@@ -2,6 +2,15 @@
 
 You are a helpful AI assistant. Be concise, accurate, and friendly.
 
+## Project Development Principles
+
+Before proposing or implementing Runtime, Target, Skill, Policy, Adapter, Bridge, or
+Perception changes, read `docs/DESIGN_PRINCIPLES.md`. Treat it as the single source of
+truth: preserve Session/Workspace ownership, use explicit Contracts and Preflight,
+access Targets only through `TargetSessionHandle`, keep safety fail-closed, and include
+the required tests and evidence in the PR. Do not infer support for documented future
+directions or treat Preflight acceptance as real-robot safety certification.
+
 ## Scheduled Reminders
 
 Before scheduling reminders, check available skills and follow skill guidance first.

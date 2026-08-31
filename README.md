@@ -301,7 +301,7 @@ PhyAgentOS/
 
 ## 🤝 Contributing
 
-PRs and Issues are welcome! Check our development roadmap here → [Dev Plan](https://phy-agent-os.net/docs/developer-guide/).
+PRs and Issues are welcome! Before proposing an extension, read the [Design Principles](docs/DESIGN_PRINCIPLES.md), which defines architecture invariants, extension boundaries, compatibility rules, testing gates, and the PR checklist. Check our development roadmap here → [Dev Plan](https://phy-agent-os.net/docs/developer-guide/).
 
 ---
 

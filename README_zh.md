@@ -298,7 +298,7 @@ PhyAgentOS/
 
 ## 🤝 参与贡献
 
-欢迎提交 PR 和 Issue，我们的开发计划可以在此处查看👉 [开发计划](https://phy-agent-os.net/docs/developer-guide/)。
+欢迎提交 PR 和 Issue。提交扩展前请先阅读[设计原则](docs/DESIGN_PRINCIPLES.md)，其中规定了架构不变量、扩展边界、兼容性规则、测试门禁和 PR 清单。开发计划可在此处查看👉 [开发计划](https://phy-agent-os.net/docs/developer-guide/)。
 
 ---
 

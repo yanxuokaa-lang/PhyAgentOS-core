@@ -7,6 +7,11 @@
 
 The PhyAgentOS development team maintains this directory as the public documentation for users and ecosystem developers. 
 
+## 开发规范 / Development Norms
+
+- [设计原则（唯一规范源）](DESIGN_PRINCIPLES.md)：方案设计、代码实现、测试与 PR 合入门禁
+- [Design Principles (single source of truth)](DESIGN_PRINCIPLES.md): design, implementation, testing, and PR gates
+
 ## 中文
 
 1. [框架介绍](zh/01-framework-introduction.md)：架构、已实现能力、实现边界与后续设计
