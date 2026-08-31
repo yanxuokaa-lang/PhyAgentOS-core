@@ -134,6 +134,60 @@ Before creating a PR:
 5. Use one feature branch and one focused PR per capability; use explicit
    `Depends on #...` links for stacked work.
 
+### 9.1 Verified fork and Forge worktree recipe
+
+Fork the official `PhyAgentOS/PhyAgentOS` repository into the contributor's
+account. The verified fork used for this work is
+`yanxuokaa-lang/PhyAgentOS-core`. At the time of this record it publishes only
+`preview`; it does not publish a fork-side `main`. Therefore, do not run
+`git clone --branch main` against that fork.
+
+For a fresh local checkout, clone the fork's default branch, then fetch the
+official Forge baseline and create the feature branch from `upstream/main`:
+
+```bash
+git clone https://github.com/yanxuokaa-lang/PhyAgentOS-core.git PhyAgentOS-forge
+cd PhyAgentOS-forge
+git remote add upstream https://github.com/PhyAgentOS/PhyAgentOS.git
+git fetch upstream main
+git switch -c feature/grasp-tool-contract --track upstream/main
+```
+
+When an existing local clone already contains the verified `origin/main`
+object, an isolated worktree is equivalent and avoids modifying the checked-out
+`preview` files:
+
+```bash
+cd <existing-PhyAgentOS-clone>
+git remote add upstream https://github.com/PhyAgentOS/PhyAgentOS.git
+git fetch upstream main
+git worktree add -b feature/grasp-tool-contract \
+  <path>/PhyAgentOS-forge upstream/main
+```
+
+Verify the new worktree before editing:
+
+```bash
+git remote -v
+git branch -vv
+git rev-parse HEAD upstream/main
+git status --short
+git diff --stat upstream/main...HEAD
+```
+
+The expected result is a clean feature branch whose `HEAD` equals the current
+`upstream/main`, with no diff before implementation. Push implementation
+branches to the fork and open the PR from the fork branch into the official
+`PhyAgentOS/PhyAgentOS:main` branch:
+
+```bash
+git push -u origin feature/grasp-tool-contract
+```
+
+The verified setup used `c5740a58bbc53a68aa50be9f44e94d3a90e41446` as both
+`HEAD` and `upstream/main`. This hash is an audit snapshot, not a permanent
+pin; refresh it before each PR and record the new value in the PR metadata.
+
 ## 10. Current workspace warning
 
 The local `preview` branch is not the Forge v1.0 feature base. It tracks the

@@ -11,6 +11,18 @@ find.
 
 ## Recent Versions
 
+### v0.1.13 (2026-08-31) - codex
+
+- [docs] [完成] 将 fork、`upstream/main`、Forge worktree 和首个功能分支创建流程保存到 PR 文档。
+- [docs] [completed] Saved the fork, `upstream/main`, Forge worktree, and first feature-branch workflow in the PR document.
+- Details: [2026-08 monthly record](changelog/2026-08.md#v0113-2026-08-31-1520---codex)
+
+### v0.1.12 (2026-08-31) - codex
+
+- [chore] [完成] 准备独立 Forge worktree，并验证双远程和官方 `main` 基线。
+- [chore] [completed] Prepared the isolated Forge worktree and verified the two remotes and official `main` baseline.
+- Details: [2026-08 monthly record](changelog/2026-08.md#v0112-2026-08-31-1445---codex)
+
 ### v0.1.11 (2026-08-31) - codex
 
 - [docs] [完成] 锁定 `origin/main` Forge v1.0 为融合基线，按 PR0-PR8 拆分 Hephaestus 能力，并限制为低影响 capability 扩展。
@@ -28,9 +40,3 @@ find.
 - [docs] [完成] 新增 Hephaestus 自我进化融合结论和 PAOS fork/PR 漂移防护结论。
 - [docs] [completed] Added staged Hephaestus self-evolution fusion conclusions and PAOS fork/PR drift controls.
 - Details: [2026-08 monthly record](changelog/2026-08.md#v019-2026-08-31-1357---codex)
-
-### v0.1.8 (2026-08-31) - codex
-
-- [docs] [完成] 新增统一设计原则文档，并将 README、文档索引和 Agent 模板指向该规范源。
-- [docs] [completed] Added a single design-principles document and linked README, documentation index, and Agent template to it.
-- Details: [2026-08 monthly record](changelog/2026-08.md#v018-2026-08-31-1325---codex)
