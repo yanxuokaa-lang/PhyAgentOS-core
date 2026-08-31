@@ -11,7 +11,62 @@ copying its repository-specific governance tooling into PAOS. These safeguards
 exist to keep an implementation PR aligned with its accepted design. They do
 not run inside a Target, Skill Runtime, SessionRunner, or Agent loop.
 
-## 2. Measures that are applicable to PAOS
+## 2. Stop That Shit modes
+
+Use the smallest mode that matches the task:
+
+| Mode | Use | Default effect |
+|---|---|---|
+| `change` | Implement an explicitly scoped feature or document change | Edits are allowed only for the requested result and necessary consequences |
+| `review` | Review a design, diff, or PR | Report findings; do not edit |
+| `monitor` | Wait for CI, an upstream response, or another external state change | Do not broaden the task while waiting |
+| `status` / `runtime` | Inspect advisory Guard state | Read-only inspection |
+| `lock change` | Edit only an already-known exact file set | Hard file boundary; do not invent additional targets |
+
+For PAOS self-evolution work, use `review` while comparing the architecture or
+PR plan, `lock change` for a bounded RFC or contract document, and `change` for
+one implementation capability. `monitor` is not a reason to add speculative
+hardening. The Skill is advisory; unless a host Guard explicitly reports an
+armed denial, it must not be described as having blocked an action.
+
+## 3. Stop Ladder for scope control
+
+Before adding code, a schema field, a dependency, a compatibility layer, or a
+paragraph of defensive documentation, answer in order:
+
+1. Did the user or accepted PR scope request it?
+2. Is it necessary to complete the current result?
+3. What reachable caller, data path, test, deployment state, or acceptance gate
+   proves that necessity?
+4. Would omitting it make the current result fail, unsafe, or false?
+
+If the answer remains no, do not add it. This rule prevents speculative retry,
+fallback, hashing, dependency, state-machine, and documentation growth. It
+does not remove a safety, privacy, compatibility, or failure disclosure that is
+required at the decision point to keep the result correct or safe.
+
+## 4. Defensive-code and defensive-documentation boundary
+
+Do not add the following merely because they might help future work:
+
+- a second Session, Memory, Skill Registry, Evaluator, or Promotion service;
+- generic retries, caches, fallbacks, hashes, or dependency pins without a
+  reachable current caller and acceptance test;
+- Runtime logic that inspects Git history, PR state, or local workflow files;
+- warnings, caveats, or hypothetical failure narratives unrelated to the
+  current decision or user action;
+- duplicate copies of `DESIGN_PRINCIPLES.md`, the RFC, or existing contracts.
+
+Keep documentation focused on Goal, Non-goals, owner, reachable failure/unknown
+semantics, required tests, rollback, and current limitations. Keep process
+details in this contribution document or the PR description, not in Runtime
+instructions or user-facing Skill text.
+
+Safety-critical behavior remains required: fail-closed handling of stale or
+unknown state, invalid actions, missing evidence, cancellation, timeout, and
+hardware stop semantics must not be removed merely to reduce defensive code.
+
+## 5. Measures that are applicable to PAOS
 
 | Hephaestus measure | PAOS adaptation | Where it belongs | Put into feature PR? |
 |---|---|---|---|
@@ -29,7 +84,7 @@ The last two rows are product capabilities only when the corresponding PAOS
 feature is being implemented. The other rows are process controls and must not
 be bundled as hidden runtime behavior.
 
-## 3. Measures that should not be copied
+## 6. Measures that should not be copied
 
 - Hephaestus-specific `.task/current.md` schema and repository paths.
 - Hephaestus workflow-governance YAML, cleanup baseline, or import exceptions.
@@ -42,7 +97,7 @@ be bundled as hidden runtime behavior.
 PAOS may later adopt a small generic contribution checker, but that should be a
 separate tooling proposal and must not be a prerequisite for Runtime startup.
 
-## 4. Two-document and PR policy
+## 7. Two-document and PR policy
 
 Use one non-normative architecture RFC for the overall direction. Do not
 pre-commit a set of documents that claim all future PRs are already final.
@@ -52,7 +107,7 @@ for that capability together with code and tests. Keep the broader roadmap in
 the RFC. A design document becomes normative only after the corresponding PR
 is accepted and its tests establish the claimed behavior.
 
-## 5. Fork and branch discipline
+## 8. Fork and branch discipline
 
 The fork is safe for staging docs and draft PRs; pushing to a fork does not
 change the upstream repository until a PR is opened or merged. Branch ancestry
@@ -69,14 +124,14 @@ Before creating a PR:
 5. Use one feature branch and one focused PR per capability; use explicit
    `Depends on #...` links for stacked work.
 
-## 6. Current workspace warning
+## 9. Current workspace warning
 
 The local `preview` branch is not a clean upstream feature base. It tracks the
 fork's `origin/preview`, while the worktree also contains unrelated changes in
 `pyproject.toml` and untracked `.codegraph/` and `.cursor/` paths. These must
 not be included in the architecture RFC or any feature PR.
 
-## 7. Review checklist for code-drift prevention
+## 10. Review checklist for code-drift prevention
 
 - Does the implementation still match the accepted extension point?
 - Did any new module become an accidental truth owner?
@@ -89,10 +144,9 @@ not be included in the architecture RFC or any feature PR.
 - Can the branch be rebased onto the intended upstream base without unrelated
   commits appearing in the diff?
 
-## 8. Separation guarantee
+## 11. Separation guarantee
 
 The drift controls in this document are review and branch practices. They do
 not add PAOS dependencies, runtime imports, Session fields, Target behavior,
 or Agent tools. A future feature PR may reference these controls in its PR
 description, but it must not silently implement them as part of the feature.
-
