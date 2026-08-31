@@ -11,6 +11,12 @@ find.
 
 ## Recent Versions
 
+### v0.1.15 (2026-08-31) - codex
+
+- [docs] [完成] 修正 Session 生命周期、阶段结果投影和单能力 PR 拆分，并锁定 `scene.observe` 为首个实现功能。
+- [docs] [completed] Corrected Session lifecycle, phase-result projection, and one-capability PR splitting; locked `scene.observe` as the first implementation capability.
+- Details: [2026-08 monthly record](changelog/2026-08.md#v0115-2026-08-31-1652---codex)
+
 ### v0.1.14 (2026-08-31) - codex
 
 - [docs] [完成] 收口 Hephaestus 感知抓取链路的 PAOS 模块化接口边界，并增加阶段结算归因审核。
@@ -34,15 +40,3 @@ find.
 - [docs] [完成] 锁定 `origin/main` Forge v1.0 为融合基线，按 PR0-PR8 拆分 Hephaestus 能力，并限制为低影响 capability 扩展。
 - [docs] [completed] Lock `origin/main` Forge v1.0 as the fusion baseline, split Hephaestus capabilities into PR0-PR8, and constrain the work to low-impact capability extensions.
 - Details: [2026-08 monthly record](changelog/2026-08.md#v0111-2026-08-31-0000---codex)
-
-### v0.1.10 (2026-08-31) - codex
-
-- [docs] [完成] 补充 Stop That Shit 模式、Stop Ladder 和防止防御性代码/文档膨胀的边界。
-- [docs] [completed] Added Stop That Shit modes, the Stop Ladder, and boundaries against defensive code/documentation bloat.
-- Details: [2026-08 monthly record](changelog/2026-08.md#v0110-2026-08-31-1405---codex)
-
-### v0.1.9 (2026-08-31) - codex
-
-- [docs] [完成] 新增 Hephaestus 自我进化融合结论和 PAOS fork/PR 漂移防护结论。
-- [docs] [completed] Added staged Hephaestus self-evolution fusion conclusions and PAOS fork/PR drift controls.
-- Details: [2026-08 monthly record](changelog/2026-08.md#v019-2026-08-31-1357---codex)

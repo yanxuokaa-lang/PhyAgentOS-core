@@ -63,7 +63,17 @@ are:
 | `object.acquire` | Action | Run the bounded approach/contact/close/lift/hold workflow and return typed execution and settlement facts. |
 | `object.place` | Action | Run the bounded transport/descent/release/retreat workflow and return typed execution and settlement facts. |
 | `scene.acquire_active_view` | Action | Move a camera-bearing embodiment only when a new view is explicitly required and admitted. |
-| `execution.session` | Session, optional | Correlate a continuous capability lifecycle; it does not create a cross-Tool lease or grant motion permission. |
+| `execution.session` | Session, conditional | Own an explicitly stateful capability lifecycle only when the Endpoint has resources or state that must persist across calls; correlation alone is not a Session. |
+
+`execution.session` is not part of the default PR1 contract. Use the existing
+`AgentTask`, `PlanRevision`, `record_id`, and `invocation_id` references when a
+workflow only needs correlation. Add a Session ToolSpec only when its Endpoint
+owns a resource or stateful lifecycle and can expose owner (`task`, `shared`, or
+`runtime`), status/result, stop, timeout, cleanup, and unknown semantics through
+the common Forge routes. A Session never grants a cross-Tool lease or motion
+permission. Any state used by `EntityAssociator` or an observation cache must be
+stateless over explicit references or owned by that declared task/runtime
+Session; process-global hidden state is not allowed.
 
 `task_outcome` is deliberately not a public Tool. User-level success remains
 owned by `AgentTask finalize` and `TaskVerificationContract`, using ToolResult,
@@ -130,14 +140,22 @@ artifact_refs
 bounded_metric_names
 ```
 
-The summary is a redacted projection, not a second settlement protocol. It lets
-`ExperienceCoordinator` distinguish perception unavailable, candidate empty,
-planner admission rejected, closure/attachment unconfirmed, and placement
-verification failure. It must not contain object-specific answers, coordinates,
-trajectories, provider-private payloads, RoboTwin task fields, or hardware
-credentials. Evolution may learn observation refresh, candidate ranking,
-provider/profile selection, operation order, and bounded recovery; it may not
-change safety gates, planner legality, evidence validity, or motion authority.
+The summary is a redacted, versioned extension of the terminal
+`ToolResult.data` (for example, `capability_outcome_summary_v1`), not a second
+settlement protocol or a new persisted record. Its `status` maps to the
+canonical Forge Tool status, while `capability_phase` identifies the terminal
+bounded phase. A generic `AgentTaskOutcomeSource` must validate and project the
+allowed fields into the existing `TaskOutcomeEnvelope`/`LineageOutcome` before
+`ExperienceCoordinator` runs; Experience must not read provider responses or
+ArtifactRefs directly. This lets it distinguish perception unavailable,
+candidate empty, planner admission rejected, closure/attachment unconfirmed,
+and placement verification failure without creating a grasp-specific contract.
+The summary must not contain object-specific answers, coordinates, trajectories,
+provider-private payloads, RoboTwin task fields, or hardware credentials.
+Evolution may learn observation refresh, candidate ranking, provider/profile
+selection from the active Bundle allowlist, operation order, and bounded
+recovery; it may not change safety gates, planner legality, evidence validity,
+or motion authority.
 
 ## 4. Current Status And Gaps
 
@@ -153,7 +171,8 @@ The material gaps are capability-specific rather than another evolution layer:
    seams described above;
 2. authoritative entity identity, measured pose/geometry, attachment/lift/place
    evidence, and failure/unknown semantics in ToolEndpoint results;
-3. a bounded phase-summary projection so ExperienceCoordinator can attribute
+3. a generic, schema-validated phase-summary projection from terminal ToolResult
+   through AgentTask outcome data so ExperienceCoordinator can attribute
    failures without exposing low-level provider payloads;
 4. a continuous workflow that can issue multiple bounded Actions/Sessions under
    one AgentTask and PlanRevision lineage;
@@ -171,16 +190,18 @@ and the exact grasp capability boundary. This PR changes documentation only.
 
 ### PR1 - Provider-Neutral Tool Contract
 
-Define the public Query/Action/optional Session ToolSpecs from section 3.1,
+Define the public Query/Action/conditional Session ToolSpecs from section 3.1,
 including strict schemas, frames, units, tolerances, readiness, concurrency,
 timeout, cancel/stop, and unknown semantics. Do not expose provider phases or
 make `task_outcome` a Tool.
 
 ### PR2 - Fake Gateway And Conformance Tests
 
-Test ToolSpec binding, context, Action/Session admission, invocation and attempt
+Test ToolSpec binding, context, Action admission, invocation and attempt
 identities, pending/terminal/unknown results, cancel/stop ownership, stale
-references, and AgentTask aggregation using a mock Gateway.
+references, and AgentTask aggregation using a mock Gateway. Add Session
+admission/stop ownership tests only for a capability that declares a real
+stateful Session in PR1.
 
 ### PR3 - Simulator/Robot Skill Bundle Adapter
 
@@ -189,48 +210,66 @@ manifest-v2 Skill Bundle. RoboTwin/SAPIEN or real-hardware details stay in the
 profile and adapter; no Agent-to-simulator, Agent-to-Dora, or SDK dependency is
 added to PAOS core.
 
-### PR4 - Observation And Scene Understanding
+### PR4 - Observation Query
 
-Implement `scene.observe` and `scene.understand` using measured artifacts,
-frame/calibration identity, scene revisions, entity continuity, and explicit
-unavailable/stale results. Ground-truth simulator state is evaluator data, not
-perception input.
+Implement `scene.observe` using measured artifacts, frame/calibration identity,
+timestamps, freshness, scene revisions, and explicit unavailable/stale results.
+Ground-truth simulator state is evaluator data, not perception input.
 
-### PR5 - Candidate Proposal
+### PR5 - Scene Understanding Query
+
+Implement `scene.understand` over one named observation. Preserve entity claims,
+relations, spatial envelopes, confidence, ambiguity, and the explicit stale or
+unavailable semantics without introducing simulator-specific fields.
+
+### PR6 - Candidate Proposal
 
 Implement `grasp.propose` and the internal provider, canonicalizer, and funnel
 interfaces. Preserve candidate identity, provenance, units, frame/calibration
 binding, empty-candidate semantics, and host-owned `motion_authorized=false`.
 
-### PR6 - Preparation And Bounded Acquire/Place
+### PR7 - Preparation Query
 
-Implement `manipulation.prepare`, `object.acquire`, and `object.place` through
-one canonical Gateway path. Keep preflight non-mutating, revalidate current
-scene/runtime state before Action admission, and emit bounded phase summaries
-and evidence references.
+Implement `manipulation.prepare` as a non-mutating Query through the canonical
+Gateway path. Bind the result to the current scene revision, make the
+preflight reference short-lived, and revalidate scene/runtime state before any
+Action admission.
 
-### PR7 - Long-Horizon Simulation Workflow
+### PR8 - Bounded Acquire Action
 
-Run one RoboTwin profile workflow through a single AgentTask and execution
-context, retaining meaningful observation, proposal, preparation, Action, and
-outcome records without creating a record per simulator step. Map simulator
-success to backend evaluation only.
+Implement `object.acquire` through the canonical Gateway path. Keep the
+approach/contact/close/lift/hold phases internal, and emit the versioned bounded
+outcome summary and evidence references only from the terminal ToolResult.
 
-### PR8 - Generic Verification And Outcome Projection
+### PR9 - Bounded Place Action
+
+Implement `object.place` through the canonical Gateway path. Keep the
+transport/descent/release/retreat phases internal, and preserve cancellation,
+stop, unknown, and post-release evidence semantics.
+
+### PR10 - Long-Horizon Simulation Workflow
+
+Run one RoboTwin profile workflow through a single AgentTask and, only when the
+profile declares a real stateful lifecycle, one explicitly owned Session.
+Retain meaningful observation, proposal, preparation, Action, and outcome
+records without creating a record per simulator step. Map simulator success to
+backend evaluation only.
+
+### PR11 - Generic Verification And Outcome Projection
 
 Connect before/after captures, terminal ToolResult data, backend evaluation, and
 phase summaries to the existing `TaskVerificationContract` and
 `ForgeTaskOutcomeSource`. Do not add a grasp-specific verifier or a second
 settlement protocol.
 
-### PR9 - Experience Integration
+### PR12 - Experience Integration
 
 Use the existing `ExperienceCoordinator` to create TaskEpisodes,
 FailureObservations, and SkillCandidates from the workflow. Evolution may target
 provider/profile choice, candidate ranking, observation refresh, operation order,
 and bounded recovery; it cannot mutate safety or admission rules.
 
-### PR10 - Evaluation Extension (Only If Needed)
+### PR13 - Evaluation Extension (Only If Needed)
 
 Add replay, matched, held-out, hazard, and later real-hardware profile coverage
 only when the preceding PRs demonstrate an evaluation gap. Existing support

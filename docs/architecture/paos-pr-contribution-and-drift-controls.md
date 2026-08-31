@@ -233,12 +233,20 @@ Gateway-internal only:
   -> funnel -> planner admission -> execution geometry -> settlement evidence
 ```
 
+The first functional capability after the contract, fake Gateway, and Bundle
+scaffolding is `scene.observe` (PR4). It is a provider-neutral Query that
+returns one measured observation reference plus frame, calibration identity,
+timestamp, freshness, and scene revision. It must be useful with both a
+simulator and a real sensor, while simulator ground truth remains evaluator
+data. No Action or Session is required for this first capability.
+
 The public interface must not contain `robotwin_*`, provider names, simulator
 SDK types, `task_name`, `task_config`, evaluator scripts, or low-level phases
 such as `approach` and `lift`. These remain Skill Bundle profile, adapter, or
-backend-evaluator data. `execution.session`, when used, is only a lifecycle
-context and never a cross-Tool lease. `task_outcome` remains PAOS finalization,
-not a new Tool.
+backend-evaluator data. `execution.session`, when used, must be a real,
+explicitly owned stateful lifecycle with common status/result/stop semantics;
+correlation alone is not a Session and it never creates a cross-Tool lease.
+`task_outcome` remains PAOS finalization, not a new Tool.
 
 Before accepting a capability PR, reviewers should verify:
 
@@ -249,8 +257,10 @@ Before accepting a capability PR, reviewers should verify:
   missing calibration fails closed;
 - workspace, IK, collision, complete-route planning, cancellation, unknown, and
   stop behavior remain Gateway/Runtime-owned;
-- bounded Action results include a redacted phase summary with failure owner,
-  failure code, outcome-known state, evidence availability, and ArtifactRefs;
+- bounded Action results include a versioned redacted phase summary with
+  failure owner, failure code, outcome-known state, evidence availability, and
+  ArtifactRefs, and the generic AgentTask outcome source projects it before
+  Experience analysis;
 - simulator `check_success()` is recorded as backend evaluation and does not
   replace PAOS verification;
 - the PR changes one capability surface and does not add a second AgentTask,
