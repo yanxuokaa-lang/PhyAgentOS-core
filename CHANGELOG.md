@@ -11,6 +11,12 @@ find.
 
 ## Recent Versions
 
+### v0.1.14 (2026-08-31) - codex
+
+- [docs] [完成] 收口 Hephaestus 感知抓取链路的 PAOS 模块化接口边界，并增加阶段结算归因审核。
+- [docs] [completed] Tightened the PAOS modular boundary for the Hephaestus perception-grasp chain and added phase-settlement attribution review.
+- Details: [2026-08 monthly record](changelog/2026-08.md#v0114-2026-08-31-1612---codex)
+
 ### v0.1.13 (2026-08-31) - codex
 
 - [docs] [完成] 将 fork、`upstream/main`、Forge worktree 和首个功能分支创建流程保存到 PR 文档。

@@ -215,3 +215,47 @@ The drift controls in this document are review and branch practices. They do
 not add PAOS dependencies, runtime imports, Session fields, Target behavior,
 or Agent tools. A future feature PR may reference these controls in its PR
 description, but it must not silently implement them as part of the feature.
+
+## 13. Perception-Grasp PR Boundary Review
+
+The reviewed Hephaestus perception/grasp chain is accepted as a source of
+semantics and failure evidence, with the following PAOS boundary:
+
+```text
+AgentTask / Skill workflow
+  -> scene.observe / scene.understand / grasp.propose (Query)
+  -> manipulation.prepare (non-mutating Query)
+  -> object.acquire / object.place (bounded Action)
+  -> AgentTask finalize + TaskVerificationContract
+
+Gateway-internal only:
+  ObservationSource -> calibration -> scene/geometry -> provider/canonicalizer
+  -> funnel -> planner admission -> execution geometry -> settlement evidence
+```
+
+The public interface must not contain `robotwin_*`, provider names, simulator
+SDK types, `task_name`, `task_config`, evaluator scripts, or low-level phases
+such as `approach` and `lift`. These remain Skill Bundle profile, adapter, or
+backend-evaluator data. `execution.session`, when used, is only a lifecycle
+context and never a cross-Tool lease. `task_outcome` remains PAOS finalization,
+not a new Tool.
+
+Before accepting a capability PR, reviewers should verify:
+
+- the public ToolSpec is semantic and backend-neutral;
+- provider outputs carry candidate identity, provenance, frame/calibration,
+  units, empty-result and funnel semantics, while never authorizing motion;
+- observation-backed geometry is required on the canonical route and stale or
+  missing calibration fails closed;
+- workspace, IK, collision, complete-route planning, cancellation, unknown, and
+  stop behavior remain Gateway/Runtime-owned;
+- bounded Action results include a redacted phase summary with failure owner,
+  failure code, outcome-known state, evidence availability, and ArtifactRefs;
+- simulator `check_success()` is recorded as backend evaluation and does not
+  replace PAOS verification;
+- the PR changes one capability surface and does not add a second AgentTask,
+  execution, settlement, evaluator, or promotion protocol.
+
+This review resolves the previous ambiguity between a small public Tool set and
+the richer Hephaestus internal chain. It does not require importing Hephaestus,
+RoboTwin, SAPIEN, Torch, or XPolicyLab into PAOS core.
