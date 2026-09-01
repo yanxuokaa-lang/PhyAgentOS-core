@@ -12,6 +12,12 @@ find.
 
 ## Recent Versions
 
+### v0.3.3 (2026-09-01) - codex
+
+- [chore] [完成] 将 `scene-observe` Skill 暂存到 fork 的 `feature/scene-observe` 分支，暂不创建 PR。
+- [chore] [completed] Staged the `scene-observe` Skill on the fork's `feature/scene-observe` branch without opening a PR.
+- Details: [2026-09 monthly record](changelog/2026-09.md#v033-2026-09-01-0055---codex)
+
 ### v0.3.2 (2026-09-01) - codex
 
 - [docs] [完成] 回填 RoboTwin 重装记录的最终依赖验证状态并保留历史事实。
