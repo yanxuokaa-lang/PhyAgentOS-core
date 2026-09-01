@@ -7,9 +7,28 @@ find.
 
 ## Archive
 
+- [2026-09](changelog/2026-09.md)
 - [2026-08](changelog/2026-08.md)
 
 ## Recent Versions
+
+### v0.3.1 (2026-09-01) - codex
+
+- [env] [完成] 修复 RoboTwin20 的 SAPIEN `pkg_resources` 兼容性并验证仿真依赖导入，保持碰撞规划源码不变。
+- [env] [completed] Fixed RoboTwin20 SAPIEN `pkg_resources` compatibility and verified simulator imports without changing collision-planning source.
+- Details: [2026-09 monthly record](changelog/2026-09.md#v031-2026-09-01-0020---codex)
+
+### v0.3.0 (2026-09-01) - codex
+
+- [sense] [完成] 在独立 `paos-perception-manipulation` 工程实现 provider-neutral `scene.observe` Query、无运动 Fake Gateway 和 7 项 PAOS 客户端一致性测试。
+- [sense] [completed] Implemented provider-neutral `scene.observe`, a no-motion Fake Gateway, and seven PAOS client conformance tests in the independent `paos-perception-manipulation` project.
+- Details: [2026-09 monthly record](changelog/2026-09.md#v030-2026-09-01-0000---codex)
+
+### v0.2.0 (2026-08-31) - codex
+
+- [env] [完成] 重建官方 RoboTwin 2.0 源码和独立 `RoboTwin20` 环境。
+- [env] [completed] Recreated official RoboTwin 2.0 source and isolated `RoboTwin20` environment.
+- Details: [2026-08 monthly record](changelog/2026-08.md#v020-2026-08-31-1705---codex)
 
 ### v0.1.15 (2026-08-31) - codex
 
