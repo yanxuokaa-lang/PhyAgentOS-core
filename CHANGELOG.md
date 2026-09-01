@@ -12,6 +12,12 @@ find.
 
 ## Recent Versions
 
+### v0.3.4 (2026-09-01) - codex
+
+- [sense] [完成] 在 fork 的 `feature/scene-understand` 分支实现 provider-neutral `scene.understand` Query，并保持只读、无运动和 observation-bound 语义。
+- [sense] [completed] Implemented provider-neutral `scene.understand` on the fork's `feature/scene-understand` branch with read-only, no-motion, observation-bound semantics.
+- Details: [2026-09 monthly record](changelog/2026-09.md#v034-2026-09-01-0125---codex)
+
 ### v0.3.3 (2026-09-01) - codex
 
 - [chore] [完成] 将 `scene-observe` Skill 暂存到 fork 的 `feature/scene-observe` 分支，暂不创建 PR。
