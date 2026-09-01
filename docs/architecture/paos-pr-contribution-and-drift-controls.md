@@ -4,17 +4,21 @@
 > Authority: contribution-process guidance; not a Runtime contract
 > Scope: fork workflow, reviewability, and prevention of implementation drift
 
+> Compatibility note: The normative implementation baseline is PAOS v1.0.0
+> `main` and its Developer/Integration manuals. This document governs process
+> only and does not redefine Tool API or Runtime behavior.
+
 ## 1. Purpose
 
 This document adapts the useful process safeguards from Hephaestus without
 copying its repository-specific governance tooling into PAOS. These safeguards
 exist to keep an implementation PR aligned with its accepted design. For the
-`origin/main` Forge baseline they do not run inside a ToolEndpoint, Gateway,
+`upstream/main` Forge baseline they do not run inside a ToolEndpoint, Gateway,
 Skill Bundle, AgentTask, or Agent loop.
 
 ## 2. Baseline Lock
 
-The default fusion target is `origin/main` and its v1.0 Forge Developer
+The default fusion target is `upstream/main` and its v1.0 Forge Developer
 Manual. Before opening an implementation branch, record the exact base commit,
 manual version, target simulator, and capability boundary. The `preview`
 branch is a divergent v0.1.x Session Runtime line; its Target/Adapter/
@@ -138,22 +142,22 @@ Before creating a PR:
 
 Fork the official `PhyAgentOS/PhyAgentOS` repository into the contributor's
 account. The verified fork used for this work is
-`yanxuokaa-lang/PhyAgentOS-core`. At the time of this record it publishes only
-`preview`; it does not publish a fork-side `main`. Therefore, do not run
-`git clone --branch main` against that fork.
+`yanxuokaa-lang/PhyAgentOS-core`, which now publishes `main` synchronized with
+the official v1.0.0 baseline. Use `upstream/main` as the authoritative base and
+refresh it before each PR.
 
 For a fresh local checkout, clone the fork's default branch, then fetch the
 official Forge baseline and create the feature branch from `upstream/main`:
 
 ```bash
-git clone https://github.com/yanxuokaa-lang/PhyAgentOS-core.git PhyAgentOS-forge
+git clone --branch main https://github.com/yanxuokaa-lang/PhyAgentOS-core.git PhyAgentOS-forge
 cd PhyAgentOS-forge
 git remote add upstream https://github.com/PhyAgentOS/PhyAgentOS.git
 git fetch upstream main
-git switch -c feature/grasp-tool-contract --track upstream/main
+git switch -c feature/<capability> --track upstream/main
 ```
 
-When an existing local clone already contains the verified `origin/main`
+When an existing local clone already contains the verified `upstream/main`
 object, an isolated worktree is equivalent and avoids modifying the checked-out
 `preview` files:
 
@@ -161,7 +165,7 @@ object, an isolated worktree is equivalent and avoids modifying the checked-out
 cd <existing-PhyAgentOS-clone>
 git remote add upstream https://github.com/PhyAgentOS/PhyAgentOS.git
 git fetch upstream main
-git worktree add -b feature/grasp-tool-contract \
+git worktree add -b feature/<capability> \
   <path>/PhyAgentOS-forge upstream/main
 ```
 
@@ -181,7 +185,7 @@ branches to the fork and open the PR from the fork branch into the official
 `PhyAgentOS/PhyAgentOS:main` branch:
 
 ```bash
-git push -u origin feature/grasp-tool-contract
+git push -u origin feature/<capability>
 ```
 
 The verified setup used `c5740a58bbc53a68aa50be9f44e94d3a90e41446` as both

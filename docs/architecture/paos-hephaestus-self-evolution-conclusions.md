@@ -4,29 +4,34 @@
 > Authority: non-normative until an implementation PR is accepted
 > Scope: self-evolution capability fusion, not whole-project migration
 
+> Compatibility note: PAOS v1.0.0 `main` and its Developer, Integration, and
+> Forge Tool API manuals are normative. The former `preview` Session-Centered
+> Runtime is historical reference material only.
+
 ## 1. Baseline Decision
 
-The primary integration baseline is `origin/main` at the PAOS v1.0 Forge
+The primary integration baseline is `upstream/main` at the PAOS v1.0 Forge
 architecture. Its physical execution path is
 `ForgeToolClient -> Gateway Tool API -> ToolEndpoint`; its task and evolution
 state is already represented by `AgentTask`, `PlanRevision`,
 `ToolExecutionRecord`, `TaskEpisode`, `ExperienceCoordinator`, Lessons, and
 guarded Skill promotion.
 
-The local `preview` branch is a divergent v0.1.x Session-Centered Runtime
+The local `preview` branch is a divergent historical Session-Centered Runtime
 line. Its `BaseRolloutTarget`, `TargetSessionHandle`, and legacy Skill Runtime
 extensions are compatibility references only and must not be copied into a
-Forge PR. Every implementation PR must record its exact base branch, commit,
-and Developer Manual version before code changes begin.
+Forge PR. Every implementation PR must record its exact `upstream/main` base commit,
+the v1.0.0 Developer Manual version, and the current ToolSpec/Bundle boundary.
 
 ## 2. Decision
 
 PhyAgentOS remains the host architecture for AgentTask, Forge Tool API,
 Gateway binding, evidence, verification, Skill Runtime management, and
-ExperienceCoordinator. Hephaestus is treated as a source of validated
+ExperienceCoordinator. The v1.0.0 manuals are normative for these boundaries.
+Hephaestus is treated as a source of validated
 self-evolution concepts, not as a package to be copied or embedded wholesale.
 
-The fusion unit is one capability per PR. For `origin/main`, every capability
+The fusion unit is one capability per PR. For `upstream/main`, every capability
 must first be expressed as a ToolEndpoint, ToolSpec, Skill Bundle profile, or
 existing Agent/Experience extension. Hephaestus implementation classes are
 references for semantics and failure behavior only; they are not a new PAOS
@@ -157,9 +162,40 @@ selection from the active Bundle allowlist, operation order, and bounded
 recovery; it may not change safety gates, planner legality, evidence validity,
 or motion authority.
 
+## 3.4 Evolution Eligibility And Safety Boundary
+
+The v1.0 evolution loop is deliberately downstream of execution truth:
+
+```text
+Skill activation
+  -> AgentTask / PlanRevision / Tool records
+  -> semantic outcome
+  -> redacted TaskEpisode
+  -> asynchronous reflection
+  -> FailureObservation / LessonCluster or SkillCandidate
+  -> existing guarded promotion and rollback
+```
+
+Only an attributable AgentTask with a complete-enough semantic outcome may
+support a SkillCandidate. The default independent-support threshold remains
+three successful AgentTasks; a failed or replanned task may produce a scoped
+failure observation, while `verification=off`, manual review, inconclusive,
+invalid-verdict, infrastructure, or evidence-limit outcomes are diagnostic
+only. Lessons are workflow-scoped
+advisories and never evidence, verdicts, safety authorization, or replacements
+for Gateway admission. Evolution is fail-open: reflection, persistence,
+validation, reload, or promotion errors preserve the original task outcome.
+
+Built-in Skills are never edited in place. Candidate content is redacted,
+validated, atomically written, reloaded, and rollback-capable through the
+existing Skill Runtime. Operator-owned `AGENTS.md` and `EMBODIED.md` safety
+constraints are outside the evolution write path. This section summarizes the
+v1.0 manual; it does not create a second evolution protocol or alter its
+configured thresholds.
+
 ## 4. Current Status And Gaps
 
-`origin/main` already provides the self-evolution substrate needed for the
+`upstream/main` already provides the self-evolution substrate needed for the
 first fusion PRs: immutable Skill activation/binding, task-level outcome
 envelopes, redacted TaskEpisodes, asynchronous reflection, scoped Lessons,
 Skill Candidates, support thresholds, content validation, atomic Skill writes,
@@ -174,8 +210,9 @@ The material gaps are capability-specific rather than another evolution layer:
 3. a generic, schema-validated phase-summary projection from terminal ToolResult
    through AgentTask outcome data so ExperienceCoordinator can attribute
    failures without exposing low-level provider payloads;
-4. a continuous workflow that can issue multiple bounded Actions/Sessions under
-   one AgentTask and PlanRevision lineage;
+4. a continuous workflow that can issue multiple bounded Query/Action calls and,
+   only when required by real resource ownership, Sessions under one AgentTask
+   and PlanRevision lineage;
 5. independent simulated workflows that supply enough evidence to distinguish
    reusable success from infrastructure, backend-evaluator, or verifier failure;
 6. replay and held-out/hazard evaluation only where real candidate data shows
@@ -183,19 +220,19 @@ The material gaps are capability-specific rather than another evolution layer:
 
 ## 5. Revised PR Sequence For Forge
 
-### PR0 - Baseline And Capability RFC
+### PR0 - Baseline And Capability RFC (completed in fork documentation)
 
-Lock the `origin/main` commit, Forge Developer Manual version, target simulator,
+Lock the `upstream/main` commit, Forge Developer Manual version, target simulator,
 and the exact grasp capability boundary. This PR changes documentation only.
 
-### PR1 - Provider-Neutral Tool Contract
+### PR1 - Provider-Neutral Tool Contract (completed for current Query surface)
 
 Define the public Query/Action/conditional Session ToolSpecs from section 3.1,
 including strict schemas, frames, units, tolerances, readiness, concurrency,
 timeout, cancel/stop, and unknown semantics. Do not expose provider phases or
 make `task_outcome` a Tool.
 
-### PR2 - Fake Gateway And Conformance Tests
+### PR2 - Fake Gateway And Conformance Tests (completed for current Query surface)
 
 Test ToolSpec binding, context, Action admission, invocation and attempt
 identities, pending/terminal/unknown results, cancel/stop ownership, stale
@@ -203,32 +240,32 @@ references, and AgentTask aggregation using a mock Gateway. Add Session
 admission/stop ownership tests only for a capability that declares a real
 stateful Session in PR1.
 
-### PR3 - Simulator/Robot Skill Bundle Adapter
+### PR3 - Simulator/Robot Skill Bundle Adapter (deferred until Query contracts stabilize)
 
 Package the Gateway, ToolEndpoints, profile/dataflow, and locked artifacts as a
 manifest-v2 Skill Bundle. RoboTwin/SAPIEN or real-hardware details stay in the
 profile and adapter; no Agent-to-simulator, Agent-to-Dora, or SDK dependency is
 added to PAOS core.
 
-### PR4 - Observation Query
+### PR4 - Observation Query (implemented; upstream PR pending)
 
 Implement `scene.observe` using measured artifacts, frame/calibration identity,
 timestamps, freshness, scene revisions, and explicit unavailable/stale results.
 Ground-truth simulator state is evaluator data, not perception input.
 
-### PR5 - Scene Understanding Query
+### PR5 - Scene Understanding Query (implemented; upstream PR pending)
 
 Implement `scene.understand` over one named observation. Preserve entity claims,
 relations, spatial envelopes, confidence, ambiguity, and the explicit stale or
 unavailable semantics without introducing simulator-specific fields.
 
-### PR6 - Candidate Proposal
+### PR6 - Candidate Proposal (implemented; upstream PR pending)
 
 Implement `grasp.propose` and the internal provider, canonicalizer, and funnel
 interfaces. Preserve candidate identity, provenance, units, frame/calibration
 binding, empty-candidate semantics, and host-owned `motion_authorized=false`.
 
-### PR7 - Preparation Query
+### PR7 - Preparation Query (current implementation target)
 
 Implement `manipulation.prepare` as a non-mutating Query through the canonical
 Gateway path. Bind the result to the current scene revision, make the
