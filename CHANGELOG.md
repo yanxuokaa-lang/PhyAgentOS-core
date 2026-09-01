@@ -12,6 +12,12 @@ find.
 
 ## Recent Versions
 
+### v0.3.2 (2026-09-01) - codex
+
+- [docs] [完成] 回填 RoboTwin 重装记录的最终依赖验证状态并保留历史事实。
+- [docs] [completed] Backfilled final RoboTwin reinstall dependency verification while preserving historical facts.
+- Details: [2026-09 monthly record](changelog/2026-09.md#v032-2026-09-01-0040---codex)
+
 ### v0.3.1 (2026-09-01) - codex
 
 - [env] [完成] 修复 RoboTwin20 的 SAPIEN `pkg_resources` 兼容性并验证仿真依赖导入，保持碰撞规划源码不变。
