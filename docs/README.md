@@ -25,6 +25,12 @@ The PhyAgentOS team maintains this directory for users, operators, and ecosystem
 - [通信架构](user_development_guide/COMMUNICATION.md)：Agent 消息、Forge HTTP/WebSocket、system event、SQLite 与 Artifact 边界。
 - [Forge Tool API 接入契约](forge/README_zh.md)：Query/Action/Session、不可变 Skill binding、ToolInvocation、AgentTask、证据、验证、恢复和 Skill Runtime 契约。
 
+### 项目架构决策（补充，不替代官方契约）
+
+- [Forge v1.0 接入原则](architecture/forge-v1-integration-principles.md)：扩展点、所有权、证据与安全边界，以及历史术语映射。
+- [Forge v1.0 Hephaestus 融合与自我进化边界](architecture/forge-v1-hephaestus-evolution-adr.md)：Hephaestus 能力如何进入 ToolEndpoint/provider，及 TaskEpisode/Skill promotion 所有权。
+- [Forge v1.0 贡献与防漂移控制](architecture/forge-v1-contribution-and-drift-controls.md)：基线锁定、PR 分层、验证门禁和不应进入 Runtime 的流程规则。
+
 ### 推荐阅读路径
 
 | 目标 | 建议路径 |
@@ -55,6 +61,12 @@ The PhyAgentOS team maintains this directory for users, operators, and ecosystem
 - [Integration Development Guide](user_development_guide/README_en.md): Tool, Node, and Skill integration; Bundle packaging and immutable publication; the local loop; evidence sources; providers; and PAOS extension boundaries.
 - [Communication Architecture](user_development_guide/COMMUNICATION_en.md): Agent messages, Forge HTTP/WebSocket, system events, SQLite, and artifact boundaries.
 - [Forge Tool API Integration Contract](forge/README.md): Query/Action/Session, immutable Skill binding, ToolInvocation, AgentTask, evidence, verification, recovery, and Skill Runtime contracts.
+
+### Project architecture decisions (supplemental)
+
+- [Forge v1.0 Integration Principles](architecture/forge-v1-integration-principles.md): extension points, ownership, evidence and safety boundaries, and historical terminology mapping.
+- [Forge v1.0 Hephaestus Evolution Boundary](architecture/forge-v1-hephaestus-evolution-adr.md): how Hephaestus capabilities enter through ToolEndpoints/providers and how TaskEpisode/Skill promotion remain owned by PAOS.
+- [Forge v1.0 Contribution and Drift Controls](architecture/forge-v1-contribution-and-drift-controls.md): baseline locking, PR tiers, validation gates, and process rules that must stay outside Runtime.
 
 ### Suggested reading paths
 

@@ -2,6 +2,26 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v1.0.1] - 2026-09-02
+
+Reorganized project architecture guidance around the PAOS v1.0 Forge contracts.
+
+### Added
+
+- Added supplemental Forge v1.0 integration principles, Hephaestus evolution boundary, and
+  contribution/drift-control documents.
+- Added links to the supplemental architecture decisions from the bilingual documentation index.
+
+### Changed
+
+- Reframed historical Session/Target/Verifier terminology as migration context for
+  ToolEndpoint, ToolSpec, Skill Bundle, AgentTask, Verification, and ExperienceCoordinator.
+
+### Security
+
+- Documentation-only change. No legacy Runtime code, second execution protocol, direct simulator
+  path, or motion authority was introduced.
+
 ## [v1.0.0] - 2026-08-30
 
 Initial stable release of PhyAgentOS.
