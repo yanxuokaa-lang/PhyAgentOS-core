@@ -2,6 +2,15 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v1.0.2] - 2026-09-02
+
+Recorded the v1.0.1 documentation-migration commit `a074893` on
+`docs/forge-v1-terminology`.
+
+### Security
+
+- Documentation-only closeout; no Runtime, Gateway, simulator, hardware, or motion path changed.
+
 ## [v1.0.1] - 2026-09-02
 
 Reorganized project architecture guidance around the PAOS v1.0 Forge contracts.
