@@ -329,6 +329,32 @@ def test_dispatch_does_not_reserve_a_fixed_verify_node_name():
     assert decision is not None and decision.allowed
 
 
+def test_coordinator_rejects_cyclic_plan_graph(tmp_path):
+    c = coordinator(tmp_path)
+    task = c.create_task(task_description="cycle", verification=TaskVerificationContract(mode="off"))
+    nodes = (
+        PlanNode(node_id="a", obligation_id="oa", capability="x", dependencies=("b",)),
+        PlanNode(node_id="b", obligation_id="ob", capability="y", dependencies=("a",)),
+    )
+    payload = {
+        "schema_version": "paos-plan-graph/v1",
+        "task_id": task.task_id,
+        "revision_id": "revision-cycle",
+        "graph_digest": "0" * 64,
+        "planner_decision_digest": "1" * 64,
+        "policy_snapshot_digest": "2" * 64,
+        "nodes": [node.model_dump(mode="json") for node in nodes],
+    }
+    payload["graph_digest"] = plan_graph_digest(payload)
+    graph = PlanGraph.model_validate(payload)
+    with pytest.raises(AgentTaskError, match="not a valid DAG"):
+        c.expand_discovery_revision(
+            task.task_id,
+            plan_graph=graph,
+            plan_graph_ref="artifact://plans/cycle",
+        )
+
+
 def test_unknown_outcome_stops_without_implicit_replay(tmp_path):
     c = coordinator(tmp_path)
     task = c.create_task(task_description="unknown action", verification=TaskVerificationContract(mode="off"))

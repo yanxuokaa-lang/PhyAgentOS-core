@@ -32,6 +32,7 @@ from PhyAgentOS.planning import (
     PlanningExecutionBinding,
     ReplanDelta,
     plan_node_digest,
+    validate_graph,
 )
 from PhyAgentOS.verification.contracts import (
     TaskVerificationContract,
@@ -1978,6 +1979,10 @@ def _validate_plan_graph_input(
         raise AgentTaskError("a PlanGraph requires an artifact:// plan_graph_ref")
     if graph.task_id != task_id or graph.revision_id != revision_id:
         raise AgentTaskError("PlanGraph task/revision identity does not match the revision")
+    try:
+        validate_graph(graph)
+    except ValueError as exc:
+        raise AgentTaskError(f"PlanGraph is not a valid DAG: {exc}") from exc
 
 
 def _normalize_planning_binding(
