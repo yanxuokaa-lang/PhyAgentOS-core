@@ -24,6 +24,7 @@ from robotwin_simulation_probe_worker import (
     _handle_factory,
     _joint_limits,
     _label_probe_actors,
+    _ProbeVideoRecorder,
     _recover_candidate_failure,
     _set_gripper,
     _validate_approval,
@@ -63,6 +64,50 @@ QUALIFICATION_TEST_IDS = (
     "error_path",
     "reset_path",
 )
+
+
+def test_probe_video_recorder_writes_sampled_head_camera_artifact(tmp_path: Path, monkeypatch):
+    import numpy as np
+
+    class Writer:
+        def __init__(self, path, *_args):
+            self.path = Path(path)
+            self.frames = []
+
+        def isOpened(self):  # noqa: N802 - OpenCV compatibility shim
+            return True
+
+        def write(self, frame):
+            self.frames.append(frame.copy())
+
+        def release(self):
+            self.path.write_bytes(b"fake-mp4-" + str(len(self.frames)).encode())
+
+    monkeypatch.setitem(
+        sys.modules,
+        "cv2",
+        SimpleNamespace(VideoWriter=Writer, VideoWriter_fourcc=lambda *_: 0),
+    )
+    recorder = _ProbeVideoRecorder(tmp_path / "video.mp4", stride_steps=2)
+    task = SimpleNamespace(
+        _update_render=lambda: None,
+        cameras=SimpleNamespace(
+            update_picture=lambda: None,
+            get_rgb=lambda: {"head_camera": {"rgb": np.zeros((2, 3, 3), dtype=np.uint8)}},
+        ),
+    )
+    recorder.capture(task, 1)
+    recorder.capture(task, 2)
+    record = recorder.finish(tmp_path, "artifact://probe/video.mp4")
+    assert recorder.frame_count == 1
+    assert record["artifact_ref"] == "artifact://probe/video.mp4"
+    assert (tmp_path / "probe" / "video.mp4").read_bytes().startswith(b"fake-mp4-1")
+
+
+def test_probe_video_recorder_rejects_missing_frames(tmp_path: Path):
+    recorder = _ProbeVideoRecorder(tmp_path / "video.mp4")
+    with pytest.raises(SimulationProbeError, match="video evidence is unavailable"):
+        recorder.finish(tmp_path, "artifact://probe/video.mp4")
 
 
 def _install_fake_torch(monkeypatch):

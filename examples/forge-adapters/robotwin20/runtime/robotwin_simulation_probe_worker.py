@@ -123,6 +123,63 @@ def _candidate_token(candidate_ref: str) -> str:
     return token
 
 
+class _ProbeVideoRecorder:
+    """Write a compact head-camera replay for one probe attempt."""
+
+    def __init__(self, path: Path, *, fps: float = 25.0, stride_steps: int = 4) -> None:
+        if not path.is_absolute() or path.suffix.lower() != ".mp4":
+            raise SimulationProbeError("probe video output must be an absolute mp4 path")
+        if not isinstance(fps, (int, float)) or isinstance(fps, bool) or fps <= 0:
+            raise SimulationProbeError("probe video fps must be positive")
+        if not isinstance(stride_steps, int) or isinstance(stride_steps, bool) or stride_steps <= 0:
+            raise SimulationProbeError("probe video stride must be positive")
+        self.path = path
+        self.fps = float(fps)
+        self.stride_steps = stride_steps
+        self._writer: Any | None = None
+        self.frame_count = 0
+
+    def capture(self, task: Any, step: int) -> None:
+        if step % self.stride_steps:
+            return
+        import cv2
+        import numpy as np
+
+        cameras = getattr(task, "cameras", None)
+        if cameras is None:
+            raise SimulationProbeError("probe video camera is unavailable")
+        task._update_render()
+        cameras.update_picture()
+        rgb = cameras.get_rgb().get("head_camera", {}).get("rgb")
+        if not isinstance(rgb, np.ndarray) or rgb.ndim != 3 or rgb.shape[2] != 3:
+            raise SimulationProbeError("probe video head-camera frame is invalid")
+        frame = np.ascontiguousarray(rgb[:, :, ::-1])
+        if self._writer is None:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            height, width = frame.shape[:2]
+            self._writer = cv2.VideoWriter(
+                str(self.path), cv2.VideoWriter_fourcc(*"mp4v"), self.fps, (width, height)
+            )
+            if not self._writer.isOpened():
+                raise SimulationProbeError("probe video writer could not be opened")
+        self._writer.write(frame)
+        self.frame_count += 1
+
+    def finish(self, artifact_root: Path, ref: str) -> dict[str, str]:
+        if self._writer is not None:
+            self._writer.release()
+            self._writer = None
+        if self.frame_count == 0 or not self.path.is_file():
+            raise SimulationProbeError("probe video evidence is unavailable")
+        return _artifact_record(artifact_root, ref, self.path.read_bytes())
+
+
+def _capture_probe_video(task: Any, execution_state: dict[str, Any]) -> None:
+    recorder = execution_state.get("video_recorder")
+    if recorder is not None:
+        recorder.capture(task, int(execution_state["simulator_steps"]))
+
+
 def _load_json_artifact(root: Path, ref: str) -> Mapping[str, Any]:
     path = _artifact_path(root, ref)
     try:
@@ -1042,6 +1099,7 @@ def _execute_segment(
         execution_state["phase"] = phase
         _step_bounded_controller(task, controller, execution_state)
         execution_state["simulator_steps"] += 1
+        _capture_probe_video(task, execution_state)
         current_position = np.asarray(ee()[:3], dtype=np.float64)
         displacement = current_position - previous_position
         linear_speed = float(np.linalg.norm(displacement) / timestep)
@@ -1098,6 +1156,7 @@ def _set_gripper(
         execution_state["phase"] = phase
         _step_bounded_controller(task, controller, execution_state)
         execution_state["simulator_steps"] += 1
+        _capture_probe_video(task, execution_state)
         contacts.extend(
             _contact_state(
                 task,
@@ -1325,6 +1384,13 @@ def _recover_candidate_failure(
     after_failure_ref = None
     snapshot_error = None
     reset_status = "not_required"
+    video_ref = None
+    recorder = execution_state.pop("video_recorder", None)
+    if recorder is not None:
+        try:
+            video_ref = recorder.finish(artifact_root, prefix + "/video.mp4")
+        except Exception:
+            video_ref = None
     if execution_state["world_change_started"]:
         try:
             after_state = _capture_dual_arm_state(task, request["scene_revision"])
@@ -1366,6 +1432,7 @@ def _recover_candidate_failure(
             "before_snapshot": dict(before_ref) if before_ref is not None else None,
             "after_failure_snapshot": after_failure_ref,
             "after_failure_snapshot_error": snapshot_error,
+            "video_evidence": video_ref,
         },
     )
     return {
@@ -1411,6 +1478,8 @@ def _finalize_candidate_success(
 
     execution_state["phase"] = "finalizing"
     execution_state.pop("_planner", None)
+    recorder = execution_state.pop("video_recorder", None)
+    video_ref = recorder.finish(artifact_root, prefix + "/video.mp4") if recorder else None
     after_state = _capture_dual_arm_state(task, request["scene_revision"])
     after = _snapshot(task, request, candidate, after_state)
     if before["state_digest"] == after["state_digest"]:
@@ -1530,6 +1599,17 @@ def _finalize_candidate_success(
                 "evidence": stop_ref,
                 "method": "worker-local-deadline-stop-file/v1",
             },
+            **(
+                {
+                    "video_replay": {
+                        "status": "pass",
+                        "evidence": video_ref,
+                        "method": "sapien-head-camera-mp4/v1",
+                    }
+                }
+                if video_ref is not None
+                else {}
+            ),
         },
         "before_snapshot": dict(before_ref),
         "after_snapshot": after_ref,
@@ -1562,7 +1642,17 @@ def _finalize_candidate_success(
     }
 
 
-def _handle_factory(profile: Mapping[str, Any], artifact_root: Path, *, producer_id: str, producer_profile_sha256: str, approval_ref: str, max_duration_s: float, stop_file: Path | None):
+def _handle_factory(
+    profile: Mapping[str, Any],
+    artifact_root: Path,
+    *,
+    producer_id: str,
+    producer_profile_sha256: str,
+    approval_ref: str,
+    max_duration_s: float,
+    stop_file: Path | None,
+    record_video: bool = False,
+):
     from robotwin_backend import RoboTwinRuntimeProfile, RoboTwinSensorBackend, load_runtime_profile
 
     runtime_profile = load_runtime_profile(Path(profile["runtime_profile"]).resolve())
@@ -1682,6 +1772,10 @@ def _handle_factory(profile: Mapping[str, Any], artifact_root: Path, *, producer
             f"artifact://simulation-probe/{request['request_id']}/"
             f"{_candidate_token(candidate['candidate_ref'])}"
         )
+        if record_video:
+            execution_state["video_recorder"] = _ProbeVideoRecorder(
+                _artifact_path(artifact_root, prefix + "/video.mp4", create_parent=True)
+            )
         task = None
         before_ref = None
         try:
@@ -1837,6 +1931,7 @@ def main() -> int:
     parser.add_argument("--approval-ref", required=True)
     parser.add_argument("--max-duration-s", type=float, default=300.0)
     parser.add_argument("--stop-file", type=Path)
+    parser.add_argument("--record-video", action="store_true")
     args = parser.parse_args()
     if not args.runtime_root.is_absolute() or not args.runtime_root.is_dir() or args.runtime_root.is_symlink():
         raise SystemExit("runtime root must be an absolute directory")
@@ -1878,6 +1973,7 @@ def main() -> int:
                 approval_ref=args.approval_ref,
                 max_duration_s=args.max_duration_s,
                 stop_file=resolved_stop,
+                record_video=args.record_video,
             )
         state["backend"] = backend
         state["handle"] = handler

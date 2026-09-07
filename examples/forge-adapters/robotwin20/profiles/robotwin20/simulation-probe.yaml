@@ -37,3 +37,4 @@ worker:
     - "300"
     - --stop-file
     - ${ROBOTWIN20_PROBE_STOP_FILE}
+    - --record-video
