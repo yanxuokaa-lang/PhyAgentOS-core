@@ -288,3 +288,20 @@ Planner implementations are optional installable plugins through
 `PhyAgentOS.agent.planner_plugin.PlannerPlugin` and the `paos.planners` entry
 point group. A plugin may compose a graph or propose recovery, but may not
 write task state, call Tools, access Gateway, or grant motion authority.
+
+### Long-horizon TUI integration
+
+For continuous user-visible execution, place a task-state-driven
+`LongHorizonTaskController` above `PlanningLoopAdapter`. The controller drives
+persisted checkpoints and delegates node execution to the existing adapter; it
+does not become a second scheduler or store. `prompt_toolkit` is the supported
+initial TUI surface for start/status/pause/resume/stop and user clarifications.
+A later Textual view may render the same task/revision/DAG facts but must use
+the same controller and Coordinator boundaries.
+
+LiteLLM is intentionally not the owner of multi-turn task state. It receives
+the current complete message list for each call. Chat history comes from
+`SessionManager`; long-horizon recovery comes from `AgentTaskCoordinator` and
+`PlanRevision`. A model's plain-text claim that it is finished, paused, or
+needs a Tool is not a lifecycle transition until the controller receives a
+structured result or a persisted Coordinator fact.

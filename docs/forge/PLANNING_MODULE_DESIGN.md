@@ -452,3 +452,66 @@ The RGB attribute-sorting scenario is covered by pure fake-execution tests with
 discovered entities, a sequential semantic DAG, direct predecessor context,
 post-action dropped-object counterevidence, bounded replan, and reducer replay.
 No Gateway, Dora, simulator step, or hardware action is part of this validation.
+
+## Long-horizon task outer loop review and implementation (2026-09-08)
+
+The continuous-autonomy extension was reviewed against PAOS ownership,
+provider-neutrality, extension, and developer-guide principles. The approved
+shape is a task-state-driven outer controller over the existing
+`PlanningLoopAdapter`; it is not a LiteLLM conversation loop and not a second
+runtime scheduler.
+
+```text
+TUI / chat channel
+  -> LongHorizonTaskController
+  -> PlanningLoopAdapter (one persisted planning run)
+  -> AgentLoop node turn
+  -> existing Forge Tool/Gateway execution
+  -> Coordinator execution facts, Evidence, NodeSettlement
+  -> task/revision checkpoint
+```
+
+LiteLLM remains stateless: it receives the complete `messages` array for one
+model call and returns one response. Ordinary chat continuity is provided by
+the existing `SessionManager`/`Session` JSONL history and
+`ContextBuilder.build_messages()`. Long-horizon continuity is provided by the
+persisted `AgentTask`/`PlanRevision` aggregate, not by provider-side session
+state.
+
+The TUI remains an interaction surface. It may start, inspect, pause, resume,
+or stop a task, and answer an Agent clarification request, but it must not
+write SQLite, call Gateway directly, create revisions, or infer success from
+natural-language output. `prompt_toolkit` is sufficient for the first control
+surface; Textual is an optional later presentation layer for a DAG/status
+panel, using the same controller and Coordinator APIs.
+
+The first implementation slice is `PhyAgentOS.agent.long_horizon`:
+`LongHorizonTaskController` wraps the existing adapter with a per-task lock,
+checkpoint pause/resume, terminal-task short-circuit, and
+`awaiting_replan` propagation. `PlanningLoopAdapter.run()` accepts a
+per-invocation checkpoint callback, so controller state is not stored in a
+mutable global scheduler. A pause takes effect between semantic nodes; it
+does not claim that an in-flight Gateway Action was stopped. Pause requests are
+stored as `AgentTaskRecord.pause_requested` through Coordinator transactions,
+so a restarted TUI can observe the pause without a second pause database.
+
+The outer loop has four explicit outcomes: terminal task status, blocked or
+awaiting-replan state, a user pause checkpoint, or continued node execution.
+Future UI work must preserve this boundary and add structured
+`waiting_for_user`/clarification events only at the task-controller layer;
+ordinary model text must not mutate task state.
+
+### Six-dimension review
+
+| Dimension | Result |
+| --- | --- |
+| Architecture integration | Pass: controller delegates to existing Coordinator, PlanningLoopAdapter, AgentLoop, Forge wrappers, Evidence, and Verifier; no second scheduler/store/execution plane. |
+| Failure paths | Pass for this slice: pause, terminal, awaiting-replan, blocked, node failure/unknown/stale and existing replan budget remain explicit; in-flight Action cancellation remains Coordinator/Gateway-owned. |
+| Authority boundaries | Pass: TUI/controller orchestrate; Coordinator owns task/revision facts; Gateway owns transport; LiteLLM only performs one model request; planning remains no-motion. |
+| Configuration/provenance | Pass: task/revision/node/evidence context remains loaded from the existing aggregate and trusted admission provider; no provider-side hidden conversation identity is introduced. |
+| Maintainability | Pass: one outer controller and a per-call checkpoint seam; no mutation of shared adapter state and no duplicate lifecycle implementation. |
+| Anti-OverDefense | Pass: pause is checkpointed rather than pretending to cancel physical work; no extra hashes, stores, or UI-specific task contracts were added. |
+
+Validation is no-motion only. The controller tests cover pause/resume,
+terminal short-circuit, and awaiting-replan propagation; the combined planning
+suite passes. This does not prove Gateway, simulator, or hardware execution.

@@ -2,6 +2,16 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v6.10.6] - 2026-09-08
+
+Reviewed and implemented a PAOS-compliant long-horizon outer loop: `LongHorizonTaskController` drives the existing `PlanningLoopAdapter` with per-call checkpoints, while pause requests are persisted on `AgentTaskRecord` through Coordinator transactions. Documented TUI/prompt_toolkit boundaries, stateless LiteLLM semantics, and Textual as a future presentation layer.
+
+按 PAOS 原则审核并实现长程任务 outer loop：`LongHorizonTaskController` 通过 per-call checkpoint 驱动现有 `PlanningLoopAdapter`，pause 请求由 Coordinator 事务持久化到 `AgentTaskRecord`。同步记录 TUI/prompt_toolkit 边界、LiteLLM 无状态语义和 Textual 后续展示层原则。
+
+Files: `PhyAgentOS/agent/long_horizon.py`, `PhyAgentOS/agent/planning_loop.py`, `PhyAgentOS/agent/__init__.py`, `PhyAgentOS/forge/task.py`, `tests/test_long_horizon_controller.py`, `docs/forge/PLANNING_MODULE_DESIGN.md`, `docs/forge/MANIPULATION_DAG_DEVELOPER_GUIDE.md`.
+
+Validation: `45 passed, 1 warning`; Ruff, compileall, and `git diff --check` passed; no Gateway, Dora, simulator, or hardware motion.
+
 ## [v6.10.2] - 2026-09-07
 
 Replan settlement carry-over now compares complete `PlanNode` identities and rejects changed-node preservation; node execution results are checked against task/revision/node context; admission no longer reserves a fixed `verify` node name. Added no-motion regressions for all three cases.

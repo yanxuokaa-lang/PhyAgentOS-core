@@ -1,0 +1,113 @@
+from __future__ import annotations
+
+import asyncio
+
+from PhyAgentOS.agent.long_horizon import LongHorizonTaskController
+from PhyAgentOS.agent.planning_loop import NodeContextProvider, PlanningLoopAdapter
+from PhyAgentOS.config.schema import ForgeConfig
+from PhyAgentOS.forge.task import AgentTaskCoordinator, AgentTaskStatus
+from PhyAgentOS.planning import (
+    AdmissionContext,
+    PlanGraph,
+    PlanNode,
+    ToolResultEnvelope,
+    plan_graph_digest,
+)
+from PhyAgentOS.verification.contracts import TaskVerificationContract
+
+
+def _graph(task_id: str, revision_id: str) -> PlanGraph:
+    payload = {
+        "schema_version": "paos-plan-graph/v1",
+        "task_id": task_id,
+        "revision_id": revision_id,
+        "graph_digest": "0" * 64,
+        "planner_decision_digest": "1" * 64,
+        "policy_snapshot_digest": "2" * 64,
+        "nodes": [
+            PlanNode(node_id="first", obligation_id="ob-first", capability="object.arrange").model_dump(mode="json"),
+            PlanNode(node_id="second", obligation_id="ob-second", capability="object.arrange", dependencies=("first",)).model_dump(mode="json"),
+        ],
+    }
+    payload["graph_digest"] = plan_graph_digest(payload)
+    return PlanGraph.model_validate(payload)
+
+
+def _coordinator(tmp_path):
+    return AgentTaskCoordinator(
+        workspace=tmp_path,
+        config=ForgeConfig(),
+        client=object(),
+        verifier=None,
+    )
+
+
+def _controller(c, calls):
+    def execute(context):
+        calls.append(context.node_id)
+        return ToolResultEnvelope(
+            task_id=context.task_id,
+            revision_id=context.revision_id,
+            node_id=context.node_id,
+            tool_id="object.arrange",
+            status="succeeded",
+        )
+
+    adapter = PlanningLoopAdapter(
+        c,
+        context_provider=NodeContextProvider(c.get_task),
+        node_executor=execute,
+        admission_context_provider=lambda _: AdmissionContext(scene_revision="scene-1"),
+    )
+    return LongHorizonTaskController(
+        c,
+        adapter,
+        scene_revision_provider=lambda _: "scene-1",
+    )
+
+
+def test_controller_pause_and_resume_at_node_checkpoint(tmp_path):
+    c = _coordinator(tmp_path)
+    task = c.create_task(task_description="long task", verification=TaskVerificationContract(mode="off"))
+    c.expand_discovery_revision(task.task_id, plan_graph=_graph(task.task_id, "revision-1"), plan_graph_ref="artifact://plan/1")
+    calls = []
+    controller = _controller(c, calls)
+
+    assert controller.pause(task.task_id).status == "paused"
+    assert controller.status(task.task_id).status == "paused"
+    restarted_controller = _controller(c, calls)
+    paused = asyncio.run(restarted_controller.run(task.task_id))
+    assert paused.status == "paused"
+    assert calls == []
+    assert c.get_task(task.task_id).pause_requested is True
+
+    restarted_controller.resume(task.task_id)
+    result = asyncio.run(restarted_controller.run(task.task_id))
+    assert result.status == "completed"
+    assert calls == ["first", "second"]
+    assert c.get_task(task.task_id).pause_requested is False
+
+
+def test_controller_short_circuits_terminal_task(tmp_path):
+    c = _coordinator(tmp_path)
+    task = c.create_task(task_description="already done", verification=TaskVerificationContract(mode="off"))
+    c.store.update(
+        task.task_id,
+        lambda current: setattr(current, "status", AgentTaskStatus.SUCCEEDED),
+        event_type="test_terminal",
+    )
+    calls = []
+    result = asyncio.run(_controller(c, calls).run(task.task_id))
+    assert result.status == "succeeded"
+    assert calls == []
+    assert _controller(c, calls).pause(task.task_id).status == "succeeded"
+
+
+def test_controller_does_not_run_while_replan_is_awaited(tmp_path):
+    c = _coordinator(tmp_path)
+    task = c.create_task(task_description="needs recovery", verification=TaskVerificationContract(mode="off"))
+    c.request_replan(task.task_id, reason="test recovery")
+    calls = []
+    result = asyncio.run(_controller(c, calls).run(task.task_id))
+    assert result.status == "awaiting_replan"
+    assert calls == []

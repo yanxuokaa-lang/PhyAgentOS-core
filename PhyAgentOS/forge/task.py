@@ -293,6 +293,7 @@ class AgentTaskRecord(BaseModel):
     evidence_bundle_id: str | None = None
     evidence_errors: list[str] = Field(default_factory=list)
     cancellation_requested: bool = False
+    pause_requested: bool = False
     replan_deadline: datetime | None = None
     origin_session_key: str | None = None
     origin_dedup_key: str | None = None
@@ -1055,6 +1056,26 @@ class AgentTaskCoordinator:
             current.evidence_errors.append(f"replan requested: {reason.strip()}")
 
         return self.store.update(task_id, mutate, event_type="plan_replan_requested")
+
+    def request_pause(self, task_id: str, *, reason: str = "user_requested") -> AgentTaskRecord:
+        """Persist a checkpoint pause request without cancelling in-flight Actions."""
+        task = self.store.get(task_id)
+        if task.terminal:
+            return task
+
+        def mutate(current: AgentTaskRecord) -> None:
+            current.pause_requested = True
+            current.evidence_errors.append(f"pause requested: {reason.strip()}")
+
+        return self.store.update(task_id, mutate, event_type="task_pause_requested")
+
+    def resume_task(self, task_id: str) -> AgentTaskRecord:
+        """Clear a persisted checkpoint pause request."""
+        return self.store.update(
+            task_id,
+            lambda current: setattr(current, "pause_requested", False),
+            event_type="task_pause_resumed",
+        )
 
     def begin_revision_from_delta(
         self,

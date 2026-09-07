@@ -2,11 +2,20 @@
 
 from importlib import import_module
 
-__all__ = ["AgentLoop", "ContextBuilder", "MemoryStore", "SkillsLoader"]
+__all__ = [
+    "AgentLoop",
+    "ContextBuilder",
+    "LongHorizonTaskController",
+    "LongHorizonTaskResult",
+    "MemoryStore",
+    "SkillsLoader",
+]
 
 _EXPORTS = {
     "AgentLoop": ("PhyAgentOS.agent.loop", "AgentLoop"),
     "ContextBuilder": ("PhyAgentOS.agent.context", "ContextBuilder"),
+    "LongHorizonTaskController": ("PhyAgentOS.agent.long_horizon", "LongHorizonTaskController"),
+    "LongHorizonTaskResult": ("PhyAgentOS.agent.long_horizon", "LongHorizonTaskResult"),
     "MemoryStore": ("PhyAgentOS.agent.memory", "MemoryStore"),
     "SkillsLoader": ("PhyAgentOS.agent.skills", "SkillsLoader"),
 }

@@ -280,8 +280,20 @@ class PlanningLoopAdapter:
         self.postcondition_checker = postcondition_checker
         self.max_steps = max(1, int(max_steps))
 
-    async def run(self, task_id: str, *, scene_revision: str) -> PlanningLoopResult:
-        return await self._run(task_id, scene_revision=scene_revision, completed=[], replans=0)
+    async def run(
+        self,
+        task_id: str,
+        *,
+        scene_revision: str,
+        checkpoint: Callable[[str], bool] | None = None,
+    ) -> PlanningLoopResult:
+        return await self._run(
+            task_id,
+            scene_revision=scene_revision,
+            completed=[],
+            replans=0,
+            checkpoint=checkpoint,
+        )
 
     async def _run(
         self,
@@ -290,10 +302,21 @@ class PlanningLoopAdapter:
         scene_revision: str,
         completed: list[str],
         replans: int,
+        checkpoint: Callable[[str], bool] | None = None,
     ) -> PlanningLoopResult:
         last_failure: str | None = None
 
         for _ in range(self.max_steps):
+            if checkpoint is not None and not checkpoint(task_id):
+                task = self.coordinator.get_task(task_id)
+                return PlanningLoopResult(
+                    task_id,
+                    "paused",
+                    tuple(completed),
+                    len(task.revisions),
+                    replans,
+                    "paused at a node checkpoint",
+                )
             task = self.coordinator.get_task(task_id)
             revision = task.active_revision
             graph = revision.plan_graph
@@ -364,12 +387,12 @@ class PlanningLoopAdapter:
                         self.coordinator.record_node_counterevidence(counterevidence)
                         return await self._recover(
                             task_id, graph, counterevidence, context, completed, replans,
-                            scene_revision=scene_revision,
+                            scene_revision=scene_revision, checkpoint=checkpoint,
                         )
                 continue
             return await self._recover(
                 task_id, graph, settlement, context, completed, replans,
-                scene_revision=scene_revision,
+                scene_revision=scene_revision, checkpoint=checkpoint,
             )
 
         return PlanningLoopResult(task_id, "step_limit", tuple(completed), len(self.coordinator.get_task(task_id).revisions), replans, last_failure)
@@ -399,6 +422,7 @@ class PlanningLoopAdapter:
         completed: list[str],
         replans: int,
         scene_revision: str,
+        checkpoint: Callable[[str], bool] | None = None,
     ) -> PlanningLoopResult:
         delta = build_replan_delta(graph, settlement)
         if self.replan_proposer is None:
@@ -429,6 +453,7 @@ class PlanningLoopAdapter:
             scene_revision=scene_revision,
             completed=completed,
             replans=replans + 1,
+            checkpoint=checkpoint,
         )
 
 
