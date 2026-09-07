@@ -171,8 +171,6 @@ class AgentComposedDispatch:
                 raise PlanningDispatchError("planning binding node digest does not match the active graph")
             if planning_binding.obligation_id != node.obligation_id:
                 raise PlanningDispatchError("planning binding obligation does not match the active graph")
-            if node.node_id == "verify":
-                raise PlanningDispatchError("verification node cannot create a Forge Tool")
             idempotency = hashlib.sha256(
                 json.dumps(
                     {

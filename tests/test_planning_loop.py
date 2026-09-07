@@ -5,9 +5,11 @@ import asyncio
 import pytest
 
 from PhyAgentOS.agent.planner_plugin import PlannerPluginRegistry, PlanningRequest, ReplanProposal
+from PhyAgentOS.agent.planning_dispatch import AgentComposedDispatch
 from PhyAgentOS.agent.planning_loop import (
     NodeContextProvider,
     PlanningLoopAdapter,
+    PlanningLoopError,
     StaleNodeContextError,
 )
 from PhyAgentOS.agent.tools.forge_task import build_forge_task_tools
@@ -17,9 +19,13 @@ from PhyAgentOS.planning import (
     AdmissionContext,
     NodeSettlement,
     PlanGraph,
+    PlanningExecutionBinding,
     PlanNode,
+    ReplanDelta,
     ToolResultEnvelope,
+    ToolSpecPolicy,
     plan_graph_digest,
+    plan_node_digest,
 )
 from PhyAgentOS.verification.contracts import TaskVerificationContract
 
@@ -227,6 +233,100 @@ def test_failed_node_replan_preserves_completed_predecessor(tmp_path):
     assert active.node_settlements[0].node_id == "arrange-red"
     assert active.node_settlements[0].status == "completed"
     assert active.fresh_evidence_requirements == ("scene:fresh",)
+
+
+def test_replan_rejects_preserving_changed_node_content(tmp_path):
+    c = coordinator(tmp_path)
+    task = c.create_task(task_description="changed obligation", verification=TaskVerificationContract(mode="off"))
+    original = make_graph(task.task_id, "revision-1", ("arrange-red", "verify"))
+    c.expand_discovery_revision(task.task_id, plan_graph=original, plan_graph_ref="artifact://plans/identity/1")
+    c.record_node_settlement(NodeSettlement(
+        task_id=task.task_id,
+        revision_id=original.revision_id,
+        node_id="arrange-red",
+        status="completed",
+    ))
+    c.request_replan(task.task_id, reason="changed obligation")
+    replacement = make_graph(task.task_id, "revision-2", ("arrange-red", "verify"))
+    changed_node = replacement.nodes[0].model_copy(update={"capability": "different.obligation"})
+    payload = replacement.model_dump(mode="json")
+    payload["nodes"][0] = changed_node.model_dump(mode="json")
+    payload["graph_digest"] = plan_graph_digest(payload)
+    replacement = PlanGraph.model_validate(payload)
+    with pytest.raises(AgentTaskError, match="replacement content changed"):
+        c.begin_revision_from_delta(
+            task.task_id,
+            ReplanProposal(
+                delta=ReplanDelta(
+                    task_id=task.task_id,
+                    revision_id=original.revision_id,
+                    preserve_node_ids=("arrange-red",),
+                    reason="changed obligation",
+                ),
+                plan_graph=replacement,
+                plan_graph_ref="artifact://plans/identity/2",
+            ).delta,
+            plan_graph=replacement,
+            plan_graph_ref="artifact://plans/identity/2",
+        )
+
+
+def test_loop_rejects_result_bound_to_another_node(tmp_path):
+    c = coordinator(tmp_path)
+    task = c.create_task(task_description="result identity", verification=TaskVerificationContract(mode="off"))
+    graph = make_graph(task.task_id, "revision-1", ("arrange-red", "verify"))
+    c.expand_discovery_revision(task.task_id, plan_graph=graph, plan_graph_ref="artifact://plans/identity/result")
+
+    def execute(context):
+        return ToolResultEnvelope(
+            task_id=context.task_id,
+            revision_id=context.revision_id,
+            node_id="verify",
+            tool_id="object.arrange",
+            status="succeeded",
+        )
+
+    adapter = PlanningLoopAdapter(
+        c,
+        context_provider=NodeContextProvider(c.get_task),
+        node_executor=execute,
+        admission_context_provider=lambda _: AdmissionContext(scene_revision="scene-1", evidence_refs=frozenset({"scene:inventory"})),
+    )
+    with pytest.raises(PlanningLoopError, match="different task, revision, or node"):
+        asyncio.run(adapter.run(task.task_id, scene_revision="scene-1"))
+
+
+def test_dispatch_does_not_reserve_a_fixed_verify_node_name():
+    graph = make_graph("task-dispatch", "revision-1", ("verify",))
+    policy = ToolSpecPolicy(
+        tool_id="scene.verify",
+        semantics="query",
+        spec_digest="3" * 64,
+        capabilities=("scene.verify",),
+    )
+    dispatch = AgentComposedDispatch(
+        graph,
+        (policy,),
+        AdmissionContext(scene_revision="scene-1"),
+    )
+    node = graph.nodes[0]
+    binding = PlanningExecutionBinding(
+        node_id=node.node_id,
+        node_digest=plan_node_digest(node),
+        obligation_id=node.obligation_id,
+        input_binding_digest="4" * 64,
+        decision_trace_ref="artifact://trace/verify",
+    )
+    decision = dispatch.admit_forge_tool(
+        "forge_tool_query",
+        {
+            "task_id": graph.task_id,
+            "tool_id": policy.tool_id,
+            "arguments": {},
+            "planning_binding": binding.model_dump(mode="json"),
+        },
+    )
+    assert decision is not None and decision.allowed
 
 
 def test_unknown_outcome_stops_without_implicit_replay(tmp_path):

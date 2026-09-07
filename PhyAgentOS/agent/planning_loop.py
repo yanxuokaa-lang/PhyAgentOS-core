@@ -338,6 +338,14 @@ class PlanningLoopAdapter:
                 result = await result  # type: ignore[assignment]
             if not isinstance(result, ToolResultEnvelope):
                 raise PlanningLoopError("node executor must return ToolResultEnvelope")
+            if (
+                result.task_id != context.task_id
+                or result.revision_id != context.revision_id
+                or result.node_id != context.node_id
+            ):
+                raise PlanningLoopError(
+                    "node executor returned a result bound to a different task, revision, or node"
+                )
             settlement = settle_node(
                 graph.nodes[[node.node_id for node in graph.nodes].index(node_id)],
                 result,

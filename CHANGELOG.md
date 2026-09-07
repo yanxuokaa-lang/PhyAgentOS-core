@@ -2,6 +2,16 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v6.10.2] - 2026-09-07
+
+Replan settlement carry-over now compares complete `PlanNode` identities and rejects changed-node preservation; node execution results are checked against task/revision/node context; admission no longer reserves a fixed `verify` node name. Added no-motion regressions for all three cases.
+
+跨 revision 复用 settlement 前比较完整 `PlanNode` 身份并拒绝内容变化；节点执行结果校验 task/revision/node 绑定；admission 不再占用固定 `verify` 节点名。新增三类 no-motion 回归测试。
+
+Files: `PhyAgentOS/forge/task.py:L1075-L1099`, `PhyAgentOS/agent/planning_loop.py:L341-L348`, `PhyAgentOS/agent/planning_dispatch.py:L165-L174`, `tests/test_planning_loop.py:L238-L329`, `changelog/2026-09_part3.md:L3-L74`.
+
+Validation: focused planning suite `41 passed, 1 warning`; Ruff, compileall, and `git diff --check` passed; no Gateway, Dora, simulator, or hardware motion.
+
 ## [v6.10.0] - 2026-09-07
 
 Implemented the PAOS planning-loop feature as an independent orchestration extension. The existing AgentTask/PlanRevision now persist NodeSettlements and replan metadata, discovery can expand a DAG under the same task, and `PlanningLoopAdapter` drives ready nodes with direct-predecessor context, reducer replay, and Agent-selected counterevidence recovery. `PlannerPlugin` provides an opt-in entry-point seam without a second scheduler, store, or execution path. Pure RGB attribute-sorting fake execution passed the focused contract suite; no Gateway, Dora, simulator, or hardware motion was run.

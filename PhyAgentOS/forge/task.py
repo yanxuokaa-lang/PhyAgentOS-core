@@ -31,6 +31,7 @@ from PhyAgentOS.planning import (
     PlanGraph,
     PlanningExecutionBinding,
     ReplanDelta,
+    plan_node_digest,
 )
 from PhyAgentOS.verification.contracts import (
     TaskVerificationContract,
@@ -1074,6 +1075,28 @@ class AgentTaskCoordinator:
         active_settlements = {
             item.node_id: item for item in task.active_revision.node_settlements
         }
+        active_nodes = {
+            node.node_id: node
+            for node in (
+                task.active_revision.plan_graph.nodes
+                if task.active_revision.plan_graph is not None
+                else ()
+            )
+        }
+        replacement_nodes = {node.node_id: node for node in plan_graph.nodes}
+        for node_id in (
+            set(delta.preserve_node_ids)
+            & set(active_settlements)
+            & set(replacement_nodes)
+        ):
+            if (
+                node_id not in active_nodes
+                or plan_node_digest(active_nodes[node_id])
+                != plan_node_digest(replacement_nodes[node_id])
+            ):
+                raise AgentTaskError(
+                    f"cannot preserve node {node_id!r}: replacement content changed"
+                )
         preserved = tuple(
             item.model_copy(update={"revision_id": plan_graph.revision_id})
             for node_id, item in active_settlements.items()
