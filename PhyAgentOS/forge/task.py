@@ -27,6 +27,7 @@ from PhyAgentOS.forge.evidence import ForgeEvidenceWriter
 from PhyAgentOS.forge.observation import ForgeObservationCollector
 from PhyAgentOS.forge.tool_client import ForgeToolAPIError, ForgeToolClient
 from PhyAgentOS.planning import (
+    NodeSettlement,
     PlanGraph,
     PlanningExecutionBinding,
     ReplanDelta,
@@ -168,10 +169,11 @@ class PlanRevision(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    version: Literal["plan_revision_v2", "plan_revision_v3"] = "plan_revision_v3"
+    version: Literal["plan_revision_v2", "plan_revision_v3", "plan_revision_v4"] = "plan_revision_v4"
     revision_id: str
     number: int = Field(ge=1)
     reason: str = Field(min_length=1)
+    counts_toward_replan_budget: bool = True
     skill_binding_id: str | None = None
     plan_graph: PlanGraph | None = None
     plan_graph_ref: str | None = None
@@ -179,6 +181,13 @@ class PlanRevision(BaseModel):
     planner_decision_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     policy_snapshot_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     execution_records: list[ToolExecutionRecord] = Field(default_factory=list)
+    node_settlements: list[NodeSettlement] = Field(default_factory=list)
+    counterevidence: list[NodeSettlement] = Field(default_factory=list)
+    preserved_node_ids: tuple[str, ...] = ()
+    invalidated_node_ids: tuple[str, ...] = ()
+    fresh_evidence_requirements: tuple[str, ...] = ()
+    discovery_evidence_refs: tuple[str, ...] = ()
+    replan_evidence_refs: tuple[str, ...] = ()
     verdict: VerificationVerdict | None = None
     verification_attempts: list[VerificationAttempt] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=utc_now)
@@ -211,6 +220,15 @@ class PlanRevision(BaseModel):
                 raise ValueError("PlanRevision planner digest does not match PlanGraph")
             if self.plan_graph.policy_snapshot_digest != self.policy_snapshot_digest:
                 raise ValueError("PlanRevision policy digest does not match PlanGraph")
+            known_nodes = {node.node_id for node in self.plan_graph.nodes}
+            if any(item.node_id not in known_nodes for item in self.node_settlements):
+                raise ValueError("NodeSettlement references an unknown PlanGraph node")
+        if any(item.revision_id != self.revision_id for item in self.node_settlements):
+            raise ValueError("NodeSettlement revision_id must match its PlanRevision")
+        if any(item.revision_id != self.revision_id for item in self.counterevidence):
+            raise ValueError("counterevidence revision_id must match its PlanRevision")
+        if len({item.node_id for item in self.node_settlements}) != len(self.node_settlements):
+            raise ValueError("PlanRevision cannot contain duplicate NodeSettlement node identities")
         return self
 
 
@@ -852,6 +870,13 @@ class AgentTaskCoordinator:
         reason: str,
         plan_graph: PlanGraph | None = None,
         plan_graph_ref: str | None = None,
+        preserved_node_ids: tuple[str, ...] = (),
+        invalidated_node_ids: tuple[str, ...] = (),
+        fresh_evidence_requirements: tuple[str, ...] = (),
+        discovery_evidence_refs: tuple[str, ...] = (),
+        replan_evidence_refs: tuple[str, ...] = (),
+        node_settlements: list[NodeSettlement] | None = None,
+        counterevidence: list[NodeSettlement] | None = None,
     ) -> AgentTaskRecord:
         task = self.store.get(task_id)
         if task.status != AgentTaskStatus.AWAITING_REPLAN:
@@ -866,7 +891,7 @@ class AgentTaskCoordinator:
             )
             self._schedule_experience(failed)
             raise AgentTaskError("AgentTask replan deadline expired")
-        if len(task.revisions) - 1 >= self.max_replans:
+        if _replan_count(task) >= self.max_replans:
             raise AgentTaskError(f"replan budget exhausted ({self.max_replans})")
         revision_id = plan_graph.revision_id if plan_graph is not None else f"revision_{uuid4().hex[:16]}"
         _validate_plan_graph_input(plan_graph, plan_graph_ref, task_id, revision_id)
@@ -877,6 +902,7 @@ class AgentTaskCoordinator:
                 revision_id=revision_id,
                 number=len(current.revisions) + 1,
                 reason=reason.strip(),
+                counts_toward_replan_budget=True,
                 plan_graph=plan_graph,
                 skill_binding_id=(
                     current.primary_skill_binding.binding_id
@@ -887,6 +913,13 @@ class AgentTaskCoordinator:
                 plan_graph_digest=plan_graph.graph_digest if plan_graph is not None else None,
                 planner_decision_digest=plan_graph.planner_decision_digest if plan_graph is not None else None,
                 policy_snapshot_digest=plan_graph.policy_snapshot_digest if plan_graph is not None else None,
+                node_settlements=list(node_settlements or []),
+                preserved_node_ids=tuple(preserved_node_ids),
+                invalidated_node_ids=tuple(invalidated_node_ids),
+                fresh_evidence_requirements=tuple(fresh_evidence_requirements),
+                discovery_evidence_refs=tuple(discovery_evidence_refs),
+                replan_evidence_refs=tuple(replan_evidence_refs),
+                counterevidence=list(counterevidence or []),
             )
             current.revisions.append(revision)
             current.active_revision_id = revision.revision_id
@@ -896,6 +929,131 @@ class AgentTaskCoordinator:
 
         return self.store.update(task_id, mutate, event_type="plan_revision_started")
 
+    def expand_discovery_revision(
+        self,
+        task_id: str,
+        *,
+        plan_graph: PlanGraph,
+        plan_graph_ref: str,
+        discovery_evidence_refs: tuple[str, ...] = (),
+        reason: str = "discovery completed; materialize semantic DAG",
+    ) -> AgentTaskRecord:
+        """Materialize a discovered graph under the same task identity.
+
+        Discovery is a forward planning transition, not recovery and not a new
+        task. It is allowed only while the initial revision has no graph.
+        """
+        task = self.store.get(task_id)
+        if task.status != AgentTaskStatus.EXECUTING:
+            raise AgentTaskError("discovery expansion requires an executing AgentTask")
+        if task.active_revision.plan_graph is not None:
+            raise AgentTaskError("discovery expansion requires an unmaterialized active revision")
+        if plan_graph.task_id != task_id:
+            raise AgentTaskError("discovery PlanGraph task identity mismatch")
+        _validate_plan_graph_input(plan_graph, plan_graph_ref, task_id, plan_graph.revision_id)
+
+        def mutate(current: AgentTaskRecord) -> None:
+            current.active_revision.closed_at = utc_now()
+            current.revisions.append(PlanRevision(
+                revision_id=plan_graph.revision_id,
+                number=len(current.revisions) + 1,
+                reason=reason.strip(),
+                counts_toward_replan_budget=False,
+                skill_binding_id=(
+                    current.primary_skill_binding.binding_id
+                    if current.primary_skill_binding is not None else None
+                ),
+                plan_graph=plan_graph,
+                plan_graph_ref=plan_graph_ref,
+                plan_graph_digest=plan_graph.graph_digest,
+                planner_decision_digest=plan_graph.planner_decision_digest,
+                policy_snapshot_digest=plan_graph.policy_snapshot_digest,
+                discovery_evidence_refs=tuple(discovery_evidence_refs),
+            ))
+            current.active_revision_id = plan_graph.revision_id
+
+        return self.store.update(task_id, mutate, event_type="plan_discovery_expanded")
+
+    def materialize_plan_revision(
+        self,
+        task_id: str,
+        *,
+        plan_graph: PlanGraph,
+        plan_graph_ref: str,
+        evidence_refs: tuple[str, ...] = (),
+        reason: str = "Agent selected a task-conditioned semantic DAG",
+    ) -> AgentTaskRecord:
+        """Materialize an Agent-selected DAG without imposing an observation phase."""
+        return self.expand_discovery_revision(
+            task_id,
+            plan_graph=plan_graph,
+            plan_graph_ref=plan_graph_ref,
+            discovery_evidence_refs=evidence_refs,
+            reason=reason,
+        )
+
+    def record_node_settlement(self, settlement: NodeSettlement) -> AgentTaskRecord:
+        """Persist one immutable semantic-node fact in the active revision."""
+        task = self.store.get(settlement.task_id)
+        if settlement.revision_id != task.active_revision_id:
+            raise AgentTaskError("NodeSettlement is not bound to the active revision")
+        if task.active_revision.plan_graph is None or settlement.node_id not in {
+            node.node_id for node in task.active_revision.plan_graph.nodes
+        }:
+            raise AgentTaskError("NodeSettlement references no active PlanGraph node")
+
+        def mutate(current: AgentTaskRecord) -> None:
+            revision = current.active_revision
+            if any(item.node_id == settlement.node_id for item in revision.node_settlements):
+                raise AgentTaskError("NodeSettlement for this node already exists")
+            revision.node_settlements.append(settlement)
+
+        return self.store.update(
+            settlement.task_id,
+            mutate,
+            event_type="node_settled",
+            payload={
+                "revision_id": settlement.revision_id,
+                "node_id": settlement.node_id,
+                "status": settlement.status,
+            },
+        )
+
+    def record_node_counterevidence(self, settlement: NodeSettlement) -> AgentTaskRecord:
+        """Append postcondition counterevidence without rewriting prior success."""
+        task = self.store.get(settlement.task_id)
+        if settlement.revision_id != task.active_revision_id:
+            raise AgentTaskError("counterevidence is not bound to the active revision")
+        if task.active_revision.plan_graph is None or settlement.node_id not in {
+            node.node_id for node in task.active_revision.plan_graph.nodes
+        }:
+            raise AgentTaskError("counterevidence references no active PlanGraph node")
+        return self.store.update(
+            settlement.task_id,
+            lambda current: current.active_revision.counterevidence.append(settlement),
+            event_type="node_counterevidence_recorded",
+            payload={
+                "revision_id": settlement.revision_id,
+                "node_id": settlement.node_id,
+                "status": settlement.status,
+            },
+        )
+
+    def request_replan(self, task_id: str, *, reason: str) -> AgentTaskRecord:
+        """Move a task into the existing bounded recovery state."""
+        task = self.store.get(task_id)
+        if task.terminal:
+            raise AgentTaskError("cannot request replan for a terminal AgentTask")
+        if _replan_count(task) >= self.max_replans:
+            raise AgentTaskError(f"replan budget exhausted ({self.max_replans})")
+
+        def mutate(current: AgentTaskRecord) -> None:
+            current.status = AgentTaskStatus.AWAITING_REPLAN
+            current.replan_deadline = utc_now() + timedelta(seconds=self.replan_timeout_s)
+            current.evidence_errors.append(f"replan requested: {reason.strip()}")
+
+        return self.store.update(task_id, mutate, event_type="plan_replan_requested")
+
     def begin_revision_from_delta(
         self,
         task_id: str,
@@ -904,6 +1062,8 @@ class AgentTaskCoordinator:
         plan_graph: PlanGraph,
         plan_graph_ref: str,
         reason: str | None = None,
+        counterevidence_refs: tuple[str, ...] = (),
+        counterevidence: NodeSettlement | None = None,
     ) -> AgentTaskRecord:
         """Adapt a pure planning replan delta into the coordinator-owned revision path."""
         task = self.store.get(task_id)
@@ -911,11 +1071,29 @@ class AgentTaskCoordinator:
             raise AgentTaskError("ReplanDelta is not bound to the active AgentTask revision")
         if plan_graph.task_id != task_id or plan_graph.revision_id == task.active_revision_id:
             raise AgentTaskError("replacement PlanGraph must target this task and a new revision")
+        active_settlements = {
+            item.node_id: item for item in task.active_revision.node_settlements
+        }
+        preserved = tuple(
+            item.model_copy(update={"revision_id": plan_graph.revision_id})
+            for node_id, item in active_settlements.items()
+            if node_id in set(delta.preserve_node_ids)
+            and node_id in {node.node_id for node in plan_graph.nodes}
+        )
         return self.begin_revision(
             task_id,
             reason=reason or delta.reason,
             plan_graph=plan_graph,
             plan_graph_ref=plan_graph_ref,
+            preserved_node_ids=delta.preserve_node_ids,
+            invalidated_node_ids=delta.invalidate_node_ids,
+            fresh_evidence_requirements=delta.fresh_evidence_requirements,
+            node_settlements=list(preserved),
+            replan_evidence_refs=tuple(counterevidence_refs),
+            counterevidence=(
+                [counterevidence.model_copy(update={"revision_id": plan_graph.revision_id})]
+                if counterevidence is not None else []
+            ),
         )
 
     async def invoke_query(
@@ -1339,7 +1517,7 @@ class AgentTaskCoordinator:
                     else AgentTaskStatus.FAILED
                 )
             elif current.verification.mode == "recovery" and verdict.verdict == "replan_required":
-                if len(current.revisions) - 1 >= self.max_replans:
+                if _replan_count(current) >= self.max_replans:
                     current.status = AgentTaskStatus.FAILED
                     current.evidence_errors.append(
                         f"replan limit reached ({self.max_replans}): {verdict.reason}"
@@ -1852,6 +2030,19 @@ def _remote_identity(exc: Exception) -> tuple[str | None, str | None]:
 def _fail_replan(task: AgentTaskRecord, message: str) -> None:
     task.status = AgentTaskStatus.FAILED
     task.evidence_errors.append(message)
+
+
+def _replan_count(task: AgentTaskRecord) -> int:
+    """Count recovery revisions while excluding discovery expansion.
+
+    Existing records default every revision to ``True``; subtracting the
+    initial revision preserves their historical ``len(revisions) - 1`` budget
+    semantics. New discovery revisions explicitly opt out.
+    """
+    return max(
+        0,
+        sum(revision.counts_toward_replan_budget for revision in task.revisions) - 1,
+    )
 
 
 def _response_data(response: dict[str, Any]) -> dict[str, Any]:

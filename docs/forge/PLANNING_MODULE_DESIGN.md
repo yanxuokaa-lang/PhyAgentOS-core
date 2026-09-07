@@ -417,18 +417,38 @@ planner runtime embedded in `PhyAgentOS/planning`.
 
 ### Completion status and next implementation slice
 
-The scenario is architecturally compatible, but the following pieces are not
-yet complete in the current implementation: a general decomposer/plugin seam;
-same-task discovery-to-DAG revision expansion; durable `NodeSettlement`
-storage; a public node-scoped AgentLoop entry point; automatic
-settlement-to-ready progression; bounded Agent-selected replan application;
-post-action counterevidence attribution; preserve/invalidate application; and
-predecessor-context injection into the node prompt.
+The previously missing loop slice is implemented in the feature branch below.
+Planner-specific decomposition remains an extension responsibility: a plugin
+receives a task-conditioned `PlanningRequest` containing the task description,
+verification contract, optional trusted evidence/observations, and available
+capabilities. The Agent chooses whether to call observation or scene-understanding
+Tools first; PAOS does not impose that phase. The adapter and coordinator
+enforce the common lifecycle. Action/Session reruns still require the existing
+Gateway reconciliation and fresh admission; this feature does not silently
+replay physical side effects.
 
-The smallest coherent implementation slice is: persist settlements in the
-existing `PlanRevision`, add a `NodeContextProvider` that injects one direct
-predecessor summary, and add the thin `PlanningLoopAdapter`. Only after that
-slice is verified should planner-selected replacement graphs and Action-node
-rerun semantics be enabled. The RGB sorting task then becomes a validation
-scenario for generic attribute discovery and recovery rather than a new
-hard-coded workflow.
+## Implementation result (2026-09-07)
+
+The first complete no-motion slice is now implemented outside the pure planning
+package. `PhyAgentOS.agent.planning_loop` provides a `PlanningLoopAdapter`,
+`NodeContextProvider`, durable settlement writes through `AgentTaskCoordinator`,
+ready-node progression, reducer replay, postcondition counterevidence recovery,
+Agent-selected replacement-graph application, and `AgentLoopNodeExecutor` for
+turning node-scoped Tool records into normalized results. `AgentLoop.run_node_turn()`
+is the node-scoped entry point; it uses the existing tool registry and planning
+admission guard. `PhyAgentOS.agent.planner_plugin` provides an explicit
+`PlannerPlugin` protocol and opt-in `paos.planners` entry-point registry.
+
+An Agent-selected graph is materialized through
+`AgentTaskCoordinator.materialize_plan_revision()` (with the discovery-named
+compatibility alias `expand_discovery_revision()`) under the same task identity.
+`NodeSettlement` is persisted in `PlanRevision`;
+replan metadata and preserved settlements are carried into the replacement
+revision with a new revision identity. The adapter never calls Gateway, writes
+SQLite directly, or authorizes motion. Action/Session physical reruns remain
+subject to the existing coordinator unknown-state and admission rules.
+
+The RGB attribute-sorting scenario is covered by pure fake-execution tests with
+discovered entities, a sequential semantic DAG, direct predecessor context,
+post-action dropped-object counterevidence, bounded replan, and reducer replay.
+No Gateway, Dora, simulator step, or hardware action is part of this validation.

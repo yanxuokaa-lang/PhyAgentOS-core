@@ -154,6 +154,55 @@ class ForgeTaskBeginRevisionTool(Tool):
         )
 
 
+class ForgeTaskMaterializePlanTool(Tool):
+    """Materialize an Agent-selected graph when the task started without one."""
+
+    def __init__(self, coordinator: AgentTaskCoordinator) -> None:
+        self.coordinator = coordinator
+
+    @property
+    def name(self) -> str:
+        return "forge_task_materialize_plan"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Attach an Agent-selected semantic PlanGraph to an existing task. "
+            "Choose observation/understanding Tools first only when the task needs them; "
+            "this call does not execute Tools or motion."
+        )
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        schema = _task_id_schema()
+        schema["properties"].update({
+            "plan_graph": {"type": "object", "description": "Task-conditioned semantic DAG."},
+            "plan_graph_ref": {"type": "string", "pattern": "^artifact://.+"},
+            "evidence_refs": {"type": "array", "items": {"type": "string"}},
+            "reason": {"type": "string", "minLength": 1},
+        })
+        schema["required"] += ["plan_graph", "plan_graph_ref"]
+        return schema
+
+    async def execute(
+        self,
+        task_id: str,
+        plan_graph: dict[str, Any],
+        plan_graph_ref: str,
+        evidence_refs: list[str] | None = None,
+        reason: str = "Agent selected a task-conditioned semantic DAG",
+    ) -> str:
+        return _json({
+            "ok": True,
+            "data": self.coordinator.materialize_plan_revision(
+                task_id,
+                plan_graph=PlanGraph.model_validate(plan_graph),
+                plan_graph_ref=plan_graph_ref,
+                evidence_refs=tuple(evidence_refs or ()),
+                reason=reason,
+            ),
+        })
+
 class ForgeTaskFinalizeTool(Tool):
     def __init__(self, coordinator: AgentTaskCoordinator) -> None:
         self.coordinator = coordinator
@@ -214,6 +263,7 @@ def build_forge_task_tools(coordinator: AgentTaskCoordinator) -> list[Tool]:
         ForgeTaskCreateTool(coordinator),
         ForgeTaskGetTool(coordinator),
         ForgeTaskBeginRevisionTool(coordinator),
+        ForgeTaskMaterializePlanTool(coordinator),
         ForgeTaskFinalizeTool(coordinator),
         ForgeTaskCancelTool(coordinator),
     ]
@@ -269,5 +319,6 @@ __all__ = [
     "ForgeTaskCreateTool",
     "ForgeTaskFinalizeTool",
     "ForgeTaskGetTool",
+    "ForgeTaskMaterializePlanTool",
     "build_forge_task_tools",
 ]

@@ -444,6 +444,31 @@ class AgentLoop:
 
         return final_content, tools_used, messages
 
+    async def run_node_turn(
+        self,
+        *,
+        task_id: str,
+        revision_id: str,
+        node_id: str,
+        prompt: str,
+        on_progress: Callable[[str], Awaitable[None]] | None = None,
+    ) -> tuple[str | None, list[str], list[dict]]:
+        """Run one semantic-node turn through the existing AgentLoop.
+
+        The caller supplies a bounded prompt projection (including any
+        predecessor context). Tool execution remains governed by the normal
+        registry and optional ``AgentComposedDispatch`` guard.
+        """
+        if not all(isinstance(value, str) and value.strip() for value in (task_id, revision_id, node_id, prompt)):
+            raise ValueError("node turn requires non-empty task, revision, node, and prompt identities")
+        messages = self.context.build_messages(
+            history=[],
+            current_message=prompt,
+            channel="agent_task",
+            chat_id=f"{task_id}:{revision_id}:{node_id}",
+        )
+        return await self._run_agent_loop(messages, on_progress=on_progress)
+
     async def run(self) -> None:
         """Run the agent loop, dispatching messages as tasks to stay responsive to /stop."""
         self._running = True

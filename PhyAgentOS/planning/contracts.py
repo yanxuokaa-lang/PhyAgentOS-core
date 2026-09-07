@@ -59,6 +59,7 @@ class PlanNode(_Frozen):
     produced_evidence: tuple[str, ...] = ()
     resources: tuple[ResourceClaim, ...] = ()
     effects: tuple[str, ...] = ()
+    input_bindings: dict[str, Any] = Field(default_factory=dict)
     retry_of: str | None = None
 
     @field_validator("node_id", "obligation_id", "capability")
@@ -71,6 +72,15 @@ class PlanNode(_Frozen):
     def unique_values(cls, value: tuple[str, ...]) -> tuple[str, ...]:
         if len(value) != len(set(value)):
             raise ValueError("plan node values must be unique")
+        return value
+
+    @field_validator("input_bindings")
+    @classmethod
+    def finite_input_bindings(cls, value: dict[str, Any]) -> dict[str, Any]:
+        try:
+            json.dumps(value, ensure_ascii=False, allow_nan=False)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("plan node input bindings must contain finite JSON values") from exc
         return value
 
 
@@ -248,6 +258,7 @@ class NodeSettlement(_Frozen):
         "completed", "failed", "outcome_unknown", "blocked_by_dependency", "stale", "cancelled_before_start"
     ]
     evidence_refs: tuple[str, ...] = ()
+    scene_revision: str | None = None
     failure_code: str | None = None
     source_tool_id: str | None = None
 

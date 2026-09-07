@@ -264,3 +264,27 @@ checks task-bound Query/Action/Session creation calls before existing Forge
 wrappers execute. Experience policy candidates are persisted with independent
 replay receipts and explicit human-review/promotion transitions. These bridges
 do not move lifecycle or execution ownership into `PhyAgentOS.planning`.
+
+`PhyAgentOS.agent.planning_loop.PlanningLoopAdapter` is the single orchestration
+adapter for node execution. It derives ready nodes from the active
+`PlanRevision`, projects trusted direct-predecessor settlements through
+`NodeContextProvider`, delegates one node turn to an injected Agent/Tool
+executor, and persists the normalized result through
+`AgentTaskCoordinator.record_node_settlement()`. Its `reducer_replay()` path
+only reads stored revisions and never invokes Gateway. Counterevidence is
+passed to a planner-provided `ReplanProposal`; the Coordinator applies the
+`ReplanDelta` and creates the next revision, carrying only explicitly preserved
+settlements and fresh-evidence requirements.
+
+The planner input is task-conditioned rather than observation-mandatory:
+`PlanningRequest` carries the user task description, verification goal and
+criteria, constraints, optional trusted evidence/observation projections, and
+available capabilities. The Agent may submit a graph immediately when the task
+is sufficiently specified, or select observation/scene-understanding Tools first
+when facts are missing. PAOS exposes both choices and does not hard-code either
+workflow.
+
+Planner implementations are optional installable plugins through
+`PhyAgentOS.agent.planner_plugin.PlannerPlugin` and the `paos.planners` entry
+point group. A plugin may compose a graph or propose recovery, but may not
+write task state, call Tools, access Gateway, or grant motion authority.

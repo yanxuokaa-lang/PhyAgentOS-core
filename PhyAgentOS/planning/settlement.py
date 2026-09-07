@@ -10,15 +10,15 @@ def settle_node(node: PlanNode, result: ToolResultEnvelope, *, current_scene_rev
         raise ValueError("Tool result node does not match the settled node")
     if result.status == "succeeded":
         if result.world_changed and result.new_scene_revision == current_scene_revision:
-            return NodeSettlement(task_id=result.task_id, revision_id=result.revision_id, node_id=node.node_id, status="stale", evidence_refs=result.evidence_refs, failure_code="scene_revision_not_advanced", source_tool_id=result.tool_id)
-        return NodeSettlement(task_id=result.task_id, revision_id=result.revision_id, node_id=node.node_id, status="completed", evidence_refs=result.evidence_refs, source_tool_id=result.tool_id)
+            return NodeSettlement(task_id=result.task_id, revision_id=result.revision_id, node_id=node.node_id, status="stale", evidence_refs=result.evidence_refs, scene_revision=current_scene_revision, failure_code="scene_revision_not_advanced", source_tool_id=result.tool_id)
+        return NodeSettlement(task_id=result.task_id, revision_id=result.revision_id, node_id=node.node_id, status="completed", evidence_refs=result.evidence_refs, scene_revision=result.new_scene_revision or current_scene_revision, source_tool_id=result.tool_id)
     if result.status in {"unknown"}:
         status = "outcome_unknown"
     elif result.status == "cancelled":
         status = "cancelled_before_start"
     else:
         status = "failed"
-    return NodeSettlement(task_id=result.task_id, revision_id=result.revision_id, node_id=node.node_id, status=status, failure_code=result.failure_code or result.status, source_tool_id=result.tool_id)
+    return NodeSettlement(task_id=result.task_id, revision_id=result.revision_id, node_id=node.node_id, status=status, scene_revision=current_scene_revision, failure_code=result.failure_code or result.status, source_tool_id=result.tool_id)
 
 
 __all__ = ["settle_node"]

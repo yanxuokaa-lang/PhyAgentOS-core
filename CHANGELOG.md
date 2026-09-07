@@ -2,6 +2,16 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v6.10.0] - 2026-09-07
+
+Implemented the PAOS planning-loop feature as an independent orchestration extension. The existing AgentTask/PlanRevision now persist NodeSettlements and replan metadata, discovery can expand a DAG under the same task, and `PlanningLoopAdapter` drives ready nodes with direct-predecessor context, reducer replay, and Agent-selected counterevidence recovery. `PlannerPlugin` provides an opt-in entry-point seam without a second scheduler, store, or execution path. Pure RGB attribute-sorting fake execution passed the focused contract suite; no Gateway, Dora, simulator, or hardware motion was run.
+
+以独立编排扩展实现 PAOS planning loop：现有 AgentTask/PlanRevision 持久化 NodeSettlement 与 replan 元数据，同一任务支持 discovery 后 DAG 扩展；`PlanningLoopAdapter` 支持 ready node 推进、直接前驱上下文、reducer replay 与 Agent 选择的反证恢复；`PlannerPlugin` 提供 opt-in entry-point 插件边界，不新增 scheduler、store 或执行协议。RGB 属性排序纯 fake execution 专项通过，未运行 Gateway、Dora、仿真器或硬件动作。
+
+Files: `PhyAgentOS/agent/planning_loop.py`, `PhyAgentOS/agent/planner_plugin.py`, `PhyAgentOS/forge/task.py`, `PhyAgentOS/agent/loop.py`, `PhyAgentOS/agent/tools/forge_task.py`, `tests/test_planning_loop.py`, `docs/forge/PLANNING_MODULE_DESIGN.md`.
+
+Validation: `38 passed`; Ruff, compileall, and `git diff --check` passed; no-motion only.
+
 ## [v6.8.15] - 2026-09-07
 
 Completed the RGB attribute-sorting scenario analysis with the progressive-planning gaps that the initial design did not cover. Unknown block inventory now requires a discovery checkpoint followed by DAG expansion in a new PlanRevision under the same AgentTask. The design also distinguishes direct Action failure from post-success counterevidence such as a later-observed dropped block, and records that preserve/invalidate/fresh-evidence semantics must be applied across revisions before predecessor context can be reused.
