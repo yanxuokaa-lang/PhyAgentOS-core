@@ -682,6 +682,125 @@ def _validate_trajectory(
         raise SimulationProbeError("planner trajectory exceeds joint limits")
 
 
+def _quat_matrix_wxyz(quaternion: Any) -> Any:
+    import numpy as np
+
+    w, x, y, z = [float(item) for item in quaternion]
+    return np.asarray(
+        [
+            [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+            [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+            [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)],
+        ],
+        dtype=np.float64,
+    )
+
+
+def _collision_vertices(component: Any) -> Any:
+    """Return component collision vertices in world coordinates, without stepping."""
+    import numpy as np
+
+    shapes = component.get_collision_shapes()
+    component_pose = component.get_pose()
+    component_rotation = _quat_matrix_wxyz(component_pose.q)
+    vertices: list[Any] = []
+    for shape in shapes:
+        local_pose = shape.get_local_pose()
+        local_rotation = _quat_matrix_wxyz(local_pose.q)
+        get_vertices = getattr(shape, "get_vertices", None)
+        if callable(get_vertices):
+            local_vertices = np.asarray(get_vertices(), dtype=np.float64)
+        else:
+            half_size_getter = getattr(shape, "get_half_size", None)
+            if not callable(half_size_getter):
+                raise SimulationProbeError("collision shape vertices are unavailable")
+            half_size = np.asarray(half_size_getter(), dtype=np.float64)
+            if half_size.shape != (3,) or not np.isfinite(half_size).all() or (half_size <= 0).any():
+                raise SimulationProbeError("collision box dimensions are invalid")
+            local_vertices = np.asarray(
+                [[sx * half_size[0], sy * half_size[1], sz * half_size[2]]
+                 for sx in (-1, 1) for sy in (-1, 1) for sz in (-1, 1)],
+                dtype=np.float64,
+            )
+        if local_vertices.ndim != 2 or local_vertices.shape[1] != 3:
+            raise SimulationProbeError("collision shape vertices are invalid")
+        vertices.append(
+            (local_vertices @ local_rotation.T + np.asarray(local_pose.p, dtype=np.float64))
+            @ component_rotation.T
+            + np.asarray(component_pose.p, dtype=np.float64)
+        )
+    if not vertices:
+        raise SimulationProbeError("collision shape vertices are unavailable")
+    return np.concatenate(vertices, axis=0)
+
+
+def _table_top_z(task: Any) -> float:
+    table = getattr(task, "table", None)
+    if table is None:
+        raise SimulationProbeError("RoboTwin scene table is unavailable")
+    component = next(
+        (item for item in table.get_components() if callable(getattr(item, "get_collision_shapes", None))),
+        None,
+    )
+    if component is None:
+        raise SimulationProbeError("RoboTwin scene table collision geometry is unavailable")
+    vertices = _collision_vertices(component)
+    top = float(vertices[:, 2].max())
+    if not math.isfinite(top):
+        raise SimulationProbeError("RoboTwin scene table top is non-finite")
+    return top
+
+
+def _validate_gripper_table_clearance(
+    task: Any, arm: str, positions: Any, *, phase: str, gripper_state: str | None = None
+) -> None:
+    """Reject a route sample whose real finger meshes penetrate the table.
+
+    This is a provider-owned geometry qualification, not a grasp adjustment:
+    it uses the loaded RoboTwin collision meshes at the planned joint samples
+    and never inserts a positional offset or a tolerance.
+    """
+    import numpy as np
+
+    entity = task.robot.left_entity if arm == "left" else task.robot.right_entity
+    links = [
+        link for link in entity.get_links()
+        if link.get_name() in {"panda_hand", "panda_leftfinger", "panda_rightfinger"}
+    ]
+    if len(links) != 3:
+        raise SimulationProbeError("RoboTwin gripper collision links are unavailable")
+    original = np.asarray(entity.get_qpos(), dtype=np.float64).copy()
+    geometry_qpos = original.copy()
+    table_top = _table_top_z(task)
+    if gripper_state is not None:
+        if gripper_state not in _GRIPPER_VALUES:
+            raise SimulationProbeError("gripper state is invalid for clearance qualification")
+        gripper = task.robot.left_gripper if arm == "left" else task.robot.right_gripper
+        scale = task.robot.left_gripper_scale if arm == "left" else task.robot.right_gripper_scale
+        joint_indices = {
+            joint.get_name(): index for index, joint in enumerate(entity.get_active_joints())
+        }
+        normalized = _GRIPPER_VALUES[gripper_state]
+        real_value = float(scale[0]) + normalized * (float(scale[1]) - float(scale[0]))
+        for joint, multiplier, offset in gripper:
+            index = joint_indices.get(joint.get_name())
+            if index is not None:
+                geometry_qpos[index] = real_value * float(multiplier) + float(offset)
+    try:
+        for sample in np.asarray(positions, dtype=np.float64):
+            qpos = geometry_qpos.copy()
+            qpos[:7] = sample
+            entity.set_qpos(qpos.tolist())
+            minimum = min(float(_collision_vertices(link)[:, 2].min()) for link in links)
+            if minimum < table_top:
+                raise SimulationProbeError(
+                    f"{phase} gripper collision geometry penetrates table "
+                    f"(minimum_z={minimum:.6f}, table_top_z={table_top:.6f})"
+                )
+    finally:
+        entity.set_qpos(original.tolist())
+
+
 def _validate_request_policies(
     root: Path,
     request: Mapping[str, Any],
@@ -1236,6 +1355,13 @@ def _run_candidate(
                     "velocity": np.asarray(result["velocity"], dtype=np.float64).tolist(),
                 }
             )
+            _validate_gripper_table_clearance(
+                task,
+                arm,
+                result["position"],
+                phase=phase_name,
+                gripper_state=phase["gripper_state"],
+            )
             _execute_segment(
                 task,
                 arm,
@@ -1789,6 +1915,30 @@ def _handle_factory(
                 raise SimulationProbeError("RoboTwin simulation task is unavailable")
             if backend.snapshot().get("scene_revision") != request["scene_revision"]:
                 raise SimulationProbeError("simulation backend revision binding is invalid")
+            table = getattr(task, "table", None)
+            table_pose = table.get_pose() if table is not None and callable(getattr(table, "get_pose", None)) else None
+            if table_pose is None:
+                raise SimulationProbeError("RoboTwin scene table pose is unavailable")
+            table_component = next(
+                (item for item in table.get_components() if callable(getattr(item, "get_collision_shapes", None))),
+                None,
+            )
+            table_shapes = table_component.get_collision_shapes() if table_component is not None else []
+            table_top_shape = next(
+                (shape for shape in table_shapes if callable(getattr(shape, "get_half_size", None))),
+                None,
+            )
+            if table_top_shape is None:
+                raise SimulationProbeError("RoboTwin scene table box geometry is unavailable")
+            table_center = table_pose * table_top_shape.get_local_pose()
+            half_size = [float(value) for value in table_top_shape.get_half_size()]
+            table_binding = {
+                "position_m": [float(value) for value in table_center.p],
+                "orientation_wxyz": [float(value) for value in table_center.q],
+                "half_extents_m": half_size,
+            }
+            if not all(math.isfinite(value) for value in (*table_binding["position_m"], *table_binding["orientation_wxyz"], *half_size)):
+                raise SimulationProbeError("RoboTwin scene table pose is non-finite")
             planning_state = _capture_dual_arm_state(task, request["scene_revision"])
             validate_dual_arm_state(planning_state)
             execution_state["dual_arm_state"] = planning_state
@@ -1798,6 +1948,8 @@ def _handle_factory(
             # a projection can never be silently applied to the wrong planner.
             task.robot.left_planner.arm_id = "left"
             task.robot.right_planner.arm_id = "right"
+            task.robot.left_planner._paos_table_world_pose = dict(table_binding)
+            task.robot.right_planner._paos_table_world_pose = dict(table_binding)
             execution_state["_controllers"] = _build_route_controllers(
                 task, policies["motion_capability_documents"]
             )

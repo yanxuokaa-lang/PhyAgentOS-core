@@ -84,6 +84,27 @@ def test_port_updates_both_motion_generators_for_both_arms_without_motion():
         }
 
 
+def test_port_projects_bound_scene_table_pose_into_each_planner_frame():
+    planners = {"left": FakePlanner(), "right": FakePlanner()}
+    for planner in planners.values():
+        planner._paos_table_world_pose = {
+            "position_m": [1.0, 2.0, 3.0],
+            "orientation_wxyz": [1.0, 0.0, 0.0, 0.0],
+            "half_extents_m": [0.6, 0.35, 0.025],
+        }
+    apply_collision_world(planners, _artifact())
+    for planner in planners.values():
+        table = next(item for item in planner.motion_gen.world_model.objects if item.name == "table")
+        assert table.pose == [1.0, 2.0, 3.0, 1.0, 0.0, 0.0, 0.0]
+        assert table.dims == [1.2, 0.7, 0.05]
+
+
+def test_port_keeps_native_table_when_scene_pose_is_not_bound():
+    planners = {"left": FakePlanner(), "right": FakePlanner()}
+    apply_collision_world(planners, _artifact())
+    assert planners["left"].motion_gen.world_model.objects[0].pose == [0] * 7
+
+
 def test_port_replaces_previous_provider_obstacles_on_world_revision():
     planners = {"left": FakePlanner(), "right": FakePlanner()}
     first = _artifact()

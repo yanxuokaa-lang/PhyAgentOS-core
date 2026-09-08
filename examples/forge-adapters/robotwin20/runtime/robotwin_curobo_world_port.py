@@ -83,6 +83,52 @@ def _world_pose_for_planner(planner: Any, pose: Mapping[str, Any]) -> list[float
     return [*map(float, position), *map(float, rotation)]
 
 
+def _native_table_geometry_for_planner(planner: Any) -> dict[str, Any] | None:
+    """Project the scene table pose into the planner base frame when provided.
+
+    RoboTwin's native ``CuroboPlanner`` seeds a table pose with a legacy
+    shortcut that is not valid for the two-single-arm base frames.  The
+    simulation worker binds the actual scene table collision box to each
+    planner after reset; using its center, dimensions, and transform keeps the
+    provider collision model in the scene's frame without changing grasp
+    geometry.
+    """
+
+    pose = getattr(planner, "_paos_table_world_pose", None)
+    if not isinstance(pose, Mapping):
+        return None
+    if set(pose) != {"position_m", "orientation_wxyz", "half_extents_m"}:
+        raise CuroboWorldPortError("bound table world pose fields are invalid")
+    position = pose["position_m"]
+    orientation = pose["orientation_wxyz"]
+    half_extents = pose["half_extents_m"]
+    if (
+        not isinstance(position, (list, tuple))
+        or len(position) != 3
+        or not isinstance(orientation, (list, tuple))
+        or len(orientation) != 4
+        or not isinstance(half_extents, (list, tuple))
+        or len(half_extents) != 3
+    ):
+        raise CuroboWorldPortError("bound table world pose dimensions are invalid")
+    values = [*position, *orientation, *half_extents]
+    if any(isinstance(item, bool) or not isinstance(item, (int, float)) for item in values):
+        raise CuroboWorldPortError("bound table world pose values are invalid")
+    if any(float(item) <= 0 for item in half_extents):
+        raise CuroboWorldPortError("bound table half extents are invalid")
+    world_pose = {
+        "position_m": [float(item) for item in position],
+        "orientation_xyzw": [
+            float(orientation[1]), float(orientation[2]),
+            float(orientation[3]), float(orientation[0]),
+        ],
+    }
+    return {
+        "pose": _world_pose_for_planner(planner, world_pose),
+        "dims": [2.0 * float(item) for item in half_extents],
+    }
+
+
 def _peer_pose_for_planner(planner: Any, peer: Mapping[str, Any]) -> list[float]:
     pose = peer["pose_wxyz"]
     return _world_pose_for_planner(
@@ -107,6 +153,16 @@ def _world_config(
         planner._paos_collision_base_world = base_world.clone()
     cuboids = list(base_world.cuboid)
     names = {item.name for item in cuboids}
+    native_table_geometry = _native_table_geometry_for_planner(planner)
+    if native_table_geometry is not None:
+        for index, item in enumerate(cuboids):
+            if item.name == "table":
+                cuboids[index] = Cuboid(
+                    name=item.name,
+                    dims=native_table_geometry["dims"],
+                    pose=native_table_geometry["pose"],
+                )
+                break
     for obstacle in artifact["obstacles"]:
         name = str(obstacle["entity_ref"]).removeprefix("entity://")
         if name in names:

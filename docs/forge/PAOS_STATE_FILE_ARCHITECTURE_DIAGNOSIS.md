@@ -1458,3 +1458,25 @@ Action、Dora 或 motion authority。真实 no-motion 结果为两臂
 
 该结论仅表示 collision-world provider 接入和 no-motion world update 完成，不等于真实
 抓取放置、接触动力学、完整 transport/release/retreat 或 Gateway 动作验收。
+
+## 32.26 GraspGen 夹爪—桌面接触根因与 provider 几何资格（2026-09-08）
+
+对 v6.9.1 route 的只读复核确认：GraspGen 的 canonical contact center 与目标方块中心相差约
+7 mm；RoboTwin target→`panda_hand` 的转换与 URDF 链及原生 `Robot._trans_from_gripper_to_endlink`
+一致，没有证据表明需要再乘一次 `global_trans_matrix` 或人为增加 z 偏移。实际 Franka
+collision mesh 在该 planned joint pose 的最低点约为 `0.729 m`，而 RoboTwin scene table
+top 约为 `0.740 m`；因此 `panda_*finger ↔ table` 是真实几何穿透，不是 GraspGen 数值精度
+或速度参数问题。
+
+修复放在 RoboTwin provider/runtime：
+
+- probe reset 后读取 scene table 的实际 collision box pose、尺寸并投影到左右 planner base，
+  不再只依赖原生 planner 的 legacy table shortcut；
+- 每个计划 trajectory segment、在任何 `scene.step()` 之前，使用已加载 SAPIEN collision
+  shapes 对 `panda_hand` 和两个 finger 做 no-motion 几何资格检查；
+- 几何穿透直接返回 `unavailable`/失败证据，不能通过固定偏移、速度调参、删除 contact 或
+  放宽阈值掩盖；GraspGen candidate 和 PAOS Core contract 保持不变。
+
+该资格检查只证明 provider-owned geometry clearance；它不授予 motion authority，也不替代
+完整 attached-object、双臂 peer projection、接触动力学和语义放置验证。新的 worker 源码改变
+后，历史 route approval 不可复用，必须重新物化并重新申请 simulation-only approval。

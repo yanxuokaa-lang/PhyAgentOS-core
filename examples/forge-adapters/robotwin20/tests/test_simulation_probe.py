@@ -28,6 +28,7 @@ from robotwin_simulation_probe_worker import (
     _recover_candidate_failure,
     _set_gripper,
     _validate_approval,
+    _validate_gripper_table_clearance,
     _validate_request_policies,
     _validate_route_input_artifacts,
 )
@@ -64,6 +65,53 @@ QUALIFICATION_TEST_IDS = (
     "error_path",
     "reset_path",
 )
+
+
+def test_gripper_table_clearance_uses_loaded_collision_vertices_without_offset():
+    import numpy as np
+
+    class Shape:
+        def __init__(self, z):
+            self._vertices = np.asarray([[-0.01, -0.01, z], [0.01, 0.01, z]], dtype=float)
+
+        def get_local_pose(self):
+            return SimpleNamespace(p=[0, 0, 0], q=[1, 0, 0, 0])
+
+        def get_vertices(self):
+            return self._vertices
+
+    class Component:
+        def __init__(self, z):
+            self.shape = Shape(z)
+
+        def get_collision_shapes(self):
+            return [self.shape]
+
+        def get_pose(self):
+            return SimpleNamespace(p=[0, 0, 0], q=[1, 0, 0, 0])
+
+    class Entity:
+        def __init__(self, z):
+            self.links = [Component(z) for _ in range(3)]
+            self.qpos = np.zeros(7)
+
+        def get_links(self):
+            for name, link in zip(("panda_hand", "panda_leftfinger", "panda_rightfinger"), self.links):
+                link.get_name = lambda name=name: name
+            return self.links
+
+        def get_qpos(self):
+            return self.qpos
+
+        def set_qpos(self, value):
+            self.qpos = np.asarray(value, dtype=float)
+
+    table = SimpleNamespace(get_components=lambda: [Component(0.74)])
+    task = SimpleNamespace(table=table, robot=SimpleNamespace(right_entity=Entity(0.75), left_entity=Entity(0.75)))
+    _validate_gripper_table_clearance(task, "right", np.zeros((1, 7)), phase="contact")
+    task.robot.right_entity.links[0].shape._vertices[:, 2] = 0.73
+    with pytest.raises(SimulationProbeError, match="penetrates table"):
+        _validate_gripper_table_clearance(task, "right", np.zeros((1, 7)), phase="contact")
 
 
 def test_probe_video_recorder_writes_sampled_head_camera_artifact(tmp_path: Path, monkeypatch):
