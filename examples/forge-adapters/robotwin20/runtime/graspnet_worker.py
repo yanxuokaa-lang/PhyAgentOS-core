@@ -32,12 +32,14 @@ def _load() -> None:
     if _OPTIONS.source_root:
         import sys
 
-        source = str(Path(_OPTIONS.source_root).expanduser().resolve())
-        if source not in sys.path:
-            sys.path.insert(0, source)
+        source_root = Path(_OPTIONS.source_root).expanduser().resolve()
+        for relative in ("", "models", "dataset", "utils", "pointnet2"):
+            source = str(source_root / relative) if relative else str(source_root)
+            if source not in sys.path:
+                sys.path.insert(0, source)
     try:
         import torch
-        from graspnet import GraspNet, pred_decode
+        from models.graspnet import GraspNet, pred_decode
         from graspnetAPI import GraspGroup
 
         device = torch.device(_OPTIONS.device if torch.cuda.is_available() and _OPTIONS.device.startswith("cuda") else "cpu")
