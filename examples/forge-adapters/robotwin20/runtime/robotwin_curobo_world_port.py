@@ -118,13 +118,24 @@ def _native_table_geometry_for_planner(planner: Any) -> dict[str, Any] | None:
         raise CuroboWorldPortError("bound table half extents are invalid")
     world_pose = {
         "position_m": [float(item) for item in position],
-        "orientation_xyzw": [
-            float(orientation[1]), float(orientation[2]),
-            float(orientation[3]), float(orientation[0]),
-        ],
+        # Curobo's world model uses its own planner-frame orientation.  The
+        # SAPIEN table pose is in the scene frame; rotating it through the
+        # robot-base transform would swap the support slab's thin axis into
+        # the planner vertical axis.  Preserve the native table orientation
+        # while projecting the measured center and dimensions.
+        "orientation_xyzw": [0.0, 0.0, 0.0, 1.0],
     }
+    base_world = getattr(getattr(planner, "motion_gen", None), "world_model", None)
+    native_table = next(
+        (item for item in getattr(base_world, "cuboid", []) if item.name == "table"),
+        None,
+    )
+    if native_table is None or not isinstance(native_table.pose, (list, tuple)) or len(native_table.pose) != 7:
+        raise CuroboWorldPortError("native planner table orientation is unavailable")
+    native_orientation = native_table.pose[3:]
+    projected = _world_pose_for_planner(planner, world_pose)
     return {
-        "pose": _world_pose_for_planner(planner, world_pose),
+        "pose": [*projected[:3], *map(float, native_orientation)],
         "dims": [2.0 * float(item) for item in half_extents],
     }
 

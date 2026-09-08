@@ -26,7 +26,9 @@ class FakeCuboid:
 
 class FakeMotionGen:
     def __init__(self, fail=False, capacity=8):
-        self.world_model = FakeWorld([FakeCuboid(name="table", dims=[1, 1, 1], pose=[0] * 7)])
+        self.world_model = FakeWorld(
+            [FakeCuboid(name="table", dims=[1, 1, 1], pose=[0, 0, 0, 1, 0, 0, 0])]
+        )
         self.fail = fail
         self.collision_cache = {"obb": capacity}
         self.updates = []
@@ -99,10 +101,24 @@ def test_port_projects_bound_scene_table_pose_into_each_planner_frame():
         assert table.dims == [1.2, 0.7, 0.05]
 
 
+def test_port_preserves_native_planner_table_orientation():
+    planners = {"left": FakePlanner(), "right": FakePlanner()}
+    for planner in planners.values():
+        planner._paos_table_world_pose = {
+            "position_m": [1.0, 2.0, 3.0],
+            "orientation_wxyz": [0.0, 0.0, 0.0, 1.0],
+            "half_extents_m": [0.6, 0.35, 0.025],
+        }
+    apply_collision_world(planners, _artifact())
+    for planner in planners.values():
+        table = next(item for item in planner.motion_gen.world_model.objects if item.name == "table")
+        assert table.pose[3:] == [1, 0, 0, 0]
+
+
 def test_port_keeps_native_table_when_scene_pose_is_not_bound():
     planners = {"left": FakePlanner(), "right": FakePlanner()}
     apply_collision_world(planners, _artifact())
-    assert planners["left"].motion_gen.world_model.objects[0].pose == [0] * 7
+    assert planners["left"].motion_gen.world_model.objects[0].pose == [0, 0, 0, 1, 0, 0, 0]
 
 
 def test_port_replaces_previous_provider_obstacles_on_world_revision():
