@@ -286,8 +286,13 @@ workflow.
 
 Planner implementations are optional installable plugins through
 `PhyAgentOS.agent.planner_plugin.PlannerPlugin` and the `paos.planners` entry
-point group. A plugin may compose a graph or propose recovery, but may not
-write task state, call Tools, access Gateway, or grant motion authority.
+point group. The entry-point registry is an in-process development seam. A
+managed plugin must run its code and private dependencies in the plugin/
+Skill-owned environment (such as a separately installed runtime Node), then
+exchange only provider-neutral planning projections. Do not install plugin
+dependencies into PAOS or import them from the PAOS interpreter. Plugins may
+compose a graph or propose recovery, but may not write task state, call Tools,
+access Gateway, or grant motion authority.
 
 ### Long-horizon TUI integration
 

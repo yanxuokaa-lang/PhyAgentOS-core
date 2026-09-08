@@ -396,7 +396,11 @@ policy belong in an installable planner/Skill plugin. The plugin may call
 `compose_agent_plan()` and return a `PlanGraph`, but it does not own task state,
 Tool transport, Evidence, Verifier semantics, Runtime admission, or motion
 authority. PAOS core exposes only the provider-neutral planning contracts and
-the existing coordinator/AgentLoop seams.
+the existing coordinator/AgentLoop seams. In-process entry-point loading is
+for development in the PAOS interpreter; a managed production plugin runs
+its code and private dependencies in the plugin/Skill-owned environment (for
+example, a separately installed runtime Node) and exchanges only these
+provider-neutral projections across the process boundary.
 
 This preserves the current baseline workflow and allows an attribute-sorting
 planner to coexist with other planners. The present repository already has
