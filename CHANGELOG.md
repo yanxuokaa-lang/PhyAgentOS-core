@@ -2,6 +2,61 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v7.3.0] - 2026-09-08
+
+Added RoboTwin provider-owned GraspGen contact-depth post-processing. The new
+no-motion geometry worker extracts real Panda hand/finger vertices and table
+support geometry; finite ingress-backoff variants are qualified for support
+clearance and pinch containment before route materialization. Original
+GraspGen depth and PAOS authority boundaries remain unchanged. Focused tests
+pass `10`; full RoboTwin adapter suite passes `323 passed, 1 skipped`; no
+simulator motion, Gateway, Dora, Action, benchmark motion, or hardware ran.
+
+新增 RoboTwin provider-owned GraspGen 抓取接触后处理。新的无运动 geometry worker
+读取真实 Panda hand/finger 顶点和桌面支撑几何，在 route 物化前按有限 ingress backoff
+候选同时验证支撑面净空与 pinch 包络。原始 GraspGen depth 与 PAOS 权威边界保持不变。
+专项测试 `9 passed`，RoboTwin adapter 全量 `323 passed, 1 skipped`；未运行仿真动作、
+Gateway、Dora、Action、benchmark motion 或硬件。
+
+Files: `docs/forge/GRASPGEN_CONTACT_DEPTH_POSTPROCESSING.md:L1-L67`,
+`examples/forge-adapters/robotwin20/src/robotwin20_adapter/grasp_postprocessing.py:L1-L201`,
+`examples/forge-adapters/robotwin20/runtime/robotwin_grasp_contact_geometry_worker.py:L1-L98`,
+`examples/forge-adapters/robotwin20/scripts/materialize_complete_route.py:L653-L674,L692-L699,L820-L827`,
+and the two focused test files.
+
+Implementation commit: `8c7cd7f`; branch: `feature/planning-loop`.
+
+## [v7.3.1] - 2026-09-08
+
+Code-review fixes for the independent `evolution` extension: transition
+predicates are bound to declared expectations, evidence-free and low-confidence
+attributions cannot create EvoPhy candidates, TRACE exposes explicit
+score-primary ordering while retaining earliest-first default behavior, and
+EvoPhy can emit all four bounded patch surfaces. Candidate lifecycle submission
+is now an explicit host port; verification-off episodes are skipped and
+forward-transfer is reported only when held-out pairs exist.
+
+针对独立 `evolution` 扩展完成代码审查修复：transition predicate 必须绑定到已声明的
+expectation；无 evidence 和低置信度归因不会生成 EvoPhy 候选；TRACE 保留默认最早偏离
+顺序并支持显式 score-primary 排序；EvoPhy 可生成四类受限 patch。候选生命周期提交改为
+显式宿主 port；verification-off episode 会跳过；只有存在 held-out pair 时才报告
+forward-transfer。
+
+Files: `extensions/evolution/evolution/api.py:L158-L184,L267-L312`,
+`trace.py:L12-L174`, `settlement.py:L21-L226`,
+`methods/evophy/method.py:L21-L83`, `plugin.py:L25-L151`,
+`evaluation.py:L49-L75`, `observation.py:L27-L145`,
+`PhyAgentOS/agent/experience/contracts.py:L139-L206`,
+`source.py:L237-L267`, `coordinator.py:L205-L235`, and extension tests.
+
+Validation: extension `60 passed`; full PAOS `250 passed`; Ruff,
+compileall, wheel build, and `git diff --check` passed. Six-dimension review
+passes failure behavior, authority/safety, reproducibility, maintainability,
+and observability. Architecture integration is partial: standard CLI/gateway
+composition still requires an explicit host projection and lifecycle adapter;
+no complete production self-evolution claim is made. No Gateway, Dora,
+simulation step, Action, or hardware execution ran.
+
 ## [v7.2.6] - 2026-09-08
 
 Fixed the Textual Tasks / DAG projection diagnostics. An empty dashboard now
@@ -37,6 +92,97 @@ lines.append(f"  status={node['status']} node={node['node_id']} ...")
 Validation: Textual/planning regression `44 passed, 1 warning`; Ruff,
 compileall, and `git diff --check` passed. No Gateway, Dora, simulator,
 Action, or hardware execution ran.
+
+## [v7.2.5] - 2026-09-08
+
+Added provider-neutral consequence settlement to the independent `evolution`
+extension. Timestamped physical evidence now remains pending while its outcome
+window is open and settles on deadline, provider confirmation, terminal event,
+or interruption. The latest observation group determines predicate state;
+missing, low-coverage, and same-time conflicting evidence settles as `unknown`.
+Side effects, reversibility, owner hypotheses, evidence references, and window
+close reason remain available to PULSE, TRACE, and EvoPhy candidate generation.
+
+为独立 `evolution` 扩展增加 provider-neutral consequence settlement。带时间戳的
+物理证据在 outcome window 开放时保持 pending，并在 deadline、provider 确认、
+terminal event 或 interruption 时结算。最后一组观测决定谓词状态；无证据、低覆盖和
+同时间冲突结算为 `unknown`。side effects、reversibility、owner hypotheses、
+evidence references 与窗口关闭原因继续传递给 PULSE、TRACE 和 EvoPhy 候选生成。
+
+Files: `extensions/evolution/evolution/api.py:L25-L155,L293-L314`,
+`settlement.py:L21-L212`, `evolution/__init__.py:L1-L58`,
+`tests/test_consequence_settlement.py:L1-L250`,
+`extensions/evolution/README.md:L38-L72`, and the local design document
+`docs/zh/06-consequence-driven-skill-evolution-design.md:L455-L472`.
+
+Key diff / 关键代码 Diff:
+
+```python
+# Before: episode close converted every pending record directly to unknown.
+settled = settle_pending(records)
+
+# After: timestamped provider evidence is settled against explicit windows.
+observations = ConsequenceSettler(policy=policy).settle(
+    targets=targets,
+    samples=evidence_samples,
+    at_ms=settlement_time_ms,
+    close_reason=close_reason,
+)
+```
+
+Six-dimension acceptance passed for architecture integration, failure behavior,
+authority and safety, configuration and reproducibility, maintainability, and
+observability/Anti-OverDefense. Review found no Blocker or Major findings.
+Validation: independent extension `48 passed`; PAOS seam `6 passed`; full PAOS
+regression `248 passed`; Ruff, compileall, locked environment sync, extension
+sdist/wheel build, isolated wheel import, root wheel build/exclusion, and
+`git diff --check` passed. All tests used fake facts without Gateway, Dora,
+simulation step, Action, or hardware motion. Benchmark accuracy, cross-provider
+generalization, and future-task utility remain evaluation-pending claims.
+
+## [v7.2.4] - 2026-09-08
+
+Completed the independently packaged `evolution` extension around the existing
+PAOS episode hook. Provider-neutral projection composition now feeds explicit
+outcome windows, evidence coverage, owner hypotheses, reversibility, and costs
+into PULSE and TRACE; EvoPhy emits one-surface Local Skill Patch candidates.
+Matched, held-out, and hazard receipts drive a fixed-weight selection policy,
+paired Future Skill Use comparisons, and non-overwriting evaluation artifacts.
+
+完成基于 PAOS 既有 episode hook 的独立 `evolution` 扩展包。provider-neutral
+projection 将 outcome window、证据覆盖、owner hypotheses、reversibility 与成本
+送入 PULSE 和 TRACE；EvoPhy 输出单一修改表面的 Local Skill Patch 候选。
+matched、held-out 与 hazard receipts 驱动固定权重选择、成对 Future Skill Use
+比较以及不覆盖历史结果的评测 artifacts。
+
+Files: `extensions/evolution/evolution/api.py:L1-L267`,
+`projection.py:L1-L106`, `plugin.py:L1-L136`, `pulse.py:L1-L74`,
+`trace.py:L1-L160`, `revision.py:L1-L107`, `evaluation.py:L1-L156`,
+`observation.py:L1-L145`, `experiment.py:L1-L144`,
+`tests/test_evolution_extension.py:L1-L937`,
+`tests/test_evolution_extension_hook.py:L1-L133`, and the local design/README.
+
+Key diff / 关键代码 Diff:
+
+```python
+# Before: evolution stopped at a generic episode/candidate loop.
+projection = project_episode(episode)
+proposal = method.process(projection)
+
+# After: episode facts flow through explicit method and evaluation stages.
+projection = composed_projection.project(episode)
+proposals = evophy.process(projection)
+decision = CandidateEvaluator(policy=policy).decide(
+    proposals[0], receipts=matched_heldout_hazard_receipts
+)
+```
+
+Validation: independent Python 3.11 extension suite `38 passed`; PAOS seam
+suite `6 passed`; full PAOS regression `247 passed`; Ruff, compileall, locked
+environment sync, extension/root wheel builds, fresh-wheel import, root-wheel
+exclusion, and `git diff --check` passed. Fake facts establish mechanical and
+integration behavior only; comparative benchmark claims remain evaluation
+pending. No Gateway, Dora, simulator step, Action, or hardware motion ran.
 
 ## [v7.2.3] - 2026-09-08
 

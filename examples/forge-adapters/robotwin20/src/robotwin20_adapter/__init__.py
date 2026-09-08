@@ -89,6 +89,13 @@ from .grasp_proposal import (
     GraspWorkerClient,
     PointCloudArtifactResolver,
 )
+from .grasp_postprocessing import (
+    GRASP_POSTPROCESSING_SCHEMA_VERSION,
+    GraspPostprocessingError,
+    apply_contact_variant,
+    qualify_geometry_artifact,
+    qualify_contact_variants,
+)
 from .motion_capabilities import (
     MOTION_CAPABILITY_SCHEMA_VERSION,
     MOTION_CAPABILITY_VALIDATION_SCHEMA_VERSION,
@@ -280,6 +287,11 @@ __all__ = [
     "ProcessWorkerConfig",
     "ProcessWorkerError",
     "GraspGenProposalProvider",
+    "GRASP_POSTPROCESSING_SCHEMA_VERSION",
+    "GraspPostprocessingError",
+    "apply_contact_variant",
+    "qualify_geometry_artifact",
+    "qualify_contact_variants",
     "GraspProposalAdapterError",
     "GraspWorkerClient",
     "FilesystemPointCloudArtifactResolver",

@@ -28,6 +28,10 @@ from robotwin20_adapter.grasp_adaptation import (
     GRASP_ADAPTATION_PROFILE_SCHEMA_VERSION,
     adapt_grasp_candidate,
 )
+from robotwin20_adapter.grasp_postprocessing import (
+    GraspPostprocessingError,
+    apply_contact_variant,
+)
 from robotwin20_adapter.motion_capabilities import (
     MotionCapabilityDocument,
     MotionCapabilityValidation,
@@ -631,6 +635,22 @@ def materialize(args: argparse.Namespace) -> dict[str, Any]:
         base_request,
         adaptation_config,
     )
+    contact_qualification = getattr(args, "contact_qualification", None)
+    contact_qualification_ref = getattr(args, "contact_qualification_ref", None)
+    if contact_qualification is not None and not contact_qualification_ref:
+        raise MaterializationError("contact qualification artifact_ref is required")
+    if contact_qualification is None and contact_qualification_ref:
+        raise MaterializationError("contact qualification path is required")
+    if contact_qualification is not None:
+        qualification = _load_json(contact_qualification, "grasp contact qualification")
+        if qualification.get("parent_candidate_ref") != proposal["candidate_ref"]:
+            raise MaterializationError("grasp contact qualification candidate binding is invalid")
+        qualification_ref_path = _artifact_path(output_root, contact_qualification_ref)
+        _write_bytes(qualification_ref_path, contact_qualification.read_bytes())
+        try:
+            execution_grasp = apply_contact_variant(execution_grasp, qualification)
+        except GraspPostprocessingError as exc:
+            raise MaterializationError("grasp contact qualification is not usable") from exc
     derived = derive_bound_route_inputs(
         facts,
         entity_ref=args.entity_ref,
@@ -651,7 +671,11 @@ def materialize(args: argparse.Namespace) -> dict[str, Any]:
     proposal_binding = {
         "candidate_ref": proposal["candidate_ref"],
         "entity_ref": proposal["entity_ref"],
-        "provenance": [*proposal["provenance"], refs["candidate-proposal"]],
+        "provenance": [
+            *proposal["provenance"],
+            refs["candidate-proposal"],
+            *([contact_qualification_ref] if contact_qualification_ref else []),
+        ],
         "observation_ref": facts["observation_ref"],
         "observation_frame_id": facts["observation_frame_id"],
         "scene_revision": facts["scene_revision"],
@@ -772,6 +796,14 @@ def main() -> int:
     parser.add_argument("--candidate-ref", required=True)
     parser.add_argument("--entity-ref", required=True)
     parser.add_argument("--request-id", required=True)
+    parser.add_argument(
+        "--contact-qualification", type=Path,
+        help="Optional provider-owned no-motion GraspGen contact qualification artifact.",
+    )
+    parser.add_argument(
+        "--contact-qualification-ref",
+        help="Artifact reference recorded in candidate provenance for the qualification.",
+    )
     args = parser.parse_args()
     review = materialize(args)
     print(json.dumps({"status": "awaiting_human_review", "artifact_root": str(args.artifact_root), **review}, sort_keys=True))
