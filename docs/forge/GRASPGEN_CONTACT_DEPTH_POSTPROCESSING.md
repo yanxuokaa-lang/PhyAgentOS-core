@@ -30,10 +30,13 @@ nominal route path is unchanged.
 - Backoff is along the candidate's normalized ingress axis, in the direction
   opposite insertion: `target' = target - ingress * backoff`.
 - Collision vertices are provider snapshots in the reset world frame together
-  with each arm's reference hand pose. The adapter first maps them through the
-  reference hand frame into the candidate robot-target pose, then translates
-  that nominal geometry along ingress for each variant. No world-Z offset or
-  tolerance is added.
+  with each arm's reference hand pose. The qualification caller must derive the
+  actual RoboTwin hand/endlink pose from the provider profile's declared
+  `robot_target_reference_distance_m`, `robot_gripper_bias_m`, and
+  `robot_delta_matrix`; the adapter then maps vertices through the reference
+  hand frame into that pose before translating nominal geometry along ingress.
+  The adapter does not invent a reference distance, world-Z offset, or
+  tolerance.
 - The support plane is provider data (`normal · p >= offset`).
 - Pinch validity is checked against the measured object center and half extents.
 - The original GraspGen proposal and provider `depth` remain unchanged. The

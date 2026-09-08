@@ -54,6 +54,78 @@ def _rotate(rotation: Sequence[Sequence[float]], vector: Sequence[float]) -> lis
     return [sum(float(rotation[row][index]) * float(vector[index]) for index in range(3)) for row in range(3)]
 
 
+def _rotation_quaternion(rotation: Sequence[Sequence[float]]) -> list[float]:
+    trace = sum(float(rotation[index][index]) for index in range(3))
+    if trace > 0:
+        scale = math.sqrt(trace + 1.0) * 2
+        result = [
+            (rotation[2][1] - rotation[1][2]) / scale,
+            (rotation[0][2] - rotation[2][0]) / scale,
+            (rotation[1][0] - rotation[0][1]) / scale,
+            0.25 * scale,
+        ]
+    else:
+        axis = max(range(3), key=lambda index: rotation[index][index])
+        if axis == 0:
+            scale = math.sqrt(1 + rotation[0][0] - rotation[1][1] - rotation[2][2]) * 2
+            result = [0.25 * scale, (rotation[0][1] + rotation[1][0]) / scale, (rotation[0][2] + rotation[2][0]) / scale, (rotation[2][1] - rotation[1][2]) / scale]
+        elif axis == 1:
+            scale = math.sqrt(1 + rotation[1][1] - rotation[0][0] - rotation[2][2]) * 2
+            result = [(rotation[0][1] + rotation[1][0]) / scale, 0.25 * scale, (rotation[1][2] + rotation[2][1]) / scale, (rotation[0][2] - rotation[2][0]) / scale]
+        else:
+            scale = math.sqrt(1 + rotation[2][2] - rotation[0][0] - rotation[1][1]) * 2
+            result = [(rotation[0][2] + rotation[2][0]) / scale, (rotation[1][2] + rotation[2][1]) / scale, 0.25 * scale, (rotation[1][0] - rotation[0][1]) / scale]
+    norm = math.sqrt(sum(float(item) * float(item) for item in result))
+    return [float(item) / norm for item in result]
+
+
+def derive_robot_hand_pose(
+    robot_target_pose: Mapping[str, Any],
+    *,
+    reference_distance_m: float,
+    gripper_bias_m: float,
+    delta_matrix: Sequence[Sequence[float]],
+) -> dict[str, Any]:
+    """Derive RoboTwin's actual hand pose from its route gripper target.
+
+    ``reference_distance_m`` is supplied by the provider profile used by
+    RoboTwin's gripper-to-endlink transform.
+    """
+
+    position, quaternion = _pose(robot_target_pose, "robot_target_pose")
+    if (
+        isinstance(reference_distance_m, bool)
+        or not math.isfinite(float(reference_distance_m))
+        or float(reference_distance_m) <= 0
+    ):
+        raise GraspPostprocessingError("reference distance must be positive")
+    if (
+        isinstance(gripper_bias_m, bool)
+        or not math.isfinite(float(gripper_bias_m))
+        or float(gripper_bias_m) < 0
+    ):
+        raise GraspPostprocessingError("gripper bias must be finite and non-negative")
+    delta = [[float(item) for item in row] for row in delta_matrix]
+    if len(delta) != 3 or any(len(row) != 3 for row in delta) or any(
+        not math.isfinite(item) for row in delta for item in row
+    ):
+        raise GraspPostprocessingError("delta matrix must be 3x3")
+    rotation = _quaternion_rotation(quaternion, "robot target orientation")
+    offset = _rotate(
+        rotation, [float(reference_distance_m) - float(gripper_bias_m), 0.0, 0.0]
+    )
+    inverse_delta = [[delta[column][row] for column in range(3)] for row in range(3)]
+    hand_rotation = [
+        [sum(rotation[row][index] * inverse_delta[index][column] for index in range(3)) for column in range(3)]
+        for row in range(3)
+    ]
+    return {
+        "frame_id": robot_target_pose["frame_id"],
+        "position_m": [position[index] + offset[index] for index in range(3)],
+        "orientation_xyzw": _rotation_quaternion(hand_rotation),
+    }
+
+
 def _project_reference_vertices(
     vertices: Sequence[Sequence[float]],
     reference_pose: Mapping[str, Any],
@@ -207,6 +279,7 @@ def qualify_geometry_artifact(
     object_center_m: Sequence[float],
     object_half_extents_m: Sequence[float],
     backoff_candidates_m: Sequence[float],
+    target_hand_pose: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Bridge a RoboTwin geometry artifact into the pure qualification seam."""
 
@@ -234,7 +307,7 @@ def qualify_geometry_artifact(
     grasp = candidate.get("execution_grasp")
     if not isinstance(grasp, Mapping):
         raise GraspPostprocessingError("candidate execution grasp is missing")
-    target_pose = grasp.get("robot_target_pose")
+    target_pose = target_hand_pose or grasp.get("robot_target_pose")
     if not isinstance(target_pose, Mapping):
         raise GraspPostprocessingError("candidate robot target pose is missing")
     vertices = _project_reference_vertices(vertices, reference_pose, target_pose)
@@ -256,6 +329,7 @@ __all__ = [
     "GRASP_POSTPROCESSING_SCHEMA_VERSION",
     "GraspPostprocessingError",
     "apply_contact_variant",
+    "derive_robot_hand_pose",
     "qualify_geometry_artifact",
     "qualify_contact_variants",
 ]
