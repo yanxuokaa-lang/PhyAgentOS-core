@@ -129,6 +129,9 @@ def test_graspnet_uses_its_approach_axis_without_reusing_graspgen_semantics(tmp_
             }
 
     worker = GraspNetWorker()
-    data = GraspNetProposalProvider(worker, artifact_store=_store(tmp_path), apply_nms=False).propose(REQUEST)
+    provider = GraspNetProposalProvider(worker, artifact_store=_store(tmp_path), apply_nms=False)
+    data = provider.propose(REQUEST)
     assert worker.requests[0]["provider"] == "graspnet"
+    assert provider.approach_axis == 0
+    assert provider.closing_axis == 1
     assert data["candidates"][0]["approach_direction"]["vector"] == [0.0, 1.0, 0.0]

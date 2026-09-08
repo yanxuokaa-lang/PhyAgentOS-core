@@ -86,6 +86,7 @@ class GraspProposalProvider:
         provider_id: str = "graspgen",
         model_variant: str = "ptv3",
         approach_axis: int = 2,
+        closing_axis: int = 0,
     ) -> None:
         if not callable(getattr(client, "request", None)):
             raise TypeError("grasp worker client must expose request(payload)")
@@ -110,6 +111,8 @@ class GraspProposalProvider:
             raise ValueError("model_variant must be a non-empty identifier")
         if isinstance(approach_axis, bool) or not isinstance(approach_axis, int) or approach_axis not in (0, 1, 2):
             raise ValueError("approach_axis must be 0, 1, or 2")
+        if isinstance(closing_axis, bool) or not isinstance(closing_axis, int) or closing_axis not in (0, 1, 2) or closing_axis == approach_axis:
+            raise ValueError("closing_axis must be a different axis from approach_axis")
         self.client = client
         self.artifact_store = artifact_store
         self.max_candidates = max_candidates
@@ -122,6 +125,7 @@ class GraspProposalProvider:
         self.provider_id = provider_id
         self.model_variant = model_variant
         self.approach_axis = approach_axis
+        self.closing_axis = closing_axis
 
     def propose(self, request: Mapping[str, Any]) -> Mapping[str, Any]:
         if not isinstance(request, Mapping):
@@ -161,6 +165,7 @@ class GraspProposalProvider:
                         approach_angle_deg=self.nms_approach_angle_deg,
                         closing_angle_deg=self.nms_closing_angle_deg,
                         approach_axis=self.approach_axis,
+                        closing_axis=self.closing_axis,
                     )
                 funnel["deduplicated"] += len(canonical)
                 for matrix, score, index in canonical[: self.max_candidates]:
@@ -329,7 +334,7 @@ def _candidate(*, entity_ref: str, candidate_index: int, matrix: Any, score: flo
     }
 
 
-def _nms(candidates: list[tuple[Any, float, int]], *, position_threshold_m: float, approach_angle_deg: float, closing_angle_deg: float, approach_axis: int = 2) -> list[tuple[Any, float, int]]:
+def _nms(candidates: list[tuple[Any, float, int]], *, position_threshold_m: float, approach_angle_deg: float, closing_angle_deg: float, approach_axis: int = 2, closing_axis: int = 0) -> list[tuple[Any, float, int]]:
     np = _numpy()
     position_sq = position_threshold_m ** 2
     approach_cos = math.cos(math.radians(approach_angle_deg))
@@ -344,7 +349,7 @@ def _nms(candidates: list[tuple[Any, float, int]], *, position_threshold_m: floa
                 continue
             if float(np.dot(matrix[:3, :3][:, approach_axis], retained[:3, :3][:, approach_axis])) < approach_cos:
                 continue
-            if abs(float(np.dot(matrix[:3, :3][:, 0], retained[:3, :3][:, 0]))) < closing_cos:
+            if abs(float(np.dot(matrix[:3, :3][:, closing_axis], retained[:3, :3][:, closing_axis]))) < closing_cos:
                 continue
             suppressed = True
             break
@@ -410,11 +415,11 @@ class GraspGenProposalProvider(GraspProposalProvider):
     """Backward-compatible GraspGen provider with its historical axis semantics."""
 
     def __init__(self, client: GraspWorkerClient, *, model_variant: str = "ptv3", **kwargs: Any) -> None:
-        super().__init__(client, provider_id="graspgen", model_variant=model_variant, approach_axis=2, **kwargs)
+        super().__init__(client, provider_id="graspgen", model_variant=model_variant, approach_axis=2, closing_axis=0, **kwargs)
 
 
 class GraspNetProposalProvider(GraspProposalProvider):
     """GraspNet adapter; GraspNet's first rotation column is approach."""
 
     def __init__(self, client: GraspWorkerClient, *, model_variant: str = "baseline", **kwargs: Any) -> None:
-        super().__init__(client, provider_id="graspnet", model_variant=model_variant, approach_axis=0, **kwargs)
+        super().__init__(client, provider_id="graspnet", model_variant=model_variant, approach_axis=0, closing_axis=1, **kwargs)
