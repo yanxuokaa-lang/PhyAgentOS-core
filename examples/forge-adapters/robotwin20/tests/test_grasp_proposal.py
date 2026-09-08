@@ -6,6 +6,7 @@ import pytest
 from robotwin20_adapter.grasp_proposal import (
     FilesystemPointCloudArtifactResolver,
     GraspGenProposalProvider,
+    GraspNetProposalProvider,
     GraspProposalAdapterError,
 )
 
@@ -113,3 +114,21 @@ def test_worker_cleanup_failure_is_fail_closed(tmp_path):
     provider = GraspGenProposalProvider(CleanupFailureWorker(), artifact_store=_store(tmp_path))
     with pytest.raises(GraspProposalAdapterError, match="cleanup failed"):
         provider.propose(REQUEST)
+
+
+def test_graspnet_uses_its_approach_axis_without_reusing_graspgen_semantics(tmp_path):
+    class GraspNetWorker(Worker):
+        def request(self, payload):
+            self.requests.append(payload)
+            matrix = np.eye(4)
+            matrix[:3, :3] = np.array([[0, 0, 1], [1, 0, 0], [0, 1, 0]], dtype=float)
+            return {
+                "request_id": payload["request_id"], "status": "available",
+                "candidates": [{"matrix": matrix.tolist(), "score": 0.9}],
+                "funnel": {"decoded": 1, "canonicalized": 1, "deduplicated": 1, "retained": 1},
+            }
+
+    worker = GraspNetWorker()
+    data = GraspNetProposalProvider(worker, artifact_store=_store(tmp_path), apply_nms=False).propose(REQUEST)
+    assert worker.requests[0]["provider"] == "graspnet"
+    assert data["candidates"][0]["approach_direction"]["vector"] == [0.0, 1.0, 0.0]

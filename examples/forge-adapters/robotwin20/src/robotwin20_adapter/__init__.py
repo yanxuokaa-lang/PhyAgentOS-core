@@ -82,7 +82,9 @@ from .grasp_profile import (
 )
 from .grasp_proposal import (
     FilesystemPointCloudArtifactResolver,
+    GraspProposalProvider,
     GraspGenProposalProvider,
+    GraspNetProposalProvider,
     GraspProposalAdapterError,
     GraspWorkerClient,
     PointCloudArtifactResolver,

@@ -7,6 +7,7 @@ import pytest
 from robotwin20_adapter import (
     GRASP_PROFILE_SCHEMA_VERSION,
     GraspGenProposalProvider,
+    GraspNetProposalProvider,
     GraspProfileError,
     build_grasp_provider,
     load_grasp_profile,
@@ -68,3 +69,11 @@ def test_grasp_profile_loader_requires_absolute_file(tmp_path):
     assert load_grasp_profile(path.resolve()) == profile
     with pytest.raises(GraspProfileError, match="absolute"):
         load_grasp_profile("grasp.yaml")
+
+
+def test_grasp_profile_selects_graspnet_provider(tmp_path):
+    profile, environment = _profile(tmp_path)
+    (tmp_path / "artifacts").mkdir()
+    profile = {**profile, "provider_id": "graspnet", "model_variant": "baseline"}
+    provider = build_grasp_provider(profile, environ=environment)
+    assert isinstance(provider, GraspNetProposalProvider)

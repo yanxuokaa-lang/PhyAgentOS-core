@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 import sys
 from pathlib import Path
 
@@ -96,3 +97,17 @@ def test_graspgen_model_output_isolated_from_jsonl_stdout(monkeypatch, capsys):
     assert "model initialization log" in captured.err
     assert "model inference log" in captured.err
     assert observed["schema_version"] == "paos-grasp-worker/v1"
+
+
+def test_graspnet_worker_reports_unavailable_for_missing_checkpoint():
+    worker_path = Path(__file__).parents[1] / "runtime" / "graspnet_worker.py"
+    result = subprocess.run(
+        [sys.executable, str(worker_path), "--stdio-worker", "--checkpoint", "/tmp/missing-graspnet-checkpoint"],
+        capture_output=True,
+        text=True,
+        env={"PYTHONPATH": str(worker_path.parent)},
+        check=False,
+    )
+    assert result.returncode == 2
+    assert '"provider":"graspnet"' in result.stdout
+    assert '"event":"worker_unavailable"' in result.stdout

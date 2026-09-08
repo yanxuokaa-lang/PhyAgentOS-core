@@ -6,7 +6,12 @@ import os
 from pathlib import Path
 from typing import Any, Mapping
 
-from .grasp_proposal import FilesystemPointCloudArtifactResolver, GraspGenProposalProvider
+from .grasp_proposal import (
+    FilesystemPointCloudArtifactResolver,
+    GraspGenProposalProvider,
+    GraspNetProposalProvider,
+    GraspProposalProvider,
+)
 from .perception_profile import PerceptionProfileError, _absolute_path, _worker_config
 from .process_worker import JsonlProcessWorkerClient
 
@@ -36,13 +41,13 @@ def build_grasp_provider(
     profile: Mapping[str, Any],
     *,
     environ: Mapping[str, str] | None = None,
-) -> GraspGenProposalProvider:
+) -> GraspProposalProvider:
     required = {
         "schema_version", "artifact_root", "max_candidates", "score_threshold", "apply_nms",
         "nms_position_threshold_m", "nms_approach_angle_deg", "nms_closing_angle_deg",
         "apply_model_collision", "worker",
     }
-    if not isinstance(profile, Mapping) or set(profile) != required:
+    if not isinstance(profile, Mapping) or not required.issubset(profile):
         raise GraspProfileError("grasp profile fields are invalid")
     if profile.get("schema_version") != GRASP_PROFILE_SCHEMA_VERSION:
         raise GraspProfileError("grasp profile schema_version is unsupported")
@@ -54,9 +59,19 @@ def build_grasp_provider(
         worker_config = _worker_config(profile.get("worker"), variables, "grasp_worker")
     except PerceptionProfileError as exc:
         raise GraspProfileError(str(exc)) from exc
+    provider_id = profile.get("provider_id", "graspgen")
+    model_variant = profile.get("model_variant", "ptv3" if provider_id == "graspgen" else "baseline")
+    if not isinstance(provider_id, str) or not provider_id:
+        raise GraspProfileError("grasp provider_id is invalid")
+    if not isinstance(model_variant, str) or not model_variant:
+        raise GraspProfileError("grasp model_variant is invalid")
+    providers = {"graspgen": GraspGenProposalProvider, "graspnet": GraspNetProposalProvider}
+    provider_type = providers.get(provider_id)
+    if provider_type is None:
+        raise GraspProfileError("unsupported grasp provider")
     client = JsonlProcessWorkerClient(worker_config)
     try:
-        return GraspGenProposalProvider(
+        return provider_type(
             client,
             artifact_store=FilesystemPointCloudArtifactResolver(artifact_root),
             max_candidates=profile["max_candidates"],
@@ -66,6 +81,7 @@ def build_grasp_provider(
             nms_approach_angle_deg=profile["nms_approach_angle_deg"],
             nms_closing_angle_deg=profile["nms_closing_angle_deg"],
             apply_model_collision=profile["apply_model_collision"],
+            model_variant=model_variant,
         )
     except (TypeError, ValueError) as exc:
         raise GraspProfileError("grasp profile values are invalid") from exc

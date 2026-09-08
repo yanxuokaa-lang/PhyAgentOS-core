@@ -61,8 +61,15 @@ class FilesystemPointCloudArtifactResolver:
         return path
 
 
-class GraspGenProposalProvider:
-    """Translate a configured GraspGen-compatible worker into the PAOS port."""
+class GraspProposalProvider:
+    """Translate an isolated grasp worker into the provider-neutral PAOS port.
+
+    ``provider_id`` and ``model_variant`` are adapter configuration, not PAOS
+    planning concepts.  Workers must return the small ``matrix``/``score``
+    protocol; provider-specific frame conventions are expressed by
+    ``approach_axis``.  No worker is allowed to execute motion or mutate task
+    state through this seam.
+    """
 
     def __init__(
         self,
@@ -76,6 +83,9 @@ class GraspGenProposalProvider:
         nms_approach_angle_deg: float = 10.0,
         nms_closing_angle_deg: float = 10.0,
         apply_model_collision: bool = False,
+        provider_id: str = "graspgen",
+        model_variant: str = "ptv3",
+        approach_axis: int = 2,
     ) -> None:
         if not callable(getattr(client, "request", None)):
             raise TypeError("grasp worker client must expose request(payload)")
@@ -94,6 +104,12 @@ class GraspGenProposalProvider:
                 raise ValueError(f"{name} must be finite and positive")
         if not isinstance(apply_nms, bool) or not isinstance(apply_model_collision, bool):
             raise TypeError("grasp filtering flags must be booleans")
+        if not isinstance(provider_id, str) or not provider_id or not provider_id.isidentifier():
+            raise ValueError("provider_id must be a non-empty identifier")
+        if not isinstance(model_variant, str) or not model_variant or not model_variant.isidentifier():
+            raise ValueError("model_variant must be a non-empty identifier")
+        if isinstance(approach_axis, bool) or not isinstance(approach_axis, int) or approach_axis not in (0, 1, 2):
+            raise ValueError("approach_axis must be 0, 1, or 2")
         self.client = client
         self.artifact_store = artifact_store
         self.max_candidates = max_candidates
@@ -103,6 +119,9 @@ class GraspGenProposalProvider:
         self.nms_approach_angle_deg = float(nms_approach_angle_deg)
         self.nms_closing_angle_deg = float(nms_closing_angle_deg)
         self.apply_model_collision = apply_model_collision
+        self.provider_id = provider_id
+        self.model_variant = model_variant
+        self.approach_axis = approach_axis
 
     def propose(self, request: Mapping[str, Any]) -> Mapping[str, Any]:
         if not isinstance(request, Mapping):
@@ -141,6 +160,7 @@ class GraspGenProposalProvider:
                         position_threshold_m=self.nms_position_threshold_m,
                         approach_angle_deg=self.nms_approach_angle_deg,
                         closing_angle_deg=self.nms_closing_angle_deg,
+                        approach_axis=self.approach_axis,
                     )
                 funnel["deduplicated"] += len(canonical)
                 for matrix, score, index in canonical[: self.max_candidates]:
@@ -153,6 +173,7 @@ class GraspGenProposalProvider:
                             frame_id=str(request["frame_id"]),
                             geometry_ref=str(geometry["artifact_ref"]),
                             source_index=index,
+                            approach_axis=self.approach_axis,
                         )
                     )
                 funnel["retained"] = len(all_candidates)
@@ -201,8 +222,8 @@ class GraspGenProposalProvider:
             {
                 "schema_version": "paos-grasp-worker/v1",
                 "request_id": request_id,
-                "provider": "graspgen",
-                "model_variant": "ptv3",
+                "provider": self.provider_id,
+                "model_variant": self.model_variant,
                 "observation_ref": request["observation_ref"],
                 "scene_revision": request["scene_revision"],
                 "entity_ref": target["entity_ref"],
@@ -284,9 +305,9 @@ def _matrix(value: Any) -> Any:
     return matrix
 
 
-def _candidate(*, entity_ref: str, candidate_index: int, matrix: Any, score: float, frame_id: str, geometry_ref: str, source_index: int) -> dict[str, Any]:
+def _candidate(*, entity_ref: str, candidate_index: int, matrix: Any, score: float, frame_id: str, geometry_ref: str, source_index: int, approach_axis: int = 2) -> dict[str, Any]:
     rotation = matrix[:3, :3]
-    approach = rotation[:, 2]
+    approach = rotation[:, approach_axis]
     return {
         "candidate_ref": f"candidate://{entity_ref.removeprefix('entity://')}/{candidate_index}",
         "entity_ref": entity_ref,
@@ -308,7 +329,7 @@ def _candidate(*, entity_ref: str, candidate_index: int, matrix: Any, score: flo
     }
 
 
-def _nms(candidates: list[tuple[Any, float, int]], *, position_threshold_m: float, approach_angle_deg: float, closing_angle_deg: float) -> list[tuple[Any, float, int]]:
+def _nms(candidates: list[tuple[Any, float, int]], *, position_threshold_m: float, approach_angle_deg: float, closing_angle_deg: float, approach_axis: int = 2) -> list[tuple[Any, float, int]]:
     np = _numpy()
     position_sq = position_threshold_m ** 2
     approach_cos = math.cos(math.radians(approach_angle_deg))
@@ -321,7 +342,7 @@ def _nms(candidates: list[tuple[Any, float, int]], *, position_threshold_m: floa
         for retained, _, _ in kept:
             if float(np.sum((matrix[:3, 3] - retained[:3, 3]) ** 2)) > position_sq:
                 continue
-            if float(np.dot(matrix[:3, :3][:, 2], retained[:3, :3][:, 2])) < approach_cos:
+            if float(np.dot(matrix[:3, :3][:, approach_axis], retained[:3, :3][:, approach_axis])) < approach_cos:
                 continue
             if abs(float(np.dot(matrix[:3, :3][:, 0], retained[:3, :3][:, 0]))) < closing_cos:
                 continue
@@ -376,8 +397,24 @@ def _numpy() -> Any:
 
 __all__ = [
     "FilesystemPointCloudArtifactResolver",
+    "GraspProposalProvider",
     "GraspGenProposalProvider",
+    "GraspNetProposalProvider",
     "GraspProposalAdapterError",
     "GraspWorkerClient",
     "PointCloudArtifactResolver",
 ]
+
+
+class GraspGenProposalProvider(GraspProposalProvider):
+    """Backward-compatible GraspGen provider with its historical axis semantics."""
+
+    def __init__(self, client: GraspWorkerClient, *, model_variant: str = "ptv3", **kwargs: Any) -> None:
+        super().__init__(client, provider_id="graspgen", model_variant=model_variant, approach_axis=2, **kwargs)
+
+
+class GraspNetProposalProvider(GraspProposalProvider):
+    """GraspNet adapter; GraspNet's first rotation column is approach."""
+
+    def __init__(self, client: GraspWorkerClient, *, model_variant: str = "baseline", **kwargs: Any) -> None:
+        super().__init__(client, provider_id="graspnet", model_variant=model_variant, approach_axis=0, **kwargs)
