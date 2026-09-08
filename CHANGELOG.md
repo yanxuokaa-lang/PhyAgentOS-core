@@ -24,7 +24,7 @@ Files: `docs/forge/GRASPGEN_CONTACT_DEPTH_POSTPROCESSING.md:L1-L67`,
 `examples/forge-adapters/robotwin20/scripts/materialize_complete_route.py:L653-L674,L692-L699,L820-L827`,
 and the two focused test files.
 
-Implementation commit: `8c7cd7f`; branch: `feature/planning-loop`.
+Implementation commit: `f7eea46`; branch: `feature/planning-loop`.
 
 ## [v7.3.1] - 2026-09-08
 
