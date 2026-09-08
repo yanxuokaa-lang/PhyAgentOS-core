@@ -134,9 +134,17 @@ def _native_table_geometry_for_planner(planner: Any) -> dict[str, Any] | None:
         raise CuroboWorldPortError("native planner table orientation is unavailable")
     native_orientation = native_table.pose[3:]
     projected = _world_pose_for_planner(planner, world_pose)
+    import transforms3d.quaternions as tquat
+
+    base_rotation = tquat.quat2mat(list(planner.robot_origion_pose.q))
+    scene_half_extents = [float(item) for item in half_extents]
+    planner_half_extents = [
+        sum(abs(float(base_rotation[column][row])) * scene_half_extents[column] for column in range(3))
+        for row in range(3)
+    ]
     return {
         "pose": [*projected[:3], *map(float, native_orientation)],
-        "dims": [2.0 * float(item) for item in half_extents],
+        "dims": [2.0 * value for value in planner_half_extents],
     }
 
 

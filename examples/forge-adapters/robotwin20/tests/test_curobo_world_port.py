@@ -115,6 +115,20 @@ def test_port_preserves_native_planner_table_orientation():
         assert table.pose[3:] == [1, 0, 0, 0]
 
 
+def test_port_projects_table_half_extents_through_rotated_base():
+    planner = FakePlanner()
+    planner.robot_origion_pose.q = [2**-0.5, 2**-0.5, 0.0, 0.0]
+    planner._paos_table_world_pose = {
+        "position_m": [0.0, 0.0, 0.0],
+        "orientation_wxyz": [1.0, 0.0, 0.0, 0.0],
+        "half_extents_m": [0.6, 0.35, 0.025],
+    }
+    world = _artifact()
+    apply_collision_world({"left": planner, "right": FakePlanner()}, world)
+    table = next(item for item in planner.motion_gen.world_model.objects if item.name == "table")
+    assert table.dims == pytest.approx([1.2, 0.05, 0.7])
+
+
 def test_port_keeps_native_table_when_scene_pose_is_not_bound():
     planners = {"left": FakePlanner(), "right": FakePlanner()}
     apply_collision_world(planners, _artifact())
