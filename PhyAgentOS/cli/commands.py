@@ -897,6 +897,7 @@ def agent(
     config: Optional[str] = typer.Option(None, "--config", "-c", help="Config file path"),
     markdown: bool = typer.Option(True, "--markdown/--no-markdown", help="Render assistant output as Markdown"),
     logs: bool = typer.Option(False, "--logs/--no-logs", help="Show PhyAgentOS process logs during chat"),
+    ui: str = typer.Option("prompt_toolkit", "--ui", help="Interactive UI: prompt_toolkit or textual"),
 ):
     """Interact with the agent directly."""
     from loguru import logger
@@ -970,13 +971,35 @@ def agent(
                 f"completed={len(result.completed_nodes)}, revisions={result.revisions}, "
                 f"replans={result.replans}"
             ),
-            metadata={"_long_horizon": True},
+            metadata={"_long_horizon": True, "event_type": "task_status", "task_id": result.task_id},
         ))
 
     long_horizon_controller = agent_loop.build_long_horizon_controller(
         on_result=_long_horizon_result
     )
     agent_loop.set_long_horizon_controller(long_horizon_controller)
+
+    if ui not in {"prompt_toolkit", "textual"}:
+        raise typer.BadParameter("--ui must be prompt_toolkit or textual")
+    if ui == "textual" and message:
+        raise typer.BadParameter("--ui textual requires interactive mode (omit --message)")
+    if ui == "textual":
+        from PhyAgentOS.cli.textual_app import TextualUnavailableError, run_textual_app
+
+        try:
+            try:
+                run_textual_app(
+                    agent_loop=agent_loop,
+                    bus=bus,
+                    controller=long_horizon_controller,
+                    coordinator=forge_task_coordinator,
+                    session_key=session_id,
+                )
+            except TextualUnavailableError as exc:
+                raise typer.BadParameter(str(exc), param_hint="--ui") from exc
+        finally:
+            agent_loop.stop()
+        return
 
     # Show spinner when logs are off (no output to miss); skip when logs are on
     def _thinking_ctx():

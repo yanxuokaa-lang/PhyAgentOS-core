@@ -2,6 +2,49 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v7.2.0] - 2026-09-08
+
+Added the optional Textual task-monitoring presentation layer. `paos agent
+--ui textual` renders conversation, progress, persisted Coordinator events,
+task/revision/DAG settlements, and clarification state while reusing the
+existing AgentLoop, MessageBus, LongHorizonTaskController, and
+AgentTaskCoordinator. It adds no scheduler, store, PlanRevision, Gateway, or
+motion authority; `prompt_toolkit` remains the default. Validation: Textual
+0.89.1 installed, focused no-motion suite `41 passed, 1 warning`, Ruff,
+compileall, and `git diff --check` passed.
+
+新增可选 Textual 任务监控 presentation layer。`paos agent --ui textual` 复用既有
+AgentLoop、MessageBus、LongHorizonTaskController 和 AgentTaskCoordinator，展示对话、
+进度、持久化 Coordinator 事件、任务/revision/DAG settlement 与 clarification；不新增
+scheduler、store、PlanRevision、Gateway 或运动权限，默认 `prompt_toolkit` 保持兼容。
+验证：Textual 0.89.1 安装成功，无运动专项 `41 passed, 1 warning`，Ruff、compileall 和
+`git diff --check` 通过。
+
+Files: `PhyAgentOS/cli/textual_app.py`, `PhyAgentOS/cli/commands.py`,
+`tests/test_textual_app.py`, `pyproject.toml`, and Forge planning docs.
+
+Key diff / 关键代码 Diff:
+
+```python
+# Before: prompt_toolkit presentation started directly after controller wiring.
+agent_loop.set_long_horizon_controller(long_horizon_controller)
+
+# After: Textual receives the same runtime objects through an optional branch.
+if ui == "textual":
+    run_textual_app(
+        agent_loop=agent_loop,
+        bus=bus,
+        controller=long_horizon_controller,
+        coordinator=forge_task_coordinator,
+        session_key=session_id,
+    )
+```
+
+File details: `PhyAgentOS/cli/textual_app.py:L1-L332` added the presentation
+adapter; `PhyAgentOS/cli/commands.py:L900-L1003` added the optional entry;
+`tests/test_textual_app.py:L1-L192` added projection, headless UI, delegation,
+and shutdown coverage.
+
 ## [v6.10.9] - 2026-09-08
 
 Added the control-only long-horizon task surface: `paos task status|pause|resume`
@@ -889,6 +932,7 @@ After:  implementation commit f88778a and pushed branch are explicitly recorded;
 
 ## Archive
 
+- [2026-09 part 4](changelog/2026-09_part4.md)
 - [2026-09 part 3](changelog/2026-09_part3.md)
 - [2026-09 part 2](changelog/2026-09_part2.md)
 - [2026-09](changelog/2026-09.md)

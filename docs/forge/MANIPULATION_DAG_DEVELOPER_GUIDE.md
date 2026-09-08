@@ -303,9 +303,22 @@ does not become a second scheduler or store. `prompt_toolkit` is the supported
 initial TUI surface for start/status/pause/resume/stop/replay. Materialized
 tasks created by the current AgentLoop turn are started in its background task
 set, leaving the prompt available for control input. Structured clarification
-events remain a later extension.
-A later Textual view may render the same task/revision/DAG facts but must use
-the same controller and Coordinator boundaries.
+events are rendered by the optional dashboard and remain persisted through the
+existing Coordinator state.
+Textual is now an optional replacement presentation layer for a full task
+monitoring dashboard. Enable it with `pip install -e '.[tui]'` and
+`paos agent --ui textual`. It renders conversation, progress/thinking,
+persisted Coordinator events, task status, active revision, DAG node
+settlements, and clarification prompts. Textual receives the already-created
+AgentLoop, MessageBus, LongHorizonTaskController, and AgentTaskCoordinator;
+it does not create a scheduler, task store, PlanRevision, Gateway client, or
+motion authority. The default `prompt_toolkit` surface remains unchanged.
+
+The dashboard supports `/task status|start|pause|resume|stop|replay TASK_ID`.
+`stop` reconciles through the same Coordinator cancellation path and does not
+claim that an in-flight physical Action has stopped. If Textual is not
+installed, the CLI fails with an actionable optional-dependency message rather
+than silently falling back to a different execution path.
 
 The current control surface is `paos task status|pause|resume|stop|replay TASK_ID`,
 with equivalent `/task ...` commands in interactive `paos agent`. When an

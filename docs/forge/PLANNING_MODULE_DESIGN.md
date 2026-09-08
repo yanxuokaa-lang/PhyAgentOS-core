@@ -488,9 +488,14 @@ controller boundary. Materialized tasks created by a user turn are started in
 the AgentLoop's background task set, so the prompt remains available for
 control or clarification input. The TUI must not write SQLite, call Gateway
 directly, create revisions, or infer success from natural-language output.
-`prompt_toolkit` is sufficient for the first control surface; Textual is an
-optional later presentation layer for a DAG/status panel, using the same
-controller and Coordinator APIs.
+`prompt_toolkit` remains the default input surface. The optional Textual
+presentation layer is enabled with `pip install -e '.[tui]'` and
+`paos agent --ui textual`; it renders conversation, progress, Coordinator
+events, task/revision/DAG state, and clarification prompts while receiving the
+same AgentLoop, MessageBus, LongHorizonTaskController, and Coordinator
+objects. It does not add a scheduler, store, execution adapter, or motion
+authority. Its task commands are `/task status|start|pause|resume|stop|replay
+TASK_ID`. Missing Textual is reported as an explicit install error.
 
 Execution admission in the TUI is backed by
 `AgentTaskPlanningContextProvider`. It projects the latest scene revision,
@@ -514,9 +519,9 @@ so a restarted TUI can observe the pause without a second pause database.
 The outer loop has four explicit outcomes: terminal task status, blocked or
 awaiting-replan state, a user pause checkpoint, or continued node execution.
 Stop/cancel is reconciled through `AgentTaskCoordinator.cancel_task()` and does
-not claim an in-flight Action stopped. Clarification remains ordinary AgentLoop
-input until a future structured `waiting_for_user` event is added at the
-task-controller layer; ordinary model text must not mutate task state.
+not claim an in-flight Action stopped. Structured clarification events are
+persisted as `waiting_for_user` by the existing task Tool and rendered by the
+dashboard; ordinary model text still must not mutate task state.
 
 The shipped control surface is `paos task status|pause|resume|stop|replay TASK_ID`.
 An interactive `paos agent` session accepts `/task status|pause|resume|start|stop|replay
