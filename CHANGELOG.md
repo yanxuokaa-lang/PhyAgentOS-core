@@ -45,6 +45,8 @@ adapter; `PhyAgentOS/cli/commands.py:L900-L1003` added the optional entry;
 `tests/test_textual_app.py:L1-L192` added projection, headless UI, delegation,
 and shutdown coverage.
 
+Implementation commit: `be13b77`; branch: `feature/planning-loop`.
+
 ## [v6.10.9] - 2026-09-08
 
 Added the control-only long-horizon task surface: `paos task status|pause|resume`
