@@ -177,3 +177,61 @@ def test_interactive_async_stop_uses_coordinator_cancellation(tmp_path):
     from PhyAgentOS.cli.commands import _interactive_task_control_async
     assert asyncio.run(exercise()) is True
     assert c.get_task(task.task_id).cancellation_requested is True
+
+
+def test_background_runner_exception_is_visible_to_tui_callback(tmp_path):
+    c = _coordinator(tmp_path)
+    task = c.create_task(task_description="runner failure", verification=TaskVerificationContract(mode="off"))
+    c.expand_discovery_revision(
+        task.task_id,
+        plan_graph=_graph(task.task_id, "revision-1"),
+        plan_graph_ref="artifact://plan/failure",
+    )
+
+    class FailingAdapter:
+        async def run(self, *_args, **_kwargs):
+            raise RuntimeError("node executor exploded")
+
+    results = []
+    controller = LongHorizonTaskController(
+        c,
+        FailingAdapter(),
+        scene_revision_provider=lambda _: "scene-1",
+        on_result=results.append,
+    )
+
+    async def exercise():
+        controller.start(task.task_id)
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+
+    asyncio.run(exercise())
+    assert results and results[0].status == "failed"
+    assert "node executor exploded" in (results[0].last_failure or "")
+
+
+def test_background_runner_consumes_exception_without_callback(tmp_path):
+    c = _coordinator(tmp_path)
+    task = c.create_task(task_description="runner failure no callback", verification=TaskVerificationContract(mode="off"))
+    c.expand_discovery_revision(
+        task.task_id,
+        plan_graph=_graph(task.task_id, "revision-1"),
+        plan_graph_ref="artifact://plan/failure-no-callback",
+    )
+
+    class FailingAdapter:
+        async def run(self, *_args, **_kwargs):
+            raise RuntimeError("unobserved failure")
+
+    controller = LongHorizonTaskController(
+        c,
+        FailingAdapter(),
+        scene_revision_provider=lambda _: "scene-1",
+    )
+
+    async def exercise():
+        controller.start(task.task_id)
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+
+    asyncio.run(exercise())

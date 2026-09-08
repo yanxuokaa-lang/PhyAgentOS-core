@@ -11,6 +11,8 @@ import asyncio
 from dataclasses import dataclass
 from typing import Awaitable, Callable
 
+from loguru import logger
+
 from PhyAgentOS.agent.planning_context import PlanningContextUnavailableError
 from PhyAgentOS.agent.planning_loop import PlanningLoopAdapter, PlanningLoopResult
 from PhyAgentOS.forge.task import AgentTaskCoordinator, AgentTaskStatus
@@ -214,11 +216,32 @@ class LongHorizonTaskController:
 
         def completed(done: asyncio.Task[LongHorizonTaskResult]) -> None:
             self._runs.pop(task_id, None)
-            if done.cancelled() or self._on_result is None:
+            if done.cancelled():
                 return
             try:
                 result = done.result()
-            except Exception:
+            except Exception as exc:
+                if self._on_result is not None:
+                    snapshot = self._snapshot(task_id)
+                    callback = self._on_result(LongHorizonTaskResult(
+                        task_id=task_id,
+                        status="failed",
+                        revision_id=snapshot.revision_id,
+                        completed_nodes=snapshot.completed_nodes,
+                        revisions=snapshot.revisions,
+                        replans=snapshot.replans,
+                        last_failure=f"{type(exc).__name__}: {exc}",
+                    ))
+                    if hasattr(callback, "__await__"):
+                        loop.create_task(callback)  # type: ignore[arg-type]
+                else:
+                    logger.error(
+                        "Long-horizon runner failed without result callback: task_id={} error={}",
+                        task_id,
+                        exc,
+                    )
+                return
+            if self._on_result is None:
                 return
             callback = self._on_result(result)
             if hasattr(callback, "__await__"):
