@@ -12,6 +12,9 @@ class _Link:
     def get_name(self):
         return self._name
 
+    def get_entity_pose(self):
+        return SimpleNamespace(p=np.zeros(3), q=np.array([1.0, 0.0, 0.0, 0.0]))
+
 
 class _Entity:
     def __init__(self):
@@ -52,6 +55,8 @@ def test_provider_worker_extracts_both_arms_and_support_without_step(monkeypatch
     assert result["schema_version"] == worker.SCHEMA_VERSION
     assert set(result["arms"]) == {"left", "right"}
     assert set(result["arms"]["left"]["links"]) == set(worker._LINKS)
+    assert result["arms"]["left"]["reference_hand_pose"]["frame_id"] == "world"
+    assert len(result["arms"]["left"]["reference_hand_pose"]["position_m"]) == 3
     assert result["support_plane"]["offset_m"] == 0.74
     assert result["motion_authorized"] is False
 

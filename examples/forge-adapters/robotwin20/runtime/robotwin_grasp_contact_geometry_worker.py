@@ -43,9 +43,15 @@ def capture_contact_geometry(*, runtime_root: Path, runtime_profile: Path, artif
             links = {str(link.get_name()): link for link in entity.get_links()}
             if set(_LINKS) - set(links):
                 raise GraspContactGeometryError(f"{arm} Panda gripper links are incomplete")
+            hand_pose = links["panda_hand"].get_entity_pose()
             arms[arm] = {
                 "links": {
                     name: _collision_vertices(links[name]).tolist() for name in _LINKS
+                },
+                "reference_hand_pose": {
+                    "frame_id": "world",
+                    "position_m": [float(item) for item in hand_pose.p],
+                    "orientation_wxyz": [float(item) for item in hand_pose.q],
                 },
                 "joint_position": [float(item) for item in entity.get_qpos()[:7]],
             }

@@ -125,6 +125,9 @@ def test_geometry_artifact_bridge_uses_all_panda_links():
             "panda_hand": [[0.0, 0.0, 0.8]],
             "panda_leftfinger": [[0.0, 0.0, 0.8]],
             "panda_rightfinger": [[0.0, 0.0, 0.8]],
+        }, "reference_hand_pose": {
+            "frame_id": "world", "position_m": [0.0, 0.0, 0.0],
+            "orientation_wxyz": [1.0, 0.0, 0.0, 0.0],
         }}},
         "support_plane": {"normal": [0.0, 0.0, 1.0], "offset_m": 0.74},
     }
@@ -133,3 +136,50 @@ def test_geometry_artifact_bridge_uses_all_panda_links():
         object_half_extents_m=[0.05, 0.05, 0.1], backoff_candidates_m=[0.0],
     )
     assert result["status"] == "qualified"
+
+
+def test_geometry_artifact_projects_reference_vertices_to_target_pose():
+    candidate = _candidate()
+    candidate["execution_grasp"]["robot_target_pose"]["position_m"] = [1.0, 0.0, 1.0]
+    candidate["execution_grasp"]["robot_target_pose"]["orientation_xyzw"] = [
+        0.0, 0.0, 2**-0.5, 2**-0.5
+    ]
+    geometry = {
+        "schema_version": "paos-robotwin20-grasp-contact-geometry/v1",
+        "frame_id": "world", "scene_revision": "scene-1", "motion_authorized": False,
+        "arms": {"right": {
+            "links": {
+                "panda_hand": [[0.0, 0.0, 0.0]],
+                "panda_leftfinger": [[0.0, 0.0, 0.0]],
+                "panda_rightfinger": [[0.0, 0.0, 0.0]],
+            },
+            "reference_hand_pose": {
+                "frame_id": "world", "position_m": [0.0, 0.0, 0.0],
+                "orientation_wxyz": [1.0, 0.0, 0.0, 0.0],
+            },
+        }},
+        "support_plane": {"normal": [0.0, 0.0, 1.0], "offset_m": 0.74},
+    }
+    result = qualify_geometry_artifact(
+        candidate, geometry, arm_id="right", object_center_m=[0.0, 0.0, 0.8],
+        object_half_extents_m=[0.05, 0.05, 0.1], backoff_candidates_m=[0.0],
+    )
+    assert result["variants"][0]["support_clearance_m"] == pytest.approx(0.26)
+
+
+def test_geometry_artifact_requires_reference_hand_pose():
+    geometry = {
+        "schema_version": "paos-robotwin20-grasp-contact-geometry/v1",
+        "frame_id": "world", "scene_revision": "scene-1", "motion_authorized": False,
+        "arms": {"right": {"links": {
+            "panda_hand": [[0.0, 0.0, 0.8]],
+            "panda_leftfinger": [[0.0, 0.0, 0.8]],
+            "panda_rightfinger": [[0.0, 0.0, 0.8]],
+        }}},
+        "support_plane": {"normal": [0.0, 0.0, 1.0], "offset_m": 0.74},
+    }
+    with pytest.raises(GraspPostprocessingError, match="reference hand pose"):
+        qualify_geometry_artifact(
+            _candidate(), geometry, arm_id="right", object_center_m=[0.0, 0.0, 0.8],
+            object_half_extents_m=[0.05, 0.05, 0.1], backoff_candidates_m=[0.0],
+        )

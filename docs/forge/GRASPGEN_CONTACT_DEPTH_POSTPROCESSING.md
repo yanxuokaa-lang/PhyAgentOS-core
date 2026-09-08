@@ -29,9 +29,11 @@ nominal route path is unchanged.
 
 - Backoff is along the candidate's normalized ingress axis, in the direction
   opposite insertion: `target' = target - ingress * backoff`.
-- Collision vertices are provider snapshots in the route/world frame at the
-  nominal target pose; the snapshot is translated by the target-pose delta for
-  each variant. No world-Z offset or tolerance is added.
+- Collision vertices are provider snapshots in the reset world frame together
+  with each arm's reference hand pose. The adapter first maps them through the
+  reference hand frame into the candidate robot-target pose, then translates
+  that nominal geometry along ingress for each variant. No world-Z offset or
+  tolerance is added.
 - The support plane is provider data (`normal · p >= offset`).
 - Pinch validity is checked against the measured object center and half extents.
 - The original GraspGen proposal and provider `depth` remain unchanged. The

@@ -37,6 +37,56 @@ def _unit(value: Any, label: str) -> list[float]:
     return [item / norm for item in result]
 
 
+def _quaternion_rotation(value: Any, label: str) -> list[list[float]]:
+    x, y, z, w = _vector(value, 4, label)
+    norm = math.sqrt(x * x + y * y + z * z + w * w)
+    if norm <= 1e-9:
+        raise GraspPostprocessingError(f"{label} is degenerate")
+    x, y, z, w = (item / norm for item in (x, y, z, w))
+    return [
+        [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+        [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+        [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)],
+    ]
+
+
+def _rotate(rotation: Sequence[Sequence[float]], vector: Sequence[float]) -> list[float]:
+    return [sum(float(rotation[row][index]) * float(vector[index]) for index in range(3)) for row in range(3)]
+
+
+def _project_reference_vertices(
+    vertices: Sequence[Sequence[float]],
+    reference_pose: Mapping[str, Any],
+    target_pose: Mapping[str, Any],
+) -> list[list[float]]:
+    """Move reset-world vertices from the reference hand pose to target pose."""
+
+    if not isinstance(reference_pose, Mapping) or set(reference_pose) != {
+        "frame_id", "position_m", "orientation_wxyz"
+    }:
+        raise GraspPostprocessingError("reference hand pose fields are invalid")
+    if reference_pose["frame_id"] != "world":
+        raise GraspPostprocessingError("reference hand pose frame is invalid")
+    reference_position = _vector(reference_pose["position_m"], 3, "reference hand position")
+    reference_wxyz = _vector(reference_pose["orientation_wxyz"], 4, "reference hand orientation")
+    reference_rotation = _quaternion_rotation(
+        [reference_wxyz[1], reference_wxyz[2], reference_wxyz[3], reference_wxyz[0]],
+        "reference hand orientation",
+    )
+    target_position, target_quaternion = _pose(target_pose, "robot_target_pose")
+    target_rotation = _quaternion_rotation(target_quaternion, "robot target orientation")
+    # The reference rotation is orthonormal, so its transpose is the inverse.
+    reference_inverse = [[reference_rotation[column][row] for column in range(3)] for row in range(3)]
+    projected: list[list[float]] = []
+    for vertex in vertices:
+        world_vertex = _vector(vertex, 3, "gripper collision vertex")
+        relative = [world_vertex[index] - reference_position[index] for index in range(3)]
+        local = _rotate(reference_inverse, relative)
+        moved = _rotate(target_rotation, local)
+        projected.append([moved[index] + target_position[index] for index in range(3)])
+    return projected
+
+
 def _pose(value: Mapping[str, Any], label: str) -> tuple[list[float], list[float]]:
     if not isinstance(value, Mapping) or set(value) != {
         "frame_id", "position_m", "orientation_xyzw"
@@ -178,6 +228,16 @@ def qualify_geometry_artifact(
         if not isinstance(value, list):
             raise GraspPostprocessingError("contact geometry link vertices are unavailable")
         vertices.extend(value)
+    reference_pose = arms[arm_id].get("reference_hand_pose")
+    if not isinstance(reference_pose, Mapping):
+        raise GraspPostprocessingError("contact geometry reference hand pose is unavailable")
+    grasp = candidate.get("execution_grasp")
+    if not isinstance(grasp, Mapping):
+        raise GraspPostprocessingError("candidate execution grasp is missing")
+    target_pose = grasp.get("robot_target_pose")
+    if not isinstance(target_pose, Mapping):
+        raise GraspPostprocessingError("candidate robot target pose is missing")
+    vertices = _project_reference_vertices(vertices, reference_pose, target_pose)
     support = geometry_artifact.get("support_plane")
     if not isinstance(support, Mapping):
         raise GraspPostprocessingError("contact geometry support plane is unavailable")
