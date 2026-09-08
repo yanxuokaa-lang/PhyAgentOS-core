@@ -1035,16 +1035,14 @@ def agent(
         async def run_interactive():
             bus_task = asyncio.create_task(agent_loop.run())
             control_controller = long_horizon_controller
-            turn_done = asyncio.Event()
-            turn_done.set()
-            turn_response: list[str] = []
 
             async def _consume_outbound():
                 while True:
                     try:
                         msg = await asyncio.wait_for(bus.consume_outbound(), timeout=1.0)
-                        if msg.metadata.get("_progress"):
-                            is_tool_hint = msg.metadata.get("_tool_hint", False)
+                        metadata = msg.metadata or {}
+                        if metadata.get("_progress"):
+                            is_tool_hint = metadata.get("_tool_hint", False)
                             ch = agent_loop.channels_config
                             if ch and is_tool_hint and not ch.send_tool_hints:
                                 pass
@@ -1052,10 +1050,6 @@ def agent(
                                 pass
                             else:
                                 console.print(f"  [dim]↳ {msg.content}[/dim]")
-                        elif not turn_done.is_set():
-                            if msg.content:
-                                turn_response.append(msg.content)
-                            turn_done.set()
                         elif msg.content:
                             console.print()
                             _print_agent_response(msg.content, render_markdown=markdown)
@@ -1091,6 +1085,17 @@ def agent(
                             chat_id=cli_chat_id,
                             content=user_input,
                         ))
+
+                        # Keep the familiar immediate feedback while the
+                        # AgentLoop processes this turn in the background.
+                        # patch_stdout keeps the prompt usable while this line
+                        # is emitted, and the eventual outbound response is
+                        # rendered by _consume_outbound.
+                        with patch_stdout(raw=True):
+                            # Keep this marker plain text: some embedding
+                            # terminals transport ESC bytes as literal `?`
+                            # sequences, which makes Rich styling unreadable.
+                            console.print("  PhyAgentOS is thinking...")
 
                         # Do not block the prompt on a model turn.  AgentLoop
                         # serializes turns, while the outbound consumer renders
