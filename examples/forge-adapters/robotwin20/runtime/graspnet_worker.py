@@ -39,8 +39,8 @@ def _load() -> None:
                 sys.path.insert(0, source)
     try:
         import torch
-        from models.graspnet import GraspNet, pred_decode
         from graspnetAPI import GraspGroup
+        from models.graspnet import GraspNet, pred_decode
 
         device = torch.device(_OPTIONS.device if torch.cuda.is_available() and _OPTIONS.device.startswith("cuda") else "cpu")
         network = GraspNet(
