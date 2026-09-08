@@ -124,19 +124,26 @@ def _candidate_token(candidate_ref: str) -> str:
 
 
 class _ProbeVideoRecorder:
-    """Write a compact head-camera replay for one probe attempt."""
+    """Write synchronized head and observer replays for one probe attempt."""
 
-    def __init__(self, path: Path, *, fps: float = 25.0, stride_steps: int = 4) -> None:
-        if not path.is_absolute() or path.suffix.lower() != ".mp4":
-            raise SimulationProbeError("probe video output must be an absolute mp4 path")
+    _VIEW_FILENAMES = {
+        "head_camera": "head-camera.mp4",
+        "observer_camera": "observer-camera.mp4",
+    }
+
+    def __init__(self, output_dir: Path, *, fps: float = 25.0, stride_steps: int = 4) -> None:
+        if not output_dir.is_absolute():
+            raise SimulationProbeError("probe video output directory must be absolute")
         if not isinstance(fps, (int, float)) or isinstance(fps, bool) or fps <= 0:
             raise SimulationProbeError("probe video fps must be positive")
         if not isinstance(stride_steps, int) or isinstance(stride_steps, bool) or stride_steps <= 0:
             raise SimulationProbeError("probe video stride must be positive")
-        self.path = path
+        self.paths = {
+            view: output_dir / filename for view, filename in self._VIEW_FILENAMES.items()
+        }
         self.fps = float(fps)
         self.stride_steps = stride_steps
-        self._writer: Any | None = None
+        self._writers: dict[str, Any] = {}
         self.frame_count = 0
 
     def capture(self, task: Any, step: int) -> None:
@@ -150,28 +157,48 @@ class _ProbeVideoRecorder:
             raise SimulationProbeError("probe video camera is unavailable")
         task._update_render()
         cameras.update_picture()
-        rgb = cameras.get_rgb().get("head_camera", {}).get("rgb")
-        if not isinstance(rgb, np.ndarray) or rgb.ndim != 3 or rgb.shape[2] != 3:
+        head_rgb = cameras.get_rgb().get("head_camera", {}).get("rgb")
+        observer_rgb = cameras.get_observer_rgb()
+        if not isinstance(head_rgb, np.ndarray) or head_rgb.ndim != 3 or head_rgb.shape[2] != 3:
             raise SimulationProbeError("probe video head-camera frame is invalid")
-        frame = np.ascontiguousarray(rgb[:, :, ::-1])
-        if self._writer is None:
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            height, width = frame.shape[:2]
-            self._writer = cv2.VideoWriter(
-                str(self.path), cv2.VideoWriter_fourcc(*"mp4v"), self.fps, (width, height)
-            )
-            if not self._writer.isOpened():
-                raise SimulationProbeError("probe video writer could not be opened")
-        self._writer.write(frame)
+        if not isinstance(observer_rgb, np.ndarray) or observer_rgb.ndim != 3 or observer_rgb.shape[2] != 3:
+            raise SimulationProbeError("probe video observer-camera frame is invalid")
+        frames = {
+            "head_camera": np.ascontiguousarray(head_rgb[:, :, ::-1]),
+            "observer_camera": np.ascontiguousarray(observer_rgb[:, :, ::-1]),
+        }
+        for view, frame in frames.items():
+            writer = self._writers.get(view)
+            if writer is None:
+                path = self.paths[view]
+                path.parent.mkdir(parents=True, exist_ok=True)
+                height, width = frame.shape[:2]
+                writer = cv2.VideoWriter(
+                    str(path), cv2.VideoWriter_fourcc(*"mp4v"), self.fps, (width, height)
+                )
+                if not writer.isOpened():
+                    raise SimulationProbeError(f"probe video {view} writer could not be opened")
+                self._writers[view] = writer
+            writer.write(frame)
         self.frame_count += 1
 
-    def finish(self, artifact_root: Path, ref: str) -> dict[str, str]:
-        if self._writer is not None:
-            self._writer.release()
-            self._writer = None
-        if self.frame_count == 0 or not self.path.is_file():
-            raise SimulationProbeError("probe video evidence is unavailable")
-        return _artifact_record(artifact_root, ref, self.path.read_bytes())
+    def finish(self, artifact_root: Path, prefix: str) -> dict[str, dict[str, str]]:
+        for writer in self._writers.values():
+            writer.release()
+        self._writers.clear()
+        if self.frame_count == 0 or any(not path.is_file() for path in self.paths.values()):
+            raise SimulationProbeError("probe dual-view video evidence is unavailable")
+        return {
+            view: _artifact_record(
+                artifact_root,
+                f"{prefix}/video/{filename}",
+                path.read_bytes(),
+            )
+            for view, (filename, path) in {
+                view: (self._VIEW_FILENAMES[view], self.paths[view])
+                for view in self._VIEW_FILENAMES
+            }.items()
+        }
 
 
 def _capture_probe_video(task: Any, execution_state: dict[str, Any]) -> None:
@@ -1514,7 +1541,7 @@ def _recover_candidate_failure(
     recorder = execution_state.pop("video_recorder", None)
     if recorder is not None:
         try:
-            video_ref = recorder.finish(artifact_root, prefix + "/video.mp4")
+            video_ref = recorder.finish(artifact_root, prefix)
         except Exception:
             video_ref = None
     if execution_state["world_change_started"]:
@@ -1605,7 +1632,7 @@ def _finalize_candidate_success(
     execution_state["phase"] = "finalizing"
     execution_state.pop("_planner", None)
     recorder = execution_state.pop("video_recorder", None)
-    video_ref = recorder.finish(artifact_root, prefix + "/video.mp4") if recorder else None
+    video_ref = recorder.finish(artifact_root, prefix) if recorder else None
     after_state = _capture_dual_arm_state(task, request["scene_revision"])
     after = _snapshot(task, request, candidate, after_state)
     if before["state_digest"] == after["state_digest"]:
@@ -1730,7 +1757,7 @@ def _finalize_candidate_success(
                     "video_replay": {
                         "status": "pass",
                         "evidence": video_ref,
-                        "method": "sapien-head-camera-mp4/v1",
+                        "method": "sapien-head-and-observer-camera-mp4/v1",
                     }
                 }
                 if video_ref is not None
@@ -1900,7 +1927,9 @@ def _handle_factory(
         )
         if record_video:
             execution_state["video_recorder"] = _ProbeVideoRecorder(
-                _artifact_path(artifact_root, prefix + "/video.mp4", create_parent=True)
+                _artifact_path(
+                    artifact_root, prefix + "/video/head-camera.mp4", create_parent=True
+                ).parent
             )
         task = None
         before_ref = None

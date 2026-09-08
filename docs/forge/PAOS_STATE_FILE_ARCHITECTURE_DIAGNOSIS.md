@@ -1480,3 +1480,8 @@ top 约为 `0.740 m`；因此 `panda_*finger ↔ table` 是真实几何穿透，
 该资格检查只证明 provider-owned geometry clearance；它不授予 motion authority，也不替代
 完整 attached-object、双臂 peer projection、接触动力学和语义放置验证。新的 worker 源码改变
 后，历史 route approval 不可复用，必须重新物化并重新申请 simulation-only approval。
+
+后续获批准的 probe 由同一个 RoboTwin 渲染周期输出两路独立视频：`head-camera.mp4`（任务
+观测视角）和 `observer-camera.mp4`（固定第三人称视角）。两个视频在相同 simulator step 和
+采样间隔下写入；任一路缺帧时，该次视频 evidence 不可用，不能将单视角记录表述为双视角证据。
+视频仍只是 provider-owned execution evidence，不改变路线准入、碰撞判定或 motion authority。

@@ -114,7 +114,7 @@ def test_gripper_table_clearance_uses_loaded_collision_vertices_without_offset()
         _validate_gripper_table_clearance(task, "right", np.zeros((1, 7)), phase="contact")
 
 
-def test_probe_video_recorder_writes_sampled_head_camera_artifact(tmp_path: Path, monkeypatch):
+def test_probe_video_recorder_writes_sampled_dual_view_artifacts(tmp_path: Path, monkeypatch):
     import numpy as np
 
     class Writer:
@@ -136,26 +136,47 @@ def test_probe_video_recorder_writes_sampled_head_camera_artifact(tmp_path: Path
         "cv2",
         SimpleNamespace(VideoWriter=Writer, VideoWriter_fourcc=lambda *_: 0),
     )
-    recorder = _ProbeVideoRecorder(tmp_path / "video.mp4", stride_steps=2)
+    recorder = _ProbeVideoRecorder(tmp_path / "video", stride_steps=2)
     task = SimpleNamespace(
         _update_render=lambda: None,
         cameras=SimpleNamespace(
             update_picture=lambda: None,
             get_rgb=lambda: {"head_camera": {"rgb": np.zeros((2, 3, 3), dtype=np.uint8)}},
+            get_observer_rgb=lambda: np.zeros((4, 5, 3), dtype=np.uint8),
         ),
     )
     recorder.capture(task, 1)
     recorder.capture(task, 2)
-    record = recorder.finish(tmp_path, "artifact://probe/video.mp4")
+    record = recorder.finish(tmp_path, "artifact://probe")
     assert recorder.frame_count == 1
-    assert record["artifact_ref"] == "artifact://probe/video.mp4"
-    assert (tmp_path / "probe" / "video.mp4").read_bytes().startswith(b"fake-mp4-1")
+    assert set(record) == {"head_camera", "observer_camera"}
+    assert record["head_camera"]["artifact_ref"] == "artifact://probe/video/head-camera.mp4"
+    assert record["observer_camera"]["artifact_ref"] == "artifact://probe/video/observer-camera.mp4"
+    assert (tmp_path / "probe" / "video" / "head-camera.mp4").read_bytes().startswith(b"fake-mp4-1")
+    assert (tmp_path / "probe" / "video" / "observer-camera.mp4").read_bytes().startswith(b"fake-mp4-1")
+
+
+def test_probe_video_recorder_rejects_missing_observer_frame(tmp_path: Path, monkeypatch):
+    import numpy as np
+
+    monkeypatch.setitem(sys.modules, "cv2", SimpleNamespace())
+    recorder = _ProbeVideoRecorder(tmp_path / "video")
+    task = SimpleNamespace(
+        _update_render=lambda: None,
+        cameras=SimpleNamespace(
+            update_picture=lambda: None,
+            get_rgb=lambda: {"head_camera": {"rgb": np.zeros((2, 3, 3), dtype=np.uint8)}},
+            get_observer_rgb=lambda: None,
+        ),
+    )
+    with pytest.raises(SimulationProbeError, match="observer-camera frame is invalid"):
+        recorder.capture(task, 0)
 
 
 def test_probe_video_recorder_rejects_missing_frames(tmp_path: Path):
-    recorder = _ProbeVideoRecorder(tmp_path / "video.mp4")
-    with pytest.raises(SimulationProbeError, match="video evidence is unavailable"):
-        recorder.finish(tmp_path, "artifact://probe/video.mp4")
+    recorder = _ProbeVideoRecorder(tmp_path / "video")
+    with pytest.raises(SimulationProbeError, match="dual-view video evidence is unavailable"):
+        recorder.finish(tmp_path, "artifact://probe")
 
 
 def _install_fake_torch(monkeypatch):
@@ -985,6 +1006,15 @@ def test_post_step_failure_is_snapshotted_and_reset(tmp_path: Path, monkeypatch)
             assert seed == 0
             self.reset_count += 1
 
+    class VideoRecorder:
+        def finish(self, artifact_root, prefix):
+            assert artifact_root == tmp_path
+            assert prefix == "artifact://probe/request/candidate"
+            return {
+                "head_camera": {"artifact_ref": prefix + "/video/head-camera.mp4", "sha256": "d" * 64},
+                "observer_camera": {"artifact_ref": prefix + "/video/observer-camera.mp4", "sha256": "e" * 64},
+            }
+
     backend = Backend()
     request = _route_request(tmp_path)
     candidate = request["candidates"][0]
@@ -1007,6 +1037,7 @@ def test_post_step_failure_is_snapshotted_and_reset(tmp_path: Path, monkeypatch)
         "phase": "finalizing",
         "simulator_steps": 9,
         "contact_trace": [],
+        "video_recorder": VideoRecorder(),
     }
     response = _recover_candidate_failure(
         backend=backend,
@@ -1037,6 +1068,7 @@ def test_post_step_failure_is_snapshotted_and_reset(tmp_path: Path, monkeypatch)
     assert failure["controller_stop_status"] == "stopped"
     assert controller.stopped is True
     assert failure["linear_speed_violation"] is None
+    assert set(failure["video_evidence"]) == {"head_camera", "observer_camera"}
 
     no_step_state = {
         "planner_object_attached": False,
