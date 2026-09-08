@@ -141,3 +141,39 @@ def test_interactive_task_control_consumes_only_supported_commands(tmp_path):
     assert _interactive_task_control(f"/task resume {task.task_id}", controller) is True
     assert c.get_task(task.task_id).pause_requested is False
     assert _interactive_task_control("/task unknown task", controller) is False
+
+
+def test_controller_start_runs_in_background_and_replays_without_tools(tmp_path):
+    c = _coordinator(tmp_path)
+    task = c.create_task(task_description="background", verification=TaskVerificationContract(mode="off"))
+    c.expand_discovery_revision(
+        task.task_id,
+        plan_graph=_graph(task.task_id, "revision-1"),
+        plan_graph_ref="artifact://plan/background",
+    )
+    calls = []
+    controller = _controller(c, calls)
+
+    async def exercise():
+        started = controller.start(task.task_id)
+        assert started.status == "executing"
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        return controller.replay(task.task_id)
+
+    replay = asyncio.run(exercise())
+    assert calls == ["first", "second"]
+    assert replay["revision-1"] == ()
+
+
+def test_interactive_async_stop_uses_coordinator_cancellation(tmp_path):
+    c = _coordinator(tmp_path)
+    task = c.create_task(task_description="stop", verification=TaskVerificationContract(mode="off"))
+    controller = LongHorizonTaskController.for_control(c)
+
+    async def exercise():
+        return await _interactive_task_control_async(f"/task stop {task.task_id}", controller)
+
+    from PhyAgentOS.cli.commands import _interactive_task_control_async
+    assert asyncio.run(exercise()) is True
+    assert c.get_task(task.task_id).cancellation_requested is True

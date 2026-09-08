@@ -482,13 +482,24 @@ the existing `SessionManager`/`Session` JSONL history and
 persisted `AgentTask`/`PlanRevision` aggregate, not by provider-side session
 state.
 
-The TUI remains an interaction surface. The current slice can inspect, pause,
-and resume a task; future start/stop and clarification controls must remain on
-the same controller boundary. It must not write SQLite, call Gateway directly,
-create revisions, or infer success from natural-language output.
+The TUI remains an interaction surface. The current slice can inspect, start,
+pause, resume, stop/cancel, and reducer-replay a task through the same
+controller boundary. Materialized tasks created by a user turn are started in
+the AgentLoop's background task set, so the prompt remains available for
+control or clarification input. The TUI must not write SQLite, call Gateway
+directly, create revisions, or infer success from natural-language output.
 `prompt_toolkit` is sufficient for the first control surface; Textual is an
 optional later presentation layer for a DAG/status panel, using the same
 controller and Coordinator APIs.
+
+Execution admission in the TUI is backed by
+`AgentTaskPlanningContextProvider`. It projects the latest scene revision,
+evidence references, and node settlements from persisted Tool records and the
+active `PlanRevision`. If no observation/understanding Tool has produced a
+scene revision yet, the runner returns `blocked` with an explicit missing-fact
+reason; it never invents a placeholder scene identity. Natural-language task
+creation can therefore let the Agent choose whether observation is needed,
+while execution still uses the existing evidence authority.
 
 The first implementation slice is `PhyAgentOS.agent.long_horizon`:
 `LongHorizonTaskController` wraps the existing adapter with a per-task lock,
@@ -502,16 +513,17 @@ so a restarted TUI can observe the pause without a second pause database.
 
 The outer loop has four explicit outcomes: terminal task status, blocked or
 awaiting-replan state, a user pause checkpoint, or continued node execution.
-Future UI work must preserve this boundary and add structured
-`waiting_for_user`/clarification events only at the task-controller layer;
-ordinary model text must not mutate task state.
+Stop/cancel is reconciled through `AgentTaskCoordinator.cancel_task()` and does
+not claim an in-flight Action stopped. Clarification remains ordinary AgentLoop
+input until a future structured `waiting_for_user` event is added at the
+task-controller layer; ordinary model text must not mutate task state.
 
-The shipped control surface is `paos task status|pause|resume TASK_ID`. An
-interactive `paos agent` session also accepts `/task status TASK_ID`,
-`/task pause TASK_ID`, and `/task resume TASK_ID`. These commands use
-`LongHorizonTaskController.for_control()` and only read or persist Coordinator
-state; they do not construct an execution adapter, invoke LiteLLM, call
-Gateway, or claim that an in-flight Action stopped.
+The shipped control surface is `paos task status|pause|resume|stop|replay TASK_ID`.
+An interactive `paos agent` session accepts `/task status|pause|resume|start|stop|replay
+TASK_ID`. In the same process, `start`/`resume` wake the existing background
+controller; status/pause/stop/replay remain Coordinator/controller operations.
+No command constructs a second execution adapter, invokes LiteLLM directly,
+calls Gateway directly, or claims that an in-flight Action stopped.
 
 ### Six-dimension review
 

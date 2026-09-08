@@ -300,14 +300,24 @@ For continuous user-visible execution, place a task-state-driven
 `LongHorizonTaskController` above `PlanningLoopAdapter`. The controller drives
 persisted checkpoints and delegates node execution to the existing adapter; it
 does not become a second scheduler or store. `prompt_toolkit` is the supported
-initial TUI surface for start/status/pause/resume/stop and user clarifications.
+initial TUI surface for start/status/pause/resume/stop/replay. Materialized
+tasks created by the current AgentLoop turn are started in its background task
+set, leaving the prompt available for control input. Structured clarification
+events remain a later extension.
 A later Textual view may render the same task/revision/DAG facts but must use
 the same controller and Coordinator boundaries.
 
-The current control surface is `paos task status|pause|resume TASK_ID`, with
-the equivalent `/task ...` commands in interactive `paos agent`. These use a
-control-only `LongHorizonTaskController` facade; execution still requires the
-injected `PlanningLoopAdapter` and is never recreated by the TUI.
+The current control surface is `paos task status|pause|resume|stop|replay TASK_ID`,
+with equivalent `/task ...` commands in interactive `paos agent`. When an
+execution controller is attached, `/task start` and `/task resume` wake its
+background runner; the TUI never recreates the adapter or bypasses Coordinator
+ownership.
+
+The CLI supplies the runner with `AgentTaskPlanningContextProvider`, which
+projects scene revision, evidence, and settlements from persisted task Tool
+facts. A task with no persisted scene revision is reported as `blocked` until
+an Agent-selected observation/understanding step supplies one; placeholder
+scene identities are prohibited.
 
 LiteLLM is intentionally not the owner of multi-turn task state. It receives
 the current complete message list for each call. Chat history comes from

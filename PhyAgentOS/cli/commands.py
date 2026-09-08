@@ -251,20 +251,85 @@ def task_resume(
         raise typer.Exit(1) from exc
 
 
+@task_app.command("stop")
+def task_stop(
+    task_id: str = typer.Argument(..., help="Persisted AgentTask identifier"),
+    workspace: Optional[str] = typer.Option(None, "--workspace", "-w"),
+    config: Optional[str] = typer.Option(None, "--config", "-c"),
+):
+    """Request Coordinator-owned cancellation of a persisted AgentTask."""
+    import asyncio
+
+    from PhyAgentOS.agent.long_horizon import LongHorizonTaskController
+
+    loaded = _load_command_config(config, workspace)
+    try:
+        controller = LongHorizonTaskController.for_control(_task_control_coordinator(loaded))
+        result = asyncio.run(controller.cancel(task_id, reason="cli_stop"))
+        _print_task_result(result)
+    except Exception as exc:
+        console.print(f"[red]Error: {exc}[/red]")
+        raise typer.Exit(1) from exc
+
+
+@task_app.command("replay")
+def task_replay(
+    task_id: str = typer.Argument(..., help="Persisted AgentTask identifier"),
+    workspace: Optional[str] = typer.Option(None, "--workspace", "-w"),
+    config: Optional[str] = typer.Option(None, "--config", "-c"),
+):
+    """Recompute ready nodes from persisted facts without invoking a Tool."""
+    from PhyAgentOS.agent.long_horizon import LongHorizonTaskController
+
+    loaded = _load_command_config(config, workspace)
+    try:
+        replay = LongHorizonTaskController.for_control(
+            _task_control_coordinator(loaded)
+        ).replay(task_id)
+        for revision_id, ready in replay.items():
+            console.print(
+                f"[cyan]{revision_id}[/cyan] ready="
+                f"{', '.join(ready) if ready else '(none)'}"
+            )
+    except Exception as exc:
+        console.print(f"[red]Error: {exc}[/red]")
+        raise typer.Exit(1) from exc
+
+
 def _interactive_task_control(command: str, controller) -> bool:
-    """Handle `/task status|pause|resume ID` without sending chat text."""
+    """Handle synchronous `/task status|pause|resume|start ID` commands."""
     parts = command.split()
     if len(parts) != 3 or parts[0].lower() != "/task" or parts[1].lower() not in {
-        "status", "pause", "resume"
+        "status", "pause", "resume", "start", "replay"
     }:
         return False
     operation, task_id = parts[1].lower(), parts[2]
     try:
         result = getattr(controller, operation)(task_id)
-        _print_task_result(result)
+        if operation == "replay":
+            for revision_id, ready in result.items():
+                console.print(
+                    f"[cyan]{revision_id}[/cyan] ready="
+                    f"{', '.join(ready) if ready else '(none)'}"
+                )
+        else:
+            _print_task_result(result)
     except Exception as exc:
         console.print(f"[red]Task control error: {exc}[/red]")
     return True
+
+
+async def _interactive_task_control_async(command: str, controller) -> bool:
+    """Handle async stop while keeping the synchronous control helper testable."""
+    parts = command.split()
+    if len(parts) == 3 and parts[0].lower() == "/task" and parts[1].lower() == "stop":
+        try:
+            result = await controller.cancel(parts[2], reason="interactive_stop")
+            _print_task_result(result)
+        except Exception as exc:
+            console.print(f"[red]Task control error: {exc}[/red]")
+        return True
+    return _interactive_task_control(command, controller)
 
 
 async def _read_interactive_input_async() -> str:
@@ -570,6 +635,13 @@ def _make_forge_components(config: Config, provider):
     return client, invocation_ids, coordinator, runtime_registry.is_available
 
 
+def _make_planning_context_provider(coordinator):
+    """Project persisted AgentTask scene/evidence facts for planning admission."""
+    from PhyAgentOS.agent.planning_context import AgentTaskPlanningContextProvider
+
+    return AgentTaskPlanningContextProvider(coordinator)
+
+
 def _load_command_config(config: str | None = None, workspace: str | None = None) -> Config:
     """Load config and optionally override the active workspace."""
     from PhyAgentOS.config.loader import load_config, set_config_path
@@ -679,6 +751,7 @@ def gateway(
         evolution_config=config.agents.evolution,
         evolution_provider=evolution_provider,
         evolution_model=evolution_model,
+        planning_context_provider=_make_planning_context_provider(forge_task_coordinator),
     )
 
     # Set cron callback (needs agent)
@@ -882,7 +955,27 @@ def agent(
         evolution_config=config.agents.evolution,
         evolution_provider=evolution_provider,
         evolution_model=evolution_model,
+        planning_context_provider=_make_planning_context_provider(forge_task_coordinator),
     )
+
+    async def _long_horizon_result(result) -> None:
+        from PhyAgentOS.bus.events import OutboundMessage
+
+        await bus.publish_outbound(OutboundMessage(
+            channel="cli",
+            chat_id=session_id.split(":", 1)[1] if ":" in session_id else session_id,
+            content=(
+                f"Long-horizon task {result.task_id}: status={result.status}, "
+                f"completed={len(result.completed_nodes)}, revisions={result.revisions}, "
+                f"replans={result.replans}"
+            ),
+            metadata={"_long_horizon": True},
+        ))
+
+    long_horizon_controller = agent_loop.build_long_horizon_controller(
+        on_result=_long_horizon_result
+    )
+    agent_loop.set_long_horizon_controller(long_horizon_controller)
 
     # Show spinner when logs are off (no output to miss); skip when logs are on
     def _thinking_ctx():
@@ -941,13 +1034,7 @@ def agent(
 
         async def run_interactive():
             bus_task = asyncio.create_task(agent_loop.run())
-            control_controller = None
-            if agent_loop.forge_task_coordinator is not None:
-                from PhyAgentOS.agent.long_horizon import LongHorizonTaskController
-
-                control_controller = LongHorizonTaskController.for_control(
-                    agent_loop.forge_task_coordinator
-                )
+            control_controller = long_horizon_controller
             turn_done = asyncio.Event()
             turn_done.set()
             turn_response: list[str] = []
@@ -993,13 +1080,10 @@ def agent(
                             console.print("\nGoodbye!")
                             break
 
-                        if control_controller is not None and _interactive_task_control(
+                        if control_controller is not None and await _interactive_task_control_async(
                             command, control_controller
                         ):
                             continue
-
-                        turn_done.clear()
-                        turn_response.clear()
 
                         await bus.publish_inbound(InboundMessage(
                             channel=cli_channel,
@@ -1008,11 +1092,9 @@ def agent(
                             content=user_input,
                         ))
 
-                        with _thinking_ctx():
-                            await turn_done.wait()
-
-                        if turn_response:
-                            _print_agent_response(turn_response[0], render_markdown=markdown)
+                        # Do not block the prompt on a model turn.  AgentLoop
+                        # serializes turns, while the outbound consumer renders
+                        # responses and long-horizon status asynchronously.
                     except KeyboardInterrupt:
                         _restore_terminal()
                         console.print("\nGoodbye!")

@@ -159,6 +159,11 @@ class AgentLoopNodeExecutor:
         self.prompt_builder = prompt_builder or self._default_prompt
 
     async def __call__(self, context: NodeExecutionContext) -> ToolResultEnvelope:
+        activate = getattr(self.agent_loop, "activate_planning_task", None)
+        if callable(activate):
+            activation = activate(context.task_id)
+            if hasattr(activation, "__await__"):
+                await activation
         before = {
             item.record_id
             for item in self.coordinator.get_task(context.task_id).active_revision.execution_records
@@ -347,7 +352,23 @@ class PlanningLoopAdapter:
                 if len(settlements) == len(graph.nodes) and all(
                     value == "completed" for value in settlements.values()
                 ):
-                    return PlanningLoopResult(task_id, "completed", tuple(completed), len(task.revisions), replans)
+                    # Finalize only when the node executor produced persisted
+                    # Tool facts.  Pure no-motion adapters may intentionally
+                    # return semantic envelopes without executions; their
+                    # result remains useful for planning tests but must not
+                    # fabricate a terminal task verdict.
+                    if task.execution_records:
+                        finalized = self.coordinator.finalize_task(task_id)
+                        if hasattr(finalized, "__await__"):
+                            await finalized
+                        task = self.coordinator.get_task(task_id)
+                    return PlanningLoopResult(
+                        task_id,
+                        "completed" if not task.execution_records else task.status.value,
+                        tuple(completed),
+                        len(task.revisions),
+                        replans,
+                    )
                 return PlanningLoopResult(task_id, "blocked", tuple(completed), len(task.revisions), replans, last_failure)
 
             node_id = ready[0]

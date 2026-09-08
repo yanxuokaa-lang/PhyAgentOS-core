@@ -10,7 +10,7 @@ import sys
 from collections.abc import MutableSet
 from contextlib import AsyncExitStack
 from pathlib import Path
-from typing import TYPE_CHECKING, Awaitable, Callable
+from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 from loguru import logger
 
@@ -35,6 +35,7 @@ from PhyAgentOS.providers.providers_manager import ProvidersManager
 from PhyAgentOS.session.manager import Session, SessionManager
 
 if TYPE_CHECKING:
+    from PhyAgentOS.agent.long_horizon import LongHorizonTaskController
     from PhyAgentOS.agent.planning_dispatch import AgentComposedDispatch
     from PhyAgentOS.config.schema import AgentEvolutionConfig, ChannelsConfig, ExecToolConfig
     from PhyAgentOS.cron.service import CronService
@@ -102,6 +103,7 @@ class AgentLoop:
         self.forge_task_coordinator = forge_task_coordinator
         self._planning_dispatch = planning_dispatch
         self._planning_context_provider = planning_context_provider
+        self.long_horizon_controller: LongHorizonTaskController | None = None
         binding_resolver = (
             forge_task_coordinator.binding_resolver
             if forge_task_coordinator is not None
@@ -268,6 +270,75 @@ class AgentLoop:
             from PhyAgentOS.agent.tools.planning import ForgePlanReadyTool
 
             self.tools.register(ForgePlanReadyTool(dispatch))
+
+    def set_long_horizon_controller(self, controller: Any | None) -> None:
+        """Attach the host-owned long-horizon lifecycle seam to this AgentLoop."""
+        self.long_horizon_controller = controller
+
+    def activate_planning_task(self, task_id: str) -> None:
+        """Activate admission for one task immediately before a node turn.
+
+        Node execution must never rely on a stale dispatch left by a previous
+        chat turn.  The dispatch remains a pure admission facade; lifecycle and
+        execution facts stay owned by their existing components.
+        """
+        if self.forge_task_coordinator is None:
+            raise RuntimeError("planning activation requires a Forge task coordinator")
+        if self._planning_context_provider is None:
+            raise RuntimeError("planning activation requires a trusted planning context provider")
+        from PhyAgentOS.agent.planning_dispatch import AgentComposedDispatch
+
+        task = self.forge_task_coordinator.get_task(task_id)
+        self.set_planning_dispatch(AgentComposedDispatch.from_task(
+            task,
+            context_provider=self._planning_context_provider,
+        ))
+
+    def start_ready_long_horizon_tasks(self, session_key: str) -> tuple[str, ...]:
+        """Start materialized tasks created by the current user turn."""
+        controller = self.long_horizon_controller
+        coordinator = self.forge_task_coordinator
+        if controller is None or coordinator is None:
+            return ()
+        started: list[str] = []
+        for task in coordinator.store.find_by_origin_session_key(session_key):
+            if task.terminal or task.active_revision.plan_graph is None:
+                continue
+            controller.start(task.task_id)
+            started.append(task.task_id)
+        return tuple(started)
+
+    def build_long_horizon_controller(self, *, on_result=None):
+        """Build the thin outer controller when a trusted context provider exists.
+
+        The provider is deliberately required for execution: fabricating a
+        scene revision in the TUI would turn a chat convenience into an
+        authority bypass.  Without it callers still receive the control facade.
+        """
+        from PhyAgentOS.agent.long_horizon import LongHorizonTaskController
+
+        if self.forge_task_coordinator is None:
+            return None
+        if self._planning_context_provider is None:
+            return LongHorizonTaskController.for_control(self.forge_task_coordinator)
+        from PhyAgentOS.agent.planning_loop import (
+            AgentLoopNodeExecutor,
+            NodeContextProvider,
+            PlanningLoopAdapter,
+        )
+
+        adapter = PlanningLoopAdapter(
+            self.forge_task_coordinator,
+            context_provider=NodeContextProvider(self.forge_task_coordinator.get_task),
+            node_executor=AgentLoopNodeExecutor(self, self.forge_task_coordinator),
+            admission_context_provider=self._planning_context_provider,
+        )
+        return LongHorizonTaskController(
+            self.forge_task_coordinator,
+            adapter,
+            scene_revision_provider=lambda task_id: self._planning_context_provider(task_id).scene_revision,
+            on_result=on_result,
+        )
 
     def _planning_guard(self, name: str, arguments: dict) -> str | None:
         if self._planning_dispatch is None:
@@ -705,6 +776,11 @@ class AgentLoop:
         self._save_turn(session, all_msgs, 1 + len(history))
         self.sessions.save(session)
         await self.memory_consolidator.maybe_consolidate_by_tokens(session)
+
+        # A task created/materialized by this turn is now eligible for the
+        # host-owned outer loop.  The loop runs in the background so the TUI can
+        # continue receiving pause, stop, resume, or clarification input.
+        self.start_ready_long_horizon_tasks(key)
 
         if (mt := self.tools.get("message")) and isinstance(mt, MessageTool) and mt._sent_in_turn:
             return None
