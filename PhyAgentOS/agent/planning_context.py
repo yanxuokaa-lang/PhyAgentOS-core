@@ -28,6 +28,8 @@ def context_from_task(task: Any) -> AdmissionContext:
     records = list(getattr(task, "execution_records", ()))
     revisions: list[str] = []
     evidence: set[str] = set()
+    condition_facts: dict[str, bool] = {}
+    resources_in_use: set[str] = set()
     for record in records:
         evidence.update(item for item in getattr(record, "evidence_refs", ()) if isinstance(item, str))
         response = getattr(record, "response", None)
@@ -42,6 +44,12 @@ def context_from_task(task: Any) -> AdmissionContext:
         for ref in payload.get("evidence_refs", ()) if isinstance(payload.get("evidence_refs"), (list, tuple, set)) else ():
             if isinstance(ref, str) and ref:
                 evidence.add(ref)
+        facts = payload.get("condition_facts")
+        if isinstance(facts, dict):
+            condition_facts.update({key: value for key, value in facts.items() if isinstance(key, str) and isinstance(value, bool)})
+        resources = payload.get("resources_in_use")
+        if isinstance(resources, (list, tuple, set)):
+            resources_in_use.update(item for item in resources if isinstance(item, str) and item)
     if not revisions:
         raise PlanningContextUnavailableError(
             "no persisted scene revision is available; complete an observation or understanding Tool first"
@@ -54,7 +62,9 @@ def context_from_task(task: Any) -> AdmissionContext:
     return AdmissionContext(
         scene_revision=scene_revision,
         evidence_refs=frozenset(evidence),
+        resources_in_use=frozenset(resources_in_use),
         settlements=settlements,
+        condition_facts=condition_facts,
     )
 
 

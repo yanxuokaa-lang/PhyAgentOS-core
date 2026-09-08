@@ -21,6 +21,8 @@ def test_context_projection_uses_persisted_scene_and_evidence():
                     "data": {
                         "scene_revision": "scene-7",
                         "evidence_refs": ["scene://scene-7"],
+                        "condition_facts": {"workspace_clear": True},
+                        "resources_in_use": ["arm:right"],
                     }
                 },
             )
@@ -39,6 +41,8 @@ def test_context_projection_uses_persisted_scene_and_evidence():
         "scene://scene-7",
     }
     assert dict(context.settlements) == {"observe": "completed"}
+    assert dict(context.condition_facts) == {"workspace_clear": True}
+    assert set(context.resources_in_use) == {"arm:right"}
 
 
 def test_context_projection_blocks_before_observation():
