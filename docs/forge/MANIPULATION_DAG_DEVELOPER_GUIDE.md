@@ -319,6 +319,15 @@ facts. A task with no persisted scene revision is reported as `blocked` until
 an Agent-selected observation/understanding step supplies one; placeholder
 scene identities are prohibited.
 
+Interactive turns carry a `turn_id` and `event_type` in the existing message
+metadata. The TUI renders clarification requests as task-bound events rather
+than treating arbitrary assistant text as a lifecycle transition. The
+`forge_task_request_clarification` Tool persists `waiting_for_user`; the next
+message in the task's session resolves it and the normal AgentLoop resumes the
+task. A host may inject one pure `PlannerPlugin` into `AgentLoop` to provide
+the adapter's existing replan proposer; the plugin owns no task, Store, Tool,
+Gateway, or motion state.
+
 LiteLLM is intentionally not the owner of multi-turn task state. It receives
 the current complete message list for each call. Chat history comes from
 `SessionManager`; long-horizon recovery comes from `AgentTaskCoordinator` and

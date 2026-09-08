@@ -36,6 +36,7 @@ from PhyAgentOS.session.manager import Session, SessionManager
 
 if TYPE_CHECKING:
     from PhyAgentOS.agent.long_horizon import LongHorizonTaskController
+    from PhyAgentOS.agent.planner_plugin import PlannerPlugin
     from PhyAgentOS.agent.planning_dispatch import AgentComposedDispatch
     from PhyAgentOS.config.schema import AgentEvolutionConfig, ChannelsConfig, ExecToolConfig
     from PhyAgentOS.cron.service import CronService
@@ -84,6 +85,7 @@ class AgentLoop:
         evolution_model: str | None = None,
         planning_dispatch: AgentComposedDispatch | None = None,
         planning_context_provider: Callable[[str], AdmissionContext] | None = None,
+        planner_plugin: PlannerPlugin | None = None,
     ):
         from PhyAgentOS.config.schema import ExecToolConfig
         self.bus = bus
@@ -103,6 +105,7 @@ class AgentLoop:
         self.forge_task_coordinator = forge_task_coordinator
         self._planning_dispatch = planning_dispatch
         self._planning_context_provider = planning_context_provider
+        self._planner_plugin = planner_plugin
         self.long_horizon_controller: LongHorizonTaskController | None = None
         binding_resolver = (
             forge_task_coordinator.binding_resolver
@@ -332,6 +335,16 @@ class AgentLoop:
             context_provider=NodeContextProvider(self.forge_task_coordinator.get_task),
             node_executor=AgentLoopNodeExecutor(self, self.forge_task_coordinator),
             admission_context_provider=self._planning_context_provider,
+            replan_proposer=(
+                lambda graph, settlement, delta, context: self._planner_plugin.propose_replan(
+                    graph=graph,
+                    settlement=settlement,
+                    delta=delta,
+                    context=context,
+                )
+                if self._planner_plugin is not None
+                else None
+            ),
         )
         return LongHorizonTaskController(
             self.forge_task_coordinator,
@@ -627,6 +640,10 @@ class AgentLoop:
                 await self.bus.publish_outbound(OutboundMessage(
                     channel=msg.channel, chat_id=msg.chat_id,
                     content="Sorry, I encountered an error.",
+                    metadata={
+                        **(msg.metadata or {}),
+                        "event_type": "turn_failed",
+                    },
                 ))
 
     async def close_mcp(self) -> None:
@@ -702,6 +719,20 @@ class AgentLoop:
         session = self.sessions.get_or_create(key)
         self.skill_activation.begin_turn(key, msg.content)
 
+        clarification_task = None
+        if self.forge_task_coordinator is not None:
+            waiting = [
+                item
+                for item in self.forge_task_coordinator.store.find_by_origin_session_key(key)
+                if item.status.value == "waiting_for_user"
+            ]
+            if waiting:
+                clarification_task = waiting[-1]
+                self.forge_task_coordinator.resolve_clarification(
+                    clarification_task.task_id,
+                    answer=msg.content,
+                )
+
         # Slash commands
         cmd = msg.content.strip().lower()
         if cmd == "/new":
@@ -751,7 +782,11 @@ class AgentLoop:
         history = session.get_history(max_messages=0)
         initial_messages = self.context.build_messages(
             history=history,
-            current_message=msg.content,
+            current_message=(
+                f"[Clarification answer for AgentTask {clarification_task.task_id}]\n{msg.content}"
+                if clarification_task is not None
+                else msg.content
+            ),
             media=msg.media if msg.media else None,
             channel=msg.channel, chat_id=msg.chat_id,
         )
@@ -760,6 +795,7 @@ class AgentLoop:
             meta = dict(msg.metadata or {})
             meta["_progress"] = True
             meta["_tool_hint"] = tool_hint
+            meta["event_type"] = "turn_progress"
             await self.bus.publish_outbound(OutboundMessage(
                 channel=msg.channel, chat_id=msg.chat_id, content=content, metadata=meta,
             ))
@@ -781,6 +817,28 @@ class AgentLoop:
         # host-owned outer loop.  The loop runs in the background so the TUI can
         # continue receiving pause, stop, resume, or clarification input.
         self.start_ready_long_horizon_tasks(key)
+
+        if self.forge_task_coordinator is not None:
+            waiting = [
+                item
+                for item in self.forge_task_coordinator.store.find_by_origin_session_key(key)
+                if item.status.value == "waiting_for_user"
+            ]
+            if waiting:
+                pending = waiting[-1]
+                await self.bus.publish_outbound(OutboundMessage(
+                    channel=msg.channel,
+                    chat_id=msg.chat_id,
+                    content=pending.clarification_question or "Clarification required.",
+                    metadata={
+                        **(msg.metadata or {}),
+                        "event_type": "clarification_requested",
+                        "task_id": pending.task_id,
+                        "revision_id": pending.active_revision_id,
+                        "node_id": pending.clarification_node_id,
+                        "clarification_id": pending.clarification_id,
+                    },
+                ))
 
         if (mt := self.tools.get("message")) and isinstance(mt, MessageTool) and mt._sent_in_turn:
             return None

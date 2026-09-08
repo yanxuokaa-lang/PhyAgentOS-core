@@ -258,6 +258,44 @@ class ForgeTaskCancelTool(Tool):
         )
 
 
+class ForgeTaskClarificationTool(Tool):
+    """Pause a task on a structured user question instead of plain text."""
+
+    def __init__(self, coordinator: AgentTaskCoordinator) -> None:
+        self.coordinator = coordinator
+
+    @property
+    def name(self) -> str:
+        return "forge_task_request_clarification"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Pause an AgentTask while asking the user a required clarification. "
+            "The task remains persisted and can resume after the user answers."
+        )
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        schema = _task_id_schema()
+        schema["properties"].update({
+            "question": {"type": "string", "minLength": 1},
+            "node_id": {"type": "string", "minLength": 1},
+        })
+        schema["required"] += ["question"]
+        return schema
+
+    async def execute(self, task_id: str, question: str, node_id: str | None = None) -> str:
+        return _json({
+            "ok": True,
+            "data": self.coordinator.request_clarification(
+                task_id,
+                question=question,
+                node_id=node_id,
+            ),
+        })
+
+
 def build_forge_task_tools(coordinator: AgentTaskCoordinator) -> list[Tool]:
     return [
         ForgeTaskCreateTool(coordinator),
@@ -266,6 +304,7 @@ def build_forge_task_tools(coordinator: AgentTaskCoordinator) -> list[Tool]:
         ForgeTaskMaterializePlanTool(coordinator),
         ForgeTaskFinalizeTool(coordinator),
         ForgeTaskCancelTool(coordinator),
+        ForgeTaskClarificationTool(coordinator),
     ]
 
 
@@ -316,6 +355,7 @@ def _verification_schema() -> dict[str, Any]:
 __all__ = [
     "ForgeTaskBeginRevisionTool",
     "ForgeTaskCancelTool",
+    "ForgeTaskClarificationTool",
     "ForgeTaskCreateTool",
     "ForgeTaskFinalizeTool",
     "ForgeTaskGetTool",

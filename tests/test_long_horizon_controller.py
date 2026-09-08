@@ -235,3 +235,21 @@ def test_background_runner_consumes_exception_without_callback(tmp_path):
         await asyncio.sleep(0)
 
     asyncio.run(exercise())
+
+
+def test_structured_clarification_round_trip(tmp_path):
+    c = _coordinator(tmp_path)
+    task = c.create_task(task_description="clarify", verification=TaskVerificationContract(mode="off"))
+    waiting = c.request_clarification(
+        task.task_id,
+        question="Which spatial direction defines the RGB order?",
+        node_id="arrange",
+    )
+    assert waiting.status.value == "waiting_for_user"
+    assert waiting.clarification_id
+    assert waiting.clarification_node_id == "arrange"
+    assert waiting.clarification_question.startswith("Which")
+
+    resolved = c.resolve_clarification(task.task_id, answer="left to right")
+    assert resolved.status == AgentTaskStatus.EXECUTING
+    assert resolved.clarification_answer == "left to right"

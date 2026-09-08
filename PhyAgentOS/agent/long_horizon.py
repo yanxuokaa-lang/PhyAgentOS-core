@@ -157,6 +157,8 @@ class LongHorizonTaskController:
                 return self._snapshot(task_id)
             if task.status == AgentTaskStatus.AWAITING_REPLAN:
                 return self._snapshot(task_id, status="awaiting_replan")
+            if task.status == AgentTaskStatus.WAITING_FOR_USER:
+                return self._snapshot(task_id, status="waiting_for_user")
             if task.pause_requested:
                 return self._snapshot(task_id, status="paused")
 

@@ -539,3 +539,64 @@ calls Gateway directly, or claims that an in-flight Action stopped.
 Validation is no-motion only. The controller tests cover pause/resume,
 terminal short-circuit, and awaiting-replan propagation; the combined planning
 suite passes. This does not prove Gateway, simulator, or hardware execution.
+
+## Multi-turn Agent/TUI gap diagnosis and extension plan (2026-09-08)
+
+The previous TUI waited for one complete Agent turn before reading the next
+input. That gave a stable `thinking -> reply` interaction, but it prevented a
+long-horizon AgentTask from remaining active while the user issued control or
+clarification input. The current background mode removes that wait, but the
+presentation layer is still missing several pieces required for a complete
+multi-turn experience.
+
+The remaining gaps are:
+
+1. Inbound and outbound messages do not share a durable turn correlation. A
+   normal reply, progress hint, task completion, and runner failure can all
+   arrive through the same queue without an explicit turn/task/node relation.
+2. The TUI prints a one-shot thinking marker but has no queued, running,
+   completed, or failed lifecycle for each turn. The user cannot tell whether
+   a later input is queued behind the existing per-process AgentLoop lock.
+3. Clarification is still plain text. There is no structured
+   `waiting_for_user` state bound to task, revision, and node, and no explicit
+   resume transition after the user answers.
+4. `PlanningLoopAdapter` accepts a `replan_proposer`, but the CLI-created
+   controller does not yet select a `PlannerPlugin` and bind its pure
+   `propose_replan` callback. Failure can therefore be surfaced without
+   autonomous plugin-selected replacement planning.
+5. Rich output is not portable to hosts that expose ANSI escapes literally.
+   The TUI needs a presentation renderer that can choose Rich for a real TTY
+   and plain text for embedded or non-ANSI hosts.
+
+The first implementation slice now carries `turn_id` and `event_type` in the
+existing inbound/outbound metadata, emits a structured clarification event,
+and persists clarification state through `AgentTaskCoordinator`. A user reply
+to the same session resolves the waiting task before the normal Agent turn and
+the existing outer controller can resume it. Hosts may inject one
+`PlannerPlugin` into `AgentLoop`; its pure `propose_replan` method is then
+passed to the existing `PlanningLoopAdapter` without moving plugin code into
+PAOS Core.
+
+The implementation boundary is a thin Agent/TUI presentation adapter. It may
+add correlation metadata and render state, but it must not become a task
+store, scheduler, Gateway client, or lifecycle authority. AgentTask state
+continues to be owned by `AgentTaskCoordinator`; DAG execution remains in
+`PlanningLoopAdapter`; provider-side conversation state remains absent; and a
+planner plugin remains a pure graph/replan proposer.
+
+The recommended implementation order is:
+
+```text
+correlated bus events
+  -> per-session turn queue/state
+  -> structured clarification event
+  -> planner plugin replan callback
+  -> TUI renderer (ANSI/plain)
+```
+
+`prompt_toolkit` remains the near-term input surface because it already
+provides editing, history, paste handling, and async prompts. A future
+Textual view may replace only this presentation adapter and render the same
+events and Coordinator snapshots; it must not introduce another AgentTask or
+execution implementation. Rich Live, questionary, and InquirerPy do not
+provide the required combined async input, event routing, and task-state view.

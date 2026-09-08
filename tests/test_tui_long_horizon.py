@@ -9,6 +9,7 @@ from PhyAgentOS.agent.planning_context import (
     PlanningContextUnavailableError,
     context_from_task,
 )
+from PhyAgentOS.bus.events import InboundMessage, OutboundMessage
 from PhyAgentOS.planning import AdmissionContext
 
 
@@ -60,3 +61,21 @@ def test_context_provider_loads_current_task():
     )
     provider = AgentTaskPlanningContextProvider(SimpleNamespace(get_task=lambda _: task))
     assert provider("task-1").scene_revision == "scene-1"
+
+
+def test_turn_correlation_round_trips_through_existing_event_metadata():
+    inbound = InboundMessage(
+        channel="cli",
+        sender_id="user",
+        chat_id="direct",
+        content="hello",
+        metadata={"turn_id": "turn-1", "event_type": "turn_submitted"},
+    )
+    outbound = OutboundMessage(
+        channel=inbound.channel,
+        chat_id=inbound.chat_id,
+        content="reply",
+        metadata={**inbound.metadata, "event_type": "turn_completed"},
+    )
+    assert outbound.metadata["turn_id"] == "turn-1"
+    assert outbound.metadata["event_type"] == "turn_completed"

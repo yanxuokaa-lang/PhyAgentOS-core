@@ -8,6 +8,7 @@ import sys
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional
+from uuid import uuid4
 
 # Force UTF-8 encoding for Windows console
 if sys.platform == "win32":
@@ -1050,6 +1051,12 @@ def agent(
                                 pass
                             else:
                                 console.print(f"  [dim]↳ {msg.content}[/dim]")
+                        elif metadata.get("event_type") == "clarification_requested":
+                            console.print(
+                                f"  Clarification required for task {metadata.get('task_id', 'unknown')}:"
+                            )
+                            if msg.content:
+                                console.print(f"  {msg.content}")
                         elif msg.content:
                             console.print()
                             _print_agent_response(msg.content, render_markdown=markdown)
@@ -1084,6 +1091,10 @@ def agent(
                             sender_id="user",
                             chat_id=cli_chat_id,
                             content=user_input,
+                            metadata={
+                                "turn_id": uuid4().hex,
+                                "event_type": "turn_submitted",
+                            },
                         ))
 
                         # Keep the familiar immediate feedback while the

@@ -66,6 +66,7 @@ class AgentTaskOriginConflictError(AgentTaskError):
 
 class AgentTaskStatus(StrEnum):
     EXECUTING = "executing"
+    WAITING_FOR_USER = "waiting_for_user"
     CANCELLING = "cancelling"
     AWAITING_REPLAN = "awaiting_replan"
     SUCCEEDED = "succeeded"
@@ -294,6 +295,10 @@ class AgentTaskRecord(BaseModel):
     evidence_errors: list[str] = Field(default_factory=list)
     cancellation_requested: bool = False
     pause_requested: bool = False
+    clarification_id: str | None = None
+    clarification_question: str | None = None
+    clarification_node_id: str | None = None
+    clarification_answer: str | None = None
     replan_deadline: datetime | None = None
     origin_session_key: str | None = None
     origin_dedup_key: str | None = None
@@ -1056,6 +1061,47 @@ class AgentTaskCoordinator:
             current.evidence_errors.append(f"replan requested: {reason.strip()}")
 
         return self.store.update(task_id, mutate, event_type="plan_replan_requested")
+
+    def request_clarification(
+        self,
+        task_id: str,
+        *,
+        question: str,
+        node_id: str | None = None,
+    ) -> AgentTaskRecord:
+        """Persist a user clarification checkpoint for the current task."""
+        task = self.store.get(task_id)
+        if task.terminal:
+            raise AgentTaskError("cannot request clarification for a terminal AgentTask")
+        question = question.strip()
+        if not question:
+            raise AgentTaskError("clarification question must be non-empty")
+        if task.status not in {AgentTaskStatus.EXECUTING, AgentTaskStatus.WAITING_FOR_USER}:
+            raise AgentTaskError("clarification requires an executing AgentTask")
+
+        def mutate(current: AgentTaskRecord) -> None:
+            current.status = AgentTaskStatus.WAITING_FOR_USER
+            current.clarification_id = f"clarification_{uuid4().hex[:16]}"
+            current.clarification_question = question
+            current.clarification_node_id = node_id
+            current.clarification_answer = None
+
+        return self.store.update(task_id, mutate, event_type="task_clarification_requested")
+
+    def resolve_clarification(self, task_id: str, *, answer: str) -> AgentTaskRecord:
+        """Persist a user answer and make the task runnable again."""
+        task = self.store.get(task_id)
+        if task.status != AgentTaskStatus.WAITING_FOR_USER:
+            raise AgentTaskError("AgentTask is not waiting for clarification")
+        answer = answer.strip()
+        if not answer:
+            raise AgentTaskError("clarification answer must be non-empty")
+
+        def mutate(current: AgentTaskRecord) -> None:
+            current.status = AgentTaskStatus.EXECUTING
+            current.clarification_answer = answer
+
+        return self.store.update(task_id, mutate, event_type="task_clarification_resolved")
 
     def request_pause(self, task_id: str, *, reason: str = "user_requested") -> AgentTaskRecord:
         """Persist a checkpoint pause request without cancelling in-flight Actions."""
