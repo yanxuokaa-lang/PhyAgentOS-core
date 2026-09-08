@@ -22,6 +22,22 @@ Note: current Typer 0.9/Click 8.2 help rendering has a pre-existing
 `Parameter.make_metavar(ctx)` compatibility error; task control logic itself is
 covered directly and does not depend on help rendering.
 
+## [v6.10.10] - 2026-09-08
+
+Clarified that production Planner/Skill plugins run in their own managed
+runtime environment and exchange only provider-neutral planning projections;
+the `paos.planners` entry point remains an explicit in-process development seam.
+Validated in the `paos` environment: planning/controller no-motion focus
+`47 passed`, CLI task help renders, and unknown task control exits with code 1.
+
+明确生产 Planner/Skill 插件必须运行在自身 managed runtime 环境，只跨边界交换
+provider-neutral planning projection；`paos.planners` entry point 仅作为显式的
+PAOS 内开发 seam。在 `paos` 环境验证：规划/控制器无运动专项 `47 passed`，CLI
+task help 正常显示，未知任务控制以退出码 1 fail-closed。
+
+Files: `docs/forge/PLANNING_MODULE_DESIGN.md`,
+`docs/forge/MANIPULATION_DAG_DEVELOPER_GUIDE.md`.
+
 ## [v6.10.6] - 2026-09-08
 
 Reviewed and implemented a PAOS-compliant long-horizon outer loop: `LongHorizonTaskController` drives the existing `PlanningLoopAdapter` with per-call checkpoints, while pause requests are persisted on `AgentTaskRecord` through Coordinator transactions. Documented TUI/prompt_toolkit boundaries, stateless LiteLLM semantics, and Textual as a future presentation layer.
