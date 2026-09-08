@@ -66,6 +66,7 @@ class AgentLoop:
         workspace: Path,
         model: str | None = None,
         max_iterations: int = 40,
+        turn_timeout_s: float = 300.0,
         context_window_tokens: int = 65_536,
         brave_api_key: str | None = None,
         web_proxy: str | None = None,
@@ -94,6 +95,7 @@ class AgentLoop:
         self.workspace = workspace
         self.model = model or provider.get_default_model()
         self.max_iterations = max_iterations
+        self.turn_timeout_s = max(1.0, float(turn_timeout_s))
         self.context_window_tokens = context_window_tokens
         self.brave_api_key = brave_api_key
         self.web_proxy = web_proxy
@@ -623,28 +625,71 @@ class AgentLoop:
     async def _dispatch(self, msg: InboundMessage) -> None:
         """Process a message under the global lock."""
         async with self._processing_lock:
+            await self._publish_turn_event(msg, "turn_started")
             try:
-                response = await self._process_message(msg)
+                response = await asyncio.wait_for(
+                    self._process_message(msg), timeout=self.turn_timeout_s
+                )
                 if response is not None:
                     await self.bus.publish_outbound(response)
                 elif msg.channel == "cli":
-                    await self.bus.publish_outbound(OutboundMessage(
-                        channel=msg.channel, chat_id=msg.chat_id,
-                        content="", metadata=msg.metadata or {},
-                    ))
+                    await self.bus.publish_outbound(
+                        OutboundMessage(
+                            channel=msg.channel,
+                            chat_id=msg.chat_id,
+                            content="",
+                            metadata={
+                                **(msg.metadata or {}),
+                                "event_type": "turn_completed",
+                            },
+                        )
+                    )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "Turn timed out after {} seconds for session {}",
+                    self.turn_timeout_s,
+                    msg.session_key,
+                )
+                await self._publish_turn_event(
+                    msg,
+                    "turn_timeout",
+                    f"Turn timed out after {self.turn_timeout_s:g} seconds. "
+                    "You can retry the request or use /stop.",
+                )
             except asyncio.CancelledError:
                 logger.info("Task cancelled for session {}", msg.session_key)
+                await self._publish_turn_event(msg, "turn_cancelled", "Turn cancelled.")
                 raise
             except Exception:
                 logger.exception("Error processing message for session {}", msg.session_key)
-                await self.bus.publish_outbound(OutboundMessage(
-                    channel=msg.channel, chat_id=msg.chat_id,
-                    content="Sorry, I encountered an error.",
-                    metadata={
-                        **(msg.metadata or {}),
-                        "event_type": "turn_failed",
-                    },
-                ))
+                await self.bus.publish_outbound(
+                    OutboundMessage(
+                        channel=msg.channel,
+                        chat_id=msg.chat_id,
+                        content="Sorry, I encountered an error.",
+                        metadata={
+                            **(msg.metadata or {}),
+                            "event_type": "turn_failed",
+                        },
+                    )
+                )
+
+    async def _publish_turn_event(
+        self,
+        msg: InboundMessage,
+        event_type: str,
+        content: str = "",
+    ) -> None:
+        """Publish a lifecycle event correlated with an inbound turn."""
+        await self.bus.publish_outbound(OutboundMessage(
+            channel=msg.channel,
+            chat_id=msg.chat_id,
+            content=content,
+            metadata={
+                **(msg.metadata or {}),
+                "event_type": event_type,
+            },
+        ))
 
     async def close_mcp(self) -> None:
         """Close MCP connections."""
@@ -846,8 +891,13 @@ class AgentLoop:
         preview = final_content[:120] + "..." if len(final_content) > 120 else final_content
         logger.info("Response to {}:{}: {}", msg.channel, msg.sender_id, preview)
         return OutboundMessage(
-            channel=msg.channel, chat_id=msg.chat_id, content=final_content,
-            metadata=msg.metadata or {},
+            channel=msg.channel,
+            chat_id=msg.chat_id,
+            content=final_content,
+            metadata={
+                **(msg.metadata or {}),
+                "event_type": "turn_completed",
+            },
         )
 
     def _save_turn(self, session: Session, messages: list[dict], skip: int) -> None:
@@ -896,5 +946,21 @@ class AgentLoop:
         """Process a message directly (for CLI or cron usage)."""
         await self._connect_mcp()
         msg = InboundMessage(channel=channel, sender_id="user", chat_id=chat_id, content=content)
-        response = await self._process_message(msg, session_key=session_key, on_progress=on_progress)
+        try:
+            response = await asyncio.wait_for(
+                self._process_message(
+                    msg, session_key=session_key, on_progress=on_progress
+                ),
+                timeout=self.turn_timeout_s,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                "Direct turn timed out after {} seconds for session {}",
+                self.turn_timeout_s,
+                session_key,
+            )
+            return (
+                f"Turn timed out after {self.turn_timeout_s:g} seconds. "
+                "You can retry the request or use /stop."
+            )
         return response.content if response else ""

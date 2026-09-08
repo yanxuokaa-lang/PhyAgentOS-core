@@ -68,6 +68,10 @@ class GenerationSettings:
     temperature: float = 0.7
     max_tokens: int = 4096
     reasoning_effort: str | None = None
+    # Bound each provider attempt.  The AgentLoop has a separate whole-turn
+    # deadline; this shorter budget prevents a provider from holding the
+    # event loop indefinitely before retry/failure handling can run.
+    request_timeout_s: float = 180.0
 
 
 class LLMProvider(ABC):
@@ -216,17 +220,30 @@ class LLMProvider(ABC):
         if reasoning_effort is self._SENTINEL:
             reasoning_effort = self.generation.reasoning_effort
 
+        async def call_with_timeout() -> LLMResponse:
+            timeout_s = max(0.1, float(self.generation.request_timeout_s))
+            try:
+                return await asyncio.wait_for(
+                    self.chat(
+                        messages=messages,
+                        tools=tools,
+                        model=model,
+                        max_tokens=max_tokens,
+                        temperature=temperature,
+                        reasoning_effort=reasoning_effort,
+                        tool_choice=tool_choice,
+                    ),
+                    timeout=timeout_s,
+                )
+            except asyncio.TimeoutError:
+                return LLMResponse(
+                    content=f"LLM request timed out after {timeout_s:g} seconds",
+                    finish_reason="error",
+                )
+
         for attempt, delay in enumerate(self._CHAT_RETRY_DELAYS, start=1):
             try:
-                response = await self.chat(
-                    messages=messages,
-                    tools=tools,
-                    model=model,
-                    max_tokens=max_tokens,
-                    temperature=temperature,
-                    reasoning_effort=reasoning_effort,
-                    tool_choice=tool_choice,
-                )
+                response = await call_with_timeout()
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
@@ -251,15 +268,7 @@ class LLMProvider(ABC):
             await asyncio.sleep(delay)
 
         try:
-            return await self.chat(
-                messages=messages,
-                tools=tools,
-                model=model,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                reasoning_effort=reasoning_effort,
-                tool_choice=tool_choice,
-            )
+            return await call_with_timeout()
         except asyncio.CancelledError:
             raise
         except Exception as exc:

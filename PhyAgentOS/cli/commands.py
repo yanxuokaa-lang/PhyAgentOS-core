@@ -471,6 +471,7 @@ def _make_provider(
             api_key=api_key or "no-key",
             api_base=api_base() or "http://localhost:8000/v1",
             default_model=model,
+            timeout_s=config.agents.defaults.request_timeout_s,
         )
     # Azure OpenAI: direct Azure OpenAI endpoint with deployment name
     elif provider_name == "azure_openai":
@@ -505,6 +506,7 @@ def _make_provider(
         temperature=defaults.temperature,
         max_tokens=defaults.max_tokens,
         reasoning_effort=defaults.reasoning_effort,
+        request_timeout_s=defaults.request_timeout_s,
     )
     return provider
 
@@ -735,6 +737,7 @@ def gateway(
         workspace=config.workspace_path,
         model=config.agents.defaults.model,
         max_iterations=config.agents.defaults.max_tool_iterations,
+        turn_timeout_s=config.agents.defaults.turn_timeout_s,
         context_window_tokens=config.agents.defaults.context_window_tokens,
         brave_api_key=config.tools.web.search.api_key or None,
         web_proxy=config.tools.web.proxy or None,
@@ -941,6 +944,7 @@ def agent(
         workspace=config.workspace_path,
         model=config.agents.defaults.model,
         max_iterations=config.agents.defaults.max_tool_iterations,
+        turn_timeout_s=config.agents.defaults.turn_timeout_s,
         context_window_tokens=config.agents.defaults.context_window_tokens,
         brave_api_key=config.tools.web.search.api_key or None,
         web_proxy=config.tools.web.proxy or None,

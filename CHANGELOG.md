@@ -2,6 +2,42 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v7.2.3] - 2026-09-08
+
+Bounded provider attempts and complete Agent turn execution with configurable
+`requestTimeoutS` and `turnTimeoutS`. AgentLoop now emits turn-correlated
+queued/running/completed/timeout/failed/cancelled lifecycle events, and the
+Textual presentation renders them instead of leaving a permanent `thinking`
+marker. A timed-out turn releases the existing serialization lock so the next
+queued turn can run; no second scheduler or store was introduced.
+
+通过可配置的 `requestTimeoutS` 与 `turnTimeoutS` 限制 provider 单次请求和完整
+Agent turn。AgentLoop 发布关联 turn_id 的 queued/running/completed/timeout/failed/
+cancelled 生命周期事件，Textual 展示这些状态，不再永久停留在 `thinking`。超时后会
+释放既有串行锁，使后续排队 turn 能继续执行；没有新增第二套 scheduler 或 store。
+
+Files: `PhyAgentOS/providers/base.py:L59-L69,L219-L272`,
+`PhyAgentOS/providers/litellm_provider.py:L243-L249`,
+`PhyAgentOS/config/schema.py:L232-L251`,
+`PhyAgentOS/agent/loop.py:L627-L713,L893-L964`,
+`PhyAgentOS/cli/textual_app.py:L159-L280`, CLI wiring, and focused tests.
+
+Key diff / 关键代码 Diff:
+
+```python
+# Before: an unbounded model request could hold the turn forever.
+response = await self._process_message(msg)
+
+# After: the same AgentLoop owns a bounded turn and publishes timeout state.
+response = await asyncio.wait_for(
+    self._process_message(msg), timeout=self.turn_timeout_s
+)
+```
+
+Validation: focused timeout/Textual suite `11 passed`; planning/TUI regression
+`64 passed`; Ruff, compileall, and `git diff --check` passed. No Gateway, Dora,
+simulation, Action, or hardware execution was started.
+
 ## [v7.2.0] - 2026-09-08
 
 Added the optional Textual task-monitoring presentation layer. `paos agent

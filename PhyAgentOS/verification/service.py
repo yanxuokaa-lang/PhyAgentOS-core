@@ -546,6 +546,7 @@ def _provider(
         temperature=normalized.temperature,
         max_tokens=normalized.max_tokens,
         reasoning_effort=normalized.reasoning_effort,
+        request_timeout_s=timeout_s,
     )
     return provider
 

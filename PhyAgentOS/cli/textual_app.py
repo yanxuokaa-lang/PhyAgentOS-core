@@ -151,7 +151,7 @@ def build_textual_app(*, agent_loop: Any, bus: Any, controller: Any, coordinator
             yield static_type("Events", classes="panel-title")
             yield rich_log_type(id="events", markup=False, wrap=True)
             yield input_type(
-                placeholder="Message or /task status|start|pause|resume|stop|replay TASK_ID",
+                placeholder="Message, /stop, or /task status|start|pause|resume|stop|replay TASK_ID",
                 id="input",
             )
             yield footer_type()
@@ -161,6 +161,7 @@ def build_textual_app(*, agent_loop: Any, bus: Any, controller: Any, coordinator
             self._agent_task.add_done_callback(self._agent_finished)
             self._outbound_task = asyncio.create_task(self._consume_outbound())
             self._event_lines: set[str] = set()
+            self._turn_states: dict[str, str] = {}
             self._shutdown_started = False
             self.set_interval(1.0, self._refresh_tasks)
             self._refresh_tasks()
@@ -190,16 +191,42 @@ def build_textual_app(*, agent_loop: Any, bus: Any, controller: Any, coordinator
                 turn_prefix = f"[{turn_id}] " if turn_id else ""
                 text = message.content or ""
                 if metadata.get("_progress"):
+                    if turn_id:
+                        self._turn_states[turn_id] = "running"
                     self.query_one("#events", rich_log_type).write(
                         f"{turn_prefix}progress: {text}"
                     )
                 elif event_type == "clarification_requested":
+                    if turn_id:
+                        self._turn_states[turn_id] = "waiting_for_user"
                     self.query_one("#conversation", rich_log_type).write(
                         f"PhyAgentOS clarification: {text}"
                     )
                     self.query_one("#events", rich_log_type).write(
                         f"{turn_prefix}waiting_for_user"
                     )
+                elif event_type in {
+                    "turn_started",
+                    "turn_completed",
+                    "turn_timeout",
+                    "turn_failed",
+                    "turn_cancelled",
+                }:
+                    if turn_id:
+                        self._turn_states[turn_id] = {
+                            "turn_started": "running",
+                            "turn_completed": "completed",
+                            "turn_timeout": "timeout",
+                            "turn_failed": "failed",
+                            "turn_cancelled": "cancelled",
+                        }[event_type]
+                    self.query_one("#events", rich_log_type).write(
+                        f"{turn_prefix}{event_type}"
+                    )
+                    if text:
+                        self.query_one("#conversation", rich_log_type).write(
+                            f"PhyAgentOS: {text}"
+                        )
                 elif text:
                     self.query_one("#conversation", rich_log_type).write(
                         f"PhyAgentOS: {text}"
@@ -258,7 +285,8 @@ def build_textual_app(*, agent_loop: Any, bus: Any, controller: Any, coordinator
                 return
             turn_id = uuid4().hex
             self.query_one("#conversation", rich_log_type).write(f"You: {value}")
-            self.query_one("#events", rich_log_type).write(f"[{turn_id}] thinking")
+            self._turn_states[turn_id] = "queued"
+            self.query_one("#events", rich_log_type).write(f"[{turn_id}] queued")
             await bus.publish_inbound(InboundMessage(
                 channel=channel,
                 sender_id="user",

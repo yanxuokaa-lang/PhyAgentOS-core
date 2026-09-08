@@ -190,3 +190,63 @@ def test_textual_dashboard_routes_input_through_existing_bus_and_closes_cleanly(
         assert closed == [True]
 
     asyncio.run(exercise())
+
+
+def test_textual_dashboard_renders_turn_lifecycle_events_without_reply_text():
+    async def exercise() -> None:
+        bus = MessageBus()
+        stopped = asyncio.Event()
+
+        class AgentLoop:
+            async def run(self) -> None:
+                await stopped.wait()
+
+            def stop(self) -> None:
+                stopped.set()
+
+            async def close_mcp(self) -> None:
+                return None
+
+        app = build_textual_app(
+            agent_loop=AgentLoop(),
+            bus=bus,
+            controller=None,
+            coordinator=_coordinator(),
+            session_key="cli:direct",
+        )
+        async with app.run_test() as pilot:
+            await bus.publish_outbound(
+                SimpleNamespace(
+                    channel="cli",
+                    chat_id="direct",
+                    content="",
+                    metadata={"turn_id": "turn-3", "event_type": "turn_started"},
+                )
+            )
+            await bus.publish_outbound(
+                SimpleNamespace(
+                    channel="cli",
+                    chat_id="direct",
+                    content="Turn timed out after 1 seconds.",
+                    metadata={"turn_id": "turn-3", "event_type": "turn_timeout"},
+                )
+            )
+            await pilot.pause()
+            assert app._turn_states["turn-3"] == "timeout"
+            assert "Turn timed out" in repr(app.query_one("#conversation").lines)
+
+            await bus.publish_outbound(
+                SimpleNamespace(
+                    channel="cli",
+                    chat_id="direct",
+                    content="",
+                    metadata={"turn_id": "turn-4", "event_type": "turn_started"},
+                )
+            )
+            await pilot.pause()
+            assert app._turn_states["turn-4"] == "running"
+            await pilot.press("ctrl+c")
+
+        assert stopped.is_set()
+
+    asyncio.run(exercise())
