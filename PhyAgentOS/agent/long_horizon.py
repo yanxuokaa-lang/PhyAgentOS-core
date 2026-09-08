@@ -38,7 +38,7 @@ class LongHorizonTaskController:
     def __init__(
         self,
         coordinator: AgentTaskCoordinator,
-        adapter: PlanningLoopAdapter,
+        adapter: PlanningLoopAdapter | None = None,
         *,
         scene_revision_provider: Callable[[str], str],
     ) -> None:
@@ -46,6 +46,16 @@ class LongHorizonTaskController:
         self.adapter = adapter
         self.scene_revision_provider = scene_revision_provider
         self._locks: dict[str, asyncio.Lock] = {}
+
+    @classmethod
+    def for_control(cls, coordinator: AgentTaskCoordinator) -> "LongHorizonTaskController":
+        """Create a control-only facade for a UI process.
+
+        Status and checkpoint controls do not need an execution adapter.  Keeping
+        this seam on the same controller prevents a CLI/TUI from reaching into
+        SQLite or creating a parallel task-control implementation.
+        """
+        return cls(coordinator, None, scene_revision_provider=lambda _task_id: "")
 
     def pause(self, task_id: str) -> LongHorizonTaskResult:
         """Request a pause at the next node checkpoint."""
@@ -65,6 +75,8 @@ class LongHorizonTaskController:
 
     async def run(self, task_id: str) -> LongHorizonTaskResult:
         """Run until a terminal, blocked, awaiting-replan, or paused state."""
+        if self.adapter is None:
+            raise RuntimeError("this controller is control-only; execution adapter is not configured")
         lock = self._locks.setdefault(task_id, asyncio.Lock())
         async with lock:
             task = self.coordinator.get_task(task_id)

@@ -478,12 +478,13 @@ the existing `SessionManager`/`Session` JSONL history and
 persisted `AgentTask`/`PlanRevision` aggregate, not by provider-side session
 state.
 
-The TUI remains an interaction surface. It may start, inspect, pause, resume,
-or stop a task, and answer an Agent clarification request, but it must not
-write SQLite, call Gateway directly, create revisions, or infer success from
-natural-language output. `prompt_toolkit` is sufficient for the first control
-surface; Textual is an optional later presentation layer for a DAG/status
-panel, using the same controller and Coordinator APIs.
+The TUI remains an interaction surface. The current slice can inspect, pause,
+and resume a task; future start/stop and clarification controls must remain on
+the same controller boundary. It must not write SQLite, call Gateway directly,
+create revisions, or infer success from natural-language output.
+`prompt_toolkit` is sufficient for the first control surface; Textual is an
+optional later presentation layer for a DAG/status panel, using the same
+controller and Coordinator APIs.
 
 The first implementation slice is `PhyAgentOS.agent.long_horizon`:
 `LongHorizonTaskController` wraps the existing adapter with a per-task lock,
@@ -500,6 +501,13 @@ awaiting-replan state, a user pause checkpoint, or continued node execution.
 Future UI work must preserve this boundary and add structured
 `waiting_for_user`/clarification events only at the task-controller layer;
 ordinary model text must not mutate task state.
+
+The shipped control surface is `paos task status|pause|resume TASK_ID`. An
+interactive `paos agent` session also accepts `/task status TASK_ID`,
+`/task pause TASK_ID`, and `/task resume TASK_ID`. These commands use
+`LongHorizonTaskController.for_control()` and only read or persist Coordinator
+state; they do not construct an execution adapter, invoke LiteLLM, call
+Gateway, or claim that an in-flight Action stopped.
 
 ### Six-dimension review
 

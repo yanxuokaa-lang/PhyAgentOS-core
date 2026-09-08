@@ -7,6 +7,7 @@ import signal
 import sys
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Optional
 
 # Force UTF-8 encoding for Windows console
 if sys.platform == "win32":
@@ -47,6 +48,9 @@ app = typer.Typer(
     help=f"{__logo__} PhyAgentOS - Personal AI Assistant",
     no_args_is_help=True,
 )
+
+task_app = typer.Typer(help="Inspect and control persisted long-horizon AgentTasks")
+app.add_typer(task_app, name="task")
 
 console = Console()
 EXIT_COMMANDS = {"exit", "quit", "/exit", "/quit", ":q"}
@@ -169,6 +173,98 @@ def _print_agent_response(response: str, render_markdown: bool) -> None:
 def _is_exit_command(command: str) -> bool:
     """Return True when input should end interactive chat."""
     return command.lower() in EXIT_COMMANDS
+
+
+def _task_control_coordinator(config: Config):
+    """Build a control-only Coordinator without starting a Skill runtime."""
+    from PhyAgentOS.forge.task import AgentTaskCoordinator
+
+    return AgentTaskCoordinator(
+        workspace=config.workspace_path,
+        config=config.forge,
+        client=object(),
+    )
+
+
+def _print_task_result(result) -> None:
+    console.print(
+        f"[cyan]{result.task_id}[/cyan] status={result.status} "
+        f"revision={result.revision_id} completed={len(result.completed_nodes)} "
+        f"revisions={result.revisions} replans={result.replans}"
+    )
+
+
+@task_app.command("status")
+def task_status(
+    task_id: str = typer.Argument(..., help="Persisted AgentTask identifier"),
+    workspace: Optional[str] = typer.Option(None, "--workspace", "-w"),
+    config: Optional[str] = typer.Option(None, "--config", "-c"),
+):
+    """Read task state without invoking a Tool or provider."""
+    from PhyAgentOS.agent.long_horizon import LongHorizonTaskController
+
+    loaded = _load_command_config(config, workspace)
+    try:
+        _print_task_result(LongHorizonTaskController.for_control(
+            _task_control_coordinator(loaded)
+        ).status(task_id))
+    except Exception as exc:
+        console.print(f"[red]Error: {exc}[/red]")
+        raise typer.Exit(1) from exc
+
+
+@task_app.command("pause")
+def task_pause(
+    task_id: str = typer.Argument(..., help="Persisted AgentTask identifier"),
+    workspace: Optional[str] = typer.Option(None, "--workspace", "-w"),
+    config: Optional[str] = typer.Option(None, "--config", "-c"),
+):
+    """Persist a pause request for the next semantic-node checkpoint."""
+    from PhyAgentOS.agent.long_horizon import LongHorizonTaskController
+
+    loaded = _load_command_config(config, workspace)
+    try:
+        _print_task_result(LongHorizonTaskController.for_control(
+            _task_control_coordinator(loaded)
+        ).pause(task_id))
+    except Exception as exc:
+        console.print(f"[red]Error: {exc}[/red]")
+        raise typer.Exit(1) from exc
+
+
+@task_app.command("resume")
+def task_resume(
+    task_id: str = typer.Argument(..., help="Persisted AgentTask identifier"),
+    workspace: Optional[str] = typer.Option(None, "--workspace", "-w"),
+    config: Optional[str] = typer.Option(None, "--config", "-c"),
+):
+    """Clear a persisted pause request; execution remains controller-owned."""
+    from PhyAgentOS.agent.long_horizon import LongHorizonTaskController
+
+    loaded = _load_command_config(config, workspace)
+    try:
+        _print_task_result(LongHorizonTaskController.for_control(
+            _task_control_coordinator(loaded)
+        ).resume(task_id))
+    except Exception as exc:
+        console.print(f"[red]Error: {exc}[/red]")
+        raise typer.Exit(1) from exc
+
+
+def _interactive_task_control(command: str, controller) -> bool:
+    """Handle `/task status|pause|resume ID` without sending chat text."""
+    parts = command.split()
+    if len(parts) != 3 or parts[0].lower() != "/task" or parts[1].lower() not in {
+        "status", "pause", "resume"
+    }:
+        return False
+    operation, task_id = parts[1].lower(), parts[2]
+    try:
+        result = getattr(controller, operation)(task_id)
+        _print_task_result(result)
+    except Exception as exc:
+        console.print(f"[red]Task control error: {exc}[/red]")
+    return True
 
 
 async def _read_interactive_input_async() -> str:
@@ -513,10 +609,10 @@ def _print_deprecated_memory_window_notice(config: Config) -> None:
 
 @app.command()
 def gateway(
-    port: int | None = typer.Option(None, "--port", "-p", help="Gateway port"),
-    workspace: str | None = typer.Option(None, "--workspace", "-w", help="Workspace directory"),
+    port: Optional[int] = typer.Option(None, "--port", "-p", help="Gateway port"),
+    workspace: Optional[str] = typer.Option(None, "--workspace", "-w", help="Workspace directory"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
-    config: str | None = typer.Option(None, "--config", "-c", help="Path to config file"),
+    config: Optional[str] = typer.Option(None, "--config", "-c", help="Path to config file"),
 ):
     """Start the PhyAgentOS gateway."""
     from PhyAgentOS.agent.loop import AgentLoop
@@ -723,8 +819,8 @@ def gateway(
 def agent(
     message: str = typer.Option(None, "--message", "-m", help="Message to send to the agent"),
     session_id: str = typer.Option("cli:direct", "--session", "-s", help="Session ID"),
-    workspace: str | None = typer.Option(None, "--workspace", "-w", help="Workspace directory"),
-    config: str | None = typer.Option(None, "--config", "-c", help="Config file path"),
+    workspace: Optional[str] = typer.Option(None, "--workspace", "-w", help="Workspace directory"),
+    config: Optional[str] = typer.Option(None, "--config", "-c", help="Config file path"),
     markdown: bool = typer.Option(True, "--markdown/--no-markdown", help="Render assistant output as Markdown"),
     logs: bool = typer.Option(False, "--logs/--no-logs", help="Show PhyAgentOS process logs during chat"),
 ):
@@ -845,6 +941,13 @@ def agent(
 
         async def run_interactive():
             bus_task = asyncio.create_task(agent_loop.run())
+            control_controller = None
+            if agent_loop.forge_task_coordinator is not None:
+                from PhyAgentOS.agent.long_horizon import LongHorizonTaskController
+
+                control_controller = LongHorizonTaskController.for_control(
+                    agent_loop.forge_task_coordinator
+                )
             turn_done = asyncio.Event()
             turn_done.set()
             turn_response: list[str] = []
@@ -889,6 +992,11 @@ def agent(
                             _restore_terminal()
                             console.print("\nGoodbye!")
                             break
+
+                        if control_controller is not None and _interactive_task_control(
+                            command, control_controller
+                        ):
+                            continue
 
                         turn_done.clear()
                         turn_response.clear()
@@ -943,7 +1051,7 @@ def _skill_runtime_error(error: Exception) -> None:
 @skill_app.command("search")
 def skill_search(
     query: str = typer.Argument("", help="Skill name or search text"),
-    index: str | None = typer.Option(
+    index: Optional[str] = typer.Option(
         None,
         "--index",
         help="Schema-v3 static package index path or URL",
@@ -1152,8 +1260,8 @@ def _resolve_skill_install_source(name: str) -> str | Path:
 @skill_app.command("install")
 def skill_install(
     name: str = typer.Argument(..., help="Registry Skill name or local .tar.gz bundle"),
-    version: str | None = typer.Option(None, "--version", "-v", help="Exact version"),
-    index: str | None = typer.Option(
+    version: Optional[str] = typer.Option(None, "--version", "-v", help="Exact version"),
+    index: Optional[str] = typer.Option(
         None,
         "--index",
         help="Schema-v3 static package index path or URL",
@@ -1182,8 +1290,8 @@ def skill_install(
 @skill_app.command("update")
 def skill_update(
     name: str = typer.Argument(..., help="Installed Skill name"),
-    version: str | None = typer.Option(None, "--version", "-v", help="Target version"),
-    index: str | None = typer.Option(
+    version: Optional[str] = typer.Option(None, "--version", "-v", help="Target version"),
+    index: Optional[str] = typer.Option(
         None,
         "--index",
         help="Schema-v3 static package index path or URL",
@@ -1425,7 +1533,7 @@ app.add_typer(forge_node_app, name="forge-node")
 def forge_node_install(
     skill_name: str = typer.Argument(..., help="Installed Skill containing the Node lock"),
     node_id: str = typer.Argument(..., help="Node ID from the Skill lock"),
-    archive: Path | None = typer.Option(
+    archive: Optional[Path] = typer.Option(
         None,
         "--archive",
         help="Independently obtained local Node .tar.gz instead of a Registry download",

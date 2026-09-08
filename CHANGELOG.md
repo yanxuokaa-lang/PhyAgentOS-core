@@ -2,6 +2,26 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v6.10.9] - 2026-09-08
+
+Added the control-only long-horizon task surface: `paos task status|pause|resume`
+and interactive `/task ...` commands reuse `LongHorizonTaskController` and the
+existing Coordinator transaction store. No second scheduler, store, LiteLLM
+loop, Gateway path, or motion authority was added. No-motion planning/controller
+regression passes `47 passed`.
+
+新增长程任务 control-only 入口：`paos task status|pause|resume` 及交互式
+`/task ...` 命令复用 `LongHorizonTaskController` 与现有 Coordinator 事务存储，
+没有新增 scheduler、store、LiteLLM loop、Gateway 路径或运动权限。无运动规划/控制器
+回归通过 `47 passed`。
+
+Files: `PhyAgentOS/agent/long_horizon.py`, `PhyAgentOS/cli/commands.py`,
+`tests/test_long_horizon_controller.py`, and Forge planning docs.
+
+Note: current Typer 0.9/Click 8.2 help rendering has a pre-existing
+`Parameter.make_metavar(ctx)` compatibility error; task control logic itself is
+covered directly and does not depend on help rendering.
+
 ## [v6.10.6] - 2026-09-08
 
 Reviewed and implemented a PAOS-compliant long-horizon outer loop: `LongHorizonTaskController` drives the existing `PlanningLoopAdapter` with per-call checkpoints, while pause requests are persisted on `AgentTaskRecord` through Coordinator transactions. Documented TUI/prompt_toolkit boundaries, stateless LiteLLM semantics, and Textual as a future presentation layer.

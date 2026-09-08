@@ -4,6 +4,7 @@ import asyncio
 
 from PhyAgentOS.agent.long_horizon import LongHorizonTaskController
 from PhyAgentOS.agent.planning_loop import NodeContextProvider, PlanningLoopAdapter
+from PhyAgentOS.cli.commands import _interactive_task_control
 from PhyAgentOS.config.schema import ForgeConfig
 from PhyAgentOS.forge.task import AgentTaskCoordinator, AgentTaskStatus
 from PhyAgentOS.planning import (
@@ -111,3 +112,32 @@ def test_controller_does_not_run_while_replan_is_awaited(tmp_path):
     result = asyncio.run(_controller(c, calls).run(task.task_id))
     assert result.status == "awaiting_replan"
     assert calls == []
+
+
+def test_control_only_controller_uses_persisted_coordinator_state(tmp_path):
+    c = _coordinator(tmp_path)
+    task = c.create_task(task_description="control", verification=TaskVerificationContract(mode="off"))
+    controller = LongHorizonTaskController.for_control(c)
+
+    assert controller.status(task.task_id).status == "executing"
+    assert controller.pause(task.task_id).status == "paused"
+    assert controller.status(task.task_id).status == "paused"
+    assert controller.resume(task.task_id).status == "executing"
+    try:
+        asyncio.run(controller.run(task.task_id))
+    except RuntimeError as exc:
+        assert "control-only" in str(exc)
+    else:
+        raise AssertionError("control-only controller must not execute without an adapter")
+
+
+def test_interactive_task_control_consumes_only_supported_commands(tmp_path):
+    c = _coordinator(tmp_path)
+    task = c.create_task(task_description="interactive", verification=TaskVerificationContract(mode="off"))
+    controller = LongHorizonTaskController.for_control(c)
+
+    assert _interactive_task_control(f"/task pause {task.task_id}", controller) is True
+    assert c.get_task(task.task_id).pause_requested is True
+    assert _interactive_task_control(f"/task resume {task.task_id}", controller) is True
+    assert c.get_task(task.task_id).pause_requested is False
+    assert _interactive_task_control("/task unknown task", controller) is False

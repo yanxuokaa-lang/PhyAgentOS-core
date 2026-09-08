@@ -299,6 +299,11 @@ initial TUI surface for start/status/pause/resume/stop and user clarifications.
 A later Textual view may render the same task/revision/DAG facts but must use
 the same controller and Coordinator boundaries.
 
+The current control surface is `paos task status|pause|resume TASK_ID`, with
+the equivalent `/task ...` commands in interactive `paos agent`. These use a
+control-only `LongHorizonTaskController` facade; execution still requires the
+injected `PlanningLoopAdapter` and is never recreated by the TUI.
+
 LiteLLM is intentionally not the owner of multi-turn task state. It receives
 the current complete message list for each call. Chat history comes from
 `SessionManager`; long-horizon recovery comes from `AgentTaskCoordinator` and
