@@ -1,0 +1,19 @@
+{
+  "schema_version": "paos-robotwin20-grasp-transform-attestation/v2",
+  "provider": "graspnet",
+  "upstream_repository": "https://github.com/graspnet/graspnet-baseline.git",
+  "upstream_commit": "280c215129f759ed8649cb4e89fc5dfee55f4f80",
+  "origin_frame": "grasp_center",
+  "target_frame": "canonical_contact_center",
+  "units": "m",
+  "provider_T_contact_center": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+  "source_chain": [
+    {
+      "path": "models/graspnet.py",
+      "sha256": "ac6ea39544380dc8cd9c48ec66134c713cbe6ec6efd3de0e604d51f2b8d46799"
+    }
+  ],
+  "model_executed": false,
+  "hardware_io_performed": false,
+  "motion_authorized": false
+}
