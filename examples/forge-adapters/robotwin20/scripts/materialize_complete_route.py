@@ -15,6 +15,7 @@ from typing import Any, Mapping
 import yaml
 
 from robotwin20_adapter.arm_candidates import ArmPlanningError, load_arm_planning_profile
+from robotwin20_adapter.collision_world import build_collision_world
 from robotwin20_adapter.controller_qualification import (
     ControllerQualification,
     ControllerQualificationError,
@@ -23,7 +24,6 @@ from robotwin20_adapter.controller_qualification import (
     ControllerQualificationValidation,
     validate_controller_qualification_result_package,
 )
-from robotwin20_adapter.collision_world import build_collision_world
 from robotwin20_adapter.grasp_adaptation import (
     GRASP_ADAPTATION_PROFILE_SCHEMA_VERSION,
     adapt_grasp_candidate,
@@ -214,7 +214,7 @@ def _load_runtime_identity(path: Path) -> Mapping[str, str]:
 
 
 def _validate_transform_attestation(
-    path: Path, source_root: Path, configured_transform: Any
+    path: Path, source_root: Path, configured_transform: Any, expected_provider: str
 ) -> Mapping[str, Any]:
     value = _load_json(path, "grasp transform attestation")
     required = {
@@ -227,8 +227,9 @@ def _validate_transform_attestation(
         raise MaterializationError("grasp transform attestation fields are invalid")
     if (
         value["schema_version"] != "paos-robotwin20-grasp-transform-attestation/v2"
-        or value["provider"] != "graspgen"
-        or value["origin_frame"] != "gripper_base_link"
+        or value["provider"] != expected_provider
+        or value["provider"] not in {"graspgen", "graspnet"}
+        or value["origin_frame"] != ("gripper_base_link" if value["provider"] == "graspgen" else "grasp_center")
         or value["target_frame"] != "canonical_contact_center"
         or value["units"] != "m"
         or value["provider_T_contact_center"] != configured_transform
@@ -238,7 +239,7 @@ def _validate_transform_attestation(
     ):
         raise MaterializationError("grasp transform attestation semantics are invalid")
     if not source_root.is_absolute() or not source_root.is_dir() or source_root.is_symlink():
-        raise MaterializationError("GraspGen source root must be an absolute checkout")
+        raise MaterializationError("grasp provider source root must be an absolute checkout")
     try:
         commit = subprocess.run(
             ["git", "-C", str(source_root), "rev-parse", "HEAD"],
@@ -248,9 +249,9 @@ def _validate_transform_attestation(
             timeout=10,
         ).stdout.strip()
     except (OSError, subprocess.SubprocessError) as exc:
-        raise MaterializationError("GraspGen source commit is unavailable") from exc
+        raise MaterializationError("grasp provider source commit is unavailable") from exc
     if commit != value["upstream_commit"]:
-        raise MaterializationError("GraspGen source commit does not match attestation")
+        raise MaterializationError("grasp provider source commit does not match attestation")
     chain = value["source_chain"]
     if not isinstance(chain, list) or not chain:
         raise MaterializationError("grasp transform source chain is empty")
@@ -355,10 +356,15 @@ def materialize(args: argparse.Namespace) -> dict[str, Any]:
     arm_profiles = {item["arm_id"]: item for item in arm_profile["arms"]}
     if set(arm_profiles) != {"left", "right"}:
         raise MaterializationError("arm planning profile must bind left and right arms")
+    provider_source = profile["grasp_adaptation"]["provider_transform_source"]
+    expected_provider = provider_source.get("provider") if isinstance(provider_source, Mapping) else None
+    if expected_provider not in {"graspgen", "graspnet"}:
+        raise MaterializationError("grasp adaptation provider is unsupported")
     transform_attestation = _validate_transform_attestation(
         args.grasp_transform_attestation,
-        args.graspgen_source_root,
+        args.grasp_provider_source_root,
         profile["grasp_adaptation"]["provider_T_contact_center"],
+        expected_provider,
     )
     grasp_bundle = _load_json(args.grasp_results, "grasp results")
     request_binding = grasp_bundle.get("request")
@@ -746,7 +752,10 @@ def main() -> int:
     parser.add_argument("--grasp-results", type=Path, required=True)
     parser.add_argument("--route-input-profile", type=Path, required=True)
     parser.add_argument("--grasp-transform-attestation", type=Path, required=True)
-    parser.add_argument("--graspgen-source-root", type=Path, required=True)
+    parser.add_argument(
+        "--grasp-provider-source-root", "--graspgen-source-root",
+        dest="grasp_provider_source_root", type=Path, required=True,
+    )
     parser.add_argument("--simulation-probe-profile", type=Path, required=True)
     parser.add_argument("--simulation-probe-worker", type=Path, required=True)
     parser.add_argument("--runtime-profile", type=Path, required=True)

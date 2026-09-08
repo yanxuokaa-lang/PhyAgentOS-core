@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from pathlib import Path
 
 import pytest
 
@@ -120,3 +121,16 @@ def test_route_inputs_reject_unbound_entity_and_tolerance():
             transform_ref="artifact://route/object-t-robot-target",
             placement_ref="artifact://route/placement",
         )
+
+
+def test_graspnet_route_profile_uses_grasp_center_without_graspgen_depth():
+    import yaml
+
+    path = Path(__file__).parents[1] / "profiles" / "robotwin20" / "route-inputs-graspnet.yaml"
+    profile = yaml.safe_load(path.read_text(encoding="utf-8"))
+    adaptation = profile["grasp_adaptation"]
+    assert adaptation["provider_transform_source"]["provider"] == "graspnet"
+    assert adaptation["provider_transform_source"]["origin_frame"] == "grasp_center"
+    assert adaptation["provider_T_contact_center"][3] == 0
+    assert adaptation["provider_T_contact_center"][7] == 0
+    assert adaptation["provider_T_contact_center"][11] == 0
