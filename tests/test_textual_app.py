@@ -125,6 +125,72 @@ def test_task_projection_renders_pause_without_mutating_persisted_status():
     assert row["clarification"] is None
 
 
+def test_textual_dashboard_renders_node_status_as_literal_text():
+    """Node status must remain visible when Rich markup is enabled by a host."""
+    coordinator = _coordinator()
+
+    async def exercise() -> None:
+        bus = MessageBus()
+        stopped = asyncio.Event()
+
+        class AgentLoop:
+            async def run(self) -> None:
+                await stopped.wait()
+
+            def stop(self) -> None:
+                stopped.set()
+
+            async def close_mcp(self) -> None:
+                return None
+
+        app = build_textual_app(
+            agent_loop=AgentLoop(),
+            bus=bus,
+            controller=None,
+            coordinator=coordinator,
+            session_key="cli:direct",
+        )
+        async with app.run_test() as pilot:
+            rendered = str(app.query_one("#tasks").render())
+            assert "status=pending" in rendered
+            assert "node=arrange" in rendered
+            await pilot.press("ctrl+c")
+
+    asyncio.run(exercise())
+
+
+def test_textual_dashboard_explains_empty_task_projection():
+    async def exercise() -> None:
+        bus = MessageBus()
+        stopped = asyncio.Event()
+
+        class AgentLoop:
+            async def run(self) -> None:
+                await stopped.wait()
+
+            def stop(self) -> None:
+                stopped.set()
+
+            async def close_mcp(self) -> None:
+                return None
+
+        coordinator = SimpleNamespace(store=_Store([], {}))
+        app = build_textual_app(
+            agent_loop=AgentLoop(),
+            bus=bus,
+            controller=None,
+            coordinator=coordinator,
+            session_key="cli:direct",
+        )
+        async with app.run_test() as pilot:
+            rendered = str(app.query_one("#tasks").render())
+            assert "No AgentTask for session cli:direct" in rendered
+            assert "materializes an AgentTask + PlanGraph" in rendered
+            await pilot.press("ctrl+c")
+
+    asyncio.run(exercise())
+
+
 def test_event_projection_reads_coordinator_events_without_execution_side_effects():
     lines = _task_event_lines(_coordinator(), "cli:direct")
 

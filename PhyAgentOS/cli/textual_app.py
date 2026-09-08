@@ -240,7 +240,14 @@ def build_textual_app(*, agent_loop: Any, bus: Any, controller: Any, coordinator
         def _refresh_tasks(self) -> None:
             rows = _task_rows(coordinator, normalized_session_key)
             if not rows:
-                self.query_one("#tasks", static_type).update("No AgentTask")
+                # An empty projection is an authoritative no-task state, not a
+                # missing-DAG error. Include the exact session identity so the
+                # operator can distinguish an uncreated task from a task that
+                # was created under another session or workspace.
+                self.query_one("#tasks", static_type).update(
+                    f"No AgentTask for session {normalized_session_key}\n"
+                    "Submit a task that materializes an AgentTask + PlanGraph."
+                )
             else:
                 lines: list[str] = []
                 for row in rows:
@@ -258,7 +265,11 @@ def build_textual_app(*, agent_loop: Any, bus: Any, controller: Any, coordinator
                             else ""
                         )
                         lines.append(
-                            f"  [{node['status']}] {node['node_id']} "
+                            # Keep the projection plain text. Rich/Textual
+                            # interprets square-bracket fragments as markup in
+                            # some versions, which hid the literal `pending`
+                            # status from the operator.
+                            f"  status={node['status']} node={node['node_id']} "
                             f"({node['capability']}){dependency_text}"
                         )
                     if row["clarification"]:

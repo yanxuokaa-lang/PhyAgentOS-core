@@ -2,6 +2,42 @@
 
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
+## [v7.2.6] - 2026-09-08
+
+Fixed the Textual Tasks / DAG projection diagnostics. An empty dashboard now
+identifies the exact session and explains that a persisted `AgentTask +
+PlanGraph` is required; DAG node states render as plain `status=<state>` text
+so `pending` is not consumed by Rich/Textual markup. The existing
+AgentTaskCoordinator ownership, session filtering, Skill binding requirements,
+and no-motion boundaries are unchanged.
+
+修复 Textual Tasks / DAG 投影诊断。空面板现在显示精确 session，并说明必须先持久化
+`AgentTask + PlanGraph`；DAG 节点状态改为纯文本 `status=<state>`，避免 `pending`
+被 Rich/Textual markup 吞掉。AgentTaskCoordinator 所有权、session 过滤、Skill binding
+要求以及无运动边界均保持不变。
+
+Files: `PhyAgentOS/cli/textual_app.py:L240-L250,L267-L273`,
+`tests/test_textual_app.py:L128-L207`.
+
+Key diff / 关键代码 Diff:
+
+```python
+# Before
+self.query_one("#tasks", static_type).update("No AgentTask")
+lines.append(f"  [{node['status']}] {node['node_id']} ...")
+
+# After
+self.query_one("#tasks", static_type).update(
+    f"No AgentTask for session {normalized_session_key}\n"
+    "Submit a task that materializes an AgentTask + PlanGraph."
+)
+lines.append(f"  status={node['status']} node={node['node_id']} ...")
+```
+
+Validation: Textual/planning regression `44 passed, 1 warning`; Ruff,
+compileall, and `git diff --check` passed. No Gateway, Dora, simulator,
+Action, or hardware execution ran.
+
 ## [v7.2.3] - 2026-09-08
 
 Bounded provider attempts and complete Agent turn execution with configurable
