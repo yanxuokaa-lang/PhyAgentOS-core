@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import re
 import shutil
 import subprocess
@@ -148,14 +149,34 @@ def _load_profile(path: Path) -> Mapping[str, Any]:
     } or workspace["frame_id"] != "world":
         raise MaterializationError("route input workspace is invalid")
     adaptation = value["grasp_adaptation"]
-    if not isinstance(adaptation, Mapping) or set(adaptation) != {
+    required_adaptation = {
         "extrinsic_semantics", "provider_T_contact_center", "support_clear_direction",
         "provider_transform_source",
         "contact_shell_tolerance_m", "robot_target_frame",
         "robot_target_reference_distance_m", "robot_gripper_bias_m",
         "robot_delta_matrix",
-    }:
+    }
+    optional_adaptation = {"contact_backoff_candidates_m"}
+    if (
+        not isinstance(adaptation, Mapping)
+        or not required_adaptation.issubset(adaptation)
+        or set(adaptation) - required_adaptation - optional_adaptation
+    ):
         raise MaterializationError("route input grasp adaptation fields are invalid")
+    backoff_candidates = adaptation.get("contact_backoff_candidates_m")
+    if backoff_candidates is not None and (
+        not isinstance(backoff_candidates, list)
+        or not backoff_candidates
+        or any(
+            isinstance(item, bool)
+            or not isinstance(item, (int, float))
+            or not math.isfinite(float(item))
+            or float(item) < 0
+            for item in backoff_candidates
+        )
+        or backoff_candidates != sorted(set(backoff_candidates))
+    ):
+        raise MaterializationError("route input contact backoff candidates are invalid")
     route_policy = value["route_policy"]
     if not isinstance(route_policy, Mapping) or set(route_policy) != {
         "approach_clearance_m", "lift_clearance_m", "transport_clearance_m",
@@ -607,6 +628,10 @@ def materialize(args: argparse.Namespace) -> dict[str, Any]:
             "provenance_ref": refs["workspace"],
         },
     }
+    if "contact_backoff_candidates_m" in profile["grasp_adaptation"]:
+        adaptation_config["contact_backoff_candidates_m"] = list(
+            profile["grasp_adaptation"]["contact_backoff_candidates_m"]
+        )
     adaptation_artifact = {
         **adaptation_config,
         "scene_revision": facts["scene_revision"],

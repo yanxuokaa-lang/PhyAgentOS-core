@@ -31,7 +31,7 @@ def _inputs(tmp_path: Path):
         "schema_version": "paos-robotwin20-grasp-contact-geometry/v1",
         "frame_id": "world", "scene_revision": "scene-1", "motion_authorized": False,
         "arms": {"right": {
-            "links": {name: [[0.0, 0.0, 0.0]] for name in (
+            "links": {name: [[0.0, 0.0, -0.272164]] for name in (
                 "panda_hand", "panda_leftfinger", "panda_rightfinger"
             )},
             "reference_hand_pose": {
@@ -45,7 +45,7 @@ def _inputs(tmp_path: Path):
         "entity_ref": "entity://block-green-1", "half_extents_m": [0.05, 0.05, 0.05],
         "world_T_object": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0.8, 0, 0, 0, 1],
     }]}
-    profile = """grasp_adaptation:\n  robot_target_reference_distance_m: 0.12\n  robot_gripper_bias_m: 0.08\n  robot_delta_matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]]\n"""
+    profile = """grasp_adaptation:\n  robot_target_reference_distance_m: 0.12\n  robot_gripper_bias_m: 0.08\n  robot_delta_matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]]\n  contact_backoff_candidates_m: [0.0, 0.005, 0.01, 0.015, 0.02]\n"""
     files = {
         "candidate": _write(tmp_path / "candidate.json", candidate),
         "geometry": _write(tmp_path / "geometry.json", geometry),
@@ -65,6 +65,7 @@ def test_cli_qualifies_using_profile_derived_hand_pose(tmp_path):
         entity_ref="entity://block-green-1", arm_id="right",
     )
     assert result["status"] == "qualified"
+    assert result["selected_backoff_m"] == pytest.approx(0.015)
     assert result["motion_authorized"] is False
 
 
@@ -87,6 +88,34 @@ def test_cli_rejects_candidate_entity_mismatch(tmp_path):
     candidate["entity_ref"] = "entity://block-red-1"
     _write(files["candidate"], candidate)
     with pytest.raises(cli.QualificationCliError, match="candidate entity binding"):
+        cli.qualify(
+            candidate_file=files["candidate"], geometry_file=files["geometry"],
+            scene_file=files["scene"], profile_file=files["profile"],
+            entity_ref="entity://block-green-1", arm_id="right",
+        )
+
+
+def test_cli_rejects_unsorted_backoff_profile(tmp_path):
+    files = _inputs(tmp_path)
+    files["profile"].write_text(
+        "grasp_adaptation:\n  robot_target_reference_distance_m: 0.12\n  robot_gripper_bias_m: 0.08\n  robot_delta_matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]]\n  contact_backoff_candidates_m: [0.01, 0.0]\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(cli.QualificationCliError, match="backoff candidates"):
+        cli.qualify(
+            candidate_file=files["candidate"], geometry_file=files["geometry"],
+            scene_file=files["scene"], profile_file=files["profile"],
+            entity_ref="entity://block-green-1", arm_id="right",
+        )
+
+
+def test_cli_rejects_empty_backoff_profile(tmp_path):
+    files = _inputs(tmp_path)
+    files["profile"].write_text(
+        "grasp_adaptation:\n  robot_target_reference_distance_m: 0.12\n  robot_gripper_bias_m: 0.08\n  robot_delta_matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]]\n  contact_backoff_candidates_m: []\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(cli.QualificationCliError, match="backoff candidates"):
         cli.qualify(
             candidate_file=files["candidate"], geometry_file=files["geometry"],
             scene_file=files["scene"], profile_file=files["profile"],

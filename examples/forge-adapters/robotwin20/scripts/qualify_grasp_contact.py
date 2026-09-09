@@ -62,6 +62,20 @@ def _profile(path: Path) -> Mapping[str, Any]:
     }
     if not required.issubset(adaptation):
         raise QualificationCliError("route input profile lacks RoboTwin transform fields")
+    candidates = adaptation.get("contact_backoff_candidates_m", [0.0])
+    if (
+        not isinstance(candidates, list)
+        or not candidates
+        or any(
+            isinstance(item, bool)
+            or not isinstance(item, (int, float))
+            or not math.isfinite(float(item))
+            or float(item) < 0
+            for item in candidates
+        )
+        or candidates != sorted(set(candidates))
+    ):
+        raise QualificationCliError("route input contact backoff candidates are invalid")
     return adaptation
 
 
@@ -107,7 +121,7 @@ def qualify(*, candidate_file: Path, geometry_file: Path, scene_file: Path, prof
             arm_id=arm_id,
             object_center_m=center,
             object_half_extents_m=extents,
-            backoff_candidates_m=[0.0],
+            backoff_candidates_m=adaptation.get("contact_backoff_candidates_m", [0.0]),
             target_hand_pose=hand_pose,
         )
     except (GraspPostprocessingError, TypeError, ValueError) as exc:
