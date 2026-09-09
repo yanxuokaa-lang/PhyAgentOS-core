@@ -63,6 +63,7 @@
 ### Git 提交 / Git Commit
 
 - Branch: `feature/planning-loop`; only this log and CHANGELOG.md are committed.
+- Simulation record commit: `fd62ff4`; 时间 / Time: 2026-09-09 14:27 (Asia/Shanghai).
 
 ## v7.5.3 (2026-09-09 14:11) - codex
 
