@@ -8,6 +8,29 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v8.8.0 (2026-09-09 23:10) - codex
+
+### 变更摘要 / Change Summary
+
+- [完成] [runtime] [feat] 持久 Runtime 新增 adapter-owned 持物状态机 `empty -> acquiring -> holding -> placing -> empty`，并对 unknown/world-change/evidence-free 结果进入 `uncertain`；校验 task owner、entity 与 acquire invocation 接续。(local)
+- [Completed] [Runtime] [Feat] Add an adapter-owned possession state machine to the persistent Runtime with `empty -> acquiring -> holding -> placing -> empty`; unknown/world-change/evidence-free outcomes enter `uncertain`, and task owner, entity, and acquire invocation continuity are validated. (local)
+- [完成] [eval] [test] 新增成功接续、owner/entity 不匹配、uncertain 重复 acquire、未确认 cancel 保留持物状态测试；`9 passed` focused、`599 passed` broad PAOS/workflow。(local)
+- [Completed] [Eval] [Test] Add continuity, owner/entity mismatch, uncertain reacquire, and unconfirmed-cancel retention tests; `9 passed` focused and `599 passed` broad PAOS/workflow. (local)
+
+### 文件变更详情 / File Details
+
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/persistent_runtime.py` L30-L81, L84-L122, L131-L147, L159-L214, L217-L239：持物状态机、Action 终态投影、接续校验与共享注入 / possession state machine, terminal projection, continuity validation, and shared injection.
+- `examples/forge-skills/pick-place-workflow/tests/test_persistent_runtime.py` L112-L143：持物生命周期与失败路径测试 / possession lifecycle and failure-path tests.
+
+### 六维验收 / Six-Dimensional Acceptance
+
+Architecture, failure paths, authority/safety, configuration/reproducibility, maintainability, and observability all PASS within provider-neutral dry-run scope. This does not claim real robot motion or final field Verifier success.
+
+### 验证 / Validation
+
+- Ruff、compileall、`git diff --check`: passed。
+- Adapter tests were not collected in the default PAOS interpreter because `numpy` is unavailable.
+
 ## v8.7.0 (2026-09-09 22:25) - codex
 
 ### 变更摘要 / Change Summary

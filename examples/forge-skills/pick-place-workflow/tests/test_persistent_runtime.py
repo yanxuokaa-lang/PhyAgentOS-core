@@ -4,7 +4,12 @@ from PhyAgentOS.planning import project_tool_spec
 
 from pick_place_workflow.object_acquire import ACQUIRE_TOOL_SPEC
 from pick_place_workflow.object_place import PLACE_TOOL_SPEC
-from pick_place_workflow.persistent_runtime import PersistentActionEndpoint, _ProjectedDriver, _spec
+from pick_place_workflow.persistent_runtime import (
+    PersistentActionEndpoint,
+    PersistentPossession,
+    _ProjectedDriver,
+    _spec,
+)
 
 
 def arguments(place=False):
@@ -102,3 +107,37 @@ def test_evidence_free_success_does_not_complete_relocate():
     assert result["evidence_refs"] == []
     assert result["capability_outcome_summary"]["outcome_known"] is False
     assert result["capability_outcome_summary"]["world_change_started"] is True
+
+
+def test_persistent_possession_requires_acquire_then_matching_place():
+    possession = PersistentPossession()
+    possession.begin("acquire", owner="paos:task", entity_ref="entity://red")
+    assert possession.state == "acquiring"
+    possession.settle("acquire", {"status": "succeeded", "outcome_known": True, "world_change_started": True})
+    assert possession.state == "holding"
+    with pytest.raises(ValueError, match="does not match"):
+        possession.validate_begin("place", owner="paos:other", entity_ref="entity://red", acquire_ref=None)
+    possession.acquire_invocation_ref = "invocation://object-acquire/abc"
+    possession.validate_begin("place", owner="paos:task", entity_ref="entity://red", acquire_ref="invocation://object-acquire/abc")
+    possession.begin("place", owner="paos:task", entity_ref="entity://red", acquire_ref="invocation://object-acquire/abc")
+    assert possession.state == "placing"
+    possession.settle("place", {"status": "succeeded", "outcome_known": True, "world_change_started": True})
+    assert possession.state == "empty"
+
+
+def test_uncertain_possession_blocks_second_acquire_and_preserves_owner():
+    possession = PersistentPossession()
+    possession.begin("acquire", owner="paos:task", entity_ref="entity://red")
+    possession.settle("acquire", {"status": "unknown", "outcome_known": False, "world_change_started": True})
+    assert possession.state == "uncertain"
+    with pytest.raises(ValueError, match="not admissible"):
+        possession.validate_begin("acquire", owner="paos:task", entity_ref="entity://blue")
+    assert possession.owner == "paos:task"
+    assert possession.entity_ref == "entity://red"
+
+
+def test_cancel_or_stop_without_physical_confirmation_does_not_release():
+    possession = PersistentPossession()
+    possession.begin("acquire", owner="paos:task", entity_ref="entity://red")
+    possession.settle("acquire", {"status": "cancelled", "outcome_known": False, "world_change_started": True})
+    assert possession.state == "uncertain"
