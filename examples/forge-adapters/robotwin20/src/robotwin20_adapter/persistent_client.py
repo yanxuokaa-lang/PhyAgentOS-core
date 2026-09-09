@@ -59,3 +59,20 @@ class PersistentActionDriver:
 
     def stop(self) -> None:
         self.cancel()
+
+
+class PersistentRouteReadinessTransport:
+    """Use the existing readiness validator over the live world connection."""
+
+    def __init__(self, client: PersistentWorkerClient) -> None:
+        self.client = client
+
+    def request(self, payload: Mapping[str, Any]) -> Mapping[str, Any]:
+        response = self.client.query("route_readiness", payload)
+        return {**response, "request_id": payload["request_id"]}
+
+
+def build_persistent_route_readiness(client: PersistentWorkerClient):
+    from .route_readiness import RouteReadinessClient
+
+    return RouteReadinessClient(PersistentRouteReadinessTransport(client), worker_id="persistent-route-readiness")

@@ -246,11 +246,12 @@ def evaluate_route(
 class RoboTwinRouteEvaluator:
     """Injected implementation for the existing route-readiness worker."""
 
-    def __init__(self, runtime_root, runtime_profile, artifact_root, *, diagnose_failure=False):
+    def __init__(self, runtime_root, runtime_profile, artifact_root, *, diagnose_failure=False, backend=None):
         self.runtime_root = runtime_root
         self.runtime_profile = runtime_profile
         self.artifact_root = artifact_root
         self.diagnose_failure = diagnose_failure
+        self.backend = backend
 
     def __call__(self, request):
         import hashlib
@@ -272,13 +273,18 @@ class RoboTwinRouteEvaluator:
             return json.loads(data)
 
         profile = load_runtime_profile(self.runtime_profile)
-        if request["scene_revision"] != f"{profile['task_name']}-{profile['seed']}-1":
+        owned = self.backend is None
+        expected_scene = (f"{profile['task_name']}-{profile['seed']}-1" if owned
+                          else self.backend.snapshot()["scene_revision"])
+        if request["scene_revision"] != expected_scene:
             raise SimulationProbeError("route scene revision differs from runtime profile")
         world = artifact(
             request["collision_world"]["artifact_ref"], request["collision_world"]["sha256"]
         )
         scene = artifact(world["source_scene_facts_ref"], world["source_scene_facts_sha256"])
-        backend = RoboTwinSensorBackend(
+        if world["scene_revision"] != expected_scene or scene["scene_revision"] != expected_scene:
+            raise SimulationProbeError("route collision world or source facts are stale")
+        backend = self.backend if not owned else RoboTwinSensorBackend(
             RoboTwinRuntimeProfile(
                 runtime_root=self.runtime_root,
                 artifact_root=self.artifact_root,
@@ -288,8 +294,17 @@ class RoboTwinRouteEvaluator:
             )
         )
         try:
-            backend.reset(seed=profile["seed"])
+            if owned:
+                backend.reset(seed=profile["seed"])
             task = backend._task
+            if not owned:
+                from robotwin_simulation_probe_worker import (
+                    _validate_route_input_artifacts,
+                    _validate_runtime_route_input_binding,
+                )
+                for candidate in request["candidates"]:
+                    inputs = _validate_route_input_artifacts(self.artifact_root, request, candidate)
+                    _validate_runtime_route_input_binding(task, candidate, inputs)
             world_evidence = prepare_planning_world(task, world)
             results = {}
             for candidate in request["candidates"]:
@@ -311,4 +326,5 @@ class RoboTwinRouteEvaluator:
                 "motion_authorized": False,
             }
         finally:
-            backend.close()
+            if owned:
+                backend.close()

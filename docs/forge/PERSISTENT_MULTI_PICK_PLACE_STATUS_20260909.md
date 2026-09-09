@@ -83,3 +83,13 @@ The follow-up review found that persistent execution retained an assignment URI 
 PreparedRoutes is constructed in the PAOS Python environment with `(client, artifact_root)`; the Python 3.10 simulation process does not import it. Existing assignment and per-step artifact checks are reused. No new authorization scheme is introduced.
 
 Focused assignment/executor/endpoint tests: 62 passed. This closes the assigned-arm execution defect, not the outstanding deployment or real Agent acceptance items above.
+
+## v7.8.0 current-scene readiness connection
+
+`RoboTwinRouteEvaluator(..., backend=...)` now evaluates the existing world without resetting or closing it. It rejects stale request/world/source-fact revisions and checks the route's geometry against the live actors before configuring the planner. The default standalone evaluator still owns its own reset/close lifecycle.
+
+The persistent worker exposes the adapter-private `route_readiness` query. `build_persistent_route_readiness(client)` sends it over the existing world connection and feeds its reply through the existing RouteReadinessClient validator. Outer JSONL request identity is preserved separately from the nested route identity. While holding or uncertain, new route preparation is rejected; observation and snapshots remain available.
+
+This is the current-world evaluator connection, not the complete `manipulation.prepare` deployment factory. Contact dynamics and stop control remain unavailable in no-motion readiness results. Public preparation/assignment generation, formal Bundle and real Agent continuous multi-object execution remain outstanding.
+
+Focused tests cover two successive scene revisions, no backend recreation, stale rejection, held-object exclusion, unchanged readiness evidence limits and JSONL identity. No new real model or simulator-motion experiment was performed in this checkpoint.

@@ -49,7 +49,7 @@ def main() -> int:
                     result = provider.query(request["operation"], request.get("arguments", {}))
                 else:
                     raise ValueError("unsupported persistent worker command")
-                emit({"request_id": request["request_id"], "ok": True, **result})
+                emit({**result, "request_id": request["request_id"], "ok": True})
             except Exception as exc:
                 emit({"request_id": request.get("request_id", "invalid"), "ok": False,
                       "error": {"code": type(exc).__name__, "message": str(exc)}})
