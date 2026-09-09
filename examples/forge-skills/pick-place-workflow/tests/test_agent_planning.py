@@ -28,6 +28,7 @@ def _plan():
             AgentSubtaskSpec(
                 subtask_id="relocate-red",
                 entity_ref="entity://red-block",
+                destination_ref="region://red-bin",
                 required_evidence=("observation:red",),
                 resources=(ResourceClaim(resource_class="arm:right"),),
             ),
@@ -64,6 +65,7 @@ def test_agent_plan_compiles_multi_entity_partial_order_and_verify_join():
     assert plan.graph.nodes[-1].node_id == "verify"
     assert set(plan.graph.nodes[-1].dependencies) == {"relocate-red", "relocate-blue"}
     assert dict(plan.entity_bindings)["relocate-red"] == "entity://red-block"
+    assert plan.graph.nodes[0].input_bindings == {"entity_ref": "entity://red-block", "destination_ref": "region://red-bin"}
 
 
 def test_agent_plan_rejects_duplicate_unknown_and_invalid_bindings():

@@ -328,18 +328,10 @@ class CapabilityRuntime:
         if invocation.status in {"succeeded", "failed", "cancelled", "stopped", "unknown"}:
             return
         if invocation.cancel_requested:
-            invocation.status = "cancelled"
-            invocation.terminal_result = {
-                **invocation.terminal_result,
-                "status": "cancelled",
-            }
+            self._settle_interruption(invocation, "cancelled")
             return
         if invocation.stop_requested:
-            invocation.status = "stopped"
-            invocation.terminal_result = {
-                **invocation.terminal_result,
-                "status": "stopped",
-            }
+            self._settle_interruption(invocation, "stopped")
             return
         if (
             invocation.deadline_monotonic is not None
@@ -358,6 +350,21 @@ class CapabilityRuntime:
             return
         terminal = invocation.terminal_result.get("status")
         invocation.status = terminal if terminal in {"succeeded", "failed", "cancelled", "stopped", "unknown"} else "unknown"
+
+    @staticmethod
+    def _settle_interruption(invocation: Invocation, requested_status: str) -> None:
+        result = invocation.terminal_result
+        summary = result.get("capability_outcome_summary")
+        facts = summary if isinstance(summary, dict) else result
+        # Request acceptance is not provider confirmation that effects stopped.
+        no_effect = facts.get("world_change_started") is False
+        invocation.status = requested_status if no_effect else "unknown"
+        updates = {"status": invocation.status}
+        if not no_effect:
+            updates.update(outcome_known=False, failure_code="stop_unconfirmed", failure_owner="execution")
+        invocation.terminal_result = {**result, **updates}
+        if isinstance(summary, dict):
+            invocation.terminal_result["capability_outcome_summary"] = {**summary, **updates}
 
     def _registration(self, tool_id: str) -> EndpointRegistration:
         try:

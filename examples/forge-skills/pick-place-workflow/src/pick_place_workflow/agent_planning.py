@@ -47,6 +47,7 @@ class AgentSubtaskSpec(BaseModel):
 
     subtask_id: str
     entity_ref: str
+    destination_ref: str | None = Field(default=None, min_length=1)
     capability: str = "object.relocate"
     depends_on: tuple[str, ...] = ()
     required_evidence: tuple[str, ...] = ()
@@ -133,6 +134,7 @@ def compose_agent_plan(
             required_evidence=item.required_evidence,
             produced_evidence=item.produced_evidence,
             resources=item.resources,
+            input_bindings={"entity_ref": item.entity_ref, **({"destination_ref": item.destination_ref} if item.destination_ref is not None else {})},
         )
         for item in subtasks
     ) + (PlanNode(

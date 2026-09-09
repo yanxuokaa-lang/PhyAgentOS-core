@@ -17,6 +17,7 @@ def test_context_projection_uses_persisted_scene_and_evidence():
     task = SimpleNamespace(
         execution_records=[
             SimpleNamespace(
+                terminal=True, status="succeeded",
                 evidence_refs=["tool:observe", "observation://scene-7/frame-1"],
                 response={
                     "data": {
@@ -55,7 +56,7 @@ def test_context_projection_blocks_before_observation():
 def test_context_provider_loads_current_task():
     task = SimpleNamespace(
         execution_records=[
-            SimpleNamespace(evidence_refs=[], response={"scene_revision": "scene-1"})
+            SimpleNamespace(terminal=True, status="succeeded", evidence_refs=[], response={"scene_revision": "scene-1"})
         ],
         active_revision=SimpleNamespace(node_settlements=[]),
     )

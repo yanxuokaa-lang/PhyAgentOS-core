@@ -227,6 +227,8 @@ class ToolResultEnvelope(_Frozen):
     tool_id: str
     status: _STATUS
     world_changed: bool = False
+    world_change_started: bool | None = None
+    outcome_known: bool | None = None
     output_refs: tuple[str, ...] = ()
     evidence_refs: tuple[str, ...] = ()
     new_scene_revision: str | None = None
@@ -242,8 +244,8 @@ class ToolResultEnvelope(_Frozen):
     def result_consistency(self) -> "ToolResultEnvelope":
         if self.status == "succeeded" and self.failure_code is not None:
             raise ValueError("successful Tool result cannot contain failure_code")
-        if self.status != "succeeded" and self.world_changed:
-            raise ValueError("non-successful Tool result cannot assert world_changed")
+        if self.world_changed and self.world_change_started is False:
+            raise ValueError("changed world cannot have world_change_started=false")
         if self.world_changed and not self.new_scene_revision:
             raise ValueError("world-changing result must provide new_scene_revision")
         return self
@@ -261,6 +263,8 @@ class NodeSettlement(_Frozen):
     scene_revision: str | None = None
     failure_code: str | None = None
     source_tool_id: str | None = None
+    world_change_started: bool | None = None
+    outcome_known: bool | None = None
 
 
 class ReplanDelta(_Frozen):

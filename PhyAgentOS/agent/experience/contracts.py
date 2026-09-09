@@ -7,6 +7,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from PhyAgentOS.verification.contracts import VerificationMode
+
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
@@ -160,6 +162,7 @@ class TaskOutcomeEnvelope(ExperienceModel):
         default_factory=CapabilityOutcomeSummary
     )
     completed_at: datetime = Field(default_factory=utc_now)
+    verification_mode: VerificationMode | Literal["report"] | None = None
 
     @property
     def learnable(self) -> bool:
@@ -202,6 +205,7 @@ class TaskEpisode(ExperienceModel):
     ] = "pending"
     created_at: datetime = Field(default_factory=utc_now)
     processed_at: datetime | None = None
+    verification_mode: VerificationMode | Literal["report"] | None = None
 
     @property
     def primary_skill(self) -> str | None:

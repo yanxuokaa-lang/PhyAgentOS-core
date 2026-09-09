@@ -10,7 +10,6 @@ from PhyAgentOS.agent.planning_loop import (
     NodeContextProvider,
     PlanningLoopAdapter,
     PlanningLoopError,
-    StaleNodeContextError,
 )
 from PhyAgentOS.agent.tools.forge_task import build_forge_task_tools
 from PhyAgentOS.config.schema import ForgeConfig
@@ -97,7 +96,7 @@ def test_discovery_expands_same_task_and_injects_direct_predecessor_context(tmp_
     assert next_context.predecessor_context[0].evidence_refs == ("artifact://placed/red",)
 
 
-def test_context_rejects_stale_predecessor(tmp_path):
+def test_context_preserves_historical_predecessor_after_scene_progression(tmp_path):
     c = coordinator(tmp_path)
     task = c.create_task(task_description="stale context", verification=TaskVerificationContract(mode="off"))
     graph = make_graph(task.task_id, "revision-1", ("arrange-red", "verify"))
@@ -107,8 +106,9 @@ def test_context_rejects_stale_predecessor(tmp_path):
         status="completed", scene_revision="scene-1",
     ))
     provider = NodeContextProvider(c.get_task)
-    with pytest.raises(StaleNodeContextError):
-        provider.build(task.task_id, "verify", scene_revision="scene-2")
+    context = provider.build(task.task_id, "verify", scene_revision="scene-2")
+    assert context.scene_revision == "scene-2"
+    assert context.predecessor_context[0].scene_revision == "scene-1"
 
 
 def test_rgb_attribute_sorting_loop_replans_after_drop_and_reducer_replays(tmp_path):
@@ -210,7 +210,7 @@ def test_failed_node_replan_preserves_completed_predecessor(tmp_path):
         if context.node_id == "arrange-green" and failures[context.node_id] == 0:
             failures[context.node_id] += 1
             return ToolResultEnvelope(task_id=context.task_id, revision_id=context.revision_id, node_id=context.node_id, tool_id="object.arrange", status="failed", failure_code="gripper_slip")
-        return ToolResultEnvelope(task_id=context.task_id, revision_id=context.revision_id, node_id=context.node_id, tool_id="scene.verify" if context.node_id == "verify" else "object.arrange", status="succeeded")
+        return ToolResultEnvelope(task_id=context.task_id, revision_id=context.revision_id, node_id=context.node_id, tool_id="scene.verify" if context.node_id == "verify" else "object.arrange", status="succeeded", evidence_refs=(f"placed:{context.node_id}",) if context.node_id != "verify" else ())
 
     def replan(_graph, _settlement, delta, _context):
         replacement = make_graph(task.task_id, "revision-2", ("arrange-red", "arrange-green-retry", "verify"))

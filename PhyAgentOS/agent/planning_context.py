@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from PhyAgentOS.agent.planning_facts import response_facts
 from PhyAgentOS.planning import AdmissionContext
 
 
@@ -30,17 +31,30 @@ def context_from_task(task: Any) -> AdmissionContext:
     evidence: set[str] = set()
     condition_facts: dict[str, bool] = {}
     resources_in_use: set[str] = set()
+    needs_observation = False
     for record in records:
-        evidence.update(item for item in getattr(record, "evidence_refs", ()) if isinstance(item, str))
+        if not getattr(record, "terminal", False):
+            continue
         response = getattr(record, "response", None)
         if not isinstance(response, dict):
             continue
-        payload = response.get("data") if isinstance(response.get("data"), dict) else response
+        payload = response_facts(response)
         scene = payload.get("new_scene_revision")
+        effect_started = payload.get("world_change_started") is True or payload.get("world_changed") is True
+        if effect_started and not (isinstance(scene, str) and scene.strip()):
+            needs_observation = True
+            evidence.clear()
+            condition_facts.clear()
+        if not isinstance(scene, str) or not scene.strip():
+            scene = payload.get("scene_revision") if getattr(record, "status", None) == "succeeded" and not effect_started and not isinstance(payload.get("capability_outcome_summary"), dict) else None
         if isinstance(scene, str) and scene.strip():
-            revisions.append(scene.strip())
-        elif isinstance(payload.get("scene_revision"), str) and payload["scene_revision"].strip():
-            revisions.append(payload["scene_revision"].strip())
+            needs_observation = False
+            scene = scene.strip()
+            if revisions and revisions[-1] != scene:
+                evidence.clear()
+                condition_facts.clear()
+            revisions.append(scene)
+        evidence.update(item for item in getattr(record, "evidence_refs", ()) if isinstance(item, str))
         for ref in payload.get("evidence_refs", ()) if isinstance(payload.get("evidence_refs"), (list, tuple, set)) else ():
             if isinstance(ref, str) and ref:
                 evidence.add(ref)
@@ -49,7 +63,9 @@ def context_from_task(task: Any) -> AdmissionContext:
             condition_facts.update({key: value for key, value in facts.items() if isinstance(key, str) and isinstance(value, bool)})
         resources = payload.get("resources_in_use")
         if isinstance(resources, (list, tuple, set)):
-            resources_in_use.update(item for item in resources if isinstance(item, str) and item)
+            resources_in_use = {item for item in resources if isinstance(item, str) and item}
+    if needs_observation:
+        raise PlanningContextUnavailableError("physical effects require a fresh observation before planning admission")
     if not revisions:
         raise PlanningContextUnavailableError(
             "no persisted scene revision is available; complete an observation or understanding Tool first"

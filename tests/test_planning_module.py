@@ -170,8 +170,9 @@ def test_settlement_distinguishes_success_unknown_failure_cancel_and_stale():
     base = {"task_id": "task-1", "revision_id": "revision-1", "node_id": node.node_id, "tool_id": "scene.observe"}
     assert settle_node(node, ToolResultEnvelope(**base, status="unknown"), current_scene_revision="scene-1").status == "outcome_unknown"
     assert settle_node(node, ToolResultEnvelope(**base, status="failed", failure_code="timeout"), current_scene_revision="scene-1").status == "failed"
-    assert settle_node(node, ToolResultEnvelope(**base, status="cancelled"), current_scene_revision="scene-1").status == "cancelled_before_start"
-    assert settle_node(node, ToolResultEnvelope(**base, status="succeeded", world_changed=True, new_scene_revision="scene-2"), current_scene_revision="scene-1").status == "completed"
+    assert settle_node(node, ToolResultEnvelope(**base, status="cancelled"), current_scene_revision="scene-1").status == "outcome_unknown"
+    assert settle_node(node, ToolResultEnvelope(**base, status="cancelled", world_change_started=False), current_scene_revision="scene-1").status == "cancelled_before_start"
+    assert settle_node(node, ToolResultEnvelope(**base, status="succeeded", world_changed=True, new_scene_revision="scene-2", evidence_refs=("acquired:red",)), current_scene_revision="scene-1").status == "completed"
     assert settle_node(node, ToolResultEnvelope(**base, status="succeeded", world_changed=True, new_scene_revision="scene-1"), current_scene_revision="scene-1").status == "stale"
     with pytest.raises(ValidationError):
         ToolResultEnvelope(**base, status="failed", world_changed=True)

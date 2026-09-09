@@ -41,7 +41,7 @@ class Action:
     def admit(self, arguments):
         return ActionAdmission(
             pending_polls=self.pending_polls,
-            terminal_result={"status": "succeeded", "arguments": dict(arguments)},
+            terminal_result={"status": "succeeded", "world_change_started": False, "arguments": dict(arguments)},
         )
 
 
