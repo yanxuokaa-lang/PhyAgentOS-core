@@ -51,6 +51,7 @@
 ### Git 提交 / Git Commit
 
 - Branch: `feature/planning-loop`; commit only the diagnosis and its logs.
+- Diagnosis commit: `dfc51f2`; 时间 / Time: 2026-09-09 14:40 (Asia/Shanghai).
 
 ## v7.5.4 (2026-09-09 14:21) - codex
 
