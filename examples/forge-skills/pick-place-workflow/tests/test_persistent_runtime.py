@@ -141,3 +141,35 @@ def test_cancel_or_stop_without_physical_confirmation_does_not_release():
     possession.begin("acquire", owner="paos:task", entity_ref="entity://red")
     possession.settle("acquire", {"status": "cancelled", "outcome_known": False, "world_change_started": True})
     assert possession.state == "uncertain"
+
+
+def test_restart_reconciliation_restores_only_explicit_matching_holding():
+    possession = PersistentPossession(
+        state="uncertain",
+        owner="paos:task",
+        entity_ref="entity://red",
+        acquire_invocation_ref="invocation://object-acquire/abc",
+    )
+    snapshot = {
+        "available": True,
+        "holding_state": "holding",
+        "owner": "paos:task",
+        "entity_ref": "entity://red",
+        "acquire_invocation_ref": "invocation://object-acquire/abc",
+    }
+    assert possession.reconcile(snapshot) == "holding"
+    mismatch = {**snapshot, "entity_ref": "entity://blue"}
+    assert possession.reconcile(mismatch) == "uncertain"
+
+
+def test_restart_reconciliation_empty_is_explicit_and_disconnect_never_releases():
+    possession = PersistentPossession(
+        state="uncertain",
+        owner="paos:task",
+        entity_ref="entity://red",
+        acquire_invocation_ref="invocation://object-acquire/abc",
+    )
+    assert possession.reconcile({"available": False}) == "uncertain"
+    assert possession.entity_ref == "entity://red"
+    assert possession.reconcile({"available": True, "holding_state": "empty"}) == "empty"
+    assert possession.entity_ref is None

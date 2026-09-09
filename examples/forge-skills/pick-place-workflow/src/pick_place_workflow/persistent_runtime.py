@@ -76,6 +76,32 @@ class PersistentPossession:
             else:
                 self.state = "uncertain"
 
+    def reconcile(self, snapshot: Mapping[str, Any]) -> str:
+        """Reconcile after restart from explicit adapter-owned physical facts."""
+        if not isinstance(snapshot, Mapping) or snapshot.get("available") is not True:
+            self.state = "uncertain"
+            return self.state
+        holding = snapshot.get("holding_state")
+        if holding == "empty":
+            self.state = "empty"
+            self.owner = self.entity_ref = self.acquire_invocation_ref = None
+            return self.state
+        if holding != "holding":
+            self.state = "uncertain"
+            return self.state
+        if any(value is None for value in (self.owner, self.entity_ref, self.acquire_invocation_ref)):
+            self.state = "uncertain"
+            return self.state
+        if any(snapshot.get(key) != value for key, value in (
+            ("owner", self.owner),
+            ("entity_ref", self.entity_ref),
+            ("acquire_invocation_ref", self.acquire_invocation_ref),
+        )):
+            self.state = "uncertain"
+            return self.state
+        self.state = "holding"
+        return self.state
+
 
 class _ProjectedDriver:
     def __init__(self, driver, phase, arguments, possession: PersistentPossession | None = None, *, invocation_id: str = "invocation://object-acquire/unknown"):

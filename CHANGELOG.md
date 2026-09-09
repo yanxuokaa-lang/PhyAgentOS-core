@@ -8,6 +8,22 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v8.9.0 (2026-09-09 23:35) - codex
+
+- [完成] [runtime] [feat] 增加显式 restart/reconciliation：adapter 快照明确 holding/empty 且身份匹配时才恢复；失联、unknown 或 mismatch 保持 `uncertain`。(local)
+- [Completed] [Runtime] [Feat] Add explicit restart/reconciliation; restore only when adapter facts explicitly report holding/empty with matching identity, while disconnected, unknown, or mismatched facts remain `uncertain`. (local)
+- [完成] [eval] [test] `11 passed` focused，`601 passed` PAOS/workflow broad；六维验收在 provider-neutral dry-run 范围内通过。(local)
+- [Completed] [Eval] [Test] `11 passed` focused and `601 passed` broad PAOS/workflow; six-dimensional acceptance passes within provider-neutral dry-run scope. (local)
+
+### 文件变更详情 / File Details
+
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/persistent_runtime.py` L79-L103：重启对账入口 / restart reconciliation seam.
+- `examples/forge-skills/pick-place-workflow/tests/test_persistent_runtime.py` L146-L175：恢复与失联测试 / recovery and disconnect tests.
+
+### Git 提交 / Git Commit
+
+- Commit: 待提交后回填 / to be filled after commit; Branch: `feature/planning-loop`.
+
 ## v8.8.0 (2026-09-09 23:10) - codex
 
 ### 变更摘要 / Change Summary
