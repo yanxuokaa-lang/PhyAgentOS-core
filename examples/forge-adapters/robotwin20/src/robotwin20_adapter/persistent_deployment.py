@@ -58,6 +58,12 @@ def build_persistent_runtime_bundle(
     issue motion commands. Action admission remains in the persistent endpoint
     and final user-level success remains Coordinator/Verifier-owned.
     """
+    if any(component.client is not client for component in (
+        deployment.preparation_provider,
+        deployment.capability_provider,
+        deployment.prepared_routes,
+    )):
+        raise ValueError("persistent runtime and deployment must share one worker client")
     runtime = build_persistent_runtime(
         client=client,
         understanding_provider=understanding_provider,

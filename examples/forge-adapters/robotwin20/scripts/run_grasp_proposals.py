@@ -18,10 +18,17 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     request = json.loads(args.request.read_text(encoding="utf-8"))
     provider = build_grasp_provider(load_grasp_profile(args.profile))
-    result = provider.propose(request)
-    bundle: dict[str, Any] = {"request": request, "result": result}
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(bundle, indent=2, default=list) + "\n", encoding="utf-8")
+    bundle: dict[str, Any] = {"request": request}
+    try:
+        result = provider.propose(request)
+        bundle["result"] = result
+    except Exception as exc:
+        bundle["error"] = {"type": type(exc).__name__, "message": str(exc)}
+        raise
+    finally:
+        args.output.write_text(json.dumps(bundle, indent=2, default=list) + "\n", encoding="utf-8")
+        args.output.with_suffix(".worker.log").write_text("\n".join(provider.client.stderr_tail), encoding="utf-8")
     print(json.dumps({"status": "available" if result["provider_available"] else "unavailable", "candidate_count": len(result["candidates"]), "output": str(args.output)}))
     return 0
 

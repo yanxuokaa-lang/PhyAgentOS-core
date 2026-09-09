@@ -43,14 +43,15 @@ def test_runtime_bundle_registers_persistent_tools_behind_one_transport(tmp_path
         "arm-planning-profile": str(arm),
         "route-input-profile": str(profiles / "route-inputs-persistent.yaml"),
     }
+    client = object()
     deployment = build_persistent_deployment(
-        client=object(), artifact_root=tmp_path, scene_source=lambda request: None,
+        client=client, artifact_root=tmp_path, scene_source=lambda request: None,
         materializer_command=("python",), materializer_arguments=arguments,
         arm_profile_digest="a" * 64,
     )
     bundle = build_persistent_runtime_bundle(
         deployment=deployment,
-        client=object(),
+        client=client,
         understanding_provider=object(),
         grasp_provider=object(),
         tool_context_provider=lambda tool_id: {"ready": True, "tool_id": tool_id},
@@ -60,3 +61,9 @@ def test_runtime_bundle_registers_persistent_tools_behind_one_transport(tmp_path
         "scene.observe", "manipulation.capabilities", "scene.understand",
         "grasp.propose", "manipulation.prepare", "object.acquire", "object.place",
     }
+    with pytest.raises(ValueError, match="share one worker client"):
+        build_persistent_runtime_bundle(
+            deployment=deployment, client=object(),
+            understanding_provider=object(), grasp_provider=object(),
+            tool_context_provider=lambda tool_id: {"ready": True},
+        )

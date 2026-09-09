@@ -8,39 +8,213 @@
 
 ## 最近 5 条 / Latest Five Versions
 
-## v8.3.0 (2026-09-09 19:20) - codex
+## v8.3.1 (2026-09-09 19:32) - codex
 
-### 变更摘要 / Change Summary
+### 预期修改 / Planned Changes
 
-- [env] [feat] 新增 `PersistentRuntimeBundle` 与 `build_persistent_runtime_bundle`，把持久 provider、7 个 Tool endpoint 和同一 `CapabilityRuntimeTransport` 组合到 ForgeToolClient 边界；不引入 reset、直接 Action 或运动授权。(local)
-- [eval] [test] 增加部署级注册测试，并复用既有 Runtime/Coordinator 测试验证 pending、terminal、unknown 与 Verifier fail-closed。(local)
-- [Env] [Feat] Added `PersistentRuntimeBundle` and `build_persistent_runtime_bundle` to compose persistent providers, seven Tool endpoints, and one `CapabilityRuntimeTransport` at the ForgeToolClient boundary; no reset, direct Action, or motion authority is introduced. (local)
-- [Eval] [Test] Added deployment registration coverage and reused Runtime/Coordinator tests for pending, terminal, unknown, and Verifier fail-closed behavior. (local)
-
-### 文件变更详情 / File Details
-
-- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_deployment.py` L1-L80 [新增 / Added] Runtime Bundle composition.
-- `examples/forge-adapters/robotwin20/tests/test_persistent_deployment.py` L35-L63 [新增 / Added] bundle registration test.
-- `docs/forge/PERSISTENT_MULTI_PICK_PLACE_STATUS_20260909.md` L251-L265 [新增 / Added] Runtime Bundle/Verifier status.
-
-## v8.2.0 (2026-09-09 18:56) - codex
-
-### 变更摘要 / Change Summary
-
-- [policy] [feat] 新增 `compose_executable_pick_place_plan`，将 Agent relocation 投影为现有七个 pick-place Tool 节点和 `verify` 汇合，保持实体/目的地绑定与现有 PlanGraph/Gateway/Coordinator 边界。(local)
-- [eval] [test] 覆盖 `blocks_ranking_rgb` seed 0 的节点顺序、跨子任务依赖、绑定持久化和 `motion_authorized=False` admission。(local)
-- [Policy] [Feat] Added `compose_executable_pick_place_plan` to project Agent relocation into the existing seven pick-place Tool nodes plus a `verify` join, preserving bindings and PlanGraph/Gateway/Coordinator boundaries. (local)
-- [Eval] [Test] Covered blocks_ranking_rgb seed 0 node order, cross-subtask dependencies, binding persistence, and no-motion admission. (local)
+- [完成] [env] [fix] 修复持久部署可接入不同 worker client 的具体错误，使准备、观测与 Action 复用同一世界连接；使用普通对象身份检查，不增加授权门禁。(local)
+- [Completed] [env] [fix] Reject mismatched worker clients so preparation, observation and Actions share one world connection, using ordinary identity checks rather than new authorization gates. (local)
+- [完成] [eval] [exp] 通过 ForgeToolClient 验证 seed 0 真实观测与几何感知，绿色方块 GraspGen 重放获得 24 个候选；整体 Agent/Action/Verifier 验收仍未通过。(local)
+- [Completed] [eval] [exp] Validate seed-0 public observation and measured geometry; green-cube GraspGen replay returns 24 proposals. Full Agent/Action/Verifier acceptance remains incomplete. (local)
 
 ### 文件变更详情 / File Details
 
-- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/agent_planning.py` L178-L246 [新增 / Added] executable pick-place projection.
-- `examples/forge-skills/pick-place-workflow/tests/test_agent_planning.py` L132-L183 [新增 / Added] focused projection and admission tests.
-- `docs/forge/PERSISTENT_MULTI_PICK_PLACE_STATUS_20260909.md` L241-L249 [新增 / Added] execution-order and F1-F7 status.
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_deployment.py` L61-L66 [修改 / Modified]: 拒绝不同世界连接 / reject different world connections.
+- `examples/forge-adapters/robotwin20/scripts/check_persistent_runtime.py` L10-L217 [修改 / Modified]: 公共 Query、几何/抓取配置、唯一目标选择与日志 / public Queries, geometry/grasp configuration, unique target selection and logs.
+- `examples/forge-adapters/robotwin20/scripts/run_grasp_proposals.py` L21-L32 [修改 / Modified]: 失败产物与 worker 日志留存 / retain failure artifacts and worker logs.
+- `examples/forge-adapters/robotwin20/tests/test_persistent_deployment.py` L46-L70 [修改 / Modified]: 单连接装配及混用拒绝 / single-client assembly and mismatch rejection.
+- `examples/forge-adapters/robotwin20/tests/test_persistent_public_smoke.py` L1-L55 [新增 / Added]: 新鲜捕获、不可用、目标缺失/歧义 / fresh capture, unavailable source, missing/ambiguous target.
+- `docs/forge/PERSISTENT_MULTI_PICK_PLACE_STATUS_20260909.md` L268-L313 [新增 / Added]: 真实证据、完整复现命令与未完成项 / real evidence, reproduction command and remaining work.
+- `CHANGELOG.md` [修改 / Modified]: 从月度日志生成最新五版本全文，补回 v8.1.1；月度历史不变 / regenerate latest five complete entries including v8.1.1, preserving monthly history.
+
+### 关键 Diff / Key Diff
+
+```diff
++if any(component.client is not client for component in (
++    deployment.preparation_provider, deployment.capability_provider, deployment.prepared_routes,
++)):
++    raise ValueError("persistent runtime and deployment must share one worker client")
+-observation = ObservationEndpoint(SimpleNamespace(capture=lambda request: second)).invoke(...)
++observation = asyncio.run(invoke_public_query(runtime, "scene.observe", ...))
++selected_entity = select_grasp_target(understanding, args.grasp_target_category)
+-result = provider.propose(request)
++try:
++    result = provider.propose(request)
++finally:
++    # persist both the result/error and worker log
+```
+
+### 验证与六维验收 / Validation and Six Dimensions
+
+- 原始全量 / Initial full run: 984 passed, 1 skipped, 1 failed (`test_paos_import_boundary_remains_clean`, process-wide import contamination). Isolated file passed.
+- 修复后广域 / Broad regression after fixes: 986 passed, 1 skipped, 1 deselected; targeted final tests: 12 passed, including isolated import-boundary coverage and new target-selection coverage.
+- Command: `PYTHONPATH=.:examples/forge-adapters/robotwin20/src:examples/forge-adapters/robotwin20/runtime:examples/forge-adapters/robotwin20/scripts:examples/forge-skills/pick-place-workflow/src PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /home/yanxu/miniconda3/envs/paos/bin/python -m pytest -q -p pytest_asyncio.plugin tests examples/forge-adapters/robotwin20/tests examples/forge-skills/pick-place-workflow/tests -k 'not test_paos_import_boundary_remains_clean'`.
+- 实测 / Measured: seed 0 sensor PASS; semantic model PASS; three cubes with nine measured geometry artifacts PASS; explicit green-cube replay 24 candidates. Broad grasp failed on a desktop-surface target; target selection corrected. No motion/Action/final Verifier result.
+- 架构 / Architecture: PARTIAL, assembly fixed; Agent task entry and installed Skill Bundle still need integration.
+- 失败路径 / Failures: PARTIAL, tested sensor/client/target failures and retained model diagnostics; live Action recovery not run.
+- 权限安全 / Safety: existing route checks preserved; no motion performed or new authorization introduced.
+- 配置复现 / Reproducibility: real dedicated environments and external profiles recorded; model wording and grasp sampling can vary.
+- 可维护性 / Maintainability: reused providers/transport, no parallel scheduler; complete root-test import isolation remains an existing issue.
+- 可观察性 / Observability: measured artifacts and worker logs available; task-level Action/Verifier receipts still absent.
+- 整体验收未通过 / Overall task acceptance remains incomplete. Artifact paths and full live command are in the status document above.
 
 ### Git 提交 / Git Commit
 
-- Commit: `21e7fff`; Branch: `feature/planning-loop`.
+- Branch: `feature/planning-loop`; implementation commit recorded after commit creation.
+
+## v8.3.0 (2026-09-09 19:20) - codex
+
+### 预期修改 / Planned Changes
+
+- [完成] [env] [feat] 增加 Robotwin20 持久 Runtime Bundle 组合根，将现有 deployment provider、CapabilityRuntime 和 HTTP transport 接到同一 ForgeToolClient 边界。(local)
+- [Completed] [Env] [Feat] Add a Robotwin20 persistent Runtime Bundle composition root wiring the existing deployment providers, CapabilityRuntime, and HTTP transport to one ForgeToolClient boundary. (local)
+- [完成] [eval] [test] 验证 Query/Action 注册、Action pending/terminal 生命周期及 Verifier 缺失或 unknown 结果的 fail-closed 行为。(local)
+- [Completed] [Eval] [Test] Verify Query/Action registration, pending/terminal lifecycle, and fail-closed behavior for missing Verifier or unknown results. (local)
+
+### 变更摘要 / Change Summary
+
+- [完成] [env] [feat] 新增 `PersistentRuntimeBundle` 与 `build_persistent_runtime_bundle`，组合现有持久部署 provider、7 个 Tool endpoint 和 `CapabilityRuntimeTransport`；不 reset world、不直接启动 Action、不授予运动权限。(local)
+- [Completed] [Env] [Feat] Added `PersistentRuntimeBundle` and `build_persistent_runtime_bundle` to compose existing persistent providers, seven Tool endpoints, and `CapabilityRuntimeTransport`; no world reset, direct Action start, or motion authority is introduced. (local)
+- [完成] [eval] [test] 增加部署级 bundle 注册测试；既有 Runtime/Coordinator 测试验证 pending、terminal、unknown 和 Verifier fail-closed 语义。(local)
+- [Completed] [Eval] [Test] Added deployment-level bundle registration coverage; existing Runtime/Coordinator tests verify pending, terminal, unknown, and Verifier fail-closed semantics. (local)
+
+### 文件变更详情 / File Details
+
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_deployment.py` L1-L28, L31-L80 [新增 / Added] Runtime Bundle 类型与组合入口 / Runtime Bundle type and composition entry point.
+- `examples/forge-adapters/robotwin20/tests/test_persistent_deployment.py` L35-L63 [新增 / Added] 单 transport、7 Tool 注册测试 / single-transport, seven-Tool registration test.
+- `docs/forge/PERSISTENT_MULTI_PICK_PLACE_STATUS_20260909.md` L251-L265 [新增 / Added] Runtime Bundle 和 Verifier 边界状态 / Runtime Bundle and Verifier boundary status.
+
+### 六维验收 / Six-dimensional Acceptance
+
+- 架构集成 / Architecture: PASS, one deployment composition root reuses existing provider/runtime/transport boundaries.
+- 失败路径 / Failure paths: PASS, generic Runtime preserves pending/terminal/unknown; Coordinator refuses finalization without terminal executions or Verifier.
+- 权限安全 / Authority and safety: PASS, composition performs no reset or motion and leaves route admission to existing endpoint gates.
+- 配置复现 / Configuration and reproducibility: PASS, deployment inputs and tool context provider are explicit; caller owns client/world lifetime.
+- 可维护性 / Maintainability: PASS, no duplicate scheduler, task store, or execution protocol; focused bundle API is isolated.
+- 可观察性 / Observability: PASS, Gateway identity and existing invocation/evidence records remain on the same transport.
+
+### 验证 / Validation
+
+- Focused: `11 passed` for deployment/runtime lifecycle tests.
+- Root: `281 passed` with `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q -p pytest_asyncio.plugin tests`.
+- Changed-file Ruff and adapter `compileall`: passed. Full adapter-suite collection requires the RoboTwin/numpy environment and was not runnable in the PAOS interpreter.
+
+## v8.2.0 (2026-09-09 18:56) - codex
+
+### 预期修改 / Planned Changes
+
+- [完成] [policy] [feat] 将 Agent 语义 relocation 子任务投影为现有 pick-place Tool DAG，保留实体/目的地绑定并复用 PlanGraph、Gateway 与任务协调器。(local)
+- [Completed] [Policy] [Feat] Project Agent semantic relocation subtasks into the existing pick-place Tool DAG, preserving entity/destination bindings and reusing PlanGraph, Gateway, and task coordinator. (local)
+- [完成] [eval] [test] 增加 blocks_ranking_rgb seed 0 的分解、可执行节点顺序、admission 及失败不 finalize 测试。(local)
+- [Completed] [Eval] [Test] Add decomposition, executable-node ordering, admission, and failure-no-finalize tests for blocks_ranking_rgb seed 0. (local)
+
+### 变更摘要 / Change Summary
+
+- [完成] [policy] [feat] 新增 `compose_executable_pick_place_plan`，为每个 Agent relocation 生成 observe、capabilities、understand、grasp、prepare、acquire、place 节点，并以 verify 汇合；依赖按 place 终点连接，支持非拓扑输入顺序。(local)
+- [Completed] [Policy] [Feat] Added `compose_executable_pick_place_plan` to generate observe, capabilities, understand, grasp, prepare, acquire, and place nodes per Agent relocation, joined by verify; dependencies connect through place terminals and accept non-topological input ordering. (local)
+- [完成] [docs] [docs] 更新持久多物体状态，标记 F1 已解决并明确 F2-F7 仍未进入真实执行验收。(local)
+- [Completed] [Docs] [Docs] Updated persistent multi-object status, marking F1 resolved and F2-F7 outside real-execution acceptance. (local)
+
+### 文件变更详情 / File Details
+
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/agent_planning.py` L178-L246 [新增 / Added] 可执行 pick-place PlanGraph 投影及绑定传播 / executable pick-place PlanGraph projection and binding propagation.
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/__init__.py` L11-L12, L109-L110 [修改 / Modified] 导出新投影入口 / export new projection entry point.
+- `examples/forge-skills/pick-place-workflow/tests/test_agent_planning.py` L132-L183 [新增 / Added] 节点顺序、跨子任务依赖、绑定及无运动权限测试 / node order, cross-subtask dependency, bindings, and no-motion-authority tests.
+- `docs/forge/PERSISTENT_MULTI_PICK_PLACE_STATUS_20260909.md` L241-L249 [新增 / Added] 产品顺序与 F1-F7 状态 / product order and F1-F7 status.
+
+### 关键代码 Diff / Key Code Diff
+
+```diff
+ def compose_agent_plan(...):
+     # existing one-node-per-semantic-obligation compatibility path
++def compose_executable_pick_place_plan(...):
++    # project each relocation onto the existing seven-tool DAG plus verify
++    node.capability = "scene.observe" ... "object.place"
++    node.input_bindings = {"entity_ref", "destination_ref"}
+```
+
+### 六维验收 / Six-dimensional Acceptance
+
+- 架构集成 / Architecture: PASS, one projection reuses PlanGraph and existing Gateway/Coordinator boundaries; no second scheduler or task store.
+- 失败路径 / Failure paths: PASS, invalid dependencies fail planning and existing admission rejects missing evidence; no success finalization logic was bypassed.
+- 权限安全 / Authority and safety: PASS, projection is planning-only and admission reports `motion_authorized=False`; no provider or hardware call is made.
+- 配置复现 / Configuration and reproducibility: PASS, task/revision and planner/policy digests remain explicit; seed-0 identifiers are test inputs, not hidden configuration.
+- 可维护性 / Maintainability: PASS, existing semantic API remains compatible and the new projection is isolated with focused tests.
+- 可观察性 / Observability: PASS, node IDs, obligation IDs, bindings, and graph digest remain available for downstream execution records.
+
+### 验证 / Validation
+
+- `PYTHONPATH=examples/forge-skills/pick-place-workflow/src PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q examples/forge-skills/pick-place-workflow/tests/test_agent_planning.py`: 6 passed.
+- `PYTHONPATH=examples/forge-skills/pick-place-workflow/src PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q -p pytest_asyncio.plugin examples/forge-skills/pick-place-workflow/tests/test_full_workflow.py examples/forge-skills/pick-place-workflow/tests/test_persistent_runtime.py`: 9 passed.
+- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q -p pytest_asyncio.plugin tests`: 281 passed.
+- Ruff on changed files, `compileall`, and `git diff --check`: passed. Full-repository Ruff still reports a pre-existing import-order issue in `PhyAgentOS/agent/experience/__init__.py`.
+
+## v8.1.1 (2026-09-09 18:00) - codex
+
+### 预期修改 / Planned Changes
+
+- [完成] [env] [feat] 增加 PAOS 宿主侧标准 evolution composition root，统一装配 `EvolutionExtension`、`EvolutionCandidateLifecycleAdapter`、episode hook 与事件记录；缺少扩展或投影端口时保持现有核心行为并 fail-open。(local)
+- [Completed] [Env] [Feat] Add a standard PAOS-host evolution composition root that wires `EvolutionExtension`, `EvolutionCandidateLifecycleAdapter`, the episode hook, and event recording; preserve core behavior and fail open when the extension or projection ports are unavailable. (local)
+- [完成] [eval] [test] 覆盖成功装配、未安装扩展、事件转发和重复装配，并完成六维验收。(local)
+- [Completed] [Eval] [Test] Cover successful composition, missing optional extension, event forwarding, and duplicate composition, followed by six-dimensional acceptance. (local)
+
+### 变更摘要 / Change Summary
+
+- [完成] [env] [feat] 新增标准宿主 composition root，复用现有 ExperienceStore、candidate lifecycle 与 episode hook；扩展事件持久化失败保持 fail-open。(local)
+- [Completed] [Env] [Feat] Added the standard host composition root, reusing the existing ExperienceStore, candidate lifecycle, and episode hook; extension-event persistence failures remain fail-open. (local)
+- [完成] [eval] [test] 增加幂等装配、可选扩展缺失、事件转发和既有 hook/adapter 回归测试。(local)
+- [Completed] [Eval] [Test] Added idempotent composition, missing optional extension, event forwarding, and existing hook/adapter regression tests. (local)
+
+### 影响文件 / Affected Files
+
+- `PhyAgentOS/agent/experience/evolution_composition.py`
+- `PhyAgentOS/agent/experience/__init__.py`
+- `PhyAgentOS/agent/loop.py`
+- `tests/test_evolution_composition.py`
+- `extensions/evolution/README.md`
+- `docs/forge/PERSISTENT_MULTI_PICK_PLACE_STATUS_20260909.md`
+
+### 文件变更详情 / File Details
+
+#### [新增 / Added] `PhyAgentOS/agent/experience/evolution_composition.py` L1-L114
+
+**修改前 / Before:** No reusable PAOS host composition entry point existed; `AgentLoop` manually attached the adapter after constructing `ExperienceCoordinator`.
+
+**修改后 / After:** `compose_evolution_extension` explicitly accepts an extension or registry/projection ports, wires the existing candidate adapter and event sink, returns no-op when the optional distribution is unavailable, and preserves the first extension on repeated calls.
+
+#### [修改 / Modified] `PhyAgentOS/agent/loop.py` L122-L143
+
+**修改前 / Before:** `AgentLoop` directly mutated `candidate_lifecycle` with an inline adapter block.
+
+**修改后 / After:** `AgentLoop` constructs the coordinator once and delegates extension wiring to `compose_evolution_extension`.
+
+#### [新增 / Added] `tests/test_evolution_composition.py` L1-L58
+
+**新增内容 / Added:** Tests for idempotent wiring, absent optional package no-op, and host event persistence/forwarding.
+
+### 六维验收 / Six-dimensional Acceptance
+
+- 架构集成 / Architecture: PASS, one host seam reuses existing coordinator/store/lifecycle; no second scheduler or store.
+- 失败路径 / Failure paths: PASS, missing package and construction/event persistence failures remain fail-open.
+- 权限安全 / Authority and safety: PASS, composition grants no motion, verifier, planner, or promotion authority.
+- 配置复现 / Configuration and reproducibility: PASS, provider and projection ports are explicit; no implicit physical semantics.
+- 可维护性 / Maintainability: PASS, adapter wiring is centralized and idempotent; focused tests cover the public helper.
+- 可观察性 / Observability: PASS, extension events are persisted through the existing store and optionally forwarded.
+
+Acceptance scope is the host wiring seam. Formal Bundle, provider health, model geometry grounding, and real Agent multi-object execution remain open.
+
+### 验证 / Validation
+
+- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q tests/test_evolution_composition.py tests/test_evolution_extension_hook.py tests/test_evolution_extension_adapter.py`: 14 passed.
+- `cd extensions/evolution && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest -q`: 68 passed.
+- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q -p pytest_asyncio.plugin tests`: 281 passed.
+- Ruff, `compileall`, and `git diff --check`: passed.
+
+### Git 提交 / Git Commit
+
+- Commit: `ea786fc` (implementation commit)
+- Branch: `feature/planning-loop`
+- 时间 / Time: 2026-09-09 18:00 (Asia/Shanghai)
 
 ## v8.1.0 (2026-09-09 17:29) - codex
 
@@ -103,6 +277,8 @@
 ### Git 提交 / Git Commit
 
 - Branch: `feature/planning-loop`; implementation commit: `0a84e20`; validation date: 2026-09-09 (Asia/Shanghai).
+
+# 历史记录 / Historical Records
 
 ## v8.0.0 (2026-09-09 17:14) - codex
 

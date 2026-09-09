@@ -265,3 +265,49 @@ the bundle does not reset a world, start an Action, or grant motion. Action
 pending/terminal/unknown semantics continue to be owned by the generic Runtime,
 while user-level finalization remains in `AgentTaskCoordinator.finalize_task`
 and its configured Verifier.
+# v8.3.1: measured seed-0 progress, not task acceptance
+
+2026-09-09: 本轮真实运行已完成持久场景 RGB-D、模型识别、LocateAnything/SAM2 定位，以及绿色方块的 GraspGen 候选重放。Agent -> PlanGraph -> acquire/place -> 最终 Verifier 尚未完整执行，整体六维验收仍未通过。此前 v8.2/v8.3 的 PASS 只代表局部组件，不能据此宣称当前任务已成功；内存中的 RuntimeBundle 也不是已安装的 manifest-v2 Skill Bundle。
+
+Live progress: one persistent seed-0 scene produces fresh RGB-D captures; model perception plus LocateAnything/SAM2 produces measured geometry. A replay of the observed green cube produces 24 GraspGen proposals. No Action or final Verifier was run. The Agent-to-task-success path is not accepted, and the in-process RuntimeBundle is not an installed manifest-v2 Skill Bundle.
+
+Artifacts under `/home/yanxu/robotwin20-runtime/artifacts/`:
+
+- `paos-agent-seed0-sensors-20260909-r1/persistent-sensor-result.json`: two distinct captures, same scene revision, empty holding state.
+- `paos-agent-seed0-understanding-20260909-r1/persistent-sensor-result.json`: real model semantic output, no metric geometry.
+- `paos-agent-seed0-geometry-20260909-r1/persistent-sensor-result.json`: public ForgeToolClient Queries; three colored cubes, three metric envelopes and nine derived artifacts. Camera frame `head_camera`, metres; calibration comes from the current capture and the configured depth scale is 0.001.
+- `paos-agent-seed0-grasp-20260909-r1/persistent-sensor-result.json`: initial broad target request failed after including the desktop surface. Three cube requests generated candidates before the surface failed; zero aggregate candidates were accepted.
+- `paos-agent-seed0-grasp-20260909-r1/grasp-green-request.json` and `grasp-green-result.json`: explicit green entity `entity://a2` selected from that observation; 24 proposals in isolated replay, without planner qualification or motion authorization. Logs are beside the replay result.
+
+The smoke runner now supports `--perception-profile`, `--grasp-profile`, and an explicit unique `--grasp-target-category`; unmatched or repeated categories stop the grasp stage. This is a diagnostic selector, not a replacement Agent task decomposer. `run_grasp_proposals.py` now retains failed results and worker logs. Runtime assembly rejects different clients for preparation, capabilities, route resolution and observation/Action execution.
+
+Reproduce in the existing PAOS environment, with the LocateAnything/SAM2 environment variables from the adapter README:
+
+```bash
+export PAOS_ROBOTWIN20_ADAPTER_ROOT=/home/yanxu/PhyAgentOS-forge/examples/forge-adapters/robotwin20
+export LOCATEANYTHING_PYTHON=/home/yanxu/.hephaestus/envs/hephaestus-locateanything/bin/python
+export LOCATEANYTHING_CACHE_DIR=/home/yanxu/.hephaestus/cache/huggingface/hub
+export LOCATEANYTHING_MODULES_CACHE_DIR=/home/yanxu/.hephaestus/cache/huggingface/modules
+export SAM2_PYTHON=/home/yanxu/miniconda3/envs/seg/bin/python
+export SAM2_REPO_ROOT=/home/yanxu/Grounded-SAM-2
+export SAM2_CHECKPOINT=/home/yanxu/Grounded-SAM-2/checkpoints/sam2.1_hiera_large.pt
+export GRASPGEN_PYTHON=/home/yanxu/.local/share/hephaestus/providers/graspgen/env/bin/python
+export GRASPGEN_CHECKPOINT=/home/yanxu/.local/share/hephaestus/providers/graspgen/models/GraspGenModels/checkpoints/graspgen_franka_panda_gen.pth
+export GRASPGEN_CONFIG=/home/yanxu/.local/share/hephaestus/providers/graspgen/models/GraspGenModels/checkpoints/graspgen_franka_panda.yml
+export GRASPGEN_SOURCE_ROOT=/home/yanxu/robotwin20-runtime/graspgen-attested-20260906TSifryr/source
+PYTHONPATH=.:examples/forge-adapters/robotwin20/src \
+/home/yanxu/miniconda3/envs/paos/bin/python \
+ examples/forge-adapters/robotwin20/scripts/check_persistent_runtime.py \
+ --runtime-root /home/yanxu/robotwin20-runtime/RoboTwin \
+ --runtime-profile "$PAOS_ROBOTWIN20_ADAPTER_ROOT/profiles/robotwin20/franka-blocks-ranking.yaml" \
+ --artifact-root "/home/yanxu/robotwin20-runtime/artifacts/agent-seed0-$(date +%Y%m%dT%H%M%S)" \
+ --worker-python /home/yanxu/miniconda3/envs/RoboTwin20/bin/python \
+ --paos-config /home/yanxu/.PhyAgentOS/config.json \
+ --perception-profile "$PAOS_ROBOTWIN20_ADAPTER_ROOT/profiles/robotwin20/perception.yaml" \
+ --grasp-profile "$PAOS_ROBOTWIN20_ADAPTER_ROOT/profiles/robotwin20/graspgen.yaml" \
+ --grasp-target-category 'green cube'
+```
+
+This command uses real models; semantic category wording and grasp sampling can vary. An exact-category mismatch is an explicit diagnostic stop, not permission to choose another entity. Live artifacts were produced with the v8.3.1 working-tree changes on top of `0420213`.
+
+Six-dimensional status: architecture remains incomplete (Agent entry and installed deployment); failure handling has targeted coverage but live Action recovery is untested; existing safety admission remains enforced and no motion was performed; dedicated-environment reproducibility and artifact retention are demonstrated; assembly maintenance improved through shared-client checking; observation/perception/grasp diagnostics are available but there are no task-level Action/Verifier receipts. Next concrete integration is measured entity/destination binding into current-scene preparation and the existing Agent planning loop.
