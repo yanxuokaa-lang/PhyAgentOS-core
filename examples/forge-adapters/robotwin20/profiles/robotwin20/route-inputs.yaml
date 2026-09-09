@@ -22,7 +22,7 @@ grasp_adaptation:
   robot_delta_matrix: [[0, 0, 1], [0, -1, 0], [1, 0, 0]]
   # Provider-declared shallower contact variants; qualification selects only
   # variants that clear the support plane while retaining pinch validity.
-  contact_backoff_candidates_m: [0.0, 0.005, 0.010, 0.015, 0.020]
+  contact_backoff_candidates_m: [0.0, 0.005, 0.010, 0.015, 0.016, 0.01625, 0.01645, 0.020]
   provider_transform_source:
     provider: graspgen
     upstream_commit: 2dd8852e1be60f5f9d277fafcc621835cdf59110

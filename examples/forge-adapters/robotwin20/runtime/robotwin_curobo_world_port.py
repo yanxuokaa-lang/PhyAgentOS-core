@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping, Sequence
 from typing import Any
 
 from robotwin20_adapter.collision_world import validate_collision_world
 from robotwin20_adapter.dual_arm_state import (
     PEER_ARM_SPHERE_PROJECTION_SCHEMA_VERSION,
+    DualArmStateError,
+    build_peer_arm_sphere_projection,
     validate_peer_arm_projection,
     validate_peer_arm_sphere_projection,
 )
@@ -15,6 +18,90 @@ from robotwin20_adapter.dual_arm_state import (
 
 class CuroboWorldPortError(RuntimeError):
     """The provider could not apply a collision world to all planners."""
+
+
+def bind_scene_table(task: Any) -> None:
+    """Bind the measured support box to both provider planners without stepping."""
+    table = getattr(task, "table", None)
+    table_pose = table.get_pose() if table is not None and callable(getattr(table, "get_pose", None)) else None
+    if table_pose is None:
+        raise CuroboWorldPortError("RoboTwin scene table pose is unavailable")
+    table_component = next(
+        (item for item in table.get_components() if callable(getattr(item, "get_collision_shapes", None))),
+        None,
+    )
+    table_shapes = table_component.get_collision_shapes() if table_component is not None else []
+    table_top_shape = next(
+        (shape for shape in table_shapes if callable(getattr(shape, "get_half_size", None))),
+        None,
+    )
+    if table_top_shape is None:
+        raise CuroboWorldPortError("RoboTwin scene table box geometry is unavailable")
+    table_center = table_pose * table_top_shape.get_local_pose()
+    half_size = [float(value) for value in table_top_shape.get_half_size()]
+    table_binding = {
+        "position_m": [float(value) for value in table_center.p],
+        "orientation_wxyz": [float(value) for value in table_center.q],
+        "half_extents_m": half_size,
+    }
+    if not all(math.isfinite(value) for value in (*table_binding["position_m"], *table_binding["orientation_wxyz"], *half_size)):
+        raise CuroboWorldPortError("RoboTwin scene table pose is non-finite")
+    for arm in ("left", "right"):
+        planner = getattr(task.robot, f"{arm}_planner")
+        planner.arm_id = arm
+        planner._paos_table_world_pose = dict(table_binding)
+
+
+def capture_peer_projection(task: Any, state: Mapping[str, Any], selected_arm: str) -> dict[str, Any]:
+    """Project the held arm using Curobo's native collision-sphere model.
+
+    RoboTwin's SAPIEN links are mesh/convex geometry and cannot be represented
+    safely by the old single-box extraction.  Curobo already owns a sphere
+    approximation for the same robot model, so use that model at the captured
+    hold qpos and transform its centers into the shared world frame.
+    """
+    import numpy as np
+    import torch
+    import transforms3d.quaternions as tquat
+
+    peer_arm = "right" if selected_arm == "left" else "left"
+    planner = task.robot.right_planner if peer_arm == "right" else task.robot.left_planner
+    kinematics = getattr(getattr(planner, "motion_gen", None), "kinematics", None)
+    get_spheres = getattr(kinematics, "get_robot_as_spheres", None)
+    if not callable(get_spheres):
+        raise CuroboWorldPortError("peer arm collision sphere model is unavailable")
+    entity = task.robot.right_entity if peer_arm == "right" else task.robot.left_entity
+    qpos = np.asarray(entity.get_qpos()[:7], dtype=np.float32).reshape(1, -1)
+    tensor_args = getattr(planner.motion_gen, "tensor_args", None)
+    device = getattr(tensor_args, "device", "cpu")
+    try:
+        sphere_batches = get_spheres(torch.as_tensor(qpos, device=device), filter_valid=True)
+    except Exception as exc:
+        raise CuroboWorldPortError("peer arm collision sphere model failed") from exc
+    if not sphere_batches or not sphere_batches[0]:
+        raise CuroboWorldPortError("peer arm collision sphere model is empty")
+    base = planner.robot_origion_pose
+    base_rotation = np.asarray(tquat.quat2mat(list(base.q)), dtype=np.float64)
+    base_position = np.asarray(base.p, dtype=np.float64)
+    spheres: list[dict[str, Any]] = []
+    for sphere in sphere_batches[0]:
+        pose = getattr(sphere, "pose", None)
+        radius = getattr(sphere, "radius", None)
+        if pose is None or radius is None or len(pose) < 3:
+            raise CuroboWorldPortError("peer arm collision sphere record is invalid")
+        center = base_position + base_rotation @ np.asarray(pose[:3], dtype=np.float64)
+        spheres.append({"center_m": [*map(float, center)], "radius_m": float(radius)})
+    try:
+        return build_peer_arm_sphere_projection(
+            scene_revision=state["scene_revision"],
+            state_revision=state["state_revision"],
+            frame_id=state["frame_id"],
+            selected_arm=selected_arm,
+            spheres=spheres,
+            source_ref=state["provenance_refs"][0],
+        )
+    except DualArmStateError as exc:
+        raise CuroboWorldPortError("peer arm projection is invalid") from exc
 
 
 def _obb_capacity(motion_gen: Any) -> int:
@@ -224,6 +311,26 @@ def _world_config(
                 dimensions = [2.0 * float(value) for value in peer["half_extents_m"]]
             cuboids.append(Cuboid(name=name, dims=dimensions, pose=_peer_pose_for_planner(planner, peer)))
     return WorldConfig(cuboid=cuboids)
+
+
+def add_released_object(planner: Any, pose: Mapping[str, Any], half_extents: Sequence[float]) -> list[tuple[Any, Any]]:
+    """Make the detached object an obstacle for retreat; return worlds to restore."""
+    from curobo.geom.types import Cuboid
+
+    previous = []
+    try:
+        for model in (planner.motion_gen, planner.motion_gen_batch):
+            world = model.world_model.clone()
+            if len(world.cuboid) + 1 > _obb_capacity(model):
+                raise CuroboWorldPortError("collision cache has no slot for released object")
+            previous.append((model, model.world_model.clone()))
+            world.cuboid.append(Cuboid(name="released_target", dims=[2 * float(v) for v in half_extents], pose=_world_pose_for_planner(planner, pose)))
+            model.update_world(world)
+    except Exception:
+        for model, world in reversed(previous):
+            model.update_world(world)
+        raise
+    return previous
 
 
 def apply_collision_world(

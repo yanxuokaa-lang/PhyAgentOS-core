@@ -206,6 +206,43 @@ def test_external_worker_records_unavailable_evidence_without_motion(tmp_path: P
         client.release()
 
 
+def test_live_geometry_evidence_cannot_authorize_dynamic_readiness(tmp_path):
+    from robotwin_route_readiness_worker import _handle_factory
+
+    from robotwin20_adapter.route_readiness import RouteReadinessClient
+
+    request = _request(tmp_path)
+    def evaluate(request):
+        return {
+            "candidates": {item["candidate_ref"]: {"status": "pass", "selected_arm": "right", "arm_attempts": []} for item in request["candidates"]},
+            "world": {"collision_world_receipt": {"status": "applied"}},
+            "simulator_steps": 0,
+        }
+    handle = _handle_factory(tmp_path, "test-live", evaluate)
+    response = handle(request)
+    assert response["status"] == "fail"
+    assert response["provider_available"] is True
+    checks = response["route_evidence"][0]["checks"]
+    assert checks["complete_transport_descent_retreat"] == "pass"
+    assert checks["contact_dynamics"] == "unavailable"
+    assert checks["stop_control"] == "unavailable"
+    class Client:
+        def request(self, request):
+            return response
+    assert RouteReadinessClient(Client(), worker_id="test-live").evaluate(request)["motion_authorized"] is False
+
+
+def test_live_provider_failure_is_recorded_as_unavailable(tmp_path):
+    from robotwin_route_readiness_worker import _handle_factory
+    request = _request(tmp_path)
+    def reject(request):
+        raise RuntimeError("Curobo model unavailable")
+    response = _handle_factory(tmp_path, "test-live", reject)(request)
+    assert response["provider_available"] is False
+    assert response["status"] == "unavailable"
+    assert "Curobo model unavailable" in response["unavailable_reasons"][0]
+
+
 def test_route_readiness_profile_loader_rejects_duplicate_keys(tmp_path):
     profile_path = tmp_path / "duplicate.yaml"
     profile_path.write_text(

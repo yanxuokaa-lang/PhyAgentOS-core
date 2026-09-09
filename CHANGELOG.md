@@ -1,5 +1,440 @@
 # Changelog
 
+## Archive
+
+- [2026-09 Part 4](changelog/2026-09_part4.md)
+
+## 最近 5 条 / Latest Five Versions
+
+## v7.5.0 (2026-09-09 12:43) - codex
+
+### 预期修改 / Planned Changes
+
+- [完成] [policy] [feat] 按开发者手册第 12/13 节和 manipulation ownership matrix，将完整碰撞世界、无动作路线评估与抓取资格评估接入现有 RoboTwin adapter/runtime；Core、Skill、Gateway 生命周期保持原有所有权。(local)
+- [Completed] [policy] [feat] Integrate complete collision-world preparation, no-motion route evaluation and grasp qualification in the existing RoboTwin adapter/runtime following developer manual sections 12/13 and the manipulation ownership matrix. Preserve Core, Skill and Gateway lifecycle ownership. (local)
+- [完成] [model] [fix] 修正旋转物体的包含判定，补充指间几何约束和有限 backoff 候选的实际 Curobo 评估；保留原始 GraspGen depth、实测桌面、方块、peer-arm 投影。(local)
+- [Completed] [model] [fix] Correct rotated-object containment and add finger geometry constraints and actual Curobo evaluation of finite backoffs; retain original GraspGen depth, measured table, blocks and peer-arm projection. (local)
+- [完成] [eval] [test] 增加失败路径回归并运行独立 no-motion 测量；记录每个候选/机械臂/阶段的结果，不将几何可行性当作动态接触、任务成功或运动授权。(local)
+- [Completed] [eval] [test] Add failure regressions and independent no-motion measurements with candidate/arm/phase results. Geometry feasibility does not establish contact dynamics, task success or motion authority. (local)
+
+### 架构审核 / Architecture Review
+
+- `docs/zh/03-developer-manual.md` L197-L229、`docs/user_development_guide/README.md` L24-L47、`docs/forge/MANIPULATION_DAG_DEVELOPER_GUIDE.md` L8-L18：通过上述 ownership 修正后实施。仿真内部物体几何仅作仿真资格对照。
+- Approved within those documented ownership boundaries; simulator object geometry remains simulation qualification reference data.
+- 具体失败：mesh-only qualified 会选中 planner 拒绝的抓取；原始姿态检查与实际执行目标不一致；只测 contact 不能判断完整 attached route。现有 route-readiness 边界足以承载修复，不新增 hash、gate、状态库或执行协议。
+- Concrete failures: mesh-only qualification selects planner-rejected grasps; raw-pose checks differ from execution targets; contact-only checks do not establish attached-route feasibility. Reuse existing route-readiness checks without new hashes, gates, stores or execution protocols.
+
+### 预期影响文件 / Planned Files
+
+- `examples/forge-adapters/robotwin20/runtime/robotwin_curobo_world_port.py`
+- `examples/forge-adapters/robotwin20/runtime/robotwin_route_readiness_worker.py`
+- `examples/forge-adapters/robotwin20/runtime/robotwin_simulation_probe_worker.py`
+- `examples/forge-adapters/robotwin20/runtime/robotwin_grasp_contact_geometry_worker.py`
+- RoboTwin provider shared geometry/planning helpers, qualification CLI, grasp postprocessing, profiles and focused tests.
+- `docs/forge/GRASPGEN_CONTACT_DEPTH_POSTPROCESSING.md`, `CHANGELOG.md`, this monthly archive.
+### 实际修改与验证 / Changes and Validation
+
+- [完成] [policy] [feat] 完成 provider-owned 完整世界与路线评估；原始 GraspGen depth 和 Core/Skill/Gateway 权限不变。(local)
+- [Completed] [policy] [feat] Implemented provider-owned complete-world and route evaluation; original GraspGen depth and Core/Skill/Gateway authority are unchanged. (local)
+- [完成] [eval] [test] 工作区 356 passed, 1 skipped；独立暂存内容 354 passed, 1 skipped；Ruff、compileall、git diff --check 通过。差异来自未纳入提交的现有草稿测试。
+- [Completed] [eval] [test] Working tree: 356 passed, 1 skipped; isolated staged content: 354 passed, 1 skipped. Ruff, compileall and diff check pass. Existing unstaged draft tests explain the count difference.
+- [完成] [eval] [exp] 右臂 16/16.25/16.45 mm 接触资格通过，sphere 净空 0.050918/0.300401/0.500095 mm；左臂八个候选全部失败。16 mm 完整路线复测：left approach waypoint 0 失败；right descent waypoint 1 失败；simulator_steps=0，motion_authorized=false。
+- [Completed] [eval] [exp] Right 16/16.25/16.45 mm contact variants qualify with the listed sphere clearances; all eight left variants fail. Full 16 mm route repeat rejects left approach waypoint 0 and right descent waypoint 1, with zero steps and no motion authorization.
+- Evidence: `/home/yanxu/robotwin20-runtime/artifacts/paos-contact-v7.5.0-20260909T1305Z/`; final package `/home/yanxu/robotwin20-runtime/artifacts/paos-route-v7.5.0-16mm-20260909T0508Z/`. Earlier directory timestamp labels were manually chosen; they are output identifiers, not measured capture timestamps. Scene seed 0, original saved GraspGen proposal, RoboTwin20 Python 3.10, Torch 2.9.1+cu128. Curobo randomness remains.
+
+### 文件变更详情 / File Changes
+
+#### [修改 / Added or Modified] `docs/forge/GRASPGEN_CONTACT_DEPTH_POSTPROCESSING.md` L18-L20, L43-L47, L80-L153
+
+关键 Diff / Key Diff:
+
+```diff
+-keeps the contact center inside the object. It never calls Curobo/SAPIEN,
++keeps the contact center inside the oriented object. Live qualification also
++requires a conservative Panda finger-envelope fit and Curobo contact evidence.
++The pure module never calls Curobo/SAPIEN,
+-- Pinch validity is checked against the measured object center and half extents.
++- Contact containment uses the inverse object rotation and measured half extents.
++  Live qualification checks that the object fits the open-finger aperture, the
+```
+
+#### [修改 / Added or Modified] `examples/forge-adapters/robotwin20/profiles/robotwin20/route-inputs.yaml` L25-L25
+
+关键 Diff / Key Diff:
+
+```diff
+-  contact_backoff_candidates_m: [0.0, 0.005, 0.010, 0.015, 0.020]
++  contact_backoff_candidates_m: [0.0, 0.005, 0.010, 0.015, 0.016, 0.01625, 0.01645, 0.020]
+```
+
+#### [修改 / Added or Modified] `examples/forge-adapters/robotwin20/profiles/robotwin20/route-readiness-live.yaml` L1-L22
+
+关键 Diff / Key Diff:
+
+```diff
++schema_version: paos-robotwin20-route-readiness/v1
++worker_id: robotwin20-route-readiness/v1
++artifact_root: ${ROBOTWIN20_SIMULATION_ARTIFACT_ROOT}
++worker:
++  python: ${ROBOTWIN20_ROUTE_WORKER_PYTHON}
++  script: ${PAOS_ROBOTWIN20_ADAPTER_ROOT}/runtime/robotwin_route_readiness_worker.py
++  cwd: ${ROBOTWIN20_RUNTIME_ROOT}
+```
+
+#### [修改 / Added or Modified] `examples/forge-adapters/robotwin20/runtime/robotwin_curobo_world_port.py` L5-L5, L12-L13, L23-L106, L315-L334
+
+关键 Diff / Key Diff:
+
+```diff
++import math
++    DualArmStateError,
++    build_peer_arm_sphere_projection,
++def bind_scene_table(task: Any) -> None:
++    """Bind the measured support box to both provider planners without stepping."""
++    table = getattr(task, "table", None)
++    table_pose = table.get_pose() if table is not None and callable(getattr(table, "get_pose", None)) else None
+```
+
+#### [修改 / Added or Modified] `examples/forge-adapters/robotwin20/runtime/robotwin_grasp_contact_geometry_worker.py` L12-L12, L38-L38, L43-L78
+
+关键 Diff / Key Diff:
+
+```diff
+-from robotwin_simulation_probe_worker import _collision_vertices, _table_top_z
++from robotwin_planning_geometry import _collision_vertices, _table_top_z
+-        arms: dict[str, Any] = {}
+-        for arm, attribute in (("left", "left_entity"), ("right", "right_entity")):
+-            entity = getattr(task.robot, attribute, None)
+-            if entity is None:
+-                raise GraspContactGeometryError(f"{arm} robot entity is unavailable")
+```
+
+#### [修改 / Added or Modified] `examples/forge-adapters/robotwin20/runtime/robotwin_planning_geometry.py` L1-L361
+
+关键 Diff / Key Diff:
+
+```diff
++"""Shared RoboTwin planner geometry checks; no controller or scene stepping."""
++
++from __future__ import annotations
++
++import math
++from typing import Any, Mapping
++
+```
+
+#### [修改 / Added or Modified] `examples/forge-adapters/robotwin20/runtime/robotwin_route_planner.py` L1-L265
+
+关键 Diff / Key Diff:
+
+```diff
++"""Provider-owned no-motion evaluation of execution grasps and full routes."""
++
++from __future__ import annotations
++
++from typing import Any, Mapping
++
++from robotwin_curobo_world_port import (
+```
+
+#### [修改 / Added or Modified] `examples/forge-adapters/robotwin20/runtime/robotwin_route_readiness_worker.py` L3-L5, L14-L15, L36-L36, L49-L56, L61-L65, L69-L69, L72-L79, L91-L91, L95-L95, L97-L97, L100-L100, 删除旧 L80-L80, L113-L116, L118-L136
+
+关键 Diff / Key Diff:
+
+```diff
+-The worker validates the complete route/evidence contract and records an
+-explicit unavailable result until a real planner, attached-object collision
+-checker, contact probe, stop controller, and semantic verifier are injected.
++The worker records planner and attached-object geometry evidence when a
++RoboTwin evaluator is configured. Contact dynamics and stop control remain
++unavailable here; user-level verification belongs to the PAOS Verifier.
++import sys
+```
+
+#### [修改 / Added or Modified] `examples/forge-adapters/robotwin20/runtime/robotwin_simulation_probe_worker.py` L34-L64, 删除旧 L48-L49, 删除旧 L71-L72, 删除旧 L285-L321, 删除旧 L325-L345, L315-L317, 删除旧 L496-L513, 删除旧 L667-L684, 删除旧 L687-L691, 删除旧 L693-L713, 删除旧 L715-L723, 删除旧 L726-L728, 删除旧 L730-L761, 删除旧 L764-L778, 删除旧 L781-L784, 删除旧 L786-L790, L606-L606, 删除旧 L1087-L1096, 删除旧 L1162-L1206, L1056-L1061, L1098-L1107, L1135-L1135, L1140-L1144, L1659-L1659, 删除旧 L1980-L1981
+
+关键 Diff / Key Diff:
+
+```diff
+-from robotwin_curobo_world_port import CuroboWorldPortError, apply_collision_world
++from robotwin_curobo_world_port import (
++    CuroboWorldPortError,
++    add_released_object,
++    apply_collision_world,
++    bind_scene_table,
++    capture_peer_projection,
+```
+
+#### [修改 / Added or Modified] `examples/forge-adapters/robotwin20/scripts/qualify_grasp_contact.py` L9-L9, L17-L17, L39-L45, L90-L90, L105-L105, L108-L146, L152-L152, L156-L170, L178-L178, L184-L184, L186-L188, L190-L192, L197-L225, L234-L243, L246-L247, L258-L263
+
+关键 Diff / Key Diff:
+
+```diff
++from copy import deepcopy
++    _rotation_quaternion,
+-def _candidate(value: Mapping[str, Any]) -> Mapping[str, Any]:
++def _candidate(value: Mapping[str, Any], candidate_ref: str | None = None) -> Mapping[str, Any]:
++    if candidate_ref is not None:
++        candidates = value.get("candidates", [value.get("candidate", value)])
++        candidate = next((item for item in candidates if item.get("candidate_ref") == candidate_ref), None)
+```
+
+#### [修改 / Added or Modified] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/grasp_postprocessing.py` L14-L14, L180-L211, L223-L226, L251-L251, L264-L275, L278-L278, L284-L293, L300-L308, L318-L318, L349-L351, L394-L397
+
+关键 Diff / Key Diff:
+
+```diff
++from itertools import product
+-def _object_contains(point: Sequence[float], center: Sequence[float], half_extents: Sequence[float]) -> bool:
+-    return all(abs(float(a) - float(b)) <= float(extent) + 1e-9 for a, b, extent in zip(point, center, half_extents))
++def _object_contains(point: Sequence[float], center: Sequence[float], half_extents: Sequence[float], rotation: Sequence[Sequence[float]]) -> bool:
++    local = _rotate(list(zip(*rotation)), [a - b for a, b in zip(point, center)])
++    return all(abs(value) <= extent + 1e-9 for value, extent in zip(local, half_extents))
++
+```
+
+#### [修改 / Added or Modified] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/route_readiness.py` L543-L547, L549-L549, L581-L584
+
+关键 Diff / Key Diff:
+
+```diff
+-        if response.get("status") != "unavailable" or response.get("provider_available") is not False:
++        status = response.get("status")
++        if not (
++            (status == "unavailable" and response.get("provider_available") is False)
++            or (status == "fail" and response.get("provider_available") is True)
++        ):
+-                "route readiness worker must remain unavailable until capabilities exist"
+```
+
+#### [修改 / Added or Modified] `examples/forge-adapters/robotwin20/tests/test_curobo_world_port.py` L89-L106
+
+关键 Diff / Key Diff:
+
+```diff
++def test_released_target_becomes_obstacle_without_dropping_existing_world():
++    from robotwin_curobo_world_port import add_released_object
++    planner = FakePlanner()
++    previous = add_released_object(planner, {"position_m": [.1, .2, .8], "orientation_xyzw": [0, 0, 0, 1]}, [.02] * 3)
++    for model, world in previous:
++        assert [item.name for item in model.world_model.cuboid] == ["table", "released_target"]
++        assert [item.name for item in world.cuboid] == ["table"]
+```
+
+#### [修改 / Added or Modified] `examples/forge-adapters/robotwin20/tests/test_grasp_postprocessing.py` L15-L36, L88-L132
+
+关键 Diff / Key Diff:
+
+```diff
++def test_rotated_object_containment_uses_object_frame():
++    from robotwin20_adapter.grasp_postprocessing import _object_contains
++    rotation = [[0, -1, 0], [1, 0, 0], [0, 0, 1]]
++    assert _object_contains([0, .08, 0], [0, 0, 0], [.1, .02, .02], rotation)
++    assert not _object_contains([.08, 0, 0], [0, 0, 0], [.1, .02, .02], rotation)
++
++
+```
+
+#### [修改 / Added or Modified] `examples/forge-adapters/robotwin20/tests/test_qualify_grasp_contact.py` L72-L129
+
+关键 Diff / Key Diff:
+
+```diff
++def test_cli_rejects_mesh_only_variant_when_curobo_evidence_fails(tmp_path):
++    files = _inputs(tmp_path)
++    curobo = _write(
++        tmp_path / "curobo.json",
++        {
++            "schema_version": "paos-robotwin20-curobo-contact-qualification/v1",
++            "candidate_ref": "candidate://block-green-1/0",
+```
+
+#### [修改 / Added or Modified] `examples/forge-adapters/robotwin20/tests/test_route_planner.py` L1-L120
+
+关键 Diff / Key Diff:
+
+```diff
++from copy import deepcopy
++from types import SimpleNamespace
++
++import numpy as np
++import pytest
++import robotwin_route_planner as module
++
+```
+
+#### [修改 / Added or Modified] `examples/forge-adapters/robotwin20/tests/test_route_readiness.py` L209-L245
+
+关键 Diff / Key Diff:
+
+```diff
++def test_live_geometry_evidence_cannot_authorize_dynamic_readiness(tmp_path):
++    from robotwin_route_readiness_worker import _handle_factory
++
++    from robotwin20_adapter.route_readiness import RouteReadinessClient
++
++    request = _request(tmp_path)
++    def evaluate(request):
+```
+
+#### [修改 / Added or Modified] `examples/forge-adapters/robotwin20/tests/test_simulation_probe.py` L34-L34, L118-L131
+
+关键 Diff / Key Diff:
+
+```diff
++    _validate_support_departure_results,
++def test_support_departure_allows_only_a_leading_world_contact_prefix():
++    world_contact = SimpleNamespace(value="Start state is colliding with world")
++    _validate_support_departure_results(
++        [(False, world_contact), (False, world_contact), (True, None), (True, None)]
++    )
++
+```
+
+### 验证命令 / Validation Commands
+
+```bash
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=.:examples/forge-adapters/robotwin20/src:examples/forge-adapters/robotwin20/runtime:examples/forge-adapters/robotwin20/scripts:examples/forge-skills/pick-place-workflow/src python -m pytest -q -p pytest_asyncio.plugin examples/forge-adapters/robotwin20/tests
+```
+
+### Git 提交 / Git Commit
+
+- Branch: `feature/planning-loop`; implementation commit recorded in the follow-up receipt after commit.
+
+## v7.4.2 (2026-09-09 13:20) - codex
+
+### 预期修改 / Planned Changes
+
+- [计划] [policy] [fix] 在 RoboTwin provider-owned grasp/contact qualification 中增加 Curobo robot collision-sphere 与实测桌面投影的 no-motion 净空检查；保留现有 SAPIEN mesh 净空和 pinch containment 判定，不放宽 collision policy。
+- [Planned] [Policy] [Fix] Add a no-motion clearance check between Curobo robot collision spheres and the measured table projection to RoboTwin provider-owned grasp/contact qualification; retain SAPIEN mesh clearance and pinch containment checks without relaxing collision policy.
+- [计划] [eval] [test] 增加 sphere/table 分离、目标姿态碰撞、双臂 frame 变换和未提供 Curobo model 的回归测试；失败时返回明确 qualification reason，不进入 route materialization。
+- [Planned] [Eval] [Test] Add regressions for sphere/table separation, colliding target poses, dual-arm frame transforms, and unavailable Curobo models; return an explicit qualification reason and prevent route materialization on failure.
+
+### 预期影响文件 / Planned Files
+
+- `changelog/2026-09_part4.md`
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/grasp_postprocessing.py`
+- `examples/forge-adapters/robotwin20/runtime/robotwin_grasp_contact_geometry_worker.py`
+- `examples/forge-adapters/robotwin20/tests/`
+- `docs/forge/GRASPGEN_CONTACT_DEPTH_POSTPROCESSING.md`
+
+## v7.4.1 (2026-09-09 11:30) - codex
+
+### 预期修改 / Planned Changes
+
+- [计划] [eval] [exp] 物化用户批准的 v7.4.0 simulation-only approval，并运行绑定该 route、candidate、source manifest 和 worker 的完整 RoboTwin 双视角 probe；保存 head-camera 与 observer-camera 视频证据。
+- [Planned] [Eval] [Exp] Materialize the user-approved v7.4.0 simulation-only approval and run the complete RoboTwin dual-view probe bound to this route, candidate, source manifest, and worker; persist head-camera and observer-camera video evidence.
+- [计划] [safety] [test] 仅允许 attached/lift/transport/descent/release/retreat/semantic probe；不接入 Gateway、Dora、Action 或硬件，失败时保留 failure evidence、接触记录、stop/reset 和视频结果。
+- [Planned] [Safety] [Test] Permit only the attached/lift/transport/descent/release/retreat/semantic probe; do not connect Gateway, Dora, Action, or hardware, and preserve failure evidence, contact records, stop/reset, and video results on failure.
+
+### 预期影响文件 / Planned Files
+
+- `changelog/2026-09_part4.md`
+- `/home/yanxu/robotwin20-runtime/artifacts/paos-route-v7.4.0-graspgen-contact-backoff-20260909T1100Z/probe/approval.json`
+- `/home/yanxu/robotwin20-runtime/artifacts/paos-route-v7.4.0-graspgen-contact-backoff-20260909T1100Z/probe/`
+
+### 实际结果 / Actual Results
+
+- [完成] [eval] [exp] 已物化并校验用户批准的 approval artifact：`/home/yanxu/robotwin20-runtime/artifacts/paos-route-v7.4.0-graspgen-contact-backoff-20260909T1100Z/probe/approval.json`；route digest `7f9055c2090c64ee88f42e00657e3c7800173c7e5c2c53ec5bd303921083935a`、source manifest digest `8fb85da145f034a4a3283bbfa43bdd4378499d78443b15ce8d882b911b8bffeb`、worker digest `6534f093bb4fb76f747a9532646be056520ef69c91c9a61b8a096797d3e092cc` 均匹配。/ [Completed] Materialized and validated the approved approval artifact; route, source-manifest, and worker digests matched the submitted approval.
+- [完成] [eval] [test] 使用外置 artifact root `/home/yanxu/robotwin20-probe-v7.4.0-graspgen-contact-backoff-20260909T1100Z-run3/` 运行独立 RoboTwin worker；worker 在 `.../RoboTwin` runtime 中成功加载 provider、初始化场景并开始碰撞世界 preflight。/ [Completed] Ran the independent RoboTwin worker with an external artifact root; the provider loaded, initialized the scene, and began collision-world preflight in the `.../RoboTwin` runtime.
+- [完成] [eval] [test] probe 返回 `unavailable`，原因是 `no arm can plan candidate route`：left/right 两臂均在首段 planner route segment 失败；`simulator_steps=0`、`contact_trace=[]`、`video_evidence=null`，因此没有任何动作执行或视频帧可供人工验收。/ [Completed] The probe returned `unavailable` because no arm could plan the candidate route; both arms failed on the first planner segment, with zero simulator steps, no contacts, and no video evidence.
+- [完成] [safety] [test] 失败证据已保存：`simulation-probe/.../failure.json`、`before-snapshot.json`、`after-failure-snapshot.json`；`controller_stop_status=stopped`、`simulation_reset_status=completed`、`reconciliation_required=false`。未调用 Gateway、Dora、Action 或硬件。/ [Completed] Failure evidence was persisted with stopped controller and completed simulation reset; Gateway, Dora, Action, and hardware were not used.
+
+### 六维验收 / Six-Dimension Acceptance
+
+1. 架构集成：通过（边界）。执行仍在独立 RoboTwin provider worker，PAOS planning、Gateway 和任务生命周期未被接管；功能结果本身未通过。/ Passed (boundary). Execution remained in the independent RoboTwin provider worker; PAOS planning, Gateway, and task lifecycle were not taken over. The functional result did not pass.
+2. 失败路径：通过。启动路径、provider unavailable、双臂 planner 失败、reset 和 failure evidence 均被明确收敛；失败未被解释为成功。/ Passed. Startup, provider availability, dual-arm planner failure, reset, and failure evidence were explicitly reconciled without treating failure as success.
+3. 权威与安全边界：通过。仅使用 simulation-only approval；`scene.step()` 未发生，未接入生产动作执行面。/ Passed. Only the simulation-only approval was used; no `scene.step()` occurred and no production execution plane was connected.
+4. 配置与复现：通过。首次路径错误和 runtime-root 配置错误均被识别；最终 run 使用固定 route/source/worker/profile 绑定及独立输出目录。/ Passed. The initial profile-path and runtime-root configuration errors were identified; the final run used fixed route/source/worker/profile bindings and an isolated output directory.
+5. 可维护性：部分通过。probe 的证据和复位行为可复现，但 planner 首段失败细节目前只在 arm-attempt 摘要中记录，尚不足以判断具体碰撞几何或 IK 原因。/ Partially passed. Probe evidence and reset behavior are reproducible, but the first-segment planner failure is only summarized at arm-attempt level and does not yet identify the exact collision or IK cause.
+6. 防止过度防御编程：通过。未新增代码、哈希、baseline 或 gate；仅修正了运行时目录边界并保存现有 worker 的失败证据。/ Passed. No code, hash, baseline, or gate was added; only the runtime directory boundary was corrected for execution and existing worker failure evidence was preserved.
+
+### 验证与 Git 状态 / Verification and Git Status
+
+- `validate_route_request()` 与前序聚焦测试已通过（`65 passed`）；本轮独立 probe 的最终结果为 `unavailable`，不能宣称双臂 route 可执行。
+- 首次执行因 profile 相对路径被拒绝，第二次因 artifact root 位于 runtime root 内被拒绝；第三次修正为外置 artifact root 与 `.../RoboTwin` runtime 后进入真实 provider preflight。
+- 本轮只修改本日志；未修改实现代码。工作区包含其他已有用户改动，未对其进行提交或推送。
+
+### Git 提交 / Git Commit
+
+- Commit: `cd73356`；Branch: `feature/planning-loop`；已推送。/ Commit: `cd73356`; Branch: `feature/planning-loop`; pushed.
+
+## v7.4.0 (2026-09-09 10:52) - codex
+
+### 预期修改 / Planned Changes
+
+- [计划] [eval] [exp] 将 v7.3.15 已资格评估的 GraspGen `0.015 m` ingress-backoff variant 物化为新的 RoboTwin 双臂 route package，并显式绑定 qualification artifact；不改变 GraspGen depth、碰撞策略、PAOS planning、Skill 或 Gateway。
+- [Planned] [Eval] [Exp] Materialize the v7.3.15 qualified GraspGen `0.015 m` ingress-backoff variant as a new RoboTwin dual-arm route package with an explicit qualification-artifact binding; do not change GraspGen depth, collision policy, PAOS planning, Skills, or Gateway.
+- [计划] [eval] [test] 独立校验 package 的 route、source manifest、双臂 capability、controller qualification、worker 与 contact-qualification binding；完成后停在新的 simulation-only 人工审批边界，不运行 planner、`scene.step()`、Gateway、Dora、Action 或硬件。
+- [Planned] [Eval] [Test] Independently validate the package route, source manifest, dual-arm capabilities, controller qualification, worker, and contact-qualification binding; then stop at a fresh simulation-only human-approval boundary without running planner, `scene.step()`, Gateway, Dora, Action, or hardware.
+
+### 预期影响文件 / Planned Files
+
+- `changelog/2026-09_part4.md`
+- `/home/yanxu/robotwin20-runtime/artifacts/paos-route-v7.4.0-graspgen-contact-backoff-*/`
+
+### 实际结果 / Actual Results
+
+- [完成] [eval] [exp] 已物化 `/home/yanxu/robotwin20-runtime/artifacts/paos-route-v7.4.0-graspgen-contact-backoff-20260909T1100Z/`；route geometry digest 为 `7f9055c2090c64ee88f42e00657e3c7800173c7e5c2c53ec5bd303921083935a`，source manifest digest 为 `8fb85da145f034a4a3283bbfa43bdd4378499d78443b15ce8d882b911b8bffeb`。/ [Completed] Materialized `/home/yanxu/robotwin20-runtime/artifacts/paos-route-v7.4.0-graspgen-contact-backoff-20260909T1100Z/`; route geometry digest is `7f9055c2090c64ee88f42e00657e3c7800173c7e5c2c53ec5bd303921083935a`, and source manifest digest is `8fb85da145f034a4a3283bbfa43bdd4378499d78443b15ce8d882b911b8bffeb`.
+- [完成] [policy] [fix] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/grasp_adaptation.py:L201-L213,L228-L240` 允许 route profile 已定义的 `contact_backoff_candidates_m` 和既有 `grasp_geometry` proposal 字段通过 schema 兼容检查；未改变坐标变换、GraspGen depth、碰撞策略或执行权限。/ [Completed] [Policy] [Fix] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/grasp_adaptation.py:L201-L213,L228-L240` allows the route profile's existing `contact_backoff_candidates_m` and `grasp_geometry` proposal field through schema compatibility checks; transforms, GraspGen depth, collision policy, and execution authority are unchanged.
+- [完成] [eval] [test] contact qualification 选择 `0.015 m` variant：support clearance `+0.002807598225252672 m` 且 pinch containment 有效；`0/0.005/0.01 m` 因桌面穿透拒绝，`0.02 m` 因 pinch containment 失败拒绝。/ [Completed] [Eval] [Test] Contact qualification selected the `0.015 m` variant with `+0.002807598225252672 m` support clearance and valid pinch containment; `0/0.005/0.01 m` were rejected for table-plane penetration and `0.02 m` for failed pinch containment.
+- [完成] [eval] [test] route 通过 `validate_route_request()`，包含完整 `approach/contact/close/lift/transport/descent/release/retreat` 阶段；candidate provenance 绑定 contact-qualification，source manifest 绑定双臂 capability、controller qualification、collision world 与 worker `6534f093bb4fb76f747a9532646be056520ef69c91c9a61b8a096797d3e092cc`。/ [Completed] [Eval] [Test] The route passed `validate_route_request()` with complete `approach/contact/close/lift/transport/descent/release/retreat` phases; candidate provenance binds contact qualification, and the source manifest binds both arm capabilities, controller qualification, collision world, and worker `6534f093bb4fb76f747a9532646be056520ef69c91c9a61b8a096797d3e092cc`.
+
+### 六维验收 / Six-Dimension Acceptance
+
+1. 架构集成：通过。改动位于 RoboTwin adapter 的 grasp adaptation 兼容层；PAOS planning、Skill、Gateway 和仿真执行面未被接管。/ Passed. The change stays in the RoboTwin adapter's grasp-adaptation compatibility layer; PAOS planning, Skills, Gateway, and simulation execution remain untouched.
+2. 失败路径：通过。未资格化的 backoff、非法字段、缺失绑定和 route 结构错误仍由既有 qualification/materialization/readiness 校验拒绝。/ Passed. Unqualified backoffs, invalid fields, missing bindings, and malformed route structure remain rejected by the existing qualification, materialization, and readiness checks.
+3. 权威与安全边界：通过。package 和 review request 均保持 `simulation_only=true`、`motion_authorized=false`；未运行 planner、`scene.step()`、Gateway、Dora、Action 或硬件。/ Passed. The package and review request retain `simulation_only=true` and `motion_authorized=false`; no planner, `scene.step()`, Gateway, Dora, Action, or hardware was run.
+4. 配置与复现：通过。route、qualification、双臂 capability、controller qualification、collision world、worker 和原始 GraspGen bundle 均由 package manifest 绑定，可由 digest 重现。/ Passed. The route, qualification, dual-arm capabilities, controller qualification, collision world, worker, and original GraspGen bundle are bound by the package manifest and reproducible from its digests.
+5. 可维护性：通过。仅复用已有 profile/materialization/route-readiness 流程；没有新增 planner service、store、scheduler 或执行通道。/ Passed. The implementation reuses the existing profile, materialization, and route-readiness flow without adding a planner service, store, scheduler, or execution channel.
+6. 防止过度防御编程：通过。兼容修复对应一个已复现的 materialization 失败，不新增 hash、baseline、冻结 contract 或额外 gate；现有 digest 仅用于 package 原有 provenance。/ Passed. The compatibility fix addresses a reproduced materialization failure without adding hashes, baselines, frozen contracts, or extra gates; existing digests remain part of the package's established provenance.
+
+### 验证 / Validation
+
+- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=.:examples/forge-adapters/robotwin20/src:examples/forge-adapters/robotwin20/runtime:examples/forge-adapters/robotwin20/scripts python -m pytest -q -p pytest_asyncio.plugin examples/forge-adapters/robotwin20/tests/test_grasp_adaptation.py examples/forge-adapters/robotwin20/tests/test_grasp_postprocessing.py examples/forge-adapters/robotwin20/tests/test_qualify_grasp_contact.py examples/forge-adapters/robotwin20/tests/test_route_generation.py examples/forge-adapters/robotwin20/tests/test_route_readiness.py examples/forge-adapters/robotwin20/tests/test_collision_world.py`: `65 passed`。
+- 独立 package 验证：`validate_route_request()` 通过；selected backoff、contact center、robot target、route phases、candidate provenance、双臂 capability、controller qualification、collision world 和 worker 绑定全部通过；`motion_authorized=false`。
+- Independent package validation: `validate_route_request()` passed; selected backoff, contact center, robot target, route phases, candidate provenance, dual-arm capabilities, controller qualification, collision world, and worker bindings all passed; `motion_authorized=false`.
+
+### Git 提交 / Git Commit
+
+- Commit: `57539a2`；Branch: `feature/planning-loop`；已推送。/ Commit: `57539a2`; Branch: `feature/planning-loop`; pushed.
+
+## v7.3.15 (2026-09-09 02:35) - codex
+
+### 预期修改 / Planned Changes
+
+- [计划] [policy] [fix] 根据真实 no-motion 证据，在 RoboTwin route profile 中声明有限的 ingress backoff 候选（0–20 mm 范围内由 provider 明确列出），由 qualification CLI 逐一评估桌面净空和 pinch 约束；不修改 GraspGen depth，不加入隐式偏移。
+- [Planned] [Policy] [Fix] Based on the real no-motion evidence, declare a finite provider-owned ingress-backoff candidate list in the RoboTwin route profile and have the qualification CLI evaluate each candidate against table clearance and pinch constraints; do not modify GraspGen depth or add implicit offsets.
+- [计划] [eval] [test] 覆盖 profile 候选列表解析、15 mm 合法变体、20 mm pinch 失败、空列表/乱序输入和实际 artifact 重新 qualification；保持 no-motion，不运行 planner、scene.step、Gateway、Dora、Action 或硬件。
+- [Planned] [Eval] [Test] Cover profile-list parsing, the valid 15 mm variant, 20 mm pinch failure, empty/unsorted inputs, and requalification of the real artifact; remain no-motion and run no planner, scene.step, Gateway, Dora, Action, or hardware.
+
+### 实际结果 / Actual Results
+
+- [完成] [policy] [fix] `examples/forge-adapters/robotwin20/profiles/robotwin20/route-inputs.yaml:L23-L25` 声明 `contact_backoff_candidates_m=[0.0, 0.005, 0.010, 0.015, 0.020]`；候选是 RoboTwin provider 的显式 ingress route 变体，不改变 GraspGen `depth_m=0.10527314`。
+- [Completed] [Policy] [Fix] `examples/forge-adapters/robotwin20/profiles/robotwin20/route-inputs.yaml:L23-L25` declares `contact_backoff_candidates_m=[0.0, 0.005, 0.010, 0.015, 0.020]`; the values are explicit RoboTwin-provider ingress-route variants and leave GraspGen `depth_m=0.10527314` unchanged.
+- [完成] [policy] [fix] `examples/forge-adapters/robotwin20/scripts/materialize_complete_route.py:L152-L179,L631-L634` 验证并物化该有限列表；`examples/forge-adapters/robotwin20/scripts/qualify_grasp_contact.py:L65-L78,L118-L125` 使用同一列表评估实际 hand pose，拒绝空、乱序、负值或非有限输入。
+- [Completed] [Policy] [Fix] `examples/forge-adapters/robotwin20/scripts/materialize_complete_route.py:L152-L179,L631-L634` validates and materializes the finite list; `examples/forge-adapters/robotwin20/scripts/qualify_grasp_contact.py:L65-L78,L118-L125` evaluates actual hand poses with that list and rejects empty, unordered, negative, or non-finite inputs.
+- [完成] [eval] [test] `examples/forge-adapters/robotwin20/tests/test_qualify_grasp_contact.py:L60-L124` 覆盖 15 mm 首个合法 variant、空列表与乱序 profile；专项 `30 passed`，RoboTwin adapter 全量 `341 passed, 1 skipped`。
+- [Completed] [Eval] [Test] `examples/forge-adapters/robotwin20/tests/test_qualify_grasp_contact.py:L60-L124` covers the first valid 15 mm variant plus empty and unordered profiles; focused tests report `30 passed`, and the full RoboTwin adapter suite reports `341 passed, 1 skipped`.
+- [完成] [eval] [exp] 实际 no-motion artifact `/home/yanxu/robotwin20-runtime/artifacts/paos-grasp-contact-v7.3.15-20260909T1045Z/qualification.json` 选择 `0.015 m`：`0/5/10 mm` 的支持面净空分别为 `-12.1636/-7.1732/-2.1828 mm`，`15 mm` 为 `+2.8076 mm` 且 pinch 仍在对象内；`20 mm` 虽为 `+7.7980 mm`，但 pinch 已离开对象而被拒绝。
+- [Completed] [Eval] [Exp] The real no-motion artifact `/home/yanxu/robotwin20-runtime/artifacts/paos-grasp-contact-v7.3.15-20260909T1045Z/qualification.json` selects `0.015 m`: support clearance is `-12.1636/-7.1732/-2.1828 mm` at `0/5/10 mm`; `15 mm` reaches `+2.8076 mm` while retaining pinch; `20 mm` reaches `+7.7980 mm` but is rejected because the pinch exits the object.
+
+### 六维验收 / Six-Dimension Acceptance
+
+1. 架构集成：通过。候选定义与 qualification 都留在 RoboTwin provider adapter；PAOS planning、Skill、Gateway、任务生命周期和执行面未改变。 / Passed. Candidate definition and qualification remain in the RoboTwin provider adapter; PAOS planning, Skills, Gateway, task lifecycle, and execution remain unchanged.
+2. 失败路径：通过。无候选、乱序、负值、非有限值、桌面净空不足和 pinch 失效均不能产生 qualified variant。 / Passed. Empty, unordered, negative, non-finite, insufficient-clearance, and pinch-invalid cases cannot yield a qualified variant.
+3. 权威与安全边界：通过。结果仅为 `motion_authorized=false` 的 no-motion evidence；它不授权 route 执行，也不放宽桌面碰撞。 / Passed. The result is no-motion evidence with `motion_authorized=false`; it authorizes neither route execution nor relaxed table collision.
+4. 配置与复现：通过。候选由 versioned provider profile 声明，并在 materialized adaptation artifact 中保留；实际 evidence 使用独立时间戳目录。 / Passed. Candidates are declared by the versioned provider profile and retained in the materialized adaptation artifact; real evidence uses an independent timestamped directory.
+5. 可维护性：通过。复用现有 `qualify_geometry_artifact` 和 route materializer，不新增 planner、Grasp provider、store、scheduler 或平行执行路径。 / Passed. Existing `qualify_geometry_artifact` and the route materializer are reused without a new planner, Grasp provider, store, scheduler, or parallel execution path.
+6. 防止过度防御编程：通过。新增检查只约束本功能需要的有限、单调、非负候选列表；未新增 hash、baseline、冻结 contract 或审批 gate。 / Passed. New checks only constrain the finite, monotonic, non-negative candidate list required by this feature; no hash, baseline, frozen contract, or approval gate was added.
+
+### 下一步 / Next Step
+
+重新物化包含 selected contact variant 的 route package，独立校验其绑定后，再申请新的 simulation-only 人工审批。此前不得执行 planner、`scene.step()`、Gateway、Dora、Action 或硬件。 / Rematerialize a route package containing the selected contact variant, independently validate its bindings, then request fresh simulation-only human approval. Until then, do not run planner, `scene.step()`, Gateway, Dora, Action, or hardware.
+
+## Historical Index (Preserved)
+
+
 ## [v7.4.1] - 2026-09-09
 
 Ran the approved isolated RoboTwin dual-view probe for the v7.4.0 GraspGen

@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from robotwin_backend import RoboTwinRuntimeProfile, RoboTwinSensorBackend, load_runtime_profile
-from robotwin_simulation_probe_worker import _collision_vertices, _table_top_z
+from robotwin_planning_geometry import _collision_vertices, _table_top_z
 
 SCHEMA_VERSION = "paos-robotwin20-grasp-contact-geometry/v1"
 _LINKS = ("panda_hand", "panda_leftfinger", "panda_rightfinger")
@@ -35,41 +35,45 @@ def capture_contact_geometry(*, runtime_root: Path, runtime_profile: Path, artif
         task = backend._task
         if task is None:
             raise GraspContactGeometryError("RoboTwin task is unavailable")
-        arms: dict[str, Any] = {}
-        for arm, attribute in (("left", "left_entity"), ("right", "right_entity")):
-            entity = getattr(task.robot, attribute, None)
-            if entity is None:
-                raise GraspContactGeometryError(f"{arm} robot entity is unavailable")
-            links = {str(link.get_name()): link for link in entity.get_links()}
-            if set(_LINKS) - set(links):
-                raise GraspContactGeometryError(f"{arm} Panda gripper links are incomplete")
-            hand_pose = links["panda_hand"].get_entity_pose()
-            arms[arm] = {
-                "links": {
-                    name: _collision_vertices(links[name]).tolist() for name in _LINKS
-                },
-                "reference_hand_pose": {
-                    "frame_id": "world",
-                    "position_m": [float(item) for item in hand_pose.p],
-                    "orientation_wxyz": [float(item) for item in hand_pose.q],
-                },
-                "joint_position": [float(item) for item in entity.get_qpos()[:7]],
-            }
-        table_top = float(_table_top_z(task))
-        if not math.isfinite(table_top):
-            raise GraspContactGeometryError("table support plane is non-finite")
-        return {
-            "schema_version": SCHEMA_VERSION,
-            "task_name": profile["task_name"],
-            "seed": profile["seed"],
-            "scene_revision": f"{profile['task_name']}-{profile['seed']}-1",
-            "frame_id": "world",
-            "support_plane": {"normal": [0.0, 0.0, 1.0], "offset_m": table_top},
-            "arms": arms,
-            "motion_authorized": False,
-        }
+        return capture_task_geometry(task, profile)
     finally:
         backend.close()
+
+
+def capture_task_geometry(task: Any, profile: dict[str, Any]) -> dict[str, Any]:
+    arms: dict[str, Any] = {}
+    for arm, attribute in (("left", "left_entity"), ("right", "right_entity")):
+        entity = getattr(task.robot, attribute, None)
+        if entity is None:
+            raise GraspContactGeometryError(f"{arm} robot entity is unavailable")
+        links = {str(link.get_name()): link for link in entity.get_links()}
+        if set(_LINKS) - set(links):
+            raise GraspContactGeometryError(f"{arm} Panda gripper links are incomplete")
+        hand_pose = links["panda_hand"].get_entity_pose()
+        arms[arm] = {
+            "links": {
+                name: _collision_vertices(links[name]).tolist() for name in _LINKS
+            },
+            "reference_hand_pose": {
+                "frame_id": "world",
+                "position_m": [float(item) for item in hand_pose.p],
+                "orientation_wxyz": [float(item) for item in hand_pose.q],
+            },
+            "joint_position": [float(item) for item in entity.get_qpos()[:7]],
+        }
+    table_top = float(_table_top_z(task))
+    if not math.isfinite(table_top):
+        raise GraspContactGeometryError("table support plane is non-finite")
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "task_name": profile["task_name"],
+        "seed": profile["seed"],
+        "scene_revision": f"{profile['task_name']}-{profile['seed']}-1",
+        "frame_id": "world",
+        "support_plane": {"normal": [0.0, 0.0, 1.0], "offset_m": table_top},
+        "arms": arms,
+        "motion_authorized": False,
+    }
 
 
 def main() -> int:

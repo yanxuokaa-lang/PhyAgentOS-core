@@ -11,6 +11,7 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
+from itertools import product
 from typing import Any
 
 GRASP_POSTPROCESSING_SCHEMA_VERSION = "paos-robotwin20-grasp-postprocessing/v1"
@@ -176,8 +177,38 @@ def _backoff_position(position: Sequence[float], ingress: Sequence[float], dista
     return [float(p) - float(distance) * float(axis) for p, axis in zip(position, ingress)]
 
 
-def _object_contains(point: Sequence[float], center: Sequence[float], half_extents: Sequence[float]) -> bool:
-    return all(abs(float(a) - float(b)) <= float(extent) + 1e-9 for a, b, extent in zip(point, center, half_extents))
+def _object_contains(point: Sequence[float], center: Sequence[float], half_extents: Sequence[float], rotation: Sequence[Sequence[float]]) -> bool:
+    local = _rotate(list(zip(*rotation)), [a - b for a, b in zip(point, center)])
+    return all(abs(value) <= extent + 1e-9 for value, extent in zip(local, half_extents))
+
+
+def _pinch_geometry(contact: Sequence[float], center: Sequence[float], extents: Sequence[float], object_rotation: Sequence[Sequence[float]], hand_pose: Mapping[str, Any], links: Mapping[str, Any], delta: Sequence[float]) -> bool:
+    """Conservative Panda open-finger envelope, not a force-closure verdict."""
+    position, quaternion = _pose(hand_pose, "hand pose")
+    inverse = list(zip(*_quaternion_rotation(quaternion, "hand orientation")))
+    def local(point):
+        return _rotate(inverse, [point[i] - position[i] - delta[i] for i in range(3)])
+    corners = [local([center[i] + offset[i] for i in range(3)]) for offset in (
+        _rotate(object_rotation, [sign[i] * extents[i] for i in range(3)])
+        for sign in product((-1, 1), repeat=3)
+    )]
+    object_low = [min(point[i] for point in corners) for i in range(3)]
+    object_high = [max(point[i] for point in corners) for i in range(3)]
+    # Link snapshots are already at the nominal hand pose; their local bounds
+    # stay fixed when the complete gripper is translated by a backoff.
+    bounds = {}
+    for name, vertices in links.items():
+        points = [_rotate(inverse, [point[i] - position[i] for i in range(3)]) for point in vertices]
+        bounds[name] = ([min(p[i] for p in points) for i in range(3)], [max(p[i] for p in points) for i in range(3)])
+    fingers = sorted((bounds[name] for name in ("panda_leftfinger", "panda_rightfinger")), key=lambda bound: bound[0][1])
+    if object_low[1] < fingers[0][1][1] or object_high[1] > fingers[1][0][1]:
+        return False
+    center_local = local(contact)
+    for low, high in fingers:
+        if any(not low[i] <= center_local[i] <= high[i] for i in (0, 2)):
+            return False
+    hand_low, hand_high = bounds["panda_hand"]
+    return any(object_high[i] < hand_low[i] or object_low[i] > hand_high[i] for i in range(3))
 
 
 def qualify_contact_variants(
@@ -189,6 +220,10 @@ def qualify_contact_variants(
     support_normal: Sequence[float],
     support_offset_m: float,
     backoff_candidates_m: Sequence[float],
+    curobo_clearance_m: Sequence[float | None] | None = None,
+    object_orientation_xyzw: Sequence[float] = (0, 0, 0, 1),
+    hand_pose: Mapping[str, Any] | None = None,
+    gripper_links_m: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Select the smallest declared backoff that clears support and keeps pinch.
 
@@ -213,6 +248,7 @@ def qualify_contact_variants(
     if not vertices:
         raise GraspPostprocessingError("gripper collision vertices are empty")
     center = _vector(object_center_m, 3, "object center")
+    object_rotation = _quaternion_rotation(object_orientation_xyzw, "object orientation")
     extents = _vector(object_half_extents_m, 3, "object half extents")
     if any(item <= 0 for item in extents):
         raise GraspPostprocessingError("object half extents must be positive")
@@ -225,22 +261,51 @@ def qualify_contact_variants(
         raise GraspPostprocessingError("backoff candidates must be finite and non-negative")
     if distances != sorted(set(distances)):
         raise GraspPostprocessingError("backoff candidates must be strictly increasing")
+    if curobo_clearance_m is not None:
+        if len(curobo_clearance_m) != len(distances):
+            raise GraspPostprocessingError(
+                "curobo clearance evidence must match backoff candidates"
+            )
+        for value in curobo_clearance_m:
+            if value is not None and (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(float(value))
+            ):
+                raise GraspPostprocessingError("curobo clearance evidence is invalid")
 
     variants: list[dict[str, Any]] = []
-    for distance in distances:
+    for index, distance in enumerate(distances):
         target = _backoff_position(target_position, ingress, distance)
         contact = _backoff_position(contact_position, ingress, distance)
         delta = [target[index] - target_position[index] for index in range(3)]
         world_vertices = [[vertex[index] + delta[index] for index in range(3)] for vertex in vertices]
         clearance = min(sum(normal[index] * point[index] for index in range(3)) - support_offset for point in world_vertices)
-        pinch = _object_contains(contact, center, extents)
+        pinch = _object_contains(contact, center, extents, object_rotation)
+        finger_fit = None if gripper_links_m is None else _pinch_geometry(
+            contact, center, extents, object_rotation, hand_pose, gripper_links_m, delta
+        )
+        curobo_clearance = (
+            None if curobo_clearance_m is None else curobo_clearance_m[index]
+        )
+        curobo_valid = curobo_clearance_m is None or (
+            curobo_clearance is not None and float(curobo_clearance) >= 0
+        )
         variants.append({
             "backoff_m": distance,
             "robot_target_position_m": target,
             "contact_center_position_m": contact,
             "support_clearance_m": clearance,
             "pinch_center_inside_object": pinch,
-            "status": "valid" if clearance >= 0 and pinch else "rejected",
+            "finger_envelope_fit": finger_fit,
+            **({"curobo_clearance_m": curobo_clearance} if curobo_clearance_m is not None else {}),
+            "rejection_reasons": [reason for rejected, reason in (
+                (clearance < 0, "mesh_support_penetration"),
+                (not pinch, "contact_center_outside_object"),
+                (finger_fit is False, "finger_envelope_rejected"),
+                (not curobo_valid, "curobo_collision_or_unavailable"),
+            ) if rejected],
+            "status": "valid" if clearance >= 0 and pinch and finger_fit is not False and curobo_valid else "rejected",
         })
     selected = next((item for item in variants if item["status"] == "valid"), None)
     return {
@@ -250,6 +315,7 @@ def qualify_contact_variants(
         "variants": variants,
         "status": "qualified" if selected is not None else "unavailable",
         "motion_authorized": False,
+        "qualification_scope": "mesh_and_curobo_contact" if curobo_clearance_m is not None else "mesh_contact_only",
     }
 
 
@@ -280,6 +346,9 @@ def qualify_geometry_artifact(
     object_half_extents_m: Sequence[float],
     backoff_candidates_m: Sequence[float],
     target_hand_pose: Mapping[str, Any] | None = None,
+    curobo_clearance_m: Sequence[float | None] | None = None,
+    object_orientation_xyzw: Sequence[float] = (0, 0, 0, 1),
+    check_finger_envelope: bool = False,
 ) -> dict[str, Any]:
     """Bridge a RoboTwin geometry artifact into the pure qualification seam."""
 
@@ -322,6 +391,10 @@ def qualify_geometry_artifact(
         support_normal=support.get("normal"),
         support_offset_m=support.get("offset_m"),
         backoff_candidates_m=backoff_candidates_m,
+        curobo_clearance_m=curobo_clearance_m,
+        object_orientation_xyzw=object_orientation_xyzw,
+        hand_pose=target_pose,
+        gripper_links_m={name: _project_reference_vertices(value, reference_pose, target_pose) for name, value in links.items()} if check_finger_envelope else None,
     )
 
 

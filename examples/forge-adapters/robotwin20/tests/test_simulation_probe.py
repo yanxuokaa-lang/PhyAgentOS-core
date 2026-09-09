@@ -31,6 +31,7 @@ from robotwin_simulation_probe_worker import (
     _validate_gripper_table_clearance,
     _validate_request_policies,
     _validate_route_input_artifacts,
+    _validate_support_departure_results,
 )
 from test_route_readiness import _request as _route_request
 
@@ -112,6 +113,20 @@ def test_gripper_table_clearance_uses_loaded_collision_vertices_without_offset()
     task.robot.right_entity.links[0].shape._vertices[:, 2] = 0.73
     with pytest.raises(SimulationProbeError, match="penetrates table"):
         _validate_gripper_table_clearance(task, "right", np.zeros((1, 7)), phase="contact")
+
+
+def test_support_departure_allows_only_a_leading_world_contact_prefix():
+    world_contact = SimpleNamespace(value="Start state is colliding with world")
+    _validate_support_departure_results(
+        [(False, world_contact), (False, world_contact), (True, None), (True, None)]
+    )
+
+    with pytest.raises(SimulationProbeError, match="collision-invalid"):
+        _validate_support_departure_results(
+            [(False, world_contact), (True, None), (False, world_contact)]
+        )
+    with pytest.raises(SimulationProbeError, match="never clears"):
+        _validate_support_departure_results([(False, world_contact)])
 
 
 def test_probe_video_recorder_writes_sampled_dual_view_artifacts(tmp_path: Path, monkeypatch):

@@ -540,9 +540,13 @@ class RouteReadinessClient:
             raise RouteReadinessProfileError("route readiness worker is not no-motion")
         if response.get("world_change_started") is not False:
             raise RouteReadinessProfileError("route readiness worker world-change state is invalid")
-        if response.get("status") != "unavailable" or response.get("provider_available") is not False:
+        status = response.get("status")
+        if not (
+            (status == "unavailable" and response.get("provider_available") is False)
+            or (status == "fail" and response.get("provider_available") is True)
+        ):
             raise RouteReadinessProfileError(
-                "route readiness worker must remain unavailable until capabilities exist"
+                "route readiness worker cannot authorize a route without dynamic capabilities"
             )
         evidence = response.get("route_evidence")
         if not isinstance(evidence, list) or len(evidence) != len(request["candidates"]):
@@ -574,7 +578,10 @@ class RouteReadinessClient:
                 or item.get("world_change_started") is not False
                 or not isinstance(item.get("checks"), Mapping)
                 or set(item["checks"]) != set(ROUTE_CHECKS)
-                or any(value != "unavailable" for value in item["checks"].values())
+                or any(value not in {"pass", "fail", "unavailable"} for value in item["checks"].values())
+                or (status == "unavailable" and any(value != "unavailable" for value in item["checks"].values()))
+                or item["checks"]["contact_dynamics"] != "unavailable"
+                or item["checks"]["stop_control"] != "unavailable"
             ):
                 raise RouteReadinessProfileError("route readiness evidence identity is invalid")
         return dict(response)

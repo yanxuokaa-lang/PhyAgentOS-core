@@ -69,6 +69,64 @@ def test_cli_qualifies_using_profile_derived_hand_pose(tmp_path):
     assert result["motion_authorized"] is False
 
 
+def test_cli_rejects_mesh_only_variant_when_curobo_evidence_fails(tmp_path):
+    files = _inputs(tmp_path)
+    curobo = _write(
+        tmp_path / "curobo.json",
+        {
+            "schema_version": "paos-robotwin20-curobo-contact-qualification/v1",
+            "candidate_ref": "candidate://block-green-1/0",
+            "scene_revision": "scene-1",
+            "arm_id": "right",
+            "motion_authorized": False,
+            "variants": [
+                {"backoff_m": 0.0, "planner_status": "success", "clearance_m": -0.001},
+                {"backoff_m": 0.005, "planner_status": "success", "clearance_m": -0.001},
+                {"backoff_m": 0.01, "planner_status": "success", "clearance_m": -0.001},
+                {"backoff_m": 0.015, "planner_status": "success", "clearance_m": -0.001},
+                {"backoff_m": 0.02, "planner_status": "success", "clearance_m": 0.001},
+            ],
+        },
+    )
+    result = cli.qualify(
+        candidate_file=files["candidate"],
+        geometry_file=files["geometry"],
+        scene_file=files["scene"],
+        profile_file=files["profile"],
+        entity_ref="entity://block-green-1",
+        arm_id="right",
+        curobo_file=curobo,
+    )
+    assert result["status"] == "qualified"
+    assert result["selected_backoff_m"] == pytest.approx(0.02)
+    assert result["variants"][0]["curobo_clearance_m"] == pytest.approx(-0.001)
+
+
+def test_cli_rejects_unbound_curobo_evidence(tmp_path):
+    files = _inputs(tmp_path)
+    curobo = _write(
+        tmp_path / "curobo.json",
+        {
+            "schema_version": "paos-robotwin20-curobo-contact-qualification/v1",
+            "candidate_ref": "candidate://other/0",
+            "scene_revision": "scene-1",
+            "arm_id": "right",
+            "motion_authorized": False,
+            "variants": [],
+        },
+    )
+    with pytest.raises(cli.QualificationCliError, match="binding"):
+        cli.qualify(
+            candidate_file=files["candidate"],
+            geometry_file=files["geometry"],
+            scene_file=files["scene"],
+            profile_file=files["profile"],
+            entity_ref="entity://block-green-1",
+            arm_id="right",
+            curobo_file=curobo,
+        )
+
+
 def test_cli_reports_stale_geometry_binding(tmp_path):
     files = _inputs(tmp_path)
     geometry = json.loads(files["geometry"].read_text())

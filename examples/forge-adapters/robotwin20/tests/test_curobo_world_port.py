@@ -86,6 +86,24 @@ def test_port_updates_both_motion_generators_for_both_arms_without_motion():
         }
 
 
+def test_released_target_becomes_obstacle_without_dropping_existing_world():
+    from robotwin_curobo_world_port import add_released_object
+    planner = FakePlanner()
+    previous = add_released_object(planner, {"position_m": [.1, .2, .8], "orientation_xyzw": [0, 0, 0, 1]}, [.02] * 3)
+    for model, world in previous:
+        assert [item.name for item in model.world_model.cuboid] == ["table", "released_target"]
+        assert [item.name for item in world.cuboid] == ["table"]
+        model.update_world(world)
+
+
+def test_released_target_cannot_silently_overflow_collision_cache():
+    from robotwin_curobo_world_port import add_released_object
+    planner = FakePlanner(capacity=1)
+    with pytest.raises(CuroboWorldPortError, match="no slot"):
+        add_released_object(planner, {"position_m": [.1, .2, .8], "orientation_xyzw": [0, 0, 0, 1]}, [.02] * 3)
+    assert len(planner.motion_gen.world_model.cuboid) == 1
+
+
 def test_port_projects_bound_scene_table_pose_into_each_planner_frame():
     planners = {"left": FakePlanner(), "right": FakePlanner()}
     for planner in planners.values():

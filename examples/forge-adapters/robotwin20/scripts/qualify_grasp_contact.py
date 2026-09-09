@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+from copy import deepcopy
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -13,6 +14,7 @@ import yaml
 
 from robotwin20_adapter.grasp_postprocessing import (
     GraspPostprocessingError,
+    _rotation_quaternion,
     derive_robot_hand_pose,
     qualify_geometry_artifact,
 )
@@ -34,7 +36,13 @@ def _read_json(path: Path, label: str) -> Mapping[str, Any]:
     return value
 
 
-def _candidate(value: Mapping[str, Any]) -> Mapping[str, Any]:
+def _candidate(value: Mapping[str, Any], candidate_ref: str | None = None) -> Mapping[str, Any]:
+    if candidate_ref is not None:
+        candidates = value.get("candidates", [value.get("candidate", value)])
+        candidate = next((item for item in candidates if item.get("candidate_ref") == candidate_ref), None)
+        if candidate is None:
+            raise QualificationCliError("requested candidate is unavailable")
+        return {**candidate, "scene_revision": candidate.get("scene_revision", value.get("scene_revision"))}
     candidate = value.get("candidate", value)
     if not isinstance(candidate, Mapping):
         raise QualificationCliError("candidate artifact does not contain a candidate")
@@ -79,7 +87,7 @@ def _profile(path: Path) -> Mapping[str, Any]:
     return adaptation
 
 
-def _scene_object(scene: Mapping[str, Any], entity_ref: str) -> tuple[list[float], list[float]]:
+def _scene_object(scene: Mapping[str, Any], entity_ref: str) -> tuple[list[float], list[float], list[float]]:
     objects = scene.get("objects")
     if not isinstance(objects, list):
         raise QualificationCliError("scene facts objects are unavailable")
@@ -94,20 +102,72 @@ def _scene_object(scene: Mapping[str, Any], entity_ref: str) -> tuple[list[float
     half_extents = [float(item) for item in extents]
     if any(not math.isfinite(item) for item in [*center, *half_extents]) or any(item <= 0 for item in half_extents):
         raise QualificationCliError("scene facts object geometry is invalid")
-    return center, half_extents
+    return center, half_extents, _rotation_quaternion([transform[i:i + 3] for i in (0, 4, 8)])
 
 
-def qualify(*, candidate_file: Path, geometry_file: Path, scene_file: Path, profile_file: Path, entity_ref: str, arm_id: str) -> dict[str, Any]:
-    candidate = _candidate(_read_json(candidate_file, "candidate artifact"))
+def _curobo_clearance(
+    path: Path | None,
+    *,
+    candidate: Mapping[str, Any],
+    arm_id: str,
+    backoff_candidates_m: list[float],
+) -> list[float | None] | None:
+    if path is None:
+        return None
+    value = _read_json(path, "Curobo contact qualification")
+    if value.get("schema_version") != "paos-robotwin20-curobo-contact-qualification/v1":
+        raise QualificationCliError("Curobo contact qualification schema is unsupported")
+    if (
+        value.get("candidate_ref") != candidate.get("candidate_ref")
+        or value.get("scene_revision") != candidate.get("scene_revision")
+        or value.get("arm_id") != arm_id
+        or value.get("motion_authorized") is not False
+    ):
+        raise QualificationCliError("Curobo contact qualification binding is invalid")
+    variants = value.get("variants")
+    if not isinstance(variants, list) or len(variants) != len(backoff_candidates_m):
+        raise QualificationCliError("Curobo contact qualification candidates are incomplete")
+    result: list[float | None] = []
+    for expected, item in zip(backoff_candidates_m, variants):
+        if not isinstance(item, Mapping) or float(item.get("backoff_m", float("nan"))) != expected:
+            raise QualificationCliError("Curobo contact qualification backoff binding is invalid")
+        status = item.get("planner_status")
+        clearance = item.get("clearance_m")
+        if status != "success":
+            result.append(None)
+            continue
+        if isinstance(clearance, bool) or not isinstance(clearance, (int, float)) or not math.isfinite(float(clearance)):
+            raise QualificationCliError("Curobo contact qualification clearance is invalid")
+        result.append(float(clearance))
+    return result
+
+
+def qualify(*, candidate_file: Path, geometry_file: Path, scene_file: Path, profile_file: Path, entity_ref: str, arm_id: str, curobo_file: Path | None = None, candidate_ref: str | None = None, runtime_root: Path | None = None, runtime_profile: Path | None = None, collision_world_file: Path | None = None, check_finger_envelope: bool = False) -> dict[str, Any]:
+    candidate = _candidate(_read_json(candidate_file, "candidate artifact"), candidate_ref)
     geometry = _read_json(geometry_file, "contact geometry artifact")
     scene = _read_json(scene_file, "scene facts")
     adaptation = _profile(profile_file)
     if candidate.get("entity_ref") != entity_ref:
         raise QualificationCliError("candidate entity binding is invalid")
-    center, extents = _scene_object(scene, entity_ref)
+    center, extents, orientation = _scene_object(scene, entity_ref)
     grasp = candidate.get("execution_grasp")
     if not isinstance(grasp, Mapping) or not isinstance(grasp.get("robot_target_pose"), Mapping):
         raise QualificationCliError("candidate execution grasp is incomplete")
+    backoff_candidates = adaptation.get("contact_backoff_candidates_m", [0.0])
+    curobo_clearance = _curobo_clearance(
+        curobo_file,
+        candidate=candidate,
+        arm_id=arm_id,
+        backoff_candidates_m=backoff_candidates,
+    )
+    live_evidence = None
+    if runtime_root is not None:
+        if curobo_file is not None or runtime_profile is None or collision_world_file is None:
+            raise QualificationCliError("live qualification requires runtime profile and collision world, without replay Curobo evidence")
+        policy = yaml.safe_load(profile_file.read_text())["route_policy"]
+        live_evidence, geometry = _live_qualification(runtime_root, runtime_profile, candidate, collision_world_file, backoff_candidates, arm_id, geometry_file.parent, float(policy["approach_clearance_m"]))
+        curobo_clearance = [item["clearance_m"] if item["planner_status"] == "success" else None for item in live_evidence["variants"]]
+        check_finger_envelope = True
     try:
         hand_pose = derive_robot_hand_pose(
             grasp["robot_target_pose"],
@@ -115,17 +175,52 @@ def qualify(*, candidate_file: Path, geometry_file: Path, scene_file: Path, prof
             gripper_bias_m=adaptation["robot_gripper_bias_m"],
             delta_matrix=adaptation["robot_delta_matrix"],
         )
-        return qualify_geometry_artifact(
+        result = qualify_geometry_artifact(
             candidate,
             geometry,
             arm_id=arm_id,
             object_center_m=center,
             object_half_extents_m=extents,
-            backoff_candidates_m=adaptation.get("contact_backoff_candidates_m", [0.0]),
+            backoff_candidates_m=backoff_candidates,
             target_hand_pose=hand_pose,
+            curobo_clearance_m=curobo_clearance,
+            object_orientation_xyzw=orientation,
+            check_finger_envelope=check_finger_envelope,
         )
+        if live_evidence is not None:
+            result["provider_evaluation"] = live_evidence
+        return result
     except (GraspPostprocessingError, TypeError, ValueError) as exc:
         raise QualificationCliError("contact qualification failed") from exc
+
+
+def _live_qualification(runtime_root, runtime_profile, candidate, collision_world_file, distances, arm, artifact_root, approach_clearance_m):
+    from robotwin_backend import RoboTwinRuntimeProfile, RoboTwinSensorBackend, load_runtime_profile
+    from robotwin_grasp_contact_geometry_worker import capture_task_geometry
+    from robotwin_route_planner import evaluate_contact, prepare_planning_world
+
+    profile = load_runtime_profile(runtime_profile)
+    if candidate["scene_revision"] != f"{profile['task_name']}-{profile['seed']}-1":
+        raise QualificationCliError("live qualification scene revision mismatch")
+    world = _read_json(collision_world_file, "collision world")
+    if world["scene_revision"] != candidate["scene_revision"] or world["target_entity_ref"] != candidate["entity_ref"]:
+        raise QualificationCliError("live qualification collision world mismatch")
+    backend = RoboTwinSensorBackend(RoboTwinRuntimeProfile(runtime_root=runtime_root, artifact_root=artifact_root, task_name=profile["task_name"], task_config=profile["task_config"], embodiment=profile["embodiment"]))
+    try:
+        backend.reset(seed=profile["seed"])
+        task = backend._task
+        world_evidence = prepare_planning_world(task, world)
+        geometry = capture_task_geometry(task, profile)
+        variants = []
+        for distance in distances:
+            grasp = deepcopy(candidate["execution_grasp"])
+            ingress = grasp["ingress_direction"]["vector"]
+            for key in ("robot_target_pose", "contact_center_pose"):
+                grasp[key]["position_m"] = [p - distance * axis for p, axis in zip(grasp[key]["position_m"], ingress)]
+            variants.append({"backoff_m": distance, **evaluate_contact(task, grasp, arm, approach_clearance_m)})
+        return {"candidate_ref": candidate["candidate_ref"], "arm_id": arm, "scene_revision": candidate["scene_revision"], "runtime_profile": dict(profile), "runtime_root": str(runtime_root), "variants": variants, "world": world_evidence, "simulator_steps": 0, "motion_authorized": False}, geometry
+    finally:
+        backend.close()
 
 
 def main() -> int:
@@ -136,8 +231,20 @@ def main() -> int:
     parser.add_argument("--route-input-profile", type=Path, required=True)
     parser.add_argument("--entity-ref", required=True)
     parser.add_argument("--arm-id", required=True)
+    parser.add_argument("--candidate-ref")
+    parser.add_argument("--runtime-root", type=Path)
+    parser.add_argument("--runtime-profile", type=Path)
+    parser.add_argument("--collision-world", type=Path)
+    parser.add_argument("--check-finger-envelope", action="store_true")
+    parser.add_argument(
+        "--curobo-qualification",
+        type=Path,
+        help="Optional provider-owned no-motion Curobo sphere clearance artifact.",
+    )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
+    if any((args.runtime_root, args.runtime_profile, args.collision_world)) and not all((args.runtime_root, args.runtime_profile, args.collision_world)):
+        parser.error("live qualification requires runtime-root, runtime-profile and collision-world together")
     if not args.output.is_absolute() or args.output.exists() or args.output.is_symlink():
         raise SystemExit("output must be a new absolute file")
     try:
@@ -148,6 +255,12 @@ def main() -> int:
             profile_file=args.route_input_profile,
             entity_ref=args.entity_ref,
             arm_id=args.arm_id,
+            curobo_file=args.curobo_qualification,
+            candidate_ref=args.candidate_ref,
+            runtime_root=args.runtime_root,
+            runtime_profile=args.runtime_profile,
+            collision_world_file=args.collision_world,
+            check_finger_envelope=args.check_finger_envelope,
         )
     except QualificationCliError as exc:
         raise SystemExit(str(exc)) from exc

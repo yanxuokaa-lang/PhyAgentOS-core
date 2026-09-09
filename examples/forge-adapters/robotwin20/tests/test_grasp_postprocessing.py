@@ -12,6 +12,28 @@ from robotwin20_adapter.grasp_postprocessing import (
 )
 
 
+def test_rotated_object_containment_uses_object_frame():
+    from robotwin20_adapter.grasp_postprocessing import _object_contains
+    rotation = [[0, -1, 0], [1, 0, 0], [0, 0, 1]]
+    assert _object_contains([0, .08, 0], [0, 0, 0], [.1, .02, .02], rotation)
+    assert not _object_contains([.08, 0, 0], [0, 0, 0], [.1, .02, .02], rotation)
+
+
+def test_center_inside_is_insufficient_for_finger_envelope():
+    from robotwin20_adapter.grasp_postprocessing import _pinch_geometry
+    hand = {"frame_id": "world", "position_m": [0, 0, 0], "orientation_xyzw": [0, 0, 0, 1]}
+    links = {
+        "panda_hand": [[-.03, -.05, -.02], [.03, .05, 0]],
+        "panda_leftfinger": [[-.01, -.05, .01], [.01, -.04, .06]],
+        "panda_rightfinger": [[-.01, .04, .01], [.01, .05, .06]],
+    }
+    identity = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+    assert _pinch_geometry([0, 0, .04], [0, 0, .04], [.01, .02, .01], identity, hand, links, [0, 0, 0])
+    assert not _pinch_geometry([0, 0, .04], [0, 0, .04], [.01, .06, .01], identity, hand, links, [0, 0, 0])
+    assert not _pinch_geometry([0, 0, .09], [0, 0, .09], [.01, .02, .01], identity, hand, links, [0, 0, 0])
+
+
+
 def _candidate():
     return {
         "candidate_ref": "candidate://block/0",
@@ -61,6 +83,51 @@ def test_nominal_pose_is_retained_when_already_clear():
         backoff_candidates_m=[0.0, 0.04],
     )
     assert result["selected_backoff_m"] == 0.0
+
+
+def test_curobo_clearance_is_required_when_provider_evidence_is_bound():
+    result = qualify_contact_variants(
+        _candidate(),
+        gripper_vertices_m=[[0.0, 0.0, 0.80]],
+        object_center_m=[0.0, 0.0, 0.8],
+        object_half_extents_m=[0.05, 0.05, 0.10],
+        support_normal=[0.0, 0.0, 1.0],
+        support_offset_m=0.74,
+        backoff_candidates_m=[0.0, 0.04],
+        curobo_clearance_m=[-0.001, 0.002],
+    )
+    assert result["selected_backoff_m"] == pytest.approx(0.04)
+    assert result["variants"][0]["curobo_clearance_m"] == pytest.approx(-0.001)
+    assert result["variants"][0]["status"] == "rejected"
+
+
+def test_curobo_planner_failure_is_not_treated_as_clearance():
+    result = qualify_contact_variants(
+        _candidate(),
+        gripper_vertices_m=[[0.0, 0.0, 0.80]],
+        object_center_m=[0.0, 0.0, 0.8],
+        object_half_extents_m=[0.05, 0.05, 0.10],
+        support_normal=[0.0, 0.0, 1.0],
+        support_offset_m=0.74,
+        backoff_candidates_m=[0.0],
+        curobo_clearance_m=[None],
+    )
+    assert result["status"] == "unavailable"
+    assert result["selected_backoff_m"] is None
+
+
+def test_curobo_clearance_evidence_must_match_candidates():
+    with pytest.raises(GraspPostprocessingError, match="match backoff candidates"):
+        qualify_contact_variants(
+            _candidate(),
+            gripper_vertices_m=[[0.0, 0.0, 0.80]],
+            object_center_m=[0.0, 0.0, 0.8],
+            object_half_extents_m=[0.05, 0.05, 0.10],
+            support_normal=[0.0, 0.0, 1.0],
+            support_offset_m=0.74,
+            backoff_candidates_m=[0.0, 0.04],
+            curobo_clearance_m=[0.01],
+        )
 
 
 def test_unavailable_is_explicit_when_no_variant_can_keep_pinch_or_clear_support():
