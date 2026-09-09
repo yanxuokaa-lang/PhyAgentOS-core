@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import pytest
+from PhyAgentOS.agent.planning_loop import NodeContextProvider, PlanningLoopAdapter
 from PhyAgentOS.config.schema import ForgeConfig
 from PhyAgentOS.forge.task import AgentTaskCoordinator, AgentTaskError
+from PhyAgentOS.planning import AdmissionContext, ToolResultEnvelope
 from PhyAgentOS.verification.contracts import TaskVerificationContract
 
 from pick_place_workflow.multi_object_agent import (
@@ -166,3 +168,60 @@ async def test_runner_rejects_stale_scene_before_agent_loop(tmp_path):
         )
     with pytest.raises(AgentTaskError, match="not found"):
         coordinator.get_task("task-stale-1")
+
+
+@pytest.mark.asyncio
+async def test_two_object_dry_run_propagates_scene_revision_to_later_object(tmp_path):
+    coordinator = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=object())
+    runner = MultiObjectAgentRunner(
+        coordinator=coordinator,
+        agent_loop=object(),
+        scene_revision_provider=lambda _task_id: "scene://s0",
+    )
+    task = await runner.create_task(
+        task_description="place two blocks sequentially",
+        entities=[entity("green"), entity("red")],
+        verification=TaskVerificationContract(mode="off"),
+        task_id="task-revision-propagation",
+        revision_id="revision-revision-propagation",
+    )
+    current_scene = {"value": "scene://s0"}
+    contexts: list[tuple[str, str]] = []
+
+    def admission(_task_id: str) -> AdmissionContext:
+        return AdmissionContext(scene_revision=current_scene["value"])
+
+    def execute(context):
+        contexts.append((context.node_id, context.scene_revision))
+        changed = context.node_id.endswith(".place")
+        next_scene = None
+        evidence = ()
+        if changed:
+            next_scene = "scene://s2" if current_scene["value"] == "scene://s0" else "scene://s3"
+            current_scene["value"] = next_scene
+            entity_ref = context.input_bindings["entity_ref"]
+            evidence = (f"placed:{entity_ref}",)
+        return ToolResultEnvelope(
+            task_id=context.task_id,
+            revision_id=context.revision_id,
+            node_id=context.node_id,
+            tool_id=context.capability,
+            status="succeeded",
+            world_changed=changed,
+            new_scene_revision=next_scene,
+            evidence_refs=evidence,
+        )
+
+    adapter = PlanningLoopAdapter(
+        coordinator,
+        context_provider=NodeContextProvider(coordinator.get_task),
+        node_executor=execute,
+        admission_context_provider=admission,
+    )
+    result = await adapter.run(task.task_id, scene_revision="scene://s0")
+    assert result.status == "completed"
+    assert contexts[-1] == ("verify", "scene://s3")
+    assert next(scene for node, scene in contexts if node == "relocate_2.observe") == "scene://s2"
+    assert [node for node, _ in contexts if node.endswith(".place")] == [
+        "relocate_1.place", "relocate_2.place"
+    ]

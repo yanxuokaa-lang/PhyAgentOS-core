@@ -8,6 +8,25 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v8.4.5 (2026-09-09 21:20) - codex
+
+### 变更摘要 / Change Summary
+
+- [完成] [policy] [test] 增加两对象 dry-run 的 scene revision 传播回归，证明首个 world-changing 节点后的后续对象使用新场景版本，并保持最终 verify 汇合 / add a two-object dry-run regression for scene-revision propagation and final verify join. (local)
+- [Completed] [Policy] [Test] Add a two-object dry-run regression for scene-revision propagation and final verify join. (local)
+
+### 文件变更详情 / File Details
+
+- `examples/forge-skills/pick-place-workflow/tests/test_multi_object_agent.py` L173-L227 [新增 / Added]
+
+### 验证 / Validation
+
+- Focused `9 passed`; planning-loop combined `23 passed`; broad `581 passed`; Ruff, compileall, and diff checks passed.
+
+### Git 提交 / Git Commit
+
+- Commit: `556de09`; Branch: `feature/planning-loop`; 时间 / Time: 2026-09-09 (Asia/Shanghai).
+
 ## v8.4.4 (2026-09-09 21:05) - codex
 
 ### 变更摘要 / Change Summary
