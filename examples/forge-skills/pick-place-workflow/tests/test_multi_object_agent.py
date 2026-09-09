@@ -34,6 +34,7 @@ from pick_place_workflow.multi_object_agent import (
     MultiObjectAgentRunner,
     SceneObjectBinding,
     bind_scene_objects,
+    bind_understood_scene_objects,
 )
 
 
@@ -49,6 +50,53 @@ def entity(name: str, *, destination: str | None = None, scene: str = "scene://s
         "geometry_artifact_ref": f"artifact://geometry/{name}",
         "category": "block",
     }
+
+
+def understood_scene(*names: str):
+    understanding = {
+        "status": "available",
+        "observation_ref": "observation://s0/camera_front",
+        "scene_revision": "scene://s0",
+        "frame": {"frame_id": "camera_front", "unit": "m"},
+        "calibration_ref": "artifact://calibration/front",
+        "entities": [
+            {
+                "entity_ref": f"entity://{name}",
+                "category": "block",
+                "confidence": 0.95,
+                "provenance": ["artifact://observation/s0/rgb"],
+            }
+            for name in names
+        ],
+        "ambiguities": [],
+        "derived_artifacts": [
+            {
+                "artifact_ref": f"artifact://geometry/{name}",
+                "entity_ref": f"entity://{name}",
+                "observation_ref": "observation://s0/camera_front",
+                "scene_revision": "scene://s0",
+                "frame_id": "camera_front",
+                "calibration_ref": "artifact://calibration/front",
+                "provenance": ["artifact://observation/s0/depth"],
+            }
+            for name in names
+        ],
+    }
+    measured = [
+        {
+            "entity_ref": f"entity://{name}",
+            "benchmark_object_ref": f"block-{name}-1",
+            "destination_ref": f"destination://slot-{name}",
+            "observation_ref": "observation://s0/camera_front",
+            "scene_revision": "scene://s0",
+            "frame_id": "camera_front",
+            "calibration_ref": "artifact://calibration/front",
+            "geometry_artifact_ref": f"artifact://geometry/{name}",
+            "category": "block",
+        }
+        for name in names
+    ]
+    return understanding, measured
 
 
 class DeterministicTaskVerifier:
@@ -107,6 +155,75 @@ def test_bind_scene_objects_excludes_surface_and_requires_unique_bindings():
 def test_bind_scene_objects_rejects_mixed_scene_revision():
     with pytest.raises(MultiObjectAgentError, match="scene revision"):
         bind_scene_objects([entity("a", scene="scene://s0"), entity("b", scene="scene://s1")])
+
+
+def test_bind_understood_scene_objects_can_select_one_semantic_entity():
+    understanding, measured = understood_scene("green", "red")
+    bound = bind_understood_scene_objects(
+        understanding, measured, entity_refs=["entity://red"],
+    )
+    assert [item.entity_ref for item in bound] == ["entity://red"]
+    assert bound[0].destination_ref == "destination://slot-red"
+    assert bound[0].required_evidence == (
+        "artifact://geometry/red", "artifact://observation/s0/depth",
+    )
+
+
+def test_bind_understood_scene_objects_joins_all_unique_measured_objects():
+    understanding, measured = understood_scene("green", "red")
+    bound = bind_understood_scene_objects(understanding, measured)
+    assert [item.entity_ref for item in bound] == ["entity://green", "entity://red"]
+    assert {item.benchmark_object_ref for item in bound} == {"block-green-1", "block-red-1"}
+
+
+def test_bind_understood_scene_objects_rejects_duplicate_geometry_artifacts():
+    understanding, measured = understood_scene("green", "red")
+    understanding["derived_artifacts"].append(dict(understanding["derived_artifacts"][0]))
+    with pytest.raises(MultiObjectAgentError, match="geometry artifact identities"):
+        bind_understood_scene_objects(understanding, measured)
+
+
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [("ambiguity", "ambiguities"), ("scene", "drift"), ("geometry", "geometry evidence")],
+)
+def test_bind_understood_scene_objects_rejects_untrusted_join(change, message):
+    understanding, measured = understood_scene("green")
+    if change == "ambiguity":
+        understanding["ambiguities"] = [{"code": "ambiguous", "entity_refs": ["entity://green"]}]
+    elif change == "scene":
+        measured[0]["scene_revision"] = "scene://stale"
+    else:
+        measured[0]["geometry_artifact_ref"] = "artifact://geometry/other"
+    with pytest.raises(MultiObjectAgentError, match=message):
+        bind_understood_scene_objects(understanding, measured)
+
+
+@pytest.mark.asyncio
+async def test_runner_creates_plan_from_understanding_and_measured_scene(tmp_path):
+    understanding, measured = understood_scene("green", "red")
+    coordinator = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=object())
+    runner = MultiObjectAgentRunner(
+        coordinator=coordinator,
+        agent_loop=object(),
+        scene_revision_provider=lambda _task_id: "scene://s0",
+    )
+    task = await runner.create_task_from_scene_understanding(
+        task_description="place the red and green blocks",
+        understanding=understanding,
+        measured_objects=measured,
+        verification=TaskVerificationContract(mode="off"),
+        task_id="task-understood-scene",
+        revision_id="revision-understood-scene",
+        entity_refs=["entity://red", "entity://green"],
+    )
+    graph = task.active_revision.plan_graph
+    assert graph is not None
+    assert {
+        node.input_bindings["entity_ref"]
+        for node in graph.nodes
+        if "entity_ref" in node.input_bindings
+    } == {"entity://red", "entity://green"}
 
 
 @pytest.mark.asyncio

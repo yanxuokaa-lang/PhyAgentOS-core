@@ -9,7 +9,7 @@ completion.
 from __future__ import annotations
 
 import inspect
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from typing import Any, Literal
 
 from PhyAgentOS.agent.long_horizon import LongHorizonTaskController, LongHorizonTaskResult
@@ -101,6 +101,126 @@ def bind_scene_objects(
     return selected
 
 
+def bind_understood_scene_objects(
+    understanding: Mapping[str, Any],
+    measured_objects: Iterable[Mapping[str, Any]],
+    *,
+    entity_refs: Iterable[str] | None = None,
+    category: str = "block",
+) -> tuple[SceneObjectBinding, ...]:
+    """Join semantic claims to one current, measured scene.
+
+    The understanding provider supplies semantic identity and geometry evidence;
+    the adapter supplies benchmark identity and destination geometry.  This
+    pure join is intentionally below the provider boundary: it does not call a
+    model, inspect a simulator, persist a task, or authorize an Action.
+    """
+
+    if not isinstance(understanding, Mapping) or understanding.get("status") != "available":
+        raise MultiObjectAgentError("scene understanding is not available")
+    if understanding.get("ambiguities"):
+        raise MultiObjectAgentError("scene understanding contains unresolved ambiguities")
+    observation_ref = understanding.get("observation_ref")
+    scene_revision = understanding.get("scene_revision")
+    frame = understanding.get("frame")
+    calibration_ref = understanding.get("calibration_ref")
+    frame_id = frame.get("frame_id") if isinstance(frame, Mapping) else None
+    if not all(isinstance(value, str) and value for value in (
+        observation_ref, scene_revision, frame_id, calibration_ref,
+    )):
+        raise MultiObjectAgentError("scene understanding has incomplete binding facts")
+
+    claims = understanding.get("entities")
+    if not isinstance(claims, (list, tuple)):
+        raise MultiObjectAgentError("scene understanding entities are missing")
+    claims_by_ref: dict[str, Mapping[str, Any]] = {}
+    for claim in claims:
+        if not isinstance(claim, Mapping):
+            raise MultiObjectAgentError("scene understanding entity claim is invalid")
+        ref = claim.get("entity_ref")
+        if not isinstance(ref, str) or not ref.startswith("entity://") or ref in claims_by_ref:
+            raise MultiObjectAgentError("scene understanding entity identities are invalid")
+        claims_by_ref[ref] = claim
+
+    requested = tuple(entity_refs) if entity_refs is not None else tuple(
+        ref for ref, claim in claims_by_ref.items() if claim.get("category") == category
+    )
+    if not requested or len(requested) != len(set(requested)):
+        raise MultiObjectAgentError("semantic entity selection is empty or not unique")
+    if any(ref not in claims_by_ref for ref in requested):
+        raise MultiObjectAgentError("semantic entity selection references an unknown entity")
+    if any(claims_by_ref[ref].get("category") != category for ref in requested):
+        raise MultiObjectAgentError(f"semantic entity selection is not executable {category!r} objects")
+
+    measured_by_ref: dict[str, Mapping[str, Any]] = {}
+    for measured in measured_objects:
+        if not isinstance(measured, Mapping):
+            raise MultiObjectAgentError("measured scene object is invalid")
+        ref = measured.get("entity_ref")
+        if not isinstance(ref, str) or ref in measured_by_ref:
+            raise MultiObjectAgentError("measured scene entity identities are invalid")
+        measured_by_ref[ref] = measured
+
+    derived = understanding.get("derived_artifacts", ())
+    if not isinstance(derived, (list, tuple)):
+        raise MultiObjectAgentError("scene understanding geometry evidence is invalid")
+    derived_by_ref: dict[str, Mapping[str, Any]] = {}
+    for item in derived:
+        if not isinstance(item, Mapping) or not isinstance(item.get("artifact_ref"), str):
+            raise MultiObjectAgentError("scene understanding geometry evidence is invalid")
+        artifact_ref = item["artifact_ref"]
+        if artifact_ref in derived_by_ref:
+            raise MultiObjectAgentError("scene understanding geometry artifact identities are invalid")
+        derived_by_ref[artifact_ref] = item
+    bindings: list[dict[str, Any]] = []
+    for ref in requested:
+        measured = measured_by_ref.get(ref)
+        if measured is None:
+            raise MultiObjectAgentError(f"measured scene is missing semantic entity {ref}")
+        required = (
+            "benchmark_object_ref", "destination_ref", "observation_ref", "scene_revision",
+            "frame_id", "calibration_ref", "geometry_artifact_ref", "category",
+        )
+        if any(not isinstance(measured.get(key), str) or not measured[key] for key in required):
+            raise MultiObjectAgentError(f"measured scene binding is incomplete for {ref}")
+        for key, expected in (
+            ("observation_ref", observation_ref), ("scene_revision", scene_revision),
+            ("frame_id", frame_id), ("calibration_ref", calibration_ref),
+        ):
+            if measured[key] != expected:
+                raise MultiObjectAgentError(f"measured scene binding drift for {ref}: {key}")
+        if measured["category"] != category:
+            raise MultiObjectAgentError(f"measured scene object {ref} is not an executable {category!r}")
+        geometry = derived_by_ref.get(measured["geometry_artifact_ref"])
+        if not isinstance(geometry, Mapping) or any(
+            geometry.get(key) != expected
+            for key, expected in (
+                ("entity_ref", ref), ("observation_ref", observation_ref),
+                ("scene_revision", scene_revision), ("frame_id", frame_id),
+                ("calibration_ref", calibration_ref),
+            )
+        ):
+            raise MultiObjectAgentError(f"geometry evidence is not bound to measured entity {ref}")
+        bindings.append({
+            "entity_ref": ref,
+            "benchmark_object_ref": measured["benchmark_object_ref"],
+            "destination_ref": measured["destination_ref"],
+            "observation_ref": observation_ref,
+            "scene_revision": scene_revision,
+            "frame_id": frame_id,
+            "calibration_ref": calibration_ref,
+            "geometry_artifact_ref": measured["geometry_artifact_ref"],
+            "capability_snapshot_ref": measured.get("capability_snapshot_ref"),
+            "assignment_ref": measured.get("assignment_ref"),
+            "category": category,
+            "required_evidence": tuple(dict.fromkeys((
+                measured["geometry_artifact_ref"],
+                *tuple(item for item in geometry.get("provenance", ()) if isinstance(item, str)),
+            ))),
+        })
+    return bind_scene_objects(bindings, category=category)
+
+
 class MultiObjectAgentRunner:
     """Create and execute one multi-object AgentTask through PAOS authorities."""
 
@@ -188,6 +308,28 @@ class MultiObjectAgentRunner:
             task = await task
         return task
 
+    async def create_task_from_scene_understanding(
+        self,
+        *,
+        task_description: str,
+        understanding: Mapping[str, Any],
+        measured_objects: Iterable[Mapping[str, Any]],
+        verification: TaskVerificationContract,
+        task_id: str,
+        revision_id: str,
+        entity_refs: Iterable[str] | None = None,
+        category: str = "block",
+    ) -> AgentTaskRecord:
+        """Create one task from semantic claims joined to measured scene facts."""
+
+        entities = bind_understood_scene_objects(
+            understanding, measured_objects, entity_refs=entity_refs, category=category,
+        )
+        return await self.create_task(
+            task_description=task_description, entities=entities, verification=verification,
+            task_id=task_id, revision_id=revision_id,
+        )
+
     async def run(
         self,
         *,
@@ -216,10 +358,33 @@ class MultiObjectAgentRunner:
             raise MultiObjectAgentError("AgentLoop did not provide an executable long-horizon controller")
         return await controller.run(task.task_id)
 
+    async def run_from_scene_understanding(
+        self,
+        *,
+        task_description: str,
+        understanding: Mapping[str, Any],
+        measured_objects: Iterable[Mapping[str, Any]],
+        verification: TaskVerificationContract,
+        task_id: str,
+        revision_id: str,
+        entity_refs: Iterable[str] | None = None,
+        category: str = "block",
+    ) -> LongHorizonTaskResult:
+        """Run the existing Agent controller after the semantic/measured join."""
+
+        entities = bind_understood_scene_objects(
+            understanding, measured_objects, entity_refs=entity_refs, category=category,
+        )
+        return await self.run(
+            task_description=task_description, entities=entities, verification=verification,
+            task_id=task_id, revision_id=revision_id,
+        )
+
 
 __all__ = [
     "MultiObjectAgentError",
     "MultiObjectAgentRunner",
     "SceneObjectBinding",
     "bind_scene_objects",
+    "bind_understood_scene_objects",
 ]

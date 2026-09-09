@@ -41,6 +41,7 @@ from .multi_object_agent import (
     MultiObjectAgentRunner,
     SceneObjectBinding,
     bind_scene_objects,
+    bind_understood_scene_objects,
 )
 from .object_acquire import (
     ACQUIRE_TOOL_SPEC,
@@ -120,4 +121,5 @@ __all__ = [
     "MultiObjectAgentRunner",
     "SceneObjectBinding",
     "bind_scene_objects",
+    "bind_understood_scene_objects",
 ]
