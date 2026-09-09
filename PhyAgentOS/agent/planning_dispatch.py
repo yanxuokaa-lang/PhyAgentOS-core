@@ -97,6 +97,10 @@ class AgentComposedDispatch:
             conditions,
         )
         nodes = {node.node_id: node for node in self.graph.nodes}
+        if conditions.get("scene_current") is False:
+            ready = tuple(node.node_id for node in self.graph.nodes
+                          if node.node_id not in settlements
+                          and all(settlements.get(dep) == "completed" for dep in node.dependencies))
         return {
             "ok": True,
             "mode": "agent_composed",
@@ -113,6 +117,7 @@ class AgentComposedDispatch:
                         policy.tool_id
                         for policy in self.policies
                         if nodes[node_id].capability in policy.capabilities
+                        and (conditions.get("scene_current") is not False or policy.refreshes_scene)
                     ],
                 }
                 for node_id in ready

@@ -178,6 +178,25 @@ def test_settlement_distinguishes_success_unknown_failure_cancel_and_stale():
         ToolResultEnvelope(**base, status="failed", world_changed=True)
 
 
+def test_refresh_query_can_recover_without_old_evidence_or_arm_claim():
+    context = AdmissionContext(scene_revision="scene-1", resources_in_use=frozenset({"arm:right"}), condition_facts={"scene_current": False})
+    assert admit_tool_call(_graph(), _call(), _tool(), context).code == "observation_required"
+    refresh = _tool().model_copy(update={"refreshes_scene": True, "required_evidence": ()})
+    assert admit_tool_call(_graph(), _call(), refresh, context).allowed is True
+
+
+def test_argument_binding_rejects_wrong_entity():
+    graph = _graph()
+    node = graph.nodes[0].model_copy(update={"input_bindings": {"entity_ref": "entity://red"}})
+    graph = graph.model_copy(update={"nodes": (node, *graph.nodes[1:])})
+    policy = _tool().model_copy(update={"input_binding_keys": ("entity_ref",)})
+    context = AdmissionContext(scene_revision="scene-1", evidence_refs=frozenset({"observation:red"}))
+    bad = _call().model_copy(update={"arguments": {"entity_ref": "entity://blue"}})
+    assert admit_tool_call(graph, bad, policy, context).code == "input_binding_mismatch"
+    good = bad.model_copy(update={"arguments": {"entity_ref": "entity://red"}})
+    assert admit_tool_call(graph, good, policy, context).allowed
+
+
 def test_replan_invalidates_transitive_descendants_without_creating_revision():
     graph = _graph()
     settlement = settle_node(

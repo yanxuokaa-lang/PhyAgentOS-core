@@ -73,11 +73,20 @@ def admit_tool_call(
         return reject("capability_mismatch", "Tool is not declared for this node capability")
     if call.scene_revision != context.scene_revision:
         return reject("stale_scene", "call scene revision is stale")
+    for key in tool.input_binding_keys:
+        if key not in node.input_bindings or call.arguments.get(key) != node.input_bindings[key]:
+            return reject("input_binding_mismatch", f"Tool argument {key!r} does not match the node")
     settlements = dict(context.settlements)
     condition_facts = dict(context.condition_facts)
-    if call.node_id not in derive_ready_nodes(graph, settlements, set(context.evidence_refs), condition_facts):
+    refresh = tool.refreshes_scene and tool.semantics == "query" and tool.scene_write_behavior == "none"
+    if condition_facts.get("scene_current") is False and not refresh:
+        return reject("observation_required", "physical effects require a fresh scene observation")
+    if refresh:
+        if settlements.get(node.node_id) is not None or any(settlements.get(dep) != "completed" for dep in node.dependencies):
+            return reject("node_not_ready", "refresh node dependencies are not satisfied")
+    elif call.node_id not in derive_ready_nodes(graph, settlements, set(context.evidence_refs), condition_facts):
         return reject("node_not_ready", "node dependencies, evidence, or conditions are not satisfied")
-    required = set(node.required_evidence) | set(tool.required_evidence)
+    required = (set() if refresh else set(node.required_evidence)) | set(tool.required_evidence)
     if not required.issubset(context.evidence_refs):
         return reject("missing_evidence", "required evidence is unavailable")
     for precondition in tool.preconditions:
@@ -86,9 +95,9 @@ def admit_tool_call(
                 return reject("precondition_failed", f"precondition {precondition!r} is not satisfied")
         elif precondition not in {"node_ready", "scene_current"} and condition_facts.get(precondition) is not True:
             return reject("precondition_failed", f"precondition {precondition!r} is not satisfied")
-    claims = {claim.resource_class for claim in tool.resource_claims} | {
-        claim.resource_class for claim in node.resources
-    }
+    claims = {claim.resource_class for claim in tool.resource_claims}
+    if not refresh:
+        claims.update(claim.resource_class for claim in node.resources)
     if claims & set(context.resources_in_use):
         return reject("resource_conflict", "a required symbolic resource is already in use")
     return AdmissionDecision(allowed=True, code="admitted", detail="Tool call is structurally admissible", node_id=call.node_id, tool_id=call.tool_id)

@@ -79,6 +79,15 @@ def test_partial_effect_blocks_old_scene_until_fresh_observation():
     assert refreshed.evidence_refs == frozenset({"fresh"})
 
 
+def test_unknown_effect_requires_observation_even_with_a_runtime_revision():
+    current = task(record({"scene_revision": "scene-1"}), record({"new_scene_revision": "scene-2", "outcome_known": False}, status="unknown"))
+    with pytest.raises(PlanningContextUnavailableError):
+        context_from_task(current)
+    recovery = context_from_task(current, allow_refresh=True)
+    assert recovery.scene_revision == "scene-2"
+    assert dict(recovery.condition_facts)["scene_current"] is False
+
+
 def test_node_executor_projects_nested_failed_action_after_successful_observation():
     revision = SimpleNamespace(execution_records=[])
     saved_task = SimpleNamespace(active_revision=revision, active_revision_id="revision")

@@ -11,6 +11,16 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping, Protocol
 
 
+class ActionDriver(Protocol):
+    """Provider-owned running operation; poll never starts or repeats motion."""
+
+    def poll(self) -> Mapping[str, Any] | None: ...
+
+    def cancel(self) -> None: ...
+
+    def stop(self) -> None: ...
+
+
 @dataclass(frozen=True)
 class ActionAdmission:
     """Provider result retained by the generic invocation owner."""
@@ -21,6 +31,7 @@ class ActionAdmission:
     # invocation and attempt identities.  The callback returns the provider's
     # bounded admission snapshot and never owns lifecycle state.
     start: Callable[[str, str], "ActionAdmission"] | None = None
+    driver: ActionDriver | None = None
 
 
 class ObservationSource(Protocol):
@@ -77,6 +88,7 @@ class ActionEndpoint(Protocol):
 
 __all__ = [
     "ActionAdmission",
+    "ActionDriver",
     "ActionEndpoint",
     "EnvironmentAdapter",
     "GraspProposalProvider",

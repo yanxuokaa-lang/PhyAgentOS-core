@@ -132,7 +132,7 @@ def compose_agent_plan(
             capability=item.capability,
             dependencies=item.depends_on,
             required_evidence=item.required_evidence,
-            produced_evidence=item.produced_evidence,
+            produced_evidence=item.produced_evidence or ((f"placed:{item.entity_ref}",) if item.capability == "object.relocate" else ()),
             resources=item.resources,
             input_bindings={"entity_ref": item.entity_ref, **({"destination_ref": item.destination_ref} if item.destination_ref is not None else {})},
         )

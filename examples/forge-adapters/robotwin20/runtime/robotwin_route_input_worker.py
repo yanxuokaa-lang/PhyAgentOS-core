@@ -12,7 +12,11 @@ from typing import Any
 
 from robotwin_backend import RoboTwinRuntimeProfile, RoboTwinSensorBackend, load_runtime_profile
 
-from robotwin20_adapter.route_inputs import ROUTE_SCENE_FACTS_SCHEMA_VERSION, validate_scene_facts
+from robotwin20_adapter.route_inputs import (
+    CURRENT_SCENE_FACTS_SCHEMA_VERSION,
+    ROUTE_SCENE_FACTS_SCHEMA_VERSION,
+    validate_scene_facts,
+)
 
 
 class RouteInputWorkerError(RuntimeError):
@@ -80,13 +84,15 @@ def _half_extents(actor: Any) -> list[float]:
 
 
 def capture_scene_facts(
-    *, runtime_root: Path, runtime_profile: Path, artifact_root: Path, calibration_ref: str
+    *, runtime_root: Path, runtime_profile: Path, artifact_root: Path, calibration_ref: str,
+    backend: Any = None,
 ) -> dict[str, Any]:
     profile = load_runtime_profile(runtime_profile)
     task_file = runtime_root / "envs" / f"{profile['task_name']}.py"
     if not task_file.is_file() or task_file.is_symlink():
         raise RouteInputWorkerError("benchmark task definition is unavailable")
-    backend = RoboTwinSensorBackend(
+    owned = backend is None
+    backend = backend or RoboTwinSensorBackend(
         RoboTwinRuntimeProfile(
             runtime_root=runtime_root,
             artifact_root=artifact_root,
@@ -96,9 +102,11 @@ def capture_scene_facts(
         )
     )
     try:
-        backend.reset(seed=profile["seed"])
+        if owned:
+            backend.reset(seed=profile["seed"])
         task = backend._task
-        if task is None or backend.snapshot().get("scene_revision") != f"{profile['task_name']}-{profile['seed']}-1":
+        revision = backend.snapshot().get("scene_revision")
+        if task is None or not revision or (owned and revision != f"{profile['task_name']}-{profile['seed']}-1"):
             raise RouteInputWorkerError("benchmark scene revision is unavailable")
         objects = []
         for entity_ref, actor_attribute, target_token in _ENTITIES:
@@ -126,11 +134,11 @@ def capture_scene_facts(
                 }
             )
         value = {
-            "schema_version": ROUTE_SCENE_FACTS_SCHEMA_VERSION,
+            "schema_version": ROUTE_SCENE_FACTS_SCHEMA_VERSION if owned else CURRENT_SCENE_FACTS_SCHEMA_VERSION,
             "task_name": profile["task_name"],
             "seed": profile["seed"],
-            "scene_revision": f"{profile['task_name']}-{profile['seed']}-1",
-            "observation_ref": f"observation://{profile['task_name']}-{profile['seed']}-1/head_camera",
+            "scene_revision": revision,
+            "observation_ref": f"observation://{revision}/head_camera",
             "observation_frame_id": "head_camera",
             "route_frame_id": "world",
             "calibration_ref": calibration_ref,
@@ -147,7 +155,8 @@ def capture_scene_facts(
         validate_scene_facts(value)
         return value
     finally:
-        backend.close()
+        if owned:
+            backend.close()
 
 
 def main() -> int:

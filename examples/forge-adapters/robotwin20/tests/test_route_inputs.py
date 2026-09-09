@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from robotwin20_adapter.route_inputs import (
+    CURRENT_SCENE_FACTS_SCHEMA_VERSION,
     OBJECT_GEOMETRY_SCHEMA_VERSION,
     OBJECT_ROBOT_TARGET_TRANSFORM_SCHEMA_VERSION,
     ROUTE_SCENE_FACTS_SCHEMA_VERSION,
@@ -52,6 +53,16 @@ def _facts():
         "coverage": "complete",
         "objects": objects,
     }
+
+
+def test_current_scene_facts_support_later_revision_and_bounded_object_subset():
+    facts = _facts()
+    facts.update(schema_version=CURRENT_SCENE_FACTS_SCHEMA_VERSION, scene_revision="runtime-epoch-5", observation_ref="observation://runtime-epoch-5/head_camera")
+    facts["objects"] = facts["objects"][:2]
+    assert len(validate_scene_facts(facts)["objects"]) == 2
+    facts["schema_version"] = ROUTE_SCENE_FACTS_SCHEMA_VERSION
+    with pytest.raises(RouteInputError, match="revision binding"):
+        validate_scene_facts(facts)
 
 
 def _grasp():

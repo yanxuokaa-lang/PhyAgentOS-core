@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Mapping
 from uuid import uuid4
 
-from .ports import ActionAdmission, ActionEndpoint, QueryEndpoint
+from .ports import ActionAdmission, ActionDriver, ActionEndpoint, QueryEndpoint
 
 
 class CapabilityRuntimeError(RuntimeError):
@@ -66,6 +66,9 @@ class Invocation:
     cancel_requested: bool = False
     stop_requested: bool = False
     deadline_monotonic: float | None = None
+    driver: ActionDriver | None = None
+    driver_stop_sent: bool = False
+    timed_out: bool = False
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -188,7 +191,8 @@ class CapabilityRuntime:
             raise ToolContractError("Tool context max_concurrency must be a positive integer")
         active = sum(
             item.tool_id == tool_id
-            and item.status not in {"succeeded", "failed", "cancelled", "stopped", "unknown"}
+            and (item.status not in {"succeeded", "failed", "cancelled", "stopped", "unknown"}
+                 or item.status == "unknown" and item.driver is not None)
             for item in self._invocations.values()
         )
         if active >= max_concurrency:
@@ -197,7 +201,8 @@ class CapabilityRuntime:
         if not callable(admit):
             raise ToolContractError("Action ToolEndpoint does not expose admit(arguments)")
         try:
-            admission = admit(dict(arguments or {}))
+            admit_owned = getattr(registration.endpoint, "admit_for_caller", None)
+            admission = admit_owned(dict(arguments or {}), caller_id=caller_id) if callable(admit_owned) else admit(dict(arguments or {}))
         except Exception as exc:  # admission failures must fail closed
             raise CapabilityRuntimeError("Action ToolEndpoint admission failed") from exc
         if not isinstance(admission, ActionAdmission):
@@ -215,6 +220,7 @@ class CapabilityRuntime:
             arguments=dict(arguments or {}),
             pending_polls=admission.pending_polls,
             terminal_result=dict(admission.terminal_result),
+            driver=admission.driver,
             caller_id=caller_id,
             timeout_ms=timeout_ms,
             deadline_monotonic=(
@@ -269,6 +275,7 @@ class CapabilityRuntime:
                     raise ToolContractError("nested Action start callbacks are not supported")
                 invocation.pending_polls = started.pending_polls
                 invocation.terminal_result = dict(started.terminal_result)
+                invocation.driver = started.driver
         return {
             "invocation_id": invocation_id,
             "attempt_id": attempt_id,
@@ -310,6 +317,12 @@ class CapabilityRuntime:
             return {"accepted": False, "status": invocation.status}
         invocation.cancel_requested = True
         invocation.status = "cancel_requested"
+        if invocation.driver is not None and not invocation.driver_stop_sent:
+            try:
+                invocation.driver.cancel()
+                invocation.driver_stop_sent = True
+            except Exception:
+                self._mark_unknown(invocation, "provider_cancel_failed")
         return {"accepted": True, "status": "cancel_requested"}
 
     def stop_invocation(self, invocation_id: str) -> dict[str, Any]:
@@ -322,9 +335,18 @@ class CapabilityRuntime:
             return {"accepted": False, "status": invocation.status}
         invocation.stop_requested = True
         invocation.status = "stop_requested"
+        if invocation.driver is not None and not invocation.driver_stop_sent:
+            try:
+                invocation.driver.stop()
+                invocation.driver_stop_sent = True
+            except Exception:
+                self._mark_unknown(invocation, "provider_stop_failed")
         return {"accepted": True, "status": "stop_requested"}
 
     def _advance(self, invocation: Invocation) -> None:
+        if invocation.driver is not None:
+            self._advance_driver(invocation)
+            return
         if invocation.status in {"succeeded", "failed", "cancelled", "stopped", "unknown"}:
             return
         if invocation.cancel_requested:
@@ -337,12 +359,7 @@ class CapabilityRuntime:
             invocation.deadline_monotonic is not None
             and self._clock() >= invocation.deadline_monotonic
         ):
-            invocation.status = "unknown"
-            invocation.terminal_result = {
-                **invocation.terminal_result,
-                "status": "unknown",
-                "failure_code": "timeout",
-            }
+            self._mark_unknown(invocation, "timeout")
             return
         if invocation.pending_polls > 0:
             invocation.pending_polls -= 1
@@ -350,6 +367,44 @@ class CapabilityRuntime:
             return
         terminal = invocation.terminal_result.get("status")
         invocation.status = terminal if terminal in {"succeeded", "failed", "cancelled", "stopped", "unknown"} else "unknown"
+
+    @staticmethod
+    def _mark_unknown(invocation: Invocation, failure_code: str) -> None:
+        invocation.status = "unknown"
+        updates = {"status": "unknown", "outcome_known": False, "failure_code": failure_code, "failure_owner": "execution"}
+        invocation.terminal_result = {**invocation.terminal_result, **updates}
+        summary = invocation.terminal_result.get("capability_outcome_summary")
+        if isinstance(summary, dict):
+            invocation.terminal_result["capability_outcome_summary"] = {**summary, **updates}
+
+    def _advance_driver(self, invocation: Invocation) -> None:
+        driver = invocation.driver
+        if invocation.status in {"succeeded", "failed", "cancelled", "stopped"}:
+            return
+        if invocation.deadline_monotonic is not None and self._clock() >= invocation.deadline_monotonic:
+            invocation.timed_out = True
+        try:
+            if (invocation.cancel_requested or invocation.stop_requested or invocation.timed_out) and not invocation.driver_stop_sent:
+                if invocation.stop_requested:
+                    driver.stop()
+                else:
+                    driver.cancel()
+                invocation.driver_stop_sent = True
+            result = driver.poll()
+        except Exception:
+            self._mark_unknown(invocation, "provider_lifecycle_failed")
+            return
+        if result is None:
+            if invocation.timed_out:
+                self._mark_unknown(invocation, "timeout")
+            elif invocation.status == "accepted":
+                invocation.status = "running"
+            return
+        if not isinstance(result, Mapping) or result.get("status") not in {"succeeded", "failed", "cancelled", "stopped", "unknown"}:
+            self._mark_unknown(invocation, "invalid_provider_terminal_result")
+            return
+        invocation.terminal_result = dict(result)
+        invocation.status = result["status"]
 
     @staticmethod
     def _settle_interruption(invocation: Invocation, requested_status: str) -> None:

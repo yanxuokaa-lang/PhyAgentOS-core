@@ -29,6 +29,8 @@ class _PlanningExtension(BaseModel):
     scene_write_behavior: str = "none"
     failure_classes: tuple[str, ...] = ()
     idempotency: str = "unknown"
+    refreshes_scene: bool = False
+    input_binding_keys: tuple[str, ...] = ()
 
 
 _PROVIDER_PRIVATE = re.compile(
@@ -76,6 +78,7 @@ def project_tool_spec(spec: Mapping[str, Any]) -> ToolSpecPolicy:
     for label in (
         "capabilities", "preconditions", "required_evidence", "produced_evidence",
         "expected_effects", "failure_classes",
+        "input_binding_keys",
     ):
         _unique_strings(getattr(parsed, label), label)
     try:
@@ -92,6 +95,8 @@ def project_tool_spec(spec: Mapping[str, Any]) -> ToolSpecPolicy:
             scene_write_behavior=parsed.scene_write_behavior,
             failure_classes=parsed.failure_classes,
             idempotency=parsed.idempotency,
+            refreshes_scene=parsed.refreshes_scene,
+            input_binding_keys=parsed.input_binding_keys,
         )
     except (ValidationError, ValueError) as exc:
         raise ToolSpecProjectionError(f"invalid ToolSpec planning policy: {exc}") from exc

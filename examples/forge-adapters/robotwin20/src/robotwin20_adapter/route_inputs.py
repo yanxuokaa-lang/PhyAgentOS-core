@@ -14,6 +14,7 @@ from collections.abc import Mapping
 from typing import Any
 
 ROUTE_SCENE_FACTS_SCHEMA_VERSION = "paos-robotwin20-route-scene-facts/v1"
+CURRENT_SCENE_FACTS_SCHEMA_VERSION = "paos-robotwin20-route-scene-facts/v2"
 ROUTE_INPUT_PROFILE_SCHEMA_VERSION = "paos-robotwin20-route-input-profile/v3"
 OBJECT_GEOMETRY_SCHEMA_VERSION = "paos-robotwin20-object-geometry/v1"
 OBJECT_ROBOT_TARGET_TRANSFORM_SCHEMA_VERSION = "paos-robotwin20-object-robot-target-transform/v1"
@@ -140,7 +141,7 @@ def validate_scene_facts(value: Any) -> dict[str, Any]:
     }
     if not isinstance(value, Mapping) or set(value) != required:
         raise RouteInputError("route scene facts fields are invalid")
-    if value["schema_version"] != ROUTE_SCENE_FACTS_SCHEMA_VERSION:
+    if value["schema_version"] not in {ROUTE_SCENE_FACTS_SCHEMA_VERSION, CURRENT_SCENE_FACTS_SCHEMA_VERSION}:
         raise RouteInputError("route scene facts schema is unsupported")
     if value["route_frame_id"] != "world" or value["motion_authorized"] is not False or value["robot_control_steps"] != 0:
         raise RouteInputError("route scene facts motion/frame boundary is invalid")
@@ -150,7 +151,7 @@ def validate_scene_facts(value: Any) -> dict[str, Any]:
     frame = value["observation_frame_id"]
     if value["observation_ref"] != f"observation://{revision}/{frame}":
         raise RouteInputError("route scene facts observation binding is invalid")
-    if revision != f"{value['task_name']}-{value['seed']}-1":
+    if not isinstance(revision, str) or not revision.strip() or (value["schema_version"] == ROUTE_SCENE_FACTS_SCHEMA_VERSION and revision != f"{value['task_name']}-{value['seed']}-1"):
         raise RouteInputError("route scene facts revision binding is invalid")
     if not isinstance(value["calibration_ref"], str) or not value["calibration_ref"].startswith("artifact://"):
         raise RouteInputError("route scene facts calibration_ref is invalid")
@@ -165,8 +166,8 @@ def validate_scene_facts(value: Any) -> dict[str, Any]:
     if not isinstance(value["captured_at"], str) or not value["captured_at"].strip():
         raise RouteInputError("route scene facts timestamp is invalid")
     objects = value["objects"]
-    if not isinstance(objects, list) or len(objects) != 3:
-        raise RouteInputError("route scene facts must contain three blocks")
+    if not isinstance(objects, list) or not objects or (value["schema_version"] == ROUTE_SCENE_FACTS_SCHEMA_VERSION and len(objects) != 3):
+        raise RouteInputError("route scene facts object coverage is invalid")
     seen: set[str] = set()
     for item in objects:
         expected = {

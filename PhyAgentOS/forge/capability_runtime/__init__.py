@@ -29,6 +29,7 @@ from .observation import (
 )
 from .ports import (
     ActionAdmission,
+    ActionDriver,
     ActionEndpoint,
     EnvironmentAdapter,
     GraspProposalProvider,
@@ -55,6 +56,7 @@ from .understanding import (
 
 __all__ = [
     "ActionAdmission",
+    "ActionDriver",
     "ActionEndpoint",
     "CapabilityRuntime",
     "CapabilityRuntimeTransport",

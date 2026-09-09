@@ -174,6 +174,8 @@ class ToolSpecPolicy(_Frozen):
     scene_write_behavior: Literal["none", "new_revision", "unknown"] = "none"
     failure_classes: tuple[str, ...] = ()
     idempotency: Literal["idempotent", "at_most_once", "unknown"] = "unknown"
+    refreshes_scene: bool = False
+    input_binding_keys: tuple[str, ...] = ()
 
     @field_validator("tool_id")
     @classmethod

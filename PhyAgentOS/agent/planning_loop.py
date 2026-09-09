@@ -332,7 +332,7 @@ class PlanningLoopAdapter:
                 raise PlanningLoopError("admission context provider returned an invalid context")
             scene_revision = admission.scene_revision
             missing_fresh = set(revision.fresh_evidence_requirements) - set(admission.evidence_refs)
-            if missing_fresh:
+            if missing_fresh and dict(admission.condition_facts).get("scene_current") is not False:
                 return PlanningLoopResult(
                     task_id,
                     "blocked",
@@ -347,6 +347,10 @@ class PlanningLoopAdapter:
                 set(admission.evidence_refs),
                 dict(admission.condition_facts),
             )
+            if dict(admission.condition_facts).get("scene_current") is False:
+                ready = tuple(node.node_id for node in graph.nodes
+                              if node.node_id not in settlements
+                              and all(settlements.get(dep) == "completed" for dep in node.dependencies))
             if not ready:
                 if len(settlements) == len(graph.nodes) and all(
                     value == "completed" for value in settlements.values()

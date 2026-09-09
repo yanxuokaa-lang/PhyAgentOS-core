@@ -18,7 +18,7 @@ class PlanningContextUnavailableError(RuntimeError):
     """No authoritative scene fact is available for admission yet."""
 
 
-def context_from_task(task: Any) -> AdmissionContext:
+def context_from_task(task: Any, *, allow_refresh: bool = False) -> AdmissionContext:
     """Build an admission context from persisted task facts.
 
     Scene identity is read exclusively from Tool responses.  A task that has
@@ -41,14 +41,15 @@ def context_from_task(task: Any) -> AdmissionContext:
         payload = response_facts(response)
         scene = payload.get("new_scene_revision")
         effect_started = payload.get("world_change_started") is True or payload.get("world_changed") is True
-        if effect_started and not (isinstance(scene, str) and scene.strip()):
+        effect_unknown = payload.get("outcome_known") is False and payload.get("world_change_started") is not False
+        if effect_unknown or effect_started and not (isinstance(scene, str) and scene.strip()):
             needs_observation = True
             evidence.clear()
             condition_facts.clear()
         if not isinstance(scene, str) or not scene.strip():
             scene = payload.get("scene_revision") if getattr(record, "status", None) == "succeeded" and not effect_started and not isinstance(payload.get("capability_outcome_summary"), dict) else None
         if isinstance(scene, str) and scene.strip():
-            needs_observation = False
+            needs_observation = effect_unknown
             scene = scene.strip()
             if revisions and revisions[-1] != scene:
                 evidence.clear()
@@ -64,13 +65,15 @@ def context_from_task(task: Any) -> AdmissionContext:
         resources = payload.get("resources_in_use")
         if isinstance(resources, (list, tuple, set)):
             resources_in_use = {item for item in resources if isinstance(item, str) and item}
-    if needs_observation:
+    if needs_observation and not allow_refresh:
         raise PlanningContextUnavailableError("physical effects require a fresh observation before planning admission")
     if not revisions:
         raise PlanningContextUnavailableError(
             "no persisted scene revision is available; complete an observation or understanding Tool first"
         )
     scene_revision = revisions[-1]
+    if needs_observation:
+        condition_facts["scene_current"] = False
     settlements = {
         settlement.node_id: settlement.status
         for settlement in getattr(getattr(task, "active_revision", None), "node_settlements", ())
@@ -91,7 +94,7 @@ class AgentTaskPlanningContextProvider:
         self.coordinator = coordinator
 
     def __call__(self, task_id: str) -> AdmissionContext:
-        return context_from_task(self.coordinator.get_task(task_id))
+        return context_from_task(self.coordinator.get_task(task_id), allow_refresh=True)
 
 
 __all__ = [

@@ -683,6 +683,7 @@ def _validate_request_policies(
     *,
     max_duration_s: float,
     robot_identity: str,
+    failure_recovery: str = "reset_simulation",
 ) -> dict[str, Any]:
     joint = _load_json_artifact(root, request["joint_limits_ref"])
     stop = _load_json_artifact(root, request["stop_policy_ref"])
@@ -708,7 +709,7 @@ def _validate_request_policies(
         or not math.isclose(float(stop["max_duration_s"]), max_duration_s, abs_tol=1e-9)
         or stop["stop_file_required"] is not True
         or stop["poll_each_step"] is not True
-        or stop["failure_recovery"] != "reset_simulation"
+        or stop["failure_recovery"] != failure_recovery
     ):
         raise SimulationProbeError("stop policy is invalid")
     validated_arms: set[str] = set()
@@ -1119,6 +1120,28 @@ def _run_candidate(
     stop_file: Path | None,
     execution_state: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any], str]:
+    phases = execute_candidate_phases(
+        task, request, candidate, policies, deadline=deadline,
+        stop_file=stop_file, execution_state=execution_state,
+    )
+    while True:
+        try:
+            next(phases)
+        except StopIteration as completed:
+            return completed.value
+
+
+def execute_candidate_phases(
+    task: Any,
+    request: Mapping[str, Any],
+    candidate: Mapping[str, Any],
+    policies: Mapping[str, Any],
+    *,
+    deadline: float,
+    stop_file: Path | None,
+    execution_state: dict[str, Any],
+):
+    """Yield settled phases, retaining attachment and route state between Actions."""
     import numpy as np
 
     actor = _actor_for_entity(task, candidate["entity_ref"])
@@ -1144,6 +1167,7 @@ def _run_candidate(
     previous_target: list[float] | None = None
     previous_phase: str | None = None
     for phase in candidate["route"]:
+        deadline = execution_state.get("action_deadline", deadline)
         phase_name = phase["phase"]
         execution_state["phase"] = phase_name
         world_waypoints = []
@@ -1260,6 +1284,7 @@ def _run_candidate(
             }
         )
         previous_phase = phase_name
+        yield route_records[-1]
     after_actor = np.asarray(actor.get_pose().p, dtype=np.float64).copy()
     if not np.isfinite(after_actor).all() or float(np.linalg.norm(after_actor - before_actor)) < 1e-4:
         raise SimulationProbeError("simulation route did not change target actor state")
