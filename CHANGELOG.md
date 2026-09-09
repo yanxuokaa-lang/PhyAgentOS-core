@@ -7,6 +7,43 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v7.5.6 (2026-09-09 14:47) - codex
+
+### 预期修改 / Planned Changes
+
+- [完成] [docs] [docs] 按用户“再次审核，没有问题再实现”的条件，复核多次抓放方案与 PAOS 设计哲学、架构、开发和扩展原则；记录新增设计阻断与源码依据，不将设计 review 冒充实现完成后的代码 review。(local)
+- [Completed] [docs] [docs] Re-audit repeated manipulation against PAOS philosophy, architecture and extension guidance under the user's review-before-implementation condition; record newly identified design blockers and source evidence, keeping design review distinct from post-implementation code review. (local)
+- 影响 / Files: `docs/forge/TASK_UNDERSTANDING_MULTI_PICK_PLACE_SECOND_REVIEW_20260909.md`, monthly log and CHANGELOG.md. No production code or runtime changes while design blockers remain.
+
+### 审核结果 / Results
+
+- [docs] [docs] 复核未通过：R1-R4 为设计阻断（动态语义、持物生命周期、场景接续、失败/取消效果），R5-R6 为 Major（当前上下文投影、端到端验收）。保留原方案历史，列出修订要求。(local)
+- [docs] [docs] Review does not pass: R1-R4 cover dynamic semantics, held-object lifecycle, scene continuity and failed/cancelled effects; R5-R6 cover current-context projection and end-to-end acceptance. Preserve the original proposal and record corrections. (local)
+- [docs] [docs] 用户“无问题再实现”的条件尚未满足；未修改执行代码，未运行测试、模型或仿真。六维表仅为设计检查，最终代码 review 未开展。(local)
+- [docs] [docs] The user's implementation condition is unmet; no execution code, tests, model or simulation runs. The six-dimension table is a design audit, not the final code review. (local)
+
+### 文件变更详情 / File Details
+
+- [新增 / Added] `docs/forge/TASK_UNDERSTANDING_MULTI_PICK_PLACE_SECOND_REVIEW_20260909.md` L1-L104：规范依据 L9-L15；六项问题 L17-L77；六维设计检查 L79-L90；修订交付和范围 L92-L104 / normative sources, six findings, six-dimension design audit and required revisions.
+- [新增 / Added] `changelog/2026-09_part5.md` L184-L220：本版本计划、审核结果与 Git 记录 / version plan, review result and Git record.
+- [修改 / Modified] `CHANGELOG.md` L10-L46：同步最新完整记录，Earlier Records 前移至 v7.5.1 / mirror full latest record and move earlier-record separator before v7.5.1.
+
+```diff
+-原方案可以直接进入模块接线 / proceed directly with wiring
++设计复核未通过：先明确动态义务、持物占用、场景接续及失败效果映射
++Design review fails pending dynamic-obligation, holding, scene-continuity
++and failure-effect semantics. Implementation and final code review remain pending.
+```
+
+### 验证 / Validation
+
+- UTF-8、5 个本地链接、6 个发现条目及 `git diff --check` 通过。
+- UTF-8 inspection, five local links, six finding entries and `git diff --check` pass.
+
+### Git 提交 / Git Commit
+
+- Branch: `feature/planning-loop`; only review documentation and logs.
+
 ## v7.5.5 (2026-09-09 14:34) - codex
 
 ### 预期修改 / Planned Changes
@@ -236,6 +273,8 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=.:examples/forge-adapters/robotwin20
 
 - Commit: `e5e65f8`; Branch: `feature/planning-loop`; 时间 / Time: 2026-09-09 13:59 (Asia/Shanghai).
 
+## 既有历史记录 / Earlier Records
+
 ## v7.5.1 (2026-09-09 13:29) - codex
 
 ### 用户确认的范围更新 / User-Authorized Scope Update
@@ -388,8 +427,6 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=.:examples/forge-adapters/robotwin20
 ### Git 提交 / Git Commit
 
 - Commit: `376c097`; Branch: `feature/planning-loop`; 时间 / Time: 2026-09-09 13:42 (Asia/Shanghai).
-
-## 既有历史记录 / Earlier Records
 
 ## v7.5.0 (2026-09-09 12:43) - codex
 
