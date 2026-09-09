@@ -8,6 +8,40 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v8.3.0 (2026-09-09 19:20) - codex
+
+### 变更摘要 / Change Summary
+
+- [env] [feat] 新增 `PersistentRuntimeBundle` 与 `build_persistent_runtime_bundle`，把持久 provider、7 个 Tool endpoint 和同一 `CapabilityRuntimeTransport` 组合到 ForgeToolClient 边界；不引入 reset、直接 Action 或运动授权。(local)
+- [eval] [test] 增加部署级注册测试，并复用既有 Runtime/Coordinator 测试验证 pending、terminal、unknown 与 Verifier fail-closed。(local)
+- [Env] [Feat] Added `PersistentRuntimeBundle` and `build_persistent_runtime_bundle` to compose persistent providers, seven Tool endpoints, and one `CapabilityRuntimeTransport` at the ForgeToolClient boundary; no reset, direct Action, or motion authority is introduced. (local)
+- [Eval] [Test] Added deployment registration coverage and reused Runtime/Coordinator tests for pending, terminal, unknown, and Verifier fail-closed behavior. (local)
+
+### 文件变更详情 / File Details
+
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_deployment.py` L1-L80 [新增 / Added] Runtime Bundle composition.
+- `examples/forge-adapters/robotwin20/tests/test_persistent_deployment.py` L35-L63 [新增 / Added] bundle registration test.
+- `docs/forge/PERSISTENT_MULTI_PICK_PLACE_STATUS_20260909.md` L251-L265 [新增 / Added] Runtime Bundle/Verifier status.
+
+## v8.2.0 (2026-09-09 18:56) - codex
+
+### 变更摘要 / Change Summary
+
+- [policy] [feat] 新增 `compose_executable_pick_place_plan`，将 Agent relocation 投影为现有七个 pick-place Tool 节点和 `verify` 汇合，保持实体/目的地绑定与现有 PlanGraph/Gateway/Coordinator 边界。(local)
+- [eval] [test] 覆盖 `blocks_ranking_rgb` seed 0 的节点顺序、跨子任务依赖、绑定持久化和 `motion_authorized=False` admission。(local)
+- [Policy] [Feat] Added `compose_executable_pick_place_plan` to project Agent relocation into the existing seven pick-place Tool nodes plus a `verify` join, preserving bindings and PlanGraph/Gateway/Coordinator boundaries. (local)
+- [Eval] [Test] Covered blocks_ranking_rgb seed 0 node order, cross-subtask dependencies, binding persistence, and no-motion admission. (local)
+
+### 文件变更详情 / File Details
+
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/agent_planning.py` L178-L246 [新增 / Added] executable pick-place projection.
+- `examples/forge-skills/pick-place-workflow/tests/test_agent_planning.py` L132-L183 [新增 / Added] focused projection and admission tests.
+- `docs/forge/PERSISTENT_MULTI_PICK_PLACE_STATUS_20260909.md` L241-L249 [新增 / Added] execution-order and F1-F7 status.
+
+### Git 提交 / Git Commit
+
+- Commit: `21e7fff`; Branch: `feature/planning-loop`.
+
 ## v8.1.0 (2026-09-09 17:29) - codex
 
 ### 预期修改 / Planned Changes

@@ -164,6 +164,88 @@ def compose_agent_plan(
     )
 
 
+_PICK_PLACE_TOOL_ORDER = (
+    ("observe", "scene.observe"),
+    ("capabilities", "manipulation.capabilities"),
+    ("understand", "scene.understand"),
+    ("grasp", "grasp.propose"),
+    ("prepare", "manipulation.prepare"),
+    ("acquire", "object.acquire"),
+    ("place", "object.place"),
+)
+
+
+def compose_executable_pick_place_plan(
+    task_id: str,
+    revision_id: str,
+    subtasks: tuple[AgentSubtaskSpec, ...],
+    *,
+    planner_decision_digest: str,
+    policy_snapshot_digest: str,
+) -> AgentComposedPlan:
+    """Project Agent relocation obligations onto the existing pick-place DAG.
+
+    This is still planning-only: nodes name frozen Tool capabilities and carry
+    opaque entity bindings; Gateway invocation and task settlement stay outside
+    this module. Independent subtasks may run in parallel, while each object's
+    perception and manipulation stages retain the Skill-defined order.
+    """
+    if not subtasks:
+        raise AgentPlanningError("agent-composed plan requires at least one subtask")
+    ids = [item.subtask_id for item in subtasks]
+    if len(ids) != len(set(ids)) or "verify" in set(ids):
+        raise AgentPlanningError("subtask identities must be unique and cannot use verify")
+    known = set(ids)
+    if any(set(item.depends_on) - known for item in subtasks):
+        raise AgentPlanningError("subtask dependency references an unknown subtask")
+
+    nodes: list[PlanNode] = []
+    bindings: list[tuple[str, str]] = []
+    for item in subtasks:
+        parent_deps = tuple(f"{parent}.place" for parent in item.depends_on)
+        previous = parent_deps
+        for suffix, capability in _PICK_PLACE_TOOL_ORDER:
+            node_id = f"{item.subtask_id}.{suffix}"
+            input_bindings = {"entity_ref": item.entity_ref}
+            if item.destination_ref is not None:
+                input_bindings["destination_ref"] = item.destination_ref
+            node = PlanNode(
+                node_id=node_id,
+                obligation_id=item.subtask_id,
+                capability=capability,
+                dependencies=previous,
+                required_evidence=item.required_evidence if suffix == "observe" else (),
+                produced_evidence=(f"placed:{item.entity_ref}",) if suffix == "place" else (),
+                resources=item.resources,
+                input_bindings=input_bindings,
+            )
+            nodes.append(node)
+            bindings.append((node_id, item.entity_ref))
+            previous = (node_id,)
+    nodes.append(PlanNode(
+        node_id="verify",
+        obligation_id="verify-task",
+        capability="task.verify",
+        dependencies=tuple(f"{item.subtask_id}.place" for item in subtasks),
+    ))
+    payload = {
+        "schema_version": "paos-plan-graph/v1",
+        "task_id": task_id,
+        "revision_id": revision_id,
+        "graph_digest": "0" * 64,
+        "planner_decision_digest": planner_decision_digest,
+        "policy_snapshot_digest": policy_snapshot_digest,
+        "nodes": [node.model_dump(mode="json") for node in nodes],
+    }
+    payload["graph_digest"] = plan_graph_digest(payload)
+    graph = PlanGraph.model_validate(payload)
+    try:
+        validate_graph(graph)
+    except ValueError as exc:
+        raise AgentPlanningError(str(exc)) from exc
+    return AgentComposedPlan(graph=graph, entity_bindings=tuple(bindings))
+
+
 def select_planning_mode(mode: PlanningMode) -> PlanningMode:
     """Validate the migration switch without changing the baseline reducer."""
 
@@ -214,5 +296,6 @@ __all__ = [
     "PlanningMode",
     "ToolSelectionError",
     "compose_agent_plan",
+    "compose_executable_pick_place_plan",
     "select_planning_mode",
 ]

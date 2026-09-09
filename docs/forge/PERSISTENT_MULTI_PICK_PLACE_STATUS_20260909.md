@@ -238,3 +238,30 @@ motion, independently from holding state and per-request route/approval admissio
 A provider success without execution artifact refs projects to unknown with
 `missing_execution_evidence`, preserves world-change facts, and emits no `placed:`
 completion. No additional simulation or model run was performed in this checkpoint.
+# 2026-09-09 Agent 执行顺序校正 / Agent Execution-Order Alignment
+
+本轮确认产品顺序为“Agent 接收任务 -> 任务分解 -> PlanGraph -> Tool/Gateway 执行 -> 当前场景成功 -> 再接入进化”。针对 `blocks_ranking_rgb` seed 0，`compose_executable_pick_place_plan` 已将每个 relocation 义务投影为现有 `scene.observe`、`manipulation.capabilities`、`scene.understand`、`grasp.propose`、`manipulation.prepare`、`object.acquire`、`object.place` 节点链，并以 `verify` 汇合；实体和目的地通过 `PlanNode.input_bindings` 持久传递。该投影不调用 provider、不创建第二执行循环、不授予运动权限。
+
+因此集成评审 F1（语义 relocation 与可执行节点未对齐）在本轮已解决；F2-F7（持久 runtime/Action 生命周期、当前场景更新、基准实体处理、Bundle 与恢复）仍保持开放，不将假 Gateway 测试宣称为真实机器人或多物体成功。
+
+This iteration confirms the product order: Agent receives a task, decomposes it, builds a PlanGraph, executes through Tools/Gateway, succeeds in the current scene, and only then integrates evolution. For `blocks_ranking_rgb` seed 0, `compose_executable_pick_place_plan` projects each relocation obligation onto the existing `scene.observe`, `manipulation.capabilities`, `scene.understand`, `grasp.propose`, `manipulation.prepare`, `object.acquire`, and `object.place` node chain, joined by `verify`; entity and destination bindings persist through `PlanNode.input_bindings`. The projection invokes no provider, creates no second execution loop, and grants no motion authority.
+
+Integration-review F1 (semantic relocation not aligned with executable nodes) is resolved in this iteration. F2-F7 (persistent runtime/Action lifecycle, current-scene updates, benchmark entity handling, Bundle, and recovery) remain open; Fake Gateway tests are not represented as real-robot or multi-object success.
+
+## v8.3.0 Runtime Bundle 接入 / Runtime Bundle Integration
+
+`build_persistent_runtime_bundle` now composes the existing persistent deployment
+providers, `CapabilityRuntime`, and `CapabilityRuntimeTransport` behind one
+ForgeToolClient-compatible boundary. Tool registration remains provider-neutral;
+the bundle does not reset a world, start an Action, or grant motion. Action
+pending/terminal/unknown semantics continue to be owned by the generic Runtime,
+while user-level finalization remains in `AgentTaskCoordinator.finalize_task`
+and its configured Verifier.
+
+`build_persistent_runtime_bundle` now composes the existing persistent deployment
+providers, `CapabilityRuntime`, and `CapabilityRuntimeTransport` behind one
+ForgeToolClient-compatible boundary. Tool registration remains provider-neutral;
+the bundle does not reset a world, start an Action, or grant motion. Action
+pending/terminal/unknown semantics continue to be owned by the generic Runtime,
+while user-level finalization remains in `AgentTaskCoordinator.finalize_task`
+and its configured Verifier.

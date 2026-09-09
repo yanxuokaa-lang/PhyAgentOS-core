@@ -2,8 +2,11 @@
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Callable
 
 import yaml
+from PhyAgentOS.forge.capability_runtime import CapabilityRuntime, CapabilityRuntimeTransport
+from pick_place_workflow.persistent_runtime import build_persistent_runtime
 
 from .arm_candidates import CompleteRouteSelector
 from .persistent_capabilities import PersistentCapabilityProvider
@@ -24,6 +27,48 @@ class PersistentDeployment:
         return {"preparation_provider": self.preparation_provider,
                 "capability_provider": self.capability_provider,
                 "resolve_preparation": self.prepared_routes}
+
+
+@dataclass(frozen=True)
+class PersistentRuntimeBundle:
+    """One adapter-owned Runtime/transport pair for the existing Forge API."""
+
+    deployment: PersistentDeployment
+    runtime: CapabilityRuntime
+    transport: CapabilityRuntimeTransport
+
+    def client_transport(self) -> CapabilityRuntimeTransport:
+        """Return the transport accepted by ``ForgeToolClient``."""
+        return self.transport
+
+
+def build_persistent_runtime_bundle(
+    *,
+    deployment: PersistentDeployment,
+    client: Any,
+    understanding_provider: Any,
+    grasp_provider: Any,
+    tool_context_provider: Callable[[str], dict[str, Any]],
+    gateway_identity: str = "robotwin20-persistent-runtime",
+) -> PersistentRuntimeBundle:
+    """Compose the persistent providers behind one provider-neutral transport.
+
+    The caller owns the client/world lifetime. This function only registers the
+    existing Tool endpoints; it does not reset a world, start an Action, or
+    issue motion commands. Action admission remains in the persistent endpoint
+    and final user-level success remains Coordinator/Verifier-owned.
+    """
+    runtime = build_persistent_runtime(
+        client=client,
+        understanding_provider=understanding_provider,
+        grasp_provider=grasp_provider,
+        preparation_provider=deployment.preparation_provider,
+        capability_provider=deployment.capability_provider,
+        resolve_preparation=deployment.prepared_routes,
+        tool_context_provider=tool_context_provider,
+    )
+    transport = CapabilityRuntimeTransport(runtime, gateway_identity=gateway_identity)
+    return PersistentRuntimeBundle(deployment=deployment, runtime=runtime, transport=transport)
 
 
 def build_persistent_deployment(*, client, artifact_root: Path, scene_source,

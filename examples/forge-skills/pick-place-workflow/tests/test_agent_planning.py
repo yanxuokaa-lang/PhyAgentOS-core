@@ -16,6 +16,7 @@ from pick_place_workflow.agent_planning import (
     DynamicToolPlanner,
     ToolSelectionError,
     compose_agent_plan,
+    compose_executable_pick_place_plan,
     select_planning_mode,
 )
 
@@ -126,3 +127,57 @@ def test_mode_switch_is_explicit_and_baseline_remains_untouched():
     assert select_planning_mode("agent_composed") == "agent_composed"
     with pytest.raises(AgentPlanningError):
         select_planning_mode("fixed")
+
+
+def test_executable_pick_place_projection_preserves_skill_order_and_bindings():
+    plan = compose_executable_pick_place_plan(
+        "blocks-ranking-rgb-seed-0", "revision-1",
+        (
+            AgentSubtaskSpec(
+                subtask_id="green", entity_ref="entity://block-green-1",
+                destination_ref="destination://bin/primary",
+            ),
+            AgentSubtaskSpec(
+                subtask_id="red", entity_ref="entity://block-red-1",
+                destination_ref="destination://bin/secondary", depends_on=("green",),
+            ),
+        ),
+        planner_decision_digest="1" * 64,
+        policy_snapshot_digest="2" * 64,
+    )
+    nodes = {node.node_id: node for node in plan.graph.nodes}
+    assert [node.capability for node in plan.graph.nodes[:7]] == [
+        "scene.observe", "manipulation.capabilities", "scene.understand",
+        "grasp.propose", "manipulation.prepare", "object.acquire", "object.place",
+    ]
+    assert nodes["red.observe"].dependencies == ("green.place",)
+    assert nodes["green.place"].input_bindings == {
+        "entity_ref": "entity://block-green-1",
+        "destination_ref": "destination://bin/primary",
+    }
+    assert nodes["red.acquire"].input_bindings["entity_ref"] == "entity://block-red-1"
+    assert set(nodes["verify"].dependencies) == {"green.place", "red.place"}
+    assert dict(plan.entity_bindings)["red.place"] == "entity://block-red-1"
+
+
+def test_executable_projection_admits_declared_tool_without_motion_authority():
+    plan = compose_executable_pick_place_plan(
+        "blocks-ranking-rgb-seed-0", "revision-1",
+        (AgentSubtaskSpec(subtask_id="green", entity_ref="entity://block-green-1"),),
+        planner_decision_digest="1" * 64,
+        policy_snapshot_digest="2" * 64,
+    )
+    policy = ToolSpecPolicy(
+        tool_id="scene.observe", semantics="query", spec_digest="3" * 64,
+        capabilities=("scene.observe",),
+    )
+    planner = DynamicToolPlanner(plan, (policy,))
+    call = ToolCallEnvelope(
+        task_id=plan.graph.task_id, revision_id=plan.graph.revision_id,
+        node_id="green.observe", tool_id="scene.observe", tool_spec_digest="3" * 64,
+        input_binding_digest="4" * 64, scene_revision="scene-0",
+        idempotency_key="idem-0", semantics="query",
+    )
+    decision = planner.admit(call, AdmissionContext(scene_revision="scene-0"))
+    assert decision.allowed is True
+    assert decision.motion_authorized is False

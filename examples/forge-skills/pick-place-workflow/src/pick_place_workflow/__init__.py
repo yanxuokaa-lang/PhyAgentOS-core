@@ -8,6 +8,7 @@ from .agent_planning import (
     DynamicToolPlanner,
     ToolSelectionError,
     compose_agent_plan,
+    compose_executable_pick_place_plan,
     select_planning_mode,
 )
 from .fake_gateway import (
@@ -107,5 +108,6 @@ __all__ = [
     "DynamicToolPlanner",
     "ToolSelectionError",
     "compose_agent_plan",
+    "compose_executable_pick_place_plan",
     "select_planning_mode",
 ]

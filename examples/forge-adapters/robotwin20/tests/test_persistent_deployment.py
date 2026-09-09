@@ -4,7 +4,10 @@ import pytest
 import yaml
 from test_arm_candidates import _profile
 
-from robotwin20_adapter.persistent_deployment import build_persistent_deployment
+from robotwin20_adapter.persistent_deployment import (
+    build_persistent_deployment,
+    build_persistent_runtime_bundle,
+)
 
 
 def test_deployment_wires_shared_cache_and_requires_persistent_stop_policy(tmp_path):
@@ -30,3 +33,30 @@ def test_deployment_wires_shared_cache_and_requires_persistent_stop_policy(tmp_p
             materializer_command=("python",), materializer_arguments=arguments,
             arm_profile_digest="a" * 64,
         )
+
+
+def test_runtime_bundle_registers_persistent_tools_behind_one_transport(tmp_path):
+    arm = tmp_path / "arms.yaml"
+    arm.write_text(yaml.safe_dump(_profile()))
+    profiles = Path(__file__).parents[1] / "profiles/robotwin20"
+    arguments = {
+        "arm-planning-profile": str(arm),
+        "route-input-profile": str(profiles / "route-inputs-persistent.yaml"),
+    }
+    deployment = build_persistent_deployment(
+        client=object(), artifact_root=tmp_path, scene_source=lambda request: None,
+        materializer_command=("python",), materializer_arguments=arguments,
+        arm_profile_digest="a" * 64,
+    )
+    bundle = build_persistent_runtime_bundle(
+        deployment=deployment,
+        client=object(),
+        understanding_provider=object(),
+        grasp_provider=object(),
+        tool_context_provider=lambda tool_id: {"ready": True, "tool_id": tool_id},
+    )
+    assert bundle.client_transport() is bundle.transport
+    assert {item["tool_id"] for item in bundle.runtime.list_tools()["tools"]} == {
+        "scene.observe", "manipulation.capabilities", "scene.understand",
+        "grasp.propose", "manipulation.prepare", "object.acquire", "object.place",
+    }
