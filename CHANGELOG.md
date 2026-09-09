@@ -65,6 +65,10 @@
 - Ruff、compileall、`git diff --check`: passed。
 - 证据范围 / Evidence scope: provider-neutral/dry-run semantic binding and PlanGraph propagation only; no claim of real robot motion, live Action completion, or field Verifier success.
 
+### Git 提交 / Git Commit
+
+- Commit: `22f3057`; Branch: `feature/planning-loop`; 时间 / Time: 2026-09-09 (Asia/Shanghai).
+
 ## v8.6.0 (2026-09-09 22:00) - codex
 
 ### 变更摘要 / Change Summary
