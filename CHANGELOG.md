@@ -22,7 +22,7 @@
 
 ### Git 提交 / Git Commit
 
-- Commit: 待提交后回填 / to be filled after commit; Branch: `feature/planning-loop`.
+- Commit: `6cff5cd`; Branch: `feature/planning-loop`.
 
 ## v8.9.0 (2026-09-09 23:35) - codex
 
