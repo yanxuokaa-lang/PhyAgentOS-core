@@ -43,6 +43,7 @@
 ### Git 提交 / Git Commit
 
 - Branch: `feature/planning-loop`; only review documentation and logs.
+- Review commit: `83954c4`; 时间 / Time: 2026-09-09 14:50 (Asia/Shanghai).
 
 ## v7.5.5 (2026-09-09 14:34) - codex
 
