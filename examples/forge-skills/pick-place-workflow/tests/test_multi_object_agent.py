@@ -118,6 +118,33 @@ async def test_runner_semantic_mode_does_not_force_tool_queue(tmp_path):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("planning_mode", ["baseline", "agent_composed"])
+async def test_runner_persists_optional_execution_evidence_in_plan_nodes(tmp_path, planning_mode):
+    coordinator = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=object())
+    runner = MultiObjectAgentRunner(
+        coordinator=coordinator,
+        agent_loop=object(),
+        scene_revision_provider=lambda _task_id: "scene://s0",
+        planning_mode=planning_mode,
+    )
+    task = await runner.create_task(
+        task_description="evidence-bound block",
+        entities=[{
+            **entity("green"),
+            "capability_snapshot_ref": "artifact://capabilities/s0",
+            "assignment_ref": "artifact://assignments/s0/green",
+        }],
+        verification=TaskVerificationContract(mode="off"),
+        task_id=f"task-evidence-{planning_mode}",
+        revision_id=f"revision-evidence-{planning_mode}",
+    )
+    nodes = [node for node in task.active_revision.plan_graph.nodes if node.node_id != "verify"]
+    assert nodes
+    assert all(node.input_bindings["capability_snapshot_ref"] == "artifact://capabilities/s0" for node in nodes)
+    assert all(node.input_bindings["assignment_ref"] == "artifact://assignments/s0/green" for node in nodes)
+
+
+@pytest.mark.asyncio
 async def test_runner_rejects_stale_scene_before_agent_loop(tmp_path):
     coordinator = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=object())
     class AgentLoop:

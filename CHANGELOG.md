@@ -8,6 +8,25 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v8.4.4 (2026-09-09 21:05) - codex
+
+### 变更摘要 / Change Summary
+
+- [完成] [policy] [test] 验证 capability/assignment evidence 在 baseline 与 semantic PlanGraph 的所有节点中持久化 / verify capability/assignment evidence persistence on all nodes in baseline and semantic PlanGraphs. (local)
+- [Completed] [Policy] [Test] Verify capability/assignment evidence persistence across all baseline and semantic PlanGraph nodes. (local)
+
+### 文件变更详情 / File Details
+
+- `examples/forge-skills/pick-place-workflow/tests/test_multi_object_agent.py` L108-L137 [新增 / Added]
+
+### 验证 / Validation
+
+- Focused `8 passed`; broad `580 passed`; Ruff and diff checks passed.
+
+### Git 提交 / Git Commit
+
+- Commit: `9ce5365`; Branch: `feature/planning-loop`; 时间 / Time: 2026-09-09 (Asia/Shanghai).
+
 ## v8.4.2 (2026-09-09 20:45) - codex
 
 ### 变更摘要 / Change Summary
