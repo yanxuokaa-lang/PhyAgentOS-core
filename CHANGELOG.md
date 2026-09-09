@@ -2,9 +2,86 @@
 
 ## Archive
 
+- [2026-09 Part 5](changelog/2026-09_part5.md)
 - [2026-09 Part 4](changelog/2026-09_part4.md)
 
 ## 最近 5 条 / Latest Five Versions
+
+## v7.5.3 (2026-09-09 14:11) - codex
+
+### 预期修改 / Planned Changes
+
+- [完成] [policy] [fix] 修复 RoboTwin close/release 重复轨迹及 lift/transport 重复边界，夹爪保持固定轨迹终点；保留阶段和安全检查。(local)
+- [Completed] [policy] [fix] Remove duplicate close/release trajectories and the lift/transport boundary motion; hold the fixed trajectory endpoint during gripper commands and preserve phase evidence and safety checks. (local)
+- [完成] [eval] [fix] 增加可配置有界到位等待及回归测试；不调用硬件。(local)
+- [Completed] [eval] [fix] Add configurable bounded arrival waiting and regression coverage; no hardware invocation. (local)
+- 具体失败场景：移除重复规划后，跟踪滞后可能使夹爪提前动作；静态类型及普通测试无法测得运行时位置。因此在夹爪动作前及重复边界处测量姿态，有限步保持原目标，超限失败；复用现有逐步执行检查，不新增 hash、baseline 或发布门禁。
+- Failure scenario: after removing replanning, tracking lag can trigger gripper action before arrival. Types and ordinary tests cannot measure runtime pose. Measure arrival before gripper-only phases and skipped boundaries, hold the existing target for bounded steps, and fail on exhaustion using existing step checks; no new hashes, baselines or release gates.
+
+### 影响文件 / Planned Files
+
+- `examples/forge-adapters/robotwin20/runtime/robotwin_simulation_probe_worker.py`
+- `examples/forge-adapters/robotwin20/profiles/robotwin20/simulation-probe.yaml`
+- `examples/forge-adapters/robotwin20/tests/test_simulation_probe.py`
+- `docs/forge/GRASPGEN_CONTACT_DEPTH_POSTPROCESSING.md`
+- `CHANGELOG.md`, `changelog/2026-09_part5.md`
+
+### 完成结果 / Results
+
+- [eval] [fix] 八阶段保留，close/release 的机械臂轨迹为零；transport 仅去除与 lift 完整姿态相同的首点。夹爪保持最后已验证关节目标。(local)
+- [eval] [fix] Preserve eight phases, execute zero arm trajectory in close/release, skip only a transport start matching the full lift endpoint, and hold the last validated joint target. (local)
+- [eval] [test] 专项 54 passed；当前工作区适配器 384 passed, 1 skipped；Ruff 和 diff check 通过。测试使用 fake planner/scene IO；未运行新 SAPIEN 仿真或硬件。(local)
+- [eval] [test] Focused tests: 54 passed; current workspace adapter suite: 384 passed, 1 skipped; Ruff and diff check pass. Tests use fake planner/scene IO; no new SAPIEN or hardware run. (local)
+- 到位默认 0.005 m / 0.05 rad / 125 steps 为可配置初始值，尚未通过新动态试验测量；v7.5.2 的成功不代表此版本动态验证。
+- Arrival defaults of 0.005 m / 0.05 rad / 125 steps are configurable initial values, pending dynamic measurement; v7.5.2 success does not validate this executor.
+
+### 文件变更详情 / File Details
+
+- [修改 / Modified] `examples/forge-adapters/robotwin20/runtime/robotwin_simulation_probe_worker.py` L25, L100-L167, L1060-L1062, L1082, L1095, L1144-L1145, L1155-L1180, L1218-L1219, L1256-L1259, L1262, L1401, L1628, L1744, L1913-L1915, L1917-L1919, L1961：阶段分流、完整姿态去重、固定保持、到位检查、失败记录及 CLI 参数 / phase dispatch, full-pose deduplication, fixed holds, bounded arrival, failure evidence and CLI.
+- [修改 / Modified] `examples/forge-adapters/robotwin20/tests/test_simulation_probe.py` L917, L968, L987, L1593-L1763：固定保持及真实执行循环 fake IO 回归 / fixed holds and production execution-loop fake IO regressions.
+- [修改 / Modified] `examples/forge-adapters/robotwin20/profiles/robotwin20/simulation-probe.yaml` L41-L46：显式到位参数 / explicit arrival parameters.
+- [新增 / Added] `docs/forge/GRASPGEN_CONTACT_DEPTH_POSTPROCESSING.md` L228-L263：执行语义、配置及未实测边界 / execution semantics, configuration and dynamic validation limits.
+- [新增 / Added] `changelog/2026-09_part5.md` L1-L78：本版本完整双语归档 / complete bilingual version archive.
+- [修改 / Modified] `CHANGELOG.md` L5, L10-L85, L600-L601：新增 Part 5 链接，保留当前最新五版本完整记录并分隔已有历史记录 / add Part 5 link, retain complete latest five records and separate existing history.
+
+### 关键代码 Diff / Key Code Diff
+
+```diff
+-entity = task.robot.left_entity if arm == "left" else task.robot.right_entity
+-current_position = [float(item) for item in entity.get_qpos()[:7]]
+-controller.command(current_position, [0.0] * len(current_position))
++hold_position = execution_state["_arm_hold_targets"][arm]
++controller.command(hold_position, [0.0] * len(hold_position))
+```
+
+```diff
++execution_state.setdefault("_arm_hold_targets", {})[arm] = np.asarray(
++    positions[-1], dtype=np.float64
++).tolist()
+-for route_waypoint, waypoint in zip(phase["waypoints"], world_waypoints):
++for index, (route_waypoint, waypoint) in enumerate(zip(phase["waypoints"], world_waypoints)):
++    if gripper_only or duplicate_boundary:
++        arrival_checks.append(_wait_for_arrival(...))
++        skipped_waypoints.append(...)
++        continue
+     result = fn(waypoint)
+```
+
+- 上述循环 Diff 为关键片段；完整代码对 close/release 只执行一次到位检查，并校验它们与前一移动阶段一致。
+- The loop diff is abbreviated; full code checks arrival once for each gripper-only phase and validates the preceding motion endpoint.
+
+### 验证命令 / Validation
+
+```bash
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=.:examples/forge-adapters/robotwin20/src:examples/forge-adapters/robotwin20/runtime:examples/forge-adapters/robotwin20/scripts:examples/forge-skills/pick-place-workflow/src /home/yanxu/miniconda3/envs/paos/bin/python -m pytest -q -p pytest_asyncio.plugin examples/forge-adapters/robotwin20/tests
+/home/yanxu/miniconda3/envs/paos/bin/ruff check examples/forge-adapters/robotwin20/runtime/robotwin_simulation_probe_worker.py examples/forge-adapters/robotwin20/tests/test_simulation_probe.py
+git diff --check
+```
+
+### Git 提交 / Git Commit
+
+- Branch: `feature/planning-loop`.
+- 仅提交本次文件；已有其他未提交修改保留 / commit only this task's files and preserve existing unrelated edits.
 
 ## v7.5.2 (2026-09-09 13:51) - codex
 
@@ -518,6 +595,8 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=.:examples/forge-adapters/robotwin20
 - `examples/forge-adapters/robotwin20/runtime/robotwin_grasp_contact_geometry_worker.py`
 - `examples/forge-adapters/robotwin20/tests/`
 - `docs/forge/GRASPGEN_CONTACT_DEPTH_POSTPROCESSING.md`
+
+## 既有历史记录 / Earlier Records
 
 ## v7.4.1 (2026-09-09 11:30) - codex
 

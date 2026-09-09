@@ -914,6 +914,7 @@ def test_execute_segment_passes_planner_velocity_through_bounded_controller(tmp_
     assert np.allclose(velocity, 0.8)
     assert execution_state["simulator_steps"] == 1
     assert controller.counters["settled_steps"] == 1
+    assert execution_state["_arm_hold_targets"]["left"] == [0.0] * 7
 
 
 def test_gripper_step_uses_bounded_arm_hold_and_rejects_invalid_target(tmp_path: Path):
@@ -964,6 +965,7 @@ def test_gripper_step_uses_bounded_arm_hold_and_rejects_invalid_target(tmp_path:
         "planner_object_attached": False,
         "simulator_steps": 0,
         "_controllers": {"left": controller},
+        "_arm_hold_targets": {"left": [0.2] * 7},
         "_artifact_root": tmp_path,
         "_execution_input_digests": {},
         "_controller_source_sha256": hashlib.sha256(
@@ -982,6 +984,7 @@ def test_gripper_step_uses_bounded_arm_hold_and_rejects_invalid_target(tmp_path:
     )
     assert len(task.robot.arm_commands) == 20
     assert len(task.robot.gripper_commands) == 20
+    assert all(command[0] == [0.2] * 7 for command in task.robot.arm_commands)
     assert controller.counters["settled_steps"] == 20
     with pytest.raises(SimulationProbeError, match="normalized bounds"):
         _set_gripper(
@@ -1587,3 +1590,174 @@ def test_contact_trace_qualifies_duplicate_arm_link_names():
     trace = probe_worker._contact_state(Task(), phase="approach", step=1)
     assert trace[0]["pair"] == ["left:panda_leftfinger", "table"]
     assert trace[0]["active_contact"] is True
+
+
+@pytest.fixture
+def execution_route(tmp_path, monkeypatch):
+    """Exercise the provider loop with deterministic fake planner and scene IO."""
+    import copy
+
+    import numpy as np
+
+    request = _route_request(tmp_path)
+    candidate = request["candidates"][0]
+    phases = {item["phase"]: item for item in candidate["route"]}
+    phases["transport"]["waypoints"].insert(0, copy.deepcopy(phases["lift"]["waypoints"][-1]))
+    state = {
+        "planner_object_attached": False, "simulator_steps": 0,
+        "_artifact_root": tmp_path, "_execution_input_digests": {},
+        "_controller_source_sha256": hashlib.sha256(
+            Path(probe_worker.__file__).with_name("robotwin_capability_controller.py").read_bytes()
+        ).hexdigest(),
+        "_arrival_policy": probe_worker.ArrivalPolicy(max_steps=2),
+    }
+    pose = SimpleNamespace(p=np.array([0., 0., .7]), q=[1., 0., 0., 0.])
+    actor = SimpleNamespace(get_pose=lambda: pose, get_name=lambda: "block")
+    planned, gripped, commands = [], [], []
+    robot = SimpleNamespace(ee=[0., 0., .8, 1., 0., 0., 0.])
+
+    def plan(waypoint):
+        planned.append((state["phase"], list(waypoint)))
+        return {"status": "Success", "position": np.array([waypoint]), "velocity": np.zeros((1, 7))}
+
+    def command(q, dq):
+        commands.append((list(q), list(dq)))
+        robot.target = list(q)
+
+    def step():
+        robot.ee = list(robot.target)
+        if state["phase"] == "lift":
+            pose.p[2] = .85
+        elif state["phase"] == "release":
+            pose.p[2] = .72
+
+    robot.left_plan_path = plan
+    robot.get_left_ee_pose = lambda: robot.ee
+    robot.get_left_gripper_val = lambda: 1.
+    robot.set_gripper = lambda value, arm: gripped.append((state["phase"], value))
+    robot.left_planner = SimpleNamespace(motion_gen=SimpleNamespace(detach_object_from_robot=lambda: None))
+    task = SimpleNamespace(robot=robot, scene=SimpleNamespace(step=step, get_timestep=lambda: .004))
+    state["_controllers"] = {"left": CapabilityBoundedDriveController(
+        ControllerLimits(
+            joint_order=tuple(f"joint-{i}" for i in range(7)),
+            position_lower_rad=(-2.,) * 7, position_upper_rad=(2.,) * 7,
+            velocity_lower_radps=(-1.,) * 7, velocity_upper_radps=(1.,) * 7,
+        ), command,
+    )}
+    monkeypatch.setattr(probe_worker, "_actor_for_entity", lambda *_: actor)
+    monkeypatch.setattr(probe_worker, "evaluate_route", lambda *_: {"selected_arm": "left", "arm_attempts": []})
+    monkeypatch.setattr(probe_worker, "_joint_limits", lambda *_: [[-2.] * 7, [2.] * 7])
+    monkeypatch.setattr(probe_worker, "_validate_gripper_table_clearance", lambda *_, **__: None)
+    monkeypatch.setattr(probe_worker, "_attach_object_to_planner", lambda *_: {"fake": True})
+    monkeypatch.setattr(probe_worker, "_validate_attached_support_departure", lambda *_: None)
+    monkeypatch.setattr(probe_worker, "add_released_object", lambda *_: None)
+    monkeypatch.setattr(probe_worker, "_contact_state", lambda *_, **__: [])
+    monkeypatch.setattr(probe_worker, "_evaluate_contacts", lambda *_: {
+        "status": "pass", "unexpected_robot_environment_contacts": [],
+    })
+
+    def run():
+        return probe_worker._run_candidate(
+            task, request, candidate, {"joint_limit_policy": {}},
+            deadline=time.monotonic() + 10, stop_file=None, execution_state=state,
+        )[0]
+
+    return SimpleNamespace(
+        run=run, state=state, task=task, phases=phases, planned=planned, gripped=gripped, commands=commands,
+    )
+
+
+def test_route_gripper_phases_and_duplicate_boundary_do_not_replan(execution_route):
+    route = execution_route
+    trajectory = route.run()
+    assert [phase for phase, _ in route.planned] == ["approach", "contact", "lift", "transport", "descent", "retreat"]
+    records = {item["phase"]: item for item in trajectory["phases"]}
+    assert len(records) == 8
+    for phase in ("close", "release"):
+        assert records[phase]["trajectory_steps"] == 0
+        assert records[phase]["segments"] == []
+        assert records[phase]["gripper_steps"] == 20
+        assert records[phase]["arrival_checks"][0]["status"] == "arrived"
+    assert records["transport"]["skipped_waypoints"][0]["reason"] == "duplicate_phase_boundary"
+    assert records["transport"]["trajectory_steps"] == 1
+
+
+def test_duplicate_boundary_preserves_a_rotation(execution_route):
+    route = execution_route
+    route.phases["transport"]["waypoints"][0]["orientation_xyzw"] = [0., 0., 1., 0.]
+    trajectory = route.run()
+    assert len([phase for phase, _ in route.planned if phase == "transport"]) == 2
+    assert trajectory["phases"][4]["skipped_waypoints"] == []
+
+
+@pytest.mark.parametrize("phase", ["close", "release"])
+def test_gripper_only_target_mismatch_fails_before_actuation(execution_route, phase):
+    route = execution_route
+    route.phases[phase]["waypoints"][0]["position_m"][0] += .01
+    with pytest.raises(SimulationProbeError, match="differs from preceding"):
+        route.run()
+    assert not any(name == phase for name, _ in route.gripped)
+    assert not any(name == phase for name, _ in route.planned)
+
+
+@pytest.mark.parametrize("phase", ["close", "release"])
+def test_arrival_exhaustion_prevents_gripper_action(execution_route, phase):
+    route = execution_route
+    route.task.robot.get_left_ee_pose = lambda: (
+        [0., 0., 1.1, 1., 0., 0., 0.] if route.state["phase"] == phase else route.task.robot.ee
+    )
+    with pytest.raises(SimulationProbeError, match="did not converge"):
+        route.run()
+    assert not any(name == phase for name, _ in route.gripped)
+    assert route.state["arrival_checks"][-1]["steps"] == 2
+    assert route.state["arrival_checks"][-1]["status"] == "failed"
+
+
+def test_arrival_wait_holds_fixed_target_and_observes_convergence(execution_route):
+    route = execution_route
+    route.run()
+    target = list(route.task.robot.ee)
+    route.task.robot.ee[0] += .02
+    record = probe_worker._wait_for_arrival(
+        route.task, "left", target, phase="retreat", deadline=time.monotonic() + 1,
+        stop_file=None, contacts=[], execution_state=route.state,
+    )
+    assert record["steps"] == 1
+    assert record["status"] == "arrived"
+    assert route.commands[-1] == (target, [0.] * 7)
+
+
+@pytest.mark.parametrize("failure", ["stop", "timeout", "nan", "zero_quaternion"])
+def test_arrival_checks_fail_without_extra_steps(execution_route, tmp_path, failure):
+    route = execution_route
+    route.run()
+    before = route.state["simulator_steps"]
+    deadline = time.monotonic() - 1 if failure == "timeout" else time.monotonic() + 1
+    stop = tmp_path / "stop"
+    if failure == "stop":
+        stop.touch()
+    elif failure == "nan":
+        route.task.robot.ee[0] = float("nan")
+    elif failure == "zero_quaternion":
+        route.task.robot.ee[3:] = [0.] * 4
+    error = {"stop": InterruptedError, "timeout": TimeoutError}.get(failure, SimulationProbeError)
+    with pytest.raises(error):
+        probe_worker._wait_for_arrival(
+            route.task, "left", [0., 0., .8, 1., 0., 0., 0.], phase="retreat",
+            deadline=deadline, stop_file=stop, contacts=[], execution_state=route.state,
+        )
+    assert route.state["simulator_steps"] == before
+
+
+def test_same_route_target_accepts_quaternion_sign_but_not_translation():
+    assert probe_worker._same_route_target([0., 0., 0., 1., 0., 0., 0.], [0., 0., 0., -1., 0., 0., 0.])
+    assert not probe_worker._same_route_target([0., 0., 0., 1., 0., 0., 0.], [.0001, 0., 0., 1., 0., 0., 0.])
+
+
+@pytest.mark.parametrize("kwargs", [
+    {"position_tolerance_m": float("nan")}, {"orientation_tolerance_rad": 0.},
+    {"max_steps": -1}, {"max_steps": True},
+])
+def test_arrival_policy_rejects_invalid_bounds(kwargs):
+    with pytest.raises(SimulationProbeError):
+        probe_worker.ArrivalPolicy(**kwargs)

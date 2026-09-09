@@ -225,3 +225,39 @@ contains 444 frames at 320x240 and lasts 17.76 s.
 This is one independent simulation result. It does not create a Gateway
 invocation, grant hardware authority, or finalize a PAOS AgentTask. The
 worker-local deadline/stop monitoring result is not a hardware stop certificate.
+
+## Phase execution correction (v7.5.3)
+
+The provider now executes `close` and `release` as gripper-only phases. Their
+world position and orientation must match the preceding `contact` or `descent`
+endpoint. The first `transport` waypoint is skipped only when its full pose
+matches the `lift` endpoint; an in-place rotation remains a planned movement.
+All eight PAOS phases remain in the trajectory evidence. Gripper-only phases
+have zero trajectory steps; skipped waypoints, arrival checks, arrival steps
+and gripper steps are recorded separately, including arrival errors on failure.
+
+The arm holds the last validated trajectory joint target at zero target
+velocity throughout gripper commands. Measured joint positions no longer
+replace that target on every gripper step. Before a gripper-only phase or a
+skipped transport boundary advances, the provider measures the RoboTwin world
+EE pose (position plus wxyz quaternion, matching the planner route target).
+It waits at the same joint target, using existing bounded controller, stop,
+timeout, contact, video and peer-arm checks. Exhaustion follows the existing
+failure/stop/reset path and prevents the pending gripper action.
+
+Provider CLI/profile settings are `--arrival-position-tolerance-m 0.005`,
+`--arrival-orientation-tolerance-rad 0.05`, and `--arrival-max-steps 125`.
+These are initial configurable arrival limits, not measured physical accuracy
+or the final object placement tolerance. At a 0.004 s timestep, the maximum
+additional wait is 0.5 s per check. Quaternion sign changes do not cause motion.
+
+Validation uses fake planner and simulator IO through the production execution
+loop, covering both gripper phases, rotated boundaries, convergence, exhaustion,
+stop, deadline, invalid measurements and fixed holds. No new SAPIEN probe or
+hardware run has been performed for this version; the v7.5.2 dynamic result
+above describes the previous executor. A new independently approved simulation
+package must bind this worker before measuring total steps and placement.
+
+```bash
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=.:examples/forge-adapters/robotwin20/src:examples/forge-adapters/robotwin20/runtime:examples/forge-adapters/robotwin20/scripts:examples/forge-skills/pick-place-workflow/src /home/yanxu/miniconda3/envs/paos/bin/python -m pytest -q -p pytest_asyncio.plugin examples/forge-adapters/robotwin20/tests
+```

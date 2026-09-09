@@ -38,3 +38,9 @@ worker:
     - --stop-file
     - ${ROBOTWIN20_PROBE_STOP_FILE}
     - --record-video
+    - --arrival-position-tolerance-m
+    - "0.005"
+    - --arrival-orientation-tolerance-rad
+    - "0.05"
+    - --arrival-max-steps
+    - "125"

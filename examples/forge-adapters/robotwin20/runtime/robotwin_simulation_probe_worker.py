@@ -22,6 +22,7 @@ import re
 import sys
 import time
 from contextlib import redirect_stdout
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
@@ -94,6 +95,74 @@ APPROVAL_SCHEMA_VERSION = "paos-robotwin20-simulation-probe-approval/v4"
 _STATE_FIELDS = ("scene_revision", "observation_ref", "frame_id", "candidate_set_ref")
 _GRIPPER_VALUES = {"open": 1.0, "contact": 1.0, "closed": 0.0, "released": 1.0}
 _SAFE_TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
+
+
+@dataclass(frozen=True)
+class ArrivalPolicy:
+    position_tolerance_m: float = 0.005
+    orientation_tolerance_rad: float = 0.05
+    max_steps: int = 125
+
+    def __post_init__(self) -> None:
+        for value in (self.position_tolerance_m, self.orientation_tolerance_rad):
+            if isinstance(value, bool) or not math.isfinite(value) or value <= 0:
+                raise SimulationProbeError("arrival tolerances must be finite and positive")
+        if isinstance(self.max_steps, bool) or not isinstance(self.max_steps, int) or self.max_steps < 0:
+            raise SimulationProbeError("arrival max steps must be a nonnegative integer")
+
+
+def _same_route_target(left: list[float] | None, right: list[float]) -> bool:
+    import numpy as np
+
+    return left is not None and bool(
+        np.allclose(left[:3], right[:3], rtol=0, atol=1e-9)
+        and _orientation_error_rad(left[3:], right[3:]) <= 1e-7
+    )
+
+
+def _wait_for_arrival(
+    task: Any,
+    arm: str,
+    target: list[float],
+    *,
+    phase: str,
+    deadline: float,
+    stop_file: Path | None,
+    contacts: list[dict[str, Any]],
+    execution_state: dict[str, Any],
+) -> dict[str, Any]:
+    import numpy as np
+
+    policy = execution_state.get("_arrival_policy", ArrivalPolicy())
+    hold = execution_state["_arm_hold_targets"][arm]
+    ee = task.robot.get_left_ee_pose if arm == "left" else task.robot.get_right_ee_pose
+    record = {"phase": phase, "steps": 0, "status": "waiting", **asdict(policy)}
+    execution_state.setdefault("arrival_checks", []).append(record)
+    for step in range(policy.max_steps + 1):
+        if time.monotonic() >= deadline:
+            raise TimeoutError("simulation probe exceeded max duration")
+        if stop_file is not None and stop_file.exists():
+            for controller in execution_state["_controllers"].values():
+                controller.stop()
+            raise InterruptedError("simulation probe stop requested")
+        observed = np.asarray(ee(), dtype=np.float64)
+        if observed.shape != (7,) or not np.isfinite(observed).all() or np.linalg.norm(observed[3:]) <= 1e-9:
+            raise SimulationProbeError("arrival pose measurement is invalid")
+        position_error = float(np.linalg.norm(observed[:3] - target[:3]))
+        orientation_error = _orientation_error_rad(observed[3:], target[3:])
+        record.update(steps=step, position_error_m=position_error, orientation_error_rad=orientation_error)
+        if position_error <= policy.position_tolerance_m and orientation_error <= policy.orientation_tolerance_rad:
+            record["status"] = "arrived"
+            return record
+        if step == policy.max_steps:
+            record["status"] = "failed"
+            raise SimulationProbeError(f"{phase} target did not converge within arrival limits")
+        _execute_segment(
+            task, arm, {"position": [hold], "velocity": [[0.0] * len(hold)]},
+            phase=phase, deadline=deadline, stop_file=stop_file,
+            contacts=contacts, execution_state=execution_state,
+        )
+    raise AssertionError("arrival loop exhausted without a result")
 
 
 
@@ -988,6 +1057,9 @@ def _execute_segment(
                 attached=bool(execution_state["planner_object_attached"]),
             )
         )
+    execution_state.setdefault("_arm_hold_targets", {})[arm] = np.asarray(
+        positions[-1], dtype=np.float64
+    ).tolist()
 
 
 def _set_gripper(
@@ -1007,7 +1079,7 @@ def _set_gripper(
     if not math.isfinite(normalized_value) or not 0.0 <= normalized_value <= 1.0:
         raise SimulationProbeError("gripper command is outside provider normalized bounds")
     controller = execution_state["_controllers"][arm]
-    entity = task.robot.left_entity if arm == "left" else task.robot.right_entity
+    hold_position = execution_state["_arm_hold_targets"][arm]
     for _ in range(20):
         if time.monotonic() >= deadline:
             raise TimeoutError("simulation probe exceeded max duration")
@@ -1020,8 +1092,7 @@ def _set_gripper(
             execution_state["_execution_input_digests"],
         )
         _guard_controller_source_digest(execution_state["_controller_source_sha256"])
-        current_position = [float(item) for item in entity.get_qpos()[:7]]
-        controller.command(current_position, [0.0] * len(current_position))
+        controller.command(hold_position, [0.0] * len(hold_position))
         task.robot.set_gripper(normalized_value, arm)
         execution_state["world_change_started"] = True
         execution_state["phase"] = phase
@@ -1070,6 +1141,8 @@ def _run_candidate(
     half_extents = [float(item) for item in candidate["attached_object"]["half_extents_m"]]
     attached_model: dict[str, Any] | None = None
     detached = False
+    previous_target: list[float] | None = None
+    previous_phase: str | None = None
     for phase in candidate["route"]:
         phase_name = phase["phase"]
         execution_state["phase"] = phase_name
@@ -1079,7 +1152,32 @@ def _run_candidate(
             _validate_world_pose(world_pose, request["workspace_bounds_m"], half_extents)
             world_waypoints.append(world_pose)
         planned_segments = []
-        for route_waypoint, waypoint in zip(phase["waypoints"], world_waypoints):
+        skipped_waypoints = []
+        arrival_checks = []
+        gripper_only = phase_name in {"close", "release"}
+        if gripper_only and (
+            previous_phase != {"close": "contact", "release": "descent"}[phase_name]
+            or not world_waypoints
+            or not all(_same_route_target(previous_target, pose) for pose in world_waypoints)
+        ):
+            raise SimulationProbeError(f"{phase_name} target differs from preceding motion endpoint")
+        for index, (route_waypoint, waypoint) in enumerate(zip(phase["waypoints"], world_waypoints)):
+            duplicate_boundary = (
+                phase_name == "transport" and previous_phase == "lift" and index == 0
+                and _same_route_target(previous_target, waypoint)
+            )
+            if gripper_only or duplicate_boundary:
+                if not gripper_only or index == 0:
+                    arrival_checks.append(_wait_for_arrival(
+                        task, arm, waypoint, phase=phase_name, deadline=deadline,
+                        stop_file=stop_file, contacts=contact_trace, execution_state=execution_state,
+                    ))
+                skipped_waypoints.append({
+                    "route_waypoint": route_waypoint,
+                    "world_pose_pq_wxyz": waypoint,
+                    "reason": "gripper_only" if gripper_only else "duplicate_phase_boundary",
+                })
+                continue
             result = fn(waypoint)
             _validate_trajectory(result, limits)
             planned_segments.append(
@@ -1117,6 +1215,8 @@ def _run_candidate(
                 contacts=contact_trace,
                 execution_state=execution_state,
             )
+            previous_target = waypoint
+        gripper_start_step = execution_state["simulator_steps"]
         _set_gripper(
             task,
             arm,
@@ -1153,8 +1253,13 @@ def _run_candidate(
                 "waypoint_count": len(world_waypoints),
                 "trajectory_steps": sum(len(item["position"]) for item in planned_segments),
                 "segments": planned_segments,
+                "skipped_waypoints": skipped_waypoints,
+                "arrival_checks": arrival_checks,
+                "arrival_steps": sum(item["steps"] for item in arrival_checks),
+                "gripper_steps": execution_state["simulator_steps"] - gripper_start_step,
             }
         )
+        previous_phase = phase_name
     after_actor = np.asarray(actor.get_pose().p, dtype=np.float64).copy()
     if not np.isfinite(after_actor).all() or float(np.linalg.norm(after_actor - before_actor)) < 1e-4:
         raise SimulationProbeError("simulation route did not change target actor state")
@@ -1293,6 +1398,7 @@ def _recover_candidate_failure(
             "controller": execution_state.get("controller"),
             "arm_selection_attempts": execution_state.get("arm_selection_attempts", []),
             "contact_trace": execution_state.get("contact_trace", []),
+            "arrival_checks": execution_state.get("arrival_checks", []),
             "planner_detach_status": detach_status,
             "simulation_reset_status": reset_status,
             "controller_stop_status": controller_stop_status,
@@ -1519,6 +1625,7 @@ def _handle_factory(
     max_duration_s: float,
     stop_file: Path | None,
     record_video: bool = False,
+    arrival_policy: ArrivalPolicy = ArrivalPolicy(),
 ):
     from robotwin_backend import RoboTwinRuntimeProfile, RoboTwinSensorBackend, load_runtime_profile
 
@@ -1634,6 +1741,7 @@ def _handle_factory(
             "phase": "scene_initialization",
             "planner_object_attached": False,
             "object_lifted": False,
+            "_arrival_policy": arrival_policy,
         }
         prefix = (
             f"artifact://simulation-probe/{request['request_id']}/"
@@ -1802,7 +1910,13 @@ def main() -> int:
     parser.add_argument("--max-duration-s", type=float, default=300.0)
     parser.add_argument("--stop-file", type=Path)
     parser.add_argument("--record-video", action="store_true")
+    parser.add_argument("--arrival-position-tolerance-m", type=float, default=0.005)
+    parser.add_argument("--arrival-orientation-tolerance-rad", type=float, default=0.05)
+    parser.add_argument("--arrival-max-steps", type=int, default=125)
     args = parser.parse_args()
+    arrival_policy = ArrivalPolicy(
+        args.arrival_position_tolerance_m, args.arrival_orientation_tolerance_rad, args.arrival_max_steps
+    )
     if not args.runtime_root.is_absolute() or not args.runtime_root.is_dir() or args.runtime_root.is_symlink():
         raise SystemExit("runtime root must be an absolute directory")
     if not args.artifact_root.is_absolute() or not args.artifact_root.is_dir() or args.artifact_root.is_symlink():
@@ -1844,6 +1958,7 @@ def main() -> int:
                 max_duration_s=args.max_duration_s,
                 stop_file=resolved_stop,
                 record_video=args.record_video,
+                arrival_policy=arrival_policy,
             )
         state["backend"] = backend
         state["handle"] = handler
