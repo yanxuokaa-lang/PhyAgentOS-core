@@ -17,11 +17,17 @@ from PhyAgentOS.forge.task import AgentTaskCoordinator, AgentTaskError
 from PhyAgentOS.forge.tool_client import ForgeToolClient
 from PhyAgentOS.planning import (
     AdmissionContext,
+    NodeSettlement,
     PlanningExecutionBinding,
     ToolResultEnvelope,
     plan_node_digest,
 )
-from PhyAgentOS.verification.contracts import TaskVerificationContract
+from PhyAgentOS.verification.contracts import (
+    CriterionVerdict,
+    TaskVerificationContract,
+    VerificationAttempt,
+    VerificationVerdict,
+)
 
 from pick_place_workflow.multi_object_agent import (
     MultiObjectAgentError,
@@ -43,6 +49,37 @@ def entity(name: str, *, destination: str | None = None, scene: str = "scene://s
         "geometry_artifact_ref": f"artifact://geometry/{name}",
         "category": "block",
     }
+
+
+class DeterministicTaskVerifier:
+    """Record the aggregate supplied to the final Verifier and return a fixed verdict."""
+
+    def __init__(self, verdict: str = "success") -> None:
+        self.verdict_name = verdict
+        self.received_tasks = []
+        self.received_events = []
+
+    async def verify_agent_task(self, task, *, events, lessons, source, mode):
+        del lessons
+        self.received_tasks.append(task.model_copy(deep=True))
+        self.received_events.append(list(events))
+        criterion_status = {
+            "success": "satisfied",
+            "failure": "unsatisfied",
+            "inconclusive": "unknown",
+        }[self.verdict_name]
+        verdict = VerificationVerdict(
+            verdict=self.verdict_name,
+            criteria=[CriterionVerdict(criterion="both objects are placed", status=criterion_status)],
+            reason=f"deterministic {self.verdict_name} verdict",
+            lesson="none",
+        )
+        return verdict, {"verdict": self.verdict_name}, VerificationAttempt(
+            attempt_id=f"verification-{len(self.received_tasks)}",
+            source=source,
+            mode=mode,
+            verdict=self.verdict_name,
+        )
 
 
 def test_scene_binding_accepts_optional_capability_and_assignment_evidence():
@@ -312,8 +349,19 @@ async def test_two_object_action_loop_reconciles_scene_revisions_and_final_verif
     register(runtime, "object.place", "object", "place", "action", Action("object.place"))
 
     transport = CapabilityRuntimeTransport(runtime)
+    verifier = DeterministicTaskVerifier()
     async with ForgeToolClient("http://runtime", transport=transport) as client:
-        coordinator = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=client)
+        coordinator = AgentTaskCoordinator(
+            workspace=tmp_path,
+            config=ForgeConfig(),
+            client=client,
+            verifier=verifier,
+        )
+        async def no_capture(_task_id):
+            return None
+
+        coordinator._capture_before = no_capture
+        coordinator._capture_after = no_capture
         runner = MultiObjectAgentRunner(
             coordinator=coordinator,
             agent_loop=object(),
@@ -323,7 +371,11 @@ async def test_two_object_action_loop_reconciles_scene_revisions_and_final_verif
         task = await runner.create_task(
             task_description="place two blocks sequentially",
             entities=[entity("green"), entity("red")],
-            verification=TaskVerificationContract(mode="off"),
+            verification=TaskVerificationContract(
+                mode="enforce",
+                goal="place both blocks in their assigned regions",
+                success_criteria=["both objects are placed"],
+            ),
             task_id="task-runtime-multi",
             revision_id="revision-runtime-multi",
         )
@@ -395,3 +447,136 @@ async def test_two_object_action_loop_reconciles_scene_revisions_and_final_verif
     ]
     assert len(action_invocations) == 4
     assert all(isinstance(invocation_id, str) for invocation_id in action_invocations)
+    finalized = coordinator.get_task(task.task_id)
+    assert finalized.status.value == "succeeded"
+    assert finalized.verdict is not None
+    assert finalized.verdict.verdict == "success"
+    assert finalized.verification_attempts
+    assert len(verifier.received_tasks) == 1
+    verified = verifier.received_tasks[0]
+    verified_graph = verified.active_revision.plan_graph
+    assert verified_graph is not None
+    assert {
+        node.input_bindings["entity_ref"]
+        for node in verified_graph.nodes
+        if "entity_ref" in node.input_bindings
+    } == {"entity://green", "entity://red"}
+    assert any(
+        response_facts(record.response).get("new_scene_revision") == "scene://s3"
+        for record in verified.execution_records
+    )
+    assert all(record.evidence_refs for record in verified.execution_records)
+
+
+@pytest.mark.asyncio
+async def test_finalize_rejects_partially_completed_multi_object_plan(tmp_path):
+    coordinator = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=object())
+    runner = MultiObjectAgentRunner(
+        coordinator=coordinator,
+        agent_loop=object(),
+        scene_revision_provider=lambda _task_id: "scene://s0",
+    )
+    task = await runner.create_task(
+        task_description="place two blocks sequentially",
+        entities=[entity("green"), entity("red")],
+        verification=TaskVerificationContract(mode="off"),
+        task_id="task-partial-finalize",
+        revision_id="revision-partial-finalize",
+    )
+    graph = task.active_revision.plan_graph
+    assert graph is not None
+    for node in graph.nodes:
+        if node.obligation_id == "relocate_1":
+            coordinator.record_node_settlement(NodeSettlement(
+                task_id=task.task_id,
+                revision_id=task.active_revision_id,
+                node_id=node.node_id,
+                status="completed",
+            ))
+
+    with pytest.raises(AgentTaskError, match="incomplete node settlements"):
+        await coordinator.finalize_task(task.task_id)
+
+    current = coordinator.get_task(task.task_id)
+    assert current.status.value == "executing"
+    assert current.verdict is None
+
+
+@pytest.mark.asyncio
+async def test_multi_object_verifier_rejection_does_not_report_success(tmp_path):
+    class QueryClient:
+        async def invoke_query_tool(self, tool_id, arguments, *, caller_id, timeout_ms):
+            del caller_id, timeout_ms
+            return {
+                "data": {
+                    "status": "succeeded",
+                    "tool_id": tool_id,
+                    "scene_revision": arguments.get("scene_revision", "scene://s3"),
+                    "evidence_refs": [f"observed:{arguments.get('entity_ref', 'task')}"],
+                }
+            }
+
+    verifier = DeterministicTaskVerifier("failure")
+    coordinator = AgentTaskCoordinator(
+        workspace=tmp_path,
+        config=ForgeConfig(),
+        client=QueryClient(),
+        verifier=verifier,
+    )
+    async def no_capture(_task_id):
+        return None
+
+    coordinator._capture_after = no_capture
+    runner = MultiObjectAgentRunner(
+        coordinator=coordinator,
+        agent_loop=object(),
+        scene_revision_provider=lambda _task_id: "scene://s0",
+        planning_mode="baseline",
+    )
+    task = await runner.create_task(
+        task_description="place two blocks sequentially",
+        entities=[entity("green"), entity("red")],
+        verification=TaskVerificationContract(
+            mode="enforce",
+            goal="place both blocks in their assigned regions",
+            success_criteria=["both objects are placed"],
+        ),
+        task_id="task-verifier-rejection",
+        revision_id="revision-verifier-rejection",
+    )
+    graph = task.active_revision.plan_graph
+    assert graph is not None
+    for node in graph.nodes:
+        binding = PlanningExecutionBinding(
+            node_id=node.node_id,
+            node_digest=plan_node_digest(node),
+            obligation_id=node.obligation_id,
+            input_binding_digest="a" * 64,
+            decision_trace_ref=f"artifact://trace/{node.node_id}",
+        )
+        await coordinator.invoke_query(
+            task.task_id,
+            node.capability,
+            {
+                "entity_ref": node.input_bindings.get("entity_ref", "entity://task"),
+                "scene_revision": "scene://s3",
+            },
+            planning_binding=binding,
+        )
+        coordinator.record_node_settlement(NodeSettlement(
+            task_id=task.task_id,
+            revision_id=task.active_revision_id,
+            node_id=node.node_id,
+            status="completed",
+            scene_revision="scene://s3",
+            source_tool_id=node.capability,
+            outcome_known=True,
+        ))
+
+    finalized = await coordinator.finalize_task(task.task_id)
+
+    assert finalized.status.value == "failed"
+    assert finalized.verdict is not None
+    assert finalized.verdict.verdict == "failure"
+    assert finalized.verification_attempts
+    assert all(record.terminal and record.status == "succeeded" for record in finalized.execution_records)

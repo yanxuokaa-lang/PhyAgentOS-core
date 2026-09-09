@@ -1558,6 +1558,22 @@ class AgentTaskCoordinator:
                 "cannot finalize while task-owned Action/Session invocation(s) are non-terminal: "
                 + ", ".join(pending)
             )
+        graph = task.active_revision.plan_graph
+        if graph is not None:
+            settlements = {
+                item.node_id: item.status
+                for item in task.active_revision.node_settlements
+            }
+            incomplete = tuple(
+                node.node_id
+                for node in graph.nodes
+                if settlements.get(node.node_id) != "completed"
+            )
+            if incomplete:
+                raise AgentTaskError(
+                    "cannot finalize while active PlanGraph has incomplete node settlements: "
+                    + ", ".join(incomplete)
+                )
         if not task.execution_records:
             raise AgentTaskError("cannot finalize an AgentTask without Tool executions")
         await self._capture_after(task_id)

@@ -8,6 +8,41 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v8.6.0 (2026-09-09 22:00) - codex
+
+### 变更摘要 / Change Summary
+
+- [完成] [policy] [feat] 带 PlanGraph 的 AgentTask 只有在所有语义节点存在 completed NodeSettlement 时才能 finalize；无 PlanGraph 任务保持兼容。(local)
+- [Completed] [Policy] [Feat] Require every semantic PlanGraph node to have a completed NodeSettlement before finalization; tasks without a PlanGraph remain compatible. (local)
+- [完成] [eval] [test] 双对象 Runtime dry-run 接入 enforce Verifier，覆盖 success、Verifier rejection、最终 scene revision/evidence 传递和部分完成拒绝 finalize。(local)
+- [Completed] [Eval] [Test] Connect the two-object Runtime dry-run to an enforce Verifier, covering success, rejection, final scene/evidence propagation, and partial-finalize rejection. (local)
+
+### 文件变更详情 / File Details
+
+- `PhyAgentOS/forge/task.py` L1543-L1578 [修改 / Modified]: finalize 前拒绝 active PlanGraph 中缺失或非 completed settlement 的节点。
+- `examples/forge-skills/pick-place-workflow/tests/test_multi_object_agent.py` L54-L82, L349-L468, L471-L582 [新增/修改 / Added/Modified]: 覆盖确定性最终 Verifier、双对象闭环、rejection 与部分完成拒绝。
+
+### 关键 Diff / Key Diff
+
+```diff
++graph = task.active_revision.plan_graph
++if graph is not None:
++    settlements = {item.node_id: item.status for item in task.active_revision.node_settlements}
++    incomplete = tuple(node.node_id for node in graph.nodes if settlements.get(node.node_id) != "completed")
++    if incomplete:
++        raise AgentTaskError("cannot finalize while active PlanGraph has incomplete node settlements: " + ", ".join(incomplete))
+```
+
+### 验证 / Validation
+
+- 聚焦 / Focused: `12 passed`; 全量核心与示例 / Full core plus examples: `589 passed`。
+- 变更文件 Ruff、compileall、`git diff --check`: passed。
+- 六维验收 / Six dimensions: architecture, failure paths, authority/safety, reproducibility, maintainability, and observability all PASS within provider-neutral dry-run scope。
+
+### Git 提交 / Git Commit
+
+- Commit: pending implementation commit; Branch: `feature/planning-loop`; 时间 / Time: 2026-09-09 (Asia/Shanghai)。
+
 ## v8.5.0 (2026-09-09 21:22) - codex
 
 ### 变更摘要 / Change Summary
@@ -100,26 +135,6 @@
 ### Git 提交 / Git Commit
 
 - Commit: `328ca3b`; Branch: `feature/planning-loop`; 时间 / Time: 2026-09-09 (Asia/Shanghai).
-
-## v8.4.1 (2026-09-09 20:35) - codex
-
-### 变更摘要 / Change Summary
-
-- [完成] [policy] [fix] runner 启动前拒绝绑定 scene revision 已过期的多对象任务 / reject stale bound scene revisions before starting the multi-object runner. (local)
-- [Completed] [Policy] [Fix] Reject multi-object tasks whose bound scene revision is stale before AgentLoop execution. (local)
-
-### 文件变更详情 / File Details
-
-- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/multi_object_agent.py` L190-L195 [修改 / Modified]: 启动 controller 前检查当前场景版本 / check current scene before controller creation.
-- `examples/forge-skills/pick-place-workflow/tests/test_multi_object_agent.py` L108-L127 [新增 / Added]: 过期场景 fail-closed 测试 / stale-scene fail-closed test.
-
-### 验证 / Validation
-
-- Focused `11 passed`; broad `577 passed`; Ruff, compileall, and diff checks passed.
-
-### Git 提交 / Git Commit
-
-- Commit: `b06664d`; Branch: `feature/planning-loop`; 时间 / Time: 2026-09-09 (Asia/Shanghai).
 
 ## v8.3.1 (2026-09-09 19:32) - codex
 
