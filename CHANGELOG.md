@@ -7,6 +7,63 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v7.5.4 (2026-09-09 14:21) - codex
+
+### 预期操作 / Planned Operations
+
+- [完成] [eval] [exp] 按用户“再次运行一次仿真”执行修复后的一次独立 RoboTwin probe，沿用成功路线、场景和候选，新建绑定当前 worker 的授权与输出包；保存视频、阶段步数、到位误差及最终结果。(local)
+- [Completed] [eval] [exp] Run one independent RoboTwin probe following the user's explicit rerun request, reusing the successful route, scene and candidate in a new package bound to the current worker; preserve videos, phase steps, arrival errors and outcome. (local)
+- 影响 / Files: this log, CHANGELOG.md, external simulation artifacts. No hardware or Gateway invocation; preserve collision, stop and reset checks.
+
+### 实际结果 / Results
+
+- [eval] [exp] 单次运行 available，world_change_completed=true，reconciliation_required=false；右臂 1361 steps，相比 v7.5.2 的 1778 减少 417（23.45%）。未放宽任何参数或重复试跑。(local)
+- [eval] [exp] One run returns available/completed with no reconciliation required: right arm 1361 steps versus 1778 in v7.5.2, a reduction of 417 (23.45%). No parameter relaxation or repeated attempts. (local)
+- [eval] [exp] close/release 轨迹各 0 steps，夹爪各 20 steps；transport 跳过 lift 重复首点。close/transport/release 到位位置误差分别 0.003326079896 / 0.003822250210 / 0.004228611383 m，姿态误差 0.007453857039 / 0.004559152033 / 0.007200542569 rad，均直接通过，额外等待 0 steps。(local)
+- [eval] [exp] Close/release each execute zero trajectory steps and 20 gripper steps; transport skips the duplicate lift endpoint. Close/transport/release arrival position errors are 0.003326079896 / 0.003822250210 / 0.004228611383 m and orientation errors 0.007453857039 / 0.004559152033 / 0.007200542569 rad; all pass with zero additional wait. (local)
+- [eval] [exp] 抓取和落地接触通过；现有 attached robot/environment 检查 unexpected=0。最终位置误差 0.004567554930 m，姿态误差 0.043359644876 rad，夹爪张开，满足原有落点容差。(local)
+- [eval] [exp] Grasp and support contact pass; existing attached robot/environment checks report zero unexpected contacts. Final position error 0.004567554930 m and orientation error 0.043359644876 rad satisfy original placement tolerances, with gripper open. (local)
+- [eval] [exp] 双视频各 320x240、340 frames、13.60 s；ffprobe 和 observer 五帧接触表验证通过。步数差并非严格 430，因为其他规划段也有变化；单次结果不建立成功率。(local)
+- [eval] [exp] Both videos are 320x240, 340 frames, 13.60 s; ffprobe and a five-frame observer contact sheet pass inspection. The reduction is not exactly 430 because other planned segment lengths also changed; one run does not establish a success rate. (local)
+
+| Phase | Trajectory steps | Arrival steps | Gripper steps |
+|---|---:|---:|---:|
+| approach | 278 | 0 | 20 |
+| contact | 199 | 0 | 20 |
+| close | 0 | 0 | 20 |
+| lift | 192 | 0 | 20 |
+| transport | 77 | 0 | 20 |
+| descent | 263 | 0 | 20 |
+| release | 0 | 0 | 20 |
+| retreat | 192 | 0 | 20 |
+
+### 证据与复现 / Evidence and Reproduction
+
+- Output root: `/home/yanxu/robotwin20-runtime/artifacts/paos-probe-v7.5.4-20260909T062313Z`.
+- `probe/result.json`, `probe/approval.json`, `probe/run.log`, `probe/run_provenance.py`, `probe/observer-contact-sheet.png`.
+- `simulation-probe/franka-green-release-gap-v751/block-green-1-0/`: trajectory, contact-dynamics, observed-outcome, stop-control, before/after snapshots, head/observer videos.
+- Scene: blocks_ranking_rgb, seed 0, candidate `candidate://block-green-1/0`; original 5 mm elevated release route, current worker commit `090885e`, RoboTwin20 Python 3.10. Invocation uses `run_approved_simulation_probe.py`; exact arguments and environment are preserved in `probe/run_provenance.py`.
+- 本次运行仅更新新包中 manifest 的 worker 绑定和 review 的 worker/profile/manifest 绑定，通过既有 approve 工具物化用户本轮授权；原包未覆盖。无硬件、Gateway 或 PAOS 任务结算。
+- Only new-package worker/profile/manifest bindings were updated and the existing approval tool materialized this turn's user authorization; original package preserved. No hardware, Gateway or PAOS task finalization.
+
+### 文件变更详情 / File Details
+
+- [新增 / Added] `changelog/2026-09_part5.md` L80-L136：双语运行记录、精确结果和命令来源 / bilingual run record, measured results and command provenance.
+- [修改 / Modified] `CHANGELOG.md` L10-L66：同步本版本完整记录 / mirror complete version record; move Earlier Records separator before v7.4.2 to preserve latest five.
+- 外部 `probe/run_provenance.py` L1-L63 记录新包物化及执行命令，其他输出为 JSON/视频机器证据；本轮未改生产代码。
+- External `probe/run_provenance.py` L1-L63 preserves package materialization and invocation; other outputs are machine JSON/video evidence. No production code changes.
+
+```diff
+-latest recorded run: v7.5.2, 1778 steps
++v7.5.4: 1361 steps, close/release trajectory_steps=0
++arrival checks: arrived; additional arrival_steps=0
++position error: 0.004567554930 m; orientation error: 0.043359644876 rad
+```
+
+### Git 提交 / Git Commit
+
+- Branch: `feature/planning-loop`; only this log and CHANGELOG.md are committed.
+
 ## v7.5.3 (2026-09-09 14:11) - codex
 
 ### 预期修改 / Planned Changes
@@ -580,6 +637,8 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=.:examples/forge-adapters/robotwin20
 
 - Commit: `b15d053`; Branch: `feature/planning-loop`; 时间 / Time: 2026-09-09 13:08 (Asia/Shanghai).
 
+## 既有历史记录 / Earlier Records
+
 ## v7.4.2 (2026-09-09 13:20) - codex
 
 ### 预期修改 / Planned Changes
@@ -596,8 +655,6 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=.:examples/forge-adapters/robotwin20
 - `examples/forge-adapters/robotwin20/runtime/robotwin_grasp_contact_geometry_worker.py`
 - `examples/forge-adapters/robotwin20/tests/`
 - `docs/forge/GRASPGEN_CONTACT_DEPTH_POSTPROCESSING.md`
-
-## 既有历史记录 / Earlier Records
 
 ## v7.4.1 (2026-09-09 11:30) - codex
 
