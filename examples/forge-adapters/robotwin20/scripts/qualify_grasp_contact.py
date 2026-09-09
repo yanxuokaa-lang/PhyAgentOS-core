@@ -42,6 +42,8 @@ def _candidate(value: Mapping[str, Any]) -> Mapping[str, Any]:
         candidates = value.get("candidates")
         if isinstance(candidates, list) and len(candidates) == 1 and isinstance(candidates[0], Mapping):
             candidate = candidates[0]
+    if "scene_revision" not in candidate and isinstance(value.get("scene_revision"), str):
+        candidate = {**candidate, "scene_revision": value["scene_revision"]}
     return candidate
 
 
