@@ -48,6 +48,7 @@ class EndpointRegistration:
     spec: dict[str, Any]
     endpoint: object
     context: dict[str, Any]
+    context_provider: Callable[[], Mapping[str, Any]] | None = None
 
 
 @dataclass
@@ -112,6 +113,7 @@ class CapabilityRuntime:
         endpoint: QueryEndpoint | ActionEndpoint,
         *,
         context: Mapping[str, Any] | None = None,
+        context_provider: Callable[[], Mapping[str, Any]] | None = None,
     ) -> None:
         normalized = _validate_spec(spec)
         tool_id = normalized["tool_id"]
@@ -121,7 +123,7 @@ class CapabilityRuntime:
         base_context = {"ready": True, "binding_error": None}
         if context is not None:
             base_context.update(dict(context))
-        registration = EndpointRegistration(normalized, endpoint, base_context)
+        registration = EndpointRegistration(normalized, endpoint, base_context, context_provider)
         self._tools[tool_id] = registration
         self._operations[endpoint_key] = registration
 
@@ -132,7 +134,19 @@ class CapabilityRuntime:
         return self._registration(tool_id).spec.copy()
 
     def get_context(self, tool_id: str) -> dict[str, Any]:
-        return self._registration(tool_id).context.copy()
+        registration = self._registration(tool_id)
+        context = registration.context.copy()
+        if registration.context_provider is not None:
+            try:
+                current = registration.context_provider()
+                if not isinstance(current, Mapping) or not isinstance(current.get("ready"), bool):
+                    raise ValueError("context provider must return explicit readiness")
+                context.update(current)
+                if current["ready"] is True:
+                    context["binding_error"] = None
+            except Exception as exc:
+                context.update(ready=False, binding_error=f"context_provider_error:{type(exc).__name__}")
+        return context
 
     def get_tool_context(self, tool_id: str) -> dict[str, Any]:
         """Compatibility name matching the ForgeToolClient discovery vocabulary."""
@@ -147,9 +161,10 @@ class CapabilityRuntime:
         registration = self._operation(endpoint_id, operation)
         if registration.spec["semantics"] != "query":
             raise ToolContractError(f"Tool {registration.spec['tool_id']!r} is not a Query")
-        if registration.context.get("ready") is not True:
+        context = self.get_context(registration.spec["tool_id"])
+        if context.get("ready") is not True:
             raise CapabilityRuntimeError(
-                str(registration.context.get("binding_error") or "ToolEndpoint is not ready")
+                str(context.get("binding_error") or "ToolEndpoint is not ready")
             )
         handler = registration.endpoint
         invoke = getattr(handler, "invoke", None)
@@ -174,9 +189,10 @@ class CapabilityRuntime:
         registration = self._registration(tool_id)
         if registration.spec["semantics"] not in {"action", "session"}:
             raise ToolContractError(f"Tool {tool_id!r} is not an Action or Session")
-        if registration.context.get("ready") is not True:
+        context = self.get_context(tool_id)
+        if context.get("ready") is not True:
             raise CapabilityRuntimeError(
-                str(registration.context.get("binding_error") or "ToolEndpoint is not ready")
+                str(context.get("binding_error") or "ToolEndpoint is not ready")
             )
         if caller_id is not None and (not isinstance(caller_id, str) or not caller_id.strip()):
             raise ToolContractError("caller_id must be a non-empty string when provided")
@@ -186,7 +202,7 @@ class CapabilityRuntime:
             raise ToolContractError("timeout_ms must be a positive integer when provided")
         if registration.spec["semantics"] == "session" and timeout_ms is not None:
             raise ToolContractError("Session invocations do not accept timeout_ms")
-        max_concurrency = registration.context.get("max_concurrency", 1)
+        max_concurrency = context.get("max_concurrency", 1)
         if isinstance(max_concurrency, bool) or not isinstance(max_concurrency, int) or max_concurrency < 1:
             raise ToolContractError("Tool context max_concurrency must be a positive integer")
         active = sum(

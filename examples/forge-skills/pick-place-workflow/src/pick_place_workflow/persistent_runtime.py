@@ -39,12 +39,17 @@ class _ProjectedDriver:
             status = "unknown"
         success = status == "succeeded"
         refs = list(raw.get("artifact_refs", ()))
+        outcome_known = raw.get("outcome_known", False)
+        missing_evidence = success and not refs
+        if missing_evidence:
+            status, success = "unknown", False
+            outcome_known = False
         summary = {
             "version": "capability_outcome_summary_v1",
             "capability_phase": ("hold" if self.phase == "acquire" else "retreat") if success else "none",
-            "status": status, "failure_owner": raw.get("failure_owner"),
-            "failure_code": raw.get("failure_code"), "world_change_started": raw.get("world_change_started"),
-            "outcome_known": raw.get("outcome_known", False),
+            "status": status, "failure_owner": "execution" if missing_evidence else raw.get("failure_owner"),
+            "failure_code": "missing_execution_evidence" if missing_evidence else raw.get("failure_code"), "world_change_started": raw.get("world_change_started"),
+            "outcome_known": outcome_known,
             "evidence_availability": "complete" if success and refs else "partial" if refs else "none",
             "artifact_refs": refs, "bounded_metric_names": [],
         }
@@ -131,19 +136,26 @@ class PersistentActionEndpoint:
 
 
 def build_persistent_runtime(*, client, understanding_provider, grasp_provider,
-                             preparation_provider, capability_provider, resolve_preparation) -> CapabilityRuntime:
+                             preparation_provider, capability_provider, resolve_preparation,
+                             tool_context_provider) -> CapabilityRuntime:
     """Use injected model providers and one persistent manipulation process.
 
     resolve_preparation belongs to the adapter and supplies the approved route
     and current admission scene from its preparation artifacts. Public Action
     arguments keep the original candidate/acquire provenance intact.
+    tool_context_provider(tool_id) reports host-owned endpoint readiness, not
+    whether a specific candidate or Action is admissible in the current world.
     """
     runtime = CapabilityRuntime()
-    runtime.register_tool(_spec(OBSERVATION_TOOL_SPEC), ObservationEndpoint(PersistentObservationSource(client)))
-    runtime.register_tool(_spec(SCENE_UNDERSTANDING_TOOL_SPEC), SceneUnderstandingEndpoint(understanding_provider))
-    runtime.register_tool(_spec(GRASP_PROPOSAL_TOOL_SPEC), GraspProposalEndpoint(grasp_provider))
-    runtime.register_tool(_spec(CAPABILITY_TOOL_SPEC), CapabilitySnapshotEndpoint(capability_provider))
-    runtime.register_tool(_spec(MANIPULATION_TOOL_SPEC), ManipulationPreparationEndpoint(preparation_provider))
-    runtime.register_tool(_spec(ACQUIRE_TOOL_SPEC), PersistentActionEndpoint("acquire", client, resolve_preparation))
-    runtime.register_tool(_spec(PLACE_TOOL_SPEC), PersistentActionEndpoint("place", client, resolve_preparation))
+    for spec, endpoint in (
+        (OBSERVATION_TOOL_SPEC, ObservationEndpoint(PersistentObservationSource(client))),
+        (SCENE_UNDERSTANDING_TOOL_SPEC, SceneUnderstandingEndpoint(understanding_provider)),
+        (GRASP_PROPOSAL_TOOL_SPEC, GraspProposalEndpoint(grasp_provider)),
+        (CAPABILITY_TOOL_SPEC, CapabilitySnapshotEndpoint(capability_provider)),
+        (MANIPULATION_TOOL_SPEC, ManipulationPreparationEndpoint(preparation_provider)),
+        (ACQUIRE_TOOL_SPEC, PersistentActionEndpoint("acquire", client, resolve_preparation)),
+        (PLACE_TOOL_SPEC, PersistentActionEndpoint("place", client, resolve_preparation)),
+    ):
+        runtime.register_tool(_spec(spec), endpoint,
+                              context_provider=lambda tool_id=spec["tool_id"]: tool_context_provider(tool_id))
     return runtime

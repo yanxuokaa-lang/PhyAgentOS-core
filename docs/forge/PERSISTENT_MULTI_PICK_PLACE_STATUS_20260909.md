@@ -195,6 +195,7 @@ deployment = build_persistent_deployment(
 runtime = build_persistent_runtime(
     client=client, understanding_provider=understanding_provider,
     grasp_provider=grasp_provider, **deployment.runtime_arguments(),
+    tool_context_provider=tool_context_provider,
 )
 ```
 
@@ -208,3 +209,22 @@ This closes selected-request artifact identity and provider composition only.
 Formal Skill Bundle lifecycle/registration, complete readiness, model entity
 grounding and real Agent continuous multi-object verification remain unaccepted.
 No additional model or simulator-motion run was performed in this checkpoint.
+
+## v8.1.0 direction review and live Tool contexts
+
+The [direction review](MULTI_PICK_PLACE_DIRECTION_REVIEW_20260909.md) confirms
+ownership and extension direction against the normative guides. It distinguishes
+component delivery from formal Bundle/Agent acceptance and records two corrected
+implementation findings.
+
+`CapabilityRuntime.register_tool(..., context_provider=...)` supports live endpoint
+context. Discovery and new Query/Action admission use the same projection; missing
+explicit readiness or provider exceptions return ready=false. Existing invocation
+poll/cancel/stop remain available. Static registrations retain their prior behavior.
+`build_persistent_runtime` now requires `tool_context_provider(tool_id)` from its
+host. This must report endpoint dependency/connection health without inference or
+motion, independently from holding state and per-request route/approval admission.
+
+A provider success without execution artifact refs projects to unknown with
+`missing_execution_evidence`, preserves world-change facts, and emits no `placed:`
+completion. No additional simulation or model run was performed in this checkpoint.

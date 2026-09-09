@@ -72,11 +72,13 @@ def test_composition_registers_all_seven_required_tools():
         client=object(), understanding_provider=provider, grasp_provider=provider,
         preparation_provider=provider, capability_provider=provider,
         resolve_preparation=lambda phase, request: request,
+        tool_context_provider=lambda tool_id: {"ready": False, "binding_error": "not started"},
     )
     assert {tool["tool_id"] for tool in runtime.list_tools()["tools"]} == {
         "scene.observe", "scene.understand", "grasp.propose", "manipulation.capabilities",
         "manipulation.prepare", "object.acquire", "object.place",
     }
+    assert all(runtime.get_context(tool["tool_id"])["ready"] is False for tool in runtime.list_tools()["tools"])
 
 
 def test_unknown_place_cannot_produce_semantic_completion_evidence():
@@ -88,3 +90,15 @@ def test_unknown_place_cannot_produce_semantic_completion_evidence():
     assert result["status"] == "unknown"
     assert result["evidence_refs"] == ["artifact://scene/partial"]
     assert result["capability_outcome_summary"]["post_release_evidence"]["availability"] == "none"
+
+
+def test_evidence_free_success_does_not_complete_relocate():
+    class Driver:
+        def poll(self):
+            return {"status": "succeeded", "outcome_known": True, "world_change_started": True}
+
+    result = _ProjectedDriver(Driver(), "place", arguments(True)).poll()
+    assert result["status"] == "unknown"
+    assert result["evidence_refs"] == []
+    assert result["capability_outcome_summary"]["outcome_known"] is False
+    assert result["capability_outcome_summary"]["world_change_started"] is True
