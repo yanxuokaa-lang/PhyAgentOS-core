@@ -3,112 +3,509 @@ implementation_id: manipulation.preparation
 endpoint_id: manipulation_preparation
 operation: prepare
 semantics: query
-description: Evaluate non-mutating workspace, kinematic, and collision readiness for one grasp candidate set without authorizing or producing motion.
+description: Evaluate non-mutating workspace, kinematic, and collision readiness for
+  one grasp candidate set without authorizing or producing motion.
 input_schema:
   type: object
   additionalProperties: false
-  required: [observation_ref, scene_revision, frame_id, calibration_ref, freshness_ms, max_age_ms, candidate_set_ref, candidates]
+  required:
+  - observation_ref
+  - scene_revision
+  - frame_id
+  - calibration_ref
+  - freshness_ms
+  - max_age_ms
+  - candidate_set_ref
+  - candidates
   properties:
-    observation_ref: {type: string, pattern: '^observation://[^/]+/[^/]+$'}
-    scene_revision: {type: string, minLength: 1}
-    frame_id: {type: string, minLength: 1}
-    calibration_ref: {type: string, minLength: 1}
-    freshness_ms: {type: integer, minimum: 0}
-    max_age_ms: {type: integer, minimum: 1}
-    candidate_set_ref: {type: string, pattern: '^candidate-set://[^/]+/.+$'}
+    observation_ref:
+      type: string
+      pattern: ^observation://[^/]+/[^/]+$
+    scene_revision:
+      type: string
+      minLength: 1
+    frame_id:
+      type: string
+      minLength: 1
+    calibration_ref:
+      type: string
+      minLength: 1
+    freshness_ms:
+      type: integer
+      minimum: 0
+    max_age_ms:
+      type: integer
+      minimum: 1
+    candidate_set_ref:
+      type: string
+      pattern: ^candidate-set://[^/]+/.+$
     candidates:
       type: array
       items:
         type: object
         additionalProperties: false
-        required: [candidate_ref, entity_ref, grasp_frame, approach_direction, score, confidence, provenance, qualification]
+        required:
+        - candidate_ref
+        - entity_ref
+        - grasp_frame
+        - approach_direction
+        - score
+        - confidence
+        - provenance
+        - qualification
         properties:
-          candidate_ref: {type: string, pattern: '^candidate://[^/]+/.+$'}
-          entity_ref: {type: string, pattern: '^entity://[^/]+$'}
+          candidate_ref:
+            type: string
+            pattern: ^candidate://[^/]+/.+$
+          entity_ref:
+            type: string
+            pattern: ^entity://[^/]+$
           grasp_frame:
             type: object
             additionalProperties: false
-            required: [frame_id, unit, position_m, orientation_xyzw]
+            required:
+            - frame_id
+            - unit
+            - position_m
+            - orientation_xyzw
             properties:
-              frame_id: {type: string, minLength: 1}
-              unit: {const: m}
-              position_m: {type: array, minItems: 3, maxItems: 3, items: {type: number}}
-              orientation_xyzw: {type: array, minItems: 4, maxItems: 4, items: {type: number}}
+              frame_id:
+                type: string
+                minLength: 1
+              unit:
+                const: m
+              position_m:
+                type: array
+                minItems: 3
+                maxItems: 3
+                items:
+                  type: number
+              orientation_xyzw:
+                type: array
+                minItems: 4
+                maxItems: 4
+                items:
+                  type: number
           approach_direction:
             type: object
             additionalProperties: false
-            required: [frame_id, unit, vector]
+            required:
+            - frame_id
+            - unit
+            - vector
             properties:
-              frame_id: {type: string, minLength: 1}
-              unit: {const: unitless}
-              vector: {type: array, minItems: 3, maxItems: 3, items: {type: number}}
-          score: {type: number, minimum: 0, maximum: 1}
-          confidence: {type: number, minimum: 0, maximum: 1}
+              frame_id:
+                type: string
+                minLength: 1
+              unit:
+                const: unitless
+              vector:
+                type: array
+                minItems: 3
+                maxItems: 3
+                items:
+                  type: number
+          score:
+            type: number
+            minimum: 0
+            maximum: 1
+          confidence:
+            type: number
+            minimum: 0
+            maximum: 1
           provenance:
             type: array
             minItems: 1
-            items: {type: string, pattern: '^artifact://[^/]+/.+$'}
-          qualification: {enum: [proposed, low_confidence, ambiguous]}
+            items:
+              type: string
+              pattern: ^artifact://[^/]+/.+$
+          qualification:
+            enum:
+            - proposed
+            - low_confidence
+            - ambiguous
+    intent:
+      $defs:
+        CoordinationMode:
+          enum:
+          - single_arm
+          - alternative_arm
+          - bimanual
+          title: CoordinationMode
+          type: string
+      additionalProperties: false
+      description: Immutable semantic input for one adapter-owned capability query.
+      properties:
+        version:
+          const: manipulation_intent_v2
+          default: manipulation_intent_v2
+          title: Version
+          type: string
+        task_id:
+          title: Task Id
+          type: string
+        revision_id:
+          title: Revision Id
+          type: string
+        node_id:
+          title: Node Id
+          type: string
+        node_digest:
+          pattern: ^[0-9a-f]{64}$
+          title: Node Digest
+          type: string
+        entity_ref:
+          title: Entity Ref
+          type: string
+        goal:
+          title: Goal
+          type: string
+        success_criteria:
+          items:
+            type: string
+          title: Success Criteria
+          type: array
+        allowed_arms:
+          items:
+            type: string
+          title: Allowed Arms
+          type: array
+        coordination_mode:
+          $ref: '#/properties/intent/$defs/CoordinationMode'
+        observation_ref:
+          title: Observation Ref
+          type: string
+        scene_revision:
+          title: Scene Revision
+          type: string
+        observation_frame_id:
+          title: Observation Frame Id
+          type: string
+        calibration_ref:
+          title: Calibration Ref
+          type: string
+        candidate_set_ref:
+          title: Candidate Set Ref
+          type: string
+        constraints:
+          default: []
+          items:
+            type: string
+          title: Constraints
+          type: array
+        motion_authorized:
+          const: false
+          default: false
+          title: Motion Authorized
+          type: boolean
+      required:
+      - task_id
+      - revision_id
+      - node_id
+      - node_digest
+      - entity_ref
+      - goal
+      - success_criteria
+      - allowed_arms
+      - coordination_mode
+      - observation_ref
+      - scene_revision
+      - observation_frame_id
+      - calibration_ref
+      - candidate_set_ref
+      title: ManipulationIntent
+      type: object
+    destination_ref:
+      type: string
+      pattern: ^destination://[^/]+.*$
+    capability_snapshot_ref:
+      type: string
+      pattern: ^artifact://[^/]+/.+$
 output_schema:
   type: object
   additionalProperties: false
-  required: [status, preparation_ref, candidate_set_ref, observation_ref, scene_revision, frame, calibration_ref, prepared_candidates, checks, evidence, motion_authorized]
+  required:
+  - status
+  - preparation_ref
+  - candidate_set_ref
+  - observation_ref
+  - scene_revision
+  - frame
+  - calibration_ref
+  - prepared_candidates
+  - checks
+  - evidence
+  - motion_authorized
   properties:
     status:
-      enum: [available, empty, unavailable, stale, invalid]
-    preparation_ref: {type: string, pattern: '^preparation://[^/]+/.+$'}
-    candidate_set_ref: {type: string, pattern: '^candidate-set://[^/]+/.+$'}
-    observation_ref: {type: string, pattern: '^observation://[^/]+/[^/]+$'}
-    scene_revision: {type: string, minLength: 1}
+      enum:
+      - available
+      - empty
+      - unavailable
+      - stale
+      - invalid
+    preparation_ref:
+      type: string
+      pattern: ^preparation://[^/]+/.+$
+    candidate_set_ref:
+      type: string
+      pattern: ^candidate-set://[^/]+/.+$
+    observation_ref:
+      type: string
+      pattern: ^observation://[^/]+/[^/]+$
+    scene_revision:
+      type: string
+      minLength: 1
     frame:
       type: object
       additionalProperties: false
-      required: [frame_id, unit]
+      required:
+      - frame_id
+      - unit
       properties:
-        frame_id: {type: string, minLength: 1}
-        unit: {const: m}
-    calibration_ref: {type: [string, 'null']}
+        frame_id:
+          type: string
+          minLength: 1
+        unit:
+          const: m
+    calibration_ref:
+      type:
+      - string
+      - 'null'
     prepared_candidates:
       type: array
       items:
         type: object
         additionalProperties: false
-        required: [candidate_ref, entity_ref, checks, evidence, qualification]
+        required:
+        - candidate_ref
+        - entity_ref
+        - checks
+        - evidence
+        - qualification
         properties:
-          candidate_ref: {type: string, pattern: '^candidate://[^/]+/.+$'}
-          entity_ref: {type: string, pattern: '^entity://[^/]+$'}
+          candidate_ref:
+            type: string
+            pattern: ^candidate://[^/]+/.+$
+          entity_ref:
+            type: string
+            pattern: ^entity://[^/]+$
           checks:
             type: object
             additionalProperties: false
-            required: [kinematic, collision, workspace]
+            required:
+            - kinematic
+            - collision
+            - workspace
             properties:
-              kinematic: {enum: [pass, fail, unknown]}
-              collision: {enum: [pass, fail, unknown]}
-              workspace: {enum: [pass, fail, unknown]}
+              kinematic:
+                enum:
+                - pass
+                - fail
+                - unknown
+              collision:
+                enum:
+                - pass
+                - fail
+                - unknown
+              workspace:
+                enum:
+                - pass
+                - fail
+                - unknown
           evidence:
             type: array
             minItems: 1
-            items: {type: string, pattern: '^artifact://[^/]+/.+$'}
-          qualification: {enum: [prepared]}
+            items:
+              type: string
+              pattern: ^artifact://[^/]+/.+$
+          qualification:
+            enum:
+            - prepared
     checks:
       type: object
       additionalProperties: false
-      required: [kinematic, collision, workspace]
+      required:
+      - kinematic
+      - collision
+      - workspace
       properties:
-        kinematic: {enum: [pass, fail, unknown]}
-        collision: {enum: [pass, fail, unknown]}
-        workspace: {enum: [pass, fail, unknown]}
+        kinematic:
+          enum:
+          - pass
+          - fail
+          - unknown
+        collision:
+          enum:
+          - pass
+          - fail
+          - unknown
+        workspace:
+          enum:
+          - pass
+          - fail
+          - unknown
     evidence:
       type: array
-      items: {type: string, pattern: '^artifact://[^/]+/.+$'}
-    motion_authorized: {const: false}
+      items:
+        type: string
+        pattern: ^artifact://[^/]+/.+$
+    motion_authorized:
+      const: false
     error:
       type: object
       additionalProperties: false
-      required: [code, message]
+      required:
+      - code
+      - message
       properties:
-        code: {type: string, minLength: 1}
-        message: {type: string, minLength: 1}
+        code:
+          type: string
+          minLength: 1
+        message:
+          type: string
+          minLength: 1
+    assignments:
+      type: array
+      items:
+        $defs:
+          AssignmentAlternative:
+            additionalProperties: false
+            description: A rejected, auditable assignment option.
+            properties:
+              arm_ids:
+                items:
+                  type: string
+                title: Arm Ids
+                type: array
+              candidate_ref:
+                title: Candidate Ref
+                type: string
+              status:
+                const: rejected
+                default: rejected
+                title: Status
+                type: string
+              reason:
+                title: Reason
+                type: string
+            required:
+            - arm_ids
+            - candidate_ref
+            - reason
+            title: AssignmentAlternative
+            type: object
+          CoordinationMode:
+            enum:
+            - single_arm
+            - alternative_arm
+            - bimanual
+            title: CoordinationMode
+            type: string
+        additionalProperties: false
+        description: No-motion planning result selecting resources after readiness
+          evaluation.
+        properties:
+          schema_version:
+            const: paos-arm-assignment/v1
+            default: paos-arm-assignment/v1
+            title: Schema Version
+            type: string
+          assignment_ref:
+            title: Assignment Ref
+            type: string
+          assignment_digest:
+            pattern: ^[0-9a-f]{64}$
+            title: Assignment Digest
+            type: string
+          task_id:
+            title: Task Id
+            type: string
+          revision_id:
+            title: Revision Id
+            type: string
+          node_id:
+            title: Node Id
+            type: string
+          node_digest:
+            pattern: ^[0-9a-f]{64}$
+            title: Node Digest
+            type: string
+          entity_ref:
+            title: Entity Ref
+            type: string
+          observation_ref:
+            title: Observation Ref
+            type: string
+          scene_revision:
+            title: Scene Revision
+            type: string
+          calibration_ref:
+            title: Calibration Ref
+            type: string
+          candidate_set_ref:
+            title: Candidate Set Ref
+            type: string
+          coordination_mode:
+            $ref: '#/properties/assignments/items/$defs/CoordinationMode'
+          selected_arm_ids:
+            items:
+              type: string
+            title: Selected Arm Ids
+            type: array
+          candidate_ref:
+            title: Candidate Ref
+            type: string
+          route_digest:
+            pattern: ^[0-9a-f]{64}$
+            title: Route Digest
+            type: string
+          capability_snapshot_ref:
+            title: Capability Snapshot Ref
+            type: string
+          readiness_evidence_ref:
+            title: Readiness Evidence Ref
+            type: string
+          decision_basis:
+            items:
+              type: string
+            title: Decision Basis
+            type: array
+          alternatives:
+            default: []
+            items:
+              $ref: '#/properties/assignments/items/$defs/AssignmentAlternative'
+            title: Alternatives
+            type: array
+          motion_authorized:
+            const: false
+            default: false
+            title: Motion Authorized
+            type: boolean
+        required:
+        - assignment_ref
+        - assignment_digest
+        - task_id
+        - revision_id
+        - node_id
+        - node_digest
+        - entity_ref
+        - observation_ref
+        - scene_revision
+        - calibration_ref
+        - candidate_set_ref
+        - coordination_mode
+        - selected_arm_ids
+        - candidate_ref
+        - route_digest
+        - capability_snapshot_ref
+        - readiness_evidence_ref
+        - decision_basis
+        title: ArmAssignment
+        type: object
+    destination_ref:
+      type: string
+      pattern: ^destination://[^/]+.*$
 robot_frame_profile:
   observation_frame: observation
   unit: m

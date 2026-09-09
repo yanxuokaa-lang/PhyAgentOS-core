@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any, Mapping, Protocol
 
 from PhyAgentOS.forge.capability_runtime.grasp_proposal import _validate_candidate
+from PhyAgentOS.forge.manipulation import ArmAssignment, ManipulationIntent
 
 PREPARATION_TOOL_ID = "manipulation.prepare"
 PREPARATION_ENDPOINT_ID = "manipulation_preparation"
@@ -33,6 +34,8 @@ class PreparationProvider(Protocol):
 class PreparationSnapshot:
     prepared_candidates: tuple[dict[str, Any], ...] = field(default_factory=tuple)
     provider_available: bool = True
+    assignments: tuple[dict[str, Any], ...] = field(default_factory=tuple)
+    destination_ref: str | None = None
 
 
 MANIPULATION_TOOL_SPEC: dict[str, Any] = {
@@ -196,6 +199,17 @@ MANIPULATION_TOOL_SPEC: dict[str, Any] = {
     "robot_frame_profile": {"observation_frame": "observation", "unit": "m"},
 }
 
+MANIPULATION_TOOL_SPEC["input_schema"]["properties"].update({
+    "intent": ManipulationIntent.model_json_schema(ref_template="#/properties/intent/$defs/{model}"),
+    "destination_ref": {"type": "string", "pattern": r"^destination://[^/]+.*$"},
+    "capability_snapshot_ref": {"type": "string", "pattern": _ARTIFACT_REF.pattern},
+})
+MANIPULATION_TOOL_SPEC["output_schema"]["properties"].update({
+    "assignments": {"type": "array", "items": ArmAssignment.model_json_schema(
+        ref_template="#/properties/assignments/items/$defs/{model}")},
+    "destination_ref": {"type": "string", "pattern": r"^destination://[^/]+.*$"},
+})
+
 
 def _unknown_checks() -> dict[str, str]:
     return {key: "unknown" for key in _CHECK_KEYS}
@@ -229,9 +243,27 @@ def validate_arguments(arguments: Any) -> dict[str, Any] | None:
     allowed = {
         "observation_ref", "scene_revision", "frame_id", "calibration_ref",
         "freshness_ms", "max_age_ms", "candidate_set_ref", "candidates",
+        "intent", "destination_ref", "capability_snapshot_ref",
     }
     if set(arguments) - allowed:
         return _error("invalid_arguments", "unknown manipulation.prepare argument")
+    route_keys = {"intent", "destination_ref", "capability_snapshot_ref"}
+    if route_keys & arguments.keys():
+        if not route_keys <= arguments.keys():
+            return _error("invalid_intent_binding", "route preparation requires intent, destination and capability snapshot")
+        try:
+            intent = ManipulationIntent.model_validate(arguments["intent"])
+        except ValueError:
+            return _error("invalid_intent", "manipulation intent is invalid")
+        for name in ("observation_ref", "scene_revision", "calibration_ref", "candidate_set_ref"):
+            if getattr(intent, name) != arguments.get(name):
+                return _error("invalid_intent_binding", f"intent {name} differs from preparation")
+        if intent.observation_frame_id != arguments.get("frame_id"):
+            return _error("invalid_intent_binding", "intent observation frame differs from preparation")
+        if not isinstance(arguments["destination_ref"], str) or re.fullmatch(r"destination://[^/]+.*", arguments["destination_ref"]) is None:
+            return _error("invalid_destination", "destination_ref is invalid")
+        if not isinstance(arguments["capability_snapshot_ref"], str) or _ARTIFACT_REF.fullmatch(arguments["capability_snapshot_ref"]) is None:
+            return _error("invalid_capability_binding", "capability_snapshot_ref is invalid")
     observation_ref = arguments.get("observation_ref")
     if not isinstance(observation_ref, str) or _OBSERVATION_REF.fullmatch(observation_ref) is None:
         return _error("invalid_observation_ref", "observation_ref must use observation:// scheme")
@@ -288,6 +320,8 @@ def validate_arguments(arguments: Any) -> dict[str, Any] | None:
         if not isinstance(entity_ref, str) or _ENTITY_REF.fullmatch(entity_ref) is None:
             return _error("invalid_entity_ref", "candidate entity_ref is invalid", observation_ref=observation_ref)
         entity_refs.add(entity_ref)
+    if "intent" in arguments and entity_refs - {intent.entity_ref}:
+        return _error("invalid_intent_binding", "candidates differ from the intent entity")
     seen_candidate_refs: set[str] = set()
     for candidate in candidates:
         candidate_error = _validate_candidate(
@@ -357,8 +391,8 @@ def normalize_snapshot(snapshot: Any) -> PreparationSnapshot | None:
         return snapshot
     if not isinstance(snapshot, Mapping):
         return None
-    allowed = {"prepared_candidates", "provider_available"}
-    if set(snapshot) - allowed or set(snapshot) != allowed:
+    allowed = {"prepared_candidates", "provider_available", "assignments", "destination_ref"}
+    if set(snapshot) - allowed or not {"prepared_candidates", "provider_available"} <= set(snapshot):
         return None
     prepared = snapshot.get("prepared_candidates")
     if not isinstance(prepared, (list, tuple)) or any(not isinstance(item, Mapping) for item in prepared):
@@ -366,9 +400,14 @@ def normalize_snapshot(snapshot: Any) -> PreparationSnapshot | None:
     provider_available = snapshot["provider_available"]
     if not isinstance(provider_available, bool):
         return None
+    assignments = snapshot.get("assignments", ())
+    if not isinstance(assignments, (list, tuple)) or any(not isinstance(item, Mapping) for item in assignments):
+        return None
     return PreparationSnapshot(
         prepared_candidates=tuple(dict(item) for item in prepared),
         provider_available=provider_available,
+        assignments=tuple(dict(item) for item in assignments),
+        destination_ref=snapshot.get("destination_ref"),
     )
 
 
@@ -465,6 +504,32 @@ class ManipulationPreparationEndpoint:
                 observation_ref=observation_ref,
             )
         prepared = [dict(item) for item in snapshot.prepared_candidates]
+        route_result = {}
+        if "intent" in arguments:
+            intent = ManipulationIntent.model_validate(arguments["intent"])
+            try:
+                assignments = [ArmAssignment.model_validate(item) for item in snapshot.assignments]
+                candidates = {item["candidate_ref"] for item in prepared}
+                if {item.candidate_ref for item in assignments} != candidates or len(assignments) != len(candidates):
+                    raise ValueError("assignments must cover each prepared candidate exactly once")
+                if snapshot.destination_ref != arguments["destination_ref"]:
+                    raise ValueError("assignment destination differs from requested destination")
+                for assignment in assignments:
+                    candidate = next(item for item in prepared if item["candidate_ref"] == assignment.candidate_ref)
+                    if assignment.readiness_evidence_ref not in candidate["evidence"]:
+                        raise ValueError("assignment readiness evidence is missing from prepared candidate")
+                    for name in ("task_id", "revision_id", "node_id", "node_digest", "entity_ref", "observation_ref",
+                                 "scene_revision", "calibration_ref", "candidate_set_ref", "coordination_mode"):
+                        if getattr(assignment, name) != getattr(intent, name):
+                            raise ValueError("assignment differs from manipulation intent")
+                    if assignment.capability_snapshot_ref != arguments["capability_snapshot_ref"] or not set(assignment.selected_arm_ids) <= set(intent.allowed_arms):
+                        raise ValueError("assignment differs from requested capability or allowed arms")
+            except (ValueError, TypeError):
+                return _error("invalid_assignment_binding", "prepared assignments failed intent binding validation", observation_ref=observation_ref)
+            route_result = {"assignments": [item.model_dump(mode="json") for item in assignments],
+                            "destination_ref": snapshot.destination_ref}
+        elif snapshot.assignments or snapshot.destination_ref is not None:
+            return _error("invalid_assignment_binding", "assignments require an explicit route intent", observation_ref=observation_ref)
         evidence: list[str] = []
         for item in prepared:
             for ref in item["evidence"]:
@@ -472,6 +537,7 @@ class ManipulationPreparationEndpoint:
                     evidence.append(ref)
         return {
             "status": "available" if prepared else "empty",
+            **route_result,
             "preparation_ref": preparation_ref,
             "candidate_set_ref": arguments["candidate_set_ref"],
             "observation_ref": observation_ref,

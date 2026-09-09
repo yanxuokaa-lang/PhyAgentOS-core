@@ -7,6 +7,70 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v7.9.0 (2026-09-09 16:37) - codex
+
+### 预期修改 / Planned Changes
+
+- [完成] [policy] [feat] 公开 manipulation.prepare 支持显式 intent、目标及能力快照绑定，返回现有 ArmAssignment 类型；旧候选准备调用保持兼容。(local)
+- [Completed] [policy] [feat] Extend manipulation.prepare with explicit intent, destination and capability bindings and existing typed ArmAssignment results while preserving legacy candidate preparation. (local)
+- [完成] [eval] [fix] 验证任务/候选/现场/能力/证据绑定不一致时拒绝，不能凭 Query 成功创建执行授权；同步 Tool schema 和测试。(local)
+- [Completed] [eval] [fix] Reject task/candidate/scene/capability/evidence mismatches without turning Query success into motion authority; synchronize Tool schema and tests. (local)
+- Files: generic preparation endpoint, Skill Tool contract, tests and logs.
+- [完成] [env] [feat] 增加 adapter 准备编排：使用既有 CompleteRouteSelector 和 ArmAssignment 投影，写入 assignment 并登记准备路线；Query 准备与 Action 授权分开。(local)
+- [Completed] [env] [feat] Compose existing route selection and assignment projection in the adapter, persist assignment and register prepared routes, keeping Query preparation separate from Action authorization. (local)
+
+### 文件变更详情 / File Details
+
+- [修改 / Modified] `PhyAgentOS/forge/capability_runtime/manipulation_prepare.py`: L11, L37-L38, L202-L212, L246-L266, L323-L324, L394-L410, L507-L532, L540. 可选路线义务及 assignment 验证 / Optional route intent and assignment validation.
+- [新增 / Added] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_preparation.py`: L1-L92. 现场准备编排 / Current-world preparation composition.
+- [修改 / Modified] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/prepared_routes.py`: L24, L31-L32, L48-L49, L54-L61, L67-L68. 授权后绑定及重复准备 / Deferred approval and repeated preparation.
+- [新增 / Added] `examples/forge-adapters/robotwin20/tests/test_persistent_preparation.py`: L1-L111. 选择、持久化、授权、陈旧现场和失败路径 / Selection, persistence, approval, stale worlds and failure paths.
+- [新增 / Added] `examples/forge-skills/pick-place-workflow/tests/test_prepare_assignment.py`: L1-L71. 公开契约和绑定测试 / Public contract and binding tests.
+- [修改 / Modified] `examples/forge-skills/pick-place-workflow/contracts/manipulation.prepare.tool.yaml`: L1-L511. 从现有 ToolSpec 同步完整 schema / Full schema synchronized from existing ToolSpec.
+- [修改 / Modified] `docs/forge/PERSISTENT_MULTI_PICK_PLACE_STATUS_20260909.md`: L96-L130. 接线方法、六维检查和剩余交付 / Wiring, six-dimensional review and remaining delivery.
+
+### 关键代码 Diff / Key Code Diff
+
+```diff
+ class PreparationSnapshot:
++    assignments: tuple[dict[str, Any], ...] = field(default_factory=tuple)
++    destination_ref: str | None = None
++route_keys = {"intent", "destination_ref", "capability_snapshot_ref"}
++if route_keys & arguments.keys():
++    if not route_keys <= arguments.keys():
++        return _error("invalid_intent_binding", "route preparation requires intent, destination and capability snapshot")
++if assignment.readiness_evidence_ref not in candidate["evidence"]:
++    raise ValueError("assignment readiness evidence is missing from prepared candidate")
+-approval_ref: str
++approval_ref: str | None
++if key in self._routes and approval_ref is None:
++    value["approval_ref"] = self._routes[key]["approval_ref"]
++if prepared["approval_ref"] is None:
++    raise ValueError("prepared geometry has no execution approval")
++bundle = self.route_builder.build(deepcopy(dict(request)))
++if bundle.get("destination_ref") != request["destination_ref"]:
++    raise ValueError("materialized route destination differs from request")
++selected = self.selector.select(intent, bundle["base_request"], bundle["options"])
++assignment = project_arm_assignment(intent, capability, selected)
++self.prepared_routes.register(arguments, route_request=route, approval_ref=None,
++                              destination_ref=request["destination_ref"])
+```
+
+- 中文：assignment 文件沿用读取器的后缀规则，带点节点 ID 不再丢失后缀。相同路线重试保留已绑定授权。未增加新 hash 或门禁。
+- English: Assignment writes follow reader suffix rules, preserving dotted node IDs. Identical route retries preserve existing approval. No new hashes or gates were added.
+
+### 验证 / Validation
+
+- Workspace: 744 passed, 1 skipped; isolated staged tree: 742 passed, 1 skipped; focused preparation/cache tests: 14 passed. Ruff passed.
+- 六维检查覆盖架构、失败路径、权限安全、配置复现、可维护性和可观测性；范围为接口组合，未声称物理执行成功。
+- Six-dimensional review covers architecture, failure paths, authority/safety, configuration/reproducibility, maintainability and observability; this is interface composition, not physical execution evidence.
+- 当前现场路线构建器、正式 Bundle、模型实体几何绑定和真实 Agent 多物体验收仍待完成。
+- Current-scene route builder, formal Bundle, model entity grounding and real Agent multi-object acceptance remain outstanding.
+
+### Git 提交 / Git Commit
+
+- Branch: `feature/planning-loop`; implementation commit recorded after commit.
+
 ## v7.8.0 (2026-09-09 16:25) - codex
 
 ### 预期修改 / Planned Changes
@@ -1060,44 +1124,6 @@ index b2d8c63..fc93907 100644
 
 - Branch: `feature/planning-loop`; implementation commit: `1d95b71`; 时间 / Time: 2026-09-09 15:15 (Asia/Shanghai).
 - 独立暂存树 / Isolated staged tree: 699 passed, 1 skipped. Implementation status document extends to L53; its final two lines record this isolated validation.
-
-## v7.5.6 (2026-09-09 14:47) - codex
-
-### 预期修改 / Planned Changes
-
-- [完成] [docs] [docs] 按用户“再次审核，没有问题再实现”的条件，复核多次抓放方案与 PAOS 设计哲学、架构、开发和扩展原则；记录新增设计阻断与源码依据，不将设计 review 冒充实现完成后的代码 review。(local)
-- [Completed] [docs] [docs] Re-audit repeated manipulation against PAOS philosophy, architecture and extension guidance under the user's review-before-implementation condition; record newly identified design blockers and source evidence, keeping design review distinct from post-implementation code review. (local)
-- 影响 / Files: `docs/forge/TASK_UNDERSTANDING_MULTI_PICK_PLACE_SECOND_REVIEW_20260909.md`, monthly log and CHANGELOG.md. No production code or runtime changes while design blockers remain.
-
-### 审核结果 / Results
-
-- [docs] [docs] 复核未通过：R1-R4 为设计阻断（动态语义、持物生命周期、场景接续、失败/取消效果），R5-R6 为 Major（当前上下文投影、端到端验收）。保留原方案历史，列出修订要求。(local)
-- [docs] [docs] Review does not pass: R1-R4 cover dynamic semantics, held-object lifecycle, scene continuity and failed/cancelled effects; R5-R6 cover current-context projection and end-to-end acceptance. Preserve the original proposal and record corrections. (local)
-- [docs] [docs] 用户“无问题再实现”的条件尚未满足；未修改执行代码，未运行测试、模型或仿真。六维表仅为设计检查，最终代码 review 未开展。(local)
-- [docs] [docs] The user's implementation condition is unmet; no execution code, tests, model or simulation runs. The six-dimension table is a design audit, not the final code review. (local)
-
-### 文件变更详情 / File Details
-
-- [新增 / Added] `docs/forge/TASK_UNDERSTANDING_MULTI_PICK_PLACE_SECOND_REVIEW_20260909.md` L1-L104：规范依据 L9-L15；六项问题 L17-L77；六维设计检查 L79-L90；修订交付和范围 L92-L104 / normative sources, six findings, six-dimension design audit and required revisions.
-- [新增 / Added] `changelog/2026-09_part5.md` L184-L220：本版本计划、审核结果与 Git 记录 / version plan, review result and Git record.
-- [修改 / Modified] `CHANGELOG.md` L10-L46：同步最新完整记录，Earlier Records 前移至 v7.5.1 / mirror full latest record and move earlier-record separator before v7.5.1.
-
-```diff
--原方案可以直接进入模块接线 / proceed directly with wiring
-+设计复核未通过：先明确动态义务、持物占用、场景接续及失败效果映射
-+Design review fails pending dynamic-obligation, holding, scene-continuity
-+and failure-effect semantics. Implementation and final code review remain pending.
-```
-
-### 验证 / Validation
-
-- UTF-8、5 个本地链接、6 个发现条目及 `git diff --check` 通过。
-- UTF-8 inspection, five local links, six finding entries and `git diff --check` pass.
-
-### Git 提交 / Git Commit
-
-- Branch: `feature/planning-loop`; only review documentation and logs.
-- Review commit: `83954c4`; 时间 / Time: 2026-09-09 14:50 (Asia/Shanghai).
 
 ## 既有历史记录 / Earlier Records
 

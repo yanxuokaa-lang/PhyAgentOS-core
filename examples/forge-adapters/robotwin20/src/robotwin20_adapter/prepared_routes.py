@@ -21,15 +21,15 @@ class PreparedRoutes:
         self.artifact_root = artifact_root.resolve()
         self._routes: dict[tuple[str, str], dict[str, Any]] = {}
 
-    def register(self, arguments: Mapping[str, Any], *, route_request: Mapping[str, Any], approval_ref: str, destination_ref: str) -> None:
+    def register(self, arguments: Mapping[str, Any], *, route_request: Mapping[str, Any], approval_ref: str | None, destination_ref: str) -> None:
         validate_route_request(route_request)
         candidate = next((item for item in route_request["candidates"] if item["candidate_ref"] == arguments["candidate_ref"]), None)
         if candidate is None or candidate["entity_ref"] != arguments["entity_ref"]:
             raise ValueError("prepared route candidate/entity mismatch")
         if route_request["scene_revision"] != arguments["scene_revision"]:
             raise ValueError("prepared route source scene mismatch")
-        if not destination_ref or not approval_ref.startswith("artifact://"):
-            raise ValueError("prepared route requires destination and approval evidence")
+        if not destination_ref or (approval_ref is not None and not approval_ref.startswith("artifact://")):
+            raise ValueError("prepared route requires a destination and valid optional approval reference")
         assignment = ArmAssignment.model_validate(json.loads(
             _artifact_path(self.artifact_root, arguments["assignment_ref"]).read_text(encoding="utf-8")
         ))
@@ -45,15 +45,27 @@ class PreparedRoutes:
         value = {**deepcopy(dict(arguments)), "route_request": deepcopy(dict(route_request)),
                  "approval_ref": approval_ref, "destination_ref": destination_ref,
                  "assignment": assignment.model_dump(mode="json")}
+        if key in self._routes and approval_ref is None:
+            value["approval_ref"] = self._routes[key]["approval_ref"]
         if key in self._routes and self._routes[key] != value:
             raise ValueError("preparation reference already identifies different geometry")
         self._routes[key] = value
+
+    def bind_approval(self, preparation_ref: str, candidate_ref: str, approval_ref: str) -> None:
+        """Attach externally issued approval; the execution worker validates it."""
+        _artifact_path(self.artifact_root, approval_ref)
+        prepared = self._routes[(preparation_ref, candidate_ref)]
+        if prepared["approval_ref"] not in (None, approval_ref):
+            raise ValueError("preparation already binds another approval")
+        prepared["approval_ref"] = approval_ref
 
     def __call__(self, phase: str, arguments: Mapping[str, Any]) -> dict[str, Any]:
         key = (arguments["preparation_ref"], arguments["candidate_ref"])
         if key not in self._routes:
             raise ValueError("no executable route is bound to this preparation")
         prepared = self._routes[key]
+        if prepared["approval_ref"] is None:
+            raise ValueError("prepared geometry has no execution approval")
         for field in ("observation_ref", "scene_revision", "frame_id", "calibration_ref", "entity_ref", "candidate_set_ref", "assignment_ref", "capability_snapshot_ref"):
             if arguments.get(field) != prepared.get(field):
                 raise ValueError(f"Action changed preparation provenance: {field}")

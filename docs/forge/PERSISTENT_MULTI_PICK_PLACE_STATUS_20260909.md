@@ -93,3 +93,38 @@ The persistent worker exposes the adapter-private `route_readiness` query. `buil
 This is the current-world evaluator connection, not the complete `manipulation.prepare` deployment factory. Contact dynamics and stop control remain unavailable in no-motion readiness results. Public preparation/assignment generation, formal Bundle and real Agent continuous multi-object execution remain outstanding.
 
 Focused tests cover two successive scene revisions, no backend recreation, stale rejection, held-object exclusion, unchanged readiness evidence limits and JSONL identity. No new real model or simulator-motion experiment was performed in this checkpoint.
+
+## v7.9.0 public preparation and adapter composition
+
+The optional `intent`, `destination_ref`, and `capability_snapshot_ref` inputs to
+`manipulation.prepare` must be supplied together. Results contain existing typed
+`ArmAssignment` records for exactly the prepared candidates, bound to the task,
+node, source observation, capabilities, allowed arms, and readiness evidence.
+Legacy preparation requests remain supported. Query success grants no motion.
+
+`robotwin20_adapter.persistent_preparation.PersistentPreparationProvider` composes
+the existing route selector and assignment projector with `PreparedRoutes`.
+Inject it as `preparation_provider` and the same cache as `resolve_preparation`
+into `pick_place_workflow.persistent_runtime.build_persistent_runtime`.
+Its injected `route_builder.build(request)` must return `destination_ref`,
+`base_request`, and the existing enumerated `options`, grounding the destination
+in calibrated geometry. Selection uses complete readiness evidence. The adapter
+checks the live empty scene before and after selection, persists the assignment,
+and registers geometry without approval. `PreparedRoutes.bind_approval` attaches
+an externally issued execution approval; the execution worker still validates it.
+Repreparing identical geometry preserves an existing approval. Changed selection
+under the same assignment reference requires a new task revision/node reference.
+
+Six-dimensional review: architecture keeps selection in the adapter and task
+ownership in PAOS; failure paths reject changed scenes, holdings, destinations,
+and unbound assignments; authority remains separate from Query; configuration
+uses injected dependencies and the existing profiles; maintainability reuses
+selection/projection and artifact naming; observability retains readiness refs
+and persisted assignments. Tests are composition evidence, not physical proof.
+
+Still required for deployment: a current-scene route builder (the standalone
+materializer currently requires an empty artifact root), capability provider and
+formal Bundle factory, model entity-to-measured-geometry grounding, and real
+Agent continuous multi-object execution plus final goal verification. The
+no-motion evaluator cannot claim contact/stop dynamics readiness. No new model
+or simulator-motion run was performed for this checkpoint.
