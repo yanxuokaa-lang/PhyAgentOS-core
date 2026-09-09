@@ -356,7 +356,7 @@ def validate_route_request(request: Mapping[str, Any]) -> None:
         )
 
         placement = candidate["placement_target"]
-        if not isinstance(placement, Mapping) or set(placement) != {
+        if not isinstance(placement, Mapping) or set(placement) - {"release_clearance_m"} != {
             "target_ref", "target_object_pose", "release_robot_target_pose", "provenance_ref",
         }:
             raise RouteReadinessError("placement_target fields are invalid")
@@ -369,7 +369,13 @@ def validate_route_request(request: Mapping[str, Any]) -> None:
             [float(attached["object_T_robot_target"][row * 4 + col]) for col in range(4)]
             for row in range(4)
         ]
-        if not _pose_matches_matrix(release_pose, _multiply(_pose_matrix(target_pose), transform)):
+        release_clearance = placement.get("release_clearance_m", 0.0)
+        if isinstance(release_clearance, bool) or not isinstance(release_clearance, (int, float)) or not math.isfinite(release_clearance) or release_clearance < 0:
+            raise RouteReadinessError("release clearance must be finite and non-negative")
+        expected_release = _multiply(_pose_matrix(target_pose), transform)
+        for axis in range(3):
+            expected_release[axis][3] += release_clearance * grasp["support_clear_direction"]["vector"][axis]
+        if not _pose_matches_matrix(release_pose, expected_release):
             raise RouteReadinessError("release RoboTwin target pose is inconsistent with object_T_robot_target")
         _ref(placement["provenance_ref"], "placement_target.provenance_ref", "artifact://")
 

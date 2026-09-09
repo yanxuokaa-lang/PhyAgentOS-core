@@ -6,6 +6,159 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v7.5.1 (2026-09-09 13:29) - codex
+
+### 用户确认的范围更新 / User-Authorized Scope Update
+
+- [完成] [policy] [feat] 用户允许在目标上方释放，新增显式 5 mm release_clearance_m；最终落点目标不变，释放 TCP 按支撑法向抬高，保留附着/桌面/双臂碰撞检查并重新无动作验证完整路线。(local)
+- [Completed] [policy] [feat] User authorized releasing above the destination. Add explicit 5 mm release_clearance_m, keep the final placement goal, offset release TCP along the support normal, retain attached/table/dual-arm collision checks and rerun full no-motion qualification. (local)
+- Additional files: route_generation.py, route_readiness.py, route-inputs.yaml, route generation/readiness tests.
+- 实测追加修复 / Measured follow-up fix: 5 mm 路线已通过下降和释放，但退让因 OBB cache 无 released-object slot 被拒绝；在原有 world 安装时为已实现的释放物体障碍预留一个槽位，不删除任何碰撞对象。Reserve one OBB slot during world setup for the existing released-object obstacle after the measured retreat cache-capacity failure.
+
+### 预期修改 / Planned Changes
+
+- [完成] [eval] [fix] 在独立 provider 无动作诊断中对比失败下降段的 attached/robot-only 结果，记录目标物体及机械臂 sphere 的桌面距离；保持生产碰撞检查和原始路线不变。(local)
+- [Completed] [eval] [fix] Compare attached and robot-only planning for the rejected descent in an isolated provider diagnostic and measure object/robot sphere table distances; preserve production collision checks and the original route. (local)
+- [完成] [docs] [docs] 根据实际证据记录根因及后续修复边界，补充测试、行号、Diff 和提交信息；无 scene.step、Gateway 或硬件操作。(local)
+- [Completed] [docs] [docs] Record the measured cause and repair boundary with tests, line ranges, diffs and commits; no scene stepping, Gateway or hardware operation. (local)
+
+### 影响文件 / Planned Files
+
+- RoboTwin runtime diagnostic module, route evaluator diagnostic hook, focused tests, contact postprocessing documentation, monthly log and index.
+
+### 实际结果 / Results
+
+- [eval] [fix] 已定位 attached sphere/table 约 -1.0000615 mm 重叠；robot-only 对照成功但不参与准入。用户允许目标上方释放后，显式 5 mm 间隙通过最终下降；预留 released-object OBB 槽位后右臂完整八阶段、10 waypoint segment 全部通过。(local)
+- [eval] [fix] Diagnosed about -1.0000615 mm attached sphere/table overlap; robot-only success remains diagnostic. User-authorized 5 mm elevated release clears final descent; reserving the released-object OBB slot completes all eight right-arm phases and 10 segments. (local)
+- [eval] [test] 工作区 367 passed, 1 skipped；独立暂存内容 365 passed, 1 skipped；Ruff、compileall 和 diff check 通过。未提交草稿造成两项差异。(local)
+- [eval] [test] Working tree 367 passed, 1 skipped; isolated staged tree 365 passed, 1 skipped; Ruff, compileall and diff check pass. Two extra tests belong to unstaged drafts. (local)
+- Evidence: `/home/yanxu/robotwin20-runtime/artifacts/paos-release-gap-v7.5.1-20260909T053746Z/no-motion-route-cache-fixed.json`; left fails approach, right complete-route pass, simulator_steps=0, motion_authorized=false. Landing dynamics and final accuracy remain unmeasured.
+- 桌面、红蓝方块和 peer-arm projection 保留；抓取 16 mm backoff 不变；最终物体目标不变；只抬高释放 TCP，退让障碍覆盖释放至落地的包络。
+- Table, red/blue blocks and peer projection remain; 16 mm grasp backoff and final object goal are unchanged. Only release TCP is elevated; retreat includes the release-to-settled object envelope.
+
+### 文件详情 / File Details
+
+- `docs/forge/GRASPGEN_CONTACT_DEPTH_POSTPROCESSING.md` L154-L205 [修改 / Added or modified]
+
+```diff
++
++## Final descent diagnosis (v7.5.1)
++
++The one-shot route worker accepts `--diagnose-failure` with `--request` and
+```
+
+- `examples/forge-adapters/robotwin20/profiles/robotwin20/route-inputs.yaml` L36-L36 [修改 / Added or modified]
+
+```diff
++  release_clearance_m: 0.005
+```
+
+- `examples/forge-adapters/robotwin20/runtime/robotwin_curobo_world_port.py` L379-L380 [修改 / Added or modified]
+
+```diff
+-        required_capacity = len(world.cuboid)
++        # Retreat replaces the attachment with one released-object obstacle.
++        required_capacity = len(world.cuboid) + 1
+```
+
+- `examples/forge-adapters/robotwin20/runtime/robotwin_descent_diagnostic.py` L1-L101 [修改 / Added or modified]
+
+```diff
++"""Explicit no-motion ablation of a rejected attached segment.
++
++The robot-only result is diagnostic evidence and can never replace the
++production attached-route result. The full table/blocks/peer world stays loaded.
+```
+
+- `examples/forge-adapters/robotwin20/runtime/robotwin_route_planner.py` L5-L5, L96-L113, L115-L121, L146-L146, L149-L150, L187-L194, L201-L201, L218-L223, L226-L234, L249-L249, L253-L253, L303-L303 [修改 / Added or modified]
+
+```diff
++from copy import deepcopy
++def released_object_envelope(candidate):
++    """Conservative box covering release-to-settled translation for retreat."""
++    import numpy as np
+```
+
+- `examples/forge-adapters/robotwin20/runtime/robotwin_route_readiness_worker.py` L117-L117, L124-L126 [修改 / Added or modified]
+
+```diff
++    parser.add_argument("--diagnose-failure", action="store_true")
+-        evaluator = RoboTwinRouteEvaluator(args.runtime_root.resolve(), args.runtime_profile.resolve(), args.artifact_root.resolve())
++        evaluator = RoboTwinRouteEvaluator(args.runtime_root.resolve(), args.runtime_profile.resolve(), args.artifact_root.resolve(), diagnose_failure=args.diagnose_failure)
++    if args.diagnose_failure and not (args.request and args.output):
+```
+
+- `examples/forge-adapters/robotwin20/scripts/materialize_complete_route.py` L181-L181 [修改 / Added or modified]
+
+```diff
+-    if not isinstance(route_policy, Mapping) or set(route_policy) != {
++    if not isinstance(route_policy, Mapping) or set(route_policy) - {"release_clearance_m"} != {
+```
+
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/route_generation.py` L173-L173, L182-L186, L307-L308, L349-L349 [修改 / Added or modified]
+
+```diff
+-    if not isinstance(value, Mapping) or set(value) != required:
++    if not isinstance(value, Mapping) or set(value) - {"release_clearance_m"} != required:
++    if "release_clearance_m" in value:
++        clearance = _finite(value["release_clearance_m"], "release_clearance_m")
+```
+
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/route_readiness.py` L359-L359, L372-L378 [修改 / Added or modified]
+
+```diff
+-        if not isinstance(placement, Mapping) or set(placement) != {
++        if not isinstance(placement, Mapping) or set(placement) - {"release_clearance_m"} != {
+-        if not _pose_matches_matrix(release_pose, _multiply(_pose_matrix(target_pose), transform)):
++        release_clearance = placement.get("release_clearance_m", 0.0)
+```
+
+- `examples/forge-adapters/robotwin20/tests/test_curobo_world_port.py` L200-L200, L203-L206 [修改 / Added or modified]
+
+```diff
+-    assert all(item[1:] == (3, 3) for item in rebuilt)
++    assert all(item[1:] == (3, 4) for item in rebuilt)
+-        assert planner.motion_gen.collision_cache["obb"] == 3
++        assert planner.motion_gen.collision_cache["obb"] == 4
+```
+
+- `examples/forge-adapters/robotwin20/tests/test_descent_diagnostic.py` L1-L53 [修改 / Added or modified]
+
+```diff
++from types import SimpleNamespace
++
++import numpy as np
++import pytest
+```
+
+- `examples/forge-adapters/robotwin20/tests/test_route_generation.py` L62-L87 [修改 / Added or modified]
+
+```diff
++def test_release_clearance_preserves_final_goal_and_grasp():
++    inputs = _inputs()
++    nominal = generate_route_request(*inputs)
++    inputs[-1]["release_clearance_m"] = .005
+```
+
+- `examples/forge-adapters/robotwin20/tests/test_route_planner.py` L121-L152 [修改 / Added or modified]
+
+```diff
++
++
++def test_diagnostic_success_never_promotes_rejected_route(route, monkeypatch):
++    task, request, candidate, entity, events, starts = route
+```
+
+### 验证 / Validation
+
+```bash
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=.:examples/forge-adapters/robotwin20/src:examples/forge-adapters/robotwin20/runtime:examples/forge-adapters/robotwin20/scripts:examples/forge-skills/pick-place-workflow/src python -m pytest -q -p pytest_asyncio.plugin examples/forge-adapters/robotwin20/tests
+```
+
+### Git 提交 / Git Commit
+
+- Branch: `feature/planning-loop`; commit recorded after implementation commit.
+
 ## v7.5.0 (2026-09-09 12:43) - codex
 
 ### 预期修改 / Planned Changes
@@ -398,39 +551,6 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=.:examples/forge-adapters/robotwin20
 ### Git 提交 / Git Commit
 
 - Commit: `57539a2`；Branch: `feature/planning-loop`；已推送。/ Commit: `57539a2`; Branch: `feature/planning-loop`; pushed.
-
-## v7.3.15 (2026-09-09 02:35) - codex
-
-### 预期修改 / Planned Changes
-
-- [计划] [policy] [fix] 根据真实 no-motion 证据，在 RoboTwin route profile 中声明有限的 ingress backoff 候选（0–20 mm 范围内由 provider 明确列出），由 qualification CLI 逐一评估桌面净空和 pinch 约束；不修改 GraspGen depth，不加入隐式偏移。
-- [Planned] [Policy] [Fix] Based on the real no-motion evidence, declare a finite provider-owned ingress-backoff candidate list in the RoboTwin route profile and have the qualification CLI evaluate each candidate against table clearance and pinch constraints; do not modify GraspGen depth or add implicit offsets.
-- [计划] [eval] [test] 覆盖 profile 候选列表解析、15 mm 合法变体、20 mm pinch 失败、空列表/乱序输入和实际 artifact 重新 qualification；保持 no-motion，不运行 planner、scene.step、Gateway、Dora、Action 或硬件。
-- [Planned] [Eval] [Test] Cover profile-list parsing, the valid 15 mm variant, 20 mm pinch failure, empty/unsorted inputs, and requalification of the real artifact; remain no-motion and run no planner, scene.step, Gateway, Dora, Action, or hardware.
-
-### 实际结果 / Actual Results
-
-- [完成] [policy] [fix] `examples/forge-adapters/robotwin20/profiles/robotwin20/route-inputs.yaml:L23-L25` 声明 `contact_backoff_candidates_m=[0.0, 0.005, 0.010, 0.015, 0.020]`；候选是 RoboTwin provider 的显式 ingress route 变体，不改变 GraspGen `depth_m=0.10527314`。
-- [Completed] [Policy] [Fix] `examples/forge-adapters/robotwin20/profiles/robotwin20/route-inputs.yaml:L23-L25` declares `contact_backoff_candidates_m=[0.0, 0.005, 0.010, 0.015, 0.020]`; the values are explicit RoboTwin-provider ingress-route variants and leave GraspGen `depth_m=0.10527314` unchanged.
-- [完成] [policy] [fix] `examples/forge-adapters/robotwin20/scripts/materialize_complete_route.py:L152-L179,L631-L634` 验证并物化该有限列表；`examples/forge-adapters/robotwin20/scripts/qualify_grasp_contact.py:L65-L78,L118-L125` 使用同一列表评估实际 hand pose，拒绝空、乱序、负值或非有限输入。
-- [Completed] [Policy] [Fix] `examples/forge-adapters/robotwin20/scripts/materialize_complete_route.py:L152-L179,L631-L634` validates and materializes the finite list; `examples/forge-adapters/robotwin20/scripts/qualify_grasp_contact.py:L65-L78,L118-L125` evaluates actual hand poses with that list and rejects empty, unordered, negative, or non-finite inputs.
-- [完成] [eval] [test] `examples/forge-adapters/robotwin20/tests/test_qualify_grasp_contact.py:L60-L124` 覆盖 15 mm 首个合法 variant、空列表与乱序 profile；专项 `30 passed`，RoboTwin adapter 全量 `341 passed, 1 skipped`。
-- [Completed] [Eval] [Test] `examples/forge-adapters/robotwin20/tests/test_qualify_grasp_contact.py:L60-L124` covers the first valid 15 mm variant plus empty and unordered profiles; focused tests report `30 passed`, and the full RoboTwin adapter suite reports `341 passed, 1 skipped`.
-- [完成] [eval] [exp] 实际 no-motion artifact `/home/yanxu/robotwin20-runtime/artifacts/paos-grasp-contact-v7.3.15-20260909T1045Z/qualification.json` 选择 `0.015 m`：`0/5/10 mm` 的支持面净空分别为 `-12.1636/-7.1732/-2.1828 mm`，`15 mm` 为 `+2.8076 mm` 且 pinch 仍在对象内；`20 mm` 虽为 `+7.7980 mm`，但 pinch 已离开对象而被拒绝。
-- [Completed] [Eval] [Exp] The real no-motion artifact `/home/yanxu/robotwin20-runtime/artifacts/paos-grasp-contact-v7.3.15-20260909T1045Z/qualification.json` selects `0.015 m`: support clearance is `-12.1636/-7.1732/-2.1828 mm` at `0/5/10 mm`; `15 mm` reaches `+2.8076 mm` while retaining pinch; `20 mm` reaches `+7.7980 mm` but is rejected because the pinch exits the object.
-
-### 六维验收 / Six-Dimension Acceptance
-
-1. 架构集成：通过。候选定义与 qualification 都留在 RoboTwin provider adapter；PAOS planning、Skill、Gateway、任务生命周期和执行面未改变。 / Passed. Candidate definition and qualification remain in the RoboTwin provider adapter; PAOS planning, Skills, Gateway, task lifecycle, and execution remain unchanged.
-2. 失败路径：通过。无候选、乱序、负值、非有限值、桌面净空不足和 pinch 失效均不能产生 qualified variant。 / Passed. Empty, unordered, negative, non-finite, insufficient-clearance, and pinch-invalid cases cannot yield a qualified variant.
-3. 权威与安全边界：通过。结果仅为 `motion_authorized=false` 的 no-motion evidence；它不授权 route 执行，也不放宽桌面碰撞。 / Passed. The result is no-motion evidence with `motion_authorized=false`; it authorizes neither route execution nor relaxed table collision.
-4. 配置与复现：通过。候选由 versioned provider profile 声明，并在 materialized adaptation artifact 中保留；实际 evidence 使用独立时间戳目录。 / Passed. Candidates are declared by the versioned provider profile and retained in the materialized adaptation artifact; real evidence uses an independent timestamped directory.
-5. 可维护性：通过。复用现有 `qualify_geometry_artifact` 和 route materializer，不新增 planner、Grasp provider、store、scheduler 或平行执行路径。 / Passed. Existing `qualify_geometry_artifact` and the route materializer are reused without a new planner, Grasp provider, store, scheduler, or parallel execution path.
-6. 防止过度防御编程：通过。新增检查只约束本功能需要的有限、单调、非负候选列表；未新增 hash、baseline、冻结 contract 或审批 gate。 / Passed. New checks only constrain the finite, monotonic, non-negative candidate list required by this feature; no hash, baseline, frozen contract, or approval gate was added.
-
-### 下一步 / Next Step
-
-重新物化包含 selected contact variant 的 route package，独立校验其绑定后，再申请新的 simulation-only 人工审批。此前不得执行 planner、`scene.step()`、Gateway、Dora、Action 或硬件。 / Rematerialize a route package containing the selected contact variant, independently validate its bindings, then request fresh simulation-only human approval. Until then, do not run planner, `scene.step()`, Gateway, Dora, Action, or hardware.
 
 ## Historical Index (Preserved)
 

@@ -178,7 +178,7 @@ def _load_profile(path: Path) -> Mapping[str, Any]:
     ):
         raise MaterializationError("route input contact backoff candidates are invalid")
     route_policy = value["route_policy"]
-    if not isinstance(route_policy, Mapping) or set(route_policy) != {
+    if not isinstance(route_policy, Mapping) or set(route_policy) - {"release_clearance_m"} != {
         "approach_clearance_m", "lift_clearance_m", "transport_clearance_m",
         "descent_clearance_m", "retreat_distance_m", "retreat_direction",
     }:

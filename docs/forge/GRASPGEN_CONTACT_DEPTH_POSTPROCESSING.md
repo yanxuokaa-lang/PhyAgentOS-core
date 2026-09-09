@@ -151,3 +151,55 @@ Final materialized package and repeated no-motion result:
 `/home/yanxu/robotwin20-runtime/artifacts/paos-route-v7.5.0-16mm-20260909T0508Z/`.
 `no-motion-route.json` repeats left approach waypoint 0 rejection and right
 descent waypoint 1 rejection. This package is not approved for simulation motion.
+
+## Final descent diagnosis (v7.5.1)
+
+The one-shot route worker accepts `--diagnose-failure` with `--request` and
+`--output`. On attached descent rejection it temporarily detaches only the
+object, retries the same segment from the same start, restores the exact
+attachment sphere tensor, and checks the robot-only endpoint with the object
+attached again. Table, blocks and peer-arm projection stay loaded. The result
+is diagnostic-only and cannot change route admission. JSONL readiness and the
+simulation probe do not enable this ablation.
+
+The exact-restoration run at
+`/home/yanxu/robotwin20-runtime/artifacts/paos-descent-v7.5.1-20260909T0532Z/diagnostic-exact-restore.json`
+reports:
+
+- Right descent waypoint 1 still fails with the attachment; robot-only planning
+  and real gripper mesh clearance pass.
+- The only negative sphere/cuboid pair is attached-object sphere 62 against
+  table: clearance -0.001000061515 m, radius 0.001000000047 m. Its center is
+  approximately on the table surface (-0.000000061467 m signed distance).
+- Robot/table sphere clearance is +0.000051121227 m. Red/blue blocks and peer
+  obstacles have positive distances at that endpoint.
+- The desired object box bottom is at the measured support surface within
+  floating-point precision (-0.000000022351 m). No simulation step occurred.
+
+This is the support-arrival contact boundary of the surface-sphere attachment
+model. Further grasp backoff does not remove the required object/table contact
+at the fixed placement goal. Production remains rejected. A subsequent fix
+must explicitly qualify the target-object/support pair during final arrival
+and release while checking robot/table, object/other-obstacles, self and peer
+collisions throughout the trajectory. Do not apply a global penetration
+tolerance, remove the table, or admit the diagnostic robot-only trajectory.
+
+## Elevated release (user-authorized v7.5.1)
+
+The user authorized release slightly above the destination. The RoboTwin
+profile now declares `route_policy.release_clearance_m: 0.005`. Route generation
+offsets the release TCP along the bound support-clear direction after applying
+`object_T_robot_target`; the final `target_object_pose` and grasp stay unchanged.
+The optional placement field records this distance, and route validation checks
+the same transform. Zero/omitted clearance preserves historical routes.
+
+For no-motion retreat, the released obstacle encloses both release and settled
+object boxes. World setup reserves one extra OBB slot for this obstacle after a
+real run exposed an otherwise full cache. The physical probe still measures
+release state and verifies the final object against the unchanged destination.
+
+Evidence: `/home/yanxu/robotwin20-runtime/artifacts/paos-release-gap-v7.5.1-20260909T053746Z/no-motion-route-cache-fixed.json`.
+Right arm passes all eight phases (10 waypoint segments); left fails approach.
+All table/block/peer checks remain active, `simulator_steps=0` and
+`motion_authorized=false`. Dynamic landing, rebound and placement accuracy have
+not yet been measured. This geometric pass is not a task-success verdict.

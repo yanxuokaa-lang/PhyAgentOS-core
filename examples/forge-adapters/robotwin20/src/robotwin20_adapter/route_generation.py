@@ -170,7 +170,7 @@ def validate_route_policy(value: Any, frame_id: str) -> dict[str, Any]:
         "retreat_distance_m",
         "retreat_direction",
     }
-    if not isinstance(value, Mapping) or set(value) != required:
+    if not isinstance(value, Mapping) or set(value) - {"release_clearance_m"} != required:
         raise RouteGenerationError("route_policy fields are invalid")
     normalized = {
         name: _finite(value[name], f"route_policy.{name}", positive=True)
@@ -179,6 +179,11 @@ def validate_route_policy(value: Any, frame_id: str) -> dict[str, Any]:
     normalized["retreat_direction"] = _direction(
         value["retreat_direction"], frame_id, "route_policy.retreat_direction"
     )
+    if "release_clearance_m" in value:
+        clearance = _finite(value["release_clearance_m"], "release_clearance_m")
+        if clearance < 0:
+            raise RouteGenerationError("release clearance must be non-negative")
+        normalized["release_clearance_m"] = clearance
     return normalized
 
 
@@ -299,6 +304,8 @@ def generate_route_request(
     release_robot_target = _matrix_pose(
         _multiply(_pose_matrix(target_object), object_t_robot_target), target_object
     )
+    release_clearance = policy.get("release_clearance_m", 0.0)
+    release_robot_target = _offset(release_robot_target, release_clearance, support_clear)
     approach = _offset(robot_target, -distances["approach_clearance_m"], ingress)
     lift = _offset(robot_target, distances["lift_clearance_m"], support_clear)
     transport = _offset(
@@ -339,6 +346,7 @@ def generate_route_request(
             "target_object_pose": target_object,
             "release_robot_target_pose": release_robot_target,
             "provenance_ref": target_provenance,
+            **({"release_clearance_m": release_clearance} if release_clearance else {}),
         },
         "route": route,
     }

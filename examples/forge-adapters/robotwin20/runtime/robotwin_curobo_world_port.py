@@ -376,7 +376,8 @@ def apply_collision_world(
         if motion_gen is None or batch is None or not callable(getattr(motion_gen, "update_world", None)) or not callable(getattr(batch, "update_world", None)):
             raise CuroboWorldPortError("planner does not expose motion_gen and motion_gen_batch update_world")
         world = _world_config(planner, world_artifact, peer_projection)
-        required_capacity = len(world.cuboid)
+        # Retreat replaces the attachment with one released-object obstacle.
+        required_capacity = len(world.cuboid) + 1
         prepared.append(
             (
                 planner,

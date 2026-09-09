@@ -118,3 +118,35 @@ def test_arm_selection_uses_complete_route_not_contact(monkeypatch):
     )
     result = module.evaluate_route(None, {}, {"candidate_ref": "candidate://block/0"}, None)
     assert result["selected_arm"] == "right"
+
+
+def test_diagnostic_success_never_promotes_rejected_route(route, monkeypatch):
+    task, request, candidate, entity, events, starts = route
+    original_plan = task.robot.left_plan_path
+
+    def plan(pose, last_qpos):
+        if len(starts) == 5:
+            return {"status": "Fail"}
+        return original_plan(pose, last_qpos)
+
+    task.robot.left_plan_path = plan
+    monkeypatch.setattr(
+        "robotwin_descent_diagnostic.diagnose_attached_segment",
+        lambda *args: {"robot_only_status": "success", "diagnostic_only": True},
+    )
+    result = module.evaluate_route_arm(task, request, candidate, "left", object(), diagnose_failure=True)
+    assert result["status"] == "fail"
+    assert result["failed_phase"] == "descent"
+    assert result["diagnostic"]["robot_only_status"] == "success"
+    assert result["motion_authorized"] is False
+    assert entity.qpos == [0.] * 9
+
+
+def test_retreat_obstacle_covers_both_release_and_landing(route):
+    candidate = route[2]
+    candidate["placement_target"]["release_clearance_m"] = .005
+    candidate["execution_grasp"] = {"support_clear_direction": {"vector": [0, 0, 1]}}
+    pose, extents = module.released_object_envelope(candidate)
+    assert pose["position_m"] == pytest.approx([0, 0, 1.0025])
+    assert extents == pytest.approx([.02, .02, .0225])
+    assert candidate["placement_target"]["target_object_pose"]["position_m"] == [0, 0, 1]

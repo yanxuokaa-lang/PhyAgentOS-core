@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Any, Mapping
 
 from robotwin_curobo_world_port import (
@@ -92,8 +93,32 @@ def evaluate_contact(
         return {"planner_status": "failed", "clearance_m": None, "reason": str(exc)}
 
 
+def released_object_envelope(candidate):
+    """Conservative box covering release-to-settled translation for retreat."""
+    import numpy as np
+    import transforms3d.quaternions as tquat
+
+    placement = candidate["placement_target"]
+    pose = deepcopy(placement["target_object_pose"])
+    extents = list(candidate["attached_object"]["half_extents_m"])
+    clearance = placement.get("release_clearance_m", 0.0)
+    if not clearance:
+        return pose, extents
+    shift = np.asarray(candidate["execution_grasp"]["support_clear_direction"]["vector"]) * clearance
+    q = pose["orientation_xyzw"]
+    local_shift = tquat.quat2mat([q[3], *q[:3]]).T @ shift
+    pose["position_m"] = (np.asarray(pose["position_m"]) + shift / 2).tolist()
+    return pose, (np.asarray(extents) + np.abs(local_shift) / 2).tolist()
+
+
 def evaluate_route_arm(
-    task: Any, request: Mapping[str, Any], candidate: Mapping[str, Any], arm: str, actor: Any
+    task: Any,
+    request: Mapping[str, Any],
+    candidate: Mapping[str, Any],
+    arm: str,
+    actor: Any,
+    *,
+    diagnose_failure: bool = False,
 ) -> dict[str, Any]:
     """Plan serially from predicted endpoints, restoring geometry in all cases.
 
@@ -118,10 +143,11 @@ def evaluate_route_arm(
             if phase_name == "retreat" and attached:
                 planner.motion_gen.detach_object_from_robot()
                 attached = False
+                released_pose, released_extents = released_object_envelope(candidate)
                 previous_worlds = add_released_object(
                     planner,
-                    candidate["placement_target"]["target_object_pose"],
-                    candidate["attached_object"]["half_extents_m"],
+                    released_pose,
+                    released_extents,
                 )
             for index, waypoint in enumerate(phase["waypoints"]):
                 pose = _route_pose(waypoint, request["frame_id"])
@@ -158,12 +184,21 @@ def evaluate_route_arm(
                 )
         return {"arm": arm, "status": "pass", "segments": segments, "motion_authorized": False}
     except Exception as exc:
+        diagnostic = None
+        if diagnose_failure and attached and phase_name == "descent":
+            from robotwin_descent_diagnostic import diagnose_attached_segment
+
+            try:
+                diagnostic = diagnose_attached_segment(task, candidate, arm, actor, pose, predicted)
+            except Exception as diagnostic_error:
+                diagnostic = {"error": str(diagnostic_error), "diagnostic_only": True}
         return {
             "arm": arm,
             "status": "fail",
             "failed_phase": phase_name,
             "failed_waypoint_index": index,
             "detail": str(exc),
+            "diagnostic": diagnostic,
             "segments": segments,
             "motion_authorized": False,
         }
@@ -180,10 +215,23 @@ def evaluate_route_arm(
 
 
 def evaluate_route(
-    task: Any, request: Mapping[str, Any], candidate: Mapping[str, Any], actor: Any
+    task: Any,
+    request: Mapping[str, Any],
+    candidate: Mapping[str, Any],
+    actor: Any,
+    *,
+    diagnose_failure: bool = False,
 ) -> dict[str, Any]:
     attempts = [
-        evaluate_route_arm(task, request, candidate, arm, actor) for arm in ("left", "right")
+        evaluate_route_arm(
+            task,
+            request,
+            candidate,
+            arm,
+            actor,
+            **({"diagnose_failure": True} if diagnose_failure else {}),
+        )
+        for arm in ("left", "right")
     ]
     selected = next((item["arm"] for item in attempts if item["status"] == "pass"), None)
     return {
@@ -198,10 +246,11 @@ def evaluate_route(
 class RoboTwinRouteEvaluator:
     """Injected implementation for the existing route-readiness worker."""
 
-    def __init__(self, runtime_root, runtime_profile, artifact_root):
+    def __init__(self, runtime_root, runtime_profile, artifact_root, *, diagnose_failure=False):
         self.runtime_root = runtime_root
         self.runtime_profile = runtime_profile
         self.artifact_root = artifact_root
+        self.diagnose_failure = diagnose_failure
 
     def __call__(self, request):
         import hashlib
@@ -251,7 +300,7 @@ class RoboTwinRouteEvaluator:
                 )
                 actor = getattr(task, record["actor_name"])
                 results[candidate["candidate_ref"]] = evaluate_route(
-                    task, request, candidate, actor
+                    task, request, candidate, actor, diagnose_failure=self.diagnose_failure
                 )
             return {
                 "candidates": results,

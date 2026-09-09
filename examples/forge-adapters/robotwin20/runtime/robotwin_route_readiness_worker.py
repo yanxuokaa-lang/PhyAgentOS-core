@@ -114,13 +114,16 @@ def main() -> int:
     parser.add_argument("--runtime-profile", type=Path)
     parser.add_argument("--request", type=Path)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--diagnose-failure", action="store_true")
     args = parser.parse_args()
     if bool(args.runtime_root) != bool(args.runtime_profile):
         parser.error("runtime-root and runtime-profile must be supplied together")
     evaluator = None
     if args.runtime_root:
         from robotwin_route_planner import RoboTwinRouteEvaluator
-        evaluator = RoboTwinRouteEvaluator(args.runtime_root.resolve(), args.runtime_profile.resolve(), args.artifact_root.resolve())
+        evaluator = RoboTwinRouteEvaluator(args.runtime_root.resolve(), args.runtime_profile.resolve(), args.artifact_root.resolve(), diagnose_failure=args.diagnose_failure)
+    if args.diagnose_failure and not (args.request and args.output):
+        parser.error("failure ablation is only available in one-shot no-motion diagnostics")
     handle = _handle_factory(args.artifact_root.resolve(), args.worker_id, evaluator)
     if args.request or args.output:
         if not (args.request and args.output and evaluator):

@@ -59,6 +59,32 @@ def _generate():
     return generate_route_request(*_inputs())
 
 
+def test_release_clearance_preserves_final_goal_and_grasp():
+    inputs = _inputs()
+    nominal = generate_route_request(*inputs)
+    inputs[-1]["release_clearance_m"] = .005
+    elevated = generate_route_request(*inputs)
+    before = nominal["candidates"][0]
+    after = elevated["candidates"][0]
+    assert after["execution_grasp"] == before["execution_grasp"]
+    assert after["placement_target"]["target_object_pose"] == before["placement_target"]["target_object_pose"]
+    a = after["placement_target"]["release_robot_target_pose"]["position_m"]
+    b = before["placement_target"]["release_robot_target_pose"]["position_m"]
+    assert [x - y for x, y in zip(a, b)] == pytest.approx([0, 0, .005])
+    validate_route_request(elevated)
+    after["placement_target"]["release_clearance_m"] = .01
+    with pytest.raises(ValueError, match="inconsistent"):
+        validate_route_request(elevated)
+
+
+@pytest.mark.parametrize("value", [-.001, float("nan"), True])
+def test_invalid_release_clearance_is_rejected(value):
+    inputs = _inputs()
+    inputs[-1]["release_clearance_m"] = value
+    with pytest.raises(RouteGenerationError):
+        generate_route_request(*inputs)
+
+
 def test_route_generation_produces_complete_deterministic_no_motion_request():
     inputs = _inputs()
     before = deepcopy(inputs)

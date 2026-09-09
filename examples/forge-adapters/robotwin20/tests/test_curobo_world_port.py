@@ -197,10 +197,13 @@ def test_port_rebuilds_when_provider_cache_is_too_small(monkeypatch):
     receipt = apply_collision_world(planners, _artifact())
     assert receipt["arm_receipts"][0]["operation"] == "rebuild_motion_gen"
     assert len(rebuilt) == 2
-    assert all(item[1:] == (3, 3) for item in rebuilt)
+    assert all(item[1:] == (3, 4) for item in rebuilt)
     for planner in planners.values():
         assert len(planner.motion_gen.world_model.objects) == 3
-        assert planner.motion_gen.collision_cache["obb"] == 3
+        assert planner.motion_gen.collision_cache["obb"] == 4
+        from robotwin_curobo_world_port import add_released_object
+        add_released_object(planner, {"position_m": [0, 0, .8], "orientation_xyzw": [0, 0, 0, 1]}, [.02] * 3)
+        assert len(planner.motion_gen.world_model.cuboid) == 4
 
 
 def test_rebuild_failure_keeps_original_both_arm_references(monkeypatch):
