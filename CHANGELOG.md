@@ -1,5 +1,64 @@
 # Changelog
 
+## [v7.4.1] - 2026-09-09
+
+Ran the approved isolated RoboTwin dual-view probe for the v7.4.0 GraspGen
+route. Provider initialization and collision-world preflight completed, but
+both arms failed the first route-planning segment; the result is explicitly
+`unavailable` with zero simulator steps and no video frames. Failure snapshots,
+reset evidence, and arm-attempt records were preserved. No Gateway, Dora,
+Action, or hardware was used.
+
+运行 v7.4.0 GraspGen 路线的已批准隔离 RoboTwin 双视角 probe。provider 初始化与
+碰撞世界 preflight 完成，但左右臂均未通过首段路线规划；结果明确为
+`unavailable`，仿真步数为 0 且没有视频帧。失败快照、复位证据和双臂尝试记录已保留。
+未调用 Gateway、Dora、Action 或硬件。
+
+Files: `changelog/2026-09_part4.md:L3-L38`.
+Validation: focused RoboTwin tests `65 passed`; simulation probe result is
+`unavailable` and is not treated as route success.
+
+## [v7.3.11] - 2026-09-09
+
+Completed the local self-evolution lifecycle closure: evaluator receipts and
+selection requests now return through the extension boundary, a named host
+reviewer promotes only evidence-current Skill candidates, and Future-use
+metrics recompute only for newly complete parent/candidate pairs. Extension
+tests pass `68`; full PAOS tests pass `258`. No commit or push.
+
+完成本地自我进化生命周期闭环：评测 receipt 与 selection request 通过 extension
+边界回写；具名宿主 reviewer 只晋升证据仍为当前的 Skill candidate；Future-use
+指标仅在新增完整 parent/candidate pair 时重算。扩展测试 `68` 通过，PAOS 全量测试
+`258` 通过。不会提交或推送。
+
+## [v7.3.10] - 2026-09-09
+
+Fixed duplicate Future-use comparisons by recording completion in the existing
+evolution event ledger. Extension tests pass `66`; full PAOS tests pass `254`.
+No commit or push.
+
+修复 Future-use 配对完成后的重复比较，使用现有 evolution event ledger 记录完成状态。
+扩展测试 `66` 通过，PAOS 全量测试 `254` 通过。不会提交或推送。
+
+## [v7.3.4] - 2026-09-08
+
+Added a provider-neutral `SettledOutcomeProjectionPort` that routes host
+targets and evidence through `ConsequenceSettler` before EvoPhy processing.
+Extension tests pass `61`; full PAOS tests pass `253`. No commit or push.
+
+新增 provider-neutral 的 `SettledOutcomeProjectionPort`，在 EvoPhy 处理前将宿主提供的
+targets 与 evidence 统一交给 `ConsequenceSettler`。扩展测试 `61` 通过，PAOS 全量测试
+`253` 通过。不会提交或推送。
+
+## [v7.3.3] - 2026-09-08
+
+Connected the optional evolution extension to the existing PAOS candidate
+lifecycle and evolution-job replay path through a host adapter. Added optional
+provenance storage and fail-closed delivery handling; no commit or push.
+
+通过宿主适配器将可选 evolution 扩展接入现有 PAOS candidate 生命周期与 evolution-job
+重放路径，增加 provenance 保存和失败闭环处理；不会提交或推送。
+
 All notable changes to PhyAgentOS are documented here. Categories follow Keep a Changelog.
 
 ## [v7.3.0] - 2026-09-08
