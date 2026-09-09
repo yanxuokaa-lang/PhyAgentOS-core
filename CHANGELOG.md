@@ -207,7 +207,7 @@ index a782584..a14bcf1 100644
 
 ### Git 提交 / Git Commit
 
-- Branch: `feature/planning-loop`; commit recorded after creation.
+- Branch: `feature/planning-loop`; implementation commit: `323b3d5`; verified before push on 2026-09-09 (Asia/Shanghai).
 
 ## v7.7.0 (2026-09-09 15:19) - codex
 
