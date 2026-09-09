@@ -8,6 +8,24 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v8.4.0 (2026-09-09 20:00) - codex
+
+### 变更摘要 / Change Summary
+
+- [完成] [policy] [feat] 新增 `MultiObjectAgentRunner`，绑定可信多对象场景事实，支持显式 baseline/semantic PlanGraph，并复用 AgentLoop、Coordinator 和现有 Gateway 路径；进化模块和真实硬件不在范围内。(local)
+- [Completed] [Policy] [Feat] Added `MultiObjectAgentRunner` with trusted multi-object scene binding, explicit baseline/semantic PlanGraph modes, and reuse of AgentLoop, Coordinator, and the existing Gateway path; evolution and live hardware remain out of scope. (local)
+
+### 文件变更详情 / File Details
+
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/multi_object_agent.py` L1-L193 [新增 / Added]: 实体事实绑定和 AgentTask runner / scene-fact binding and AgentTask runner.
+- `examples/forge-skills/pick-place-workflow/tests/test_multi_object_agent.py` L1-L91 [新增 / Added]: 多对象入口边界测试 / multi-object entry boundary tests.
+- `docs/forge/MULTI_OBJECT_AGENT_LOOP_EXECUTION_PLAN_20260909.md` L1-L106 [新增 / Added]: 审核、执行和六维验收矩阵 / audit, execution, and six-dimensional acceptance matrix.
+
+### 验证 / Validation
+
+- Focused `4 passed`; broad `576 passed`; Ruff, compileall, and diff checks passed.
+- Action/Verifier real-runtime evidence remains pending; current six-dimensional result is staged, not final physical success.
+
 ## v8.3.1 (2026-09-09 19:32) - codex
 
 ### 预期修改 / Planned Changes

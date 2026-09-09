@@ -11,6 +11,12 @@ from .agent_planning import (
     compose_executable_pick_place_plan,
     select_planning_mode,
 )
+from .multi_object_agent import (
+    MultiObjectAgentError,
+    MultiObjectAgentRunner,
+    SceneObjectBinding,
+    bind_scene_objects,
+)
 from .fake_gateway import (
     FakeGatewayTransport,
     ObservationProvider,
@@ -110,4 +116,8 @@ __all__ = [
     "compose_agent_plan",
     "compose_executable_pick_place_plan",
     "select_planning_mode",
+    "MultiObjectAgentError",
+    "MultiObjectAgentRunner",
+    "SceneObjectBinding",
+    "bind_scene_objects",
 ]

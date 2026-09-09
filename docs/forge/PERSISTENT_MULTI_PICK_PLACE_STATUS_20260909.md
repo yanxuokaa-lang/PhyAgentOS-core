@@ -311,3 +311,19 @@ PYTHONPATH=.:examples/forge-adapters/robotwin20/src \
 This command uses real models; semantic category wording and grasp sampling can vary. An exact-category mismatch is an explicit diagnostic stop, not permission to choose another entity. Live artifacts were produced with the v8.3.1 working-tree changes on top of `0420213`.
 
 Six-dimensional status: architecture remains incomplete (Agent entry and installed deployment); failure handling has targeted coverage but live Action recovery is untested; existing safety admission remains enforced and no motion was performed; dedicated-environment reproducibility and artifact retention are demonstrated; assembly maintenance improved through shared-client checking; observation/perception/grasp diagnostics are available but there are no task-level Action/Verifier receipts. Next concrete integration is measured entity/destination binding into current-scene preparation and the existing Agent planning loop.
+## v8.4.0 执行进展
+
+本轮按 `MULTI_OBJECT_AGENT_LOOP_EXECUTION_PLAN_20260909.md` 执行了第一阶段接入：新增 `MultiObjectAgentRunner`，将可信场景实体筛选为唯一方块对象，要求 observation/scene/frame/calibration/geometry 事实和不透明 destination 引用，按显式 `baseline` 或 `agent_composed` 模式创建一个带 `artifact://` 引用的 AgentTask/PlanRevision，并把后续运行委托给现有 `AgentLoop.build_long_horizon_controller()`。该入口没有调用 provider、创建 scheduler 或授予 motion authority。
+
+当前仍未完成真实多对象 Action/Verifier 闭环：需要在同一持久 Runtime 中验证每个 acquire/place 的 terminal 对账、scene revision 更新、持物/资源状态、失败/取消/unknown 以及最终 Verifier verdict。以下 focused 测试只证明入口边界和图持久化，不等价于机器人成功。
+
+### 六维阶段检查
+
+| 维度 | 当前结论 |
+|---|---|
+| 架构集成 | 通过入口边界检查；复用 Coordinator/Controller |
+| 失败路径 | 部分；实体缺失、重复和混合 scene 已覆盖，Action 失败矩阵待跑 |
+| 权限与安全 | 通过；无 provider 直连、无 motion authority |
+| 配置与复现 | 通过；事实字段和 plan artifact ref 显式输入 |
+| 可维护性 | 通过；baseline/semantic 模式显式分离，无第二 scheduler |
+| 可观察性 | 部分；任务/PlanRevision 可追踪，真实 Action/Verifier receipts 待补 |
