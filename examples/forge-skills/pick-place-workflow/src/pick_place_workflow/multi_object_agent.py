@@ -41,6 +41,8 @@ class SceneObjectBinding(BaseModel):
     frame_id: str = Field(min_length=1)
     calibration_ref: str = Field(min_length=1)
     geometry_artifact_ref: str = Field(min_length=1)
+    capability_snapshot_ref: str | None = Field(default=None, min_length=1)
+    assignment_ref: str | None = Field(default=None, min_length=1)
     category: str = Field(default="block", min_length=1)
     required_evidence: tuple[str, ...] = ()
 
@@ -56,6 +58,13 @@ class SceneObjectBinding(BaseModel):
     def destination_reference(cls, value: str) -> str:
         if "://" not in value or value.startswith("://"):
             raise ValueError("destination_ref must be an opaque URI reference")
+        return value
+
+    @field_validator("capability_snapshot_ref", "assignment_ref")
+    @classmethod
+    def artifact_reference(cls, value: str | None) -> str | None:
+        if value is not None and not value.startswith("artifact://"):
+            raise ValueError("capability and assignment references must use artifact://")
         return value
 
 
@@ -140,6 +149,14 @@ class MultiObjectAgentRunner:
                     ("frame_id", item.frame_id),
                     ("calibration_ref", item.calibration_ref),
                     ("geometry_artifact_ref", item.geometry_artifact_ref),
+                    *tuple(
+                        (key, value)
+                        for key, value in (
+                            ("capability_snapshot_ref", item.capability_snapshot_ref),
+                            ("assignment_ref", item.assignment_ref),
+                        )
+                        if value is not None
+                    ),
                 ),
             )
             for index, item in enumerate(bound)

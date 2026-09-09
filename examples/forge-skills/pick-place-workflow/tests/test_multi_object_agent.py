@@ -27,6 +27,18 @@ def entity(name: str, *, destination: str | None = None, scene: str = "scene://s
     }
 
 
+def test_scene_binding_accepts_optional_capability_and_assignment_evidence():
+    bound = SceneObjectBinding.model_validate({
+        **entity("green"),
+        "capability_snapshot_ref": "artifact://capabilities/s0",
+        "assignment_ref": "artifact://assignments/s0/green",
+    })
+    assert bound.capability_snapshot_ref == "artifact://capabilities/s0"
+    assert bound.assignment_ref == "artifact://assignments/s0/green"
+    with pytest.raises(ValueError, match="artifact://"):
+        SceneObjectBinding.model_validate({**entity("red"), "assignment_ref": "assignment://bad"})
+
+
 def test_bind_scene_objects_excludes_surface_and_requires_unique_bindings():
     values = bind_scene_objects([
         entity("green"),
