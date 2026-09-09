@@ -111,6 +111,169 @@ def test_node_executor_projects_nested_failed_action_after_successful_observatio
     assert projected.failure_code == "slip"
 
 
+class _LifecycleClient:
+    def __init__(self, statuses, results):
+        self.statuses = iter(statuses)
+        self.results = iter(results)
+        self.status_calls = 0
+        self.result_calls = 0
+
+    async def invocation_status(self, _invocation_id):
+        self.status_calls += 1
+        return next(self.statuses)
+
+    async def invocation_result(self, _invocation_id):
+        self.result_calls += 1
+        return next(self.results)
+
+
+class _LifecycleCoordinator:
+    def __init__(self, client):
+        self.client = client
+        records = []
+        self.task = SimpleNamespace(
+            active_revision=SimpleNamespace(execution_records=records),
+            execution_records=records,
+            active_revision_id="revision",
+        )
+        self.unknown_codes = []
+        self.started = 0
+
+    def get_task(self, _task_id):
+        return self.task
+
+    async def start_action(self, _task_id, _tool_id, _arguments, *, planning_binding=None):
+        self.started += 1
+        binding = planning_binding or {}
+        self.task.active_revision.execution_records.append(SimpleNamespace(
+            record_id="action-1",
+            node_id=binding.get("node_id", "relocate"),
+            semantics="action",
+            tool_id="object.place",
+            status="accepted",
+            terminal=False,
+            invocation_id="invocation://place/1",
+            error=None,
+            evidence_refs=(),
+            response={"data": {"phase": "accepted"}},
+        ))
+        return {"data": {"invocation_id": "invocation://place/1"}}
+
+    def observe_action(self, _task_id, _invocation_id, response):
+        record = self.task.active_revision.execution_records[0]
+        data = response.get("data", response)
+        status = data.get("status") or data.get("phase")
+        if status == "completed":
+            status = "succeeded"
+        record.status = status
+        record.response = response
+        record.terminal = status in {"succeeded", "failed", "cancelled", "stopped", "unknown"}
+
+    def mark_execution_unknown(self, _task_id, _record_id, *, code, message):
+        record = self.task.active_revision.execution_records[0]
+        record.status = "unknown"
+        record.terminal = True
+        record.error = {"code": code, "message": message}
+        self.unknown_codes.append(code)
+
+
+class _ActionAgent:
+    def __init__(self, coordinator):
+        self.coordinator = coordinator
+        self.turns = 0
+
+    async def run_node_turn(self, *, task_id, node_id, **_kwargs):
+        self.turns += 1
+        await self.coordinator.start_action(
+            task_id,
+            "object.place",
+            {"entity_ref": "entity://green"},
+            planning_binding={"node_id": node_id},
+        )
+
+
+def _executor_context():
+    return NodeExecutionContext(
+        task_id="task",
+        revision_id="revision",
+        node_id="relocate",
+        capability="object.relocate",
+        dependencies=(),
+        required_evidence=(),
+        input_bindings={"entity_ref": "entity://green"},
+        scene_revision="scene://s0",
+    )
+
+
+def test_agent_node_executor_reconciles_action_to_terminal_result_without_resend():
+    client = _LifecycleClient(
+        statuses=[{"data": {"status": "running"}}, {"data": {"status": "running"}}],
+        results=[
+            {"data": {"status": "pending"}},
+            {"data": {"status": "succeeded", "result": {
+                "status": "succeeded",
+                "world_changed": True,
+                "new_scene_revision": "scene://s2",
+                "capability_outcome_summary": {"world_change_started": True, "outcome_known": True},
+            }}},
+        ],
+    )
+    coordinator = _LifecycleCoordinator(client)
+    agent = _ActionAgent(coordinator)
+    projected = asyncio.run(AgentLoopNodeExecutor(agent, coordinator)(_executor_context()))
+
+    record = coordinator.task.active_revision.execution_records[0]
+    assert projected.status == "succeeded"
+    assert projected.new_scene_revision == "scene://s2"
+    assert record.status == "succeeded"
+    assert client.status_calls == 2
+    assert client.result_calls == 2
+    assert coordinator.started == 1
+    assert agent.turns == 1
+
+
+@pytest.mark.parametrize("terminal_status", ["failed", "unknown"])
+def test_agent_node_executor_preserves_failed_or_unknown_action_status(terminal_status):
+    client = _LifecycleClient(
+        statuses=[{"data": {"status": terminal_status}}],
+        results=[{"data": {"status": terminal_status, "result": {
+            "status": terminal_status,
+            "failure_code": "provider_failure",
+            "capability_outcome_summary": {"world_change_started": True, "outcome_known": False},
+        }}}],
+    )
+    coordinator = _LifecycleCoordinator(client)
+    projected = asyncio.run(AgentLoopNodeExecutor(_ActionAgent(coordinator), coordinator)(_executor_context()))
+    assert projected.status == terminal_status
+    assert coordinator.task.active_revision.execution_records[0].status == terminal_status
+
+
+def test_agent_node_executor_marks_poll_budget_exhaustion_unknown():
+    client = _LifecycleClient(
+        statuses=[{"data": {"status": "running"}}],
+        results=[{"data": {"status": "pending"}}],
+    )
+    coordinator = _LifecycleCoordinator(client)
+    projected = asyncio.run(
+        AgentLoopNodeExecutor(_ActionAgent(coordinator), coordinator, max_action_polls=1)(_executor_context())
+    )
+    assert projected.status == "unknown"
+    record = coordinator.task.active_revision.execution_records[0]
+    assert record.status == "unknown"
+    assert record.response["error"]["code"] == "action_poll_budget_exhausted"
+
+
+def test_agent_node_executor_marks_gateway_read_failure_unknown():
+    class BrokenClient(_LifecycleClient):
+        async def invocation_status(self, _invocation_id):
+            raise TimeoutError("gateway read timed out")
+
+    coordinator = _LifecycleCoordinator(BrokenClient([], []))
+    projected = asyncio.run(AgentLoopNodeExecutor(_ActionAgent(coordinator), coordinator)(_executor_context()))
+    assert projected.status == "unknown"
+    assert coordinator.unknown_codes == ["action_reconciliation_failed"]
+
+
 @pytest.mark.parametrize("started", [True, None])
 @pytest.mark.parametrize("semantics", ["action", "session"])
 def test_runtime_does_not_claim_unconfirmed_motion_stopped(started, semantics):

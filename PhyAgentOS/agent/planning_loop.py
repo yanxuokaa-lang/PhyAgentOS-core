@@ -7,6 +7,7 @@ become a second scheduler or physical execution path.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
@@ -152,12 +153,20 @@ class AgentLoopNodeExecutor:
         coordinator: AgentTaskCoordinator,
         *,
         prompt_builder: Callable[[NodeExecutionContext], str] | None = None,
+        max_action_polls: int = 100,
+        action_poll_interval_s: float = 0.0,
     ) -> None:
         if not callable(getattr(agent_loop, "run_node_turn", None)):
             raise TypeError("Agent loop must provide run_node_turn")
         self.agent_loop = agent_loop
         self.coordinator = coordinator
         self.prompt_builder = prompt_builder or self._default_prompt
+        if isinstance(max_action_polls, bool) or int(max_action_polls) < 1:
+            raise ValueError("max_action_polls must be a positive integer")
+        if isinstance(action_poll_interval_s, bool) or float(action_poll_interval_s) < 0:
+            raise ValueError("action_poll_interval_s must be non-negative")
+        self.max_action_polls = int(max_action_polls)
+        self.action_poll_interval_s = float(action_poll_interval_s)
 
     async def __call__(self, context: NodeExecutionContext) -> ToolResultEnvelope:
         activate = getattr(self.agent_loop, "activate_planning_task", None)
@@ -175,6 +184,7 @@ class AgentLoopNodeExecutor:
             node_id=context.node_id,
             prompt=self.prompt_builder(context),
         )
+        await self._reconcile_actions(context.task_id, context.node_id)
         task = self.coordinator.get_task(context.task_id)
         if task.active_revision_id != context.revision_id:
             raise PlanningLoopError("Agent node turn changed the active PlanRevision")
@@ -244,6 +254,69 @@ class AgentLoopNodeExecutor:
             failure_code=failure_code or (status if status != "succeeded" else None),
             failure_owner=failure_owner,
         )
+
+    async def _reconcile_actions(self, task_id: str, node_id: str) -> None:
+        """Drive node-owned Actions to a durable terminal observation.
+
+        The Agent may submit an Action during its turn, but acceptance is only
+        an invocation identity.  Polling remains on the existing Gateway client
+        and every response is persisted by the Coordinator.  A bounded poll
+        budget records ``unknown`` when the remote state cannot be proven; it
+        never retries the physical POST.
+        """
+        task = self.coordinator.get_task(task_id)
+        records = [
+            record for record in task.active_revision.execution_records
+            if record.node_id == node_id
+            and getattr(record, "semantics", None) == "action"
+            and not getattr(record, "terminal", False)
+        ]
+        for record in records:
+            if not record.invocation_id:
+                self.coordinator.mark_execution_unknown(
+                    task_id,
+                    record.record_id,
+                    code="missing_invocation_identity",
+                    message="Action acceptance omitted invocation identity",
+                )
+                continue
+            terminal = False
+            for _ in range(self.max_action_polls):
+                try:
+                    status = await self.coordinator.client.invocation_status(record.invocation_id)
+                    self.coordinator.observe_action(task_id, record.invocation_id, status)
+                    result = await self.coordinator.client.invocation_result(record.invocation_id)
+                    self.coordinator.observe_action(task_id, record.invocation_id, result)
+                except Exception as exc:
+                    self.coordinator.mark_execution_unknown(
+                        task_id,
+                        record.record_id,
+                        code="action_reconciliation_failed",
+                        message=f"Gateway lifecycle read failed: {type(exc).__name__}: {exc}",
+                    )
+                    terminal = True
+                    break
+                current = next(
+                    item for item in self.coordinator.get_task(task_id).execution_records
+                    if item.record_id == record.record_id
+                )
+                if current.terminal:
+                    terminal = True
+                    break
+                if self.action_poll_interval_s:
+                    await asyncio.sleep(self.action_poll_interval_s)
+            if not terminal:
+                self.coordinator.observe_action(
+                    task_id,
+                    record.invocation_id,
+                    {
+                        "status": "unknown",
+                        "error": {
+                            "code": "action_poll_budget_exhausted",
+                            "message": "Action did not reach a terminal Gateway result",
+                        },
+                    },
+                )
 
     @staticmethod
     def _default_prompt(context: NodeExecutionContext) -> str:

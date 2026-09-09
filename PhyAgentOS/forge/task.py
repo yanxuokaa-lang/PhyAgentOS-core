@@ -1325,6 +1325,19 @@ class AgentTaskCoordinator:
         ):
             self.runtime_invocation_ids.discard(invocation_id)
 
+    def mark_execution_unknown(
+        self, task_id: str, record_id: str, *, code: str, message: str
+    ) -> None:
+        """Persist an execution with no recoverable remote identity as unknown."""
+        task = self.store.get(task_id)
+        _task_execution(task, record_id)
+        self._finish_execution(
+            task_id,
+            record_id,
+            status="unknown",
+            error={"type": "ExecutionUnknown", "code": code, "message": message},
+        )
+
     def require_action_invocation(
         self, task_id: str, invocation_id: str
     ) -> ToolExecutionRecord:
@@ -2147,11 +2160,12 @@ def _response_data(response: dict[str, Any]) -> dict[str, Any]:
 
 def _tool_status(response: dict[str, Any], *, default: str) -> str:
     data = _response_data(response)
-    phase = data.get("phase") or data.get("state")
+    phase = data.get("phase") or data.get("state") or data.get("status")
     if isinstance(phase, str):
         normalized = phase.lower()
         mapping = {
             "dispatching": "pending",
+            "pending": "pending",
             "accepted": "accepted",
             "running": "running",
             "stopping": "running",

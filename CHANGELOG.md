@@ -8,6 +8,41 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v8.5.0 (2026-09-09 21:22) - codex
+
+### 变更摘要 / Change Summary
+
+- [完成] [policy] [feat] 通过现有 Coordinator/Gateway 驱动 task-bound Action 的 status/result 轮询、terminal 对账和 unknown 保留；不新增 scheduler、Task Store 或 motion authority。(local)
+- [Completed] [Policy] [Feat] Drive task-bound Action status/result polling, terminal reconciliation, and preserved unknown outcomes through the existing Coordinator/Gateway; no new scheduler, Task Store, or motion authority. (local)
+- [完成] [eval] [test] 增加单对象生命周期失败路径和双对象连续 acquire/place dry-run，验证 `scene://s0 -> scene://s2 -> scene://s3` 与最终 verify 汇合。(local)
+- [Completed] [Eval] [Test] Add lifecycle failure-path coverage and a two-object continuous acquire/place dry-run proving `scene://s0 -> scene://s2 -> scene://s3` and final verify convergence. (local)
+
+### 文件变更详情 / File Details
+
+- `PhyAgentOS/agent/planning_loop.py` L147-L319 [新增 / Added]: Agent turn 后经现有 Gateway 轮询 Action，并把 terminal/unknown 结果交回 Coordinator。
+- `PhyAgentOS/forge/task.py` L1328-L1339, L2161-L2187 [修改 / Modified]: 持久化 unknown execution 并解析 status/phase/state/pending。
+- `tests/test_planning_effect_recovery.py` L114-L285 [新增 / Added]: success、failed、unknown、poll budget、Gateway failure、unconfirmed stop 和不重发覆盖。
+- `examples/forge-skills/pick-place-workflow/tests/test_multi_object_agent.py` L246-L397 [新增 / Added]: 真实 Runtime transport 组合下的双对象连续 Action 与 scene revision 传播。
+
+### 关键 Diff / Key Diff
+
+```diff
++await self._reconcile_actions(context.task_id, context.node_id)
++status = await self.coordinator.client.invocation_status(record.invocation_id)
++result = await self.coordinator.client.invocation_result(record.invocation_id)
++self.coordinator.observe_action(task_id, record.invocation_id, result)
+```
+
+### 验证 / Validation
+
+- Focused `51 passed`; full PAOS `tests` `286 passed`; Ruff、compileall、`git diff --check` passed。
+- 六维验收：架构集成、失败路径、权限与安全、配置与复现、可维护性、可观察性均在 provider-neutral dry-run 范围内 PASS；不宣称真实硬件或现场 Verifier 成功。
+
+### Git 提交 / Git Commit
+
+- Commit: 待提交后回填 / to be filled after commit。
+- Branch: `feature/planning-loop`; 时间 / Time: 2026-09-09 (Asia/Shanghai)。
+
 ## v8.4.5 (2026-09-09 21:20) - codex
 
 ### 变更摘要 / Change Summary
@@ -85,25 +120,6 @@
 ### Git 提交 / Git Commit
 
 - Commit: `b06664d`; Branch: `feature/planning-loop`; 时间 / Time: 2026-09-09 (Asia/Shanghai).
-
-## v8.4.0 (2026-09-09 20:00) - codex
-
-### 变更摘要 / Change Summary
-
-- [完成] [policy] [feat] 新增 `MultiObjectAgentRunner`，绑定可信多对象场景事实，支持显式 baseline/semantic PlanGraph，并复用 AgentLoop、Coordinator 和现有 Gateway 路径；进化模块和真实硬件不在范围内。(local)
-- [Completed] [Policy] [Feat] Added `MultiObjectAgentRunner` with trusted multi-object scene binding, explicit baseline/semantic PlanGraph modes, and reuse of AgentLoop, Coordinator, and the existing Gateway path; evolution and live hardware remain out of scope. (local)
-
-### 文件变更详情 / File Details
-
-- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/multi_object_agent.py` L1-L206 [新增 / Added]: 实体事实绑定、PlanNode context bindings 和 AgentTask runner / scene-fact binding, PlanNode context bindings, and AgentTask runner.
-- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/agent_planning.py` L43-L75, L148-L152, L224-L237 [修改 / Modified]: 接受并持久化 opaque context bindings / accept and persist opaque context bindings.
-- `examples/forge-skills/pick-place-workflow/tests/test_multi_object_agent.py` L1-L91 [新增 / Added]: 多对象入口边界测试 / multi-object entry boundary tests.
-- `docs/forge/MULTI_OBJECT_AGENT_LOOP_EXECUTION_PLAN_20260909.md` L1-L106 [新增 / Added]: 审核、执行和六维验收矩阵 / audit, execution, and six-dimensional acceptance matrix.
-
-### 验证 / Validation
-
-- Focused `10 passed`; broad `576 passed`; Ruff, compileall, and diff checks passed.
-- Action/Verifier real-runtime evidence remains pending; current six-dimensional result is staged, not final physical success.
 
 ## v8.3.1 (2026-09-09 19:32) - codex
 

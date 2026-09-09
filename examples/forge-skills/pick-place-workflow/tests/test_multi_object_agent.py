@@ -1,10 +1,26 @@
 from __future__ import annotations
 
 import pytest
-from PhyAgentOS.agent.planning_loop import NodeContextProvider, PlanningLoopAdapter
+from PhyAgentOS.agent.planning_facts import response_facts
+from PhyAgentOS.agent.planning_loop import (
+    AgentLoopNodeExecutor,
+    NodeContextProvider,
+    PlanningLoopAdapter,
+)
 from PhyAgentOS.config.schema import ForgeConfig
+from PhyAgentOS.forge.capability_runtime import (
+    ActionAdmission,
+    CapabilityRuntime,
+    CapabilityRuntimeTransport,
+)
 from PhyAgentOS.forge.task import AgentTaskCoordinator, AgentTaskError
-from PhyAgentOS.planning import AdmissionContext, ToolResultEnvelope
+from PhyAgentOS.forge.tool_client import ForgeToolClient
+from PhyAgentOS.planning import (
+    AdmissionContext,
+    PlanningExecutionBinding,
+    ToolResultEnvelope,
+    plan_node_digest,
+)
 from PhyAgentOS.verification.contracts import TaskVerificationContract
 
 from pick_place_workflow.multi_object_agent import (
@@ -225,3 +241,157 @@ async def test_two_object_dry_run_propagates_scene_revision_to_later_object(tmp_
     assert [node for node, _ in contexts if node.endswith(".place")] == [
         "relocate_1.place", "relocate_2.place"
     ]
+
+
+@pytest.mark.asyncio
+async def test_two_object_action_loop_reconciles_scene_revisions_and_final_verify(tmp_path):
+    class Query:
+        def invoke(self, arguments):
+            return {
+                "status": "available",
+                "scene_revision": arguments["scene_revision"],
+                "evidence_refs": [f"observed:{arguments.get('entity_ref', 'task')}"],
+            }
+
+    class Action:
+        def __init__(self, tool_id):
+            self.tool_id = tool_id
+
+        def admit(self, arguments):
+            if self.tool_id == "object.place":
+                next_scene = "scene://s2" if arguments["scene_revision"] == "scene://s0" else "scene://s3"
+                return ActionAdmission(
+                    pending_polls=1,
+                    terminal_result={
+                        "status": "succeeded",
+                        "world_changed": True,
+                        "new_scene_revision": next_scene,
+                        "evidence_refs": [f"placed:{arguments['entity_ref']}"],
+                        "capability_outcome_summary": {
+                            "world_change_started": True,
+                            "outcome_known": True,
+                        },
+                    },
+                )
+            return ActionAdmission(
+                pending_polls=1,
+                terminal_result={
+                    "status": "succeeded",
+                    "world_changed": False,
+                    "evidence_refs": [f"acquired:{arguments['entity_ref']}"],
+                    "capability_outcome_summary": {
+                        "world_change_started": True,
+                        "outcome_known": True,
+                    },
+                },
+            )
+
+    def register(runtime, tool_id, endpoint_id, operation, semantics, endpoint):
+        runtime.register_tool(
+            {
+                "tool_id": tool_id,
+                "endpoint_id": endpoint_id,
+                "operation": operation,
+                "semantics": semantics,
+                "description": f"Provider-neutral {tool_id} endpoint.",
+            },
+            endpoint,
+        )
+
+    runtime = CapabilityRuntime()
+    for tool_id, endpoint_id, operation in (
+        ("scene.observe", "scene", "observe"),
+        ("manipulation.capabilities", "manipulation", "capabilities"),
+        ("scene.understand", "scene", "understand"),
+        ("grasp.propose", "grasp", "propose"),
+        ("manipulation.prepare", "manipulation", "prepare"),
+        ("task.verify", "task", "verify"),
+    ):
+        register(runtime, tool_id, endpoint_id, operation, "query", Query())
+    register(runtime, "object.acquire", "object", "acquire", "action", Action("object.acquire"))
+    register(runtime, "object.place", "object", "place", "action", Action("object.place"))
+
+    transport = CapabilityRuntimeTransport(runtime)
+    async with ForgeToolClient("http://runtime", transport=transport) as client:
+        coordinator = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=client)
+        runner = MultiObjectAgentRunner(
+            coordinator=coordinator,
+            agent_loop=object(),
+            scene_revision_provider=lambda _task_id: "scene://s0",
+            planning_mode="baseline",
+        )
+        task = await runner.create_task(
+            task_description="place two blocks sequentially",
+            entities=[entity("green"), entity("red")],
+            verification=TaskVerificationContract(mode="off"),
+            task_id="task-runtime-multi",
+            revision_id="revision-runtime-multi",
+        )
+        contexts = []
+
+        class Agent:
+            async def run_node_turn(self, *, task_id, revision_id, node_id, **_kwargs):
+                current_task = coordinator.get_task(task_id)
+                node = next(item for item in current_task.active_revision.plan_graph.nodes if item.node_id == node_id)
+                current_scene = "scene://s0"
+                for record in current_task.execution_records:
+                    facts = response_facts(record.response)
+                    if isinstance(facts.get("new_scene_revision"), str):
+                        current_scene = facts["new_scene_revision"]
+                contexts.append((node_id, current_scene))
+                binding = PlanningExecutionBinding(
+                    node_id=node_id,
+                    node_digest=plan_node_digest(node),
+                    obligation_id=node.obligation_id,
+                    input_binding_digest="a" * 64,
+                    decision_trace_ref=f"artifact://trace/{node_id}",
+                )
+                arguments = {
+                    "entity_ref": node.input_bindings.get("entity_ref", "entity://task"),
+                    "scene_revision": current_scene,
+                }
+                if node.capability in {"object.acquire", "object.place"}:
+                    await coordinator.start_action(
+                        task_id,
+                        node.capability,
+                        arguments,
+                        planning_binding=binding,
+                    )
+                else:
+                    await coordinator.invoke_query(
+                        task_id,
+                        node.capability,
+                        arguments,
+                        planning_binding=binding,
+                    )
+
+        def admission(task_id):
+            scene = "scene://s0"
+            evidence = set()
+            for record in coordinator.get_task(task_id).execution_records:
+                facts = response_facts(record.response)
+                if isinstance(facts.get("new_scene_revision"), str):
+                    scene = facts["new_scene_revision"]
+                evidence.update(item for item in record.evidence_refs if isinstance(item, str))
+            return AdmissionContext(scene_revision=scene, evidence_refs=frozenset(evidence))
+
+        executor = AgentLoopNodeExecutor(Agent(), coordinator)
+        result = await PlanningLoopAdapter(
+            coordinator,
+            context_provider=NodeContextProvider(coordinator.get_task),
+            node_executor=executor,
+            admission_context_provider=admission,
+        ).run(task.task_id, scene_revision="scene://s0")
+
+    assert result.status == "succeeded"
+    assert dict(contexts)["relocate_1.place"] == "scene://s0"
+    assert dict(contexts)["relocate_2.observe"] == "scene://s2"
+    assert dict(contexts)["relocate_2.place"] == "scene://s2"
+    assert dict(contexts)["verify"] == "scene://s3"
+    records = coordinator.get_task(task.task_id).execution_records
+    assert all(record.terminal and record.status == "succeeded" for record in records)
+    action_invocations = [
+        record.invocation_id for record in records if record.semantics == "action"
+    ]
+    assert len(action_invocations) == 4
+    assert all(isinstance(invocation_id, str) for invocation_id in action_invocations)
