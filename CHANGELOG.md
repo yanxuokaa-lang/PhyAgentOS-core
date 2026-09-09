@@ -41,7 +41,7 @@
 
 ### Git 提交 / Git Commit
 
-- Commit: pending implementation commit; Branch: `feature/planning-loop`; 时间 / Time: 2026-09-09 (Asia/Shanghai)。
+- Commit: `1704e96` (implementation commit; metadata follow-up below); Branch: `feature/planning-loop`; 时间 / Time: 2026-09-09 (Asia/Shanghai)。
 
 ## v8.5.0 (2026-09-09 21:22) - codex
 
