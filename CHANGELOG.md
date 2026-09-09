@@ -31,6 +31,10 @@ Architecture, failure paths, authority/safety, configuration/reproducibility, ma
 - Ruff、compileall、`git diff --check`: passed。
 - Adapter tests were not collected in the default PAOS interpreter because `numpy` is unavailable.
 
+### Git 提交 / Git Commit
+
+- Commit: `f01814c`; Branch: `feature/planning-loop`; 时间 / Time: 2026-09-09 (Asia/Shanghai)。
+
 ## v8.7.0 (2026-09-09 22:25) - codex
 
 ### 变更摘要 / Change Summary
