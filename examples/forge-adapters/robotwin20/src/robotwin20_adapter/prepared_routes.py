@@ -2,17 +2,23 @@
 
 from __future__ import annotations
 
+import json
 from copy import deepcopy
+from pathlib import Path
 from typing import Any, Mapping
 
-from .route_readiness import validate_route_request
+from PhyAgentOS.forge.manipulation import ArmAssignment
+
+from .route_evidence import _artifact_path
+from .route_readiness import route_geometry_digest, validate_route_request
 
 
 class PreparedRoutes:
     """Runtime-local cache of prepared geometry, not task or invocation state."""
 
-    def __init__(self, client) -> None:
+    def __init__(self, client, artifact_root: Path) -> None:
         self.client = client
+        self.artifact_root = artifact_root.resolve()
         self._routes: dict[tuple[str, str], dict[str, Any]] = {}
 
     def register(self, arguments: Mapping[str, Any], *, route_request: Mapping[str, Any], approval_ref: str, destination_ref: str) -> None:
@@ -24,9 +30,21 @@ class PreparedRoutes:
             raise ValueError("prepared route source scene mismatch")
         if not destination_ref or not approval_ref.startswith("artifact://"):
             raise ValueError("prepared route requires destination and approval evidence")
+        assignment = ArmAssignment.model_validate(json.loads(
+            _artifact_path(self.artifact_root, arguments["assignment_ref"]).read_text(encoding="utf-8")
+        ))
+        for field in ("assignment_ref", "entity_ref", "candidate_ref", "observation_ref", "scene_revision",
+                      "calibration_ref", "candidate_set_ref", "capability_snapshot_ref"):
+            if getattr(assignment, field) != arguments[field]:
+                raise ValueError(f"assignment does not match preparation: {field}")
+        if assignment.route_digest != route_geometry_digest(route_request):
+            raise ValueError("assignment does not match the prepared complete route")
+        if len(assignment.selected_arm_ids) != 1 or assignment.selected_arm_ids[0] not in {"left", "right"}:
+            raise ValueError("persistent route requires one supported assigned arm")
         key = (arguments["preparation_ref"], arguments["candidate_ref"])
         value = {**deepcopy(dict(arguments)), "route_request": deepcopy(dict(route_request)),
-                 "approval_ref": approval_ref, "destination_ref": destination_ref}
+                 "approval_ref": approval_ref, "destination_ref": destination_ref,
+                 "assignment": assignment.model_dump(mode="json")}
         if key in self._routes and self._routes[key] != value:
             raise ValueError("preparation reference already identifies different geometry")
         self._routes[key] = value

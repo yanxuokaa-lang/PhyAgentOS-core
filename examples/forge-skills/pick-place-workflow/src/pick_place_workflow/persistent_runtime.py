@@ -114,6 +114,12 @@ class PersistentActionEndpoint:
         for key in keys:
             if resolved.get(key) != public.get(key):
                 raise ValueError(f"resolved preparation changed {key}")
+        assignment = resolved.get("assignment")
+        if not isinstance(assignment, Mapping) or assignment.get("task_id") != parts[1]:
+            raise ValueError("prepared assignment does not belong to this task")
+        if assignment.get("assignment_ref") != public["assignment_ref"]:
+            raise ValueError("prepared assignment reference mismatch")
+        resolved["task_id"] = parts[1]
         if self.phase == "place":
             resolved["acquire_invocation_id"] = public["acquire_invocation_ref"]
 

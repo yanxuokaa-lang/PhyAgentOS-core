@@ -75,3 +75,11 @@ Credentials are resolved privately; the smoke runner exposes model timeout/reaso
 2. Ground opaque model entity references in measured geometry, including repeated colors. The current benchmark actor map only supports three named block identities. Simulator actor facts must not be presented as model perception.
 3. Add the deployment factory/profile and formal Skill Runtime Bundle, then exercise actual AgentLoop and Coordinator through live Tool APIs.
 4. Implement final multi-goal Verifier evidence and run two successive objects in one world, cancellation, drop, restart, repeated identity, and disturbed-previous-goal recovery. Do not promote the checkpoint to full acceptance until these results exist.
+
+## v7.7.1 assignment repair
+
+The follow-up review found that persistent execution retained an assignment URI but the shared executor still selected the first feasible arm. PreparedRoutes now loads the existing typed ArmAssignment, checks source/route bindings, and passes its selected arm through task-owned admission. The worker checks the persisted assignment and enforces that arm for complete-route qualification; failure cannot silently fall back to another arm. Place must retain the acquisition assignment.
+
+PreparedRoutes is constructed in the PAOS Python environment with `(client, artifact_root)`; the Python 3.10 simulation process does not import it. Existing assignment and per-step artifact checks are reused. No new authorization scheme is introduced.
+
+Focused assignment/executor/endpoint tests: 62 passed. This closes the assigned-arm execution defect, not the outstanding deployment or real Agent acceptance items above.

@@ -38,7 +38,8 @@ def test_owner_from_gateway_caller_is_stable_across_revision_and_record():
         def start(self, phase, invocation, owner, resolved):
             seen.append(owner)
             return object()
-    endpoint = PersistentActionEndpoint("acquire", Client(), lambda phase, request: request)
+    endpoint = PersistentActionEndpoint("acquire", Client(), lambda phase, request: {
+        **request, "assignment": {"task_id": "task-1", "assignment_ref": request["assignment_ref"]}})
     for caller in ("paos:task-1:revision-1:record-1", "paos:task-1:revision-2:record-9"):
         admission = endpoint.admit_for_caller(arguments(), caller_id=caller)
         assert not seen or seen == ["paos:task-1"]
@@ -46,6 +47,8 @@ def test_owner_from_gateway_caller_is_stable_across_revision_and_record():
     assert seen == ["paos:task-1", "paos:task-1"]
     with pytest.raises(ValueError, match="caller"):
         endpoint.admit_for_caller(arguments(), caller_id="diagnostic")
+    with pytest.raises(ValueError, match="this task"):
+        endpoint.admit_for_caller(arguments(), caller_id="paos:other:revision:record")
 
 
 def test_composition_registers_all_seven_required_tools():

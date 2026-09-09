@@ -62,7 +62,7 @@ from robotwin_planning_geometry import (
 from robotwin_planning_geometry import (
     _validate_support_departure_results as _validate_support_departure_results,
 )
-from robotwin_route_planner import evaluate_route
+from robotwin_route_planner import evaluate_route, evaluate_route_arm
 from worker_protocol import serve
 
 from robotwin20_adapter.controller_qualification import (
@@ -1149,7 +1149,15 @@ def execute_candidate_phases(
     route_records: list[dict[str, Any]] = []
     contact_trace: list[dict[str, Any]] = []
     execution_state["contact_trace"] = contact_trace
-    qualification = evaluate_route(task, request, candidate, actor)
+    assigned_arm = execution_state.get("_assigned_arm")
+    if assigned_arm is None:
+        qualification = evaluate_route(task, request, candidate, actor)
+    else:
+        if assigned_arm not in {"left", "right"}:
+            raise SimulationProbeError("unsupported assigned arm")
+        attempt = evaluate_route_arm(task, request, candidate, assigned_arm, actor)
+        qualification = {"selected_arm": assigned_arm if attempt["status"] == "pass" else None,
+                         "arm_attempts": [attempt]}
     arm_attempts = qualification["arm_attempts"]
     execution_state["arm_selection_attempts"] = qualification["arm_attempts"]
     arm = qualification["selected_arm"]

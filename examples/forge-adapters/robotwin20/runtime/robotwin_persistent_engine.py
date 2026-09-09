@@ -86,6 +86,17 @@ class RoboTwinPersistentEngine:
         candidate = next(c for c in request["candidates"] if c["candidate_ref"] == arguments["candidate_ref"])
         if candidate["entity_ref"] != arguments["entity_ref"]:
             raise ValueError("candidate does not match the requested entity")
+        assignment = probe._load_json_artifact(self.root, arguments["assignment_ref"])
+        if assignment != arguments["assignment"]:
+            raise ValueError("assignment artifact changed after preparation")
+        for key in ("task_id", "assignment_ref", "entity_ref", "candidate_ref", "capability_snapshot_ref"):
+            if assignment.get(key) != arguments[key]:
+                raise ValueError(f"assignment execution binding mismatch: {key}")
+        if assignment.get("scene_revision") != request["scene_revision"] or assignment.get("route_digest") != probe.route_geometry_digest(request):
+            raise ValueError("assignment does not bind the current complete route")
+        arms = assignment.get("selected_arm_ids")
+        if not isinstance(arms, list) or len(arms) != 1 or arms[0] not in {"left", "right"}:
+            raise ValueError("persistent execution requires one assigned arm")
         probe._validate_approval(
             self.root, arguments["approval_ref"], producer_id=self.profile["producer_id"],
             producer_profile_sha256=self.profile["producer_profile_sha256"],
@@ -99,6 +110,9 @@ class RoboTwinPersistentEngine:
         policies["execution_input_digests"][arguments["approval_ref"]] = probe._sha_bytes(
             probe._artifact_path(self.root, arguments["approval_ref"]).read_bytes()
         )
+        policies["execution_input_digests"][arguments["assignment_ref"]] = probe._sha_bytes(
+            probe._artifact_path(self.root, arguments["assignment_ref"]).read_bytes()
+        )
         inputs = probe._validate_route_input_artifacts(self.root, request, candidate)
         geometry = probe._artifact_path(self.root, candidate["attached_object"]["geometry_ref"])
         if probe._sha_bytes(geometry.read_bytes()) != candidate["attached_object"]["geometry_sha256"]:
@@ -110,6 +124,7 @@ class RoboTwinPersistentEngine:
         task.robot.left_planner.arm_id = "left"
         task.robot.right_planner.arm_id = "right"
         self._state = {
+            "_assigned_arm": arms[0], "assignment_ref": arguments["assignment_ref"],
             "world_change_started": False, "simulator_steps": 0, "planner_object_attached": False,
             "object_lifted": False, "dual_arm_state": state, "held_arm": "left",
             "_controllers": probe._build_route_controllers(task, policies["motion_capability_documents"]),
@@ -150,6 +165,8 @@ class RoboTwinPersistentEngine:
                 raise ValueError("place requires a prepared held route")
             elif arguments.get("scene_revision") != self.backend.snapshot()["scene_revision"]:
                 raise ValueError("place current scene binding mismatch")
+            elif arguments.get("assignment_ref") != self._state["assignment_ref"]:
+                raise ValueError("place must continue the acquisition assignment")
             self._state["action_deadline"] = time.monotonic() + self.duration
             while True:
                 try:

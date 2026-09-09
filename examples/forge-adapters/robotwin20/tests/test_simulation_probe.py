@@ -1682,6 +1682,28 @@ def test_route_gripper_phases_and_duplicate_boundary_do_not_replan(execution_rou
     assert records["transport"]["trajectory_steps"] == 1
 
 
+def test_persistent_assignment_limits_complete_route_qualification(execution_route, monkeypatch):
+    checked = []
+    execution_route.state["_assigned_arm"] = "left"
+
+    def evaluate(task, request, candidate, arm, actor):
+        checked.append(arm)
+        return {"arm": arm, "status": "pass"}
+
+    monkeypatch.setattr(probe_worker, "evaluate_route_arm", evaluate)
+    execution_route.run()
+    assert checked == ["left"]
+
+
+def test_failed_assigned_arm_never_falls_back_or_moves(execution_route, monkeypatch):
+    execution_route.state["_assigned_arm"] = "right"
+    monkeypatch.setattr(probe_worker, "evaluate_route_arm", lambda *args: {"arm": "right", "status": "fail"})
+    with pytest.raises(probe_worker.SimulationProbeError, match="no arm"):
+        execution_route.run()
+    assert not execution_route.planned
+    assert not execution_route.gripped
+
+
 def test_duplicate_boundary_preserves_a_rotation(execution_route):
     route = execution_route
     route.phases["transport"]["waypoints"][0]["orientation_xyzw"] = [0., 0., 1., 0.]
