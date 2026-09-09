@@ -299,7 +299,7 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=.:examples/forge-adapters/robotwin20
 
 ### Git 提交 / Git Commit
 
-- Branch: `feature/planning-loop`; implementation commit recorded in the follow-up receipt after commit.
+- Commit: `b15d053`; Branch: `feature/planning-loop`; 时间 / Time: 2026-09-09 13:08 (Asia/Shanghai).
 
 ## v7.4.2 (2026-09-09 13:20) - codex
 
