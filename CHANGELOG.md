@@ -8,6 +8,22 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v8.10.0 (2026-09-10 00:05) - codex
+
+- [完成] [runtime] [feat] place 显式暴露 adapter 解析的 `current_scene_revision`，保留 acquire 原始 provenance，并拒绝缺失当前 scene 的 Action。(local)
+- [Completed] [Runtime] [Feat] Expose adapter-resolved `current_scene_revision` for place, retain acquire provenance, and reject Actions without a current scene revision. (local)
+- [完成] [eval] [test] 跨 scene 接续 focused `12 passed`，PAOS/workflow broad `602 passed`；六维验收通过（provider-neutral dry-run）。(local)
+- [Completed] [Eval] [Test] Cross-scene continuity focused `12 passed` and PAOS/workflow broad `602 passed`; six-dimensional acceptance passes within provider-neutral dry-run scope. (local)
+
+### 文件变更详情 / File Details
+
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/persistent_runtime.py` L106-L154, L163-L182, L226-L245：当前 scene 投影、schema 与准入 / current-scene projection, schema, and admission.
+- `examples/forge-skills/pick-place-workflow/tests/test_persistent_runtime.py` L146-L165：跨 scene provenance 测试 / cross-scene provenance test.
+
+### Git 提交 / Git Commit
+
+- Commit: 待提交后回填 / to be filled after commit; Branch: `feature/planning-loop`.
+
 ## v8.9.0 (2026-09-09 23:35) - codex
 
 - [完成] [runtime] [feat] 增加显式 restart/reconciliation：adapter 快照明确 holding/empty 且身份匹配时才恢复；失联、unknown 或 mismatch 保持 `uncertain`。(local)

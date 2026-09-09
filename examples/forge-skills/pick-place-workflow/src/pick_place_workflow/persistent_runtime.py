@@ -104,9 +104,14 @@ class PersistentPossession:
 
 
 class _ProjectedDriver:
-    def __init__(self, driver, phase, arguments, possession: PersistentPossession | None = None, *, invocation_id: str = "invocation://object-acquire/unknown"):
+    def __init__(self, driver, phase, arguments, possession: PersistentPossession | None = None, *, invocation_id: str = "invocation://object-acquire/unknown", current_scene_revision: str | None = None):
         self.driver, self.phase, self.arguments = driver, phase, arguments
         self.possession, self.invocation_id = possession or PersistentPossession(), invocation_id
+        self.current_scene_revision = (
+            current_scene_revision
+            if current_scene_revision is not None
+            else arguments.get("scene_revision") if phase == "place" else None
+        )
 
     def poll(self):
         raw = self.driver.poll()
@@ -140,6 +145,8 @@ class _ProjectedDriver:
         result = {key: value for key, value in self.arguments.items() if key not in {"freshness_ms", "max_age_ms", "frame_id"}}
         if self.phase == "acquire":
             result["acquire_invocation_ref"] = self.invocation_id
+        elif self.current_scene_revision is not None:
+            result["current_scene_revision"] = self.current_scene_revision
         result.update(status=status, frame={"frame_id": self.arguments["frame_id"], "unit": "m"}, capability_outcome_summary=summary)
         if raw.get("new_scene_revision"):
             result["new_scene_revision"] = raw["new_scene_revision"]
@@ -170,6 +177,8 @@ def _spec(spec):
         properties["capability_outcome_summary"]["properties"]["world_change_started"] = {"type": ["boolean", "null"]}
         if spec["tool_id"] == "object.acquire":
             properties["acquire_invocation_ref"] = {"type": "string", "pattern": r"^invocation://object-acquire/[^/]+$"}
+        elif spec["tool_id"] == "object.place":
+            properties["current_scene_revision"] = {"type": "string", "minLength": 1}
     return spec
 
 
@@ -214,6 +223,11 @@ class PersistentActionEndpoint:
         resolved["task_id"] = parts[1]
         if self.phase == "place":
             resolved["acquire_invocation_id"] = public["acquire_invocation_ref"]
+            current_scene_revision = resolved.get("scene_revision")
+            if not isinstance(current_scene_revision, str) or not current_scene_revision.strip():
+                raise ValueError("place preparation lacks current scene revision")
+        else:
+            current_scene_revision = None
         self.possession.validate_begin(
             self.phase,
             owner=f"paos:{parts[1]}",
@@ -234,7 +248,7 @@ class PersistentActionEndpoint:
             except Exception:
                 self.possession.settle(self.phase, {"status": "failed", "outcome_known": True, "world_change_started": False})
                 raise
-            return ActionAdmission(driver=_ProjectedDriver(driver, self.phase, public, self.possession, invocation_id=invocation_id))
+            return ActionAdmission(driver=_ProjectedDriver(driver, self.phase, public, self.possession, invocation_id=invocation_id, current_scene_revision=current_scene_revision))
 
         return ActionAdmission(start=start)
 

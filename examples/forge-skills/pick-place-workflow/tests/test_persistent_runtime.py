@@ -143,6 +143,28 @@ def test_cancel_or_stop_without_physical_confirmation_does_not_release():
     assert possession.state == "uncertain"
 
 
+def test_place_projects_current_scene_while_retaining_acquire_provenance():
+    class Driver:
+        def poll(self):
+            return {
+                "status": "succeeded",
+                "outcome_known": True,
+                "world_change_started": True,
+                "artifact_refs": ["artifact://scene-2/place"],
+                "new_scene_revision": "scene-3",
+            }
+
+    source = arguments(True)
+    result = _ProjectedDriver(
+        Driver(), "place", source, current_scene_revision="scene-2"
+    ).poll()
+    assert result["scene_revision"] == "scene"
+    assert result["current_scene_revision"] == "scene-2"
+    assert result["candidate_ref"] == source["candidate_ref"]
+    assert result["preparation_ref"] == source["preparation_ref"]
+    assert result["acquire_invocation_ref"] == source["acquire_invocation_ref"]
+
+
 def test_restart_reconciliation_restores_only_explicit_matching_holding():
     possession = PersistentPossession(
         state="uncertain",
