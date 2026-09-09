@@ -68,7 +68,7 @@
 
 ### Git 提交 / Git Commit
 
-- Branch: `feature/planning-loop`; implementation commit recorded after commit.
+- Branch: `feature/planning-loop`; implementation commit: `0a84e20`; validation date: 2026-09-09 (Asia/Shanghai).
 
 ## v8.0.0 (2026-09-09 17:14) - codex
 
