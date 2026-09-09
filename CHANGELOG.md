@@ -510,7 +510,7 @@ index b2d8c63..fc93907 100644
 
 ### Git 提交 / Git Commit
 
-- Branch: `feature/planning-loop`; commit and push pending below.
+- Branch: `feature/planning-loop`; implementation commit: `1d95b71`; 时间 / Time: 2026-09-09 15:15 (Asia/Shanghai).
 - 独立暂存树 / Isolated staged tree: 699 passed, 1 skipped. Implementation status document extends to L53; its final two lines record this isolated validation.
 
 ## v7.5.6 (2026-09-09 14:47) - codex
