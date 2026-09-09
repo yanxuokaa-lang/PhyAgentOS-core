@@ -40,7 +40,7 @@
 
 ### Git 提交 / Git Commit
 
-- Commit: 待提交后回填 / to be filled after commit。
+- Commit: `36caf10` (implementation commit; metadata follow-up below)。
 - Branch: `feature/planning-loop`; 时间 / Time: 2026-09-09 (Asia/Shanghai)。
 
 ## v8.4.5 (2026-09-09 21:20) - codex
