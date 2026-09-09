@@ -204,7 +204,12 @@ def adapt_grasp_candidate(
         "robot_gripper_bias_m", "robot_delta_matrix", "adaptation_provenance_ref",
         "support_clear_direction",
     }
-    if not isinstance(profile, Mapping) or set(profile) != required_profile:
+    optional_profile = {"grasp_depth_adaptation", "contact_backoff_candidates_m"}
+    if (
+        not isinstance(profile, Mapping)
+        or not required_profile.issubset(profile)
+        or set(profile) - required_profile - optional_profile
+    ):
         raise GraspAdaptationError("grasp adaptation profile fields are invalid")
     if profile["schema_version"] != GRASP_ADAPTATION_PROFILE_SCHEMA_VERSION:
         raise GraspAdaptationError("grasp adaptation profile schema is unsupported")
@@ -228,7 +233,11 @@ def adapt_grasp_candidate(
         "candidate_ref", "entity_ref", "grasp_frame", "approach_direction",
         "score", "confidence", "provenance", "qualification",
     }
-    if not isinstance(proposal, Mapping) or set(proposal) != required_proposal:
+    if (
+        not isinstance(proposal, Mapping)
+        or not required_proposal.issubset(proposal)
+        or set(proposal) - required_proposal - {"grasp_geometry"}
+    ):
         raise GraspAdaptationError("provider proposal fields are invalid")
     grasp_frame = proposal["grasp_frame"]
     world_from_provider = camera_pose_to_world_matrix(
@@ -252,6 +261,36 @@ def adapt_grasp_candidate(
             raise GraspAdaptationError(f"{label} must be positive")
     reference_distance = float(reference_distance)
     gripper_bias = float(gripper_bias)
+    depth_adaptation = profile.get("grasp_depth_adaptation")
+    if depth_adaptation is not None:
+        if (
+            not isinstance(depth_adaptation, Mapping)
+            or set(depth_adaptation) != {"source", "tool_tip_forward_m"}
+            or depth_adaptation.get("source") != "provider_grasp_depth"
+        ):
+            raise GraspAdaptationError("grasp depth adaptation profile is invalid")
+        geometry = proposal.get("grasp_geometry")
+        if not isinstance(geometry, Mapping) or set(geometry) != {
+            "width_m", "height_m", "depth_m"
+        }:
+            raise GraspAdaptationError("provider grasp geometry is required for depth adaptation")
+        depth = geometry["depth_m"]
+        tip_forward = depth_adaptation["tool_tip_forward_m"]
+        if (
+            isinstance(depth, bool)
+            or not isinstance(depth, (int, float))
+            or not math.isfinite(float(depth))
+            or float(depth) <= 0
+            or isinstance(tip_forward, bool)
+            or not isinstance(tip_forward, (int, float))
+            or not math.isfinite(float(tip_forward))
+            or float(tip_forward) <= float(depth)
+        ):
+            raise GraspAdaptationError("provider grasp depth or tool tip distance is invalid")
+        # GraspNet defines depth as the finger-tip x coordinate relative to
+        # grasp_center.  Choose the standard RoboTwin target whose panda_hand
+        # plus the URDF-derived finger reach reproduces that same depth.
+        reference_distance = float(tip_forward) + gripper_bias - float(depth)
     if reference_distance <= gripper_bias:
         raise GraspAdaptationError("robot target reference distance must exceed gripper bias")
     robot_delta = _matrix(profile["robot_delta_matrix"], 3, 3, "robot_delta_matrix")
