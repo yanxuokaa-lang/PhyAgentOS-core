@@ -25,7 +25,7 @@
 
 ### Git 提交 / Git Commit
 
-- Commit: `556de09`; Branch: `feature/planning-loop`; 时间 / Time: 2026-09-09 (Asia/Shanghai).
+- Commit: `3b95596`; Branch: `feature/planning-loop`; 时间 / Time: 2026-09-09 (Asia/Shanghai).
 
 ## v8.4.4 (2026-09-09 21:05) - codex
 
