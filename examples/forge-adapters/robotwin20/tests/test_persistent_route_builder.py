@@ -1,3 +1,4 @@
+import hashlib
 import json
 import subprocess
 from copy import deepcopy
@@ -9,6 +10,9 @@ from test_route_inputs import _facts
 from test_route_readiness import _request
 
 from robotwin20_adapter.persistent_route_builder import BenchmarkSceneSource, PersistentRouteBuilder
+from robotwin20_adapter.route_evidence import _artifact_path
+from robotwin20_adapter.route_inputs import canonical_json
+from robotwin20_adapter.route_readiness import route_geometry_digest
 
 
 def test_benchmark_source_removes_only_provider_envelope():
@@ -18,7 +22,7 @@ def test_benchmark_source_removes_only_provider_envelope():
         def query(self, operation, arguments):
             assert operation == "benchmark_scene_facts"
             return {**deepcopy(facts), "holding_state": "empty", "owner": None,
-                    "acquire_invocation_id": None, "entity_ref": None}
+                    "acquire_invocation_id": None, "entity_ref": None, "ok": True, "request_id": "transport-1"}
 
     assert BenchmarkSceneSource(Client())({"calibration_ref": facts["calibration_ref"]}) == facts
 
@@ -126,3 +130,43 @@ def test_failed_materializer_retains_log_and_returns_no_route(tmp_path, monkeypa
     logs = list((tmp_path / "preparation-builds").glob("*/materializer-0.log"))
     assert logs[0].read_text() == "calibration unavailable"
     assert not (tmp_path / "shared").exists()
+
+
+def test_finalize_binds_selected_request_and_never_issues_approval(tmp_path, monkeypatch):
+    request, builder, _ = setup_builder(tmp_path, monkeypatch)
+    bundle = builder.build(request)
+    route = deepcopy(bundle["base_request"])
+    original_id = route["request_id"]
+    route["request_id"] += "-option-0-left"
+    source = tmp_path / "source"
+    source.mkdir()
+    manifest = {"request_id": original_id, "candidate_ref": request["candidates"][0]["candidate_ref"],
+                "scene_revision": request["scene_revision"], "motion_authorized": False}
+    manifest_bytes = canonical_json(manifest)
+    (source / "manifest.json").write_bytes(manifest_bytes)
+    review = {**manifest, "decision": "pending_human_review", "source_manifest_ref": "artifact://source/manifest",
+              "source_manifest_sha256": hashlib.sha256(manifest_bytes).hexdigest()}
+    from pathlib import Path
+    review_path = Path(bundle["reviews"][manifest["candidate_ref"]])
+    review_path.write_text(json.dumps(review))
+    for key in ("calibration_ref", "joint_limits_ref", "stop_policy_ref"):
+        path = tmp_path / (route[key].removeprefix("artifact://") + ".json")
+        path.parent.mkdir(exist_ok=True, parents=True)
+        path.write_text("{}")
+    ref = builder.finalize(bundle, route)
+    final = json.loads(_artifact_path(tmp_path, ref).read_text())
+    assert final["request_id"] == route["request_id"]
+    assert final["motion_authorized"] is False
+    assert final["decision"] == "pending_human_review"
+    assert final["route_geometry_digest"] == route_geometry_digest(route)
+    final_manifest_path = _artifact_path(tmp_path, final["source_manifest_ref"])
+    assert hashlib.sha256(final_manifest_path.read_bytes()).hexdigest() == final["source_manifest_sha256"]
+    final_manifest = json.loads(final_manifest_path.read_text())
+    final_route = _artifact_path(tmp_path, final_manifest["route_request"]["artifact_ref"])
+    assert json.loads(final_route.read_text()) == route
+    assert hashlib.sha256(final_route.read_bytes()).hexdigest() == final["route_request_sha256"]
+    assert builder.finalize(bundle, route) == ref
+    assert json.loads(review_path.read_text())["request_id"] == original_id
+    (source / "manifest.json").write_text("{}")
+    with pytest.raises(ValueError, match="differs from materializer"):
+        builder.finalize(bundle, route)

@@ -58,6 +58,8 @@ class PersistentPreparationProvider:
         route["candidates"] = [deepcopy(option["candidate"])]
         if route_geometry_digest(route) != assignment.route_digest:
             raise ValueError("selected route geometry differs from assignment")
+        finalize = getattr(self.route_builder, "finalize", None)
+        review_ref = finalize(bundle, route) if callable(finalize) else None
         # Recheck after potentially expensive preparation; stale work is not published.
         current = self.client.query("snapshot", {})
         if current["scene_revision"] != intent.scene_revision or current["holding_state"] != "empty":
@@ -83,10 +85,12 @@ class PersistentPreparationProvider:
         arguments.update(preparation_ref=f"preparation://{intent.scene_revision}/{intent.observation_frame_id}",
                          candidate_ref=assignment.candidate_ref, entity_ref=assignment.entity_ref,
                          assignment_ref=assignment.assignment_ref)
+        if review_ref is not None:
+            arguments["review_request_ref"] = review_ref
         self.prepared_routes.register(arguments, route_request=route, approval_ref=None,
                                       destination_ref=request["destination_ref"])
         return {"prepared_candidates": [{"candidate_ref": assignment.candidate_ref,
                                           "entity_ref": assignment.entity_ref,
                                           "checks": {key: "pass" for key in ("kinematic", "collision", "workspace")},
-                                          "evidence": list(selected["evidence_refs"]), "qualification": "prepared"}],
+                                          "evidence": [*selected["evidence_refs"], *([review_ref] if review_ref else [])], "qualification": "prepared"}],
                 "provider_available": True, "assignments": [value], "destination_ref": request["destination_ref"]}

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import subprocess
@@ -13,8 +14,9 @@ from typing import Any, Mapping
 from PhyAgentOS.forge.manipulation import ManipulationIntent
 
 from .arm_candidates import enumerate_arm_candidates, load_arm_planning_profile
-from .route_inputs import validate_scene_facts
-from .route_readiness import validate_route_request
+from .route_evidence import _artifact_path
+from .route_inputs import canonical_json, validate_scene_facts
+from .route_readiness import route_geometry_digest, validate_route_request
 
 
 class BenchmarkSceneSource:
@@ -25,7 +27,7 @@ class BenchmarkSceneSource:
 
     def __call__(self, request):
         response = self.client.query("benchmark_scene_facts", {"calibration_ref": request["calibration_ref"]})
-        for key in ("holding_state", "owner", "acquire_invocation_id", "entity_ref"):
+        for key in ("holding_state", "owner", "acquire_invocation_id", "entity_ref", "ok", "request_id"):
             response.pop(key, None)
         return validate_scene_facts(response)
 
@@ -84,6 +86,7 @@ class PersistentRouteBuilder:
         (run / "grasp-results.json").write_text(json.dumps(bundle), encoding="utf-8")
         base = None
         candidates = []
+        reviews = {}
         output_roots = []
         for index, candidate in enumerate(request["candidates"]):
             output = run / f"candidate-{index}"
@@ -112,6 +115,7 @@ class PersistentRouteBuilder:
                 raise ValueError("materialized candidate or destination mismatch")
             base = route if base is None else base
             candidates.append(generated)
+            reviews[candidate["candidate_ref"]] = str(output / "human_review_request.json")
             output_roots.append(output)
         self._current(intent.scene_revision)
         assert base is not None
@@ -119,7 +123,65 @@ class PersistentRouteBuilder:
         validate_route_request(base)
         options = enumerate_arm_candidates(intent, candidates, self.arm_profile)
         self._import_artifacts(output_roots)
-        return {"destination_ref": request["destination_ref"], "base_request": base, "options": options}
+        return {"destination_ref": request["destination_ref"], "base_request": base,
+                "options": options, "reviews": reviews}
+
+    def finalize(self, bundle, route):
+        """Bind existing review evidence to the selected request without approving it."""
+        validate_route_request(route)
+        self._current(route["scene_revision"])
+        candidate = route["candidates"][0]
+        if len(route["candidates"]) != 1:
+            raise ValueError("finalization requires one selected candidate")
+        review_path = Path(bundle["reviews"][candidate["candidate_ref"]])
+        review = json.loads(review_path.read_text(encoding="utf-8"))
+        if (review["candidate_ref"] != candidate["candidate_ref"]
+                or review["scene_revision"] != route["scene_revision"]
+                or review["motion_authorized"] is not False
+                or review["decision"] != "pending_human_review"):
+            raise ValueError("source review does not bind the selected candidate")
+        manifest_bytes = _artifact_path(self.root, review["source_manifest_ref"]).read_bytes()
+        if hashlib.sha256(manifest_bytes).hexdigest() != review["source_manifest_sha256"]:
+            raise ValueError("source manifest differs from materializer review")
+        manifest = json.loads(manifest_bytes)
+        prefix = f"artifact://selected-routes/{route['request_id']}"
+
+        def write(ref, value):
+            relative = ref.removeprefix("artifact://")
+            path = self.root / (relative + ".json")
+            if self.root not in path.resolve().parents:
+                raise ValueError("selected route artifact escapes runtime root")
+            data = canonical_json(value)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if path.exists():
+                if path.is_symlink() or path.read_bytes() != data:
+                    raise ValueError("selected route artifact already identifies different content")
+            else:
+                with path.open("xb") as stream:
+                    stream.write(data)
+            return hashlib.sha256(data).hexdigest()
+
+        route_ref = f"{prefix}/route-request"
+        route_sha = write(route_ref, route)
+        manifest.update(request_id=route["request_id"],
+                        route_request={"artifact_ref": route_ref, "sha256": route_sha},
+                        route_geometry_digest=route_geometry_digest(route),
+                        motion_capabilities=route["motion_capabilities"],
+                        controller_qualification=route["controller_qualification"],
+                        collision_world={key: route["collision_world"][key]
+                                         for key in ("artifact_ref", "sha256", "world_digest")})
+        manifest_ref = f"{prefix}/source-manifest"
+        manifest_sha = write(manifest_ref, manifest)
+        review.update(request_id=route["request_id"], route_geometry_digest=route_geometry_digest(route),
+                      route_request_sha256=route_sha, source_manifest_ref=manifest_ref,
+                      source_manifest_sha256=manifest_sha)
+        for field, ref in (("calibration_sha256", route["calibration_ref"]),
+                           ("joint_limits_sha256", route["joint_limits_ref"]),
+                           ("stop_policy_sha256", route["stop_policy_ref"])):
+            review[field] = hashlib.sha256(_artifact_path(self.root, ref).read_bytes()).hexdigest()
+        review_ref = f"{prefix}/review-request"
+        write(review_ref, review)
+        return review_ref
 
     def _import_artifacts(self, output_roots):
         # References span shared calibration and per-route artifacts. Compare all

@@ -89,6 +89,28 @@ def test_failed_complete_routes_produce_no_prepared_assignment(tmp_path):
     assert not (tmp_path / "assignments").exists()
 
 
+def test_finalized_review_is_exposed_as_preparation_evidence(tmp_path):
+    request, provider, routes = composition(tmp_path)
+    ref = "artifact://selected/review"
+    provider.route_builder.finalize = lambda bundle, route: ref
+    result = provider.prepare(request)
+    assert ref in result["prepared_candidates"][0]["evidence"]
+    assert next(iter(routes._routes.values()))["review_request_ref"] == ref
+
+
+def test_finalization_failure_does_not_register_executable_route(tmp_path):
+    request, provider, routes = composition(tmp_path)
+
+    def fail(bundle, route):
+        raise ValueError("source manifest mismatch")
+
+    provider.route_builder.finalize = fail
+    with pytest.raises(ValueError, match="manifest mismatch"):
+        provider.prepare(request)
+    assert not routes._routes
+    assert not (tmp_path / "assignments").exists()
+
+
 @pytest.mark.parametrize("change", ["scene", "holding", "destination"])
 def test_changed_world_or_destination_is_not_published(tmp_path, change):
     request, provider, routes = composition(tmp_path)

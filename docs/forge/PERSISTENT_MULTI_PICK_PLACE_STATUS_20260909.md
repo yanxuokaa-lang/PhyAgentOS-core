@@ -168,3 +168,43 @@ returned `understanding_provider_error`; motion remained false. The smoke runner
 now records the underlying provider exception class without raw exception text.
 Formal Bundle, selected-route finalization, model geometry grounding, complete
 readiness evidence and real Agent multi-object task verification remain open.
+
+## v8.0.0 selected route finalization and deployment components
+
+The persistent builder now finalizes the selected request after the selector
+adds its option ID. It writes the final route, source manifest and pending review
+under `artifact://selected-routes/<request-id>/`, preserving the original
+materializer outputs. Existing artifact digests are recomputed for those changed
+records, and source manifest bytes must match the original review. The preparation
+provider registers the review reference and exposes it as preparation evidence.
+Finalization failure prevents assignment/cache publication. No approval is issued.
+
+`profiles/robotwin20/route-inputs-persistent.yaml` retains the existing GraspGen
+geometry settings and uses `hold_and_reconcile`. The standalone reset profile
+remains available for independent probes. `build_persistent_deployment` requires
+the persistent stop policy and constructs the builder, selector, capability
+provider and shared cache with one caller-owned client. Compose the Skill with:
+
+```python
+deployment = build_persistent_deployment(
+    client=client, artifact_root=artifact_root, scene_source=scene_source,
+    materializer_command=materializer_command,
+    materializer_arguments=materializer_arguments,
+    arm_profile_digest=arm_profile_digest,
+)
+runtime = build_persistent_runtime(
+    client=client, understanding_provider=understanding_provider,
+    grasp_provider=grasp_provider, **deployment.runtime_arguments(),
+)
+```
+
+The default readiness evaluator uses the live persistent world and retains
+unavailable contact/stop evidence. A complete-evidence evaluator can be injected
+through the existing interface. The factory does not create another task loop,
+grant motion authority or own client shutdown. Benchmark scene projection now
+also removes JSONL `ok`/`request_id` envelope fields.
+
+This closes selected-request artifact identity and provider composition only.
+Formal Skill Bundle lifecycle/registration, complete readiness, model entity
+grounding and real Agent continuous multi-object verification remain unaccepted.
+No additional model or simulator-motion run was performed in this checkpoint.

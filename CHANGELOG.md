@@ -7,6 +7,64 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v8.0.0 (2026-09-09 17:14) - codex
+
+### 预期修改 / Planned Changes
+
+- [完成] [env] [feat] 选定路线后重建已有 manifest/review 的请求绑定，接入准备缓存；保持待审且不产生授权，修复 selector 更改 request ID 导致执行拒绝。(local)
+- [Completed] [env] [feat] Finalize existing manifest/review request bindings after selection and connect preparation caching; retain pending review and no motion authority to fix selector request-ID drift. (local)
+- [完成] [eval] [fix] 验证最终路线产物一致性、失败拒绝和未授权行为；记录剩余 Bundle 与真实 Agent 验收缺口。(local)
+- [Completed] [eval] [fix] Verify final route artifact consistency, rejection paths and absent authority; record remaining Bundle and real Agent acceptance gaps. (local)
+- Version: minor feature increment carries v7.10.0 to v8.0.0 under repository version limits.
+- [完成] [env] [feat] 添加持久 hold_and_reconcile 路线 profile 和 adapter 部署组件工厂；修复 benchmark source 遗漏 JSONL ok/request_id 封装字段。(local)
+- [Completed] [env] [feat] Add persistent hold_and_reconcile route profile and adapter deployment component factory; strip JSONL ok/request_id fields from benchmark scene facts. (local)
+
+### 文件变更详情 / File Details
+
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_route_builder.py`: L5, L17-L19, L30, L89, L118, L126-L184 [修改 / Modified] 最终路线证据及 JSONL 封装 / Final route evidence and JSONL envelope.
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_preparation.py`: L61-L62, L88-L89, L95 [修改 / Modified] 定稿及证据返回 / Finalization and evidence projection.
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_deployment.py`: L1-L59 [新增 / Added] 共享部署组件 / Shared deployment components.
+- `examples/forge-adapters/robotwin20/profiles/robotwin20/route-inputs-persistent.yaml`: L1-L56 [新增 / Added] 持久停止策略 / Persistent stop policy.
+- `examples/forge-adapters/robotwin20/tests/test_persistent_route_builder.py`: L1-L15, L24, L134-L172 [修改 / Modified] 请求绑定和封装测试 / Request binding and envelope tests.
+- `examples/forge-adapters/robotwin20/tests/test_persistent_preparation.py`: L92-L113 [新增 / Added] 定稿成功/失败接线 / Finalization success and failure wiring.
+- `examples/forge-adapters/robotwin20/tests/test_persistent_deployment.py`: L1-L32 [新增 / Added] 共享缓存和策略测试 / Shared cache and policy tests.
+- `docs/forge/PERSISTENT_MULTI_PICK_PLACE_STATUS_20260909.md`: L172-L210 [新增 / Added] 接线方法和未验收边界 / Wiring and unaccepted scope.
+
+### 关键代码 Diff / Key Code Diff
+
+```diff
+-for key in ("holding_state", "owner", "acquire_invocation_id", "entity_ref"):
++for key in ("holding_state", "owner", "acquire_invocation_id", "entity_ref", "ok", "request_id"):
++    response.pop(key, None)
++finalize = getattr(self.route_builder, "finalize", None)
++review_ref = finalize(bundle, route) if callable(finalize) else None
++if review_ref is not None:
++    arguments["review_request_ref"] = review_ref
+-"evidence": list(selected["evidence_refs"])
++"evidence": [*selected["evidence_refs"], *([review_ref] if review_ref else [])]
++manifest.update(request_id=route["request_id"],
++                route_request={"artifact_ref": route_ref, "sha256": route_sha},
++                route_geometry_digest=route_geometry_digest(route))
++review.update(request_id=route["request_id"], route_geometry_digest=route_geometry_digest(route),
++              route_request_sha256=route_sha, source_manifest_ref=manifest_ref,
++              source_manifest_sha256=manifest_sha)
+-failure_recovery: reset_simulation
++failure_recovery: hold_and_reconcile
++return PersistentDeployment(preparation, capabilities, routes)
+```
+
+### 验证 / Validation
+
+- Workspace before final two preparation tests: 753 passed, 1 skipped; isolated final staged tree: 753 passed, 1 skipped. Ruff passed.
+- 六维：架构复用 adapter/Skill 接口；定稿失败不登记；权限仍待审；profile/超时外置；复用 manifest 格式；最终 review_ref 进入公开证据。无新 hash 机制，仅重算既有执行校验字段。
+- Six dimensions: adapter/Skill interface reuse; no registration on finalization failure; pending authority; external profiles/timeouts; existing manifest format; final review_ref in public evidence. No new hashing mechanism; existing execution validation fields are recomputed.
+- 本轮未运行真实模型或仿真运动；正式 Bundle 生命周期、完整 readiness、模型几何绑定及 Agent 多物体验收仍未交付。
+- No real model or simulator motion run this checkpoint; formal Bundle lifecycle, complete readiness, model geometry grounding and Agent multi-object acceptance remain undelivered.
+
+### Git 提交 / Git Commit
+
+- Branch: `feature/planning-loop`; implementation commit recorded after commit.
+
 ## v7.10.0 (2026-09-09 16:58) - codex
 
 ### 预期修改 / Planned Changes
@@ -588,102 +646,6 @@ index a782584..a14bcf1 100644
 ### Git 提交 / Git Commit
 
 - Branch: `feature/planning-loop`; implementation commit: `323b3d5`; verified before push on 2026-09-09 (Asia/Shanghai).
-
-## v7.7.0 (2026-09-09 15:19) - codex
-
-### 预期修改 / Planned Changes
-
-- [部分完成] [policy] [fix] 六维验收 v7.6.0，修复超时摘要、恢复观测准入及动态调用绑定缺口。(local)
-- [Partially completed] [policy] [fix] Review v7.6.0 across six dimensions and repair timeout summaries, recovery observation admission and dynamic call bindings. (local)
-- [部分完成] [env] [feat] 扩展现有 ActionAdmission 的 provider 执行生命周期，在 RoboTwin adapter 实现持久场景、持物接续及工具接线；保留既有运动安全检查。(local)
-- [Partially completed] [env] [feat] Extend the existing ActionAdmission provider lifecycle and integrate persistent scenes, holding continuation and Tool wiring in the RoboTwin adapter while preserving motion safety checks. (local)
-- [部分完成] [eval] [exp] 回归测试、独立暂存树验证和真实 Agent 多物体仿真；按实际证据记录结果，不把 fake provider 测试称为物理仿真。(local)
-- [Partially completed] [eval] [exp] Run regression and isolated staged-tree validation and real Agent multi-object simulation, reporting measured outcomes without equating fake-provider tests with physical simulation. (local)
-- Files: `PhyAgentOS/{planning,agent,forge/capability_runtime}/`, `examples/forge-adapters/robotwin20/{runtime,src,profiles,scripts,tests}/`, pick-place Skill composition/tests, integration docs and changelogs.
-- [部分完成] [env] [fix] 具体失败场景：持久 worker 丢失回复后，通用模型进程客户端会自动创建新世界；旧抓取是否执行无法由 Git 或类型判断。持久客户端在传输失败后保持不可用，旧调用返回 unknown，避免静默重置后接续。(local)
-- [Partially completed] [env] [fix] A lost persistent-worker reply can make the generic model client silently recreate the world. Git and types cannot establish the old physical outcome; latch transport loss in the persistent client and retain unknown invocation evidence. (local)
-
-### 实际修改 / Actual Changes
-
-- [env] [feat] 实现持久 provider、单线程物理世界、持物接续、七 Tool 组合及当前场景路线引用解析；这些是接入基础，完整部署仍未交付。(local)
-- [env] [feat] Implement persistent provider ownership, single-thread world access, holding continuation, seven-Tool composition and current-scene route resolution. Full deployment remains unfinished. (local)
-- [policy] [fix] 修复超时嵌套摘要、恢复观测、输入绑定；连接丢失保持 unknown，不静默创建新世界。(local)
-- [policy] [fix] Repair timeout summaries, recovery observation and input binding; retain unknown after connection loss without silently recreating the world. (local)
-
-### 文件变更详情 / File Details
-
-- `PhyAgentOS/agent/planning_context.py`: L21-L21, L44-L45, L52-L52, L68-L68, L75-L76, L97-L97.
-- `PhyAgentOS/agent/planning_dispatch.py`: L100-L103, L120-L120.
-- `PhyAgentOS/agent/planning_loop.py`: L335-L335, L350-L353.
-- `PhyAgentOS/forge/capability_runtime/__init__.py`: L32-L32, L59-L59.
-- `PhyAgentOS/forge/capability_runtime/ports.py`: L14-L23, L34-L34, L91-L91.
-- `PhyAgentOS/forge/capability_runtime/runtime.py`: L18-L18, L69-L71, L194-L195, L204-L205, L223-L223, L278-L278, L320-L325, L338-L343, L347-L349, L362-L362, L371-L408.
-- `PhyAgentOS/planning/admission.py`: L76-L78, L81-L87, L89-L89, L98-L100.
-- `PhyAgentOS/planning/contracts.py`: L177-L178.
-- `PhyAgentOS/planning/projection.py`: L32-L33, L81-L81, L98-L99.
-- `docs/forge/PERSISTENT_MULTI_PICK_PLACE_STATUS_20260909.md`: L1-L77.
-- `examples/forge-adapters/robotwin20/runtime/robotwin_persistent_engine.py`: L1-L216.
-- `examples/forge-adapters/robotwin20/runtime/robotwin_persistent_worker.py`: L1-L62.
-- `examples/forge-adapters/robotwin20/runtime/robotwin_route_input_worker.py`: L15-L19, L87-L88, L94-L95, L105-L106, L108-L109, L137-L137, L140-L141, L158-L159.
-- `examples/forge-adapters/robotwin20/runtime/robotwin_simulation_probe_worker.py`: L686-L686, L712-L712, L1123-L1144, L1170-L1170, L1287-L1287.
-- `examples/forge-adapters/robotwin20/scripts/check_persistent_runtime.py`: L1-L106.
-- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_client.py`: L1-L61.
-- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_manipulation.py`: L1-L124.
-- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/prepared_routes.py`: L1-L55.
-- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/route_inputs.py`: L17-L17, L144-L144, L154-L154, L169-L170.
-- `examples/forge-adapters/robotwin20/tests/test_persistent_client.py`: L1-L34.
-- `examples/forge-adapters/robotwin20/tests/test_persistent_manipulation.py`: L1-L71.
-- `examples/forge-adapters/robotwin20/tests/test_prepared_routes.py`: L1-L38.
-- `examples/forge-adapters/robotwin20/tests/test_route_inputs.py`: L9-L9, L58-L67.
-- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/agent_planning.py`: L135-L135.
-- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/persistent_runtime.py`: L1-L143.
-- `examples/forge-skills/pick-place-workflow/tests/test_persistent_runtime.py`: L1-L87.
-- `tests/test_capability_runtime_driver.py`: L1-L77.
-- `tests/test_planning_effect_recovery.py`: L82-L90.
-- `tests/test_planning_module.py`: L181-L199.
-
-### 关键代码 Diff / Key Code Diff
-
-```diff
-- if missing_fresh:
-+ if missing_fresh and dict(admission.condition_facts).get("scene_current") is not False:
-
-+ class ActionDriver(Protocol):
-+     def poll(self) -> Mapping[str, Any] | None: ...
-+     def cancel(self) -> None: ...
-+     def stop(self) -> None: ...
-
-- self._mark_unknown(invocation, "timeout")  # static-only lifecycle
-+ if invocation.driver is not None:
-+     self._advance_driver(invocation)
-+     return
-
-+ if self._transport_lost:
-+     raise RuntimeError("persistent world connection lost; start a new runtime explicitly")
-
-+ if phase == "acquire" and settled["phase"] == "lift":
-+     break
-
-+ runtime.register_tool(_spec(CAPABILITY_TOOL_SPEC), CapabilitySnapshotEndpoint(capability_provider))
-
-+ if status == "succeeded" and raw.get("outcome_known") is not True:
-+     status = "unknown"
-
-- request["artifacts"] = first["artifacts"]
-+ request["artifacts"] = [artifact["ref"] for artifact in observation["artifacts"]]
-```
-
-### 验证及限制 / Validation and Limits
-
-- Workspace: **726 passed, 1 skipped**; isolated staged tree: **724 passed, 1 skipped**. Exact command and six-dimensional findings: `docs/forge/PERSISTENT_MULTI_PICK_PLACE_STATUS_20260909.md`.
-- 实际持久传感器与正式 Observation Tool 验证通过，scene `21bd9631ed704b619bd0a9398eff09e3-1`；两次真实模型请求超时。未运行多物体运动或硬件。
-- Actual persistent sensors/public Observation Tool passed; two real model requests timed out. No multi-object motion or hardware execution.
-- 未完成：当前场景动态准备、正式 Runtime Bundle、重复物体身份绑定、最终多目标 Verifier 与真实 Agent 连续仿真及恢复矩阵。六维验收不能判为整个方案通过。
-- Remaining: current-scene preparation, formal Runtime Bundle, repeated-object grounding, final multi-goal Verifier, real Agent continuous simulation and recovery matrix. Full six-dimensional acceptance remains open.
-
-### Git 提交 / Git Commit
-
-- Branch: `feature/planning-loop`; implementation commit: `681f973`; isolated staged tree: 724 passed, 1 skipped.
 
 ## 既有历史记录 / Earlier Records
 
