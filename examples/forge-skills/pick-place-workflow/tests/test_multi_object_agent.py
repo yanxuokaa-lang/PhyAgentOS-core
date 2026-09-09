@@ -69,6 +69,18 @@ async def test_runner_creates_one_task_with_all_object_obligations(tmp_path):
         "relocate_1", "relocate_2"
     }
     assert set(graph.nodes[-1].dependencies) == {"relocate_1.place", "relocate_2.place"}
+    bindings = {node.node_id: node.input_bindings for node in graph.nodes}
+    assert bindings["relocate_1.observe"] == {
+        "entity_ref": "entity://green",
+        "destination_ref": "region://green",
+        "benchmark_object_ref": "block-green-1",
+        "observation_ref": "artifact://observation/s0",
+        "scene_revision": "scene://s0",
+        "frame_id": "camera_front",
+        "calibration_ref": "artifact://calibration/front",
+        "geometry_artifact_ref": "artifact://geometry/green",
+    }
+    assert bindings["relocate_2.place"]["geometry_artifact_ref"] == "artifact://geometry/red"
     assert len(task.revisions) == 1
 
 
@@ -88,4 +100,6 @@ async def test_runner_semantic_mode_does_not_force_tool_queue(tmp_path):
         task_id="task-semantic-1",
         revision_id="revision-semantic-1",
     )
-    assert [node.node_id for node in task.active_revision.plan_graph.nodes] == ["relocate_1", "verify"]
+    nodes = {node.node_id: node for node in task.active_revision.plan_graph.nodes}
+    assert list(nodes) == ["relocate_1", "verify"]
+    assert nodes["relocate_1"].input_bindings["scene_revision"] == "scene://s0"

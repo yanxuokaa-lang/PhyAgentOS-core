@@ -17,13 +17,14 @@
 
 ### 文件变更详情 / File Details
 
-- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/multi_object_agent.py` L1-L193 [新增 / Added]: 实体事实绑定和 AgentTask runner / scene-fact binding and AgentTask runner.
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/multi_object_agent.py` L1-L206 [新增 / Added]: 实体事实绑定、PlanNode context bindings 和 AgentTask runner / scene-fact binding, PlanNode context bindings, and AgentTask runner.
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/agent_planning.py` L43-L75, L148-L152, L224-L237 [修改 / Modified]: 接受并持久化 opaque context bindings / accept and persist opaque context bindings.
 - `examples/forge-skills/pick-place-workflow/tests/test_multi_object_agent.py` L1-L91 [新增 / Added]: 多对象入口边界测试 / multi-object entry boundary tests.
 - `docs/forge/MULTI_OBJECT_AGENT_LOOP_EXECUTION_PLAN_20260909.md` L1-L106 [新增 / Added]: 审核、执行和六维验收矩阵 / audit, execution, and six-dimensional acceptance matrix.
 
 ### 验证 / Validation
 
-- Focused `4 passed`; broad `576 passed`; Ruff, compileall, and diff checks passed.
+- Focused `10 passed`; broad `576 passed`; Ruff, compileall, and diff checks passed.
 - Action/Verifier real-runtime evidence remains pending; current six-dimensional result is staged, not final physical success.
 
 ## v8.3.1 (2026-09-09 19:32) - codex
@@ -77,6 +78,8 @@
 - 整体验收未通过 / Overall task acceptance remains incomplete. Artifact paths and full live command are in the status document above.
 
 ### Git 提交 / Git Commit
+
+- Commit: `96b3631`; Branch: `feature/planning-loop`; 时间 / Time: 2026-09-09 (Asia/Shanghai).
 
 - Branch: `feature/planning-loop`; implementation commit: `c560bef`; date: 2026-09-09 (Asia/Shanghai).
 

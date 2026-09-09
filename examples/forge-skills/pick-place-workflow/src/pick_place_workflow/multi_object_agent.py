@@ -133,6 +133,14 @@ class MultiObjectAgentRunner:
                 entity_ref=item.entity_ref,
                 destination_ref=item.destination_ref,
                 required_evidence=item.required_evidence,
+                context_bindings=(
+                    ("benchmark_object_ref", item.benchmark_object_ref),
+                    ("observation_ref", item.observation_ref),
+                    ("scene_revision", item.scene_revision),
+                    ("frame_id", item.frame_id),
+                    ("calibration_ref", item.calibration_ref),
+                    ("geometry_artifact_ref", item.geometry_artifact_ref),
+                ),
             )
             for index, item in enumerate(bound)
         )

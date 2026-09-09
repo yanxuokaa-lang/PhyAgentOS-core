@@ -53,6 +53,7 @@ class AgentSubtaskSpec(BaseModel):
     required_evidence: tuple[str, ...] = ()
     produced_evidence: tuple[str, ...] = ()
     resources: tuple[ResourceClaim, ...] = ()
+    context_bindings: tuple[tuple[str, str], ...] = ()
 
     @field_validator("subtask_id", "capability")
     @classmethod
@@ -73,6 +74,16 @@ class AgentSubtaskSpec(BaseModel):
     def unique_values(cls, value: tuple[str, ...]) -> tuple[str, ...]:
         if len(value) != len(set(value)):
             raise ValueError("subtask values must be unique")
+        return value
+
+    @field_validator("context_bindings")
+    @classmethod
+    def unique_context_keys(cls, value: tuple[tuple[str, str], ...]) -> tuple[tuple[str, str], ...]:
+        keys = [item[0] for item in value]
+        if len(keys) != len(set(keys)):
+            raise ValueError("context binding keys must be unique")
+        if any(not key or not val for key, val in value):
+            raise ValueError("context bindings must contain non-empty strings")
         return value
 
 
@@ -134,7 +145,11 @@ def compose_agent_plan(
             required_evidence=item.required_evidence,
             produced_evidence=item.produced_evidence or ((f"placed:{item.entity_ref}",) if item.capability == "object.relocate" else ()),
             resources=item.resources,
-            input_bindings={"entity_ref": item.entity_ref, **({"destination_ref": item.destination_ref} if item.destination_ref is not None else {})},
+            input_bindings={
+                "entity_ref": item.entity_ref,
+                **({"destination_ref": item.destination_ref} if item.destination_ref is not None else {}),
+                **dict(item.context_bindings),
+            },
         )
         for item in subtasks
     ) + (PlanNode(
@@ -206,7 +221,7 @@ def compose_executable_pick_place_plan(
         previous = parent_deps
         for suffix, capability in _PICK_PLACE_TOOL_ORDER:
             node_id = f"{item.subtask_id}.{suffix}"
-            input_bindings = {"entity_ref": item.entity_ref}
+            input_bindings = {"entity_ref": item.entity_ref, **dict(item.context_bindings)}
             if item.destination_ref is not None:
                 input_bindings["destination_ref"] = item.destination_ref
             node = PlanNode(

@@ -11,12 +11,6 @@ from .agent_planning import (
     compose_executable_pick_place_plan,
     select_planning_mode,
 )
-from .multi_object_agent import (
-    MultiObjectAgentError,
-    MultiObjectAgentRunner,
-    SceneObjectBinding,
-    bind_scene_objects,
-)
 from .fake_gateway import (
     FakeGatewayTransport,
     ObservationProvider,
@@ -41,6 +35,12 @@ from .manipulation_prepare import (
     ManipulationPreparationEndpoint,
     PreparationProvider,
     PreparationSnapshot,
+)
+from .multi_object_agent import (
+    MultiObjectAgentError,
+    MultiObjectAgentRunner,
+    SceneObjectBinding,
+    bind_scene_objects,
 )
 from .object_acquire import (
     ACQUIRE_TOOL_SPEC,
