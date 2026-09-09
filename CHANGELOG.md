@@ -8,6 +8,26 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v8.4.2 (2026-09-09 20:45) - codex
+
+### 变更摘要 / Change Summary
+
+- [完成] [policy] [fix] 将 scene revision 预检前移到 AgentTask 持久化之前，避免 stale 场景创建孤儿任务 / move scene-revision preflight before AgentTask persistence to prevent orphan tasks. (local)
+- [Completed] [Policy] [Fix] Move scene-revision preflight before AgentTask persistence so stale scenes cannot create orphan tasks. (local)
+
+### 文件变更详情 / File Details
+
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/multi_object_agent.py` L183-L196 [修改 / Modified]
+- `examples/forge-skills/pick-place-workflow/tests/test_multi_object_agent.py` L108-L129 [修改 / Modified]
+
+### 验证 / Validation
+
+- Focused `5 passed`; broad `577 passed`; Ruff and diff checks passed.
+
+### Git 提交 / Git Commit
+
+- Commit: `328ca3b`; Branch: `feature/planning-loop`; 时间 / Time: 2026-09-09 (Asia/Shanghai).
+
 ## v8.4.1 (2026-09-09 20:35) - codex
 
 ### 变更摘要 / Change Summary

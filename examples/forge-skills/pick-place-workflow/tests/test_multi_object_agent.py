@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 from PhyAgentOS.config.schema import ForgeConfig
-from PhyAgentOS.forge.task import AgentTaskCoordinator
+from PhyAgentOS.forge.task import AgentTaskCoordinator, AgentTaskError
 from PhyAgentOS.verification.contracts import TaskVerificationContract
 
 from pick_place_workflow.multi_object_agent import (
@@ -125,3 +125,5 @@ async def test_runner_rejects_stale_scene_before_agent_loop(tmp_path):
             task_id="task-stale-1",
             revision_id="revision-stale-1",
         )
+    with pytest.raises(AgentTaskError, match="not found"):
+        coordinator.get_task("task-stale-1")
