@@ -85,7 +85,19 @@ def main() -> int:
                                          max_output_tokens=args.model_max_output_tokens,
                                          timeout_seconds=args.model_timeout_s, max_retries=0)
             try:
-                endpoint = SceneUnderstandingEndpoint(RoboTwinSceneUnderstandingProvider(inference))
+                provider = RoboTwinSceneUnderstandingProvider(inference)
+
+                class DiagnosedProvider:
+                    def understand(self, arguments):
+                        try:
+                            return provider.understand(arguments)
+                        except Exception as exc:
+                            result["understanding_provider_exception"] = type(exc).__name__
+                            if exc.__cause__ is not None:
+                                result["understanding_provider_cause"] = type(exc.__cause__).__name__
+                            raise
+
+                endpoint = SceneUnderstandingEndpoint(DiagnosedProvider())
                 result["understanding"] = endpoint.invoke(request)
                 if result["understanding"]["status"] != "available":
                     raise RuntimeError("scene understanding Tool did not return an available result")

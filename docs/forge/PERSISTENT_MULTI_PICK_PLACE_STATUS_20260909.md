@@ -128,3 +128,43 @@ formal Bundle factory, model entity-to-measured-geometry grounding, and real
 Agent continuous multi-object execution plus final goal verification. The
 no-motion evaluator cannot claim contact/stop dynamics readiness. No new model
 or simulator-motion run was performed for this checkpoint.
+
+## v7.10.0 current-scene route builder and capabilities
+
+`PersistentRouteBuilder` runs the existing `materialize_complete_route.py` CLI
+for each proposed candidate using the supplied interpreter, static profile and
+controller qualification arguments. Dynamic scene facts, proposal bundle and
+output directory are owned by the builder. Each build keeps its inputs, command
+and subprocess logs under `preparation-builds/route-*`. Current scene and empty
+holding state are checked before/after materialization. Requested destinations
+must match the selected entity's scene-fact target, and generated routes must
+retain candidate, scene, calibration and destination bindings.
+
+Artifact import preserves original references and compares existing bytes before
+publishing; conflicting data is rejected rather than replacing runtime evidence.
+Multiple candidates reuse equivalent shared calibration/controller artifacts.
+`BenchmarkSceneSource(client)` explicitly reads simulator benchmark facts and
+requires `allow_benchmark_scene_facts=true`; it does not implement model entity
+grounding. Deployments may supply another measured scene source.
+
+`PersistentCapabilityProvider` projects the configured arm profile into a typed
+scene-bound snapshot, persists it under `artifact://capabilities/`, reuses it for
+identical requests and rejects obsolete scene revisions. Pass the existing
+deployment profile digest explicitly. Inject this provider and the route builder
+into the preparation/runtime composition described above. The materializer
+arguments use its existing CLI option names without leading `--`; its command
+is `[python_executable, materializer_script]`, with a finite timeout in seconds.
+
+The builder is tested with a controlled materializer, not yet with current model
+grasp output. Its static route profile must use `hold_and_reconcile` for persistent
+execution; the standalone reset profile is not execution-compatible. Selection
+also changes the request identity; selected-route source manifest/review
+materialization must be finalized before execution approval. This remains an
+open execution integration requirement, not permission to reuse old approvals.
+
+Real smoke `paos-persistent-v7100-understanding-20260909T1707` produced two captures
+from one world and an available public Observation Tool result. Scene understanding
+returned `understanding_provider_error`; motion remained false. The smoke runner
+now records the underlying provider exception class without raw exception text.
+Formal Bundle, selected-route finalization, model geometry grounding, complete
+readiness evidence and real Agent multi-object task verification remain open.
