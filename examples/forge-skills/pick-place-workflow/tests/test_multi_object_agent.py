@@ -103,3 +103,25 @@ async def test_runner_semantic_mode_does_not_force_tool_queue(tmp_path):
     nodes = {node.node_id: node for node in task.active_revision.plan_graph.nodes}
     assert list(nodes) == ["relocate_1", "verify"]
     assert nodes["relocate_1"].input_bindings["scene_revision"] == "scene://s0"
+
+
+@pytest.mark.asyncio
+async def test_runner_rejects_stale_scene_before_agent_loop(tmp_path):
+    coordinator = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=object())
+    class AgentLoop:
+        def build_long_horizon_controller(self):
+            raise AssertionError("stale scene must be rejected before controller creation")
+
+    runner = MultiObjectAgentRunner(
+        coordinator=coordinator,
+        agent_loop=AgentLoop(),
+        scene_revision_provider=lambda _task_id: "scene://new",
+    )
+    with pytest.raises(MultiObjectAgentError, match="stale"):
+        await runner.run(
+            task_description="stale scene",
+            entities=[entity("green")],
+            verification=TaskVerificationContract(mode="off"),
+            task_id="task-stale-1",
+            revision_id="revision-stale-1",
+        )

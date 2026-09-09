@@ -8,6 +8,26 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v8.4.1 (2026-09-09 20:35) - codex
+
+### 变更摘要 / Change Summary
+
+- [完成] [policy] [fix] runner 启动前拒绝绑定 scene revision 已过期的多对象任务 / reject stale bound scene revisions before starting the multi-object runner. (local)
+- [Completed] [Policy] [Fix] Reject multi-object tasks whose bound scene revision is stale before AgentLoop execution. (local)
+
+### 文件变更详情 / File Details
+
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/multi_object_agent.py` L190-L195 [修改 / Modified]: 启动 controller 前检查当前场景版本 / check current scene before controller creation.
+- `examples/forge-skills/pick-place-workflow/tests/test_multi_object_agent.py` L108-L127 [新增 / Added]: 过期场景 fail-closed 测试 / stale-scene fail-closed test.
+
+### 验证 / Validation
+
+- Focused `11 passed`; broad `577 passed`; Ruff, compileall, and diff checks passed.
+
+### Git 提交 / Git Commit
+
+- Commit: `b06664d`; Branch: `feature/planning-loop`; 时间 / Time: 2026-09-09 (Asia/Shanghai).
+
 ## v8.4.0 (2026-09-09 20:00) - codex
 
 ### 变更摘要 / Change Summary

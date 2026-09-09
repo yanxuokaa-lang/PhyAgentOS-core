@@ -187,6 +187,12 @@ class MultiObjectAgentRunner:
             task_id=task_id,
             revision_id=revision_id,
         )
+        bound_scene_revision = task.active_revision.plan_graph.nodes[0].input_bindings.get("scene_revision")
+        current_scene_revision = self.scene_revision_provider(task.task_id)
+        if current_scene_revision != bound_scene_revision:
+            raise MultiObjectAgentError(
+                "bound scene revision is stale before AgentLoop execution"
+            )
         controller = self.agent_loop.build_long_horizon_controller()
         if not isinstance(controller, LongHorizonTaskController):
             raise MultiObjectAgentError("AgentLoop did not provide an executable long-horizon controller")
