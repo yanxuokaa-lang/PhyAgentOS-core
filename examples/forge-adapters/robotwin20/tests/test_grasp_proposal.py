@@ -124,7 +124,17 @@ def test_graspnet_uses_its_approach_axis_without_reusing_graspgen_semantics(tmp_
             matrix[:3, :3] = np.array([[0, 0, 1], [1, 0, 0], [0, 1, 0]], dtype=float)
             return {
                 "request_id": payload["request_id"], "status": "available",
-                "candidates": [{"matrix": matrix.tolist(), "score": 0.9}],
+                "candidates": [
+                    {
+                        "matrix": matrix.tolist(),
+                        "score": 0.9,
+                        "grasp_geometry": {
+                            "width_m": 0.04,
+                            "height_m": 0.02,
+                            "depth_m": 0.01,
+                        },
+                    }
+                ],
                 "funnel": {"decoded": 1, "canonicalized": 1, "deduplicated": 1, "retained": 1},
             }
 
@@ -135,3 +145,40 @@ def test_graspnet_uses_its_approach_axis_without_reusing_graspgen_semantics(tmp_
     assert provider.approach_axis == 0
     assert provider.closing_axis == 1
     assert data["candidates"][0]["approach_direction"]["vector"] == [0.0, 1.0, 0.0]
+    assert data["candidates"][0]["grasp_geometry"] == {
+        "width_m": 0.04,
+        "height_m": 0.02,
+        "depth_m": 0.01,
+    }
+
+
+def test_invalid_worker_grasp_geometry_is_rejected(tmp_path):
+    class InvalidGeometryWorker(Worker):
+        def request(self, payload):
+            return {
+                "request_id": payload["request_id"],
+                "status": "available",
+                "candidates": [
+                    {
+                        "matrix": np.eye(4).tolist(),
+                        "score": 0.9,
+                        "grasp_geometry": {
+                            "width_m": 0.04,
+                            "height_m": 0.02,
+                            "depth_m": 0.0,
+                        },
+                    }
+                ],
+                "funnel": {
+                    "decoded": 1,
+                    "canonicalized": 1,
+                    "deduplicated": 1,
+                    "retained": 1,
+                },
+            }
+
+    provider = GraspNetProposalProvider(
+        InvalidGeometryWorker(), artifact_store=_store(tmp_path), apply_nms=False
+    )
+    with pytest.raises(GraspProposalAdapterError, match="geometry is invalid"):
+        provider.propose(REQUEST)

@@ -20,6 +20,11 @@ grasp_adaptation:
   robot_target_reference_distance_m: 0.12
   robot_gripper_bias_m: 0.08
   robot_delta_matrix: [[0, 0, 1], [0, -1, 0], [1, 0, 0]]
+  grasp_depth_adaptation:
+    source: provider_grasp_depth
+    # panda_hand -> fingertip along tool-forward: 0.0584 m joint origin plus
+    # 0.05384903 m collision-mesh extent in the RoboTwin Panda URDF.
+    tool_tip_forward_m: 0.11224903
   provider_transform_source:
     provider: graspnet
     upstream_commit: 280c215129f759ed8649cb4e89fc5dfee55f4f80

@@ -65,10 +65,11 @@ class GraspProposalProvider:
     """Translate an isolated grasp worker into the provider-neutral PAOS port.
 
     ``provider_id`` and ``model_variant`` are adapter configuration, not PAOS
-    planning concepts.  Workers must return the small ``matrix``/``score``
-    protocol; provider-specific frame conventions are expressed by
-    ``approach_axis``.  No worker is allowed to execute motion or mutate task
-    state through this seam.
+    planning concepts.  Workers return ``matrix``/``score`` and may preserve
+    provider-predicted grasp geometry needed by the embodiment adapter;
+    provider-specific frame conventions are expressed by ``approach_axis``.
+    No worker is allowed to execute motion or mutate task state through this
+    seam.
     """
 
     def __init__(
@@ -169,6 +170,7 @@ class GraspProposalProvider:
                     )
                 funnel["deduplicated"] += len(canonical)
                 for matrix, score, index in canonical[: self.max_candidates]:
+                    grasp_geometry = raw_candidates[index].get("grasp_geometry")
                     all_candidates.append(
                         _candidate(
                             entity_ref=entity_ref,
@@ -179,6 +181,7 @@ class GraspProposalProvider:
                             geometry_ref=str(geometry["artifact_ref"]),
                             source_index=index,
                             approach_axis=self.approach_axis,
+                            grasp_geometry=grasp_geometry,
                         )
                     )
                 funnel["retained"] = len(all_candidates)
@@ -289,8 +292,19 @@ def _validate_worker_reply(reply: Mapping[str, Any]) -> tuple[list[Mapping[str, 
         raise GraspProposalAdapterError("grasp worker marked an empty result available")
     if reply.get("status") == "empty" and candidates:
         raise GraspProposalAdapterError("grasp worker returned candidates with empty status")
-    if any(not isinstance(item, Mapping) or set(item) != {"matrix", "score"} for item in candidates):
-        raise GraspProposalAdapterError("grasp worker candidate shape is invalid")
+    for item in candidates:
+        if not isinstance(item, Mapping) or set(item) not in (
+            {"matrix", "score"},
+            {"matrix", "score", "grasp_geometry"},
+        ):
+            raise GraspProposalAdapterError("grasp worker candidate shape is invalid")
+        geometry = item.get("grasp_geometry")
+        if geometry is not None and (
+            not isinstance(geometry, Mapping)
+            or set(geometry) != {"width_m", "height_m", "depth_m"}
+            or any(not _finite(geometry[key]) or float(geometry[key]) <= 0 for key in geometry)
+        ):
+            raise GraspProposalAdapterError("grasp worker geometry is invalid")
     return candidates, normalized
 
 
@@ -310,10 +324,21 @@ def _matrix(value: Any) -> Any:
     return matrix
 
 
-def _candidate(*, entity_ref: str, candidate_index: int, matrix: Any, score: float, frame_id: str, geometry_ref: str, source_index: int, approach_axis: int = 2) -> dict[str, Any]:
+def _candidate(
+    *,
+    entity_ref: str,
+    candidate_index: int,
+    matrix: Any,
+    score: float,
+    frame_id: str,
+    geometry_ref: str,
+    source_index: int,
+    approach_axis: int = 2,
+    grasp_geometry: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
     rotation = matrix[:3, :3]
     approach = rotation[:, approach_axis]
-    return {
+    candidate = {
         "candidate_ref": f"candidate://{entity_ref.removeprefix('entity://')}/{candidate_index}",
         "entity_ref": entity_ref,
         "grasp_frame": {
@@ -332,6 +357,12 @@ def _candidate(*, entity_ref: str, candidate_index: int, matrix: Any, score: flo
         "provenance": [geometry_ref],
         "qualification": "proposed" if score >= 0.5 else "low_confidence",
     }
+    if grasp_geometry is not None:
+        candidate["grasp_geometry"] = {
+            key: float(grasp_geometry[key])
+            for key in ("width_m", "height_m", "depth_m")
+        }
+    return candidate
 
 
 def _nms(candidates: list[tuple[Any, float, int]], *, position_threshold_m: float, approach_angle_deg: float, closing_angle_deg: float, approach_axis: int = 2, closing_axis: int = 0) -> list[tuple[Any, float, int]]:

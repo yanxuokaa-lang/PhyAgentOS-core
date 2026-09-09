@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from pathlib import Path
 from typing import Iterable
@@ -523,6 +524,60 @@ class SkillEvolutionManager:
             "blocked" if blockers or collecting.validation_errors else "collecting"
         )
         return self.store.upsert_candidate(collecting)
+
+    def review_and_promote_candidate(
+        self, candidate_id: str, *, reviewer_id: str
+    ) -> SkillCandidate:
+        """Apply a reviewed candidate through the existing Skill revision path."""
+        candidate = self.store.get_candidate(candidate_id)
+        if candidate is None:
+            raise SkillEvolutionError("Skill candidate does not exist")
+        if candidate.status != "collecting":
+            raise SkillEvolutionError("only collecting Skill candidates can be reviewed")
+        reviewer = reviewer_id.strip()
+        if not reviewer:
+            raise SkillEvolutionError("reviewer_id must be non-empty")
+        if len(set(candidate.supporting_episode_ids)) < self.min_successful_episodes:
+            raise SkillEvolutionError("candidate lacks independent episode support")
+        self._require_promotable_evaluation(candidate)
+
+        self.store.record_event(
+            "candidate_reviewed", candidate.candidate_id, {"reviewer_id": reviewer}
+        )
+        self._promote_if_ready(candidate)
+        return self.store.get_candidate(candidate.candidate_id) or candidate
+
+    def _require_promotable_evaluation(self, candidate: SkillCandidate) -> None:
+        method_id = candidate.proposal.evolution_metadata.get("method_id")
+        if not isinstance(method_id, str) or not method_id:
+            return
+        receipts = [
+            item
+            for item in self.store.list_event_payloads(
+                "candidate_evaluation_receipt", candidate.candidate_id
+            )
+            if item.get("method_id") == method_id
+        ]
+        if {item.get("split") for item in receipts} != {"matched", "held_out", "hazard"}:
+            raise SkillEvolutionError("candidate lacks complete evaluation splits")
+        if any(item.get("verdict") != "pass" or item.get("metrics") is None for item in receipts):
+            raise SkillEvolutionError("candidate lacks passing evaluation evidence")
+        receipt_payloads = sorted(
+            json.dumps(item, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+            for item in receipts
+        )
+        decisions = self.store.list_event_payloads(
+            "candidate_evaluation_decision", candidate.candidate_id
+        )
+        if not any(
+            item.get("method_id") == method_id
+            and item.get("decision") == "promote"
+            and item.get("receipt_payloads") == receipt_payloads
+            for item in decisions
+        ):
+            raise SkillEvolutionError(
+                "candidate lacks a promote decision for the current evaluation evidence"
+            )
 
     def _bind_matching_unbound_lessons(
         self, skill_name: str, workflow_key: str

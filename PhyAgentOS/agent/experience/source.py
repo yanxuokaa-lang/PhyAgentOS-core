@@ -263,4 +263,5 @@ class AgentTaskOutcomeSource:
             capability_outcome_errors=capability_outcome_errors,
             capability_outcome_summary=capability_outcome_summary,
             completed_at=task.terminal_at or task.updated_at,
+            verification_mode=task.verification.mode,
         )

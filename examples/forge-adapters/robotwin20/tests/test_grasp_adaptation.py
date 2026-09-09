@@ -87,6 +87,28 @@ def test_camera_pose_to_world_matrix_uses_inverse_extrinsic():
     assert [matrix[index][3] for index in range(3)] == pytest.approx([1.1, 2.2, 3.3])
 
 
+def test_graspnet_depth_aligns_provider_tip_depth_without_world_z_offset():
+    proposal, payload, base, profile = _inputs()
+    proposal["grasp_geometry"] = {
+        "width_m": 0.04,
+        "height_m": 0.02,
+        "depth_m": 0.01,
+    }
+    profile["grasp_depth_adaptation"] = {
+        "source": "provider_grasp_depth",
+        "tool_tip_forward_m": 0.11224903,
+    }
+
+    result = adapt_grasp_candidate(proposal, payload, base, profile)
+
+    expected_reference = 0.11224903 + 0.08 - 0.01
+    assert result["contact_center_pose"]["position_m"] == pytest.approx([1.11, 2.22, 3.33])
+    assert result["robot_target_pose"]["position_m"] == pytest.approx(
+        [1.11, 2.22, 3.33 - expected_reference]
+    )
+    assert result["robot_target_round_trip_residual_m"] < 1e-8
+
+
 def test_adaptation_is_deterministic_and_does_not_mutate_inputs():
     inputs = _inputs()
     before = deepcopy(inputs)

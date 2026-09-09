@@ -74,6 +74,14 @@ from .grasp_adaptation import (
     adapt_grasp_candidate,
     camera_pose_to_world_matrix,
 )
+from .grasp_postprocessing import (
+    GRASP_POSTPROCESSING_SCHEMA_VERSION,
+    GraspPostprocessingError,
+    apply_contact_variant,
+    derive_robot_hand_pose,
+    qualify_contact_variants,
+    qualify_geometry_artifact,
+)
 from .grasp_profile import (
     GRASP_PROFILE_SCHEMA_VERSION,
     GraspProfileError,
@@ -82,19 +90,12 @@ from .grasp_profile import (
 )
 from .grasp_proposal import (
     FilesystemPointCloudArtifactResolver,
-    GraspProposalProvider,
     GraspGenProposalProvider,
     GraspNetProposalProvider,
     GraspProposalAdapterError,
+    GraspProposalProvider,
     GraspWorkerClient,
     PointCloudArtifactResolver,
-)
-from .grasp_postprocessing import (
-    GRASP_POSTPROCESSING_SCHEMA_VERSION,
-    GraspPostprocessingError,
-    apply_contact_variant,
-    qualify_geometry_artifact,
-    qualify_contact_variants,
 )
 from .motion_capabilities import (
     MOTION_CAPABILITY_SCHEMA_VERSION,
@@ -287,9 +288,12 @@ __all__ = [
     "ProcessWorkerConfig",
     "ProcessWorkerError",
     "GraspGenProposalProvider",
+    "GraspProposalProvider",
+    "GraspNetProposalProvider",
     "GRASP_POSTPROCESSING_SCHEMA_VERSION",
     "GraspPostprocessingError",
     "apply_contact_variant",
+    "derive_robot_hand_pose",
     "qualify_geometry_artifact",
     "qualify_contact_variants",
     "GraspProposalAdapterError",

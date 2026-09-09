@@ -351,6 +351,9 @@ class SkillWorkflowProposal(ExperienceModel):
     verification_checkpoints: list[str] = Field(min_length=1)
     recovery_guidance: list[str] = Field(default_factory=list)
     applicability_boundaries: list[str] = Field(min_length=1)
+    # Optional provenance emitted by external evolution extensions.  The core
+    # stores it with the candidate but does not interpret or activate patches.
+    evolution_metadata: dict[str, object] = Field(default_factory=dict)
 
     @field_validator(
         "preconditions",

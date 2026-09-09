@@ -92,6 +92,16 @@ The persistent worker exposes the adapter-private `route_readiness` query. `buil
 
 This is the current-world evaluator connection, not the complete `manipulation.prepare` deployment factory. Contact dynamics and stop control remain unavailable in no-motion readiness results. Public preparation/assignment generation, formal Bundle and real Agent continuous multi-object execution remain outstanding.
 
+## v8.1.1 evolution composition root
+
+The PAOS host now exposes `compose_evolution_extension` as the standard
+composition entry point. It reuses the existing `ExperienceCoordinator` store
+and candidate lifecycle, accepts an explicitly selected extension or explicit
+registry/projection ports, persists extension events, and is idempotent. Missing
+optional extension packages or invalid construction remain fail-open. This
+completes the host wiring seam only; it does not claim promotion, physical
+execution, or real multi-object Agent evidence.
+
 Focused tests cover two successive scene revisions, no backend recreation, stale rejection, held-object exclusion, unchanged readiness evidence limits and JSONL identity. No new real model or simulator-motion experiment was performed in this checkpoint.
 
 ## v7.9.0 public preparation and adapter composition

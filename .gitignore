@@ -24,6 +24,7 @@ SECURITY.md
 .kilo
 test
 tests/*
+!tests/test_evolution_extension_hook.py
 plan/
 external/
 artifacts/evals/

@@ -35,6 +35,7 @@ from PhyAgentOS.providers.providers_manager import ProvidersManager
 from PhyAgentOS.session.manager import Session, SessionManager
 
 if TYPE_CHECKING:
+    from PhyAgentOS.agent.experience.coordinator import EpisodeClosedHook
     from PhyAgentOS.agent.long_horizon import LongHorizonTaskController
     from PhyAgentOS.agent.planner_plugin import PlannerPlugin
     from PhyAgentOS.agent.planning_dispatch import AgentComposedDispatch
@@ -84,11 +85,13 @@ class AgentLoop:
         evolution_config: AgentEvolutionConfig | None = None,
         evolution_provider: LLMProvider | None = None,
         evolution_model: str | None = None,
+        evolution_extension: EpisodeClosedHook | None = None,
         planning_dispatch: AgentComposedDispatch | None = None,
         planning_context_provider: Callable[[str], AdmissionContext] | None = None,
         planner_plugin: PlannerPlugin | None = None,
     ):
         from PhyAgentOS.config.schema import ExecToolConfig
+
         self.bus = bus
         self.channels_config = channels_config
         self.provider = provider
@@ -110,9 +113,7 @@ class AgentLoop:
         self._planner_plugin = planner_plugin
         self.long_horizon_controller: LongHorizonTaskController | None = None
         binding_resolver = (
-            forge_task_coordinator.binding_resolver
-            if forge_task_coordinator is not None
-            else None
+            forge_task_coordinator.binding_resolver if forge_task_coordinator is not None else None
         )
 
         self.experience = None
@@ -120,6 +121,9 @@ class AgentLoop:
             try:
                 from PhyAgentOS.agent.experience.analyzer import ModelExperienceAnalyzer
                 from PhyAgentOS.agent.experience.coordinator import ExperienceCoordinator
+                from PhyAgentOS.agent.experience.evolution_composition import (
+                    compose_evolution_extension,
+                )
 
                 self.experience = ExperienceCoordinator(
                     workspace=workspace,
@@ -134,7 +138,9 @@ class AgentLoop:
                     min_lesson_episodes=evolution_config.min_lesson_episodes,
                     max_lessons_per_skill=evolution_config.max_lessons_per_skill,
                     max_calls=evolution_config.max_evolution_calls_per_run,
+                    evolution_extension=None,
                 )
+                compose_evolution_extension(self.experience, extension=evolution_extension)
             except Exception as exc:
                 logger.warning(
                     "Experience evolution initialization failed open: error_type={}",
@@ -214,12 +220,14 @@ class AgentLoop:
         allowed_dir = self.workspace if self.restrict_to_workspace else None
         for cls in (ReadFileTool, WriteFileTool, EditFileTool, ListDirTool):
             self.tools.register(cls(workspace=self.workspace, allowed_dir=allowed_dir))
-        self.tools.register(ExecTool(
-            working_dir=str(self.workspace),
-            timeout=self.exec_config.timeout,
-            restrict_to_workspace=self.restrict_to_workspace,
-            path_append=self.exec_config.path_append,
-        ))
+        self.tools.register(
+            ExecTool(
+                working_dir=str(self.workspace),
+                timeout=self.exec_config.timeout,
+                restrict_to_workspace=self.restrict_to_workspace,
+                path_append=self.exec_config.path_append,
+            )
+        )
         self.tools.register(WebSearchTool(api_key=self.brave_api_key, proxy=self.web_proxy))
         self.tools.register(WebFetchTool(proxy=self.web_proxy))
         self.tools.register(MessageTool(send_callback=self.bus.publish_outbound))
@@ -294,10 +302,12 @@ class AgentLoop:
         from PhyAgentOS.agent.planning_dispatch import AgentComposedDispatch
 
         task = self.forge_task_coordinator.get_task(task_id)
-        self.set_planning_dispatch(AgentComposedDispatch.from_task(
-            task,
-            context_provider=self._planning_context_provider,
-        ))
+        self.set_planning_dispatch(
+            AgentComposedDispatch.from_task(
+                task,
+                context_provider=self._planning_context_provider,
+            )
+        )
 
     def start_ready_long_horizon_tasks(self, session_key: str) -> tuple[str, ...]:
         """Start materialized tasks created by the current user turn."""
@@ -338,20 +348,24 @@ class AgentLoop:
             node_executor=AgentLoopNodeExecutor(self, self.forge_task_coordinator),
             admission_context_provider=self._planning_context_provider,
             replan_proposer=(
-                lambda graph, settlement, delta, context: self._planner_plugin.propose_replan(
-                    graph=graph,
-                    settlement=settlement,
-                    delta=delta,
-                    context=context,
+                lambda graph, settlement, delta, context: (
+                    self._planner_plugin.propose_replan(
+                        graph=graph,
+                        settlement=settlement,
+                        delta=delta,
+                        context=context,
+                    )
+                    if self._planner_plugin is not None
+                    else None
                 )
-                if self._planner_plugin is not None
-                else None
             ),
         )
         return LongHorizonTaskController(
             self.forge_task_coordinator,
             adapter,
-            scene_revision_provider=lambda task_id: self._planning_context_provider(task_id).scene_revision,
+            scene_revision_provider=lambda task_id: (
+                self._planning_context_provider(task_id).scene_revision
+            ),
             on_result=on_result,
         )
 
@@ -403,6 +417,7 @@ class AgentLoop:
             return
         self._mcp_connecting = True
         from PhyAgentOS.agent.tools.mcp import connect_mcp_servers
+
         try:
             self._mcp_stack = AsyncExitStack()
             await self._mcp_stack.__aenter__()
@@ -446,12 +461,14 @@ class AgentLoop:
     @staticmethod
     def _tool_hint(tool_calls: list) -> str:
         """Format tool calls as concise hint, e.g. 'web_search("query")'."""
+
         def _fmt(tc):
             args = (tc.arguments[0] if isinstance(tc.arguments, list) else tc.arguments) or {}
             val = next(iter(args.values()), None) if isinstance(args, dict) else None
             if not isinstance(val, str):
                 return tc.name
             return f'{tc.name}("{val[:40]}…")' if len(val) > 40 else f'{tc.name}("{val}")'
+
         return ", ".join(_fmt(tc) for tc in tool_calls)
 
     async def _run_agent_loop(
@@ -484,12 +501,11 @@ class AgentLoop:
                         await on_progress(thought)
                     await on_progress(self._tool_hint(response.tool_calls), tool_hint=True)
 
-                tool_call_dicts = [
-                    tc.to_openai_tool_call()
-                    for tc in response.tool_calls
-                ]
+                tool_call_dicts = [tc.to_openai_tool_call() for tc in response.tool_calls]
                 messages = self.context.add_assistant_message(
-                    messages, response.content, tool_call_dicts,
+                    messages,
+                    response.content,
+                    tool_call_dicts,
                     reasoning_content=response.reasoning_content,
                     thinking_blocks=response.thinking_blocks,
                 )
@@ -515,7 +531,9 @@ class AgentLoop:
                     final_content = clean or "Sorry, I encountered an error calling the AI model."
                     break
                 messages = self.context.add_assistant_message(
-                    messages, clean, reasoning_content=response.reasoning_content,
+                    messages,
+                    clean,
+                    reasoning_content=response.reasoning_content,
                     thinking_blocks=response.thinking_blocks,
                 )
                 final_content = clean
@@ -545,8 +563,13 @@ class AgentLoop:
         predecessor context). Tool execution remains governed by the normal
         registry and optional ``AgentComposedDispatch`` guard.
         """
-        if not all(isinstance(value, str) and value.strip() for value in (task_id, revision_id, node_id, prompt)):
-            raise ValueError("node turn requires non-empty task, revision, node, and prompt identities")
+        if not all(
+            isinstance(value, str) and value.strip()
+            for value in (task_id, revision_id, node_id, prompt)
+        ):
+            raise ValueError(
+                "node turn requires non-empty task, revision, node, and prompt identities"
+            )
         messages = self.context.build_messages(
             history=[],
             current_message=prompt,
@@ -575,7 +598,13 @@ class AgentLoop:
             else:
                 task = asyncio.create_task(self._dispatch(msg))
                 self._active_tasks.setdefault(msg.session_key, []).append(task)
-                task.add_done_callback(lambda t, k=msg.session_key: self._active_tasks.get(k, []) and self._active_tasks[k].remove(t) if t in self._active_tasks.get(k, []) else None)
+                task.add_done_callback(
+                    lambda t, k=msg.session_key: (
+                        self._active_tasks.get(k, []) and self._active_tasks[k].remove(t)
+                        if t in self._active_tasks.get(k, [])
+                        else None
+                    )
+                )
 
     async def _handle_stop(self, msg: InboundMessage) -> None:
         """Cancel all active tasks and subagents for the session."""
@@ -591,9 +620,7 @@ class AgentLoop:
         if self.forge_task_coordinator is not None:
             record = self.forge_task_coordinator.store.active()
             if record is not None and record.origin_session_key == msg.session_key:
-                await self.forge_task_coordinator.cancel_task(
-                    record.task_id, reason="user_stop"
-                )
+                await self.forge_task_coordinator.cancel_task(record.task_id, reason="user_stop")
                 forge_cancelled = 1
         local_stopped = cancelled + sub_cancelled
         if forge_cancelled:
@@ -606,15 +633,23 @@ class AgentLoop:
             content = f"Stopped {local_stopped} task(s)."
         else:
             content = "No active task to stop."
-        await self.bus.publish_outbound(OutboundMessage(
-            channel=msg.channel, chat_id=msg.chat_id, content=content,
-        ))
+        await self.bus.publish_outbound(
+            OutboundMessage(
+                channel=msg.channel,
+                chat_id=msg.chat_id,
+                content=content,
+            )
+        )
 
     async def _handle_restart(self, msg: InboundMessage) -> None:
         """Restart the process in-place via os.execv."""
-        await self.bus.publish_outbound(OutboundMessage(
-            channel=msg.channel, chat_id=msg.chat_id, content="Restarting...",
-        ))
+        await self.bus.publish_outbound(
+            OutboundMessage(
+                channel=msg.channel,
+                chat_id=msg.chat_id,
+                content="Restarting...",
+            )
+        )
 
         async def _do_restart():
             await asyncio.sleep(1)
@@ -681,15 +716,17 @@ class AgentLoop:
         content: str = "",
     ) -> None:
         """Publish a lifecycle event correlated with an inbound turn."""
-        await self.bus.publish_outbound(OutboundMessage(
-            channel=msg.channel,
-            chat_id=msg.chat_id,
-            content=content,
-            metadata={
-                **(msg.metadata or {}),
-                "event_type": event_type,
-            },
-        ))
+        await self.bus.publish_outbound(
+            OutboundMessage(
+                channel=msg.channel,
+                chat_id=msg.chat_id,
+                content=content,
+                metadata={
+                    **(msg.metadata or {}),
+                    "event_type": event_type,
+                },
+            )
+        )
 
     async def close_mcp(self) -> None:
         """Close MCP connections."""
@@ -723,18 +760,15 @@ class AgentLoop:
         """Process a single inbound message and return the response."""
         # System messages: parse origin from chat_id ("channel:chat_id")
         if msg.channel == "system":
-            channel, chat_id = (msg.chat_id.split(":", 1) if ":" in msg.chat_id
-                                else ("cli", msg.chat_id))
+            channel, chat_id = (
+                msg.chat_id.split(":", 1) if ":" in msg.chat_id else ("cli", msg.chat_id)
+            )
             logger.info("Processing system message from {}", msg.sender_id)
             key = msg.session_key_override or f"{channel}:{chat_id}"
             self.skill_activation.begin_turn(key, msg.content)
-            task_ref = msg.metadata.get("agent_task_id") or msg.metadata.get(
-                "forge_session_id"
-            )
+            task_ref = msg.metadata.get("agent_task_id") or msg.metadata.get("forge_session_id")
             if self.experience is not None and task_ref:
-                self.experience.schedule_forge_completion(
-                    str(task_ref)
-                )
+                self.experience.schedule_forge_completion(str(task_ref))
             session = self.sessions.get_or_create(key)
             await self.memory_consolidator.maybe_consolidate_by_tokens(session)
             self._set_tool_context(
@@ -746,7 +780,9 @@ class AgentLoop:
             history = session.get_history(max_messages=0)
             messages = self.context.build_messages(
                 history=history,
-                current_message=msg.content, channel=channel, chat_id=chat_id,
+                current_message=msg.content,
+                channel=channel,
+                chat_id=chat_id,
             )
             final_content, _, all_msgs = await self._run_agent_loop(
                 messages, experience_session_key=key
@@ -754,8 +790,11 @@ class AgentLoop:
             self._save_turn(session, all_msgs, 1 + len(history))
             self.sessions.save(session)
             await self.memory_consolidator.maybe_consolidate_by_tokens(session)
-            return OutboundMessage(channel=channel, chat_id=chat_id,
-                                  content=final_content or "Background task completed.")
+            return OutboundMessage(
+                channel=channel,
+                chat_id=chat_id,
+                content=final_content or "Background task completed.",
+            )
 
         preview = msg.content[:80] + "..." if len(msg.content) > 80 else msg.content
         logger.info("Processing message from {}:{}: {}", msg.channel, msg.sender_id, preview)
@@ -799,8 +838,9 @@ class AgentLoop:
             session.clear()
             self.sessions.save(session)
             self.sessions.invalidate(session.key)
-            return OutboundMessage(channel=msg.channel, chat_id=msg.chat_id,
-                                  content="New session started.")
+            return OutboundMessage(
+                channel=msg.channel, chat_id=msg.chat_id, content="New session started."
+            )
         if cmd == "/help":
             lines = [
                 "🍞 PhyAgentOS commands:",
@@ -810,7 +850,9 @@ class AgentLoop:
                 "/help — Show available commands",
             ]
             return OutboundMessage(
-                channel=msg.channel, chat_id=msg.chat_id, content="\n".join(lines),
+                channel=msg.channel,
+                chat_id=msg.chat_id,
+                content="\n".join(lines),
             )
         await self.memory_consolidator.maybe_consolidate_by_tokens(session)
 
@@ -833,7 +875,8 @@ class AgentLoop:
                 else msg.content
             ),
             media=msg.media if msg.media else None,
-            channel=msg.channel, chat_id=msg.chat_id,
+            channel=msg.channel,
+            chat_id=msg.chat_id,
         )
 
         async def _bus_progress(content: str, *, tool_hint: bool = False) -> None:
@@ -841,9 +884,14 @@ class AgentLoop:
             meta["_progress"] = True
             meta["_tool_hint"] = tool_hint
             meta["event_type"] = "turn_progress"
-            await self.bus.publish_outbound(OutboundMessage(
-                channel=msg.channel, chat_id=msg.chat_id, content=content, metadata=meta,
-            ))
+            await self.bus.publish_outbound(
+                OutboundMessage(
+                    channel=msg.channel,
+                    chat_id=msg.chat_id,
+                    content=content,
+                    metadata=meta,
+                )
+            )
 
         final_content, _, all_msgs = await self._run_agent_loop(
             initial_messages,
@@ -871,19 +919,21 @@ class AgentLoop:
             ]
             if waiting:
                 pending = waiting[-1]
-                await self.bus.publish_outbound(OutboundMessage(
-                    channel=msg.channel,
-                    chat_id=msg.chat_id,
-                    content=pending.clarification_question or "Clarification required.",
-                    metadata={
-                        **(msg.metadata or {}),
-                        "event_type": "clarification_requested",
-                        "task_id": pending.task_id,
-                        "revision_id": pending.active_revision_id,
-                        "node_id": pending.clarification_node_id,
-                        "clarification_id": pending.clarification_id,
-                    },
-                ))
+                await self.bus.publish_outbound(
+                    OutboundMessage(
+                        channel=msg.channel,
+                        chat_id=msg.chat_id,
+                        content=pending.clarification_question or "Clarification required.",
+                        metadata={
+                            **(msg.metadata or {}),
+                            "event_type": "clarification_requested",
+                            "task_id": pending.task_id,
+                            "revision_id": pending.active_revision_id,
+                            "node_id": pending.clarification_node_id,
+                            "clarification_id": pending.clarification_id,
+                        },
+                    )
+                )
 
         if (mt := self.tools.get("message")) and isinstance(mt, MessageTool) and mt._sent_in_turn:
             return None
@@ -903,15 +953,22 @@ class AgentLoop:
     def _save_turn(self, session: Session, messages: list[dict], skip: int) -> None:
         """Save new-turn messages into session, truncating large tool results."""
         from datetime import datetime
+
         for m in messages[skip:]:
             entry = dict(m)
             role, content = entry.get("role"), entry.get("content")
             if role == "assistant" and not content and not entry.get("tool_calls"):
                 continue  # skip empty assistant messages — they poison session context
-            if role == "tool" and isinstance(content, str) and len(content) > self._TOOL_RESULT_MAX_CHARS:
-                entry["content"] = content[:self._TOOL_RESULT_MAX_CHARS] + "\n... (truncated)"
+            if (
+                role == "tool"
+                and isinstance(content, str)
+                and len(content) > self._TOOL_RESULT_MAX_CHARS
+            ):
+                entry["content"] = content[: self._TOOL_RESULT_MAX_CHARS] + "\n... (truncated)"
             elif role == "user":
-                if isinstance(content, str) and content.startswith(ContextBuilder._MESSAGE_CONTEXT_TAG):
+                if isinstance(content, str) and content.startswith(
+                    ContextBuilder._MESSAGE_CONTEXT_TAG
+                ):
                     # Strip the message-metadata prefix, keep only the user text.
                     parts = content.split("\n\n", 1)
                     if len(parts) > 1 and parts[1].strip():
@@ -921,10 +978,15 @@ class AgentLoop:
                 if isinstance(content, list):
                     filtered = []
                     for c in content:
-                        if c.get("type") == "text" and isinstance(c.get("text"), str) and c["text"].startswith(ContextBuilder._MESSAGE_CONTEXT_TAG):
+                        if (
+                            c.get("type") == "text"
+                            and isinstance(c.get("text"), str)
+                            and c["text"].startswith(ContextBuilder._MESSAGE_CONTEXT_TAG)
+                        ):
                             continue  # Strip message metadata from multimodal messages
-                        if (c.get("type") == "image_url"
-                                and c.get("image_url", {}).get("url", "").startswith("data:image/")):
+                        if c.get("type") == "image_url" and c.get("image_url", {}).get(
+                            "url", ""
+                        ).startswith("data:image/"):
                             filtered.append({"type": "text", "text": "[image]"})
                         else:
                             filtered.append(c)

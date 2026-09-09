@@ -756,6 +756,14 @@ class ExperienceStore:
             self._event(connection, event_type, candidate.candidate_id, {})
             connection.commit()
 
+    def get_candidate(self, candidate_id: str) -> SkillCandidate | None:
+        with self._lock, self._connection() as connection:
+            row = connection.execute(
+                "SELECT record_json FROM skill_candidates WHERE candidate_id = ?",
+                (candidate_id,),
+            ).fetchone()
+        return SkillCandidate.model_validate_json(row["record_json"]) if row else None
+
     def list_candidates(self, *, active_only: bool = False) -> list[SkillCandidate]:
         where = " WHERE status IN ('collecting', 'blocked')" if active_only else ""
         with self._lock, self._connection() as connection:
@@ -913,18 +921,30 @@ class ExperienceStore:
         self, event_type: str, subject_id: str, payload: dict[str, Any] | None = None
     ) -> bool:
         """Record a deterministic event at most once for one subject and payload."""
-        encoded = json.dumps(payload or {}, ensure_ascii=False, sort_keys=True)
+        expected = payload or {}
         with self._lock, self._connection() as connection:
-            exists = connection.execute(
-                "SELECT 1 FROM evolution_events WHERE event_type = ? AND subject_id = ? "
-                "AND payload_json = ? LIMIT 1",
-                (event_type, subject_id, encoded),
-            ).fetchone()
-            if exists:
+            rows = connection.execute(
+                "SELECT payload_json FROM evolution_events WHERE event_type = ? "
+                "AND subject_id = ?",
+                (event_type, subject_id),
+            ).fetchall()
+            if any(json.loads(row["payload_json"]) == expected for row in rows):
                 return False
-            self._event(connection, event_type, subject_id, payload or {})
+            self._event(connection, event_type, subject_id, expected)
             connection.commit()
         return True
+
+    def list_event_payloads(
+        self, event_type: str, subject_id: str
+    ) -> list[dict[str, Any]]:
+        """Return persisted event payloads for host adapters and replay."""
+        with self._lock, self._connection() as connection:
+            rows = connection.execute(
+                "SELECT payload_json FROM evolution_events "
+                "WHERE event_type = ? AND subject_id = ? ORDER BY event_id",
+                (event_type, subject_id),
+            ).fetchall()
+        return [json.loads(row["payload_json"]) for row in rows]
 
     def metadata(self, key: str) -> str | None:
         with self._lock, self._connection() as connection:

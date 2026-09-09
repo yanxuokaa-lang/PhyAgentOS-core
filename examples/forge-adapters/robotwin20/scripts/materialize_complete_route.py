@@ -156,7 +156,7 @@ def _load_profile(path: Path) -> Mapping[str, Any]:
         "robot_target_reference_distance_m", "robot_gripper_bias_m",
         "robot_delta_matrix",
     }
-    optional_adaptation = {"contact_backoff_candidates_m"}
+    optional_adaptation = {"grasp_depth_adaptation", "contact_backoff_candidates_m"}
     if (
         not isinstance(adaptation, Mapping)
         or not required_adaptation.issubset(adaptation)
@@ -177,6 +177,17 @@ def _load_profile(path: Path) -> Mapping[str, Any]:
         or backoff_candidates != sorted(set(backoff_candidates))
     ):
         raise MaterializationError("route input contact backoff candidates are invalid")
+    depth_adaptation = adaptation.get("grasp_depth_adaptation")
+    if depth_adaptation is not None and (
+        not isinstance(depth_adaptation, Mapping)
+        or set(depth_adaptation) != {"source", "tool_tip_forward_m"}
+        or depth_adaptation.get("source") != "provider_grasp_depth"
+        or isinstance(depth_adaptation.get("tool_tip_forward_m"), bool)
+        or not isinstance(depth_adaptation.get("tool_tip_forward_m"), (int, float))
+        or not math.isfinite(float(depth_adaptation["tool_tip_forward_m"]))
+        or float(depth_adaptation["tool_tip_forward_m"]) <= 0
+    ):
+        raise MaterializationError("route input grasp depth adaptation is invalid")
     route_policy = value["route_policy"]
     if not isinstance(route_policy, Mapping) or set(route_policy) - {"release_clearance_m"} != {
         "approach_clearance_m", "lift_clearance_m", "transport_clearance_m",
@@ -628,6 +639,10 @@ def materialize(args: argparse.Namespace) -> dict[str, Any]:
             "provenance_ref": refs["workspace"],
         },
     }
+    if "grasp_depth_adaptation" in profile["grasp_adaptation"]:
+        adaptation_config["grasp_depth_adaptation"] = dict(
+            profile["grasp_adaptation"]["grasp_depth_adaptation"]
+        )
     if "contact_backoff_candidates_m" in profile["grasp_adaptation"]:
         adaptation_config["contact_backoff_candidates_m"] = list(
             profile["grasp_adaptation"]["contact_backoff_candidates_m"]

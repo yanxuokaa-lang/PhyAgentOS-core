@@ -33,6 +33,7 @@ from PhyAgentOS.agent.experience.policy_candidates import (
     WorkflowPolicyCandidateManager,
 )
 from PhyAgentOS.agent.experience.source import ForgeTaskOutcomeSource, TaskOutcomeSource
+from PhyAgentOS.agent.experience.evolution_composition import compose_evolution_extension
 
 __all__ = [
     "ExperienceAssessment",
@@ -63,4 +64,5 @@ __all__ = [
     "validate_counterexample_scope",
     "PolicyCandidateError",
     "WorkflowPolicyCandidateManager",
+    "compose_evolution_extension",
 ]

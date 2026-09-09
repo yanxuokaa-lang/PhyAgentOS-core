@@ -115,7 +115,17 @@ def _handle(request: Mapping[str, Any]) -> Mapping[str, Any]:
         matrix = np.eye(4, dtype=np.float64)
         matrix[:3, :3] = rotation
         matrix[:3, 3] = center
-        candidates.append({"matrix": matrix.tolist(), "score": score})
+        candidates.append(
+            {
+                "matrix": matrix.tolist(),
+                "score": score,
+                "grasp_geometry": {
+                    "width_m": float(grasp.width),
+                    "height_m": float(grasp.height),
+                    "depth_m": float(grasp.depth),
+                },
+            }
+        )
     candidates = candidates[:max_candidates]
     return {
         "request_id": request["request_id"],

@@ -7,7 +7,7 @@ import hashlib
 import json
 import re
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Protocol
 
 from loguru import logger
 
@@ -17,6 +17,7 @@ from PhyAgentOS.agent.experience.attribution import validate_cluster_owner_scope
 from PhyAgentOS.agent.experience.contracts import (
     ScopedLesson,
     SkillActivation,
+    SkillCandidate,
     TaskEpisode,
     WorkflowTraceItem,
     utc_now,
@@ -30,6 +31,13 @@ from PhyAgentOS.agent.experience.source import (
 )
 from PhyAgentOS.agent.experience.store import ExperienceStore
 from PhyAgentOS.planning import WorkflowPolicyCandidate, WorkflowPolicyReplayReceipt
+
+
+class EpisodeClosedHook(Protocol):
+    """Method-agnostic seam for optional extensions observing closed episodes."""
+
+    def on_episode_closed(self, episode: TaskEpisode) -> object:
+        """Observe a persisted episode without changing its task verdict."""
 
 
 class ExperienceCoordinator:
@@ -48,6 +56,7 @@ class ExperienceCoordinator:
         max_calls: int = 20,
         min_policy_candidate_episodes: int = 3,
         policy_promotion_callback=None,
+        evolution_extension: EpisodeClosedHook | None = None,
     ) -> None:
         self.workspace = Path(workspace).expanduser().resolve()
         self.store = ExperienceStore(self.workspace)
@@ -70,6 +79,9 @@ class ExperienceCoordinator:
             min_support_episodes=min_policy_candidate_episodes,
             promotion_callback=policy_promotion_callback,
         )
+        # Optional evolution extension.  The core only forwards lifecycle events;
+        # method logic and candidate interpretation stay outside this package.
+        self.evolution_extension = evolution_extension
         if task_coordinator is not None:
             self.outcome_source = AgentTaskOutcomeSource(task_coordinator)
         elif forge_orchestrator is not None:
@@ -80,6 +92,7 @@ class ExperienceCoordinator:
         self.calls = 0
         self._tasks: dict[str, asyncio.Task] = {}
         self._cluster_tasks: dict[str, asyncio.Task] = {}
+        self._extension_delivery_pending: set[str] = set()
         self._started = False
 
     async def start(self) -> None:
@@ -94,9 +107,7 @@ class ExperienceCoordinator:
             for cluster_id in self.store.pending_cluster_jobs():
                 self._schedule_cluster_job(cluster_id)
         except Exception as exc:
-            logger.warning(
-                "Experience startup failed open: error_type={}", type(exc).__name__
-            )
+            logger.warning("Experience startup failed open: error_type={}", type(exc).__name__)
 
     def stop(self) -> None:
         for task in list(self._tasks.values()):
@@ -166,10 +177,16 @@ class ExperienceCoordinator:
             candidate_id, approved=approved, reviewer_id=reviewer_id
         )
 
-    def promote_workflow_policy_candidate(
-        self, candidate_id: str
-    ) -> WorkflowPolicyCandidate:
+    def promote_workflow_policy_candidate(self, candidate_id: str) -> WorkflowPolicyCandidate:
         return self.policy_candidates.promote(candidate_id)
+
+    def review_evolution_skill_candidate(
+        self, candidate_id: str, *, reviewer_id: str
+    ) -> SkillCandidate:
+        """Review and promote one collected Skill revision candidate."""
+        return self.evolution.review_and_promote_candidate(
+            candidate_id, reviewer_id=reviewer_id
+        )
 
     def schedule_forge_completion(self, task_ref: str) -> None:
         """Persist an episode synchronously, then schedule reflection without awaiting it."""
@@ -193,17 +210,14 @@ class ExperienceCoordinator:
                 for item in binding.get("skill_activations", [])
             ]
             trace = [
-                WorkflowTraceItem.model_validate(item)
-                for item in binding.get("workflow_trace", [])
+                WorkflowTraceItem.model_validate(item) for item in binding.get("workflow_trace", [])
             ]
             episode = TaskEpisode(
                 episode_id="episode_"
                 + hashlib.sha256(outcome.root_task_id.encode("utf-8")).hexdigest()[:20],
                 root_task_id=outcome.root_task_id,
                 source=outcome.source,
-                task_summary=redact_text(
-                    (binding.get("task_summary") or outcome.goal).strip()
-                ),
+                task_summary=redact_text((binding.get("task_summary") or outcome.goal).strip()),
                 goal=outcome.goal,
                 success_criteria=outcome.success_criteria,
                 skill_activations=activations,
@@ -227,9 +241,22 @@ class ExperienceCoordinator:
                 agent_task_ref=outcome.agent_task_ref,
                 tool_invocation_refs=outcome.tool_invocation_refs,
                 processing_status="pending",
+                verification_mode=outcome.verification_mode,
             )
             created = self.store.create_episode(episode, enqueue=True)
             if created:
+                if self.evolution_extension is not None:
+                    try:
+                        self.evolution_extension.on_episode_closed(episode)
+                        if getattr(self.evolution_extension, "last_delivery_failed", False):
+                            self._extension_delivery_pending.add(outcome.root_task_id)
+                    except Exception as exc:
+                        self._extension_delivery_pending.add(outcome.root_task_id)
+                        logger.warning(
+                            "Evolution extension callback failed open for {}: error_type={}",
+                            outcome.root_task_id,
+                            type(exc).__name__,
+                        )
                 self._schedule_job(outcome.root_task_id)
         except Exception as exc:
             logger.warning(
@@ -270,6 +297,29 @@ class ExperienceCoordinator:
             return
         try:
             episode = self.store.get_episode_by_root(root_task_id)
+            if self.evolution_extension is not None and root_task_id in self._extension_delivery_pending:
+                try:
+                    self.evolution_extension.on_episode_closed(episode)
+                except Exception as exc:
+                    logger.warning(
+                        "Evolution extension callback failed open for {}: error_type={}",
+                        root_task_id,
+                        type(exc).__name__,
+                    )
+                if getattr(self.evolution_extension, "last_delivery_failed", False):
+                    attempts = self.store.job_attempts(root_task_id)
+                    if attempts < 3:
+                        self.store.fail_job(root_task_id, "evolution extension delivery failed", retry=True)
+                        self._tasks.pop(root_task_id, None)
+                        self._schedule_job(root_task_id)
+                        return
+                    self.store.record_event(
+                        "evolution_extension_delivery_exhausted",
+                        root_task_id,
+                        {"attempts": attempts},
+                    )
+                else:
+                    self._extension_delivery_pending.discard(root_task_id)
             assessment = await self.analyzer.assess(
                 episode,
                 candidates=self.store.list_candidates(active_only=True),
@@ -327,9 +377,7 @@ class ExperienceCoordinator:
         except RuntimeError:
             return
         self._cluster_tasks[cluster_id] = task
-        task.add_done_callback(
-            lambda done, cid=cluster_id: self._cluster_job_done(cid, done)
-        )
+        task.add_done_callback(lambda done, cid=cluster_id: self._cluster_job_done(cid, done))
 
     def _cluster_job_done(self, cluster_id: str, task: asyncio.Task) -> None:
         if self._cluster_tasks.get(cluster_id) is task:
@@ -373,9 +421,7 @@ class ExperienceCoordinator:
                     return
                 draft = await self.analyzer.synthesize_lesson(cluster, observations)
                 cluster.draft = draft
-                self.store.update_cluster(
-                    cluster, event_type="lesson_synthesis_completed"
-                )
+                self.store.update_cluster(cluster, event_type="lesson_synthesis_completed")
             try:
                 self.evolution.validate_cluster_draft(cluster, draft)
             except SkillEvolutionError as exc:
@@ -400,9 +446,7 @@ class ExperienceCoordinator:
                 )
             self.store.finish_cluster_job(cluster_id)
         except asyncio.CancelledError:
-            self.store.fail_cluster_job(
-                cluster_id, "cluster evolution cancelled", retry=True
-            )
+            self.store.fail_cluster_job(cluster_id, "cluster evolution cancelled", retry=True)
             raise
         except Exception as exc:
             attempts = self.store.cluster_job_attempts(cluster_id)
