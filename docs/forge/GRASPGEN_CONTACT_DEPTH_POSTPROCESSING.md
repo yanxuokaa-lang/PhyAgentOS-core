@@ -203,3 +203,25 @@ Right arm passes all eight phases (10 waypoint segments); left fails approach.
 All table/block/peer checks remain active, `simulator_steps=0` and
 `motion_authorized=false`. Dynamic landing, rebound and placement accuracy have
 not yet been measured. This geometric pass is not a task-success verdict.
+
+## Independent simulation (v7.5.2)
+
+The approved 5 mm release probe was executed. The first run reached 1776 steps
+but failed contact evaluation because transient SAPIEN wrapper ids were reused
+for unrelated bodies. The contact decoder now retains strong references during
+decoding; the new regression checks wrapper lifetime and preserves detection of
+robot/table contact. No collision threshold or policy was relaxed.
+
+The corrected run at
+`/home/yanxu/robotwin20-runtime/artifacts/paos-probe-v7.5.2-20260909T055546Z/`
+returns `available`, `world_change_completed=true`, and
+`reconciliation_required=false`. Right arm executes 1778 simulator steps;
+grasp contact and placed support contact are observed. The existing attached
+robot/environment contact evaluation reports zero unexpected contacts. Final
+position error is 0.006262958274 m and orientation error 0.013672666572 rad,
+within the profiled 0.04 m / 0.35 rad tolerances; gripper is open. Each video
+contains 444 frames at 320x240 and lasts 17.76 s.
+
+This is one independent simulation result. It does not create a Gateway
+invocation, grant hardware authority, or finalize a PAOS AgentTask. The
+worker-local deadline/stop monitoring result is not a hardware stop certificate.

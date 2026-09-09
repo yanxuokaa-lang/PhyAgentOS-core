@@ -6,6 +6,54 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v7.5.2 (2026-09-09 13:51) - codex
+
+### 实测追加修复 / Measured Follow-Up
+
+- 首轮 1776 steps 完成释放与退让动作后，接触判定失败；记录出现同一 link 自身接触及静止方块随机被标成机器人 link。`_contact_state` 只保存临时 Python wrapper 的 id，wrapper 被回收后 id 可复用。改为保存 wrapper 强引用与名称，避免误归因，保留所有碰撞判定并补回归后用新包重跑。
+- First run reached 1776 steps and completed release/retreat motion, but contact evaluation failed. Trace identities included self-identical links and stationary blocks misidentified as robot links. Retain strong wrapper references with names in `_contact_state` to prevent Python id reuse; keep collision policy, add regression and rerun a new package.
+- Files: `runtime/robotwin_simulation_probe_worker.py`, `tests/test_simulation_probe.py` under the RoboTwin adapter.
+
+### 预期操作 / Planned Operations
+
+- [完成] [eval] [exp] 根据用户在 5 mm 上方释放完整无动作路线通过后的“jixu”指令，执行该具体路线的独立 simulation-only probe；物化新 approval，保存 head/observer 视频、接触、停止、reset 和落点结果，不使用硬件或 Gateway。(local)
+- [Completed] [eval] [exp] Following the user's continuation after the concrete 5 mm elevated-release route passed no-motion planning, run its independent simulation-only probe with a new approval; preserve head/observer video, contacts, stop/reset and placement evidence. No hardware or Gateway. (local)
+- 影响 / Files: this monthly log, CHANGELOG.md, external `paos-release-gap-v7.5.1-20260909T053746Z/probe/` and `simulation-probe/` artifacts. Existing route and collision policy unchanged.
+
+### 结果 / Results
+
+- [eval] [exp] 新包 `/home/yanxu/robotwin20-runtime/artifacts/paos-probe-v7.5.2-20260909T055546Z`：status=available，world_change_completed=true，reconciliation_required=false；右臂 1778 steps，抓取及落地支撑接触通过，既有 attached robot/environment 判定下 unexpected=0。(local)
+- [eval] [exp] Corrected package returns available/completed with no reconciliation needed: right arm 1778 steps, observed grasp and support contact, zero unexpected contacts under the existing attached robot/environment checks. (local)
+- [eval] [exp] 最终位置误差 0.006262958274 m，姿态误差 0.013672666572 rad，夹爪张开；满足当前 0.04 m / 0.35 rad 容差。head/observer 视频各 444 帧、320x240、17.76 s。仅独立仿真，不授予硬件权限、不创建 Gateway invocation 或 PAOS 任务成功。(local)
+- [eval] [exp] Position error 0.006262958274 m and orientation error 0.013672666572 rad meet configured tolerances; gripper open. Both videos contain 444 frames at 320x240, 17.76 seconds. Independent simulation only; no hardware authority, Gateway invocation or PAOS task finalization. (local)
+- [eval] [test] 专项 38 passed；工作区 368 passed, 1 skipped；独立暂存内容 366 passed, 1 skipped；Ruff、compileall、diff check、视频元数据及抽帧验证通过。(local)
+- [eval] [test] Focused 38 pass; working tree 368 pass/1 skip; isolated staged content 366 pass/1 skip. Ruff, compileall, diff check, video metadata and frame extraction pass. (local)
+
+### 文件详情 / File Details
+
+- `examples/forge-adapters/robotwin20/runtime/robotwin_simulation_probe_worker.py` L449-L479：保存强引用 / retain strong references.
+- `examples/forge-adapters/robotwin20/tests/test_simulation_probe.py` L1514-L1543：临时 wrapper 生命周期及真实碰撞标记回归 / transient-wrapper lifetime and real contact regression.
+- `docs/forge/GRASPGEN_CONTACT_DEPTH_POSTPROCESSING.md` L206-L227：独立仿真范围与结果 / independent simulation scope and result.
+
+```diff
+-link_identity[id(link)] = qualified
++link_identity[id(link)] = (link, qualified)
+-qualified = link_identity.get(id(candidate))
++binding = link_identity.get(id(candidate))
++if binding is not None and binding[0] is candidate:
++    return binding[1]
+```
+
+### 验证命令 / Validation
+
+```bash
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=.:examples/forge-adapters/robotwin20/src:examples/forge-adapters/robotwin20/runtime:examples/forge-adapters/robotwin20/scripts:examples/forge-skills/pick-place-workflow/src /home/yanxu/miniconda3/envs/paos/bin/python -m pytest -q -p pytest_asyncio.plugin examples/forge-adapters/robotwin20/tests
+```
+
+### Git 提交 / Git Commit
+
+- Branch: `feature/planning-loop`; implementation commit to be recorded after commit.
+
 ## v7.5.1 (2026-09-09 13:29) - codex
 
 ### 用户确认的范围更新 / User-Authorized Scope Update
@@ -511,46 +559,6 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=.:examples/forge-adapters/robotwin20
 ### Git 提交 / Git Commit
 
 - Commit: `cd73356`；Branch: `feature/planning-loop`；已推送。/ Commit: `cd73356`; Branch: `feature/planning-loop`; pushed.
-
-## v7.4.0 (2026-09-09 10:52) - codex
-
-### 预期修改 / Planned Changes
-
-- [计划] [eval] [exp] 将 v7.3.15 已资格评估的 GraspGen `0.015 m` ingress-backoff variant 物化为新的 RoboTwin 双臂 route package，并显式绑定 qualification artifact；不改变 GraspGen depth、碰撞策略、PAOS planning、Skill 或 Gateway。
-- [Planned] [Eval] [Exp] Materialize the v7.3.15 qualified GraspGen `0.015 m` ingress-backoff variant as a new RoboTwin dual-arm route package with an explicit qualification-artifact binding; do not change GraspGen depth, collision policy, PAOS planning, Skills, or Gateway.
-- [计划] [eval] [test] 独立校验 package 的 route、source manifest、双臂 capability、controller qualification、worker 与 contact-qualification binding；完成后停在新的 simulation-only 人工审批边界，不运行 planner、`scene.step()`、Gateway、Dora、Action 或硬件。
-- [Planned] [Eval] [Test] Independently validate the package route, source manifest, dual-arm capabilities, controller qualification, worker, and contact-qualification binding; then stop at a fresh simulation-only human-approval boundary without running planner, `scene.step()`, Gateway, Dora, Action, or hardware.
-
-### 预期影响文件 / Planned Files
-
-- `changelog/2026-09_part4.md`
-- `/home/yanxu/robotwin20-runtime/artifacts/paos-route-v7.4.0-graspgen-contact-backoff-*/`
-
-### 实际结果 / Actual Results
-
-- [完成] [eval] [exp] 已物化 `/home/yanxu/robotwin20-runtime/artifacts/paos-route-v7.4.0-graspgen-contact-backoff-20260909T1100Z/`；route geometry digest 为 `7f9055c2090c64ee88f42e00657e3c7800173c7e5c2c53ec5bd303921083935a`，source manifest digest 为 `8fb85da145f034a4a3283bbfa43bdd4378499d78443b15ce8d882b911b8bffeb`。/ [Completed] Materialized `/home/yanxu/robotwin20-runtime/artifacts/paos-route-v7.4.0-graspgen-contact-backoff-20260909T1100Z/`; route geometry digest is `7f9055c2090c64ee88f42e00657e3c7800173c7e5c2c53ec5bd303921083935a`, and source manifest digest is `8fb85da145f034a4a3283bbfa43bdd4378499d78443b15ce8d882b911b8bffeb`.
-- [完成] [policy] [fix] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/grasp_adaptation.py:L201-L213,L228-L240` 允许 route profile 已定义的 `contact_backoff_candidates_m` 和既有 `grasp_geometry` proposal 字段通过 schema 兼容检查；未改变坐标变换、GraspGen depth、碰撞策略或执行权限。/ [Completed] [Policy] [Fix] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/grasp_adaptation.py:L201-L213,L228-L240` allows the route profile's existing `contact_backoff_candidates_m` and `grasp_geometry` proposal field through schema compatibility checks; transforms, GraspGen depth, collision policy, and execution authority are unchanged.
-- [完成] [eval] [test] contact qualification 选择 `0.015 m` variant：support clearance `+0.002807598225252672 m` 且 pinch containment 有效；`0/0.005/0.01 m` 因桌面穿透拒绝，`0.02 m` 因 pinch containment 失败拒绝。/ [Completed] [Eval] [Test] Contact qualification selected the `0.015 m` variant with `+0.002807598225252672 m` support clearance and valid pinch containment; `0/0.005/0.01 m` were rejected for table-plane penetration and `0.02 m` for failed pinch containment.
-- [完成] [eval] [test] route 通过 `validate_route_request()`，包含完整 `approach/contact/close/lift/transport/descent/release/retreat` 阶段；candidate provenance 绑定 contact-qualification，source manifest 绑定双臂 capability、controller qualification、collision world 与 worker `6534f093bb4fb76f747a9532646be056520ef69c91c9a61b8a096797d3e092cc`。/ [Completed] [Eval] [Test] The route passed `validate_route_request()` with complete `approach/contact/close/lift/transport/descent/release/retreat` phases; candidate provenance binds contact qualification, and the source manifest binds both arm capabilities, controller qualification, collision world, and worker `6534f093bb4fb76f747a9532646be056520ef69c91c9a61b8a096797d3e092cc`.
-
-### 六维验收 / Six-Dimension Acceptance
-
-1. 架构集成：通过。改动位于 RoboTwin adapter 的 grasp adaptation 兼容层；PAOS planning、Skill、Gateway 和仿真执行面未被接管。/ Passed. The change stays in the RoboTwin adapter's grasp-adaptation compatibility layer; PAOS planning, Skills, Gateway, and simulation execution remain untouched.
-2. 失败路径：通过。未资格化的 backoff、非法字段、缺失绑定和 route 结构错误仍由既有 qualification/materialization/readiness 校验拒绝。/ Passed. Unqualified backoffs, invalid fields, missing bindings, and malformed route structure remain rejected by the existing qualification, materialization, and readiness checks.
-3. 权威与安全边界：通过。package 和 review request 均保持 `simulation_only=true`、`motion_authorized=false`；未运行 planner、`scene.step()`、Gateway、Dora、Action 或硬件。/ Passed. The package and review request retain `simulation_only=true` and `motion_authorized=false`; no planner, `scene.step()`, Gateway, Dora, Action, or hardware was run.
-4. 配置与复现：通过。route、qualification、双臂 capability、controller qualification、collision world、worker 和原始 GraspGen bundle 均由 package manifest 绑定，可由 digest 重现。/ Passed. The route, qualification, dual-arm capabilities, controller qualification, collision world, worker, and original GraspGen bundle are bound by the package manifest and reproducible from its digests.
-5. 可维护性：通过。仅复用已有 profile/materialization/route-readiness 流程；没有新增 planner service、store、scheduler 或执行通道。/ Passed. The implementation reuses the existing profile, materialization, and route-readiness flow without adding a planner service, store, scheduler, or execution channel.
-6. 防止过度防御编程：通过。兼容修复对应一个已复现的 materialization 失败，不新增 hash、baseline、冻结 contract 或额外 gate；现有 digest 仅用于 package 原有 provenance。/ Passed. The compatibility fix addresses a reproduced materialization failure without adding hashes, baselines, frozen contracts, or extra gates; existing digests remain part of the package's established provenance.
-
-### 验证 / Validation
-
-- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=.:examples/forge-adapters/robotwin20/src:examples/forge-adapters/robotwin20/runtime:examples/forge-adapters/robotwin20/scripts python -m pytest -q -p pytest_asyncio.plugin examples/forge-adapters/robotwin20/tests/test_grasp_adaptation.py examples/forge-adapters/robotwin20/tests/test_grasp_postprocessing.py examples/forge-adapters/robotwin20/tests/test_qualify_grasp_contact.py examples/forge-adapters/robotwin20/tests/test_route_generation.py examples/forge-adapters/robotwin20/tests/test_route_readiness.py examples/forge-adapters/robotwin20/tests/test_collision_world.py`: `65 passed`。
-- 独立 package 验证：`validate_route_request()` 通过；selected backoff、contact center、robot target、route phases、candidate provenance、双臂 capability、controller qualification、collision world 和 worker 绑定全部通过；`motion_authorized=false`。
-- Independent package validation: `validate_route_request()` passed; selected backoff, contact center, robot target, route phases, candidate provenance, dual-arm capabilities, controller qualification, collision world, and worker bindings all passed; `motion_authorized=false`.
-
-### Git 提交 / Git Commit
-
-- Commit: `57539a2`；Branch: `feature/planning-loop`；已推送。/ Commit: `57539a2`; Branch: `feature/planning-loop`; pushed.
 
 ## Historical Index (Preserved)
 

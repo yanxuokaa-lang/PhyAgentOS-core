@@ -1511,6 +1511,37 @@ def test_client_rejects_reconciliation_without_world_change(tmp_path: Path):
         client.probe(request, candidate_ref=request["candidates"][0]["candidate_ref"])
 
 
+def test_contact_trace_keeps_temporary_link_wrappers_alive():
+    import weakref
+
+    import robotwin_simulation_probe_worker as worker
+
+    references = []
+
+    class Link:
+        def get_name(self):
+            return "panda_hand"
+
+    class Entity:
+        def get_links(self):
+            link = Link()
+            references.append(weakref.ref(link))
+            return [link]
+
+    class Scene:
+        def get_contacts(self):
+            assert all(ref() is not None for ref in references)
+            return [SimpleNamespace(
+                bodies=[references[0](), SimpleNamespace(name="table")],
+                points=[SimpleNamespace(impulse=[0., 0., .001])],
+            )]
+
+    task = SimpleNamespace(robot=SimpleNamespace(left_entity=Entity(), right_entity=Entity()), scene=Scene())
+    result = worker._contact_state(task, phase="retreat", step=1)
+    assert result[0]["pair"] == ["left:panda_hand", "table"]
+    assert result[0]["active_contact"] is True
+
+
 def test_contact_trace_qualifies_duplicate_arm_link_names():
     class Link:
         def __init__(self, name):

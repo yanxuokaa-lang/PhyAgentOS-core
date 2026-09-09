@@ -446,7 +446,9 @@ def _contact_state(
     step: int,
     attached: bool = False,
 ) -> list[dict[str, Any]]:
-    link_identity: dict[int, str] = {}
+    # Keep wrappers alive while decoding contacts: SAPIEN may create temporary
+    # Python wrappers, whose ids otherwise get reused for unrelated bodies.
+    link_identity: dict[int, tuple[Any, str]] = {}
     by_name: dict[str, list[str]] = {}
     entities = []
     for arm_id in ("left", "right"):
@@ -456,25 +458,25 @@ def _contact_state(
     for arm_id, entity in entities:
         for link in entity.get_links():
             qualified = f"{arm_id}:{link.get_name()}"
-            link_identity[id(link)] = qualified
+            link_identity[id(link)] = (link, qualified)
             for attribute in ("entity", "component"):
                 owner = getattr(link, attribute, None)
                 if owner is not None:
-                    link_identity[id(owner)] = qualified
+                    link_identity[id(owner)] = (owner, qualified)
             getter = getattr(link, "get_entity", None)
             if callable(getter):
                 owner = getter()
                 if owner is not None:
-                    link_identity[id(owner)] = qualified
+                    link_identity[id(owner)] = (owner, qualified)
             by_name.setdefault(str(link.get_name()), []).append(qualified)
 
     def body_name(body: Any) -> str:
         for candidate in (body, getattr(body, "entity", None)):
             if candidate is None:
                 continue
-            qualified = link_identity.get(id(candidate))
-            if qualified is not None:
-                return qualified
+            binding = link_identity.get(id(candidate))
+            if binding is not None and binding[0] is candidate:
+                return binding[1]
         raw_entity = getattr(body, "entity", None)
         raw = str(getattr(raw_entity, "name", getattr(body, "name", "")))
         candidates = by_name.get(raw, [])
