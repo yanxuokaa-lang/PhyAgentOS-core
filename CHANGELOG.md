@@ -255,7 +255,7 @@ index 0000000..a1cc01c
 
 ### Git 提交 / Git Commit
 
-- Branch: `feature/planning-loop`; implementation commit recorded after creation.
+- Branch: `feature/planning-loop`; implementation commit: `182e345`; validation: 2026-09-09 (Asia/Shanghai).
 
 ## v7.7.1 (2026-09-09 16:15) - codex
 
