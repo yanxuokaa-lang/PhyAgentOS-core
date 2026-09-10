@@ -41,7 +41,7 @@
 
 ### Git 提交 / Git Commit
 
-- Commit: `PENDING`; Branch: `feature/planning-loop`。
+- Commit: `a329e49` (implementation commit); Branch: `feature/planning-loop`。
 
 ## v8.10.0 (2026-09-10 00:05) - codex
 
