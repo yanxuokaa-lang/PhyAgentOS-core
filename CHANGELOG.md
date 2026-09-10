@@ -45,7 +45,7 @@ Architecture, failure paths, authority/safety, configuration/reproducibility, ma
 
 ### Git 提交 / Git Commit
 
-- Commit: `(pending)`; Branch: `feature/planning-loop`。
+- Commit: `d6eea97` (implementation commit); Branch: `feature/planning-loop`。
 
 ## v9.0.0 (2026-09-10 12:14) - codex
 
