@@ -167,6 +167,34 @@ AgentTask T
 - 进程重启：从 Coordinator 恢复任务，从 Runtime/Gateway 核对物理状态；无法确认时进入恢复，不默认空手或回到初始场景。
 - reducer replay 只重放记录；执行性重试复用已有 retry_of、新 revision 与重新准入规则。
 
+恢复策略在节点结算后显式分为 `stop/replay/replan`。只有 completed
+settlement 能推进依赖节点；`stop` 保留失败现场并停止推进，`replay` 只用已持久化
+Tool/Settlement 事实重算 ready set，不调用 Gateway/Runtime，也不创建 revision。
+`replan` 才是执行性恢复：必须由 Agent/Planner 明确选择，经 Coordinator 创建新
+`PlanRevision`、持久化 `retry_parent_node_id`，并重新通过 admission 后才能执行。
+
+失败或 `outcome_unknown` 若报告 `world_changed` 与 `new_scene_revision`，必须先由
+可信 admission context 刷新到该 scene；未刷新时返回
+`scene_refresh_required:<revision>`，不得调用 replan proposer，也不得启动后续对象。
+刷新后 Planner 接收最新 scene revision，原节点 bindings 仅作为来源记录保留。
+`unknown` invocation 必须按原 invocation 对账，不能用 reducer replay 或重新 POST
+猜测结果。上述恢复接线属于现有 PlanningLoop/Coordinator 所有权，不引入第二套
+scheduler、Runtime 或 store，也不接入 evolution。
+
+场景未刷新而暂停后，后续 `run()` 从 active revision 的 failed settlement 恢复同一
+恢复决策；scene 刷新完成才调用 proposer。若 settlement 为 `outcome_unknown`，即使
+策略选择 `replan`，也先返回 `reconciliation_required:<node>`，不生成会重新执行的
+revision。
+若在 world-changing settlement 后、刷新前重启，PlanningLoop 从 active revision
+最后一条 settlement 重建待刷新 scene；内存标记丢失不会放行第二对象。
+
+### 5.4 当前实现状态（2026-09-10）
+
+本轮已实现上述控制面边界：`PlanningLoopAdapter` 接收 Agent/Planner 提供的恢复
+策略；`PlanRevision` 持久化 retry parent；两对象回归证明第一个 place 产生新 scene
+后，旧 admission 会阻断第二对象。验证仍是 provider-neutral fake/no-motion，尚未
+证明真实 Runtime、Gateway、仿真或硬件上的多对象动作闭环。
+
 ## 6. 审核后的分阶段接入方案
 
 | 阶段 | 修改归属及交付 | 验收条件 |

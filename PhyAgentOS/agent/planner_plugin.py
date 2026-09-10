@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from importlib.metadata import entry_points
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
@@ -79,6 +79,21 @@ class PlannerPlugin(Protocol):
         """Return a replacement graph and artifact reference, without side effects."""
 
 
+@runtime_checkable
+class RecoveryPlannerPlugin(Protocol):
+    """Optional planner capability for choosing a node recovery operation."""
+
+    def select_recovery(
+        self,
+        *,
+        graph: PlanGraph,
+        settlement: NodeSettlement,
+        delta: ReplanDelta,
+        context: object,
+    ) -> Literal["stop", "replay", "replan"]:
+        """Choose recovery from persisted failure context without executing it."""
+
+
 class PlannerPluginRegistry:
     """Small registry supporting explicit registration and Python entry points."""
 
@@ -109,5 +124,6 @@ class PlannerPluginRegistry:
 
 
 __all__ = [
-    "PlannerPlugin", "PlannerPluginRegistry", "PlanningRequest", "ReplanProposal",
+    "PlannerPlugin", "PlannerPluginRegistry", "PlanningRequest", "RecoveryPlannerPlugin",
+    "ReplanProposal",
 ]

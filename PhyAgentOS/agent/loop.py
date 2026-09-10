@@ -342,23 +342,38 @@ class AgentLoop:
             PlanningLoopAdapter,
         )
 
-        adapter = PlanningLoopAdapter(
-            self.forge_task_coordinator,
-            context_provider=NodeContextProvider(self.forge_task_coordinator.get_task),
-            node_executor=AgentLoopNodeExecutor(self, self.forge_task_coordinator),
-            admission_context_provider=self._planning_context_provider,
-            replan_proposer=(
-                lambda graph, settlement, delta, context: (
-                    self._planner_plugin.propose_replan(
+        planner = self._planner_plugin
+        replan_proposer = None
+        recovery_policy = None
+        if planner is not None:
+            def propose_replan(graph, settlement, delta, context):
+                return planner.propose_replan(
+                    graph=graph,
+                    settlement=settlement,
+                    delta=delta,
+                    context=context,
+                )
+
+            replan_proposer = propose_replan
+            select_recovery = getattr(planner, "select_recovery", None)
+            if callable(select_recovery):
+                def choose_recovery(graph, settlement, delta, context):
+                    return select_recovery(
                         graph=graph,
                         settlement=settlement,
                         delta=delta,
                         context=context,
                     )
-                    if self._planner_plugin is not None
-                    else None
-                )
-            ),
+
+                recovery_policy = choose_recovery
+
+        adapter = PlanningLoopAdapter(
+            self.forge_task_coordinator,
+            context_provider=NodeContextProvider(self.forge_task_coordinator.get_task),
+            node_executor=AgentLoopNodeExecutor(self, self.forge_task_coordinator),
+            admission_context_provider=self._planning_context_provider,
+            replan_proposer=replan_proposer,
+            recovery_policy=recovery_policy,
         )
         return LongHorizonTaskController(
             self.forge_task_coordinator,

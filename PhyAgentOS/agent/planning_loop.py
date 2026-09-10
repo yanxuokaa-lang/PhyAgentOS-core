@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -78,6 +78,7 @@ class NodeContextProvider:
         *,
         scene_revision: str,
         preserved_constraints: tuple[str, ...] = (),
+        allow_stale_predecessors: bool = False,
     ) -> NodeExecutionContext:
         task = self._task_loader(task_id)
         revision = task.active_revision
@@ -95,7 +96,11 @@ class NodeContextProvider:
                 raise StaleNodeContextError(
                     f"predecessor {dependency} has no durable settlement"
                 )
-            if settlement.scene_revision not in (None, scene_revision) and set(settlement.evidence_refs) & set(node.required_evidence):
+            if (
+                not allow_stale_predecessors
+                and settlement.scene_revision not in (None, scene_revision)
+                and set(settlement.evidence_refs) & set(node.required_evidence)
+            ):
                 raise StaleNodeContextError(
                     f"predecessor {dependency} belongs to stale scene revision"
                 )
@@ -137,6 +142,11 @@ NodeExecutor = Callable[[NodeExecutionContext], Awaitable[ToolResultEnvelope] | 
 ReplanProposer = Callable[
     [PlanGraph, NodeSettlement, ReplanDelta, NodeExecutionContext],
     Awaitable[ReplanProposal] | ReplanProposal,
+]
+RecoveryDecision = Literal["stop", "replay", "replan"]
+RecoveryPolicy = Callable[
+    [PlanGraph, NodeSettlement, ReplanDelta, NodeExecutionContext],
+    Awaitable[RecoveryDecision] | RecoveryDecision,
 ]
 PostconditionChecker = Callable[
     [NodeExecutionContext, ToolResultEnvelope],
@@ -346,6 +356,7 @@ class PlanningLoopAdapter:
         node_executor: NodeExecutor,
         admission_context_provider: Callable[[str], AdmissionContext],
         replan_proposer: ReplanProposer | None = None,
+        recovery_policy: RecoveryPolicy | None = None,
         postcondition_checker: PostconditionChecker | None = None,
         max_steps: int = 100,
     ) -> None:
@@ -354,6 +365,7 @@ class PlanningLoopAdapter:
         self.node_executor = node_executor
         self.admission_context_provider = admission_context_provider
         self.replan_proposer = replan_proposer
+        self.recovery_policy = recovery_policy
         self.postcondition_checker = postcondition_checker
         self.max_steps = max(1, int(max_steps))
 
@@ -379,6 +391,7 @@ class PlanningLoopAdapter:
         scene_revision: str,
         completed: list[str],
         replans: int,
+        pending_scene_refresh: str | None = None,
         checkpoint: Callable[[str], bool] | None = None,
     ) -> PlanningLoopResult:
         last_failure: str | None = None
@@ -404,6 +417,24 @@ class PlanningLoopAdapter:
             if not isinstance(admission, AdmissionContext):
                 raise PlanningLoopError("admission context provider returned an invalid context")
             scene_revision = admission.scene_revision
+            if pending_scene_refresh is None and revision.node_settlements:
+                latest_settlement = revision.node_settlements[-1]
+                if (
+                    latest_settlement.world_change_started is True
+                    and latest_settlement.scene_revision not in (None, scene_revision)
+                ):
+                    pending_scene_refresh = latest_settlement.scene_revision
+            if pending_scene_refresh is not None:
+                if scene_revision != pending_scene_refresh:
+                    return PlanningLoopResult(
+                        task_id,
+                        "blocked",
+                        tuple(completed),
+                        len(task.revisions),
+                        replans,
+                        f"scene_refresh_required:{pending_scene_refresh}",
+                    )
+                pending_scene_refresh = None
             missing_fresh = set(revision.fresh_evidence_requirements) - set(admission.evidence_refs)
             if missing_fresh and dict(admission.condition_facts).get("scene_current") is not False:
                 return PlanningLoopResult(
@@ -445,6 +476,38 @@ class PlanningLoopAdapter:
                         len(task.revisions),
                         replans,
                     )
+                failed_settlement = next(
+                    (
+                        item for item in reversed(revision.node_settlements)
+                        if item.status != "completed"
+                        and item.node_id in {node.node_id for node in graph.nodes}
+                    ),
+                    None,
+                )
+                if failed_settlement is not None:
+                    context = self.context_provider.build(
+                        task_id,
+                        failed_settlement.node_id,
+                        scene_revision=scene_revision,
+                        allow_stale_predecessors=True,
+                    )
+                    required_scene = (
+                        failed_settlement.scene_revision
+                        if failed_settlement.world_change_started is True
+                        and failed_settlement.scene_revision != scene_revision
+                        else None
+                    )
+                    return await self._recover(
+                        task_id,
+                        graph,
+                        failed_settlement,
+                        context,
+                        completed,
+                        replans,
+                        scene_revision=scene_revision,
+                        pending_scene_refresh=required_scene,
+                        checkpoint=checkpoint,
+                    )
                 return PlanningLoopResult(task_id, "blocked", tuple(completed), len(task.revisions), replans, last_failure)
 
             node_id = ready[0]
@@ -476,6 +539,7 @@ class PlanningLoopAdapter:
                 completed.append(node_id)
                 if result.world_changed and result.new_scene_revision:
                     scene_revision = result.new_scene_revision
+                    pending_scene_refresh = result.new_scene_revision
                 if self.postcondition_checker is not None:
                     counterevidence = self.postcondition_checker(context, result)
                     if hasattr(counterevidence, "__await__"):
@@ -484,12 +548,18 @@ class PlanningLoopAdapter:
                         self.coordinator.record_node_counterevidence(counterevidence)
                         return await self._recover(
                             task_id, graph, counterevidence, context, completed, replans,
-                            scene_revision=scene_revision, checkpoint=checkpoint,
+                            scene_revision=scene_revision,
+                            pending_scene_refresh=pending_scene_refresh,
+                            checkpoint=checkpoint,
                         )
                 continue
+            if result.world_changed and result.new_scene_revision:
+                pending_scene_refresh = result.new_scene_revision
             return await self._recover(
                 task_id, graph, settlement, context, completed, replans,
-                scene_revision=scene_revision, checkpoint=checkpoint,
+                scene_revision=scene_revision,
+                pending_scene_refresh=pending_scene_refresh,
+                checkpoint=checkpoint,
             )
 
         return PlanningLoopResult(task_id, "step_limit", tuple(completed), len(self.coordinator.get_task(task_id).revisions), replans, last_failure)
@@ -519,14 +589,56 @@ class PlanningLoopAdapter:
         completed: list[str],
         replans: int,
         scene_revision: str,
+        pending_scene_refresh: str | None = None,
         checkpoint: Callable[[str], bool] | None = None,
     ) -> PlanningLoopResult:
         delta = build_replan_delta(graph, settlement)
-        if self.replan_proposer is None:
+        decision: RecoveryDecision = "replan" if self.replan_proposer is not None else "stop"
+        if self.recovery_policy is not None:
+            decision = self.recovery_policy(graph, settlement, delta, context)
+            if hasattr(decision, "__await__"):
+                decision = await decision  # type: ignore[assignment]
+            if decision not in {"stop", "replay", "replan"}:
+                raise PlanningLoopError("recovery policy must return stop, replay, or replan")
+        if decision == "stop":
             return PlanningLoopResult(
                 task_id, settlement.status, tuple(completed), len(self.coordinator.get_task(task_id).revisions), replans,
                 settlement.failure_code,
             )
+        if decision == "replay":
+            self.reducer_replay(
+                task_id,
+                evidence_refs=set(settlement.evidence_refs),
+            )
+            return PlanningLoopResult(
+                task_id, "replay_required", tuple(completed),
+                len(self.coordinator.get_task(task_id).revisions), replans,
+                f"reducer_replay_only:{settlement.node_id}",
+            )
+        if settlement.status == "outcome_unknown":
+            return PlanningLoopResult(
+                task_id, "blocked", tuple(completed),
+                len(self.coordinator.get_task(task_id).revisions), replans,
+                f"reconciliation_required:{settlement.node_id}",
+            )
+        if self.replan_proposer is None:
+            return PlanningLoopResult(
+                task_id, settlement.status, tuple(completed), len(self.coordinator.get_task(task_id).revisions), replans,
+                "replan_unavailable",
+            )
+        if pending_scene_refresh is not None:
+            admission = self.admission_context_provider(task_id)
+            if not isinstance(admission, AdmissionContext):
+                raise PlanningLoopError("admission context provider returned an invalid context")
+            if admission.scene_revision != pending_scene_refresh:
+                return PlanningLoopResult(
+                    task_id, "blocked", tuple(completed),
+                    len(self.coordinator.get_task(task_id).revisions), replans,
+                    f"scene_refresh_required:{pending_scene_refresh}",
+                )
+            scene_revision = admission.scene_revision
+            context = context.model_copy(update={"scene_revision": scene_revision})
+            pending_scene_refresh = None
         proposal = self.replan_proposer(graph, settlement, delta, context)
         if hasattr(proposal, "__await__"):
             proposal = await proposal  # type: ignore[assignment]
@@ -550,6 +662,7 @@ class PlanningLoopAdapter:
             scene_revision=scene_revision,
             completed=completed,
             replans=replans + 1,
+            pending_scene_refresh=pending_scene_refresh,
             checkpoint=checkpoint,
         )
 
@@ -557,5 +670,6 @@ class PlanningLoopAdapter:
 __all__ = [
     "NodeContextProvider", "NodeExecutionContext", "PlanningLoopAdapter",
     "PlanningLoopError", "PlanningLoopResult", "PredecessorContext",
+    "RecoveryDecision", "RecoveryPolicy",
     "StaleNodeContextError",
 ]

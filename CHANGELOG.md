@@ -8,6 +8,41 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v9.0.0 (2026-09-10 12:14) - codex
+
+- [完成] [policy] [feat] 将失败恢复拆分为 `stop/replay/replan`，只允许 completed 节点推进；执行性 replan 使用刷新后的 scene、新 PlanRevision 和 retry lineage。(local)
+- [Completed] [Policy] [Feat] Split failure recovery into `stop/replay/replan`, advance only completed nodes, and require refreshed-scene context, a new PlanRevision, and retry lineage for execution recovery. (local)
+- [完成] [policy] [feat] 可选 `RecoveryPlannerPlugin` 已接入 AgentLoop；replay 不调用 executor/Gateway，无 Planner 时明确 stop。(local)
+- [Completed] [Policy] [Feat] Wire the optional `RecoveryPlannerPlugin` into AgentLoop; replay never invokes the executor/Gateway and no Planner means explicit stop. (local)
+
+### 文件变更详情 / File Details
+
+- `PhyAgentOS/agent/planning_loop.py` L74-L126, L141-L150, L351-L435, L479-L669：恢复上下文、恢复决策、重启 scene refresh、unknown 对账与 retry revision 编排。
+- `PhyAgentOS/agent/planner_plugin.py` L82-L94, L126-L129；`PhyAgentOS/agent/loop.py` L326-L385：可选恢复协议与组合入口。
+- `PhyAgentOS/forge/task.py` L178-L198, L875-L934, L1129-L1190：持久化 `retry_parent_node_id`。
+- `tests/test_planning_loop.py` L100-L146, L418-L704, L740-L782；`examples/forge-skills/pick-place-workflow/tests/test_multi_object_agent.py` L400-L457：恢复、重启与多对象 scene 阻断测试。
+- `docs/forge/PLANNING_MODULE_DESIGN.md` L357-L426；`docs/forge/TASK_UNDERSTANDING_MULTI_PICK_PLACE_INTEGRATION_REVIEW_20260909.md` L161-L196：设计与实现边界。
+
+### 关键 Diff / Key Diff
+
+```diff
++decision = recovery_policy(...) if recovery_policy else default_decision
++if decision == "replay":
++    self.reducer_replay(task_id, ...)
++if admission.scene_revision != pending_scene_refresh:
++    return PlanningLoopResult(..., "scene_refresh_required:<revision>")
++retry_parent_node_id=delta.retry_parent_node_id
+```
+
+### 验证 / Validation
+
+- Focused `45 passed`; core plus pick-place workflow `614 passed`; Ruff、compileall、`git diff --check` passed。
+- 六维验收在 provider-neutral fake/no-motion 范围内通过；不宣称真实 Runtime、Gateway、仿真或硬件闭环成功。
+
+### Git 提交 / Git Commit
+
+- Commit: `PENDING`; Branch: `feature/planning-loop`。
+
 ## v8.10.0 (2026-09-10 00:05) - codex
 
 - [完成] [runtime] [feat] place 显式暴露 adapter 解析的 `current_scene_revision`，保留 acquire 原始 provenance，并拒绝缺失当前 scene 的 Action。(local)
@@ -127,41 +162,6 @@ Architecture, failure paths, authority/safety, configuration/reproducibility, ma
 ### Git 提交 / Git Commit
 
 - Commit: `22f3057`; Branch: `feature/planning-loop`; 时间 / Time: 2026-09-09 (Asia/Shanghai).
-
-## v8.6.0 (2026-09-09 22:00) - codex
-
-### 变更摘要 / Change Summary
-
-- [完成] [policy] [feat] 带 PlanGraph 的 AgentTask 只有在所有语义节点存在 completed NodeSettlement 时才能 finalize；无 PlanGraph 任务保持兼容。(local)
-- [Completed] [Policy] [Feat] Require every semantic PlanGraph node to have a completed NodeSettlement before finalization; tasks without a PlanGraph remain compatible. (local)
-- [完成] [eval] [test] 双对象 Runtime dry-run 接入 enforce Verifier，覆盖 success、Verifier rejection、最终 scene revision/evidence 传递和部分完成拒绝 finalize。(local)
-- [Completed] [Eval] [Test] Connect the two-object Runtime dry-run to an enforce Verifier, covering success, rejection, final scene/evidence propagation, and partial-finalize rejection. (local)
-
-### 文件变更详情 / File Details
-
-- `PhyAgentOS/forge/task.py` L1543-L1578 [修改 / Modified]: finalize 前拒绝 active PlanGraph 中缺失或非 completed settlement 的节点。
-- `examples/forge-skills/pick-place-workflow/tests/test_multi_object_agent.py` L54-L82, L349-L468, L471-L582 [新增/修改 / Added/Modified]: 覆盖确定性最终 Verifier、双对象闭环、rejection 与部分完成拒绝。
-
-### 关键 Diff / Key Diff
-
-```diff
-+graph = task.active_revision.plan_graph
-+if graph is not None:
-+    settlements = {item.node_id: item.status for item in task.active_revision.node_settlements}
-+    incomplete = tuple(node.node_id for node in graph.nodes if settlements.get(node.node_id) != "completed")
-+    if incomplete:
-+        raise AgentTaskError("cannot finalize while active PlanGraph has incomplete node settlements: " + ", ".join(incomplete))
-```
-
-### 验证 / Validation
-
-- 聚焦 / Focused: `12 passed`; 全量核心与示例 / Full core plus examples: `589 passed`。
-- 变更文件 Ruff、compileall、`git diff --check`: passed。
-- 六维验收 / Six dimensions: architecture, failure paths, authority/safety, reproducibility, maintainability, and observability all PASS within provider-neutral dry-run scope。
-
-### Git 提交 / Git Commit
-
-- Commit: `1704e96` (implementation commit; metadata follow-up below); Branch: `feature/planning-loop`; 时间 / Time: 2026-09-09 (Asia/Shanghai)。
 
 ## v8.5.0 (2026-09-09 21:22) - codex
 

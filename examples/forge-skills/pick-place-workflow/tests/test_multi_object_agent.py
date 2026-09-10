@@ -398,6 +398,66 @@ async def test_two_object_dry_run_propagates_scene_revision_to_later_object(tmp_
 
 
 @pytest.mark.asyncio
+async def test_scene_change_blocks_next_object_until_admission_refreshes(tmp_path):
+    """A world-changing place cannot silently continue on the old scene."""
+    coordinator = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=object())
+    runner = MultiObjectAgentRunner(
+        coordinator=coordinator,
+        agent_loop=object(),
+        scene_revision_provider=lambda _task_id: "scene://s0",
+    )
+    task = await runner.create_task(
+        task_description="place two blocks sequentially",
+        entities=[entity("green"), entity("red")],
+        verification=TaskVerificationContract(mode="off"),
+        task_id="task-refresh-required",
+        revision_id="revision-refresh-required",
+    )
+    calls: list[str] = []
+
+    def admission(_task_id: str) -> AdmissionContext:
+        # Simulate a stale adapter projection after place changed the world.
+        return AdmissionContext(scene_revision="scene://s0")
+
+    def execute(context):
+        calls.append(context.node_id)
+        changed = context.node_id == "relocate_1.place"
+        return ToolResultEnvelope(
+            task_id=context.task_id,
+            revision_id=context.revision_id,
+            node_id=context.node_id,
+            tool_id=context.capability,
+            status="succeeded",
+            world_changed=changed,
+            new_scene_revision="scene://s2" if changed else None,
+            evidence_refs=(f"placed:{context.input_bindings['entity_ref']}",) if changed else (),
+        )
+
+    result = await PlanningLoopAdapter(
+        coordinator,
+        context_provider=NodeContextProvider(coordinator.get_task),
+        node_executor=execute,
+        admission_context_provider=admission,
+    ).run(task.task_id, scene_revision="scene://s0")
+
+    assert result.status == "blocked"
+    assert result.last_failure == "scene_refresh_required:scene://s2"
+    assert calls[-1] == "relocate_1.place"
+    assert "relocate_2.observe" not in calls
+
+    calls_before_restart = list(calls)
+    restarted = await PlanningLoopAdapter(
+        coordinator,
+        context_provider=NodeContextProvider(coordinator.get_task),
+        node_executor=execute,
+        admission_context_provider=admission,
+    ).run(task.task_id, scene_revision="scene://s0")
+    assert restarted.status == "blocked"
+    assert restarted.last_failure == "scene_refresh_required:scene://s2"
+    assert calls == calls_before_restart
+
+
+@pytest.mark.asyncio
 async def test_two_object_action_loop_reconciles_scene_revisions_and_final_verify(tmp_path):
     class Query:
         def invoke(self, arguments):

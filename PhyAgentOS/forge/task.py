@@ -188,6 +188,7 @@ class PlanRevision(BaseModel):
     counterevidence: list[NodeSettlement] = Field(default_factory=list)
     preserved_node_ids: tuple[str, ...] = ()
     invalidated_node_ids: tuple[str, ...] = ()
+    retry_parent_node_id: str | None = None
     fresh_evidence_requirements: tuple[str, ...] = ()
     discovery_evidence_refs: tuple[str, ...] = ()
     replan_evidence_refs: tuple[str, ...] = ()
@@ -880,6 +881,7 @@ class AgentTaskCoordinator:
         plan_graph_ref: str | None = None,
         preserved_node_ids: tuple[str, ...] = (),
         invalidated_node_ids: tuple[str, ...] = (),
+        retry_parent_node_id: str | None = None,
         fresh_evidence_requirements: tuple[str, ...] = (),
         discovery_evidence_refs: tuple[str, ...] = (),
         replan_evidence_refs: tuple[str, ...] = (),
@@ -924,6 +926,7 @@ class AgentTaskCoordinator:
                 node_settlements=list(node_settlements or []),
                 preserved_node_ids=tuple(preserved_node_ids),
                 invalidated_node_ids=tuple(invalidated_node_ids),
+                retry_parent_node_id=retry_parent_node_id,
                 fresh_evidence_requirements=tuple(fresh_evidence_requirements),
                 discovery_evidence_refs=tuple(discovery_evidence_refs),
                 replan_evidence_refs=tuple(replan_evidence_refs),
@@ -1178,6 +1181,7 @@ class AgentTaskCoordinator:
             plan_graph_ref=plan_graph_ref,
             preserved_node_ids=delta.preserve_node_ids,
             invalidated_node_ids=delta.invalidate_node_ids,
+            retry_parent_node_id=delta.retry_parent_node_id,
             fresh_evidence_requirements=delta.fresh_evidence_requirements,
             node_settlements=list(preserved),
             replan_evidence_refs=tuple(counterevidence_refs),

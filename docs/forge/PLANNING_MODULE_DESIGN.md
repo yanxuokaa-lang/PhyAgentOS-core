@@ -389,6 +389,42 @@ The recovery policy is selected by the Agent/Planner Plugin from the failure
 feedback. PAOS supplies the facts and gates; it does not hard-code a rule such
 as "always retry the dropped block".
 
+An installable planner may implement the optional `RecoveryPlannerPlugin`
+protocol and return `stop`, `replay`, or `replan` from `select_recovery()`.
+Plugins that only implement the original `PlannerPlugin` remain compatible and
+retain bounded replan behavior. When no planner is installed, the composition
+root supplies neither a fake proposer nor a recovery policy, so failure stops
+cleanly instead of manufacturing a `None` proposal.
+
+The adapter exposes three explicit recovery decisions after a non-completed
+settlement: `stop`, `replay`, and `replan`. `stop` leaves the failed node and
+its descendants unexecuted. `replay` invokes only the pure reducer over
+persisted Tool results and `NodeSettlement` records; it neither calls the node
+executor nor creates a revision. `replan` is the execution-recovery path: it
+must create a new `PlanRevision` through `AgentTaskCoordinator`, persist
+`retry_parent_node_id`, and pass through normal admission before any replacement
+node can execute. A missing policy retains compatibility by choosing `replan`
+only when a replan proposer is installed; otherwise it stops.
+
+If a failed or outcome-unknown result reports `world_changed` and a
+`new_scene_revision`, `replan` is blocked until the trusted admission context
+projects exactly that revision. The refreshed revision is then supplied to the
+Planner while the node's original input bindings remain provenance. No later
+object may observe, plan, or act using the prior scene. An unknown invocation
+is reconciled through its existing invocation identity; reducer replay or a
+new POST is not a substitute for Gateway reconciliation. If recovery pauses
+with `scene_refresh_required:*`, a later adapter run reloads the failed
+`NodeSettlement` from the active revision and re-enters recovery after the
+trusted context refreshes; this checkpoint does not require a second recovery
+store. Selecting execution `replan` for an `outcome_unknown` settlement returns
+`reconciliation_required:*` before the proposer is called.
+The recovery-only context projection retains stale predecessor settlements as
+labelled historical provenance so the Planner can invalidate or replace them;
+the normal node-execution projection continues to reject the same stale facts.
+After process restart, the adapter reconstructs an outstanding refresh from the
+active revision's latest world-changing settlement, so the next object cannot
+advance merely because the in-memory refresh marker was lost.
+
 ### Planner/plugin boundary
 
 The decomposer, node-selection policy, node-context projection, and recovery

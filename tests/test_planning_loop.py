@@ -4,12 +4,14 @@ import asyncio
 
 import pytest
 
+from PhyAgentOS.agent.loop import AgentLoop
 from PhyAgentOS.agent.planner_plugin import PlannerPluginRegistry, PlanningRequest, ReplanProposal
 from PhyAgentOS.agent.planning_dispatch import AgentComposedDispatch
 from PhyAgentOS.agent.planning_loop import (
     NodeContextProvider,
     PlanningLoopAdapter,
     PlanningLoopError,
+    StaleNodeContextError,
 )
 from PhyAgentOS.agent.tools.forge_task import build_forge_task_tools
 from PhyAgentOS.config.schema import ForgeConfig
@@ -109,6 +111,41 @@ def test_context_preserves_historical_predecessor_after_scene_progression(tmp_pa
     context = provider.build(task.task_id, "verify", scene_revision="scene-2")
     assert context.scene_revision == "scene-2"
     assert context.predecessor_context[0].scene_revision == "scene-1"
+
+
+def test_recovery_context_retains_stale_required_predecessor_as_provenance(tmp_path):
+    c = coordinator(tmp_path)
+    task = c.create_task(
+        task_description="recover after changed scene",
+        verification=TaskVerificationContract(mode="off"),
+    )
+    graph = make_graph(task.task_id, "revision-recovery-context", ("observe", "arrange-red"))
+    c.expand_discovery_revision(
+        task.task_id,
+        plan_graph=graph,
+        plan_graph_ref="artifact://plans/recovery/stale-predecessor",
+    )
+    c.record_node_settlement(NodeSettlement(
+        task_id=task.task_id,
+        revision_id=graph.revision_id,
+        node_id="observe",
+        status="completed",
+        evidence_refs=("scene:inventory",),
+        scene_revision="scene-1",
+    ))
+    provider = NodeContextProvider(c.get_task)
+
+    with pytest.raises(StaleNodeContextError):
+        provider.build(task.task_id, "arrange-red", scene_revision="scene-2")
+
+    recovery = provider.build(
+        task.task_id,
+        "arrange-red",
+        scene_revision="scene-2",
+        allow_stale_predecessors=True,
+    )
+    assert recovery.scene_revision == "scene-2"
+    assert recovery.predecessor_context[0].scene_revision == "scene-1"
 
 
 def test_rgb_attribute_sorting_loop_replans_after_drop_and_reducer_replays(tmp_path):
@@ -383,6 +420,326 @@ def test_unknown_outcome_stops_without_implicit_replay(tmp_path):
     assert calls["count"] == 1
 
 
+def test_recovery_stop_does_not_advance_to_dependent_node(tmp_path):
+    c = coordinator(tmp_path)
+    task = c.create_task(task_description="explicit stop", verification=TaskVerificationContract(mode="off"))
+    graph = make_graph(task.task_id, "revision-stop", ("arrange-red", "verify"))
+    c.expand_discovery_revision(task.task_id, plan_graph=graph, plan_graph_ref="artifact://plans/recovery/stop")
+    calls: list[str] = []
+
+    def execute(context):
+        calls.append(context.node_id)
+        return ToolResultEnvelope(
+            task_id=context.task_id,
+            revision_id=context.revision_id,
+            node_id=context.node_id,
+            tool_id="object.arrange",
+            status="failed",
+            failure_code="gripper_slip",
+        )
+
+    result = asyncio.run(PlanningLoopAdapter(
+        c,
+        context_provider=NodeContextProvider(c.get_task),
+        node_executor=execute,
+        admission_context_provider=lambda _: AdmissionContext(
+            scene_revision="scene-1", evidence_refs=frozenset({"scene:inventory"})
+        ),
+        recovery_policy=lambda *_: "stop",
+    ).run(task.task_id, scene_revision="scene-1"))
+    assert result.status == "failed"
+    assert result.completed_nodes == ()
+    assert calls == ["arrange-red"]
+
+
+def test_recovery_replay_only_reduces_persisted_facts(tmp_path):
+    c = coordinator(tmp_path)
+    task = c.create_task(task_description="reducer replay", verification=TaskVerificationContract(mode="off"))
+    graph = make_graph(task.task_id, "revision-replay", ("arrange-red", "verify"))
+    c.expand_discovery_revision(task.task_id, plan_graph=graph, plan_graph_ref="artifact://plans/recovery/replay")
+    calls: list[str] = []
+
+    def execute(context):
+        calls.append(context.node_id)
+        return ToolResultEnvelope(
+            task_id=context.task_id,
+            revision_id=context.revision_id,
+            node_id=context.node_id,
+            tool_id="object.arrange",
+            status="failed",
+            failure_code="transport_timeout",
+        )
+
+    result = asyncio.run(PlanningLoopAdapter(
+        c,
+        context_provider=NodeContextProvider(c.get_task),
+        node_executor=execute,
+        admission_context_provider=lambda _: AdmissionContext(
+            scene_revision="scene-1", evidence_refs=frozenset({"scene:inventory"})
+        ),
+        recovery_policy=lambda *_: "replay",
+    ).run(task.task_id, scene_revision="scene-1"))
+    assert result.status == "replay_required"
+    assert result.last_failure == "reducer_replay_only:arrange-red"
+    assert calls == ["arrange-red"]
+    assert len(c.get_task(task.task_id).revisions) == 2
+
+
+def test_reducer_replay_does_not_require_scene_refresh_or_execute_again(tmp_path):
+    c = coordinator(tmp_path)
+    task = c.create_task(task_description="replay changed result", verification=TaskVerificationContract(mode="off"))
+    graph = make_graph(task.task_id, "revision-replay-change", ("arrange-red", "verify"))
+    c.expand_discovery_revision(task.task_id, plan_graph=graph, plan_graph_ref="artifact://plans/recovery/replay-change")
+    calls: list[str] = []
+
+    def execute(context):
+        calls.append(context.node_id)
+        return ToolResultEnvelope(
+            task_id=context.task_id,
+            revision_id=context.revision_id,
+            node_id=context.node_id,
+            tool_id="object.arrange",
+            status="unknown",
+            world_changed=True,
+            world_change_started=True,
+            outcome_known=False,
+            new_scene_revision="scene-2",
+            failure_code="transport_lost_after_effect",
+        )
+
+    result = asyncio.run(PlanningLoopAdapter(
+        c,
+        context_provider=NodeContextProvider(c.get_task),
+        node_executor=execute,
+        admission_context_provider=lambda _: AdmissionContext(
+            scene_revision="scene-1", evidence_refs=frozenset({"scene:inventory"})
+        ),
+        recovery_policy=lambda *_: "replay",
+    ).run(task.task_id, scene_revision="scene-1"))
+    assert result.status == "replay_required"
+    assert result.last_failure == "reducer_replay_only:arrange-red"
+    assert calls == ["arrange-red"]
+
+
+def test_world_changing_failure_requires_scene_refresh_before_replan(tmp_path):
+    c = coordinator(tmp_path)
+    task = c.create_task(task_description="refresh before recovery", verification=TaskVerificationContract(mode="off"))
+    graph = make_graph(task.task_id, "revision-refresh", ("arrange-red", "verify"))
+    c.expand_discovery_revision(task.task_id, plan_graph=graph, plan_graph_ref="artifact://plans/recovery/refresh")
+    admission_calls = {"count": 0}
+
+    def admission(_):
+        admission_calls["count"] += 1
+        return AdmissionContext(scene_revision="scene-1", evidence_refs=frozenset({"scene:inventory"}))
+
+    def execute(context):
+        return ToolResultEnvelope(
+            task_id=context.task_id,
+            revision_id=context.revision_id,
+            node_id=context.node_id,
+            tool_id="object.arrange",
+            status="failed",
+            world_changed=True,
+            world_change_started=True,
+            new_scene_revision="scene-2",
+            failure_code="object_dropped",
+        )
+
+    proposed = {"called": False}
+
+    def replan(*_):
+        proposed["called"] = True
+        raise AssertionError("replan must wait for refreshed scene")
+
+    result = asyncio.run(PlanningLoopAdapter(
+        c,
+        context_provider=NodeContextProvider(c.get_task),
+        node_executor=execute,
+        admission_context_provider=admission,
+        replan_proposer=replan,
+        recovery_policy=lambda *_: "replan",
+    ).run(task.task_id, scene_revision="scene-1"))
+    assert result.status == "blocked"
+    assert result.last_failure == "scene_refresh_required:scene-2"
+    assert not proposed["called"]
+    assert admission_calls["count"] == 2
+
+
+def test_world_changing_failure_resumes_replan_after_scene_refresh(tmp_path):
+    c = coordinator(tmp_path)
+    task = c.create_task(task_description="resume refreshed recovery", verification=TaskVerificationContract(mode="off"))
+    graph = make_graph(task.task_id, "revision-refresh-resume", ("arrange-red", "verify"))
+    c.expand_discovery_revision(task.task_id, plan_graph=graph, plan_graph_ref="artifact://plans/recovery/refresh-resume")
+    current_scene = {"value": "scene-1"}
+
+    def execute(context):
+        failed = context.revision_id == graph.revision_id
+        return ToolResultEnvelope(
+            task_id=context.task_id,
+            revision_id=context.revision_id,
+            node_id=context.node_id,
+            tool_id="object.arrange",
+            status="failed" if failed else "succeeded",
+            world_changed=failed,
+            world_change_started=True if failed else None,
+            new_scene_revision="scene-2" if failed else None,
+            failure_code="object_dropped" if failed else None,
+            evidence_refs=() if context.node_id == "verify" else ("placed:arrange-red",),
+        )
+
+    def replan(_graph, _settlement, delta, _context):
+        return ReplanProposal(
+            delta=delta,
+            plan_graph=make_graph(task.task_id, "revision-refresh-resumed", ("arrange-red", "verify")),
+            plan_graph_ref="artifact://plans/recovery/refresh-resumed",
+        )
+
+    adapter = PlanningLoopAdapter(
+        c,
+        context_provider=NodeContextProvider(c.get_task),
+        node_executor=execute,
+        admission_context_provider=lambda _: AdmissionContext(
+            scene_revision=current_scene["value"], evidence_refs=frozenset({"scene:inventory"})
+        ),
+        replan_proposer=replan,
+        recovery_policy=lambda *_: "replan",
+    )
+    blocked = asyncio.run(adapter.run(task.task_id, scene_revision="scene-1"))
+    assert blocked.last_failure == "scene_refresh_required:scene-2"
+
+    current_scene["value"] = "scene-2"
+    resumed = asyncio.run(adapter.run(task.task_id, scene_revision="scene-2"))
+    assert resumed.status == "completed"
+    assert c.get_task(task.task_id).active_revision.retry_parent_node_id == "arrange-red"
+
+
+def test_unknown_outcome_cannot_enter_execution_replan(tmp_path):
+    c = coordinator(tmp_path)
+    task = c.create_task(task_description="reconcile unknown", verification=TaskVerificationContract(mode="off"))
+    graph = make_graph(task.task_id, "revision-unknown-replan", ("arrange-red", "verify"))
+    c.expand_discovery_revision(task.task_id, plan_graph=graph, plan_graph_ref="artifact://plans/recovery/unknown")
+    proposals = {"count": 0}
+
+    def execute(context):
+        return ToolResultEnvelope(
+            task_id=context.task_id,
+            revision_id=context.revision_id,
+            node_id=context.node_id,
+            tool_id="object.arrange",
+            status="unknown",
+            world_change_started=True,
+            outcome_known=False,
+            failure_code="transport_lost",
+        )
+
+    def replan(*_):
+        proposals["count"] += 1
+        raise AssertionError("unknown outcome must reconcile before execution replan")
+
+    result = asyncio.run(PlanningLoopAdapter(
+        c,
+        context_provider=NodeContextProvider(c.get_task),
+        node_executor=execute,
+        admission_context_provider=lambda _: AdmissionContext(
+            scene_revision="scene-1", evidence_refs=frozenset({"scene:inventory"})
+        ),
+        replan_proposer=replan,
+        recovery_policy=lambda *_: "replan",
+    ).run(task.task_id, scene_revision="scene-1"))
+    assert result.status == "blocked"
+    assert result.last_failure == "reconciliation_required:arrange-red"
+    assert proposals["count"] == 0
+
+
+def test_replan_receives_refreshed_scene_context(tmp_path):
+    c = coordinator(tmp_path)
+    task = c.create_task(task_description="refresh planner context", verification=TaskVerificationContract(mode="off"))
+    graph = make_graph(task.task_id, "revision-refresh-context", ("arrange-red", "verify"))
+    c.expand_discovery_revision(task.task_id, plan_graph=graph, plan_graph_ref="artifact://plans/recovery/refresh-context")
+    admission_calls = {"count": 0}
+    proposed_scenes: list[str] = []
+
+    def admission(_task_id):
+        admission_calls["count"] += 1
+        return AdmissionContext(
+            scene_revision="scene-1" if admission_calls["count"] == 1 else "scene-2",
+            evidence_refs=frozenset({"scene:inventory"}),
+        )
+
+    def execute(context):
+        failed = context.revision_id == graph.revision_id
+        return ToolResultEnvelope(
+            task_id=context.task_id,
+            revision_id=context.revision_id,
+            node_id=context.node_id,
+            tool_id="object.arrange",
+            status="failed" if failed else "succeeded",
+            world_changed=failed,
+            world_change_started=True if failed else None,
+            new_scene_revision="scene-2" if failed else None,
+            failure_code="object_dropped" if failed else None,
+            evidence_refs=() if context.node_id == "verify" else ("placed:arrange-red",),
+        )
+
+    def replan(_graph, _settlement, delta, context):
+        proposed_scenes.append(context.scene_revision)
+        return ReplanProposal(
+            delta=delta,
+            plan_graph=make_graph(task.task_id, "revision-refresh-context-retry", ("arrange-red", "verify")),
+            plan_graph_ref="artifact://plans/recovery/refresh-context-retry",
+        )
+
+    result = asyncio.run(PlanningLoopAdapter(
+        c,
+        context_provider=NodeContextProvider(c.get_task),
+        node_executor=execute,
+        admission_context_provider=admission,
+        replan_proposer=replan,
+        recovery_policy=lambda *_: "replan",
+    ).run(task.task_id, scene_revision="scene-1"))
+    assert result.status == "completed"
+    assert proposed_scenes == ["scene-2"]
+
+
+def test_replan_persists_retry_parent_lineage_on_new_revision(tmp_path):
+    c = coordinator(tmp_path)
+    task = c.create_task(task_description="persist retry lineage", verification=TaskVerificationContract(mode="off"))
+    graph = make_graph(task.task_id, "revision-lineage", ("arrange-red", "verify"))
+    c.expand_discovery_revision(task.task_id, plan_graph=graph, plan_graph_ref="artifact://plans/recovery/lineage/1")
+
+    def execute(context):
+        return ToolResultEnvelope(
+            task_id=context.task_id,
+            revision_id=context.revision_id,
+            node_id=context.node_id,
+            tool_id="object.arrange",
+            status="failed" if context.revision_id == graph.revision_id else "succeeded",
+            failure_code="gripper_slip" if context.revision_id == graph.revision_id else None,
+            evidence_refs=() if context.node_id == "verify" else ("placed:arrange-red",),
+        )
+
+    def replan(_graph, _settlement, delta, _context):
+        replacement = make_graph(task.task_id, "revision-lineage-retry", ("arrange-red", "verify"))
+        return ReplanProposal(
+            delta=delta,
+            plan_graph=replacement,
+            plan_graph_ref="artifact://plans/recovery/lineage/2",
+        )
+
+    result = asyncio.run(PlanningLoopAdapter(
+        c,
+        context_provider=NodeContextProvider(c.get_task),
+        node_executor=execute,
+        admission_context_provider=lambda _: AdmissionContext(
+            scene_revision="scene-1", evidence_refs=frozenset({"scene:inventory"})
+        ),
+        replan_proposer=replan,
+        recovery_policy=lambda *_: "replan",
+    ).run(task.task_id, scene_revision="scene-1"))
+    assert result.status == "completed"
+    assert c.get_task(task.task_id).active_revision.retry_parent_node_id == "arrange-red"
+
+
 def test_replan_budget_is_enforced(tmp_path):
     c = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=object(), verifier=None, max_replans=0)
     task = c.create_task(task_description="budget", verification=TaskVerificationContract(mode="off"))
@@ -414,6 +771,51 @@ def test_planner_plugin_registry_is_explicit_and_separate():
     registry.register(DemoPlugin())
     assert registry.get("demo").version == "1"
     assert registry.discover() == ("demo",)
+
+
+def test_agent_loop_controller_without_planner_defaults_to_stop(tmp_path):
+    c = coordinator(tmp_path)
+    loop = object.__new__(AgentLoop)
+    loop.forge_task_coordinator = c
+    loop._planning_context_provider = lambda _: AdmissionContext(scene_revision="scene-1")
+    loop._planner_plugin = None
+
+    controller = loop.build_long_horizon_controller()
+
+    assert controller.adapter is not None
+    assert controller.adapter.replan_proposer is None
+    assert controller.adapter.recovery_policy is None
+
+
+def test_agent_loop_controller_wires_optional_planner_recovery_policy(tmp_path):
+    class DemoPlugin:
+        def compose_plan(self, **kwargs):
+            return kwargs["request"]
+
+        def propose_replan(self, **kwargs):
+            return kwargs["context"]
+
+        def select_recovery(self, **kwargs):
+            return "replay" if kwargs["settlement"].status == "outcome_unknown" else "replan"
+
+    c = coordinator(tmp_path)
+    loop = object.__new__(AgentLoop)
+    loop.forge_task_coordinator = c
+    loop._planning_context_provider = lambda _: AdmissionContext(scene_revision="scene-1")
+    loop._planner_plugin = DemoPlugin()
+
+    controller = loop.build_long_horizon_controller()
+
+    assert controller.adapter is not None
+    assert controller.adapter.replan_proposer is not None
+    assert controller.adapter.recovery_policy is not None
+    settlement = NodeSettlement(
+        task_id="task-1",
+        revision_id="revision-1",
+        node_id="node-1",
+        status="outcome_unknown",
+    )
+    assert controller.adapter.recovery_policy(None, settlement, None, None) == "replay"
 
 
 def test_planner_request_supports_task_only_or_agent_selected_context():
