@@ -1,0 +1,15 @@
+route-input-profile: ${PAOS_ROBOTWIN20_ADAPTER_ROOT}/profiles/robotwin20/route-inputs-persistent.yaml
+grasp-transform-attestation: ${PAOS_ROBOTWIN20_ADAPTER_ROOT}/profiles/robotwin20/graspgen-tool-transform.json
+grasp-provider-source-root: ${GRASPGEN_SOURCE_ROOT}
+simulation-probe-profile: ${PAOS_ROBOTWIN20_ADAPTER_ROOT}/profiles/robotwin20/simulation-probe.yaml
+simulation-probe-worker: ${PAOS_ROBOTWIN20_ADAPTER_ROOT}/runtime/robotwin_simulation_probe_worker.py
+runtime-profile: ${ROBOTWIN20_RUNTIME_PROFILE}
+arm-planning-profile: ${PAOS_ROBOTWIN20_ADAPTER_ROOT}/profiles/robotwin20/manipulation-planning.yaml
+left-motion-capability: ${ROBOTWIN20_LEFT_MOTION_CAPABILITY}
+right-motion-capability: ${ROBOTWIN20_RIGHT_MOTION_CAPABILITY}
+left-motion-capability-validation: ${ROBOTWIN20_LEFT_MOTION_CAPABILITY_VALIDATION}
+right-motion-capability-validation: ${ROBOTWIN20_RIGHT_MOTION_CAPABILITY_VALIDATION}
+controller-qualification: ${ROBOTWIN20_CONTROLLER_QUALIFICATION}
+controller-qualification-plan: ${ROBOTWIN20_CONTROLLER_QUALIFICATION_PLAN}
+controller-qualification-evidence: ${ROBOTWIN20_CONTROLLER_QUALIFICATION_EVIDENCE}
+controller-qualification-validation: ${ROBOTWIN20_CONTROLLER_QUALIFICATION_VALIDATION}

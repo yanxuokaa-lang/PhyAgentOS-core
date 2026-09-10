@@ -522,3 +522,52 @@ the first step and on every step. Trajectory commands settle through
 zero-velocity arm hold. Native controller, changed source, stale approval, input digest drift,
 or normalized gripper values outside `[0, 1]` fail closed. This remains simulation-only and
 never grants PAOS Gateway, benchmark, or hardware motion authority.
+
+### Persistent Tool host development deployment
+
+`profiles/forge-persistent/` runs the existing seven Tool endpoints behind one
+Gateway-compatible HTTP transport while retaining one RoboTwin worker and world for the
+host process lifetime. Startup sends one read-only `snapshot` to create and validate the
+world. It does not create an Action or issue motion. `object.acquire` and `object.place`
+remain subject to their existing preparation, approval, ownership, and Runtime admission.
+
+Set the deployment-owned paths and provider configuration before starting the development
+flow:
+
+```bash
+export PAOS_ROBOTWIN20_FORGE_ROOT=/home/yanxu/PhyAgentOS-forge
+export PAOS_ROBOTWIN20_ADAPTER_ROOT="$PAOS_ROBOTWIN20_FORGE_ROOT/examples/forge-adapters/robotwin20"
+export ROBOTWIN20_PAOS_PYTHON=/home/yanxu/miniconda3/envs/paos/bin/python
+export ROBOTWIN20_WORKER_PYTHON=/home/yanxu/miniconda3/envs/RoboTwin20/bin/python
+export ROBOTWIN20_MATERIALIZER_PYTHON="$ROBOTWIN20_PAOS_PYTHON"
+export ROBOTWIN20_RUNTIME_ROOT=/home/yanxu/robotwin20-runtime/RoboTwin
+export ROBOTWIN20_RUNTIME_PROFILE="$PAOS_ROBOTWIN20_ADAPTER_ROOT/profiles/robotwin20/franka-blocks-ranking.yaml"
+export ROBOTWIN20_ARTIFACT_ROOT=/absolute/path/to/a/new/artifact-root
+export ROBOTWIN20_PERCEPTION_PROFILE="$PAOS_ROBOTWIN20_ADAPTER_ROOT/profiles/robotwin20/perception.yaml"
+export ROBOTWIN20_GRASP_PROFILE="$PAOS_ROBOTWIN20_ADAPTER_ROOT/profiles/robotwin20/graspgen.yaml"
+export ROBOTWIN20_MATERIALIZER_ARGUMENTS="$PAOS_ROBOTWIN20_ADAPTER_ROOT/profiles/robotwin20/persistent-materializer.yaml"
+export ROBOTWIN20_MODEL_API_BASE=https://api.openai.com/v1
+export ROBOTWIN20_MODEL=gpt-5
+export ROBOTWIN20_MODEL_API_KEY=...
+```
+
+The perception, GraspGen, route, controller-qualification, and motion-capability variables
+referenced by those profiles must also be set. Then run from the development profile
+directory:
+
+```bash
+cd "$PAOS_ROBOTWIN20_ADAPTER_ROOT/profiles/forge-persistent"
+dora run dataflow.yaml
+```
+
+The HTTP Tool API listens on `127.0.0.1:19020`; `GET /tools` is the readiness probe. A
+lost worker connection changes newly discovered/admitted Tool context to `ready=false`.
+The host serializes HTTP dispatch because all endpoints share the same world. SIGINT or
+SIGTERM closes both the HTTP server and the persistent worker.
+
+This is an adapter-owned source-tree deployment template, not a published manifest-v2
+Skill profile. The pick-place Bundle must not reference it until a self-contained,
+immutable `robotwin20_persistent_host` Node artifact has been built and published. The
+controlled integration tests exercise the full AgentTask/Action/Verifier protocol with a
+deterministic persistent worker seam; they do not run model inference, RoboTwin motion, or
+hardware.

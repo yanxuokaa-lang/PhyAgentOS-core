@@ -261,6 +261,7 @@ class MultiObjectAgentRunner:
                 subtask_id=f"relocate_{index + 1}",
                 entity_ref=item.entity_ref,
                 destination_ref=item.destination_ref,
+                depends_on=((f"relocate_{index}",) if index else ()),
                 required_evidence=item.required_evidence,
                 context_bindings=(
                     ("benchmark_object_ref", item.benchmark_object_ref),

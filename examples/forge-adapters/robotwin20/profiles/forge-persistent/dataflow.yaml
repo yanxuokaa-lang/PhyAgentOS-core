@@ -1,0 +1,10 @@
+# Development deployment template. A formal manifest-v2 Skill profile must
+# replace both source paths with a published robotwin20_persistent_host Node.
+nodes:
+  - id: robotwin20_persistent_host
+    path: ${ROBOTWIN20_PAOS_PYTHON}
+    args: -m robotwin20_adapter.persistent_host --profile persistent-host.yaml
+    env:
+      PYTHONPATH: ${PAOS_ROBOTWIN20_FORGE_ROOT}:${PAOS_ROBOTWIN20_ADAPTER_ROOT}/src:${PAOS_ROBOTWIN20_FORGE_ROOT}/examples/forge-skills/pick-place-workflow/src
+    inputs:
+      tick: dora/timer/millis/1000

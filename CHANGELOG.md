@@ -8,6 +8,45 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v9.1.0 (2026-09-10 12:38) - codex
+
+- [完成] [runtime] [feat] 新增 adapter-owned persistent host 和源码树开发 dataflow，组合一个 worker/client/world、既有 deployment、七个 Tool 与标准 HTTP transport；startup snapshot 无 Action，失联 not-ready，请求串行，关闭释放 worker。(local)
+- [Completed] [Runtime] [Feat] Add an adapter-owned persistent host and source-tree development dataflow composing one worker/client/world, the existing deployment, seven Tools, and standard HTTP transport; startup snapshot creates no Action, disconnect is not-ready, requests are serialized, and shutdown releases the worker. (local)
+- [完成] [policy] [fix] 后续 relocation 的 observe 显式依赖前一对象 place；两对象各走完整七 Tool，Action terminal 后推进，最终 Verifier 在 Runtime 最后 revision 汇合。(local)
+- [Completed] [Policy] [Fix] Make each later relocation observe depend on the previous object's place; both objects run all seven Tools, advance only after terminal Actions, and join the final Verifier on the Runtime's last revision. (local)
+- [完成] [docs] [docs] 记录开发部署和六维验收；正式 manifest-v2 profile 因缺少已发布 Node artifact 保持未注册，进化关闭，不宣称真实运动。(local)
+- [Completed] [Docs] [Docs] Document development deployment and six-dimensional acceptance; keep the formal manifest-v2 profile unregistered pending a published Node artifact, keep evolution disabled, and make no real-motion claim. (local)
+
+### 文件变更详情 / File Details
+
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_host.py` L1-L434；`profiles/forge-persistent/dataflow.yaml` L1-L10；`profiles/forge-persistent/persistent-host.yaml` L1-L30；`profiles/robotwin20/persistent-materializer.yaml` L1-L15：持久 host、开发 dataflow 和外部配置。
+- `examples/forge-adapters/robotwin20/tests/test_persistent_host.py` L1-L297；`examples/forge-adapters/robotwin20/tests/test_persistent_agent_loop.py` L1-L577：host 生命周期与完整多对象闭环测试。
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/multi_object_agent.py` L260-L284；`examples/forge-skills/pick-place-workflow/tests/test_multi_object_agent.py` L242-L270：对象间 PlanGraph 顺序依赖与断言。
+- `examples/forge-adapters/robotwin20/README.md` L526-L573；`docs/forge/PERSISTENT_MULTI_PICK_PLACE_STATUS_20260909.md` L331-L373：部署说明、状态与证据边界。
+
+### 关键 Diff / Key Diff
+
+```diff
++depends_on=((f"relocate_{index}",) if index else ())
++snapshot = client.query("snapshot", {})
++bundle = build_persistent_runtime_bundle(..., client=client, tool_context_provider=context)
++with dispatch_lock:
++    response = asyncio.run(transport.handle_async_request(request))
+```
+
+### 六维验收 / Six-Dimensional Acceptance
+
+Architecture, failure paths, authority/safety, configuration/reproducibility, maintainability, and observability PASS for the controlled persistent seam. Evidence includes explicit PlanGraph ordering, terminal Action reconciliation, lost-transport/bind-failure handling, profile-owned configuration, one shared Runtime/world, 15 Tool records, four invocation/attempt identities, and one final Verifier verdict. Real model inference, RoboTwin motion, hardware, and formal Bundle publication are outside this acceptance.
+
+### 验证 / Validation
+
+- Focused `5 passed`; persistent `34 passed`; PlanningLoop `25 passed`; workflow `317 passed`; core `297 passed`; complete adapter `422 passed, 1 skipped`.
+- Ruff, compileall, three YAML parses, and `git diff --check` passed.
+
+### Git 提交 / Git Commit
+
+- Commit: `(pending)`; Branch: `feature/planning-loop`。
+
 ## v9.0.0 (2026-09-10 12:14) - codex
 
 - [完成] [policy] [feat] 将失败恢复拆分为 `stop/replay/replan`，只允许 completed 节点推进；执行性 replan 使用刷新后的 scene、新 PlanRevision 和 retry lineage。(local)
@@ -101,67 +140,6 @@ Architecture, failure paths, authority/safety, configuration/reproducibility, ma
 ### Git 提交 / Git Commit
 
 - Commit: `f01814c`; Branch: `feature/planning-loop`; 时间 / Time: 2026-09-09 (Asia/Shanghai)。
-
-## v8.7.0 (2026-09-09 22:25) - codex
-
-### 变更摘要 / Change Summary
-
-- [完成] [policy] [feat] 增加 provider-neutral 的语义理解到当前场景测量事实绑定层：校验实体身份、目的地、scene/frame/calibration、几何产物和歧义，并复用现有 `SceneObjectBinding`/`bind_scene_objects`，不新增 scheduler、Task Store、provider 直连或 motion authority。(local)
-- [Completed] [Policy] [Feat] Add a provider-neutral binding seam from scene-understanding claims to current measured-scene facts, validating entity identity, destination, scene/frame/calibration, geometry artifacts, and ambiguity while reusing `SceneObjectBinding`/`bind_scene_objects`; no scheduler, Task Store, provider direct access, or motion authority. (local)
-- [完成] [eval] [test] 增加单对象语义选择、多对象唯一绑定、重复/歧义/过期/几何证据漂移失败路径测试，并验证绑定结果进入同一个 AgentTask PlanGraph。(local)
-- [Completed] [Eval] [Test] Add tests for single-object semantic selection, multi-object unique binding, duplicate/ambiguity/stale/geometry-drift failures, and propagation of resolved bindings into one AgentTask PlanGraph. (local)
-
-### 文件变更详情 / File Details
-
-- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/multi_object_agent.py` L104-L221 [新增 / Added]: 语义实体与当前测量事实绑定，拒绝歧义、身份重复、场景漂移和重复 geometry artifact / bind semantic entities to measured facts and reject ambiguity, duplicate identities, scene drift, and duplicate geometry artifacts.
-- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/multi_object_agent.py` L311-L380 [新增 / Added]: 通过既有 runner、Coordinator 和 PlanGraph 创建或运行语义理解任务 / create or run understanding-backed tasks through the existing runner, Coordinator, and PlanGraph.
-- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/__init__.py` L39-L45, L120-L124 [修改 / Modified]: 导出语义绑定入口 / export the semantic binding entry point.
-- `examples/forge-skills/pick-place-workflow/tests/test_multi_object_agent.py` L160-L226 [新增 / Added]: 覆盖语义选择、唯一绑定、重复 artifact、漂移失败和 PlanGraph 传播 / cover semantic selection, unique binding, duplicate artifacts, drift failures, and PlanGraph propagation.
-
-### 关键 Diff / Key Diff
-
-```diff
-- derived_by_ref = {item.get("artifact_ref"): item for item in derived ...}
-+ for item in derived:
-+     if not isinstance(item, Mapping) or not isinstance(item.get("artifact_ref"), str):
-+         raise MultiObjectAgentError("scene understanding geometry evidence is invalid")
-+     artifact_ref = item["artifact_ref"]
-+     if artifact_ref in derived_by_ref:
-+         raise MultiObjectAgentError("scene understanding geometry artifact identities are invalid")
-+     derived_by_ref[artifact_ref] = item
-```
-
-```diff
-+ entities = bind_understood_scene_objects(
-+     understanding, measured_objects, entity_refs=entity_refs, category=category,
-+ )
-+ return await self.create_task(
-+     task_description=task_description, entities=entities, verification=verification,
-+     task_id=task_id, revision_id=revision_id,
-+ )
-```
-
-### 六维验收 / Six-Dimensional Acceptance
-
-| 维度 / Dimension | 结果 / Result | 证据 / Evidence |
-| --- | --- | --- |
-| 架构集成 / Architecture | PASS（provider-neutral dry-run） | 语义绑定进入现有 `MultiObjectAgentRunner -> AgentTaskCoordinator -> PlanGraph`，无第二 scheduler、Task Store 或 provider 直连。 |
-| 失败路径 / Failure paths | PASS | 覆盖 unavailable、ambiguity、重复 entity/measured/artifact、unknown selection、scene/frame/calibration/geometry drift 和缺失测量事实。 |
-| 权限与安全 / Authority and safety | PASS（范围内） | 绑定层不调用 Action、不授予 motion authority；真实 Runtime、SAPIEN 和硬件未启动。 |
-| 配置与复现 / Configuration and reproducibility | PASS（dry-run） | entity、benchmark object、destination、observation、scene revision、frame、calibration、geometry 和 optional evidence 进入 PlanGraph bindings。 |
-| 可维护性 / Maintainability | PASS | 复用 `SceneObjectBinding`、`bind_scene_objects`、既有 runner/Coordinator，无平行执行路径。 |
-| 可观察性 / Observability | PASS（dry-run） | 绑定结果和 evidence refs 可从 PlanGraph 节点读取，失败原因明确。 |
-
-### 验证 / Validation
-
-- 聚焦 / Focused: `19 passed`。
-- 广域回归 / Broad regression: `778 passed, 1 skipped`。
-- Ruff、compileall、`git diff --check`: passed。
-- 证据范围 / Evidence scope: provider-neutral/dry-run semantic binding and PlanGraph propagation only; no claim of real robot motion, live Action completion, or field Verifier success.
-
-### Git 提交 / Git Commit
-
-- Commit: `22f3057`; Branch: `feature/planning-loop`; 时间 / Time: 2026-09-09 (Asia/Shanghai).
 
 ## v8.4.5 (2026-09-09 21:20) - codex
 

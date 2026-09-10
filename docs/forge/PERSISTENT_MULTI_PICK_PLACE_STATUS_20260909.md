@@ -327,3 +327,47 @@ Six-dimensional status: architecture remains incomplete (Agent entry and install
 | 配置与复现 | 通过；事实字段和 plan artifact ref 显式输入 |
 | 可维护性 | 通过；baseline/semantic 模式显式分离，无第二 scheduler |
 | 可观察性 | 部分；任务/PlanRevision 可追踪，真实 Action/Verifier receipts 待补 |
+
+## v9.1.0 受控持久 Agent Loop 集成 / Controlled Persistent Agent Loop Integration
+
+2026-09-10：adapter-owned `persistent_host` 现在从外部 profile 构造一个
+`JsonlProcessWorkerClient -> PersistentWorkerClient`、既有 preparation/capability/route
+deployment、七个 Tool 以及 `CapabilityRuntimeTransport`。启动只执行一次只读
+`snapshot` 来创建和校验世界，不创建 Action、不授予 motion；HTTP 请求在共享 Runtime
+边界串行化，transport 丢失后新的 Tool discovery/admission 显式变为 `ready=false`。
+
+新增集成测试从一个 AgentTask 的两个语义 relocation 开始，经现有 PlanGraph 和
+PlanningLoop 调用真实 `build_persistent_runtime_bundle` Action endpoints。每个 acquire
+和 place 都有独立 invocation/attempt，必须获得 terminal settlement 才能推进。第一个
+对象的 place 更新当前现场后，第二个对象的 observe 使用该新 revision；第二次 place
+再次更新现场，最终 Verifier 只在最后 revision 调用一次并聚合全部 Action facts。
+测试中的 revision 由持久 worker 依次生成 `runtime-0` 到 `runtime-4`，它们是 opaque
+Runtime facts，不是业务代码写死的 `scene://s2`/`scene://s3`。
+
+这完成了受控 persistent seam 下的多对象 Agent Loop 集成验收，但不等于真实
+RoboTwin 运动验收。本轮没有运行 GPT/LocateAnything/SAM2/GraspGen 全链，没有执行
+RoboTwin acquire/place 仿真运动，也没有接触硬件。真实 provider 的规划、批准和执行
+仍必须通过已有 motion admission；失败、unknown 或失联不会自动推进下一节点，可由
+既有 recovery policy 选择 stop、只读 replay 或新 PlanRevision replan。进化模块未接入。
+
+`profiles/forge-persistent/dataflow.yaml` 是源码树开发部署模板。它没有加入
+pick-place `skill.yaml`，因为仓库尚未发布自包含、不可变的
+`robotwin20_persistent_host` Node artifact；在该 artifact 发布前，不应把开发模板称为
+可安装的 manifest-v2 Bundle profile。
+
+### v9.1.0 六维验收 / Six-Dimensional Acceptance
+
+| 维度 / Dimension | 结果 / Result | 证据 / Evidence |
+| --- | --- | --- |
+| 架构集成 / Architecture | PASS | 单一 AgentTask、现有 PlanningLoop、单一 persistent client/world、现有 Runtime/Gateway/Verifier；无第二 scheduler、Task Store 或 Runtime 状态库。 |
+| 失败路径 / Failure paths | PASS | 每个 Action 等待 terminal；lost transport 投影 `ready=false`；既有 failed/unknown/cancelled recovery 保持 stop/replay/replan，失败不自动推进。 |
+| 权限安全 / Authority and safety | PASS | startup 仅只读 snapshot，Tool context 保持 `motion_authorized=false`；测试无模型、仿真运动或硬件调用。 |
+| 配置复现 / Configuration and reproducibility | PASS | host、worker、provider、materializer 与 artifact 路径全部来自 profile/env；测试使用确定性 persistent seam 和显式 scene/action facts。 |
+| 可维护性 / Maintainability | PASS | host 位于 adapter ownership 边界并复用七个 Tool、persistent deployment 与通用 Runtime；未把源码路径塞入正式 Skill manifest。 |
+| 可观察性 / Observability | PASS | scene revision、invocation/attempt、terminal result、NodeSettlement、最终 Verifier 输入/verdict 均有断言；启动 profile 和运行产物保存在 artifact root。 |
+
+聚焦 host/Agent Loop：`5 passed`；persistent adapter：`34 passed`；core：
+`297 passed`；完整 RoboTwin adapter：`422 passed, 1 skipped`；pick-place
+workflow：`317 passed`。变更文件 Ruff、compileall、YAML 解析和
+`git diff --check` 均通过。
+正式 Bundle Node 发布、真实模型链、真实 RoboTwin 多对象 Action 和硬件仍未验收。

@@ -265,6 +265,8 @@ async def test_runner_creates_one_task_with_all_object_obligations(tmp_path):
         "geometry_artifact_ref": "artifact://geometry/green",
     }
     assert bindings["relocate_2.place"]["geometry_artifact_ref"] == "artifact://geometry/red"
+    nodes = {node.node_id: node for node in graph.nodes}
+    assert nodes["relocate_2.observe"].dependencies == ("relocate_1.place",)
     assert len(task.revisions) == 1
 
 
