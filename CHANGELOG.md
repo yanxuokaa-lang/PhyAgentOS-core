@@ -163,41 +163,6 @@ Architecture, failure paths, authority/safety, configuration/reproducibility, ma
 
 - Commit: `22f3057`; Branch: `feature/planning-loop`; 时间 / Time: 2026-09-09 (Asia/Shanghai).
 
-## v8.5.0 (2026-09-09 21:22) - codex
-
-### 变更摘要 / Change Summary
-
-- [完成] [policy] [feat] 通过现有 Coordinator/Gateway 驱动 task-bound Action 的 status/result 轮询、terminal 对账和 unknown 保留；不新增 scheduler、Task Store 或 motion authority。(local)
-- [Completed] [Policy] [Feat] Drive task-bound Action status/result polling, terminal reconciliation, and preserved unknown outcomes through the existing Coordinator/Gateway; no new scheduler, Task Store, or motion authority. (local)
-- [完成] [eval] [test] 增加单对象生命周期失败路径和双对象连续 acquire/place dry-run，验证 `scene://s0 -> scene://s2 -> scene://s3` 与最终 verify 汇合。(local)
-- [Completed] [Eval] [Test] Add lifecycle failure-path coverage and a two-object continuous acquire/place dry-run proving `scene://s0 -> scene://s2 -> scene://s3` and final verify convergence. (local)
-
-### 文件变更详情 / File Details
-
-- `PhyAgentOS/agent/planning_loop.py` L147-L319 [新增 / Added]: Agent turn 后经现有 Gateway 轮询 Action，并把 terminal/unknown 结果交回 Coordinator。
-- `PhyAgentOS/forge/task.py` L1328-L1339, L2161-L2187 [修改 / Modified]: 持久化 unknown execution 并解析 status/phase/state/pending。
-- `tests/test_planning_effect_recovery.py` L114-L285 [新增 / Added]: success、failed、unknown、poll budget、Gateway failure、unconfirmed stop 和不重发覆盖。
-- `examples/forge-skills/pick-place-workflow/tests/test_multi_object_agent.py` L246-L397 [新增 / Added]: 真实 Runtime transport 组合下的双对象连续 Action 与 scene revision 传播。
-
-### 关键 Diff / Key Diff
-
-```diff
-+await self._reconcile_actions(context.task_id, context.node_id)
-+status = await self.coordinator.client.invocation_status(record.invocation_id)
-+result = await self.coordinator.client.invocation_result(record.invocation_id)
-+self.coordinator.observe_action(task_id, record.invocation_id, result)
-```
-
-### 验证 / Validation
-
-- Focused `51 passed`; full PAOS `tests` `286 passed`; Ruff、compileall、`git diff --check` passed。
-- 六维验收：架构集成、失败路径、权限与安全、配置与复现、可维护性、可观察性均在 provider-neutral dry-run 范围内 PASS；不宣称真实硬件或现场 Verifier 成功。
-
-### Git 提交 / Git Commit
-
-- Commit: `36caf10` (implementation commit; metadata follow-up below)。
-- Branch: `feature/planning-loop`; 时间 / Time: 2026-09-09 (Asia/Shanghai)。
-
 ## v8.4.5 (2026-09-09 21:20) - codex
 
 ### 变更摘要 / Change Summary
