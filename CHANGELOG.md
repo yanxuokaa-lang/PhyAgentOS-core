@@ -14,7 +14,7 @@
 - [完成] [policy] [feat] 记录实际 Skill-use 的激活版本、指令快照和决策/节点/尝试 lineage；任务创建允许 Runtime-only，Experience 与 Verifier 接收归因元数据。(local)
 - [Completed] [Policy] [Feat] Record actual Skill-use activation versions, instruction snapshots, and decision/node/attempt lineage; allow Runtime-only task creation and expose attribution metadata to Experience and Verifier. (local)
 - Files: `PhyAgentOS/forge/task.py` L93-L205,L299-L315,L850-L1040,L1980-L2040; Agent tool/loop, Experience, recovery, and Verifier consumers. Validation: 657 tests passed; focused set 72 passed; Ruff passed.
-- Scope: evolution and live Runtime/task migration remain disabled. Commit: pending.
+- Scope: evolution and live Runtime/task migration remain disabled. Commit: `5e74947`.
 
 ## v9.6.0 (2026-09-11 17:05) - codex
 
