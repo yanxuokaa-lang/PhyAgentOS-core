@@ -12,7 +12,11 @@ from PhyAgentOS.agent.loop import AgentLoop
 from PhyAgentOS.agent.plan_proposal import compile_task_plan
 from PhyAgentOS.agent.planning_loop import _planning_record_status
 from PhyAgentOS.agent.recovery_decisions import AgentRecoveryDecisions
-from PhyAgentOS.agent.tools.forge_task import ForgeTaskMaterializePlanTool
+from PhyAgentOS.agent.tools.forge_task import (
+    ForgeTaskClarificationTool,
+    ForgeTaskGetTool,
+    ForgeTaskMaterializePlanTool,
+)
 from PhyAgentOS.bus.queue import MessageBus
 from PhyAgentOS.config.schema import ForgeConfig
 from PhyAgentOS.forge.binding import BoundToolSpec, ForgeSkillBinding
@@ -98,6 +102,30 @@ def test_semantic_submission_rejects_cycle_undeclared_capability_and_ambiguous_i
     with pytest.raises(ValueError, match="either"):
         asyncio.run(ForgeTaskMaterializePlanTool(c).execute(task.task_id, nodes=[], plan_graph={}))
     assert len(c.get_task(task.task_id).revisions) == 1
+
+
+def test_forge_task_tool_responses_json_encode_nested_task_records(tmp_path):
+    """CLI-facing tools must return JSON after coordinator state is persisted."""
+
+    async def exercise():
+        c, task = setup_task(tmp_path)
+
+        fetched = json.loads(await ForgeTaskGetTool(c).execute(task.task_id))
+        assert fetched["ok"] is True
+        assert fetched["data"]["task_id"] == task.task_id
+
+        waiting = json.loads(
+            await ForgeTaskClarificationTool(c).execute(
+                task.task_id,
+                question="Which direction should be used?",
+                node_id="arrange",
+            )
+        )
+        assert waiting["ok"] is True
+        assert waiting["data"]["status"] == "waiting_for_user"
+        assert waiting["data"]["clarification_question"] == "Which direction should be used?"
+
+    asyncio.run(exercise())
 
 
 def test_activation_retains_instructions_when_source_changes(tmp_path):

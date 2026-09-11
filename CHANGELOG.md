@@ -8,6 +8,16 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v9.3.3 (2026-09-11 10:55) - codex
+
+- [完成] [runtime] [fix] 修复 Forge task 嵌套记录序列化，补齐感知依赖 readiness 与正式 dataflow 环境传递；Skill 更新至 0.10.5。(local)
+- [Completed] [Runtime] [Fix] Fix nested Forge task-record serialization, complete perception dependency readiness and formal dataflow environment propagation; update the Skill to 0.10.5. (local)
+
+### 验证 / Validation
+
+- JSON serialization regression passed; missing dependency start fails closed; Bundle 0.10.5 installed locally.
+- Recovery task retained Query-only evidence and zero Action/motion records; full scene understanding remained unavailable during Runtime cold-start, so RGB task success was not claimed.
+
 ## v9.3.2 (2026-09-11 10:58) - codex
 
 - [完成] [runtime] [fix] 修复正式 persistent dataflow 的 Dora 描述兼容性与 Node 内嵌环境变量，重新打包并启动 Runtime readiness。(local)

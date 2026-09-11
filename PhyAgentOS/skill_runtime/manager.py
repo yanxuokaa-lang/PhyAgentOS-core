@@ -60,7 +60,12 @@ class RuntimeManager:
         state_store: RuntimeStateStore | None = None,
         runtime_root: Path | None = None,
         logs_root: Path | None = None,
-        health_timeout_s: float = 30.0,
+        # Persistent robotics hosts may need to initialize a simulator worker
+        # before the HTTP gateway can answer /tools.  Thirty seconds caused the
+        # manager to SIGKILL otherwise healthy starts during measured cold
+        # starts, so keep the launch gate bounded but long enough for that
+        # required initialization.
+        health_timeout_s: float = 300.0,
         poll_interval_s: float = 0.25,
     ) -> None:
         self.catalog = catalog or SkillCatalog()

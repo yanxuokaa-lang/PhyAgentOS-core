@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import inspect
 import json
+from collections.abc import Mapping, Sequence
+from enum import Enum
 from typing import Any
 
 from PhyAgentOS.agent.tools.base import Tool
@@ -13,9 +15,28 @@ from PhyAgentOS.verification.contracts import TaskVerificationContract
 
 
 def _json(value: Any) -> str:
-    if hasattr(value, "model_dump"):
-        value = value.model_dump(mode="json", exclude_none=True)
-    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+    """Serialize tool responses, including Pydantic records nested in envelopes.
+
+    Forge coordinator methods return rich ``AgentTaskRecord`` instances.  Tool
+    responses wrap those records in a mapping (``{"ok": True, "data": ...}``),
+    so converting only the top-level value leaves the record for ``json.dumps``
+    and causes the CLI to fail after the state has already been persisted.
+    """
+
+    def safe(item: Any) -> Any:
+        if hasattr(item, "model_dump"):
+            return safe(item.model_dump(mode="json", exclude_none=True))
+        if isinstance(item, Mapping):
+            return {str(key): safe(child) for key, child in item.items()}
+        if isinstance(item, Sequence) and not isinstance(item, (str, bytes, bytearray)):
+            return [safe(child) for child in item]
+        if isinstance(item, (set, frozenset)):
+            return [safe(child) for child in item]
+        if isinstance(item, Enum):
+            return item.value
+        return item
+
+    return json.dumps(safe(value), ensure_ascii=False, separators=(",", ":"))
 
 
 class ForgeTaskCreateTool(Tool):
