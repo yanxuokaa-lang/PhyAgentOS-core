@@ -699,6 +699,8 @@ class SkillEvolutionManager:
                 raise SkillEvolutionError("update target Skill does not exist")
             base = self._new_skill_base(proposal)
 
+        if proposal.evolution_metadata.get("method_id"):
+            self._validate_extension_parent(candidate, builtin_baseline or base)
         managed = self._managed_block(proposal, candidate.target_revision)
         if candidate.proposal.evolution_metadata.get("method_id"):
             # Local revisions append their scoped advice without erasing other transitions.
@@ -755,6 +757,35 @@ class SkillEvolutionManager:
                 workspace_path.unlink(missing_ok=True)
             self.store.record_event("revision_rolled_back", candidate.candidate_id)
             raise
+
+    def _validate_extension_parent(self, candidate: SkillCandidate, content: str) -> None:
+        """Use frozen episode bindings, not the candidate's declared parent alone."""
+        roots: set[str] = set()
+        digests: set[str] = set()
+        for episode_id in candidate.supporting_episode_ids:
+            episode = self.store.get_episode(episode_id)
+            if episode is None:
+                raise SkillEvolutionError("candidate support lacks persisted episode binding")
+            if not episode.outcome.learnable or episode.verification_mode == "off":
+                raise SkillEvolutionError("candidate support lacks a learnable verified outcome")
+            activations = [
+                item for item in episode.skill_activations
+                if item.role == "primary" and item.skill_name == candidate.proposal.skill_name
+            ]
+            if len(activations) != 1:
+                raise SkillEvolutionError("candidate support must bind the target primary Skill")
+            activation = activations[0]
+            declared = candidate.proposal.evolution_metadata.get("parent_skill_revision")
+            if activation.skill_version is not None and declared != activation.skill_version:
+                raise SkillEvolutionError("candidate parent revision differs from episode binding")
+            roots.add(episode.root_task_id)
+            digests.add(activation.content_sha256)
+        if len(roots) < self.min_successful_episodes:
+            raise SkillEvolutionError("candidate lacks independent task support")
+        if len(digests) != 1:
+            raise SkillEvolutionError("candidate support spans different parent documents")
+        if hashlib.sha256(content.encode("utf-8")).hexdigest() not in digests:
+            raise SkillEvolutionError("candidate parent document changed; re-evaluation required")
 
     @staticmethod
     def _new_skill_base(proposal: SkillWorkflowProposal) -> str:

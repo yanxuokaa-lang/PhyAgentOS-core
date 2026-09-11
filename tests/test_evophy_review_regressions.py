@@ -123,3 +123,44 @@ def test_trace_requires_dependency_and_owner_evidence(monkeypatch):
     assert result.joint_cause_sets == (("a", "b"),)
     uncertain = records[0].model_copy(update={"owner_hypotheses": (owner.model_copy(update={"confidence": 0.1}),)})
     assert TraceAttributor().attribute("episode", (uncertain,)).ranked[0].owner == "unknown"
+
+
+@pytest.mark.parametrize("fault", ["missing", "changed", "supporting", "mixed_parent", "revision"])
+def test_parent_binding_fault_blocks_evaluated_candidate(tmp_path, monkeypatch, fault):
+    path = _write_skill(tmp_path)
+    coordinator = ExperienceCoordinator(
+        workspace=tmp_path, analyzer=_NoopAnalyzer(), min_successful_episodes=1,
+    )
+    adapter = EvolutionCandidateLifecycleAdapter(coordinator.store)
+    proposal = _proposal()
+    adapter.submit(proposal)
+    _record_promote_evaluation(adapter, proposal, monkeypatch)
+    if fault == "changed":
+        path.write_text(path.read_text() + "\nOperator updated workflow.\n")
+    else:
+        candidate = coordinator.store.get_candidate(proposal.candidate_id)
+        if fault == "missing":
+            candidate.supporting_episode_ids = ["missing-source-episode"]
+        elif fault == "revision":
+            candidate.proposal.evolution_metadata["parent_skill_revision"] = "different-parent"
+        else:
+            episode = coordinator.store.get_episode("episode-1")
+            activation = episode.skill_activations[0].model_copy(update={
+                "role": "supporting" if fault == "supporting" else "primary",
+                "content_sha256": "0" * 64,
+            })
+            other = episode.model_copy(update={
+                "episode_id": "other", "root_task_id": "other",
+                "skill_activations": [activation],
+            })
+            coordinator.store.create_episode(other, enqueue=False)
+            candidate.supporting_episode_ids = (
+                ["other"] if fault == "supporting" else ["episode-1", "other"]
+            )
+        coordinator.store.update_candidate(candidate, event_type="test_source_binding")
+    before = path.read_text()
+    result = coordinator.review_evolution_skill_candidate(proposal.candidate_id, reviewer_id="reviewer")
+    assert result.status == "blocked"
+    assert result.validation_errors
+    assert path.read_text() == before
+    coordinator.stop()

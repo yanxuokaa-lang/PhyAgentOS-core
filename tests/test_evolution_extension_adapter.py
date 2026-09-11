@@ -154,6 +154,30 @@ def _write_skill(tmp_path: Path, skill_name: str = "pick-and-place") -> Path:
 
 
 def _record_promote_evaluation(adapter, proposal, monkeypatch):
+    import hashlib
+
+    from PhyAgentOS.agent.experience.contracts import (
+        SkillActivation,
+        TaskEpisode,
+        TaskOutcomeEnvelope,
+    )
+
+    # Evaluation fixtures bind real persisted source episodes to the parent document.
+    workspace = adapter.store.path.parents[2]
+    content = (workspace / "skills" / proposal.skill_name / "SKILL.md").read_text()
+    for episode_id in adapter.store.get_candidate(proposal.candidate_id).supporting_episode_ids:
+        if adapter.store.get_episode(episode_id) is None:
+            adapter.store.create_episode(TaskEpisode(
+                episode_id=episode_id, root_task_id=episode_id, task_summary="Place object",
+                goal="Place object", outcome=TaskOutcomeEnvelope(
+                    task_id=episode_id, root_task_id=episode_id, goal="Place object", final_verdict="failure",
+                ),
+                skill_activations=[SkillActivation(
+                    activation_id=f"activation-{episode_id}", skill_name=proposal.skill_name,
+                    source="workspace", content_sha256=hashlib.sha256(content.encode()).hexdigest(),
+                    skill_version=proposal.skill_revision,
+                )],
+            ), enqueue=False)
     monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1] / "extensions" / "evolution"))
     from evolution import EvolutionExtension, EvolutionMethodRegistry
     from evolution.api import EvaluationMetrics, EvaluationReceipt

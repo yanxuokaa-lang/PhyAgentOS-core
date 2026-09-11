@@ -37,9 +37,12 @@ Patch synthesis still emits four deterministic advice templates. It cannot yet
 search alternative recovery strategies, show that the selected instruction
 changes Agent decisions, or execute structured add/replace/remove operations on
 a workflow DAG. Appending local advice avoids deleting learned transitions but
-does not solve conflicting advice, stale parent revisions, or patch retirement.
-Parent revision is retained as provenance, not yet checked against the deployed
-Skill's exact evaluated document. These are remaining acceptance requirements.
+does not solve conflicting advice or patch retirement. Promotion now resolves
+each support episode's primary activation, requires one shared parent document,
+and compares its existing digest with the current Skill before writing. Missing
+episodes, mixed parents, changed documents, and revision mismatches block the
+candidate. This binds publication to the source parent; an independent evaluator
+must still prove it actually ran that parent and the proposed candidate content.
 
 The next method evaluation should separate:
 
@@ -52,8 +55,8 @@ The next method evaluation should separate:
 4. Actual selected transition behavior, task outcomes, side effects, and cost
    after a new binding. Loading advice alone is not behavioral adoption.
 
-Real provider projections, an independent execution evaluator, and parent-version
-binding must be integrated before enabling automatic promotion. The explicit
+Real provider projections and an independent execution evaluator must be
+integrated before enabling automatic promotion. The explicit
 review boundary remains in place. No robot or simulator run was used for this
 review; fake-facts tests verify mechanics, not measured learning effectiveness.
 

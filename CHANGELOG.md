@@ -9,6 +9,37 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v10.0.1 (2026-09-11 23:52) - codex
+
+- [policy] [fix] [完成] 复用已有 activation 摘要与任务主键，校验扩展候选的 primary 归属、独立源任务和父文档一致性，拒绝过时父版本写入。(local)
+- [policy] [fix] [Done] Reused activation digests and task keys to validate primary ownership, independent source tasks and parent document consistency before extension publication. (local)
+- [eval] [fix] [完成] 评测 fixture 使用持久化源 episode；覆盖缺失绑定、父文档变化、supporting 归属、混合父文档和 revision 不匹配。(local)
+- [eval] [fix] [Done] Evaluation fixtures now persist source episodes; regressions cover missing bindings, changed documents, supporting ownership, mixed parents and revision mismatches. (local)
+
+### Files and Diff / 文件与差异
+
+- `PhyAgentOS/agent/experience/evolution.py` L702-L703,L761-L789: existing publication boundary resolves source activations and checks the parent.
+- `tests/test_evolution_extension_adapter.py` L157-L180: persisted source episode fixtures.
+- `tests/test_evophy_review_regressions.py` L128-L166: five rejection cases preserve the Skill file.
+- `docs/forge/EVOPHY_CLOSED_LOOP_REVIEW.md` L40-L45,L58-L59: updated parent-binding status and remaining independent evaluator requirement.
+
+```diff
+- evaluated extension candidate writes against whichever Skill document exists
++ resolve persisted primary activations and require one unchanged parent document
+- support is counted from arbitrary episode ID strings
++ resolve source episodes and count independent root task IDs
+- parent revision is provenance only
++ reject mismatch with recorded activation revision when available
+```
+
+### Validation / 验证
+
+- `PYTHONPATH=extensions/evolution:examples/forge-skills/pick-place-workflow/src .venv/bin/python -m pytest -q tests extensions/evolution/tests examples/forge-skills/pick-place-workflow/tests/test_experience_attribution.py examples/forge-skills/pick-place-workflow/tests/test_experience_recovery_episode.py examples/forge-skills/pick-place-workflow/tests/test_experience_capability_facts.py`: 432 passed in 22.93s.
+- Changed-file Ruff and `git diff --check` passed.
+- Failure scenario: applying old evaluation conclusions after a parent edit. Reused existing activation digests; no new hash subsystem. No physical experiments.
+- Remaining: independent execution receipts must prove actual parent/candidate runs; conflicting advice and retirement still need implementation.
+- Branch: `feature/planning-loop`; implementation commit recorded after commit.
+
 ## v10.0.0 (2026-09-11 23:34) - codex
 
 - [policy] [fix] [完成] 修复 EvoPhy 候选隔离、评测晋升、局部建议保留和重启投递；TRACE 使用显式依赖与 owner 证据。(local)
