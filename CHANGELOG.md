@@ -8,6 +8,15 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v9.3.1 (2026-09-11 10:45) - codex
+
+- [完成] [docs] [chore] 回填 v9.3.0 artifact 发布提交引用。(local)
+- [Completed] [Docs] [Chore] Backfill the v9.3.0 artifact-release commit reference. (local)
+
+### Git 提交 / Git Commit
+
+- Content commit: `4fa4919`; Branch: `feature/planning-loop`。
+
 ## v9.3.0 (2026-09-11 10:20) - codex
 
 - [完成] [runtime] [feat] 构建可执行 `robotwin20_persistent_host` Node artifact，为 pick-place Skill 增加正式 persistent profile 与 Node lock，并完成本地 Bundle/Node 安装校验。(local)
