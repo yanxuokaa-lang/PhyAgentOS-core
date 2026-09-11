@@ -9,6 +9,12 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v9.3.9 (2026-09-11 14:25) - codex
+
+- [完成] [docs] [chore] 回填 v9.3.8 提交凭据 `24e4e48`；无运行代码变更。(local)
+- [Completed] [Docs] [Chore] Record v9.3.8 implementation receipt `24e4e48`; no runtime changes. (local)
+- Diff: pending receipt -> `24e4e48`; validation: `git diff --check`.
+
 ## v9.3.8 (2026-09-11 14:12) - codex
 
 - [完成] [policy] [fix] 返回 Query 持久证据引用，保存中断回合并记录分段耗时；不硬编码任务答案或 discovery 流程。(local)
@@ -54,7 +60,7 @@ PYTHONPATH=.:examples/forge-skills/pick-place-workflow/src PYTEST_DISABLE_PLUGIN
 - Six dimensions: architecture, software recovery, authority boundaries, configuration reuse, maintainability and software observability covered; live model, physical recovery, RGB outcome and final Verifier remain unverified.
 - No Runtime restart, Agent launch, Action or motion. Three pre-existing adapter edits are excluded from this commit.
 - Diagnosis correction: absent graph proves no successful materialization, not absence of a failed Tool call or repeated model planning. No forced planning deadline or task failure transition was added.
-- Branch: `feature/planning-loop`; commit receipt recorded after implementation commit.
+- Branch: `feature/planning-loop`; implementation commit: `24e4e48`.
 
 ## v9.3.6 (2026-09-11 13:31) - codex
 
