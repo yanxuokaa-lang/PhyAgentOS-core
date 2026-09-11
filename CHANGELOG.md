@@ -13,7 +13,7 @@
 
 - [完成] [policy] [fix] 修复自然语言 `PlanNode.conditions` 导致 `ready_nodes=[]` 的根因；仅在新 PlanGraph 准入时校验符号条件，保留旧任务可读和可停止。(local)
 - [Completed] [Policy] [Fix] Fixed the root cause of natural-language `PlanNode.conditions` producing `ready_nodes=[]`; symbolic conditions are checked only at new PlanGraph admission while historical tasks remain readable and stoppable. (local)
-- Files: planning contracts/export, plan proposal, task admission, Agent guidance, diagnosis, and tests. Validation: 53 focused and 335 full no-motion tests passed; Ruff and `git diff --check` passed. Commit: pending.
+- Files: planning contracts/export, plan proposal, task admission, Agent guidance, diagnosis, and tests. Validation: 53 focused and 335 full no-motion tests passed; Ruff and `git diff --check` passed. Commit: `2e01ab3`.
 
 ## v9.9.0 (2026-09-11 20:20) - codex
 
