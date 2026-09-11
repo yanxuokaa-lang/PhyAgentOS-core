@@ -9,6 +9,31 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v9.4.3 (2026-09-11 15:30) - codex
+
+- [完成] [eval] [exp] 用户授权的旧任务已取消、旧 Runtime 正常停止；安装启动 Skill 1.0.0 / Node 0.2.0，创建正式关联旧任务的新 RGB 任务；未执行 Action。(local)
+- [Completed] [eval] [exp] Cancel the authorized old task, stop the old Runtime normally, install/start Skill 1.0.0 / Node 0.2.0 and create a linked RGB successor; no Actions executed. (local)
+
+### Evidence / 证据
+
+- `paos task stop task_7bd79d84408a49cd`: cancelled; `paos skill stop pick-place-workflow`: stopped without force.
+- `paos skill install --local --yes /tmp/paos-layout-release-2DAow3/final/pick-place-workflow-1.0.0.tar.gz`: installed.
+- `paos forge-node install pick-place-workflow robotwin20_persistent_host --archive /tmp/paos-layout-release-2DAow3/final/robotwin20_persistent_host-0.2.0-linux-x86_64.tar.gz`: installed; `paos forge-node verify pick-place-workflow robotwin20_persistent_host`: passed.
+- Reused existing deployment environment from the live Dora daemon without printing secrets; changed only artifact root to /home/yanxu/robotwin20-runtime/artifacts/paos-rgb-v9.4.3-20260911.
+- `paos skill start pick-place-workflow --profile robotwin-persistent`: running; `paos skill status pick-place-workflow`: /tools and all eight Tool contexts ready.
+- Standard CLI component factory, SkillActivationManager and AgentTaskCoordinator.create_task created task_4aac89c44f474687 with parent_task_id=task_7bd79d84408a49cd. No custom runner or database writes.
+- New binding: binding_243fb101e3e063ce08ad6273; Runtime: runtime_8cfb941d439f483f; Skill 1.0.0; revision_a3378b12f2db4fbf. Status executing, DAG null, records=0; required verification remains enforce.
+- Runtime ownership contains only the new binding; active invocations and sessions empty. No Agent inference, scene.understand invocation, Action or motion in this turn.
+- An initial task-creation diagnostic referenced nonexistent store.get_active; it failed before activation/create. Corrected to store.active, then created exactly one task.
+- Six dimensions: standard lifecycle/binding integration verified; normal stop and fail-before-create observed; no motion authority bypass; installed versions/artifact root recorded; no production code edits; task lineage and runtime ownership checked. Live perception, layout, route and final Verifier acceptance remain pending.
+
+### Files / 文件
+
+- changelog/2026-09_part7.md L3-L24; CHANGELOG.md L13-L34: planned lifecycle -> completed evidence, bilingual documentation only. Three pre-existing adapter changes excluded.
+- Key diff: old task executing -> cancelled; installed Skill 0.10.7 -> 1.0.0; Node 0.1.3 -> 0.2.0; new task.parent_task_id -> old task ID. These are lifecycle results, not direct state-file edits.
+- Validation: task status, runtime status/ownership, Node verify and git diff --check.
+- Branch: feature/planning-loop; commit receipt follows.
+
 ## v9.4.2 (2026-09-11 15:05) - codex
 
 - [完成] [chore] [feat] 本地发布 Node 0.2.0 / Skill 1.0.0，声明八个必需 Tool；隔离安装及入口验证通过，保留旧任务绑定。(local)
