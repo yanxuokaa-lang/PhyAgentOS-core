@@ -257,3 +257,54 @@ artifacts, start the new Runtime and create a successor task.
 This repair does not prove the Agent can choose collision-free RGB destinations
 or a swap sequence. It removes the lower-layer answer policy and provides the
 geometry interfaces through which those choices can be evaluated.
+
+## 14. Formal Acceptance Path and Runtime-only Migration Boundary (2026-09-11)
+
+The architecture review confirms two related but distinct paths:
+
+1. **Current formal Forge acceptance:** create the task after explicit primary
+   Skill activation. The task freezes the Skill/Runtime/ToolSpec binding, while
+   Runtime and Gateway remain the only execution owners. The Agent still
+   selects the semantic PlanGraph from the natural-language goal and fresh
+   scene evidence; Skill activation does not grant motion authority.
+2. **Runtime-only migration target:** a task may bind only a managed Runtime and
+   enroll Tool contracts on demand. This is an accepted architectural
+   direction, but the current implementation does not yet complete action-plan
+   materialization: Query contracts may be enrolled before planning while
+   action Tool planning policies are not necessarily present when
+   `compile_task_plan()` validates semantic capabilities. It must not be used
+   as evidence of the current RGB execution loop until that migration is
+   completed and documented as released.
+
+The distinction follows the ownership rules in `docs/zh/01-framework-introduction.md`,
+`docs/zh/03-developer-manual.md`, `docs/forge/UNIFIED_TOOL_API.md`, and the
+accepted migration design `docs/forge/RUNTIME_BINDING_SKILL_USE_DESIGN.md`:
+
+| Concern | Current formal path | Migration target |
+| --- | --- | --- |
+| Execution owner | frozen Runtime binding | frozen Runtime binding |
+| Method/policy source | explicit primary Skill binding | zero/one/multiple Skill uses |
+| Action Tool policies | frozen in Skill candidate | enroll from authorized Runtime before plan admission |
+| Motion authority | Gateway/Tool readiness/admission | unchanged |
+| User-level success | existing ForgeTaskVerifier | unchanged |
+| Evolution | disabled for acceptance | consumes only settled evidence later |
+
+The acceptance prompt must express the user goal and evidence/safety
+invariants, not replace Agent reasoning with a fixed YAML answer or an
+unconditionally prescribed seven-node queue. The pick/place seven-node graph
+remains a valid Skill baseline projection; a concrete task graph is still an
+Agent-selected `PlanGraph` bound to the `PlanRevision`.
+
+The next live gate is consequently the formal Skill-bound path:
+
+```text
+activate_skill -> forge_task_create -> fresh discovery and grounding
+-> Agent PlanGraph -> Tool/Gateway execution and terminal settlement
+-> fresh final observation -> forge_task_finalize / ForgeTaskVerifier
+```
+
+No Action is accepted as task success, and no `accepted`, timeout, cancellation
+request, or `unknown` result may be treated as proof that motion stopped. A
+Runtime-only task may be tested separately as a migration regression, but its
+failure must remain a blocked implementation state rather than being hidden by
+Skill activation or a custom runner.

@@ -75,7 +75,7 @@ class ContextBuilder:
                 "Before the first tool call, check these summaries. For a matching workflow, use "
                 "activate_skill with the exact Skill name; it loads the instructions and only the "
                 "applicable scoped lessons."
-                if self.evolution_enabled
+                if self.evolution_enabled or self.forge_context_provider is not None
                 else "To use a skill, read its SKILL.md file using the read_file tool."
             )
             parts.append(f"""# Skills

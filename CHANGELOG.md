@@ -9,11 +9,17 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v9.9.0 (2026-09-11 20:20) - codex
+
+- [完成] [policy] [fix] Forge 上下文在 evolution 关闭时仍要求显式 `activate_skill`，并记录当前正式 Skill-bound 验收路径与 Runtime-only 未完成迁移边界。(local)
+- [Completed] [Policy] [Fix] Forge context now still requires explicit `activate_skill` when evolution is disabled, and the formal Skill-bound acceptance path plus incomplete Runtime-only migration boundary are documented. (local)
+- Files: `PhyAgentOS/agent/context.py` L74-L80; `docs/forge/AGENT_LOOP_FOUNDATION_DIAGNOSIS_20260910.md` L261-L310; `tests/test_context_activation.py` L1-L36. Validation: 42 focused and 334 full no-motion tests passed; Ruff and `git diff --check` passed. Commit: pending.
+
 ## v9.8.1 (2026-09-11 20:00) - codex
 
 - [完成] [chore] 清理三个暂不采用的未提交 RoboTwin Adapter 实验修改，恢复基线；未修改 Runtime 或 Skill。(local)
 - [Completed] [Chore] Removed three unused uncommitted RoboTwin Adapter experiments and restored the baseline; Runtime and Skill were unchanged. (local)
-- Files: `examples/forge-adapters/robotwin20/scripts/approve_simulation_probe.py`, `persistent_host.py`, `prepared_routes.py` restored; `git diff --check` passed. Commit: pending.
+- Files: `examples/forge-adapters/robotwin20/scripts/approve_simulation_probe.py`, `persistent_host.py`, `prepared_routes.py` restored; `git diff --check` passed. Commit: `5a55b22`.
 
 ## v9.8.0 (2026-09-11 19:30) - codex
 
