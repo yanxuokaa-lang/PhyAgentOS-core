@@ -8,6 +8,15 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v9.2.1 (2026-09-11 09:36) - codex
+
+- [完成] [docs] [fix] 回填基础修复的最终实现提交引用，保持中英文日志与工作区证据一致。(local)
+- [Completed] [Docs] [Fix] Backfill the final implementation commit reference so bilingual logs match workspace evidence. (local)
+
+### Git 提交 / Git Commit
+
+- Commit: `7122faf` (implementation reference); Branch: `feature/planning-loop`。
+
 ## v9.2.0 (2026-09-11 09:30) - codex
 
 ### 变更摘要 / Change Summary
@@ -47,7 +56,7 @@
 
 ### Git 提交 / Git Commit
 
-- Commit: `95d4aad` (amended after changelog metadata); Branch: `feature/planning-loop`。
+- Implementation commit: `7122faf`; Branch: `feature/planning-loop`。
 
 ## v9.1.0 (2026-09-10 12:38) - codex
 
