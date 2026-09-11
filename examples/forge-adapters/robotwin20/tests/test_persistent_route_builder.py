@@ -20,7 +20,7 @@ def test_benchmark_source_removes_only_provider_envelope():
 
     class Client:
         def query(self, operation, arguments):
-            assert operation == "benchmark_scene_facts"
+            assert operation == "execution_scene_facts"
             return {**deepcopy(facts), "holding_state": "empty", "owner": None,
                     "acquire_invocation_id": None, "entity_ref": None, "ok": True, "request_id": "transport-1"}
 

@@ -66,22 +66,27 @@ class RoboTwinPersistentEngine:
 
     def query(self, operation: str, arguments: Mapping[str, Any]) -> dict[str, Any]:
         if operation == "bind_observed_entities":
-            layout = probe._load_json_artifact(self.root, arguments["layout_ref"])
-            if (layout["scene_revision"] != self.backend.snapshot()["scene_revision"]
-                    or layout["motion_authorized"] is not False):
+            binding_record = probe._load_json_artifact(self.root, arguments["binding_ref"])
+            if (binding_record["scene_revision"] != self.backend.snapshot()["scene_revision"]
+                    or binding_record["motion_authorized"] is not False):
                 raise ValueError("entity binding requires current idle scene")
             mapping = {}
-            for binding in layout["bindings"]:
+            for binding in binding_record["bindings"]:
                 if binding["entity_ref"] in {"entity://block-red-1", "entity://block-green-1", "entity://block-blue-1"}:
                     raise ValueError("observed identity must not shadow execution identity")
                 actor = probe._actor_for_entity(self.backend._task, binding["execution_entity_ref"])
                 if actor is not getattr(self.backend._task, binding["actor_name"], None):
-                    raise ValueError("execution actor binding differs from layout")
+                    raise ValueError("execution actor binding differs from observation")
+                import numpy as np
+
+                expected = np.asarray(binding_record["objects"][binding["entity_ref"]]["world_T_object"]).reshape(4, 4)
+                if not np.allclose(actor.get_pose().to_transformation_matrix(), expected, atol=1e-6, rtol=0):
+                    raise ValueError("execution actor moved since binding")
                 mapping[binding["entity_ref"]] = actor
             self.backend._task._paos_observed_entities = mapping
-            return {"scene_revision": layout["scene_revision"], "motion_authorized": False}
+            return {"scene_revision": binding_record["scene_revision"], "motion_authorized": False}
         if operation == "snapshot":
-            return dict(self.backend.snapshot())
+            return {**dict(self.backend.snapshot()), "scene_validity": "action_driven"}
         if operation == "observe":
             captured = asdict(self.observation.observe(arguments["sensor_ref"]))
             captured["captured_at"] = captured["captured_at"].isoformat()
@@ -95,11 +100,12 @@ class RoboTwinPersistentEngine:
                 self.root, backend=self.backend,
             )
             return dict(_handle_factory(self.root, "persistent-route-readiness", evaluator)(arguments))
-        if operation == "benchmark_scene_facts" and self.profile.get("allow_benchmark_scene_facts") is True:
+        if operation in {"benchmark_scene_facts", "execution_scene_facts"} and self.profile.get("allow_benchmark_scene_facts") is True:
             from robotwin_route_input_worker import capture_scene_facts
             return capture_scene_facts(runtime_root=Path(self.profile["runtime_root"]),
                                        runtime_profile=Path(self.profile["runtime_profile"]),
-                                       artifact_root=self.root, calibration_ref=arguments["calibration_ref"], backend=self.backend)
+                                       artifact_root=self.root, calibration_ref=arguments["calibration_ref"], backend=self.backend,
+                                       include_targets=operation == "benchmark_scene_facts")
         raise ValueError(f"unsupported persistent query: {operation}")
 
     def _prepare(self, arguments: Mapping[str, Any]) -> None:

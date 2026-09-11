@@ -2,6 +2,9 @@
 
 日期 / Date: 2026-09-10. Scope: natural-language multi-object Agent Loop; evolution disabled.
 
+Current correction (2026-09-11): sections 10-11 describe a superseded layout
+implementation/release, not the recommended architecture. See section 12.
+
 ## 1. 诊断 / Diagnosis
 
 当前未提交的 `persistent_agent_runner.py` 不是完整 Agent Loop：
@@ -204,3 +207,53 @@ It was not changed. Before switching the live installation:
 
 This release does not implement temporary swap destinations or certify live
 geometric matching, route feasibility or RGB success. Evolution remains disabled.
+
+## 12. Remove Mandatory Layout, Separate Identity and Goal Geometry
+
+The layout implementation selected sorted current positions and an averaged row,
+then required its own targets for every preparation. This encoded a task policy
+inside the execution adapter. Its source, ToolSpec, registration and tests have
+been deleted, rather than adding a bypass or another mode to that implementation.
+
+Replacement ownership:
+
+- Agent/Planner owns ordering relations, reference-frame interpretation, chosen
+  poses/regions, intermediate relocations and semantic dependencies.
+- `scene.bind` accepts one or more observed entity references and matching
+  observation/scene/calibration identities. It proves unique geometric
+  correspondence and returns a binding receipt and calibrated world geometry.
+  It has no target, sorting or minimum-two-object requirement.
+- `manipulation.target` accepts an explicit object pose in world or the bound
+  observation frame, in metres. It transforms that pose and returns a destination
+  reference. It does not select slots, average positions or infer user intent.
+- Existing preparation resolves that destination, rechecks current scene and
+  execution actor pose, then retains the existing complete-route admission.
+  Target availability is not workspace, support, collision or execution success.
+- Final verification still evaluates the user's original goal and fresh final
+  evidence. An optional geometric layout solver may later assist Agent planning,
+  but is not implemented or required by these two interfaces.
+
+The persistent execution geometry query does not read benchmark target poses.
+The older benchmark diagnostic remains separate; no benchmark target can be used
+as an implicit default in the new target resolver. The legacy internal class name
+`BenchmarkSceneSource` is retained to avoid overwriting unrelated host edits; its
+persistent operation now returns execution geometry only.
+
+The previous 60-second layout timer is removed with the layout module, not
+globally relaxed. The current persistent engine is action-driven: its worker
+serializes Queries, rejects them during movement, and advances revision after
+successful or world-changing failed Actions. RoboTwin `get_obs` performs render
+updates and sensor reads, not physics steps. Grounding requires the explicit
+action-driven snapshot and empty state, rejects revision drift, and checks actual
+actor pose again before preparation. Clock-driven/hardware scenes are unsupported
+by this adapter and cannot inherit this validity policy. Observation timestamps
+remain in receipts; a new world/Action invalidates old bindings.
+
+Source package versions are Skill 2.0.0 / Node 0.3.0, replacing the incompatible
+Tool set. No installed Runtime or active task is modified by source edits.
+Before live testing, explicitly dispose of the old binding, install the new
+artifacts, start the new Runtime and create a successor task.
+
+This repair does not prove the Agent can choose collision-free RGB destinations
+or a swap sequence. It removes the lower-layer answer policy and provides the
+geometry interfaces through which those choices can be evaluated.

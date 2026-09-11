@@ -41,27 +41,31 @@ observed scene, including legitimate recovery attempts.
 
 ## Capability Workflow
 
-### Observed Destination Layout
+### Object Binding and Explicit Targets
 
-For a requested row arrangement, discover `manipulation.layout` through the
-installed Skill's Tool binding. Submit the ordered observation entity references,
-the same observation/scene/calibration identities, an explicit supported world
-axis, and the freshness limit. Never equate image-left with world+x without
-calibration, invent destination references, or search Runtime-private files for
-benchmark targets. If this Tool is absent from the bound Skill, report that
-capability gap instead of using an unbound diagnostic Query to execute the task.
+Use `scene.bind` for one or more selected observation entities and their matching
+observation/scene/calibration references. It returns geometric correspondence,
+`binding_ref`, world object geometry and the calibrated observation transform.
+Identity binding does not require a placement goal or an arrangement task.
 
-The Query returns scene-bound destination references, target geometry and explicit
-observation-to-execution identity evidence. It does not grant motion or certify
-support, workspace, collision-free relocation, or complete-route feasibility.
-Use these references in Agent-selected semantic nodes and manipulation.prepare.
-Occupied destinations may require an Agent-selected intermediate relocation; the
-row Query does not generate a swap schedule or temporary destinations. If that
-capability is needed but unavailable, stop or request a supported alternative.
-After a placement, observe and understand again before generating a new layout;
-do not carry observation entity IDs or stale destination references across scenes.
-Final verification compares fresh observations with the original requested order,
-not with a benchmark evaluator or the layout Query's available status.
+Choose task relations, reference frames, destinations, intermediate placements
+and dependencies from the user goal and observed evidence. Never equate camera
+left with world+x. When the user's reference frame is ambiguous, clarify it.
+Use `manipulation.target` to resolve a chosen object pose: supply binding_ref,
+entity_ref, frame_id, unit=m and a row-major 4x4 frame_T_object_target. Supported
+frames are world and the bound observation frame. The resolver does not sort,
+choose slots, preserve a height implicitly or create an execution sequence.
+Derive proposed poses from returned geometry and explicit task constraints;
+do not invent benchmark coordinates or opaque destination references.
+
+The resulting destination_ref is a geometric proposal, not permission or proof
+of feasibility. Pass it through manipulation.prepare and existing Action
+admission. Rejected targets require Agent reconsideration, not silent changes by
+the resolver. Binding validity follows the provider's declared scene model;
+action-driven simulation validity does not imply stationary real-world objects.
+After motion, obtain new observations and bindings before the next preparation.
+The final Verifier evaluates the original user goal against final observations,
+not agreement with the proposed target alone.
 
 This Skill describes one complete provider-neutral pick-and-place workflow. It is
 not a scene-observation-only Skill: `scene.observe` and `scene.understand` are the

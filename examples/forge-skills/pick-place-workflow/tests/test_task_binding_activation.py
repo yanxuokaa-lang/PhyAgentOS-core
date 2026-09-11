@@ -64,7 +64,7 @@ def _setup(tmp_path):
         preparation_provider=provider,
         acquire_provider=provider,
         place_provider=provider,
-        layout_provider=provider,
+        grounding_provider=provider,
     )
     client = ForgeToolClient("http://fake", transport=transport)
     runtime = ActiveSkillRuntime(

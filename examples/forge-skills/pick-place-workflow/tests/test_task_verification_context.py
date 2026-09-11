@@ -143,7 +143,7 @@ async def _setup(tmp_path, verifier):
         preparation_provider=provider,
         acquire_provider=provider,
         place_provider=provider,
-        layout_provider=provider,
+        grounding_provider=provider,
         now=NOW,
     )
     client = ForgeToolClient("http://fake", transport=transport)

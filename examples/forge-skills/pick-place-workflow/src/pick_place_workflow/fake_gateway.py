@@ -33,7 +33,7 @@ from .grasp_proposal import (
     GraspProposalEndpoint,
     GraspProposalProvider,
 )
-from .layout import LAYOUT_TOOL_SPEC
+from .grounding import BIND_TOOL_SPEC, TARGET_TOOL_SPEC
 from .manipulation_prepare import (
     MANIPULATION_TOOL_SPEC,
     PREPARATION_ENDPOINT_ID,
@@ -330,13 +330,13 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
         acquire_provider: AcquireProvider | None = None,
         place_provider: PlaceProvider | None = None,
         capability_provider: Any | None = None,
-        layout_provider: Any | None = None,
+        grounding_provider: Any | None = None,
         readiness_gate: ActionReadinessGate | None = None,
         defer_action_execution: bool = False,
         now: datetime | None = None,
     ) -> None:
         self.endpoint = SceneObservationEndpoint(provider, now=now)
-        self.layout_provider = layout_provider
+        self.grounding_provider = grounding_provider
         self.understanding_endpoint = (
             SceneUnderstandingEndpoint(understanding_provider)
             if understanding_provider is not None
@@ -383,22 +383,24 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
                         MANIPULATION_TOOL_SPEC,
                         ACQUIRE_TOOL_SPEC,
                         PLACE_TOOL_SPEC,
-                        LAYOUT_TOOL_SPEC,
+                        BIND_TOOL_SPEC,
+                        TARGET_TOOL_SPEC,
                     ]
                 }
             )
         if request.method == "GET" and path == f"/tools/{TOOL_ID}":
             return self._ok(TOOL_SPEC)
-        if request.method == "GET" and path == "/tools/manipulation.layout":
-            return self._ok(LAYOUT_TOOL_SPEC)
-        if request.method == "GET" and path == "/tools/manipulation.layout/context":
-            return self._ok({"ready": self.layout_provider is not None,
-                             "binding_error": None if self.layout_provider is not None else "layout provider unavailable",
-                             "motion_authorized": False})
-        if request.method == "POST" and path == "/tools/manipulation_layout/resolve:invoke":
-            if self.layout_provider is None:
-                return self._ok({"status": "unavailable", "motion_authorized": False})
-            return self._ok(self.layout_provider.invoke(json.loads(request.content)["arguments"]))
+        for spec, method in ((BIND_TOOL_SPEC, "bind"), (TARGET_TOOL_SPEC, "target")):
+            if request.method == "GET" and path == f"/tools/{spec['tool_id']}":
+                return self._ok(spec)
+            if request.method == "GET" and path == f"/tools/{spec['tool_id']}/context":
+                return self._ok({"ready": self.grounding_provider is not None,
+                                 "binding_error": None if self.grounding_provider is not None else "grounding provider unavailable",
+                                 "motion_authorized": False})
+            if request.method == "POST" and path == f"/tools/{spec['endpoint_id']}/resolve:invoke":
+                if self.grounding_provider is None:
+                    return self._ok({"status": "unavailable", "motion_authorized": False})
+                return self._ok(getattr(self.grounding_provider, method)(json.loads(request.content)["arguments"]))
         if request.method == "GET" and path == f"/tools/{TOOL_ID}/context":
             return self._ok(
                 {

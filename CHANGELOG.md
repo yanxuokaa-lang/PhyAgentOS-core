@@ -9,6 +9,76 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v9.5.0 (2026-09-11 15:57) - codex
+
+- [完成] [sense] [refactor] 删除强制 layout、排列策略及对应契约/测试；重新实现独立 scene.bind 和显式 manipulation.target，保持任务策略归 Agent。(local)
+- [Completed] [sense] [refactor] Delete mandatory layout, row policy and its contract/tests; implement independent scene.bind and explicit manipulation.target, leaving task strategy with the Agent. (local)
+- [完成] [eval] [exp] 构建 Node 0.3.0 / Skill 2.0.0 并完成隔离安装；807 项回归通过、1 跳过，另行隔离 7 项通过；旧脚本化测试仍有已复现的既有失败。(local)
+- [Completed] [eval] [exp] Build Node 0.3.0 / Skill 2.0.0 and verify isolated installation; 807 regressions passed, 1 skipped, and 7 passed separately; retain the reproduced pre-existing scripted-test failure. (local)
+
+### Files and Diff / 文件与差异
+
+Paths: A = examples/forge-adapters/robotwin20; S = examples/forge-skills/pick-place-workflow.
+
+- [删除/Delete] A/src/robotwin20_adapter/target_layout.py old L1-L194; A/tests/test_target_layout.py old L1-L216; S/src/pick_place_workflow/layout.py old L1-L47; S/tests/test_layout_discovery.py old L1-L30. Git retains recovery history. No optional mode or bypass added to the deleted policy.
+- [新增/Add] A/src/robotwin20_adapter/observed_binding.py L1-L48: rigid transform and unique calibrated geometric correspondence, independent of labels or goals.
+- [新增/Add] A/src/robotwin20_adapter/grounding.py L1-L143: observation receipts, independent entity bindings, caller-selected pose transformation and existing route source integration; preparation reads entity_ref from the existing nested intent.
+- [新增/Add] S/src/pick_place_workflow/grounding.py L1-L58: two read-only ToolSpecs, single-object support, explicit pose/frame/unit and evidence outputs.
+- [修改/Change] A/src/robotwin20_adapter/persistent_deployment.py L9-L27,L78-L86,L110-L123: remove layout registration/source; connect independent binding/target endpoints through existing Runtime.
+- [修改/Change] A/src/robotwin20_adapter/persistent_route_builder.py L23-L32: persistent execution_scene_facts replaces benchmark target-bearing query; legacy class name retained to avoid overwriting unrelated host edits.
+- [修改/Change] A/runtime/robotwin_persistent_engine.py L68-L110: consume binding artifact without layout; recheck actor pose, declare action-driven snapshot, expose target-free execution geometry.
+- [修改/Change] A/runtime/robotwin_route_input_worker.py L88,L113-L137,L157-L158: execution registry omits target fields and does not read target_pose; historical diagnostic target path remains explicit.
+- [修改/Change] S/SKILL.md L44-L68: Agent owns goal/axis/pose/intermediate choices; geometry query cannot select a row or infer image-left=world+x.
+- [修改/Change] S/skill.yaml L3,L11-L12,L54-L60; S/pyproject.toml L3: incompatible Skill 2.0.0 / Node 0.3.0, nine required Tools and verified existing Node lock.
+- [修改/Change] S/src/pick_place_workflow/fake_gateway.py L36,L333-L339,L386-L403: independent fake binding/target endpoints; missing provider stays unavailable.
+- [新增/Add] A/tests/test_grounding.py L1-L318; A/tests/test_execution_geometry.py L1-L30; S/tests/test_grounding_discovery.py L1-L24: single/multiple identity failures, transform/scene validity, actual actor drift, nested-intent RouteBuilder integration, no target-answer reads, missing providers.
+- [修改/Change] A/tests/test_persistent_deployment.py L67; A/tests/test_persistent_route_builder.py L23: new discovery and execution geometry operation.
+- [修改/Change] S/tests/test_binding_freeze.py L22-L23,L86; test_bound_execution_records.py L74; test_grasp_propose.py L177-L178,L268; test_manipulation_prepare.py L156-L157; test_object_acquire.py L130-L131; test_runtime_install_discovery.py L20-L21; test_task_binding_activation.py L67; test_task_verification_context.py L146: replace layout fixtures/discovery and align release version.
+- [修改/Change] docs/forge/AGENT_LOOP_FOUNDATION_DIAGNOSIS_20260910.md L5-L6,L211-L259: mark historical layout release superseded and document replacement ownership/validity. CHANGELOG.md and monthly log: bilingual evidence.
+
+```diff
+- slots = sorted(observed_positions); row = mean(other_axis)
+- prepare requires current observed layout
++ scene.bind(observation_identity, entity_refs) -> binding_ref
++ manipulation.target(binding_ref, entity_ref, frame_id, explicit_pose) -> destination_ref
++ prepare reads intent.entity_ref and rechecks scene/actor before existing route admission
+- query("benchmark_scene_facts", ...)
++ query("execution_scene_facts", ...)  # no target answers
+```
+
+### Validation / 验证
+
+```bash
+PYTHONPATH=.:examples/forge-adapters/robotwin20/src:examples/forge-adapters/robotwin20/runtime:examples/forge-adapters/robotwin20/scripts:examples/forge-skills/pick-place-workflow/src PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /home/yanxu/miniconda3/envs/paos/bin/python -m pytest -p pytest_asyncio.plugin -q examples/forge-adapters/robotwin20/tests examples/forge-skills/pick-place-workflow/tests tests/test_agent_foundation.py tests/test_planning_loop.py tests/test_runtime_review_regressions.py --ignore=examples/forge-adapters/robotwin20/tests/test_persistent_agent_loop.py --ignore=examples/forge-adapters/robotwin20/tests/test_scene_understand_provider.py
+```
+
+- Final run against clean staged source tree 1f3c8c35697ca6ddc91bd7b5e205de3d1b91fbc6: 807 passed, 1 skipped in 13.64s. Running test_scene_understand_provider.py separately with the same environment: 7 passed in 0.27s.
+- Full combined run before final test addition: 811 passed, 1 skipped, 2 failed. test_persistent_agent_loop.py fails identically in prior release source /tmp/paos-layout-release-2DAow3/source-final and current source; this scripted fixture is not real Agent success evidence. Import-boundary test sees modules imported by other suites; its isolated seven-test run passes. These exclusions are explicit, not full-suite acceptance.
+- Initial collection omitted adapter/scripts from PYTHONPATH; corrected command above. New test insertion and nested-intent integration mistakes were caught and corrected before final release.
+- Focused Ruff and git diff --check passed.
+- Final release root: /tmp/paos-grounding-release-Zg4UQL/final. Parent-directory preliminary artifacts are superseded.
+- Node robotwin20_persistent_host-0.3.0-linux-x86_64.tar.gz: 300171 bytes; SHA256 f6dab0184abadc081c9dce0e30138e1fbaecca43ce756351c0128823ce3b0d7a.
+- Skill pick-place-workflow-2.0.0.tar.gz: 108172 bytes; SHA256 734ee4a31c766dbf7a6386474b4d3f2f987fc61b65a02bf953d9364f583396c7.
+- Built with scripts/build_robotwin20_node.py --adapter-root <clean-source>/examples/forge-adapters/robotwin20 --workflow-root <clean-source>/examples/forge-skills/pick-place-workflow --output <Node path>; packaged with scripts/package_skill.py examples/forge-skills/pick-place-workflow --output-dir <final root>.
+- SkillInstaller, NodeInstaller.install/load used final/isolated/skills, runtime and state roots. Archive/lock verification passed; embedded payload has new grounding modules and no layout modules. Installed executable --help exited 0 outside source cwd and without repository PYTHONPATH, using external ROBOTWIN20_PAOS_PYTHON. This is not a fresh Python/model environment installation.
+- Three pre-existing user changes excluded from Node and commits: approve_simulation_probe.py, persistent_host.py, prepared_routes.py.
+- Read-only live check: task_4aac89c44f474687 remains executing, Skill 1.0.0, six Queries and zero Actions; runtime_8cfb941d439f483f remains running. No task mutation, Runtime restart, live model Query or motion by this turn.
+
+### Six Dimensions / 六维验收
+
+- Architecture: remove lower-layer row policy; standard Query/Runtime and preparation interfaces reused; no PAOS core task scheduler changes.
+- Failure/recovery: missing/ambiguous/many-to-one correspondence, invalid frame/pose, changed scene, actor drift and unavailable provider tested; existing replay/replan lifecycle retained. Physical recovery untested.
+- Permissions/safety: Queries grant no motion; correspondence, transforms, complete-route validation and Gateway admission retained. Persistent action-driven validity is not generalized to hardware.
+- Configuration/reproducibility: incompatible versions and locked isolated artifacts verified; no fixed RGB targets. Existing isolated model/Python dependencies remain required.
+- Maintainability: old implementation deleted; identity and explicit target transformation independent of task policy; legacy internal scene-source class name documented.
+- Observability: timestamp, observation/scene/calibration identities, binding/target artifacts and original intent preserved; old task state untouched.
+- Safety rationale: ID/version equality cannot establish geometric identity. The worker checks actual actor pose before alias installation. Serialized idle Queries and verified get_obs render/sensor behavior justify action-driven validity; clock-driven scenes are rejected. No new hash or general gate.
+- Outcome: source repair and isolated publication accepted within tested scope; full RGB Agent decisions, live geometry, route feasibility and final Verifier remain unaccepted.
+
+### Git / 提交
+
+- Branch: feature/planning-loop; implementation receipt follows.
+
 ## v9.4.3 (2026-09-11 15:30) - codex
 
 - [完成] [eval] [exp] 用户授权的旧任务已取消、旧 Runtime 正常停止；安装启动 Skill 1.0.0 / Node 0.2.0，创建正式关联旧任务的新 RGB 任务；未执行 Action。(local)
@@ -144,6 +214,8 @@ PYTHONPATH=.:examples/forge-adapters/robotwin20/src:examples/forge-adapters/robo
 - No live Runtime/Agent/Action started. Three pre-existing adapter modifications are excluded from commits.
 - Branch: `feature/planning-loop`; implementation commit: `49d403b`.
 
+## Earlier Records / 历史记录
+
 ## v9.3.10 (2026-09-11 14:37) - codex
 
 - [完成] [policy] [fix] 当前任务摘要进入 Agent 上下文；shell 超时和取消清理所属 POSIX 进程组与管道。(local)
@@ -162,8 +234,6 @@ PYTHONPATH=.:examples/forge-adapters/robotwin20/src:examples/forge-adapters/robo
 - [完成] [docs] [chore] 回填 v9.3.8 提交凭据 `24e4e48`；无运行代码变更。(local)
 - [Completed] [Docs] [Chore] Record v9.3.8 implementation receipt `24e4e48`; no runtime changes. (local)
 - Diff: pending receipt -> `24e4e48`; validation: `git diff --check`.
-
-## Earlier Records / 历史记录
 
 ## v9.3.8 (2026-09-11 14:12) - codex
 

@@ -60,7 +60,7 @@ def test_runtime_bundle_registers_persistent_tools_behind_one_transport(tmp_path
     assert {item["tool_id"] for item in bundle.runtime.list_tools()["tools"]} == {
         "scene.observe", "manipulation.capabilities", "scene.understand",
         "grasp.propose", "manipulation.prepare", "object.acquire", "object.place",
-        "manipulation.layout",
+        "scene.bind", "manipulation.target",
     }
     with pytest.raises(ValueError, match="share one worker client"):
         build_persistent_runtime_bundle(

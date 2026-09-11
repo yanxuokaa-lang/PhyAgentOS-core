@@ -85,7 +85,7 @@ def _half_extents(actor: Any) -> list[float]:
 
 def capture_scene_facts(
     *, runtime_root: Path, runtime_profile: Path, artifact_root: Path, calibration_ref: str,
-    backend: Any = None,
+    backend: Any = None, include_targets: bool = True,
 ) -> dict[str, Any]:
     profile = load_runtime_profile(runtime_profile)
     task_file = runtime_root / "envs" / f"{profile['task_name']}.py"
@@ -111,14 +111,10 @@ def capture_scene_facts(
         objects = []
         for entity_ref, actor_attribute, target_token in _ENTITIES:
             actor = getattr(task, actor_attribute, None)
-            target_value = getattr(task, f"{actor_attribute}_target_pose", None)
             if actor is None or not callable(getattr(actor, "get_functional_point", None)):
                 raise RouteInputWorkerError("benchmark actor binding is unavailable")
             world_object = _matrix(actor.get_pose())
             world_functional = _matrix(actor.get_functional_point(0, "pose"))
-            world_functional_target = _matrix(_pose_from_pq_wxyz(target_value))
-            object_functional = _multiply(_inverse_rigid(world_object), world_functional)
-            world_object_target = _multiply(world_functional_target, _inverse_rigid(object_functional))
             objects.append(
                 {
                     "entity_ref": entity_ref,
@@ -126,13 +122,19 @@ def capture_scene_facts(
                     "object_frame_id": entity_ref.removeprefix("entity://"),
                     "world_T_object": _flatten(world_object),
                     "world_T_functional_point": _flatten(world_functional),
-                    "world_T_functional_target": _flatten(world_functional_target),
-                    "world_T_object_target": _flatten(world_object_target),
                     "half_extents_m": _half_extents(actor),
-                    "target_ref": f"destination://blocks-ranking-rgb/{target_token}",
                     "functional_point_id": 0,
                 }
             )
+            if include_targets:
+                target_value = getattr(task, f"{actor_attribute}_target_pose", None)
+                world_functional_target = _matrix(_pose_from_pq_wxyz(target_value))
+                object_functional = _multiply(_inverse_rigid(world_object), world_functional)
+                objects[-1].update(
+                    world_T_functional_target=_flatten(world_functional_target),
+                    world_T_object_target=_flatten(_multiply(world_functional_target, _inverse_rigid(object_functional))),
+                    target_ref=f"destination://blocks-ranking-rgb/{target_token}",
+                )
         value = {
             "schema_version": ROUTE_SCENE_FACTS_SCHEMA_VERSION if owned else CURRENT_SCENE_FACTS_SCHEMA_VERSION,
             "task_name": profile["task_name"],
@@ -152,7 +154,8 @@ def capture_scene_facts(
             "coverage": "complete",
             "objects": objects,
         }
-        validate_scene_facts(value)
+        if include_targets:
+            validate_scene_facts(value)
         return value
     finally:
         if owned:

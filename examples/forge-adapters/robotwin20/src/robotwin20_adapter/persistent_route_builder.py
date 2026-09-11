@@ -20,16 +20,16 @@ from .route_readiness import route_geometry_digest, validate_route_request
 
 
 class BenchmarkSceneSource:
-    """Explicit simulator-facts source; never a substitute for model perception."""
+    """Execution geometry only; legacy class name retained for host compatibility."""
 
     def __init__(self, client):
         self.client = client
 
     def __call__(self, request):
-        response = self.client.query("benchmark_scene_facts", {"calibration_ref": request["calibration_ref"]})
+        response = self.client.query("execution_scene_facts", {"calibration_ref": request["calibration_ref"]})
         for key in ("holding_state", "owner", "acquire_invocation_id", "entity_ref", "ok", "request_id"):
             response.pop(key, None)
-        return validate_scene_facts(response)
+        return response
 
 
 class PersistentRouteBuilder:
