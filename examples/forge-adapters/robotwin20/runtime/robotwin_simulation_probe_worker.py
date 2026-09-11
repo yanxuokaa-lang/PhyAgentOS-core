@@ -630,6 +630,9 @@ def _snapshot(
 
 
 def _actor_for_entity(task: Any, entity_ref: str) -> Any:
+    observed = getattr(task, "_paos_observed_entities", {})
+    if entity_ref in observed:
+        return observed[entity_ref]
     mapping = {
         "entity://block-red-1": "block1",
         "entity://block-green-1": "block2",

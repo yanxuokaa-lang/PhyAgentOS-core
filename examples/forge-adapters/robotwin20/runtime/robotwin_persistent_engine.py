@@ -65,6 +65,21 @@ class RoboTwinPersistentEngine:
         return self.backend._scene_revision
 
     def query(self, operation: str, arguments: Mapping[str, Any]) -> dict[str, Any]:
+        if operation == "bind_observed_entities":
+            layout = probe._load_json_artifact(self.root, arguments["layout_ref"])
+            if (layout["scene_revision"] != self.backend.snapshot()["scene_revision"]
+                    or layout["motion_authorized"] is not False):
+                raise ValueError("entity binding requires current idle scene")
+            mapping = {}
+            for binding in layout["bindings"]:
+                if binding["entity_ref"] in {"entity://block-red-1", "entity://block-green-1", "entity://block-blue-1"}:
+                    raise ValueError("observed identity must not shadow execution identity")
+                actor = probe._actor_for_entity(self.backend._task, binding["execution_entity_ref"])
+                if actor is not getattr(self.backend._task, binding["actor_name"], None):
+                    raise ValueError("execution actor binding differs from layout")
+                mapping[binding["entity_ref"]] = actor
+            self.backend._task._paos_observed_entities = mapping
+            return {"scene_revision": layout["scene_revision"], "motion_authorized": False}
         if operation == "snapshot":
             return dict(self.backend.snapshot())
         if operation == "observe":

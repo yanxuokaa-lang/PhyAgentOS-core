@@ -41,6 +41,28 @@ observed scene, including legitimate recovery attempts.
 
 ## Capability Workflow
 
+### Observed Destination Layout
+
+For a requested row arrangement, discover `manipulation.layout` through the
+installed Skill's Tool binding. Submit the ordered observation entity references,
+the same observation/scene/calibration identities, an explicit supported world
+axis, and the freshness limit. Never equate image-left with world+x without
+calibration, invent destination references, or search Runtime-private files for
+benchmark targets. If this Tool is absent from the bound Skill, report that
+capability gap instead of using an unbound diagnostic Query to execute the task.
+
+The Query returns scene-bound destination references, target geometry and explicit
+observation-to-execution identity evidence. It does not grant motion or certify
+support, workspace, collision-free relocation, or complete-route feasibility.
+Use these references in Agent-selected semantic nodes and manipulation.prepare.
+Occupied destinations may require an Agent-selected intermediate relocation; the
+row Query does not generate a swap schedule or temporary destinations. If that
+capability is needed but unavailable, stop or request a supported alternative.
+After a placement, observe and understand again before generating a new layout;
+do not carry observation entity IDs or stale destination references across scenes.
+Final verification compares fresh observations with the original requested order,
+not with a benchmark evaluator or the layout Query's available status.
+
 This Skill describes one complete provider-neutral pick-and-place workflow. It is
 not a scene-observation-only Skill: `scene.observe` and `scene.understand` are the
 perception steps, `grasp.propose` and `manipulation.prepare` are non-mutating

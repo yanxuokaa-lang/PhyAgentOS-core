@@ -255,7 +255,8 @@ class PersistentActionEndpoint:
 
 def build_persistent_runtime(*, client, understanding_provider, grasp_provider,
                              preparation_provider, capability_provider, resolve_preparation,
-                             tool_context_provider, possession: PersistentPossession | None = None) -> CapabilityRuntime:
+                             tool_context_provider, possession: PersistentPossession | None = None,
+                             query_decorator=None) -> CapabilityRuntime:
     """Use injected model providers and one persistent manipulation process.
 
     resolve_preparation belongs to the adapter and supplies the approved route
@@ -275,6 +276,8 @@ def build_persistent_runtime(*, client, understanding_provider, grasp_provider,
         (ACQUIRE_TOOL_SPEC, PersistentActionEndpoint("acquire", client, resolve_preparation, possession=possession)),
         (PLACE_TOOL_SPEC, PersistentActionEndpoint("place", client, resolve_preparation, possession=possession)),
     ):
+        if query_decorator is not None and spec["semantics"] == "query":
+            endpoint = query_decorator(spec["tool_id"], endpoint)
         runtime.register_tool(_spec(spec), endpoint,
                               context_provider=lambda tool_id=spec["tool_id"]: tool_context_provider(tool_id))
     return runtime

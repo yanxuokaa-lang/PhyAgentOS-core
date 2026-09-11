@@ -43,7 +43,7 @@ class PersistentManipulationProvider:
         with self._lock:
             if self._closed or self._state in {"acquiring", "placing"}:
                 raise ManipulationStateError("world query unavailable during motion or shutdown")
-            if operation == "route_readiness" and self._state != "empty":
+            if operation in {"route_readiness", "bind_observed_entities"} and self._state != "empty":
                 raise ManipulationStateError("new route preparation requires an empty provider")
             future = self._pool.submit(self._engine.query, operation, deepcopy(dict(arguments)))
             return {**dict(future.result()), **self.snapshot()}

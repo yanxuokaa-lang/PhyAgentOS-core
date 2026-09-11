@@ -41,6 +41,8 @@ def test_two_objects_share_world_and_require_owned_acquire_continuation():
             assert settle(provider, acquire)["holding_state"] == "holding"
             with pytest.raises(ManipulationStateError, match="empty provider"):
                 provider.query("route_readiness", {})
+            with pytest.raises(ManipulationStateError, match="empty provider"):
+                provider.query("bind_observed_entities", {})
             assert provider.query("snapshot", {})["scene_revision"] == str(index * 2 + 1)
             with pytest.raises(ManipulationStateError):
                 provider.start("acquire", "conflict", "task-2", {"entity_ref": entity})

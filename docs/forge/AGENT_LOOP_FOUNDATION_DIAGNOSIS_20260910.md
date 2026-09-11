@@ -131,3 +131,50 @@ and calibration into scene-bound destination geometry, then retain existing
 preparation, collision and Action admission. No Runtime-private file search should
 be used to replace that public interface. This change does not implement that
 interface and does not make arbitrary RGB sorting executable.
+
+## 10. Observed Entity Binding and Row Layout (Development)
+
+The source persistent deployment now registers `manipulation.layout`, a read-only
+Query accepting `observation_ref`, `scene_revision`, `calibration_ref`,
+`ordered_entities`, `axis` (`world+x` or `world+y`) and `max_age_ms` (1..60000).
+Observation and understanding results are captured from successful public
+endpoints, not accepted as caller-supplied geometry. Capture time is taken from
+the observation endpoint; request freshness does not replace it.
+
+The adapter inverts the calibrated world-to-camera CV rigid transform, compares
+observed spatial envelopes with current execution-object oriented boxes and
+requires a single overlapping box containing the observed center. Multiple
+overlaps, missing geometry and many-to-one correspondence fail closed. Labels
+never select actor identity. This is geometric correspondence evidence, not a
+proof of model semantic accuracy. Partial views/noisy depth can be rejected.
+
+Row horizontal slots and transverse center come from transformed observations.
+Object orientation and support height remain execution-object geometric facts;
+benchmark target poses are overwritten and do not choose requested positions.
+Insufficient span for non-overlapping targets is rejected. The Query does not
+certify support, workspace or route feasibility, and does not select temporary
+destinations or a swap sequence. Those remain separate planning/preparation
+obligations. Unsupported rearrangements must stop, not bypass preparation.
+
+The output carries a layout artifact, explicit observed/execution identities,
+scene-bound destination references and world-frame target transforms. An
+adapter-private artifact also records actor identities and route scene facts.
+Preparation accepts only a matching, unexpired layout, binds the observed IDs
+inside the idle persistent worker and reuses existing route generation,
+readiness, approval, acquisition and placement paths. Rebinding while holding
+or moving is rejected. Original perception IDs and execution IDs remain distinct.
+An updated scene requires new observation, understanding and layout resolution.
+
+Software evidence: 111 tests passed, including public HTTP Query transport,
+calibration, stale/expired evidence, duplicate entities, ambiguous correspondence,
+worker alias binding, held-object rejection, deployment and planning regressions.
+No live perception, planner, Action, simulation stepping or hardware IO was run.
+
+Release status: source integration only. Installed Skill 0.10.7 and its locked
+Node do not gain the new Tool; no manifest or installed runtime was changed.
+Before standard Agent use, build a new Node, declare the new required Tool in a
+versioned Skill manifest (including compatible test profiles), validate isolated
+installation, and resolve the existing active task explicitly before switching
+its Runtime. Do not use an unbound diagnostic call as a task-binding workaround.
+Live identity accuracy, placement feasibility and final RGB verification remain
+unaccepted. Evolution remains disabled.
