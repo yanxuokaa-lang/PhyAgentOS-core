@@ -1496,6 +1496,7 @@ class AgentTaskCoordinator:
     async def cancel_task(self, task_id: str, *, reason: str) -> AgentTaskRecord:
         task = self.store.get(task_id)
         if task.terminal:
+            self._schedule_experience(task)
             return task
         pending = [
             item

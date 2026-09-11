@@ -264,9 +264,29 @@ def task_stop(
     from PhyAgentOS.agent.long_horizon import LongHorizonTaskController
 
     loaded = _load_command_config(config, workspace)
+    async def cancel_owned_task():
+        from PhyAgentOS.forge.binding import ForgeSkillBindingResolver
+        from PhyAgentOS.skill_runtime.integration import ActiveRuntimeRegistry, discover_active_runtime
+
+        coordinator = _task_control_coordinator(loaded)
+        task = coordinator.get_task(task_id)
+        active = discover_active_runtime()
+        try:
+            if task.primary_skill_binding is not None and active is not None:
+                resolver = ForgeSkillBindingResolver(ActiveRuntimeRegistry(active))
+                resolver.validate_runtime(task.primary_skill_binding)
+                coordinator.client = active.client
+                coordinator.runtime_task_binding_ids = active.task_binding_ids
+                coordinator.runtime_invocation_ids = active.invocation_ids
+                coordinator.runtime_session_ids = active.session_ids
+            controller = LongHorizonTaskController.for_control(coordinator)
+            return await controller.cancel(task_id, reason="cli_stop")
+        finally:
+            if active is not None:
+                await active.client.close()
+
     try:
-        controller = LongHorizonTaskController.for_control(_task_control_coordinator(loaded))
-        result = asyncio.run(controller.cancel(task_id, reason="cli_stop"))
+        result = asyncio.run(cancel_owned_task())
         _print_task_result(result)
     except Exception as exc:
         console.print(f"[red]Error: {exc}[/red]")

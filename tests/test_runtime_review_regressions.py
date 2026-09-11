@@ -98,3 +98,13 @@ def test_node_archive_includes_materializer_and_runtime_dependencies():
         assert 'adapter/scripts/materialize_complete_route.py' in archive.namelist()
         assert 'adapter/runtime/robotwin_persistent_worker.py' in archive.namelist()
         assert not any('__pycache__' in name for name in archive.namelist())
+
+
+def test_repeated_cancel_releases_terminal_task_binding(tmp_path):
+    coordinator, task = setup_task(tmp_path)
+    asyncio.run(coordinator.cancel_task(task.task_id, reason='first cancellation without runtime'))
+    references = {task.primary_skill_binding.binding_id}
+    coordinator.runtime_task_binding_ids = references
+    result = asyncio.run(coordinator.cancel_task(task.task_id, reason='repair ownership'))
+    assert result.terminal
+    assert references == set()
