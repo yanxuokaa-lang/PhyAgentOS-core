@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -17,6 +18,7 @@ from PhyAgentOS.agent.tools.forge_task import (
     ForgeTaskGetTool,
     ForgeTaskMaterializePlanTool,
 )
+from PhyAgentOS.agent.tools.forge_tool_api import ForgeToolQueryTool
 from PhyAgentOS.bus.queue import MessageBus
 from PhyAgentOS.config.schema import ForgeConfig
 from PhyAgentOS.forge.binding import BoundToolSpec, ForgeSkillBinding
@@ -209,4 +211,149 @@ def test_model_replan_preserves_task_identity_without_executing(tmp_path):
         assert proposal.plan_graph.revision_id != graph.revision_id
         assert proposal.delta.retry_parent_node_id == "chosen-0"
         assert len(c.get_task(task.task_id).revisions) == 1
+    asyncio.run(exercise())
+
+
+@pytest.mark.parametrize("status", ["available", "unavailable"])
+def test_query_receipt_is_persisted_identity_not_gateway_verdict(tmp_path, status):
+    async def exercise():
+        c, task = setup_task(tmp_path)
+        gateway = {"ok": True, "data": {"status": status, "scene_revision": "scene-1"}}
+        c.client = SimpleNamespace(invoke_query_tool=AsyncMock(return_value=gateway))
+        c._require_binding_tool = AsyncMock(return_value=task.primary_skill_binding.required_tools[0])
+        output = json.loads(await ForgeToolQueryTool(c.client, c).execute(
+            "scene.observe", {}, task_id=task.task_id,
+        ))
+        record = c.get_task(task.task_id).execution_records[0]
+        assert output["paos_record"] == {
+            "task_id": task.task_id, "revision_id": task.active_revision_id,
+            "record_id": record.record_id, "evidence_refs": record.evidence_refs,
+        }
+        assert output["data"] == gateway["data"]
+        assert record.response == gateway
+        assert "paos_record" not in gateway
+        assert _planning_record_status(record) == ("succeeded" if status == "available" else "failed")
+        assert c.get_task(task.task_id).active_revision.plan_graph is None
+    asyncio.run(exercise())
+
+
+def test_discovery_receipt_can_materialize_without_task_get(tmp_path):
+    class DiscoveryPlanner(ScriptedProvider):
+        async def chat(self, **kwargs):
+            self.requests.append(kwargs)
+            if len(self.requests) == 1:
+                return LLMResponse(content=None, tool_calls=[ToolCallRequest(
+                    "discover", "forge_tool_query", {"task_id": task.task_id,
+                    "tool_id": "scene.observe", "arguments": {}},
+                )])
+            if len(self.requests) == 2:
+                receipt = json.loads(kwargs["messages"][-1]["content"])["paos_record"]
+                return LLMResponse(content=None, tool_calls=[ToolCallRequest(
+                    "materialize", "forge_task_materialize_plan", {
+                        "task_id": task.task_id, "nodes": semantic_nodes(2),
+                        "evidence_refs": receipt["evidence_refs"],
+                    },
+                )])
+            return LLMResponse(content="Plan submitted")
+
+    async def exercise():
+        provider = DiscoveryPlanner()
+        loop = AgentLoop(bus=MessageBus(), provider=provider, workspace=tmp_path,
+                         forge_task_coordinator=c, max_iterations=3)
+        loop.tools.register(ForgeToolQueryTool(c.client, c))
+        _, used, _ = await loop._run_agent_loop([{"role": "user", "content": task.task_description}])
+        result = c.get_task(task.task_id)
+        assert used == ["forge_tool_query", "forge_task_materialize_plan"]
+        assert len(result.revisions) == 2
+        assert len(result.active_revision.plan_graph.nodes) == 3
+        assert result.active_revision.discovery_evidence_refs == tuple(result.execution_records[0].evidence_refs)
+        assert len(result.execution_records) == 1
+
+    c, task = setup_task(tmp_path)
+    c.client = SimpleNamespace(invoke_query_tool=AsyncMock(return_value={
+        "ok": True, "data": {"status": "available", "scene_revision": "scene-1"},
+    }))
+    c._require_binding_tool = AsyncMock(return_value=task.primary_skill_binding.required_tools[0])
+    asyncio.run(exercise())
+
+
+@pytest.mark.parametrize("interrupt_tool", [False, True])
+@pytest.mark.parametrize("via_timeout", [False, True])
+def test_interrupted_turn_retains_context_and_resumes_same_task(tmp_path, interrupt_tool, via_timeout):
+    async def exercise():
+        c, task = setup_task(tmp_path)
+        entered = asyncio.Event()
+        blocker = asyncio.Event()
+
+        class InterruptedProvider(ScriptedProvider):
+            async def chat(self, **kwargs):
+                if not self.responses:
+                    entered.set()
+                    await blocker.wait()
+                return await super().chat(**kwargs)
+
+        calls = [ToolCallRequest("read", "forge_task_get", {"task_id": task.task_id})]
+        if interrupt_tool:
+            calls.extend([
+                ToolCallRequest("pending", "forge_task_get", {"task_id": task.task_id}),
+                ToolCallRequest("not-dispatched", "forge_task_get", {"task_id": task.task_id}),
+            ])
+        provider = InterruptedProvider([LLMResponse(content="Discovery done; prepare plan", tool_calls=calls)])
+        loop = AgentLoop(bus=MessageBus(), provider=provider, workspace=tmp_path,
+                         forge_task_coordinator=c, max_iterations=3)
+        loop._connect_mcp = AsyncMock()
+        loop.memory_consolidator.maybe_consolidate_by_tokens = AsyncMock()
+        execute = loop.tools.execute
+        n = 0
+
+        async def interrupt(name, args):
+            nonlocal n
+            n += 1
+            if interrupt_tool and n == 2:
+                entered.set()
+                await blocker.wait()
+            return await execute(name, args)
+
+        loop.tools.execute = interrupt
+        if via_timeout:
+            loop.turn_timeout_s = 0.2
+        turn = asyncio.create_task(loop.process_direct("Continue this task", session_key="cli:retained"))
+        await asyncio.wait_for(entered.wait(), 3)
+        if via_timeout:
+            assert "Turn timed out" in await asyncio.wait_for(turn, 3)
+        else:
+            turn.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await turn
+        loop.sessions.invalidate("cli:retained")
+        saved = loop.sessions.get_or_create("cli:retained").get_history(max_messages=0)
+        answers = [m for m in saved if m["role"] == "tool"]
+        assert len(answers) == len(calls)
+        assert json.loads(answers[0]["content"])["ok"] is True
+        if interrupt_tool:
+            assert all(json.loads(m["content"])["error"]["type"] == "local_turn_interrupted"
+                       for m in answers[1:])
+            assert n == 2  # The third call was never dispatched.
+        assert c.get_task(task.task_id).status == AgentTaskStatus.EXECUTING
+        assert c.get_task(task.task_id).active_revision.plan_graph is None
+
+        provider.responses = [
+            LLMResponse(content=None, tool_calls=[ToolCallRequest("plan", "forge_task_materialize_plan", {
+                "task_id": task.task_id, "nodes": semantic_nodes(2),
+            })]), LLMResponse(content="Plan submitted"),
+        ]
+        loop.turn_timeout_s = 3
+        assert await loop.process_direct("Submit the plan", session_key="cli:retained") == "Plan submitted"
+        assert len(c.get_task(task.task_id).revisions) == 2
+        assert c.get_task(task.task_id).execution_records == []
+        history = loop.sessions.get_or_create("cli:retained").get_history(max_messages=0)
+        assert sum(m["role"] == "tool" and m["tool_call_id"] == "read" for m in history) == 1
+    asyncio.run(exercise())
+
+
+def test_diagnostic_query_does_not_invent_task_receipt():
+    async def exercise():
+        result = {"ok": True, "data": {"status": "available"}}
+        client = SimpleNamespace(invoke_query_tool=AsyncMock(return_value=result))
+        assert json.loads(await ForgeToolQueryTool(client, None).execute("scene.observe", {})) == result
     asyncio.run(exercise())

@@ -10,6 +10,7 @@ import sys
 from collections.abc import MutableSet
 from contextlib import AsyncExitStack
 from pathlib import Path
+from time import monotonic
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 from loguru import logger
@@ -503,11 +504,20 @@ class AgentLoop:
 
             tool_defs = self.tools.get_definitions()
 
-            response = await self.provider.chat_with_retry(
-                messages=messages,
-                tools=tool_defs,
-                model=self.model,
-            )
+            started = monotonic()
+            logger.info("Agent model start session={} iteration={}", experience_session_key, iteration)
+            try:
+                response = await self.provider.chat_with_retry(
+                    messages=messages,
+                    tools=tool_defs,
+                    model=self.model,
+                )
+            except asyncio.CancelledError:
+                logger.warning("Agent model cancelled session={} iteration={}", experience_session_key, iteration)
+                raise
+            finally:
+                logger.info("Agent model exit session={} iteration={} elapsed_s={:.3f}",
+                            experience_session_key, iteration, monotonic() - started)
 
             if response.has_tool_calls:
                 if on_progress:
@@ -533,7 +543,18 @@ class AgentLoop:
                         )
                     args_str = json.dumps(tool_call.arguments, ensure_ascii=False)
                     logger.info("Tool call: {}({})", tool_call.name, args_str[:200])
-                    result = await self.tools.execute(tool_call.name, tool_call.arguments)
+                    started = monotonic()
+                    logger.info("Agent tool start session={} iteration={} call_id={} tool={}",
+                                experience_session_key, iteration, tool_call.id, tool_call.name)
+                    try:
+                        result = await self.tools.execute(tool_call.name, tool_call.arguments)
+                    except asyncio.CancelledError:
+                        logger.warning("Agent tool cancelled session={} iteration={} call_id={} tool={}",
+                                       experience_session_key, iteration, tool_call.id, tool_call.name)
+                        raise
+                    finally:
+                        logger.info("Agent tool exit session={} iteration={} call_id={} elapsed_s={:.3f}",
+                                    experience_session_key, iteration, tool_call.id, monotonic() - started)
                     messages = self.context.add_tool_result(
                         messages, tool_call.id, tool_call.name, result
                     )
@@ -918,11 +939,33 @@ class AgentLoop:
                 )
             )
 
-        final_content, _, all_msgs = await self._run_agent_loop(
-            initial_messages,
-            on_progress=on_progress or _bus_progress,
-            experience_session_key=key,
-        )
+        try:
+            final_content, _, all_msgs = await self._run_agent_loop(
+                initial_messages,
+                on_progress=on_progress or _bus_progress,
+                experience_session_key=key,
+            )
+        except asyncio.CancelledError:
+            # The loop appends to initial_messages. Preserve completed observations
+            # and model decisions, not a second copy of task execution state.
+            turn_messages = initial_messages[1 + len(history):]
+            answered = {m.get("tool_call_id") for m in turn_messages if m["role"] == "tool"}
+            for message in turn_messages:
+                for call in message.get("tool_calls", ()):
+                    if call["id"] not in answered:
+                        self.context.add_tool_result(
+                            initial_messages, call["id"], call["function"]["name"],
+                            json.dumps({"ok": False, "error": {
+                                "type": "local_turn_interrupted",
+                                "message": "No tool result was received before local cancellation. "
+                                "The call may be undispatched or its outcome unknown. Reconcile "
+                                "persisted task/Gateway facts before any retry; this is not proof of stop.",
+                            }}),
+                        )
+            self._save_turn(session, initial_messages, 1 + len(history))
+            self.sessions.save(session)
+            logger.warning("Interrupted turn history saved for session {}", key)
+            raise
 
         if final_content is None:
             final_content = "I've completed processing but have no response to give."

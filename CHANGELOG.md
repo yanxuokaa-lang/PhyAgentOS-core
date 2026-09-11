@@ -9,6 +9,53 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v9.3.8 (2026-09-11 14:12) - codex
+
+- [完成] [policy] [fix] 返回 Query 持久证据引用，保存中断回合并记录分段耗时；不硬编码任务答案或 discovery 流程。(local)
+- [Completed] [Policy] [Fix] Return persisted Query evidence references, retain interrupted turns, and log per-call timing without task answers or fixed discovery. (local)
+
+### 文件变更 / File Changes
+
+- `PhyAgentOS/forge/task.py` L1226-L1236: 返回独立 paos_record，保留 Gateway data 和持久 response / return local receipt without rewriting Gateway facts.
+- `PhyAgentOS/agent/tools/forge_tool_api.py` L88-L90 and `PhyAgentOS/agent/tools/forge_task.py` L193-L196: 说明引用及物化用法 / explain receipt and materialization.
+- `PhyAgentOS/agent/context.py` L117-L120: 证据充分后提交，不强制三 Query / submit when sufficient without a mandatory discovery sequence.
+- `PhyAgentOS/agent/loop.py` L13, L507-L520, L546-L557, L942-L968: 分段计时及取消会话保存 / call timing and cancellation history retention.
+- `tests/test_agent_foundation.py` L6, L21, L215-L359: 引用、无回读物化、取消/超时恢复及诊断 Query / receipts, direct materialization, cancellation/timeout recovery and diagnostic Query.
+- `docs/forge/AGENT_LOOP_FOUNDATION_DIAGNOSIS_20260910.md` L89-L112: 诊断边界、实现和复测说明 / diagnosis bounds, implementation and retest.
+- `CHANGELOG.md`: 最新记录同步 / synchronize latest entry.
+
+### 关键 Diff / Key Diff
+
+```diff
+- return response
++ return {"paos_record": persisted_identity_and_evidence, **gateway_envelope}
+
+- final_content, _, all_msgs = await self._run_agent_loop(...)
++ try:
++     final_content, _, all_msgs = await self._run_agent_loop(...)
++ except asyncio.CancelledError:
++     # Missing local results are interruption notices, never Gateway facts.
++     self._save_turn(session, initial_messages, 1 + len(history))
++     self.sessions.save(session)
++     raise
+
++ # Model and Tool start/exit/cancellation timing uses monotonic time.
+```
+
+### 验证 / Validation
+
+```bash
+PYTHONPATH=.:examples/forge-skills/pick-place-workflow/src PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /home/yanxu/miniconda3/envs/paos/bin/python -m pytest -p pytest_asyncio.plugin -q tests/test_agent_foundation.py tests/test_planning_loop.py tests/test_runtime_review_regressions.py tests/test_turn_timeouts.py tests/test_planning_module.py tests/test_planning_task_integration.py tests/test_long_horizon_controller.py tests/test_planning_dispatch.py tests/test_planning_effect_recovery.py tests/test_planning_end_to_end.py tests/test_tui_long_horizon.py
+```
+
+- 120 passed in 5.97s; targeted Ruff and `git diff --check` passed.
+- An earlier command named nonexistent `tests/test_context.py`; no tests ran in that command. Corrected paths are in the command above.
+- 六维：架构、软件恢复、权限边界、配置复用、可维护性及软件可观察性通过本次回归；真实模型、物理恢复、RGB 终态和 Verifier 尚未验收。
+- Six dimensions: architecture, software recovery, authority boundaries, configuration reuse, maintainability and software observability covered; live model, physical recovery, RGB outcome and final Verifier remain unverified.
+- No Runtime restart, Agent launch, Action or motion. Three pre-existing adapter edits are excluded from this commit.
+- Diagnosis correction: absent graph proves no successful materialization, not absence of a failed Tool call or repeated model planning. No forced planning deadline or task failure transition was added.
+- Branch: `feature/planning-loop`; commit receipt recorded after implementation commit.
+
 ## v9.3.6 (2026-09-11 13:31) - codex
 
 - [完成] [docs] [chore] 回填修复提交 `b9cfcf9`；完整记录见 [月度日志](changelog/2026-09_part7.md)。(local)

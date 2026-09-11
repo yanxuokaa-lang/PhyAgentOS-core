@@ -85,3 +85,28 @@ motion_executed=false
 ```
 
 This proves the persistent worker can create the configured world and expose an initial scene fact. It does not prove perception, grasp generation, route preparation, Action admission, placement, final verification, or model-driven task understanding. `paos skill list` currently reports no installed Skill Runtime, and the source-tree deployment is not registered as a formal manifest-v2 profile because the self-contained `robotwin20_persistent_host` Node artifact is not published. The next executable gate is therefore artifact-backed Runtime installation and `/tools` readiness, followed by the standard PAOS Agent entry.
+
+## 8. Interrupted Discovery-to-Plan Turn (2026-09-11)
+
+Later evidence supersedes the preflight-only installation status above: task
+`task_7bd79d84408a49cd` completed three Queries with Skill 0.10.7. Understanding
+returned available with four entities, four envelopes and twelve derived artifacts.
+The CLI reached its 300-second turn limit without a persisted PlanGraph.
+This proves no successful materialization, not that the model repeatedly planned
+or that a materialization call was never attempted. Per-call timing was unavailable.
+
+The coordinator now returns a separate `paos_record` receipt with its persisted
+record/revision/task identity and evidence refs; Gateway data and stored response
+remain unchanged. The Agent can submit selected nodes without fetching the whole
+task merely to obtain those references. No fixed Query sequence is required.
+
+Interrupted ordinary Agent turns retain completed messages through SessionManager.
+Missing local Tool results receive explicit interruption notices, not remote
+execution facts. Recovery must reconcile task/Gateway state before retrying.
+Model and Tool timing/cancellation use existing logging, available with `paos agent --logs`.
+
+Validation: 120 software regressions passed, including direct materialization and
+same-task recovery after model/Tool interruption and actual turn timeout. The
+model is scripted in tests. Next live validation must use the same task, enable
+logs, submit a graph through the standard Agent and inspect persisted revisions;
+do not treat this patch as RGB execution or final Verifier success.

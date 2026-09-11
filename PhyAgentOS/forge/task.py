@@ -1223,7 +1223,17 @@ class AgentTaskCoordinator:
             )
             raise
         self._finish_execution(task_id, record_id, status="succeeded", response=response)
-        return response
+        # Keep Gateway data unchanged; the coordinator owns this local receipt.
+        record = _task_execution(self.store.get(task_id), record_id)
+        return {
+            "paos_record": {
+                "task_id": task_id,
+                "revision_id": record.revision_id,
+                "record_id": record.record_id,
+                "evidence_refs": list(record.evidence_refs),
+            },
+            **{key: value for key, value in response.items() if key != "paos_record"},
+        }
 
     async def start_action(
         self,

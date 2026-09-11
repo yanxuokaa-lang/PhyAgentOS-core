@@ -85,7 +85,9 @@ class ForgeToolQueryTool(Tool):
     def description(self) -> str:
         return (
             "Invoke a Gateway-declared read-only Query. Supply task_id while executing an "
-            "AgentTask so the result is audited; omit it only for unbound diagnostics."
+            "AgentTask so the result is audited; omit it only for unbound diagnostics. "
+            "Task-bound responses include coordinator-owned paos_record with record_id and "
+            "evidence_refs for plan submission; data remains the Gateway result."
         )
 
     @property

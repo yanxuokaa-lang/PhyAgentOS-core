@@ -190,7 +190,10 @@ class ForgeTaskMaterializePlanTool(Tool):
         return (
             "Attach an Agent-selected semantic PlanGraph to an existing task. "
             "Choose observation/understanding Tools first only when the task needs them; "
-            "this call does not execute Tools or motion."
+            "once evidence is sufficient, submit nodes here instead of narrating a future plan. "
+            "Use paos_record.evidence_refs from task-bound Query responses directly; "
+            "no extra task read is needed just to recover their IDs. If evidence is insufficient, "
+            "obtain the missing facts or request clarification. This call does not execute Tools or motion."
         )
 
     @property
