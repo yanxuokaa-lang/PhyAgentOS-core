@@ -9,6 +9,12 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v9.4.1 (2026-09-11 15:00) - codex
+
+- [完成] [docs] [chore] 回填源码实现提交 `49d403b`；无运行代码变更。(local)
+- [Completed] [Docs] [Chore] Record source implementation commit `49d403b`; no runtime code changes. (local)
+- Diff: pending receipt -> `49d403b`; files: CHANGELOG.md and monthly log; validation: `git diff --check`.
+
 ## v9.4.0 (2026-09-11 14:46) - codex
 
 - [完成] [sense] [feat] 实现源码层观察实体几何绑定和单行目标布局 Query，接入持久准备与执行对象解析；未发布新版 manifest/Node，未运行运动。(local)
@@ -54,7 +60,7 @@ PYTHONPATH=.:examples/forge-adapters/robotwin20/src:examples/forge-adapters/robo
 - 六维 / Six dimensions: architecture and software failure recovery tested; motion authority preserved; configuration independent of RGB labels but formal manifest/Node release pending; maintainability uses existing endpoints and preparation; artifact/identity observability tested. Live geometry accuracy, complete routes, physical recovery and Verifier remain unaccepted.
 - Existing benchmark geometry serves execution-object registration only; target answers and category names never choose correspondence or horizontal destination.
 - No live Runtime/Agent/Action started. Three pre-existing adapter modifications are excluded from commits.
-- Branch: `feature/planning-loop`; implementation receipt will follow.
+- Branch: `feature/planning-loop`; implementation commit: `49d403b`.
 
 ## v9.3.10 (2026-09-11 14:37) - codex
 
