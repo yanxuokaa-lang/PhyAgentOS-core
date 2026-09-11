@@ -174,6 +174,14 @@ class VerificationRequestBuilder:
             "enrolled_tool_bindings": [
                 item.model_dump(mode="json") for item in task.tool_bindings
             ],
+            "skill_uses": [
+                {
+                    key: value
+                    for key, value in item.model_dump(mode="json").items()
+                    if key != "instructions"
+                }
+                for item in task.skill_uses
+            ],
             "supporting_skill_bindings": [
                 item.model_dump(mode="json") for item in task.supporting_skill_bindings
             ],

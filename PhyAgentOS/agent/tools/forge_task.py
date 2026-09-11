@@ -67,7 +67,7 @@ class ForgeTaskCreateTool(Tool):
                 "activation_id": {
                     "type": "string",
                     "pattern": "^activation_[a-z0-9]+$",
-                    "description": "Primary activate_skill result from this session turn",
+                    "description": "Optional primary activate_skill result; omit when using Runtime-only execution",
                 },
                 "verification": _verification_schema(),
                 "plan_graph": {
@@ -80,15 +80,15 @@ class ForgeTaskCreateTool(Tool):
                     "description": "Immutable artifact reference for the concrete PlanGraph.",
                 },
             },
-            "required": ["task_description", "activation_id", "verification"],
+            "required": ["task_description", "verification"],
             "additionalProperties": False,
         }
 
     async def execute(
         self,
         task_description: str,
-        activation_id: str,
         verification: dict[str, Any],
+        activation_id: str | None = None,
         plan_graph: dict[str, Any] | None = None,
         plan_graph_ref: str | None = None,
     ) -> str:

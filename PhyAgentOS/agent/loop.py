@@ -610,10 +610,24 @@ class AgentLoop:
             task = self.forge_task_coordinator.get_task(task_id)
             if task.active_revision_id != revision_id:
                 raise ValueError("node turn revision is not current")
+            if task.skill_uses:
+                method = task.skill_uses[-1]
+                self.forge_task_coordinator.record_skill_use(
+                    task_id,
+                    activation_id=method.activation_id,
+                    skill_name=method.skill_name,
+                    skill_version=method.skill_version,
+                    content_sha256=method.content_sha256,
+                    instructions=method.instructions,
+                    decision_ref=f"node:{revision_id}:{node_id}",
+                    node_id=node_id,
+                )
+                task = self.forge_task_coordinator.get_task(task_id)
             prompt = json.dumps({
                 "original_goal": task.task_description,
                 "verification": task.verification.model_dump(mode="json"),
                 "bound_skill_instructions": task.primary_skill_instructions,
+                "skill_uses": [item.model_dump(mode="json") for item in task.skill_uses],
                 "node_context": prompt,
             }, ensure_ascii=False)
         messages = self.context.build_messages(

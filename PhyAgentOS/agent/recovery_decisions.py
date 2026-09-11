@@ -51,6 +51,7 @@ class AgentRecoveryDecisions:
                     "goal": task.task_description,
                     "verification": task.verification.model_dump(mode="json"),
                     "skill_instructions": task.primary_skill_instructions,
+                    "skill_uses": [item.model_dump(mode="json") for item in task.skill_uses],
                     "graph": graph.model_dump(mode="json"),
                     "settlement": settlement.model_dump(mode="json"),
                     "delta": delta.model_dump(mode="json"),

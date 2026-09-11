@@ -102,6 +102,7 @@ class ToolExecutionRecord(BaseModel):
     semantics: Literal["query", "action", "session"]
     skill_binding_id: str | None = None
     runtime_binding_id: str | None = None
+    skill_use_ids: tuple[str, ...] = ()
     tool_spec_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     caller_id: str
     node_id: str | None = None
@@ -169,6 +170,25 @@ class ToolExecutionRecord(BaseModel):
         return self.status in TERMINAL_TOOL_STATUSES
 
 
+class SkillUseRecord(BaseModel):
+    """Append-only evidence that a concrete Skill method informed a decision."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: Literal["skill_use_record_v1"] = "skill_use_record_v1"
+    use_id: str
+    activation_id: str
+    skill_name: str
+    skill_version: str | None = None
+    content_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    instructions: str = Field(min_length=1)
+    decision_ref: str = Field(min_length=1)
+    node_id: str | None = None
+    attempt_id: str | None = None
+    outcome: Literal["selected", "completed", "failed", "cancelled"] = "selected"
+    created_at: datetime = Field(default_factory=utc_now)
+
+
 class PlanRevision(BaseModel):
     """Append-only plan generation within one stable AgentTask identity."""
 
@@ -181,6 +201,7 @@ class PlanRevision(BaseModel):
     counts_toward_replan_budget: bool = True
     skill_binding_id: str | None = None
     runtime_binding_id: str | None = None
+    skill_use_ids: tuple[str, ...] = ()
     plan_graph: PlanGraph | None = None
     plan_graph_ref: str | None = None
     plan_graph_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
@@ -291,6 +312,7 @@ class AgentTaskRecord(BaseModel):
     primary_skill_instructions: str | None = None
     runtime_binding: RuntimeBinding | None = None
     tool_bindings: list[BoundToolSpec] = Field(default_factory=list)
+    skill_uses: list[SkillUseRecord] = Field(default_factory=list)
     supporting_skill_bindings: list[ForgeSkillBinding] = Field(default_factory=list)
     runtime_snapshot_ref: str | None = None
     verdict: VerificationVerdict | None = None
@@ -354,6 +376,9 @@ class AgentTaskRecord(BaseModel):
         if self.active_revision_id not in set(revision_ids):
             raise ValueError("active_revision_id must identify an AgentTask revision")
         execution_ids: set[str] = set()
+        skill_use_ids = {item.use_id for item in self.skill_uses}
+        if len(skill_use_ids) != len(self.skill_uses):
+            raise ValueError("Skill-use identities must be unique")
         for revision in self.revisions:
             expected_runtime = (
                 self.runtime_binding.binding_id if self.runtime_binding is not None else None
@@ -369,6 +394,8 @@ class AgentTaskRecord(BaseModel):
                     raise ValueError("Tool execution record identities must be unique")
                 if execution.runtime_binding_id != expected_runtime:
                     raise ValueError("Tool execution Runtime binding must match AgentTask binding")
+                if not set(execution.skill_use_ids).issubset(skill_use_ids):
+                    raise ValueError("Tool execution references an unknown Skill-use")
                 execution_ids.add(execution.record_id)
         return self
 
@@ -819,6 +846,7 @@ class AgentTaskCoordinator:
         binding: ForgeSkillBinding | None = None
         runtime_binding: RuntimeBinding | None = None
         skill_instructions: str | None = None
+        initial_skill_use: SkillUseRecord | None = None
         if self.binding_resolver is not None:
             if activation_id and origin_session_key:
                 if self.activation_manager is None:
@@ -842,6 +870,15 @@ class AgentTaskCoordinator:
                 skill_instructions = self.activation_manager.instructions_for_activation(
                     session_key=origin_session_key, activation_id=activation_id,
                 )
+                initial_skill_use = SkillUseRecord(
+                    use_id=f"skill_use_{uuid4().hex[:16]}",
+                    activation_id=activation.activation_id,
+                    skill_name=activation.skill_name,
+                    skill_version=activation.skill_version,
+                    content_sha256=activation.content_sha256,
+                    instructions=skill_instructions,
+                    decision_ref=f"task:{task_id}:create",
+                )
             else:
                 try:
                     runtime_binding = self.binding_resolver.freeze_runtime(task_id=task_id)
@@ -863,6 +900,9 @@ class AgentTaskCoordinator:
                     runtime_binding_id=(
                         runtime_binding.binding_id if runtime_binding is not None else None
                     ),
+                    skill_use_ids=(
+                        (initial_skill_use.use_id,) if initial_skill_use is not None else ()
+                    ),
                     plan_graph_ref=plan_graph_ref,
                     plan_graph_digest=plan_graph.graph_digest if plan_graph is not None else None,
                     planner_decision_digest=plan_graph.planner_decision_digest if plan_graph is not None else None,
@@ -873,6 +913,7 @@ class AgentTaskCoordinator:
             primary_skill_binding=binding,
             primary_skill_instructions=skill_instructions,
             runtime_binding=runtime_binding,
+            skill_uses=([initial_skill_use] if initial_skill_use is not None else []),
             runtime_snapshot_ref=(
                 f"runtime:{binding.runtime_instance_id}"
                 if binding is not None
@@ -901,11 +942,61 @@ class AgentTaskCoordinator:
                 task_id,
                 session_key=origin_session_key,
                 forge_binding=binding,
+                skill_uses=task.skill_uses,
             )
         return task
 
     def get_task(self, task_id: str) -> AgentTaskRecord:
         return self.store.get(task_id)
+
+    def record_skill_use(
+        self,
+        task_id: str,
+        *,
+        activation_id: str,
+        skill_name: str,
+        skill_version: str | None,
+        content_sha256: str,
+        instructions: str,
+        decision_ref: str,
+        node_id: str | None = None,
+        attempt_id: str | None = None,
+    ) -> SkillUseRecord:
+        """Persist one actual method use; does not grant Tool or motion authority."""
+        use = SkillUseRecord(
+            use_id=f"skill_use_{uuid4().hex[:16]}",
+            activation_id=activation_id,
+            skill_name=skill_name,
+            skill_version=skill_version,
+            content_sha256=content_sha256,
+            instructions=instructions,
+            decision_ref=decision_ref,
+            node_id=node_id,
+            attempt_id=attempt_id,
+        )
+
+        def mutate(current: AgentTaskRecord) -> None:
+            if any(item.use_id == use.use_id for item in current.skill_uses):
+                return
+            current.skill_uses.append(use)
+            current.active_revision.skill_use_ids = tuple(
+                (*current.active_revision.skill_use_ids, use.use_id)
+            )
+
+        self.store.update(
+            task_id,
+            mutate,
+            event_type="skill_use_recorded",
+            payload={
+                "use_id": use.use_id,
+                "skill_name": skill_name,
+                "skill_version": skill_version,
+                "decision_ref": decision_ref,
+                "node_id": node_id,
+                "attempt_id": attempt_id,
+            },
+        )
+        return use
 
     def begin_revision(
         self,
@@ -1961,6 +2052,7 @@ class AgentTaskCoordinator:
                         if current.runtime_binding is not None
                         else None
                     ),
+                    skill_use_ids=tuple(current.active_revision.skill_use_ids),
                     tool_spec_sha256=tool.spec_sha256,
                     caller_id=caller_id,
                     node_id=binding.node_id if binding is not None else None,

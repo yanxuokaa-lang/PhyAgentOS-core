@@ -129,11 +129,17 @@ class ExperienceCoordinator:
         *,
         session_key: str,
         forge_binding: Any | None = None,
+        skill_uses: list[Any] | None = None,
     ) -> None:
         try:
             snapshot = self.activation.snapshot(session_key)
             if forge_binding is not None:
                 snapshot["forge_skill_binding"] = forge_binding.model_dump(mode="json")
+            if skill_uses:
+                snapshot["skill_uses"] = [
+                    item.model_dump(mode="json") if hasattr(item, "model_dump") else dict(item)
+                    for item in skill_uses
+                ]
             self.store.save_binding(root_task_id, snapshot)
         except Exception as exc:
             logger.warning(
@@ -221,6 +227,9 @@ class ExperienceCoordinator:
                 goal=outcome.goal,
                 success_criteria=outcome.success_criteria,
                 skill_activations=activations,
+                skill_uses=[
+                    item for item in binding.get("skill_uses", []) if isinstance(item, dict)
+                ],
                 primary_skill_binding_id=(
                     binding.get("forge_skill_binding", {}).get("binding_id")
                     if isinstance(binding.get("forge_skill_binding"), dict)

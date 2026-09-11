@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -191,6 +191,7 @@ class TaskEpisode(ExperienceModel):
     goal: str
     success_criteria: list[str] = Field(default_factory=list)
     skill_activations: list[SkillActivation] = Field(default_factory=list)
+    skill_uses: list[dict[str, Any]] = Field(default_factory=list)
     primary_skill_binding_id: str | None = None
     primary_skill_version: str | None = None
     skill_document_sha256: str | None = Field(
