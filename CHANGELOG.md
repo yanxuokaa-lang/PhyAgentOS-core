@@ -34,7 +34,7 @@
 
 - 29 focused tests passed in 0.75s; 336 full core no-motion tests passed in 22.40s.
 - Ruff and `git diff --check` passed. No Runtime, Gateway Action, simulator, hardware connection, or motion was started.
-- Implementation commit: pending; branch: `feature/planning-loop`.
+- Implementation commit: `8a71ec5`; branch: `feature/planning-loop`.
 
 ## v9.10.0 (2026-09-11 20:50) - codex
 
