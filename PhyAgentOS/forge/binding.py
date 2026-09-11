@@ -88,6 +88,22 @@ def _candidate_payload(candidate: ForgeSkillBindingCandidate) -> dict[str, Any]:
     return value
 
 
+def validate_runtime_identity(runtime: Any, binding: ForgeSkillBinding) -> None:
+    """Validate that a live Runtime still owns a persisted task binding.
+
+    This comparison is deliberately independent of Skill instructions and Tool
+    contract validation so recovery callers can enforce execution ownership
+    without treating a method Skill as the owner of the robot.
+    """
+    if (
+        runtime.runtime_instance_id != binding.runtime_instance_id
+        or runtime.gateway_url != binding.gateway_url
+        or runtime.profile != binding.runtime_profile
+        or runtime.gateway_identity != binding.gateway_identity
+    ):
+        raise ForgeSkillBindingError("AgentTask Forge runtime binding is no longer active")
+
+
 class ForgeSkillBindingResolver:
     """Preview, freeze, and continuously validate one active Skill runtime."""
 
@@ -191,14 +207,9 @@ class ForgeSkillBindingResolver:
     def validate_runtime(self, binding: ForgeSkillBinding) -> Any:
         """Resolve only the Runtime that owns this binding, including during recovery."""
         runtime = self._runtime()
-        if (
-            runtime.runtime_instance_id != binding.runtime_instance_id
-            or runtime.gateway_url != binding.gateway_url
-            or runtime.skill_name != binding.skill_name
-            or runtime.skill_version != binding.skill_version
-            or runtime.profile != binding.runtime_profile
-            or runtime.gateway_identity != binding.gateway_identity
-        ):
+        validate_runtime_identity(runtime, binding)
+        # Legacy tasks also pinned their deployment Skill; preserve that history.
+        if runtime.skill_name != binding.skill_name or runtime.skill_version != binding.skill_version:
             raise ForgeSkillBindingError("AgentTask Forge runtime binding is no longer active")
         return runtime
 
@@ -247,4 +258,5 @@ __all__ = [
     "ForgeSkillBindingError",
     "ForgeSkillBindingResolver",
     "canonical_sha256",
+    "validate_runtime_identity",
 ]

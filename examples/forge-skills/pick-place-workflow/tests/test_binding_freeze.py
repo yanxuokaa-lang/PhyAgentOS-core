@@ -7,6 +7,7 @@ from PhyAgentOS.forge.binding import (
     ForgeSkillBindingError,
     ForgeSkillBindingResolver,
     canonical_sha256,
+    validate_runtime_identity,
 )
 from PhyAgentOS.skill_runtime.integration import ActiveRuntimeRegistry, ActiveSkillRuntime
 from PhyAgentOS.skill_runtime.manifest import load_manifest
@@ -153,5 +154,39 @@ async def test_freeze_rejects_changed_tool_spec_after_preview(tmp_path):
 
         with pytest.raises(ForgeSkillBindingError, match="Runtime or ToolSpec changed"):
             await resolver.freeze(candidate.candidate_id, task_id="task_fixture")
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("field,value", [
+    ("runtime_instance_id", "another-world"),
+    ("gateway_url", "http://another-gateway"),
+    ("gateway_identity", "another-identity"),
+    ("gateway_identity", None),
+    ("profile", "another-profile"),
+    ("skill_name", "another-deployment"),
+    ("skill_version", "99.0.0"),
+])
+async def test_runtime_and_legacy_deployment_identity_checks(tmp_path, field, value):
+    _manifest, transport, client, registry, resolver = _fixture(tmp_path)
+    try:
+        candidate = await resolver.preview(SKILL_NAME)
+        binding = await resolver.freeze(candidate.candidate_id, task_id="task_fixture")
+        original = registry.current()
+        assert resolver.validate_runtime(binding) is original
+        changed = replace(original, **{field: value})
+        if field in {"skill_name", "skill_version"}:
+            validate_runtime_identity(changed, binding)
+        else:
+            with pytest.raises(ForgeSkillBindingError, match="binding is no longer active"):
+                validate_runtime_identity(changed, binding)
+        registry.replace(changed)
+        request_count = len(transport.requests)
+        with pytest.raises(ForgeSkillBindingError, match="binding is no longer active"):
+            await resolver.validate_tool(binding, "scene.observe", "query")
+        assert len(transport.requests) == request_count
+        registry.replace(original)
+        assert resolver.validate_runtime(binding) is original
     finally:
         await client.close()

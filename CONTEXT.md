@@ -2,6 +2,24 @@
 
 本文件只记录领域术语，不规定代码实现细节。
 
+## Execution Runtime Binding
+
+Execution Runtime Binding 是任务与实际执行环境之间的归属关系，不代表任务采用某一种方法或固定流程。
+_Avoid_: 将执行环境归属称为 Skill 使用。
+
+## Tool Contract Binding
+
+Tool Contract Binding 是一次任务使用某个执行接口时所依据的能力契约。它不能授予超出执行环境权限的动作。
+
+## Skill Use
+
+Skill Use 是 Agent 在某次决策中采用一个特定版本方法的事实。同一任务可以组合多个方法，历史使用不随方法更新而改变。
+_Avoid_: 将安装能力包等同于实际采用其中的方法。
+
+## Runtime Deployment Bundle
+
+Runtime Deployment Bundle 是部署执行能力所需的可安装资源集合。它的生命周期与任务方法的选用不同。
+
 ## PAOS Core
 
 PAOS Core 是任务、执行事实、Skill binding、候选生命周期和最终权限的现有宿主。它不包含某一篇

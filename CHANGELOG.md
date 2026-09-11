@@ -9,6 +9,36 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v9.5.1 (2026-09-11 16:28) - codex
+
+- [完成] [policy] [refactor] 提取 Runtime 身份比较，保留旧任务的部署 Skill/version 校验；记录后续持久化和 Skill-use 迁移。(local)
+- [Completed] [policy] [refactor] Extract Runtime identity comparison, preserve legacy deployment Skill/version checks, and document subsequent persistence and Skill-use migration. (local)
+
+### Files and Diff / 文件与差异
+
+- PhyAgentOS/forge/binding.py L91-L104,L207-L214,L261: extract identity comparison and call it from the existing resolver.
+- examples/forge-skills/pick-place-workflow/tests/test_binding_freeze.py L10,L160-L192: seven identity-change cases, no Gateway call after rejection, original Runtime restoration.
+- CONTEXT.md L5-L22: four ownership terms.
+- docs/adr/0001-runtime-ownership-and-skill-use.md L1-L14: accepted direction, explicit legacy compatibility.
+- docs/forge/RUNTIME_BINDING_SKILL_USE_DESIGN.md L1-L119: staged migration and acceptance requirements.
+- changelog/2026-09_part7.md and CHANGELOG.md: matching current-version record; historical content preserved.
+
+```diff
+- validate_runtime: combined Runtime and Skill identity comparison
++ validate_runtime_identity: instance, Gateway URL/identity, profile comparison
++ validate_runtime: call identity helper, then preserve legacy Skill/version comparison
+```
+
+### Validation / 验证
+
+- 78 passed in 6.02s; focused Ruff passed; git diff --check passed.
+- Command: PYTHONPATH=.:examples/forge-skills/pick-place-workflow/src PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /home/yanxu/miniconda3/envs/paos/bin/python -m pytest -p pytest_asyncio.plugin -q examples/forge-skills/pick-place-workflow/tests/test_binding_freeze.py examples/forge-skills/pick-place-workflow/tests/test_task_binding_activation.py examples/forge-skills/pick-place-workflow/tests/test_bound_execution_records.py examples/forge-skills/pick-place-workflow/tests/test_task_verification_context.py tests/test_runtime_review_regressions.py tests/test_agent_foundation.py tests/test_planning_loop.py tests/test_planning_task_integration.py
+- 六维 / Six dimensions: architecture uses existing resolver; recovery regressions pass; identity drift fails before Tool IO; no new configuration or hash; one shared comparison; existing errors and history preserved.
+- Scope: preparatory refactor only. Activation-free task creation, on-demand Tool enrollment and per-decision Skill attribution are NOT implemented or accepted yet.
+- 本阶段未修改在线任务、未重启 Runtime、未执行 Action；三个既有 adapter 修改保留且不提交。
+- No live task mutation, Runtime restart or Action; three pre-existing adapter changes preserved and excluded.
+- Branch: feature/planning-loop; implementation receipt recorded after commit.
+
 ## v9.5.0 (2026-09-11 15:57) - codex
 
 - [完成] [sense] [refactor] 删除强制 layout、排列策略及对应契约/测试；重新实现独立 scene.bind 和显式 manipulation.target，保持任务策略归 Agent。(local)
@@ -166,6 +196,8 @@ PYTHONPATH=.:examples/forge-adapters/robotwin20/src:examples/forge-adapters/robo
 - [完成] [docs] [chore] 回填源码实现提交 `49d403b`；无运行代码变更。(local)
 - [Completed] [Docs] [Chore] Record source implementation commit `49d403b`; no runtime code changes. (local)
 - Diff: pending receipt -> `49d403b`; files: CHANGELOG.md and monthly log; validation: `git diff --check`.
+
+## Earlier Records / 历史记录
 
 ## v9.4.0 (2026-09-11 14:46) - codex
 
