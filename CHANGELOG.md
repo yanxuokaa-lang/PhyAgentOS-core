@@ -19,6 +19,10 @@
 - `/tools=0.011s`, `scene.observe=0.534s`, `scene.understand=51.852s`; understanding `available`, 4 entities, 4 envelopes, 12 derived artifacts.
 - No Action or motion was executed.
 
+### Git 提交 / Git Commit
+
+- Commit: `1c3070b`; Branch: `feature/planning-loop`。
+
 ## v9.3.3 (2026-09-11 10:55) - codex
 
 - [完成] [runtime] [fix] 修复 Forge task 嵌套记录序列化，补齐感知依赖 readiness 与正式 dataflow 环境传递；Skill 更新至 0.10.5。(local)
