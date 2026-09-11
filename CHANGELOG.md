@@ -13,7 +13,7 @@
 
 - [完成] [policy] [fix] Forge 上下文在 evolution 关闭时仍要求显式 `activate_skill`，并记录当前正式 Skill-bound 验收路径与 Runtime-only 未完成迁移边界。(local)
 - [Completed] [Policy] [Fix] Forge context now still requires explicit `activate_skill` when evolution is disabled, and the formal Skill-bound acceptance path plus incomplete Runtime-only migration boundary are documented. (local)
-- Files: `PhyAgentOS/agent/context.py` L74-L80; `docs/forge/AGENT_LOOP_FOUNDATION_DIAGNOSIS_20260910.md` L261-L310; `tests/test_context_activation.py` L1-L36. Validation: 42 focused and 334 full no-motion tests passed; Ruff and `git diff --check` passed. Commit: pending.
+- Files: `PhyAgentOS/agent/context.py` L74-L80; `docs/forge/AGENT_LOOP_FOUNDATION_DIAGNOSIS_20260910.md` L261-L310; `tests/test_context_activation.py` L1-L36. Validation: 42 focused and 334 full no-motion tests passed; Ruff and `git diff --check` passed. Commit: `0cea27c`.
 
 ## v9.8.1 (2026-09-11 20:00) - codex
 
