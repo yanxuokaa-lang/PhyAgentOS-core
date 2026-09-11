@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import sqlite3
 
 from PhyAgentOS.agent.long_horizon import LongHorizonTaskController
 from PhyAgentOS.agent.planning_loop import NodeContextProvider, PlanningLoopAdapter
@@ -177,6 +179,57 @@ def test_interactive_async_stop_uses_coordinator_cancellation(tmp_path):
     from PhyAgentOS.cli.commands import _interactive_task_control_async
     assert asyncio.run(exercise()) is True
     assert c.get_task(task.task_id).cancellation_requested is True
+
+
+def test_legacy_prose_condition_task_remains_readable_reconcilable_and_stoppable(tmp_path):
+    graph = _graph("task-legacy-prose", "revision-legacy-prose")
+    coordinator = _coordinator(tmp_path)
+    task = coordinator.create_task(
+        task_description="legacy prose condition",
+        verification=TaskVerificationContract(mode="off"),
+        plan_graph=graph,
+        plan_graph_ref="artifact://plan/legacy-prose",
+    )
+
+    # Simulate a row persisted before admission began rejecting prose conditions.
+    payload = task.model_dump(mode="json")
+    legacy_graph = payload["revisions"][0]["plan_graph"]
+    legacy_graph["nodes"][0]["conditions"] = ["使用本次成功绑定的蓝块"]
+    legacy_graph["graph_digest"] = plan_graph_digest(legacy_graph)
+    payload["revisions"][0]["plan_graph_digest"] = legacy_graph["graph_digest"]
+    with sqlite3.connect(coordinator.store.path) as connection:
+        connection.execute(
+            "UPDATE agent_tasks SET record_json = ? WHERE task_id = ?",
+            (json.dumps(payload, ensure_ascii=False), task.task_id),
+        )
+
+    restarted = _coordinator(tmp_path)
+    stored = restarted.store.get(task.task_id)
+    controller = LongHorizonTaskController.for_control(restarted)
+    stored_graph = stored.active_revision.plan_graph
+    assert stored_graph is not None
+    assert stored_graph.nodes[0].conditions == (
+        "使用本次成功绑定的蓝块",
+    )
+    assert stored.execution_records == []
+    assert controller.status(task.task_id).status == "executing"
+
+    async def reconcile_and_stop():
+        reconciled = await restarted.reconcile_nonterminal()
+        assert reconciled is not None
+        assert reconciled.task_id == task.task_id
+        from PhyAgentOS.cli.commands import _interactive_task_control_async
+
+        return await _interactive_task_control_async(
+            f"/task stop {task.task_id}", controller
+        )
+
+    assert asyncio.run(reconcile_and_stop()) is True
+    stopped = restarted.store.get(task.task_id)
+    assert stopped.status == AgentTaskStatus.CANCELLED
+    assert stopped.cancellation_requested is True
+    assert stopped.execution_records == []
+    assert [item for item in stopped.execution_records if item.semantics == "action"] == []
 
 
 def test_background_runner_exception_is_visible_to_tui_callback(tmp_path):

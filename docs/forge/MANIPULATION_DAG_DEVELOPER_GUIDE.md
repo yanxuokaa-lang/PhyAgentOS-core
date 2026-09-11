@@ -252,6 +252,15 @@ record and projected as a redacted trace reference for Experience. Supplying
 only part of the binding is rejected; legacy calls without planning metadata
 remain supported.
 
+`PlanNode.conditions` contains symbolic trusted-fact keys only. Each key must
+fully match `[a-z][a-z0-9_.:-]*` and is evaluated by exact lookup in
+`AdmissionContext.condition_facts`; absent or false facts keep the node not
+ready. Put prose constraints in the task description, obligation, or other
+semantic fields, not in `conditions`. The grammar is enforced when a new graph
+is admitted. It is intentionally not a deserialization validator: historical
+graphs containing prose must remain readable for status, reconciliation, and
+stop, while their unmatched conditions remain fail-closed.
+
 Live Gateway ToolSpecs now expose an explicit, versioned `planning` extension
 that is projected into the immutable `ToolSpecPolicy` carried by a Skill
 binding. Missing planning metadata is not inferred, so legacy ToolSpecs remain

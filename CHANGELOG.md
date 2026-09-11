@@ -9,6 +9,33 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v9.10.2 (2026-09-11 21:09) - codex
+
+- [完成] [docs] [docs] 在 planning 规范中明确 `PlanNode.conditions` 的 `[a-z][a-z0-9_.:-]*` 语法、精确事实求值和自然语言字段边界。(local)
+- [Completed] [Docs] [Docs] Documented the `[a-z][a-z0-9_.:-]*` `PlanNode.conditions` grammar, exact fact evaluation, and natural-language field boundary in the planning specifications. (local)
+- [完成] [eval] [fix] 增加旧自然语言 condition PlanGraph 的 Store 读取、status、reconcile 和 stop 无运动回归，显式断言零 execution/Action 记录。(local)
+- [Completed] [Eval] [Fix] Added a no-motion Store read, status, reconcile, and stop regression for historical prose-condition PlanGraphs, explicitly asserting zero execution/Action records. (local)
+
+### Files and Diff / 文件与差异
+
+- `docs/forge/PLANNING_MODULE_DESIGN.md` L92-L99: normative condition-key syntax and legacy read/control boundary.
+- `docs/forge/MANIPULATION_DAG_DEVELOPER_GUIDE.md` L255-L262: developer-facing syntax, exact fact lookup, and prose placement.
+- `tests/test_long_horizon_controller.py` L4-L5,L184-L232: persisted old-row restart, read, status, reconcile, `/task stop`, and zero execution/Action assertions.
+- `changelog/2026-09_part7.md` L610-L658 and `CHANGELOG.md` L12-L37: matching bilingual record.
+
+```diff
+- conditions accepted by documentation without an explicit symbolic-key grammar
++ conditions keys fully match [a-z][a-z0-9_.:-]*; prose stays in semantic fields
+- legacy stop compatibility backed only by manual task evidence
++ automated persisted-row read/status/reconcile/stop regression with zero execution/Action records
+```
+
+### Validation / 验证
+
+- 29 focused tests passed in 0.75s; 336 full core no-motion tests passed in 22.40s.
+- Ruff and `git diff --check` passed. No Runtime, Gateway Action, simulator, hardware connection, or motion was started.
+- Implementation commit: pending; branch: `feature/planning-loop`.
+
 ## v9.10.0 (2026-09-11 20:50) - codex
 
 - [完成] [policy] [fix] 修复自然语言 `PlanNode.conditions` 导致 `ready_nodes=[]` 的根因；仅在新 PlanGraph 准入时校验符号条件，保留旧任务可读和可停止。(local)

@@ -89,6 +89,15 @@ documents explicit rate-limiting controls and joint-velocity-limit queries.
   separate from a concrete `PlanGraph`; one successful episode never rewrites a
   policy automatically.
 
+Every `PlanNode.conditions` entry is a symbolic key with the full-match syntax
+`[a-z][a-z0-9_.:-]*`. The key is looked up exactly in trusted
+`AdmissionContext.condition_facts`; a missing or false fact leaves the node not
+ready. Natural-language requirements belong in semantic fields such as the
+obligation or task description, never in `conditions`. New PlanGraph admission
+enforces this grammar. Historical serialized graphs remain deserializable so
+operators can inspect, reconcile, and stop old tasks without authorizing their
+nodes for execution.
+
 `PlanRevision` stores an immutable `artifact://` graph reference plus graph,
 planner-decision, and policy-snapshot digests;
 `ToolExecutionRecord` stores node/obligation/input-binding/decision-trace
