@@ -61,6 +61,8 @@ from __future__ import annotations
 import base64
 import io
 import os
+import shutil
+import subprocess
 import sys
 import tempfile
 import zipfile
@@ -87,8 +89,28 @@ def main() -> int:
         if existing:
             paths.append(existing)
         environment["PYTHONPATH"] = os.pathsep.join(paths)
-        command = [sys.executable, "-m", "robotwin20_adapter.persistent_host", *sys.argv[1:]]
-        os.execvpe(sys.executable, command, environment)
+        runtime_python = environment.get("ROBOTWIN20_PAOS_PYTHON") or sys.executable
+        runtime_python = shutil.which(runtime_python) or runtime_python
+        if not os.path.isabs(runtime_python) or not os.path.isfile(runtime_python):
+            raise SystemExit(
+                "ROBOTWIN20_PAOS_PYTHON must point to an existing absolute Python executable"
+            )
+        # The host performs NumPy-backed RGB-D geometry and YAML profile loading;
+        # fail before creating a world if the selected host interpreter lacks them.
+        check = [runtime_python, "-c", "import numpy, yaml"]
+        check_result = subprocess.run(
+            check,
+            env=environment,
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        if check_result.returncode != 0:
+            raise SystemExit(
+                "persistent host requires importable numpy and yaml in ROBOTWIN20_PAOS_PYTHON"
+            )
+        command = [runtime_python, "-m", "robotwin20_adapter.persistent_host", *sys.argv[1:]]
+        os.execvpe(runtime_python, command, environment)
     return 0
 
 

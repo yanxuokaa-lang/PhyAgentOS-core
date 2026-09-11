@@ -8,6 +8,17 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v9.3.4 (2026-09-11 12:40) - codex
+
+- [完成] [runtime] [fix] Node 使用 `ROBOTWIN20_PAOS_PYTHON` 并在启动前检查 NumPy/PyYAML；重建 0.10.6 Skill 并完成 Runtime 感知链只读测量。(local)
+- [Completed] [Runtime] [Fix] Use `ROBOTWIN20_PAOS_PYTHON` in the Node and check NumPy/PyYAML before startup; rebuild Skill 0.10.6 and complete read-only Runtime perception measurements. (local)
+
+### 验证 / Validation
+
+- Node `0.1.2` SHA-256 `0750eceb24153947fa142e9afc8414f769aef544e6bdfc21eb3cfa9ced5d683e`; Forge Node verification passed.
+- `/tools=0.011s`, `scene.observe=0.534s`, `scene.understand=51.852s`; understanding `available`, 4 entities, 4 envelopes, 12 derived artifacts.
+- No Action or motion was executed.
+
 ## v9.3.3 (2026-09-11 10:55) - codex
 
 - [完成] [runtime] [fix] 修复 Forge task 嵌套记录序列化，补齐感知依赖 readiness 与正式 dataflow 环境传递；Skill 更新至 0.10.5。(local)
