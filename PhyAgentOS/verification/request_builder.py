@@ -166,6 +166,14 @@ class VerificationRequestBuilder:
                 if task.primary_skill_binding is not None
                 else None
             ),
+            "runtime_binding": (
+                task.runtime_binding.model_dump(mode="json")
+                if task.runtime_binding is not None
+                else None
+            ),
+            "enrolled_tool_bindings": [
+                item.model_dump(mode="json") for item in task.tool_bindings
+            ],
             "supporting_skill_bindings": [
                 item.model_dump(mode="json") for item in task.supporting_skill_bindings
             ],
@@ -344,6 +352,9 @@ class VerificationRequestBuilder:
             if task.primary_skill_binding is not None
             else None
         )
+        expected_runtime_binding_id = (
+            task.runtime_binding.binding_id if task.runtime_binding is not None else None
+        )
         revision_ids: set[str] = set()
         record_ids: set[str] = set()
         evidence_refs: set[str] = set()
@@ -355,6 +366,10 @@ class VerificationRequestBuilder:
                 raise VerificationEvidenceError(
                     f"PlanRevision binding does not match frozen AgentTask binding: "
                     f"{revision.revision_id}"
+                )
+            if revision.runtime_binding_id != expected_runtime_binding_id:
+                raise VerificationEvidenceError(
+                    f"PlanRevision Runtime binding does not match AgentTask binding: {revision.revision_id}"
                 )
             for record in revision.execution_records:
                 if record.record_id in record_ids:
@@ -369,6 +384,10 @@ class VerificationRequestBuilder:
                 if record.skill_binding_id != expected_binding_id:
                     raise VerificationEvidenceError(
                         f"ToolExecutionRecord binding mismatch: {record.record_id}"
+                    )
+                if record.runtime_binding_id != expected_runtime_binding_id:
+                    raise VerificationEvidenceError(
+                        f"ToolExecutionRecord Runtime binding mismatch: {record.record_id}"
                     )
                 for reference in record.evidence_refs:
                     if not reference.strip():

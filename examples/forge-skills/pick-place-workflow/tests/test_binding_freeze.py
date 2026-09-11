@@ -3,14 +3,17 @@ from hashlib import sha256
 from pathlib import Path
 
 import pytest
+from PhyAgentOS.config.schema import ForgeConfig
 from PhyAgentOS.forge.binding import (
     ForgeSkillBindingError,
     ForgeSkillBindingResolver,
     canonical_sha256,
     validate_runtime_identity,
 )
+from PhyAgentOS.forge.task import AgentTaskCoordinator
 from PhyAgentOS.skill_runtime.integration import ActiveRuntimeRegistry, ActiveSkillRuntime
 from PhyAgentOS.skill_runtime.manifest import load_manifest
+from PhyAgentOS.verification.contracts import TaskVerificationContract
 
 from pick_place_workflow.fake_gateway import FakeGatewayTransport
 
@@ -188,5 +191,32 @@ async def test_runtime_and_legacy_deployment_identity_checks(tmp_path, field, va
         assert len(transport.requests) == request_count
         registry.replace(original)
         assert resolver.validate_runtime(binding) is original
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_task_can_bind_runtime_and_enroll_tool_without_skill_activation(tmp_path):
+    _manifest, _transport, client, _registry, resolver = _fixture(tmp_path)
+    try:
+        coordinator = AgentTaskCoordinator(
+            workspace=tmp_path,
+            config=ForgeConfig(),
+            client=client,
+            binding_resolver=resolver,
+        )
+        task = await coordinator.create_task(
+            task_description="observe the current scene",
+            verification=TaskVerificationContract(mode="off"),
+        )
+        assert task.primary_skill_binding is None
+        assert task.runtime_binding is not None
+        assert task.tool_bindings == []
+        tool = await coordinator._require_binding_tool(task.task_id, "scene.observe", "query")
+        refreshed = coordinator.get_task(task.task_id)
+        assert tool.tool_id == "scene.observe"
+        assert [item.tool_id for item in refreshed.tool_bindings] == ["scene.observe"]
+        again = await coordinator._require_binding_tool(task.task_id, "scene.observe", "query")
+        assert again.spec_sha256 == tool.spec_sha256
     finally:
         await client.close()

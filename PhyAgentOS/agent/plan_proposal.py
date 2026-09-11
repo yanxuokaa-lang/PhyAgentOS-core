@@ -20,11 +20,12 @@ def compile_task_plan(
 ) -> PlanGraph:
     """Own protocol metadata, never select entities, Tools, or dependencies."""
     binding = task.primary_skill_binding
-    if binding is None:
-        raise ValueError("semantic plan submission requires a bound Skill")
+    tools = binding.required_tools if binding is not None else tuple(task.tool_bindings)
+    if binding is None and task.runtime_binding is None:
+        raise ValueError("semantic plan submission requires a bound Runtime")
     parsed = tuple(PlanNode.model_validate(node) for node in nodes)
     capabilities = {
-        capability for tool in binding.required_tools if tool.planning_policy is not None
+        capability for tool in tools if tool.planning_policy is not None
         for capability in tool.planning_policy.capabilities
     }
     if any(node.capability not in capabilities for node in parsed):
@@ -35,8 +36,13 @@ def compile_task_plan(
         "nodes": [node.model_dump(mode="json") for node in parsed],
         "planner_decision_digest": canonical_sha256({"nodes": nodes, "reason": reason}),
         "policy_snapshot_digest": canonical_sha256({
-            "skill_document_sha256": binding.skill_document_sha256,
-            "tools": [tool.model_dump(mode="json") for tool in binding.required_tools],
+            "skill_document_sha256": (
+                binding.skill_document_sha256 if binding is not None else None
+            ),
+            "runtime_binding_id": (
+                task.runtime_binding.binding_id if task.runtime_binding is not None else None
+            ),
+            "tools": [tool.model_dump(mode="json") for tool in tools],
         }),
     }
     payload["graph_digest"] = plan_graph_digest(payload)

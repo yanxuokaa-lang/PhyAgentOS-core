@@ -31,6 +31,20 @@ class BoundToolSpec(BindingModel):
     planning_policy: ToolSpecPolicy | None = None
 
 
+class RuntimeBinding(BindingModel):
+    """Execution ownership independent from any Agent-selected Skill method."""
+
+    version: Literal["runtime_binding_v1"] = "runtime_binding_v1"
+    binding_id: str
+    runtime_profile: str
+    runtime_instance_id: str
+    gateway_url: str
+    gateway_identity: str | None = None
+
+    def tool(self, tool_id: str, tools: tuple[BoundToolSpec, ...]) -> BoundToolSpec | None:
+        return next((item for item in tools if item.tool_id == tool_id), None)
+
+
 class ForgeSkillBindingCandidate(BindingModel):
     candidate_id: str
     skill_name: str
@@ -88,7 +102,7 @@ def _candidate_payload(candidate: ForgeSkillBindingCandidate) -> dict[str, Any]:
     return value
 
 
-def validate_runtime_identity(runtime: Any, binding: ForgeSkillBinding) -> None:
+def validate_runtime_identity(runtime: Any, binding: Any) -> None:
     """Validate that a live Runtime still owns a persisted task binding.
 
     This comparison is deliberately independent of Skill instructions and Tool
@@ -204,6 +218,55 @@ class ForgeSkillBindingResolver:
             **current.model_dump(exclude={"candidate_id"}),
         )
 
+    def freeze_runtime(self, *, task_id: str) -> RuntimeBinding:
+        """Capture only execution ownership for a task with no Skill activation."""
+        runtime = self._runtime()
+        payload = {
+            "task_id": task_id,
+            "runtime_profile": runtime.profile,
+            "runtime_instance_id": runtime.runtime_instance_id,
+            "gateway_url": runtime.gateway_url,
+            "gateway_identity": runtime.gateway_identity,
+        }
+        return RuntimeBinding(
+            binding_id=f"runtime_binding_{canonical_sha256(payload)[:24]}",
+            runtime_profile=runtime.profile,
+            runtime_instance_id=runtime.runtime_instance_id,
+            gateway_url=runtime.gateway_url,
+            gateway_identity=runtime.gateway_identity,
+        )
+
+    async def enroll_tool(
+        self,
+        binding: RuntimeBinding,
+        tool_id: str,
+        semantics: Literal["query", "action", "session"],
+    ) -> BoundToolSpec:
+        """Resolve one authorized Tool contract on the owning Runtime."""
+        runtime = self._runtime()
+        validate_runtime_identity(runtime, binding)
+        manifest = self.catalog.get(runtime.skill_name)
+        if tool_id not in manifest.required_tools:
+            raise ForgeSkillBindingError(f"Forge Tool {tool_id!r} is not authorized by the Runtime")
+        spec = _response_data(await runtime.client.get_tool(tool_id), f"ToolSpec {tool_id!r}")
+        if spec.get("semantics") != semantics:
+            raise ForgeSkillBindingError(
+                f"Forge Tool {tool_id!r} is {spec.get('semantics')}, not {semantics}"
+            )
+        context = _response_data(
+            await runtime.client.get_tool_context(tool_id), f"Tool context {tool_id!r}"
+        )
+        if context.get("ready") is not True or context.get("binding_error") is not None:
+            raise ForgeSkillBindingError(f"Forge Tool {tool_id!r} is not ready")
+        planning_policy = project_tool_spec(spec) if "planning" in spec else None
+        return BoundToolSpec(
+            tool_id=tool_id,
+            semantics=semantics,
+            spec_sha256=canonical_sha256(spec),
+            ready_at_binding=True,
+            planning_policy=planning_policy,
+        )
+
     def validate_runtime(self, binding: ForgeSkillBinding) -> Any:
         """Resolve only the Runtime that owns this binding, including during recovery."""
         runtime = self._runtime()
@@ -211,6 +274,11 @@ class ForgeSkillBindingResolver:
         # Legacy tasks also pinned their deployment Skill; preserve that history.
         if runtime.skill_name != binding.skill_name or runtime.skill_version != binding.skill_version:
             raise ForgeSkillBindingError("AgentTask Forge runtime binding is no longer active")
+        return runtime
+
+    def validate_runtime_binding(self, binding: RuntimeBinding) -> Any:
+        runtime = self._runtime()
+        validate_runtime_identity(runtime, binding)
         return runtime
 
     async def validate_tool(
@@ -257,6 +325,7 @@ __all__ = [
     "ForgeSkillBindingCandidate",
     "ForgeSkillBindingError",
     "ForgeSkillBindingResolver",
+    "RuntimeBinding",
     "canonical_sha256",
     "validate_runtime_identity",
 ]

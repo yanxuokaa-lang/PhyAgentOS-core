@@ -21,6 +21,7 @@ from PhyAgentOS.forge.binding import (
     ForgeSkillBinding,
     ForgeSkillBindingError,
     ForgeSkillBindingResolver,
+    RuntimeBinding,
     canonical_sha256,
 )
 from PhyAgentOS.forge.evidence import ForgeEvidenceWriter
@@ -100,6 +101,7 @@ class ToolExecutionRecord(BaseModel):
     tool_id: str
     semantics: Literal["query", "action", "session"]
     skill_binding_id: str | None = None
+    runtime_binding_id: str | None = None
     tool_spec_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     caller_id: str
     node_id: str | None = None
@@ -178,6 +180,7 @@ class PlanRevision(BaseModel):
     reason: str = Field(min_length=1)
     counts_toward_replan_budget: bool = True
     skill_binding_id: str | None = None
+    runtime_binding_id: str | None = None
     plan_graph: PlanGraph | None = None
     plan_graph_ref: str | None = None
     plan_graph_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
@@ -286,6 +289,8 @@ class AgentTaskRecord(BaseModel):
     active_revision_id: str
     primary_skill_binding: ForgeSkillBinding | None = None
     primary_skill_instructions: str | None = None
+    runtime_binding: RuntimeBinding | None = None
+    tool_bindings: list[BoundToolSpec] = Field(default_factory=list)
     supporting_skill_bindings: list[ForgeSkillBinding] = Field(default_factory=list)
     runtime_snapshot_ref: str | None = None
     verdict: VerificationVerdict | None = None
@@ -350,6 +355,11 @@ class AgentTaskRecord(BaseModel):
             raise ValueError("active_revision_id must identify an AgentTask revision")
         execution_ids: set[str] = set()
         for revision in self.revisions:
+            expected_runtime = (
+                self.runtime_binding.binding_id if self.runtime_binding is not None else None
+            )
+            if revision.runtime_binding_id != expected_runtime:
+                raise ValueError("PlanRevision Runtime binding must match AgentTask binding")
             for execution in revision.execution_records:
                 if execution.revision_id != revision.revision_id:
                     raise ValueError(
@@ -357,6 +367,8 @@ class AgentTaskRecord(BaseModel):
                     )
                 if execution.record_id in execution_ids:
                     raise ValueError("Tool execution record identities must be unique")
+                if execution.runtime_binding_id != expected_runtime:
+                    raise ValueError("Tool execution Runtime binding must match AgentTask binding")
                 execution_ids.add(execution.record_id)
         return self
 
@@ -805,31 +817,36 @@ class AgentTaskCoordinator:
         revision_id = plan_graph.revision_id if plan_graph is not None else f"revision_{uuid4().hex[:16]}"
         _validate_plan_graph_input(plan_graph, plan_graph_ref, task_id, revision_id)
         binding: ForgeSkillBinding | None = None
+        runtime_binding: RuntimeBinding | None = None
         skill_instructions: str | None = None
         if self.binding_resolver is not None:
-            if self.activation_manager is None or not origin_session_key or not activation_id:
-                raise AgentTaskError(
-                    "Forge AgentTask creation requires a primary Skill activation from this turn"
+            if activation_id and origin_session_key:
+                if self.activation_manager is None:
+                    raise AgentTaskError("Skill activation manager is unavailable")
+                activation = self.activation_manager.require_activation(
+                    session_key=origin_session_key,
+                    activation_id=activation_id,
+                    role="primary",
                 )
-            activation = self.activation_manager.require_activation(
-                session_key=origin_session_key,
-                activation_id=activation_id,
-                role="primary",
-            )
-            candidate_id = activation.binding_candidate_id
-            if not candidate_id:
-                raise AgentTaskError("primary Skill activation has no Forge binding candidate")
-            try:
-                binding = await self.binding_resolver.freeze(candidate_id, task_id=task_id)
-            except ForgeSkillBindingError as exc:
-                raise AgentTaskError(str(exc)) from exc
-            if activation.content_sha256 != binding.skill_document_sha256:
-                raise AgentTaskError(
-                    "activated SKILL.md does not match the installed Runtime binding"
+                candidate_id = activation.binding_candidate_id
+                if not candidate_id:
+                    raise AgentTaskError("primary Skill activation has no Forge binding candidate")
+                try:
+                    binding = await self.binding_resolver.freeze(candidate_id, task_id=task_id)
+                except ForgeSkillBindingError as exc:
+                    raise AgentTaskError(str(exc)) from exc
+                if activation.content_sha256 != binding.skill_document_sha256:
+                    raise AgentTaskError(
+                        "activated SKILL.md does not match the installed Runtime binding"
+                    )
+                skill_instructions = self.activation_manager.instructions_for_activation(
+                    session_key=origin_session_key, activation_id=activation_id,
                 )
-            skill_instructions = self.activation_manager.instructions_for_activation(
-                session_key=origin_session_key, activation_id=activation_id,
-            )
+            else:
+                try:
+                    runtime_binding = self.binding_resolver.freeze_runtime(task_id=task_id)
+                except ForgeSkillBindingError as exc:
+                    raise AgentTaskError(str(exc)) from exc
         task = AgentTaskRecord(
             task_id=task_id,
             task_description=task_description.strip(),
@@ -843,6 +860,9 @@ class AgentTaskCoordinator:
                     reason="initial plan",
                     plan_graph=plan_graph,
                     skill_binding_id=binding.binding_id if binding is not None else None,
+                    runtime_binding_id=(
+                        runtime_binding.binding_id if runtime_binding is not None else None
+                    ),
                     plan_graph_ref=plan_graph_ref,
                     plan_graph_digest=plan_graph.graph_digest if plan_graph is not None else None,
                     planner_decision_digest=plan_graph.planner_decision_digest if plan_graph is not None else None,
@@ -852,20 +872,29 @@ class AgentTaskCoordinator:
             active_revision_id=revision_id,
             primary_skill_binding=binding,
             primary_skill_instructions=skill_instructions,
+            runtime_binding=runtime_binding,
             runtime_snapshot_ref=(
-                f"runtime:{binding.runtime_instance_id}" if binding is not None else None
+                f"runtime:{binding.runtime_instance_id}"
+                if binding is not None
+                else f"runtime:{runtime_binding.runtime_instance_id}"
+                if runtime_binding is not None else None
             ),
             origin_session_key=origin_session_key,
             origin_dedup_key=origin_dedup_key,
             origin_approval=origin_approval,
         )
-        if binding is not None and self.runtime_task_binding_ids is not None:
-            self.runtime_task_binding_ids.add(binding.binding_id)
+        ownership_binding_id = (
+            binding.binding_id if binding is not None
+            else runtime_binding.binding_id if runtime_binding is not None
+            else None
+        )
+        if ownership_binding_id is not None and self.runtime_task_binding_ids is not None:
+            self.runtime_task_binding_ids.add(ownership_binding_id)
         try:
             self.store.create(task)
         except Exception:
-            if binding is not None and self.runtime_task_binding_ids is not None:
-                self.runtime_task_binding_ids.discard(binding.binding_id)
+            if ownership_binding_id is not None and self.runtime_task_binding_ids is not None:
+                self.runtime_task_binding_ids.discard(ownership_binding_id)
             raise
         if self.experience is not None and origin_session_key:
             self.experience.bind_forge_task(
@@ -925,6 +954,10 @@ class AgentTaskCoordinator:
                     if current.primary_skill_binding is not None
                     else None
                 ),
+                runtime_binding_id=(
+                    current.runtime_binding.binding_id
+                    if current.runtime_binding is not None else None
+                ),
                 plan_graph_ref=plan_graph_ref,
                 plan_graph_digest=plan_graph.graph_digest if plan_graph is not None else None,
                 planner_decision_digest=plan_graph.planner_decision_digest if plan_graph is not None else None,
@@ -979,6 +1012,10 @@ class AgentTaskCoordinator:
                 skill_binding_id=(
                     current.primary_skill_binding.binding_id
                     if current.primary_skill_binding is not None else None
+                ),
+                runtime_binding_id=(
+                    current.runtime_binding.binding_id
+                    if current.runtime_binding is not None else None
                 ),
                 plan_graph=plan_graph,
                 plan_graph_ref=plan_graph_ref,
@@ -1765,8 +1802,18 @@ class AgentTaskCoordinator:
                 # Leave persisted facts untouched until their owning Runtime returns.
                 # Startup must still allow status inspection and user-directed recovery.
                 return task
-        if binding is not None and self.runtime_task_binding_ids is not None:
-            self.runtime_task_binding_ids.add(binding.binding_id)
+        runtime_binding = task.runtime_binding
+        if runtime_binding is not None and self.binding_resolver is not None:
+            try:
+                self.binding_resolver.validate_runtime_binding(runtime_binding)
+            except ForgeSkillBindingError:
+                return task
+        ownership_binding_id = (
+            binding.binding_id if binding is not None
+            else runtime_binding.binding_id if runtime_binding is not None else None
+        )
+        if ownership_binding_id is not None and self.runtime_task_binding_ids is not None:
+            self.runtime_task_binding_ids.add(ownership_binding_id)
         for record in task.execution_records:
             if record.terminal or record.semantics == "query":
                 continue
@@ -1810,8 +1857,9 @@ class AgentTaskCoordinator:
 
     def capabilities_summary(self) -> str:
         return (
-            "Forge execution uses only an activated Skill, a frozen AgentTask binding, and the "
-            "Gateway Tool API. Query is read-only; Action admission is not task success; "
+            "Forge execution uses a frozen AgentTask Runtime binding, enrolled Tool contracts, "
+            "and the Gateway Tool API; Skills are optional Agent-selected methods. Query is "
+            "read-only; Action admission is not task success; "
             "task-owned Sessions must be stopped before finalization."
         )
 
@@ -1831,7 +1879,7 @@ class AgentTaskCoordinator:
     ) -> BoundToolSpec:
         task = self._require_executable(task_id)
         binding = task.primary_skill_binding
-        if binding is None and self.binding_resolver is None:
+        if binding is None and task.runtime_binding is None and self.binding_resolver is None:
             return BoundToolSpec(
                 tool_id=tool_id,
                 semantics=semantics,
@@ -1840,10 +1888,41 @@ class AgentTaskCoordinator:
                 ),
                 ready_at_binding=True,
             )
-        if binding is None or self.binding_resolver is None:
-            raise AgentTaskError("AgentTask has no frozen primary Forge Skill binding")
+        if self.binding_resolver is None:
+            raise AgentTaskError("AgentTask has no managed Runtime binding")
         try:
-            return await self.binding_resolver.validate_tool(binding, tool_id, semantics)
+            if binding is not None:
+                return await self.binding_resolver.validate_tool(binding, tool_id, semantics)
+            if task.runtime_binding is None:
+                raise AgentTaskError("AgentTask has no Runtime binding")
+            existing = next((item for item in task.tool_bindings if item.tool_id == tool_id), None)
+            if existing is not None:
+                if existing.semantics != semantics:
+                    raise AgentTaskError(f"Forge Tool {tool_id!r} semantics changed")
+                self.binding_resolver.validate_runtime_binding(task.runtime_binding)
+                return existing
+            enrolled = await self.binding_resolver.enroll_tool(
+                task.runtime_binding, tool_id, semantics
+            )
+            def enroll(current: AgentTaskRecord) -> None:
+                existing = next(
+                    (item for item in current.tool_bindings if item.tool_id == tool_id), None
+                )
+                if existing is None:
+                    current.tool_bindings.append(enrolled)
+                elif existing != enrolled:
+                    raise AgentTaskError(
+                        f"Forge Tool {tool_id!r} contract changed during enrollment"
+                    )
+
+            self.store.update(
+                task_id,
+                enroll,
+                event_type="tool_contract_enrolled",
+                payload={"tool_id": tool_id, "spec_sha256": enrolled.spec_sha256},
+            )
+            current = self.store.get(task_id)
+            return next(item for item in current.tool_bindings if item.tool_id == tool_id)
         except ForgeSkillBindingError as exc:
             raise AgentTaskError(str(exc)) from exc
 
@@ -1875,6 +1954,11 @@ class AgentTaskCoordinator:
                     skill_binding_id=(
                         current.primary_skill_binding.binding_id
                         if current.primary_skill_binding is not None
+                        else None
+                    ),
+                    runtime_binding_id=(
+                        current.runtime_binding.binding_id
+                        if current.runtime_binding is not None
                         else None
                     ),
                     tool_spec_sha256=tool.spec_sha256,
@@ -2053,6 +2137,8 @@ class AgentTaskCoordinator:
         gateway_url = (
             task.primary_skill_binding.gateway_url
             if task.primary_skill_binding is not None
+            else task.runtime_binding.gateway_url
+            if task.runtime_binding is not None
             else getattr(self.client, "base_url", None)
         )
         if not isinstance(gateway_url, str) or not gateway_url:
@@ -2070,14 +2156,19 @@ class AgentTaskCoordinator:
     def _schedule_experience(self, task: AgentTaskRecord) -> None:
         if (
             task.terminal
-            and task.primary_skill_binding is not None
+            and (task.primary_skill_binding is not None or task.runtime_binding is not None)
             and self.runtime_task_binding_ids is not None
             and not any(
                 item.semantics in {"action", "session"} and item.status == "unknown"
                 for item in task.execution_records
             )
         ):
-            self.runtime_task_binding_ids.discard(task.primary_skill_binding.binding_id)
+            binding_id = (
+                task.primary_skill_binding.binding_id
+                if task.primary_skill_binding is not None
+                else task.runtime_binding.binding_id
+            )
+            self.runtime_task_binding_ids.discard(binding_id)
         if self.experience is not None:
             self.experience.schedule_forge_completion(task.task_id)
 
