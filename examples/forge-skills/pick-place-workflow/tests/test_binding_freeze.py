@@ -19,6 +19,7 @@ TOOL_IDS = (
     "scene.observe",
     "manipulation.capabilities",
     "scene.understand",
+    "manipulation.layout",
     "grasp.propose",
     "manipulation.prepare",
     "object.acquire",
@@ -81,6 +82,7 @@ def _fixture(tmp_path):
         preparation_provider=dummy,
         acquire_provider=dummy,
         place_provider=dummy,
+        layout_provider=dummy,
     )
     from PhyAgentOS.forge.tool_client import ForgeToolClient
 

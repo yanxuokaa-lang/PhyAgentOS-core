@@ -156,7 +156,7 @@ async def test_discovery_success_pending_and_post_release_evidence():
         invocation_id = admitted["data"]["invocation_id"]
         pending = await client.invocation_result(invocation_id)
         terminal = await client.invocation_result(invocation_id)
-    assert [item["tool_id"] for item in tools["data"]["tools"]][-1] == PLACE_TOOL_ID
+    assert PLACE_TOOL_ID in [item["tool_id"] for item in tools["data"]["tools"]]
     assert spec["data"]["semantics"] == "action"
     assert context["data"]["ready"] is True
     assert admitted["data"]["phase"] == "accepted"

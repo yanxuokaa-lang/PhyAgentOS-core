@@ -64,11 +64,12 @@ def _setup(tmp_path):
         preparation_provider=provider,
         acquire_provider=provider,
         place_provider=provider,
+        layout_provider=provider,
     )
     client = ForgeToolClient("http://fake", transport=transport)
     runtime = ActiveSkillRuntime(
         skill_name="pick-place-workflow",
-        skill_version="0.10.1",
+        skill_version=manifest.version,
         profile="fake",
         runtime_instance_id="runtime-binding",
         gateway_url="http://fake",

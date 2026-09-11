@@ -137,7 +137,7 @@ def test_public_transport_exposes_layout_without_motion(tmp_path):
     from PhyAgentOS.forge.capability_runtime import CapabilityRuntime, CapabilityRuntimeTransport
     from PhyAgentOS.forge.tool_client import ForgeToolClient
 
-    from robotwin20_adapter.target_layout import LAYOUT_TOOL_SPEC
+    from pick_place_workflow.layout import LAYOUT_TOOL_SPEC
 
     async def exercise():
         layout, request, _, _ = fixture(tmp_path)

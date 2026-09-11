@@ -178,3 +178,29 @@ installation, and resolve the existing active task explicitly before switching
 its Runtime. Do not use an unbound diagnostic call as a task-binding workaround.
 Live identity accuracy, placement feasibility and final RGB verification remain
 unaccepted. Evolution remains disabled.
+
+## 11. Local Release and Binding Disposition (2026-09-11)
+
+Node 0.2.0 and manifest-v2 Skill 1.0.0 are built and installed in isolated
+directories under `/tmp/paos-layout-release-2DAow3/final`. The manifest now requires
+`manipulation.layout`. Shared ToolSpec ownership is in the Skill; geometric
+resolution remains adapter-owned. 342 regressions passed. Node lock/load and the
+installed executable's `--help` passed outside the source directory, using the
+external PAOS Python environment. No live Runtime or model readiness is claimed.
+Artifact digests, sizes and validation commands are in changelog v9.4.2.
+
+Read-only inspection found `task_7bd79d84408a49cd` still executing with frozen
+Skill 0.10.7 / `runtime_9e6e0ee97fe44721`, three Queries, no Actions and no DAG.
+It was not changed. Before switching the live installation:
+
+1. Obtain explicit disposition of this old task, then use the standard task stop
+   interface and verify terminal status plus released Runtime references.
+2. Stop the old Runtime normally, install the new Skill and locked Node, and
+   start the persistent profile with its external dependencies configured.
+3. Verify all eight Tool contexts, then create a new task bound to Skill 1.0.0,
+   retaining the predecessor task reference. Never edit the old frozen binding.
+4. Re-observe, understand and resolve layout using fresh scene/calibration facts;
+   retain preparation, motion admission, terminal settlement and final Verifier.
+
+This release does not implement temporary swap destinations or certify live
+geometric matching, route feasibility or RGB success. Evolution remains disabled.

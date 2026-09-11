@@ -17,6 +17,7 @@ EXPECTED_TOOLS = {
     "scene.observe",
     "manipulation.capabilities",
     "scene.understand",
+    "manipulation.layout",
     "grasp.propose",
     "manipulation.prepare",
     "object.acquire",

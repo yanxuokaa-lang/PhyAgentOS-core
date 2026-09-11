@@ -6,6 +6,7 @@ from typing import Any, Callable
 
 import yaml
 from PhyAgentOS.forge.capability_runtime import CapabilityRuntime, CapabilityRuntimeTransport
+from pick_place_workflow.layout import LAYOUT_TOOL_SPEC
 from pick_place_workflow.persistent_runtime import build_persistent_runtime
 
 from .arm_candidates import CompleteRouteSelector
@@ -15,7 +16,7 @@ from .persistent_preparation import PersistentPreparationProvider
 from .persistent_route_builder import PersistentRouteBuilder
 from .prepared_routes import PreparedRoutes
 from .route_readiness import RouteReadinessEvaluationAdapter
-from .target_layout import LAYOUT_TOOL_SPEC, ObservedLayout, RememberUnderstanding
+from .target_layout import ObservedLayout, RememberUnderstanding
 
 
 @dataclass(frozen=True)

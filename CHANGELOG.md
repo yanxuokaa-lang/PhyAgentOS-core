@@ -9,6 +9,62 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v9.4.2 (2026-09-11 15:05) - codex
+
+- [完成] [chore] [feat] 本地发布 Node 0.2.0 / Skill 1.0.0，声明八个必需 Tool；隔离安装及入口验证通过，保留旧任务绑定。(local)
+- [Completed] [chore] [feat] Locally release Node 0.2.0 / Skill 1.0.0 with eight required Tools; isolated installation and entrypoint checks passed, preserving the old task binding. (local)
+
+### Files and Diff / 文件与差异
+
+Paths use workflow = examples/forge-skills/pick-place-workflow and adapter = examples/forge-adapters/robotwin20.
+
+- workflow/src/pick_place_workflow/layout.py L1-L47: shared provider-neutral ToolSpec moved from adapter/target_layout.py (old L13-L57); adapter/src/robotwin20_adapter/target_layout.py L10 imports IDENTITY_KEYS.
+- adapter/src/robotwin20_adapter/persistent_deployment.py L9,L19 and adapter/tests/test_target_layout.py L140: import shared ToolSpec directly from Skill.
+- workflow/skill.yaml L3,L11,L53-L59: version 0.10.7 -> 1.0.0; add manipulation.layout; Node 0.1.3 -> 0.2.0 with built artifact lock. workflow/pyproject.toml L3: 0.10.1 -> 1.0.0.
+- workflow/src/pick_place_workflow/fake_gateway.py L36,L333-L339,L386-L401: expose layout with explicit provider; absent provider remains unavailable.
+- workflow/tests/test_layout_discovery.py L1-L29: missing-provider and provider-failure preservation regression.
+- workflow/tests/test_binding_freeze.py L22,L85; test_bound_execution_records.py L74; test_grasp_propose.py L177,L265-L268; test_manipulation_prepare.py L156; test_object_acquire.py L130; test_object_place.py L159; test_runtime_install_discovery.py L20; test_task_binding_activation.py L67,L72; test_task_verification_context.py L146: update discovery, explicit fixtures and version assertions.
+- docs/forge/AGENT_LOOP_FOUNDATION_DIAGNOSIS_20260910.md: append local release and old-binding disposition evidence; this log and CHANGELOG.md record release.
+
+```diff
+- from .target_layout import LAYOUT_TOOL_SPEC, ObservedLayout, RememberUnderstanding
++ from pick_place_workflow.layout import LAYOUT_TOOL_SPEC
++ from .target_layout import ObservedLayout, RememberUnderstanding
+- version: "0.10.7"
++ version: "1.0.0"
++ required_tools: [..., manipulation.layout]
++ ready = layout_provider is not None
+```
+
+### Validation / 验证
+
+- 342 passed in 8.47s:
+```bash
+PYTHONPATH=.:examples/forge-adapters/robotwin20/src:examples/forge-adapters/robotwin20/runtime:examples/forge-skills/pick-place-workflow/src PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /home/yanxu/miniconda3/envs/paos/bin/python -m pytest -p pytest_asyncio.plugin -q examples/forge-skills/pick-place-workflow/tests examples/forge-adapters/robotwin20/tests/test_target_layout.py examples/forge-adapters/robotwin20/tests/test_persistent_deployment.py tests/test_runtime_review_regressions.py
+```
+- Release root: /tmp/paos-layout-release-2DAow3/final. Earlier parent-directory artifacts failed import smoke and are superseded; use only final/.
+- Node: robotwin20_persistent_host-0.2.0-linux-x86_64.tar.gz; 299876 bytes; SHA256 20d670dbcc4475542a868086ea43d446fa0e3ee7c4f3cbcdd70cb750190606b6.
+- Skill: pick-place-workflow-1.0.0.tar.gz; 107492 bytes; SHA256 0ec4980e768a508028c40069c02b7bf23dbfe5d2e3cbee675481776891c30de7.
+- Built using scripts/build_robotwin20_node.py from staged source tree 4b539b9409b700da5548b6bdad493282ce9fc23e. Three pre-existing edits (approve_simulation_probe.py, persistent_host.py, prepared_routes.py) excluded.
+- SkillInstaller and NodeInstaller used separate final/isolated/skills, runtime and state roots. Archive validation, NodeInstaller.load and installed executable --help passed (exit 0), with no repository PYTHONPATH and an external paos Python interpreter. This is not a clean Python dependency installation or live Runtime startup.
+- Initial isolated smoke caught an obsolete ToolSpec import; fixed import ownership and rebuilt before final validation.
+- Read-only task audit: task_7bd79d84408a49cd remains executing, frozen Skill 0.10.7, runtime_9e6e0ee97fe44721, binding_db13776d7a5907628304fe0e; 3 Query records, 0 Action, 0 PlanGraph.
+- No public registry upload, live Runtime switch, Agent invocation, Action or RoboTwin motion.
+
+### Six Dimensions / 六维验收
+
+- Architecture: shared Skill ToolSpec, adapter geometry implementation, existing manifest/installer/binding reused.
+- Failure/recovery: absent layout provider unavailable; failure result retained; binding and runtime regressions pass.
+- Permissions/safety: query-only; existing frame/calibration/freshness and motion admission unchanged; old task untouched.
+- Configuration/reproducibility: versioned local artifacts and existing lock verified in isolated roots; external Python/model/RoboTwin dependencies remain explicit.
+- Maintainability: one shared ToolSpec; package/manifest versions aligned; obsolete import caught by installed smoke.
+- Observability: artifact sizes/digests, commands, task identity and failed/final smoke results recorded.
+- Acceptance is software-release scoped. Live geometry, route feasibility, recovery and final RGB Verifier remain unaccepted.
+
+### Git / 提交
+
+- Branch: feature/planning-loop; implementation receipt follows after commit.
+
 ## v9.4.1 (2026-09-11 15:00) - codex
 
 - [完成] [docs] [chore] 回填源码实现提交 `49d403b`；无运行代码变更。(local)
@@ -80,6 +136,8 @@ PYTHONPATH=.:examples/forge-adapters/robotwin20/src:examples/forge-adapters/robo
 - [完成] [docs] [chore] 回填 v9.3.8 提交凭据 `24e4e48`；无运行代码变更。(local)
 - [Completed] [Docs] [Chore] Record v9.3.8 implementation receipt `24e4e48`; no runtime changes. (local)
 - Diff: pending receipt -> `24e4e48`; validation: `git diff --check`.
+
+## Earlier Records / 历史记录
 
 ## v9.3.8 (2026-09-11 14:12) - codex
 

@@ -174,6 +174,7 @@ async def test_grasp_propose_is_discovered_with_the_perception_queries():
         "manipulation.prepare",
         "object.acquire",
         "object.place",
+        "manipulation.layout",
     ]
     assert spec["data"]["endpoint_id"] == "grasp_proposal"
     assert spec["data"]["operation"] == "propose"
@@ -261,8 +262,10 @@ def test_bundle_and_package_versions_match_the_feature_revision():
     package_text = (Path(__file__).resolve().parents[1] / "pyproject.toml").read_text(
         encoding="utf-8"
     )
-    assert bundle_manifest["version"] == "0.10.1"
-    assert 'version = "0.10.1"' in package_text
+    import tomllib
+
+    assert bundle_manifest["version"] == "1.0.0"
+    assert tomllib.loads(package_text)["project"]["version"] == bundle_manifest["version"]
 
 
 @pytest.mark.asyncio
