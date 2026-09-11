@@ -574,7 +574,7 @@ hardware.
 
 ### Build the self-contained Node and local Skill Bundle
 
-The release builders embed the adapter `src`, worker `runtime`, profiles, and the
+The release builders embed the adapter `src`, worker `runtime`, profiles, scripts, and the
 provider-neutral pick-place runtime package in one executable Node archive. The Node
 does not embed RoboTwin assets or credentials; those remain external profile inputs.
 Build both artifacts from the repository root:
@@ -584,18 +584,18 @@ mkdir -p /tmp/paos-robotwin20-release
 python scripts/build_robotwin20_node.py \
   --adapter-root examples/forge-adapters/robotwin20 \
   --workflow-root examples/forge-skills/pick-place-workflow \
-  --output /tmp/paos-robotwin20-release/robotwin20_persistent_host-0.1.2-linux-x86_64.tar.gz
+  --output /tmp/paos-robotwin20-release/robotwin20_persistent_host-0.1.3-linux-x86_64.tar.gz
 python scripts/build_robotwin20_skill_bundle.py \
-  --node-archive /tmp/paos-robotwin20-release/robotwin20_persistent_host-0.1.2-linux-x86_64.tar.gz \
+  --node-archive /tmp/paos-robotwin20-release/robotwin20_persistent_host-0.1.3-linux-x86_64.tar.gz \
   --output-dir /tmp/paos-robotwin20-release/skills
 ```
 
 Install both archives in an isolated PAOS home before starting the profile:
 
 ```bash
-paos skill install /tmp/paos-robotwin20-release/skills/pick-place-workflow-0.10.6.tar.gz --local
+paos skill install /tmp/paos-robotwin20-release/skills/pick-place-workflow-0.10.7.tar.gz --local
 paos forge-node install pick-place-workflow robotwin20_persistent_host \
-  --archive /tmp/paos-robotwin20-release/robotwin20_persistent_host-0.1.2-linux-x86_64.tar.gz
+  --archive /tmp/paos-robotwin20-release/robotwin20_persistent_host-0.1.3-linux-x86_64.tar.gz
 paos forge-node verify pick-place-workflow robotwin20_persistent_host
 ```
 

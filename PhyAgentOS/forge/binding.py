@@ -188,12 +188,8 @@ class ForgeSkillBindingResolver:
             **current.model_dump(exclude={"candidate_id"}),
         )
 
-    async def validate_tool(
-        self,
-        binding: ForgeSkillBinding,
-        tool_id: str,
-        semantics: Literal["query", "action", "session"],
-    ) -> BoundToolSpec:
+    def validate_runtime(self, binding: ForgeSkillBinding) -> Any:
+        """Resolve only the Runtime that owns this binding, including during recovery."""
         runtime = self._runtime()
         if (
             runtime.runtime_instance_id != binding.runtime_instance_id
@@ -204,6 +200,15 @@ class ForgeSkillBindingResolver:
             or runtime.gateway_identity != binding.gateway_identity
         ):
             raise ForgeSkillBindingError("AgentTask Forge runtime binding is no longer active")
+        return runtime
+
+    async def validate_tool(
+        self,
+        binding: ForgeSkillBinding,
+        tool_id: str,
+        semantics: Literal["query", "action", "session"],
+    ) -> BoundToolSpec:
+        runtime = self.validate_runtime(binding)
         bound = binding.tool(tool_id)
         if bound is None:
             raise ForgeSkillBindingError(f"Forge Tool {tool_id!r} is not in the Skill allowlist")

@@ -2,11 +2,19 @@
 
 ## Archive
 
+- [2026-09 Part 7](changelog/2026-09_part7.md)
 - [2026-09 Part 6](changelog/2026-09_part6.md)
 - [2026-09 Part 5](changelog/2026-09_part5.md)
 - [2026-09 Part 4](changelog/2026-09_part4.md)
 
 ## 最近 5 条 / Latest Five Versions
+
+## v9.3.5 (2026-09-11 13:20) - codex
+
+- [完成] [comm] [fix] 修复 Query HTTP 超时、恢复 Runtime 归属和 Node 脚本缺失；55 项测试通过，Node 0.1.3 / Skill 0.10.7 隔离安装通过。真实全链路等待旧活动任务处置确认。(local)
+- [Completed] [comm] [fix] Fix Query HTTP timeouts, recovery Runtime ownership, and missing Node scripts; 55 tests and isolated Node 0.1.3 / Skill 0.10.7 installation passed. Live integration awaits active-task disposition. (local)
+
+- Exact line ranges, key diffs, commands, artifact provenance, and six-dimensional evidence: [full record](changelog/2026-09_part7.md).
 
 ## v9.3.4 (2026-09-11 12:40) - codex
 

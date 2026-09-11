@@ -28,6 +28,7 @@ def _source_archive(adapter_root: Path, workflow_root: Path) -> str:
             ("adapter", adapter_root / "src"),
             ("adapter", adapter_root / "runtime"),
             ("adapter", adapter_root / "profiles"),
+            ("adapter", adapter_root / "scripts"),
             ("workflow", workflow_root / "src"),
         )
         for label, root in roots:

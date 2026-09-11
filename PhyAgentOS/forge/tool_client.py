@@ -91,6 +91,7 @@ class ForgeToolClient:
             ),
             payload=payload,
             expected_statuses={200},
+            read_timeout_s=timeout_ms / 1000 if timeout_ms is not None else None,
         )
 
     async def invoke_query_tool(
@@ -200,9 +201,15 @@ class ForgeToolClient:
         *,
         payload: dict[str, Any] | None = None,
         expected_statuses: set[int],
+        read_timeout_s: float | None = None,
     ) -> dict[str, Any]:
         try:
-            response = await self._client.request(method, path, json=payload)
+            options = {}
+            if read_timeout_s is not None:
+                timeout = httpx.Timeout(self._client.timeout)
+                timeout.read = read_timeout_s
+                options["timeout"] = timeout
+            response = await self._client.request(method, path, json=payload, **options)
         except httpx.TimeoutException as exc:
             raise ForgeToolAPITimeoutError(
                 f"Forge Gateway Tool API {method} {path} timed out; remote state is unknown"

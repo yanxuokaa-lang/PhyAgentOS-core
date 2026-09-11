@@ -1747,6 +1747,13 @@ class AgentTaskCoordinator:
         if task is None:
             return None
         binding = task.primary_skill_binding
+        if binding is not None and self.binding_resolver is not None:
+            try:
+                self.binding_resolver.validate_runtime(binding)
+            except ForgeSkillBindingError:
+                # Leave persisted facts untouched until their owning Runtime returns.
+                # Startup must still allow status inspection and user-directed recovery.
+                return task
         if binding is not None and self.runtime_task_binding_ids is not None:
             self.runtime_task_binding_ids.add(binding.binding_id)
         for record in task.execution_records:

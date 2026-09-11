@@ -10,6 +10,7 @@ from PhyAgentOS.skill_runtime.installer import SkillInstaller
 from PhyAgentOS.skill_runtime.integration import discover_active_runtime
 from PhyAgentOS.skill_runtime.manager import RuntimeManager, RuntimeStatusReport
 from PhyAgentOS.skill_runtime.state import RuntimeState, RuntimeStateStore
+from PhyAgentOS.skill_runtime.manifest import load_manifest
 
 BUNDLE_ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_TOOLS = {
@@ -34,7 +35,8 @@ def _package_bundle(tmp_path: Path) -> Path:
         "--force",
     ]
     completed = subprocess.run(command, check=True, capture_output=True, text=True)
-    archive = output / "pick-place-workflow-0.10.1.tar.gz"
+    version = load_manifest(BUNDLE_ROOT / "skill.yaml").version
+    archive = output / f"pick-place-workflow-{version}.tar.gz"
     assert archive.is_file(), completed.stdout
     return archive
 
@@ -96,7 +98,7 @@ def test_discovery_publishes_only_one_healthy_installed_runtime(tmp_path):
 
     assert active is not None
     assert active.skill_name == "pick-place-workflow"
-    assert active.skill_version == "0.10.1"
+    assert active.skill_version == manifest.version
     assert active.profile == "fake"
     assert active.gateway_identity == "gateway_fake_fixture"
     assert manager.calls == ["pick-place-workflow"]
