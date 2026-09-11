@@ -18,6 +18,10 @@
 - JSON serialization regression passed; missing dependency start fails closed; Bundle 0.10.5 installed locally.
 - Recovery task retained Query-only evidence and zero Action/motion records; full scene understanding remained unavailable during Runtime cold-start, so RGB task success was not claimed.
 
+### Git 提交 / Git Commit
+
+- Commit: `0ac81b1`; Branch: `feature/planning-loop`。
+
 ## v9.3.2 (2026-09-11 10:58) - codex
 
 - [完成] [runtime] [fix] 修复正式 persistent dataflow 的 Dora 描述兼容性与 Node 内嵌环境变量，重新打包并启动 Runtime readiness。(local)
