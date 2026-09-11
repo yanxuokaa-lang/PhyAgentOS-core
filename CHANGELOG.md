@@ -32,7 +32,7 @@
 - changelog/2026-09_part7.md L3-L24; CHANGELOG.md L13-L34: planned lifecycle -> completed evidence, bilingual documentation only. Three pre-existing adapter changes excluded.
 - Key diff: old task executing -> cancelled; installed Skill 0.10.7 -> 1.0.0; Node 0.1.3 -> 0.2.0; new task.parent_task_id -> old task ID. These are lifecycle results, not direct state-file edits.
 - Validation: task status, runtime status/ownership, Node verify and git diff --check.
-- Branch: feature/planning-loop; commit receipt follows.
+- Branch: feature/planning-loop; evidence commit: 9d28e3a.
 
 ## v9.4.2 (2026-09-11 15:05) - codex
 
