@@ -9,6 +9,11 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v9.3.6 (2026-09-11 13:31) - codex
+
+- [完成] [docs] [chore] 回填修复提交 `b9cfcf9`；完整记录见 [月度日志](changelog/2026-09_part7.md)。(local)
+- [Completed] [docs] [chore] Record implementation commit `b9cfcf9`; see the monthly log for full validation evidence. (local)
+
 ## v9.3.5 (2026-09-11 13:20) - codex
 
 - [完成] [comm] [fix] 修复 Query HTTP 超时、恢复 Runtime 归属和 Node 脚本缺失；55 项测试通过，Node 0.1.3 / Skill 0.10.7 隔离安装通过。真实全链路等待旧活动任务处置确认。(local)
