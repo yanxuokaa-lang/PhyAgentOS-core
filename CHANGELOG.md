@@ -8,6 +8,15 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v9.2.2 (2026-09-11 09:45) - codex
+
+- [完成] [eval] [exp] 真实 RoboTwin 持久 worker 只读启动预检通过；标准 PAOS Runtime 发现仍等待已安装 Skill 和正式 Node artifact，未执行 Action 或运动。(local)
+- [Completed] [Eval] [Exp] Real RoboTwin persistent-worker read-only startup preflight passed; standard PAOS Runtime discovery still awaits an installed Skill and formal Node artifact, with no Action or motion executed. (local)
+
+### Git 提交 / Git Commit
+
+- Commit: `c0007ae`; preflight evidence was run against implementation commit `1e7490d`; Branch: `feature/planning-loop`。
+
 ## v9.2.1 (2026-09-11 09:36) - codex
 
 - [完成] [docs] [fix] 回填基础修复的最终实现提交引用，保持中英文日志与工作区证据一致。(local)

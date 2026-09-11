@@ -73,3 +73,15 @@ Validation evidence:
 - `git diff --check`: passed.
 
 The tests are no-motion contract tests. They do not claim live model perception, RoboTwin execution, hardware movement, or formal manifest publication. Evolution remains disabled.
+
+## 7. Persistent Runtime Preflight
+
+On 2026-09-11 the real `RoboTwinPersistentEngine` worker was started through `check_persistent_runtime.py` with the repository adapter, RoboTwin runtime profile `franka-blocks-ranking.yaml`, and the RoboTwin20 Python environment. Startup completed a read-only snapshot successfully:
+
+```text
+status=passed
+scene_revision=e2f84bbf24f84792b3af3cbe637ab1d6-1
+motion_executed=false
+```
+
+This proves the persistent worker can create the configured world and expose an initial scene fact. It does not prove perception, grasp generation, route preparation, Action admission, placement, final verification, or model-driven task understanding. `paos skill list` currently reports no installed Skill Runtime, and the source-tree deployment is not registered as a formal manifest-v2 profile because the self-contained `robotwin20_persistent_host` Node artifact is not published. The next executable gate is therefore artifact-backed Runtime installation and `/tools` readiness, followed by the standard PAOS Agent entry.
