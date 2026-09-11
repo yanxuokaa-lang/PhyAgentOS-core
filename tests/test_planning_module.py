@@ -126,6 +126,33 @@ def test_cycle_and_condition_fail_closed():
         validate_graph(graph)
     assert evaluate_conditions(("ready",), {}) is False
     assert evaluate_conditions(("ready",), {"ready": True}) is True
+    prose = PlanNode(
+        node_id="prose-condition",
+        obligation_id="prose-condition",
+        capability="object.acquire",
+        conditions=("使用本次成功绑定的蓝块",),
+    )
+    from PhyAgentOS.planning import validate_condition_keys
+    with pytest.raises(ValueError, match="symbolic fact keys"):
+        validate_condition_keys(prose.conditions)
+
+
+def test_symbolic_condition_is_evaluated_from_trusted_facts():
+    node = PlanNode(
+        node_id="conditioned",
+        obligation_id="conditioned",
+        capability="object.acquire",
+        conditions=("binding_ready",),
+    )
+    payload = {
+        "schema_version": "paos-plan-graph/v1",
+        "task_id": "task-1", "revision_id": "revision-1", "graph_digest": "0" * 64,
+        "planner_decision_digest": "1" * 64, "policy_snapshot_digest": "2" * 64,
+        "nodes": [node.model_dump(mode="json")],
+    }
+    payload["graph_digest"] = plan_graph_digest(payload)
+    graph = PlanGraph.model_validate(payload)
+    assert derive_ready_nodes(graph, {}, set(), {"binding_ready": True}) == ("conditioned",)
 
 
 def test_admission_checks_dynamic_choice_and_failure_paths():

@@ -23,6 +23,7 @@ from .contracts import (
     canonical_sha256,
     plan_graph_digest,
     plan_node_digest,
+    validate_condition_keys,
 )
 from .dag import derive_ready_nodes, evaluate_conditions, invalidate_stale_nodes, validate_graph
 from .policy import validate_policy_edges, workflow_policy_digest
@@ -52,6 +53,7 @@ __all__ = [
     "canonical_sha256",
     "plan_graph_digest",
     "plan_node_digest",
+    "validate_condition_keys",
     "derive_ready_nodes",
     "evaluate_conditions",
     "invalidate_stale_nodes",

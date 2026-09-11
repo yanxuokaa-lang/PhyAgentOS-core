@@ -9,6 +9,12 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v9.10.0 (2026-09-11 20:50) - codex
+
+- [完成] [policy] [fix] 修复自然语言 `PlanNode.conditions` 导致 `ready_nodes=[]` 的根因；仅在新 PlanGraph 准入时校验符号条件，保留旧任务可读和可停止。(local)
+- [Completed] [Policy] [Fix] Fixed the root cause of natural-language `PlanNode.conditions` producing `ready_nodes=[]`; symbolic conditions are checked only at new PlanGraph admission while historical tasks remain readable and stoppable. (local)
+- Files: planning contracts/export, plan proposal, task admission, Agent guidance, diagnosis, and tests. Validation: 53 focused and 335 full no-motion tests passed; Ruff and `git diff --check` passed. Commit: pending.
+
 ## v9.9.0 (2026-09-11 20:20) - codex
 
 - [完成] [policy] [fix] Forge 上下文在 evolution 关闭时仍要求显式 `activate_skill`，并记录当前正式 Skill-bound 验收路径与 Runtime-only 未完成迁移边界。(local)

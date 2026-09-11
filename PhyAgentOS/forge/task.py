@@ -33,6 +33,7 @@ from PhyAgentOS.planning import (
     PlanningExecutionBinding,
     ReplanDelta,
     plan_node_digest,
+    validate_condition_keys,
     validate_graph,
 )
 from PhyAgentOS.verification.contracts import (
@@ -2288,6 +2289,8 @@ def _validate_plan_graph_input(
         raise AgentTaskError("PlanGraph task/revision identity does not match the revision")
     try:
         validate_graph(graph)
+        for node in graph.nodes:
+            validate_condition_keys(node.conditions)
     except ValueError as exc:
         raise AgentTaskError(f"PlanGraph is not a valid DAG: {exc}") from exc
 

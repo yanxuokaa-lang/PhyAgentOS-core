@@ -35,6 +35,16 @@ def _digest(value: str, label: str) -> str:
     return value
 
 
+def validate_condition_keys(conditions: tuple[str, ...] | list[str]) -> None:
+    """Validate new PlanGraph gates without breaking historical records."""
+    for condition in conditions:
+        if not re.fullmatch(r"[a-z][a-z0-9_.:-]*", condition):
+            raise ValueError(
+                "plan node conditions must be symbolic fact keys "
+                "(lowercase letters, digits, '.', '_', ':' or '-')"
+            )
+
+
 class _Frozen(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 

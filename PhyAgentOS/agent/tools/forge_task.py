@@ -193,7 +193,9 @@ class ForgeTaskMaterializePlanTool(Tool):
             "once evidence is sufficient, submit nodes here instead of narrating a future plan. "
             "Use paos_record.evidence_refs from task-bound Query responses directly; "
             "no extra task read is needed just to recover their IDs. If evidence is insufficient, "
-            "obtain the missing facts or request clarification. This call does not execute Tools or motion."
+            "obtain the missing facts or request clarification. PlanNode.conditions must be "
+            "symbolic condition-fact keys, not prose; keep natural-language constraints in "
+            "obligation/evidence/input_bindings. This call does not execute Tools or motion."
         )
 
     @property

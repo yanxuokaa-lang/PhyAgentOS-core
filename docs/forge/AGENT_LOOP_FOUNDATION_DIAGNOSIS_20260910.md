@@ -308,3 +308,29 @@ request, or `unknown` result may be treated as proof that motion stopped. A
 Runtime-only task may be tested separately as a migration regression, but its
 failure must remain a blocked implementation state rather than being hidden by
 Skill activation or a custom runner.
+
+## 15. Empty Ready Set Root Cause and Compatibility Repair (2026-09-11)
+
+Task `task_ba016fca37ec441c` successfully produced and persisted
+`revision_b30d0f9c60034183`, but `forge_plan_ready` returned an empty set before
+any execution record existed. Read-only inspection showed that every node's
+`PlanNode.conditions` contained prose such as `使用本次成功绑定的蓝块` and
+`candidate 为 prepared`. PAOS evaluates conditions only as symbolic keys in
+trusted `condition_facts`; unknown keys evaluate false. The graph therefore
+had no ready root node even though its dependency topology was valid. This was
+not a Runtime startup, Skill binding, or Action admission failure.
+
+The repair keeps the ownership boundary intact:
+
+- `PlanNode.conditions` remain boolean fact gates, not a second natural-language
+  policy language.
+- New graph admission validates condition keys against the symbolic form
+  `[a-z][a-z0-9_.:-]*` and fails with an explicit error before persistence.
+- Natural-language constraints remain in the obligation, evidence, or
+  `input_bindings` fields and are not silently converted into gates.
+- The check is performed at new graph admission rather than Pydantic record
+  deserialization, so historical malformed records remain readable for
+  reconciliation and normal stop/cancel operations.
+
+The timed-out task had zero execution records and zero Actions. It was safely
+cancelled through `paos task stop`; no simulation motion occurred.

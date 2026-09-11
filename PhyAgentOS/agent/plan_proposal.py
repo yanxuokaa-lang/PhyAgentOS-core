@@ -11,6 +11,7 @@ from PhyAgentOS.planning import (
     PlanNode,
     canonical_sha256,
     plan_graph_digest,
+    validate_condition_keys,
     validate_graph,
 )
 
@@ -24,6 +25,8 @@ def compile_task_plan(
     if binding is None and task.runtime_binding is None:
         raise ValueError("semantic plan submission requires a bound Runtime")
     parsed = tuple(PlanNode.model_validate(node) for node in nodes)
+    for node in parsed:
+        validate_condition_keys(node.conditions)
     capabilities = {
         capability for tool in tools if tool.planning_policy is not None
         for capability in tool.planning_policy.capabilities

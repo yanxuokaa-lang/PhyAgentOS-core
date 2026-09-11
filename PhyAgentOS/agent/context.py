@@ -116,6 +116,8 @@ Skills with available="false" cannot be activated until their declared dependenc
                 "- Query live context before the first invocation and after readiness changes.\n"
                 "- For a task without a PlanGraph, gather only task-required missing facts, then "
                 "submit Agent-selected nodes with forge_task_materialize_plan when sufficient. "
+                "PlanNode.conditions must contain symbolic condition-fact keys only; keep natural-language "
+                "constraints in the obligation, evidence, or input bindings. "
                 "Use Query paos_record.evidence_refs directly; do not re-read the whole task "
                 "just to find discovery IDs. Missing facts still require discovery or clarification.\n"
                 "- Gateway success is an execution fact; finalize the AgentTask for user-level "
