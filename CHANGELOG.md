@@ -9,6 +9,12 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v9.8.1 (2026-09-11 20:00) - codex
+
+- [完成] [chore] 清理三个暂不采用的未提交 RoboTwin Adapter 实验修改，恢复基线；未修改 Runtime 或 Skill。(local)
+- [Completed] [Chore] Removed three unused uncommitted RoboTwin Adapter experiments and restored the baseline; Runtime and Skill were unchanged. (local)
+- Files: `examples/forge-adapters/robotwin20/scripts/approve_simulation_probe.py`, `persistent_host.py`, `prepared_routes.py` restored; `git diff --check` passed. Commit: pending.
+
 ## v9.8.0 (2026-09-11 19:30) - codex
 
 - [完成] [policy] [fix] Runtime-only AgentTask 可使用已登记 Tool policies 激活 Agent-composed PlanGraph；仍要求 Runtime binding，未放宽 motion admission。(local)
