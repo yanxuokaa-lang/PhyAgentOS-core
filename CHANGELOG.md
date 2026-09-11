@@ -9,6 +9,43 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v10.0.0 (2026-09-11 23:34) - codex
+
+- [policy] [fix] [完成] 修复 EvoPhy 候选隔离、评测晋升、局部建议保留和重启投递；TRACE 使用显式依赖与 owner 证据。(local)
+- [policy] [fix] [done] Fixed EvoPhy candidate isolation, evaluated promotion, local advice retention and restart delivery; TRACE uses explicit dependencies and owner evidence. (local)
+- [policy] [feat] [完成] 将实际加载的进化候选与后续任务结果关联，保持与 Runtime binding identity 分离。(local)
+- [policy] [feat] [done] Associated loaded evolution candidates with future task outcomes, separately from Runtime binding identity. (local)
+
+### Files and Diff / 文件与差异
+
+- `PhyAgentOS/agent/experience/evolution.py` L490-L491,L623-L628,L703-L723,L814,L845: candidate isolation, promotion checks, scoped advice and exclusions.
+- `PhyAgentOS/agent/experience/activation.py` L143-L147; `contracts.py` L30: loaded evolution candidate identities.
+- `PhyAgentOS/agent/experience/coordinator.py` L106-L109,L261-L277,L326-L350: outcome events and restart delivery.
+- `PhyAgentOS/agent/experience/evolution_extension_adapter.py` L160: parent revision provenance.
+- `extensions/evolution/evolution/api.py` L69,L175-L178,L198; `pulse.py` L20,L50; `trace.py` L33-L38,L71,L101-L106,L152-L166: dependencies and owner evidence.
+- `extensions/evolution/evolution/plugin.py` L92,L131: projection/method failure retries.
+- `extensions/evolution/tests/test_evolution_extension.py` L95,L220-L231: dependency fixture and shared-image regression.
+- `tests/test_evophy_review_regressions.py` L1-L125; `tests/test_evolution_extension_adapter.py` L1-L295; `tests/test_evolution_composition.py` L1-L56: tracked lifecycle regression coverage.
+- `docs/forge/EVOPHY_CLOSED_LOOP_REVIEW.md` L1-L70; `extensions/evolution/README.md` L3-L9: algorithm limits and reproducible validation.
+
+```diff
+- generic reflection can overwrite extension method metadata and bypass evaluation
++ method-isolated support and mandatory extension review/evaluation at promotion
+- local revision replaces previous learned workflow
++ scoped advice and exclusions retained inside one managed block
+- timestamps/shared image imply downstream/joint causes
++ explicit dependencies and shared owner-hypothesis evidence; causality remains unproven
+- failed extension delivery lost after restart
++ existing pending jobs and persisted delivery acknowledgements recover it
+```
+
+### Validation / 验证
+
+- 105 focused tests passed; full core suite: 340 passed in 22.83s.
+- Changed-file Ruff and `git diff --check` passed. Existing unrelated `experience/__init__.py` import-order warning remains.
+- No physical experiment; independent provider evaluation and exact parent-version binding remain open requirements.
+- Implementation commit: `b5452c8`; branch: `feature/planning-loop`.
+
 ## v9.10.2 (2026-09-11 21:09) - codex
 
 - [完成] [docs] [docs] 在 planning 规范中明确 `PlanNode.conditions` 的 `[a-z][a-z0-9_.:-]*` 语法、精确事实求值和自然语言字段边界。(local)
