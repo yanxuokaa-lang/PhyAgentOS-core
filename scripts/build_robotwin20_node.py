@@ -75,6 +75,9 @@ def main() -> int:
         root = os.path.join(directory, "adapter")
         environment = os.environ.copy()
         environment["ROBOTWIN20_EMBEDDED_ADAPTER_ROOT"] = root
+        # Existing adapter profiles use this deployment variable; bind it to the
+        # embedded, relocatable payload rather than a repository path.
+        environment["PAOS_ROBOTWIN20_ADAPTER_ROOT"] = root
         paths = [
             os.path.join(root, "src"),
             os.path.join(root, "runtime"),

@@ -8,6 +8,15 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v9.3.2 (2026-09-11 10:58) - codex
+
+- [完成] [runtime] [fix] 修复正式 persistent dataflow 的 Dora 描述兼容性与 Node 内嵌环境变量，重新打包并启动 Runtime readiness。(local)
+- [Completed] [Runtime] [Fix] Fix Dora descriptor compatibility and embedded Node environment binding, then repackage and start Runtime readiness. (local)
+
+### Git 提交 / Git Commit
+
+- Commit: `e894259`; Branch: `feature/planning-loop`。
+
 ## v9.3.1 (2026-09-11 10:45) - codex
 
 - [完成] [docs] [chore] 回填 v9.3.0 artifact 发布提交引用。(local)

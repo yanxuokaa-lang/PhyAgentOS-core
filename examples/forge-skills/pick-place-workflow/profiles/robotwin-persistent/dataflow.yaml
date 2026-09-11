@@ -4,4 +4,3 @@ nodes:
     args: --profile ${PAOS_SKILL_ROOT}/profiles/robotwin-persistent/persistent-host.yaml
     inputs:
       tick: dora/timer/millis/1000
-schema_version: paos-robotwin20-persistent-host/v1

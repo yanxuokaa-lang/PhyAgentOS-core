@@ -593,7 +593,7 @@ python scripts/build_robotwin20_skill_bundle.py \
 Install both archives in an isolated PAOS home before starting the profile:
 
 ```bash
-paos skill install /tmp/paos-robotwin20-release/skills/pick-place-workflow-0.10.1.tar.gz --local
+paos skill install /tmp/paos-robotwin20-release/skills/pick-place-workflow-0.10.3.tar.gz --local
 paos forge-node install pick-place-workflow robotwin20_persistent_host \
   --archive /tmp/paos-robotwin20-release/robotwin20_persistent_host-0.1.0-linux-x86_64.tar.gz
 paos forge-node verify pick-place-workflow robotwin20_persistent_host
