@@ -19,6 +19,30 @@ profiles:
     required_assets: []
     required_environment: []
     environment: {}
+  robotwin-persistent:
+    dataflow: profiles/robotwin-persistent/dataflow.yaml
+    required_binaries:
+      - robotwin20_persistent_host
+    required_assets: []
+    required_environment:
+      - ROBOTWIN20_PAOS_PYTHON
+      - ROBOTWIN20_ARTIFACT_ROOT
+      - ROBOTWIN20_RUNTIME_ROOT
+      - ROBOTWIN20_RUNTIME_PROFILE
+      - ROBOTWIN20_WORKER_PYTHON
+      - ROBOTWIN20_MATERIALIZER_PYTHON
+      - ROBOTWIN20_MODEL_API_BASE
+      - ROBOTWIN20_MODEL
+      - ROBOTWIN20_MODEL_API_KEY
+    environment: {}
 artifacts:
   resolver: local
-  nodes: {}
+  nodes:
+    robotwin20_persistent_host:
+      artifact_id: robotwin20_persistent_host-0.1.0-linux-x86_64
+      version: "0.1.0"
+      platform: linux
+      arch: x86_64
+      artifact_type: executable_tar_gz
+      entrypoint: robotwin20_persistent_host
+      sha256: c37d2ed9122095c801359224437d3225eeff559243c22a9f6d0477f09746e5c9

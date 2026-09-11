@@ -571,3 +571,34 @@ immutable `robotwin20_persistent_host` Node artifact has been built and publishe
 controlled integration tests exercise the full AgentTask/Action/Verifier protocol with a
 deterministic persistent worker seam; they do not run model inference, RoboTwin motion, or
 hardware.
+
+### Build the self-contained Node and local Skill Bundle
+
+The release builders embed the adapter `src`, worker `runtime`, profiles, and the
+provider-neutral pick-place runtime package in one executable Node archive. The Node
+does not embed RoboTwin assets or credentials; those remain external profile inputs.
+Build both artifacts from the repository root:
+
+```bash
+mkdir -p /tmp/paos-robotwin20-release
+python scripts/build_robotwin20_node.py \
+  --adapter-root examples/forge-adapters/robotwin20 \
+  --workflow-root examples/forge-skills/pick-place-workflow \
+  --output /tmp/paos-robotwin20-release/robotwin20_persistent_host-0.1.0-linux-x86_64.tar.gz
+python scripts/build_robotwin20_skill_bundle.py \
+  --node-archive /tmp/paos-robotwin20-release/robotwin20_persistent_host-0.1.0-linux-x86_64.tar.gz \
+  --output-dir /tmp/paos-robotwin20-release/skills
+```
+
+Install both archives in an isolated PAOS home before starting the profile:
+
+```bash
+paos skill install /tmp/paos-robotwin20-release/skills/pick-place-workflow-0.10.1.tar.gz --local
+paos forge-node install pick-place-workflow robotwin20_persistent_host \
+  --archive /tmp/paos-robotwin20-release/robotwin20_persistent_host-0.1.0-linux-x86_64.tar.gz
+paos forge-node verify pick-place-workflow robotwin20_persistent_host
+```
+
+The formal profile still requires externally supplied RoboTwin/runtime/model
+environment variables. Installation and `forge-node verify` are no-motion checks;
+starting the runtime is a separate operator action.

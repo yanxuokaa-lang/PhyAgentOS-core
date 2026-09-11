@@ -1,0 +1,30 @@
+schema_version: paos-robotwin20-persistent-host/v1
+agent:
+  enabled: false
+tools:
+  enabled: true
+host: 127.0.0.1
+port: 19020
+artifact_root: ${ROBOTWIN20_ARTIFACT_ROOT}
+adapter_root: ${ROBOTWIN20_EMBEDDED_ADAPTER_ROOT}
+runtime_root: ${ROBOTWIN20_RUNTIME_ROOT}
+runtime_profile: ${ROBOTWIN20_RUNTIME_PROFILE}
+worker_python: ${ROBOTWIN20_WORKER_PYTHON}
+materializer_python: ${ROBOTWIN20_MATERIALIZER_PYTHON}
+perception_profile: ${ROBOTWIN20_EMBEDDED_ADAPTER_ROOT}/profiles/robotwin20/perception.yaml
+grasp_profile: ${ROBOTWIN20_EMBEDDED_ADAPTER_ROOT}/profiles/robotwin20/graspgen.yaml
+materializer_arguments: ${ROBOTWIN20_EMBEDDED_ADAPTER_ROOT}/profiles/robotwin20/persistent-materializer.yaml
+model:
+  api_base: ${ROBOTWIN20_MODEL_API_BASE}
+  model: ${ROBOTWIN20_MODEL}
+  api_key_env: ROBOTWIN20_MODEL_API_KEY
+  reasoning_effort: low
+  timeout_seconds: 90
+  max_output_tokens: 2048
+worker:
+  startup_timeout_s: 180
+  request_timeout_s: 360
+  shutdown_timeout_s: 30
+  action_max_duration_s: 300
+materializer_timeout_s: 300
+allow_benchmark_scene_facts: true

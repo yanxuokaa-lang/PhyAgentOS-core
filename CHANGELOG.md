@@ -8,6 +8,11 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v9.3.0 (2026-09-11 10:20) - codex
+
+- [完成] [runtime] [feat] 构建可执行 `robotwin20_persistent_host` Node artifact，为 pick-place Skill 增加正式 persistent profile 与 Node lock，并完成本地 Bundle/Node 安装校验。(local)
+- [Completed] [Runtime] [Feat] Build an executable `robotwin20_persistent_host` Node artifact, add the formal persistent profile and Node lock to the pick-place Skill, and verify local Bundle/Node installation. (local)
+
 ## v9.2.2 (2026-09-11 09:45) - codex
 
 - [完成] [eval] [exp] 真实 RoboTwin 持久 worker 只读启动预检通过；标准 PAOS Runtime 发现仍等待已安装 Skill 和正式 Node artifact，未执行 Action 或运动。(local)

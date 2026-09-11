@@ -1,0 +1,7 @@
+nodes:
+  - id: robotwin20_persistent_host
+    path: ${FORGE_RUNTIME_BIN}/robotwin20_persistent_host
+    args: --profile ${PAOS_SKILL_ROOT}/profiles/robotwin-persistent/persistent-host.yaml
+    inputs:
+      tick: dora/timer/millis/1000
+schema_version: paos-robotwin20-persistent-host/v1
