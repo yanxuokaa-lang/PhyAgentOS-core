@@ -63,7 +63,8 @@ PYTHONPATH=.:examples/forge-adapters/robotwin20/src:examples/forge-adapters/robo
 
 ### Git / 提交
 
-- Branch: feature/planning-loop; implementation receipt follows after commit.
+- Branch: feature/planning-loop; implementation commit: 264424d.
+- [完成] [docs] [chore] 回填提交凭据；无运行代码修改。 / [Completed] [docs] [chore] Record commit receipt; no runtime code changes.
 
 ## v9.4.1 (2026-09-11 15:00) - codex
 
