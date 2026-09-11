@@ -9,6 +9,13 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v9.8.0 (2026-09-11 19:30) - codex
+
+- [完成] [policy] [fix] Runtime-only AgentTask 可使用已登记 Tool policies 激活 Agent-composed PlanGraph；仍要求 Runtime binding，未放宽 motion admission。(local)
+- [Completed] [Policy] [Fix] Runtime-only AgentTasks can activate an Agent-composed PlanGraph from enrolled Tool policies; Runtime binding remains required and motion admission is unchanged. (local)
+- Files: `PhyAgentOS/agent/planning_dispatch.py` L62-L84; `tests/test_planning_dispatch.py` L42-L72. Validation: 658 tests passed, focused set 26 passed, Ruff passed. Commit: pending.
+- Live task `task_166078818c494d21` was cancelled before Action; no physical motion.
+
 ## v9.7.0 (2026-09-11 18:00) - codex
 
 - [完成] [policy] [feat] 记录实际 Skill-use 的激活版本、指令快照和决策/节点/尝试 lineage；任务创建允许 Runtime-only，Experience 与 Verifier 接收归因元数据。(local)

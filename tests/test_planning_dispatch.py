@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 from PhyAgentOS.agent.planning_dispatch import AgentComposedDispatch
 from PhyAgentOS.agent.tools.base import Tool
 from PhyAgentOS.agent.tools.planning import ForgePlanActivateTool
 from PhyAgentOS.agent.tools.registry import ToolRegistry
+from PhyAgentOS.forge.binding import BoundToolSpec, RuntimeBinding
 from PhyAgentOS.planning import (
     AdmissionContext,
     PlanGraph,
@@ -43,6 +45,36 @@ def _dispatch() -> AgentComposedDispatch:
     return AgentComposedDispatch(
         _graph(), (policy,), AdmissionContext(scene_revision="scene-1")
     )
+
+
+def test_runtime_only_task_builds_dispatch_from_enrolled_tool_policies():
+    policy = ToolSpecPolicy(
+        tool_id="scene.observe",
+        semantics="query",
+        spec_digest="3" * 64,
+        capabilities=("scene.observe",),
+    )
+    task = SimpleNamespace(
+        active_revision=SimpleNamespace(plan_graph=_graph()),
+        primary_skill_binding=None,
+        runtime_binding=RuntimeBinding(
+            binding_id="runtime_binding_1",
+            runtime_profile="fake",
+            runtime_instance_id="runtime_1",
+            gateway_url="http://fake",
+        ),
+        tool_bindings=(BoundToolSpec(
+            tool_id="scene.observe",
+            semantics="query",
+            spec_sha256="3" * 64,
+            ready_at_binding=True,
+            planning_policy=policy,
+        ),),
+    )
+    dispatch = AgentComposedDispatch.from_task(
+        task, context_provider=lambda _task_id: AdmissionContext(scene_revision="scene-1")
+    )
+    assert dispatch.policies == (policy,)
 
 
 def test_ready_tool_is_read_only_and_reports_candidates():

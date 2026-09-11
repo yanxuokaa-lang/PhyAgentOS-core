@@ -66,15 +66,22 @@ class AgentComposedDispatch:
         if graph is None:
             raise PlanningDispatchError("AgentTask active revision has no concrete PlanGraph")
         binding = getattr(task, "primary_skill_binding", None)
-        if binding is None:
-            raise PlanningDispatchError("AgentTask has no frozen Skill binding")
+        enrolled = (
+            getattr(binding, "required_tools", ())
+            if binding is not None
+            else getattr(task, "tool_bindings", ())
+        )
+        if binding is None and getattr(task, "runtime_binding", None) is None:
+            raise PlanningDispatchError("AgentTask has no frozen Runtime binding")
         policies = tuple(
             item.planning_policy
-            for item in getattr(binding, "required_tools", ())
+            for item in enrolled
             if item.planning_policy is not None
         )
         if not policies:
-            raise PlanningDispatchError("frozen Skill binding has no planning ToolSpec projections")
+            raise PlanningDispatchError(
+                "Runtime-bound task has no enrolled planning ToolSpec projections"
+            )
         context = context_provider(graph.task_id)
         if not isinstance(context, AdmissionContext):
             raise PlanningDispatchError("planning context provider returned an invalid context")
