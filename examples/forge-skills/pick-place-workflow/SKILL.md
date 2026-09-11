@@ -6,6 +6,41 @@ metadata: {"PhyAgentOS":{"always":false,"requires":{"runtime":["pick-place-workf
 
 # Pick and Place Workflow
 
+## Task Understanding and Multi-Object Execution
+
+Use the user's natural-language goal, not a task-answer configuration. Activate
+this Skill and create one AgentTask with the original goal, success criteria and
+constraints. If the object inventory is unknown, leave the graph absent, perform
+task-bound observation, capability discovery and scene understanding, then call
+`forge_task_materialize_plan` with your selected semantic `nodes`. PAOS supplies
+the graph identity and integrity metadata. Do not invent digests or executable
+references. Preserve all discovery records in the same task.
+
+Select entities and destinations from sensor-backed attributes and relations.
+Resolve phrases such as "the left red object" against the observed scene; request
+clarification or another observation when selection is ambiguous or a target is
+missing. Never rewrite an entity or geometry reference to match a benchmark ID.
+Calibrated named regions may be deployment data; which region serves this user's
+goal is a task decision. Object count, order and goals must not come from a fixed
+two-object template.
+
+The graph represents your chosen obligations and dependencies. For sequential
+relocations, require a fresh observation after the preceding placement before
+planning the next object's motion. A final observation/verification obligation
+joins all requested placements. Keep the original success criteria; do not
+weaken them during recovery. Each node turn uses the task's activated Skill
+instructions, not a later revision loaded silently during execution.
+
+Use settled results and postcondition evidence to decide whether to advance.
+For failure, choose stop, replay or replan from the facts. In PAOS, replay means
+recomputing the reducer from existing records, not repeating a grasp. A new
+physical attempt requires a new admitted plan revision. Unknown Action effects
+must be reconciled by invocation ID before any retry. Final success requires
+the existing task Verifier to evaluate all requested destinations in the last
+observed scene, including legitimate recovery attempts.
+
+## Capability Workflow
+
 This Skill describes one complete provider-neutral pick-and-place workflow. It is
 not a scene-observation-only Skill: `scene.observe` and `scene.understand` are the
 perception steps, `grasp.propose` and `manipulation.prepare` are non-mutating

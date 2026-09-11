@@ -585,6 +585,16 @@ class AgentLoop:
             raise ValueError(
                 "node turn requires non-empty task, revision, node, and prompt identities"
             )
+        if self.forge_task_coordinator is not None:
+            task = self.forge_task_coordinator.get_task(task_id)
+            if task.active_revision_id != revision_id:
+                raise ValueError("node turn revision is not current")
+            prompt = json.dumps({
+                "original_goal": task.task_description,
+                "verification": task.verification.model_dump(mode="json"),
+                "bound_skill_instructions": task.primary_skill_instructions,
+                "node_context": prompt,
+            }, ensure_ascii=False)
         messages = self.context.build_messages(
             history=[],
             current_message=prompt,

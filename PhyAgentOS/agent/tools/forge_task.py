@@ -8,7 +8,7 @@ from typing import Any
 
 from PhyAgentOS.agent.tools.base import Tool
 from PhyAgentOS.forge.task import AgentTaskCoordinator
-from PhyAgentOS.planning import PlanGraph
+from PhyAgentOS.planning import PlanGraph, PlanNode
 from PhyAgentOS.verification.contracts import TaskVerificationContract
 
 
@@ -177,26 +177,40 @@ class ForgeTaskMaterializePlanTool(Tool):
         schema = _task_id_schema()
         schema["properties"].update({
             "plan_graph": {"type": "object", "description": "Task-conditioned semantic DAG."},
+            "nodes": {"type": "array", "minItems": 1, "items": PlanNode.model_json_schema(),
+                      "description": "Agent-selected semantic nodes. PAOS supplies graph IDs and integrity metadata."},
             "plan_graph_ref": {"type": "string", "pattern": "^artifact://.+"},
             "evidence_refs": {"type": "array", "items": {"type": "string"}},
             "reason": {"type": "string", "minLength": 1},
         })
-        schema["required"] += ["plan_graph", "plan_graph_ref"]
+        schema["description"] = "Supply nodes, or a complete plan_graph with plan_graph_ref, but not both."
         return schema
 
     async def execute(
         self,
         task_id: str,
-        plan_graph: dict[str, Any],
-        plan_graph_ref: str,
+        plan_graph: dict[str, Any] | None = None,
+        plan_graph_ref: str | None = None,
         evidence_refs: list[str] | None = None,
         reason: str = "Agent selected a task-conditioned semantic DAG",
+        nodes: list[dict[str, Any]] | None = None,
     ) -> str:
+        if (nodes is None) == (plan_graph is None):
+            raise ValueError("supply either nodes or plan_graph")
+        if nodes is not None:
+            from PhyAgentOS.agent.plan_proposal import compile_task_plan
+
+            if plan_graph_ref is not None:
+                raise ValueError("PAOS supplies the plan reference for semantic nodes")
+            graph = compile_task_plan(self.coordinator.get_task(task_id), nodes, reason=reason)
+            plan_graph_ref = f"artifact://plans/{task_id}/{graph.revision_id}"
+        else:
+            graph = PlanGraph.model_validate(plan_graph)
         return _json({
             "ok": True,
             "data": self.coordinator.materialize_plan_revision(
                 task_id,
-                plan_graph=PlanGraph.model_validate(plan_graph),
+                plan_graph=graph,
                 plan_graph_ref=plan_graph_ref,
                 evidence_refs=tuple(evidence_refs or ()),
                 reason=reason,

@@ -8,6 +8,47 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v9.2.0 (2026-09-11 09:30) - codex
+
+### 变更摘要 / Change Summary
+
+- [完成] [policy] [fix] 保存 Agent Loop 基础诊断，删除未提交的任务答案 YAML、专用脚本和伪 Agent Runner。(local)
+- [Completed] [Policy] [Fix] Persist the Agent Loop foundation diagnosis and delete the uncommitted task-answer YAML, launcher, and pseudo-Agent runner. (local)
+- [完成] [policy] [feat] 让模型提交语义节点，由 PAOS 生成 PlanRevision 元数据；持久化激活时的 Skill 指令，并通过只读模型决策接入 stop/replay/replan。(local)
+- [Completed] [Policy] [Feat] Let the model submit semantic nodes while PAOS derives PlanRevision metadata; persist activation-time Skill instructions and connect read-only model stop/replay/replan decisions. (local)
+- [完成] [eval] [chore] 增加可变对象数量、Skill 指令快照、查询状态投影和恢复决策的无运动测试；313 个完整测试通过。(local)
+- [Completed] [Eval] [Chore] Add no-motion tests for variable object counts, Skill instruction snapshots, query status projection, and recovery decisions; all 313 tests pass. (local)
+
+### 影响文件 / Affected Files
+
+- `docs/forge/AGENT_LOOP_FOUNDATION_DIAGNOSIS_20260910.md`：诊断、所有权、修复路线和六维验收标准。
+- `PhyAgentOS/agent/plan_proposal.py`、`recovery_decisions.py`、`agent/loop.py`、`agent/tools/forge_task.py`：模型语义计划与只读恢复决策。
+- `PhyAgentOS/agent/experience/activation.py`、`PhyAgentOS/forge/task.py`：Skill 指令快照及任务不可变归因。
+- `examples/forge-skills/pick-place-workflow/SKILL.md`：动态发现、grounding、恢复和最终验证指导。
+- 删除 `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_agent_runner.py`、`scripts/run_persistent_agent_task.py`、`profiles/forge-persistent/persistent-agent-task.yaml`。
+
+### 关键 Diff / Key Diff
+
+```diff
+- persistent_agent_runner.py / persistent-agent-task.yaml / run_persistent_agent_task.py
++ compile_task_plan(task, nodes) -> PlanGraph
++ AgentRecoveryDecisions.select_recovery(...) -> stop | replay | replan
++ AgentTaskRecord.primary_skill_instructions (immutable)
+```
+
+### 六维验收 / Six-Dimensional Acceptance
+
+架构集成、失败恢复、权限与仿真安全、配置复现、可维护性、可观察性均通过无运动软件测试；真实模型感知、RoboTwin 运动、硬件和正式 Node 发布仍未验收。 / All six dimensions pass no-motion software checks; live model perception, RoboTwin motion, hardware, and formal Node publication remain unverified.
+
+### 验证 / Validation
+
+- Full suite: `313 passed`; focused foundation/planning: `49 passed`。
+- 变更文件 Ruff、compileall、`git diff --check` passed；全仓 Ruff 仍报告未纳入本修复的既有 `PhyAgentOS/agent/experience/__init__.py` import-order 问题。 / Changed-file Ruff, compileall, and `git diff --check` passed; repository-wide Ruff still reports a pre-existing import-order issue outside this repair in `PhyAgentOS/agent/experience/__init__.py`.
+
+### Git 提交 / Git Commit
+
+- Commit: `95d4aad` (amended after changelog metadata); Branch: `feature/planning-loop`。
+
 ## v9.1.0 (2026-09-10 12:38) - codex
 
 - [完成] [runtime] [feat] 新增 adapter-owned persistent host 和源码树开发 dataflow，组合一个 worker/client/world、既有 deployment、七个 Tool 与标准 HTTP transport；startup snapshot 无 Action，失联 not-ready，请求串行，关闭释放 worker。(local)

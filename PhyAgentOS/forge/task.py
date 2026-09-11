@@ -285,6 +285,7 @@ class AgentTaskRecord(BaseModel):
     revisions: list[PlanRevision] = Field(min_length=1)
     active_revision_id: str
     primary_skill_binding: ForgeSkillBinding | None = None
+    primary_skill_instructions: str | None = None
     supporting_skill_bindings: list[ForgeSkillBinding] = Field(default_factory=list)
     runtime_snapshot_ref: str | None = None
     verdict: VerificationVerdict | None = None
@@ -523,7 +524,7 @@ class AgentTaskStore:
         with self._lock, self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             record = self._get(connection, task_id)
-            task_identity = (record.task_id, record.created_at)
+            task_identity = (record.task_id, record.created_at, record.primary_skill_instructions)
             origin_snapshot = (
                 record.origin_session_key,
                 record.origin_dedup_key,
@@ -540,7 +541,7 @@ class AgentTaskStore:
                 raise AgentTaskError(
                     "AgentTask mutation violates the authoritative record schema"
                 ) from exc
-            if (record.task_id, record.created_at) != task_identity:
+            if (record.task_id, record.created_at, record.primary_skill_instructions) != task_identity:
                 raise AgentTaskError("AgentTask identity is immutable")
             mutated_origin = (
                 record.origin_session_key,
@@ -804,6 +805,7 @@ class AgentTaskCoordinator:
         revision_id = plan_graph.revision_id if plan_graph is not None else f"revision_{uuid4().hex[:16]}"
         _validate_plan_graph_input(plan_graph, plan_graph_ref, task_id, revision_id)
         binding: ForgeSkillBinding | None = None
+        skill_instructions: str | None = None
         if self.binding_resolver is not None:
             if self.activation_manager is None or not origin_session_key or not activation_id:
                 raise AgentTaskError(
@@ -825,6 +827,9 @@ class AgentTaskCoordinator:
                 raise AgentTaskError(
                     "activated SKILL.md does not match the installed Runtime binding"
                 )
+            skill_instructions = self.activation_manager.instructions_for_activation(
+                session_key=origin_session_key, activation_id=activation_id,
+            )
         task = AgentTaskRecord(
             task_id=task_id,
             task_description=task_description.strip(),
@@ -846,6 +851,7 @@ class AgentTaskCoordinator:
             ],
             active_revision_id=revision_id,
             primary_skill_binding=binding,
+            primary_skill_instructions=skill_instructions,
             runtime_snapshot_ref=(
                 f"runtime:{binding.runtime_instance_id}" if binding is not None else None
             ),

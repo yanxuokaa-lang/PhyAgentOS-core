@@ -28,6 +28,7 @@ class TurnExperienceContext:
     session_key: str
     task_summary: str
     activations: list[SkillActivation] = field(default_factory=list)
+    skill_instructions: dict[str, str] = field(default_factory=dict)
     workflow_trace: list[WorkflowTraceItem] = field(default_factory=list)
     verification_lessons: dict[str, list[dict[str, Any]]] = field(
         default_factory=dict
@@ -162,8 +163,10 @@ class SkillActivationManager:
                     )
             if existing is None:
                 context.activations.append(activation)
+                context.skill_instructions[activation.activation_id] = content
             else:
                 activation = existing
+                content = context.skill_instructions[activation.activation_id]
             task_summary = context.task_summary
         lessons = self.relevant_lessons(name, task_summary, skill_version=skill_version)
         with self._lock:
@@ -210,6 +213,12 @@ class SkillActivationManager:
                     item.model_dump(mode="json") for item in context.workflow_trace
                 ],
             }
+
+    def instructions_for_activation(self, *, session_key: str, activation_id: str) -> str:
+        """Return the instructions actually supplied by this activation."""
+        with self._lock:
+            self.require_activation(session_key=session_key, activation_id=activation_id)
+            return self._contexts[session_key].skill_instructions[activation_id]
 
     def require_activation(
         self,

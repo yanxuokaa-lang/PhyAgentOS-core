@@ -1,0 +1,75 @@
+# Agent Loop 基础诊断与修复 / Foundation Diagnosis and Repair
+
+日期 / Date: 2026-09-10. Scope: natural-language multi-object Agent Loop; evolution disabled.
+
+## 1. 诊断 / Diagnosis
+
+当前未提交的 `persistent_agent_runner.py` 不是完整 Agent Loop：
+
+- 任务 YAML 预填对象、benchmark identity 和目标区域，替代了本应由 Agent 基于用户目标与现场证据产生的任务理解。
+- `run_node_turn` 丢弃 prompt，按 `relocate_N` 和节点后缀执行固定逻辑；没有实际节点推理。
+- category 字符串匹配后改写 geometry entity identity，不能证明感知对象与执行对象一致。
+- 自定义 Verifier 用 benchmark pose 作用户级裁判；动作总数检查拒绝合法恢复，且姿态误差公式错误。
+- 没有接入实际 recovery decision / replan proposer，不能证明基于事实的恢复能力。
+
+The uncommitted runner substitutes task answers and node-name dispatch for reasoning, rewrites grounding identities, introduces a benchmark-owned final verdict, and has no model recovery path. Its custom verifier also miscounts recovered attempts and computes relative orientation incorrectly. Remove the implementation rather than retaining its architecture behind patches.
+
+## 2. 所有权 / Ownership
+
+| Owner | Responsibility |
+| --- | --- |
+| Deployment | Interpreter/model/Runtime/sensors/capabilities/limits; no task answers |
+| Agent + Skill | Interpret the user request, select evidence-backed entities and destinations, propose semantic dependencies and success conditions |
+| Perception + Adapter | Sensor evidence, measured geometry, transforms and grounded execution references; never rename entities to match benchmark answers |
+| AgentTask / PlanningLoop | One task, append-only revisions, node settlement, bounded recovery and persisted facts |
+| Forge / persistent Runtime | The only physical execution path, invocation/attempt/status and current world revision |
+| ForgeTaskVerifier | Evaluate the original goal against all relevant records and final current-scene evidence |
+| Experience / evolution | Consume settled outcomes later; never execute, authorize motion or rewrite historical results |
+
+依据 / Sources: `docs/zh/01-framework-introduction.md` sections 1-6; `docs/zh/03-developer-manual.md` sections 12-13; `PLANNING_MODULE_DESIGN.md` generic attribute-sorting scenario; `docs/zh/06-consequence-driven-skill-evolution-design.md` sections 7 and 15.5.
+
+## 3. 修复路线 / Repair Sequence
+
+1. Delete the three uncommitted dedicated runner/profile/script files and their semantic-ID rewrite support. Keep the persistent host and existing safety authorities. Fixed-input fixtures remain fixtures, not natural-language acceptance.
+2. Use the existing `activate_skill -> forge_task_create -> task-bound discovery -> forge_task_materialize_plan` path. Let the model submit semantic nodes; code supplies existing graph identity/digest metadata rather than requiring the model to fabricate it. This reuses existing integrity fields, not a new gate.
+3. Supply each node turn with the original user goal, verification criteria and the task-bound Skill instructions. A later changed Skill must not silently alter an in-flight task. Persist the actually activated instructions with the task, using the existing task store.
+4. Connect model recovery through the existing PlanningLoop callbacks; preserve the semantics that replay reprocesses settled facts without repeating a physical Action, while a new physical attempt requires replan and current-scene admission.
+5. Preserve Query failure and unknown outcomes as node failures/uncertainty. Final success remains the existing Verifier's responsibility. Do not retain the deleted benchmark verifier or replace its math in place.
+6. Update Skill guidance and tests. Run software acceptance before any authorized live perception/simulation acceptance.
+
+## 4. 六维验收标准 / Acceptance Criteria
+
+| Dimension | Required evidence |
+| --- | --- |
+| Architecture | Model-facing task and node paths use existing AgentLoop/Coordinator; no replacement execution runner |
+| Failure/recovery | Query unavailable/unknown, model recovery rejection, stop/replay/replan, no unknown Action resubmission |
+| Authority/safety | No sensor-to-actuator shortcut, unchanged readiness/approval checks, no motion during tests |
+| Configuration/reproducibility | Different goals/entities use the same deployment; answers exist only in task output or test fixtures |
+| Maintainability | Remove divergent implementation; share graph construction and existing lifecycle, no second store/scheduler/verifier |
+| Observability | Persist original goal, Skill instructions, graph, decision context, records and recovery lineage |
+
+## 5. 真实场景后续验收 / Live Acceptance
+
+After software verification, use a ready managed Runtime and the normal PAOS Agent entry. Observe the same persistent world, ground requested objects from sensors, finish each Action before progression, refresh before the next object, and obtain a final current-scene verdict. The development host is not automatically a published manifest-v2 Node artifact. Do not fabricate registration or treat contract tests as live model/robot proof.
+
+Evolution remains off until this loop is demonstrated. Later patches may change reusable observation/decision/recovery guidance, not deployment answers, immutable facts or safety policy. A promoted Skill must demonstrably affect a subsequent task's decisions and measured outcome.
+
+## 6. 实施与验证 / Implementation and Validation
+
+Completed in the working tree:
+
+- Removed the uncommitted `persistent_agent_runner.py`, task-answer YAML and dedicated launcher. No replacement execution protocol was added.
+- Added `compile_task_plan()` and the `forge_task_materialize_plan` `nodes` path. The model selects semantic nodes; PAOS derives revision, graph and policy metadata and validates capabilities against the frozen Skill binding.
+- Persisted the exact primary Skill instructions on `AgentTaskRecord`; node turns include the original goal, verification contract and those instructions. The field is immutable after task creation.
+- Added a read-only `AgentRecoveryDecisions` planner adapter. It asks for `stop`, `replay` or `replan`, records the decision, and delegates all state changes to `PlanningLoop`/`AgentTaskCoordinator`. Invalid or unavailable model output falls back to `stop`.
+- Updated the provider-neutral pick/place Skill with dynamic grounding, discovery, materialization and recovery guidance.
+
+Validation evidence:
+
+- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest -p pytest_asyncio.plugin -q`: **313 passed** (one existing Pydantic warning in a fixture).
+- Focused foundation/planning tests: **49 passed**.
+- `ruff check` on all changed implementation and foundation-test files: passed. The repository-wide command still reports a pre-existing import-order issue in `PhyAgentOS/agent/experience/__init__.py`, which is outside this repair.
+- `python -m compileall -q PhyAgentOS tests`: passed.
+- `git diff --check`: passed.
+
+The tests are no-motion contract tests. They do not claim live model perception, RoboTwin execution, hardware movement, or formal manifest publication. Evolution remains disabled.

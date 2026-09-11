@@ -691,6 +691,7 @@ def gateway(
 ):
     """Start the PhyAgentOS gateway."""
     from PhyAgentOS.agent.loop import AgentLoop
+    from PhyAgentOS.agent.recovery_decisions import AgentRecoveryDecisions
     from PhyAgentOS.bus.queue import MessageBus
     from PhyAgentOS.channels.manager import ChannelManager
     from PhyAgentOS.config.paths import get_cron_dir
@@ -756,6 +757,9 @@ def gateway(
         evolution_provider=evolution_provider,
         evolution_model=evolution_model,
         planning_context_provider=_make_planning_context_provider(forge_task_coordinator),
+        planner_plugin=AgentRecoveryDecisions(
+            provider, config.agents.defaults.model, forge_task_coordinator
+        ),
     )
 
     # Set cron callback (needs agent)
@@ -906,6 +910,7 @@ def agent(
     from loguru import logger
 
     from PhyAgentOS.agent.loop import AgentLoop
+    from PhyAgentOS.agent.recovery_decisions import AgentRecoveryDecisions
     from PhyAgentOS.bus.queue import MessageBus
     from PhyAgentOS.config.paths import get_cron_dir
     from PhyAgentOS.cron.service import CronService
@@ -962,6 +967,9 @@ def agent(
         evolution_provider=evolution_provider,
         evolution_model=evolution_model,
         planning_context_provider=_make_planning_context_provider(forge_task_coordinator),
+        planner_plugin=AgentRecoveryDecisions(
+            provider, config.agents.defaults.model, forge_task_coordinator
+        ),
     )
 
     async def _long_horizon_result(result) -> None:
