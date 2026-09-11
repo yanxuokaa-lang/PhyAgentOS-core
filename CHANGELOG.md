@@ -37,7 +37,7 @@
 - Scope: preparatory refactor only. Activation-free task creation, on-demand Tool enrollment and per-decision Skill attribution are NOT implemented or accepted yet.
 - 本阶段未修改在线任务、未重启 Runtime、未执行 Action；三个既有 adapter 修改保留且不提交。
 - No live task mutation, Runtime restart or Action; three pre-existing adapter changes preserved and excluded.
-- Branch: feature/planning-loop; implementation receipt recorded after commit.
+- Branch: feature/planning-loop; implementation commit: bba0baa.
 
 ## v9.5.0 (2026-09-11 15:57) - codex
 
