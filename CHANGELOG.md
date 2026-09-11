@@ -77,7 +77,7 @@ PYTHONPATH=.:examples/forge-adapters/robotwin20/src:examples/forge-adapters/robo
 
 ### Git / 提交
 
-- Branch: feature/planning-loop; implementation receipt follows.
+- Branch: feature/planning-loop; implementation commit: 325286f.
 
 ## v9.4.3 (2026-09-11 15:30) - codex
 
