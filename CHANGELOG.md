@@ -38,7 +38,7 @@
 - Changed-file Ruff and `git diff --check` passed.
 - Failure scenario: applying old evaluation conclusions after a parent edit. Reused existing activation digests; no new hash subsystem. No physical experiments.
 - Remaining: independent execution receipts must prove actual parent/candidate runs; conflicting advice and retirement still need implementation.
-- Branch: `feature/planning-loop`; implementation commit recorded after commit.
+- Branch: `feature/planning-loop`; implementation commit: `ce20699`.
 
 ## v10.0.0 (2026-09-11 23:34) - codex
 
