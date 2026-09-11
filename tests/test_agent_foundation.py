@@ -344,6 +344,10 @@ def test_interrupted_turn_retains_context_and_resumes_same_task(tmp_path, interr
         ]
         loop.turn_timeout_s = 3
         assert await loop.process_direct("Submit the plan", session_key="cli:retained") == "Plan submitted"
+        system = provider.requests[-1]["messages"][0]["content"]
+        assert "Current persisted AgentTask snapshot" in system
+        assert task.task_id in system
+        assert "does not authorize takeover" in system
         assert len(c.get_task(task.task_id).revisions) == 2
         assert c.get_task(task.task_id).execution_records == []
         history = loop.sessions.get_or_create("cli:retained").get_history(max_messages=0)

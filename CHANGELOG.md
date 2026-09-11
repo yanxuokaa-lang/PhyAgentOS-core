@@ -9,6 +9,19 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v9.3.10 (2026-09-11 14:37) - codex
+
+- [完成] [policy] [fix] 当前任务摘要进入 Agent 上下文；shell 超时和取消清理所属 POSIX 进程组与管道。(local)
+- [Completed] [Policy] [Fix] Project current task into Agent context and reap owned POSIX shell groups/pipes on timeout or cancellation. (local)
+- Files/lines: `agent/loop.py` L928-L951; `agent/tools/shell.py` L6, L101-L124; `tests/test_agent_foundation.py` L347-L350; `tests/test_shell_cleanup.py` L1-L43; diagnosis L114-L133 (source paths under PhyAgentOS).
+```diff
++ current_task_summary -> model context
+- process.kill(); await process.wait()
++ kill_owned_process_group(); await communication; await process.wait()
+```
+- 56 regressions and Ruff passed. Full command and six-dimensional scope: [monthly log](changelog/2026-09_part7.md).
+- Destination grounding remains incomplete; no live Agent, Action or motion.
+
 ## v9.3.9 (2026-09-11 14:25) - codex
 
 - [完成] [docs] [chore] 回填 v9.3.8 提交凭据 `24e4e48`；无运行代码变更。(local)

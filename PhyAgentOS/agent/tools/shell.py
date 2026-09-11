@@ -3,6 +3,7 @@
 import asyncio
 import os
 import re
+import signal
 from pathlib import Path
 from typing import Any
 
@@ -97,19 +98,29 @@ class ExecTool(Tool):
                 stderr=asyncio.subprocess.PIPE,
                 cwd=cwd,
                 env=env,
+                start_new_session=(os.name == "posix"),
             )
 
+            communication = asyncio.create_task(process.communicate())
             try:
                 stdout, stderr = await asyncio.wait_for(
-                    process.communicate(),
+                    asyncio.shield(communication),
                     timeout=effective_timeout,
                 )
-            except asyncio.TimeoutError:
-                process.kill()
+            except (asyncio.TimeoutError, asyncio.CancelledError) as exc:
+                # Kill the command's own group: descendants can retain pipe FDs
+                # after the shell exits, preventing transport cleanup.
                 try:
-                    await asyncio.wait_for(process.wait(), timeout=5.0)
-                except asyncio.TimeoutError:
+                    if os.name == "posix":
+                        os.killpg(process.pid, signal.SIGKILL)
+                    else:
+                        process.kill()
+                except ProcessLookupError:
                     pass
+                await asyncio.shield(communication)
+                await process.wait()
+                if isinstance(exc, asyncio.CancelledError):
+                    raise
                 return f"Error: Command timed out after {effective_timeout} seconds"
 
             output_parts = []

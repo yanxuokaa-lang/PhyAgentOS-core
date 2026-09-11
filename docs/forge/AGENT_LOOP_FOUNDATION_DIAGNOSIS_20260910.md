@@ -110,3 +110,24 @@ same-task recovery after model/Tool interruption and actual turn timeout. The
 model is scripted in tests. Next live validation must use the same task, enable
 logs, submit a graph through the standard Agent and inspect persisted revisions;
 do not treat this patch as RGB execution or final Verifier success.
+
+## 9. Destination Discovery and Shell Cancellation
+
+The next live turn exhausted its budget searching local files for destination refs.
+The current Agent now receives a compact persisted active-task snapshot before
+model inference, instead of relying solely on historical task IDs. This grants
+no takeover, migration, cancellation or motion authority.
+Shell commands use a dedicated POSIX process group; timeout/cancellation kills
+that group and drains pipes before returning or propagating cancellation.
+Deliberately detached descendants and Windows process trees are not covered by
+the POSIX cleanup tests.
+
+Destination grounding remains an implementation gap, not a prompt-only fix:
+`persistent_route_builder.py` checks the requested destination against the selected
+object's `target_ref` in adapter scene facts. Exposing benchmark target answers
+would not demonstrate task understanding. A subsequent adapter/Tool change must
+accept Agent-selected relational goals and resolve them from current observation
+and calibration into scene-bound destination geometry, then retain existing
+preparation, collision and Action admission. No Runtime-private file search should
+be used to replace that public interface. This change does not implement that
+interface and does not make arbitrary RGB sorting executable.
