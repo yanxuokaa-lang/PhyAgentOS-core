@@ -1,5 +1,12 @@
 # PAOS Evolution Extension
 
+See the [closed-loop algorithm review](../../docs/forge/EVOPHY_CLOSED_LOOP_REVIEW.md)
+for tested lifecycle behavior and outstanding real-provider evaluation work.
+Transition projections should supply explicit `depends_on` edges. TRACE does
+not infer dependencies or joint causes from observation timestamps or shared
+images. Local advice loaded by a future activation is tracked separately from
+Runtime binding identity; loading does not prove behavioral adoption.
+
 `evolution` is an optional, independently packaged host for self-evolution
 methods. `evolution.methods.evophy` is the first method implementation. The
 package consumes provider-neutral episode projections and emits non-authoritative

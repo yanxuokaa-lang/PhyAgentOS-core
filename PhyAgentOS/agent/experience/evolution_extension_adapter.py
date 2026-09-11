@@ -157,6 +157,7 @@ class EvolutionCandidateLifecycleAdapter:
             applicability = [f"transition:{proposal.transition_id}"]
         metadata = {
             "method_id": proposal.method_id,
+            "parent_skill_revision": getattr(proposal, "skill_revision", None),
             "transition_id": proposal.transition_id,
             "changed_surface": surface,
             "patch": [item.model_dump(mode="json") for item in patch_items],

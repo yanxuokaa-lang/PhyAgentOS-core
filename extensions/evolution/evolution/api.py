@@ -66,6 +66,7 @@ class OutcomeWindow(EvolutionModel):
 class TransitionExpectation(EvolutionModel):
     transition_id: str = Field(min_length=1, max_length=200)
     order: int = Field(ge=0)
+    depends_on: tuple[str, ...] = ()
     expected_predicates: tuple[str, ...] = Field(min_length=1)
     preconditions: tuple[str, ...] = ()
     semantic_action: str | None = Field(default=None, min_length=1, max_length=300)
@@ -171,6 +172,10 @@ class EpisodeProjection(EvolutionModel):
         if len({item.order for item in self.transitions}) != len(self.transitions):
             raise ValueError("episode transition order must be unique")
         known = set(identities)
+        order_by_id = {item.transition_id: item.order for item in self.transitions}
+        for transition in self.transitions:
+            if any(dep not in known or order_by_id[dep] >= transition.order for dep in transition.depends_on):
+                raise ValueError("transition dependencies must reference earlier declared transitions")
         if any(item.transition_id not in known for item in self.observations):
             raise ValueError("outcome observation references an unknown transition")
         predicates_by_transition = {
@@ -190,6 +195,7 @@ class EpisodeProjection(EvolutionModel):
 class PulseRecord(EvolutionModel):
     transition_id: str
     order: int
+    depends_on: tuple[str, ...] = ()
     predicate: str
     expected: Literal["satisfied"] = "satisfied"
     observed: Literal["satisfied", "violated", "unknown", "pending"]

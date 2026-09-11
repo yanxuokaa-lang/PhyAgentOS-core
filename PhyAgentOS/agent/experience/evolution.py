@@ -488,6 +488,7 @@ class SkillEvolutionManager:
             if item.proposal.skill_name == proposal.skill_name
             and item.proposal.workflow_key == proposal.workflow_key
             and sorted(item.capability_failure_owners) == capability_scope
+            and not item.proposal.evolution_metadata.get("method_id")
         ]
         collecting = next(
             (item for item in related if item.status in {"collecting", "blocked"}), None
@@ -619,6 +620,12 @@ class SkillEvolutionManager:
             )
 
     def _promote_if_ready(self, candidate: SkillCandidate) -> None:
+        if candidate.proposal.evolution_metadata.get("method_id"):
+            self._require_promotable_evaluation(candidate)
+            if len(set(candidate.supporting_episode_ids)) < self.min_successful_episodes:
+                raise SkillEvolutionError("candidate lacks independent episode support")
+            if not self.store.list_event_payloads("candidate_reviewed", candidate.candidate_id):
+                raise SkillEvolutionError("extension candidate requires explicit review")
         active_blockers = [
             lesson_id
             for lesson_id in candidate.blocked_by_lesson_ids
@@ -693,7 +700,27 @@ class SkillEvolutionManager:
             base = self._new_skill_base(proposal)
 
         managed = self._managed_block(proposal, candidate.target_revision)
-        updated = self._replace_managed_block(base, managed)
+        if candidate.proposal.evolution_metadata.get("method_id"):
+            # Local revisions append their scoped advice without erasing other transitions.
+            marker = f"<!-- paos:candidate:{candidate.candidate_id} -->"
+            if marker in base:
+                raise SkillEvolutionError("candidate revision is already present")
+            local = managed.replace(_MANAGED_START, marker).replace(
+                _MANAGED_END, "<!-- paos:candidate:end -->"
+            )
+            if _MANAGED_END in base:
+                updated = base.replace(_MANAGED_END, local + "\n" + _MANAGED_END, 1)
+            else:
+                updated = self._replace_managed_block(
+                    base, _MANAGED_START + "\n" + local + "\n" + _MANAGED_END
+                )
+        else:
+            local_revisions = re.findall(
+                r"<!-- paos:candidate:[^>]+ -->[\s\S]*?<!-- paos:candidate:end -->", base
+            )
+            if local_revisions:
+                managed = managed.replace(_MANAGED_END, "\n".join(local_revisions) + "\n" + _MANAGED_END)
+            updated = self._replace_managed_block(base, managed)
         self._validate_skill_document(updated, proposal.skill_name)
 
         revision_dir = self.revisions_dir / proposal.skill_name
@@ -784,6 +811,7 @@ class SkillEvolutionManager:
         text += section("Verification Checkpoints", proposal.verification_checkpoints)
         text += section("Recovery", proposal.recovery_guidance)
         text += section("Applicability Boundaries", proposal.applicability_boundaries)
+        text += section("Does Not Apply When", proposal.evolution_metadata.get("does_not_apply_when", []))
         text += (
             "\nDiscover live robot capabilities with `forge_tool_context` and execute only through "
             "registered Forge tools. Treat Gateway completion as an execution fact and use the "
@@ -814,6 +842,7 @@ class SkillEvolutionManager:
                 *proposal.verification_checkpoints,
                 *proposal.recovery_guidance,
                 *proposal.applicability_boundaries,
+                *proposal.evolution_metadata.get("does_not_apply_when", []),
             ]
         )
         for pattern in _BANNED_CONTENT:

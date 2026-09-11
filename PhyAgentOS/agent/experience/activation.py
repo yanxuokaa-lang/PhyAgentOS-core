@@ -140,6 +140,11 @@ class SkillActivationManager:
             content_sha256=hashlib.sha256(content.encode("utf-8")).hexdigest(),
             skill_version=skill_version,
             binding_candidate_id=candidate_id,
+            evolution_candidate_ids=[
+                item.candidate_id for item in self.store.list_candidates()
+                if item.status == "promoted" and item.proposal.skill_name == name
+                and f"<!-- paos:candidate:{item.candidate_id} -->" in content
+            ],
         )
         with self._lock:
             context = self._contexts.setdefault(

@@ -89,6 +89,7 @@ class EvolutionExtension:
                 try:
                     proposals.extend(method.process(projection))
                 except Exception as exc:  # evolution remains fail-open
+                    self.last_delivery_failed = True
                     self._emit(
                         "method_failed",
                         projection.episode_id,
@@ -127,6 +128,7 @@ class EvolutionExtension:
                 )
             return tuple(proposals)
         except Exception as exc:  # projection failures never affect task outcome
+            self.last_delivery_failed = True
             episode_id = getattr(episode, "episode_id", "unknown")
             self._emit("projection_failed", str(episode_id), {"error": type(exc).__name__})
             logger.warning("Evolution projection failed open: error=%s", type(exc).__name__)

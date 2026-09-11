@@ -17,6 +17,7 @@ class PulseLogger:
                         PulseRecord(
                             transition_id=transition.transition_id,
                             order=transition.order,
+                            depends_on=transition.depends_on,
                             predicate=predicate,
                             observed="unknown",
                             evidence_coverage=0.0,
@@ -46,6 +47,7 @@ class PulseLogger:
                     PulseRecord(
                         transition_id=transition.transition_id,
                         order=transition.order,
+                        depends_on=transition.depends_on,
                         predicate=predicate,
                         observed=observed,
                         evidence_coverage=observation.evidence_coverage,

@@ -92,6 +92,7 @@ def _projection(*, delayed: bool = False, unknown: bool = False) -> EpisodeProje
             TransitionExpectation(
                 transition_id="place",
                 order=1,
+                depends_on=("grasp",),
                 expected_predicates=("object-stable",),
                 skill_name="pick-place",
                 skill_revision="1",
@@ -216,7 +217,7 @@ def test_pulse_keeps_open_outcome_window_pending():
     assert all(record.settled_at_ms == projection.time_cost_ms for record in settled)
 
 
-def test_trace_preserves_joint_cause_only_when_evidence_is_shared():
+def test_shared_observation_is_not_joint_cause_evidence():
     projection = _projection(delayed=True).model_copy(
         update={
             "observations": tuple(
@@ -227,7 +228,7 @@ def test_trace_preserves_joint_cause_only_when_evidence_is_shared():
     )
     records = PulseLogger().build(projection)
     result = TraceAttributor().attribute(projection.episode_id, records)
-    assert result.joint_cause_sets == (("grasp", "place"),)
+    assert result.joint_cause_sets == ()
 
     independent = TraceAttributor().attribute(
         _projection(delayed=True).episode_id,

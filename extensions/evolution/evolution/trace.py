@@ -30,6 +30,12 @@ class TraceAttributor:
 
         hypotheses: list[TraceHypothesis] = []
         ordered = sorted(grouped.items(), key=lambda item: min(row.order for row in item[1]))
+        ancestors: dict[str, set[str]] = {}
+        for transition_id, rows in ordered:
+            dependencies = {dep for row in rows for dep in row.depends_on}
+            ancestors[transition_id] = dependencies | {
+                ancestor for dep in dependencies for ancestor in ancestors.get(dep, ())
+            }
         violated_transitions = {
             transition_id
             for transition_id, rows in ordered
@@ -62,7 +68,7 @@ class TraceAttributor:
             downstream = tuple(
                 later_id
                 for later_id, later_rows in ordered
-                if min(row.order for row in later_rows) > order and later_id in violated_transitions
+                if transition_id in ancestors[later_id] and later_id in violated_transitions
             )
             coverage = max(row.evidence_coverage for row in selected)
             base_weight = (
@@ -92,7 +98,10 @@ class TraceAttributor:
             owner = (
                 owner_hypotheses[0].owner
                 if owner_hypotheses
-                else next((row.owner for row in selected if row.owner != "unknown"), "unknown")
+                else (
+                    "unknown" if any(row.owner_hypotheses for row in selected)
+                    else next((row.owner for row in selected if row.owner != "unknown"), "unknown")
+                )
             )
             reversibility = "unknown"
             if any(row.reversibility == "irreversible" for row in selected):
@@ -140,11 +149,20 @@ class TraceAttributor:
         adjacency = {item.transition_id: set() for item in actionable}
         for index, left in enumerate(actionable):
             left_rows = grouped[left.transition_id]
-            left_refs = {ref for row in left_rows for ref in row.evidence_refs}
+            left_refs = {
+                (hyp.owner, ref) for row in left_rows for hyp in row.owner_hypotheses
+                if hyp.confidence >= self.policy.minimum_owner_confidence
+                for ref in hyp.evidence_refs
+            }
             for right in actionable[index + 1 :]:
                 right_rows = grouped[right.transition_id]
-                right_refs = {ref for row in right_rows for ref in row.evidence_refs}
-                if left_refs & right_refs:
+                right_refs = {
+                    (hyp.owner, ref) for row in right_rows for hyp in row.owner_hypotheses
+                    if hyp.confidence >= self.policy.minimum_owner_confidence
+                    for ref in hyp.evidence_refs
+                }
+                related = left.transition_id in ancestors[right.transition_id] or right.transition_id in ancestors[left.transition_id]
+                if related and left_refs & right_refs:
                     adjacency[left.transition_id].add(right.transition_id)
                     adjacency[right.transition_id].add(left.transition_id)
         joint_sets: list[tuple[str, ...]] = []

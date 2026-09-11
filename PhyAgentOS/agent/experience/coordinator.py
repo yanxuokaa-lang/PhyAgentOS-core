@@ -103,6 +103,10 @@ class ExperienceCoordinator:
             self._import_legacy_lessons()
             self.evolution.migrate_active_lessons()
             for root_task_id in self.store.pending_jobs():
+                if self.evolution_extension is not None and not self.store.list_event_payloads(
+                    "evolution_extension_delivered", root_task_id
+                ):
+                    self._extension_delivery_pending.add(root_task_id)
                 self._schedule_job(root_task_id)
             for cluster_id in self.store.pending_cluster_jobs():
                 self._schedule_cluster_job(cluster_id)
@@ -254,11 +258,23 @@ class ExperienceCoordinator:
             )
             created = self.store.create_episode(episode, enqueue=True)
             if created:
+                for activation in episode.skill_activations:
+                    for candidate_id in activation.evolution_candidate_ids:
+                        self.store.record_event_once(
+                            "evolution_candidate_task_outcome", candidate_id,
+                            {"episode_id": episode.episode_id,
+                             "root_task_id": episode.root_task_id,
+                             "activation_id": activation.activation_id,
+                             "verdict": outcome.final_verdict,
+                             "authority": "loaded_advice_task_outcome"},
+                        )
                 if self.evolution_extension is not None:
                     try:
                         self.evolution_extension.on_episode_closed(episode)
                         if getattr(self.evolution_extension, "last_delivery_failed", False):
                             self._extension_delivery_pending.add(outcome.root_task_id)
+                        else:
+                            self.store.record_event_once("evolution_extension_delivered", outcome.root_task_id)
                     except Exception as exc:
                         self._extension_delivery_pending.add(outcome.root_task_id)
                         logger.warning(
@@ -307,15 +323,17 @@ class ExperienceCoordinator:
         try:
             episode = self.store.get_episode_by_root(root_task_id)
             if self.evolution_extension is not None and root_task_id in self._extension_delivery_pending:
+                delivery_failed = False
                 try:
                     self.evolution_extension.on_episode_closed(episode)
                 except Exception as exc:
+                    delivery_failed = True
                     logger.warning(
                         "Evolution extension callback failed open for {}: error_type={}",
                         root_task_id,
                         type(exc).__name__,
                     )
-                if getattr(self.evolution_extension, "last_delivery_failed", False):
+                if delivery_failed or getattr(self.evolution_extension, "last_delivery_failed", False):
                     attempts = self.store.job_attempts(root_task_id)
                     if attempts < 3:
                         self.store.fail_job(root_task_id, "evolution extension delivery failed", retry=True)
@@ -328,6 +346,7 @@ class ExperienceCoordinator:
                         {"attempts": attempts},
                     )
                 else:
+                    self.store.record_event_once("evolution_extension_delivered", root_task_id)
                     self._extension_delivery_pending.discard(root_task_id)
             assessment = await self.analyzer.assess(
                 episode,

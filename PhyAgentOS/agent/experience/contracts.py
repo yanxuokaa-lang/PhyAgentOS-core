@@ -27,6 +27,7 @@ class SkillActivation(ExperienceModel):
     content_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     skill_version: str | None = None
     binding_candidate_id: str | None = None
+    evolution_candidate_ids: list[str] = Field(default_factory=list)
     activated_at: datetime = Field(default_factory=utc_now)
 
 
