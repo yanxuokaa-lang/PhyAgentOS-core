@@ -9,6 +9,14 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v9.6.0 (2026-09-11 17:05) - codex
+
+- [完成] [policy] [feat] 新任务可独立绑定 Runtime，按需登记授权 Tool 契约，并将 Runtime lineage 纳入恢复与 Verifier；旧 primary Skill 任务保持兼容。(local)
+- [Completed] [Policy] [Feat] New tasks independently bind a Runtime, enroll authorized Tool contracts on demand, and carry Runtime lineage through recovery and Verifier; legacy primary-Skill tasks remain compatible. (local)
+- Files: `PhyAgentOS/forge/binding.py` L25-L42,L221-L282; `PhyAgentOS/forge/task.py` L93-L105,L172-L184,L290-L294,L819-L925,L1848-L1925,L2160-L2171; `PhyAgentOS/agent/plan_proposal.py` L20-L48; `PhyAgentOS/verification/request_builder.py` L160-L181,L343-L389; focused test L200-L220.
+- Validation: 657 tests passed; 83 focused tests and 29 compatibility tests passed; Ruff and `git diff --check` passed. Commit: `2596f4b`.
+- Scope: no Skill-use attribution/evolution implementation, no live task or Runtime mutation, no physical Action.
+
 ## v9.5.1 (2026-09-11 16:28) - codex
 
 - [完成] [policy] [refactor] 提取 Runtime 身份比较，保留旧任务的部署 Skill/version 校验；记录后续持久化和 Skill-use 迁移。(local)
