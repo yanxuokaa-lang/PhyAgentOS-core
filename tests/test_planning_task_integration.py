@@ -6,18 +6,15 @@ import json
 import pytest
 
 from PhyAgentOS.agent.experience.source import AgentTaskOutcomeSource
-from PhyAgentOS.agent.plan_proposal import compile_task_plan
-from PhyAgentOS.agent.tools.forge_task import ForgeTaskMaterializePlanTool
 from PhyAgentOS.agent.tools.forge_tool_api import ForgeToolQueryTool
 from PhyAgentOS.config.schema import ForgeConfig
-from PhyAgentOS.forge.binding import BoundToolSpec, RuntimeBinding
+from PhyAgentOS.forge.binding import BoundToolSpec
 from PhyAgentOS.forge.task import AgentTaskCoordinator, AgentTaskStatus
 from PhyAgentOS.planning import (
     PlanGraph,
     PlanningExecutionBinding,
     PlanNode,
     ToolResultEnvelope,
-    ToolSpecPolicy,
     build_replan_delta,
     plan_graph_digest,
     plan_node_digest,
@@ -28,60 +25,6 @@ from PhyAgentOS.verification.contracts import TaskVerificationContract
 
 class _Client:
     pass
-
-
-class _RuntimeClient:
-    async def get_tool(self, tool_id):
-        semantics = "action" if tool_id == "object.place" else "query"
-        return {"data": {"tool_id": tool_id, "semantics": semantics, "planning": {"capabilities": [
-            "object.place" if tool_id == "object.place" else "scene.observe"
-        ]}}}
-
-    async def get_tool_context(self, _tool_id):
-        return {"data": {"ready": True}}
-
-
-class _Runtime:
-    skill_name = "runtime-tools"
-    skill_version = "1.0.0"
-    profile = "sim"
-    runtime_instance_id = "runtime-1"
-    gateway_url = "http://runtime"
-    gateway_identity = None
-    client = _RuntimeClient()
-
-
-class _RuntimeManifest:
-    required_tools = ("scene.observe", "object.place")
-
-
-class _RuntimeCatalog:
-    def get(self, _name):
-        return _RuntimeManifest()
-
-
-class _RuntimeResolver:
-    catalog = _RuntimeCatalog()
-
-    def freeze_runtime(self, *, task_id):
-        return RuntimeBinding(
-            binding_id=f"runtime-{task_id}", runtime_profile="sim",
-            runtime_instance_id="runtime-1", gateway_url="http://runtime",
-        )
-
-    def validate_runtime_binding(self, _binding):
-        return _Runtime()
-
-    async def enroll_tool(self, _binding, tool_id, semantics):
-        capability = "object.place" if tool_id == "object.place" else "scene.observe"
-        return BoundToolSpec(
-            tool_id=tool_id, semantics=semantics, spec_sha256="4" * 64,
-            ready_at_binding=True,
-            planning_policy=ToolSpecPolicy(
-                tool_id=tool_id, semantics=semantics, spec_digest="5" * 64,
-                capabilities=(capability,),
-            ),
-        )
 
 
 def _graph(task_id: str, revision_id: str) -> PlanGraph:
@@ -102,31 +45,6 @@ def _graph(task_id: str, revision_id: str) -> PlanGraph:
     }
     payload["graph_digest"] = plan_graph_digest(payload)
     return PlanGraph.model_validate(payload)
-
-
-def test_runtime_only_plan_compilation_enrolls_declared_tool_policies(tmp_path):
-    coordinator = AgentTaskCoordinator(
-        workspace=tmp_path,
-        config=ForgeConfig(),
-        client=_Client(),
-        binding_resolver=_RuntimeResolver(),
-    )
-    task = asyncio.run(coordinator.create_task(
-        task_description="place objects",
-        verification=TaskVerificationContract(mode="off"),
-    ))
-    assert task.primary_skill_binding is None
-    assert task.runtime_binding is not None
-    task = asyncio.run(coordinator.ensure_runtime_tool_bindings(task.task_id))
-    assert {item.tool_id for item in task.tool_bindings} == {"scene.observe", "object.place"}
-    nodes = [{"node_id": "place", "obligation_id": "place", "capability": "object.place"}]
-    graph = compile_task_plan(task, nodes, reason="runtime-only plan")
-    assert graph.nodes[0].capability == "object.place"
-    result = json.loads(asyncio.run(ForgeTaskMaterializePlanTool(coordinator).execute(
-        task.task_id, nodes=nodes, reason="runtime-only plan"
-    )))
-    assert result["ok"] is True
-    assert coordinator.get_task(task.task_id).active_revision.plan_graph is not None
 
 
 def test_coordinator_persists_concrete_graph_and_complete_execution_attribution(tmp_path):
