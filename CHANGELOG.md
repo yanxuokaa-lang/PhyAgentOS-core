@@ -31,6 +31,11 @@
 - 31 focused planning/long-horizon tests passed; Ruff and `git diff --check` passed.
 - No Runtime, Gateway Action, simulator, hardware connection, or motion was started.
 
+### Git Commit / Git 提交
+
+- Implementation commit: `76d4140`; branch: `feature/planning-loop`; pushed to `origin/feature/planning-loop`.
+- 实现提交：`76d4140`；分支：`feature/planning-loop`；已推送至 `origin/feature/planning-loop`。
+
 ## v10.0.1 (2026-09-11 23:52) - codex
 
 - [policy] [fix] [完成] 复用已有 activation 摘要与任务主键，校验扩展候选的 primary 归属、独立源任务和父文档一致性，拒绝过时父版本写入。(local)
