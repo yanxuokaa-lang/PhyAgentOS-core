@@ -228,7 +228,10 @@ class ForgeTaskMaterializePlanTool(Tool):
 
             if plan_graph_ref is not None:
                 raise ValueError("PAOS supplies the plan reference for semantic nodes")
-            graph = compile_task_plan(self.coordinator.get_task(task_id), nodes, reason=reason)
+            task = self.coordinator.get_task(task_id)
+            if task.primary_skill_binding is None and task.runtime_binding is not None:
+                task = await self.coordinator.ensure_runtime_tool_bindings(task_id)
+            graph = compile_task_plan(task, nodes, reason=reason)
             plan_graph_ref = f"artifact://plans/{task_id}/{graph.revision_id}"
         else:
             graph = PlanGraph.model_validate(plan_graph)

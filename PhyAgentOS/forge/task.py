@@ -756,6 +756,32 @@ class AgentTaskCoordinator:
     def set_activation_manager(self, activation_manager: Any) -> None:
         self.activation_manager = activation_manager
 
+    async def ensure_runtime_tool_bindings(self, task_id: str) -> AgentTaskRecord:
+        """Enroll the Runtime's declared Tool contracts before semantic compilation.
+
+        Runtime-only tasks intentionally use lazy Tool enrollment.  PlanGraph
+        compilation needs the planning projections before it can validate node
+        capabilities, so this method performs the same governed enrollment for
+        the Runtime manifest without invoking any Query or Action.
+        """
+        task = self.store.get(task_id)
+        if task.primary_skill_binding is not None or task.runtime_binding is None:
+            return task
+        if self.binding_resolver is None:
+            raise AgentTaskError("Runtime-only plan compilation requires a binding resolver")
+        runtime = self.binding_resolver.validate_runtime_binding(task.runtime_binding)
+        manifest = self.binding_resolver.catalog.get(runtime.skill_name)
+        for tool_id in manifest.required_tools:
+            response = await runtime.client.get_tool(tool_id)
+            data = response.get("data") if isinstance(response, dict) else None
+            semantics = data.get("semantics") if isinstance(data, dict) else None
+            if semantics not in {"query", "action", "session"}:
+                raise AgentTaskError(
+                    f"Forge Tool {tool_id!r} has unsupported semantics {semantics!r}"
+                )
+            await self._require_binding_tool(task_id, tool_id, semantics)
+        return self.store.get(task_id)
+
     def persist_planning_selection(self, proposal: dict[str, Any]) -> dict[str, Any]:
         """Persist a dispatch-approved selection and return its execution binding."""
         task = self.store.get(str(proposal.get("task_id")))
