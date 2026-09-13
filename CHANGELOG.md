@@ -34,6 +34,7 @@
 
 - Full core suite: 353 passed; changed-file Ruff and `git diff --check` passed.
 - No Gateway Query/Action, simulator, hardware connection, or motion was started.
+- Implementation commit: `805d8f9`; branch: `feature/planning-loop`; pushed to `origin/feature/planning-loop`.
 
 ## v10.0.2 (2026-09-13 18:51) - codex
 
