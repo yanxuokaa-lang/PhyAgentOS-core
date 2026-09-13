@@ -4,7 +4,20 @@ import asyncio
 import json
 from types import SimpleNamespace
 
+from PhyAgentOS.agent.planning_dispatch import AgentComposedDispatch
 from PhyAgentOS.agent.tools.planning import ForgePlanSelectTool
+from PhyAgentOS.config.schema import ForgeConfig
+from PhyAgentOS.forge.task import AgentTaskCoordinator
+from PhyAgentOS.planning import (
+    AdmissionContext,
+    PlanGraph,
+    PlanningExecutionBinding,
+    PlanNode,
+    ToolSpecPolicy,
+    canonical_sha256,
+    plan_graph_digest,
+)
+from PhyAgentOS.verification.contracts import TaskVerificationContract
 
 
 class _Coordinator:
@@ -69,3 +82,52 @@ def test_plan_select_rejects_when_task_is_not_active_graph():
     assert result["ok"] is False
     assert result["motion_authorized"] is False
     assert coordinator.proposals == []
+
+
+def test_real_coordinator_persists_context_bound_decision_trace(tmp_path):
+    task_id = "task-real-selection"
+    revision_id = "revision-real-selection"
+    node = PlanNode(node_id="observe", obligation_id="observe", capability="scene.observe")
+    payload = {
+        "schema_version": "paos-plan-graph/v1",
+        "task_id": task_id,
+        "revision_id": revision_id,
+        "graph_digest": "0" * 64,
+        "planner_decision_digest": "1" * 64,
+        "policy_snapshot_digest": "2" * 64,
+        "nodes": [node.model_dump(mode="json")],
+    }
+    payload["graph_digest"] = plan_graph_digest(payload)
+    graph = PlanGraph.model_validate(payload)
+    coordinator = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=object())
+    coordinator.create_task(
+        task_description="observe",
+        verification=TaskVerificationContract(mode="off"),
+        plan_graph=graph,
+        plan_graph_ref="artifact://plans/task-real-selection/revision-real-selection",
+    )
+    policy = ToolSpecPolicy(
+        tool_id="scene.observe",
+        semantics="query",
+        spec_digest="3" * 64,
+        capabilities=("scene.observe",),
+    )
+    context = AdmissionContext(scene_revision="scene-real")
+    dispatch = AgentComposedDispatch(graph, (policy,), context)
+    proposal = dispatch.prepare_selection(
+        node_id="observe",
+        tool_id="scene.observe",
+        arguments={},
+        decision_reason="initial observation",
+    )
+    binding = coordinator.persist_planning_selection(proposal)
+    validated = PlanningExecutionBinding.model_validate(
+        {key: binding[key] for key in PlanningExecutionBinding.model_fields}
+    )
+    assert validated.node_id == "observe"
+    trace_path = tmp_path / "artifacts" / "planning-traces" / task_id / revision_id / "observe"
+    traces = list(trace_path.glob("*.json"))
+    assert len(traces) == 1
+    trace = json.loads(traces[0].read_text())
+    assert trace["context_digest"] == canonical_sha256(context.model_dump(mode="json"))
+    assert trace["selected_tool_id"] == "scene.observe"

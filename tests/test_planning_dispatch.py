@@ -13,6 +13,7 @@ from PhyAgentOS.planning import (
     PlanGraph,
     PlanNode,
     ToolSpecPolicy,
+    canonical_sha256,
     plan_graph_digest,
     plan_node_digest,
     tool_input_binding_digest,
@@ -152,6 +153,9 @@ def test_prepare_selection_returns_paos_owned_binding_facts_without_execution():
     assert proposal["input_binding_digest"] == tool_input_binding_digest({})
     assert proposal["decision_reason"] == "initial live observation"
     assert proposal["scene_revision"] == "scene-1"
+    assert proposal["context_digest"] == canonical_sha256(
+        AdmissionContext(scene_revision="scene-1").model_dump(mode="json")
+    )
 
 
 def test_prepare_selection_rejects_unready_or_wrong_tool():

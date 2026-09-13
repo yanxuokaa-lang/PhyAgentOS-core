@@ -276,6 +276,7 @@ class AgentComposedDispatch:
             ),
             "input_binding_digest": tool_input_binding_digest(arguments),
             "scene_revision": context.scene_revision,
+            "context_digest": canonical_sha256(context.model_dump(mode="json")),
             "evidence_refs": tuple(context.evidence_refs),
             "decision_reason": decision_reason.strip(),
         }
