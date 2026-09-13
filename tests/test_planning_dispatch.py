@@ -15,6 +15,7 @@ from PhyAgentOS.planning import (
     ToolSpecPolicy,
     plan_graph_digest,
     plan_node_digest,
+    tool_input_binding_digest,
 )
 
 
@@ -139,6 +140,40 @@ def test_guard_rejects_node_and_obligation_drift():
     assert result is not None and result.code == "invalid_planning_binding"
 
 
+def test_prepare_selection_returns_paos_owned_binding_facts_without_execution():
+    dispatch = _dispatch()
+    proposal = dispatch.prepare_selection(
+        node_id="observe",
+        tool_id="scene.observe",
+        arguments={},
+        decision_reason="initial live observation",
+    )
+    assert proposal["node_digest"] == plan_node_digest(dispatch.graph.nodes[0])
+    assert proposal["input_binding_digest"] == tool_input_binding_digest({})
+    assert proposal["decision_reason"] == "initial live observation"
+    assert proposal["scene_revision"] == "scene-1"
+
+
+def test_prepare_selection_rejects_unready_or_wrong_tool():
+    dispatch = _dispatch()
+    try:
+        dispatch.prepare_selection(
+            node_id="verify", tool_id="scene.observe", arguments={},
+            decision_reason="not ready",
+        )
+    except ValueError as exc:
+        assert "planning node" in str(exc) or "not ready" in str(exc)
+    else:
+        raise AssertionError("unready node was accepted")
+    try:
+        dispatch.prepare_selection(
+            node_id="observe", tool_id="unknown", arguments={},
+            decision_reason="wrong tool",
+        )
+    except ValueError as exc:
+        assert "not declared" in str(exc)
+    else:
+        raise AssertionError("undeclared tool was accepted")
 def test_guard_admits_complete_binding_without_authorizing_motion():
     dispatch = _dispatch()
     binding = {

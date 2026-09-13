@@ -39,6 +39,51 @@ class ForgePlanReadyTool(Tool):
         return json.dumps(self.dispatch.describe(), ensure_ascii=False, separators=(",", ":"))
 
 
+class ForgePlanSelectTool(Tool):
+    """Create a Coordinator-owned binding for one ready semantic node."""
+
+    def __init__(self, coordinator: "AgentTaskCoordinator", dispatch_getter: Callable[[], AgentComposedDispatch | None]) -> None:
+        self.coordinator = coordinator
+        self.dispatch_getter = dispatch_getter
+
+    @property
+    def name(self) -> str:
+        return "forge_plan_select"
+
+    @property
+    def description(self) -> str:
+        return "Select one ready semantic node and Tool; returns a PAOS-generated planning binding without invoking a Gateway."
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "string", "minLength": 1},
+                "node_id": {"type": "string", "minLength": 1},
+                "tool_id": {"type": "string", "minLength": 1},
+                "arguments": {"type": "object"},
+                "decision_reason": {"type": "string", "minLength": 1},
+            },
+            "required": ["task_id", "node_id", "tool_id", "arguments", "decision_reason"],
+            "additionalProperties": False,
+        }
+
+    async def execute(self, task_id: str, node_id: str, tool_id: str, arguments: dict[str, Any], decision_reason: str) -> str:
+        dispatch = self.dispatch_getter()
+        if dispatch is None or dispatch.graph.task_id != task_id:
+            return json.dumps({"ok": False, "error": {"type": "planning_selection", "message": "the requested task is not the active PlanGraph"}, "motion_authorized": False}, ensure_ascii=False, separators=(",", ":"))
+        try:
+            proposal = dispatch.prepare_selection(
+                node_id=node_id, tool_id=tool_id, arguments=arguments,
+                decision_reason=decision_reason,
+            )
+            binding = self.coordinator.persist_planning_selection(proposal)
+            return json.dumps({"ok": True, "data": {"planning_binding": binding}, "motion_authorized": False}, ensure_ascii=False, separators=(",", ":"))
+        except Exception as exc:
+            return json.dumps({"ok": False, "error": {"type": "planning_selection", "message": str(exc)}, "motion_authorized": False}, ensure_ascii=False, separators=(",", ":"))
+
+
 class ForgePlanActivateTool(Tool):
     """Attach a task's frozen graph to the AgentLoop admission bridge."""
 
@@ -96,4 +141,4 @@ class ForgePlanActivateTool(Tool):
             )
 
 
-__all__ = ["ForgePlanActivateTool", "ForgePlanReadyTool"]
+__all__ = ["ForgePlanActivateTool", "ForgePlanReadyTool", "ForgePlanSelectTool"]

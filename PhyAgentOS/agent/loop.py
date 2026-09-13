@@ -245,7 +245,7 @@ class AgentLoop:
         self.tools.register(ActivateSkillTool(self.skill_activation))
         if self.forge_task_coordinator is not None:
             from PhyAgentOS.agent.tools.forge_task import build_forge_task_tools
-            from PhyAgentOS.agent.tools.planning import ForgePlanActivateTool
+            from PhyAgentOS.agent.tools.planning import ForgePlanActivateTool, ForgePlanSelectTool
 
             for tool in build_forge_task_tools(self.forge_task_coordinator):
                 self.tools.register(tool)
@@ -254,6 +254,12 @@ class AgentLoop:
                     self.forge_task_coordinator,
                     self.set_planning_dispatch,
                     self._planning_context_provider,
+                )
+            )
+            self.tools.register(
+                ForgePlanSelectTool(
+                    self.forge_task_coordinator,
+                    lambda: self._planning_dispatch,
                 )
             )
         if self.forge_tool_client is not None:

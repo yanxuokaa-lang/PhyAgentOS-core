@@ -9,6 +9,32 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v10.0.3 (2026-09-13 19:12) - codex
+
+- [policy] [feat] [完成] 新增 `forge_plan_select` 控制面闭环：dispatch 校验 ready node，Coordinator 持久化 DecisionTrace 并返回完整 `PlanningExecutionBinding`；Skill 明确 discovery 后再 materialize，避免重复 initial observation。(local)
+- [Policy] [Feature] [Completed] Added the `forge_plan_select` control-plane path: dispatch validates a ready node, the Coordinator persists a DecisionTrace and returns the complete `PlanningExecutionBinding`; the Skill now requires discovery before materialization to avoid repeating the initial observation. (local)
+
+### Files and Diff / 文件与差异
+
+- `PhyAgentOS/planning/contracts.py` L109-L111: exact Tool argument digest helper.
+- `PhyAgentOS/agent/planning_dispatch.py` L225-L280: PAOS-owned ready-node selection facts.
+- `PhyAgentOS/forge/task.py` L759-L806: Coordinator validation and DecisionTrace artifact persistence.
+- `PhyAgentOS/agent/tools/planning.py` L42-L84; `PhyAgentOS/agent/loop.py` L248-L264: Agent-facing selection tool registration.
+- `tests/test_planning_dispatch.py` L137-L177; `tests/test_planning_selection.py` L1-L72: selection and no-execution regressions.
+- `examples/forge-skills/pick-place-workflow/SKILL.md` L206-L216; planning design docs: discovery/materialization order and ownership boundaries.
+
+```diff
+- forge_plan_ready exposed candidates but no supported binding-production path
++ forge_plan_select validates the exact selection, persists DecisionTrace, and returns a PAOS-owned binding
+- Agent could repeat initial-observe after discovery
++ Skill requires discovery evidence before materializing the post-discovery semantic graph
+```
+
+### Validation / 验证
+
+- Full core suite: 353 passed; changed-file Ruff and `git diff --check` passed.
+- No Gateway Query/Action, simulator, hardware connection, or motion was started.
+
 ## v10.0.2 (2026-09-13 18:51) - codex
 
 - [policy] [fix] [完成] 修复旧 AgentComposedDispatch 残留时拦截新任务初始只读 discovery Query；仅放行无 PlanGraph、无 planning binding 的 `scene.observe`，保持 Action admission 不变。(local)

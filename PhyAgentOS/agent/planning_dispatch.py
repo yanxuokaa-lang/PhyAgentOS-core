@@ -21,8 +21,10 @@ from PhyAgentOS.planning import (
     ToolCallEnvelope,
     ToolSpecPolicy,
     admit_tool_call,
+    canonical_sha256,
     derive_ready_nodes,
     plan_node_digest,
+    tool_input_binding_digest,
 )
 
 
@@ -115,6 +117,7 @@ class AgentComposedDispatch:
             "revision_id": self.graph.revision_id,
             "graph_digest": self.graph.graph_digest,
             "scene_revision": context.scene_revision,
+            "context_digest": canonical_sha256(context.model_dump(mode="json")),
             "ready_nodes": [
                 {
                     "node_id": node_id,
@@ -220,6 +223,62 @@ class AgentComposedDispatch:
                 tool_id=tool_id,
             )
         return admit_tool_call(self.graph, call, policy, context)
+
+    def prepare_selection(
+        self,
+        *,
+        node_id: str,
+        tool_id: str,
+        arguments: Mapping[str, Any],
+        decision_reason: str,
+    ) -> dict[str, Any]:
+        """Validate a ready-node Tool choice without invoking a Gateway."""
+        context = self._current_context()
+        node = next((item for item in self.graph.nodes if item.node_id == node_id), None)
+        policy = self._policies.get(tool_id)
+        if node is None:
+            raise PlanningDispatchError("selected planning node is not in the active graph")
+        if policy is None or node.capability not in policy.capabilities:
+            raise PlanningDispatchError("selected Tool is not declared for the planning node")
+        conditions = dict(context.condition_facts)
+        ready = derive_ready_nodes(
+            self.graph,
+            dict(context.settlements),
+            set(context.evidence_refs),
+            conditions,
+        )
+        if conditions.get("scene_current") is False:
+            ready = tuple(
+                item.node_id
+                for item in self.graph.nodes
+                if item.node_id not in dict(context.settlements)
+                and all(dict(context.settlements).get(dep) == "completed" for dep in item.dependencies)
+            )
+        if node_id not in ready:
+            raise PlanningDispatchError("selected planning node is not ready")
+        if conditions.get("scene_current") is False and not policy.refreshes_scene:
+            raise PlanningDispatchError("a fresh scene observation is required before this Tool")
+        if not isinstance(decision_reason, str) or not decision_reason.strip():
+            raise PlanningDispatchError("decision_reason must be non-empty")
+        for key in policy.input_binding_keys:
+            if key not in node.input_bindings or arguments.get(key) != node.input_bindings[key]:
+                raise PlanningDispatchError(f"Tool argument {key!r} does not match the node")
+        return {
+            "task_id": self.graph.task_id,
+            "revision_id": self.graph.revision_id,
+            "node_id": node_id,
+            "node_digest": plan_node_digest(node),
+            "obligation_id": node.obligation_id,
+            "tool_id": tool_id,
+            "candidate_tool_ids": tuple(
+                item.tool_id for item in self.policies
+                if node.capability in item.capabilities and item.semantics == policy.semantics
+            ),
+            "input_binding_digest": tool_input_binding_digest(arguments),
+            "scene_revision": context.scene_revision,
+            "evidence_refs": tuple(context.evidence_refs),
+            "decision_reason": decision_reason.strip(),
+        }
 
     def _current_context(self) -> AdmissionContext:
         if self.context_provider is None:

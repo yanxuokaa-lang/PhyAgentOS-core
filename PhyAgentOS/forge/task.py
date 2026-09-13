@@ -28,6 +28,7 @@ from PhyAgentOS.forge.evidence import ForgeEvidenceWriter
 from PhyAgentOS.forge.observation import ForgeObservationCollector
 from PhyAgentOS.forge.tool_client import ForgeToolAPIError, ForgeToolClient
 from PhyAgentOS.planning import (
+    DecisionTrace,
     NodeSettlement,
     PlanGraph,
     PlanningExecutionBinding,
@@ -36,6 +37,7 @@ from PhyAgentOS.planning import (
     validate_condition_keys,
     validate_graph,
 )
+from PhyAgentOS.utils.atomic_file import atomic_write_text
 from PhyAgentOS.verification.contracts import (
     TaskVerificationContract,
     VerificationAttempt,
@@ -753,6 +755,56 @@ class AgentTaskCoordinator:
 
     def set_activation_manager(self, activation_manager: Any) -> None:
         self.activation_manager = activation_manager
+
+    def persist_planning_selection(self, proposal: dict[str, Any]) -> dict[str, Any]:
+        """Persist a dispatch-approved selection and return its execution binding."""
+        task = self.store.get(str(proposal.get("task_id")))
+        if task.active_revision_id != proposal.get("revision_id"):
+            raise AgentTaskError("planning selection is not bound to the active revision")
+        if task.active_revision.plan_graph is None:
+            raise AgentTaskError("planning selection requires a materialized PlanGraph")
+        node = next((item for item in task.active_revision.plan_graph.nodes if item.node_id == proposal.get("node_id")), None)
+        if node is None or plan_node_digest(node) != proposal.get("node_digest"):
+            raise AgentTaskError("planning selection node digest does not match the active graph")
+        trace_id = uuid4().hex[:16]
+        trace_ref = (
+            f"artifact://planning-traces/{task.task_id}/"
+            f"{task.active_revision_id}/{node.node_id}/{trace_id}"
+        )
+        trace = {
+            "schema_version": "paos-decision-trace/v1",
+            "task_id": task.task_id,
+            "revision_id": task.active_revision_id,
+            "node_id": node.node_id,
+            "candidate_tool_ids": list(proposal.get("candidate_tool_ids", ())),
+            "selected_tool_id": proposal.get("tool_id"),
+            "input_binding_digest": proposal.get("input_binding_digest"),
+            "scene_revision": proposal.get("scene_revision"),
+            "context_digest": proposal.get("context_digest"),
+            "decision_reason": proposal.get("decision_reason"),
+            "evidence_refs": list(proposal.get("evidence_refs", ())),
+            "created_at": utc_now().isoformat(),
+        }
+        try:
+            DecisionTrace.model_validate(trace)
+        except Exception as exc:
+            raise AgentTaskError(f"planning DecisionTrace is invalid: {exc}") from exc
+        relative = Path("artifacts") / "planning-traces" / task.task_id / task.active_revision_id / node.node_id
+        path = (self.workspace / relative).resolve()
+        if not path.is_relative_to(self.workspace):
+            raise AgentTaskError("planning trace path escapes workspace")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write_text(path / f"{trace_id}.json", json.dumps(trace, ensure_ascii=False, sort_keys=True, indent=2) + "\n")
+        return {
+            "node_id": node.node_id,
+            "node_digest": proposal["node_digest"],
+            "obligation_id": node.obligation_id,
+            "input_binding_digest": proposal["input_binding_digest"],
+            "decision_trace_ref": trace_ref,
+            "task_id": task.task_id,
+            "revision_id": task.active_revision_id,
+            "scene_revision": proposal["scene_revision"],
+        }
 
     def create_task(
         self,

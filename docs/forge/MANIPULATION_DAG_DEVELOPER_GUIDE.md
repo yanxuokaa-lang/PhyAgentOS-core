@@ -274,6 +274,16 @@ wrappers execute. Experience policy candidates are persisted with independent
 replay receipts and explicit human-review/promotion transitions. These bridges
 do not move lifecycle or execution ownership into `PhyAgentOS.planning`.
 
+After `forge_plan_ready`, AgentLoop callers use the read-only
+`forge_plan_select` control-plane tool to select one ready node and frozen
+candidate Tool with exact arguments. The dispatch validates the selection and
+the Coordinator persists a DecisionTrace before returning the complete
+`PlanningExecutionBinding`. The Agent passes that binding unchanged to the
+existing Query/Action wrapper; it must not calculate digests or invent trace
+references. Discovery tasks observe and understand before materializing their
+semantic graph, so an initial discovery observation is not repeated as a graph
+node unless a fresh observation obligation is explicitly selected.
+
 `PhyAgentOS.agent.planning_loop.PlanningLoopAdapter` is the single orchestration
 adapter for node execution. It derives ready nodes from the active
 `PlanRevision`, projects trusted direct-predecessor settlements through

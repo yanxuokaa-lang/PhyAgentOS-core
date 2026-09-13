@@ -210,6 +210,18 @@ identities, incomplete planning bindings, and unready nodes return a
 structured fail-closed error; status/result/cancel reconciliation remains under
 Coordinator ownership.
 
+For AgentLoop execution, `forge_plan_ready` is followed by the read-only
+`forge_plan_select` control-plane tool. It validates one ready node, a frozen
+candidate Tool, and the exact input arguments, then asks the Coordinator to
+persist a DecisionTrace and return the complete `PlanningExecutionBinding`.
+The Agent passes that binding unchanged to the existing Forge Query/Action
+wrapper. Digest calculation, trace artifact ownership, task persistence, and
+Gateway execution remain in their existing owners; EvoPhy may advise selection
+policy but cannot create bindings or authorize motion. Discovery tasks observe
+and understand before materializing their semantic graph; an initial discovery
+observation is not repeated as a graph node unless a fresh observation
+obligation is explicitly selected.
+
 Experience now stores `WorkflowPolicyCandidate` and immutable independent
 `WorkflowPolicyReplayReceipt` records in `experience.sqlite3`. Candidates are
 deduplicated by base/proposed policy digests, require support from distinct

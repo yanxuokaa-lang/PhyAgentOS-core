@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from typing import Any, Literal
 
@@ -103,6 +104,11 @@ def plan_node_digest(node: PlanNode | dict[str, Any]) -> str:
     """
     value = node.model_dump(mode="json") if isinstance(node, BaseModel) else dict(node)
     return canonical_sha256(value)
+
+
+def tool_input_binding_digest(arguments: Mapping[str, Any]) -> str:
+    """Digest the exact JSON arguments selected for one Tool invocation."""
+    return canonical_sha256(dict(arguments))
 
 
 class PlanningExecutionBinding(_Frozen):
@@ -430,5 +436,5 @@ __all__ = [
     "DecisionTrace", "NodeSettlement", "PlanGraph", "PlanNode", "ReplanDelta",
     "PlanningExecutionBinding", "ResourceClaim", "ToolCallEnvelope", "ToolResultEnvelope",
     "ToolSpecPolicy", "WorkflowPolicy", "WorkflowPolicyCandidate", "WorkflowPolicyReplayReceipt", "canonical_sha256",
-    "plan_graph_digest", "plan_node_digest",
+    "plan_graph_digest", "plan_node_digest", "tool_input_binding_digest",
 ]

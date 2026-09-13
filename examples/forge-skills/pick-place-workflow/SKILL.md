@@ -205,7 +205,10 @@ not execute Tools, create revisions, hold leases, or authorize motion. The
 
 When running through AgentLoop, activate a persisted agent-composed revision
 with `forge_plan_activate`, then call `forge_plan_ready` before selecting a
-Forge Tool. The AgentLoop registry guard rechecks the selected Tool's planning
-projection and node binding; a missing or stale binding is returned as a
-structured admission error. This bridge is read-only and does not replace the
-Coordinator/Gateway execution or reconciliation path.
+Forge Tool. For each ready node, call `forge_plan_select` with the node, frozen
+candidate Tool, exact Tool arguments, and a short decision reason. PAOS returns
+the complete Coordinator-owned `planning_binding`; pass it unchanged to the
+task-bound Query or Action wrapper. Never calculate node/input digests or invent
+a decision-trace reference. The selection tool is control-plane only and does
+not invoke a Gateway, authorize motion, or replace Coordinator/Gateway
+execution and reconciliation.
