@@ -9,6 +9,28 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v10.0.2 (2026-09-13 18:51) - codex
+
+- [policy] [fix] [完成] 修复旧 AgentComposedDispatch 残留时拦截新任务初始只读 discovery Query；仅放行无 PlanGraph、无 planning binding 的 `scene.observe`，保持 Action admission 不变。(local)
+- [Policy] [Fix] [Completed] Prevent stale AgentComposedDispatch from blocking a new task's initial read-only discovery Query; allow only graph-less, unbound `scene.observe` while preserving Action admission. (local)
+
+### Files and Diff / 文件与差异
+
+- `PhyAgentOS/agent/loop.py` L388-L460: narrow `_allows_pre_graph_discovery_query` exception for non-terminal graph-less tasks when the installed dispatch belongs to another task.
+- `tests/test_planning_dispatch_bootstrap.py` L1-L115: discovery allowlist and Action/bound/same-task/graph/terminal rejection regressions.
+
+```diff
+- stale dispatch rejected a new task's initial scene.observe as identity_mismatch
++ only a non-terminal graph-less task's unbound scene.observe bypasses the stale dispatch;
++ all other Forge create calls retain normal admission
+```
+
+### Validation / 验证
+
+- 31 个 planning/long-horizon focused tests 通过；Ruff 与 `git diff --check` 通过。
+- 31 focused planning/long-horizon tests passed; Ruff and `git diff --check` passed.
+- No Runtime, Gateway Action, simulator, hardware connection, or motion was started.
+
 ## v10.0.1 (2026-09-11 23:52) - codex
 
 - [policy] [fix] [完成] 复用已有 activation 摘要与任务主键，校验扩展候选的 primary 归属、独立源任务和父文档一致性，拒绝过时父版本写入。(local)

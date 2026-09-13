@@ -388,6 +388,8 @@ class AgentLoop:
     def _planning_guard(self, name: str, arguments: dict) -> str | None:
         if self._planning_dispatch is None:
             return None
+        if self._allows_pre_graph_discovery_query(name, arguments):
+            return None
         try:
             decision = self._planning_dispatch.admit_forge_tool(name, arguments)
         except Exception as exc:
@@ -420,6 +422,39 @@ class AgentLoop:
             },
             ensure_ascii=False,
             separators=(",", ":"),
+        )
+
+    def _allows_pre_graph_discovery_query(self, name: str, arguments: dict) -> bool:
+        """Allow the governed first observation when an old dispatch is stale.
+
+        A planning dispatch is installed for the active task and can outlive
+        that task until the next explicit activation.  Discovery intentionally
+        happens before a semantic PlanGraph exists, so a stale dispatch must
+        not turn the first read-only ``scene.observe`` into a cross-task
+        identity failure.  This exception is deliberately narrow: it applies
+        only to a non-terminal task with no graph, the declared observation
+        Query, and no planning binding.  Actions and graph-bound calls still
+        flow through normal admission.
+        """
+        if name != "forge_tool_query" or self.forge_task_coordinator is None:
+            return False
+        if arguments.get("tool_id") != "scene.observe":
+            return False
+        task_id = arguments.get("task_id")
+        if not isinstance(task_id, str) or arguments.get("planning_binding") is not None:
+            return False
+        dispatch_task_id = getattr(getattr(self._planning_dispatch, "graph", None), "task_id", None)
+        if not isinstance(dispatch_task_id, str) or task_id == dispatch_task_id:
+            return False
+        try:
+            task = self.forge_task_coordinator.get_task(task_id)
+        except Exception:
+            return False
+        revision = getattr(task, "active_revision", None)
+        return (
+            getattr(task, "terminal", False) is False
+            and revision is not None
+            and getattr(revision, "plan_graph", None) is None
         )
 
     async def _connect_mcp(self) -> None:
