@@ -9,6 +9,33 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v10.1.7 (2026-09-14 14:10) - codex
+
+- [chore] [fix] [完成] 更新 `robotwin20_persistent_host` Node lock 至 `0.1.4` 和新 SHA-256，修复新适配器 Bundle 无法通过 Skill 完整性校验的问题；不绕过 lock 或权限门禁。(local)
+- [Chore] [Fix] [Completed] Updated the `robotwin20_persistent_host` Node lock to `0.1.4` with the new SHA-256 so the adapter Bundle passes Skill integrity validation; lock and permission gates remain enforced. (local)
+
+### Files and Diff / 文件与差异
+
+- `examples/forge-skills/pick-place-workflow/skill.yaml` L53-L61: changed the locked Node artifact/version and SHA-256 to the newly built diagnostics-enabled Node.
+
+```diff
+- artifact_id: robotwin20_persistent_host-0.3.0-linux-x86_64
+- version: "0.3.0"
+- sha256: f6dab018...
++ artifact_id: robotwin20_persistent_host-0.1.4-linux-x86_64
++ version: "0.1.4"
++ sha256: 49b22982825f63fe35b5d85781d3e569facac3fe11f64f929975a92cb79f20bd
+```
+
+### Validation / 验证
+
+- Node and Skill Bundle builds passed; local Skill and Forge Node installation passed; `paos forge-node verify` passed.
+- Runtime start was not admitted because required environment variables were absent; no Runtime or Action was started.
+
+### Git Commit / Git 提交
+
+- Commit: pending; branch: `feature/planning-loop`。
+
 ## v10.1.6 (2026-09-14 13:05) - codex
 
 - [sense] [fix] [完成] Grounding 按实体和阶段分类 ambiguity，补充输入、缓存、当前场景、标定、对应和视觉 geometry 的可审计诊断；缺失可选 geometry 时仅使用视觉 metric envelope，malformed artifact fail-closed。(local)

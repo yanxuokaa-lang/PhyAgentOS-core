@@ -51,10 +51,10 @@ artifacts:
   resolver: local
   nodes:
     robotwin20_persistent_host:
-      artifact_id: robotwin20_persistent_host-0.3.0-linux-x86_64
-      version: "0.3.0"
+      artifact_id: robotwin20_persistent_host-0.1.4-linux-x86_64
+      version: "0.1.4"
       platform: linux
       arch: x86_64
       artifact_type: executable_tar_gz
       entrypoint: robotwin20_persistent_host
-      sha256: f6dab0184abadc081c9dce0e30138e1fbaecca43ce756351c0128823ce3b0d7a
+      sha256: 49b22982825f63fe35b5d85781d3e569facac3fe11f64f929975a92cb79f20bd
