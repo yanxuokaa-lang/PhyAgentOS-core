@@ -166,6 +166,16 @@ variables, Gateway `/tools`, and all manifest `required_tools`. RuntimeManager s
 services when needed. An active
 Runtime's manifest `gateway_url` is the Tool API URL used by the Agent.
 
+`paos skill start <name> --profile <profile> --env-file <path>` reads an operator-owned UTF-8
+`KEY=VALUE` deployment file. It does not invoke a shell or expand variables; blank lines and leading
+`#` comments are ignored, while duplicate keys and invalid names fail before launch. Precedence is
+manifest `environment` < environment file < current process environment. The merged result is used
+for required-environment preflight, Bundle `start.sh`, the Dora coordinator, and the flow without
+being written to Runtime state. Machine paths, model caches, and external qualification references
+may live in this file; inject API keys and other secrets separately through a restricted operator
+environment. Do not place deployment files in the PAOS-managed `forge_runtime/environments`
+directory or package real host values in a Skill or Node.
+
 ## 9. `embodiments`
 
 Embodiment config describes knowledge topology, not execution adapters:

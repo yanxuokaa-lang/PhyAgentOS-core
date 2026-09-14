@@ -67,6 +67,28 @@ def test_robotwin_profile_declares_every_external_environment_used_by_dataflow()
     placeholders = set(re.findall(r"\$\{([A-Z][A-Z0-9_]*)\}", dataflow))
     installer_owned = {"FORGE_RUNTIME_BIN", "PAOS_SKILL_ROOT", "PAOS_SKILL_NAME", "PAOS_SKILL_VERSION"}
     assert set(profile.required_environment) == placeholders - installer_owned
+    assert "PAOS_ROBOTWIN20_ADAPTER_ROOT" not in placeholders
+    assert "PAOS_ROBOTWIN20_ADAPTER_ROOT" not in profile.required_environment
+
+
+def test_robotwin_environment_template_tracks_non_secret_required_inputs():
+    manifest = load_manifest(BUNDLE_ROOT / "skill.yaml")
+    profile = manifest.profiles["robotwin-persistent"]
+    template = (
+        BUNDLE_ROOT
+        / "profiles"
+        / "robotwin-persistent"
+        / "runtime.env.example"
+    ).read_text(encoding="utf-8")
+    template_names = {
+        line.partition("=")[0].strip()
+        for line in template.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    }
+
+    assert template_names == set(profile.required_environment) - {
+        "ROBOTWIN20_MODEL_API_KEY"
+    }
 
 
 class HealthyRuntimeManager:

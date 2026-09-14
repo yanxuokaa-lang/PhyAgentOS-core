@@ -176,6 +176,30 @@ relative to its own location, tolerate repeated execution, and return non-zero o
 Bundle requires Bash on the host `PATH`. `PAOS_SKILL_NAME` and `PAOS_SKILL_VERSION` are available as
 dataflow placeholders and in Dora process environments.
 
+### 4.1 Runtime deployment environment
+
+`required_environment` declares external deployment inputs; it is not a persistence location for
+their values. Machine-specific Python interpreters, Runtime roots, checkpoints, caches, and
+qualification paths belong in an operator-owned UTF-8 `KEY=VALUE` file passed explicitly with
+`paos skill start --env-file <path>`. The file does not execute a shell or expand variables; blank
+lines and comments beginning with `#` are ignored. Precedence from lowest to highest is manifest
+`profile.environment`, the environment file, and the current launch-process environment.
+RuntimeManager uses the same merged result for preflight, optional `start.sh`, the Dora coordinator,
+and the flow, without writing environment names or values to Runtime state.
+
+The environment file is deployment configuration for one PAOS instance. Place it beside that
+instance configuration under `deployments/<profile>/runtime.env`; do not place it in the
+RuntimeManager-owned `forge_runtime/environments` directory or commit host-specific values. A
+repository or Bundle may provide a `.example` template containing names only. Inject API keys and
+other secrets separately through an operator secret store or restricted environment; they must not
+enter a Skill, Node, dataflow, log, trace, or evolution experience.
+
+```bash
+paos skill start example-skill \
+  --profile sim \
+  --env-file ~/.PhyAgentOS/deployments/sim/runtime.env
+```
+
 ## 5. Package, publish, and close the local loop
 
 ### 5.1 Build and validate a Bundle

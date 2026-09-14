@@ -168,6 +168,27 @@ Bundle 如需在启动前下载权重或准备其他外部资源，可在根目�
 `PATH` 中存在 Bash。`PAOS_SKILL_NAME` 与 `PAOS_SKILL_VERSION` 可用于 dataflow 占位符，
 也会进入 Dora 进程环境。
 
+### 4.1 Runtime deployment environment
+
+`required_environment` 是 Skill 对外部部署输入的声明，不是环境值的持久化位置。机器相关的
+Python、Runtime root、checkpoint、cache 和 qualification 路径应写入 operator-owned UTF-8
+`KEY=VALUE` 文件，并通过 `paos skill start --env-file <path>` 显式传入。文件不执行 shell、
+不展开变量；空行和以 `#` 开头的注释会被忽略。合并优先级从低到高为 manifest
+`profile.environment`、env file、当前启动进程环境。RuntimeManager 使用同一合并结果执行
+preflight、可选 `start.sh`、Dora coordinator 和 flow，但不会把环境名称或值写入 Runtime state。
+
+环境文件属于 PAOS instance 的部署配置，建议放在配置文件所在目录的
+`deployments/<profile>/runtime.env`；不要放入 RuntimeManager 管理的 `forge_runtime/environments`
+目录，也不要提交包含主机路径的文件。仓库或 Bundle 可以提供仅含变量名的 `.example` 模板。
+API key 等 secret 应由操作员密钥存储或受限环境单独注入，不得进入 Skill、Node、dataflow、
+日志、trace 或 evolution experience。
+
+```bash
+paos skill start example-skill \
+  --profile sim \
+  --env-file ~/.PhyAgentOS/deployments/sim/runtime.env
+```
+
 ## 5. 打包、发布与本地闭环
 
 ### 5.1 构建并验证 Bundle

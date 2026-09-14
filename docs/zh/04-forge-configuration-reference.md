@@ -165,6 +165,14 @@ Node；通过 `--archive <path>` 可安装独立获取的 Node 而不访问 Regi
 `required_tools`。RuntimeManager 需要时启动本地 Dora 服务。活动 Runtime manifest 的
 `gateway_url` 是 Agent 使用的 Tool API URL。
 
+`paos skill start <name> --profile <profile> --env-file <path>` 可读取 operator-owned UTF-8
+`KEY=VALUE` 部署文件。该文件不使用 shell 解析或变量展开；空行和行首 `#` 注释会被忽略，
+重复键或非法变量名会在启动前返回结构化错误。环境优先级为 manifest `environment` < env file
+< 当前进程环境；合并结果同时用于 required-environment preflight、Bundle `start.sh`、Dora
+coordinator 和 flow，且不写入 Runtime state。机器路径、模型缓存和外部 qualification 引用可放入
+该文件，API key 等 secret 应由受限的 operator 环境单独注入。不要把部署文件放入 PAOS 管理的
+`forge_runtime/environments`，也不要把真实主机值打包进 Skill/Node。
+
 ## 9. `embodiments`
 
 Embodiment 只配置知识拓扑，不选择执行 adapter：

@@ -2,12 +2,43 @@
 
 ## Archive
 
+- [2026-09 Part 8](changelog/2026-09_part8.md)
 - [2026-09 Part 7](changelog/2026-09_part7.md)
 - [2026-09 Part 6](changelog/2026-09_part6.md)
 - [2026-09 Part 5](changelog/2026-09_part5.md)
 - [2026-09 Part 4](changelog/2026-09_part4.md)
 
 ## 最近 5 条 / Latest Five Versions
+
+## v10.1.10 (2026-09-14 19:30) - codex
+
+- [env] [feat] [完成] 为 Skill Runtime 增加 operator-owned `--env-file`，统一 preflight、start hook、Dora coordinator 与 flow 的启动环境；RoboTwin Skill 2.0.1 移除源码 adapter-root 外部要求。(local)
+- [Env] [Feat] [Completed] Added operator-owned `--env-file` support with one launch environment across preflight, start hook, Dora coordinator, and flow; RoboTwin Skill 2.0.1 removes the source adapter-root external requirement. (local)
+
+### Files and Diff / 文件与差异
+
+- `PhyAgentOS/skill_runtime/environment.py` L1-L67; `manager.py` L23-L26,L94-L190,L335-L480: non-executing environment-file parser, precedence, and single launch projection.
+- `PhyAgentOS/cli/commands.py` L1549-L1569: `paos skill start --env-file` public CLI.
+- `examples/forge-skills/pick-place-workflow/skill.yaml` L1-L57; `profiles/robotwin-persistent/dataflow.yaml` L1-L34; `runtime.env.example` L1-L33: Skill 2.0.1 deployment contract and non-secret template.
+- `tests/test_skill_runtime_environment.py` L1-L285; Runtime install/version tests: parsing, precedence, no-persistence, CLI, and manifest/template ownership regressions.
+- Chinese/English developer, configuration, and adapter guides document deployment/secret/generated-state ownership.
+
+```diff
+- preflight from os.environ; separate Dora environment construction
++ manifest environment < env file < process environment
++ one launch_environment for preflight, hook, coordinator, and flow
+- operator exports source-tree PAOS_ROBOTWIN20_ADAPTER_ROOT
++ self-contained Node owns embedded adapter root
+```
+
+### Validation / 验证
+
+- Focused 16, core 366, Skill 330, and adapter 459 tests passed; Skill 2.0.1 Bundle packaging, Ruff, compileall, CLI help, and `git diff --check` passed.
+- No Runtime, Query, Gateway Action, simulator, hardware, or motion was started.
+
+### Git Commit / Git 提交
+
+- Commit: pending; branch: `feature/planning-loop`。
 
 ## v10.1.9 (2026-09-14 19:05) - codex
 
@@ -113,36 +144,6 @@
 ### Git Commit / Git 提交
 
 - Commits: `fd51bd5`, `0033aca`; branch: `feature/planning-loop`。
-
-## v10.1.5 (2026-09-14 12:20) - codex
-
-- [comm] [fix] [完成] 明确 `scene.observe` 的 frame contract：首次观察省略 `requested_frame`，该字段仅接受 Runtime 返回的具体 frame ID；保留 `invalid_frame` fail-closed 门禁。(local)
-- [Comm] [Fix] [Completed] Clarified the `scene.observe` frame contract: omit `requested_frame` for the initial observation and accept only a concrete Runtime frame ID; retained the fail-closed `invalid_frame` gate. (local)
-
-### Files and Diff / 文件与差异
-
-- `PhyAgentOS/forge/capability_runtime/observation.py` L40-L48,L100-L106,L148-L153: added concrete frame-ID semantics, initial omission guidance, and actionable mismatch errors.
-- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/fake_gateway.py` L162-L167,L205-L213,L267-L273: mirrored the public contract and error projection.
-- `examples/forge-skills/pick-place-workflow/contracts/scene.observe.tool.yaml` L15-L23,L70-L74; `examples/forge-skills/pick-place-workflow/SKILL.md` L77-L85; `docs/forge/MANIPULATION_DAG_DEVELOPER_GUIDE.md` L146-L151: documented abstract sensor roles versus concrete Runtime frame IDs.
-- `tests/test_environment_adapter_observation.py` L53-L91; `examples/forge-skills/pick-place-workflow/tests/test_scene_observe.py` L82-L108: concrete-frame, abstract-label, and ToolSpec metadata regressions.
-
-```diff
-- requested_frame had no usage semantics and mismatch returned a generic error
-+ initial_observation = omit_requested_frame
-+ requested_frame_semantics = optional_concrete_runtime_frame_id
-+ mismatch remains invalid_frame with actionable guidance
-```
-
-### Validation / 验证
-
-- Observation/Skill/adapter focused tests: 28 passed; RoboTwin adapter suite: 449 passed; changed-file Ruff and `git diff --check` passed.
-- Full core/Skill run: 684 passed, with one pre-existing `scene.understand` YAML/Spec alignment failure unrelated to this change.
-- No Runtime, Gateway Action, simulator, hardware, or motion was started.
-
-### Git Commit / Git 提交
-
-- Commit: `dab70d1`; branch: `feature/planning-loop`.
-- 提交：`dab70d1`；分支：`feature/planning-loop`。
 
 ## v10.0.3 (2026-09-13 19:12) - codex
 

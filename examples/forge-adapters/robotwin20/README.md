@@ -602,3 +602,25 @@ paos forge-node verify pick-place-workflow robotwin20_persistent_host
 The formal profile still requires externally supplied RoboTwin/runtime/model
 environment variables. Installation and `forge-node verify` are no-motion checks;
 starting the runtime is a separate operator action.
+
+For an installed self-contained Node, do not export a source-tree
+`PAOS_ROBOTWIN20_ADAPTER_ROOT`; the Node binds that name to its embedded,
+relocatable adapter payload. Copy the shipped non-secret template into the active
+PAOS instance and keep the completed file outside the Skill Bundle:
+
+```bash
+install -d -m 700 ~/.PhyAgentOS/deployments/robotwin-persistent
+cp ~/.PhyAgentOS/skills/pick-place-workflow/profiles/robotwin-persistent/runtime.env.example \
+  ~/.PhyAgentOS/deployments/robotwin-persistent/runtime.env
+chmod 600 ~/.PhyAgentOS/deployments/robotwin-persistent/runtime.env
+
+ROBOTWIN20_MODEL_API_KEY="$(cat /absolute/path/to/operator-owned-api-key)" \
+  paos skill start pick-place-workflow \
+    --profile robotwin-persistent \
+    --env-file ~/.PhyAgentOS/deployments/robotwin-persistent/runtime.env
+```
+
+The environment file uses literal UTF-8 `KEY=VALUE` records and performs no shell
+or variable expansion. Fill every path explicitly. Runtime artifacts, Dora logs,
+task records, and current bindings remain Runtime-generated state and must not be
+mixed into this static deployment file.

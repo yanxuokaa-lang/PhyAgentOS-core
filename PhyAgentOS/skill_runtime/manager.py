@@ -20,6 +20,10 @@ from PhyAgentOS.config.paths import (
     get_skill_runtime_logs_dir,
 )
 from PhyAgentOS.skill_runtime.catalog import SkillCatalog
+from PhyAgentOS.skill_runtime.environment import (
+    RuntimeEnvironmentFileError,
+    compose_runtime_environment,
+)
 from PhyAgentOS.skill_runtime.installer import InstallerError, SkillEnvironmentBuilder
 from PhyAgentOS.skill_runtime.locking import SkillOperationBusyError, SkillOperationLock
 from PhyAgentOS.skill_runtime.manifest import RuntimeProfile, SkillManifest
@@ -87,14 +91,26 @@ class RuntimeManager:
             raise RuntimeManagerError("Skill and profile names must be Dora-name safe")
         return safe
 
-    def start(self, skill_name: str, profile_name: str) -> RuntimeState:
+    def start(
+        self,
+        skill_name: str,
+        profile_name: str,
+        *,
+        env_file: str | Path | None = None,
+    ) -> RuntimeState:
         try:
             with SkillOperationLock(self.state_store.root, skill_name):
-                return self._start_locked(skill_name, profile_name)
-        except (SkillOperationBusyError, ValueError) as exc:
+                return self._start_locked(skill_name, profile_name, env_file=env_file)
+        except (RuntimeEnvironmentFileError, SkillOperationBusyError, ValueError) as exc:
             raise RuntimeManagerError(str(exc)) from exc
 
-    def _start_locked(self, skill_name: str, profile_name: str) -> RuntimeState:
+    def _start_locked(
+        self,
+        skill_name: str,
+        profile_name: str,
+        *,
+        env_file: str | Path | None = None,
+    ) -> RuntimeState:
         manifest = self.catalog.get(skill_name)
         profile = manifest.profiles.get(profile_name)
         if profile is None:
@@ -118,7 +134,19 @@ class RuntimeManager:
         except InstallerError as exc:
             raise RuntimeManagerError(str(exc)) from exc
         self.runtime_root = binary_root
-        self._preflight(manifest, profile, binary_root)
+        launch_environment = compose_runtime_environment(
+            profile.environment,
+            env_file=env_file,
+        )
+        launch_environment.update(
+            {
+                "FORGE_RUNTIME_BIN": str(binary_root),
+                "PAOS_SKILL_ROOT": str(manifest.bundle_root),
+                "PAOS_SKILL_NAME": manifest.name,
+                "PAOS_SKILL_VERSION": manifest.version,
+            }
+        )
+        self._preflight(manifest, profile, binary_root, launch_environment)
         if self._gateway_snapshot(manifest) is not None:
             raise RuntimeManagerError(
                 f"Gateway address {manifest.gateway_url} is already in use; "
@@ -137,10 +165,16 @@ class RuntimeManager:
         self._log(skill_name, f"starting profile={profile_name} flow={flow_name}")
         launched = False
         try:
-            self._run_start_hook(manifest, profile_name)
-            self._ensure_dora_up(manifest, profile, binary_root)
+            self._run_start_hook(manifest, profile_name, launch_environment)
+            self._ensure_dora_up(manifest, profile, binary_root, launch_environment)
             launched = True
-            self._start_flow(flow_name, manifest, profile, binary_root)
+            self._start_flow(
+                flow_name,
+                manifest,
+                profile,
+                binary_root,
+                launch_environment,
+            )
             self._wait_until_ready(manifest, flow_name)
             snapshot = self._gateway_snapshot(manifest) or {}
             data = snapshot.get("data") if isinstance(snapshot.get("data"), dict) else {}
@@ -299,12 +333,16 @@ class RuntimeManager:
         return "".join(combined.splitlines(keepends=True)[-lines:])
 
     def _preflight(
-        self, skill: SkillManifest, profile: RuntimeProfile, binary_root: Path
+        self,
+        skill: SkillManifest,
+        profile: RuntimeProfile,
+        binary_root: Path,
+        launch_environment: dict[str, str],
     ) -> None:
-        dora = shutil.which("dora")
+        dora = shutil.which("dora", path=launch_environment.get("PATH"))
         if dora is None:
             raise RuntimeManagerError("dora is not installed or not available on PATH")
-        result = self._run([dora, "--version"], timeout=5)
+        result = self._run([dora, "--version"], env=launch_environment, timeout=5)
         if result.returncode != 0:
             raise RuntimeManagerError("dora version check failed")
         self._skill_path(skill, profile.dataflow, kind="dataflow")
@@ -313,7 +351,7 @@ class RuntimeManager:
         for relative in profile.required_assets:
             self._skill_path(skill, relative, kind="required asset")
         missing_environment = [
-            name for name in profile.required_environment if not os.environ.get(name)
+            name for name in profile.required_environment if not launch_environment.get(name)
         ]
         if missing_environment:
             raise RuntimeManagerError(
@@ -341,12 +379,17 @@ class RuntimeManager:
             raise RuntimeManagerError("rendered Skill dataflow is missing")
         return path
 
-    def _run_start_hook(self, skill: SkillManifest, profile_name: str) -> None:
+    def _run_start_hook(
+        self,
+        skill: SkillManifest,
+        profile_name: str,
+        launch_environment: dict[str, str],
+    ) -> None:
         """Run the PR98 bundle ``start.sh`` hook before launching Dora."""
         hook = skill.bundle_root / "start.sh"
         if not hook.is_file():
             return
-        bash = shutil.which("bash")
+        bash = shutil.which("bash", path=launch_environment.get("PATH"))
         if bash is None:
             raise RuntimeManagerError(
                 "bundle start.sh requires bash, but bash is not available on PATH"
@@ -356,6 +399,7 @@ class RuntimeManager:
             result = subprocess.run(
                 [bash, str(hook), skill.name, skill.version],
                 check=False,
+                env=launch_environment,
             )
         except OSError as exc:
             raise RuntimeManagerError("failed to execute bundle start.sh hook") from exc
@@ -371,29 +415,24 @@ class RuntimeManager:
         skill: SkillManifest,
         profile: RuntimeProfile,
         binary_root: Path,
+        launch_environment: dict[str, str],
     ) -> None:
-        dora = shutil.which("dora")
+        dora = shutil.which("dora", path=launch_environment.get("PATH"))
         assert dora is not None
         cwd = self._launch_dataflow(binary_root, profile).parent
-        check = self._run([dora, "check"], cwd=cwd, timeout=5)
+        check = self._run(
+            [dora, "check"], cwd=cwd, env=launch_environment, timeout=5
+        )
         if check.returncode == 0:
             return
         self.logs_root.mkdir(parents=True, exist_ok=True)
         coordinator_log = self.logs_root / "dora-coordinator.log"
         with coordinator_log.open("ab") as output:
             try:
-                env = {
-                    **os.environ,
-                    **profile.environment,
-                    "FORGE_RUNTIME_BIN": str(binary_root),
-                    "PAOS_SKILL_ROOT": str(skill.bundle_root),
-                    "PAOS_SKILL_NAME": skill.name,
-                    "PAOS_SKILL_VERSION": skill.version,
-                }
                 subprocess.Popen(
                     [dora, "up"],
                     cwd=cwd,
-                    env=env,
+                    env=launch_environment,
                     stdout=output,
                     stderr=subprocess.STDOUT,
                     start_new_session=True,
@@ -402,7 +441,9 @@ class RuntimeManager:
                 raise RuntimeManagerError("failed to launch dora up") from exc
         deadline = time.monotonic() + min(self.health_timeout_s, 10.0)
         while time.monotonic() < deadline:
-            if self._run([dora, "check"], cwd=cwd, timeout=5).returncode == 0:
+            if self._run(
+                [dora, "check"], cwd=cwd, env=launch_environment, timeout=5
+            ).returncode == 0:
                 return
             time.sleep(self.poll_interval_s)
         raise RuntimeManagerError("dora up did not become ready before the timeout")
@@ -413,18 +454,11 @@ class RuntimeManager:
         skill: SkillManifest,
         profile: RuntimeProfile,
         binary_root: Path,
+        launch_environment: dict[str, str],
     ) -> None:
-        dora = shutil.which("dora")
+        dora = shutil.which("dora", path=launch_environment.get("PATH"))
         assert dora is not None
         dataflow = self._launch_dataflow(binary_root, profile)
-        env = {
-            **os.environ,
-            **profile.environment,
-            "FORGE_RUNTIME_BIN": str(binary_root),
-            "PAOS_SKILL_ROOT": str(skill.bundle_root),
-            "PAOS_SKILL_NAME": skill.name,
-            "PAOS_SKILL_VERSION": skill.version,
-        }
         self.logs_root.mkdir(parents=True, exist_ok=True)
         launch_log = self.logs_root / f"{flow_name}-dora.log"
         with launch_log.open("ab") as output:
@@ -432,7 +466,7 @@ class RuntimeManager:
                 process = subprocess.Popen(
                     [dora, "start", "--name", flow_name, dataflow.name],
                     cwd=dataflow.parent,
-                    env=env,
+                    env=launch_environment,
                     stdin=subprocess.DEVNULL,
                     stdout=output,
                     stderr=subprocess.STDOUT,

@@ -265,7 +265,7 @@ def test_bundle_and_package_versions_match_the_feature_revision():
     )
     import tomllib
 
-    assert bundle_manifest["version"] == "2.0.0"
+    assert bundle_manifest["version"] == "2.0.1"
     assert tomllib.loads(package_text)["project"]["version"] == bundle_manifest["version"]
 
 

@@ -1547,12 +1547,17 @@ def skill_inspect(skill_name: str = typer.Argument(..., help="Installed Skill na
 def skill_start(
     skill_name: str = typer.Argument(..., help="Installed Skill name"),
     profile: str = typer.Option(..., "--profile", "-p", help="Runtime profile"),
+    env_file: Optional[Path] = typer.Option(
+        None,
+        "--env-file",
+        help="Operator-owned UTF-8 KEY=VALUE environment file",
+    ),
 ):
     """Start an installed Skill's named Dora dataflow."""
     from PhyAgentOS.skill_runtime.manager import RuntimeManager
 
     try:
-        state = RuntimeManager().start(skill_name, profile)
+        state = RuntimeManager().start(skill_name, profile, env_file=env_file)
     except Exception as error:
         _skill_runtime_error(error)
         return
