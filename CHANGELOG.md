@@ -34,6 +34,11 @@
 - Full core/Skill run: 684 passed, with one pre-existing `scene.understand` YAML/Spec alignment failure unrelated to this change.
 - No Runtime, Gateway Action, simulator, hardware, or motion was started.
 
+### Git Commit / Git 提交
+
+- Commit: `dab70d1`; branch: `feature/planning-loop`.
+- 提交：`dab70d1`；分支：`feature/planning-loop`。
+
 ## v10.0.3 (2026-09-13 19:12) - codex
 
 - [policy] [feat] [完成] 新增 `forge_plan_select` 控制面闭环：dispatch 校验 ready node，Coordinator 持久化 DecisionTrace 并返回完整 `PlanningExecutionBinding`；Skill 明确 discovery 后再 materialize，避免重复 initial observation。(local)
