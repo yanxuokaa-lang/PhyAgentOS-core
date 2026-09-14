@@ -1,4 +1,5 @@
 import json
+import re
 import subprocess
 import sys
 import threading
@@ -59,10 +60,13 @@ def test_manifest_v2_bundle_installs_and_catalog_reloads_required_tools(tmp_path
     assert (tmp_path / "skills" / "pick-place-workflow" / "SKILL.md").is_file()
 
 
-def test_robotwin_profile_declares_every_adapter_root_used_by_dataflow():
+def test_robotwin_profile_declares_every_external_environment_used_by_dataflow():
     manifest = load_manifest(BUNDLE_ROOT / "skill.yaml")
-    required = set(manifest.profiles["robotwin-persistent"].required_environment)
-    assert "PAOS_ROBOTWIN20_ADAPTER_ROOT" in required
+    profile = manifest.profiles["robotwin-persistent"]
+    dataflow = (BUNDLE_ROOT / profile.dataflow).read_text(encoding="utf-8")
+    placeholders = set(re.findall(r"\$\{([A-Z][A-Z0-9_]*)\}", dataflow))
+    installer_owned = {"FORGE_RUNTIME_BIN", "PAOS_SKILL_ROOT", "PAOS_SKILL_NAME", "PAOS_SKILL_VERSION"}
+    assert set(profile.required_environment) == placeholders - installer_owned
 
 
 class HealthyRuntimeManager:

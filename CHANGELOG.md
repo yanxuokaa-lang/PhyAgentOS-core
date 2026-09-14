@@ -9,6 +9,31 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v10.1.9 (2026-09-14 19:05) - codex
+
+- [policy] [fix] [完成] 完整对齐 robotwin-persistent dataflow 的全部外部环境占位符与 Skill `required_environment`，以集合一致性回归替代逐变量补漏。(local)
+- [Policy] [Fix] [Completed] Fully aligned all external robotwin-persistent dataflow placeholders with the Skill `required_environment`, replacing incremental fixes with a set-consistency regression. (local)
+
+### Files and Diff / 文件与差异
+
+- `examples/forge-skills/pick-place-workflow/skill.yaml` L50-L57: added all controller-qualification and left/right motion-capability environment declarations.
+- `examples/forge-skills/pick-place-workflow/tests/test_runtime_install_discovery.py` L1-L65: extracts dataflow placeholders and exactly compares external inputs with the manifest declaration.
+
+```diff
+- one-variable manifest assertion
++ exact external dataflow placeholder == required_environment assertion
++ controller qualification and both arm capability artifact inputs declared
+```
+
+### Validation / 验证
+
+- Runtime-install regression: 5 passed; Skill Bundle rebuild/install and Forge Node verification passed; Ruff and `git diff --check` passed.
+- No Runtime, Query, Action, simulator motion, or hardware operation was started.
+
+### Git Commit / Git 提交
+
+- Commit: pending; branch: `feature/planning-loop`。
+
 ## v10.1.8 (2026-09-14 18:45) - codex
 
 - [policy] [fix] [完成] 将 dataflow 使用的 `PAOS_ROBOTWIN20_ADAPTER_ROOT` 纳入 robotwin-persistent Skill 的 required environment，避免未展开占位符进入 Dora 并产生低层 YAML admission 错误。(local)
