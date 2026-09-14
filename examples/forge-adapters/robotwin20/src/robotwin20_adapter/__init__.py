@@ -203,10 +203,12 @@ from .simulation_probe import (
 )
 from .single_view_perception import (
     FilesystemPerceptionArtifactStore,
+    GeometryResult,
     LocalizationRequest,
     LocalizationResult,
     MetricLocalizationProvider,
     NumpyMetricLocalizationProvider,
+    NumpyVisualGeometryProvider,
     Proposal,
     ProposalProvider,
     ProposalRequest,
@@ -218,6 +220,7 @@ from .single_view_perception import (
     WorkerClient,
     WorkerProposalProvider,
     WorkerSegmentationProvider,
+    VisualGeometryProvider,
 )
 from .understanding import (
     RoboTwinSceneUnderstandingProvider,

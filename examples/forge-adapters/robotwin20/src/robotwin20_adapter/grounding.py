@@ -44,13 +44,28 @@ class Grounding:
         key = tuple(request[k] for k in IDENTITY_KEYS)
         observed = self.observations[key]
         understanding = self.understandings[key]
-        if understanding.get("ambiguities"):
-            raise ValueError("unambiguous scene understanding required")
         selected = request["entity_refs"]
         if not selected or len(set(selected)) != len(selected):
             raise ValueError("select distinct observed entities")
         if not set(selected) <= {e["entity_ref"] for e in understanding["entities"]}:
             raise ValueError("entity is not in the observation")
+        selected_set = set(selected)
+        blocking = [
+            item for item in understanding.get("ambiguities", [])
+            if item.get("code") != "object_shape_uncertain"
+            and (not item.get("entity_refs") or selected_set.intersection(item.get("entity_refs", [])))
+        ]
+        if blocking:
+            raise ValueError("selected entity has unresolved perception ambiguity")
+        envelopes = {
+            item.get("entity_ref"): item
+            for item in understanding.get("spatial_envelopes", [])
+            if isinstance(item, dict)
+        }
+        for entity_ref in selected:
+            envelope = envelopes.get(entity_ref)
+            if not envelope or envelope.get("unit") != "m":
+                raise ValueError("selected entity lacks metric visual localization")
         self._current(request)
         calibration = json.loads(_artifact_path(self.root, request["calibration_ref"]).read_text())
         frame = understanding["frame"]["frame_id"]

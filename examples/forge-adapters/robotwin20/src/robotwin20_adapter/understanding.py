@@ -49,6 +49,7 @@ class RoboTwinSceneUnderstandingProvider:
             "spatial_envelopes",
             "derived_artifacts",
             "ambiguities",
+            "reconciliations",
             "provider_available",
         }
     )
@@ -84,6 +85,7 @@ class RoboTwinSceneUnderstandingProvider:
                 raw.get("derived_artifacts", ()), "derived_artifacts"
             ),
             "ambiguities": _tuple_of_mappings(raw.get("ambiguities", ()), "ambiguities"),
+            "reconciliations": _tuple_of_mappings(raw.get("reconciliations", ()), "reconciliations"),
             "provider_available": raw.get("provider_available", True),
         }
 

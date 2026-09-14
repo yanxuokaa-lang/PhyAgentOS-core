@@ -104,6 +104,15 @@ def test_single_object_binding_needs_no_goal_and_target_preserves_explicit_pose(
     assert target["motion_authorized"] is False
 
 
+def test_shape_uncertainty_is_not_a_global_binding_gate(tmp_path):
+    g, request, _ = setup(tmp_path)
+    g.understandings[(request["observation_ref"], request["scene_revision"], request["calibration_ref"])] ["ambiguities"] = [
+        {"code": "object_shape_uncertain", "message": "shape requires candidate checks", "entity_refs": ["entity://seen"]}
+    ]
+    bound = g.bind(request)
+    assert bound["status"] == "available"
+
+
 def test_persistent_snapshot_declares_action_driven_validity_without_executing():
     from robotwin_persistent_engine import RoboTwinPersistentEngine
 

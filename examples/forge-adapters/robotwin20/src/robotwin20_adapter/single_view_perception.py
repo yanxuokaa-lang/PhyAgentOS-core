@@ -78,6 +78,14 @@ class LocalizationResult:
     valid_depth_ratio: float
 
 
+@dataclass(frozen=True)
+class GeometryResult:
+    shape_class: str
+    dimensions_m: tuple[float, float, float]
+    orientation_reliable: bool
+    confidence: float
+
+
 class ProposalProvider(Protocol):
     def propose(self, request: ProposalRequest) -> Sequence[Proposal]: ...
 
@@ -88,6 +96,10 @@ class SegmentationProvider(Protocol):
 
 class MetricLocalizationProvider(Protocol):
     def localize(self, request: LocalizationRequest) -> LocalizationResult: ...
+
+
+class VisualGeometryProvider(Protocol):
+    def estimate(self, points_xyz_m: Any, *, confidence: float) -> GeometryResult: ...
 
 
 class WorkerClient(Protocol):
@@ -247,6 +259,31 @@ class NumpyMetricLocalizationProvider:
         )
 
 
+class NumpyVisualGeometryProvider:
+    """Estimate a conservative visual envelope from an RGB-D point cloud."""
+
+    def estimate(self, points_xyz_m: Any, *, confidence: float) -> GeometryResult:
+        np = _numpy()
+        points = np.asarray(points_xyz_m, dtype=np.float64)
+        if points.ndim != 2 or points.shape[1] != 3 or points.shape[0] < 1:
+            raise SingleViewPerceptionError("visual geometry requires a non-empty Nx3 point cloud")
+        if not bool(np.isfinite(points).all()):
+            raise SingleViewPerceptionError("visual geometry contains non-finite points")
+        dimensions = points.max(axis=0) - points.min(axis=0)
+        if not bool(np.isfinite(dimensions).all()):
+            raise SingleViewPerceptionError("visual geometry envelope is non-finite")
+        # A single-view cloud can be planar (for example, a constant-depth
+        # face). Keep a conservative positive thickness instead of inventing
+        # simulator geometry; grasp/readiness may still reject it later.
+        dimensions = np.maximum(dimensions, 1e-4)
+        return GeometryResult(
+            shape_class="box_envelope",
+            dimensions_m=tuple(float(value) for value in dimensions),
+            orientation_reliable=False,
+            confidence=float(confidence),
+        )
+
+
 class FilesystemPerceptionArtifactStore:
     """Resolve observation artifacts and atomically materialize derived results."""
 
@@ -383,6 +420,7 @@ class SingleViewPerceptionInference:
         segmentation_provider: SegmentationProvider,
         localization_provider: MetricLocalizationProvider,
         artifact_store: FilesystemPerceptionArtifactStore,
+        geometry_provider: VisualGeometryProvider | None = None,
     ) -> None:
         infer = getattr(semantic_inference, "infer", None)
         if not callable(infer) and not callable(semantic_inference):
@@ -398,6 +436,7 @@ class SingleViewPerceptionInference:
         self.proposal_provider = proposal_provider
         self.segmentation_provider = segmentation_provider
         self.localization_provider = localization_provider
+        self.geometry_provider = geometry_provider or NumpyVisualGeometryProvider()
         self.artifact_store = artifact_store
 
     def infer(self, request: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -411,6 +450,7 @@ class SingleViewPerceptionInference:
         width, height = self.artifact_store.image_size(rgb_path)
         pending: list[tuple[Mapping[str, Any], Proposal]] = []
         ambiguities = list(base.get("ambiguities", []))
+        reconciliations = list(base.get("reconciliations", []))
         try:
             for entity in base["entities"]:
                 entity_ref = entity.get("entity_ref")
@@ -455,6 +495,7 @@ class SingleViewPerceptionInference:
                 "spatial_envelopes": envelopes,
                 "derived_artifacts": derived,
                 "ambiguities": ambiguities,
+                "reconciliations": reconciliations,
                 "provider_available": base.get("provider_available", True),
             }
         materialized: list[tuple[str, str]] = []
@@ -496,7 +537,7 @@ class SingleViewPerceptionInference:
                             frame_id=str(request["frame_id"]),
                         )
                     )
-                    mask_ref, points_ref, localization_ref = _derived_refs(rgb_ref, entity_ref)
+                    mask_ref, points_ref, localization_ref, geometry_ref = _derived_refs(rgb_ref, entity_ref)
                     self.artifact_store.materialize_numpy(mask_ref, mask.astype(np.uint8))
                     materialized.append((mask_ref, ".npy"))
                     self.artifact_store.materialize_numpy(points_ref, localization.points_xyz_m)
@@ -515,6 +556,16 @@ class SingleViewPerceptionInference:
                     }
                     self.artifact_store.materialize_json(localization_ref, localization_value)
                     materialized.append((localization_ref, ".json"))
+                    geometry = self.geometry_provider.estimate(localization.points_xyz_m, confidence=confidence)
+                    geometry_value = {
+                        "entity_ref": entity_ref,
+                        "shape_class": geometry.shape_class,
+                        "dimensions_m": list(geometry.dimensions_m),
+                        "orientation_reliable": geometry.orientation_reliable,
+                        "confidence": geometry.confidence,
+                    }
+                    self.artifact_store.materialize_json(geometry_ref, geometry_value)
+                    materialized.append((geometry_ref, ".json"))
                     derived.extend(
                         _derived_records(
                             request=request,
@@ -524,16 +575,22 @@ class SingleViewPerceptionInference:
                             mask_ref=mask_ref,
                             points_ref=points_ref,
                             localization_ref=localization_ref,
+                            geometry_ref=geometry_ref,
                             proposal=proposal,
                             width=width,
                             height=height,
                             foreground=foreground,
                             point_count=len(localization.points_xyz_m),
                             localization=localization,
+                            geometry=geometry,
                             confidence=confidence,
                         )
                     )
                     envelopes.append({**localization_value, "provenance": [localization_ref]})
+                    matched = [item for item in ambiguities if item.get("code") == "metric_3d_unavailable" and entity_ref in item.get("entity_refs", [])]
+                    if matched:
+                        ambiguities = [item for item in ambiguities if item not in matched]
+                        reconciliations.extend({"code": item["code"], "entity_refs": [entity_ref], "resolution": "visual_metric_localization", "evidence_refs": [localization_ref]} for item in matched)
             finally:
                 _release_provider(self.segmentation_provider, "segmentation")
         except Exception:
@@ -546,6 +603,7 @@ class SingleViewPerceptionInference:
             "spatial_envelopes": envelopes,
             "derived_artifacts": derived,
             "ambiguities": ambiguities,
+            "reconciliations": reconciliations,
             "provider_available": base.get("provider_available", True),
         }
 
@@ -554,7 +612,7 @@ class SingleViewPerceptionInference:
         raw = infer(request) if callable(infer) else self.semantic_inference(request)
         if not isinstance(raw, Mapping):
             raise SingleViewPerceptionError("semantic inference returned an invalid result")
-        allowed = {"entities", "relations", "spatial_envelopes", "derived_artifacts", "ambiguities", "provider_available"}
+        allowed = {"entities", "relations", "spatial_envelopes", "derived_artifacts", "ambiguities", "reconciliations", "provider_available"}
         if set(raw) - allowed:
             raise SingleViewPerceptionError("semantic inference returned provider-specific fields")
         if raw.get("derived_artifacts") not in (None, [], ()):
@@ -576,12 +634,14 @@ def _derived_records(
     mask_ref: str,
     points_ref: str,
     localization_ref: str,
+    geometry_ref: str,
     proposal: Proposal,
     width: int,
     height: int,
     foreground: int,
     point_count: int,
     localization: LocalizationResult,
+    geometry: GeometryResult,
     confidence: float,
 ) -> list[dict[str, Any]]:
     binding = {
@@ -616,6 +676,16 @@ def _derived_records(
             "descriptor": {
                 **empty, "unit": "m", "min_xyz_m": list(localization.min_xyz_m),
                 "max_xyz_m": list(localization.max_xyz_m), "confidence": confidence,
+            },
+        },
+        {
+            "artifact_ref": geometry_ref, "kind": "object_geometry", "media_type": "application/json",
+            **binding, "source_refs": [points_ref, localization_ref], "provenance": [rgb_ref, depth_ref],
+            "descriptor": {
+                "shape_class": "box_envelope",
+                "dimensions_m": list(geometry.dimensions_m),
+                "orientation_reliable": geometry.orientation_reliable,
+                "confidence": geometry.confidence,
             },
         },
     ]
@@ -668,12 +738,12 @@ def _artifact_parts(artifact_ref: str) -> tuple[str, ...]:
     return parts
 
 
-def _derived_refs(rgb_ref: str, entity_ref: str) -> tuple[str, str, str]:
+def _derived_refs(rgb_ref: str, entity_ref: str) -> tuple[str, str, str, str]:
     parsed = urlparse(rgb_ref)
     path = parsed.path.rsplit("/", 1)[0]
     token = sha256(entity_ref.encode("utf-8")).hexdigest()[:16]
     base = f"artifact://{parsed.netloc}{path}/derived"
-    return f"{base}/mask-{token}", f"{base}/points-{token}", f"{base}/localization-{token}"
+    return f"{base}/mask-{token}", f"{base}/points-{token}", f"{base}/localization-{token}", f"{base}/geometry-{token}"
 
 
 def _release_provider(provider: Any, label: str) -> None:
@@ -708,10 +778,12 @@ def _numpy() -> Any:
 
 __all__ = [
     "FilesystemPerceptionArtifactStore",
+    "GeometryResult",
     "LocalizationRequest",
     "LocalizationResult",
     "MetricLocalizationProvider",
     "NumpyMetricLocalizationProvider",
+    "NumpyVisualGeometryProvider",
     "Proposal",
     "ProposalProvider",
     "ProposalRequest",
@@ -723,4 +795,5 @@ __all__ = [
     "WorkerClient",
     "WorkerProposalProvider",
     "WorkerSegmentationProvider",
+    "VisualGeometryProvider",
 ]

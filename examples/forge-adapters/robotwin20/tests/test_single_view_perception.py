@@ -57,6 +57,16 @@ class SemanticInference:
         }
 
 
+class AmbiguousSemanticInference(SemanticInference):
+    def infer(self, request):
+        result = super().infer(request)
+        result["ambiguities"] = [
+            {"code": "metric_3d_unavailable", "message": "RGB has no metric scale", "entity_refs": ["entity://red-block"]},
+            {"code": "object_shape_uncertain", "message": "RGB shape is uncertain", "entity_refs": ["entity://red-block"]},
+        ]
+        return result
+
+
 class ProposalProvider:
     def __init__(self, proposals=(Proposal((1, 1, 3, 3), 0.8),), *, release_error=False):
         self.proposals = proposals
@@ -158,6 +168,7 @@ def test_single_view_composition_crosses_the_generic_gateway_without_motion(tmp_
         "instance_mask",
         "object_point_cloud",
         "metric_localization",
+        "object_geometry",
     ]
     assert result["spatial_envelopes"][0]["frame_id"] == "head_camera"
     assert result["spatial_envelopes"][0]["min_xyz_m"] == pytest.approx([-0.01, -0.005, 1.0])
@@ -190,6 +201,21 @@ def test_missing_proposal_score_is_not_fabricated(tmp_path):
     inference, _, _ = _inference(tmp_path, proposals=(Proposal((1, 1, 3, 3), None),))
     result = inference.infer(REQUEST)
     assert result["spatial_envelopes"][0]["confidence"] == pytest.approx(0.9)
+
+
+def test_visual_metric_evidence_reconciles_metric_ambiguity_and_emits_geometry(tmp_path):
+    base = _artifacts(tmp_path)
+    inference = SingleViewPerceptionInference(
+        AmbiguousSemanticInference(),
+        proposal_provider=ProposalProvider(),
+        segmentation_provider=SegmentationProvider(np.array([[False, False, False, False], [False, True, True, False], [False, True, True, False]])),
+        localization_provider=NumpyMetricLocalizationProvider(),
+        artifact_store=base,
+    )
+    result = inference.infer(REQUEST)
+    assert [item["code"] for item in result["ambiguities"]] == ["object_shape_uncertain"]
+    assert result["reconciliations"][0]["resolution"] == "visual_metric_localization"
+    assert any(item["kind"] == "object_geometry" for item in result["derived_artifacts"])
 
 
 def test_no_proposal_does_not_require_depth_or_calibration_materialization(tmp_path):

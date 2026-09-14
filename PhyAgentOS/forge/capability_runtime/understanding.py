@@ -33,6 +33,7 @@ class UnderstandingSnapshot:
     spatial_envelopes: tuple[dict[str, Any], ...] = field(default_factory=tuple)
     derived_artifacts: tuple[dict[str, Any], ...] = field(default_factory=tuple)
     ambiguities: tuple[dict[str, Any], ...] = field(default_factory=tuple)
+    reconciliations: tuple[dict[str, Any], ...] = field(default_factory=tuple)
     provider_available: bool = True
 
 
@@ -96,7 +97,7 @@ _DERIVED_ARTIFACT_SCHEMA = {
     ],
     "properties": {
         "artifact_ref": {"type": "string", "pattern": _ARTIFACT_REF.pattern},
-        "kind": {"enum": ["instance_mask", "object_point_cloud", "metric_localization"]},
+        "kind": {"enum": ["instance_mask", "object_point_cloud", "metric_localization", "object_geometry"]},
         "media_type": {"type": "string", "minLength": 1},
         "observation_ref": {"type": "string", "pattern": _OBSERVATION_REF.pattern},
         "scene_revision": {"type": "string", "minLength": 1},
@@ -105,7 +106,22 @@ _DERIVED_ARTIFACT_SCHEMA = {
         "calibration_ref": {"type": "string", "minLength": 1},
         "source_refs": _PROVENANCE_SCHEMA,
         "provenance": _PROVENANCE_SCHEMA,
-        "descriptor": _DERIVED_DESCRIPTOR_SCHEMA,
+        "descriptor": {
+            "oneOf": [
+                _DERIVED_DESCRIPTOR_SCHEMA,
+                {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["shape_class", "dimensions_m", "orientation_reliable", "confidence"],
+                    "properties": {
+                        "shape_class": {"type": "string", "minLength": 1},
+                        "dimensions_m": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number", "exclusiveMinimum": 0}},
+                        "orientation_reliable": {"type": "boolean"},
+                        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                    },
+                },
+            ],
+        },
     },
 }
 
@@ -143,6 +159,7 @@ TOOL_SPEC: dict[str, Any] = {
             "status", "observation_ref", "scene_revision", "frame",
             "calibration_ref", "entities", "relations", "spatial_envelopes",
             "derived_artifacts", "ambiguities",
+            "reconciliations",
         ],
         "properties": {
             "status": {"enum": ["available", "unavailable", "stale", "invalid"]},
@@ -234,6 +251,7 @@ TOOL_SPEC: dict[str, Any] = {
                     },
                 },
             },
+            "reconciliations": {"type": "array", "items": {"type": "object"}},
             "error": {
                 "type": "object",
                 "additionalProperties": False,
@@ -257,7 +275,7 @@ def _error(code: str, message: str, *, observation_ref: str = "observation://unk
         "frame": {"frame_id": "unknown", "unit": "m"},
         "calibration_ref": None,
         "entities": [], "relations": [], "spatial_envelopes": [],
-        "derived_artifacts": [], "ambiguities": [],
+        "derived_artifacts": [], "ambiguities": [], "reconciliations": [],
         "error": {"code": code, "message": message},
     }
 
@@ -313,14 +331,14 @@ def normalize_snapshot(snapshot: Any) -> UnderstandingSnapshot | None:
     if not isinstance(snapshot, Mapping):
         return None
     allowed = {
-        "entities", "relations", "spatial_envelopes", "derived_artifacts", "ambiguities",
+        "entities", "relations", "spatial_envelopes", "derived_artifacts", "ambiguities", "reconciliations",
         "provider_available",
     }
     if set(snapshot) - allowed:
         return None
     values = {
         key: snapshot.get(key, ())
-        for key in ("entities", "relations", "spatial_envelopes", "derived_artifacts", "ambiguities")
+        for key in ("entities", "relations", "spatial_envelopes", "derived_artifacts", "ambiguities", "reconciliations")
     }
     if any(
         not isinstance(value, (list, tuple))
@@ -337,6 +355,7 @@ def normalize_snapshot(snapshot: Any) -> UnderstandingSnapshot | None:
         spatial_envelopes=tuple(dict(item) for item in values["spatial_envelopes"]),
         derived_artifacts=tuple(dict(item) for item in values["derived_artifacts"]),
         ambiguities=tuple(dict(item) for item in values["ambiguities"]),
+        reconciliations=tuple(dict(item) for item in values["reconciliations"]),
         provider_available=provider_available,
     )
 
@@ -400,7 +419,7 @@ def _validate_derived_artifacts(
         ):
             return "invalid_derived_artifact_binding"
         kind = artifact.get("kind")
-        if kind not in {"instance_mask", "object_point_cloud", "metric_localization"}:
+        if kind not in {"instance_mask", "object_point_cloud", "metric_localization", "object_geometry"}:
             return "invalid_derived_artifact_kind"
         source_refs = artifact.get("source_refs")
         provenance = artifact.get("provenance")
@@ -425,12 +444,11 @@ def _validate_derived_artifacts(
         if set(provenance) != roots:
             return "invalid_derived_artifact_lineage"
         descriptor = artifact.get("descriptor")
-        if not isinstance(descriptor, dict) or set(descriptor) != {
-            "width_px", "height_px", "bbox_xyxy_px", "foreground_pixels", "point_count",
-            "unit", "min_xyz_m", "max_xyz_m", "confidence",
-        }:
+        if not isinstance(descriptor, dict):
             return "invalid_derived_artifact_descriptor"
         if kind == "instance_mask":
+            if set(descriptor) != {"width_px", "height_px", "bbox_xyxy_px", "foreground_pixels", "point_count", "unit", "min_xyz_m", "max_xyz_m", "confidence"}:
+                return "invalid_derived_artifact_descriptor"
             width, height, bbox, pixels = (
                 descriptor.get("width_px"), descriptor.get("height_px"),
                 descriptor.get("bbox_xyxy_px"), descriptor.get("foreground_pixels"),
@@ -446,6 +464,8 @@ def _validate_derived_artifacts(
             ):
                 return "invalid_derived_artifact_descriptor"
         elif kind == "object_point_cloud":
+            if set(descriptor) != {"width_px", "height_px", "bbox_xyxy_px", "foreground_pixels", "point_count", "unit", "min_xyz_m", "max_xyz_m", "confidence"}:
+                return "invalid_derived_artifact_descriptor"
             if (
                 not isinstance(descriptor.get("point_count"), int)
                 or isinstance(descriptor["point_count"], bool) or descriptor["point_count"] < 1
@@ -453,7 +473,9 @@ def _validate_derived_artifacts(
                 or any(descriptor.get(name) is not None for name in ("width_px", "height_px", "bbox_xyxy_px", "foreground_pixels", "min_xyz_m", "max_xyz_m", "confidence"))
             ):
                 return "invalid_derived_artifact_descriptor"
-        else:
+        elif kind == "metric_localization":
+            if set(descriptor) != {"width_px", "height_px", "bbox_xyxy_px", "foreground_pixels", "point_count", "unit", "min_xyz_m", "max_xyz_m", "confidence"}:
+                return "invalid_derived_artifact_descriptor"
             if (
                 descriptor.get("unit") != "m"
                 or not _finite_vector(descriptor.get("min_xyz_m"))
@@ -461,6 +483,22 @@ def _validate_derived_artifacts(
                 or any(low > high for low, high in zip(descriptor["min_xyz_m"], descriptor["max_xyz_m"], strict=True))
                 or not _finite_confidence(descriptor.get("confidence"))
                 or any(descriptor.get(name) is not None for name in ("width_px", "height_px", "bbox_xyxy_px", "foreground_pixels", "point_count"))
+            ):
+                return "invalid_derived_artifact_descriptor"
+        else:
+            if (
+                set(descriptor) != {"shape_class", "dimensions_m", "orientation_reliable", "confidence"}
+                or not isinstance(descriptor.get("shape_class"), str)
+                or not descriptor["shape_class"].strip()
+                or not isinstance(descriptor.get("dimensions_m"), list)
+                or len(descriptor["dimensions_m"]) != 3
+                or any(
+                    isinstance(value, bool) or not isinstance(value, (int, float))
+                    or not math.isfinite(value) or value <= 0
+                    for value in descriptor["dimensions_m"]
+                )
+                or not isinstance(descriptor.get("orientation_reliable"), bool)
+                or not _finite_confidence(descriptor.get("confidence"))
             ):
                 return "invalid_derived_artifact_descriptor"
         seen.add(ref)
@@ -619,6 +657,7 @@ class SceneUnderstandingEndpoint:
             "spatial_envelopes": [dict(item) for item in normalized.spatial_envelopes],
             "derived_artifacts": [dict(item) for item in normalized.derived_artifacts],
             "ambiguities": [dict(item) for item in normalized.ambiguities],
+            "reconciliations": [dict(item) for item in normalized.reconciliations],
         }
 
 
