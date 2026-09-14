@@ -120,6 +120,7 @@ class Grounding:
                 raise ValueError("visual geometry evidence is invalid")
             center_world = camera_to_world @ np.r_[((low + high) / 2.0), 1.0]
             visual_pose = np.eye(4)
+            visual_pose[:3, :3] = camera_to_world[:3, :3]
             visual_pose[:3, 3] = center_world[:3]
             runtime = objects[ref]
             runtime_pose = rigid_transform(runtime["world_T_object"])

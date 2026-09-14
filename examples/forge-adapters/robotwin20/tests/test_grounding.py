@@ -120,6 +120,23 @@ def test_shape_uncertainty_is_not_a_global_binding_gate(tmp_path):
     assert bound["status"] == "available"
 
 
+def test_binding_projects_visual_geometry_with_camera_rotation(tmp_path):
+    g, request, facts = setup(tmp_path)
+    facts["objects"][0]["half_extents_m"] = [1.0, 1.0, 1.0]
+    calibration = np.eye(4)
+    calibration[:3, :3] = np.asarray([[0, -1, 0], [1, 0, 0], [0, 0, 1]], dtype=float)
+    (tmp_path / "capture/calibration.json").write_text(
+        json.dumps({"camera_name": "camera", "extrinsic_cv": calibration.tolist()})
+    )
+    g.understandings[(request["observation_ref"], request["scene_revision"], request["calibration_ref"])] [
+        "spatial_envelopes"
+    ][0].update(min_xyz_m=[0.0, 0.0, 0.0], max_xyz_m=[0.1, 0.2, 0.3])
+    bound = g.bind(request)
+    pose_world = np.asarray(bound["entities"][0]["world_T_object"]).reshape(4, 4)
+    assert pose_world[:3, :3].tolist() == np.linalg.inv(calibration)[:3, :3].tolist()
+    assert pose_world[:3, 3].tolist() == pytest.approx([0.1, -0.05, 0.15])
+
+
 def test_persistent_snapshot_declares_action_driven_validity_without_executing():
     from robotwin_persistent_engine import RoboTwinPersistentEngine
 
