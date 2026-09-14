@@ -38,7 +38,8 @@
 
 ### Git Commit / Git 提交
 
-- Commit: pending; branch: `feature/planning-loop`。
+- Functional commit: `a1aa477`; branch: `feature/planning-loop`。
+- The changelog receipt is committed separately after recording the functional hash.
 
 ## v10.1.9 (2026-09-14 19:05) - codex
 
