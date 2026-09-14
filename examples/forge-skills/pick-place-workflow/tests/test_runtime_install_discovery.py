@@ -9,8 +9,8 @@ from PhyAgentOS.skill_runtime.catalog import SkillCatalog
 from PhyAgentOS.skill_runtime.installer import SkillInstaller
 from PhyAgentOS.skill_runtime.integration import discover_active_runtime
 from PhyAgentOS.skill_runtime.manager import RuntimeManager, RuntimeStatusReport
-from PhyAgentOS.skill_runtime.state import RuntimeState, RuntimeStateStore
 from PhyAgentOS.skill_runtime.manifest import load_manifest
+from PhyAgentOS.skill_runtime.state import RuntimeState, RuntimeStateStore
 
 BUNDLE_ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_TOOLS = {
@@ -57,6 +57,12 @@ def test_manifest_v2_bundle_installs_and_catalog_reloads_required_tools(tmp_path
     assert set(manifest.required_tools) == EXPECTED_TOOLS
     assert manifest.profiles["fake"].dataflow.as_posix() == "profiles/fake/dataflow.yaml"
     assert (tmp_path / "skills" / "pick-place-workflow" / "SKILL.md").is_file()
+
+
+def test_robotwin_profile_declares_every_adapter_root_used_by_dataflow():
+    manifest = load_manifest(BUNDLE_ROOT / "skill.yaml")
+    required = set(manifest.profiles["robotwin-persistent"].required_environment)
+    assert "PAOS_ROBOTWIN20_ADAPTER_ROOT" in required
 
 
 class HealthyRuntimeManager:

@@ -27,6 +27,7 @@ profiles:
       - robotwin20_persistent_host
     required_assets: []
     required_environment:
+      - PAOS_ROBOTWIN20_ADAPTER_ROOT
       - ROBOTWIN20_PAOS_PYTHON
       - ROBOTWIN20_ARTIFACT_ROOT
       - ROBOTWIN20_RUNTIME_ROOT

@@ -9,6 +9,30 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v10.1.8 (2026-09-14 18:45) - codex
+
+- [policy] [fix] [完成] 将 dataflow 使用的 `PAOS_ROBOTWIN20_ADAPTER_ROOT` 纳入 robotwin-persistent Skill 的 required environment，避免未展开占位符进入 Dora 并产生低层 YAML admission 错误。(local)
+- [Policy] [Fix] [Completed] Declared the dataflow's `PAOS_ROBOTWIN20_ADAPTER_ROOT` in the robotwin-persistent Skill required environment, preventing unresolved placeholders from reaching Dora as a low-level YAML admission error. (local)
+
+### Files and Diff / 文件与差异
+
+- `examples/forge-skills/pick-place-workflow/skill.yaml` L29-L31: added the adapter-root environment declaration.
+- `examples/forge-skills/pick-place-workflow/tests/test_runtime_install_discovery.py` L58-L61: added manifest regression coverage.
+
+```diff
+- required_environment: [ROBOTWIN20_PAOS_PYTHON, ...]
++ required_environment: [PAOS_ROBOTWIN20_ADAPTER_ROOT, ROBOTWIN20_PAOS_PYTHON, ...]
+```
+
+### Validation / 验证
+
+- Manifest regression: 5 passed; Skill Bundle rebuild, Ruff, and `git diff --check` passed.
+- Runtime was not started until the operator loads all required environment variables; no Action or motion was started.
+
+### Git Commit / Git 提交
+
+- Commit: pending; branch: `feature/planning-loop`。
+
 ## v10.1.7 (2026-09-14 14:10) - codex
 
 - [chore] [fix] [完成] 更新 `robotwin20_persistent_host` Node lock 至 `0.1.4` 和新 SHA-256，修复新适配器 Bundle 无法通过 Skill 完整性校验的问题；不绕过 lock 或权限门禁。(local)
