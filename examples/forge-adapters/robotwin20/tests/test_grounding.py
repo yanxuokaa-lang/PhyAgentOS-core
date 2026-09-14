@@ -151,7 +151,9 @@ def test_real_route_builder_consumes_target_from_nested_intent(tmp_path, monkeyp
     g.remember("scene.understand", {**identities, "status": "available", "frame": {"frame_id": "head_camera"},
         "entities": [{"entity_ref": ref}], "ambiguities": [], "spatial_envelopes": [{
             "entity_ref": ref, "frame_id": "head_camera", "unit": "m",
-            "min_xyz_m": (center-.01).tolist(), "max_xyz_m": (center+.01).tolist()}]})
+            "min_xyz_m": (center-.01).tolist(), "max_xyz_m": (center+.01).tolist()}],
+        "derived_artifacts": [{"entity_ref": ref, "kind": "object_geometry",
+            "descriptor": {"dimensions_m": [0.02, 0.02, 0.02]}}]})
     b = g.bind({**identities, "entity_refs": [ref]})
     target = g.target(dict(binding_ref=b["binding_ref"], entity_ref=ref, frame_id="world",
                            unit="m", frame_T_object_target=obj["world_T_object_target"]))
