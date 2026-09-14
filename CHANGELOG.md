@@ -10,6 +10,19 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v10.1.11 (2026-09-14 20:20) - codex
+
+- [env] [chore] [完成] `/home/yanxu/.PhyAgentOS/deployments/robotwin-persistent/runtime.env:L1-L36` 填充 26 个非秘密 RoboTwin persistent Runtime 变量；模型 API key 保持进程环境注入。(local)
+- [Env] [Chore] [Completed] `/home/yanxu/.PhyAgentOS/deployments/robotwin-persistent/runtime.env:L1-L36` populated 26 non-secret RoboTwin persistent Runtime variables; the model API key remains process-injected. (local)
+
+```diff
+- deployment file absent; template values empty
++ absolute local paths for PAOS/RoboTwin/model workers/GraspGen/qualification/capability artifacts
++ ROBOTWIN20_MODEL_API_KEY omitted by design
+```
+
+- Validation: Skill 2.0.1; 26/27 required values supplied (only secret omitted); all paths exist; file mode `0600`; no Runtime or motion started.
+
 ## v10.1.10 (2026-09-14 19:30) - codex
 
 - [env] [feat] [完成] 为 Skill Runtime 增加 operator-owned `--env-file`，统一 preflight、start hook、Dora coordinator 与 flow 的启动环境；RoboTwin Skill 2.0.1 移除源码 adapter-root 外部要求。(local)
