@@ -32,6 +32,7 @@ from .persistent_deployment import (
 )
 from .persistent_route_builder import BenchmarkSceneSource
 from .process_worker import JsonlProcessWorkerClient, ProcessWorkerConfig
+from .qwen3_vl_scene_understanding import Qwen3VLConfig, Qwen3VLSceneUnderstandingInference
 from .understanding import RoboTwinSceneUnderstandingProvider
 
 PROFILE_SCHEMA_VERSION = "paos-robotwin20-persistent-host/v1"
@@ -231,33 +232,66 @@ def build_persistent_host(
                 "persistent worker returned an invalid startup snapshot"
             )
         model = profile.get("model")
-        if not isinstance(model, Mapping) or set(model) != {
-            "api_base",
-            "model",
-            "api_key_env",
-            "reasoning_effort",
-            "timeout_seconds",
-            "max_output_tokens",
-        }:
+        if not isinstance(model, Mapping) or not isinstance(model.get("provider", "openai_responses"), str):
             raise PersistentHostConfigurationError("model settings are invalid")
-        api_key_env = str(model["api_key_env"])
-        if not variables.get(api_key_env):
-            raise PersistentHostConfigurationError(
-                f"model credential environment is unavailable: {api_key_env}"
+        resolver = FilesystemArtifactResolver(artifact_root)
+        provider = model.get("provider", "openai_responses")
+        if provider == "openai_responses":
+            if set(model) != {
+                "api_base", "model", "api_key_env", "reasoning_effort",
+                "timeout_seconds", "max_output_tokens",
+            }:
+                raise PersistentHostConfigurationError("model settings are invalid")
+            api_key_env = str(model["api_key_env"])
+            if not variables.get(api_key_env):
+                raise PersistentHostConfigurationError(
+                    f"model credential environment is unavailable: {api_key_env}"
+                )
+            inference = OpenAIResponsesSceneUnderstandingInference(
+                resolver,
+                config=OpenAIResponsesConfig(
+                    api_base=str(model["api_base"]), model=str(model["model"]),
+                    api_key_env=api_key_env, reasoning_effort=str(model["reasoning_effort"]),
+                    timeout_seconds=_positive_number(model["timeout_seconds"], "model.timeout_seconds"),
+                    max_output_tokens=int(_positive_number(model["max_output_tokens"], "model.max_output_tokens")),
+                ),
             )
-        inference = OpenAIResponsesSceneUnderstandingInference(
-            FilesystemArtifactResolver(artifact_root),
-            config=OpenAIResponsesConfig(
-                api_base=str(model["api_base"]),
-                model=str(model["model"]),
-                api_key_env=api_key_env,
-                reasoning_effort=str(model["reasoning_effort"]),
-                timeout_seconds=_positive_number(model["timeout_seconds"], "model.timeout_seconds"),
-                max_output_tokens=int(_positive_number(
-                    model["max_output_tokens"], "model.max_output_tokens"
-                )),
-            ),
-        )
+        elif provider == "qwen3_vl_local":
+            required = {
+                "provider", "model_path", "worker_python", "worker_script", "worker_cwd",
+                "device", "max_output_tokens", "startup_timeout_s", "request_timeout_s",
+                "shutdown_timeout_s",
+            }
+            if set(model) != required:
+                raise PersistentHostConfigurationError("qwen model settings are invalid")
+            model_path = _path(model["model_path"], "model.model_path", directory=True)
+            qwen_python = _path(model["worker_python"], "model.worker_python")
+            qwen_script = _path(model["worker_script"], "model.worker_script")
+            qwen_cwd = _path(model["worker_cwd"], "model.worker_cwd", directory=True)
+            qwen_client = JsonlProcessWorkerClient(
+                ProcessWorkerConfig(
+                    command=(str(qwen_python), str(qwen_script), "--model-path", str(model_path), "--device", str(model["device"])),
+                    cwd=qwen_cwd,
+                    environment={
+                        "PYTHONPATH": f"{adapter_root / 'src'}:{adapter_root / 'runtime'}",
+                        "PYTHONUNBUFFERED": "1",
+                    },
+                    startup_timeout_s=_positive_number(model["startup_timeout_s"], "model.startup_timeout_s"),
+                    request_timeout_s=_positive_number(model["request_timeout_s"], "model.request_timeout_s"),
+                    shutdown_timeout_s=_positive_number(model["shutdown_timeout_s"], "model.shutdown_timeout_s"),
+                )
+            )
+            inference = Qwen3VLSceneUnderstandingInference(
+                resolver,
+                config=Qwen3VLConfig(
+                    model_path=str(model_path),
+                    max_output_tokens=int(_positive_number(model["max_output_tokens"], "model.max_output_tokens")),
+                    device=str(model["device"]),
+                ),
+                worker=qwen_client,
+            )
+        else:
+            raise PersistentHostConfigurationError(f"unsupported semantic provider: {provider}")
         understanding = RoboTwinSceneUnderstandingProvider(
             build_single_view_perception(
                 inference,

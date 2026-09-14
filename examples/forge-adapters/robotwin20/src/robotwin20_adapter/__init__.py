@@ -117,6 +117,11 @@ from .openai_scene_understanding import (
     OpenAIResponsesInferenceError,
     OpenAIResponsesSceneUnderstandingInference,
 )
+from .qwen3_vl_scene_understanding import (
+    Qwen3VLConfig,
+    Qwen3VLInferenceError,
+    Qwen3VLSceneUnderstandingInference,
+)
 from .perception_profile import (
     PROFILE_SCHEMA_VERSION,
     PerceptionProfileError,
@@ -282,6 +287,9 @@ __all__ = [
     "OpenAIResponsesConfig",
     "OpenAIResponsesInferenceError",
     "OpenAIResponsesSceneUnderstandingInference",
+    "Qwen3VLConfig",
+    "Qwen3VLInferenceError",
+    "Qwen3VLSceneUnderstandingInference",
     "SCENE_UNDERSTANDING_JSON_SCHEMA",
     "PROFILE_SCHEMA_VERSION",
     "PerceptionProfileError",

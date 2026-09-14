@@ -20,13 +20,14 @@ from urllib.parse import urlparse
 class ArtifactPayload:
     """Bytes and media type for one externally stored observation artifact."""
 
-    def __init__(self, data: bytes, media_type: str) -> None:
+    def __init__(self, data: bytes, media_type: str, path: Path | None = None) -> None:
         if not isinstance(data, bytes) or not data:
             raise ValueError("artifact data must be non-empty bytes")
         if not isinstance(media_type, str) or not media_type.startswith("image/"):
             raise ValueError("scene understanding requires an image/* artifact")
         self.data = data
         self.media_type = media_type
+        self.path = path.resolve() if path is not None else None
 
 
 class ArtifactResolver(Protocol):
@@ -70,7 +71,7 @@ class FilesystemArtifactResolver:
             data = candidate.read_bytes()
         except OSError as exc:
             raise OpenAIResponsesInferenceError("observation artifact read failed") from exc
-        return ArtifactPayload(data, "image/png")
+        return ArtifactPayload(data, "image/png", candidate)
 
 
 class ResponsesClient(Protocol):

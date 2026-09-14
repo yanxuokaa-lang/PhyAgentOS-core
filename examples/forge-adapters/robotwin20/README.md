@@ -115,6 +115,30 @@ The provider emits only `entities`, `relations`, `spatial_envelopes`, and
 each claim's provenance to an artifact in the requested observation, and
 projects the result through the same Gateway endpoint used by the Fake path.
 
+For a local Qwen3-VL semantic deployment, install the optional dependencies in
+an isolated provider environment.  The downloaded model directory is external
+to this repository (for example
+`/home/yanxu/models/qwen3-vl-8b-instruct-awq-4bit`), and the worker is started
+only when `scene.understand` is invoked:
+
+```bash
+python -m pip install -e 'examples/forge-adapters/robotwin20[qwen3-vl]'
+export ROBOTWIN20_QWEN_MODEL_PATH=/home/yanxu/models/qwen3-vl-8b-instruct-awq-4bit
+export ROBOTWIN20_QWEN_PYTHON=/home/yanxu/miniconda3/envs/hephaestus-vlm/bin/python
+```
+
+Set `model.provider: qwen3_vl_local` in the persistent host profile (the
+shipped `profiles/forge-persistent/persistent-host.yaml` is an example).  The
+Qwen JSONL worker imports Torch/Transformers only inside its process, uses the
+local model files, and returns semantic entities, relations, and ambiguities.
+It must emit an empty `spatial_envelopes` array: metric localization and
+geometry remain owned by the existing RGB-D, segmentation, depth, and
+calibration pipeline.  `device: cuda:0` uses bounded automatic placement; set
+`device: cpu` for a CPU-only fallback.  The adapter shuts the worker down after
+each bounded query so LocateAnything and SAM2 can run sequentially on a 16-GB
+GPU.  A worker-unavailable result is surfaced as a bounded `scene.understand`
+failure; no simulator state or stale observation is used as a fallback.
+
 The perception boundary is intentionally split by PAOS use case:
 
 | Capability | ToolSpec | Adapter/provider responsibility |
