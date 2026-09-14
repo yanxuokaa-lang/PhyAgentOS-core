@@ -9,6 +9,31 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v10.1.5 (2026-09-14 12:20) - codex
+
+- [comm] [fix] [完成] 明确 `scene.observe` 的 frame contract：首次观察省略 `requested_frame`，该字段仅接受 Runtime 返回的具体 frame ID；保留 `invalid_frame` fail-closed 门禁。(local)
+- [Comm] [Fix] [Completed] Clarified the `scene.observe` frame contract: omit `requested_frame` for the initial observation and accept only a concrete Runtime frame ID; retained the fail-closed `invalid_frame` gate. (local)
+
+### Files and Diff / 文件与差异
+
+- `PhyAgentOS/forge/capability_runtime/observation.py` L40-L48,L100-L106,L148-L153: added concrete frame-ID semantics, initial omission guidance, and actionable mismatch errors.
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/fake_gateway.py` L162-L167,L205-L213,L267-L273: mirrored the public contract and error projection.
+- `examples/forge-skills/pick-place-workflow/contracts/scene.observe.tool.yaml` L15-L23,L70-L74; `examples/forge-skills/pick-place-workflow/SKILL.md` L77-L85; `docs/forge/MANIPULATION_DAG_DEVELOPER_GUIDE.md` L146-L151: documented abstract sensor roles versus concrete Runtime frame IDs.
+- `tests/test_environment_adapter_observation.py` L53-L91; `examples/forge-skills/pick-place-workflow/tests/test_scene_observe.py` L82-L108: concrete-frame, abstract-label, and ToolSpec metadata regressions.
+
+```diff
+- requested_frame had no usage semantics and mismatch returned a generic error
++ initial_observation = omit_requested_frame
++ requested_frame_semantics = optional_concrete_runtime_frame_id
++ mismatch remains invalid_frame with actionable guidance
+```
+
+### Validation / 验证
+
+- Observation/Skill/adapter focused tests: 28 passed; RoboTwin adapter suite: 449 passed; changed-file Ruff and `git diff --check` passed.
+- Full core/Skill run: 684 passed, with one pre-existing `scene.understand` YAML/Spec alignment failure unrelated to this change.
+- No Runtime, Gateway Action, simulator, hardware, or motion was started.
+
 ## v10.0.3 (2026-09-13 19:12) - codex
 
 - [policy] [feat] [完成] 新增 `forge_plan_select` 控制面闭环：dispatch 校验 ready node，Coordinator 持久化 DecisionTrace 并返回完整 `PlanningExecutionBinding`；Skill 明确 discovery 后再 materialize，避免重复 initial observation。(local)

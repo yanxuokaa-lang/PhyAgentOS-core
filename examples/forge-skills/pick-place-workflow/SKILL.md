@@ -75,9 +75,14 @@ physical-effect Actions. The Skill does not implement any provider, simulator,
 camera driver, robot SDK, or task-specific success rule.
 
 Use `scene.observe` only to obtain measured observation artifacts. Before invocation,
-read the ToolSpec and live context through `forge_tool_context`; use only the declared
-sensor reference, frame, and freshness fields. A successful Query does not authorize
-planning or motion and must not be passed directly to an Action.
+read the ToolSpec and live context through `forge_tool_context`; use the declared
+sensor reference and freshness fields. On the initial observation, omit the optional
+`requested_frame`: `robot_frame_profile.observation_frame` is an abstract sensor
+role, not a concrete frame identifier. If a later call must constrain the frame,
+`requested_frame` must exactly equal a concrete `frame.frame_id` returned by an
+earlier observation for the same sensor; never send labels such as `sensor` or
+`observation`. A successful Query does not authorize planning or motion and must not
+be passed directly to an Action.
 
 The Query returns an explicit status, capture timestamp, scene revision, frame identity,
 calibration reference, freshness measurement, and opaque artifact references. Treat

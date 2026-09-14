@@ -160,7 +160,11 @@ class SceneObservationEndpoint:
         if snapshot_error:
             return _error(snapshot_error, "observation failed contract validation")
         if requested_frame is not None and requested_frame != snapshot.frame_id:
-            return _error("invalid_frame", "requested frame is not available")
+            return _error(
+                "invalid_frame",
+                "requested_frame must match the concrete Runtime frame_id returned "
+                "for sensor_ref; omit it for the initial observation",
+            )
         age_ms = max(0, int((self.now - snapshot.captured_at).total_seconds() * 1000))
         result = {
             "status": "stale" if age_ms > max_age_ms else "available",
@@ -198,7 +202,15 @@ TOOL_SPEC: dict[str, Any] = {
         "required": ["sensor_ref", "max_age_ms"],
         "properties": {
             "sensor_ref": {"type": "string", "minLength": 1},
-            "requested_frame": {"type": "string", "minLength": 1},
+            "requested_frame": {
+                "type": "string",
+                "minLength": 1,
+                "description": (
+                    "Optional concrete Runtime frame_id to validate against the "
+                    "returned frame. Omit for the initial observation; do not use "
+                    "abstract labels such as 'sensor' or 'observation'."
+                ),
+            },
             "max_age_ms": {"type": "integer", "minimum": 1},
         },
     },
@@ -252,7 +264,13 @@ TOOL_SPEC: dict[str, Any] = {
             },
         },
     },
-    "robot_frame_profile": {"observation_frame": "sensor", "unit": "m"},
+    "robot_frame_profile": {
+        "observation_frame": "sensor",
+        "frame_id_source": "result.frame.frame_id",
+        "requested_frame_semantics": "optional_concrete_runtime_frame_id",
+        "initial_observation": "omit_requested_frame",
+        "unit": "m",
+    },
 }
 
 

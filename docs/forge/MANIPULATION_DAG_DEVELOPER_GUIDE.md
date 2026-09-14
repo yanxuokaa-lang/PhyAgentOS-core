@@ -143,6 +143,12 @@ no-motion projection and remains `motion_authorized=false`.
 
 ## Frame and Calibration Contract
 
+- `scene.observe` returns the concrete Runtime frame identifier in
+  `frame.frame_id`. Its `robot_frame_profile.observation_frame` value is an
+  abstract sensor role, not a frame name to copy into a request. Omit the
+  optional `requested_frame` on the initial observation; when used later it
+  must exactly match a previously returned concrete `frame.frame_id` for the
+  same sensor. Labels such as `sensor` and `observation` are invalid values.
 - `observation_frame_id` identifies the sensor frame used by `observation_ref` and
   `candidate_set_ref`.
 - route `frame_id` identifies every execution pose and must equal the workspace

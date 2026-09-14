@@ -37,7 +37,15 @@ OBSERVATION_TOOL_SPEC: dict[str, Any] = {
         "required": ["sensor_ref", "max_age_ms"],
         "properties": {
             "sensor_ref": {"type": "string", "minLength": 1},
-            "requested_frame": {"type": "string", "minLength": 1},
+            "requested_frame": {
+                "type": "string",
+                "minLength": 1,
+                "description": (
+                    "Optional concrete Runtime frame_id to validate against the "
+                    "returned frame. Omit for the initial observation; do not use "
+                    "abstract labels such as 'sensor' or 'observation'."
+                ),
+            },
             "max_age_ms": {"type": "integer", "minimum": 1},
         },
     },
@@ -89,7 +97,13 @@ OBSERVATION_TOOL_SPEC: dict[str, Any] = {
             },
         },
     },
-    "robot_frame_profile": {"observation_frame": "sensor", "unit": "m"},
+    "robot_frame_profile": {
+        "observation_frame": "sensor",
+        "frame_id_source": "result.frame.frame_id",
+        "requested_frame_semantics": "optional_concrete_runtime_frame_id",
+        "initial_observation": "omit_requested_frame",
+        "unit": "m",
+    },
 }
 
 
@@ -132,7 +146,11 @@ class ObservationEndpoint:
         except ObservationContractError as exc:
             return self._error(str(exc), "observation failed contract validation")
         if requested_frame is not None and requested_frame != result["frame"]["frame_id"]:
-            return self._error("invalid_frame", "requested frame is not available")
+            return self._error(
+                "invalid_frame",
+                "requested_frame must match the concrete Runtime frame_id returned "
+                "for sensor_ref; omit it for the initial observation",
+            )
         captured_at = datetime.fromisoformat(result["captured_at"].replace("Z", "+00:00"))
         now = self._now()
         if not isinstance(now, datetime) or now.tzinfo is None:

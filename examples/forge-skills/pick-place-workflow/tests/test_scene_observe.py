@@ -80,6 +80,35 @@ async def test_query_discovery_context_and_success():
 
 
 @pytest.mark.asyncio
+async def test_query_accepts_only_a_concrete_returned_frame_id():
+    spec, _, result, _ = await query(
+        FixtureProvider(snapshot()),
+        {
+            "sensor_ref": "sensor/front",
+            "requested_frame": "camera_front",
+            "max_age_ms": 1000,
+        },
+    )
+    assert spec["data"]["robot_frame_profile"]["initial_observation"] == "omit_requested_frame"
+    assert result["data"]["status"] == "available"
+
+
+@pytest.mark.asyncio
+async def test_query_rejects_abstract_frame_label_with_guidance():
+    _, _, result, _ = await query(
+        FixtureProvider(snapshot()),
+        {
+            "sensor_ref": "sensor/front",
+            "requested_frame": "observation",
+            "max_age_ms": 1000,
+        },
+    )
+    assert result["data"]["status"] == "invalid"
+    assert result["data"]["error"]["code"] == "invalid_frame"
+    assert "omit it for the initial observation" in result["data"]["error"]["message"]
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("snapshot_overrides", "arguments", "status", "code"),
     [

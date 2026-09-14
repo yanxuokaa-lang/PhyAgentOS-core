@@ -15,6 +15,10 @@ input_schema:
     requested_frame:
       type: string
       minLength: 1
+      description: >-
+        Optional concrete Runtime frame_id to validate against the returned
+        frame. Omit for the initial observation; do not use abstract labels
+        such as 'sensor' or 'observation'.
     max_age_ms:
       type: integer
       minimum: 1
@@ -65,4 +69,7 @@ output_schema:
         message: {type: string, minLength: 1}
 robot_frame_profile:
   observation_frame: sensor
+  frame_id_source: result.frame.frame_id
+  requested_frame_semantics: optional_concrete_runtime_frame_id
+  initial_observation: omit_requested_frame
   unit: m

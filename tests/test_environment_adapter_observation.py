@@ -50,6 +50,47 @@ def test_observation_endpoint_projects_adapter_capture_and_freshness():
     assert source.calls == 1
 
 
+def test_observation_endpoint_accepts_the_concrete_returned_frame_id():
+    result = ObservationEndpoint(
+        Source(observation()),
+        now=lambda: datetime(2026, 9, 4, 0, 0, tzinfo=timezone.utc),
+    ).invoke(
+        {
+            "sensor_ref": "camera/front",
+            "requested_frame": "camera-front",
+            "max_age_ms": 1000,
+        }
+    )
+    assert result["status"] == "available"
+
+
+def test_observation_endpoint_explains_that_abstract_frame_labels_are_invalid():
+    result = ObservationEndpoint(Source(observation())).invoke(
+        {
+            "sensor_ref": "camera/front",
+            "requested_frame": "sensor",
+            "max_age_ms": 1000,
+        }
+    )
+    assert result["status"] == "invalid"
+    assert result["error"] == {
+        "code": "invalid_frame",
+        "message": (
+            "requested_frame must match the concrete Runtime frame_id returned "
+            "for sensor_ref; omit it for the initial observation"
+        ),
+    }
+
+
+def test_observation_tool_spec_distinguishes_abstract_profile_from_frame_id():
+    properties = OBSERVATION_TOOL_SPEC["input_schema"]["properties"]
+    assert "concrete Runtime frame_id" in properties["requested_frame"]["description"]
+    profile = OBSERVATION_TOOL_SPEC["robot_frame_profile"]
+    assert profile["frame_id_source"] == "result.frame.frame_id"
+    assert profile["requested_frame_semantics"] == "optional_concrete_runtime_frame_id"
+    assert profile["initial_observation"] == "omit_requested_frame"
+
+
 @pytest.mark.parametrize(
     ("value", "code"),
     [
