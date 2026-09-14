@@ -67,6 +67,12 @@ def setup(tmp_path):
             "frame": {"frame_id": "camera"},
             "entities": [{"entity_ref": "entity://seen"}],
             "ambiguities": [],
+            "derived_artifacts": [{
+                "artifact_ref": "artifact://capture/geometry",
+                "kind": "object_geometry",
+                "entity_ref": "entity://seen",
+                "descriptor": {"dimensions_m": [0.04, 0.04, 0.04]},
+            }],
             "spatial_envelopes": [
                 dict(
                     entity_ref="entity://seen",
@@ -86,6 +92,7 @@ def test_single_object_binding_needs_no_goal_and_target_preserves_explicit_pose(
     bound = g.bind(request)
     assert not g.targets
     assert bound["entities"][0]["entity_ref"] == "entity://seen"
+    assert bound["entities"][0]["half_extents_m"] == pytest.approx([0.02, 0.02, 0.02])
     target = g.target(
         dict(
             binding_ref=bound["binding_ref"],

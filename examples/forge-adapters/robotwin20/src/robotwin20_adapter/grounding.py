@@ -76,6 +76,9 @@ class Grounding:
         if any(facts[k] != request[k] for k in IDENTITY_KEYS):
             raise ValueError("execution scene identity mismatch")
         objects = correspond(selected, understanding, facts["objects"], camera_to_world)
+        objects = self._project_visual_geometry(selected, objects, understanding, camera_to_world)
+        facts = deepcopy(facts)
+        facts["objects"] = [objects.get(item["entity_ref"], item) for item in facts["objects"]]
         self._current(request)
         bindings = [{"entity_ref": ref, "execution_entity_ref": obj["entity_ref"],
                      "actor_name": obj["actor_name"]} for ref, obj in objects.items()]
@@ -93,6 +96,40 @@ class Grounding:
                               "world_T_object": obj["world_T_object"],
                               "half_extents_m": obj["half_extents_m"]} for ref, obj in objects.items()],
                 "evidence_refs": [ref]}
+
+    @staticmethod
+    def _project_visual_geometry(selected, objects, understanding, camera_to_world):
+        """Project visual evidence into route geometry; Runtime remains identity-only."""
+        envelopes = {item["entity_ref"]: item for item in understanding.get("spatial_envelopes", [])}
+        geometries = {
+            item["entity_ref"]: item.get("descriptor", {})
+            for item in understanding.get("derived_artifacts", [])
+            if item.get("kind") == "object_geometry"
+        }
+        projected = {}
+        for ref in selected:
+            envelope, geometry = envelopes.get(ref), geometries.get(ref)
+            if not envelope or not geometry:
+                raise ValueError("selected entity lacks visual geometry evidence")
+            low = np.asarray(envelope.get("min_xyz_m"), dtype=float)
+            high = np.asarray(envelope.get("max_xyz_m"), dtype=float)
+            dimensions = np.asarray(geometry.get("dimensions_m"), dtype=float)
+            if (low.shape != (3,) or high.shape != (3,) or dimensions.shape != (3,)
+                    or not np.isfinite([low, high, dimensions]).all()
+                    or np.any(high <= low) or np.any(dimensions <= 0)):
+                raise ValueError("visual geometry evidence is invalid")
+            center_world = camera_to_world @ np.r_[((low + high) / 2.0), 1.0]
+            visual_pose = np.eye(4)
+            visual_pose[:3, 3] = center_world[:3]
+            runtime = objects[ref]
+            runtime_pose = rigid_transform(runtime["world_T_object"])
+            functional_offset = np.linalg.inv(runtime_pose) @ rigid_transform(runtime["world_T_functional_point"])
+            updated = deepcopy(runtime)
+            updated["world_T_object"] = visual_pose.reshape(-1).tolist()
+            updated["half_extents_m"] = (dimensions / 2.0).tolist()
+            updated["world_T_functional_point"] = (visual_pose @ functional_offset).reshape(-1).tolist()
+            projected[ref] = updated
+        return projected
 
     def target(self, request):
         binding = self.bindings[request["binding_ref"]]
