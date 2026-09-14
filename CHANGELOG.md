@@ -32,7 +32,7 @@
 
 ### Git Commit / Git 提交
 
-- Commit: pending; branch: `feature/planning-loop`。
+- Commit: `a4a6a05`; branch: `feature/planning-loop`。
 
 ## v10.1.8 (2026-09-14 18:45) - codex
 
