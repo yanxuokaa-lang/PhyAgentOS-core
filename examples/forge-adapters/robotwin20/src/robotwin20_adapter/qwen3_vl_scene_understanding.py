@@ -79,7 +79,12 @@ class Qwen3VLSceneUnderstandingInference:
         if not isinstance(artifacts, list) or not artifacts:
             raise Qwen3VLInferenceError("scene understanding request has no artifacts")
         image_ref, image = self._resolve_image(artifacts)
+        if image.path is None:
+            raise Qwen3VLInferenceError(
+                "qwen local provider requires a filesystem-backed RGB artifact"
+            )
         request_id = os.urandom(16).hex()
+        primary_error = False
         try:
             reply = self.worker.request(
                 {
@@ -99,14 +104,17 @@ class Qwen3VLSceneUnderstandingInference:
                 raise Qwen3VLInferenceError("qwen worker reported unavailable")
             return _project_claims(reply.get("result"), image_ref)
         except Qwen3VLInferenceError:
+            primary_error = True
             raise
         except Exception as exc:
+            primary_error = True
             raise Qwen3VLInferenceError("qwen scene understanding request failed") from exc
         finally:
             try:
                 self.worker.release()
             except Exception as exc:
-                raise Qwen3VLInferenceError("qwen worker release failed") from exc
+                if not primary_error:
+                    raise Qwen3VLInferenceError("qwen worker release failed") from exc
 
     def _resolve_image(self, refs: list[Any]) -> tuple[str, ArtifactPayload]:
         resolve = getattr(self.resolver, "resolve", None)

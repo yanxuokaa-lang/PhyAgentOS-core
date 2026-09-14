@@ -42,6 +42,12 @@ class Worker:
         self.released += 1
 
 
+class ReleaseFailWorker(Worker):
+    def release(self):
+        self.released += 1
+        raise RuntimeError("cleanup failed")
+
+
 def _config(tmp_path):
     (tmp_path / "config.json").write_text("{}", encoding="utf-8")
     return Qwen3VLConfig(model_path=str(tmp_path))
@@ -99,3 +105,27 @@ def test_qwen_provider_rejects_unknown_relation_entity(tmp_path):
 def test_qwen_config_requires_model_directory(tmp_path):
     with pytest.raises(ValueError, match="config.json"):
         Qwen3VLConfig(model_path=str(tmp_path)).validate()
+
+
+def test_qwen_provider_requires_filesystem_path_for_local_worker(tmp_path):
+    class UriOnlyResolver:
+        def resolve(self, ref):
+            return ArtifactPayload(b"png", "image/png")
+
+    inference = Qwen3VLSceneUnderstandingInference(
+        UriOnlyResolver(), config=_config(tmp_path), worker=Worker(_result())
+    )
+    with pytest.raises(Qwen3VLInferenceError, match="filesystem-backed"):
+        inference.infer(REQUEST)
+
+
+def test_qwen_release_error_does_not_mask_primary_worker_failure(tmp_path):
+    worker = ReleaseFailWorker(_result())
+    worker.request = lambda payload: {
+        "request_id": payload["request_id"], "status": "unavailable"
+    }
+    inference = Qwen3VLSceneUnderstandingInference(
+        Resolver(), config=_config(tmp_path), worker=worker
+    )
+    with pytest.raises(Qwen3VLInferenceError, match="reported unavailable"):
+        inference.infer(REQUEST)
