@@ -226,6 +226,7 @@ class CapabilityFixture:
 
     def describe(self, request):
         payload = {
+            "schema_version": "paos-manipulation-capability-snapshot/v1",
             "snapshot_ref": f"artifact://capabilities/{request['scene_revision']}",
             "snapshot_digest": "0" * 64,
             "scene_revision": request["scene_revision"],
