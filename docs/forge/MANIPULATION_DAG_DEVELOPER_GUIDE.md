@@ -164,6 +164,13 @@ no-motion projection and remains `motion_authorized=false`.
 Missing transforms, stale scene revisions, frame drift, invalid digests or
 non-finite values fail closed before a planner or probe is called.
 
+Binding may use a selected entity's calibrated metric envelope as a conservative
+visual extent when the optional `object_geometry` artifact is unavailable. This
+does not assert object shape or simulator collision truth; `grasp.propose` and
+`manipulation.prepare` must qualify shape and candidate readiness before Action
+admission. Ambiguities are evaluated by entity and stage, not as a global scene
+stop.
+
 ## RoboTwin and Embodiment Extension
 
 `manipulation-planning.yaml` owns Franka arm identities, planner/workspace/limit

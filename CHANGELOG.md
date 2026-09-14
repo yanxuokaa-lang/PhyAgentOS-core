@@ -9,6 +9,35 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v10.1.6 (2026-09-14 13:05) - codex
+
+- [sense] [fix] [完成] Grounding 按实体和阶段分类 ambiguity，补充输入、缓存、当前场景、标定、对应和视觉 geometry 的可审计诊断；缺失可选 geometry 时仅使用视觉 metric envelope，malformed artifact fail-closed。(local)
+- [Sense] [Fix] [Completed] Grounding now classifies ambiguities by entity and stage, adds auditable diagnostics for input, cache, current scene, calibration, correspondence, and visual geometry; missing optional geometry uses only the visual metric envelope, while malformed artifacts fail closed. (local)
+
+### Files and Diff / 文件与差异
+
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/grounding.py` L14-L340: deferred later-stage ambiguity, added structured rejection stages, validated visual frame/unit and geometry multiplicity, and preserved Runtime geometry as identity-only.
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/single_view_perception.py` L590-L620: reconciled legacy metric ambiguity aliases with entity-scoped visual evidence.
+- `examples/forge-skills/pick-place-workflow/contracts/scene.understand.tool.yaml` L25-L169: synchronized `reconciliations`, `object_geometry`, and descriptor `oneOf` with the public Spec.
+- `examples/forge-adapters/robotwin20/tests/test_grounding.py` L114-L225; `examples/forge-adapters/robotwin20/tests/test_single_view_perception.py` L231-L248: added ambiguity, diagnostics, fallback, and malformed-artifact regressions.
+- `docs/forge/VISUAL_GEOMETRY_EVIDENCE_ARCHITECTURE.md` L56-L100; `docs/forge/MANIPULATION_DAG_DEVELOPER_GUIDE.md` L164-L171: clarified reconciliation and stage-specific gate ownership.
+
+```diff
+- selected shape/geometry ambiguity or any adapter exception -> generic grounding_unavailable
++ entity/stage-aware deferred ambiguity; diagnostic stage and expected/actual evidence details
++ optional geometry artifact absence -> conservative selected visual envelope
++ malformed, stale, mismatched, or ambiguous evidence -> fail-closed with no Action
+```
+
+### Validation / 验证
+
+- Full core/Skill suite: 685 passed; RoboTwin adapter suite: 458 passed; changed-file Ruff, compileall and `git diff --check` passed.
+- No Runtime, Gateway Action, simulator, hardware connection, or motion was started.
+
+### Git Commit / Git 提交
+
+- Commit: pending; branch: `feature/planning-loop`。
+
 ## v10.1.5 (2026-09-14 12:20) - codex
 
 - [comm] [fix] [完成] 明确 `scene.observe` 的 frame contract：首次观察省略 `requested_frame`，该字段仅接受 Runtime 返回的具体 frame ID；保留 `invalid_frame` fail-closed 门禁。(local)

@@ -111,13 +111,69 @@ def test_single_object_binding_needs_no_goal_and_target_preserves_explicit_pose(
     assert target["motion_authorized"] is False
 
 
-def test_shape_uncertainty_is_not_a_global_binding_gate(tmp_path):
+@pytest.mark.parametrize("code", [
+    "object_shape_uncertain",
+    "metric_3d_unavailable",
+    "metric_geometry_unavailable",
+    "NO_RELIABLE_METRIC_EXTENTS",
+])
+def test_later_stage_visual_ambiguity_is_not_a_binding_gate(tmp_path, code):
     g, request, _ = setup(tmp_path)
     g.understandings[(request["observation_ref"], request["scene_revision"], request["calibration_ref"])] ["ambiguities"] = [
-        {"code": "object_shape_uncertain", "message": "shape requires candidate checks", "entity_refs": ["entity://seen"]}
+        {"code": code, "message": "visual evidence requires later-stage checks", "entity_refs": ["entity://seen"]}
     ]
     bound = g.bind(request)
     assert bound["status"] == "available"
+
+
+def test_unselected_entity_ambiguity_does_not_block_selected_binding(tmp_path):
+    g, request, _ = setup(tmp_path)
+    g.understandings[(request["observation_ref"], request["scene_revision"], request["calibration_ref"])] ["ambiguities"] = [
+        {
+            "code": "entity_pose_ambiguous",
+            "message": "another entity is unresolved",
+            "entity_refs": ["entity://other"],
+        }
+    ]
+    bound = g.bind(request)
+    assert bound["status"] == "available"
+
+
+def test_binding_diagnostics_identify_entity_scoped_blocking_ambiguity(tmp_path):
+    g, request, _ = setup(tmp_path)
+    g.understandings[(request["observation_ref"], request["scene_revision"], request["calibration_ref"])] ["ambiguities"] = [
+        {
+            "code": "entity_pose_ambiguous",
+            "message": "execution identity is unresolved",
+            "entity_refs": ["entity://seen"],
+        }
+    ]
+    result = GroundingEndpoint(g.bind).invoke(request)
+    assert result["status"] == "unavailable"
+    assert result["error"]["code"] == "grounding_unavailable"
+    assert result["diagnostics"] == {
+        "stage": "ambiguity_admission",
+        "message": "selected entity has unresolved perception ambiguity",
+        "selected_entities": ["entity://seen"],
+        "blocking_ambiguities": [{
+            "code": "entity_pose_ambiguous",
+            "entity_refs": ["entity://seen"],
+            "message": "execution identity is unresolved",
+        }],
+        "deferred_ambiguities": [],
+    }
+
+
+def test_binding_diagnostics_report_invalid_entity_refs_shape(tmp_path):
+    g, request, _ = setup(tmp_path)
+    request["entity_refs"] = "entity://seen"
+    result = GroundingEndpoint(g.bind).invoke(request)
+    assert result["status"] == "unavailable"
+    assert result["diagnostics"] == {
+        "stage": "input_validation",
+        "message": "entity_refs must be a non-empty array of references",
+        "selected": "entity://seen",
+    }
 
 
 def test_binding_projects_visual_geometry_with_camera_rotation(tmp_path):
@@ -135,6 +191,35 @@ def test_binding_projects_visual_geometry_with_camera_rotation(tmp_path):
     pose_world = np.asarray(bound["entities"][0]["world_T_object"]).reshape(4, 4)
     assert pose_world[:3, :3].tolist() == np.linalg.inv(calibration)[:3, :3].tolist()
     assert pose_world[:3, 3].tolist() == pytest.approx([0.1, -0.05, 0.15])
+
+
+def test_binding_uses_metric_envelope_when_optional_shape_artifact_is_absent(tmp_path):
+    g, request, _ = setup(tmp_path)
+    understanding = next(iter(g.understandings.values()))
+    understanding["derived_artifacts"] = []
+    bound = g.bind(request)
+    assert bound["status"] == "available"
+    assert bound["entities"][0]["half_extents_m"] == pytest.approx([0.02, 0.02, 0.02])
+
+
+def test_binding_diagnostics_report_current_scene_mismatch(tmp_path):
+    g, request, _ = setup(tmp_path)
+    g.client.revision = "s2"
+    result = GroundingEndpoint(g.bind).invoke(request)
+    assert result["status"] == "unavailable"
+    assert result["diagnostics"]["stage"] == "current_scene"
+    assert result["diagnostics"]["expected"]["scene_revision"] == "s1"
+    assert result["diagnostics"]["actual"]["scene_revision"] == "s2"
+
+
+def test_binding_rejects_malformed_object_geometry_instead_of_falling_back(tmp_path):
+    g, request, _ = setup(tmp_path)
+    understanding = next(iter(g.understandings.values()))
+    understanding["derived_artifacts"][0]["descriptor"] = {"dimensions_m": [0.04, 0.04]}
+    result = GroundingEndpoint(g.bind).invoke(request)
+    assert result["status"] == "unavailable"
+    assert result["diagnostics"]["stage"] == "visual_geometry"
+    assert result["diagnostics"]["geometry_artifact_present"] is True
 
 
 def test_persistent_snapshot_declares_action_driven_validity_without_executing():

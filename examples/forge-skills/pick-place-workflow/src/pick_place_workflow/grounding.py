@@ -47,6 +47,7 @@ _COMMON_OUTPUT = {**{key: _REF for key in IDENTITY_KEYS}, "binding_ref": _REF,
                   "error": {"type": "object", "properties": {"code": _REF, "message": _REF}}}
 BIND_TOOL_SPEC["output_schema"]["properties"].update({
     **_COMMON_OUTPUT, "captured_at": _REF, "validity": {"const": "current_action_driven_scene"},
+    "diagnostics": {"type": "object"},
     "observation_frame_id": _REF, "world_T_observation": _POSE,
     "entities": {"type": "array", "items": {"type": "object", "properties": {
         "entity_ref": _REF, "execution_entity_ref": _REF, "world_T_object": _POSE,

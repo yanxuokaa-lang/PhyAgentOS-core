@@ -57,13 +57,17 @@ owns the provider implementation and artifact storage.
 The adapter checks each semantic entity for exactly one metric localization with
 the same observation, revision, frame, and calibration, a non-empty finite point
 cloud, metre units, and a valid confidence. It then removes only the matching
-`metric_3d_unavailable` ambiguity and emits a reconciliation entry. The raw
-semantic ambiguity remains in the record under `reconciled_ambiguities` so the
-model output is never rewritten as if it had inferred metric scale.
+metric ambiguity from the active `ambiguities` list and emits a
+`reconciliations` entry containing the original code and evidence references.
+The reconciliation record preserves the fact that the semantic provider did not
+infer metric scale; adapter-derived evidence is the basis for downstream
+admission.
 
-If any required visual evidence is absent, malformed, stale, or mismatched, the
-ambiguity remains and binding fails closed. No simulator pose is used as a
-fallback.
+If required metric localization evidence is absent, malformed, stale, or
+mismatched, the ambiguity remains and binding fails closed. An optional
+`object_geometry` artifact may be absent; in that case binding carries only the
+visual metric envelope and later grasp/readiness checks decide whether shape
+evidence is sufficient. No simulator pose is used as a fallback.
 
 ### Visual shape evidence
 
@@ -87,7 +91,11 @@ localization.
    Metric reconciliation is performed here.
 3. `scene.bind` requires selected entities to have valid metric localization and
    an unambiguous opaque execution identity. It does **not** reject the whole
-   scene because one entity has `object_shape_uncertain`.
+   scene because one entity has `object_shape_uncertain`, metric-geometry
+   uncertainty, or an ambiguity belonging to another entity. When the optional
+   `object_geometry` artifact is absent, binding may carry a conservative extent
+   derived from the selected entity's visual metric envelope; grasp/readiness
+   remains responsible for rejecting insufficient shape evidence.
 4. `grasp.propose` returns no candidate (or an explicit `ambiguous` result) for
    an entity whose geometry is insufficient. It never invents default shape.
 5. `manipulation.prepare` validates each candidate's frame, workspace, limits,

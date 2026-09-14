@@ -67,6 +67,19 @@ class AmbiguousSemanticInference(SemanticInference):
         return result
 
 
+class GeometryAmbiguousSemanticInference(SemanticInference):
+    def infer(self, request):
+        result = super().infer(request)
+        result["ambiguities"] = [
+            {
+                "code": "metric_geometry_unavailable",
+                "message": "metric extents require visual geometry",
+                "entity_refs": ["entity://red-block"],
+            }
+        ]
+        return result
+
+
 class ProposalProvider:
     def __init__(self, proposals=(Proposal((1, 1, 3, 3), 0.8),), *, release_error=False):
         self.proposals = proposals
@@ -216,6 +229,20 @@ def test_visual_metric_evidence_reconciles_metric_ambiguity_and_emits_geometry(t
     assert [item["code"] for item in result["ambiguities"]] == ["object_shape_uncertain"]
     assert result["reconciliations"][0]["resolution"] == "visual_metric_localization"
     assert any(item["kind"] == "object_geometry" for item in result["derived_artifacts"])
+
+
+def test_visual_geometry_reconciles_geometry_ambiguity_alias(tmp_path):
+    base = _artifacts(tmp_path)
+    inference = SingleViewPerceptionInference(
+        GeometryAmbiguousSemanticInference(),
+        proposal_provider=ProposalProvider(),
+        segmentation_provider=SegmentationProvider(np.array([[False, False, False, False], [False, True, True, False], [False, True, True, False]])),
+        localization_provider=NumpyMetricLocalizationProvider(),
+        artifact_store=base,
+    )
+    result = inference.infer(REQUEST)
+    assert result["ambiguities"] == []
+    assert result["reconciliations"][0]["resolution"] == "visual_metric_geometry"
 
 
 def test_no_proposal_does_not_require_depth_or_calibration_materialization(tmp_path):

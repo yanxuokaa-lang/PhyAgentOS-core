@@ -587,10 +587,36 @@ class SingleViewPerceptionInference:
                         )
                     )
                     envelopes.append({**localization_value, "provenance": [localization_ref]})
-                    matched = [item for item in ambiguities if item.get("code") == "metric_3d_unavailable" and entity_ref in item.get("entity_refs", [])]
+                    # Semantic providers may describe the same missing visual
+                    # metric evidence with either the legacy 3-D code or the
+                    # geometry-specific code.  Once this entity has a valid
+                    # depth/calibration localization and visual geometry
+                    # artifact, reconcile only the entity-scoped entries.
+                    metric_codes = {
+                        "metric_3d_unavailable",
+                        "metric_geometry_unavailable",
+                        "NO_RELIABLE_METRIC_EXTENTS",
+                    }
+                    matched = [
+                        item for item in ambiguities
+                        if item.get("code") in metric_codes
+                        and entity_ref in item.get("entity_refs", [])
+                    ]
                     if matched:
                         ambiguities = [item for item in ambiguities if item not in matched]
-                        reconciliations.extend({"code": item["code"], "entity_refs": [entity_ref], "resolution": "visual_metric_localization", "evidence_refs": [localization_ref]} for item in matched)
+                        reconciliations.extend(
+                            {
+                                "code": item["code"],
+                                "entity_refs": [entity_ref],
+                                "resolution": (
+                                    "visual_metric_localization"
+                                    if item["code"] == "metric_3d_unavailable"
+                                    else "visual_metric_geometry"
+                                ),
+                                "evidence_refs": [localization_ref, geometry_ref],
+                            }
+                            for item in matched
+                        )
             finally:
                 _release_provider(self.segmentation_provider, "segmentation")
         except Exception:
