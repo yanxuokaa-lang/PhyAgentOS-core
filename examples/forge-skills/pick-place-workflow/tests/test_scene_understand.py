@@ -127,6 +127,21 @@ def test_provider_failures_are_explicit(result, code):
     assert output["error"]["code"] == code
 
 
+def test_provider_timeout_is_projected_with_stable_reason():
+    class TimeoutProvider:
+        def understand(self, request):
+            raise TimeoutError("upstream detail must stay server-side")
+
+    output = SceneUnderstandingEndpoint(TimeoutProvider()).invoke(request_payload())
+    assert output["error"] == {
+        "code": "understanding_provider_error",
+        "message": "scene understanding provider failed",
+        "reason": "timeout",
+        "failure_stage": "provider",
+        "retryable": True,
+    }
+
+
 def test_missing_calibration_and_unknown_provider_fields_fail_closed():
     provider = Provider(understanding_snapshot())
     endpoint = SceneUnderstandingEndpoint(provider)

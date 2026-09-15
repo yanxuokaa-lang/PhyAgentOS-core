@@ -19,6 +19,16 @@ class _HangingProvider(LLMProvider):
         return "test-model"
 
 
+class _CountingHangingProvider(LLMProvider):
+    async def chat(self, *args, **kwargs) -> LLMResponse:
+        self.calls = getattr(self, "calls", 0) + 1
+        await asyncio.Event().wait()
+        raise AssertionError("unreachable")
+
+    def get_default_model(self) -> str:
+        return "test-model"
+
+
 def test_provider_attempt_timeout_is_bounded_without_network() -> None:
     async def exercise() -> None:
         provider = _HangingProvider()
@@ -29,6 +39,21 @@ def test_provider_attempt_timeout_is_bounded_without_network() -> None:
             timeout=0.5,
         )
 
+        assert response.finish_reason == "error"
+        assert "timed out" in (response.content or "")
+
+    asyncio.run(exercise())
+
+
+def test_provider_timeout_is_fail_fast_and_not_retried() -> None:
+    async def exercise() -> None:
+        provider = _CountingHangingProvider()
+        provider.generation = GenerationSettings(request_timeout_s=0.01)
+        response = await asyncio.wait_for(
+            provider.chat_with_retry(messages=[{"role": "user", "content": "hi"}]),
+            timeout=0.5,
+        )
+        assert provider.calls == 1
         assert response.finish_reason == "error"
         assert "timed out" in (response.content or "")
 

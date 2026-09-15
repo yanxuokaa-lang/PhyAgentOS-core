@@ -91,6 +91,8 @@ async def test_provider_specific_fields_fail_closed_through_tool_api():
     result = await invoke(RoboTwinSceneUnderstandingProvider(BadInference()))
     assert result["status"] == "unavailable"
     assert result["error"]["code"] == "understanding_provider_error"
+    assert result["error"]["reason"] == "contract"
+    assert result["error"]["failure_stage"] == "provider"
 
 
 @pytest.mark.asyncio

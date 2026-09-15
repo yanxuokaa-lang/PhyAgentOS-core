@@ -91,8 +91,6 @@ class LLMProvider(ABC):
         "503",
         "504",
         "overloaded",
-        "timeout",
-        "timed out",
         "connection",
         "server error",
         "temporarily unavailable",
@@ -197,6 +195,12 @@ class LLMProvider(ABC):
         err = (content or "").lower()
         return any(marker in err for marker in cls._TRANSIENT_ERROR_MARKERS)
 
+    @staticmethod
+    def _is_timeout_error(content: str | None) -> bool:
+        """Timeouts fail fast; repeating the same bounded wait multiplies outage time."""
+        err = (content or "").lower()
+        return "timeout" in err or "timed out" in err
+
     async def chat_with_retry(
         self,
         messages: list[dict[str, Any]],
@@ -253,6 +257,9 @@ class LLMProvider(ABC):
                 )
 
             if response.finish_reason != "error":
+                return response
+            if self._is_timeout_error(response.content):
+                logger.warning("LLM request timed out; returning without retry: {}", (response.content or "")[:120])
                 return response
             if not self._is_transient_error(response.content):
                 return response

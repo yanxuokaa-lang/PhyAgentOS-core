@@ -7,6 +7,7 @@ logic.  A model, camera runtime, simulator, or vendor SDK is supplied through
 
 from __future__ import annotations
 
+import asyncio
 import math
 import re
 from copy import deepcopy
@@ -255,10 +256,13 @@ TOOL_SPEC: dict[str, Any] = {
             "error": {
                 "type": "object",
                 "additionalProperties": False,
-                "required": ["code", "message"],
+                "required": ["code", "message", "reason", "failure_stage", "retryable"],
                 "properties": {
                     "code": {"type": "string", "minLength": 1},
                     "message": {"type": "string", "minLength": 1},
+                    "reason": {"type": "string", "minLength": 1},
+                    "failure_stage": {"type": "string", "minLength": 1},
+                    "retryable": {"type": "boolean"},
                 },
             },
         },
@@ -267,7 +271,15 @@ TOOL_SPEC: dict[str, Any] = {
 }
 
 
-def _error(code: str, message: str, *, observation_ref: str = "observation://unknown/unknown") -> dict[str, Any]:
+def _error(
+    code: str,
+    message: str,
+    *,
+    observation_ref: str = "observation://unknown/unknown",
+    reason: str = "validation",
+    failure_stage: str = "request",
+    retryable: bool = False,
+) -> dict[str, Any]:
     return {
         "status": "invalid" if code.startswith("invalid") else "unavailable",
         "observation_ref": observation_ref,
@@ -276,8 +288,32 @@ def _error(code: str, message: str, *, observation_ref: str = "observation://unk
         "calibration_ref": None,
         "entities": [], "relations": [], "spatial_envelopes": [],
         "derived_artifacts": [], "ambiguities": [], "reconciliations": [],
-        "error": {"code": code, "message": message},
+        "error": {
+            "code": code,
+            "message": message,
+            "reason": reason,
+            "failure_stage": failure_stage,
+            "retryable": retryable,
+        },
     }
+
+
+def _provider_failure(exc: Exception) -> tuple[str, bool]:
+    """Return a stable, secret-free provider failure category."""
+    text = str(exc).lower()
+    name = type(exc).__name__.lower()
+    if isinstance(exc, (asyncio.TimeoutError, TimeoutError)) or "timeout" in name or "timed out" in text:
+        return "timeout", True
+    if (
+        "contract" in text
+        or "schema" in text
+        or "provider-specific" in text
+        or "violated" in text
+        or "contract" in name
+        or "schema" in name
+    ):
+        return "contract", False
+    return "provider_failure", False
 
 
 def validate_arguments(arguments: Any) -> dict[str, Any] | None:
@@ -632,11 +668,26 @@ class SceneUnderstandingEndpoint:
             }
         try:
             snapshot = self.provider.understand(deepcopy(arguments))
-        except Exception:
-            return _error("understanding_provider_error", "scene understanding provider failed", observation_ref=observation_ref)
+        except Exception as exc:
+            reason, retryable = _provider_failure(exc)
+            return _error(
+                "understanding_provider_error",
+                "scene understanding provider failed",
+                observation_ref=observation_ref,
+                reason=reason,
+                failure_stage="provider",
+                retryable=retryable,
+            )
         normalized = normalize_snapshot(snapshot)
         if normalized is None or not normalized.provider_available:
-            return _error("understanding_unavailable", "scene understanding provider is unavailable", observation_ref=observation_ref)
+            return _error(
+                "understanding_unavailable",
+                "scene understanding provider is unavailable",
+                observation_ref=observation_ref,
+                reason="unavailable",
+                failure_stage="provider",
+                retryable=True,
+            )
         snapshot_error = validate_snapshot(
             normalized,
             artifact_refs=arguments["artifacts"],
@@ -646,7 +697,14 @@ class SceneUnderstandingEndpoint:
             calibration_ref=arguments["calibration_ref"],
         )
         if snapshot_error:
-            return _error(snapshot_error, "understanding provider result failed contract validation", observation_ref=observation_ref)
+            return _error(
+                snapshot_error,
+                "understanding provider result failed contract validation",
+                observation_ref=observation_ref,
+                reason="contract",
+                failure_stage="provider",
+                retryable=False,
+            )
         return {
             "status": "available", "observation_ref": observation_ref,
             "scene_revision": arguments["scene_revision"],
