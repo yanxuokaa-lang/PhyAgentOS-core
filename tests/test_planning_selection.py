@@ -68,6 +68,8 @@ def test_plan_select_is_control_plane_only_and_returns_binding():
     assert result["ok"] is True
     assert result["motion_authorized"] is False
     assert result["data"]["planning_binding"]["decision_trace_ref"].startswith("artifact://")
+    assert "scene_revision" not in result["data"]["planning_binding"]
+    assert result["data"]["selection"]["scene_revision"] == "scene-1"
     assert coordinator.proposals[0]["tool_id"] == "scene.observe"
 
 

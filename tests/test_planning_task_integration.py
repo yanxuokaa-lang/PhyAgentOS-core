@@ -6,9 +6,10 @@ import json
 import pytest
 
 from PhyAgentOS.agent.experience.source import AgentTaskOutcomeSource
+from PhyAgentOS.agent.tools.forge_task import ForgeTaskBeginRevisionTool
 from PhyAgentOS.agent.tools.forge_tool_api import ForgeToolQueryTool
 from PhyAgentOS.config.schema import ForgeConfig
-from PhyAgentOS.forge.binding import BoundToolSpec
+from PhyAgentOS.forge.binding import BoundToolSpec, RuntimeBinding
 from PhyAgentOS.forge.task import AgentTaskCoordinator, AgentTaskStatus, DiscoveryRequiredError
 from PhyAgentOS.planning import (
     PlanGraph,
@@ -243,6 +244,65 @@ def test_terminal_planning_query_failure_enters_replan_without_motion(tmp_path):
     assert current.replan_deadline is not None
     assert current.active_revision.node_settlements[0].status == "failed"
     assert all(record.semantics == "query" for record in current.execution_records)
+
+
+def test_agent_recovery_nodes_are_compiled_by_paos_without_motion(tmp_path):
+    coordinator = AgentTaskCoordinator(
+        workspace=tmp_path, config=ForgeConfig(), client=_Client()
+    )
+    task = coordinator.create_task(
+        task_description="compile a semantic recovery revision",
+        verification=TaskVerificationContract(mode="off"),
+    )
+    policy = ToolSpecPolicy(
+        tool_id="object.relocate",
+        semantics="action",
+        spec_digest="4" * 64,
+        capabilities=("object.relocate",),
+    )
+    runtime_binding = RuntimeBinding(
+        binding_id="runtime_binding_recovery",
+        runtime_profile="fake",
+        runtime_instance_id="runtime_recovery",
+        gateway_url="http://fake",
+    )
+    tool_binding = BoundToolSpec(
+        tool_id="object.relocate",
+        semantics="action",
+        spec_sha256="4" * 64,
+        ready_at_binding=True,
+        planning_policy=policy,
+    )
+
+    def attach_binding(current):
+        current.runtime_binding = runtime_binding
+        current.active_revision.runtime_binding_id = runtime_binding.binding_id
+        current.tool_bindings = [tool_binding]
+
+    coordinator.store.update(
+        task.task_id,
+        attach_binding,
+        event_type="test_recovery_binding",
+    )
+    coordinator.request_replan(task.task_id, reason="replace failed semantic node")
+    result = json.loads(asyncio.run(ForgeTaskBeginRevisionTool(coordinator).execute(
+        task.task_id,
+        reason="retry with corrected semantic inputs",
+        nodes=[PlanNode(
+            node_id="retry-relocate",
+            obligation_id="retry-relocate",
+            capability="object.relocate",
+        ).model_dump(mode="json")],
+    )))
+
+    assert result["ok"] is True
+    current = coordinator.get_task(task.task_id)
+    assert current.status == AgentTaskStatus.EXECUTING
+    assert current.active_revision.plan_graph is not None
+    assert current.active_revision.plan_graph.revision_id.startswith("revision_")
+    assert current.active_revision.plan_graph_ref.startswith("artifact://plans/")
+    assert current.active_revision.execution_records == []
+    assert current.active_revision.node_settlements == []
 
 
 def test_discovery_failure_stays_open_but_planning_unknown_requests_replan(tmp_path):

@@ -10,6 +10,14 @@ from PhyAgentOS.agent.planning_dispatch import AgentComposedDispatch
 from PhyAgentOS.agent.tools.base import Tool
 from PhyAgentOS.planning import AdmissionContext
 
+_PLANNING_BINDING_FIELDS = (
+    "node_id",
+    "node_digest",
+    "obligation_id",
+    "input_binding_digest",
+    "decision_trace_ref",
+)
+
 if TYPE_CHECKING:
     from PhyAgentOS.forge.task import AgentTaskCoordinator
 
@@ -78,8 +86,32 @@ class ForgePlanSelectTool(Tool):
                 node_id=node_id, tool_id=tool_id, arguments=arguments,
                 decision_reason=decision_reason,
             )
-            binding = self.coordinator.persist_planning_selection(proposal)
-            return json.dumps({"ok": True, "data": {"planning_binding": binding}, "motion_authorized": False}, ensure_ascii=False, separators=(",", ":"))
+            receipt = self.coordinator.persist_planning_selection(proposal)
+            binding = {
+                field: receipt[field]
+                for field in _PLANNING_BINDING_FIELDS
+                if field in receipt
+            }
+            missing = sorted(set(_PLANNING_BINDING_FIELDS) - set(binding))
+            if missing:
+                raise ValueError(
+                    "Coordinator selection receipt omitted planning binding fields: "
+                    + ", ".join(missing)
+                )
+            selection = {
+                field: receipt[field]
+                for field in ("task_id", "revision_id", "scene_revision")
+                if field in receipt
+            }
+            return json.dumps(
+                {
+                    "ok": True,
+                    "data": {"planning_binding": binding, "selection": selection},
+                    "motion_authorized": False,
+                },
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
         except Exception as exc:
             return json.dumps({"ok": False, "error": {"type": "planning_selection", "message": str(exc)}, "motion_authorized": False}, ensure_ascii=False, separators=(",", ":"))
 

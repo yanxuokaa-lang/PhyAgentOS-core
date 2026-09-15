@@ -15,12 +15,6 @@ from PhyAgentOS.planning import (
     validate_graph,
 )
 
-_DISCOVERY_CAPABILITIES = frozenset({
-    "scene.observe",
-    "scene.understand",
-    "manipulation.capabilities",
-})
-
 
 def compile_task_plan(
     task: AgentTaskRecord,
@@ -42,6 +36,13 @@ def compile_task_plan(
         capability for tool in tools if tool.planning_policy is not None
         for capability in tool.planning_policy.capabilities
     }
+    preplan_capabilities = {
+        capability
+        for tool in tools
+        if tool.planning_policy is not None
+        and tool.semantics == "query"
+        for capability in tool.planning_policy.capabilities
+    }
     unsupported = sorted({
         node.capability for node in parsed if node.capability not in capabilities
     })
@@ -56,7 +57,7 @@ def compile_task_plan(
         for node in parsed
         if (
             not node.dependencies
-            and node.capability in _DISCOVERY_CAPABILITIES
+            and node.capability in preplan_capabilities
             and node.produced_evidence
         )
     }

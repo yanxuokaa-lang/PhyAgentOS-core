@@ -142,22 +142,25 @@ class ForgeTaskBeginRevisionTool(Tool):
     def description(self) -> str:
         return (
             "Append a new immutable PlanRevision to the same task after verification requests "
-            "replanning."
+            "replanning. Supply semantic nodes for a model-directed recovery; PAOS compiles "
+            "revision IDs and integrity metadata. A complete plan_graph remains available "
+            "for coordinator-owned callers. This call only changes the planning revision and "
+            "never invokes a Tool or motion."
         )
 
     @property
     def parameters(self) -> dict[str, Any]:
         schema = _task_id_schema()
         schema["properties"]["reason"] = {"type": "string", "minLength": 1}
-        schema["properties"]["plan_graph"] = {
-            "type": "object",
-            "description": "Replacement concrete semantic DAG for the new revision.",
+        schema["properties"]["nodes"] = {
+            "type": "array",
+            "minItems": 1,
+            "items": PlanNode.model_json_schema(),
+            "description": (
+                "Full replacement semantic node list. PAOS supplies revision and digest metadata."
+            ),
         }
-        schema["properties"]["plan_graph_ref"] = {
-            "type": "string",
-            "pattern": "^artifact://.+",
-        }
-        schema["required"].append("reason")
+        schema["required"].extend(["reason", "nodes"])
         return schema
 
     async def execute(
@@ -166,7 +169,21 @@ class ForgeTaskBeginRevisionTool(Tool):
         reason: str,
         plan_graph: dict[str, Any] | None = None,
         plan_graph_ref: str | None = None,
+        nodes: list[dict[str, Any]] | None = None,
     ) -> str:
+        if nodes is not None and plan_graph is not None:
+            raise ValueError("supply either nodes or plan_graph")
+        if nodes is None and plan_graph is None:
+            raise ValueError("semantic recovery requires replacement nodes")
+        task = self.coordinator.get_task(task_id)
+        if nodes is not None:
+            from PhyAgentOS.agent.plan_proposal import compile_task_plan
+
+            if plan_graph_ref is not None:
+                raise ValueError("PAOS supplies the plan reference for semantic nodes")
+            graph = compile_task_plan(task, nodes, reason=reason)
+            plan_graph = graph.model_dump(mode="json")
+            plan_graph_ref = f"artifact://plans/{task_id}/{graph.revision_id}"
         return _json(
             {
                 "ok": True,

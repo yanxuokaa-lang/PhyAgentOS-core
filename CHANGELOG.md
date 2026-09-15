@@ -11,6 +11,36 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v10.5.0 (2026-09-16 03:41) - codex
+
+- [agent] [refactor] [完成] `forge_task_begin_revision` 对模型只暴露语义 `nodes`，由 PAOS 编译 revision/ref/digest；拒绝空恢复和混用完整图元数据。(local)
+- [agent] [refactor] [完成] `forge_plan_select` 仅将五个纯 `planning_binding` 字段传给执行层，任务/revision/scene 信息放入独立 selection 诊断对象。(local)
+- [agent] [refactor] [完成] root Query 能力从绑定 ToolSpec 动态推导，移除固定 discovery capability 集合。(local)
+- [test] [feat] [完成] 新增恢复 revision 无动作编译、binding 边界和状态回归覆盖。(local)
+- [Agent] [Refactor] [Completed] Exposed only semantic `nodes` to the model for `forge_task_begin_revision`; PAOS compiles revision/ref/digest and rejects empty or mixed complete-graph recovery input. (local)
+- [Agent] [Refactor] [Completed] Restricted execution-layer `planning_binding` to five fields and moved task/revision/scene facts into a separate selection diagnostic object. (local)
+- [Agent] [Refactor] [Completed] Derived root Query capabilities from bound ToolSpec metadata instead of a fixed discovery capability set. (local)
+- [Test] [Feat] [Completed] Added no-motion recovery compilation, binding-boundary, and lifecycle regression coverage. (local)
+
+### 影响文件 / Affected Files
+
+- `PhyAgentOS/agent/tools/forge_task.py:L142-L197`
+- `PhyAgentOS/agent/tools/planning.py:L13-L116`
+- `PhyAgentOS/agent/plan_proposal.py:L19-L73`
+- `tests/test_planning_selection.py:L60-L73`
+- `tests/test_planning_task_integration.py:L249-L305`
+
+```diff
+- model submits plan_graph + plan_graph_ref
++ model submits semantic nodes; PAOS compiles immutable revision metadata
+- selection receipt copied wholesale into planning_binding
++ pure binding fields and separate selection diagnostics
+- fixed discovery capability names
++ query capabilities derived from frozen ToolSpec metadata
+```
+
+Validation: Core `408 passed`; focused planning/AgentLoop `49 passed`; Ruff, compileall, and `git diff --check` passed. No Runtime, Gateway, Action, Session, or physical motion was started.
+
 ## v10.4.0 (2026-09-16 10:00) - codex
 
 - [comm] [refactor] [完成] 为 GraspGen task-bound Query 引入 ToolSpec 声明的最小 timeout `180000ms`，并由 Coordinator 保证调用者不能选择更短 deadline。(local)
