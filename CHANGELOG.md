@@ -16,6 +16,7 @@
 - [Policy] [Fix] [Completed] Fixed PlanGraph semantic-to-runtime trusted evidence/condition mapping, added per-node readiness diagnostics, limited stale-scene readiness to refresh Queries, and allowed pre-execution append-only graph correction; GPT-Sol High and no-motion boundaries remain unchanged. (local)
 - Files: `PhyAgentOS/planning/dag.py`, `PhyAgentOS/agent/plan_proposal.py`, `PhyAgentOS/agent/tools/forge_task.py`, `PhyAgentOS/agent/planning_dispatch.py`, `PhyAgentOS/forge/task.py`, tests/docs, Skill manifest/dataflow.
 - Validation: core `375 passed`, Skill `330 passed`, Adapter `465 passed`, focused `50 passed`; changed-file Ruff, compileall, diff check, and Agent Route Principles Gate passed.
+- Git commit: `d037c1d`; branch: `feature/planning-loop`.
 
 ## v10.1.14 (2026-09-15 00:45) - codex
 
