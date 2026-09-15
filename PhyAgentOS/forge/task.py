@@ -33,7 +33,9 @@ from PhyAgentOS.planning import (
     PlanGraph,
     PlanningExecutionBinding,
     ReplanDelta,
+    ToolResultEnvelope,
     plan_node_digest,
+    settle_node,
     validate_condition_keys,
     validate_graph,
 )
@@ -1215,11 +1217,31 @@ class AgentTaskCoordinator:
             node.node_id for node in task.active_revision.plan_graph.nodes
         }:
             raise AgentTaskError("NodeSettlement references no active PlanGraph node")
+        existing = next(
+            (item for item in task.active_revision.node_settlements if item.node_id == settlement.node_id),
+            None,
+        )
+        if existing is not None:
+            if existing.status == settlement.status:
+                return task
+            raise AgentTaskError(
+                "conflicting NodeSettlement already exists for this node "
+                f"{settlement.node_id} ({existing.status} vs {settlement.status})"
+            )
 
         def mutate(current: AgentTaskRecord) -> None:
             revision = current.active_revision
-            if any(item.node_id == settlement.node_id for item in revision.node_settlements):
-                raise AgentTaskError("NodeSettlement for this node already exists")
+            existing = next(
+                (item for item in revision.node_settlements if item.node_id == settlement.node_id),
+                None,
+            )
+            if existing is not None:
+                if existing.status == settlement.status:
+                    return
+                raise AgentTaskError(
+                    "conflicting NodeSettlement already exists for this node "
+                    f"{settlement.node_id} ({existing.status} vs {settlement.status})"
+                )
             revision.node_settlements.append(settlement)
 
         return self.store.update(
@@ -1232,6 +1254,51 @@ class AgentTaskCoordinator:
                 "status": settlement.status,
             },
         )
+
+    def reconcile_terminal_settlements(self, task_id: str) -> AgentTaskRecord:
+        """Persist missing settlements for already-terminal planning-bound records.
+
+        This is a read/reconcile operation over Coordinator-owned facts.  It never
+        invokes a Gateway Tool, retries an invocation, or replaces a PlanGraph.
+        Repeated calls are idempotent because an existing node settlement is left
+        untouched.
+        """
+        task = self.store.get(task_id)
+        revision = task.active_revision
+        graph = revision.plan_graph
+        if graph is None:
+            return task
+        settled = {item.node_id for item in revision.node_settlements}
+        for record in revision.execution_records:
+            if (
+                not record.terminal
+                or record.node_id is None
+                or record.revision_id != revision.revision_id
+                or record.node_id in settled
+            ):
+                continue
+            result = _tool_result_from_execution(task, record)
+            if result is None:
+                continue
+            node = next(
+                (item for item in graph.nodes if item.node_id == record.node_id),
+                None,
+            )
+            if node is None:
+                raise AgentTaskError(
+                    f"planning-bound Tool record references unknown PlanGraph node: {record.node_id}"
+                )
+            settlement = settle_node(
+                node,
+                result,
+                current_scene_revision=_task_scene_revision(
+                    task, exclude_record_id=record.record_id
+                ),
+            )
+            self.record_node_settlement(settlement)
+            settled.add(record.node_id)
+            task = self.store.get(task_id)
+        return task
 
     def record_node_counterevidence(self, settlement: NodeSettlement) -> AgentTaskRecord:
         """Append postcondition counterevidence without rewriting prior success."""
@@ -1536,6 +1603,7 @@ class AgentTaskCoordinator:
             target.updated_at = utc_now()
 
         self.store.update(task.task_id, mutate, event_type="action_observed")
+        self.reconcile_terminal_settlements(task_id)
         if (
             status in TERMINAL_TOOL_STATUSES - {"unknown"}
             and self.runtime_invocation_ids is not None
@@ -1677,6 +1745,7 @@ class AgentTaskCoordinator:
             target.updated_at = utc_now()
 
         self.store.update(task_id, mutate, event_type="session_observed")
+        self.reconcile_terminal_settlements(task_id)
         if (
             status in TERMINAL_TOOL_STATUSES - {"unknown"}
             and self.runtime_session_ids is not None
@@ -2163,6 +2232,7 @@ class AgentTaskCoordinator:
             record.updated_at = utc_now()
 
         self.store.update(task_id, mutate, event_type="tool_execution_finished")
+        self.reconcile_terminal_settlements(task_id)
 
     def _track_remote_identity(
         self,
@@ -2454,6 +2524,122 @@ def _replan_count(task: AgentTaskRecord) -> int:
 def _response_data(response: dict[str, Any]) -> dict[str, Any]:
     data = response.get("data")
     return data if isinstance(data, dict) else response
+
+
+def _planning_response_facts(response: dict[str, Any] | None) -> dict[str, Any]:
+    """Project persisted Gateway data into settlement facts without provider coupling."""
+    if not isinstance(response, dict):
+        return {}
+    payload = response.get("data")
+    payload = payload if isinstance(payload, dict) else response
+    result = payload.get("result")
+    if isinstance(result, dict):
+        payload = {**payload, **result}
+    summary = payload.get("capability_outcome_summary")
+    if isinstance(summary, dict):
+        payload = {**payload, **summary}
+    return payload
+
+
+def _planning_record_status(record: ToolExecutionRecord) -> str:
+    """Normalize provider-level Query status before NodeSettlement."""
+    if record.semantics != "query" or record.status != "succeeded":
+        return record.status
+    status = _planning_response_facts(record.response).get("status")
+    if status in {"unavailable", "invalid", "stale", "empty", "failed"}:
+        return "failed"
+    if status == "unknown":
+        return "unknown"
+    return record.status
+
+
+def _string_refs(value: object) -> list[str]:
+    if isinstance(value, str) and value:
+        return [value]
+    if isinstance(value, (list, tuple, set)):
+        return [item for item in value if isinstance(item, str) and item]
+    return []
+
+
+def _task_scene_revision(
+    task: AgentTaskRecord,
+    *,
+    exclude_record_id: str | None = None,
+) -> str | None:
+    """Read the latest scene identity emitted by a persisted Tool response."""
+    scene_revision: str | None = None
+    for record in task.active_revision.execution_records:
+        if record.record_id == exclude_record_id:
+            continue
+        facts = _planning_response_facts(record.response)
+        for key in ("scene_revision", "new_scene_revision"):
+            value = facts.get(key)
+            if isinstance(value, str) and value.strip():
+                scene_revision = value.strip()
+    return scene_revision
+
+
+def _tool_result_from_execution(
+    task: AgentTaskRecord,
+    record: ToolExecutionRecord,
+) -> ToolResultEnvelope | None:
+    """Build the pure planning result projection from one terminal record."""
+    if record.node_id is None:
+        return None
+    facts = _planning_response_facts(record.response)
+    status = _planning_record_status(record)
+    evidence_refs = list(record.evidence_refs)
+    for key in ("evidence_refs", "artifact_refs"):
+        evidence_refs.extend(_string_refs(facts.get(key)))
+    output_refs = _string_refs(facts.get("output_refs"))
+    world_changed = facts.get("world_changed") is True
+    started_facts = [facts.get("world_change_started")]
+    known_facts = [facts.get("outcome_known")]
+    world_change_started: bool | None
+    outcome_known: bool | None
+    if world_changed or any(value is True for value in started_facts):
+        world_change_started = True
+    elif all(value is False for value in started_facts) or record.semantics == "query":
+        world_change_started = False
+    else:
+        world_change_started = None
+    if any(value is False for value in known_facts):
+        outcome_known = False
+    elif all(value is True for value in known_facts) or record.semantics == "query":
+        outcome_known = True
+    else:
+        outcome_known = None
+    new_scene_revision = facts.get("new_scene_revision")
+    if not isinstance(new_scene_revision, str) or not new_scene_revision.strip():
+        new_scene_revision = None
+    failure_code: str | None = None
+    failure_owner: str | None = None
+    if isinstance(record.error, dict):
+        value = record.error.get("code") or record.error.get("type")
+        failure_code = value if isinstance(value, str) else None
+        owner = record.error.get("owner")
+        failure_owner = owner if isinstance(owner, str) else None
+    if failure_code is None and isinstance(facts.get("failure_code"), str):
+        failure_code = facts["failure_code"]
+        owner = facts.get("failure_owner")
+        failure_owner = owner if isinstance(owner, str) else failure_owner
+    if failure_code is None and status != "succeeded":
+        failure_code = status
+    return ToolResultEnvelope(
+        task_id=task.task_id,
+        revision_id=record.revision_id,
+        node_id=record.node_id,
+        tool_id=record.tool_id,
+        status=status,
+        world_changed=world_changed,
+        world_change_started=world_change_started,
+        outcome_known=outcome_known,
+        output_refs=tuple(dict.fromkeys(output_refs)),
+        evidence_refs=tuple(dict.fromkeys(evidence_refs)),
+        new_scene_revision=new_scene_revision,
+        failure_code=failure_code,
+        failure_owner=failure_owner,
+    )
 
 
 def _tool_status(response: dict[str, Any], *, default: str) -> str:

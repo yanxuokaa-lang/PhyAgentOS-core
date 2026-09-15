@@ -686,12 +686,15 @@ async def test_multi_object_verifier_rejection_does_not_report_success(tmp_path)
     class QueryClient:
         async def invoke_query_tool(self, tool_id, arguments, *, caller_id, timeout_ms):
             del caller_id, timeout_ms
+            evidence_refs = [f"observed:{arguments.get('entity_ref', 'task')}"]
+            if tool_id in {"object.relocate", "object.place"}:
+                evidence_refs.append(f"placed:{arguments.get('entity_ref', 'task')}")
             return {
                 "data": {
                     "status": "succeeded",
                     "tool_id": tool_id,
                     "scene_revision": arguments.get("scene_revision", "scene://s3"),
-                    "evidence_refs": [f"observed:{arguments.get('entity_ref', 'task')}"],
+                    "evidence_refs": evidence_refs,
                 }
             }
 

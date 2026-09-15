@@ -326,6 +326,17 @@ references. Discovery tasks observe and understand before materializing their
 semantic graph, so an initial discovery observation is not repeated as a graph
 node unless a fresh observation obligation is explicitly selected.
 
+Every terminal planning-bound Query, Action, or Session record must also be
+normalized into a `NodeSettlement` by `AgentTaskCoordinator`. The Coordinator
+performs this conversion after terminal observation and exposes an idempotent
+`reconcile_terminal_settlements()` read/reconcile path for records persisted by
+an older process or recovered after restart. The reconciliation path consumes
+only the active revision's existing terminal records, never re-posts a Tool,
+replaces a graph, or infers success from a non-terminal record. `forge_plan_ready`
+therefore remains a pure projection over durable settlements, and a successful
+`ToolExecutionRecord` without a corresponding settlement is treated as an
+incomplete control-plane record until reconciliation completes.
+
 `PhyAgentOS.agent.planning_loop.PlanningLoopAdapter` is the single orchestration
 adapter for node execution. It derives ready nodes from the active
 `PlanRevision`, projects trusted direct-predecessor settlements through

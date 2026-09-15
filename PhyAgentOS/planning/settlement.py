@@ -5,7 +5,12 @@ from __future__ import annotations
 from .contracts import NodeSettlement, PlanNode, ToolResultEnvelope
 
 
-def settle_node(node: PlanNode, result: ToolResultEnvelope, *, current_scene_revision: str) -> NodeSettlement:
+def settle_node(
+    node: PlanNode,
+    result: ToolResultEnvelope,
+    *,
+    current_scene_revision: str | None,
+) -> NodeSettlement:
     if result.node_id != node.node_id:
         raise ValueError("Tool result node does not match the settled node")
     facts = dict(
@@ -19,7 +24,11 @@ def settle_node(node: PlanNode, result: ToolResultEnvelope, *, current_scene_rev
     if result.outcome_known is False:
         return NodeSettlement(**facts, status="outcome_unknown", failure_code=result.failure_code or "outcome_unknown")
     if result.status == "succeeded":
-        if result.world_changed and result.new_scene_revision == current_scene_revision:
+        if (
+            result.world_changed
+            and current_scene_revision is not None
+            and result.new_scene_revision == current_scene_revision
+        ):
             return NodeSettlement(**facts, status="stale", failure_code="scene_revision_not_advanced")
         missing = set(node.produced_evidence) - set(result.evidence_refs)
         if missing:

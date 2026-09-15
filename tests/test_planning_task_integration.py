@@ -16,6 +16,7 @@ from PhyAgentOS.planning import (
     PlanNode,
     ToolResultEnvelope,
     build_replan_delta,
+    derive_ready_nodes,
     plan_graph_digest,
     plan_node_digest,
     settle_node,
@@ -92,6 +93,10 @@ def test_coordinator_persists_concrete_graph_and_complete_execution_attribution(
     coordinator._finish_execution(
         task.task_id, record_id, status="succeeded", response={"status": "succeeded"}
     )
+    settled = coordinator.get_task(task.task_id).active_revision.node_settlements
+    assert len(settled) == 1
+    assert settled[0].node_id == "relocate-red"
+    assert settled[0].status == "completed"
     coordinator.store.update(
         task.task_id,
         lambda current: setattr(current, "status", AgentTaskStatus.SUCCEEDED),
@@ -100,6 +105,219 @@ def test_coordinator_persists_concrete_graph_and_complete_execution_attribution(
     outcome = AgentTaskOutcomeSource(coordinator).build(task.task_id)
     assert len(outcome.decision_trace_refs) == 1
     assert outcome.decision_trace_refs[0].startswith("evidence:")
+
+
+@pytest.mark.parametrize("semantics", ["query", "action", "session"])
+def test_terminal_planning_records_settle_all_tool_semantics(tmp_path, semantics):
+    graph = _graph("task-1", "revision-1")
+    coordinator = AgentTaskCoordinator(
+        workspace=tmp_path, config=ForgeConfig(), client=_Client()
+    )
+    task = coordinator.create_task(
+        task_description="settle one semantic node",
+        verification=TaskVerificationContract(mode="off"),
+        plan_graph=graph,
+        plan_graph_ref="artifact://plans/task-1/revision-1",
+    )
+    binding = {
+        "node_id": "relocate-red",
+        "node_digest": plan_node_digest(graph.nodes[0]),
+        "obligation_id": "relocate-red",
+        "input_binding_digest": "3" * 64,
+        "decision_trace_ref": "artifact://traces/task-1/record-1",
+    }
+    record_id, _caller = coordinator._append_execution(
+        task.task_id,
+        f"tool.{semantics}",
+        semantics,
+        {},
+        tool=BoundToolSpec(
+            tool_id=f"tool.{semantics}",
+            semantics=semantics,
+            spec_sha256="4" * 64,
+            ready_at_binding=True,
+        ),
+        planning_binding=binding,
+    )
+    coordinator._finish_execution(
+        task.task_id,
+        record_id,
+        status="succeeded",
+        response={"status": "succeeded", "scene_revision": "scene-1"},
+    )
+    settlements = coordinator.get_task(task.task_id).active_revision.node_settlements
+    assert [(item.node_id, item.status) for item in settlements] == [
+        ("relocate-red", "completed")
+    ]
+    coordinator.reconcile_terminal_settlements(task.task_id)
+    assert len(coordinator.get_task(task.task_id).active_revision.node_settlements) == 1
+
+
+def test_reconcile_terminal_settlement_repairs_legacy_missing_projection(tmp_path):
+    graph = _graph("task-1", "revision-1")
+    coordinator = AgentTaskCoordinator(
+        workspace=tmp_path, config=ForgeConfig(), client=_Client()
+    )
+    task = coordinator.create_task(
+        task_description="repair an old terminal record",
+        verification=TaskVerificationContract(mode="off"),
+        plan_graph=graph,
+        plan_graph_ref="artifact://plans/task-1/revision-1",
+    )
+    binding = {
+        "node_id": "relocate-red",
+        "node_digest": plan_node_digest(graph.nodes[0]),
+        "obligation_id": "relocate-red",
+        "input_binding_digest": "3" * 64,
+        "decision_trace_ref": "artifact://traces/task-1/record-1",
+    }
+    record_id, _caller = coordinator._append_execution(
+        task.task_id,
+        "scene.observe",
+        "query",
+        {},
+        tool=BoundToolSpec(
+            tool_id="scene.observe",
+            semantics="query",
+            spec_sha256="4" * 64,
+            ready_at_binding=True,
+        ),
+        planning_binding=binding,
+    )
+    coordinator.store.update(
+        task.task_id,
+        lambda current: (
+            setattr(current.execution_records[0], "status", "succeeded"),
+            setattr(
+                current.execution_records[0],
+                "response",
+                {"status": "succeeded", "scene_revision": "scene-1"},
+            ),
+        ),
+        event_type="test_legacy_terminal_record",
+    )
+    assert coordinator.get_task(task.task_id).active_revision.node_settlements == []
+    repaired = coordinator.reconcile_terminal_settlements(task.task_id)
+    assert repaired.active_revision.node_settlements[0].status == "completed"
+    assert record_id == repaired.active_revision.execution_records[0].record_id
+
+
+@pytest.mark.parametrize("semantics", ["action", "session"])
+def test_terminal_observation_paths_settle_planning_nodes(tmp_path, semantics):
+    graph = _graph("task-1", "revision-1")
+    coordinator = AgentTaskCoordinator(
+        workspace=tmp_path, config=ForgeConfig(), client=_Client()
+    )
+    task = coordinator.create_task(
+        task_description="settle an observed invocation",
+        verification=TaskVerificationContract(mode="off"),
+        plan_graph=graph,
+        plan_graph_ref="artifact://plans/task-1/revision-1",
+    )
+    binding = {
+        "node_id": "relocate-red",
+        "node_digest": plan_node_digest(graph.nodes[0]),
+        "obligation_id": "relocate-red",
+        "input_binding_digest": "3" * 64,
+        "decision_trace_ref": "artifact://traces/task-1/record-1",
+    }
+    record_id, _caller = coordinator._append_execution(
+        task.task_id,
+        f"tool.{semantics}",
+        semantics,
+        {},
+        tool=BoundToolSpec(
+            tool_id=f"tool.{semantics}",
+            semantics=semantics,
+            spec_sha256="4" * 64,
+            ready_at_binding=True,
+        ),
+        planning_binding=binding,
+    )
+    invocation_id = f"invocation-{semantics}"
+    coordinator.store.update(
+        task.task_id,
+        lambda current: (
+            setattr(current.execution_records[0], "invocation_id", invocation_id),
+            setattr(current.execution_records[0], "status", "running"),
+        ),
+        event_type="test_invocation_running",
+    )
+    response = {"status": "succeeded", "scene_revision": "scene-1"}
+    if semantics == "action":
+        coordinator.observe_action(task.task_id, invocation_id, response)
+    else:
+        coordinator.observe_session(task.task_id, invocation_id, response)
+    current = coordinator.get_task(task.task_id)
+    assert current.execution_records[0].record_id == record_id
+    assert current.execution_records[0].status == "succeeded"
+    assert current.active_revision.node_settlements[0].status == "completed"
+
+
+def test_terminal_settlement_unlocks_downstream_node(tmp_path):
+    target = PlanNode(
+        node_id="target",
+        obligation_id="target",
+        capability="manipulation.target",
+    )
+    grasp = PlanNode(
+        node_id="grasp",
+        obligation_id="grasp",
+        capability="grasp.propose",
+        dependencies=("target",),
+    )
+    payload = {
+        "schema_version": "paos-plan-graph/v1",
+        "task_id": "task-dag",
+        "revision_id": "revision-dag",
+        "graph_digest": "0" * 64,
+        "planner_decision_digest": "1" * 64,
+        "policy_snapshot_digest": "2" * 64,
+        "nodes": [target.model_dump(mode="json"), grasp.model_dump(mode="json")],
+    }
+    payload["graph_digest"] = plan_graph_digest(payload)
+    graph = PlanGraph.model_validate(payload)
+    coordinator = AgentTaskCoordinator(
+        workspace=tmp_path, config=ForgeConfig(), client=_Client()
+    )
+    task = coordinator.create_task(
+        task_description="unlock the dependent grasp node",
+        verification=TaskVerificationContract(mode="off"),
+        plan_graph=graph,
+        plan_graph_ref="artifact://plans/task-dag/revision-dag",
+    )
+    binding = {
+        "node_id": "target",
+        "node_digest": plan_node_digest(target),
+        "obligation_id": "target",
+        "input_binding_digest": "3" * 64,
+        "decision_trace_ref": "artifact://traces/task-dag/target",
+    }
+    record_id, _caller = coordinator._append_execution(
+        task.task_id,
+        "manipulation.target",
+        "query",
+        {},
+        tool=BoundToolSpec(
+            tool_id="manipulation.target",
+            semantics="query",
+            spec_sha256="4" * 64,
+            ready_at_binding=True,
+        ),
+        planning_binding=binding,
+    )
+    coordinator._finish_execution(
+        task.task_id,
+        record_id,
+        status="succeeded",
+        response={"status": "succeeded", "scene_revision": "scene-1"},
+    )
+    current = coordinator.get_task(task.task_id)
+    ready = derive_ready_nodes(
+        graph,
+        {item.node_id: item.status for item in current.active_revision.node_settlements},
+    )
+    assert ready == ("grasp",)
 
 
 def test_partial_planning_binding_and_unbound_graph_ref_fail_closed(tmp_path):

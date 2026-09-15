@@ -11,6 +11,14 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v10.3.1 (2026-09-15 16:40) - codex
+
+- [task] [fix] [完成] Coordinator 现在把 planning-bound Query/Action/Session 的终态记录归一化为 `NodeSettlement`；新增 active-revision terminal reconciliation、同状态幂等与冲突拒绝，修复 target 成功后下游 DAG 节点无法解锁的问题。(local)
+- [Task] [Fix] [Completed] The Coordinator now normalizes terminal planning-bound Query/Action/Session records into `NodeSettlement`; added active-revision reconciliation, same-status idempotency, and conflicting-status rejection, fixing downstream DAG nodes remaining locked after a successful target step. (local)
+- Files: `PhyAgentOS/forge/task.py` L1211-L1301,L1590-L1607,L1734-L1748,L2214-L2235,L2529-L2642; `PhyAgentOS/planning/settlement.py` L8-L35; planning integration/Skill tests and DAG guide.
+- Validation: core `393 passed`, planning focus `45 passed`, Skill `330 passed`, Adapter `465 passed`; Ruff, compileall, and diff check passed; no Runtime/Action/motion.
+- Git commit: pending; branch: `feature/planning-loop`.
+
 ## v10.3.0 (2026-09-15 14:00) - codex
 
 - [agent] [feat] [完成] AgentLoop 现在按 AgentTask 阶段选择 Forge Tool schema，每次模型调用前执行 260K prompt budget 检查、Coordinator 状态重建和权威引用保留的 Tool 结果压缩；hard window 为 272K，并为 `maxTokens` 预留响应空间。(local)
@@ -33,13 +41,6 @@
 - Files: `PhyAgentOS/planning/dag.py`, `PhyAgentOS/agent/plan_proposal.py`, `PhyAgentOS/agent/tools/forge_task.py`, `PhyAgentOS/agent/planning_dispatch.py`, `PhyAgentOS/forge/task.py`, tests/docs, Skill manifest/dataflow.
 - Validation: core `375 passed`, Skill `330 passed`, Adapter `465 passed`, focused `50 passed`; changed-file Ruff, compileall, diff check, and Agent Route Principles Gate passed.
 - Git commit: `d037c1d`; branch: `feature/planning-loop`.
-
-## v10.1.14 (2026-09-15 00:45) - codex
-
-- [model] [exp] [完成] Qwen3-VL-4B 模型完整下载并完成 GPU worker 生命周期和真实 RGB 生成验收；结构化输出返回空实体，因此未进入绑定、规划或动作。(local)
-- [Model] [Exp] [Completed] Qwen3-VL-4B download, GPU worker lifecycle, and real RGB generation acceptance completed; structured output returned no entities, so binding, planning, and actions were not attempted. (local)
-- Files: `examples/forge-adapters/robotwin20/runtime/qwen3_vl_worker.py` L101-L122; `changelog/2026-09_part8.md` v10.1.14.
-- Validation: model load and generation passed on an exclusive GPU; semantic quality remains not accepted.
 
 ## v10.1.13 (2026-09-15 00:20) - codex
 
