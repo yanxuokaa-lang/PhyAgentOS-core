@@ -98,6 +98,37 @@ enforces this grammar. Historical serialized graphs remain deserializable so
 operators can inspect, reconcile, and stop old tasks without authorizing their
 nodes for execution.
 
+### Semantic-to-execution mapping
+
+An Agent-composed graph crosses into execution through explicit mappings, not
+name similarity or model-written aliases:
+
+| Agent intent | PlanGraph field | Runtime source |
+| --- | --- | --- |
+| Human-readable requirement | `obligation_id`, task contract, `input_bindings` | Agent/task decision |
+| Already true boolean state | `conditions` | exact key in trusted `AdmissionContext.condition_facts` |
+| Already available evidence | `required_evidence` | exact opaque reference persisted by a Tool record |
+| Ordering and causal availability | `dependencies` | completed predecessor `NodeSettlement` |
+| Implementation choice | `capability` | frozen `ToolSpecPolicy.capabilities` candidate |
+
+The compiler rejects a root node whose conditions are not currently true or
+whose required evidence is absent from the supplied discovery receipts. It
+does not translate labels such as `metric_geometry` or `binding_ready` into an
+artifact, set them true by default, or inspect provider payloads. Later-node
+requirements must be satisfied by explicit predecessor settlement/evidence,
+not by assuming that a declared effect has occurred.
+
+`forge_plan_ready` returns `node_diagnostics` alongside the existing ready set.
+Each pending node reports missing dependencies and their settlement status,
+missing evidence references, unknown/false condition facts, and Tool
+candidates. This projection is diagnostic only and does not alter readiness.
+
+Before any Tool record, settlement, counterevidence, or verification attempt is
+attached to a materialized discovery graph, the Agent may submit one corrected
+graph. The Coordinator appends a new revision and closes the old revision; it
+never overwrites it. After execution facts exist, graph replacement remains a
+normal recovery/replan transition and cannot use discovery correction.
+
 `PlanRevision` stores an immutable `artifact://` graph reference plus graph,
 planner-decision, and policy-snapshot digests;
 `ToolExecutionRecord` stores node/obligation/input-binding/decision-trace

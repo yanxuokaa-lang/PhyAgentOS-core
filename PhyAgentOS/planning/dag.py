@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from typing import Any
 
 from .contracts import PlanGraph
 
@@ -40,6 +41,65 @@ def evaluate_conditions(conditions: tuple[str, ...], facts: Mapping[str, bool]) 
     return all(facts[condition] is True for condition in conditions)
 
 
+def explain_node_readiness(
+    node: Any,
+    settlements: Mapping[str, str],
+    evidence: set[str] | frozenset[str] = frozenset(),
+    facts: Mapping[str, bool] | None = None,
+) -> dict[str, Any]:
+    """Explain why one semantic node is or is not ready.
+
+    This is a pure diagnostic projection.  It does not turn effects into
+    facts, infer evidence aliases, or relax any admission rule.  The caller
+    may add Tool candidates, but the lower-level blockers come only from the
+    trusted settlement/evidence/fact projections supplied here.
+    """
+    facts = facts or {}
+    missing_dependencies = tuple(
+        dependency
+        for dependency in node.dependencies
+        if settlements.get(dependency) != "completed"
+    )
+    missing_evidence = tuple(
+        reference
+        for reference in node.required_evidence
+        if reference not in evidence
+    )
+    unknown_conditions = tuple(
+        condition
+        for condition in node.conditions
+        if condition not in facts
+    )
+    false_conditions = tuple(
+        condition
+        for condition in node.conditions
+        if facts.get(condition) is False
+    )
+    dependency_status = {
+        dependency: settlements.get(dependency)
+        for dependency in missing_dependencies
+    }
+    blockers: list[str] = []
+    if missing_dependencies:
+        blockers.append("dependencies")
+    if missing_evidence:
+        blockers.append("evidence")
+    if unknown_conditions:
+        blockers.append("unknown_conditions")
+    if false_conditions:
+        blockers.append("false_conditions")
+    return {
+        "node_id": node.node_id,
+        "ready": not blockers,
+        "blockers": tuple(blockers),
+        "missing_dependencies": missing_dependencies,
+        "dependency_status": dependency_status,
+        "missing_evidence": missing_evidence,
+        "unknown_conditions": unknown_conditions,
+        "false_conditions": false_conditions,
+    }
+
+
 def derive_ready_nodes(
     graph: PlanGraph,
     settlements: Mapping[str, str],
@@ -53,11 +113,8 @@ def derive_ready_nodes(
     for node in graph.nodes:
         if settlements.get(node.node_id) is not None:
             continue
-        if any(settlements.get(dep) != "completed" for dep in node.dependencies):
-            continue
-        if not set(node.required_evidence).issubset(evidence):
-            continue
-        if not evaluate_conditions(node.conditions, facts):
+        diagnostic = explain_node_readiness(node, settlements, evidence, facts)
+        if not diagnostic["ready"]:
             continue
         ready.append(node.node_id)
     return tuple(sorted(ready))

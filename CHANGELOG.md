@@ -10,6 +10,13 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v10.1.15 (2026-09-15 11:20) - codex
+
+- [policy] [fix] [完成] 修复 PlanGraph 语义到 Runtime 的 trusted evidence/condition 映射，增加逐节点 readiness 诊断，限制 stale-scene ready 到 refresh Query，并允许执行前 append-only graph correction；不切换 GPT-Sol High、不启动运动。(local)
+- [Policy] [Fix] [Completed] Fixed PlanGraph semantic-to-runtime trusted evidence/condition mapping, added per-node readiness diagnostics, limited stale-scene readiness to refresh Queries, and allowed pre-execution append-only graph correction; GPT-Sol High and no-motion boundaries remain unchanged. (local)
+- Files: `PhyAgentOS/planning/dag.py`, `PhyAgentOS/agent/plan_proposal.py`, `PhyAgentOS/agent/tools/forge_task.py`, `PhyAgentOS/agent/planning_dispatch.py`, `PhyAgentOS/forge/task.py`, tests/docs, Skill manifest/dataflow.
+- Validation: core `375 passed`, Skill `330 passed`, Adapter `465 passed`, focused `50 passed`; changed-file Ruff, compileall, diff check, and Agent Route Principles Gate passed.
+
 ## v10.1.14 (2026-09-15 00:45) - codex
 
 - [model] [exp] [完成] Qwen3-VL-4B 模型完整下载并完成 GPU worker 生命周期和真实 RGB 生成验收；结构化输出返回空实体，因此未进入绑定、规划或动作。(local)

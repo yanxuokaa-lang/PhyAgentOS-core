@@ -26,7 +26,13 @@ from .contracts import (
     tool_input_binding_digest,
     validate_condition_keys,
 )
-from .dag import derive_ready_nodes, evaluate_conditions, invalidate_stale_nodes, validate_graph
+from .dag import (
+    derive_ready_nodes,
+    evaluate_conditions,
+    explain_node_readiness,
+    invalidate_stale_nodes,
+    validate_graph,
+)
 from .policy import validate_policy_edges, workflow_policy_digest
 from .projection import ToolSpecProjectionError, project_tool_spec
 from .replan import build_replan_delta
@@ -58,6 +64,7 @@ __all__ = [
     "validate_condition_keys",
     "derive_ready_nodes",
     "evaluate_conditions",
+    "explain_node_readiness",
     "invalidate_stale_nodes",
     "settle_node",
     "validate_graph",

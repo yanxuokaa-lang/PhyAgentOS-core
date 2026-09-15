@@ -106,6 +106,111 @@ def test_semantic_submission_rejects_cycle_undeclared_capability_and_ambiguous_i
     assert len(c.get_task(task.task_id).revisions) == 1
 
 
+def test_materialized_unstarted_graph_can_be_corrected_append_only(tmp_path):
+    c, task = setup_task(tmp_path)
+    first = semantic_nodes(1)
+    first[0]["conditions"] = ["unproduced_fact"]
+    with pytest.raises(ValueError, match="condition facts"):
+        asyncio.run(ForgeTaskMaterializePlanTool(c).execute(
+            task.task_id, nodes=first, reason="invalid root condition"
+        ))
+
+    # A graph with no executed Tool or settlement may be corrected without
+    # overwriting the old revision; once execution facts exist, normal replan
+    # rules remain the only replacement path.
+    first[0].pop("conditions")
+    first_result = json.loads(asyncio.run(ForgeTaskMaterializePlanTool(c).execute(
+        task.task_id, nodes=first, reason="initial graph"
+    )))
+    assert first_result["ok"] is True
+    old_revision = c.get_task(task.task_id).active_revision_id
+    corrected = semantic_nodes(2)
+    corrected_result = json.loads(asyncio.run(ForgeTaskMaterializePlanTool(c).execute(
+        task.task_id, nodes=corrected, reason="correct unstarted graph"
+    )))
+    assert corrected_result["ok"] is True
+    result = c.get_task(task.task_id)
+    assert len(result.revisions) == 3
+    assert result.revisions[1].revision_id == old_revision
+    assert result.active_revision_id != old_revision
+    assert result.active_revision.plan_graph is not None
+    assert len(result.active_revision.plan_graph.nodes) == 3
+
+
+def test_semantic_materialization_rejects_fabricated_evidence_refs(tmp_path):
+    c, task = setup_task(tmp_path)
+    nodes = semantic_nodes(1)
+    nodes[0]["required_evidence"] = ["observation://fabricated"]
+    with pytest.raises(ValueError, match="unknown or fabricated refs"):
+        asyncio.run(ForgeTaskMaterializePlanTool(c).execute(
+            task.task_id,
+            nodes=nodes,
+            evidence_refs=["observation://fabricated"],
+            reason="must reject caller-supplied evidence",
+        ))
+    assert len(c.get_task(task.task_id).revisions) == 1
+
+
+def test_complete_plan_materialization_rejects_fabricated_evidence_refs(tmp_path):
+    c, task = setup_task(tmp_path)
+    graph = compile_task_plan(task, semantic_nodes(1), reason="complete graph")
+    with pytest.raises(ValueError, match="unknown or fabricated refs"):
+        asyncio.run(ForgeTaskMaterializePlanTool(c).execute(
+            task.task_id,
+            plan_graph=graph.model_dump(mode="json"),
+            plan_graph_ref="artifact://plans/fabricated",
+            evidence_refs=["artifact://fabricated"],
+            reason="must reject fabricated graph evidence",
+        ))
+    assert len(c.get_task(task.task_id).revisions) == 1
+
+
+def test_semantic_materialization_accepts_exact_persisted_evidence_ref(tmp_path):
+    c, task = setup_task(tmp_path)
+    record_id, _ = c._append_execution(
+        task.task_id,
+        "scene.observe",
+        "query",
+        {},
+        tool=task.primary_skill_binding.required_tools[0],
+    )
+    c._finish_execution(
+        task.task_id,
+        record_id,
+        status="succeeded",
+        response={"status": "available", "scene_revision": "scene-1",
+                  "evidence_refs": ["artifact://observation/1"]},
+    )
+    nodes = semantic_nodes(1)
+    nodes[0]["required_evidence"] = ["artifact://observation/1"]
+    result = json.loads(asyncio.run(ForgeTaskMaterializePlanTool(c).execute(
+        task.task_id,
+        nodes=nodes,
+        reason="use exact Coordinator evidence",
+    )))
+    assert result["ok"] is True
+    assert "artifact://observation/1" in c.get_task(task.task_id).active_revision.discovery_evidence_refs
+
+
+def test_materialized_graph_correction_is_rejected_after_execution_fact(tmp_path):
+    c, task = setup_task(tmp_path)
+    first = json.loads(asyncio.run(ForgeTaskMaterializePlanTool(c).execute(
+        task.task_id, nodes=semantic_nodes(1), reason="initial graph"
+    )))
+    assert first["ok"] is True
+    c._append_execution(
+        task.task_id,
+        "scene.observe",
+        "query",
+        {},
+        tool=task.primary_skill_binding.required_tools[0],
+    )
+    with pytest.raises(AgentTaskError, match="execution facts"):
+        asyncio.run(ForgeTaskMaterializePlanTool(c).execute(
+            task.task_id, nodes=semantic_nodes(2), reason="late correction"
+        ))
+
+
 def test_forge_task_tool_responses_json_encode_nested_task_records(tmp_path):
     """CLI-facing tools must return JSON after coordinator state is persisted."""
 

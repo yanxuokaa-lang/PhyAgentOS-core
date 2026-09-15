@@ -217,3 +217,21 @@ task-bound Query or Action wrapper. Never calculate node/input digests or invent
 a decision-trace reference. The selection tool is control-plane only and does
 not invoke a Gateway, authorize motion, or replace Coordinator/Gateway
 execution and reconciliation.
+
+When submitting semantic nodes, use exact task-bound
+`paos_record.evidence_refs` for evidence already available at the graph root.
+Do not put labels such as `latest_observation`, `metric_geometry`, or
+`entity_binding` in `required_evidence` unless a Tool actually returned that
+exact opaque reference. The optional `evidence_refs` argument only selects from
+the task-bound references already persisted by Coordinator; it cannot create or
+rename evidence. Use `dependencies` for ordering and keep prose in the
+obligation or `input_bindings`. A `conditions` key is legal only when the same
+key is already true in trusted Coordinator `condition_facts`, or when a prior
+Tool node will persist it before the dependent node is evaluated. Read
+`forge_plan_ready.node_diagnostics` to distinguish missing dependencies,
+evidence, conditions, and Tool candidates; never bypass an empty ready set.
+
+Before any execution or settlement is attached to a newly materialized graph,
+one corrected semantic graph may be resubmitted and will become a new
+append-only revision. Once execution facts exist, use the normal recovery and
+replan path instead of discovery correction.

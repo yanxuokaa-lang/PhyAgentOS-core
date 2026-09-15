@@ -1140,8 +1140,19 @@ class AgentTaskCoordinator:
         task = self.store.get(task_id)
         if task.status != AgentTaskStatus.EXECUTING:
             raise AgentTaskError("discovery expansion requires an executing AgentTask")
-        if task.active_revision.plan_graph is not None:
-            raise AgentTaskError("discovery expansion requires an unmaterialized active revision")
+        existing_graph = task.active_revision.plan_graph
+        if existing_graph is not None:
+            revision = task.active_revision
+            if (
+                revision.execution_records
+                or revision.node_settlements
+                or revision.counterevidence
+                or revision.verification_attempts
+            ):
+                raise AgentTaskError(
+                    "discovery expansion requires an unmaterialized active revision "
+                    "or a materialized revision with no execution facts"
+                )
         if plan_graph.task_id != task_id:
             raise AgentTaskError("discovery PlanGraph task identity mismatch")
         _validate_plan_graph_input(plan_graph, plan_graph_ref, task_id, plan_graph.revision_id)
@@ -1170,7 +1181,12 @@ class AgentTaskCoordinator:
             ))
             current.active_revision_id = plan_graph.revision_id
 
-        return self.store.update(task_id, mutate, event_type="plan_discovery_expanded")
+        event_type = (
+            "plan_discovery_corrected"
+            if existing_graph is not None
+            else "plan_discovery_expanded"
+        )
+        return self.store.update(task_id, mutate, event_type=event_type)
 
     def materialize_plan_revision(
         self,

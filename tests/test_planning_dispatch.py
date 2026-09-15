@@ -82,7 +82,40 @@ def test_runtime_only_task_builds_dispatch_from_enrolled_tool_policies():
 def test_ready_tool_is_read_only_and_reports_candidates():
     data = _dispatch().describe()
     assert data["ready_nodes"][0]["candidate_tool_ids"] == ["scene.observe"]
+    assert data["node_diagnostics"][0]["ready"] is True
+    assert data["node_diagnostics"][0]["blockers"] == ()
     assert data["motion_authorized"] is False
+
+
+def test_ready_diagnostics_explain_evidence_and_condition_blockers():
+    node = PlanNode(
+        node_id="target",
+        obligation_id="target",
+        capability="scene.observe",
+        conditions=("scene_current", "binding_ready"),
+        required_evidence=("artifact://observation/current",),
+    )
+    payload = {
+        "schema_version": "paos-plan-graph/v1",
+        "task_id": "task-1",
+        "revision_id": "revision-1",
+        "graph_digest": "0" * 64,
+        "planner_decision_digest": "1" * 64,
+        "policy_snapshot_digest": "2" * 64,
+        "nodes": [node.model_dump(mode="json")],
+    }
+    payload["graph_digest"] = plan_graph_digest(payload)
+    dispatch = AgentComposedDispatch(
+        PlanGraph.model_validate(payload),
+        (_dispatch().policies[0],),
+        AdmissionContext(scene_revision="scene-1"),
+    )
+    diagnostic = dispatch.describe()["node_diagnostics"][0]
+    assert diagnostic["ready"] is False
+    assert diagnostic["missing_evidence"] == ("artifact://observation/current",)
+    assert diagnostic["unknown_conditions"] == ("scene_current", "binding_ready")
+    assert "evidence" in diagnostic["blockers"]
+    assert "unknown_conditions" in diagnostic["blockers"]
 
 
 def test_dispatch_refreshes_authoritative_context_before_each_read():
@@ -95,6 +128,23 @@ def test_dispatch_refreshes_authoritative_context_before_each_read():
     )
     assert dispatch.describe()["scene_revision"] == "scene-1"
     assert dispatch.describe()["scene_revision"] == "scene-2"
+
+
+def test_stale_scene_ready_projection_exposes_only_refresh_tools():
+    policy = ToolSpecPolicy(
+        tool_id="scene.observe",
+        semantics="query",
+        spec_digest="3" * 64,
+        capabilities=("scene.observe", "object.relocate"),
+        refreshes_scene=True,
+    )
+    dispatch = AgentComposedDispatch(
+        _graph(), (policy,),
+        AdmissionContext(scene_revision="scene-1", condition_facts={"scene_current": False}),
+    )
+    data = dispatch.describe()
+    assert [item["node_id"] for item in data["ready_nodes"]] == ["observe"]
+    assert all(item["node_id"] != "verify" for item in data["ready_nodes"])
 
 
 def test_guard_rejects_missing_binding_and_wrong_node():

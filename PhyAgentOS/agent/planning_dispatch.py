@@ -23,6 +23,7 @@ from PhyAgentOS.planning import (
     admit_tool_call,
     canonical_sha256,
     derive_ready_nodes,
+    explain_node_readiness,
     plan_node_digest,
     tool_input_binding_digest,
 )
@@ -107,9 +108,36 @@ class AgentComposedDispatch:
         )
         nodes = {node.node_id: node for node in self.graph.nodes}
         if conditions.get("scene_current") is False:
-            ready = tuple(node.node_id for node in self.graph.nodes
-                          if node.node_id not in settlements
-                          and all(settlements.get(dep) == "completed" for dep in node.dependencies))
+            ready = tuple(
+                node.node_id
+                for node in self.graph.nodes
+                if node.node_id not in settlements
+                and all(settlements.get(dep) == "completed" for dep in node.dependencies)
+                and any(
+                    node.capability in policy.capabilities and policy.refreshes_scene
+                    for policy in self.policies
+                )
+            )
+        diagnostics = []
+        for node in self.graph.nodes:
+            if node.node_id in settlements:
+                continue
+            item = explain_node_readiness(
+                node,
+                settlements,
+                set(context.evidence_refs),
+                conditions,
+            )
+            candidates = tuple(
+                policy.tool_id
+                for policy in self.policies
+                if node.capability in policy.capabilities
+                and (conditions.get("scene_current") is not False or policy.refreshes_scene)
+            )
+            item["candidate_tool_ids"] = candidates
+            if not candidates:
+                item["blockers"] = tuple((*item["blockers"], "no_tool_candidate"))
+            diagnostics.append(item)
         return {
             "ok": True,
             "mode": "agent_composed",
@@ -132,6 +160,7 @@ class AgentComposedDispatch:
                 }
                 for node_id in ready
             ],
+            "node_diagnostics": diagnostics,
             "motion_authorized": False,
         }
 
@@ -248,11 +277,16 @@ class AgentComposedDispatch:
             conditions,
         )
         if conditions.get("scene_current") is False:
+            settlements = dict(context.settlements)
             ready = tuple(
                 item.node_id
                 for item in self.graph.nodes
-                if item.node_id not in dict(context.settlements)
-                and all(dict(context.settlements).get(dep) == "completed" for dep in item.dependencies)
+                if item.node_id not in settlements
+                and all(settlements.get(dep) == "completed" for dep in item.dependencies)
+                and any(
+                    item.capability in candidate.capabilities and candidate.refreshes_scene
+                    for candidate in self.policies
+                )
             )
         if node_id not in ready:
             raise PlanningDispatchError("selected planning node is not ready")

@@ -274,6 +274,35 @@ is admitted. It is intentionally not a deserialization validator: historical
 graphs containing prose must remain readable for status, reconciliation, and
 stop, while their unmatched conditions remain fail-closed.
 
+Do not use descriptive evidence aliases in `required_evidence`. For current
+scene facts, copy the exact opaque references returned in task-bound Query
+`paos_record.evidence_refs` or other Coordinator-persisted artifact references.
+The `evidence_refs` argument on semantic materialization is only a selector over
+those already-persisted references; it cannot introduce a new reference. A
+caller-supplied `observation://...`, `metric_geometry`, or similar label is
+rejected unless the same exact value was emitted and persisted by a task-bound
+Tool. An empty trusted evidence set is still checked when a scene context
+exists; it is not treated as "skip validation".
+Put an explanation such as "use current metric localization and calibration"
+in the obligation or `input_bindings`; it does not become evidence merely by
+appearing in the graph. A root node is rejected at materialization when its
+required references are absent or one of its condition facts is not currently
+true.
+
+Use `dependencies` for workflow ordering. A declared `effects` or
+`produced_evidence` entry is an expected postcondition, not a fact that the
+planner can assert before a Tool reaches a terminal result. After activation,
+inspect `forge_plan_ready.node_diagnostics` before selecting a Tool. The
+diagnostic distinguishes dependency, evidence, condition, and Tool-candidate
+blockers without invoking Gateway or changing task state.
+
+If an Agent discovers a mapping error immediately after materialization and the
+active graph has no execution record, node settlement, counterevidence, or
+verification attempt, it may resubmit a corrected graph. PAOS records this as
+an append-only discovery-correction revision. Once execution facts exist, use
+the existing stop/replay/replan path; never replace or edit the active graph in
+place.
+
 Live Gateway ToolSpecs now expose an explicit, versioned `planning` extension
 that is projected into the immutable `ToolSpecPolicy` carried by a Skill
 binding. Missing planning metadata is not inferred, so legacy ToolSpecs remain

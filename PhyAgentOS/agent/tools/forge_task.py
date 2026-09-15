@@ -223,12 +223,42 @@ class ForgeTaskMaterializePlanTool(Tool):
     ) -> str:
         if (nodes is None) == (plan_graph is None):
             raise ValueError("supply either nodes or plan_graph")
+        from PhyAgentOS.agent.planning_context import (
+            PlanningContextUnavailableError,
+            context_from_task,
+        )
+
+        task = self.coordinator.get_task(task_id)
+        try:
+            context = context_from_task(task, allow_refresh=True)
+        except PlanningContextUnavailableError:
+            # A scene-free graph may be materialized before discovery, but it
+            # cannot claim evidence that has not been persisted by Coordinator.
+            context = None
+        trusted_evidence = set(context.evidence_refs) if context is not None else set()
+        requested_evidence = tuple(evidence_refs or ())
+        fabricated = sorted(set(requested_evidence) - trusted_evidence)
+        if fabricated:
+            raise ValueError(
+                "plan evidence_refs must be exact task-bound Coordinator references; "
+                "unknown or fabricated refs: " + ", ".join(fabricated)
+            )
         if nodes is not None:
             from PhyAgentOS.agent.plan_proposal import compile_task_plan
-
             if plan_graph_ref is not None:
                 raise ValueError("PAOS supplies the plan reference for semantic nodes")
-            graph = compile_task_plan(self.coordinator.get_task(task_id), nodes, reason=reason)
+            selected_evidence = requested_evidence or tuple(sorted(trusted_evidence))
+            graph = compile_task_plan(
+                task,
+                nodes,
+                reason=reason,
+                initial_evidence_refs=(
+                    selected_evidence if context is not None else None
+                ),
+                initial_condition_facts=(
+                    dict(context.condition_facts) if context is not None else {}
+                ),
+            )
             plan_graph_ref = f"artifact://plans/{task_id}/{graph.revision_id}"
         else:
             graph = PlanGraph.model_validate(plan_graph)
@@ -238,7 +268,9 @@ class ForgeTaskMaterializePlanTool(Tool):
                 task_id,
                 plan_graph=graph,
                 plan_graph_ref=plan_graph_ref,
-                evidence_refs=tuple(evidence_refs or ()),
+                evidence_refs=(
+                    selected_evidence if nodes is not None else requested_evidence
+                ),
                 reason=reason,
             ),
         })
