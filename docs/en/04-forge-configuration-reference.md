@@ -16,6 +16,27 @@ Legacy Forge execution selectors (`enabled`, `baseUrl`, and `apiVersion`, includ
 forms) are also rejected. Runtime selection and the Gateway URL come from an installed Skill
 manifest and an explicitly started profile.
 
+## 1.1 `agents.defaults` context budget
+
+| JSON field | Type | Default | Constraint and meaning |
+|:-----------|:-----|:--------|:-----------------------|
+| `contextWindowTokens` | integer | `272000` | Hard model-request window used by AgentLoop prompt admission. |
+| `contextCompactionTriggerTokens` | integer | `260000` | Starts deterministic prompt rebuilding and persistent-history consolidation before the hard window; must be smaller than `contextWindowTokens`. |
+| `requestTimeoutS` | number | `180.0` | Timeout for each provider attempt; independent of whole-turn timeout and context compaction. |
+
+Before every model call, AgentLoop projects the current Coordinator-owned AgentTask,
+exposes only Forge wrappers relevant to the current lifecycle phase, and estimates the
+complete request including Tool schemas. At the trigger it removes older chat history
+already represented by the task projection and compacts completed Forge results while
+retaining task, revision, scene, calibration, entity, geometry, evidence, binding, and
+invocation references. SQLite records, Gateway results, and Session history are not
+rewritten. Prompt admission reserves `maxTokens` for the response, so the effective input
+limit is `contextWindowTokens - maxTokens`; a request that remains above that input limit
+fails locally before provider transport.
+
+An older configuration that sets only `contextWindowTokens` remains supported; its
+compaction trigger is derived at 95 percent of that custom window.
+
 ## 2. `forge`
 
 | JSON field | Type | Default | Constraint and meaning |

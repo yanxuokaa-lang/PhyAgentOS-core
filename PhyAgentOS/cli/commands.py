@@ -760,6 +760,9 @@ def gateway(
         max_iterations=config.agents.defaults.max_tool_iterations,
         turn_timeout_s=config.agents.defaults.turn_timeout_s,
         context_window_tokens=config.agents.defaults.context_window_tokens,
+        context_compaction_trigger_tokens=(
+            config.agents.defaults.context_compaction_trigger_tokens
+        ),
         brave_api_key=config.tools.web.search.api_key or None,
         web_proxy=config.tools.web.proxy or None,
         exec_config=config.tools.exec,
@@ -971,6 +974,9 @@ def agent(
         max_iterations=config.agents.defaults.max_tool_iterations,
         turn_timeout_s=config.agents.defaults.turn_timeout_s,
         context_window_tokens=config.agents.defaults.context_window_tokens,
+        context_compaction_trigger_tokens=(
+            config.agents.defaults.context_compaction_trigger_tokens
+        ),
         brave_api_key=config.tools.web.search.api_key or None,
         web_proxy=config.tools.web.proxy or None,
         exec_config=config.tools.exec,

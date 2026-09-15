@@ -164,12 +164,18 @@ class MemoryConsolidator:
         context_window_tokens: int,
         build_messages: Callable[..., list[dict[str, Any]]],
         get_tool_definitions: Callable[[], list[dict[str, Any]]],
+        compaction_trigger_tokens: int | None = None,
     ):
         self.store = MemoryStore(workspace)
         self.provider = provider
         self.model = model
         self.sessions = sessions
         self.context_window_tokens = context_window_tokens
+        self.compaction_trigger_tokens = (
+            int(compaction_trigger_tokens)
+            if compaction_trigger_tokens is not None
+            else max(1, int(context_window_tokens * 0.95))
+        )
         self._build_messages = build_messages
         self._get_tool_definitions = get_tool_definitions
         self._locks: weakref.WeakValueDictionary[str, asyncio.Lock] = weakref.WeakValueDictionary()
@@ -237,16 +243,16 @@ class MemoryConsolidator:
 
         lock = self.get_lock(session.key)
         async with lock:
-            target = self.context_window_tokens // 2
+            target = self.compaction_trigger_tokens // 2
             estimated, source = self.estimate_session_prompt_tokens(session)
             if estimated <= 0:
                 return
-            if estimated < self.context_window_tokens:
+            if estimated < self.compaction_trigger_tokens:
                 logger.debug(
                     "Token consolidation idle {}: {}/{} via {}",
                     session.key,
                     estimated,
-                    self.context_window_tokens,
+                    self.compaction_trigger_tokens,
                     source,
                 )
                 return
@@ -274,7 +280,7 @@ class MemoryConsolidator:
                     round_num,
                     session.key,
                     estimated,
-                    self.context_window_tokens,
+                    self.compaction_trigger_tokens,
                     source,
                     len(chunk),
                 )

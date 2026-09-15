@@ -15,6 +15,23 @@ legacy `runtime` configuration is unsupported; remove it and configure `forge`
 旧 Forge 执行选择字段 `enabled`、`baseUrl`、`apiVersion`（含 snake_case 形式）也会被拒绝。
 Runtime 选择与 Gateway URL 来自已安装 Skill manifest 和显式启动的 profile。
 
+## 1.1 `agents.defaults` 上下文预算
+
+| JSON 字段 | 类型 | 默认值 | 约束与含义 |
+|:----------|:-----|:-------|:-----------|
+| `contextWindowTokens` | integer | `272000` | AgentLoop 模型请求的硬窗口。 |
+| `contextCompactionTriggerTokens` | integer | `260000` | 在硬窗口前触发确定性 prompt 重建和持久历史压缩；必须小于 `contextWindowTokens`。 |
+| `requestTimeoutS` | number | `180.0` | 每次 Provider 请求的 timeout；与整轮 timeout 和上下文压缩相互独立。 |
+
+每次模型调用前，AgentLoop 都从 Coordinator 当前 AgentTask 重建只读投影，按生命周期阶段仅暴露
+相关 Forge wrapper，并对包含 Tool schema 的完整请求计数。达到触发值后，系统移除已由任务投影
+覆盖的旧聊天历史，并压缩已完成的 Forge 结果，同时保留 task、revision、scene、calibration、
+entity、geometry、evidence、binding 与 invocation 引用。SQLite 记录、Gateway 结果和 Session
+历史均不被改写。Prompt admission 会为响应预留 `maxTokens`，因此有效输入上限为
+`contextWindowTokens - maxTokens`；压缩后仍超过该输入上限的请求会在 Provider transport 前本地失败。
+
+旧配置若只设置 `contextWindowTokens`，仍保持兼容，并按该自定义窗口的 95% 推导压缩触发值。
+
 ## 2. `forge`
 
 | JSON 字段 | 类型 | 默认值 | 约束与含义 |

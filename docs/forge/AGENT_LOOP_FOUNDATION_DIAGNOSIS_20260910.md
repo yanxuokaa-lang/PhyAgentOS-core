@@ -77,6 +77,30 @@ Validation evidence:
 
 The tests are no-motion contract tests. They do not claim live model perception, RoboTwin execution, hardware movement, or formal manifest publication. Evolution remains disabled.
 
+## 6.1 In-turn prompt-budget governance (2026-09-15)
+
+Long Forge turns previously checked persistent-session size only before and after
+`_run_agent_loop`. Tool calls and results accumulated across model iterations, so a
+single turn could grow from roughly 63K to 91K tokens without another budget check.
+
+AgentLoop now constructs a temporary request view before every provider call:
+
+1. Forge wrapper schemas are selected from the current AgentTask lifecycle phase.
+2. The complete request, including selected Tool schemas, is counted each iteration.
+3. Coordinator task/revision/node/record state is projected read-only into the request.
+4. Superseded or large completed Forge results are compacted deterministically while
+   preserving scene, calibration, semantic geometry, evidence, binding and invocation
+   references.
+5. At `contextCompactionTriggerTokens`, older chat history already represented by the
+   task projection is removed from the request copy; recent assistant/tool groups stay
+   structurally complete. The persisted Session and AgentTask records remain unchanged.
+6. Prompt admission reserves the configured response `maxTokens`; requests still above
+   `contextWindowTokens - maxTokens` fail locally before transport.
+
+The configured default is a 272,000-token hard window and a 260,000-token trigger.
+This is context management, not motion admission: Coordinator, planning binding,
+Gateway reconciliation, Runtime truth, and Verifier ownership are unchanged.
+
 ## 7. Persistent Runtime Preflight
 
 On 2026-09-11 the real `RoboTwinPersistentEngine` worker was started through `check_persistent_runtime.py` with the repository adapter, RoboTwin runtime profile `franka-blocks-ranking.yaml`, and the RoboTwin20 Python environment. Startup completed a read-only snapshot successfully:

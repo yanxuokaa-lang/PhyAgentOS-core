@@ -238,7 +238,8 @@ class AgentDefaults(Base):
         "auto"  # Provider name (e.g. "anthropic", "openrouter") or "auto" for auto-detection
     )
     max_tokens: int = 8192
-    context_window_tokens: int = 65_536
+    context_window_tokens: int = Field(default=272_000, gt=0)
+    context_compaction_trigger_tokens: int = Field(default=260_000, gt=0)
     temperature: float = 0.1
     max_tool_iterations: int = 40
     request_timeout_s: float = Field(default=180.0, gt=0)
@@ -246,6 +247,24 @@ class AgentDefaults(Base):
     # Deprecated compatibility field: accepted from old configs but ignored at runtime.
     memory_window: int | None = Field(default=None, exclude=True)
     reasoning_effort: str | None = None  # low / medium / high — enables LLM thinking mode
+
+    @model_validator(mode="after")
+    def validate_context_budget(self) -> "AgentDefaults":
+        if (
+            "context_compaction_trigger_tokens" not in self.model_fields_set
+            and self.context_window_tokens != 272_000
+        ):
+            # Old configurations commonly set only contextWindowTokens.  Keep
+            # them valid and derive a margin instead of applying the new 260K
+            # default to a smaller custom window.
+            self.context_compaction_trigger_tokens = max(
+                1, int(self.context_window_tokens * 0.95)
+            )
+        if self.context_compaction_trigger_tokens >= self.context_window_tokens:
+            raise ValueError(
+                "contextCompactionTriggerTokens must be smaller than contextWindowTokens"
+            )
+        return self
 
     @property
     def should_warn_deprecated_memory_window(self) -> bool:

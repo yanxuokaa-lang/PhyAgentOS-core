@@ -45,9 +45,18 @@ class ToolRegistry:
         """Check if a tool is registered."""
         return name in self._tools
 
-    def get_definitions(self) -> list[dict[str, Any]]:
-        """Get all tool definitions in OpenAI format."""
-        return [tool.to_schema() for tool in self._tools.values()]
+    def get_definitions(self, names: set[str] | tuple[str, ...] | None = None) -> list[dict[str, Any]]:
+        """Get selected tool definitions in stable registry order.
+
+        Filtering controls only what the model sees for one request.  It does
+        not unregister Tools or bypass the execution guard.
+        """
+        selected = set(names) if names is not None else None
+        return [
+            tool.to_schema()
+            for name, tool in self._tools.items()
+            if selected is None or name in selected
+        ]
 
     async def execute(self, name: str, params: dict[str, Any]) -> str:
         """Execute a tool by name with given parameters."""

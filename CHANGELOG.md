@@ -3,12 +3,20 @@
 ## Archive
 
 - [2026-09 Part 8](changelog/2026-09_part8.md)
+- [2026-09 Part 9](changelog/2026-09_part9.md)
 - [2026-09 Part 7](changelog/2026-09_part7.md)
 - [2026-09 Part 6](changelog/2026-09_part6.md)
 - [2026-09 Part 5](changelog/2026-09_part5.md)
 - [2026-09 Part 4](changelog/2026-09_part4.md)
 
 ## 最近 5 条 / Latest Five Versions
+
+## v10.3.0 (2026-09-15 14:00) - codex
+
+- [agent] [feat] [完成] AgentLoop 现在按 AgentTask 阶段选择 Forge Tool schema，每次模型调用前执行 260K prompt budget 检查、Coordinator 状态重建和权威引用保留的 Tool 结果压缩；hard window 为 272K，并为 `maxTokens` 预留响应空间。(local)
+- [Agent] [Feat] [Completed] AgentLoop now selects Forge Tool schemas by AgentTask phase and performs a 260K prompt-budget check, Coordinator state rebuilding, and authority-reference-preserving Tool-result compaction before every model call; the hard window is 272K with response space reserved for `maxTokens`. (local)
+- Files: `PhyAgentOS/agent/prompt_context.py` L1-L625; `PhyAgentOS/agent/loop.py` L20-L23,L69-L114,L212-L226,L547-L686; memory/registry/config/CLI, tests and docs.
+- Validation: core `386 passed`, Skill `330 passed`, Adapter `465 passed`, prompt-context `12 passed`; discovery schema filtering and no-motion checks passed; no Runtime/Action/motion.
 
 ## v10.2.0 (2026-09-15 11:45) - codex
 

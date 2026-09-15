@@ -17,6 +17,10 @@ from loguru import logger
 
 from PhyAgentOS.agent.context import ContextBuilder
 from PhyAgentOS.agent.memory import MemoryConsolidator
+from PhyAgentOS.agent.prompt_context import (
+    AgentPromptContextManager,
+    PromptBudgetExceededError,
+)
 from PhyAgentOS.agent.subagent import SubagentManager
 from PhyAgentOS.agent.tools.agent import AgentModeTool
 from PhyAgentOS.agent.tools.cron import CronTool
@@ -34,6 +38,7 @@ from PhyAgentOS.embodiment_registry import EmbodimentRegistry
 from PhyAgentOS.providers.base import LLMProvider
 from PhyAgentOS.providers.providers_manager import ProvidersManager
 from PhyAgentOS.session.manager import Session, SessionManager
+from PhyAgentOS.utils.helpers import estimate_prompt_tokens_chain
 
 if TYPE_CHECKING:
     from PhyAgentOS.agent.experience.coordinator import EpisodeClosedHook
@@ -69,7 +74,8 @@ class AgentLoop:
         model: str | None = None,
         max_iterations: int = 40,
         turn_timeout_s: float = 300.0,
-        context_window_tokens: int = 65_536,
+        context_window_tokens: int = 272_000,
+        context_compaction_trigger_tokens: int | None = None,
         brave_api_key: str | None = None,
         web_proxy: str | None = None,
         exec_config: ExecToolConfig | None = None,
@@ -101,6 +107,11 @@ class AgentLoop:
         self.max_iterations = max_iterations
         self.turn_timeout_s = max(1.0, float(turn_timeout_s))
         self.context_window_tokens = context_window_tokens
+        self.context_compaction_trigger_tokens = (
+            int(context_compaction_trigger_tokens)
+            if context_compaction_trigger_tokens is not None
+            else max(1, int(context_window_tokens * 0.95))
+        )
         self.brave_api_key = brave_api_key
         self.web_proxy = web_proxy
         self.exec_config = exec_config or ExecToolConfig()
@@ -204,8 +215,14 @@ class AgentLoop:
             model=self.model,
             sessions=self.sessions,
             context_window_tokens=context_window_tokens,
+            compaction_trigger_tokens=self.context_compaction_trigger_tokens,
             build_messages=self.context.build_messages,
             get_tool_definitions=self.tools.get_definitions,
+        )
+        self.prompt_context = AgentPromptContextManager(
+            context_window_tokens=context_window_tokens,
+            compaction_trigger_tokens=self.context_compaction_trigger_tokens,
+            reserved_output_tokens=provider.generation.max_tokens,
         )
         self._register_default_tools()
         # Load env variables
@@ -536,6 +553,10 @@ class AgentLoop:
     ) -> tuple[str | None, list[str], list[dict]]:
         """Run the agent iteration loop."""
         messages = initial_messages
+        turn_start_index = max(
+            (index for index, message in enumerate(messages) if message.get("role") == "user"),
+            default=max(0, len(messages) - 1),
+        )
         iteration = 0
         final_content = None
         tools_used: list[str] = []
@@ -543,13 +564,55 @@ class AgentLoop:
         while iteration < self.max_iterations:
             iteration += 1
 
-            tool_defs = self.tools.get_definitions()
+            active_task = (
+                self.forge_task_coordinator.store.active()
+                if self.forge_task_coordinator is not None
+                else None
+            )
+
+            def estimate(request_messages, visible_names):
+                definitions = self.tools.get_definitions(set(visible_names))
+                return estimate_prompt_tokens_chain(
+                    self.provider, self.model, request_messages, definitions
+                )[0]
+
+            try:
+                request_view = self.prompt_context.build(
+                    messages=messages,
+                    turn_start_index=turn_start_index,
+                    all_tool_names=self.tools.tool_names,
+                    task=active_task,
+                    estimate_tokens=estimate,
+                )
+            except PromptBudgetExceededError as exc:
+                logger.error("Agent prompt budget exceeded: {}", exc)
+                final_content = str(exc)
+                break
+            tool_defs = self.tools.get_definitions(set(request_view.visible_tool_names))
+            estimated_tokens, token_source = estimate_prompt_tokens_chain(
+                self.provider, self.model, request_view.messages, tool_defs
+            )
+            logger.info(
+                "Agent prompt context session={} iteration={} phase={} tokens={}/{} "
+                "window={} trigger={} output_reserve={} source={} tools={} compacted={}",
+                experience_session_key,
+                iteration,
+                request_view.phase,
+                estimated_tokens,
+                self.prompt_context.prompt_token_limit,
+                self.context_window_tokens,
+                self.context_compaction_trigger_tokens,
+                self.prompt_context.reserved_output_tokens,
+                token_source,
+                len(tool_defs),
+                request_view.compacted,
+            )
 
             started = monotonic()
             logger.info("Agent model start session={} iteration={}", experience_session_key, iteration)
             try:
                 response = await self.provider.chat_with_retry(
-                    messages=messages,
+                    messages=request_view.messages,
                     tools=tool_defs,
                     model=self.model,
                 )
