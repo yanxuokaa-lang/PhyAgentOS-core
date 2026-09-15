@@ -98,6 +98,48 @@ class GPTSolAliasSemanticInference(SemanticInference):
         return result
 
 
+class MultiEntityMetricAliasSemanticInference(SemanticInference):
+    def infer(self, request):
+        return {
+            "entities": [
+                {
+                    "entity_ref": "entity://red-block",
+                    "category": "red block",
+                    "confidence": 0.9,
+                    "provenance": [RGB_REF],
+                },
+                {
+                    "entity_ref": "entity://blue-block",
+                    "category": "blue block",
+                    "confidence": 0.9,
+                    "provenance": [RGB_REF],
+                },
+            ],
+            "relations": [],
+            "spatial_envelopes": [],
+            "ambiguities": [
+                {
+                    "code": "METRIC_EXTENTS_NOT_ESTIMATED",
+                    "message": "RGB did not estimate metric extents",
+                    "entity_refs": ["entity://red-block", "entity://blue-block"],
+                }
+            ],
+        }
+
+
+class UnknownAmbiguitySemanticInference(SemanticInference):
+    def infer(self, request):
+        result = super().infer(request)
+        result["ambiguities"] = [
+            {
+                "code": "provider_private_uncertainty",
+                "message": "provider-specific uncertainty",
+                "entity_refs": ["entity://red-block"],
+            }
+        ]
+        return result
+
+
 class ProposalProvider:
     def __init__(self, proposals=(Proposal((1, 1, 3, 3), 0.8),), *, release_error=False):
         self.proposals = proposals
@@ -282,6 +324,47 @@ def test_gpt_sol_aliases_normalize_and_reconcile_without_leaking_provider_code(t
     assert "_provider_code" not in result["ambiguities"][0]
     assert result["reconciliations"][0]["code"] == "metric_3d_unavailable"
     assert result["reconciliations"][0]["provider_code"] == "NO_METRIC_3D_ENVELOPES"
+
+
+def test_metric_extents_alias_reconciles_each_entity_independently(tmp_path):
+    mask = np.array(
+        [[False, False, False, False], [False, True, True, False], [False, True, True, False]]
+    )
+    inference = SingleViewPerceptionInference(
+        MultiEntityMetricAliasSemanticInference(),
+        proposal_provider=ProposalProvider(),
+        segmentation_provider=SegmentationProvider(mask),
+        localization_provider=NumpyMetricLocalizationProvider(),
+        artifact_store=_artifacts(tmp_path),
+    )
+
+    result = inference.infer(REQUEST)
+
+    assert result["ambiguities"] == []
+    assert [item["entity_refs"] for item in result["reconciliations"]] == [
+        ["entity://red-block"],
+        ["entity://blue-block"],
+    ]
+    assert all(item["provider_code"] == "METRIC_EXTENTS_NOT_ESTIMATED" for item in result["reconciliations"])
+
+
+def test_unknown_provider_ambiguity_remains_active_after_rgbd_evidence(tmp_path):
+    inference = SingleViewPerceptionInference(
+        UnknownAmbiguitySemanticInference(),
+        proposal_provider=ProposalProvider(),
+        segmentation_provider=SegmentationProvider(
+            np.array(
+                [[False, False, False, False], [False, True, True, False], [False, True, True, False]]
+            )
+        ),
+        localization_provider=NumpyMetricLocalizationProvider(),
+        artifact_store=_artifacts(tmp_path),
+    )
+
+    result = inference.infer(REQUEST)
+
+    assert result["ambiguities"][0]["code"] == "provider_private_uncertainty"
+    assert result["reconciliations"] == []
 
 
 def test_no_proposal_does_not_require_depth_or_calibration_materialization(tmp_path):

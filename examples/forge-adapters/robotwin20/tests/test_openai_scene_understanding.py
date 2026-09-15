@@ -181,6 +181,74 @@ def test_provider_specific_response_fields_fail_closed(monkeypatch):
         inference.infer(REQUEST)
 
 
+def test_provider_rejects_metric_ambiguity_codes_even_if_a_client_ignores_schema(monkeypatch):
+    monkeypatch.setenv("CUSTOM_API_KEY", "test-key")
+
+    class MetricAmbiguityResponse(Response):
+        output_text = json.dumps(
+            {
+                "entities": [],
+                "relations": [],
+                "spatial_envelopes": [],
+                "ambiguities": [
+                    {
+                        "code": "NO_METRIC_3D_EXTENTS",
+                        "message": "RGB cannot estimate metric size",
+                        "entity_refs": [],
+                    }
+                ],
+            }
+        )
+
+    class MetricAmbiguityClient(Client):
+        def __init__(self):
+            super().__init__()
+            self.responses.create = lambda **kwargs: MetricAmbiguityResponse()
+
+    inference = OpenAIResponsesSceneUnderstandingInference(
+        Resolver(), client_factory=lambda **kwargs: MetricAmbiguityClient()
+    )
+    with pytest.raises(OpenAIResponsesInferenceError, match="non-semantic ambiguity code"):
+        inference.infer(REQUEST)
+
+
+def test_provider_accepts_canonical_visible_semantic_ambiguity(monkeypatch):
+    monkeypatch.setenv("CUSTOM_API_KEY", "test-key")
+
+    class SemanticAmbiguityResponse(Response):
+        output_text = json.dumps(
+            {
+                "entities": [],
+                "relations": [],
+                "spatial_envelopes": [],
+                "ambiguities": [
+                    {
+                        "code": "occlusion_uncertain",
+                        "message": "the rear object is partly occluded",
+                        "entity_refs": [],
+                    }
+                ],
+            }
+        )
+
+    class SemanticAmbiguityClient(Client):
+        def __init__(self):
+            super().__init__()
+            self.responses.create = lambda **kwargs: SemanticAmbiguityResponse()
+
+    inference = OpenAIResponsesSceneUnderstandingInference(
+        Resolver(), client_factory=lambda **kwargs: SemanticAmbiguityClient()
+    )
+    assert inference.infer(REQUEST)["ambiguities"][0]["code"] == "occlusion_uncertain"
+
+
+def test_provider_prompt_assigns_metric_geometry_to_rgbd_composition():
+    prompt = OpenAIResponsesSceneUnderstandingInference._system_prompt()
+    assert "never emit an ambiguity merely because RGB alone cannot estimate metric" in prompt
+    assert "3-D extents" in prompt
+    assert "RGB-D composition" in prompt
+
+
 def test_response_schema_declares_closed_neutral_claim_objects():
     from robotwin20_adapter import SCENE_UNDERSTANDING_JSON_SCHEMA
 
@@ -193,6 +261,14 @@ def test_response_schema_declares_closed_neutral_claim_objects():
     assert envelope_schema["additionalProperties"] is False
     assert ambiguity_schema["additionalProperties"] is False
     assert "actor_id" not in entity_schema["properties"]
+    assert ambiguity_schema["properties"]["code"]["enum"] == [
+        "entity_identity_uncertain",
+        "entity_category_uncertain",
+        "entity_count_uncertain",
+        "visual_attribute_uncertain",
+        "spatial_relation_uncertain",
+        "occlusion_uncertain",
+    ]
 
 
 def test_response_schema_is_responses_strict_schema_conformant():

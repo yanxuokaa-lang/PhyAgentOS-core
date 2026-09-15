@@ -105,6 +105,16 @@ class OpenAIResponsesInferenceError(RuntimeError):
     """Bounded provider error safe to project as a generic ToolResult failure."""
 
 
+SCENE_SEMANTIC_AMBIGUITY_CODES = (
+    "entity_identity_uncertain",
+    "entity_category_uncertain",
+    "entity_count_uncertain",
+    "visual_attribute_uncertain",
+    "spatial_relation_uncertain",
+    "occlusion_uncertain",
+)
+
+
 SCENE_UNDERSTANDING_JSON_SCHEMA: dict[str, Any] = {
     "type": "object",
     "additionalProperties": False,
@@ -177,7 +187,10 @@ SCENE_UNDERSTANDING_JSON_SCHEMA: dict[str, Any] = {
                 "additionalProperties": False,
                 "required": ["code", "message", "entity_refs"],
                 "properties": {
-                    "code": {"type": "string", "minLength": 1},
+                    "code": {
+                        "type": "string",
+                        "enum": list(SCENE_SEMANTIC_AMBIGUITY_CODES),
+                    },
                     "message": {"type": "string", "minLength": 1},
                     "entity_refs": {
                         "type": "array",
@@ -344,11 +357,17 @@ class OpenAIResponsesSceneUnderstandingInference:
     @staticmethod
     def _system_prompt() -> str:
         return (
-            "You are a query-only visual scene understanding service. Infer only claims supported by the "
+            "You are a query-only RGB visual scene understanding service. Infer only claims supported by the "
             "provided observation image. Return the requested JSON schema. Use opaque entity:// references, "
-            "confidence values in [0,1], and artifact:// provenance supplied by the caller. Do not use or "
-            "invent simulator actor IDs, segmentation truth, task success, robot poses, IK, collision, or "
-            "motion authorization. If the image is ambiguous, return an ambiguity entry instead of guessing."
+            "confidence values in [0,1], and artifact:// provenance supplied by the caller. Your scope is "
+            "visible semantic content: entity identity, category, count, visual attributes, occlusion, and "
+            "relative spatial relations. Do not report or speculate about metric scale, depth, 3-D extents, "
+            "exact dimensions, metric pose, point clouds, collision geometry, segmentation truth, simulator "
+            "actor IDs, task success, IK, or motion authorization. RGB-D composition outside this provider "
+            "will independently establish metric localization and geometry from masks, depth, and calibration. "
+            "Therefore never emit an ambiguity merely because RGB alone cannot estimate metric or geometric "
+            "quantities. If a visible semantic claim is ambiguous, use only one of the schema's canonical "
+            "semantic ambiguity codes instead of guessing."
         )
 
     @staticmethod
@@ -380,6 +399,11 @@ class OpenAIResponsesSceneUnderstandingInference:
         allowed = {"entities", "relations", "spatial_envelopes", "ambiguities"}
         if set(parsed) - allowed or any(not isinstance(parsed.get(key), list) for key in allowed):
             raise OpenAIResponsesInferenceError("Responses structured output violated the provider contract")
+        for ambiguity in parsed["ambiguities"]:
+            if not isinstance(ambiguity, dict) or ambiguity.get("code") not in SCENE_SEMANTIC_AMBIGUITY_CODES:
+                raise OpenAIResponsesInferenceError(
+                    "Responses structured output used a non-semantic ambiguity code"
+                )
         return parsed
 
 
@@ -390,5 +414,6 @@ __all__ = [
     "OpenAIResponsesConfig",
     "OpenAIResponsesInferenceError",
     "OpenAIResponsesSceneUnderstandingInference",
+    "SCENE_SEMANTIC_AMBIGUITY_CODES",
     "SCENE_UNDERSTANDING_JSON_SCHEMA",
 ]

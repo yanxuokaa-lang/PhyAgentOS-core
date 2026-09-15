@@ -11,6 +11,22 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v10.3.5 (2026-09-15 20:00) - codex
+
+- [sense] [fix] [完成] GPT-Sol RGB provider 的 ambiguity schema/prompt 仅允许六类可见语义歧义；metric/depth/3-D/pose/collision 由 RGB-D composition 负责，绕过 schema 的 metric code fail-closed。(local)
+- [Sense] [Fix] [Completed] Restricted GPT-Sol RGB ambiguity schema/prompt to six visible-semantic codes; RGB-D composition owns metric/depth/3-D/pose/collision evidence, and schema-bypassing metric codes fail closed. (local)
+- [sense] [fix] [完成] adapter 兼容 `NO_METRIC_3D_EXTENTS`、`METRIC_EXTENTS_NOT_ESTIMATED` 等历史 code，并按实体独立 reconciliation；未知 ambiguity 保持 active。(local)
+- [Sense] [Fix] [Completed] Adapter compatibility covers observed legacy metric codes with per-entity reconciliation; unknown ambiguities remain active. (local)
+- Files: `openai_scene_understanding.py:L108-L115,L183-L200,L357-L370,L389-L407`; `single_view_perception.py:L29-L35,L537-L538,L632-L676`; regression tests.
+- Validation: adapter `470 passed`, core planning focus `39 passed`, Ruff, compileall, and diff check passed; no Action/Session/motion.
+
+## v10.3.4 (2026-09-15 19:55) - codex
+
+- [env] [chore] [完成] RoboTwin20 Node `0.1.5` 与 Skill `2.0.3` 已构建、验签并安装；Runtime 启动仅等待 operator 进程注入 API key，未保存 secret。(local)
+- [Env] [Chore] [Completed] RoboTwin20 Node `0.1.5` and Skill `2.0.3` were built, verified, and installed; Runtime start only awaits operator API-key injection, with no secret persisted. (local)
+- Files: `examples/forge-skills/pick-place-workflow/skill.yaml`, local deployment receipt.
+- Validation: Skill inspect and forge-node verify passed; no Query/Action/Session/motion after stop.
+
 ## v10.3.3 (2026-09-15 19:35) - codex
 
 - [sense] [fix] [完成] RoboTwin adapter 将 GPT-Sol High 的 `NO_METRIC_3D_ENVELOPES`、`BLOCK_GEOMETRY_UNCERTAIN` 归一化为 PAOS canonical ambiguity；有效 RGB-D metric evidence 按实体 reconciliation，shape uncertainty 延迟到 grasp/readiness。(local)

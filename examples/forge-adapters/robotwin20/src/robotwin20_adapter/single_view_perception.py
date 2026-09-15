@@ -28,6 +28,9 @@ class SingleViewPerceptionError(RuntimeError):
 # Core and the Skill continue to consume the provider-neutral vocabulary.
 _AMBIGUITY_ALIASES = {
     "NO_METRIC_3D_ENVELOPES": "metric_3d_unavailable",
+    "NO_METRIC_3D_EXTENTS": "metric_geometry_unavailable",
+    "METRIC_EXTENTS_NOT_ESTIMATED": "metric_geometry_unavailable",
+    "NO_RELIABLE_METRIC_EXTENTS": "metric_geometry_unavailable",
     "BLOCK_GEOMETRY_UNCERTAIN": "object_shape_uncertain",
 }
 
@@ -532,6 +535,7 @@ class SingleViewPerceptionInference:
                 "provider_available": base.get("provider_available", True),
             }
         materialized: list[tuple[str, str]] = []
+        reconciled_entities: dict[int, set[str]] = {}
         try:
             try:
                 depth = self.artifact_store.load_depth(depth_ref)
@@ -625,42 +629,51 @@ class SingleViewPerceptionInference:
                     # geometry-specific code.  Once this entity has a valid
                     # depth/calibration localization and visual geometry
                     # artifact, reconcile only the entity-scoped entries.
-                    metric_codes = {
-                        "metric_3d_unavailable",
-                        "metric_geometry_unavailable",
-                        "NO_RELIABLE_METRIC_EXTENTS",
-                    }
-                    matched = [
-                        item for item in ambiguities
-                        if item.get("code") in metric_codes
-                        and entity_ref in item.get("entity_refs", [])
-                    ]
-                    if matched:
-                        ambiguities = [item for item in ambiguities if item not in matched]
-                        reconciliations.extend(
-                            {
-                                "code": item["code"],
-                                **({"provider_code": item["_provider_code"]}
-                                   if item.get("_provider_code") else {}),
-                                "entity_refs": [entity_ref],
-                                "resolution": (
-                                    "visual_metric_localization"
-                                    if item["code"] == "metric_3d_unavailable"
-                                    else "visual_metric_geometry"
-                                ),
-                                "evidence_refs": [localization_ref, geometry_ref],
-                            }
-                            for item in matched
-                        )
+                    metric_codes = {"metric_3d_unavailable", "metric_geometry_unavailable"}
+                    for ambiguity_index, item in enumerate(ambiguities):
+                        if not isinstance(item, Mapping) or item.get("code") not in metric_codes:
+                            continue
+                        if entity_ref not in item.get("entity_refs", []):
+                            continue
+                        resolved_entities = reconciled_entities.setdefault(ambiguity_index, set())
+                        if entity_ref in resolved_entities:
+                            continue
+                        resolved_entities.add(entity_ref)
+                        reconciliation = {
+                            "code": item["code"],
+                            **({"provider_code": item["_provider_code"]}
+                               if item.get("_provider_code") else {}),
+                            "entity_refs": [entity_ref],
+                            "resolution": (
+                                "visual_metric_localization"
+                                if item["code"] == "metric_3d_unavailable"
+                                else "visual_metric_geometry"
+                            ),
+                            "evidence_refs": [localization_ref, geometry_ref],
+                        }
+                        reconciliations.append(reconciliation)
             finally:
                 _release_provider(self.segmentation_provider, "segmentation")
         except Exception:
             for artifact_ref, suffix in reversed(materialized):
                 self.artifact_store.discard(artifact_ref, suffix)
             raise
-        for item in ambiguities:
+        remaining_ambiguities: list[Any] = []
+        for ambiguity_index, item in enumerate(ambiguities):
+            if isinstance(item, Mapping) and item.get("code") in {
+                "metric_3d_unavailable",
+                "metric_geometry_unavailable",
+            }:
+                refs = item.get("entity_refs", [])
+                resolved = reconciled_entities.get(ambiguity_index, set())
+                if refs and set(refs) <= resolved:
+                    continue
+                if refs and resolved:
+                    item = {**item, "entity_refs": [ref for ref in refs if ref not in resolved]}
             if isinstance(item, dict):
                 item.pop("_provider_code", None)
+            remaining_ambiguities.append(dict(item) if isinstance(item, Mapping) else item)
+        ambiguities = remaining_ambiguities
         return {
             "entities": list(base["entities"]),
             "relations": list(base.get("relations", [])),
