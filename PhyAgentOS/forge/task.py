@@ -1181,7 +1181,7 @@ class AgentTaskCoordinator:
         completed_queries = {
             record.tool_id
             for record in task.active_revision.execution_records
-            if record.semantics == "query" and record.status == "succeeded"
+            if record.semantics == "query" and _planning_record_status(record) == "succeeded"
         }
         missing_queries = tuple(sorted(required_queries - completed_queries))
         if missing_queries:
@@ -1504,6 +1504,8 @@ class AgentTaskCoordinator:
         planning_binding: PlanningExecutionBinding | dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         tool = await self._require_binding_tool(task_id, tool_id, "query")
+        if tool.default_timeout_ms is not None:
+            timeout_ms = max(timeout_ms or 0, tool.default_timeout_ms)
         record_id, caller = self._append_execution(
             task_id, tool_id, "query", arguments, tool=tool, planning_binding=planning_binding
         )
@@ -2271,6 +2273,44 @@ class AgentTaskCoordinator:
 
         self.store.update(task_id, mutate, event_type="tool_execution_finished")
         self.reconcile_terminal_settlements(task_id)
+        self._project_query_failure_recovery(task_id, record_id)
+
+    def _project_query_failure_recovery(self, task_id: str, record_id: str) -> None:
+        """Expose a terminal planning Query failure through the recovery lifecycle.
+
+        Pre-graph discovery remains open-ended, but an admitted read-only Query
+        with an unknown transport outcome cannot make progress in its frozen
+        PlanGraph.  Projecting that node to ``awaiting_replan`` gives the Agent
+        a legal recovery choice without retrying or authorizing motion.
+        """
+        task = self.store.get(task_id)
+        revision = task.active_revision
+        record = next(
+            (item for item in revision.execution_records if item.record_id == record_id),
+            None,
+        )
+        if (
+            record is None
+            or record.node_id is None
+            or record.semantics != "query"
+            or not record.terminal
+            or revision.plan_graph is None
+            or task.status != AgentTaskStatus.EXECUTING
+            or _planning_record_status(record) not in {"failed", "unknown"}
+            or _replan_count(task) >= self.max_replans
+        ):
+            return
+
+        def mutate(current: AgentTaskRecord) -> None:
+            if current.status != AgentTaskStatus.EXECUTING:
+                return
+            current.status = AgentTaskStatus.AWAITING_REPLAN
+            current.replan_deadline = utc_now() + timedelta(seconds=self.replan_timeout_s)
+            current.evidence_errors.append(
+                f"planning Query failure requires recovery: {record.node_id}"
+            )
+
+        self.store.update(task_id, mutate, event_type="query_failure_replan_required")
 
     def _track_remote_identity(
         self,

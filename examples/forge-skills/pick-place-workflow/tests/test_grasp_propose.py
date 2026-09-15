@@ -265,7 +265,7 @@ def test_bundle_and_package_versions_match_the_feature_revision():
     )
     import tomllib
 
-    assert bundle_manifest["version"] == "2.0.7"
+    assert bundle_manifest["version"] == "2.0.8"
     assert tomllib.loads(package_text)["project"]["version"] == bundle_manifest["version"]
 
 
@@ -380,6 +380,84 @@ def test_candidate_provenance_must_bind_to_requested_target_artifacts():
     result = GraspProposalEndpoint(provider).invoke(request_payload())
     assert result["status"] == "invalid"
     assert result["error"]["code"] == "invalid_provenance"
+    assert result["candidate_set_ref"] == "candidate-set://scene-7/camera_front"
+    assert result["scene_revision"] == "scene-7"
+    assert result["frame"] == {"frame_id": "camera_front", "unit": "m"}
+    assert result["calibration_ref"] == "calibration://front/v3"
+
+
+def test_candidate_provenance_may_cite_a_directly_bound_geometry_artifact():
+    geometry = {
+        "artifact_ref": "artifact://obs-7/camera_front/derived/points-bottle",
+        "kind": "object_point_cloud",
+        "observation_ref": "observation://scene-7/camera_front",
+        "scene_revision": "scene-7",
+        "entity_ref": "entity://bottle-1",
+        "frame_id": "camera_front",
+        "calibration_ref": "calibration://front/v3",
+        "provenance": ["artifact://obs-7/depth"],
+    }
+    direct = candidate(1, provenance=[geometry["artifact_ref"]])
+    provider = Provider(
+        proposal_snapshot(
+            candidates=(direct,),
+            funnel={
+                "decoded": 1,
+                "canonicalized": 1,
+                "deduplicated": 1,
+                "retained": 1,
+            },
+        )
+    )
+
+    result = GraspProposalEndpoint(provider).invoke(
+        request_payload(targets=[target(geometry_artifacts=[geometry])])
+    )
+
+    assert result["status"] == "available"
+    assert result["candidates"][0]["provenance"] == [geometry["artifact_ref"]]
+
+
+def test_candidate_provenance_cannot_cross_target_entities():
+    bottle_geometry = {
+        "artifact_ref": "artifact://obs-7/camera_front/derived/points-bottle",
+        "kind": "object_point_cloud",
+        "observation_ref": "observation://scene-7/camera_front",
+        "scene_revision": "scene-7",
+        "entity_ref": "entity://bottle-1",
+        "frame_id": "camera_front",
+        "calibration_ref": "calibration://front/v3",
+        "provenance": ["artifact://obs-7/depth"],
+    }
+    cup_geometry = {
+        **bottle_geometry,
+        "artifact_ref": "artifact://obs-7/camera_front/derived/points-cup",
+        "entity_ref": "entity://cup-1",
+    }
+    crossed = candidate(1, provenance=[cup_geometry["artifact_ref"]])
+    provider = Provider(
+        proposal_snapshot(
+            candidates=(crossed,),
+            funnel={
+                "decoded": 1,
+                "canonicalized": 1,
+                "deduplicated": 1,
+                "retained": 1,
+            },
+        )
+    )
+
+    result = GraspProposalEndpoint(provider).invoke(
+        request_payload(
+            targets=[
+                target(geometry_artifacts=[bottle_geometry]),
+                target(entity_ref="entity://cup-1", geometry_artifacts=[cup_geometry]),
+            ]
+        )
+    )
+
+    assert result["status"] == "invalid"
+    assert result["error"]["code"] == "invalid_provenance"
 
 
 def test_provider_request_mutation_cannot_change_public_binding():
@@ -401,6 +479,10 @@ async def test_provider_exception_fails_closed_without_gateway_error():
     assert data["status"] == "unavailable"
     assert data["error"]["code"] == "grasp_proposal_provider_error"
     assert data["candidates"] == []
+    assert data["candidate_set_ref"] == "candidate-set://scene-7/camera_front"
+    assert data["scene_revision"] == "scene-7"
+    assert data["frame"] == {"frame_id": "camera_front", "unit": "m"}
+    assert data["calibration_ref"] == "calibration://front/v3"
 
 
 @pytest.mark.parametrize(
@@ -418,6 +500,10 @@ async def test_malformed_snapshot_fails_closed_with_invalid_snapshot(snapshot):
     assert data["status"] == "invalid"
     assert data["error"]["code"] == "invalid_snapshot"
     assert data["candidates"] == []
+    assert data["candidate_set_ref"] == "candidate-set://scene-7/camera_front"
+    assert data["scene_revision"] == "scene-7"
+    assert data["frame"] == {"frame_id": "camera_front", "unit": "m"}
+    assert data["calibration_ref"] == "calibration://front/v3"
 
 
 @pytest.mark.asyncio

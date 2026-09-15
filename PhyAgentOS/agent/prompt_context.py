@@ -11,6 +11,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
+from PhyAgentOS.agent.planning_facts import response_facts
 from PhyAgentOS.forge.binding import required_preplan_queries
 
 TERMINAL_EXECUTION_STATUSES = {"succeeded", "failed", "cancelled", "stopped", "unknown"}
@@ -36,9 +37,22 @@ def _discovery_complete(task: Any) -> bool:
     completed = {
         getattr(record, "tool_id", None)
         for record in records
-        if getattr(record, "status", None) == "succeeded"
+        if _discovery_record_succeeded(record)
     }
     return required.issubset(completed)
+
+
+def _discovery_record_succeeded(record: Any) -> bool:
+    """Treat provider-level non-success responses as incomplete discovery."""
+    if getattr(record, "status", None) != "succeeded":
+        return False
+    response = getattr(record, "response", None)
+    if not isinstance(response, dict):
+        # Preserve compatibility with legacy persisted records that predate
+        # response projection; the Coordinator still owns final admission.
+        return True
+    status = response_facts(response).get("status")
+    return status not in {"unavailable", "invalid", "stale", "empty", "failed", "unknown"}
 _PLANNING = {
     "forge_task_begin_revision",
     "forge_task_finalize",

@@ -3,6 +3,7 @@ implementation_id: grasp.proposal
 endpoint_id: grasp_proposal
 operation: propose
 semantics: query
+default_timeout_ms: 180000
 description: Propose provider-neutral grasp candidates from one verified scene understanding result without planning, IK, collision checking, or motion.
 input_schema:
   type: object

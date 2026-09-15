@@ -73,6 +73,12 @@ def test_registration_rejects_duplicate_and_provider_specific_specs():
         )
 
 
+def test_registration_rejects_invalid_default_query_timeout():
+    runtime = CapabilityRuntime()
+    with pytest.raises(ToolContractError, match="default_timeout_ms"):
+        runtime.register_tool({**QUERY_SPEC, "default_timeout_ms": 0}, Query())
+
+
 def test_query_requires_ready_context_and_action_enforces_concurrency():
     runtime = CapabilityRuntime()
     runtime.register_tool(

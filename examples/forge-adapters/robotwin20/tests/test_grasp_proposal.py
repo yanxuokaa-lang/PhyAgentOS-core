@@ -2,6 +2,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from PhyAgentOS.forge.capability_runtime.grasp_proposal import GraspProposalEndpoint
 
 from robotwin20_adapter.grasp_proposal import (
     FilesystemPointCloudArtifactResolver,
@@ -93,6 +94,23 @@ def test_graspgen_provider_maps_bound_geometry_to_neutral_candidates(tmp_path):
     assert worker.requests[0]["provider"] == "graspgen"
     assert worker.requests[0]["point_units"] == "m"
     assert worker.released is True
+
+
+def test_graspgen_provider_composes_with_generic_endpoint(tmp_path):
+    provider = GraspGenProposalProvider(
+        Worker(), artifact_store=_store(tmp_path), apply_nms=True
+    )
+
+    result = GraspProposalEndpoint(provider).invoke(REQUEST)
+
+    assert result["status"] == "available"
+    assert result["candidate_set_ref"] == "candidate-set://scene-7/camera_front"
+    assert result["scene_revision"] == "scene-7"
+    assert result["frame"] == {"frame_id": "camera_front", "unit": "m"}
+    assert result["calibration_ref"] == "calibration://front/v3"
+    assert result["candidates"][0]["provenance"] == [
+        REQUEST["targets"][0]["geometry_artifacts"][0]["artifact_ref"]
+    ]
 
 
 def test_missing_geometry_fails_closed(tmp_path):

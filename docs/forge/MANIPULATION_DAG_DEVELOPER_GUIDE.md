@@ -141,6 +141,16 @@ Keep these representations distinct:
 the target object pose copied into a TCP command. A route selection is only a
 no-motion projection and remains `motion_authorized=false`.
 
+For multi-object rearrangement, the Agent owns semantic cycle breaking while
+the adapter owns geometric feasibility. A sequential plan must not place one
+object into a destination still occupied by another selected object. Cycles
+must use an unoccupied staging destination backed by current observation and
+binding evidence, followed by fresh observation and binding after each world
+change. PAOS core must not encode benchmark coordinates, color order, object
+names, or a universal buffer pose. A synchronized multi-arm swap remains
+unavailable unless one Runtime capability atomically owns shared timing and
+inter-arm collision evidence.
+
 ## Frame and Calibration Contract
 
 - `scene.observe` returns the concrete Runtime frame identifier in
@@ -170,6 +180,14 @@ does not assert object shape or simulator collision truth; `grasp.propose` and
 `manipulation.prepare` must qualify shape and candidate readiness before Action
 admission. Ambiguities are evaluated by entity and stage, not as a global scene
 stop.
+
+`grasp.propose` candidate provenance may cite a directly bound geometry
+artifact because that artifact is the immediate input consumed by the provider.
+The generic Endpoint validates candidates against the request's bound spatial
+provenance, geometry artifact identities, and their upstream provenance; an
+unrelated artifact remains invalid. Provider failures and invalid output stay
+non-motion results, but retain the validated scene/frame/calibration identity
+so recovery can diagnose the correct failure without fabricating evidence.
 
 ## RoboTwin and Embodiment Extension
 

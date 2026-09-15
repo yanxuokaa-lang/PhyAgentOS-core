@@ -258,6 +258,29 @@ def test_discovery_visibility_uses_skill_declared_prerequisites() -> None:
     assert required_preplan_queries(task) == frozenset({"inspect.scene"})
 
 
+def test_discovery_visibility_does_not_count_provider_failure_as_success() -> None:
+    names = ("forge_task_materialize_plan", "forge_tool_query", "forge_tool_context")
+    task = _task()
+    policy = ToolSpecPolicy(
+        tool_id="inspect.scene", semantics="query", spec_digest="a" * 64,
+        requires_before_plan=True,
+    )
+    task.primary_skill_binding = ForgeSkillBinding(
+        binding_id="binding-1", skill_name="fixture", skill_version="1",
+        manifest_sha256="b" * 64, skill_document_sha256="c" * 64,
+        runtime_profile="fixture", runtime_instance_id="runtime-1",
+        gateway_url="http://fixture", required_tools=(
+            BoundToolSpec(tool_id="inspect.scene", semantics="query", spec_sha256="d" * 64,
+                          ready_at_binding=True, planning_policy=policy),
+        ),
+    )
+    task.active_revision.execution_records = [SimpleNamespace(
+        tool_id="inspect.scene", status="succeeded",
+        response={"status": "unavailable"},
+    )]
+    assert "forge_task_materialize_plan" not in visible_tool_names(names, task)
+
+
 def test_compaction_preserves_visual_and_execution_references() -> None:
     content = json.dumps(
         {

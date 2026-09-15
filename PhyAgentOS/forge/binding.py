@@ -28,6 +28,7 @@ class BoundToolSpec(BindingModel):
     semantics: Literal["query", "action", "session"]
     spec_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     ready_at_binding: bool
+    default_timeout_ms: int | None = Field(default=None, ge=1)
     planning_policy: ToolSpecPolicy | None = None
 
 
@@ -189,6 +190,7 @@ class ForgeSkillBindingResolver:
                     semantics=semantics,
                     spec_sha256=canonical_sha256(spec),
                     ready_at_binding=True,
+                    default_timeout_ms=spec.get("default_timeout_ms"),
                     planning_policy=planning_policy,
                 )
             )
@@ -281,6 +283,7 @@ class ForgeSkillBindingResolver:
             semantics=semantics,
             spec_sha256=canonical_sha256(spec),
             ready_at_binding=True,
+            default_timeout_ms=spec.get("default_timeout_ms"),
             planning_policy=planning_policy,
         )
 

@@ -50,6 +50,9 @@ GRASP_TOOL_SPEC: dict[str, Any] = {
     "endpoint_id": GRASP_ENDPOINT_ID,
     "operation": GRASP_OPERATION,
     "semantics": "query",
+    # GraspGen has a bounded worker request budget; callers may not select a
+    # shorter transport deadline and disconnect while the provider is running.
+    "default_timeout_ms": 180_000,
     "description": (
         "Propose provider-neutral grasp candidates from one verified scene understanding "
         "result without planning, IK, collision checking, or motion."
@@ -254,14 +257,18 @@ def _error(
     message: str,
     *,
     observation_ref: str = "observation://unknown/unknown",
+    candidate_set_ref: str = "candidate-set://unknown/unknown",
+    scene_revision: str = "unknown",
+    frame_id: str = "unknown",
+    calibration_ref: str | None = None,
 ) -> dict[str, Any]:
     return {
         "status": "invalid" if code.startswith("invalid") else "unavailable",
-        "candidate_set_ref": "candidate-set://unknown/unknown",
+        "candidate_set_ref": candidate_set_ref,
         "observation_ref": observation_ref,
-        "scene_revision": "unknown",
-        "frame": {"frame_id": "unknown", "unit": "m"},
-        "calibration_ref": None,
+        "scene_revision": scene_revision,
+        "frame": {"frame_id": frame_id, "unit": "m"},
+        "calibration_ref": calibration_ref,
         "candidates": [],
         "funnel": {"decoded": 0, "canonicalized": 0, "deduplicated": 0, "retained": 0},
         "ambiguities": [],
@@ -271,6 +278,26 @@ def _error(
 
 def _candidate_set_ref(arguments: dict[str, Any]) -> str:
     return f"candidate-set://{arguments['scene_revision']}/{arguments['frame_id']}"
+
+
+def _bound_error(
+    code: str,
+    message: str,
+    *,
+    arguments: dict[str, Any],
+    candidate_set_ref: str,
+) -> dict[str, Any]:
+    """Return a fail-closed error without discarding validated request identity."""
+
+    return _error(
+        code,
+        message,
+        observation_ref=arguments["observation_ref"],
+        candidate_set_ref=candidate_set_ref,
+        scene_revision=arguments["scene_revision"],
+        frame_id=arguments["frame_id"],
+        calibration_ref=arguments["calibration_ref"],
+    )
 
 
 def _finite_number(value: Any) -> bool:
@@ -427,6 +454,7 @@ def _validate_candidate(
     requested_entity_refs: set[str],
     seen_candidate_refs: set[str],
     allowed_provenance: set[str] | None = None,
+    allowed_provenance_by_entity: Mapping[str, set[str]] | None = None,
 ) -> str | None:
     if not isinstance(candidate, dict) or set(candidate) != _CANDIDATE_KEYS:
         return "invalid_candidate"
@@ -441,6 +469,9 @@ def _validate_candidate(
         return "invalid_entity_ref"
     if entity_ref not in requested_entity_refs:
         return "invalid_candidate_entity"
+    entity_provenance = allowed_provenance
+    if allowed_provenance_by_entity is not None:
+        entity_provenance = allowed_provenance_by_entity.get(entity_ref, set())
     grasp_frame = candidate.get("grasp_frame")
     if (
         not isinstance(grasp_frame, dict)
@@ -492,8 +523,8 @@ def _validate_candidate(
         or not candidate["provenance"]
         or not _artifact_refs(candidate["provenance"])
         or (
-            allowed_provenance is not None
-            and any(ref not in allowed_provenance for ref in candidate["provenance"])
+            entity_provenance is not None
+            and any(ref not in entity_provenance for ref in candidate["provenance"])
         )
     ):
         return "invalid_provenance"
@@ -536,6 +567,7 @@ def validate_snapshot(
     frame_id: str,
     requested_entity_refs: set[str],
     allowed_provenance: set[str] | None = None,
+    allowed_provenance_by_entity: Mapping[str, set[str]] | None = None,
 ) -> str | None:
     snapshot = normalize_snapshot(snapshot)
     if snapshot is None:
@@ -553,6 +585,7 @@ def validate_snapshot(
             requested_entity_refs=requested_entity_refs,
             seen_candidate_refs=seen_candidate_refs,
             allowed_provenance=allowed_provenance,
+            allowed_provenance_by_entity=allowed_provenance_by_entity,
         )
         if candidate_error is not None:
             return candidate_error
@@ -606,16 +639,13 @@ class GraspProposalEndpoint:
             )
         if arguments["freshness_ms"] > arguments["max_age_ms"]:
             return {
-                **_error(
+                **_bound_error(
                     "stale_observation",
                     "observation exceeds max_age_ms",
-                    observation_ref=observation_ref,
+                    arguments=arguments,
+                    candidate_set_ref=candidate_set_ref,
                 ),
                 "status": "stale",
-                "candidate_set_ref": candidate_set_ref,
-                "scene_revision": arguments["scene_revision"],
-                "frame": {"frame_id": arguments["frame_id"], "unit": "m"},
-                "calibration_ref": arguments["calibration_ref"],
             }
         if not arguments["targets"]:
             # An empty target list is a complete request: no candidates may be fabricated.
@@ -634,60 +664,64 @@ class GraspProposalEndpoint:
             snapshot = self.provider.propose(deepcopy(arguments))
         except Exception:
             # Provider failures are unavailable, never an implicit Gateway 500 or success.
-            return _error(
+            return _bound_error(
                 "grasp_proposal_provider_error",
                 "grasp proposal provider failed",
-                observation_ref=observation_ref,
+                arguments=arguments,
+                candidate_set_ref=candidate_set_ref,
             )
         if snapshot is None:
-            return _error(
+            return _bound_error(
                 "grasp_proposal_unavailable",
                 "grasp proposal provider is unavailable",
-                observation_ref=observation_ref,
+                arguments=arguments,
+                candidate_set_ref=candidate_set_ref,
             )
         normalized = normalize_snapshot(snapshot)
         if normalized is None:
-            return _error(
+            return _bound_error(
                 "invalid_snapshot",
                 "grasp proposal provider returned an invalid snapshot",
-                observation_ref=observation_ref,
+                arguments=arguments,
+                candidate_set_ref=candidate_set_ref,
             )
         snapshot = normalized
         if not isinstance(snapshot.provider_available, bool):
-            return _error(
+            return _bound_error(
                 "invalid_snapshot",
                 "grasp proposal provider returned an invalid availability flag",
-                observation_ref=observation_ref,
+                arguments=arguments,
+                candidate_set_ref=candidate_set_ref,
             )
         if not snapshot.provider_available:
-            return _error(
+            return _bound_error(
                 "grasp_proposal_unavailable",
                 "grasp proposal provider is unavailable",
-                observation_ref=observation_ref,
+                arguments=arguments,
+                candidate_set_ref=candidate_set_ref,
             )
         requested_entity_refs = {target["entity_ref"] for target in arguments["targets"]}
-        allowed_provenance = {
-            ref
-            for target in arguments["targets"]
-            for ref in target["spatial_envelope"]["provenance"]
-        }
-        allowed_provenance.update(
-            ref
-            for target in arguments["targets"]
-            for artifact in target.get("geometry_artifacts", [])
-            for ref in artifact["provenance"]
-        )
+        allowed_provenance_by_entity: dict[str, set[str]] = {}
+        for target in arguments["targets"]:
+            target_provenance = allowed_provenance_by_entity.setdefault(
+                target["entity_ref"], set()
+            )
+            target_provenance.update(target["spatial_envelope"]["provenance"])
+            for artifact in target.get("geometry_artifacts", []):
+                target_provenance.add(artifact["artifact_ref"])
+                target_provenance.update(artifact["provenance"])
         snapshot_error = validate_snapshot(
             snapshot,
             frame_id=arguments["frame_id"],
             requested_entity_refs=requested_entity_refs,
-            allowed_provenance=allowed_provenance,
+            allowed_provenance_by_entity=allowed_provenance_by_entity,
         )
         if snapshot_error:
-            return _error(
+            return _bound_error(
                 snapshot_error,
                 "grasp proposal provider result failed contract validation",
-                observation_ref=observation_ref,
+                arguments=arguments,
+                candidate_set_ref=candidate_set_ref,
             )
         return {
             "status": "available" if snapshot.candidates else "empty",

@@ -93,6 +93,10 @@ def _validate_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
             raise ToolContractError(f"ToolSpec {key} must be a non-empty string")
     if value["semantics"] not in _SEMANTICS:
         raise ToolContractError(f"unsupported ToolSpec semantics: {value['semantics']!r}")
+    if "default_timeout_ms" in value:
+        timeout_ms = value["default_timeout_ms"]
+        if isinstance(timeout_ms, bool) or not isinstance(timeout_ms, int) or timeout_ms < 1:
+            raise ToolContractError("ToolSpec default_timeout_ms must be a positive integer")
     if not _provider_neutral(value):
         raise ToolContractError("ToolSpec contains provider-specific simulator/model terms")
     return value

@@ -31,6 +31,16 @@ joins all requested placements. Keep the original success criteria; do not
 weaken them during recovery. Each node turn uses the task's activated Skill
 instructions, not a later revision loaded silently during execution.
 
+Before materializing a multi-object rearrangement, check whether a selected
+destination is still occupied by another object that must move. A sequential
+place must not overwrite an occupied destination. Break each relocation cycle
+through an unoccupied staging destination whose free space, support geometry,
+object fit, and later recovery path are supported by the current observation
+and binding evidence. Re-observe and rebind after every staged placement. If no
+such destination is evidenced, request clarification or stop; do not invent a
+buffer pose. A simultaneous multi-arm swap is admissible only when the Runtime
+exposes one atomic synchronized capability with inter-arm collision evidence.
+
 Use settled results and postcondition evidence to decide whether to advance.
 For failure, choose stop, replay or replan from the facts. In PAOS, replay means
 recomputing the reducer from existing records, not repeating a grasp. A new

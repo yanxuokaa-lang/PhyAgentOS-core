@@ -9,12 +9,13 @@ from PhyAgentOS.agent.experience.source import AgentTaskOutcomeSource
 from PhyAgentOS.agent.tools.forge_tool_api import ForgeToolQueryTool
 from PhyAgentOS.config.schema import ForgeConfig
 from PhyAgentOS.forge.binding import BoundToolSpec
-from PhyAgentOS.forge.task import AgentTaskCoordinator, AgentTaskStatus
+from PhyAgentOS.forge.task import AgentTaskCoordinator, AgentTaskStatus, DiscoveryRequiredError
 from PhyAgentOS.planning import (
     PlanGraph,
     PlanningExecutionBinding,
     PlanNode,
     ToolResultEnvelope,
+    ToolSpecPolicy,
     build_replan_delta,
     derive_ready_nodes,
     plan_graph_digest,
@@ -26,6 +27,17 @@ from PhyAgentOS.verification.contracts import TaskVerificationContract
 
 class _Client:
     pass
+
+
+class _QueryClient:
+    def __init__(self):
+        self.timeout_ms = None
+
+    async def invoke_query_tool(
+        self, tool_id, arguments, *, caller_id=None, timeout_ms=None
+    ):
+        self.timeout_ms = timeout_ms
+        return {"ok": True, "data": {"status": "available"}}
 
 
 def _graph(task_id: str, revision_id: str) -> PlanGraph:
@@ -151,6 +163,208 @@ def test_terminal_planning_records_settle_all_tool_semantics(tmp_path, semantics
     ]
     coordinator.reconcile_terminal_settlements(task.task_id)
     assert len(coordinator.get_task(task.task_id).active_revision.node_settlements) == 1
+
+
+@pytest.mark.asyncio
+async def test_bound_query_timeout_cannot_be_shorter_than_tool_spec_default(tmp_path):
+    client = _QueryClient()
+    coordinator = AgentTaskCoordinator(
+        workspace=tmp_path, config=ForgeConfig(), client=client
+    )
+    task = coordinator.create_task(
+        task_description="run one bounded model Query",
+        verification=TaskVerificationContract(mode="off"),
+    )
+
+    async def require_tool(task_id, tool_id, semantics):
+        return BoundToolSpec(
+            tool_id=tool_id,
+            semantics=semantics,
+            spec_sha256="4" * 64,
+            ready_at_binding=True,
+            default_timeout_ms=180_000,
+        )
+
+    coordinator._require_binding_tool = require_tool
+    await coordinator.invoke_query(
+        task.task_id,
+        "grasp.propose",
+        {},
+        timeout_ms=30_000,
+    )
+
+    assert client.timeout_ms == 180_000
+
+
+def test_terminal_planning_query_failure_enters_replan_without_motion(tmp_path):
+    graph = _graph("task-1", "revision-1")
+    coordinator = AgentTaskCoordinator(
+        workspace=tmp_path, config=ForgeConfig(), client=_Client()
+    )
+    task = coordinator.create_task(
+        task_description="recover one failed planning Query",
+        verification=TaskVerificationContract(mode="off"),
+        plan_graph=graph,
+        plan_graph_ref="artifact://plans/task-1/revision-1",
+    )
+    binding = PlanningExecutionBinding(
+        node_id="relocate-red",
+        node_digest=plan_node_digest(graph.nodes[0]),
+        obligation_id="relocate-red",
+        input_binding_digest="3" * 64,
+        decision_trace_ref="artifact://traces/task-1/record-1",
+    )
+    record_id, _caller = coordinator._append_execution(
+        task.task_id,
+        "grasp.propose",
+        "query",
+        {},
+        tool=BoundToolSpec(
+            tool_id="grasp.propose",
+            semantics="query",
+            spec_sha256="4" * 64,
+            ready_at_binding=True,
+        ),
+        planning_binding=binding,
+    )
+
+    coordinator._finish_execution(
+        task.task_id,
+        record_id,
+        status="succeeded",
+        response={
+            "status": "unavailable",
+            "error": {"code": "grasp_proposal_provider_error"},
+        },
+    )
+
+    current = coordinator.get_task(task.task_id)
+    assert current.status == AgentTaskStatus.AWAITING_REPLAN
+    assert current.replan_deadline is not None
+    assert current.active_revision.node_settlements[0].status == "failed"
+    assert all(record.semantics == "query" for record in current.execution_records)
+
+
+def test_discovery_failure_stays_open_but_planning_unknown_requests_replan(tmp_path):
+    coordinator = AgentTaskCoordinator(
+        workspace=tmp_path, config=ForgeConfig(), client=_Client()
+    )
+    task = coordinator.create_task(
+        task_description="continue open discovery",
+        verification=TaskVerificationContract(mode="off"),
+    )
+    record_id, _caller = coordinator._append_execution(
+        task.task_id,
+        "scene.understand",
+        "query",
+        {},
+        tool=BoundToolSpec(
+            tool_id="scene.understand",
+            semantics="query",
+            spec_sha256="4" * 64,
+            ready_at_binding=True,
+        ),
+    )
+    coordinator._finish_execution(
+        task.task_id,
+        record_id,
+        status="succeeded",
+        response={"status": "unavailable"},
+    )
+    assert coordinator.get_task(task.task_id).status == AgentTaskStatus.EXECUTING
+
+    coordinator = AgentTaskCoordinator(
+        workspace=tmp_path / "planned", config=ForgeConfig(), client=_Client()
+    )
+    graph = _graph("task-2", "revision-2")
+    planned = coordinator.create_task(
+        task_description="retain unknown Query state",
+        verification=TaskVerificationContract(mode="off"),
+        plan_graph=graph,
+        plan_graph_ref="artifact://plans/task-2/revision-2",
+    )
+    binding = PlanningExecutionBinding(
+        node_id="relocate-red",
+        node_digest=plan_node_digest(graph.nodes[0]),
+        obligation_id="relocate-red",
+        input_binding_digest="3" * 64,
+        decision_trace_ref="artifact://traces/task-2/record-1",
+    )
+    record_id, _caller = coordinator._append_execution(
+        planned.task_id,
+        "grasp.propose",
+        "query",
+        {},
+        tool=BoundToolSpec(
+            tool_id="grasp.propose",
+            semantics="query",
+            spec_sha256="4" * 64,
+            ready_at_binding=True,
+        ),
+        planning_binding=binding,
+    )
+    coordinator._finish_execution(
+        planned.task_id,
+        record_id,
+        status="unknown",
+        error={"type": "ForgeToolAPITimeoutError"},
+    )
+    assert coordinator.get_task(planned.task_id).status == AgentTaskStatus.AWAITING_REPLAN
+    assert coordinator.get_task(planned.task_id).replan_deadline is not None
+
+
+def test_discovery_expansion_rejects_provider_failure_response(tmp_path):
+    coordinator = AgentTaskCoordinator(
+        workspace=tmp_path, config=ForgeConfig(), client=_Client()
+    )
+    task = coordinator.create_task(
+        task_description="reject failed discovery evidence",
+        verification=TaskVerificationContract(mode="off"),
+    )
+    task = coordinator.store.update(
+        task.task_id,
+        lambda current: current.tool_bindings.append(
+            BoundToolSpec(
+                tool_id="scene.observe",
+                semantics="query",
+                spec_sha256="5" * 64,
+                ready_at_binding=True,
+                planning_policy=ToolSpecPolicy(
+                    tool_id="scene.observe",
+                    semantics="query",
+                    spec_digest="5" * 64,
+                    requires_before_plan=True,
+                    capabilities=("scene.observe",),
+                ),
+            )
+        ),
+        event_type="test_binding_added",
+    )
+    record_id, _caller = coordinator._append_execution(
+        task.task_id,
+        "scene.observe",
+        "query",
+        {},
+        tool=BoundToolSpec(
+            tool_id="scene.observe",
+            semantics="query",
+            spec_sha256="4" * 64,
+            ready_at_binding=True,
+        ),
+    )
+    coordinator._finish_execution(
+        task.task_id,
+        record_id,
+        status="succeeded",
+        response={"status": "unavailable", "scene_revision": "scene-1"},
+    )
+    assert coordinator.get_task(task.task_id).status == AgentTaskStatus.EXECUTING
+    with pytest.raises(DiscoveryRequiredError):
+        coordinator.expand_discovery_revision(
+            task.task_id,
+            plan_graph=_graph(task.task_id, "revision-discovery-failed"),
+            plan_graph_ref=f"artifact://plans/{task.task_id}/revision-discovery-failed",
+        )
 
 
 def test_reconcile_terminal_settlement_repairs_legacy_missing_projection(tmp_path):
