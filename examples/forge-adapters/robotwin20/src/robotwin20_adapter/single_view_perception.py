@@ -24,6 +24,36 @@ class SingleViewPerceptionError(RuntimeError):
     """The adapter cannot produce a contract-valid perception result."""
 
 
+# Provider/model wording is normalized only at this adapter boundary.  PAOS
+# Core and the Skill continue to consume the provider-neutral vocabulary.
+_AMBIGUITY_ALIASES = {
+    "NO_METRIC_3D_ENVELOPES": "metric_3d_unavailable",
+    "BLOCK_GEOMETRY_UNCERTAIN": "object_shape_uncertain",
+}
+
+
+def _normalize_ambiguities(items: Sequence[Any]) -> list[dict[str, Any]]:
+    """Map known semantic-provider aliases while retaining raw wording.
+
+    Unknown ambiguity codes remain untouched and therefore continue to fail
+    closed in Grounding.  The raw code is carried only into a reconciliation
+    record when a derived artifact resolves that ambiguity.
+    """
+    normalized: list[dict[str, Any]] = []
+    for item in items:
+        if not isinstance(item, Mapping):
+            normalized.append(item)
+            continue
+        value = dict(item)
+        raw_code = value.get("code")
+        canonical = _AMBIGUITY_ALIASES.get(raw_code, raw_code)
+        if canonical != raw_code:
+            value["code"] = canonical
+            value["_provider_code"] = raw_code
+        normalized.append(value)
+    return normalized
+
+
 @dataclass(frozen=True)
 class Proposal:
     bbox_xyxy_px: tuple[int, int, int, int]
@@ -449,7 +479,7 @@ class SingleViewPerceptionInference:
         rgb_path = self.artifact_store.resolve_source(rgb_ref, "rgb")
         width, height = self.artifact_store.image_size(rgb_path)
         pending: list[tuple[Mapping[str, Any], Proposal]] = []
-        ambiguities = list(base.get("ambiguities", []))
+        ambiguities = _normalize_ambiguities(base.get("ambiguities", []))
         reconciliations = list(base.get("reconciliations", []))
         try:
             for entity in base["entities"]:
@@ -489,6 +519,9 @@ class SingleViewPerceptionInference:
         envelopes = list(base.get("spatial_envelopes", []))
         if not pending:
             _release_provider(self.segmentation_provider, "segmentation")
+            for item in ambiguities:
+                if isinstance(item, dict):
+                    item.pop("_provider_code", None)
             return {
                 "entities": list(base["entities"]),
                 "relations": list(base.get("relations", [])),
@@ -607,6 +640,8 @@ class SingleViewPerceptionInference:
                         reconciliations.extend(
                             {
                                 "code": item["code"],
+                                **({"provider_code": item["_provider_code"]}
+                                   if item.get("_provider_code") else {}),
                                 "entity_refs": [entity_ref],
                                 "resolution": (
                                     "visual_metric_localization"
@@ -623,6 +658,9 @@ class SingleViewPerceptionInference:
             for artifact_ref, suffix in reversed(materialized):
                 self.artifact_store.discard(artifact_ref, suffix)
             raise
+        for item in ambiguities:
+            if isinstance(item, dict):
+                item.pop("_provider_code", None)
         return {
             "entities": list(base["entities"]),
             "relations": list(base.get("relations", [])),

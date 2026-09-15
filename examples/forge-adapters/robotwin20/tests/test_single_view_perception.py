@@ -80,6 +80,24 @@ class GeometryAmbiguousSemanticInference(SemanticInference):
         return result
 
 
+class GPTSolAliasSemanticInference(SemanticInference):
+    def infer(self, request):
+        result = super().infer(request)
+        result["ambiguities"] = [
+            {
+                "code": "NO_METRIC_3D_ENVELOPES",
+                "message": "the RGB model did not infer metric envelopes",
+                "entity_refs": ["entity://red-block"],
+            },
+            {
+                "code": "BLOCK_GEOMETRY_UNCERTAIN",
+                "message": "block geometry is uncertain",
+                "entity_refs": ["entity://red-block"],
+            },
+        ]
+        return result
+
+
 class ProposalProvider:
     def __init__(self, proposals=(Proposal((1, 1, 3, 3), 0.8),), *, release_error=False):
         self.proposals = proposals
@@ -243,6 +261,27 @@ def test_visual_geometry_reconciles_geometry_ambiguity_alias(tmp_path):
     result = inference.infer(REQUEST)
     assert result["ambiguities"] == []
     assert result["reconciliations"][0]["resolution"] == "visual_metric_geometry"
+
+
+def test_gpt_sol_aliases_normalize_and_reconcile_without_leaking_provider_code(tmp_path):
+    inference = SingleViewPerceptionInference(
+        GPTSolAliasSemanticInference(),
+        proposal_provider=ProposalProvider(),
+        segmentation_provider=SegmentationProvider(
+            np.array(
+                [[False, False, False, False], [False, True, True, False], [False, True, True, False]]
+            )
+        ),
+        localization_provider=NumpyMetricLocalizationProvider(),
+        artifact_store=_artifacts(tmp_path),
+    )
+
+    result = inference.infer(REQUEST)
+
+    assert [item["code"] for item in result["ambiguities"]] == ["object_shape_uncertain"]
+    assert "_provider_code" not in result["ambiguities"][0]
+    assert result["reconciliations"][0]["code"] == "metric_3d_unavailable"
+    assert result["reconciliations"][0]["provider_code"] == "NO_METRIC_3D_ENVELOPES"
 
 
 def test_no_proposal_does_not_require_depth_or_calibration_materialization(tmp_path):

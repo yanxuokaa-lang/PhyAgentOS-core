@@ -106,6 +106,16 @@ def test_semantic_submission_rejects_cycle_undeclared_capability_and_ambiguous_i
     assert len(c.get_task(task.task_id).revisions) == 1
 
 
+def test_semantic_submission_rejects_root_produced_evidence_before_tool_result(tmp_path):
+    c, task = setup_task(tmp_path)
+    nodes = semantic_nodes(1)
+    nodes[0]["capability"] = "scene.observe"
+    nodes[0]["produced_evidence"] = ["observation_ref", "scene_revision"]
+    with pytest.raises(ValueError, match="root discovery nodes cannot declare produced_evidence"):
+        compile_task_plan(task, nodes, reason="reject unresolved discovery outputs")
+    assert len(c.get_task(task.task_id).revisions) == 1
+
+
 def test_materialized_unstarted_graph_can_be_corrected_append_only(tmp_path):
     c, task = setup_task(tmp_path)
     first = semantic_nodes(1)

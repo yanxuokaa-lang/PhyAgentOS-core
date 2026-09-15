@@ -195,7 +195,10 @@ class ForgeTaskMaterializePlanTool(Tool):
             "no extra task read is needed just to recover their IDs. If evidence is insufficient, "
             "obtain the missing facts or request clarification. PlanNode.conditions must be "
             "symbolic condition-fact keys, not prose; keep natural-language constraints in "
-            "obligation/evidence/input_bindings. This call does not execute Tools or motion."
+            "obligation/evidence/input_bindings. Root discovery nodes must leave "
+            "produced_evidence empty because their opaque Tool refs do not exist until "
+            "the terminal result; use exact paos_record.evidence_refs on later nodes. "
+            "This call does not execute Tools or motion."
         )
 
     @property

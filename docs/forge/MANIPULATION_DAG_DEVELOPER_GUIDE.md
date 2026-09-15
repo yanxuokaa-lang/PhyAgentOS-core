@@ -296,6 +296,13 @@ inspect `forge_plan_ready.node_diagnostics` before selecting a Tool. The
 diagnostic distinguishes dependency, evidence, condition, and Tool-candidate
 blockers without invoking Gateway or changing task state.
 
+Root discovery nodes must leave `produced_evidence` empty when their Tool has
+not yet returned a terminal result: their opaque evidence references do not
+exist at graph-construction time. After the discovery Tool settles, later nodes
+may use the exact `paos_record.evidence_refs` values as `required_evidence`.
+Descriptive labels such as `observation_ref`, `frame`, or `rgb_image` are not
+substitutes for Coordinator-owned evidence references.
+
 If an Agent discovers a mapping error immediately after materialization and the
 active graph has no execution record, node settlement, counterevidence, or
 verification attempt, it may resubmit a corrected graph. PAOS records this as

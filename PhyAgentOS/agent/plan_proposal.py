@@ -15,6 +15,12 @@ from PhyAgentOS.planning import (
     validate_graph,
 )
 
+_DISCOVERY_CAPABILITIES = frozenset({
+    "scene.observe",
+    "scene.understand",
+    "manipulation.capabilities",
+})
+
 
 def compile_task_plan(
     task: AgentTaskRecord,
@@ -44,6 +50,25 @@ def compile_task_plan(
         raise ValueError(
             "semantic plan references capabilities outside the bound Skill: "
             f"{', '.join(unsupported)}; available capabilities: {available}"
+        )
+    root_produced_evidence = {
+        node.node_id: node.produced_evidence
+        for node in parsed
+        if (
+            not node.dependencies
+            and node.capability in _DISCOVERY_CAPABILITIES
+            and node.produced_evidence
+        )
+    }
+    if root_produced_evidence:
+        details = "; ".join(
+            f"{node_id}: {', '.join(values)}"
+            for node_id, values in sorted(root_produced_evidence.items())
+        )
+        raise ValueError(
+            "root discovery nodes cannot declare produced_evidence before their Tool "
+            f"has a terminal result: {details}; leave produced_evidence empty and "
+            "use the exact paos_record.evidence_refs for later dependent nodes"
         )
     if initial_evidence_refs is not None:
         initial = set(initial_evidence_refs)
