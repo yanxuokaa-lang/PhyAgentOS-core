@@ -11,6 +11,16 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v10.3.3 (2026-09-15 19:35) - codex
+
+- [sense] [fix] [完成] RoboTwin adapter 将 GPT-Sol High 的 `NO_METRIC_3D_ENVELOPES`、`BLOCK_GEOMETRY_UNCERTAIN` 归一化为 PAOS canonical ambiguity；有效 RGB-D metric evidence 按实体 reconciliation，shape uncertainty 延迟到 grasp/readiness。(local)
+- [Sense] [Fix] [Completed] The RoboTwin adapter normalizes GPT-Sol High `NO_METRIC_3D_ENVELOPES` and `BLOCK_GEOMETRY_UNCERTAIN` into PAOS canonical ambiguities; valid RGB-D metric evidence reconciles per entity while shape uncertainty remains deferred to grasp/readiness. (local)
+- [policy] [fix] [完成] Agent-composed materialization 在执行前拒绝 root discovery node 的描述性 `produced_evidence`，指导后续节点使用精确 `paos_record.evidence_refs`，避免成功观察被结算为 `missing_produced_evidence`。(local)
+- [Policy] [Fix] [Completed] Agent-composed materialization rejects descriptive root-discovery `produced_evidence` before execution and directs later nodes to exact `paos_record.evidence_refs`, preventing successful observations from settling as `missing_produced_evidence`. (local)
+- Files: `single_view_perception.py:L27-L54,L482-L483,L520-L525,L640-L663`; `plan_proposal.py:L25-L69`; `forge_task.py:L190-L201`; focused tests and DAG developer guide.
+- Validation: core `398 passed`, adapter `466 passed`, focused perception `15 passed`, planning/Coordinator `65 passed`, planning module `57 passed`, grounding/Skill `34 passed`; Ruff, compileall, and diff check passed; existing task replay stayed no-motion.
+- Git commit: `d182781`; branch: `feature/planning-loop`.
+
 ## v10.3.2 (2026-09-15 18:45) - codex
 
 - [comm] [tune] [完成] `scene.understand` Agent 查询设置 180 秒最小超时；超时错误返回 `status=timeout`、`code=gateway_timeout` 与具体原因；Runtime profile 使用 GPT-Sol High、provider timeout 150 秒。(local)
