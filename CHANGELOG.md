@@ -17,7 +17,7 @@
 - [Task] [Fix] [Completed] The Coordinator now normalizes terminal planning-bound Query/Action/Session records into `NodeSettlement`; added active-revision reconciliation, same-status idempotency, and conflicting-status rejection, fixing downstream DAG nodes remaining locked after a successful target step. (local)
 - Files: `PhyAgentOS/forge/task.py` L1211-L1301,L1590-L1607,L1734-L1748,L2214-L2235,L2529-L2642; `PhyAgentOS/planning/settlement.py` L8-L35; planning integration/Skill tests and DAG guide.
 - Validation: core `393 passed`, planning focus `45 passed`, Skill `330 passed`, Adapter `465 passed`; Ruff, compileall, and diff check passed; no Runtime/Action/motion.
-- Git commit: pending; branch: `feature/planning-loop`.
+- Git commit: `523ac98`; branch: `feature/planning-loop`.
 
 ## v10.3.0 (2026-09-15 14:00) - codex
 
