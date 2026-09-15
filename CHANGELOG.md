@@ -17,6 +17,7 @@
 - [Agent] [Feat] [Completed] AgentLoop now selects Forge Tool schemas by AgentTask phase and performs a 260K prompt-budget check, Coordinator state rebuilding, and authority-reference-preserving Tool-result compaction before every model call; the hard window is 272K with response space reserved for `maxTokens`. (local)
 - Files: `PhyAgentOS/agent/prompt_context.py` L1-L625; `PhyAgentOS/agent/loop.py` L20-L23,L69-L114,L212-L226,L547-L686; memory/registry/config/CLI, tests and docs.
 - Validation: core `386 passed`, Skill `330 passed`, Adapter `465 passed`, prompt-context `12 passed`; discovery schema filtering and no-motion checks passed; no Runtime/Action/motion.
+- Git commit: `e35b03b`; branch: `feature/planning-loop`.
 
 ## v10.2.0 (2026-09-15 11:45) - codex
 
