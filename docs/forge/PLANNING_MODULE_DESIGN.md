@@ -72,8 +72,11 @@ documents explicit rate-limiting controls and joint-velocity-limit queries.
   evidence, resource claims, and retry lineage.
 - `ToolSpecPolicy`: planning projection of a ToolSpec. It declares
   preconditions, required/produced evidence, expected effects, resources,
-  scene-write behavior, failure classes, and idempotency. It is not a second
-  provider configuration source.
+  scene-write behavior, failure classes, and idempotency. Its optional
+  `requires_before_plan` flag lets a Skill declare a Query that must settle
+  before PlanGraph materialization; it gates only the irreversible planning
+  transition, never Query ordering, execution authority, or motion. It is not
+  a second provider configuration source.
 - `ToolCallEnvelope`: Agent proposal with task/revision/node identity,
   ToolSpec digest, input-binding digest, scene revision, and idempotency key.
 - `ToolResultEnvelope`: execution result projection. `unknown`, `failed`, and
