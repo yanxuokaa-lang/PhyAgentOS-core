@@ -15,6 +15,22 @@ from PhyAgentOS.forge.tool_client import (
     ForgeToolClient,
 )
 
+# Scene understanding is a synchronous, model-backed Query.  The previous
+# caller-selected 30-second deadline was shorter than the configured GPT
+# provider timeout and repeatedly converted slow-but-valid responses into an
+# ``unknown`` transport result.  Keep this policy at the Agent Tool boundary
+# so PAOS planning remains provider-neutral and Action/Session deadlines are
+# unchanged.
+_SCENE_UNDERSTAND_TIMEOUT_MS = 180_000
+
+
+def _effective_query_timeout_ms(tool_id: str, timeout_ms: int | None) -> int | None:
+    if tool_id != "scene.understand":
+        return timeout_ms
+    if timeout_ms is None:
+        return _SCENE_UNDERSTAND_TIMEOUT_MS
+    return max(timeout_ms, _SCENE_UNDERSTAND_TIMEOUT_MS)
+
 
 def _json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
@@ -38,7 +54,23 @@ async def _call(operation: Callable[[], Awaitable[dict[str, Any]]]) -> str:
                 if isinstance(payload_data.get(identity), str):
                     error[identity] = payload_data[identity]
         if isinstance(exc, ForgeToolAPITimeoutError):
-            error.update({"remote_state": "unknown", "stopped": False})
+            timeout_s = getattr(exc, "timeout_s", None)
+            reason = str(exc)
+            if isinstance(timeout_s, (int, float)) and timeout_s > 0:
+                reason = f"{reason} (timeout_budget_s={timeout_s:g})"
+            error.update(
+                {
+                    "message": reason,
+                    "code": "gateway_timeout",
+                    "status": "timeout",
+                    "reason": reason,
+                    # The user-facing status is timeout; the internal
+                    # accounting remains uncertain until a remote result can
+                    # be reconciled, so no success is inferred.
+                    "remote_state": "unconfirmed",
+                    "stopped": False,
+                }
+            )
         return _json({"ok": False, "error": error})
     except AgentTaskError as exc:
         return _json({"ok": False, "error": {"type": "agent_task", "message": str(exc)}})
@@ -112,10 +144,11 @@ class ForgeToolQueryTool(Tool):
                     },
                 }
             )
+        effective_timeout_ms = _effective_query_timeout_ms(tool_id, timeout_ms)
         if task_id:
             return await _call(
                 lambda: self.coordinator.invoke_query(
-                    task_id, tool_id, arguments, timeout_ms=timeout_ms,
+                    task_id, tool_id, arguments, timeout_ms=effective_timeout_ms,
                     planning_binding=planning_binding,
                 )
             )
@@ -124,7 +157,7 @@ class ForgeToolQueryTool(Tool):
                 tool_id,
                 arguments,
                 caller_id=f"paos:diagnostic:{uuid4().hex[:20]}",
-                timeout_ms=timeout_ms,
+                timeout_ms=effective_timeout_ms,
             )
         )
 

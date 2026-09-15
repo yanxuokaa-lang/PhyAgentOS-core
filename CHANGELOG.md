@@ -11,6 +11,14 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v10.3.2 (2026-09-15 18:45) - codex
+
+- [comm] [tune] [完成] `scene.understand` Agent 查询设置 180 秒最小超时；超时错误返回 `status=timeout`、`code=gateway_timeout` 与具体原因；Runtime profile 使用 GPT-Sol High、provider timeout 150 秒。(local)
+- [Comm] [Tune] [Completed] Set a 180-second minimum Agent deadline for `scene.understand`; timeout errors expose `status=timeout`, `code=gateway_timeout`, and a concrete reason; Runtime profile uses GPT-Sol High with a 150-second provider timeout. (local)
+- Files: `PhyAgentOS/agent/tools/forge_tool_api.py:L18-L32,L54-L72,L146-L160`; `PhyAgentOS/forge/tool_client.py:L30-L35,L217-L221`; `tests/test_forge_tool_api.py:L1-L31`; persistent-host profiles.
+- Validation: core `397 passed`, focused timeout `3 passed`, Ruff, compileall, and diff check passed; no Action/Session/motion.
+- Git commit: pending.
+
 ## v10.3.1 (2026-09-15 16:40) - codex
 
 - [task] [fix] [完成] Coordinator 现在把 planning-bound Query/Action/Session 的终态记录归一化为 `NodeSettlement`；新增 active-revision terminal reconciliation、同状态幂等与冲突拒绝，修复 target 成功后下游 DAG 节点无法解锁的问题。(local)
@@ -41,17 +49,6 @@
 - Files: `PhyAgentOS/planning/dag.py`, `PhyAgentOS/agent/plan_proposal.py`, `PhyAgentOS/agent/tools/forge_task.py`, `PhyAgentOS/agent/planning_dispatch.py`, `PhyAgentOS/forge/task.py`, tests/docs, Skill manifest/dataflow.
 - Validation: core `375 passed`, Skill `330 passed`, Adapter `465 passed`, focused `50 passed`; changed-file Ruff, compileall, diff check, and Agent Route Principles Gate passed.
 - Git commit: `d037c1d`; branch: `feature/planning-loop`.
-
-## v10.1.13 (2026-09-15 00:20) - codex
-
-- [env] [tune] [完成] `/home/yanxu/.PhyAgentOS/deployments/robotwin-persistent/runtime.env` L12-L13 configured the Qwen3-VL-4B model path and `qwen3vl-4b` Python interpreter; incomplete model download was detected fail-closed. (local)
-- [Env] [Tune] [Completed] Configured the Qwen3-VL-4B model path and `qwen3vl-4b` interpreter in the operator deployment env; an incomplete model download was detected fail-closed. (local)
-- Validation: dependency and quantization configuration checks passed; worker load was pending until the model files completed.
-
-## v10.1.12 (2026-09-14 21:00) - codex
-
-- [model] [feat] [完成] Added the adapter-owned Qwen3-VL local provider and isolated JSONL worker behind the existing `scene.understand` seam; full details and six-dimension acceptance are recorded in `changelog/2026-09_part8.md`. (local)
-- Validation: RoboTwin adapter suite `463 passed`; no motion or Gateway Action was started.
 
 ## v10.1.11 (2026-09-14 20:20) - codex
 

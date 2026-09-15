@@ -18,8 +18,8 @@ model:
   api_base: ${ROBOTWIN20_MODEL_API_BASE}
   model: ${ROBOTWIN20_MODEL}
   api_key_env: ROBOTWIN20_MODEL_API_KEY
-  reasoning_effort: low
-  timeout_seconds: 90
+  reasoning_effort: high
+  timeout_seconds: 150
   max_output_tokens: 2048
 worker:
   startup_timeout_s: 180

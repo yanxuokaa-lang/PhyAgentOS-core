@@ -30,6 +30,10 @@ class ForgeToolAPIError(RuntimeError):
 class ForgeToolAPITimeoutError(ForgeToolAPIError):
     """The HTTP exchange timed out; remote execution state is not implied."""
 
+    def __init__(self, message: str, *, timeout_s: float | None = None) -> None:
+        super().__init__(message)
+        self.timeout_s = timeout_s
+
 
 class ForgeToolClient:
     """Strict async client for Gateway Tool discovery and invocation resources."""
@@ -212,7 +216,8 @@ class ForgeToolClient:
             response = await self._client.request(method, path, json=payload, **options)
         except httpx.TimeoutException as exc:
             raise ForgeToolAPITimeoutError(
-                f"Forge Gateway Tool API {method} {path} timed out; remote state is unknown"
+                f"Forge Gateway Tool API {method} {path} timed out; remote outcome was not confirmed",
+                timeout_s=read_timeout_s,
             ) from exc
         except httpx.HTTPError as exc:
             raise ForgeToolAPIError(
