@@ -11,6 +11,13 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v10.3.6 (2026-09-15 20:10) - codex
+
+- [env] [chore] [部分完成] 安全取消 AgentTask、停止旧 Runtime，构建并安装 Node `0.1.6` 与 Skill `2.0.4`；Node/Skill 验签通过。Runtime 启动等待 operator 进程注入 `ROBOTWIN20_MODEL_API_KEY`，未保存 secret。(local)
+- [Env] [Chore] [Partially completed] Safely cancelled the AgentTask, stopped the old Runtime, and built/installed Node `0.1.6` and Skill `2.0.4`; Node/Skill verification passed. Runtime start awaits operator-process injection of `ROBOTWIN20_MODEL_API_KEY`; no secret was persisted. (local)
+- Files: `examples/forge-skills/pick-place-workflow/skill.yaml`; `changelog/2026-09.md`.
+- Validation: task status `cancelled`, old Runtime stopped, `paos forge-node verify` passed; no Action/Session/motion during deployment.
+
 ## v10.3.5 (2026-09-15 20:00) - codex
 
 - [sense] [fix] [完成] GPT-Sol RGB provider 的 ambiguity schema/prompt 仅允许六类可见语义歧义；metric/depth/3-D/pose/collision 由 RGB-D composition 负责，绕过 schema 的 metric code fail-closed。(local)
