@@ -17,7 +17,7 @@
 - [Comm] [Tune] [Completed] Set a 180-second minimum Agent deadline for `scene.understand`; timeout errors expose `status=timeout`, `code=gateway_timeout`, and a concrete reason; Runtime profile uses GPT-Sol High with a 150-second provider timeout. (local)
 - Files: `PhyAgentOS/agent/tools/forge_tool_api.py:L18-L32,L54-L72,L146-L160`; `PhyAgentOS/forge/tool_client.py:L30-L35,L217-L221`; `tests/test_forge_tool_api.py:L1-L31`; persistent-host profiles.
 - Validation: core `397 passed`, focused timeout `3 passed`, Ruff, compileall, and diff check passed; no Action/Session/motion.
-- Git commit: pending.
+- Git commit: `53c63b9`; branch: `feature/planning-loop`.
 
 ## v10.3.1 (2026-09-15 16:40) - codex
 
