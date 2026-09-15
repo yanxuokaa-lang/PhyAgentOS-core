@@ -26,9 +26,11 @@ _DISCOVERY = {
 
 def _discovery_complete(task: Any) -> bool:
     """Expose planning submission only after durable discovery results exist."""
+    revision = getattr(task, "active_revision", None)
+    records = getattr(revision, "execution_records", ()) if revision is not None else ()
     completed = {
         getattr(record, "tool_id", None)
-        for record in getattr(task, "execution_records", ())
+        for record in records
         if getattr(record, "status", None) == "succeeded"
     }
     return "scene.observe" in completed and "scene.understand" in completed

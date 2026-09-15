@@ -15,10 +15,11 @@ from PhyAgentOS.agent.prompt_context import (
     visible_tool_names,
 )
 from PhyAgentOS.agent.tools.base import Tool
+from PhyAgentOS.agent.tools.forge_task import ForgeTaskFinalizeTool
 from PhyAgentOS.agent.tools.registry import ToolRegistry
 from PhyAgentOS.bus.queue import MessageBus
 from PhyAgentOS.config.schema import AgentDefaults, ForgeConfig
-from PhyAgentOS.forge.task import AgentTaskCoordinator
+from PhyAgentOS.forge.task import AgentTaskCoordinator, AgentTaskError
 from PhyAgentOS.providers.base import LLMProvider, LLMResponse
 from PhyAgentOS.verification.contracts import TaskVerificationContract
 
@@ -84,6 +85,7 @@ def _task(*, graph=None, records=(), status="executing"):
             fresh_evidence_requirements=(),
             discovery_evidence_refs=("tool:discovery-1",),
             replan_evidence_refs=(),
+            execution_records=list(records),
         ),
         execution_records=list(records),
         verdict=None,
@@ -169,6 +171,11 @@ def test_visible_forge_tools_follow_task_phase() -> None:
     ready_discovery = visible_tool_names(names, _task(records=completed))
     assert "forge_task_materialize_plan" in ready_discovery
 
+    historical = _task(records=completed)
+    historical.active_revision.execution_records = []
+    assert "forge_task_materialize_plan" not in visible_tool_names(names, historical)
+
+
     graph = SimpleNamespace(nodes=())
     planning = visible_tool_names(names, _task(graph=graph))
     assert {"forge_plan_activate", "forge_plan_ready", "forge_plan_select"} <= set(planning)
@@ -202,6 +209,18 @@ def test_visible_forge_tools_follow_task_phase() -> None:
     assert "forge_tool_context" in waiting_tools
     assert "forge_tool_query" not in waiting_tools
     assert AgentPromptContextManager.phase(waiting) == "waiting_for_user"
+
+
+def test_finalize_tool_returns_recoverable_structured_error() -> None:
+    class Coordinator:
+        async def finalize_task(self, task_id: str):
+            raise AgentTaskError("cannot finalize while active PlanGraph has incomplete node settlements: observe")
+
+    payload = json.loads(asyncio.run(ForgeTaskFinalizeTool(Coordinator()).execute("task-rgb")))
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "task_not_ready_for_finalization"
+    assert payload["error"]["reason"] == "incomplete_plan"
+    assert payload["motion_authorized"] is False
 
 
 def test_compaction_preserves_visual_and_execution_references() -> None:

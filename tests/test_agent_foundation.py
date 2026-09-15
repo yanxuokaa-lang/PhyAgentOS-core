@@ -202,6 +202,27 @@ def test_semantic_materialization_accepts_exact_persisted_evidence_ref(tmp_path)
     assert "artifact://observation/1" in c.get_task(task.task_id).active_revision.discovery_evidence_refs
 
 
+def test_materialization_rejects_graph_of_completed_query_only(tmp_path):
+    c, task = setup_task(tmp_path)
+    record_id, _ = c._append_execution(
+        task.task_id, "scene.observe", "query", {},
+        tool=task.primary_skill_binding.required_tools[0],
+    )
+    c._finish_execution(
+        task.task_id, record_id, status="succeeded",
+        response={"status": "available", "scene_revision": "scene-1",
+                  "evidence_refs": ["artifact://observation/1"]},
+    )
+    result = json.loads(asyncio.run(ForgeTaskMaterializePlanTool(c).execute(
+        task.task_id,
+        nodes=[{"node_id": "observe", "obligation_id": "observe", "capability": "scene.observe"}],
+        reason="reject frozen discovery-only graph",
+    )))
+    assert result["ok"] is False
+    assert result["error"]["code"] == "discovery_required"
+    assert len(c.get_task(task.task_id).revisions) == 1
+
+
 def test_materialized_graph_correction_is_rejected_after_execution_fact(tmp_path):
     c, task = setup_task(tmp_path)
     first = json.loads(asyncio.run(ForgeTaskMaterializePlanTool(c).execute(

@@ -94,7 +94,6 @@ TERMINAL_TOOL_STATUSES = {
     "unknown",
 }
 
-
 class ToolExecutionRecord(BaseModel):
     """One Query execution or one Gateway-owned Action invocation reference."""
 
@@ -1157,6 +1156,17 @@ class AgentTaskCoordinator:
                 )
         if plan_graph.task_id != task_id:
             raise AgentTaskError("discovery PlanGraph task identity mismatch")
+        completed_queries = {
+            record.tool_id
+            for record in task.active_revision.execution_records
+            if record.semantics == "query" and record.status == "succeeded"
+        }
+        if completed_queries and all(
+            node.capability in completed_queries for node in plan_graph.nodes
+        ):
+            raise AgentTaskError(
+                "discovery_required: PlanGraph contains only already-completed task-bound Queries"
+            )
         _validate_plan_graph_input(plan_graph, plan_graph_ref, task_id, plan_graph.revision_id)
 
         def mutate(current: AgentTaskRecord) -> None:

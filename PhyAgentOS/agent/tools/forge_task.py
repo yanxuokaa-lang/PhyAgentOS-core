@@ -9,7 +9,7 @@ from enum import Enum
 from typing import Any
 
 from PhyAgentOS.agent.tools.base import Tool
-from PhyAgentOS.forge.task import AgentTaskCoordinator
+from PhyAgentOS.forge.task import AgentTaskCoordinator, AgentTaskError
 from PhyAgentOS.planning import PlanGraph, PlanNode
 from PhyAgentOS.verification.contracts import TaskVerificationContract
 
@@ -282,9 +282,8 @@ class ForgeTaskMaterializePlanTool(Tool):
             plan_graph_ref = f"artifact://plans/{task_id}/{graph.revision_id}"
         else:
             graph = PlanGraph.model_validate(plan_graph)
-        return _json({
-            "ok": True,
-            "data": self.coordinator.materialize_plan_revision(
+        try:
+            materialized = self.coordinator.materialize_plan_revision(
                 task_id,
                 plan_graph=graph,
                 plan_graph_ref=plan_graph_ref,
@@ -292,8 +291,19 @@ class ForgeTaskMaterializePlanTool(Tool):
                     selected_evidence if nodes is not None else requested_evidence
                 ),
                 reason=reason,
-            ),
-        })
+            )
+        except AgentTaskError as exc:
+            if str(exc).startswith("discovery_required:"):
+                return _json({
+                    "ok": False,
+                    "error": {
+                        "code": "discovery_required",
+                        "reason": str(exc).split(":", 1)[1].strip(),
+                    },
+                    "motion_authorized": False,
+                })
+            raise
+        return _json({"ok": True, "data": materialized})
 
 class ForgeTaskFinalizeTool(Tool):
     def __init__(self, coordinator: AgentTaskCoordinator) -> None:
@@ -315,9 +325,32 @@ class ForgeTaskFinalizeTool(Tool):
         return _task_id_schema()
 
     async def execute(self, task_id: str) -> str:
-        return _json(
-            {"ok": True, "data": await self.coordinator.finalize_task(task_id)}
-        )
+        try:
+            result = await self.coordinator.finalize_task(task_id)
+        except AgentTaskError as exc:
+            message = str(exc)
+            if ("PlanGraph" in message and "incomplete" in message) or "without Tool executions" in message:
+                return _json({
+                    "ok": False,
+                    "error": {
+                        "code": "task_not_ready_for_finalization",
+                        "reason": "incomplete_plan",
+                        "message": message,
+                    },
+                    "motion_authorized": False,
+                })
+            if "Action/Session invocation" in message:
+                return _json({
+                    "ok": False,
+                    "error": {
+                        "code": "task_not_ready_for_finalization",
+                        "reason": "active_invocation",
+                        "message": message,
+                    },
+                    "motion_authorized": False,
+                })
+            raise
+        return _json({"ok": True, "data": result})
 
 
 class ForgeTaskCancelTool(Tool):
