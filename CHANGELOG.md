@@ -41,6 +41,8 @@
 
 Validation: Core `408 passed`; focused planning/AgentLoop `49 passed`; Ruff, compileall, and `git diff --check` passed. No Runtime, Gateway, Action, Session, or physical motion was started.
 
+Git commit: `d4c1b7b` on `feature/planning-loop`.
+
 ## v10.4.0 (2026-09-16 10:00) - codex
 
 - [comm] [refactor] [完成] 为 GraspGen task-bound Query 引入 ToolSpec 声明的最小 timeout `180000ms`，并由 Coordinator 保证调用者不能选择更短 deadline。(local)
