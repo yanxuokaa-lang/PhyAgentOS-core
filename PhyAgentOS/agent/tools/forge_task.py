@@ -239,6 +239,23 @@ class ForgeTaskMaterializePlanTool(Tool):
             # cannot claim evidence that has not been persisted by Coordinator.
             context = None
         trusted_evidence = set(context.evidence_refs) if context is not None else set()
+        discovery_capabilities = {
+            "scene.observe",
+            "scene.understand",
+            "manipulation.capabilities",
+            "scene.bind",
+        }
+        if context is None and nodes is not None and any(
+            node.get("capability") in discovery_capabilities for node in nodes
+        ):
+            return _json({
+                "ok": False,
+                "error": {
+                    "code": "discovery_required",
+                    "reason": "complete task-bound discovery before materializing a discovery graph",
+                },
+                "motion_authorized": False,
+            })
         requested_evidence = tuple(evidence_refs or ())
         fabricated = sorted(set(requested_evidence) - trusted_evidence)
         if fabricated:

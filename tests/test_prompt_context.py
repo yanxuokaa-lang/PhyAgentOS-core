@@ -159,8 +159,15 @@ def test_visible_forge_tools_follow_task_phase() -> None:
 
     discovery = visible_tool_names(names, _task())
     assert "forge_tool_query" in discovery
-    assert "forge_task_materialize_plan" in discovery
+    assert "forge_task_materialize_plan" not in discovery
     assert "forge_tool_start_action" not in discovery
+
+    completed = (
+        SimpleNamespace(tool_id="scene.observe", status="succeeded"),
+        SimpleNamespace(tool_id="scene.understand", status="succeeded"),
+    )
+    ready_discovery = visible_tool_names(names, _task(records=completed))
+    assert "forge_task_materialize_plan" in ready_discovery
 
     graph = SimpleNamespace(nodes=())
     planning = visible_tool_names(names, _task(graph=graph))
@@ -429,7 +436,7 @@ def test_agent_loop_sends_phase_scoped_tools_and_fresh_task_projection(tmp_path)
         assert result == "done"
         request = provider.requests[0]
         tool_names = {item["function"]["name"] for item in request["tools"]}
-        assert "forge_task_materialize_plan" in tool_names
+        assert "forge_task_materialize_plan" not in tool_names
         assert "forge_tool_start_action" not in tool_names
         sent = json.dumps(request["messages"])
         assert task.task_id in sent

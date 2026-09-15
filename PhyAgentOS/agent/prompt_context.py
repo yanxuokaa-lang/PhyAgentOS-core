@@ -21,8 +21,17 @@ _TASK_COMMON = {
 _DISCOVERY = {
     "forge_tool_context",
     "forge_tool_query",
-    "forge_task_materialize_plan",
 }
+
+
+def _discovery_complete(task: Any) -> bool:
+    """Expose planning submission only after durable discovery results exist."""
+    completed = {
+        getattr(record, "tool_id", None)
+        for record in getattr(task, "execution_records", ())
+        if getattr(record, "status", None) == "succeeded"
+    }
+    return "scene.observe" in completed and "scene.understand" in completed
 _PLANNING = {
     "forge_task_begin_revision",
     "forge_task_finalize",
@@ -212,6 +221,8 @@ def visible_tool_names(all_names: Iterable[str], task: Any | None) -> tuple[str,
     graph = getattr(revision, "plan_graph", None) if revision is not None else None
     if graph is None:
         allowed = generic | _TASK_COMMON | _DISCOVERY
+        if _discovery_complete(task):
+            allowed.add("forge_task_materialize_plan")
     elif status == "awaiting_replan":
         allowed = (
             generic
