@@ -100,13 +100,19 @@ class Qwen3VLWorker:
 
 def _prompt() -> str:
     return (
-        "Inspect this single RGB observation for a robot scene. Return JSON only with exactly these keys: "
+        "Inspect this single RGB observation for a robot scene. Return one JSON object only, with exactly these keys: "
         "entities, relations, spatial_envelopes, ambiguities. Entities must be objects with entity_ref "
         "(entity://name), category, confidence. Relations must be objects with relation_ref, subject_ref, "
         "predicate, object_ref, confidence. spatial_envelopes must be an empty array because metric geometry "
-        "comes from RGB-D perception. Ambiguities must contain code, message, entity_refs. Identify only "
+        "comes from RGB-D perception. Every one of entities, relations, spatial_envelopes, and ambiguities "
+        "must be an array (use [] when empty). Ambiguities items must contain code, message, entity_refs. "
+        "Inspect the complete image including corners and small or low-contrast objects; do not "
+        "return an empty entities array when a distinct object is visible. Populate one entity for "
+        "every distinct visible object before writing ambiguities. Identify only "
         "clearly visible objects; never invent simulator IDs, poses, dimensions, collision geometry, IK, "
-        "motion authorization, or task success."
+        "motion authorization, or task success. Use this task-neutral JSON shape exactly: "
+        '{"entities":[{"entity_ref":"entity://object-1","category":"visible category",'
+        '"confidence":0.9}],"relations":[],"spatial_envelopes":[],"ambiguities":[]}'
     )
 
 
@@ -117,6 +123,12 @@ def _parse_json(output: str) -> dict[str, Any]:
     value = json.loads(match.group(0))
     if not isinstance(value, dict):
         raise ValueError("qwen output JSON must be an object")
+    # Some instruct checkpoints emit one ambiguity object instead of the
+    # schema's array when there is only one item.  Normalize that container
+    # shape locally; semantic fields and metric-envelope prohibitions remain
+    # validated by the adapter provider.
+    if isinstance(value.get("ambiguities"), dict):
+        value["ambiguities"] = [value["ambiguities"]]
     return value
 
 

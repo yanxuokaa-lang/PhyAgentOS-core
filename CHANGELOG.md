@@ -10,6 +10,24 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v10.1.14 (2026-09-15 00:45) - codex
+
+- [model] [exp] [完成] Qwen3-VL-4B 模型完整下载并完成 GPU worker 生命周期和真实 RGB 生成验收；结构化输出返回空实体，因此未进入绑定、规划或动作。(local)
+- [Model] [Exp] [Completed] Qwen3-VL-4B download, GPU worker lifecycle, and real RGB generation acceptance completed; structured output returned no entities, so binding, planning, and actions were not attempted. (local)
+- Files: `examples/forge-adapters/robotwin20/runtime/qwen3_vl_worker.py` L101-L122; `changelog/2026-09_part8.md` v10.1.14.
+- Validation: model load and generation passed on an exclusive GPU; semantic quality remains not accepted.
+
+## v10.1.13 (2026-09-15 00:20) - codex
+
+- [env] [tune] [完成] `/home/yanxu/.PhyAgentOS/deployments/robotwin-persistent/runtime.env` L12-L13 configured the Qwen3-VL-4B model path and `qwen3vl-4b` Python interpreter; incomplete model download was detected fail-closed. (local)
+- [Env] [Tune] [Completed] Configured the Qwen3-VL-4B model path and `qwen3vl-4b` interpreter in the operator deployment env; an incomplete model download was detected fail-closed. (local)
+- Validation: dependency and quantization configuration checks passed; worker load was pending until the model files completed.
+
+## v10.1.12 (2026-09-14 21:00) - codex
+
+- [model] [feat] [完成] Added the adapter-owned Qwen3-VL local provider and isolated JSONL worker behind the existing `scene.understand` seam; full details and six-dimension acceptance are recorded in `changelog/2026-09_part8.md`. (local)
+- Validation: RoboTwin adapter suite `463 passed`; no motion or Gateway Action was started.
+
 ## v10.1.11 (2026-09-14 20:20) - codex
 
 - [env] [chore] [完成] `/home/yanxu/.PhyAgentOS/deployments/robotwin-persistent/runtime.env:L1-L36` 填充 26 个非秘密 RoboTwin persistent Runtime 变量；模型 API key 保持进程环境注入。(local)
