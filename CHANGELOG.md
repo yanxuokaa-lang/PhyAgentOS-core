@@ -10,6 +10,13 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v10.2.0 (2026-09-15 11:45) - codex
+
+- [docs] [docs] [完成] 新增 [RoboTwin20 下一轮运行命令手册](docs/forge/ROBOTWIN20_NEXT_RUN_COMMANDS.md)，集中保存 Skill 安装、API key 注入、Runtime 启动、状态检查、现有 AgentTask 接续、停止和错误排查命令；继续 GPT-Sol High，不保存 secret，不启动动作。(local)
+- [Docs] [Docs] [Completed] Added the [RoboTwin20 next-run command guide](docs/forge/ROBOTWIN20_NEXT_RUN_COMMANDS.md) covering Skill installation, API-key injection, Runtime startup, status checks, existing AgentTask continuation, shutdown, and troubleshooting; GPT-Sol High remains active, no secret is stored, and no action is started. (local)
+- Files: `docs/forge/ROBOTWIN20_NEXT_RUN_COMMANDS.md` L1-L184; `changelog/2026-09_part8.md` v10.2.0.
+- Validation: command/path review and `git diff --check` passed; no Runtime, Gateway, simulator, hardware, or motion started.
+
 ## v10.1.15 (2026-09-15 11:20) - codex
 
 - [policy] [fix] [完成] 修复 PlanGraph 语义到 Runtime 的 trusted evidence/condition 映射，增加逐节点 readiness 诊断，限制 stale-scene ready 到 refresh Query，并允许执行前 append-only graph correction；不切换 GPT-Sol High、不启动运动。(local)
