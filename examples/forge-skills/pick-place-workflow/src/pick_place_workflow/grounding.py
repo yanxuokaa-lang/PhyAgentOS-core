@@ -16,7 +16,8 @@ def _spec(tool_id, properties, required, description):
         },
         "planning": {"schema_version": "paos-tool-spec-policy/v1",
                      "capabilities": [tool_id], "refreshes_scene": False,
-                     "input_binding_keys": [], "scene_write_behavior": "none"},
+                     "input_binding_keys": [], "scene_write_behavior": "none",
+                     "requires_before_plan": tool_id == "scene.bind"},
     }
 
 

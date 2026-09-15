@@ -19,7 +19,12 @@ from PhyAgentOS.agent.tools.forge_task import ForgeTaskFinalizeTool
 from PhyAgentOS.agent.tools.registry import ToolRegistry
 from PhyAgentOS.bus.queue import MessageBus
 from PhyAgentOS.config.schema import AgentDefaults, ForgeConfig
-from PhyAgentOS.forge.task import AgentTaskCoordinator, AgentTaskError
+from PhyAgentOS.forge.binding import BoundToolSpec, ForgeSkillBinding, required_preplan_queries
+from PhyAgentOS.forge.task import (
+    AgentTaskCoordinator,
+    TaskNotReadyForFinalizationError,
+)
+from PhyAgentOS.planning import ToolSpecPolicy
 from PhyAgentOS.providers.base import LLMProvider, LLMResponse
 from PhyAgentOS.verification.contracts import TaskVerificationContract
 
@@ -161,7 +166,7 @@ def test_visible_forge_tools_follow_task_phase() -> None:
 
     discovery = visible_tool_names(names, _task())
     assert "forge_tool_query" in discovery
-    assert "forge_task_materialize_plan" not in discovery
+    assert "forge_task_materialize_plan" in discovery
     assert "forge_tool_start_action" not in discovery
 
     completed = (
@@ -170,11 +175,6 @@ def test_visible_forge_tools_follow_task_phase() -> None:
     )
     ready_discovery = visible_tool_names(names, _task(records=completed))
     assert "forge_task_materialize_plan" in ready_discovery
-
-    historical = _task(records=completed)
-    historical.active_revision.execution_records = []
-    assert "forge_task_materialize_plan" not in visible_tool_names(names, historical)
-
 
     graph = SimpleNamespace(nodes=())
     planning = visible_tool_names(names, _task(graph=graph))
@@ -214,13 +214,48 @@ def test_visible_forge_tools_follow_task_phase() -> None:
 def test_finalize_tool_returns_recoverable_structured_error() -> None:
     class Coordinator:
         async def finalize_task(self, task_id: str):
-            raise AgentTaskError("cannot finalize while active PlanGraph has incomplete node settlements: observe")
+            raise TaskNotReadyForFinalizationError(
+                "cannot finalize while active PlanGraph has incomplete node settlements: observe",
+                reason="incomplete_plan",
+            )
 
     payload = json.loads(asyncio.run(ForgeTaskFinalizeTool(Coordinator()).execute("task-rgb")))
     assert payload["ok"] is False
     assert payload["error"]["code"] == "task_not_ready_for_finalization"
     assert payload["error"]["reason"] == "incomplete_plan"
     assert payload["motion_authorized"] is False
+
+
+def test_discovery_visibility_uses_skill_declared_prerequisites() -> None:
+    names = ("forge_task_materialize_plan", "forge_tool_query", "forge_tool_context")
+    task = _task()
+    policy = ToolSpecPolicy(
+        tool_id="inspect.scene", semantics="query", spec_digest="a" * 64,
+        requires_before_plan=True,
+    )
+    task.primary_skill_binding = ForgeSkillBinding(
+        binding_id="binding-1", skill_name="fixture", skill_version="1",
+        manifest_sha256="b" * 64, skill_document_sha256="c" * 64,
+        runtime_profile="fixture", runtime_instance_id="runtime-1",
+        gateway_url="http://fixture", required_tools=(
+            BoundToolSpec(tool_id="inspect.scene", semantics="query", spec_sha256="d" * 64,
+                          ready_at_binding=True, planning_policy=policy),
+        ),
+    )
+    assert "forge_task_materialize_plan" not in visible_tool_names(names, task)
+    task.active_revision.execution_records = [
+        SimpleNamespace(tool_id="inspect.scene", status="succeeded")
+    ]
+    assert "forge_task_materialize_plan" in visible_tool_names(names, task)
+    task.active_revision.execution_records = []
+    assert "forge_task_materialize_plan" not in visible_tool_names(names, task)
+
+    task.primary_skill_binding = None
+    task.tool_bindings = (BoundToolSpec(
+        tool_id="inspect.scene", semantics="query", spec_sha256="d" * 64,
+        ready_at_binding=True, planning_policy=policy,
+    ),)
+    assert required_preplan_queries(task) == frozenset({"inspect.scene"})
 
 
 def test_compaction_preserves_visual_and_execution_references() -> None:
@@ -455,7 +490,7 @@ def test_agent_loop_sends_phase_scoped_tools_and_fresh_task_projection(tmp_path)
         assert result == "done"
         request = provider.requests[0]
         tool_names = {item["function"]["name"] for item in request["tools"]}
-        assert "forge_task_materialize_plan" not in tool_names
+        assert "forge_task_materialize_plan" in tool_names
         assert "forge_tool_start_action" not in tool_names
         sent = json.dumps(request["messages"])
         assert task.task_id in sent

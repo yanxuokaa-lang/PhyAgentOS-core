@@ -133,6 +133,10 @@ TOOL_SPEC: dict[str, Any] = {
     "endpoint_id": ENDPOINT_ID,
     "operation": OPERATION,
     "semantics": "query",
+    "planning": {
+        "schema_version": "paos-tool-spec-policy/v1",
+        "requires_before_plan": True,
+    },
     "description": "Derive provider-neutral entity and relation claims from one named observation.",
     "input_schema": {
         "type": "object",

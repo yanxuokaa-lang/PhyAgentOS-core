@@ -1,4 +1,7 @@
 tool_id: scene.observe
+planning:
+  schema_version: paos-tool-spec-policy/v1
+  requires_before_plan: true
 implementation_id: scene.observation
 endpoint_id: scene_observation
 operation: observe

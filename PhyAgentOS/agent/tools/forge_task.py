@@ -9,7 +9,12 @@ from enum import Enum
 from typing import Any
 
 from PhyAgentOS.agent.tools.base import Tool
-from PhyAgentOS.forge.task import AgentTaskCoordinator, AgentTaskError
+from PhyAgentOS.forge.binding import required_preplan_queries
+from PhyAgentOS.forge.task import (
+    AgentTaskCoordinator,
+    DiscoveryRequiredError,
+    TaskNotReadyForFinalizationError,
+)
 from PhyAgentOS.planning import PlanGraph, PlanNode
 from PhyAgentOS.verification.contracts import TaskVerificationContract
 
@@ -239,15 +244,7 @@ class ForgeTaskMaterializePlanTool(Tool):
             # cannot claim evidence that has not been persisted by Coordinator.
             context = None
         trusted_evidence = set(context.evidence_refs) if context is not None else set()
-        discovery_capabilities = {
-            "scene.observe",
-            "scene.understand",
-            "manipulation.capabilities",
-            "scene.bind",
-        }
-        if context is None and nodes is not None and any(
-            node.get("capability") in discovery_capabilities for node in nodes
-        ):
+        if context is None and required_preplan_queries(task):
             return _json({
                 "ok": False,
                 "error": {
@@ -292,13 +289,14 @@ class ForgeTaskMaterializePlanTool(Tool):
                 ),
                 reason=reason,
             )
-        except AgentTaskError as exc:
-            if str(exc).startswith("discovery_required:"):
+        except DiscoveryRequiredError as exc:
+            if exc.code == "discovery_required":
                 return _json({
                     "ok": False,
                     "error": {
-                        "code": "discovery_required",
-                        "reason": str(exc).split(":", 1)[1].strip(),
+                        "code": exc.code,
+                        "reason": str(exc),
+                        "missing": list(exc.missing),
                     },
                     "motion_authorized": False,
                 })
@@ -327,25 +325,14 @@ class ForgeTaskFinalizeTool(Tool):
     async def execute(self, task_id: str) -> str:
         try:
             result = await self.coordinator.finalize_task(task_id)
-        except AgentTaskError as exc:
-            message = str(exc)
-            if ("PlanGraph" in message and "incomplete" in message) or "without Tool executions" in message:
+        except TaskNotReadyForFinalizationError as exc:
+            if exc.code == "task_not_ready_for_finalization":
                 return _json({
                     "ok": False,
                     "error": {
-                        "code": "task_not_ready_for_finalization",
-                        "reason": "incomplete_plan",
-                        "message": message,
-                    },
-                    "motion_authorized": False,
-                })
-            if "Action/Session invocation" in message:
-                return _json({
-                    "ok": False,
-                    "error": {
-                        "code": "task_not_ready_for_finalization",
-                        "reason": "active_invocation",
-                        "message": message,
+                        "code": exc.code,
+                        "reason": exc.reason,
+                        "message": str(exc),
                     },
                     "motion_authorized": False,
                 })

@@ -11,6 +11,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
+from PhyAgentOS.forge.binding import required_preplan_queries
+
 TERMINAL_EXECUTION_STATUSES = {"succeeded", "failed", "cancelled", "stopped", "unknown"}
 
 _TASK_COMMON = {
@@ -26,6 +28,9 @@ _DISCOVERY = {
 
 def _discovery_complete(task: Any) -> bool:
     """Expose planning submission only after durable discovery results exist."""
+    required = required_preplan_queries(task)
+    if not required:
+        return True
     revision = getattr(task, "active_revision", None)
     records = getattr(revision, "execution_records", ()) if revision is not None else ()
     completed = {
@@ -33,7 +38,7 @@ def _discovery_complete(task: Any) -> bool:
         for record in records
         if getattr(record, "status", None) == "succeeded"
     }
-    return "scene.observe" in completed and "scene.understand" in completed
+    return required.issubset(completed)
 _PLANNING = {
     "forge_task_begin_revision",
     "forge_task_finalize",

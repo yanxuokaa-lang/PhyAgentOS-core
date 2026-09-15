@@ -1,4 +1,7 @@
 tool_id: manipulation.capabilities
+planning:
+  schema_version: paos-tool-spec-policy/v1
+  requires_before_plan: true
 implementation_id: manipulation.capabilities
 endpoint_id: manipulation_capabilities
 operation: describe

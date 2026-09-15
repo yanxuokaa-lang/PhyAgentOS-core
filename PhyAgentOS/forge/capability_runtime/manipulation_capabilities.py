@@ -26,6 +26,10 @@ CAPABILITY_TOOL_SPEC: dict[str, Any] = {
     "endpoint_id": CAPABILITY_ENDPOINT_ID,
     "operation": CAPABILITY_OPERATION,
     "semantics": "query",
+    "planning": {
+        "schema_version": "paos-tool-spec-policy/v1",
+        "requires_before_plan": True,
+    },
     "description": "Describe profile-bound manipulator capabilities for one immutable scene revision.",
     "input_schema": {
         "type": "object",

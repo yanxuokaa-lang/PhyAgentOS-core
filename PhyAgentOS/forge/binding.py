@@ -79,6 +79,23 @@ class ForgeSkillBinding(BindingModel):
         return next((item for item in self.required_tools if item.tool_id == tool_id), None)
 
 
+def required_preplan_queries(task: Any) -> frozenset[str]:
+    """Return Skill-declared Query IDs required before PlanGraph materialization."""
+    binding = getattr(task, "primary_skill_binding", None)
+    tools = (
+        getattr(binding, "required_tools", ())
+        if binding is not None
+        else getattr(task, "tool_bindings", ())
+    )
+    return frozenset(
+        item.tool_id
+        for item in tools
+        if item.semantics == "query"
+        and item.planning_policy is not None
+        and item.planning_policy.requires_before_plan
+    )
+
+
 def canonical_sha256(value: Any) -> str:
     encoded = json.dumps(
         value,

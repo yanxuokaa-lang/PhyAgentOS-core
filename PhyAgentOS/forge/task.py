@@ -23,6 +23,7 @@ from PhyAgentOS.forge.binding import (
     ForgeSkillBindingResolver,
     RuntimeBinding,
     canonical_sha256,
+    required_preplan_queries,
 )
 from PhyAgentOS.forge.evidence import ForgeEvidenceWriter
 from PhyAgentOS.forge.observation import ForgeObservationCollector
@@ -50,6 +51,26 @@ from PhyAgentOS.verification.contracts import (
 
 class AgentTaskError(RuntimeError):
     """Raised when an AgentTask operation violates its lifecycle contract."""
+
+
+class DiscoveryRequiredError(AgentTaskError):
+    """Raised when Skill-declared discovery Queries are incomplete."""
+
+    code = "discovery_required"
+
+    def __init__(self, message: str, *, missing: tuple[str, ...] = ()) -> None:
+        self.missing = missing
+        super().__init__(message)
+
+
+class TaskNotReadyForFinalizationError(AgentTaskError):
+    """Raised when final verification prerequisites are not yet satisfied."""
+
+    code = "task_not_ready_for_finalization"
+
+    def __init__(self, message: str, *, reason: str) -> None:
+        self.reason = reason
+        super().__init__(message)
 
 
 class AgentTaskBusyError(AgentTaskError):
@@ -1156,16 +1177,18 @@ class AgentTaskCoordinator:
                 )
         if plan_graph.task_id != task_id:
             raise AgentTaskError("discovery PlanGraph task identity mismatch")
+        required_queries = required_preplan_queries(task)
         completed_queries = {
             record.tool_id
             for record in task.active_revision.execution_records
             if record.semantics == "query" and record.status == "succeeded"
         }
-        if completed_queries and all(
-            node.capability in completed_queries for node in plan_graph.nodes
-        ):
-            raise AgentTaskError(
-                "discovery_required: PlanGraph contains only already-completed task-bound Queries"
+        missing_queries = tuple(sorted(required_queries - completed_queries))
+        if missing_queries:
+            raise DiscoveryRequiredError(
+                "required task-bound discovery Queries are incomplete: "
+                + ", ".join(missing_queries),
+                missing=missing_queries,
             )
         _validate_plan_graph_input(plan_graph, plan_graph_ref, task_id, plan_graph.revision_id)
 
@@ -1851,9 +1874,10 @@ class AgentTaskCoordinator:
             and not item.terminal
         ]
         if pending:
-            raise AgentTaskError(
+            raise TaskNotReadyForFinalizationError(
                 "cannot finalize while task-owned Action/Session invocation(s) are non-terminal: "
-                + ", ".join(pending)
+                + ", ".join(pending),
+                reason="active_invocation",
             )
         graph = task.active_revision.plan_graph
         if graph is not None:
@@ -1867,12 +1891,16 @@ class AgentTaskCoordinator:
                 if settlements.get(node.node_id) != "completed"
             )
             if incomplete:
-                raise AgentTaskError(
+                raise TaskNotReadyForFinalizationError(
                     "cannot finalize while active PlanGraph has incomplete node settlements: "
-                    + ", ".join(incomplete)
+                    + ", ".join(incomplete),
+                    reason="incomplete_plan",
                 )
         if not task.execution_records:
-            raise AgentTaskError("cannot finalize an AgentTask without Tool executions")
+            raise TaskNotReadyForFinalizationError(
+                "cannot finalize an AgentTask without Tool executions",
+                reason="incomplete_plan",
+            )
         await self._capture_after(task_id)
         task = self.store.get(task_id)
         if task.cancellation_requested:

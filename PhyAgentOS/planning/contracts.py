@@ -192,6 +192,7 @@ class ToolSpecPolicy(_Frozen):
     idempotency: Literal["idempotent", "at_most_once", "unknown"] = "unknown"
     refreshes_scene: bool = False
     input_binding_keys: tuple[str, ...] = ()
+    requires_before_plan: bool = False
 
     @field_validator("tool_id")
     @classmethod

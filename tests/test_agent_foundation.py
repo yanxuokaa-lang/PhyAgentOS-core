@@ -204,6 +204,42 @@ def test_semantic_materialization_accepts_exact_persisted_evidence_ref(tmp_path)
 
 def test_materialization_rejects_graph_of_completed_query_only(tmp_path):
     c, task = setup_task(tmp_path)
+    required_policy = ToolSpecPolicy(
+        tool_id="scene.observe", semantics="query", spec_digest="e" * 64,
+        requires_before_plan=True, capabilities=("scene.observe", "object.relocate"),
+    )
+    understand_policy = ToolSpecPolicy(
+        tool_id="scene.understand", semantics="query", spec_digest="f" * 64,
+        requires_before_plan=True,
+    )
+    task = c.store.update(
+        task.task_id,
+        lambda item: setattr(
+            item,
+            "primary_skill_binding",
+            item.primary_skill_binding.model_copy(update={
+                "required_tools": (
+                    item.primary_skill_binding.required_tools[0].model_copy(
+                        update={"planning_policy": required_policy}
+                    ),
+                    BoundToolSpec(
+                        tool_id="scene.understand", semantics="query", spec_sha256="a" * 64,
+                        ready_at_binding=True, planning_policy=understand_policy,
+                    ),
+                ),
+            }),
+        ),
+        event_type="test_preplan_policy",
+    )
+    direct_result = json.loads(asyncio.run(ForgeTaskMaterializePlanTool(c).execute(
+        task.task_id,
+        plan_graph={},
+        plan_graph_ref="artifact://plans/not-ready",
+        reason="direct graph must not bypass discovery admission",
+    )))
+    assert direct_result["ok"] is False
+    assert direct_result["error"]["code"] == "discovery_required"
+    assert len(c.get_task(task.task_id).revisions) == 1
     record_id, _ = c._append_execution(
         task.task_id, "scene.observe", "query", {},
         tool=task.primary_skill_binding.required_tools[0],
@@ -215,7 +251,7 @@ def test_materialization_rejects_graph_of_completed_query_only(tmp_path):
     )
     result = json.loads(asyncio.run(ForgeTaskMaterializePlanTool(c).execute(
         task.task_id,
-        nodes=[{"node_id": "observe", "obligation_id": "observe", "capability": "scene.observe"}],
+        nodes=[{"node_id": "move", "obligation_id": "move", "capability": "object.relocate"}],
         reason="reject frozen discovery-only graph",
     )))
     assert result["ok"] is False

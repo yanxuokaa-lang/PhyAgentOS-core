@@ -31,6 +31,7 @@ class _PlanningExtension(BaseModel):
     idempotency: str = "unknown"
     refreshes_scene: bool = False
     input_binding_keys: tuple[str, ...] = ()
+    requires_before_plan: bool = False
 
 
 _PROVIDER_PRIVATE = re.compile(
@@ -97,6 +98,7 @@ def project_tool_spec(spec: Mapping[str, Any]) -> ToolSpecPolicy:
             idempotency=parsed.idempotency,
             refreshes_scene=parsed.refreshes_scene,
             input_binding_keys=parsed.input_binding_keys,
+            requires_before_plan=parsed.requires_before_plan,
         )
     except (ValidationError, ValueError) as exc:
         raise ToolSpecProjectionError(f"invalid ToolSpec planning policy: {exc}") from exc
