@@ -11,6 +11,32 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v10.6.0 (2026-09-16 20:15) - codex
+
+- [sense] [feat] [完成] 接入 `paos-qwen3vl-4b-vllm` 环境中的 Qwen3-VL-4B-Instruct vLLM 场景理解，并在本地 provider 失败时显式回退 `gpt-5.6-sol` high。(local)
+- [sense] [feat] [Completed] Integrated Qwen3-VL-4B-Instruct vLLM scene understanding from the dedicated `paos-qwen3vl-4b-vllm` environment with explicit `gpt-5.6-sol` high fallback. (local)
+
+### 影响文件 / Affected files
+
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/qwen3_vl_vllm_scene_understanding.py:L1-L242`
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/scene_understanding_fallback.py:L1-L54`
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_host.py:L264-L308`
+- `examples/forge-adapters/robotwin20/profiles/forge-persistent/persistent-host.yaml:L17-L31`
+- `examples/forge-skills/pick-place-workflow/profiles/robotwin-persistent/persistent-host.yaml:L17-L31`
+- `examples/forge-adapters/robotwin20/tests/test_qwen3_vl_vllm_scene_understanding.py:L1-L94`
+- `examples/forge-adapters/robotwin20/tests/test_scene_understanding_fallback.py:L1-L59`
+
+```diff
+- provider: qwen3_vl_local
++ provider: qwen3_vl_vllm_fallback
++ primary: http://127.0.0.1:8012/v1 / qwen3-vl-4b-awq
++ fallback: gpt-5.6-sol / reasoning_effort=high
+```
+
+Validation: dedicated environment package check passed; live vLLM profile/warmup `25.06 s`, peak `4710 MiB`; six-case HTTP evaluation `6/6` JSON/schema and `6/6` entity semantics, mean `2.840267 s`, aggregate `98.46491 token/s`; PAOS projection and focused tests `11 passed`; no Runtime/Action/motion started. Relation semantic `1/6`, so no claim of equivalent relation quality.
+
+Git commit: pending.
+
 ## v10.5.0 (2026-09-16 03:41) - codex
 
 - [agent] [refactor] [完成] `forge_task_begin_revision` 对模型只暴露语义 `nodes`，由 PAOS 编译 revision/ref/digest；拒绝空恢复和混用完整图元数据。(local)

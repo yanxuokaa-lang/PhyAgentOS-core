@@ -139,6 +139,53 @@ each bounded query so LocateAnything and SAM2 can run sequentially on a 16-GB
 GPU.  A worker-unavailable result is surfaced as a bounded `scene.understand`
 failure; no simulator state or stale observation is used as a fallback.
 
+### PAOS Qwen3-VL-4B vLLM route with GPT fallback
+
+The validated vLLM stack is isolated in the dedicated conda environment
+`paos-qwen3vl-4b-vllm`, cloned from the previously tested `hephaestus-vlm`
+environment.  It contains vLLM `0.11.2`, Torch `2.9.0+cu128`, Transformers
+`4.57.6`, `qwen-vl-utils`, and the OpenAI client.  The Qwen model files remain
+operator-owned at `/home/yanxu/models/qwen3-vl-4b-instruct-awq-4bit`.
+
+Start the already-validated long-lived vLLM server from that environment (the
+server owns cold-start, level-1 sleep, and wake; PAOS never reloads weights):
+
+```bash
+conda run -n paos-qwen3vl-4b-vllm vllm serve \
+  /home/yanxu/models/qwen3-vl-4b-instruct-awq-4bit \
+  --served-model-name qwen3-vl-4b-awq \
+  --host 127.0.0.1 --port 8012 \
+  --quantization compressed-tensors --dtype bfloat16 \
+  --max-model-len 2048 --max-num-seqs 1 --max-num-batched-tokens 2048 \
+  --gpu-memory-utilization 0.65 --kv-cache-memory-bytes 536870912 \
+  --limit-mm-per-prompt '{"image":1,"video":0}' \
+  --structured-outputs-config '{"backend":"xgrammar"}'
+```
+
+Use `profiles/forge-persistent/persistent-host.yaml` with
+`model.provider: qwen3_vl_vllm_fallback`.  PAOS sends semantic RGB queries to
+`http://127.0.0.1:8012/v1`; if the endpoint is unavailable or returns a
+contract-invalid response, the adapter explicitly routes the same observation
+to `gpt-5.6-sol` with `reasoning_effort: high`.  Both providers return only
+provider-neutral claims, and neither provider can authorize motion.
+
+The local vLLM endpoint is loopback-only and does not use an API key.  The GPT
+fallback credential is supplied only in the invoking process as
+`ROBOTWIN20_MODEL_API_KEY`; no credential is stored in the profile or PAOS
+state.
+
+For a clean-room environment rebuild from the validated source environment:
+
+```bash
+conda create -n paos-qwen3vl-4b-vllm --clone hephaestus-vlm
+conda run -n paos-qwen3vl-4b-vllm python -c \
+  'import torch, vllm, transformers; print(torch.__version__, vllm.__version__, transformers.__version__)'
+```
+
+The adapter does not manage the vLLM process.  Runtime startup/health checks,
+server sleep, and wake remain external deployment responsibilities; a failed
+health check causes the local leg to fail closed and activates the GPT fallback.
+
 The perception boundary is intentionally split by PAOS use case:
 
 | Capability | ToolSpec | Adapter/provider responsibility |

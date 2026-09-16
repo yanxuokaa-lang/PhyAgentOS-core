@@ -17,6 +17,9 @@ qwen3-vl = [
   "Pillow>=10",
   "compressed-tensors>=0.12",
 ]
+qwen3-vl-vllm = [
+  "openai>=2.46,<3",
+]
 
 [project.scripts]
 robotwin20-preflight = "robotwin20_adapter.preflight:main"

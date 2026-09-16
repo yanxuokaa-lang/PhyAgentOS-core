@@ -122,6 +122,15 @@ from .qwen3_vl_scene_understanding import (
     Qwen3VLInferenceError,
     Qwen3VLSceneUnderstandingInference,
 )
+from .qwen3_vl_vllm_scene_understanding import (
+    Qwen3VLVLLMConfig,
+    Qwen3VLVLLMInferenceError,
+    Qwen3VLVLLMSceneUnderstandingInference,
+)
+from .scene_understanding_fallback import (
+    FallbackSceneUnderstandingInference,
+    SceneUnderstandingFallbackError,
+)
 from .perception_profile import (
     PROFILE_SCHEMA_VERSION,
     PerceptionProfileError,
@@ -290,6 +299,11 @@ __all__ = [
     "Qwen3VLConfig",
     "Qwen3VLInferenceError",
     "Qwen3VLSceneUnderstandingInference",
+    "Qwen3VLVLLMConfig",
+    "Qwen3VLVLLMInferenceError",
+    "Qwen3VLVLLMSceneUnderstandingInference",
+    "FallbackSceneUnderstandingInference",
+    "SceneUnderstandingFallbackError",
     "SCENE_UNDERSTANDING_JSON_SCHEMA",
     "PROFILE_SCHEMA_VERSION",
     "PerceptionProfileError",

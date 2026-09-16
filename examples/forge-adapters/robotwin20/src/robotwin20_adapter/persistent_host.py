@@ -33,6 +33,11 @@ from .persistent_deployment import (
 from .persistent_route_builder import BenchmarkSceneSource
 from .process_worker import JsonlProcessWorkerClient, ProcessWorkerConfig
 from .qwen3_vl_scene_understanding import Qwen3VLConfig, Qwen3VLSceneUnderstandingInference
+from .qwen3_vl_vllm_scene_understanding import (
+    Qwen3VLVLLMConfig,
+    Qwen3VLVLLMSceneUnderstandingInference,
+)
+from .scene_understanding_fallback import FallbackSceneUnderstandingInference
 from .understanding import RoboTwinSceneUnderstandingProvider
 
 PROFILE_SCHEMA_VERSION = "paos-robotwin20-persistent-host/v1"
@@ -255,6 +260,51 @@ def build_persistent_host(
                     timeout_seconds=_positive_number(model["timeout_seconds"], "model.timeout_seconds"),
                     max_output_tokens=int(_positive_number(model["max_output_tokens"], "model.max_output_tokens")),
                 ),
+            )
+        elif provider == "qwen3_vl_vllm_fallback":
+            if set(model) != {"provider", "primary", "fallback"}:
+                raise PersistentHostConfigurationError("qwen vLLM fallback model settings are invalid")
+            primary = model.get("primary")
+            fallback = model.get("fallback")
+            if not isinstance(primary, Mapping) or not isinstance(fallback, Mapping):
+                raise PersistentHostConfigurationError("qwen vLLM primary/fallback settings are invalid")
+            if set(primary) != {"api_base", "model", "api_key_env", "timeout_seconds", "max_output_tokens"}:
+                raise PersistentHostConfigurationError("qwen vLLM primary settings are invalid")
+            if set(fallback) != {
+                "api_base", "model", "api_key_env", "reasoning_effort", "timeout_seconds", "max_output_tokens"
+            }:
+                raise PersistentHostConfigurationError("GPT fallback settings are invalid")
+            qwen_inference = Qwen3VLVLLMSceneUnderstandingInference(
+                resolver,
+                config=Qwen3VLVLLMConfig(
+                    api_base=str(primary["api_base"]),
+                    model=str(primary["model"]),
+                    api_key_env=str(primary["api_key_env"]),
+                    timeout_seconds=_positive_number(primary["timeout_seconds"], "model.primary.timeout_seconds"),
+                    max_output_tokens=int(_positive_number(primary["max_output_tokens"], "model.primary.max_output_tokens")),
+                ),
+            )
+            fallback_key_env = str(fallback["api_key_env"])
+            if not variables.get(fallback_key_env):
+                raise PersistentHostConfigurationError(
+                    f"model credential environment is unavailable: {fallback_key_env}"
+                )
+            gpt_inference = OpenAIResponsesSceneUnderstandingInference(
+                resolver,
+                config=OpenAIResponsesConfig(
+                    api_base=str(fallback["api_base"]),
+                    model=str(fallback["model"]),
+                    api_key_env=fallback_key_env,
+                    reasoning_effort=str(fallback["reasoning_effort"]),
+                    timeout_seconds=_positive_number(fallback["timeout_seconds"], "model.fallback.timeout_seconds"),
+                    max_output_tokens=int(_positive_number(fallback["max_output_tokens"], "model.fallback.max_output_tokens")),
+                ),
+            )
+            inference = FallbackSceneUnderstandingInference(
+                qwen_inference,
+                gpt_inference,
+                primary_name="qwen3-vl-4b-vllm",
+                fallback_name="gpt-5.6-sol-high",
             )
         elif provider == "qwen3_vl_local":
             required = {

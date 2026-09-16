@@ -15,16 +15,20 @@ perception_profile: ${ROBOTWIN20_PERCEPTION_PROFILE}
 grasp_profile: ${ROBOTWIN20_GRASP_PROFILE}
 materializer_arguments: ${ROBOTWIN20_MATERIALIZER_ARGUMENTS}
 model:
-  provider: qwen3_vl_local
-  model_path: ${ROBOTWIN20_QWEN_MODEL_PATH}
-  worker_python: ${ROBOTWIN20_QWEN_PYTHON}
-  worker_script: ${PAOS_ROBOTWIN20_ADAPTER_ROOT}/runtime/qwen3_vl_worker.py
-  worker_cwd: ${PAOS_ROBOTWIN20_ADAPTER_ROOT}/runtime
-  device: cuda:0
-  max_output_tokens: 512
-  startup_timeout_s: 300
-  request_timeout_s: 600
-  shutdown_timeout_s: 30
+  provider: qwen3_vl_vllm_fallback
+  primary:
+    api_base: http://127.0.0.1:8012/v1
+    model: qwen3-vl-4b-awq
+    api_key_env: ""
+    timeout_seconds: 30
+    max_output_tokens: 768
+  fallback:
+    api_base: ${ROBOTWIN20_MODEL_API_BASE}
+    model: gpt-5.6-sol
+    api_key_env: ROBOTWIN20_MODEL_API_KEY
+    reasoning_effort: high
+    timeout_seconds: 60
+    max_output_tokens: 768
 worker:
   startup_timeout_s: 180
   request_timeout_s: 360
