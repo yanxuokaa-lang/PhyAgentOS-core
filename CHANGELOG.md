@@ -40,7 +40,7 @@
 
 Validation: Core `416 passed`; Skill `334 passed`; Adapter `493 passed`; focused lifecycle/host `15 passed`; package regression `1 passed`; changed-file Ruff, compileall, diff check, and Agent Route Principles Gate passed. Installed Skill `2.1.4` archive SHA-256 `259792c968d3d369d010961948d3fc21fa65b5f91d5f66d2e3388a74c6449bbf`; Node `0.1.13` SHA-256 `58bc793aa2d90a7344c4ebea8b57140c45c168527eccd65929e906de4a55151f` verified. Final Query: 9/9 Tools ready, automatic wake and return-to-sleep, `13.225 s`, 3 entities, 2 relations, 4 explicit ambiguities, no fabricated metric evidence. Query-only: 0 Action, 0 Session, 0 world change.
 
-Git commit: pending on `feature/planning-loop`.
+Git commit: `ead479d` on `feature/planning-loop` at 2026-09-17 00:00 CST.
 
 ## v10.6.1 (2026-09-16 20:30) - codex
 
