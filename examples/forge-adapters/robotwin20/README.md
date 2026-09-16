@@ -159,8 +159,14 @@ conda run -n paos-qwen3vl-4b-vllm vllm serve \
   --max-model-len 2048 --max-num-seqs 1 --max-num-batched-tokens 2048 \
   --gpu-memory-utilization 0.65 --kv-cache-memory-bytes 536870912 \
   --limit-mm-per-prompt '{"image":1,"video":0}' \
-  --structured-outputs-config '{"backend":"xgrammar"}'
+  --structured-outputs-config '{"backend":"xgrammar"}' \
+  --enable-sleep-mode
 ```
+
+The vLLM 0.11.2 control routes are development-mode endpoints. Export
+`VLLM_SERVER_DEV_MODE=1` in the vLLM server process before running this
+command; otherwise `/sleep`, `/wake_up`, and `/is_sleeping` return HTTP 404
+even when `--enable-sleep-mode` is present.
 
 Use `profiles/forge-persistent/persistent-host.yaml` with
 `model.provider: qwen3_vl_vllm_fallback`.  PAOS sends semantic RGB queries to
@@ -182,9 +188,14 @@ conda run -n paos-qwen3vl-4b-vllm python -c \
   'import torch, vllm, transformers; print(torch.__version__, vllm.__version__, transformers.__version__)'
 ```
 
-The adapter does not manage the vLLM process.  Runtime startup/health checks,
-server sleep, and wake remain external deployment responsibilities; a failed
-health check causes the local leg to fail closed and activates the GPT fallback.
+The adapter does not start or stop the vLLM process. It does own request-scoped
+sleep/wake coordination through the loopback control API: a scene-understanding
+request wakes a sleeping engine before inference, active requests exclude
+sleep, and the final request arms the configured idle timer for level-1 sleep.
+Control/status failure activates the GPT fallback. A normal Qwen inference or
+provider-contract failure is returned as a failed scene-understanding Query and
+does not silently switch models. Cold start remains an operator-owned PAOS
+Runtime startup concern.
 
 The perception boundary is intentionally split by PAOS use case:
 

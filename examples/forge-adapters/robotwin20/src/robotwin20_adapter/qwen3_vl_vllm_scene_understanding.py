@@ -228,9 +228,7 @@ def _project_vllm_claims(value: Any, image_ref: str) -> dict[str, Any]:
     for item in value["ambiguities"]:
         if not isinstance(item, Mapping) or set(item) != {"code", "message", "entity_ids"}:
             raise Qwen3VLVLLMInferenceError("qwen vLLM ambiguity fields are invalid")
-        refs = [id_map.get(ref) for ref in item["entity_ids"]]
-        if any(ref is None for ref in refs):
-            raise Qwen3VLVLLMInferenceError("qwen vLLM ambiguity references unknown entity")
+        refs = [id_map[ref] for ref in item["entity_ids"] if ref in id_map]
         ambiguities.append({"code": item["code"], "message": item["message"], "entity_refs": refs})
     return {"entities": entities, "relations": relations, "spatial_envelopes": [], "ambiguities": ambiguities, "provider_available": True}
 

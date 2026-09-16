@@ -8,7 +8,7 @@ import hashlib
 import json
 import os
 import signal
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from threading import Event, Lock
@@ -33,6 +33,12 @@ from .persistent_deployment import (
 from .persistent_route_builder import BenchmarkSceneSource
 from .process_worker import JsonlProcessWorkerClient, ProcessWorkerConfig
 from .qwen3_vl_scene_understanding import Qwen3VLConfig, Qwen3VLSceneUnderstandingInference
+from .qwen3_vl_vllm_lifecycle import (
+    LifecycleManagedSceneUnderstandingInference,
+    Qwen3VLVLLMLifecycleConfig,
+    Qwen3VLVLLMLifecycleError,
+    Qwen3VLVLLMLifecycleManager,
+)
 from .qwen3_vl_vllm_scene_understanding import (
     Qwen3VLVLLMConfig,
     Qwen3VLVLLMSceneUnderstandingInference,
@@ -54,8 +60,13 @@ class PersistentHost:
 
     client: PersistentWorkerClient
     bundle: PersistentRuntimeBundle
+    lifecycle_managers: tuple[Qwen3VLVLLMLifecycleManager, ...] = field(
+        default_factory=tuple
+    )
 
     def close(self) -> None:
+        for manager in self.lifecycle_managers:
+            manager.close()
         self.client.close()
 
 
@@ -148,6 +159,7 @@ def build_persistent_host(
     """
 
     variables = dict(os.environ if environ is None else environ)
+    lifecycle_managers: list[Qwen3VLVLLMLifecycleManager] = []
     if profile.get("agent") != {"enabled": False} or profile.get("tools") != {
         "enabled": True
     }:
@@ -268,7 +280,7 @@ def build_persistent_host(
             fallback = model.get("fallback")
             if not isinstance(primary, Mapping) or not isinstance(fallback, Mapping):
                 raise PersistentHostConfigurationError("qwen vLLM primary/fallback settings are invalid")
-            if set(primary) != {"api_base", "model", "api_key_env", "timeout_seconds", "max_output_tokens"}:
+            if set(primary) != {"api_base", "model", "api_key_env", "timeout_seconds", "max_output_tokens", "lifecycle"}:
                 raise PersistentHostConfigurationError("qwen vLLM primary settings are invalid")
             if set(fallback) != {
                 "api_base", "model", "api_key_env", "reasoning_effort", "timeout_seconds", "max_output_tokens"
@@ -284,6 +296,26 @@ def build_persistent_host(
                     max_output_tokens=int(_positive_number(primary["max_output_tokens"], "model.primary.max_output_tokens")),
                 ),
             )
+            lifecycle = primary.get("lifecycle")
+            if not isinstance(lifecycle, Mapping) or set(lifecycle) != {
+                "enabled", "control_api_base", "idle_timeout_s", "control_timeout_s", "sleep_level"
+            }:
+                raise PersistentHostConfigurationError("qwen vLLM lifecycle settings are invalid")
+            if not isinstance(lifecycle["enabled"], bool):
+                raise PersistentHostConfigurationError("qwen vLLM lifecycle enabled must be boolean")
+            if lifecycle["enabled"]:
+                manager = Qwen3VLVLLMLifecycleManager(
+                    Qwen3VLVLLMLifecycleConfig(
+                        control_api_base=str(lifecycle["control_api_base"]),
+                        idle_timeout_s=_positive_number(lifecycle["idle_timeout_s"], "model.primary.lifecycle.idle_timeout_s"),
+                        control_timeout_s=_positive_number(lifecycle["control_timeout_s"], "model.primary.lifecycle.control_timeout_s"),
+                        sleep_level=int(lifecycle["sleep_level"]),
+                    )
+                )
+                lifecycle_managers.append(manager)
+                qwen_inference = LifecycleManagedSceneUnderstandingInference(
+                    qwen_inference, manager
+                )
             fallback_key_env = str(fallback["api_key_env"])
             if not variables.get(fallback_key_env):
                 raise PersistentHostConfigurationError(
@@ -305,6 +337,8 @@ def build_persistent_host(
                 gpt_inference,
                 primary_name="qwen3-vl-4b-vllm",
                 fallback_name="gpt-5.6-sol-high",
+                fallback_exceptions=(Qwen3VLVLLMLifecycleError,),
+                fallback_on_empty=False,
             )
         elif provider == "qwen3_vl_local":
             required = {
@@ -405,9 +439,15 @@ def build_persistent_host(
             tool_context_provider=context,
         )
     except Exception:
+        for manager in lifecycle_managers:
+            manager.close()
         client.close()
         raise
-    return PersistentHost(client=client, bundle=bundle)
+    return PersistentHost(
+        client=client,
+        bundle=bundle,
+        lifecycle_managers=tuple(lifecycle_managers),
+    )
 
 
 def _handler(transport: httpx.AsyncBaseTransport) -> type[BaseHTTPRequestHandler]:

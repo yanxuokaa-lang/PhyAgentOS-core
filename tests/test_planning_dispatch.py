@@ -234,7 +234,7 @@ def test_guard_admits_complete_binding_without_authorizing_motion():
         "node_id": "observe",
         "node_digest": plan_node_digest(dispatch.graph.nodes[0]),
         "obligation_id": "observe",
-        "input_binding_digest": "4" * 64,
+        "input_binding_digest": tool_input_binding_digest({}),
         "decision_trace_ref": "artifact://trace/1",
     }
     result = dispatch.admit_forge_tool(

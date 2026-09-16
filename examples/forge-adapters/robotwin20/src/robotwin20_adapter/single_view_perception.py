@@ -474,6 +474,7 @@ class SingleViewPerceptionInference:
 
     def infer(self, request: Mapping[str, Any]) -> Mapping[str, Any]:
         base = self._semantic_result(request)
+        _release_provider(self.semantic_inference, "semantic")
         artifacts = request.get("artifacts")
         if not isinstance(artifacts, list):
             raise SingleViewPerceptionError("scene understanding artifacts must be an array")

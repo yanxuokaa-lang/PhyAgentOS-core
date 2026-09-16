@@ -2,10 +2,16 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from robotwin20_adapter import (
     ArtifactPayload,
     Qwen3VLVLLMConfig,
     Qwen3VLVLLMSceneUnderstandingInference,
+)
+from robotwin20_adapter.qwen3_vl_vllm_scene_understanding import (
+    Qwen3VLVLLMInferenceError,
+    _project_vllm_claims,
 )
 
 REQUEST = {
@@ -92,3 +98,57 @@ def test_vllm_config_rejects_non_http_endpoint():
         assert "absolute HTTP(S) URL" in str(exc)
     else:  # pragma: no cover
         raise AssertionError("invalid endpoint must fail closed")
+
+
+def test_vllm_projection_preserves_ambiguity_for_unmodeled_partial_object():
+    result = _project_vllm_claims(
+        {
+            "entities": [
+                {"local_id": "e1", "category": "cube", "attributes": [], "confidence": 0.95}
+            ],
+            "relations": [],
+            "ambiguities": [
+                {
+                    "code": "partial_object",
+                    "message": "foreground object is not identifiable",
+                    "entity_ids": ["e0", "e1"],
+                }
+            ],
+        },
+        REQUEST["artifacts"][0],
+    )
+
+    assert result["ambiguities"] == [
+        {
+            "code": "partial_object",
+            "message": "foreground object is not identifiable",
+            "entity_refs": ["entity://e1"],
+        }
+    ]
+
+
+def test_vllm_projection_still_rejects_unknown_relation_entity():
+    with pytest.raises(Qwen3VLVLLMInferenceError, match="relation references unknown entity"):
+        _project_vllm_claims(
+            {
+                "entities": [
+                    {
+                        "local_id": "e1",
+                        "category": "cube",
+                        "attributes": [],
+                        "confidence": 0.95,
+                    }
+                ],
+                "relations": [
+                    {
+                        "subject_id": "e1",
+                        "predicate": "left_of",
+                        "object_id": "e0",
+                        "relation_space": "image-plane",
+                        "confidence": 0.9,
+                    }
+                ],
+                "ambiguities": [],
+            },
+            REQUEST["artifacts"][0],
+        )

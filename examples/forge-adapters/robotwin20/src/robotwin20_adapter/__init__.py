@@ -117,20 +117,6 @@ from .openai_scene_understanding import (
     OpenAIResponsesInferenceError,
     OpenAIResponsesSceneUnderstandingInference,
 )
-from .qwen3_vl_scene_understanding import (
-    Qwen3VLConfig,
-    Qwen3VLInferenceError,
-    Qwen3VLSceneUnderstandingInference,
-)
-from .qwen3_vl_vllm_scene_understanding import (
-    Qwen3VLVLLMConfig,
-    Qwen3VLVLLMInferenceError,
-    Qwen3VLVLLMSceneUnderstandingInference,
-)
-from .scene_understanding_fallback import (
-    FallbackSceneUnderstandingInference,
-    SceneUnderstandingFallbackError,
-)
 from .perception_profile import (
     PROFILE_SCHEMA_VERSION,
     PerceptionProfileError,
@@ -138,6 +124,22 @@ from .perception_profile import (
     load_perception_profile,
 )
 from .process_worker import JsonlProcessWorkerClient, ProcessWorkerConfig, ProcessWorkerError
+from .qwen3_vl_scene_understanding import (
+    Qwen3VLConfig,
+    Qwen3VLInferenceError,
+    Qwen3VLSceneUnderstandingInference,
+)
+from .qwen3_vl_vllm_lifecycle import (
+    LifecycleManagedSceneUnderstandingInference,
+    Qwen3VLVLLMLifecycleConfig,
+    Qwen3VLVLLMLifecycleError,
+    Qwen3VLVLLMLifecycleManager,
+)
+from .qwen3_vl_vllm_scene_understanding import (
+    Qwen3VLVLLMConfig,
+    Qwen3VLVLLMInferenceError,
+    Qwen3VLVLLMSceneUnderstandingInference,
+)
 from .readiness import ReadinessAdapterError, ReadinessEvaluator, RoboTwinReadinessEvaluator
 from .readiness_profile import (
     LIVE_READINESS_PROFILE_SCHEMA_VERSION,
@@ -198,6 +200,10 @@ from .route_readiness import (
     project_route_evidence,
     route_geometry_digest,
     validate_route_request,
+)
+from .scene_understanding_fallback import (
+    FallbackSceneUnderstandingInference,
+    SceneUnderstandingFallbackError,
 )
 from .simulation_authorization import (
     SIMULATION_APPROVAL_SCHEMA_VERSION,
@@ -302,6 +308,10 @@ __all__ = [
     "Qwen3VLVLLMConfig",
     "Qwen3VLVLLMInferenceError",
     "Qwen3VLVLLMSceneUnderstandingInference",
+    "LifecycleManagedSceneUnderstandingInference",
+    "Qwen3VLVLLMLifecycleConfig",
+    "Qwen3VLVLLMLifecycleError",
+    "Qwen3VLVLLMLifecycleManager",
     "FallbackSceneUnderstandingInference",
     "SceneUnderstandingFallbackError",
     "SCENE_UNDERSTANDING_JSON_SCHEMA",

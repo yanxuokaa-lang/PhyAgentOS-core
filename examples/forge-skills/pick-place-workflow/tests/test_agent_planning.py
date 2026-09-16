@@ -7,6 +7,7 @@ from PhyAgentOS.planning import (
     ToolCallEnvelope,
     ToolSpecPolicy,
     derive_ready_nodes,
+    tool_input_binding_digest,
 )
 from pydantic import ValidationError
 
@@ -108,7 +109,7 @@ def test_dynamic_planner_selects_alternative_tools_and_admits_without_execution(
     call = ToolCallEnvelope(
         task_id="task-1", revision_id="revision-1", node_id="relocate-red",
         tool_id="understand.depth", tool_spec_digest="3" * 64,
-        input_binding_digest="4" * 64, scene_revision="scene-1",
+            input_binding_digest=tool_input_binding_digest({}), scene_revision="scene-1",
         idempotency_key="idem-1", semantics="query",
     )
     decision = planner.admit(call, AdmissionContext(scene_revision="scene-1", evidence_refs=frozenset({"observation:red"})))
@@ -175,7 +176,7 @@ def test_executable_projection_admits_declared_tool_without_motion_authority():
     call = ToolCallEnvelope(
         task_id=plan.graph.task_id, revision_id=plan.graph.revision_id,
         node_id="green.observe", tool_id="scene.observe", tool_spec_digest="3" * 64,
-        input_binding_digest="4" * 64, scene_revision="scene-0",
+            input_binding_digest=tool_input_binding_digest({}), scene_revision="scene-0",
         idempotency_key="idem-0", semantics="query",
     )
     decision = planner.admit(call, AdmissionContext(scene_revision="scene-0"))

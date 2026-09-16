@@ -16,7 +16,7 @@ from PhyAgentOS.forge.task import (
     TaskNotReadyForFinalizationError,
 )
 from PhyAgentOS.planning import PlanGraph, PlanNode
-from PhyAgentOS.verification.contracts import TaskVerificationContract
+from PhyAgentOS.verification.contracts import TaskVerificationContract, utc_now
 
 
 def _json(value: Any) -> str:
@@ -97,6 +97,8 @@ class ForgeTaskCreateTool(Tool):
         plan_graph: dict[str, Any] | None = None,
         plan_graph_ref: str | None = None,
     ) -> str:
+        if task_description.strip().casefold() in {"noop", "no-op", "none"}:
+            raise ValueError("AgentTask description must state an executable user task")
         task = self.coordinator.create_task(
             task_description=task_description,
             activation_id=activation_id,
@@ -145,7 +147,8 @@ class ForgeTaskBeginRevisionTool(Tool):
             "replanning. Supply semantic nodes for a model-directed recovery; PAOS compiles "
             "revision IDs and integrity metadata. A complete plan_graph remains available "
             "for coordinator-owned callers. This call only changes the planning revision and "
-            "never invokes a Tool or motion."
+            "never invokes a Tool or motion. retry_of may reference only a node included in "
+            "this replacement graph; use reason and evidence refs for prior-revision history."
         )
 
     @property
@@ -175,6 +178,7 @@ class ForgeTaskBeginRevisionTool(Tool):
             raise ValueError("supply either nodes or plan_graph")
         if nodes is None and plan_graph is None:
             raise ValueError("semantic recovery requires replacement nodes")
+        attempt_started_at = utc_now()
         task = self.coordinator.get_task(task_id)
         if nodes is not None:
             from PhyAgentOS.agent.plan_proposal import compile_task_plan
@@ -184,6 +188,9 @@ class ForgeTaskBeginRevisionTool(Tool):
             graph = compile_task_plan(task, nodes, reason=reason)
             plan_graph = graph.model_dump(mode="json")
             plan_graph_ref = f"artifact://plans/{task_id}/{graph.revision_id}"
+        self.coordinator.claim_replan_attempt(
+            task_id, attempt_started_at=attempt_started_at
+        )
         return _json(
             {
                 "ok": True,

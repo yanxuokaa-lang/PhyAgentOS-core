@@ -27,6 +27,7 @@ from PhyAgentOS.planning import (
     ToolSpecPolicy,
     plan_graph_digest,
     plan_node_digest,
+    tool_input_binding_digest,
 )
 from PhyAgentOS.verification.contracts import TaskVerificationContract
 
@@ -351,7 +352,7 @@ def test_dispatch_does_not_reserve_a_fixed_verify_node_name():
         node_id=node.node_id,
         node_digest=plan_node_digest(node),
         obligation_id=node.obligation_id,
-        input_binding_digest="4" * 64,
+        input_binding_digest=tool_input_binding_digest({}),
         decision_trace_ref="artifact://trace/verify",
     )
     decision = dispatch.admit_forge_tool(

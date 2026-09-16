@@ -23,6 +23,7 @@ from PhyAgentOS.planning import (
     make_decision_trace,
     plan_graph_digest,
     settle_node,
+    tool_input_binding_digest,
     validate_graph,
     validate_policy_edges,
     workflow_policy_digest,
@@ -68,14 +69,15 @@ def _graph() -> PlanGraph:
 
 
 def _call(*, node_id: str = "pick-red", semantics: str = "query") -> ToolCallEnvelope:
+    arguments = {"sensor_ref": "camera/front"}
     return ToolCallEnvelope(
         task_id="task-1",
         revision_id="revision-1",
         node_id=node_id,
         tool_id="scene.observe",
         tool_spec_digest="3" * 64,
-        input_binding_digest="4" * 64,
-        arguments={"sensor_ref": "camera/front"},
+        input_binding_digest=tool_input_binding_digest(arguments),
+        arguments=arguments,
         caller_id="agent:planner",
         scene_revision="scene-1",
         idempotency_key="idem-1",
@@ -218,9 +220,17 @@ def test_argument_binding_rejects_wrong_entity():
     graph = graph.model_copy(update={"nodes": (node, *graph.nodes[1:])})
     policy = _tool().model_copy(update={"input_binding_keys": ("entity_ref",)})
     context = AdmissionContext(scene_revision="scene-1", evidence_refs=frozenset({"observation:red"}))
-    bad = _call().model_copy(update={"arguments": {"entity_ref": "entity://blue"}})
+    bad_arguments = {"entity_ref": "entity://blue"}
+    bad = _call().model_copy(update={
+        "arguments": bad_arguments,
+        "input_binding_digest": tool_input_binding_digest(bad_arguments),
+    })
     assert admit_tool_call(graph, bad, policy, context).code == "input_binding_mismatch"
-    good = bad.model_copy(update={"arguments": {"entity_ref": "entity://red"}})
+    good_arguments = {"entity_ref": "entity://red"}
+    good = bad.model_copy(update={
+        "arguments": good_arguments,
+        "input_binding_digest": tool_input_binding_digest(good_arguments),
+    })
     assert admit_tool_call(graph, good, policy, context).allowed
 
 

@@ -305,6 +305,77 @@ def test_agent_recovery_nodes_are_compiled_by_paos_without_motion(tmp_path):
     assert current.active_revision.node_settlements == []
 
 
+def test_replan_submission_claims_only_one_bounded_extension(tmp_path):
+    coordinator = AgentTaskCoordinator(
+        workspace=tmp_path,
+        config=ForgeConfig(),
+        client=_Client(),
+        replan_timeout_s=120,
+    )
+    task = coordinator.create_task(
+        task_description="recover a failed planning query",
+        verification=TaskVerificationContract(mode="off"),
+    )
+    coordinator.request_replan(task.task_id, reason="correct semantic inputs")
+    before = coordinator.get_task(task.task_id).replan_deadline
+
+    first = coordinator.claim_replan_attempt(task.task_id)
+    second = coordinator.claim_replan_attempt(task.task_id)
+
+    assert before is not None
+    assert first.replan_deadline is not None
+    assert (first.replan_deadline - before).total_seconds() == 120
+    assert first.replan_extension_used is True
+    assert second.replan_deadline == first.replan_deadline
+
+
+def test_recovery_graph_retry_of_cannot_reference_prior_revision(tmp_path):
+    coordinator = AgentTaskCoordinator(
+        workspace=tmp_path, config=ForgeConfig(), client=_Client()
+    )
+    task = coordinator.create_task(
+        task_description="recover one node",
+        verification=TaskVerificationContract(mode="off"),
+    )
+    policy = ToolSpecPolicy(
+        tool_id="object.relocate",
+        semantics="action",
+        spec_digest="4" * 64,
+        capabilities=("object.relocate",),
+    )
+
+    def attach_binding(current):
+        current.runtime_binding = RuntimeBinding(
+            binding_id="runtime_binding_retry",
+            runtime_profile="fake",
+            runtime_instance_id="runtime_retry",
+            gateway_url="http://fake",
+        )
+        current.active_revision.runtime_binding_id = "runtime_binding_retry"
+        current.tool_bindings = [BoundToolSpec(
+            tool_id="object.relocate",
+            semantics="action",
+            spec_sha256="4" * 64,
+            ready_at_binding=True,
+            planning_policy=policy,
+        )]
+
+    coordinator.store.update(task.task_id, attach_binding, event_type="test_binding")
+    coordinator.request_replan(task.task_id, reason="retry")
+    with pytest.raises(ValueError, match="retry_of references an unknown node"):
+        asyncio.run(ForgeTaskBeginRevisionTool(coordinator).execute(
+            task.task_id,
+            reason="retry with corrected inputs",
+            nodes=[PlanNode(
+                node_id="new-node",
+                obligation_id="new-node",
+                capability="object.relocate",
+                retry_of="old-revision-node",
+            ).model_dump(mode="json")],
+        ))
+    assert coordinator.get_task(task.task_id).replan_extension_used is False
+
+
 def test_discovery_failure_stays_open_but_planning_unknown_requests_replan(tmp_path):
     coordinator = AgentTaskCoordinator(
         workspace=tmp_path, config=ForgeConfig(), client=_Client()

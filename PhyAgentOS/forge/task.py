@@ -37,6 +37,7 @@ from PhyAgentOS.planning import (
     ToolResultEnvelope,
     plan_node_digest,
     settle_node,
+    tool_input_binding_digest,
     validate_condition_keys,
     validate_graph,
 )
@@ -354,6 +355,7 @@ class AgentTaskRecord(BaseModel):
     clarification_node_id: str | None = None
     clarification_answer: str | None = None
     replan_deadline: datetime | None = None
+    replan_extension_used: bool = False
     origin_session_key: str | None = None
     origin_dedup_key: str | None = None
     origin_approval: AgentTaskOriginApproval | None = None
@@ -788,6 +790,11 @@ class AgentTaskCoordinator:
         node = next((item for item in task.active_revision.plan_graph.nodes if item.node_id == proposal.get("node_id")), None)
         if node is None or plan_node_digest(node) != proposal.get("node_digest"):
             raise AgentTaskError("planning selection node digest does not match the active graph")
+        tool_arguments = proposal.get("tool_arguments")
+        if not isinstance(tool_arguments, dict):
+            raise AgentTaskError("planning selection omitted final Tool arguments")
+        if tool_input_binding_digest(tool_arguments) != proposal.get("input_binding_digest"):
+            raise AgentTaskError("planning selection arguments do not match their digest")
         trace_id = uuid4().hex[:16]
         trace_ref = (
             f"artifact://planning-traces/{task.task_id}/"
@@ -826,6 +833,7 @@ class AgentTaskCoordinator:
             "task_id": task.task_id,
             "revision_id": task.active_revision_id,
             "scene_revision": proposal["scene_revision"],
+            "tool_arguments": tool_arguments,
         }
 
     def create_task(
@@ -1142,8 +1150,39 @@ class AgentTaskCoordinator:
             current.status = AgentTaskStatus.EXECUTING
             current.verdict = None
             current.replan_deadline = None
+            current.replan_extension_used = False
 
         return self.store.update(task_id, mutate, event_type="plan_revision_started")
+
+    def claim_replan_attempt(
+        self, task_id: str, *, attempt_started_at: datetime | None = None
+    ) -> AgentTaskRecord:
+        """Grant one bounded recovery lease when an Agent starts a revision submission."""
+
+        task = self.store.get(task_id)
+        if task.status != AgentTaskStatus.AWAITING_REPLAN:
+            raise AgentTaskError("a replan attempt requires awaiting_replan status")
+        now = utc_now()
+        started_at = attempt_started_at or now
+        if task.replan_deadline is None or started_at >= task.replan_deadline:
+            return task
+        if task.replan_extension_used:
+            return task
+
+        def mutate(current: AgentTaskRecord) -> None:
+            if current.replan_extension_used or current.replan_deadline is None:
+                return
+            current.replan_deadline = max(current.replan_deadline, now) + timedelta(
+                seconds=self.replan_timeout_s
+            )
+            current.replan_extension_used = True
+
+        return self.store.update(
+            task_id,
+            mutate,
+            event_type="plan_revision_attempt_lease_claimed",
+            payload={"bounded_extension_s": self.replan_timeout_s},
+        )
 
     def expand_discovery_revision(
         self,
@@ -1364,6 +1403,7 @@ class AgentTaskCoordinator:
         def mutate(current: AgentTaskRecord) -> None:
             current.status = AgentTaskStatus.AWAITING_REPLAN
             current.replan_deadline = utc_now() + timedelta(seconds=self.replan_timeout_s)
+            current.replan_extension_used = False
             current.evidence_errors.append(f"replan requested: {reason.strip()}")
 
         return self.store.update(task_id, mutate, event_type="plan_replan_requested")
@@ -2306,6 +2346,7 @@ class AgentTaskCoordinator:
                 return
             current.status = AgentTaskStatus.AWAITING_REPLAN
             current.replan_deadline = utc_now() + timedelta(seconds=self.replan_timeout_s)
+            current.replan_extension_used = False
             current.evidence_errors.append(
                 f"planning Query failure requires recovery: {record.node_id}"
             )

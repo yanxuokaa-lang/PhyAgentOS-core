@@ -15,7 +15,7 @@ from PhyAgentOS.agent.prompt_context import (
     visible_tool_names,
 )
 from PhyAgentOS.agent.tools.base import Tool
-from PhyAgentOS.agent.tools.forge_task import ForgeTaskFinalizeTool
+from PhyAgentOS.agent.tools.forge_task import ForgeTaskCreateTool, ForgeTaskFinalizeTool
 from PhyAgentOS.agent.tools.registry import ToolRegistry
 from PhyAgentOS.bus.queue import MessageBus
 from PhyAgentOS.config.schema import AgentDefaults, ForgeConfig
@@ -106,6 +106,8 @@ def _task(*, graph=None, records=(), status="executing"):
         evidence_bundle_ref=None,
         evidence_bundle_id=None,
         evidence_errors=[],
+        replan_deadline=None,
+        replan_extension_used=False,
         cancellation_requested=False,
         pause_requested=False,
     )
@@ -113,6 +115,30 @@ def _task(*, graph=None, records=(), status="executing"):
 
 def _estimate(messages, names):
     return sum(len(str(message.get("content", ""))) for message in messages) + 10 * len(names)
+
+
+def test_agent_loop_selects_task_from_current_session_not_global_active():
+    session_task = SimpleNamespace(task_id="task-session", terminal=False)
+    other_task = SimpleNamespace(task_id="task-other", terminal=False)
+
+    class Store:
+        def find_by_origin_session_key(self, key):
+            return [session_task] if key == "cli:session" else [other_task]
+
+    loop = object.__new__(AgentLoop)
+    loop.forge_task_coordinator = SimpleNamespace(store=Store())
+
+    assert loop._task_for_session("cli:session") is session_task
+
+
+def test_task_create_rejects_placeholder_noop_description():
+    coordinator = SimpleNamespace(create_task=lambda **_kwargs: None)
+    tool = ForgeTaskCreateTool(coordinator)
+    with pytest.raises(ValueError, match="executable user task"):
+        asyncio.run(tool.execute(
+            "noop",
+            TaskVerificationContract(mode="off").model_dump(mode="json"),
+        ))
 
 
 def test_agent_defaults_use_272k_window_and_260k_trigger() -> None:

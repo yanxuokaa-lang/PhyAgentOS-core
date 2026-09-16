@@ -60,7 +60,11 @@ class ForgePlanSelectTool(Tool):
 
     @property
     def description(self) -> str:
-        return "Select one ready semantic node and Tool; returns a PAOS-generated planning binding without invoking a Gateway."
+        return (
+            "Select one ready semantic node and Tool; returns a PAOS-generated planning "
+            "binding plus the final Tool arguments without invoking a Gateway. Pass both "
+            "unchanged to the selected Forge Tool wrapper."
+        )
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -100,7 +104,7 @@ class ForgePlanSelectTool(Tool):
                 )
             selection = {
                 field: receipt[field]
-                for field in ("task_id", "revision_id", "scene_revision")
+                for field in ("task_id", "revision_id", "scene_revision", "tool_arguments")
                 if field in receipt
             }
             return json.dumps(

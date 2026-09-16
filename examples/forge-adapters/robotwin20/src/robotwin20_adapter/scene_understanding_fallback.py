@@ -20,11 +20,22 @@ class FallbackSceneUnderstandingInference:
     cross the provider-neutral PAOS ToolSpec boundary.
     """
 
-    def __init__(self, primary: _Inference, fallback: _Inference, *, primary_name: str, fallback_name: str) -> None:
+    def __init__(
+        self,
+        primary: _Inference,
+        fallback: _Inference,
+        *,
+        primary_name: str,
+        fallback_name: str,
+        fallback_exceptions: tuple[type[Exception], ...] = (Exception,),
+        fallback_on_empty: bool = True,
+    ) -> None:
         self.primary = primary
         self.fallback = fallback
         self.primary_name = primary_name
         self.fallback_name = fallback_name
+        self.fallback_exceptions = fallback_exceptions
+        self.fallback_on_empty = fallback_on_empty
         self.last_route: str | None = None
         self.last_error: str | None = None
 
@@ -35,8 +46,10 @@ class FallbackSceneUnderstandingInference:
                 self.last_route = self.primary_name
                 self.last_error = None
                 return result
+            if not self.fallback_on_empty:
+                return None
             primary_error = "provider returned no result"
-        except Exception as exc:
+        except self.fallback_exceptions as exc:
             primary_error = type(exc).__name__
         try:
             result = self.fallback.infer(request)
@@ -49,6 +62,13 @@ class FallbackSceneUnderstandingInference:
             self.last_route = None
             self.last_error = f"{primary_error}; {type(exc).__name__}"
             raise SceneUnderstandingFallbackError("local and fallback scene understanding providers failed") from exc
+
+    def release(self) -> None:
+        if self.last_route != self.primary_name:
+            return
+        release = getattr(self.primary, "release", None)
+        if callable(release):
+            release()
 
 
 __all__ = ["FallbackSceneUnderstandingInference", "SceneUnderstandingFallbackError"]

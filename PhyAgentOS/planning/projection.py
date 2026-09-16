@@ -32,6 +32,7 @@ class _PlanningExtension(BaseModel):
     refreshes_scene: bool = False
     input_binding_keys: tuple[str, ...] = ()
     requires_before_plan: bool = False
+    trusted_argument_builder: str | None = None
 
 
 _PROVIDER_PRIVATE = re.compile(
@@ -99,6 +100,7 @@ def project_tool_spec(spec: Mapping[str, Any]) -> ToolSpecPolicy:
             refreshes_scene=parsed.refreshes_scene,
             input_binding_keys=parsed.input_binding_keys,
             requires_before_plan=parsed.requires_before_plan,
+            trusted_argument_builder=parsed.trusted_argument_builder,
         )
     except (ValidationError, ValueError) as exc:
         raise ToolSpecProjectionError(f"invalid ToolSpec planning policy: {exc}") from exc

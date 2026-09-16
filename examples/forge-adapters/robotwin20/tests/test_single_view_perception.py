@@ -41,6 +41,9 @@ REQUEST = {
 
 
 class SemanticInference:
+    def __init__(self):
+        self.released = 0
+
     def infer(self, request):
         return {
             "entities": [
@@ -55,6 +58,9 @@ class SemanticInference:
             "spatial_envelopes": [],
             "ambiguities": [],
         }
+
+    def release(self):
+        self.released += 1
 
 
 class AmbiguousSemanticInference(SemanticInference):
@@ -245,6 +251,7 @@ def test_single_view_composition_crosses_the_generic_gateway_without_motion(tmp_
     ]
     assert result["spatial_envelopes"][0]["frame_id"] == "head_camera"
     assert result["spatial_envelopes"][0]["min_xyz_m"] == pytest.approx([-0.01, -0.005, 1.0])
+    assert inference.semantic_inference.released == 1
     assert proposal.released == 1
     assert segmentation.released == 1
     assert proposal.requests[0].query == "red block"

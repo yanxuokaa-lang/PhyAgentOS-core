@@ -13,6 +13,7 @@ import json
 from collections.abc import Mapping
 from typing import Any, Callable
 
+from PhyAgentOS.forge.manipulation import ManipulationIntent
 from PhyAgentOS.planning import (
     AdmissionContext,
     AdmissionDecision,
@@ -294,8 +295,13 @@ class AgentComposedDispatch:
             raise PlanningDispatchError("a fresh scene observation is required before this Tool")
         if not isinstance(decision_reason, str) or not decision_reason.strip():
             raise PlanningDispatchError("decision_reason must be non-empty")
+        final_arguments = self._build_trusted_arguments(
+            policy=policy,
+            node=node,
+            arguments=arguments,
+        )
         for key in policy.input_binding_keys:
-            if key not in node.input_bindings or arguments.get(key) != node.input_bindings[key]:
+            if key not in node.input_bindings or final_arguments.get(key) != node.input_bindings[key]:
                 raise PlanningDispatchError(f"Tool argument {key!r} does not match the node")
         return {
             "task_id": self.graph.task_id,
@@ -308,12 +314,101 @@ class AgentComposedDispatch:
                 item.tool_id for item in self.policies
                 if node.capability in item.capabilities and item.semantics == policy.semantics
             ),
-            "input_binding_digest": tool_input_binding_digest(arguments),
+            "input_binding_digest": tool_input_binding_digest(final_arguments),
+            "tool_arguments": final_arguments,
             "scene_revision": context.scene_revision,
             "context_digest": canonical_sha256(context.model_dump(mode="json")),
             "evidence_refs": tuple(context.evidence_refs),
             "decision_reason": decision_reason.strip(),
         }
+
+    def _build_trusted_arguments(
+        self,
+        *,
+        policy: ToolSpecPolicy,
+        node: Any,
+        arguments: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        final_arguments = dict(arguments)
+        if policy.trusted_argument_builder is None:
+            return final_arguments
+        if policy.trusted_argument_builder != "manipulation_intent_v2":
+            raise PlanningDispatchError("ToolSpec trusted argument builder is unsupported")
+
+        supplied = final_arguments.pop("intent", None)
+        node_intent = node.input_bindings.get("intent")
+        if supplied is not None and node_intent is not None and supplied != node_intent:
+            raise PlanningDispatchError("Tool intent does not match the semantic node")
+        semantic = supplied if supplied is not None else node_intent
+        if not isinstance(semantic, Mapping):
+            raise PlanningDispatchError(
+                "manipulation intent semantics are required in Tool arguments or node input_bindings"
+            )
+        semantic_keys = {
+            "goal",
+            "success_criteria",
+            "allowed_arms",
+            "coordination_mode",
+            "constraints",
+        }
+        owned_keys = {
+            "version",
+            "task_id",
+            "revision_id",
+            "node_id",
+            "node_digest",
+            "entity_ref",
+            "observation_ref",
+            "scene_revision",
+            "observation_frame_id",
+            "calibration_ref",
+            "candidate_set_ref",
+            "motion_authorized",
+        }
+        unexpected = set(semantic) - semantic_keys
+        if unexpected:
+            label = "Coordinator-owned" if unexpected & owned_keys else "unsupported"
+            raise PlanningDispatchError(
+                f"manipulation intent contains {label} fields: {', '.join(sorted(unexpected))}"
+            )
+        candidates = final_arguments.get("candidates")
+        entity_refs = {
+            item.get("entity_ref")
+            for item in candidates
+            if isinstance(item, Mapping) and isinstance(item.get("entity_ref"), str)
+        } if isinstance(candidates, list) else set()
+        entity_ref = node.input_bindings.get("entity_ref")
+        if not isinstance(entity_ref, str) and len(entity_refs) == 1:
+            entity_ref = next(iter(entity_refs))
+        if not isinstance(entity_ref, str) or entity_refs != {entity_ref}:
+            raise PlanningDispatchError(
+                "manipulation candidates must bind exactly the semantic node entity"
+            )
+        for required in ("destination_ref", "capability_snapshot_ref"):
+            if not isinstance(final_arguments.get(required), str):
+                raise PlanningDispatchError(f"manipulation preparation requires {required}")
+
+        intent_payload = {
+            **dict(semantic),
+            "version": "manipulation_intent_v2",
+            "task_id": self.graph.task_id,
+            "revision_id": self.graph.revision_id,
+            "node_id": node.node_id,
+            "node_digest": plan_node_digest(node),
+            "entity_ref": entity_ref,
+            "observation_ref": final_arguments.get("observation_ref"),
+            "scene_revision": final_arguments.get("scene_revision"),
+            "observation_frame_id": final_arguments.get("frame_id"),
+            "calibration_ref": final_arguments.get("calibration_ref"),
+            "candidate_set_ref": final_arguments.get("candidate_set_ref"),
+            "motion_authorized": False,
+        }
+        try:
+            intent = ManipulationIntent.model_validate(intent_payload)
+        except ValueError as exc:
+            raise PlanningDispatchError(f"manipulation intent is incomplete: {exc}") from exc
+        final_arguments["intent"] = intent.model_dump(mode="json")
+        return final_arguments
 
     def _current_context(self) -> AdmissionContext:
         if self.context_provider is None:

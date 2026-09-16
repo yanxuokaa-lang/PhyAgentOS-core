@@ -113,6 +113,68 @@ allow_benchmark_scene_facts: true
     assert loaded["tools"] == {"enabled": True}
 
 
+def test_host_closes_lifecycle_manager_when_fallback_credential_is_missing(
+    tmp_path, monkeypatch
+):
+    profile, _environ = _profile(tmp_path)
+    profile["model"] = {
+        "provider": "qwen3_vl_vllm_fallback",
+        "primary": {
+            "api_base": "http://127.0.0.1:8012/v1",
+            "model": "qwen3-vl-4b-awq",
+            "api_key_env": "",
+            "timeout_seconds": 5,
+            "max_output_tokens": 128,
+            "lifecycle": {
+                "enabled": True,
+                "control_api_base": "http://127.0.0.1:8012",
+                "idle_timeout_s": 60,
+                "control_timeout_s": 5,
+                "sleep_level": 1,
+            },
+        },
+        "fallback": {
+            "api_base": "https://models.invalid/v1",
+            "model": "gpt-5.6-sol",
+            "api_key_env": "MISSING_MODEL_KEY",
+            "reasoning_effort": "high",
+            "timeout_seconds": 5,
+            "max_output_tokens": 128,
+        },
+    }
+    client_closed = []
+
+    class Client:
+        def query(self, operation, arguments):
+            assert (operation, arguments) == ("snapshot", {})
+            return {"scene_revision": "runtime-1", "holding_state": "empty"}
+
+        def close(self):
+            client_closed.append(True)
+
+    manager_closed = []
+
+    class Manager:
+        def __init__(self, _config):
+            pass
+
+        def close(self):
+            manager_closed.append(True)
+
+    monkeypatch.setattr(host_module, "JsonlProcessWorkerClient", lambda _config: object())
+    monkeypatch.setattr(host_module, "PersistentWorkerClient", lambda _worker: Client())
+    monkeypatch.setattr(host_module, "Qwen3VLVLLMLifecycleManager", Manager)
+
+    with pytest.raises(
+        PersistentHostConfigurationError,
+        match="model credential environment is unavailable",
+    ):
+        build_persistent_host(profile, environ={})
+
+    assert manager_closed == [True]
+    assert client_closed == [True]
+
+
 def test_host_composes_seven_tools_around_one_persistent_worker_client(tmp_path, monkeypatch):
     profile, environ = _profile(tmp_path)
     closed = []

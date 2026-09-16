@@ -193,6 +193,7 @@ class ToolSpecPolicy(_Frozen):
     refreshes_scene: bool = False
     input_binding_keys: tuple[str, ...] = ()
     requires_before_plan: bool = False
+    trusted_argument_builder: Literal["manipulation_intent_v2"] | None = None
 
     @field_validator("tool_id")
     @classmethod

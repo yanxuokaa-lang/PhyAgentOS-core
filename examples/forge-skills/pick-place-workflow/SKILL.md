@@ -153,6 +153,14 @@ non-mutating readiness assessment with three explicit checks: `workspace`,
 `pass` can appear as `qualification: prepared`; rejected candidates are omitted and
 an empty set is returned explicitly as `status: empty`.
 
+For an agent-composed preparation node, include semantic `intent` fields in the
+`forge_plan_select.arguments`: `goal`, non-empty `success_criteria`, one or more
+`allowed_arms`, `coordination_mode`, and optional `constraints`. Do not provide
+task/revision/node identity, node digest, observation bindings, entity identity,
+or `motion_authorized`; PAOS derives those fields from the active graph and final
+Tool arguments. Use the returned `selection.tool_arguments` unchanged for
+`forge_tool_query`, together with the returned `planning_binding`.
+
 Preparation evidence is not an IK guarantee, collision guarantee for a future
 trajectory, or execution admission. Treat `stale`, `unavailable`, and `invalid` as
 blockers. Never call `invoke_action` or start a Session with this Query, and never
@@ -221,12 +229,13 @@ not execute Tools, create revisions, hold leases, or authorize motion. The
 When running through AgentLoop, activate a persisted agent-composed revision
 with `forge_plan_activate`, then call `forge_plan_ready` before selecting a
 Forge Tool. For each ready node, call `forge_plan_select` with the node, frozen
-candidate Tool, exact Tool arguments, and a short decision reason. PAOS returns
-the complete Coordinator-owned `planning_binding`; pass it unchanged to the
-task-bound Query or Action wrapper. Never calculate node/input digests or invent
-a decision-trace reference. The selection tool is control-plane only and does
-not invoke a Gateway, authorize motion, or replace Coordinator/Gateway
-execution and reconciliation.
+candidate Tool, exact semantic Tool arguments, and a short decision reason.
+PAOS returns the complete Coordinator-owned `planning_binding` and
+`selection.tool_arguments`; pass both unchanged to the task-bound Query or
+Action wrapper. Never calculate node/input digests, add Coordinator-owned
+intent identity, or invent a decision-trace reference. The selection tool is
+control-plane only and does not invoke a Gateway, authorize motion, or replace
+Coordinator/Gateway execution and reconciliation.
 
 When submitting semantic nodes, use exact task-bound
 `paos_record.evidence_refs` for evidence already available at the graph root.

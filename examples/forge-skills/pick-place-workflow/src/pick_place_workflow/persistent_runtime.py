@@ -169,6 +169,8 @@ def _spec(spec):
                      "refreshes_scene": spec["tool_id"] == "scene.observe",
                      "input_binding_keys": ["entity_ref", "destination_ref"] if spec["tool_id"] == "object.place" else ["entity_ref"] if action else [],
                      "scene_write_behavior": "new_revision" if action else "none"})
+    if spec["tool_id"] == "manipulation.prepare":
+        planning["trusted_argument_builder"] = "manipulation_intent_v2"
     spec["planning"] = planning
     if spec["tool_id"] == "scene.observe":
         spec["planning"]["capabilities"].append("task.verify")

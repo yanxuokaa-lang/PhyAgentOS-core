@@ -11,6 +11,37 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v10.7.0 (2026-09-16 22:10) - codex
+
+- [sense] [feat] [完成] 为 Qwen3-VL-4B vLLM 增加请求前 wake、空闲 level-1 sleep、活动请求互斥及 Qwen/LocateAnything GPU 交接；仅 lifecycle/control 异常进入 GPT-5.6-sol/high fallback。(local)
+- [agent] [fix] [完成] 由 Coordinator 派生 `manipulation_intent_v2` identity，修复跨 revision 恢复、一次 bounded lease、session task 归属与 `noop` 占位任务。(local)
+- [Sense] [Feat] [Completed] Added wake-before-request, idle level-1 sleep, active-request exclusion, and Qwen/LocateAnything GPU handoff; only lifecycle/control errors enter GPT-5.6-sol/high fallback. (local)
+- [Agent] [Fix] [Completed] Moved `manipulation_intent_v2` identity derivation to the Coordinator and fixed cross-revision recovery, one bounded lease, session task ownership, and placeholder `noop` tasks. (local)
+
+### 影响文件 / Affected Files
+
+- `PhyAgentOS/agent/planning_dispatch.py:L295-L402`; `PhyAgentOS/forge/task.py:L790-L836,L1157-L1190`; `PhyAgentOS/planning/admission.py:L74-L83`
+- `PhyAgentOS/agent/loop.py:L548-L571,L585-L589,L799-L803,L1058-L1067`; `PhyAgentOS/agent/tools/forge_task.py:L100-L103,L147-L198`
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/qwen3_vl_vllm_lifecycle.py:L1-L258`; `persistent_host.py:L60-L69,L162,L296-L341,L439-L452`
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/scene_understanding_fallback.py:L23-L71`; `single_view_perception.py:L477`
+- `scripts/package_skill.py:L28-L36`; `tests/test_skill_packaging.py:L1-L31`
+- `examples/forge-skills/pick-place-workflow/skill.yaml:L1-L67`; `pyproject.toml:L1-L4`; focused Core/Skill/Adapter tests and acceptance documentation
+
+```diff
+- model authors task/revision/node/digest intent identity
++ Coordinator derives trusted identity and returns exact final tool_arguments
+- global active task + unbounded correction pressure
++ origin-session task + one valid bounded recovery lease
+- Qwen residency unmanaged; broad provider fallback
++ lifecycle-managed wake/sleep; GPT fallback only on lifecycle/control errors
+- release bundle includes local test/lint caches
++ package excludes .pytest_cache, .ruff_cache, and __pycache__
+```
+
+Validation: Core `416 passed`; Skill `334 passed`; Adapter `493 passed`; focused lifecycle/host `15 passed`; package regression `1 passed`; changed-file Ruff, compileall, diff check, and Agent Route Principles Gate passed. Installed Skill `2.1.4` archive SHA-256 `259792c968d3d369d010961948d3fc21fa65b5f91d5f66d2e3388a74c6449bbf`; Node `0.1.13` SHA-256 `58bc793aa2d90a7344c4ebea8b57140c45c168527eccd65929e906de4a55151f` verified. Final Query: 9/9 Tools ready, automatic wake and return-to-sleep, `13.225 s`, 3 entities, 2 relations, 4 explicit ambiguities, no fabricated metric evidence. Query-only: 0 Action, 0 Session, 0 world change.
+
+Git commit: pending on `feature/planning-loop`.
+
 ## v10.6.1 (2026-09-16 20:30) - codex
 
 - [env] [chore] [完成] 打包并安装 `pick-place-workflow` Skill `2.0.9` 与 Node `0.1.7`; 安装后 Runtime 保持 stopped，等待用户发起测试。(local)
@@ -121,67 +152,6 @@ Git commit: `d4c1b7b` on `feature/planning-loop`.
 ```
 
 Validation: Core `407 passed`; Skill `334 passed`; focused integration `110 passed`; Ruff, compileall, and `git diff --check` passed. Full Adapter collection remains limited by optional worker-script import paths; focused GraspGen adapter tests passed.
-
-## v10.3.15 (2026-09-16 01:32) - codex
-
-- [sense] [fix] [完成] `grasp.propose` 按实体接受请求中直接绑定的 geometry artifact 及其上游 provenance，继续拒绝无关和跨实体引用；失败响应保留真实 candidate-set/scene/frame/calibration 身份。(local)
-- [Sense] [Fix] [Completed] `grasp.propose` now accepts per-entity geometry artifacts directly bound by the request plus their upstream provenance, while rejecting unrelated and cross-entity references; failure responses retain the real candidate-set/scene/frame/calibration identity. (local)
-- Files: `PhyAgentOS/forge/capability_runtime/grasp_proposal.py:L252-L297,L447-L527,L561-L733`; Skill/Adapter regressions; `SKILL.md:L34-L42`; `skill.yaml:L1-L3`; `pyproject.toml:L1-L3`; DAG developer guide `L144-L152,L184-L190`.
-
-```diff
-- global provenance set omitted geometry artifact_ref
-+ per-entity provenance = envelope refs + geometry artifact_ref + geometry upstream refs
-- invalid provider output -> candidate-set://unknown/unknown
-+ invalid provider output -> validated request identity, empty candidates, non-success status
-```
-
-- Validation: focused `69 passed`; Core `402 passed`; Skill `333 passed`; Adapter `472 passed`; Ruff, compileall and diff check passed. Skill `2.0.8` bundle SHA-256 `fb16d4a507af475a5a093015bebd6d4b0be6a73b21ac569edf59e5a81dd6360c`; Node remains `0.1.6`; no Runtime or motion operation.
-
-## v10.3.14 (2026-09-16 09:20) - codex
-
-- [docs] [docs] [完成] 在 planning module developer guide 中记录 `ToolSpecPolicy.requires_before_plan` 的 Skill 声明、AgentLoop 可见性和非授权边界。(local)
-- [Docs] [Docs] [Completed] Documented the Skill declaration, AgentLoop visibility, and non-authorizing boundary of `ToolSpecPolicy.requires_before_plan` in the planning module guide. (local)
-- File: `docs/forge/PLANNING_MODULE_DESIGN.md:L73-L79`.
-
-```diff
-+ requires_before_plan is frozen Skill metadata
-+ it gates PlanGraph materialization only and never authorizes Tool execution
-```
-
-## v10.3.13 (2026-09-16 09:10) - codex
-
-- [policy] [fix] [完成] runtime-only task 从 `tool_bindings` 读取 pre-plan Query policy，并让 semantic nodes 与完整 `plan_graph` 两条入口共享 Coordinator admission。(local)
-- [Policy] [Fix] [Completed] Runtime-only tasks now read pre-plan Query policy from `tool_bindings`, and semantic-node and complete-`plan_graph` paths share Coordinator admission. (local)
-- Files: `PhyAgentOS/forge/binding.py:L82-L95`; `PhyAgentOS/agent/tools/forge_task.py:L247-L255`; `tests/test_agent_foundation.py:L205-L260`; `tests/test_prompt_context.py:L215-L250`.
-
-```diff
-- primary Skill only policy lookup; direct graph path could precede prerequisite check
-+ primary Skill or runtime tool_bindings lookup; both materialization paths check prerequisites first
-```
-
-## v10.3.12 (2026-09-16 08:45) - codex
-
-- [policy] [refactor] [完成] 将 discovery prerequisite 从 Core capability 名称迁移到冻结的 provider-neutral ToolSpec policy，并用类型化 lifecycle errors 取代字符串匹配。(local)
-- [Policy] [Refactor] [Completed] Moved discovery prerequisites from Core capability names into frozen provider-neutral ToolSpec policy and replaced lifecycle error-string matching with typed errors. (local)
-- Files: `PhyAgentOS/planning/contracts.py:L177-L195`; `planning/projection.py:L17-L35,L88-L102`; `forge/binding.py:L82-L95`; `agent/prompt_context.py:L29-L41`; `forge/task.py:L56-L73,L1178-L1193,L1876-L1903`; `agent/tools/forge_task.py:L292-L340`; capability ToolSpecs and tests.
-
-```diff
-- Core hard-coded discovery capability names and parsed error messages
-+ frozen ToolSpecPolicy.requires_before_plan and typed recoverable lifecycle errors
-```
-
-- Deployment: Skill `2.0.7` bundle SHA-256 `86e9fb6baa0893909b4ed661a04299281cb25d53aa4bfd512b25dbff00627bf1`; installed locally with Runtime stopped.
-
-## v10.3.11 (2026-09-16 08:15) - codex
-
-- [policy] [refactor] [完成] discovery completion 仅读取 active revision records；Coordinator 拒绝冻结的已完成 discovery-only graph，premature finalize 返回结构化可恢复错误并保持 task executing。(local)
-- [Policy] [Refactor] [Completed] Discovery completion now reads only active-revision records; Coordinator rejects frozen completed discovery-only graphs, and premature finalize returns a structured recoverable error while keeping the task executing. (local)
-- Files: `PhyAgentOS/agent/prompt_context.py:L27-L36,L222-L227`; `PhyAgentOS/forge/task.py:L1157-L1170`; `PhyAgentOS/agent/tools/forge_task.py:L242-L358`; focused lifecycle tests.
-
-```diff
-- task-wide history could unlock planning; premature finalize reached verifier
-+ active-revision discovery facts; discovery_required/task_not_ready_for_finalization without terminal mutation
-```
 
 ## Historical Entries
 

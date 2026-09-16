@@ -468,6 +468,12 @@ def task_prompt_projection(task: Any | None) -> dict[str, Any] | None:
         "evidence_bundle_ref": getattr(task, "evidence_bundle_ref", None),
         "evidence_bundle_id": getattr(task, "evidence_bundle_id", None),
         "evidence_errors": list(getattr(task, "evidence_errors", ())),
+        "replan_deadline": (
+            getattr(task, "replan_deadline").isoformat()
+            if getattr(task, "replan_deadline", None) is not None
+            else None
+        ),
+        "replan_extension_used": getattr(task, "replan_extension_used", False),
         "motion_authorized": False,
     }
 

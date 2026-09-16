@@ -7,7 +7,12 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from .contracts import PlanGraph, ToolCallEnvelope, ToolSpecPolicy
+from .contracts import (
+    PlanGraph,
+    ToolCallEnvelope,
+    ToolSpecPolicy,
+    tool_input_binding_digest,
+)
 from .dag import derive_ready_nodes
 
 
@@ -69,6 +74,11 @@ def admit_tool_call(
         return reject("tool_binding_mismatch", "ToolSpec identity or digest does not match")
     if call.semantics != tool.semantics:
         return reject("semantics_mismatch", "Tool semantics do not match the ToolSpec")
+    if call.input_binding_digest != tool_input_binding_digest(call.arguments):
+        return reject(
+            "input_digest_mismatch",
+            "Tool arguments do not match the Coordinator planning binding",
+        )
     if tool.capabilities and node.capability not in tool.capabilities:
         return reject("capability_mismatch", "Tool is not declared for this node capability")
     if call.scene_revision != context.scene_revision:

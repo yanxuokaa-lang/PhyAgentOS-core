@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
 import json
+from datetime import datetime, timezone
 
 from PhyAgentOS.agent.experience.policy_candidates import WorkflowPolicyCandidateManager
 from PhyAgentOS.agent.experience.store import ExperienceStore
@@ -23,6 +23,7 @@ from PhyAgentOS.planning import (
     plan_graph_digest,
     plan_node_digest,
     settle_node,
+    tool_input_binding_digest,
 )
 from PhyAgentOS.verification.contracts import TaskVerificationContract
 
@@ -161,13 +162,13 @@ def test_agent_composed_plan_is_effectively_wired_without_motion(tmp_path):
     assert [node["node_id"] for node in activation_result["ready_nodes"]] == ["observe"]
     assert activation_result["motion_authorized"] is False
 
-    def binding_for(node_id: str, index: int) -> dict[str, str]:
+    def binding_for(node_id: str, arguments: dict) -> dict[str, str]:
         node = next(item for item in graph.nodes if item.node_id == node_id)
         return {
             "node_id": node_id,
             "node_digest": plan_node_digest(node),
             "obligation_id": node.obligation_id,
-            "input_binding_digest": f"{index:x}" * 64,
+            "input_binding_digest": tool_input_binding_digest(arguments),
             "decision_trace_ref": f"artifact://traces/task-e2e/{node_id}",
         }
 
@@ -177,7 +178,7 @@ def test_agent_composed_plan_is_effectively_wired_without_motion(tmp_path):
             "task_id": task.task_id,
             "tool_id": "scene.observe",
             "arguments": {"sensor_ref": "camera/front"},
-            "planning_binding": binding_for("observe", 6),
+            "planning_binding": binding_for("observe", {"sensor_ref": "camera/front"}),
         },
     )
     assert observe is not None and observe.allowed and observe.motion_authorized is False
@@ -195,7 +196,7 @@ def test_agent_composed_plan_is_effectively_wired_without_motion(tmp_path):
             "task_id": task.task_id,
             "tool_id": "scene.understand",
             "arguments": {},
-            "planning_binding": binding_for("understand", 7),
+            "planning_binding": binding_for("understand", {}),
         },
     )
     assert understand is not None and understand.allowed
@@ -211,7 +212,7 @@ def test_agent_composed_plan_is_effectively_wired_without_motion(tmp_path):
             "task_id": task.task_id,
             "tool_id": "object.acquire",
             "arguments": {"assignment_ref": "assignment://right/red"},
-            "planning_binding": binding_for("acquire", 8),
+            "planning_binding": binding_for("acquire", {"assignment_ref": "assignment://right/red"}),
         },
     )
     assert acquire is not None and acquire.allowed and acquire.motion_authorized is False

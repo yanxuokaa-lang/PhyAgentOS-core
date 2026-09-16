@@ -545,6 +545,24 @@ class AgentLoop:
 
         return ", ".join(_fmt(tc) for tc in tool_calls)
 
+    def _task_for_session(
+        self, session_key: str | None, *, include_terminal: bool = True
+    ) -> Any | None:
+        if self.forge_task_coordinator is None or session_key is None:
+            return None
+        tasks = self.forge_task_coordinator.store.find_by_origin_session_key(
+            session_key
+        )
+        nonterminal = [task for task in tasks if not task.terminal]
+        if nonterminal:
+            return nonterminal[-1]
+        if include_terminal and tasks:
+            return tasks[-1]
+        legacy = self.forge_task_coordinator.store.active()
+        if legacy is not None and legacy.origin_session_key is None:
+            return legacy
+        return None
+
     async def _run_agent_loop(
         self,
         initial_messages: list[dict],
@@ -564,11 +582,7 @@ class AgentLoop:
         while iteration < self.max_iterations:
             iteration += 1
 
-            active_task = (
-                self.forge_task_coordinator.store.active()
-                if self.forge_task_coordinator is not None
-                else None
-            )
+            active_task = self._task_for_session(experience_session_key)
 
             def estimate(request_messages, visible_names):
                 definitions = self.tools.get_definitions(set(visible_names))
@@ -782,8 +796,8 @@ class AgentLoop:
         sub_cancelled = await self.subagents.cancel_by_session(msg.session_key)
         forge_cancelled = 0
         if self.forge_task_coordinator is not None:
-            record = self.forge_task_coordinator.store.active()
-            if record is not None and record.origin_session_key == msg.session_key:
+            record = self._task_for_session(msg.session_key, include_terminal=False)
+            if record is not None:
                 await self.forge_task_coordinator.cancel_task(record.task_id, reason="user_stop")
                 forge_cancelled = 1
         local_stopped = cancelled + sub_cancelled
@@ -1044,7 +1058,7 @@ class AgentLoop:
         )
 
         if self.forge_task_coordinator is not None:
-            active = self.forge_task_coordinator.store.active()
+            active = self._task_for_session(key)
             if active is not None:
                 binding = active.primary_skill_binding
                 summary = {

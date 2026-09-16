@@ -16,6 +16,7 @@ from PhyAgentOS.planning import (
     ToolSpecPolicy,
     canonical_sha256,
     plan_graph_digest,
+    tool_input_binding_digest,
 )
 from PhyAgentOS.verification.contracts import TaskVerificationContract
 
@@ -35,6 +36,7 @@ class _Coordinator:
             "task_id": proposal["task_id"],
             "revision_id": proposal["revision_id"],
             "scene_revision": proposal["scene_revision"],
+            "tool_arguments": proposal["tool_arguments"],
         }
 
 
@@ -54,6 +56,7 @@ class _Dispatch:
             "scene_revision": "scene-1",
             "evidence_refs": (),
             "decision_reason": kwargs["decision_reason"],
+            "tool_arguments": kwargs["arguments"],
         }
 
 
@@ -70,6 +73,7 @@ def test_plan_select_is_control_plane_only_and_returns_binding():
     assert result["data"]["planning_binding"]["decision_trace_ref"].startswith("artifact://")
     assert "scene_revision" not in result["data"]["planning_binding"]
     assert result["data"]["selection"]["scene_revision"] == "scene-1"
+    assert result["data"]["selection"]["tool_arguments"] == {}
     assert coordinator.proposals[0]["tool_id"] == "scene.observe"
 
 
@@ -133,3 +137,108 @@ def test_real_coordinator_persists_context_bound_decision_trace(tmp_path):
     trace = json.loads(traces[0].read_text())
     assert trace["context_digest"] == canonical_sha256(context.model_dump(mode="json"))
     assert trace["selected_tool_id"] == "scene.observe"
+    assert binding["tool_arguments"] == {}
+
+
+def test_prepare_selection_builds_coordinator_owned_manipulation_intent():
+    node = PlanNode(
+        node_id="prepare-green",
+        obligation_id="prepare-green",
+        capability="manipulation.prepare",
+        input_bindings={"entity_ref": "entity://green"},
+    )
+    payload = {
+        "task_id": "task-prepare",
+        "revision_id": "revision-prepare",
+        "graph_digest": "0" * 64,
+        "planner_decision_digest": "1" * 64,
+        "policy_snapshot_digest": "2" * 64,
+        "nodes": [node.model_dump(mode="json")],
+    }
+    payload["graph_digest"] = plan_graph_digest(payload)
+    graph = PlanGraph.model_validate(payload)
+    policy = ToolSpecPolicy(
+        tool_id="manipulation.prepare",
+        semantics="query",
+        spec_digest="3" * 64,
+        capabilities=("manipulation.prepare",),
+        trusted_argument_builder="manipulation_intent_v2",
+    )
+    dispatch = AgentComposedDispatch(
+        graph, (policy,), AdmissionContext(scene_revision="scene-1")
+    )
+    arguments = {
+        "observation_ref": "observation://scene-1/camera",
+        "scene_revision": "scene-1",
+        "frame_id": "camera",
+        "calibration_ref": "artifact://calibration/camera",
+        "freshness_ms": 0,
+        "max_age_ms": 1000,
+        "candidate_set_ref": "candidate-set://scene-1/camera",
+        "candidates": [{"entity_ref": "entity://green"}],
+        "destination_ref": "destination://targets/middle",
+        "capability_snapshot_ref": "artifact://capabilities/current",
+        "intent": {
+            "goal": "place green in the middle",
+            "success_criteria": ["green reaches the resolved destination"],
+            "allowed_arms": ["left"],
+            "coordination_mode": "single_arm",
+            "constraints": ["collision free"],
+        },
+    }
+
+    proposal = dispatch.prepare_selection(
+        node_id=node.node_id,
+        tool_id=policy.tool_id,
+        arguments=arguments,
+        decision_reason="check readiness",
+    )
+
+    final = proposal["tool_arguments"]
+    assert final["intent"]["task_id"] == graph.task_id
+    assert final["intent"]["revision_id"] == graph.revision_id
+    assert final["intent"]["node_id"] == node.node_id
+    assert final["intent"]["node_digest"] == proposal["node_digest"]
+    assert final["intent"]["motion_authorized"] is False
+    assert proposal["input_binding_digest"] == tool_input_binding_digest(final)
+
+
+def test_prepare_selection_rejects_model_owned_coordinator_identity():
+    node = PlanNode(
+        node_id="prepare-green",
+        obligation_id="prepare-green",
+        capability="manipulation.prepare",
+        input_bindings={"entity_ref": "entity://green"},
+    )
+    payload = {
+        "task_id": "task-prepare",
+        "revision_id": "revision-prepare",
+        "graph_digest": "0" * 64,
+        "planner_decision_digest": "1" * 64,
+        "policy_snapshot_digest": "2" * 64,
+        "nodes": [node.model_dump(mode="json")],
+    }
+    payload["graph_digest"] = plan_graph_digest(payload)
+    dispatch = AgentComposedDispatch(
+        PlanGraph.model_validate(payload),
+        (ToolSpecPolicy(
+            tool_id="manipulation.prepare",
+            semantics="query",
+            spec_digest="3" * 64,
+            capabilities=("manipulation.prepare",),
+            trusted_argument_builder="manipulation_intent_v2",
+        ),),
+        AdmissionContext(scene_revision="scene-1"),
+    )
+
+    try:
+        dispatch.prepare_selection(
+            node_id=node.node_id,
+            tool_id="manipulation.prepare",
+            arguments={"intent": {"task_id": "model-authored"}},
+            decision_reason="invalid ownership",
+        )
+    except ValueError as exc:
+        assert "Coordinator-owned" in str(exc)
+    else:
+        raise AssertionError("model-authored Coordinator identity must be rejected")

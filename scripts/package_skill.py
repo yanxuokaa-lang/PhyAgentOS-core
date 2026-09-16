@@ -25,7 +25,15 @@ class PackagingError(RuntimeError):
     pass
 
 
-EXCLUDED_PARTS = {".git", ".hg", ".svn", "__pycache__", "node_modules"}
+EXCLUDED_PARTS = {
+    ".git",
+    ".hg",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".svn",
+    "__pycache__",
+    "node_modules",
+}
 
 
 def _safe_identity(value: object, label: str) -> str:

@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import pytest
 
+from robotwin20_adapter.qwen3_vl_vllm_lifecycle import Qwen3VLVLLMLifecycleError
+from robotwin20_adapter.qwen3_vl_vllm_scene_understanding import (
+    Qwen3VLVLLMInferenceError,
+)
 from robotwin20_adapter.scene_understanding_fallback import (
     FallbackSceneUnderstandingInference,
     SceneUnderstandingFallbackError,
@@ -17,6 +21,15 @@ class _Provider:
         if self.error:
             raise self.error
         return self.result
+
+
+class _ReleasableProvider(_Provider):
+    def __init__(self, result=None, error=None):
+        super().__init__(result=result, error=error)
+        self.release_count = 0
+
+    def release(self):
+        self.release_count += 1
 
 
 def test_local_provider_is_primary_and_route_is_diagnostic_only():
@@ -57,3 +70,62 @@ def test_both_provider_failures_are_bounded():
         route.infer({})
     assert route.last_route is None
     assert route.last_error == "TimeoutError; ConnectionError"
+
+
+def test_lifecycle_only_route_does_not_hide_qwen_inference_failure():
+    route = FallbackSceneUnderstandingInference(
+        _Provider(error=Qwen3VLVLLMInferenceError("invalid output")),
+        _Provider({"entities": [{"entity_ref": "entity://fallback"}]}),
+        primary_name="qwen3-vl-4b-vllm",
+        fallback_name="gpt-5.6-sol-high",
+        fallback_exceptions=(Qwen3VLVLLMLifecycleError,),
+        fallback_on_empty=False,
+    )
+
+    with pytest.raises(Qwen3VLVLLMInferenceError, match="invalid output"):
+        route.infer({})
+
+
+def test_lifecycle_only_route_uses_gpt_for_lifecycle_failure():
+    route = FallbackSceneUnderstandingInference(
+        _Provider(error=Qwen3VLVLLMLifecycleError("status unavailable")),
+        _Provider({"entities": [{"entity_ref": "entity://fallback"}]}),
+        primary_name="qwen3-vl-4b-vllm",
+        fallback_name="gpt-5.6-sol-high",
+        fallback_exceptions=(Qwen3VLVLLMLifecycleError,),
+        fallback_on_empty=False,
+    )
+
+    assert route.infer({})["entities"][0]["entity_ref"] == "entity://fallback"
+    assert route.last_error == "Qwen3VLVLLMLifecycleError"
+
+
+def test_release_is_forwarded_only_after_primary_route():
+    primary = _ReleasableProvider({"entities": []})
+    route = FallbackSceneUnderstandingInference(
+        primary,
+        _Provider({"entities": [{"entity_ref": "entity://fallback"}]}),
+        primary_name="qwen3-vl-4b-vllm",
+        fallback_name="gpt-5.6-sol-high",
+    )
+
+    assert route.infer({}) == {"entities": []}
+    route.release()
+
+    assert primary.release_count == 1
+
+
+def test_release_does_not_touch_failed_primary_after_fallback():
+    primary = _ReleasableProvider(error=Qwen3VLVLLMLifecycleError("down"))
+    route = FallbackSceneUnderstandingInference(
+        primary,
+        _Provider({"entities": [{"entity_ref": "entity://fallback"}]}),
+        primary_name="qwen3-vl-4b-vllm",
+        fallback_name="gpt-5.6-sol-high",
+        fallback_exceptions=(Qwen3VLVLLMLifecycleError,),
+    )
+
+    assert route.infer({})["entities"][0]["entity_ref"] == "entity://fallback"
+    route.release()
+
+    assert primary.release_count == 0
