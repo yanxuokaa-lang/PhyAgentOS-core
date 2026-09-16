@@ -31,7 +31,7 @@
 
 Validation: old Runtime stopped after two cancelled AgentTasks were reconciled; Skill archive SHA-256 `1c90cc8a69362eedf44f225eb094bbe26c77639849434b9f047813c4aeec5190`; Node archive SHA-256 `7be228edd4a810d7711d716e5c43a84138b3e0a13c13bbc34e6c7fd382866c6b`; `paos forge-node verify` passed; no Runtime/Action/motion started.
 
-Git commit: pending.
+Git commit: `2282f14` (implementation commit; branch `feature/planning-loop`).
 
 ## v10.6.0 (2026-09-16 20:15) - codex
 
