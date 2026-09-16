@@ -11,6 +11,28 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v10.6.1 (2026-09-16 20:30) - codex
+
+- [env] [chore] [完成] 打包并安装 `pick-place-workflow` Skill `2.0.9` 与 Node `0.1.7`; 安装后 Runtime 保持 stopped，等待用户发起测试。(local)
+- [Env] [Chore] [Completed] Packaged and installed Skill `2.0.9` and Node `0.1.7`; left the replacement Runtime stopped for the user's explicit test. (local)
+
+### 影响文件 / Affected files
+
+- `examples/forge-skills/pick-place-workflow/skill.yaml:L1-L3,L57-L67`
+- `/home/yanxu/.PhyAgentOS/skills/pick-place-workflow/`
+- `/home/yanxu/.PhyAgentOS/forge_runtime/nodes/robotwin20_persistent_host/versions/robotwin20_persistent_host-0.1.7-linux-x86_64/`
+
+```diff
+- version: "2.0.8"
++ version: "2.0.9"
+- robotwin20_persistent_host 0.1.6
++ robotwin20_persistent_host 0.1.7
+```
+
+Validation: old Runtime stopped after two cancelled AgentTasks were reconciled; Skill archive SHA-256 `1c90cc8a69362eedf44f225eb094bbe26c77639849434b9f047813c4aeec5190`; Node archive SHA-256 `7be228edd4a810d7711d716e5c43a84138b3e0a13c13bbc34e6c7fd382866c6b`; `paos forge-node verify` passed; no Runtime/Action/motion started.
+
+Git commit: pending.
+
 ## v10.6.0 (2026-09-16 20:15) - codex
 
 - [sense] [feat] [完成] 接入 `paos-qwen3vl-4b-vllm` 环境中的 Qwen3-VL-4B-Instruct vLLM 场景理解，并在本地 provider 失败时显式回退 `gpt-5.6-sol` high。(local)
