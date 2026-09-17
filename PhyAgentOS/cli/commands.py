@@ -1064,8 +1064,16 @@ def agent(
             try:
                 with _thinking_ctx():
                     response = await agent_loop.process_direct(message, session_id, on_progress=_cli_progress)
-                    await agent_loop.wait_for_long_horizon_tasks(session_id)
+                    task_results = await agent_loop.wait_for_long_horizon_tasks(session_id)
                 _print_agent_response(response, render_markdown=markdown)
+                for result in task_results:
+                    if result.status in {"completed", "succeeded"}:
+                        continue
+                    detail = f", reason={result.last_failure}" if result.last_failure else ""
+                    console.print(
+                        f"[yellow]Long-horizon task {result.task_id}: "
+                        f"status={result.status}, revision={result.revision_id}{detail}[/yellow]"
+                    )
             finally:
                 agent_loop.stop()
                 await agent_loop.close_mcp()

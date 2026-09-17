@@ -133,6 +133,39 @@ class PlanningExecutionBinding(_Frozen):
         return value
 
 
+class ResumablePlanningSelection(_Frozen):
+    """Exact control-plane selection needed to resume before Tool execution."""
+
+    tool_id: str
+    semantics: Literal["query", "action", "session"]
+    planning_binding: PlanningExecutionBinding
+    tool_arguments: dict[str, Any]
+
+    @field_validator("tool_id")
+    @classmethod
+    def tool_identity(cls, value: str) -> str:
+        return _identity(value, "planning selection Tool identity")
+
+    @field_validator("tool_arguments")
+    @classmethod
+    def finite_tool_arguments(cls, value: dict[str, Any]) -> dict[str, Any]:
+        try:
+            json.dumps(value, ensure_ascii=False, allow_nan=False)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                "planning selection Tool arguments must contain finite JSON values"
+            ) from exc
+        return value
+
+    @model_validator(mode="after")
+    def binding_matches_arguments(self) -> "ResumablePlanningSelection":
+        if self.planning_binding.input_binding_digest != tool_input_binding_digest(
+            self.tool_arguments
+        ):
+            raise ValueError("planning selection binding does not match Tool arguments")
+        return self
+
+
 class PlanGraph(_Frozen):
     """Concrete task graph bound to one PAOS PlanRevision."""
 
@@ -313,6 +346,7 @@ class DecisionTrace(_Frozen):
     result_status: str | None = None
     evidence_refs: tuple[str, ...] = ()
     created_at: datetime
+    resumable_selection: ResumablePlanningSelection | None = None
 
     @field_validator("task_id", "revision_id", "node_id")
     @classmethod
@@ -325,6 +359,12 @@ class DecisionTrace(_Frozen):
             raise ValueError("decision trace candidate tools must be unique")
         if self.selected_tool_id is not None and self.selected_tool_id not in self.candidate_tool_ids:
             raise ValueError("decision trace selected Tool is not a candidate")
+        if self.resumable_selection is not None:
+            selection = self.resumable_selection
+            if selection.tool_id != self.selected_tool_id:
+                raise ValueError("resumable selection Tool does not match decision trace")
+            if selection.planning_binding.node_id != self.node_id:
+                raise ValueError("resumable selection node does not match decision trace")
         return self
 
 

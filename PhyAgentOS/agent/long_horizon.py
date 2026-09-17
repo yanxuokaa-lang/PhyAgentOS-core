@@ -196,11 +196,30 @@ class LongHorizonTaskController:
                     replans=snapshot.replans,
                     last_failure=str(exc),
                 )
-            result = await self.adapter.run(
-                task_id,
-                scene_revision=scene_revision,
-                checkpoint=checkpoint,
-            )
+            try:
+                result = await self.adapter.run(
+                    task_id,
+                    scene_revision=scene_revision,
+                    checkpoint=checkpoint,
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.exception(
+                    "Long-horizon runner blocked by internal error: task_id={} error={}",
+                    task_id,
+                    exc,
+                )
+                snapshot = self._snapshot(task_id)
+                return LongHorizonTaskResult(
+                    task_id=task_id,
+                    status="blocked",
+                    revision_id=snapshot.revision_id,
+                    completed_nodes=snapshot.completed_nodes,
+                    revisions=snapshot.revisions,
+                    replans=snapshot.replans,
+                    last_failure=f"runner_error:{type(exc).__name__}:{exc}",
+                )
             final = self._from_planning_result(result)
             if self.coordinator.get_task(task_id).cancellation_requested:
                 final = LongHorizonTaskResult(

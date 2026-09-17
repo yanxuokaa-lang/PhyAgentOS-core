@@ -365,6 +365,17 @@ references. Discovery tasks observe and understand before materializing their
 semantic graph, so an initial discovery observation is not repeated as a graph
 node unless a fresh observation obligation is explicitly selected.
 
+The DecisionTrace also carries the exact resumable selection receipt until one
+planning-bound execution record consumes its `decision_trace_ref`. This closes
+the process interruption window between `forge_plan_select` and the selected
+Query/Action/Session wrapper. A node runner first reconciles an existing record;
+it never posts that Tool again. If no record exists, it may perform one bounded
+same-revision continuation using the receipt. Exhausting that continuation
+returns `blocked` with `node_turn_incomplete`, leaves the node unsettled, and
+does not consume replan budget. In particular, a non-terminal or unknown Action
+is reconciled through its existing invocation identity and is never restarted
+from the selection receipt.
+
 Every terminal planning-bound Query, Action, or Session record must also be
 normalized into a `NodeSettlement` by `AgentTaskCoordinator`. The Coordinator
 performs this conversion after terminal observation and exposes an idempotent

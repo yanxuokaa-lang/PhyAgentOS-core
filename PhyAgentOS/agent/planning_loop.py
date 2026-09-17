@@ -37,6 +37,17 @@ class StaleNodeContextError(PlanningLoopError):
     """A predecessor fact belongs to an older scene or revision."""
 
 
+class NodeTurnIncompleteError(PlanningLoopError):
+    """A bounded Agent node turn ended before governed Tool execution."""
+
+    code = "node_turn_incomplete"
+
+    def __init__(self, node_id: str, reason: str) -> None:
+        self.node_id = node_id
+        self.reason = reason
+        super().__init__(f"{self.code}:{node_id}:{reason}")
+
+
 class PredecessorContext(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -165,6 +176,7 @@ class AgentLoopNodeExecutor:
         prompt_builder: Callable[[NodeExecutionContext], str] | None = None,
         max_action_polls: int = 100,
         action_poll_interval_s: float = 0.0,
+        max_node_turn_continuations: int = 1,
     ) -> None:
         if not callable(getattr(agent_loop, "run_node_turn", None)):
             raise TypeError("Agent loop must provide run_node_turn")
@@ -175,8 +187,14 @@ class AgentLoopNodeExecutor:
             raise ValueError("max_action_polls must be a positive integer")
         if isinstance(action_poll_interval_s, bool) or float(action_poll_interval_s) < 0:
             raise ValueError("action_poll_interval_s must be non-negative")
+        if (
+            isinstance(max_node_turn_continuations, bool)
+            or int(max_node_turn_continuations) < 0
+        ):
+            raise ValueError("max_node_turn_continuations must be non-negative")
         self.max_action_polls = int(max_action_polls)
         self.action_poll_interval_s = float(action_poll_interval_s)
+        self.max_node_turn_continuations = int(max_node_turn_continuations)
 
     async def __call__(self, context: NodeExecutionContext) -> ToolResultEnvelope:
         activate = getattr(self.agent_loop, "activate_planning_task", None)
@@ -184,28 +202,68 @@ class AgentLoopNodeExecutor:
             activation = activate(context.task_id)
             if hasattr(activation, "__await__"):
                 await activation
-        before = {
-            item.record_id
-            for item in self.coordinator.get_task(context.task_id).active_revision.execution_records
-        }
-        await self.agent_loop.run_node_turn(
-            task_id=context.task_id,
-            revision_id=context.revision_id,
-            node_id=context.node_id,
-            prompt=self.prompt_builder(context),
+        existing = self._node_records(context)
+        if existing:
+            await self._reconcile_actions(context.task_id, context.node_id)
+            existing = self._node_records(context)
+            if any(not item.terminal for item in existing):
+                raise NodeTurnIncompleteError(
+                    context.node_id,
+                    "existing planning-bound execution requires reconciliation",
+                )
+            return self._result_from_records(context, existing)
+
+        attempts = 1 + self.max_node_turn_continuations
+        for _attempt in range(attempts):
+            await self.agent_loop.run_node_turn(
+                task_id=context.task_id,
+                revision_id=context.revision_id,
+                node_id=context.node_id,
+                prompt=self._prompt_for_turn(context),
+            )
+            await self._reconcile_actions(context.task_id, context.node_id)
+            records = self._node_records(context)
+            if records:
+                if any(not item.terminal for item in records):
+                    raise NodeTurnIncompleteError(
+                        context.node_id,
+                        "planning-bound Tool execution did not reach a durable terminal state",
+                    )
+                return self._result_from_records(context, records)
+
+        pending = self._pending_selection(context)
+        reason = (
+            "admitted selection remains unconsumed; retry the current revision"
+            if pending is not None
+            else "Agent produced no planning-bound Tool execution; retry the current revision"
         )
-        await self._reconcile_actions(context.task_id, context.node_id)
+        raise NodeTurnIncompleteError(context.node_id, reason)
+
+    def _node_records(self, context: NodeExecutionContext) -> list[Any]:
         task = self.coordinator.get_task(context.task_id)
         if task.active_revision_id != context.revision_id:
             raise PlanningLoopError("Agent node turn changed the active PlanRevision")
-        records = [
-            item for item in task.active_revision.execution_records
-            if item.record_id not in before and item.node_id == context.node_id
+        return [
+            item
+            for item in task.active_revision.execution_records
+            if item.node_id == context.node_id
         ]
+
+    def _result_from_records(
+        self,
+        context: NodeExecutionContext,
+        records: list[Any],
+    ) -> ToolResultEnvelope:
         if not records:
-            raise PlanningLoopError("Agent node turn produced no planning-bound Tool record")
+            raise NodeTurnIncompleteError(
+                context.node_id,
+                "Agent produced no planning-bound Tool execution",
+            )
         if any(not item.terminal for item in records):
-            raise PlanningLoopError("Agent node turn returned before its Tool records were terminal")
+            raise NodeTurnIncompleteError(
+                context.node_id,
+                "planning-bound Tool execution is not terminal",
+            )
         statuses = {_planning_record_status(item) for item in records}
         if "unknown" in statuses:
             status = "unknown"
@@ -263,6 +321,30 @@ class AgentLoopNodeExecutor:
             new_scene_revision=new_scene_revision,
             failure_code=failure_code or (status if status != "succeeded" else None),
             failure_owner=failure_owner,
+        )
+
+    def _prompt_for_turn(self, context: NodeExecutionContext) -> str:
+        prompt = self.prompt_builder(context)
+        pending = self._pending_selection(context)
+        if pending is None:
+            return prompt
+        return (
+            prompt
+            + "\n\nPAOS has one admitted, unconsumed selection for this exact node. "
+            "Call only execution_tool with task_id, tool_id, arguments, and "
+            "planning_binding exactly as supplied below. Do not select again and do not "
+            "repeat predecessor Queries. The selection is not execution or motion permission.\n"
+            + json.dumps(pending, ensure_ascii=False, sort_keys=True)
+        )
+
+    def _pending_selection(self, context: NodeExecutionContext) -> dict[str, Any] | None:
+        loader = getattr(self.coordinator, "pending_planning_selection", None)
+        if not callable(loader):
+            return None
+        return loader(
+            context.task_id,
+            context.node_id,
+            scene_revision=context.scene_revision,
         )
 
     async def _reconcile_actions(self, task_id: str, node_id: str) -> None:
@@ -529,9 +611,19 @@ class PlanningLoopAdapter:
                 node_id,
                 scene_revision=scene_revision,
             )
-            result = self.node_executor(context)
-            if hasattr(result, "__await__"):
-                result = await result  # type: ignore[assignment]
+            try:
+                result = self.node_executor(context)
+                if hasattr(result, "__await__"):
+                    result = await result  # type: ignore[assignment]
+            except NodeTurnIncompleteError as exc:
+                return PlanningLoopResult(
+                    task_id,
+                    "blocked",
+                    tuple(completed),
+                    len(self.coordinator.get_task(task_id).revisions),
+                    replans,
+                    str(exc),
+                )
             if not isinstance(result, ToolResultEnvelope):
                 raise PlanningLoopError("node executor must return ToolResultEnvelope")
             if (

@@ -442,6 +442,7 @@ class AgentComposedDispatch:
             "node_digest": plan_node_digest(node),
             "obligation_id": node.obligation_id,
             "tool_id": tool_id,
+            "semantics": policy.semantics,
             "candidate_tool_ids": tuple(
                 item.tool_id for item in self.policies
                 if node.capability in item.capabilities and item.semantics == policy.semantics

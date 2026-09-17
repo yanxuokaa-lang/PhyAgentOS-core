@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 
 import pytest
 
@@ -8,7 +9,10 @@ from PhyAgentOS.agent.loop import AgentLoop
 from PhyAgentOS.agent.planner_plugin import PlannerPluginRegistry, PlanningRequest, ReplanProposal
 from PhyAgentOS.agent.planning_dispatch import AgentComposedDispatch
 from PhyAgentOS.agent.planning_loop import (
+    AgentLoopNodeExecutor,
     NodeContextProvider,
+    NodeExecutionContext,
+    NodeTurnIncompleteError,
     PlanningLoopAdapter,
     PlanningLoopError,
     StaleNodeContextError,
@@ -841,3 +845,174 @@ def test_agent_can_choose_plan_materialization_capability(tmp_path):
     c = coordinator(tmp_path)
     names = {tool.name for tool in build_forge_task_tools(c)}
     assert "forge_task_materialize_plan" in names
+
+
+def _executor_context() -> NodeExecutionContext:
+    return NodeExecutionContext(
+        task_id="task-resume",
+        revision_id="revision-resume",
+        node_id="prepare",
+        capability="manipulation.prepare",
+        dependencies=(),
+        required_evidence=(),
+        input_bindings={},
+        scene_revision="scene-1",
+    )
+
+
+def _terminal_record(*, semantics="query", status="succeeded"):
+    return SimpleNamespace(
+        record_id="tool-1",
+        node_id="prepare",
+        terminal=True,
+        semantics=semantics,
+        status=status,
+        tool_id="manipulation.prepare",
+        invocation_id="invocation-1" if semantics == "action" else None,
+        evidence_refs=("tool:tool-1",),
+        response={
+            "ok": status == "succeeded",
+            "data": {
+                "status": "available",
+                "world_change_started": status == "unknown",
+                "outcome_known": status != "unknown",
+            },
+        },
+        error=None,
+    )
+
+
+def test_node_executor_reuses_pending_selection_on_bounded_continuation():
+    records = []
+    pending = {"value": None}
+    prompts = []
+    task = SimpleNamespace(
+        active_revision_id="revision-resume",
+        active_revision=SimpleNamespace(execution_records=records),
+    )
+
+    class Coordinator:
+        def get_task(self, _task_id):
+            return task
+
+        def pending_planning_selection(self, *_args, **_kwargs):
+            return pending["value"]
+
+    class Loop:
+        def activate_planning_task(self, _task_id):
+            return None
+
+        async def run_node_turn(self, *, prompt, **_kwargs):
+            prompts.append(prompt)
+            if len(prompts) == 1:
+                pending["value"] = {
+                    "execution_tool": "forge_tool_query",
+                    "task_id": "task-resume",
+                    "tool_id": "manipulation.prepare",
+                    "arguments": {"candidate_set_ref": "candidate-set://1"},
+                    "planning_binding": {"node_id": "prepare"},
+                }
+            else:
+                records.append(_terminal_record())
+
+    result = asyncio.run(AgentLoopNodeExecutor(Loop(), Coordinator())(_executor_context()))
+
+    assert result.status == "succeeded"
+    assert len(prompts) == 2
+    assert "forge_tool_query" not in prompts[0]
+    assert "forge_tool_query" in prompts[1]
+    assert "Do not select again" in prompts[1]
+    assert len(records) == 1
+
+
+def test_node_executor_reconciles_existing_terminal_record_without_model_call():
+    record = _terminal_record(semantics="action", status="unknown")
+    task = SimpleNamespace(
+        active_revision_id="revision-resume",
+        active_revision=SimpleNamespace(execution_records=[record]),
+    )
+
+    class Coordinator:
+        def get_task(self, _task_id):
+            return task
+
+        def pending_planning_selection(self, *_args, **_kwargs):
+            raise AssertionError("pending selection must not be read after execution")
+
+    class Loop:
+        calls = 0
+
+        async def run_node_turn(self, **_kwargs):
+            self.calls += 1
+
+    loop = Loop()
+    result = asyncio.run(AgentLoopNodeExecutor(loop, Coordinator())(_executor_context()))
+
+    assert result.status == "unknown"
+    assert result.world_change_started is True
+    assert loop.calls == 0
+
+
+def test_node_executor_reports_incomplete_after_bounded_no_record_turns():
+    task = SimpleNamespace(
+        active_revision_id="revision-resume",
+        active_revision=SimpleNamespace(execution_records=[]),
+    )
+
+    class Coordinator:
+        def get_task(self, _task_id):
+            return task
+
+        def pending_planning_selection(self, *_args, **_kwargs):
+            return None
+
+    class Loop:
+        calls = 0
+
+        async def run_node_turn(self, **_kwargs):
+            self.calls += 1
+
+    loop = Loop()
+    executor = AgentLoopNodeExecutor(loop, Coordinator())
+
+    with pytest.raises(NodeTurnIncompleteError, match="node_turn_incomplete:prepare"):
+        asyncio.run(executor(_executor_context()))
+    assert loop.calls == 2
+    assert task.active_revision.execution_records == []
+
+
+def test_planning_loop_blocks_incomplete_node_without_settlement(tmp_path):
+    c = coordinator(tmp_path)
+    task = c.create_task(
+        task_description="incomplete node turn",
+        verification=TaskVerificationContract(mode="off"),
+    )
+    graph = make_graph(task.task_id, "revision-incomplete", ("arrange-red",))
+    c.expand_discovery_revision(
+        task.task_id,
+        plan_graph=graph,
+        plan_graph_ref="artifact://plans/incomplete",
+        discovery_evidence_refs=("scene:inventory",),
+    )
+
+    async def incomplete(context):
+        raise NodeTurnIncompleteError(context.node_id, "selection remains unconsumed")
+
+    result = asyncio.run(PlanningLoopAdapter(
+        c,
+        context_provider=NodeContextProvider(c.get_task),
+        node_executor=incomplete,
+        admission_context_provider=lambda _: AdmissionContext(
+            scene_revision="scene-1",
+            evidence_refs=frozenset({"scene:inventory"}),
+        ),
+    ).run(task.task_id, scene_revision="scene-1"))
+
+    assert result.status == "blocked"
+    assert result.last_failure == (
+        "node_turn_incomplete:arrange-red:selection remains unconsumed"
+    )
+    current = c.get_task(task.task_id)
+    assert current.status.value == "executing"
+    assert current.active_revision.node_settlements == []
+    assert current.active_revision.execution_records == []

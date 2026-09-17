@@ -34,6 +34,7 @@ from PhyAgentOS.planning import (
     PlanGraph,
     PlanningExecutionBinding,
     ReplanDelta,
+    ResumablePlanningSelection,
     ToolResultEnvelope,
     plan_node_digest,
     settle_node,
@@ -812,6 +813,19 @@ class AgentTaskCoordinator:
             f"artifact://planning-traces/{task.task_id}/"
             f"{task.active_revision_id}/{node.node_id}/{trace_id}"
         )
+        binding = PlanningExecutionBinding(
+            node_id=node.node_id,
+            node_digest=proposal["node_digest"],
+            obligation_id=node.obligation_id,
+            input_binding_digest=proposal["input_binding_digest"],
+            decision_trace_ref=trace_ref,
+        )
+        resumable = ResumablePlanningSelection(
+            tool_id=proposal["tool_id"],
+            semantics=proposal["semantics"],
+            planning_binding=binding,
+            tool_arguments=tool_arguments,
+        )
         trace = {
             "schema_version": "paos-decision-trace/v1",
             "task_id": task.task_id,
@@ -825,6 +839,7 @@ class AgentTaskCoordinator:
             "decision_reason": proposal.get("decision_reason"),
             "evidence_refs": list(proposal.get("evidence_refs", ())),
             "created_at": utc_now().isoformat(),
+            "resumable_selection": resumable.model_dump(mode="json"),
         }
         try:
             DecisionTrace.model_validate(trace)
@@ -837,15 +852,81 @@ class AgentTaskCoordinator:
         path.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_text(path / f"{trace_id}.json", json.dumps(trace, ensure_ascii=False, sort_keys=True, indent=2) + "\n")
         return {
-            "node_id": node.node_id,
-            "node_digest": proposal["node_digest"],
-            "obligation_id": node.obligation_id,
-            "input_binding_digest": proposal["input_binding_digest"],
-            "decision_trace_ref": trace_ref,
+            **binding.model_dump(mode="json"),
             "task_id": task.task_id,
             "revision_id": task.active_revision_id,
             "scene_revision": proposal["scene_revision"],
             "tool_arguments": tool_arguments,
+        }
+
+    def pending_planning_selection(
+        self,
+        task_id: str,
+        node_id: str,
+        *,
+        scene_revision: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Return the latest unconsumed selection for the current node.
+
+        A selection is consumed only when a planning-bound execution record
+        references its decision trace. Reading this checkpoint never invokes a
+        Tool and never changes task state.
+        """
+        task = self.store.get(task_id)
+        revision = task.active_revision
+        graph = revision.plan_graph
+        if graph is None or not any(item.node_id == node_id for item in graph.nodes):
+            return None
+        if any(item.node_id == node_id for item in revision.node_settlements):
+            return None
+        used_trace_refs = {
+            item.decision_trace_ref
+            for item in revision.execution_records
+            if item.decision_trace_ref is not None
+        }
+        directory = (
+            self.workspace
+            / "artifacts"
+            / "planning-traces"
+            / task_id
+            / revision.revision_id
+            / node_id
+        )
+        if not directory.is_dir():
+            return None
+        candidates: list[DecisionTrace] = []
+        for path in directory.glob("*.json"):
+            try:
+                trace = DecisionTrace.model_validate_json(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            selection = trace.resumable_selection
+            if selection is None:
+                continue
+            if selection.planning_binding.decision_trace_ref in used_trace_refs:
+                continue
+            if scene_revision is not None and trace.scene_revision != scene_revision:
+                continue
+            candidates.append(trace)
+        if not candidates:
+            return None
+        trace = max(candidates, key=lambda item: item.created_at)
+        selection = trace.resumable_selection
+        assert selection is not None
+        wrapper = {
+            "query": "forge_tool_query",
+            "action": "forge_tool_start_action",
+            "session": "forge_tool_start_session",
+        }[selection.semantics]
+        return {
+            "task_id": task_id,
+            "revision_id": revision.revision_id,
+            "node_id": node_id,
+            "scene_revision": trace.scene_revision,
+            "execution_tool": wrapper,
+            "tool_id": selection.tool_id,
+            "arguments": selection.tool_arguments,
+            "planning_binding": selection.planning_binding.model_dump(mode="json"),
         }
 
     def record_planning_selection_rejection(

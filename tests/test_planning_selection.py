@@ -372,7 +372,42 @@ def test_real_coordinator_persists_context_bound_decision_trace(tmp_path):
     trace = json.loads(traces[0].read_text())
     assert trace["context_digest"] == canonical_sha256(context.model_dump(mode="json"))
     assert trace["selected_tool_id"] == "scene.observe"
+    resumable = trace["resumable_selection"]
+    assert resumable["tool_id"] == "scene.observe"
+    assert resumable["semantics"] == "query"
+    assert resumable["tool_arguments"] == {}
+    assert resumable["planning_binding"]["decision_trace_ref"] == binding["decision_trace_ref"]
     assert binding["tool_arguments"] == {}
+    assert coordinator.pending_planning_selection(
+        task_id, "observe", scene_revision="scene-real"
+    ) == {
+        "task_id": task_id,
+        "revision_id": revision_id,
+        "node_id": "observe",
+        "scene_revision": "scene-real",
+        "execution_tool": "forge_tool_query",
+        "tool_id": "scene.observe",
+        "arguments": {},
+        "planning_binding": validated.model_dump(mode="json"),
+    }
+    assert coordinator.pending_planning_selection(
+        task_id, "observe", scene_revision="scene-stale"
+    ) is None
+
+    class QueryClient:
+        async def invoke_query_tool(self, *_args, **_kwargs):
+            return {"ok": True, "data": {"status": "available"}}
+
+    coordinator.client = QueryClient()
+    asyncio.run(coordinator.invoke_query(
+        task_id,
+        "scene.observe",
+        {},
+        planning_binding=validated,
+    ))
+    assert coordinator.pending_planning_selection(
+        task_id, "observe", scene_revision="scene-real"
+    ) is None
 
 
 def test_prepare_selection_builds_coordinator_owned_manipulation_intent():

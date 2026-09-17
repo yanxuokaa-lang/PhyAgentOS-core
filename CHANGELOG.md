@@ -11,6 +11,55 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v10.8.2 (2026-09-18 00:51) - codex
+
+- [agent] [fix] [完成] 持久化可恢复 planning selection receipt，并在同 revision 内有界续跑；无 Tool record 时返回 `blocked/node_turn_incomplete`。(local)
+- [agent] [fix] [完成] 节点恢复先对账已有 Query/Action 记录；未知或未终态 Action 不自动重发。(local)
+- [agent] [fix] [完成] Long-horizon runner 与 one-shot CLI 返回结构化 blocked 状态，消除受控不完整节点的 traceback。(local)
+- [Agent] [Fix] [Completed] Persist resumable planning-selection receipts and perform bounded same-revision continuation; return `blocked/node_turn_incomplete` when no Tool record is produced. (local)
+- [Agent] [Fix] [Completed] Reconcile existing Query/Action records before node recovery; never automatically repost an unknown or non-terminal Action. (local)
+- [Agent] [Fix] [Completed] Return structured blocked states from the long-horizon runner and one-shot CLI instead of traceback for controlled incomplete nodes. (local)
+
+### 影响文件 / Affected files
+
+- `PhyAgentOS/planning/contracts.py:L136-L168,L336-L364`
+- `PhyAgentOS/agent/planning_dispatch.py:L438-L455`
+- `PhyAgentOS/forge/task.py:L796-L934`
+- `PhyAgentOS/agent/planning_loop.py:L40-L50,L164-L352,L605-L631`
+- `PhyAgentOS/agent/long_horizon.py:L181-L233`
+- `PhyAgentOS/cli/commands.py:L1061-L1078`
+- `docs/forge/MANIPULATION_DAG_DEVELOPER_GUIDE.md:L358-L378`
+- Focused planning/AgentLoop tests and changelog.
+
+```diff
+- successful selection exists only in model response; no Tool record crashes CLI
++ immutable receipt resumes exact execution once; exhaustion blocks without settlement
+- resumed node may ask the model before checking an existing Action
++ existing execution record is reconciled first and never reposted
+```
+
+### 七维验收 / Seven-dimension acceptance
+
+Architecture, recovery, robotics safety, configuration/reproducibility,
+maintainability, observability, and AgentLoop autonomy: PASS. Focused `73`,
+Core `439`, Evolution extension `68`, Skill `334`, and Adapter `491 passed,
+1 skipped`; Ruff, compileall, deterministic packaging, and diff check passed.
+No Gateway request, Action, Session, simulator step, world change, Runtime
+restart, or Qwen wake occurred.
+
+### 安装 / Installation
+
+- Core editable install refreshed with `.venv/bin/python -m pip install -e .`.
+- Installed Skill remains `pick-place-workflow 2.2.0`; Runtime is running with
+  9/9 Tools ready, Node `0.1.15` verified, and Qwen sleeping.
+- Active `task_ba404a47673640bd` remains executing with 10 succeeded Queries,
+  one completed node, 0 Actions, and 0 Sessions.
+
+### Git 提交 / Git commit
+
+- Implementation commit: `pending`
+- Branch: `feature/planning-loop`
+
 ## v10.8.1 (2026-09-18 00:08) - codex
 
 - [agent] [fix] [完成] selection replan budget 耗尽后复用统一终态收尾，释放 Runtime task-binding 并调度 experience completion。(local)
@@ -129,6 +178,8 @@ Architecture, recovery, robotics safety/authority, configuration/reproducibility
 ```
 
 Validation: Core 425, Skill 334, Adapter 497, focused AgentLoop/planning 19 plus 51, safety/package 15, and focused Skill 74 passed; Ruff, compileall, diff check, and Agent Route Principles Gate passed; no Action/Session/motion.
+
+## 历史记录 / Historical Records
 
 ## v10.7.2 (2026-09-17 15:06) - codex
 
