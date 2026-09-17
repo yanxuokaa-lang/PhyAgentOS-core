@@ -1200,6 +1200,20 @@ class AgentTaskCoordinator:
         attempt_id: str | None = None,
     ) -> SkillUseRecord:
         """Persist one actual method use; does not grant Tool or motion authority."""
+        def same_decision(item: SkillUseRecord) -> bool:
+            return (
+                item.activation_id == activation_id
+                and item.content_sha256 == content_sha256
+                and item.decision_ref == decision_ref
+                and item.node_id == node_id
+                and item.attempt_id == attempt_id
+            )
+
+        current = self.store.get(task_id)
+        existing = next((item for item in current.skill_uses if same_decision(item)), None)
+        if existing is not None:
+            return existing
+
         use = SkillUseRecord(
             use_id=f"skill_use_{uuid4().hex[:16]}",
             activation_id=activation_id,
@@ -1213,14 +1227,14 @@ class AgentTaskCoordinator:
         )
 
         def mutate(current: AgentTaskRecord) -> None:
-            if any(item.use_id == use.use_id for item in current.skill_uses):
+            if any(same_decision(item) for item in current.skill_uses):
                 return
             current.skill_uses.append(use)
             current.active_revision.skill_use_ids = tuple(
                 (*current.active_revision.skill_use_ids, use.use_id)
             )
 
-        self.store.update(
+        updated = self.store.update(
             task_id,
             mutate,
             event_type="skill_use_recorded",
@@ -1233,7 +1247,7 @@ class AgentTaskCoordinator:
                 "attempt_id": attempt_id,
             },
         )
-        return use
+        return next(item for item in updated.skill_uses if same_decision(item))
 
     def begin_revision(
         self,

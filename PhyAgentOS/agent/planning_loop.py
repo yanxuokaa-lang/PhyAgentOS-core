@@ -48,6 +48,12 @@ class NodeTurnIncompleteError(PlanningLoopError):
         super().__init__(f"{self.code}:{node_id}:{reason}")
 
 
+class NodeTurnProviderError(NodeTurnIncompleteError):
+    """A model transport failure blocked the node before governed execution."""
+
+    code = "node_turn_provider_error"
+
+
 class PredecessorContext(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -177,6 +183,7 @@ class AgentLoopNodeExecutor:
         max_action_polls: int = 100,
         action_poll_interval_s: float = 0.0,
         max_node_turn_continuations: int = 1,
+        on_progress: Callable[..., Awaitable[None]] | None = None,
     ) -> None:
         if not callable(getattr(agent_loop, "run_node_turn", None)):
             raise TypeError("Agent loop must provide run_node_turn")
@@ -195,6 +202,7 @@ class AgentLoopNodeExecutor:
         self.max_action_polls = int(max_action_polls)
         self.action_poll_interval_s = float(action_poll_interval_s)
         self.max_node_turn_continuations = int(max_node_turn_continuations)
+        self.on_progress = on_progress
 
     async def __call__(self, context: NodeExecutionContext) -> ToolResultEnvelope:
         activate = getattr(self.agent_loop, "activate_planning_task", None)
@@ -215,12 +223,19 @@ class AgentLoopNodeExecutor:
 
         attempts = 1 + self.max_node_turn_continuations
         for _attempt in range(attempts):
-            await self.agent_loop.run_node_turn(
+            turn_result = await self.agent_loop.run_node_turn(
                 task_id=context.task_id,
                 revision_id=context.revision_id,
                 node_id=context.node_id,
                 prompt=self._prompt_for_turn(context),
+                on_progress=self.on_progress,
             )
+            model_failure_code = getattr(turn_result, "model_failure_code", None)
+            if model_failure_code:
+                raise NodeTurnProviderError(context.node_id, model_failure_code)
+            turn_failure_code = getattr(turn_result, "turn_failure_code", None)
+            if turn_failure_code:
+                raise NodeTurnIncompleteError(context.node_id, turn_failure_code)
             await self._reconcile_actions(context.task_id, context.node_id)
             records = self._node_records(context)
             if records:
@@ -773,7 +788,8 @@ class PlanningLoopAdapter:
 
 
 __all__ = [
-    "NodeContextProvider", "NodeExecutionContext", "PlanningLoopAdapter",
+    "AgentLoopNodeExecutor", "NodeContextProvider", "NodeExecutionContext",
+    "NodeTurnIncompleteError", "NodeTurnProviderError", "PlanningLoopAdapter",
     "PlanningLoopError", "PlanningLoopResult", "PredecessorContext",
     "RecoveryDecision", "RecoveryPolicy",
     "StaleNodeContextError",

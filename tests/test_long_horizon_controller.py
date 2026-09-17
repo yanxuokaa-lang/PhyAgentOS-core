@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import nullcontext
 import json
 import sqlite3
 
 from PhyAgentOS.agent.long_horizon import LongHorizonTaskController
+from PhyAgentOS.cli import commands
 from PhyAgentOS.agent.planning_loop import NodeContextProvider, PlanningLoopAdapter
 from PhyAgentOS.cli.commands import _interactive_task_control
 from PhyAgentOS.config.schema import ForgeConfig
@@ -343,6 +345,34 @@ def test_wait_returns_structured_block_instead_of_runner_exception(tmp_path):
     assert result.status == "blocked"
     assert result.last_failure == "runner_error:RuntimeError:bounded node turn failed"
     assert c.get_task(task.task_id).status == AgentTaskStatus.EXECUTING
+
+
+def test_one_shot_prints_initial_response_before_waiting_for_long_horizon(monkeypatch):
+    events: list[str] = []
+
+    class Loop:
+        async def wait_for_long_horizon_tasks(self, session_id: str):
+            events.append(f"wait:{session_id}")
+            return ("result",)
+
+    monkeypatch.setattr(
+        commands,
+        "_print_agent_response",
+        lambda response, render_markdown: events.append(
+            f"print:{response}:{render_markdown}"
+        ),
+    )
+
+    results = asyncio.run(commands._print_response_then_wait(
+        Loop(),
+        response="task accepted",
+        session_id="cli:rgb",
+        render_markdown=True,
+        wait_context=nullcontext,
+    ))
+
+    assert events == ["print:task accepted:True", "wait:cli:rgb"]
+    assert results == ("result",)
 
 
 def test_structured_clarification_round_trip(tmp_path):

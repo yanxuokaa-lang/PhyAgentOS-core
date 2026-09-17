@@ -199,7 +199,28 @@ class LLMProvider(ABC):
     def _is_timeout_error(content: str | None) -> bool:
         """Timeouts fail fast; repeating the same bounded wait multiplies outage time."""
         err = (content or "").lower()
-        return "timeout" in err or "timed out" in err
+        return any(
+            marker in err
+            for marker in (
+                "timeout",
+                "timed out",
+                "status_code=524",
+                "status code: 524",
+                "error code: 524",
+                "请求处理超时",
+                "请求超时",
+            )
+        )
+
+    @classmethod
+    def classify_error(cls, content: str | None) -> str:
+        """Return a stable AgentLoop failure class for a provider error response."""
+
+        if cls._is_timeout_error(content):
+            return "provider_timeout"
+        if cls._is_transient_error(content):
+            return "provider_transient"
+        return "provider_error"
 
     async def chat_with_retry(
         self,

@@ -87,6 +87,12 @@ PlanRevision、evidence refs、verification attempts、取消状态和时间戳�
 保证跨进程全局单活动槽位。更新写入完整的已校验 record 和 append-only event；业务代码不直接
 修改表。
 
+LongHorizon 的连续性来自持久化 `AgentTask`/`PlanRevision`，而不是把完整历史反复发送给模型。
+每个节点回合仅构造只读的 node-scoped projection：任务/revision 身份、冻结 Skill/Runtime 身份、
+当前节点声明、直接前驱摘要以及相关 SkillUse 引用。完整 SkillUse 指令、无关节点和全局执行历史
+继续由 Coordinator 保存用于审计，不进入每次节点提示。同一 revision/node 决策重复进入时复用
+既有 SkillUse，不追加相同指令副本。
+
 多对象动态场景不得把动作后的 `entity_ref`/`destination_ref` 用自然语言角色提前冻结在一个
 静态全图中。新图编译会检查至少一个冻结 ToolPolicy 能用节点 `input_bindings` 满足其
 `input_binding_keys`。每个 revision 只规划当前场景可绑定的一次搬运和之后的重新观测/理解/
@@ -110,6 +116,13 @@ Gateway；`forge_task_begin_revision` 仍仅用于 `awaiting_replan` 失败恢�
 
 record 一旦终结，后续 observation 不会重写它。Cancellation response 会保存，但
 `requested` 或 `accepted` 仍使任务保持 `cancelling`，直到核对并显式 finalize。
+
+模型 provider 的 `provider_timeout`、`provider_transient`、`provider_error` 与“模型正常返回但
+没有调用 Tool”是不同结果。provider 失败立即阻塞当前节点，不消耗普通 selection continuation，
+不生成 settlement，也不触发 replan。未消费的 selection receipt 可在后续 resume 使用；已有或
+unknown Action 只按 invocation identity 对账，绝不重新 POST。上下文压缩阈值和 LLM 请求超时属于
+配置策略；本地 `prompt_budget_exceeded` 同样只执行一次，不会删改 Coordinator 事实、绕过 Tool
+admission 或授予运动权限。
 
 ## 7. Verification 与 recovery
 

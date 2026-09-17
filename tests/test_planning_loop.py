@@ -13,6 +13,7 @@ from PhyAgentOS.agent.planning_loop import (
     NodeContextProvider,
     NodeExecutionContext,
     NodeTurnIncompleteError,
+    NodeTurnProviderError,
     PlanningLoopAdapter,
     PlanningLoopError,
     StaleNodeContextError,
@@ -979,6 +980,118 @@ def test_node_executor_reports_incomplete_after_bounded_no_record_turns():
         asyncio.run(executor(_executor_context()))
     assert loop.calls == 2
     assert task.active_revision.execution_records == []
+
+
+def test_node_executor_provider_failure_does_not_consume_continuation():
+    task = SimpleNamespace(
+        active_revision_id="revision-resume",
+        active_revision=SimpleNamespace(execution_records=[]),
+    )
+
+    class Coordinator:
+        def get_task(self, _task_id):
+            return task
+
+        def pending_planning_selection(self, *_args, **_kwargs):
+            return {
+                "execution_tool": "forge_tool_query",
+                "task_id": "task-resume",
+                "tool_id": "manipulation.prepare",
+                "arguments": {"candidate_set_ref": "candidate-set://1"},
+                "planning_binding": {"node_id": "prepare"},
+            }
+
+    class Loop:
+        calls = 0
+
+        async def run_node_turn(self, **_kwargs):
+            self.calls += 1
+            return SimpleNamespace(model_failure_code="provider_timeout")
+
+    loop = Loop()
+    executor = AgentLoopNodeExecutor(loop, Coordinator())
+
+    with pytest.raises(
+        NodeTurnProviderError,
+        match="node_turn_provider_error:prepare:provider_timeout",
+    ):
+        asyncio.run(executor(_executor_context()))
+
+    assert loop.calls == 1
+    assert task.active_revision.execution_records == []
+
+
+def test_node_executor_prompt_budget_failure_does_not_consume_continuation():
+    task = SimpleNamespace(
+        active_revision_id="revision-resume",
+        active_revision=SimpleNamespace(execution_records=[]),
+    )
+
+    class Coordinator:
+        def get_task(self, _task_id):
+            return task
+
+        def pending_planning_selection(self, *_args, **_kwargs):
+            return None
+
+    class Loop:
+        calls = 0
+
+        async def run_node_turn(self, **_kwargs):
+            self.calls += 1
+            return SimpleNamespace(
+                model_failure_code=None,
+                turn_failure_code="prompt_budget_exceeded",
+            )
+
+    loop = Loop()
+    executor = AgentLoopNodeExecutor(loop, Coordinator())
+
+    with pytest.raises(
+        NodeTurnIncompleteError,
+        match="node_turn_incomplete:prepare:prompt_budget_exceeded",
+    ):
+        asyncio.run(executor(_executor_context()))
+
+    assert loop.calls == 1
+    assert task.active_revision.execution_records == []
+
+
+def test_planning_loop_blocks_provider_failure_without_settlement(tmp_path):
+    c = coordinator(tmp_path)
+    task = c.create_task(
+        task_description="provider timeout during node turn",
+        verification=TaskVerificationContract(mode="off"),
+    )
+    graph = make_graph(task.task_id, "revision-provider-timeout", ("arrange-red",))
+    c.expand_discovery_revision(
+        task.task_id,
+        plan_graph=graph,
+        plan_graph_ref="artifact://plans/provider-timeout",
+        discovery_evidence_refs=("scene:inventory",),
+    )
+
+    async def provider_timeout(context):
+        raise NodeTurnProviderError(context.node_id, "provider_timeout")
+
+    result = asyncio.run(PlanningLoopAdapter(
+        c,
+        context_provider=NodeContextProvider(c.get_task),
+        node_executor=provider_timeout,
+        admission_context_provider=lambda _: AdmissionContext(
+            scene_revision="scene-1",
+            evidence_refs=frozenset({"scene:inventory"}),
+        ),
+    ).run(task.task_id, scene_revision="scene-1"))
+
+    assert result.status == "blocked"
+    assert result.last_failure == (
+        "node_turn_provider_error:arrange-red:provider_timeout"
+    )
+    current = c.get_task(task.task_id)
+    assert current.status.value == "executing"
+    assert current.active_revision.node_settlements == []
+    assert current.active_revision.execution_records == []
 
 
 def test_planning_loop_blocks_incomplete_node_without_settlement(tmp_path):

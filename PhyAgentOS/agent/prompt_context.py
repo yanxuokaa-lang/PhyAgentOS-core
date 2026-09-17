@@ -494,6 +494,111 @@ def task_prompt_projection(task: Any | None) -> dict[str, Any] | None:
     }
 
 
+def _skill_binding_identity(binding: Any | None) -> dict[str, Any] | None:
+    """Project Skill/Runtime identity without copying every frozen Tool policy."""
+
+    if binding is None:
+        return None
+    return {
+        "binding_id": getattr(binding, "binding_id", None),
+        "skill_name": getattr(binding, "skill_name", None),
+        "skill_version": getattr(binding, "skill_version", None),
+        "content_sha256": getattr(binding, "skill_document_sha256", None),
+        "runtime_profile": getattr(binding, "runtime_profile", None),
+        "runtime_instance_id": getattr(binding, "runtime_instance_id", None),
+        "gateway_identity": getattr(binding, "gateway_identity", None),
+        "required_tools": [
+            {
+                "tool_id": getattr(tool, "tool_id", None),
+                "semantics": getattr(tool, "semantics", None),
+                "spec_sha256": getattr(tool, "spec_sha256", None),
+                "ready_at_binding": getattr(tool, "ready_at_binding", None),
+            }
+            for tool in getattr(binding, "required_tools", ())
+        ],
+    }
+
+
+def node_task_prompt_projection(
+    task: Any | None,
+    node_id: str,
+) -> dict[str, Any] | None:
+    """Project only facts needed to execute one semantic planning node.
+
+    The full AgentTask remains authoritative in the Coordinator.  This view is
+    deliberately reference-oriented so node retries do not re-inject the full
+    SkillUse history, discovery transcript, or unrelated execution records.
+    """
+
+    if task is None:
+        return None
+    revision = getattr(task, "active_revision", None)
+    graph = getattr(revision, "plan_graph", None) if revision is not None else None
+    node = next(
+        (
+            item
+            for item in getattr(graph, "nodes", ())
+            if getattr(item, "node_id", None) == node_id
+        ),
+        None,
+    )
+    relevant_uses = [
+        item
+        for item in getattr(task, "skill_uses", ())
+        if getattr(item, "node_id", None) in (None, node_id)
+    ]
+    return {
+        "version": "agent_node_prompt_projection_v1",
+        "authority": "read_only_projection_from_AgentTaskCoordinator",
+        "task_id": getattr(task, "task_id", None),
+        "status": _task_status(task),
+        "active_revision_id": getattr(task, "active_revision_id", None),
+        "revision_number": getattr(revision, "number", None),
+        "skill_binding": _skill_binding_identity(
+            getattr(task, "primary_skill_binding", None)
+        ),
+        "skill_uses": [
+            {
+                "use_id": getattr(item, "use_id", None),
+                "activation_id": getattr(item, "activation_id", None),
+                "skill_name": getattr(item, "skill_name", None),
+                "skill_version": getattr(item, "skill_version", None),
+                "content_sha256": getattr(item, "content_sha256", None),
+                "decision_ref": getattr(item, "decision_ref", None),
+                "node_id": getattr(item, "node_id", None),
+                "attempt_id": getattr(item, "attempt_id", None),
+                "outcome": getattr(item, "outcome", None),
+            }
+            for item in relevant_uses
+        ],
+        "node": (
+            {
+                "node_id": getattr(node, "node_id", None),
+                "obligation_id": getattr(node, "obligation_id", None),
+                "capability": getattr(node, "capability", None),
+                "dependencies": list(getattr(node, "dependencies", ())),
+                "conditions": list(getattr(node, "conditions", ())),
+                "required_evidence": list(getattr(node, "required_evidence", ())),
+                "input_bindings": _safe_json(getattr(node, "input_bindings", {})),
+                "resources": _safe_json(getattr(node, "resources", ())),
+                "effects": list(getattr(node, "effects", ())),
+                "retry_of": getattr(node, "retry_of", None),
+            }
+            if node is not None
+            else None
+        ),
+        "node_settlement": next(
+            (
+                _safe_json(item)
+                for item in getattr(revision, "node_settlements", ())
+                if getattr(item, "node_id", None) == node_id
+            ),
+            None,
+        ),
+        "motion_authorized": False,
+    }
+
+
 def _with_task_projection(
     messages: list[dict[str, Any]],
     projection: dict[str, Any] | None,
@@ -618,9 +723,18 @@ class AgentPromptContextManager:
         all_tool_names: Iterable[str],
         task: Any | None,
         estimate_tokens: Any,
+        projection_scope: str = "task",
+        projection_node_id: str | None = None,
     ) -> PromptRequestView:
         visible = visible_tool_names(all_tool_names, task)
-        projection = task_prompt_projection(task)
+        if projection_scope == "task":
+            projection = task_prompt_projection(task)
+        elif projection_scope == "node":
+            if not projection_node_id:
+                raise ValueError("node projection requires projection_node_id")
+            projection = node_task_prompt_projection(task, projection_node_id)
+        else:
+            raise ValueError(f"unsupported prompt projection scope: {projection_scope}")
         compacted_messages = _compact_forge_results(messages, aggressive=False)
         compacted = compacted_messages != messages
         view = _with_task_projection(compacted_messages, projection)
@@ -674,6 +788,7 @@ __all__ = [
     "PromptBudgetExceededError",
     "PromptRequestView",
     "compact_tool_result",
+    "node_task_prompt_projection",
     "task_prompt_projection",
     "visible_tool_names",
 ]

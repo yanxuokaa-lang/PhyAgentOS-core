@@ -328,18 +328,64 @@ def test_node_turn_receives_original_goal_and_persisted_skill(tmp_path):
         task = task.model_copy(update={"task_id": "task-with-instructions", "primary_skill_instructions": "Observe after grasp."})
         c.store.update("%s" % c.store.active().task_id, lambda item: setattr(item, "status", AgentTaskStatus.FAILED), event_type="fixture_end")
         c.store.create(task)
-        provider = ScriptedProvider([LLMResponse(content="Need observation")])
+        initial_use = c.record_skill_use(
+            task.task_id,
+            activation_id="activation-1",
+            skill_name="pick-place-workflow",
+            skill_version="2.2.0",
+            content_sha256="b" * 64,
+            instructions="HISTORICAL FULL INSTRUCTIONS",
+            decision_ref="task:initial",
+        )
+        provider = ScriptedProvider([
+            LLMResponse(content="Need observation"),
+            LLMResponse(content="Still need observation"),
+        ])
         loop = AgentLoop(bus=MessageBus(), provider=provider, workspace=tmp_path, forge_task_coordinator=c)
-        await loop.run_node_turn(task_id=task.task_id, revision_id=task.active_revision_id, node_id="selected", prompt="node evidence")
+        first = await loop.run_node_turn(task_id=task.task_id, revision_id=task.active_revision_id, node_id="selected", prompt="node evidence")
+        second = await loop.run_node_turn(task_id=task.task_id, revision_id=task.active_revision_id, node_id="selected", prompt="node evidence")
         sent = json.dumps(provider.requests[0]["messages"])
         assert "Move only the left red object" in sent
-        assert "Observe after grasp." in sent
+        assert sent.count("Observe after grasp.") == 1
+        assert "HISTORICAL FULL INSTRUCTIONS" not in sent
         assert "node evidence" in sent
+        assert "agent_node_prompt_projection_v1" in sent
+        assert first.model_failure_code is None
+        assert second.model_failure_code is None
         reloaded = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=object()).get_task(task.task_id)
         assert reloaded.primary_skill_instructions == "Observe after grasp."
+        assert len(reloaded.skill_uses) == 2
+        assert reloaded.skill_uses[0].use_id == initial_use.use_id
+        assert reloaded.skill_uses[1].node_id == "selected"
         with pytest.raises(AgentTaskError, match="immutable"):
             c.store.update(task.task_id, lambda item: setattr(item, "primary_skill_instructions", "changed"), event_type="bad_update")
     asyncio.run(exercise())
+
+
+def test_record_skill_use_is_idempotent_for_same_node_decision(tmp_path):
+    c, task = setup_task(tmp_path)
+    arguments = {
+        "activation_id": "activation-1",
+        "skill_name": "pick-place-workflow",
+        "skill_version": "2.2.0",
+        "content_sha256": "b" * 64,
+        "instructions": "Observe, prepare, then execute through Forge.",
+        "decision_ref": "node:revision-1:prepare",
+        "node_id": "prepare",
+    }
+
+    first = c.record_skill_use(task.task_id, **arguments)
+    repeated = c.record_skill_use(task.task_id, **arguments)
+    distinct = c.record_skill_use(
+        task.task_id,
+        **{**arguments, "decision_ref": "node:revision-1:place", "node_id": "place"},
+    )
+
+    current = c.get_task(task.task_id)
+    assert repeated.use_id == first.use_id
+    assert distinct.use_id != first.use_id
+    assert len(current.skill_uses) == 2
+    assert current.active_revision.skill_use_ids == (first.use_id, distinct.use_id)
 
 
 @pytest.mark.parametrize("status,expected", [("unavailable", "failed"), ("empty", "failed"), ("stale", "failed"), ("unknown", "unknown"), ("available", "succeeded")])

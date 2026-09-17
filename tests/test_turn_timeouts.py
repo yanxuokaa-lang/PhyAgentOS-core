@@ -29,6 +29,22 @@ class _CountingHangingProvider(LLMProvider):
         return "test-model"
 
 
+class _ScriptedErrorProvider(LLMProvider):
+    _CHAT_RETRY_DELAYS = (0.0, 0.0)
+
+    def __init__(self, content: str) -> None:
+        super().__init__()
+        self.content = content
+        self.calls = 0
+
+    async def chat(self, *args, **kwargs) -> LLMResponse:
+        self.calls += 1
+        return LLMResponse(content=self.content, finish_reason="error")
+
+    def get_default_model(self) -> str:
+        return "test-model"
+
+
 def test_provider_attempt_timeout_is_bounded_without_network() -> None:
     async def exercise() -> None:
         provider = _HangingProvider()
@@ -58,6 +74,25 @@ def test_provider_timeout_is_fail_fast_and_not_retried() -> None:
         assert "timed out" in (response.content or "")
 
     asyncio.run(exercise())
+
+
+def test_provider_524_chinese_timeout_is_classified_and_not_retried() -> None:
+    async def exercise() -> None:
+        provider = _ScriptedErrorProvider("status_code=524, 请求处理超时，请稍后重试")
+        response = await provider.chat_with_retry(
+            messages=[{"role": "user", "content": "hi"}]
+        )
+
+        assert response.finish_reason == "error"
+        assert provider.calls == 1
+        assert provider.classify_error(response.content) == "provider_timeout"
+
+    asyncio.run(exercise())
+
+
+def test_provider_502_remains_transient() -> None:
+    provider = _ScriptedErrorProvider("status_code=502, service temporarily unavailable")
+    assert provider.classify_error(provider.content) == "provider_transient"
 
 
 def test_dispatch_emits_started_and_timeout_events_for_hanging_turn() -> None:

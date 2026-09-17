@@ -424,6 +424,25 @@ This reuses `ToolExecutionRecord`, `NodeSettlement`, `AgentTaskStore.events()`,
 the existing evidence references, and advisory Experience lessons. It does not
 require a second memory database or a second prompt protocol.
 
+The node prompt is a bounded view, not a copy of the aggregate. Complete
+SkillUse instructions, unrelated PlanNodes, and the global execution history
+remain persisted under `AgentTaskCoordinator`; the model receives the frozen
+Skill/Runtime identity plus references for the current node's relevant
+SkillUse records. The current node and direct-predecessor projection are rebuilt
+from the authoritative active revision before every request. This keeps retries
+and resumes independent of provider-side conversation growth while preserving
+the evidence needed for admission.
+
+Provider transport failures are represented separately from an Agent turn that
+successfully returned without a Tool call. `provider_timeout`,
+`provider_transient`, and `provider_error` stop the current node attempt without
+spending the ordinary selection-receipt continuation. They do not settle the
+node, consume a pending receipt, request replan, or retry an Action. On resume,
+the adapter first reconciles any existing invocation/record; unknown physical
+effects remain fail-closed and are never reposted. A local
+`prompt_budget_exceeded` result follows the same single-attempt rule while
+remaining distinct from provider transport ownership.
+
 ### Failure, replay, and replan semantics
 
 The physical-drop example is represented as a normal node outcome, not as an
@@ -582,7 +601,9 @@ TUI / chat channel
 ```
 
 LiteLLM remains stateless: it receives the complete `messages` array for one
-model call and returns one response. Ordinary chat continuity is provided by
+model call and returns one response. For a node turn, that array contains a
+bounded node-scoped projection rather than the full AgentTask/SkillUse audit
+history. Ordinary chat continuity is provided by
 the existing `SessionManager`/`Session` JSONL history and
 `ContextBuilder.build_messages()`. Long-horizon continuity is provided by the
 persisted `AgentTask`/`PlanRevision` aggregate, not by provider-side session

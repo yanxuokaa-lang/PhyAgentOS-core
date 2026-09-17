@@ -376,6 +376,26 @@ does not consume replan budget. In particular, a non-terminal or unknown Action
 is reconciled through its existing invocation identity and is never restarted
 from the selection receipt.
 
+Long-horizon continuity is stored in `AgentTask`/`PlanRevision`, not in an
+ever-growing model transcript. Each node turn receives a read-only,
+node-scoped projection containing task/revision identity, the frozen Skill and
+Runtime identity, the current node declaration, its direct-predecessor context,
+and relevant SkillUse references. The Coordinator retains complete SkillUse
+instructions and all execution facts for audit, but historical instructions,
+unrelated nodes, and unrelated Tool payloads are not copied into every node
+prompt. Repeating the same revision/node decision reuses its existing SkillUse
+record instead of appending another copy.
+
+A provider transport failure is not an ordinary no-Tool node turn. Stable
+`provider_timeout`, `provider_transient`, and `provider_error` results block the
+current runner without consuming its same-revision selection continuation. A
+persisted, unconsumed selection receipt remains available for a later resume;
+an existing or unknown Action is still reconciled by invocation identity and
+is never posted again. A deterministic local `prompt_budget_exceeded` result
+also blocks without repeating the same node request. Context compaction and provider request timeouts are
+configuration policy only: they do not remove Coordinator facts or authorize
+motion.
+
 Every terminal planning-bound Query, Action, or Session record must also be
 normalized into a `NodeSettlement` by `AgentTaskCoordinator`. The Coordinator
 performs this conversion after terminal observation and exposes an idempotent
@@ -464,8 +484,10 @@ the adapter's existing replan proposer; the plugin owns no task, Store, Tool,
 Gateway, or motion state.
 
 LiteLLM is intentionally not the owner of multi-turn task state. It receives
-the current complete message list for each call. Chat history comes from
-`SessionManager`; long-horizon recovery comes from `AgentTaskCoordinator` and
-`PlanRevision`. A model's plain-text claim that it is finished, paused, or
-needs a Tool is not a lifecycle transition until the controller receives a
-structured result or a persisted Coordinator fact.
+a bounded request view for each call. Chat history comes from `SessionManager`;
+long-horizon recovery comes from `AgentTaskCoordinator` and `PlanRevision`.
+The one-shot CLI prints the initial Agent reply before waiting for the
+background long-horizon runner, and node model waits emit progress with the
+current phase and prompt estimate. A model's plain-text claim that it is
+finished, paused, or needs a Tool is not a lifecycle transition until the
+controller receives a structured result or a persisted Coordinator fact.

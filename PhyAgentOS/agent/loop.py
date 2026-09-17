@@ -9,6 +9,7 @@ import re
 import sys
 from collections.abc import Mapping, MutableSet
 from contextlib import AsyncExitStack
+from dataclasses import dataclass
 from pathlib import Path
 from time import monotonic
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
@@ -51,6 +52,24 @@ if TYPE_CHECKING:
     from PhyAgentOS.forge.task import AgentTaskCoordinator
     from PhyAgentOS.forge.tool_client import ForgeToolClient
     from PhyAgentOS.planning import AdmissionContext
+
+
+@dataclass(frozen=True)
+class AgentLoopRunResult:
+    """One bounded model/tool loop result with explicit provider-failure state."""
+
+    content: str | None
+    tools_used: list[str]
+    messages: list[dict[str, Any]]
+    turn_failure_code: str | None = None
+    model_failure_code: str | None = None
+
+    def __iter__(self):
+        """Preserve the historical private-loop tuple unpacking contract."""
+
+        yield self.content
+        yield self.tools_used
+        yield self.messages
 
 
 class AgentLoop:
@@ -366,7 +385,7 @@ class AgentLoop:
             results.append(await controller.wait(task.task_id))
         return tuple(results)
 
-    def build_long_horizon_controller(self, *, on_result=None):
+    def build_long_horizon_controller(self, *, on_result=None, on_progress=None):
         """Build the thin outer controller when a trusted context provider exists.
 
         The provider is deliberately required for execution: fabricating a
@@ -413,7 +432,11 @@ class AgentLoop:
         adapter = PlanningLoopAdapter(
             self.forge_task_coordinator,
             context_provider=NodeContextProvider(self.forge_task_coordinator.get_task),
-            node_executor=AgentLoopNodeExecutor(self, self.forge_task_coordinator),
+            node_executor=AgentLoopNodeExecutor(
+                self,
+                self.forge_task_coordinator,
+                on_progress=on_progress,
+            ),
             admission_context_provider=self._planning_context_provider,
             replan_proposer=replan_proposer,
             recovery_policy=recovery_policy,
@@ -622,7 +645,9 @@ class AgentLoop:
         on_progress: Callable[..., Awaitable[None]] | None = None,
         experience_session_key: str | None = None,
         active_task_id: str | None = None,
-    ) -> tuple[str | None, list[str], list[dict]]:
+        projection_scope: str = "task",
+        projection_node_id: str | None = None,
+    ) -> AgentLoopRunResult:
         """Run the agent iteration loop."""
         messages = initial_messages
         turn_start_index = max(
@@ -631,6 +656,8 @@ class AgentLoop:
         )
         iteration = 0
         final_content = None
+        turn_failure_code = None
+        model_failure_code = None
         tools_used: list[str] = []
 
         while iteration < self.max_iterations:
@@ -655,9 +682,12 @@ class AgentLoop:
                     all_tool_names=self.tools.tool_names,
                     task=active_task,
                     estimate_tokens=estimate,
+                    projection_scope=projection_scope,
+                    projection_node_id=projection_node_id,
                 )
             except PromptBudgetExceededError as exc:
                 logger.error("Agent prompt budget exceeded: {}", exc)
+                turn_failure_code = "prompt_budget_exceeded"
                 final_content = str(exc)
                 break
             tool_defs = self.tools.get_definitions(set(request_view.visible_tool_names))
@@ -682,6 +712,12 @@ class AgentLoop:
 
             started = monotonic()
             logger.info("Agent model start session={} iteration={}", experience_session_key, iteration)
+            if on_progress:
+                await on_progress(
+                    f"Model request started: phase={request_view.phase}, "
+                    f"prompt≈{estimated_tokens} tokens, iteration={iteration}.",
+                    tool_hint=False,
+                )
             try:
                 response = await self.provider.chat_with_retry(
                     messages=request_view.messages,
@@ -740,6 +776,13 @@ class AgentLoop:
                 # poison the context and cause permanent 400 loops (#1303).
                 if response.finish_reason == "error":
                     logger.error("LLM returned error: {}", (clean or "")[:200])
+                    model_failure_code = self.provider.classify_error(clean)
+                    turn_failure_code = model_failure_code
+                    if on_progress:
+                        await on_progress(
+                            f"Model request stopped: {model_failure_code}.",
+                            tool_hint=False,
+                        )
                     final_content = clean or "Sorry, I encountered an error calling the AI model."
                     break
                 messages = self.context.add_assistant_message(
@@ -758,7 +801,13 @@ class AgentLoop:
                 "without completing the task. You can try breaking the task into smaller steps."
             )
 
-        return final_content, tools_used, messages
+        return AgentLoopRunResult(
+            content=final_content,
+            tools_used=tools_used,
+            messages=messages,
+            turn_failure_code=turn_failure_code,
+            model_failure_code=model_failure_code,
+        )
 
     async def run_node_turn(
         self,
@@ -767,8 +816,8 @@ class AgentLoop:
         revision_id: str,
         node_id: str,
         prompt: str,
-        on_progress: Callable[[str], Awaitable[None]] | None = None,
-    ) -> tuple[str | None, list[str], list[dict]]:
+        on_progress: Callable[..., Awaitable[None]] | None = None,
+    ) -> AgentLoopRunResult:
         """Run one semantic-node turn through the existing AgentLoop.
 
         The caller supplies a bounded prompt projection (including any
@@ -788,9 +837,10 @@ class AgentLoop:
             node_session_key = task.origin_session_key or node_session_key
             if task.active_revision_id != revision_id:
                 raise ValueError("node turn revision is not current")
+            method_use = None
             if task.skill_uses:
                 method = task.skill_uses[-1]
-                self.forge_task_coordinator.record_skill_use(
+                method_use = self.forge_task_coordinator.record_skill_use(
                     task_id,
                     activation_id=method.activation_id,
                     skill_name=method.skill_name,
@@ -801,11 +851,34 @@ class AgentLoop:
                     node_id=node_id,
                 )
                 task = self.forge_task_coordinator.get_task(task_id)
+            binding = task.primary_skill_binding
             prompt = json.dumps({
                 "original_goal": task.task_description,
                 "verification": task.verification.model_dump(mode="json"),
                 "bound_skill_instructions": task.primary_skill_instructions,
-                "skill_uses": [item.model_dump(mode="json") for item in task.skill_uses],
+                "skill_binding": (
+                    {
+                        "binding_id": binding.binding_id,
+                        "skill_name": binding.skill_name,
+                        "skill_version": binding.skill_version,
+                        "content_sha256": binding.skill_document_sha256,
+                        "runtime_profile": binding.runtime_profile,
+                        "runtime_instance_id": binding.runtime_instance_id,
+                    }
+                    if binding is not None
+                    else None
+                ),
+                "skill_use": (
+                    {
+                        "use_id": method_use.use_id,
+                        "activation_id": method_use.activation_id,
+                        "decision_ref": method_use.decision_ref,
+                        "node_id": method_use.node_id,
+                        "content_sha256": method_use.content_sha256,
+                    }
+                    if method_use is not None
+                    else None
+                ),
                 "node_context": prompt,
             }, ensure_ascii=False)
         messages = self.context.build_messages(
@@ -819,6 +892,8 @@ class AgentLoop:
             on_progress=on_progress,
             experience_session_key=node_session_key,
             active_task_id=task_id,
+            projection_scope="node",
+            projection_node_id=node_id,
         )
 
     async def run(self) -> None:
@@ -1027,10 +1102,11 @@ class AgentLoop:
                 channel=channel,
                 chat_id=chat_id,
             )
-            final_content, _, all_msgs = await self._run_agent_loop(
+            run_result = await self._run_agent_loop(
                 messages, experience_session_key=key
             )
-            self._save_turn(session, all_msgs, 1 + len(history))
+            final_content = run_result.content
+            self._save_turn(session, run_result.messages, 1 + len(history))
             self.sessions.save(session)
             await self.memory_consolidator.maybe_consolidate_by_tokens(session)
             return OutboundMessage(
@@ -1161,7 +1237,7 @@ class AgentLoop:
             )
 
         try:
-            final_content, _, all_msgs = await self._run_agent_loop(
+            run_result = await self._run_agent_loop(
                 initial_messages,
                 on_progress=on_progress or _bus_progress,
                 experience_session_key=key,
@@ -1188,10 +1264,10 @@ class AgentLoop:
             logger.warning("Interrupted turn history saved for session {}", key)
             raise
 
+        final_content = run_result.content
         if final_content is None:
             final_content = "I've completed processing but have no response to give."
-
-        self._save_turn(session, all_msgs, 1 + len(history))
+        self._save_turn(session, run_result.messages, 1 + len(history))
         self.sessions.save(session)
         await self.memory_consolidator.maybe_consolidate_by_tokens(session)
 

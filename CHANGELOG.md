@@ -11,6 +11,59 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v10.8.3 (2026-09-18 02:15) - codex
+
+- [agent] [fix] [完成] LongHorizon 节点改用有界 node-scoped 投影，同一节点的 SkillUse 幂等，不再重复注入完整指令和全局任务历史。(local)
+- [agent] [fix] [完成] 524/provider/prompt-budget 失败结构化阻塞且不消耗普通 continuation；one-shot CLI 先显示初始回复再等待长任务。(local)
+- [config] [tune] [完成] RGB 配置保持 `gpt-5.6-sol/high/272K`，使用既有参数设置 96K 软压缩触发与 110s LLM 请求超时。(local)
+- [Agent] [Fix] [Completed] Use bounded node-scoped LongHorizon projections and idempotent per-node SkillUse records instead of reinjecting complete instructions and global task history. (local)
+- [Agent] [Fix] [Completed] Block 524/provider/prompt-budget failures without consuming normal continuation, and show the initial one-shot reply before awaiting the long task. (local)
+- [Config] [Tune] [Completed] Keep `gpt-5.6-sol/high/272K` while configuring the existing 96K soft-compaction trigger and 110s LLM request timeout for RGB runs. (local)
+
+### 影响文件 / Affected files
+
+- `PhyAgentOS/agent/loop.py:L57-L72,L388-L445,L642-L897,L1105-L1109,L1240-L1270`
+- `PhyAgentOS/agent/prompt_context.py:L497-L601,L726-L745,L791`
+- `PhyAgentOS/agent/planning_loop.py:L40-L56,L179-L255,L791-L794`
+- `PhyAgentOS/forge/task.py:L1189-L1250`; `PhyAgentOS/providers/base.py:L199-L223`
+- `PhyAgentOS/cli/commands.py:L8-L11,L175-L189,L1034-L1062,L1107-L1116`
+- focused AgentLoop/prompt/planning/provider/CLI tests and three Forge developer guides
+- `/home/yanxu/.PhyAgentOS/config-rgb-no-evolution-long.json:L5-L14`
+
+```diff
+- full SkillUse history + global task projection on every node request
++ one frozen Skill instruction + node/binding/SkillUse-reference projection
+- provider error -> ordinary no-record continuation
++ stable single-attempt provider/prompt-budget blocked result
+- await long-horizon; print initial response
++ print initial response; await long-horizon with progress
+```
+
+### 七维验收 / Seven-dimension acceptance
+
+Architecture integration, failure recovery, robotics safety,
+configuration/reproducibility, maintainability, observability, and AgentLoop
+autonomy: PASS with no remaining Blocker/Major. The read-only r50 comparison
+reduced the model-facing node material from a `50642`-character global
+projection to `4937` characters (`24292` including the one frozen Skill
+wrapper), while all six persisted SkillUse audit records remained intact.
+
+### 验证与安装 / Validation and installation
+
+- Focused `139 passed`; full no-motion suite `448 passed`; Ruff, compileall,
+  configuration parsing, and diff check passed.
+- Editable install succeeded in `/home/yanxu/miniconda3/envs/paos`; imports
+  resolve to this repository.
+- Installed Skill remains `pick-place-workflow 2.2.0`. Read-only status showed
+  the pre-existing Runtime as running with Gateway and 9/9 Tool contexts ready;
+  no start/stop/switch, Tool invocation, Action, Session, simulator step, Qwen
+  request, or world change occurred.
+
+### Git 提交 / Git commit
+
+- Implementation commit: `PENDING`
+- Branch: `feature/planning-loop`
+
 ## v10.8.2 (2026-09-18 00:51) - codex
 
 - [agent] [fix] [完成] 持久化可恢复 planning selection receipt，并在同 revision 内有界续跑；无 Tool record 时返回 `blocked/node_turn_incomplete`。(local)
@@ -145,6 +198,8 @@ Architecture, recovery, robotics safety/authority, configuration/reproducibility
 - Branch: `feature/planning-loop`
 - 时间 / Time: 2026-09-17 (Asia/Shanghai)
 
+## 历史记录 / Historical Records
+
 ## v10.7.3 (2026-09-17 15:36) - codex
 
 - [agent] [fix] [完成] 跨 session AgentTask 冲突现在返回 `agent_task_busy`、owner session 与只读恢复指引；不允许隐式接管。(local)
@@ -178,8 +233,6 @@ Architecture, recovery, robotics safety/authority, configuration/reproducibility
 ```
 
 Validation: Core 425, Skill 334, Adapter 497, focused AgentLoop/planning 19 plus 51, safety/package 15, and focused Skill 74 passed; Ruff, compileall, diff check, and Agent Route Principles Gate passed; no Action/Session/motion.
-
-## 历史记录 / Historical Records
 
 ## v10.7.2 (2026-09-17 15:06) - codex
 

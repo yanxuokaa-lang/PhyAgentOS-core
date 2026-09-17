@@ -11,6 +11,7 @@ from PhyAgentOS.agent.prompt_context import (
     AgentPromptContextManager,
     PromptBudgetExceededError,
     compact_tool_result,
+    node_task_prompt_projection,
     task_prompt_projection,
     visible_tool_names,
 )
@@ -765,6 +766,97 @@ def test_task_projection_preserves_revision_bindings_and_node_obligations() -> N
         "artifact://decision/skill-use-1",
     ):
         assert required in encoded
+
+
+def test_node_projection_is_reference_only_and_scoped_to_current_node() -> None:
+    current = SimpleNamespace(
+        node_id="node-place",
+        obligation_id="place-red-left",
+        capability="object.place",
+        dependencies=("node-acquire",),
+        conditions=("scene.current",),
+        required_evidence=("binding.current",),
+        input_bindings={"entity_ref": "entity://red"},
+        resources=(),
+        effects=("scene.changed",),
+        retry_of=None,
+    )
+    unrelated = SimpleNamespace(
+        node_id="node-blue",
+        obligation_id="place-blue-right",
+        capability="object.place",
+        dependencies=(),
+        conditions=(),
+        required_evidence=(),
+        input_bindings={"entity_ref": "entity://blue"},
+        resources=(),
+        effects=(),
+        retry_of=None,
+    )
+    task = _task(graph=SimpleNamespace(nodes=(current, unrelated)))
+    task.primary_skill_binding = SimpleNamespace(
+        binding_id="skill-binding-1",
+        skill_name="pick-place-workflow",
+        skill_version="2.2.0",
+        skill_document_sha256="b" * 64,
+        runtime_profile="robotwin-persistent",
+        runtime_instance_id="runtime-1",
+        gateway_identity="gateway-1",
+        required_tools=(),
+    )
+    task.skill_uses = (
+        SimpleNamespace(
+            use_id="skill-use-current",
+            activation_id="activation-1",
+            skill_name="pick-place-workflow",
+            skill_version="2.2.0",
+            content_sha256="b" * 64,
+            instructions="CURRENT FULL INSTRUCTIONS MUST NOT BE COPIED",
+            decision_ref="node:revision-1:node-place",
+            node_id="node-place",
+            attempt_id=None,
+            outcome="selected",
+        ),
+        SimpleNamespace(
+            use_id="skill-use-unrelated",
+            activation_id="activation-1",
+            skill_name="pick-place-workflow",
+            skill_version="2.2.0",
+            content_sha256="b" * 64,
+            instructions="UNRELATED FULL INSTRUCTIONS MUST NOT BE COPIED",
+            decision_ref="node:revision-1:node-blue",
+            node_id="node-blue",
+            attempt_id=None,
+            outcome="selected",
+        ),
+    )
+
+    encoded = json.dumps(node_task_prompt_projection(task, "node-place"))
+
+    assert "agent_node_prompt_projection_v1" in encoded
+    assert "skill-use-current" in encoded
+    assert "skill-use-unrelated" not in encoded
+    assert "place-red-left" in encoded
+    assert "place-blue-right" not in encoded
+    assert "FULL INSTRUCTIONS" not in encoded
+    assert "primary_skill_instructions" not in encoded
+
+
+def test_node_projection_scope_requires_node_identity() -> None:
+    manager = AgentPromptContextManager(
+        context_window_tokens=20_000,
+        compaction_trigger_tokens=18_000,
+    )
+
+    with pytest.raises(ValueError, match="requires projection_node_id"):
+        manager.build(
+            messages=[{"role": "user", "content": "continue"}],
+            turn_start_index=0,
+            all_tool_names=(),
+            task=_task(),
+            estimate_tokens=_estimate,
+            projection_scope="node",
+        )
 
 
 def test_task_projection_does_not_report_compaction_by_itself() -> None:

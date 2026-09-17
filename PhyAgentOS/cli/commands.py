@@ -5,9 +5,10 @@ import os
 import select
 import signal
 import sys
+from collections.abc import Callable
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 from uuid import uuid4
 
 # Force UTF-8 encoding for Windows console
@@ -169,6 +170,21 @@ def _print_agent_response(response: str, render_markdown: bool) -> None:
     console.print(f"[cyan]{__logo__} PhyAgentOS[/cyan]")
     console.print(body)
     console.print()
+
+
+async def _print_response_then_wait(
+    agent_loop: Any,
+    *,
+    response: str,
+    session_id: str,
+    render_markdown: bool,
+    wait_context: Callable[[], Any],
+) -> tuple[Any, ...]:
+    """Expose the initial reply before awaiting background AgentTask completion."""
+
+    _print_agent_response(response, render_markdown=render_markdown)
+    with wait_context():
+        return await agent_loop.wait_for_long_horizon_tasks(session_id)
 
 
 def _is_exit_command(command: str) -> bool:
@@ -1015,8 +1031,32 @@ def agent(
             metadata={"_long_horizon": True, "event_type": "task_status", "task_id": result.task_id},
         ))
 
+    async def _long_horizon_progress(content: str, *, tool_hint: bool = False) -> None:
+        from PhyAgentOS.bus.events import OutboundMessage
+
+        ch = agent_loop.channels_config
+        if ch and tool_hint and not ch.send_tool_hints:
+            return
+        if ch and not tool_hint and not ch.send_progress:
+            return
+        if message:
+            console.print(f"  [dim]↳ {content}[/dim]")
+            return
+        await bus.publish_outbound(OutboundMessage(
+            channel="cli",
+            chat_id=session_id.split(":", 1)[1] if ":" in session_id else session_id,
+            content=content,
+            metadata={
+                "_long_horizon": True,
+                "_progress": True,
+                "_tool_hint": tool_hint,
+                "event_type": "turn_progress",
+            },
+        ))
+
     long_horizon_controller = agent_loop.build_long_horizon_controller(
-        on_result=_long_horizon_result
+        on_result=_long_horizon_result,
+        on_progress=_long_horizon_progress,
     )
     agent_loop.set_long_horizon_controller(long_horizon_controller)
 
@@ -1064,8 +1104,13 @@ def agent(
             try:
                 with _thinking_ctx():
                     response = await agent_loop.process_direct(message, session_id, on_progress=_cli_progress)
-                    task_results = await agent_loop.wait_for_long_horizon_tasks(session_id)
-                _print_agent_response(response, render_markdown=markdown)
+                task_results = await _print_response_then_wait(
+                    agent_loop,
+                    response=response,
+                    session_id=session_id,
+                    render_markdown=markdown,
+                    wait_context=_thinking_ctx,
+                )
                 for result in task_results:
                     if result.status in {"completed", "succeeded"}:
                         continue
