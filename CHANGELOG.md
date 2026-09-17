@@ -37,7 +37,7 @@ Validation: focused `70`, Core/extension `521`, Skill `334`, Adapter `491 passed
 
 ### Git 提交 / Git commit
 
-- Commit: `PENDING`
+- Commit: `0f553a0`
 - Branch: `feature/planning-loop`
 - 时间 / Time: 2026-09-18 (Asia/Shanghai)
 
