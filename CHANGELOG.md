@@ -34,7 +34,7 @@ Gateway Tool, Action, Session, simulator step, world change, or motion.
 
 ### Git 提交 / Git commit
 
-- Commit: `pending`
+- Commit: `c76b732`
 - Branch: `feature/planning-loop`
 
 ## v10.8.4 (2026-09-18 02:45) - codex
