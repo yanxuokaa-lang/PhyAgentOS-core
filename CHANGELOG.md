@@ -57,7 +57,7 @@ restart, or Qwen wake occurred.
 
 ### Git 提交 / Git commit
 
-- Implementation commit: `pending`
+- Implementation commit: `abdd356`
 - Branch: `feature/planning-loop`
 
 ## v10.8.1 (2026-09-18 00:08) - codex
