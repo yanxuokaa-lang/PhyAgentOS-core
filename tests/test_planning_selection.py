@@ -7,7 +7,8 @@ from types import SimpleNamespace
 from PhyAgentOS.agent.planning_dispatch import AgentComposedDispatch
 from PhyAgentOS.agent.tools.planning import ForgePlanSelectTool
 from PhyAgentOS.config.schema import ForgeConfig
-from PhyAgentOS.forge.task import AgentTaskCoordinator
+from PhyAgentOS.forge.binding import RuntimeBinding
+from PhyAgentOS.forge.task import AgentTaskCoordinator, AgentTaskStatus
 from PhyAgentOS.planning import (
     AdmissionContext,
     PlanGraph,
@@ -93,7 +94,95 @@ def test_plan_select_rejects_when_task_is_not_active_graph():
     assert result["motion_authorized"] is False
     assert result["error"]["code"] == "inactive_plan_graph"
     assert result["error"]["recommended_action"] == "activate_current_task_plan"
+    assert result["error"]["rejection_persisted"] is True
     assert coordinator.proposals == []
+
+
+def test_plan_select_reports_rejection_persistence_failure():
+    class FailingCoordinator(_Coordinator):
+        def record_planning_selection_rejection(self, task_id, **kwargs):
+            raise RuntimeError("task event store unavailable")
+
+    result = json.loads(asyncio.run(ForgePlanSelectTool(
+        FailingCoordinator(), lambda: None
+    ).execute(
+        "task-1", "observe", "scene.observe", {}, "initial observation"
+    )))
+
+    assert result["ok"] is False
+    assert result["motion_authorized"] is False
+    assert result["error"]["code"] == "inactive_plan_graph"
+    assert result["error"]["rejection_persisted"] is False
+    persistence = result["error"]["persistence_error"]
+    assert persistence == {
+        "type": "RuntimeError",
+        "code": "planning_selection_rejection_not_persisted",
+        "failure_owner": "coordinator",
+        "message": "task event store unavailable",
+        "recommended_action": "read_authoritative_task_state",
+    }
+
+
+def test_replan_budget_exhaustion_runs_terminal_cleanup(tmp_path):
+    class Experience:
+        def __init__(self):
+            self.completed = []
+
+        def schedule_forge_completion(self, task_id):
+            self.completed.append(task_id)
+
+    binding_id = "runtime-binding-budget-exhausted"
+    experience = Experience()
+    task_bindings = {binding_id}
+    coordinator = AgentTaskCoordinator(
+        workspace=tmp_path,
+        config=ForgeConfig(),
+        client=object(),
+        experience=experience,
+        runtime_task_binding_ids=task_bindings,
+        max_replans=0,
+    )
+    task = coordinator.create_task(
+        task_description="reject an unbindable historical plan",
+        verification=TaskVerificationContract(mode="off"),
+    )
+    task_id = task.task_id
+
+    def attach_runtime_binding(current):
+        current.runtime_binding = RuntimeBinding(
+            binding_id=binding_id,
+            runtime_profile="fake",
+            runtime_instance_id="runtime-budget-exhausted",
+            gateway_url="http://fake",
+        )
+        current.active_revision.runtime_binding_id = binding_id
+
+    coordinator.store.update(
+        task_id,
+        attach_runtime_binding,
+        event_type="test_runtime_binding",
+    )
+
+    result = coordinator.record_planning_selection_rejection(
+        task_id,
+        revision_id=task.active_revision_id,
+        node_id="acquire-blue",
+        tool_id="object.acquire",
+        error={
+            "type": "PlanningDispatchError",
+            "code": "node_tool_binding_incompatible",
+            "failure_owner": "plan_graph",
+            "message": "entity_ref is not frozen",
+            "retryable_in_revision": False,
+            "requires_replan": True,
+            "recommended_action": "replace_active_plan_graph",
+        },
+    )
+
+    assert result.status == AgentTaskStatus.FAILED
+    assert binding_id not in task_bindings
+    assert experience.completed == [task_id]
+    assert result.execution_records == []
 
 
 def test_prepare_selection_reports_all_missing_runtime_arguments_and_persists_event(tmp_path):

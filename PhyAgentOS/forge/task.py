@@ -899,12 +899,15 @@ class AgentTaskCoordinator:
                 + str(error.get("code", "planning_selection_rejected"))
             )
 
-        return self.store.update(
+        result = self.store.update(
             task_id,
             mutate,
             event_type="planning_selection_rejected",
             payload=payload,
         )
+        if result.terminal:
+            self._schedule_experience(result)
+        return result
 
     def create_task(
         self,

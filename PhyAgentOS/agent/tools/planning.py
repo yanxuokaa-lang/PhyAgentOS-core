@@ -160,16 +160,24 @@ class ForgePlanSelectTool(Tool):
         error: dict[str, Any],
     ) -> Any | None:
         try:
-            return self.coordinator.record_planning_selection_rejection(
+            current = self.coordinator.record_planning_selection_rejection(
                 task_id,
                 revision_id=revision_id,
                 node_id=node_id,
                 tool_id=tool_id,
                 error=error,
             )
-        except Exception:
-            # The structured response remains authoritative when the requested
-            # task itself is unknown or no longer writable.
+            error["rejection_persisted"] = True
+            return current
+        except Exception as exc:
+            error["rejection_persisted"] = False
+            error["persistence_error"] = {
+                "type": type(exc).__name__,
+                "code": "planning_selection_rejection_not_persisted",
+                "failure_owner": "coordinator",
+                "message": str(exc) or type(exc).__name__,
+                "recommended_action": "read_authoritative_task_state",
+            }
             return None
 
     @staticmethod

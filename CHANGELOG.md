@@ -11,6 +11,36 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v10.8.1 (2026-09-18 00:08) - codex
+
+- [agent] [fix] [完成] selection replan budget 耗尽后复用统一终态收尾，释放 Runtime task-binding 并调度 experience completion。(local)
+- [agent] [fix] [完成] selection 拒绝事件落盘失败显式返回稳定错误码、责任方和恢复动作，不再静默吞掉。(local)
+- [eval] [test] [完成] 七维复审无 Blocker/Major；安装并启动 Skill `2.2.0`，Node `0.1.15`、9/9 Tools 与 Qwen healthy/sleeping 均通过。(local)
+- [Agent] [Fix] [Completed] Route selection replan-budget exhaustion through shared terminal cleanup, releasing Runtime task-binding ownership and scheduling experience completion. (local)
+- [Agent] [Fix] [Completed] Expose stable owner and recovery diagnostics when rejection-event persistence fails instead of silently swallowing the failure. (local)
+- [Eval] [Test] [Completed] Seven-dimension review found no remaining Blocker/Major; installed and started Skill `2.2.0`, with Node `0.1.15`, 9/9 Tools, and healthy sleeping Qwen verified. (local)
+
+### 影响文件 / Affected files
+
+- `PhyAgentOS/forge/task.py:L851-L910`
+- `PhyAgentOS/agent/tools/planning.py:L154-L181`
+- `tests/test_planning_selection.py:L85-L185`
+- `changelog/2026-09_part9.md`
+- `/home/yanxu/.PhyAgentOS/skills/pick-place-workflow/`
+
+```diff
+- terminal planning rejection bypasses cleanup; persistence errors disappear
++ shared terminal cleanup + explicit rejection persistence diagnostics
+```
+
+Validation: focused `70`, Core/extension `521`, Skill `334`, Adapter `491 passed, 1 skipped`; changed-file Ruff, full compileall, and diff check passed. Old query-only task was governance-cancelled before normal stop/install; no force, Action, Session, simulator step, world change, or motion. Bundle SHA-256 `ed8fb2b98ac7bc2b6296a9d7f1c72f6386469ceabdcff83fd291156630cb1a49`, `101559` bytes. Runtime is running with 9/9 Tools ready; Qwen remained PID `198471`, health `200`, sleeping `true`.
+
+### Git 提交 / Git commit
+
+- Commit: `PENDING`
+- Branch: `feature/planning-loop`
+- 时间 / Time: 2026-09-18 (Asia/Shanghai)
+
 ## v10.8.0 (2026-09-17 23:39) - codex
 
 - [agent] [fix] [完成] 编译期拒绝无冻结 ToolPolicy 可绑定的节点；历史图在 `forge_plan_ready` 中区分 dependency-ready 与 selection-ready。(local)
@@ -114,38 +144,6 @@ Validation: Core 425, Skill 334, Adapter 497, focused AgentLoop/planning 19 plus
 - `examples/forge-skills/pick-place-workflow/skill.yaml`, `pyproject.toml`
 
 Validation: changed Adapter/Skill tests and lint passed; no Action/Session/motion.
-
-## v10.7.1 (2026-09-17 00:20) - codex
-
-- [agent] [fix] [完成] AgentLoop 不再接管全局 unbound legacy active task；仅当前 session 的结构化 `forge_task_get(task_id)` 引用可恢复旧任务，并拒绝纯文本 task ID 与 terminal stop-path 误绑定。(local)
-- [sense] [fix] [完成] Qwen GPU handoff lifecycle failure 使用同一请求进入 GPT-5.6-sol/high fallback；未确认 sleep 时返回 semantic-only 结果，不启动下游 GPU provider。(local)
-- [test] [feat] [完成] 增加四项 session ownership 回归与 handoff fallback 回归；Core `420 passed`、Skill `334 passed`、Adapter `495 passed`。(local)
-- [env] [chore] [完成] 发布并安装 Skill `2.1.5` 与 Node `0.1.14`；Node SHA-256 `1ff841511a31caaf1ce555bd7e510ac6a34a6ed44decddf689795fa90e789a92`；Skill SHA-256 `b4246219f7872787507284b749faf776400022dde9096d7adf6e6dfcd218c3a8`。(local)
-- [Agent] [Fix] [Completed] AgentLoop no longer adopts a global unbound legacy active task; only a structured session-local `forge_task_get(task_id)` reference can resume it, while plain-text IDs and terminal stop paths are rejected. (local)
-- [Sense] [Fix] [Completed] Qwen GPU-handoff lifecycle failures use same-request GPT-5.6-sol/high fallback; semantic-only output prevents downstream GPU overlap before sleep confirmation. (local)
-- [Test] [Feat] [Completed] Added four session-ownership regressions and handoff-fallback regressions; Core `420 passed`, Skill `334 passed`, Adapter `495 passed`. (local)
-- [Env] [Chore] [Completed] Released and installed Skill `2.1.5` and Node `0.1.14`; archive SHAs recorded above. (local)
-
-### 影响文件 / Affected files
-
-- `PhyAgentOS/agent/loop.py:L549-L599`
-- `tests/test_prompt_context.py:L134-L232`
-- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/scene_understanding_fallback.py:L73-L103`
-- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/single_view_perception.py:L475-L490,L701-L720,L844-L860`
-- `examples/forge-adapters/robotwin20/tests/test_scene_understanding_fallback.py:L132-L157`
-- `examples/forge-adapters/robotwin20/tests/test_single_view_perception.py:L289-L310`
-- `examples/forge-skills/pick-place-workflow/skill.yaml:L1-L67`
-
-```diff
-- legacy = store.active()
-+ legacy = session-structured forge_task_get(task_id) only
-- lifecycle cleanup error leaked to generic scene Tool
-+ same-request GPT fallback returns semantic-only result
-```
-
-Validation: focused `53 passed`; Core `420 passed`; Skill `334 passed`; Adapter `495 passed`; Ruff, compileall, `git diff --check`, and Agent Route Principles Gate passed. Runtime installed with 9/9 Tools ready; Query-only `scene.observe` `0.506 s`, `scene.understand` `12.358 s`, 3 entities, 2 relations, 4 explicit ambiguities, and automatic return to vLLM sleep. `0` Action, `0` Session, no simulator step or physical motion.
-
-Git commit: `7b9e0d5` on `feature/planning-loop` at 2026-09-17 (Asia/Shanghai).
 
 ## v10.7.0 (2026-09-16 22:10) - codex
 
