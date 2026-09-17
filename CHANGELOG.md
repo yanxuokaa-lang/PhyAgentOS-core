@@ -11,6 +11,19 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v10.7.4 (2026-09-17 23:02) - codex
+
+- [eval] [test] [完成] v10.7.0-v10.7.3 七维复审无 Blocker/Major；Core `425`、Skill `334`、Adapter `497` tests passed。(local)
+- [env] [chore] [完成] Coordinator 取消旧任务后正常停止 `2.1.6`；安装并启动 Skill `2.1.7`，Node `0.1.15` 校验通过，9/9 Tools ready，Qwen healthy/sleeping。(local)
+- [Eval] [Test] [Completed] Seven-dimension review of v10.7.0-v10.7.3 found no Blocker/Major; Core `425`, Skill `334`, and Adapter `497` tests passed. (local)
+- [Env] [Chore] [Completed] Coordinator-cancelled the stale task, normally stopped `2.1.6`, installed/started Skill `2.1.7`, verified Node `0.1.15`, 9/9 Tools, and healthy sleeping Qwen. (local)
+
+Bundle SHA-256: `69094772e730c67d8111fbbd1faa8d6040194f638faba4d2c2de36e7c217ae21`; Node archive SHA-256: `44472908bc94c9c46dcb0e1b1213456a4d590157318a7750f6ea4ed6ab672db7`. No force-stop, new task, Action, Session, simulation step, or physical motion.
+
+### 七维验收 / Seven-dimension acceptance
+
+Architecture, recovery, robotics safety/authority, configuration/reproducibility, maintainability, observability, and AgentLoop autonomy: PASS. Runtime is `running`; Gateway and all 9 Tool contexts are ready; Qwen health is HTTP `200` and sleep state is `true`.
+
 ## v10.7.3 (2026-09-17 15:36) - codex
 
 - [agent] [fix] [完成] 跨 session AgentTask 冲突现在返回 `agent_task_busy`、owner session 与只读恢复指引；不允许隐式接管。(local)
