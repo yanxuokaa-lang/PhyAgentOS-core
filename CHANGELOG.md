@@ -41,7 +41,7 @@
 
 Validation: focused `53 passed`; Core `420 passed`; Skill `334 passed`; Adapter `495 passed`; Ruff, compileall, `git diff --check`, and Agent Route Principles Gate passed. Runtime installed with 9/9 Tools ready; Query-only `scene.observe` `0.506 s`, `scene.understand` `12.358 s`, 3 entities, 2 relations, 4 explicit ambiguities, and automatic return to vLLM sleep. `0` Action, `0` Session, no simulator step or physical motion.
 
-Git commit: pending.
+Git commit: `7b9e0d5` on `feature/planning-loop` at 2026-09-17 (Asia/Shanghai).
 
 ## v10.7.0 (2026-09-16 22:10) - codex
 
