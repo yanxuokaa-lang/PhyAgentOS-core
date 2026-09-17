@@ -212,7 +212,7 @@ class AgentLoopNodeExecutor:
                 await activation
         existing = self._node_records(context)
         if existing:
-            await self._reconcile_actions(context.task_id, context.node_id)
+            await self._reconcile_executions(context.task_id, context.node_id)
             existing = self._node_records(context)
             if any(not item.terminal for item in existing):
                 raise NodeTurnIncompleteError(
@@ -230,13 +230,10 @@ class AgentLoopNodeExecutor:
                 prompt=self._prompt_for_turn(context),
                 on_progress=self.on_progress,
             )
-            model_failure_code = getattr(turn_result, "model_failure_code", None)
-            if model_failure_code:
-                raise NodeTurnProviderError(context.node_id, model_failure_code)
-            turn_failure_code = getattr(turn_result, "turn_failure_code", None)
-            if turn_failure_code:
-                raise NodeTurnIncompleteError(context.node_id, turn_failure_code)
-            await self._reconcile_actions(context.task_id, context.node_id)
+            # A Tool may have been accepted before a later model iteration
+            # failed while producing narration.  Persisted execution facts
+            # outrank that model failure and Actions must be reconciled now.
+            await self._reconcile_executions(context.task_id, context.node_id)
             records = self._node_records(context)
             if records:
                 if any(not item.terminal for item in records):
@@ -245,6 +242,12 @@ class AgentLoopNodeExecutor:
                         "planning-bound Tool execution did not reach a durable terminal state",
                     )
                 return self._result_from_records(context, records)
+            model_failure_code = getattr(turn_result, "model_failure_code", None)
+            if model_failure_code:
+                raise NodeTurnProviderError(context.node_id, model_failure_code)
+            turn_failure_code = getattr(turn_result, "turn_failure_code", None)
+            if turn_failure_code:
+                raise NodeTurnIncompleteError(context.node_id, turn_failure_code)
 
         pending = self._pending_selection(context)
         reason = (
@@ -362,43 +365,64 @@ class AgentLoopNodeExecutor:
             scene_revision=context.scene_revision,
         )
 
-    async def _reconcile_actions(self, task_id: str, node_id: str) -> None:
-        """Drive node-owned Actions to a durable terminal observation.
+    async def _reconcile_executions(self, task_id: str, node_id: str) -> None:
+        """Drive node-owned Actions/Sessions toward a durable observation.
 
-        The Agent may submit an Action during its turn, but acceptance is only
-        an invocation identity.  Polling remains on the existing Gateway client
-        and every response is persisted by the Coordinator.  A bounded poll
-        budget records ``unknown`` when the remote state cannot be proven; it
-        never retries the physical POST.
+        The Agent may submit an Action or Session during its turn, but
+        acceptance is only an invocation identity. Polling remains on the
+        existing Gateway client and every response is persisted by the
+        Coordinator. A bounded Action poll budget records ``unknown`` when the
+        remote state cannot be proven; a known-running Session stays
+        non-terminal because Sessions deliberately have no deadline. This path
+        never retries the original POST.
         """
         task = self.coordinator.get_task(task_id)
         records = [
             record for record in task.active_revision.execution_records
             if record.node_id == node_id
-            and getattr(record, "semantics", None) == "action"
+            and getattr(record, "semantics", None) in {"action", "session"}
             and not getattr(record, "terminal", False)
         ]
         for record in records:
+            semantics = getattr(record, "semantics", None)
             if not record.invocation_id:
                 self.coordinator.mark_execution_unknown(
                     task_id,
                     record.record_id,
-                    code="missing_invocation_identity",
-                    message="Action acceptance omitted invocation identity",
+                    code=(
+                        "missing_invocation_identity"
+                        if semantics == "action"
+                        else "missing_session_invocation_identity"
+                    ),
+                    message=f"{semantics.title()} acceptance omitted invocation identity",
                 )
                 continue
             terminal = False
             for _ in range(self.max_action_polls):
                 try:
                     status = await self.coordinator.client.invocation_status(record.invocation_id)
-                    self.coordinator.observe_action(task_id, record.invocation_id, status)
+                    observer = (
+                        self.coordinator.observe_session
+                        if semantics == "session"
+                        else self.coordinator.observe_action
+                    )
+                    # Status is progress evidence only. A terminal status may
+                    # precede the result payload that carries scene revision,
+                    # world-change, and produced-evidence facts, so do not
+                    # create the immutable NodeSettlement from status alone.
+                    observer(
+                        task_id,
+                        record.invocation_id,
+                        status,
+                        reconcile_settlement=False,
+                    )
                     result = await self.coordinator.client.invocation_result(record.invocation_id)
-                    self.coordinator.observe_action(task_id, record.invocation_id, result)
+                    observer(task_id, record.invocation_id, result)
                 except Exception as exc:
                     self.coordinator.mark_execution_unknown(
                         task_id,
                         record.record_id,
-                        code="action_reconciliation_failed",
+                        code=f"{semantics}_reconciliation_failed",
                         message=f"Gateway lifecycle read failed: {type(exc).__name__}: {exc}",
                     )
                     terminal = True
@@ -412,7 +436,7 @@ class AgentLoopNodeExecutor:
                     break
                 if self.action_poll_interval_s:
                     await asyncio.sleep(self.action_poll_interval_s)
-            if not terminal:
+            if not terminal and semantics == "action":
                 self.coordinator.observe_action(
                     task_id,
                     record.invocation_id,

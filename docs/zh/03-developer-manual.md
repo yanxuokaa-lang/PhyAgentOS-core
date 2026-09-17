@@ -124,6 +124,16 @@ unknown Action 只按 invocation identity 对账，绝不重新 POST。上下文
 配置策略；本地 `prompt_budget_exceeded` 同样只执行一次，不会删改 Coordinator 事实、绕过 Tool
 admission 或授予运动权限。
 
+若同一节点已在前一次模型迭代中产生 planning-bound Tool record，后续模型收尾超时不得
+覆盖该执行事实。节点 runner 先按 invocation identity 读取并持久化 Action/Session status/result，
+再进行节点结算。已知仍在运行的 Session 保持非终态并阻塞节点，不因本地 bounded poll 结束就
+伪造为 `unknown`，也不重发 Session POST。
+status snapshot 只作为进度事实落盘，即使它先报告终态，也必须等待 result payload 落盘后再
+生成不可变 NodeSettlement；scene revision、world change 和 produced evidence 以 result 中的
+完整事实为准。
+显式 Action/Session status Tool 与启动恢复也遵守同一规则：status 不结算节点，result 才可
+触发终态结算。
+
 ## 7. Verification 与 recovery
 
 `TaskVerificationContract` 继续作为用户级公共契约。Verifier 接收 goal、criteria、

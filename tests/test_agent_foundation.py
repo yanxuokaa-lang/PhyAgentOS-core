@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -18,7 +20,13 @@ from PhyAgentOS.agent.tools.forge_task import (
     ForgeTaskGetTool,
     ForgeTaskMaterializePlanTool,
 )
-from PhyAgentOS.agent.tools.forge_tool_api import ForgeToolQueryTool
+from PhyAgentOS.agent.tools.forge_tool_api import (
+    ForgeToolActionResultTool,
+    ForgeToolActionStatusTool,
+    ForgeToolQueryTool,
+    ForgeToolSessionResultTool,
+    ForgeToolSessionStatusTool,
+)
 from PhyAgentOS.bus.queue import MessageBus
 from PhyAgentOS.config.schema import ForgeConfig
 from PhyAgentOS.forge.binding import BoundToolSpec, ForgeSkillBinding
@@ -388,6 +396,44 @@ def test_record_skill_use_is_idempotent_for_same_node_decision(tmp_path):
     assert current.active_revision.skill_use_ids == (first.use_id, distinct.use_id)
 
 
+def test_record_skill_use_is_atomic_across_store_instances(tmp_path):
+    c, task = setup_task(tmp_path)
+    peer = AgentTaskCoordinator(
+        workspace=tmp_path,
+        config=ForgeConfig(),
+        client=object(),
+    )
+    barrier = threading.Barrier(2)
+    arguments = {
+        "activation_id": "activation-concurrent",
+        "skill_name": "pick-place-workflow",
+        "skill_version": "2.2.0",
+        "content_sha256": "c" * 64,
+        "instructions": "Observe, prepare, then execute through Forge.",
+        "decision_ref": "node:revision-concurrent:prepare",
+        "node_id": "prepare",
+    }
+
+    def record(coordinator):
+        barrier.wait(timeout=2)
+        return coordinator.record_skill_use(task.task_id, **arguments)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        uses = tuple(pool.map(record, (c, peer)))
+
+    current = c.get_task(task.task_id)
+    events = [
+        item
+        for item in c.store.events(task.task_id)
+        if item["event_type"] == "skill_use_recorded"
+    ]
+    assert uses[0].use_id == uses[1].use_id
+    assert [item.use_id for item in current.skill_uses] == [uses[0].use_id]
+    assert current.active_revision.skill_use_ids == (uses[0].use_id,)
+    assert len(events) == 1
+    assert events[0]["payload"]["use_id"] == uses[0].use_id
+
+
 @pytest.mark.parametrize("status,expected", [("unavailable", "failed"), ("empty", "failed"), ("stale", "failed"), ("unknown", "unknown"), ("available", "succeeded")])
 def test_query_availability_is_not_transport_success(status, expected):
     record = SimpleNamespace(semantics="query", status="succeeded", response={"status": status})
@@ -453,6 +499,50 @@ def test_query_receipt_is_persisted_identity_not_gateway_verdict(tmp_path, statu
         assert _planning_record_status(record) == ("succeeded" if status == "available" else "failed")
         assert c.get_task(task.task_id).active_revision.plan_graph is None
     asyncio.run(exercise())
+
+
+@pytest.mark.parametrize(
+    "tool_type,semantics,operation,expected_reconcile",
+    [
+        (ForgeToolActionStatusTool, "action", "status", False),
+        (ForgeToolActionResultTool, "action", "result", True),
+        (ForgeToolSessionStatusTool, "session", "status", False),
+        (ForgeToolSessionResultTool, "session", "result", True),
+    ],
+)
+def test_invocation_read_tools_settle_only_from_result(
+    tool_type,
+    semantics,
+    operation,
+    expected_reconcile,
+):
+    response = {"data": {"status": "succeeded"}}
+    client = SimpleNamespace(
+        invocation_status=AsyncMock(return_value=response),
+        invocation_result=AsyncMock(return_value=response),
+    )
+    coordinator = SimpleNamespace(
+        require_action_invocation=Mock(),
+        require_session_invocation=Mock(),
+        observe_action=Mock(),
+        observe_session=Mock(),
+    )
+
+    output = json.loads(asyncio.run(
+        tool_type(client, coordinator).execute("task-1", "invocation-1")
+    ))
+
+    assert output == response
+    getattr(client, f"invocation_{operation}").assert_awaited_once_with("invocation-1")
+    getattr(coordinator, f"require_{semantics}_invocation").assert_called_once_with(
+        "task-1", "invocation-1"
+    )
+    getattr(coordinator, f"observe_{semantics}").assert_called_once_with(
+        "task-1",
+        "invocation-1",
+        response,
+        reconcile_settlement=expected_reconcile,
+    )
 
 
 def test_discovery_receipt_can_materialize_without_task_get(tmp_path):

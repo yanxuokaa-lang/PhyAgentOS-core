@@ -592,6 +592,74 @@ class AgentTaskStore:
         with self._lock, self._connection() as connection:
             return self._get(connection, task_id)
 
+    def record_skill_use_once(
+        self,
+        task_id: str,
+        use: SkillUseRecord,
+    ) -> SkillUseRecord:
+        """Insert one semantic SkillUse and its event in the same transaction."""
+
+        def same_decision(item: SkillUseRecord) -> bool:
+            return (
+                item.activation_id == use.activation_id
+                and item.content_sha256 == use.content_sha256
+                and item.decision_ref == use.decision_ref
+                and item.node_id == use.node_id
+                and item.attempt_id == use.attempt_id
+            )
+
+        with self._lock, self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            record = self._get(connection, task_id)
+            existing = next(
+                (item for item in record.skill_uses if same_decision(item)),
+                None,
+            )
+            if existing is not None:
+                connection.commit()
+                return existing
+
+            record.skill_uses.append(use)
+            record.active_revision.skill_use_ids = tuple(
+                (*record.active_revision.skill_use_ids, use.use_id)
+            )
+            try:
+                record = AgentTaskRecord.model_validate(
+                    record.model_dump(mode="python")
+                )
+            except Exception as exc:
+                raise AgentTaskError(
+                    "SkillUse mutation violates the authoritative record schema"
+                ) from exc
+            record.updated_at = utc_now()
+            connection.execute(
+                "UPDATE agent_tasks SET status = ?, record_json = ?, updated_at = ?, "
+                "origin_session_key = ?, origin_dedup_key = ? WHERE task_id = ?",
+                (
+                    record.status.value,
+                    record.model_dump_json(),
+                    record.updated_at.isoformat(),
+                    record.origin_session_key,
+                    record.origin_dedup_key,
+                    task_id,
+                ),
+            )
+            self._event(
+                connection,
+                task_id,
+                "skill_use_recorded",
+                {
+                    "use_id": use.use_id,
+                    "skill_name": use.skill_name,
+                    "skill_version": use.skill_version,
+                    "decision_ref": use.decision_ref,
+                    "node_id": use.node_id,
+                    "attempt_id": use.attempt_id,
+                },
+            )
+            connection.commit()
+            return use
+
     def update(
         self,
         task_id: str,
@@ -1200,20 +1268,6 @@ class AgentTaskCoordinator:
         attempt_id: str | None = None,
     ) -> SkillUseRecord:
         """Persist one actual method use; does not grant Tool or motion authority."""
-        def same_decision(item: SkillUseRecord) -> bool:
-            return (
-                item.activation_id == activation_id
-                and item.content_sha256 == content_sha256
-                and item.decision_ref == decision_ref
-                and item.node_id == node_id
-                and item.attempt_id == attempt_id
-            )
-
-        current = self.store.get(task_id)
-        existing = next((item for item in current.skill_uses if same_decision(item)), None)
-        if existing is not None:
-            return existing
-
         use = SkillUseRecord(
             use_id=f"skill_use_{uuid4().hex[:16]}",
             activation_id=activation_id,
@@ -1225,29 +1279,7 @@ class AgentTaskCoordinator:
             node_id=node_id,
             attempt_id=attempt_id,
         )
-
-        def mutate(current: AgentTaskRecord) -> None:
-            if any(same_decision(item) for item in current.skill_uses):
-                return
-            current.skill_uses.append(use)
-            current.active_revision.skill_use_ids = tuple(
-                (*current.active_revision.skill_use_ids, use.use_id)
-            )
-
-        updated = self.store.update(
-            task_id,
-            mutate,
-            event_type="skill_use_recorded",
-            payload={
-                "use_id": use.use_id,
-                "skill_name": skill_name,
-                "skill_version": skill_version,
-                "decision_ref": decision_ref,
-                "node_id": node_id,
-                "attempt_id": attempt_id,
-            },
-        )
-        return next(item for item in updated.skill_uses if same_decision(item))
+        return self.store.record_skill_use_once(task_id, use)
 
     def begin_revision(
         self,
@@ -1953,13 +1985,23 @@ class AgentTaskCoordinator:
         )
 
     def observe_action(
-        self, task_id: str, invocation_id: str, response: dict[str, Any]
+        self,
+        task_id: str,
+        invocation_id: str,
+        response: dict[str, Any],
+        *,
+        reconcile_settlement: bool = True,
     ) -> None:
         task = self.store.get(task_id)
         record = _owned_execution(task, invocation_id, semantics="action")
         if task.terminal:
             return
-        status = _tool_status(response, default=record.status)
+        observed_status = _tool_status(response, default=record.status)
+        status = (
+            record.status
+            if not reconcile_settlement and observed_status in TERMINAL_TOOL_STATUSES
+            else observed_status
+        )
 
         def mutate(current: AgentTaskRecord) -> None:
             target = _task_execution(current, record.record_id)
@@ -1968,9 +2010,11 @@ class AgentTaskCoordinator:
             target.updated_at = utc_now()
 
         self.store.update(task.task_id, mutate, event_type="action_observed")
-        self.reconcile_terminal_settlements(task_id)
+        if reconcile_settlement:
+            self.reconcile_terminal_settlements(task_id)
         if (
-            status in TERMINAL_TOOL_STATUSES - {"unknown"}
+            reconcile_settlement
+            and status in TERMINAL_TOOL_STATUSES - {"unknown"}
             and self.runtime_invocation_ids is not None
         ):
             self.runtime_invocation_ids.discard(invocation_id)
@@ -2097,11 +2141,21 @@ class AgentTaskCoordinator:
         )
 
     def observe_session(
-        self, task_id: str, invocation_id: str, response: dict[str, Any]
+        self,
+        task_id: str,
+        invocation_id: str,
+        response: dict[str, Any],
+        *,
+        reconcile_settlement: bool = True,
     ) -> None:
         task = self.store.get(task_id)
         record = _owned_execution(task, invocation_id, semantics="session")
-        status = _tool_status(response, default=record.status)
+        observed_status = _tool_status(response, default=record.status)
+        status = (
+            record.status
+            if not reconcile_settlement and observed_status in TERMINAL_TOOL_STATUSES
+            else observed_status
+        )
 
         def mutate(current: AgentTaskRecord) -> None:
             target = _task_execution(current, record.record_id)
@@ -2110,9 +2164,11 @@ class AgentTaskCoordinator:
             target.updated_at = utc_now()
 
         self.store.update(task_id, mutate, event_type="session_observed")
-        self.reconcile_terminal_settlements(task_id)
+        if reconcile_settlement:
+            self.reconcile_terminal_settlements(task_id)
         if (
-            status in TERMINAL_TOOL_STATUSES - {"unknown"}
+            reconcile_settlement
+            and status in TERMINAL_TOOL_STATUSES - {"unknown"}
             and self.runtime_session_ids is not None
         ):
             self.runtime_session_ids.discard(invocation_id)
@@ -2437,7 +2493,20 @@ class AgentTaskCoordinator:
             if tracker is not None:
                 tracker.add(record.invocation_id)
             try:
-                response = await self.client.invocation_status(record.invocation_id)
+                status_response = await self.client.invocation_status(record.invocation_id)
+                observer = (
+                    self.observe_session
+                    if record.semantics == "session"
+                    else self.observe_action
+                )
+                observer(
+                    task.task_id,
+                    record.invocation_id,
+                    status_response,
+                    reconcile_settlement=False,
+                )
+                result_response = await self.client.invocation_result(record.invocation_id)
+                observer(task.task_id, record.invocation_id, result_response)
             except Exception as exc:
                 self._finish_execution(
                     task.task_id,
@@ -2448,10 +2517,6 @@ class AgentTaskCoordinator:
                     error={"type": type(exc).__name__, "message": str(exc)},
                 )
                 continue
-            if record.semantics == "session":
-                self.observe_session(task.task_id, record.invocation_id, response)
-            else:
-                self.observe_action(task.task_id, record.invocation_id, response)
         return self.store.get(task.task_id)
 
     def capabilities_summary(self) -> str:

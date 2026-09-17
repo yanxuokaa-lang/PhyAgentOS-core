@@ -20,7 +20,11 @@ from PhyAgentOS.agent.planning_loop import (
 )
 from PhyAgentOS.agent.tools.forge_task import build_forge_task_tools
 from PhyAgentOS.config.schema import ForgeConfig
-from PhyAgentOS.forge.task import AgentTaskCoordinator, AgentTaskError
+from PhyAgentOS.forge.task import (
+    AgentTaskCoordinator,
+    AgentTaskError,
+    ToolExecutionRecord,
+)
 from PhyAgentOS.planning import (
     AdmissionContext,
     NodeSettlement,
@@ -1019,6 +1023,275 @@ def test_node_executor_provider_failure_does_not_consume_continuation():
 
     assert loop.calls == 1
     assert task.active_revision.execution_records == []
+
+
+@pytest.mark.parametrize("semantics", ["action", "session"])
+def test_node_executor_reconciles_record_before_later_provider_failure(semantics):
+    records = []
+    task = SimpleNamespace(
+        active_revision_id="revision-resume",
+        active_revision=SimpleNamespace(execution_records=records),
+        execution_records=records,
+    )
+
+    class Client:
+        calls = []
+
+        async def invocation_status(self, invocation_id):
+            self.calls.append(("status", invocation_id))
+            return {"status": "succeeded"}
+
+        async def invocation_result(self, invocation_id):
+            self.calls.append(("result", invocation_id))
+            return {
+                "status": "succeeded",
+                "ok": True,
+                "data": {
+                    "status": "available",
+                    "world_change_started": True,
+                    "outcome_known": True,
+                },
+            }
+
+    class Coordinator:
+        client = Client()
+
+        def get_task(self, _task_id):
+            return task
+
+        def pending_planning_selection(self, *_args, **_kwargs):
+            return None
+
+        def _observe(self, invocation_id, response, expected_semantics):
+            assert invocation_id == "invocation-accepted"
+            record = records[0]
+            assert record.semantics == expected_semantics
+            record.status = response["status"]
+            record.terminal = response["status"] == "succeeded"
+            record.response = response
+
+        def observe_action(
+            self,
+            _task_id,
+            invocation_id,
+            response,
+            *,
+            reconcile_settlement=True,
+        ):
+            self._observe(invocation_id, response, "action")
+
+        def observe_session(
+            self,
+            _task_id,
+            invocation_id,
+            response,
+            *,
+            reconcile_settlement=True,
+        ):
+            self._observe(invocation_id, response, "session")
+
+        def mark_execution_unknown(self, *_args, **_kwargs):
+            raise AssertionError("known invocation must be reconciled, not marked unknown")
+
+    class Loop:
+        calls = 0
+
+        async def run_node_turn(self, **_kwargs):
+            self.calls += 1
+            records.append(SimpleNamespace(
+                record_id="tool-action",
+                node_id="prepare",
+                terminal=False,
+                semantics=semantics,
+                status="accepted",
+                tool_id=("object.acquire" if semantics == "action" else "camera.stream"),
+                invocation_id="invocation-accepted",
+                evidence_refs=("tool:tool-action",),
+                response={"status": "accepted"},
+                error=None,
+            ))
+            return SimpleNamespace(
+                model_failure_code="provider_timeout",
+                turn_failure_code="provider_timeout",
+            )
+
+    loop = Loop()
+    coordinator = Coordinator()
+    result = asyncio.run(
+        AgentLoopNodeExecutor(loop, coordinator)(_executor_context())
+    )
+
+    assert result.status == "succeeded"
+    assert result.world_change_started is True
+    assert loop.calls == 1
+    assert coordinator.client.calls == [
+        ("status", "invocation-accepted"),
+        ("result", "invocation-accepted"),
+    ]
+
+
+def test_node_executor_leaves_known_running_session_nonterminal():
+    records = []
+    task = SimpleNamespace(
+        active_revision_id="revision-resume",
+        active_revision=SimpleNamespace(execution_records=records),
+        execution_records=records,
+    )
+
+    class Client:
+        async def invocation_status(self, _invocation_id):
+            return {"status": "running"}
+
+        async def invocation_result(self, _invocation_id):
+            return {"status": "pending"}
+
+    class Coordinator:
+        client = Client()
+        unknown_codes = []
+
+        def get_task(self, _task_id):
+            return task
+
+        def pending_planning_selection(self, *_args, **_kwargs):
+            return None
+
+        def observe_session(
+            self,
+            _task_id,
+            _invocation_id,
+            response,
+            *,
+            reconcile_settlement=True,
+        ):
+            records[0].status = response["status"]
+            records[0].response = response
+
+        def mark_execution_unknown(self, _task_id, _record_id, *, code, message):
+            self.unknown_codes.append((code, message))
+
+    class Loop:
+        async def run_node_turn(self, **_kwargs):
+            records.append(SimpleNamespace(
+                record_id="tool-session",
+                node_id="prepare",
+                terminal=False,
+                semantics="session",
+                status="accepted",
+                tool_id="camera.stream",
+                invocation_id="session-accepted",
+                evidence_refs=("tool:tool-session",),
+                response={"status": "accepted"},
+                error=None,
+            ))
+            return SimpleNamespace(
+                model_failure_code=None,
+                turn_failure_code=None,
+            )
+
+    coordinator = Coordinator()
+    with pytest.raises(
+        NodeTurnIncompleteError,
+        match="did not reach a durable terminal state",
+    ):
+        asyncio.run(
+            AgentLoopNodeExecutor(
+                Loop(),
+                coordinator,
+                max_action_polls=1,
+            )(_executor_context())
+        )
+
+    assert records[0].status == "pending"
+    assert records[0].terminal is False
+    assert coordinator.unknown_codes == []
+
+
+def test_terminal_status_waits_for_result_facts_before_node_settlement(tmp_path):
+    c = coordinator(tmp_path)
+    task = c.create_task(
+        task_description="defer settlement until terminal result",
+        verification=TaskVerificationContract(mode="off"),
+    )
+    graph = make_graph(task.task_id, "revision-result-first", ("arrange-red",))
+    c.expand_discovery_revision(
+        task.task_id,
+        plan_graph=graph,
+        plan_graph_ref="artifact://plans/result-first",
+    )
+    invocation_id = "invocation-result-first"
+    execution = ToolExecutionRecord(
+        record_id="tool-result-first",
+        revision_id=graph.revision_id,
+        tool_id="object.place",
+        semantics="action",
+        caller_id="agent-task-test",
+        node_id="arrange-red",
+        node_digest="3" * 64,
+        obligation_id="obligation-arrange-red",
+        input_binding_digest="4" * 64,
+        decision_trace_ref="decision:test:result-first",
+        status="accepted",
+        invocation_id=invocation_id,
+        evidence_refs=[f"invocation:{invocation_id}"],
+        response={"data": {"phase": "accepted"}},
+    )
+    c.store.update(
+        task.task_id,
+        lambda current: current.active_revision.execution_records.append(execution),
+        event_type="fixture_action_accepted",
+    )
+
+    c.observe_action(
+        task.task_id,
+        invocation_id,
+        {"data": {"status": "succeeded"}},
+        reconcile_settlement=False,
+    )
+    after_status = c.get_task(task.task_id)
+    status_record = after_status.active_revision.execution_records[0]
+    assert status_record.status == "accepted"
+    assert status_record.response == {"data": {"status": "succeeded"}}
+    assert after_status.active_revision.node_settlements == []
+
+    class Client:
+        calls = []
+
+        async def invocation_status(self, requested_id):
+            self.calls.append(("status", requested_id))
+            return {"data": {"status": "succeeded"}}
+
+        async def invocation_result(self, requested_id):
+            self.calls.append(("result", requested_id))
+            return {
+                "data": {
+                    "status": "succeeded",
+                    "result": {
+                        "world_changed": True,
+                        "world_change_started": True,
+                        "outcome_known": True,
+                        "new_scene_revision": "scene-2",
+                        "evidence_refs": ["placed:arrange-red"],
+                    },
+                }
+            }
+
+    restarted = AgentTaskCoordinator(
+        workspace=tmp_path,
+        config=ForgeConfig(),
+        client=Client(),
+    )
+    asyncio.run(restarted.reconcile_nonterminal())
+    settlement = restarted.get_task(task.task_id).active_revision.node_settlements[0]
+    assert settlement.status == "completed"
+    assert settlement.scene_revision == "scene-2"
+    assert settlement.evidence_refs == (
+        f"invocation:{invocation_id}",
+        "placed:arrange-red",
+    )
+    assert restarted.client.calls == [
+        ("status", invocation_id),
+        ("result", invocation_id),
+    ]
 
 
 def test_node_executor_prompt_budget_failure_does_not_consume_continuation():

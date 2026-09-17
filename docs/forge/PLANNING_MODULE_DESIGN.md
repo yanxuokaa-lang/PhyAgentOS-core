@@ -443,6 +443,18 @@ effects remain fail-closed and are never reposted. A local
 `prompt_budget_exceeded` result follows the same single-attempt rule while
 remaining distinct from provider transport ownership.
 
+Persisted Tool facts outrank a later model-transport failure in the same node
+turn. `AgentLoopNodeExecutor` reconciles accepted Actions and Sessions through
+their invocation identities before propagating a provider/prompt failure. A
+terminal record is settled normally; a known-running Session stays
+non-terminal and blocks the node without a replacement POST or a fabricated
+`unknown` outcome.
+Status and result observations are deliberately distinct: status is persisted
+without settling the node, and only the result observation may create the
+immutable settlement. This prevents a terminal status snapshot from racing
+ahead of result-only scene and evidence facts.
+Direct status tools and startup recovery use the same progress/result split.
+
 ### Failure, replay, and replan semantics
 
 The physical-drop example is represented as a normal node outcome, not as an

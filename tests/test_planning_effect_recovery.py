@@ -159,7 +159,14 @@ class _LifecycleCoordinator:
         ))
         return {"data": {"invocation_id": "invocation://place/1"}}
 
-    def observe_action(self, _task_id, _invocation_id, response):
+    def observe_action(
+        self,
+        _task_id,
+        _invocation_id,
+        response,
+        *,
+        reconcile_settlement=True,
+    ):
         record = self.task.active_revision.execution_records[0]
         data = response.get("data", response)
         status = data.get("status") or data.get("phase")

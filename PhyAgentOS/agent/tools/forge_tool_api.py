@@ -213,7 +213,12 @@ class _ActionReadTool(Tool):
                 response = await self.client.invocation_status(invocation_id)
             else:
                 response = await self.client.invocation_result(invocation_id)
-            self.coordinator.observe_action(task_id, invocation_id, response)
+            self.coordinator.observe_action(
+                task_id,
+                invocation_id,
+                response,
+                reconcile_settlement=self.operation == "result",
+            )
             return response
 
         return await _call(read)
@@ -228,7 +233,10 @@ class ForgeToolActionStatusTool(_ActionReadTool):
 
     @property
     def description(self) -> str:
-        return "Read and persist the authoritative phase of this task's Action invocation."
+        return (
+            "Read and persist Action progress without settling the planning node; "
+            "the result endpoint owns terminal settlement facts."
+        )
 
 
 class ForgeToolActionResultTool(_ActionReadTool):
@@ -326,7 +334,12 @@ class _SessionReadTool(Tool):
                 if self.operation == "status"
                 else await self.client.invocation_result(invocation_id)
             )
-            self.coordinator.observe_session(task_id, invocation_id, response)
+            self.coordinator.observe_session(
+                task_id,
+                invocation_id,
+                response,
+                reconcile_settlement=self.operation == "result",
+            )
             return response
 
         return await _call(read)
@@ -341,7 +354,10 @@ class ForgeToolSessionStatusTool(_SessionReadTool):
 
     @property
     def description(self) -> str:
-        return "Read and persist the authoritative state of a task-referenced Session."
+        return (
+            "Read and persist Session progress without settling the planning node; "
+            "the result endpoint owns terminal settlement facts."
+        )
 
 
 class ForgeToolSessionResultTool(_SessionReadTool):

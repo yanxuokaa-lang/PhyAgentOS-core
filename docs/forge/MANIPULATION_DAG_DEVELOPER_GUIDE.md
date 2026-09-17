@@ -396,6 +396,20 @@ also blocks without repeating the same node request. Context compaction and prov
 configuration policy only: they do not remove Coordinator facts or authorize
 motion.
 
+If a node turn already created a planning-bound Tool record before a later
+model request failed, the persisted Tool fact has priority over the model
+failure. The runner first reconciles the existing Action or Session through
+Gateway status/result reads, then derives the node result. It never discards an
+accepted invocation merely because narration timed out. A known-running
+Session remains non-terminal because Sessions have no deadline; it is not
+rewritten as `unknown` merely because a bounded local poll ended.
+The status snapshot is persisted as progress only. Even when status reports a
+terminal phase, the Coordinator defers immutable node settlement until the
+corresponding result payload has been persisted, because result owns the full
+scene-revision, world-change, and produced-evidence facts.
+The explicit Action/Session status tools and startup reconciliation follow the
+same rule: status never settles a node, while a result read may do so.
+
 Every terminal planning-bound Query, Action, or Session record must also be
 normalized into a `NodeSettlement` by `AgentTaskCoordinator`. The Coordinator
 performs this conversion after terminal observation and exposes an idempotent

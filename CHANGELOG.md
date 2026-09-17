@@ -11,6 +11,48 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v10.8.4 (2026-09-18 02:45) - codex
+
+- [agent] [fix] [完成] 已落盘 Query/Action/Session 在同轮后续模型失败前完成对账；status 只保存进度，result 才允许终态 NodeSettlement。(local)
+- [agent] [fix] [完成] 同一决策 SkillUse 与事件在既有 SQLite `BEGIN IMMEDIATE` 中原子复用/写入，跨 store 并发只产生一个真实 ID。(local)
+- [eval] [test] [完成] 独立七维复审修复全部 Blocker/Major；focused `115 passed`、全仓 no-motion `457 passed`。(local)
+- [Agent] [Fix] [Completed] Reconcile persisted Query/Action/Session facts before later model failure; status records progress and only result may produce a terminal NodeSettlement. (local)
+- [Agent] [Fix] [Completed] Atomically reuse/insert same-decision SkillUse and event facts in the existing SQLite `BEGIN IMMEDIATE` transaction, retaining one real ID across concurrent stores. (local)
+- [Eval] [Test] [Completed] The independent seven-dimension review fixed every Blocker/Major; focused `115 passed` and the full no-motion suite `457 passed`. (local)
+
+### 影响文件 / Affected files
+
+- `PhyAgentOS/agent/planning_loop.py:L207-L258,L368-L450`
+- `PhyAgentOS/agent/tools/forge_tool_api.py:L197-L250,L317-L371`
+- `PhyAgentOS/forge/task.py:L595-L661,L1257-L1282,L1987-L2020,L2143-L2174,L2447-L2520`
+- `tests/test_agent_foundation.py:L399-L434,L504-L545`
+- `tests/test_planning_effect_recovery.py:L162-L177`
+- `tests/test_planning_loop.py:L1028-L1294`
+- three Forge developer guides and changelog records
+
+```diff
+- provider failure wins before persisted execution reconciliation
++ persisted execution facts reconcile first; existing invocation is never reposted
+- terminal status snapshot immediately creates immutable settlement
++ status remains recoverable progress; result owns terminal scene/evidence settlement
+- transaction-external SkillUse dedup can emit a losing random event ID
++ one SQLite transaction reuses or persists the same SkillUse/event ID
+```
+
+### 七维验收 / Seven-dimension acceptance
+
+Architecture, recovery, robotics safety, configuration/reproducibility,
+maintainability, observability, and AgentLoop autonomy: PASS with no remaining
+Blocker/Major. Configuration resolves to `gpt-5.6-sol/high`, 272K context,
+96K soft compaction, 110s model timeout, and 10s Forge timeout. No Gateway
+Tool, Action, Session, simulator step, world change, or physical motion occurred.
+
+### 验证与安装 / Validation and installation
+
+- Focused `115 passed in 5.48s`; full no-motion `457 passed in 23.35s`.
+- Ruff, compileall, diff check, editable install, import-path check, and config parsing passed.
+- Implementation commit: `pending`; branch: `feature/planning-loop`.
+
 ## v10.8.3 (2026-09-18 02:15) - codex
 
 - [agent] [fix] [完成] LongHorizon 节点改用有界 node-scoped 投影，同一节点的 SkillUse 幂等，不再重复注入完整指令和全局任务历史。(local)
@@ -179,6 +221,8 @@ Architecture, recovery, robotics safety, configuration/reproducibility, maintain
 - Branch: `feature/planning-loop`
 - 时间 / Time: 2026-09-18 (Asia/Shanghai)
 
+## 历史记录 / Historical Records
+
 ## v10.7.4 (2026-09-17 23:02) - codex
 
 - [eval] [test] [完成] v10.7.0-v10.7.3 七维复审无 Blocker/Major；Core `425`、Skill `334`、Adapter `497` tests passed。(local)
@@ -197,8 +241,6 @@ Architecture, recovery, robotics safety/authority, configuration/reproducibility
 - Commit: `9999759`
 - Branch: `feature/planning-loop`
 - 时间 / Time: 2026-09-17 (Asia/Shanghai)
-
-## 历史记录 / Historical Records
 
 ## v10.7.3 (2026-09-17 15:36) - codex
 
