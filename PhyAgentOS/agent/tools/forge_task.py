@@ -344,6 +344,79 @@ class ForgeTaskMaterializePlanTool(Tool):
             raise
         return _json({"ok": True, "data": materialized})
 
+
+class ForgeTaskContinuePlanTool(Tool):
+    """Append the next dynamic-scene segment after the active graph completed."""
+
+    def __init__(self, coordinator: AgentTaskCoordinator) -> None:
+        self.coordinator = coordinator
+
+    @property
+    def name(self) -> str:
+        return "forge_task_continue_plan"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Append the next semantic PlanGraph segment after every node in the active graph "
+            "completed. Use this normal forward path after post-action observation and binding; "
+            "it preserves task identity, does not consume replan budget, invoke a Tool, or "
+            "authorize motion. Submit only the next segment using current Coordinator evidence."
+        )
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        schema = _task_id_schema()
+        schema["properties"].update({
+            "nodes": {
+                "type": "array",
+                "minItems": 1,
+                "items": PlanNode.model_json_schema(),
+                "description": "Next scene-bound segment; PAOS supplies revision metadata.",
+            },
+            "evidence_refs": {"type": "array", "items": {"type": "string"}},
+            "reason": {"type": "string", "minLength": 1},
+        })
+        schema["required"].extend(["nodes", "reason"])
+        return schema
+
+    async def execute(
+        self,
+        task_id: str,
+        nodes: list[dict[str, Any]],
+        reason: str,
+        evidence_refs: list[str] | None = None,
+    ) -> str:
+        from PhyAgentOS.agent.plan_proposal import compile_task_plan
+        from PhyAgentOS.agent.planning_context import context_from_task
+
+        task = self.coordinator.get_task(task_id)
+        context = context_from_task(task, allow_refresh=True)
+        trusted_evidence = set(context.evidence_refs)
+        requested_evidence = tuple(evidence_refs or ())
+        fabricated = sorted(set(requested_evidence) - trusted_evidence)
+        if fabricated:
+            raise ValueError(
+                "continuation evidence_refs must be exact task-bound Coordinator references; "
+                "unknown or fabricated refs: " + ", ".join(fabricated)
+            )
+        selected_evidence = requested_evidence or tuple(sorted(trusted_evidence))
+        graph = compile_task_plan(
+            task,
+            nodes,
+            reason=reason,
+            initial_evidence_refs=selected_evidence,
+            initial_condition_facts=dict(context.condition_facts),
+        )
+        continued = self.coordinator.begin_continuation_revision(
+            task_id,
+            reason=reason,
+            plan_graph=graph,
+            plan_graph_ref=f"artifact://plans/{task_id}/{graph.revision_id}",
+            evidence_refs=selected_evidence,
+        )
+        return _json({"ok": True, "data": continued, "motion_authorized": False})
+
 class ForgeTaskFinalizeTool(Tool):
     def __init__(self, coordinator: AgentTaskCoordinator) -> None:
         self.coordinator = coordinator
@@ -455,6 +528,7 @@ def build_forge_task_tools(coordinator: AgentTaskCoordinator) -> list[Tool]:
         ForgeTaskGetTool(coordinator),
         ForgeTaskBeginRevisionTool(coordinator),
         ForgeTaskMaterializePlanTool(coordinator),
+        ForgeTaskContinuePlanTool(coordinator),
         ForgeTaskFinalizeTool(coordinator),
         ForgeTaskCancelTool(coordinator),
         ForgeTaskClarificationTool(coordinator),
@@ -509,6 +583,7 @@ __all__ = [
     "ForgeTaskBeginRevisionTool",
     "ForgeTaskCancelTool",
     "ForgeTaskClarificationTool",
+    "ForgeTaskContinuePlanTool",
     "ForgeTaskCreateTool",
     "ForgeTaskFinalizeTool",
     "ForgeTaskGetTool",

@@ -25,11 +25,16 @@ goal is a task decision. Object count, order and goals must not come from a fixe
 two-object template.
 
 The graph represents your chosen obligations and dependencies. For sequential
-relocations, require a fresh observation after the preceding placement before
-planning the next object's motion. A final observation/verification obligation
-joins all requested placements. Keep the original success criteria; do not
-weaken them during recovery. Each node turn uses the task's activated Skill
-instructions, not a later revision loaded silently during execution.
+relocations, materialize only the current scene-bound relocation plus its
+post-placement observation, understanding, and binding checkpoint. Do not freeze
+future `entity_ref` or `destination_ref` values from natural-language roles. After
+the checkpoint graph is fully settled, call `forge_task_continue_plan` with the
+next segment and exact current evidence references. This normal continuation keeps
+the same task identity and does not consume failure-replan budget. A final
+observation/verification segment joins all requested placements. Keep the original
+success criteria; do not weaken them during recovery. Each node turn uses the
+task's activated Skill instructions, not a later revision loaded silently during
+execution.
 
 Before materializing a multi-object rearrangement, check whether a selected
 destination is still occupied by another object that must move. A sequential
@@ -239,6 +244,16 @@ intent identity, or invent a decision-trace reference. The selection tool is
 control-plane only and does not invoke a Gateway, authorize motion, or replace
 Coordinator/Gateway execution and reconciliation.
 
+For `manipulation.prepare`, PAOS does not reconstruct predecessor provider
+payloads. `forge_plan_select.arguments` must include the complete unchanged
+`candidates`, `candidate_set_ref`, `observation_ref`, `scene_revision`, `frame_id`,
+`calibration_ref`, `freshness_ms`, `max_age_ms`, `destination_ref`, and
+`capability_snapshot_ref`. A `missing_runtime_arguments` rejection is retryable
+in the same revision after adding the listed fields. A
+`node_tool_binding_incompatible` rejection means the immutable graph itself is
+not bindable; replace the segment through the governed revision path instead of
+retrying the same selection.
+
 When submitting semantic nodes, use exact task-bound
 `paos_record.evidence_refs` for evidence already available at the graph root.
 Do not put labels such as `latest_observation`, `metric_geometry`, or
@@ -254,5 +269,7 @@ evidence, conditions, and Tool candidates; never bypass an empty ready set.
 
 Before any execution or settlement is attached to a newly materialized graph,
 one corrected semantic graph may be resubmitted and will become a new
-append-only revision. Once execution facts exist, use the normal recovery and
-replan path instead of discovery correction.
+append-only revision. Once execution facts exist, use failure replan only for
+failed or unknown execution. For successful dynamic-scene progress, complete
+the current checkpoint graph and call `forge_task_continue_plan`; discovery
+correction and failure replan are not normal forward-progression mechanisms.

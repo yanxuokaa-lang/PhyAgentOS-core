@@ -87,6 +87,62 @@ def test_ready_tool_is_read_only_and_reports_candidates():
     assert data["motion_authorized"] is False
 
 
+def test_historical_unbindable_node_is_dependency_ready_but_not_selection_ready():
+    node = PlanNode(
+        node_id="acquire-blue",
+        obligation_id="acquire-blue",
+        capability="object.acquire",
+    )
+    payload = {
+        "task_id": "task-1",
+        "revision_id": "revision-1",
+        "graph_digest": "0" * 64,
+        "planner_decision_digest": "1" * 64,
+        "policy_snapshot_digest": "2" * 64,
+        "nodes": [node.model_dump(mode="json")],
+    }
+    payload["graph_digest"] = plan_graph_digest(payload)
+    policy = ToolSpecPolicy(
+        tool_id="object.acquire",
+        semantics="action",
+        spec_digest="3" * 64,
+        capabilities=("object.acquire",),
+        input_binding_keys=("entity_ref",),
+    )
+    dispatch = AgentComposedDispatch(
+        PlanGraph.model_validate(payload),
+        (policy,),
+        AdmissionContext(scene_revision="scene-1"),
+    )
+
+    data = dispatch.describe()
+
+    assert data["ready_nodes"] == []
+    diagnostic = data["node_diagnostics"][0]
+    assert diagnostic["dependency_ready"] is True
+    assert diagnostic["selection_ready"] is False
+    assert diagnostic["bindable_tool_ids"] == ()
+    assert diagnostic["missing_node_bindings"] == {
+        "object.acquire": ("entity_ref",)
+    }
+    assert "missing_node_bindings" in diagnostic["blockers"]
+
+    try:
+        dispatch.prepare_selection(
+            node_id=node.node_id,
+            tool_id=policy.tool_id,
+            arguments={},
+            decision_reason="should require a scene-bound entity",
+        )
+    except Exception as exc:
+        assert getattr(exc, "code") == "node_tool_binding_incompatible"
+        assert getattr(exc, "requires_replan") is True
+        assert getattr(exc, "retryable_in_revision") is False
+        assert getattr(exc, "missing_fields") == ("entity_ref",)
+    else:
+        raise AssertionError("an unbindable historical node must fail closed")
+
+
 def test_ready_diagnostics_explain_evidence_and_condition_blockers():
     node = PlanNode(
         node_id="target",

@@ -6,12 +6,17 @@ import json
 import pytest
 
 from PhyAgentOS.agent.experience.source import AgentTaskOutcomeSource
-from PhyAgentOS.agent.tools.forge_task import ForgeTaskBeginRevisionTool
+from PhyAgentOS.agent.plan_proposal import compile_task_plan
+from PhyAgentOS.agent.tools.forge_task import (
+    ForgeTaskBeginRevisionTool,
+    ForgeTaskContinuePlanTool,
+)
 from PhyAgentOS.agent.tools.forge_tool_api import ForgeToolQueryTool
 from PhyAgentOS.config.schema import ForgeConfig
 from PhyAgentOS.forge.binding import BoundToolSpec, RuntimeBinding
 from PhyAgentOS.forge.task import AgentTaskCoordinator, AgentTaskStatus, DiscoveryRequiredError
 from PhyAgentOS.planning import (
+    NodeSettlement,
     PlanGraph,
     PlanningExecutionBinding,
     PlanNode,
@@ -303,6 +308,257 @@ def test_agent_recovery_nodes_are_compiled_by_paos_without_motion(tmp_path):
     assert current.active_revision.plan_graph_ref.startswith("artifact://plans/")
     assert current.active_revision.execution_records == []
     assert current.active_revision.node_settlements == []
+
+
+def test_compile_rejects_future_action_nodes_without_frozen_runtime_bindings(tmp_path):
+    coordinator = AgentTaskCoordinator(
+        workspace=tmp_path, config=ForgeConfig(), client=_Client()
+    )
+    task = coordinator.create_task(
+        task_description="reject a statically unbindable rearrangement",
+        verification=TaskVerificationContract(mode="off"),
+    )
+    runtime = RuntimeBinding(
+        binding_id="runtime_binding_compile",
+        runtime_profile="fake",
+        runtime_instance_id="runtime_compile",
+        gateway_url="http://fake",
+    )
+    policies = (
+        ToolSpecPolicy(
+            tool_id="object.acquire",
+            semantics="action",
+            spec_digest="4" * 64,
+            capabilities=("object.acquire",),
+            input_binding_keys=("entity_ref",),
+        ),
+        ToolSpecPolicy(
+            tool_id="object.place",
+            semantics="action",
+            spec_digest="5" * 64,
+            capabilities=("object.place",),
+            input_binding_keys=("entity_ref", "destination_ref"),
+        ),
+    )
+
+    def attach_binding(current):
+        current.runtime_binding = runtime
+        current.active_revision.runtime_binding_id = runtime.binding_id
+        current.tool_bindings = [
+            BoundToolSpec(
+                tool_id=policy.tool_id,
+                semantics=policy.semantics,
+                spec_sha256=policy.spec_digest,
+                ready_at_binding=True,
+                planning_policy=policy,
+            )
+            for policy in policies
+        ]
+
+    coordinator.store.update(task.task_id, attach_binding, event_type="test_binding")
+    task = coordinator.get_task(task.task_id)
+
+    with pytest.raises(ValueError, match="no frozen ToolPolicy can bind") as exc:
+        compile_task_plan(
+            task,
+            [
+                PlanNode(
+                    node_id="acquire-blue-buffer",
+                    obligation_id="acquire-blue-buffer",
+                    capability="object.acquire",
+                ).model_dump(mode="json"),
+                PlanNode(
+                    node_id="place-blue-buffer",
+                    obligation_id="place-blue-buffer",
+                    capability="object.place",
+                    input_bindings={"entity_ref": "entity://blue"},
+                ).model_dump(mode="json"),
+            ],
+            reason="freeze future role placeholders",
+        )
+    assert "acquire-blue-buffer: object.acquire missing [entity_ref]" in str(exc.value)
+    assert "place-blue-buffer: object.place missing [destination_ref]" in str(exc.value)
+
+
+def test_completed_plan_can_continue_without_gateway_or_replan_budget(tmp_path):
+    class NoGatewayClient:
+        def __getattr__(self, name):
+            raise AssertionError(f"continuation must not call Gateway: {name}")
+
+    task_id = "task-segmented-rgb"
+    first = _graph(task_id, "revision-segment-1")
+    coordinator = AgentTaskCoordinator(
+        workspace=tmp_path,
+        config=ForgeConfig(),
+        client=NoGatewayClient(),
+        max_replans=0,
+    )
+    coordinator.create_task(
+        task_description="complete RGB rearrangement in scene-bound segments",
+        verification=TaskVerificationContract(mode="off"),
+        plan_graph=first,
+        plan_graph_ref="artifact://plans/task-segmented-rgb/revision-segment-1",
+    )
+    coordinator.record_node_settlement(NodeSettlement(
+        task_id=task_id,
+        revision_id=first.revision_id,
+        node_id=first.nodes[0].node_id,
+        status="completed",
+        scene_revision="scene-2",
+        world_change_started=False,
+        outcome_known=True,
+    ))
+    second = _graph(task_id, "revision-segment-2")
+
+    continued = coordinator.begin_continuation_revision(
+        task_id,
+        reason="fresh scene binding enables the next relocation",
+        plan_graph=second,
+        plan_graph_ref="artifact://plans/task-segmented-rgb/revision-segment-2",
+        evidence_refs=("artifact://scene/scene-2",),
+    )
+
+    assert continued.status == AgentTaskStatus.EXECUTING
+    assert continued.active_revision_id == second.revision_id
+    assert len(continued.revisions) == 2
+    assert continued.revisions[1].counts_toward_replan_budget is False
+    assert continued.active_revision.execution_records == []
+    assert continued.active_revision.node_settlements == []
+    assert coordinator.store.events(task_id)[-1]["event_type"] == "plan_continuation_started"
+
+
+def test_continue_plan_agent_tool_compiles_next_trusted_segment_without_gateway(tmp_path):
+    class NoGatewayClient:
+        def __getattr__(self, name):
+            raise AssertionError(f"continuation Agent tool must not call Gateway: {name}")
+
+    task_id = "task-agent-continuation"
+    first = _graph(task_id, "revision-agent-segment-1")
+    coordinator = AgentTaskCoordinator(
+        workspace=tmp_path, config=ForgeConfig(), client=NoGatewayClient()
+    )
+    coordinator.create_task(
+        task_description="continue one successful segment",
+        verification=TaskVerificationContract(mode="off"),
+        plan_graph=first,
+        plan_graph_ref="artifact://plans/task-agent-continuation/revision-agent-segment-1",
+    )
+    runtime = RuntimeBinding(
+        binding_id="runtime_binding_continuation",
+        runtime_profile="fake",
+        runtime_instance_id="runtime_continuation",
+        gateway_url="http://fake",
+    )
+    policy = ToolSpecPolicy(
+        tool_id="scene.observe",
+        semantics="query",
+        spec_digest="4" * 64,
+        capabilities=("scene.observe",),
+    )
+
+    def attach_binding(current):
+        current.runtime_binding = runtime
+        current.active_revision.runtime_binding_id = runtime.binding_id
+        current.tool_bindings = [BoundToolSpec(
+            tool_id=policy.tool_id,
+            semantics=policy.semantics,
+            spec_sha256=policy.spec_digest,
+            ready_at_binding=True,
+            planning_policy=policy,
+        )]
+
+    coordinator.store.update(task_id, attach_binding, event_type="test_binding")
+    record_id, _caller = coordinator._append_execution(
+        task_id,
+        "scene.observe",
+        "query",
+        {},
+        tool=coordinator.get_task(task_id).tool_bindings[0],
+    )
+    coordinator._finish_execution(
+        task_id,
+        record_id,
+        status="succeeded",
+        response={
+            "status": "available",
+            "scene_revision": "scene-agent-2",
+            "evidence_refs": ["artifact://scene/agent-2"],
+        },
+    )
+    coordinator.record_node_settlement(NodeSettlement(
+        task_id=task_id,
+        revision_id=first.revision_id,
+        node_id=first.nodes[0].node_id,
+        status="completed",
+        scene_revision="scene-agent-2",
+    ))
+
+    result = json.loads(asyncio.run(ForgeTaskContinuePlanTool(coordinator).execute(
+        task_id,
+        nodes=[PlanNode(
+            node_id="observe-next-segment",
+            obligation_id="observe-next-segment",
+            capability="scene.observe",
+        ).model_dump(mode="json")],
+        reason="continue from the fresh scene checkpoint",
+        evidence_refs=["artifact://scene/agent-2"],
+    )))
+
+    assert result["ok"] is True
+    assert result["motion_authorized"] is False
+    current = coordinator.get_task(task_id)
+    assert current.active_revision_id != first.revision_id
+    assert current.active_revision.counts_toward_replan_budget is False
+    assert current.active_revision.plan_graph.nodes[0].node_id == "observe-next-segment"
+    assert current.active_revision.execution_records == []
+
+
+def test_continuation_rejects_incomplete_graph_and_pending_task_action(tmp_path):
+    task_id = "task-continuation-guards"
+    first = _graph(task_id, "revision-guard-1")
+    coordinator = AgentTaskCoordinator(
+        workspace=tmp_path, config=ForgeConfig(), client=_Client()
+    )
+    coordinator.create_task(
+        task_description="guard continuation",
+        verification=TaskVerificationContract(mode="off"),
+        plan_graph=first,
+        plan_graph_ref="artifact://plans/task-continuation-guards/revision-guard-1",
+    )
+    second = _graph(task_id, "revision-guard-2")
+    with pytest.raises(Exception, match="every active graph node"):
+        coordinator.begin_continuation_revision(
+            task_id,
+            reason="too early",
+            plan_graph=second,
+            plan_graph_ref="artifact://plans/task-continuation-guards/revision-guard-2",
+        )
+
+    coordinator.record_node_settlement(NodeSettlement(
+        task_id=task_id,
+        revision_id=first.revision_id,
+        node_id=first.nodes[0].node_id,
+        status="completed",
+    ))
+    coordinator._append_execution(
+        task_id,
+        "object.acquire",
+        "action",
+        {},
+        tool=BoundToolSpec(
+            tool_id="object.acquire",
+            semantics="action",
+            spec_sha256="4" * 64,
+            ready_at_binding=True,
+        ),
+    )
+    with pytest.raises(Exception, match="non-terminal task-owned"):
+        coordinator.begin_continuation_revision(
+            task_id,
+            reason="pending action must block",
+            plan_graph=second,
+            plan_graph_ref="artifact://plans/task-continuation-guards/revision-guard-2",
+        )
 
 
 def test_replan_submission_claims_only_one_bounded_extension(tmp_path):

@@ -62,7 +62,7 @@ class _Provider(LLMProvider):
         return "fixture-model"
 
 
-def _task(*, graph=None, records=(), status="executing"):
+def _task(*, graph=None, records=(), status="executing", settlements=()):
     return SimpleNamespace(
         task_id="task-rgb",
         status=SimpleNamespace(value=status),
@@ -83,7 +83,7 @@ def _task(*, graph=None, records=(), status="executing"):
             plan_graph_digest="plan-digest" if graph is not None else None,
             planner_decision_digest="planner-digest" if graph is not None else None,
             policy_snapshot_digest="policy-digest" if graph is not None else None,
-            node_settlements=(),
+            node_settlements=settlements,
             preserved_node_ids=(),
             invalidated_node_ids=(),
             retry_parent_node_id=None,
@@ -271,6 +271,7 @@ def test_visible_forge_tools_follow_task_phase() -> None:
         "forge_task_get",
         "forge_task_begin_revision",
         "forge_task_materialize_plan",
+        "forge_task_continue_plan",
         "forge_task_finalize",
         "forge_tool_context",
         "forge_tool_query",
@@ -307,6 +308,16 @@ def test_visible_forge_tools_follow_task_phase() -> None:
     planning = visible_tool_names(names, _task(graph=graph))
     assert {"forge_plan_activate", "forge_plan_ready", "forge_plan_select"} <= set(planning)
     assert "forge_tool_start_action" in planning
+    assert "forge_task_begin_revision" not in planning
+    assert "forge_task_continue_plan" not in planning
+
+    completed_graph = SimpleNamespace(nodes=(SimpleNamespace(node_id="done"),))
+    completed_settlement = SimpleNamespace(node_id="done", status="completed")
+    continuation = visible_tool_names(
+        names,
+        _task(graph=completed_graph, settlements=(completed_settlement,)),
+    )
+    assert "forge_task_continue_plan" in continuation
 
     pending = SimpleNamespace(status="running", semantics="action")
     reconcile = visible_tool_names(names, _task(graph=graph, records=(pending,)))

@@ -6,7 +6,7 @@ import json
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
-from PhyAgentOS.agent.planning_dispatch import AgentComposedDispatch
+from PhyAgentOS.agent.planning_dispatch import AgentComposedDispatch, PlanningDispatchError
 from PhyAgentOS.agent.tools.base import Tool
 from PhyAgentOS.planning import AdmissionContext
 
@@ -84,7 +84,17 @@ class ForgePlanSelectTool(Tool):
     async def execute(self, task_id: str, node_id: str, tool_id: str, arguments: dict[str, Any], decision_reason: str) -> str:
         dispatch = self.dispatch_getter()
         if dispatch is None or dispatch.graph.task_id != task_id:
-            return json.dumps({"ok": False, "error": {"type": "planning_selection", "message": "the requested task is not the active PlanGraph"}, "motion_authorized": False}, ensure_ascii=False, separators=(",", ":"))
+            error = PlanningDispatchError(
+                "the requested task is not the active PlanGraph",
+                code="inactive_plan_graph",
+                failure_owner="agent_state",
+                retryable_in_revision=False,
+                recommended_action="activate_current_task_plan",
+            ).as_dict()
+            current = self._persist_rejection(task_id, None, node_id, tool_id, error)
+            if current is not None:
+                error["task_status"] = current.status.value
+            return self._error_response(error)
         try:
             proposal = dispatch.prepare_selection(
                 node_id=node_id, tool_id=tool_id, arguments=arguments,
@@ -116,8 +126,59 @@ class ForgePlanSelectTool(Tool):
                 ensure_ascii=False,
                 separators=(",", ":"),
             )
+        except PlanningDispatchError as exc:
+            error = exc.as_dict()
+            current = self._persist_rejection(
+                task_id, dispatch.graph.revision_id, node_id, tool_id, error
+            )
+            if current is not None:
+                error["task_status"] = current.status.value
+                if current.status.value == "failed":
+                    error["recommended_action"] = "inspect_task_and_create_new_task_if_appropriate"
+            return self._error_response(error)
         except Exception as exc:
-            return json.dumps({"ok": False, "error": {"type": "planning_selection", "message": str(exc)}, "motion_authorized": False}, ensure_ascii=False, separators=(",", ":"))
+            error = PlanningDispatchError(
+                str(exc),
+                code="planning_selection_internal_error",
+                failure_owner="coordinator",
+                retryable_in_revision=False,
+                recommended_action="read_authoritative_task_state",
+            ).as_dict()
+            current = self._persist_rejection(
+                task_id, dispatch.graph.revision_id, node_id, tool_id, error
+            )
+            if current is not None:
+                error["task_status"] = current.status.value
+            return self._error_response(error)
+
+    def _persist_rejection(
+        self,
+        task_id: str,
+        revision_id: str | None,
+        node_id: str,
+        tool_id: str,
+        error: dict[str, Any],
+    ) -> Any | None:
+        try:
+            return self.coordinator.record_planning_selection_rejection(
+                task_id,
+                revision_id=revision_id,
+                node_id=node_id,
+                tool_id=tool_id,
+                error=error,
+            )
+        except Exception:
+            # The structured response remains authoritative when the requested
+            # task itself is unknown or no longer writable.
+            return None
+
+    @staticmethod
+    def _error_response(error: dict[str, Any]) -> str:
+        return json.dumps(
+            {"ok": False, "error": error, "motion_authorized": False},
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
 
 
 class ForgePlanActivateTool(Tool):

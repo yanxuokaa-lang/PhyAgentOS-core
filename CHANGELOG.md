@@ -11,6 +11,42 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v10.8.0 (2026-09-17 23:39) - codex
+
+- [agent] [fix] [完成] 编译期拒绝无冻结 ToolPolicy 可绑定的节点；历史图在 `forge_plan_ready` 中区分 dependency-ready 与 selection-ready。(local)
+- [agent] [feat] [完成] 新增 `forge_task_continue_plan`，仅在当前图全部完成且没有 task-owned 非终态 Action/Session 时追加不计 replan budget 的下一场景段。(local)
+- [agent] [fix] [完成] selection 拒绝持久化稳定 code、owner、missing fields、恢复建议和 task status；参数缺失同 revision 重试，图契约错误进入 bounded recovery。(local)
+- [Agent] [Fix] [Completed] Reject newly unbindable nodes and expose dependency versus selection readiness for historical graphs. (local)
+- [Agent] [Feat] [Completed] Add `forge_task_continue_plan` for completed scene-bound segments without consuming failure-replan budget. (local)
+- [Agent] [Fix] [Completed] Persist structured selection rejection facts and separate same-revision argument retry from bounded graph recovery. (local)
+
+### 影响文件 / Affected files
+
+- `PhyAgentOS/agent/plan_proposal.py:L55-L79`
+- `PhyAgentOS/agent/planning_dispatch.py:L33-L653`
+- `PhyAgentOS/agent/tools/planning.py:L50-L180`
+- `PhyAgentOS/forge/task.py:L851-L903,L1227-L1347`
+- `PhyAgentOS/agent/tools/forge_task.py:L348-L409`
+- `PhyAgentOS/agent/prompt_context.py:L54-L80,L276-L278`
+- Core planning/AgentLoop tests, Skill `2.2.0`, README, and PAOS developer guides.
+
+```diff
+- static future-role graph accepted; selection failures returned one message
++ ToolPolicy binding validation + structured retry/replan diagnostics
+- failure replan reused for successful dynamic-world progress
++ completed segment -> Coordinator-owned continuation revision
+```
+
+### 七维验收 / Seven-dimension acceptance
+
+Architecture, recovery, robotics safety, configuration/reproducibility, maintainability, observability, and AgentLoop autonomy: PASS. Focused `68`, Core `432`, Skill `334`, Adapter `497` tests passed; Ruff, compileall, and diff check passed. No Gateway, Action, Session, simulator step, world change, or motion authorization. The PAOS repository has no local `tools/principles_check.py`, so no cross-repository Principles Gate result is claimed.
+
+### Git 提交 / Git commit
+
+- Commit: pending
+- Branch: `feature/planning-loop`
+- 时间 / Time: 2026-09-18 (Asia/Shanghai)
+
 ## v10.7.4 (2026-09-17 23:02) - codex
 
 - [eval] [test] [完成] v10.7.0-v10.7.3 七维复审无 Blocker/Major；Core `425`、Skill `334`、Adapter `497` tests passed。(local)

@@ -54,7 +54,6 @@ def _discovery_record_succeeded(record: Any) -> bool:
     status = response_facts(response).get("status")
     return status not in {"unavailable", "invalid", "stale", "empty", "failed", "unknown"}
 _PLANNING = {
-    "forge_task_begin_revision",
     "forge_task_finalize",
     "forge_plan_activate",
     "forge_plan_ready",
@@ -64,6 +63,21 @@ _PLANNING = {
     "forge_tool_start_action",
     "forge_tool_start_session",
 }
+
+
+def _active_graph_completed(task: Any) -> bool:
+    revision = getattr(task, "active_revision", None)
+    graph = getattr(revision, "plan_graph", None) if revision is not None else None
+    if graph is None:
+        return False
+    nodes = tuple(getattr(graph, "nodes", ()))
+    settlements = {
+        getattr(item, "node_id", None): getattr(item, "status", None)
+        for item in getattr(revision, "node_settlements", ())
+    }
+    return bool(nodes) and all(
+        settlements.get(getattr(node, "node_id", None)) == "completed" for node in nodes
+    )
 _ACTION_RECONCILIATION = {
     "forge_tool_action_status",
     "forge_tool_action_result",
@@ -260,6 +274,8 @@ def visible_tool_names(all_names: Iterable[str], task: Any | None) -> tuple[str,
         allowed = (
             generic | _TASK_COMMON | _PLANNING | _ACTION_RECONCILIATION | _SESSION_RECONCILIATION
         )
+        if _active_graph_completed(task):
+            allowed.add("forge_task_continue_plan")
     return tuple(name for name in names if name in allowed)
 
 

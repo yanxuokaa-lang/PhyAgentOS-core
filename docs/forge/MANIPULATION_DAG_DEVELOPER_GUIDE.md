@@ -151,6 +151,17 @@ names, or a universal buffer pose. A synchronized multi-arm swap remains
 unavailable unless one Runtime capability atomically owns shared timing and
 inter-arm collision evidence.
 
+Do not encode future post-action objects as natural-language role placeholders
+inside one static PlanGraph. A newly compiled node is admissible only when at
+least one frozen ToolSpec policy can satisfy all of its `input_binding_keys` from
+that node's immutable `input_bindings`. Plan one current scene-bound relocation
+and its re-observation/rebinding checkpoint. Once every node in that revision is
+settled `completed` and no task-owned Action/Session is non-terminal,
+`forge_task_continue_plan` may append the next segment. The Coordinator keeps the
+same task identity, marks the new revision as not counting toward replan budget,
+and performs no Gateway call. Failure replan remains exclusive to
+`awaiting_replan`.
+
 ## Frame and Calibration Contract
 
 - `scene.observe` returns the concrete Runtime frame identifier in
@@ -312,7 +323,10 @@ Use `dependencies` for workflow ordering. A declared `effects` or
 planner can assert before a Tool reaches a terminal result. After activation,
 inspect `forge_plan_ready.node_diagnostics` before selecting a Tool. The
 diagnostic distinguishes dependency, evidence, condition, and Tool-candidate
-blockers without invoking Gateway or changing task state.
+blockers without invoking Gateway or changing task state. It separately reports
+`dependency_ready`, `selection_ready`, `bindable_tool_ids`, per-Tool
+`missing_node_bindings`, and dynamic `missing_runtime_arguments`. A dependency-
+ready node with no bindable Tool is excluded from `ready_nodes`.
 
 Root discovery nodes must leave `produced_evidence` empty when their Tool has
 not yet returned a terminal result: their opaque evidence references do not

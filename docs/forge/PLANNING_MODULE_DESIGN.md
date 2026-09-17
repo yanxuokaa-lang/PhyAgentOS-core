@@ -126,6 +126,21 @@ Each pending node reports missing dependencies and their settlement status,
 missing evidence references, unknown/false condition facts, and Tool
 candidates. This projection is diagnostic only and does not alter readiness.
 
+Compilation additionally checks node/Tool binding compatibility. For every node,
+at least one frozen candidate ToolPolicy must have all `input_binding_keys`
+present in immutable `PlanNode.input_bindings`. This prevents a dependency-ready
+but unselectable Action from being discovered only after earlier execution facts
+have frozen the revision. Persisted historical graphs remain readable;
+`forge_plan_ready` reports their `missing_node_bindings` and excludes them from
+the selection-ready set.
+
+Normal dynamic-world progress is an append-only continuation, not recovery. A
+continuation revision requires the active graph to be fully settled `completed`,
+an executing task, and no task-owned non-terminal Action/Session. It preserves
+task identity, does not count toward replan budget, and contains only the next
+scene-bound segment compiled from current trusted evidence. `awaiting_replan`
+and `forge_task_begin_revision` remain failure-recovery mechanisms.
+
 Before any Tool record, settlement, counterevidence, or verification attempt is
 attached to a materialized discovery graph, the Agent may submit one corrected
 graph. The Coordinator appends a new revision and closes the old revision; it

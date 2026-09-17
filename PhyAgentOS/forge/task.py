@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from enum import StrEnum
@@ -848,6 +848,64 @@ class AgentTaskCoordinator:
             "tool_arguments": tool_arguments,
         }
 
+    def record_planning_selection_rejection(
+        self,
+        task_id: str,
+        *,
+        revision_id: str | None,
+        node_id: str,
+        tool_id: str,
+        error: Mapping[str, Any],
+    ) -> AgentTaskRecord:
+        """Persist a redacted control-plane rejection without creating a Tool record."""
+        allowed = {
+            "type",
+            "code",
+            "failure_owner",
+            "message",
+            "missing_fields",
+            "retryable_in_revision",
+            "requires_replan",
+            "recommended_action",
+        }
+        redacted = {key: error[key] for key in allowed if key in error}
+        requires_replan = error.get("requires_replan") is True
+        payload = {
+            "revision_id": revision_id,
+            "node_id": node_id,
+            "tool_id": tool_id,
+            "error": redacted,
+            "motion_authorized": False,
+        }
+
+        def mutate(current: AgentTaskRecord) -> None:
+            if revision_id is not None and current.active_revision_id != revision_id:
+                raise AgentTaskError(
+                    "planning selection rejection is not bound to the active revision"
+                )
+            if not requires_replan or current.status != AgentTaskStatus.EXECUTING:
+                return
+            if _replan_count(current) >= self.max_replans:
+                current.status = AgentTaskStatus.FAILED
+                current.evidence_errors.append(
+                    "planning selection requires a replacement graph but replan budget is exhausted"
+                )
+                return
+            current.status = AgentTaskStatus.AWAITING_REPLAN
+            current.replan_deadline = utc_now() + timedelta(seconds=self.replan_timeout_s)
+            current.replan_extension_used = False
+            current.evidence_errors.append(
+                "planning selection requires replacement graph: "
+                + str(error.get("code", "planning_selection_rejected"))
+            )
+
+        return self.store.update(
+            task_id,
+            mutate,
+            event_type="planning_selection_rejected",
+            payload=payload,
+        )
+
     def create_task(
         self,
         *,
@@ -1165,6 +1223,128 @@ class AgentTaskCoordinator:
             current.replan_extension_used = False
 
         return self.store.update(task_id, mutate, event_type="plan_revision_started")
+
+    def begin_continuation_revision(
+        self,
+        task_id: str,
+        *,
+        reason: str,
+        plan_graph: PlanGraph,
+        plan_graph_ref: str,
+        evidence_refs: tuple[str, ...] = (),
+    ) -> AgentTaskRecord:
+        """Append a successful next plan segment without consuming recovery budget."""
+        task = self.store.get(task_id)
+        if task.status != AgentTaskStatus.EXECUTING:
+            raise AgentTaskError(
+                "plan continuation requires an executing AgentTask; failure recovery uses begin_revision"
+            )
+        revision = task.active_revision
+        if revision.plan_graph is None:
+            raise AgentTaskError("plan continuation requires a materialized active PlanGraph")
+        settlements = {item.node_id: item.status for item in revision.node_settlements}
+        incomplete = tuple(
+            node.node_id
+            for node in revision.plan_graph.nodes
+            if settlements.get(node.node_id) != "completed"
+        )
+        if incomplete:
+            raise AgentTaskError(
+                "plan continuation requires every active graph node to be completed; incomplete nodes: "
+                + ", ".join(incomplete)
+            )
+        nonterminal = tuple(
+            record.record_id
+            for record in task.execution_records
+            if record.ownership == "task"
+            and record.semantics in {"action", "session"}
+            and not record.terminal
+        )
+        if nonterminal:
+            raise AgentTaskError(
+                "plan continuation is blocked by non-terminal task-owned Action/Session records: "
+                + ", ".join(nonterminal)
+            )
+        if not reason.strip():
+            raise AgentTaskError("plan continuation reason must be non-empty")
+        _validate_plan_graph_input(
+            plan_graph,
+            plan_graph_ref,
+            task_id,
+            plan_graph.revision_id,
+        )
+
+        source_revision_id = revision.revision_id
+
+        def mutate(current: AgentTaskRecord) -> None:
+            if current.status != AgentTaskStatus.EXECUTING:
+                raise AgentTaskError("plan continuation requires an executing AgentTask")
+            if current.active_revision_id != source_revision_id:
+                raise AgentTaskError("plan continuation source revision is no longer active")
+            current_revision = current.active_revision
+            current_settlements = {
+                item.node_id: item.status for item in current_revision.node_settlements
+            }
+            current_incomplete = tuple(
+                node.node_id
+                for node in current_revision.plan_graph.nodes
+                if current_settlements.get(node.node_id) != "completed"
+            ) if current_revision.plan_graph is not None else ("<missing-plan-graph>",)
+            if current_incomplete:
+                raise AgentTaskError(
+                    "plan continuation requires every active graph node to be completed; "
+                    "incomplete nodes: " + ", ".join(current_incomplete)
+                )
+            current_nonterminal = tuple(
+                record.record_id
+                for record in current.execution_records
+                if record.ownership == "task"
+                and record.semantics in {"action", "session"}
+                and not record.terminal
+            )
+            if current_nonterminal:
+                raise AgentTaskError(
+                    "plan continuation is blocked by non-terminal task-owned Action/Session records: "
+                    + ", ".join(current_nonterminal)
+                )
+            current.active_revision.closed_at = utc_now()
+            current.revisions.append(
+                PlanRevision(
+                    revision_id=plan_graph.revision_id,
+                    number=len(current.revisions) + 1,
+                    reason=reason.strip(),
+                    counts_toward_replan_budget=False,
+                    skill_binding_id=(
+                        current.primary_skill_binding.binding_id
+                        if current.primary_skill_binding is not None
+                        else None
+                    ),
+                    runtime_binding_id=(
+                        current.runtime_binding.binding_id
+                        if current.runtime_binding is not None
+                        else None
+                    ),
+                    plan_graph=plan_graph,
+                    plan_graph_ref=plan_graph_ref,
+                    plan_graph_digest=plan_graph.graph_digest,
+                    planner_decision_digest=plan_graph.planner_decision_digest,
+                    policy_snapshot_digest=plan_graph.policy_snapshot_digest,
+                    discovery_evidence_refs=tuple(evidence_refs),
+                )
+            )
+            current.active_revision_id = plan_graph.revision_id
+            current.verdict = None
+
+        return self.store.update(
+            task_id,
+            mutate,
+            event_type="plan_continuation_started",
+            payload={
+                "previous_revision_id": revision.revision_id,
+                "revision_id": plan_graph.revision_id,
+                "evidence_refs": list(evidence_refs),
+            },
+        )
 
     def claim_replan_attempt(
         self, task_id: str, *, attempt_started_at: datetime | None = None

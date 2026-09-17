@@ -24,6 +24,7 @@ from PhyAgentOS.verification.contracts import TaskVerificationContract
 class _Coordinator:
     def __init__(self):
         self.proposals = []
+        self.rejections = []
 
     def persist_planning_selection(self, proposal):
         self.proposals.append(proposal)
@@ -38,6 +39,9 @@ class _Coordinator:
             "scene_revision": proposal["scene_revision"],
             "tool_arguments": proposal["tool_arguments"],
         }
+
+    def record_planning_selection_rejection(self, task_id, **kwargs):
+        self.rejections.append((task_id, kwargs))
 
 
 class _Dispatch:
@@ -87,7 +91,149 @@ def test_plan_select_rejects_when_task_is_not_active_graph():
 
     assert result["ok"] is False
     assert result["motion_authorized"] is False
+    assert result["error"]["code"] == "inactive_plan_graph"
+    assert result["error"]["recommended_action"] == "activate_current_task_plan"
     assert coordinator.proposals == []
+
+
+def test_prepare_selection_reports_all_missing_runtime_arguments_and_persists_event(tmp_path):
+    task_id = "task-missing-candidates"
+    revision_id = "revision-missing-candidates"
+    node = PlanNode(
+        node_id="prepare-green",
+        obligation_id="prepare-green",
+        capability="manipulation.prepare",
+        input_bindings={
+            "goal": "prepare green",
+            "success_criteria": ["one prepared candidate"],
+            "allowed_arms": ["left"],
+            "coordination_mode": "single_arm",
+        },
+    )
+    payload = {
+        "task_id": task_id,
+        "revision_id": revision_id,
+        "graph_digest": "0" * 64,
+        "planner_decision_digest": "1" * 64,
+        "policy_snapshot_digest": "2" * 64,
+        "nodes": [node.model_dump(mode="json")],
+    }
+    payload["graph_digest"] = plan_graph_digest(payload)
+    graph = PlanGraph.model_validate(payload)
+    policy = ToolSpecPolicy(
+        tool_id="manipulation.prepare",
+        semantics="query",
+        spec_digest="3" * 64,
+        capabilities=("manipulation.prepare",),
+        trusted_argument_builder="manipulation_intent_v2",
+    )
+    coordinator = AgentTaskCoordinator(
+        workspace=tmp_path, config=ForgeConfig(), client=object()
+    )
+    coordinator.create_task(
+        task_description="prepare green",
+        verification=TaskVerificationContract(mode="off"),
+        plan_graph=graph,
+        plan_graph_ref=f"artifact://plans/{task_id}/{revision_id}",
+    )
+    dispatch = AgentComposedDispatch(
+        graph, (policy,), AdmissionContext(scene_revision="scene-1")
+    )
+    tool = ForgePlanSelectTool(coordinator, lambda: dispatch)
+
+    result = json.loads(asyncio.run(tool.execute(
+        task_id,
+        node.node_id,
+        policy.tool_id,
+        {},
+        "prepare current candidates",
+    )))
+
+    assert result["ok"] is False
+    assert result["motion_authorized"] is False
+    assert result["error"]["code"] == "missing_runtime_arguments"
+    assert result["error"]["failure_owner"] == "agent_arguments"
+    assert result["error"]["retryable_in_revision"] is True
+    assert result["error"]["requires_replan"] is False
+    assert result["error"]["task_status"] == "executing"
+    assert set(result["error"]["missing_fields"]) == {
+        "observation_ref",
+        "scene_revision",
+        "frame_id",
+        "calibration_ref",
+        "freshness_ms",
+        "max_age_ms",
+        "candidate_set_ref",
+        "candidates",
+        "destination_ref",
+        "capability_snapshot_ref",
+    }
+    current = coordinator.get_task(task_id)
+    assert current.execution_records == []
+    rejection = coordinator.store.events(task_id)[-1]
+    assert rejection["event_type"] == "planning_selection_rejected"
+    assert rejection["payload"]["error"]["code"] == "missing_runtime_arguments"
+    assert "arguments" not in rejection["payload"]
+    assert rejection["payload"]["motion_authorized"] is False
+
+
+def test_unbindable_historical_selection_enters_bounded_replan(tmp_path):
+    task_id = "task-historical-unbindable"
+    revision_id = "revision-historical-unbindable"
+    node = PlanNode(
+        node_id="acquire-blue",
+        obligation_id="acquire-blue",
+        capability="object.acquire",
+    )
+    payload = {
+        "task_id": task_id,
+        "revision_id": revision_id,
+        "graph_digest": "0" * 64,
+        "planner_decision_digest": "1" * 64,
+        "policy_snapshot_digest": "2" * 64,
+        "nodes": [node.model_dump(mode="json")],
+    }
+    payload["graph_digest"] = plan_graph_digest(payload)
+    graph = PlanGraph.model_validate(payload)
+    policy = ToolSpecPolicy(
+        tool_id="object.acquire",
+        semantics="action",
+        spec_digest="3" * 64,
+        capabilities=("object.acquire",),
+        input_binding_keys=("entity_ref",),
+    )
+    coordinator = AgentTaskCoordinator(
+        workspace=tmp_path, config=ForgeConfig(), client=object()
+    )
+    coordinator.create_task(
+        task_description="resume a historical graph",
+        verification=TaskVerificationContract(mode="off"),
+        plan_graph=graph,
+        plan_graph_ref=f"artifact://plans/{task_id}/{revision_id}",
+    )
+    dispatch = AgentComposedDispatch(
+        graph, (policy,), AdmissionContext(scene_revision="scene-1")
+    )
+
+    result = json.loads(asyncio.run(ForgePlanSelectTool(
+        coordinator, lambda: dispatch
+    ).execute(
+        task_id,
+        node.node_id,
+        policy.tool_id,
+        {},
+        "select historical node",
+    )))
+
+    assert result["error"]["code"] == "node_tool_binding_incompatible"
+    assert result["error"]["requires_replan"] is True
+    assert result["error"]["retryable_in_revision"] is False
+    assert result["error"]["task_status"] == "awaiting_replan"
+    current = coordinator.get_task(task_id)
+    assert current.status.value == "awaiting_replan"
+    assert current.replan_deadline is not None
+    assert current.execution_records == []
+    assert coordinator.store.events(task_id)[-1]["event_type"] == "planning_selection_rejected"
 
 
 def test_real_coordinator_persists_context_bound_decision_trace(tmp_path):

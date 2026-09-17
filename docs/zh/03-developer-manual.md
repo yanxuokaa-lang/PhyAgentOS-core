@@ -59,6 +59,7 @@ Task lifecycle：
 - `forge_task_create(task_description, verification, activation_id)`；
 - `forge_task_get(task_id)`；
 - `forge_task_begin_revision(task_id, reason)`；
+- `forge_task_continue_plan(task_id, nodes, reason, evidence_refs?)`；
 - `forge_task_finalize(task_id)`；
 - `forge_task_cancel(task_id, reason?)`。
 
@@ -85,6 +86,13 @@ PlanRevision、evidence refs、verification attempts、取消状态和时间戳�
 `AgentTaskStore` 使用 SQLite WAL 与 `BEGIN IMMEDIATE`。创建时在同一事务内查询非终态任务，
 保证跨进程全局单活动槽位。更新写入完整的已校验 record 和 append-only event；业务代码不直接
 修改表。
+
+多对象动态场景不得把动作后的 `entity_ref`/`destination_ref` 用自然语言角色提前冻结在一个
+静态全图中。新图编译会检查至少一个冻结 ToolPolicy 能用节点 `input_bindings` 满足其
+`input_binding_keys`。每个 revision 只规划当前场景可绑定的一次搬运和之后的重新观测/理解/
+绑定检查点；该图全部 `completed` 且没有 task-owned 非终态 Action/Session 后，使用
+`forge_task_continue_plan` 追加下一段。该路径保持同一 task，不消耗 replan budget，不调用
+Gateway；`forge_task_begin_revision` 仍仅用于 `awaiting_replan` 失败恢复。
 
 终态任务状态为 `succeeded`、`failed`、`cancelled`；非终态为 `executing`、`cancelling`、
 `awaiting_replan`。Tool status `unknown` 对聚合记账是终态，但它表示失败，不表示已停止。

@@ -33,6 +33,37 @@ from PhyAgentOS.planning import (
 class PlanningDispatchError(ValueError):
     """A Forge Tool call cannot be admitted by the active semantic graph."""
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "planning_selection_rejected",
+        failure_owner: str = "agent_arguments",
+        retryable_in_revision: bool = True,
+        requires_replan: bool = False,
+        missing_fields: tuple[str, ...] = (),
+        recommended_action: str = "correct_arguments_and_retry_selection",
+    ) -> None:
+        super().__init__(message)
+        self.code = code
+        self.failure_owner = failure_owner
+        self.retryable_in_revision = retryable_in_revision
+        self.requires_replan = requires_replan
+        self.missing_fields = tuple(sorted(set(missing_fields)))
+        self.recommended_action = recommended_action
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "type": "planning_selection",
+            "code": self.code,
+            "failure_owner": self.failure_owner,
+            "message": str(self),
+            "missing_fields": list(self.missing_fields),
+            "retryable_in_revision": self.retryable_in_revision,
+            "requires_replan": self.requires_replan,
+            "recommended_action": self.recommended_action,
+        }
+
 
 class AgentComposedDispatch:
     """Pure admission facade used by AgentLoop for one frozen PlanGraph."""
@@ -129,15 +160,43 @@ class AgentComposedDispatch:
                 set(context.evidence_refs),
                 conditions,
             )
-            candidates = tuple(
-                policy.tool_id
+            candidate_policies = tuple(
+                policy
                 for policy in self.policies
                 if node.capability in policy.capabilities
                 and (conditions.get("scene_current") is not False or policy.refreshes_scene)
             )
-            item["candidate_tool_ids"] = candidates
+            candidates = tuple(policy.tool_id for policy in candidate_policies)
+            missing_node_bindings = {
+                policy.tool_id: tuple(
+                    key for key in policy.input_binding_keys if key not in node.input_bindings
+                )
+                for policy in candidate_policies
+                if any(key not in node.input_bindings for key in policy.input_binding_keys)
+            }
+            bindable = tuple(
+                policy.tool_id
+                for policy in candidate_policies
+                if policy.tool_id not in missing_node_bindings
+            )
+            runtime_requirements = {
+                policy.tool_id: self._required_runtime_arguments(policy)
+                for policy in candidate_policies
+                if self._required_runtime_arguments(policy)
+            }
+            dependency_ready = node.node_id in ready
+            item.update({
+                "dependency_ready": dependency_ready,
+                "selection_ready": dependency_ready and bool(bindable),
+                "candidate_tool_ids": candidates,
+                "bindable_tool_ids": bindable,
+                "missing_node_bindings": missing_node_bindings,
+                "missing_runtime_arguments": runtime_requirements,
+            })
             if not candidates:
                 item["blockers"] = tuple((*item["blockers"], "no_tool_candidate"))
+            elif not bindable:
+                item["blockers"] = tuple((*item["blockers"], "missing_node_bindings"))
             diagnostics.append(item)
         return {
             "ok": True,
@@ -157,9 +216,37 @@ class AgentComposedDispatch:
                         for policy in self.policies
                         if nodes[node_id].capability in policy.capabilities
                         and (conditions.get("scene_current") is not False or policy.refreshes_scene)
+                        and set(policy.input_binding_keys).issubset(nodes[node_id].input_bindings)
                     ],
+                    **(
+                        {"missing_runtime_arguments": {
+                            policy.tool_id: self._required_runtime_arguments(policy)
+                            for policy in self.policies
+                            if nodes[node_id].capability in policy.capabilities
+                            and (
+                                conditions.get("scene_current") is not False
+                                or policy.refreshes_scene
+                            )
+                            and set(policy.input_binding_keys).issubset(
+                                nodes[node_id].input_bindings
+                            )
+                            and self._required_runtime_arguments(policy)
+                        }}
+                        if any(
+                            nodes[node_id].capability in policy.capabilities
+                            and self._required_runtime_arguments(policy)
+                            for policy in self.policies
+                        )
+                        else {}
+                    ),
                 }
                 for node_id in ready
+                if any(
+                    nodes[node_id].capability in policy.capabilities
+                    and (conditions.get("scene_current") is not False or policy.refreshes_scene)
+                    and set(policy.input_binding_keys).issubset(nodes[node_id].input_bindings)
+                    for policy in self.policies
+                )
             ],
             "node_diagnostics": diagnostics,
             "motion_authorized": False,
@@ -267,9 +354,34 @@ class AgentComposedDispatch:
         node = next((item for item in self.graph.nodes if item.node_id == node_id), None)
         policy = self._policies.get(tool_id)
         if node is None:
-            raise PlanningDispatchError("selected planning node is not in the active graph")
+            raise PlanningDispatchError(
+                "selected planning node is not in the active graph",
+                code="stale_planning_node",
+                failure_owner="agent_state",
+                retryable_in_revision=False,
+                recommended_action="refresh_active_plan",
+            )
         if policy is None or node.capability not in policy.capabilities:
-            raise PlanningDispatchError("selected Tool is not declared for the planning node")
+            raise PlanningDispatchError(
+                "selected Tool is not declared for the planning node",
+                code="tool_not_declared_for_node",
+                missing_fields=("tool_id",),
+                recommended_action="choose_candidate_tool",
+            )
+        missing_node_bindings = tuple(
+            key for key in policy.input_binding_keys if key not in node.input_bindings
+        )
+        if missing_node_bindings:
+            raise PlanningDispatchError(
+                "selected Tool cannot bind the semantic node; missing frozen node bindings: "
+                + ", ".join(missing_node_bindings),
+                code="node_tool_binding_incompatible",
+                failure_owner="plan_contract",
+                retryable_in_revision=False,
+                requires_replan=True,
+                missing_fields=missing_node_bindings,
+                recommended_action="replace_plan_segment",
+            )
         conditions = dict(context.condition_facts)
         ready = derive_ready_nodes(
             self.graph,
@@ -290,11 +402,27 @@ class AgentComposedDispatch:
                 )
             )
         if node_id not in ready:
-            raise PlanningDispatchError("selected planning node is not ready")
+            raise PlanningDispatchError(
+                "selected planning node is not dependency-ready",
+                code="node_not_ready",
+                failure_owner="agent_state",
+                retryable_in_revision=True,
+                recommended_action="execute_ready_predecessor_or_refresh_ready_projection",
+            )
         if conditions.get("scene_current") is False and not policy.refreshes_scene:
-            raise PlanningDispatchError("a fresh scene observation is required before this Tool")
+            raise PlanningDispatchError(
+                "a fresh scene observation is required before this Tool",
+                code="fresh_observation_required",
+                failure_owner="runtime_context",
+                retryable_in_revision=True,
+                recommended_action="execute_scene_refresh_node",
+            )
         if not isinstance(decision_reason, str) or not decision_reason.strip():
-            raise PlanningDispatchError("decision_reason must be non-empty")
+            raise PlanningDispatchError(
+                "decision_reason must be non-empty",
+                code="missing_selection_arguments",
+                missing_fields=("decision_reason",),
+            )
         final_arguments = self._build_trusted_arguments(
             policy=policy,
             node=node,
@@ -302,7 +430,11 @@ class AgentComposedDispatch:
         )
         for key in policy.input_binding_keys:
             if key not in node.input_bindings or final_arguments.get(key) != node.input_bindings[key]:
-                raise PlanningDispatchError(f"Tool argument {key!r} does not match the node")
+                raise PlanningDispatchError(
+                    f"Tool argument {key!r} does not match the node",
+                    code="semantic_binding_mismatch",
+                    missing_fields=(key,),
+                )
         return {
             "task_id": self.graph.task_id,
             "revision_id": self.graph.revision_id,
@@ -333,7 +465,14 @@ class AgentComposedDispatch:
         if policy.trusted_argument_builder is None:
             return final_arguments
         if policy.trusted_argument_builder != "manipulation_intent_v2":
-            raise PlanningDispatchError("ToolSpec trusted argument builder is unsupported")
+            raise PlanningDispatchError(
+                "ToolSpec trusted argument builder is unsupported",
+                code="unsupported_trusted_argument_builder",
+                failure_owner="plan_contract",
+                retryable_in_revision=False,
+                requires_replan=True,
+                recommended_action="repair_tool_policy",
+            )
 
         supplied = final_arguments.pop("intent", None)
         semantic_keys = {
@@ -355,21 +494,48 @@ class AgentComposedDispatch:
             if key in node.input_bindings
         }
         if supplied is not None and not isinstance(supplied, Mapping):
-            raise PlanningDispatchError("nested Tool intent semantics must be an object")
+            raise PlanningDispatchError(
+                "nested Tool intent semantics must be an object",
+                code="invalid_selection_arguments",
+                missing_fields=("intent",),
+            )
         if node_intent is not None and not isinstance(node_intent, Mapping):
-            raise PlanningDispatchError("nested node intent semantics must be an object")
+            raise PlanningDispatchError(
+                "nested node intent semantics must be an object",
+                code="invalid_node_semantics",
+                failure_owner="plan_contract",
+                retryable_in_revision=False,
+                requires_replan=True,
+                missing_fields=("intent",),
+                recommended_action="replace_plan_segment",
+            )
         if supplied is not None and flat_supplied and dict(supplied) != flat_supplied:
-            raise PlanningDispatchError("nested and flat Tool intent semantics conflict")
+            raise PlanningDispatchError(
+                "nested and flat Tool intent semantics conflict",
+                code="semantic_intent_mismatch",
+            )
         if node_intent is not None and flat_node and dict(node_intent) != flat_node:
-            raise PlanningDispatchError("nested and flat node intent semantics conflict")
+            raise PlanningDispatchError(
+                "nested and flat node intent semantics conflict",
+                code="invalid_node_semantics",
+                failure_owner="plan_contract",
+                retryable_in_revision=False,
+                requires_replan=True,
+                recommended_action="replace_plan_segment",
+            )
         supplied_semantic = supplied if supplied is not None else (flat_supplied or None)
         node_semantic = node_intent if node_intent is not None else (flat_node or None)
         if supplied_semantic is not None and node_semantic is not None and dict(supplied_semantic) != dict(node_semantic):
-            raise PlanningDispatchError("Tool intent does not match the semantic node")
+            raise PlanningDispatchError(
+                "Tool intent does not match the semantic node",
+                code="semantic_intent_mismatch",
+            )
         semantic = supplied_semantic if supplied_semantic is not None else node_semantic
         if not isinstance(semantic, Mapping):
             raise PlanningDispatchError(
-                "manipulation intent semantics are required in Tool arguments or node input_bindings"
+                "manipulation intent semantics are required in Tool arguments or node input_bindings",
+                code="missing_runtime_arguments",
+                missing_fields=("goal", "success_criteria", "allowed_arms", "coordination_mode"),
             )
         owned_keys = {
             "version",
@@ -389,7 +555,20 @@ class AgentComposedDispatch:
         if unexpected:
             label = "Coordinator-owned" if unexpected & owned_keys else "unsupported"
             raise PlanningDispatchError(
-                f"manipulation intent contains {label} fields: {', '.join(sorted(unexpected))}"
+                f"manipulation intent contains {label} fields: {', '.join(sorted(unexpected))}",
+                code="invalid_selection_arguments",
+            )
+        missing_runtime = tuple(
+            key
+            for key in self._required_runtime_arguments(policy)
+            if key not in final_arguments or final_arguments[key] is None
+        )
+        if missing_runtime:
+            raise PlanningDispatchError(
+                "manipulation preparation omitted required Runtime arguments: "
+                + ", ".join(missing_runtime),
+                code="missing_runtime_arguments",
+                missing_fields=missing_runtime,
             )
         candidates = final_arguments.get("candidates")
         entity_refs = {
@@ -402,11 +581,17 @@ class AgentComposedDispatch:
             entity_ref = next(iter(entity_refs))
         if not isinstance(entity_ref, str) or entity_refs != {entity_ref}:
             raise PlanningDispatchError(
-                "manipulation candidates must bind exactly the semantic node entity"
+                "manipulation candidates must bind exactly one semantic node entity",
+                code="candidate_entity_mismatch",
+                missing_fields=("candidates", "entity_ref"),
             )
         for required in ("destination_ref", "capability_snapshot_ref"):
             if not isinstance(final_arguments.get(required), str):
-                raise PlanningDispatchError(f"manipulation preparation requires {required}")
+                raise PlanningDispatchError(
+                    f"manipulation preparation requires {required}",
+                    code="missing_runtime_arguments",
+                    missing_fields=(required,),
+                )
 
         intent_payload = {
             **dict(semantic),
@@ -426,9 +611,29 @@ class AgentComposedDispatch:
         try:
             intent = ManipulationIntent.model_validate(intent_payload)
         except ValueError as exc:
-            raise PlanningDispatchError(f"manipulation intent is incomplete: {exc}") from exc
+            raise PlanningDispatchError(
+                f"manipulation intent is incomplete: {exc}",
+                code="invalid_selection_arguments",
+            ) from exc
         final_arguments["intent"] = intent.model_dump(mode="json")
         return final_arguments
+
+    @staticmethod
+    def _required_runtime_arguments(policy: ToolSpecPolicy) -> tuple[str, ...]:
+        if policy.trusted_argument_builder != "manipulation_intent_v2":
+            return ()
+        return (
+            "observation_ref",
+            "scene_revision",
+            "frame_id",
+            "calibration_ref",
+            "freshness_ms",
+            "max_age_ms",
+            "candidate_set_ref",
+            "candidates",
+            "destination_ref",
+            "capability_snapshot_ref",
+        )
 
     def _current_context(self) -> AdmissionContext:
         if self.context_provider is None:

@@ -52,6 +52,31 @@ def compile_task_plan(
             "semantic plan references capabilities outside the bound Skill: "
             f"{', '.join(unsupported)}; available capabilities: {available}"
         )
+    unbindable: list[str] = []
+    for node in parsed:
+        candidates = tuple(
+            tool.planning_policy
+            for tool in tools
+            if tool.planning_policy is not None
+            and node.capability in tool.planning_policy.capabilities
+        )
+        if any(
+            set(policy.input_binding_keys).issubset(node.input_bindings)
+            for policy in candidates
+        ):
+            continue
+        candidate_details = ", ".join(
+            f"{policy.tool_id} missing "
+            f"[{', '.join(key for key in policy.input_binding_keys if key not in node.input_bindings)}]"
+            for policy in candidates
+        ) or "<none>"
+        unbindable.append(f"{node.node_id}: {candidate_details}")
+    if unbindable:
+        raise ValueError(
+            "semantic plan contains node(s) that no frozen ToolPolicy can bind: "
+            + "; ".join(unbindable)
+            + "; materialize only the current scene-bound segment and continue after fresh observation/binding"
+        )
     root_produced_evidence = {
         node.node_id: node.produced_evidence
         for node in parsed

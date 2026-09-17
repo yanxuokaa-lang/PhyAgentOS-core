@@ -62,6 +62,14 @@ step status and opaque references, delegates all execution to the existing
 ForgeToolClient/AgentTask path, and uses append-only revisions for recovery. It
 does not add a Gateway route, Session, cross-Tool lease, or motion authorization.
 
+Multi-object rearrangement uses scene-bound segments rather than one static graph
+containing future object roles. Each revision freezes only references available in
+the current observation and ends at a fresh observation/understanding/binding
+checkpoint. After every node in that graph is completed,
+`forge_task_continue_plan` appends the next segment under the same task without
+consuming failure-replan budget. `forge_task_begin_revision` remains reserved for
+`awaiting_replan` failure recovery.
+
 For Agent-composed long-horizon tasks, use `pick_place_workflow.agent_planning`.
 The Agent supplies semantic subtasks (for example one `relocate-*` node per
 entity), and `compose_agent_plan` compiles them into a PAOS `PlanGraph` with a
@@ -75,6 +83,10 @@ AgentLoop integration uses `forge_plan_activate` to bind the current persisted
 PlanGraph and `forge_plan_ready` to inspect ready nodes. A registry guard then
 performs pure admission before task-bound Forge Query/Action/Session creation;
 execution and cancellation still go through the existing Coordinator/Gateway.
+Ready diagnostics distinguish dependency readiness from Tool/node binding
+readiness and list runtime arguments required at selection. Rejections are
+persisted as redacted task events with stable code, owner, missing fields, and
+same-revision retry or replan guidance.
 
 The Agent may change subtask order, independent-arm assignments, optional
 Queries, and Tool choice through a new plan/revision. It may not change adapter
