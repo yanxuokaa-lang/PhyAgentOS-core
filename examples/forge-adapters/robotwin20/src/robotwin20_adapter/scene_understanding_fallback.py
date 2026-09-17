@@ -70,5 +70,37 @@ class FallbackSceneUnderstandingInference:
         if callable(release):
             release()
 
+    def release_for_request(self, request: Mapping[str, Any]) -> Mapping[str, Any] | None:
+        """Release the primary provider, falling back when lifecycle handoff fails.
+
+        The semantic result may already have been produced when GPU handoff is
+        attempted.  A lifecycle-specific release failure must therefore retain
+        the original request and route semantics through GPT instead of leaking
+        an adapter-only cleanup error to the generic scene Tool.
+        """
+        if self.last_route != self.primary_name:
+            return None
+        release = getattr(self.primary, "release", None)
+        if not callable(release):
+            return None
+        try:
+            release()
+            return None
+        except self.fallback_exceptions as exc:
+            primary_error = type(exc).__name__
+        try:
+            result = self.fallback.infer(request)
+            if result is None:
+                raise SceneUnderstandingFallbackError("fallback provider returned no result")
+            self.last_route = self.fallback_name
+            self.last_error = primary_error
+            return result
+        except Exception as exc:
+            self.last_route = None
+            self.last_error = f"{primary_error}; {type(exc).__name__}"
+            raise SceneUnderstandingFallbackError(
+                "lifecycle handoff failed and fallback scene understanding failed"
+            ) from exc
+
 
 __all__ = ["FallbackSceneUnderstandingInference", "SceneUnderstandingFallbackError"]

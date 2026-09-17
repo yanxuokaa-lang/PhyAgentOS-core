@@ -131,6 +131,107 @@ def test_agent_loop_selects_task_from_current_session_not_global_active():
     assert loop._task_for_session("cli:session") is session_task
 
 
+def test_agent_loop_does_not_fallback_to_unbound_legacy_active_task():
+    legacy_task = SimpleNamespace(task_id="task-legacy", terminal=False, origin_session_key=None)
+
+    class Store:
+        def find_by_origin_session_key(self, _key):
+            return []
+
+        def active(self):
+            return legacy_task
+
+    loop = object.__new__(AgentLoop)
+    loop.forge_task_coordinator = SimpleNamespace(store=Store())
+    loop.sessions = SimpleNamespace(
+        get_or_create=lambda _key: SimpleNamespace(get_history=lambda **_kwargs: [])
+    )
+
+    assert loop._task_for_session("cli:new") is None
+
+
+def test_agent_loop_resumes_legacy_task_explicitly_referenced_by_session():
+    legacy_task = SimpleNamespace(task_id="task-legacy", terminal=False, origin_session_key=None)
+
+    class Store:
+        def find_by_origin_session_key(self, _key):
+            return []
+
+        def get(self, task_id):
+            assert task_id == legacy_task.task_id
+            return legacy_task
+
+    history = [{
+        "role": "assistant",
+        "content": None,
+        "tool_calls": [{
+            "id": "read-task",
+            "type": "function",
+            "function": {
+                "name": "forge_task_get",
+                "arguments": json.dumps({"task_id": legacy_task.task_id}),
+            },
+        }],
+    }]
+    loop = object.__new__(AgentLoop)
+    loop.forge_task_coordinator = SimpleNamespace(store=Store())
+    loop.sessions = SimpleNamespace(
+        get_or_create=lambda _key: SimpleNamespace(get_history=lambda **_kwargs: history)
+    )
+
+    assert loop._task_for_session("cli:retained") is legacy_task
+
+
+def test_agent_loop_does_not_bind_legacy_task_from_plain_text_reference():
+    class Store:
+        def find_by_origin_session_key(self, _key):
+            return []
+
+        def get(self, _task_id):
+            raise AssertionError("plain text must not be treated as a task binding")
+
+    history = [{"role": "user", "content": "Continue task-legacy"}]
+    loop = object.__new__(AgentLoop)
+    loop.forge_task_coordinator = SimpleNamespace(store=Store())
+    loop.sessions = SimpleNamespace(
+        get_or_create=lambda _key: SimpleNamespace(get_history=lambda **_kwargs: history)
+    )
+
+    assert loop._task_for_session("cli:new") is None
+
+
+def test_agent_loop_does_not_resume_terminal_legacy_task_for_stop_path():
+    legacy_task = SimpleNamespace(task_id="task-legacy", terminal=True, origin_session_key=None)
+
+    class Store:
+        def find_by_origin_session_key(self, _key):
+            return []
+
+        def get(self, _task_id):
+            return legacy_task
+
+    history = [{
+        "role": "assistant",
+        "content": None,
+        "tool_calls": [{
+            "id": "read-task",
+            "type": "function",
+            "function": {
+                "name": "forge_task_get",
+                "arguments": {"task_id": legacy_task.task_id},
+            },
+        }],
+    }]
+    loop = object.__new__(AgentLoop)
+    loop.forge_task_coordinator = SimpleNamespace(store=Store())
+    loop.sessions = SimpleNamespace(
+        get_or_create=lambda _key: SimpleNamespace(get_history=lambda **_kwargs: history)
+    )
+
+    assert loop._task_for_session("cli:retained", include_terminal=False) is None
+    assert loop._task_for_session("cli:retained", include_terminal=True) is legacy_task
+
+
 def test_task_create_rejects_placeholder_noop_description():
     coordinator = SimpleNamespace(create_task=lambda **_kwargs: None)
     tool = ForgeTaskCreateTool(coordinator)

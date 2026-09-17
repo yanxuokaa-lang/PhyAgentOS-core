@@ -11,6 +11,38 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v10.7.1 (2026-09-17 00:20) - codex
+
+- [agent] [fix] [完成] AgentLoop 不再接管全局 unbound legacy active task；仅当前 session 的结构化 `forge_task_get(task_id)` 引用可恢复旧任务，并拒绝纯文本 task ID 与 terminal stop-path 误绑定。(local)
+- [sense] [fix] [完成] Qwen GPU handoff lifecycle failure 使用同一请求进入 GPT-5.6-sol/high fallback；未确认 sleep 时返回 semantic-only 结果，不启动下游 GPU provider。(local)
+- [test] [feat] [完成] 增加四项 session ownership 回归与 handoff fallback 回归；Core `420 passed`、Skill `334 passed`、Adapter `495 passed`。(local)
+- [env] [chore] [完成] 发布并安装 Skill `2.1.5` 与 Node `0.1.14`；Node SHA-256 `1ff841511a31caaf1ce555bd7e510ac6a34a6ed44decddf689795fa90e789a92`；Skill SHA-256 `b4246219f7872787507284b749faf776400022dde9096d7adf6e6dfcd218c3a8`。(local)
+- [Agent] [Fix] [Completed] AgentLoop no longer adopts a global unbound legacy active task; only a structured session-local `forge_task_get(task_id)` reference can resume it, while plain-text IDs and terminal stop paths are rejected. (local)
+- [Sense] [Fix] [Completed] Qwen GPU-handoff lifecycle failures use same-request GPT-5.6-sol/high fallback; semantic-only output prevents downstream GPU overlap before sleep confirmation. (local)
+- [Test] [Feat] [Completed] Added four session-ownership regressions and handoff-fallback regressions; Core `420 passed`, Skill `334 passed`, Adapter `495 passed`. (local)
+- [Env] [Chore] [Completed] Released and installed Skill `2.1.5` and Node `0.1.14`; archive SHAs recorded above. (local)
+
+### 影响文件 / Affected files
+
+- `PhyAgentOS/agent/loop.py:L549-L599`
+- `tests/test_prompt_context.py:L134-L232`
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/scene_understanding_fallback.py:L73-L103`
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/single_view_perception.py:L475-L490,L701-L720,L844-L860`
+- `examples/forge-adapters/robotwin20/tests/test_scene_understanding_fallback.py:L132-L157`
+- `examples/forge-adapters/robotwin20/tests/test_single_view_perception.py:L289-L310`
+- `examples/forge-skills/pick-place-workflow/skill.yaml:L1-L67`
+
+```diff
+- legacy = store.active()
++ legacy = session-structured forge_task_get(task_id) only
+- lifecycle cleanup error leaked to generic scene Tool
++ same-request GPT fallback returns semantic-only result
+```
+
+Validation: focused `53 passed`; Core `420 passed`; Skill `334 passed`; Adapter `495 passed`; Ruff, compileall, `git diff --check`, and Agent Route Principles Gate passed. Runtime installed with 9/9 Tools ready; Query-only `scene.observe` `0.506 s`, `scene.understand` `12.358 s`, 3 entities, 2 relations, 4 explicit ambiguities, and automatic return to vLLM sleep. `0` Action, `0` Session, no simulator step or physical motion.
+
+Git commit: pending.
+
 ## v10.7.0 (2026-09-16 22:10) - codex
 
 - [sense] [feat] [完成] 为 Qwen3-VL-4B vLLM 增加请求前 wake、空闲 level-1 sleep、活动请求互斥及 Qwen/LocateAnything GPU 交接；仅 lifecycle/control 异常进入 GPT-5.6-sol/high fallback。(local)

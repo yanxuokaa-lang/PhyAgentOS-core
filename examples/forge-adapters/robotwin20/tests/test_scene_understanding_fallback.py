@@ -24,12 +24,15 @@ class _Provider:
 
 
 class _ReleasableProvider(_Provider):
-    def __init__(self, result=None, error=None):
+    def __init__(self, result=None, error=None, release_error=None):
         super().__init__(result=result, error=error)
         self.release_count = 0
+        self.release_error = release_error
 
     def release(self):
         self.release_count += 1
+        if self.release_error:
+            raise self.release_error
 
 
 def test_local_provider_is_primary_and_route_is_diagnostic_only():
@@ -129,3 +132,26 @@ def test_release_does_not_touch_failed_primary_after_fallback():
     route.release()
 
     assert primary.release_count == 0
+
+
+def test_lifecycle_handoff_failure_uses_gpt_for_same_request():
+    primary = _ReleasableProvider(
+        {"entities": [{"entity_ref": "entity://qwen"}]},
+        release_error=Qwen3VLVLLMLifecycleError("sleep failed"),
+    )
+    fallback = _Provider({"entities": [{"entity_ref": "entity://fallback"}]})
+    route = FallbackSceneUnderstandingInference(
+        primary,
+        fallback,
+        primary_name="qwen3-vl-4b-vllm",
+        fallback_name="gpt-5.6-sol-high",
+        fallback_exceptions=(Qwen3VLVLLMLifecycleError,),
+        fallback_on_empty=False,
+    )
+
+    assert route.infer({"observation_ref": "observation://1/head"})["entities"][0]["entity_ref"] == "entity://qwen"
+    recovered = route.release_for_request({"observation_ref": "observation://1/head"})
+
+    assert recovered["entities"][0]["entity_ref"] == "entity://fallback"
+    assert route.last_route == "gpt-5.6-sol-high"
+    assert route.last_error == "Qwen3VLVLLMLifecycleError"

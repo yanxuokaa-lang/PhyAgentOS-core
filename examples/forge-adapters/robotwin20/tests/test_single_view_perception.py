@@ -63,6 +63,32 @@ class SemanticInference:
         self.released += 1
 
 
+class HandoffFallbackSemanticInference(SemanticInference):
+    def release_for_request(self, request):
+        assert request == REQUEST
+        return {
+            "entities": [
+                {
+                    "entity_ref": "entity://fallback-block",
+                    "category": "fallback block",
+                    "confidence": 0.85,
+                    "provenance": [RGB_REF],
+                }
+            ],
+            "relations": [],
+            "spatial_envelopes": [],
+            "derived_artifacts": [],
+            "ambiguities": [
+                {
+                    "code": "lifecycle_handoff_failed",
+                    "message": "Qwen sleep was not confirmed; GPT semantics used",
+                    "entity_refs": ["entity://fallback-block"],
+                }
+            ],
+            "reconciliations": [],
+        }
+
+
 class AmbiguousSemanticInference(SemanticInference):
     def infer(self, request):
         result = super().infer(request)
@@ -261,6 +287,26 @@ def test_single_view_composition_crosses_the_generic_gateway_without_motion(tmp_
         "/tools/scene.understand",
         "/tools/scene_understanding/understand:invoke",
     ]
+
+
+def test_handoff_fallback_skips_downstream_gpu_providers(tmp_path):
+    proposal = ProposalProvider()
+    segmentation = SegmentationProvider(np.ones((3, 4), dtype=bool))
+    inference = SingleViewPerceptionInference(
+        HandoffFallbackSemanticInference(),
+        proposal_provider=proposal,
+        segmentation_provider=segmentation,
+        localization_provider=NumpyMetricLocalizationProvider(),
+        artifact_store=_artifacts(tmp_path),
+    )
+
+    result = inference.infer(REQUEST)
+
+    assert result["entities"][0]["entity_ref"] == "entity://fallback-block"
+    assert result["spatial_envelopes"] == []
+    assert result["derived_artifacts"] == []
+    assert proposal.requests == []
+    assert segmentation.requests == []
 
 
 def test_multiple_proposals_return_ambiguity_without_segmenting(tmp_path):

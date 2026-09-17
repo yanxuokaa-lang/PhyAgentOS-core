@@ -7,7 +7,7 @@ import json
 import os
 import re
 import sys
-from collections.abc import MutableSet
+from collections.abc import Mapping, MutableSet
 from contextlib import AsyncExitStack
 from pathlib import Path
 from time import monotonic
@@ -35,6 +35,7 @@ from PhyAgentOS.agent.tools.web import WebFetchTool, WebSearchTool
 from PhyAgentOS.bus.events import InboundMessage, OutboundMessage
 from PhyAgentOS.bus.queue import MessageBus
 from PhyAgentOS.embodiment_registry import EmbodimentRegistry
+from PhyAgentOS.forge.task import AgentTaskError
 from PhyAgentOS.providers.base import LLMProvider
 from PhyAgentOS.providers.providers_manager import ProvidersManager
 from PhyAgentOS.session.manager import Session, SessionManager
@@ -558,9 +559,43 @@ class AgentLoop:
             return nonterminal[-1]
         if include_terminal and tasks:
             return tasks[-1]
-        legacy = self.forge_task_coordinator.store.active()
-        if legacy is not None and legacy.origin_session_key is None:
+        legacy = self._legacy_task_for_session(session_key)
+        if legacy is not None and (include_terminal or not legacy.terminal):
             return legacy
+        return None
+
+    def _legacy_task_for_session(self, session_key: str) -> Any | None:
+        """Resolve only a legacy task explicitly referenced by this session."""
+        history = self.sessions.get_or_create(session_key).get_history(max_messages=0)
+        for message in reversed(history):
+            if message.get("role") != "assistant":
+                continue
+            tool_calls = message.get("tool_calls")
+            if not isinstance(tool_calls, list):
+                continue
+            for call in reversed(tool_calls):
+                if not isinstance(call, Mapping):
+                    continue
+                function = call.get("function")
+                if not isinstance(function, Mapping) or function.get("name") != "forge_task_get":
+                    continue
+                arguments = function.get("arguments")
+                if isinstance(arguments, str):
+                    try:
+                        arguments = json.loads(arguments)
+                    except json.JSONDecodeError:
+                        continue
+                if not isinstance(arguments, Mapping):
+                    continue
+                task_id = arguments.get("task_id")
+                if not isinstance(task_id, str) or not task_id:
+                    continue
+                try:
+                    task = self.forge_task_coordinator.store.get(task_id)
+                except AgentTaskError:
+                    continue
+                if task.origin_session_key is None:
+                    return task
         return None
 
     async def _run_agent_loop(

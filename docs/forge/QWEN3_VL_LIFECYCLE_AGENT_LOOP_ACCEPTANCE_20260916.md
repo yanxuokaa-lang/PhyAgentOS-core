@@ -75,27 +75,30 @@ without it, `/sleep`, `/wake_up`, and `/is_sleeping` return HTTP 404 even with
    at the adapter boundary; task projection exposes recovery deadline and lease
    use.
 7. AgentLoop autonomy: the Agent supplies semantic intent, while PAOS supplies
-   trusted identity and returns directly reusable final Tool arguments.
+   trusted identity and returns directly reusable final Tool arguments. Legacy
+   tasks are resumable only after this session explicitly issued a structured
+   `forge_task_get(task_id)` call; unrelated global legacy tasks are ignored.
 
 ## Validation evidence
 
-- Core: `416 passed`
+- Core: `420 passed`
 - Skill: `334 passed`
-- RoboTwin adapter: `493 passed`
+- RoboTwin adapter: `495 passed`
 - Ruff, compileall, and `git diff --check`: passed
 - Live no-motion image: sleeping memory about `276 MiB`; automatic wake request
   `6.865 s`; output `3` entities, `2` relations, `1` ambiguity, empty metric
   envelope; automatic idle sleep returned to `276 MiB`.
 - Subsequent live requests: `4.474 s` and `3.687 s`, both with `3` entities and
   `2` relations.
-- Final installed release: Skill `2.1.4`, Node `0.1.13`; Node SHA-256
-  `58bc793aa2d90a7344c4ebea8b57140c45c168527eccd65929e906de4a55151f`;
+- Final installed release: Skill `2.1.5`, Node `0.1.14`; Node SHA-256
+  `1ff841511a31caaf1ce555bd7e510ac6a34a6ed44decddf689795fa90e789a92`;
   Skill archive SHA-256
-  `259792c968d3d369d010961948d3fc21fa65b5f91d5f66d2e3388a74c6449bbf`.
-- Final installed-Runtime Query: all `9` Tools ready; request began and ended
-  with vLLM sleeping, completed in `13.225 s`, and returned `3` entities and
-  `2` relations. Four ambiguities remained explicit, including the unmodeled
-  foreground object; no metric envelope or derived artifact was fabricated.
+  `b4246219f7872787507284b749faf776400022dde9096d7adf6e6dfcd218c3a8`.
+- Final installed-Runtime Query: all `9` Tools ready; `scene.observe` returned
+  a fresh observation in `0.506 s`, then `scene.understand` automatically woke
+  vLLM and completed in `12.358 s`, returning `3` entities, `2` relations,
+  four explicit ambiguities, and no fabricated metric envelope or derived
+  artifact. After 4 seconds of inactivity `/is_sleeping` returned `true`.
 - The release packager excludes `.pytest_cache`, `.ruff_cache`, and
   `__pycache__`; the archive-content regression passed.
 - Lifecycle fault injection: with the operator-owned vLLM stopped, the same
@@ -103,6 +106,31 @@ without it, `/sleep`, `/wake_up`, and `/is_sleeping` return HTTP 404 even with
   metric envelopes in `121.011 s`; no Action or Session was created.
 - Direct calls to the vLLM inference endpoint are outside lifecycle ownership
   and must not run concurrently with PAOS-managed sleep/wake transitions.
+
+### Review closeout
+
+- Problem 1 (missing `manipulation_intent_v2`): fixed in the earlier release;
+  Coordinator derives task/revision/node/digest identity and admission checks
+  the persisted argument digest.
+- Problem 2 (cross-revision recovery, deadline, and bounded lease): fixed;
+  cross-graph `retry_of` is rejected at compile time, and `begin_revision()`
+  independently enforces the deadline with one bounded lease.
+- Problem 3 (global active/noop task selection): fixed; current-session tasks
+  win, unbound legacy tasks require a structured session-local
+  `forge_task_get` reference, and plain text/global active state is ignored.
+- Lifecycle Major: fixed; handoff failure uses the same request for GPT
+  fallback and returns semantic-only output without downstream GPU providers.
+
+### Final static and no-motion checks
+
+- Focused AgentLoop/lifecycle tests: `53 passed`; Core `420 passed`; Skill
+  `334 passed`; Adapter `495 passed`.
+- Ruff, compileall, `git diff --check`, and Principles Gate
+  `--complete --agent-route`: passed.
+- Runtime deployment: old `2.1.4/0.1.13` stopped normally; new Skill
+  `2.1.5` and Node `0.1.14` installed and `paos forge-node verify` passed.
+- Query-only evidence: `0` Action, `0` Session, no simulator step, no
+  physical motion, and no motion authorization was granted.
 
 ### Principles Gate
 

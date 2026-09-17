@@ -474,7 +474,20 @@ class SingleViewPerceptionInference:
 
     def infer(self, request: Mapping[str, Any]) -> Mapping[str, Any]:
         base = self._semantic_result(request)
-        _release_provider(self.semantic_inference, "semantic")
+        handoff_result = _release_provider(
+            self.semantic_inference, "semantic", request=request
+        )
+        if handoff_result is not None:
+            base = self._validate_semantic_result(handoff_result)
+            return {
+                "entities": list(base["entities"]),
+                "relations": list(base.get("relations", [])),
+                "spatial_envelopes": list(base.get("spatial_envelopes", [])),
+                "derived_artifacts": [],
+                "ambiguities": list(base.get("ambiguities", [])),
+                "reconciliations": list(base.get("reconciliations", [])),
+                "provider_available": base.get("provider_available", True),
+            }
         artifacts = request.get("artifacts")
         if not isinstance(artifacts, list):
             raise SingleViewPerceptionError("scene understanding artifacts must be an array")
@@ -688,6 +701,10 @@ class SingleViewPerceptionInference:
     def _semantic_result(self, request: Mapping[str, Any]) -> Mapping[str, Any]:
         infer = getattr(self.semantic_inference, "infer", None)
         raw = infer(request) if callable(infer) else self.semantic_inference(request)
+        return self._validate_semantic_result(raw)
+
+    @staticmethod
+    def _validate_semantic_result(raw: Any) -> Mapping[str, Any]:
         if not isinstance(raw, Mapping):
             raise SingleViewPerceptionError("semantic inference returned an invalid result")
         allowed = {"entities", "relations", "spatial_envelopes", "derived_artifacts", "ambiguities", "reconciliations", "provider_available"}
@@ -824,13 +841,23 @@ def _derived_refs(rgb_ref: str, entity_ref: str) -> tuple[str, str, str, str]:
     return f"{base}/mask-{token}", f"{base}/points-{token}", f"{base}/localization-{token}", f"{base}/geometry-{token}"
 
 
-def _release_provider(provider: Any, label: str) -> None:
+def _release_provider(
+    provider: Any, label: str, *, request: Mapping[str, Any] | None = None
+) -> Mapping[str, Any] | None:
+    if request is not None:
+        release_for_request = getattr(provider, "release_for_request", None)
+        if callable(release_for_request):
+            try:
+                return release_for_request(request)
+            except Exception as exc:
+                raise SingleViewPerceptionError(f"{label} provider cleanup failed") from exc
     release = getattr(provider, "release", None)
     if callable(release):
         try:
             release()
         except Exception as exc:
             raise SingleViewPerceptionError(f"{label} provider cleanup failed") from exc
+    return None
 
 
 def _finite_matrix(value: Any, shape: tuple[int, int], name: str) -> Any:
