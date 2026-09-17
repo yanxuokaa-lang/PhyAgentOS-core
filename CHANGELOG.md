@@ -43,7 +43,7 @@ Architecture, recovery, robotics safety, configuration/reproducibility, maintain
 
 ### Git 提交 / Git commit
 
-- Commit: pending
+- Commit: `77f2c25`
 - Branch: `feature/planning-loop`
 - 时间 / Time: 2026-09-18 (Asia/Shanghai)
 
