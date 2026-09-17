@@ -53,7 +53,7 @@ admission, and final verification remain fail-closed.
 - Editable install resolves to `/home/yanxu/PhyAgentOS-forge/PhyAgentOS`.
 - RGB config remains `gpt-5.6-sol/high/272000/260000/110s`; no Gateway Tool,
   Action, Session, simulator step, Runtime transition, or physical motion occurred.
-- Implementation commit: `pending`; branch: `feature/planning-loop`.
+- Implementation commit: `8ae4189`; branch: `feature/planning-loop`.
 
 ## v10.8.5 (2026-09-18 03:27) - codex
 
