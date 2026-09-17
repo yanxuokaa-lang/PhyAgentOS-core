@@ -11,6 +11,32 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v10.8.5 (2026-09-18 03:27) - codex
+
+- [config] [tune] [完成] RGB 正式任务恢复 272K context window 与 260K compaction trigger；模型、high reasoning、110s 请求超时和 10s Forge timeout 不变。(local)
+- [eval] [test] [完成] 实际配置解析与 PromptContext/config focused tests 通过，全程 no-motion。(local)
+- [Config] [Tune] [Completed] Restore the formal RGB task to a 272K context window and 260K compaction trigger while retaining the model, high reasoning, 110s request timeout, and 10s Forge timeout. (local)
+- [Eval] [Test] [Completed] Resolved configuration and focused PromptContext/config tests passed under no-motion validation. (local)
+
+### 影响文件 / Affected files
+
+- `/home/yanxu/.PhyAgentOS/config-rgb-no-evolution-long.json:L8-L12`
+- `changelog/2026-09_part9.md`; `CHANGELOG.md`
+
+```diff
+- "contextCompactionTriggerTokens": 96000
++ "contextCompactionTriggerTokens": 260000
+```
+
+Validation: resolved `gpt-5.6-sol/high/272000/260000/110s`, Forge timeout
+`10s`; focused `55 passed in 2.71s`; JSON parse and diff check passed. No
+Gateway Tool, Action, Session, simulator step, world change, or motion.
+
+### Git 提交 / Git commit
+
+- Commit: `pending`
+- Branch: `feature/planning-loop`
+
 ## v10.8.4 (2026-09-18 02:45) - codex
 
 - [agent] [fix] [完成] 已落盘 Query/Action/Session 在同轮后续模型失败前完成对账；status 只保存进度，result 才允许终态 NodeSettlement。(local)
@@ -185,6 +211,8 @@ Validation: focused `70`, Core/extension `521`, Skill `334`, Adapter `491 passed
 - Branch: `feature/planning-loop`
 - 时间 / Time: 2026-09-18 (Asia/Shanghai)
 
+## 历史记录 / Historical Records
+
 ## v10.8.0 (2026-09-17 23:39) - codex
 
 - [agent] [fix] [完成] 编译期拒绝无冻结 ToolPolicy 可绑定的节点；历史图在 `forge_plan_ready` 中区分 dependency-ready 与 selection-ready。(local)
@@ -220,8 +248,6 @@ Architecture, recovery, robotics safety, configuration/reproducibility, maintain
 - Commit: `77f2c25`
 - Branch: `feature/planning-loop`
 - 时间 / Time: 2026-09-18 (Asia/Shanghai)
-
-## 历史记录 / Historical Records
 
 ## v10.7.4 (2026-09-17 23:02) - codex
 
