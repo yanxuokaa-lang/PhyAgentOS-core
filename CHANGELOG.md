@@ -61,7 +61,7 @@ wrapper), while all six persisted SkillUse audit records remained intact.
 
 ### Git 提交 / Git commit
 
-- Implementation commit: `PENDING`
+- Implementation commit: `7480e14`
 - Branch: `feature/planning-loop`
 
 ## v10.8.2 (2026-09-18 00:51) - codex
