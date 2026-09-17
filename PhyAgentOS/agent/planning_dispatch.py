@@ -336,14 +336,6 @@ class AgentComposedDispatch:
             raise PlanningDispatchError("ToolSpec trusted argument builder is unsupported")
 
         supplied = final_arguments.pop("intent", None)
-        node_intent = node.input_bindings.get("intent")
-        if supplied is not None and node_intent is not None and supplied != node_intent:
-            raise PlanningDispatchError("Tool intent does not match the semantic node")
-        semantic = supplied if supplied is not None else node_intent
-        if not isinstance(semantic, Mapping):
-            raise PlanningDispatchError(
-                "manipulation intent semantics are required in Tool arguments or node input_bindings"
-            )
         semantic_keys = {
             "goal",
             "success_criteria",
@@ -351,6 +343,34 @@ class AgentComposedDispatch:
             "coordination_mode",
             "constraints",
         }
+        flat_supplied = {
+            key: final_arguments.pop(key)
+            for key in semantic_keys
+            if key in final_arguments
+        }
+        node_intent = node.input_bindings.get("intent")
+        flat_node = {
+            key: node.input_bindings[key]
+            for key in semantic_keys
+            if key in node.input_bindings
+        }
+        if supplied is not None and not isinstance(supplied, Mapping):
+            raise PlanningDispatchError("nested Tool intent semantics must be an object")
+        if node_intent is not None and not isinstance(node_intent, Mapping):
+            raise PlanningDispatchError("nested node intent semantics must be an object")
+        if supplied is not None and flat_supplied and dict(supplied) != flat_supplied:
+            raise PlanningDispatchError("nested and flat Tool intent semantics conflict")
+        if node_intent is not None and flat_node and dict(node_intent) != flat_node:
+            raise PlanningDispatchError("nested and flat node intent semantics conflict")
+        supplied_semantic = supplied if supplied is not None else (flat_supplied or None)
+        node_semantic = node_intent if node_intent is not None else (flat_node or None)
+        if supplied_semantic is not None and node_semantic is not None and dict(supplied_semantic) != dict(node_semantic):
+            raise PlanningDispatchError("Tool intent does not match the semantic node")
+        semantic = supplied_semantic if supplied_semantic is not None else node_semantic
+        if not isinstance(semantic, Mapping):
+            raise PlanningDispatchError(
+                "manipulation intent semantics are required in Tool arguments or node input_bindings"
+            )
         owned_keys = {
             "version",
             "task_id",

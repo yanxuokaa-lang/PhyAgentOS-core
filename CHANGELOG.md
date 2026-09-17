@@ -11,6 +11,55 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v10.7.3 (2026-09-17 15:36) - codex
+
+- [agent] [fix] [完成] 跨 session AgentTask 冲突现在返回 `agent_task_busy`、owner session 与只读恢复指引；不允许隐式接管。(local)
+- [agent] [fix] [完成] `manipulation_intent_v2` 支持文档声明的 flat 语义和旧 nested `intent`，冲突在 Gateway 前拒绝，身份仍由 Coordinator 派生。(local)
+- [agent] [fix] [完成] long-horizon node turn 显式携带 task identity；one-shot CLI 在关闭 MCP/Gateway 前等待任务终态或受治理阻塞。(local)
+- [eval] [test] [完成] 新增跨 session（含异步绑定）、flat/conflicting/invalid intent、task-aware projection、CLI wait 与 no-motion 回归；Core 425、Skill 334、Adapter 497 passed。(local)
+- [Agent] [Fix] [Completed] Cross-session AgentTask conflicts now return `agent_task_busy`, owner session, and read-only recovery guidance; implicit takeover remains forbidden. (local)
+- [Agent] [Fix] [Completed] `manipulation_intent_v2` accepts documented flat semantics and legacy nested `intent`; conflicts fail before Gateway while Coordinator derives identity. (local)
+- [Agent] [Fix] [Completed] Long-horizon node turns carry explicit task identity; one-shot CLI waits for terminal or governed blocked state before closing MCP/Gateway. (local)
+- [Eval] [Test] [Completed] Added cross-session (including async bound creation), flat/conflicting/invalid intent, task-aware projection, CLI-wait, and no-motion regressions; Core 425, Skill 334, Adapter 497 passed. (local)
+
+### 影响文件 / Affected Files
+
+- `PhyAgentOS/forge/task.py:L77-L88,L575-L584`
+- `PhyAgentOS/agent/tools/forge_task.py:L13-L18,L103-L127`
+- `PhyAgentOS/agent/planning_dispatch.py:L338-L392`
+- `PhyAgentOS/agent/loop.py:L351-L367,L619-L643,L785-L822`
+- `PhyAgentOS/agent/long_horizon.py:L149-L160`
+- `PhyAgentOS/cli/commands.py:L1061-L1071`
+- `examples/forge-skills/pick-place-workflow/SKILL.md:L156-L164`, `skill.yaml:L3`, `pyproject.toml:L3`
+- `tests/test_agent_task_tool.py:L1-L40`, `tests/test_planning_selection.py:L247-L351`, `tests/test_long_horizon_controller.py:L171-L190`
+- `PhyAgentOS/agent/experience/__init__.py:L31-L36`
+
+```diff
+- generic busy error / missing-tools diagnosis
++ structured owner-session conflict with no takeover
+- flat intent rejected
++ flat and nested intent normalized and conflict-checked
+- one-shot closes clients immediately
++ one-shot awaits controller join
+```
+
+Validation: Core 425, Skill 334, Adapter 497, focused AgentLoop/planning 19 plus 51, safety/package 15, and focused Skill 74 passed; Ruff, compileall, diff check, and Agent Route Principles Gate passed; no Action/Session/motion.
+
+## v10.7.2 (2026-09-17 15:06) - codex
+
+- [sense] [fix] [完成] Qwen 场景理解投影保留颜色等识别属性，并放宽仅缺少 metric/3-D/support geometry 时的语义阻塞。(local)
+- [test] [feat] [完成] 增加属性投影、重复描述和提示边界回归。(local)
+- [Sense] [Fix] [Completed] Qwen scene projection preserves identifying attributes such as color and does not block solely on missing metric/3-D/support geometry. (local)
+- [Test] [Feat] [Completed] Added regressions for attribute projection, duplicate descriptions, and prompt boundaries. (local)
+
+### 影响文件 / Affected Files
+
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/qwen3_vl_vllm_scene_understanding.py`
+- `examples/forge-adapters/robotwin20/tests/test_qwen3_vl_vllm_scene_understanding.py`
+- `examples/forge-skills/pick-place-workflow/skill.yaml`, `pyproject.toml`
+
+Validation: changed Adapter/Skill tests and lint passed; no Action/Session/motion.
+
 ## v10.7.1 (2026-09-17 00:20) - codex
 
 - [agent] [fix] [完成] AgentLoop 不再接管全局 unbound legacy active task；仅当前 session 的结构化 `forge_task_get(task_id)` 引用可恢复旧任务，并拒绝纯文本 task ID 与 terminal stop-path 误绑定。(local)

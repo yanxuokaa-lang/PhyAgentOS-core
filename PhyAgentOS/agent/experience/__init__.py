@@ -28,12 +28,12 @@ from PhyAgentOS.agent.experience.contracts import (
     TaskOutcomeEnvelope,
     WorkflowTraceItem,
 )
+from PhyAgentOS.agent.experience.evolution_composition import compose_evolution_extension
 from PhyAgentOS.agent.experience.policy_candidates import (
     PolicyCandidateError,
     WorkflowPolicyCandidateManager,
 )
 from PhyAgentOS.agent.experience.source import ForgeTaskOutcomeSource, TaskOutcomeSource
-from PhyAgentOS.agent.experience.evolution_composition import compose_evolution_extension
 
 __all__ = [
     "ExperienceAssessment",

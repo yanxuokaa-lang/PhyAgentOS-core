@@ -146,6 +146,19 @@ class LongHorizonTaskController:
         """Return persisted task/revision status without invoking a Tool."""
         return self._snapshot(task_id)
 
+    async def wait(self, task_id: str) -> LongHorizonTaskResult:
+        """Join an in-process run before its host closes shared clients."""
+        run = self._runs.get(task_id)
+        if run is None:
+            task = self.coordinator.get_task(task_id)
+            if task.terminal or self.adapter is None or task.active_revision.plan_graph is None:
+                return self._snapshot(task_id)
+            self._ensure_started(task_id)
+            run = self._runs.get(task_id)
+        if run is None:
+            return self._snapshot(task_id)
+        return await asyncio.shield(run)
+
     async def run(self, task_id: str) -> LongHorizonTaskResult:
         """Run until a terminal, blocked, awaiting-replan, or paused state."""
         if self.adapter is None:

@@ -266,7 +266,10 @@ def task_stop(
     loaded = _load_command_config(config, workspace)
     async def cancel_owned_task():
         from PhyAgentOS.forge.binding import ForgeSkillBindingResolver
-        from PhyAgentOS.skill_runtime.integration import ActiveRuntimeRegistry, discover_active_runtime
+        from PhyAgentOS.skill_runtime.integration import (
+            ActiveRuntimeRegistry,
+            discover_active_runtime,
+        )
 
         coordinator = _task_control_coordinator(loaded)
         task = coordinator.get_task(task_id)
@@ -1061,6 +1064,7 @@ def agent(
             try:
                 with _thinking_ctx():
                     response = await agent_loop.process_direct(message, session_id, on_progress=_cli_progress)
+                    await agent_loop.wait_for_long_horizon_tasks(session_id)
                 _print_agent_response(response, render_markdown=markdown)
             finally:
                 agent_loop.stop()

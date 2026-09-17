@@ -183,8 +183,12 @@ class Qwen3VLVLLMSceneUnderstandingInference:
         return (
             "Inspect this single RGB observation for visible semantic scene understanding. "
             "Return only the requested JSON schema. Identify clearly visible entities and "
-            "image-plane/topological relations; use confidence in [0,1]. Do not infer metric "
+            "image-plane/topological relations; use confidence in [0,1]. Include visible "
+            "identifying attributes such as color in both attributes and the natural-language "
+            "category (for example, red cube rather than cube). Do not infer metric "
             "depth, 3-D geometry, simulator truth, task success, IK, or motion authorization. "
+            "Do not report an ambiguity solely because metric scale, 3-D geometry, or support "
+            "geometry is unavailable; downstream RGB-D composition owns those claims. "
             "All provenance is assigned by the adapter. "
             + json.dumps({"observation_ref": request.get("observation_ref"), "scene_revision": request.get("scene_revision")}, sort_keys=True)
         )
@@ -213,7 +217,8 @@ def _project_vllm_claims(value: Any, image_ref: str) -> dict[str, Any]:
             raise Qwen3VLVLLMInferenceError("qwen vLLM entity identity is invalid")
         ref = f"entity://{local_id}"
         id_map[local_id] = ref
-        entities.append({"entity_ref": ref, "category": str(item["category"]), "confidence": item["confidence"], "provenance": [image_ref]})
+        category, confidence = _public_entity_category(item)
+        entities.append({"entity_ref": ref, "category": category, "confidence": confidence, "provenance": [image_ref]})
     relations = []
     for item in value["relations"]:
         if not isinstance(item, Mapping) or set(item) != {"subject_id", "predicate", "object_id", "relation_space", "confidence"}:
@@ -231,6 +236,34 @@ def _project_vllm_claims(value: Any, image_ref: str) -> dict[str, Any]:
         refs = [id_map[ref] for ref in item["entity_ids"] if ref in id_map]
         ambiguities.append({"code": item["code"], "message": item["message"], "entity_refs": refs})
     return {"entities": entities, "relations": relations, "spatial_envelopes": [], "ambiguities": ambiguities, "provider_available": True}
+
+
+def _public_entity_category(item: Mapping[str, Any]) -> tuple[str, float]:
+    """Fold a visible color into the public natural-language category.
+
+    The public scene entity contract intentionally has no provider-specific
+    ``attributes`` field, while downstream localization consumes ``category``
+    as its text query. Preserve the model's color evidence at that boundary and
+    lower the entity confidence when the color claim is less certain.
+    """
+    category = " ".join(str(item["category"]).split())
+    confidence = float(item["confidence"])
+    for attribute in item["attributes"]:
+        if not isinstance(attribute, Mapping) or set(attribute) != {"name", "value", "confidence"}:
+            raise Qwen3VLVLLMInferenceError("qwen vLLM entity attribute fields are invalid")
+        if str(attribute["name"]).strip().casefold() != "color":
+            continue
+        value = attribute["value"]
+        if not isinstance(value, str) or not value.strip():
+            continue
+        color = " ".join(value.split())
+        normalized_category = f" {category.casefold()} "
+        normalized_color = f" {color.casefold()} "
+        if normalized_color not in normalized_category:
+            category = f"{color} {category}"
+        confidence = min(confidence, float(attribute["confidence"]))
+        break
+    return category, confidence
 
 
 __all__ = [

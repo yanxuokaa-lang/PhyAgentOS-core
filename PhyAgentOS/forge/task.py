@@ -77,6 +77,16 @@ class TaskNotReadyForFinalizationError(AgentTaskError):
 class AgentTaskBusyError(AgentTaskError):
     """Raised when the global non-terminal AgentTask slot is occupied."""
 
+    code = "agent_task_busy"
+
+    def __init__(self, task_id: str, owner_session_key: str | None) -> None:
+        self.task_id = task_id
+        self.owner_session_key = owner_session_key
+        owner = owner_session_key or "unknown"
+        super().__init__(
+            f"AgentTask {task_id} is still non-terminal and is owned by session {owner}"
+        )
+
 
 class AgentTaskOriginConflictError(AgentTaskError):
     """Raised when an immutable task origin has already been compiled."""
@@ -563,12 +573,14 @@ class AgentTaskStore:
                         str(existing["task_id"]),
                     )
             active = connection.execute(
-                "SELECT task_id FROM agent_tasks WHERE status NOT IN (?, ?, ?) LIMIT 1",
+                "SELECT task_id, origin_session_key FROM agent_tasks "
+                "WHERE status NOT IN (?, ?, ?) LIMIT 1",
                 tuple(item.value for item in TERMINAL_TASK_STATUSES),
             ).fetchone()
             if active is not None:
                 raise AgentTaskBusyError(
-                    f"AgentTask {active['task_id']} is still non-terminal"
+                    str(active["task_id"]),
+                    active["origin_session_key"],
                 )
             self._insert(connection, record)
             self._event(connection, record.task_id, "task_created", {})

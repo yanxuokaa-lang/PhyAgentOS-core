@@ -242,3 +242,117 @@ def test_prepare_selection_rejects_model_owned_coordinator_identity():
         assert "Coordinator-owned" in str(exc)
     else:
         raise AssertionError("model-authored Coordinator identity must be rejected")
+
+
+def test_prepare_selection_accepts_documented_flat_intent_fields():
+    node = PlanNode(
+        node_id="prepare-flat",
+        obligation_id="prepare-flat",
+        capability="manipulation.prepare",
+        input_bindings={
+            "entity_ref": "entity://green",
+            "goal": "place green in the middle",
+            "success_criteria": ["green reaches the resolved destination"],
+            "allowed_arms": ["left"],
+            "coordination_mode": "single_arm",
+            "constraints": ["collision free"],
+        },
+    )
+    payload = {
+        "task_id": "task-flat",
+        "revision_id": "revision-flat",
+        "graph_digest": "0" * 64,
+        "planner_decision_digest": "1" * 64,
+        "policy_snapshot_digest": "2" * 64,
+        "nodes": [node.model_dump(mode="json")],
+    }
+    payload["graph_digest"] = plan_graph_digest(payload)
+    dispatch = AgentComposedDispatch(
+        PlanGraph.model_validate(payload),
+        (ToolSpecPolicy(
+            tool_id="manipulation.prepare",
+            semantics="query",
+            spec_digest="3" * 64,
+            capabilities=("manipulation.prepare",),
+            trusted_argument_builder="manipulation_intent_v2",
+        ),),
+        AdmissionContext(scene_revision="scene-flat"),
+    )
+    arguments = {
+        "observation_ref": "observation://scene-flat/camera",
+        "scene_revision": "scene-flat",
+        "frame_id": "camera",
+        "calibration_ref": "artifact://calibration/camera",
+        "freshness_ms": 0,
+        "max_age_ms": 1000,
+        "candidate_set_ref": "candidate-set://scene-flat/camera",
+        "candidates": [{"entity_ref": "entity://green"}],
+        "destination_ref": "destination://targets/middle",
+        "capability_snapshot_ref": "artifact://capabilities/current",
+        "goal": "place green in the middle",
+        "success_criteria": ["green reaches the resolved destination"],
+        "allowed_arms": ["left"],
+        "coordination_mode": "single_arm",
+        "constraints": ["collision free"],
+    }
+    proposal = dispatch.prepare_selection(
+        node_id=node.node_id,
+        tool_id="manipulation.prepare",
+        arguments=arguments,
+        decision_reason="check flat contract",
+    )
+    assert proposal["tool_arguments"]["intent"]["goal"] == "place green in the middle"
+    assert proposal["tool_arguments"]["intent"]["motion_authorized"] is False
+
+    conflicting = dict(arguments, coordination_mode="bimanual")
+    try:
+        dispatch.prepare_selection(
+            node_id=node.node_id,
+            tool_id="manipulation.prepare",
+            arguments=conflicting,
+            decision_reason="reject semantic drift",
+        )
+    except ValueError as exc:
+        assert "does not match the semantic node" in str(exc)
+    else:
+        raise AssertionError("conflicting flat intent must fail before Gateway invocation")
+
+
+def test_prepare_selection_rejects_non_object_nested_intent_as_contract_error():
+    node = PlanNode(
+        node_id="prepare-invalid",
+        obligation_id="prepare-invalid",
+        capability="manipulation.prepare",
+        input_bindings={"entity_ref": "entity://green"},
+    )
+    payload = {
+        "task_id": "task-invalid",
+        "revision_id": "revision-invalid",
+        "graph_digest": "0" * 64,
+        "planner_decision_digest": "1" * 64,
+        "policy_snapshot_digest": "2" * 64,
+        "nodes": [node.model_dump(mode="json")],
+    }
+    payload["graph_digest"] = plan_graph_digest(payload)
+    dispatch = AgentComposedDispatch(
+        PlanGraph.model_validate(payload),
+        (ToolSpecPolicy(
+            tool_id="manipulation.prepare",
+            semantics="query",
+            spec_digest="3" * 64,
+            capabilities=("manipulation.prepare",),
+            trusted_argument_builder="manipulation_intent_v2",
+        ),),
+        AdmissionContext(scene_revision="scene-invalid"),
+    )
+    try:
+        dispatch.prepare_selection(
+            node_id=node.node_id,
+            tool_id="manipulation.prepare",
+            arguments={"intent": "not-an-object"},
+            decision_reason="reject invalid shape",
+        )
+    except ValueError as exc:
+        assert "must be an object" in str(exc)
+    else:
+        raise AssertionError("non-object nested intent must be rejected as a contract error")

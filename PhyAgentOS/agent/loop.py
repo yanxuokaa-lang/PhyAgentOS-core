@@ -348,6 +348,24 @@ class AgentLoop:
             started.append(task.task_id)
         return tuple(started)
 
+    async def wait_for_long_horizon_tasks(self, session_key: str) -> tuple[Any, ...]:
+        """Wait for tasks started by one direct/one-shot turn.
+
+        Interactive transports keep the existing background behavior; callers
+        that own the process lifetime (the one-shot CLI) use this explicit join
+        before closing MCP/Gateway clients.
+        """
+        controller = self.long_horizon_controller
+        coordinator = self.forge_task_coordinator
+        if controller is None or coordinator is None or not callable(getattr(controller, "wait", None)):
+            return ()
+        results = []
+        for task in coordinator.store.find_by_origin_session_key(session_key):
+            if task.terminal or task.active_revision.plan_graph is None:
+                continue
+            results.append(await controller.wait(task.task_id))
+        return tuple(results)
+
     def build_long_horizon_controller(self, *, on_result=None):
         """Build the thin outer controller when a trusted context provider exists.
 
@@ -603,6 +621,7 @@ class AgentLoop:
         initial_messages: list[dict],
         on_progress: Callable[..., Awaitable[None]] | None = None,
         experience_session_key: str | None = None,
+        active_task_id: str | None = None,
     ) -> tuple[str | None, list[str], list[dict]]:
         """Run the agent iteration loop."""
         messages = initial_messages
@@ -617,7 +636,11 @@ class AgentLoop:
         while iteration < self.max_iterations:
             iteration += 1
 
-            active_task = self._task_for_session(experience_session_key)
+            active_task = (
+                self.forge_task_coordinator.get_task(active_task_id)
+                if active_task_id is not None and self.forge_task_coordinator is not None
+                else self._task_for_session(experience_session_key)
+            )
 
             def estimate(request_messages, visible_names):
                 definitions = self.tools.get_definitions(set(visible_names))
@@ -759,8 +782,10 @@ class AgentLoop:
             raise ValueError(
                 "node turn requires non-empty task, revision, node, and prompt identities"
             )
+        node_session_key = f"agent_task:{task_id}"
         if self.forge_task_coordinator is not None:
             task = self.forge_task_coordinator.get_task(task_id)
+            node_session_key = task.origin_session_key or node_session_key
             if task.active_revision_id != revision_id:
                 raise ValueError("node turn revision is not current")
             if task.skill_uses:
@@ -789,7 +814,12 @@ class AgentLoop:
             channel="agent_task",
             chat_id=f"{task_id}:{revision_id}:{node_id}",
         )
-        return await self._run_agent_loop(messages, on_progress=on_progress)
+        return await self._run_agent_loop(
+            messages,
+            on_progress=on_progress,
+            experience_session_key=node_session_key,
+            active_task_id=task_id,
+        )
 
     async def run(self) -> None:
         """Run the agent loop, dispatching messages as tasks to stay responsive to /stop."""

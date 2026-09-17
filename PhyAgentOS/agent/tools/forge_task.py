@@ -11,6 +11,7 @@ from typing import Any
 from PhyAgentOS.agent.tools.base import Tool
 from PhyAgentOS.forge.binding import required_preplan_queries
 from PhyAgentOS.forge.task import (
+    AgentTaskBusyError,
     AgentTaskCoordinator,
     DiscoveryRequiredError,
     TaskNotReadyForFinalizationError,
@@ -99,16 +100,32 @@ class ForgeTaskCreateTool(Tool):
     ) -> str:
         if task_description.strip().casefold() in {"noop", "no-op", "none"}:
             raise ValueError("AgentTask description must state an executable user task")
-        task = self.coordinator.create_task(
-            task_description=task_description,
-            activation_id=activation_id,
-            verification=TaskVerificationContract.model_validate(verification),
-            origin_session_key=self.session_key,
-            plan_graph=(PlanGraph.model_validate(plan_graph) if plan_graph is not None else None),
-            plan_graph_ref=plan_graph_ref,
-        )
-        if inspect.isawaitable(task):
-            task = await task
+        try:
+            task = self.coordinator.create_task(
+                task_description=task_description,
+                activation_id=activation_id,
+                verification=TaskVerificationContract.model_validate(verification),
+                origin_session_key=self.session_key,
+                plan_graph=(PlanGraph.model_validate(plan_graph) if plan_graph is not None else None),
+                plan_graph_ref=plan_graph_ref,
+            )
+            if inspect.isawaitable(task):
+                task = await task
+        except AgentTaskBusyError as exc:
+            return _json({
+                "ok": False,
+                "error": {
+                    "code": exc.code,
+                    "task_id": exc.task_id,
+                    "owner_session_key": exc.owner_session_key,
+                    "message": str(exc),
+                    "action": (
+                        "Continue the owner session or wait for it to reach a terminal state. "
+                        "forge_task_get is read-only and does not transfer task ownership."
+                    ),
+                },
+                "motion_authorized": False,
+            })
         return _json({"ok": True, "data": task})
 
 

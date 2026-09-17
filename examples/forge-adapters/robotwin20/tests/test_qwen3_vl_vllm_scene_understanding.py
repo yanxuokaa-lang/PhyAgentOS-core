@@ -88,7 +88,54 @@ def test_vllm_provider_uses_openai_compatible_multimodal_schema():
     assert payload["model"] == "qwen3-vl-4b-awq"
     assert payload["response_format"]["json_schema"]["strict"] is True
     assert payload["messages"][0]["content"][1]["type"] == "image_url"
+    prompt = payload["messages"][0]["content"][0]["text"]
+    assert "red cube rather than cube" in prompt
+    assert "downstream RGB-D composition owns those claims" in prompt
     assert client.closed is True
+
+
+def test_vllm_projection_preserves_color_for_downstream_localization():
+    result = _project_vllm_claims(
+        {
+            "entities": [{
+                "local_id": "e1",
+                "category": "cube",
+                "attributes": [
+                    {"name": "color", "value": "red", "confidence": 0.9},
+                    {"name": "material", "value": "plastic", "confidence": 0.8},
+                ],
+                "confidence": 0.95,
+            }],
+            "relations": [],
+            "ambiguities": [],
+        },
+        REQUEST["artifacts"][0],
+    )
+
+    assert result["entities"] == [{
+        "entity_ref": "entity://e1",
+        "category": "red cube",
+        "confidence": 0.9,
+        "provenance": REQUEST["artifacts"],
+    }]
+
+
+def test_vllm_projection_does_not_duplicate_color_already_in_category():
+    result = _project_vllm_claims(
+        {
+            "entities": [{
+                "local_id": "e1",
+                "category": "red cube",
+                "attributes": [{"name": "color", "value": "red", "confidence": 0.95}],
+                "confidence": 0.95,
+            }],
+            "relations": [],
+            "ambiguities": [],
+        },
+        REQUEST["artifacts"][0],
+    )
+
+    assert result["entities"][0]["category"] == "red cube"
 
 
 def test_vllm_config_rejects_non_http_endpoint():

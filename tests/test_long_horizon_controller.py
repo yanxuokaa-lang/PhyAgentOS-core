@@ -168,6 +168,28 @@ def test_controller_start_runs_in_background_and_replays_without_tools(tmp_path)
     assert replay["revision-1"] == ()
 
 
+def test_controller_wait_joins_started_run_before_host_shutdown(tmp_path):
+    c = _coordinator(tmp_path)
+    task = c.create_task(task_description="join", verification=TaskVerificationContract(mode="off"))
+    c.expand_discovery_revision(
+        task.task_id,
+        plan_graph=_graph(task.task_id, "revision-1"),
+        plan_graph_ref="artifact://plan/join",
+    )
+    calls = []
+    controller = _controller(c, calls)
+
+    async def exercise():
+        controller.start(task.task_id)
+        result = await controller.wait(task.task_id)
+        assert result.status == "completed"
+        assert calls == ["first", "second"]
+        return result
+
+    joined = asyncio.run(exercise())
+    assert joined.status == "completed"
+
+
 def test_interactive_async_stop_uses_coordinator_cancellation(tmp_path):
     c = _coordinator(tmp_path)
     task = c.create_task(task_description="stop", verification=TaskVerificationContract(mode="off"))

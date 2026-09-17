@@ -153,12 +153,14 @@ non-mutating readiness assessment with three explicit checks: `workspace`,
 `pass` can appear as `qualification: prepared`; rejected candidates are omitted and
 an empty set is returned explicitly as `status: empty`.
 
-For an agent-composed preparation node, include semantic `intent` fields in the
-`forge_plan_select.arguments`: `goal`, non-empty `success_criteria`, one or more
-`allowed_arms`, `coordination_mode`, and optional `constraints`. Do not provide
+For an agent-composed preparation node, include semantic fields directly in
+`forge_plan_select.arguments` (or as a nested `intent` object): `goal`, non-empty
+`success_criteria`, one or more `allowed_arms`, `coordination_mode` (`single_arm`,
+`alternative_arm`, or `bimanual`), and optional `constraints`. Do not provide
 task/revision/node identity, node digest, observation bindings, entity identity,
 or `motion_authorized`; PAOS derives those fields from the active graph and final
-Tool arguments. Use the returned `selection.tool_arguments` unchanged for
+Tool arguments. Flat and nested forms must not conflict with each other or with
+the node declaration. Use the returned `selection.tool_arguments` unchanged for
 `forge_tool_query`, together with the returned `planning_binding`.
 
 Preparation evidence is not an IK guarantee, collision guarantee for a future
