@@ -51,7 +51,7 @@ Tool, Action, Session, simulator step, world change, or physical motion occurred
 
 - Focused `115 passed in 5.48s`; full no-motion `457 passed in 23.35s`.
 - Ruff, compileall, diff check, editable install, import-path check, and config parsing passed.
-- Implementation commit: `pending`; branch: `feature/planning-loop`.
+- Implementation commit: `88fc1a2`; branch: `feature/planning-loop`.
 
 ## v10.8.3 (2026-09-18 02:15) - codex
 
