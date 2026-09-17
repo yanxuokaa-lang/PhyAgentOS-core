@@ -72,6 +72,22 @@ class AgentLoopRunResult:
         yield self.messages
 
 
+_NODE_TURN_ALLOWED_TOOLS = frozenset({
+    "forge_plan_ready",
+    "forge_plan_select",
+    "forge_tool_context",
+    "forge_tool_query",
+    "forge_tool_start_action",
+    "forge_tool_start_session",
+})
+
+_NODE_TURN_EXECUTION_TOOLS = frozenset({
+    "forge_tool_query",
+    "forge_tool_start_action",
+    "forge_tool_start_session",
+})
+
+
 class AgentLoop:
     """
     The agent loop is the core processing engine.
@@ -980,6 +996,8 @@ class AgentLoop:
             active_task_id=task_id,
             projection_scope="node",
             projection_node_id=node_id,
+            allowed_tool_names=_NODE_TURN_ALLOWED_TOOLS,
+            yield_after_tools=_NODE_TURN_EXECUTION_TOOLS,
         )
 
     async def run_segment_continuation_turn(

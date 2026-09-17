@@ -173,6 +173,16 @@ for example, `manipulation.prepare` requires the complete candidate array from
 `grasp.propose`, while unrelated discovery and execution history remains in the
 Coordinator rather than in the model prompt.
 
+A semantic-node turn exposes only the node execution surface:
+`forge_tool_context`, `forge_plan_ready`, `forge_plan_select`, and the governed
+Query/Action/Session submission wrappers. Generic shell/filesystem Tools,
+task-wide continuation/finalization, and plan activation are not available in
+that turn. The first successful planning-bound Query, Action, or Session
+submission ends the model turn immediately; `AgentLoopNodeExecutor` then
+reconciles the persisted record and returns settlement control to PlanningLoop.
+The model cannot execute the next node or append a revision from the completed
+node's accumulated Tool history.
+
 Completing a scene-bound graph is a segment boundary, not proof that the user
 goal is complete. Runtime LongHorizon execution therefore returns
 `segment_completed` without calling the verifier. A fresh continuation turn may

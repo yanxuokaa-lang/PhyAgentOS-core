@@ -150,6 +150,15 @@ results only for direct predecessor executions. This keeps required payloads
 such as grasp candidates available without re-injecting the complete discovery
 transcript or forcing the model to query CLI/SQLite state.
 
+The node turn is also capability-bounded. Its model-visible and executable Tool
+surface contains only context inspection, readiness, selection, and governed
+Query/Action/Session submission for the current node. A successful submission
+is a mandatory handoff point: the AgentLoop returns before another model request,
+and the node executor reconciles the durable execution record. Task-wide
+continuation/finalization and generic shell/filesystem Tools remain outside this
+scope, so a settled node cannot mutate the active revision or execute a successor
+from the same model transcript.
+
 When the configured runtime uses scene-bound segments, `PlanningLoopAdapter`
 reports `segment_completed` instead of finalizing automatically. The outer
 controller invokes a bounded Agent continuation turn whose executable surface

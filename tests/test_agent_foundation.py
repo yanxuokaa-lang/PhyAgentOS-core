@@ -187,6 +187,81 @@ def test_bounded_turn_rejects_provider_tool_outside_allowed_set(tmp_path):
     asyncio.run(exercise())
 
 
+def test_node_turn_yields_after_bound_execution_and_cannot_continue_revision(tmp_path):
+    async def exercise():
+        c, task = setup_task(tmp_path, goal="Resolve one current semantic node")
+        await ForgeTaskMaterializePlanTool(c).execute(
+            task.task_id,
+            nodes=semantic_nodes(1),
+            reason="current scene-bound node",
+        )
+        current = c.get_task(task.task_id)
+        provider = ScriptedProvider([
+            LLMResponse(
+                content="Execute the current Query, then incorrectly continue the graph.",
+                tool_calls=[
+                    ToolCallRequest(
+                        "node-query",
+                        "forge_tool_query",
+                        {"tool_id": "scene.observe", "arguments": {}},
+                    ),
+                    ToolCallRequest(
+                        "illegal-continuation",
+                        "forge_task_continue_plan",
+                        {
+                            "task_id": task.task_id,
+                            "nodes": semantic_nodes(1),
+                            "reason": "must not execute inside the old node turn",
+                        },
+                    ),
+                ],
+            ),
+        ])
+        loop = AgentLoop(
+            bus=MessageBus(),
+            provider=provider,
+            workspace=tmp_path,
+            forge_tool_client=SimpleNamespace(),
+            forge_task_coordinator=c,
+            max_iterations=3,
+        )
+        loop.tools.execute = AsyncMock(return_value=json.dumps({"ok": True}))
+
+        result = await loop.run_node_turn(
+            task_id=task.task_id,
+            revision_id=current.active_revision_id,
+            node_id=current.active_revision.plan_graph.nodes[0].node_id,
+            prompt="Execute only this semantic node.",
+        )
+
+        visible = {item["function"]["name"] for item in provider.requests[0]["tools"]}
+        assert visible == {
+            "forge_plan_select",
+            "forge_tool_context",
+            "forge_tool_query",
+            "forge_tool_start_action",
+            "forge_tool_start_session",
+        }
+        assert "forge_plan_activate" not in visible
+        assert "forge_task_get" not in visible
+        assert "forge_task_continue_plan" not in visible
+        assert "forge_task_finalize" not in visible
+        assert "exec" not in visible
+        loop.tools.execute.assert_awaited_once_with(
+            "forge_tool_query",
+            {"tool_id": "scene.observe", "arguments": {}},
+        )
+        deferred = next(
+            message for message in result.messages
+            if message.get("tool_call_id") == "illegal-continuation"
+        )
+        assert json.loads(deferred["content"])["error"]["type"] == "control_handoff"
+        assert len(provider.requests) == 1
+        assert c.get_task(task.task_id).active_revision_id == current.active_revision_id
+
+    asyncio.run(exercise())
+
+
 def test_segment_continuation_turn_appends_next_revision_without_execution_tools(tmp_path):
     async def exercise():
         c, task = setup_task(tmp_path, goal="Move two scene-bound objects in sequence")

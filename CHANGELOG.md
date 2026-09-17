@@ -2,6 +2,7 @@
 
 ## Archive
 
+- [2026-09 Part 10](changelog/2026-09_part10.md)
 - [2026-09 Part 8](changelog/2026-09_part8.md)
 - [2026-09 Part 9](changelog/2026-09_part9.md)
 - [2026-09 Part 7](changelog/2026-09_part7.md)
@@ -10,6 +11,43 @@
 - [2026-09 Part 4](changelog/2026-09_part4.md)
 
 ## 最近 5 条 / Latest Five Versions
+
+## v10.8.7 (2026-09-18 04:46) - codex
+
+- [agent] [fix] [完成] LongHorizon 节点回合只暴露当前节点 context/ready/select/execution Tool，并在首个成功 planning-bound 提交后立即交还 PlanningLoop。(local)
+- [agent] [fix] [完成] 已完成节点不能再追加 revision 或执行后继节点，消除 r58 的 active-revision mismatch 与 24 候选后的同回合 96K timeout。(local)
+- [Agent] [Fix] [Completed] Restrict LongHorizon node turns to current-node context/ready/select/execution Tools and yield to PlanningLoop after the first successful planning-bound submission. (local)
+- [Agent] [Fix] [Completed] Prevent a completed node from appending a revision or executing a successor, removing the r58 active-revision mismatch and same-turn 96K timeout after 24 candidates. (local)
+
+### 影响文件 / Affected files
+
+- `PhyAgentOS/agent/loop.py:L75-L89,L999-L1000`
+- `tests/test_agent_foundation.py:L190-L264`
+- three Forge developer guides; `changelog/2026-09_part10.md`; `CHANGELOG.md`
+
+```diff
+- successful node execution keeps using task-wide and generic Tools
++ successful planning-bound execution yields immediately to PlanningLoop
+- old node turn can append and execute a successor revision
++ continuation/finalization exist only in the separate segment turn
+```
+
+### 七维验收 / Seven-dimension acceptance
+
+Architecture, recovery/idempotency, robotics safety, context/performance,
+configuration/reproducibility, maintainability/observability, and AgentLoop
+autonomy: PASS with no remaining Blocker/Major. The fix retains the effective
+discovery-to-LongHorizon reset while closing the missing per-node Tool and
+termination boundary. Motion gates and final verification remain fail-closed.
+
+### 验证与安装 / Validation and installation
+
+- Focused `56 passed`; full no-motion suite `464 passed in 23.81s`; Ruff,
+  compileall, and diff check passed.
+- Editable Core install resolves to this repository; Skill `2.2.0` is unchanged.
+- RGB config remains `gpt-5.6-sol/high/272000/260000/110s`; no Gateway Tool,
+  Action, Session, simulator step, Runtime transition, or physical motion occurred.
+- Implementation commit: `pending`; branch: `feature/planning-loop`.
 
 ## v10.8.6 (2026-09-18 03:52) - codex
 
@@ -174,55 +212,6 @@ wrapper), while all six persisted SkillUse audit records remained intact.
 ### Git 提交 / Git commit
 
 - Implementation commit: `7480e14`
-- Branch: `feature/planning-loop`
-
-## v10.8.2 (2026-09-18 00:51) - codex
-
-- [agent] [fix] [完成] 持久化可恢复 planning selection receipt，并在同 revision 内有界续跑；无 Tool record 时返回 `blocked/node_turn_incomplete`。(local)
-- [agent] [fix] [完成] 节点恢复先对账已有 Query/Action 记录；未知或未终态 Action 不自动重发。(local)
-- [agent] [fix] [完成] Long-horizon runner 与 one-shot CLI 返回结构化 blocked 状态，消除受控不完整节点的 traceback。(local)
-- [Agent] [Fix] [Completed] Persist resumable planning-selection receipts and perform bounded same-revision continuation; return `blocked/node_turn_incomplete` when no Tool record is produced. (local)
-- [Agent] [Fix] [Completed] Reconcile existing Query/Action records before node recovery; never automatically repost an unknown or non-terminal Action. (local)
-- [Agent] [Fix] [Completed] Return structured blocked states from the long-horizon runner and one-shot CLI instead of traceback for controlled incomplete nodes. (local)
-
-### 影响文件 / Affected files
-
-- `PhyAgentOS/planning/contracts.py:L136-L168,L336-L364`
-- `PhyAgentOS/agent/planning_dispatch.py:L438-L455`
-- `PhyAgentOS/forge/task.py:L796-L934`
-- `PhyAgentOS/agent/planning_loop.py:L40-L50,L164-L352,L605-L631`
-- `PhyAgentOS/agent/long_horizon.py:L181-L233`
-- `PhyAgentOS/cli/commands.py:L1061-L1078`
-- `docs/forge/MANIPULATION_DAG_DEVELOPER_GUIDE.md:L358-L378`
-- Focused planning/AgentLoop tests and changelog.
-
-```diff
-- successful selection exists only in model response; no Tool record crashes CLI
-+ immutable receipt resumes exact execution once; exhaustion blocks without settlement
-- resumed node may ask the model before checking an existing Action
-+ existing execution record is reconciled first and never reposted
-```
-
-### 七维验收 / Seven-dimension acceptance
-
-Architecture, recovery, robotics safety, configuration/reproducibility,
-maintainability, observability, and AgentLoop autonomy: PASS. Focused `73`,
-Core `439`, Evolution extension `68`, Skill `334`, and Adapter `491 passed,
-1 skipped`; Ruff, compileall, deterministic packaging, and diff check passed.
-No Gateway request, Action, Session, simulator step, world change, Runtime
-restart, or Qwen wake occurred.
-
-### 安装 / Installation
-
-- Core editable install refreshed with `.venv/bin/python -m pip install -e .`.
-- Installed Skill remains `pick-place-workflow 2.2.0`; Runtime is running with
-  9/9 Tools ready, Node `0.1.15` verified, and Qwen sleeping.
-- Active `task_ba404a47673640bd` remains executing with 10 succeeded Queries,
-  one completed node, 0 Actions, and 0 Sessions.
-
-### Git 提交 / Git commit
-
-- Implementation commit: `abdd356`
 - Branch: `feature/planning-loop`
 
 ## 历史记录 / Historical Records
