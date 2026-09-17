@@ -141,6 +141,24 @@ task identity, does not count toward replan budget, and contains only the next
 scene-bound segment compiled from current trusted evidence. `awaiting_replan`
 and `forge_task_begin_revision` remain failure-recovery mechanisms.
 
+In the runtime Agent route, successful initial materialization is also the
+control handoff from discovery to LongHorizon. The discovery AgentLoop returns
+without issuing `forge_plan_activate`, readiness, selection, or execution calls;
+the existing `AgentLoopNodeExecutor` activates the revision immediately before
+each node. Every node turn starts from empty chat history and receives exact
+results only for direct predecessor executions. This keeps required payloads
+such as grasp candidates available without re-injecting the complete discovery
+transcript or forcing the model to query CLI/SQLite state.
+
+When the configured runtime uses scene-bound segments, `PlanningLoopAdapter`
+reports `segment_completed` instead of finalizing automatically. The outer
+controller invokes a bounded Agent continuation turn whose executable surface
+is limited to `forge_task_continue_plan`, `forge_task_finalize`, or structured
+clarification. A successful continuation must either append a new active
+revision or make the task terminal; provider failure or a no-op remains a
+recoverable blocked result. This is orchestration only and grants no motion
+authority.
+
 Before any Tool record, settlement, counterevidence, or verification attempt is
 attached to a materialized discovery graph, the Agent may submit one corrected
 graph. The Coordinator appends a new revision and closes the old revision; it

@@ -440,6 +440,7 @@ class AgentLoop:
             admission_context_provider=self._planning_context_provider,
             replan_proposer=replan_proposer,
             recovery_policy=recovery_policy,
+            finalize_completed_graph=False,
         )
         return LongHorizonTaskController(
             self.forge_task_coordinator,
@@ -448,6 +449,10 @@ class AgentLoop:
                 self._planning_context_provider(task_id).scene_revision
             ),
             on_result=on_result,
+            segment_continuation=lambda task_id: self.run_segment_continuation_turn(
+                task_id=task_id,
+                on_progress=on_progress,
+            ),
         )
 
     def _planning_guard(self, name: str, arguments: dict) -> str | None:
@@ -647,6 +652,8 @@ class AgentLoop:
         active_task_id: str | None = None,
         projection_scope: str = "task",
         projection_node_id: str | None = None,
+        allowed_tool_names: frozenset[str] | None = None,
+        yield_after_tools: frozenset[str] = frozenset(),
     ) -> AgentLoopRunResult:
         """Run the agent iteration loop."""
         messages = initial_messages
@@ -662,6 +669,12 @@ class AgentLoop:
 
         while iteration < self.max_iterations:
             iteration += 1
+
+            prompt_tool_names = self.tools.tool_names
+            if allowed_tool_names is not None:
+                prompt_tool_names = tuple(
+                    name for name in prompt_tool_names if name in allowed_tool_names
+                )
 
             active_task = (
                 self.forge_task_coordinator.get_task(active_task_id)
@@ -679,7 +692,7 @@ class AgentLoop:
                 request_view = self.prompt_context.build(
                     messages=messages,
                     turn_start_index=turn_start_index,
-                    all_tool_names=self.tools.tool_names,
+                    all_tool_names=prompt_tool_names,
                     task=active_task,
                     estimate_tokens=estimate,
                     projection_scope=projection_scope,
@@ -690,7 +703,12 @@ class AgentLoop:
                 turn_failure_code = "prompt_budget_exceeded"
                 final_content = str(exc)
                 break
-            tool_defs = self.tools.get_definitions(set(request_view.visible_tool_names))
+            visible_tool_names = request_view.visible_tool_names
+            if allowed_tool_names is not None:
+                visible_tool_names = tuple(
+                    name for name in visible_tool_names if name in allowed_tool_names
+                )
+            tool_defs = self.tools.get_definitions(set(visible_tool_names))
             estimated_tokens, token_source = estimate_prompt_tokens_chain(
                 self.provider, self.model, request_view.messages, tool_defs
             )
@@ -747,7 +765,33 @@ class AgentLoop:
                     thinking_blocks=response.thinking_blocks,
                 )
 
-                for tool_call in response.tool_calls:
+                yield_to_host = False
+                for call_index, tool_call in enumerate(response.tool_calls):
+                    if (
+                        allowed_tool_names is not None
+                        and tool_call.name not in allowed_tool_names
+                    ):
+                        messages = self.context.add_tool_result(
+                            messages,
+                            tool_call.id,
+                            tool_call.name,
+                            json.dumps(
+                                {
+                                    "ok": False,
+                                    "error": {
+                                        "type": "tool_not_available_in_turn",
+                                        "message": (
+                                            f"{tool_call.name} is not available in this "
+                                            "bounded Agent turn."
+                                        ),
+                                    },
+                                    "motion_authorized": False,
+                                },
+                                ensure_ascii=False,
+                                separators=(",", ":"),
+                            ),
+                        )
+                        continue
                     tools_used.append(tool_call.name)
                     if experience_session_key is not None:
                         self.skill_activation.record_tool(
@@ -770,6 +814,40 @@ class AgentLoop:
                     messages = self.context.add_tool_result(
                         messages, tool_call.id, tool_call.name, result
                     )
+                    if (
+                        tool_call.name in yield_after_tools
+                        and self._tool_result_succeeded(result)
+                    ):
+                        for deferred in response.tool_calls[call_index + 1 :]:
+                            messages = self.context.add_tool_result(
+                                messages,
+                                deferred.id,
+                                deferred.name,
+                                json.dumps(
+                                    {
+                                        "ok": False,
+                                        "status": "deferred_to_long_horizon",
+                                        "error": {
+                                            "type": "control_handoff",
+                                            "message": (
+                                                "Tool was not executed because the persisted "
+                                                "planning lifecycle now owns the next step."
+                                            ),
+                                        },
+                                        "motion_authorized": False,
+                                    },
+                                    ensure_ascii=False,
+                                    separators=(",", ":"),
+                                ),
+                            )
+                        final_content = (
+                            f"{tool_call.name} succeeded; continuing through the "
+                            "persisted long-horizon planning loop."
+                        )
+                        yield_to_host = True
+                        break
+                if yield_to_host:
+                    break
             else:
                 clean = self._strip_think(response.content)
                 # Don't persist error responses to session history — they can
@@ -808,6 +886,14 @@ class AgentLoop:
             turn_failure_code=turn_failure_code,
             model_failure_code=model_failure_code,
         )
+
+    @staticmethod
+    def _tool_result_succeeded(result: str) -> bool:
+        try:
+            payload = json.loads(result)
+        except (TypeError, json.JSONDecodeError):
+            return False
+        return isinstance(payload, dict) and payload.get("ok") is True
 
     async def run_node_turn(
         self,
@@ -894,6 +980,70 @@ class AgentLoop:
             active_task_id=task_id,
             projection_scope="node",
             projection_node_id=node_id,
+        )
+
+    async def run_segment_continuation_turn(
+        self,
+        *,
+        task_id: str,
+        on_progress: Callable[..., Awaitable[None]] | None = None,
+    ) -> AgentLoopRunResult:
+        """Choose the next scene-bound segment or final verification from persisted facts."""
+
+        if self.forge_task_coordinator is None:
+            raise RuntimeError("segment continuation requires a Forge task coordinator")
+        task = self.forge_task_coordinator.get_task(task_id)
+        revision = task.active_revision
+        graph = revision.plan_graph
+        if graph is None:
+            raise ValueError("segment continuation requires a materialized PlanGraph")
+        settlements = {item.node_id: item.status for item in revision.node_settlements}
+        if any(settlements.get(node.node_id) != "completed" for node in graph.nodes):
+            raise ValueError("segment continuation requires every active node to be completed")
+
+        prompt = json.dumps(
+            {
+                "task_id": task_id,
+                "original_goal": task.task_description,
+                "verification": task.verification.model_dump(mode="json"),
+                "active_revision_id": task.active_revision_id,
+                "instruction": (
+                    "The current scene-bound PlanGraph segment is fully settled. Use only "
+                    "persisted Coordinator facts. If the user-level goal still requires work, "
+                    "call forge_task_continue_plan with exactly the next scene-bound segment. "
+                    "If current evidence proves the complete goal is ready for verification, "
+                    "call forge_task_finalize. Do not repeat completed Query, Action, or Session "
+                    "executions and do not access Runtime or SQLite internals."
+                ),
+            },
+            ensure_ascii=False,
+        )
+        messages = self.context.build_messages(
+            history=[],
+            current_message=prompt,
+            channel="agent_task",
+            chat_id=f"{task_id}:{task.active_revision_id}:continuation",
+        )
+        return await self._run_agent_loop(
+            messages,
+            on_progress=on_progress,
+            experience_session_key=task.origin_session_key or f"agent_task:{task_id}",
+            active_task_id=task_id,
+            projection_scope="task",
+            allowed_tool_names=frozenset(
+                {
+                    "forge_task_continue_plan",
+                    "forge_task_finalize",
+                    "forge_task_request_clarification",
+                }
+            ),
+            yield_after_tools=frozenset(
+                {
+                    "forge_task_continue_plan",
+                    "forge_task_finalize",
+                    "forge_task_request_clarification",
+                }
+            ),
         )
 
     async def run(self) -> None:
@@ -1241,6 +1391,11 @@ class AgentLoop:
                 initial_messages,
                 on_progress=on_progress or _bus_progress,
                 experience_session_key=key,
+                yield_after_tools=(
+                    frozenset({"forge_task_materialize_plan"})
+                    if self.long_horizon_controller is not None
+                    else frozenset()
+                ),
             )
         except asyncio.CancelledError:
             # The loop appends to initial_messages. Preserve completed observations

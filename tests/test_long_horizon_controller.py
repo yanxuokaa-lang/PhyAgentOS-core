@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import asyncio
-from contextlib import nullcontext
 import json
 import sqlite3
+from contextlib import nullcontext
+from types import SimpleNamespace
 
 from PhyAgentOS.agent.long_horizon import LongHorizonTaskController
-from PhyAgentOS.cli import commands
 from PhyAgentOS.agent.planning_loop import NodeContextProvider, PlanningLoopAdapter
+from PhyAgentOS.cli import commands
 from PhyAgentOS.cli.commands import _interactive_task_control
 from PhyAgentOS.config.schema import ForgeConfig
 from PhyAgentOS.forge.task import AgentTaskCoordinator, AgentTaskStatus
@@ -190,6 +191,116 @@ def test_controller_wait_joins_started_run_before_host_shutdown(tmp_path):
 
     joined = asyncio.run(exercise())
     assert joined.status == "completed"
+
+
+def test_controller_continues_completed_scene_segments_until_task_terminal(tmp_path):
+    c = _coordinator(tmp_path)
+    task = c.create_task(
+        task_description="complete two scene-bound segments",
+        verification=TaskVerificationContract(mode="off"),
+    )
+    c.expand_discovery_revision(
+        task.task_id,
+        plan_graph=_graph(task.task_id, "revision-segment-1"),
+        plan_graph_ref="artifact://plan/segment-1",
+    )
+    node_calls: list[tuple[str, str]] = []
+    continuation_calls: list[str] = []
+
+    def execute(context):
+        node_calls.append((context.revision_id, context.node_id))
+        return ToolResultEnvelope(
+            task_id=context.task_id,
+            revision_id=context.revision_id,
+            node_id=context.node_id,
+            tool_id="object.arrange",
+            status="succeeded",
+        )
+
+    adapter = PlanningLoopAdapter(
+        c,
+        context_provider=NodeContextProvider(c.get_task),
+        node_executor=execute,
+        admission_context_provider=lambda _: AdmissionContext(scene_revision="scene-1"),
+        finalize_completed_graph=False,
+    )
+
+    def continue_segment(task_id):
+        current = c.get_task(task_id)
+        continuation_calls.append(current.active_revision_id)
+        if current.active_revision_id == "revision-segment-1":
+            c.begin_continuation_revision(
+                task_id,
+                reason="fresh scene requires the second segment",
+                plan_graph=_graph(task_id, "revision-segment-2"),
+                plan_graph_ref="artifact://plan/segment-2",
+            )
+        else:
+            c.store.update(
+                task_id,
+                lambda record: setattr(record, "status", AgentTaskStatus.SUCCEEDED),
+                event_type="fixture_verified",
+            )
+        return SimpleNamespace(turn_failure_code=None, model_failure_code=None)
+
+    controller = LongHorizonTaskController(
+        c,
+        adapter,
+        scene_revision_provider=lambda _: "scene-1",
+        segment_continuation=continue_segment,
+    )
+
+    result = asyncio.run(controller.run(task.task_id))
+
+    assert result.status == "succeeded"
+    assert continuation_calls == ["revision-segment-1", "revision-segment-2"]
+    assert node_calls == [
+        ("revision-segment-1", "first"),
+        ("revision-segment-1", "second"),
+        ("revision-segment-2", "first"),
+        ("revision-segment-2", "second"),
+    ]
+
+
+def test_controller_blocks_when_segment_continuation_makes_no_state_transition(tmp_path):
+    c = _coordinator(tmp_path)
+    task = c.create_task(
+        task_description="surface continuation provider failure",
+        verification=TaskVerificationContract(mode="off"),
+    )
+    c.expand_discovery_revision(
+        task.task_id,
+        plan_graph=_graph(task.task_id, "revision-segment-timeout"),
+        plan_graph_ref="artifact://plan/segment-timeout",
+    )
+    adapter = PlanningLoopAdapter(
+        c,
+        context_provider=NodeContextProvider(c.get_task),
+        node_executor=lambda context: ToolResultEnvelope(
+            task_id=context.task_id,
+            revision_id=context.revision_id,
+            node_id=context.node_id,
+            tool_id="object.arrange",
+            status="succeeded",
+        ),
+        admission_context_provider=lambda _: AdmissionContext(scene_revision="scene-1"),
+        finalize_completed_graph=False,
+    )
+    controller = LongHorizonTaskController(
+        c,
+        adapter,
+        scene_revision_provider=lambda _: "scene-1",
+        segment_continuation=lambda _: SimpleNamespace(
+            turn_failure_code="provider_timeout",
+            model_failure_code="provider_timeout",
+        ),
+    )
+
+    result = asyncio.run(controller.run(task.task_id))
+
+    assert result.status == "blocked"
+    assert result.last_failure == "segment_continuation_incomplete:provider_timeout"
+    assert c.get_task(task.task_id).status == AgentTaskStatus.EXECUTING
 
 
 def test_interactive_async_stop_uses_coordinator_cancellation(tmp_path):

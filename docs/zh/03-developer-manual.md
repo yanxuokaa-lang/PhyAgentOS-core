@@ -89,8 +89,8 @@ PlanRevision、evidence refs、verification attempts、取消状态和时间戳�
 
 LongHorizon 的连续性来自持久化 `AgentTask`/`PlanRevision`，而不是把完整历史反复发送给模型。
 每个节点回合仅构造只读的 node-scoped projection：任务/revision 身份、冻结 Skill/Runtime 身份、
-当前节点声明、直接前驱摘要以及相关 SkillUse 引用。完整 SkillUse 指令、无关节点和全局执行历史
-继续由 Coordinator 保存用于审计，不进入每次节点提示。同一 revision/node 决策重复进入时复用
+当前节点声明、直接前驱引用及当前节点必需的权威 Tool 结果，以及相关 SkillUse 引用。完整 SkillUse
+指令、无关节点和全局执行历史继续由 Coordinator 保存用于审计，不进入每次节点提示。同一 revision/node 决策重复进入时复用
 既有 SkillUse，不追加相同指令副本。
 
 多对象动态场景不得把动作后的 `entity_ref`/`destination_ref` 用自然语言角色提前冻结在一个
@@ -99,6 +99,14 @@ LongHorizon 的连续性来自持久化 `AgentTask`/`PlanRevision`，而不是�
 绑定检查点；该图全部 `completed` 且没有 task-owned 非终态 Action/Session 后，使用
 `forge_task_continue_plan` 追加下一段。该路径保持同一 task，不消耗 replan budget，不调用
 Gateway；`forge_task_begin_revision` 仍仅用于 `awaiting_replan` 失败恢复。
+
+首次 discovery 回合在 `forge_task_materialize_plan` 成功后立即把控制权交给
+LongHorizon，不再从累积 discovery 历史中继续 activate/select/execute。每个语义节点由
+`AgentLoopNodeExecutor` 从空历史启动，只投影当前节点和直接前驱的权威 Tool 结果；因此
+`manipulation.prepare` 可以取得 `grasp.propose` 的完整候选数组，同时不会重新注入无关的
+全局执行历史。当前场景段全部结算后，PlanningLoop 返回 `segment_completed`，再由独立的
+受限回合选择 `forge_task_continue_plan`、`forge_task_finalize` 或结构化澄清；该回合不暴露
+Query、Action 或 Session Tool，也不授予运动许可。
 
 终态任务状态为 `succeeded`、`failed`、`cancelled`；非终态为 `executing`、`cancelling`、
 `awaiting_replan`。Tool status `unknown` 对聚合记账是终态，但它表示失败，不表示已停止。

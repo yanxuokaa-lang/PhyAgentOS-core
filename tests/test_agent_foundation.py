@@ -30,7 +30,12 @@ from PhyAgentOS.agent.tools.forge_tool_api import (
 from PhyAgentOS.bus.queue import MessageBus
 from PhyAgentOS.config.schema import ForgeConfig
 from PhyAgentOS.forge.binding import BoundToolSpec, ForgeSkillBinding
-from PhyAgentOS.forge.task import AgentTaskCoordinator, AgentTaskError, AgentTaskStatus
+from PhyAgentOS.forge.task import (
+    AgentTaskCoordinator,
+    AgentTaskError,
+    AgentTaskStatus,
+    ToolExecutionRecord,
+)
 from PhyAgentOS.planning import NodeSettlement, ToolSpecPolicy, build_replan_delta
 from PhyAgentOS.providers.base import LLMProvider, LLMResponse, ToolCallRequest
 from PhyAgentOS.verification.contracts import TaskVerificationContract
@@ -96,6 +101,174 @@ def test_model_tool_call_materializes_variable_objects_in_same_task(tmp_path, co
         assert result.active_revision.plan_graph.nodes[0].input_bindings["entity_ref"] == "entity://observed-0"
         assert result.execution_records == []
         assert loop.experience is None
+    asyncio.run(exercise())
+
+
+def test_initial_turn_yields_immediately_after_plan_materialization(tmp_path):
+    async def exercise():
+        c, task = setup_task(tmp_path, goal="Move one observed object into the tray")
+        request = {
+            "task_id": task.task_id,
+            "nodes": semantic_nodes(1),
+            "reason": "selected from current observation",
+        }
+        provider = ScriptedProvider([
+            LLMResponse(
+                content="Materializing the current scene-bound segment.",
+                tool_calls=[
+                    ToolCallRequest(
+                        "plan-call",
+                        "forge_task_materialize_plan",
+                        request,
+                    )
+                ],
+            ),
+        ])
+        loop = AgentLoop(
+            bus=MessageBus(),
+            provider=provider,
+            workspace=tmp_path,
+            forge_task_coordinator=c,
+            max_iterations=3,
+        )
+
+        result = await loop._run_agent_loop(
+            [{"role": "user", "content": task.task_description}],
+            yield_after_tools=frozenset({"forge_task_materialize_plan"}),
+        )
+
+        assert len(provider.requests) == 1
+        assert result.tools_used == ["forge_task_materialize_plan"]
+        assert result.content is not None and "long-horizon" in result.content
+        assert c.get_task(task.task_id).active_revision.plan_graph is not None
+        assert result.messages[-1]["role"] == "tool"
+
+    asyncio.run(exercise())
+
+
+def test_bounded_turn_rejects_provider_tool_outside_allowed_set(tmp_path):
+    async def exercise():
+        provider = ScriptedProvider([
+            LLMResponse(
+                content=None,
+                tool_calls=[
+                    ToolCallRequest(
+                        "hidden-query",
+                        "forge_tool_query",
+                        {"tool_id": "grasp.propose"},
+                    )
+                ],
+            ),
+            LLMResponse(content="No allowed state transition was selected."),
+        ])
+        loop = AgentLoop(
+            bus=MessageBus(),
+            provider=provider,
+            workspace=tmp_path,
+            max_iterations=2,
+        )
+        loop.tools.execute = AsyncMock(side_effect=AssertionError("hidden Tool executed"))
+
+        result = await loop._run_agent_loop(
+            [{"role": "user", "content": "continue only through declared tools"}],
+            allowed_tool_names=frozenset(),
+        )
+
+        loop.tools.execute.assert_not_awaited()
+        assert result.tools_used == []
+        rejection = next(
+            message for message in result.messages
+            if message.get("tool_call_id") == "hidden-query"
+        )
+        assert json.loads(rejection["content"])["error"]["type"] == (
+            "tool_not_available_in_turn"
+        )
+
+    asyncio.run(exercise())
+
+
+def test_segment_continuation_turn_appends_next_revision_without_execution_tools(tmp_path):
+    async def exercise():
+        c, task = setup_task(tmp_path, goal="Move two scene-bound objects in sequence")
+        await ForgeTaskMaterializePlanTool(c).execute(
+            task.task_id,
+            nodes=semantic_nodes(1),
+            reason="first scene-bound segment",
+        )
+        current = c.get_task(task.task_id)
+        for node in current.active_revision.plan_graph.nodes:
+            c.record_node_settlement(NodeSettlement(
+                task_id=task.task_id,
+                revision_id=current.active_revision_id,
+                node_id=node.node_id,
+                status="completed",
+                scene_revision="scene-1",
+            ))
+        c.store.update(
+            task.task_id,
+            lambda record: record.active_revision.execution_records.append(
+                ToolExecutionRecord(
+                    record_id="tool-current-scene",
+                    revision_id=current.active_revision_id,
+                    tool_id="scene.bind",
+                    semantics="query",
+                    caller_id="agent-task-test",
+                    status="succeeded",
+                    response={"ok": True, "data": {"scene_revision": "scene-1"}},
+                    evidence_refs=["tool:tool-current-scene"],
+                )
+            ),
+            event_type="fixture_current_scene",
+        )
+        provider = ScriptedProvider([
+            LLMResponse(
+                content="Appending the next scene-bound segment.",
+                tool_calls=[
+                    ToolCallRequest(
+                        "continue-call",
+                        "forge_task_continue_plan",
+                        {
+                            "task_id": task.task_id,
+                            "nodes": semantic_nodes(1),
+                            "reason": "fresh evidence supports the next segment",
+                        },
+                    )
+                ],
+            ),
+        ])
+        loop = AgentLoop(
+            bus=MessageBus(),
+            provider=provider,
+            workspace=tmp_path,
+            forge_task_coordinator=c,
+            max_iterations=3,
+        )
+        original_build = loop.prompt_context.build
+        prompt_tool_sets: list[frozenset[str]] = []
+
+        def record_prompt_tools(**kwargs):
+            prompt_tool_sets.append(frozenset(kwargs["all_tool_names"]))
+            return original_build(**kwargs)
+
+        loop.prompt_context.build = record_prompt_tools
+
+        result = await loop.run_segment_continuation_turn(task_id=task.task_id)
+
+        updated = c.get_task(task.task_id)
+        assert len(provider.requests) == 1
+        visible = {item["function"]["name"] for item in provider.requests[0]["tools"]}
+        assert "forge_task_continue_plan" in visible
+        assert "forge_task_finalize" in visible
+        assert "forge_tool_query" not in visible
+        assert prompt_tool_sets == [frozenset({
+            "forge_task_continue_plan",
+            "forge_task_finalize",
+            "forge_task_request_clarification",
+        })]
+        assert result.tools_used == ["forge_task_continue_plan"]
+        assert len(updated.revisions) == 3
+        assert updated.active_revision_id != current.active_revision_id
+
     asyncio.run(exercise())
 
 

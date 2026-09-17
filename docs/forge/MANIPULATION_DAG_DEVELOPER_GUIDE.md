@@ -162,6 +162,24 @@ same task identity, marks the new revision as not counting toward replan budget,
 and performs no Gateway call. Failure replan remains exclusive to
 `awaiting_replan`.
 
+The initial discovery turn yields immediately after
+`forge_task_materialize_plan` succeeds. It does not activate, select, or execute
+the first node from the accumulated discovery transcript. The host-owned
+LongHorizon controller activates the persisted revision and starts each semantic
+node through a fresh `run_node_turn` with no chat history. A node prompt contains
+the current node, its immutable bindings, and exact persisted Tool results only
+from direct predecessor nodes. This bounded predecessor payload is intentional:
+for example, `manipulation.prepare` requires the complete candidate array from
+`grasp.propose`, while unrelated discovery and execution history remains in the
+Coordinator rather than in the model prompt.
+
+Completing a scene-bound graph is a segment boundary, not proof that the user
+goal is complete. Runtime LongHorizon execution therefore returns
+`segment_completed` without calling the verifier. A fresh continuation turn may
+only append the next graph, request clarification, or call
+`forge_task_finalize`; Query, Action, and Session Tools are not available in
+that turn. Finalization remains the only path to a terminal verification verdict.
+
 ## Frame and Calibration Contract
 
 - `scene.observe` returns the concrete Runtime frame identifier in

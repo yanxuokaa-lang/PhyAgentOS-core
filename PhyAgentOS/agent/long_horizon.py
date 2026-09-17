@@ -46,6 +46,7 @@ class LongHorizonTaskController:
         *,
         scene_revision_provider: Callable[[str], str],
         on_result: Callable[[LongHorizonTaskResult], Awaitable[None] | None] | None = None,
+        segment_continuation: Callable[[str], Awaitable[object] | object] | None = None,
     ) -> None:
         self.coordinator = coordinator
         self.adapter = adapter
@@ -53,6 +54,7 @@ class LongHorizonTaskController:
         self._locks: dict[str, asyncio.Lock] = {}
         self._runs: dict[str, asyncio.Task[LongHorizonTaskResult]] = {}
         self._on_result = on_result
+        self._segment_continuation = segment_continuation
 
     @classmethod
     def for_control(cls, coordinator: AgentTaskCoordinator) -> "LongHorizonTaskController":
@@ -178,60 +180,87 @@ class LongHorizonTaskController:
             def checkpoint(current: str) -> bool:
                 task = self.coordinator.get_task(current)
                 return not task.pause_requested and not task.cancellation_requested
-            try:
-                scene_revision = self.scene_revision_provider(task_id)
-                if not isinstance(scene_revision, str) or not scene_revision.strip():
-                    raise ValueError("scene revision provider returned an empty value")
-            except (PlanningContextUnavailableError, ValueError) as exc:
-                # Missing trusted scene facts are a planning block, not a
-                # runner crash.  The Agent can obtain observation evidence and
-                # the user can resume the persisted task afterward.
-                snapshot = self._snapshot(task_id)
-                return LongHorizonTaskResult(
-                    task_id=task_id,
-                    status="blocked",
-                    revision_id=snapshot.revision_id,
-                    completed_nodes=snapshot.completed_nodes,
-                    revisions=snapshot.revisions,
-                    replans=snapshot.replans,
-                    last_failure=str(exc),
-                )
-            try:
-                result = await self.adapter.run(
-                    task_id,
-                    scene_revision=scene_revision,
-                    checkpoint=checkpoint,
-                )
-            except asyncio.CancelledError:
-                raise
-            except Exception as exc:
-                logger.exception(
-                    "Long-horizon runner blocked by internal error: task_id={} error={}",
-                    task_id,
-                    exc,
-                )
-                snapshot = self._snapshot(task_id)
-                return LongHorizonTaskResult(
-                    task_id=task_id,
-                    status="blocked",
-                    revision_id=snapshot.revision_id,
-                    completed_nodes=snapshot.completed_nodes,
-                    revisions=snapshot.revisions,
-                    replans=snapshot.replans,
-                    last_failure=f"runner_error:{type(exc).__name__}:{exc}",
-                )
-            final = self._from_planning_result(result)
-            if self.coordinator.get_task(task_id).cancellation_requested:
-                final = LongHorizonTaskResult(
-                    task_id=final.task_id,
-                    status=self.coordinator.get_task(task_id).status.value,
-                    revision_id=final.revision_id,
-                    completed_nodes=final.completed_nodes,
-                    revisions=final.revisions,
-                    replans=final.replans,
-                    last_failure=final.last_failure,
-                )
-            return final
+            while True:
+                try:
+                    scene_revision = self.scene_revision_provider(task_id)
+                    if not isinstance(scene_revision, str) or not scene_revision.strip():
+                        raise ValueError("scene revision provider returned an empty value")
+                except (PlanningContextUnavailableError, ValueError) as exc:
+                    # Missing trusted scene facts are a planning block, not a
+                    # runner crash.  The Agent can obtain observation evidence and
+                    # the user can resume the persisted task afterward.
+                    return self._blocked(task_id, str(exc))
+                try:
+                    result = await self.adapter.run(
+                        task_id,
+                        scene_revision=scene_revision,
+                        checkpoint=checkpoint,
+                    )
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    logger.exception(
+                        "Long-horizon runner blocked by internal error: task_id={} error={}",
+                        task_id,
+                        exc,
+                    )
+                    return self._blocked(
+                        task_id,
+                        f"runner_error:{type(exc).__name__}:{exc}",
+                    )
+
+                if result.status != "segment_completed":
+                    final = self._from_planning_result(result)
+                    if self.coordinator.get_task(task_id).cancellation_requested:
+                        final = LongHorizonTaskResult(
+                            task_id=final.task_id,
+                            status=self.coordinator.get_task(task_id).status.value,
+                            revision_id=final.revision_id,
+                            completed_nodes=final.completed_nodes,
+                            revisions=final.revisions,
+                            replans=final.replans,
+                            last_failure=final.last_failure,
+                        )
+                    return final
+
+                if self._segment_continuation is None:
+                    return self._from_planning_result(result)
+                completed_revision_id = self.coordinator.get_task(task_id).active_revision_id
+                try:
+                    continuation = self._segment_continuation(task_id)
+                    if hasattr(continuation, "__await__"):
+                        continuation = await continuation  # type: ignore[assignment,misc]
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    logger.exception(
+                        "Long-horizon segment continuation failed: task_id={} error={}",
+                        task_id,
+                        exc,
+                    )
+                    return self._blocked(
+                        task_id,
+                        f"segment_continuation_error:{type(exc).__name__}:{exc}",
+                    )
+
+                task = self.coordinator.get_task(task_id)
+                if task.terminal or task.status in {
+                    AgentTaskStatus.AWAITING_REPLAN,
+                    AgentTaskStatus.WAITING_FOR_USER,
+                }:
+                    return self._snapshot(task_id)
+                if task.pause_requested or task.cancellation_requested:
+                    return self._snapshot(task_id)
+                if task.active_revision_id == completed_revision_id:
+                    failure = (
+                        getattr(continuation, "turn_failure_code", None)
+                        or getattr(continuation, "model_failure_code", None)
+                        or "no_state_transition"
+                    )
+                    return self._blocked(
+                        task_id,
+                        f"segment_continuation_incomplete:{failure}",
+                    )
 
     def _ensure_started(self, task_id: str) -> None:
         if self.adapter is None:
@@ -292,6 +321,18 @@ class LongHorizonTaskController:
             revisions=result.revisions,
             replans=result.replans,
             last_failure=result.last_failure,
+        )
+
+    def _blocked(self, task_id: str, reason: str) -> LongHorizonTaskResult:
+        snapshot = self._snapshot(task_id)
+        return LongHorizonTaskResult(
+            task_id=task_id,
+            status="blocked",
+            revision_id=snapshot.revision_id,
+            completed_nodes=snapshot.completed_nodes,
+            revisions=snapshot.revisions,
+            replans=snapshot.replans,
+            last_failure=reason,
         )
 
     def _snapshot(self, task_id: str, *, status: str | None = None) -> LongHorizonTaskResult:

@@ -11,6 +11,50 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v10.8.6 (2026-09-18 03:52) - codex
+
+- [agent] [fix] [完成] PlanGraph 物化后立即由 discovery 交接 LongHorizon；每个节点从空历史和 node-scoped 投影运行。(local)
+- [agent] [fix] [完成] 节点只接收直接前驱的精确持久化 Tool 结果，使 `manipulation.prepare` 取得完整候选而不重复 Query/CLI/SQLite 恢复。(local)
+- [agent] [fix] [完成] 场景段完成后进入受限 continue/finalize/clarification 回合；Tool 允许集同时约束预算、schema 与本地执行。(local)
+- [Agent] [Fix] [Completed] Yield discovery to LongHorizon immediately after PlanGraph materialization; run every node from empty history with a node-scoped projection. (local)
+- [Agent] [Fix] [Completed] Supply exact persisted results only from direct predecessors so `manipulation.prepare` receives complete candidates without repeated Query/CLI/SQLite recovery. (local)
+- [Agent] [Fix] [Completed] Route completed scene segments through a bounded continue/finalize/clarification turn and enforce its Tool allowlist in budgeting, schema exposure, and local execution. (local)
+
+### 影响文件 / Affected files
+
+- `PhyAgentOS/agent/loop.py:L432-L456,L647-L896,L985-L1050,L1383-L1400`
+- `PhyAgentOS/agent/planning_loop.py:L57-L80,L99-L173,L512-L635,L852-L858`
+- `PhyAgentOS/agent/long_horizon.py:L42-L57,L164-L263,L315-L338`
+- `tests/test_agent_foundation.py:L107-L258`; `tests/test_planning_loop.py:L111-L175`; `tests/test_long_horizon_controller.py:L196-L303`
+- three Forge developer guides; `changelog/2026-09_part9.md`; `CHANGELOG.md`
+
+```diff
+- materialize; continue activate/select/query in accumulated discovery history
++ materialize; yield to host-owned fresh LongHorizon node turns
+- predecessor refs only; recover required candidates through CLI/SQLite
++ exact direct-predecessor Tool results in bounded node context
+- segment completion directly implies whole-task finalization
++ segment_completed -> restricted continue/finalize/clarification
+```
+
+### 七维验收 / Seven-dimension acceptance
+
+Architecture, recovery/idempotency, robotics safety, context/performance,
+configuration/reproducibility, maintainability/observability, and AgentLoop
+autonomy: PASS with no remaining Blocker/Major. Review fixed execution-time
+rejection for hidden provider Tool calls and moved the allowed Tool set before
+prompt-budget calculation. Workspace/IK/collision, planning binding, Action
+admission, and final verification remain fail-closed.
+
+### 验证与安装 / Validation and installation
+
+- Focused `94 passed`; full no-motion suite `463 passed in 23.55s`; Ruff,
+  compileall, and diff check passed.
+- Editable install resolves to `/home/yanxu/PhyAgentOS-forge/PhyAgentOS`.
+- RGB config remains `gpt-5.6-sol/high/272000/260000/110s`; no Gateway Tool,
+  Action, Session, simulator step, Runtime transition, or physical motion occurred.
+- Implementation commit: `pending`; branch: `feature/planning-loop`.
+
 ## v10.8.5 (2026-09-18 03:27) - codex
 
 - [config] [tune] [完成] RGB 正式任务恢复 272K context window 与 260K compaction trigger；模型、high reasoning、110s 请求超时和 10s Forge timeout 不变。(local)
@@ -180,36 +224,6 @@ restart, or Qwen wake occurred.
 
 - Implementation commit: `abdd356`
 - Branch: `feature/planning-loop`
-
-## v10.8.1 (2026-09-18 00:08) - codex
-
-- [agent] [fix] [完成] selection replan budget 耗尽后复用统一终态收尾，释放 Runtime task-binding 并调度 experience completion。(local)
-- [agent] [fix] [完成] selection 拒绝事件落盘失败显式返回稳定错误码、责任方和恢复动作，不再静默吞掉。(local)
-- [eval] [test] [完成] 七维复审无 Blocker/Major；安装并启动 Skill `2.2.0`，Node `0.1.15`、9/9 Tools 与 Qwen healthy/sleeping 均通过。(local)
-- [Agent] [Fix] [Completed] Route selection replan-budget exhaustion through shared terminal cleanup, releasing Runtime task-binding ownership and scheduling experience completion. (local)
-- [Agent] [Fix] [Completed] Expose stable owner and recovery diagnostics when rejection-event persistence fails instead of silently swallowing the failure. (local)
-- [Eval] [Test] [Completed] Seven-dimension review found no remaining Blocker/Major; installed and started Skill `2.2.0`, with Node `0.1.15`, 9/9 Tools, and healthy sleeping Qwen verified. (local)
-
-### 影响文件 / Affected files
-
-- `PhyAgentOS/forge/task.py:L851-L910`
-- `PhyAgentOS/agent/tools/planning.py:L154-L181`
-- `tests/test_planning_selection.py:L85-L185`
-- `changelog/2026-09_part9.md`
-- `/home/yanxu/.PhyAgentOS/skills/pick-place-workflow/`
-
-```diff
-- terminal planning rejection bypasses cleanup; persistence errors disappear
-+ shared terminal cleanup + explicit rejection persistence diagnostics
-```
-
-Validation: focused `70`, Core/extension `521`, Skill `334`, Adapter `491 passed, 1 skipped`; changed-file Ruff, full compileall, and diff check passed. Old query-only task was governance-cancelled before normal stop/install; no force, Action, Session, simulator step, world change, or motion. Bundle SHA-256 `ed8fb2b98ac7bc2b6296a9d7f1c72f6386469ceabdcff83fd291156630cb1a49`, `101559` bytes. Runtime is running with 9/9 Tools ready; Qwen remained PID `198471`, health `200`, sleeping `true`.
-
-### Git 提交 / Git commit
-
-- Commit: `0f553a0`
-- Branch: `feature/planning-loop`
-- 时间 / Time: 2026-09-18 (Asia/Shanghai)
 
 ## 历史记录 / Historical Records
 

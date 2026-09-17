@@ -54,6 +54,19 @@ class NodeTurnProviderError(NodeTurnIncompleteError):
     code = "node_turn_provider_error"
 
 
+class PredecessorExecutionContext(BaseModel):
+    """Exact persisted result from one direct predecessor Tool execution."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    record_id: str
+    tool_id: str
+    semantics: str
+    status: str
+    response: dict[str, Any] | None = None
+    error: dict[str, Any] | None = None
+
+
 class PredecessorContext(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -63,6 +76,7 @@ class PredecessorContext(BaseModel):
     evidence_refs: tuple[str, ...] = ()
     source_tool_id: str | None = None
     failure_code: str | None = None
+    executions: tuple[PredecessorExecutionContext, ...] = ()
 
 
 class NodeExecutionContext(BaseModel):
@@ -121,6 +135,18 @@ class NodeContextProvider:
                 raise StaleNodeContextError(
                     f"predecessor {dependency} belongs to stale scene revision"
                 )
+            execution_context = tuple(
+                PredecessorExecutionContext(
+                    record_id=record.record_id,
+                    tool_id=record.tool_id,
+                    semantics=record.semantics,
+                    status=record.status,
+                    response=record.response,
+                    error=record.error,
+                )
+                for record in revision.execution_records
+                if record.node_id == dependency
+            )
             predecessors.append(PredecessorContext(
                 node_id=dependency,
                 status=settlement.status,
@@ -128,6 +154,7 @@ class NodeContextProvider:
                 evidence_refs=settlement.evidence_refs,
                 source_tool_id=settlement.source_tool_id,
                 failure_code=settlement.failure_code,
+                executions=execution_context,
             ))
         return NodeExecutionContext(
             task_id=task_id,
@@ -493,6 +520,7 @@ class PlanningLoopAdapter:
         recovery_policy: RecoveryPolicy | None = None,
         postcondition_checker: PostconditionChecker | None = None,
         max_steps: int = 100,
+        finalize_completed_graph: bool = True,
     ) -> None:
         self.coordinator = coordinator
         self.context_provider = context_provider
@@ -502,6 +530,7 @@ class PlanningLoopAdapter:
         self.recovery_policy = recovery_policy
         self.postcondition_checker = postcondition_checker
         self.max_steps = max(1, int(max_steps))
+        self.finalize_completed_graph = bool(finalize_completed_graph)
 
     async def run(
         self,
@@ -593,6 +622,14 @@ class PlanningLoopAdapter:
                 if len(settlements) == len(graph.nodes) and all(
                     value == "completed" for value in settlements.values()
                 ):
+                    if not self.finalize_completed_graph:
+                        return PlanningLoopResult(
+                            task_id,
+                            "segment_completed",
+                            tuple(completed),
+                            len(task.revisions),
+                            replans,
+                        )
                     # Finalize only when the node executor produced persisted
                     # Tool facts.  Pure no-motion adapters may intentionally
                     # return semantic envelopes without executions; their
@@ -815,6 +852,7 @@ __all__ = [
     "AgentLoopNodeExecutor", "NodeContextProvider", "NodeExecutionContext",
     "NodeTurnIncompleteError", "NodeTurnProviderError", "PlanningLoopAdapter",
     "PlanningLoopError", "PlanningLoopResult", "PredecessorContext",
+    "PredecessorExecutionContext",
     "RecoveryDecision", "RecoveryPolicy",
     "StaleNodeContextError",
 ]

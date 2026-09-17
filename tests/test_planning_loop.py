@@ -108,6 +108,71 @@ def test_discovery_expands_same_task_and_injects_direct_predecessor_context(tmp_
     assert next_context.predecessor_context[0].evidence_refs == ("artifact://placed/red",)
 
 
+def test_node_context_projects_exact_direct_predecessor_tool_result(tmp_path):
+    c = coordinator(tmp_path)
+    task = c.create_task(
+        task_description="prepare persisted grasp candidates",
+        verification=TaskVerificationContract(mode="off"),
+    )
+    graph = make_graph(task.task_id, "revision-candidates", ("grasp", "prepare"))
+    c.expand_discovery_revision(
+        task.task_id,
+        plan_graph=graph,
+        plan_graph_ref="artifact://plans/candidates",
+    )
+    candidate = {
+        "candidate_ref": "candidate://green/0",
+        "entity_ref": "entity://green",
+        "score": 0.91,
+    }
+    execution = ToolExecutionRecord(
+        record_id="tool-grasp-candidates",
+        revision_id=graph.revision_id,
+        tool_id="grasp.propose",
+        semantics="query",
+        caller_id="agent-task-test",
+        node_id="grasp",
+        node_digest=plan_node_digest(graph.nodes[0]),
+        obligation_id=graph.nodes[0].obligation_id,
+        input_binding_digest=tool_input_binding_digest({}),
+        decision_trace_ref="artifact://decision/grasp-candidates",
+        status="succeeded",
+        response={
+            "ok": True,
+            "data": {
+                "candidate_set_ref": "candidate-set://scene-1/head-camera",
+                "candidates": [candidate],
+            },
+        },
+        evidence_refs=["tool:tool-grasp-candidates"],
+    )
+    c.store.update(
+        task.task_id,
+        lambda current: current.active_revision.execution_records.append(execution),
+        event_type="fixture_grasp_query",
+    )
+    c.record_node_settlement(NodeSettlement(
+        task_id=task.task_id,
+        revision_id=graph.revision_id,
+        node_id="grasp",
+        status="completed",
+        scene_revision="scene-1",
+        evidence_refs=("tool:tool-grasp-candidates",),
+        source_tool_id="grasp.propose",
+    ))
+
+    context = NodeContextProvider(c.get_task).build(
+        task.task_id,
+        "prepare",
+        scene_revision="scene-1",
+    )
+
+    predecessor = context.predecessor_context[0]
+    assert len(predecessor.executions) == 1
+    assert predecessor.executions[0].record_id == "tool-grasp-candidates"
+    assert predecessor.executions[0].response["data"]["candidates"] == [candidate]
+
+
 def test_context_preserves_historical_predecessor_after_scene_progression(tmp_path):
     c = coordinator(tmp_path)
     task = c.create_task(task_description="stale context", verification=TaskVerificationContract(mode="off"))
