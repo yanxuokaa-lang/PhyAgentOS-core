@@ -47,7 +47,7 @@ termination boundary. Motion gates and final verification remain fail-closed.
 - Editable Core install resolves to this repository; Skill `2.2.0` is unchanged.
 - RGB config remains `gpt-5.6-sol/high/272000/260000/110s`; no Gateway Tool,
   Action, Session, simulator step, Runtime transition, or physical motion occurred.
-- Implementation commit: `pending`; branch: `feature/planning-loop`.
+- Implementation commit: `06c79d1`; branch: `feature/planning-loop`.
 
 ## v10.8.6 (2026-09-18 03:52) - codex
 
