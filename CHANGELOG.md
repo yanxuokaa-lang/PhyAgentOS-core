@@ -24,6 +24,12 @@ Bundle SHA-256: `69094772e730c67d8111fbbd1faa8d6040194f638faba4d2c2de36e7c217ae2
 
 Architecture, recovery, robotics safety/authority, configuration/reproducibility, maintainability, observability, and AgentLoop autonomy: PASS. Runtime is `running`; Gateway and all 9 Tool contexts are ready; Qwen health is HTTP `200` and sleep state is `true`.
 
+### Git 提交 / Git commit
+
+- Commit: `9999759`
+- Branch: `feature/planning-loop`
+- 时间 / Time: 2026-09-17 (Asia/Shanghai)
+
 ## v10.7.3 (2026-09-17 15:36) - codex
 
 - [agent] [fix] [完成] 跨 session AgentTask 冲突现在返回 `agent_task_busy`、owner session 与只读恢复指引；不允许隐式接管。(local)
