@@ -40,7 +40,7 @@ the evaluation. No new Skill was installed or changed.
 
 ### Git 提交 / Git commit
 
-- Implementation commit: pending until commit
+- Implementation commit: `8b95f6f`
 - Branch: `feature/planning-loop`
 
 ## v10.8.7 (2026-09-18 04:46) - codex
