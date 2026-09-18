@@ -26,7 +26,7 @@
 - `PhyAgentOS/agent/planning_facts.py:L1-L28`; `PhyAgentOS/agent/planning_context.py:L21-L125`
 - `PhyAgentOS/agent/planning_dispatch.py:L80-L99,L229-L342`; `PhyAgentOS/agent/prompt_context.py:L144-L164`
 - `PhyAgentOS/agent/planning_loop.py:L175-L225,L551-L560,L900-L940`; `PhyAgentOS/forge/task.py:L1733-L1767`
-- `tests/test_planning_context.py:L1-L151`; `tests/test_planning_loop.py:L268-L389,L824-L880,L1144-L1158`
+- `tests/test_planning_context.py:L1-L149`; `tests/test_planning_loop.py:L268-L389,L824-L880,L1144-L1158`
 - `tests/test_planning_dispatch.py:L192-L229,L359-L375`; `tests/test_prompt_context.py:L471-L515`
 - four Forge/developer guides and `changelog/2026-09_part10.md`
 
