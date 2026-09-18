@@ -56,7 +56,7 @@ payload, reported `motion_authorized=false`, and made no Gateway call.
 - Ruff, compileall, `uv lock --check`, and `git diff --check` passed.
 - No new Skill/model, Runtime restart, Gateway Tool, Action, Session, simulator
   step, world change, or physical motion.
-- Implementation commit: `pending`; branch: `feature/planning-loop`.
+- Implementation commit: `d18dafb`; branch: `feature/planning-loop`.
 
 ## v10.8.9 (2026-09-18 19:53) - codex
 
