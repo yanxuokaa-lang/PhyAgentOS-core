@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from PhyAgentOS.agent.planning_facts import response_facts
+from PhyAgentOS.agent.planning_facts import explicit_scene_revision, response_facts
 from PhyAgentOS.planning import AdmissionContext
 
 
@@ -21,12 +21,24 @@ class PlanningContextUnavailableError(RuntimeError):
 def context_from_task(task: Any, *, allow_refresh: bool = False) -> AdmissionContext:
     """Build an admission context from persisted task facts.
 
-    Scene identity is read exclusively from Tool responses.  A task that has
-    not yet completed an observation/understanding query therefore remains
-    blocked instead of receiving a fabricated placeholder scene revision.
+    Scene identity is read from Tool responses. Scene-bound Query requests are
+    also checked against the latest response-owned scene before their evidence
+    is admitted. A task without an authoritative scene remains blocked instead
+    of receiving a fabricated placeholder identity.
     """
 
     records = list(getattr(task, "execution_records", ()))
+    binding = getattr(task, "primary_skill_binding", None)
+    bound_tools = (
+        getattr(binding, "required_tools", ())
+        if binding is not None
+        else getattr(task, "tool_bindings", ())
+    )
+    refreshing_tools = {
+        tool.tool_id
+        for tool in bound_tools
+        if getattr(getattr(tool, "planning_policy", None), "refreshes_scene", False)
+    }
     revisions: list[str] = []
     evidence: set[str] = set()
     condition_facts: dict[str, bool] = {}
@@ -48,6 +60,35 @@ def context_from_task(task: Any, *, allow_refresh: bool = False) -> AdmissionCon
             condition_facts.clear()
         if not isinstance(scene, str) or not scene.strip():
             scene = payload.get("scene_revision") if getattr(record, "status", None) == "succeeded" and not effect_started and not isinstance(payload.get("capability_outcome_summary"), dict) else None
+        request_scene = explicit_scene_revision(getattr(record, "arguments", None))
+        response_scene = scene.strip() if isinstance(scene, str) and scene.strip() else None
+        current_scene = revisions[-1] if revisions else None
+        refreshes_scene = getattr(record, "tool_id", None) in refreshing_tools
+        stale_request = (
+            not refreshes_scene
+            and request_scene is not None
+            and current_scene is not None
+            and request_scene != current_scene
+        )
+        request_response_conflict = (
+            not refreshes_scene
+            and request_scene is not None
+            and response_scene is not None
+            and request_scene != response_scene
+        )
+        stale_response = (
+            current_scene is not None
+            and response_scene is not None
+            and response_scene != current_scene
+            and not refreshes_scene
+        )
+        stale_query = (
+            getattr(record, "semantics", None) == "query"
+            and not effect_started
+            and (stale_request or request_response_conflict or stale_response)
+        )
+        if stale_query:
+            continue
         if isinstance(scene, str) and scene.strip():
             needs_observation = effect_unknown
             scene = scene.strip()

@@ -1,5 +1,6 @@
-"""Read persisted Gateway response envelopes without conflating input and effects."""
+"""Read persisted Gateway facts without conflating input and effects."""
 
+from collections.abc import Mapping
 from typing import Any
 
 
@@ -15,3 +16,13 @@ def response_facts(response: dict[str, Any] | None) -> dict[str, Any]:
     if isinstance(summary, dict):
         payload = {**payload, **summary}
     return payload
+
+
+def explicit_scene_revision(value: Mapping[str, Any] | None) -> str | None:
+    """Return a normalized scene identity only when the payload states one."""
+    if not isinstance(value, Mapping):
+        return None
+    scene_revision = value.get("scene_revision")
+    if not isinstance(scene_revision, str) or not scene_revision.strip():
+        return None
+    return scene_revision.strip()

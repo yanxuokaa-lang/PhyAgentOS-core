@@ -27,6 +27,7 @@ producer Tool terminal result
   -> NodeContextProvider bounded input view
        - exact direct-predecessor results
        - exact discovery Query arguments and terminal results named by node.required_evidence
+  -> forge_plan_ready projects the frozen schema for current candidate Tools
   -> Agent selects fields and assembles consumer arguments
   -> AgentComposedDispatch validates frozen consumer input_schema
   -> Coordinator persists DecisionTrace and resumable selection
@@ -44,18 +45,26 @@ Runtime-specific semantic validation remains owned by the consumer endpoint.
    task binds the Tool. Legacy records without a frozen schema remain readable.
 2. `input_binding_keys` continue to describe immutable semantic PlanNode
    bindings. They are not expanded to every transport argument.
-3. `forge_plan_ready` exposes the consumer's required top-level arguments as a
-   diagnostic projection. It does not synthesize values or make a node ready.
+3. `forge_plan_ready` exposes the consumer's frozen schema and required
+   top-level arguments only for current candidate Tools. Live
+   `forge_tool_context` remains the readiness source and a legacy schema
+   fallback; it does not replace the task-bound contract.
 4. `forge_plan_select` accepts exact final arguments chosen by the Agent and
    validates them against the frozen schema before persisting a DecisionTrace.
 5. A root node can receive exact discovery Query arguments and terminal results only when its
    `required_evidence` names evidence persisted by Coordinator and selected into
-   the active revision's `discovery_evidence_refs`.
+   the active revision's `discovery_evidence_refs`. For non-refresh Queries,
+   any explicit scene revision in the request or response must match the current
+   planning scene, and explicit request/response identities must agree. A Tool
+   whose frozen policy declares `refreshes_scene` may name its source scene in
+   the request, but its response must name the current planning scene.
 6. A successor receives exact results only from direct predecessor executions.
 7. Schema rejection creates no Tool record, Gateway invocation, Action,
    Session, simulator step, or motion authorization.
 8. Recovery-provider failure preserves the original node failure and enters the
-   existing bounded `awaiting_replan` state; it never retries a Tool automatically.
+   existing bounded `awaiting_replan` state. If that transition is unavailable,
+   Coordinator persists the existing terminal `failed` task state; it never
+   retries a Tool automatically.
 
 ## Extension Rule
 
@@ -75,7 +84,10 @@ seam. Do not hard-code a producer Tool ID into Core.
 - Wrong type, enum, bounds, pattern, array/object shape, or unknown property:
   `tool_input_schema_invalid` before Gateway.
 - Required evidence absent: existing DAG readiness rejection.
-- Stale scene or calibration: existing planning/Gateway admission rejection.
+- Stale request or response scene identity: excluded from current planning
+  evidence and rejected from node context before selection.
+- Stale calibration or consumer semantics: existing planning/Gateway admission
+  rejection.
 - Consumer semantic rejection: terminal Query failure owned by the Runtime.
 - Recovery provider unavailable or invalid: existing bounded
   `awaiting_replan`, preserving the original settlement failure.

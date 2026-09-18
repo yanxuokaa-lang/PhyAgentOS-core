@@ -468,6 +468,53 @@ def test_compaction_preserves_visual_and_execution_references() -> None:
     assert "irrelevant_provider_debug" not in encoded
 
 
+def test_compaction_preserves_frozen_plan_ready_contract() -> None:
+    content = json.dumps({
+        "ok": True,
+        "ready_nodes": [{
+            "node_id": "green-grasp-proposal",
+            "candidate_tool_ids": ["grasp.propose"],
+            "missing_runtime_arguments": {
+                "grasp.propose": ["freshness_ms", "max_age_ms", "targets"],
+            },
+            "required_tool_arguments": {
+                "grasp.propose": ["observation_ref", "targets"],
+            },
+            "frozen_tool_input_schemas": {
+                "grasp.propose": {
+                    "type": "object",
+                    "required": ["observation_ref", "targets"],
+                    "properties": {
+                        "observation_ref": {"type": "string"},
+                        "targets": {"type": "array", "minItems": 1},
+                    },
+                    "additionalProperties": False,
+                },
+            },
+            "irrelevant_debug": "drop-me",
+        }],
+    })
+
+    summary = json.loads(compact_tool_result("forge_plan_ready", content))
+    ready = summary["result"]["ready_nodes"][0]
+
+    assert ready["candidate_tool_ids"] == ["grasp.propose"]
+    assert ready["missing_runtime_arguments"]["grasp.propose"] == [
+        "freshness_ms",
+        "max_age_ms",
+        "targets",
+    ]
+    assert ready["required_tool_arguments"]["grasp.propose"] == [
+        "observation_ref",
+        "targets",
+    ]
+    assert ready["frozen_tool_input_schemas"]["grasp.propose"]["required"] == [
+        "observation_ref",
+        "targets",
+    ]
+    assert "irrelevant_debug" not in ready
+
+
 def test_prompt_budget_rebuilds_from_current_turn_and_task_projection() -> None:
     record = SimpleNamespace(
         record_id="record-1",

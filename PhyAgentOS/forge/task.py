@@ -1730,6 +1730,42 @@ class AgentTaskCoordinator:
 
         return self.store.update(task_id, mutate, event_type="plan_replan_requested")
 
+    def fail_replan(self, task_id: str, *, reason: str) -> AgentTaskRecord:
+        """Persist a terminal recovery failure through the existing task state."""
+        reason = reason.strip()
+        if not reason:
+            raise AgentTaskError("replan failure reason must be non-empty")
+        task = self.store.get(task_id)
+        if task.terminal:
+            return task
+        recoverable_statuses = {
+            AgentTaskStatus.EXECUTING,
+            AgentTaskStatus.AWAITING_REPLAN,
+        }
+        if task.status not in recoverable_statuses:
+            raise AgentTaskError(
+                f"cannot fail replan while AgentTask is {task.status.value}"
+            )
+
+        def mutate(current: AgentTaskRecord) -> None:
+            if current.status not in recoverable_statuses:
+                raise AgentTaskError(
+                    f"cannot fail replan while AgentTask is {current.status.value}"
+                )
+            current.status = AgentTaskStatus.FAILED
+            current.replan_deadline = None
+            current.replan_extension_used = False
+            current.evidence_errors.append(f"replan failed: {reason}")
+
+        result = self.store.update(
+            task_id,
+            mutate,
+            event_type="plan_replan_failed",
+            payload={"reason": reason},
+        )
+        self._schedule_experience(result)
+        return result
+
     def request_clarification(
         self,
         task_id: str,

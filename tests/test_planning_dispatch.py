@@ -197,12 +197,34 @@ def test_stale_scene_ready_projection_exposes_only_refresh_tools():
         capabilities=("scene.observe", "object.relocate"),
         refreshes_scene=True,
     )
+    nonrefresh = ToolSpecPolicy(
+        tool_id="object.relocate",
+        semantics="action",
+        spec_digest="4" * 64,
+        capabilities=("scene.observe",),
+    )
     dispatch = AgentComposedDispatch(
-        _graph(), (policy,),
+        _graph(), (policy, nonrefresh),
         AdmissionContext(scene_revision="scene-1", condition_facts={"scene_current": False}),
+        input_schemas={
+            "scene.observe": {
+                "type": "object",
+                "required": ["sensor_ref"],
+                "properties": {"sensor_ref": {"type": "string"}},
+            },
+            "object.relocate": {
+                "type": "object",
+                "required": ["target"],
+                "properties": {"target": {"type": "string"}},
+            },
+        },
     )
     data = dispatch.describe()
     assert [item["node_id"] for item in data["ready_nodes"]] == ["observe"]
+    assert data["ready_nodes"][0]["candidate_tool_ids"] == ["scene.observe"]
+    assert set(data["ready_nodes"][0]["frozen_tool_input_schemas"]) == {
+        "scene.observe"
+    }
     assert all(item["node_id"] != "verify" for item in data["ready_nodes"])
 
 
@@ -340,6 +362,16 @@ def test_selection_rejects_incomplete_grasp_arguments_before_execution():
     assert ready["required_tool_arguments"]["grasp.propose"] == tuple(
         GRASP_TOOL_SPEC["input_schema"]["required"]
     )
+    assert ready["frozen_tool_input_schemas"]["grasp.propose"] == (
+        GRASP_TOOL_SPEC["input_schema"]
+    )
+    ready["frozen_tool_input_schemas"]["grasp.propose"]["required"].append(
+        "caller-mutation"
+    )
+    refreshed = dispatch.describe()["ready_nodes"][0]
+    assert "caller-mutation" not in refreshed["frozen_tool_input_schemas"][
+        "grasp.propose"
+    ]["required"]
 
     with pytest.raises(Exception) as caught:
         dispatch.prepare_selection(

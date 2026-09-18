@@ -399,8 +399,14 @@ must agree with the PlanNode; they are not a duplicate list of every transport
 argument. A node turn may assemble the consumer's exact arguments from its
 immutable bindings, exact direct-predecessor results, and exact discovery Query
 request arguments plus terminal results whose evidence references are both selected into the active revision
-and named by the current node. `AgentComposedDispatch` validates the assembled
-object against the frozen consumer schema before creating a DecisionTrace.
+and named by the current node. For non-refresh Queries, explicit scene
+identities in both the persisted request and response must match the current
+planning scene and each other. A Tool whose frozen policy declares
+`refreshes_scene` may name its source scene in the request, while its response
+must name the current planning scene. `forge_plan_ready` projects the frozen consumer schema only for current
+candidate Tools; live `forge_tool_context` remains responsible for readiness
+and is a schema fallback only for legacy bindings. `AgentComposedDispatch`
+validates the assembled object against the frozen consumer schema before creating a DecisionTrace.
 Schema rejection creates no Tool record or Gateway invocation and never causes
 the Coordinator to infer a missing sensor, geometry, freshness, or calibration
 value. Producers therefore remain independent of consumer-specific argument
@@ -416,6 +422,12 @@ returns `blocked` with `node_turn_incomplete`, leaves the node unsettled, and
 does not consume replan budget. In particular, a non-terminal or unknown Action
 is reconciled through its existing invocation identity and is never restarted
 from the selection receipt.
+
+If a recovery proposer fails, the Coordinator first enters the existing
+bounded `awaiting_replan` state. If that state transition is unavailable, for
+example because the replan budget is exhausted, the Coordinator persists the
+existing terminal `failed` task state. A runner must not report `blocked` while
+leaving the authoritative task `executing` with the same failed settlement.
 
 Long-horizon continuity is stored in `AgentTask`/`PlanRevision`, not in an
 ever-growing model transcript. Each node turn receives a read-only,

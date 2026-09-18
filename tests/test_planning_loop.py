@@ -265,6 +265,126 @@ def test_root_node_projects_only_required_discovery_query_results(tmp_path):
     assert all(item.record_id != "tool-unrelated-target" for item in context.evidence_context)
 
 
+def test_root_node_rejects_discovery_query_with_stale_request_scene(tmp_path):
+    c = coordinator(tmp_path)
+    task = c.create_task(
+        task_description="reject stale discovery geometry",
+        verification=TaskVerificationContract(mode="off"),
+    )
+    stale = ToolExecutionRecord(
+        record_id="tool-understanding-stale-request",
+        revision_id=task.active_revision_id,
+        tool_id="scene.understand",
+        semantics="query",
+        caller_id="agent-task-test",
+        arguments={
+            "scene_revision": "scene-old",
+            "observation_ref": "observation://old",
+        },
+        status="succeeded",
+        response={
+            "ok": True,
+            "data": {
+                "status": "available",
+                "entities": [{"entity_ref": "entity://old-green"}],
+            },
+        },
+        evidence_refs=["tool:tool-understanding-stale-request"],
+    )
+    c.store.update(
+        task.task_id,
+        lambda current: current.active_revision.execution_records.append(stale),
+        event_type="fixture_stale_discovery_query",
+    )
+    node = PlanNode(
+        node_id="grasp-old-green",
+        obligation_id="reject-old-green",
+        capability="grasp.propose",
+        required_evidence=("tool:tool-understanding-stale-request",),
+    )
+    payload = {
+        "task_id": task.task_id,
+        "revision_id": "revision-stale-request",
+        "graph_digest": "0" * 64,
+        "planner_decision_digest": "1" * 64,
+        "policy_snapshot_digest": "2" * 64,
+        "nodes": [node.model_dump(mode="json")],
+    }
+    payload["graph_digest"] = plan_graph_digest(payload)
+    c.expand_discovery_revision(
+        task.task_id,
+        plan_graph=PlanGraph.model_validate(payload),
+        plan_graph_ref="artifact://plans/stale-request",
+        discovery_evidence_refs=("tool:tool-understanding-stale-request",),
+    )
+
+    with pytest.raises(StaleNodeContextError, match="stale scene revision"):
+        NodeContextProvider(c.get_task).build(
+            task.task_id,
+            node.node_id,
+            scene_revision="scene-new",
+        )
+
+
+def test_root_node_accepts_refresh_query_source_scene_as_provenance():
+    node = PlanNode(
+        node_id="consume-refreshed-observation",
+        obligation_id="consume-current-observation",
+        capability="scene.understand",
+        required_evidence=("tool:tool-observe-refresh",),
+    )
+    payload = {
+        "task_id": "task-refresh-evidence",
+        "revision_id": "revision-refresh-evidence",
+        "graph_digest": "0" * 64,
+        "planner_decision_digest": "1" * 64,
+        "policy_snapshot_digest": "2" * 64,
+        "nodes": [node.model_dump(mode="json")],
+    }
+    payload["graph_digest"] = plan_graph_digest(payload)
+    record = ToolExecutionRecord(
+        record_id="tool-observe-refresh",
+        revision_id="revision-discovery",
+        tool_id="scene.observe",
+        semantics="query",
+        caller_id="agent-task-test",
+        arguments={"scene_revision": "scene-old"},
+        status="succeeded",
+        response={
+            "ok": True,
+            "data": {"status": "available", "scene_revision": "scene-new"},
+        },
+        evidence_refs=["tool:tool-observe-refresh"],
+    )
+    revision = SimpleNamespace(
+        revision_id="revision-refresh-evidence",
+        plan_graph=PlanGraph.model_validate(payload),
+        node_settlements=(),
+        discovery_evidence_refs=("tool:tool-observe-refresh",),
+        execution_records=(record,),
+        fresh_evidence_requirements=(),
+        replan_evidence_refs=(),
+    )
+    task = SimpleNamespace(
+        active_revision=revision,
+        revisions=(revision,),
+        primary_skill_binding=None,
+        tool_bindings=(SimpleNamespace(
+            tool_id="scene.observe",
+            planning_policy=SimpleNamespace(refreshes_scene=True),
+        ),),
+    )
+
+    context = NodeContextProvider(lambda _: task).build(
+        "task-refresh-evidence",
+        node.node_id,
+        scene_revision="scene-new",
+    )
+
+    assert context.evidence_context[0].arguments == {"scene_revision": "scene-old"}
+    assert context.evidence_context[0].response == record.response
+
+
 def test_context_preserves_historical_predecessor_after_scene_progression(tmp_path):
     c = coordinator(tmp_path)
     task = c.create_task(task_description="stale context", verification=TaskVerificationContract(mode="off"))
@@ -701,6 +821,64 @@ def test_replan_provider_failure_enters_existing_recovery_with_original_failure(
     assert current.active_revision.execution_records == []
 
 
+def test_replan_provider_and_state_failure_persist_terminal_task(tmp_path):
+    c = AgentTaskCoordinator(
+        workspace=tmp_path,
+        config=ForgeConfig(),
+        client=object(),
+        verifier=None,
+        max_replans=0,
+    )
+    task = c.create_task(
+        task_description="terminate unavailable recovery",
+        verification=TaskVerificationContract(mode="off"),
+    )
+    graph = make_graph(task.task_id, "revision-recovery-terminal", ("arrange-red",))
+    c.expand_discovery_revision(
+        task.task_id,
+        plan_graph=graph,
+        plan_graph_ref="artifact://plans/recovery/terminal",
+    )
+
+    def execute(context):
+        return ToolResultEnvelope(
+            task_id=context.task_id,
+            revision_id=context.revision_id,
+            node_id=context.node_id,
+            tool_id="grasp.propose",
+            status="failed",
+            failure_code="invalid_arguments",
+        )
+
+    def replan(*_):
+        raise ValueError("recovery model returned no unique decision")
+
+    result = asyncio.run(PlanningLoopAdapter(
+        c,
+        context_provider=NodeContextProvider(c.get_task),
+        node_executor=execute,
+        admission_context_provider=lambda _: AdmissionContext(
+            scene_revision="scene-1",
+            evidence_refs=frozenset({"scene:inventory"}),
+        ),
+        replan_proposer=replan,
+        recovery_policy=lambda *_: "replan",
+    ).run(task.task_id, scene_revision="scene-1"))
+
+    assert result.status == "failed"
+    assert result.last_failure == (
+        "replan_proposer_error:ValueError:arrange-red:invalid_arguments:"
+        "recovery_state_error:AgentTaskError"
+    )
+    current = c.get_task(task.task_id)
+    assert current.status.value == "failed"
+    assert current.terminal is True
+    assert current.replan_deadline is None
+    assert current.active_revision.node_settlements[0].failure_code == "invalid_arguments"
+    assert current.active_revision.execution_records == []
+    assert c.store.events(task.task_id)[-1]["event_type"] == "plan_replan_failed"
+
+
 def test_reducer_replay_does_not_require_scene_refresh_or_execute_again(tmp_path):
     c = coordinator(tmp_path)
     task = c.create_task(task_description="replay changed result", verification=TaskVerificationContract(mode="off"))
@@ -961,6 +1139,20 @@ def test_replan_budget_is_enforced(tmp_path):
     task = c.create_task(task_description="budget", verification=TaskVerificationContract(mode="off"))
     with pytest.raises(AgentTaskError, match="budget exhausted"):
         c.request_replan(task.task_id, reason="no budget")
+
+
+def test_replan_failure_does_not_overwrite_waiting_for_user(tmp_path):
+    c = coordinator(tmp_path)
+    task = c.create_task(
+        task_description="preserve clarification state",
+        verification=TaskVerificationContract(mode="off"),
+    )
+    c.request_clarification(task.task_id, question="Which object should move?")
+
+    with pytest.raises(AgentTaskError, match="cannot fail replan"):
+        c.fail_replan(task.task_id, reason="concurrent recovery failure")
+
+    assert c.get_task(task.task_id).status.value == "waiting_for_user"
 
 
 def test_discovery_revision_does_not_consume_replan_budget(tmp_path):

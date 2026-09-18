@@ -15,7 +15,7 @@ from typing import Any, Awaitable, Callable, Literal
 from pydantic import BaseModel, ConfigDict
 
 from PhyAgentOS.agent.planner_plugin import ReplanProposal
-from PhyAgentOS.agent.planning_facts import response_facts
+from PhyAgentOS.agent.planning_facts import explicit_scene_revision, response_facts
 from PhyAgentOS.forge.task import AgentTaskCoordinator
 from PhyAgentOS.planning import (
     AdmissionContext,
@@ -175,6 +175,17 @@ class NodeContextProvider:
         selected_discovery_evidence = (
             set(node.required_evidence) & set(revision.discovery_evidence_refs)
         )
+        binding = getattr(task, "primary_skill_binding", None)
+        bound_tools = (
+            getattr(binding, "required_tools", ())
+            if binding is not None
+            else getattr(task, "tool_bindings", ())
+        )
+        refreshing_tools = {
+            tool.tool_id
+            for tool in bound_tools
+            if getattr(getattr(tool, "planning_policy", None), "refreshes_scene", False)
+        }
         evidence_context: list[EvidenceExecutionContext] = []
         if selected_discovery_evidence:
             for source_revision in task.revisions:
@@ -187,11 +198,20 @@ class NodeContextProvider:
                     ):
                         continue
                     facts = response_facts(record.response)
-                    source_scene = facts.get("scene_revision")
+                    request_scene = explicit_scene_revision(record.arguments)
+                    response_scene = explicit_scene_revision(facts)
+                    refreshes_scene = record.tool_id in refreshing_tools
                     if (
-                        isinstance(source_scene, str)
-                        and source_scene
-                        and source_scene != scene_revision
+                        not refreshes_scene
+                        and request_scene not in (None, scene_revision)
+                    ) or response_scene not in (
+                        None,
+                        scene_revision,
+                    ) or (
+                        not refreshes_scene
+                        and request_scene is not None
+                        and response_scene is not None
+                        and request_scene != response_scene
                     ):
                         raise StaleNodeContextError(
                             f"required evidence {record.record_id} belongs to stale scene revision"
@@ -531,7 +551,9 @@ class AgentLoopNodeExecutor:
     def _default_prompt(context: NodeExecutionContext) -> str:
         return (
             "Execute only the current semantic planning node using admitted PAOS Tools. "
-            "Use forge_tool_context for the consumer input schema, then select exact values "
+            "Use the frozen consumer input schema from forge_plan_ready when present; "
+            "use forge_tool_context for live readiness and as a legacy schema fallback. "
+            "Then select exact values "
             "from input_bindings, evidence_context, or predecessor_context. You may project "
             "and combine those structured values, but must not invent observation, geometry, "
             "calibration, freshness, execution, or motion facts. "
@@ -890,11 +912,25 @@ class PlanningLoopAdapter:
                     ),
                 )
             except Exception as state_exc:
+                try:
+                    current = self.coordinator.fail_replan(
+                        task_id,
+                        reason=(
+                            f"automatic recovery state transition failed after "
+                            f"{settlement.node_id}:{failure}:"
+                            f"{type(state_exc).__name__}"
+                        ),
+                    )
+                except Exception as terminal_exc:
+                    raise PlanningLoopError(
+                        "recovery failure could not be persisted: "
+                        f"{type(terminal_exc).__name__}"
+                    ) from terminal_exc
                 return PlanningLoopResult(
                     task_id,
-                    "blocked",
+                    current.status.value,
                     tuple(completed),
-                    len(self.coordinator.get_task(task_id).revisions),
+                    len(current.revisions),
                     replans,
                     (
                         f"replan_proposer_error:{type(exc).__name__}:"

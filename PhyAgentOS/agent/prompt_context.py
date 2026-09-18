@@ -142,7 +142,10 @@ _REFERENCE_KEYS = {
     "type",
 }
 _FULL_VALUE_KEYS = {
+    "candidate_tool_ids",
+    "frozen_tool_input_schemas",
     "input_schema",
+    "missing_runtime_arguments",
     "output_schema",
     "planning_binding",
     "node_diagnostics",
@@ -154,6 +157,7 @@ _FULL_VALUE_KEYS = {
     "failure_classes",
     "idempotency",
     "resources",
+    "required_tool_arguments",
     "scene_write",
 }
 _SEMANTIC_KEYS = {

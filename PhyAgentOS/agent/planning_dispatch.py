@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping
+from copy import deepcopy
 from typing import Any, Callable
 
 from PhyAgentOS.forge.manipulation import ManipulationIntent
@@ -92,7 +93,7 @@ class AgentComposedDispatch:
         self.context_provider = context_provider
         self._policies = {policy.tool_id: policy for policy in policies}
         self._input_schemas = {
-            tool_id: dict(schema)
+            tool_id: deepcopy(dict(schema))
             for tool_id, schema in (input_schemas or {}).items()
         }
 
@@ -253,6 +254,13 @@ class AgentComposedDispatch:
                         }}
                         if any(
                             nodes[node_id].capability in policy.capabilities
+                            and (
+                                conditions.get("scene_current") is not False
+                                or policy.refreshes_scene
+                            )
+                            and set(policy.input_binding_keys).issubset(
+                                nodes[node_id].input_bindings
+                            )
                             and self._required_runtime_arguments(policy)
                             for policy in self.policies
                         )
@@ -265,15 +273,57 @@ class AgentComposedDispatch:
                             )
                             for policy in self.policies
                             if nodes[node_id].capability in policy.capabilities
+                            and (
+                                conditions.get("scene_current") is not False
+                                or policy.refreshes_scene
+                            )
+                            and set(policy.input_binding_keys).issubset(
+                                nodes[node_id].input_bindings
+                            )
                             and required_argument_keys(
                                 self._input_schemas.get(policy.tool_id)
                             )
                         }}
                         if any(
                             nodes[node_id].capability in policy.capabilities
+                            and (
+                                conditions.get("scene_current") is not False
+                                or policy.refreshes_scene
+                            )
+                            and set(policy.input_binding_keys).issubset(
+                                nodes[node_id].input_bindings
+                            )
                             and required_argument_keys(
                                 self._input_schemas.get(policy.tool_id)
                             )
+                            for policy in self.policies
+                        )
+                        else {}
+                    ),
+                    **(
+                        {"frozen_tool_input_schemas": {
+                            policy.tool_id: deepcopy(self._input_schemas[policy.tool_id])
+                            for policy in self.policies
+                            if nodes[node_id].capability in policy.capabilities
+                            and (
+                                conditions.get("scene_current") is not False
+                                or policy.refreshes_scene
+                            )
+                            and set(policy.input_binding_keys).issubset(
+                                nodes[node_id].input_bindings
+                            )
+                            and policy.tool_id in self._input_schemas
+                        }}
+                        if any(
+                            nodes[node_id].capability in policy.capabilities
+                            and (
+                                conditions.get("scene_current") is not False
+                                or policy.refreshes_scene
+                            )
+                            and set(policy.input_binding_keys).issubset(
+                                nodes[node_id].input_bindings
+                            )
+                            and policy.tool_id in self._input_schemas
                             for policy in self.policies
                         )
                         else {}

@@ -305,7 +305,14 @@ immutable in the PlanNode. The Agent may select and structurally assemble
 values from the bounded node context, but it cannot create authoritative
 observation, geometry, calibration, freshness, or execution facts. Root nodes
 receive only successful discovery Query request arguments and terminal results whose evidence refs were
-selected into the active revision and are named by `required_evidence`;
+selected into the active revision and are named by `required_evidence`.
+For non-refresh Queries, explicit scene identities in those requests and
+responses must agree with the current planning scene and with each other. A
+Tool whose frozen policy declares `refreshes_scene` may name its source scene
+in the request, but its response must name the current planning scene.
+`forge_plan_ready` supplies the
+task-bound frozen consumer schema for current candidates, while live Tool
+context supplies readiness and only serves as a legacy schema fallback;
 successor nodes continue to receive exact direct-predecessor results. The
 dispatch validates the final object before persistence or Gateway transport.
 This is consumer-declared input, not a producer-to-consumer Tool dependency.

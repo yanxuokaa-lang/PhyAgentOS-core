@@ -12,6 +12,52 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v10.8.10 (2026-09-18 20:59) - codex
+
+- [agent] [fix] [完成] 同时校验 discovery Query 的持久请求与响应 scene identity；非刷新证据必须属于当前场景，刷新 Tool 可从源场景产生当前场景。(local)
+- [agent] [fix] [完成] `forge_plan_ready` 仅为当前可选 Tool 投影冻结消费者 schema，且长上下文压缩继续保留该有界契约。(local)
+- [agent] [fix] [完成] recovery proposer 与 replan 状态迁移同时失败时，Coordinator 持久化既有 `failed` 终态，消除 runner/task 状态分叉。(local)
+- [Agent] [Fix] [Completed] Validate persisted request and response scene identities for discovery Queries; non-refresh evidence must belong to the current scene while refresh Tools may advance from a source scene. (local)
+- [Agent] [Fix] [Completed] Project frozen consumer schemas only for currently selectable Tools through `forge_plan_ready` and preserve that bounded contract through long-context compaction. (local)
+- [Agent] [Fix] [Completed] Persist the existing terminal `failed` state when both the recovery proposer and replan transition fail, eliminating runner/task status divergence. (local)
+
+### 影响文件 / Affected files
+
+- `PhyAgentOS/agent/planning_facts.py:L1-L28`; `PhyAgentOS/agent/planning_context.py:L21-L125`
+- `PhyAgentOS/agent/planning_dispatch.py:L80-L99,L229-L342`; `PhyAgentOS/agent/prompt_context.py:L144-L164`
+- `PhyAgentOS/agent/planning_loop.py:L175-L225,L551-L560,L900-L940`; `PhyAgentOS/forge/task.py:L1733-L1767`
+- `tests/test_planning_context.py:L1-L151`; `tests/test_planning_loop.py:L268-L389,L824-L880,L1144-L1158`
+- `tests/test_planning_dispatch.py:L192-L229,L359-L375`; `tests/test_prompt_context.py:L471-L515`
+- four Forge/developer guides and `changelog/2026-09_part10.md`
+
+```diff
+- stale request scene can contribute evidence when a Query response omits scene identity
++ planning context and NodeContext reject stale explicit request/response scene identities
+- every Query request/response scene pair is treated as immutable
++ non-refresh pairs must agree; frozen refresh policy may advance source to current scene
+- Agent reads live schema while Coordinator validates a hidden frozen schema
++ ready projection and compaction expose the bounded frozen candidate schema
+- recovery double failure returns blocked while authoritative task remains executing
++ Coordinator persists and returns the existing failed terminal state
+```
+
+### 七维验收 / Seven-dimension acceptance
+
+Architecture/ownership, contract extensibility, evidence/freshness, AgentLoop
+context, recovery consistency, robotics safety, and tests/maintainability: PASS
+with no remaining Blocker/Major. Independent review fixed refresh-query source
+scene handling and frozen-schema loss during Tool-result compaction. The module
+simulation preserved all seven `grasp.propose` required fields, removed debug
+payload, reported `motion_authorized=false`, and made no Gateway call.
+
+### 验证与安全边界 / Validation and safety boundary
+
+- Core no-motion `478 passed in 24.47s`; pick-place workflow `334 passed in 6.86s`.
+- Ruff, compileall, `uv lock --check`, and `git diff --check` passed.
+- No new Skill/model, Runtime restart, Gateway Tool, Action, Session, simulator
+  step, world change, or physical motion.
+- Implementation commit: `pending`; branch: `feature/planning-loop`.
+
 ## v10.8.9 (2026-09-18 19:53) - codex
 
 - [agent] [feat] [完成] 冻结消费者 ToolSpec `input_schema`，Agent 从当前节点、显式 discovery evidence 与直接前驱的结构化事实选择并组合参数；Coordinator 在 DecisionTrace/Gateway 前校验。(local)
@@ -171,6 +217,8 @@ admission, and final verification remain fail-closed.
   Action, Session, simulator step, Runtime transition, or physical motion occurred.
 - Implementation commit: `8ae4189`; branch: `feature/planning-loop`.
 
+## 历史记录 / Historical Records
+
 ## v10.8.5 (2026-09-18 03:27) - codex
 
 - [config] [tune] [完成] RGB 正式任务恢复 272K context window 与 260K compaction trigger；模型、high reasoning、110s 请求超时和 10s Forge timeout 不变。(local)
@@ -196,8 +244,6 @@ Gateway Tool, Action, Session, simulator step, world change, or motion.
 
 - Commit: `c76b732`
 - Branch: `feature/planning-loop`
-
-## 历史记录 / Historical Records
 
 ## v10.8.4 (2026-09-18 02:45) - codex
 
