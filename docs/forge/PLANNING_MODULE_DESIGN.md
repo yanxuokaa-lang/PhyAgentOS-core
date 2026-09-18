@@ -298,6 +298,18 @@ and understand before materializing their semantic graph; an initial discovery
 observation is not repeated as a graph node unless a fresh observation
 obligation is explicitly selected.
 
+Consumer input validation is separate from semantic node binding. A frozen
+`BoundToolSpec.input_schema` defines the exact final argument object, while
+`ToolSpecPolicy.input_binding_keys` defines only semantic values that must be
+immutable in the PlanNode. The Agent may select and structurally assemble
+values from the bounded node context, but it cannot create authoritative
+observation, geometry, calibration, freshness, or execution facts. Root nodes
+receive only successful discovery Query request arguments and terminal results whose evidence refs were
+selected into the active revision and are named by `required_evidence`;
+successor nodes continue to receive exact direct-predecessor results. The
+dispatch validates the final object before persistence or Gateway transport.
+This is consumer-declared input, not a producer-to-consumer Tool dependency.
+
 Experience now stores `WorkflowPolicyCandidate` and immutable independent
 `WorkflowPolicyReplayReceipt` records in `experience.sqlite3`. Candidates are
 deduplicated by base/proposed policy digests, require support from distinct

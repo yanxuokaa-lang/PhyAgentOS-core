@@ -346,6 +346,18 @@ def compact_tool_result(tool_name: str, content: str) -> str:
     )
 
 
+def _task_binding_projection(binding: Any) -> Any:
+    """Keep binding facts while leaving Tool schemas to live Tool context."""
+    payload = _safe_json(binding)
+    if not isinstance(payload, dict):
+        return payload
+    payload.pop("input_schema", None)
+    for tool in payload.get("required_tools", ()):
+        if isinstance(tool, dict):
+            tool.pop("input_schema", None)
+    return payload
+
+
 def task_prompt_projection(task: Any | None) -> dict[str, Any] | None:
     """Project current persisted task state for model orientation between calls."""
 
@@ -451,13 +463,19 @@ def task_prompt_projection(task: Any | None) -> dict[str, Any] | None:
         "origin_session_key": getattr(task, "origin_session_key", None),
         "task_description": getattr(task, "task_description", None),
         "verification": _safe_json(getattr(task, "verification", None)),
-        "primary_skill_binding": _safe_json(getattr(task, "primary_skill_binding", None)),
+        "primary_skill_binding": _task_binding_projection(
+            getattr(task, "primary_skill_binding", None)
+        ),
         "primary_skill_instructions": getattr(task, "primary_skill_instructions", None),
         "runtime_binding": _safe_json(getattr(task, "runtime_binding", None)),
-        "tool_bindings": _safe_json(getattr(task, "tool_bindings", ())),
-        "supporting_skill_bindings": _safe_json(
-            getattr(task, "supporting_skill_bindings", ())
-        ),
+        "tool_bindings": [
+            _task_binding_projection(item)
+            for item in getattr(task, "tool_bindings", ())
+        ],
+        "supporting_skill_bindings": [
+            _task_binding_projection(item)
+            for item in getattr(task, "supporting_skill_bindings", ())
+        ],
         "skill_uses": [
             {
                 "use_id": getattr(item, "use_id", None),

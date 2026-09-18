@@ -8,6 +8,7 @@ from PhyAgentOS.agent.planning_dispatch import AgentComposedDispatch
 from PhyAgentOS.agent.tools.planning import ForgePlanSelectTool
 from PhyAgentOS.config.schema import ForgeConfig
 from PhyAgentOS.forge.binding import RuntimeBinding
+from PhyAgentOS.forge.capability_runtime.grasp_proposal import GRASP_TOOL_SPEC
 from PhyAgentOS.forge.task import AgentTaskCoordinator, AgentTaskStatus
 from PhyAgentOS.planning import (
     AdmissionContext,
@@ -264,6 +265,67 @@ def test_prepare_selection_reports_all_missing_runtime_arguments_and_persists_ev
     assert rejection["payload"]["error"]["code"] == "missing_runtime_arguments"
     assert "arguments" not in rejection["payload"]
     assert rejection["payload"]["motion_authorized"] is False
+
+
+def test_incomplete_grasp_selection_is_rejected_before_tool_record(tmp_path):
+    task_id = "task-incomplete-grasp"
+    revision_id = "revision-incomplete-grasp"
+    node = PlanNode(
+        node_id="grasp-green",
+        obligation_id="grasp-green",
+        capability="grasp.propose",
+        input_bindings={"entity_ref": "entity://green"},
+    )
+    payload = {
+        "task_id": task_id,
+        "revision_id": revision_id,
+        "graph_digest": "0" * 64,
+        "planner_decision_digest": "1" * 64,
+        "policy_snapshot_digest": "2" * 64,
+        "nodes": [node.model_dump(mode="json")],
+    }
+    payload["graph_digest"] = plan_graph_digest(payload)
+    graph = PlanGraph.model_validate(payload)
+    policy = ToolSpecPolicy(
+        tool_id="grasp.propose",
+        semantics="query",
+        spec_digest="3" * 64,
+        capabilities=("grasp.propose",),
+    )
+    coordinator = AgentTaskCoordinator(
+        workspace=tmp_path, config=ForgeConfig(), client=object()
+    )
+    coordinator.create_task(
+        task_description="propose a grasp for green",
+        verification=TaskVerificationContract(mode="off"),
+        plan_graph=graph,
+        plan_graph_ref=f"artifact://plans/{task_id}/{revision_id}",
+    )
+    dispatch = AgentComposedDispatch(
+        graph,
+        (policy,),
+        AdmissionContext(scene_revision="scene-1"),
+        input_schemas={"grasp.propose": GRASP_TOOL_SPEC["input_schema"]},
+    )
+
+    result = json.loads(asyncio.run(ForgePlanSelectTool(
+        coordinator, lambda: dispatch
+    ).execute(
+        task_id,
+        node.node_id,
+        policy.tool_id,
+        {"entity_ref": "entity://green"},
+        "select the current green entity",
+    )))
+
+    assert result["ok"] is False
+    assert result["motion_authorized"] is False
+    assert result["error"]["code"] == "tool_input_schema_invalid"
+    assert "targets" in result["error"]["missing_fields"]
+    assert coordinator.get_task(task_id).execution_records == []
+    event = coordinator.store.events(task_id)[-1]
+    assert event["event_type"] == "planning_selection_rejected"
+    assert event["payload"]["motion_authorized"] is False
 
 
 def test_unbindable_historical_selection_enters_bounded_replan(tmp_path):

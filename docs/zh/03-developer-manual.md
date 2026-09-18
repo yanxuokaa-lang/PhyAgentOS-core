@@ -152,6 +152,14 @@ status snapshot 只作为进度事实落盘，即使它先报告终态，也必�
 constraints、冻结的 Skill binding、PlanRevision、ToolExecutionRecord、Gateway 终态结果、
 before/after evidence、任务历史与冻结的 Skill 作用域建议 Lesson。
 
+冻结的 Tool binding 同时保存 provider-neutral `input_schema`。其中
+`input_binding_keys` 只表示必须与 PlanNode 一致的不可变语义身份，不等于 Tool 的全部传输参数。
+节点 Agent 可以从节点绑定、直接前驱终态结果，以及被当前 revision 与节点
+`required_evidence` 同时选中的 discovery Query 请求参数与终态结果中选择并结构化组合参数；不能创造观测、
+度量几何、标定、freshness 或执行事实。`AgentComposedDispatch` 在创建 DecisionTrace 和调用
+Gateway 前按冻结的消费者 schema 校验最终对象，失败时不创建 Tool record、不调用 Gateway。
+因此生产者无需输出消费者专用 payload，同时最终调用契约仍保持严格。
+
 在 recovery 模式下，合法 `replan_required` verdict 将任务置为 `awaiting_replan` 并设置
 deadline。`begin_revision` 检查相同 `task_id`、replan budget、deadline 和任务状态，然后追加
 revision。历史 attempts 对 experience analysis 保持可见。Verifier exception 会持久化为失败

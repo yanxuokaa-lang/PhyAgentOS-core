@@ -8,9 +8,15 @@ import threading
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from PhyAgentOS.planning import ToolSpecPolicy, ToolSpecProjectionError, project_tool_spec
+from PhyAgentOS.planning import (
+    ToolInputSchemaError,
+    ToolSpecPolicy,
+    ToolSpecProjectionError,
+    project_tool_spec,
+    validate_input_schema,
+)
 from PhyAgentOS.skill_runtime.catalog import SkillCatalog
 from PhyAgentOS.verification.contracts import utc_now
 
@@ -29,7 +35,18 @@ class BoundToolSpec(BindingModel):
     spec_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     ready_at_binding: bool
     default_timeout_ms: int | None = Field(default=None, ge=1)
+    input_schema: dict[str, Any] | None = None
     planning_policy: ToolSpecPolicy | None = None
+
+    @field_validator("input_schema")
+    @classmethod
+    def valid_input_schema(cls, value: dict[str, Any] | None) -> dict[str, Any] | None:
+        if value is None:
+            return None
+        try:
+            return validate_input_schema(value)
+        except ToolInputSchemaError as exc:
+            raise ValueError(str(exc)) from exc
 
 
 class RuntimeBinding(BindingModel):
@@ -184,6 +201,12 @@ class ForgeSkillBindingResolver:
                     raise ForgeSkillBindingError(
                         f"Forge ToolSpec {tool_id!r} has invalid planning projection"
                     ) from exc
+            try:
+                input_schema = validate_input_schema(spec.get("input_schema"))
+            except ToolInputSchemaError as exc:
+                raise ForgeSkillBindingError(
+                    f"Forge ToolSpec {tool_id!r} has invalid input_schema"
+                ) from exc
             tools.append(
                 BoundToolSpec(
                     tool_id=tool_id,
@@ -191,6 +214,7 @@ class ForgeSkillBindingResolver:
                     spec_sha256=canonical_sha256(spec),
                     ready_at_binding=True,
                     default_timeout_ms=spec.get("default_timeout_ms"),
+                    input_schema=input_schema,
                     planning_policy=planning_policy,
                 )
             )
@@ -278,12 +302,19 @@ class ForgeSkillBindingResolver:
         if context.get("ready") is not True or context.get("binding_error") is not None:
             raise ForgeSkillBindingError(f"Forge Tool {tool_id!r} is not ready")
         planning_policy = project_tool_spec(spec) if "planning" in spec else None
+        try:
+            input_schema = validate_input_schema(spec.get("input_schema"))
+        except ToolInputSchemaError as exc:
+            raise ForgeSkillBindingError(
+                f"Forge ToolSpec {tool_id!r} has invalid input_schema"
+            ) from exc
         return BoundToolSpec(
             tool_id=tool_id,
             semantics=semantics,
             spec_sha256=canonical_sha256(spec),
             ready_at_binding=True,
             default_timeout_ms=spec.get("default_timeout_ms"),
+            input_schema=input_schema,
             planning_policy=planning_policy,
         )
 

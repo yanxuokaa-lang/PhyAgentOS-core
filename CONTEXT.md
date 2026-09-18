@@ -11,6 +11,14 @@ _Avoid_: 将执行环境归属称为 Skill 使用。
 
 Tool Contract Binding 是一次任务使用某个执行接口时所依据的能力契约。它不能授予超出执行环境权限的动作。
 
+## Bounded Input View
+
+Bounded Input View 是 AgentLoop 为当前语义节点构造的只读事实视图，只包含节点不可变绑定、当前节点明确要求的 discovery evidence 对应结果，以及直接前驱的终态结果。它不是完整任务历史，也不授予事实写入或执行权限。
+
+## Tool Input Selection
+
+Tool Input Selection 是 Agent 从 Bounded Input View 中选择、筛选和组合消费者 ToolSpec 所需输入的决策。最终参数必须通过冻结的消费者输入 schema；选择不能创造传感器事实、度量几何、校准、执行状态或运动权限。
+
 ## Skill Use
 
 Skill Use 是 Agent 在某次决策中采用一个特定版本方法的事实。同一任务可以组合多个方法，历史使用不随方法更新而改变。

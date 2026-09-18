@@ -34,6 +34,12 @@ from .dag import (
     invalidate_stale_nodes,
     validate_graph,
 )
+from .input_schema import (
+    ToolInputSchemaError,
+    required_argument_keys,
+    validate_input_schema,
+    validate_tool_arguments,
+)
 from .policy import validate_policy_edges, workflow_policy_digest
 from .projection import ToolSpecProjectionError, project_tool_spec
 from .replan import build_replan_delta
@@ -53,11 +59,15 @@ __all__ = [
     "ResumablePlanningSelection",
     "ToolCallEnvelope",
     "ToolResultEnvelope",
+    "ToolInputSchemaError",
     "ToolSpecPolicy",
     "WorkflowPolicy",
     "WorkflowPolicyCandidate",
     "WorkflowPolicyReplayReceipt",
     "admit_tool_call",
+    "required_argument_keys",
+    "validate_input_schema",
+    "validate_tool_arguments",
     "build_replan_delta",
     "canonical_sha256",
     "plan_graph_digest",

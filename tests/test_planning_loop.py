@@ -173,6 +173,98 @@ def test_node_context_projects_exact_direct_predecessor_tool_result(tmp_path):
     assert predecessor.executions[0].response["data"]["candidates"] == [candidate]
 
 
+def test_root_node_projects_only_required_discovery_query_results(tmp_path):
+    c = coordinator(tmp_path)
+    task = c.create_task(
+        task_description="select current green geometry for grasp",
+        verification=TaskVerificationContract(mode="off"),
+    )
+    understanding = ToolExecutionRecord(
+        record_id="tool-understanding-current",
+        revision_id=task.active_revision_id,
+        tool_id="scene.understand",
+        semantics="query",
+        caller_id="agent-task-test",
+        arguments={"max_age_ms": 1000},
+        status="succeeded",
+        response={
+            "ok": True,
+            "data": {
+                "status": "available",
+                "scene_revision": "scene-1",
+                "entities": [{
+                    "entity_ref": "entity://green",
+                    "category": "green block",
+                    "confidence": 0.98,
+                }],
+                "spatial_envelopes": [{
+                    "entity_ref": "entity://green",
+                    "frame_id": "head_camera",
+                    "unit": "m",
+                    "min_xyz_m": [0.1, 0.2, 0.0],
+                    "max_xyz_m": [0.2, 0.3, 0.1],
+                }],
+            },
+        },
+        evidence_refs=["tool:tool-understanding-current"],
+    )
+    unrelated = ToolExecutionRecord(
+        record_id="tool-unrelated-target",
+        revision_id=task.active_revision_id,
+        tool_id="manipulation.target",
+        semantics="query",
+        caller_id="agent-task-test",
+        status="succeeded",
+        response={"ok": True, "data": {"status": "available"}},
+        evidence_refs=["tool:tool-unrelated-target"],
+    )
+    c.store.update(
+        task.task_id,
+        lambda current: current.active_revision.execution_records.extend(
+            [understanding, unrelated]
+        ),
+        event_type="fixture_discovery_queries",
+    )
+    node = PlanNode(
+        node_id="grasp-green",
+        obligation_id="propose-current-green-grasp",
+        capability="grasp.propose",
+        required_evidence=("tool:tool-understanding-current",),
+        input_bindings={"entity_ref": "entity://green"},
+    )
+    payload = {
+        "task_id": task.task_id,
+        "revision_id": "revision-root-evidence",
+        "graph_digest": "0" * 64,
+        "planner_decision_digest": "1" * 64,
+        "policy_snapshot_digest": "2" * 64,
+        "nodes": [node.model_dump(mode="json")],
+    }
+    payload["graph_digest"] = plan_graph_digest(payload)
+    graph = PlanGraph.model_validate(payload)
+    c.expand_discovery_revision(
+        task.task_id,
+        plan_graph=graph,
+        plan_graph_ref="artifact://plans/root-evidence",
+        discovery_evidence_refs=("tool:tool-understanding-current",),
+    )
+
+    context = NodeContextProvider(c.get_task).build(
+        task.task_id,
+        "grasp-green",
+        scene_revision="scene-1",
+    )
+
+    assert context.predecessor_context == ()
+    assert len(context.evidence_context) == 1
+    evidence = context.evidence_context[0]
+    assert evidence.record_id == "tool-understanding-current"
+    assert evidence.tool_id == "scene.understand"
+    assert evidence.arguments == {"max_age_ms": 1000}
+    assert evidence.response == understanding.response
+    assert all(item.record_id != "tool-unrelated-target" for item in context.evidence_context)
+
+
 def test_context_preserves_historical_predecessor_after_scene_progression(tmp_path):
     c = coordinator(tmp_path)
     task = c.create_task(task_description="stale context", verification=TaskVerificationContract(mode="off"))
@@ -558,6 +650,55 @@ def test_recovery_replay_only_reduces_persisted_facts(tmp_path):
     assert result.last_failure == "reducer_replay_only:arrange-red"
     assert calls == ["arrange-red"]
     assert len(c.get_task(task.task_id).revisions) == 2
+
+
+def test_replan_provider_failure_enters_existing_recovery_with_original_failure(tmp_path):
+    c = coordinator(tmp_path)
+    task = c.create_task(
+        task_description="preserve the original grasp failure",
+        verification=TaskVerificationContract(mode="off"),
+    )
+    graph = make_graph(task.task_id, "revision-replan-provider", ("arrange-red",))
+    c.expand_discovery_revision(
+        task.task_id,
+        plan_graph=graph,
+        plan_graph_ref="artifact://plans/recovery/provider-failure",
+    )
+
+    def execute(context):
+        return ToolResultEnvelope(
+            task_id=context.task_id,
+            revision_id=context.revision_id,
+            node_id=context.node_id,
+            tool_id="grasp.propose",
+            status="failed",
+            failure_code="invalid_arguments",
+        )
+
+    def replan(*_):
+        raise ValueError("recovery model returned no unique decision")
+
+    result = asyncio.run(PlanningLoopAdapter(
+        c,
+        context_provider=NodeContextProvider(c.get_task),
+        node_executor=execute,
+        admission_context_provider=lambda _: AdmissionContext(
+            scene_revision="scene-1",
+            evidence_refs=frozenset({"scene:inventory"}),
+        ),
+        replan_proposer=replan,
+        recovery_policy=lambda *_: "replan",
+    ).run(task.task_id, scene_revision="scene-1"))
+
+    assert result.status == "awaiting_replan"
+    assert result.last_failure == (
+        "replan_proposer_error:ValueError:arrange-red:invalid_arguments"
+    )
+    current = c.get_task(task.task_id)
+    assert current.status.value == "awaiting_replan"
+    assert current.replan_deadline is not None
+    assert current.active_revision.node_settlements[0].failure_code == "invalid_arguments"
+    assert current.active_revision.execution_records == []
 
 
 def test_reducer_replay_does_not_require_scene_refresh_or_execute_again(tmp_path):

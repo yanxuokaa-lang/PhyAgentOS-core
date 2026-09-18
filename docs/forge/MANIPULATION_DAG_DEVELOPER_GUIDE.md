@@ -393,6 +393,19 @@ references. Discovery tasks observe and understand before materializing their
 semantic graph, so an initial discovery observation is not repeated as a graph
 node unless a fresh observation obligation is explicitly selected.
 
+The frozen Tool binding also retains the provider-neutral ToolSpec
+`input_schema`. `input_binding_keys` name only immutable semantic values that
+must agree with the PlanNode; they are not a duplicate list of every transport
+argument. A node turn may assemble the consumer's exact arguments from its
+immutable bindings, exact direct-predecessor results, and exact discovery Query
+request arguments plus terminal results whose evidence references are both selected into the active revision
+and named by the current node. `AgentComposedDispatch` validates the assembled
+object against the frozen consumer schema before creating a DecisionTrace.
+Schema rejection creates no Tool record or Gateway invocation and never causes
+the Coordinator to infer a missing sensor, geometry, freshness, or calibration
+value. Producers therefore remain independent of consumer-specific argument
+shapes while the final invocation contract stays strict.
+
 The DecisionTrace also carries the exact resumable selection receipt until one
 planning-bound execution record consumes its `decision_trace_ref`. This closes
 the process interruption window between `forge_plan_select` and the selected

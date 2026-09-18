@@ -52,6 +52,22 @@ def build_verification_context_content(context: dict[str, Any]) -> list[dict[str
     ]
 
 
+def _project_tool_binding_for_verification(binding: Any) -> dict[str, Any]:
+    """Exclude planning-only invocation schemas from semantic verification."""
+    payload = binding.model_dump(mode="json")
+    payload.pop("input_schema", None)
+    return payload
+
+
+def _project_skill_binding_for_verification(binding: Any) -> dict[str, Any]:
+    """Project binding identity and policy without consumer transport schemas."""
+    payload = binding.model_dump(mode="json")
+    for tool in payload.get("required_tools", ()):
+        if isinstance(tool, dict):
+            tool.pop("input_schema", None)
+    return payload
+
+
 @dataclass(frozen=True)
 class VerificationRequest:
     content: list[dict[str, Any]]
@@ -162,7 +178,7 @@ class VerificationRequestBuilder:
             "constraints": task.verification.constraints,
             "task_verification_contract": task.verification.model_dump(mode="json"),
             "frozen_skill_binding": (
-                task.primary_skill_binding.model_dump(mode="json")
+                _project_skill_binding_for_verification(task.primary_skill_binding)
                 if task.primary_skill_binding is not None
                 else None
             ),
@@ -172,7 +188,7 @@ class VerificationRequestBuilder:
                 else None
             ),
             "enrolled_tool_bindings": [
-                item.model_dump(mode="json") for item in task.tool_bindings
+                _project_tool_binding_for_verification(item) for item in task.tool_bindings
             ],
             "skill_uses": [
                 {
@@ -183,7 +199,8 @@ class VerificationRequestBuilder:
                 for item in task.skill_uses
             ],
             "supporting_skill_bindings": [
-                item.model_dump(mode="json") for item in task.supporting_skill_bindings
+                _project_skill_binding_for_verification(item)
+                for item in task.supporting_skill_bindings
             ],
             "plan_revisions": [item.model_dump(mode="json") for item in task.revisions],
             "tool_execution_records": [item.model_dump(mode="json") for item in records],

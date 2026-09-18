@@ -264,6 +264,10 @@ async def test_bound_execution_facts_reach_generic_verifier_without_authorizing_
     assert projection[0]["opaque_artifact_refs"] == ["artifact://acquire-7/settlement"]
     assert "artifact://acquire-7/settlement" in context_text
     assert "artifact://acquire-7/settlement" not in request.valid_evidence_refs
+    assert all(
+        "input_schema" not in tool
+        for tool in context["frozen_skill_binding"]["required_tools"]
+    )
     assert "motion_authorized" not in json.dumps(context, sort_keys=True)
     assert all(
         path.startswith("/tools/") or path.startswith("/invocations/")

@@ -12,6 +12,53 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v10.8.9 (2026-09-18 19:53) - codex
+
+- [agent] [feat] [完成] 冻结消费者 ToolSpec `input_schema`，Agent 从当前节点、显式 discovery evidence 与直接前驱的结构化事实选择并组合参数；Coordinator 在 DecisionTrace/Gateway 前校验。(local)
+- [agent] [fix] [完成] discovery evidence 同时投影成功 Query 的持久化请求参数与终态结果；recovery provider 失败进入既有 `awaiting_replan` 并保留原始 settlement。(local)
+- [agent] [fix] [完成] task prompt 和 verifier 排除 planning-only schema，持久绑定与实时 Tool context 仍保留完整 schema。(local)
+- [Agent] [Feat] [Completed] Freeze consumer ToolSpec `input_schema` and let the Agent select and assemble arguments from current-node, explicit discovery-evidence, and direct-predecessor structured facts; Coordinator validates before DecisionTrace or Gateway. (local)
+- [Agent] [Fix] [Completed] Project both persisted request arguments and terminal results for successful discovery Queries; recovery-provider failure enters existing `awaiting_replan` while preserving the original settlement. (local)
+- [Agent] [Fix] [Completed] Exclude planning-only schemas from task-prompt and verifier projections while retaining full schemas in durable bindings and live Tool context. (local)
+
+### 影响文件 / Affected files
+
+- `PhyAgentOS/planning/input_schema.py:L1-L66`; `PhyAgentOS/forge/binding.py:L11-L50,L204-L218,L305-L318`
+- `PhyAgentOS/agent/planning_dispatch.py:L29-L31,L85-L98,L123-L141,L200-L214,L261-L281,L470-L486`
+- `PhyAgentOS/agent/planning_loop.py:L82-L110,L175-L220,L534-L537,L878-L915`
+- `PhyAgentOS/agent/prompt_context.py:L349-L360,L466-L479`; `PhyAgentOS/verification/request_builder.py:L55-L70,L181-L203`
+- Core/Skill tests, three developer guides, `CONTEXT.md`, `pyproject.toml`, and `uv.lock`
+
+```diff
+- producer/PlanNode must duplicate the consumer transport payload
++ producer emits reusable facts; Agent selects values; consumer schema validates the final object
+- root node loses discovery-only request values such as max_age_ms
++ selected successful Query records expose exact arguments and terminal results
+- recovery provider error becomes opaque runner_error
++ existing bounded awaiting_replan retains the original node failure
+- schemas repeat in task/verifier semantic contexts
++ schemas remain planning-owned and are queried on demand
+```
+
+### 七维验收 / Seven-dimension acceptance
+
+Architecture/ownership, contract extensibility, evidence/freshness, AgentLoop
+context, robotics safety, recovery/observability, and tests/maintainability:
+PASS with no remaining Blocker/Major. The implementation adds no benchmark
+special cases, second state machine, or motion gate. Persisted r02 simulation
+accepted a complete Agent-selected grasp input with digest
+`03f8ebf66fdf23bfe023a51de9fd994b39ca3d94fad1d26a5ffca802ecbf9765`
+while rejecting incomplete input before Gateway; bounded context was 13,500
+tokens, `motion_authorized=false`, and Gateway calls were 0.
+
+### 验证与安全边界 / Validation and safety boundary
+
+- Core no-motion `469 passed in 24.54s`; pick-place Skill `334 passed in 7.34s`.
+- Ruff, compileall, `uv lock --check`, and `git diff --check` passed.
+- Qwen3-VL-4B and Skill versions are unchanged; no new Skill, 8B, PAOS restart,
+  old-task retry, Gateway call, simulator step, Runtime transition, or motion.
+- Implementation commit: `(pending)`; branch: `feature/planning-loop`.
+
 ## v10.8.8 (2026-09-18 17:10) - codex
 
 - [sense] [fix] [完成] Qwen3-VL-4B vLLM Prompt 改为任务无关的开放世界语义场景图，允许低对比度结构、support/contact、containment、attachment 和 occlusion 语义关系，同时禁止 metric geometry、simulator truth 和动作授权。(local)
@@ -150,6 +197,8 @@ Gateway Tool, Action, Session, simulator step, world change, or motion.
 - Commit: `c76b732`
 - Branch: `feature/planning-loop`
 
+## 历史记录 / Historical Records
+
 ## v10.8.4 (2026-09-18 02:45) - codex
 
 - [agent] [fix] [完成] 已落盘 Query/Action/Session 在同轮后续模型失败前完成对账；status 只保存进度，result 才允许终态 NodeSettlement。(local)
@@ -191,8 +240,6 @@ Tool, Action, Session, simulator step, world change, or physical motion occurred
 - Focused `115 passed in 5.48s`; full no-motion `457 passed in 23.35s`.
 - Ruff, compileall, diff check, editable install, import-path check, and config parsing passed.
 - Implementation commit: `88fc1a2`; branch: `feature/planning-loop`.
-
-## 历史记录 / Historical Records
 
 ## v10.8.0 (2026-09-17 23:39) - codex
 

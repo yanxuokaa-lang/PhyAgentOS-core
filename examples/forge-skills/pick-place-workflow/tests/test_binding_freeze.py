@@ -119,6 +119,10 @@ async def test_preview_and_freeze_capture_immutable_runtime_and_tool_hashes(tmp_
         assert tuple(item.tool_id for item in binding.required_tools) == tuple(sorted(TOOL_IDS))
         assert all(item.ready_at_binding is True for item in binding.required_tools)
         assert all(len(item.spec_sha256) == 64 for item in binding.required_tools)
+        assert all(item.input_schema is not None for item in binding.required_tools)
+        grasp = binding.tool("grasp.propose")
+        assert grasp is not None
+        assert "targets" in grasp.input_schema["required"]
         assert len(transport.requests) >= len(TOOL_IDS) * 2
     finally:
         await client.close()

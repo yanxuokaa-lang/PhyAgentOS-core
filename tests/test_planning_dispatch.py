@@ -3,11 +3,14 @@ from __future__ import annotations
 import json
 from types import SimpleNamespace
 
+import pytest
+
 from PhyAgentOS.agent.planning_dispatch import AgentComposedDispatch
 from PhyAgentOS.agent.tools.base import Tool
 from PhyAgentOS.agent.tools.planning import ForgePlanActivateTool
 from PhyAgentOS.agent.tools.registry import ToolRegistry
 from PhyAgentOS.forge.binding import BoundToolSpec, RuntimeBinding
+from PhyAgentOS.forge.capability_runtime.grasp_proposal import GRASP_TOOL_SPEC
 from PhyAgentOS.planning import (
     AdmissionContext,
     PlanGraph,
@@ -262,6 +265,111 @@ def test_prepare_selection_returns_paos_owned_binding_facts_without_execution():
     assert proposal["context_digest"] == canonical_sha256(
         AdmissionContext(scene_revision="scene-1").model_dump(mode="json")
     )
+
+
+def _grasp_dispatch() -> AgentComposedDispatch:
+    node = PlanNode(
+        node_id="grasp-green",
+        obligation_id="propose-current-green-grasp",
+        capability="grasp.propose",
+        input_bindings={"entity_ref": "entity://green"},
+    )
+    payload = {
+        "task_id": "task-1",
+        "revision_id": "revision-1",
+        "graph_digest": "0" * 64,
+        "planner_decision_digest": "1" * 64,
+        "policy_snapshot_digest": "2" * 64,
+        "nodes": [node.model_dump(mode="json")],
+    }
+    payload["graph_digest"] = plan_graph_digest(payload)
+    policy = ToolSpecPolicy(
+        tool_id="grasp.propose",
+        semantics="query",
+        spec_digest="4" * 64,
+        capabilities=("grasp.propose",),
+    )
+    return AgentComposedDispatch(
+        PlanGraph.model_validate(payload),
+        (policy,),
+        AdmissionContext(scene_revision="scene-1"),
+        input_schemas={"grasp.propose": GRASP_TOOL_SPEC["input_schema"]},
+    )
+
+
+def _grasp_arguments() -> dict:
+    observation_ref = "observation://scene-1/head_camera"
+    calibration_ref = "artifact://scene-1/capture-1/calibration"
+    provenance = ["artifact://scene-1/capture-1/depth"]
+    return {
+        "observation_ref": observation_ref,
+        "scene_revision": "scene-1",
+        "frame_id": "head_camera",
+        "calibration_ref": calibration_ref,
+        "freshness_ms": 0,
+        "max_age_ms": 1000,
+        "targets": [{
+            "entity_ref": "entity://green",
+            "category": "green block",
+            "confidence": 0.98,
+            "spatial_envelope": {
+                "frame_id": "head_camera",
+                "unit": "m",
+                "min_xyz_m": [0.1, 0.2, 0.0],
+                "max_xyz_m": [0.2, 0.3, 0.1],
+                "confidence": 0.97,
+                "provenance": provenance,
+            },
+            "geometry_artifacts": [{
+                "artifact_ref": "artifact://scene-1/capture-1/green-cloud",
+                "kind": "object_point_cloud",
+                "observation_ref": observation_ref,
+                "scene_revision": "scene-1",
+                "entity_ref": "entity://green",
+                "frame_id": "head_camera",
+                "calibration_ref": calibration_ref,
+                "provenance": provenance,
+            }],
+        }],
+    }
+
+
+def test_selection_rejects_incomplete_grasp_arguments_before_execution():
+    dispatch = _grasp_dispatch()
+    ready = dispatch.describe()["ready_nodes"][0]
+    assert ready["required_tool_arguments"]["grasp.propose"] == tuple(
+        GRASP_TOOL_SPEC["input_schema"]["required"]
+    )
+
+    with pytest.raises(Exception) as caught:
+        dispatch.prepare_selection(
+            node_id="grasp-green",
+            tool_id="grasp.propose",
+            arguments={"entity_ref": "entity://green"},
+            decision_reason="use the selected green entity",
+        )
+
+    error = caught.value
+    assert getattr(error, "code") == "tool_input_schema_invalid"
+    assert set(getattr(error, "missing_fields")) == set(
+        GRASP_TOOL_SPEC["input_schema"]["required"]
+    )
+    assert getattr(error, "recommended_action") == "select_values_from_bounded_node_context"
+
+
+def test_selection_accepts_agent_assembled_grasp_arguments_without_producer_binding():
+    dispatch = _grasp_dispatch()
+    arguments = _grasp_arguments()
+
+    proposal = dispatch.prepare_selection(
+        node_id="grasp-green",
+        tool_id="grasp.propose",
+        arguments=arguments,
+        decision_reason="assemble the selected entity and current calibrated geometry",
+    )
+
+    assert proposal["tool_arguments"] == arguments
+    assert proposal["input_binding_digest"] == tool_input_binding_digest(arguments)
 
 
 def test_prepare_selection_rejects_unready_or_wrong_tool():

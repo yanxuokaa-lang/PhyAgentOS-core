@@ -26,7 +26,9 @@ from PhyAgentOS.planning import (
     derive_ready_nodes,
     explain_node_readiness,
     plan_node_digest,
+    required_argument_keys,
     tool_input_binding_digest,
+    validate_tool_arguments,
 )
 
 
@@ -80,6 +82,7 @@ class AgentComposedDispatch:
         policies: tuple[ToolSpecPolicy, ...],
         context: AdmissionContext,
         context_provider: Callable[[str], AdmissionContext] | None = None,
+        input_schemas: Mapping[str, Mapping[str, Any]] | None = None,
     ) -> None:
         if len({policy.tool_id for policy in policies}) != len(policies):
             raise PlanningDispatchError("planning ToolSpec identities must be unique")
@@ -88,6 +91,10 @@ class AgentComposedDispatch:
         self.context = context
         self.context_provider = context_provider
         self._policies = {policy.tool_id: policy for policy in policies}
+        self._input_schemas = {
+            tool_id: dict(schema)
+            for tool_id, schema in (input_schemas or {}).items()
+        }
 
     @classmethod
     def from_task(
@@ -113,6 +120,11 @@ class AgentComposedDispatch:
             for item in enrolled
             if item.planning_policy is not None
         )
+        input_schemas = {
+            item.tool_id: item.input_schema
+            for item in enrolled
+            if item.planning_policy is not None and item.input_schema is not None
+        }
         if not policies:
             raise PlanningDispatchError(
                 "Runtime-bound task has no enrolled planning ToolSpec projections"
@@ -125,6 +137,7 @@ class AgentComposedDispatch:
             policies,
             context,
             context_provider=context_provider,
+            input_schemas=input_schemas,
         )
 
     def describe(self) -> dict[str, Any]:
@@ -184,6 +197,11 @@ class AgentComposedDispatch:
                 for policy in candidate_policies
                 if self._required_runtime_arguments(policy)
             }
+            required_arguments = {
+                policy.tool_id: required_argument_keys(self._input_schemas.get(policy.tool_id))
+                for policy in candidate_policies
+                if required_argument_keys(self._input_schemas.get(policy.tool_id))
+            }
             dependency_ready = node.node_id in ready
             item.update({
                 "dependency_ready": dependency_ready,
@@ -192,6 +210,7 @@ class AgentComposedDispatch:
                 "bindable_tool_ids": bindable,
                 "missing_node_bindings": missing_node_bindings,
                 "missing_runtime_arguments": runtime_requirements,
+                "required_tool_arguments": required_arguments,
             })
             if not candidates:
                 item["blockers"] = tuple((*item["blockers"], "no_tool_candidate"))
@@ -235,6 +254,26 @@ class AgentComposedDispatch:
                         if any(
                             nodes[node_id].capability in policy.capabilities
                             and self._required_runtime_arguments(policy)
+                            for policy in self.policies
+                        )
+                        else {}
+                    ),
+                    **(
+                        {"required_tool_arguments": {
+                            policy.tool_id: required_argument_keys(
+                                self._input_schemas.get(policy.tool_id)
+                            )
+                            for policy in self.policies
+                            if nodes[node_id].capability in policy.capabilities
+                            and required_argument_keys(
+                                self._input_schemas.get(policy.tool_id)
+                            )
+                        }}
+                        if any(
+                            nodes[node_id].capability in policy.capabilities
+                            and required_argument_keys(
+                                self._input_schemas.get(policy.tool_id)
+                            )
                             for policy in self.policies
                         )
                         else {}
@@ -428,6 +467,23 @@ class AgentComposedDispatch:
             node=node,
             arguments=arguments,
         )
+        input_schema = self._input_schemas.get(tool_id)
+        if input_schema is not None:
+            issues = validate_tool_arguments(input_schema, final_arguments)
+            if issues:
+                missing = tuple(
+                    key
+                    for key in required_argument_keys(input_schema)
+                    if key not in final_arguments
+                )
+                raise PlanningDispatchError(
+                    "selected Tool arguments violate the frozen input schema: "
+                    + "; ".join(issues),
+                    code="tool_input_schema_invalid",
+                    failure_owner="agent_arguments",
+                    missing_fields=missing,
+                    recommended_action="select_values_from_bounded_node_context",
+                )
         for key in policy.input_binding_keys:
             if key not in node.input_bindings or final_arguments.get(key) != node.input_bindings[key]:
                 raise PlanningDispatchError(

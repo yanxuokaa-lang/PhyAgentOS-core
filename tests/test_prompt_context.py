@@ -721,7 +721,11 @@ def test_task_projection_preserves_revision_bindings_and_node_obligations() -> N
         "binding_id": "skill-binding-1",
         "skill_name": "pick-place-workflow",
         "skill_version": "2.0.2",
-        "required_tools": ({"tool_id": "object.place", "semantics": "action"},),
+        "required_tools": ({
+            "tool_id": "object.place",
+            "semantics": "action",
+            "input_schema": {"type": "object"},
+        },),
     }
     task.runtime_binding = {
         "binding_id": "runtime-binding-1",
@@ -734,6 +738,7 @@ def test_task_projection_preserves_revision_bindings_and_node_obligations() -> N
             "semantics": "action",
             "spec_sha256": "tool-spec-place",
             "ready_at_binding": True,
+            "input_schema": {"type": "object"},
         },
     )
     task.skill_uses = (
@@ -751,6 +756,7 @@ def test_task_projection_preserves_revision_bindings_and_node_obligations() -> N
     )
 
     encoded = json.dumps(task_prompt_projection(task))
+    assert "input_schema" not in encoded
     for required in (
         "Follow the frozen workflow.",
         "skill-binding-1",
