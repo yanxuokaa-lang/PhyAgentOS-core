@@ -89,9 +89,53 @@ def test_vllm_provider_uses_openai_compatible_multimodal_schema():
     assert payload["response_format"]["json_schema"]["strict"] is True
     assert payload["messages"][0]["content"][1]["type"] == "image_url"
     prompt = payload["messages"][0]["content"][0]["text"]
-    assert "red cube rather than cube" in prompt
-    assert "downstream RGB-D composition owns those claims" in prompt
+    assert "identifying attributes such as color in the category" in prompt
+    assert "open-world semantic scene graph" in prompt
+    assert "large or low-contrast physical structures" in prompt
+    assert "contact/support, attachment" in prompt
+    assert "broad uniform background may still be a physical structure" in prompt
+    assert "Do not infer metric depth, coordinates, plane equations" in prompt
+    assert "Do not report an ambiguity solely because" not in prompt
+    assert "observation://scene/camera" not in prompt
+    assert "scene-1" not in prompt
     assert client.closed is True
+
+
+def test_vllm_provider_emits_optional_raw_to_projected_diagnostic_without_changing_result():
+    events = []
+    client = _Client()
+    provider = Qwen3VLVLLMSceneUnderstandingInference(
+        _Resolver(),
+        config=Qwen3VLVLLMConfig(api_key_env="", model="qwen3-vl-4b-awq"),
+        client_factory=lambda **kwargs: client,
+        diagnostic_sink=events.append,
+    )
+
+    result = provider.infer(REQUEST)
+
+    assert result["entities"][0]["category"] == "cup"
+    assert len(events) == 1
+    assert events[0]["status"] == "available"
+    assert events[0]["provider"] == "qwen3-vl-vllm"
+    assert events[0]["model"] == "qwen3-vl-4b-awq"
+    assert events[0]["raw"]["entities"][0]["category"] == "cup"
+    assert events[0]["projected"] == result
+
+
+def test_vllm_provider_ignores_diagnostic_sink_failures():
+    client = _Client()
+
+    def broken_sink(_event):
+        raise RuntimeError("diagnostic output is unavailable")
+
+    provider = Qwen3VLVLLMSceneUnderstandingInference(
+        _Resolver(),
+        config=Qwen3VLVLLMConfig(api_key_env="", model="qwen3-vl-4b-awq"),
+        client_factory=lambda **kwargs: client,
+        diagnostic_sink=broken_sink,
+    )
+
+    assert provider.infer(REQUEST)["entities"][0]["category"] == "cup"
 
 
 def test_vllm_projection_preserves_color_for_downstream_localization():

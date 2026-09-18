@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import time
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping, Protocol
 from urllib.parse import urlparse
@@ -49,6 +50,9 @@ class Qwen3VLVLLMInferenceError(RuntimeError):
 
 class ChatCompletionsClient(Protocol):
     chat: Any
+
+
+DiagnosticSink = Callable[[Mapping[str, Any]], None]
 
 
 @dataclass(frozen=True)
@@ -93,6 +97,7 @@ class Qwen3VLVLLMSceneUnderstandingInference:
         *,
         config: Qwen3VLVLLMConfig | None = None,
         client_factory: Callable[..., ChatCompletionsClient] | None = None,
+        diagnostic_sink: DiagnosticSink | None = None,
     ) -> None:
         if not callable(getattr(resolver, "resolve", None)) and not callable(resolver):
             raise TypeError("artifact resolver must expose resolve(ref) or be callable")
@@ -100,6 +105,7 @@ class Qwen3VLVLLMSceneUnderstandingInference:
         self.config = config or Qwen3VLVLLMConfig()
         self.config.validate()
         self.client_factory = client_factory or _default_client_factory
+        self.diagnostic_sink = diagnostic_sink
 
     def infer(self, request: Mapping[str, Any]) -> Mapping[str, Any]:
         if not isinstance(request, Mapping):
@@ -110,6 +116,7 @@ class Qwen3VLVLLMSceneUnderstandingInference:
         if not isinstance(artifacts, list) or not artifacts:
             raise Qwen3VLVLLMInferenceError("scene understanding request has no artifacts")
         image_ref, image = self._resolve_image(artifacts)
+        started = time.perf_counter()
         api_key = os.environ.get(self.config.api_key_env, "EMPTY") if self.config.api_key_env else "EMPTY"
         client = None
         try:
@@ -149,10 +156,54 @@ class Qwen3VLVLLMSceneUnderstandingInference:
                 parsed = json.loads(content)
             except json.JSONDecodeError as exc:
                 raise Qwen3VLVLLMInferenceError("qwen vLLM output was not valid JSON") from exc
-            return _project_vllm_claims(parsed, image_ref)
+            projected = _project_vllm_claims(parsed, image_ref)
+            self._emit_diagnostic(
+                {
+                    "status": "available",
+                    "provider": "qwen3-vl-vllm",
+                    "model": self.config.model,
+                    "route": "primary",
+                    "observation_ref": request.get("observation_ref"),
+                    "scene_revision": request.get("scene_revision"),
+                    "frame_id": request.get("frame_id"),
+                    "image_ref": image_ref,
+                    "elapsed_ms": round((time.perf_counter() - started) * 1000, 3),
+                    "raw": parsed,
+                    "projected": projected,
+                }
+            )
+            return projected
         except Qwen3VLVLLMInferenceError:
+            self._emit_diagnostic(
+                {
+                    "status": "error",
+                    "provider": "qwen3-vl-vllm",
+                    "model": self.config.model,
+                    "route": "primary",
+                    "observation_ref": request.get("observation_ref"),
+                    "scene_revision": request.get("scene_revision"),
+                    "frame_id": request.get("frame_id"),
+                    "image_ref": image_ref,
+                    "elapsed_ms": round((time.perf_counter() - started) * 1000, 3),
+                    "error": "qwen_vllm_inference_error",
+                }
+            )
             raise
         except Exception as exc:
+            self._emit_diagnostic(
+                {
+                    "status": "error",
+                    "provider": "qwen3-vl-vllm",
+                    "model": self.config.model,
+                    "route": "primary",
+                    "observation_ref": request.get("observation_ref"),
+                    "scene_revision": request.get("scene_revision"),
+                    "frame_id": request.get("frame_id"),
+                    "image_ref": image_ref,
+                    "elapsed_ms": round((time.perf_counter() - started) * 1000, 3),
+                    "error": type(exc).__name__,
+                }
+            )
             raise Qwen3VLVLLMInferenceError("qwen vLLM scene understanding request failed") from exc
         finally:
             close = getattr(client, "close", None)
@@ -178,19 +229,31 @@ class Qwen3VLVLLMSceneUnderstandingInference:
     def _data_url(image: ArtifactPayload) -> str:
         return f"data:{image.media_type};base64,{base64.b64encode(image.data).decode('ascii')}"
 
+    def _emit_diagnostic(self, event: Mapping[str, Any]) -> None:
+        if self.diagnostic_sink is None:
+            return
+        try:
+            self.diagnostic_sink(dict(event))
+        except Exception:
+            # Optional diagnostics must never change the provider contract.
+            return
+
     @staticmethod
     def _prompt(request: Mapping[str, Any]) -> str:
         return (
-            "Inspect this single RGB observation for visible semantic scene understanding. "
-            "Return only the requested JSON schema. Identify clearly visible entities and "
-            "image-plane/topological relations; use confidence in [0,1]. Include visible "
-            "identifying attributes such as color in both attributes and the natural-language "
-            "category (for example, red cube rather than cube). Do not infer metric "
-            "depth, 3-D geometry, simulator truth, task success, IK, or motion authorization. "
-            "Do not report an ambiguity solely because metric scale, 3-D geometry, or support "
-            "geometry is unavailable; downstream RGB-D composition owns those claims. "
-            "All provenance is assigned by the adapter. "
-            + json.dumps({"observation_ref": request.get("observation_ref"), "scene_revision": request.get("scene_revision")}, sort_keys=True)
+            "Inspect the entire RGB image and return an open-world semantic scene graph using "
+            "exactly the requested JSON schema. List every clearly visible entity, including "
+            "salient objects and large or low-contrast physical structures such as visible "
+            "surfaces, shelves, trays, containers, hooks, rails, or articulated parts. A broad "
+            "uniform background may still be a physical structure; do not discard it as void. "
+            "Report visible directional, topology, containment, contact/support, attachment, "
+            "occlusion, and visible-state relations. Report on/support only when contact is "
+            "visually evident, not from color or relative image position alone. Use confidence "
+            "in [0,1] and include identifying attributes such as color in the category and "
+            "attributes. Do not infer metric depth, coordinates, plane equations, simulator "
+            "truth, task success, IK, or motion authorization. Preserve semantic uncertainty "
+            "in ambiguities. Do not return empty entities when visible entities are present. "
+            "All provenance is assigned by the adapter."
         )
 
     @staticmethod

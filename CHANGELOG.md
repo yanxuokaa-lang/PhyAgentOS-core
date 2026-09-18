@@ -12,6 +12,37 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v10.8.8 (2026-09-18 17:10) - codex
+
+- [sense] [fix] [完成] Qwen3-VL-4B vLLM Prompt 改为任务无关的开放世界语义场景图，允许低对比度结构、support/contact、containment、attachment 和 occlusion 语义关系，同时禁止 metric geometry、simulator truth 和动作授权。(local)
+- [sense] [eval] [完成] 增加 raw-to-normalized 诊断和跨 RobotWIN 截图 no-motion evaluator；`is_on`/`is on` 仅在指标层归一化，不改变 provider-neutral facts。(local)
+- [docs] [docs] [完成] 保存需求、PAOS ownership、AgentLoop bounded continuation、4B-only 决策和七维验收结果；未新增 Core Tool、状态机、hash 或动作 gate。(local)
+- [Sense] [Fix] [Completed] Replace the Qwen3-VL-4B prompt with a task-agnostic open-world semantic scene graph that permits visible structures and generic support/contact relations while forbidding metric geometry, simulator truth, and motion authorization. (local)
+- [Sense] [Eval] [Completed] Add raw-to-normalized diagnostics and a no-motion evaluator over six screenshots from four RobotWIN artifact roots; metric-only predicate normalization does not alter provider facts. (local)
+- [Model] [Tune] [Completed] Keep Qwen3-VL-4B vLLM only; Qwen3-VL-8B was neither started nor evaluated. (local)
+
+### 影响文件 / Affected files
+
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/qwen3_vl_vllm_scene_understanding.py:L55-L108,L110-L238,L242-L259`
+- `examples/forge-adapters/robotwin20/tests/test_qwen3_vl_vllm_scene_understanding.py:L89-L138`
+- `examples/forge-adapters/robotwin20/scripts/evaluate_open_world_scene_understanding.py:L20-L40,L109-L125,L128-L265`
+- `docs/forge/OPEN_WORLD_SCENE_UNDERSTANDING_PLAN_20260918.md:L1-L115`; `changelog/2026-09_part10.md`
+
+### 七维验收 / Seven-dimension acceptance
+
+Architecture, semantic correctness, evidence integrity, AgentLoop continuity,
+robotics safety, observability, and cross-benchmark reproducibility: PASS with
+no Blocker/Major. Final eager 4B run: 6/6 available, 22 entities, 16
+structural relations, 0 Gateway/Action/Session calls, no motion. Full no-motion
+suite: `464 passed`; focused adapter: `8 passed`. The first CUDA graph service
+failure was provider-level; the same 4B weights under `--enforce-eager` completed
+the evaluation. No new Skill was installed or changed.
+
+### Git 提交 / Git commit
+
+- Implementation commit: pending until commit
+- Branch: `feature/planning-loop`
+
 ## v10.8.7 (2026-09-18 04:46) - codex
 
 - [agent] [fix] [完成] LongHorizon 节点回合只暴露当前节点 context/ready/select/execution Tool，并在首个成功 planning-bound 提交后立即交还 PlanningLoop。(local)
@@ -160,59 +191,6 @@ Tool, Action, Session, simulator step, world change, or physical motion occurred
 - Focused `115 passed in 5.48s`; full no-motion `457 passed in 23.35s`.
 - Ruff, compileall, diff check, editable install, import-path check, and config parsing passed.
 - Implementation commit: `88fc1a2`; branch: `feature/planning-loop`.
-
-## v10.8.3 (2026-09-18 02:15) - codex
-
-- [agent] [fix] [完成] LongHorizon 节点改用有界 node-scoped 投影，同一节点的 SkillUse 幂等，不再重复注入完整指令和全局任务历史。(local)
-- [agent] [fix] [完成] 524/provider/prompt-budget 失败结构化阻塞且不消耗普通 continuation；one-shot CLI 先显示初始回复再等待长任务。(local)
-- [config] [tune] [完成] RGB 配置保持 `gpt-5.6-sol/high/272K`，使用既有参数设置 96K 软压缩触发与 110s LLM 请求超时。(local)
-- [Agent] [Fix] [Completed] Use bounded node-scoped LongHorizon projections and idempotent per-node SkillUse records instead of reinjecting complete instructions and global task history. (local)
-- [Agent] [Fix] [Completed] Block 524/provider/prompt-budget failures without consuming normal continuation, and show the initial one-shot reply before awaiting the long task. (local)
-- [Config] [Tune] [Completed] Keep `gpt-5.6-sol/high/272K` while configuring the existing 96K soft-compaction trigger and 110s LLM request timeout for RGB runs. (local)
-
-### 影响文件 / Affected files
-
-- `PhyAgentOS/agent/loop.py:L57-L72,L388-L445,L642-L897,L1105-L1109,L1240-L1270`
-- `PhyAgentOS/agent/prompt_context.py:L497-L601,L726-L745,L791`
-- `PhyAgentOS/agent/planning_loop.py:L40-L56,L179-L255,L791-L794`
-- `PhyAgentOS/forge/task.py:L1189-L1250`; `PhyAgentOS/providers/base.py:L199-L223`
-- `PhyAgentOS/cli/commands.py:L8-L11,L175-L189,L1034-L1062,L1107-L1116`
-- focused AgentLoop/prompt/planning/provider/CLI tests and three Forge developer guides
-- `/home/yanxu/.PhyAgentOS/config-rgb-no-evolution-long.json:L5-L14`
-
-```diff
-- full SkillUse history + global task projection on every node request
-+ one frozen Skill instruction + node/binding/SkillUse-reference projection
-- provider error -> ordinary no-record continuation
-+ stable single-attempt provider/prompt-budget blocked result
-- await long-horizon; print initial response
-+ print initial response; await long-horizon with progress
-```
-
-### 七维验收 / Seven-dimension acceptance
-
-Architecture integration, failure recovery, robotics safety,
-configuration/reproducibility, maintainability, observability, and AgentLoop
-autonomy: PASS with no remaining Blocker/Major. The read-only r50 comparison
-reduced the model-facing node material from a `50642`-character global
-projection to `4937` characters (`24292` including the one frozen Skill
-wrapper), while all six persisted SkillUse audit records remained intact.
-
-### 验证与安装 / Validation and installation
-
-- Focused `139 passed`; full no-motion suite `448 passed`; Ruff, compileall,
-  configuration parsing, and diff check passed.
-- Editable install succeeded in `/home/yanxu/miniconda3/envs/paos`; imports
-  resolve to this repository.
-- Installed Skill remains `pick-place-workflow 2.2.0`. Read-only status showed
-  the pre-existing Runtime as running with Gateway and 9/9 Tool contexts ready;
-  no start/stop/switch, Tool invocation, Action, Session, simulator step, Qwen
-  request, or world change occurred.
-
-### Git 提交 / Git commit
-
-- Implementation commit: `7480e14`
-- Branch: `feature/planning-loop`
 
 ## 历史记录 / Historical Records
 
