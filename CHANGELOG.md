@@ -57,7 +57,7 @@ tokens, `motion_authorized=false`, and Gateway calls were 0.
 - Ruff, compileall, `uv lock --check`, and `git diff --check` passed.
 - Qwen3-VL-4B and Skill versions are unchanged; no new Skill, 8B, PAOS restart,
   old-task retry, Gateway call, simulator step, Runtime transition, or motion.
-- Implementation commit: `(pending)`; branch: `feature/planning-loop`.
+- Implementation commit: `f11c931`; branch: `feature/planning-loop`.
 
 ## v10.8.8 (2026-09-18 17:10) - codex
 
