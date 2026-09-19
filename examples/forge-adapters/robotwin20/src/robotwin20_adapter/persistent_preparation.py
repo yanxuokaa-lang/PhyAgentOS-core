@@ -11,9 +11,11 @@ from time import monotonic
 from typing import Any, Mapping
 from uuid import uuid4
 
+from PhyAgentOS.forge.capability_runtime.manipulation_prepare import PreparationProviderError
 from PhyAgentOS.forge.manipulation import CapabilitySnapshot, ManipulationIntent, ReplanSignal
 
 from .arm_candidates import project_arm_assignment
+from .persistent_client import PersistentWorkerError
 from .preparation_deadline import PreparationDeadline
 from .route_evidence import _artifact_path
 from .route_readiness import route_geometry_digest
@@ -66,6 +68,19 @@ class PersistentPreparationProvider:
                 "message": str(exc),
                 "failure_owner": "preparation",
             }
+            if isinstance(exc, PersistentWorkerError):
+                public_errors = {
+                    "BindingPoseUnavailableError": (
+                        "binding_pose_unavailable",
+                        "Runtime binding lacks a captured execution pose; repair the binding before retrying",
+                    ),
+                    "BindingPoseChangedError": (
+                        "binding_pose_changed",
+                        "Execution actor moved since binding; obtain a fresh observation and binding",
+                    ),
+                }
+                if exc.code in public_errors:
+                    raise PreparationProviderError(*public_errors[exc.code]) from exc
             raise
         finally:
             measured["total_s"] = monotonic() - started

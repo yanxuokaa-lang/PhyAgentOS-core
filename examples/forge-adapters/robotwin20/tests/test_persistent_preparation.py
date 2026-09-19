@@ -166,3 +166,34 @@ def test_snapshot_calls_receive_remaining_total_budget(tmp_path):
     assert len(budgets) == 2
     assert budgets[1] < budgets[0]
     assert routes._routes
+
+
+@pytest.mark.parametrize("worker_code,public_code", [
+    ("BindingPoseChangedError", "binding_pose_changed"),
+    ("BindingPoseUnavailableError", "binding_pose_unavailable"),
+])
+def test_worker_binding_rejection_is_a_public_preparation_failure(tmp_path, worker_code, public_code):
+    from PhyAgentOS.forge.capability_runtime.manipulation_prepare import PreparationProviderError
+
+    from robotwin20_adapter.persistent_client import PersistentWorkerClient
+
+    request, provider, routes = composition(tmp_path)
+
+    class Worker:
+        def request(self, payload):
+            return {"ok": False, "error": {"code": worker_code, "message": "/private/internal/detail"}}
+
+    client = PersistentWorkerClient(Worker())
+
+    def fail_build(arguments, **kwargs):
+        return client.query("bind_observed_entities", {})
+
+    provider.route_builder.build = fail_build
+    metrics = {}
+    with pytest.raises(PreparationProviderError) as caught:
+        provider.prepare(request, metrics=metrics)
+    assert caught.value.code == public_code
+    assert "/private" not in str(caught.value)
+    assert not client._transport_lost
+    assert metrics["status"] == "failed"
+    assert not routes._routes

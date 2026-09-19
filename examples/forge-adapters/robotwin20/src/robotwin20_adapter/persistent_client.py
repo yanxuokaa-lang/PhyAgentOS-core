@@ -8,6 +8,14 @@ from uuid import uuid4
 from .process_worker import JsonlProcessWorkerClient
 
 
+class PersistentWorkerError(RuntimeError):
+    """A worker rejection, distinct from a lost process connection."""
+
+    def __init__(self, error):
+        super().__init__(str(error))
+        self.code = error.get("code") if isinstance(error, dict) else None
+
+
 class PersistentWorkerClient:
     def __init__(self, worker: JsonlProcessWorkerClient) -> None:
         self.worker = worker
@@ -27,7 +35,7 @@ class PersistentWorkerClient:
             self._transport_lost = True
             raise
         if result.get("ok") is not True:
-            raise RuntimeError(str(result.get("error", "persistent provider unavailable")))
+            raise PersistentWorkerError(result.get("error", "persistent provider unavailable"))
         return result
 
     def query(

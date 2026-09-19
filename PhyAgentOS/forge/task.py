@@ -3411,6 +3411,9 @@ def _tool_result_from_execution(
         failure_code = facts["failure_code"]
         owner = facts.get("failure_owner")
         failure_owner = owner if isinstance(owner, str) else failure_owner
+    if failure_code is None and isinstance(facts.get("error"), dict):
+        code = facts["error"].get("code")
+        failure_code = code if isinstance(code, str) else None
     if failure_code is None and status != "succeeded":
         failure_code = status
     return ToolResultEnvelope(

@@ -926,7 +926,7 @@ def test_replan_provider_failure_enters_existing_recovery_with_original_failure(
         )
 
     def replan(*_):
-        raise ValueError("recovery model returned no unique decision")
+        raise ValueError("recovery model returned no unique decision; api_key=private-test-value")
 
     result = asyncio.run(PlanningLoopAdapter(
         c,
@@ -948,6 +948,8 @@ def test_replan_provider_failure_enters_existing_recovery_with_original_failure(
     assert current.status.value == "awaiting_replan"
     assert current.replan_deadline is not None
     assert current.active_revision.node_settlements[0].failure_code == "invalid_arguments"
+    assert any("recovery model returned no unique decision" in error for error in current.evidence_errors)
+    assert all("private-test-value" not in error for error in current.evidence_errors)
     assert current.active_revision.execution_records == []
 
 

@@ -251,7 +251,8 @@ class Grounding:
             )
         objects = self._project_visual_geometry(selected, objects, understanding, camera_to_world)
         facts = deepcopy(facts)
-        facts["objects"] = [objects.get(item["entity_ref"], item) for item in facts["objects"]]
+        # Keep captured execution poses intact for Runtime drift checks. Visual
+        # route geometry lives in objects, in its own observation-derived frame.
         self._current(request)
         bindings = [{"entity_ref": ref, "execution_entity_ref": obj["entity_ref"],
                      "actor_name": obj["actor_name"]} for ref, obj in objects.items()]

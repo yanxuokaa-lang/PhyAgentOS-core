@@ -37,6 +37,24 @@ _ADMISSION_KEYS = {
 _PASS_CHECKS = {"kinematic": "pass", "collision": "pass", "workspace": "pass"}
 
 
+@pytest.mark.parametrize("declared", [True, False])
+def test_provider_public_failure_preserves_diagnostic_without_leaking_unknown_errors(declared):
+    from PhyAgentOS.forge.capability_runtime.manipulation_prepare import PreparationProviderError
+
+    class Provider:
+        def prepare(self, request):
+            if declared:
+                raise PreparationProviderError("binding_pose_changed", "Execution actor moved since binding")
+            raise RuntimeError("private implementation detail")
+
+    result = ManipulationPreparationEndpoint(Provider()).invoke(request_payload())
+    assert result["status"] == "unavailable"
+    assert result["prepared_candidates"] == []
+    assert result["motion_authorized"] is False
+    assert result["error"]["code"] == ("binding_pose_changed" if declared else "preparation_provider_error")
+    assert "private" not in result["error"]["message"]
+
+
 def request_payload(**overrides):
     value = {
         "observation_ref": "observation://scene-7/camera_front",

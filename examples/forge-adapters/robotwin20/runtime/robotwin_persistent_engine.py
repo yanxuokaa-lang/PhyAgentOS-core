@@ -20,6 +20,14 @@ from robotwin_backend import (
 )
 
 
+class BindingPoseUnavailableError(ValueError):
+    """The binding lacks the captured execution pose required for drift checks."""
+
+
+class BindingPoseChangedError(ValueError):
+    """An execution actor differs from its captured Runtime pose."""
+
+
 class _StopSignal:
     def __init__(self, path: Path) -> None:
         self.path = path
@@ -214,6 +222,7 @@ class RoboTwinPersistentEngine:
                     or binding_record["motion_authorized"] is not False):
                 raise ValueError("entity binding requires current idle scene")
             mapping = {}
+            captured_objects = binding_record.get("scene_facts", {}).get("objects", [])
             for binding in binding_record["bindings"]:
                 if binding["entity_ref"] in {"entity://block-red-1", "entity://block-green-1", "entity://block-blue-1"}:
                     raise ValueError("observed identity must not shadow execution identity")
@@ -222,9 +231,19 @@ class RoboTwinPersistentEngine:
                     raise ValueError("execution actor binding differs from observation")
                 import numpy as np
 
-                expected = np.asarray(binding_record["objects"][binding["entity_ref"]]["world_T_object"]).reshape(4, 4)
+                captured = [item for item in captured_objects
+                            if item.get("entity_ref") == binding["execution_entity_ref"]
+                            and item.get("actor_name") == binding["actor_name"]]
+                if len(captured) != 1:
+                    raise BindingPoseUnavailableError("binding requires one captured execution actor pose")
+                try:
+                    expected = np.asarray(captured[0]["world_T_object"], dtype=float).reshape(4, 4)
+                except (KeyError, TypeError, ValueError) as exc:
+                    raise BindingPoseUnavailableError("captured execution actor pose is invalid") from exc
+                if not np.isfinite(expected).all():
+                    raise BindingPoseUnavailableError("captured execution actor pose is invalid")
                 if not np.allclose(actor.get_pose().to_transformation_matrix(), expected, atol=1e-6, rtol=0):
-                    raise ValueError("execution actor moved since binding")
+                    raise BindingPoseChangedError("execution actor moved since binding")
                 mapping[binding["entity_ref"]] = actor
             self.backend._task._paos_observed_entities = mapping
             return {"scene_revision": binding_record["scene_revision"], "motion_authorized": False}

@@ -111,6 +111,81 @@ def test_single_object_binding_needs_no_goal_and_target_preserves_explicit_pose(
     assert target["motion_authorized"] is False
 
 
+@pytest.mark.parametrize("change", ["unchanged", "translated", "rotated", "missing", "invalid", "duplicate", "nonfinite"])
+def test_grounding_binding_checks_captured_actor_pose_not_visual_frame(tmp_path, monkeypatch, change):
+    import robotwin_persistent_engine as engine_module
+
+    g, request, facts = setup(tmp_path)
+    # A rotated actor and biased visual centre reproduce the real frame mismatch.
+    captured = np.eye(4)
+    captured[:2, :2] = [[0, -1], [1, 0]]
+    captured[0, 3] = 0.007
+    facts["objects"][0]["world_T_object"] = captured.reshape(-1).tolist()
+    bound = g.bind(request)
+    assert bound["entities"][0]["world_T_object"] != captured.reshape(-1).tolist()
+    binding_path = tmp_path / (bound["binding_ref"].removeprefix("artifact://") + ".json")
+    saved = json.loads(binding_path.read_text())
+    assert saved["scene_facts"]["objects"][0]["world_T_object"] == captured.reshape(-1).tolist()
+    if change == "missing":
+        saved["scene_facts"]["objects"] = []
+    elif change == "invalid":
+        saved["scene_facts"]["objects"][0]["world_T_object"] = [0]
+    elif change == "duplicate":
+        saved["scene_facts"]["objects"] *= 2
+    elif change == "nonfinite":
+        saved["scene_facts"]["objects"][0]["world_T_object"][0] = float("nan")
+    binding_path.write_text(json.dumps(saved))
+    current = captured.copy()
+    if change == "translated":
+        current[0, 3] += 0.002
+    elif change == "rotated":
+        current[:3, :3] = np.eye(3)
+    actor = SimpleNamespace(get_pose=lambda: SimpleNamespace(to_transformation_matrix=lambda: current))
+    old_mapping = {"previous": object()}
+    runtime_task = SimpleNamespace(block1=actor, _paos_observed_entities=old_mapping)
+    engine = object.__new__(engine_module.RoboTwinPersistentEngine)
+    engine.root = tmp_path
+    engine.backend = SimpleNamespace(_task=runtime_task, snapshot=lambda: {"scene_revision": "s1"})
+    monkeypatch.setattr(engine_module.probe, "_actor_for_entity", lambda task, ref: actor)
+    if change == "unchanged":
+        result = engine.query("bind_observed_entities", {"binding_ref": bound["binding_ref"]})
+        assert result["motion_authorized"] is False
+        assert runtime_task._paos_observed_entities == {"entity://seen": actor}
+    else:
+        error = engine_module.BindingPoseChangedError if change in {"translated", "rotated"} else engine_module.BindingPoseUnavailableError
+        with pytest.raises(error):
+            engine.query("bind_observed_entities", {"binding_ref": bound["binding_ref"]})
+        assert runtime_task._paos_observed_entities is old_mapping
+
+
+def test_binding_rejection_does_not_publish_partial_entity_aliases(tmp_path, monkeypatch):
+    import robotwin_persistent_engine as module
+
+    g, request, _ = setup(tmp_path)
+    bound = g.bind(request)
+    path = tmp_path / (bound["binding_ref"].removeprefix("artifact://") + ".json")
+    value = json.loads(path.read_text())
+    value["bindings"].append({
+        "entity_ref": "entity://second", "execution_entity_ref": "entity://execution-second", "actor_name": "block2",
+    })
+    value["scene_facts"]["objects"].append({
+        "entity_ref": "entity://execution-second", "actor_name": "block2", "world_T_object": pose(),
+    })
+    path.write_text(json.dumps(value))
+    first = SimpleNamespace(get_pose=lambda: SimpleNamespace(to_transformation_matrix=lambda: np.eye(4)))
+    second = SimpleNamespace(get_pose=lambda: SimpleNamespace(to_transformation_matrix=lambda: np.array(pose(0.1)).reshape(4, 4)))
+    old = {"previous": first}
+    runtime_task = SimpleNamespace(block1=first, block2=second, _paos_observed_entities=old)
+    engine = object.__new__(module.RoboTwinPersistentEngine)
+    engine.root = tmp_path
+    engine.backend = SimpleNamespace(_task=runtime_task, snapshot=lambda: {"scene_revision": "s1"})
+    actors = {"entity://execution": first, "entity://execution-second": second}
+    monkeypatch.setattr(module.probe, "_actor_for_entity", lambda task, ref: actors[ref])
+    with pytest.raises(module.BindingPoseChangedError):
+        engine.query("bind_observed_entities", {"binding_ref": bound["binding_ref"]})
+    assert runtime_task._paos_observed_entities is old
+
+
 def test_preparation_grounding_propagates_deadline_to_both_worker_queries(tmp_path):
     from robotwin20_adapter.preparation_deadline import PreparationDeadline
 
@@ -380,6 +455,7 @@ def test_worker_rechecks_actor_geometry_before_alias_binding(tmp_path):
     path = tmp_path / (b["binding_ref"].removeprefix("artifact://") + ".json")
     record = json.loads(path.read_text())
     record["bindings"][0]["execution_entity_ref"] = "entity://block-red-1"
+    record["scene_facts"]["objects"][0]["entity_ref"] = "entity://block-red-1"
     path.write_text(json.dumps(record))
     actor = SimpleNamespace(
         get_pose=lambda: SimpleNamespace(to_transformation_matrix=lambda: np.eye(4))

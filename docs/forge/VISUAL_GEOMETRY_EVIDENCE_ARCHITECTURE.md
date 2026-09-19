@@ -33,6 +33,20 @@ Runtime diagnostics, not visual geometry. They must not be copied into a visual
 artifact or presented as perception evidence. Until a visual entity is mapped
 to an opaque execution handle, no Action may be admitted.
 
+The binding artifact keeps these two matrices separate: `objects[observed_ref]`
+contains observation-derived route geometry, while `scene_facts.objects` retains
+the captured Runtime actor pose keyed by execution entity and actor identity.
+The visual envelope axes may follow the camera and its estimated centre may
+differ from the actor origin. Runtime drift checks compare the current actor
+only with its captured execution pose, using the existing tolerance. Missing or
+ambiguous captured poses reject the binding; visual geometry is never a fallback
+for this check. All aliases are published together only after every actor passes.
+
+Binding failures propagate through the existing preparation Query `error`:
+`binding_pose_changed` requires fresh observation/binding;
+`binding_pose_unavailable` requires repairing the missing binding snapshot.
+These are diagnostics, not motion authorization or an automatic retry policy.
+
 ## Visual pipeline
 
 For one immutable observation, the adapter composes:

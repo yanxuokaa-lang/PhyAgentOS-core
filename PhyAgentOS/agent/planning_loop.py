@@ -15,6 +15,7 @@ from typing import Any, Awaitable, Callable, Literal, Mapping
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from PhyAgentOS.agent.experience.redaction import redact_text
 from PhyAgentOS.agent.planner_plugin import ReplanProposal
 from PhyAgentOS.agent.planning_facts import explicit_scene_revision, response_facts
 from PhyAgentOS.forge.task import AgentTaskCoordinator
@@ -690,6 +691,9 @@ class AgentLoopNodeExecutor:
             if failure_code is None and isinstance(response.get("failure_code"), str):
                 failure_code = response["failure_code"]
                 failure_owner = response.get("failure_owner")
+            if failure_code is None and isinstance(response.get("error"), dict):
+                code = response["error"].get("code")
+                failure_code = code if isinstance(code, str) else None
         world_change_started = (
             True
             if world_changed or any(value is True for value in started_facts)
@@ -1225,7 +1229,7 @@ class PlanningLoopAdapter:
                     task_id,
                     reason=(
                         f"automatic replan proposal unavailable after "
-                        f"{settlement.node_id}:{failure}"
+                        f"{settlement.node_id}:{failure}; {type(exc).__name__}: {redact_text(str(exc))[:2000]}"
                     ),
                 )
             except Exception as state_exc:

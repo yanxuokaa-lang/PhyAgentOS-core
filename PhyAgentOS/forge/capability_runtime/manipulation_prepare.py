@@ -26,6 +26,14 @@ _CHECK_STATUSES = ("pass", "fail", "unknown")
 _PREPARED_KEYS = {"candidate_ref", "entity_ref", "checks", "evidence", "qualification"}
 
 
+class PreparationProviderError(RuntimeError):
+    """Provider-declared public diagnostic, safe to include in a Query result."""
+
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code = code
+
+
 class PreparationProvider(Protocol):
     def prepare(self, request: dict[str, Any]) -> "PreparationSnapshot | Mapping[str, Any] | None": ...
 
@@ -461,6 +469,8 @@ class ManipulationPreparationEndpoint:
             }
         try:
             snapshot = self.provider.prepare(deepcopy(arguments))
+        except PreparationProviderError as exc:
+            return _error(exc.code, str(exc), observation_ref=observation_ref)
         except TimeoutError:
             return _error(
                 "preparation_timeout",
@@ -563,6 +573,7 @@ __all__ = [
     "PREPARATION_OPERATION",
     "MANIPULATION_TOOL_SPEC",
     "PreparationProvider",
+    "PreparationProviderError",
     "PreparationSnapshot",
     "normalize_snapshot",
     "ManipulationPreparationEndpoint",

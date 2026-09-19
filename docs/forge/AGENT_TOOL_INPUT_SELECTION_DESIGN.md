@@ -90,6 +90,14 @@ before revision identity was added remain readable as legacy records.
    Coordinator persists the existing terminal `failed` task state; it never
    retries a Tool automatically.
 
+Both live and persisted settlement preserve nested Query `error.code`, including
+when the HTTP transport succeeded but the Tool result is unavailable. Recovery
+receives the failed node's record identity, result status, public error and
+evidence references without candidate/geometry payloads. Agent chooses whether
+the cause supports re-observation/replanning or requires stopping for repair;
+Core does not branch on an adapter's error code. Recovery proposal validation
+errors are persisted with bounded, redacted detail in the existing task history.
+
 ## Extension Rule
 
 Sourced selections return a compact receipt with `tool_arguments={}` and

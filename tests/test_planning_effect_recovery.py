@@ -35,6 +35,64 @@ def test_started_motion_does_not_require_fabricated_scene():
     assert value.new_scene_revision is None
 
 
+def test_query_error_survives_live_and_persisted_settlement_and_recovery_prompt():
+    import json
+
+    from PhyAgentOS.agent.recovery_decisions import AgentRecoveryDecisions
+    from PhyAgentOS.forge.task import _tool_result_from_execution
+
+    execution = SimpleNamespace(
+        record_id="prepare-record", revision_id="revision", node_id="prepare",
+        tool_id="manipulation.prepare", semantics="query", terminal=True,
+        status="succeeded", error=None, evidence_refs=("tool:prepare-record",),
+        response={"data": {"status": "unavailable", "error": {
+            "code": "binding_pose_unavailable", "message": "Repair binding before retrying",
+        }, "prepared_candidates": []}},
+    )
+    dump = SimpleNamespace(model_dump=lambda **_: {})
+    saved = SimpleNamespace(
+        task_id="task", primary_skill_binding=None, tool_bindings=(),
+        execution_records=[execution], task_description="move object",
+        verification=dump, primary_skill_instructions="workflow", skill_uses=[],
+    )
+    coordinator = SimpleNamespace(get_task=lambda _: saved)
+    context = NodeExecutionContext(
+        task_id="task", revision_id="revision", node_id="prepare",
+        capability="manipulation.prepare", dependencies=(), required_evidence=(),
+        input_bindings={}, scene_revision="scene-1",
+    )
+    loop = SimpleNamespace(run_node_turn=lambda **_: None)
+    live = AgentLoopNodeExecutor(loop, coordinator)._result_from_records(context, [execution])
+    persisted = _tool_result_from_execution(saved, execution)
+    node = PlanNode(node_id="prepare", obligation_id="prepare", capability="manipulation.prepare")
+    for projection in (live, persisted):
+        assert projection.status == "failed"
+        assert projection.failure_code == "binding_pose_unavailable"
+        settlement = settle_node(node, projection, current_scene_revision="scene-1")
+        assert settlement.status == "failed"
+        assert settlement.failure_code == "binding_pose_unavailable"
+    # The model receives only diagnostics for the failed revision/node, not candidates.
+    saved.execution_records += [SimpleNamespace(revision_id="old", node_id="prepare")]
+
+    class Provider:
+        async def chat_with_retry(self, **kwargs):
+            payload = json.loads(kwargs["messages"][1]["content"])
+            assert len(payload["failed_executions"]) == 1
+            failure = payload["failed_executions"][0]
+            assert failure["error"]["code"] == "binding_pose_unavailable"
+            assert failure["result_status"] == "unavailable"
+            assert "prepared_candidates" not in failure
+            return SimpleNamespace(finish_reason="tool_calls", tool_calls=[
+                SimpleNamespace(name="submit_recovery", arguments={"decision": "stop", "reason": "binding repair required"}),
+            ])
+
+    graph = SimpleNamespace(task_id="task", revision_id="revision", model_dump=lambda **_: {})
+    decision = asyncio.run(AgentRecoveryDecisions(Provider(), "model", coordinator)._ask(
+        graph, settlement, dump, context,
+    ))
+    assert decision["decision"] == "stop"
+
+
 def test_observation_only_cannot_settle_declared_relocation_evidence():
     node = PlanNode(node_id="relocate", obligation_id="move", capability="object.relocate", produced_evidence=("placed",))
     settlement = settle_node(node, result(status="succeeded", evidence_refs=("observed",)), current_scene_revision="scene-1")
