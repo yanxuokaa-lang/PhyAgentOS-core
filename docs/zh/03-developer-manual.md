@@ -270,6 +270,10 @@ attempt。Outcome source 将每个 revision verdict 映射到该 revision
    或凭据；
 7. 只有完整 runtime 和 Tool contexts ready 后，才进行仿真或硬件验收。
 
+Agent-composed PlanNode 必须能够由一个冻结 Tool 候选独立完成。只有一个 Tool 真正拥有完整终态效果时
+才发布复合 capability；否则用相互依赖的原子节点表达工作流。Tool producer 继续输出可复用、与
+consumer 解耦的结构化事实，由 Agent 按 consumer 的冻结 input schema 选择输入。
+
 不要创建第二套 PAOS 执行协议、Agent 直连 Dora/SDK、与仿真器绑定的 Skill 名称或跨 Tool lease。只有通用 task/Tool API tools
 无法表达能力时，才应新增 Agent tool。
 

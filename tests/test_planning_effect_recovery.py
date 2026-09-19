@@ -7,8 +7,9 @@ import pytest
 
 from PhyAgentOS.agent.planning_context import PlanningContextUnavailableError, context_from_task
 from PhyAgentOS.agent.planning_loop import AgentLoopNodeExecutor, NodeExecutionContext
+from PhyAgentOS.forge.binding import BoundToolSpec
 from PhyAgentOS.forge.capability_runtime import ActionAdmission, CapabilityRuntime
-from PhyAgentOS.planning import PlanNode, ToolResultEnvelope, settle_node
+from PhyAgentOS.planning import PlanNode, ToolResultEnvelope, ToolSpecPolicy, settle_node
 
 
 def result(**kwargs):
@@ -109,6 +110,73 @@ def test_node_executor_projects_nested_failed_action_after_successful_observatio
     assert projected.new_scene_revision == "scene-3"
     assert projected.evidence_refs == ("artifact://slip",)
     assert projected.failure_code == "slip"
+
+
+def test_node_executor_derives_confirmed_world_change_from_frozen_tool_policy():
+    revision = SimpleNamespace(execution_records=[])
+    policy = ToolSpecPolicy(
+        tool_id="object.place",
+        semantics="action",
+        spec_digest="a" * 64,
+        capabilities=("object.place",),
+        scene_write_behavior="new_revision",
+    )
+    saved_task = SimpleNamespace(
+        active_revision=revision,
+        active_revision_id="revision",
+        primary_skill_binding=SimpleNamespace(
+            required_tools=(
+                BoundToolSpec(
+                    tool_id="object.place",
+                    semantics="action",
+                    spec_sha256="a" * 64,
+                    ready_at_binding=True,
+                    planning_policy=policy,
+                ),
+            )
+        ),
+    )
+
+    class Loop:
+        async def run_node_turn(self, **kwargs):
+            revision.execution_records.append(
+                SimpleNamespace(
+                    record_id="place",
+                    node_id="place",
+                    tool_id="object.place",
+                    terminal=True,
+                    status="succeeded",
+                    error=None,
+                    evidence_refs=("tool:place",),
+                    response={
+                        "data": {
+                            "result": {
+                                "new_scene_revision": "scene-2",
+                                "capability_outcome_summary": {
+                                    "world_change_started": True,
+                                    "outcome_known": True,
+                                },
+                            }
+                        }
+                    },
+                )
+            )
+
+    executor = AgentLoopNodeExecutor(Loop(), SimpleNamespace(get_task=lambda _: saved_task))
+    context = NodeExecutionContext(
+        task_id="task",
+        revision_id="revision",
+        node_id="place",
+        capability="object.place",
+        dependencies=(),
+        required_evidence=(),
+        input_bindings={},
+        scene_revision="scene-1",
+    )
+    projected = asyncio.run(executor(context))
+    assert projected.scene_write_behavior == "new_revision"
+    assert projected.world_changed is True
+    assert projected.new_scene_revision == "scene-2"
 
 
 class _LifecycleClient:

@@ -165,7 +165,7 @@ def _spec(spec):
     action = spec["semantics"] == "action"
     planning = deepcopy(spec.get("planning", {}))
     planning.update({"schema_version": "paos-tool-spec-policy/v1",
-                     "capabilities": [spec["tool_id"], "object.relocate"],
+                     "capabilities": [spec["tool_id"]],
                      "refreshes_scene": spec["tool_id"] == "scene.observe",
                      "input_binding_keys": ["entity_ref", "destination_ref"] if spec["tool_id"] == "object.place" else ["entity_ref"] if action else [],
                      "scene_write_behavior": "new_revision" if action else "none"})

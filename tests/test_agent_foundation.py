@@ -372,6 +372,20 @@ def test_semantic_submission_rejects_root_produced_evidence_before_tool_result(t
     assert len(c.get_task(task.task_id).revisions) == 1
 
 
+def test_semantic_submission_rejects_unpersisted_future_evidence(tmp_path):
+    _c, task = setup_task(tmp_path)
+    nodes = semantic_nodes(1)
+    nodes[0]["required_evidence"] = ["tool:existing-observation"]
+    nodes[1]["required_evidence"] = ["tool:invented-future-record"]
+    with pytest.raises(ValueError, match="dependencies for future Tool results"):
+        compile_task_plan(
+            task,
+            nodes,
+            reason="reject invented future evidence",
+            initial_evidence_refs=("tool:existing-observation",),
+        )
+
+
 def test_materialized_unstarted_graph_can_be_corrected_append_only(tmp_path):
     c, task = setup_task(tmp_path)
     first = semantic_nodes(1)

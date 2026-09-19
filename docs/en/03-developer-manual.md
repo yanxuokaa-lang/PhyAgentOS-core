@@ -223,6 +223,12 @@ To add a robot capability:
    coordinates, provider payloads, or secrets;
 7. perform simulation or hardware acceptance only after the complete runtime and Tool contexts are ready.
 
+An Agent-composed PlanNode must be independently completable by one frozen Tool
+candidate. Publish a composite capability only when one Tool owns its complete
+terminal effect; otherwise express the workflow as dependent atomic nodes. Tool
+producers remain reusable and consumer-neutral: the Agent selects structured
+facts according to the consumer's frozen input schema.
+
 Do not create a second PAOS execution protocol, direct Agent-to-Dora/SDK calls, simulator-bound Skill
 names, or a cross-Tool lease.
 A new Agent tool is justified only when the generic task and Tool API tools cannot express the

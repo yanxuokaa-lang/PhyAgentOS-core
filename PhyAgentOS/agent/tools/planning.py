@@ -11,6 +11,7 @@ from PhyAgentOS.agent.tools.base import Tool
 from PhyAgentOS.planning import AdmissionContext
 
 _PLANNING_BINDING_FIELDS = (
+    "revision_id",
     "node_id",
     "node_digest",
     "obligation_id",

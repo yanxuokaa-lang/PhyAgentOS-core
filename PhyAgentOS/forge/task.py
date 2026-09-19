@@ -245,6 +245,7 @@ class PlanRevision(BaseModel):
     planner_decision_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     policy_snapshot_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     execution_records: list[ToolExecutionRecord] = Field(default_factory=list)
+    planning_selections: list[DecisionTrace] = Field(default_factory=list)
     node_settlements: list[NodeSettlement] = Field(default_factory=list)
     counterevidence: list[NodeSettlement] = Field(default_factory=list)
     preserved_node_ids: tuple[str, ...] = ()
@@ -288,12 +289,39 @@ class PlanRevision(BaseModel):
             known_nodes = {node.node_id for node in self.plan_graph.nodes}
             if any(item.node_id not in known_nodes for item in self.node_settlements):
                 raise ValueError("NodeSettlement references an unknown PlanGraph node")
+            if any(item.node_id not in known_nodes for item in self.planning_selections):
+                raise ValueError("DecisionTrace references an unknown PlanGraph node")
         if any(item.revision_id != self.revision_id for item in self.node_settlements):
             raise ValueError("NodeSettlement revision_id must match its PlanRevision")
+        if any(item.revision_id != self.revision_id for item in self.planning_selections):
+            raise ValueError("DecisionTrace revision_id must match its PlanRevision")
         if any(item.revision_id != self.revision_id for item in self.counterevidence):
             raise ValueError("counterevidence revision_id must match its PlanRevision")
         if len({item.node_id for item in self.node_settlements}) != len(self.node_settlements):
             raise ValueError("PlanRevision cannot contain duplicate NodeSettlement node identities")
+        trace_refs = [
+            item.resumable_selection.planning_binding.decision_trace_ref
+            for item in self.planning_selections
+            if item.resumable_selection is not None
+        ]
+        if len(trace_refs) != len(set(trace_refs)):
+            raise ValueError("PlanRevision cannot contain duplicate planning selection references")
+        used_trace_refs = {
+            item.decision_trace_ref
+            for item in self.execution_records
+            if item.decision_trace_ref is not None
+        }
+        pending_node_ids = [
+            item.node_id
+            for item in self.planning_selections
+            if item.resumable_selection is not None
+            and item.resumable_selection.planning_binding.decision_trace_ref
+            not in used_trace_refs
+        ]
+        if len(pending_node_ids) != len(set(pending_node_ids)):
+            raise ValueError(
+                "PlanRevision cannot contain multiple unconsumed selections for one node"
+            )
         return self
 
 
@@ -876,12 +904,50 @@ class AgentTaskCoordinator:
             raise AgentTaskError("planning selection omitted final Tool arguments")
         if tool_input_binding_digest(tool_arguments) != proposal.get("input_binding_digest"):
             raise AgentTaskError("planning selection arguments do not match their digest")
+        pending = self.pending_planning_selection(
+            task.task_id,
+            node.node_id,
+            scene_revision=proposal.get("scene_revision"),
+        )
+        durable_trace_refs = {
+            item.resumable_selection.planning_binding.decision_trace_ref
+            for item in task.active_revision.planning_selections
+            if item.resumable_selection is not None
+        }
+        pending_trace_ref = (
+            pending["planning_binding"]["decision_trace_ref"]
+            if pending is not None
+            else None
+        )
+        if pending is not None and pending_trace_ref not in durable_trace_refs:
+            expected_execution_tool = {
+                "query": "forge_tool_query",
+                "action": "forge_tool_start_action",
+                "session": "forge_tool_start_session",
+            }.get(proposal.get("semantics"))
+            if (
+                pending["tool_id"] == proposal.get("tool_id")
+                and pending["arguments"] == tool_arguments
+                and pending["execution_tool"] == expected_execution_tool
+                and pending["scene_revision"] == proposal.get("scene_revision")
+            ):
+                return {
+                    **pending["planning_binding"],
+                    "task_id": pending["task_id"],
+                    "revision_id": pending["revision_id"],
+                    "scene_revision": pending["scene_revision"],
+                    "tool_arguments": pending["arguments"],
+                }
+            raise AgentTaskError(
+                "planning node already has an unconsumed selection; execute or replace its revision"
+            )
         trace_id = uuid4().hex[:16]
         trace_ref = (
             f"artifact://planning-traces/{task.task_id}/"
             f"{task.active_revision_id}/{node.node_id}/{trace_id}"
         )
         binding = PlanningExecutionBinding(
+            revision_id=task.active_revision_id,
             node_id=node.node_id,
             node_digest=proposal["node_digest"],
             obligation_id=node.obligation_id,
@@ -894,37 +960,109 @@ class AgentTaskCoordinator:
             planning_binding=binding,
             tool_arguments=tool_arguments,
         )
-        trace = {
-            "schema_version": "paos-decision-trace/v1",
-            "task_id": task.task_id,
-            "revision_id": task.active_revision_id,
-            "node_id": node.node_id,
-            "candidate_tool_ids": list(proposal.get("candidate_tool_ids", ())),
-            "selected_tool_id": proposal.get("tool_id"),
-            "input_binding_digest": proposal.get("input_binding_digest"),
-            "scene_revision": proposal.get("scene_revision"),
-            "context_digest": proposal.get("context_digest"),
-            "decision_reason": proposal.get("decision_reason"),
-            "evidence_refs": list(proposal.get("evidence_refs", ())),
-            "created_at": utc_now().isoformat(),
-            "resumable_selection": resumable.model_dump(mode="json"),
-        }
         try:
-            DecisionTrace.model_validate(trace)
+            trace = DecisionTrace.model_validate({
+                "schema_version": "paos-decision-trace/v1",
+                "task_id": task.task_id,
+                "revision_id": task.active_revision_id,
+                "node_id": node.node_id,
+                "candidate_tool_ids": list(proposal.get("candidate_tool_ids", ())),
+                "selected_tool_id": proposal.get("tool_id"),
+                "input_binding_digest": proposal.get("input_binding_digest"),
+                "scene_revision": proposal.get("scene_revision"),
+                "context_digest": proposal.get("context_digest"),
+                "decision_reason": proposal.get("decision_reason"),
+                "evidence_refs": list(proposal.get("evidence_refs", ())),
+                "created_at": utc_now().isoformat(),
+                "resumable_selection": resumable.model_dump(mode="json"),
+            })
         except Exception as exc:
             raise AgentTaskError(f"planning DecisionTrace is invalid: {exc}") from exc
+
+        persisted_trace: DecisionTrace | None = None
+        event_payload: dict[str, Any] = {
+            "revision_id": task.active_revision_id,
+            "node_id": node.node_id,
+            "tool_id": proposal["tool_id"],
+            "decision_trace_ref": trace_ref,
+        }
+
+        def persist(current: AgentTaskRecord) -> None:
+            nonlocal persisted_trace
+            if current.active_revision_id != proposal.get("revision_id"):
+                raise AgentTaskError("planning selection is not bound to the active revision")
+            if any(
+                item.node_id == node.node_id
+                for item in (
+                    *current.active_revision.execution_records,
+                    *current.active_revision.node_settlements,
+                )
+            ):
+                raise AgentTaskError(
+                    "planning node already has an execution record or settlement"
+                )
+            used_trace_refs = {
+                item.decision_trace_ref
+                for item in current.active_revision.execution_records
+                if item.decision_trace_ref is not None
+            }
+            for existing in current.active_revision.planning_selections:
+                selection = existing.resumable_selection
+                if (
+                    existing.node_id == node.node_id
+                    and selection is not None
+                    and selection.planning_binding.decision_trace_ref not in used_trace_refs
+                ):
+                    if (
+                        existing.scene_revision == proposal.get("scene_revision")
+                        and selection.tool_id == proposal.get("tool_id")
+                        and selection.semantics == proposal.get("semantics")
+                        and selection.tool_arguments == tool_arguments
+                    ):
+                        persisted_trace = existing
+                        event_payload["decision_trace_ref"] = (
+                            selection.planning_binding.decision_trace_ref
+                        )
+                        event_payload["idempotent"] = True
+                        return
+                    raise AgentTaskError(
+                        "planning node already has an unconsumed selection; execute or replace its revision"
+                    )
+            current.active_revision.planning_selections.append(trace)
+            persisted_trace = trace
+
+        self.store.update(
+            task.task_id,
+            persist,
+            event_type="planning_selection_persisted",
+            payload=event_payload,
+        )
+        assert persisted_trace is not None
+        persisted_selection = persisted_trace.resumable_selection
+        assert persisted_selection is not None
+        persisted_binding = persisted_selection.planning_binding
+        persisted_trace_id = persisted_binding.decision_trace_ref.rsplit("/", 1)[-1]
         relative = Path("artifacts") / "planning-traces" / task.task_id / task.active_revision_id / node.node_id
         path = (self.workspace / relative).resolve()
         if not path.is_relative_to(self.workspace):
             raise AgentTaskError("planning trace path escapes workspace")
         path.parent.mkdir(parents=True, exist_ok=True)
-        atomic_write_text(path / f"{trace_id}.json", json.dumps(trace, ensure_ascii=False, sort_keys=True, indent=2) + "\n")
+        atomic_write_text(
+            path / f"{persisted_trace_id}.json",
+            json.dumps(
+                persisted_trace.model_dump(mode="json"),
+                ensure_ascii=False,
+                sort_keys=True,
+                indent=2,
+            )
+            + "\n",
+        )
         return {
-            **binding.model_dump(mode="json"),
+            **persisted_binding.model_dump(mode="json"),
             "task_id": task.task_id,
             "revision_id": task.active_revision_id,
-            "scene_revision": proposal["scene_revision"],
-            "tool_arguments": tool_arguments,
+            "scene_revision": persisted_trace.scene_revision,
+            "tool_arguments": persisted_selection.tool_arguments,
         }
 
     def pending_planning_selection(
@@ -960,16 +1098,29 @@ class AgentTaskCoordinator:
             / revision.revision_id
             / node_id
         )
-        if not directory.is_dir():
-            return None
-        candidates: list[DecisionTrace] = []
-        for path in directory.glob("*.json"):
+        candidates: list[DecisionTrace] = [
+            trace
+            for trace in revision.planning_selections
+            if trace.node_id == node_id
+            and trace.resumable_selection is not None
+            and trace.resumable_selection.planning_binding.decision_trace_ref
+            not in used_trace_refs
+            and (scene_revision is None or trace.scene_revision == scene_revision)
+        ]
+        known_trace_refs = {
+            item.resumable_selection.planning_binding.decision_trace_ref
+            for item in candidates
+            if item.resumable_selection is not None
+        }
+        for path in directory.glob("*.json") if directory.is_dir() else ():
             try:
                 trace = DecisionTrace.model_validate_json(path.read_text(encoding="utf-8"))
             except (OSError, ValueError):
                 continue
             selection = trace.resumable_selection
             if selection is None:
+                continue
+            if selection.planning_binding.decision_trace_ref in known_trace_refs:
                 continue
             if selection.planning_binding.decision_trace_ref in used_trace_refs:
                 continue
@@ -1942,6 +2093,15 @@ class AgentTaskCoordinator:
         planning_binding: PlanningExecutionBinding | dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         task = self._require_executable(task_id)
+        binding = _normalize_planning_binding(planning_binding)
+        if binding is not None:
+            _validate_planning_execution_selection(
+                task.active_revision,
+                binding,
+                tool_id=tool_id,
+                semantics="action",
+                arguments=arguments,
+            )
         if any(
             item.semantics == "action"
             and item.tool_id == tool_id
@@ -1956,7 +2116,7 @@ class AgentTaskCoordinator:
         if task.before_snapshot_ref is None:
             await self._capture_before(task_id)
         record_id, caller = self._append_execution(
-            task_id, tool_id, "action", arguments, tool=tool, planning_binding=planning_binding
+            task_id, tool_id, "action", arguments, tool=tool, planning_binding=binding
         )
         invocation_id: str | None = None
         attempt_id: str | None = None
@@ -2645,6 +2805,21 @@ class AgentTaskCoordinator:
         caller_id = f"paos:{task_id}:{task.active_revision_id}:{record_id}"
 
         def mutate(current: AgentTaskRecord) -> None:
+            if binding is not None:
+                if any(
+                    item.node_id == binding.node_id
+                    for item in current.active_revision.execution_records
+                ):
+                    raise AgentTaskError(
+                        "planning node already has an execution record"
+                    )
+                _validate_planning_execution_selection(
+                    current.active_revision,
+                    binding,
+                    tool_id=tool_id,
+                    semantics=semantics,
+                    arguments=arguments,
+                )
             current.active_revision.execution_records.append(
                 ToolExecutionRecord(
                     record_id=record_id,
@@ -2958,6 +3133,46 @@ def _normalize_planning_binding(
         raise AgentTaskError(f"invalid planning execution binding: {exc}") from exc
 
 
+def _validate_planning_execution_selection(
+    revision: PlanRevision,
+    binding: PlanningExecutionBinding,
+    *,
+    tool_id: str,
+    semantics: Literal["query", "action", "session"],
+    arguments: dict[str, Any],
+) -> None:
+    """Match an execution to the durable Agent selection when one exists."""
+    if binding.revision_id is not None and binding.revision_id != revision.revision_id:
+        raise AgentTaskError("planning execution binding targets a stale revision")
+    active_selections = {
+        item.resumable_selection.planning_binding.decision_trace_ref: item
+        for item in revision.planning_selections
+        if item.resumable_selection is not None
+    }
+    if not active_selections:
+        if binding.revision_id is not None:
+            raise AgentTaskError(
+                "revision-bound planning execution has no active persisted selection"
+            )
+        return
+    if binding.input_binding_digest != tool_input_binding_digest(arguments):
+        raise AgentTaskError("planning execution arguments do not match their binding")
+    selected = active_selections.get(binding.decision_trace_ref)
+    selection = selected.resumable_selection if selected is not None else None
+    if (
+        selected is None
+        or selected.node_id != binding.node_id
+        or selection is None
+        or selection.planning_binding != binding
+        or selection.tool_id != tool_id
+        or selection.semantics != semantics
+        or selection.tool_arguments != arguments
+    ):
+        raise AgentTaskError(
+            "planning execution does not match the active revision selection"
+        )
+
+
 def _owned_execution(
     task: AgentTaskRecord,
     invocation_id: str,
@@ -3098,16 +3313,17 @@ def _tool_result_from_execution(
         return None
     facts = _planning_response_facts(record.response)
     status = _planning_record_status(record)
+    scene_write_behavior = _planning_scene_write_behavior(task, record.tool_id)
     evidence_refs = list(record.evidence_refs)
     for key in ("evidence_refs", "artifact_refs"):
         evidence_refs.extend(_string_refs(facts.get(key)))
     output_refs = _string_refs(facts.get("output_refs"))
-    world_changed = facts.get("world_changed") is True
+    explicit_world_changed = facts.get("world_changed") is True
     started_facts = [facts.get("world_change_started")]
     known_facts = [facts.get("outcome_known")]
     world_change_started: bool | None
     outcome_known: bool | None
-    if world_changed or any(value is True for value in started_facts):
+    if explicit_world_changed or any(value is True for value in started_facts):
         world_change_started = True
     elif all(value is False for value in started_facts) or record.semantics == "query":
         world_change_started = False
@@ -3122,6 +3338,13 @@ def _tool_result_from_execution(
     new_scene_revision = facts.get("new_scene_revision")
     if not isinstance(new_scene_revision, str) or not new_scene_revision.strip():
         new_scene_revision = None
+    world_changed = explicit_world_changed or (
+        scene_write_behavior == "new_revision"
+        and status == "succeeded"
+        and world_change_started is True
+        and outcome_known is True
+        and new_scene_revision is not None
+    )
     failure_code: str | None = None
     failure_owner: str | None = None
     if isinstance(record.error, dict):
@@ -3141,6 +3364,7 @@ def _tool_result_from_execution(
         node_id=record.node_id,
         tool_id=record.tool_id,
         status=status,
+        scene_write_behavior=scene_write_behavior,
         world_changed=world_changed,
         world_change_started=world_change_started,
         outcome_known=outcome_known,
@@ -3150,6 +3374,17 @@ def _tool_result_from_execution(
         failure_code=failure_code,
         failure_owner=failure_owner,
     )
+
+
+def _planning_scene_write_behavior(
+    task: AgentTaskRecord,
+    tool_id: str,
+) -> Literal["none", "new_revision", "unknown"]:
+    binding = task.primary_skill_binding
+    tools = binding.required_tools if binding is not None else tuple(task.tool_bindings)
+    tool = next((item for item in tools if item.tool_id == tool_id), None)
+    policy = tool.planning_policy if tool is not None else None
+    return policy.scene_write_behavior if policy is not None else "unknown"
 
 
 def _tool_status(response: dict[str, Any], *, default: str) -> str:

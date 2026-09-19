@@ -12,6 +12,52 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v10.8.11 (2026-09-19 23:55) - codex
+
+- [agent] [fix] [完成] 将复合搬移展开为可独立结算的原子 PlanNode；Tool 继续输出可复用事实，Agent 按消费者冻结 schema 选择输入。(local)
+- [agent] [fix] [完成] selection 纳入 PlanRevision 事务状态；新 receipt 绑定 revision、Tool、语义和完整参数，并拒绝未来 opaque evidence、重复待消费 selection/执行。(local)
+- [agent] [fix] [完成] `new_revision` Tool 必须返回可确认世界变化才可完成节点；pick-place workflow 升级为 `2.2.1`。(local)
+- [Agent] [Fix] [Completed] Expand composite relocation into independently settled atomic PlanNodes while Tools keep producing reusable facts and the Agent selects inputs against each consumer's frozen schema. (local)
+- [Agent] [Fix] [Completed] Persist selections transactionally in PlanRevision; bind new receipts to revision, Tool, semantics, and exact arguments, rejecting future opaque evidence and duplicate pending selections/executions. (local)
+- [Agent] [Fix] [Completed] Require confirmed world-change evidence before a `new_revision` Tool completes its node and upgrade pick-place workflow to `2.2.1`. (local)
+
+### 影响文件 / Affected files
+
+- `PhyAgentOS/planning/contracts.py:L61-L139,L279-L377`; `PhyAgentOS/planning/settlement.py:L8-L53`
+- `PhyAgentOS/agent/plan_proposal.py:L19-L117`; `PhyAgentOS/agent/planning_loop.py:L365-L480`
+- `PhyAgentOS/agent/tools/planning.py:L13-L125`; `PhyAgentOS/agent/tools/forge_tool_api.py:L440-L460`
+- `PhyAgentOS/forge/task.py:L229-L323,L892-L1050,L1070-L1133,L2090-L2120,L2790-L2835,L3136-L3175,L3300-L3387`
+- `PhyAgentOS/verification/request_builder.py:L71-L76,L209-L216`; pick-place Runtime, Skill, tests, developer guides, and `changelog/2026-09_part10.md`
+
+```diff
+- every Tool can claim object.relocate and a read-only Query can settle relocation
++ one executable node has one independently completing Tool; composite work is an atomic DAG
+- planning selection is an artifact-only receipt reusable with altered execution input
++ PlanRevision owns one durable selection and execution exactly matches its revision/Tool/semantics/arguments
+- succeeded physical Action can settle without confirmed scene change
++ frozen new_revision policy requires known world change and an advanced scene revision
+```
+
+### 独立 Code Review 与七维验收 / Independent review and acceptance
+
+Fresh review fixed three Major findings: execution-payload substitution,
+cross-revision receipt reuse, and missing DecisionTrace artifact recovery after
+a committed selection. No Blocker/Major remains. The established seven dimensions
+all pass: architecture integration, recovery/idempotency, robotics safety,
+context/performance, configuration/reproducibility, maintainability/observability,
+and AgentLoop autonomy. The no-motion simulation rejected coarse relocation,
+rejected place without effect, completed place only with `scene-2`, and made 0
+Gateway calls.
+
+### 验证与部署边界 / Validation and deployment boundary
+
+- Core `483 passed in 24.96s`; pick-place Skill `334 passed in 7.37s`.
+- Ruff, compileall, `uv lock --check`, and `git diff --check` passed.
+- Installed Runtime remains running Skill `2.2.0`; source bundle is `2.2.1`.
+  Active old task `task_05a957a8476c4a95` was not stopped or resumed; no Runtime
+  update/restart, Gateway Tool, Action, Session, simulator step, or motion occurred.
+- Implementation commit: pending; branch: `feature/planning-loop`.
+
 ## v10.8.10 (2026-09-18 20:59) - codex
 
 - [agent] [fix] [完成] 同时校验 discovery Query 的持久请求与响应 scene identity；非刷新证据必须属于当前场景，刷新 Tool 可从源场景产生当前场景。(local)
@@ -172,50 +218,6 @@ termination boundary. Motion gates and final verification remain fail-closed.
 - RGB config remains `gpt-5.6-sol/high/272000/260000/110s`; no Gateway Tool,
   Action, Session, simulator step, Runtime transition, or physical motion occurred.
 - Implementation commit: `06c79d1`; branch: `feature/planning-loop`.
-
-## v10.8.6 (2026-09-18 03:52) - codex
-
-- [agent] [fix] [完成] PlanGraph 物化后立即由 discovery 交接 LongHorizon；每个节点从空历史和 node-scoped 投影运行。(local)
-- [agent] [fix] [完成] 节点只接收直接前驱的精确持久化 Tool 结果，使 `manipulation.prepare` 取得完整候选而不重复 Query/CLI/SQLite 恢复。(local)
-- [agent] [fix] [完成] 场景段完成后进入受限 continue/finalize/clarification 回合；Tool 允许集同时约束预算、schema 与本地执行。(local)
-- [Agent] [Fix] [Completed] Yield discovery to LongHorizon immediately after PlanGraph materialization; run every node from empty history with a node-scoped projection. (local)
-- [Agent] [Fix] [Completed] Supply exact persisted results only from direct predecessors so `manipulation.prepare` receives complete candidates without repeated Query/CLI/SQLite recovery. (local)
-- [Agent] [Fix] [Completed] Route completed scene segments through a bounded continue/finalize/clarification turn and enforce its Tool allowlist in budgeting, schema exposure, and local execution. (local)
-
-### 影响文件 / Affected files
-
-- `PhyAgentOS/agent/loop.py:L432-L456,L647-L896,L985-L1050,L1383-L1400`
-- `PhyAgentOS/agent/planning_loop.py:L57-L80,L99-L173,L512-L635,L852-L858`
-- `PhyAgentOS/agent/long_horizon.py:L42-L57,L164-L263,L315-L338`
-- `tests/test_agent_foundation.py:L107-L258`; `tests/test_planning_loop.py:L111-L175`; `tests/test_long_horizon_controller.py:L196-L303`
-- three Forge developer guides; `changelog/2026-09_part9.md`; `CHANGELOG.md`
-
-```diff
-- materialize; continue activate/select/query in accumulated discovery history
-+ materialize; yield to host-owned fresh LongHorizon node turns
-- predecessor refs only; recover required candidates through CLI/SQLite
-+ exact direct-predecessor Tool results in bounded node context
-- segment completion directly implies whole-task finalization
-+ segment_completed -> restricted continue/finalize/clarification
-```
-
-### 七维验收 / Seven-dimension acceptance
-
-Architecture, recovery/idempotency, robotics safety, context/performance,
-configuration/reproducibility, maintainability/observability, and AgentLoop
-autonomy: PASS with no remaining Blocker/Major. Review fixed execution-time
-rejection for hidden provider Tool calls and moved the allowed Tool set before
-prompt-budget calculation. Workspace/IK/collision, planning binding, Action
-admission, and final verification remain fail-closed.
-
-### 验证与安装 / Validation and installation
-
-- Focused `94 passed`; full no-motion suite `463 passed in 23.55s`; Ruff,
-  compileall, and diff check passed.
-- Editable install resolves to `/home/yanxu/PhyAgentOS-forge/PhyAgentOS`.
-- RGB config remains `gpt-5.6-sol/high/272000/260000/110s`; no Gateway Tool,
-  Action, Session, simulator step, Runtime transition, or physical motion occurred.
-- Implementation commit: `8ae4189`; branch: `feature/planning-loop`.
 
 ## 历史记录 / Historical Records
 

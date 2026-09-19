@@ -423,6 +423,15 @@ does not consume replan budget. In particular, a non-terminal or unknown Action
 is reconciled through its existing invocation identity and is never restarted
 from the selection receipt.
 
+The active PlanRevision transactionally owns at most one unconsumed selection
+per node. Repeating the same selection is idempotent; selecting a different Tool
+or argument object is rejected until the receipt is consumed or the revision is
+replaced. A node likewise accepts at most one planning-bound Tool execution.
+New selection receipts include the active `revision_id`; the Coordinator rejects
+stale-revision receipts and any execution whose Tool ID, semantics, or arguments
+differ from the persisted selection. Legacy bindings without this optional field
+remain readable for compatibility.
+
 If a recovery proposer fails, the Coordinator first enters the existing
 bounded `awaiting_replan` state. If that state transition is unavailable, for
 example because the replan budget is exhausted, the Coordinator persists the

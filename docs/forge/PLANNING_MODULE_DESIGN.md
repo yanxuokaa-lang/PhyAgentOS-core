@@ -12,17 +12,19 @@ whether a proposed Tool call is structurally and evidentially admissible. It
 does not execute Tools, own a task lifecycle, persist facts, acquire locks, or
 authorize motion.
 
-The task-level shape is:
+The task-level intent may be summarized as:
 
 ```text
 relocate(red)  ─────┐
 relocate(blue) ─────┼──> verify
 ```
 
-Each semantic node may select a different Tool sequence. The old fixed
-`observe -> capabilities -> understand -> propose -> prepare -> acquire ->
-place` sequence remains a Skill baseline policy only; it is not the only legal
-plan.
+An executable `PlanNode`, however, is one settlement unit completed by one
+selected Tool. A composite intent such as `relocate(red)` must be decomposed
+into atomic capability nodes unless one frozen ToolSpec advertises and owns the
+whole atomic relocation. The old fixed `observe -> capabilities -> understand
+-> propose -> prepare -> acquire -> place` sequence remains a Skill baseline
+policy only; other Tools may satisfy the same atomic capabilities.
 
 ## Ownership boundary
 
@@ -120,6 +122,11 @@ does not translate labels such as `metric_geometry` or `binding_ready` into an
 artifact, set them true by default, or inspect provider payloads. Later-node
 requirements must be satisfied by explicit predecessor settlement/evidence,
 not by assuming that a declared effect has occurred.
+
+Opaque references cannot name future Tool records. Every `required_evidence`
+value must already exist in the Coordinator-selected discovery evidence when a
+graph is compiled; future causal availability is represented by `dependencies`
+and projected from the direct predecessor after it settles.
 
 `forge_plan_ready` returns `node_diagnostics` alongside the existing ready set.
 Each pending node reports missing dependencies and their settlement status,

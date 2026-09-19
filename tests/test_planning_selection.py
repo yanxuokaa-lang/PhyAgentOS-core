@@ -4,12 +4,15 @@ import asyncio
 import json
 from types import SimpleNamespace
 
+import pytest
+
+import PhyAgentOS.forge.task as forge_task_module
 from PhyAgentOS.agent.planning_dispatch import AgentComposedDispatch
 from PhyAgentOS.agent.tools.planning import ForgePlanSelectTool
 from PhyAgentOS.config.schema import ForgeConfig
-from PhyAgentOS.forge.binding import RuntimeBinding
+from PhyAgentOS.forge.binding import BoundToolSpec, RuntimeBinding
 from PhyAgentOS.forge.capability_runtime.grasp_proposal import GRASP_TOOL_SPEC
-from PhyAgentOS.forge.task import AgentTaskCoordinator, AgentTaskStatus
+from PhyAgentOS.forge.task import AgentTaskCoordinator, AgentTaskError, AgentTaskStatus
 from PhyAgentOS.planning import (
     AdmissionContext,
     PlanGraph,
@@ -18,6 +21,7 @@ from PhyAgentOS.planning import (
     ToolSpecPolicy,
     canonical_sha256,
     plan_graph_digest,
+    plan_node_digest,
     tool_input_binding_digest,
 )
 from PhyAgentOS.verification.contracts import TaskVerificationContract
@@ -387,7 +391,7 @@ def test_unbindable_historical_selection_enters_bounded_replan(tmp_path):
     assert coordinator.store.events(task_id)[-1]["event_type"] == "planning_selection_rejected"
 
 
-def test_real_coordinator_persists_context_bound_decision_trace(tmp_path):
+def test_real_coordinator_persists_context_bound_decision_trace(tmp_path, monkeypatch):
     task_id = "task-real-selection"
     revision_id = "revision-real-selection"
     node = PlanNode(node_id="observe", obligation_id="observe", capability="scene.observe")
@@ -423,10 +427,42 @@ def test_real_coordinator_persists_context_bound_decision_trace(tmp_path):
         arguments={},
         decision_reason="initial observation",
     )
+    atomic_write = forge_task_module.atomic_write_text
+    write_attempts = 0
+
+    def fail_first_trace_write(*args, **kwargs):
+        nonlocal write_attempts
+        write_attempts += 1
+        if write_attempts == 1:
+            raise OSError("simulated trace write failure")
+        return atomic_write(*args, **kwargs)
+
+    monkeypatch.setattr(forge_task_module, "atomic_write_text", fail_first_trace_write)
+    with pytest.raises(OSError, match="simulated trace write failure"):
+        coordinator.persist_planning_selection(proposal)
+    assert len(coordinator.get_task(task_id).active_revision.planning_selections) == 1
     binding = coordinator.persist_planning_selection(proposal)
+    assert write_attempts == 2
+    duplicate = coordinator.persist_planning_selection(proposal)
+    assert duplicate["decision_trace_ref"] == binding["decision_trace_ref"]
+    assert len(coordinator.get_task(task_id).active_revision.planning_selections) == 1
+    monkeypatch.setattr(coordinator, "pending_planning_selection", lambda *_args, **_kwargs: None)
+    concurrent_retry = coordinator.persist_planning_selection(proposal)
+    monkeypatch.undo()
+    assert concurrent_retry["decision_trace_ref"] == binding["decision_trace_ref"]
+    assert len(coordinator.get_task(task_id).active_revision.planning_selections) == 1
+    different = dispatch.prepare_selection(
+        node_id="observe",
+        tool_id="scene.observe",
+        arguments={"max_age_ms": 1000},
+        decision_reason="different accepted input",
+    )
+    with pytest.raises(AgentTaskError, match="unconsumed selection"):
+        coordinator.persist_planning_selection(different)
     validated = PlanningExecutionBinding.model_validate(
         {key: binding[key] for key in PlanningExecutionBinding.model_fields}
     )
+    assert validated.revision_id == revision_id
     assert validated.node_id == "observe"
     trace_path = tmp_path / "artifacts" / "planning-traces" / task_id / revision_id / "observe"
     traces = list(trace_path.glob("*.json"))
@@ -456,6 +492,68 @@ def test_real_coordinator_persists_context_bound_decision_trace(tmp_path):
         task_id, "observe", scene_revision="scene-stale"
     ) is None
 
+    selected_tool = BoundToolSpec(
+        tool_id="scene.observe",
+        semantics="query",
+        spec_sha256="4" * 64,
+        ready_at_binding=True,
+    )
+    with pytest.raises(AgentTaskError, match="arguments do not match"):
+        coordinator._append_execution(
+            task_id,
+            "scene.observe",
+            "query",
+            {"max_age_ms": 1000},
+            tool=selected_tool,
+            planning_binding=validated,
+        )
+    with pytest.raises(AgentTaskError, match="active revision selection"):
+        coordinator._append_execution(
+            task_id,
+            "other.query",
+            "query",
+            {},
+            tool=selected_tool.model_copy(update={"tool_id": "other.query"}),
+            planning_binding=validated,
+        )
+    with pytest.raises(AgentTaskError, match="active revision selection"):
+        coordinator._append_execution(
+            task_id,
+            "scene.observe",
+            "action",
+            {},
+            tool=selected_tool.model_copy(update={"semantics": "action"}),
+            planning_binding=validated,
+        )
+    with pytest.raises(AgentTaskError, match="stale revision"):
+        coordinator._append_execution(
+            task_id,
+            "scene.observe",
+            "query",
+            {},
+            tool=selected_tool,
+            planning_binding=validated.model_copy(update={"revision_id": "revision-stale"}),
+        )
+    assert coordinator.get_task(task_id).active_revision.execution_records == []
+
+    capture_calls = 0
+
+    async def capture_before(_task_id):
+        nonlocal capture_calls
+        capture_calls += 1
+
+    monkeypatch.setattr(coordinator, "_capture_before", capture_before)
+    with pytest.raises(AgentTaskError, match="active revision selection"):
+        asyncio.run(
+            coordinator.start_action(
+                task_id,
+                "scene.observe",
+                {},
+                planning_binding=validated,
+            )
+        )
+    assert capture_calls == 0
+
     class QueryClient:
         async def invoke_query_tool(self, *_args, **_kwargs):
             return {"ok": True, "data": {"status": "available"}}
@@ -470,6 +568,59 @@ def test_real_coordinator_persists_context_bound_decision_trace(tmp_path):
     assert coordinator.pending_planning_selection(
         task_id, "observe", scene_revision="scene-real"
     ) is None
+
+
+def test_planning_node_accepts_only_one_execution_record(tmp_path):
+    task_id = "task-one-execution"
+    revision_id = "revision-one-execution"
+    node = PlanNode(node_id="observe", obligation_id="observe", capability="scene.observe")
+    payload = {
+        "task_id": task_id,
+        "revision_id": revision_id,
+        "graph_digest": "0" * 64,
+        "planner_decision_digest": "1" * 64,
+        "policy_snapshot_digest": "2" * 64,
+        "nodes": [node.model_dump(mode="json")],
+    }
+    payload["graph_digest"] = plan_graph_digest(payload)
+    graph = PlanGraph.model_validate(payload)
+    coordinator = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=object())
+    coordinator.create_task(
+        task_description="observe once",
+        verification=TaskVerificationContract(mode="off"),
+        plan_graph=graph,
+        plan_graph_ref="artifact://plans/task-one-execution/revision-one-execution",
+    )
+    binding = PlanningExecutionBinding(
+        node_id="observe",
+        node_digest=plan_node_digest(node),
+        obligation_id="observe",
+        input_binding_digest=tool_input_binding_digest({}),
+        decision_trace_ref="artifact://planning-traces/legacy/observe/one",
+    )
+    tool = BoundToolSpec(
+        tool_id="scene.observe",
+        semantics="query",
+        spec_sha256="4" * 64,
+        ready_at_binding=True,
+    )
+    coordinator._append_execution(
+        task_id,
+        "scene.observe",
+        "query",
+        {},
+        tool=tool,
+        planning_binding=binding,
+    )
+    with pytest.raises(AgentTaskError, match="already has an execution record"):
+        coordinator._append_execution(
+            task_id,
+            "scene.observe",
+            "query",
+            {},
+            tool=tool,
+            planning_binding=binding,
+        )
 
 
 def test_prepare_selection_builds_coordinator_owned_manipulation_intent():

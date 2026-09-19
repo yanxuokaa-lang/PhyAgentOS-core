@@ -39,6 +39,17 @@ bounded input view or immutable node bindings. It may not create sensor facts,
 metric geometry, calibration, freshness, execution state, or motion authority.
 Runtime-specific semantic validation remains owned by the consumer endpoint.
 
+This flexibility does not make one PlanNode a multi-Tool scratchpad. The Agent
+may choose the implementation and assemble one consumer payload, while each
+node still has one durable selection, one Tool execution, and one settlement.
+Composite intentions are decomposed into dependent atomic nodes unless a single
+ToolSpec explicitly advertises the composite capability.
+
+The Coordinator binds every new selection receipt to the active revision and
+persists the exact Tool ID, semantics, and argument object. Execution must match
+all four values; receipts from a replaced revision are stale. Bindings created
+before revision identity was added remain readable as legacy records.
+
 ## Contract Rules
 
 1. `BoundToolSpec` freezes the provider-neutral `input_schema` observed when the

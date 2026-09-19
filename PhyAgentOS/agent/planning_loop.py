@@ -401,6 +401,24 @@ class AgentLoopNodeExecutor:
         known_facts: list[bool | None] = []
         failure_code = None
         failure_owner = None
+        task = self.coordinator.get_task(context.task_id)
+        binding = getattr(task, "primary_skill_binding", None)
+        bound_tools = (
+            getattr(binding, "required_tools", ())
+            if binding is not None
+            else getattr(task, "tool_bindings", ())
+        )
+        scene_write_behaviors = {
+            tool.planning_policy.scene_write_behavior
+            for tool in bound_tools
+            if tool.tool_id in {record.tool_id for record in records}
+            and tool.planning_policy is not None
+        }
+        scene_write_behavior = (
+            next(iter(scene_write_behaviors))
+            if len(scene_write_behaviors) == 1
+            else "unknown"
+        )
         for record in records:
             evidence_refs.extend(record.evidence_refs)
             response = response_facts(record.response)
@@ -423,15 +441,37 @@ class AgentLoopNodeExecutor:
             if failure_code is None and isinstance(response.get("failure_code"), str):
                 failure_code = response["failure_code"]
                 failure_owner = response.get("failure_owner")
+        world_change_started = (
+            True
+            if world_changed or any(value is True for value in started_facts)
+            else False
+            if all(value is False for value in started_facts)
+            else None
+        )
+        outcome_known = (
+            False
+            if any(value is False for value in known_facts)
+            else True
+            if all(value is True for value in known_facts)
+            else None
+        )
+        world_changed = world_changed or (
+            scene_write_behavior == "new_revision"
+            and status == "succeeded"
+            and world_change_started is True
+            and outcome_known is True
+            and new_scene_revision is not None
+        )
         return ToolResultEnvelope(
             task_id=context.task_id,
             revision_id=context.revision_id,
             node_id=context.node_id,
             tool_id=records[-1].tool_id,
             status=status,
+            scene_write_behavior=scene_write_behavior,
             world_changed=world_changed,
-            world_change_started=True if world_changed or any(value is True for value in started_facts) else False if all(value is False for value in started_facts) else None,
-            outcome_known=False if any(value is False for value in known_facts) else True if all(value is True for value in known_facts) else None,
+            world_change_started=world_change_started,
+            outcome_known=outcome_known,
             output_refs=tuple(dict.fromkeys(output_refs)),
             evidence_refs=tuple(dict.fromkeys(evidence_refs)),
             new_scene_revision=new_scene_revision,

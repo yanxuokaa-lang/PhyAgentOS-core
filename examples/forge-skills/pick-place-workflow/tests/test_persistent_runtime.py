@@ -33,7 +33,7 @@ def test_persistent_results_conform_to_published_live_schema(phase, spec):
     live = _spec(spec)
     jsonschema.validate(result, live["output_schema"]["properties"]["result"])
     policy = project_tool_spec(live)
-    assert "object.relocate" in policy.capabilities
+    assert policy.capabilities == (spec["tool_id"],)
     assert policy.input_binding_keys == (("entity_ref", "destination_ref") if phase == "place" else ("entity_ref",))
 
 
@@ -83,6 +83,13 @@ def test_composition_registers_all_seven_required_tools():
         "scene.observe", "scene.understand", "grasp.propose", "manipulation.capabilities",
         "manipulation.prepare", "object.acquire", "object.place",
     }
+    for tool in runtime.list_tools()["tools"]:
+        capabilities = project_tool_spec(tool).capabilities
+        if tool["tool_id"] == "scene.observe":
+            assert capabilities == ("scene.observe", "task.verify")
+        else:
+            assert capabilities == (tool["tool_id"],)
+        assert "object.relocate" not in capabilities
     assert all(runtime.get_context(tool["tool_id"])["ready"] is False for tool in runtime.list_tools()["tools"])
 
 

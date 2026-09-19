@@ -24,6 +24,16 @@ def settle_node(
     if result.outcome_known is False:
         return NodeSettlement(**facts, status="outcome_unknown", failure_code=result.failure_code or "outcome_unknown")
     if result.status == "succeeded":
+        if result.scene_write_behavior == "new_revision" and (
+            result.world_change_started is not True
+            or not result.world_changed
+            or result.new_scene_revision is None
+        ):
+            return NodeSettlement(
+                **facts,
+                status="failed",
+                failure_code="missing_world_change_evidence",
+            )
         if (
             result.world_changed
             and current_scene_revision is not None

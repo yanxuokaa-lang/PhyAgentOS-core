@@ -207,6 +207,38 @@ def test_settlement_distinguishes_success_unknown_failure_cancel_and_stale():
         ToolResultEnvelope(**base, status="failed", world_changed=True)
 
 
+def test_new_revision_tool_requires_confirmed_world_change_to_complete():
+    node = _graph().nodes[0]
+    base = {
+        "task_id": "task-1",
+        "revision_id": "revision-1",
+        "node_id": node.node_id,
+        "tool_id": "object.place",
+        "status": "succeeded",
+        "scene_write_behavior": "new_revision",
+        "outcome_known": True,
+    }
+    missing = settle_node(
+        node,
+        ToolResultEnvelope(**base, world_change_started=False),
+        current_scene_revision="scene-1",
+    )
+    assert missing.status == "failed"
+    assert missing.failure_code == "missing_world_change_evidence"
+    completed = settle_node(
+        node,
+        ToolResultEnvelope(
+            **base,
+            world_changed=True,
+            world_change_started=True,
+            new_scene_revision="scene-2",
+            evidence_refs=("acquired:red",),
+        ),
+        current_scene_revision="scene-1",
+    )
+    assert completed.status == "completed"
+
+
 def test_refresh_query_can_recover_without_old_evidence_or_arm_claim():
     context = AdmissionContext(scene_revision="scene-1", resources_in_use=frozenset({"arm:right"}), condition_facts={"scene_current": False})
     assert admit_tool_call(_graph(), _call(), _tool(), context).code == "observation_required"

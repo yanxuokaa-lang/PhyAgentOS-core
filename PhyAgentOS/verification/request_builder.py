@@ -68,6 +68,13 @@ def _project_skill_binding_for_verification(binding: Any) -> dict[str, Any]:
     return payload
 
 
+def _project_plan_revision_for_verification(revision: Any) -> dict[str, Any]:
+    """Exclude resumable planning receipts from semantic task verification."""
+    payload = revision.model_dump(mode="json")
+    payload.pop("planning_selections", None)
+    return payload
+
+
 @dataclass(frozen=True)
 class VerificationRequest:
     content: list[dict[str, Any]]
@@ -202,7 +209,10 @@ class VerificationRequestBuilder:
                 _project_skill_binding_for_verification(item)
                 for item in task.supporting_skill_bindings
             ],
-            "plan_revisions": [item.model_dump(mode="json") for item in task.revisions],
+            "plan_revisions": [
+                _project_plan_revision_for_verification(item)
+                for item in task.revisions
+            ],
             "tool_execution_records": [item.model_dump(mode="json") for item in records],
             "gateway_terminal_results": [
                 {

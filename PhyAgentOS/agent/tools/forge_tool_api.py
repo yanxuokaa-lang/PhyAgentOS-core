@@ -445,6 +445,7 @@ def _invoke_schema(*, task_required: bool, include_timeout: bool) -> dict[str, A
         "planning_binding": {
             "type": "object",
             "properties": {
+                "revision_id": {"type": "string", "minLength": 1},
                 "node_id": {"type": "string", "minLength": 1},
                 "node_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
                 "obligation_id": {"type": "string", "minLength": 1},

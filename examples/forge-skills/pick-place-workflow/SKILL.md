@@ -24,17 +24,27 @@ Calibrated named regions may be deployment data; which region serves this user's
 goal is a task decision. Object count, order and goals must not come from a fixed
 two-object template.
 
-The graph represents your chosen obligations and dependencies. For sequential
-relocations, materialize only the current scene-bound relocation plus its
-post-placement observation, understanding, and binding checkpoint. Do not freeze
-future `entity_ref` or `destination_ref` values from natural-language roles. After
-the checkpoint graph is fully settled, call `forge_task_continue_plan` with the
-next segment and exact current evidence references. This normal continuation keeps
-the same task identity and does not consume failure-replan budget. A final
-observation/verification segment joins all requested placements. Keep the original
-success criteria; do not weaken them during recovery. Each node turn uses the
-task's activated Skill instructions, not a later revision loaded silently during
-execution.
+The graph represents your chosen obligations and dependencies. One PlanNode is one
+settlement unit completed by one selected Tool. A composite intention such as
+`object.relocate` is not an executable node unless the Runtime publishes one atomic
+Tool that owns the complete relocation. Otherwise materialize the current
+scene-bound relocation as atomic `manipulation.target -> grasp.propose ->
+manipulation.prepare -> object.acquire -> object.place` nodes, followed by its
+post-placement observation, understanding, and binding checkpoint. The Tools do
+not need producer-specific payload agreements: use each consumer's frozen
+ToolSpec, and let the Agent select its arguments from immutable node bindings,
+selected discovery records, and direct-predecessor structured results.
+
+Do not freeze future `entity_ref`, `destination_ref`, Tool record IDs, or evidence
+references from natural-language roles. An opaque evidence reference is legal only
+after the Coordinator has persisted it; use dependencies to express future causal
+ordering. After the checkpoint graph is fully settled, call
+`forge_task_continue_plan` with the next segment and exact current evidence
+references. This normal continuation keeps the same task identity and does not
+consume failure-replan budget. A final observation/verification segment joins all
+requested placements. Keep the original success criteria; do not weaken them
+during recovery. Each node turn uses the task's activated Skill instructions, not
+a later revision loaded silently during execution.
 
 Before materializing a multi-object rearrangement, check whether a selected
 destination is still occupied by another object that must move. A sequential
@@ -243,6 +253,11 @@ Action wrapper. Never calculate node/input digests, add Coordinator-owned
 intent identity, or invent a decision-trace reference. The selection tool is
 control-plane only and does not invoke a Gateway, authorize motion, or replace
 Coordinator/Gateway execution and reconciliation.
+
+Once `forge_plan_select` succeeds, that node has one durable unconsumed
+selection. Execute the returned receipt; do not select a second Tool for the
+same node. A different implementation choice requires a governed replacement
+revision before any execution fact exists, or normal recovery after failure.
 
 For `manipulation.prepare`, PAOS does not reconstruct predecessor provider
 payloads. `forge_plan_select.arguments` must include the complete unchanged

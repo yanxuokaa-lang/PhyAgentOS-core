@@ -27,6 +27,11 @@ scene.observe ───────────┤                              
                          └─ scene.understand ───────────┘
 ```
 
+Each executable PlanNode corresponds to one Tool settlement. A higher-level
+relocation is expanded into the atomic dependency graph unless a Runtime exposes
+one genuine atomic relocation Action. Tool outputs remain reusable structured
+facts; the Agent assembles each consumer input against that Tool's frozen schema.
+
 `manipulation.capabilities` is a read-only, scene-bound discovery Query. It
 materializes the adapter-owned capability snapshot used by downstream arm
 assignment; it does not lease a resource, run readiness, create an invocation,

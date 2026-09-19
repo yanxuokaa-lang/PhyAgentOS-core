@@ -98,23 +98,22 @@ def compile_task_plan(
         )
     if initial_evidence_refs is not None:
         initial = set(initial_evidence_refs)
-        root_evidence_errors = {
+        unavailable_evidence = {
             node.node_id: tuple(
                 reference for reference in node.required_evidence if reference not in initial
             )
             for node in parsed
-            if not node.dependencies
-            and any(reference not in initial for reference in node.required_evidence)
+            if any(reference not in initial for reference in node.required_evidence)
         }
-        if root_evidence_errors:
+        if unavailable_evidence:
             details = "; ".join(
                 f"{node_id}: {', '.join(missing)}"
-                for node_id, missing in sorted(root_evidence_errors.items())
+                for node_id, missing in sorted(unavailable_evidence.items())
             )
             raise ValueError(
-                "root semantic nodes require evidence not present in the current "
-                f"trusted context: {details}; use exact paos_record.evidence_refs "
-                "for current evidence and reserve produced_evidence for predecessor results"
+                "semantic nodes require evidence not present in the current trusted "
+                f"context: {details}; use exact persisted paos_record.evidence_refs "
+                "for current evidence and dependencies for future Tool results"
             )
     if initial_condition_facts is not None:
         root_condition_errors = {

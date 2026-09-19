@@ -59,7 +59,7 @@ class ResourceClaim(_Frozen):
 
 
 class PlanNode(_Frozen):
-    """One semantic obligation, not one fixed Tool call."""
+    """One semantic settlement obligation completed by one selected Tool."""
 
     node_id: str
     obligation_id: str
@@ -114,6 +114,7 @@ def tool_input_binding_digest(arguments: Mapping[str, Any]) -> str:
 class PlanningExecutionBinding(_Frozen):
     """Complete attribution from one Tool execution to a PlanGraph node."""
 
+    revision_id: str | None = None
     node_id: str
     node_digest: str = Field(pattern=_DIGEST)
     obligation_id: str
@@ -124,6 +125,11 @@ class PlanningExecutionBinding(_Frozen):
     @classmethod
     def binding_identity(cls, value: str) -> str:
         return _identity(value, "planning execution binding identity")
+
+    @field_validator("revision_id")
+    @classmethod
+    def optional_revision_identity(cls, value: str | None) -> str | None:
+        return None if value is None else _identity(value, "planning revision identity")
 
     @field_validator("decision_trace_ref")
     @classmethod
@@ -279,6 +285,7 @@ class ToolResultEnvelope(_Frozen):
     node_id: str
     tool_id: str
     status: _STATUS
+    scene_write_behavior: Literal["none", "new_revision", "unknown"] = "unknown"
     world_changed: bool = False
     world_change_started: bool | None = None
     outcome_known: bool | None = None
@@ -365,6 +372,8 @@ class DecisionTrace(_Frozen):
                 raise ValueError("resumable selection Tool does not match decision trace")
             if selection.planning_binding.node_id != self.node_id:
                 raise ValueError("resumable selection node does not match decision trace")
+            if selection.planning_binding.revision_id not in {None, self.revision_id}:
+                raise ValueError("resumable selection revision does not match decision trace")
         return self
 
 
