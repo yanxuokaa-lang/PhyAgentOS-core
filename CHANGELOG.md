@@ -583,7 +583,7 @@ index 7aff900..a81719d 100644
 
 ### Git 提交 / Git
 
-- Branch: `feature/planning-loop`; commit recorded in the documentation closeout after source commit.
+- Branch: `feature/planning-loop`; implementation commit: `da1c813`; documentation closeout records this commit on the same branch.
 
 - 日志范围 / Log ranges: `changelog/2026-09_part10.md` L784-L1357; `CHANGELOG.md` L15-L588. Latest five precede the retained historical-record section.
 
