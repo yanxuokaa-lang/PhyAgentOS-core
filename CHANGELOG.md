@@ -39,7 +39,7 @@
 - Node verification passed; Skill inspection confirms 2.3.0 and stopped/down; old task is cancelled, with no active invocations, sessions or task bindings. Runtime remains stopped for user-run acceptance; no Actions invoked.
 - 旧 Skill 备份 / Previous Skill backup: `/home/yanxu/.PhyAgentOS/skills/.backups/pick-place-workflow/2.2.1-20260919T185131.786381Z`.
 - 本次仅验证安装；真实任务、K=1/4/8/24 耗时及累计完整视频由用户新一轮验收。 / Installation verified; real-task timing and cumulative complete video remain for user acceptance.
-- Branch: `feature/planning-loop`; installation commit recorded in follow-up log closeout.
+- Branch: `feature/planning-loop`; installation commit: `ee23ea0`; 日志回填 / documentation closeout follows on the same branch.
 
 ## v10.9.0 (2026-09-20 01:21) - codex
 
