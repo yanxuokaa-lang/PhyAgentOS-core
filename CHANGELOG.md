@@ -185,7 +185,8 @@
 ### Git 提交 / Git commit
 
 - Branch: `feature/planning-loop`
-- Implementation commit: recorded in the follow-up log commit after implementation commit creation.
+- Implementation commit: `84f1376`
+- 日志回填 / Log closeout: synchronize the implementation commit in this archive and CHANGELOG; documentation-only follow-up on the same branch.
 
 ## v10.8.11 (2026-09-19 23:55) - codex
 
