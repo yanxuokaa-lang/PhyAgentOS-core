@@ -12,6 +12,45 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v10.9.5 (2026-09-20 04:08) - codex
+
+### 完成安装 / Installation completed
+
+- [env] [chore] [完成] 取消 task_483b2de75c984218，正常停止 Runtime，安装并校验 Skill 2.3.3 / Node 0.3.1，保持停止供用户验收。(local)
+- [Env] [Chore] [Completed] Cancel the previous task, stop Runtime normally, install and verify Skill 2.3.3 / Node 0.3.1, and leave stopped for user acceptance. (local)
+- [env] [fix] [完成] 历史 Node 0.2.0 已有不同内容，首次安装被正确拒绝；保留旧 Node，并将相同修复载荷重新编号为未占用的 0.3.1。Skill 从 2.3.1 经 2.3.2 更新至 2.3.3。(local)
+- [Env] [Fix] [Completed] Historical Node 0.2.0 had different contents and installation was correctly rejected; retain it and relabel the identical repaired payload as unused 0.3.1. Skill upgraded from 2.3.1 through 2.3.2 to 2.3.3. (local)
+
+### 文件范围和关键 Diff / File ranges and key diff
+
+- `examples/forge-skills/pick-place-workflow/skill.yaml` L3, L61-L62: Skill 2.3.2 → 2.3.3; Node 0.2.0 → 0.3.1; existing archive digest unchanged.
+- `examples/forge-skills/pick-place-workflow/pyproject.toml` L3: package 2.3.2 → 2.3.3.
+- `examples/forge-skills/pick-place-workflow/tests/test_grasp_propose.py` L268: expected version 2.3.2 → 2.3.3.
+- `examples/forge-adapters/robotwin20/README.md` L715-L726: installation example paths updated to Node 0.3.1 / Skill 2.3.3.
+- `changelog/2026-09_part10.md` L1359-L1398; `CHANGELOG.md` L15-L54: bilingual installation record; latest-five boundary updated.
+
+```diff
+-task: awaiting_replan; Runtime: running; Skill: 2.3.1; Node lock: 0.1.16
++task: cancelled; Runtime: stopped; Skill: 2.3.3; Node lock: 0.3.1
+-source package: Skill 2.3.2 / Node 0.2.0
++source package: Skill 2.3.3 / Node 0.3.1
+```
+
+### 验证 / Verification
+
+- `paos forge-node verify pick-place-workflow robotwin20_persistent_host`: SHA-256 verified.
+- `paos skill inspect/status pick-place-workflow`: 2.3.3; stopped; Dora down.
+- `paos task status task_483b2de75c984218`: cancelled; SQLite read-only query: no unfinished tasks.
+- Runtime active_invocations / active_sessions / active_task_bindings: all empty; fresh Core import points to this repaired repository.
+- Version consistency test: 1 passed with pytest_asyncio loaded; `git diff --check`: PASS.
+- Packages: `/tmp/paos-v10.9.4-release-CvcDv7/skills/pick-place-workflow-2.3.3.tar.gz` and `robotwin20_persistent_host-0.3.1-linux-x86_64.tar.gz`; Node bytes/digest unchanged from the tested repair.
+- Backups: `/home/yanxu/.PhyAgentOS/skills/.backups/pick-place-workflow/2.3.1-20260919T200938.184475Z` and `2.3.2-20260919T201046.640161Z`.
+- 未触发新任务或物理运动；历史记录和制品保留。 / No new task or physical motion; history and artifacts retained.
+
+### Git 提交 / Git
+
+- Branch: `feature/planning-loop`; installation commit recorded after commit.
+
 ## v10.9.4 (2026-09-20 03:55) - codex
 
 ### 完成修改 / Completed changes
@@ -745,6 +784,8 @@ index 7aff900..a81719d 100644
 - 本次仅验证安装；真实任务、K=1/4/8/24 耗时及累计完整视频由用户新一轮验收。 / Installation verified; real-task timing and cumulative complete video remain for user acceptance.
 - Branch: `feature/planning-loop`; installation commit: `ee23ea0`; 日志回填 / documentation closeout follows on the same branch.
 
+## 历史记录 / Historical records
+
 ## v10.9.0 (2026-09-20 01:21) - codex
 
 - [docs] [docs] [完成] 新增 `docs/forge/IMPLEMENTATION_REVIEW_V10_9_0.md`，逐项对照需求并记录 fresh review、既有七维验收、真实测量及部署未完成的边界。(local)
@@ -920,8 +961,6 @@ index 7aff900..a81719d 100644
 - Branch: `feature/planning-loop`
 - Implementation commit: `84f1376`
 - 日志回填 / Log closeout: synchronize the implementation commit in this archive and CHANGELOG; documentation-only follow-up on the same branch.
-
-## 历史记录 / Historical records
 
 ## v10.8.11 (2026-09-19 23:55) - codex
 
