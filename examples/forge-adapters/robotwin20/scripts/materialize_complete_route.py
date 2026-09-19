@@ -43,6 +43,7 @@ from robotwin20_adapter.perception_profile import _read_unique_yaml
 from robotwin20_adapter.route_generation import RouteCandidateRejectedError, generate_route_request
 from robotwin20_adapter.route_inputs import (
     ROUTE_INPUT_PROFILE_SCHEMA_VERSION,
+    ContactShellRejectedError,
     canonical_json,
     derive_bound_route_inputs,
     validate_scene_facts,
@@ -851,7 +852,7 @@ def main() -> int:
     args = parser.parse_args()
     try:
         review = materialize(args)
-    except (MaterializationError, RouteCandidateRejectedError) as exc:
+    except (MaterializationError, RouteCandidateRejectedError, ContactShellRejectedError) as exc:
         diagnostic = {
             "code": exc.code if isinstance(exc, MaterializationError) else "route_candidate_rejected",
             "message": str(exc),

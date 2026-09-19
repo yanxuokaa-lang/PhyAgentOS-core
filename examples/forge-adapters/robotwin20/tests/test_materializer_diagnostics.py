@@ -5,11 +5,13 @@ import materialize_complete_route as cli
 import pytest
 
 from robotwin20_adapter.route_generation import RouteCandidateRejectedError
+from robotwin20_adapter.route_inputs import ContactShellRejectedError
 
 
 @pytest.mark.parametrize("error,code", [
     (cli.MaterializationError("capabilities differ", code="motion_capability_qualification_mismatch"), "motion_capability_qualification_mismatch"),
     (RouteCandidateRejectedError("workspace bounds"), "route_candidate_rejected"),
+    (ContactShellRejectedError("contact shell"), "route_candidate_rejected"),
 ])
 def test_cli_persists_public_failure_and_exits_unsuccessfully(tmp_path, monkeypatch, capsys, error, code):
     flags = ["scene-facts", "source-capture-root", "grasp-results", "route-input-profile",

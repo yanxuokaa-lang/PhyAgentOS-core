@@ -23,6 +23,16 @@ def write(path, value):
         json.dump(value, stream, ensure_ascii=False, indent=2)
 
 
+def reexpress_target(target_world, old_model_world, new_model_world):
+    """Preserve commanded rigid displacement when observation model axes change."""
+    import numpy as np
+
+    from robotwin20_adapter.observed_binding import rigid_transform
+
+    return (rigid_transform(target_world) @ np.linalg.inv(rigid_transform(old_model_world))
+            @ rigid_transform(new_model_world)).reshape(-1).tolist()
+
+
 def build(args):
     import yaml
 
@@ -67,6 +77,10 @@ def build(args):
         grounding.remember(tool, result)
     bound = grounding.bind({**identity, "entity_refs": list(binding["objects"])})
     target_request = {**target["requested_pose"], "binding_ref": bound["binding_ref"]}
+    entity = target_request["entity_ref"]
+    target_request.update(frame_id="world", frame_T_object_target=reexpress_target(
+        target["object"]["world_T_object_target"], binding["objects"][entity]["world_T_object"],
+        grounding.bindings[bound["binding_ref"]]["objects"][entity]["world_T_object"]))
     destination = grounding.target(target_request)
     request["destination_ref"] = destination["destination_ref"]
     arguments = dict(zip((x.removeprefix("--") for x in argv[2::2]), argv[3::2]))
@@ -86,6 +100,7 @@ def build(args):
     write(root / "bundle.json", bundle)
     write(root / "request.json", request)
     write(root / "replay.json", {"task_id": args.task_id, "source_root": str(source), "source_binding": target["binding_ref"],
+                                "original_target": target["requested_pose"], "reexpressed_target": target_request,
                                 "binding_ref": bound["binding_ref"], "candidate_count": len(request["candidates"]),
                                 "git_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
                                 "working_tree_diff": subprocess.check_output(["git", "diff"], text=True),

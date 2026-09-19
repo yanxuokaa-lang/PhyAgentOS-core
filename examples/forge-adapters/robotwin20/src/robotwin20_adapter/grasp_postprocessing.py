@@ -182,7 +182,7 @@ def _object_contains(point: Sequence[float], center: Sequence[float], half_exten
     return all(abs(value) <= extent + 1e-9 for value, extent in zip(local, half_extents))
 
 
-def _pinch_geometry(contact: Sequence[float], center: Sequence[float], extents: Sequence[float], object_rotation: Sequence[Sequence[float]], hand_pose: Mapping[str, Any], links: Mapping[str, Any], delta: Sequence[float]) -> bool:
+def _pinch_geometry_diagnostics(contact: Sequence[float], center: Sequence[float], extents: Sequence[float], object_rotation: Sequence[Sequence[float]], hand_pose: Mapping[str, Any], links: Mapping[str, Any], delta: Sequence[float]) -> dict[str, Any]:
     """Conservative Panda open-finger envelope, not a force-closure verdict."""
     position, quaternion = _pose(hand_pose, "hand pose")
     inverse = list(zip(*_quaternion_rotation(quaternion, "hand orientation")))
@@ -201,14 +201,27 @@ def _pinch_geometry(contact: Sequence[float], center: Sequence[float], extents: 
         points = [_rotate(inverse, [point[i] - position[i] for i in range(3)]) for point in vertices]
         bounds[name] = ([min(p[i] for p in points) for i in range(3)], [max(p[i] for p in points) for i in range(3)])
     fingers = sorted((bounds[name] for name in ("panda_leftfinger", "panda_rightfinger")), key=lambda bound: bound[0][1])
-    if object_low[1] < fingers[0][1][1] or object_high[1] > fingers[1][0][1]:
-        return False
+    aperture_margins = [object_low[1] - fingers[0][1][1], fingers[1][0][1] - object_high[1]]
     center_local = local(contact)
-    for low, high in fingers:
-        if any(not low[i] <= center_local[i] <= high[i] for i in (0, 2)):
-            return False
+    contact_margins = [min(center_local[i] - low[i], high[i] - center_local[i])
+                       for low, high in fingers for i in (0, 2)]
     hand_low, hand_high = bounds["panda_hand"]
-    return any(object_high[i] < hand_low[i] or object_low[i] > hand_high[i] for i in range(3))
+    palm_separation = max(max(hand_low[i] - object_high[i], object_low[i] - hand_high[i]) for i in range(3))
+    reasons = [reason for failed, reason in (
+        (min(aperture_margins) < 0, "object_exceeds_finger_aperture"),
+        (min(contact_margins) < 0, "contact_outside_finger_span"),
+        (palm_separation <= 0, "object_overlaps_palm_envelope"),
+    ) if failed]
+    return {"fit": not reasons, "rejection_reasons": reasons,
+            "aperture_margins_m": aperture_margins,
+            "contact_span_margins_m": contact_margins,
+            "palm_separation_m": palm_separation,
+            "object_width_m": object_high[1] - object_low[1],
+            "finger_aperture_m": fingers[1][0][1] - fingers[0][1][1]}
+
+
+def _pinch_geometry(*args, **kwargs) -> bool:
+    return _pinch_geometry_diagnostics(*args, **kwargs)["fit"]
 
 
 def qualify_contact_variants(
@@ -282,9 +295,10 @@ def qualify_contact_variants(
         world_vertices = [[vertex[index] + delta[index] for index in range(3)] for vertex in vertices]
         clearance = min(sum(normal[index] * point[index] for index in range(3)) - support_offset for point in world_vertices)
         pinch = _object_contains(contact, center, extents, object_rotation)
-        finger_fit = None if gripper_links_m is None else _pinch_geometry(
+        finger_diagnostics = None if gripper_links_m is None else _pinch_geometry_diagnostics(
             contact, center, extents, object_rotation, hand_pose, gripper_links_m, delta
         )
+        finger_fit = None if finger_diagnostics is None else finger_diagnostics["fit"]
         curobo_clearance = (
             None if curobo_clearance_m is None else curobo_clearance_m[index]
         )
@@ -298,6 +312,7 @@ def qualify_contact_variants(
             "support_clearance_m": clearance,
             "pinch_center_inside_object": pinch,
             "finger_envelope_fit": finger_fit,
+            **({"finger_envelope_diagnostics": finger_diagnostics} if finger_diagnostics is not None else {}),
             **({"curobo_clearance_m": curobo_clearance} if curobo_clearance_m is not None else {}),
             "rejection_reasons": [reason for rejected, reason in (
                 (clearance < 0, "mesh_support_penetration"),

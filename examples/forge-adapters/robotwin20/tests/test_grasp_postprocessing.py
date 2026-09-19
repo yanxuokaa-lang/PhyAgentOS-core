@@ -33,6 +33,37 @@ def test_center_inside_is_insufficient_for_finger_envelope():
     assert not _pinch_geometry([0, 0, .09], [0, 0, .09], [.01, .02, .01], identity, hand, links, [0, 0, 0])
 
 
+@pytest.mark.parametrize("center,extents,reason", [
+    ([0, 0, .04], [.01, .06, .01], "object_exceeds_finger_aperture"),
+    ([0, 0, .09], [.01, .02, .01], "contact_outside_finger_span"),
+    ([0, 0, .015], [.01, .02, .02], "object_overlaps_palm_envelope"),
+])
+def test_finger_diagnostics_attribute_independent_failures(center, extents, reason):
+    from robotwin20_adapter.grasp_postprocessing import _pinch_geometry_diagnostics
+    hand = {"frame_id": "world", "position_m": [0, 0, 0], "orientation_xyzw": [0, 0, 0, 1]}
+    links = {"panda_hand": [[-.03, -.05, -.02], [.03, .05, 0]],
+             "panda_leftfinger": [[-.01, -.05, .01], [.01, -.04, .06]],
+             "panda_rightfinger": [[-.01, .04, .01], [.01, .05, .06]]}
+    result = _pinch_geometry_diagnostics(center, center, extents,
+        [[1, 0, 0], [0, 1, 0], [0, 0, 1]], hand, links, [0, 0, 0])
+    assert result["fit"] is False
+    assert result["rejection_reasons"] == [reason]
+    assert result["finger_aperture_m"] == pytest.approx(.08)
+
+
+def test_finger_diagnostics_preserve_boundary_and_backoff():
+    from robotwin20_adapter.grasp_postprocessing import _pinch_geometry_diagnostics
+    hand = {"frame_id": "world", "position_m": [0, 0, 0], "orientation_xyzw": [0, 0, 0, 1]}
+    links = {"panda_hand": [[-.03, -.05, -.02], [.03, .05, 0]],
+             "panda_leftfinger": [[-.01, -.05, .01], [.01, -.04, .06]],
+             "panda_rightfinger": [[-.01, .04, .01], [.01, .05, .06]]}
+    identity = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+    result = _pinch_geometry_diagnostics([0, 0, .04], [0, 0, .04], [.01, .04, .01], identity, hand, links, [0, 0, 0])
+    assert result["fit"] is True  # equality at the aperture is unchanged
+    shifted = _pinch_geometry_diagnostics([0, 0, .06], [0, 0, .04], [.01, .04, .01], identity, hand, links, [0, 0, .02])
+    assert shifted["contact_span_margins_m"] == pytest.approx(result["contact_span_margins_m"])
+
+
 
 def _candidate():
     return {

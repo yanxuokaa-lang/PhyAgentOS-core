@@ -56,6 +56,29 @@ names that frame `observed-envelope/<entity>` and uses its centroid as the model
 functional origin. It never copies a simulator functional-point offset into the
 estimated model. A supplied target transform places this model frame.
 
+For an unoriented `box_envelope` with a same-observation point-cloud artifact,
+Grounding transforms every measured point into world coordinates before bounding
+it. The frame is `observed-envelope/world/<entity>`; its axes are a representation
+choice, not an estimated physical orientation. Producer envelope padding is
+projected conservatively using the absolute calibration rotation. No point is
+trimmed, and no simulator size or pose participates. This avoids treating empty
+camera-box corners as measured occupancy. A claimed but invalid/stale cloud
+rejects; legacy envelopes without a cloud and custom shape providers retain their
+previous representation. Single-view bounds still do not prove complete hidden
+surface geometry. All contact, collision, workspace and drift checks remain.
+
+Targets refer to the model frame returned by binding. A target bound to an older
+model must not be silently reused with a newly estimated frame. Offline comparison
+reexpresses the old observed rigid displacement as
+`new_target = old_target * inverse(old_model) * new_model`, persisting both targets.
+Live Agent recovery still chooses and resolves a target against the new binding.
+
+Contact diagnostics retain the original `finger_envelope_rejected` category and
+add aperture margins, contact-span margins and palm-envelope separation in metres.
+Negative margins identify geometric rejection; planner `not_evaluated` remains
+distinct from an actual IK failure. Contact-shell rejection applies to one
+candidate, while malformed input and infrastructure errors still fail preparation.
+
 Readiness and Action preflight compare route artifacts with the bound observation
 model. The existing private Runtime drift check compares actor state only with
 its captured execution snapshot. Neither comparison overwrites an estimate or

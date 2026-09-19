@@ -344,11 +344,39 @@ class Grounding:
             visual_pose = np.eye(4)
             visual_pose[:3, :3] = camera_to_world[:3, :3]
             visual_pose[:3, 3] = center_world[:3]
+            model_frame = "observed-envelope"
+            if geometry_present and geometry.get("shape_class") == "box_envelope" and geometry.get("orientation_reliable") is False:
+                clouds = [a for a in understanding.get("derived_artifacts", [])
+                          if a.get("kind") == "object_point_cloud" and a.get("entity_ref") == ref]
+                if len(clouds) > 1:
+                    self._reject("observed object point cloud is ambiguous", stage="visual_geometry", entity_ref=ref)
+                if clouds:
+                    cloud = clouds[0]
+                    if (any(cloud.get(k) != understanding[k] for k in IDENTITY_KEYS)
+                            or cloud.get("frame_id") != understanding["frame"]["frame_id"]):
+                        self._reject("observed object cloud lineage differs from binding", stage="visual_geometry", entity_ref=ref)
+                    points = np.load(_artifact_path(self.root, cloud["artifact_ref"] + ".npy"), allow_pickle=False)
+                    if points.ndim != 2 or points.shape[1] != 3 or len(points) == 0 or not np.isfinite(points).all():
+                        self._reject("observed object point cloud is invalid", stage="visual_geometry", entity_ref=ref)
+                    # Bound measured points after calibration, not the empty
+                    # corners of a camera-axis box. Retain every point and any
+                    # producer-supplied envelope padding, projected into world.
+                    cloud_low, cloud_high = points.min(axis=0), points.max(axis=0)
+                    padding = np.maximum.reduce([np.zeros(3), cloud_low - low, high - cloud_high,
+                                                 (dimensions - (cloud_high - cloud_low)) / 2])
+                    world = points @ camera_to_world[:3, :3].T + camera_to_world[:3, 3]
+                    padding_world = np.abs(camera_to_world[:3, :3]) @ padding
+                    world_low = world.min(axis=0) - padding_world
+                    world_high = world.max(axis=0) + padding_world
+                    dimensions = np.maximum(world_high - world_low, 1e-4)
+                    visual_pose = np.eye(4)
+                    visual_pose[:3, 3] = (world_low + world_high) / 2
+                    model_frame = "observed-envelope/world"
             runtime = objects[ref]
             updated = deepcopy(runtime)
             # This is an estimated envelope frame, not the physical actor frame.
             # Its origin is the observed centroid; no hidden functional point is used.
-            updated["object_frame_id"] = f"observed-envelope/{ref.removeprefix('entity://')}"
+            updated["object_frame_id"] = f"{model_frame}/{ref.removeprefix('entity://')}"
             updated["world_T_object"] = visual_pose.reshape(-1).tolist()
             updated["half_extents_m"] = (dimensions / 2.0).tolist()
             updated["world_T_functional_point"] = visual_pose.reshape(-1).tolist()

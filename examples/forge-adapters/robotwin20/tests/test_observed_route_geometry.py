@@ -10,8 +10,67 @@ from robotwin_planning_geometry import ObservedGeometryActor, _table_top_z
 from test_grounding import pose, setup
 
 
+def cloud_model(tmp_path, *, padding=0.):
+    from itertools import product
+
+    g, request, facts = setup(tmp_path)
+    u = next(iter(g.understandings.values()))
+    transform = np.eye(4)
+    angle = np.pi / 4
+    transform[:3, :3] = [[1, 0, 0], [0, np.cos(angle), -np.sin(angle)], [0, np.sin(angle), np.cos(angle)]]
+    world = np.array(list(product([-.02, .02], [-.03, .03], [-.01, .01])))
+    cloud = world @ transform[:3, :3]
+    np.save(tmp_path / "capture/points.npy", cloud)
+    u["spatial_envelopes"][0].update(min_xyz_m=(cloud.min(0) - padding).tolist(), max_xyz_m=(cloud.max(0) + padding).tolist())
+    u["derived_artifacts"][0]["descriptor"] = {"shape_class": "box_envelope", "orientation_reliable": False,
+        "dimensions_m": (np.ptp(cloud, axis=0) + 2 * padding).tolist()}
+    u["derived_artifacts"].append({**{k: request[k] for k in ("scene_revision", "observation_ref", "calibration_ref")},
+        "entity_ref": "entity://seen", "frame_id": "camera", "kind": "object_point_cloud", "artifact_ref": "artifact://capture/points"})
+    return g, u, transform, world, facts
+
+
+@pytest.mark.parametrize("padding", [0., .003])
+def test_cloud_model_transforms_points_before_bounds_and_preserves_padding(tmp_path, padding):
+    g, u, transform, world, facts = cloud_model(tmp_path, padding=padding)
+    result = g._project_visual_geometry(["entity://seen"], {"entity://seen": facts["objects"][0]}, u, transform)["entity://seen"]
+    model = np.asarray(result["world_T_object"]).reshape(4, 4)
+    assert model == pytest.approx(np.eye(4))
+    expected = np.ptp(world, axis=0) / 2 + np.abs(transform[:3, :3]) @ np.full(3, padding)
+    assert result["half_extents_m"] == pytest.approx(expected)
+    assert result["object_frame_id"] == "observed-envelope/world/seen"
+    assert np.all(np.abs(world - model[:3, 3]) <= np.array(result["half_extents_m"]) + 1e-12)
+
+
+@pytest.mark.parametrize("fault", ["stale", "frame", "duplicate", "nonfinite", "empty"])
+def test_invalid_claimed_cloud_cannot_fall_back_to_envelope(tmp_path, fault):
+    g, u, transform, _, facts = cloud_model(tmp_path)
+    artifact = u["derived_artifacts"][-1]
+    if fault == "stale":
+        artifact["scene_revision"] = "old"
+    elif fault == "frame":
+        artifact["frame_id"] = "wrong"
+    elif fault == "duplicate":
+        u["derived_artifacts"].append(deepcopy(artifact))
+    else:
+        np.save(tmp_path / "capture/points.npy", [[float("nan"), 0, 0]] if fault == "nonfinite" else np.empty((0, 3)))
+    with pytest.raises(ValueError, match="cloud"):
+        g._project_visual_geometry(["entity://seen"], {"entity://seen": facts["objects"][0]}, u, transform)
+
+
+def test_cloud_model_keeps_outliers_and_does_not_override_custom_shape(tmp_path):
+    g, u, transform, _, facts = cloud_model(tmp_path)
+    points = np.load(tmp_path / "capture/points.npy")
+    np.save(tmp_path / "capture/points.npy", np.vstack([points, [1., 0., 0.]]))
+    result = g._project_visual_geometry(["entity://seen"], {"entity://seen": facts["objects"][0]}, u, transform)["entity://seen"]
+    assert result["half_extents_m"][0] >= .51
+    u["derived_artifacts"][0]["descriptor"]["shape_class"] = "custom_shape"
+    result = g._project_visual_geometry(["entity://seen"], {"entity://seen": facts["objects"][0]}, u, transform)["entity://seen"]
+    assert result["object_frame_id"] == "observed-envelope/seen"
+
+
 @pytest.mark.parametrize("change", [None, "actor_drift", "model_tamper", "size_tamper", "missing_binding"])
-def test_observed_route_checks_its_model_and_independent_runtime_drift(monkeypatch, change):
+@pytest.mark.parametrize("model_frame", ["observed-envelope/observed", "observed-envelope/world/observed"])
+def test_observed_route_checks_its_model_and_independent_runtime_drift(monkeypatch, change, model_frame):
     captured = np.eye(4)
     captured[:2, :2] = [[0, -1], [1, 0]]
     captured[0, 3] = .007
@@ -21,7 +80,7 @@ def test_observed_route_checks_its_model_and_independent_runtime_drift(monkeypat
     task = SimpleNamespace(_paos_observed_bindings={
         "entity://observed": {"model": model, "captured_pose": captured.tolist()}})
     monkeypatch.setattr(probe, "_actor_for_entity", lambda *args: actor)
-    candidate = {"entity_ref": "entity://observed", "attached_object": {"object_frame_id": "observed-envelope/observed"}}
+    candidate = {"entity_ref": "entity://observed", "attached_object": {"object_frame_id": model_frame}}
     artifacts = {"transform": {"world_T_object": model["world_T_object"].copy()},
                  "geometry": {"half_extents_m": model["half_extents_m"].copy()}}
     if change == "actor_drift":

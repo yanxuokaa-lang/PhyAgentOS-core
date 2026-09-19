@@ -236,6 +236,7 @@ class PersistentRouteBuilder:
             for attempt in result.get("arm_attempts", []):
                 for variant in attempt["qualification"]["variants"]:
                     rejections.update(variant["rejection_reasons"])
+                    rejections.update(variant.get("finger_envelope_diagnostics", {}).get("rejection_reasons", []))
             if result["status"] != "qualified":
                 continue
             if (result.get("scene_revision") != route["scene_revision"]

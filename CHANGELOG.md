@@ -2,6 +2,8 @@
 
 ## Archive
 
+- [2026-09 Part 12](changelog/2026-09_part12.md)
+
 - [2026-09 Part 11](changelog/2026-09_part11.md)
 
 - [2026-09 Part 10](changelog/2026-09_part10.md)
@@ -13,6 +15,239 @@
 - [2026-09 Part 4](changelog/2026-09_part4.md)
 
 ## 最近 5 条 / Latest Five Versions
+
+## v10.10.2 (2026-09-20 06:24) - codex
+
+- [policy] [fix] [完成] 拆分手指包络资格化失败原因与距离，定位开口、接触位置、掌部重叠；保持现有通过条件。(local)
+- [policy] [fix] [Completed] Expose finger-envelope failure causes and distances for aperture, contact location and palm overlap, preserving qualification conditions. (local)
+- [eval] [exp] [完成] 对同一冻结观测进行点云/包络与接触资格化无运动对照；只根据传感器证据选择几何修复，七维验收明确剩余阻塞。(local)
+- [eval] [exp] [Completed] Compare frozen cloud/envelope and contact qualification without motion; derive geometry changes only from sensor evidence and record remaining blockers in seven-dimension acceptance. (local)
+- Expected files: adapter `grasp_postprocessing.py`, qualification tests, replay script and architecture/review documentation.
+- Anti-OverDefense: the existing boolean collapses three different physical failures into one code, preventing attributable recovery. Ordinary diagnostic fields and tests suffice; no new admission check, hash or task state is needed.
+- [sense] [fix] [完成] 默认 box_envelope 从完整点云先变换再取世界轴包络，消除相机盒空角落；不删除点、不借用仿真尺寸，保留无点云的既有回退。(local)
+- [sense] [fix] [Completed] Bound the complete transformed cloud in world axes for default box_envelope models, removing artificial camera-box corners without discarding points or borrowing simulator dimensions; retain legacy no-cloud behavior. (local)
+- Additional files: adapter `grounding.py` and observed route geometry tests. Evidence: 320/320 palm overlap, 304/320 aperture rejection, 0 contact-span rejection; observed world cloud height 38.77 mm versus camera-box world height 106.20 mm.
+- [policy] [fix] [完成] 回放发现候选 22 接触点超出观测盒被误报为整个 materializer 故障；使用候选拒绝类型持久化，继续处理其他候选，其他输入错误仍失败。(local)
+- [policy] [fix] [Completed] Replay exposed candidate 22 outside the observed contact shell being reported as a materializer failure; persist typed candidate rejection and continue other candidates, preserving failure for other input errors. (local)
+- [eval] [fix] [完成] 回放保留旧观测模型到目标的刚体位移，将目标重表达于新观测模型坐标；避免把坐标基改变误当成新放置朝向。(local)
+- [eval] [fix] [Completed] Replay preserves the old observed source-to-target rigid displacement while expressing the target in the new observed model frame, avoiding an unintended placement rotation. (local)
+
+### 七维验收 / Seven-dimension acceptance
+
+- [eval] [exp] Adapter 564 passed / 1 skipped；Core 504 passed；Skill 337 passed。分进程验证通过；合并进程的 import-isolation 测试失败按原样记录。(local)
+- [eval] [exp] Adapter 564 passed / 1 skipped; Core 504 passed; Skill 337 passed in separate processes. Combined-process import-isolation failure is documented without weakening the check. (local)
+- [eval] [exp] 24→19 候选、304 变体；294 手指包络拒绝、262 支撑碰撞、0 IK、0 Action、0 实测步进；最终 no_qualified_contacts，未通过操作任务验收。(local)
+- [eval] [exp] 24 to 19 candidates / 304 variants; 294 finger-envelope rejections, 262 support collisions, zero IK, Actions or measured steps; final no_qualified_contacts, manipulation remains unaccepted. (local)
+- Seven dimensions and evidence: `docs/forge/IMPLEMENTATION_REVIEW_V10_10_2.md`. Final build `observed-prepare-4nb_bsh4` (7.906571 s); evaluation `observed-readiness-qoxxzuyc` (qualification 9.873165 s, lifecycle 22.748214 s), under `/home/yanxu/tmp/hephaestus`.
+- [env] [chore] 本轮仅源代码修复与回放，不发布新 Node/Skill，不替换 live Runtime；完整多 Action 视频仍待执行验收。(local)
+- [env] [chore] Source repair and replay only; no new Node/Skill release or live Runtime replacement; full multi-Action video still requires execution acceptance. (local)
+
+### 文件变更详情 / Exact changed ranges
+
+- [修改/新增 / Modified/added] `docs/forge/VISUAL_GEOMETRY_EVIDENCE_ARCHITECTURE.md`: L59–L81.
+- [修改/新增 / Modified/added] `examples/forge-adapters/robotwin20/scripts/materialize_complete_route.py`: L46–L46, L855–L855.
+- [修改/新增 / Modified/added] `examples/forge-adapters/robotwin20/scripts/replay_observed_preparation.py`: L26–L35, L80–L83, L103–L103.
+- [修改/新增 / Modified/added] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/grasp_postprocessing.py`: L185–L185, L204–L204, L206–L207, L209–L224, L298–L298, L301–L301, L315–L315.
+- [修改/新增 / Modified/added] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/grounding.py`: L347–L374, L379–L379.
+- [修改/新增 / Modified/added] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_route_builder.py`: L239–L239.
+- [修改/新增 / Modified/added] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/route_inputs.py`: L28–L31, L287–L287.
+- [修改/新增 / Modified/added] `examples/forge-adapters/robotwin20/tests/test_grasp_postprocessing.py`: L36–L66.
+- [修改/新增 / Modified/added] `examples/forge-adapters/robotwin20/tests/test_materializer_diagnostics.py`: L8–L8, L14–L14.
+- [修改/新增 / Modified/added] `examples/forge-adapters/robotwin20/tests/test_observed_route_geometry.py`: L13–L70, L72–L73, L83–L83.
+- [修改/新增 / Modified/added] `docs/forge/IMPLEMENTATION_REVIEW_V10_10_2.md`: L1–L128.
+- [修改/新增 / Modified/added] `examples/forge-adapters/robotwin20/tests/test_observed_replay_target.py`: L1–L15.
+
+### 关键代码 Diff / Key code diff
+
+```diff
+diff --git a/examples/forge-adapters/robotwin20/scripts/materialize_complete_route.py b/examples/forge-adapters/robotwin20/scripts/materialize_complete_route.py
+index 26b7d73..7c8a568 100644
+--- a/examples/forge-adapters/robotwin20/scripts/materialize_complete_route.py
++++ b/examples/forge-adapters/robotwin20/scripts/materialize_complete_route.py
+@@ -44,4 +44,5 @@ from robotwin20_adapter.route_generation import RouteCandidateRejectedError, gen
+ from robotwin20_adapter.route_inputs import (
+     ROUTE_INPUT_PROFILE_SCHEMA_VERSION,
++    ContactShellRejectedError,
+     canonical_json,
+     derive_bound_route_inputs,
+@@ -852,5 +853,5 @@ def main() -> int:
+     try:
+         review = materialize(args)
+-    except (MaterializationError, RouteCandidateRejectedError) as exc:
++    except (MaterializationError, RouteCandidateRejectedError, ContactShellRejectedError) as exc:
+         diagnostic = {
+             "code": exc.code if isinstance(exc, MaterializationError) else "route_candidate_rejected",
+diff --git a/examples/forge-adapters/robotwin20/scripts/replay_observed_preparation.py b/examples/forge-adapters/robotwin20/scripts/replay_observed_preparation.py
+index 0b7786e..1e9ac8f 100644
+--- a/examples/forge-adapters/robotwin20/scripts/replay_observed_preparation.py
++++ b/examples/forge-adapters/robotwin20/scripts/replay_observed_preparation.py
+@@ -24,4 +24,14 @@ def write(path, value):
+
+
++def reexpress_target(target_world, old_model_world, new_model_world):
++    """Preserve commanded rigid displacement when observation model axes change."""
++    import numpy as np
++
++    from robotwin20_adapter.observed_binding import rigid_transform
++
++    return (rigid_transform(target_world) @ np.linalg.inv(rigid_transform(old_model_world))
++            @ rigid_transform(new_model_world)).reshape(-1).tolist()
++
++
+ def build(args):
+     import yaml
+@@ -68,4 +78,8 @@ def build(args):
+     bound = grounding.bind({**identity, "entity_refs": list(binding["objects"])})
+     target_request = {**target["requested_pose"], "binding_ref": bound["binding_ref"]}
++    entity = target_request["entity_ref"]
++    target_request.update(frame_id="world", frame_T_object_target=reexpress_target(
++        target["object"]["world_T_object_target"], binding["objects"][entity]["world_T_object"],
++        grounding.bindings[bound["binding_ref"]]["objects"][entity]["world_T_object"]))
+     destination = grounding.target(target_request)
+     request["destination_ref"] = destination["destination_ref"]
+@@ -87,4 +101,5 @@ def build(args):
+     write(root / "request.json", request)
+     write(root / "replay.json", {"task_id": args.task_id, "source_root": str(source), "source_binding": target["binding_ref"],
++                                "original_target": target["requested_pose"], "reexpressed_target": target_request,
+                                 "binding_ref": bound["binding_ref"], "candidate_count": len(request["candidates"]),
+                                 "git_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
+diff --git a/examples/forge-adapters/robotwin20/src/robotwin20_adapter/grasp_postprocessing.py b/examples/forge-adapters/robotwin20/src/robotwin20_adapter/grasp_postprocessing.py
+index 50f08a6..71c3cc5 100644
+--- a/examples/forge-adapters/robotwin20/src/robotwin20_adapter/grasp_postprocessing.py
++++ b/examples/forge-adapters/robotwin20/src/robotwin20_adapter/grasp_postprocessing.py
+@@ -183,5 +183,5 @@ def _object_contains(point: Sequence[float], center: Sequence[float], half_exten
+
+
+-def _pinch_geometry(contact: Sequence[float], center: Sequence[float], extents: Sequence[float], object_rotation: Sequence[Sequence[float]], hand_pose: Mapping[str, Any], links: Mapping[str, Any], delta: Sequence[float]) -> bool:
++def _pinch_geometry_diagnostics(contact: Sequence[float], center: Sequence[float], extents: Sequence[float], object_rotation: Sequence[Sequence[float]], hand_pose: Mapping[str, Any], links: Mapping[str, Any], delta: Sequence[float]) -> dict[str, Any]:
+     """Conservative Panda open-finger envelope, not a force-closure verdict."""
+     position, quaternion = _pose(hand_pose, "hand pose")
+@@ -202,12 +202,25 @@ def _pinch_geometry(contact: Sequence[float], center: Sequence[float], extents:
+         bounds[name] = ([min(p[i] for p in points) for i in range(3)], [max(p[i] for p in points) for i in range(3)])
+     fingers = sorted((bounds[name] for name in ("panda_leftfinger", "panda_rightfinger")), key=lambda bound: bound[0][1])
+-    if object_low[1] < fingers[0][1][1] or object_high[1] > fingers[1][0][1]:
+-        return False
++    aperture_margins = [object_low[1] - fingers[0][1][1], fingers[1][0][1] - object_high[1]]
+     center_local = local(contact)
+-    for low, high in fingers:
+-        if any(not low[i] <= center_local[i] <= high[i] for i in (0, 2)):
+-            return False
++    contact_margins = [min(center_local[i] - low[i], high[i] - center_local[i])
++                       for low, high in fingers for i in (0, 2)]
+     hand_low, hand_high = bounds["panda_hand"]
+-    return any(object_high[i] < hand_low[i] or object_low[i] > hand_high[i] for i in range(3))
++    palm_separation = max(max(hand_low[i] - object_high[i], object_low[i] - hand_high[i]) for i in range(3))
++    reasons = [reason for failed, reason in (
++        (min(aperture_margins) < 0, "object_exceeds_finger_aperture"),
++        (min(contact_margins) < 0, "contact_outside_finger_span"),
++        (palm_separation <= 0, "object_overlaps_palm_envelope"),
++    ) if failed]
++    return {"fit": not reasons, "rejection_reasons": reasons,
++            "aperture_margins_m": aperture_margins,
++            "contact_span_margins_m": contact_margins,
++            "palm_separation_m": palm_separation,
++            "object_width_m": object_high[1] - object_low[1],
++            "finger_aperture_m": fingers[1][0][1] - fingers[0][1][1]}
++
++
++def _pinch_geometry(*args, **kwargs) -> bool:
++    return _pinch_geometry_diagnostics(*args, **kwargs)["fit"]
+
+
+@@ -283,7 +296,8 @@ def qualify_contact_variants(
+         clearance = min(sum(normal[index] * point[index] for index in range(3)) - support_offset for point in world_vertices)
+         pinch = _object_contains(contact, center, extents, object_rotation)
+-        finger_fit = None if gripper_links_m is None else _pinch_geometry(
++        finger_diagnostics = None if gripper_links_m is None else _pinch_geometry_diagnostics(
+             contact, center, extents, object_rotation, hand_pose, gripper_links_m, delta
+         )
++        finger_fit = None if finger_diagnostics is None else finger_diagnostics["fit"]
+         curobo_clearance = (
+             None if curobo_clearance_m is None else curobo_clearance_m[index]
+@@ -299,4 +313,5 @@ def qualify_contact_variants(
+             "pinch_center_inside_object": pinch,
+             "finger_envelope_fit": finger_fit,
++            **({"finger_envelope_diagnostics": finger_diagnostics} if finger_diagnostics is not None else {}),
+             **({"curobo_clearance_m": curobo_clearance} if curobo_clearance_m is not None else {}),
+             "rejection_reasons": [reason for rejected, reason in (
+diff --git a/examples/forge-adapters/robotwin20/src/robotwin20_adapter/grounding.py b/examples/forge-adapters/robotwin20/src/robotwin20_adapter/grounding.py
+index 9d5ee99..80b90ad 100644
+--- a/examples/forge-adapters/robotwin20/src/robotwin20_adapter/grounding.py
++++ b/examples/forge-adapters/robotwin20/src/robotwin20_adapter/grounding.py
+@@ -345,9 +345,37 @@ class Grounding:
+             visual_pose[:3, :3] = camera_to_world[:3, :3]
+             visual_pose[:3, 3] = center_world[:3]
++            model_frame = "observed-envelope"
++            if geometry_present and geometry.get("shape_class") == "box_envelope" and geometry.get("orientation_reliable") is False:
++                clouds = [a for a in understanding.get("derived_artifacts", [])
++                          if a.get("kind") == "object_point_cloud" and a.get("entity_ref") == ref]
++                if len(clouds) > 1:
++                    self._reject("observed object point cloud is ambiguous", stage="visual_geometry", entity_ref=ref)
++                if clouds:
++                    cloud = clouds[0]
++                    if (any(cloud.get(k) != understanding[k] for k in IDENTITY_KEYS)
++                            or cloud.get("frame_id") != understanding["frame"]["frame_id"]):
++                        self._reject("observed object cloud lineage differs from binding", stage="visual_geometry", entity_ref=ref)
++                    points = np.load(_artifact_path(self.root, cloud["artifact_ref"] + ".npy"), allow_pickle=False)
++                    if points.ndim != 2 or points.shape[1] != 3 or len(points) == 0 or not np.isfinite(points).all():
++                        self._reject("observed object point cloud is invalid", stage="visual_geometry", entity_ref=ref)
++                    # Bound measured points after calibration, not the empty
++                    # corners of a camera-axis box. Retain every point and any
++                    # producer-supplied envelope padding, projected into world.
++                    cloud_low, cloud_high = points.min(axis=0), points.max(axis=0)
++                    padding = np.maximum.reduce([np.zeros(3), cloud_low - low, high - cloud_high,
++                                                 (dimensions - (cloud_high - cloud_low)) / 2])
++                    world = points @ camera_to_world[:3, :3].T + camera_to_world[:3, 3]
++                    padding_world = np.abs(camera_to_world[:3, :3]) @ padding
++                    world_low = world.min(axis=0) - padding_world
++                    world_high = world.max(axis=0) + padding_world
++                    dimensions = np.maximum(world_high - world_low, 1e-4)
++                    visual_pose = np.eye(4)
++                    visual_pose[:3, 3] = (world_low + world_high) / 2
++                    model_frame = "observed-envelope/world"
+             runtime = objects[ref]
+             updated = deepcopy(runtime)
+             # This is an estimated envelope frame, not the physical actor frame.
+             # Its origin is the observed centroid; no hidden functional point is used.
+-            updated["object_frame_id"] = f"observed-envelope/{ref.removeprefix('entity://')}"
++            updated["object_frame_id"] = f"{model_frame}/{ref.removeprefix('entity://')}"
+             updated["world_T_object"] = visual_pose.reshape(-1).tolist()
+             updated["half_extents_m"] = (dimensions / 2.0).tolist()
+diff --git a/examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_route_builder.py b/examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_route_builder.py
+index 4cc3d1d..2802ba1 100644
+--- a/examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_route_builder.py
++++ b/examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_route_builder.py
+@@ -237,4 +237,5 @@ class PersistentRouteBuilder:
+                 for variant in attempt["qualification"]["variants"]:
+                     rejections.update(variant["rejection_reasons"])
++                    rejections.update(variant.get("finger_envelope_diagnostics", {}).get("rejection_reasons", []))
+             if result["status"] != "qualified":
+                 continue
+diff --git a/examples/forge-adapters/robotwin20/src/robotwin20_adapter/route_inputs.py b/examples/forge-adapters/robotwin20/src/robotwin20_adapter/route_inputs.py
+index 3e8963f..66b98e1 100644
+--- a/examples/forge-adapters/robotwin20/src/robotwin20_adapter/route_inputs.py
++++ b/examples/forge-adapters/robotwin20/src/robotwin20_adapter/route_inputs.py
+@@ -26,4 +26,8 @@ class RouteInputError(ValueError):
+
+
++class ContactShellRejectedError(RouteInputError):
++    """One candidate misses the bound object's contact shell."""
++
++
+ def canonical_json(value: Mapping[str, Any]) -> bytes:
+     return (json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n").encode()
+@@ -281,5 +285,5 @@ def derive_bound_route_inputs(
+         for value, extent in zip(contact_translation, item["half_extents_m"])
+     ):
+-        raise RouteInputError("canonical contact center does not intersect the object contact shell")
++        raise ContactShellRejectedError("canonical contact center does not intersect the object contact shell")
+     geometry = {
+         "schema_version": OBJECT_GEOMETRY_SCHEMA_VERSION,
+```
+
+### Git 提交 / Git
+
+- Branch: `feature/planning-loop`; implementation commit recorded in the following log closeout.
 
 ## v10.10.1 (2026-09-20 05:48) - codex
 
@@ -1324,6 +1559,8 @@ def test_cli_persists_public_failure_and_exits_unsuccessfully(tmp_path, monkeypa
 
 - 日志范围 / Log ranges: `changelog/2026-09_part11.md` L3-L528; `CHANGELOG.md` L17-L542. Archive link added; latest-five boundary updated without deleting historical entries.
 
+## 历史记录 / Historical records
+
 ## v10.9.5 (2026-09-20 04:08) - codex
 
 ### 完成安装 / Installation completed
@@ -1362,8 +1599,6 @@ def test_cli_persists_public_failure_and_exits_unsuccessfully(tmp_path, monkeypa
 ### Git 提交 / Git
 
 - Branch: `feature/planning-loop`; installation commit: `67be07b`; documentation closeout on the same branch.
-
-## 历史记录 / Historical records
 
 ## v10.9.4 (2026-09-20 03:55) - codex
 

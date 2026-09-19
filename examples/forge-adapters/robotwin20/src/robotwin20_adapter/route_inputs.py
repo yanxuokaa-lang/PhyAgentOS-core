@@ -25,6 +25,10 @@ class RouteInputError(ValueError):
     """Route input evidence is malformed, stale, or geometrically invalid."""
 
 
+class ContactShellRejectedError(RouteInputError):
+    """One candidate misses the bound object's contact shell."""
+
+
 def canonical_json(value: Mapping[str, Any]) -> bytes:
     return (json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n").encode()
 
@@ -280,7 +284,7 @@ def derive_bound_route_inputs(
         abs(value) > float(extent) + float(contact_shell_tolerance_m)
         for value, extent in zip(contact_translation, item["half_extents_m"])
     ):
-        raise RouteInputError("canonical contact center does not intersect the object contact shell")
+        raise ContactShellRejectedError("canonical contact center does not intersect the object contact shell")
     geometry = {
         "schema_version": OBJECT_GEOMETRY_SCHEMA_VERSION,
         "entity_ref": entity_ref,
