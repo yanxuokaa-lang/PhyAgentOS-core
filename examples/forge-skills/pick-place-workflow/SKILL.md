@@ -27,9 +27,13 @@ two-object template.
 The graph represents your chosen obligations and dependencies. One PlanNode is one
 settlement unit completed by one selected Tool. A composite intention such as
 `object.relocate` is not an executable node unless the Runtime publishes one atomic
-Tool that owns the complete relocation. Otherwise materialize the current
-scene-bound relocation as atomic `manipulation.target -> grasp.propose ->
-manipulation.prepare -> object.acquire -> object.place` nodes, followed by its
+Tool that owns the complete relocation. Before materializing a graph, complete
+the task-bound read-only Queries needed to establish every candidate's immutable
+`input_binding_keys`. In particular, resolve `manipulation.target` first when
+`object.place` requires an existing `destination_ref`; a dependency cannot stand
+in for that reference. Then materialize the current scene-bound relocation as
+atomic `grasp.propose -> manipulation.prepare -> object.acquire -> object.place`
+nodes (or the remaining suffix if earlier Queries already settled), followed by its
 post-placement observation, understanding, and binding checkpoint. The Tools do
 not need producer-specific payload agreements: use each consumer's frozen
 ToolSpec, and let the Agent select its arguments from immutable node bindings,
@@ -262,9 +266,19 @@ revision before any execution fact exists, or normal recovery after failure.
 For `manipulation.prepare`, use prompt-visible literals for small fields and
 `forge_plan_select.argument_sources` for large Producer values such as the
 complete candidate array. A source names the visible predecessor/evidence
-`record_id` and exact `available_sources.path`; PAOS resolves the complete value
+`record_id` and exact source path; PAOS resolves the complete value
 and validates the resulting arguments against the frozen consumer schema before
 persisting the selection.
+For arrays or nested objects, browse the authorized record using
+`forge_plan_ready(node_id, source_record_id, source_path, offset, limit)` and
+follow `next_offset` until the needed item is visible. Paths contain field
+strings and integer array indexes, not dotted strings or JSONPath expressions.
+Associate entities, envelopes and artifact records by their visible identity;
+do not assume parallel arrays share an order. Each source can set `target_path`
+such as `["targets", 0, "category"]` to copy one exact source value into a nested
+consumer field. Build only the fields required/allowed by that consumer's schema;
+an entire producer entity or envelope can contain extra metadata. Without
+`target_path`, the source map key remains a literal top-level parameter name.
 When the receipt sets `use_selected_arguments=true`, invoke its execution Tool
 with `arguments={}`, that flag, and the exact `planning_binding`; PAOS loads the
 persisted complete parameters without another model payload round trip.

@@ -1179,6 +1179,30 @@ class AgentTaskCoordinator:
             "planning_binding": selection.planning_binding.model_dump(mode="json"),
         }
 
+    def planning_selection_rejections(
+        self, task_id: str, revision_id: str, node_id: str,
+    ) -> list[dict[str, Any]]:
+        """Return recent durable diagnostics for this exact node/revision."""
+        return [
+            event["payload"]["error"] for event in self.store.events(task_id)
+            if event["event_type"] == "planning_selection_rejected"
+            and event["payload"].get("revision_id") == revision_id
+            and event["payload"].get("node_id") == node_id
+        ][-4:]
+
+    def record_planning_node_blocked(
+        self, task_id: str, revision_id: str, node_id: str, reason: str,
+    ) -> None:
+        """Record a runner checkpoint without inventing an execution/settlement."""
+        def check(current: AgentTaskRecord) -> None:
+            if current.active_revision_id != revision_id:
+                raise AgentTaskError("blocked node is not bound to the active revision")
+
+        self.store.update(
+            task_id, check, event_type="planning_node_blocked",
+            payload={"revision_id": revision_id, "node_id": node_id, "reason": reason},
+        )
+
     def record_planning_selection_rejection(
         self,
         task_id: str,

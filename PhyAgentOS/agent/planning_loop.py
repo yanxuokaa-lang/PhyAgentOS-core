@@ -358,15 +358,50 @@ def resolve_node_argument_sources(
     literals: Mapping[str, Any],
     selectors: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """Resolve exact catalogued values from records already visible to one node."""
+    """Copy exact authorized values into Agent-declared consumer paths."""
 
     resolved = deepcopy(dict(literals))
-    overlap = set(resolved) & set(selectors)
-    if overlap:
-        raise PlanningLoopError(
-            "planning arguments cannot be both literal and sourced: "
-            + ", ".join(sorted(overlap))
-        )
+    assignments: list[tuple[tuple[str | int, ...], Any]] = []
+    targets: list[tuple[str | int, ...]] = []
+    records = _node_source_records(context)
+    for argument_name, selector in selectors.items():
+        if not isinstance(argument_name, str) or not argument_name:
+            raise PlanningLoopError("planning argument source name must be non-empty")
+        if (
+            not isinstance(selector, Mapping)
+            or not {"record_id", "path"} <= set(selector)
+            or set(selector) - {"record_id", "path", "target_path"}
+        ):
+            raise PlanningLoopError("source requires record_id, path and optional target_path")
+        path = _source_path(selector["path"])
+        target = _source_path(selector.get("target_path", [argument_name]))
+        if not isinstance(target[0], str):
+            raise PlanningLoopError("target_path must start with an object field")
+        for previous in targets:
+            size = min(len(previous), len(target))
+            if previous[:size] == target[:size]:
+                raise PlanningLoopError("planning argument source targets overlap")
+        targets.append(target)
+        value = _read_node_source(records, selector["record_id"], path)
+        assignments.append((target, value))
+    # Array positions are independent of the order of JSON source entries.
+    assignments.sort(key=lambda item: tuple(
+        (0, part) if isinstance(part, str) else (1, part) for part in item[0]
+    ))
+    for target, value in assignments:
+        _write_argument_path(resolved, target, value)
+    return resolved
+
+
+def _source_path(value: Any, *, allow_empty: bool = False) -> tuple[str | int, ...]:
+    if not isinstance(value, (list, tuple)) or (not value and not allow_empty):
+        raise PlanningLoopError("source/target path must be an explicit field/index array")
+    if any(not ((isinstance(p, str) and p) or (type(p) is int and p >= 0)) for p in value):
+        raise PlanningLoopError("path components must be non-empty fields or non-negative integer indexes")
+    return tuple(value)
+
+
+def _node_source_records(context: NodeExecutionContext) -> dict[str, Any]:
     records: dict[str, tuple[Mapping[str, Any], Mapping[str, Any] | None]] = {}
     for predecessor in context.predecessor_context:
         for execution in predecessor.executions:
@@ -376,46 +411,77 @@ def resolve_node_argument_sources(
         if evidence.status == "succeeded":
             records[evidence.record_id] = (evidence.arguments, evidence.response)
 
-    for argument_name, selector in selectors.items():
-        if not isinstance(argument_name, str) or not argument_name:
-            raise PlanningLoopError("planning argument source name must be non-empty")
-        if not isinstance(selector, Mapping) or set(selector) != {"record_id", "path"}:
-            raise PlanningLoopError(
-                f"planning argument source {argument_name!r} must contain record_id and path"
-            )
-        record_id = selector.get("record_id")
-        path = selector.get("path")
-        if not isinstance(record_id, str) or record_id not in records:
-            raise PlanningLoopError(
-                f"planning argument source {argument_name!r} is not visible to this node"
-            )
-        if (
-            not isinstance(path, (list, tuple))
-            or not path
-            or any(not isinstance(part, str) or not part for part in path)
-        ):
-            raise PlanningLoopError(
-                f"planning argument source {argument_name!r} has an invalid field path"
-            )
-        arguments, response = records[record_id]
-        allowed_paths = {
-            tuple(item["path"])
-            for item in _source_catalog(arguments, response)
-        }
-        normalized_path = tuple(path)
-        if normalized_path not in allowed_paths:
-            raise PlanningLoopError(
-                f"planning argument source {argument_name!r} is not a catalogued field"
-            )
-        value: Any = {"arguments": arguments, "response": response}
-        for part in normalized_path:
-            if not isinstance(value, Mapping) or part not in value:
-                raise PlanningLoopError(
-                    f"planning argument source {argument_name!r} cannot be resolved"
-                )
+    return records
+
+
+def _read_node_source(records: Mapping[str, Any], record_id: Any, path: tuple) -> Any:
+    if not isinstance(record_id, str) or record_id not in records:
+        raise PlanningLoopError("planning argument source is not visible to this node")
+    arguments, response = records[record_id]
+    value: Any = {"arguments": arguments, "response": response}
+    for part in path:
+        if isinstance(value, Mapping) and isinstance(part, str) and part in value:
             value = value[part]
-        resolved[argument_name] = deepcopy(value)
-    return resolved
+        elif isinstance(value, (list, tuple)) and type(part) is int and 0 <= part < len(value):
+            value = value[part]
+        else:
+            raise PlanningLoopError(f"source path cannot be resolved at {part!r}")
+    return value
+
+
+def _write_argument_path(root: dict, path: tuple, value: Any) -> None:
+    current: Any = root
+    for index, part in enumerate(path):
+        final = index == len(path) - 1
+        child: Any = deepcopy(value) if final else ([] if type(path[index + 1]) is int else {})
+        if isinstance(current, dict) and isinstance(part, str):
+            if part in current:
+                if final:
+                    raise PlanningLoopError("planning arguments cannot be both literal and sourced")
+            else:
+                current[part] = child
+            current = current[part]
+        elif isinstance(current, list) and type(part) is int and part <= len(current):
+            if part == len(current):
+                current.append(child)
+            elif final:
+                raise PlanningLoopError("planning arguments cannot be both literal and sourced")
+            current = current[part]
+        else:
+            raise PlanningLoopError("target path has incompatible containers or a sparse array index")
+
+
+def node_source_page(
+    context: NodeExecutionContext, record_id: str, path: list[str | int],
+    *, offset: int = 0, limit: int = 20,
+) -> dict[str, Any]:
+    """Browse one level of an authorized record without returning geometry payloads."""
+    parsed = _source_path(path, allow_empty=True)
+    if type(offset) is not int or offset < 0 or type(limit) is not int or not 1 <= limit <= 100:
+        raise PlanningLoopError("source page requires offset >= 0 and limit in 1..100")
+    value = _read_node_source(_node_source_records(context), record_id, parsed)
+    if isinstance(value, Mapping):
+        keys = sorted(value)
+    elif isinstance(value, (list, tuple)):
+        keys = range(len(value))
+    else:
+        keys = []
+    entries = []
+    for key in keys[offset:offset + limit]:
+        item = value[key]
+        entry = {"path": [*parsed, key], **_source_value_summary(item)}
+        if isinstance(item, Mapping):
+            entry["identity"] = {
+                k: v for k, v in item.items()
+                if isinstance(v, (str, bool, int, float)) or v is None
+            }
+            entry["identity"] = {k: v[:256] if isinstance(v, str) else v for k, v in entry["identity"].items()}
+        entries.append(entry)
+    return {
+        "record_id": record_id, "path": list(parsed), "summary": _source_value_summary(value),
+        "entries": entries, "offset": offset,
+        "next_offset": offset + limit if offset + limit < len(keys) else None,
+    }
 
 
 @dataclass(frozen=True)
@@ -521,6 +587,14 @@ class AgentLoopNodeExecutor:
             turn_failure_code = getattr(turn_result, "turn_failure_code", None)
             if turn_failure_code:
                 raise NodeTurnIncompleteError(context.node_id, turn_failure_code)
+            rejections = self._selection_rejections(context)
+            if rejections and self._pending_selection(context) is None:
+                raise NodeTurnIncompleteError(
+                    context.node_id,
+                    "selection rejected without execution: "
+                    + str(rejections[-1].get("code", "planning_selection_rejected"))
+                    + ": " + str(rejections[-1].get("message", "")),
+                )
 
         pending = self._pending_selection(context)
         reason = (
@@ -656,6 +730,13 @@ class AgentLoopNodeExecutor:
 
     def _prompt_for_turn(self, context: NodeExecutionContext) -> str:
         prompt = self.prompt_builder(context)
+        rejections = self._selection_rejections(context)
+        if rejections:
+            prompt += (
+                "\nPrevious selection diagnostics for this node/revision (not execution facts). "
+                "Correct the indicated source/destination paths; do not repeat rejected inputs:\n"
+                + json.dumps(rejections, ensure_ascii=False)
+            )
         pending = self._pending_selection(context)
         if pending is None:
             return prompt
@@ -668,6 +749,10 @@ class AgentLoopNodeExecutor:
             "repeat predecessor Queries. The selection is not execution or motion permission.\n"
             + json.dumps(pending, ensure_ascii=False, sort_keys=True)
         )
+
+    def _selection_rejections(self, context: NodeExecutionContext) -> list[dict[str, Any]]:
+        loader = getattr(self.coordinator, "planning_selection_rejections", None)
+        return loader(context.task_id, context.revision_id, context.node_id) if callable(loader) else []
 
     def _pending_selection(self, context: NodeExecutionContext) -> dict[str, Any] | None:
         loader = getattr(self.coordinator, "pending_planning_selection", None)
@@ -770,7 +855,13 @@ class AgentLoopNodeExecutor:
             "Use the frozen consumer input schema from forge_plan_ready when present; "
             "use forge_tool_context for live readiness and as a legacy schema fallback. "
             "Then select exact values from input_bindings or use forge_plan_select "
-            "argument_sources with a visible record_id and exact available_sources path. "
+            "argument_sources with a visible record_id and exact source path. "
+            "Browse array entries and nested fields with forge_plan_ready(node_id, "
+            "source_record_id, source_path, offset, limit); follow next_offset for more entries. "
+            "Paths are arrays of object-field strings and integer array indexes. "
+            "Use each source's target_path to assemble nested consumer arguments, e.g. "
+            "['targets',0,'category']; without target_path its map key is a literal top-level name. "
+            "Select matching entity identities explicitly across arrays; never assume their orders match. "
             "The Coordinator resolves sourced values from evidence_context or "
             "predecessor_context before frozen-schema validation. Execute a sourced receipt "
             "with arguments={} and use_selected_arguments=true without repeating the resolved "
@@ -992,6 +1083,9 @@ class PlanningLoopAdapter:
                 if hasattr(result, "__await__"):
                     result = await result  # type: ignore[assignment]
             except NodeTurnIncompleteError as exc:
+                self.coordinator.record_planning_node_blocked(
+                    task_id, context.revision_id, node_id, str(exc),
+                )
                 return PlanningLoopResult(
                     task_id,
                     "blocked",

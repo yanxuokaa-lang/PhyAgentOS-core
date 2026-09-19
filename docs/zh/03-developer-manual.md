@@ -275,6 +275,11 @@ Agent-composed PlanNode 必须能够由一个冻结 Tool 候选独立完成。�
 才发布复合 capability；否则用相互依赖的原子节点表达工作流。Tool producer 继续输出可复用、与
 consumer 解耦的结构化事实，由 Agent 按 consumer 的冻结 input schema 选择输入。
 
+压缩的节点上下文通过 `forge_plan_ready` 按 `node_id/source_record_id/source_path` 分页浏览；
+`forge_plan_select.argument_sources` 的 `path` 与可选 `target_path` 使用字段字符串和整数数组下标。
+Agent 显式选择、匹配身份及组合 Consumer 参数，Coordinator 只在已有节点证据范围内精确取值并校验。
+图物化前先用任务绑定的只读 Query 获取所有必需的 immutable input bindings；依赖不替代尚不存在的引用。
+
 不要创建第二套 PAOS 执行协议、Agent 直连 Dora/SDK、与仿真器绑定的 Skill 名称或跨 Tool lease。只有通用 task/Tool API tools
 无法表达能力时，才应新增 Agent tool。
 

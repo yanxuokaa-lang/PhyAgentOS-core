@@ -171,9 +171,16 @@ the current node, immutable bindings, and a bounded field catalog for persisted
 records from direct predecessors or explicitly selected discovery evidence.
 Large geometry arrays stay in the Coordinator. For example,
 `manipulation.prepare` selects the complete `grasp.propose` candidate array with
-`record_id` plus an exact catalogued field path; Coordinator resolves that value
+`record_id` plus an exact field/index path; Coordinator resolves that value
 before frozen Consumer-schema validation. Unrelated discovery and execution
 history remains unavailable to both the prompt and the selector.
+
+Use `forge_plan_ready` with `node_id`, `source_record_id`, `source_path`, `offset`
+and `limit` to browse one level at a time; follow `next_offset` for remaining
+array entries. Source selectors may specify `target_path` to assemble nested
+consumer objects and arrays. The Agent explicitly matches identities across
+producer arrays; Core does not infer joins or reconstruct geometry. Resolve
+immutable bindings required by later nodes before materializing the segment.
 
 A semantic-node turn exposes only the node execution surface:
 `forge_tool_context`, `forge_plan_ready`, `forge_plan_select`, and the governed

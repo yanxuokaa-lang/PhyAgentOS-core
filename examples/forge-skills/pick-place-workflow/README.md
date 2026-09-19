@@ -52,6 +52,11 @@ Large predecessor values are selected without copying their full geometry into
 the node prompt. `forge_plan_select.argument_sources` names a visible
 `record_id` and exact field path; Coordinator resolves the full value and then
 validates the final request against the frozen `manipulation.prepare` schema.
+Browse source arrays and objects with `forge_plan_ready` pagination; use explicit
+integer indexes in source `path` and optional destination `target_path` to assemble
+nested consumer inputs. Match identities across arrays rather than assuming order.
+Resolve required immutable bindings (including `destination_ref` for place)
+through task-bound read-only Queries before materializing the executable segment.
 The persistent profile gives the whole preparation Query one 330-second
 deadline inside its 360-second Tool timeout.
 

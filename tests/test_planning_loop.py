@@ -1514,6 +1514,35 @@ def test_node_executor_reports_incomplete_after_bounded_no_record_turns():
     assert task.active_revision.execution_records == []
 
 
+def test_node_executor_carries_rejections_and_does_not_restart_failed_selection():
+    diagnostic = {"code": "invalid_argument_source", "message": "invalid source path"}
+    task = SimpleNamespace(active_revision_id="revision-resume",
+                           active_revision=SimpleNamespace(execution_records=[]))
+    prompts = []
+
+    class Coordinator:
+        def get_task(self, _task_id):
+            return task
+
+        def pending_planning_selection(self, *_args, **_kwargs):
+            return None
+
+        def planning_selection_rejections(self, *args):
+            assert args == ("task-resume", "revision-resume", "prepare")
+            return [diagnostic]
+
+    class Loop:
+        async def run_node_turn(self, *, prompt, **kwargs):
+            prompts.append(prompt)
+
+    with pytest.raises(NodeTurnIncompleteError, match="invalid_argument_source"):
+        asyncio.run(AgentLoopNodeExecutor(Loop(), Coordinator())(_executor_context()))
+    assert len(prompts) == 1
+    assert "Previous selection diagnostics" in prompts[0]
+    assert diagnostic["message"] in prompts[0]
+    assert task.active_revision.execution_records == []
+
+
 def test_node_executor_provider_failure_does_not_consume_continuation():
     task = SimpleNamespace(
         active_revision_id="revision-resume",
@@ -1926,6 +1955,9 @@ def test_planning_loop_blocks_incomplete_node_without_settlement(tmp_path):
     assert result.last_failure == (
         "node_turn_incomplete:arrange-red:selection remains unconsumed"
     )
+    event = c.store.events(task.task_id)[-1]
+    assert event["event_type"] == "planning_node_blocked"
+    assert event["payload"]["reason"] == result.last_failure
     current = c.get_task(task.task_id)
     assert current.status.value == "executing"
     assert current.active_revision.node_settlements == []

@@ -187,6 +187,29 @@ def test_bounded_turn_rejects_provider_tool_outside_allowed_set(tmp_path):
     asyncio.run(exercise())
 
 
+def test_node_turn_cannot_browse_another_nodes_sources(tmp_path):
+    async def exercise():
+        provider = ScriptedProvider([
+            LLMResponse(content=None, tool_calls=[ToolCallRequest(
+                "cross-node", "forge_plan_ready",
+                {"node_id": "unrelated", "source_record_id": "record-other"},
+            )]),
+            LLMResponse(content="Source browsing must use the current node."),
+        ])
+        loop = AgentLoop(bus=MessageBus(), provider=provider, workspace=tmp_path, max_iterations=2)
+        loop.tools.execute = AsyncMock(side_effect=AssertionError("cross-node source read"))
+        result = await loop._run_agent_loop(
+            [{"role": "user", "content": "execute current node"}],
+            projection_scope="node", projection_node_id="current",
+            allowed_tool_names=frozenset({"forge_plan_ready"}),
+        )
+        loop.tools.execute.assert_not_awaited()
+        rejected = next(m for m in result.messages if m.get("tool_call_id") == "cross-node")
+        assert json.loads(rejected["content"])["error"]["code"] == "source_node_out_of_scope"
+
+    asyncio.run(exercise())
+
+
 def test_node_turn_yields_after_bound_execution_and_cannot_continue_revision(tmp_path):
     async def exercise():
         c, task = setup_task(tmp_path, goal="Resolve one current semantic node")

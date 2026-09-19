@@ -336,6 +336,10 @@ def compact_tool_result(tool_name: str, content: str) -> str:
         payload = json.loads(content)
     except (TypeError, json.JSONDecodeError):
         return content
+    if tool_name == "forge_plan_ready" and isinstance(payload, dict) and "source_page" in payload:
+        # This is already a bounded catalog, not an unabridged producer payload.
+        # Earlier pages remain necessary to match identities across source arrays.
+        return content
     projection = _reference_projection(payload)
     return json.dumps(
         {

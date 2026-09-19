@@ -236,6 +236,14 @@ terminal effect; otherwise express the workflow as dependent atomic nodes. Tool
 producers remain reusable and consumer-neutral: the Agent selects structured
 facts according to the consumer's frozen input schema.
 
+Browse compact node sources through paginated `forge_plan_ready` calls using
+`node_id/source_record_id/source_path`. Selection sources use field-string and
+integer-index `path` arrays plus optional `target_path` for nested assembly.
+The Agent selects and matches identities; Coordinator copies exact values only
+within existing node evidence scope and validates the consumer schema. Resolve
+required immutable bindings through task-bound read-only Queries before graph
+materialization; dependencies cannot replace references that do not exist yet.
+
 Do not create a second PAOS execution protocol, direct Agent-to-Dora/SDK calls, simulator-bound Skill
 names, or a cross-Tool lease.
 A new Agent tool is justified only when the generic task and Tool API tools cannot express the

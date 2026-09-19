@@ -12,6 +12,106 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v10.9.2 (2026-09-20 03:25) - codex
+
+### 变更摘要 / Change summary
+
+- [agent] [fix] [完成] 修复压缩来源仅支持顶层整体传参的回归：复用 ready/select 支持分页目录、显式数组路径与嵌套目标组装，保留 Coordinator 证据权限和冻结 schema 校验。(local)
+- [Agent] [Fix] [Completed] Restore source selection and nested assembly through existing ready/select tools with paginated catalogs and explicit array paths; retain Coordinator evidence scope and frozen-schema validation. (local)
+- [agent] [fix] [完成] 续轮携带持久拒绝摘要并阻止重复拒绝空转；通过既有事件保存节点阻塞原因；修正 Skill 的目标解析与图物化顺序，补真实形状的链路回归。(local)
+- [Agent] [Fix] [Completed] Carry durable rejection summaries across continuations, stop repeated rejections, record node blocking through existing events, correct Skill materialization guidance, and test the complete source-to-execution path. (local)
+
+### 失败场景与修改边界 / Failure and scope
+
+- `task_19f02cc0b56d4c2d` 的有效 entities/spatial_envelopes 无法通过选择接口组合成 targets；两轮产生四次拒绝而无执行。来源/目标路径类型、重叠和数组边界校验用于避免同一参数被静默覆盖、稀疏扩容及越权取值，复用普通类型、现有任务权限与 schema，不新增 hash、状态机或运动门禁。
+- Valid persisted entities/envelopes cannot form consumer targets; four rejections produced no execution. Ordinary path/type/overlap checks prevent silent overwrite, sparse expansion and unauthorized reads using existing task scope and schema; no new hash, state machine or motion gate.
+- 影响文件 / Affected files: agent planning_loop/tools/planning/loop, forge/task, related tests, pick-place Skill metadata/instructions, input-selection and developer docs, CHANGELOG. No active task resume, Runtime replacement or motion.
+- [agent] [fix] [完成] 审查发现新增目录接口可通过另一 node_id 请求非当前节点证据；沿用 AgentLoop 当前节点投影身份检查浏览请求，防止跨节点读取，不新增授权体系。(local)
+- [Agent] [Fix] [Completed] Scope source browsing to the current AgentLoop node identity to prevent another node_id from exposing unrelated evidence; reuse the current projection scope. (local)
+- [agent] [fix] [完成] 来源分页在下一次同名 Tool 调用后会被通用摘要删除；保留已限页的 source_page，避免跨数组身份匹配再次失去证据。(local)
+- [Agent] [Fix] [Completed] Preserve already paginated source_page results through prompt compaction so subsequent browsing does not erase prior identity/path evidence. (local)
+
+### 文件变更详情 / Exact changed line ranges
+
+| File | Changed lines |
+| --- | --- |
+| `PhyAgentOS/agent/loop.py` | L330, L345, L845-L858 |
+| `PhyAgentOS/agent/planning_loop.py` | L361, L364-L404, L414-L423, L425-L484, L590-L597, L733-L739, L753-L756, L858-L864, L1086-L1088 |
+| `PhyAgentOS/agent/prompt_context.py` | L339-L342 |
+| `PhyAgentOS/agent/tools/planning.py` | L13, L35, L37, L47-L49, L54-L63, L65-L80, L84-L90, L125-L128, L184 |
+| `PhyAgentOS/forge/task.py` | L1182-L1205 |
+| `docs/en/03-developer-manual.md` | L239-L246 |
+| `docs/forge/AGENT_TOOL_INPUT_SELECTION_DESIGN.md` | L66-L72, L84-L85, L116-L117, L143-L170 |
+| `docs/forge/IMPLEMENTATION_REVIEW_V10_9_2.md` | L1-L73 |
+| `docs/forge/MANIPULATION_DAG_DEVELOPER_GUIDE.md` | L174, L178-L184 |
+| `docs/zh/03-developer-manual.md` | L278-L282 |
+| `examples/forge-skills/pick-place-workflow/README.md` | L55-L59 |
+| `examples/forge-skills/pick-place-workflow/SKILL.md` | L30-L36, L269, L272-L281 |
+| `examples/forge-skills/pick-place-workflow/pyproject.toml` | L3 |
+| `examples/forge-skills/pick-place-workflow/skill.yaml` | L3 |
+| `examples/forge-skills/pick-place-workflow/tests/test_grasp_propose.py` | L268 |
+| `tests/test_agent_foundation.py` | L190-L212 |
+| `tests/test_planning_loop.py` | L1517-L1545, L1958-L1960 |
+| `tests/test_planning_source_assembly.py` | L1-L385 |
+
+### 关键代码 Diff / Key code changes
+
+```diff
+-allowed_paths = {tuple(item["path"]) for item in _source_catalog(arguments, response)}
+-resolved[argument_name] = deepcopy(value)
++path = _source_path(selector["path"])
++target = _source_path(selector.get("target_path", [argument_name]))
++value = _read_node_source(records, selector["record_id"], path)
++_write_argument_path(resolved, target, value)
+```
+
+- [agent] [fix] 来源授权复用 NodeContextProvider；目录分页仅投影一层，不扩大证据范围；目标字段不覆盖字面值或其他来源。(local)
+- [Agent] [Fix] Reuse NodeContextProvider authority; page one source level without expanding evidence scope; reject destination collisions. (local)
+
+```diff
+-ForgePlanReadyTool(dispatch)
++ForgePlanReadyTool(dispatch, self.forge_task_coordinator)
++node_source_page(context, source_record_id, source_path, offset=offset, limit=limit)
++if projection_scope == "node" and requested_node != projection_node_id:
++    # reject source_node_out_of_scope before browsing
++if tool_name == "forge_plan_ready" and "source_page" in payload:
++    return content  # retain already paginated identity/path catalogs
+```
+
+```diff
+-# no record -> unconditional bounded fresh turn
++rejections = self._selection_rejections(context)
++if rejections and self._pending_selection(context) is None:
++    raise NodeTurnIncompleteError(context.node_id, last_diagnostic)
++coordinator.record_planning_node_blocked(task_id, revision_id, node_id, reason)
+```
+
+```diff
+-version: "2.3.0"
++version: "2.3.1"
+-materialize target -> grasp -> prepare -> acquire -> place
++resolve required immutable references first; materialize the executable remaining segment
+```
+
+- [docs] [docs] 同步输入选择设计、双语开发者指南、DAG 指南及 Skill 说明；新增 fresh review 报告及来源到执行入口回归。(local)
+- [Docs] [Docs] Synchronize selection design, bilingual developer guides, DAG guide and Skill; add fresh review and source-to-execution regression. (local)
+
+### 验证与七维验收 / Validation and seven dimensions
+
+- Core: `503 passed in 25.59s`; Skill: `335 passed in 7.24s`; changed-file Ruff, compileall and `git diff --check`: PASS.
+- 本次真实失败记录只读复制到临时 workspace：17 个映射含 1 个点云制品，原冻结 schema 与真实 selection 持久化通过；execution=0、Gateway=0，活动任务未修改。
+- Read-only failed-task replay in a temporary workspace: 17 mappings including one point-cloud artifact pass the original frozen schema and real selection persistence; zero executions/Gateway calls and no active-task mutation.
+- 七维 / Seven dimensions: architecture integration PASS; recovery/idempotency PASS; robotics safety PASS (no-motion); context/performance functional PASS (real timing pending); configuration/reproducibility package PASS (deployment pending); maintainability/observability PASS; AgentLoop autonomy interface PASS (real LLM behavior pending).
+- 完整证据及复现命令 / Full evidence and commands: `docs/forge/IMPLEMENTATION_REVIEW_V10_9_2.md`.
+- Skill archive: `/tmp/paos-v10.9.2-release-D4enl6/pick-place-workflow-2.3.1.tar.gz`, 103674 bytes; existing archive validation PASS. Node 0.1.16 unchanged; no active install, Runtime restart or motion.
+- Provider headers/first-token 的真实进程观测及完整任务录像未在本轮验证。 / Real-process provider timing and full task video remain unverified by this repair.
+- 日志位置 / Log ranges: `changelog/2026-09_part10.md:L655-L753`; `CHANGELOG.md:L15-L113`; latest five rolled forward, historical entries retained.
+
+### Git 提交 / Git commit
+
+- Branch: `feature/planning-loop`
+- Implementation commit: pending; recorded in documentation closeout.
+
 ## v10.9.1 (2026-09-20 02:49) - codex
 
 ### 变更摘要 / Change summary
@@ -445,6 +545,8 @@
 - Branch: `feature/planning-loop`
 - 时间 / Time: 2026-09-18 21:24 (Asia/Shanghai)
 
+## 历史记录 / Historical Records
+
 ## v10.8.9 (2026-09-18 19:53) - codex
 
 ### 变更摘要 / Change summary [完成 / Completed]
@@ -529,8 +631,6 @@
 - Implementation commit: `f11c931`
 - Branch: `feature/planning-loop`
 - 时间 / Time: 2026-09-18 22:34 (Asia/Shanghai)
-
-## 历史记录 / Historical Records
 
 ## v10.8.8 (2026-09-18 17:10) - codex
 

@@ -10,6 +10,7 @@ from PhyAgentOS.agent.planning_dispatch import AgentComposedDispatch, PlanningDi
 from PhyAgentOS.agent.planning_loop import (
     NodeContextProvider,
     PlanningLoopError,
+    node_source_page,
     resolve_node_argument_sources,
 )
 from PhyAgentOS.agent.tools.base import Tool
@@ -31,8 +32,9 @@ if TYPE_CHECKING:
 class ForgePlanReadyTool(Tool):
     """Expose ready semantic nodes without executing a Tool or changing state."""
 
-    def __init__(self, dispatch: AgentComposedDispatch) -> None:
+    def __init__(self, dispatch: AgentComposedDispatch, coordinator: "AgentTaskCoordinator | None" = None) -> None:
         self.dispatch = dispatch
+        self.coordinator = coordinator
 
     @property
     def name(self) -> str:
@@ -42,15 +44,48 @@ class ForgePlanReadyTool(Tool):
     def description(self) -> str:
         return (
             "Read the ready semantic nodes and frozen planning Tool candidates for the "
-            "active agent-composed PlanGraph. This performs no execution or motion."
+            "active agent-composed PlanGraph. Optionally browse a node's authorized source "
+            "record by explicit source_path and page offset; arrays use integer indexes. "
+            "This performs no execution or motion."
         )
 
     @property
     def parameters(self) -> dict[str, Any]:
-        return {"type": "object", "properties": {}, "additionalProperties": False}
+        return {
+            "type": "object", "additionalProperties": False,
+            "properties": {
+                "node_id": {"type": "string"},
+                "source_record_id": {"type": "string"},
+                "source_path": _path_schema(allow_empty=True),
+                "offset": {"type": "integer", "minimum": 0},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 100},
+            },
+        }
 
-    async def execute(self) -> str:
+    async def execute(self, node_id: str | None = None, source_record_id: str | None = None,
+                      source_path: list | None = None, offset: int = 0, limit: int = 20) -> str:
+        if source_record_id is not None:
+            try:
+                if self.coordinator is None or not node_id:
+                    raise PlanningLoopError("source browsing requires a node and Coordinator")
+                task = self.coordinator.get_task(self.dispatch.graph.task_id)
+                if task.active_revision_id != self.dispatch.graph.revision_id:
+                    raise PlanningLoopError("source browsing requires the active revision")
+                context = NodeContextProvider(lambda _: task).build(
+                    task.task_id, node_id, scene_revision=self.dispatch.current_scene_revision,
+                )
+                page = node_source_page(context, source_record_id, source_path or [], offset=offset, limit=limit)
+                return json.dumps({"ok": True, "source_page": page, "motion_authorized": False}, ensure_ascii=False)
+            except PlanningLoopError as exc:
+                return json.dumps({"ok": False, "error": {"code": "invalid_argument_source", "message": str(exc)}, "motion_authorized": False})
         return json.dumps(self.dispatch.describe(), ensure_ascii=False, separators=(",", ":"))
+
+
+def _path_schema(*, allow_empty: bool = False) -> dict[str, Any]:
+    return {
+        "type": "array", "minItems": 0 if allow_empty else 1,
+        "items": {"anyOf": [{"type": "string", "minLength": 1}, {"type": "integer", "minimum": 0}]},
+    }
 
 
 class ForgePlanSelectTool(Tool):
@@ -87,10 +122,10 @@ class ForgePlanSelectTool(Tool):
                         "type": "object",
                         "properties": {
                             "record_id": {"type": "string", "minLength": 1},
-                            "path": {
-                                "type": "array",
-                                "items": {"type": "string", "minLength": 1},
-                                "minItems": 1,
+                            "path": _path_schema(),
+                            "target_path": {
+                                **_path_schema(),
+                                "description": "Destination fields/indexes, e.g. ['targets',0,'category']; omitted means the source map key is the literal top-level argument name.",
                             },
                         },
                         "required": ["record_id", "path"],
@@ -146,7 +181,7 @@ class ForgePlanSelectTool(Tool):
                         code="invalid_argument_source",
                         failure_owner="agent_arguments",
                         recommended_action=(
-                            "select_a_catalogued_source_from_bounded_node_context"
+                            "browse_authorized_sources_with_forge_plan_ready_and_correct_paths"
                         ),
                     ) from exc
             proposal = dispatch.prepare_selection(

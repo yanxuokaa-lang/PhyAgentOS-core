@@ -63,7 +63,13 @@ before revision identity was added remain readable as legacy records.
    fallback; it does not replace the task-bound contract.
 4. `forge_plan_select` accepts literal arguments plus optional
    `argument_sources`. Each source contains one prompt-visible `record_id` and
-   exact `available_sources.path`. The Coordinator resolves the complete value
+   exact `path` of object-field strings and non-negative integer array indexes.
+   Optional `target_path` assembles a nested consumer object/array; when absent,
+   the source map key is the literal top-level parameter name (dots are not parsed).
+   `forge_plan_ready` can browse a node's `source_record_id` at `source_path`,
+   with `offset`/`limit` pagination and `next_offset`. Summaries do not restrict
+   evidence authority: the same NodeContextProvider scopes every browse and
+   resolution. The Coordinator resolves the complete value
    before frozen-schema validation and DecisionTrace persistence; the digest
    covers the resolved final arguments, not the selector syntax.
 5. A root node can receive exact discovery Query arguments and terminal results only when its
@@ -75,7 +81,8 @@ before revision identity was added remain readable as legacy records.
    the request, but its response must name the current planning scene.
 6. A successor receives exact results only from direct predecessor executions.
    Source selectors cannot reach unrelated nodes, historical revisions, file
-   paths, arbitrary JSONPath expressions, or unpersisted payloads.
+   paths, arbitrary JSONPath expressions, or unpersisted payloads. Explicit
+   descendant paths address only values in the already authorized records.
 7. Schema rejection creates no Tool record, Gateway invocation, Action,
    Session, simulator step, or motion authorization.
 8. Recovery-provider failure preserves the original node failure and enters the
@@ -106,7 +113,8 @@ seam. Do not hard-code a producer Tool ID into Core.
 ## Failure Semantics
 
 - Missing required argument: `tool_input_schema_invalid` before Gateway.
-- Hidden record, non-catalogued path, or literal/source collision:
+- Hidden record, nonexistent/invalid path, overlapping target paths, sparse
+  destination arrays, or literal/source collision:
   `invalid_argument_source` before Gateway.
 - Wrong type, enum, bounds, pattern, array/object shape, or unknown property:
   `tool_input_schema_invalid` before Gateway.
@@ -132,3 +140,31 @@ seam. Do not hard-code a producer Tool ID into Core.
    behavior remain compatible.
 8. A 24-candidate geometry payload is absent from the model prompt while the
    Coordinator resolves the exact full candidate array for the consumer.
+9. Paginated discovery finds items beyond the initial summary; identity-matched
+   entities and reordered envelopes form a valid nested consumer input. The
+   selected receipt executes the exact persisted arguments through the existing
+   wrapper, without a producer-specific builder in Core.
+
+## Selection example and continuation
+
+```json
+{"argument_sources": {
+  "selected_category": {
+    "record_id": "understanding",
+    "path": ["response", "data", "entities", 4, "category"],
+    "target_path": ["targets", 0, "category"]
+  }
+}}
+```
+
+The Agent supplies the other consumer fields with additional explicit mappings
+or literals. It matches identities itself; Coordinator does not infer array joins,
+compute geometry, silently drop fields, or overwrite literals. Both source and
+destination paths are ordinary typed paths, not executable expressions.
+
+Later turns receive recent persisted selection diagnostics for the same node and
+revision. A turn that ends with rejections and no admitted receipt stops with the
+last diagnostic instead of starting an empty-history retry. An admitted unconsumed
+receipt retains the existing bounded continuation. `planning_node_blocked` events
+record the runner checkpoint; task lifecycle remains resumable `executing` until
+existing task controls change it. A blocked runner is not ongoing Tool execution.

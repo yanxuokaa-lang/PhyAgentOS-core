@@ -327,7 +327,7 @@ class AgentLoop:
         if self._planning_dispatch is not None:
             from PhyAgentOS.agent.tools.planning import ForgePlanReadyTool
 
-            self.tools.register(ForgePlanReadyTool(self._planning_dispatch))
+            self.tools.register(ForgePlanReadyTool(self._planning_dispatch, self.forge_task_coordinator))
             self.tools.set_execution_guard(self._planning_guard)
 
     def set_planning_dispatch(self, dispatch: AgentComposedDispatch | None) -> None:
@@ -342,7 +342,7 @@ class AgentLoop:
         if dispatch is not None:
             from PhyAgentOS.agent.tools.planning import ForgePlanReadyTool
 
-            self.tools.register(ForgePlanReadyTool(dispatch))
+            self.tools.register(ForgePlanReadyTool(dispatch, self.forge_task_coordinator))
 
     def set_long_horizon_controller(self, controller: Any | None) -> None:
         """Attach the host-owned long-horizon lifecycle seam to this AgentLoop."""
@@ -842,6 +842,20 @@ class AgentLoop:
 
                 yield_to_host = False
                 for call_index, tool_call in enumerate(response.tool_calls):
+                    if (
+                        projection_scope == "node"
+                        and tool_call.name == "forge_plan_ready"
+                        and tool_call.arguments.get("source_record_id") is not None
+                        and tool_call.arguments.get("node_id") != projection_node_id
+                    ):
+                        messages = self.context.add_tool_result(
+                            messages, tool_call.id, tool_call.name,
+                            json.dumps({"ok": False, "error": {
+                                "code": "source_node_out_of_scope",
+                                "message": "Browse sources only for the current node: " + str(projection_node_id),
+                            }, "motion_authorized": False}),
+                        )
+                        continue
                     if (
                         allowed_tool_names is not None
                         and tool_call.name not in allowed_tool_names
