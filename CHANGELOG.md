@@ -56,7 +56,7 @@ Gateway calls.
 - Installed Runtime remains running Skill `2.2.0`; source bundle is `2.2.1`.
   Active old task `task_05a957a8476c4a95` was not stopped or resumed; no Runtime
   update/restart, Gateway Tool, Action, Session, simulator step, or motion occurred.
-- Implementation commit: pending; branch: `feature/planning-loop`.
+- Implementation commit: `6e3f7f2`; branch: `feature/planning-loop`.
 
 ## v10.8.10 (2026-09-18 20:59) - codex
 
