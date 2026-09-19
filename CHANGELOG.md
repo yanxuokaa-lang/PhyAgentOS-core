@@ -247,7 +247,8 @@ index 3e8963f..66b98e1 100644
 
 ### Git 提交 / Git
 
-- Branch: `feature/planning-loop`; implementation commit recorded in the following log closeout.
+- Branch: `feature/planning-loop`; implementation commit: `b45bf3e`; log closeout follows on the same branch.
+- 日志范围 / Log ranges: `changelog/2026-09_part12.md` L1–L235; `CHANGELOG.md` new archive link L5, latest entry L19–L251; latest-five boundary moved before v10.9.5 without changing historical content.
 
 ## v10.10.1 (2026-09-20 05:48) - codex
 
