@@ -135,11 +135,22 @@ current SAPIEN simulation.
 
 ## Route Data Model
 
-Persistent route scene facts (v2) retain non-target Runtime collision objects.
+Observation-driven route scene facts (v2) retain non-target observed collision objects.
 Only the selected visual target receives the Agent-requested destination;
 static obstacles need no target pose. A target missing its complete destination
-is rejected, and the legacy v1 all-target shape remains unchanged. Runtime
-obstacle geometry is safety context, not visual perception evidence.
+is rejected, and the legacy v1 all-target shape remains unchanged. Simulator
+obstacle geometry is restricted to explicitly configured legacy benchmark routes.
+
+Persistent preparation qualifies bounded contact variants after nominal route
+materialization. Its internal serialized Runtime Query uses calibrated robot
+hand geometry, observed object/support geometry and the profile's existing
+`contact_backoff_candidates_m`. It checks mesh support, object containment and
+finger envelope before collision-aware contact planning. Each qualified arm's
+variant is rematerialized, including attachment and placement transforms. Full
+readiness then selects among those arm/route options; prefix success is never
+promoted to full-route or dynamic evidence. No qualification grants motion.
+All stages share the preparation deadline. `no_qualified_contacts` includes
+bounded rejection counts and persisted diagnostic references for Agent recovery.
 
 Materialization distinguishes an explicit candidate workspace rejection from
 deployment or process failure. Workspace-rejected candidates are recorded in

@@ -135,6 +135,16 @@ def build_collision_world(
             "state": "static",
             "provenance": [source_scene_facts_ref, geometry_ref],
         })
+    support = facts.get("support_surface", {})
+    for index, box in enumerate(support.get("residual_boxes", [])):
+        obstacles.append({
+            "entity_ref": f"entity://observed-support-residual/{index}",
+            "geometry_ref": support["evidence_ref"], "shape": "cuboid",
+            "half_extents_m": box["half_extents_m"],
+            "world_T_entity": {"frame_id": "world", "position_m": box["position_m"],
+                               "orientation_xyzw": [0., 0., 0., 1.]},
+            "state": "static", "provenance": [source_scene_facts_ref, support["evidence_ref"]],
+        })
     resolved_cache_capacity = len(obstacles) if cache_capacity is None else cache_capacity
     if (
         not isinstance(resolved_cache_capacity, int)

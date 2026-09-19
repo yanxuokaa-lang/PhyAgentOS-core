@@ -11,6 +11,7 @@ from pick_place_workflow.persistent_runtime import build_persistent_runtime
 
 from .arm_candidates import CompleteRouteSelector
 from .grounding import Grounding, GroundingEndpoint, RememberObservation
+from .observed_support import SupportEstimationPolicy
 from .persistent_capabilities import PersistentCapabilityProvider
 from .persistent_client import build_persistent_route_readiness
 from .persistent_preparation import PersistentPreparationProvider
@@ -108,7 +109,8 @@ def build_persistent_deployment(*, client, artifact_root: Path, scene_source,
         command=materializer_command, materializer_arguments=materializer_arguments,
         timeout_s=materializer_timeout_s,
     )
-    grounding = Grounding(client, artifact_root, scene_source)
+    grounding = Grounding(client, artifact_root, scene_source,
+                          support_policy=SupportEstimationPolicy(**profile.get("observed_support", {})))
     builder.scene_source = grounding.scene_facts
     routes = PreparedRoutes(client, artifact_root)
     evaluator = readiness_evaluator if readiness_evaluator is not None else RouteReadinessEvaluationAdapter(

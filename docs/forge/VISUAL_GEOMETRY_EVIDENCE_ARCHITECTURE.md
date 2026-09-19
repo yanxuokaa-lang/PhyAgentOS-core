@@ -65,10 +65,18 @@ simulator-specific identity/safety diagnostics, not perception or planner inputs
 All movable collision objects use bound visual envelopes. Incomplete coverage
 returns `observed_collision_coverage_incomplete`; hidden actor boxes are not a
 fallback. Support comes from the metric cloud named by observed `on` relations.
-Its world-axis bounds describe observed occupancy, not a ground-truth tabletop
-plane. Missing or ambiguous support prevents readiness. Noise and occlusion can
-cause conservative over-rejection; replacing estimates with actor meshes is not
-an acceptable remedy.
+The horizontal-support provider estimates a dominant world-Z surface by median
+consensus, requires spatial coverage and a bounded fitted slope, and adds the
+configured uncertainty to the upper inlier height. All out-of-consensus points
+remain in local residual collision boxes; high points do not raise the whole
+table and are not discarded. Missing, tilted or ambiguous support prevents
+readiness. This remains a sensor-derived model, not a simulator tabletop plane.
+
+The optional adapter route-profile `observed_support` configures
+`inlier_distance_m` (0.002), `minimum_inlier_fraction` (0.7), `minimum_points` (30),
+`residual_cell_m` (0.02), `uncertainty_m` (0.001) and `maximum_slope` (0.02).
+These are estimator assumptions, not values to tune against simulator answers.
+The persisted support estimate records its policy, counts, height and slope.
 
 Materialized records label this source `observed_envelope`. Attached-object
 planning consumes a planner-only view of the estimated pose. Calibrated robot

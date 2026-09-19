@@ -141,7 +141,7 @@ def _load_profile(path: Path) -> Mapping[str, Any]:
         "grasp_adaptation", "route_policy", "joint_limit_policy", "stop_policy",
         "semantic_tolerance",
     }
-    if not isinstance(value, Mapping) or set(value) != required:
+    if not isinstance(value, Mapping) or not required <= set(value) or set(value) - required - {"observed_support"}:
         raise MaterializationError("route input profile fields are invalid")
     if value["schema_version"] != ROUTE_INPUT_PROFILE_SCHEMA_VERSION or value["route_frame_id"] != "world":
         raise MaterializationError("route input profile schema/frame is unsupported")

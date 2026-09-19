@@ -154,6 +154,10 @@ def validate_scene_facts(value: Any) -> dict[str, Any]:
             raise RouteInputError("observed support bounds are invalid")
         if not str(support.get("evidence_ref", "")).startswith("artifact://"):
             raise RouteInputError("observed support evidence is missing")
+        for residual in support.get("residual_boxes", []):
+            _finite_vector(residual.get("position_m"), 3, "support residual position")
+            if any(x <= 0 for x in _finite_vector(residual.get("half_extents_m"), 3, "support residual extents")):
+                raise RouteInputError("support residual bounds are invalid")
     if value["schema_version"] not in {ROUTE_SCENE_FACTS_SCHEMA_VERSION, CURRENT_SCENE_FACTS_SCHEMA_VERSION}:
         raise RouteInputError("route scene facts schema is unsupported")
     if value["route_frame_id"] != "world" or value["motion_authorized"] is not False or value["robot_control_steps"] != 0:

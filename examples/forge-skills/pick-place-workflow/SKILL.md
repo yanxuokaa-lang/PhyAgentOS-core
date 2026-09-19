@@ -31,6 +31,10 @@ fill gaps with simulator object poses or dimensions. Estimated envelope axes are
 model coordinates, not proof of a physical object's orientation. A preparation
 error reporting unavailable readiness capabilities or provider failure requires
 diagnosing that evidence; regenerating candidates alone does not repair it.
+If preparation reports unqualified contact geometry, inspect its rejection
+summary and evidence. Refresh or improve the relevant observed geometry when
+support or finger-fit evidence is insufficient. A contact-qualified candidate
+still requires complete-route readiness; it is not motion authorization.
 
 The graph represents your chosen obligations and dependencies. One PlanNode is one
 settlement unit completed by one selected Tool. A composite intention such as

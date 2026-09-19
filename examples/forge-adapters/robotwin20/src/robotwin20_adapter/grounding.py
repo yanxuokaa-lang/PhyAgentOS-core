@@ -10,6 +10,7 @@ from PhyAgentOS.forge.capability_runtime.manipulation_prepare import Preparation
 from pick_place_workflow.grounding import IDENTITY_KEYS
 
 from .observed_binding import correspond, rigid_transform
+from .observed_support import SupportEstimationPolicy, estimate_support
 from .route_evidence import _artifact_path
 
 _DEFERRED_BINDING_AMBIGUITIES = {
@@ -21,8 +22,9 @@ _DEFERRED_BINDING_AMBIGUITIES = {
 
 
 class Grounding:
-    def __init__(self, client, root, scene_source):
+    def __init__(self, client, root, scene_source, *, support_policy=None):
         self.client, self.root, self.source = client, root, scene_source
+        self.support_policy = support_policy or SupportEstimationPolicy()
         self.observations = {}
         self.understandings = {}
         self.bindings = {}
@@ -412,7 +414,7 @@ class Grounding:
         return facts
 
     def _observed_support(self, binding):
-        """Bound the observed support cloud in world axes, without actor meshes."""
+        """Estimate support and retain residual occupancy without actor meshes."""
         identity = tuple(binding[k] for k in IDENTITY_KEYS)
         understanding = self.understandings[identity]
         refs = {r["object_ref"] for r in understanding.get("relations", [])
@@ -434,11 +436,10 @@ class Grounding:
             raise ValueError("observed support point cloud is invalid")
         transform = rigid_transform(binding["world_T_observation"])
         world = points @ transform[:3, :3].T + transform[:3, 3]
-        low, high = world.min(axis=0), world.max(axis=0)
-        if np.any(high <= low):
-            raise ValueError("observed support extent is degenerate")
-        return {"position_m": ((low + high) / 2).tolist(), "orientation_wxyz": [1., 0., 0., 0.],
-                "half_extents_m": ((high - low) / 2).tolist(), "evidence_ref": cloud["artifact_ref"]}
+        try:
+            return estimate_support(world, cloud["artifact_ref"], self.support_policy)
+        except ValueError as exc:
+            raise PreparationProviderError("observed_support_unavailable", str(exc)) from exc
 
 
 class GroundingEndpoint:

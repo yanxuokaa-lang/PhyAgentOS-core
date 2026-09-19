@@ -69,13 +69,14 @@ def test_support_bounds_come_from_metric_cloud_not_simulator(tmp_path):
     identity = {k: request[k] for k in ("observation_ref", "scene_revision", "calibration_ref")}
     u["derived_artifacts"].append({**identity, "entity_ref": "entity://support", "frame_id": "camera",
                                    "kind": "object_point_cloud", "artifact_ref": "artifact://capture/support"})
-    np.save(tmp_path / "capture/support.npy", [[-.5, -.4, .73], [.5, .4, .75], [.2, .1, .74]])
+    cloud = [[x, y, .74] for x in np.linspace(-.5, .5, 8) for y in np.linspace(-.4, .4, 8)]
+    np.save(tmp_path / "capture/support.npy", cloud)
     b = g.bind(request)
     support = g._observed_support(g.bindings[b["binding_ref"]])
     assert support["position_m"] == pytest.approx([0, 0, .74])
-    assert support["half_extents_m"] == pytest.approx([.5, .4, .01])
+    assert support["half_extents_m"] == pytest.approx([.5, .4, .001])
     task = SimpleNamespace(_paos_observed_support=support)
-    assert _table_top_z(task) == pytest.approx(.75)
+    assert _table_top_z(task) == pytest.approx(.741)
     task._paos_observed_support = None
     with pytest.raises(probe.SimulationProbeError, match="observed support"):
         _table_top_z(task)

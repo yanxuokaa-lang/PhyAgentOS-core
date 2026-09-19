@@ -259,14 +259,21 @@ class RoboTwinPersistentEngine:
             captured = asdict(self.observation.observe(arguments["sensor_ref"]))
             captured["captured_at"] = captured["captured_at"].isoformat()
             return captured
-        if operation == "route_readiness":
+        if operation in {"route_readiness", "contact_qualification"}:
             from robotwin_route_planner import RoboTwinRouteEvaluator
             from robotwin_route_readiness_worker import _handle_factory
+
+            from robotwin20_adapter.preparation_deadline import PreparationDeadline
 
             evaluator = RoboTwinRouteEvaluator(
                 Path(self.profile["runtime_root"]), Path(self.profile["runtime_profile"]),
                 self.root, backend=self.backend,
+                contact_arms=arguments["allowed_arms"] if operation == "contact_qualification" else None,
+                deadline=PreparationDeadline.start(arguments["timeout_s"]) if operation == "contact_qualification" else None,
             )
+            if operation == "contact_qualification":
+                probe.validate_route_request(arguments["route_request"])
+                return evaluator(arguments["route_request"])
             return dict(_handle_factory(self.root, "persistent-route-readiness", evaluator)(arguments))
         if operation in {"benchmark_scene_facts", "execution_scene_facts"} and self.profile.get("allow_benchmark_scene_facts") is True:
             from robotwin_route_input_worker import capture_scene_facts

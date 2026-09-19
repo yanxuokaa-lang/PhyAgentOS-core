@@ -76,7 +76,8 @@ def _validate_trajectory(
     import numpy as np
 
     if result.get("status") != "Success":
-        raise SimulationProbeError("planner route segment failed")
+        detail = result.get("native_planner_status", "unavailable")
+        raise SimulationProbeError(f"planner route segment failed: {detail}")
     source_positions = np.asarray(result.get("position"))
     source_velocities = np.asarray(result.get("velocity"))
     if not np.issubdtype(source_positions.dtype, np.floating) or not np.issubdtype(

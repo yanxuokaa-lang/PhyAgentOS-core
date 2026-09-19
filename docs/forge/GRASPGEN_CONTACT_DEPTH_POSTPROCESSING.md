@@ -2,6 +2,15 @@
 
 ## Purpose
 
+The persistent observation-driven path now reuses this qualification inside
+`manipulation.prepare`. It consumes observed support and object geometry;
+robot hand vertices come from embodiment geometry at measured joints. Qualified
+arm variants are rematerialized before complete-route readiness. The historical
+standalone benchmark commands below remain simulator-reference experiments and
+are not proof of perception-only success. Frozen replay also retains support
+residual obstacles and the original proposal; it never inserts an old successful
+grasp or a fixed backoff.
+
 GraspGen's `depth` is the trained gripper-base-to-TCP geometry.  It is not a
 free insertion-depth parameter and must not be globally changed or applied a
 second time.  For small tabletop objects, the complete Panda hand/finger

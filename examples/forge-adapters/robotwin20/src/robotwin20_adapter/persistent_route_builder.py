@@ -79,6 +79,7 @@ class PersistentRouteBuilder:
         *,
         deadline: PreparationDeadline | None = None,
         metrics: dict[str, Any] | None = None,
+        _nominal_only: bool = False,
     ) -> dict[str, Any]:
         intent = ManipulationIntent.model_validate(request["intent"])
         if deadline is not None:
@@ -201,6 +202,81 @@ class PersistentRouteBuilder:
         validate_route_request(base)
         options = enumerate_arm_candidates(intent, candidates, self.arm_profile)
         self._import_artifacts(output_roots)
+        result = {"destination_ref": request["destination_ref"], "base_request": base,
+                  "options": options, "reviews": reviews}
+        if facts.get("geometry_source") == "observation" and not _nominal_only:
+            return self._qualify_contacts(request, result, run, deadline, metrics)
+        return result
+
+    def _qualify_contacts(self, request, bundle, run, deadline, metrics):
+        """Qualify nominal grasps, then regenerate all dependent route geometry."""
+        deadline = deadline or PreparationDeadline.start(self.timeout_s)
+        from collections import Counter
+
+        qualified = {}
+        reviews, options = {}, []
+        rejections = Counter()
+        base = None
+        for index, candidate in enumerate(bundle["base_request"]["candidates"]):
+            route = {**bundle["base_request"], "candidates": [candidate]}
+            timeout = deadline.remaining("contact_qualification")
+            started = monotonic()
+            response = self.client.query("contact_qualification", {
+                "route_request": route, "allowed_arms": request["intent"]["allowed_arms"],
+                "timeout_s": timeout}, timeout_s=timeout)
+            result = response["candidates"][candidate["candidate_ref"]]
+            diagnostic = run / f"contact-{index}.json"
+            diagnostic.write_text(json.dumps(result), encoding="utf-8")
+            diagnostic_ref = f"artifact://preparation-builds/{run.name}/contact-{index}"
+            if metrics is not None:
+                metrics.setdefault("contact_qualification", []).append({
+                    "candidate_ref": candidate["candidate_ref"], "status": result["status"],
+                    "elapsed_s": monotonic() - started, "evidence_ref": diagnostic_ref})
+            deadline.remaining("contact_qualification")
+            for attempt in result.get("arm_attempts", []):
+                for variant in attempt["qualification"]["variants"]:
+                    rejections.update(variant["rejection_reasons"])
+            if result["status"] != "qualified":
+                continue
+            if (result.get("scene_revision") != route["scene_revision"]
+                    or result.get("candidate_ref") != candidate["candidate_ref"]
+                    or result.get("arm_id") not in request["intent"]["allowed_arms"]
+                    or result.get("motion_authorized") is not False):
+                raise ValueError("contact qualification does not bind the current candidate and arm")
+            raw = next(c for c in request["candidates"] if c["candidate_ref"] == candidate["candidate_ref"])
+            for attempt in result["arm_attempts"]:
+                arm, value = attempt["arm_id"], attempt["qualification"]
+                if value["status"] != "qualified":
+                    continue
+                if arm not in request["intent"]["allowed_arms"]:
+                    raise ValueError("qualified arm is not allowed by the manipulation intent")
+                qualification = run / f"qualification-{index}-{arm}.json"
+                qualification.write_text(json.dumps(value), encoding="utf-8")
+                child = PersistentRouteBuilder(client=self.client, artifact_root=self.root,
+                    scene_source=self.scene_source, command=self.command, timeout_s=self.timeout_s,
+                    materializer_arguments={**self.arguments, "contact-qualification": str(qualification),
+                        "contact-qualification-ref": f"artifact://preparation-builds/{run.name}/qualification-{index}-{arm}"})
+                try:
+                    rebuilt = child.build({**request, "candidates": [raw]}, deadline=deadline,
+                                          metrics=metrics, _nominal_only=True)
+                except PreparationProviderError as exc:
+                    if exc.code != "no_materializable_candidates":
+                        raise
+                    continue
+                base = rebuilt["base_request"] if base is None else base
+                generated = rebuilt["base_request"]["candidates"][0]
+                qualified.setdefault(candidate["candidate_ref"], generated)
+                # Different arms may need different backoffs for the same raw
+                # proposal. Full readiness, not this prefix, chooses the arm.
+                reviews[generated["execution_grasp"]["adaptation_provenance_ref"]] = rebuilt["reviews"][candidate["candidate_ref"]]
+                for option in rebuilt["options"]:
+                    if option["arm_ids"] == [arm]:
+                        options.append({**option, "option_id": f"qualified-{index}-{arm}"})
+        if base is None:
+            raise PreparationProviderError("no_qualified_contacts",
+                f"No observed candidate passed contact qualification and route construction: {dict(rejections)}; "
+                f"diagnostics: artifact://preparation-builds/{run.name}")
+        base["candidates"] = list(qualified.values())
         return {"destination_ref": request["destination_ref"], "base_request": base,
                 "options": options, "reviews": reviews}
 
@@ -219,7 +295,8 @@ class PersistentRouteBuilder:
         candidate = route["candidates"][0]
         if len(route["candidates"]) != 1:
             raise ValueError("finalization requires one selected candidate")
-        review_path = Path(bundle["reviews"][candidate["candidate_ref"]])
+        review_key = candidate["execution_grasp"].get("adaptation_provenance_ref")
+        review_path = Path(bundle["reviews"].get(review_key) or bundle["reviews"][candidate["candidate_ref"]])
         review = json.loads(review_path.read_text(encoding="utf-8"))
         if (review["candidate_ref"] != candidate["candidate_ref"]
                 or review["scene_revision"] != route["scene_revision"]

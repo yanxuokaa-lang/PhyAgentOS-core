@@ -24,13 +24,18 @@ def write(path, value):
 
 
 def build(args):
+    import yaml
+
     from robotwin20_adapter.grounding import Grounding
+    from robotwin20_adapter.observed_support import SupportEstimationPolicy
     from robotwin20_adapter.persistent_route_builder import PersistentRouteBuilder
     from robotwin20_adapter.preparation_deadline import PreparationDeadline
     from robotwin20_adapter.route_evidence import _artifact_path
 
     root = Path(tempfile.mkdtemp(prefix="observed-prepare-", dir=args.output_parent)).resolve()
     source = args.source_root.resolve()
+    argv = json.loads(args.materializer_command.read_text())
+    profile = yaml.safe_load(Path(argv[argv.index("--route-input-profile") + 1]).read_text())
     with sqlite3.connect(args.database.resolve().as_uri() + "?mode=ro", uri=True) as conn:
         task = json.loads(conn.execute("SELECT record_json FROM agent_tasks WHERE task_id=?", (args.task_id,)).fetchone()[0])
     records = [r for rev in task["revisions"] for r in rev["execution_records"]]
@@ -54,7 +59,8 @@ def build(args):
             return {"scene_revision": request["scene_revision"], "holding_state": "empty", "scene_validity": "action_driven"}
 
     client = SavedSceneClient()
-    grounding = Grounding(client, root, lambda _: deepcopy(binding["scene_facts"]))
+    grounding = Grounding(client, root, lambda _: deepcopy(binding["scene_facts"]),
+                          support_policy=SupportEstimationPolicy(**profile.get("observed_support", {})))
     for tool in ("scene.observe", "scene.understand"):
         result = next(r["response"]["data"] for r in reversed(records)
                       if r["tool_id"] == tool and r["response"]["data"].get("scene_revision") == identity["scene_revision"])
@@ -63,7 +69,6 @@ def build(args):
     target_request = {**target["requested_pose"], "binding_ref": bound["binding_ref"]}
     destination = grounding.target(target_request)
     request["destination_ref"] = destination["destination_ref"]
-    argv = json.loads(args.materializer_command.read_text())
     arguments = dict(zip((x.removeprefix("--") for x in argv[2::2]), argv[3::2]))
     for key in ("scene-facts", "source-capture-root", "grasp-results", "artifact-root", "candidate-ref", "entity-ref", "request-id"):
         arguments.pop(key)
@@ -74,7 +79,10 @@ def build(args):
                                      materializer_arguments=arguments, timeout_s=300)
     metrics = {}
     start = monotonic()
-    bundle = builder.build(request, deadline=PreparationDeadline.start(args.deadline), metrics=metrics)
+    # Offline stage contains nominal materialization only. Runtime-dependent
+    # contact qualification runs in evaluate, under the same preparation budget.
+    bundle = builder.build(request, deadline=PreparationDeadline.start(args.deadline), metrics=metrics,
+                           _nominal_only=True)
     write(root / "bundle.json", bundle)
     write(root / "request.json", request)
     write(root / "replay.json", {"task_id": args.task_id, "source_root": str(source), "source_binding": target["binding_ref"],
@@ -93,6 +101,7 @@ def evaluate(args):
         build_persistent_route_readiness,
     )
     from robotwin20_adapter.persistent_preparation import PersistentPreparationProvider
+    from robotwin20_adapter.persistent_route_builder import PersistentRouteBuilder
     from robotwin20_adapter.prepared_routes import PreparedRoutes
     from robotwin20_adapter.process_worker import JsonlProcessWorkerClient, ProcessWorkerConfig
     from robotwin20_adapter.route_readiness import RouteReadinessEvaluationAdapter
@@ -119,7 +128,7 @@ def evaluate(args):
         startup_timeout_s=180, request_timeout_s=args.deadline, max_line_bytes=8_388_608,
     ))
     client = PersistentWorkerClient(worker)
-    result = {"gateway_calls": 0, "motion_authorized": False, "simulator_steps": 0,
+    result = {"gateway_calls": 0, "motion_authorized": False, "simulator_steps": None,
               "runtime_profile": profile, "reset_before_readiness": True, "build_root": str(source),
               "runtime_python": str(args.runtime_python), "deadline_s": args.deadline,
               "source_snapshot": str(snapshot), "runtime_profile_contents": Path(profile["runtime_profile"]).read_text()}
@@ -127,9 +136,22 @@ def evaluate(args):
     try:
         client.query("bind_observed_entities", {"binding_ref": info["binding_ref"]})
 
+        argv = info["materializer_command"]
+        arguments = dict(zip((x.removeprefix("--") for x in argv[2::2]), argv[3::2]))
+        for key in ("scene-facts", "source-capture-root", "grasp-results", "artifact-root", "candidate-ref", "entity-ref", "request-id"):
+            arguments.pop(key)
+        facts = json.loads(next((root / "preparation-builds").glob("*/scene-facts.json")).read_text())
+        builder = PersistentRouteBuilder(client=client, artifact_root=root,
+            scene_source=lambda request, **kwargs: deepcopy(facts),
+            command=(sys.executable, str(snapshot / "scripts/materialize_complete_route.py")),
+            materializer_arguments=arguments, timeout_s=args.deadline)
+        qualification_run = root / "preparation-builds" / "contact-qualification"
+        qualification_run.mkdir()
+
         class Builder:
             def build(self, *args, **kwargs):
-                return deepcopy(bundle)
+                return builder._qualify_contacts(request, deepcopy(bundle), qualification_run,
+                                                kwargs.get("deadline"), kwargs.get("metrics"))
 
             def finalize(self, *args, **kwargs):
                 raise RuntimeError("replay does not publish execution approval")
@@ -150,6 +172,11 @@ def evaluate(args):
         result["initialization_error"] = {"type": type(exc).__name__, "message": str(exc)}
         raise
     finally:
+        try:
+            snapshot_state = client.query("snapshot", {})
+            result["simulator_steps"] = snapshot_state["replay_readiness_step_calls"]
+        except Exception as exc:
+            result["step_measurement_error"] = str(exc)
         client.close()
         result["worker_stderr_tail"] = list(worker._stderr_tail)
         result["total_s"] = monotonic() - start
@@ -170,12 +197,19 @@ def run_worker(args):
     profile.update(artifact_root=str(root), stop_file=str(root / "stop"), video={"enabled": False, "fps": 25., "stride_steps": 4})
     engine = None
     provider = None
+    step_calls = 0
+
+    def forbid_readiness_step(*args, **kwargs):
+        nonlocal step_calls
+        step_calls += 1
+        raise RuntimeError("no-motion replay cannot step the simulator after initialization")
 
     def factory():
         nonlocal engine
         engine = RoboTwinPersistentEngine(profile)
         # Logical replay identity only. Never teleport actors to fit observations.
         engine.backend._scene_revision = request["scene_revision"]
+        engine.backend._task.scene.step = forbid_readiness_step
         return engine
 
     def load():
@@ -185,12 +219,13 @@ def run_worker(args):
 
     def handle(payload):
         operation = payload.get("operation")
-        if payload.get("command") != "query" or operation not in {"bind_observed_entities", "snapshot", "route_readiness"}:
+        if payload.get("command") != "query" or operation not in {"bind_observed_entities", "snapshot", "route_readiness", "contact_qualification"}:
             raise ValueError("no-motion replay permits only binding, snapshot and readiness")
         try:
             with redirect_stdout(sys.stderr):
                 result = provider.query(operation, payload.get("arguments", {}))
-            return {**result, "request_id": payload["request_id"], "ok": True}
+            return {**result, "request_id": payload["request_id"], "ok": True,
+                    "replay_readiness_step_calls": step_calls}
         except Exception as exc:
             return {"request_id": payload["request_id"], "ok": False,
                     "error": {"code": type(exc).__name__, "message": str(exc)}}

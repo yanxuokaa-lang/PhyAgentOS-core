@@ -27,6 +27,52 @@ def test_benchmark_source_removes_only_provider_envelope():
     assert BenchmarkSceneSource(Client())({"calibration_ref": facts["calibration_ref"]}) == facts
 
 
+@pytest.mark.parametrize("qualified", [True, False])
+def test_persistent_contacts_are_rematerialized_before_full_readiness(tmp_path, monkeypatch, qualified):
+    from PhyAgentOS.forge.capability_runtime.manipulation_prepare import PreparationProviderError
+
+    from robotwin20_adapter.preparation_deadline import PreparationDeadline
+
+    request, builder, calls = setup_builder(tmp_path, monkeypatch)
+    second = deepcopy(request["candidates"][0])
+    second["candidate_ref"] += "-second"
+    request["candidates"].append(second)
+    nominal = builder.build(request)
+    operation_log = []
+    def query(operation, arguments, **kwargs):
+        operation_log.append(operation)
+        if operation == "snapshot":
+            return dict(builder.client.snapshot)
+        assert operation == "contact_qualification"
+        candidate = arguments["route_request"]["candidates"][0]
+        return {"candidates": {candidate["candidate_ref"]: {
+            "status": "qualified" if qualified else "unavailable", "motion_authorized": False,
+            "scene_revision": request["scene_revision"], "candidate_ref": candidate["candidate_ref"],
+            "arm_id": "right", "arm_attempts": [{"arm_id": arm, "qualification": {
+                "parent_candidate_ref": candidate["candidate_ref"], "status": "qualified" if qualified else "unavailable",
+                "variants": []}} for arm in ("left", "right")]}}}
+    builder.client.query = query
+    original_source = builder.scene_source
+    builder.scene_source = lambda request, **kwargs: original_source(request)
+    run = tmp_path / "preparation-builds/contacts"
+    run.mkdir()
+    metrics = {}
+    if not qualified:
+        with pytest.raises(PreparationProviderError, match="No observed candidate"):
+            builder._qualify_contacts(request, nominal, run, PreparationDeadline.start(30), metrics)
+        assert len(calls) == 2
+    else:
+        rebuilt = builder._qualify_contacts(request, nominal, run, PreparationDeadline.start(30), metrics)
+        assert len(calls) == 6
+        assert all("--contact-qualification" in call for call in calls[2:])
+        assert len({o["option_id"] for o in rebuilt["options"]}) == 4
+        assert {tuple(o["arm_ids"]) for o in rebuilt["options"]} == {("left",), ("right",)}
+        assert len(rebuilt["reviews"]) == 4
+    assert operation_log.count("contact_qualification") == 2
+    assert len(metrics["contact_qualification"]) == 2
+    assert len(list(run.glob("contact-*.json"))) == 2
+
+
 def setup_builder(tmp_path, monkeypatch):
     profile = tmp_path / "arms.yaml"
     profile.write_text(yaml.safe_dump(_profile()))
@@ -56,6 +102,7 @@ def setup_builder(tmp_path, monkeypatch):
         calls.append(arguments)
         generated = deepcopy(route)
         generated["request_id"] = arguments["--request-id"]
+        generated["candidates"][0]["execution_grasp"]["adaptation_provenance_ref"] = f"artifact://adaptation/{generated['request_id']}"
         generated["candidates"][0]["candidate_ref"] = arguments["--candidate-ref"]
         output = Path(arguments["--artifact-root"])
         (output / "route_request.json").write_text(json.dumps(generated))

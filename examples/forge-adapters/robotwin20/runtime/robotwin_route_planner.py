@@ -26,6 +26,33 @@ from robotwin_planning_geometry import (
 )
 
 
+def plan_path_with_status(task, arm, pose, **kwargs):
+    """Retain the native provider status that RoboTwin's public wrapper drops."""
+    planner = getattr(task.robot, f"{arm}_planner")
+    model = getattr(planner, "motion_gen", None)
+    original = getattr(model, "plan_single", None)
+    status = []
+    def capture(*args, **kw):
+        result = original(*args, **kw)
+        status.append(str(getattr(result, "status", "unavailable")))
+        return result
+    # Runtime serializes all world queries. Restore the instance even on error.
+    had_override = model is not None and "plan_single" in vars(model)
+    if callable(original):
+        model.plan_single = capture
+    try:
+        result = getattr(task.robot, f"{arm}_plan_path")(pose, **kwargs)
+        if status and result.get("status") != "Success":
+            result = {**result, "native_planner_status": status[-1]}
+        return result
+    finally:
+        if callable(original):
+            if had_override:
+                model.plan_single = original
+            else:
+                del model.plan_single
+
+
 def prepare_planning_world(task: Any, collision_world: Mapping[str, Any]) -> dict[str, Any]:
     bind_scene_table(task)
     state = _capture_dual_arm_state(task, collision_world["scene_revision"])
@@ -75,15 +102,14 @@ def evaluate_contact(
         approach = list(pose)
         for i in range(3):
             approach[i] -= approach_clearance_m * execution_grasp["ingress_direction"]["vector"][i]
-        plan = getattr(task.robot, f"{arm}_plan_path")
-        ingress = plan(approach)
+        ingress = plan_path_with_status(task, arm, approach)
         _validate_trajectory(ingress, _joint_limits(planner))
         _validate_gripper_table_clearance(
             task, arm, ingress["position"], phase="approach", gripper_state="open"
         )
         predicted = np.asarray(getattr(task.robot, f"{arm}_entity").get_qpos()).copy()
         predicted[:7] = np.asarray(ingress["position"])[-1]
-        result = plan(pose, last_qpos=predicted.tolist())
+        result = plan_path_with_status(task, arm, pose, last_qpos=predicted.tolist())
         _validate_trajectory(result, _joint_limits(planner))
         _validate_gripper_table_clearance(
             task, arm, result["position"], phase="contact", gripper_state="open"
@@ -157,7 +183,7 @@ def evaluate_route_arm(
                     request["workspace_bounds_m"],
                     candidate["attached_object"]["half_extents_m"],
                 )
-                result = getattr(task.robot, f"{arm}_plan_path")(pose, last_qpos=predicted.tolist())
+                result = plan_path_with_status(task, arm, pose, last_qpos=predicted.tolist())
                 _validate_trajectory(result, limits)
                 _validate_gripper_table_clearance(
                     task,
@@ -247,12 +273,14 @@ def evaluate_route(
 class RoboTwinRouteEvaluator:
     """Injected implementation for the existing route-readiness worker."""
 
-    def __init__(self, runtime_root, runtime_profile, artifact_root, *, diagnose_failure=False, backend=None):
+    def __init__(self, runtime_root, runtime_profile, artifact_root, *, diagnose_failure=False, backend=None,
+                 contact_arms=None, deadline=None):
         self.runtime_root = runtime_root
         self.runtime_profile = runtime_profile
         self.artifact_root = artifact_root
         self.diagnose_failure = diagnose_failure
         self.backend = backend
+        self.contact_arms, self.deadline = contact_arms, deadline
 
     def __call__(self, request):
         import hashlib
@@ -319,6 +347,17 @@ class RoboTwinRouteEvaluator:
                     for item in scene["objects"]
                     if item["entity_ref"] == candidate["entity_ref"]
                 )
+                if self.contact_arms is not None:
+                    from robotwin_contact_qualification import qualify_observed_contact
+                    from robotwin_simulation_probe_worker import _load_json_artifact
+
+                    if scene.get("geometry_source") != "observation":
+                        raise SimulationProbeError("persistent contact qualification requires observed geometry")
+                    adaptation = _load_json_artifact(self.artifact_root, candidate["execution_grasp"]["adaptation_provenance_ref"])
+                    results[candidate["candidate_ref"]] = qualify_observed_contact(
+                        task, request, candidate, record, adaptation, self.contact_arms, self.deadline,
+                        runtime_profile=dict(profile))
+                    continue
                 actor = (ObservedGeometryActor(record["world_T_object"])
                          if scene.get("geometry_source") == "observation"
                          else getattr(task, record["actor_name"]))

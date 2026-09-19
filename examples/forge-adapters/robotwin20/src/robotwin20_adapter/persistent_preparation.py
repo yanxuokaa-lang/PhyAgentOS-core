@@ -69,6 +69,10 @@ class PersistentPreparationProvider:
                 "failure_owner": "preparation",
             }
             if isinstance(exc, PersistentWorkerError):
+                if exc.code == "PreparationDeadlineExceededError":
+                    from .preparation_deadline import PreparationDeadlineExceededError
+
+                    raise PreparationDeadlineExceededError(str(exc)) from exc
                 public_errors = {
                     "BindingPoseUnavailableError": (
                         "binding_pose_unavailable",
