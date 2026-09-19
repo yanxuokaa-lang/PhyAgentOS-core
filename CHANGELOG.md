@@ -537,7 +537,7 @@ def test_cli_persists_public_failure_and_exits_unsuccessfully(tmp_path, monkeypa
 
 ### Git 提交 / Git
 
-- Branch: `feature/planning-loop`; implementation commit recorded after commit.
+- Branch: `feature/planning-loop`; implementation commit: `db165b5`; documentation closeout on the same branch.
 
 - 日志范围 / Log ranges: `changelog/2026-09_part11.md` L3-L528; `CHANGELOG.md` L17-L542. Archive link added; latest-five boundary updated without deleting historical entries.
 
