@@ -55,6 +55,17 @@ def test_worker_config_rejects_path_lookup_and_relative_cwd(tmp_path):
         ProcessWorkerConfig(command=(sys.executable, str(FIXTURE)), cwd=Path("relative"))
 
 
+def test_per_request_budget_includes_waiting_for_transport_lock():
+    client = _client()
+    client._lock.acquire()
+    try:
+        with pytest.raises(TimeoutError, match="waiting for transport"):
+            client.request({"request_id": "waiting"}, timeout_s=0.01)
+        assert client._process is None
+    finally:
+        client._lock.release()
+
+
 def test_graspgen_model_output_isolated_from_jsonl_stdout(monkeypatch, capsys):
     import importlib.util
 

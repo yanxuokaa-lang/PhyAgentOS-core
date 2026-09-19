@@ -72,7 +72,9 @@ def _profile(tmp_path: Path) -> tuple[dict, dict[str, str]]:
             "shutdown_timeout_s": 5,
             "action_max_duration_s": 7,
         },
+        "video": {"enabled": True, "fps": 25, "stride_steps": 4},
         "materializer_timeout_s": 5,
+        "preparation_timeout_s": 4,
         "allow_benchmark_scene_facts": True,
     }
     return profile, {"ROBOTWIN20_MODEL_API_KEY": "test-secret"}
@@ -97,6 +99,7 @@ grasp_profile: /grasp.yaml
 materializer_arguments: /materializer.yaml
 model: {api_base: https://models.invalid/v1, model: test, api_key_env: KEY, reasoning_effort: low, timeout_seconds: 5, max_output_tokens: 128}
 worker: {startup_timeout_s: 5, request_timeout_s: 5, shutdown_timeout_s: 5, action_max_duration_s: 7}
+video: {enabled: true, fps: 25, stride_steps: 4}
 materializer_timeout_s: 5
 allow_benchmark_scene_facts: true
 """,
@@ -111,6 +114,19 @@ allow_benchmark_scene_facts: true
     assert loaded["artifact_root"] == "/artifacts"
     assert loaded["agent"] == {"enabled": False}
     assert loaded["tools"] == {"enabled": True}
+
+
+def test_legacy_v1_profile_without_video_configuration_remains_loadable(tmp_path):
+    profile, _environ = _profile(tmp_path)
+    profile.pop("video")
+    profile.pop("preparation_timeout_s")
+    profile_path = tmp_path / "legacy-host.yaml"
+    profile_path.write_text(yaml.safe_dump(profile), encoding="utf-8")
+
+    loaded = load_persistent_host_profile(profile_path, environ={})
+
+    assert "video" not in loaded
+    assert "preparation_timeout_s" not in loaded
 
 
 def test_host_closes_lifecycle_manager_when_fallback_credential_is_missing(
@@ -235,6 +251,7 @@ def test_host_composes_seven_tools_around_one_persistent_worker_client(tmp_path,
     host = build_persistent_host(profile, environ=environ)
 
     assert captured["client"] is client
+    assert captured["preparation_timeout_s"] == 4.0
     assert len(worker_configs) == 1
     assert {item["tool_id"] for item in host.bundle.runtime.list_tools()["tools"]} == {
         "scene.observe",
@@ -256,6 +273,11 @@ def test_host_composes_seven_tools_around_one_persistent_worker_client(tmp_path,
     )
     assert worker_profile["allow_benchmark_scene_facts"] is True
     assert worker_profile["max_duration_s"] == 7
+    assert worker_profile["video"] == {
+        "enabled": True,
+        "fps": 25.0,
+        "stride_steps": 4,
+    }
     client._transport_lost = True
     assert host.bundle.runtime.get_context("scene.observe") == {
         "ready": False,

@@ -341,6 +341,11 @@ class AgentComposedDispatch:
             "motion_authorized": False,
         }
 
+    @property
+    def current_scene_revision(self) -> str:
+        """Return the trusted scene identity used by current admission."""
+        return self._current_context().scene_revision
+
     def admit_forge_tool(
         self, wrapper_name: str, arguments: Mapping[str, Any]
     ) -> AdmissionDecision | None:

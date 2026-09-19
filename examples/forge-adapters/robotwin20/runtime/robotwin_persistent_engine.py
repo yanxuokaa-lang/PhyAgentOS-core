@@ -29,6 +29,142 @@ class _StopSignal:
         return self.event.is_set() or self.path.exists()
 
 
+class PersistentVideoError(RuntimeError):
+    """A physical phase settled but its required task video did not."""
+
+
+class _TaskVideoArchive:
+    """Accumulate all Action video for one PAOS task owner."""
+
+    def __init__(self, root: Path, epoch: str, settings: Mapping[str, Any]) -> None:
+        if set(settings) != {"enabled", "fps", "stride_steps"}:
+            raise ValueError("persistent video settings are invalid")
+        enabled = settings["enabled"]
+        fps = settings["fps"]
+        stride = settings["stride_steps"]
+        if not isinstance(enabled, bool):
+            raise ValueError("persistent video enabled must be boolean")
+        if isinstance(fps, bool) or not isinstance(fps, (int, float)) or fps <= 0:
+            raise ValueError("persistent video fps must be positive")
+        if isinstance(stride, bool) or not isinstance(stride, int) or stride <= 0:
+            raise ValueError("persistent video stride_steps must be a positive integer")
+        self.root = root
+        self.epoch = epoch
+        self.enabled = enabled
+        self.fps = float(fps)
+        self.stride_steps = stride
+        self.owner: str | None = None
+        self.session_id: str | None = None
+        self.segments: list[dict[str, dict[str, str]]] = []
+        self.actions: list[dict[str, Any]] = []
+        self.recorder: Any = None
+        self.segment_prefix: str | None = None
+        self.active: dict[str, Any] | None = None
+        self.archives: dict[str, tuple[str, list, list]] = {}
+        self.incomplete_owners: set[str] = set()
+
+    def start_action(
+        self,
+        task: Any,
+        *,
+        owner: str,
+        invocation_id: str,
+        phase: str,
+        simulator_steps: int,
+    ) -> None:
+        if not self.enabled:
+            return
+        if owner in self.incomplete_owners:
+            raise PersistentVideoError("task video has an unrecorded execution segment")
+        if self.recorder is not None:
+            raise PersistentVideoError("persistent task video already has an active Action")
+        if self.owner != owner:
+            self.owner = owner
+            self.session_id, self.segments, self.actions = self.archives.setdefault(
+                owner, (uuid4().hex, [], [])
+            )
+        sequence = len(self.actions) + 1
+        self.segment_prefix = (
+            f"artifact://persistent/{self.epoch}/task-video-{self.session_id}/"
+            f"segments/action-{sequence:04d}"
+        )
+        output_dir = probe._artifact_path(
+            self.root,
+            self.segment_prefix + "/video/head-camera.mp4",
+            create_parent=True,
+        ).parent
+        self.recorder = probe._ProbeVideoRecorder(
+            output_dir, fps=self.fps, stride_steps=self.stride_steps
+        )
+        self.active = {
+            "sequence": sequence,
+            "invocation_id": invocation_id,
+            "phase": phase,
+        }
+        try:
+            self.recorder.capture(task, simulator_steps, force=True)
+        except Exception:
+            self.incomplete_owners.add(owner)
+            self.discard_active()
+            raise
+
+    def finish_action(
+        self,
+        task: Any,
+        *,
+        status: str,
+        simulator_steps: int,
+    ) -> tuple[str, ...]:
+        if not self.enabled:
+            return ()
+        recorder, prefix, active = self.recorder, self.segment_prefix, self.active
+        if recorder is None or prefix is None or active is None or self.session_id is None:
+            return ()
+        self.recorder = self.segment_prefix = self.active = None
+        try:
+            recorder.capture(task, simulator_steps, force=True)
+            segment = recorder.finish(self.root, prefix)
+        except Exception:
+            self.incomplete_owners.add(self.owner)
+            recorder.discard()
+            raise
+        self.segments.append(segment)
+        self.actions.append({**active, "status": status, "simulator_steps": simulator_steps})
+        cumulative_prefix = (
+            f"artifact://persistent/{self.epoch}/task-video-{self.session_id}/"
+            f"cumulative/action-{active['sequence']:04d}"
+        )
+        videos, metadata = probe.concatenate_probe_videos(
+            self.root, self.segments, cumulative_prefix, fps=self.fps
+        )
+        manifest = probe._json_artifact(
+            self.root,
+            cumulative_prefix + "/manifest",
+            {
+                "schema_version": "paos-robotwin20-task-video/v1",
+                "owner": self.owner,
+                "session_id": self.session_id,
+                "action_count": len(self.actions),
+                "actions": list(self.actions),
+                "views": videos,
+                "video_metadata": metadata,
+                "fps": self.fps,
+                "stride_steps": self.stride_steps,
+            },
+        )
+        return (
+            manifest["artifact_ref"],
+            videos["head_camera"]["artifact_ref"],
+            videos["observer_camera"]["artifact_ref"],
+        )
+
+    def discard_active(self) -> None:
+        recorder = self.recorder
+        self.recorder = self.segment_prefix = self.active = None
+        if recorder is not None:
+            recorder.discard()
+
+
 class RoboTwinPersistentEngine:
     """Own one scene; acquire/place share the validated phase generator.
 
@@ -58,6 +194,13 @@ class RoboTwinPersistentEngine:
         self._state: dict[str, Any] = {}
         self._request = None
         self._candidate = None
+        self.video = _TaskVideoArchive(
+            self.root,
+            self.epoch,
+            profile.get(
+                "video", {"enabled": False, "fps": 25.0, "stride_steps": 4}
+            ),
+        )
 
     def _advance_scene(self) -> str:
         self.revision += 1
@@ -180,11 +323,21 @@ class RoboTwinPersistentEngine:
             stop_file=self.stop, execution_state=self._state,
         )
 
-    def execute(self, phase: str, arguments: Mapping[str, Any], cancel: Event) -> dict[str, Any]:
+    def execute(
+        self,
+        phase: str,
+        arguments: Mapping[str, Any],
+        cancel: Event,
+        *,
+        owner: str,
+        invocation_id: str,
+    ) -> dict[str, Any]:
         self.stop.event = cancel
         start_steps = self._state.get("simulator_steps", 0)
         phases = []
         advancing = False
+        video_refs: tuple[str, ...] = ()
+        physical_phase_completed = False
         try:
             if self.stop.exists():
                 return {"status": "cancelled", "world_change_started": False, "outcome_known": True}
@@ -198,6 +351,14 @@ class RoboTwinPersistentEngine:
             elif arguments.get("assignment_ref") != self._state["assignment_ref"]:
                 raise ValueError("place must continue the acquisition assignment")
             self._state["action_deadline"] = time.monotonic() + self.duration
+            self.video.start_action(
+                self.backend._task,
+                owner=owner,
+                invocation_id=invocation_id,
+                phase=phase,
+                simulator_steps=int(self._state.get("simulator_steps", 0)),
+            )
+            self._state["video_recorder"] = self.video.recorder
             while True:
                 try:
                     advancing = True
@@ -214,6 +375,15 @@ class RoboTwinPersistentEngine:
                     self._verify_release()
                     self._phases = None
                     break
+            physical_phase_completed = True
+            try:
+                video_refs = self.video.finish_action(
+                    self.backend._task,
+                    status="succeeded",
+                    simulator_steps=int(self._state.get("simulator_steps", 0)),
+                )
+            except Exception as exc:
+                raise PersistentVideoError(str(exc)) from exc
             result = {"status": "succeeded", "world_change_started": True, "outcome_known": True,
                       "new_scene_revision": self._advance_scene(), "source_scene_revision": self._request["scene_revision"]}
         except Exception as exc:
@@ -225,18 +395,32 @@ class RoboTwinPersistentEngine:
                         controller.stop()
                     except Exception as stop_error:
                         stop_errors.append(type(stop_error).__name__)
-            result = {"status": "unknown" if changed else "failed", "world_change_started": changed,
-                      "outcome_known": not changed, "failure_owner": "execution", "failure_code": type(exc).__name__,
+            evidence_failure = isinstance(exc, PersistentVideoError) and physical_phase_completed
+            result = {"status": "failed" if evidence_failure else "unknown" if changed else "failed", "world_change_started": changed,
+                      "outcome_known": True if evidence_failure else not changed,
+                      "failure_owner": "evidence" if evidence_failure else "execution", "failure_code": type(exc).__name__,
                       "error_detail": str(exc), "stop_confirmed": not stop_errors,
                       "stop_errors": stop_errors, "continuation_valid": not advancing}
+            if not evidence_failure:
+                try:
+                    video_refs = self.video.finish_action(
+                        self.backend._task,
+                        status=result["status"],
+                        simulator_steps=int(self._state.get("simulator_steps", 0)),
+                    )
+                except Exception as video_error:
+                    self.video.discard_active()
+                    result["video_evidence_error"] = type(video_error).__name__
             if changed:
                 result["new_scene_revision"] = self._advance_scene()
+        self._state.pop("video_recorder", None)
         reference = f"artifact://persistent/{self.epoch}/action-{uuid4().hex}"
         probe._json_artifact(self.root, reference, {**result, "phase": phase, "phases": phases,
                             "simulator_steps": self._state.get("simulator_steps", 0),
                             "placement_measurement": self._state.get("placement_measurement"),
-                            "contacts": self._state.get("contact_trace", [])})
-        result["artifact_refs"] = [reference]
+                            "contacts": self._state.get("contact_trace", []),
+                            "task_video_refs": list(video_refs)})
+        result["artifact_refs"] = [reference, *video_refs]
         return result
 
     def _verify_release(self) -> None:
@@ -255,6 +439,7 @@ class RoboTwinPersistentEngine:
 
     def close(self) -> None:
         self.stop.event.set()
+        self.video.discard_active()
         try:
             for controller in self._state.get("_controllers", {}).values():
                 controller.stop()

@@ -128,7 +128,11 @@ def load_persistent_host_profile(
         "materializer_timeout_s",
         "allow_benchmark_scene_facts",
     }
-    if set(profile) != required or profile.get("schema_version") != PROFILE_SCHEMA_VERSION:
+    if (
+        not required <= set(profile)
+        or set(profile) - required - {"video", "preparation_timeout_s"}
+        or profile.get("schema_version") != PROFILE_SCHEMA_VERSION
+    ):
         raise PersistentHostConfigurationError("persistent host profile fields are invalid")
     return profile
 
@@ -195,6 +199,27 @@ def build_persistent_host(
         "action_max_duration_s",
     }:
         raise PersistentHostConfigurationError("worker settings are invalid")
+    video_settings = profile.get(
+        "video", {"enabled": False, "fps": 25.0, "stride_steps": 4}
+    )
+    if not isinstance(video_settings, Mapping) or set(video_settings) != {
+        "enabled",
+        "fps",
+        "stride_steps",
+    }:
+        raise PersistentHostConfigurationError("video settings are invalid")
+    if not isinstance(video_settings["enabled"], bool):
+        raise PersistentHostConfigurationError("video.enabled must be boolean")
+    video_fps = _positive_number(video_settings["fps"], "video.fps")
+    video_stride = video_settings["stride_steps"]
+    if (
+        isinstance(video_stride, bool)
+        or not isinstance(video_stride, int)
+        or video_stride < 1
+    ):
+        raise PersistentHostConfigurationError(
+            "video.stride_steps must be a positive integer"
+        )
     worker_runtime_profile = artifact_root / "persistent-host-runtime.json"
     worker_runtime_profile.write_text(
         json.dumps(
@@ -208,6 +233,11 @@ def build_persistent_host(
                 ),
                 "stop_file": str(artifact_root / "persistent-host.stop"),
                 "allow_benchmark_scene_facts": True,
+                "video": {
+                    "enabled": video_settings["enabled"],
+                    "fps": video_fps,
+                    "stride_steps": video_stride,
+                },
             },
             indent=2,
         ),
@@ -415,6 +445,10 @@ def build_persistent_host(
             ).hexdigest(),
             materializer_timeout_s=_positive_number(
                 profile["materializer_timeout_s"], "materializer_timeout_s"
+            ),
+            preparation_timeout_s=_positive_number(
+                profile.get("preparation_timeout_s", 330),
+                "preparation_timeout_s",
             ),
         )
 

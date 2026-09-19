@@ -2,7 +2,10 @@ from threading import Event, get_ident
 
 import pytest
 
-from robotwin20_adapter.persistent_manipulation import ManipulationStateError, PersistentManipulationProvider
+from robotwin20_adapter.persistent_manipulation import (
+    ManipulationStateError,
+    PersistentManipulationProvider,
+)
 
 
 class Engine:
@@ -12,9 +15,9 @@ class Engine:
         self.closed = False
         self.calls = []
 
-    def execute(self, phase, arguments, cancel):
+    def execute(self, phase, arguments, cancel, *, owner, invocation_id):
         assert get_ident() == self.thread
-        self.calls.append((phase, self.scene))
+        self.calls.append((phase, self.scene, owner, invocation_id))
         self.scene += 1
         return {"status": "succeeded", "world_change_started": True, "outcome_known": True, "new_scene_revision": str(self.scene)}
 
@@ -51,7 +54,12 @@ def test_two_objects_share_world_and_require_owned_acquire_continuation():
             place = f"place-{index}"
             provider.start("place", place, "task-1", {"entity_ref": entity, "acquire_invocation_id": acquire})
             assert settle(provider, place)["holding_state"] == "empty"
-        assert provider._engine.calls == [("acquire", 0), ("place", 1), ("acquire", 2), ("place", 3)]
+        assert provider._engine.calls == [
+            ("acquire", 0, "task-1", "acquire-0"),
+            ("place", 1, "task-1", "place-0"),
+            ("acquire", 2, "task-1", "acquire-1"),
+            ("place", 3, "task-1", "place-1"),
+        ]
     finally:
         provider.close()
 
@@ -59,7 +67,8 @@ def test_two_objects_share_world_and_require_owned_acquire_continuation():
 def test_cancelled_motion_retains_uncertain_possession_without_release():
     running = Event()
     class Cancellable(Engine):
-        def execute(self, phase, arguments, cancel):
+        def execute(self, phase, arguments, cancel, *, owner, invocation_id):
+            del phase, arguments, owner, invocation_id
             running.set()
             assert cancel.wait(5)
             return {"status": "cancelled", "world_change_started": True, "outcome_known": False}

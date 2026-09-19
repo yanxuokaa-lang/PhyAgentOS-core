@@ -171,6 +171,9 @@ def _spec(spec):
                      "scene_write_behavior": "new_revision" if action else "none"})
     if spec["tool_id"] == "manipulation.prepare":
         planning["trusted_argument_builder"] = "manipulation_intent_v2"
+        spec["default_timeout_ms"] = max(
+            int(spec.get("default_timeout_ms") or 0), 360_000
+        )
     spec["planning"] = planning
     if spec["tool_id"] == "scene.observe":
         spec["planning"]["capabilities"].append("task.verify")

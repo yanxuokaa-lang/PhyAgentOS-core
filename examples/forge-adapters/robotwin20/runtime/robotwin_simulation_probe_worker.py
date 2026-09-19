@@ -18,6 +18,7 @@ import argparse
 import hashlib
 import json
 import math
+import os
 import re
 import sys
 import time
@@ -26,6 +27,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
+from uuid import uuid4
 
 from robotwin_capability_controller import (
     CapabilityBoundedDriveController,
@@ -236,13 +238,22 @@ class _ProbeVideoRecorder:
         self.paths = {
             view: output_dir / filename for view, filename in self._VIEW_FILENAMES.items()
         }
+        token = uuid4().hex
+        self._staged_paths = {
+            view: path.with_name(f".{path.stem}.{token}.partial{path.suffix}")
+            for view, path in self.paths.items()
+        }
         self.fps = float(fps)
         self.stride_steps = stride_steps
         self._writers: dict[str, Any] = {}
+        self._frame_sizes: dict[str, tuple[int, int]] = {}
         self.frame_count = 0
+        self._closed = False
 
-    def capture(self, task: Any, step: int) -> None:
-        if step % self.stride_steps:
+    def capture(self, task: Any, step: int, *, force: bool = False) -> None:
+        if self._closed:
+            raise SimulationProbeError("probe video recorder is closed")
+        if not force and step % self.stride_steps:
             return
         import cv2
         import numpy as np
@@ -265,7 +276,7 @@ class _ProbeVideoRecorder:
         for view, frame in frames.items():
             writer = self._writers.get(view)
             if writer is None:
-                path = self.paths[view]
+                path = self._staged_paths[view]
                 path.parent.mkdir(parents=True, exist_ok=True)
                 height, width = frame.shape[:2]
                 writer = cv2.VideoWriter(
@@ -274,26 +285,210 @@ class _ProbeVideoRecorder:
                 if not writer.isOpened():
                     raise SimulationProbeError(f"probe video {view} writer could not be opened")
                 self._writers[view] = writer
+                self._frame_sizes[view] = (width, height)
+            elif self._frame_sizes[view] != (frame.shape[1], frame.shape[0]):
+                raise SimulationProbeError(f"probe video {view} frame size changed")
             writer.write(frame)
         self.frame_count += 1
 
     def finish(self, artifact_root: Path, prefix: str) -> dict[str, dict[str, str]]:
+        if self._closed:
+            raise SimulationProbeError("probe video recorder is already closed")
+        self._release()
+        self._closed = True
+        try:
+            if self.frame_count == 0 or any(
+                not path.is_file() for path in self._staged_paths.values()
+            ):
+                raise SimulationProbeError("probe dual-view video evidence is unavailable")
+            for view, path in self._staged_paths.items():
+                _validate_video_file(
+                    path,
+                    expected_frames=self.frame_count,
+                    expected_fps=self.fps,
+                    expected_size=self._frame_sizes[view],
+                )
+            return {
+                view: _publish_video_file(
+                    artifact_root,
+                    f"{prefix}/video/{filename}",
+                    self._staged_paths[view],
+                )
+                for view, filename in self._VIEW_FILENAMES.items()
+            }
+        except Exception:
+            self._remove_staged()
+            raise
+
+    def discard(self) -> None:
+        if not self._closed:
+            self._release()
+            self._closed = True
+        self._remove_staged()
+
+    def _release(self) -> None:
         for writer in self._writers.values():
             writer.release()
         self._writers.clear()
-        if self.frame_count == 0 or any(not path.is_file() for path in self.paths.values()):
-            raise SimulationProbeError("probe dual-view video evidence is unavailable")
+
+    def _remove_staged(self) -> None:
+        for path in self._staged_paths.values():
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+
+def _validate_video_file(
+    path: Path,
+    *,
+    expected_frames: int,
+    expected_fps: float,
+    expected_size: tuple[int, int],
+) -> dict[str, int | float]:
+    """Decode every frame before a video can become durable evidence."""
+    import cv2
+
+    capture = cv2.VideoCapture(str(path))
+    try:
+        if not capture.isOpened():
+            raise SimulationProbeError("probe video could not be decoded")
+        actual_fps = float(capture.get(cv2.CAP_PROP_FPS))
+        if not math.isfinite(actual_fps) or abs(actual_fps - expected_fps) > max(
+            0.5, expected_fps * 0.05
+        ):
+            raise SimulationProbeError("probe video frame rate is invalid")
+        frame_count = 0
+        while True:
+            available, frame = capture.read()
+            if not available:
+                break
+            if frame is None or frame.ndim != 3:
+                raise SimulationProbeError("probe video contains an invalid frame")
+            if (frame.shape[1], frame.shape[0]) != expected_size:
+                raise SimulationProbeError("probe video decoded frame size is invalid")
+            frame_count += 1
+        if frame_count != expected_frames:
+            raise SimulationProbeError("probe video decoded frame count is invalid")
         return {
-            view: _artifact_record(
-                artifact_root,
-                f"{prefix}/video/{filename}",
-                path.read_bytes(),
-            )
-            for view, (filename, path) in {
-                view: (self._VIEW_FILENAMES[view], self.paths[view])
-                for view in self._VIEW_FILENAMES
-            }.items()
+            "frame_count": frame_count,
+            "fps": actual_fps,
+            "width": expected_size[0],
+            "height": expected_size[1],
         }
+    finally:
+        capture.release()
+
+
+def _publish_video_file(root: Path, ref: str, staged_path: Path) -> dict[str, str]:
+    payload = staged_path.read_bytes()
+    target = _artifact_path(root, ref, create_parent=True)
+    if target.exists():
+        if target.is_symlink() or target.read_bytes() != payload:
+            raise SimulationProbeError("probe video artifact is immutable and divergent")
+        staged_path.unlink(missing_ok=True)
+    else:
+        os.replace(staged_path, target)
+        target.chmod(0o600)
+    return {"artifact_ref": ref, "sha256": _sha_bytes(payload)}
+
+
+def concatenate_probe_videos(
+    artifact_root: Path,
+    segments: list[Mapping[str, Mapping[str, str]]],
+    prefix: str,
+    *,
+    fps: float,
+) -> tuple[dict[str, dict[str, str]], dict[str, dict[str, int | float]]]:
+    """Create one validated dual-view replay from ordered Action segments."""
+    if not segments:
+        raise SimulationProbeError("task video requires at least one Action segment")
+    import cv2
+
+    token = uuid4().hex
+    staged: dict[str, Path] = {}
+    metadata: dict[str, dict[str, int | float]] = {}
+    writers: dict[str, Any] = {}
+    try:
+        for view, filename in _ProbeVideoRecorder._VIEW_FILENAMES.items():
+            target = _artifact_path(
+                artifact_root, f"{prefix}/video/{filename}", create_parent=True
+            )
+            output = target.with_name(
+                f".{target.stem}.{token}.partial{target.suffix}"
+            )
+            staged[view] = output
+            frame_count = 0
+            frame_size: tuple[int, int] | None = None
+            for segment in segments:
+                record = segment.get(view)
+                if not isinstance(record, Mapping) or set(record) != {
+                    "artifact_ref",
+                    "sha256",
+                }:
+                    raise SimulationProbeError("task video segment record is invalid")
+                source = _artifact_path(artifact_root, record["artifact_ref"])
+                if _sha_bytes(source.read_bytes()) != record["sha256"]:
+                    raise SimulationProbeError("task video segment digest changed")
+                capture = cv2.VideoCapture(str(source))
+                try:
+                    if not capture.isOpened():
+                        raise SimulationProbeError("task video segment could not be decoded")
+                    while True:
+                        available, frame = capture.read()
+                        if not available:
+                            break
+                        current_size = (frame.shape[1], frame.shape[0])
+                        if frame_size is None:
+                            frame_size = current_size
+                            writer = cv2.VideoWriter(
+                                str(output),
+                                cv2.VideoWriter_fourcc(*"mp4v"),
+                                fps,
+                                frame_size,
+                            )
+                            if not writer.isOpened():
+                                raise SimulationProbeError(
+                                    f"task video {view} writer could not be opened"
+                                )
+                            writers[view] = writer
+                        elif current_size != frame_size:
+                            raise SimulationProbeError(
+                                "task video segment dimensions are inconsistent"
+                            )
+                        writers[view].write(frame)
+                        frame_count += 1
+                finally:
+                    capture.release()
+            writer = writers.pop(view, None)
+            if writer is not None:
+                writer.release()
+            if frame_size is None or frame_count == 0:
+                raise SimulationProbeError("task video segment contains no frames")
+            metadata[view] = _validate_video_file(
+                output,
+                expected_frames=frame_count,
+                expected_fps=fps,
+                expected_size=frame_size,
+            )
+        records = {
+            view: _publish_video_file(
+                artifact_root,
+                f"{prefix}/video/{_ProbeVideoRecorder._VIEW_FILENAMES[view]}",
+                staged[view],
+            )
+            for view in _ProbeVideoRecorder._VIEW_FILENAMES
+        }
+        return records, metadata
+    except Exception:
+        for writer in writers.values():
+            writer.release()
+        for path in staged.values():
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        raise
 
 
 def _capture_probe_video(task: Any, execution_state: dict[str, Any]) -> None:

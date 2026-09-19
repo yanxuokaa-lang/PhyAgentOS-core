@@ -102,9 +102,10 @@ Gateway；`forge_task_begin_revision` 仍仅用于 `awaiting_replan` 失败恢�
 
 首次 discovery 回合在 `forge_task_materialize_plan` 成功后立即把控制权交给
 LongHorizon，不再从累积 discovery 历史中继续 activate/select/execute。每个语义节点由
-`AgentLoopNodeExecutor` 从空历史启动，只投影当前节点和直接前驱的权威 Tool 结果；因此
-`manipulation.prepare` 可以取得 `grasp.propose` 的完整候选数组，同时不会重新注入无关的
-全局执行历史。节点回合只暴露当前节点所需的 context、ready、select 和受治理的 Query/
+`AgentLoopNodeExecutor` 从空历史启动，只投影当前节点以及直接前驱/显式 evidence 的字段目录、
+计数、引用和小型身份摘要；大型几何 payload 留在 Coordinator。`manipulation.prepare` 通过
+`record_id` 与精确字段路径选择 `grasp.propose` 的完整候选数组，由 Coordinator 解析后按冻结
+Consumer schema 校验，同时不会重新注入无关的全局执行历史。节点回合只暴露当前节点所需的 context、ready、select 和受治理的 Query/
 Action/Session 提交 Tool；首个 planning-bound 提交成功后立即结束模型回合，由节点执行器
 对账持久化记录并把控制权归还 PlanningLoop。generic shell/filesystem、任务级 continuation/
 finalization 和 plan activation 不进入节点回合，因此已结算节点不能在同一模型历史中追加

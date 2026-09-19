@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import queue
 import subprocess
@@ -17,6 +18,10 @@ from uuid import uuid4
 
 class ProcessWorkerError(RuntimeError):
     """An isolated worker failed its lifecycle or request protocol."""
+
+
+class ProcessWorkerTimeoutError(ProcessWorkerError, TimeoutError):
+    """A bounded worker exchange exhausted its request budget."""
 
 
 @dataclass(frozen=True)
@@ -63,20 +68,41 @@ class JsonlProcessWorkerClient:
         self._stderr_tail: deque[str] = deque(maxlen=40)
         self._lock = threading.Lock()
 
-    def request(self, payload: Mapping[str, Any]) -> Mapping[str, Any]:
+    def request(
+        self,
+        payload: Mapping[str, Any],
+        *,
+        timeout_s: float | None = None,
+    ) -> Mapping[str, Any]:
         if not isinstance(payload, Mapping):
             raise TypeError("worker payload must be a mapping")
         request_id = payload.get("request_id")
         if not isinstance(request_id, str) or not request_id:
             raise ProcessWorkerError("worker payload requires request_id")
-        with self._lock:
+        request_timeout = self.config.request_timeout_s if timeout_s is None else float(timeout_s)
+        if not math.isfinite(request_timeout) or request_timeout <= 0:
+            raise ValueError("worker request timeout must be finite and positive")
+        expires_at = monotonic() + request_timeout if timeout_s is not None else None
+        if not self._lock.acquire(timeout=request_timeout):
+            raise ProcessWorkerTimeoutError("worker request timed out waiting for transport")
+        try:
             try:
-                self._ensure_started()
+                if expires_at is None:
+                    self._ensure_started()
+                else:
+                    self._ensure_started(deadline=expires_at)
+                    request_timeout = expires_at - monotonic()
+                    if request_timeout <= 0:
+                        raise ProcessWorkerTimeoutError("worker request timed out during startup")
                 self._write(dict(payload))
-                return self._read_reply(request_id, self.config.request_timeout_s)
+                if expires_at is not None:
+                    request_timeout = expires_at - monotonic()
+                return self._read_reply(request_id, request_timeout)
             except Exception:
                 self._abort()
                 raise
+        finally:
+            self._lock.release()
 
     def release(self) -> None:
         with self._lock:
@@ -101,7 +127,7 @@ class JsonlProcessWorkerClient:
     def stderr_tail(self) -> tuple[str, ...]:
         return tuple(self._stderr_tail)
 
-    def _ensure_started(self) -> None:
+    def _ensure_started(self, *, deadline: float | None = None) -> None:
         if self._process is not None and self._process.poll() is None:
             return
         self._stdout_queue = queue.Queue()
@@ -128,7 +154,8 @@ class JsonlProcessWorkerClient:
         assert process.stdout is not None and process.stderr is not None
         threading.Thread(target=self._drain_stdout, args=(process,), daemon=True).start()
         threading.Thread(target=self._drain_stderr, args=(process,), daemon=True).start()
-        deadline = monotonic() + self.config.startup_timeout_s
+        startup_deadline = monotonic() + self.config.startup_timeout_s
+        deadline = startup_deadline if deadline is None else min(deadline, startup_deadline)
         while True:
             message = self._read_json(deadline)
             if message.get("event") == "worker_ready":
@@ -162,11 +189,11 @@ class JsonlProcessWorkerClient:
     def _read_json(self, deadline: float) -> dict[str, Any]:
         remaining = deadline - monotonic()
         if remaining <= 0:
-            raise ProcessWorkerError("worker response timed out")
+            raise ProcessWorkerTimeoutError("worker response timed out")
         try:
             line = self._stdout_queue.get(timeout=remaining)
         except queue.Empty as exc:
-            raise ProcessWorkerError("worker response timed out") from exc
+            raise ProcessWorkerTimeoutError("worker response timed out") from exc
         if line is None:
             detail = self._stderr_tail[-1] if self._stderr_tail else "no stderr"
             raise ProcessWorkerError(f"worker exited before a complete response: {detail}")

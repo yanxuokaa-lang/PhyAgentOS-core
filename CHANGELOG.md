@@ -12,175 +12,562 @@
 
 ## 最近 5 条 / Latest Five Versions
 
-## v10.8.11 (2026-09-19 23:55) - codex
+## v10.9.0 (2026-09-20 01:21) - codex
 
-- [agent] [fix] [完成] 将复合搬移展开为可独立结算的原子 PlanNode；Tool 继续输出可复用事实，Agent 按消费者冻结 schema 选择输入。(local)
-- [agent] [fix] [完成] selection 纳入 PlanRevision 事务状态；新 receipt 绑定 revision、Tool、语义和完整参数，并拒绝未来 opaque evidence、重复待消费 selection/执行。(local)
-- [agent] [fix] [完成] `new_revision` Tool 必须返回可确认世界变化才可完成节点；pick-place workflow 升级为 `2.2.1`。(local)
-- [Agent] [Fix] [Completed] Expand composite relocation into independently settled atomic PlanNodes while Tools keep producing reusable facts and the Agent selects inputs against each consumer's frozen schema. (local)
-- [Agent] [Fix] [Completed] Persist selections transactionally in PlanRevision; bind new receipts to revision, Tool, semantics, and exact arguments, rejecting future opaque evidence and duplicate pending selections/executions. (local)
-- [Agent] [Fix] [Completed] Require confirmed world-change evidence before a `new_revision` Tool completes its node and upgrade pick-place workflow to `2.2.1`. (local)
+- [docs] [docs] [完成] 新增 `docs/forge/IMPLEMENTATION_REVIEW_V10_9_0.md`，逐项对照需求并记录 fresh review、既有七维验收、真实测量及部署未完成的边界。(local)
+- [Docs] [Docs] [Completed] Add `docs/forge/IMPLEMENTATION_REVIEW_V10_9_0.md` with requirement mapping, fresh review, the established seven dimensions, and explicit measurement/deployment limits. (local)
 
-### 影响文件 / Affected files
+- [agent] [fix] [完成] 需求复核发现 long-horizon node 不经过交互 turn timeout；将配置预算用于节点模型/控制面决策，已选择的 governed Tool 独立使用其执行预算，避免 300 秒决策挤掉 330 秒 prepare。(local)
+- [Agent] [Fix] [Completed] Apply the configured turn budget to long-horizon model/control-plane decisions; selected governed Tools retain their execution budgets so a 300-second decision cannot truncate a 330-second preparation. (local)
 
-- `PhyAgentOS/planning/contracts.py:L61-L139,L279-L377`; `PhyAgentOS/planning/settlement.py:L8-L53`
-- `PhyAgentOS/agent/plan_proposal.py:L19-L117`; `PhyAgentOS/agent/planning_loop.py:L365-L480`
-- `PhyAgentOS/agent/tools/planning.py:L13-L125`; `PhyAgentOS/agent/tools/forge_tool_api.py:L440-L460`
-- `PhyAgentOS/forge/task.py:L229-L323,L892-L1050,L1070-L1133,L2090-L2120,L2790-L2835,L3136-L3175,L3300-L3387`
-- `PhyAgentOS/verification/request_builder.py:L71-L76,L209-L216`; pick-place Runtime, Skill, tests, developer guides, and `changelog/2026-09_part10.md`
+- [agent] [fix] [完成] fresh review 修复 selection receipt 再次回传完整 payload 的压缩失效：显式使用持久参数执行，沿用现有 receipt、admission 与事务校验；补齐 snapshot/scene-facts 的剩余 deadline。(local)
+- [Agent] [Fix] [Completed] Fix full-payload receipt expansion through explicit persisted-argument execution using existing receipt, admission and transaction checks; propagate remaining deadlines to snapshot and scene-fact queries. (local)
+
+### 变更摘要 / Change summary
+
+- [eval] [feat] [完成] 为 RoboTwin persistent 增加按 PAOS task/owner 聚合的双视角持久录像；同一任务的多次 `acquire`/`place` 形成一份完整累计结果，内部 Action 片段不作为最终交付。(local)
+- [Eval] [Feat] [Completed] Add PAOS task/owner-scoped dual-view persistent recording to RoboTwin persistent execution; multiple `acquire`/`place` Actions in one task form one complete cumulative result, while internal Action segments are not exposed as the final deliverable. (local)
+- [eval] [fix] [完成] 使用临时文件、真实 MP4 解码检查和原子发布保护视频证据；成功、失败、取消和关闭路径均显式终结 recorder，未验证视频不得进入 PAOS evidence refs。(local)
+- [Eval] [Fix] [Completed] Protect video evidence with temporary files, real MP4 decode validation, and atomic publication; explicitly finalize the recorder on success, failure, cancellation, and shutdown, and never publish unvalidated video through PAOS evidence refs. (local)
+- [eval] [test] [完成] 增加配置、跨 Action 生命周期、失败清理、真实 MP4、evidence 投影和无运动模块模拟测试，并按既有七个维度重新验收。(local)
+- [Eval] [Test] [Completed] Add configuration, cross-Action lifecycle, failure cleanup, real-MP4, evidence-projection, and no-motion module simulation tests, followed by the established seven-dimension acceptance. (local)
+- [agent] [fix] [完成] 为 `manipulation.prepare` 冻结与 persistent worker 一致的 Tool 默认 timeout，避免合法长 Query 回落到 Forge HTTP 10 秒默认值；不在缺少分层 benchmark 时写死 top-K 或并发策略。(local)
+- [Agent] [Fix] [Completed] Freeze a `manipulation.prepare` Tool default timeout aligned with the persistent worker so a valid long Query cannot fall back to the Forge HTTP 10-second default; do not hard-code top-K or concurrency without staged benchmark evidence. (local)
+- [env] [tune] [完成] 将当前 PAOS 部署的 Agent request/turn timeout 显式设为 300/420 秒，避免约 45K-token planning selection 在默认 180 秒处中断；不修改全局代码默认值，也不自动重试 provider 失败。(local)
+- [Env] [Tune] [Completed] Set the current PAOS deployment Agent request/turn timeouts explicitly to 300/420 seconds so an approximately 45K-token planning selection is not cut off at the 180-second default; keep code-wide defaults and no-auto-retry semantics unchanged. (local)
+- [agent] [feat] [完成] 将节点 Prompt 中的大型 Producer payload 投影为字段目录、计数、引用与小型摘要；Agent 通过 `record_id` 和字段路径声明参数来源，Coordinator 仅从当前节点已有权限的直接前驱或显式 evidence 解析完整值，再按冻结 Consumer schema 校验和持久化。(local)
+- [Agent] [Feat] [Completed] Project large Producer payloads in node prompts into field catalogs, counts, references, and small summaries; let the Agent declare argument sources by `record_id` and field path while the Coordinator resolves complete values only from direct predecessors or explicit evidence already authorized for the node, then validates and persists them against the frozen Consumer schema. (local)
+- [agent] [feat] [完成] 记录模型请求的本地提交到响应头、首个有效流事件和完整响应时延；不支持流式观测的 Provider 显式记录 unavailable，不用总时延伪装 TTFT。(local)
+- [Agent] [Feat] [Completed] Record model-request latency from local submission to response headers, first meaningful stream event, and complete response; providers without streaming observation report unavailable instead of presenting total latency as TTFT. (local)
+- [eval] [feat] [完成] 为 persistent preparation 增加覆盖 materialization、双臂 readiness 与 finalization 的统一 monotonic deadline，并增加冻结输入 K=1/4/8/24 no-motion benchmark；测量前不写死 top-K、早停或并发策略。(local)
+- [Eval] [Feat] [Completed] Add one monotonic persistent-preparation deadline spanning materialization, dual-arm readiness, and finalization, plus a frozen-input K=1/4/8/24 no-motion benchmark; do not hard-code top-K, early-stop, or concurrency policy before measurement. (local)
+
+### 预期影响文件 / Expected affected files
+
+- `examples/forge-adapters/robotwin20/runtime/robotwin_simulation_probe_worker.py`
+- `examples/forge-adapters/robotwin20/runtime/robotwin_persistent_engine.py`
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_host.py`
+- `examples/forge-adapters/robotwin20/profiles/robotwin20/persistent-host.yaml`
+- RoboTwin persistent/simulation-probe tests
+- pick-place workflow packaging metadata and runtime documentation
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/persistent_runtime.py`
+- `PhyAgentOS/agent/planning_loop.py`
+- `PhyAgentOS/agent/tools/planning.py`
+- `PhyAgentOS/providers/base.py` and the active OpenAI-compatible provider
+- RoboTwin persistent preparation, route-builder, selector, benchmark script, profiles, tests, and Forge developer documentation
+- `CHANGELOG.md` and `changelog/2026-09_part10.md`
+- `/home/yanxu/.PhyAgentOS/config.json` (deployment configuration, not committed)
+
+### 失败场景与 Anti-OverDefense 依据 / Failure scenarios and Anti-OverDefense rationale
+
+- 当前 persistent engine 没有创建 `video_recorder`，因此即使一个任务内多次 `object.acquire` 与 `object.place` 全部成功，也只发布 Action JSON artifact，当前 artifact root 中没有覆盖完整任务执行的 MP4；普通 Action 状态、事务和类型校验无法生成或聚合缺失的视觉证据。
+- 现有 probe recorder 直接写最终 `.mp4` 路径；进程在 `VideoWriter.release()` 前退出会留下名字合法但容器未闭合的部分文件。视频是跨系统验收证据，只有在 release 后通过真实解码检查并原子重命名，才能避免把损坏文件误认为持久结果。
+- 修复复用现有 `_ProbeVideoRecorder`、persistent engine 的 owner 生命周期、Action `artifact_refs` 和 `post_release_evidence`；每个 Action 安全关闭内部片段并按 owner 生成累计双视角视频，最后一次成功 `place` 的引用覆盖该任务全部物理执行；不新增第二执行协议、任务状态机、运动 gate、仿真 step 或跨 Tool 私有 payload。
+
+### 文件变更详情 / Exact changed lines
+
+- [修改/新增 Modified/Added] `PhyAgentOS/agent/loop.py` L480-L491, L685, L698-L711, L783, L787-L789, L797-L826, L881-L890, L1069：节点决策预算、持久参数 admission 与模型时延 / node decision budget, saved argument admission and latency。(local)
+- [修改/新增 Modified/Added] `PhyAgentOS/agent/planning_dispatch.py` L344-L348：配置、版本或生产集成 / configuration, version or production integration。(local)
+- [修改/新增 Modified/Added] `PhyAgentOS/agent/planning_loop.py` L12, L14, L16, L67, L162, L249-L420, L662, L666, L772-L777, L780-L784：有界字段投影与来源解析、精简恢复 receipt / bounded field projection, source resolution and compact recovery。(local)
+- [修改/新增 Modified/Added] `PhyAgentOS/agent/tools/forge_tool_api.py` L136, L138, L152-L156, L193, L197-L201, L318, L322-L326, L460-L463：既有执行 wrapper 支持持久参数 / saved argument support in existing execution wrappers。(local)
+- [修改/新增 Modified/Added] `PhyAgentOS/agent/tools/planning.py` L10-L14, L84-L99, L106-L114, L129-L151, L153, L173-L175：字段来源选择与精简 selection 返回 / source selectors and compact selection output。(local)
+- [修改/新增 Modified/Added] `PhyAgentOS/cli/commands.py` L514：配置、版本或生产集成 / configuration, version or production integration。(local)
+- [修改/新增 Modified/Added] `PhyAgentOS/config/schema.py` L421：配置、版本或生产集成 / configuration, version or production integration。(local)
+- [修改/新增 Modified/Added] `PhyAgentOS/forge/capability_runtime/manipulation_prepare.py` L464-L469：配置、版本或生产集成 / configuration, version or production integration。(local)
+- [修改/新增 Modified/Added] `PhyAgentOS/forge/task.py` L10, L893-L922：按 receipt 读取精确持久参数 / resolve exact persisted arguments by receipt。(local)
+- [修改/新增 Modified/Added] `PhyAgentOS/providers/base.py` L8, L52, L60-L69, L282, L293-L299, L318, L320-L328, L335-L340：统一模型时延结构与非流式 fallback / timing contract and non-streaming fallback。(local)
+- [修改/新增 Modified/Added] `PhyAgentOS/providers/custom_provider.py` L5-L6, L8, L15-L22, L33, L37, L66-L69, L71-L157, L159-L170：可选 streaming、计时及流关闭 / optional streaming, latency and stream cleanup。(local)
+- [修改/新增 Modified/Added] `docs/en/03-developer-manual.md` L90-L96：同步开发者契约与操作说明 / developer contract and operating guidance。(local)
+- [修改/新增 Modified/Added] `docs/forge/AGENT_TOOL_INPUT_SELECTION_DESIGN.md` L28-L29, L31-L32, L64-L68, L77-L78, L88-L95, L109-L110, L133-L134：同步开发者契约与操作说明 / developer contract and operating guidance。(local)
+- [修改/新增 Modified/Added] `docs/forge/MANIPULATION_DAG_DEVELOPER_GUIDE.md` L170-L176, L463-L484：同步开发者契约与操作说明 / developer contract and operating guidance。(local)
+- [修改/新增 Modified/Added] `docs/zh/03-developer-manual.md` L105-L108：同步开发者契约与操作说明 / developer contract and operating guidance。(local)
+- [修改/新增 Modified/Added] `examples/forge-adapters/robotwin20/README.md` L650-L695, L715, L717, L724, L726：同步开发者契约与操作说明 / developer contract and operating guidance。(local)
+- [修改/新增 Modified/Added] `examples/forge-adapters/robotwin20/profiles/forge-persistent/persistent-host.yaml` L43-L46, L48：配置、版本或生产集成 / configuration, version or production integration。(local)
+- [修改/新增 Modified/Added] `examples/forge-adapters/robotwin20/pyproject.toml` L3：配置、版本或生产集成 / configuration, version or production integration。(local)
+- [修改/新增 Modified/Added] `examples/forge-adapters/robotwin20/runtime/robotwin_persistent_engine.py` L32-L167, L197-L203, L326-L334, L339-L340, L354-L361, L378-L386, L398-L401, L404-L413, L416, L421-L423, L442：按 owner 累计录像与逐步采帧 / owner video archive and execution frame capture。(local)
+- [修改/新增 Modified/Added] `examples/forge-adapters/robotwin20/runtime/robotwin_simulation_probe_worker.py` L21, L30, L241-L245, L249, L251, L253-L256, L279, L288-L290, L295-L329, L333-L372, L374-L475, L477-L478, L480, L482-L491：视频解码、原子发布与累计拼接 / video decoding, atomic publication and concatenation。(local)
+- [修改/新增 Modified/Added] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/arm_candidates.py` L11, L29, L34, L339-L341, L361-L362, L373, L375-L391, L393-L403, L416-L426：配置、版本或生产集成 / configuration, version or production integration。(local)
+- [修改/新增 Modified/Added] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/grounding.py` L41, L43-L46, L379, L385, L387-L388：prepare grounding 查询预算传播 / preparation grounding query budgets。(local)
+- [修改/新增 Modified/Added] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_client.py` L16, L20-L25, L33-L45, L86-L96：配置、版本或生产集成 / configuration, version or production integration。(local)
+- [修改/新增 Modified/Added] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_deployment.py` L94, L119：配置、版本或生产集成 / configuration, version or production integration。(local)
+- [修改/新增 Modified/Added] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_host.py` L131-L135, L202-L222, L236-L240, L449-L452：配置、版本或生产集成 / configuration, version or production integration。(local)
+- [修改/新增 Modified/Added] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_manipulation.py` L72-L82, L84-L91, L93-L101：配置、版本或生产集成 / configuration, version or production integration。(local)
+- [修改/新增 Modified/Added] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_preparation.py` L6-L7, L9-L10, L12, L17, L21-L22, L33-L43, L48-L75, L77-L83, L85-L87, L98-L102, L105-L111, L126-L128, L130-L133, L166-L191：全程 deadline、timing metrics / shared deadline and timing metrics。(local)
+- [修改/新增 Modified/Added] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_route_builder.py` L12, L18, L30-L36, L67-L71, L75-L81, L83-L85, L88-L89, L111-L112, L124-L152, L169-L171, L180-L186, L188-L189, L191, L243-L244：materializer、场景查询和收尾剩余预算 / remaining materializer, scene-query and finalization budgets。(local)
+- [修改/新增 Modified/Added] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/process_worker.py` L6, L23-L26, L71-L76, L82-L88, L90-L96, L98-L100, L104-L105, L130, L157-L158, L192, L196：锁、启动与读取预算 / lock, startup and reply budgets。(local)
+- [修改/新增 Modified/Added] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/route_readiness.py` L444-L448, L460-L464, L544-L549, L551-L555：配置、版本或生产集成 / configuration, version or production integration。(local)
+- [修改/新增 Modified/Added] `examples/forge-adapters/robotwin20/tests/test_grounding.py` L114-L140：回归、失败路径与无运动验证 / regression, failure-path and no-motion checks。(local)
+- [修改/新增 Modified/Added] `examples/forge-adapters/robotwin20/tests/test_persistent_host.py` L75, L77, L102, L119-L131, L254, L276-L280：回归、失败路径与无运动验证 / regression, failure-path and no-motion checks。(local)
+- [修改/新增 Modified/Added] `examples/forge-adapters/robotwin20/tests/test_persistent_manipulation.py` L5-L8, L18, L20, L57-L62, L70-L71：回归、失败路径与无运动验证 / regression, failure-path and no-motion checks。(local)
+- [修改/新增 Modified/Added] `examples/forge-adapters/robotwin20/tests/test_persistent_preparation.py` L2, L40, L45, L96, L105, L120-L121, L135-L168：回归、失败路径与无运动验证 / regression, failure-path and no-motion checks。(local)
+- [修改/新增 Modified/Added] `examples/forge-adapters/robotwin20/tests/test_process_worker.py` L58-L68：回归、失败路径与无运动验证 / regression, failure-path and no-motion checks。(local)
+- [修改/新增 Modified/Added] `examples/forge-adapters/robotwin20/tests/test_simulation_probe.py` L35, L155-L164, L185-L244：回归、失败路径与无运动验证 / regression, failure-path and no-motion checks。(local)
+- [修改/新增 Modified/Added] `examples/forge-skills/pick-place-workflow/README.md` L51-L57, L71-L79：同步开发者契约与操作说明 / developer contract and operating guidance。(local)
+- [修改/新增 Modified/Added] `examples/forge-skills/pick-place-workflow/SKILL.md` L262-L272, L278-L287：同步开发者契约与操作说明 / developer contract and operating guidance。(local)
+- [修改/新增 Modified/Added] `examples/forge-skills/pick-place-workflow/profiles/robotwin-persistent/persistent-host.yaml` L43-L46, L48：配置、版本或生产集成 / configuration, version or production integration。(local)
+- [修改/新增 Modified/Added] `examples/forge-skills/pick-place-workflow/pyproject.toml` L3：配置、版本或生产集成 / configuration, version or production integration。(local)
+- [修改/新增 Modified/Added] `examples/forge-skills/pick-place-workflow/skill.yaml` L3, L61-L62, L67：配置、版本或生产集成 / configuration, version or production integration。(local)
+- [修改/新增 Modified/Added] `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/persistent_runtime.py` L174-L176：prepare Tool 360 秒默认预算 / 360-second preparation Tool budget。(local)
+- [修改/新增 Modified/Added] `examples/forge-skills/pick-place-workflow/tests/test_grasp_propose.py` L268：回归、失败路径与无运动验证 / regression, failure-path and no-motion checks。(local)
+- [修改/新增 Modified/Added] `examples/forge-skills/pick-place-workflow/tests/test_manipulation_prepare.py` L127-L131, L372-L381：回归、失败路径与无运动验证 / regression, failure-path and no-motion checks。(local)
+- [修改/新增 Modified/Added] `examples/forge-skills/pick-place-workflow/tests/test_persistent_runtime.py` L93-L98：回归、失败路径与无运动验证 / regression, failure-path and no-motion checks。(local)
+- [修改/新增 Modified/Added] `tests/test_agent_foundation.py` L228-L234：回归、失败路径与无运动验证 / regression, failure-path and no-motion checks。(local)
+- [修改/新增 Modified/Added] `tests/test_planning_loop.py` L4, L14, L21-L22, L24-L25, L87-L210：回归、失败路径与无运动验证 / regression, failure-path and no-motion checks。(local)
+- [修改/新增 Modified/Added] `tests/test_planning_selection.py` L55, L91-L187, L565-L576, L672-L688：回归、失败路径与无运动验证 / regression, failure-path and no-motion checks。(local)
+- [修改/新增 Modified/Added] `tests/test_turn_timeouts.py` L32-L45, L74-L78：回归、失败路径与无运动验证 / regression, failure-path and no-motion checks。(local)
+- [修改/新增 Modified/Added] `examples/forge-adapters/robotwin20/scripts/benchmark_persistent_preparation.py` L1-L161：配置、版本或生产集成 / configuration, version or production integration。(local)
+- [修改/新增 Modified/Added] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/preparation_deadline.py` L1-L36：配置、版本或生产集成 / configuration, version or production integration。(local)
+- [修改/新增 Modified/Added] `examples/forge-adapters/robotwin20/tests/test_persistent_task_video.py` L1-L163：回归、失败路径与无运动验证 / regression, failure-path and no-motion checks。(local)
+- [修改/新增 Modified/Added] `examples/forge-adapters/robotwin20/tests/test_preparation_benchmark.py` L1-L82：回归、失败路径与无运动验证 / regression, failure-path and no-motion checks。(local)
+- [修改/新增 Modified/Added] `tests/test_custom_provider_timing.py` L1-L98：回归、失败路径与无运动验证 / regression, failure-path and no-motion checks。(local)
+- [修改/新增 Modified/Added] `docs/forge/IMPLEMENTATION_REVIEW_V10_9_0.md` L1-L86：需求、fresh review 与七维证据 / requirements, fresh review and seven-dimension evidence。(local)
+
+### 关键代码 Diff / Key code diff
 
 ```diff
-- every Tool can claim object.relocate and a read-only Query can settle relocation
-+ one executable node has one independently completing Tool; composite work is an atomic DAG
-- planning selection is an artifact-only receipt reusable with altered execution input
-+ PlanRevision owns one durable selection and execution exactly matches its revision/Tool/semantics/arguments
-- succeeded physical Action can settle without confirmed scene change
-+ frozen new_revision policy requires known world change and an advanced scene revision
+- json.dumps(context.model_dump(mode="json"), ensure_ascii=False, sort_keys=True)
++ json.dumps(node_context_prompt_projection(context), ensure_ascii=False, sort_keys=True)
++ final_arguments = resolve_node_argument_sources(context, arguments, argument_sources)
++ selection["tool_arguments"] = {}
++ selection["use_selected_arguments"] = True
++ resolved = coordinator.selected_execution_arguments(task_id, tool_id, semantics, {}, planning_binding)
+
+- response = await self.provider.chat_with_retry(...)
++ response = await bounded_decision(self.provider.chat_with_retry(...))
++ decision_timeout_s=self.turn_timeout_s
++ # Selected governed Tools keep their own execution budget.
+
+- current = self.client.query("snapshot", {})
++ current = self.client.query("snapshot", {}, timeout_s=deadline.remaining("final_snapshot"))
++ kwargs = {"timeout_s": deadline.remaining("bind_observed_entities")}
++ self.client.query("bind_observed_entities", {"binding_ref": value["binding_ref"]}, **kwargs)
+
+- result = dict(self._engine.execute(phase, arguments, cancel))
++ result = dict(self._engine.execute(phase, arguments, cancel, owner=owner, invocation_id=invocation_id))
++ self._state["video_recorder"] = self.video.recorder
++ videos, metadata = probe.concatenate_probe_videos(self.root, self.segments, cumulative_prefix, fps=self.fps)
+
+- version: "2.2.1"
++ version: "2.3.0"
+- artifact_id: robotwin20_persistent_host-0.1.15-linux-x86_64
++ artifact_id: robotwin20_persistent_host-0.1.16-linux-x86_64
 ```
 
-### 独立 Code Review 与七维验收 / Independent review and acceptance
+### Fresh Code Review 与既有七维 / Fresh review and established seven dimensions
 
-Fresh review fixed three Major findings: execution-payload substitution,
-cross-revision receipt reuse, and missing DecisionTrace artifact recovery after
-a committed selection. No Blocker/Major remains. The established seven dimensions
-all pass: architecture integration, recovery/idempotency, robotics safety,
-context/performance, configuration/reproducibility, maintainability/observability,
-and AgentLoop autonomy. The no-motion simulation rejected coarse relocation,
-rejected place without effect, completed place only with `scene-2`, and made 0
-Gateway calls.
+- 已修复 Major：recorder 未进入逐步采帧、selection 返回重新膨胀 payload、snapshot/grounding/worker 等待绕过 deadline、node turn 未应用决策预算、owner 切换丢失累计录像、流中断观测/清理缺失。
+- Fixed Major findings: missing execution-frame recorder wiring, expanded selection receipts, unbounded snapshot/grounding/worker waits, missing node decision timeout, owner-switch archive loss, and interrupted stream observation/cleanup.
+- 1 架构集成 / Architecture integration：PASS；复用既有 Agent/Coordinator/Gateway/Adapter/Runtime 所有权。
+- 2 失败恢复与幂等 / Recovery and idempotency：PASS；精确 receipt、已消费拒绝、累计发布失败恢复、跨 owner 恢复。
+- 3 机器人安全 / Robotics safety：PASS（no-motion）；坐标、标定、完整路线与运动 admission 不变，无真实 Action/模拟器 step。
+- 4 上下文与性能 / Context and performance：功能 PASS，真实测量待验收 / functionality passes; real measurement pending。合成 24 候选上下文 49,717→1,456 字符（约 -97.1%）；不冒充原任务 token 或过滤耗时。
+- 5 配置与可复现性 / Configuration and reproducibility：构建及隔离验证 PASS，活动部署待验收 / build and isolated verification pass; active deployment pending。Skill 2.3.0、Adapter 0.4.0、Node 0.1.16。
+- 6 可维护性与可观察性 / Maintainability and observability：PASS；稳定错误、阶段计时、视频 manifest、开发者文档与回归覆盖。
+- 7 AgentLoop 自主性 / AgentLoop autonomy：PASS；Agent 仍显式选择 Tool/来源并请求执行；未擅自固定 top-K、早停或并发。
+- 源码层无已知剩余 Blocker/Major；真实任务端到端验收未完成。/ No known remaining source-level Blocker/Major; real task end-to-end acceptance remains pending.
+- 完整需求与证据见 `docs/forge/IMPLEMENTATION_REVIEW_V10_9_0.md`。
 
-### 验证与部署边界 / Validation and deployment boundary
+### 验证与制品 / Validation and artifacts
 
-- Core `483 passed in 24.96s`; pick-place Skill `334 passed in 7.37s`.
-- Ruff, compileall, `uv lock --check`, and `git diff --check` passed.
-- Installed Runtime remains running Skill `2.2.0`; source bundle is `2.2.1`.
-  Active old task `task_05a957a8476c4a95` was not stopped or resumed; no Runtime
-  update/restart, Gateway Tool, Action, Session, simulator step, or motion occurred.
-- Implementation commit: `6e3f7f2`; branch: `feature/planning-loop`.
+- Core: `490 passed in 25.15s`; Skill: `335 passed in 7.28s`; Adapter: `505 passed, 1 skipped in 5.63s`。
+- 最终视频投影测试 / final video projection tests: `4 passed`；changed-file Ruff、compileall、`uv lock --check`、`git diff --check` PASS。
+- 使用 report 中三套完整 pytest 命令复现；benchmark 通过 fake public-Query K=1/4/8/24 矩阵，尚无真实 Runtime K 耗时。
+- Reproduce with the three full pytest commands in the review report; the benchmark passes a fake public-Query K matrix, with no real Runtime timing claim.
+- `/tmp/paos-v10.9.0-release-WS5VZy/robotwin20_persistent_host-0.1.16-linux-x86_64.tar.gz`，331114 bytes，现有发布锁 SHA-256 `588e25893dac35656377b8bb9b7ab1ce9b6844a0ba2c5f6bef0687b0ee28ae32`。
+- `/tmp/paos-v10.9.0-release-WS5VZy/skills/pick-place-workflow-2.3.0.tar.gz`；同根 `isolated/` 安装/Node verify/可执行入口 --help 通过；`video-smoke/` 为合成四 Action 双视角视频。
+- 当前部署配置已核实 requestTimeoutS=300、turnTimeoutS=420、providers.custom.streamResponses=true；没有重启进程，Core 默认不变。
+- Verified deployment configuration: requestTimeoutS=300, turnTimeoutS=420, providers.custom.streamResponses=true; no process restart, unchanged Core defaults.
+- 响应头时延不能分离服务端纯排队时间。420 秒约束节点决策，已选 Tool 使用独立 360 秒外层/330 秒内部预算，worker 有界清理可能略超内部 deadline。
+- Headers latency cannot isolate pure server queue time. The 420-second budget bounds node decisions; selected Tools retain 360-second outer / 330-second internal budgets, plus bounded worker cleanup.
+- 未更新活动 Runtime、未停止/恢复旧任务，未执行真实 Action/仿真步进。真实冻结场景 benchmark 和真实完整任务录像待部署后验收。
+- No active Runtime update, old-task stop/resume, real Action or simulator step. Real frozen-scene benchmark and complete task video require later deployment acceptance.
+
+### Git 提交 / Git commit
+
+- Branch: `feature/planning-loop`
+- Implementation commit: recorded in the follow-up log commit after implementation commit creation.
+
+## v10.8.11 (2026-09-19 23:55) - codex
+
+### 变更摘要 / Change summary
+
+- [agent] [fix] [完成] 收紧 Agent-composed PlanNode 的可结算边界：只有能独立完成节点 capability 的冻结 Tool 才能成为候选；复合搬移必须展开为原子 Tool 节点，除非 Runtime 真正提供原子搬移 Action。(local)
+- [Agent] [Fix] [Completed] Tighten the settlement boundary for Agent-composed PlanNodes: only a frozen Tool that independently completes the node capability may be selected; composite relocation must expand into atomic Tool nodes unless the Runtime exposes a real atomic relocation Action. (local)
+- [agent] [fix] [完成] 将 selection 纳入 PlanRevision 事务状态，拒绝未来 opaque evidence、同节点多个待消费 selection/执行，并将新 receipt 绑定到 revision、Tool、语义和完整参数；保留 legacy binding 可读性。(local)
+- [Agent] [Fix] [Completed] Persist selections transactionally in PlanRevision, reject future opaque evidence and multiple pending selections/executions per node, and bind new receipts to the revision, Tool, semantics, and exact arguments while retaining legacy-binding readability. (local)
+- [agent] [fix] [完成] 使用冻结 Tool `scene_write_behavior` 校验物理效果结算；声明产生新 scene revision 的 Tool 未返回可确认世界变化时不得完成节点。(local)
+- [Agent] [Fix] [Completed] Validate physical-effect settlement against the frozen Tool `scene_write_behavior`; a Tool declared to produce a new scene revision cannot complete its node without confirmed world-change evidence. (local)
+- [eval] [test] [完成] 完成独立 Code Review、故障注入、no-motion 模块模拟与七维验收；修复 selection 写盘失败恢复、stale receipt 和执行载荷替换三个 Major。(local)
+- [Eval] [Test] [Completed] Complete an independent code review, fault injection, no-motion module simulation, and seven-dimension acceptance; fix three Major findings covering trace-write recovery, stale receipts, and execution-payload substitution. (local)
+
+### 预期影响文件 / Expected affected files
+
+- `PhyAgentOS/planning/contracts.py`
+- `PhyAgentOS/planning/settlement.py`
+- `PhyAgentOS/agent/plan_proposal.py`
+- `PhyAgentOS/agent/planning_loop.py`
+- `PhyAgentOS/forge/task.py`
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/persistent_runtime.py`
+- `examples/forge-skills/pick-place-workflow/SKILL.md`
+- Core and pick-place planning/Runtime tests
+- Forge planning/developer documentation and `CHANGELOG.md`
+
+### 失败场景与 Anti-OverDefense 依据 / Failure scenarios and Anti-OverDefense rationale
+
+- `task_05a957a8476c4a95` 的 `object.relocate` 节点把只读 `manipulation.capabilities` Query 作为候选并结算为 `completed`，同时 `world_change_started=false`、Action 数为 0。普通类型校验无法发现这一语义不兼容，因为 Runtime 给所有 Tool 统一声明了 umbrella capability，且 settlement 未读取冻结 scene-write policy。
+- 同一节点在 48 ms 内持久化了两个不同的未消费 selection；DecisionTrace 文件没有进入 AgentTask 的事务状态，现有主键和 Tool execution 唯一性无法阻止并行/重复选择。
+- 图中出现不存在的 `tool:tool_1a26e5a90a1048b0119b7e53e954e8-1` 未来 evidence 引用；当前编译只校验 root node，依赖节点可携带无法产生的 opaque reference 并永久阻塞。
+- 修复复用现有 ToolSpec planning policy、PlanRevision、DecisionTrace、ToolExecutionRecord、NodeSettlement 和 SQLite 事务；不新增 hash、第二任务状态机、benchmark 分支、运动权限或跨 Tool 私有 payload。
+
+### 文件变更详情 / File change details
+
+- [修改] `PhyAgentOS/planning/contracts.py:L61-L139,L279-L377`：定义单 Tool 结算节点，给新 `PlanningExecutionBinding` 增加可选 revision identity，并把冻结 scene-write policy 带入结果包络；旧 binding 缺省值仍可读取。
+- [修改] `PhyAgentOS/planning/settlement.py:L8-L53`：`new_revision` Tool 只有在动作已开始、结果已知、世界变化且返回新 scene revision 时才能完成。
+- [修改] `PhyAgentOS/agent/plan_proposal.py:L19-L117`：所有节点的 opaque `required_evidence` 必须已由 Coordinator 持久化；未来可用性只通过 DAG dependencies 表达。
+- [修改] `PhyAgentOS/agent/planning_loop.py:L365-L480`：从冻结 Tool policy 投影 scene-write 行为，并由 terminal Action 事实推导确认的世界变化。
+- [修改] `PhyAgentOS/agent/tools/planning.py:L13-L125`; `PhyAgentOS/agent/tools/forge_tool_api.py:L440-L460`：新 selection receipt 和执行 schema 携带 revision identity。
+- [修改] `PhyAgentOS/forge/task.py:L229-L323,L892-L1050,L1070-L1133,L2090-L2120,L2790-L2835,L3136-L3175,L3300-L3387`：事务持久化/幂等恢复 selection；拒绝 stale revision、Tool/语义/参数替换和第二执行；将冻结 scene-write policy 投影到 settlement。
+- [修改] `PhyAgentOS/verification/request_builder.py:L71-L76,L209-L216`：语义 verifier 上下文排除 planning-only resumable receipts。
+- [修改] `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/persistent_runtime.py:L163-L180`：每个 Tool 只发布其真实原子 capability；`scene.observe` 继续合法发布 `task.verify`，不再向所有 Tool 注入 `object.relocate`。
+- [修改] `examples/forge-skills/pick-place-workflow/SKILL.md:L27-L47,L254-L271`; `skill.yaml:L1-L4`; `pyproject.toml:L1-L4`：保存通用原子 DAG、未来引用和单 selection 规则，版本升级为 `2.2.1`。
+- [修改] `tests/test_agent_foundation.py:L375-L387`; `tests/test_planning_effect_recovery.py:L115-L179`; `tests/test_planning_module.py:L210-L238`; `tests/test_planning_selection.py:L394-L623`; `examples/forge-skills/pick-place-workflow/tests/test_persistent_runtime.py:L26-L103`：覆盖未来证据、世界变化、事务幂等、写盘恢复、receipt 替换/stale、before-snapshot 隔离与真实 capability；既有 verifier projection 回归继续覆盖 receipt 排除。
+- [修改] `docs/en/03-developer-manual.md:L226-L230`; `docs/zh/03-developer-manual.md:L273-L275`; `docs/forge/AGENT_TOOL_INPUT_SELECTION_DESIGN.md:L42-L64`; `docs/forge/MANIPULATION_DAG_DEVELOPER_GUIDE.md:L426-L439`; `docs/forge/PLANNING_MODULE_DESIGN.md:L12-L29,L121-L140`; Skill README：同步 PAOS ownership、扩展和 legacy 兼容边界。
+
+### 关键代码 Diff / Key code diff
+
+```diff
+- every Runtime Tool advertises object.relocate
++ each Tool advertises only an effect it can independently settle
++ composite relocation expands into dependent atomic nodes
+
+- DecisionTrace exists only as a side artifact; another selection can race
++ active PlanRevision transactionally owns one unconsumed selection per node
++ identical retries are idempotent and repair a failed trace-file write
+
+- a valid planning_binding can be reused with another Tool or argument object
++ new binding carries revision_id and execution must exactly match persisted Tool, semantics, and arguments
+
+- succeeded Action may complete without a confirmed physical effect
++ frozen new_revision policy requires started + known + changed + advanced scene revision
+
+- dependent nodes may name opaque Tool records that do not exist yet
++ required_evidence must already exist; dependencies express future ordering/results
+```
+
+### 独立 Code Review / Independent code review
+
+- Major（已修复）：执行入口只比较 `PlanningExecutionBinding`，没有比较持久 selection 的 Tool、语义和参数；合法 receipt 可被替换载荷复用。现由 Coordinator 在 Action before-snapshot 前预检，并在 execution 事务内再次核对。
+- Major（已修复）：binding 不携带 revision identity，replan 后同形节点可能接受旧 receipt。现新 receipt 带可选 `revision_id` 并拒绝 stale revision；旧记录继续读取。
+- Major（已修复）：SQLite 已提交后 DecisionTrace 文件写入失败，重试直接返回 receipt 而不修复 artifact。现 durable retry 重走幂等事务并补写同一 trace 文件。
+- 复审结果：无剩余 Blocker/Major；没有 producer-to-consumer Tool 映射、benchmark 分支、第二状态机、新 hash 或新动作权限。
+
+### 模块无运动模拟 / Module no-motion simulation
+
+```json
+{
+  "coarse_relocation": {
+    "accepted": false,
+    "reason": "semantic plan references capabilities outside the bound Skill: object.relocate"
+  },
+  "place_without_effect": {
+    "status": "failed",
+    "failure_code": "missing_world_change_evidence"
+  },
+  "place_with_effect": {
+    "status": "completed",
+    "scene_revision": "scene-2"
+  },
+  "gateway_calls": 0,
+  "motion_authorized": false
+}
+```
+
+### 七维验收 / Seven-dimension acceptance
+
+1. 架构集成 / Architecture integration：PASS；复用 PlanGraph、PlanRevision、DecisionTrace、Coordinator、PlanningLoop 和 Gateway；Tool 产出事实、Agent 选择、Coordinator 持久化、Runtime 执行边界不变，没有第二 store/scheduler/执行协议。
+2. 失败恢复与幂等 / Recovery and idempotency：PASS；同一选择重试返回同一 receipt，SQLite 已提交但 trace 写盘失败可补写；stale revision、不同选择和第二执行 fail closed，legacy binding 继续可读。
+3. 机器人安全 / Robotics safety：PASS；错误 Action receipt 在 before-snapshot/Gateway 前拒绝；`new_revision` Action 缺失已开始/结果已知/世界变化/新 scene 任一事实均不得完成；验收全程无运动。
+4. 上下文与性能 / Context and performance：PASS；selection 作为持久控制事实而非对话历史；Verifier 排除 resumable payload，AgentLoop 仍只接收当前节点、显式 discovery evidence 和直接前驱结果，没有新增全历史或重复 schema 注入。
+5. 配置与可复现性 / Configuration and reproducibility：PASS；没有修改模型、context、timeout 或 Runtime profile；Skill 源码/包元数据统一为 `2.2.1`，固定 no-motion 测试、模拟和静态检查命令均通过。
+6. 可维护性与可观察性 / Maintainability and observability：PASS；Core 没有 RGB、桌面、Qwen、RobotWIN 或 `grasp.propose` 特例；selection event、decision trace、稳定错误和开发者文档同步，故障注入可复现写盘恢复。
+7. AgentLoop 自主性 / AgentLoop autonomy：PASS；Agent 仍可从任意兼容 Producer 事实中选择 Tool 并按 Consumer frozen schema 组装输入；只限制一次节点结算的执行一致性，复合意图通过依赖 DAG 或真实原子 Tool 表达。
+
+最终无剩余 Blocker/Major。Core `483 passed in 24.96s`、Skill `334 passed in 7.37s`；Ruff、compileall、`uv lock --check`、`git diff --check` 全部通过。
+
+### 运行时与部署边界 / Runtime and deployment boundary
+
+- 源码 Skill 已升级为 `2.2.1`；当前已安装且运行中的 Runtime 仍为 `pick-place-workflow 2.2.0`。
+- `task_05a957a8476c4a95` 仍为 `executing`，因此未强停旧任务、未热更新 Skill、未重启 Runtime，也未恢复该无效 revision。
+- 不需要安装新 Skill；需要在用户显式处置旧任务并停止 Runtime 后，用现有 `paos skill update` 更新同一个 Skill。
+
+### Git 提交 / Git commit
+
+- Implementation commit: `6e3f7f2`
+- Branch: `feature/planning-loop`
+- 时间 / Time: 2026-09-20 00:37 (Asia/Shanghai)
 
 ## v10.8.10 (2026-09-18 20:59) - codex
 
-- [agent] [fix] [完成] 同时校验 discovery Query 的持久请求与响应 scene identity；非刷新证据必须属于当前场景，刷新 Tool 可从源场景产生当前场景。(local)
-- [agent] [fix] [完成] `forge_plan_ready` 仅为当前可选 Tool 投影冻结消费者 schema，且长上下文压缩继续保留该有界契约。(local)
-- [agent] [fix] [完成] recovery proposer 与 replan 状态迁移同时失败时，Coordinator 持久化既有 `failed` 终态，消除 runner/task 状态分叉。(local)
-- [Agent] [Fix] [Completed] Validate persisted request and response scene identities for discovery Queries; non-refresh evidence must belong to the current scene while refresh Tools may advance from a source scene. (local)
-- [Agent] [Fix] [Completed] Project frozen consumer schemas only for currently selectable Tools through `forge_plan_ready` and preserve that bounded contract through long-context compaction. (local)
-- [Agent] [Fix] [Completed] Persist the existing terminal `failed` state when both the recovery proposer and replan transition fail, eliminating runner/task status divergence. (local)
+### 变更摘要 / Change summary [完成 / Completed]
 
-### 影响文件 / Affected files
+- [agent] [fix] 同时校验 discovery Query 请求与响应中的显式 scene revision，阻止旧 observation、calibration 或 geometry 进入当前节点有界上下文。(local)
+- [agent] [fix] recovery proposer 与 replan 状态迁移同时失败时，由 Coordinator 使用既有 `FAILED` 状态持久化终结，避免返回状态与任务状态分叉。(local)
+- [agent] [fix] `forge_plan_ready` 为当前候选投影冻结的消费者 `input_schema`，Agent 使用 task-bound schema 组装参数，live Tool context 仅承担实时 readiness。(local)
+- [eval] [test] 增加 stale Query、replan budget exhausted、frozen/live schema 边界的 no-motion 回归，并重新执行七维 Code Review 与全仓验收。(local)
+- [agent] [fix] 保证 `forge_plan_ready` 的冻结候选 schema 在长上下文压缩后仍保留于只读 prompt projection，避免 Agent 回退到漂移的 live schema。(local)
+- [Agent] [Fix] Validate explicit scene revisions in both discovery Query requests and responses so stale observations, calibration, or geometry cannot enter the current bounded node context. (local)
+- [Agent] [Fix] Persist an existing `FAILED` task state when both the recovery proposer and replan state transition fail, preventing runner/task status divergence. (local)
+- [Agent] [Fix] Project the frozen consumer `input_schema` for current candidates through `forge_plan_ready`; use live Tool context for readiness rather than as the sole task-bound schema source. (local)
+- [Eval] [Test] Add no-motion regressions for stale Queries, exhausted replan budgets, and frozen/live schema boundaries, then rerun the seven-dimension review and full acceptance. (local)
+- [Agent] [Fix] Preserve frozen candidate schemas from `forge_plan_ready` in the read-only prompt projection after long-context compaction so the Agent does not fall back to a drifted live schema. (local)
 
-- `PhyAgentOS/agent/planning_facts.py:L1-L28`; `PhyAgentOS/agent/planning_context.py:L21-L125`
-- `PhyAgentOS/agent/planning_dispatch.py:L80-L99,L229-L342`; `PhyAgentOS/agent/prompt_context.py:L144-L164`
-- `PhyAgentOS/agent/planning_loop.py:L175-L225,L551-L560,L900-L940`; `PhyAgentOS/forge/task.py:L1733-L1767`
-- `tests/test_planning_context.py:L1-L149`; `tests/test_planning_loop.py:L268-L389,L824-L880,L1144-L1158`
-- `tests/test_planning_dispatch.py:L192-L229,L359-L375`; `tests/test_prompt_context.py:L471-L515`
-- four Forge/developer guides and `changelog/2026-09_part10.md`
+### 预期影响文件 / Expected affected files
+
+- `PhyAgentOS/agent/planning_facts.py`
+- `PhyAgentOS/agent/planning_context.py`
+- `PhyAgentOS/agent/planning_loop.py`
+- `PhyAgentOS/agent/planning_dispatch.py`
+- `PhyAgentOS/agent/prompt_context.py`
+- `PhyAgentOS/forge/task.py`
+- `tests/test_planning_context.py`
+- `tests/test_planning_loop.py`
+- `tests/test_planning_dispatch.py`
+- `tests/test_prompt_context.py`
+- `docs/forge/AGENT_TOOL_INPUT_SELECTION_DESIGN.md`
+- `docs/forge/MANIPULATION_DAG_DEVELOPER_GUIDE.md`
+- `docs/forge/PLANNING_MODULE_DESIGN.md`
+- `docs/zh/03-developer-manual.md`
+- `CHANGELOG.md`
+
+### 失败场景与 Anti-OverDefense 依据 / Failure scenarios and Anti-OverDefense rationale
+
+- 当前场景为 `scene-new` 时，响应省略 scene identity 的成功 Query 可携带 `arguments.scene_revision=scene-old`，其 evidence 仍可被 materialize 并投影到根节点；普通类型校验与 Gateway 末端拒绝不能保护规划上下文的证据时效。
+- recovery proposer 抛错且 `request_replan()` 因预算耗尽再次抛错时，runner 返回 `blocked` 而持久任务仍为 `executing`；事务和现有枚举不会自动完成缺失的状态迁移。
+- 节点提示要求读取 live schema，而 selection 校验 frozen schema；ToolSpec 漂移时虽然不会授权运动，但 Agent 无法看到实际校验契约并会产生不可恢复的错误重试。
+- `forge_plan_ready` 即使返回 frozen schema，旧 Tool result 在上下文压缩时也会丢失该字段；如果 Agent 随后读取 live Tool context，仍会重现按新 schema 组装、按冻结 schema 拒绝的漂移问题。
+- 修复复用现有 scene revision、evidence refs、`AgentTaskStatus.FAILED`、Tool binding 和 `forge_plan_ready`；不新增 hash、状态机、benchmark 分支、运动权限或发布 gate。
+
+### 文件变更详情 / File change details
+
+- [修改] `PhyAgentOS/agent/planning_facts.py:L1-L28`：新增通用显式 scene revision 读取，不引入 Tool ID 或 benchmark 特例。
+- [修改] `PhyAgentOS/agent/planning_context.py:L21-L125`：依据冻结 Tool policy 区分 refresh/non-refresh Query；拒绝旧请求、旧响应和非刷新请求/响应冲突，同时允许 refresh Query 从源场景产生当前场景。
+- [修改] `PhyAgentOS/agent/planning_dispatch.py:L80-L99,L229-L342`：深拷贝冻结 schema；`forge_plan_ready` 仅为当前 dependency-ready、scene-admissible、binding-compatible 候选投影 schema 与必填参数。
+- [修改] `PhyAgentOS/agent/planning_loop.py:L175-L225,L551-L560,L900-L940`：NodeContext 二次拒绝 stale discovery evidence；节点提示以 frozen schema 为权威；recovery 状态迁移失败后持久化既有 `FAILED` 终态。
+- [修改] `PhyAgentOS/agent/prompt_context.py:L144-L164`：长上下文压缩保留候选 Tool、冻结 schema、必填参数和缺失运行时参数，继续裁掉无关 provider/debug 数据。
+- [修改] `PhyAgentOS/forge/task.py:L1733-L1767`：新增 Coordinator-owned `fail_replan()`，仅允许 `executing`/`awaiting_replan` 进入既有 `failed` 终态，不覆盖 clarification/cancellation 状态。
+- [新增] `tests/test_planning_context.py:L1-L149`：覆盖旧请求、请求/响应冲突、refresh/non-refresh 场景推进与 evidence 清理。
+- [修改] `tests/test_planning_loop.py:L268-L389,L824-L880,L1144-L1158`：覆盖 root discovery stale/refresh 投影、replan 双失败终态和并发 clarification 状态保护。
+- [修改] `tests/test_planning_dispatch.py:L192-L229,L359-L375`：覆盖 stale-scene 候选过滤、冻结 schema 投影和返回值深拷贝。
+- [修改] `tests/test_prompt_context.py:L471-L515`：覆盖冻结候选契约在 compact Tool result 中完整保留。
+- [修改] `docs/forge/AGENT_TOOL_INPUT_SELECTION_DESIGN.md:L24-L93`、`docs/forge/MANIPULATION_DAG_DEVELOPER_GUIDE.md:L396-L430`、`docs/forge/PLANNING_MODULE_DESIGN.md:L301-L318`、`docs/zh/03-developer-manual.md:L155-L173`：同步 PAOS ownership、refresh scene、frozen/live schema 和 terminal recovery 规则。
 
 ```diff
-- stale request scene can contribute evidence when a Query response omits scene identity
-+ planning context and NodeContext reject stale explicit request/response scene identities
-- every Query request/response scene pair is treated as immutable
-+ non-refresh pairs must agree; frozen refresh policy may advance source to current scene
-- Agent reads live schema while Coordinator validates a hidden frozen schema
-+ ready projection and compaction expose the bounded frozen candidate schema
-- recovery double failure returns blocked while authoritative task remains executing
-+ Coordinator persists and returns the existing failed terminal state
+- discovery Query evidence trusts a response with no scene identity even when arguments.scene_revision is stale
++ current planning context and NodeContext both reject stale explicit request/response scene identities
+
+- every Query requires request scene == response scene
++ non-refresh Query requires equality; frozen refresh policy may carry source scene to a current-scene response
+
+- forge_plan_ready exposes only required argument names, then compaction drops the candidate contract
++ current candidates expose a deep-copied frozen input_schema and compaction preserves that bounded contract
+
+- proposer failure + exhausted replan budget returns blocked while task remains executing
++ Coordinator persists the original settlement and existing terminal failed task state
+```
+
+### 独立 Code Review / Independent code review
+
+- Major（已修复）：最初的 stale-scene 规则会把未来具有显式源 scene 参数的合法 refresh Query 当作请求/响应冲突；现按冻结 `refreshes_scene` policy 区分，并增加 context 与 NodeContext 回归。
+- Major（已修复）：`forge_plan_ready` 的 frozen schema 会被 superseded Tool-result compaction 裁掉，Agent 仍可能回退到漂移的 live schema；现投影保留有界候选契约并增加真实 compact 回归。
+- 复审结果：无剩余 Blocker/Major；无 benchmark/`grasp.propose` 特例、第二状态机、新 hash 或新动作 gate。
+
+### 模块无运动模拟 / Module no-motion simulation
+
+```json
+{
+  "candidate_tool_ids": ["grasp.propose"],
+  "frozen_required": [
+    "observation_ref", "scene_revision", "frame_id", "calibration_ref",
+    "freshness_ms", "max_age_ms", "targets"
+  ],
+  "required_tool_arguments": [
+    "observation_ref", "scene_revision", "frame_id", "calibration_ref",
+    "freshness_ms", "max_age_ms", "targets"
+  ],
+  "debug_survived": false,
+  "motion_authorized": false
+}
 ```
 
 ### 七维验收 / Seven-dimension acceptance
 
-Architecture/ownership, contract extensibility, evidence/freshness, AgentLoop
-context, recovery consistency, robotics safety, and tests/maintainability: PASS
-with no remaining Blocker/Major. Independent review fixed refresh-query source
-scene handling and frozen-schema loss during Tool-result compaction. The module
-simulation preserved all seven `grasp.propose` required fields, removed debug
-payload, reported `motion_authorized=false`, and made no Gateway call.
+1. 架构与所有权 / Architecture and ownership：PASS；Producer 输出结构化事实、ToolSpec 声明消费契约、Agent 选择、Coordinator 持久化、Gateway 执行权限仍分离。
+2. 契约与扩展 / Contract and extensibility：PASS；实现只依赖 provider-neutral schema、scene identity 与 frozen policy，新 benchmark/Tool 无需 Core 任务分支。
+3. 证据与时效 / Evidence and freshness：PASS；stale 请求、响应及非刷新冲突在 admission context 与 node projection 两层 fail closed，refresh 源/目标场景语义保留。
+4. AgentLoop 上下文 / AgentLoop context：PASS；只暴露当前候选的冻结 schema，superseded Tool-result 压缩后仍可用；live Tool context 只负责 readiness 与 legacy fallback。
+5. Recovery 与状态一致性 / Recovery and state consistency：PASS；双失败路径返回/持久状态均为 `failed`，保留原始 settlement，且不覆盖 waiting-for-user。
+6. 机器人安全 / Robotics safety：PASS；schema/stale/recovery 修复均在 Tool record/Gateway/Action 之前或控制面终态；没有 Runtime、Session、Action、模拟器 step 或运动。
+7. 测试与可维护性 / Tests and maintainability：PASS；核心 `478 passed`、pick-place workflow `334 passed`；Ruff、compileall、`uv lock --check`、`git diff --check` 全部通过，无 placeholder。
 
-### 验证与安全边界 / Validation and safety boundary
+### Git 提交 / Git commit
 
-- Core no-motion `478 passed in 24.47s`; pick-place workflow `334 passed in 6.86s`.
-- Ruff, compileall, `uv lock --check`, and `git diff --check` passed.
-- No new Skill/model, Runtime restart, Gateway Tool, Action, Session, simulator
-  step, world change, or physical motion.
-- Implementation commit: `d18dafb`; branch: `feature/planning-loop`.
+- Implementation commit: `d18dafb`
+- Branch: `feature/planning-loop`
+- 时间 / Time: 2026-09-18 21:24 (Asia/Shanghai)
 
 ## v10.8.9 (2026-09-18 19:53) - codex
 
-- [agent] [feat] [完成] 冻结消费者 ToolSpec `input_schema`，Agent 从当前节点、显式 discovery evidence 与直接前驱的结构化事实选择并组合参数；Coordinator 在 DecisionTrace/Gateway 前校验。(local)
-- [agent] [fix] [完成] discovery evidence 同时投影成功 Query 的持久化请求参数与终态结果；recovery provider 失败进入既有 `awaiting_replan` 并保留原始 settlement。(local)
-- [agent] [fix] [完成] task prompt 和 verifier 排除 planning-only schema，持久绑定与实时 Tool context 仍保留完整 schema。(local)
-- [Agent] [Feat] [Completed] Freeze consumer ToolSpec `input_schema` and let the Agent select and assemble arguments from current-node, explicit discovery-evidence, and direct-predecessor structured facts; Coordinator validates before DecisionTrace or Gateway. (local)
-- [Agent] [Fix] [Completed] Project both persisted request arguments and terminal results for successful discovery Queries; recovery-provider failure enters existing `awaiting_replan` while preserving the original settlement. (local)
-- [Agent] [Fix] [Completed] Exclude planning-only schemas from task-prompt and verifier projections while retaining full schemas in durable bindings and live Tool context. (local)
+### 变更摘要 / Change summary [完成 / Completed]
 
-### 影响文件 / Affected files
+- [agent] [feat] 冻结消费者现有 ToolSpec `input_schema`，Agent 从有界结构化事实选择并组合最终参数，`AgentComposedDispatch` 在 DecisionTrace 与 Gateway 前执行通用 JSON Schema 校验；PlanNode 仍只冻结语义身份。(local)
+- [agent] [fix] 根节点仅获得被 active revision 与当前节点共同引用的成功 discovery Query 请求参数和终态结果；后继节点继续只获得直接前驱终态结果，未引入 producer-to-consumer Tool ID 映射。(local)
+- [agent] [fix] recovery proposer 失败进入既有 `awaiting_replan`，保留原始节点 settlement；task/verifier 投影排除 planning-only schema，避免权限语义污染和重复 token 膨胀。(local)
+- [eval] [test] 使用真实 r02 持久记录完成只读模拟，并新增 selection、evidence、recovery、binding 与 prompt/verifier 投影回归；全程未调用 Gateway 或产生动作。(local)
+- [Agent] [Feat] Freeze the consumer's existing ToolSpec `input_schema`; the Agent selects and assembles final arguments from bounded structured facts, and `AgentComposedDispatch` performs generic JSON Schema validation before DecisionTrace persistence or Gateway transport while PlanNodes retain semantic identity only. (local)
+- [Agent] [Fix] Give root nodes only successful discovery Query request arguments and terminal results jointly selected by the active revision and current node; successor nodes still receive direct-predecessor terminal results, with no producer-to-consumer Tool-ID mapping. (local)
+- [Agent] [Fix] Route recovery-proposer failures into existing `awaiting_replan` while preserving the original settlement; exclude planning-only schemas from task/verifier projections to prevent authority confusion and repeated prompt growth. (local)
+- [Eval] [Test] Run a read-only simulation from the persisted r02 task and add regressions for selection, evidence, recovery, binding, and prompt/verifier projections without any Gateway or motion call. (local)
 
-- `PhyAgentOS/planning/input_schema.py:L1-L66`; `PhyAgentOS/forge/binding.py:L11-L50,L204-L218,L305-L318`
-- `PhyAgentOS/agent/planning_dispatch.py:L29-L31,L85-L98,L123-L141,L200-L214,L261-L281,L470-L486`
-- `PhyAgentOS/agent/planning_loop.py:L82-L110,L175-L220,L534-L537,L878-L915`
-- `PhyAgentOS/agent/prompt_context.py:L349-L360,L466-L479`; `PhyAgentOS/verification/request_builder.py:L55-L70,L181-L203`
-- Core/Skill tests, three developer guides, `CONTEXT.md`, `pyproject.toml`, and `uv.lock`
+### 文件变更详情 / File changes
+
+- [新增 / Added] `PhyAgentOS/planning/input_schema.py:L1-L66`：校验 provider-neutral object schema、投影 required keys，并返回确定排序的参数违规。
+- [修改 / Changed] `PhyAgentOS/forge/binding.py:L11-L50,L204-L218,L305-L318`：`BoundToolSpec` 兼容性新增可选 `input_schema`，新 preview/enrollment 校验并冻结实时 ToolSpec schema。
+- [修改 / Changed] `PhyAgentOS/agent/planning_dispatch.py:L29-L31,L85-L98,L123-L141,L200-L214,L261-L281,L470-L486`：展示消费者必填参数，并在 selection 持久化前校验最终对象。
+- [修改 / Changed] `PhyAgentOS/agent/planning_loop.py:L82-L110,L175-L220,L534-L537,L878-L915`：投影选中的 discovery Query arguments/results；recovery proposer 异常转为结构化 bounded recovery。
+- [修改 / Changed] `PhyAgentOS/agent/prompt_context.py:L349-L360,L466-L479`；`PhyAgentOS/verification/request_builder.py:L55-L70,L181-L203`：持久绑定保留 schema，但 task prompt 与 verifier 投影不重复携带 planning-only schema。
+- [修改 / Changed] `tests/test_planning_dispatch.py:L270-L374`; `tests/test_planning_selection.py:L270-L330`; `tests/test_planning_loop.py:L176-L267,L655-L703`; `tests/test_prompt_context.py:L702-L770`：覆盖完整/不完整组装、bounded evidence、recovery 与 prompt 投影。
+- [修改 / Changed] `examples/forge-skills/pick-place-workflow/tests/test_binding_freeze.py:L119-L126`; `examples/forge-skills/pick-place-workflow/tests/test_task_verification_context.py:L254-L275`：验证 9 个 Tool schema 冻结且 schema 不进入 verifier。
+- [新增 / Added] `docs/forge/AGENT_TOOL_INPUT_SELECTION_DESIGN.md:L1-L93`；[修改 / Changed] `docs/forge/MANIPULATION_DAG_DEVELOPER_GUIDE.md:L396-L408`, `docs/forge/PLANNING_MODULE_DESIGN.md:L301-L312`, `docs/zh/03-developer-manual.md:L155-L162`, `CONTEXT.md:L14-L21`：保存所有权、数据流、失败语义和扩展规则。
+- [修改 / Changed] `PhyAgentOS/planning/__init__.py:L37-L42,L62-L71`; `pyproject.toml:L46`; `uv.lock:L1823,L1877`：导出 schema API 并声明已有 JSON Schema 运行时依赖。
+
+### 关键代码 Diff / Key code diff
 
 ```diff
-- producer/PlanNode must duplicate the consumer transport payload
-+ producer emits reusable facts; Agent selects values; consumer schema validates the final object
-- root node loses discovery-only request values such as max_age_ms
-+ selected successful Query records expose exact arguments and terminal results
-- recovery provider error becomes opaque runner_error
-+ existing bounded awaiting_replan retains the original node failure
-- schemas repeat in task/verifier semantic contexts
-+ schemas remain planning-owned and are queried on demand
+- input_binding_keys must duplicate every consumer transport argument
++ input_binding_keys freeze semantic identity only
++ BoundToolSpec.input_schema defines the consumer's final argument shape
++ AgentComposedDispatch validates selected arguments before DecisionTrace/Gateway
+
+- root node has no predecessor and cannot recover discovery-only fields
++ required_evidence intersection selects exact successful Query arguments/results
++ direct-predecessor result projection remains unchanged for successor nodes
+
+- recovery model exception escapes as runner_error and hides invalid_arguments
++ existing request_replan() enters awaiting_replan and retains the original settlement
+
+- frozen input schemas repeat in task prompts and generic verification context
++ schemas remain durable for planning but are omitted from those semantic projections
+```
+
+### r02 无运动模拟 / r02 no-motion simulation
+
+使用 `task_65f8cd94dce94dea` / `revision_89b2f0d304584f91` / `green-grasp-proposal` 的只读 SQLite 记录。bounded context 精确包含 `scene.observe`、`manipulation.capabilities`、`scene.understand`、`scene.bind`、`manipulation.target` 五条 Query，0 条前驱记录；`max_age_ms=1000` 明确来自 `tool_0605008bc9c64615.arguments`。
+
+```json
+{
+  "incomplete_selection": {"code": "tool_input_schema_invalid", "gateway_called": false},
+  "complete_selection": {
+    "accepted": true,
+    "input_binding_digest": "03f8ebf66fdf23bfe023a51de9fd994b39ca3d94fad1d26a5ffca802ecbf9765",
+    "target_count": 1,
+    "motion_authorized": false,
+    "gateway_called": false
+  },
+  "bounded_context": {"characters": 31840, "cl100k_tokens": 13500, "evidence_records": 5}
+}
 ```
 
 ### 七维验收 / Seven-dimension acceptance
 
-Architecture/ownership, contract extensibility, evidence/freshness, AgentLoop
-context, robotics safety, recovery/observability, and tests/maintainability:
-PASS with no remaining Blocker/Major. The implementation adds no benchmark
-special cases, second state machine, or motion gate. Persisted r02 simulation
-accepted a complete Agent-selected grasp input with digest
-`03f8ebf66fdf23bfe023a51de9fd994b39ca3d94fad1d26a5ffca802ecbf9765`
-while rejecting incomplete input before Gateway; bounded context was 13,500
-tokens, `motion_authorized=false`, and Gateway calls were 0.
+1. 架构与所有权 / Architecture and ownership：PASS；Tool 产出事实、ToolSpec 声明输入、Agent 选择、Coordinator 持久化、Gateway 执行权限保持分离，没有第二套 store/scheduler/state machine/gate。
+2. 契约与扩展 / Contract and extensibility：PASS；Core 中没有 RGB、桌面、抽屉、料箱、货架或 `grasp.propose` 特例，新增 Tool 只需标准 `input_schema` 与结构化结果。
+3. 证据与时效 / Evidence and freshness：PASS；仅投影 active revision 和 node 共同引用的成功 Query，并拒绝 scene revision 不一致；请求参数与响应均来自持久记录。
+4. AgentLoop 上下文 / AgentLoop context：PASS；节点保持空历史、当前节点、直接前驱和显式 discovery evidence；r02 从约 96K 降至 13,500 tokens，schema 按 Tool context 获取而非全局重复注入。
+5. 机器人安全 / Robotics safety：PASS；不完整参数在 Tool record、Gateway、Action、Session 和 motion 前拒绝；模拟与测试均 `motion_authorized=false`。
+6. Recovery 与可观察性 / Recovery and observability：PASS；原始 `invalid_arguments` settlement 保留，provider 二次失败变为 `awaiting_replan`，拒绝事件包含稳定 code/missing fields/recommended action。
+7. 测试与可维护性 / Tests and maintainability：PASS；审查发现的 verifier schema 泄漏与 discovery request-argument 缺口均已修复，无剩余 Blocker/Major，无 placeholder 或 benchmark 硬编码。
 
 ### 验证与安全边界 / Validation and safety boundary
 
-- Core no-motion `469 passed in 24.54s`; pick-place Skill `334 passed in 7.34s`.
-- Ruff, compileall, `uv lock --check`, and `git diff --check` passed.
-- Qwen3-VL-4B and Skill versions are unchanged; no new Skill, 8B, PAOS restart,
-  old-task retry, Gateway call, simulator step, Runtime transition, or motion.
-- Implementation commit: `f11c931`; branch: `feature/planning-loop`.
+- Core 全仓 no-motion：`469 passed in 24.54s`；完整 pick-place Skill：`334 passed in 7.34s`。
+- Ruff、compileall、`uv lock --check`、`git diff --check`：通过。
+- Qwen3-VL-4B 路径与 Skill 版本未更改；未安装新 Skill，未使用或启动 8B，未重启 PAOS，未重试 r02。
+- 未调用 Gateway Tool、Action、Session、模拟器 step、真实 Runtime 或硬件运动。
+
+### Git 提交 / Git commit
+
+- Implementation commit: `f11c931`
+- Branch: `feature/planning-loop`
+- 时间 / Time: 2026-09-18 22:34 (Asia/Shanghai)
 
 ## v10.8.8 (2026-09-18 17:10) - codex
 
-- [sense] [fix] [完成] Qwen3-VL-4B vLLM Prompt 改为任务无关的开放世界语义场景图，允许低对比度结构、support/contact、containment、attachment 和 occlusion 语义关系，同时禁止 metric geometry、simulator truth 和动作授权。(local)
-- [sense] [eval] [完成] 增加 raw-to-normalized 诊断和跨 RobotWIN 截图 no-motion evaluator；`is_on`/`is on` 仅在指标层归一化，不改变 provider-neutral facts。(local)
-- [docs] [docs] [完成] 保存需求、PAOS ownership、AgentLoop bounded continuation、4B-only 决策和七维验收结果；未新增 Core Tool、状态机、hash 或动作 gate。(local)
-- [Sense] [Fix] [Completed] Replace the Qwen3-VL-4B prompt with a task-agnostic open-world semantic scene graph that permits visible structures and generic support/contact relations while forbidding metric geometry, simulator truth, and motion authorization. (local)
-- [Sense] [Eval] [Completed] Add raw-to-normalized diagnostics and a no-motion evaluator over six screenshots from four RobotWIN artifact roots; metric-only predicate normalization does not alter provider facts. (local)
-- [Model] [Tune] [Completed] Keep Qwen3-VL-4B vLLM only; Qwen3-VL-8B was neither started nor evaluated. (local)
+### 变更计划 / Change plan [完成]
 
-### 影响文件 / Affected files
+- [sense] [fix] 将 Qwen vLLM 场景理解 Prompt 改为任务无关的开放式语义场景图，允许可见结构、支撑/接触、包含、附着与遮挡关系，同时继续禁止 metric geometry、simulator truth 和动作授权。(local)
+- [sense] [eval] 保留现有 provider-neutral `entities`/`relations`/`ambiguities` 投影，增加 raw-to-normalized 诊断入口与跨 RobotWIN 截图的 no-motion 评测，不新增 PAOS Core Tool、第二状态机或动作 gate。(local)
+- [docs] [docs] 保存需求、PAOS 边界、AgentLoop 有界恢复和跨 benchmark 验收方案，记录模型语义事实与 RGB-D 几何事实的责任边界。(local)
+- [model] [tune] 明确本次实现与跨截图验收固定使用现有 Qwen3-VL-4B vLLM；不引入或测试 Qwen3-VL-8B。(local)
+- [Sense] [Fix] Replace the Qwen vLLM prompt with a task-agnostic open-world semantic scene-graph request that permits visible structures, support/contact, containment, attachment, and occlusion relations while still forbidding metric geometry, simulator truth, and motion authorization. (local)
+- [Sense] [Eval] Preserve the provider-neutral `entities`/`relations`/`ambiguities` projection and add raw-to-normalized diagnostics plus no-motion evaluation over multiple RobotWIN screenshots without adding a PAOS Core Tool, second state machine, or action gate. (local)
+- [Docs] [Docs] Record the requirements, PAOS boundaries, bounded AgentLoop recovery, and cross-benchmark acceptance plan, including ownership of semantic versus RGB-D geometric facts. (local)
+- [Model] [Tune] Keep the implementation and screenshot acceptance on the existing Qwen3-VL-4B vLLM provider; do not introduce or test Qwen3-VL-8B. (local)
 
-- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/qwen3_vl_vllm_scene_understanding.py:L55-L108,L110-L238,L242-L259`
-- `examples/forge-adapters/robotwin20/tests/test_qwen3_vl_vllm_scene_understanding.py:L89-L138`
-- `examples/forge-adapters/robotwin20/scripts/evaluate_open_world_scene_understanding.py:L20-L40,L109-L125,L128-L265`
-- `docs/forge/OPEN_WORLD_SCENE_UNDERSTANDING_PLAN_20260918.md:L1-L115`; `changelog/2026-09_part10.md`
+### 预期影响文件 / Expected affected files
+
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/qwen3_vl_vllm_scene_understanding.py`
+- `examples/forge-adapters/robotwin20/tests/test_qwen3_vl_vllm_scene_understanding.py`
+- `examples/forge-adapters/robotwin20/scripts/evaluate_open_world_scene_understanding.py`
+- `docs/forge/OPEN_WORLD_SCENE_UNDERSTANDING_PLAN_20260918.md`
+- `changelog/2026-09_part10.md`
+- `CHANGELOG.md`
+
+### 失败场景与 Anti-OverDefense 依据 / Failure scenario and Anti-OverDefense rationale
+
+- 当前 Prompt 只要求 image-plane/topological relations，并写有不得报告 support geometry；因此 4B 可能稳定返回显著彩色物体的方位关系，却把低对比度支撑面当作背景，且不会返回 `on`/`supports`。
+- 现有投影只能保留模型已返回的实体和关系，无法凭空生成桌面；若不保存 raw-to-normalized 边界，无法区分模型漏报与 Adapter 丢失。
+- 修复只改变 Adapter-owned 语义 Prompt 和只读评测/诊断，不把 RGB 任务字段写入 PAOS Core，不要求所有 benchmark 具有支撑面，不绕过现有 PlanGraph/readiness/Gateway 动作边界。
+
+### 文件变更详情 / File change details
+
+- [修改] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/qwen3_vl_vllm_scene_understanding.py:L55-L108,L110-L238,L242-L259`：加入可选 raw-to-normalized diagnostic sink；将 Prompt 改为不绑定任务的开放世界实体/关系请求，允许可见低对比度结构和 support/contact 语义事实，但继续禁止 metric geometry、simulator truth、IK、task success 和 motion authorization。
+- [修改] `examples/forge-adapters/robotwin20/tests/test_qwen3_vl_vllm_scene_understanding.py:L89-L138`：验证开放世界 Prompt、无 observation/scene ID 泄漏、原始/投影诊断和诊断失败隔离。
+- [新增/修改] `examples/forge-adapters/robotwin20/scripts/evaluate_open_world_scene_understanding.py:L20-L40,L109-L125,L128-L265`：新增 artifact-backed 多截图 no-motion evaluator，并将 `is_on`/`is on` 等表面谓词只在指标层归一化为结构关系。
+- [新增] `docs/forge/OPEN_WORLD_SCENE_UNDERSTANDING_PLAN_20260918.md:L1-L115`：记录用户需求、PAOS ownership、AgentLoop 边界、4B-only 评测契约和七维验收标准。
+
+```diff
+- Identify clearly visible entities and image-plane/topological relations; do not report support geometry
++ Enumerate visible objects and large/low-contrast structures; report visible support/contact and generic relation families
++ Keep metric depth, coordinates, plane equations, simulator truth, IK, task success, and motion authorization out of VLM claims
+- evaluator counted only exact `on` predicates
++ evaluator normalizes `is_on` and `is on` for metrics without changing provider facts
+```
 
 ### 七维验收 / Seven-dimension acceptance
 
-Architecture, semantic correctness, evidence integrity, AgentLoop continuity,
-robotics safety, observability, and cross-benchmark reproducibility: PASS with
-no Blocker/Major. Final eager 4B run: 6/6 available, 22 entities, 16
-structural relations, 0 Gateway/Action/Session calls, no motion. Full no-motion
-suite: `464 passed`; focused adapter: `8 passed`. The first CUDA graph service
-failure was provider-level; the same 4B weights under `--enforce-eager` completed
-the evaluation. No new Skill was installed or changed.
+1. 架构边界 / Architecture：PASS；只改 Adapter prompt/diagnostics 和只读 evaluator，PAOS Core、Coordinator、PlanGraph、AgentLoop、Gateway ownership 未旁路。
+2. 语义正确性 / Semantic correctness：PASS；4B 在方块与锤子两类截图均返回 `white surface`，并返回 `is_on`/`is on` 结构关系；没有加入 RGB、桌面、抽屉或其他 benchmark 专用字段。
+3. 证据完整性 / Evidence integrity：PASS；provider 仍只投影 semantic claims，metric geometry 仍由既有 RGB-D owner 负责；raw/projected 诊断保留同一图像引用和请求上下文。
+4. AgentLoop 连续性 / AgentLoop continuity：PASS；没有修改既有 node-scoped/direct-predecessor projection、bounded continuation 或 revision handoff。
+5. 机器人安全 / Robotics safety：PASS；评测器不启动 Runtime、不调用 Gateway/Action/Session、不 step simulator，`motion_authorized=false` 且 Gateway calls 为 0。
+6. 可观察性 / Observability：PASS；每轮记录 provider、model、route、耗时、raw JSON、normalized projection；初次 CUDA/HTTP 失败与 eager 重启路径均被单独保留。
+7. 跨任务可复现性 / Cross-benchmark reproducibility：PASS；六张来自四个 RobotWIN artifact roots 的截图使用同一 4B 合约，唯一输出目录 `/home/yanxu/robotwin20-runtime/artifacts/paos-open-world-eval-v10.8.8-final-eager-20260918`，6/6 available、22 entities、16 structural relations。
+
+无 Blocker/Major。Qwen3-VL-8B 未启动、未评测；4B 服务在 CUDA graph 配置下发生 provider-level `InternalServerError`，改用同一 4B 权重的 `--enforce-eager` no-motion 运行后六图稳定完成，因此该运行参数属于部署诊断结论，不改变 PAOS 语义契约。
+
+### 验证与安全边界 / Validation and safety boundary
+
+- 定向 Qwen adapter：`8 passed`；全仓 no-motion：`464 passed in 23.73s`（显式加载 `pytest_asyncio`）。
+- 改动文件 Ruff、全仓 compileall、`git diff --check`：通过；评测谓词归一化断言：通过。
+- 4B eager smoke：`1/1 available`、4 entities、3 structural relations；最终六图：`6/6 available`、22 entities、16 structural relations、0 errors。
+- 未调用 Gateway Tool、Action、Session、模拟器 step、真实 Runtime 或硬件运动；没有新增 Skill、没有重装 `pick-place-workflow 2.2.0`。
 
 ### Git 提交 / Git commit
 
 - Implementation commit: `8b95f6f`
 - Branch: `feature/planning-loop`
+
+## 历史记录 / Historical Records
 
 ## v10.8.7 (2026-09-18 04:46) - codex
 
@@ -218,8 +605,6 @@ termination boundary. Motion gates and final verification remain fail-closed.
 - RGB config remains `gpt-5.6-sol/high/272000/260000/110s`; no Gateway Tool,
   Action, Session, simulator step, Runtime transition, or physical motion occurred.
 - Implementation commit: `06c79d1`; branch: `feature/planning-loop`.
-
-## 历史记录 / Historical Records
 
 ## v10.8.5 (2026-09-18 03:27) - codex
 

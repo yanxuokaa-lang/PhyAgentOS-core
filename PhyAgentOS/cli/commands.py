@@ -511,6 +511,7 @@ def _make_provider(
             api_base=api_base() or "http://localhost:8000/v1",
             default_model=model,
             timeout_s=config.agents.defaults.request_timeout_s,
+            stream_responses=p.stream_responses if p else False,
         )
     # Azure OpenAI: direct Azure OpenAI endpoint with deployment name
     elif provider_name == "azure_openai":

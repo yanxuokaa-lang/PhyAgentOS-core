@@ -69,11 +69,36 @@ class PersistentManipulationProvider:
                 raise ManipulationStateError("place does not match the owned held object")
             self._state = "acquiring" if phase == "acquire" else "placing"
             cancel = Event()
-            self._operations[invocation_id] = (self._pool.submit(self._execute, phase, invocation_id, arguments, cancel), cancel)
+            self._operations[invocation_id] = (
+                self._pool.submit(
+                    self._execute,
+                    phase,
+                    invocation_id,
+                    owner,
+                    arguments,
+                    cancel,
+                ),
+                cancel,
+            )
 
-    def _execute(self, phase: str, invocation_id: str, arguments: dict[str, Any], cancel: Event) -> dict[str, Any]:
+    def _execute(
+        self,
+        phase: str,
+        invocation_id: str,
+        owner: str,
+        arguments: dict[str, Any],
+        cancel: Event,
+    ) -> dict[str, Any]:
         try:
-            result = dict(self._engine.execute(phase, arguments, cancel))
+            result = dict(
+                self._engine.execute(
+                    phase,
+                    arguments,
+                    cancel,
+                    owner=owner,
+                    invocation_id=invocation_id,
+                )
+            )
         except Exception as exc:
             # An exception is not evidence that nothing happened.
             result = {"status": "unknown", "outcome_known": False,

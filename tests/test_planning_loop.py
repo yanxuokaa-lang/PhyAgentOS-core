@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -10,13 +11,18 @@ from PhyAgentOS.agent.planner_plugin import PlannerPluginRegistry, PlanningReque
 from PhyAgentOS.agent.planning_dispatch import AgentComposedDispatch
 from PhyAgentOS.agent.planning_loop import (
     AgentLoopNodeExecutor,
+    EvidenceExecutionContext,
     NodeContextProvider,
     NodeExecutionContext,
     NodeTurnIncompleteError,
     NodeTurnProviderError,
     PlanningLoopAdapter,
     PlanningLoopError,
+    PredecessorContext,
+    PredecessorExecutionContext,
     StaleNodeContextError,
+    node_context_prompt_projection,
+    resolve_node_argument_sources,
 )
 from PhyAgentOS.agent.tools.forge_task import build_forge_task_tools
 from PhyAgentOS.config.schema import ForgeConfig
@@ -76,6 +82,130 @@ def coordinator(tmp_path):
         max_replans=2,
         replan_timeout_s=10,
     )
+
+
+def test_node_prompt_projects_large_payload_to_catalog_and_resolves_exact_source():
+    candidates = [
+        {
+            "candidate_ref": f"candidate://green/{index}",
+            "entity_ref": "entity://green",
+            "confidence": 0.9 - index / 100,
+            "geometry": [index + offset / 1000 for offset in range(256)],
+        }
+        for index in range(24)
+    ]
+    context = NodeExecutionContext(
+        task_id="task-1",
+        revision_id="revision-1",
+        node_id="prepare-green",
+        capability="manipulation.prepare",
+        dependencies=("propose-green",),
+        required_evidence=(),
+        input_bindings={"entity_ref": "entity://green"},
+        scene_revision="scene-1",
+        predecessor_context=(
+            PredecessorContext(
+                node_id="propose-green",
+                status="completed",
+                scene_revision="scene-1",
+                executions=(
+                    PredecessorExecutionContext(
+                        record_id="tool-candidates",
+                        tool_id="grasp.propose",
+                        semantics="query",
+                        status="succeeded",
+                        arguments={"entity_ref": "entity://green"},
+                        response={"data": {"result": {"candidates": candidates}}},
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    projected = node_context_prompt_projection(context)
+    encoded = json.dumps(projected)
+
+    assert len(encoded) < 8_000
+    assert "candidate://green/0" in encoded
+    assert '"geometry": [0.0' not in encoded
+    catalog = projected["predecessor_context"][0]["executions"][0][
+        "available_sources"
+    ]
+    assert {
+        "path": ["response", "data", "result", "candidates"],
+        "type": "array",
+        "count": 24,
+        "item_type": "dict",
+        "sample_identifiers": [
+            {
+                "candidate_ref": "candidate://green/0",
+                "entity_ref": "entity://green",
+                "confidence": 0.9,
+            },
+            {
+                "candidate_ref": "candidate://green/1",
+                "entity_ref": "entity://green",
+                "confidence": 0.89,
+            },
+            {
+                "candidate_ref": "candidate://green/2",
+                "entity_ref": "entity://green",
+                "confidence": 0.88,
+            },
+        ],
+    } in catalog
+    resolved = resolve_node_argument_sources(
+        context,
+        {"entity_ref": "entity://green"},
+        {
+            "candidates": {
+                "record_id": "tool-candidates",
+                "path": ["response", "data", "result", "candidates"],
+            }
+        },
+    )
+    assert resolved == {"entity_ref": "entity://green", "candidates": candidates}
+
+
+def test_argument_sources_reject_hidden_record_and_literal_collision():
+    context = NodeExecutionContext(
+        task_id="task-1",
+        revision_id="revision-1",
+        node_id="prepare",
+        capability="manipulation.prepare",
+        dependencies=(),
+        required_evidence=(),
+        input_bindings={},
+        scene_revision="scene-1",
+        evidence_context=(
+            EvidenceExecutionContext(
+                revision_id="revision-1",
+                record_id="visible",
+                tool_id="grasp.propose",
+                status="succeeded",
+                evidence_refs=("tool:visible",),
+                arguments={},
+                response={"data": {"candidates": [1, 2]}},
+            ),
+        ),
+    )
+    with pytest.raises(PlanningLoopError, match="not visible"):
+        resolve_node_argument_sources(
+            context,
+            {},
+            {"candidates": {"record_id": "hidden", "path": ["response"]}},
+        )
+    with pytest.raises(PlanningLoopError, match="both literal and sourced"):
+        resolve_node_argument_sources(
+            context,
+            {"candidates": []},
+            {
+                "candidates": {
+                    "record_id": "visible",
+                    "path": ["response", "data", "candidates"],
+                }
+            },
+        )
 
 
 def test_discovery_expands_same_task_and_injects_direct_predecessor_context(tmp_path):

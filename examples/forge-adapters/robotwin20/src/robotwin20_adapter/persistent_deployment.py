@@ -91,6 +91,7 @@ def build_persistent_runtime_bundle(
 def build_persistent_deployment(*, client, artifact_root: Path, scene_source,
                                 materializer_command, materializer_arguments,
                                 arm_profile_digest: str, materializer_timeout_s=120,
+                                preparation_timeout_s=330,
                                 readiness_evaluator=None):
     """Build real adapter components, retaining caller-owned client lifetime.
 
@@ -115,6 +116,7 @@ def build_persistent_deployment(*, client, artifact_root: Path, scene_source,
     preparation = PersistentPreparationProvider(
         client=client, route_builder=builder,
         selector=CompleteRouteSelector(evaluator, builder.arm_profile), prepared_routes=routes,
+        timeout_s=preparation_timeout_s,
     )
     capabilities = PersistentCapabilityProvider(
         client=client, artifact_root=artifact_root,

@@ -87,6 +87,13 @@ timestamps. Each `PlanRevision` contains its own Tool records, verdict, and veri
 inside the same transaction, enforcing one global active slot across processes. Updates write the
 complete validated record and an append-only event. Callers do not modify tables directly.
 
+Node prompts expose field catalogs, counts, references, and small identity
+summaries for direct-predecessor or explicitly selected evidence records, not
+large geometry payloads. `forge_plan_select.argument_sources` names a visible
+record and exact catalogued path; Coordinator resolves the complete value and
+validates the final object against the frozen Consumer ToolSpec before it
+persists the selection.
+
 Terminal task states are `succeeded`, `failed`, and `cancelled`. Non-terminal states are
 `executing`, `cancelling`, and `awaiting_replan`. Tool status `unknown` is terminal for aggregate
 accounting but is a failure, not evidence of stop.

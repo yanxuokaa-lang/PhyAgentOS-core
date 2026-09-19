@@ -1,4 +1,5 @@
 import json
+import time
 from copy import deepcopy
 
 import pytest
@@ -36,12 +37,12 @@ def composition(tmp_path, *, status="pass", node_id="pick-red"):
     class Client:
         snapshot = {"scene_revision": intent.scene_revision, "holding_state": "empty"}
 
-        def query(self, operation, arguments):
+        def query(self, operation, arguments, *, timeout_s=None):
             assert operation == "snapshot"
             return deepcopy(self.snapshot)
 
     class Builder:
-        def build(self, arguments):
+        def build(self, arguments, *, deadline=None, metrics=None):
             return {"destination_ref": arguments["destination_ref"], "base_request": route,
                     "options": enumerate_arm_candidates(intent, route["candidates"], profile)}
 
@@ -92,7 +93,7 @@ def test_failed_complete_routes_produce_no_prepared_assignment(tmp_path):
 def test_finalized_review_is_exposed_as_preparation_evidence(tmp_path):
     request, provider, routes = composition(tmp_path)
     ref = "artifact://selected/review"
-    provider.route_builder.finalize = lambda bundle, route: ref
+    provider.route_builder.finalize = lambda bundle, route, **_kwargs: ref
     result = provider.prepare(request)
     assert ref in result["prepared_candidates"][0]["evidence"]
     assert next(iter(routes._routes.values()))["review_request_ref"] == ref
@@ -101,7 +102,7 @@ def test_finalized_review_is_exposed_as_preparation_evidence(tmp_path):
 def test_finalization_failure_does_not_register_executable_route(tmp_path):
     request, provider, routes = composition(tmp_path)
 
-    def fail(bundle, route):
+    def fail(bundle, route, **_kwargs):
         raise ValueError("source manifest mismatch")
 
     provider.route_builder.finalize = fail
@@ -116,8 +117,8 @@ def test_changed_world_or_destination_is_not_published(tmp_path, change):
     request, provider, routes = composition(tmp_path)
     original = provider.route_builder.build
 
-    def build(arguments):
-        bundle = original(arguments)
+    def build(arguments, **kwargs):
+        bundle = original(arguments, **kwargs)
         if change == "scene":
             provider.client.snapshot["scene_revision"] = "next-scene"
         elif change == "holding":
@@ -131,3 +132,37 @@ def test_changed_world_or_destination_is_not_published(tmp_path, change):
         provider.prepare(request)
     assert not routes._routes
     assert not (tmp_path / "assignments").exists()
+
+
+def test_complete_preparation_deadline_spans_builder_and_selector(tmp_path):
+    request, provider, routes = composition(tmp_path)
+    original = provider.route_builder.build
+
+    def slow_build(arguments, **kwargs):
+        time.sleep(0.02)
+        return original(arguments, **kwargs)
+
+    provider.route_builder.build = slow_build
+    provider.timeout_s = 0.005
+
+    with pytest.raises(TimeoutError, match="deadline"):
+        provider.prepare(request)
+    assert not routes._routes
+    assert not (tmp_path / "assignments").exists()
+
+
+def test_snapshot_calls_receive_remaining_total_budget(tmp_path):
+    request, provider, routes = composition(tmp_path)
+    original = provider.client.query
+    budgets = []
+
+    def query(operation, arguments, *, timeout_s=None):
+        assert timeout_s is not None and 0 < timeout_s <= provider.timeout_s
+        budgets.append(timeout_s)
+        return original(operation, arguments)
+
+    provider.client.query = query
+    provider.prepare(request)
+    assert len(budgets) == 2
+    assert budgets[1] < budgets[0]
+    assert routes._routes

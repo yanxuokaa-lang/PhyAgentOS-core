@@ -477,6 +477,18 @@ class AgentLoop:
         if self._allows_pre_graph_discovery_query(name, arguments):
             return None
         try:
+            semantics = {
+                "forge_tool_query": "query", "forge_tool_start_action": "action",
+                "forge_tool_start_session": "session",
+            }.get(name)
+            if semantics and arguments.get("use_selected_arguments") is True:
+                arguments = {
+                    **arguments,
+                    "arguments": self.forge_task_coordinator.selected_execution_arguments(
+                        arguments.get("task_id"), arguments.get("tool_id"), semantics,
+                        arguments.get("arguments", {}), arguments.get("planning_binding"),
+                    ),
+                }
             decision = self._planning_dispatch.admit_forge_tool(name, arguments)
         except Exception as exc:
             return json.dumps(
@@ -670,6 +682,7 @@ class AgentLoop:
         projection_node_id: str | None = None,
         allowed_tool_names: frozenset[str] | None = None,
         yield_after_tools: frozenset[str] = frozenset(),
+        decision_timeout_s: float | None = None,
     ) -> AgentLoopRunResult:
         """Run the agent iteration loop."""
         messages = initial_messages
@@ -682,6 +695,20 @@ class AgentLoop:
         turn_failure_code = None
         model_failure_code = None
         tools_used: list[str] = []
+        decision_deadline = (
+            monotonic() + decision_timeout_s if decision_timeout_s is not None else None
+        )
+
+        async def bounded_decision(operation):
+            if decision_deadline is None:
+                return await operation
+            return await asyncio.wait_for(operation, timeout=max(0, decision_deadline - monotonic()))
+
+        def decision_timeout_result():
+            return AgentLoopRunResult(
+                content="Node decision turn timed out; persisted execution facts remain authoritative.",
+                tools_used=tools_used, messages=messages, turn_failure_code="turn_timeout",
+            )
 
         while iteration < self.max_iterations:
             iteration += 1
@@ -753,17 +780,49 @@ class AgentLoop:
                     tool_hint=False,
                 )
             try:
-                response = await self.provider.chat_with_retry(
+                response = await bounded_decision(self.provider.chat_with_retry(
                     messages=request_view.messages,
                     tools=tool_defs,
                     model=self.model,
-                )
+                ))
+            except asyncio.TimeoutError:
+                return decision_timeout_result()
             except asyncio.CancelledError:
                 logger.warning("Agent model cancelled session={} iteration={}", experience_session_key, iteration)
                 raise
             finally:
                 logger.info("Agent model exit session={} iteration={} elapsed_s={:.3f}",
                             experience_session_key, iteration, monotonic() - started)
+
+            timing = response.timing
+            if timing is not None:
+                headers = (
+                    f"{timing.request_to_headers_s:.3f}s"
+                    if timing.request_to_headers_s is not None
+                    else "unavailable"
+                )
+                first_token = (
+                    f"{timing.time_to_first_token_s:.3f}s"
+                    if timing.time_to_first_token_s is not None
+                    else "unavailable"
+                )
+                logger.info(
+                    "Agent model timing session={} iteration={} "
+                    "request_to_headers={} first_token={} complete_s={:.3f} mode={}",
+                    experience_session_key,
+                    iteration,
+                    headers,
+                    first_token,
+                    timing.complete_response_s,
+                    timing.observation_mode,
+                )
+                if on_progress:
+                    await on_progress(
+                        "Model request timing: "
+                        f"headers={headers}, first_token={first_token}, "
+                        f"complete={timing.complete_response_s:.3f}s.",
+                        tool_hint=False,
+                    )
 
             if response.has_tool_calls:
                 if on_progress:
@@ -819,7 +878,16 @@ class AgentLoop:
                     logger.info("Agent tool start session={} iteration={} call_id={} tool={}",
                                 experience_session_key, iteration, tool_call.id, tool_call.name)
                     try:
-                        result = await self.tools.execute(tool_call.name, tool_call.arguments)
+                        if tool_call.name in yield_after_tools:
+                            # A governed execution has its own Tool budget and is
+                            # reconciled from durable facts by the node executor.
+                            if decision_deadline is not None and monotonic() >= decision_deadline:
+                                return decision_timeout_result()
+                            result = await self.tools.execute(tool_call.name, tool_call.arguments)
+                        else:
+                            result = await bounded_decision(self.tools.execute(tool_call.name, tool_call.arguments))
+                    except asyncio.TimeoutError:
+                        return decision_timeout_result()
                     except asyncio.CancelledError:
                         logger.warning("Agent tool cancelled session={} iteration={} call_id={} tool={}",
                                        experience_session_key, iteration, tool_call.id, tool_call.name)
@@ -998,6 +1066,7 @@ class AgentLoop:
             projection_node_id=node_id,
             allowed_tool_names=_NODE_TURN_ALLOWED_TOOLS,
             yield_after_tools=_NODE_TURN_EXECUTION_TOOLS,
+            decision_timeout_s=self.turn_timeout_s,
         )
 
     async def run_segment_continuation_turn(

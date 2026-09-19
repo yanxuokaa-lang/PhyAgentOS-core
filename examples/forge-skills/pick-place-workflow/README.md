@@ -48,6 +48,13 @@ not execute commands, create an Action or Session, or authorize motion;
 scene revision, frame, calibration, and candidate-set references, so a later
 execution layer must perform its own admission checks.
 
+Large predecessor values are selected without copying their full geometry into
+the node prompt. `forge_plan_select.argument_sources` names a visible
+`record_id` and exact field path; Coordinator resolves the full value and then
+validates the final request against the frozen `manipulation.prepare` schema.
+The persistent profile gives the whole preparation Query one 330-second
+deadline inside its 360-second Tool timeout.
+
 `object.acquire` is the first physical-effect boundary. It consumes a fresh,
 calibration-bound preparation reference through the standard Action admission
 route and is reconciled through `/invocations`; approach, contact, close, lift,
@@ -60,6 +67,15 @@ bindings, and an opaque `destination_ref`; transport, descent, release, and
 retreat remain Gateway-internal. Its terminal summary adds typed
 `post_release_evidence` for downstream verification, without exposing
 coordinates, simulator parameters, or controller details.
+
+The `robotwin-persistent` profile enables adapter-owned task video. All
+`object.acquire` and `object.place` Actions with the same PAOS task owner are
+aggregated into cumulative head-camera and observer-camera MP4 artifacts. Each
+Action result carries the latest task-video manifest and both cumulative views;
+the final successful `object.place` therefore points to the complete multi-step
+execution, while the provider-neutral Tool schemas continue to expose only
+opaque evidence references. Recording observes existing simulator steps and
+does not grant motion authority or add control commands.
 
 Long-horizon orchestration remains an AgentTask concern. The bundle exposes a
 replayable reducer for the seven-node pick-and-place dependency graph; it stores only

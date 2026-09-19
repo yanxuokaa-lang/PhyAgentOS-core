@@ -29,6 +29,20 @@ class _CountingHangingProvider(LLMProvider):
         return "test-model"
 
 
+def test_node_turn_uses_decision_budget_without_waiting_for_request_timeout(tmp_path):
+    async def exercise():
+        provider = _HangingProvider()
+        provider.generation = GenerationSettings(request_timeout_s=10)
+        loop = AgentLoop(bus=MessageBus(), provider=provider, workspace=tmp_path)
+        loop.turn_timeout_s = 0.02
+        result = await asyncio.wait_for(loop.run_node_turn(
+            task_id="task", revision_id="revision", node_id="node", prompt="Choose a Tool"
+        ), timeout=1)
+        assert result.turn_failure_code == "turn_timeout"
+        assert not result.tools_used
+    asyncio.run(exercise())
+
+
 class _ScriptedErrorProvider(LLMProvider):
     _CHAT_RETRY_DELAYS = (0.0, 0.0)
 
@@ -57,6 +71,11 @@ def test_provider_attempt_timeout_is_bounded_without_network() -> None:
 
         assert response.finish_reason == "error"
         assert "timed out" in (response.content or "")
+        assert response.timing is not None
+        assert response.timing.request_to_headers_s is None
+        assert response.timing.time_to_first_token_s is None
+        assert response.timing.complete_response_s >= 0.01
+        assert response.timing.observation_mode == "non_streaming"
 
     asyncio.run(exercise())
 

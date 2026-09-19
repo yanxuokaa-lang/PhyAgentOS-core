@@ -32,6 +32,7 @@ from robotwin_simulation_probe_worker import (
     _validate_request_policies,
     _validate_route_input_artifacts,
     _validate_support_departure_results,
+    concatenate_probe_videos,
 )
 from test_route_readiness import _request as _route_request
 
@@ -151,6 +152,16 @@ def test_probe_video_recorder_writes_sampled_dual_view_artifacts(tmp_path: Path,
         "cv2",
         SimpleNamespace(VideoWriter=Writer, VideoWriter_fourcc=lambda *_: 0),
     )
+    monkeypatch.setattr(
+        probe_worker,
+        "_validate_video_file",
+        lambda *_args, **_kwargs: {
+            "frame_count": 1,
+            "fps": 25.0,
+            "width": 3,
+            "height": 2,
+        },
+    )
     recorder = _ProbeVideoRecorder(tmp_path / "video", stride_steps=2)
     task = SimpleNamespace(
         _update_render=lambda: None,
@@ -169,6 +180,66 @@ def test_probe_video_recorder_writes_sampled_dual_view_artifacts(tmp_path: Path,
     assert record["observer_camera"]["artifact_ref"] == "artifact://probe/video/observer-camera.mp4"
     assert (tmp_path / "probe" / "video" / "head-camera.mp4").read_bytes().startswith(b"fake-mp4-1")
     assert (tmp_path / "probe" / "video" / "observer-camera.mp4").read_bytes().startswith(b"fake-mp4-1")
+
+
+def test_probe_video_recorder_and_concatenation_write_decodable_task_video(tmp_path: Path):
+    import cv2
+    import numpy as np
+
+    class Cameras:
+        def __init__(self):
+            self.value = 0
+
+        def update_picture(self):
+            self.value += 20
+
+        def get_rgb(self):
+            return {
+                "head_camera": {
+                    "rgb": np.full((16, 24, 3), self.value, dtype=np.uint8)
+                }
+            }
+
+        def get_observer_rgb(self):
+            return np.full((18, 26, 3), self.value + 5, dtype=np.uint8)
+
+    task = SimpleNamespace(_update_render=lambda: None, cameras=Cameras())
+    segments = []
+    for index in range(2):
+        prefix = f"artifact://segments/action-{index}"
+        recorder = _ProbeVideoRecorder(
+            tmp_path / "segments" / f"action-{index}" / "video",
+            fps=10,
+            stride_steps=1,
+        )
+        recorder.capture(task, 0, force=True)
+        recorder.capture(task, 1, force=True)
+        segments.append(recorder.finish(tmp_path, prefix))
+
+    records, metadata = concatenate_probe_videos(
+        tmp_path,
+        segments,
+        "artifact://task-video/cumulative/action-0002",
+        fps=10,
+    )
+
+    assert metadata["head_camera"]["frame_count"] == 4
+    assert metadata["observer_camera"]["frame_count"] == 4
+    for view, filename in {
+        "head_camera": "head-camera.mp4",
+        "observer_camera": "observer-camera.mp4",
+    }.items():
+        path = tmp_path / "task-video" / "cumulative" / "action-0002" / "video" / filename
+        capture = cv2.VideoCapture(str(path))
+        try:
+            decoded = 0
+            while capture.read()[0]:
+                decoded += 1
+        finally:
+            capture.release()
+        assert decoded == 4
+        assert records[view]["artifact_ref"].endswith(filename)
+    assert not list(tmp_path.rglob("*.partial.mp4"))
 
 
 def test_probe_video_recorder_rejects_missing_observer_frame(tmp_path: Path, monkeypatch):

@@ -441,7 +441,11 @@ class RouteReadinessEvaluationAdapter:
         self.client = client
 
     def evaluate(
-        self, request: Mapping[str, Any], option: Mapping[str, Any]
+        self,
+        request: Mapping[str, Any],
+        option: Mapping[str, Any],
+        *,
+        timeout_s: float | None = None,
     ) -> dict[str, Any]:
         validate_route_request(request)
         if not isinstance(option, Mapping) or not isinstance(option.get("candidate_ref"), str):
@@ -453,7 +457,11 @@ class RouteReadinessEvaluationAdapter:
         )
         if candidate is None:
             raise RouteReadinessProfileError("route evaluation option is not bound to request")
-        response = self.client.evaluate(request)
+        response = (
+            self.client.evaluate(request)
+            if timeout_s is None
+            else self.client.evaluate(request, timeout_s=timeout_s)
+        )
         evidence = response.get("route_evidence") if isinstance(response, Mapping) else None
         item = next(
             (
@@ -533,9 +541,18 @@ class RouteReadinessClient:
         self.client = client
         self.worker_id = worker_id
 
-    def evaluate(self, request: Mapping[str, Any]) -> Mapping[str, Any]:
+    def evaluate(
+        self,
+        request: Mapping[str, Any],
+        *,
+        timeout_s: float | None = None,
+    ) -> Mapping[str, Any]:
         validate_route_request(request)
-        response = self.client.request(dict(request))
+        response = (
+            self.client.request(dict(request))
+            if timeout_s is None
+            else self.client.request(dict(request), timeout_s=timeout_s)
+        )
         if response.get("request_id") != request["request_id"]:
             raise RouteReadinessProfileError("route readiness response identity mismatch")
         if response.get("schema_version") != SIMULATION_ROUTE_READINESS_SCHEMA_VERSION:

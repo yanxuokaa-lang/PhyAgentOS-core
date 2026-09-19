@@ -225,7 +225,13 @@ def test_node_turn_yields_after_bound_execution_and_cannot_continue_revision(tmp
             forge_task_coordinator=c,
             max_iterations=3,
         )
-        loop.tools.execute = AsyncMock(return_value=json.dumps({"ok": True}))
+        loop.turn_timeout_s = 0.5
+
+        async def governed_execution(*_args, **_kwargs):
+            await asyncio.sleep(0.6)
+            return json.dumps({"ok": True})
+
+        loop.tools.execute = AsyncMock(side_effect=governed_execution)
 
         result = await loop.run_node_turn(
             task_id=task.task_id,

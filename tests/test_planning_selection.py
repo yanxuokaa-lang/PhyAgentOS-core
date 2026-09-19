@@ -52,6 +52,7 @@ class _Coordinator:
 
 class _Dispatch:
     graph = SimpleNamespace(task_id="task-1")
+    current_scene_revision = "scene-1"
 
     def prepare_selection(self, **kwargs):
         return {
@@ -85,6 +86,103 @@ def test_plan_select_is_control_plane_only_and_returns_binding():
     assert result["data"]["selection"]["scene_revision"] == "scene-1"
     assert result["data"]["selection"]["tool_arguments"] == {}
     assert coordinator.proposals[0]["tool_id"] == "scene.observe"
+
+
+def test_plan_select_resolves_catalogued_predecessor_source_before_persistence():
+    predecessor = PlanNode(
+        node_id="propose",
+        obligation_id="propose",
+        capability="grasp.propose",
+    )
+    consumer = PlanNode(
+        node_id="prepare",
+        obligation_id="prepare",
+        capability="manipulation.prepare",
+        dependencies=("propose",),
+    )
+    graph_payload = {
+        "schema_version": "paos-plan-graph/v1",
+        "task_id": "task-1",
+        "revision_id": "revision-1",
+        "graph_digest": "0" * 64,
+        "planner_decision_digest": "1" * 64,
+        "policy_snapshot_digest": "2" * 64,
+        "nodes": [
+            predecessor.model_dump(mode="json"),
+            consumer.model_dump(mode="json"),
+        ],
+    }
+    graph_payload["graph_digest"] = plan_graph_digest(graph_payload)
+    graph = PlanGraph.model_validate(graph_payload)
+    candidates = [{"candidate_ref": "candidate://green/1", "score": 0.9}]
+    task = SimpleNamespace(
+        task_id="task-1",
+        primary_skill_binding=None,
+        tool_bindings=(),
+        revisions=(),
+        active_revision=SimpleNamespace(
+            revision_id="revision-1",
+            plan_graph=graph,
+            node_settlements=(
+                SimpleNamespace(
+                    node_id="propose",
+                    status="completed",
+                    scene_revision="scene-1",
+                    evidence_refs=("tool:proposal",),
+                    source_tool_id="grasp.propose",
+                    failure_code=None,
+                ),
+            ),
+            execution_records=(
+                SimpleNamespace(
+                    record_id="tool-proposal",
+                    node_id="propose",
+                    tool_id="grasp.propose",
+                    semantics="query",
+                    status="succeeded",
+                    arguments={"entity_ref": "entity://green"},
+                    response={"data": {"candidates": candidates}},
+                    error=None,
+                ),
+            ),
+            discovery_evidence_refs=(),
+            fresh_evidence_requirements=(),
+            replan_evidence_refs=(),
+        ),
+    )
+
+    class Coordinator(_Coordinator):
+        def get_task(self, task_id):
+            assert task_id == "task-1"
+            return task
+
+    coordinator = Coordinator()
+    tool = ForgePlanSelectTool(coordinator, lambda: _Dispatch())
+    result = json.loads(
+        asyncio.run(
+            tool.execute(
+                "task-1",
+                "prepare",
+                "manipulation.prepare",
+                {"entity_ref": "entity://green"},
+                "use persisted proposal",
+                {
+                    "candidates": {
+                        "record_id": "tool-proposal",
+                        "path": ["response", "data", "candidates"],
+                    }
+                },
+            )
+        )
+    )
+
+    assert result["ok"] is True
+    assert coordinator.proposals[0]["tool_arguments"] == {
+        "entity_ref": "entity://green",
+        "candidates": candidates,
+    }
+    assert result["data"]["selection"]["tool_arguments"] == {}
+    assert result["data"]["selection"]["use_selected_arguments"] is True
 
 
 def test_plan_select_rejects_when_task_is_not_active_graph():
@@ -464,6 +562,18 @@ def test_real_coordinator_persists_context_bound_decision_trace(tmp_path, monkey
     )
     assert validated.revision_id == revision_id
     assert validated.node_id == "observe"
+    saved_arguments = coordinator.selected_execution_arguments(
+        task_id, "scene.observe", "query", {}, validated.model_dump(mode="json")
+    )
+    assert saved_arguments == {}
+    with pytest.raises(AgentTaskError, match="active revision selection"):
+        coordinator.selected_execution_arguments(
+            task_id, "other.query", "query", {}, validated.model_dump(mode="json")
+        )
+    with pytest.raises(AgentTaskError, match="empty literal"):
+        coordinator.selected_execution_arguments(
+            task_id, "scene.observe", "query", {"changed": True}, validated.model_dump(mode="json")
+        )
     trace_path = tmp_path / "artifacts" / "planning-traces" / task_id / revision_id / "observe"
     traces = list(trace_path.glob("*.json"))
     assert len(traces) == 1
@@ -559,12 +669,23 @@ def test_real_coordinator_persists_context_bound_decision_trace(tmp_path, monkey
             return {"ok": True, "data": {"status": "available"}}
 
     coordinator.client = QueryClient()
-    asyncio.run(coordinator.invoke_query(
-        task_id,
-        "scene.observe",
-        {},
-        planning_binding=validated,
-    ))
+    from PhyAgentOS.agent.loop import AgentLoop
+    from PhyAgentOS.agent.tools.forge_tool_api import ForgeToolQueryTool
+    from PhyAgentOS.agent.tools.registry import ToolRegistry
+
+    loop = object.__new__(AgentLoop)
+    loop._planning_dispatch = dispatch
+    loop.forge_task_coordinator = coordinator
+    loop._allows_pre_graph_discovery_query = lambda *_args: False
+    registry = ToolRegistry()
+    registry.register(ForgeToolQueryTool(coordinator.client, coordinator))
+    registry.set_execution_guard(loop._planning_guard)
+    result = json.loads(asyncio.run(registry.execute("forge_tool_query", {
+        "task_id": task_id, "tool_id": "scene.observe", "arguments": {},
+        "planning_binding": validated.model_dump(mode="json"),
+        "use_selected_arguments": True,
+    })))
+    assert result["ok"] is True
     assert coordinator.pending_planning_selection(
         task_id, "observe", scene_revision="scene-real"
     ) is None

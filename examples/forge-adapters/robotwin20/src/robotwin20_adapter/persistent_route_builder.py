@@ -9,11 +9,13 @@ import subprocess
 from copy import deepcopy
 from pathlib import Path
 from tempfile import mkdtemp
+from time import monotonic
 from typing import Any, Mapping
 
 from PhyAgentOS.forge.manipulation import ManipulationIntent
 
 from .arm_candidates import enumerate_arm_candidates, load_arm_planning_profile
+from .preparation_deadline import PreparationDeadline, PreparationDeadlineExceededError
 from .route_evidence import _artifact_path
 from .route_inputs import canonical_json, validate_scene_facts
 from .route_readiness import route_geometry_digest, validate_route_request
@@ -25,8 +27,13 @@ class BenchmarkSceneSource:
     def __init__(self, client):
         self.client = client
 
-    def __call__(self, request):
-        response = self.client.query("execution_scene_facts", {"calibration_ref": request["calibration_ref"]})
+    def __call__(self, request, *, deadline: PreparationDeadline | None = None):
+        kwargs = {} if deadline is None else {
+            "timeout_s": deadline.remaining("execution_scene_facts")
+        }
+        response = self.client.query(
+            "execution_scene_facts", {"calibration_ref": request["calibration_ref"]}, **kwargs
+        )
         for key in ("holding_state", "owner", "acquire_invocation_id", "entity_ref", "ok", "request_id"):
             response.pop(key, None)
         return response
@@ -57,17 +64,29 @@ class PersistentRouteBuilder:
             raise ValueError("materializer configuration overrides dynamic scene arguments")
         self.arm_profile = load_arm_planning_profile(Path(self.arguments["arm-planning-profile"]))
 
-    def _current(self, scene_revision):
-        current = self.client.query("snapshot", {})
+    def _current(self, scene_revision, *, deadline: PreparationDeadline | None = None):
+        kwargs = {} if deadline is None else {
+            "timeout_s": deadline.remaining("route_snapshot")
+        }
+        current = self.client.query("snapshot", {}, **kwargs)
         if current["scene_revision"] != scene_revision or current["holding_state"] != "empty":
             raise ValueError("route building requires the current empty scene")
 
-    def build(self, request: Mapping[str, Any]) -> dict[str, Any]:
+    def build(
+        self,
+        request: Mapping[str, Any],
+        *,
+        deadline: PreparationDeadline | None = None,
+        metrics: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         intent = ManipulationIntent.model_validate(request["intent"])
-        self._current(intent.scene_revision)
+        if deadline is not None:
+            deadline.remaining("route_materialization")
+        self._current(intent.scene_revision, deadline=deadline)
         # Validate the candidate/arm budget before invoking an expensive materializer.
         enumerate_arm_candidates(intent, request["candidates"], self.arm_profile)
-        facts = validate_scene_facts(self.scene_source(deepcopy(dict(request))))
+        source_kwargs = {} if deadline is None else {"deadline": deadline}
+        facts = validate_scene_facts(self.scene_source(deepcopy(dict(request)), **source_kwargs))
         for key in ("scene_revision", "observation_ref", "calibration_ref"):
             if facts[key] != request[key]:
                 raise ValueError(f"route scene facts differ from request: {key}")
@@ -89,6 +108,8 @@ class PersistentRouteBuilder:
         reviews = {}
         output_roots = []
         for index, candidate in enumerate(request["candidates"]):
+            if deadline is not None:
+                deadline.remaining("route_materialization")
             output = run / f"candidate-{index}"
             output.mkdir()
             arguments = {**self.arguments, "scene-facts": str(run / "scene-facts.json"),
@@ -100,7 +121,35 @@ class PersistentRouteBuilder:
                 argv.extend((f"--{key}", str(value)))
             (run / f"command-{index}.json").write_text(json.dumps(argv), encoding="utf-8")
             with (run / f"materializer-{index}.log").open("w", encoding="utf-8") as log:
-                subprocess.run(argv, check=True, timeout=self.timeout_s, stdout=log, stderr=subprocess.STDOUT)
+                timeout_s = (
+                    self.timeout_s
+                    if deadline is None
+                    else deadline.bounded_timeout(
+                        self.timeout_s,
+                        "route_materialization",
+                    )
+                )
+                try:
+                    materialization_started = monotonic()
+                    subprocess.run(
+                        argv,
+                        check=True,
+                        timeout=timeout_s,
+                        stdout=log,
+                        stderr=subprocess.STDOUT,
+                    )
+                except subprocess.TimeoutExpired as exc:
+                    raise PreparationDeadlineExceededError(
+                        "preparation timed out during route materialization"
+                    ) from exc
+                finally:
+                    if metrics is not None:
+                        metrics.setdefault("materialization", []).append(
+                            {
+                                "candidate_ref": candidate["candidate_ref"],
+                                "elapsed_s": monotonic() - materialization_started,
+                            }
+                        )
             route = json.loads((output / "route_request.json").read_text(encoding="utf-8"))
             validate_route_request(route)
             for key in ("scene_revision", "observation_ref", "calibration_ref", "candidate_set_ref"):
@@ -117,7 +166,9 @@ class PersistentRouteBuilder:
             candidates.append(generated)
             reviews[candidate["candidate_ref"]] = str(output / "human_review_request.json")
             output_roots.append(output)
-        self._current(intent.scene_revision)
+        self._current(intent.scene_revision, deadline=deadline)
+        if deadline is not None:
+            deadline.remaining("route_materialization")
         assert base is not None
         base["candidates"] = candidates
         validate_route_request(base)
@@ -126,10 +177,18 @@ class PersistentRouteBuilder:
         return {"destination_ref": request["destination_ref"], "base_request": base,
                 "options": options, "reviews": reviews}
 
-    def finalize(self, bundle, route):
+    def finalize(
+        self,
+        bundle,
+        route,
+        *,
+        deadline: PreparationDeadline | None = None,
+    ):
         """Bind existing review evidence to the selected request without approving it."""
+        if deadline is not None:
+            deadline.remaining("route_finalization")
         validate_route_request(route)
-        self._current(route["scene_revision"])
+        self._current(route["scene_revision"], deadline=deadline)
         candidate = route["candidates"][0]
         if len(route["candidates"]) != 1:
             raise ValueError("finalization requires one selected candidate")
@@ -181,6 +240,8 @@ class PersistentRouteBuilder:
             review[field] = hashlib.sha256(_artifact_path(self.root, ref).read_bytes()).hexdigest()
         review_ref = f"{prefix}/review-request"
         write(review_ref, review)
+        if deadline is not None:
+            deadline.remaining("route_finalization")
         return review_ref
 
     def _import_artifacts(self, output_roots):

@@ -7,6 +7,11 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from PhyAgentOS.agent.planning_dispatch import AgentComposedDispatch, PlanningDispatchError
+from PhyAgentOS.agent.planning_loop import (
+    NodeContextProvider,
+    PlanningLoopError,
+    resolve_node_argument_sources,
+)
 from PhyAgentOS.agent.tools.base import Tool
 from PhyAgentOS.planning import AdmissionContext
 
@@ -76,13 +81,37 @@ class ForgePlanSelectTool(Tool):
                 "node_id": {"type": "string", "minLength": 1},
                 "tool_id": {"type": "string", "minLength": 1},
                 "arguments": {"type": "object"},
+                "argument_sources": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                            "record_id": {"type": "string", "minLength": 1},
+                            "path": {
+                                "type": "array",
+                                "items": {"type": "string", "minLength": 1},
+                                "minItems": 1,
+                            },
+                        },
+                        "required": ["record_id", "path"],
+                        "additionalProperties": False,
+                    },
+                },
                 "decision_reason": {"type": "string", "minLength": 1},
             },
             "required": ["task_id", "node_id", "tool_id", "arguments", "decision_reason"],
             "additionalProperties": False,
         }
 
-    async def execute(self, task_id: str, node_id: str, tool_id: str, arguments: dict[str, Any], decision_reason: str) -> str:
+    async def execute(
+        self,
+        task_id: str,
+        node_id: str,
+        tool_id: str,
+        arguments: dict[str, Any],
+        decision_reason: str,
+        argument_sources: dict[str, Any] | None = None,
+    ) -> str:
         dispatch = self.dispatch_getter()
         if dispatch is None or dispatch.graph.task_id != task_id:
             error = PlanningDispatchError(
@@ -97,8 +126,31 @@ class ForgePlanSelectTool(Tool):
                 error["task_status"] = current.status.value
             return self._error_response(error)
         try:
+            final_arguments = arguments
+            if argument_sources:
+                try:
+                    task = self.coordinator.get_task(task_id)
+                    context = NodeContextProvider(lambda _task_id: task).build(
+                        task_id,
+                        node_id,
+                        scene_revision=dispatch.current_scene_revision,
+                    )
+                    final_arguments = resolve_node_argument_sources(
+                        context,
+                        arguments,
+                        argument_sources,
+                    )
+                except PlanningLoopError as exc:
+                    raise PlanningDispatchError(
+                        str(exc),
+                        code="invalid_argument_source",
+                        failure_owner="agent_arguments",
+                        recommended_action=(
+                            "select_a_catalogued_source_from_bounded_node_context"
+                        ),
+                    ) from exc
             proposal = dispatch.prepare_selection(
-                node_id=node_id, tool_id=tool_id, arguments=arguments,
+                node_id=node_id, tool_id=tool_id, arguments=final_arguments,
                 decision_reason=decision_reason,
             )
             receipt = self.coordinator.persist_planning_selection(proposal)
@@ -118,6 +170,9 @@ class ForgePlanSelectTool(Tool):
                 for field in ("task_id", "revision_id", "scene_revision", "tool_arguments")
                 if field in receipt
             }
+            if argument_sources:
+                selection["tool_arguments"] = {}
+                selection["use_selected_arguments"] = True
             return json.dumps(
                 {
                     "ok": True,

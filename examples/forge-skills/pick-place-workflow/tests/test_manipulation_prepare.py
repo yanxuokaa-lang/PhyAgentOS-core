@@ -124,6 +124,11 @@ class RaisingProvider:
         raise RuntimeError("provider backend failure")
 
 
+class TimeoutProvider:
+    def prepare(self, request):
+        raise TimeoutError("complete preparation budget exhausted")
+
+
 def _observation_stub():
     return type("Observation", (), {"observe": lambda self, sensor_ref: None})()
 
@@ -362,6 +367,16 @@ async def test_provider_exception_fails_closed_without_gateway_error():
     assert data["status"] == "unavailable"
     assert data["error"]["code"] == "preparation_provider_error"
     assert data["prepared_candidates"] == []
+
+
+@pytest.mark.asyncio
+async def test_provider_timeout_has_stable_no_motion_failure_code():
+    _, _, result, _ = await query(TimeoutProvider(), request_payload())
+    data = result["data"]
+    assert data["status"] == "unavailable"
+    assert data["error"]["code"] == "preparation_timeout"
+    assert data["prepared_candidates"] == []
+    assert data["motion_authorized"] is False
 
 
 @pytest.mark.parametrize(

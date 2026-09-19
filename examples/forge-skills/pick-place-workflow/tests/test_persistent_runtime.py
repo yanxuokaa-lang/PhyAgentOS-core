@@ -90,6 +90,12 @@ def test_composition_registers_all_seven_required_tools():
         else:
             assert capabilities == (tool["tool_id"],)
         assert "object.relocate" not in capabilities
+    prepare = next(
+        tool
+        for tool in runtime.list_tools()["tools"]
+        if tool["tool_id"] == "manipulation.prepare"
+    )
+    assert prepare["default_timeout_ms"] == 360_000
     assert all(runtime.get_context(tool["tool_id"])["ready"] is False for tool in runtime.list_tools()["tools"])
 
 

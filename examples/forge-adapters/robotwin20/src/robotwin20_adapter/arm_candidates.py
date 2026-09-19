@@ -8,6 +8,7 @@ from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
+from time import monotonic
 from typing import Any, Protocol
 
 from PhyAgentOS.forge.manipulation import (
@@ -25,10 +26,12 @@ from PhyAgentOS.forge.manipulation import (
 )
 
 from .perception_profile import _read_unique_yaml
+from .preparation_deadline import PreparationDeadline, PreparationDeadlineExceededError
 from .route_generation import RouteGenerationError, validate_route_policy
 from .route_readiness import (
     ROUTE_CHECKS,
     ROUTE_PHASES,
+    RouteReadinessEvaluationAdapter,
     route_geometry_digest,
     validate_route_request,
 )
@@ -333,6 +336,9 @@ class CompleteRouteSelector:
         intent: ManipulationIntent,
         base_request: Mapping[str, Any],
         options: Sequence[Mapping[str, Any]],
+        *,
+        deadline: PreparationDeadline | None = None,
+        metrics: dict[str, Any] | None = None,
     ) -> dict[str, Any] | ReplanSignal:
         if not isinstance(intent, ManipulationIntent):
             raise TypeError("route selection requires a ManipulationIntent")
@@ -352,6 +358,8 @@ class CompleteRouteSelector:
         seen_options: set[str] = set()
         seen_routes: set[tuple[str, tuple[str, ...]]] = set()
         for option in options:
+            if deadline is not None:
+                deadline.remaining("route_readiness")
             option_id, arm_ids, candidate = self._validate_option(intent, option, seen_options)
             route_identity = (candidate["candidate_ref"], arm_ids)
             if route_identity in seen_routes:
@@ -362,13 +370,37 @@ class CompleteRouteSelector:
             request["candidates"] = [deepcopy(candidate)]
             validate_route_request(request)
             evaluate = getattr(self.evaluator, "evaluate", None)
+            readiness_started = monotonic()
             try:
-                raw = (
-                    evaluate(deepcopy(request), deepcopy(option))
-                    if callable(evaluate)
-                    else self.evaluator(deepcopy(request), deepcopy(option))
-                )
+                if callable(evaluate):
+                    if deadline is not None and isinstance(
+                        self.evaluator, RouteReadinessEvaluationAdapter
+                    ):
+                        raw = evaluate(
+                            deepcopy(request),
+                            deepcopy(option),
+                            timeout_s=deadline.remaining("route_readiness"),
+                        )
+                    else:
+                        raw = evaluate(deepcopy(request), deepcopy(option))
+                else:
+                    raw = self.evaluator(deepcopy(request), deepcopy(option))
+                if deadline is not None:
+                    deadline.remaining("route_readiness")
+            except PreparationDeadlineExceededError:
+                raise
             except Exception as exc:
+                if deadline is not None:
+                    deadline.remaining("route_readiness")
+                if metrics is not None:
+                    metrics.setdefault("readiness", []).append(
+                        {
+                            "candidate_ref": candidate["candidate_ref"],
+                            "arm_ids": list(arm_ids),
+                            "elapsed_s": monotonic() - readiness_started,
+                            "status": "provider_error",
+                        }
+                    )
                 failures.append(
                     RouteFailure(
                         candidate_ref=candidate["candidate_ref"],
@@ -381,6 +413,17 @@ class CompleteRouteSelector:
                     )
                 )
                 continue
+            if metrics is not None:
+                metrics.setdefault("readiness", []).append(
+                    {
+                        "candidate_ref": candidate["candidate_ref"],
+                        "arm_ids": list(arm_ids),
+                        "elapsed_s": monotonic() - readiness_started,
+                        "status": raw.get("status", "invalid")
+                        if isinstance(raw, Mapping)
+                        else "invalid",
+                    }
+                )
             try:
                 normalized = self._validate_result(request, option, raw)
             except ArmPlanningError as exc:

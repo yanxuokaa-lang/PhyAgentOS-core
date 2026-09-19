@@ -647,6 +647,52 @@ lost worker connection changes newly discovered/admitted Tool context to `ready=
 The host serializes HTTP dispatch because all endpoints share the same world. SIGINT or
 SIGTERM closes both the HTTP server and the persistent worker.
 
+The shipped persistent profile enables task-scoped dual-view execution recording. The
+existing PAOS Action owner (`paos:<task_id>`) is the aggregation identity: every
+`object.acquire` and `object.place` Action closes an internal segment, then rebuilds one
+cumulative head-camera MP4 and one cumulative observer-camera MP4 for that task. The
+latest `object.place` result therefore references the complete physical execution so far,
+not one file per relocation. Internal segments are retained only as provenance. Writers
+use temporary MP4 paths; both views must close and decode with the expected frame count,
+rate, and dimensions before immutable artifact references are published. Recording calls
+render/camera capture only after existing simulator steps and never adds a simulator step,
+trajectory command, Action, or motion authority. Legacy v1 host profiles without `video`
+remain valid and default recording off.
+
+The cumulative manifest uses `paos-robotwin20-task-video/v1` and records ordered Action
+identities, view references, frame counts, dimensions, FPS, and sampling stride. Each
+successful Action exposes the latest manifest plus both cumulative MP4s through its opaque
+`artifact_refs`; `object.place` also carries them through `post_release_evidence`. A video
+capture or finalization error cannot be reported as a fully successful Action.
+
+Persistent preparation uses one `preparation_timeout_s` budget for candidate
+materialization, all candidate/arm readiness checks, and finalization. The shipped
+value is 330 seconds, inside the Skill ToolSpec's 360-second timeout. Snapshot,
+grounding, transport-lock waits, and worker startup use the remaining budget too;
+worker termination cleanup can add its existing bounded shutdown interval.
+Measure the
+actual frozen-scene cost before selecting top-K, early-stop, or concurrency policy:
+
+```bash
+PYTHONPATH="$PAOS_ROBOTWIN20_ADAPTER_ROOT/src" \
+python "$PAOS_ROBOTWIN20_ADAPTER_ROOT/scripts/benchmark_persistent_preparation.py" \
+  --base-url http://127.0.0.1:19020 \
+  --artifact-root "$ROBOTWIN20_ARTIFACT_ROOT" \
+  --request /absolute/path/to/frozen-preparation-request.json \
+  --output /absolute/path/to/preparation-k-benchmark.json
+```
+
+Run it only while the named frozen scene remains current and do not submit other
+preparation Queries concurrently. The benchmark invokes the public Query four
+times against that one Runtime, records per-candidate materialization, per
+candidate/arm readiness, finalization, total latency, timeout ownership, and
+scene identity, and has no Action path.
+Use a new output filename for each run; existing reports are rejected. The report
+includes the exact input/order, source commit, Python version, Gateway address and
+metrics root. An unavailable response with unknown scene identity is reported as
+unknown rather than proof that the scene remained unchanged. Real planner timing
+still depends on the external runtime/model profiles, assets, device and seed.
+
 This is an adapter-owned source-tree deployment template, not a published manifest-v2
 Skill profile. The pick-place Bundle must not reference it until a self-contained,
 immutable `robotwin20_persistent_host` Node artifact has been built and published. The
@@ -666,18 +712,18 @@ mkdir -p /tmp/paos-robotwin20-release
 python scripts/build_robotwin20_node.py \
   --adapter-root examples/forge-adapters/robotwin20 \
   --workflow-root examples/forge-skills/pick-place-workflow \
-  --output /tmp/paos-robotwin20-release/robotwin20_persistent_host-0.1.3-linux-x86_64.tar.gz
+  --output /tmp/paos-robotwin20-release/robotwin20_persistent_host-0.1.16-linux-x86_64.tar.gz
 python scripts/build_robotwin20_skill_bundle.py \
-  --node-archive /tmp/paos-robotwin20-release/robotwin20_persistent_host-0.1.3-linux-x86_64.tar.gz \
+  --node-archive /tmp/paos-robotwin20-release/robotwin20_persistent_host-0.1.16-linux-x86_64.tar.gz \
   --output-dir /tmp/paos-robotwin20-release/skills
 ```
 
 Install both archives in an isolated PAOS home before starting the profile:
 
 ```bash
-paos skill install /tmp/paos-robotwin20-release/skills/pick-place-workflow-0.10.7.tar.gz --local
+paos skill install /tmp/paos-robotwin20-release/skills/pick-place-workflow-2.3.0.tar.gz --local
 paos forge-node install pick-place-workflow robotwin20_persistent_host \
-  --archive /tmp/paos-robotwin20-release/robotwin20_persistent_host-0.1.3-linux-x86_64.tar.gz
+  --archive /tmp/paos-robotwin20-release/robotwin20_persistent_host-0.1.16-linux-x86_64.tar.gz
 paos forge-node verify pick-place-workflow robotwin20_persistent_host
 ```
 

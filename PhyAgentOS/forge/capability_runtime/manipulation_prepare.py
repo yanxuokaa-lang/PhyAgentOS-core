@@ -461,6 +461,12 @@ class ManipulationPreparationEndpoint:
             }
         try:
             snapshot = self.provider.prepare(deepcopy(arguments))
+        except TimeoutError:
+            return _error(
+                "preparation_timeout",
+                "manipulation preparation exceeded its total time budget",
+                observation_ref=observation_ref,
+            )
         except Exception:
             # Provider failures are unavailable, never an implicit Gateway 500 or success.
             return _error(

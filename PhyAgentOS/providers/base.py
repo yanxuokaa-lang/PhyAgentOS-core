@@ -5,6 +5,7 @@ import json
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from time import monotonic
 from typing import Any
 
 try:
@@ -48,11 +49,22 @@ class LLMResponse:
     usage: dict[str, int] = field(default_factory=dict)
     reasoning_content: str | None = None  # Kimi, DeepSeek-R1 etc.
     thinking_blocks: list[dict] | None = None  # Anthropic extended thinking
+    timing: "ModelRequestTiming | None" = None
 
     @property
     def has_tool_calls(self) -> bool:
         """Check if response contains tool calls."""
         return len(self.tool_calls) > 0
+
+
+@dataclass(frozen=True)
+class ModelRequestTiming:
+    """Locally observed provider latency; unavailable phases remain explicit."""
+
+    request_to_headers_s: float | None
+    time_to_first_token_s: float | None
+    complete_response_s: float
+    observation_mode: str
 
 
 @dataclass(frozen=True)
@@ -267,6 +279,7 @@ class LLMProvider(ABC):
                 )
 
         for attempt, delay in enumerate(self._CHAT_RETRY_DELAYS, start=1):
+            request_started = monotonic()
             try:
                 response = await call_with_timeout()
             except asyncio.CancelledError:
@@ -277,6 +290,13 @@ class LLMProvider(ABC):
                     finish_reason="error",
                 )
 
+            if response.timing is None:
+                response.timing = ModelRequestTiming(
+                    request_to_headers_s=None,
+                    time_to_first_token_s=None,
+                    complete_response_s=monotonic() - request_started,
+                    observation_mode="non_streaming",
+                )
             if response.finish_reason != "error":
                 return response
             if self._is_timeout_error(response.content):
@@ -295,14 +315,29 @@ class LLMProvider(ABC):
             )
             await asyncio.sleep(delay)
 
+        request_started = monotonic()
         try:
-            return await call_with_timeout()
+            response = await call_with_timeout()
+            if response.timing is None:
+                response.timing = ModelRequestTiming(
+                    request_to_headers_s=None,
+                    time_to_first_token_s=None,
+                    complete_response_s=monotonic() - request_started,
+                    observation_mode="non_streaming",
+                )
+            return response
         except asyncio.CancelledError:
             raise
         except Exception as exc:
             return LLMResponse(
                 content=f"Error calling LLM: {exc}",
                 finish_reason="error",
+                timing=ModelRequestTiming(
+                    request_to_headers_s=None,
+                    time_to_first_token_s=None,
+                    complete_response_s=monotonic() - request_started,
+                    observation_mode="non_streaming",
+                ),
             )
 
     @abstractmethod

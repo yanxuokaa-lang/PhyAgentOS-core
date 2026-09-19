@@ -13,11 +13,16 @@ class PersistentWorkerClient:
         self.worker = worker
         self._transport_lost = False
 
-    def _request(self, **payload) -> dict[str, Any]:
+    def _request(self, *, timeout_s: float | None = None, **payload) -> dict[str, Any]:
         if self._transport_lost:
             raise RuntimeError("persistent world connection lost; start a new runtime explicitly")
         try:
-            result = dict(self.worker.request({"request_id": uuid4().hex, **payload}))
+            request = {"request_id": uuid4().hex, **payload}
+            result = dict(
+                self.worker.request(request)
+                if timeout_s is None
+                else self.worker.request(request, timeout_s=timeout_s)
+            )
         except Exception:
             self._transport_lost = True
             raise
@@ -25,8 +30,19 @@ class PersistentWorkerClient:
             raise RuntimeError(str(result.get("error", "persistent provider unavailable")))
         return result
 
-    def query(self, operation: str, arguments: Mapping[str, Any]) -> dict[str, Any]:
-        return self._request(command="query", operation=operation, arguments=dict(arguments))
+    def query(
+        self,
+        operation: str,
+        arguments: Mapping[str, Any],
+        *,
+        timeout_s: float | None = None,
+    ) -> dict[str, Any]:
+        return self._request(
+            command="query",
+            operation=operation,
+            arguments=dict(arguments),
+            timeout_s=timeout_s,
+        )
 
     def start(self, phase: str, invocation_id: str, owner: str, arguments: Mapping[str, Any]):
         try:
@@ -67,8 +83,17 @@ class PersistentRouteReadinessTransport:
     def __init__(self, client: PersistentWorkerClient) -> None:
         self.client = client
 
-    def request(self, payload: Mapping[str, Any]) -> Mapping[str, Any]:
-        response = self.client.query("route_readiness", payload)
+    def request(
+        self,
+        payload: Mapping[str, Any],
+        *,
+        timeout_s: float | None = None,
+    ) -> Mapping[str, Any]:
+        response = (
+            self.client.query("route_readiness", payload)
+            if timeout_s is None
+            else self.client.query("route_readiness", payload, timeout_s=timeout_s)
+        )
         return {**response, "request_id": payload["request_id"]}
 
 

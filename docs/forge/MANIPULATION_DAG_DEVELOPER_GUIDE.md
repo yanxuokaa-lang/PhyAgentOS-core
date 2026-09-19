@@ -167,11 +167,13 @@ The initial discovery turn yields immediately after
 the first node from the accumulated discovery transcript. The host-owned
 LongHorizon controller activates the persisted revision and starts each semantic
 node through a fresh `run_node_turn` with no chat history. A node prompt contains
-the current node, its immutable bindings, and exact persisted Tool results only
-from direct predecessor nodes. This bounded predecessor payload is intentional:
-for example, `manipulation.prepare` requires the complete candidate array from
-`grasp.propose`, while unrelated discovery and execution history remains in the
-Coordinator rather than in the model prompt.
+the current node, immutable bindings, and a bounded field catalog for persisted
+records from direct predecessors or explicitly selected discovery evidence.
+Large geometry arrays stay in the Coordinator. For example,
+`manipulation.prepare` selects the complete `grasp.propose` candidate array with
+`record_id` plus an exact catalogued field path; Coordinator resolves that value
+before frozen Consumer-schema validation. Unrelated discovery and execution
+history remains unavailable to both the prompt and the selector.
 
 A semantic-node turn exposes only the node execution surface:
 `forge_tool_context`, `forge_plan_ready`, `forge_plan_select`, and the governed
@@ -457,6 +459,28 @@ is never posted again. A deterministic local `prompt_budget_exceeded` result
 also blocks without repeating the same node request. Context compaction and provider request timeouts are
 configuration policy only: they do not remove Coordinator facts or authorize
 motion.
+
+The active OpenAI-compatible provider records local request-to-response-header,
+first meaningful stream event, and complete-response latency. The first value
+includes transport and provider queue time and is not presented as a pure
+server-side queue metric. Non-streaming providers report the first two phases as
+unavailable instead of substituting total latency.
+
+Long-horizon node turns apply `turnTimeoutS` to the model/control-plane decision
+phase, including repeated model calls and readiness queries. Once the Agent
+explicitly invokes a selected execution Tool, that Tool retains its own budget
+and the node executor reconciles its durable outcome. Thus a deployment with
+300-second model requests, a 420-second decision budget, and 330-second preparation
+does not silently give preparation only the remainder of the model budget.
+
+Persistent `manipulation.prepare` uses one profile-owned monotonic deadline
+across candidate materialization, every candidate/arm readiness evaluation, and
+finalization. The Tool's 360-second outer timeout leaves transport headroom over
+the shipped 330-second preparation deadline. A deadline failure is a stable
+no-motion `preparation_timeout`; partial route or assignment artifacts are not
+published as prepared evidence. Use
+`scripts/benchmark_persistent_preparation.py` with one frozen request to measure
+K=1/4/8/24 before choosing top-K, early-stop, or bounded concurrency policy.
 
 If a node turn already created a planning-bound Tool record before a later
 model request failed, the persisted Tool fact has priority over the model

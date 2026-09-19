@@ -418,6 +418,7 @@ class ProviderConfig(Base):
     api_key_file: str | None = None
     api_base: str | None = None
     extra_headers: dict[str, str] | None = None  # Custom headers (e.g. APP-Code for AiHubMix)
+    stream_responses: bool = False
 
     @model_validator(mode="after")
     def validate_credential_sources(self) -> "ProviderConfig":

@@ -25,10 +25,11 @@ object, and a PlanNode does not duplicate a complete predecessor response.
 producer Tool terminal result
   -> Coordinator ToolExecutionRecord + evidence refs
   -> NodeContextProvider bounded input view
-       - exact direct-predecessor results
-       - exact discovery Query arguments and terminal results named by node.required_evidence
+       - prompt-visible field catalogs, counts, references, and small identity summaries
+       - Coordinator-retained exact direct-predecessor and selected discovery results
   -> forge_plan_ready projects the frozen schema for current candidate Tools
-  -> Agent selects fields and assembles consumer arguments
+  -> Agent selects literals and/or record_id + exact field-path sources
+  -> Coordinator resolves complete values from the same bounded node records
   -> AgentComposedDispatch validates frozen consumer input_schema
   -> Coordinator persists DecisionTrace and resumable selection
   -> existing Forge wrapper and Gateway admission
@@ -60,8 +61,11 @@ before revision identity was added remain readable as legacy records.
    top-level arguments only for current candidate Tools. Live
    `forge_tool_context` remains the readiness source and a legacy schema
    fallback; it does not replace the task-bound contract.
-4. `forge_plan_select` accepts exact final arguments chosen by the Agent and
-   validates them against the frozen schema before persisting a DecisionTrace.
+4. `forge_plan_select` accepts literal arguments plus optional
+   `argument_sources`. Each source contains one prompt-visible `record_id` and
+   exact `available_sources.path`. The Coordinator resolves the complete value
+   before frozen-schema validation and DecisionTrace persistence; the digest
+   covers the resolved final arguments, not the selector syntax.
 5. A root node can receive exact discovery Query arguments and terminal results only when its
    `required_evidence` names evidence persisted by Coordinator and selected into
    the active revision's `discovery_evidence_refs`. For non-refresh Queries,
@@ -70,6 +74,8 @@ before revision identity was added remain readable as legacy records.
    whose frozen policy declares `refreshes_scene` may name its source scene in
    the request, but its response must name the current planning scene.
 6. A successor receives exact results only from direct predecessor executions.
+   Source selectors cannot reach unrelated nodes, historical revisions, file
+   paths, arbitrary JSONPath expressions, or unpersisted payloads.
 7. Schema rejection creates no Tool record, Gateway invocation, Action,
    Session, simulator step, or motion authorization.
 8. Recovery-provider failure preserves the original node failure and enters the
@@ -78,6 +84,14 @@ before revision identity was added remain readable as legacy records.
    retries a Tool automatically.
 
 ## Extension Rule
+
+Sourced selections return a compact receipt with `tool_arguments={}` and
+`use_selected_arguments=true`. The Agent explicitly invokes the existing
+Query/Action/Session wrapper with that flag and the receipt. Coordinator reads
+the saved complete arguments; dispatch admission and transactional execution
+validation still inspect those exact values. Resumed node prompts use the same
+receipt form, so neither selection nor resumption reintroduces geometry into
+the model context.
 
 New benchmark tasks add or replace ToolSpecs and Adapter outputs. PAOS Core does
 not add drawer, bin, shelf, hook, obstacle, tabletop, color, or fixed-object
@@ -92,6 +106,8 @@ seam. Do not hard-code a producer Tool ID into Core.
 ## Failure Semantics
 
 - Missing required argument: `tool_input_schema_invalid` before Gateway.
+- Hidden record, non-catalogued path, or literal/source collision:
+  `invalid_argument_source` before Gateway.
 - Wrong type, enum, bounds, pattern, array/object shape, or unknown property:
   `tool_input_schema_invalid` before Gateway.
 - Required evidence absent: existing DAG readiness rejection.
@@ -114,3 +130,5 @@ seam. Do not hard-code a producer Tool ID into Core.
 6. No-motion tests prove zero Action/Session/Gateway motion effects.
 7. Existing ToolSpec, legacy binding, continuation, settlement, and replay
    behavior remain compatible.
+8. A 24-candidate geometry payload is absent from the model prompt while the
+   Coordinator resolves the exact full candidate array for the consumer.

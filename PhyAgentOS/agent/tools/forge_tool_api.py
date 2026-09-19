@@ -133,8 +133,9 @@ class ForgeToolQueryTool(Tool):
         task_id: str | None = None,
         timeout_ms: int | None = None,
         planning_binding: dict[str, Any] | None = None,
+        use_selected_arguments: bool = False,
     ) -> str:
-        if planning_binding is not None and not task_id:
+        if (planning_binding is not None or use_selected_arguments) and not task_id:
             return _json(
                 {
                     "ok": False,
@@ -148,7 +149,11 @@ class ForgeToolQueryTool(Tool):
         if task_id:
             return await _call(
                 lambda: self.coordinator.invoke_query(
-                    task_id, tool_id, arguments, timeout_ms=effective_timeout_ms,
+                    task_id, tool_id,
+                    self.coordinator.selected_execution_arguments(
+                        task_id, tool_id, "query", arguments, planning_binding
+                    ) if use_selected_arguments else arguments,
+                    timeout_ms=effective_timeout_ms,
                     planning_binding=planning_binding,
                 )
             )
@@ -185,10 +190,15 @@ class ForgeToolStartActionTool(Tool):
         arguments: dict[str, Any],
         timeout_ms: int | None = None,
         planning_binding: dict[str, Any] | None = None,
+        use_selected_arguments: bool = False,
     ) -> str:
         return await _call(
             lambda: self.coordinator.start_action(
-                task_id, tool_id, arguments, timeout_ms=timeout_ms,
+                task_id, tool_id,
+                self.coordinator.selected_execution_arguments(
+                    task_id, tool_id, "action", arguments, planning_binding
+                ) if use_selected_arguments else arguments,
+                timeout_ms=timeout_ms,
                 planning_binding=planning_binding,
             )
         )
@@ -305,10 +315,15 @@ class ForgeToolStartSessionTool(Tool):
         arguments: dict[str, Any],
         ownership: str,
         planning_binding: dict[str, Any] | None = None,
+        use_selected_arguments: bool = False,
     ) -> str:
         return await _call(
             lambda: self.coordinator.start_session(
-                task_id, tool_id, arguments, ownership=ownership,  # type: ignore[arg-type]
+                task_id, tool_id,
+                self.coordinator.selected_execution_arguments(
+                    task_id, tool_id, "session", arguments, planning_binding
+                ) if use_selected_arguments else arguments,
+                ownership=ownership,  # type: ignore[arg-type]
                 planning_binding=planning_binding,
             )
         )
@@ -442,6 +457,10 @@ def _invoke_schema(*, task_required: bool, include_timeout: bool) -> dict[str, A
         "task_id": {"type": "string", "minLength": 1},
         "tool_id": {"type": "string", "minLength": 1},
         "arguments": {"type": "object"},
+        "use_selected_arguments": {
+            "type": "boolean",
+            "description": "Use exact persisted selection arguments; pass arguments={} and the returned planning_binding.",
+        },
         "planning_binding": {
             "type": "object",
             "properties": {

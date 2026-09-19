@@ -111,6 +111,33 @@ def test_single_object_binding_needs_no_goal_and_target_preserves_explicit_pose(
     assert target["motion_authorized"] is False
 
 
+def test_preparation_grounding_propagates_deadline_to_both_worker_queries(tmp_path):
+    from robotwin20_adapter.preparation_deadline import PreparationDeadline
+
+    g, request, _ = setup(tmp_path)
+    bound = g.bind(request)
+    target = g.target(dict(
+        **{k: request[k] for k in ("observation_ref", "scene_revision", "calibration_ref")},
+        binding_ref=bound["binding_ref"], entity_ref="entity://seen", frame_id="world",
+        unit="m", frame_T_object_target=pose(0.35),
+    ))
+    original = g.client.query
+    calls = []
+
+    def query(operation, arguments, *, timeout_s):
+        assert 0 < timeout_s <= 10
+        calls.append((operation, timeout_s))
+        return original(operation, arguments)
+
+    g.client.query = query
+    g.scene_facts(
+        {**request, "intent": {"entity_ref": "entity://seen"}, "destination_ref": target["destination_ref"]},
+        deadline=PreparationDeadline.start(10),
+    )
+    assert [op for op, _ in calls] == ["snapshot", "bind_observed_entities"]
+    assert calls[1][1] < calls[0][1]
+
+
 @pytest.mark.parametrize("code", [
     "object_shape_uncertain",
     "metric_3d_unavailable",

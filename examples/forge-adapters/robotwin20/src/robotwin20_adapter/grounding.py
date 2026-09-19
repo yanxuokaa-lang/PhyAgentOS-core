@@ -38,9 +38,12 @@ class Grounding:
             cache = self.observations if tool_id == "scene.observe" else self.understandings
             cache[key] = deepcopy(result)
 
-    def _current(self, identity):
+    def _current(self, identity, *, deadline=None):
         try:
-            state = self.client.query("snapshot", {})
+            kwargs = {} if deadline is None else {"timeout_s": deadline.remaining("grounding_snapshot")}
+            state = self.client.query("snapshot", {}, **kwargs)
+        except TimeoutError:
+            raise
         except Exception as exc:
             self._reject(
                 "current scene snapshot is unavailable",
@@ -373,15 +376,16 @@ class Grounding:
                 "world_T_object_target": target["world_T_object_target"],
                 "evidence_refs": [request["binding_ref"], evidence_ref], "motion_authorized": False}
 
-    def scene_facts(self, request):
+    def scene_facts(self, request, *, deadline=None):
         value = self.targets[request["destination_ref"]]
         if any(value[k] != request[k] for k in IDENTITY_KEYS):
             raise ValueError("target observation identity mismatch")
         if value["object"]["entity_ref"] != request["intent"]["entity_ref"]:
             raise ValueError("target belongs to a different entity")
-        self._current(value)
+        self._current(value, deadline=deadline)
         binding = self.bindings[value["binding_ref"]]
-        self.client.query("bind_observed_entities", {"binding_ref": value["binding_ref"]})
+        kwargs = {} if deadline is None else {"timeout_s": deadline.remaining("bind_observed_entities")}
+        self.client.query("bind_observed_entities", {"binding_ref": value["binding_ref"]}, **kwargs)
         facts = deepcopy(binding["scene_facts"])
         obj = deepcopy(value["object"])
         obj["target_ref"] = request["destination_ref"]

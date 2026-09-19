@@ -259,15 +259,31 @@ selection. Execute the returned receipt; do not select a second Tool for the
 same node. A different implementation choice requires a governed replacement
 revision before any execution fact exists, or normal recovery after failure.
 
-For `manipulation.prepare`, PAOS does not reconstruct predecessor provider
-payloads. `forge_plan_select.arguments` must include the complete unchanged
-`candidates`, `candidate_set_ref`, `observation_ref`, `scene_revision`, `frame_id`,
-`calibration_ref`, `freshness_ms`, `max_age_ms`, `destination_ref`, and
-`capability_snapshot_ref`. A `missing_runtime_arguments` rejection is retryable
+For `manipulation.prepare`, use prompt-visible literals for small fields and
+`forge_plan_select.argument_sources` for large Producer values such as the
+complete candidate array. A source names the visible predecessor/evidence
+`record_id` and exact `available_sources.path`; PAOS resolves the complete value
+and validates the resulting arguments against the frozen consumer schema before
+persisting the selection.
+When the receipt sets `use_selected_arguments=true`, invoke its execution Tool
+with `arguments={}`, that flag, and the exact `planning_binding`; PAOS loads the
+persisted complete parameters without another model payload round trip.
+Do not copy summarized geometry into literal arguments or select an unrelated
+record. A `missing_runtime_arguments` rejection is retryable
 in the same revision after adding the listed fields. A
 `node_tool_binding_incompatible` rejection means the immutable graph itself is
 not bindable; replace the segment through the governed revision path instead of
 retrying the same selection.
+
+The persistent Runtime freezes a 360-second default timeout for
+`manipulation.prepare`, matching its worker request boundary so the Query does
+not fall back to the generic 10-second Forge HTTP default. Its shipped profile
+uses one 330-second internal deadline across materialization, readiness, and
+finalization. A timeout is a no-motion `preparation_timeout`; it does not
+authorize motion or retry a provider failure. The `robotwin-persistent`
+profile also returns an adapter-owned cumulative task-video manifest and both
+camera MP4 references as opaque Action evidence; never treat their contents as
+Tool arguments or motion authority.
 
 When submitting semantic nodes, use exact task-bound
 `paos_record.evidence_refs` for evidence already available at the graph root.
