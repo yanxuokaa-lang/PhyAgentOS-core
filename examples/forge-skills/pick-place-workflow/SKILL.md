@@ -24,6 +24,14 @@ Calibrated named regions may be deployment data; which region serves this user's
 goal is a task decision. Object count, order and goals must not come from a fixed
 two-object template.
 
+Use observed geometry for the target and relevant collision obstacles; preserve
+support relations and their metric evidence. If preparation reports incomplete
+observed collision coverage, obtain or bind the missing observed entities. Do not
+fill gaps with simulator object poses or dimensions. Estimated envelope axes are
+model coordinates, not proof of a physical object's orientation. A preparation
+error reporting unavailable readiness capabilities or provider failure requires
+diagnosing that evidence; regenerating candidates alone does not repair it.
+
 The graph represents your chosen obligations and dependencies. One PlanNode is one
 settlement unit completed by one selected Tool. A composite intention such as
 `object.relocate` is not an executable node unless the Runtime publishes one atomic

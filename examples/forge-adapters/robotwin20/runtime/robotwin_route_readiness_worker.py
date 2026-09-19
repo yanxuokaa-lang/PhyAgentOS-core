@@ -71,6 +71,12 @@ def _handle_factory(artifact_root: Path, worker_id: str, evaluator=None):
             )
             artifact = dict(item)
             if result is not None:
+                # Public bounded diagnostics, without trajectories or actor truth.
+                item["arm_results"] = [
+                    {key: attempt[key] for key in ("arm", "status", "failed_phase", "detail") if key in attempt}
+                    for attempt in result.get("arm_attempts", [])
+                ]
+                artifact["arm_results"] = item["arm_results"]
                 artifact["planner_evaluation"] = result
                 artifact["collision_world_evidence"] = evaluation["world"]
                 artifact["simulator_steps"] = evaluation["simulator_steps"]

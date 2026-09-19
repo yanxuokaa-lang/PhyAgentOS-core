@@ -549,7 +549,7 @@ def materialize(args: argparse.Namespace) -> dict[str, Any]:
                 "shape": "box",
                 "half_extents_m": item["half_extents_m"],
                 "source_scene_facts_ref": refs["scene-facts"],
-                "source": "sapien_collision_shape",
+                "source": "observed_envelope" if facts.get("geometry_source") == "observation" else "sapien_collision_shape",
             },
         )
     collision_world = build_collision_world(

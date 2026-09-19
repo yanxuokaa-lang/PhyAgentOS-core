@@ -473,7 +473,7 @@ def test_worker_rechecks_actor_geometry_before_alias_binding(tmp_path):
         engine.query("bind_observed_entities", {"binding_ref": b["binding_ref"]})
 
 
-def test_route_contract_uses_only_explicit_goal_and_preserves_functional_offset(tmp_path):
+def test_route_contract_uses_observed_geometry_without_hidden_functional_offset(tmp_path):
     from test_route_inputs import _facts
 
     from robotwin20_adapter.route_inputs import (
@@ -495,6 +495,16 @@ def test_route_contract_uses_only_explicit_goal_and_preserves_functional_offset(
             obstacle.pop(field)
     facts["objects"] = [obj, *obstacles]
     g.source = lambda _: deepcopy(facts)
+    understanding = next(iter(g.understandings.values()))
+    for i, obstacle in enumerate(obstacles):
+        ref = f"entity://observed-obstacle-{i}"
+        center = np.asarray(obstacle["world_T_object"]).reshape(4, 4)[:3, 3] + 0.003
+        understanding["entities"].append({"entity_ref": ref})
+        understanding["spatial_envelopes"].append({
+            "entity_ref": ref, "frame_id": "camera", "unit": "m",
+            "min_xyz_m": (center - 0.025).tolist(), "max_xyz_m": (center + 0.025).tolist(),
+        })
+        req["entity_refs"].append(ref)
     b = g.bind(req)
     t = g.target(
         dict(
@@ -509,10 +519,12 @@ def test_route_contract_uses_only_explicit_goal_and_preserves_functional_offset(
         {**req, "intent": {"entity_ref": "entity://seen"}, "destination_ref": t["destination_ref"]}
     )
     validate_scene_facts(route)
-    assert route["objects"][0]["world_T_functional_target"][3] == 0.26
+    assert route["objects"][0]["world_T_functional_target"][3] == 0.25
     assert route["objects"][0]["world_T_object_target"][3] == 0.25
     assert "target_ref" not in obj
-    assert route["objects"][1:] == obstacles
+    assert route["geometry_source"] == "observation"
+    assert route["objects"][1:] != obstacles
+    assert all(item["half_extents_m"] == pytest.approx([0.025] * 3) for item in route["objects"][1:])
     assert len(route["objects"]) == 3
     from robotwin20_adapter.collision_world import build_collision_world
     world = build_collision_world(

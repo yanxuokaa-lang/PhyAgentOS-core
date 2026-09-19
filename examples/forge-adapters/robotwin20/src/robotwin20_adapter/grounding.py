@@ -6,6 +6,7 @@ from copy import deepcopy
 from uuid import uuid4
 
 import numpy as np
+from PhyAgentOS.forge.capability_runtime.manipulation_prepare import PreparationProviderError
 from pick_place_workflow.grounding import IDENTITY_KEYS
 
 from .observed_binding import correspond, rigid_transform
@@ -342,12 +343,14 @@ class Grounding:
             visual_pose[:3, :3] = camera_to_world[:3, :3]
             visual_pose[:3, 3] = center_world[:3]
             runtime = objects[ref]
-            runtime_pose = rigid_transform(runtime["world_T_object"])
-            functional_offset = np.linalg.inv(runtime_pose) @ rigid_transform(runtime["world_T_functional_point"])
             updated = deepcopy(runtime)
+            # This is an estimated envelope frame, not the physical actor frame.
+            # Its origin is the observed centroid; no hidden functional point is used.
+            updated["object_frame_id"] = f"observed-envelope/{ref.removeprefix('entity://')}"
             updated["world_T_object"] = visual_pose.reshape(-1).tolist()
             updated["half_extents_m"] = (dimensions / 2.0).tolist()
-            updated["world_T_functional_point"] = (visual_pose @ functional_offset).reshape(-1).tolist()
+            updated["world_T_functional_point"] = visual_pose.reshape(-1).tolist()
+            updated["functional_point_id"] = 0
             projected[ref] = updated
         return projected
 
@@ -390,14 +393,52 @@ class Grounding:
         facts = deepcopy(binding["scene_facts"])
         obj = deepcopy(value["object"])
         obj["target_ref"] = request["destination_ref"]
-        # The target uses bound visual route geometry. Other captured Runtime
-        # objects remain collision obstacles, not newly inferred visual evidence.
-        execution_ref = binding["objects"][obj["entity_ref"]]["entity_ref"]
-        facts["objects"] = [
-            obj if item["entity_ref"] == execution_ref else item
-            for item in facts["objects"]
-        ]
+        # Captured actor geometry is private drift/identity evidence. Every
+        # planning obstacle must have its own observation-derived model.
+        by_execution = {item["entity_ref"]: (ref, item) for ref, item in binding["objects"].items()}
+        missing = [item["entity_ref"] for item in facts["objects"] if item["entity_ref"] not in by_execution]
+        if missing:
+            raise PreparationProviderError("observed_collision_coverage_incomplete",
+                                           "observed collision coverage is incomplete; bind all observed obstacles")
+        facts["objects"] = []
+        for ref, model in by_execution.values():
+            item = deepcopy(model)
+            item["entity_ref"] = ref
+            facts["objects"].append(obj if ref == obj["entity_ref"] else item)
+        facts["geometry_source"] = "observation"
+        support = self._observed_support(binding)
+        if support is not None:
+            facts["support_surface"] = support
         return facts
+
+    def _observed_support(self, binding):
+        """Bound the observed support cloud in world axes, without actor meshes."""
+        identity = tuple(binding[k] for k in IDENTITY_KEYS)
+        understanding = self.understandings[identity]
+        refs = {r["object_ref"] for r in understanding.get("relations", [])
+                if r.get("predicate") == "on" and r.get("subject_ref") in binding["objects"]}
+        if not refs:
+            return None  # Consumers requiring support must reject missing evidence.
+        if len(refs) != 1:
+            raise ValueError("observed support surface is ambiguous")
+        ref = next(iter(refs))
+        clouds = [a for a in understanding.get("derived_artifacts", [])
+                  if a.get("kind") == "object_point_cloud" and a.get("entity_ref") == ref]
+        if len(clouds) != 1:
+            raise ValueError("observed support requires one metric point cloud")
+        cloud = clouds[0]
+        if any(cloud.get(k) != binding[k] for k in IDENTITY_KEYS) or cloud.get("frame_id") != binding["frame_id"]:
+            raise ValueError("observed support lineage differs from binding")
+        points = np.load(_artifact_path(self.root, cloud["artifact_ref"] + ".npy"), allow_pickle=False)
+        if points.ndim != 2 or points.shape[1] != 3 or len(points) < 3 or not np.isfinite(points).all():
+            raise ValueError("observed support point cloud is invalid")
+        transform = rigid_transform(binding["world_T_observation"])
+        world = points @ transform[:3, :3].T + transform[:3, 3]
+        low, high = world.min(axis=0), world.max(axis=0)
+        if np.any(high <= low):
+            raise ValueError("observed support extent is degenerate")
+        return {"position_m": ((low + high) / 2).tolist(), "orientation_wxyz": [1., 0., 0., 0.],
+                "half_extents_m": ((high - low) / 2).tolist(), "evidence_ref": cloud["artifact_ref"]}
 
 
 class GroundingEndpoint:

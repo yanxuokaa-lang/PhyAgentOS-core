@@ -12,6 +12,7 @@ from robotwin_curobo_world_port import (
     capture_peer_projection,
 )
 from robotwin_planning_geometry import (
+    ObservedGeometryActor,
     SimulationProbeError,
     _attach_object_to_planner,
     _capture_dual_arm_state,
@@ -297,6 +298,11 @@ class RoboTwinRouteEvaluator:
             if owned:
                 backend.reset(seed=profile["seed"])
             task = backend._task
+            if (any(c["entity_ref"] in getattr(task, "_paos_observed_bindings", {}) for c in request["candidates"])
+                    and scene.get("geometry_source") != "observation"):
+                raise SimulationProbeError("observed route requires observed collision geometry")
+            if scene.get("geometry_source") == "observation":
+                task._paos_observed_support = scene.get("support_surface")
             if not owned:
                 from robotwin_simulation_probe_worker import (
                     _validate_route_input_artifacts,
@@ -313,7 +319,9 @@ class RoboTwinRouteEvaluator:
                     for item in scene["objects"]
                     if item["entity_ref"] == candidate["entity_ref"]
                 )
-                actor = getattr(task, record["actor_name"])
+                actor = (ObservedGeometryActor(record["world_T_object"])
+                         if scene.get("geometry_source") == "observation"
+                         else getattr(task, record["actor_name"]))
                 results[candidate["candidate_ref"]] = evaluate_route(
                     task, request, candidate, actor, diagnose_failure=self.diagnose_failure
                 )

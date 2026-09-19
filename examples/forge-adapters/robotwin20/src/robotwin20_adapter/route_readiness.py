@@ -481,6 +481,17 @@ class RouteReadinessEvaluationAdapter:
             raise RouteReadinessProfileError("route evaluation evidence checks are invalid")
         if any(value not in {"pass", "fail", "unavailable"} for value in checks.values()):
             raise RouteReadinessProfileError("route evaluation evidence check status is invalid")
+        checks = dict(checks)
+        arm_results = item.get("arm_results", [])
+        selected_arms = option.get("arm_ids", ())
+        attempts = [a for a in arm_results if a.get("arm") in selected_arms]
+        if arm_results:
+            if len(attempts) != len(selected_arms) or {a.get("arm") for a in attempts} != set(selected_arms):
+                raise RouteReadinessProfileError("route evidence lacks the selected arm")
+            if any(a.get("status") not in {"pass", "fail"} for a in attempts):
+                raise RouteReadinessProfileError("route arm result status is invalid")
+            for key in ("attached_object_collision", "complete_transport_descent_retreat", "workspace_and_joint_limits"):
+                checks[key] = "pass" if all(a["status"] == "pass" for a in attempts) else "fail"
         status = "pass" if all(value == "pass" for value in checks.values()) else (
             "unavailable" if response.get("status") == "unavailable" else "fail"
         )
@@ -496,6 +507,11 @@ class RouteReadinessEvaluationAdapter:
             "provider_unavailable" if status == "unavailable" else "route_rejected"
         )
         owner = "readiness" if status == "pass" else "infrastructure" if status == "unavailable" else "readiness"
+        if "unavailable" in checks.values() and "fail" not in checks.values() and status != "unavailable":
+            code, owner = "readiness_capability_unavailable", "infrastructure"
+        detail = [f"{a['arm']}:{a.get('failed_phase', 'none')}: {a.get('detail', a['status'])}"
+                  for a in attempts if a["status"] != "pass"]
+        detail.extend(str(x) for x in response.get("unavailable_reasons", []))
         positions = [
             waypoint["position_m"]
             for phase in candidate["route"]
@@ -524,10 +540,14 @@ class RouteReadinessEvaluationAdapter:
             "option_id": option.get("option_id"),
             "status": status,
             "checks": dict(checks),
-            "phase": "none",
+            "phase": next((a.get("failed_phase", "none") for a in attempts if a["status"] != "pass"), "none"),
             "code": code,
             "owner": owner,
-            "detail": "route evidence accepted" if status == "pass" else "route readiness unavailable" if status == "unavailable" else "route evidence rejected",
+            "detail": ("route evidence accepted" if status == "pass" else
+                       "; ".join(detail)[:2000]
+                       or "route evidence rejected") + (
+                           "" if status == "pass" else "; evidence: " + ", ".join(evidence_refs)
+                       ),
             "route_geometry_digest": route_geometry_digest(request),
             "evidence_refs": list(evidence_refs),
             "motion_authorized": False,

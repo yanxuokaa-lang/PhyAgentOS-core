@@ -83,11 +83,31 @@ def test_selection_registers_geometry_but_requires_separate_approval(tmp_path, n
 
 
 def test_failed_complete_routes_produce_no_prepared_assignment(tmp_path):
+    from PhyAgentOS.forge.capability_runtime.manipulation_prepare import PreparationProviderError
+
     request, provider, routes = composition(tmp_path, status="fail")
-    result = provider.prepare(request)
-    assert result["prepared_candidates"] == result["assignments"] == []
+    with pytest.raises(PreparationProviderError, match="route collides") as caught:
+        provider.prepare(request)
+    assert caught.value.code == "no_admissible_route"
+    saved = json.loads(next((tmp_path / "preparation-rejections").glob("*.json")).read_text())
+    assert len(saved["failed_routes"]) == 2
     assert not routes._routes
     assert not (tmp_path / "assignments").exists()
+
+
+def test_readiness_infrastructure_failure_is_not_an_empty_candidate_set(tmp_path):
+    from PhyAgentOS.forge.capability_runtime.manipulation_prepare import PreparationProviderError
+
+    request, provider, routes = composition(tmp_path)
+
+    def unavailable(*args):
+        raise ValueError("observation model provenance mismatch")
+
+    provider.selector.evaluator = unavailable
+    with pytest.raises(PreparationProviderError, match="observation model provenance mismatch") as caught:
+        provider.prepare(request)
+    assert caught.value.code == "readiness_provider_unavailable"
+    assert not routes._routes
 
 
 def test_finalized_review_is_exposed_as_preparation_evidence(tmp_path):

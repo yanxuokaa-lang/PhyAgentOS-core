@@ -125,8 +125,24 @@ class PersistentPreparationProvider:
             metrics=metrics,
         )
         if isinstance(selected, ReplanSignal):
-            return {"prepared_candidates": [], "provider_available": True,
-                    "assignments": [], "destination_ref": request["destination_ref"]}
+            from collections import Counter
+
+            metrics["route_failures"] = selected.model_dump(mode="json")
+            directory = self.prepared_routes.artifact_root / "preparation-rejections"
+            directory.mkdir(parents=True, exist_ok=True)
+            ref = f"artifact://preparation-rejections/{uuid4().hex}"
+            path = directory / (ref.rsplit("/", 1)[1] + ".json")
+            with path.open("x", encoding="utf-8") as stream:
+                json.dump(selected.model_dump(mode="json"), stream, ensure_ascii=False)
+            infrastructure = any(f.owner in {"infrastructure", "input", "binding"}
+                                 for f in selected.failed_routes)
+            counts = Counter(f.code for f in selected.failed_routes)
+            details = list(dict.fromkeys(f.detail for f in selected.failed_routes))
+            raise PreparationProviderError(
+                "readiness_provider_unavailable" if infrastructure else "no_admissible_route",
+                f"Preparation produced no assignment: {dict(counts)}; "
+                f"{'; '.join(details[:2])[:1500]}; diagnostics: {ref}",
+            )
         assignment = project_arm_assignment(intent, capability, selected)
         proposed = {item["candidate_ref"]: item["entity_ref"] for item in request["candidates"]}
         if proposed.get(assignment.candidate_ref) != assignment.entity_ref:

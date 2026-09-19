@@ -222,6 +222,7 @@ class RoboTwinPersistentEngine:
                     or binding_record["motion_authorized"] is not False):
                 raise ValueError("entity binding requires current idle scene")
             mapping = {}
+            observed_bindings = {}
             captured_objects = binding_record.get("scene_facts", {}).get("objects", [])
             for binding in binding_record["bindings"]:
                 if binding["entity_ref"] in {"entity://block-red-1", "entity://block-green-1", "entity://block-blue-1"}:
@@ -245,7 +246,12 @@ class RoboTwinPersistentEngine:
                 if not np.allclose(actor.get_pose().to_transformation_matrix(), expected, atol=1e-6, rtol=0):
                     raise BindingPoseChangedError("execution actor moved since binding")
                 mapping[binding["entity_ref"]] = actor
+                observed_bindings[binding["entity_ref"]] = {
+                    "captured_pose": expected.tolist(),
+                    "model": binding_record["objects"][binding["entity_ref"]],
+                }
             self.backend._task._paos_observed_entities = mapping
+            self.backend._task._paos_observed_bindings = observed_bindings
             return {"scene_revision": binding_record["scene_revision"], "motion_authorized": False}
         if operation == "snapshot":
             return {**dict(self.backend.snapshot()), "scene_validity": "action_driven"}
@@ -310,6 +316,13 @@ class RoboTwinPersistentEngine:
         if probe._sha_bytes(geometry.read_bytes()) != candidate["attached_object"]["geometry_sha256"]:
             raise ValueError("attached geometry binding mismatch")
         task = self.backend._task
+        world_source = probe._load_json_artifact(self.root, request["collision_world"]["artifact_ref"])
+        scene_source = probe._load_json_artifact(self.root, world_source["source_scene_facts_ref"])
+        if (candidate["entity_ref"] in getattr(task, "_paos_observed_bindings", {})
+                and scene_source.get("geometry_source") != "observation"):
+            raise ValueError("observed route requires observed collision geometry")
+        if scene_source.get("geometry_source") == "observation":
+            task._paos_observed_support = scene_source.get("support_surface")
         probe.bind_scene_table(task)
         state = probe._capture_dual_arm_state(task, request["scene_revision"])
         probe.validate_dual_arm_state(state)

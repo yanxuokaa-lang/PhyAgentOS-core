@@ -243,6 +243,39 @@ def test_live_provider_failure_is_recorded_as_unavailable(tmp_path):
     assert "Curobo model unavailable" in response["unavailable_reasons"][0]
 
 
+def test_selector_receives_selected_arm_failure_and_missing_capability(tmp_path):
+    from robotwin_route_readiness_worker import _handle_factory
+
+    from robotwin20_adapter.route_readiness import RouteReadinessEvaluationAdapter
+
+    request = _request(tmp_path)
+
+    def evaluate(current):
+        return {"candidates": {item["candidate_ref"]: {
+            "status": "pass", "selected_arm": "right", "arm_attempts": [
+                {"arm": "left", "status": "fail", "failed_phase": "approach", "detail": "observed obstacle collision"},
+                {"arm": "right", "status": "pass"},
+            ]} for item in current["candidates"]}, "world": {}, "simulator_steps": 0}
+
+    response = _handle_factory(tmp_path, "test-live", evaluate)(request)
+
+    class Client:
+        def evaluate(self, current):
+            return response
+
+    adapter = RouteReadinessEvaluationAdapter(Client())
+    option = {"candidate_ref": request["candidates"][0]["candidate_ref"], "arm_ids": ["left"]}
+    left = adapter.evaluate(request, option)
+    assert left["checks"]["complete_transport_descent_retreat"] == "fail"
+    assert "observed obstacle collision" in left["detail"]
+    assert left["code"] == "route_rejected"
+    right = adapter.evaluate(request, {**option, "arm_ids": ["right"]})
+    assert right["checks"]["complete_transport_descent_retreat"] == "pass"
+    assert right["code"] == "readiness_capability_unavailable"
+    assert right["owner"] == "infrastructure"
+    assert right["status"] != "pass"
+
+
 def test_route_readiness_profile_loader_rejects_duplicate_keys(tmp_path):
     profile_path = tmp_path / "duplicate.yaml"
     profile_path.write_text(

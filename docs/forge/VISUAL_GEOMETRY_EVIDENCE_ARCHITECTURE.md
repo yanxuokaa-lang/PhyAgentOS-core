@@ -47,6 +47,43 @@ Binding failures propagate through the existing preparation Query `error`:
 `binding_pose_unavailable` requires repairing the missing binding snapshot.
 These are diagnostics, not motion authorization or an automatic retry policy.
 
+### Observation models are not simulator object frames
+
+An axis-aligned envelope in camera coordinates has a legitimate estimated frame:
+the calibrated camera axes translated to the measured envelope centre. This does
+not assert that a physical object's orientation is known. The persistent adapter
+names that frame `observed-envelope/<entity>` and uses its centroid as the model's
+functional origin. It never copies a simulator functional-point offset into the
+estimated model. A supplied target transform places this model frame.
+
+Readiness and Action preflight compare route artifacts with the bound observation
+model. The existing private Runtime drift check compares actor state only with
+its captured execution snapshot. Neither comparison overwrites an estimate or
+relaxes drift tolerances. Runtime correspondence and drift rejection remain
+simulator-specific identity/safety diagnostics, not perception or planner inputs.
+
+All movable collision objects use bound visual envelopes. Incomplete coverage
+returns `observed_collision_coverage_incomplete`; hidden actor boxes are not a
+fallback. Support comes from the metric cloud named by observed `on` relations.
+Its world-axis bounds describe observed occupancy, not a ground-truth tabletop
+plane. Missing or ambiguous support prevents readiness. Noise and occlusion can
+cause conservative over-rejection; replacing estimates with actor meshes is not
+an acceptable remedy.
+
+Materialized records label this source `observed_envelope`. Attached-object
+planning consumes a planner-only view of the estimated pose. Calibrated robot
+kinematics and measured joints remain robot state. Legacy explicitly configured
+benchmark routes retain separate simulator-geometry provenance and cannot count
+as observation-only evidence.
+
+Readiness exposes bounded per-arm diagnostics; selection uses the requested arm,
+not another arm's success. Preparation persists the existing ReplanSignal and
+returns `readiness_provider_unavailable` for missing capability/infrastructure,
+or `no_admissible_route` for evaluated route rejection, with a diagnostic ref.
+AgentLoop chooses recovery through its existing Query error path. Unknown contact
+dynamics and unavailable stop-control evidence remain unavailable; static path
+success alone does not authorize motion.
+
 ## Visual pipeline
 
 For one immutable observation, the adapter composes:

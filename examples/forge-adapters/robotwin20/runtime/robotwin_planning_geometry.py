@@ -14,6 +14,23 @@ class SimulationProbeError(ValueError):
     """The provider request or runtime result is unsafe or incomplete."""
 
 
+class ObservedGeometryActor:
+    """Planner-only pose view; it has no actor or simulator access."""
+
+    def __init__(self, matrix):
+        from robotwin20_adapter.observed_binding import rigid_transform
+
+        self.matrix = rigid_transform(matrix).copy()
+
+    def get_pose(self):
+        from types import SimpleNamespace
+
+        import transforms3d.quaternions as tquat
+
+        return SimpleNamespace(p=self.matrix[:3, 3].copy(), q=tquat.mat2quat(self.matrix[:3, :3]),
+                               to_transformation_matrix=lambda: self.matrix.copy())
+
+
 def _route_pose(pose_value: Mapping[str, Any], route_frame_id: str) -> list[float]:
     import numpy as np
     import transforms3d as t3d
@@ -182,6 +199,11 @@ def _collision_vertices(component: Any) -> Any:
 
 
 def _table_top_z(task: Any) -> float:
+    if hasattr(task, "_paos_observed_support"):
+        support = task._paos_observed_support
+        if support is None:
+            raise SimulationProbeError("observed support geometry is unavailable")
+        return float(support["position_m"][2]) + float(support["half_extents_m"][2])
     table = getattr(task, "table", None)
     if table is None:
         raise SimulationProbeError("RoboTwin scene table is unavailable")

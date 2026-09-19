@@ -408,7 +408,7 @@ class CompleteRouteSelector:
                         phase="none",
                         code="readiness_provider_error",
                         owner="infrastructure",
-                        detail=f"route readiness provider raised {type(exc).__name__}",
+                        detail=f"route readiness provider raised {type(exc).__name__}: {str(exc)[:1000]}",
                         route_digest=route_geometry_digest(request),
                     )
                 )

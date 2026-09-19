@@ -1,5 +1,15 @@
 # PAOS Manipulation Planning Developer Guide
 
+Persistent observation-driven preparation must use observation models for target,
+attached geometry, non-target obstacles and support. Simulator actor coordinates
+may establish private execution correspondence and drift diagnostics, but must
+not correct perception or supply missing planner geometry. See
+[Visual Geometry Evidence Architecture](VISUAL_GEOMETRY_EVIDENCE_ARCHITECTURE.md).
+Public preparation errors distinguish missing readiness capabilities from
+evaluated route rejection and carry persisted diagnostic references. Recovery
+remains an Agent decision; repeated candidate generation cannot repair a missing
+provider or an invalid model binding.
+
 This guide is normative for the current PAOS manipulation-planning extension.
 It derives ownership from PAOS task, Skill, Tool, Gateway, Evidence, and Verifier
 contracts. External projects may provide failure cases, but do not define this

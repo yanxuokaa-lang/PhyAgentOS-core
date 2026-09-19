@@ -14,6 +14,656 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v10.10.0 (2026-09-20 05:05) - codex
+
+- [policy] [fix] [完成] 修复观测包络与 actor 真值相等校验冲突；路线、附着物和障碍规划使用观测模型，Runtime 只保留身份与漂移监测。明确支持面证据，禁止仿真几何回填。(local)
+- [policy] [fix] [Completed] Separate observed envelopes from actor truth checks; plan routes, attachments and obstacles from observed models, retaining Runtime identity/drift monitoring and explicit support evidence without simulator geometry fallback. (local)
+- [comm] [fix] [完成] 将 readiness 基础设施错误与真实路线拒绝通过现有公共 PreparationProviderError 传给 Agent，保留完整诊断引用。(local)
+- [comm] [fix] [Completed] Propagate readiness infrastructure failures separately from route rejection through existing PreparationProviderError, retaining diagnostic references for Agent recovery. (local)
+- [eval] [exp] [完成] 按原七维做代码审查、回归与冻结场景真实 no-motion readiness 测量；不执行 Action，不改写历史任务，不安装或重启运行中 Runtime。(local)
+- [eval] [exp] [Completed] Review the established seven dimensions, run regressions and real frozen-scene no-motion readiness; no Actions, historical task rewrites, live installation or Runtime restart. (local)
+- Affected: adapter grounding/route inputs/readiness/planner/engine, tests, visual geometry/developer documentation, acceptance report and release metadata as needed.
+- [eval] [exp] [完成] 对比旧成功探针与当前观测几何；隔离 no-motion 诊断固定当前候选，分别使用观测/诊断真值支撑面与障碍，保留原始规划器状态；诊断真值不进入生产输入或验收通过证据。(local)
+- [eval] [exp] [Completed] Compare the prior successful probe with observed geometry; isolated no-motion controls hold current candidates fixed while varying observed versus diagnostic oracle support and obstacles, preserving raw planner status. Oracle controls never become production inputs or acceptance evidence. (local)
+- Anti-OverDefense: observed geometry differs legitimately from actor coordinates; existing numerical equality validates the wrong domain. Reuse binding artifacts and revision checks, add no hashes or second state machine. Missing observation geometry must not be filled from hidden actor truth.
+
+### 验证与边界 / Validation and limits
+
+- [eval] [exp] Core 504 passed；Adapter 533 passed / 1 skipped；Skill 337 passed；Ruff、compileall、diff-check 通过。冻结回放 24→20→40，36 approach / 4 contact 失败，无 Provider/绑定异常，未通过实际操作验收。(local)
+- [eval] [exp] Core 504 passed; Adapter 533 passed / 1 skipped; Skill 337 passed; Ruff, compileall and diff checks pass. Frozen replay 24→20→40, with 36 approach / 4 contact failures and no provider/binding errors; physical manipulation acceptance remains open. (local)
+- [eval] [exp] 四组 no-motion 几何对照均为 36/4 IK_FAIL；旧候选右臂仅在诊断真值桌面且保留 16 mm 退让时通过 approach/contact。观测桌面点云中位高误差 0.576 mm，而支撑盒顶部偏高 22.275 mm。全部对照无物理步进、无 Gateway 调用，关节状态恢复。(local)
+- [eval] [exp] Four no-motion geometry controls all yield 36/4 IK_FAIL; the reference right-arm prefix passes only with diagnostic oracle support and its 16 mm backoff. Support-cloud median error is 0.576 mm versus 22.275 mm at the box top. Zero readiness physics steps or Gateway calls; joint state restored. (local)
+- [env] [chore] Skill 2.4.0 / Node 0.4.0 已打包并隔离安装校验；未安装到 live Runtime，旧任务仍保持 awaiting_replan。观察支撑面估计与接触资格化是未解决的行为问题。(local)
+- [env] [chore] Skill 2.4.0 / Node 0.4.0 packaged and verified by isolated installation, not deployed live; source task remains awaiting_replan. Observed support estimation and contact qualification remain behavioral issues. (local)
+- Detailed seven-dimension results, commands, artifact paths and comparison: `docs/forge/IMPLEMENTATION_REVIEW_V10_10_0.md` L1–L209.
+
+### 精确修改范围 / Exact changed ranges
+
+- `docs/forge/MANIPULATION_DAG_DEVELOPER_GUIDE.md` L3–L12
+- `docs/forge/VISUAL_GEOMETRY_EVIDENCE_ARCHITECTURE.md` L50–L86
+- `examples/forge-adapters/robotwin20/runtime/robotwin_curobo_world_port.py` L25–L34
+- `examples/forge-adapters/robotwin20/runtime/robotwin_persistent_engine.py` L225–L225
+- `examples/forge-adapters/robotwin20/runtime/robotwin_persistent_engine.py` L249–L252
+- `examples/forge-adapters/robotwin20/runtime/robotwin_persistent_engine.py` L254–L254
+- `examples/forge-adapters/robotwin20/runtime/robotwin_persistent_engine.py` L319–L325
+- `examples/forge-adapters/robotwin20/runtime/robotwin_planning_geometry.py` L17–L33
+- `examples/forge-adapters/robotwin20/runtime/robotwin_planning_geometry.py` L202–L206
+- `examples/forge-adapters/robotwin20/runtime/robotwin_route_planner.py` L15–L15
+- `examples/forge-adapters/robotwin20/runtime/robotwin_route_planner.py` L301–L305
+- `examples/forge-adapters/robotwin20/runtime/robotwin_route_planner.py` L322–L324
+- `examples/forge-adapters/robotwin20/runtime/robotwin_route_readiness_worker.py` L74–L79
+- `examples/forge-adapters/robotwin20/runtime/robotwin_simulation_probe_worker.py` L558–L567
+- `examples/forge-adapters/robotwin20/runtime/robotwin_simulation_probe_worker.py` L1439–L1444
+- `examples/forge-adapters/robotwin20/runtime/robotwin_simulation_probe_worker.py` L1448–L1448
+- `examples/forge-adapters/robotwin20/scripts/materialize_complete_route.py` L552–L552
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/arm_candidates.py` L411–L411
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/grounding.py` L9–L9
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/grounding.py` L345–L345 (deletion location)
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/grounding.py` L347–L349
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/grounding.py` L352–L353
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/grounding.py` L396–L411
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/grounding.py` L414–L442
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_preparation.py` L128–L145
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/route_inputs.py` L142–L143
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/route_inputs.py` L145–L156
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/route_inputs.py` L288–L288
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/route_readiness.py` L484–L494
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/route_readiness.py` L510–L514
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/route_readiness.py` L543–L543
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/route_readiness.py` L546–L550
+- `examples/forge-adapters/robotwin20/tests/test_grounding.py` L476–L476
+- `examples/forge-adapters/robotwin20/tests/test_grounding.py` L498–L507
+- `examples/forge-adapters/robotwin20/tests/test_grounding.py` L522–L522
+- `examples/forge-adapters/robotwin20/tests/test_grounding.py` L525–L527
+- `examples/forge-adapters/robotwin20/tests/test_persistent_preparation.py` L86–L87
+- `examples/forge-adapters/robotwin20/tests/test_persistent_preparation.py` L89–L93
+- `examples/forge-adapters/robotwin20/tests/test_persistent_preparation.py` L98–L112
+- `examples/forge-adapters/robotwin20/tests/test_route_readiness.py` L246–L278
+- `examples/forge-skills/pick-place-workflow/SKILL.md` L27–L34
+- `examples/forge-skills/pick-place-workflow/pyproject.toml` L3–L3
+- `examples/forge-skills/pick-place-workflow/skill.yaml` L3–L3
+- `examples/forge-skills/pick-place-workflow/skill.yaml` L61–L62
+- `examples/forge-skills/pick-place-workflow/skill.yaml` L67–L67
+- `examples/forge-skills/pick-place-workflow/tests/test_grasp_propose.py` L268–L268
+- [新增 / Added] `examples/forge-adapters/robotwin20/scripts/replay_observed_preparation.py` L1–L228: persisted-input replay, independent no-motion worker and source snapshot.
+- [新增 / Added] `examples/forge-adapters/robotwin20/tests/test_observed_route_geometry.py` L1–L95: observed models, private drift rejection and support geometry regression tests.
+- [新增 / Added] `docs/forge/IMPLEMENTATION_REVIEW_V10_10_0.md` L1–L209: seven-dimensional findings and quantified diagnostic controls.
+
+### 代码 Diff / Code diff
+
+```diff
+diff --git a/docs/forge/MANIPULATION_DAG_DEVELOPER_GUIDE.md b/docs/forge/MANIPULATION_DAG_DEVELOPER_GUIDE.md
+index e2fc0b6..307f794 100644
+--- a/docs/forge/MANIPULATION_DAG_DEVELOPER_GUIDE.md
++++ b/docs/forge/MANIPULATION_DAG_DEVELOPER_GUIDE.md
+@@ -2,2 +2,12 @@
+
++Persistent observation-driven preparation must use observation models for target,
++attached geometry, non-target obstacles and support. Simulator actor coordinates
++may establish private execution correspondence and drift diagnostics, but must
++not correct perception or supply missing planner geometry. See
++[Visual Geometry Evidence Architecture](VISUAL_GEOMETRY_EVIDENCE_ARCHITECTURE.md).
++Public preparation errors distinguish missing readiness capabilities from
++evaluated route rejection and carry persisted diagnostic references. Recovery
++remains an Agent decision; repeated candidate generation cannot repair a missing
++provider or an invalid model binding.
++
+ This guide is normative for the current PAOS manipulation-planning extension.
+diff --git a/docs/forge/VISUAL_GEOMETRY_EVIDENCE_ARCHITECTURE.md b/docs/forge/VISUAL_GEOMETRY_EVIDENCE_ARCHITECTURE.md
+index 726ea42..a844e18 100644
+--- a/docs/forge/VISUAL_GEOMETRY_EVIDENCE_ARCHITECTURE.md
++++ b/docs/forge/VISUAL_GEOMETRY_EVIDENCE_ARCHITECTURE.md
+@@ -49,2 +49,39 @@ These are diagnostics, not motion authorization or an automatic retry policy.
+
++### Observation models are not simulator object frames
++
++An axis-aligned envelope in camera coordinates has a legitimate estimated frame:
++the calibrated camera axes translated to the measured envelope centre. This does
++not assert that a physical object's orientation is known. The persistent adapter
++names that frame `observed-envelope/<entity>` and uses its centroid as the model's
++functional origin. It never copies a simulator functional-point offset into the
++estimated model. A supplied target transform places this model frame.
++
++Readiness and Action preflight compare route artifacts with the bound observation
++model. The existing private Runtime drift check compares actor state only with
++its captured execution snapshot. Neither comparison overwrites an estimate or
++relaxes drift tolerances. Runtime correspondence and drift rejection remain
++simulator-specific identity/safety diagnostics, not perception or planner inputs.
++
++All movable collision objects use bound visual envelopes. Incomplete coverage
++returns `observed_collision_coverage_incomplete`; hidden actor boxes are not a
++fallback. Support comes from the metric cloud named by observed `on` relations.
++Its world-axis bounds describe observed occupancy, not a ground-truth tabletop
++plane. Missing or ambiguous support prevents readiness. Noise and occlusion can
++cause conservative over-rejection; replacing estimates with actor meshes is not
++an acceptable remedy.
++
++Materialized records label this source `observed_envelope`. Attached-object
++planning consumes a planner-only view of the estimated pose. Calibrated robot
++kinematics and measured joints remain robot state. Legacy explicitly configured
++benchmark routes retain separate simulator-geometry provenance and cannot count
++as observation-only evidence.
++
++Readiness exposes bounded per-arm diagnostics; selection uses the requested arm,
++not another arm's success. Preparation persists the existing ReplanSignal and
++returns `readiness_provider_unavailable` for missing capability/infrastructure,
++or `no_admissible_route` for evaluated route rejection, with a diagnostic ref.
++AgentLoop chooses recovery through its existing Query error path. Unknown contact
++dynamics and unavailable stop-control evidence remain unavailable; static path
++success alone does not authorize motion.
++
+ ## Visual pipeline
+diff --git a/examples/forge-adapters/robotwin20/runtime/robotwin_curobo_world_port.py b/examples/forge-adapters/robotwin20/runtime/robotwin_curobo_world_port.py
+index 3279aa5..52ce97a 100644
+--- a/examples/forge-adapters/robotwin20/runtime/robotwin_curobo_world_port.py
++++ b/examples/forge-adapters/robotwin20/runtime/robotwin_curobo_world_port.py
+@@ -24,2 +24,12 @@ def bind_scene_table(task: Any) -> None:
+     """Bind the measured support box to both provider planners without stepping."""
++    if hasattr(task, "_paos_observed_support"):
++        support = task._paos_observed_support
++        if support is None:
++            raise CuroboWorldPortError("observed support geometry is unavailable")
++        for arm in ("left", "right"):
++            planner = getattr(task.robot, f"{arm}_planner")
++            planner.arm_id = arm
++            planner._paos_table_world_pose = {key: support[key] for key in
++                                            ("position_m", "orientation_wxyz", "half_extents_m")}
++        return
+     table = getattr(task, "table", None)
+diff --git a/examples/forge-adapters/robotwin20/runtime/robotwin_persistent_engine.py b/examples/forge-adapters/robotwin20/runtime/robotwin_persistent_engine.py
+index 7aac505..c1e19d7 100644
+--- a/examples/forge-adapters/robotwin20/runtime/robotwin_persistent_engine.py
++++ b/examples/forge-adapters/robotwin20/runtime/robotwin_persistent_engine.py
+@@ -224,2 +224,3 @@ class RoboTwinPersistentEngine:
+             mapping = {}
++            observed_bindings = {}
+             captured_objects = binding_record.get("scene_facts", {}).get("objects", [])
+@@ -247,3 +248,8 @@ class RoboTwinPersistentEngine:
+                 mapping[binding["entity_ref"]] = actor
++                observed_bindings[binding["entity_ref"]] = {
++                    "captured_pose": expected.tolist(),
++                    "model": binding_record["objects"][binding["entity_ref"]],
++                }
+             self.backend._task._paos_observed_entities = mapping
++            self.backend._task._paos_observed_bindings = observed_bindings
+             return {"scene_revision": binding_record["scene_revision"], "motion_authorized": False}
+@@ -312,2 +318,9 @@ class RoboTwinPersistentEngine:
+         task = self.backend._task
++        world_source = probe._load_json_artifact(self.root, request["collision_world"]["artifact_ref"])
++        scene_source = probe._load_json_artifact(self.root, world_source["source_scene_facts_ref"])
++        if (candidate["entity_ref"] in getattr(task, "_paos_observed_bindings", {})
++                and scene_source.get("geometry_source") != "observation"):
++            raise ValueError("observed route requires observed collision geometry")
++        if scene_source.get("geometry_source") == "observation":
++            task._paos_observed_support = scene_source.get("support_surface")
+         probe.bind_scene_table(task)
+diff --git a/examples/forge-adapters/robotwin20/runtime/robotwin_planning_geometry.py b/examples/forge-adapters/robotwin20/runtime/robotwin_planning_geometry.py
+index d73f34e..c5ee447 100644
+--- a/examples/forge-adapters/robotwin20/runtime/robotwin_planning_geometry.py
++++ b/examples/forge-adapters/robotwin20/runtime/robotwin_planning_geometry.py
+@@ -16,2 +16,19 @@ class SimulationProbeError(ValueError):
+
++class ObservedGeometryActor:
++    """Planner-only pose view; it has no actor or simulator access."""
++
++    def __init__(self, matrix):
++        from robotwin20_adapter.observed_binding import rigid_transform
++
++        self.matrix = rigid_transform(matrix).copy()
++
++    def get_pose(self):
++        from types import SimpleNamespace
++
++        import transforms3d.quaternions as tquat
++
++        return SimpleNamespace(p=self.matrix[:3, 3].copy(), q=tquat.mat2quat(self.matrix[:3, :3]),
++                               to_transformation_matrix=lambda: self.matrix.copy())
++
++
+ def _route_pose(pose_value: Mapping[str, Any], route_frame_id: str) -> list[float]:
+@@ -184,2 +201,7 @@ def _collision_vertices(component: Any) -> Any:
+ def _table_top_z(task: Any) -> float:
++    if hasattr(task, "_paos_observed_support"):
++        support = task._paos_observed_support
++        if support is None:
++            raise SimulationProbeError("observed support geometry is unavailable")
++        return float(support["position_m"][2]) + float(support["half_extents_m"][2])
+     table = getattr(task, "table", None)
+diff --git a/examples/forge-adapters/robotwin20/runtime/robotwin_route_planner.py b/examples/forge-adapters/robotwin20/runtime/robotwin_route_planner.py
+index cebd166..16245c4 100644
+--- a/examples/forge-adapters/robotwin20/runtime/robotwin_route_planner.py
++++ b/examples/forge-adapters/robotwin20/runtime/robotwin_route_planner.py
+@@ -14,2 +14,3 @@ from robotwin_curobo_world_port import (
+ from robotwin_planning_geometry import (
++    ObservedGeometryActor,
+     SimulationProbeError,
+@@ -299,2 +300,7 @@ class RoboTwinRouteEvaluator:
+             task = backend._task
++            if (any(c["entity_ref"] in getattr(task, "_paos_observed_bindings", {}) for c in request["candidates"])
++                    and scene.get("geometry_source") != "observation"):
++                raise SimulationProbeError("observed route requires observed collision geometry")
++            if scene.get("geometry_source") == "observation":
++                task._paos_observed_support = scene.get("support_surface")
+             if not owned:
+@@ -315,3 +321,5 @@ class RoboTwinRouteEvaluator:
+                 )
+-                actor = getattr(task, record["actor_name"])
++                actor = (ObservedGeometryActor(record["world_T_object"])
++                         if scene.get("geometry_source") == "observation"
++                         else getattr(task, record["actor_name"]))
+                 results[candidate["candidate_ref"]] = evaluate_route(
+diff --git a/examples/forge-adapters/robotwin20/runtime/robotwin_route_readiness_worker.py b/examples/forge-adapters/robotwin20/runtime/robotwin_route_readiness_worker.py
+index 4dda2e9..1c88f50 100644
+--- a/examples/forge-adapters/robotwin20/runtime/robotwin_route_readiness_worker.py
++++ b/examples/forge-adapters/robotwin20/runtime/robotwin_route_readiness_worker.py
+@@ -73,2 +73,8 @@ def _handle_factory(artifact_root: Path, worker_id: str, evaluator=None):
+             if result is not None:
++                # Public bounded diagnostics, without trajectories or actor truth.
++                item["arm_results"] = [
++                    {key: attempt[key] for key in ("arm", "status", "failed_phase", "detail") if key in attempt}
++                    for attempt in result.get("arm_attempts", [])
++                ]
++                artifact["arm_results"] = item["arm_results"]
+                 artifact["planner_evaluation"] = result
+diff --git a/examples/forge-adapters/robotwin20/runtime/robotwin_simulation_probe_worker.py b/examples/forge-adapters/robotwin20/runtime/robotwin_simulation_probe_worker.py
+index 580e4f0..bcb749c 100644
+--- a/examples/forge-adapters/robotwin20/runtime/robotwin_simulation_probe_worker.py
++++ b/examples/forge-adapters/robotwin20/runtime/robotwin_simulation_probe_worker.py
+@@ -557,2 +557,12 @@ def _validate_runtime_route_input_binding(
+     expected = np.asarray(expected_flat, dtype=np.float64).reshape(4, 4)
++    bound = getattr(task, "_paos_observed_bindings", {}).get(candidate["entity_ref"])
++    if bound is not None:
++        model = bound["model"]
++        if (not np.allclose(expected, np.asarray(model["world_T_object"]).reshape(4, 4), atol=1e-6, rtol=0)
++                or artifacts["geometry"]["half_extents_m"] != model["half_extents_m"]):
++            raise SimulationProbeError("route geometry differs from bound observation model")
++        # Actor truth detects drift only; it never corrects the estimated model.
++        expected = np.asarray(bound["captured_pose"], dtype=np.float64).reshape(4, 4)
++    elif candidate["attached_object"].get("object_frame_id", "").startswith("observed-envelope/"):
++        raise SimulationProbeError("observed route requires its Runtime identity binding")
+     if not np.isfinite(actual).all() or not np.isfinite(expected).all() or not np.allclose(actual, expected, atol=1e-5):
+@@ -1428,2 +1438,8 @@ def execute_candidate_phases(
+             if phase_name == "lift" and not execution_state["planner_object_attached"]:
++                planner_actor = actor
++                observed = getattr(task, "_paos_observed_bindings", {}).get(candidate["entity_ref"])
++                if observed is not None:
++                    from robotwin_planning_geometry import ObservedGeometryActor
++
++                    planner_actor = ObservedGeometryActor(observed["model"]["world_T_object"])
+                 attached_model = _attach_object_to_planner(
+@@ -1431,3 +1447,3 @@ def execute_candidate_phases(
+                     planner,
+-                    actor,
++                    planner_actor,
+                     half_extents,
+diff --git a/examples/forge-adapters/robotwin20/scripts/materialize_complete_route.py b/examples/forge-adapters/robotwin20/scripts/materialize_complete_route.py
+index 87603d9..7da40b6 100644
+--- a/examples/forge-adapters/robotwin20/scripts/materialize_complete_route.py
++++ b/examples/forge-adapters/robotwin20/scripts/materialize_complete_route.py
+@@ -551,3 +551,3 @@ def materialize(args: argparse.Namespace) -> dict[str, Any]:
+                 "source_scene_facts_ref": refs["scene-facts"],
+-                "source": "sapien_collision_shape",
++                "source": "observed_envelope" if facts.get("geometry_source") == "observation" else "sapien_collision_shape",
+             },
+diff --git a/examples/forge-adapters/robotwin20/src/robotwin20_adapter/arm_candidates.py b/examples/forge-adapters/robotwin20/src/robotwin20_adapter/arm_candidates.py
+index 468e69c..24531d5 100644
+--- a/examples/forge-adapters/robotwin20/src/robotwin20_adapter/arm_candidates.py
++++ b/examples/forge-adapters/robotwin20/src/robotwin20_adapter/arm_candidates.py
+@@ -410,3 +410,3 @@ class CompleteRouteSelector:
+                         owner="infrastructure",
+-                        detail=f"route readiness provider raised {type(exc).__name__}",
++                        detail=f"route readiness provider raised {type(exc).__name__}: {str(exc)[:1000]}",
+                         route_digest=route_geometry_digest(request),
+diff --git a/examples/forge-adapters/robotwin20/src/robotwin20_adapter/grounding.py b/examples/forge-adapters/robotwin20/src/robotwin20_adapter/grounding.py
+index 58ebca4..89c2e97 100644
+--- a/examples/forge-adapters/robotwin20/src/robotwin20_adapter/grounding.py
++++ b/examples/forge-adapters/robotwin20/src/robotwin20_adapter/grounding.py
+@@ -8,2 +8,3 @@ from uuid import uuid4
+ import numpy as np
++from PhyAgentOS.forge.capability_runtime.manipulation_prepare import PreparationProviderError
+ from pick_place_workflow.grounding import IDENTITY_KEYS
+@@ -344,8 +345,10 @@ class Grounding:
+             runtime = objects[ref]
+-            runtime_pose = rigid_transform(runtime["world_T_object"])
+-            functional_offset = np.linalg.inv(runtime_pose) @ rigid_transform(runtime["world_T_functional_point"])
+             updated = deepcopy(runtime)
++            # This is an estimated envelope frame, not the physical actor frame.
++            # Its origin is the observed centroid; no hidden functional point is used.
++            updated["object_frame_id"] = f"observed-envelope/{ref.removeprefix('entity://')}"
+             updated["world_T_object"] = visual_pose.reshape(-1).tolist()
+             updated["half_extents_m"] = (dimensions / 2.0).tolist()
+-            updated["world_T_functional_point"] = (visual_pose @ functional_offset).reshape(-1).tolist()
++            updated["world_T_functional_point"] = visual_pose.reshape(-1).tolist()
++            updated["functional_point_id"] = 0
+             projected[ref] = updated
+@@ -392,11 +395,49 @@ class Grounding:
+         obj["target_ref"] = request["destination_ref"]
+-        # The target uses bound visual route geometry. Other captured Runtime
+-        # objects remain collision obstacles, not newly inferred visual evidence.
+-        execution_ref = binding["objects"][obj["entity_ref"]]["entity_ref"]
+-        facts["objects"] = [
+-            obj if item["entity_ref"] == execution_ref else item
+-            for item in facts["objects"]
+-        ]
++        # Captured actor geometry is private drift/identity evidence. Every
++        # planning obstacle must have its own observation-derived model.
++        by_execution = {item["entity_ref"]: (ref, item) for ref, item in binding["objects"].items()}
++        missing = [item["entity_ref"] for item in facts["objects"] if item["entity_ref"] not in by_execution]
++        if missing:
++            raise PreparationProviderError("observed_collision_coverage_incomplete",
++                                           "observed collision coverage is incomplete; bind all observed obstacles")
++        facts["objects"] = []
++        for ref, model in by_execution.values():
++            item = deepcopy(model)
++            item["entity_ref"] = ref
++            facts["objects"].append(obj if ref == obj["entity_ref"] else item)
++        facts["geometry_source"] = "observation"
++        support = self._observed_support(binding)
++        if support is not None:
++            facts["support_surface"] = support
+         return facts
+
++    def _observed_support(self, binding):
++        """Bound the observed support cloud in world axes, without actor meshes."""
++        identity = tuple(binding[k] for k in IDENTITY_KEYS)
++        understanding = self.understandings[identity]
++        refs = {r["object_ref"] for r in understanding.get("relations", [])
++                if r.get("predicate") == "on" and r.get("subject_ref") in binding["objects"]}
++        if not refs:
++            return None  # Consumers requiring support must reject missing evidence.
++        if len(refs) != 1:
++            raise ValueError("observed support surface is ambiguous")
++        ref = next(iter(refs))
++        clouds = [a for a in understanding.get("derived_artifacts", [])
++                  if a.get("kind") == "object_point_cloud" and a.get("entity_ref") == ref]
++        if len(clouds) != 1:
++            raise ValueError("observed support requires one metric point cloud")
++        cloud = clouds[0]
++        if any(cloud.get(k) != binding[k] for k in IDENTITY_KEYS) or cloud.get("frame_id") != binding["frame_id"]:
++            raise ValueError("observed support lineage differs from binding")
++        points = np.load(_artifact_path(self.root, cloud["artifact_ref"] + ".npy"), allow_pickle=False)
++        if points.ndim != 2 or points.shape[1] != 3 or len(points) < 3 or not np.isfinite(points).all():
++            raise ValueError("observed support point cloud is invalid")
++        transform = rigid_transform(binding["world_T_observation"])
++        world = points @ transform[:3, :3].T + transform[:3, 3]
++        low, high = world.min(axis=0), world.max(axis=0)
++        if np.any(high <= low):
++            raise ValueError("observed support extent is degenerate")
++        return {"position_m": ((low + high) / 2).tolist(), "orientation_wxyz": [1., 0., 0., 0.],
++                "half_extents_m": ((high - low) / 2).tolist(), "evidence_ref": cloud["artifact_ref"]}
++
+
+diff --git a/examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_preparation.py b/examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_preparation.py
+index 06e7287..513dc09 100644
+--- a/examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_preparation.py
++++ b/examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_preparation.py
+@@ -127,4 +127,20 @@ class PersistentPreparationProvider:
+         if isinstance(selected, ReplanSignal):
+-            return {"prepared_candidates": [], "provider_available": True,
+-                    "assignments": [], "destination_ref": request["destination_ref"]}
++            from collections import Counter
++
++            metrics["route_failures"] = selected.model_dump(mode="json")
++            directory = self.prepared_routes.artifact_root / "preparation-rejections"
++            directory.mkdir(parents=True, exist_ok=True)
++            ref = f"artifact://preparation-rejections/{uuid4().hex}"
++            path = directory / (ref.rsplit("/", 1)[1] + ".json")
++            with path.open("x", encoding="utf-8") as stream:
++                json.dump(selected.model_dump(mode="json"), stream, ensure_ascii=False)
++            infrastructure = any(f.owner in {"infrastructure", "input", "binding"}
++                                 for f in selected.failed_routes)
++            counts = Counter(f.code for f in selected.failed_routes)
++            details = list(dict.fromkeys(f.detail for f in selected.failed_routes))
++            raise PreparationProviderError(
++                "readiness_provider_unavailable" if infrastructure else "no_admissible_route",
++                f"Preparation produced no assignment: {dict(counts)}; "
++                f"{'; '.join(details[:2])[:1500]}; diagnostics: {ref}",
++            )
+         assignment = project_arm_assignment(intent, capability, selected)
+diff --git a/examples/forge-adapters/robotwin20/src/robotwin20_adapter/route_inputs.py b/examples/forge-adapters/robotwin20/src/robotwin20_adapter/route_inputs.py
+index aa7ee6a..a161a90 100644
+--- a/examples/forge-adapters/robotwin20/src/robotwin20_adapter/route_inputs.py
++++ b/examples/forge-adapters/robotwin20/src/robotwin20_adapter/route_inputs.py
+@@ -141,4 +141,17 @@ def validate_scene_facts(value: Any) -> dict[str, Any]:
+     }
+-    if not isinstance(value, Mapping) or set(value) != required:
++    optional = {"geometry_source", "support_surface"}
++    if not isinstance(value, Mapping) or not required <= set(value) or set(value) - required - optional:
+         raise RouteInputError("route scene facts fields are invalid")
++    if "geometry_source" in value and value["geometry_source"] != "observation":
++        raise RouteInputError("route scene geometry source is invalid")
++    if "support_surface" in value:
++        support = value["support_surface"]
++        if value.get("geometry_source") != "observation" or not isinstance(support, Mapping):
++            raise RouteInputError("support surface requires observed geometry")
++        _finite_vector(support.get("position_m"), 3, "support position")
++        extents = _finite_vector(support.get("half_extents_m"), 3, "support extents")
++        if any(x <= 0 for x in extents) or support.get("orientation_wxyz") != [1., 0., 0., 0.]:
++            raise RouteInputError("observed support bounds are invalid")
++        if not str(support.get("evidence_ref", "")).startswith("artifact://"):
++            raise RouteInputError("observed support evidence is missing")
+     if value["schema_version"] not in {ROUTE_SCENE_FACTS_SCHEMA_VERSION, CURRENT_SCENE_FACTS_SCHEMA_VERSION}:
+@@ -274,3 +287,3 @@ def derive_bound_route_inputs(
+         "source_scene_facts_ref": scene_facts_ref,
+-        "source": "sapien_collision_shape",
++        "source": "observed_envelope" if facts.get("geometry_source") == "observation" else "sapien_collision_shape",
+     }
+diff --git a/examples/forge-adapters/robotwin20/src/robotwin20_adapter/route_readiness.py b/examples/forge-adapters/robotwin20/src/robotwin20_adapter/route_readiness.py
+index 57ece84..00b68a6 100644
+--- a/examples/forge-adapters/robotwin20/src/robotwin20_adapter/route_readiness.py
++++ b/examples/forge-adapters/robotwin20/src/robotwin20_adapter/route_readiness.py
+@@ -483,2 +483,13 @@ class RouteReadinessEvaluationAdapter:
+             raise RouteReadinessProfileError("route evaluation evidence check status is invalid")
++        checks = dict(checks)
++        arm_results = item.get("arm_results", [])
++        selected_arms = option.get("arm_ids", ())
++        attempts = [a for a in arm_results if a.get("arm") in selected_arms]
++        if arm_results:
++            if len(attempts) != len(selected_arms) or {a.get("arm") for a in attempts} != set(selected_arms):
++                raise RouteReadinessProfileError("route evidence lacks the selected arm")
++            if any(a.get("status") not in {"pass", "fail"} for a in attempts):
++                raise RouteReadinessProfileError("route arm result status is invalid")
++            for key in ("attached_object_collision", "complete_transport_descent_retreat", "workspace_and_joint_limits"):
++                checks[key] = "pass" if all(a["status"] == "pass" for a in attempts) else "fail"
+         status = "pass" if all(value == "pass" for value in checks.values()) else (
+@@ -498,2 +509,7 @@ class RouteReadinessEvaluationAdapter:
+         owner = "readiness" if status == "pass" else "infrastructure" if status == "unavailable" else "readiness"
++        if "unavailable" in checks.values() and "fail" not in checks.values() and status != "unavailable":
++            code, owner = "readiness_capability_unavailable", "infrastructure"
++        detail = [f"{a['arm']}:{a.get('failed_phase', 'none')}: {a.get('detail', a['status'])}"
++                  for a in attempts if a["status"] != "pass"]
++        detail.extend(str(x) for x in response.get("unavailable_reasons", []))
+         positions = [
+@@ -526,6 +542,10 @@ class RouteReadinessEvaluationAdapter:
+             "checks": dict(checks),
+-            "phase": "none",
++            "phase": next((a.get("failed_phase", "none") for a in attempts if a["status"] != "pass"), "none"),
+             "code": code,
+             "owner": owner,
+-            "detail": "route evidence accepted" if status == "pass" else "route readiness unavailable" if status == "unavailable" else "route evidence rejected",
++            "detail": ("route evidence accepted" if status == "pass" else
++                       "; ".join(detail)[:2000]
++                       or "route evidence rejected") + (
++                           "" if status == "pass" else "; evidence: " + ", ".join(evidence_refs)
++                       ),
+             "route_geometry_digest": route_geometry_digest(request),
+diff --git a/examples/forge-adapters/robotwin20/tests/test_grounding.py b/examples/forge-adapters/robotwin20/tests/test_grounding.py
+index f812dbd..96f10a6 100644
+--- a/examples/forge-adapters/robotwin20/tests/test_grounding.py
++++ b/examples/forge-adapters/robotwin20/tests/test_grounding.py
+@@ -475,3 +475,3 @@ def test_worker_rechecks_actor_geometry_before_alias_binding(tmp_path):
+
+-def test_route_contract_uses_only_explicit_goal_and_preserves_functional_offset(tmp_path):
++def test_route_contract_uses_observed_geometry_without_hidden_functional_offset(tmp_path):
+     from test_route_inputs import _facts
+@@ -497,2 +497,12 @@ def test_route_contract_uses_only_explicit_goal_and_preserves_functional_offset(
+     g.source = lambda _: deepcopy(facts)
++    understanding = next(iter(g.understandings.values()))
++    for i, obstacle in enumerate(obstacles):
++        ref = f"entity://observed-obstacle-{i}"
++        center = np.asarray(obstacle["world_T_object"]).reshape(4, 4)[:3, 3] + 0.003
++        understanding["entities"].append({"entity_ref": ref})
++        understanding["spatial_envelopes"].append({
++            "entity_ref": ref, "frame_id": "camera", "unit": "m",
++            "min_xyz_m": (center - 0.025).tolist(), "max_xyz_m": (center + 0.025).tolist(),
++        })
++        req["entity_refs"].append(ref)
+     b = g.bind(req)
+@@ -511,6 +521,8 @@ def test_route_contract_uses_only_explicit_goal_and_preserves_functional_offset(
+     validate_scene_facts(route)
+-    assert route["objects"][0]["world_T_functional_target"][3] == 0.26
++    assert route["objects"][0]["world_T_functional_target"][3] == 0.25
+     assert route["objects"][0]["world_T_object_target"][3] == 0.25
+     assert "target_ref" not in obj
+-    assert route["objects"][1:] == obstacles
++    assert route["geometry_source"] == "observation"
++    assert route["objects"][1:] != obstacles
++    assert all(item["half_extents_m"] == pytest.approx([0.025] * 3) for item in route["objects"][1:])
+     assert len(route["objects"]) == 3
+diff --git a/examples/forge-adapters/robotwin20/tests/test_persistent_preparation.py b/examples/forge-adapters/robotwin20/tests/test_persistent_preparation.py
+index b12f36d..430ad3c 100644
+--- a/examples/forge-adapters/robotwin20/tests/test_persistent_preparation.py
++++ b/examples/forge-adapters/robotwin20/tests/test_persistent_preparation.py
+@@ -85,5 +85,10 @@ def test_selection_registers_geometry_but_requires_separate_approval(tmp_path, n
+ def test_failed_complete_routes_produce_no_prepared_assignment(tmp_path):
++    from PhyAgentOS.forge.capability_runtime.manipulation_prepare import PreparationProviderError
++
+     request, provider, routes = composition(tmp_path, status="fail")
+-    result = provider.prepare(request)
+-    assert result["prepared_candidates"] == result["assignments"] == []
++    with pytest.raises(PreparationProviderError, match="route collides") as caught:
++        provider.prepare(request)
++    assert caught.value.code == "no_admissible_route"
++    saved = json.loads(next((tmp_path / "preparation-rejections").glob("*.json")).read_text())
++    assert len(saved["failed_routes"]) == 2
+     assert not routes._routes
+@@ -92,2 +97,17 @@ def test_failed_complete_routes_produce_no_prepared_assignment(tmp_path):
+
++def test_readiness_infrastructure_failure_is_not_an_empty_candidate_set(tmp_path):
++    from PhyAgentOS.forge.capability_runtime.manipulation_prepare import PreparationProviderError
++
++    request, provider, routes = composition(tmp_path)
++
++    def unavailable(*args):
++        raise ValueError("observation model provenance mismatch")
++
++    provider.selector.evaluator = unavailable
++    with pytest.raises(PreparationProviderError, match="observation model provenance mismatch") as caught:
++        provider.prepare(request)
++    assert caught.value.code == "readiness_provider_unavailable"
++    assert not routes._routes
++
++
+ def test_finalized_review_is_exposed_as_preparation_evidence(tmp_path):
+diff --git a/examples/forge-adapters/robotwin20/tests/test_route_readiness.py b/examples/forge-adapters/robotwin20/tests/test_route_readiness.py
+index 87020ca..c825555 100644
+--- a/examples/forge-adapters/robotwin20/tests/test_route_readiness.py
++++ b/examples/forge-adapters/robotwin20/tests/test_route_readiness.py
+@@ -245,2 +245,35 @@ def test_live_provider_failure_is_recorded_as_unavailable(tmp_path):
+
++def test_selector_receives_selected_arm_failure_and_missing_capability(tmp_path):
++    from robotwin_route_readiness_worker import _handle_factory
++
++    from robotwin20_adapter.route_readiness import RouteReadinessEvaluationAdapter
++
++    request = _request(tmp_path)
++
++    def evaluate(current):
++        return {"candidates": {item["candidate_ref"]: {
++            "status": "pass", "selected_arm": "right", "arm_attempts": [
++                {"arm": "left", "status": "fail", "failed_phase": "approach", "detail": "observed obstacle collision"},
++                {"arm": "right", "status": "pass"},
++            ]} for item in current["candidates"]}, "world": {}, "simulator_steps": 0}
++
++    response = _handle_factory(tmp_path, "test-live", evaluate)(request)
++
++    class Client:
++        def evaluate(self, current):
++            return response
++
++    adapter = RouteReadinessEvaluationAdapter(Client())
++    option = {"candidate_ref": request["candidates"][0]["candidate_ref"], "arm_ids": ["left"]}
++    left = adapter.evaluate(request, option)
++    assert left["checks"]["complete_transport_descent_retreat"] == "fail"
++    assert "observed obstacle collision" in left["detail"]
++    assert left["code"] == "route_rejected"
++    right = adapter.evaluate(request, {**option, "arm_ids": ["right"]})
++    assert right["checks"]["complete_transport_descent_retreat"] == "pass"
++    assert right["code"] == "readiness_capability_unavailable"
++    assert right["owner"] == "infrastructure"
++    assert right["status"] != "pass"
++
++
+ def test_route_readiness_profile_loader_rejects_duplicate_keys(tmp_path):
+diff --git a/examples/forge-skills/pick-place-workflow/SKILL.md b/examples/forge-skills/pick-place-workflow/SKILL.md
+index 6638a84..c8cc5f0 100644
+--- a/examples/forge-skills/pick-place-workflow/SKILL.md
++++ b/examples/forge-skills/pick-place-workflow/SKILL.md
+@@ -26,2 +26,10 @@ two-object template.
+
++Use observed geometry for the target and relevant collision obstacles; preserve
++support relations and their metric evidence. If preparation reports incomplete
++observed collision coverage, obtain or bind the missing observed entities. Do not
++fill gaps with simulator object poses or dimensions. Estimated envelope axes are
++model coordinates, not proof of a physical object's orientation. A preparation
++error reporting unavailable readiness capabilities or provider failure requires
++diagnosing that evidence; regenerating candidates alone does not repair it.
++
+ The graph represents your chosen obligations and dependencies. One PlanNode is one
+diff --git a/examples/forge-skills/pick-place-workflow/pyproject.toml b/examples/forge-skills/pick-place-workflow/pyproject.toml
+index 394ba55..8f268eb 100644
+--- a/examples/forge-skills/pick-place-workflow/pyproject.toml
++++ b/examples/forge-skills/pick-place-workflow/pyproject.toml
+@@ -2,3 +2,3 @@
+ name = "paos-pick-place-workflow"
+-version = "2.3.4"
++version = "2.4.0"
+ description = "Provider-neutral Forge capability contracts and no-motion conformance fixtures."
+diff --git a/examples/forge-skills/pick-place-workflow/skill.yaml b/examples/forge-skills/pick-place-workflow/skill.yaml
+index 43a97ff..6102ce7 100644
+--- a/examples/forge-skills/pick-place-workflow/skill.yaml
++++ b/examples/forge-skills/pick-place-workflow/skill.yaml
+@@ -2,3 +2,3 @@ manifest_version: 2
+ name: pick-place-workflow
+-version: "2.3.4"
++version: "2.4.0"
+ description: Provider-neutral perception, preparation, acquisition, placement, and long-horizon workflow contracts.
+@@ -60,4 +60,4 @@ artifacts:
+     robotwin20_persistent_host:
+-      artifact_id: robotwin20_persistent_host-0.3.2-linux-x86_64
+-      version: "0.3.2"
++      artifact_id: robotwin20_persistent_host-0.4.0-linux-x86_64
++      version: "0.4.0"
+       platform: linux
+@@ -66,2 +66,2 @@ artifacts:
+       entrypoint: robotwin20_persistent_host
+-      sha256: 955d0d08a3b392933dbeebabf2d3568901b86bbd94cdfe1d28b183bc6bf3b2ef
++      sha256: 6fda36d1ef18a88b39ca5e46bf6ef3f40fd54d4f5c46fc88ceeaf48508b08327
+diff --git a/examples/forge-skills/pick-place-workflow/tests/test_grasp_propose.py b/examples/forge-skills/pick-place-workflow/tests/test_grasp_propose.py
+index 01dabee..b565273 100644
+--- a/examples/forge-skills/pick-place-workflow/tests/test_grasp_propose.py
++++ b/examples/forge-skills/pick-place-workflow/tests/test_grasp_propose.py
+@@ -267,3 +267,3 @@ def test_bundle_and_package_versions_match_the_feature_revision():
+
+-    assert bundle_manifest["version"] == "2.3.4"
++    assert bundle_manifest["version"] == "2.4.0"
+     assert tomllib.loads(package_text)["project"]["version"] == bundle_manifest["version"]
+```
+
+### 新文件关键代码 / New file excerpts
+
+```python
+# scripts/replay_observed_preparation.py: separate worker, no execution approval
+if payload.get("command") != "query" or operation not in {"bind_observed_entities", "snapshot", "route_readiness"}:
+    raise ValueError("no-motion replay permits only binding, snapshot and readiness")
+# The replay Builder.finalize rejects execution approval publication.
+```
+
+### Git 提交 / Git
+
+- Branch: `feature/planning-loop`; implementation commit is recorded in the closeout entry below.
+
+
 ## v10.9.7 (2026-09-20 04:42) - codex
 
 ### 完成操作 / Completed operations
@@ -1187,6 +1837,8 @@ index 7aff900..a81719d 100644
 
 - 日志范围 / Log ranges: `changelog/2026-09_part10.md` L784-L1357; `CHANGELOG.md` L15-L588. Latest five precede the retained historical-record section.
 
+## 历史记录 / Historical records
+
 ## v10.9.3 (2026-09-20 03:35) - codex
 
 ### 变更摘要 / Change summary
@@ -1215,8 +1867,6 @@ index 7aff900..a81719d 100644
 - 无新增动作、未自动启动 Runtime 或任务；旧任务记录与保存制品保留。 / No new motion or automatic Runtime/task start; prior records and saved artifacts retained.
 - 文件范围 / File ranges: `changelog/2026-09_part10.md:L755-L782`, `CHANGELOG.md:L15-L42`; latest five updated, historical entries preserved.
 - Branch: `feature/planning-loop`; installation commit: `a176b76`; 日志回填 / documentation closeout on the same branch.
-
-## 历史记录 / Historical records
 
 ## v10.9.2 (2026-09-20 03:25) - codex
 

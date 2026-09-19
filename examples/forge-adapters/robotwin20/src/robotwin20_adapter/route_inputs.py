@@ -139,8 +139,21 @@ def validate_scene_facts(value: Any) -> dict[str, Any]:
         "observation_frame_id", "route_frame_id", "calibration_ref", "task_definition",
         "captured_at", "robot_control_steps", "motion_authorized", "coverage", "objects",
     }
-    if not isinstance(value, Mapping) or set(value) != required:
+    optional = {"geometry_source", "support_surface"}
+    if not isinstance(value, Mapping) or not required <= set(value) or set(value) - required - optional:
         raise RouteInputError("route scene facts fields are invalid")
+    if "geometry_source" in value and value["geometry_source"] != "observation":
+        raise RouteInputError("route scene geometry source is invalid")
+    if "support_surface" in value:
+        support = value["support_surface"]
+        if value.get("geometry_source") != "observation" or not isinstance(support, Mapping):
+            raise RouteInputError("support surface requires observed geometry")
+        _finite_vector(support.get("position_m"), 3, "support position")
+        extents = _finite_vector(support.get("half_extents_m"), 3, "support extents")
+        if any(x <= 0 for x in extents) or support.get("orientation_wxyz") != [1., 0., 0., 0.]:
+            raise RouteInputError("observed support bounds are invalid")
+        if not str(support.get("evidence_ref", "")).startswith("artifact://"):
+            raise RouteInputError("observed support evidence is missing")
     if value["schema_version"] not in {ROUTE_SCENE_FACTS_SCHEMA_VERSION, CURRENT_SCENE_FACTS_SCHEMA_VERSION}:
         raise RouteInputError("route scene facts schema is unsupported")
     if value["route_frame_id"] != "world" or value["motion_authorized"] is not False or value["robot_control_steps"] != 0:
@@ -272,7 +285,7 @@ def derive_bound_route_inputs(
         "shape": "box",
         "half_extents_m": item["half_extents_m"],
         "source_scene_facts_ref": scene_facts_ref,
-        "source": "sapien_collision_shape",
+        "source": "observed_envelope" if facts.get("geometry_source") == "observation" else "sapien_collision_shape",
     }
     transform = {
         "schema_version": OBJECT_ROBOT_TARGET_TRANSFORM_SCHEMA_VERSION,

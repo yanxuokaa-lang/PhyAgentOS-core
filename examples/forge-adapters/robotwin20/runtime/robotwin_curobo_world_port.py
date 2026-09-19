@@ -22,6 +22,16 @@ class CuroboWorldPortError(RuntimeError):
 
 def bind_scene_table(task: Any) -> None:
     """Bind the measured support box to both provider planners without stepping."""
+    if hasattr(task, "_paos_observed_support"):
+        support = task._paos_observed_support
+        if support is None:
+            raise CuroboWorldPortError("observed support geometry is unavailable")
+        for arm in ("left", "right"):
+            planner = getattr(task.robot, f"{arm}_planner")
+            planner.arm_id = arm
+            planner._paos_table_world_pose = {key: support[key] for key in
+                                            ("position_m", "orientation_wxyz", "half_extents_m")}
+        return
     table = getattr(task, "table", None)
     table_pose = table.get_pose() if table is not None and callable(getattr(table, "get_pose", None)) else None
     if table_pose is None:
