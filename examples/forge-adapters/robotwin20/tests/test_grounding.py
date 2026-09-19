@@ -489,7 +489,11 @@ def test_route_contract_uses_only_explicit_goal_and_preserves_functional_offset(
     obj.update(
         object_frame_id="execution", functional_point_id=0, world_T_functional_point=pose(0.01)
     )
-    facts["objects"] = [obj]
+    obstacles = [facts["objects"][0], facts["objects"][2]]
+    for obstacle in obstacles:
+        for field in ("target_ref", "world_T_object_target", "world_T_functional_target"):
+            obstacle.pop(field)
+    facts["objects"] = [obj, *obstacles]
     g.source = lambda _: deepcopy(facts)
     b = g.bind(req)
     t = g.target(
@@ -508,6 +512,15 @@ def test_route_contract_uses_only_explicit_goal_and_preserves_functional_offset(
     assert route["objects"][0]["world_T_functional_target"][3] == 0.26
     assert route["objects"][0]["world_T_object_target"][3] == 0.25
     assert "target_ref" not in obj
+    assert route["objects"][1:] == obstacles
+    assert len(route["objects"]) == 3
+    from robotwin20_adapter.collision_world import build_collision_world
+    world = build_collision_world(
+        route, target_entity_ref="entity://seen", source_scene_facts_ref="artifact://scene/facts",
+        geometry_refs={item["entity_ref"]: f"artifact://geometry/{item['actor_name']}" for item in route["objects"]},
+        calibration_ref=route["calibration_ref"],
+    )
+    assert world["obstacle_count"] == 2
 
 
 @pytest.mark.parametrize("failure", ["many_to_one", "nonrigid", "nan", "wrong_entity"])

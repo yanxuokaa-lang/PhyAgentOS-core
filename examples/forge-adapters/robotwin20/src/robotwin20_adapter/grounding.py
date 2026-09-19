@@ -390,7 +390,13 @@ class Grounding:
         facts = deepcopy(binding["scene_facts"])
         obj = deepcopy(value["object"])
         obj["target_ref"] = request["destination_ref"]
-        facts["objects"] = [obj]
+        # The target uses bound visual route geometry. Other captured Runtime
+        # objects remain collision obstacles, not newly inferred visual evidence.
+        execution_ref = binding["objects"][obj["entity_ref"]]["entity_ref"]
+        facts["objects"] = [
+            obj if item["entity_ref"] == execution_ref else item
+            for item in facts["objects"]
+        ]
         return facts
 
 

@@ -118,6 +118,7 @@ def test_conflicting_artifact_is_preserved(tmp_path, monkeypatch):
 
 
 def test_failed_materializer_retains_log_and_returns_no_route(tmp_path, monkeypatch):
+    from PhyAgentOS.forge.capability_runtime.manipulation_prepare import PreparationProviderError
     request, builder, _ = setup_builder(tmp_path, monkeypatch)
 
     def fail(argv, **kwargs):
@@ -125,11 +126,75 @@ def test_failed_materializer_retains_log_and_returns_no_route(tmp_path, monkeypa
         raise subprocess.CalledProcessError(1, argv)
 
     monkeypatch.setattr(subprocess, "run", fail)
-    with pytest.raises(subprocess.CalledProcessError):
+    with pytest.raises(PreparationProviderError, match="Route materializer exited with status 1") as caught:
         builder.build(request)
+    assert caught.value.code == "route_materialization_failed"
     logs = list((tmp_path / "preparation-builds").glob("*/materializer-0.log"))
     assert logs[0].read_text() == "calibration unavailable"
     assert not (tmp_path / "shared").exists()
+
+
+def test_materializer_qualification_error_reaches_public_provider_boundary(tmp_path, monkeypatch):
+    from pathlib import Path
+
+    from PhyAgentOS.forge.capability_runtime.manipulation_prepare import PreparationProviderError
+
+    request, builder, _ = setup_builder(tmp_path, monkeypatch)
+
+    def fail(argv, **kwargs):
+        args = dict(zip(argv[1::2], argv[2::2]))
+        (Path(args["--artifact-root"]) / "materialization_error.json").write_text(json.dumps({
+            "code": "motion_capability_qualification_mismatch",
+            "message": "configure capability files from the approved qualification package",
+        }))
+        raise subprocess.CalledProcessError(1, argv)
+
+    monkeypatch.setattr(subprocess, "run", fail)
+    with pytest.raises(PreparationProviderError) as caught:
+        builder.build(request)
+    assert caught.value.code == "motion_capability_qualification_mismatch"
+    assert "approved qualification package" in str(caught.value)
+    assert "materializer-0.log" in str(caught.value)
+    assert not (tmp_path / "shared").exists()
+
+
+@pytest.mark.parametrize("all_rejected", [False, True])
+def test_geometry_rejection_continues_but_never_becomes_a_route(tmp_path, monkeypatch, all_rejected):
+    from pathlib import Path
+
+    from PhyAgentOS.forge.capability_runtime.manipulation_prepare import PreparationProviderError
+
+    request, builder, calls = setup_builder(tmp_path, monkeypatch)
+    second = deepcopy(request["candidates"][0])
+    second["candidate_ref"] += "-second"
+    request["candidates"].append(second)
+    succeed = subprocess.run
+    attempted = []
+
+    def run(argv, **kwargs):
+        args = dict(zip(argv[1::2], argv[2::2]))
+        attempted.append(args["--candidate-ref"])
+        if all_rejected or len(attempted) == 1:
+            (Path(args["--artifact-root"]) / "materialization_error.json").write_text(json.dumps({
+                "code": "route_candidate_rejected", "message": "workspace bounds",
+            }))
+            raise subprocess.CalledProcessError(1, argv)
+        return succeed(argv, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", run)
+    metrics = {}
+    if all_rejected:
+        with pytest.raises(PreparationProviderError) as caught:
+            builder.build(request, metrics=metrics)
+        assert caught.value.code == "no_materializable_candidates"
+        assert not (tmp_path / "shared").exists()
+    else:
+        result = builder.build(request, metrics=metrics)
+        assert [c["candidate_ref"] for c in result["base_request"]["candidates"]] == [second["candidate_ref"]]
+        assert len(calls) == 1
+    assert len(attempted) == 2
+    assert len(metrics["materialization"]) == 2
+    assert len(metrics["materialization_rejections"]) == (2 if all_rejected else 1)
 
 
 def test_finalize_binds_selected_request_and_never_issues_approval(tmp_path, monkeypatch):

@@ -59,6 +59,20 @@ def _generate():
     return generate_route_request(*_inputs())
 
 
+def test_workspace_rejection_is_distinct_from_route_configuration_failure():
+    from robotwin20_adapter.route_generation import RouteCandidateRejectedError
+
+    inputs = _inputs()
+    inputs[0]["workspace_bounds_m"]["z_max_m"] = 0.81
+    with pytest.raises(RouteCandidateRejectedError, match="workspace"):
+        generate_route_request(*inputs)
+    inputs = _inputs()
+    inputs[-1]["lift_clearance_m"] = -1
+    with pytest.raises(RouteGenerationError) as caught:
+        generate_route_request(*inputs)
+    assert not isinstance(caught.value, RouteCandidateRejectedError)
+
+
 def test_release_clearance_preserves_final_goal_and_grasp():
     inputs = _inputs()
     nominal = generate_route_request(*inputs)

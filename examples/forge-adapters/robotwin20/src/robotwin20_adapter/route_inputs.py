@@ -175,7 +175,11 @@ def validate_scene_facts(value: Any) -> dict[str, Any]:
             "world_T_functional_point", "world_T_functional_target", "world_T_object_target",
             "half_extents_m", "target_ref", "functional_point_id",
         }
-        if not isinstance(item, Mapping) or set(item) != expected:
+        target_fields = {"world_T_functional_target", "world_T_object_target", "target_ref"}
+        allowed = [expected]
+        if value["schema_version"] == CURRENT_SCENE_FACTS_SCHEMA_VERSION:
+            allowed.append(expected - target_fields)
+        if not isinstance(item, Mapping) or set(item) not in allowed:
             raise RouteInputError("route scene object fields are invalid")
         entity_ref = item["entity_ref"]
         if not isinstance(entity_ref, str) or not entity_ref.startswith("entity://") or entity_ref in seen:
@@ -183,11 +187,13 @@ def validate_scene_facts(value: Any) -> dict[str, Any]:
         seen.add(entity_ref)
         if item["functional_point_id"] != 0:
             raise RouteInputError("route scene functional point is unsupported")
-        for field in ("world_T_object", "world_T_functional_point", "world_T_functional_target", "world_T_object_target"):
+        for field in ("world_T_object", "world_T_functional_point"):
             _matrix(item[field], f"route scene object {field}")
         half_extents = _finite_vector(item["half_extents_m"], 3, "route scene object half_extents_m")
         if any(item <= 0 for item in half_extents):
             raise RouteInputError("route scene object half extents must be positive")
+        if not target_fields.issubset(item):
+            continue  # A static obstacle has no requested placement destination.
         if not isinstance(item["target_ref"], str) or not item["target_ref"].startswith("destination://"):
             raise RouteInputError("route scene target_ref is invalid")
         expected_target = _multiply(
@@ -226,6 +232,8 @@ def derive_bound_route_inputs(
     if len(matches) != 1:
         raise RouteInputError("route input entity is absent or ambiguous")
     item = matches[0]
+    if not {"world_T_functional_target", "world_T_object_target", "target_ref"}.issubset(item):
+        raise RouteInputError("selected route entity requires a bound placement destination")
     contact = execution_grasp.get("contact_center_pose")
     robot_target = execution_grasp.get("robot_target_pose")
     if not isinstance(contact, Mapping) or contact.get("frame_id") != facts["route_frame_id"]:

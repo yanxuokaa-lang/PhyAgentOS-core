@@ -12,11 +12,15 @@ from collections.abc import Mapping
 from copy import deepcopy
 from typing import Any
 
-from .route_readiness import RouteReadinessError, validate_route_request
+from .route_readiness import RouteReadinessError, RouteWorkspaceError, validate_route_request
 
 
 class RouteGenerationError(ValueError):
     """An execution candidate or route template is incomplete or unsafe."""
+
+
+class RouteCandidateRejectedError(RouteGenerationError):
+    """A specific candidate violates geometry constraints; other candidates may pass."""
 
 
 def _finite(value: Any, label: str, *, positive: bool = False) -> float:
@@ -355,6 +359,8 @@ def generate_route_request(
     try:
         validate_route_request(output)
     except RouteReadinessError as exc:
+        if isinstance(exc, RouteWorkspaceError):
+            raise RouteCandidateRejectedError(str(exc)) from exc
         raise RouteGenerationError(str(exc)) from exc
     return output
 

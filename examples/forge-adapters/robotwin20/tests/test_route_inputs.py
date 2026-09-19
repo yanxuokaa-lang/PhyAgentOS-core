@@ -65,6 +65,26 @@ def test_current_scene_facts_support_later_revision_and_bounded_object_subset():
         validate_scene_facts(facts)
 
 
+def test_v2_obstacles_need_no_goal_but_selected_target_does():
+    facts = _facts()
+    fields = ("target_ref", "world_T_object_target", "world_T_functional_target")
+    for name in fields:
+        facts["objects"][0].pop(name)
+    with pytest.raises(RouteInputError, match="fields"):
+        validate_scene_facts(facts)  # v1 retains the legacy all-target requirement.
+    facts["schema_version"] = CURRENT_SCENE_FACTS_SCHEMA_VERSION
+    assert validate_scene_facts(facts)["objects"][0] == facts["objects"][0]
+    with pytest.raises(RouteInputError, match="bound placement destination"):
+        derive_bound_route_inputs(
+            facts, entity_ref=facts["objects"][0]["entity_ref"], execution_grasp={},
+            scene_facts_ref="artifact://scene/facts", geometry_ref="artifact://scene/geometry",
+            transform_ref="artifact://scene/transform", placement_ref="artifact://scene/placement",
+        )
+    facts["objects"][0]["target_ref"] = "destination://partial"
+    with pytest.raises(RouteInputError, match="fields"):
+        validate_scene_facts(facts)
+
+
 def _grasp():
     return {
         "contact_center_pose": {

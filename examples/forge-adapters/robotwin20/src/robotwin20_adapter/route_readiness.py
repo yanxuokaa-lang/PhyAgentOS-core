@@ -41,6 +41,10 @@ class RouteReadinessError(ValueError):
     """A route request or evidence record is malformed or unsafe."""
 
 
+class RouteWorkspaceError(RouteReadinessError):
+    """A candidate's geometry lies outside the configured workspace."""
+
+
 class RouteReadinessProfileError(RouteReadinessError):
     """A route-readiness worker profile is incomplete or unsafe."""
 
@@ -408,7 +412,7 @@ def validate_route_request(request: Mapping[str, Any]) -> None:
                         coordinate - conservative_extent < float(bounds[f"{axis}_min_m"])
                         or coordinate + conservative_extent > float(bounds[f"{axis}_max_m"])
                     ):
-                        raise RouteReadinessError(
+                        raise RouteWorkspaceError(
                             "route waypoint or attached object exceeds workspace bounds"
                         )
         by_phase = {item["phase"]: item for item in route}

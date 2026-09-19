@@ -12,6 +12,7 @@ from tempfile import mkdtemp
 from time import monotonic
 from typing import Any, Mapping
 
+from PhyAgentOS.forge.capability_runtime.manipulation_prepare import PreparationProviderError
 from PhyAgentOS.forge.manipulation import ManipulationIntent
 
 from .arm_candidates import enumerate_arm_candidates, load_arm_planning_profile
@@ -142,6 +143,28 @@ class PersistentRouteBuilder:
                     raise PreparationDeadlineExceededError(
                         "preparation timed out during route materialization"
                     ) from exc
+                except subprocess.CalledProcessError as exc:
+                    diagnostic_path = output / "materialization_error.json"
+                    try:
+                        diagnostic = json.loads(diagnostic_path.read_text(encoding="utf-8"))
+                    except (OSError, ValueError):
+                        diagnostic = {}
+                    code = diagnostic.get("code") if isinstance(diagnostic, dict) else None
+                    message = diagnostic.get("message") if isinstance(diagnostic, dict) else None
+                    if not isinstance(code, str) or not code or not isinstance(message, str) or not message:
+                        code = "route_materialization_failed"
+                        message = f"Route materializer exited with status {exc.returncode}"
+                    if code == "route_candidate_rejected":
+                        if metrics is not None:
+                            metrics.setdefault("materialization_rejections", []).append({
+                                "candidate_ref": candidate["candidate_ref"], "code": code, "message": message,
+                                "diagnostic_ref": f"preparation-builds/{run.name}/candidate-{index}/materialization_error.json",
+                            })
+                        continue
+                    raise PreparationProviderError(
+                        code,
+                        f"{message}; diagnostic log: preparation-builds/{run.name}/materializer-{index}.log",
+                    ) from exc
                 finally:
                     if metrics is not None:
                         metrics.setdefault("materialization", []).append(
@@ -169,7 +192,11 @@ class PersistentRouteBuilder:
         self._current(intent.scene_revision, deadline=deadline)
         if deadline is not None:
             deadline.remaining("route_materialization")
-        assert base is not None
+        if base is None:
+            raise PreparationProviderError(
+                "no_materializable_candidates",
+                f"All candidates were rejected during route construction; diagnostics: preparation-builds/{run.name}",
+            )
         base["candidates"] = candidates
         validate_route_request(base)
         options = enumerate_arm_candidates(intent, candidates, self.arm_profile)

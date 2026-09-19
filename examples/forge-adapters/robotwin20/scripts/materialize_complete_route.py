@@ -40,7 +40,7 @@ from robotwin20_adapter.motion_capabilities import (
     motion_capability_digest,
 )
 from robotwin20_adapter.perception_profile import _read_unique_yaml
-from robotwin20_adapter.route_generation import generate_route_request
+from robotwin20_adapter.route_generation import RouteCandidateRejectedError, generate_route_request
 from robotwin20_adapter.route_inputs import (
     ROUTE_INPUT_PROFILE_SCHEMA_VERSION,
     canonical_json,
@@ -57,7 +57,9 @@ _REQUEST_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
 
 
 class MaterializationError(RuntimeError):
-    pass
+    def __init__(self, message: str, *, code: str = "route_materialization_invalid"):
+        super().__init__(message)
+        self.code = code
 
 
 def _load_json(path: Path, label: str) -> Mapping[str, Any]:
@@ -494,7 +496,9 @@ def materialize(args: argparse.Namespace) -> dict[str, Any]:
         item["arm_id"]: item for item in capability_bindings
     }:
         raise MaterializationError(
-            "route motion capabilities do not match controller qualification"
+            "route motion capabilities do not match controller qualification; "
+            "configure capability and validation files from the approved qualification package",
+            code="motion_capability_qualification_mismatch",
         )
     qualification_identity = qualification.identity
     for capability in loaded_capabilities.values():
@@ -845,7 +849,22 @@ def main() -> int:
         help="Artifact reference recorded in candidate provenance for the qualification.",
     )
     args = parser.parse_args()
-    review = materialize(args)
+    try:
+        review = materialize(args)
+    except (MaterializationError, RouteCandidateRejectedError) as exc:
+        diagnostic = {
+            "code": exc.code if isinstance(exc, MaterializationError) else "route_candidate_rejected",
+            "message": str(exc),
+        }
+        # The parent owns a fresh output directory per candidate. Never replace
+        # an earlier run's diagnostic when this CLI is invoked directly.
+        try:
+            with (args.artifact_root / "materialization_error.json").open("x", encoding="utf-8") as stream:
+                json.dump(diagnostic, stream)
+        except OSError:
+            pass  # The public stderr/stdout log still retains the rejection.
+        print(json.dumps({"status": "unavailable", "error": diagnostic, "motion_authorized": False}))
+        return 1
     print(json.dumps({"status": "awaiting_human_review", "artifact_root": str(args.artifact_root), **review}, sort_keys=True))
     return 0
 

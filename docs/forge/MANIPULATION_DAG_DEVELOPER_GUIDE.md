@@ -125,6 +125,28 @@ current SAPIEN simulation.
 
 ## Route Data Model
 
+Persistent route scene facts (v2) retain non-target Runtime collision objects.
+Only the selected visual target receives the Agent-requested destination;
+static obstacles need no target pose. A target missing its complete destination
+is rejected, and the legacy v1 all-target shape remains unchanged. Runtime
+obstacle geometry is safety context, not visual perception evidence.
+
+Materialization distinguishes an explicit candidate workspace rejection from
+deployment or process failure. Workspace-rejected candidates are recorded in
+preparation timing diagnostics and excluded; other candidates still undergo
+the full existing checks. If all are rejected, preparation fails with
+`no_materializable_candidates`. Qualification mismatch, timeout, malformed
+output and unclassified subprocess errors stop the build without publishing
+routes. No workspace, collision or controller qualification condition is relaxed.
+
+The deployment's capability/validation files must match the controller
+qualification plan's existing bindings exactly. `motion_capability_qualification_mismatch`
+is a configuration failure, not a reason for Agent to regenerate qualification.
+The materializer writes `materialization_error.json` for declared rejections;
+the builder exposes its code through the existing preparation Query error,
+with a relative log locator. Core recovery remains provider-neutral and
+Agent-owned. Materialization does not run IK or establish motion readiness.
+
 Keep these representations distinct:
 
 1. Proposal candidate: perception/provider output in the observation frame.
