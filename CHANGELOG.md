@@ -79,6 +79,13 @@
 + return coarse + fine, coarse_count + fine_count
 ```
 
+### Git 提交 / Git commit
+
+- Implementation commit: `b3611ab`
+- Branch: `feature/planning-loop`
+- 时间 / Time: 2026-09-20 21:49 Asia/Shanghai
+- [chore] [chore] 追加实现提交记录并同步最近五条。/ Record implementation commit and synchronize latest-five entry. (local)
+
 ## v11.0.0 (2026-09-20 18:05) - codex
 
 - [sense] [feat] [完成] 观测深度/目标掩码经现有 Grounding 与碰撞制品进入 Runtime，完整可见环境生成不丢占据的体素盒，机器人自体过滤只用本体几何与当前关节。(local)
