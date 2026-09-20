@@ -11,6 +11,7 @@ from robotwin_curobo_world_port import (
     bind_scene_table,
     capture_peer_projection,
 )
+from robotwin_gripper_geometry import planner_gripper_state
 from robotwin_planning_geometry import (
     ObservedGeometryActor,
     SimulationProbeError,
@@ -94,6 +95,13 @@ def sphere_support_clearance(task: Any, arm: str, qpos: Any) -> float:
 def evaluate_contact(
     task: Any, execution_grasp: Mapping[str, Any], arm: str, approach_clearance_m: float
 ) -> dict[str, Any]:
+    with planner_gripper_state(task, arm, "open"):
+        return _evaluate_contact(task, execution_grasp, arm, approach_clearance_m)
+
+
+def _evaluate_contact(
+    task: Any, execution_grasp: Mapping[str, Any], arm: str, approach_clearance_m: float
+) -> dict[str, Any]:
     import numpy as np
 
     planner = getattr(task.robot, f"{arm}_planner")
@@ -163,6 +171,7 @@ def evaluate_route_arm(
     index = 0
     segments = []
     previous_worlds = []
+    gripper = []
     try:
         limits = _joint_limits(planner)
         for phase in candidate["route"]:
@@ -183,23 +192,20 @@ def evaluate_route_arm(
                     request["workspace_bounds_m"],
                     candidate["attached_object"]["half_extents_m"],
                 )
-                result = plan_path_with_status(task, arm, pose, last_qpos=predicted.tolist())
-                _validate_trajectory(result, limits)
-                _validate_gripper_table_clearance(
-                    task,
-                    arm,
-                    result["position"],
-                    phase=phase_name,
-                    gripper_state=phase["gripper_state"],
-                )
-                if phase_name == "lift" and not attached:
-                    entity.set_qpos(predicted.tolist())
-                    # Keep cleanup armed even if Curobo raises during attach.
-                    attached = True
-                    _attach_object_to_planner(
-                        task, planner, actor, candidate["attached_object"]["half_extents_m"], arm
+                with planner_gripper_state(task, arm, phase["gripper_state"]) as gripper:
+                    result = plan_path_with_status(task, arm, pose, last_qpos=predicted.tolist())
+                    _validate_trajectory(result, limits)
+                    _validate_gripper_table_clearance(
+                        task, arm, result["position"], phase=phase_name,
+                        gripper_state=phase["gripper_state"],
                     )
-                    _validate_attached_support_departure(planner, result["position"])
+                    if phase_name == "lift" and not attached:
+                        entity.set_qpos(predicted.tolist())
+                        attached = True
+                        _attach_object_to_planner(
+                            task, planner, actor, candidate["attached_object"]["half_extents_m"], arm
+                        )
+                        _validate_attached_support_departure(planner, result["position"])
                 predicted[:7] = np.asarray(result["position"])[-1]
                 segments.append(
                     {
@@ -207,6 +213,7 @@ def evaluate_route_arm(
                         "waypoint_index": index,
                         "status": "pass",
                         "end_qpos": predicted[:7].tolist(),
+                        "gripper_geometry": gripper,
                     }
                 )
         return {"arm": arm, "status": "pass", "segments": segments, "motion_authorized": False}
@@ -225,6 +232,7 @@ def evaluate_route_arm(
             "failed_phase": phase_name,
             "failed_waypoint_index": index,
             "detail": str(exc),
+            "gripper_geometry": gripper,
             "diagnostic": diagnostic,
             "segments": segments,
             "motion_authorized": False,

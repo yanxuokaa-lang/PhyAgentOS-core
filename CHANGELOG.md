@@ -16,6 +16,69 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v11.1.0 (2026-09-20 21:22) - codex
+
+- [policy] [fix] [完成] Adapter/Runtime 区分实际关节测量、限位内张开预测和未来抓持预测缺失；同步详细几何、单/批量 Curobo rollout 与对臂投影，实际执行每段读取关节测量。(local)
+- [policy] [fix] [Completed] Separate measured joints, physically bounded open prediction and unavailable future holding prediction in Adapter/Runtime; synchronize detailed geometry, single/batch CuRobo rollouts and peer projection, measuring joints for each execution segment. (local)
+- [sense] [fix] [完成] 支撑面附近使用 10×10×1 mm 网格，保留全部观测点和原有 1 mm 外扩；范围来自现有 profile，Core 与 AgentLoop 不增加几何逻辑。(local)
+- [sense] [fix] [Completed] Use 10×10×1 mm cells near observed support, retaining every return and existing 1 mm padding through the profile; Core/AgentLoop gain no geometry policy. (local)
+- [policy] [fix] [完成] 用户审核指出未知区间导致球额外膨胀 20 mm 属于过度拒绝，已撤回实现与 close 拒绝结论。缺少预测仅记录不可用并保留测量参考，不扩大球、不单独拒绝路线、不宣称已预测真实抓持宽度。(local)
+- [policy] [fix] [Completed] User review identified 20 mm sphere enlargement for unknown holding intervals as excessive rejection; withdraw that implementation and its close-rejection conclusion. Missing prediction retains measured reference with explicit unavailable provenance; no sphere enlargement, independent rejection or claimed actual holding prediction. (local)
+- [eval] [exp] [完成] 已按原七维进行源码/无运动验收；不新增释放 gate、hash、任务状态机、自动重试或目标改写，不安装或恢复现场任务。(local)
+- [eval] [exp] [Completed] Complete established seven-dimension source/no-motion review; no release gate, hash, task state machine, automatic retry, goal rewrite, live install or task resume. (local)
+- Anti-OverDefense: concrete failures are out-of-limit command geometry versus fixed-open planning and coarse grid overfill at a millimeter-scale support gap. Correct existing representation/state plumbing, retaining existing safety checks and native sphere margins.
+
+### 验证与结论 / Validation and conclusions
+
+- [eval] [exp] Core 504 passed; Adapter 591 passed, 1 skipped (Pillow unavailable); Skill 337 passed. Final Adapter rerun after withdrawing sphere enlargement: 591 passed. Ruff, Python 3.10 compile and diff checks pass.
+- [eval] [exp] 76277 环境点及其不确定性全部保留，目标 523 点；5862 cells / 303 boxes；同一附着球净空 -4.1247→+4.1052 mm。/ All 76277 environment points and uncertainty retained, 523 target points; 5862 cells / 303 boxes; identical attachment-sphere clearance -4.1247→+4.1052 mm.
+- [eval] [exp] 单/批量状态同步、异常恢复、附着物保留通过；同状态球/详细 FK 位移误差≤3.40e-8 m；缺失抓持预测不改变原有球。/ Single/batch state, exception restoration and attachment preservation pass; same-state sphere/detailed FK displacement error ≤3.40e-8 m; missing holding prediction leaves native spheres unchanged.
+- [eval] [exp] 最终隔离运行 35.805 s；右臂通过 close/lift/transport 后在 descent 报 IK_FAIL；新增 close 拒绝已消除。未来抓持宽度仍未预测，不能据此证明真实方案不可行。/ Final isolated lifecycle 35.805 s; right arm passes close/lift/transport then rejects at descent IK_FAIL; introduced close rejection removed. Future holding width remains unpredicted, so physical impossibility is not established.
+- [eval] [exp] 初始化后仿真步进/Gateway/Action 为 0，未更新 Skill/Node/Runtime、未恢复任务、无执行视频。/ Zero post-initialization steps/Gateway/Actions; no Skill/Node/Runtime update, task resume or execution video.
+- Evidence: `/home/yanxu/tmp/hephaestus/gripper-support-validation-AbSpTs/{run.py,result.json,runtime.log,source/}`. Earlier unique roots preserved; withdrawn interval results are not final acceptance.
+- Report: `docs/forge/IMPLEMENTATION_REVIEW_V11_1_0.md`.
+
+### 文件变更详情 / Exact changed ranges
+
+- [修改/新增 / Changed/Added] `docs/forge/MANIPULATION_DAG_DEVELOPER_GUIDE.md` L184-L215.
+- [修改/新增 / Changed/Added] `examples/forge-adapters/robotwin20/profiles/robotwin20/route-inputs-persistent.yaml` L7-L9.
+- [修改/新增 / Changed/Added] `examples/forge-adapters/robotwin20/runtime/robotwin_contact_qualification.py` L20, L28-L38.
+- [修改/新增 / Changed/Added] `examples/forge-adapters/robotwin20/runtime/robotwin_curobo_world_port.py` L88-L91.
+- [修改/新增 / Changed/Added] `examples/forge-adapters/robotwin20/runtime/robotwin_observed_collision.py` L56-L60, L85-L87, L95-L97.
+- [修改/新增 / Changed/Added] `examples/forge-adapters/robotwin20/runtime/robotwin_planning_geometry.py` L250-L254, L256-L259.
+- [修改/新增 / Changed/Added] `examples/forge-adapters/robotwin20/runtime/robotwin_route_planner.py` L14, L97-L103, L174, L195-L200, L202-L208, L216, L235.
+- [修改/新增 / Changed/Added] `examples/forge-adapters/robotwin20/runtime/robotwin_simulation_probe_worker.py` L1421-L1426, L1434, L1442, L1459-L1460.
+- [修改/新增 / Changed/Added] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/observed_collision.py` L14, L22-L23, L44-L49, L51-L60.
+- [修改/新增 / Changed/Added] `examples/forge-adapters/robotwin20/tests/test_observed_collision.py` L20-L41.
+- [修改/新增 / Changed/Added] `examples/forge-adapters/robotwin20/tests/test_route_planner.py` L1, L23.
+- [修改/新增 / Changed/Added] `examples/forge-adapters/robotwin20/tests/test_simulation_probe.py` L269-L271, L1671-L1673.
+- [修改/新增 / Changed/Added] `examples/forge-adapters/robotwin20/runtime/robotwin_gripper_geometry.py` L1-L139.
+- [修改/新增 / Changed/Added] `examples/forge-adapters/robotwin20/tests/test_gripper_geometry.py` L1-L35.
+- [修改/新增 / Changed/Added] `docs/forge/IMPLEMENTATION_REVIEW_V11_1_0.md` L1-L119.
+
+### 关键 Diff / Key diff
+
+```diff
+- geometry_qpos[index] = real_value * float(multiplier) + float(offset)
++ configuration = gripper_configuration(task, arm, gripper_state)
++ # Open: physically bounded command prediction. Closed: measured reference,
++ # holding prediction unavailable. Native sphere radii remain unchanged.
++ with planner_gripper_state(task, arm, phase["gripper_state"]) as gripper:
++     result = plan_path_with_status(task, arm, pose, last_qpos=predicted.tolist())
+- result = fn(waypoint)
++ with planner_gripper_state(task, arm) as measured_gripper:
++     result = fn(waypoint)
+- gripper_state=phase["gripper_state"],
++ gripper_state=None,  # actual execution detailed geometry uses measured joints
+- boxes, cell_count = voxel_boxes(environment, policy.voxel_size_m, policy.uncertainty_m)
++ boxes, cell_count = voxel_boxes(environment, policy.voxel_size_m, policy.uncertainty_m,
++     support_z=support_z, refinement_band=policy.support_refinement_band_m)
++ near = np.abs(points[:, 2] - support_z) <= refinement_band
++ fine, fine_count = _grid_boxes(points[near],
++     np.array([size, size, min(size, padding)]), padding)
++ return coarse + fine, coarse_count + fine_count
+```
+
 ## v11.0.0 (2026-09-20 18:05) - codex
 
 - [sense] [feat] [完成] 观测深度/目标掩码经现有 Grounding 与碰撞制品进入 Runtime，完整可见环境生成不丢占据的体素盒，机器人自体过滤只用本体几何与当前关节。(local)
@@ -476,6 +539,8 @@ assert len({o["option_id"] for o in rebuilt["options"]}) == 4
 
 - Branch: `feature/planning-loop`; implementation commit recorded after commit.
 - Implementation commit / 实现提交: `3050271`; code, tests and seven-dimension report. Closeout records this commit before pushing the current branch.
+
+## 历史记录 / Historical records
 
 ## v10.10.0 (2026-09-20 05:05) - codex
 
@@ -1127,8 +1192,6 @@ if payload.get("command") != "query" or operation not in {"bind_observed_entitie
 - Branch: `feature/planning-loop`; implementation commit is recorded in the closeout entry below.
 - Implementation commit / 实现提交: `08be9c8`; closeout records this immutable code/report revision before pushing the current branch.
 
-
-## 历史记录 / Historical records
 
 ## v10.9.7 (2026-09-20 04:42) - codex
 

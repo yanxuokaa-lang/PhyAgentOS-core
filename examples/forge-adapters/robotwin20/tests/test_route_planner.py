@@ -1,3 +1,4 @@
+from contextlib import nullcontext
 from copy import deepcopy
 from types import SimpleNamespace
 
@@ -19,6 +20,7 @@ class Entity:
 
 @pytest.fixture
 def route(monkeypatch):
+    monkeypatch.setattr(module, "planner_gripper_state", lambda *args: nullcontext([]))
     entity = Entity()
     events = []
     model = SimpleNamespace(detach_object_from_robot=lambda: events.append("detach"))

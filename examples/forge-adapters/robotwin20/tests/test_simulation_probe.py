@@ -266,6 +266,9 @@ def test_probe_video_recorder_rejects_missing_frames(tmp_path: Path):
 
 
 def _install_fake_torch(monkeypatch):
+    from contextlib import nullcontext
+
+    monkeypatch.setattr("robotwin_gripper_geometry.planner_gripper_state", lambda *args: nullcontext([]))
     class TensorArgs:
         device = "cpu"
 
@@ -1665,6 +1668,9 @@ def test_contact_trace_qualifies_duplicate_arm_link_names():
 
 @pytest.fixture
 def execution_route(tmp_path, monkeypatch):
+    from contextlib import nullcontext
+
+    monkeypatch.setattr("robotwin_gripper_geometry.planner_gripper_state", lambda *args: nullcontext([]))
     """Exercise the provider loop with deterministic fake planner and scene IO."""
     import copy
 

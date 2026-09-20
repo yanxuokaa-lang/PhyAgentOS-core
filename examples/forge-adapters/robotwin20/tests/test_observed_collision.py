@@ -17,6 +17,28 @@ def box(low, high):
     return np.array(list(product(*zip(low, high))))
 
 
+def test_support_refinement_retains_all_points_and_uncertainty_without_grid_overfill():
+    from robotwin20_adapter.observed_collision import voxel_boxes
+
+    points = np.array([[.001, .001, .7405], [.012, .003, .7417],
+                       [.018, .009, .748], [.041, .004, .79]])
+    coarse, count = voxel_boxes(points, .01, .001)
+    refined, new_count = voxel_boxes(points, .01, .001, support_z=.7417, refinement_band=.02)
+    assert new_count >= count
+    for point in points:
+        assert any(np.all(point - .001 >= np.array(b["position_m"]) - b["half_extents_m"] - 1e-12)
+                   and np.all(point + .001 <= np.array(b["position_m"]) + b["half_extents_m"] + 1e-12)
+                   for b in refined)
+    # Mixed higher points remain, rather than flattening a row onto the table.
+    assert max(b["position_m"][2] + b["half_extents_m"][2] for b in refined[1:]) == pytest.approx(.750)
+    assert refined[0] == coarse[-1]
+    assert all(b["half_extents_m"][2] < coarse[0]["half_extents_m"][2] for b in refined[1:])
+    # A high return elsewhere in the old merged row no longer inflates support
+    # under a different cell; occupied high returns themselves are still kept.
+    support = [b for b in refined if abs(b["position_m"][0] - .005) < .001]
+    assert max(b["position_m"][2] + b["half_extents_m"][2] for b in support) == pytest.approx(.742)
+
+
 def gripper():
     return {"panda_hand": [box([-.03, -.05, -.02], [.03, .05, 0])],
             "panda_leftfinger": [box([-.01, -.05, .01], [.01, -.04, .06])],

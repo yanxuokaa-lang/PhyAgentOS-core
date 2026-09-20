@@ -17,6 +17,7 @@ from robotwin20_adapter.grasp_postprocessing import (
 
 def qualify_point_contact(task, candidate, geometry, arm, hand, distances, approach, scene, deadline):
     import numpy as np
+    from robotwin_gripper_geometry import geometry_samples, gripper_configuration
     from robotwin_observed_collision import collision_components
     from robotwin_planning_geometry import _quat_matrix_wxyz
 
@@ -24,10 +25,17 @@ def qualify_point_contact(task, candidate, geometry, arm, hand, distances, appro
 
     reference = geometry["arms"][arm]["reference_hand_pose"]
     reference_rotation = _quat_matrix_wxyz(reference["orientation_wxyz"])
-    links = {link.get_name(): link for link in getattr(task.robot, f"{arm}_entity").get_links()}
-    shapes = {name: [(vertices - reference["position_m"]) @ reference_rotation
-                     for vertices in collision_components(links[name])]
-              for name in ("panda_hand", "panda_leftfinger", "panda_rightfinger")}
+    entity = getattr(task.robot, f"{arm}_entity")
+    original = np.asarray(entity.get_qpos()).copy()
+    opened = next(geometry_samples(original, gripper_configuration(task, arm, "open")))
+    try:
+        entity.set_qpos(opened.tolist())
+        links = {link.get_name(): link for link in entity.get_links()}
+        shapes = {name: [(vertices - reference["position_m"]) @ reference_rotation
+                         for vertices in collision_components(links[name])]
+                  for name in ("panda_hand", "panda_leftfinger", "panda_rightfinger")}
+    finally:
+        entity.set_qpos(original.tolist())
     if any(not parts for parts in shapes.values()):
         raise ValueError("gripper collision components are incomplete")
     rotation = np.asarray(_quaternion_rotation(hand["orientation_xyzw"], "hand orientation"))

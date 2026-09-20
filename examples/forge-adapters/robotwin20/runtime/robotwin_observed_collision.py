@@ -53,7 +53,11 @@ def configure_observed_collision(task, world, root):
               for link in getattr(task.robot, f"{arm}_entity").get_links())
         for arm in ("left", "right"))
     previous = getattr(task, "_paos_observed_collision", None)
-    if previous is not None and previous["descriptor"] == descriptor and previous["robot_poses"] == robot_poses:
+    support = getattr(task, "_paos_observed_support", None)
+    support_z = (float(support["position_m"][2]) + float(support["half_extents_m"][2])
+                 if support is not None else None)
+    if (previous is not None and previous["descriptor"] == descriptor
+            and previous["robot_poses"] == robot_poses and previous.get("support_z") == support_z):
         return
     calibration = json.loads(_artifact_path(root, descriptor["calibration_ref"]).read_text())
     transform = rigid_transform(descriptor["world_T_camera"])
@@ -78,8 +82,9 @@ def configure_observed_collision(task, world, root):
     if (robot & selected).any():
         raise ValueError("observed target overlaps robot self geometry")
     environment = points[~selected & ~robot]
-    boxes, cell_count = voxel_boxes(environment, policy.voxel_size_m, policy.uncertainty_m)
-    value = {"descriptor": descriptor, "robot_poses": robot_poses, "policy": policy,
+    boxes, cell_count = voxel_boxes(environment, policy.voxel_size_m, policy.uncertainty_m,
+                                   support_z=support_z, refinement_band=policy.support_refinement_band_m)
+    value = {"descriptor": descriptor, "robot_poses": robot_poses, "policy": policy, "support_z": support_z,
              "target": points[selected], "environment": environment, "boxes": boxes,
              "depth": depth, "intrinsic": np.asarray(calibration["intrinsic_cv"]), "world_T_camera": transform,
              "evidence": {"scene_revision": world["scene_revision"], "depth_ref": descriptor["depth_ref"],
@@ -87,6 +92,9 @@ def configure_observed_collision(task, world, root):
                  "target_points": int(selected.sum()), "robot_self_points": int(robot.sum()),
                  "environment_points": len(environment), "occupied_voxels": cell_count, "merged_boxes": len(boxes),
                  "voxel_size_m": policy.voxel_size_m, "uncertainty_m": policy.uncertainty_m,
+                 "support_refinement_band_m": policy.support_refinement_band_m,
+                 "support_vertical_cell_m": min(policy.voxel_size_m, policy.uncertainty_m),
+                 "support_refinement_applied": support_z is not None and policy.support_refinement_band_m > 0,
                  "visibility_scope": "observed_only", "unobserved_space": "unknown", "motion_authorized": False}}
     task._paos_observed_collision = value
     for arm in ("left", "right"):

@@ -4,6 +4,9 @@ observed_collision:
   depth_scale_to_m: 0.001
   voxel_size_m: 0.01
   uncertainty_m: 0.001
+  # Refine vertical cells to the uncertainty scale near observed support;
+  # preserve every return, coarse XY coverage and the same uncertainty padding.
+  support_refinement_band_m: 0.02
   minimum_inner_points: 3
 calibration_revision: robotwin20-head-camera-seed0-v1
 workspace_bounds_m:

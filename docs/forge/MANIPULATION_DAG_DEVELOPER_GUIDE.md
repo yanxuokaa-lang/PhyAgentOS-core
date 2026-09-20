@@ -181,6 +181,38 @@ contact evidence reference. AgentLoop decides whether uncertainty near an import
 clearance warrants another observation. The provider adds no automatic reobserve,
 retry, top-K policy or motion permission.
 
+### Gripper state and near-support resolution
+
+The Adapter/Runtime owns gripper geometry, not Core or AgentLoop. A controller
+target is not a measured joint position. Readiness predicts physically bounded
+open endpoints. Without future holding-width evidence, preparation retains the
+measured reference geometry, explicitly marked
+`measured_reference_holding_prediction_unavailable`. This is a nominal planning
+reference, not a prediction of the eventual holding width. Missing width does not
+inflate collision spheres or independently reject a route. Actual post-acquire
+planning uses measured joints. Native sphere radii/margins remain unchanged.
+
+Execution reads current gripper joints for each arm-motion plan, including
+post-acquire transport. Detailed FK geometry and all CuRobo rollout instances use
+the same state. Temporary planner changes restore on success/error, preserving
+route-owned attachment changes. Peer-arm projection also uses measured fingers.
+No robot command or simulator step is needed to change planner geometry.
+
+The existing observed-collision profile may set `support_refinement_band_m`.
+Inside this vertical band around observation-owned support, voxel Z resolution
+is `min(voxel_size_m, uncertainty_m)`; XY resolution and outward uncertainty
+padding remain unchanged. All returns, including mixed and unclassified points,
+remain occupied. Only consecutive X cells with the same Y/Z bin merge. Outside
+the band the original coarse representation remains. This removes grid-induced
+height overfill without deleting the table or substituting an exact hidden plane.
+The setting defaults to zero for existing descriptors; the persistent profile
+uses a 20 mm band, 10 mm XY cells and 1 mm Z cells with 1 mm padding.
+
+These are corrections to existing model inputs, not a new admission gate or
+release-sweep validator. The Agent keeps task planning/recovery ownership; width
+uncertainty and remaining observed collisions remain explicit. A preparation
+failure does not authorize execution, automatic retry or a changed destination.
+
 Materialization distinguishes an explicit candidate workspace rejection from
 deployment or process failure. Workspace-rejected candidates are recorded in
 preparation timing diagnostics and excluded; other candidates still undergo

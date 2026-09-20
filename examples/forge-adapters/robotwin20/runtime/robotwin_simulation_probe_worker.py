@@ -1418,7 +1418,12 @@ def execute_candidate_phases(
                     "reason": "gripper_only" if gripper_only else "duplicate_phase_boundary",
                 })
                 continue
-            result = fn(waypoint)
+            from robotwin_gripper_geometry import planner_gripper_state
+
+            # Execution uses freshly measured joints, never a phase label or
+            # the controller's beyond-limit effort target as geometry.
+            with planner_gripper_state(task, arm) as measured_gripper:
+                result = fn(waypoint)
             _validate_trajectory(result, limits)
             planned_segments.append(
                 {
@@ -1426,6 +1431,7 @@ def execute_candidate_phases(
                     "world_pose_pq_wxyz": waypoint,
                     "position": np.asarray(result["position"], dtype=np.float64).tolist(),
                     "velocity": np.asarray(result["velocity"], dtype=np.float64).tolist(),
+                    "gripper_geometry": measured_gripper,
                 }
             )
             _validate_gripper_table_clearance(
@@ -1433,7 +1439,7 @@ def execute_candidate_phases(
                 arm,
                 result["position"],
                 phase=phase_name,
-                gripper_state=phase["gripper_state"],
+                gripper_state=None,
             )
             if phase_name == "lift" and not execution_state["planner_object_attached"]:
                 planner_actor = actor
@@ -1450,7 +1456,8 @@ def execute_candidate_phases(
                     arm,
                 )
                 execution_state["planner_object_attached"] = True
-                _validate_attached_support_departure(planner, result["position"])
+                with planner_gripper_state(task, arm):
+                    _validate_attached_support_departure(planner, result["position"])
             _execute_segment(
                 task,
                 arm,

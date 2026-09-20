@@ -11,6 +11,7 @@ class ObservedCollisionPolicy:
     voxel_size_m: float = .01
     uncertainty_m: float = .001
     minimum_inner_points: int = 3
+    support_refinement_band_m: float = 0.0
 
     def __post_init__(self):
         if any(not np.isfinite(v) or v <= 0 for v in
@@ -18,6 +19,8 @@ class ObservedCollisionPolicy:
             raise ValueError("observed collision metric settings must be positive and finite")
         if not isinstance(self.minimum_inner_points, int) or self.minimum_inner_points < 1:
             raise ValueError("minimum inner points must be a positive integer")
+        if not np.isfinite(self.support_refinement_band_m) or self.support_refinement_band_m < 0:
+            raise ValueError("support refinement band must be finite and nonnegative")
 
     def to_dict(self):
         return asdict(self)
@@ -38,9 +41,23 @@ def depth_points(depth, intrinsic, world_t_camera, scale):
     return camera @ transform[:3, :3].T + transform[:3, 3], ys, xs
 
 
-def voxel_boxes(points, size, padding):
-    """Merge consecutive X cells only; never bridge an unoccupied voxel."""
+def voxel_boxes(points, size, padding, *, support_z=None, refinement_band=0.):
+    """Use sensor-uncertainty-scale vertical cells near observed support.
+
+    Coarse XY coverage and uncertainty padding remain unchanged. Refinement
+    uses every return in the band, not a table label or fitted-plane replacement.
+    """
     points = np.asarray(points, dtype=float).reshape(-1, 3)
+    if support_z is None or refinement_band <= 0:
+        return _grid_boxes(points, size, padding)
+    near = np.abs(points[:, 2] - support_z) <= refinement_band
+    coarse, coarse_count = _grid_boxes(points[~near], size, padding)
+    fine, fine_count = _grid_boxes(points[near], np.array([size, size, min(size, padding)]), padding)
+    return coarse + fine, coarse_count + fine_count
+
+
+def _grid_boxes(points, size, padding):
+    """Merge consecutive X cells only; never bridge an unoccupied voxel."""
     cells = np.unique(np.floor(points / size).astype(np.int64), axis=0)
     groups = {}
     for x, y, z in cells:

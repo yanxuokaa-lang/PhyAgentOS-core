@@ -247,23 +247,16 @@ def _validate_gripper_table_clearance(
     original = np.asarray(entity.get_qpos(), dtype=np.float64).copy()
     geometry_qpos = original.copy()
     table_top = _table_top_z(task)
-    if gripper_state is not None:
-        if gripper_state not in _GRIPPER_VALUES:
-            raise SimulationProbeError("gripper state is invalid for clearance qualification")
-        gripper = task.robot.left_gripper if arm == "left" else task.robot.right_gripper
-        scale = task.robot.left_gripper_scale if arm == "left" else task.robot.right_gripper_scale
-        joint_indices = {
-            joint.get_name(): index for index, joint in enumerate(entity.get_active_joints())
-        }
-        normalized = _GRIPPER_VALUES[gripper_state]
-        real_value = float(scale[0]) + normalized * (float(scale[1]) - float(scale[0]))
-        for joint, multiplier, offset in gripper:
-            index = joint_indices.get(joint.get_name())
-            if index is not None:
-                geometry_qpos[index] = real_value * float(multiplier) + float(offset)
+    from robotwin_gripper_geometry import geometry_samples, gripper_configuration
+
+    bound = getattr(task, "_paos_gripper_geometry", None)
+    configuration = (bound["joints"] if bound is not None and bound["arm"] == arm else
+                     gripper_configuration(task, arm, gripper_state) if gripper_state is not None else [])
     try:
-        for sample in np.asarray(positions, dtype=np.float64):
-            qpos = geometry_qpos.copy()
+        for sample, qpos in (
+            (sample, qpos) for sample in np.asarray(positions, dtype=np.float64)
+            for qpos in geometry_samples(geometry_qpos, configuration)
+        ):
             qpos[:7] = sample
             entity.set_qpos(qpos.tolist())
             observed = getattr(task, "_paos_observed_collision", None)

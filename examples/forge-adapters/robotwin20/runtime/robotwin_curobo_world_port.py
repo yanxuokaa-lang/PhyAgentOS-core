@@ -85,7 +85,10 @@ def capture_peer_projection(task: Any, state: Mapping[str, Any], selected_arm: s
     tensor_args = getattr(planner.motion_gen, "tensor_args", None)
     device = getattr(tensor_args, "device", "cpu")
     try:
-        sphere_batches = get_spheres(torch.as_tensor(qpos, device=device), filter_valid=True)
+        from robotwin_gripper_geometry import planner_gripper_state
+
+        with planner_gripper_state(task, peer_arm):
+            sphere_batches = get_spheres(torch.as_tensor(qpos, device=device), filter_valid=True)
     except Exception as exc:
         raise CuroboWorldPortError("peer arm collision sphere model failed") from exc
     if not sphere_batches or not sphere_batches[0]:
