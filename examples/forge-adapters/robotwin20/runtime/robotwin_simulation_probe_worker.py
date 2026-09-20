@@ -2013,7 +2013,6 @@ def _handle_factory(
                 raise SimulationProbeError("RoboTwin simulation task is unavailable")
             if backend.snapshot().get("scene_revision") != request["scene_revision"]:
                 raise SimulationProbeError("simulation backend revision binding is invalid")
-            bind_scene_table(task)
             planning_state = _capture_dual_arm_state(task, request["scene_revision"])
             validate_dual_arm_state(planning_state)
             execution_state["dual_arm_state"] = planning_state
@@ -2043,6 +2042,18 @@ def _handle_factory(
                 raise SimulationProbeError("collision world artifact digest mismatch")
             if collision_artifact.get("world_digest") != collision_binding["world_digest"]:
                 raise SimulationProbeError("collision world digest binding is invalid")
+            scene_path = _artifact_path(artifact_root, collision_artifact["source_scene_facts_ref"])
+            scene_bytes = scene_path.read_bytes()
+            if _sha_bytes(scene_bytes) != collision_artifact["source_scene_facts_sha256"]:
+                raise SimulationProbeError("collision source scene facts digest mismatch")
+            scene_facts = json.loads(scene_bytes)
+            if scene_facts.get("geometry_source") == "observation":
+                task._paos_observed_support = scene_facts.get("support_surface")
+            elif "observed_collision" in collision_artifact:
+                raise SimulationProbeError("observed collision requires observed source geometry")
+            bind_scene_table(task)
+            from robotwin_observed_collision import configure_observed_collision
+            configure_observed_collision(task, collision_artifact, artifact_root)
             try:
                 peer_projections = {
                     arm_id: _capture_peer_projection(task, planning_state, arm_id)

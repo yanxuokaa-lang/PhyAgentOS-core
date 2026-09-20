@@ -279,7 +279,16 @@ def _world_config(
                     pose=native_table_geometry["pose"],
                 )
                 break
-    for obstacle in artifact["obstacles"]:
+    observed = getattr(planner, "_paos_observed_collision", None)
+    obstacles = artifact["obstacles"]
+    if "observed_collision" in artifact:
+        if observed is None or observed["descriptor"] != artifact["observed_collision"]:
+            raise CuroboWorldPortError("observed collision world has not been loaded")
+        obstacles = [{"entity_ref": f"entity://observed-voxel/{index}",
+                      "half_extents_m": box["half_extents_m"],
+                      "world_T_entity": {"position_m": box["position_m"], "orientation_xyzw": [0., 0., 0., 1.]}}
+                     for index, box in enumerate(observed["boxes"])]
+    for obstacle in obstacles:
         name = str(obstacle["entity_ref"]).removeprefix("entity://")
         if name in names:
             raise CuroboWorldPortError(f"collision obstacle duplicates planner object: {name}")
@@ -430,6 +439,8 @@ def apply_collision_world(
                 "world_revision": world_artifact["world_revision"],
                 "world_digest": world_artifact["world_digest"],
                 "operation": "rebuild_motion_gen" if rebuild_required else "update_world",
+                **({"observed_collision": planner._paos_observed_collision["evidence"]}
+                   if "observed_collision" in world_artifact else {}),
             })
     except Exception as exc:
         for motion_gen, previous_world in reversed(applied):

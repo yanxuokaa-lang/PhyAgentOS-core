@@ -1,4 +1,5 @@
 from copy import deepcopy
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -70,3 +71,21 @@ def test_expired_budget_cannot_produce_qualification(monkeypatch):
     with pytest.raises(PreparationDeadlineExceededError):
         contact.qualify_observed_contact(None, {"scene_revision": "scene"}, candidate, record,
                                         adaptation, ["right"], PreparationDeadline(0), runtime_profile={})
+
+
+@pytest.mark.parametrize("clearance,expected", [(None, "unavailable"), (-.001, "unavailable"),
+                                               (float("nan"), "unavailable"), (float("inf"), "unavailable"),
+                                               (0., "qualified")])
+def test_observed_contact_requires_finite_nonnegative_planner_clearance(monkeypatch, clearance, expected):
+    candidate, geometry, record, adaptation = inputs()
+    monkeypatch.setattr(contact, "capture_task_geometry", lambda *args: geometry)
+    mesh = {"variants": [{"backoff_m": 0., "status": "valid", "rejection_reasons": [],
+                          "robot_target_position_m": [0., 0., 0.], "contact_center_position_m": [0., 0., .04]}]}
+    monkeypatch.setattr(contact, "qualify_point_contact", lambda *args: deepcopy(mesh))
+    monkeypatch.setattr(contact, "evaluate_contact", lambda *args: {"planner_status": "success", "clearance_m": clearance})
+    task = SimpleNamespace(_paos_observed_collision={})
+    result = contact.qualify_observed_contact(task, {"scene_revision": "scene"}, candidate, record,
+                                             adaptation, ["right"], PreparationDeadline.start(10), runtime_profile={})
+    assert result["status"] == expected
+    if expected == "unavailable":
+        assert result["arm_attempts"][0]["qualification"]["variants"][0]["rejection_reasons"] == ["contact_clearance_unproven_or_negative"]

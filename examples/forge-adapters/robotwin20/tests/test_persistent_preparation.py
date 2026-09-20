@@ -95,6 +95,21 @@ def test_failed_complete_routes_produce_no_prepared_assignment(tmp_path):
     assert not (tmp_path / "assignments").exists()
 
 
+def test_observed_uncertainty_reaches_public_failure_without_changing_recovery_code(tmp_path):
+    from PhyAgentOS.forge.capability_runtime.manipulation_prepare import PreparationProviderError
+
+    request, provider, _ = composition(tmp_path, status="fail")
+    metrics = {"contact_qualification": [{"candidate_ref": request["candidates"][0]["candidate_ref"],
+               "observed_collision": {"visibility_scope": "observed_only"},
+               "visibility": {"occluded_samples": 12, "unobserved_samples": 4},
+               "evidence_ref": "artifact://contact/0"}]}
+    with pytest.raises(PreparationProviderError, match="unobserved space remains unknown") as caught:
+        provider.prepare(request, metrics=metrics)
+    assert caught.value.code == "no_admissible_route"
+    assert "artifact://contact/0" in str(caught.value)
+    assert "'occluded_samples': 12" in str(caught.value)
+
+
 def test_readiness_infrastructure_failure_is_not_an_empty_candidate_set(tmp_path):
     from PhyAgentOS.forge.capability_runtime.manipulation_prepare import PreparationProviderError
 

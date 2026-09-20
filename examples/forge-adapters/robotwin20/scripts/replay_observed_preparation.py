@@ -37,6 +37,7 @@ def build(args):
     import yaml
 
     from robotwin20_adapter.grounding import Grounding
+    from robotwin20_adapter.observed_collision import ObservedCollisionPolicy
     from robotwin20_adapter.observed_support import SupportEstimationPolicy
     from robotwin20_adapter.persistent_route_builder import PersistentRouteBuilder
     from robotwin20_adapter.preparation_deadline import PreparationDeadline
@@ -45,6 +46,8 @@ def build(args):
     root = Path(tempfile.mkdtemp(prefix="observed-prepare-", dir=args.output_parent)).resolve()
     source = args.source_root.resolve()
     argv = json.loads(args.materializer_command.read_text())
+    if args.route_input_profile is not None:
+        argv[argv.index("--route-input-profile") + 1] = str(args.route_input_profile.resolve())
     profile = yaml.safe_load(Path(argv[argv.index("--route-input-profile") + 1]).read_text())
     with sqlite3.connect(args.database.resolve().as_uri() + "?mode=ro", uri=True) as conn:
         task = json.loads(conn.execute("SELECT record_json FROM agent_tasks WHERE task_id=?", (args.task_id,)).fetchone()[0])
@@ -70,7 +73,9 @@ def build(args):
 
     client = SavedSceneClient()
     grounding = Grounding(client, root, lambda _: deepcopy(binding["scene_facts"]),
-                          support_policy=SupportEstimationPolicy(**profile.get("observed_support", {})))
+                          support_policy=SupportEstimationPolicy(**profile.get("observed_support", {})),
+                          collision_policy=(ObservedCollisionPolicy(**profile["observed_collision"])
+                                            if "observed_collision" in profile else None))
     for tool in ("scene.observe", "scene.understand"):
         result = next(r["response"]["data"] for r in reversed(records)
                       if r["tool_id"] == tool and r["response"]["data"].get("scene_revision") == identity["scene_revision"])
@@ -261,6 +266,7 @@ def main():
         p.add_argument("--" + name, required=True, type=Path)
     p.add_argument("--task-id", required=True)
     p.add_argument("--limit", type=int)
+    p.add_argument("--route-input-profile", type=Path)
     p.add_argument("--deadline", type=float, default=330)
     p = sub.add_parser("evaluate")
     p.add_argument("--replay-root", required=True, type=Path)

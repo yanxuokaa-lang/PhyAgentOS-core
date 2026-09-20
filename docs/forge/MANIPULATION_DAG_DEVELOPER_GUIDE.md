@@ -144,13 +144,42 @@ obstacle geometry is restricted to explicitly configured legacy benchmark routes
 Persistent preparation qualifies bounded contact variants after nominal route
 materialization. Its internal serialized Runtime Query uses calibrated robot
 hand geometry, observed object/support geometry and the profile's existing
-`contact_backoff_candidates_m`. It checks mesh support, object containment and
-finger envelope before collision-aware contact planning. Each qualified arm's
+`contact_backoff_candidates_m`. Legacy profiles check mesh support, object
+containment and finger envelope before collision-aware contact planning. Each qualified arm's
 variant is rematerialized, including attachment and placement transforms. Full
 readiness then selects among those arm/route options; prefix success is never
 promoted to full-route or dynamic evidence. No qualification grants motion.
 All stages share the preparation deadline. `no_qualified_contacts` includes
 bounded rejection counts and persisted diagnostic references for Agent recovery.
+
+The persistent route profile now enables `observed_collision`. Grounding binds
+complete depth, the selected target mask and calibration to the existing scene
+facts/collision artifact. Runtime projects every valid depth return: target
+points are separate; robot self returns use measured robot link poses and convex
+collision shapes; all other points, including unclassified occupancy, form the
+environment. Consecutive occupied voxel cells may merge, but gaps never fill.
+The profile declares depth units, voxel size, uncertainty padding and minimum
+inner contact samples. Adapter/runtime environments require the adapter's
+`collision` extra (NumPy/SciPy); Core has no new dependency.
+
+For this path, separate actual finger/palm convex components and their nominal
+straight approach sweeps replace whole-object aperture tests. Bounding boxes
+remain broad phase; the open region between fingers must contain observed target
+points, while occupied finger/palm solids reject. Collision-aware contact planning
+must also succeed with finite nonnegative clearance. Actual approach/contact
+trajectories check target occupancy at joint samples, restoring FK state even on
+failure. Full attached lift/transport/descent, released-object retreat, peer-arm,
+support, dynamic and stop-control checks still apply. Observed support bounds and
+attached object boxes remain conservative models; this change does not remove them.
+
+Readiness and execution load the same observed world descriptor. Single-view
+hidden surfaces stay unknown. Vertex visibility at contact/approach endpoints is
+diagnostic sampling, not full swept-volume visibility or a free-space proof.
+Public preparation failures retain the existing recovery code, bounded sample
+counts and contact evidence references; successful preparations carry the selected
+contact evidence reference. AgentLoop decides whether uncertainty near an important
+clearance warrants another observation. The provider adds no automatic reobserve,
+retry, top-K policy or motion permission.
 
 Materialization distinguishes an explicit candidate workspace rejection from
 deployment or process failure. Workspace-rejected candidates are recorded in

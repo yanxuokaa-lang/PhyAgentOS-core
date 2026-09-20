@@ -43,13 +43,20 @@ def test_current_route_evaluation_reuses_world_and_rejects_stale_inputs(tmp_path
         assert result["world"]["scene_revision"] == revision
         with pytest.raises(planner.SimulationProbeError, match="scene revision"):
             evaluator({**request, "scene_revision": "old-scene"})
+        observed_ref, observed_digest = artifact(revision + "-observed-world", {
+            "scene_revision": revision, "source_scene_facts_ref": scene_ref,
+            "source_scene_facts_sha256": scene_digest, "observed_collision": {},
+        })
+        with pytest.raises(planner.SimulationProbeError, match="requires observed collision geometry"):
+            evaluator({**request, "collision_world": {"artifact_ref": observed_ref, "sha256": observed_digest}})
     assert checked == ["entity://block", "entity://block"]
 
 
 def test_readiness_client_validates_live_world_evidence(tmp_path):
     from robotwin_route_readiness_worker import _handle_factory
-    from robotwin20_adapter.persistent_client import build_persistent_route_readiness
     from test_route_readiness import _request
+
+    from robotwin20_adapter.persistent_client import build_persistent_route_readiness
 
     request = _request(tmp_path)
     handle = _handle_factory(tmp_path, "persistent-route-readiness", lambda request: {
@@ -73,6 +80,7 @@ def test_readiness_client_validates_live_world_evidence(tmp_path):
 def test_worker_preserves_transport_identity_for_nested_query(monkeypatch, tmp_path):
     import io
     import sys
+
     import robotwin_persistent_worker as worker
 
     profile = tmp_path / "profile.json"

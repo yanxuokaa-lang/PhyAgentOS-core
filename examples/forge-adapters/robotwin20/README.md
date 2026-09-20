@@ -8,6 +8,14 @@ environments. A deployment-specific backend is installed in a separate
 RoboTwin runtime environment and injected through the `RoboTwinSensorBackend`
 protocol.
 
+Observation-owned collision profiles additionally require the `collision` extra
+in the adapter/runtime environment: `python -m pip install -e
+'examples/forge-adapters/robotwin20[collision]'`. NumPy and SciPy provide depth
+projection and convex halfspaces; they are not Core dependencies. The persistent
+route profile enables observed depth voxels and local finger/palm approach checks.
+See `docs/forge/IMPLEMENTATION_REVIEW_V11_0_0.md` for the frozen no-motion result and
+the remaining full-route rejection.
+
 RoboTwin/SAPIEN packages, Torch/YOLO models, simulator assets, task files,
 embodiment configuration, and benchmark data stay outside PAOS and outside this
 source bundle. A profile should pass an external asset root to the backend; this

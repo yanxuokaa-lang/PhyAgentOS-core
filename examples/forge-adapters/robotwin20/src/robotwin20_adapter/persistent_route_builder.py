@@ -228,10 +228,20 @@ class PersistentRouteBuilder:
             diagnostic = run / f"contact-{index}.json"
             diagnostic.write_text(json.dumps(result), encoding="utf-8")
             diagnostic_ref = f"artifact://preparation-builds/{run.name}/contact-{index}"
+            visibility = Counter()
+            occupancy = None
+            for attempt in result.get("arm_attempts", []):
+                qualification = attempt["qualification"]
+                occupancy = qualification.get("observed_collision", occupancy)
+                for variant in qualification["variants"]:
+                    visibility.update(variant.get("visibility", {}))
             if metrics is not None:
                 metrics.setdefault("contact_qualification", []).append({
                     "candidate_ref": candidate["candidate_ref"], "status": result["status"],
-                    "elapsed_s": monotonic() - started, "evidence_ref": diagnostic_ref})
+                    "elapsed_s": monotonic() - started, "evidence_ref": diagnostic_ref,
+                    **({"observed_collision": occupancy, "visibility": dict(visibility),
+                        "visibility_sampling": "convex_vertices_at_contact_and_approach_endpoints",
+                        "unobserved_space": "unknown"} if occupancy is not None else {})})
             deadline.remaining("contact_qualification")
             for attempt in result.get("arm_attempts", []):
                 for variant in attempt["qualification"]["variants"]:

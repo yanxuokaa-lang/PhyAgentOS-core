@@ -86,6 +86,23 @@ def test_port_updates_both_motion_generators_for_both_arms_without_motion():
         }
 
 
+def test_observed_world_replaces_whole_object_boxes_with_visible_occupancy():
+    from robotwin_curobo_world_port import _world_config
+    artifact = _artifact()
+    artifact["observed_collision"] = {"scene_revision": artifact["scene_revision"]}
+    planner = FakePlanner()
+    with pytest.raises(CuroboWorldPortError, match="not been loaded"):
+        _world_config(planner, artifact)
+    planner._paos_observed_collision = {"descriptor": artifact["observed_collision"],
+        "boxes": [{"position_m": [.2, .3, .4], "half_extents_m": [.005, .005, .005]}]}
+    planner._paos_table_world_pose = {"position_m": [0, 0, .7], "half_extents_m": [.4, .3, .01],
+                                    "orientation_wxyz": [1, 0, 0, 0]}
+    world = _world_config(planner, artifact)
+    assert [item.name for item in world.cuboid] == ["table", "observed-voxel/0"]
+    assert world.cuboid[0].pose[2] == .7
+    assert world.cuboid[1].dims == [.01, .01, .01]
+
+
 def test_released_target_becomes_obstacle_without_dropping_existing_world():
     from robotwin_curobo_world_port import add_released_object
     planner = FakePlanner()

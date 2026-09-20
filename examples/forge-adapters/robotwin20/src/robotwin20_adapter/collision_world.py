@@ -173,6 +173,8 @@ def build_collision_world(
         "cache_capacity": resolved_cache_capacity,
         "motion_authorized": False,
     }
+    if "observed_collision" in facts:
+        result["observed_collision"] = facts["observed_collision"]
     result["world_digest"] = collision_world_digest(result)
     return result
 
@@ -185,7 +187,7 @@ def validate_collision_world(value: Mapping[str, Any]) -> dict[str, Any]:
         "obstacles", "excluded_entities", "target_entity_ref", "obstacle_count",
         "cache_capacity", "motion_authorized", "world_digest",
     }
-    if not isinstance(value, Mapping) or set(value) != required:
+    if not isinstance(value, Mapping) or not required <= set(value) or set(value) - required - {"observed_collision"}:
         raise CollisionWorldError("collision world fields are invalid")
     if value["schema_version"] != SCENE_COLLISION_WORLD_SCHEMA_VERSION:
         raise CollisionWorldError("collision world schema is unsupported")

@@ -325,7 +325,8 @@ class RoboTwinPersistentEngine:
         task = self.backend._task
         world_source = probe._load_json_artifact(self.root, request["collision_world"]["artifact_ref"])
         scene_source = probe._load_json_artifact(self.root, world_source["source_scene_facts_ref"])
-        if (candidate["entity_ref"] in getattr(task, "_paos_observed_bindings", {})
+        if (("observed_collision" in world_source
+             or candidate["entity_ref"] in getattr(task, "_paos_observed_bindings", {}))
                 and scene_source.get("geometry_source") != "observation"):
             raise ValueError("observed route requires observed collision geometry")
         if scene_source.get("geometry_source") == "observation":
@@ -349,6 +350,8 @@ class RoboTwinPersistentEngine:
         world = json.loads(raw)
         if probe._sha_bytes(raw) != collision["sha256"] or world.get("world_digest") != collision["world_digest"]:
             raise ValueError("collision world binding mismatch")
+        from robotwin_observed_collision import configure_observed_collision
+        configure_observed_collision(task, world, self.root)
         peer = {arm: probe._capture_peer_projection(task, state, arm) for arm in ("left", "right")}
         self._state["peer_arm_projection"] = peer
         self._state["collision_world_receipt"] = probe.apply_collision_world(

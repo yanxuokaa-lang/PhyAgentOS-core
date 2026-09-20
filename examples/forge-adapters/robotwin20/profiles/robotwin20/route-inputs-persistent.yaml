@@ -1,5 +1,10 @@
 schema_version: paos-robotwin20-route-input-profile/v3
 route_frame_id: world
+observed_collision:
+  depth_scale_to_m: 0.001
+  voxel_size_m: 0.01
+  uncertainty_m: 0.001
+  minimum_inner_points: 3
 calibration_revision: robotwin20-head-camera-seed0-v1
 workspace_bounds_m:
   frame_id: world

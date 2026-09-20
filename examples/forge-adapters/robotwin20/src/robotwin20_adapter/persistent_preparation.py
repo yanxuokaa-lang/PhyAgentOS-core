@@ -68,6 +68,20 @@ class PersistentPreparationProvider:
                 "message": str(exc),
                 "failure_owner": "preparation",
             }
+            if isinstance(exc, PreparationProviderError):
+                observed = [item for item in measured.get("contact_qualification", [])
+                            if "observed_collision" in item]
+                if observed:
+                    from collections import Counter
+
+                    visibility = Counter()
+                    for item in observed:
+                        visibility.update(item["visibility"])
+                    refs = [item["evidence_ref"] for item in observed[:2]]
+                    raise PreparationProviderError(exc.code,
+                        f"{exc}; observed-only contact/approach endpoint samples "
+                        f"(summed over evaluated variants): {dict(visibility)}; "
+                        f"unobserved space remains unknown; contact evidence: {refs}") from exc
             if isinstance(exc, PersistentWorkerError):
                 if exc.code == "PreparationDeadlineExceededError":
                     from .preparation_deadline import PreparationDeadlineExceededError
@@ -196,7 +210,10 @@ class PersistentPreparationProvider:
         return {"prepared_candidates": [{"candidate_ref": assignment.candidate_ref,
                                           "entity_ref": assignment.entity_ref,
                                           "checks": {key: "pass" for key in ("kinematic", "collision", "workspace")},
-                                          "evidence": [*selected["evidence_refs"], *([review_ref] if review_ref else [])], "qualification": "prepared"}],
+                                          "evidence": [*selected["evidence_refs"], *([review_ref] if review_ref else []),
+                                                       *[item["evidence_ref"] for item in metrics.get("contact_qualification", [])
+                                                         if item["candidate_ref"] == assignment.candidate_ref
+                                                         and "observed_collision" in item]], "qualification": "prepared"}],
                 "provider_available": True, "assignments": [value], "destination_ref": request["destination_ref"]}
 
     def _persist_metrics(

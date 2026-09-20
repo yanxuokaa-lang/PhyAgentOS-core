@@ -22,9 +22,10 @@ _DEFERRED_BINDING_AMBIGUITIES = {
 
 
 class Grounding:
-    def __init__(self, client, root, scene_source, *, support_policy=None):
+    def __init__(self, client, root, scene_source, *, support_policy=None, collision_policy=None):
         self.client, self.root, self.source = client, root, scene_source
         self.support_policy = support_policy or SupportEstimationPolicy()
+        self.collision_policy = collision_policy
         self.observations = {}
         self.understandings = {}
         self.bindings = {}
@@ -436,6 +437,24 @@ class Grounding:
             item["entity_ref"] = ref
             facts["objects"].append(obj if ref == obj["entity_ref"] else item)
         facts["geometry_source"] = "observation"
+        if self.collision_policy is not None:
+            identity = tuple(binding[k] for k in IDENTITY_KEYS)
+            observed, understanding = self.observations[identity], self.understandings[identity]
+            masks = [a for a in understanding.get("derived_artifacts", [])
+                     if a.get("kind") == "instance_mask" and a.get("entity_ref") == obj["entity_ref"]]
+            depths = [a for a in observed.get("artifacts", []) if a.get("kind") == "depth"]
+            if len(masks) != 1 or len(depths) != 1:
+                raise PreparationProviderError("observed_collision_unavailable", "one target mask and complete scene depth are required")
+            mask = masks[0]
+            if any(mask.get(k) != binding[k] for k in IDENTITY_KEYS) or mask.get("frame_id") != binding["frame_id"]:
+                raise PreparationProviderError("observed_collision_unavailable", "target mask lineage differs from binding")
+            facts["observed_collision"] = {
+                **{k: binding[k] for k in IDENTITY_KEYS}, "frame_id": binding["frame_id"],
+                "world_T_camera": binding["world_T_observation"], "depth_ref": depths[0]["ref"],
+                "target_mask_ref": mask["artifact_ref"], "target_entity_ref": obj["entity_ref"],
+                "policy": self.collision_policy.to_dict(), "visibility_scope": "observed_only",
+                "unknown_space_policy": "report_for_agent_recovery",
+            }
         support = self._observed_support(binding)
         if support is not None:
             facts["support_surface"] = support

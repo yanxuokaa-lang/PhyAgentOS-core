@@ -326,11 +326,14 @@ class RoboTwinRouteEvaluator:
             if owned:
                 backend.reset(seed=profile["seed"])
             task = backend._task
-            if (any(c["entity_ref"] in getattr(task, "_paos_observed_bindings", {}) for c in request["candidates"])
+            if (("observed_collision" in world
+                 or any(c["entity_ref"] in getattr(task, "_paos_observed_bindings", {}) for c in request["candidates"]))
                     and scene.get("geometry_source") != "observation"):
                 raise SimulationProbeError("observed route requires observed collision geometry")
             if scene.get("geometry_source") == "observation":
                 task._paos_observed_support = scene.get("support_surface")
+            from robotwin_observed_collision import configure_observed_collision
+            configure_observed_collision(task, world, self.artifact_root)
             if not owned:
                 from robotwin_simulation_probe_worker import (
                     _validate_route_input_artifacts,

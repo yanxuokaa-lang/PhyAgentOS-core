@@ -266,6 +266,15 @@ def _validate_gripper_table_clearance(
             qpos = geometry_qpos.copy()
             qpos[:7] = sample
             entity.set_qpos(qpos.tolist())
+            observed = getattr(task, "_paos_observed_collision", None)
+            if observed is not None and phase in {"approach", "contact"}:
+                from robotwin_observed_collision import collision_components
+
+                from robotwin20_adapter.observed_collision import inside_convex
+                for link in entity.get_links():
+                    for vertices in collision_components(link):
+                        if inside_convex(observed["target"], vertices, observed["policy"].uncertainty_m).any():
+                            raise SimulationProbeError(f"{phase} observed target intersects robot link {link.get_name()}")
             minimum = min(float(_collision_vertices(link)[:, 2].min()) for link in links)
             if minimum < table_top:
                 raise SimulationProbeError(

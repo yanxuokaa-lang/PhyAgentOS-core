@@ -9,6 +9,7 @@ dependencies = []
 openai = ["openai>=1.0,<4"]
 perception = ["numpy>=1.26,<3", "PyYAML>=6,<7"]
 grasp = ["numpy>=1.26,<3", "PyYAML>=6,<7"]
+collision = ["numpy>=1.26,<3", "scipy>=1.10,<2"]
 qwen3-vl = [
   "torch>=2.6",
   "transformers>=4.57",
