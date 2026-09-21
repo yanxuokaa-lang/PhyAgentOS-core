@@ -16,6 +16,12 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v11.4.0 (2026-09-22) - codex
+
+- [agent] [fix] [完成] 保留 PlanRevision 明确选定的 discovery evidence，限制 stale scene.bind 为 provenance-only，并记录真实 Oracle 第一段动作与感知遮挡后的七维验收结论。(local)
+- [Agent] [Fix] [Completed] Preserve explicitly selected PlanRevision discovery evidence, restrict stale scene.bind to provenance-only, and record the seven-dimension result from the real Oracle first segment and post-action perception occlusion. (local)
+- Report: [`docs/forge/IMPLEMENTATION_REVIEW_V11_4_0.md`](docs/forge/IMPLEMENTATION_REVIEW_V11_4_0.md), detailed entry: [`changelog/2026-09_part12.md`](changelog/2026-09_part12.md).
+
 ## v11.3.1 (2026-09-21 18:20) - codex
 
 - [env] [tune] [完成] Agent/感知模型改为 `gpt-5.6-sol`、high；只读 benchmark goal smoke 成功，完整任务在不可重试的 scene-understanding provider failure 前安全停止。(local)
