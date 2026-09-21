@@ -58,6 +58,7 @@ class Qwen3VLVLLMLifecycleManager:
         self._client = factory(
             base_url=config.control_api_base.rstrip("/"),
             timeout=config.control_timeout_s,
+            trust_env=False,
         )
         self._condition = Condition()
         self._active_requests = 0

@@ -9,7 +9,6 @@ from robotwin20_adapter import (
     Qwen3VLSceneUnderstandingInference,
 )
 
-
 REF = "artifact://scene-1/capture-1/rgb"
 REQUEST = {
     "observation_ref": "observation://scene-1/head_camera",

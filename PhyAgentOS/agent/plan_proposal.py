@@ -7,6 +7,11 @@ from typing import Any
 from uuid import uuid4
 
 from PhyAgentOS.agent.planning_facts import response_facts
+from PhyAgentOS.forge.manipulation import (
+    CapabilitySnapshot,
+    CoordinationMode,
+    ResourceMode,
+)
 from PhyAgentOS.forge.task import AgentTaskRecord
 from PhyAgentOS.planning import (
     PlanGraph,
@@ -180,6 +185,7 @@ def _complete_persisted_runtime_bindings(
             destination_by_entity.setdefault(entity, set()).add(destination)
 
     capability_refs: set[str] = set()
+    capability_arm_ids: dict[str, tuple[str, ...]] = {}
     goal_sources: dict[str, set[str]] = {}
     predecessor_destinations: dict[str, set[str]] = {}
     predecessor_entities: dict[str, set[str]] = {}
@@ -231,6 +237,42 @@ def _complete_persisted_runtime_bindings(
         snapshot_ref = facts.get("snapshot_ref") or facts.get("capability_snapshot_ref")
         if isinstance(snapshot_ref, str) and snapshot_ref.startswith("artifact://"):
             capability_refs.add(snapshot_ref)
+            snapshot_payload = {
+                key: facts[key]
+                for key in CapabilitySnapshot.model_fields
+                if key in facts
+            }
+            try:
+                snapshot = CapabilitySnapshot.model_validate(snapshot_payload)
+            except ValueError:
+                continue
+            capability_arm_ids[snapshot_ref] = tuple(
+                arm.arm_id
+                for arm in snapshot.arms
+                if arm.availability == "available"
+                and ResourceMode.ALTERNATIVE_RESOURCE in arm.supported_modes
+            )
+
+    # A preparation/acquisition node may carry the Runtime execution identity
+    # while its grasp predecessor is the node that needs the observed identity.
+    # Propagate only a unique scene.bind correspondence; never derive an ID from
+    # color, category, or string spelling.
+    execution_to_observed: dict[str, set[str]] = {}
+    for observed, executions in observed_to_execution.items():
+        for execution in executions:
+            execution_to_observed.setdefault(execution, set()).add(observed)
+    node_by_id = {node.node_id: node for node in nodes}
+    grasp_execution_targets: dict[str, set[str]] = {}
+    for node in nodes:
+        execution = node.input_bindings.get("execution_entity_ref")
+        if not isinstance(execution, str):
+            continue
+        if node.capability == "grasp.propose":
+            grasp_execution_targets.setdefault(node.node_id, set()).add(execution)
+        for dependency in node.dependencies:
+            predecessor = node_by_id.get(dependency)
+            if predecessor is not None and predecessor.capability == "grasp.propose":
+                grasp_execution_targets.setdefault(dependency, set()).add(execution)
 
     proposed_entities = {
         node.node_id: {entity}
@@ -241,8 +283,27 @@ def _complete_persisted_runtime_bindings(
     completed: list[PlanNode] = []
     for node in nodes:
         bindings = dict(node.input_bindings)
+        if node.capability == "grasp.propose":
+            execution_targets = grasp_execution_targets.get(node.node_id, set())
+            if len(execution_targets) == 1:
+                observed_entities = execution_to_observed.get(next(iter(execution_targets)), set())
+                if len(observed_entities) == 1:
+                    expected_entity = next(iter(observed_entities))
+                    existing_entity = bindings.get("entity_ref")
+                    if existing_entity is not None and existing_entity != expected_entity:
+                        raise ValueError(
+                            f"{node.node_id}: entity_ref conflicts with the unique scene.bind "
+                            f"execution identity; expected {expected_entity}"
+                        )
+                    bindings["entity_ref"] = expected_entity
         if node.capability in {"manipulation.prepare", "object.acquire", "object.place"}:
             entity = bindings.get("entity_ref")
+            execution_entity = bindings.get("execution_entity_ref")
+            if not isinstance(entity, str) and isinstance(execution_entity, str):
+                observed_entities = execution_to_observed.get(execution_entity, set())
+                if len(observed_entities) == 1:
+                    entity = next(iter(observed_entities))
+                    bindings["entity_ref"] = entity
             if not isinstance(entity, str):
                 predecessor_values = [
                     values for key, values in predecessor_entities.items()
@@ -257,6 +318,8 @@ def _complete_persisted_runtime_bindings(
                     entity = next(iter(merged))
                     bindings["entity_ref"] = entity
             destinations = set(destination_by_entity.get(entity, set()))
+            if isinstance(execution_entity, str):
+                destinations |= goal_sources.get(execution_entity, set())
             destinations |= goal_sources.get(entity, set())
             execution_entities = observed_to_execution.get(entity, set())
             if len(execution_entities) == 1:
@@ -265,6 +328,26 @@ def _complete_persisted_runtime_bindings(
             if node.capability in {"manipulation.prepare", "object.place"} and len(destinations) == 1:
                 bindings.setdefault("destination_ref", next(iter(destinations)))
             if len(capability_refs) == 1:
-                bindings.setdefault("capability_snapshot_ref", next(iter(capability_refs)))
+                capability_ref = next(iter(capability_refs))
+                bindings.setdefault("capability_snapshot_ref", capability_ref)
+                if node.capability == "manipulation.prepare":
+                    available_arms = capability_arm_ids.get(capability_ref, ())
+                    selected_arms = bindings.get("allowed_arms")
+                    if selected_arms is not None:
+                        if not isinstance(selected_arms, (list, tuple)):
+                            raise ValueError(
+                                f"{node.node_id}: allowed_arms must be copied as an arm_id list"
+                            )
+                        invalid = [arm for arm in selected_arms if arm not in available_arms]
+                        if invalid:
+                            raise ValueError(
+                                f"{node.node_id}: allowed_arms contains identities absent from "
+                                f"the capability snapshot: {', '.join(map(str, invalid))}; "
+                                f"available arm_id values: {', '.join(available_arms)}"
+                            )
+                    elif available_arms and bindings.get("coordination_mode") in {
+                        CoordinationMode.ALTERNATIVE_ARM.value,
+                    }:
+                        bindings["allowed_arms"] = list(available_arms)
         completed.append(node.model_copy(update={"input_bindings": bindings}))
     return tuple(completed)

@@ -2488,14 +2488,10 @@ class AgentTaskCoordinator:
 
         def mutate(current: AgentTaskRecord) -> None:
             current.cancellation_requested = True
-            has_owned_execution = any(
-                item.semantics == "action"
-                or (item.semantics == "session" and item.ownership == "task")
-                for item in current.execution_records
-            )
+            has_nonterminal_owned_execution = has_unsettled_owned_execution(current)
             current.status = (
                 AgentTaskStatus.CANCELLING
-                if pending or has_owned_execution
+                if pending or has_nonterminal_owned_execution
                 else _cancel_terminal_status(current)
             )
             current.evidence_errors.append(f"task cancellation requested: {reason.strip()}")
@@ -3267,6 +3263,23 @@ def _cancel_terminal_status(task: AgentTaskRecord) -> AgentTaskStatus:
     if not owned or all(item.status in {"cancelled", "stopped"} for item in owned):
         return AgentTaskStatus.CANCELLED
     return AgentTaskStatus.FAILED
+
+
+def has_unsettled_owned_execution(task: AgentTaskRecord) -> bool:
+    """Return whether cancellation still needs the owning Runtime.
+
+    Query records and terminal Action/Session records are durable facts that
+    can be settled by the Coordinator alone. Only a non-terminal task-owned
+    Action or Session may still require a Runtime-side stop/cancel request.
+    """
+    return any(
+        (
+            item.semantics == "action"
+            or (item.semantics == "session" and item.ownership == "task")
+        )
+        and not item.terminal
+        for item in task.execution_records
+    )
 
 
 def _execution_facts_succeeded(task: AgentTaskRecord) -> bool:

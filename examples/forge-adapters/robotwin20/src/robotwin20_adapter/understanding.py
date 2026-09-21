@@ -89,6 +89,16 @@ class RoboTwinSceneUnderstandingProvider:
             "provider_available": raw.get("provider_available", True),
         }
 
+    def diagnostic_summary(self) -> dict[str, str]:
+        summary = getattr(self.inference, "diagnostic_summary", None)
+        if not callable(summary):
+            return {}
+        try:
+            value = summary()
+        except Exception:
+            return {}
+        return dict(value) if isinstance(value, Mapping) else {}
+
 
 def _tuple_of_mappings(value: Any, field_name: str) -> tuple[dict[str, Any], ...]:
     if not isinstance(value, (list, tuple)):

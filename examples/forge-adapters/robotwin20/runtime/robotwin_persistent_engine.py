@@ -444,7 +444,7 @@ class RoboTwinPersistentEngine:
         )
         policies = probe._validate_request_policies(
             self.root, request, max_duration_s=self.duration,
-            robot_identity=self.profile["embodiment_binding"]["robot_identity"],
+            robot_identity=self.runtime_profile["robot_identity"],
             failure_recovery="hold_and_reconcile",
         )
         policies["execution_input_digests"][arguments["approval_ref"]] = probe._sha_bytes(

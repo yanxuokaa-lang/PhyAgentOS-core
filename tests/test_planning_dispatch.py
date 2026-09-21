@@ -447,6 +447,115 @@ def test_selection_accepts_agent_assembled_grasp_arguments_without_producer_bind
     assert proposal["input_binding_digest"] == tool_input_binding_digest(arguments)
 
 
+def test_persisted_bindings_are_projected_by_the_selected_consumer_schema():
+    node = PlanNode(
+        node_id="acquire-green",
+        obligation_id="acquire-green",
+        capability="object.acquire",
+        input_bindings={
+            "entity_ref": "entity://green",
+            "destination_ref": "destination://slot",
+            "capability_snapshot_ref": "artifact://capabilities/s0",
+        },
+    )
+    payload = {
+        "task_id": "task-consumer-projection",
+        "revision_id": "revision-consumer-projection",
+        "graph_digest": "0" * 64,
+        "planner_decision_digest": "1" * 64,
+        "policy_snapshot_digest": "2" * 64,
+        "nodes": [node.model_dump(mode="json")],
+    }
+    payload["graph_digest"] = plan_graph_digest(payload)
+    acquire_policy = ToolSpecPolicy(
+        tool_id="object.acquire",
+        semantics="action",
+        spec_digest="3" * 64,
+        capabilities=("object.acquire",),
+        input_binding_keys=("entity_ref",),
+    )
+    dispatch = AgentComposedDispatch(
+        PlanGraph.model_validate(payload),
+        (acquire_policy,),
+        AdmissionContext(scene_revision="scene-1"),
+        input_schemas={
+            "object.acquire": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {"entity_ref": {"type": "string"}},
+            }
+        },
+    )
+
+    proposal = dispatch.prepare_selection(
+        node_id="acquire-green",
+        tool_id="object.acquire",
+        arguments={"entity_ref": "entity://green"},
+        decision_reason="use the persisted green acquisition binding",
+    )
+
+    assert proposal["tool_arguments"] == {"entity_ref": "entity://green"}
+    assert "destination_ref" not in proposal["tool_arguments"]
+    assert "capability_snapshot_ref" not in proposal["tool_arguments"]
+
+
+def test_prepare_and_place_receive_only_their_schema_accepted_persisted_bindings():
+    node = PlanNode(
+        node_id="prepare-green",
+        obligation_id="prepare-green",
+        capability="manipulation.prepare",
+        input_bindings={
+            "entity_ref": "entity://green",
+            "destination_ref": "destination://slot",
+            "capability_snapshot_ref": "artifact://capabilities/s0",
+        },
+    )
+    payload = {
+        "task_id": "task-consumer-projection",
+        "revision_id": "revision-consumer-projection",
+        "graph_digest": "0" * 64,
+        "planner_decision_digest": "1" * 64,
+        "policy_snapshot_digest": "2" * 64,
+        "nodes": [node.model_dump(mode="json")],
+    }
+    payload["graph_digest"] = plan_graph_digest(payload)
+    prepare_policy = ToolSpecPolicy(
+        tool_id="manipulation.prepare",
+        semantics="query",
+        spec_digest="3" * 64,
+        capabilities=("manipulation.prepare",),
+    )
+    dispatch = AgentComposedDispatch(
+        PlanGraph.model_validate(payload),
+        (prepare_policy,),
+        AdmissionContext(scene_revision="scene-1"),
+        input_schemas={
+            "manipulation.prepare": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "entity_ref": {"type": "string"},
+                    "destination_ref": {"type": "string"},
+                    "capability_snapshot_ref": {"type": "string"},
+                },
+            }
+        },
+    )
+
+    proposal = dispatch.prepare_selection(
+        node_id="prepare-green",
+        tool_id="manipulation.prepare",
+        arguments={"entity_ref": "entity://green"},
+        decision_reason="use the persisted preparation bindings",
+    )
+
+    assert proposal["tool_arguments"] == {
+        "entity_ref": "entity://green",
+        "destination_ref": "destination://slot",
+        "capability_snapshot_ref": "artifact://capabilities/s0",
+    }
+
+
 def test_prepare_selection_rejects_unready_or_wrong_tool():
     dispatch = _dispatch()
     try:

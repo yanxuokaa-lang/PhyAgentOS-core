@@ -15,6 +15,8 @@ from dataclasses import dataclass
 from typing import Any, Callable, Mapping, Protocol
 from urllib.parse import urlparse
 
+import httpx
+
 from .openai_scene_understanding import ArtifactPayload, ArtifactResolver
 
 _VLLM_SCENE_SCHEMA: dict[str, Any] = {
@@ -78,7 +80,7 @@ def _default_client_factory(**kwargs: Any) -> ChatCompletionsClient:
         from openai import OpenAI
     except ImportError as exc:  # pragma: no cover - deployment-only dependency
         raise Qwen3VLVLLMInferenceError("OpenAI SDK is not installed in the vLLM adapter environment") from exc
-    return OpenAI(**kwargs)
+    return OpenAI(http_client=httpx.Client(trust_env=False), **kwargs)
 
 
 class Qwen3VLVLLMSceneUnderstandingInference:
@@ -106,6 +108,13 @@ class Qwen3VLVLLMSceneUnderstandingInference:
         self.config.validate()
         self.client_factory = client_factory or _default_client_factory
         self.diagnostic_sink = diagnostic_sink
+        self._last_error_class = "none"
+
+    def diagnostic_summary(self) -> dict[str, str]:
+        return {
+            "provider_route": "qwen3-vl-4b-vllm",
+            "provider_error_class": self._last_error_class,
+        }
 
     def infer(self, request: Mapping[str, Any]) -> Mapping[str, Any]:
         if not isinstance(request, Mapping):
@@ -172,8 +181,10 @@ class Qwen3VLVLLMSceneUnderstandingInference:
                     "projected": projected,
                 }
             )
+            self._last_error_class = "none"
             return projected
         except Qwen3VLVLLMInferenceError:
+            self._last_error_class = "contract"
             self._emit_diagnostic(
                 {
                     "status": "error",
@@ -190,6 +201,7 @@ class Qwen3VLVLLMSceneUnderstandingInference:
             )
             raise
         except Exception as exc:
+            self._last_error_class = "provider_failure"
             self._emit_diagnostic(
                 {
                     "status": "error",

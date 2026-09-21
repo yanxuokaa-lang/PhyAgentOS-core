@@ -148,6 +148,43 @@ def test_oracle_scene_uses_bound_actor_geometry_without_changing_observed_identi
     assert "observed_collision" not in facts
 
 
+def test_oracle_scene_resolves_runtime_goal_without_target_matrix_transcription(tmp_path):
+    g, request, _ = setup(tmp_path)
+    g.bind(request)
+    destination = "destination://blocks-ranking-rgb/red-slot"
+    calls = []
+    original_query = g.client.query
+
+    def query(operation, arguments, **kwargs):
+        calls.append(operation)
+        if operation == "task_goal_facts":
+            return {
+                "status": "available",
+                "geometry_source": "benchmark_task_definition",
+                "goals": [{
+                    "execution_entity_ref": "entity://execution",
+                    "destination_ref": destination,
+                    "frame_id": "world",
+                    "unit": "m",
+                    "world_T_object_target": pose(0.35),
+                }],
+            }
+        return original_query(operation, arguments, **kwargs)
+
+    g.client.query = query
+    facts = g.oracle_scene_facts({
+        **request,
+        "intent": {"entity_ref": "entity://seen"},
+        "destination_ref": destination,
+    })
+
+    assert facts["objects"][0]["target_ref"] == destination
+    assert facts["objects"][0]["world_T_object_target"] == pose(0.35)
+    assert facts["geometry_source"] == "oracle_actor"
+    assert not g.targets
+    assert calls.count("task_goal_facts") == 1
+
+
 def test_oracle_grasp_activation_reuses_one_current_persisted_binding(tmp_path):
     grounding, request, _ = setup(tmp_path)
     bound = grounding.bind(request)

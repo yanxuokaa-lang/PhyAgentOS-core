@@ -69,10 +69,41 @@ def test_both_provider_failures_are_bounded():
         fallback_name="gpt-5.6-sol-high",
     )
 
-    with pytest.raises(SceneUnderstandingFallbackError):
+    with pytest.raises(SceneUnderstandingFallbackError) as failure:
         route.infer({})
     assert route.last_route is None
     assert route.last_error == "TimeoutError; ConnectionError"
+    assert failure.value.provider_error_class == "timeout+transport"
+    assert failure.value.retryable is True
+    assert route.diagnostic_summary() == {
+        "provider_route": "none",
+        "provider_error_class": "timeout+transport",
+    }
+
+
+def test_fallback_diagnostic_sink_is_bounded_and_does_not_copy_exception_text():
+    events = []
+    route = FallbackSceneUnderstandingInference(
+        _Provider(error=TimeoutError("secret endpoint")),
+        _Provider({"entities": []}),
+        primary_name="qwen3-vl-4b-vllm",
+        fallback_name="gpt-5.6-sol-high",
+        diagnostic_sink=events.append,
+    )
+
+    assert route.infer({"observation_ref": "observation://s/c"}) == {"entities": []}
+    assert route.diagnostic_summary() == {
+        "provider_route": "gpt-5.6-sol-high",
+        "provider_error_class": "timeout",
+    }
+    assert events == [{
+        "status": "available",
+        "route": "gpt-5.6-sol-high",
+        "provider_error_class": "timeout",
+        "observation_ref": "observation://s/c",
+        "scene_revision": None,
+        "elapsed_ms": events[0]["elapsed_ms"],
+    }]
 
 
 def test_lifecycle_only_route_does_not_hide_qwen_inference_failure():

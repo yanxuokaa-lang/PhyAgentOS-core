@@ -198,3 +198,59 @@ def test_engine_rejects_changed_approval_before_action_setup(tmp_path):
         engine._prepare(arguments)
     assert snapshots == [True]
     assert not hasattr(engine.backend, "_task")
+
+
+def test_engine_uses_validated_runtime_identity_not_host_profile(tmp_path, monkeypatch):
+    import robotwin_persistent_engine as module
+
+    route = _request(tmp_path)
+    assignment = {
+        **_assignment(route),
+        "task_id": "task-1",
+        "capability_snapshot_ref": "artifact://capabilities/snapshot",
+        "selected_arm_ids": ["right"],
+    }
+    assignment_path = tmp_path / "assignments" / "task" / "revision" / "node.json"
+    assignment_path.parent.mkdir(parents=True)
+    assignment_path.write_text(json.dumps(assignment), encoding="utf-8")
+    approval_ref = PersistentSimulationActionApprover(
+        tmp_path,
+        task_name="blocks_ranking_rgb",
+        mode="runtime_monitored",
+    ).issue(
+        route,
+        candidate_ref=assignment["candidate_ref"],
+        assignment=assignment,
+        readiness_evidence_refs=["artifact://readiness/right-arm"],
+    )
+
+    observed = {}
+
+    def stop_after_identity(*args, **kwargs):
+        observed["robot_identity"] = kwargs["robot_identity"]
+        raise RuntimeError("policy boundary reached")
+
+    monkeypatch.setattr(module.probe, "_validate_request_policies", stop_after_identity)
+    engine = object.__new__(module.RoboTwinPersistentEngine)
+    engine.root = tmp_path
+    engine.profile = {"simulation_action_mode": "runtime_monitored"}
+    engine.runtime_profile = {"robot_identity": "franka-panda"}
+    engine.duration = 30.0
+    engine.task_adapter = SimpleNamespace(task_name="blocks_ranking_rgb")
+    engine.backend = SimpleNamespace(
+        snapshot=lambda: {"scene_revision": route["scene_revision"]}
+    )
+    arguments = {
+        "route_request": route,
+        "candidate_ref": assignment["candidate_ref"],
+        "entity_ref": assignment["entity_ref"],
+        "assignment_ref": assignment["assignment_ref"],
+        "assignment": assignment,
+        "task_id": assignment["task_id"],
+        "capability_snapshot_ref": assignment["capability_snapshot_ref"],
+        "approval_ref": approval_ref,
+    }
+
+    with pytest.raises(RuntimeError, match="policy boundary"):
+        engine._prepare(arguments)
+    assert observed == {"robot_identity": "franka-panda"}

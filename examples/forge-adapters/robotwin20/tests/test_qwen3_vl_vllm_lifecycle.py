@@ -57,6 +57,22 @@ def _manager(client, *, idle=60):
     )
 
 
+def test_lifecycle_control_bypasses_environment_proxy_for_local_endpoint():
+    captured = {}
+
+    def factory(**kwargs):
+        captured.update(kwargs)
+        return _Client()
+
+    manager = Qwen3VLVLLMLifecycleManager(
+        Qwen3VLVLLMLifecycleConfig(), client_factory=factory
+    )
+
+    assert captured["base_url"] == "http://127.0.0.1:8012"
+    assert captured["trust_env"] is False
+    manager.close()
+
+
 def test_sleeping_request_wakes_before_inference_and_arms_idle_sleep():
     client = _Client(sleeping=True)
     manager = _manager(client)

@@ -8,7 +8,9 @@ import hashlib
 import json
 import os
 import signal
+import threading
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from threading import Event, Lock
@@ -53,6 +55,28 @@ from .understanding import RoboTwinSceneUnderstandingProvider
 
 PROFILE_SCHEMA_VERSION = "paos-robotwin20-persistent-host/v1"
 MAX_REQUEST_BYTES = 1_048_576
+
+
+def _scene_diagnostic_sink(artifact_root: Path):
+    """Return an append-only bounded diagnostic writer for semantic inference."""
+    path = artifact_root / "scene-understanding-diagnostics.jsonl"
+    lock = threading.Lock()
+
+    def write(event: Mapping[str, Any]) -> None:
+        allowed = {
+            "status", "route", "provider_error_class", "observation_ref",
+            "scene_revision", "frame_id", "elapsed_ms", "image_ref",
+        }
+        value = {key: event[key] for key in allowed if key in event}
+        if "provider_error_class" in value and not isinstance(value["provider_error_class"], str):
+            value["provider_error_class"] = "provider_failure"
+        value["captured_at"] = datetime.now(timezone.utc).isoformat()
+        line = json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n"
+        with lock:
+            with path.open("a", encoding="utf-8") as stream:
+                stream.write(line)
+
+    return write
 
 
 class PersistentHostConfigurationError(ValueError):
@@ -325,6 +349,7 @@ def build_persistent_host(
         if not isinstance(model, Mapping) or not isinstance(model.get("provider", "openai_responses"), str):
             raise PersistentHostConfigurationError("model settings are invalid")
         resolver = FilesystemArtifactResolver(artifact_root)
+        diagnostic_sink = _scene_diagnostic_sink(artifact_root)
         provider = model.get("provider", "openai_responses")
         if provider == "openai_responses":
             if set(model) != {
@@ -345,6 +370,7 @@ def build_persistent_host(
                     timeout_seconds=_positive_number(model["timeout_seconds"], "model.timeout_seconds"),
                     max_output_tokens=int(_positive_number(model["max_output_tokens"], "model.max_output_tokens")),
                 ),
+                diagnostic_sink=diagnostic_sink,
             )
         elif provider == "qwen3_vl_vllm_fallback":
             if set(model) != {"provider", "primary", "fallback"}:
@@ -368,6 +394,7 @@ def build_persistent_host(
                     timeout_seconds=_positive_number(primary["timeout_seconds"], "model.primary.timeout_seconds"),
                     max_output_tokens=int(_positive_number(primary["max_output_tokens"], "model.primary.max_output_tokens")),
                 ),
+                diagnostic_sink=diagnostic_sink,
             )
             lifecycle = primary.get("lifecycle")
             if not isinstance(lifecycle, Mapping) or set(lifecycle) != {
@@ -404,14 +431,16 @@ def build_persistent_host(
                     timeout_seconds=_positive_number(fallback["timeout_seconds"], "model.fallback.timeout_seconds"),
                     max_output_tokens=int(_positive_number(fallback["max_output_tokens"], "model.fallback.max_output_tokens")),
                 ),
+                diagnostic_sink=diagnostic_sink,
             )
             inference = FallbackSceneUnderstandingInference(
                 qwen_inference,
                 gpt_inference,
                 primary_name="qwen3-vl-4b-vllm",
-                fallback_name="gpt-5.6-terra-medium",
+                fallback_name=f"{fallback['model']}-{fallback['reasoning_effort']}",
                 fallback_exceptions=(Qwen3VLVLLMLifecycleError,),
                 fallback_on_empty=False,
+                diagnostic_sink=diagnostic_sink,
             )
         elif provider == "qwen3_vl_local":
             required = {

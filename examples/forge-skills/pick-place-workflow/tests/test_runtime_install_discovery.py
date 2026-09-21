@@ -87,6 +87,10 @@ def test_robotwin_dataflow_forwards_profile_owned_route_geometry_source():
     assert dataflow["nodes"][0]["env"]["ROBOTWIN20_GOAL_SOURCE"] == (
         "${ROBOTWIN20_GOAL_SOURCE}"
     )
+    assert dataflow["nodes"][0]["env"]["ROBOTWIN20_MODEL"] == "${ROBOTWIN20_MODEL}"
+    assert dataflow["nodes"][0]["env"]["ROBOTWIN20_REASONING_EFFORT"] == (
+        "${ROBOTWIN20_REASONING_EFFORT}"
+    )
 
 
 def test_robotwin_profile_declares_every_external_environment_used_by_dataflow():
@@ -119,6 +123,30 @@ def test_robotwin_environment_template_tracks_non_secret_required_inputs():
         "ROBOTWIN20_MODEL_API_KEY",
         *profile.environment,
     }
+
+
+def test_prepare_contract_requires_verbatim_capability_arm_ids():
+    contract = yaml.safe_load(
+        (BUNDLE_ROOT / "contracts/manipulation.prepare.tool.yaml").read_text(encoding="utf-8")
+    )
+    description = contract["input_schema"]["properties"]["intent"]["properties"]["allowed_arms"]["description"]
+    assert "manipulation.capabilities" in description
+    assert "verbatim" in description
+    assert "left_arm" in description
+    skill_text = (BUNDLE_ROOT / "SKILL.md").read_text(encoding="utf-8")
+    assert "opaque Runtime resource" in skill_text
+    assert "left_arm`/`right_arm" in skill_text
+
+
+def test_grasp_contract_requires_verbatim_entity_identity():
+    contract = yaml.safe_load(
+        (BUNDLE_ROOT / "contracts/grasp.propose.tool.yaml").read_text(encoding="utf-8")
+    )
+    description = contract["input_schema"]["properties"]["targets"]["items"]["properties"]["entity_ref"]["description"]
+    assert "verbatim" in description
+    assert "color" in description
+    skill_text = (BUNDLE_ROOT / "SKILL.md").read_text(encoding="utf-8")
+    assert "color-derived alias" in skill_text
 
 
 class HealthyRuntimeManager:

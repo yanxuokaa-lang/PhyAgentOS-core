@@ -85,6 +85,14 @@ Runtime scheduler.
 - `ManipulationIntent` binds one ready DAG node to task/revision/node, entity,
   observation, observation frame, scene revision, calibration, candidate set,
   criteria, constraints, and allowed arms.
+- `allowed_arms` is a verbatim tuple of opaque `arm_id` values from the same-scene
+  `CapabilitySnapshot`. It is not a natural-language label: an adapter profile
+  declaring `left` and `right` must not receive invented `left_arm` or `right_arm`
+  aliases. Adapters continue to reject identifiers absent from that profile.
+  When the Coordinator has one valid same-scene capability snapshot and the node
+  uses `alternative_arm`, it may freeze the snapshot's available `arm_id` values
+  into the node so the Agent does not transcribe them. A requested subset is
+  checked against the snapshot before selection; no alias conversion is allowed.
 - `RouteFailure` records one bounded candidate/arm rejection.
 - `ReplanSignal` is a no-motion recovery hint for the existing PAOS recovery path.
 - `ReplanCoordinator` validates and digests that hint; it never mutates a task.
@@ -273,17 +281,33 @@ LongHorizon controller activates the persisted revision and starts each semantic
 node through a fresh `run_node_turn` with no chat history. A node prompt contains
 the current node, immutable bindings, and a bounded field catalog for persisted
 records from direct predecessors or explicitly selected discovery evidence.
-Large geometry arrays stay in the Coordinator. For example,
-`manipulation.prepare` selects the complete `grasp.propose` candidate array with
-`record_id` plus an exact field/index path; Coordinator resolves that value
-before frozen Consumer-schema validation. Unrelated discovery and execution
-history remains unavailable to both the prompt and the selector.
+Large geometry arrays stay in the Coordinator. A consumer may declare an
+explicit projection such as `entity_geometry_target_v1`: the Agent selects the
+semantic `entity_ref` and one visible understanding `record_id`, then Core
+executes the ToolSpec's `argument_projection_plan` (identity join, source
+collections, output shape, and field allowlists) for that record. The final
+frozen Consumer-schema validation remains mandatory. Unrelated discovery and
+execution history remains unavailable to both the prompt and the selector.
+If `scene.bind` already provides one unique observed entity for the node's
+execution identity, materialization freezes that exact `entity_ref` first. The
+Agent may omit it from `forge_plan_select`; a conflicting selector is rejected
+before projection rather than renamed. If the correspondence is ambiguous, the
+node remains explicitly selectable and the Agent must choose an exact opaque
+ID from bounded current evidence.
+
+For a projection consumer, `projection_source` is the normal and preferred
+assembly mode. A legacy `argument_sources` map is tolerated only for declared
+top-level fields from that same understanding record during a tool-version
+transition; it cannot write `targets`, override `entity_ref`, or combine a
+second record. This keeps the Coordinator's projection as the single source of
+truth instead of making AgentLoop reconcile two independently assembled payloads.
 
 Use `forge_plan_ready` with `node_id`, `source_record_id`, `source_path`, `offset`
 and `limit` to browse one level at a time; follow `next_offset` for remaining
 array entries. Source selectors may specify `target_path` to assemble nested
-consumer objects and arrays. The Agent explicitly matches identities across
-producer arrays; Core does not infer joins or reconstruct geometry. Resolve
+consumer objects and arrays. For ordinary selectors the Agent explicitly
+matches identities across producer arrays; a declared consumer projection is
+the only documented identity-join exception and never reconstructs geometry. Resolve
 immutable bindings required by later nodes before materializing the segment.
 
 A semantic-node turn exposes only the node execution surface:
@@ -516,14 +540,15 @@ and named by the current node. For non-refresh Queries, explicit scene
 identities in both the persisted request and response must match the current
 planning scene and each other. A Tool whose frozen policy declares
 `refreshes_scene` may name its source scene in the request, while its response
-must name the current planning scene. `forge_plan_ready` projects the frozen consumer schema only for current
+must name the current planning scene. `forge_plan_ready` projects the frozen consumer schema and any declared
+consumer argument projection only for current
 candidate Tools; live `forge_tool_context` remains responsible for readiness
 and is a schema fallback only for legacy bindings. `AgentComposedDispatch`
 validates the assembled object against the frozen consumer schema before creating a DecisionTrace.
-Schema rejection creates no Tool record or Gateway invocation and never causes
-the Coordinator to infer a missing sensor, geometry, freshness, or calibration
-value. Producers therefore remain independent of consumer-specific argument
-shapes while the final invocation contract stays strict.
+Schema or projection rejection creates no Tool record or Gateway invocation and
+never causes an undeclared fallback or implicit sensor/geometry inference.
+Producers therefore remain independent of consumer-specific argument shapes
+while the final invocation contract stays strict.
 
 The DecisionTrace also carries the exact resumable selection receipt until one
 planning-bound execution record consumes its `decision_trace_ref`. This closes
@@ -721,7 +746,10 @@ Its output is not observation evidence. The explicit
 `robotwin-blocks-ranking-oracle` baseline sets
 `goal_source=benchmark_task_definition`; the Coordinator binds each returned
 `execution_entity_ref` and opaque `destination_ref` into the current semantic
-segment, so the Agent does not invent or optimize destination poses. The
+segment, so the Agent does not invent, optimize, or transcribe destination poses.
+The Oracle Adapter resolves the opaque reference against current Runtime goal
+facts after checking the current `scene.bind` observed-to-execution identity.
+The benchmark path therefore does not add a `manipulation.target` node. The
 observation-owned profile sets `goal_source=observation_owned`, disables
 benchmark destinations, and keeps the Agent-selected `manipulation.target`
 path. There is no implicit fallback between profiles, and neither profile

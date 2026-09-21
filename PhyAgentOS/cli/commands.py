@@ -281,7 +281,8 @@ def task_stop(
 
     loaded = _load_command_config(config, workspace)
     async def cancel_owned_task():
-        from PhyAgentOS.forge.binding import ForgeSkillBindingResolver
+        from PhyAgentOS.forge.binding import ForgeSkillBindingError, ForgeSkillBindingResolver
+        from PhyAgentOS.forge.task import has_unsettled_owned_execution
         from PhyAgentOS.skill_runtime.integration import (
             ActiveRuntimeRegistry,
             discover_active_runtime,
@@ -293,11 +294,23 @@ def task_stop(
         try:
             if task.primary_skill_binding is not None and active is not None:
                 resolver = ForgeSkillBindingResolver(ActiveRuntimeRegistry(active))
-                resolver.validate_runtime(task.primary_skill_binding)
-                coordinator.client = active.client
-                coordinator.runtime_task_binding_ids = active.task_binding_ids
-                coordinator.runtime_invocation_ids = active.invocation_ids
-                coordinator.runtime_session_ids = active.session_ids
+                try:
+                    resolver.validate_runtime(task.primary_skill_binding)
+                except ForgeSkillBindingError:
+                    if has_unsettled_owned_execution(task):
+                        raise
+                    # No Gateway call is possible or necessary: only durable
+                    # Query/terminal facts remain, so Coordinator can settle
+                    # the user-requested cancellation without a live Runtime.
+                else:
+                    coordinator.client = active.client
+                    coordinator.runtime_task_binding_ids = active.task_binding_ids
+                    coordinator.runtime_invocation_ids = active.invocation_ids
+                    coordinator.runtime_session_ids = active.session_ids
+            elif has_unsettled_owned_execution(task):
+                raise ForgeSkillBindingError(
+                    "cannot cancel unsettled task-owned execution without its active Runtime"
+                )
             controller = LongHorizonTaskController.for_control(coordinator)
             return await controller.cancel(task_id, reason="cli_stop")
         finally:

@@ -411,3 +411,26 @@ async def test_cancelled_action_requires_observation_before_task_terminal(tmp_pa
 
     assert finalized.status is AgentTaskStatus.CANCELLED
     assert finalized.execution_records[-1].status == "cancelled"
+
+
+@pytest.mark.asyncio
+async def test_stop_after_terminal_action_releases_task_without_runtime(tmp_path):
+    transport = FakeGatewayTransport(
+        ObservationProvider(),
+        acquire_provider=_acquire_provider(status="failed"),
+        now=NOW,
+    )
+    async with ForgeToolClient("http://fake", transport=transport) as client:
+        coordinator = _coordinator(tmp_path, client)
+        task = coordinator.create_task(
+            task_description="stop after a settled action",
+            verification=TaskVerificationContract(mode="off"),
+        )
+        admitted = await coordinator.start_action(task.task_id, "object.acquire", _action_args())
+        invocation_id = admitted["data"]["invocation_id"]
+        terminal = await client.invocation_result(invocation_id)
+        coordinator.observe_action(task.task_id, invocation_id, terminal)
+        stopped = await coordinator.cancel_task(task.task_id, reason="runtime stopped")
+
+    assert stopped.status is AgentTaskStatus.FAILED
+    assert stopped.execution_records[-1].status == "failed"

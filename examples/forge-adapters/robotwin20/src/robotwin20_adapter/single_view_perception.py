@@ -698,6 +698,16 @@ class SingleViewPerceptionInference:
             "provider_available": base.get("provider_available", True),
         }
 
+    def diagnostic_summary(self) -> dict[str, str]:
+        summary = getattr(self.semantic_inference, "diagnostic_summary", None)
+        if not callable(summary):
+            return {}
+        try:
+            value = summary()
+        except Exception:
+            return {}
+        return dict(value) if isinstance(value, Mapping) else {}
+
     def _semantic_result(self, request: Mapping[str, Any]) -> Mapping[str, Any]:
         infer = getattr(self.semantic_inference, "infer", None)
         raw = infer(request) if callable(infer) else self.semantic_inference(request)

@@ -30,9 +30,9 @@ model:
       sleep_level: 1
   fallback:
     api_base: ${ROBOTWIN20_MODEL_API_BASE}
-    model: gpt-5.6-terra
+    model: ${ROBOTWIN20_MODEL}
     api_key_env: ROBOTWIN20_MODEL_API_KEY
-    reasoning_effort: medium
+    reasoning_effort: ${ROBOTWIN20_REASONING_EFFORT}
     timeout_seconds: 120
     max_output_tokens: 768
 worker:

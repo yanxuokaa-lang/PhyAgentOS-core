@@ -174,6 +174,8 @@ def _spec(spec):
         spec["default_timeout_ms"] = max(
             int(spec.get("default_timeout_ms") or 0), 360_000
         )
+    if spec["tool_id"] == "grasp.propose":
+        planning["argument_projection"] = "entity_geometry_target_v1"
     spec["planning"] = planning
     if spec["tool_id"] == "scene.observe":
         spec["planning"]["capabilities"].append("task.verify")

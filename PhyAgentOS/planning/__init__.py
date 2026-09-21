@@ -7,6 +7,7 @@ execution and persistence.
 
 from .admission import AdmissionContext, AdmissionDecision, admit_tool_call
 from .contracts import (
+    ArgumentProjectionPlan,
     DecisionTrace,
     NodeSettlement,
     PlanGraph,
@@ -42,13 +43,19 @@ from .input_schema import (
     validate_tool_arguments,
 )
 from .policy import validate_policy_edges, workflow_policy_digest
-from .projection import ToolSpecProjectionError, project_tool_spec
+from .projection import (
+    ArgumentProjectionError,
+    ToolSpecProjectionError,
+    execute_argument_projection,
+    project_tool_spec,
+)
 from .replan import build_replan_delta
 from .settlement import settle_node
 from .trace import make_decision_trace
 
 __all__ = [
     "AdmissionContext",
+    "ArgumentProjectionPlan",
     "AdmissionDecision",
     "DecisionTrace",
     "NodeSettlement",
@@ -85,6 +92,8 @@ __all__ = [
     "validate_policy_edges",
     "workflow_policy_digest",
     "ToolSpecProjectionError",
+    "ArgumentProjectionError",
+    "execute_argument_projection",
     "project_tool_spec",
     "make_decision_trace",
 ]

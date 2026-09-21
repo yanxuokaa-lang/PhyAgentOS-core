@@ -304,6 +304,11 @@ def _error(
 
 def _provider_failure(exc: Exception) -> tuple[str, bool]:
     """Return a stable, secret-free provider failure category."""
+    declared_class = getattr(exc, "provider_error_class", None)
+    declared_retryable = getattr(exc, "retryable", None)
+    if isinstance(declared_class, str) and declared_class.strip():
+        if isinstance(declared_retryable, bool):
+            return declared_class, declared_retryable
     text = str(exc).lower()
     name = type(exc).__name__.lower()
     if isinstance(exc, (asyncio.TimeoutError, TimeoutError)) or "timeout" in name or "timed out" in text:
@@ -318,6 +323,31 @@ def _provider_failure(exc: Exception) -> tuple[str, bool]:
     ):
         return "contract", False
     return "provider_failure", False
+
+
+def _provider_diagnostics(provider: Any) -> dict[str, str]:
+    """Project only bounded adapter diagnostics, never exception text or payloads."""
+    summary = getattr(provider, "diagnostic_summary", None)
+    if not callable(summary):
+        return {}
+    try:
+        value = summary()
+    except Exception:
+        return {}
+    if not isinstance(value, Mapping):
+        return {}
+    result: dict[str, str] = {}
+    for key in ("provider_route", "provider_error_class"):
+        item = value.get(key)
+        if isinstance(item, str) and item in {
+            "none", "primary", "fallback", "qwen3-vl-4b-vllm",
+            "gpt-5.6-sol-high", "gpt-5.6-terra-medium", "authentication",
+            "timeout", "transport", "contract", "provider_failure",
+            "authentication+timeout", "authentication+transport",
+            "timeout+transport", "provider_failure+provider_failure",
+        }:
+            result[key] = item
+    return result
 
 
 def validate_arguments(arguments: Any) -> dict[str, Any] | None:
@@ -674,14 +704,17 @@ class SceneUnderstandingEndpoint:
             snapshot = self.provider.understand(deepcopy(arguments))
         except Exception as exc:
             reason, retryable = _provider_failure(exc)
-            return _error(
+            return {
+                **_error(
                 "understanding_provider_error",
                 "scene understanding provider failed",
                 observation_ref=observation_ref,
                 reason=reason,
                 failure_stage="provider",
                 retryable=retryable,
-            )
+                ),
+                **_provider_diagnostics(self.provider),
+            }
         normalized = normalize_snapshot(snapshot)
         if normalized is None or not normalized.provider_available:
             return _error(

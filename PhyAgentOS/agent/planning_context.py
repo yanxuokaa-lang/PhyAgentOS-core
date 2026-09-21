@@ -112,6 +112,17 @@ def context_from_task(task: Any, *, allow_refresh: bool = False) -> AdmissionCon
         raise PlanningContextUnavailableError(
             "no persisted scene revision is available; complete an observation or understanding Tool first"
         )
+    # Discovery evidence is an explicit, Coordinator-selected input of the
+    # active PlanRevision.  It is task/segment-scoped rather than an implicit
+    # replay of every historical record, so retain only this declared set when
+    # a world-changing Action has advanced the planning scene.
+    active_revision = getattr(task, "active_revision", None)
+    selected_discovery = getattr(active_revision, "discovery_evidence_refs", ())
+    evidence.update(
+        reference
+        for reference in selected_discovery
+        if isinstance(reference, str) and reference
+    )
     scene_revision = revisions[-1]
     if needs_observation:
         condition_facts["scene_current"] = False

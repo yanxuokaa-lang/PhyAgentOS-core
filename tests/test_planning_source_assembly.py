@@ -12,6 +12,7 @@ from PhyAgentOS.agent.planning_loop import (
     NodeExecutionContext,
     PlanningLoopError,
     node_source_page,
+    project_consumer_arguments,
     resolve_node_argument_sources,
 )
 from PhyAgentOS.agent.prompt_context import _compact_forge_results
@@ -23,12 +24,139 @@ from PhyAgentOS.forge.capability_runtime.grasp_proposal import GRASP_TOOL_SPEC
 from PhyAgentOS.forge.task import AgentTaskCoordinator, ToolExecutionRecord
 from PhyAgentOS.planning import (
     AdmissionContext,
+    ArgumentProjectionPlan,
     PlanGraph,
     PlanNode,
     ToolSpecPolicy,
     plan_graph_digest,
 )
 from PhyAgentOS.verification.contracts import TaskVerificationContract
+
+
+def test_declared_consumer_projection_joins_identity_and_drops_producer_only_fields():
+    context = source_context()
+    understanding = context.evidence_context[0].model_copy(update={
+        "arguments": {
+            "observation_ref": "observation://scene-1/camera",
+            "scene_revision": "scene-1",
+            "frame_id": "camera",
+            "calibration_ref": "artifact://scene-1/calibration",
+            "freshness_ms": 10,
+            "max_age_ms": 1000,
+        },
+        "response": {"data": {
+            **producer(),
+            "frame": {"frame_id": "camera", "unit": "m"},
+            "calibration_ref": "artifact://scene-1/calibration",
+            "derived_artifacts": [{
+                "artifact_ref": "artifact://scene-1/object-4-cloud",
+                "kind": "object_point_cloud",
+                "observation_ref": "observation://scene-1/camera",
+                "scene_revision": "scene-1",
+                "entity_ref": "entity://object-4",
+                "frame_id": "camera",
+                "calibration_ref": "artifact://scene-1/calibration",
+                "provenance": ["artifact://scene-1/capture/depth"],
+                "descriptor": {"shape_class": "box", "dimensions_m": [1, 1, 1], "orientation_reliable": False, "confidence": 0.9},
+            }],
+        }},
+    })
+    context = context.model_copy(update={"evidence_context": (understanding,)})
+    result = project_consumer_arguments(
+        context,
+        projection="entity_geometry_target_v1",
+        projection_plan=ArgumentProjectionPlan(
+            projection_id="entity_geometry_target_v1",
+            entity_collection="entities",
+            envelope_collection="spatial_envelopes",
+            artifact_collection="derived_artifacts",
+            output_collection="targets",
+            entity_fields=("entity_ref", "category", "confidence"),
+            envelope_fields=("frame_id", "unit", "min_xyz_m", "max_xyz_m", "confidence", "provenance"),
+            artifact_output_field="geometry_artifacts",
+            artifact_kind_field="kind",
+            artifact_kind_value="object_point_cloud",
+            artifact_fields=(
+                "artifact_ref", "kind", "observation_ref", "scene_revision",
+                "entity_ref", "frame_id", "calibration_ref", "provenance",
+            ),
+            top_level_fields=(
+                "observation_ref", "scene_revision", "frame_id", "calibration_ref",
+                "freshness_ms", "max_age_ms",
+            ),
+        ),
+        literals={"entity_ref": "entity://object-4"},
+        source_record_id="understanding",
+    )
+    assert result["observation_ref"] == "observation://scene-1/camera"
+    target = result["targets"][0]
+    assert target["entity_ref"] == "entity://object-4"
+    assert target["spatial_envelope"]["min_xyz_m"] == [0.4, 0.1, 0.2]
+    assert "entity_ref" not in target["spatial_envelope"]
+    assert target["geometry_artifacts"][0]["artifact_ref"].endswith("object-4-cloud")
+    assert "descriptor" not in target["geometry_artifacts"][0]
+
+
+@pytest.mark.parametrize(
+    ("record_id", "mutate", "message"),
+    [
+        ("missing-record", lambda data: data, "source record is not visible"),
+        (
+            "understanding",
+            lambda data: {**data, "entities": [*data["entities"], data["entities"][0]]},
+            "one uniquely matched entity",
+        ),
+        (
+            "understanding",
+            lambda data: {
+                **data,
+                "spatial_envelopes": [
+                    *data["spatial_envelopes"], data["spatial_envelopes"][-1]
+                ],
+            },
+            "one uniquely matched spatial envelope",
+        ),
+        (
+            "understanding",
+            lambda data: {
+                **data,
+                "entities": [
+                    {key: value for key, value in data["entities"][0].items() if key != "confidence"},
+                    *data["entities"][1:],
+                ],
+            },
+            "projection entity is missing fields: confidence",
+        ),
+    ],
+)
+def test_consumer_projection_rejects_missing_or_ambiguous_authorized_facts(
+    record_id, mutate, message
+):
+    context = source_context()
+    if record_id == "understanding":
+        source = context.evidence_context[0]
+        data = source.response["data"]
+        source = source.model_copy(update={"response": {"data": mutate(data)}})
+        context = context.model_copy(update={"evidence_context": (source,)})
+
+    with pytest.raises(PlanningLoopError, match=message):
+        project_consumer_arguments(
+            context,
+            projection="entity_geometry_target_v1",
+            projection_plan=ArgumentProjectionPlan(
+                projection_id="entity_geometry_target_v1",
+                entity_collection="entities",
+                envelope_collection="spatial_envelopes",
+                output_collection="targets",
+                entity_fields=("entity_ref", "category", "confidence"),
+                envelope_fields=(
+                    "frame_id", "unit", "min_xyz_m", "max_xyz_m", "confidence", "provenance"
+                ),
+                top_level_fields=(),
+            ),
+            literals={"entity_ref": "entity://object-0"},
+            source_record_id=record_id,
+        )
 
 
 def producer():

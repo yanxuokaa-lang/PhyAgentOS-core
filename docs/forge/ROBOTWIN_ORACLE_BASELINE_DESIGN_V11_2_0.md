@@ -46,7 +46,11 @@ not called or copied into a PlanGraph.
 The oracle profile also sets `goal_source=benchmark_task_definition`. In that
 profile `task.goal` is the explicit Runtime-owned destination source and the
 Coordinator propagates its opaque `destination_ref` into the preparation/place
-segment. The observed profile sets `goal_source=observation_owned`; benchmark
+segment. `Grounding.oracle_scene_facts` resolves that reference against current
+Runtime goal facts only after matching the current observed identity to its
+execution identity; no model-visible 4x4 matrix transcription or
+`manipulation.target` node is required. The observed profile sets
+`goal_source=observation_owned`; benchmark
 goal facts are disabled for that profile and the Agent must later create targets
 through the existing observation-owned `manipulation.target` path. This is a
 profile selection, not an implicit fallback.

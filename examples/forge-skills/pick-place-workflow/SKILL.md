@@ -41,19 +41,24 @@ baseline exception: identity still comes from `scene.observe`,
 `scene.understand`, and `scene.bind`, while preparation uses the bound Runtime
 actor geometry and collision world. `task.goal` returns task-specification goal
 facts separately from observations. Match its `execution_entity_ref` to the
-mapping returned by `scene.bind`, choose the operation order yourself, and pass
-the selected exact `world_T_object_target` to `manipulation.target`. Never call
-`task.goal` output sensor evidence, task success, readiness, or motion approval.
-The Runtime must not fall back between oracle and observed profiles.
+mapping returned by `scene.bind` and choose the operation order yourself. Use the
+opaque benchmark `destination_ref` directly in `manipulation.prepare` and
+`object.place`; the Coordinator propagates the uniquely matched reference and the
+Oracle Adapter resolves its Runtime-owned pose. Do not copy the benchmark 4x4
+matrix into a `manipulation.target` node. Never call `task.goal` output sensor
+evidence, task success, readiness, or motion approval. The Runtime must not fall
+back between oracle and observed profiles.
 
 The graph represents your chosen obligations and dependencies. One PlanNode is one
 settlement unit completed by one selected Tool. A composite intention such as
 `object.relocate` is not an executable node unless the Runtime publishes one atomic
 Tool that owns the complete relocation. Before materializing a graph, complete
 the task-bound read-only Queries needed to establish every candidate's immutable
-`input_binding_keys`. In particular, resolve `manipulation.target` first when
-`object.place` requires an existing `destination_ref`; a dependency cannot stand
-in for that reference. Then materialize the current scene-bound relocation as
+`input_binding_keys`. In observation-owned profiles, resolve
+`manipulation.target` first when `object.place` requires an existing
+`destination_ref`; a dependency cannot stand in for that reference. In the
+explicit benchmark profile, use the unique `task.goal` destination propagated by
+the Coordinator instead. Then materialize the current scene-bound relocation as
 atomic `grasp.propose -> manipulation.prepare -> object.acquire -> object.place`
 nodes (or the remaining suffix if earlier Queries already settled), followed by its
 post-placement observation, understanding, and binding checkpoint. The Tools do
@@ -104,6 +109,9 @@ discovery Query before materializing goal-bound nodes. It may expose exact goals
 from a simulator task definition or another deployment-owned task specification;
 its provenance is distinct from observation. The Agent remains responsible for
 matching each goal to a bound entity and choosing order, staging, and recovery.
+For the explicit benchmark profile, preserve the matched opaque
+`destination_ref`; do not reproduce its numeric pose through
+`manipulation.target`.
 
 Choose task relations, reference frames, destinations, intermediate placements
 and dependencies from the user goal and observed evidence. Never equate camera
@@ -192,6 +200,13 @@ checks to obtain candidates. Any further preparation must go through an independ
 `manipulation.prepare` Query, and motion authorization stays with the Gateway/Runtime
 admission path.
 
+The `entity_ref` selected for a projection must be the opaque primary key copied
+verbatim from the current `scene.bind`/`scene.understand` record. If the active
+PlanGraph already contains a unique Coordinator-owned entity binding, omit the
+selector and let PAOS project that binding. Do not rename
+`entity://block-red-1` to a color-derived alias such as `entity://red-block-1`;
+category and color are descriptive fields, not identity.
+
 Use `manipulation.prepare` only after a successful `grasp.propose` result. Pass the
 observation reference, scene revision, frame, calibration reference, freshness,
 candidate-set reference, and complete candidate records unchanged. This Query is a
@@ -202,13 +217,20 @@ an empty set is returned explicitly as `status: empty`.
 
 For an agent-composed preparation node, include semantic fields directly in
 `forge_plan_select.arguments` (or as a nested `intent` object): `goal`, non-empty
-`success_criteria`, one or more `allowed_arms`, `coordination_mode` (`single_arm`,
+`success_criteria`, one or more exact `allowed_arms`, `coordination_mode` (`single_arm`,
 `alternative_arm`, or `bimanual`), and optional `constraints`. Do not provide
 task/revision/node identity, node digest, observation bindings, entity identity,
 or `motion_authorized`; PAOS derives those fields from the active graph and final
 Tool arguments. Flat and nested forms must not conflict with each other or with
 the node declaration. Use the returned `selection.tool_arguments` unchanged for
 `forge_tool_query`, together with the returned `planning_binding`.
+
+`allowed_arms` must copy the `arm_id` strings from the same-scene
+`manipulation.capabilities` snapshot verbatim. For an `alternative_arm` node,
+PAOS may already bind all available IDs from that snapshot; in that case use the
+node binding and do not repeat the field. They are opaque Runtime resource
+identifiers, not natural-language labels: for this profile the values are `left`
+and `right`; do not rewrite them as `left_arm`/`right_arm` or invent aliases.
 
 Preparation evidence is not an IK guarantee, collision guarantee for a future
 trajectory, or execution admission. Treat `stale`, `unavailable`, and `invalid` as

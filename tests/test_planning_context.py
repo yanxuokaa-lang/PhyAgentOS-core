@@ -29,10 +29,16 @@ def _record(
     )
 
 
-def _task(*records: SimpleNamespace) -> SimpleNamespace:
+def _task(
+    *records: SimpleNamespace,
+    discovery_evidence_refs: tuple[str, ...] = (),
+) -> SimpleNamespace:
     return SimpleNamespace(
         execution_records=records,
-        active_revision=SimpleNamespace(node_settlements=()),
+        active_revision=SimpleNamespace(
+            node_settlements=(),
+            discovery_evidence_refs=discovery_evidence_refs,
+        ),
         primary_skill_binding=None,
         tool_bindings=(
             SimpleNamespace(
@@ -147,3 +153,59 @@ def test_context_accepts_refresh_query_from_current_to_new_scene() -> None:
 
     assert context.scene_revision == "scene-2"
     assert context.evidence_refs == frozenset({"tool:observe-second"})
+
+
+def test_context_restores_only_selected_discovery_evidence_after_world_change() -> None:
+    observation = _record(
+        "observe-current",
+        tool_id="scene.observe",
+        arguments={"sensor_ref": "camera/head"},
+        response={"ok": True, "data": {"scene_revision": "scene-new"}},
+    )
+    acquire = _record(
+        "acquire",
+        tool_id="object.acquire",
+        arguments={"scene_revision": "scene-old"},
+        response={
+            "ok": True,
+            "data": {
+                "status": "succeeded",
+                "world_changed": True,
+                "new_scene_revision": "scene-new",
+            },
+        },
+    )
+
+    context = context_from_task(
+        _task(
+            observation,
+            acquire,
+            discovery_evidence_refs=("tool:goal", "tool:bind"),
+        ),
+        allow_refresh=True,
+    )
+
+    assert context.scene_revision == "scene-new"
+    assert context.evidence_refs == frozenset(
+        {"tool:observe-current", "tool:acquire", "tool:goal", "tool:bind"}
+    )
+
+
+def test_context_does_not_restore_unselected_historical_discovery_evidence() -> None:
+    observation = _record(
+        "observe-current",
+        tool_id="scene.observe",
+        arguments={"sensor_ref": "camera/head"},
+        response={"ok": True, "data": {"scene_revision": "scene-new"}},
+    )
+
+    context = context_from_task(
+        _task(
+            observation,
+            discovery_evidence_refs=("tool:selected",),
+        ),
+        allow_refresh=True,
+    )
+
+    assert "tool:selected" in context.evidence_refs
+    assert "tool:historical" not in context.evidence_refs

@@ -3,6 +3,25 @@ implementation_id: grasp.proposal
 endpoint_id: grasp_proposal
 operation: propose
 semantics: query
+planning:
+  schema_version: paos-tool-spec-policy/v1
+  capabilities: [grasp.propose]
+  argument_projection: entity_geometry_target_v1
+  argument_projection_plan:
+    projection_id: entity_geometry_target_v1
+    join_field: entity_ref
+    entity_collection: entities
+    envelope_collection: spatial_envelopes
+    artifact_collection: derived_artifacts
+    output_collection: targets
+    entity_fields: [entity_ref, category, confidence]
+    envelope_output_field: spatial_envelope
+    envelope_fields: [frame_id, unit, min_xyz_m, max_xyz_m, confidence, provenance]
+    artifact_output_field: geometry_artifacts
+    artifact_kind_field: kind
+    artifact_kind_value: object_point_cloud
+    artifact_fields: [artifact_ref, kind, observation_ref, scene_revision, entity_ref, frame_id, calibration_ref, provenance]
+    top_level_fields: [observation_ref, scene_revision, frame_id, calibration_ref, freshness_ms, max_age_ms]
 default_timeout_ms: 180000
 description: Propose provider-neutral grasp candidates from one verified scene understanding result without planning, IK, collision checking, or motion.
 input_schema:
@@ -23,7 +42,14 @@ input_schema:
         additionalProperties: false
         required: [entity_ref, category, confidence, spatial_envelope]
         properties:
-          entity_ref: {type: string, pattern: '^entity://[^/]+$'}
+          entity_ref:
+            type: string
+            pattern: '^entity://[^/]+$'
+            description: >-
+              Opaque entity primary key copied verbatim from the current
+              scene.bind/scene.understand record. When a unique Coordinator-owned
+              node binding exists, PAOS supplies it before projection; do not
+              derive or rename it from a color or category label.
           category: {type: string, minLength: 1}
           confidence: {type: number, minimum: 0, maximum: 1}
           spatial_envelope:

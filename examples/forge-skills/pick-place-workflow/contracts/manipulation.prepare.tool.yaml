@@ -169,6 +169,11 @@ input_schema:
           items:
             type: string
           title: Allowed Arms
+          description: >-
+            Copy arm_id values verbatim from the same-scene
+            manipulation.capabilities snapshot (for example left or right).
+            These are opaque Runtime resource identifiers, not natural-language
+            labels; do not rewrite them as left_arm/right_arm or invent aliases.
           type: array
         coordination_mode:
           $ref: '#/properties/intent/$defs/CoordinationMode'

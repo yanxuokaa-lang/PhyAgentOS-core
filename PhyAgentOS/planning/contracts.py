@@ -58,6 +58,34 @@ class ResourceClaim(_Frozen):
     quantity: int = Field(default=1, ge=1)
 
 
+class ArgumentProjectionPlan(_Frozen):
+    """Provider-neutral declaration for compiling producer facts for one consumer."""
+
+    projection_id: str = Field(min_length=1)
+    join_field: str = Field(default="entity_ref", min_length=1)
+    entity_collection: str = Field(min_length=1)
+    envelope_collection: str = Field(min_length=1)
+    artifact_collection: str | None = None
+    output_collection: str = Field(min_length=1)
+    entity_fields: tuple[str, ...] = ()
+    envelope_output_field: str = Field(default="spatial_envelope", min_length=1)
+    envelope_fields: tuple[str, ...] = ()
+    artifact_output_field: str | None = None
+    artifact_kind_field: str | None = None
+    artifact_kind_value: str | None = None
+    artifact_fields: tuple[str, ...] = ()
+    top_level_fields: tuple[str, ...] = ()
+
+    @field_validator(
+        "entity_fields", "envelope_fields", "artifact_fields", "top_level_fields"
+    )
+    @classmethod
+    def unique_projection_fields(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if len(value) != len(set(value)) or any(not field.strip() for field in value):
+            raise ValueError("projection fields must be unique non-empty strings")
+        return value
+
+
 class PlanNode(_Frozen):
     """One semantic settlement obligation completed by one selected Tool."""
 
@@ -233,6 +261,8 @@ class ToolSpecPolicy(_Frozen):
     input_binding_keys: tuple[str, ...] = ()
     requires_before_plan: bool = False
     trusted_argument_builder: Literal["manipulation_intent_v2"] | None = None
+    argument_projection: str | None = None
+    argument_projection_plan: ArgumentProjectionPlan | None = None
 
     @field_validator("tool_id")
     @classmethod

@@ -487,7 +487,9 @@ class Grounding:
 
     def oracle_scene_facts(self, request, *, deadline=None):
         """Bind simulator actor geometry to Agent-selected observed identities."""
-        value = self.targets[request["destination_ref"]]
+        value = self.targets.get(request["destination_ref"])
+        if value is None:
+            value = self._benchmark_goal_target(request, deadline=deadline)
         if any(value[key] != request[key] for key in IDENTITY_KEYS):
             raise ValueError("target observation identity mismatch")
         target_entity = request["intent"]["entity_ref"]
@@ -538,6 +540,70 @@ class Grounding:
         facts.pop("support_surface", None)
         facts.pop("observed_collision", None)
         return facts
+
+    def _benchmark_goal_target(self, request, *, deadline=None):
+        """Resolve one Runtime-owned benchmark destination through current binding."""
+
+        target_entity = request.get("intent", {}).get("entity_ref")
+        destination_ref = request.get("destination_ref")
+        if not isinstance(target_entity, str) or not isinstance(destination_ref, str):
+            raise ValueError("oracle benchmark target request is incomplete")
+        matches = [
+            (reference, binding)
+            for reference, binding in self.bindings.items()
+            if all(binding.get(key) == request.get(key) for key in IDENTITY_KEYS)
+            and target_entity in binding.get("objects", {})
+        ]
+        if len(matches) != 1:
+            raise ValueError("oracle benchmark target binding is absent or ambiguous")
+        binding_ref, binding = matches[0]
+        observed_object = binding["objects"][target_entity]
+        execution_entity = observed_object.get("entity_ref")
+        kwargs = (
+            {}
+            if deadline is None
+            else {"timeout_s": deadline.remaining("task_goal_facts")}
+        )
+        goal_facts = self.client.query("task_goal_facts", {}, **kwargs)
+        if (
+            not isinstance(goal_facts, Mapping)
+            or goal_facts.get("status") != "available"
+            or goal_facts.get("geometry_source") != "benchmark_task_definition"
+        ):
+            raise ValueError("oracle benchmark goal facts are unavailable")
+        goals = goal_facts.get("goals")
+        if not isinstance(goals, list):
+            raise ValueError("oracle benchmark goals are invalid")
+        goal_matches = [
+            goal
+            for goal in goals
+            if isinstance(goal, Mapping)
+            and goal.get("destination_ref") == destination_ref
+            and goal.get("execution_entity_ref") == execution_entity
+        ]
+        if len(goal_matches) != 1:
+            raise ValueError("oracle benchmark destination does not uniquely match binding")
+        goal = goal_matches[0]
+        if goal.get("frame_id") != "world" or goal.get("unit") != "m":
+            raise ValueError("oracle benchmark destination frame or unit is invalid")
+        pose = rigid_transform(goal.get("world_T_object_target"))
+        target = deepcopy(observed_object)
+        target.update(
+            entity_ref=target_entity,
+            world_T_object_target=pose.reshape(-1).tolist(),
+        )
+        return {
+            **{key: request[key] for key in IDENTITY_KEYS},
+            "binding_ref": binding_ref,
+            "requested_pose": {
+                "destination_ref": destination_ref,
+                "execution_entity_ref": execution_entity,
+                "frame_id": "world",
+                "unit": "m",
+            },
+            "object": target,
+            "motion_authorized": False,
+        }
 
     def _observed_support(self, binding):
         """Estimate support and retain residual occupancy without actor meshes."""

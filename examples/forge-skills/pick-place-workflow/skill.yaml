@@ -1,6 +1,6 @@
 manifest_version: 2
 name: pick-place-workflow
-version: "2.6.6"
+version: "2.6.16"
 description: Provider-neutral perception, preparation, acquisition, placement, and long-horizon workflow contracts.
 skill_document: SKILL.md
 gateway_url: http://127.0.0.1:19020
@@ -36,6 +36,8 @@ profiles:
       - ROBOTWIN20_MATERIALIZER_PYTHON
       - ROBOTWIN20_MODEL_API_BASE
       - ROBOTWIN20_MODEL_API_KEY
+      - ROBOTWIN20_MODEL
+      - ROBOTWIN20_REASONING_EFFORT
       - ROBOTWIN20_ROUTE_GEOMETRY_SOURCE
       - ROBOTWIN20_SIMULATION_ACTION_MODE
       - ROBOTWIN20_GOAL_SOURCE
@@ -75,6 +77,8 @@ profiles:
       - ROBOTWIN20_MATERIALIZER_PYTHON
       - ROBOTWIN20_MODEL_API_BASE
       - ROBOTWIN20_MODEL_API_KEY
+      - ROBOTWIN20_MODEL
+      - ROBOTWIN20_REASONING_EFFORT
       - ROBOTWIN20_ROUTE_GEOMETRY_SOURCE
       - ROBOTWIN20_SIMULATION_ACTION_MODE
       - ROBOTWIN20_GOAL_SOURCE
@@ -114,6 +118,8 @@ profiles:
       - ROBOTWIN20_MATERIALIZER_PYTHON
       - ROBOTWIN20_MODEL_API_BASE
       - ROBOTWIN20_MODEL_API_KEY
+      - ROBOTWIN20_MODEL
+      - ROBOTWIN20_REASONING_EFFORT
       - ROBOTWIN20_ROUTE_GEOMETRY_SOURCE
       - ROBOTWIN20_SIMULATION_ACTION_MODE
       - ROBOTWIN20_GOAL_SOURCE
@@ -143,10 +149,10 @@ artifacts:
   resolver: local
   nodes:
     robotwin20_persistent_host:
-      artifact_id: robotwin20_persistent_host-0.6.6-linux-x86_64
-      version: "0.6.6"
+      artifact_id: robotwin20_persistent_host-0.6.13-linux-x86_64
+      version: "0.6.13"
       platform: linux
       arch: x86_64
       artifact_type: executable_tar_gz
       entrypoint: robotwin20_persistent_host
-      sha256: a888f999cbfae2b8b7f3bea9d3bf045f4dc043ba6d7cb168e3cd6d169824b042
+      sha256: 5f186d81d0cb46400d98dc022cd916e1248c272874b84b511235aab4faff82af

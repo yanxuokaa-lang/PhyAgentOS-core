@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING, Any
 
 from PhyAgentOS.agent.planning_dispatch import AgentComposedDispatch, PlanningDispatchError
@@ -11,6 +11,7 @@ from PhyAgentOS.agent.planning_loop import (
     NodeContextProvider,
     PlanningLoopError,
     node_source_page,
+    project_consumer_arguments,
     resolve_node_argument_sources,
 )
 from PhyAgentOS.agent.tools.base import Tool
@@ -88,6 +89,68 @@ def _path_schema(*, allow_empty: bool = False) -> dict[str, Any]:
     }
 
 
+def _merge_projection_compatible_sources(
+    context: Any,
+    *,
+    literals: Mapping[str, Any],
+    argument_sources: Mapping[str, Any] | None,
+    projection_source: Mapping[str, Any] | None,
+    projection_plan: Any,
+) -> dict[str, Any]:
+    """Normalize legacy top-level sources into one projection-owned input.
+
+    Projection plans own the consumer shape.  A model may still include the
+    older source map while transitioning between prompt/tool versions, but it
+    is safe only when every mapping points at the same authorized record and a
+    declared top-level projection field.  Nested consumer output and semantic
+    identity remain projection-owned and therefore cannot be overridden.
+    """
+
+    if not isinstance(projection_source, Mapping):
+        raise PlanningLoopError(
+            "consumer projection requires projection_source with one understanding record"
+        )
+    source_record_id = projection_source.get("record_id")
+    if not isinstance(source_record_id, str) or not source_record_id:
+        raise PlanningLoopError("consumer projection source record_id must be non-empty")
+    merged = dict(literals)
+    if not argument_sources:
+        return merged
+    if not isinstance(argument_sources, Mapping):
+        raise PlanningLoopError("consumer projection argument_sources must be an object")
+
+    top_level_fields = set(getattr(projection_plan, "top_level_fields", ()))
+    for argument_name, selector in argument_sources.items():
+        if not isinstance(selector, Mapping):
+            raise PlanningLoopError("consumer projection source selector must be an object")
+        if selector.get("record_id") != source_record_id:
+            raise PlanningLoopError(
+                "projection_source and argument_sources must use the same authorized record"
+            )
+        target_path = selector.get("target_path", [argument_name])
+        if (
+            not isinstance(target_path, (list, tuple))
+            or len(target_path) != 1
+            or not isinstance(target_path[0], str)
+            or target_path[0] not in top_level_fields
+        ):
+            raise PlanningLoopError(
+                "projection consumer accepts only declared top-level source fields; "
+                "do not source nested targets or entity identity"
+            )
+
+    resolved = resolve_node_argument_sources(context, {}, argument_sources)
+    for field in top_level_fields:
+        if field not in resolved:
+            continue
+        if field in merged and merged[field] != resolved[field]:
+            raise PlanningLoopError(
+                f"projection top-level field {field!r} conflicts with its authorized source"
+            )
+        merged[field] = resolved[field]
+    return merged
+
+
 class ForgePlanSelectTool(Tool):
     """Create a Coordinator-owned binding for one ready semantic node."""
 
@@ -103,8 +166,10 @@ class ForgePlanSelectTool(Tool):
     def description(self) -> str:
         return (
             "Select one ready semantic node and Tool; returns a PAOS-generated planning "
-            "binding plus the final Tool arguments without invoking a Gateway. Pass both "
-            "unchanged to the selected Forge Tool wrapper."
+            "binding plus the final Tool arguments without invoking a Gateway. For a Tool "
+            "with a declared argument projection, pass projection_source only; a legacy "
+            "argument_sources map is accepted only for compatible top-level fields from "
+            "that same record. Pass the returned binding and selection unchanged."
         )
 
     @property
@@ -125,12 +190,19 @@ class ForgePlanSelectTool(Tool):
                             "path": _path_schema(),
                             "target_path": {
                                 **_path_schema(),
-                                "description": "Destination fields/indexes, e.g. ['targets',0,'category']; omitted means the source map key is the literal top-level argument name.",
+                                "description": "Destination fields/indexes, e.g. ['targets',0,'category']; omitted means the source map key is the literal top-level argument name. Do not use this for a ToolSpec projection consumer's nested output.",
                             },
                         },
                         "required": ["record_id", "path"],
                         "additionalProperties": False,
                     },
+                },
+                "projection_source": {
+                    "type": "object",
+                    "description": "For a ToolSpec projection, the one authorized understanding record. Do not manually source targets or geometry fields.",
+                    "properties": {"record_id": {"type": "string", "minLength": 1}},
+                    "required": ["record_id"],
+                    "additionalProperties": False,
                 },
                 "decision_reason": {"type": "string", "minLength": 1},
             },
@@ -146,6 +218,7 @@ class ForgePlanSelectTool(Tool):
         arguments: dict[str, Any],
         decision_reason: str,
         argument_sources: dict[str, Any] | None = None,
+        projection_source: dict[str, Any] | None = None,
     ) -> str:
         dispatch = self.dispatch_getter()
         if dispatch is None or dispatch.graph.task_id != task_id:
@@ -160,10 +233,106 @@ class ForgePlanSelectTool(Tool):
             if current is not None:
                 error["task_status"] = current.status.value
             return self._error_response(error)
+        pending_loader = getattr(self.coordinator, "pending_planning_selection", None)
+        pending = (
+            pending_loader(
+                task_id,
+                node_id,
+                scene_revision=dispatch.current_scene_revision,
+            )
+            if callable(pending_loader)
+            else None
+        )
+        if pending is not None and pending.get("tool_id") == tool_id:
+            return json.dumps(
+                {
+                    "ok": True,
+                    "data": {
+                        "planning_binding": pending["planning_binding"],
+                        "selection": {
+                            "task_id": pending["task_id"],
+                            "revision_id": pending["revision_id"],
+                            "scene_revision": pending["scene_revision"],
+                            "tool_id": pending["tool_id"],
+                            "execution_tool": pending["execution_tool"],
+                            "arguments": {},
+                            "use_selected_arguments": True,
+                        },
+                        "resumed_selection": True,
+                    },
+                    "motion_authorized": False,
+                },
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
         try:
             final_arguments = arguments
-            if argument_sources:
+            projection, projection_plan = dispatch.argument_projection(tool_id)
+            if projection is not None:
+                node = next(
+                    item for item in dispatch.graph.nodes if item.node_id == node_id
+                )
+                bound_entity = node.input_bindings.get("entity_ref")
+                if isinstance(bound_entity, str):
+                    supplied_entity = final_arguments.get("entity_ref")
+                    if supplied_entity is not None and supplied_entity != bound_entity:
+                        raise PlanningDispatchError(
+                            "projection entity_ref conflicts with the Coordinator-owned node binding",
+                            code="semantic_binding_mismatch",
+                            failure_owner="agent_arguments",
+                            retryable_in_revision=False,
+                            requires_replan=True,
+                            missing_fields=("entity_ref",),
+                            recommended_action="use_the_exact_node_entity_ref",
+                        )
+                    # The Coordinator-owned binding is the only source of
+                    # identity for a uniquely scene-bound projection node.
+                    final_arguments = {**final_arguments, "entity_ref": bound_entity}
                 try:
+                    task = self.coordinator.get_task(task_id)
+                    context = NodeContextProvider(lambda _task_id: task).build(
+                        task_id,
+                        node_id,
+                        scene_revision=dispatch.current_scene_revision,
+                    )
+                    final_arguments = _merge_projection_compatible_sources(
+                        context,
+                        literals=final_arguments,
+                        argument_sources=argument_sources,
+                        projection_source=projection_source,
+                        projection_plan=projection_plan,
+                    )
+                    final_arguments = project_consumer_arguments(
+                        context,
+                        projection=projection,
+                        projection_plan=projection_plan,
+                        literals=final_arguments,
+                        source_record_id=(
+                            projection_source.get("record_id")
+                            if isinstance(projection_source, dict)
+                            else None
+                        ),
+                    )
+                except PlanningLoopError as exc:
+                    raise PlanningDispatchError(
+                        str(exc),
+                        code="consumer_projection_invalid",
+                        failure_owner="agent_arguments",
+                        retryable_in_revision=False,
+                        requires_replan=True,
+                        recommended_action="use_one_understanding_record_for_projection_and_top_level_fields",
+                    ) from exc
+            else:
+                if projection_source:
+                    raise PlanningDispatchError(
+                        "projection_source was supplied for a Tool without a declared projection",
+                        code="consumer_projection_invalid",
+                        failure_owner="agent_arguments",
+                        retryable_in_revision=False,
+                        requires_replan=True,
+                        recommended_action="use_argument_sources_for_this_consumer",
+                    )
+                if argument_sources:
                     task = self.coordinator.get_task(task_id)
                     context = NodeContextProvider(lambda _task_id: task).build(
                         task_id,
@@ -175,15 +344,6 @@ class ForgePlanSelectTool(Tool):
                         arguments,
                         argument_sources,
                     )
-                except PlanningLoopError as exc:
-                    raise PlanningDispatchError(
-                        str(exc),
-                        code="invalid_argument_source",
-                        failure_owner="agent_arguments",
-                        recommended_action=(
-                            "browse_authorized_sources_with_forge_plan_ready_and_correct_paths"
-                        ),
-                    ) from exc
             proposal = dispatch.prepare_selection(
                 node_id=node_id, tool_id=tool_id, arguments=final_arguments,
                 decision_reason=decision_reason,
@@ -205,7 +365,7 @@ class ForgePlanSelectTool(Tool):
                 for field in ("task_id", "revision_id", "scene_revision", "tool_arguments")
                 if field in receipt
             }
-            if argument_sources:
+            if argument_sources or projection_source:
                 selection["tool_arguments"] = {}
                 selection["use_selected_arguments"] = True
             return json.dumps(

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -11,6 +13,7 @@ from robotwin20_adapter import (
 )
 from robotwin20_adapter.qwen3_vl_vllm_scene_understanding import (
     Qwen3VLVLLMInferenceError,
+    _default_client_factory,
     _project_vllm_claims,
 )
 
@@ -71,6 +74,27 @@ class _Client:
 
     def close(self):
         self.closed = True
+
+
+def test_default_local_client_bypasses_environment_proxy(monkeypatch):
+    captured = {}
+    http_client = object()
+    monkeypatch.setattr(
+        "robotwin20_adapter.qwen3_vl_vllm_scene_understanding.httpx.Client",
+        lambda **kwargs: captured.setdefault("http", (kwargs, http_client))[1],
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "openai",
+        SimpleNamespace(
+            OpenAI=lambda **kwargs: captured.setdefault("openai", kwargs) or object()
+        ),
+    )
+
+    _default_client_factory(api_key="EMPTY", base_url="http://127.0.0.1:8012/v1")
+
+    assert captured["http"][0] == {"trust_env": False}
+    assert captured["openai"]["http_client"] is http_client
 
 
 def test_vllm_provider_uses_openai_compatible_multimodal_schema():

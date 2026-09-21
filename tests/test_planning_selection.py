@@ -8,7 +8,11 @@ import pytest
 
 import PhyAgentOS.forge.task as forge_task_module
 from PhyAgentOS.agent.planning_dispatch import AgentComposedDispatch
-from PhyAgentOS.agent.tools.planning import ForgePlanSelectTool
+from PhyAgentOS.agent.planning_loop import PlanningLoopError
+from PhyAgentOS.agent.tools.planning import (
+    ForgePlanSelectTool,
+    _merge_projection_compatible_sources,
+)
 from PhyAgentOS.config.schema import ForgeConfig
 from PhyAgentOS.forge.binding import BoundToolSpec, RuntimeBinding
 from PhyAgentOS.forge.capability_runtime.grasp_proposal import GRASP_TOOL_SPEC
@@ -22,6 +26,7 @@ from PhyAgentOS.planning import (
     canonical_sha256,
     plan_graph_digest,
     plan_node_digest,
+    project_tool_spec,
     tool_input_binding_digest,
 )
 from PhyAgentOS.verification.contracts import TaskVerificationContract
@@ -53,6 +58,9 @@ class _Coordinator:
 class _Dispatch:
     graph = SimpleNamespace(task_id="task-1")
     current_scene_revision = "scene-1"
+
+    def argument_projection(self, tool_id):
+        return None, None
 
     def prepare_selection(self, **kwargs):
         return {
@@ -86,6 +94,42 @@ def test_plan_select_is_control_plane_only_and_returns_binding():
     assert result["data"]["selection"]["scene_revision"] == "scene-1"
     assert result["data"]["selection"]["tool_arguments"] == {}
     assert coordinator.proposals[0]["tool_id"] == "scene.observe"
+
+
+def test_plan_select_resumes_existing_unconsumed_selection_without_reselecting():
+    class Coordinator(_Coordinator):
+        def pending_planning_selection(self, task_id, node_id, *, scene_revision):
+            assert (task_id, node_id, scene_revision) == ("task-1", "observe", "scene-1")
+            return {
+                "task_id": task_id,
+                "revision_id": "revision-1",
+                "node_id": node_id,
+                "scene_revision": scene_revision,
+                "execution_tool": "forge_tool_query",
+                "tool_id": "scene.observe",
+                "arguments": {"sensor_ref": "head_camera", "max_age_ms": 1000},
+                "planning_binding": {
+                    "revision_id": "revision-1",
+                    "node_id": node_id,
+                    "node_digest": "1" * 64,
+                    "obligation_id": "observe",
+                    "input_binding_digest": "2" * 64,
+                    "decision_trace_ref": "artifact://planning-traces/task-1/revision-1/observe/t1",
+                },
+            }
+
+    coordinator = Coordinator()
+    result = json.loads(asyncio.run(ForgePlanSelectTool(
+        coordinator, lambda: _Dispatch()
+    ).execute(
+        "task-1", "observe", "scene.observe", {"sensor_ref": "wrong"}, "retry selection"
+    )))
+
+    assert result["ok"] is True
+    assert result["data"]["resumed_selection"] is True
+    assert result["data"]["selection"]["use_selected_arguments"] is True
+    assert result["data"]["selection"]["arguments"] == {}
+    assert coordinator.proposals == []
 
 
 def test_plan_select_resolves_catalogued_predecessor_source_before_persistence():
@@ -183,6 +227,194 @@ def test_plan_select_resolves_catalogued_predecessor_source_before_persistence()
     }
     assert result["data"]["selection"]["tool_arguments"] == {}
     assert result["data"]["selection"]["use_selected_arguments"] is True
+
+
+def test_plan_select_projects_authorized_understanding_into_persisted_consumer_arguments():
+    evidence_ref = "artifact://scene-1/understanding"
+    node = PlanNode(
+        node_id="grasp-green",
+        obligation_id="grasp-green",
+        capability="grasp.propose",
+        required_evidence=(evidence_ref,),
+        input_bindings={"entity_ref": "entity://green"},
+    )
+    payload = {
+        "task_id": "task-1",
+        "revision_id": "revision-1",
+        "graph_digest": "0" * 64,
+        "planner_decision_digest": "1" * 64,
+        "policy_snapshot_digest": "2" * 64,
+        "nodes": [node.model_dump(mode="json")],
+    }
+    payload["graph_digest"] = plan_graph_digest(payload)
+    graph = PlanGraph.model_validate(payload)
+    understanding_arguments = {
+        "observation_ref": "observation://scene-1/head",
+        "scene_revision": "scene-1",
+        "frame_id": "head_camera",
+        "calibration_ref": "artifact://scene-1/calibration/head",
+        "freshness_ms": 10,
+        "max_age_ms": 1000,
+    }
+    understanding_response = {"data": {
+        "entities": [{
+            "entity_ref": "entity://green", "category": "green block", "confidence": 0.98,
+        }],
+        "spatial_envelopes": [{
+            "entity_ref": "entity://green", "frame_id": "head_camera", "unit": "m",
+            "min_xyz_m": [0.1, 0.2, 0.3], "max_xyz_m": [0.2, 0.3, 0.4],
+            "confidence": 0.91, "provenance": ["artifact://scene-1/depth/head"],
+        }],
+        "derived_artifacts": [{
+            "artifact_ref": "artifact://scene-1/cloud/green", "kind": "object_point_cloud",
+            "observation_ref": "observation://scene-1/head", "scene_revision": "scene-1",
+            "entity_ref": "entity://green", "frame_id": "head_camera",
+            "calibration_ref": "artifact://scene-1/calibration/head",
+            "provenance": ["artifact://scene-1/depth/head"],
+            "descriptor": {"producer_only": True},
+        }],
+    }}
+    record = SimpleNamespace(
+        record_id="understanding-record",
+        node_id=None,
+        tool_id="scene.understand",
+        semantics="query",
+        status="succeeded",
+        evidence_refs=(evidence_ref,),
+        arguments=understanding_arguments,
+        response=understanding_response,
+        error=None,
+    )
+    revision = SimpleNamespace(
+        revision_id="revision-1",
+        plan_graph=graph,
+        node_settlements=(),
+        execution_records=(record,),
+        discovery_evidence_refs=(evidence_ref,),
+        fresh_evidence_requirements=(),
+        replan_evidence_refs=(),
+    )
+    task = SimpleNamespace(
+        task_id="task-1",
+        primary_skill_binding=None,
+        tool_bindings=(),
+        revisions=(revision,),
+        active_revision=revision,
+    )
+
+    class Coordinator(_Coordinator):
+        def get_task(self, task_id):
+            assert task_id == "task-1"
+            return task
+
+        def persist_planning_selection(self, proposal):
+            self.proposals.append(proposal)
+            return {
+                **proposal,
+                "decision_trace_ref": "artifact://planning-traces/task-1/revision-1/grasp-green/t1",
+            }
+
+    coordinator = Coordinator()
+    dispatch = AgentComposedDispatch(
+        graph,
+        (project_tool_spec(GRASP_TOOL_SPEC),),
+        AdmissionContext(scene_revision="scene-1", evidence_refs=(evidence_ref,)),
+        input_schemas={"grasp.propose": GRASP_TOOL_SPEC["input_schema"]},
+    )
+    result = json.loads(asyncio.run(ForgePlanSelectTool(
+        coordinator, lambda: dispatch
+    ).execute(
+        "task-1",
+        "grasp-green",
+        "grasp.propose",
+        {},
+        "select the current green entity",
+        argument_sources={
+            "observation_ref": {
+                "record_id": "understanding-record",
+                "path": ["arguments", "observation_ref"],
+            },
+        },
+        projection_source={"record_id": "understanding-record"},
+    )))
+
+    assert result["ok"] is True
+    assert result["motion_authorized"] is False
+    assert result["data"]["selection"] == {
+        "task_id": "task-1",
+        "revision_id": "revision-1",
+        "scene_revision": "scene-1",
+        "tool_arguments": {},
+        "use_selected_arguments": True,
+    }
+    persisted = coordinator.proposals[0]["tool_arguments"]
+    assert persisted["targets"][0]["entity_ref"] == "entity://green"
+    assert persisted["targets"][0]["spatial_envelope"]["min_xyz_m"] == [0.1, 0.2, 0.3]
+    assert "entity_ref" not in persisted["targets"][0]["spatial_envelope"]
+    assert "descriptor" not in persisted["targets"][0]["geometry_artifacts"][0]
+
+    conflict = json.loads(asyncio.run(ForgePlanSelectTool(
+        coordinator, lambda: dispatch
+    ).execute(
+        "task-1",
+        "grasp-green",
+        "grasp.propose",
+        {"entity_ref": "entity://renamed-green"},
+        "reject a renamed entity",
+        projection_source={"record_id": "understanding-record"},
+    )))
+    assert conflict["ok"] is False
+    assert conflict["error"]["code"] == "semantic_binding_mismatch"
+    assert len(coordinator.proposals) == 1
+
+
+def test_projection_rejects_cross_record_legacy_sources():
+    context = SimpleNamespace(
+        predecessor_context=(),
+        evidence_context=(
+            SimpleNamespace(
+                record_id="understanding-record",
+                status="succeeded",
+                arguments={"observation_ref": "observation://scene-1/head"},
+                response={"data": {}},
+            ),
+        ),
+    )
+    plan = SimpleNamespace(top_level_fields=("observation_ref",))
+
+    with pytest.raises(PlanningLoopError, match="same authorized record"):
+        _merge_projection_compatible_sources(
+            context,
+            literals={},
+            argument_sources={
+                "observation_ref": {
+                    "record_id": "other-record",
+                    "path": ["arguments", "observation_ref"],
+                },
+            },
+            projection_source={"record_id": "understanding-record"},
+            projection_plan=plan,
+        )
+
+
+def test_projection_rejects_nested_legacy_target_override():
+    context = SimpleNamespace(predecessor_context=(), evidence_context=())
+    plan = SimpleNamespace(top_level_fields=("observation_ref",))
+
+    with pytest.raises(PlanningLoopError, match="only declared top-level source fields"):
+        _merge_projection_compatible_sources(
+            context,
+            literals={},
+            argument_sources={
+                "observation_ref": {
+                    "record_id": "understanding-record",
+                    "path": ["arguments", "observation_ref"],
+                    "target_path": ["targets", 0, "observation_ref"],
+                },
+            },
+            projection_source={"record_id": "understanding-record"},
+            projection_plan=plan,
+        )
 
 
 def test_plan_select_rejects_when_task_is_not_active_graph():

@@ -167,6 +167,156 @@ def test_node_prompt_projects_large_payload_to_catalog_and_resolves_exact_source
     assert resolved == {"entity_ref": "entity://green", "candidates": candidates}
 
 
+def test_node_prompt_catalog_surfaces_opaque_arm_identity():
+    context = NodeExecutionContext(
+        task_id="task-capabilities",
+        revision_id="revision-1",
+        node_id="prepare-green",
+        capability="manipulation.prepare",
+        dependencies=("capabilities",),
+        required_evidence=(),
+        input_bindings={},
+        scene_revision="scene-1",
+        predecessor_context=(
+            PredecessorContext(
+                node_id="capabilities",
+                status="completed",
+                scene_revision="scene-1",
+                executions=(
+                    PredecessorExecutionContext(
+                        record_id="tool-capabilities",
+                        tool_id="manipulation.capabilities",
+                        semantics="query",
+                        status="succeeded",
+                        arguments={},
+                        response={
+                            "data": {
+                                "arms": [
+                                    {"arm_id": "left"},
+                                    {"arm_id": "right"},
+                                ]
+                            }
+                        },
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    projected = node_context_prompt_projection(context)
+    encoded = json.dumps(projected)
+
+    assert '"arm_id": "left"' in encoded
+    assert '"arm_id": "right"' in encoded
+
+
+def test_frozen_entity_allows_stale_bind_as_provenance_only():
+    node = PlanNode(
+        node_id="place-red",
+        obligation_id="place-red",
+        capability="object.place",
+        required_evidence=("tool:bind",),
+        input_bindings={"entity_ref": "entity://red"},
+    )
+    graph_payload = {
+        "schema_version": "paos-plan-graph/v1",
+        "task_id": "task-stale-bind",
+        "revision_id": "revision-stale-bind",
+        "graph_digest": "0" * 64,
+        "planner_decision_digest": "1" * 64,
+        "policy_snapshot_digest": "2" * 64,
+        "nodes": [node.model_dump(mode="json")],
+    }
+    graph_payload["graph_digest"] = plan_graph_digest(graph_payload)
+    graph = PlanGraph.model_validate(graph_payload)
+    bind = ToolExecutionRecord(
+        record_id="bind-record",
+        revision_id="revision-stale-bind",
+        tool_id="scene.bind",
+        semantics="query",
+        caller_id="test",
+        status="succeeded",
+        arguments={"scene_revision": "scene-old"},
+        response={"ok": True, "data": {"scene_revision": "scene-old"}},
+        evidence_refs=["tool:bind"],
+    )
+    revision = SimpleNamespace(
+        plan_graph=graph,
+        node_settlements=(),
+        execution_records=(bind,),
+        discovery_evidence_refs=("tool:bind",),
+        fresh_evidence_requirements=(),
+        replan_evidence_refs=(),
+        revision_id="revision-stale-bind",
+    )
+    task = SimpleNamespace(
+        task_id="task-stale-bind",
+        active_revision=revision,
+        revisions=(revision,),
+    )
+
+    context = NodeContextProvider(lambda _: task).build(
+        task.task_id,
+        node.node_id,
+        scene_revision="scene-new",
+    )
+
+    assert context.evidence_context == ()
+
+
+def test_stale_non_bind_discovery_evidence_remains_rejected():
+    node = PlanNode(
+        node_id="place-red",
+        obligation_id="place-red",
+        capability="object.place",
+        required_evidence=("tool:understand",),
+        input_bindings={"entity_ref": "entity://red"},
+    )
+    graph_payload = {
+        "schema_version": "paos-plan-graph/v1",
+        "task_id": "task-stale-understand",
+        "revision_id": "revision-stale-understand",
+        "graph_digest": "0" * 64,
+        "planner_decision_digest": "1" * 64,
+        "policy_snapshot_digest": "2" * 64,
+        "nodes": [node.model_dump(mode="json")],
+    }
+    graph_payload["graph_digest"] = plan_graph_digest(graph_payload)
+    graph = PlanGraph.model_validate(graph_payload)
+    understand = ToolExecutionRecord(
+        record_id="understand-record",
+        revision_id="revision-stale-understand",
+        tool_id="scene.understand",
+        semantics="query",
+        caller_id="test",
+        status="succeeded",
+        arguments={"scene_revision": "scene-old"},
+        response={"ok": True, "data": {"scene_revision": "scene-old"}},
+        evidence_refs=["tool:understand"],
+    )
+    revision = SimpleNamespace(
+        plan_graph=graph,
+        node_settlements=(),
+        execution_records=(understand,),
+        discovery_evidence_refs=("tool:understand",),
+        fresh_evidence_requirements=(),
+        replan_evidence_refs=(),
+        revision_id="revision-stale-understand",
+    )
+    task = SimpleNamespace(
+        task_id="task-stale-understand",
+        active_revision=revision,
+        revisions=(revision,),
+    )
+
+    with pytest.raises(StaleNodeContextError):
+        NodeContextProvider(lambda _: task).build(
+            task.task_id,
+            node.node_id,
+            scene_revision="scene-new",
+        )
+
+
 def test_argument_sources_reject_hidden_record_and_literal_collision():
     context = NodeExecutionContext(
         task_id="task-1",

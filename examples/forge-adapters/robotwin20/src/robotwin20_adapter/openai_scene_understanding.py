@@ -265,6 +265,7 @@ class OpenAIResponsesSceneUnderstandingInference:
         *,
         config: OpenAIResponsesConfig | None = None,
         client_factory: Callable[..., ResponsesClient] | None = None,
+        diagnostic_sink: Callable[[Mapping[str, Any]], None] | None = None,
     ) -> None:
         if not callable(getattr(resolver, "resolve", None)) and not callable(resolver):
             raise TypeError("artifact resolver must expose resolve(ref) or be callable")
@@ -273,6 +274,14 @@ class OpenAIResponsesSceneUnderstandingInference:
         self.config.validate()
         _validate_strict_schema(SCENE_UNDERSTANDING_JSON_SCHEMA)
         self.client_factory = client_factory or _default_client_factory
+        self.diagnostic_sink = diagnostic_sink
+        self._last_error_class = "none"
+
+    def diagnostic_summary(self) -> dict[str, str]:
+        return {
+            "provider_route": "openai-responses",
+            "provider_error_class": self._last_error_class,
+        }
 
     def infer(self, request: Mapping[str, Any]) -> Mapping[str, Any]:
         if not isinstance(request, Mapping):
@@ -329,6 +338,7 @@ class OpenAIResponsesSceneUnderstandingInference:
                 payload["reasoning"] = {"effort": self.config.reasoning_effort}
             response = client.responses.create(**payload)
             parsed = dict(self._parse_response(response))
+            self._last_error_class = "none"
             # Semantic claims are grounded in the RGB image sent above.  Some
             # Responses models omit the optional provenance array even when the
             # claim is visual; bind only that omission to the current RGB input.
@@ -349,8 +359,16 @@ class OpenAIResponsesSceneUnderstandingInference:
                         claim["provenance"] = [rgb_ref]
             return parsed
         except OpenAIResponsesInferenceError:
+            self._last_error_class = "contract"
             raise
         except Exception as exc:
+            text = f"{type(exc).__name__} {exc}".lower()
+            self._last_error_class = (
+                "authentication" if "auth" in text or "401" in text or "403" in text
+                else "timeout" if "timeout" in text or "timed out" in text
+                else "transport" if "connection" in text or "http" in text
+                else "provider_failure"
+            )
             raise OpenAIResponsesInferenceError("scene understanding Responses request failed") from exc
         finally:
             close = getattr(client, "close", None)

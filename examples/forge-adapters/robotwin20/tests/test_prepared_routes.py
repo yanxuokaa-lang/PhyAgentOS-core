@@ -1,12 +1,13 @@
-from copy import deepcopy
 import json
+from copy import deepcopy
 
 import pytest
 
-from robotwin20_adapter.prepared_routes import PreparedRoutes
-from robotwin20_adapter.route_readiness import route_geometry_digest
 from PhyAgentOS.forge.manipulation import arm_assignment_digest
 from test_route_readiness import _request
+
+from robotwin20_adapter.prepared_routes import PreparedRoutes
+from robotwin20_adapter.route_readiness import route_geometry_digest
 
 
 def test_place_retains_source_geometry_but_requires_current_acquisition(tmp_path):

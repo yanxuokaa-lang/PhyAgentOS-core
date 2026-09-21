@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 
 import pytest
+from PhyAgentOS.forge.capability_runtime.understanding import SceneUnderstandingEndpoint
 from PhyAgentOS.forge.tool_client import ForgeToolClient
 from pick_place_workflow.fake_gateway import FakeGatewayTransport
 
@@ -10,6 +11,7 @@ from robotwin20_adapter import (
     RoboTwinSceneUnderstandingProvider,
     RoboTwinUnderstandingSnapshot,
 )
+from robotwin20_adapter.scene_understanding_fallback import SceneUnderstandingFallbackError
 
 OBSERVE_INPUT = {
     "observation_ref": "observation://scene-7/camera_front",
@@ -93,6 +95,47 @@ async def test_provider_specific_fields_fail_closed_through_tool_api():
     assert result["error"]["code"] == "understanding_provider_error"
     assert result["error"]["reason"] == "contract"
     assert result["error"]["failure_stage"] == "provider"
+
+
+@pytest.mark.asyncio
+async def test_provider_failure_projects_only_bounded_adapter_diagnostics():
+    class FailingInference:
+        def infer(self, request):
+            raise TimeoutError("private endpoint details")
+
+        def diagnostic_summary(self):
+            return {
+                "provider_route": "gpt-5.6-sol-high",
+                "provider_error_class": "timeout",
+                "raw_exception": "must not cross the boundary",
+            }
+
+    result = SceneUnderstandingEndpoint(
+        RoboTwinSceneUnderstandingProvider(FailingInference())
+    ).invoke(OBSERVE_INPUT)
+    assert result["provider_route"] == "gpt-5.6-sol-high"
+    assert result["provider_error_class"] == "timeout"
+    assert "raw_exception" not in result
+
+
+@pytest.mark.asyncio
+async def test_declared_fallback_failure_class_survives_public_projection():
+    class FailingInference:
+        def infer(self, request):
+            raise SceneUnderstandingFallbackError(
+                "providers failed", provider_error_class="timeout+transport", retryable=True
+            )
+
+    result = SceneUnderstandingEndpoint(
+        RoboTwinSceneUnderstandingProvider(FailingInference())
+    ).invoke(OBSERVE_INPUT)
+    assert result["error"] == {
+        "code": "understanding_provider_error",
+        "message": "scene understanding provider failed",
+        "reason": "timeout+transport",
+        "failure_stage": "provider",
+        "retryable": True,
+    }
 
 
 @pytest.mark.asyncio

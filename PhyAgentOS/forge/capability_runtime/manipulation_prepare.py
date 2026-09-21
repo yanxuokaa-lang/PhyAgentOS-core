@@ -207,8 +207,17 @@ MANIPULATION_TOOL_SPEC: dict[str, Any] = {
     "robot_frame_profile": {"observation_frame": "observation", "unit": "m"},
 }
 
+_intent_schema = ManipulationIntent.model_json_schema(
+    ref_template="#/properties/intent/$defs/{model}"
+)
+_intent_schema["properties"]["allowed_arms"]["description"] = (
+    "Copy arm_id values verbatim from the same-scene manipulation.capabilities "
+    "snapshot (for example left or right). These are opaque Runtime resource "
+    "identifiers, not natural-language labels; do not rewrite them as "
+    "left_arm/right_arm or invent aliases."
+)
 MANIPULATION_TOOL_SPEC["input_schema"]["properties"].update({
-    "intent": ManipulationIntent.model_json_schema(ref_template="#/properties/intent/$defs/{model}"),
+    "intent": _intent_schema,
     "destination_ref": {"type": "string", "pattern": r"^destination://[^/]+.*$"},
     "capability_snapshot_ref": {"type": "string", "pattern": _ARTIFACT_REF.pattern},
 })

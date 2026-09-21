@@ -18,6 +18,7 @@ from PhyAgentOS.forge.manipulation import ManipulationIntent
 from PhyAgentOS.planning import (
     AdmissionContext,
     AdmissionDecision,
+    ArgumentProjectionPlan,
     PlanGraph,
     PlanningExecutionBinding,
     ToolCallEnvelope,
@@ -208,6 +209,11 @@ class AgentComposedDispatch:
                 for policy in candidate_policies
                 if required_argument_keys(self._input_schemas.get(policy.tool_id))
             }
+            argument_projections = {
+                policy.tool_id: policy.argument_projection
+                for policy in candidate_policies
+                if policy.argument_projection is not None
+            }
             dependency_ready = node.node_id in ready
             item.update({
                 "dependency_ready": dependency_ready,
@@ -217,6 +223,7 @@ class AgentComposedDispatch:
                 "missing_node_bindings": missing_node_bindings,
                 "missing_runtime_arguments": runtime_requirements,
                 "required_tool_arguments": required_arguments,
+                "argument_projections": argument_projections,
             })
             if not candidates:
                 item["blockers"] = tuple((*item["blockers"], "no_tool_candidate"))
@@ -333,6 +340,20 @@ class AgentComposedDispatch:
                         )
                         else {}
                     ),
+                    **(
+                        {"argument_projections": {
+                            policy.tool_id: policy.argument_projection
+                            for policy in self.policies
+                            if nodes[node_id].capability in policy.capabilities
+                            and policy.argument_projection is not None
+                        }}
+                        if any(
+                            nodes[node_id].capability in policy.capabilities
+                            and policy.argument_projection is not None
+                            for policy in self.policies
+                        )
+                        else {}
+                    ),
                 }
                 for node_id in ready
                 if any(
@@ -350,6 +371,15 @@ class AgentComposedDispatch:
     def current_scene_revision(self) -> str:
         """Return the trusted scene identity used by current admission."""
         return self._current_context().scene_revision
+
+    def argument_projection(
+        self, tool_id: str
+    ) -> tuple[str | None, ArgumentProjectionPlan | None]:
+        """Return the declared consumer projection without exposing policy storage."""
+        policy = self._policies.get(tool_id)
+        if policy is None:
+            return None, None
+        return policy.argument_projection, policy.argument_projection_plan
 
     def admit_forge_tool(
         self, wrapper_name: str, arguments: Mapping[str, Any]
@@ -468,12 +498,24 @@ class AgentComposedDispatch:
                 recommended_action="choose_candidate_tool",
             )
         # These references are frozen node inputs when the planning compiler
-        # can resolve one persisted producer.  Reuse them here so the Agent
-        # selects candidate payloads without manually duplicating opaque
-        # destination/capability URIs in every prepare/acquire receipt.
+        # can resolve one persisted producer.  Reuse only the values accepted
+        # by this consumer's frozen schema.  A binding can serve later nodes
+        # (for example, destination_ref is needed by object.place) without
+        # becoming an unsupported argument for object.acquire.
         arguments = dict(arguments)
+        input_schema = self._input_schemas.get(tool_id)
+        accepted_binding_keys = {"destination_ref", "capability_snapshot_ref"}
+        if isinstance(input_schema, Mapping):
+            accepted_binding_keys = set()
+            properties = input_schema.get("properties")
+            if isinstance(properties, Mapping):
+                accepted_binding_keys = set(properties)
         for key in ("destination_ref", "capability_snapshot_ref"):
-            if key not in arguments and key in node.input_bindings:
+            if (
+                key in accepted_binding_keys
+                and key not in arguments
+                and key in node.input_bindings
+            ):
                 arguments[key] = node.input_bindings[key]
         missing_node_bindings = tuple(
             key for key in required_node_binding_keys(policy)
@@ -536,7 +578,6 @@ class AgentComposedDispatch:
             node=node,
             arguments=arguments,
         )
-        input_schema = self._input_schemas.get(tool_id)
         if input_schema is not None:
             issues = validate_tool_arguments(input_schema, final_arguments)
             if issues:

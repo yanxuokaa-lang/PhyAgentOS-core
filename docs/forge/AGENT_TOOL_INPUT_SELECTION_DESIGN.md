@@ -15,7 +15,8 @@ object, and a PlanNode does not duplicate a complete predecessor response.
 | Required final argument shape | Consumer ToolSpec `input_schema` |
 | Semantic identity and graph dependency | PlanNode |
 | Durable Tool records, evidence, revisions, and DecisionTrace | AgentTaskCoordinator |
-| Selection and assembly from the bounded input view | AgentLoop node turn |
+| Semantic selection from the bounded input view | AgentLoop node turn |
+| Declared deterministic consumer projection | Coordinator using the ToolSpec planning extension |
 | Structural validation before invocation | AgentComposedDispatch |
 | Execution and motion admission | Gateway and existing readiness/safety providers |
 
@@ -28,7 +29,8 @@ producer Tool terminal result
        - prompt-visible field catalogs, counts, references, and small identity summaries
        - Coordinator-retained exact direct-predecessor and selected discovery results
   -> forge_plan_ready projects the frozen schema for current candidate Tools
-  -> Agent selects literals and/or record_id + exact field-path sources
+  -> Agent selects semantic literals and/or record_id + exact field-path sources
+  -> declared consumer projection may compile identity-keyed facts into the consumer shape
   -> Coordinator resolves complete values from the same bounded node records
   -> AgentComposedDispatch validates frozen consumer input_schema
   -> Coordinator persists DecisionTrace and resumable selection
@@ -72,6 +74,34 @@ before revision identity was added remain readable as legacy records.
    resolution. The Coordinator resolves the complete value
    before frozen-schema validation and DecisionTrace persistence; the digest
    covers the resolved final arguments, not the selector syntax.
+   A ToolSpec may additionally declare `argument_projection`. The current
+   provider-neutral `entity_geometry_target_v1` projection accepts one
+   `projection_source.record_id` and one semantic `entity_ref`; its
+   `argument_projection_plan` declares the identity join, source collections,
+   output collection, field allowlists, and top-level fields. Core executes
+   that declaration without knowing RoboTwin or vision-specific semantics. The
+   projection is explicit and consumer-owned; it does not search other records,
+   infer array order, or replace schema validation. The Agent should send only
+   `projection_source` for such a consumer. During a prompt/tool version
+   transition, a legacy `argument_sources` map is normalized only when every
+   entry uses that same authorized record and targets one declared projection
+   top-level field. Nested consumer output, entity identity overrides, and
+   cross-record mappings remain invalid, so the Coordinator still produces one
+   projection-owned final argument object.
+
+When the active PlanGraph already contains a unique `scene.bind` correspondence
+for a consumer node, Coordinator materialization may freeze the exact opaque
+`entity_ref` into that node. The Agent may omit that selector; if it supplies a
+different value, selection is rejected as a semantic binding mismatch. This is
+propagation of an existing identity, not alias resolution. Ambiguous mappings
+remain unbound and require an explicit Agent choice from the current bounded
+context.
+
+The same rule applies to `allowed_arms`: a preparation node may receive the
+exact available `arm_id` values from its same-scene typed
+`CapabilitySnapshot` when its coordination mode means "any alternative arm".
+Explicit subsets are checked against those IDs. Natural-language aliases such
+as `left_arm` for a snapshot ID `left` are never rewritten.
 5. A root node can receive exact discovery Query arguments and terminal results only when its
    `required_evidence` names evidence persisted by Coordinator and selected into
    the active revision's `discovery_evidence_refs`. For non-refresh Queries,
@@ -79,6 +109,12 @@ before revision identity was added remain readable as legacy records.
    planning scene, and explicit request/response identities must agree. A Tool
    whose frozen policy declares `refreshes_scene` may name its source scene in
    the request, but its response must name the current planning scene.
+   The explicitly selected discovery set remains available to admission after
+   a world-changing Action advances the scene revision. This is a narrow
+   PlanRevision projection, not replay of historical execution evidence:
+   scene-bound payloads still undergo the existing stale-scene checks when a
+   node context is built, while task-scoped facts such as an opaque benchmark
+   destination can authorize a later place node.
 6. A successor receives exact results only from direct predecessor executions.
    Source selectors cannot reach unrelated nodes, historical revisions, file
    paths, arbitrary JSONPath expressions, or unpersisted payloads. Explicit
@@ -115,8 +151,16 @@ compatible structured facts through the bounded evidence or predecessor view.
 
 If a future consumer needs a deterministic transformation that cannot be
 expressed as Agent selection plus its normal endpoint validation, add a
-consumer-owned trusted argument builder through the existing planning extension
-seam. Do not hard-code a producer Tool ID into Core.
+consumer-owned argument projection through the existing planning extension
+seam. The projection must declare its accepted semantic selectors, operate only
+on the current node's authorized records, and leave the final consumer schema
+   strict. Do not hard-code a producer Tool ID into Core or add implicit fallback.
+
+The legacy `argument_sources` mode remains appropriate for non-projection
+consumers such as `manipulation.prepare`, where a complete candidate array is
+copied from a direct predecessor. It does not apply to a projection consumer
+such as `grasp.propose`: do not combine a candidate-style nested `target_path`
+map with the projection's understanding record.
 
 ## Failure Semantics
 
@@ -166,9 +210,12 @@ seam. Do not hard-code a producer Tool ID into Core.
 ```
 
 The Agent supplies the other consumer fields with additional explicit mappings
-or literals. It matches identities itself; Coordinator does not infer array joins,
-compute geometry, silently drop fields, or overwrite literals. Both source and
-destination paths are ordinary typed paths, not executable expressions.
+or literals. For ordinary selectors it matches identities itself; Coordinator
+does not infer array joins, compute geometry, silently drop fields, or overwrite
+literals. A declared consumer projection is the explicit exception: its
+documented identity join and field allowlist apply only when the Agent supplies
+the projection source and semantic selector. Ordinary source and destination
+paths remain typed paths, not executable expressions.
 
 Later turns receive recent persisted selection diagnostics for the same node and
 revision. A turn that ends with rejections and no admitted receipt stops with the

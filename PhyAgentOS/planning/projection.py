@@ -9,11 +9,20 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from .contracts import ResourceClaim, ToolSpecPolicy, canonical_sha256
+from .contracts import (
+    ArgumentProjectionPlan,
+    ResourceClaim,
+    ToolSpecPolicy,
+    canonical_sha256,
+)
 
 
 class ToolSpecProjectionError(ValueError):
     """A live ToolSpec cannot safely participate in planning admission."""
+
+
+class ArgumentProjectionError(ValueError):
+    """A declared consumer projection cannot be compiled from its source record."""
 
 
 class _PlanningExtension(BaseModel):
@@ -33,6 +42,8 @@ class _PlanningExtension(BaseModel):
     input_binding_keys: tuple[str, ...] = ()
     requires_before_plan: bool = False
     trusted_argument_builder: str | None = None
+    argument_projection: str | None = None
+    argument_projection_plan: ArgumentProjectionPlan | None = None
 
 
 _PROVIDER_PRIVATE = re.compile(
@@ -83,6 +94,22 @@ def project_tool_spec(spec: Mapping[str, Any]) -> ToolSpecPolicy:
         "input_binding_keys",
     ):
         _unique_strings(getattr(parsed, label), label)
+    if parsed.argument_projection is not None and not parsed.argument_projection.strip():
+        raise ToolSpecProjectionError("planning argument_projection must be non-empty")
+    projection_plan = None
+    if isinstance(extension.get("argument_projection_plan"), Mapping):
+        try:
+            projection_plan = ArgumentProjectionPlan.model_validate(
+                extension["argument_projection_plan"]
+            )
+        except ValidationError as exc:
+            raise ToolSpecProjectionError(
+                f"invalid ToolSpec argument projection plan: {exc}"
+            ) from exc
+        if parsed.argument_projection != projection_plan.projection_id:
+            raise ToolSpecProjectionError(
+                "argument_projection must match argument_projection_plan.projection_id"
+            )
     try:
         policy = ToolSpecPolicy(
             tool_id=value["tool_id"],
@@ -101,10 +128,131 @@ def project_tool_spec(spec: Mapping[str, Any]) -> ToolSpecPolicy:
             input_binding_keys=parsed.input_binding_keys,
             requires_before_plan=parsed.requires_before_plan,
             trusted_argument_builder=parsed.trusted_argument_builder,
+            argument_projection=parsed.argument_projection,
+            argument_projection_plan=projection_plan,
         )
     except (ValidationError, ValueError) as exc:
         raise ToolSpecProjectionError(f"invalid ToolSpec planning policy: {exc}") from exc
     return policy
 
 
-__all__ = ["ToolSpecProjectionError", "project_tool_spec"]
+def execute_argument_projection(
+    plan: ArgumentProjectionPlan,
+    *,
+    records: Mapping[str, tuple[Mapping[str, Any], Mapping[str, Any] | None]],
+    literals: Mapping[str, Any],
+    source_record_id: str,
+) -> dict[str, Any]:
+    """Execute a declarative projection without provider-specific field logic."""
+
+    if not isinstance(source_record_id, str) or source_record_id not in records:
+        raise ArgumentProjectionError("consumer projection source record is not visible")
+    arguments, response = records[source_record_id]
+    facts = response.get("data", response) if isinstance(response, Mapping) else {}
+    if not isinstance(facts, Mapping):
+        raise ArgumentProjectionError("consumer projection source has no structured result")
+
+    def collection(name: str) -> list[Mapping[str, Any]]:
+        value = facts.get(name, ())
+        if not isinstance(value, (list, tuple)):
+            raise ArgumentProjectionError(f"projection source collection {name!r} is not an array")
+        return [item for item in value if isinstance(item, Mapping)]
+
+    join_value = literals.get(plan.join_field)
+    if not isinstance(join_value, str) or not join_value:
+        raise ArgumentProjectionError(
+            f"consumer projection requires selected {plan.join_field}"
+        )
+    entities = [
+        item for item in collection(plan.entity_collection)
+        if item.get(plan.join_field) == join_value
+    ]
+    envelopes = [
+        item for item in collection(plan.envelope_collection)
+        if item.get(plan.join_field) == join_value
+    ]
+    if len(entities) != 1:
+        raise ArgumentProjectionError("consumer projection requires one uniquely matched entity")
+    if len(envelopes) != 1:
+        raise ArgumentProjectionError(
+            "consumer projection requires one uniquely matched spatial envelope"
+        )
+
+    entity = entities[0]
+    envelope = envelopes[0]
+    target = {
+        field: entity[field]
+        for field in plan.entity_fields
+        if field in entity
+    }
+    missing_entity_fields = [field for field in plan.entity_fields if field not in target]
+    if missing_entity_fields:
+        raise ArgumentProjectionError(
+            "projection entity is missing fields: " + ", ".join(missing_entity_fields)
+        )
+    target[plan.envelope_output_field] = {
+        field: envelope[field]
+        for field in plan.envelope_fields
+        if field in envelope
+    }
+    missing_envelope_fields = [
+        field for field in plan.envelope_fields
+        if field not in target[plan.envelope_output_field]
+    ]
+    if missing_envelope_fields:
+        raise ArgumentProjectionError(
+            "projection envelope is missing fields: " + ", ".join(missing_envelope_fields)
+        )
+
+    if plan.artifact_collection is not None and plan.artifact_output_field is not None:
+        artifacts = [
+            item for item in collection(plan.artifact_collection)
+            if item.get(plan.join_field) == join_value
+            and (
+                plan.artifact_kind_field is None
+                or item.get(plan.artifact_kind_field) == plan.artifact_kind_value
+            )
+        ]
+        if artifacts:
+            target[plan.artifact_output_field] = [
+                {
+                    field: artifact[field]
+                    for field in plan.artifact_fields
+                    if field in artifact
+                }
+                for artifact in artifacts
+            ]
+            for artifact, projected in zip(artifacts, target[plan.artifact_output_field]):
+                missing = [field for field in plan.artifact_fields if field not in projected]
+                if missing:
+                    raise ArgumentProjectionError(
+                        "projection artifact is missing fields: " + ", ".join(missing)
+                    )
+
+    result = {
+        field: literals[field]
+        for field in plan.top_level_fields
+        if field in literals
+    }
+    for field in plan.top_level_fields:
+        if field in result:
+            continue
+        if field in arguments:
+            result[field] = arguments[field]
+        elif field in facts:
+            result[field] = facts[field]
+    result[plan.output_collection] = [target]
+    missing_top_level = [field for field in plan.top_level_fields if field not in result]
+    if missing_top_level:
+        raise ArgumentProjectionError(
+            "projection source is missing top-level fields: " + ", ".join(missing_top_level)
+        )
+    return result
+
+
+__all__ = [
+    "ArgumentProjectionError",
+    "ToolSpecProjectionError",
+    "execute_argument_projection",
+    "project_tool_spec",
+]
