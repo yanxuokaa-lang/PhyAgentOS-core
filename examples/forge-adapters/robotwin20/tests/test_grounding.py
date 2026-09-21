@@ -111,6 +111,74 @@ def test_single_object_binding_needs_no_goal_and_target_preserves_explicit_pose(
     assert target["motion_authorized"] is False
 
 
+def test_oracle_scene_uses_bound_actor_geometry_without_changing_observed_identity(tmp_path):
+    g, request, _ = setup(tmp_path)
+    bound = g.bind(request)
+    target = g.target(
+        dict(
+            binding_ref=bound["binding_ref"],
+            entity_ref="entity://seen",
+            frame_id="world",
+            unit="m",
+            frame_T_object_target=pose(0.35),
+        )
+    )
+
+    facts = g.oracle_scene_facts(
+        {
+            **request,
+            "intent": {"entity_ref": "entity://seen"},
+            "destination_ref": target["destination_ref"],
+        }
+    )
+
+    assert facts["objects"] == [
+        {
+            "entity_ref": "entity://seen",
+            "actor_name": "block1",
+            "half_extents_m": [0.04, 0.04, 0.04],
+            "world_T_object": pose(),
+            "world_T_functional_point": pose(),
+            "target_ref": target["destination_ref"],
+            "world_T_object_target": pose(0.35),
+            "world_T_functional_target": pose(0.35),
+        }
+    ]
+    assert facts["geometry_source"] == "oracle_actor"
+    assert "observed_collision" not in facts
+
+
+def test_oracle_grasp_activation_reuses_one_current_persisted_binding(tmp_path):
+    grounding, request, _ = setup(tmp_path)
+    bound = grounding.bind(request)
+    calls = []
+
+    def query(operation, arguments):
+        calls.append((operation, arguments))
+        if operation == "snapshot":
+            return {
+                "scene_revision": "s1",
+                "scene_validity": "action_driven",
+                "holding_state": "empty",
+            }
+        assert operation == "bind_observed_entities"
+        return {"scene_revision": "s1", "motion_authorized": False}
+
+    grounding.client.query = query
+    reference = grounding.activate_observed_entities(
+        {
+            **{key: request[key] for key in ("observation_ref", "scene_revision", "calibration_ref")},
+            "targets": [{"entity_ref": "entity://seen"}],
+        }
+    )
+
+    assert reference == bound["binding_ref"]
+    assert calls[-1] == (
+        "bind_observed_entities",
+        {"binding_ref": bound["binding_ref"]},
+    )
+
+
 @pytest.mark.parametrize("change", ["unchanged", "translated", "rotated", "missing", "invalid", "duplicate", "nonfinite"])
 def test_grounding_binding_checks_captured_actor_pose_not_visual_frame(tmp_path, monkeypatch, change):
     import robotwin_persistent_engine as engine_module
@@ -182,6 +250,118 @@ def test_binding_rejection_does_not_publish_partial_entity_aliases(tmp_path, mon
     actors = {"entity://execution": first, "entity://execution-second": second}
     monkeypatch.setattr(module.probe, "_actor_for_entity", lambda task, ref: actors[ref])
     with pytest.raises(module.BindingPoseChangedError):
+        engine.query("bind_observed_entities", {"binding_ref": bound["binding_ref"]})
+    assert runtime_task._paos_observed_entities is old
+
+
+def _rewrite_binding_identity(tmp_path, bound, *, observed_ref, execution_ref, actor_name):
+    path = tmp_path / (bound["binding_ref"].removeprefix("artifact://") + ".json")
+    value = json.loads(path.read_text())
+    original_ref = value["bindings"][0]["entity_ref"]
+    value["bindings"][0] = {
+        "entity_ref": observed_ref,
+        "execution_entity_ref": execution_ref,
+        "actor_name": actor_name,
+    }
+    value["objects"][observed_ref] = value["objects"].pop(original_ref)
+    value["scene_facts"]["objects"][0].update(
+        entity_ref=execution_ref,
+        actor_name=actor_name,
+    )
+    path.write_text(json.dumps(value))
+
+
+def test_same_reserved_observed_and_execution_identity_is_accepted(tmp_path):
+    from robotwin_persistent_engine import RoboTwinPersistentEngine
+
+    grounding, request, _ = setup(tmp_path)
+    bound = grounding.bind(request)
+    _rewrite_binding_identity(
+        tmp_path,
+        bound,
+        observed_ref="entity://block-green-1",
+        execution_ref="entity://block-green-1",
+        actor_name="block2",
+    )
+    actor = SimpleNamespace(
+        get_pose=lambda: SimpleNamespace(to_transformation_matrix=lambda: np.eye(4))
+    )
+    old = {"previous": object()}
+    runtime_task = SimpleNamespace(block2=actor, _paos_observed_entities=old)
+    engine = object.__new__(RoboTwinPersistentEngine)
+    engine.root = tmp_path
+    engine.backend = SimpleNamespace(_task=runtime_task, snapshot=lambda: {"scene_revision": "s1"})
+
+    result = engine.query("bind_observed_entities", {"binding_ref": bound["binding_ref"]})
+
+    assert result == {"scene_revision": "s1", "motion_authorized": False}
+    assert runtime_task._paos_observed_entities == {"entity://block-green-1": actor}
+
+
+@pytest.mark.parametrize(
+    ("execution_ref", "actor_name"),
+    [
+        ("entity://block-red-1", "block1"),
+        ("entity://block-green-1", "block1"),
+    ],
+)
+def test_reserved_observed_identity_rejects_execution_or_actor_mismatch(
+    tmp_path, execution_ref, actor_name
+):
+    from robotwin_persistent_engine import RoboTwinPersistentEngine
+
+    grounding, request, _ = setup(tmp_path)
+    bound = grounding.bind(request)
+    _rewrite_binding_identity(
+        tmp_path,
+        bound,
+        observed_ref="entity://block-green-1",
+        execution_ref=execution_ref,
+        actor_name=actor_name,
+    )
+    actor = SimpleNamespace(
+        get_pose=lambda: SimpleNamespace(to_transformation_matrix=lambda: np.eye(4))
+    )
+    old = {"previous": actor}
+    runtime_task = SimpleNamespace(
+        block1=actor,
+        block2=actor,
+        _paos_observed_entities=old,
+    )
+    engine = object.__new__(RoboTwinPersistentEngine)
+    engine.root = tmp_path
+    engine.backend = SimpleNamespace(_task=runtime_task, snapshot=lambda: {"scene_revision": "s1"})
+
+    with pytest.raises(ValueError, match="reserved observed identity differs"):
+        engine.query("bind_observed_entities", {"binding_ref": bound["binding_ref"]})
+    assert runtime_task._paos_observed_entities is old
+
+
+def test_duplicate_binding_correspondence_does_not_publish_partial_aliases(tmp_path):
+    from robotwin_persistent_engine import RoboTwinPersistentEngine
+
+    grounding, request, _ = setup(tmp_path)
+    bound = grounding.bind(request)
+    path = tmp_path / (bound["binding_ref"].removeprefix("artifact://") + ".json")
+    value = json.loads(path.read_text())
+    value["bindings"].append(
+        {
+            "entity_ref": "entity://second",
+            "execution_entity_ref": value["bindings"][0]["execution_entity_ref"],
+            "actor_name": "block1",
+        }
+    )
+    path.write_text(json.dumps(value))
+    actor = SimpleNamespace(
+        get_pose=lambda: SimpleNamespace(to_transformation_matrix=lambda: np.eye(4))
+    )
+    old = {"previous": actor}
+    runtime_task = SimpleNamespace(block1=actor, _paos_observed_entities=old)
+    engine = object.__new__(RoboTwinPersistentEngine)
+    engine.root = tmp_path
+    engine.backend = SimpleNamespace(_task=runtime_task, snapshot=lambda: {"scene_revision": "s1"})
+
+    with pytest.raises(ValueError, match="one-to-one"):
         engine.query("bind_observed_entities", {"binding_ref": bound["binding_ref"]})
     assert runtime_task._paos_observed_entities is old
 

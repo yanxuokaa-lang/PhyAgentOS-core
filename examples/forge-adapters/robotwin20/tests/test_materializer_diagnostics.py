@@ -8,6 +8,38 @@ from robotwin20_adapter.route_generation import RouteCandidateRejectedError
 from robotwin20_adapter.route_inputs import ContactShellRejectedError
 
 
+def test_provenance_copy_preserves_the_unique_persisted_artifact_type(tmp_path):
+    source = tmp_path / "source"
+    output = tmp_path / "output"
+    source.mkdir()
+    output.mkdir()
+    reference = "artifact://persistent/epoch/oracle-grasp"
+    path = cli._artifact_path(source, reference, ".json")
+    path.parent.mkdir(parents=True)
+    path.write_text('{"motion_authorized":false}\n')
+
+    cli._copy_provenance_artifact(source, output, reference)
+
+    assert cli._artifact_path(output, reference, ".json").read_bytes() == path.read_bytes()
+    assert not cli._artifact_path(output, reference, ".npy").exists()
+
+
+def test_provenance_copy_rejects_missing_or_ambiguous_source_type(tmp_path):
+    source = tmp_path / "source"
+    output = tmp_path / "output"
+    source.mkdir()
+    output.mkdir()
+    reference = "artifact://source/item"
+    with pytest.raises(cli.MaterializationError, match="unavailable"):
+        cli._copy_provenance_artifact(source, output, reference)
+    for suffix in (".json", ".npy"):
+        path = cli._artifact_path(source, reference, suffix)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"source")
+    with pytest.raises(cli.MaterializationError, match="ambiguous"):
+        cli._copy_provenance_artifact(source, output, reference)
+
+
 @pytest.mark.parametrize("error,code", [
     (cli.MaterializationError("capabilities differ", code="motion_capability_qualification_mismatch"), "motion_capability_qualification_mismatch"),
     (RouteCandidateRejectedError("workspace bounds"), "route_candidate_rejected"),

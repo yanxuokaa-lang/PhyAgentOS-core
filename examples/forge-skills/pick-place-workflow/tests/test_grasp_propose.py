@@ -176,6 +176,7 @@ async def test_grasp_propose_is_discovered_with_the_perception_queries():
         "object.place",
         "scene.bind",
         "manipulation.target",
+        "task.goal",
     ]
     assert spec["data"]["endpoint_id"] == "grasp_proposal"
     assert spec["data"]["operation"] == "propose"
@@ -265,7 +266,7 @@ def test_bundle_and_package_versions_match_the_feature_revision():
     )
     import tomllib
 
-    assert bundle_manifest["version"] == "2.4.1"
+    assert bundle_manifest["version"] == "2.6.5"
     assert tomllib.loads(package_text)["project"]["version"] == bundle_manifest["version"]
 
 
@@ -384,6 +385,42 @@ def test_candidate_provenance_must_bind_to_requested_target_artifacts():
     assert result["scene_revision"] == "scene-7"
     assert result["frame"] == {"frame_id": "camera_front", "unit": "m"}
     assert result["calibration_ref"] == "calibration://front/v3"
+
+
+def test_candidate_provenance_may_cite_provider_declared_evidence():
+    evidence_ref = "artifact://provider-run/oracle-grasp"
+    provider = Provider(
+        proposal_snapshot(
+            candidates=(candidate(1, provenance=[evidence_ref]),),
+            funnel={
+                "decoded": 1,
+                "canonicalized": 1,
+                "deduplicated": 1,
+                "retained": 1,
+            },
+            produced_evidence_refs=(evidence_ref,),
+        )
+    )
+
+    result = GraspProposalEndpoint(provider).invoke(request_payload())
+
+    assert result["status"] == "available"
+    assert result["candidates"][0]["provenance"] == [evidence_ref]
+
+
+@pytest.mark.parametrize(
+    "produced_evidence_refs",
+    [("not-an-artifact",), ("artifact://provider-run/evidence",) * 2],
+)
+def test_provider_evidence_declaration_must_be_valid_and_unique(produced_evidence_refs):
+    provider = Provider(
+        proposal_snapshot(produced_evidence_refs=produced_evidence_refs)
+    )
+
+    result = GraspProposalEndpoint(provider).invoke(request_payload())
+
+    assert result["status"] == "invalid"
+    assert result["error"]["code"] == "invalid_provenance"
 
 
 def test_candidate_provenance_may_cite_a_directly_bound_geometry_artifact():

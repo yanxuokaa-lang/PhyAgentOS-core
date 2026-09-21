@@ -479,7 +479,7 @@ class RouteReadinessEvaluationAdapter:
         checks = item.get("checks")
         if not isinstance(checks, Mapping) or set(checks) != set(ROUTE_CHECKS):
             raise RouteReadinessProfileError("route evaluation evidence checks are invalid")
-        if any(value not in {"pass", "fail", "unavailable"} for value in checks.values()):
+        if any(value not in {"pass", "fail", "unavailable", "deferred"} for value in checks.values()):
             raise RouteReadinessProfileError("route evaluation evidence check status is invalid")
         checks = dict(checks)
         arm_results = item.get("arm_results", [])
@@ -492,8 +492,18 @@ class RouteReadinessEvaluationAdapter:
                 raise RouteReadinessProfileError("route arm result status is invalid")
             for key in ("attached_object_collision", "complete_transport_descent_retreat", "workspace_and_joint_limits"):
                 checks[key] = "pass" if all(a["status"] == "pass" for a in attempts) else "fail"
-        status = "pass" if all(value == "pass" for value in checks.values()) else (
-            "unavailable" if response.get("status") == "unavailable" else "fail"
+        deferred = {key for key, value in checks.items() if value == "deferred"}
+        static_pass = all(
+            value == "pass" for key, value in checks.items() if key not in deferred
+        )
+        status = (
+            "pass"
+            if all(value == "pass" for value in checks.values())
+            else "deferred"
+            if deferred == {"contact_dynamics", "stop_control"} and static_pass
+            else "unavailable"
+            if response.get("status") == "unavailable"
+            else "fail"
         )
         if status == "unavailable" and any(value != "unavailable" for value in checks.values()):
             raise RouteReadinessProfileError("unavailable route evidence has inconsistent checks")
@@ -503,15 +513,26 @@ class RouteReadinessEvaluationAdapter:
             for ref in evidence_refs
         ):
             raise RouteReadinessProfileError("route evaluation evidence refs are invalid")
-        code = "ok" if status == "pass" else (
-            "provider_unavailable" if status == "unavailable" else "route_rejected"
+        code = (
+            "ok"
+            if status == "pass"
+            else "execution_checks_deferred"
+            if status == "deferred"
+            else "provider_unavailable"
+            if status == "unavailable"
+            else "route_rejected"
         )
-        owner = "readiness" if status == "pass" else "infrastructure" if status == "unavailable" else "readiness"
+        owner = (
+            "readiness" if status in {"pass", "deferred"}
+            else "infrastructure" if status == "unavailable"
+            else "readiness"
+        )
         if "unavailable" in checks.values() and "fail" not in checks.values() and status != "unavailable":
             code, owner = "readiness_capability_unavailable", "infrastructure"
         detail = [f"{a['arm']}:{a.get('failed_phase', 'none')}: {a.get('detail', a['status'])}"
                   for a in attempts if a["status"] != "pass"]
         detail.extend(str(x) for x in response.get("unavailable_reasons", []))
+        detail.extend(str(x) for x in response.get("deferred_reasons", []))
         positions = [
             waypoint["position_m"]
             for phase in candidate["route"]
@@ -544,6 +565,7 @@ class RouteReadinessEvaluationAdapter:
             "code": code,
             "owner": owner,
             "detail": ("route evidence accepted" if status == "pass" else
+                       "static route accepted; execution checks deferred" if status == "deferred" else
                        "; ".join(detail)[:2000]
                        or "route evidence rejected") + (
                            "" if status == "pass" else "; evidence: " + ", ".join(evidence_refs)
@@ -591,6 +613,7 @@ class RouteReadinessClient:
         if not (
             (status == "unavailable" and response.get("provider_available") is False)
             or (status == "fail" and response.get("provider_available") is True)
+            or (status == "deferred" and response.get("provider_available") is True)
         ):
             raise RouteReadinessProfileError(
                 "route readiness worker cannot authorize a route without dynamic capabilities"
@@ -625,10 +648,16 @@ class RouteReadinessClient:
                 or item.get("world_change_started") is not False
                 or not isinstance(item.get("checks"), Mapping)
                 or set(item["checks"]) != set(ROUTE_CHECKS)
-                or any(value not in {"pass", "fail", "unavailable"} for value in item["checks"].values())
+                or any(value not in {"pass", "fail", "unavailable", "deferred"} for value in item["checks"].values())
                 or (status == "unavailable" and any(value != "unavailable" for value in item["checks"].values()))
-                or item["checks"]["contact_dynamics"] != "unavailable"
-                or item["checks"]["stop_control"] != "unavailable"
+                or (status == "deferred" and (
+                    item["checks"]["contact_dynamics"] != "deferred"
+                    or item["checks"]["stop_control"] != "deferred"
+                ))
+                or (status != "deferred" and (
+                    item["checks"]["contact_dynamics"] != "unavailable"
+                    or item["checks"]["stop_control"] != "unavailable"
+                ))
             ):
                 raise RouteReadinessProfileError("route readiness evidence identity is invalid")
         return dict(response)
@@ -691,7 +720,7 @@ def project_route_evidence(
         raise RouteReadinessError("route candidate is not bound to request")
     if not isinstance(capability_status, Mapping) or set(capability_status) != set(ROUTE_CHECKS):
         raise RouteReadinessError("route capability status fields are invalid")
-    if any(status not in {"pass", "fail", "unavailable"} for status in capability_status.values()):
+    if any(status not in {"pass", "fail", "unavailable", "deferred"} for status in capability_status.values()):
         raise RouteReadinessError("route capability status is invalid")
     _ref(evidence_ref, "evidence_ref", "artifact://")
     return {

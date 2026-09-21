@@ -805,7 +805,6 @@ def test_task_projection_preserves_revision_bindings_and_node_obligations() -> N
     encoded = json.dumps(task_prompt_projection(task))
     assert "input_schema" not in encoded
     for required in (
-        "Follow the frozen workflow.",
         "skill-binding-1",
         "runtime-binding-1",
         "artifact://plans/revision-1",
@@ -929,3 +928,4 @@ def test_task_projection_does_not_report_compaction_by_itself() -> None:
     )
     assert view.compacted is False
     assert "read_only_projection_from_AgentTaskCoordinator" in json.dumps(view.messages)
+    assert "primary_skill_instructions" not in json.dumps(view.messages)

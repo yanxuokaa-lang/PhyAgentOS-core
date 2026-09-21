@@ -33,11 +33,22 @@ def _artifact_path(root: Path, request_id: str, candidate_ref: str) -> tuple[Pat
     return directory / f"{token}.json", f"artifact://simulation-route-readiness/{token}"
 
 
-def _handle_factory(artifact_root: Path, worker_id: str, evaluator=None):
+def _handle_factory(
+    artifact_root: Path,
+    worker_id: str,
+    evaluator=None,
+    *,
+    deferred_execution_checks: tuple[str, ...] = (),
+):
     if not artifact_root.is_absolute() or artifact_root.is_symlink() or not artifact_root.is_dir():
         raise ValueError("artifact root must be an existing absolute directory")
     if not isinstance(worker_id, str) or not worker_id.strip():
         raise ValueError("worker_id must be non-empty")
+    if frozenset(deferred_execution_checks) not in {
+        frozenset(),
+        frozenset({"contact_dynamics", "stop_control"}),
+    }:
+        raise ValueError("deferred execution checks are invalid")
 
     def handle(request: Mapping[str, Any]) -> Mapping[str, Any]:
         validate_route_request(request)
@@ -63,6 +74,8 @@ def _handle_factory(artifact_root: Path, worker_id: str, evaluator=None):
             if result is not None:
                 for check in ("attached_object_collision", "complete_transport_descent_retreat", "workspace_and_joint_limits"):
                     checks[check] = result["status"]
+                for check in deferred_execution_checks:
+                    checks[check] = "deferred"
             item = project_route_evidence(
                 request,
                 candidate,
@@ -94,7 +107,9 @@ def _handle_factory(artifact_root: Path, worker_id: str, evaluator=None):
         return {
             "request_id": request["request_id"],
             "schema_version": SIMULATION_ROUTE_READINESS_SCHEMA_VERSION,
-            "status": "unavailable" if evaluation is None else "fail",
+            "status": "unavailable" if evaluation is None else (
+                "deferred" if deferred_execution_checks else "fail"
+            ),
             "worker_id": worker_id,
             "motion_authorized": False,
             "world_change_started": False,
@@ -103,10 +118,14 @@ def _handle_factory(artifact_root: Path, worker_id: str, evaluator=None):
             "unavailable_reasons": ([evaluation_error] if evaluation_error else []) + ([
                 "attached_object_collision_worker_not_connected",
                 "planner_route_worker_not_connected",
-            ] if evaluation is None else []) + [
+            ] if evaluation is None else []) + ([] if deferred_execution_checks else [
                 "contact_dynamics_not_proven_without_stepping",
                 "stop_controller_not_connected",
-            ],
+            ]),
+            "deferred_reasons": ([
+                "contact_dynamics_verified_during_admitted_action",
+                "stop_control_verified_during_admitted_action",
+            ] if deferred_execution_checks else []),
         }
 
     return handle

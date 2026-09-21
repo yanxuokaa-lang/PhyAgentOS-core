@@ -22,6 +22,51 @@ def _spec(tool_id, properties, required, description):
 
 
 _REF = {"type": "string", "minLength": 1}
+_POSE = {"type": "array", "minItems": 16, "maxItems": 16, "items": {"type": "number"}}
+TASK_GOAL_TOOL_SPEC = _spec(
+    "task.goal",
+    {},
+    [],
+    "Read task-specification goals from the active Runtime. Goal facts are not "
+    "sensor observations, motion approval, operation ordering, or task-success verdicts.",
+)
+TASK_GOAL_TOOL_SPEC["planning"]["requires_before_plan"] = True
+TASK_GOAL_TOOL_SPEC["output_schema"]["properties"].update(
+    {
+        "schema_version": {"const": "paos-task-goals/v1"},
+        "task_name": _REF,
+        "seed": {"type": "integer"},
+        "geometry_source": {"const": "benchmark_task_definition"},
+        "goal_ref": {"type": "string", "pattern": "^artifact://.+"},
+        "captured_at": _REF,
+        "evidence_refs": {
+            "type": "array",
+            "items": {"type": "string", "pattern": "^artifact://.+"},
+        },
+        "goals": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "execution_entity_ref",
+                    "destination_ref",
+                    "frame_id",
+                    "unit",
+                    "world_T_object_target",
+                ],
+                "properties": {
+                    "execution_entity_ref": _REF,
+                    "destination_ref": _REF,
+                    "frame_id": {"const": "world"},
+                    "unit": {"const": "m"},
+                    "world_T_object_target": _POSE,
+                },
+            },
+        },
+    }
+)
 BIND_TOOL_SPEC = _spec(
     "scene.bind",
     {**{k: _REF for k in IDENTITY_KEYS},
@@ -41,7 +86,6 @@ TARGET_TOOL_SPEC = _spec(
     "placement feasibility or motion authorization; use manipulation.prepare afterward.",
 )
 
-_POSE = {"type": "array", "minItems": 16, "maxItems": 16, "items": {"type": "number"}}
 _COMMON_OUTPUT = {**{key: _REF for key in IDENTITY_KEYS}, "binding_ref": _REF,
                   "frame_id": {"const": "world"}, "unit": {"const": "m"},
                   "evidence_refs": {"type": "array", "items": _REF},

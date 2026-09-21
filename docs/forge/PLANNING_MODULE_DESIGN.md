@@ -166,6 +166,12 @@ continuation/finalization and generic shell/filesystem Tools remain outside this
 scope, so a settled node cannot mutate the active revision or execute a successor
 from the same model transcript.
 
+The node message carries only the frozen Skill/Runtime identity and the
+node-scoped projection. Complete activated Skill instructions and SkillUse
+content remain in the Coordinator for audit and verification, but are not
+duplicated in every node request; the node executor supplies the bounded
+execution rules needed for the current node.
+
 When the configured runtime uses scene-bound segments, `PlanningLoopAdapter`
 reports `segment_completed` instead of finalizing automatically. The outer
 controller invokes a bounded Agent continuation turn whose executable surface

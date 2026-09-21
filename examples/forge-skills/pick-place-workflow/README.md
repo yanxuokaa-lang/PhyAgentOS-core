@@ -2,13 +2,14 @@
 
 This directory is an independently installable Forge Skill source bundle for the
 provider-neutral `scene.observe`, `manipulation.capabilities`, `scene.understand`,
-`grasp.propose`, `manipulation.prepare`, `object.acquire`, and `object.place`
+`scene.bind`, `task.goal`, `manipulation.target`, `grasp.propose`,
+`manipulation.prepare`, `object.acquire`, and `object.place`
 Query/Action contracts. It is an
 example integration and is not part
 of the `PhyAgentOS` Python distribution.
 
-The Skill is intentionally named `pick-place-workflow` because it describes the
-complete seven-tool workflow. It is not a `scene-observe` Skill and does not claim
+The Skill is intentionally named `pick-place-workflow` because it describes a
+complete atomic pick/place workflow. It is not a `scene-observe` Skill and does not claim
 that observation alone includes grasping or manipulation.
 
 The implementation deliberately has no simulator, robot SDK, camera driver, or
@@ -22,9 +23,9 @@ successful grasp execution.
 The capability dependency graph is:
 
 ```text
-                         ┌─ manipulation.capabilities ─┐
-scene.observe ───────────┤                              ├─ grasp.propose -> manipulation.prepare -> object.acquire -> object.place
-                         └─ scene.understand ───────────┘
+task.goal ────────────────────────────────────────┐
+scene.observe -> scene.understand -> scene.bind ──┼─ manipulation.target
+                         └─ manipulation.capabilities ─┴─ grasp.propose -> manipulation.prepare -> object.acquire -> object.place
 ```
 
 Each executable PlanNode corresponds to one Tool settlement. A higher-level
@@ -73,7 +74,13 @@ retreat remain Gateway-internal. Its terminal summary adds typed
 `post_release_evidence` for downstream verification, without exposing
 coordinates, simulator parameters, or controller details.
 
-The `robotwin-persistent` profile enables adapter-owned task video. All
+The legacy `robotwin-persistent` and explicit
+`robotwin-blocks-ranking-observed` profiles use observation-owned route geometry.
+`robotwin-blocks-ranking-oracle` keeps observation-owned semantic identity but
+uses bound actor geometry and task-definition goals for the `blocks_ranking_rgb`
+development baseline. No profile automatically falls back to another.
+
+All persistent profiles enable adapter-owned task video. All
 `object.acquire` and `object.place` Actions with the same PAOS task owner are
 aggregated into cumulative head-camera and observer-camera MP4 artifacts. Each
 Action result carries the latest task-video manifest and both cumulative views;
@@ -83,7 +90,7 @@ opaque evidence references. Recording observes existing simulator steps and
 does not grant motion authority or add control commands.
 
 Long-horizon orchestration remains an AgentTask concern. The bundle exposes a
-replayable reducer for the seven-node pick-and-place dependency graph; it stores only
+replayable reducer for the atomic pick-and-place dependency graph; it stores only
 step status and opaque references, delegates all execution to the existing
 ForgeToolClient/AgentTask path, and uses append-only revisions for recovery. It
 does not add a Gateway route, Session, cross-Tool lease, or motion authorization.

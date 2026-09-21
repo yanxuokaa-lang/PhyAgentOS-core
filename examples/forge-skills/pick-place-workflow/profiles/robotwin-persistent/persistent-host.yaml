@@ -30,10 +30,10 @@ model:
       sleep_level: 1
   fallback:
     api_base: ${ROBOTWIN20_MODEL_API_BASE}
-    model: gpt-5.6-sol
+    model: gpt-5.6-terra
     api_key_env: ROBOTWIN20_MODEL_API_KEY
-    reasoning_effort: high
-    timeout_seconds: 60
+    reasoning_effort: medium
+    timeout_seconds: 120
     max_output_tokens: 768
 worker:
   startup_timeout_s: 180
@@ -47,3 +47,5 @@ video:
 materializer_timeout_s: 300
 preparation_timeout_s: 330
 allow_benchmark_scene_facts: true
+route_geometry_source: ${ROBOTWIN20_ROUTE_GEOMETRY_SOURCE}
+simulation_action_mode: ${ROBOTWIN20_SIMULATION_ACTION_MODE}

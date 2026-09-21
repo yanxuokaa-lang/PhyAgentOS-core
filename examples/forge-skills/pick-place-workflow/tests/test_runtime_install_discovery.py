@@ -6,6 +6,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+import yaml
 from PhyAgentOS.skill_runtime.catalog import SkillCatalog
 from PhyAgentOS.skill_runtime.installer import SkillInstaller
 from PhyAgentOS.skill_runtime.integration import discover_active_runtime
@@ -19,6 +20,7 @@ EXPECTED_TOOLS = {
     "manipulation.capabilities",
     "scene.understand",
     "scene.bind",
+    "task.goal",
     "manipulation.target",
     "grasp.propose",
     "manipulation.prepare",
@@ -57,7 +59,29 @@ def test_manifest_v2_bundle_installs_and_catalog_reloads_required_tools(tmp_path
     assert manifest.manifest_version == 2
     assert set(manifest.required_tools) == EXPECTED_TOOLS
     assert manifest.profiles["fake"].dataflow.as_posix() == "profiles/fake/dataflow.yaml"
+    assert manifest.profiles["robotwin-blocks-ranking-observed"].environment == {
+        "ROBOTWIN20_ROUTE_GEOMETRY_SOURCE": "observed",
+        "ROBOTWIN20_SIMULATION_ACTION_MODE": "disabled",
+    }
+    assert manifest.profiles["robotwin-blocks-ranking-oracle"].environment == {
+        "ROBOTWIN20_ROUTE_GEOMETRY_SOURCE": "oracle",
+        "ROBOTWIN20_SIMULATION_ACTION_MODE": "runtime_monitored",
+    }
     assert (tmp_path / "skills" / "pick-place-workflow" / "SKILL.md").is_file()
+
+
+def test_robotwin_dataflow_forwards_profile_owned_route_geometry_source():
+    root = Path(__file__).parents[1]
+    dataflow = yaml.safe_load(
+        (root / "profiles/robotwin-persistent/dataflow.yaml").read_text(encoding="utf-8")
+    )
+
+    assert dataflow["nodes"][0]["env"]["ROBOTWIN20_ROUTE_GEOMETRY_SOURCE"] == (
+        "${ROBOTWIN20_ROUTE_GEOMETRY_SOURCE}"
+    )
+    assert dataflow["nodes"][0]["env"]["ROBOTWIN20_SIMULATION_ACTION_MODE"] == (
+        "${ROBOTWIN20_SIMULATION_ACTION_MODE}"
+    )
 
 
 def test_robotwin_profile_declares_every_external_environment_used_by_dataflow():
@@ -87,7 +111,8 @@ def test_robotwin_environment_template_tracks_non_secret_required_inputs():
     }
 
     assert template_names == set(profile.required_environment) - {
-        "ROBOTWIN20_MODEL_API_KEY"
+        "ROBOTWIN20_MODEL_API_KEY",
+        *profile.environment,
     }
 
 

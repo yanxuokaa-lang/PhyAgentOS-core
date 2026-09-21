@@ -474,7 +474,10 @@ def task_prompt_projection(task: Any | None) -> dict[str, Any] | None:
         "primary_skill_binding": _task_binding_projection(
             getattr(task, "primary_skill_binding", None)
         ),
-        "primary_skill_instructions": getattr(task, "primary_skill_instructions", None),
+        # The complete activated Skill document is retained on AgentTask for
+        # audit and verification. It is already delivered by the explicit
+        # activation result and must not be copied into every discovery
+        # request; node turns likewise use their bounded execution prompt.
         "runtime_binding": _safe_json(getattr(task, "runtime_binding", None)),
         "tool_bindings": [
             _task_binding_projection(item)

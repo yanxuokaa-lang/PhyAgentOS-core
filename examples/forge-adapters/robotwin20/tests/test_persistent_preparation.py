@@ -82,6 +82,74 @@ def test_selection_registers_geometry_but_requires_separate_approval(tmp_path, n
     assert routes("acquire", arguments)["approval_ref"] == "artifact://scene/approval"
 
 
+def test_runtime_monitored_preparation_issues_route_bound_approval(tmp_path):
+    from robotwin20_adapter.persistent_action_approval import (
+        PersistentSimulationActionApprover,
+        validate_persistent_action_approval,
+    )
+
+    request, provider, routes = composition(tmp_path)
+    provider.approval_issuer = PersistentSimulationActionApprover(
+        tmp_path,
+        task_name="blocks_ranking_rgb",
+        mode="runtime_monitored",
+    )
+    output = provider.prepare(request)
+    assignment = output["assignments"][0]
+    prepared = next(iter(routes._routes.values()))
+    approval = validate_persistent_action_approval(
+        tmp_path,
+        prepared["approval_ref"],
+        task_name="blocks_ranking_rgb",
+        mode="runtime_monitored",
+        route_request=prepared["route_request"],
+        candidate_ref=assignment["candidate_ref"],
+        assignment=assignment,
+    )
+    assert approval["assignment_ref"] == assignment["assignment_ref"]
+
+
+def test_deferred_route_uses_core_prepared_qualification(tmp_path):
+    from PhyAgentOS.forge.capability_runtime.manipulation_prepare import (
+        normalize_snapshot,
+        validate_snapshot,
+    )
+
+    request, provider, _ = composition(tmp_path)
+    original = provider.selector.evaluator
+
+    def evaluate(route_request, option):
+        result = original(route_request, option)
+        result = dict(result)
+        result.update(
+            status="deferred",
+            phase="none",
+            code="execution_checks_deferred",
+            detail="dynamic checks run inside the admitted simulation Action",
+        )
+        result["checks"] = dict(result["checks"])
+        result["checks"].update(contact_dynamics="deferred", stop_control="deferred")
+        return result
+
+    provider.selector = CompleteRouteSelector(
+        evaluate,
+        _profile(),
+        deferred_checks=("contact_dynamics", "stop_control"),
+    )
+    output = provider.prepare(request)
+    assert output["prepared_candidates"][0]["qualification"] == "prepared"
+    snapshot = normalize_snapshot(output)
+    assert snapshot is not None
+    assert validate_snapshot(
+        snapshot,
+        candidate_entities={item["candidate_ref"]: item["entity_ref"] for item in request["candidates"]},
+    ) is None
+    assert output["assignments"][0]["decision_basis"][:2] == [
+        "complete_route_static_readiness",
+        "execution_checks_deferred",
+    ]
+
+
 def test_failed_complete_routes_produce_no_prepared_assignment(tmp_path):
     from PhyAgentOS.forge.capability_runtime.manipulation_prepare import PreparationProviderError
 

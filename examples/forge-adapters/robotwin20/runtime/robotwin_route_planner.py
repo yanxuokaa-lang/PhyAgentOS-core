@@ -335,7 +335,12 @@ class RoboTwinRouteEvaluator:
                 backend.reset(seed=profile["seed"])
             task = backend._task
             if (("observed_collision" in world
-                 or any(c["entity_ref"] in getattr(task, "_paos_observed_bindings", {}) for c in request["candidates"]))
+                 or any(
+                     c.get("attached_object", {}).get("object_frame_id", "").startswith(
+                         "observed-envelope/"
+                     )
+                     for c in request["candidates"]
+                 ))
                     and scene.get("geometry_source") != "observation"):
                 raise SimulationProbeError("observed route requires observed collision geometry")
             if scene.get("geometry_source") == "observation":

@@ -39,7 +39,7 @@ from .route_readiness import (
 ARM_PLANNING_PROFILE_SCHEMA_VERSION = "paos-robotwin20-arm-planning/v2"
 ROUTE_EVALUATION_SCHEMA_VERSION = "paos-robotwin20-route-evaluation/v1"
 ROUTE_SELECTION_SCHEMA_VERSION = "paos-robotwin20-route-selection/v1"
-_OUTCOME_STATUSES = frozenset({"pass", "fail", "unavailable"})
+_OUTCOME_STATUSES = frozenset({"pass", "fail", "unavailable", "deferred"})
 _OWNERS = frozenset(
     {"input", "binding", "planner", "policy", "collision", "readiness", "infrastructure"}
 )
@@ -324,12 +324,20 @@ class CompleteRouteSelector:
         evaluator: RouteReadinessProvider
         | Callable[[Mapping[str, Any], Mapping[str, Any]], Mapping[str, Any]],
         profile: Mapping[str, Any],
+        *,
+        deferred_checks: Sequence[str] = (),
     ) -> None:
         if not callable(getattr(evaluator, "evaluate", None)) and not callable(evaluator):
             raise TypeError("route selector evaluator must expose evaluate(request) or be callable")
         validate_arm_planning_profile(profile)
         self.evaluator = evaluator
         self.profile = deepcopy(dict(profile))
+        self.deferred_checks = frozenset(deferred_checks)
+        if self.deferred_checks not in (
+            frozenset(),
+            frozenset({"contact_dynamics", "stop_control"}),
+        ):
+            raise ValueError("route selector deferred checks are invalid")
 
     def select(
         self,
@@ -439,7 +447,15 @@ class CompleteRouteSelector:
                     )
                 )
                 continue
-            if normalized["status"] != "pass":
+            deferred = {
+                key for key, value in normalized["checks"].items() if value == "deferred"
+            }
+            selectable = normalized["status"] == "pass" or (
+                normalized["status"] == "deferred"
+                and deferred == self.deferred_checks
+                and bool(deferred)
+            )
+            if not selectable:
                 failures.append(
                     RouteFailure(
                         candidate_ref=candidate["candidate_ref"],
@@ -484,6 +500,9 @@ class CompleteRouteSelector:
             "arm_ids": list(selected["arm_ids"]),
             "route_geometry_digest": selected["route_geometry_digest"],
             "evidence_refs": list(selected["evidence_refs"]),
+            "deferred_checks": sorted(
+                key for key, value in selected["checks"].items() if value == "deferred"
+            ),
             "score": score,
             "rejected_routes": [item.model_dump(mode="json") for item in failures],
             "motion_authorized": False,
@@ -643,7 +662,17 @@ class CompleteRouteSelector:
             raise ArmPlanningError("route evaluator check status is invalid")
         if raw["status"] == "pass" and any(value != "pass" for value in checks.values()):
             raise ArmPlanningError("passing route evaluator result has non-passing checks")
-        if raw["status"] != "pass" and all(value == "pass" for value in checks.values()):
+        if raw["status"] == "deferred" and (
+            {key for key, value in checks.items() if value == "deferred"}
+            != {"contact_dynamics", "stop_control"}
+            or any(
+                value != "pass"
+                for key, value in checks.items()
+                if key not in {"contact_dynamics", "stop_control"}
+            )
+        ):
+            raise ArmPlanningError("deferred route evaluator result is inconsistent")
+        if raw["status"] not in {"pass", "deferred"} and all(value == "pass" for value in checks.values()):
             raise ArmPlanningError("non-passing route evaluator result requires a failed check")
         for key in ("phase", "code", "detail"):
             if not isinstance(raw[key], str) or not raw[key].strip():
@@ -656,6 +685,12 @@ class CompleteRouteSelector:
             raw["phase"] != "none" or raw["code"] != "ok" or raw["owner"] != "readiness"
         ):
             raise ArmPlanningError("passing route evaluator result has invalid outcome fields")
+        if raw["status"] == "deferred" and (
+            raw["phase"] != "none"
+            or raw["code"] != "execution_checks_deferred"
+            or raw["owner"] != "readiness"
+        ):
+            raise ArmPlanningError("deferred route evaluator result has invalid outcome fields")
         if raw["motion_authorized"] is not False or raw["world_change_started"] is not False:
             raise ArmPlanningError("route evaluator result must remain no-motion")
         if raw["route_geometry_digest"] != route_geometry_digest(request):
@@ -775,7 +810,11 @@ def project_arm_assignment(
         "capability_snapshot_ref": capability_snapshot.snapshot_ref,
         "readiness_evidence_ref": evidence_refs[0],
         "decision_basis": (
-            "complete_route_readiness",
+            *(
+                ("complete_route_static_readiness", "execution_checks_deferred")
+                if selection.get("deferred_checks")
+                else ("complete_route_readiness",)
+            ),
             "workspace_and_joint_limits",
             "configured_route_score",
         ),

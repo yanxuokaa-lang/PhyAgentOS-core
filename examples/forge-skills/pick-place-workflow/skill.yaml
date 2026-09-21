@@ -1,6 +1,6 @@
 manifest_version: 2
 name: pick-place-workflow
-version: "2.4.1"
+version: "2.6.5"
 description: Provider-neutral perception, preparation, acquisition, placement, and long-horizon workflow contracts.
 skill_document: SKILL.md
 gateway_url: http://127.0.0.1:19020
@@ -9,6 +9,7 @@ required_tools:
   - manipulation.capabilities
   - scene.understand
   - scene.bind
+  - task.goal
   - manipulation.target
   - grasp.propose
   - manipulation.prepare
@@ -21,7 +22,7 @@ profiles:
     required_assets: []
     required_environment: []
     environment: {}
-  robotwin-persistent:
+  robotwin-blocks-ranking-observed:
     dataflow: profiles/robotwin-persistent/dataflow.yaml
     required_binaries:
       - robotwin20_persistent_host
@@ -35,6 +36,8 @@ profiles:
       - ROBOTWIN20_MATERIALIZER_PYTHON
       - ROBOTWIN20_MODEL_API_BASE
       - ROBOTWIN20_MODEL_API_KEY
+      - ROBOTWIN20_ROUTE_GEOMETRY_SOURCE
+      - ROBOTWIN20_SIMULATION_ACTION_MODE
       - LOCATEANYTHING_PYTHON
       - LOCATEANYTHING_CACHE_DIR
       - LOCATEANYTHING_MODULES_CACHE_DIR
@@ -53,15 +56,91 @@ profiles:
       - ROBOTWIN20_LEFT_MOTION_CAPABILITY_VALIDATION
       - ROBOTWIN20_RIGHT_MOTION_CAPABILITY
       - ROBOTWIN20_RIGHT_MOTION_CAPABILITY_VALIDATION
-    environment: {}
+    environment:
+      ROBOTWIN20_ROUTE_GEOMETRY_SOURCE: observed
+      ROBOTWIN20_SIMULATION_ACTION_MODE: disabled
+  robotwin-blocks-ranking-oracle:
+    dataflow: profiles/robotwin-persistent/dataflow.yaml
+    required_binaries:
+      - robotwin20_persistent_host
+    required_assets: []
+    required_environment:
+      - ROBOTWIN20_PAOS_PYTHON
+      - ROBOTWIN20_ARTIFACT_ROOT
+      - ROBOTWIN20_RUNTIME_ROOT
+      - ROBOTWIN20_RUNTIME_PROFILE
+      - ROBOTWIN20_WORKER_PYTHON
+      - ROBOTWIN20_MATERIALIZER_PYTHON
+      - ROBOTWIN20_MODEL_API_BASE
+      - ROBOTWIN20_MODEL_API_KEY
+      - ROBOTWIN20_ROUTE_GEOMETRY_SOURCE
+      - ROBOTWIN20_SIMULATION_ACTION_MODE
+      - LOCATEANYTHING_PYTHON
+      - LOCATEANYTHING_CACHE_DIR
+      - LOCATEANYTHING_MODULES_CACHE_DIR
+      - SAM2_PYTHON
+      - SAM2_REPO_ROOT
+      - SAM2_CHECKPOINT
+      - GRASPGEN_PYTHON
+      - GRASPGEN_CHECKPOINT
+      - GRASPGEN_CONFIG
+      - GRASPGEN_SOURCE_ROOT
+      - ROBOTWIN20_CONTROLLER_QUALIFICATION
+      - ROBOTWIN20_CONTROLLER_QUALIFICATION_PLAN
+      - ROBOTWIN20_CONTROLLER_QUALIFICATION_EVIDENCE
+      - ROBOTWIN20_CONTROLLER_QUALIFICATION_VALIDATION
+      - ROBOTWIN20_LEFT_MOTION_CAPABILITY
+      - ROBOTWIN20_LEFT_MOTION_CAPABILITY_VALIDATION
+      - ROBOTWIN20_RIGHT_MOTION_CAPABILITY
+      - ROBOTWIN20_RIGHT_MOTION_CAPABILITY_VALIDATION
+    environment:
+      ROBOTWIN20_ROUTE_GEOMETRY_SOURCE: oracle
+      ROBOTWIN20_SIMULATION_ACTION_MODE: runtime_monitored
+  robotwin-persistent:
+    dataflow: profiles/robotwin-persistent/dataflow.yaml
+    required_binaries:
+      - robotwin20_persistent_host
+    required_assets: []
+    required_environment:
+      - ROBOTWIN20_PAOS_PYTHON
+      - ROBOTWIN20_ARTIFACT_ROOT
+      - ROBOTWIN20_RUNTIME_ROOT
+      - ROBOTWIN20_RUNTIME_PROFILE
+      - ROBOTWIN20_WORKER_PYTHON
+      - ROBOTWIN20_MATERIALIZER_PYTHON
+      - ROBOTWIN20_MODEL_API_BASE
+      - ROBOTWIN20_MODEL_API_KEY
+      - ROBOTWIN20_ROUTE_GEOMETRY_SOURCE
+      - ROBOTWIN20_SIMULATION_ACTION_MODE
+      - LOCATEANYTHING_PYTHON
+      - LOCATEANYTHING_CACHE_DIR
+      - LOCATEANYTHING_MODULES_CACHE_DIR
+      - SAM2_PYTHON
+      - SAM2_REPO_ROOT
+      - SAM2_CHECKPOINT
+      - GRASPGEN_PYTHON
+      - GRASPGEN_CHECKPOINT
+      - GRASPGEN_CONFIG
+      - GRASPGEN_SOURCE_ROOT
+      - ROBOTWIN20_CONTROLLER_QUALIFICATION
+      - ROBOTWIN20_CONTROLLER_QUALIFICATION_PLAN
+      - ROBOTWIN20_CONTROLLER_QUALIFICATION_EVIDENCE
+      - ROBOTWIN20_CONTROLLER_QUALIFICATION_VALIDATION
+      - ROBOTWIN20_LEFT_MOTION_CAPABILITY
+      - ROBOTWIN20_LEFT_MOTION_CAPABILITY_VALIDATION
+      - ROBOTWIN20_RIGHT_MOTION_CAPABILITY
+      - ROBOTWIN20_RIGHT_MOTION_CAPABILITY_VALIDATION
+    environment:
+      ROBOTWIN20_ROUTE_GEOMETRY_SOURCE: observed
+      ROBOTWIN20_SIMULATION_ACTION_MODE: disabled
 artifacts:
   resolver: local
   nodes:
     robotwin20_persistent_host:
-      artifact_id: robotwin20_persistent_host-0.4.1-linux-x86_64
-      version: "0.4.1"
+      artifact_id: robotwin20_persistent_host-0.6.5-linux-x86_64
+      version: "0.6.5"
       platform: linux
       arch: x86_64
       artifact_type: executable_tar_gz
       entrypoint: robotwin20_persistent_host
-      sha256: 2ec74104a7be7b7db5dfc84cb07022e95318e60654a10befa8e7b5c149a91aa3
+      sha256: 6059635a7c463e517d2a304d68862fa3f5f903742872e553d3a80133285a11f7

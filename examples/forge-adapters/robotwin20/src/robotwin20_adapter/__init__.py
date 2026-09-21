@@ -117,6 +117,7 @@ from .openai_scene_understanding import (
     OpenAIResponsesInferenceError,
     OpenAIResponsesSceneUnderstandingInference,
 )
+from .oracle_grasp import OracleGraspProviderError, PersistentOracleGraspProvider
 from .perception_profile import (
     PROFILE_SCHEMA_VERSION,
     PerceptionProfileError,
@@ -302,6 +303,8 @@ __all__ = [
     "OpenAIResponsesConfig",
     "OpenAIResponsesInferenceError",
     "OpenAIResponsesSceneUnderstandingInference",
+    "OracleGraspProviderError",
+    "PersistentOracleGraspProvider",
     "Qwen3VLConfig",
     "Qwen3VLInferenceError",
     "Qwen3VLSceneUnderstandingInference",

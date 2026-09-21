@@ -33,7 +33,7 @@ from .grasp_proposal import (
     GraspProposalEndpoint,
     GraspProposalProvider,
 )
-from .grounding import BIND_TOOL_SPEC, TARGET_TOOL_SPEC
+from .grounding import BIND_TOOL_SPEC, TARGET_TOOL_SPEC, TASK_GOAL_TOOL_SPEC
 from .manipulation_prepare import (
     MANIPULATION_TOOL_SPEC,
     PREPARATION_ENDPOINT_ID,
@@ -124,6 +124,35 @@ class _StaticCapabilityProvider:
         }
         value["snapshot_digest"] = capability_snapshot_digest(value)
         return CapabilitySnapshot.model_validate(value)
+
+
+class _StaticTaskGoalProvider:
+    def goal(self, _request: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "status": "available",
+            "schema_version": "paos-task-goals/v1",
+            "task_name": "fake_pick_place",
+            "seed": 0,
+            "geometry_source": "benchmark_task_definition",
+            "goal_ref": "artifact://fake/task-goals",
+            "captured_at": "2026-01-01T00:00:00+00:00",
+            "evidence_refs": ["artifact://fake/task-goals"],
+            "goals": [
+                {
+                    "execution_entity_ref": "entity://fake-object",
+                    "destination_ref": "destination://fake/primary",
+                    "frame_id": "world",
+                    "unit": "m",
+                    "world_T_object_target": [
+                        1.0, 0.0, 0.0, 0.0,
+                        0.0, 1.0, 0.0, 0.0,
+                        0.0, 0.0, 1.0, 0.0,
+                        0.0, 0.0, 0.0, 1.0,
+                    ],
+                }
+            ],
+            "motion_authorized": False,
+        }
 
 
 class ObservationProvider(Protocol):
@@ -349,12 +378,14 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
         place_provider: PlaceProvider | None = None,
         capability_provider: Any | None = None,
         grounding_provider: Any | None = None,
+        task_goal_provider: Any | None = None,
         readiness_gate: ActionReadinessGate | None = None,
         defer_action_execution: bool = False,
         now: datetime | None = None,
     ) -> None:
         self.endpoint = SceneObservationEndpoint(provider, now=now)
         self.grounding_provider = grounding_provider
+        self.task_goal_provider = task_goal_provider or _StaticTaskGoalProvider()
         self.understanding_endpoint = (
             SceneUnderstandingEndpoint(understanding_provider)
             if understanding_provider is not None
@@ -403,6 +434,7 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
                         PLACE_TOOL_SPEC,
                         BIND_TOOL_SPEC,
                         TARGET_TOOL_SPEC,
+                        TASK_GOAL_TOOL_SPEC,
                     ]
                 }
             )
@@ -419,6 +451,12 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
                 if self.grounding_provider is None:
                     return self._ok({"status": "unavailable", "motion_authorized": False})
                 return self._ok(getattr(self.grounding_provider, method)(json.loads(request.content)["arguments"]))
+        if request.method == "GET" and path == f"/tools/{TASK_GOAL_TOOL_SPEC['tool_id']}":
+            return self._ok(TASK_GOAL_TOOL_SPEC)
+        if request.method == "GET" and path == f"/tools/{TASK_GOAL_TOOL_SPEC['tool_id']}/context":
+            return self._ok({"ready": True, "binding_error": None, "motion_authorized": False})
+        if request.method == "POST" and path == f"/tools/{TASK_GOAL_TOOL_SPEC['endpoint_id']}/resolve:invoke":
+            return self._ok(self.task_goal_provider.goal(json.loads(request.content)["arguments"]))
         if request.method == "GET" and path == f"/tools/{TOOL_ID}/context":
             return self._ok(
                 {

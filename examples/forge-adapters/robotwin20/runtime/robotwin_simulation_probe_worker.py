@@ -555,15 +555,16 @@ def _validate_runtime_route_input_binding(
     if not isinstance(expected_flat, list) or len(expected_flat) != 16:
         raise SimulationProbeError("object_T_robot_target provenance initial object pose is invalid")
     expected = np.asarray(expected_flat, dtype=np.float64).reshape(4, 4)
+    geometry_source = artifacts["geometry"].get("source")
     bound = getattr(task, "_paos_observed_bindings", {}).get(candidate["entity_ref"])
-    if bound is not None:
+    if geometry_source == "observed_envelope" and bound is not None:
         model = bound["model"]
         if (not np.allclose(expected, np.asarray(model["world_T_object"]).reshape(4, 4), atol=1e-6, rtol=0)
                 or artifacts["geometry"]["half_extents_m"] != model["half_extents_m"]):
             raise SimulationProbeError("route geometry differs from bound observation model")
         # Actor truth detects drift only; it never corrects the estimated model.
         expected = np.asarray(bound["captured_pose"], dtype=np.float64).reshape(4, 4)
-    elif candidate["attached_object"].get("object_frame_id", "").startswith("observed-envelope/"):
+    elif geometry_source == "observed_envelope":
         raise SimulationProbeError("observed route requires its Runtime identity binding")
     if not np.isfinite(actual).all() or not np.isfinite(expected).all() or not np.allclose(actual, expected, atol=1e-5):
         raise SimulationProbeError("runtime object pose does not match route input evidence")

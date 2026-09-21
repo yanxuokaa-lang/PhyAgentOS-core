@@ -5,12 +5,12 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import math
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from robotwin_backend import RoboTwinRuntimeProfile, RoboTwinSensorBackend, load_runtime_profile
+from robotwin_blocks_ranking_adapter import task_adapter
 
 from robotwin20_adapter.route_inputs import (
     CURRENT_SCENE_FACTS_SCHEMA_VERSION,
@@ -21,66 +21,6 @@ from robotwin20_adapter.route_inputs import (
 
 class RouteInputWorkerError(RuntimeError):
     pass
-
-
-_ENTITIES = (
-    ("entity://block-red-1", "block1", "red-slot"),
-    ("entity://block-green-1", "block2", "green-slot"),
-    ("entity://block-blue-1", "block3", "blue-slot"),
-)
-
-
-def _matrix(pose: Any) -> list[list[float]]:
-    matrix = pose.to_transformation_matrix()
-    return [[float(matrix[row][column]) for column in range(4)] for row in range(4)]
-
-
-def _flatten(matrix: list[list[float]]) -> list[float]:
-    return [item for row in matrix for item in row]
-
-
-def _multiply(left: list[list[float]], right: list[list[float]]) -> list[list[float]]:
-    return [[sum(left[row][i] * right[i][column] for i in range(4)) for column in range(4)] for row in range(4)]
-
-
-def _inverse_rigid(value: list[list[float]]) -> list[list[float]]:
-    rotation = [row[:3] for row in value[:3]]
-    transpose = [[rotation[column][row] for column in range(3)] for row in range(3)]
-    translation = [value[row][3] for row in range(3)]
-    inverse_translation = [-sum(transpose[row][column] * translation[column] for column in range(3)) for row in range(3)]
-    return [[*transpose[0], inverse_translation[0]], [*transpose[1], inverse_translation[1]], [*transpose[2], inverse_translation[2]], [0.0, 0.0, 0.0, 1.0]]
-
-
-def _pose_from_pq_wxyz(value: Any) -> Any:
-    import sapien
-
-    if not isinstance(value, (list, tuple)) or len(value) != 7 or any(
-        isinstance(item, bool) or not isinstance(item, (int, float)) or not math.isfinite(float(item)) for item in value
-    ):
-        raise RouteInputWorkerError("benchmark functional target pose is invalid")
-    return sapien.Pose([float(item) for item in value[:3]], [float(item) for item in value[3:]])
-
-
-def _half_extents(actor: Any) -> list[float]:
-    components = getattr(actor.actor, "components", None)
-    if not isinstance(components, list):
-        raise RouteInputWorkerError("actor physics components are unavailable")
-    shapes = []
-    for component in components:
-        getter = getattr(component, "get_collision_shapes", None)
-        if callable(getter):
-            shapes.extend(getter())
-    if len(shapes) != 1 or not callable(getattr(shapes[0], "get_half_size", None)):
-        raise RouteInputWorkerError("actor must expose one box collision shape")
-    values = [float(item) for item in shapes[0].get_half_size()]
-    if len(values) != 3 or any(not math.isfinite(item) or item <= 0 for item in values):
-        raise RouteInputWorkerError("actor collision half extents are invalid")
-    local_pose = shapes[0].get_local_pose()
-    local_matrix = _matrix(local_pose)
-    identity = [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]]
-    if any(abs(local_matrix[row][column] - identity[row][column]) > 1e-6 for row in range(4) for column in range(4)):
-        raise RouteInputWorkerError("non-identity collision-shape pose is unsupported")
-    return values
 
 
 def capture_scene_facts(
@@ -108,33 +48,8 @@ def capture_scene_facts(
         revision = backend.snapshot().get("scene_revision")
         if task is None or not revision or (owned and revision != f"{profile['task_name']}-{profile['seed']}-1"):
             raise RouteInputWorkerError("benchmark scene revision is unavailable")
-        objects = []
-        for entity_ref, actor_attribute, target_token in _ENTITIES:
-            actor = getattr(task, actor_attribute, None)
-            if actor is None or not callable(getattr(actor, "get_functional_point", None)):
-                raise RouteInputWorkerError("benchmark actor binding is unavailable")
-            world_object = _matrix(actor.get_pose())
-            world_functional = _matrix(actor.get_functional_point(0, "pose"))
-            objects.append(
-                {
-                    "entity_ref": entity_ref,
-                    "actor_name": actor_attribute,
-                    "object_frame_id": entity_ref.removeprefix("entity://"),
-                    "world_T_object": _flatten(world_object),
-                    "world_T_functional_point": _flatten(world_functional),
-                    "half_extents_m": _half_extents(actor),
-                    "functional_point_id": 0,
-                }
-            )
-            if include_targets:
-                target_value = getattr(task, f"{actor_attribute}_target_pose", None)
-                world_functional_target = _matrix(_pose_from_pq_wxyz(target_value))
-                object_functional = _multiply(_inverse_rigid(world_object), world_functional)
-                objects[-1].update(
-                    world_T_functional_target=_flatten(world_functional_target),
-                    world_T_object_target=_flatten(_multiply(world_functional_target, _inverse_rigid(object_functional))),
-                    target_ref=f"destination://blocks-ranking-rgb/{target_token}",
-                )
+        adapter = task_adapter(profile["task_name"])
+        objects = adapter.capture_objects(task, include_targets=include_targets)
         value = {
             "schema_version": ROUTE_SCENE_FACTS_SCHEMA_VERSION if owned else CURRENT_SCENE_FACTS_SCHEMA_VERSION,
             "task_name": profile["task_name"],

@@ -115,6 +115,71 @@ def test_task_video_accumulates_multiple_actions_into_one_owner_result(tmp_path:
     assert {manifest["views"][key]["artifact_ref"] for key in manifest["views"]} == set(
         final_refs[1:]
     )
+    assert archive.result("paos:task-1") == {
+        "availability": "complete",
+        "session_id": manifest["session_id"],
+        "action_count": 4,
+        "actions": manifest["actions"],
+        "artifact_refs": list(final_refs),
+    }
+    assert archive.result("paos:missing") == {
+        "availability": "none",
+        "action_count": 0,
+        "artifact_refs": [],
+    }
+
+
+def test_engine_persists_goal_and_independent_benchmark_results(tmp_path):
+    from robotwin_persistent_engine import RoboTwinPersistentEngine
+
+    class Adapter:
+        def goal_facts(self, _task, *, seed):
+            return {
+                "schema_version": "paos-task-goals/v1",
+                "task_name": "blocks_ranking_rgb",
+                "seed": seed,
+                "geometry_source": "benchmark_task_definition",
+                "goals": [{}],
+                "captured_at": "2026-09-20T00:00:00+00:00",
+                "motion_authorized": False,
+            }
+
+        def benchmark_result(self, _task, *, seed, scene_revision):
+            return {
+                "schema_version": "paos-robotwin20-benchmark-result/v1",
+                "task_name": "blocks_ranking_rgb",
+                "seed": seed,
+                "scene_revision": scene_revision,
+                "success": True,
+                "score": 1.0,
+                "motion_authorized": False,
+            }
+
+    engine = object.__new__(RoboTwinPersistentEngine)
+    engine.root, engine.epoch = tmp_path, "epoch"
+    engine.runtime_profile = {"seed": 3}
+    engine.task_adapter = Adapter()
+    engine._goal_facts_ref = None
+    engine.backend = SimpleNamespace(
+        _task=object(), snapshot=lambda: {"scene_revision": "scene-final"}
+    )
+    engine.video = SimpleNamespace(
+        result=lambda owner: {
+            "availability": "complete",
+            "action_count": 6,
+            "artifact_refs": [f"artifact://video/{owner}"],
+        }
+    )
+
+    first = engine.query("task_goal_facts", {})
+    second = engine.query("task_goal_facts", {})
+    result = engine.query("benchmark_result", {"task_id": "task-1"})
+
+    assert first["goal_ref"] == second["goal_ref"]
+    assert first["motion_authorized"] is False
+    assert result["success"] is True
+    assert result["task_video"]["action_count"] == 6
+    assert _artifact_path(tmp_path, result["artifact_ref"]).is_file()
 
 
 def test_task_video_starts_a_new_archive_when_owner_changes(tmp_path: Path):

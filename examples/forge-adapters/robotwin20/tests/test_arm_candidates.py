@@ -148,6 +148,44 @@ def test_selector_skips_failed_arm_and_selects_passing_arm():
     assert len(result["rejected_routes"]) == 1
 
 
+def test_selector_accepts_deferred_execution_checks_only_when_explicitly_enabled():
+    request = _request(Path("/tmp"))
+    options = enumerate_arm_candidates(
+        _intent(), [dict(request["candidates"][0])], _profile()
+    )
+
+    def evaluate(route_request, option):
+        result = _result(route_request, option)
+        result.update(
+            status="deferred",
+            phase="none",
+            code="execution_checks_deferred",
+            detail="dynamic checks run inside the admitted simulation Action",
+        )
+        result["checks"].update(
+            contact_dynamics="deferred",
+            stop_control="deferred",
+        )
+        return result
+
+    rejected = CompleteRouteSelector(evaluate, _profile()).select(
+        _intent(), request, options
+    )
+    assert rejected.status == "replan_required"
+    assert {failure.code for failure in rejected.failed_routes} == {
+        "execution_checks_deferred"
+    }
+
+    selected = CompleteRouteSelector(
+        evaluate,
+        _profile(),
+        deferred_checks=("contact_dynamics", "stop_control"),
+    ).select(_intent(), request, options)
+    assert selected["status"] == "selected"
+    assert selected["deferred_checks"] == ["contact_dynamics", "stop_control"]
+    assert selected["motion_authorized"] is False
+
+
 def test_selector_returns_replan_when_all_options_fail():
     request = _request(Path("/tmp"))
     options = enumerate_arm_candidates(_intent(), [dict(request["candidates"][0])], _profile())

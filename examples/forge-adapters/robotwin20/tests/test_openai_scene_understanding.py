@@ -72,10 +72,16 @@ class Resolver:
 def test_responses_provider_builds_structured_image_request_and_projects_result(monkeypatch):
     monkeypatch.setenv("CUSTOM_API_KEY", "test-key")
     client = Client()
+    client_options = {}
+
+    def client_factory(**kwargs):
+        client_options.update(kwargs)
+        return client
+
     inference = OpenAIResponsesSceneUnderstandingInference(
         Resolver(),
         config=OpenAIResponsesConfig(model="gpt-5.6-sol"),
-        client_factory=lambda **kwargs: client,
+        client_factory=client_factory,
     )
 
     result = inference.infer(REQUEST)
@@ -85,6 +91,7 @@ def test_responses_provider_builds_structured_image_request_and_projects_result(
     assert payload["model"] == "gpt-5.6-sol"
     assert payload["store"] is False
     assert payload["text"]["format"]["type"] == "json_schema"
+    assert client_options["max_retries"] == 0
     image = payload["input"][0]["content"][1]
     assert image["type"] == "input_image"
     assert image["image_url"] == "data:image/png;base64," + base64.b64encode(b"rgb-bytes").decode()
@@ -100,6 +107,38 @@ def test_provider_composes_with_generic_scene_understanding_endpoint(monkeypatch
     snapshot = RoboTwinSceneUnderstandingProvider(inference).understand(REQUEST)
     assert snapshot is not None
     assert snapshot["entities"][0]["provenance"] == REQUEST["artifacts"]
+
+
+def test_provider_binds_empty_semantic_provenance_to_current_rgb(monkeypatch):
+    monkeypatch.setenv("CUSTOM_API_KEY", "test-key")
+
+    class EmptyProvenanceResponse(Response):
+        output_text = json.dumps(
+            {
+                "entities": [
+                    {
+                        "entity_ref": "entity://bottle-1",
+                        "category": "container",
+                        "confidence": 0.91,
+                        "provenance": [],
+                    }
+                ],
+                "relations": [],
+                "spatial_envelopes": [],
+                "ambiguities": [],
+            }
+        )
+
+    class EmptyProvenanceClient(Client):
+        def __init__(self):
+            super().__init__()
+            self.responses.create = lambda **kwargs: EmptyProvenanceResponse()
+
+    inference = OpenAIResponsesSceneUnderstandingInference(
+        Resolver(), client_factory=lambda **kwargs: EmptyProvenanceClient()
+    )
+    result = inference.infer(REQUEST)
+    assert result["entities"][0]["provenance"] == REQUEST["artifacts"]
 
 
 @pytest.mark.asyncio

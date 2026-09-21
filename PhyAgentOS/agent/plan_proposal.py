@@ -30,6 +30,7 @@ def compile_task_plan(
     if binding is None and task.runtime_binding is None:
         raise ValueError("semantic plan submission requires a bound Runtime")
     parsed = tuple(PlanNode.model_validate(node) for node in nodes)
+    parsed = _complete_persisted_runtime_bindings(task, parsed)
     for node in parsed:
         validate_condition_keys(node.conditions)
     capabilities = {
@@ -154,3 +155,49 @@ def compile_task_plan(
     graph = PlanGraph.model_validate(payload)
     validate_graph(graph)
     return graph
+
+
+def _complete_persisted_runtime_bindings(
+    task: AgentTaskRecord, nodes: tuple[PlanNode, ...]
+) -> tuple[PlanNode, ...]:
+    """Carry unambiguous producer references into consumer node bindings.
+
+    Agent-composed plans intentionally choose semantic nodes, while the
+    Coordinator owns exact persisted producer facts.  Preparation/acquisition
+    consumers must not depend on the model copying a destination or capability
+    URI into every later selection.  Only values already frozen in this graph
+    or a unique current-task capabilities result are propagated; ambiguous or
+    stale values remain absent and are rejected by normal selection validation.
+    """
+    destination_by_entity: dict[str, set[str]] = {}
+    for node in nodes:
+        entity = node.input_bindings.get("entity_ref")
+        destination = node.input_bindings.get("destination_ref")
+        if isinstance(entity, str) and isinstance(destination, str):
+            destination_by_entity.setdefault(entity, set()).add(destination)
+
+    capability_refs: set[str] = set()
+    for revision in reversed(task.revisions):
+        for record in reversed(revision.execution_records):
+            if record.tool_id != "manipulation.capabilities" or record.status != "succeeded":
+                continue
+            response = record.response if isinstance(record.response, dict) else {}
+            data = response.get("data") if isinstance(response.get("data"), dict) else response
+            snapshot_ref = data.get("snapshot_ref") if isinstance(data, dict) else None
+            if isinstance(snapshot_ref, str) and snapshot_ref.startswith("artifact://"):
+                capability_refs.add(snapshot_ref)
+        if capability_refs:
+            break
+
+    completed: list[PlanNode] = []
+    for node in nodes:
+        bindings = dict(node.input_bindings)
+        if node.capability in {"manipulation.prepare", "object.acquire", "object.place"}:
+            entity = bindings.get("entity_ref")
+            destinations = destination_by_entity.get(entity, set())
+            if node.capability in {"manipulation.prepare", "object.place"} and len(destinations) == 1:
+                bindings.setdefault("destination_ref", next(iter(destinations)))
+            if len(capability_refs) == 1:
+                bindings.setdefault("capability_snapshot_ref", next(iter(capability_refs)))
+        completed.append(node.model_copy(update={"input_bindings": bindings}))
+    return tuple(completed)

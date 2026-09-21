@@ -293,6 +293,10 @@ class OpenAIResponsesSceneUnderstandingInference:
                 api_key=api_key,
                 base_url=self.config.api_base,
                 timeout=self.config.timeout_seconds,
+                # Provider recovery belongs to AgentLoop/Coordinator. Hidden
+                # SDK retries multiply this synchronous Query's deadline and
+                # can leave its persisted remote state unknown.
+                max_retries=0,
             )
             payload: dict[str, Any] = {
                 "model": self.config.model,
@@ -324,7 +328,26 @@ class OpenAIResponsesSceneUnderstandingInference:
             if self.config.reasoning_effort is not None:
                 payload["reasoning"] = {"effort": self.config.reasoning_effort}
             response = client.responses.create(**payload)
-            return self._parse_response(response)
+            parsed = dict(self._parse_response(response))
+            # Semantic claims are grounded in the RGB image sent above.  Some
+            # Responses models omit the optional provenance array even when the
+            # claim is visual; bind only that omission to the current RGB input.
+            # Explicit references remain untouched and are still validated by
+            # the provider-neutral Core contract.
+            rgb_refs = [
+                ref for ref in artifacts
+                if isinstance(ref, str) and ref.rsplit("/", 1)[-1] == "rgb"
+            ]
+            if len(rgb_refs) != 1:
+                raise OpenAIResponsesInferenceError(
+                    "scene understanding requires exactly one rgb artifact"
+                )
+            rgb_ref = rgb_refs[0]
+            for field in ("entities", "relations", "spatial_envelopes"):
+                for claim in parsed[field]:
+                    if isinstance(claim, dict) and not claim.get("provenance"):
+                        claim["provenance"] = [rgb_ref]
+            return parsed
         except OpenAIResponsesInferenceError:
             raise
         except Exception as exc:

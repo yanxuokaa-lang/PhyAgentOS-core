@@ -146,7 +146,10 @@ def validate_scene_facts(value: Any) -> dict[str, Any]:
     optional = {"geometry_source", "support_surface", "observed_collision"}
     if not isinstance(value, Mapping) or not required <= set(value) or set(value) - required - optional:
         raise RouteInputError("route scene facts fields are invalid")
-    if "geometry_source" in value and value["geometry_source"] != "observation":
+    if "geometry_source" in value and value["geometry_source"] not in {
+        "observation",
+        "oracle_actor",
+    }:
         raise RouteInputError("route scene geometry source is invalid")
     if "support_surface" in value:
         support = value["support_surface"]

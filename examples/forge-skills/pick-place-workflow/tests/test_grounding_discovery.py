@@ -22,3 +22,20 @@ def test_missing_provider_is_not_ready_and_failure_is_preserved():
                 tools = await client.list_tools()
                 assert "manipulation.layout" not in {t["tool_id"] for t in tools["data"]["tools"]}
     asyncio.run(run())
+
+
+def test_task_goal_is_a_read_only_task_fact_query():
+    async def run():
+        async with ForgeToolClient(
+            "http://test", transport=FakeGatewayTransport(object())
+        ) as client:
+            spec = await client.get_tool("task.goal")
+            context = await client.get_tool_context("task.goal")
+            result = await client.invoke_query_tool("task.goal", {})
+        assert spec["data"]["semantics"] == "query"
+        assert spec["data"]["planning"]["requires_before_plan"] is True
+        assert context["data"]["motion_authorized"] is False
+        assert result["data"]["geometry_source"] == "benchmark_task_definition"
+        assert result["data"]["motion_authorized"] is False
+
+    asyncio.run(run())

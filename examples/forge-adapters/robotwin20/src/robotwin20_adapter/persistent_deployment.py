@@ -6,19 +6,50 @@ from typing import Any, Callable
 
 import yaml
 from PhyAgentOS.forge.capability_runtime import CapabilityRuntime, CapabilityRuntimeTransport
-from pick_place_workflow.grounding import BIND_TOOL_SPEC, TARGET_TOOL_SPEC
+from pick_place_workflow.grounding import BIND_TOOL_SPEC, TARGET_TOOL_SPEC, TASK_GOAL_TOOL_SPEC
 from pick_place_workflow.persistent_runtime import build_persistent_runtime
 
 from .arm_candidates import CompleteRouteSelector
 from .grounding import Grounding, GroundingEndpoint, RememberObservation
 from .observed_collision import ObservedCollisionPolicy
 from .observed_support import SupportEstimationPolicy
+from .persistent_action_approval import (
+    DEFERRED_EXECUTION_CHECKS,
+    DISABLED_ACTION_MODE,
+    RUNTIME_MONITORED_ACTION_MODE,
+    PersistentSimulationActionApprover,
+)
 from .persistent_capabilities import PersistentCapabilityProvider
-from .persistent_client import build_persistent_route_readiness
+from .persistent_client import PersistentWorkerError, build_persistent_route_readiness
 from .persistent_preparation import PersistentPreparationProvider
 from .persistent_route_builder import PersistentRouteBuilder
 from .prepared_routes import PreparedRoutes
 from .route_readiness import RouteReadinessEvaluationAdapter
+
+
+class PersistentTaskGoalProvider:
+    """Read task-definition goals without projecting them as observations."""
+
+    def __init__(self, client: Any) -> None:
+        self.client = client
+
+    def goal(self, request: dict[str, Any]) -> dict[str, Any]:
+        return self.client.query("task_goal_facts", request)
+
+
+class TaskGoalEndpoint:
+    def __init__(self, provider: PersistentTaskGoalProvider) -> None:
+        self.provider = provider
+
+    def invoke(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return self.provider.goal(arguments)
+        except (KeyError, ValueError, TypeError, OSError, PersistentWorkerError) as exc:
+            return {
+                "status": "unavailable",
+                "motion_authorized": False,
+                "error": {"code": "task_goal_unavailable", "message": str(exc)},
+            }
 
 
 @dataclass(frozen=True)
@@ -27,6 +58,7 @@ class PersistentDeployment:
     capability_provider: PersistentCapabilityProvider
     prepared_routes: PreparedRoutes
     grounding: Grounding | None = None
+    task_goal_provider: Any | None = None
 
     def runtime_arguments(self):
         return {"preparation_provider": self.preparation_provider,
@@ -86,6 +118,12 @@ def build_persistent_runtime_bundle(
                               (TARGET_TOOL_SPEC, deployment.grounding.target)):
             runtime.register_tool(spec, GroundingEndpoint(resolve),
                                   context_provider=lambda tool_id=spec["tool_id"]: tool_context_provider(tool_id))
+    if deployment.task_goal_provider is not None:
+        runtime.register_tool(
+            TASK_GOAL_TOOL_SPEC,
+            TaskGoalEndpoint(deployment.task_goal_provider),
+            context_provider=lambda: tool_context_provider("task.goal"),
+        )
     transport = CapabilityRuntimeTransport(runtime, gateway_identity=gateway_identity)
     return PersistentRuntimeBundle(deployment=deployment, runtime=runtime, transport=transport)
 
@@ -94,6 +132,9 @@ def build_persistent_deployment(*, client, artifact_root: Path, scene_source,
                                 materializer_command, materializer_arguments,
                                 arm_profile_digest: str, materializer_timeout_s=120,
                                 preparation_timeout_s=330,
+                                route_geometry_source="observed",
+                                simulation_action_mode=DISABLED_ACTION_MODE,
+                                task_name=None,
                                 readiness_evaluator=None):
     """Build real adapter components, retaining caller-owned client lifetime.
 
@@ -114,17 +155,55 @@ def build_persistent_deployment(*, client, artifact_root: Path, scene_source,
                           support_policy=SupportEstimationPolicy(**profile.get("observed_support", {})),
                           collision_policy=(ObservedCollisionPolicy(**profile["observed_collision"])
                                             if "observed_collision" in profile else None))
-    builder.scene_source = grounding.scene_facts
+    if route_geometry_source == "observed":
+        builder.scene_source = grounding.scene_facts
+    elif route_geometry_source == "oracle":
+        builder.scene_source = grounding.oracle_scene_facts
+    else:
+        raise ValueError("route_geometry_source must be observed or oracle")
+    if simulation_action_mode not in {
+        DISABLED_ACTION_MODE,
+        RUNTIME_MONITORED_ACTION_MODE,
+    }:
+        raise ValueError("simulation_action_mode must be disabled or runtime_monitored")
+    if simulation_action_mode == RUNTIME_MONITORED_ACTION_MODE and route_geometry_source != "oracle":
+        raise ValueError("runtime_monitored simulation Actions require oracle route geometry")
     routes = PreparedRoutes(client, artifact_root)
     evaluator = readiness_evaluator if readiness_evaluator is not None else RouteReadinessEvaluationAdapter(
         build_persistent_route_readiness(client))
+    deferred_checks = (
+        DEFERRED_EXECUTION_CHECKS
+        if simulation_action_mode == RUNTIME_MONITORED_ACTION_MODE
+        else ()
+    )
+    approval_issuer = (
+        PersistentSimulationActionApprover(
+            artifact_root,
+            task_name=task_name,
+            mode=simulation_action_mode,
+        )
+        if simulation_action_mode == RUNTIME_MONITORED_ACTION_MODE
+        else None
+    )
     preparation = PersistentPreparationProvider(
         client=client, route_builder=builder,
-        selector=CompleteRouteSelector(evaluator, builder.arm_profile), prepared_routes=routes,
+        selector=CompleteRouteSelector(
+            evaluator,
+            builder.arm_profile,
+            deferred_checks=deferred_checks,
+        ),
+        prepared_routes=routes,
+        approval_issuer=approval_issuer,
         timeout_s=preparation_timeout_s,
     )
     capabilities = PersistentCapabilityProvider(
         client=client, artifact_root=artifact_root,
         arm_profile=Path(materializer_arguments["arm-planning-profile"]), profile_digest=arm_profile_digest,
     )
-    return PersistentDeployment(preparation, capabilities, routes, grounding)
+    return PersistentDeployment(
+        preparation,
+        capabilities,
+        routes,
+        grounding,
+        PersistentTaskGoalProvider(client),
+    )

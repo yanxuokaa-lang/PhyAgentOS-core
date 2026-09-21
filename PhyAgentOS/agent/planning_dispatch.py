@@ -462,6 +462,14 @@ class AgentComposedDispatch:
                 missing_fields=("tool_id",),
                 recommended_action="choose_candidate_tool",
             )
+        # These references are frozen node inputs when the planning compiler
+        # can resolve one persisted producer.  Reuse them here so the Agent
+        # selects candidate payloads without manually duplicating opaque
+        # destination/capability URIs in every prepare/acquire receipt.
+        arguments = dict(arguments)
+        for key in ("destination_ref", "capability_snapshot_ref"):
+            if key not in arguments and key in node.input_bindings:
+                arguments[key] = node.input_bindings[key]
         missing_node_bindings = tuple(
             key for key in policy.input_binding_keys if key not in node.input_bindings
         )

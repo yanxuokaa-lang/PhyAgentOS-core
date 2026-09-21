@@ -583,6 +583,9 @@ explicitly invokes a selected execution Tool, that Tool retains its own budget
 and the node executor reconciles its durable outcome. Thus a deployment with
 300-second model requests, a 420-second decision budget, and 330-second preparation
 does not silently give preparation only the remainder of the model budget.
+The node request carries the current node projection and Skill/Runtime identity;
+complete activated Skill instructions remain in Coordinator audit state and are
+not duplicated in every node request.
 
 Persistent `manipulation.prepare` uses one profile-owned monotonic deadline
 across candidate materialization, every candidate/arm readiness evaluation, and
@@ -702,3 +705,28 @@ background long-horizon runner, and node model waits emit progress with the
 current phase and prompt estimate. A model's plain-text claim that it is
 finished, paused, or needs a Tool is not a lifecycle transition until the
 controller receives a structured result or a persisted Coordinator fact.
+
+### RoboTwin oracle development baseline
+
+The `blocks_ranking_rgb` integration has two explicit persistent profiles. The
+observed profile routes through `Grounding.scene_facts`; the oracle development
+profile routes through `Grounding.oracle_scene_facts`. Both require current
+sensor observation, semantic understanding, calibration and `scene.bind` identity
+correspondence. The oracle profile replaces only execution/collision geometry
+with the bound Runtime actor model. It does not replace Agent ordering,
+preparation, Gateway admission, settlement, or verification.
+
+`task.goal` is a provider-neutral read-only Query for task-specification facts.
+Its output is not observation evidence. For `blocks_ranking_rgb`, the Runtime
+task adapter returns three execution identities and exact target transforms; the
+Agent matches those identities to `scene.bind` and invokes the existing
+`manipulation.target`. The Runtime never chooses a fixed color order and never
+calls RoboTwin `play_once()`.
+
+The Runtime's private `benchmark_result` query is reserved for post-run
+acceptance. It persists RoboTwin `check_success()` separately from the PAOS
+ForgeTaskVerifier verdict and includes the latest `_TaskVideoArchive` result for
+the task owner. A benchmark pass cannot overwrite, imply, or replace the PAOS
+verdict. Other RoboTwin tasks add task adapters and the atomic capabilities they
+actually require; they are not routed through pick/place by name-based branches
+in Core.

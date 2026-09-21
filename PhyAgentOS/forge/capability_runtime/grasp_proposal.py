@@ -42,6 +42,7 @@ class GraspProposalSnapshot:
     ambiguities: tuple[dict[str, Any], ...] = field(default_factory=tuple)
     funnel: dict[str, int] | None = None
     provider_available: bool = True
+    produced_evidence_refs: tuple[str, ...] = field(default_factory=tuple)
 
 
 GRASP_TOOL_SPEC: dict[str, Any] = {
@@ -538,7 +539,13 @@ def normalize_snapshot(snapshot: Any) -> GraspProposalSnapshot | None:
         return snapshot
     if not isinstance(snapshot, Mapping):
         return None
-    allowed = {"candidates", "ambiguities", "funnel", "provider_available"}
+    allowed = {
+        "candidates",
+        "ambiguities",
+        "funnel",
+        "provider_available",
+        "produced_evidence_refs",
+    }
     if set(snapshot) - allowed or not {"candidates", "ambiguities", "funnel"} <= set(snapshot):
         return None
     candidates = snapshot.get("candidates", ())
@@ -553,11 +560,18 @@ def normalize_snapshot(snapshot: Any) -> GraspProposalSnapshot | None:
     provider_available = snapshot.get("provider_available", True)
     if not isinstance(provider_available, bool):
         return None
+    produced_evidence_refs = snapshot.get("produced_evidence_refs", ())
+    if (
+        not isinstance(produced_evidence_refs, (list, tuple))
+        or any(not isinstance(ref, str) for ref in produced_evidence_refs)
+    ):
+        return None
     return GraspProposalSnapshot(
         candidates=tuple(dict(item) for item in candidates),
         ambiguities=tuple(dict(item) for item in ambiguities),
         funnel=snapshot.get("funnel"),
         provider_available=provider_available,
+        produced_evidence_refs=tuple(produced_evidence_refs),
     )
 
 
@@ -576,8 +590,22 @@ def validate_snapshot(
         return "invalid_snapshot"
     if not isinstance(snapshot.ambiguities, (tuple, list)):
         return "invalid_snapshot"
+    produced_evidence_refs = set(snapshot.produced_evidence_refs)
+    if (
+        len(produced_evidence_refs) != len(snapshot.produced_evidence_refs)
+        or (
+            produced_evidence_refs
+            and not _artifact_refs(list(produced_evidence_refs))
+        )
+    ):
+        return "invalid_provenance"
     seen_candidate_refs: set[str] = set()
-    allowed_provenance = allowed_provenance or set()
+    allowed_provenance = set(allowed_provenance or ()) | produced_evidence_refs
+    if allowed_provenance_by_entity is not None:
+        allowed_provenance_by_entity = {
+            entity_ref: set(refs) | produced_evidence_refs
+            for entity_ref, refs in allowed_provenance_by_entity.items()
+        }
     for candidate in snapshot.candidates:
         candidate_error = _validate_candidate(
             candidate,

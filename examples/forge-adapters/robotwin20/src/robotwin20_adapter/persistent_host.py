@@ -23,7 +23,12 @@ from .openai_scene_understanding import (
     OpenAIResponsesConfig,
     OpenAIResponsesSceneUnderstandingInference,
 )
+from .oracle_grasp import PersistentOracleGraspProvider
 from .perception_profile import build_single_view_perception, load_perception_profile
+from .persistent_action_approval import (
+    DISABLED_ACTION_MODE,
+    RUNTIME_MONITORED_ACTION_MODE,
+)
 from .persistent_client import PersistentWorkerClient
 from .persistent_deployment import (
     PersistentRuntimeBundle,
@@ -130,7 +135,14 @@ def load_persistent_host_profile(
     }
     if (
         not required <= set(profile)
-        or set(profile) - required - {"video", "preparation_timeout_s"}
+        or set(profile)
+        - required
+        - {
+            "video",
+            "preparation_timeout_s",
+            "route_geometry_source",
+            "simulation_action_mode",
+        }
         or profile.get("schema_version") != PROFILE_SCHEMA_VERSION
     ):
         raise PersistentHostConfigurationError("persistent host profile fields are invalid")
@@ -156,10 +168,11 @@ def _positive_number(value: Any, label: str) -> float:
 def build_persistent_host(
     profile: Mapping[str, Any], *, environ: Mapping[str, str] | None = None
 ) -> PersistentHost:
-    """Construct the adapter providers and seven Tools around one worker client.
+    """Construct the adapter Tool API around one worker client.
 
     Startup creates and validates the world with one read-only snapshot. It does not
-    issue an Action or motion; Actions still require externally bound approval.
+    issue an Action or motion; enabled simulation Actions still require a
+    route-bound approval emitted after no-motion preparation.
     """
 
     variables = dict(os.environ if environ is None else environ)
@@ -173,6 +186,28 @@ def build_persistent_host(
     if profile.get("allow_benchmark_scene_facts") is not True:
         raise PersistentHostConfigurationError(
             "this host requires explicit benchmark scene-fact projection"
+        )
+    route_geometry_source = profile.get("route_geometry_source", "observed")
+    if route_geometry_source not in {"observed", "oracle"}:
+        raise PersistentHostConfigurationError(
+            "route_geometry_source must be observed or oracle"
+        )
+    simulation_action_mode = profile.get(
+        "simulation_action_mode", DISABLED_ACTION_MODE
+    )
+    if simulation_action_mode not in {
+        DISABLED_ACTION_MODE,
+        RUNTIME_MONITORED_ACTION_MODE,
+    }:
+        raise PersistentHostConfigurationError(
+            "simulation_action_mode must be disabled or runtime_monitored"
+        )
+    if (
+        simulation_action_mode == RUNTIME_MONITORED_ACTION_MODE
+        and route_geometry_source != "oracle"
+    ):
+        raise PersistentHostConfigurationError(
+            "runtime_monitored simulation Actions require oracle route geometry"
         )
     adapter_root = _path(profile.get("adapter_root"), "adapter_root", directory=True)
     artifact_root = Path(str(profile.get("artifact_root")))
@@ -233,6 +268,7 @@ def build_persistent_host(
                 ),
                 "stop_file": str(artifact_root / "persistent-host.stop"),
                 "allow_benchmark_scene_facts": True,
+                "simulation_action_mode": simulation_action_mode,
                 "video": {
                     "enabled": video_settings["enabled"],
                     "fps": video_fps,
@@ -366,7 +402,7 @@ def build_persistent_host(
                 qwen_inference,
                 gpt_inference,
                 primary_name="qwen3-vl-4b-vllm",
-                fallback_name="gpt-5.6-sol-high",
+                fallback_name="gpt-5.6-terra-medium",
                 fallback_exceptions=(Qwen3VLVLLMLifecycleError,),
                 fallback_on_empty=False,
             )
@@ -413,7 +449,6 @@ def build_persistent_host(
                 environ=variables,
             )
         )
-        grasp = build_grasp_provider(load_grasp_profile(grasp_profile), environ=variables)
         try:
             import yaml
         except ImportError as exc:
@@ -431,6 +466,35 @@ def build_persistent_host(
         if not isinstance(materializer_arguments, dict):
             raise PersistentHostConfigurationError("materializer arguments must be an object")
         materializer_arguments = _expand(materializer_arguments, variables)
+        task_name = None
+        if simulation_action_mode == RUNTIME_MONITORED_ACTION_MODE:
+            try:
+                runtime_definition = yaml.safe_load(
+                    runtime_profile.read_text(encoding="utf-8")
+                )
+                task_name = runtime_definition["task_name"]
+            except (KeyError, TypeError, OSError, UnicodeError, yaml.YAMLError) as exc:
+                raise PersistentHostConfigurationError(
+                    "persistent Runtime task definition is unavailable"
+                ) from exc
+            if not isinstance(task_name, str) or not task_name:
+                raise PersistentHostConfigurationError(
+                    "persistent Runtime task_name is invalid"
+                )
+        if route_geometry_source == "oracle":
+            try:
+                route_profile = yaml.safe_load(
+                    Path(materializer_arguments["route-input-profile"]).read_text(
+                        encoding="utf-8"
+                    )
+                )
+                provider_transform = route_profile["grasp_adaptation"][
+                    "provider_T_contact_center"
+                ]
+            except (KeyError, TypeError, OSError, UnicodeError, yaml.YAMLError) as exc:
+                raise PersistentHostConfigurationError(
+                    "oracle grasp adaptation profile is unavailable"
+                ) from exc
         deployment = build_persistent_deployment(
             client=client,
             artifact_root=artifact_root,
@@ -450,7 +514,20 @@ def build_persistent_host(
                 profile.get("preparation_timeout_s", 330),
                 "preparation_timeout_s",
             ),
+            route_geometry_source=route_geometry_source,
+            simulation_action_mode=simulation_action_mode,
+            task_name=task_name,
         )
+        if route_geometry_source == "oracle":
+            grasp = PersistentOracleGraspProvider(
+                client,
+                provider_to_contact_flat=provider_transform,
+                grounding=deployment.grounding,
+            )
+        else:
+            grasp = build_grasp_provider(
+                load_grasp_profile(grasp_profile), environ=variables
+            )
 
         def context(tool_id: str) -> dict[str, Any]:
             transport_lost = getattr(client, "_transport_lost", False) is True

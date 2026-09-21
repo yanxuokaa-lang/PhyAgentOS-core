@@ -82,7 +82,8 @@ def test_observed_route_checks_its_model_and_independent_runtime_drift(monkeypat
     monkeypatch.setattr(probe, "_actor_for_entity", lambda *args: actor)
     candidate = {"entity_ref": "entity://observed", "attached_object": {"object_frame_id": model_frame}}
     artifacts = {"transform": {"world_T_object": model["world_T_object"].copy()},
-                 "geometry": {"half_extents_m": model["half_extents_m"].copy()}}
+                 "geometry": {"source": "observed_envelope",
+                              "half_extents_m": model["half_extents_m"].copy()}}
     if change == "actor_drift":
         current[0, 3] += .01
     elif change == "model_tamper":
@@ -97,6 +98,39 @@ def test_observed_route_checks_its_model_and_independent_runtime_drift(monkeypat
     else:
         with pytest.raises(probe.SimulationProbeError):
             probe._validate_runtime_route_input_binding(task, candidate, artifacts)
+
+
+def test_oracle_actor_route_uses_actor_geometry_even_with_observed_identity_binding(monkeypatch):
+    actor_pose = np.eye(4)
+    actor_pose[0, 3] = 0.2
+    actor = SimpleNamespace(
+        get_pose=lambda: SimpleNamespace(to_transformation_matrix=lambda: actor_pose)
+    )
+    task = SimpleNamespace(
+        _paos_observed_bindings={
+            "entity://observed": {
+                "model": {
+                    "world_T_object": np.eye(4).reshape(-1).tolist(),
+                    "half_extents_m": [0.03] * 3,
+                },
+                "captured_pose": np.eye(4).tolist(),
+            }
+        }
+    )
+    monkeypatch.setattr(probe, "_actor_for_entity", lambda *_args: actor)
+    candidate = {
+        "entity_ref": "entity://observed",
+        "attached_object": {"object_frame_id": "block-green-1"},
+    }
+    artifacts = {
+        "transform": {"world_T_object": actor_pose.reshape(-1).tolist()},
+        "geometry": {
+            "source": "sapien_collision_shape",
+            "half_extents_m": [0.02] * 3,
+        },
+    }
+
+    probe._validate_runtime_route_input_binding(task, candidate, artifacts)
 
 
 def test_planner_pose_view_has_only_observed_geometry():

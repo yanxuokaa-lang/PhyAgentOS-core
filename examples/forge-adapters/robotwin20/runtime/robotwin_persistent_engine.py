@@ -18,6 +18,18 @@ from robotwin_backend import (
     RoboTwinSensorBackend,
     load_runtime_profile,
 )
+from robotwin_blocks_ranking_adapter import BlocksRankingRgbTaskAdapter, task_adapter
+
+from robotwin20_adapter.persistent_action_approval import (
+    DEFERRED_EXECUTION_CHECKS,
+    RUNTIME_MONITORED_ACTION_MODE,
+    validate_persistent_action_approval,
+)
+
+_RESERVED_EXECUTION_ACTORS = {
+    entity_ref: actor_name
+    for entity_ref, actor_name, _target_token in BlocksRankingRgbTaskAdapter.entities
+}
 
 
 class BindingPoseUnavailableError(ValueError):
@@ -70,6 +82,7 @@ class _TaskVideoArchive:
         self.active: dict[str, Any] | None = None
         self.archives: dict[str, tuple[str, list, list]] = {}
         self.incomplete_owners: set[str] = set()
+        self.latest_refs: dict[str, tuple[str, ...]] = {}
 
     def start_action(
         self,
@@ -160,11 +173,28 @@ class _TaskVideoArchive:
                 "stride_steps": self.stride_steps,
             },
         )
-        return (
+        refs = (
             manifest["artifact_ref"],
             videos["head_camera"]["artifact_ref"],
             videos["observer_camera"]["artifact_ref"],
         )
+        if self.owner is not None:
+            self.latest_refs[self.owner] = refs
+        return refs
+
+    def result(self, owner: str) -> dict[str, Any]:
+        archive = self.archives.get(owner)
+        if archive is None:
+            return {"availability": "none", "action_count": 0, "artifact_refs": []}
+        session_id, _segments, actions = archive
+        refs = self.latest_refs.get(owner, ())
+        return {
+            "availability": "complete" if refs else "incomplete",
+            "session_id": session_id,
+            "action_count": len(actions),
+            "actions": list(actions),
+            "artifact_refs": list(refs),
+        }
 
     def discard_active(self) -> None:
         recorder = self.recorder
@@ -189,6 +219,9 @@ class RoboTwinPersistentEngine:
             raise ValueError("max_duration_s must be finite and positive")
         self.stop = _StopSignal(Path(profile["stop_file"]))
         runtime = load_runtime_profile(Path(profile["runtime_profile"]).resolve())
+        self.runtime_profile = runtime
+        self.task_adapter = task_adapter(runtime["task_name"])
+        self._goal_facts_ref: str | None = None
         self.backend = RoboTwinSensorBackend(RoboTwinRuntimeProfile(
             runtime_root=Path(profile["runtime_root"]), artifact_root=self.root,
             task_name=runtime["task_name"], task_config=runtime["task_config"], embodiment=runtime["embodiment"],
@@ -216,18 +249,103 @@ class RoboTwinPersistentEngine:
         return self.backend._scene_revision
 
     def query(self, operation: str, arguments: Mapping[str, Any]) -> dict[str, Any]:
+        if operation == "oracle_grasp_candidates":
+            if set(arguments) != {
+                "request", "provider_T_contact_center", "binding_ref"
+            }:
+                raise ValueError("oracle grasp query fields are invalid")
+            request = arguments["request"]
+            if not isinstance(request, dict):
+                raise ValueError("oracle grasp request must be an object")
+            calibration = probe._load_json_artifact(
+                self.root, request["calibration_ref"]
+            )
+            value = self.task_adapter.oracle_grasp_candidates(
+                self.backend._task,
+                request,
+                calibration=calibration,
+                provider_to_contact_flat=arguments["provider_T_contact_center"],
+                scene_revision=self.backend.snapshot()["scene_revision"],
+            )
+            evidence = value.pop("oracle_evidence")
+            reference = (
+                f"artifact://persistent/{self.epoch}/oracle-grasps/{uuid4().hex}"
+            )
+            artifact = probe._json_artifact(
+                self.root,
+                reference,
+                {
+                    "schema_version": "paos-robotwin20-oracle-grasp-evidence/v1",
+                    "task_name": self.task_adapter.task_name,
+                    "scene_revision": request["scene_revision"],
+                    "observation_ref": request["observation_ref"],
+                    "calibration_ref": request["calibration_ref"],
+                    "binding_ref": arguments["binding_ref"],
+                    "geometry_source": value["geometry_source"],
+                    "template_evidence": evidence,
+                    "motion_authorized": False,
+                },
+            )
+            return {**value, "oracle_evidence_ref": artifact["artifact_ref"]}
+        if operation == "task_goal_facts":
+            if arguments:
+                raise ValueError("task goal facts do not accept arguments")
+            value = self.task_adapter.goal_facts(
+                self.backend._task, seed=self.runtime_profile["seed"]
+            )
+            if self._goal_facts_ref is None:
+                reference = f"artifact://persistent/{self.epoch}/task-goals"
+                artifact = probe._json_artifact(self.root, reference, value)
+                self._goal_facts_ref = artifact["artifact_ref"]
+            return {
+                "status": "available",
+                **value,
+                "goal_ref": self._goal_facts_ref,
+                "evidence_refs": [self._goal_facts_ref],
+            }
+        if operation == "benchmark_result":
+            task_id = arguments.get("task_id")
+            if set(arguments) != {"task_id"} or not isinstance(task_id, str) or not task_id:
+                raise ValueError("benchmark result requires one task_id")
+            value = self.task_adapter.benchmark_result(
+                self.backend._task,
+                seed=self.runtime_profile["seed"],
+                scene_revision=self.backend.snapshot()["scene_revision"],
+            )
+            value["task_id"] = task_id
+            value["task_video"] = self.video.result(f"paos:{task_id}")
+            reference = (
+                f"artifact://persistent/{self.epoch}/benchmark-results/{uuid4().hex}"
+            )
+            artifact = probe._json_artifact(self.root, reference, value)
+            return {**value, "artifact_ref": artifact["artifact_ref"]}
         if operation == "bind_observed_entities":
             binding_record = probe._load_json_artifact(self.root, arguments["binding_ref"])
             if (binding_record["scene_revision"] != self.backend.snapshot()["scene_revision"]
                     or binding_record["motion_authorized"] is not False):
                 raise ValueError("entity binding requires current idle scene")
+            bindings = binding_record["bindings"]
+            observed_refs = [binding["entity_ref"] for binding in bindings]
+            execution_refs = [binding["execution_entity_ref"] for binding in bindings]
+            if len(set(observed_refs)) != len(observed_refs) or len(set(execution_refs)) != len(execution_refs):
+                raise ValueError("entity binding correspondence must be one-to-one")
             mapping = {}
             observed_bindings = {}
             captured_objects = binding_record.get("scene_facts", {}).get("objects", [])
-            for binding in binding_record["bindings"]:
-                if binding["entity_ref"] in {"entity://block-red-1", "entity://block-green-1", "entity://block-blue-1"}:
-                    raise ValueError("observed identity must not shadow execution identity")
-                actor = probe._actor_for_entity(self.backend._task, binding["execution_entity_ref"])
+            for binding in bindings:
+                expected_actor_name = _RESERVED_EXECUTION_ACTORS.get(binding["entity_ref"])
+                if expected_actor_name is not None and (
+                    binding["execution_entity_ref"] != binding["entity_ref"]
+                    or binding["actor_name"] != expected_actor_name
+                ):
+                    raise ValueError("reserved observed identity differs from execution identity")
+                actor = (
+                    getattr(self.backend._task, expected_actor_name, None)
+                    if expected_actor_name is not None
+                    else probe._actor_for_entity(
+                        self.backend._task, binding["execution_entity_ref"]
+                    )
+                )
                 if actor is not getattr(self.backend._task, binding["actor_name"], None):
                     raise ValueError("execution actor binding differs from observation")
                 import numpy as np
@@ -274,7 +392,20 @@ class RoboTwinPersistentEngine:
             if operation == "contact_qualification":
                 probe.validate_route_request(arguments["route_request"])
                 return evaluator(arguments["route_request"])
-            return dict(_handle_factory(self.root, "persistent-route-readiness", evaluator)(arguments))
+            deferred = (
+                DEFERRED_EXECUTION_CHECKS
+                if self.profile.get("simulation_action_mode")
+                == RUNTIME_MONITORED_ACTION_MODE
+                else ()
+            )
+            return dict(
+                _handle_factory(
+                    self.root,
+                    "persistent-route-readiness",
+                    evaluator,
+                    deferred_execution_checks=deferred,
+                )(arguments)
+            )
         if operation in {"benchmark_scene_facts", "execution_scene_facts"} and self.profile.get("allow_benchmark_scene_facts") is True:
             from robotwin_route_input_worker import capture_scene_facts
             return capture_scene_facts(runtime_root=Path(self.profile["runtime_root"]),
@@ -302,10 +433,14 @@ class RoboTwinPersistentEngine:
         arms = assignment.get("selected_arm_ids")
         if not isinstance(arms, list) or len(arms) != 1 or arms[0] not in {"left", "right"}:
             raise ValueError("persistent execution requires one assigned arm")
-        probe._validate_approval(
-            self.root, arguments["approval_ref"], producer_id=self.profile["producer_id"],
-            producer_profile_sha256=self.profile["producer_profile_sha256"],
-            request=request, candidate_ref=candidate["candidate_ref"], profile=self.profile,
+        validate_persistent_action_approval(
+            self.root,
+            arguments["approval_ref"],
+            task_name=self.task_adapter.task_name,
+            mode=self.profile.get("simulation_action_mode", "disabled"),
+            route_request=request,
+            candidate_ref=candidate["candidate_ref"],
+            assignment=assignment,
         )
         policies = probe._validate_request_policies(
             self.root, request, max_duration_s=self.duration,
@@ -326,7 +461,9 @@ class RoboTwinPersistentEngine:
         world_source = probe._load_json_artifact(self.root, request["collision_world"]["artifact_ref"])
         scene_source = probe._load_json_artifact(self.root, world_source["source_scene_facts_ref"])
         if (("observed_collision" in world_source
-             or candidate["entity_ref"] in getattr(task, "_paos_observed_bindings", {}))
+             or candidate["attached_object"].get("object_frame_id", "").startswith(
+                 "observed-envelope/"
+             ))
                 and scene_source.get("geometry_source") != "observation"):
             raise ValueError("observed route requires observed collision geometry")
         if scene_source.get("geometry_source") == "observation":

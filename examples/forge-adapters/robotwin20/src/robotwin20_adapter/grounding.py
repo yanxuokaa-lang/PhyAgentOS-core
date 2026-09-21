@@ -3,6 +3,7 @@
 import json
 from collections.abc import Mapping
 from copy import deepcopy
+from typing import Any
 from uuid import uuid4
 
 import numpy as np
@@ -411,6 +412,30 @@ class Grounding:
                 "world_T_object_target": target["world_T_object_target"],
                 "evidence_refs": [request["binding_ref"], evidence_ref], "motion_authorized": False}
 
+    def activate_observed_entities(self, request: Mapping[str, Any]) -> str:
+        """Synchronize one persisted semantic binding to the Runtime worker."""
+
+        targets = request.get("targets")
+        if not isinstance(targets, list) or not targets:
+            raise ValueError("observed entity activation requires grasp targets")
+        entity_refs = {
+            item.get("entity_ref") for item in targets if isinstance(item, Mapping)
+        }
+        if len(entity_refs) != len(targets) or None in entity_refs:
+            raise ValueError("observed entity activation targets are invalid")
+        matches = [
+            (reference, binding)
+            for reference, binding in self.bindings.items()
+            if all(binding.get(key) == request.get(key) for key in IDENTITY_KEYS)
+            and entity_refs <= set(binding.get("objects", {}))
+        ]
+        if len(matches) != 1:
+            raise ValueError("current observed entity binding is absent or ambiguous")
+        reference, binding = matches[0]
+        self._current(binding)
+        self.client.query("bind_observed_entities", {"binding_ref": reference})
+        return reference
+
     def scene_facts(self, request, *, deadline=None):
         value = self.targets[request["destination_ref"]]
         if any(value[k] != request[k] for k in IDENTITY_KEYS):
@@ -458,6 +483,60 @@ class Grounding:
         support = self._observed_support(binding)
         if support is not None:
             facts["support_surface"] = support
+        return facts
+
+    def oracle_scene_facts(self, request, *, deadline=None):
+        """Bind simulator actor geometry to Agent-selected observed identities."""
+        value = self.targets[request["destination_ref"]]
+        if any(value[key] != request[key] for key in IDENTITY_KEYS):
+            raise ValueError("target observation identity mismatch")
+        target_entity = request["intent"]["entity_ref"]
+        if value["object"]["entity_ref"] != target_entity:
+            raise ValueError("target belongs to a different entity")
+        self._current(value, deadline=deadline)
+        binding = self.bindings[value["binding_ref"]]
+        kwargs = (
+            {}
+            if deadline is None
+            else {"timeout_s": deadline.remaining("bind_observed_entities")}
+        )
+        self.client.query(
+            "bind_observed_entities", {"binding_ref": value["binding_ref"]}, **kwargs
+        )
+        facts = deepcopy(binding["scene_facts"])
+        originals = {item["entity_ref"]: item for item in facts["objects"]}
+        observed_by_execution = {
+            model["entity_ref"]: observed_ref
+            for observed_ref, model in binding["objects"].items()
+        }
+        missing = sorted(set(originals) - set(observed_by_execution))
+        if missing:
+            raise PreparationProviderError(
+                "oracle_collision_coverage_incomplete",
+                "oracle route requires every execution object to have an observed identity binding",
+            )
+        target_world_object = rigid_transform(value["object"]["world_T_object_target"])
+        projected = []
+        for execution_ref, original in originals.items():
+            observed_ref = observed_by_execution[execution_ref]
+            item = deepcopy(original)
+            item["entity_ref"] = observed_ref
+            if observed_ref == target_entity:
+                world_object = rigid_transform(original["world_T_object"])
+                world_functional = rigid_transform(original["world_T_functional_point"])
+                object_functional = np.linalg.inv(world_object) @ world_functional
+                item.update(
+                    target_ref=request["destination_ref"],
+                    world_T_object_target=target_world_object.reshape(-1).tolist(),
+                    world_T_functional_target=(
+                        target_world_object @ object_functional
+                    ).reshape(-1).tolist(),
+                )
+            projected.append(item)
+        facts["objects"] = projected
+        facts["geometry_source"] = "oracle_actor"
+        facts.pop("support_surface", None)
+        facts.pop("observed_collision", None)
         return facts
 
     def _observed_support(self, binding):

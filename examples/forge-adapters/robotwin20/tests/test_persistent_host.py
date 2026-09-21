@@ -76,6 +76,7 @@ def _profile(tmp_path: Path) -> tuple[dict, dict[str, str]]:
         "materializer_timeout_s": 5,
         "preparation_timeout_s": 4,
         "allow_benchmark_scene_facts": True,
+        "route_geometry_source": "observed",
     }
     return profile, {"ROBOTWIN20_MODEL_API_KEY": "test-secret"}
 
@@ -191,7 +192,29 @@ def test_host_closes_lifecycle_manager_when_fallback_credential_is_missing(
     assert client_closed == [True]
 
 
-def test_host_composes_seven_tools_around_one_persistent_worker_client(tmp_path, monkeypatch):
+def test_host_rejects_unknown_route_geometry_source(tmp_path):
+    profile, environ = _profile(tmp_path)
+    profile["route_geometry_source"] = "automatic"
+
+    with pytest.raises(
+        PersistentHostConfigurationError,
+        match="route_geometry_source must be observed or oracle",
+    ):
+        build_persistent_host(profile, environ=environ)
+
+
+def test_host_rejects_runtime_monitored_observed_profile_before_worker_start(tmp_path):
+    profile, environ = _profile(tmp_path)
+    profile["simulation_action_mode"] = "runtime_monitored"
+
+    with pytest.raises(
+        PersistentHostConfigurationError,
+        match="require oracle route geometry",
+    ):
+        build_persistent_host(profile, environ=environ)
+
+
+def test_host_composes_tools_around_one_persistent_worker_client(tmp_path, monkeypatch):
     profile, environ = _profile(tmp_path)
     closed = []
 
@@ -252,6 +275,7 @@ def test_host_composes_seven_tools_around_one_persistent_worker_client(tmp_path,
 
     assert captured["client"] is client
     assert captured["preparation_timeout_s"] == 4.0
+    assert captured["route_geometry_source"] == "observed"
     assert len(worker_configs) == 1
     assert {item["tool_id"] for item in host.bundle.runtime.list_tools()["tools"]} == {
         "scene.observe",

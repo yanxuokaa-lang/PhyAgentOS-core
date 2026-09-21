@@ -353,6 +353,19 @@ def _copy_source_artifact(source_root: Path, output_root: Path, ref: str, suffix
     return hashlib.sha256(target.read_bytes()).hexdigest()
 
 
+def _copy_provenance_artifact(source_root: Path, output_root: Path, ref: str) -> str:
+    matches = [
+        suffix
+        for suffix in (".npy", ".json")
+        if _artifact_path(source_root, ref, suffix).is_file()
+        and not _artifact_path(source_root, ref, suffix).is_symlink()
+    ]
+    if len(matches) != 1:
+        reason = "ambiguous" if matches else "unavailable"
+        raise MaterializationError(f"source artifact is {reason}: {ref}")
+    return _copy_source_artifact(source_root, output_root, ref, matches[0])
+
+
 def materialize(args: argparse.Namespace) -> dict[str, Any]:
     if _REQUEST_ID.fullmatch(args.request_id) is None:
         raise MaterializationError("request_id is invalid")
@@ -522,7 +535,7 @@ def materialize(args: argparse.Namespace) -> dict[str, Any]:
     calibration_ref = facts["calibration_ref"]
     calibration_digest = _copy_source_artifact(source_root, output_root, calibration_ref, ".json")
     for provenance_ref in proposal.get("provenance", []):
-        _copy_source_artifact(source_root, output_root, provenance_ref, ".npy")
+        _copy_provenance_artifact(source_root, output_root, provenance_ref)
 
     workspace_artifact = {
         "schema_version": "paos-robotwin20-workspace-bounds/v1",

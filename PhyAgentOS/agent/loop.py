@@ -1039,7 +1039,11 @@ class AgentLoop:
             prompt = json.dumps({
                 "original_goal": task.task_description,
                 "verification": task.verification.model_dump(mode="json"),
-                "bound_skill_instructions": task.primary_skill_instructions,
+                # Full Skill instructions remain immutable Coordinator/SkillUse
+                # audit facts. The node-scoped projection carries the binding
+                # identity, while _default_prompt supplies bounded execution
+                # rules for this node. Re-injecting the complete document here
+                # duplicates the projection and consumes model decision budget.
                 "skill_binding": (
                     {
                         "binding_id": binding.binding_id,

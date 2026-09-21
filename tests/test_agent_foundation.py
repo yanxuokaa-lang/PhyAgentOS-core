@@ -12,7 +12,10 @@ import pytest
 from PhyAgentOS.agent.experience.activation import SkillActivationManager
 from PhyAgentOS.agent.experience.store import ExperienceStore
 from PhyAgentOS.agent.loop import AgentLoop
-from PhyAgentOS.agent.plan_proposal import compile_task_plan
+from PhyAgentOS.agent.plan_proposal import (
+    _complete_persisted_runtime_bindings,
+    compile_task_plan,
+)
 from PhyAgentOS.agent.planning_loop import _planning_record_status
 from PhyAgentOS.agent.recovery_decisions import AgentRecoveryDecisions
 from PhyAgentOS.agent.tools.forge_task import (
@@ -36,7 +39,7 @@ from PhyAgentOS.forge.task import (
     AgentTaskStatus,
     ToolExecutionRecord,
 )
-from PhyAgentOS.planning import NodeSettlement, ToolSpecPolicy, build_replan_delta
+from PhyAgentOS.planning import NodeSettlement, PlanNode, ToolSpecPolicy, build_replan_delta
 from PhyAgentOS.providers.base import LLMProvider, LLMResponse, ToolCallRequest
 from PhyAgentOS.verification.contracts import TaskVerificationContract
 
@@ -80,6 +83,38 @@ def semantic_nodes(count):
     nodes.append({"node_id": "final-observation", "obligation_id": "verify-goal", "capability": "task.verify",
                   "dependencies": [node["node_id"] for node in nodes]})
     return nodes
+
+
+def test_prepare_bindings_reuse_unique_current_capability_and_destination_facts():
+    task = SimpleNamespace(revisions=[SimpleNamespace(execution_records=[SimpleNamespace(
+        tool_id="manipulation.capabilities",
+        status="succeeded",
+        response={"data": {"snapshot_ref": "artifact://capabilities/current"}},
+    )])])
+    nodes = (
+        PlanNode(
+            node_id="red_prepare",
+            obligation_id="red-prepare",
+            capability="manipulation.prepare",
+            input_bindings={"entity_ref": "entity://red"},
+        ),
+        PlanNode(
+            node_id="red_place",
+            obligation_id="red-place",
+            capability="object.place",
+            input_bindings={
+                "entity_ref": "entity://red",
+                "destination_ref": "destination://left",
+            },
+        ),
+    )
+
+    completed = _complete_persisted_runtime_bindings(task, nodes)
+    assert completed[0].input_bindings == {
+        "entity_ref": "entity://red",
+        "destination_ref": "destination://left",
+        "capability_snapshot_ref": "artifact://capabilities/current",
+    }
 
 
 @pytest.mark.parametrize("count", [1, 2, 3])
@@ -619,7 +654,7 @@ def test_activation_retains_instructions_when_source_changes(tmp_path):
     assert "New instructions" in later
 
 
-def test_node_turn_receives_original_goal_and_persisted_skill(tmp_path):
+def test_node_turn_receives_original_goal_without_reinjecting_full_skill(tmp_path):
     async def exercise():
         c = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=object())
         task = c.create_task(task_description="Move only the left red object", verification=TaskVerificationContract(mode="off"))
@@ -645,7 +680,7 @@ def test_node_turn_receives_original_goal_and_persisted_skill(tmp_path):
         second = await loop.run_node_turn(task_id=task.task_id, revision_id=task.active_revision_id, node_id="selected", prompt="node evidence")
         sent = json.dumps(provider.requests[0]["messages"])
         assert "Move only the left red object" in sent
-        assert sent.count("Observe after grasp.") == 1
+        assert "Observe after grasp." not in sent
         assert "HISTORICAL FULL INSTRUCTIONS" not in sent
         assert "node evidence" in sent
         assert "agent_node_prompt_projection_v1" in sent

@@ -1,0 +1,15 @@
+tool_id: task.goal
+planning:
+  schema_version: paos-tool-spec-policy/v1
+  requires_before_plan: true
+implementation_id: task.goal
+endpoint_id: task_goal
+operation: resolve
+semantics: query
+description: Read task-specification goals without treating them as sensor evidence or motion approval.
+input_schema:
+  type: object
+  additionalProperties: false
+  required: []
+  properties: {}
+unknown_semantics: terminal_for_accounting_only

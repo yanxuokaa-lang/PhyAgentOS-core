@@ -232,6 +232,57 @@ def test_live_geometry_evidence_cannot_authorize_dynamic_readiness(tmp_path):
     assert RouteReadinessClient(Client(), worker_id="test-live").evaluate(request)["motion_authorized"] is False
 
 
+def test_explicit_runtime_monitored_readiness_defers_only_action_checks(tmp_path):
+    from robotwin_route_readiness_worker import _handle_factory
+
+    from robotwin20_adapter.route_readiness import (
+        RouteReadinessClient,
+        RouteReadinessEvaluationAdapter,
+    )
+
+    request = _request(tmp_path)
+
+    def evaluate(current):
+        return {
+            "candidates": {
+                item["candidate_ref"]: {
+                    "status": "pass",
+                    "selected_arm": "right",
+                    "arm_attempts": [{"arm": "right", "status": "pass"}],
+                }
+                for item in current["candidates"]
+            },
+            "world": {},
+            "simulator_steps": 0,
+        }
+
+    response = _handle_factory(
+        tmp_path,
+        "test-live",
+        evaluate,
+        deferred_execution_checks=("contact_dynamics", "stop_control"),
+    )(request)
+
+    class Client:
+        def request(self, current):
+            return response
+
+    validated = RouteReadinessClient(Client(), worker_id="test-live").evaluate(request)
+    assert validated["status"] == "deferred"
+    assert validated["motion_authorized"] is False
+    option = {
+        "candidate_ref": request["candidates"][0]["candidate_ref"],
+        "arm_ids": ["right"],
+    }
+    projected = RouteReadinessEvaluationAdapter(
+        type("ValidatedClient", (), {"evaluate": lambda self, current: validated})()
+    ).evaluate(request, option)
+    assert projected["status"] == "deferred"
+    assert projected["checks"]["contact_dynamics"] == "deferred"
+    assert projected["checks"]["stop_control"] == "deferred"
+    assert projected["checks"]["complete_transport_descent_retreat"] == "pass"
+
+
 def test_live_provider_failure_is_recorded_as_unavailable(tmp_path):
     from robotwin_route_readiness_worker import _handle_factory
     request = _request(tmp_path)

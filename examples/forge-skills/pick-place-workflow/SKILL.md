@@ -36,6 +36,16 @@ summary and evidence. Refresh or improve the relevant observed geometry when
 support or finger-fit evidence is insufficient. A contact-qualified candidate
 still requires complete-route readiness; it is not motion authorization.
 
+The explicitly named `robotwin-blocks-ranking-oracle` profile is a development
+baseline exception: identity still comes from `scene.observe`,
+`scene.understand`, and `scene.bind`, while preparation uses the bound Runtime
+actor geometry and collision world. `task.goal` returns task-specification goal
+facts separately from observations. Match its `execution_entity_ref` to the
+mapping returned by `scene.bind`, choose the operation order yourself, and pass
+the selected exact `world_T_object_target` to `manipulation.target`. Never call
+`task.goal` output sensor evidence, task success, readiness, or motion approval.
+The Runtime must not fall back between oracle and observed profiles.
+
 The graph represents your chosen obligations and dependencies. One PlanNode is one
 settlement unit completed by one selected Tool. A composite intention such as
 `object.relocate` is not an executable node unless the Runtime publishes one atomic
@@ -88,6 +98,12 @@ Use `scene.bind` for one or more selected observation entities and their matchin
 observation/scene/calibration references. It returns geometric correspondence,
 `binding_ref`, world object geometry and the calibrated observation transform.
 Identity binding does not require a placement goal or an arrangement task.
+
+When the active Runtime publishes `task.goal`, call it as a task-bound read-only
+discovery Query before materializing goal-bound nodes. It may expose exact goals
+from a simulator task definition or another deployment-owned task specification;
+its provenance is distinct from observation. The Agent remains responsible for
+matching each goal to a bound entity and choosing order, staging, and recovery.
 
 Choose task relations, reference frames, destinations, intermediate placements
 and dependencies from the user goal and observed evidence. Never equate camera
@@ -306,8 +322,11 @@ The persistent Runtime freezes a 360-second default timeout for
 not fall back to the generic 10-second Forge HTTP default. Its shipped profile
 uses one 330-second internal deadline across materialization, readiness, and
 finalization. A timeout is a no-motion `preparation_timeout`; it does not
-authorize motion or retry a provider failure. The `robotwin-persistent`
-profile also returns an adapter-owned cumulative task-video manifest and both
+authorize motion or retry a provider failure. The legacy `robotwin-persistent`
+profile and `robotwin-blocks-ranking-observed` use observation-owned route
+geometry. `robotwin-blocks-ranking-oracle` uses bound actor geometry for the
+`blocks_ranking_rgb` development baseline. These are explicit profiles, never an
+automatic recovery choice. All three return an adapter-owned cumulative task-video manifest and both
 camera MP4 references as opaque Action evidence; never treat their contents as
 Tool arguments or motion authority.
 

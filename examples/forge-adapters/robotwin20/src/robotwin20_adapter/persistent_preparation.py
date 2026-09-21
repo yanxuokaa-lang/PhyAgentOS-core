@@ -39,6 +39,7 @@ class PersistentPreparationProvider:
         route_builder,
         selector,
         prepared_routes,
+        approval_issuer=None,
         timeout_s: float = 330.0,
     ) -> None:
         if isinstance(timeout_s, bool) or not math.isfinite(timeout_s) or timeout_s <= 0:
@@ -47,6 +48,7 @@ class PersistentPreparationProvider:
         self.route_builder = route_builder
         self.selector = selector
         self.prepared_routes = prepared_routes
+        self.approval_issuer = approval_issuer
         self.timeout_s = float(timeout_s)
 
     def prepare(
@@ -205,7 +207,16 @@ class PersistentPreparationProvider:
                          assignment_ref=assignment.assignment_ref)
         if review_ref is not None:
             arguments["review_request_ref"] = review_ref
-        self.prepared_routes.register(arguments, route_request=route, approval_ref=None,
+        approval_ref = None
+        if self.approval_issuer is not None:
+            approval_ref = self.approval_issuer.issue(
+                route,
+                candidate_ref=assignment.candidate_ref,
+                assignment=value,
+                readiness_evidence_refs=list(selected["evidence_refs"]),
+            )
+            metrics["execution_approval_ref"] = approval_ref
+        self.prepared_routes.register(arguments, route_request=route, approval_ref=approval_ref,
                                       destination_ref=request["destination_ref"])
         return {"prepared_candidates": [{"candidate_ref": assignment.candidate_ref,
                                           "entity_ref": assignment.entity_ref,
@@ -213,7 +224,12 @@ class PersistentPreparationProvider:
                                           "evidence": [*selected["evidence_refs"], *([review_ref] if review_ref else []),
                                                        *[item["evidence_ref"] for item in metrics.get("contact_qualification", [])
                                                          if item["candidate_ref"] == assignment.candidate_ref
-                                                         and "observed_collision" in item]], "qualification": "prepared"}],
+                                                         and "observed_collision" in item]],
+                                          # Core's public preparation contract describes
+                                          # static readiness only.  Dynamic checks deferred
+                                          # to an admitted simulation Action remain owned by
+                                          # the assignment/evidence/approval records.
+                                          "qualification": "prepared"}],
                 "provider_available": True, "assignments": [value], "destination_ref": request["destination_ref"]}
 
     def _persist_metrics(

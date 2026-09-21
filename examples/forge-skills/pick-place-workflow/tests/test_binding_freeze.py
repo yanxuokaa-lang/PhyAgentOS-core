@@ -24,6 +24,7 @@ TOOL_IDS = (
     "manipulation.capabilities",
     "scene.understand",
     "scene.bind",
+    "task.goal",
     "manipulation.target",
     "grasp.propose",
     "manipulation.prepare",
