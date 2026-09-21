@@ -43,16 +43,31 @@ not called or copied into a PlanGraph.
 - `robotwin-blocks-ranking-observed`: retains observation-owned route and collision
   geometry.
 
+The oracle profile also sets `goal_source=benchmark_task_definition`. In that
+profile `task.goal` is the explicit Runtime-owned destination source and the
+Coordinator propagates its opaque `destination_ref` into the preparation/place
+segment. The observed profile sets `goal_source=observation_owned`; benchmark
+goal facts are disabled for that profile and the Agent must later create targets
+through the existing observation-owned `manipulation.target` path. This is a
+profile selection, not an implicit fallback.
+
 Both profiles use the same AgentTask, planning, preparation, Gateway, Action,
 settlement, and verifier lifecycle. There is no automatic fallback between them.
 
 ## Data Flow
 
 ```text
+benchmark profile:
 task.goal (benchmark task specification; no sensor claim)
+  -> Coordinator binds execution_entity_ref + destination_ref
 scene.observe -> scene.understand -> scene.bind
-  -> Agent matches observed entity to execution_entity_ref and task goal
-  -> manipulation.target persists the selected target
+  -> Agent matches observed entity to the bound execution identity
+  -> grasp.propose
+  -> manipulation.prepare
+
+observation-owned profile:
+scene.observe -> scene.understand -> scene.bind
+  -> Agent chooses a target through manipulation.target
   -> grasp.propose
   -> manipulation.prepare
        oracle profile: bound actor execution geometry and collision world

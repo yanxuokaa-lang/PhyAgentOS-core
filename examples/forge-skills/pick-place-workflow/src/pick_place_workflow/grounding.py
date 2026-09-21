@@ -34,6 +34,7 @@ TASK_GOAL_TOOL_SPEC["planning"]["requires_before_plan"] = True
 TASK_GOAL_TOOL_SPEC["output_schema"]["properties"].update(
     {
         "schema_version": {"const": "paos-task-goals/v1"},
+        "goal_source": {"enum": ["benchmark_task_definition", "observation_owned"]},
         "task_name": _REF,
         "seed": {"type": "integer"},
         "geometry_source": {"const": "benchmark_task_definition"},

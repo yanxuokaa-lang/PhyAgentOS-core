@@ -590,10 +590,24 @@ class AgentLoopNodeExecutor:
                 raise NodeTurnIncompleteError(context.node_id, turn_failure_code)
             rejections = self._selection_rejections(context)
             if rejections and self._pending_selection(context) is None:
+                code = str(rejections[-1].get("code", "planning_selection_rejected"))
+                if code in {
+                    "missing_runtime_arguments",
+                    "node_tool_binding_incompatible",
+                    "semantic_binding_mismatch",
+                    "invalid_planning_binding",
+                    "stale_planning_node",
+                }:
+                    raise NodeTurnIncompleteError(
+                        context.node_id,
+                        "deterministic plan-contract rejection: "
+                        + code + ": "
+                        + str(rejections[-1].get("message", "")),
+                    )
                 raise NodeTurnIncompleteError(
                     context.node_id,
                     "selection rejected without execution: "
-                    + str(rejections[-1].get("code", "planning_selection_rejected"))
+                    + code
                     + ": " + str(rejections[-1].get("message", "")),
                 )
 

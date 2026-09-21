@@ -1,6 +1,6 @@
 manifest_version: 2
 name: pick-place-workflow
-version: "2.6.5"
+version: "2.6.6"
 description: Provider-neutral perception, preparation, acquisition, placement, and long-horizon workflow contracts.
 skill_document: SKILL.md
 gateway_url: http://127.0.0.1:19020
@@ -38,6 +38,7 @@ profiles:
       - ROBOTWIN20_MODEL_API_KEY
       - ROBOTWIN20_ROUTE_GEOMETRY_SOURCE
       - ROBOTWIN20_SIMULATION_ACTION_MODE
+      - ROBOTWIN20_GOAL_SOURCE
       - LOCATEANYTHING_PYTHON
       - LOCATEANYTHING_CACHE_DIR
       - LOCATEANYTHING_MODULES_CACHE_DIR
@@ -59,6 +60,7 @@ profiles:
     environment:
       ROBOTWIN20_ROUTE_GEOMETRY_SOURCE: observed
       ROBOTWIN20_SIMULATION_ACTION_MODE: disabled
+      ROBOTWIN20_GOAL_SOURCE: observation_owned
   robotwin-blocks-ranking-oracle:
     dataflow: profiles/robotwin-persistent/dataflow.yaml
     required_binaries:
@@ -75,6 +77,7 @@ profiles:
       - ROBOTWIN20_MODEL_API_KEY
       - ROBOTWIN20_ROUTE_GEOMETRY_SOURCE
       - ROBOTWIN20_SIMULATION_ACTION_MODE
+      - ROBOTWIN20_GOAL_SOURCE
       - LOCATEANYTHING_PYTHON
       - LOCATEANYTHING_CACHE_DIR
       - LOCATEANYTHING_MODULES_CACHE_DIR
@@ -96,6 +99,7 @@ profiles:
     environment:
       ROBOTWIN20_ROUTE_GEOMETRY_SOURCE: oracle
       ROBOTWIN20_SIMULATION_ACTION_MODE: runtime_monitored
+      ROBOTWIN20_GOAL_SOURCE: benchmark_task_definition
   robotwin-persistent:
     dataflow: profiles/robotwin-persistent/dataflow.yaml
     required_binaries:
@@ -112,6 +116,7 @@ profiles:
       - ROBOTWIN20_MODEL_API_KEY
       - ROBOTWIN20_ROUTE_GEOMETRY_SOURCE
       - ROBOTWIN20_SIMULATION_ACTION_MODE
+      - ROBOTWIN20_GOAL_SOURCE
       - LOCATEANYTHING_PYTHON
       - LOCATEANYTHING_CACHE_DIR
       - LOCATEANYTHING_MODULES_CACHE_DIR
@@ -133,14 +138,15 @@ profiles:
     environment:
       ROBOTWIN20_ROUTE_GEOMETRY_SOURCE: observed
       ROBOTWIN20_SIMULATION_ACTION_MODE: disabled
+      ROBOTWIN20_GOAL_SOURCE: observation_owned
 artifacts:
   resolver: local
   nodes:
     robotwin20_persistent_host:
-      artifact_id: robotwin20_persistent_host-0.6.5-linux-x86_64
-      version: "0.6.5"
+      artifact_id: robotwin20_persistent_host-0.6.6-linux-x86_64
+      version: "0.6.6"
       platform: linux
       arch: x86_64
       artifact_type: executable_tar_gz
       entrypoint: robotwin20_persistent_host
-      sha256: 6059635a7c463e517d2a304d68862fa3f5f903742872e553d3a80133285a11f7
+      sha256: a888f999cbfae2b8b7f3bea9d3bf045f4dc043ba6d7cb168e3cd6d169824b042

@@ -16,6 +16,18 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v11.3.1 (2026-09-21 18:20) - codex
+
+- [env] [tune] [完成] Agent/感知模型改为 `gpt-5.6-sol`、high；只读 benchmark goal smoke 成功，完整任务在不可重试的 scene-understanding provider failure 前安全停止。(local)
+- [Env] [Tune] [Completed] Agent/perception model changed to `gpt-5.6-sol`, high; read-only benchmark-goal smoke passed, while the full task stopped safely before Actions on a non-retryable scene-understanding provider failure. (local)
+- Detailed entry: [`changelog/2026-09_part12.md`](changelog/2026-09_part12.md).
+
+## v11.3.0 (2026-09-21) - codex
+
+- [agent] [feat] [完成] Benchmark-first Oracle profile, Runtime binding propagation, deterministic selection short circuit, Skill 2.6.6 / Node 0.6.6 installation and seven-dimension review completed; live three-block benchmark remains unaccepted because no Action reached execution. (local)
+- [Agent] [Feat] [Completed] Benchmark-first Oracle profile, Runtime binding propagation, deterministic selection short circuit, Skill 2.6.6 / Node 0.6.6 installation, and seven-dimension review completed; the live three-block benchmark remains unaccepted because no Action reached execution. (local)
+- Report: [`docs/forge/IMPLEMENTATION_REVIEW_V11_3_0.md`](docs/forge/IMPLEMENTATION_REVIEW_V11_3_0.md), detailed entry: [`changelog/2026-09_part12.md`](changelog/2026-09_part12.md).
+
 ## v11.2.3 (2026-09-21 13:58) - codex
 
 - [agent] [docs] [完成] 保存当前长程任务四类诊断：Terra 由配置明确选择；`manipulation.prepare` 拒绝来自缺少 Runtime `destination_ref`/`capability_snapshot_ref` 的图绑定传播；AgentLoop 将确定性绑定缺失当作可重复选择错误；当前任务未采用 benchmark 目标区域。(local)

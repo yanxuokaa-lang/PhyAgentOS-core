@@ -240,6 +240,14 @@ class ToolSpecPolicy(_Frozen):
         return _identity(value, "tool identity")
 
 
+def required_node_binding_keys(policy: ToolSpecPolicy) -> tuple[str, ...]:
+    """Return opaque facts that must be frozen before a node is model-ready."""
+    required = list(policy.input_binding_keys)
+    if policy.trusted_argument_builder == "manipulation_intent_v2":
+        required.extend(("entity_ref", "destination_ref", "capability_snapshot_ref"))
+    return tuple(dict.fromkeys(required))
+
+
 class ToolCallEnvelope(_Frozen):
     """Agent proposal; it contains references/digests, not raw provider secrets."""
 

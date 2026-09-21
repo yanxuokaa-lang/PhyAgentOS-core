@@ -1193,10 +1193,24 @@ class AgentTaskCoordinator:
     def record_planning_node_blocked(
         self, task_id: str, revision_id: str, node_id: str, reason: str,
     ) -> None:
-        """Record a runner checkpoint without inventing an execution/settlement."""
+        """Persist a blocked node and enter the existing bounded recovery state.
+
+        A runner can stop before a Tool execution record exists (for example a
+        deterministic planning-contract rejection or a provider timeout).  The
+        task must not remain visibly ``executing`` after that runner has stopped;
+        ``awaiting_replan`` is the existing recovery owner for this boundary.
+        """
         def check(current: AgentTaskRecord) -> None:
             if current.active_revision_id != revision_id:
                 raise AgentTaskError("blocked node is not bound to the active revision")
+            if current.terminal:
+                return
+            current.status = AgentTaskStatus.AWAITING_REPLAN
+            current.replan_deadline = utc_now() + timedelta(seconds=self.replan_timeout_s)
+            current.replan_extension_used = False
+            current.evidence_errors.append(
+                f"planning node blocked: {node_id}: {reason.strip()}"
+            )
 
         self.store.update(
             task_id, check, event_type="planning_node_blocked",

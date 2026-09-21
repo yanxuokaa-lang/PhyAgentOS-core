@@ -913,6 +913,39 @@ class AgentLoop:
                         messages, tool_call.id, tool_call.name, result
                     )
                     if (
+                        projection_scope == "node"
+                        and tool_call.name == "forge_plan_select"
+                        and self._tool_result_requires_replan(result)
+                    ):
+                        for deferred in response.tool_calls[call_index + 1 :]:
+                            messages = self.context.add_tool_result(
+                                messages,
+                                deferred.id,
+                                deferred.name,
+                                json.dumps(
+                                    {
+                                        "ok": False,
+                                        "status": "deferred_to_replan",
+                                        "error": {
+                                            "type": "control_handoff",
+                                            "message": (
+                                                "Tool was not executed because the persisted "
+                                                "recovery lifecycle now owns the next step."
+                                            ),
+                                        },
+                                        "motion_authorized": False,
+                                    },
+                                    ensure_ascii=False,
+                                    separators=(",", ":"),
+                                ),
+                            )
+                        final_content = (
+                            "Planning selection requires a replacement plan segment; "
+                            "returning control to the persisted recovery lifecycle."
+                        )
+                        yield_to_host = True
+                        break
+                    if (
                         tool_call.name in yield_after_tools
                         and self._tool_result_succeeded(result)
                     ):
@@ -992,6 +1025,16 @@ class AgentLoop:
         except (TypeError, json.JSONDecodeError):
             return False
         return isinstance(payload, dict) and payload.get("ok") is True
+
+    @staticmethod
+    def _tool_result_requires_replan(result: str) -> bool:
+        """Recognize an explicit selection handoff without another model request."""
+        try:
+            payload = json.loads(result)
+        except (TypeError, json.JSONDecodeError):
+            return False
+        error = payload.get("error") if isinstance(payload, dict) else None
+        return isinstance(error, dict) and error.get("requires_replan") is True
 
     async def run_node_turn(
         self,

@@ -296,6 +296,9 @@ def test_prepare_selection_reports_all_missing_runtime_arguments_and_persists_ev
         obligation_id="prepare-green",
         capability="manipulation.prepare",
         input_bindings={
+            "entity_ref": "entity://green",
+            "destination_ref": "destination://targets/middle",
+            "capability_snapshot_ref": "artifact://capabilities/current",
             "goal": "prepare green",
             "success_criteria": ["one prepared candidate"],
             "allowed_arms": ["left"],
@@ -357,8 +360,6 @@ def test_prepare_selection_reports_all_missing_runtime_arguments_and_persists_ev
         "max_age_ms",
         "candidate_set_ref",
         "candidates",
-        "destination_ref",
-        "capability_snapshot_ref",
     }
     current = coordinator.get_task(task_id)
     assert current.execution_records == []
@@ -376,7 +377,11 @@ def test_incomplete_grasp_selection_is_rejected_before_tool_record(tmp_path):
         node_id="grasp-green",
         obligation_id="grasp-green",
         capability="grasp.propose",
-        input_bindings={"entity_ref": "entity://green"},
+        input_bindings={
+            "entity_ref": "entity://green",
+            "destination_ref": "destination://targets/middle",
+            "capability_snapshot_ref": "artifact://capabilities/current",
+        },
     )
     payload = {
         "task_id": task_id,
@@ -749,7 +754,11 @@ def test_prepare_selection_builds_coordinator_owned_manipulation_intent():
         node_id="prepare-green",
         obligation_id="prepare-green",
         capability="manipulation.prepare",
-        input_bindings={"entity_ref": "entity://green"},
+        input_bindings={
+            "entity_ref": "entity://green",
+            "destination_ref": "destination://targets/middle",
+            "capability_snapshot_ref": "artifact://capabilities/current",
+        },
     )
     payload = {
         "task_id": "task-prepare",
@@ -812,7 +821,11 @@ def test_prepare_selection_rejects_model_owned_coordinator_identity():
         node_id="prepare-green",
         obligation_id="prepare-green",
         capability="manipulation.prepare",
-        input_bindings={"entity_ref": "entity://green"},
+        input_bindings={
+            "entity_ref": "entity://green",
+            "destination_ref": "destination://targets/middle",
+            "capability_snapshot_ref": "artifact://capabilities/current",
+        },
     )
     payload = {
         "task_id": "task-prepare",
@@ -855,6 +868,8 @@ def test_prepare_selection_accepts_documented_flat_intent_fields():
         capability="manipulation.prepare",
         input_bindings={
             "entity_ref": "entity://green",
+            "destination_ref": "destination://targets/middle",
+            "capability_snapshot_ref": "artifact://capabilities/current",
             "goal": "place green in the middle",
             "success_criteria": ["green reaches the resolved destination"],
             "allowed_arms": ["left"],
@@ -927,7 +942,11 @@ def test_prepare_selection_rejects_non_object_nested_intent_as_contract_error():
         node_id="prepare-invalid",
         obligation_id="prepare-invalid",
         capability="manipulation.prepare",
-        input_bindings={"entity_ref": "entity://green"},
+        input_bindings={
+            "entity_ref": "entity://green",
+            "destination_ref": "destination://targets/middle",
+            "capability_snapshot_ref": "artifact://capabilities/current",
+        },
     )
     payload = {
         "task_id": "task-invalid",

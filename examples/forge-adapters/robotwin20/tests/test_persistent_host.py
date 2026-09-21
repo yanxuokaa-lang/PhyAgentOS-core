@@ -276,6 +276,7 @@ def test_host_composes_tools_around_one_persistent_worker_client(tmp_path, monke
     assert captured["client"] is client
     assert captured["preparation_timeout_s"] == 4.0
     assert captured["route_geometry_source"] == "observed"
+    assert captured["goal_source"] == "observation_owned"
     assert len(worker_configs) == 1
     assert {item["tool_id"] for item in host.bundle.runtime.list_tools()["tools"]} == {
         "scene.observe",
@@ -296,6 +297,7 @@ def test_host_composes_tools_around_one_persistent_worker_client(tmp_path, monke
         )
     )
     assert worker_profile["allow_benchmark_scene_facts"] is True
+    assert worker_profile["goal_source"] == "observation_owned"
     assert worker_profile["max_duration_s"] == 7
     assert worker_profile["video"] == {
         "enabled": True,

@@ -146,6 +146,49 @@ def test_historical_unbindable_node_is_dependency_ready_but_not_selection_ready(
         raise AssertionError("an unbindable historical node must fail closed")
 
 
+def test_prepare_node_without_runtime_owned_references_is_not_model_ready():
+    node = PlanNode(
+        node_id="prepare-green",
+        obligation_id="prepare-green",
+        capability="manipulation.prepare",
+        input_bindings={"entity_ref": "entity://green"},
+    )
+    payload = {
+        "task_id": "task-prepare",
+        "revision_id": "revision-prepare",
+        "graph_digest": "0" * 64,
+        "planner_decision_digest": "1" * 64,
+        "policy_snapshot_digest": "2" * 64,
+        "nodes": [node.model_dump(mode="json")],
+    }
+    payload["graph_digest"] = plan_graph_digest(payload)
+    policy = ToolSpecPolicy(
+        tool_id="manipulation.prepare",
+        semantics="query",
+        spec_digest="3" * 64,
+        capabilities=("manipulation.prepare",),
+        trusted_argument_builder="manipulation_intent_v2",
+    )
+    dispatch = AgentComposedDispatch(
+        PlanGraph.model_validate(payload),
+        (policy,),
+        AdmissionContext(scene_revision="scene-1"),
+    )
+
+    projection = dispatch.describe()
+
+    diagnostic = projection["node_diagnostics"][0]
+    assert diagnostic["dependency_ready"] is True
+    assert diagnostic["selection_ready"] is False
+    assert diagnostic["missing_node_bindings"] == {
+        "manipulation.prepare": (
+            "destination_ref",
+            "capability_snapshot_ref",
+        )
+    }
+    assert projection["ready_nodes"] == []
+
+
 def test_ready_diagnostics_explain_evidence_and_condition_blockers():
     node = PlanNode(
         node_id="target",

@@ -62,10 +62,12 @@ def test_manifest_v2_bundle_installs_and_catalog_reloads_required_tools(tmp_path
     assert manifest.profiles["robotwin-blocks-ranking-observed"].environment == {
         "ROBOTWIN20_ROUTE_GEOMETRY_SOURCE": "observed",
         "ROBOTWIN20_SIMULATION_ACTION_MODE": "disabled",
+        "ROBOTWIN20_GOAL_SOURCE": "observation_owned",
     }
     assert manifest.profiles["robotwin-blocks-ranking-oracle"].environment == {
         "ROBOTWIN20_ROUTE_GEOMETRY_SOURCE": "oracle",
         "ROBOTWIN20_SIMULATION_ACTION_MODE": "runtime_monitored",
+        "ROBOTWIN20_GOAL_SOURCE": "benchmark_task_definition",
     }
     assert (tmp_path / "skills" / "pick-place-workflow" / "SKILL.md").is_file()
 
@@ -81,6 +83,9 @@ def test_robotwin_dataflow_forwards_profile_owned_route_geometry_source():
     )
     assert dataflow["nodes"][0]["env"]["ROBOTWIN20_SIMULATION_ACTION_MODE"] == (
         "${ROBOTWIN20_SIMULATION_ACTION_MODE}"
+    )
+    assert dataflow["nodes"][0]["env"]["ROBOTWIN20_GOAL_SOURCE"] == (
+        "${ROBOTWIN20_GOAL_SOURCE}"
     )
 
 

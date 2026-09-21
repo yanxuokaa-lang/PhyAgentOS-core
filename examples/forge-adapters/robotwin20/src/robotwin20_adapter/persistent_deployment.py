@@ -1,5 +1,6 @@
 """Compose adapter providers for the existing pick-place Skill runtime."""
 
+from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -30,11 +31,25 @@ from .route_readiness import RouteReadinessEvaluationAdapter
 class PersistentTaskGoalProvider:
     """Read task-definition goals without projecting them as observations."""
 
-    def __init__(self, client: Any) -> None:
+    def __init__(self, client: Any, *, goal_source: str = "benchmark_task_definition") -> None:
         self.client = client
+        if goal_source not in {"benchmark_task_definition", "observation_owned"}:
+            raise ValueError("goal_source must be benchmark_task_definition or observation_owned")
+        self.goal_source = goal_source
 
     def goal(self, request: dict[str, Any]) -> dict[str, Any]:
-        return self.client.query("task_goal_facts", request)
+        if self.goal_source == "observation_owned":
+            return {
+                "status": "unavailable",
+                "motion_authorized": False,
+                "error": {
+                    "code": "benchmark_goal_disabled",
+                    "message": "observation-owned profile does not expose benchmark destinations",
+                },
+            }
+        value = dict(self.client.query("task_goal_facts", request))
+        value["goal_source"] = self.goal_source
+        return value
 
 
 class TaskGoalEndpoint:
@@ -119,8 +134,11 @@ def build_persistent_runtime_bundle(
             runtime.register_tool(spec, GroundingEndpoint(resolve),
                                   context_provider=lambda tool_id=spec["tool_id"]: tool_context_provider(tool_id))
     if deployment.task_goal_provider is not None:
+        goal_spec = deepcopy(TASK_GOAL_TOOL_SPEC)
+        if getattr(deployment.task_goal_provider, "goal_source", None) == "observation_owned":
+            goal_spec["planning"]["requires_before_plan"] = False
         runtime.register_tool(
-            TASK_GOAL_TOOL_SPEC,
+            goal_spec,
             TaskGoalEndpoint(deployment.task_goal_provider),
             context_provider=lambda: tool_context_provider("task.goal"),
         )
@@ -134,6 +152,7 @@ def build_persistent_deployment(*, client, artifact_root: Path, scene_source,
                                 preparation_timeout_s=330,
                                 route_geometry_source="observed",
                                 simulation_action_mode=DISABLED_ACTION_MODE,
+                                goal_source="observation_owned",
                                 task_name=None,
                                 readiness_evaluator=None):
     """Build real adapter components, retaining caller-owned client lifetime.
@@ -166,6 +185,8 @@ def build_persistent_deployment(*, client, artifact_root: Path, scene_source,
         RUNTIME_MONITORED_ACTION_MODE,
     }:
         raise ValueError("simulation_action_mode must be disabled or runtime_monitored")
+    if goal_source not in {"benchmark_task_definition", "observation_owned"}:
+        raise ValueError("goal_source must be benchmark_task_definition or observation_owned")
     if simulation_action_mode == RUNTIME_MONITORED_ACTION_MODE and route_geometry_source != "oracle":
         raise ValueError("runtime_monitored simulation Actions require oracle route geometry")
     routes = PreparedRoutes(client, artifact_root)
@@ -205,5 +226,5 @@ def build_persistent_deployment(*, client, artifact_root: Path, scene_source,
         capabilities,
         routes,
         grounding,
-        PersistentTaskGoalProvider(client),
+        PersistentTaskGoalProvider(client, goal_source=goal_source),
     )

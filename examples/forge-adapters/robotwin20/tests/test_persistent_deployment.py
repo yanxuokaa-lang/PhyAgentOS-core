@@ -93,7 +93,9 @@ def test_task_goal_endpoint_preserves_worker_rejection_but_not_transport_loss():
 
     client = Client()
     endpoint = TaskGoalEndpoint(PersistentTaskGoalProvider(client))
-    assert endpoint.invoke({})["status"] == "available"
+    available = endpoint.invoke({})
+    assert available["status"] == "available"
+    assert available["goal_source"] == "benchmark_task_definition"
 
     client.error = PersistentWorkerError({"code": "task_goal_invalid"})
     rejected = endpoint.invoke({})
@@ -103,6 +105,25 @@ def test_task_goal_endpoint_preserves_worker_rejection_but_not_transport_loss():
     client.error = RuntimeError("persistent world connection lost")
     with pytest.raises(RuntimeError, match="connection lost"):
         endpoint.invoke({})
+
+
+def test_observation_owned_goal_provider_never_queries_benchmark_facts():
+    class Client:
+        def query(self, *_args, **_kwargs):
+            raise AssertionError("observation-owned profile queried benchmark facts")
+
+    result = PersistentTaskGoalProvider(
+        Client(), goal_source="observation_owned"
+    ).goal({})
+
+    assert result == {
+        "status": "unavailable",
+        "motion_authorized": False,
+        "error": {
+            "code": "benchmark_goal_disabled",
+            "message": "observation-owned profile does not expose benchmark destinations",
+        },
+    }
 
 
 def test_runtime_bundle_registers_persistent_tools_behind_one_transport(tmp_path):
@@ -132,6 +153,11 @@ def test_runtime_bundle_registers_persistent_tools_behind_one_transport(tmp_path
         "grasp.propose", "manipulation.prepare", "object.acquire", "object.place",
         "scene.bind", "task.goal", "manipulation.target",
     }
+    task_goal = next(
+        item for item in bundle.runtime.list_tools()["tools"]
+        if item["tool_id"] == "task.goal"
+    )
+    assert task_goal["planning"]["requires_before_plan"] is False
     with pytest.raises(ValueError, match="share one worker client"):
         build_persistent_runtime_bundle(
             deployment=deployment, client=object(),

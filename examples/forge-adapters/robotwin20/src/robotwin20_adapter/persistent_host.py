@@ -142,6 +142,7 @@ def load_persistent_host_profile(
             "preparation_timeout_s",
             "route_geometry_source",
             "simulation_action_mode",
+            "goal_source",
         }
         or profile.get("schema_version") != PROFILE_SCHEMA_VERSION
     ):
@@ -209,6 +210,11 @@ def build_persistent_host(
         raise PersistentHostConfigurationError(
             "runtime_monitored simulation Actions require oracle route geometry"
         )
+    goal_source = profile.get("goal_source", "observation_owned")
+    if goal_source not in {"benchmark_task_definition", "observation_owned"}:
+        raise PersistentHostConfigurationError(
+            "goal_source must be benchmark_task_definition or observation_owned"
+        )
     adapter_root = _path(profile.get("adapter_root"), "adapter_root", directory=True)
     artifact_root = Path(str(profile.get("artifact_root")))
     if not artifact_root.is_absolute():
@@ -269,6 +275,7 @@ def build_persistent_host(
                 "stop_file": str(artifact_root / "persistent-host.stop"),
                 "allow_benchmark_scene_facts": True,
                 "simulation_action_mode": simulation_action_mode,
+                "goal_source": goal_source,
                 "video": {
                     "enabled": video_settings["enabled"],
                     "fps": video_fps,
@@ -516,6 +523,7 @@ def build_persistent_host(
             ),
             route_geometry_source=route_geometry_source,
             simulation_action_mode=simulation_action_mode,
+            goal_source=goal_source,
             task_name=task_name,
         )
         if route_geometry_source == "oracle":

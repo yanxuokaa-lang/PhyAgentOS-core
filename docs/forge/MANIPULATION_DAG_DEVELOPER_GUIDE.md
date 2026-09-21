@@ -717,11 +717,15 @@ with the bound Runtime actor model. It does not replace Agent ordering,
 preparation, Gateway admission, settlement, or verification.
 
 `task.goal` is a provider-neutral read-only Query for task-specification facts.
-Its output is not observation evidence. For `blocks_ranking_rgb`, the Runtime
-task adapter returns three execution identities and exact target transforms; the
-Agent matches those identities to `scene.bind` and invokes the existing
-`manipulation.target`. The Runtime never chooses a fixed color order and never
-calls RoboTwin `play_once()`.
+Its output is not observation evidence. The explicit
+`robotwin-blocks-ranking-oracle` baseline sets
+`goal_source=benchmark_task_definition`; the Coordinator binds each returned
+`execution_entity_ref` and opaque `destination_ref` into the current semantic
+segment, so the Agent does not invent or optimize destination poses. The
+observation-owned profile sets `goal_source=observation_owned`, disables
+benchmark destinations, and keeps the Agent-selected `manipulation.target`
+path. There is no implicit fallback between profiles, and neither profile
+calls RoboTwin `play_once()` from the planning layer.
 
 The Runtime's private `benchmark_result` query is reserved for post-run
 acceptance. It persists RoboTwin `check_success()` separately from the PAOS

@@ -28,6 +28,7 @@ from PhyAgentOS.planning import (
     explain_node_readiness,
     plan_node_digest,
     required_argument_keys,
+    required_node_binding_keys,
     tool_input_binding_digest,
     validate_tool_arguments,
 )
@@ -183,10 +184,14 @@ class AgentComposedDispatch:
             candidates = tuple(policy.tool_id for policy in candidate_policies)
             missing_node_bindings = {
                 policy.tool_id: tuple(
-                    key for key in policy.input_binding_keys if key not in node.input_bindings
+                    key for key in required_node_binding_keys(policy)
+                    if key not in node.input_bindings
                 )
                 for policy in candidate_policies
-                if any(key not in node.input_bindings for key in policy.input_binding_keys)
+                if any(
+                    key not in node.input_bindings
+                    for key in required_node_binding_keys(policy)
+                )
             }
             bindable = tuple(
                 policy.tool_id
@@ -236,7 +241,7 @@ class AgentComposedDispatch:
                         for policy in self.policies
                         if nodes[node_id].capability in policy.capabilities
                         and (conditions.get("scene_current") is not False or policy.refreshes_scene)
-                        and set(policy.input_binding_keys).issubset(nodes[node_id].input_bindings)
+                        and set(required_node_binding_keys(policy)).issubset(nodes[node_id].input_bindings)
                     ],
                     **(
                         {"missing_runtime_arguments": {
@@ -247,7 +252,7 @@ class AgentComposedDispatch:
                                 conditions.get("scene_current") is not False
                                 or policy.refreshes_scene
                             )
-                            and set(policy.input_binding_keys).issubset(
+                            and set(required_node_binding_keys(policy)).issubset(
                                 nodes[node_id].input_bindings
                             )
                             and self._required_runtime_arguments(policy)
@@ -258,7 +263,7 @@ class AgentComposedDispatch:
                                 conditions.get("scene_current") is not False
                                 or policy.refreshes_scene
                             )
-                            and set(policy.input_binding_keys).issubset(
+                            and set(required_node_binding_keys(policy)).issubset(
                                 nodes[node_id].input_bindings
                             )
                             and self._required_runtime_arguments(policy)
@@ -277,7 +282,7 @@ class AgentComposedDispatch:
                                 conditions.get("scene_current") is not False
                                 or policy.refreshes_scene
                             )
-                            and set(policy.input_binding_keys).issubset(
+                            and set(required_node_binding_keys(policy)).issubset(
                                 nodes[node_id].input_bindings
                             )
                             and required_argument_keys(
@@ -290,7 +295,7 @@ class AgentComposedDispatch:
                                 conditions.get("scene_current") is not False
                                 or policy.refreshes_scene
                             )
-                            and set(policy.input_binding_keys).issubset(
+                            and set(required_node_binding_keys(policy)).issubset(
                                 nodes[node_id].input_bindings
                             )
                             and required_argument_keys(
@@ -309,7 +314,7 @@ class AgentComposedDispatch:
                                 conditions.get("scene_current") is not False
                                 or policy.refreshes_scene
                             )
-                            and set(policy.input_binding_keys).issubset(
+                            and set(required_node_binding_keys(policy)).issubset(
                                 nodes[node_id].input_bindings
                             )
                             and policy.tool_id in self._input_schemas
@@ -320,7 +325,7 @@ class AgentComposedDispatch:
                                 conditions.get("scene_current") is not False
                                 or policy.refreshes_scene
                             )
-                            and set(policy.input_binding_keys).issubset(
+                            and set(required_node_binding_keys(policy)).issubset(
                                 nodes[node_id].input_bindings
                             )
                             and policy.tool_id in self._input_schemas
@@ -333,7 +338,7 @@ class AgentComposedDispatch:
                 if any(
                     nodes[node_id].capability in policy.capabilities
                     and (conditions.get("scene_current") is not False or policy.refreshes_scene)
-                    and set(policy.input_binding_keys).issubset(nodes[node_id].input_bindings)
+                    and set(required_node_binding_keys(policy)).issubset(nodes[node_id].input_bindings)
                     for policy in self.policies
                 )
             ],
@@ -471,7 +476,8 @@ class AgentComposedDispatch:
             if key not in arguments and key in node.input_bindings:
                 arguments[key] = node.input_bindings[key]
         missing_node_bindings = tuple(
-            key for key in policy.input_binding_keys if key not in node.input_bindings
+            key for key in required_node_binding_keys(policy)
+            if key not in node.input_bindings
         )
         if missing_node_bindings:
             raise PlanningDispatchError(

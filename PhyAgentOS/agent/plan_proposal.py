@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 from uuid import uuid4
 
+from PhyAgentOS.agent.planning_facts import response_facts
 from PhyAgentOS.forge.task import AgentTaskRecord
 from PhyAgentOS.planning import (
     PlanGraph,
     PlanNode,
     canonical_sha256,
     plan_graph_digest,
+    required_node_binding_keys,
     validate_condition_keys,
     validate_graph,
 )
@@ -62,13 +65,13 @@ def compile_task_plan(
             and node.capability in tool.planning_policy.capabilities
         )
         if any(
-            set(policy.input_binding_keys).issubset(node.input_bindings)
+            set(required_node_binding_keys(policy)).issubset(node.input_bindings)
             for policy in candidates
         ):
             continue
         candidate_details = ", ".join(
             f"{policy.tool_id} missing "
-            f"[{', '.join(key for key in policy.input_binding_keys if key not in node.input_bindings)}]"
+            f"[{', '.join(key for key in required_node_binding_keys(policy) if key not in node.input_bindings)}]"
             for policy in candidates
         ) or "<none>"
         unbindable.append(f"{node.node_id}: {candidate_details}")
@@ -166,7 +169,7 @@ def _complete_persisted_runtime_bindings(
     Coordinator owns exact persisted producer facts.  Preparation/acquisition
     consumers must not depend on the model copying a destination or capability
     URI into every later selection.  Only values already frozen in this graph
-    or a unique current-task capabilities result are propagated; ambiguous or
+    or a unique current-revision capabilities result are propagated; ambiguous or
     stale values remain absent and are rejected by normal selection validation.
     """
     destination_by_entity: dict[str, set[str]] = {}
@@ -177,24 +180,88 @@ def _complete_persisted_runtime_bindings(
             destination_by_entity.setdefault(entity, set()).add(destination)
 
     capability_refs: set[str] = set()
-    for revision in reversed(task.revisions):
-        for record in reversed(revision.execution_records):
-            if record.tool_id != "manipulation.capabilities" or record.status != "succeeded":
-                continue
-            response = record.response if isinstance(record.response, dict) else {}
-            data = response.get("data") if isinstance(response.get("data"), dict) else response
-            snapshot_ref = data.get("snapshot_ref") if isinstance(data, dict) else None
-            if isinstance(snapshot_ref, str) and snapshot_ref.startswith("artifact://"):
-                capability_refs.add(snapshot_ref)
-        if capability_refs:
-            break
+    goal_sources: dict[str, set[str]] = {}
+    predecessor_destinations: dict[str, set[str]] = {}
+    predecessor_entities: dict[str, set[str]] = {}
+    observed_to_execution: dict[str, set[str]] = {}
+    for revision in task.revisions:
+        for record in revision.execution_records:
+            facts = response_facts(record.response)
+            if record.status == "succeeded" and record.tool_id == "task.goal":
+                if facts.get("goal_source", facts.get("geometry_source")) == "benchmark_task_definition":
+                    for goal in facts.get("goals", ()):
+                        if not isinstance(goal, Mapping):
+                            continue
+                        entity = goal.get("execution_entity_ref")
+                        destination = goal.get("destination_ref")
+                        if isinstance(entity, str) and isinstance(destination, str):
+                            goal_sources.setdefault(entity, set()).add(destination)
+
+    # Scene-bound facts must come from the revision being compiled. Task goals
+    # are task-specification facts and may outlive a scene; capabilities,
+    # identity correspondence, targets, and candidates may not.
+    active_revision = task.active_revision
+    for record in active_revision.execution_records:
+        facts = response_facts(record.response)
+        if record.status != "succeeded":
+            continue
+        if record.tool_id == "scene.bind":
+            for item in facts.get("entities", ()):
+                if not isinstance(item, Mapping):
+                    continue
+                observed = item.get("entity_ref")
+                execution = item.get("execution_entity_ref")
+                if isinstance(observed, str) and isinstance(execution, str):
+                    observed_to_execution.setdefault(observed, set()).add(execution)
+        if record.tool_id in {"grasp.propose", "manipulation.target", "scene.bind"}:
+            entities = set()
+            entity = facts.get("entity_ref")
+            if isinstance(entity, str):
+                entities.add(entity)
+            for candidate in facts.get("candidates", ()):
+                if isinstance(candidate, Mapping) and isinstance(candidate.get("entity_ref"), str):
+                    entities.add(candidate["entity_ref"])
+            destination = facts.get("destination_ref")
+            if isinstance(destination, str) and len(entities) == 1:
+                predecessor_destinations.setdefault(next(iter(entities)), set()).add(destination)
+            if entities:
+                predecessor_entities[record.node_id or record.tool_id] = entities
+        if record.tool_id != "manipulation.capabilities":
+            continue
+        snapshot_ref = facts.get("snapshot_ref") or facts.get("capability_snapshot_ref")
+        if isinstance(snapshot_ref, str) and snapshot_ref.startswith("artifact://"):
+            capability_refs.add(snapshot_ref)
+
+    proposed_entities = {
+        node.node_id: {entity}
+        for node in nodes
+        if isinstance((entity := node.input_bindings.get("entity_ref")), str)
+    }
 
     completed: list[PlanNode] = []
     for node in nodes:
         bindings = dict(node.input_bindings)
         if node.capability in {"manipulation.prepare", "object.acquire", "object.place"}:
             entity = bindings.get("entity_ref")
-            destinations = destination_by_entity.get(entity, set())
+            if not isinstance(entity, str):
+                predecessor_values = [
+                    values for key, values in predecessor_entities.items()
+                    if key in node.dependencies
+                ]
+                predecessor_values.extend(
+                    values for key, values in proposed_entities.items()
+                    if key in node.dependencies
+                )
+                merged = set().union(*predecessor_values) if predecessor_values else set()
+                if len(merged) == 1:
+                    entity = next(iter(merged))
+                    bindings["entity_ref"] = entity
+            destinations = set(destination_by_entity.get(entity, set()))
+            destinations |= goal_sources.get(entity, set())
+            execution_entities = observed_to_execution.get(entity, set())
+            if len(execution_entities) == 1:
+                destinations |= goal_sources.get(next(iter(execution_entities)), set())
+            destinations |= predecessor_destinations.get(entity, set())
             if node.capability in {"manipulation.prepare", "object.place"} and len(destinations) == 1:
                 bindings.setdefault("destination_ref", next(iter(destinations)))
             if len(capability_refs) == 1:

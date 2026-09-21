@@ -86,11 +86,12 @@ def semantic_nodes(count):
 
 
 def test_prepare_bindings_reuse_unique_current_capability_and_destination_facts():
-    task = SimpleNamespace(revisions=[SimpleNamespace(execution_records=[SimpleNamespace(
+    active_revision = SimpleNamespace(execution_records=[SimpleNamespace(
         tool_id="manipulation.capabilities",
         status="succeeded",
         response={"data": {"snapshot_ref": "artifact://capabilities/current"}},
-    )])])
+    )])
+    task = SimpleNamespace(revisions=[active_revision], active_revision=active_revision)
     nodes = (
         PlanNode(
             node_id="red_prepare",
@@ -115,6 +116,136 @@ def test_prepare_bindings_reuse_unique_current_capability_and_destination_facts(
         "destination_ref": "destination://left",
         "capability_snapshot_ref": "artifact://capabilities/current",
     }
+
+
+def test_prepare_bindings_map_observed_identity_to_benchmark_destination():
+    discovery = SimpleNamespace(execution_records=[
+        SimpleNamespace(
+            tool_id="task.goal",
+            status="succeeded",
+            response={
+                "status": "available",
+                "goal_source": "benchmark_task_definition",
+                "goals": [{
+                    "execution_entity_ref": "entity://block-green-1",
+                    "destination_ref": "destination://benchmark/green",
+                }],
+            },
+        ),
+        SimpleNamespace(
+            tool_id="scene.bind",
+            node_id="bind-scene",
+            status="succeeded",
+            response={
+                "status": "available",
+                "entities": [{
+                    "entity_ref": "entity://observed-green",
+                    "execution_entity_ref": "entity://block-green-1",
+                }],
+            },
+        ),
+        SimpleNamespace(
+            tool_id="manipulation.capabilities",
+            status="succeeded",
+            response={
+                "status": "available",
+                "snapshot_ref": "artifact://capabilities/scene-1",
+            },
+        ),
+    ])
+    task = SimpleNamespace(revisions=[discovery], active_revision=discovery)
+    nodes = (
+        PlanNode(
+            node_id="green-grasp",
+            obligation_id="green-grasp",
+            capability="grasp.propose",
+            input_bindings={"entity_ref": "entity://observed-green"},
+        ),
+        PlanNode(
+            node_id="green-prepare",
+            obligation_id="green-prepare",
+            capability="manipulation.prepare",
+            dependencies=("green-grasp",),
+        ),
+    )
+
+    completed = _complete_persisted_runtime_bindings(task, nodes)
+
+    assert completed[1].input_bindings == {
+        "entity_ref": "entity://observed-green",
+        "destination_ref": "destination://benchmark/green",
+        "capability_snapshot_ref": "artifact://capabilities/scene-1",
+    }
+
+
+def test_prepare_bindings_do_not_reuse_scene_facts_from_closed_revision():
+    closed = SimpleNamespace(execution_records=[
+        SimpleNamespace(
+            tool_id="manipulation.capabilities",
+            status="succeeded",
+            response={"snapshot_ref": "artifact://capabilities/stale"},
+        ),
+        SimpleNamespace(
+            tool_id="grasp.propose",
+            node_id="green-grasp",
+            status="succeeded",
+            response={"candidates": [{"entity_ref": "entity://stale-green"}]},
+        ),
+    ])
+    active = SimpleNamespace(execution_records=[])
+    task = SimpleNamespace(revisions=[closed, active], active_revision=active)
+    node = PlanNode(
+        node_id="green-prepare",
+        obligation_id="green-prepare",
+        capability="manipulation.prepare",
+        dependencies=("green-grasp",),
+    )
+
+    completed = _complete_persisted_runtime_bindings(task, (node,))
+
+    assert completed[0].input_bindings == {}
+
+
+def test_node_turn_yields_after_selection_requires_replan(tmp_path):
+    async def exercise():
+        provider = ScriptedProvider([
+            LLMResponse(content=None, tool_calls=[ToolCallRequest(
+                "reject-selection",
+                "forge_plan_select",
+                {
+                    "task_id": "task-1",
+                    "node_id": "prepare-green",
+                    "tool_id": "manipulation.prepare",
+                    "arguments": {},
+                    "decision_reason": "prepare current candidates",
+                },
+            )]),
+        ])
+        loop = AgentLoop(
+            bus=MessageBus(), provider=provider, workspace=tmp_path, max_iterations=4
+        )
+        loop.tools.execute = AsyncMock(return_value=json.dumps({
+            "ok": False,
+            "error": {
+                "code": "node_tool_binding_incompatible",
+                "requires_replan": True,
+                "retryable_in_revision": False,
+            },
+            "motion_authorized": False,
+        }))
+
+        result = await loop._run_agent_loop(
+            [{"role": "user", "content": "execute current node"}],
+            projection_scope="node",
+            projection_node_id="prepare-green",
+            allowed_tool_names=frozenset({"forge_plan_select"}),
+        )
+
+        assert len(provider.requests) == 1
+        assert result.tools_used == ["forge_plan_select"]
+        assert "replacement plan segment" in result.content
+
+    asyncio.run(exercise())
 
 
 @pytest.mark.parametrize("count", [1, 2, 3])

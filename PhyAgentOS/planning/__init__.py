@@ -24,6 +24,7 @@ from .contracts import (
     canonical_sha256,
     plan_graph_digest,
     plan_node_digest,
+    required_node_binding_keys,
     tool_input_binding_digest,
     validate_condition_keys,
 )
@@ -66,6 +67,7 @@ __all__ = [
     "WorkflowPolicyReplayReceipt",
     "admit_tool_call",
     "required_argument_keys",
+    "required_node_binding_keys",
     "validate_input_schema",
     "validate_tool_arguments",
     "build_replan_delta",

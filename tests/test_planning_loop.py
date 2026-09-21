@@ -1921,7 +1921,8 @@ def test_planning_loop_blocks_provider_failure_without_settlement(tmp_path):
         "node_turn_provider_error:arrange-red:provider_timeout"
     )
     current = c.get_task(task.task_id)
-    assert current.status.value == "executing"
+    assert current.status.value == "awaiting_replan"
+    assert current.replan_deadline is not None
     assert current.active_revision.node_settlements == []
     assert current.active_revision.execution_records == []
 
@@ -1961,6 +1962,7 @@ def test_planning_loop_blocks_incomplete_node_without_settlement(tmp_path):
     assert event["event_type"] == "planning_node_blocked"
     assert event["payload"]["reason"] == result.last_failure
     current = c.get_task(task.task_id)
-    assert current.status.value == "executing"
+    assert current.status.value == "awaiting_replan"
+    assert current.replan_deadline is not None
     assert current.active_revision.node_settlements == []
     assert current.active_revision.execution_records == []
