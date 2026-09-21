@@ -16,6 +16,12 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v11.2.3 (2026-09-21 13:58) - codex
+
+- [agent] [docs] [完成] 保存当前长程任务四类诊断：Terra 由配置明确选择；`manipulation.prepare` 拒绝来自缺少 Runtime `destination_ref`/`capability_snapshot_ref` 的图绑定传播；AgentLoop 将确定性绑定缺失当作可重复选择错误；当前任务未采用 benchmark 目标区域。(local)
+- [Agent] [Docs] [Completed] Preserve four diagnostics from the current long-horizon task: Terra is explicitly selected by config; `manipulation.prepare` rejection comes from missing Runtime `destination_ref`/`capability_snapshot_ref` graph propagation; AgentLoop treats deterministic binding absence as a repeatable selection error; the current task did not use benchmark target regions. (local)
+- Report: [`docs/forge/DIAGNOSTIC_BENCHMARK_GOAL_BASELINE_V11_2_3.md`](docs/forge/DIAGNOSTIC_BENCHMARK_GOAL_BASELINE_V11_2_3.md), detailed entry: [`changelog/2026-09_part12.md`](changelog/2026-09_part12.md).
+
 ## v11.1.0 (2026-09-20 21:22) - codex
 
 - [policy] [fix] [完成] Adapter/Runtime 区分实际关节测量、限位内张开预测和未来抓持预测缺失；同步详细几何、单/批量 Curobo rollout 与对臂投影，实际执行每段读取关节测量。(local)
