@@ -610,6 +610,11 @@ class AgentLoopNodeExecutor:
 
         attempts = 1 + self.max_node_turn_continuations
         for _attempt in range(attempts):
+            # A model/provider failure after forge_plan_select is recoverable:
+            # the Coordinator has already persisted the exact execution
+            # arguments, so the bounded continuation can issue the normal
+            # governed wrapper without asking the model to select again.
+            had_pending_selection = self._pending_selection(context) is not None
             turn_result = await self.agent_loop.run_node_turn(
                 task_id=context.task_id,
                 revision_id=context.revision_id,
@@ -631,9 +636,21 @@ class AgentLoopNodeExecutor:
                 return self._result_from_records(context, records)
             model_failure_code = getattr(turn_result, "model_failure_code", None)
             if model_failure_code:
+                if (
+                    not had_pending_selection
+                    and self._pending_selection(context) is not None
+                    and _attempt + 1 < attempts
+                ):
+                    continue
                 raise NodeTurnProviderError(context.node_id, model_failure_code)
             turn_failure_code = getattr(turn_result, "turn_failure_code", None)
             if turn_failure_code:
+                if (
+                    not had_pending_selection
+                    and self._pending_selection(context) is not None
+                    and _attempt + 1 < attempts
+                ):
+                    continue
                 raise NodeTurnIncompleteError(context.node_id, turn_failure_code)
             rejections = self._selection_rejections(context)
             if rejections and self._pending_selection(context) is None:

@@ -1734,6 +1734,49 @@ def test_node_executor_provider_failure_does_not_consume_continuation():
     assert task.active_revision.execution_records == []
 
 
+def test_node_executor_retries_provider_failure_after_selection_is_persisted():
+    records = []
+    pending = {"value": None}
+    task = SimpleNamespace(
+        active_revision_id="revision-resume",
+        active_revision=SimpleNamespace(execution_records=records),
+    )
+
+    class Coordinator:
+        def get_task(self, _task_id):
+            return task
+
+        def pending_planning_selection(self, *_args, **_kwargs):
+            return pending["value"]
+
+    class Loop:
+        calls = 0
+        prompts = []
+
+        async def run_node_turn(self, *, prompt, **_kwargs):
+            self.calls += 1
+            self.prompts.append(prompt)
+            if self.calls == 1:
+                pending["value"] = {
+                    "execution_tool": "forge_tool_query",
+                    "task_id": "task-resume",
+                    "tool_id": "manipulation.prepare",
+                    "arguments": {"candidate_set_ref": "candidate-set://1"},
+                    "planning_binding": {"node_id": "prepare"},
+                }
+                return SimpleNamespace(model_failure_code="provider_timeout")
+            records.append(_terminal_record())
+            return SimpleNamespace(model_failure_code=None, turn_failure_code=None)
+
+    loop = Loop()
+    result = asyncio.run(AgentLoopNodeExecutor(loop, Coordinator())(_executor_context()))
+
+    assert result.status == "succeeded"
+    assert loop.calls == 2
+    assert "Do not select again" in loop.prompts[1]
+    assert len(records) == 1
+
+
 @pytest.mark.parametrize("semantics", ["action", "session"])
 def test_node_executor_reconciles_record_before_later_provider_failure(semantics):
     records = []
