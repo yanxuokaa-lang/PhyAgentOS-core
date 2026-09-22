@@ -1747,7 +1747,10 @@ def execution_route(tmp_path, monkeypatch):
 def test_route_gripper_phases_and_duplicate_boundary_do_not_replan(execution_route):
     route = execution_route
     trajectory = route.run()
-    assert [phase for phase, _ in route.planned] == ["approach", "contact", "lift", "transport", "descent", "retreat"]
+    assert [phase for phase, _ in route.planned] == [
+        "approach", "contact", "lift", "transport", "descent", "retreat", "retreat"
+    ]
+    assert route.planned[-1][1] == [0.0, 0.0, 0.8, 1.0, 0.0, 0.0, 0.0]
     records = {item["phase"]: item for item in trajectory["phases"]}
     assert len(records) == 8
     for phase in ("close", "release"):
@@ -1802,6 +1805,7 @@ def test_gripper_only_target_mismatch_fails_before_actuation(execution_route, ph
 @pytest.mark.parametrize("phase", ["close", "release"])
 def test_arrival_exhaustion_prevents_gripper_action(execution_route, phase):
     route = execution_route
+    route.state["phase"] = "initial"
     route.task.robot.get_left_ee_pose = lambda: (
         [0., 0., 1.1, 1., 0., 0., 0.] if route.state["phase"] == phase else route.task.robot.ee
     )

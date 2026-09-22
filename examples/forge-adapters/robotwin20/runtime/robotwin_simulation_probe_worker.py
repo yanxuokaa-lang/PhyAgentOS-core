@@ -23,6 +23,7 @@ import re
 import sys
 import time
 from contextlib import redirect_stdout
+from copy import deepcopy
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -45,6 +46,7 @@ from robotwin_planning_geometry import (
     SimulationProbeError,
     _attach_object_to_planner,
     _capture_dual_arm_state,
+    _initial_gripper_waypoint,
     _joint_limits,
     _route_pose,
     _validate_attached_support_departure,
@@ -1375,6 +1377,15 @@ def execute_candidate_phases(
     execution_state["held_arm"] = "right" if arm == "left" else "left"
     planner = task.robot.left_planner if arm == "left" else task.robot.right_planner
     execution_state["_planner"] = planner
+    # The final retreat waypoint returns the selected arm to the Runtime pose
+    # captured before this Action.  It is planned and monitored like every
+    # other route segment so post-place observation is not made from above the
+    # destination.
+    execution_state["phase"] = "initial"
+    route = deepcopy(candidate["route"])
+    route[-1]["waypoints"].append(
+        _initial_gripper_waypoint(task, arm, request["frame_id"])
+    )
     limits = _joint_limits(planner)
     fn = task.robot.left_plan_path if arm == "left" else task.robot.right_plan_path
     task.need_plan = True
@@ -1383,7 +1394,7 @@ def execute_candidate_phases(
     detached = False
     previous_target: list[float] | None = None
     previous_phase: str | None = None
-    for phase in candidate["route"]:
+    for phase in route:
         deadline = execution_state.get("action_deadline", deadline)
         phase_name = phase["phase"]
         execution_state["phase"] = phase_name

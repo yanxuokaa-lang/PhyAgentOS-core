@@ -17,6 +17,7 @@ from robotwin_planning_geometry import (
     SimulationProbeError,
     _attach_object_to_planner,
     _capture_dual_arm_state,
+    _initial_gripper_waypoint,
     _joint_limits,
     _route_pose,
     _table_top_z,
@@ -165,6 +166,10 @@ def evaluate_route_arm(
     planner = getattr(task.robot, f"{arm}_planner")
     entity = getattr(task.robot, f"{arm}_entity")
     original = np.asarray(entity.get_qpos()).copy()
+    initial_gripper_waypoint = _initial_gripper_waypoint(task, arm, request["frame_id"])
+    planned_candidate = deepcopy(dict(candidate))
+    planned_candidate["route"] = deepcopy(candidate["route"])
+    planned_candidate["route"][-1]["waypoints"].append(initial_gripper_waypoint)
     predicted = original.copy()
     attached = False
     phase_name = "approach"
@@ -174,12 +179,12 @@ def evaluate_route_arm(
     gripper = []
     try:
         limits = _joint_limits(planner)
-        for phase in candidate["route"]:
+        for phase in planned_candidate["route"]:
             phase_name = phase["phase"]
             if phase_name == "retreat" and attached:
                 planner.motion_gen.detach_object_from_robot()
                 attached = False
-                released_pose, released_extents = released_object_envelope(candidate)
+                released_pose, released_extents = released_object_envelope(planned_candidate)
                 previous_worlds = add_released_object(
                     planner,
                     released_pose,
@@ -203,7 +208,7 @@ def evaluate_route_arm(
                         entity.set_qpos(predicted.tolist())
                         attached = True
                         _attach_object_to_planner(
-                            task, planner, actor, candidate["attached_object"]["half_extents_m"], arm
+                            task, planner, actor, planned_candidate["attached_object"]["half_extents_m"], arm
                         )
                         _validate_attached_support_departure(planner, result["position"])
                 predicted[:7] = np.asarray(result["position"])[-1]
@@ -223,7 +228,9 @@ def evaluate_route_arm(
             from robotwin_descent_diagnostic import diagnose_attached_segment
 
             try:
-                diagnostic = diagnose_attached_segment(task, candidate, arm, actor, pose, predicted)
+                diagnostic = diagnose_attached_segment(
+                    task, planned_candidate, arm, actor, pose, predicted
+                )
             except Exception as diagnostic_error:
                 diagnostic = {"error": str(diagnostic_error), "diagnostic_only": True}
         return {

@@ -49,6 +49,38 @@ def _route_pose(pose_value: Mapping[str, Any], route_frame_id: str) -> list[floa
     return position.tolist() + q_wxyz.tolist()
 
 
+def _initial_gripper_pose(task: Any, arm: str) -> list[float]:
+    """Return the selected arm's pre-action gripper pose for post-place stow.
+
+    The pose is captured from the Runtime-owned robot state before the route
+    changes it.  It is used as a normal planner target, never as a direct
+    joint reset or an Agent-supplied execution parameter.
+    """
+    getter = getattr(task.robot, f"get_{arm}_ee_pose", None)
+    if not callable(getter):
+        raise SimulationProbeError("robot initial gripper pose is unavailable")
+    pose = getter()
+    if isinstance(pose, (list, tuple)):
+        values = list(pose)
+    else:
+        values = list(getattr(pose, "p", ())) + list(getattr(pose, "q", ()))
+    if len(values) != 7:
+        raise SimulationProbeError("robot initial gripper pose is invalid")
+    if not all(math.isfinite(float(value)) for value in values):
+        raise SimulationProbeError("robot initial gripper pose is invalid")
+    return [float(value) for value in values]
+
+
+def _initial_gripper_waypoint(task: Any, arm: str, frame_id: str) -> dict[str, Any]:
+    """Adapt the Runtime pose into the route request's explicit pose shape."""
+    values = _initial_gripper_pose(task, arm)
+    return {
+        "frame_id": frame_id,
+        "position_m": values[:3],
+        "orientation_xyzw": [values[4], values[5], values[6], values[3]],
+    }
+
+
 def _joint_limits(planner: Any) -> list[list[float]]:
     try:
         kinematics = planner.motion_gen.robot_cfg.kinematics

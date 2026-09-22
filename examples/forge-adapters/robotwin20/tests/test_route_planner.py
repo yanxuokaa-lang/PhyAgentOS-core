@@ -37,7 +37,12 @@ def route(monkeypatch):
         }
 
     task = SimpleNamespace(
-        robot=SimpleNamespace(left_entity=entity, left_planner=planner, left_plan_path=plan)
+        robot=SimpleNamespace(
+            left_entity=entity,
+            left_planner=planner,
+            left_plan_path=plan,
+            get_left_ee_pose=lambda: [0.0, 0.0, 0.8, 1.0, 0.0, 0.0, 0.0],
+        )
     )
     monkeypatch.setattr(module, "_joint_limits", lambda planner: [[-3.0] * 7, [3.0] * 7])
     monkeypatch.setattr(module, "_validate_world_pose", lambda *args: None)
@@ -70,9 +75,10 @@ def test_route_chains_predicted_endpoints_and_restores_without_scene_steps(route
     task, request, candidate, entity, events, starts = route
     result = module.evaluate_route_arm(task, request, candidate, "left", object())
     assert result["status"] == "pass"
-    assert len(result["segments"]) == 8
+    assert len(result["segments"]) == 9
     assert starts[1] == pytest.approx([0.01] * 7)
-    assert starts[-1] == pytest.approx([0.07] * 7)
+    assert starts[-2] == pytest.approx([0.07] * 7)
+    assert starts[-1] == pytest.approx([0.08] * 7)
     assert entity.qpos == [0.0] * 9
     assert events == ["attach", "attached_check", "detach", "released_obstacle"]
     assert result["motion_authorized"] is False
