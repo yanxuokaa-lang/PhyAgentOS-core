@@ -187,6 +187,7 @@ def _complete_persisted_runtime_bindings(
     capability_refs: set[str] = set()
     capability_arm_ids: dict[str, tuple[str, ...]] = {}
     goal_sources: dict[str, set[str]] = {}
+    goal_entities_by_destination: dict[str, set[str]] = {}
     predecessor_destinations: dict[str, set[str]] = {}
     predecessor_entities: dict[str, set[str]] = {}
     observed_to_execution: dict[str, set[str]] = {}
@@ -202,6 +203,7 @@ def _complete_persisted_runtime_bindings(
                         destination = goal.get("destination_ref")
                         if isinstance(entity, str) and isinstance(destination, str):
                             goal_sources.setdefault(entity, set()).add(destination)
+                            goal_entities_by_destination.setdefault(destination, set()).add(entity)
 
     # Scene-bound facts must come from the revision being compiled. Task goals
     # are task-specification facts and may outlive a scene; capabilities,
@@ -265,6 +267,11 @@ def _complete_persisted_runtime_bindings(
     grasp_execution_targets: dict[str, set[str]] = {}
     for node in nodes:
         execution = node.input_bindings.get("execution_entity_ref")
+        destination = node.input_bindings.get("destination_ref")
+        if not isinstance(execution, str) and isinstance(destination, str):
+            destination_entities = goal_entities_by_destination.get(destination, set())
+            if len(destination_entities) == 1:
+                execution = next(iter(destination_entities))
         if not isinstance(execution, str):
             continue
         if node.capability == "grasp.propose":
@@ -289,17 +296,26 @@ def _complete_persisted_runtime_bindings(
                 observed_entities = execution_to_observed.get(next(iter(execution_targets)), set())
                 if len(observed_entities) == 1:
                     expected_entity = next(iter(observed_entities))
-                    existing_entity = bindings.get("entity_ref")
-                    if existing_entity is not None and existing_entity != expected_entity:
-                        raise ValueError(
-                            f"{node.node_id}: entity_ref conflicts with the unique scene.bind "
-                            f"execution identity; expected {expected_entity}"
-                        )
+                    # A semantic Agent label (for example
+                    # ``entity://red-block-1``) is not an execution identity.
+                    # When the current goal/destination uniquely identifies the
+                    # object, Coordinator-owned scene.bind correspondence is
+                    # authoritative and compiles the observed key here.
                     bindings["entity_ref"] = expected_entity
         if node.capability in {"manipulation.prepare", "object.acquire", "object.place"}:
             entity = bindings.get("entity_ref")
             execution_entity = bindings.get("execution_entity_ref")
+            destination = bindings.get("destination_ref")
+            if not isinstance(execution_entity, str) and isinstance(destination, str):
+                destination_entities = goal_entities_by_destination.get(destination, set())
+                if len(destination_entities) == 1:
+                    execution_entity = next(iter(destination_entities))
             if not isinstance(entity, str) and isinstance(execution_entity, str):
+                observed_entities = execution_to_observed.get(execution_entity, set())
+                if len(observed_entities) == 1:
+                    entity = next(iter(observed_entities))
+                    bindings["entity_ref"] = entity
+            elif isinstance(execution_entity, str):
                 observed_entities = execution_to_observed.get(execution_entity, set())
                 if len(observed_entities) == 1:
                     entity = next(iter(observed_entities))

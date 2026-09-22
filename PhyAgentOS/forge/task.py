@@ -897,28 +897,68 @@ class AgentTaskCoordinator:
         """Read exact durable arguments for an explicit receipt-based execution."""
         if arguments:
             raise AgentTaskError("selected execution requires empty literal arguments")
-        binding = _normalize_planning_binding(planning_binding)
-        if binding is None:
-            raise AgentTaskError("selected execution requires a planning binding")
+        binding = self.selected_execution_binding(
+            task_id, tool_id, semantics, planning_binding
+        )
         task = self.get_task(task_id)
         pending = self.pending_planning_selection(task_id, binding.node_id)
-        if pending is None:
-            raise AgentTaskError("selected execution has no unconsumed selection")
-        if (
-            pending["tool_id"] != tool_id
-            or pending["planning_binding"] != binding.model_dump(mode="json")
-            or pending["execution_tool"] != {
-                "query": "forge_tool_query", "action": "forge_tool_start_action",
-                "session": "forge_tool_start_session",
-            }.get(semantics)
-        ):
-            raise AgentTaskError("selected execution does not match the active revision selection")
+        assert pending is not None
         resolved = deepcopy(pending["arguments"])
         _validate_planning_execution_selection(
             task.active_revision, binding, tool_id=tool_id,
             semantics=semantics, arguments=resolved,
         )
         return resolved
+
+    def selected_execution_binding(
+        self,
+        task_id: str,
+        tool_id: str,
+        semantics: str,
+        planning_binding: dict[str, Any] | None,
+    ) -> PlanningExecutionBinding:
+        """Resolve the Coordinator-owned binding for a pending selection.
+
+        The Agent may identify a pending selection by node, but it must not
+        retype Coordinator-owned digests or trace references.  When the node
+        is omitted, this method accepts a unique current selection for the
+        requested tool; ambiguity remains an explicit planning error.
+        """
+        task = self.get_task(task_id)
+        wrapper = {
+            "query": "forge_tool_query",
+            "action": "forge_tool_start_action",
+            "session": "forge_tool_start_session",
+        }.get(semantics)
+        if wrapper is None:
+            raise AgentTaskError("selected execution has unsupported semantics")
+        supplied = _normalize_planning_binding(planning_binding)
+        candidates: list[dict[str, Any]] = []
+        if supplied is not None:
+            if supplied.revision_id != task.active_revision_id:
+                raise AgentTaskError("selected execution has a stale revision")
+            pending = self.pending_planning_selection(task_id, supplied.node_id)
+            if pending is not None:
+                candidates.append(pending)
+        else:
+            graph = task.active_revision.plan_graph
+            if graph is not None:
+                for node in graph.nodes:
+                    pending = self.pending_planning_selection(task_id, node.node_id)
+                    if pending is not None:
+                        candidates.append(pending)
+        candidates = [
+            pending for pending in candidates
+            if pending["tool_id"] == tool_id
+            and pending["execution_tool"] == wrapper
+        ]
+        if not candidates:
+            raise AgentTaskError("selected execution has no matching unconsumed selection")
+        if len(candidates) != 1:
+            raise AgentTaskError(
+                "selected execution requires a unique node selection for the requested tool"
+            )
+        return PlanningExecutionBinding.model_validate(candidates[0]["planning_binding"])
 
     def persist_planning_selection(self, proposal: dict[str, Any]) -> dict[str, Any]:
         """Persist a dispatch-approved selection and return its execution binding."""

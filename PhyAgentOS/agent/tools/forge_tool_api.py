@@ -147,16 +147,24 @@ class ForgeToolQueryTool(Tool):
             )
         effective_timeout_ms = _effective_query_timeout_ms(tool_id, timeout_ms)
         if task_id:
-            return await _call(
-                lambda: self.coordinator.invoke_query(
+            async def invoke():
+                resolved_arguments = arguments
+                resolved_binding = planning_binding
+                if use_selected_arguments:
+                    binding = self.coordinator.selected_execution_binding(
+                        task_id, tool_id, "query", planning_binding
+                    )
+                    resolved_binding = binding.model_dump(mode="json")
+                    resolved_arguments = self.coordinator.selected_execution_arguments(
+                        task_id, tool_id, "query", arguments, resolved_binding
+                    )
+                return await self.coordinator.invoke_query(
                     task_id, tool_id,
-                    self.coordinator.selected_execution_arguments(
-                        task_id, tool_id, "query", arguments, planning_binding
-                    ) if use_selected_arguments else arguments,
+                    resolved_arguments,
                     timeout_ms=effective_timeout_ms,
-                    planning_binding=planning_binding,
+                    planning_binding=resolved_binding,
                 )
-            )
+            return await _call(invoke)
         return await _call(
             lambda: self.client.invoke_query_tool(
                 tool_id,
@@ -192,16 +200,24 @@ class ForgeToolStartActionTool(Tool):
         planning_binding: dict[str, Any] | None = None,
         use_selected_arguments: bool = False,
     ) -> str:
-        return await _call(
-            lambda: self.coordinator.start_action(
+        async def start():
+            resolved_arguments = arguments
+            resolved_binding = planning_binding
+            if use_selected_arguments:
+                binding = self.coordinator.selected_execution_binding(
+                    task_id, tool_id, "action", planning_binding
+                )
+                resolved_binding = binding.model_dump(mode="json")
+                resolved_arguments = self.coordinator.selected_execution_arguments(
+                    task_id, tool_id, "action", arguments, resolved_binding
+                )
+            return await self.coordinator.start_action(
                 task_id, tool_id,
-                self.coordinator.selected_execution_arguments(
-                    task_id, tool_id, "action", arguments, planning_binding
-                ) if use_selected_arguments else arguments,
+                resolved_arguments,
                 timeout_ms=timeout_ms,
-                planning_binding=planning_binding,
+                planning_binding=resolved_binding,
             )
-        )
+        return await _call(start)
 
 
 class _ActionReadTool(Tool):
@@ -317,16 +333,24 @@ class ForgeToolStartSessionTool(Tool):
         planning_binding: dict[str, Any] | None = None,
         use_selected_arguments: bool = False,
     ) -> str:
-        return await _call(
-            lambda: self.coordinator.start_session(
+        async def start():
+            resolved_arguments = arguments
+            resolved_binding = planning_binding
+            if use_selected_arguments:
+                binding = self.coordinator.selected_execution_binding(
+                    task_id, tool_id, "session", planning_binding
+                )
+                resolved_binding = binding.model_dump(mode="json")
+                resolved_arguments = self.coordinator.selected_execution_arguments(
+                    task_id, tool_id, "session", arguments, resolved_binding
+                )
+            return await self.coordinator.start_session(
                 task_id, tool_id,
-                self.coordinator.selected_execution_arguments(
-                    task_id, tool_id, "session", arguments, planning_binding
-                ) if use_selected_arguments else arguments,
+                resolved_arguments,
                 ownership=ownership,  # type: ignore[arg-type]
-                planning_binding=planning_binding,
+                planning_binding=resolved_binding,
             )
-        )
+        return await _call(start)
 
 
 class _SessionReadTool(Tool):
@@ -459,7 +483,7 @@ def _invoke_schema(*, task_required: bool, include_timeout: bool) -> dict[str, A
         "arguments": {"type": "object"},
         "use_selected_arguments": {
             "type": "boolean",
-            "description": "Use exact persisted selection arguments; pass arguments={} and the returned planning_binding.",
+            "description": "Use exact persisted selection arguments; pass arguments={}. The Coordinator resolves the current task/node selection and its binding.",
         },
         "planning_binding": {
             "type": "object",

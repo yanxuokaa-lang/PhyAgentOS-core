@@ -482,11 +482,18 @@ class AgentLoop:
                 "forge_tool_start_session": "session",
             }.get(name)
             if semantics and arguments.get("use_selected_arguments") is True:
+                binding = self.forge_task_coordinator.selected_execution_binding(
+                    arguments.get("task_id"),
+                    arguments.get("tool_id"),
+                    semantics,
+                    arguments.get("planning_binding"),
+                )
                 arguments = {
                     **arguments,
+                    "planning_binding": binding.model_dump(mode="json"),
                     "arguments": self.forge_task_coordinator.selected_execution_arguments(
                         arguments.get("task_id"), arguments.get("tool_id"), semantics,
-                        arguments.get("arguments", {}), arguments.get("planning_binding"),
+                        arguments.get("arguments", {}), binding.model_dump(mode="json"),
                     ),
                 }
             decision = self._planning_dispatch.admit_forge_tool(name, arguments)

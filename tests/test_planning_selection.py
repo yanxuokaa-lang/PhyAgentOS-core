@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 import PhyAgentOS.forge.task as forge_task_module
+from PhyAgentOS.agent.plan_proposal import _complete_persisted_runtime_bindings
 from PhyAgentOS.agent.planning_dispatch import AgentComposedDispatch
 from PhyAgentOS.agent.planning_loop import PlanningLoopError
 from PhyAgentOS.agent.tools.planning import (
@@ -30,6 +31,51 @@ from PhyAgentOS.planning import (
     tool_input_binding_digest,
 )
 from PhyAgentOS.verification.contracts import TaskVerificationContract
+
+
+def test_oracle_destination_compiles_agent_entity_label_from_scene_bind():
+    grasp = PlanNode(
+        node_id="red.grasp",
+        obligation_id="red.grasp",
+        capability="grasp.propose",
+        input_bindings={"entity_ref": "entity://red-block-1"},
+    )
+    prepare = PlanNode(
+        node_id="red.prepare",
+        obligation_id="red.prepare",
+        capability="manipulation.prepare",
+        dependencies=("red.grasp",),
+        input_bindings={
+            "entity_ref": "entity://red-block-1",
+            "destination_ref": "destination://blocks-ranking-rgb/red-slot",
+        },
+    )
+
+    def record(tool_id, response):
+        return SimpleNamespace(
+            record_id=f"record-{tool_id}", node_id=None, tool_id=tool_id,
+            status="succeeded", response=response,
+        )
+
+    revision = SimpleNamespace(execution_records=(
+        record("scene.bind", {"data": {"entities": [{
+            "entity_ref": "entity://block-red-01",
+            "execution_entity_ref": "entity://block-red-1",
+        }]} }),
+        record("task.goal", {"data": {
+            "goal_source": "benchmark_task_definition",
+            "goals": [{
+                "execution_entity_ref": "entity://block-red-1",
+                "destination_ref": "destination://blocks-ranking-rgb/red-slot",
+            }],
+        }}),
+    ))
+    task = SimpleNamespace(active_revision=revision, revisions=(revision,))
+
+    completed = _complete_persisted_runtime_bindings(task, (grasp, prepare))
+
+    assert completed[0].input_bindings["entity_ref"] == "entity://block-red-01"
+    assert completed[1].input_bindings["entity_ref"] == "entity://block-red-01"
 
 
 class _Coordinator:
@@ -803,7 +849,11 @@ def test_real_coordinator_persists_context_bound_decision_trace(tmp_path, monkey
         task_id, "scene.observe", "query", {}, validated.model_dump(mode="json")
     )
     assert saved_arguments == {}
-    with pytest.raises(AgentTaskError, match="active revision selection"):
+    corrupted = validated.model_copy(update={"input_binding_digest": "f" * 64})
+    assert coordinator.selected_execution_arguments(
+        task_id, "scene.observe", "query", {}, corrupted.model_dump(mode="json")
+    ) == {}
+    with pytest.raises(AgentTaskError, match="no matching unconsumed selection"):
         coordinator.selected_execution_arguments(
             task_id, "other.query", "query", {}, validated.model_dump(mode="json")
         )
@@ -919,7 +969,6 @@ def test_real_coordinator_persists_context_bound_decision_trace(tmp_path, monkey
     registry.set_execution_guard(loop._planning_guard)
     result = json.loads(asyncio.run(registry.execute("forge_tool_query", {
         "task_id": task_id, "tool_id": "scene.observe", "arguments": {},
-        "planning_binding": validated.model_dump(mode="json"),
         "use_selected_arguments": True,
     })))
     assert result["ok"] is True
