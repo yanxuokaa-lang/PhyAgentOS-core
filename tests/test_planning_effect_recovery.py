@@ -393,6 +393,27 @@ def test_agent_node_executor_uses_coordinator_forge_poll_interval():
     assert client.result_calls == 2
 
 
+def test_agent_node_executor_derives_poll_budget_from_forge_timeout():
+    coordinator = _LifecycleCoordinator(_LifecycleClient([], []))
+    coordinator.config = SimpleNamespace(poll_interval_s=0.5, execution_timeout_s=300.0)
+
+    executor = AgentLoopNodeExecutor(_ActionAgent(coordinator), coordinator)
+
+    assert executor.action_poll_interval_s == 0.5
+    assert executor.max_action_polls == 600
+
+
+def test_agent_node_executor_explicit_poll_budget_overrides_forge_timeout():
+    coordinator = _LifecycleCoordinator(_LifecycleClient([], []))
+    coordinator.config = SimpleNamespace(poll_interval_s=0.5, execution_timeout_s=300.0)
+
+    executor = AgentLoopNodeExecutor(
+        _ActionAgent(coordinator), coordinator, max_action_polls=1
+    )
+
+    assert executor.max_action_polls == 1
+
+
 @pytest.mark.parametrize("terminal_status", ["failed", "unknown"])
 def test_agent_node_executor_preserves_failed_or_unknown_action_status(terminal_status):
     client = _LifecycleClient(

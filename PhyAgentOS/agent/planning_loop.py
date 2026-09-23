@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Literal, Mapping
@@ -595,7 +596,7 @@ class AgentLoopNodeExecutor:
         coordinator: AgentTaskCoordinator,
         *,
         prompt_builder: Callable[[NodeExecutionContext], str] | None = None,
-        max_action_polls: int = 100,
+        max_action_polls: int | None = None,
         action_poll_interval_s: float | None = None,
         max_node_turn_continuations: int = 1,
         on_progress: Callable[..., Awaitable[None]] | None = None,
@@ -605,17 +606,32 @@ class AgentLoopNodeExecutor:
         self.agent_loop = agent_loop
         self.coordinator = coordinator
         self.prompt_builder = prompt_builder or self._default_prompt
+        config = getattr(coordinator, "config", None)
         if action_poll_interval_s is None:
             # ForgeConfig is the single configured timing source for Gateway
             # lifecycle reads. Test doubles without config retain the legacy
             # zero-delay behavior unless they opt in explicitly.
             action_poll_interval_s = getattr(
-                getattr(coordinator, "config", None), "poll_interval_s", 0.0
+                config, "poll_interval_s", 0.0
             )
-        if isinstance(max_action_polls, bool) or int(max_action_polls) < 1:
-            raise ValueError("max_action_polls must be a positive integer")
         if isinstance(action_poll_interval_s, bool) or float(action_poll_interval_s) < 0:
             raise ValueError("action_poll_interval_s must be non-negative")
+        if max_action_polls is None:
+            execution_timeout_s = getattr(config, "execution_timeout_s", None)
+            if (
+                isinstance(execution_timeout_s, (int, float))
+                and not isinstance(execution_timeout_s, bool)
+                and execution_timeout_s > 0
+                and float(action_poll_interval_s) > 0
+            ):
+                max_action_polls = max(
+                    1,
+                    math.ceil(float(execution_timeout_s) / float(action_poll_interval_s)),
+                )
+            else:
+                max_action_polls = 100
+        if isinstance(max_action_polls, bool) or int(max_action_polls) < 1:
+            raise ValueError("max_action_polls must be a positive integer")
         if (
             isinstance(max_node_turn_continuations, bool)
             or int(max_node_turn_continuations) < 0
