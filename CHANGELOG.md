@@ -16,6 +16,12 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v11.4.7 (2026-09-23 18:11) - codex
+
+- [eval] [exp] [完成] 三方块 Oracle 源码与无运动验收：Core `535 passed`、Skill `346 passed`、Adapter `639 passed, 1 skipped`；Ruff、compileall、diff 检查通过。Runtime 无模型密钥而保持 stopped，未宣称 Action、Verifier、benchmark 或累计视频成功。(local)
+- [Eval] [Exp] [Completed] Three-block Oracle source/no-motion acceptance: Core `535 passed`, Skill `346 passed`, Adapter `639 passed, 1 skipped`; Ruff, compileall, and diff checks passed. Runtime stayed stopped because the model key was unavailable; no Action, verifier, benchmark, or cumulative-video success is claimed. (local)
+- Detailed entry: [`changelog/2026-09_part12.md`](changelog/2026-09_part12.md).
+
 ## v11.4.0 (2026-09-22) - codex
 
 - [agent] [fix] [完成] 保留 PlanRevision 明确选定的 discovery evidence，限制 stale scene.bind 为 provenance-only，并记录真实 Oracle 第一段动作与感知遮挡后的七维验收结论。(local)
