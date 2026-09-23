@@ -1,5 +1,10 @@
 # Change Log
 
+## v2.6.19 (2026-09-24) - codex
+
+- [sense] [fix] [completed] Remove the stale desktop-organization task label from visual scene-understanding requests so task-independent RGB scenes are described without domain bias; publish Node lock `0.7.0`.
+- [sense] [fix] [完成] 移除视觉场景理解请求中过时的 desktop organization 任务标签，避免对任务无关 RGB 场景施加领域偏置；Node 锁定版本为 `0.7.0`。
+
 ## v2.6.18 (2026-09-24) - codex
 
 - [policy] [fix] [completed] Carry runtime-profile `scene.observe` defaults through the frozen ToolSpec so task-bound Query arguments are completed by the Coordinator.

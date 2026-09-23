@@ -100,7 +100,7 @@ def test_task_query_copies_exact_source_fields_and_keeps_literal_arguments(
             status="succeeded",
             revision_id="revision-current",
             arguments={},
-            response=observation,
+            response={"ok": True, "data": observation},
         )],
     )
 
@@ -149,6 +149,116 @@ def test_task_query_copies_exact_source_fields_and_keeps_literal_arguments(
     }
 
 
+@pytest.mark.parametrize(
+    ("scene_id", "frame_id", "artifact_names"),
+    [
+        ("scene-6", "head_camera", ("rgb", "depth")),
+        ("scene-7", "wrist_camera", ("rgb",)),
+        ("scene-8", "observer_camera", ("rgb", "depth", "state")),
+    ],
+)
+@pytest.mark.parametrize("tool_id", ["manipulation.capabilities", "scene.understand"])
+def test_scene_followup_queries_use_observation_receipt_instead_of_retyped_refs(
+    scene_id, frame_id, artifact_names, tool_id
+):
+    artifact_refs = [f"artifact://{scene_id}/{name}" for name in artifact_names]
+    observation = {
+        "status": "available",
+        "observation_ref": f"observation://{scene_id}/{frame_id}",
+        "scene_revision": scene_id,
+        "frame": {"frame_id": frame_id, "unit": "m"},
+        "calibration_ref": f"artifact://{scene_id}/calibration",
+        "freshness_ms": 17,
+        "artifacts": [
+            {"ref": ref, "kind": name, "media_type": "image/png" if name == "rgb" else "application/octet-stream"}
+            for ref, name in zip(artifact_refs, artifact_names, strict=True)
+        ],
+    }
+    task = SimpleNamespace(
+        active_revision_id="revision-current",
+        execution_records=[SimpleNamespace(
+            record_id="observe-1",
+            tool_id="scene.observe",
+            semantics="query",
+            status="succeeded",
+            revision_id="revision-current",
+            arguments={"sensor_ref": "camera/head", "max_age_ms": 1000},
+            response={"ok": True, "data": observation},
+        )],
+    )
+
+    class Coordinator:
+        def get_task(self, task_id):
+            assert task_id == "task-1"
+            return task
+
+        async def invoke_query(self, task_id, actual_tool_id, arguments, **kwargs):
+            assert (task_id, actual_tool_id) == ("task-1", tool_id)
+            return {"ok": True, "arguments": arguments}
+
+    supplied = {
+        "scene_revision": "copied-wrong-scene",
+        "observation_ref": "observation://wrong/camera",
+        "calibration_ref": "artifact://wrong/calibration",
+    }
+    if tool_id == "scene.understand":
+        supplied["max_age_ms"] = 1000
+        supplied["agent_owned_option"] = "preserved"
+
+    result = json.loads(asyncio.run(ForgeToolQueryTool(object(), Coordinator()).execute(
+        task_id="task-1",
+        tool_id=tool_id,
+        arguments=supplied,
+    )))
+
+    assert result["ok"] is True
+    effective = result["arguments"]
+    assert effective["scene_revision"] == scene_id
+    assert effective["observation_ref"] == observation["observation_ref"]
+    assert effective["calibration_ref"] == observation["calibration_ref"]
+    if tool_id == "scene.understand":
+        assert effective == {
+            "scene_revision": scene_id,
+            "observation_ref": observation["observation_ref"],
+            "frame_id": frame_id,
+            "calibration_ref": observation["calibration_ref"],
+            "freshness_ms": 17,
+            "artifacts": artifact_refs,
+            "agent_owned_option": "preserved",
+            "max_age_ms": 1000,
+        }
+    else:
+        assert effective == {
+            "scene_revision": scene_id,
+            "observation_ref": observation["observation_ref"],
+            "calibration_ref": observation["calibration_ref"],
+        }
+
+
+def test_scene_followup_query_requires_available_active_revision_observation():
+    task = SimpleNamespace(active_revision_id="revision-current", execution_records=[])
+
+    class Coordinator:
+        def get_task(self, _task_id):
+            return task
+
+        async def invoke_query(self, *_args, **_kwargs):
+            raise AssertionError("Query must not run without its observation source")
+
+    result = json.loads(asyncio.run(ForgeToolQueryTool(object(), Coordinator()).execute(
+        task_id="task-1",
+        tool_id="manipulation.capabilities",
+        arguments={
+            "scene_revision": "invented",
+            "observation_ref": "invented",
+            "calibration_ref": "invented",
+        },
+    )))
+
+    assert result["ok"] is False
+    assert "successful scene.observe Query" in result["error"]["message"]
+
+
 def test_task_query_rejects_unavailable_sources_without_gateway_call():
     task = SimpleNamespace(active_revision_id="revision-current", execution_records=[])
 
@@ -169,7 +279,7 @@ def test_task_query_rejects_unavailable_sources_without_gateway_call():
     )))
 
     assert result["ok"] is False
-    assert "not visible" in result["error"]["message"]
+    assert "successful scene.observe Query" in result["error"]["message"]
 
 
 def test_failed_latest_query_does_not_fall_back_to_older_source():
@@ -218,7 +328,7 @@ def test_task_query_rejects_literal_and_source_conflicts_before_gateway_call():
 
     result = json.loads(asyncio.run(ForgeToolQueryTool(object(), Coordinator()).execute(
         task_id="task-1",
-        tool_id="scene.understand",
+        tool_id="custom.readonly",
         arguments={"scene_revision": "caller-value"},
         argument_sources={
             "scene_revision": {

@@ -18,6 +18,26 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v11.5.5 (2026-09-24 04:13) - codex
+
+- [agent] [fix] [完成] `forge_tool_api.py:L32-L52,L145-L161,L211-L253,L651-L681` 将标准 follow-up scene identity/provenance 字段从当前 revision 最新有效 `scene.observe` 收据自动投影；agent literal 与可选来源映射不能覆盖这些字段。(local)
+- [Agent] [Fix] [Completed] `forge_tool_api.py:L32-L52,L145-L161,L211-L253,L651-L681` automatically projects standard follow-up scene identity/provenance fields from the latest available `scene.observe` receipt in the active revision; Agent literals and optional source maps cannot override them. (local)
+- [tests] [feat] [完成] `test_forge_tool_api.py:L155-L259` 覆盖六组 RGB/depth/state artifact 输入、错误 literal 覆盖、保留非来源参数及来源缺失时拒绝 Gateway；Core `579 passed`，AgentLoop/API 专项 `70 passed`，Ruff/compileall/diff 检查通过。(local)
+- [Tests] [Feat] [Completed] `test_forge_tool_api.py:L155-L259` covers six RGB/depth/state artifact input cases, wrong-literal replacement, preservation of non-source arguments, and Gateway rejection when the source is missing; Core passed `579`, AgentLoop/API focused tests `70`, and Ruff/compileall/diff checks passed. (local)
+- 当前 RGB 三方块完整 AgentLoop、Verifier 与视频验收仍未完成。(local)
+- Full RGB three-block AgentLoop, verifier, and video acceptance remain pending. (local)
+- **Diff:** `caller-provided scene refs -> PAOS receipt projection`; other caller-owned Query fields remain unchanged.
+- Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md). RGB arrangement acceptance remains pending.
+
+## v11.5.4 (2026-09-24 03:56) - codex
+
+- [sense] [fix] [完成] `openai_scene_understanding.py:L415-L430` 移除固定 desktop organization 提示，改为识别可见实体、外观和相对布局；Adapter/Node/Skill 升级为 `0.7.0` / `0.7.0` / `2.6.19`。(local)
+- [Sense] [Fix] [Completed] `openai_scene_understanding.py:L415-L430` removes the fixed desktop-organization prompt and asks for visible entities, appearance, and relative layout; Adapter/Node/Skill versions are `0.7.0` / `0.7.0` / `2.6.19`. (local)
+- [tests] [feat] [完成] provider payload 验证无 desktop 偏置且真实 RGB image payload 保持传递；Adapter `13 passed`、Skill `347 passed`、Core `579 passed`，无运动测试。(local)
+- [Tests] [Feat] [Completed] Provider payload tests prove the desktop bias is removed and the RGB image payload remains attached; Adapter passed `13`, Skill `347`, and Core `579`, all without motion. (local)
+- **Diff:** `"desktop organization scene understanding" -> "Identify visible entities ... and their relative spatial layout"`.
+- Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md). RGB arrangement acceptance remains pending.
+
 ## v11.5.3 (2026-09-24 02:52) - codex
 
 - [agent] [fix] [完成] 将 profile 的 scene.observe 默认值放入冻结 ToolSpec，由 Coordinator 只补 task-bound Query 缺失字段并审计最终参数；Action 不接收 Query defaults。(local)

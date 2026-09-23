@@ -92,6 +92,10 @@ def test_responses_provider_builds_structured_image_request_and_projects_result(
     assert payload["store"] is False
     assert payload["text"]["format"]["type"] == "json_schema"
     assert client_options["max_retries"] == 0
+    prompt = json.loads(payload["input"][0]["content"][0]["text"])
+    assert "desktop" not in prompt["task"].lower()
+    assert "visible entities" in prompt["task"]
+    assert "relative spatial layout" in prompt["task"]
     image = payload["input"][0]["content"][1]
     assert image["type"] == "input_image"
     assert image["image_url"] == "data:image/png;base64," + base64.b64encode(b"rgb-bytes").decode()

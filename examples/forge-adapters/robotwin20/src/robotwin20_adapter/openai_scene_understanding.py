@@ -420,7 +420,10 @@ class OpenAIResponsesSceneUnderstandingInference:
                 "frame_id": request.get("frame_id"),
                 "calibration_ref": request.get("calibration_ref"),
                 "artifact_refs": request.get("artifacts"),
-                "task": "desktop organization scene understanding",
+                "task": (
+                    "Identify visible entities, their count and appearance, and their relative "
+                    "spatial layout from the supplied RGB image."
+                ),
             },
             ensure_ascii=False,
             sort_keys=True,

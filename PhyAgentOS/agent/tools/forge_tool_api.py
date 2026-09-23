@@ -29,6 +29,28 @@ from PhyAgentOS.forge.tool_client import (
 # unchanged.
 _SCENE_UNDERSTAND_TIMEOUT_MS = 180_000
 
+# These are identity and provenance inputs owned by the current scene
+# observation. Resolve them from its receipt instead of asking the model to
+# retype opaque references between standard discovery Queries.
+_OBSERVATION_BOUND_QUERY_ARGUMENTS: dict[str, dict[str, dict[str, Any]]] = {
+    "manipulation.capabilities": {
+        "scene_revision": {"path": ["response", "data", "scene_revision"]},
+        "observation_ref": {"path": ["response", "data", "observation_ref"]},
+        "calibration_ref": {"path": ["response", "data", "calibration_ref"]},
+    },
+    "scene.understand": {
+        "observation_ref": {"path": ["response", "data", "observation_ref"]},
+        "scene_revision": {"path": ["response", "data", "scene_revision"]},
+        "frame_id": {"path": ["response", "data", "frame", "frame_id"]},
+        "calibration_ref": {"path": ["response", "data", "calibration_ref"]},
+        "freshness_ms": {"path": ["response", "data", "freshness_ms"]},
+        "artifacts": {
+            "path": ["response", "data", "artifacts"],
+            "map_field": "ref",
+        },
+    },
+}
+
 
 def _effective_query_timeout_ms(tool_id: str, timeout_ms: int | None) -> int | None:
     if tool_id != "scene.understand":
@@ -125,9 +147,12 @@ class ForgeToolQueryTool(Tool):
             "Invoke a Gateway-declared read-only Query. Supply task_id while executing an "
             "AgentTask so the result is audited; omit it only for unbound diagnostics. "
             "Task-bound responses include coordinator-owned paos_record with record_id and "
-            "evidence_refs for plan submission; data remains the Gateway result. For a "
-            "follow-up Query, use argument_sources to copy exact fields from a successful "
-            "Query record in this task's active revision instead of retyping them. Each "
+            "evidence_refs for plan submission; data remains the Gateway result. PAOS "
+            "automatically copies scene identity and provenance fields for "
+            "scene.understand and manipulation.capabilities from this task's latest "
+            "successful scene.observe; omit those fields from arguments. For other "
+            "follow-up Query inputs, use argument_sources to copy exact fields from a "
+            "successful Query record in this task's active revision instead of retyping them. Each "
             "entry names record_id, an explicit path such as ['response','scene_revision'], "
             "and optional target_path. For scene.understand, copy observation_ref, "
             "scene_revision, frame.frame_id to frame_id, calibration_ref, freshness_ms, "
@@ -185,13 +210,35 @@ class ForgeToolQueryTool(Tool):
             async def invoke():
                 resolved_arguments = arguments
                 resolved_binding = planning_binding
-                if argument_sources:
-                    task = self.coordinator.get_task(task_id)
+                task = self.coordinator.get_task(task_id)
+                sources = _task_query_source_records(task)
+                if (
+                    tool_id in _OBSERVATION_BOUND_QUERY_ARGUMENTS
+                    and not use_selected_arguments
+                    and planning_binding is None
+                ):
+                    try:
+                        resolved_arguments = _resolve_observation_bound_query_arguments(
+                            tool_id,
+                            task,
+                            arguments,
+                        )
+                    except ArgumentSourceError as exc:
+                        raise AgentTaskError(str(exc)) from exc
+                remaining_sources = argument_sources
+                if remaining_sources and tool_id in _OBSERVATION_BOUND_QUERY_ARGUMENTS:
+                    bound_fields = _OBSERVATION_BOUND_QUERY_ARGUMENTS[tool_id]
+                    remaining_sources = {
+                        name: selector
+                        for name, selector in remaining_sources.items()
+                        if name not in bound_fields
+                    }
+                if remaining_sources:
                     try:
                         resolved_arguments = resolve_argument_sources(
-                            _task_query_source_records(task),
-                            arguments,
-                            argument_sources,
+                            sources,
+                            resolved_arguments,
+                            remaining_sources,
                         )
                     except ArgumentSourceError as exc:
                         raise AgentTaskError(str(exc)) from exc
@@ -599,6 +646,39 @@ def _task_query_source_records(task: Any) -> dict[str, tuple[dict[str, Any], dic
             continue
         sources[record.record_id] = (record.arguments, record.response)
     return sources
+
+
+def _resolve_observation_bound_query_arguments(
+    tool_id: str,
+    task: Any,
+    arguments: dict[str, Any],
+) -> dict[str, Any]:
+    """Project canonical scene inputs from the active revision's observation."""
+
+    bindings = _OBSERVATION_BOUND_QUERY_ARGUMENTS[tool_id]
+    sources = _task_query_source_records(task)
+    observation_record = next(
+        (
+            record
+            for record in reversed(task.execution_records)
+            if record.tool_id == "scene.observe"
+            and record.semantics == "query"
+            and record.revision_id == task.active_revision_id
+            and record.record_id in sources
+        ),
+        None,
+    )
+    if observation_record is None:
+        raise ArgumentSourceError(
+            f"{tool_id} requires a successful scene.observe Query in the active revision"
+        )
+
+    literals = {key: value for key, value in arguments.items() if key not in bindings}
+    selectors = {
+        name: {"record_id": observation_record.record_id, **selector}
+        for name, selector in bindings.items()
+    }
+    return resolve_argument_sources(sources, literals, selectors)
 
 
 __all__ = [
