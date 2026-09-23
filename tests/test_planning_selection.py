@@ -737,6 +737,13 @@ def test_incomplete_grasp_selection_is_rejected_before_tool_record(tmp_path):
             "entity_ref": "entity://green",
             "destination_ref": "destination://targets/middle",
             "capability_snapshot_ref": "artifact://capabilities/current",
+            "intent": {
+                "goal": "place green in the middle",
+                "success_criteria": ["green reaches the resolved destination"],
+                "allowed_arms": ["left"],
+                "coordination_mode": "single_arm",
+                "constraints": ["collision free"],
+            },
         },
     )
     payload = {
@@ -1117,6 +1124,13 @@ def test_prepare_selection_builds_coordinator_owned_manipulation_intent():
             "entity_ref": "entity://green",
             "destination_ref": "destination://targets/middle",
             "capability_snapshot_ref": "artifact://capabilities/current",
+            "intent": {
+                "goal": "place green in the middle",
+                "success_criteria": ["green reaches the resolved destination"],
+                "allowed_arms": ["left"],
+                "coordination_mode": "single_arm",
+                "constraints": ["collision free"],
+            },
         },
     )
     payload = {
@@ -1151,11 +1165,7 @@ def test_prepare_selection_builds_coordinator_owned_manipulation_intent():
         "destination_ref": "destination://targets/middle",
         "capability_snapshot_ref": "artifact://capabilities/current",
         "intent": {
-            "goal": "place green in the middle",
-            "success_criteria": ["green reaches the resolved destination"],
             "allowed_arms": ["left"],
-            "coordination_mode": "single_arm",
-            "constraints": ["collision free"],
         },
     }
 

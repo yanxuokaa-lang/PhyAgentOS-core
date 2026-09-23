@@ -693,28 +693,43 @@ class AgentComposedDispatch:
                 missing_fields=("intent",),
                 recommended_action="replace_plan_segment",
             )
-        if supplied is not None and flat_supplied and dict(supplied) != flat_supplied:
-            raise PlanningDispatchError(
-                "nested and flat Tool intent semantics conflict",
-                code="semantic_intent_mismatch",
-            )
-        if node_intent is not None and flat_node and dict(node_intent) != flat_node:
-            raise PlanningDispatchError(
-                "nested and flat node intent semantics conflict",
-                code="invalid_node_semantics",
-                failure_owner="plan_contract",
-                retryable_in_revision=False,
-                requires_replan=True,
-                recommended_action="replace_plan_segment",
-            )
-        supplied_semantic = supplied if supplied is not None else (flat_supplied or None)
-        node_semantic = node_intent if node_intent is not None else (flat_node or None)
-        if supplied_semantic is not None and node_semantic is not None and dict(supplied_semantic) != dict(node_semantic):
-            raise PlanningDispatchError(
-                "Tool intent does not match the semantic node",
-                code="semantic_intent_mismatch",
-            )
-        semantic = supplied_semantic if supplied_semantic is not None else node_semantic
+        def merge_intent_fields(
+            base: Mapping[str, Any] | None,
+            supplement: Mapping[str, Any] | None,
+            *,
+            conflict_message: str,
+            conflict_code: str,
+        ) -> dict[str, Any] | None:
+            if base is None and supplement is None:
+                return None
+            merged = dict(base or {})
+            for key, value in (supplement or {}).items():
+                if key in merged and merged[key] != value:
+                    raise PlanningDispatchError(
+                        conflict_message,
+                        code=conflict_code,
+                    )
+                merged[key] = value
+            return merged
+
+        supplied_semantic = merge_intent_fields(
+            supplied,
+            flat_supplied,
+            conflict_message="nested and flat Tool intent semantics conflict",
+            conflict_code="semantic_intent_mismatch",
+        )
+        node_semantic = merge_intent_fields(
+            node_intent,
+            flat_node,
+            conflict_message="nested and flat node intent semantics conflict",
+            conflict_code="invalid_node_semantics",
+        )
+        semantic = merge_intent_fields(
+            node_semantic,
+            supplied_semantic,
+            conflict_message="Tool intent does not match the semantic node",
+            conflict_code="semantic_intent_mismatch",
+        )
         if not isinstance(semantic, Mapping):
             raise PlanningDispatchError(
                 "manipulation intent semantics are required in Tool arguments or node input_bindings",
