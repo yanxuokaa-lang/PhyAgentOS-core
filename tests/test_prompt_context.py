@@ -133,17 +133,23 @@ def test_agent_loop_selects_task_from_current_session_not_global_active():
     assert loop._task_for_session("cli:session") is session_task
 
 
-def test_latest_task_get_result_is_compacted_to_bounded_projection():
+@pytest.mark.parametrize("tool_name", ["forge_task_get", "forge_task_create"])
+def test_latest_task_lifecycle_result_is_compacted_to_bounded_projection(tool_name):
     raw = json.dumps({
         "ok": True,
         "data": {
             "task_id": "task-rgb",
             "status": "executing",
+            "revision_id": "revision-rgb-2",
+            "plan_graph_ref": "artifact://plan/rgb-2",
+            "invocation_id": "invocation-place-red-1",
+            "destination_ref": "benchmark://rgb/red-slot",
+            "required_tools": [{"tool_id": "object.place", "input_schema": {"large": "z" * 20_000}}],
             "revisions": [{"execution_records": [{"response": {"huge": "x" * 20_000}}]}],
             "skill_uses": [{"instructions": "y" * 20_000}],
         },
     })
-    messages = [{"role": "tool", "name": "forge_task_get", "content": raw}]
+    messages = [{"role": "tool", "name": tool_name, "content": raw}]
 
     projected = _compact_forge_results(messages, aggressive=False)
     content = projected[0]["content"]
@@ -151,8 +157,16 @@ def test_latest_task_get_result_is_compacted_to_bounded_projection():
     assert len(content) < len(raw)
     summary = json.loads(content)
     assert summary["version"] == "agent_tool_result_summary_v1"
-    assert summary["tool_name"] == "forge_task_get"
+    assert summary["tool_name"] == tool_name
+    result = summary["result"]["data"]
+    assert result["task_id"] == "task-rgb"
+    assert result["status"] == "executing"
+    assert result["revision_id"] == "revision-rgb-2"
+    assert result["plan_graph_ref"] == "artifact://plan/rgb-2"
+    assert result["invocation_id"] == "invocation-place-red-1"
+    assert result["destination_ref"] == "benchmark://rgb/red-slot"
     assert "instructions" not in content
+    assert "input_schema" not in content
 
 
 def test_agent_loop_does_not_fallback_to_unbound_legacy_active_task():

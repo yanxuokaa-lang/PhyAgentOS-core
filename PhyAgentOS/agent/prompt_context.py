@@ -721,12 +721,12 @@ def _compact_forge_results(
             and isinstance(name, str)
             and name.startswith("forge_")
             and isinstance(content, str)
-            # ``forge_task_get`` returns the complete persisted task, while
-            # the injected task projection already carries its authoritative
-            # bounded view. Keep every task read compact to prevent repeated
-            # discovery reads from expanding the model context.
+            # ``forge_task_*`` lifecycle tools return the complete persisted
+            # task, while the injected task projection already carries its
+            # authoritative bounded view. Keep every lifecycle result compact
+            # to prevent discovery reads from expanding the model context.
             and (
-                name == "forge_task_get"
+                name.startswith("forge_task_")
                 or aggressive
                 or latest_by_name.get(name) != index
             )

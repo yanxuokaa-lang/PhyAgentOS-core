@@ -18,6 +18,23 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v11.5.1 (2026-09-24 10:30) - codex
+
+- [agent] [fix] [完成] `prompt_context.py:L719-L734` 将最新和历史 `forge_task_*` lifecycle 响应纳入已有 bounded reference projection，避免完整 AgentTask/ToolSpec 重复进入 discovery prompt。(local)
+- [Agent] [Fix] [Completed] `prompt_context.py:L719-L734` routes latest and historical `forge_task_*` lifecycle responses through the existing bounded reference projection, preventing full AgentTask/ToolSpec payloads from repeating in discovery prompts. (local)
+- [tests] [feat] [完成] `test_prompt_context.py:L136-L169` 验证 task/status/revision/plan/invocation/destination 引用保留及 schema/SkillUse 裁减；Core `558 passed`，Prompt Context `26 passed`。(local)
+- [Tests] [Feat] [Completed] `test_prompt_context.py:L136-L169` verifies task/status/revision/plan/invocation/destination retention and schema/SkillUse compaction; Core passed `558`, Prompt Context passed `26`. (local)
+
+```diff
+- name == "forge_task_get"
++ name.startswith("forge_task_")
++ assert result["task_id"] == "task-rgb" and result["status"] == "executing"
++ assert result["plan_graph_ref"] and result["invocation_id"]
++ assert "input_schema" not in content
+```
+
+- Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md). Live RGB acceptance remains pending until verifier success and video evidence.
+
 ## v11.5.0 (2026-09-24 10:10) - codex
 
 - [agent] [fix] [完成] `planning_loop.py:L599-L640` 按已有 `execution_timeout_s / poll_interval_s` 推导 Action 对账预算，生产默认由 100 次扩大为 600 次；显式预算仍优先。(local)
@@ -65,6 +82,8 @@
 
 - Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md). No physical three-block/Verifier/benchmark/video success is claimed.
 
+## Historical Entries
+
 ## v11.4.9 (2026-09-23 20:02) - codex
 
 - [agent] [fix] [完成] Coordinator selection 现在是 task-bound Action/Session 的唯一参数来源；scene-bound continuation 使用紧凑事实投影并拒绝 future dependency。(local)
@@ -89,8 +108,6 @@
 - [env] [tune] [完成] Agent/感知模型改为 `gpt-5.6-sol`、high；只读 benchmark goal smoke 成功，完整任务在不可重试的 scene-understanding provider failure 前安全停止。(local)
 - [Env] [Tune] [Completed] Agent/perception model changed to `gpt-5.6-sol`, high; read-only benchmark-goal smoke passed, while the full task stopped safely before Actions on a non-retryable scene-understanding provider failure. (local)
 - Detailed entry: [`changelog/2026-09_part12.md`](changelog/2026-09_part12.md).
-
-## Historical Entries
 
 ## v11.3.0 (2026-09-21) - codex
 
