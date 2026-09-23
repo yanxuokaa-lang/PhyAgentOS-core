@@ -220,6 +220,13 @@ class AgentComposedDispatch:
                 "selection_ready": dependency_ready and bool(bindable),
                 "candidate_tool_ids": candidates,
                 "bindable_tool_ids": bindable,
+                "selection_source_modes": {
+                    policy.tool_id: (
+                        "projection_source" if policy.argument_projection is not None
+                        else "arguments_or_argument_sources"
+                    )
+                    for policy in candidate_policies
+                },
                 "missing_node_bindings": missing_node_bindings,
                 "missing_runtime_arguments": runtime_requirements,
                 "required_tool_arguments": required_arguments,
@@ -250,6 +257,16 @@ class AgentComposedDispatch:
                         and (conditions.get("scene_current") is not False or policy.refreshes_scene)
                         and set(required_node_binding_keys(policy)).issubset(nodes[node_id].input_bindings)
                     ],
+                    "selection_source_modes": {
+                        policy.tool_id: (
+                            "projection_source" if policy.argument_projection is not None
+                            else "arguments_or_argument_sources"
+                        )
+                        for policy in self.policies
+                        if nodes[node_id].capability in policy.capabilities
+                        and (conditions.get("scene_current") is not False or policy.refreshes_scene)
+                        and set(required_node_binding_keys(policy)).issubset(nodes[node_id].input_bindings)
+                    },
                     **(
                         {"missing_runtime_arguments": {
                             policy.tool_id: self._required_runtime_arguments(policy)

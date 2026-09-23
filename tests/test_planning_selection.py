@@ -102,7 +102,7 @@ class _Coordinator:
 
 
 class _Dispatch:
-    graph = SimpleNamespace(task_id="task-1")
+    graph = SimpleNamespace(task_id="task-1", revision_id="revision-1")
     current_scene_revision = "scene-1"
 
     def argument_projection(self, tool_id):
@@ -178,7 +178,13 @@ def test_plan_select_resumes_existing_unconsumed_selection_without_reselecting()
     assert coordinator.proposals == []
 
 
-def test_plan_select_resolves_catalogued_predecessor_source_before_persistence():
+@pytest.mark.parametrize("candidates", [
+    [{"candidate_ref": "candidate://green/1", "score": 0.9}],
+    [{"candidate_ref": "candidate://green/2", "score": 0.7},
+     {"candidate_ref": "candidate://green/3", "score": 0.8}],
+    [],
+])
+def test_plan_select_resolves_catalogued_predecessor_source_before_persistence(candidates):
     predecessor = PlanNode(
         node_id="propose",
         obligation_id="propose",
@@ -204,7 +210,6 @@ def test_plan_select_resolves_catalogued_predecessor_source_before_persistence()
     }
     graph_payload["graph_digest"] = plan_graph_digest(graph_payload)
     graph = PlanGraph.model_validate(graph_payload)
-    candidates = [{"candidate_ref": "candidate://green/1", "score": 0.9}]
     task = SimpleNamespace(
         task_id="task-1",
         primary_skill_binding=None,
@@ -248,6 +253,25 @@ def test_plan_select_resolves_catalogued_predecessor_source_before_persistence()
 
     coordinator = Coordinator()
     tool = ForgePlanSelectTool(coordinator, lambda: _Dispatch())
+    wrong_mode = json.loads(asyncio.run(tool.execute(
+        "task-1", "prepare", "manipulation.prepare", {"entity_ref": "entity://green"},
+        "use persisted proposal", projection_source={"record_id": "tool-proposal"},
+    )))
+    assert wrong_mode["error"]["code"] == "consumer_projection_invalid"
+    assert wrong_mode["error"]["retryable_in_revision"] is True
+    assert wrong_mode["error"]["requires_replan"] is False
+    assert coordinator.proposals == []
+
+    hidden_source = json.loads(asyncio.run(tool.execute(
+        "task-1", "prepare", "manipulation.prepare", {"entity_ref": "entity://green"},
+        "use persisted proposal", argument_sources={
+            "candidates": {"record_id": "unrelated-record", "path": ["response", "data", "candidates"]},
+        },
+    )))
+    assert hidden_source["error"]["code"] == "invalid_argument_source"
+    assert hidden_source["error"]["requires_replan"] is False
+    assert coordinator.proposals == []
+
     result = json.loads(
         asyncio.run(
             tool.execute(
@@ -367,6 +391,9 @@ def test_plan_select_projects_authorized_understanding_into_persisted_consumer_a
         AdmissionContext(scene_revision="scene-1", evidence_refs=(evidence_ref,)),
         input_schemas={"grasp.propose": GRASP_TOOL_SPEC["input_schema"]},
     )
+    assert dispatch.describe()["ready_nodes"][0]["selection_source_modes"] == {
+        "grasp.propose": "projection_source"
+    }
     result = json.loads(asyncio.run(ForgePlanSelectTool(
         coordinator, lambda: dispatch
     ).execute(
@@ -564,6 +591,57 @@ def test_replan_budget_exhaustion_runs_terminal_cleanup(tmp_path):
     assert binding_id not in task_bindings
     assert experience.completed == [task_id]
     assert result.execution_records == []
+
+
+def test_correctable_selection_rejection_keeps_real_task_executing(tmp_path):
+    coordinator = AgentTaskCoordinator(
+        workspace=tmp_path, config=ForgeConfig(), client=object(), max_replans=0,
+    )
+    task = coordinator.create_task(
+        task_description="prepare a currently observed block",
+        verification=TaskVerificationContract(mode="off"),
+    )
+    result = coordinator.record_planning_selection_rejection(
+        task.task_id,
+        revision_id=task.active_revision_id,
+        node_id="prepare",
+        tool_id="manipulation.prepare",
+        error={
+            "code": "consumer_projection_invalid",
+            "failure_owner": "agent_arguments",
+            "message": "projection_source requires a declared projection",
+            "retryable_in_revision": True,
+            "requires_replan": False,
+            "recommended_action": "use_argument_sources_for_this_consumer",
+        },
+    )
+    assert result.status == AgentTaskStatus.EXECUTING
+    assert result.execution_records == []
+    assert coordinator.planning_selection_rejections(
+        task.task_id, task.active_revision_id, "prepare"
+    )[-1]["code"] == "consumer_projection_invalid"
+
+
+def test_missing_node_source_context_requires_plan_recovery():
+    class Coordinator(_Coordinator):
+        def get_task(self, _task_id):
+            return SimpleNamespace(
+                active_revision=SimpleNamespace(plan_graph=None),
+            )
+
+    coordinator = Coordinator()
+    result = json.loads(asyncio.run(ForgePlanSelectTool(
+        coordinator, lambda: _Dispatch()
+    ).execute(
+        "task-1", "prepare", "manipulation.prepare", {}, "copy predecessor candidates",
+        argument_sources={
+            "candidates": {"record_id": "tool-proposal", "path": ["response", "data", "candidates"]},
+        },
+    )))
+    assert result["error"]["code"] == "source_context_invalid"
+    assert result["error"]["retryable_in_revision"] is False
+    assert result["error"]["requires_replan"] is True
+    assert coordinator.proposals == []
 
 
 def test_prepare_selection_reports_all_missing_runtime_arguments_and_persists_event(tmp_path):

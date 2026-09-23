@@ -221,6 +221,7 @@ def test_agent_composed_plan_is_effectively_wired_without_motion(tmp_path):
         "obligation_id": "relocate-red",
         "capability": "object.acquire",
         "candidate_tool_ids": ["object.acquire"],
+        "selection_source_modes": {"object.acquire": "arguments_or_argument_sources"},
     }]
 
     failed = settle_node(

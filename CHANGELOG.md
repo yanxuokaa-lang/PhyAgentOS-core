@@ -2,6 +2,8 @@
 
 ## Archive
 
+- [2026-09 Part 13](changelog/2026-09_part13.md)
+
 - [2026-09 Part 12](changelog/2026-09_part12.md)
 
 - [2026-09 Part 11](changelog/2026-09_part11.md)
@@ -15,6 +17,29 @@
 - [2026-09 Part 4](changelog/2026-09_part4.md)
 
 ## 最近 5 条 / Latest Five Versions
+
+## v11.4.11 (2026-09-23 22:13) - codex
+
+- [agent] [fix] [完成] `planning_dispatch.py:L223-L229,L260-L269` 显示冻结 ToolSpec 来源模式；`tools/planning.py:L327-L355,L399-L413` 允许未消费 selection 的模式/路径错误在同节点纠正，失效节点上下文仍要求恢复。(local)
+- [Agent] [Fix] [Completed] `planning_dispatch.py:L223-L229,L260-L269` exposes frozen ToolSpec source modes; `tools/planning.py:L327-L355,L399-L413` permits same-node correction of unconsumed selection mode/path errors while invalid node context still requires recovery. (local)
+- [tests] [feat] [完成] `test_planning_dispatch.py:L85-L98`、`test_planning_selection.py:L104-L105,L180-L299,L391-L397,L596-L645`、`test_planning_end_to_end.py:L219-L225`；专项三轮各 `42 passed`，Core `551 passed`、Skill `346 passed`、Adapter `639 passed, 1 skipped`。(local)
+- [Tests] [Feat] [Completed] `test_planning_dispatch.py:L85-L98`, `test_planning_selection.py:L104-L105,L180-L299,L391-L397,L596-L645`; focused tests passed `42` in each of three runs, Core `551`, Skill `346`, Adapter `639 passed, 1 skipped`. (local)
+- [tests] [feat] [完成] `test_agent_foundation.py:L251-L289` 验证同一节点回合内错误来源模式后再次选择；扩大专项三轮各 `91 passed`，Core `552 passed`。(local)
+- [Tests] [Feat] [Completed] `test_agent_foundation.py:L251-L289` verifies same-node correction after a wrong source mode; the expanded focused suite passed `91` in each of three runs and Core passed `552`. (local)
+
+```diff
+- if projection_source: raise PlanningDispatchError(..., requires_replan=True)
++ if projection_source is not None: raise PlanningDispatchError(..., retryable_in_revision=True)
++ "selection_source_modes": {
++     policy.tool_id: (
++         "projection_source" if policy.argument_projection is not None
++         else "arguments_or_argument_sources"
++     )
++ }
++ # AgentLoop: wrong source mode -> corrected selection in the same node turn
+```
+
+- Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md). No physical three-block/Verifier/benchmark/video success is claimed.
 
 ## v11.4.9 (2026-09-23 20:02) - codex
 
@@ -40,6 +65,8 @@
 - [env] [tune] [完成] Agent/感知模型改为 `gpt-5.6-sol`、high；只读 benchmark goal smoke 成功，完整任务在不可重试的 scene-understanding provider failure 前安全停止。(local)
 - [Env] [Tune] [Completed] Agent/perception model changed to `gpt-5.6-sol`, high; read-only benchmark-goal smoke passed, while the full task stopped safely before Actions on a non-retryable scene-understanding provider failure. (local)
 - Detailed entry: [`changelog/2026-09_part12.md`](changelog/2026-09_part12.md).
+
+## Historical Entries
 
 ## v11.3.0 (2026-09-21) - codex
 

@@ -248,6 +248,47 @@ def test_node_turn_yields_after_selection_requires_replan(tmp_path):
     asyncio.run(exercise())
 
 
+def test_node_turn_can_correct_selection_input_without_replan(tmp_path):
+    async def exercise():
+        provider = ScriptedProvider([
+            LLMResponse(content=None, tool_calls=[ToolCallRequest(
+                "wrong-mode", "forge_plan_select", {"projection_source": {"record_id": "proposal"}},
+            )]),
+            LLMResponse(content=None, tool_calls=[ToolCallRequest(
+                "correct-mode", "forge_plan_select", {"argument_sources": {
+                    "candidates": {"record_id": "proposal", "path": ["response", "data", "candidates"]},
+                }},
+            )]),
+            LLMResponse(content="Selection persisted."),
+        ])
+        loop = AgentLoop(bus=MessageBus(), provider=provider, workspace=tmp_path, max_iterations=4)
+        loop.tools.execute = AsyncMock(side_effect=[
+            json.dumps({"ok": False, "error": {
+                "code": "consumer_projection_invalid", "retryable_in_revision": True,
+                "requires_replan": False,
+            }, "motion_authorized": False}),
+            json.dumps({"ok": True, "data": {"selection": {"use_selected_arguments": True}},
+                        "motion_authorized": False}),
+        ])
+
+        result = await loop._run_agent_loop(
+            [{"role": "user", "content": "select current prepare node"}],
+            projection_scope="node", projection_node_id="prepare-green",
+            allowed_tool_names=frozenset({"forge_plan_select"}),
+        )
+
+        assert len(provider.requests) == 3
+        assert result.tools_used == ["forge_plan_select", "forge_plan_select"]
+        assert result.content == "Selection persisted."
+        correction_context = provider.requests[1]["messages"]
+        assert any(message.get("tool_call_id") == "wrong-mode" and
+                   json.loads(message["content"])["error"]["code"] == "consumer_projection_invalid"
+                   for message in correction_context)
+        assert loop.tools.execute.await_count == 2
+
+    asyncio.run(exercise())
+
+
 @pytest.mark.parametrize("count", [1, 2, 3])
 def test_model_tool_call_materializes_variable_objects_in_same_task(tmp_path, count):
     async def exercise():

@@ -62,7 +62,9 @@ before revision identity was added remain readable as legacy records.
 3. `forge_plan_ready` exposes the consumer's frozen schema and required
    top-level arguments only for current candidate Tools. Live
    `forge_tool_context` remains the readiness source and a legacy schema
-   fallback; it does not replace the task-bound contract.
+   fallback; it does not replace the task-bound contract. Each candidate also
+   reports `selection_source_modes`: `projection_source` only when its frozen
+   ToolSpec declares a projection, otherwise `arguments_or_argument_sources`.
 4. `forge_plan_select` accepts literal arguments plus optional
    `argument_sources`. Each source contains one prompt-visible `record_id` and
    exact `path` of object-field strings and non-negative integer array indexes.
@@ -161,6 +163,15 @@ consumers such as `manipulation.prepare`, where a complete candidate array is
 copied from a direct predecessor. It does not apply to a projection consumer
 such as `grasp.propose`: do not combine a candidate-style nested `target_path`
 map with the projection's understanding record.
+
+For a non-projection consumer, a supplied `projection_source` is a correctable
+selection input error while no selection has been consumed and no Tool has run.
+The Agent may inspect the bounded predecessor fields and submit
+`argument_sources` in the same node turn. An invalid or hidden source path is
+also rejected without copying data. Existing node iteration and decision
+timeouts bound correction; final schema, scene, identity, Coordinator receipt,
+and Gateway admission remain authoritative. A stopped node turn still follows
+the normal recovery path rather than executing a guessed payload.
 
 ## Failure Semantics
 

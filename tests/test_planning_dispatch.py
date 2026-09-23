@@ -85,6 +85,12 @@ def test_runtime_only_task_builds_dispatch_from_enrolled_tool_policies():
 def test_ready_tool_is_read_only_and_reports_candidates():
     data = _dispatch().describe()
     assert data["ready_nodes"][0]["candidate_tool_ids"] == ["scene.observe"]
+    assert data["ready_nodes"][0]["selection_source_modes"] == {
+        "scene.observe": "arguments_or_argument_sources"
+    }
+    assert data["node_diagnostics"][0]["selection_source_modes"] == {
+        "scene.observe": "arguments_or_argument_sources"
+    }
     assert data["node_diagnostics"][0]["ready"] is True
     assert data["node_diagnostics"][0]["blockers"] == ()
     assert data["motion_authorized"] is False

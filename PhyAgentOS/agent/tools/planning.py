@@ -169,7 +169,9 @@ class ForgePlanSelectTool(Tool):
             "binding plus the final Tool arguments without invoking a Gateway. For a Tool "
             "with a declared argument projection, pass projection_source only; a legacy "
             "argument_sources map is accepted only for compatible top-level fields from "
-            "that same record. Pass the returned binding and selection unchanged."
+            "that same record. For a Tool without a projection, use arguments and/or "
+            "argument_sources, never projection_source. Pass the returned binding and "
+            "selection unchanged."
         )
 
     @property
@@ -323,13 +325,12 @@ class ForgePlanSelectTool(Tool):
                         recommended_action="use_one_understanding_record_for_projection_and_top_level_fields",
                     ) from exc
             else:
-                if projection_source:
+                if projection_source is not None:
                     raise PlanningDispatchError(
                         "projection_source was supplied for a Tool without a declared projection",
                         code="consumer_projection_invalid",
                         failure_owner="agent_arguments",
-                        retryable_in_revision=False,
-                        requires_replan=True,
+                        retryable_in_revision=True,
                         recommended_action="use_argument_sources_for_this_consumer",
                     )
                 if argument_sources:
@@ -339,11 +340,19 @@ class ForgePlanSelectTool(Tool):
                         node_id,
                         scene_revision=dispatch.current_scene_revision,
                     )
-                    final_arguments = resolve_node_argument_sources(
-                        context,
-                        arguments,
-                        argument_sources,
-                    )
+                    try:
+                        final_arguments = resolve_node_argument_sources(
+                            context,
+                            arguments,
+                            argument_sources,
+                        )
+                    except PlanningLoopError as exc:
+                        raise PlanningDispatchError(
+                            str(exc),
+                            code="invalid_argument_source",
+                            failure_owner="agent_arguments",
+                            recommended_action="browse_authorized_source_and_correct_path",
+                        ) from exc
             proposal = dispatch.prepare_selection(
                 node_id=node_id, tool_id=tool_id, arguments=final_arguments,
                 decision_reason=decision_reason,
@@ -386,6 +395,21 @@ class ForgePlanSelectTool(Tool):
                 error["task_status"] = current.status.value
                 if current.status.value == "failed":
                     error["recommended_action"] = "inspect_task_and_create_new_task_if_appropriate"
+            return self._error_response(error)
+        except PlanningLoopError as exc:
+            error = PlanningDispatchError(
+                str(exc),
+                code="source_context_invalid",
+                failure_owner="plan_contract",
+                retryable_in_revision=False,
+                requires_replan=True,
+                recommended_action="refresh_or_replace_plan_segment",
+            ).as_dict()
+            current = self._persist_rejection(
+                task_id, dispatch.graph.revision_id, node_id, tool_id, error
+            )
+            if current is not None:
+                error["task_status"] = current.status.value
             return self._error_response(error)
         except Exception as exc:
             error = PlanningDispatchError(
