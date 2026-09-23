@@ -596,7 +596,7 @@ class AgentLoopNodeExecutor:
         *,
         prompt_builder: Callable[[NodeExecutionContext], str] | None = None,
         max_action_polls: int = 100,
-        action_poll_interval_s: float = 0.0,
+        action_poll_interval_s: float | None = None,
         max_node_turn_continuations: int = 1,
         on_progress: Callable[..., Awaitable[None]] | None = None,
     ) -> None:
@@ -605,6 +605,13 @@ class AgentLoopNodeExecutor:
         self.agent_loop = agent_loop
         self.coordinator = coordinator
         self.prompt_builder = prompt_builder or self._default_prompt
+        if action_poll_interval_s is None:
+            # ForgeConfig is the single configured timing source for Gateway
+            # lifecycle reads. Test doubles without config retain the legacy
+            # zero-delay behavior unless they opt in explicitly.
+            action_poll_interval_s = getattr(
+                getattr(coordinator, "config", None), "poll_interval_s", 0.0
+            )
         if isinstance(max_action_polls, bool) or int(max_action_polls) < 1:
             raise ValueError("max_action_polls must be a positive integer")
         if isinstance(action_poll_interval_s, bool) or float(action_poll_interval_s) < 0:

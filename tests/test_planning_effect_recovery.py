@@ -365,6 +365,34 @@ def test_agent_node_executor_reconciles_action_to_terminal_result_without_resend
     assert agent.turns == 1
 
 
+def test_agent_node_executor_uses_coordinator_forge_poll_interval():
+    client = _LifecycleClient(
+        statuses=[{"data": {"status": "running"}}, {"data": {"status": "running"}}],
+        results=[
+            {"data": {"status": "pending"}},
+            {"data": {"status": "succeeded", "result": {
+                "status": "succeeded",
+                "capability_outcome_summary": {
+                    "world_change_started": True,
+                    "outcome_known": True,
+                },
+            }}},
+        ],
+    )
+    coordinator = _LifecycleCoordinator(client)
+    coordinator.config = SimpleNamespace(poll_interval_s=0.01)
+    agent = _ActionAgent(coordinator)
+    executor = AgentLoopNodeExecutor(agent, coordinator)
+
+    assert executor.action_poll_interval_s == 0.01
+    projected = asyncio.run(executor(_executor_context()))
+
+    assert projected.status == "succeeded"
+    assert coordinator.started == 1
+    assert client.status_calls == 2
+    assert client.result_calls == 2
+
+
 @pytest.mark.parametrize("terminal_status", ["failed", "unknown"])
 def test_agent_node_executor_preserves_failed_or_unknown_action_status(terminal_status):
     client = _LifecycleClient(

@@ -18,6 +18,14 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v11.4.14 (2026-09-24 08:35) - codex
+
+- [agent] [fix] [完成] `planning_loop.py:L592-L625` 读取已有 `ForgeConfig.poll_interval_s` 进行 Action invocation 对账，避免零间隔耗尽轮询预算；不重发 Action、不伪造成功。(local)
+- [Agent] [Fix] [Completed] `planning_loop.py:L592-L625` reads the existing `ForgeConfig.poll_interval_s` for Action invocation reconciliation, preventing zero-delay poll-budget exhaustion without resending Actions or fabricating success. (local)
+- [tests] [feat] [完成] `test_planning_effect_recovery.py:L368-L393` 覆盖 pending 到 terminal、同一 invocation 和单次 Action；专项 `76 passed`，Core `554 passed`。(local)
+- [Tests] [Feat] [Completed] `test_planning_effect_recovery.py:L368-L393` covers pending-to-terminal settlement, the same invocation, and one Action start; focused tests `76 passed`, Core `554 passed`. (local)
+- Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md). Live three-block acceptance remains pending until a task reaches three successful placements, verifier success, and video evidence.
+
 ## v11.4.11 (2026-09-23 22:13) - codex
 
 - [agent] [fix] [完成] `planning_dispatch.py:L223-L229,L260-L269` 显示冻结 ToolSpec 来源模式；`tools/planning.py:L327-L355,L399-L413` 允许未消费 selection 的模式/路径错误在同节点纠正，失效节点上下文仍要求恢复。(local)
