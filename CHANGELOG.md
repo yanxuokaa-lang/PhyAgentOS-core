@@ -34,6 +34,7 @@
 ```
 
 - Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md). Live RGB acceptance remains pending until verifier success and video evidence.
+- Commit: `eee2a2a` on `feature/planning-loop`.
 
 ## v11.5.0 (2026-09-24 10:10) - codex
 
