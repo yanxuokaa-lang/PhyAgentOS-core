@@ -721,7 +721,15 @@ def _compact_forge_results(
             and isinstance(name, str)
             and name.startswith("forge_")
             and isinstance(content, str)
-            and (aggressive or latest_by_name.get(name) != index)
+            # ``forge_task_get`` returns the complete persisted task, while
+            # the injected task projection already carries its authoritative
+            # bounded view. Keep every task read compact to prevent repeated
+            # discovery reads from expanding the model context.
+            and (
+                name == "forge_task_get"
+                or aggressive
+                or latest_by_name.get(name) != index
+            )
         ):
             entry["content"] = compact_tool_result(name, content)
         elif aggressive and entry.get("role") == "assistant" and entry.get("tool_calls"):

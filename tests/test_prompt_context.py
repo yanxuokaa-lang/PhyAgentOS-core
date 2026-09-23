@@ -10,6 +10,7 @@ from PhyAgentOS.agent.loop import AgentLoop
 from PhyAgentOS.agent.prompt_context import (
     AgentPromptContextManager,
     PromptBudgetExceededError,
+    _compact_forge_results,
     compact_tool_result,
     node_task_prompt_projection,
     task_prompt_projection,
@@ -130,6 +131,28 @@ def test_agent_loop_selects_task_from_current_session_not_global_active():
     loop.forge_task_coordinator = SimpleNamespace(store=Store())
 
     assert loop._task_for_session("cli:session") is session_task
+
+
+def test_latest_task_get_result_is_compacted_to_bounded_projection():
+    raw = json.dumps({
+        "ok": True,
+        "data": {
+            "task_id": "task-rgb",
+            "status": "executing",
+            "revisions": [{"execution_records": [{"response": {"huge": "x" * 20_000}}]}],
+            "skill_uses": [{"instructions": "y" * 20_000}],
+        },
+    })
+    messages = [{"role": "tool", "name": "forge_task_get", "content": raw}]
+
+    projected = _compact_forge_results(messages, aggressive=False)
+    content = projected[0]["content"]
+
+    assert len(content) < len(raw)
+    summary = json.loads(content)
+    assert summary["version"] == "agent_tool_result_summary_v1"
+    assert summary["tool_name"] == "forge_task_get"
+    assert "instructions" not in content
 
 
 def test_agent_loop_does_not_fallback_to_unbound_legacy_active_task():
