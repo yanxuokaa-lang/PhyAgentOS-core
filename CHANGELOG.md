@@ -18,6 +18,18 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v11.5.8 (2026-09-24 06:20) - codex
+
+- [agent] [fix] [完成] Coordinator 从同一份有效 CapabilitySnapshot 冻结 manipulation.prepare 的协调模式与 arm_id，阻止 AgentLoop 反复组装参数。(local)
+- [Agent] [Fix] [Completed] Coordinator freezes manipulation.prepare coordination mode and arm_id values from one valid CapabilitySnapshot, preventing repeated AgentLoop parameter assembly. (local)
+- Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md).
+
+## v11.5.7 (2026-09-24 05:40) - codex
+
+- [env] [tune] [完成] Oracle RGB AgentLoop model `gpt-5.6-sol` -> `gpt-6-sol`, reasoning effort remains `high`; current active task continues in place。(local)
+- [Env] [Tune] [Completed] Oracle RGB AgentLoop model `gpt-5.6-sol` -> `gpt-6-sol`, with reasoning effort remaining `high`; the current active task continues in place. (local)
+- Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md).
+
 ## v11.5.6 (2026-09-24 05:20) - codex
 
 - [sense] [fix] [完成] OpenAI 场景理解加强彩色几何积木检查；空实体且无歧义时投影 `entity_count_uncertain`，不虚构实体。(local)

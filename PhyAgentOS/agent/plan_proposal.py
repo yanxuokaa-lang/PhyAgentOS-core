@@ -10,7 +10,6 @@ from PhyAgentOS.agent.planning_facts import response_facts
 from PhyAgentOS.forge.manipulation import (
     CapabilitySnapshot,
     CoordinationMode,
-    ResourceMode,
 )
 from PhyAgentOS.forge.task import AgentTaskRecord
 from PhyAgentOS.planning import (
@@ -186,6 +185,7 @@ def _complete_persisted_runtime_bindings(
 
     capability_refs: set[str] = set()
     capability_arm_ids: dict[str, tuple[str, ...]] = {}
+    capability_topologies: dict[str, str] = {}
     goal_sources: dict[str, set[str]] = {}
     goal_entities_by_destination: dict[str, set[str]] = {}
     predecessor_destinations: dict[str, set[str]] = {}
@@ -248,11 +248,11 @@ def _complete_persisted_runtime_bindings(
                 snapshot = CapabilitySnapshot.model_validate(snapshot_payload)
             except ValueError:
                 continue
+            capability_topologies[snapshot_ref] = snapshot.topology
             capability_arm_ids[snapshot_ref] = tuple(
                 arm.arm_id
                 for arm in snapshot.arms
                 if arm.availability == "available"
-                and ResourceMode.ALTERNATIVE_RESOURCE in arm.supported_modes
             )
 
     # A preparation/acquisition node may carry the Runtime execution identity
@@ -348,6 +348,13 @@ def _complete_persisted_runtime_bindings(
                 bindings.setdefault("capability_snapshot_ref", capability_ref)
                 if node.capability == "manipulation.prepare":
                     available_arms = capability_arm_ids.get(capability_ref, ())
+                    topology = capability_topologies.get(capability_ref)
+                    if "coordination_mode" not in bindings and topology is not None:
+                        bindings["coordination_mode"] = {
+                            "single_arm": CoordinationMode.SINGLE_ARM.value,
+                            "dual_independent": CoordinationMode.ALTERNATIVE_ARM.value,
+                            "dual_coordinated": CoordinationMode.BIMANUAL.value,
+                        }[topology]
                     selected_arms = bindings.get("allowed_arms")
                     if selected_arms is not None:
                         if not isinstance(selected_arms, (list, tuple)):
@@ -362,7 +369,9 @@ def _complete_persisted_runtime_bindings(
                                 f"available arm_id values: {', '.join(available_arms)}"
                             )
                     elif available_arms and bindings.get("coordination_mode") in {
+                        CoordinationMode.SINGLE_ARM.value,
                         CoordinationMode.ALTERNATIVE_ARM.value,
+                        CoordinationMode.BIMANUAL.value,
                     }:
                         bindings["allowed_arms"] = list(available_arms)
         completed.append(node.model_copy(update={"input_bindings": bindings}))
