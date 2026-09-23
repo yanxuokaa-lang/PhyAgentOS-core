@@ -27,6 +27,7 @@
 - 当前 RGB 三方块完整 AgentLoop、Verifier 与视频验收仍未完成。(local)
 - Full RGB three-block AgentLoop, verifier, and video acceptance remain pending. (local)
 - **Diff:** `caller-provided scene refs -> PAOS receipt projection`; other caller-owned Query fields remain unchanged.
+- Implementation commit: `376bd13` on `feature/planning-loop`.
 - Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md). RGB arrangement acceptance remains pending.
 
 ## v11.5.4 (2026-09-24 03:56) - codex
