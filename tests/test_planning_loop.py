@@ -210,6 +210,95 @@ def test_node_prompt_catalog_surfaces_opaque_arm_identity():
     assert '"arm_id": "right"' in encoded
 
 
+def test_unqualified_source_field_resolves_from_predecessor_arguments():
+    context = NodeExecutionContext(
+        task_id="task-source-fields",
+        revision_id="revision-1",
+        node_id="place",
+        capability="object.place",
+        dependencies=("acquire",),
+        required_evidence=(),
+        input_bindings={},
+        scene_revision="scene-2",
+        predecessor_context=(
+            PredecessorContext(
+                node_id="acquire",
+                status="completed",
+                scene_revision="scene-2",
+                executions=(
+                    PredecessorExecutionContext(
+                        record_id="acquire-record",
+                        tool_id="object.acquire",
+                        semantics="action",
+                        status="succeeded",
+                        arguments={"freshness_ms": 0, "max_age_ms": 1000},
+                        response={"status": "succeeded", "data": {"result": {}}},
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    resolved = resolve_node_argument_sources(
+        context,
+        {},
+        {
+            "freshness_ms": {
+                "record_id": "acquire-record",
+                "path": ["freshness_ms"],
+            },
+            "max_age_ms": {
+                "record_id": "acquire-record",
+                "path": ["max_age_ms"],
+            },
+        },
+    )
+
+    assert resolved == {"freshness_ms": 0, "max_age_ms": 1000}
+
+
+def test_unqualified_source_field_rejects_conflicting_argument_and_response_values():
+    context = NodeExecutionContext(
+        task_id="task-source-conflict",
+        revision_id="revision-1",
+        node_id="place",
+        capability="object.place",
+        dependencies=("acquire",),
+        required_evidence=(),
+        input_bindings={},
+        scene_revision="scene-1",
+        predecessor_context=(
+            PredecessorContext(
+                node_id="acquire",
+                status="completed",
+                scene_revision="scene-1",
+                executions=(
+                    PredecessorExecutionContext(
+                        record_id="acquire-record",
+                        tool_id="object.acquire",
+                        semantics="action",
+                        status="succeeded",
+                        arguments={"freshness_ms": 0},
+                        response={"freshness_ms": 20},
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    with pytest.raises(PlanningLoopError, match="ambiguous"):
+        resolve_node_argument_sources(
+            context,
+            {},
+            {
+                "freshness_ms": {
+                    "record_id": "acquire-record",
+                    "path": ["freshness_ms"],
+                },
+            },
+        )
+
+
 def test_frozen_entity_allows_stale_bind_as_provenance_only():
     node = PlanNode(
         node_id="place-red",
@@ -985,6 +1074,37 @@ def test_unknown_outcome_stops_without_implicit_replay(tmp_path):
     ).run(task.task_id, scene_revision="scene-1"))
     assert result.status == "outcome_unknown"
     assert calls["count"] == 1
+
+
+def test_unknown_outcome_converges_task_to_recovery_state_without_retry(tmp_path):
+    c = coordinator(tmp_path)
+    task = c.create_task(task_description="unknown action recovery", verification=TaskVerificationContract(mode="off"))
+    graph = make_graph(task.task_id, "revision-unknown-recovery", ("arrange-red", "verify"))
+    c.expand_discovery_revision(task.task_id, plan_graph=graph, plan_graph_ref="artifact://plans/unknown-recovery")
+
+    def execute(context):
+        return ToolResultEnvelope(
+            task_id=context.task_id,
+            revision_id=context.revision_id,
+            node_id=context.node_id,
+            tool_id="object.arrange",
+            status="unknown",
+            failure_code="action_poll_budget_exhausted",
+        )
+
+    result = asyncio.run(PlanningLoopAdapter(
+        c,
+        context_provider=NodeContextProvider(c.get_task),
+        node_executor=execute,
+        recovery_policy=lambda *_: "replan",
+        replan_proposer=lambda *_: None,
+        admission_context_provider=lambda _: AdmissionContext(scene_revision="scene-1", evidence_refs=frozenset({"scene:inventory"})),
+    ).run(task.task_id, scene_revision="scene-1"))
+    current = c.get_task(task.task_id)
+    assert result.status == "blocked"
+    assert current.status.value == "awaiting_replan"
+    assert current.active_revision.node_settlements[-1].status == "outcome_unknown"
+    assert current.execution_records == []
 
 
 def test_recovery_stop_does_not_advance_to_dependent_node(tmp_path):

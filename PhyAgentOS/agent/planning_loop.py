@@ -466,15 +466,43 @@ def _read_node_source(records: Mapping[str, Any], record_id: Any, path: tuple) -
     if not isinstance(record_id, str) or record_id not in records:
         raise PlanningLoopError("planning argument source is not visible to this node")
     arguments, response = records[record_id]
-    value: Any = {"arguments": arguments, "response": response}
-    for part in path:
-        if isinstance(value, Mapping) and isinstance(part, str) and part in value:
-            value = value[part]
-        elif isinstance(value, (list, tuple)) and type(part) is int and 0 <= part < len(value):
-            value = value[part]
-        else:
-            raise PlanningLoopError(f"source path cannot be resolved at {part!r}")
-    return value
+    root: Any = {"arguments": arguments, "response": response}
+
+    def read(value: Any, parts: tuple[Any, ...]) -> tuple[bool, Any]:
+        for part in parts:
+            if isinstance(value, Mapping) and isinstance(part, str) and part in value:
+                value = value[part]
+            elif isinstance(value, (list, tuple)) and type(part) is int and 0 <= part < len(value):
+                value = value[part]
+            else:
+                return False, None
+        return True, value
+
+    # The documented form remains explicit (``arguments/...`` or
+    # ``response/...``).  A bounded node projection also exposes the fields of
+    # both records, so accept an unqualified path when exactly one record side
+    # can resolve it.  This keeps the Coordinator responsible for copying
+    # freshness/limits instead of requiring the model to reproduce the record
+    # envelope.  Equal values on both sides are harmless; conflicting values
+    # remain an explicit selection error.
+    resolved, value = read(root, path)
+    if resolved:
+        return value
+    if path and path[0] not in {"arguments", "response"}:
+        argument_ok, argument_value = read(arguments, path)
+        response_ok, response_value = read(response, path) if response is not None else (False, None)
+        if argument_ok and not response_ok:
+            return argument_value
+        if response_ok and not argument_ok:
+            return response_value
+        if argument_ok and response_ok:
+            if argument_value == response_value:
+                return argument_value
+            raise PlanningLoopError(
+                "planning argument source path is ambiguous between arguments and response"
+            )
+    part = path[-1] if path else None
+    raise PlanningLoopError(f"source path cannot be resolved at {part!r}")
 
 
 def _write_argument_path(root: dict, path: tuple, value: Any) -> None:
@@ -1286,6 +1314,12 @@ class PlanningLoopAdapter:
                 f"reducer_replay_only:{settlement.node_id}",
             )
         if settlement.status == "outcome_unknown":
+            self.coordinator.record_planning_node_blocked(
+                task_id,
+                context.revision_id,
+                context.node_id,
+                "reconciliation_required:" + settlement.node_id,
+            )
             return PlanningLoopResult(
                 task_id, "blocked", tuple(completed),
                 len(self.coordinator.get_task(task_id).revisions), replans,
