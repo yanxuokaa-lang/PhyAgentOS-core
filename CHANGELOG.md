@@ -31,7 +31,7 @@
 ```
 
 - Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md). The pre-fix live task stopped before planning and produced zero Actions; RGB physical acceptance remains pending.
-- Commit: pending.
+- Implementation commit: `0932ca5` on `feature/planning-loop`.
 
 ## v11.5.1 (2026-09-24 10:30) - codex
 
