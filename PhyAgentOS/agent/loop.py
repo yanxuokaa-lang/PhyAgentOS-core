@@ -481,7 +481,16 @@ class AgentLoop:
                 "forge_tool_query": "query", "forge_tool_start_action": "action",
                 "forge_tool_start_session": "session",
             }.get(name)
-            if semantics and arguments.get("use_selected_arguments") is True:
+            task_id = arguments.get("task_id")
+            task = (
+                self.forge_task_coordinator.get_task(task_id)
+                if semantics and task_id is not None else None
+            )
+            active_graph = getattr(getattr(task, "active_revision", None), "plan_graph", None)
+            if semantics and active_graph is not None and (
+                semantics in {"action", "session"}
+                or arguments.get("use_selected_arguments") is True
+            ):
                 binding = self.forge_task_coordinator.selected_execution_binding(
                     arguments.get("task_id"),
                     arguments.get("tool_id"),
@@ -493,7 +502,7 @@ class AgentLoop:
                     "planning_binding": binding.model_dump(mode="json"),
                     "arguments": self.forge_task_coordinator.selected_execution_arguments(
                         arguments.get("task_id"), arguments.get("tool_id"), semantics,
-                        arguments.get("arguments", {}), binding.model_dump(mode="json"),
+                        {}, binding.model_dump(mode="json"),
                     ),
                 }
             decision = self._planning_dispatch.admit_forge_tool(name, arguments)
@@ -1184,7 +1193,7 @@ class AgentLoop:
             on_progress=on_progress,
             experience_session_key=task.origin_session_key or f"agent_task:{task_id}",
             active_task_id=task_id,
-            projection_scope="task",
+            projection_scope="continuation",
             allowed_tool_names=frozenset(
                 {
                     "forge_task_continue_plan",

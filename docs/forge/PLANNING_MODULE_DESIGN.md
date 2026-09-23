@@ -172,6 +172,14 @@ content remain in the Coordinator for audit and verification, but are not
 duplicated in every node request; the node executor supplies the bounded
 execution rules needed for the current node.
 
+After `forge_plan_select`, task-bound Actions and Sessions consume the exact
+unconsumed Coordinator selection. The Agent may choose the Tool and semantic
+inputs at selection time, but execution arguments, provenance references and
+planning binding are read from the persisted receipt. Literal fields in a
+later execution call do not replace those values. A missing or ambiguous
+selection fails before Gateway admission. Discovery Queries remain available
+without a planning selection; selected Queries use the same receipt handoff.
+
 When the configured runtime uses scene-bound segments, `PlanningLoopAdapter`
 reports `segment_completed` instead of finalizing automatically. The outer
 controller invokes a bounded Agent continuation turn whose executable surface
@@ -180,6 +188,14 @@ clarification. A successful continuation must either append a new active
 revision or make the task terminal; provider failure or a no-op remains a
 recoverable blocked result. This is orchestration only and grants no motion
 authority.
+
+The continuation turn receives a compact projection of completed node IDs and
+the latest successful world-changing Action's new scene revision and bounded
+post-release evidence. It does not carry prior execution payloads or old
+discovery refs into the new scene. Dependencies in a submitted continuation
+must refer to nodes in that same new segment; already completed nodes are
+settled, while future results require a later continuation. The Coordinator
+still validates exact current evidence and compiles the Agent's chosen nodes.
 
 Before any Tool record, settlement, counterevidence, or verification attempt is
 attached to a materialized discovery graph, the Agent may submit one corrected

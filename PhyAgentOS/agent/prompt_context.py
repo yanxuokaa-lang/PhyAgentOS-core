@@ -628,6 +628,60 @@ def node_task_prompt_projection(
     }
 
 
+def continuation_task_prompt_projection(task: Any | None) -> dict[str, Any] | None:
+    """Project settled facts needed to append the next scene segment."""
+    if task is None:
+        return None
+    revision = getattr(task, "active_revision", None)
+    graph = getattr(revision, "plan_graph", None) if revision is not None else None
+    settlements = {
+        getattr(item, "node_id", None): getattr(item, "status", None)
+        for item in getattr(revision, "node_settlements", ())
+    }
+    latest_effect = next(
+        (
+            record for record in reversed(tuple(getattr(task, "execution_records", ())))
+            if getattr(record, "semantics", None) == "action"
+            and getattr(record, "status", None) == "succeeded"
+            and response_facts(getattr(record, "response", None)).get("world_change_started") is True
+        ),
+        None,
+    )
+    effect = response_facts(getattr(latest_effect, "response", None)) if latest_effect else {}
+    return {
+        "version": "agent_continuation_prompt_projection_v1",
+        "authority": "read_only_projection_from_AgentTaskCoordinator",
+        "task_id": getattr(task, "task_id", None),
+        "active_revision_id": getattr(task, "active_revision_id", None),
+        "task_description": getattr(task, "task_description", None),
+        "verification": _safe_json(getattr(task, "verification", None)),
+        "completed_nodes": [
+            getattr(node, "node_id", None)
+            for node in getattr(graph, "nodes", ())
+            if settlements.get(getattr(node, "node_id", None)) == "completed"
+        ],
+        "latest_effect": {
+            "node_id": getattr(latest_effect, "node_id", None),
+            "tool_id": getattr(latest_effect, "tool_id", None),
+            "status": getattr(latest_effect, "status", None),
+            "new_scene_revision": effect.get("new_scene_revision"),
+            "evidence_refs": list(getattr(latest_effect, "evidence_refs", ()))[:8],
+            "post_release_evidence": {
+                "availability": effect.get("post_release_evidence", {}).get("availability"),
+                "artifact_refs": list(
+                    effect.get("post_release_evidence", {}).get("artifact_refs", ())
+                )[:8],
+            } if isinstance(effect.get("post_release_evidence"), dict) else None,
+        } if latest_effect else None,
+        "instruction_boundary": (
+            "Submit only the next scene-bound semantic segment or finalize. "
+            "Do not repeat completed nodes, cite future node IDs, or copy prior "
+            "execution arguments, digests, assignments, candidates, or refs."
+        ),
+        "motion_authorized": False,
+    }
+
+
 def _with_task_projection(
     messages: list[dict[str, Any]],
     projection: dict[str, Any] | None,
@@ -762,6 +816,8 @@ class AgentPromptContextManager:
             if not projection_node_id:
                 raise ValueError("node projection requires projection_node_id")
             projection = node_task_prompt_projection(task, projection_node_id)
+        elif projection_scope == "continuation":
+            projection = continuation_task_prompt_projection(task)
         else:
             raise ValueError(f"unsupported prompt projection scope: {projection_scope}")
         compacted_messages = _compact_forge_results(messages, aggressive=False)

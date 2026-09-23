@@ -156,7 +156,7 @@ class ForgeToolQueryTool(Tool):
                     )
                     resolved_binding = binding.model_dump(mode="json")
                     resolved_arguments = self.coordinator.selected_execution_arguments(
-                        task_id, tool_id, "query", arguments, resolved_binding
+                        task_id, tool_id, "query", {}, resolved_binding
                     )
                 return await self.coordinator.invoke_query(
                     task_id, tool_id,
@@ -203,14 +203,14 @@ class ForgeToolStartActionTool(Tool):
         async def start():
             resolved_arguments = arguments
             resolved_binding = planning_binding
-            if use_selected_arguments:
-                binding = self.coordinator.selected_execution_binding(
-                    task_id, tool_id, "action", planning_binding
-                )
-                resolved_binding = binding.model_dump(mode="json")
-                resolved_arguments = self.coordinator.selected_execution_arguments(
-                    task_id, tool_id, "action", arguments, resolved_binding
-                )
+            # Actions always consume the Coordinator's unique pending selection.
+            binding = self.coordinator.selected_execution_binding(
+                task_id, tool_id, "action", planning_binding
+            )
+            resolved_binding = binding.model_dump(mode="json")
+            resolved_arguments = self.coordinator.selected_execution_arguments(
+                task_id, tool_id, "action", {}, resolved_binding
+            )
             return await self.coordinator.start_action(
                 task_id, tool_id,
                 resolved_arguments,
@@ -336,14 +336,13 @@ class ForgeToolStartSessionTool(Tool):
         async def start():
             resolved_arguments = arguments
             resolved_binding = planning_binding
-            if use_selected_arguments:
-                binding = self.coordinator.selected_execution_binding(
-                    task_id, tool_id, "session", planning_binding
-                )
-                resolved_binding = binding.model_dump(mode="json")
-                resolved_arguments = self.coordinator.selected_execution_arguments(
-                    task_id, tool_id, "session", arguments, resolved_binding
-                )
+            binding = self.coordinator.selected_execution_binding(
+                task_id, tool_id, "session", planning_binding
+            )
+            resolved_binding = binding.model_dump(mode="json")
+            resolved_arguments = self.coordinator.selected_execution_arguments(
+                task_id, tool_id, "session", {}, resolved_binding
+            )
             return await self.coordinator.start_session(
                 task_id, tool_id,
                 resolved_arguments,

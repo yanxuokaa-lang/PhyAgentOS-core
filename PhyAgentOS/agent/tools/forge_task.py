@@ -390,6 +390,21 @@ class ForgeTaskContinuePlanTool(Tool):
         from PhyAgentOS.agent.plan_proposal import compile_task_plan
         from PhyAgentOS.agent.planning_context import context_from_task
 
+        submitted_ids = {
+            node.get("node_id") for node in nodes if isinstance(node, dict)
+        }
+        missing_dependencies = sorted({
+            dependency
+            for node in nodes if isinstance(node, dict)
+            for dependency in node.get("dependencies", ())
+            if dependency not in submitted_ids
+        })
+        if missing_dependencies:
+            raise ValueError(
+                "continuation dependencies must name nodes in this submitted segment; "
+                "completed prior nodes are already settled, and future nodes need a later "
+                "continuation: " + ", ".join(missing_dependencies)
+            )
         task = self.coordinator.get_task(task_id)
         context = context_from_task(task, allow_refresh=True)
         trusted_evidence = set(context.evidence_refs)

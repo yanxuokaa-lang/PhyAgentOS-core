@@ -16,6 +16,13 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v11.4.9 (2026-09-23 20:02) - codex
+
+- [agent] [fix] [完成] Coordinator selection 现在是 task-bound Action/Session 的唯一参数来源；scene-bound continuation 使用紧凑事实投影并拒绝 future dependency。(local)
+- [Agent] [Fix] [Completed] Coordinator selections are now the sole argument source for task-bound Action/Session calls; scene-bound continuation uses a compact fact projection and rejects future dependencies. (local)
+- Tests: focused `79 passed`; Core `547 passed`; Ruff, compileall, and `git diff --check` passed. Full three-block physical acceptance remains unclaimed.
+- Detailed entry: [`changelog/2026-09_part12.md`](changelog/2026-09_part12.md).
+
 ## v11.4.7 (2026-09-23 18:11) - codex
 
 - [eval] [exp] [完成] 三方块 Oracle 源码与无运动验收：Core `535 passed`、Skill `346 passed`、Adapter `639 passed, 1 skipped`；Ruff、compileall、diff 检查通过。Runtime 无模型密钥而保持 stopped，未宣称 Action、Verifier、benchmark 或累计视频成功。(local)
