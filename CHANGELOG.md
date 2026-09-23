@@ -18,6 +18,14 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v11.4.15 (2026-09-24 09:35) - codex
+
+- [agent] [fix] [完成] `prompt_context.py:L706-L732` 对最新及历史 `forge_task_get` 结果统一使用有界投影，避免重复 discovery 读取把完整任务记录重新注入模型上下文。(local)
+- [Agent] [Fix] [Completed] `prompt_context.py:L706-L732` applies bounded projection to latest and historical `forge_task_get` results, preventing repeated discovery reads from reinjecting full task records into model context. (local)
+- [tests] [feat] [完成] `test_prompt_context.py:L136-L155` 覆盖大任务记录压缩；Prompt/planning `117 passed`，Core `555 passed`。(local)
+- [Tests] [Feat] [Completed] `test_prompt_context.py:L136-L155` covers compaction of oversized task records; Prompt/planning `117 passed`, Core `555 passed`. (local)
+- Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md). Live RGB acceptance remains pending because the provider timed out before Action execution.
+
 ## v11.4.14 (2026-09-24 08:35) - codex
 
 - [agent] [fix] [完成] `planning_loop.py:L592-L625` 读取已有 `ForgeConfig.poll_interval_s` 进行 Action invocation 对账，避免零间隔耗尽轮询预算；不重发 Action、不伪造成功。(local)
