@@ -357,6 +357,17 @@ class OpenAIResponsesSceneUnderstandingInference:
                 for claim in parsed[field]:
                     if isinstance(claim, dict) and not claim.get("provenance"):
                         claim["provenance"] = [rgb_ref]
+            if not parsed["entities"] and not parsed["ambiguities"]:
+                parsed["ambiguities"].append(
+                    {
+                        "code": "entity_count_uncertain",
+                        "message": (
+                            "No entities were returned; verify whether visible objects were missed "
+                            "or whether the image contains no identifiable entities."
+                        ),
+                        "entity_refs": [],
+                    }
+                )
             return parsed
         except OpenAIResponsesInferenceError:
             self._last_error_class = "contract"
@@ -408,7 +419,11 @@ class OpenAIResponsesSceneUnderstandingInference:
             "will independently establish metric localization and geometry from masks, depth, and calibration. "
             "Therefore never emit an ambiguity merely because RGB alone cannot estimate metric or geometric "
             "quantities. If a visible semantic claim is ambiguous, use only one of the schema's canonical "
-            "semantic ambiguity codes instead of guessing."
+            "semantic ambiguity codes instead of guessing. Inspect the entire image, including simple geometric "
+            "objects such as cubes and blocks, and enumerate each visibly distinct object with its apparent color "
+            "and relative position. Do not return empty entities just because the scene is simple or the objects "
+            "are not household items. If no entity can be identified confidently, return the appropriate semantic "
+            "ambiguity rather than a clean empty result."
         )
 
     @staticmethod
@@ -421,8 +436,8 @@ class OpenAIResponsesSceneUnderstandingInference:
                 "calibration_ref": request.get("calibration_ref"),
                 "artifact_refs": request.get("artifacts"),
                 "task": (
-                    "Identify visible entities, their count and appearance, and their relative "
-                    "spatial layout from the supplied RGB image."
+                    "Inspect the full RGB image and identify each visible object, including simple colored "
+                    "geometric blocks or cubes; report its color, count, and relative left-to-right layout."
                 ),
             },
             ensure_ascii=False,

@@ -94,8 +94,10 @@ def test_responses_provider_builds_structured_image_request_and_projects_result(
     assert client_options["max_retries"] == 0
     prompt = json.loads(payload["input"][0]["content"][0]["text"])
     assert "desktop" not in prompt["task"].lower()
-    assert "visible entities" in prompt["task"]
-    assert "relative spatial layout" in prompt["task"]
+    assert "geometric blocks or cubes" in prompt["task"]
+    assert "left-to-right layout" in prompt["task"]
+    assert "simple geometric objects" in payload["instructions"]
+    assert "not household items" in payload["instructions"]
     image = payload["input"][0]["content"][1]
     assert image["type"] == "input_image"
     assert image["image_url"] == "data:image/png;base64," + base64.b64encode(b"rgb-bytes").decode()
@@ -143,6 +145,38 @@ def test_provider_binds_empty_semantic_provenance_to_current_rgb(monkeypatch):
     )
     result = inference.infer(REQUEST)
     assert result["entities"][0]["provenance"] == REQUEST["artifacts"]
+
+
+def test_empty_scene_claims_are_projected_as_uncertain_without_inventing_entities(monkeypatch):
+    monkeypatch.setenv("CUSTOM_API_KEY", "test-key")
+
+    class EmptySceneResponse(Response):
+        output_text = json.dumps(
+            {"entities": [], "relations": [], "spatial_envelopes": [], "ambiguities": []}
+        )
+
+    class EmptySceneClient(Client):
+        def __init__(self):
+            super().__init__()
+            self.responses.create = lambda **kwargs: EmptySceneResponse()
+
+    inference = OpenAIResponsesSceneUnderstandingInference(
+        Resolver(), client_factory=lambda **kwargs: EmptySceneClient()
+    )
+
+    result = inference.infer(REQUEST)
+
+    assert result["entities"] == []
+    assert result["ambiguities"] == [
+        {
+            "code": "entity_count_uncertain",
+            "message": (
+                "No entities were returned; verify whether visible objects were missed "
+                "or whether the image contains no identifiable entities."
+            ),
+            "entity_refs": [],
+        }
+    ]
 
 
 @pytest.mark.asyncio

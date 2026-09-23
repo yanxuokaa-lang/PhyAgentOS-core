@@ -285,3 +285,8 @@
   availability in the `scene.understand` context; unavailable providers remain fail-closed.
 - [sense] [feat] Provider-neutral `scene.observe` Query contract, endpoint interface,
   no-motion Fake Gateway transport, and PAOS ForgeToolClient conformance tests.
+## v2.6.20 (2026-09-24) - codex
+
+- [sense] [fix] [completed] Treat an empty OpenAI scene-understanding result with no ambiguity as `entity_count_uncertain`; explicitly inspect colored geometric blocks and preserve the existing available/ambiguity contract.
+- [sense] [fix] [完成] OpenAI 场景理解返回空实体且无歧义时标记为 `entity_count_uncertain`；明确检查彩色几何积木，并保持现有 available/ambiguity 契约。
+- Adapter and persistent Node version: `0.7.1`.

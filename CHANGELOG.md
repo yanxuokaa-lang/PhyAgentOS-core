@@ -18,6 +18,18 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v11.5.6 (2026-09-24 05:20) - codex
+
+- [sense] [fix] [完成] OpenAI 场景理解加强彩色几何积木检查；空实体且无歧义时投影 `entity_count_uncertain`，不虚构实体。(local)
+- [Sense] [Fix] [Completed] OpenAI scene understanding now checks colored geometric blocks; empty entities with no ambiguity become `entity_count_uncertain` without fabricated entities. (local)
+- [agent] [fix] [完成] 模型 turn timeout/error 在无未终态 Action/Session 时由 Coordinator 收敛为 `failed`；未决物理执行继续保留对账。(local)
+- [Agent] [Fix] [Completed] Model turn timeout/error now settles to `failed` through the Coordinator when no non-terminal Action/Session exists; unresolved physical execution remains subject to reconciliation. (local)
+- [tests] [feat] [完成] Core `581 passed`、Skill `347 passed`、Adapter `14 passed`；Node `0.7.1`、Skill `2.6.20` 已构建安装并锁定校验。(local)
+- [Tests] [Feat] [Completed] Core `581 passed`, Skill `347 passed`, Adapter `14 passed`; Node `0.7.1` and Skill `2.6.20` were built, installed, and lock-verified. (local)
+- 运行时新任务在旧代码安装期间于 discovery provider timeout，零 Query/Action，已取消；完整 RGB 三方块与视频验收仍待修复代码下重新运行。(local)
+- A fresh runtime task timed out during discovery while the old code was installed, with zero Queries/Actions, and was cancelled; full RGB three-block and video acceptance remains pending for a post-fix run. (local)
+- Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md).
+
 ## v11.5.5 (2026-09-24 04:13) - codex
 
 - [agent] [fix] [完成] `forge_tool_api.py:L32-L52,L145-L161,L211-L253,L651-L681` 将标准 follow-up scene identity/provenance 字段从当前 revision 最新有效 `scene.observe` 收据自动投影；agent literal 与可选来源映射不能覆盖这些字段。(local)
@@ -73,24 +85,6 @@
 
 - Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md). The pre-fix live task stopped before planning and produced zero Actions; RGB physical acceptance remains pending.
 - Implementation commit: `0932ca5` on `feature/planning-loop`.
-
-## v11.5.1 (2026-09-24 10:30) - codex
-
-- [agent] [fix] [完成] `prompt_context.py:L719-L734` 将最新和历史 `forge_task_*` lifecycle 响应纳入已有 bounded reference projection，避免完整 AgentTask/ToolSpec 重复进入 discovery prompt。(local)
-- [Agent] [Fix] [Completed] `prompt_context.py:L719-L734` routes latest and historical `forge_task_*` lifecycle responses through the existing bounded reference projection, preventing full AgentTask/ToolSpec payloads from repeating in discovery prompts. (local)
-- [tests] [feat] [完成] `test_prompt_context.py:L136-L169` 验证 task/status/revision/plan/invocation/destination 引用保留及 schema/SkillUse 裁减；Core `558 passed`，Prompt Context `26 passed`。(local)
-- [Tests] [Feat] [Completed] `test_prompt_context.py:L136-L169` verifies task/status/revision/plan/invocation/destination retention and schema/SkillUse compaction; Core passed `558`, Prompt Context passed `26`. (local)
-
-```diff
-- name == "forge_task_get"
-+ name.startswith("forge_task_")
-+ assert result["task_id"] == "task-rgb" and result["status"] == "executing"
-+ assert result["plan_graph_ref"] and result["invocation_id"]
-+ assert "input_schema" not in content
-```
-
-- Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md). Live RGB acceptance remains pending until verifier success and video evidence.
-- Commit: `eee2a2a` on `feature/planning-loop`.
 
 ## v11.5.0 (2026-09-24 10:10) - codex
 

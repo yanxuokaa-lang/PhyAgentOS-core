@@ -894,6 +894,40 @@ def test_record_skill_use_is_idempotent_for_same_node_decision(tmp_path):
     assert current.active_revision.skill_use_ids == (first.use_id, distinct.use_id)
 
 
+def test_model_failure_settlement_closes_task_without_unresolved_execution(tmp_path):
+    coordinator, task = setup_task(tmp_path)
+
+    result = coordinator.fail_task(task.task_id, reason="agent model/control-plane failure: turn_timeout")
+
+    assert result.status is AgentTaskStatus.FAILED
+    assert result.terminal
+    assert result.evidence_errors[-1].endswith("turn_timeout")
+    assert coordinator.get_task(task.task_id).status is AgentTaskStatus.FAILED
+
+
+def test_model_failure_settlement_does_not_bypass_unresolved_action(tmp_path):
+    coordinator, task = setup_task(tmp_path)
+    coordinator.store.update(
+        task.task_id,
+        lambda current: current.active_revision.execution_records.append(
+            ToolExecutionRecord(
+                record_id="execution-pending",
+                revision_id=current.active_revision_id,
+                tool_id="object.place",
+                semantics="action",
+                caller_id="agent",
+                status="accepted",
+                invocation_id="invocation-pending",
+            )
+        ),
+        event_type="test_pending_action",
+    )
+
+    with pytest.raises(AgentTaskError, match="non-terminal"):
+        coordinator.fail_task(task.task_id, reason="agent model/control-plane failure: turn_timeout")
+    assert coordinator.get_task(task.task_id).status is AgentTaskStatus.EXECUTING
+
+
 def test_record_skill_use_is_atomic_across_store_instances(tmp_path):
     c, task = setup_task(tmp_path)
     peer = AgentTaskCoordinator(

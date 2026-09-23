@@ -1586,6 +1586,26 @@ class AgentLoop:
         final_content = run_result.content
         if final_content is None:
             final_content = "I've completed processing but have no response to give."
+        failure_code = run_result.turn_failure_code or run_result.model_failure_code
+        if failure_code is not None and self.forge_task_coordinator is not None:
+            failed_task = self._task_for_session(key, include_terminal=False)
+            if failed_task is not None:
+                try:
+                    self.forge_task_coordinator.fail_task(
+                        failed_task.task_id,
+                        reason=(
+                            f"agent model/control-plane failure: {failure_code}; "
+                            "no new tool call was authorized"
+                        ),
+                    )
+                except AgentTaskError:
+                    # An unresolved Action/Session keeps physical reconciliation
+                    # authoritative; the task remains recoverable for polling.
+                    logger.warning(
+                        "Could not terminally settle AgentTask %s after model failure; "
+                        "physical reconciliation remains required",
+                        failed_task.task_id,
+                    )
         self._save_turn(session, run_result.messages, 1 + len(history))
         self.sessions.save(session)
         await self.memory_consolidator.maybe_consolidate_by_tokens(session)

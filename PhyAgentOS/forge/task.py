@@ -2026,6 +2026,49 @@ class AgentTaskCoordinator:
         self._schedule_experience(result)
         return result
 
+    def fail_task(self, task_id: str, *, reason: str) -> AgentTaskRecord:
+        """Persist a model/control-plane failure when no physical execution is unresolved.
+
+        A provider timeout can happen after ``forge_task_create`` but before the
+        long-horizon runner gets a chance to start.  Leaving that task as
+        ``executing`` makes the global task slot look owned forever.  This
+        transition is deliberately Coordinator-owned and refuses to cross an
+        unresolved Action/Session boundary, where physical reconciliation still
+        has authority.
+        """
+        reason = reason.strip()
+        if not reason:
+            raise AgentTaskError("task failure reason must be non-empty")
+        task = self.store.get(task_id)
+        if task.terminal:
+            return task
+        if has_unsettled_owned_execution(task):
+            raise AgentTaskError(
+                "cannot fail AgentTask while task-owned Action/Session invocation is non-terminal"
+            )
+
+        def mutate(current: AgentTaskRecord) -> None:
+            if current.terminal:
+                return
+            if has_unsettled_owned_execution(current):
+                raise AgentTaskError(
+                    "cannot fail AgentTask while task-owned Action/Session invocation is non-terminal"
+                )
+            current.status = AgentTaskStatus.FAILED
+            current.pause_requested = False
+            current.replan_deadline = None
+            current.replan_extension_used = False
+            current.evidence_errors.append(reason)
+
+        result = self.store.update(
+            task_id,
+            mutate,
+            event_type="task_failed_control_plane",
+            payload={"reason": reason},
+        )
+        self._schedule_experience(result)
+        return result
+
     def request_clarification(
         self,
         task_id: str,
