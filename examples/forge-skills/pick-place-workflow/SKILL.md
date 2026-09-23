@@ -253,9 +253,11 @@ Gateway result is terminal. It is execution evidence, not a replacement for
 `AgentTask finalize` or the generic verification contract.
 
 Use `object.place` only after `object.acquire` is terminal with `status: succeeded`.
-Pass the same observation, scene, frame, calibration, candidate-set, preparation,
-candidate, and entity references, plus the acquire invocation reference and an
-opaque `destination_ref`, unchanged into the place Action. A destination reference
+Pass the acquire observation, frame, calibration, candidate-set, preparation,
+candidate, and entity references unchanged, plus the acquire invocation reference
+and an opaque `destination_ref`. The `scene_revision` field names the current
+Runtime execution scene after acquire; the provenance URIs remain bound to the
+scene in which the route was prepared. A destination reference
 does not expose coordinates, simulator fields, or controller parameters; its
 meaning is resolved by the Gateway profile. Transport, descent, release, and
 retreat are internal bounded phases. Reconcile the place invocation through the

@@ -78,6 +78,20 @@ def _active_graph_completed(task: Any) -> bool:
     return bool(nodes) and all(
         settlements.get(getattr(node, "node_id", None)) == "completed" for node in nodes
     )
+
+
+def _has_reconcilable_action(task: Any) -> bool:
+    """Keep read-only recovery available for a persisted uncertain invocation."""
+    settled_statuses = {"succeeded", "failed", "cancelled", "stopped"}
+    return any(
+        getattr(record, "semantics", None) == "action"
+        and isinstance(getattr(record, "invocation_id", None), str)
+        and bool(record.invocation_id)
+        and getattr(record, "status", None) not in settled_statuses
+        for record in getattr(task, "execution_records", ())
+    )
+
+
 _ACTION_RECONCILIATION = {
     "forge_tool_action_status",
     "forge_tool_action_result",
@@ -230,6 +244,8 @@ def visible_tool_names(all_names: Iterable[str], task: Any | None) -> tuple[str,
     status = _task_status(task)
     if getattr(task, "terminal", False):
         allowed = generic | {"forge_task_create", "forge_task_get", "forge_tool_context"}
+        if _has_reconcilable_action(task):
+            allowed |= {"forge_tool_action_status", "forge_tool_action_result"}
         return tuple(name for name in names if name in allowed)
 
     if (

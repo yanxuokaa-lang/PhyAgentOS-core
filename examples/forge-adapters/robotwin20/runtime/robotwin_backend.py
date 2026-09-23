@@ -101,7 +101,8 @@ def load_runtime_profile(path: Path) -> dict[str, Any]:
     except (OSError, UnicodeError, profile_yaml.YAMLError) as exc:
         raise RoboTwinRuntimeError("runtime profile could not be loaded") from exc
     required = {
-        "schema_version", "task_name", "task_config", "embodiment", "sensor_ref", "seed",
+        "schema_version", "task_name", "task_config", "embodiment", "sensor_ref",
+        "max_observation_age_ms", "seed",
         "robot_identity", "gripper_identity", "embodiment_topology", "planner_profile",
     }
     if not isinstance(value, Mapping) or set(value) != required:
@@ -119,6 +120,8 @@ def load_runtime_profile(path: Path) -> dict[str, Any]:
         or not _IDENTIFIER.fullmatch(value["task_config"])
         or not isinstance(value["sensor_ref"], str)
         or value["sensor_ref"] not in _CAMERA_REFS
+        or type(value["max_observation_age_ms"]) is not int
+        or value["max_observation_age_ms"] < 1
         or not isinstance(value["seed"], int)
         or isinstance(value["seed"], bool)
     ):

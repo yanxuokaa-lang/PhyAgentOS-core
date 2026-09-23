@@ -3,6 +3,7 @@ task_name: blocks_ranking_rgb
 task_config: demo_clean
 embodiment: [franka-panda, franka-panda, 0.8]
 sensor_ref: camera/head
+max_observation_age_ms: 1000
 seed: 0
 
 # Adapter-owned identity used to bind independent readiness evidence.

@@ -68,9 +68,11 @@ and hold remain Gateway-internal phases. A terminal result contains only the
 redacted `capability_outcome_summary_v1`, not provider or simulator payloads.
 
 `object.place` is a separate bounded physical-effect Action. It consumes a
-terminal successful acquire invocation, the same immutable scene/candidate
-bindings, and an opaque `destination_ref`; transport, descent, release, and
-retreat remain Gateway-internal. Its terminal summary adds typed
+terminal successful acquire invocation, the same immutable candidate/preparation
+lineage, the current Runtime execution scene, and an opaque `destination_ref`;
+transport, descent, release, and retreat remain Gateway-internal. The provenance
+URIs remain bound to the acquire preparation scene; `scene_revision` is the
+current scene validated by Runtime before the held route continues. Its terminal summary adds typed
 `post_release_evidence` for downstream verification, without exposing
 coordinates, simulator parameters, or controller details.
 

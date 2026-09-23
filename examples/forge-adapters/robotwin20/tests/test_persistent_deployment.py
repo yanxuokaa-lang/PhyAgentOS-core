@@ -146,13 +146,19 @@ def test_runtime_bundle_registers_persistent_tools_behind_one_transport(tmp_path
         understanding_provider=object(),
         grasp_provider=object(),
         tool_context_provider=lambda tool_id: {"ready": True, "tool_id": tool_id},
+        tool_input_defaults={
+            "scene.observe": {"sensor_ref": "camera/head", "max_age_ms": 1000}
+        },
     )
     assert bundle.client_transport() is bundle.transport
-    assert {item["tool_id"] for item in bundle.runtime.list_tools()["tools"]} == {
+    tools = {item["tool_id"]: item for item in bundle.runtime.list_tools()["tools"]}
+    assert set(tools) == {
         "scene.observe", "manipulation.capabilities", "scene.understand",
         "grasp.propose", "manipulation.prepare", "object.acquire", "object.place",
         "scene.bind", "task.goal", "manipulation.target",
     }
+    assert tools["scene.observe"]["input_schema"]["properties"]["sensor_ref"]["default"] == "camera/head"
+    assert tools["scene.observe"]["input_schema"]["properties"]["max_age_ms"]["default"] == 1000
     task_goal = next(
         item for item in bundle.runtime.list_tools()["tools"]
         if item["tool_id"] == "task.goal"

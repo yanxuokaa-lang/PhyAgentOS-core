@@ -11,6 +11,7 @@ from pick_place_workflow.object_place import (
     PLACE_TOOL_SPEC,
     ObjectPlaceEndpoint,
     PlaceSnapshot,
+    validate_arguments,
 )
 
 _FORBIDDEN_TOKENS = (
@@ -134,6 +135,19 @@ def test_place_spec_is_strict_provider_neutral_and_keeps_phases_internal():
     assert not {"transport", "descent", "release", "retreat"} & set(input_schema["properties"])
     blob = repr(PLACE_TOOL_SPEC).lower()
     assert not any(token in blob for token in _FORBIDDEN_TOKENS)
+
+
+def test_place_keeps_acquire_provenance_when_runtime_scene_has_advanced():
+    payload = request_payload(
+        scene_revision="scene-8",
+        # The route was prepared on scene-7; scene-8 is the current Runtime
+        # execution scene after acquire lifted the object.
+        observation_ref="observation://scene-7/camera_front",
+        candidate_set_ref="candidate-set://scene-7/camera_front",
+        preparation_ref="preparation://scene-7/camera_front",
+    )
+
+    assert validate_arguments(payload) is None
 
 
 def test_contract_yaml_matches_the_published_tool_spec():

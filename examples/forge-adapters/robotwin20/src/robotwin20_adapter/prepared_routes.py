@@ -66,7 +66,14 @@ class PreparedRoutes:
         prepared = self._routes[key]
         if prepared["approval_ref"] is None:
             raise ValueError("prepared geometry has no execution approval")
-        for field in ("observation_ref", "scene_revision", "frame_id", "calibration_ref", "entity_ref", "candidate_set_ref", "assignment_ref", "capability_snapshot_ref"):
+        # Place runs after acquire has advanced the Runtime execution scene.
+        # Keep the original observation/candidate/preparation lineage bound to
+        # the prepared route, while accepting the current scene revision that
+        # the Runtime will validate before continuing the held route.
+        provenance_fields = ("observation_ref", "frame_id", "calibration_ref", "entity_ref", "candidate_set_ref", "assignment_ref", "capability_snapshot_ref")
+        if phase == "acquire":
+            provenance_fields = (*provenance_fields, "scene_revision")
+        for field in provenance_fields:
             if arguments.get(field) != prepared.get(field):
                 raise ValueError(f"Action changed preparation provenance: {field}")
         current = self.client.query("snapshot", {})

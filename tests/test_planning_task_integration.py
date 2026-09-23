@@ -38,11 +38,13 @@ class _Client:
 class _QueryClient:
     def __init__(self):
         self.timeout_ms = None
+        self.arguments = None
 
     async def invoke_query_tool(
         self, tool_id, arguments, *, caller_id=None, timeout_ms=None
     ):
         self.timeout_ms = timeout_ms
+        self.arguments = dict(arguments)
         return {"ok": True, "data": {"status": "available"}}
 
 
@@ -200,6 +202,82 @@ async def test_bound_query_timeout_cannot_be_shorter_than_tool_spec_default(tmp_
     )
 
     assert client.timeout_ms == 180_000
+    assert client.arguments == {}
+
+
+@pytest.mark.asyncio
+async def test_bound_query_fills_missing_arguments_from_frozen_tool_schema(tmp_path):
+    client = _QueryClient()
+    coordinator = AgentTaskCoordinator(
+        workspace=tmp_path, config=ForgeConfig(), client=client
+    )
+    task = coordinator.create_task(
+        task_description="observe with runtime-owned profile defaults",
+        verification=TaskVerificationContract(mode="off"),
+    )
+
+    async def require_tool(task_id, tool_id, semantics):
+        assert task_id == task.task_id
+        assert (tool_id, semantics) == ("scene.observe", "query")
+        return BoundToolSpec(
+            tool_id=tool_id,
+            semantics=semantics,
+            spec_sha256="4" * 64,
+            ready_at_binding=True,
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "sensor_ref": {"type": "string", "default": "camera/head"},
+                    "max_age_ms": {"type": "integer", "default": 1000},
+                    "requested_frame": {"type": "string"},
+                },
+                "required": ["sensor_ref", "max_age_ms"],
+                "additionalProperties": False,
+            },
+        )
+
+    coordinator._require_binding_tool = require_tool
+    await coordinator.invoke_query(task.task_id, "scene.observe", {})
+
+    assert client.arguments == {"sensor_ref": "camera/head", "max_age_ms": 1000}
+    record = coordinator.get_task(task.task_id).execution_records[-1]
+    assert record.arguments == client.arguments
+
+
+@pytest.mark.asyncio
+async def test_bound_query_explicit_arguments_override_frozen_defaults(tmp_path):
+    client = _QueryClient()
+    coordinator = AgentTaskCoordinator(
+        workspace=tmp_path, config=ForgeConfig(), client=client
+    )
+    task = coordinator.create_task(
+        task_description="preserve explicit observation arguments",
+        verification=TaskVerificationContract(mode="off"),
+    )
+
+    async def require_tool(_task_id, tool_id, semantics):
+        return BoundToolSpec(
+            tool_id=tool_id,
+            semantics=semantics,
+            spec_sha256="4" * 64,
+            ready_at_binding=True,
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "sensor_ref": {"type": "string", "default": "camera/head"},
+                    "max_age_ms": {"type": "integer", "default": 1000},
+                },
+            },
+        )
+
+    coordinator._require_binding_tool = require_tool
+    await coordinator.invoke_query(
+        task.task_id,
+        "scene.observe",
+        {"sensor_ref": "camera/front", "max_age_ms": 2000},
+    )
+
+    assert client.arguments == {"sensor_ref": "camera/front", "max_age_ms": 2000}
 
 
 def test_terminal_planning_query_failure_enters_replan_without_motion(tmp_path):

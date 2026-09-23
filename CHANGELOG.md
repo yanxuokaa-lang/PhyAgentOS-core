@@ -18,6 +18,26 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v11.5.3 (2026-09-24 02:52) - codex
+
+- [agent] [fix] [完成] 将 profile 的 scene.observe 默认值放入冻结 ToolSpec，由 Coordinator 只补 task-bound Query 缺失字段并审计最终参数；Action 不接收 Query defaults。(local)
+- [Agent] [Fix] [Completed] Carry profile scene.observe defaults in the frozen ToolSpec; the Coordinator fills only missing task-bound Query fields and audits effective arguments, while Actions receive no Query defaults. (local)
+- [agent] [fix] [完成] terminal task 仅对同任务仍 unresolved 的 Action invocation 暴露 status/result；Coordinator 保存迟到响应，只在 Gateway 确定终态时释放 invocation 与 Runtime binding，任务维持原 terminal 状态。(local)
+- [Agent] [Fix] [Completed] Expose status/result only for unresolved Action invocations owned by the same terminal task; persist late responses and release invocation/Runtime binding only after a known Gateway terminal result, while preserving task terminality. (local)
+- [eval] [test] [完成] AgentLoop/Core 专项连续三轮各 `105 passed`；Core `572 passed`、Skill `347 passed`、RobotWin Adapter `643 passed, 1 skipped`；Ruff、compileall、diff 检查通过。均为无运动测试。(local)
+- [Eval] [Test] [Completed] AgentLoop/Core focused tests passed `105` in each of three runs; Core passed `572`, Skill `347`, and RobotWin Adapter `643 passed, 1 skipped`; Ruff, compileall, and diff checks passed. All were no-motion tests. (local)
+- Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md). Physical RGB acceptance remains pending.
+
+```diff
+# prompt_context.py: terminal failed task with unknown invocation
++ expose forge_tool_action_status/result for that recorded invocation
+- hide all reconciliation tools after task terminality
+
+# forge/task.py: late Gateway result
+- if task.terminal: return
++ persist the same invocation response; release Runtime ownership only on known terminal status
+```
+
 ## v11.5.2 (2026-09-24 02:38) - codex
 
 - [agent] [fix] [完成] `forge_tool_query` 从 Coordinator 持有的同任务当前 revision 最新成功 Query 记录按精确路径复制字段；scene.understand 可从 observation 记录带入场景/frame/calibration/freshness/artifact refs，最终参数仍由 Coordinator/Gateway 校验。(local)
@@ -67,6 +87,8 @@
 - [Tests] [Feat] [Completed] `test_prompt_context.py:L136-L155` covers compaction of oversized task records; Prompt/planning `117 passed`, Core `555 passed`. (local)
 - Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md). Live RGB acceptance remains pending because the provider timed out before Action execution.
 
+## Historical Entries
+
 ## v11.4.14 (2026-09-24 08:35) - codex
 
 - [agent] [fix] [完成] `planning_loop.py:L592-L625` 读取已有 `ForgeConfig.poll_interval_s` 进行 Action invocation 对账，避免零间隔耗尽轮询预算；不重发 Action、不伪造成功。(local)
@@ -74,8 +96,6 @@
 - [tests] [feat] [完成] `test_planning_effect_recovery.py:L368-L393` 覆盖 pending 到 terminal、同一 invocation 和单次 Action；专项 `76 passed`，Core `554 passed`。(local)
 - [Tests] [Feat] [Completed] `test_planning_effect_recovery.py:L368-L393` covers pending-to-terminal settlement, the same invocation, and one Action start; focused tests `76 passed`, Core `554 passed`. (local)
 - Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md). Live three-block acceptance remains pending until a task reaches three successful placements, verifier success, and video evidence.
-
-## Historical Entries
 
 ## v11.4.11 (2026-09-23 22:13) - codex
 

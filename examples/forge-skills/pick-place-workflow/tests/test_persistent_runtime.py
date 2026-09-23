@@ -78,11 +78,19 @@ def test_composition_registers_all_seven_required_tools():
         preparation_provider=provider, capability_provider=provider,
         resolve_preparation=lambda phase, request: request,
         tool_context_provider=lambda tool_id: {"ready": False, "binding_error": "not started"},
+        tool_input_defaults={
+            "scene.observe": {"sensor_ref": "camera/head", "max_age_ms": 1000}
+        },
     )
-    assert {tool["tool_id"] for tool in runtime.list_tools()["tools"]} == {
+    tools = {tool["tool_id"]: tool for tool in runtime.list_tools()["tools"]}
+    assert set(tools) == {
         "scene.observe", "scene.understand", "grasp.propose", "manipulation.capabilities",
         "manipulation.prepare", "object.acquire", "object.place",
     }
+    observe_schema = tools["scene.observe"]["input_schema"]
+    assert observe_schema["properties"]["sensor_ref"]["default"] == "camera/head"
+    assert observe_schema["properties"]["max_age_ms"]["default"] == 1000
+    assert observe_schema["required"] == ["sensor_ref", "max_age_ms"]
     for tool in runtime.list_tools()["tools"]:
         capabilities = project_tool_spec(tool).capabilities
         if tool["tool_id"] == "scene.observe":
@@ -97,6 +105,11 @@ def test_composition_registers_all_seven_required_tools():
     )
     assert prepare["default_timeout_ms"] == 360_000
     assert all(runtime.get_context(tool["tool_id"])["ready"] is False for tool in runtime.list_tools()["tools"])
+
+
+def test_tool_defaults_must_target_declared_input_fields():
+    with pytest.raises(ValueError, match="declared input fields"):
+        _spec(ACQUIRE_TOOL_SPEC, argument_defaults={"sensor_ref": "camera/head"})
 
 
 def test_unknown_place_cannot_produce_semantic_completion_evidence():

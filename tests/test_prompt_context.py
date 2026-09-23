@@ -387,6 +387,35 @@ def test_visible_forge_tools_follow_task_phase() -> None:
     assert AgentPromptContextManager.phase(waiting) == "waiting_for_user"
 
 
+def test_terminal_task_exposes_only_reconciliation_for_unknown_action_invocation() -> None:
+    names = (
+        "forge_task_create",
+        "forge_task_get",
+        "forge_tool_context",
+        "forge_tool_start_action",
+        "forge_tool_action_status",
+        "forge_tool_action_result",
+        "forge_tool_cancel_action",
+    )
+    unknown = SimpleNamespace(
+        semantics="action", status="unknown", invocation_id="invocation://place/1"
+    )
+    visible = set(visible_tool_names(names, _task(status="failed", records=(unknown,))))
+
+    assert {"forge_tool_action_status", "forge_tool_action_result"} <= visible
+    assert "forge_tool_start_action" not in visible
+    assert "forge_tool_cancel_action" not in visible
+
+    settled = SimpleNamespace(
+        semantics="action", status="succeeded", invocation_id="invocation://place/1"
+    )
+    settled_visible = set(
+        visible_tool_names(names, _task(status="failed", records=(settled,)))
+    )
+    assert "forge_tool_action_status" not in settled_visible
+    assert "forge_tool_action_result" not in settled_visible
+
+
 def test_finalize_tool_returns_recoverable_structured_error() -> None:
     class Coordinator:
         async def finalize_task(self, task_id: str):

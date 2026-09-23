@@ -2,7 +2,6 @@ import json
 from copy import deepcopy
 
 import pytest
-
 from PhyAgentOS.forge.manipulation import arm_assignment_digest
 from test_route_readiness import _request
 
@@ -45,6 +44,10 @@ def test_place_retains_source_geometry_but_requires_current_acquisition(tmp_path
     assert resolved["scene_revision"] == "after-acquire"
     assert resolved["route_request"]["scene_revision"] == route["scene_revision"]
     assert resolved["calibration_ref"] == source["calibration_ref"]
+    current_scene_place = {**place, "scene_revision": "after-acquire"}
+    resolved_current_scene = routes("place", current_scene_place)
+    assert resolved_current_scene["scene_revision"] == "after-acquire"
+    assert resolved_current_scene["observation_ref"] == source["observation_ref"]
     with pytest.raises(ValueError, match="destination"):
         routes("place", {**place, "destination_ref": "destination://other"})
     with pytest.raises(ValueError, match="acquisition"):

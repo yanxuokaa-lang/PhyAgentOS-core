@@ -2162,14 +2162,34 @@ class AgentTaskCoordinator:
         planning_binding: PlanningExecutionBinding | dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         tool = await self._require_binding_tool(task_id, tool_id, "query")
+        effective_arguments = deepcopy(arguments)
+        properties = (
+            tool.input_schema.get("properties", {})
+            if isinstance(tool.input_schema, Mapping)
+            else {}
+        )
+        if isinstance(properties, Mapping):
+            for name, definition in properties.items():
+                if (
+                    isinstance(name, str)
+                    and name not in effective_arguments
+                    and isinstance(definition, Mapping)
+                    and "default" in definition
+                ):
+                    effective_arguments[name] = deepcopy(definition["default"])
         if tool.default_timeout_ms is not None:
             timeout_ms = max(timeout_ms or 0, tool.default_timeout_ms)
         record_id, caller = self._append_execution(
-            task_id, tool_id, "query", arguments, tool=tool, planning_binding=planning_binding
+            task_id,
+            tool_id,
+            "query",
+            effective_arguments,
+            tool=tool,
+            planning_binding=planning_binding,
         )
         try:
             response = await self.client.invoke_query_tool(
-                tool_id, arguments, caller_id=caller, timeout_ms=timeout_ms
+                tool_id, effective_arguments, caller_id=caller, timeout_ms=timeout_ms
             )
         except Exception as exc:
             self._finish_execution(
@@ -2299,8 +2319,6 @@ class AgentTaskCoordinator:
     ) -> None:
         task = self.store.get(task_id)
         record = _owned_execution(task, invocation_id, semantics="action")
-        if task.terminal:
-            return
         observed_status = _tool_status(response, default=record.status)
         status = (
             record.status
@@ -2323,6 +2341,31 @@ class AgentTaskCoordinator:
             and self.runtime_invocation_ids is not None
         ):
             self.runtime_invocation_ids.discard(invocation_id)
+        if reconcile_settlement:
+            self._release_terminal_runtime_binding_if_reconciled(
+                self.store.get(task_id)
+            )
+
+    def _release_terminal_runtime_binding_if_reconciled(
+        self, task: AgentTaskRecord
+    ) -> None:
+        if (
+            not task.terminal
+            or self.runtime_task_binding_ids is None
+            or (task.primary_skill_binding is None and task.runtime_binding is None)
+            or any(
+                item.semantics in {"action", "session"}
+                and (not item.terminal or item.status == "unknown")
+                for item in task.execution_records
+            )
+        ):
+            return
+        binding_id = (
+            task.primary_skill_binding.binding_id
+            if task.primary_skill_binding is not None
+            else task.runtime_binding.binding_id
+        )
+        self.runtime_task_binding_ids.discard(binding_id)
 
     def mark_execution_unknown(
         self, task_id: str, record_id: str, *, code: str, message: str
@@ -3175,21 +3218,7 @@ class AgentTaskCoordinator:
         )
 
     def _schedule_experience(self, task: AgentTaskRecord) -> None:
-        if (
-            task.terminal
-            and (task.primary_skill_binding is not None or task.runtime_binding is not None)
-            and self.runtime_task_binding_ids is not None
-            and not any(
-                item.semantics in {"action", "session"} and item.status == "unknown"
-                for item in task.execution_records
-            )
-        ):
-            binding_id = (
-                task.primary_skill_binding.binding_id
-                if task.primary_skill_binding is not None
-                else task.runtime_binding.binding_id
-            )
-            self.runtime_task_binding_ids.discard(binding_id)
+        self._release_terminal_runtime_binding_if_reconciled(task)
         if self.experience is not None:
             self.experience.schedule_forge_completion(task.task_id)
 

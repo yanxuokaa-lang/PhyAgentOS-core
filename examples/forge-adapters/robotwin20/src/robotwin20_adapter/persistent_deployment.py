@@ -3,7 +3,7 @@
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 
 import yaml
 from PhyAgentOS.forge.capability_runtime import CapabilityRuntime, CapabilityRuntimeTransport
@@ -101,6 +101,7 @@ def build_persistent_runtime_bundle(
     understanding_provider: Any,
     grasp_provider: Any,
     tool_context_provider: Callable[[str], dict[str, Any]],
+    tool_input_defaults: Mapping[str, Mapping[str, Any]] | None = None,
     gateway_identity: str = "robotwin20-persistent-runtime",
 ) -> PersistentRuntimeBundle:
     """Compose the persistent providers behind one provider-neutral transport.
@@ -124,6 +125,7 @@ def build_persistent_runtime_bundle(
         capability_provider=deployment.capability_provider,
         resolve_preparation=deployment.prepared_routes,
         tool_context_provider=tool_context_provider,
+        tool_input_defaults=tool_input_defaults,
         query_decorator=(lambda tool_id, endpoint: RememberObservation(endpoint, deployment.grounding, tool_id)
                          if tool_id in {"scene.observe", "scene.understand"} else endpoint)
         if deployment.grounding is not None else None,

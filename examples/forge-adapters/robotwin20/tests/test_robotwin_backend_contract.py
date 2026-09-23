@@ -56,6 +56,7 @@ task_name: blocks_ranking_rgb
 task_config: demo_clean
 embodiment: [franka-panda, franka-panda, 0.8]
 sensor_ref: camera/head
+max_observation_age_ms: 1000
 seed: 0
 robot_identity: franka-panda
 gripper_identity: panda-gripper
@@ -66,6 +67,8 @@ planner_profile: curobo
     )
     loaded = backend_module.load_runtime_profile(profile_path)
     assert loaded["embodiment"] == ("franka-panda", "franka-panda", 0.8)
+    assert loaded["sensor_ref"] == "camera/head"
+    assert loaded["max_observation_age_ms"] == 1000
 
 
 def test_runtime_profile_loader_rejects_topology_drift(tmp_path):
@@ -77,6 +80,7 @@ task_name: blocks_ranking_rgb
 task_config: demo_clean
 embodiment: [franka-panda, franka-panda, 0.8]
 sensor_ref: camera/head
+max_observation_age_ms: 1000
 seed: 0
 robot_identity: franka-panda
 gripper_identity: panda-gripper
@@ -86,6 +90,29 @@ planner_profile: curobo
         encoding="utf-8",
     )
     with pytest.raises(backend_module.RoboTwinRuntimeError, match="topology"):
+        backend_module.load_runtime_profile(profile_path)
+
+
+@pytest.mark.parametrize("age", [0, -1, True, 1.5])
+def test_runtime_profile_loader_rejects_invalid_observation_age(tmp_path, age):
+    profile_path = tmp_path / "profile.yaml"
+    profile_path.write_text(
+        f"""
+schema_version: paos-robotwin20-runtime-profile/v1
+task_name: blocks_ranking_rgb
+task_config: demo_clean
+embodiment: [franka-panda, franka-panda, 0.8]
+sensor_ref: camera/head
+max_observation_age_ms: {str(age).lower()}
+seed: 0
+robot_identity: franka-panda
+gripper_identity: panda-gripper
+embodiment_topology: two-single-arm
+planner_profile: curobo
+""",
+        encoding="utf-8",
+    )
+    with pytest.raises(backend_module.RoboTwinRuntimeError, match="task or sensor"):
         backend_module.load_runtime_profile(profile_path)
 
 

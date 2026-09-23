@@ -37,6 +37,12 @@ _FAILURE_OWNERS = (
 )
 _EVIDENCE_AVAILABILITY = ("complete", "partial", "none", "unknown")
 
+
+def _ref_scene_revision(reference: str, scheme: str) -> str:
+    """Return the scene component carried by a provenance URI."""
+    prefix = f"{scheme}://"
+    return reference.removeprefix(prefix).split("/", 1)[0]
+
 _INPUT_KEYS = {
     "observation_ref",
     "scene_revision",
@@ -316,7 +322,13 @@ def validate_arguments(arguments: Any) -> str | None:
         return "invalid_scene_revision"
     if not isinstance(frame_id, str) or not frame_id.strip():
         return "invalid_frame"
-    if observation_ref != f"observation://{scene_revision}/{frame_id}":
+    # ``scene_revision`` is the Runtime scene in which this placement is
+    # admitted.  The observation/candidate/preparation references are the
+    # immutable acquire provenance and may belong to the immediately preceding
+    # scene after the Runtime advances while the object is being held.  They
+    # must still agree with one another and retain the selected frame.
+    source_scene_revision = _ref_scene_revision(observation_ref, "observation")
+    if observation_ref != f"observation://{source_scene_revision}/{frame_id}":
         return "invalid_observation_binding"
     calibration_ref = arguments.get("calibration_ref")
     if not isinstance(calibration_ref, str) or not calibration_ref.strip():
@@ -331,12 +343,12 @@ def validate_arguments(arguments: Any) -> str | None:
         or _CANDIDATE_SET_REF.fullmatch(candidate_set_ref) is None
     ):
         return "invalid_candidate_set_ref"
-    if candidate_set_ref != f"candidate-set://{scene_revision}/{frame_id}":
+    if candidate_set_ref != f"candidate-set://{source_scene_revision}/{frame_id}":
         return "invalid_candidate_set_binding"
     preparation_ref = arguments.get("preparation_ref")
     if not isinstance(preparation_ref, str) or _PREPARATION_REF.fullmatch(preparation_ref) is None:
         return "invalid_preparation_ref"
-    if preparation_ref != f"preparation://{scene_revision}/{frame_id}":
+    if preparation_ref != f"preparation://{source_scene_revision}/{frame_id}":
         return "invalid_preparation_binding"
     candidate_ref = arguments.get("candidate_ref")
     if not isinstance(candidate_ref, str) or _CANDIDATE_REF.fullmatch(candidate_ref) is None:

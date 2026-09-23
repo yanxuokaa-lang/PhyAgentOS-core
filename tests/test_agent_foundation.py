@@ -1043,6 +1043,53 @@ def test_invocation_read_tools_settle_only_from_result(
     )
 
 
+@pytest.mark.parametrize(
+    ("gateway_status", "binding_retained"),
+    [("succeeded", False), ("unknown", True)],
+)
+def test_terminal_task_reconciles_original_unknown_action_without_reopening(
+    tmp_path, gateway_status, binding_retained
+):
+    async def exercise():
+        coordinator, task = setup_task(tmp_path)
+        invocation_id = "invocation://object-place/original"
+        coordinator.runtime_invocation_ids = {invocation_id}
+        coordinator.runtime_task_binding_ids = {"binding-test"}
+        coordinator.client = SimpleNamespace(
+            invocation_result=AsyncMock(return_value={"data": {"status": gateway_status}})
+        )
+
+        def add_unknown_action(current):
+            current.status = AgentTaskStatus.FAILED
+            current.active_revision.execution_records.append(ToolExecutionRecord(
+                record_id="action-record-1",
+                revision_id=current.active_revision_id,
+                tool_id="object.place",
+                semantics="action",
+                caller_id="paos:test",
+                status="unknown",
+                invocation_id=invocation_id,
+                error={"code": "action_poll_budget_exhausted"},
+            ))
+
+        coordinator.store.update(
+            task.task_id, add_unknown_action, event_type="test_unknown_action"
+        )
+        result = json.loads(await ForgeToolActionResultTool(
+            coordinator.client, coordinator
+        ).execute(task.task_id, invocation_id))
+
+        saved = coordinator.get_task(task.task_id)
+        record = saved.execution_records[-1]
+        assert result["data"]["status"] == gateway_status
+        assert saved.status == AgentTaskStatus.FAILED
+        assert record.status == gateway_status
+        assert (invocation_id in coordinator.runtime_invocation_ids) is binding_retained
+        assert ("binding-test" in coordinator.runtime_task_binding_ids) is binding_retained
+
+    asyncio.run(exercise())
+
+
 def test_discovery_receipt_can_materialize_without_task_get(tmp_path):
     class DiscoveryPlanner(ScriptedProvider):
         async def chat(self, **kwargs):

@@ -160,8 +160,14 @@ class _ProjectedDriver:
         self.driver.stop()
 
 
-def _spec(spec):
+def _spec(spec, *, argument_defaults=None):
     spec = deepcopy(spec)
+    if argument_defaults:
+        properties = spec.get("input_schema", {}).get("properties", {})
+        if not isinstance(properties, dict) or set(argument_defaults) - set(properties):
+            raise ValueError("Tool argument defaults must name declared input fields")
+        for name, value in argument_defaults.items():
+            properties[name]["default"] = deepcopy(value)
     action = spec["semantics"] == "action"
     planning = deepcopy(spec.get("planning", {}))
     planning.update({"schema_version": "paos-tool-spec-policy/v1",
@@ -265,7 +271,7 @@ class PersistentActionEndpoint:
 def build_persistent_runtime(*, client, understanding_provider, grasp_provider,
                              preparation_provider, capability_provider, resolve_preparation,
                              tool_context_provider, possession: PersistentPossession | None = None,
-                             query_decorator=None) -> CapabilityRuntime:
+                             query_decorator=None, tool_input_defaults=None) -> CapabilityRuntime:
     """Use injected model providers and one persistent manipulation process.
 
     resolve_preparation belongs to the adapter and supplies the approved route
@@ -285,8 +291,9 @@ def build_persistent_runtime(*, client, understanding_provider, grasp_provider,
         (ACQUIRE_TOOL_SPEC, PersistentActionEndpoint("acquire", client, resolve_preparation, possession=possession)),
         (PLACE_TOOL_SPEC, PersistentActionEndpoint("place", client, resolve_preparation, possession=possession)),
     ):
+        defaults = (tool_input_defaults or {}).get(spec["tool_id"])
         if query_decorator is not None and spec["semantics"] == "query":
             endpoint = query_decorator(spec["tool_id"], endpoint)
-        runtime.register_tool(_spec(spec), endpoint,
+        runtime.register_tool(_spec(spec, argument_defaults=defaults), endpoint,
                               context_provider=lambda tool_id=spec["tool_id"]: tool_context_provider(tool_id))
     return runtime

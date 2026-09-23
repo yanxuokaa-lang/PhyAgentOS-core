@@ -32,7 +32,22 @@ def _profile(tmp_path: Path) -> tuple[dict, dict[str, str]]:
     files = {}
     for name in ("runtime.yaml", "perception.yaml", "grasp.yaml", "arms.yaml"):
         files[name] = tmp_path / name
-        files[name].write_text("{}\n", encoding="utf-8")
+        contents = (
+            "schema_version: paos-robotwin20-runtime-profile/v1\n"
+            "task_name: blocks_ranking_rgb\n"
+            "task_config: demo_clean\n"
+            "embodiment: [franka-panda, franka-panda, 0.8]\n"
+            "sensor_ref: camera/head\n"
+            "max_observation_age_ms: 1000\n"
+            "seed: 0\n"
+            "robot_identity: franka-panda\n"
+            "gripper_identity: panda-gripper\n"
+            "embodiment_topology: two-single-arm\n"
+            "planner_profile: curobo\n"
+            if name == "runtime.yaml"
+            else "{}\n"
+        )
+        files[name].write_text(contents, encoding="utf-8")
     materializer = tmp_path / "materializer.yaml"
     materializer.write_text(
         yaml.safe_dump(
@@ -291,6 +306,12 @@ def test_host_composes_tools_around_one_persistent_worker_client(tmp_path, monke
         host.bundle.runtime.get_context(item["tool_id"])["motion_authorized"] is False
         for item in host.bundle.runtime.list_tools()["tools"]
     )
+    observe = next(
+        item for item in host.bundle.runtime.list_tools()["tools"]
+        if item["tool_id"] == "scene.observe"
+    )
+    assert observe["input_schema"]["properties"]["sensor_ref"]["default"] == "camera/head"
+    assert observe["input_schema"]["properties"]["max_age_ms"]["default"] == 1000
     worker_profile = json.loads(
         (tmp_path / "artifacts" / "persistent-host-runtime.json").read_text(
             encoding="utf-8"

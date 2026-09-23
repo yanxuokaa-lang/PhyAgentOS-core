@@ -1,5 +1,12 @@
 # Change Log
 
+## v2.6.18 (2026-09-24) - codex
+
+- [policy] [fix] [completed] Carry runtime-profile `scene.observe` defaults through the frozen ToolSpec so task-bound Query arguments are completed by the Coordinator.
+- [policy] [fix] [完成] 将 runtime profile 的 `scene.observe` 默认值写入冻结 ToolSpec，由 Coordinator 补齐 task-bound Query 参数。
+- [tests] [fix] [completed] Keep the bundle/package version assertion aligned with the v2.6.18 feature revision; Skill suite: 347 passed.
+- [tests] [fix] [完成] 将 bundle/package 版本一致性断言同步到 v2.6.18 功能修订；Skill 全量测试 347 项通过。
+
 ## v0.10.1 (2026-09-05) - codex
 
 - [policy] [refactor] [completed] Changed the canonical workflow from a linear

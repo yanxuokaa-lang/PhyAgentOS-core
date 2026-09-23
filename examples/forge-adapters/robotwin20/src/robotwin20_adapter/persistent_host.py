@@ -246,6 +246,31 @@ def build_persistent_host(
     artifact_root.mkdir(parents=True, exist_ok=True)
     runtime_root = _path(profile.get("runtime_root"), "runtime_root", directory=True)
     runtime_profile = _path(profile.get("runtime_profile"), "runtime_profile")
+    try:
+        import yaml
+    except ImportError as exc:
+        raise PersistentHostConfigurationError(
+            "PyYAML is required to load observation defaults"
+        ) from exc
+    try:
+        runtime_definition = yaml.safe_load(runtime_profile.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, yaml.YAMLError) as exc:
+        raise PersistentHostConfigurationError(
+            "persistent Runtime profile could not be loaded for observation defaults"
+        ) from exc
+    if not isinstance(runtime_definition, Mapping):
+        raise PersistentHostConfigurationError("persistent Runtime profile must contain an object")
+    sensor_ref = runtime_definition.get("sensor_ref")
+    max_observation_age_ms = runtime_definition.get("max_observation_age_ms")
+    if not isinstance(sensor_ref, str) or not sensor_ref.strip():
+        raise PersistentHostConfigurationError("runtime profile sensor_ref must be non-empty")
+    if (
+        type(max_observation_age_ms) is not int
+        or max_observation_age_ms < 1
+    ):
+        raise PersistentHostConfigurationError(
+            "runtime profile max_observation_age_ms must be a positive integer"
+        )
     worker_python = _path(profile.get("worker_python"), "worker_python")
     materializer_python = _path(
         profile.get("materializer_python"), "materializer_python"
@@ -585,6 +610,12 @@ def build_persistent_host(
             understanding_provider=understanding,
             grasp_provider=grasp,
             tool_context_provider=context,
+            tool_input_defaults={
+                "scene.observe": {
+                    "sensor_ref": sensor_ref,
+                    "max_age_ms": max_observation_age_ms,
+                }
+            },
         )
     except Exception:
         for manager in lifecycle_managers:
