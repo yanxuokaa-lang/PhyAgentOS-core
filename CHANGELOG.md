@@ -18,6 +18,12 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v11.5.9 (2026-09-24 06:45) - codex
+
+- [env] [tune] [完成] 针对 `gpt-6-sol/high` 在约 13K token 任务创建上下文下的可复现 provider timeout，将 Oracle 输出上限从 `8192` 调整为 `4096`；模型、reasoning、provider、上下文窗口和物理执行约束不变。(local)
+- [Env] [Tune] [Completed] In response to the reproducible provider timeout for `gpt-6-sol/high` on the approximately 13K-token task-creation context, reduce the Oracle output limit from `8192` to `4096`; keep the model, reasoning, provider, context window, and physical execution constraints unchanged. (local)
+- Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md).
+
 ## v11.5.8 (2026-09-24 06:20) - codex
 
 - [agent] [fix] [完成] Coordinator 从同一份有效 CapabilitySnapshot 冻结 manipulation.prepare 的协调模式与 arm_id，阻止 AgentLoop 反复组装参数。(local)
