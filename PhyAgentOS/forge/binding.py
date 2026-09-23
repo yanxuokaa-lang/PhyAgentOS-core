@@ -114,6 +114,82 @@ def required_preplan_queries(task: Any) -> frozenset[str]:
     )
 
 
+_SCENE_BOUND_PREPLAN_QUERIES = frozenset({
+    "scene.understand",
+    "manipulation.capabilities",
+    "scene.bind",
+})
+_NON_SUCCESS_QUERY_STATES = frozenset({
+    "unavailable", "invalid", "stale", "empty", "failed", "unknown",
+})
+
+
+def _query_facts(record: Any) -> dict[str, Any]:
+    response = getattr(record, "response", None)
+    if not isinstance(response, dict):
+        return {}
+    payload = response.get("data")
+    payload = payload if isinstance(payload, dict) else response
+    result = payload.get("result")
+    if isinstance(result, dict):
+        payload = {**payload, **result}
+    return payload
+
+
+def _query_succeeded(record: Any) -> bool:
+    if getattr(record, "semantics", "query") != "query":
+        return False
+    if getattr(record, "status", None) != "succeeded":
+        return False
+    return _query_facts(record).get("status") not in _NON_SUCCESS_QUERY_STATES
+
+
+def _scene_identity(record: Any) -> tuple[str | None, str | None, str | None]:
+    facts = _query_facts(record)
+    return (
+        facts.get("scene_revision") if isinstance(facts.get("scene_revision"), str) else None,
+        facts.get("observation_ref") if isinstance(facts.get("observation_ref"), str) else None,
+        facts.get("calibration_ref") if isinstance(facts.get("calibration_ref"), str) else None,
+    )
+
+
+def missing_preplan_queries(task: Any) -> tuple[str, ...]:
+    """Return required discovery Queries missing from the latest observation.
+
+    Query IDs alone are insufficient: a fresh capture can retain the same
+    ``scene_revision`` while changing observation/calibration references.  All
+    scene-bound prerequisites must therefore match the latest successful
+    ``scene.observe`` receipt before a semantic PlanGraph is admitted.
+    """
+    required = required_preplan_queries(task)
+    revision = getattr(task, "active_revision", None)
+    records = tuple(getattr(revision, "execution_records", ())) if revision is not None else ()
+    successful = [record for record in records if _query_succeeded(record)]
+    latest_observe = next(
+        (record for record in reversed(successful) if getattr(record, "tool_id", None) == "scene.observe"),
+        None,
+    )
+    current_identity = _scene_identity(latest_observe) if latest_observe is not None else None
+    missing: list[str] = []
+    for tool_id in sorted(required):
+        candidate = next(
+            (record for record in reversed(successful) if getattr(record, "tool_id", None) == tool_id),
+            None,
+        )
+        if candidate is None:
+            missing.append(tool_id)
+            continue
+        if tool_id in _SCENE_BOUND_PREPLAN_QUERIES:
+            if (
+                latest_observe is None
+                or current_identity is None
+                or any(value is None for value in current_identity)
+                or _scene_identity(candidate) != current_identity
+            ):
+                missing.append(tool_id)
+    return tuple(missing)
+
+
 def canonical_sha256(value: Any) -> str:
     encoded = json.dumps(
         value,
@@ -378,5 +454,7 @@ __all__ = [
     "ForgeSkillBindingResolver",
     "RuntimeBinding",
     "canonical_sha256",
+    "missing_preplan_queries",
+    "required_preplan_queries",
     "validate_runtime_identity",
 ]

@@ -209,6 +209,18 @@ def _complete_persisted_runtime_bindings(
     # are task-specification facts and may outlive a scene; capabilities,
     # identity correspondence, targets, and candidates may not.
     active_revision = task.active_revision
+    latest_observation_identity: tuple[str, str, str] | None = None
+    for record in reversed(active_revision.execution_records):
+        if record.status != "succeeded" or record.tool_id != "scene.observe":
+            continue
+        facts = response_facts(record.response)
+        identity = tuple(
+            facts.get(key)
+            for key in ("scene_revision", "observation_ref", "calibration_ref")
+        )
+        if all(isinstance(value, str) and value for value in identity):
+            latest_observation_identity = identity  # type: ignore[assignment]
+            break
     for record in active_revision.execution_records:
         facts = response_facts(record.response)
         if record.status != "succeeded":
@@ -238,6 +250,15 @@ def _complete_persisted_runtime_bindings(
             continue
         snapshot_ref = facts.get("snapshot_ref") or facts.get("capability_snapshot_ref")
         if isinstance(snapshot_ref, str) and snapshot_ref.startswith("artifact://"):
+            capability_identity = tuple(
+                facts.get(key)
+                for key in ("scene_revision", "observation_ref", "calibration_ref")
+            )
+            if (
+                latest_observation_identity is not None
+                and capability_identity != latest_observation_identity
+            ):
+                continue
             capability_refs.add(snapshot_ref)
             snapshot_payload = {
                 key: facts[key]

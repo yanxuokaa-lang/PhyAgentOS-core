@@ -9,7 +9,7 @@ from enum import Enum
 from typing import Any
 
 from PhyAgentOS.agent.tools.base import Tool
-from PhyAgentOS.forge.binding import required_preplan_queries
+from PhyAgentOS.forge.binding import missing_preplan_queries
 from PhyAgentOS.forge.task import (
     AgentTaskBusyError,
     AgentTaskCoordinator,
@@ -285,7 +285,7 @@ class ForgeTaskMaterializePlanTool(Tool):
             # cannot claim evidence that has not been persisted by Coordinator.
             context = None
         trusted_evidence = set(context.evidence_refs) if context is not None else set()
-        if context is None and required_preplan_queries(task):
+        if context is None and missing_preplan_queries(task):
             return _json({
                 "ok": False,
                 "error": {

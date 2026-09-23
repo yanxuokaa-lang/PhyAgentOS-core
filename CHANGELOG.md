@@ -18,6 +18,14 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v11.5.10 (2026-09-24 07:24) - codex
+
+- [agent] [fix] [完成] discovery 门禁与 Runtime binding 按最新 `scene.observe` 的 capture/calibration 身份筛选场景绑定 Query 和 capability snapshot，避免 stale 参数进入 `manipulation.prepare`。(local)
+- [Agent] [Fix] [Completed] Discovery admission and Runtime binding filter scene-bound Queries and capability snapshots by the latest `scene.observe` capture/calibration identity, preventing stale arguments from reaching `manipulation.prepare`. (local)
+- [tests] [feat] [完成] Core `585 passed`、Planning/Agent 专项 `120 passed` 与 `45 passed`、Skill `347 passed`；Ruff、compileall、`git diff --check` 通过。(local)
+- [Tests] [Feat] [Completed] Core passed `585`, Planning/Agent focused suites passed `120` and `45`, and Skill passed `347`; Ruff, compileall, and `git diff --check` passed. (local)
+- Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md).
+
 ## v11.5.9 (2026-09-24 06:45) - codex
 
 - [env] [tune] [完成] 针对 `gpt-6-sol/high` 在约 13K token 任务创建上下文下的可复现 provider timeout，将 Oracle 输出上限从 `8192` 调整为 `4096`；模型、reasoning、provider、上下文窗口和物理执行约束不变。(local)
@@ -47,18 +55,6 @@
 - 运行时新任务在旧代码安装期间于 discovery provider timeout，零 Query/Action，已取消；完整 RGB 三方块与视频验收仍待修复代码下重新运行。(local)
 - A fresh runtime task timed out during discovery while the old code was installed, with zero Queries/Actions, and was cancelled; full RGB three-block and video acceptance remains pending for a post-fix run. (local)
 - Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md).
-
-## v11.5.5 (2026-09-24 04:13) - codex
-
-- [agent] [fix] [完成] `forge_tool_api.py:L32-L52,L145-L161,L211-L253,L651-L681` 将标准 follow-up scene identity/provenance 字段从当前 revision 最新有效 `scene.observe` 收据自动投影；agent literal 与可选来源映射不能覆盖这些字段。(local)
-- [Agent] [Fix] [Completed] `forge_tool_api.py:L32-L52,L145-L161,L211-L253,L651-L681` automatically projects standard follow-up scene identity/provenance fields from the latest available `scene.observe` receipt in the active revision; Agent literals and optional source maps cannot override them. (local)
-- [tests] [feat] [完成] `test_forge_tool_api.py:L155-L259` 覆盖六组 RGB/depth/state artifact 输入、错误 literal 覆盖、保留非来源参数及来源缺失时拒绝 Gateway；Core `579 passed`，AgentLoop/API 专项 `70 passed`，Ruff/compileall/diff 检查通过。(local)
-- [Tests] [Feat] [Completed] `test_forge_tool_api.py:L155-L259` covers six RGB/depth/state artifact input cases, wrong-literal replacement, preservation of non-source arguments, and Gateway rejection when the source is missing; Core passed `579`, AgentLoop/API focused tests `70`, and Ruff/compileall/diff checks passed. (local)
-- 当前 RGB 三方块完整 AgentLoop、Verifier 与视频验收仍未完成。(local)
-- Full RGB three-block AgentLoop, verifier, and video acceptance remain pending. (local)
-- **Diff:** `caller-provided scene refs -> PAOS receipt projection`; other caller-owned Query fields remain unchanged.
-- Implementation commit: `376bd13` on `feature/planning-loop`.
-- Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md). RGB arrangement acceptance remains pending.
 
 ## v11.5.4 (2026-09-24 03:56) - codex
 

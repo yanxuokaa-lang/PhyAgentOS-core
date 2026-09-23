@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from PhyAgentOS.agent.planning_facts import response_facts
-from PhyAgentOS.forge.binding import required_preplan_queries
+from PhyAgentOS.forge.binding import missing_preplan_queries
 
 TERMINAL_EXECUTION_STATUSES = {"succeeded", "failed", "cancelled", "stopped", "unknown"}
 
@@ -29,17 +29,7 @@ _DISCOVERY = {
 
 def _discovery_complete(task: Any) -> bool:
     """Expose planning submission only after durable discovery results exist."""
-    required = required_preplan_queries(task)
-    if not required:
-        return True
-    revision = getattr(task, "active_revision", None)
-    records = getattr(revision, "execution_records", ()) if revision is not None else ()
-    completed = {
-        getattr(record, "tool_id", None)
-        for record in records
-        if _discovery_record_succeeded(record)
-    }
-    return required.issubset(completed)
+    return not missing_preplan_queries(task)
 
 
 def _discovery_record_succeeded(record: Any) -> bool:

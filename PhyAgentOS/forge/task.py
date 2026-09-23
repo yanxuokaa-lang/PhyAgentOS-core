@@ -24,7 +24,7 @@ from PhyAgentOS.forge.binding import (
     ForgeSkillBindingResolver,
     RuntimeBinding,
     canonical_sha256,
-    required_preplan_queries,
+    missing_preplan_queries,
 )
 from PhyAgentOS.forge.evidence import ForgeEvidenceWriter
 from PhyAgentOS.forge.observation import ForgeObservationCollector
@@ -1798,13 +1798,7 @@ class AgentTaskCoordinator:
                 )
         if plan_graph.task_id != task_id:
             raise AgentTaskError("discovery PlanGraph task identity mismatch")
-        required_queries = required_preplan_queries(task)
-        completed_queries = {
-            record.tool_id
-            for record in task.active_revision.execution_records
-            if record.semantics == "query" and _planning_record_status(record) == "succeeded"
-        }
-        missing_queries = tuple(sorted(required_queries - completed_queries))
+        missing_queries = missing_preplan_queries(task)
         if missing_queries:
             raise DiscoveryRequiredError(
                 "required task-bound discovery Queries are incomplete: "
