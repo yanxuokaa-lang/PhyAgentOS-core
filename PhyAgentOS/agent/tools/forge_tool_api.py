@@ -7,6 +7,12 @@ import json
 from typing import Any, Awaitable, Callable
 from uuid import uuid4
 
+from PhyAgentOS.agent.argument_sources import (
+    ArgumentSourceError,
+    argument_path_schema,
+    resolve_argument_sources,
+)
+from PhyAgentOS.agent.planning_facts import response_facts
 from PhyAgentOS.agent.tools.base import Tool
 from PhyAgentOS.forge.task import AgentTaskCoordinator, AgentTaskError
 from PhyAgentOS.forge.tool_client import (
@@ -119,12 +125,24 @@ class ForgeToolQueryTool(Tool):
             "Invoke a Gateway-declared read-only Query. Supply task_id while executing an "
             "AgentTask so the result is audited; omit it only for unbound diagnostics. "
             "Task-bound responses include coordinator-owned paos_record with record_id and "
-            "evidence_refs for plan submission; data remains the Gateway result."
+            "evidence_refs for plan submission; data remains the Gateway result. For a "
+            "follow-up Query, use argument_sources to copy exact fields from a successful "
+            "Query record in this task's active revision instead of retyping them. Each "
+            "entry names record_id, an explicit path such as ['response','scene_revision'], "
+            "and optional target_path. For scene.understand, copy observation_ref, "
+            "scene_revision, frame.frame_id to frame_id, calibration_ref, freshness_ms, "
+            "and artifacts from the same scene.observe record; set artifact source "
+            "map_field to 'ref' to pass the required string references. Supply "
+            "max_age_ms as a literal."
         )
 
     @property
     def parameters(self) -> dict[str, Any]:
-        return _invoke_schema(task_required=False, include_timeout=True)
+        return _invoke_schema(
+            task_required=False,
+            include_timeout=True,
+            include_argument_sources=True,
+        )
 
     async def execute(
         self,
@@ -134,7 +152,24 @@ class ForgeToolQueryTool(Tool):
         timeout_ms: int | None = None,
         planning_binding: dict[str, Any] | None = None,
         use_selected_arguments: bool = False,
+        argument_sources: dict[str, Any] | None = None,
     ) -> str:
+        if argument_sources and not task_id:
+            return _json({
+                "ok": False,
+                "error": {
+                    "type": "agent_task",
+                    "message": "argument_sources require task_id",
+                },
+            })
+        if use_selected_arguments and argument_sources:
+            return _json({
+                "ok": False,
+                "error": {
+                    "type": "agent_arguments",
+                    "message": "argument_sources cannot be combined with use_selected_arguments",
+                },
+            })
         if (planning_binding is not None or use_selected_arguments) and not task_id:
             return _json(
                 {
@@ -150,6 +185,16 @@ class ForgeToolQueryTool(Tool):
             async def invoke():
                 resolved_arguments = arguments
                 resolved_binding = planning_binding
+                if argument_sources:
+                    task = self.coordinator.get_task(task_id)
+                    try:
+                        resolved_arguments = resolve_argument_sources(
+                            _task_query_source_records(task),
+                            arguments,
+                            argument_sources,
+                        )
+                    except ArgumentSourceError as exc:
+                        raise AgentTaskError(str(exc)) from exc
                 if use_selected_arguments:
                     binding = self.coordinator.selected_execution_binding(
                         task_id, tool_id, "query", planning_binding
@@ -475,7 +520,12 @@ def _owned_invocation_schema() -> dict[str, Any]:
     }
 
 
-def _invoke_schema(*, task_required: bool, include_timeout: bool) -> dict[str, Any]:
+def _invoke_schema(
+    *,
+    task_required: bool,
+    include_timeout: bool,
+    include_argument_sources: bool = False,
+) -> dict[str, Any]:
     properties: dict[str, Any] = {
         "task_id": {"type": "string", "minLength": 1},
         "tool_id": {"type": "string", "minLength": 1},
@@ -506,12 +556,49 @@ def _invoke_schema(*, task_required: bool, include_timeout: bool) -> dict[str, A
         required.insert(0, "task_id")
     if include_timeout:
         properties["timeout_ms"] = {"type": "integer", "minimum": 1}
+    if include_argument_sources:
+        properties["argument_sources"] = {
+            "type": "object",
+            "additionalProperties": {
+                "type": "object",
+                "properties": {
+                    "record_id": {"type": "string", "minLength": 1},
+                    "path": argument_path_schema(),
+                    "target_path": argument_path_schema(),
+                    "map_field": {"type": "string", "minLength": 1},
+                },
+                "required": ["record_id", "path"],
+                "additionalProperties": False,
+            },
+        }
     return {
         "type": "object",
         "properties": properties,
         "required": required,
         "additionalProperties": False,
     }
+
+
+def _task_query_source_records(task: Any) -> dict[str, tuple[dict[str, Any], dict[str, Any] | None]]:
+    """Expose latest successful Query records from this task's active revision."""
+
+    latest_by_tool: dict[str, Any] = {}
+    for record in task.execution_records:
+        if (
+            record.revision_id == task.active_revision_id
+            and record.semantics == "query"
+        ):
+            latest_by_tool[record.tool_id] = record
+
+    excluded_statuses = {"unavailable", "invalid", "stale", "empty", "failed", "unknown"}
+    sources: dict[str, tuple[dict[str, Any], dict[str, Any] | None]] = {}
+    for record in latest_by_tool.values():
+        if record.status != "succeeded" or not isinstance(record.response, dict):
+            continue
+        if response_facts(record.response).get("status") in excluded_statuses:
+            continue
+        sources[record.record_id] = (record.arguments, record.response)
+    return sources
 
 
 __all__ = [

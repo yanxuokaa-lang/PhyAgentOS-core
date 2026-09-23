@@ -6,6 +6,7 @@ import json
 from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING, Any
 
+from PhyAgentOS.agent.argument_sources import argument_path_schema
 from PhyAgentOS.agent.planning_dispatch import AgentComposedDispatch, PlanningDispatchError
 from PhyAgentOS.agent.planning_loop import (
     NodeContextProvider,
@@ -83,10 +84,7 @@ class ForgePlanReadyTool(Tool):
 
 
 def _path_schema(*, allow_empty: bool = False) -> dict[str, Any]:
-    return {
-        "type": "array", "minItems": 0 if allow_empty else 1,
-        "items": {"anyOf": [{"type": "string", "minLength": 1}, {"type": "integer", "minimum": 0}]},
-    }
+    return argument_path_schema(allow_empty=allow_empty)
 
 
 def _merge_projection_compatible_sources(
@@ -194,6 +192,7 @@ class ForgePlanSelectTool(Tool):
                                 **_path_schema(),
                                 "description": "Destination fields/indexes, e.g. ['targets',0,'category']; omitted means the source map key is the literal top-level argument name. Do not use this for a ToolSpec projection consumer's nested output.",
                             },
+                            "map_field": {"type": "string", "minLength": 1},
                         },
                         "required": ["record_id", "path"],
                         "additionalProperties": False,

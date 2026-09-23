@@ -18,6 +18,21 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v11.5.2 (2026-09-24 02:38) - codex
+
+- [agent] [fix] [完成] `forge_tool_query` 从 Coordinator 持有的同任务当前 revision 最新成功 Query 记录按精确路径复制字段；scene.understand 可从 observation 记录带入场景/frame/calibration/freshness/artifact refs，最终参数仍由 Coordinator/Gateway 校验。(local)
+- [Agent] [Fix] [Completed] `forge_tool_query` copies fields by exact paths from the latest successful Query records owned by the Coordinator in the same task's active revision; scene.understand can receive scene/frame/calibration/freshness/artifact refs from its observation record, with final arguments still validated by Coordinator/Gateway. (local)
+- [tests] [feat] [完成] `test_forge_tool_api.py:L43-L257` 覆盖三种输入形状与失败来源；参数来源专项连续三轮均 `100 passed`，Core `567 passed`。(local)
+- [Tests] [Feat] [Completed] `test_forge_tool_api.py:L43-L257` covers three input shapes and invalid sources; argument-source tests passed `100` in three consecutive runs, Core passed `567`. (local)
+
+```diff
++ resolve_argument_sources(_task_query_source_records(task), arguments, argument_sources)
++ "artifacts": {"path": ["response", "artifacts"], "map_field": "ref"}
+```
+
+- Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md). The pre-fix live task stopped before planning and produced zero Actions; RGB physical acceptance remains pending.
+- Commit: pending.
+
 ## v11.5.1 (2026-09-24 10:30) - codex
 
 - [agent] [fix] [完成] `prompt_context.py:L719-L734` 将最新和历史 `forge_task_*` lifecycle 响应纳入已有 bounded reference projection，避免完整 AgentTask/ToolSpec 重复进入 discovery prompt。(local)
@@ -60,30 +75,25 @@
 - [Tests] [Feat] [Completed] `test_planning_effect_recovery.py:L368-L393` covers pending-to-terminal settlement, the same invocation, and one Action start; focused tests `76 passed`, Core `554 passed`. (local)
 - Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md). Live three-block acceptance remains pending until a task reaches three successful placements, verifier success, and video evidence.
 
+## Historical Entries
+
 ## v11.4.11 (2026-09-23 22:13) - codex
 
 - [agent] [fix] [完成] `planning_dispatch.py:L223-L229,L260-L269` 显示冻结 ToolSpec 来源模式；`tools/planning.py:L327-L355,L399-L413` 允许未消费 selection 的模式/路径错误在同节点纠正，失效节点上下文仍要求恢复。(local)
 - [Agent] [Fix] [Completed] `planning_dispatch.py:L223-L229,L260-L269` exposes frozen ToolSpec source modes; `tools/planning.py:L327-L355,L399-L413` permits same-node correction of unconsumed selection mode/path errors while invalid node context still requires recovery. (local)
 - [tests] [feat] [完成] `test_planning_dispatch.py:L85-L98`、`test_planning_selection.py:L104-L105,L180-L299,L391-L397,L596-L645`、`test_planning_end_to_end.py:L219-L225`；专项三轮各 `42 passed`，Core `551 passed`、Skill `346 passed`、Adapter `639 passed, 1 skipped`。(local)
-- [Tests] [Feat] [Completed] `test_planning_dispatch.py:L85-L98`, `test_planning_selection.py:L104-L105,L180-L299,L391-L397,L596-L645`; focused tests passed `42` in each of three runs, Core `551`, Skill `346`, Adapter `639 passed, 1 skipped`. (local)
+- [Tests] [Feat] [Completed] `test_planning_dispatch.py:L85-L98`, `test_planning_selection.py:L104-L105,L180-L299,L391-L397,L596-L645`, and `test_planning_end_to_end.py:L219-L225`; focused tests passed `42` in each of three runs, Core `551`, Skill `346`, and Adapter `639 passed, 1 skipped`. (local)
 - [tests] [feat] [完成] `test_agent_foundation.py:L251-L289` 验证同一节点回合内错误来源模式后再次选择；扩大专项三轮各 `91 passed`，Core `552 passed`。(local)
 - [Tests] [Feat] [Completed] `test_agent_foundation.py:L251-L289` verifies same-node correction after a wrong source mode; the expanded focused suite passed `91` in each of three runs and Core passed `552`. (local)
 
 ```diff
 - if projection_source: raise PlanningDispatchError(..., requires_replan=True)
 + if projection_source is not None: raise PlanningDispatchError(..., retryable_in_revision=True)
-+ "selection_source_modes": {
-+     policy.tool_id: (
-+         "projection_source" if policy.argument_projection is not None
-+         else "arguments_or_argument_sources"
-+     )
-+ }
++ "selection_source_modes": {"tool": "projection_source" or "arguments_or_argument_sources"}
 + # AgentLoop: wrong source mode -> corrected selection in the same node turn
 ```
 
 - Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md). No physical three-block/Verifier/benchmark/video success is claimed.
-
-## Historical Entries
 
 ## v11.4.9 (2026-09-23 20:02) - codex
 

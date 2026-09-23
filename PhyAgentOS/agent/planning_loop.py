@@ -10,12 +10,17 @@ from __future__ import annotations
 import asyncio
 import json
 import math
-from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Literal, Mapping
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from PhyAgentOS.agent.argument_sources import (
+    ArgumentSourceError,
+    read_argument_source,
+    resolve_argument_sources,
+    source_path,
+)
 from PhyAgentOS.agent.experience.redaction import redact_text
 from PhyAgentOS.agent.planner_plugin import ReplanProposal
 from PhyAgentOS.agent.planning_facts import explicit_scene_revision, response_facts
@@ -377,38 +382,10 @@ def resolve_node_argument_sources(
     selectors: Mapping[str, Any],
 ) -> dict[str, Any]:
     """Copy exact authorized values into Agent-declared consumer paths."""
-
-    resolved = deepcopy(dict(literals))
-    assignments: list[tuple[tuple[str | int, ...], Any]] = []
-    targets: list[tuple[str | int, ...]] = []
-    records = _node_source_records(context)
-    for argument_name, selector in selectors.items():
-        if not isinstance(argument_name, str) or not argument_name:
-            raise PlanningLoopError("planning argument source name must be non-empty")
-        if (
-            not isinstance(selector, Mapping)
-            or not {"record_id", "path"} <= set(selector)
-            or set(selector) - {"record_id", "path", "target_path"}
-        ):
-            raise PlanningLoopError("source requires record_id, path and optional target_path")
-        path = _source_path(selector["path"])
-        target = _source_path(selector.get("target_path", [argument_name]))
-        if not isinstance(target[0], str):
-            raise PlanningLoopError("target_path must start with an object field")
-        for previous in targets:
-            size = min(len(previous), len(target))
-            if previous[:size] == target[:size]:
-                raise PlanningLoopError("planning argument source targets overlap")
-        targets.append(target)
-        value = _read_node_source(records, selector["record_id"], path)
-        assignments.append((target, value))
-    # Array positions are independent of the order of JSON source entries.
-    assignments.sort(key=lambda item: tuple(
-        (0, part) if isinstance(part, str) else (1, part) for part in item[0]
-    ))
-    for target, value in assignments:
-        _write_argument_path(resolved, target, value)
-    return resolved
+    try:
+        return resolve_argument_sources(_node_source_records(context), literals, selectors)
+    except ArgumentSourceError as exc:
+        raise PlanningLoopError(str(exc)) from exc
 
 
 def project_consumer_arguments(
@@ -443,11 +420,10 @@ def project_consumer_arguments(
 
 
 def _source_path(value: Any, *, allow_empty: bool = False) -> tuple[str | int, ...]:
-    if not isinstance(value, (list, tuple)) or (not value and not allow_empty):
-        raise PlanningLoopError("source/target path must be an explicit field/index array")
-    if any(not ((isinstance(p, str) and p) or (type(p) is int and p >= 0)) for p in value):
-        raise PlanningLoopError("path components must be non-empty fields or non-negative integer indexes")
-    return tuple(value)
+    try:
+        return source_path(value, allow_empty=allow_empty)
+    except ArgumentSourceError as exc:
+        raise PlanningLoopError(str(exc)) from exc
 
 
 def _node_source_records(context: NodeExecutionContext) -> dict[str, Any]:
@@ -464,68 +440,10 @@ def _node_source_records(context: NodeExecutionContext) -> dict[str, Any]:
 
 
 def _read_node_source(records: Mapping[str, Any], record_id: Any, path: tuple) -> Any:
-    if not isinstance(record_id, str) or record_id not in records:
-        raise PlanningLoopError("planning argument source is not visible to this node")
-    arguments, response = records[record_id]
-    root: Any = {"arguments": arguments, "response": response}
-
-    def read(value: Any, parts: tuple[Any, ...]) -> tuple[bool, Any]:
-        for part in parts:
-            if isinstance(value, Mapping) and isinstance(part, str) and part in value:
-                value = value[part]
-            elif isinstance(value, (list, tuple)) and type(part) is int and 0 <= part < len(value):
-                value = value[part]
-            else:
-                return False, None
-        return True, value
-
-    # The documented form remains explicit (``arguments/...`` or
-    # ``response/...``).  A bounded node projection also exposes the fields of
-    # both records, so accept an unqualified path when exactly one record side
-    # can resolve it.  This keeps the Coordinator responsible for copying
-    # freshness/limits instead of requiring the model to reproduce the record
-    # envelope.  Equal values on both sides are harmless; conflicting values
-    # remain an explicit selection error.
-    resolved, value = read(root, path)
-    if resolved:
-        return value
-    if path and path[0] not in {"arguments", "response"}:
-        argument_ok, argument_value = read(arguments, path)
-        response_ok, response_value = read(response, path) if response is not None else (False, None)
-        if argument_ok and not response_ok:
-            return argument_value
-        if response_ok and not argument_ok:
-            return response_value
-        if argument_ok and response_ok:
-            if argument_value == response_value:
-                return argument_value
-            raise PlanningLoopError(
-                "planning argument source path is ambiguous between arguments and response"
-            )
-    part = path[-1] if path else None
-    raise PlanningLoopError(f"source path cannot be resolved at {part!r}")
-
-
-def _write_argument_path(root: dict, path: tuple, value: Any) -> None:
-    current: Any = root
-    for index, part in enumerate(path):
-        final = index == len(path) - 1
-        child: Any = deepcopy(value) if final else ([] if type(path[index + 1]) is int else {})
-        if isinstance(current, dict) and isinstance(part, str):
-            if part in current:
-                if final:
-                    raise PlanningLoopError("planning arguments cannot be both literal and sourced")
-            else:
-                current[part] = child
-            current = current[part]
-        elif isinstance(current, list) and type(part) is int and part <= len(current):
-            if part == len(current):
-                current.append(child)
-            elif final:
-                raise PlanningLoopError("planning arguments cannot be both literal and sourced")
-            current = current[part]
-        else:
-            raise PlanningLoopError("target path has incompatible containers or a sparse array index")
+    try:
+        return read_argument_source(records, record_id, path)
+    except ArgumentSourceError as exc:
+        raise PlanningLoopError(str(exc)) from exc
 
 
 def node_source_page(
