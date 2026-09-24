@@ -994,6 +994,41 @@ def test_task_projection_preserves_benchmark_goal_destination_bindings() -> None
     assert "world_T_object_target" in encoded
 
 
+def test_forge_task_get_summary_exposes_active_successful_task_goals() -> None:
+    result = compact_tool_result("forge_task_get", json.dumps({
+        "ok": True,
+        "data": {
+            "task_id": "task-rgb",
+            "active_revision_id": "revision-1",
+            "revisions": [{
+                "revision_id": "revision-1",
+                "execution_records": [{
+                    "record_id": "goal-record",
+                    "tool_id": "task.goal",
+                    "status": "succeeded",
+                    "evidence_refs": ["tool:goal-record"],
+                    "response": {
+                        "ok": True,
+                        "data": {
+                            "status": "available",
+                            "goals": [{
+                                "execution_entity_ref": "entity://block-red-1",
+                                "destination_ref": "destination://blocks-ranking-rgb/red-slot",
+                                "world_T_object_target": [1.0] * 16,
+                            }],
+                        },
+                    },
+                }],
+            }],
+        },
+    }))
+
+    assert "destination://blocks-ranking-rgb/red-slot" in result
+    assert "entity://block-red-1" in result
+    assert "tool:goal-record" in result
+    assert "execution_records" not in result
+
+
 def test_task_projection_preserves_revision_bindings_and_node_obligations() -> None:
     node = SimpleNamespace(
         node_id="node-place",

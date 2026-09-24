@@ -468,6 +468,30 @@ def _task_result_projection(payload: dict[str, Any]) -> dict[str, Any]:
     ):
         if key in data:
             projected_data[key] = _reference_projection(data[key])
+    active_revision_id = data.get("active_revision_id")
+    for revision in data.get("revisions", ()):
+        if not isinstance(revision, dict) or revision.get("revision_id") != active_revision_id:
+            continue
+        task_goals = []
+        for record in revision.get("execution_records", ()):
+            if (
+                not isinstance(record, dict)
+                or record.get("tool_id") != "task.goal"
+                or record.get("status") != "succeeded"
+            ):
+                continue
+            facts = response_facts(record.get("response"))
+            goals = facts.get("goals")
+            if not isinstance(goals, list):
+                continue
+            task_goals.append({
+                "record_id": record.get("record_id"),
+                "evidence_refs": record.get("evidence_refs", []),
+                "goals": _reference_projection(goals),
+            })
+        if task_goals:
+            projected_data["task_goals"] = task_goals
+        break
     result = {"data": projected_data}
     for key in ("ok", "error", "status"):
         if key in payload:

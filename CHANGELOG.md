@@ -20,6 +20,23 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v11.7.1 (2026-09-25 01:14) - codex
+
+- [agent] [fix] `forge_task_get` now returns only the active revision's successful `task.goal` record/evidence identity and semantic goals, allowing Coordinator-approved entity/destination binding without exposing full execution records.
+- [Agent] [Fix] `forge_task_get` now returns only the active revision's successful `task.goal` record/evidence identity and semantic goals, allowing Coordinator-approved entity/destination binding without exposing full execution records.
+
+#### [修改 / Modified] `PhyAgentOS/agent/prompt_context.py` L442-L499
+
+```diff
+    projected_data["task_goals"] = [{
+        "record_id": record.get("record_id"),
+        "evidence_refs": record.get("evidence_refs", []),
+        "goals": _reference_projection(goals),
+    }]
+```
+
+- Validation: `tests/test_prompt_context.py`: 33 passed; Ruff passed.
+
 ## v11.7.0 (2026-09-25 01:05) - codex
 
 - [agent] [fix] Coordinator 已持久化完整 `task.goal.data.goals`，但 AgentLoop 语义投影遗漏 `goals`，导致模型看不到实体/目标配对并错误请求用户澄清。将 `goals` 加入既有语义投影，并验证 benchmark `destination_ref` 与目标位姿能到达规划上下文。(local)
