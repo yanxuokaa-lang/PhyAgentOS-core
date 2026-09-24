@@ -394,7 +394,19 @@ def _complete_persisted_runtime_bindings(
                 if node.capability == "manipulation.prepare":
                     available_arms = capability_arm_ids.get(capability_ref, ())
                     topology = capability_topologies.get(capability_ref)
-                    if "coordination_mode" not in bindings and topology is not None:
+                    # An explicit nested intent is the model's semantic choice.
+                    # Do not add a derived flat field that would conflict during
+                    # dispatch normalization; the capability topology only fills
+                    # an omitted coordination mode.
+                    nested_intent = bindings.get("intent")
+                    explicit_nested_mode = (
+                        isinstance(nested_intent, Mapping)
+                        and isinstance(nested_intent.get("coordination_mode"), str)
+                    )
+                    if explicit_nested_mode and "coordination_mode" in bindings:
+                        if bindings["coordination_mode"] != nested_intent["coordination_mode"]:
+                            bindings.pop("coordination_mode")
+                    if "coordination_mode" not in bindings and not explicit_nested_mode and topology is not None:
                         bindings["coordination_mode"] = {
                             "single_arm": CoordinationMode.SINGLE_ARM.value,
                             "dual_independent": CoordinationMode.ALTERNATIVE_ARM.value,
