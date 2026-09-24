@@ -3092,12 +3092,20 @@ class AgentTaskCoordinator:
             or revision.plan_graph is None
             or task.status != AgentTaskStatus.EXECUTING
             or _planning_record_status(record) not in {"failed", "unknown"}
-            or _replan_count(task) >= self.max_replans
         ):
             return
 
         def mutate(current: AgentTaskRecord) -> None:
             if current.status != AgentTaskStatus.EXECUTING:
+                return
+            if _replan_count(current) >= self.max_replans:
+                current.status = AgentTaskStatus.FAILED
+                current.replan_deadline = None
+                current.replan_extension_used = False
+                current.evidence_errors.append(
+                    "planning Query failure exhausted replan budget "
+                    f"({self.max_replans}): {record.node_id}"
+                )
                 return
             current.status = AgentTaskStatus.AWAITING_REPLAN
             current.replan_deadline = utc_now() + timedelta(seconds=self.replan_timeout_s)
@@ -3106,7 +3114,18 @@ class AgentTaskCoordinator:
                 f"planning Query failure requires recovery: {record.node_id}"
             )
 
-        self.store.update(task_id, mutate, event_type="query_failure_replan_required")
+        result = self.store.update(
+            task_id,
+            mutate,
+            event_type="query_failure_recovery_projected",
+            payload={
+                "revision_id": revision.revision_id,
+                "node_id": record.node_id,
+                "replan_budget_exhausted": _replan_count(task) >= self.max_replans,
+            },
+        )
+        if result.terminal:
+            self._schedule_experience(result)
 
     def _track_remote_identity(
         self,

@@ -2,6 +2,8 @@
 
 ## Archive
 
+- [2026-09 Part 15](changelog/2026-09_part15.md)
+
 - [2026-09 Part 14](changelog/2026-09_part14.md)
 
 - [2026-09 Part 13](changelog/2026-09_part13.md)
@@ -19,6 +21,56 @@
 - [2026-09 Part 4](changelog/2026-09_part4.md)
 
 ## 最近 5 条 / Latest Five Versions
+
+## v11.7.4 (2026-09-25 02:09) - codex
+
+- [agent] [fix] 当 planning Query 失败且 replan budget 耗尽时，将任务落到 `failed` 终态并清除 deadline，避免失败图无 ready 节点却持续占用唯一任务槽；有剩余预算时保持 `awaiting_replan`。(local)
+- [Agent] [Fix] When a planning Query fails after the replan budget is exhausted, settle the task as terminal `failed` and clear its deadline so a failed graph cannot occupy the unique task slot; preserve `awaiting_replan` while budget remains. (local)
+
+#### [修改 / Modified] `PhyAgentOS/forge/task.py` L3087-L3128
+
+```diff
+-            or _replan_count(task) >= self.max_replans
+         ):
+             return
+...
++            if _replan_count(current) >= self.max_replans:
++                current.status = AgentTaskStatus.FAILED
++                current.replan_deadline = None
++                current.replan_extension_used = False
++                current.evidence_errors.append(...)
+...
+-        self.store.update(task_id, mutate, event_type="query_failure_replan_required")
++        result = self.store.update(..., event_type="query_failure_recovery_projected", ...)
++        if result.terminal:
++            self._schedule_experience(result)
+```
+
+#### [新增 / Added] `tests/test_planning_task_integration.py` L333-L383
+
+```python
+def test_terminal_planning_query_failure_exhausting_replans_fails_task_and_releases_slot(...):
+    ...
+    assert failed.status == AgentTaskStatus.FAILED
+    assert failed.replan_deadline is None
+    assert coordinator.create_task(...).status == AgentTaskStatus.EXECUTING
+```
+
+- Validation: `tests/test_planning_task_integration.py`: 28 passed; Ruff and `git diff --check` passed.
+
+## v11.7.3 (2026-09-25 02:09) - codex
+
+- [agent] [tune] 将 RGB 长任务的 replan 窗口从 120 秒增至 600 秒；真实恢复请求耗时 155 秒，原 Coordinator 截止时间先于恢复计划提交而过期。只调整恢复等待时间，不变更执行策略。(local)
+- [Agent] [Tune] Increase the RGB long-task replan window from 120 to 600 seconds; a measured recovery request took 155 seconds and the Coordinator deadline expired before plan submission. This changes only the recovery wait duration. (local)
+
+#### [修改 / Modified] `/home/yanxu/.PhyAgentOS/config-rgb-no-evolution-long.json` L29
+
+```diff
+-      "replanTimeoutS": 120.0,
++      "replanTimeoutS": 600.0,
+```
+
+- Validation: JSON parsing passed; configured value reads back as `600.0`.
 
 ## v11.7.2 (2026-09-25 01:36) - codex
 
@@ -84,37 +136,6 @@ def test_task_projection_preserves_benchmark_goal_destination_bindings():
 ```
 
 - Validation: `tests/test_prompt_context.py`: 32 passed; Ruff passed.
-
-## v11.6.15 (2026-09-25 01:00) - codex
-
-- [model] [fix] GraspGen previously applied `score_threshold=0.02` during inference and returned only 23 of 24 requested poses. Generate all 24 real model poses before the existing score/NMS filtering and ten-candidate cap; Adapter `0.7.9`, Skill `2.7.6`, Node SHA-256 verified.
-- [Model] [Fix] GraspGen applied `score_threshold=0.02` during inference and returned only 23 of 24 requested poses. Generate all 24 real model poses before existing score/NMS filtering and the ten-candidate cap; Adapter `0.7.9`, Skill `2.7.6`, Node SHA-256 verified.
-
-### 文件变更详情 / File Change Details
-
-#### [修改 / Modified] `examples/forge-adapters/robotwin20/runtime/graspgen_worker.py` L76-L84
-
-```diff
--grasp_threshold=float(threshold)
-+grasp_threshold=-1.0
- num_grasps=max_candidates
- topk_num_grasps=max_candidates
-```
-
-#### [新增 / Added] `examples/forge-adapters/robotwin20/tests/test_process_worker.py` L113-L155
-
-```python
-def test_graspgen_generates_requested_pool_before_score_filter(...):
-    # Verify all 24 generated poses reach the post-generation score filter.
-    ...
-```
-
-- Validation: worker/provider/profile tests: 22 passed; Node SHA-256 verified; Skill `2.7.6` installed. Real run exposed `decoded=23` on the prior version and was cancelled before preparation; corrected live acceptance is pending.
-
-## v11.6.14 (2026-09-24) - codex
-
-- [model] [tune] GraspGen samples 24 genuine candidates before scoring/NMS and retains at most 10 for preparation; Adapter `0.7.8`, Skill `2.7.5`, Node SHA-256 verified.
-- [Model] [Tune] GraspGen samples 24 genuine candidates before scoring/NMS and retains at most 10 for preparation; Adapter `0.7.8`, Skill `2.7.5`, Node SHA-256 verified.
 
 ## v11.6.11 (2026-09-25 01:00) - codex
 

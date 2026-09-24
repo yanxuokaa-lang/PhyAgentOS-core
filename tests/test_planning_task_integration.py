@@ -330,6 +330,59 @@ def test_terminal_planning_query_failure_enters_replan_without_motion(tmp_path):
     assert all(record.semantics == "query" for record in current.execution_records)
 
 
+def test_terminal_planning_query_failure_exhausting_replans_fails_task_and_releases_slot(tmp_path):
+    coordinator = AgentTaskCoordinator(
+        workspace=tmp_path,
+        config=ForgeConfig(),
+        client=_Client(),
+        max_replans=0,
+    )
+    graph = _graph("task-1", "revision-1")
+    task = coordinator.create_task(
+        task_description="fail a planning Query without a recovery budget",
+        verification=TaskVerificationContract(mode="off"),
+        plan_graph=graph,
+        plan_graph_ref="artifact://plans/task-1/revision-1",
+    )
+    binding = PlanningExecutionBinding(
+        node_id="relocate-red",
+        node_digest=plan_node_digest(graph.nodes[0]),
+        obligation_id="relocate-red",
+        input_binding_digest="3" * 64,
+        decision_trace_ref="artifact://traces/task-1/record-1",
+    )
+    record_id, _caller = coordinator._append_execution(
+        task.task_id,
+        "manipulation.prepare",
+        "query",
+        {},
+        tool=BoundToolSpec(
+            tool_id="manipulation.prepare",
+            semantics="query",
+            spec_sha256="4" * 64,
+            ready_at_binding=True,
+        ),
+        planning_binding=binding,
+    )
+
+    coordinator._finish_execution(
+        task.task_id,
+        record_id,
+        status="succeeded",
+        response={"status": "failed", "reason": "no_admissible_route"},
+    )
+
+    failed = coordinator.get_task(task.task_id)
+    assert failed.status == AgentTaskStatus.FAILED
+    assert failed.replan_deadline is None
+    assert failed.active_revision.node_settlements[0].status == "failed"
+    assert any("exhausted replan budget (0)" in item for item in failed.evidence_errors)
+    assert coordinator.create_task(
+        task_description="start the next independent attempt",
+        verification=TaskVerificationContract(mode="off"),
+    ).status == AgentTaskStatus.EXECUTING
+
+
 def test_agent_recovery_nodes_are_compiled_by_paos_without_motion(tmp_path):
     coordinator = AgentTaskCoordinator(
         workspace=tmp_path, config=ForgeConfig(), client=_Client()
