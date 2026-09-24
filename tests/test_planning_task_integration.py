@@ -7,6 +7,7 @@ import pytest
 
 from PhyAgentOS.agent.experience.source import AgentTaskOutcomeSource
 from PhyAgentOS.agent.plan_proposal import compile_task_plan
+from PhyAgentOS.agent.planning_loop import NodeContextProvider
 from PhyAgentOS.agent.tools.forge_task import (
     ForgeTaskBeginRevisionTool,
     ForgeTaskContinuePlanTool,
@@ -367,6 +368,38 @@ def test_agent_recovery_nodes_are_compiled_by_paos_without_motion(tmp_path):
         attach_binding,
         event_type="test_recovery_binding",
     )
+    evidence_tool = BoundToolSpec(
+        tool_id="scene.understand",
+        semantics="query",
+        spec_sha256="6" * 64,
+        ready_at_binding=True,
+    )
+    evidence_record_id, _caller = coordinator._append_execution(
+        task.task_id,
+        "scene.understand",
+        "query",
+        {"scene_revision": "scene-1"},
+        tool=evidence_tool,
+    )
+    coordinator._finish_execution(
+        task.task_id,
+        evidence_record_id,
+        status="succeeded",
+        response={"ok": True, "data": {
+            "status": "available",
+            "scene_revision": "scene-1",
+            "observation_ref": "observation://scene-1/camera",
+            "calibration_ref": "calibration://scene-1/camera",
+        }},
+    )
+    evidence_ref = f"tool:{evidence_record_id}"
+    coordinator.store.update(
+        task.task_id,
+        lambda current: setattr(
+            current.active_revision, "discovery_evidence_refs", (evidence_ref,)
+        ),
+        event_type="test_current_discovery_evidence",
+    )
     coordinator.request_replan(task.task_id, reason="replace failed semantic node")
     result = json.loads(asyncio.run(ForgeTaskBeginRevisionTool(coordinator).execute(
         task.task_id,
@@ -375,6 +408,7 @@ def test_agent_recovery_nodes_are_compiled_by_paos_without_motion(tmp_path):
             node_id="retry-relocate",
             obligation_id="retry-relocate",
             capability="object.relocate",
+            required_evidence=(evidence_ref,),
         ).model_dump(mode="json")],
     )))
 
@@ -386,6 +420,13 @@ def test_agent_recovery_nodes_are_compiled_by_paos_without_motion(tmp_path):
     assert current.active_revision.plan_graph_ref.startswith("artifact://plans/")
     assert current.active_revision.execution_records == []
     assert current.active_revision.node_settlements == []
+    assert current.active_revision.discovery_evidence_refs == (evidence_ref,)
+    context = NodeContextProvider(lambda _task_id: current).build(
+        task.task_id,
+        "retry-relocate",
+        scene_revision="scene-1",
+    )
+    assert [item.record_id for item in context.evidence_context] == [evidence_record_id]
 
 
 def test_compile_rejects_future_action_nodes_without_frozen_runtime_bindings(tmp_path):

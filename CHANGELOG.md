@@ -20,6 +20,28 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v11.7.2 (2026-09-25 01:36) - codex
+
+- [agent] [fix] Replan now inherits discovery evidence refs from the prior revision when none are supplied, so still-current scene Query records remain available to NodeContext and consumer projections; stale evidence remains rejected by existing scene-freshness checks.
+- [Agent] [Fix] Replan now inherits discovery evidence refs from the prior revision when none are supplied, so still-current scene Query records remain available to NodeContext and consumer projections; stale evidence remains rejected by existing scene-freshness checks.
+
+#### [修改 / Modified] `PhyAgentOS/forge/task.py` L1555-L1608
+
+```diff
+-discovery_evidence_refs: tuple[str, ...] = ()
++discovery_evidence_refs: tuple[str, ...] | None = None
+...
++discovery_evidence_refs=tuple(
++    current.active_revision.discovery_evidence_refs
++    if discovery_evidence_refs is None else discovery_evidence_refs
++)
+```
+
+#### [修改 / Modified] `tests/test_planning_task_integration.py` L371-L429
+
+- Regression exercises `ForgeTaskBeginRevisionTool` and confirms prior-revision Query evidence is visible in the new node context.
+- Validation: planning task integration and planning context: 35 passed; Ruff passed.
+
 ## v11.7.1 (2026-09-25 01:14) - codex
 
 - [agent] [fix] `forge_task_get` now returns only the active revision's successful `task.goal` record/evidence identity and semantic goals, allowing Coordinator-approved entity/destination binding without exposing full execution records.

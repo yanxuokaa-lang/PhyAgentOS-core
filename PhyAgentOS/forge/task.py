@@ -1552,7 +1552,7 @@ class AgentTaskCoordinator:
         invalidated_node_ids: tuple[str, ...] = (),
         retry_parent_node_id: str | None = None,
         fresh_evidence_requirements: tuple[str, ...] = (),
-        discovery_evidence_refs: tuple[str, ...] = (),
+        discovery_evidence_refs: tuple[str, ...] | None = None,
         replan_evidence_refs: tuple[str, ...] = (),
         node_settlements: list[NodeSettlement] | None = None,
         counterevidence: list[NodeSettlement] | None = None,
@@ -1601,7 +1601,11 @@ class AgentTaskCoordinator:
                 invalidated_node_ids=tuple(invalidated_node_ids),
                 retry_parent_node_id=retry_parent_node_id,
                 fresh_evidence_requirements=tuple(fresh_evidence_requirements),
-                discovery_evidence_refs=tuple(discovery_evidence_refs),
+                discovery_evidence_refs=tuple(
+                    current.active_revision.discovery_evidence_refs
+                    if discovery_evidence_refs is None
+                    else discovery_evidence_refs
+                ),
                 replan_evidence_refs=tuple(replan_evidence_refs),
                 counterevidence=list(counterevidence or []),
             )
