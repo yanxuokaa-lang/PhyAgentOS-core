@@ -407,6 +407,7 @@ def test_visible_forge_tools_follow_task_phase() -> None:
     waiting = _task(graph=graph, status="waiting_for_user")
     waiting_tools = visible_tool_names(names, waiting)
     assert "forge_tool_context" in waiting_tools
+    assert "forge_task_begin_revision" in waiting_tools
     assert "forge_tool_query" not in waiting_tools
     assert AgentPromptContextManager.phase(waiting) == "waiting_for_user"
 

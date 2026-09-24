@@ -319,7 +319,14 @@ def visible_tool_names(all_names: Iterable[str], task: Any | None) -> tuple[str,
             }
         )
     elif status == "waiting_for_user":
-        allowed = generic | _TASK_COMMON | {"forge_tool_context"}
+        # A clarification pause must still permit the user-authorized recovery
+        # turn to append a Coordinator-owned revision.  The tool only mutates
+        # planning state; Gateway queries/actions remain hidden until planning
+        # execution resumes.
+        allowed = generic | _TASK_COMMON | {
+            "forge_tool_context",
+            "forge_task_begin_revision",
+        }
     else:
         allowed = (
             generic | _TASK_COMMON | _PLANNING | _ACTION_RECONCILIATION | _SESSION_RECONCILIATION
