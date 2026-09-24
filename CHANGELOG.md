@@ -20,6 +20,11 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v11.6.14 (2026-09-24) - codex
+
+- [model] [tune] GraspGen samples 24 genuine candidates before scoring/NMS and retains at most 10 for preparation; Adapter `0.7.8`, Skill `2.7.5`, Node SHA-256 verified.
+- [Model] [Tune] GraspGen samples 24 genuine candidates before scoring/NMS and retains at most 10 for preparation; Adapter `0.7.8`, Skill `2.7.5`, Node SHA-256 verified.
+
 ## v11.6.11 (2026-09-25 01:00) - codex
 
 - [agent] [fix] [完成] GraspGen projection 节点把 `target_execution_entity_ref` 留在语义绑定中，但编译器只识别 `execution_entity_ref`，导致 Coordinator 无法补齐唯一观察 `entity_ref`。统一读取两种已存在的执行身份字段，仍只接受当前 scene.bind 的唯一对应关系；补充 projection 绑定回归测试。(local)
