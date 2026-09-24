@@ -57,6 +57,7 @@ def test_terminal_planning_query_failure_exhausting_replans_fails_task_and_relea
 ```
 
 - Validation: `tests/test_planning_task_integration.py`: 28 passed; Ruff and `git diff --check` passed.
+- Commit: `f70123b` on `feature/planning-loop`.
 
 ## v11.7.3 (2026-09-25 02:09) - codex
 
