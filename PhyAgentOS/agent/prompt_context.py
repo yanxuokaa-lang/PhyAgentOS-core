@@ -144,6 +144,10 @@ _REFERENCE_KEYS = {
     "code",
     "message",
     "type",
+    "reason",
+    "retryable",
+    "missing_queries",
+    "recommended_action",
 }
 _FULL_VALUE_KEYS = {
     "candidate_tool_ids",
@@ -206,6 +210,7 @@ _SEMANTIC_KEYS = {
 }
 
 _SCHEMA_KEYS = {
+    "$ref",
     "type",
     "required",
     "properties",
@@ -221,6 +226,22 @@ _SCHEMA_KEYS = {
     "uniqueItems",
     "additionalProperties",
     "pattern",
+    "default",
+    "anyOf",
+    "oneOf",
+    "allOf",
+    "not",
+}
+
+_PLANNING_CONTEXT_KEYS = {
+    "schema_version",
+    "requires_before_plan",
+    "capabilities",
+    "refreshes_scene",
+    "input_binding_keys",
+    "scene_write_behavior",
+    "argument_projection",
+    "argument_projection_plan",
 }
 
 
@@ -360,7 +381,7 @@ def _schema_projection(value: Any) -> Any:
     if isinstance(value, dict):
         projected: dict[str, Any] = {}
         for key, child in value.items():
-            if key == "properties" and isinstance(child, dict):
+            if key in {"properties", "$defs"} and isinstance(child, dict):
                 projected[key] = {
                     str(property_name): _schema_projection(property_schema)
                     for property_name, property_schema in child.items()
@@ -387,7 +408,11 @@ def _context_result_projection(payload: dict[str, Any]) -> dict[str, Any]:
             if key in tool:
                 projected_tool[key] = tool[key]
         if isinstance(tool.get("planning"), dict):
-            projected_tool["planning"] = _reference_projection(tool["planning"])
+            projected_tool["planning"] = {
+                key: _safe_json(child)
+                for key, child in tool["planning"].items()
+                if key in _PLANNING_CONTEXT_KEYS
+            }
         for key in ("input_schema", "output_schema"):
             if key in tool:
                 projected_tool[key] = _schema_projection(tool[key])
@@ -462,7 +487,7 @@ def compact_tool_result(tool_name: str, content: str) -> str:
         return content
     if tool_name == "forge_tool_context" and isinstance(payload, dict):
         projection = _context_result_projection(payload)
-    elif tool_name.startswith("forge_task_") and isinstance(payload, dict):
+    elif tool_name in {"forge_task_create", "forge_task_get"} and isinstance(payload, dict):
         projection = _task_result_projection(payload)
     else:
         projection = _reference_projection(payload)

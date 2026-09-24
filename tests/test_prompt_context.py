@@ -568,6 +568,11 @@ def test_context_compaction_keeps_schema_shape_and_readiness_without_prose() -> 
                     "endpoint_id": "scene_understanding",
                     "operation": "understand",
                     "semantics": "query",
+                    "planning": {
+                        "requires_before_plan": True,
+                        "capabilities": ["scene.understand"],
+                        "irrelevant_debug": "drop",
+                    },
                     "description": "provider prose " * 200,
                     "input_schema": {
                         "type": "object",
@@ -581,6 +586,14 @@ def test_context_compaction_keeps_schema_shape_and_readiness_without_prose() -> 
                             "artifacts": {
                                 "type": "array",
                                 "items": {"type": "string", "description": "drop"},
+                            },
+                            "intent": {
+                                "$defs": {
+                                    "Mode": {"enum": ["single_arm", "alternative_arm"]}
+                                },
+                                "properties": {
+                                    "coordination_mode": {"$ref": "#/properties/intent/$defs/Mode"}
+                                },
                             },
                         },
                     },
@@ -604,8 +617,17 @@ def test_context_compaction_keeps_schema_shape_and_readiness_without_prose() -> 
     schema = summary["result"]["data"]["tool"]["input_schema"]
     assert schema["required"] == ["observation_ref", "artifacts"]
     assert schema["properties"]["observation_ref"]["pattern"] == "^observation://"
+    assert schema["properties"]["intent"]["$defs"]["Mode"]["enum"] == [
+        "single_arm",
+        "alternative_arm",
+    ]
+    assert schema["properties"]["intent"]["properties"]["coordination_mode"]["$ref"] == (
+        "#/properties/intent/$defs/Mode"
+    )
+    assert summary["result"]["data"]["tool"]["planning"]["requires_before_plan"] is True
     assert "description" not in encoded
     assert "provider_debug" not in encoded
+    assert "irrelevant_debug" not in encoded
     assert summary["result"]["data"]["context"]["ready"] is True
     assert summary["result"]["data"]["context"]["motion_authorized"] is False
 
@@ -633,6 +655,20 @@ def test_task_lifecycle_compaction_keeps_identity_and_drops_duplicate_record() -
     assert summary["result"]["data"]["motion_authorized"] is False
     assert "duplicate task prose" not in encoded
     assert "tool_records" not in encoded
+
+
+def test_other_task_lifecycle_results_keep_diagnostics() -> None:
+    content = json.dumps({
+        "ok": False,
+        "error": {"code": "discovery_required", "missing_queries": ["scene.bind"]},
+        "data": {"plan_graph_ref": "artifact://plan/current"},
+    })
+    summary = json.loads(compact_tool_result("forge_task_materialize_plan", content))
+    encoded = json.dumps(summary)
+    assert summary["result"]["ok"] is False
+    assert "discovery_required" in encoded
+    assert summary["result"]["error"]["missing_queries"] == ["scene.bind"]
+    assert "artifact://plan/current" in encoded
 
 
 def test_compaction_preserves_frozen_plan_ready_contract() -> None:

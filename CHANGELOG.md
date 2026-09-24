@@ -18,6 +18,33 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v11.5.15 (2026-09-24 11:15) - codex
+
+- [agent] [fix] [完成] `PhyAgentOS/agent/prompt_context.py:L147-L150,L212-L245,L377-L418,L488-L492` 保留 ToolSpec `$ref/$defs`、planning policy 与缺失 Query 诊断，并只对 `forge_task_create/get` 使用完整任务压缩。(local)
+- [Agent] [Fix] [Completed] `PhyAgentOS/agent/prompt_context.py:L147-L150,L212-L245,L377-L418,L488-L492` retains ToolSpec `$ref/$defs`, planning policy, and missing-Query diagnostics, and applies full-task compaction only to `forge_task_create/get`. (local)
+- [tests] [feat] [完成] `tests/test_prompt_context.py:L561-L671` 覆盖多种 schema 和生命周期错误；专项 `139 passed`，Ruff、compileall、diff 检查通过。(local)
+- [Tests] [Feat] [Completed] `tests/test_prompt_context.py:L561-L671` covers schema variants and lifecycle errors; focused tests passed `139`, with Ruff, compileall, and diff checks passing. (local)
+- Diff: `all forge_task_*` -> `forge_task_create/get`; `schema projection` -> `schema projection + $ref/$defs/planning`.
+- Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md). RGB physical acceptance remains incomplete.
+
+## v11.5.14 (2026-09-24 10:00) - codex
+
+- [agent] [fix] [完成] `PhyAgentOS/agent/loop.py:L21-L25,L1741-L1764` 在 session 持久化前结构化压缩 Forge 结果，保留可解析 `ok/data/error` envelope，修复原 16,016 字符截断生成非法 JSON。(local)
+- [Agent] [Fix] [Completed] `PhyAgentOS/agent/loop.py:L21-L25,L1741-L1764` structurally compacts Forge results before session persistence and retains a parseable `ok/data/error` envelope, fixing the former invalid JSON produced by 16,016-character truncation. (local)
+- [agent] [fix] [完成] `PhyAgentOS/agent/prompt_context.py:L445-L470` 保留顶层 `ok`；`tests/test_agent_foundation.py:L65-L87` 验证中断恢复和大结果压缩，专项 `138 passed`。(local)
+- [Agent] [Fix] [Completed] `PhyAgentOS/agent/prompt_context.py:L445-L470` retains top-level `ok`; `tests/test_agent_foundation.py:L65-L87` covers interruption recovery and large-result compaction, with `138` focused tests passing. (local)
+- Diff: `result[:16000] + truncated` -> `compact_tool_result(result)["result"]`; commit `7eda145`.
+- Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md).
+
+## v11.5.13 (2026-09-24 09:30) - codex
+
+- [agent] [fix] [完成] `PhyAgentOS/agent/prompt_context.py:L208-L224,L356-L448,L462-L467` 为 discovery ToolSpec 与任务读取添加有界 prompt 投影，保留 schema 结构、readiness 和身份引用。(local)
+- [Agent] [Fix] [Completed] `PhyAgentOS/agent/prompt_context.py:L208-L224,L356-L448,L462-L467` adds bounded discovery ToolSpec and task-read prompt projections while retaining schema shape, readiness, and identity references. (local)
+- [tests] [feat] [完成] `tests/test_prompt_context.py:L561-L635` 验证不同输入形状；专项 `137 passed`，Ruff、compileall、diff 检查通过。(local)
+- [Tests] [Feat] [Completed] `tests/test_prompt_context.py:L561-L635` verifies varied input shapes; focused tests passed `137`, with Ruff, compileall, and diff checks passing. (local)
+- Diff: `full ToolSpec/task record` -> `bounded schema/readiness/identity projection`; implementation commit `27a3a60`.
+- Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md).
+
 ## v11.5.12 (2026-09-24 15:30) - codex
 
 - [agent] [fix] [完成] `PhyAgentOS/agent/prompt_context.py:L748-L779,L871-L874` 在 AgentTask 已创建后压缩 `activate_skill` 结果，保留 activation/lessons 身份和 SkillUse 持久化提示，避免 discovery prompt 重复携带完整 Skill 文档。(local)
@@ -33,6 +60,8 @@
 - [tests] [feat] [完成] `tests/test_agent_foundation.py:L209-L268` 覆盖激活后的受限创建工具与创建成功后的恢复；Prompt/Agent 专项 `81 passed`，compileall、Ruff、`git diff --check` 通过。(local)
 - [Tests] [Feat] [Completed] `tests/test_agent_foundation.py:L209-L268` covers the restricted creation set after activation and restoration after successful creation; Prompt/Agent focused tests passed `81`, with compileall, Ruff, and `git diff --check` passing. (local)
 - Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md).
+
+## Historical Entries
 
 ## v11.5.10 (2026-09-24 07:24) - codex
 
