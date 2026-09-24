@@ -153,4 +153,35 @@ __all__ = [
     "AgentTaskPlanningContextProvider",
     "PlanningContextUnavailableError",
     "context_from_task",
+    "current_scene_query_records",
 ]
+
+
+def current_scene_query_records(task):
+    """Return trusted Query records for the latest capture across plan segments."""
+    try:
+        context = context_from_task(task, allow_refresh=True)
+    except PlanningContextUnavailableError:
+        return ()
+    if dict(context.condition_facts).get("scene_current") is False:
+        return ()
+    trusted = set(context.evidence_refs)
+    records = tuple(getattr(task, "execution_records", ()))
+    visible = tuple(
+        record for record in records
+        if record.status == "succeeded"
+        and record.semantics == "query"
+        and trusted.intersection(record.evidence_refs)
+    )
+    observation = next((r for r in reversed(visible) if r.tool_id == "scene.observe"), None)
+    if observation is None:
+        return ()
+    keys = ("scene_revision", "observation_ref", "calibration_ref")
+    capture = response_facts(observation.response)
+    if capture.get("scene_revision") != context.scene_revision:
+        return ()
+    identity = tuple(capture.get(key) for key in keys)
+    return tuple(
+        record for record in visible
+        if tuple(response_facts(record.response).get(key) for key in keys) == identity
+    )

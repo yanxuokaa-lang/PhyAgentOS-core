@@ -209,3 +209,57 @@ def test_context_does_not_restore_unselected_historical_discovery_evidence() -> 
 
     assert "tool:selected" in context.evidence_refs
     assert "tool:historical" not in context.evidence_refs
+
+
+def test_continuation_keeps_same_capture_records_and_excludes_stale_captures():
+    from PhyAgentOS.agent.planning_context import current_scene_query_records
+    from PhyAgentOS.agent.prompt_context import continuation_task_prompt_projection
+
+    def query(name, tool, capture):
+        return _record(name, tool_id=tool, arguments={}, response={"data": {
+            "scene_revision": "scene", "observation_ref": "observation://same-scene",
+            "calibration_ref": f"artifact://{capture}/calibration",
+            "entities": [{"entity_ref": "entity://red", "category": "red cube", "world_T_object": [12345]}],
+        }})
+
+    observation = query("observe", "scene.observe", "first")
+    binding = query("bind", "scene.bind", "first")
+    task = _task(observation, binding)
+    # Queries remain available even though the active continuation has no records.
+    task.active_revision.execution_records = ()
+    assert current_scene_query_records(task) == (observation, binding)
+    projection = continuation_task_prompt_projection(task)
+    assert projection["current_scene_queries"][1]["entities"] == [{"entity_ref": "entity://red", "category": "red cube"}]
+    assert "12345" not in str(projection)
+    newer = query("observe-new", "scene.observe", "second")
+    task.execution_records += (newer,)
+    assert current_scene_query_records(task) == (newer,)
+    effect = _record("action", tool_id="object.place", arguments={}, response={"data": {"world_change_started": True}})
+    effect.semantics = "action"
+    task.execution_records += (effect,)
+    task.active_revision.discovery_evidence_refs = newer.evidence_refs
+    assert current_scene_query_records(task) == ()
+    effect.response["data"]["new_scene_revision"] = "scene-after-place"
+    assert current_scene_query_records(task) == ()
+
+
+def test_compiler_resolves_entity_from_previous_segment_current_capture():
+    from PhyAgentOS.agent.plan_proposal import _complete_persisted_runtime_bindings
+    from PhyAgentOS.planning import PlanNode
+
+    identity = {"scene_revision": "scene", "observation_ref": "observation://current",
+                "calibration_ref": "artifact://current/calibration"}
+    observation = _record("observe", tool_id="scene.observe", arguments={}, response={"data": identity})
+    binding = _record("bind", tool_id="scene.bind", arguments={}, response={"data": {
+        **identity, "entities": [{"entity_ref": "entity://observed-red",
+                                 "execution_entity_ref": "entity://block-red-1"}],
+    }})
+    observation.node_id = "observe"
+    binding.node_id = "bind"
+    task = _task(observation, binding)
+    task.revisions = (SimpleNamespace(execution_records=task.execution_records),)
+    task.active_revision.execution_records = ()
+    prepare = PlanNode(node_id="prepare", obligation_id="prepare", capability="manipulation.prepare",
+                       input_bindings={"execution_entity_ref": "entity://block-red-1"})
+    completed = _complete_persisted_runtime_bindings(task, (prepare,))
+    assert completed[0].input_bindings["entity_ref"] == "entity://observed-red"

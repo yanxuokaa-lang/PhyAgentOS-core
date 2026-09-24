@@ -18,6 +18,231 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v11.6.7 (2026-09-24 19:29) - codex
+
+- [agent] [fix] [完成] 单块任务完成 grasp 后续接上下文只暴露 completed_nodes/latest_effect，遗漏无世界变化时仍有效的 discovery 引用；编译器也只检查 active_revision，丢失前一 revision 的同场景绑定。使用现有 context_from_task 的受信任 evidence 与当前 capture identity 解析同任务记录，在 continuation 提供引用摘要；不转录候选、不将旧世界证据带入新场景。(local)
+- [Agent] [Fix] [Completed] Continuation after grasp hides valid discovery references and the compiler scans only the active revision. Resolve same-task current-capture records through existing trusted context and expose compact reference summaries during continuation; never copy candidates or carry stale world evidence. (local)
+- Files: `PhyAgentOS/agent/plan_proposal.py`, `PhyAgentOS/agent/prompt_context.py`, corresponding tests and `CHANGELOG.md`.
+
+### 验证 / Validation
+
+- 166 tests passed: planning context, foundation, plan proposal bindings, prompt context, planning loop. Ruff passed. Live single-block acceptance is pending.
+- 同场景跨 revision 保留引用；新 capture 和世界变化均排除旧证据，含旧 discovery refs 的回归。 / Preserve references across segments only for the current capture; exclude stale captures and world evidence, including selected old discovery refs.
+
+### 文件变更详情 / File changes
+
+#### [修改 / Modified] `PhyAgentOS/agent/planning_context.py` L154-L187
+
+```diff
+diff --git a/PhyAgentOS/agent/planning_context.py b/PhyAgentOS/agent/planning_context.py
+index 9b50ab4..38ee77d 100644
+--- a/PhyAgentOS/agent/planning_context.py
++++ b/PhyAgentOS/agent/planning_context.py
+@@ -154,3 +154,34 @@ __all__ = [
+     "PlanningContextUnavailableError",
+     "context_from_task",
++    "current_scene_query_records",
+ ]
++
++
++def current_scene_query_records(task):
++    """Return trusted Query records for the latest capture across plan segments."""
++    try:
++        context = context_from_task(task, allow_refresh=True)
++    except PlanningContextUnavailableError:
++        return ()
++    if dict(context.condition_facts).get("scene_current") is False:
++        return ()
++    trusted = set(context.evidence_refs)
++    records = tuple(getattr(task, "execution_records", ()))
++    visible = tuple(
++        record for record in records
++        if record.status == "succeeded"
++        and record.semantics == "query"
++        and trusted.intersection(record.evidence_refs)
++    )
++    observation = next((r for r in reversed(visible) if r.tool_id == "scene.observe"), None)
++    if observation is None:
++        return ()
++    keys = ("scene_revision", "observation_ref", "calibration_ref")
++    capture = response_facts(observation.response)
++    if capture.get("scene_revision") != context.scene_revision:
++        return ()
++    identity = tuple(capture.get(key) for key in keys)
++    return tuple(
++        record for record in visible
++        if tuple(response_facts(record.response).get(key) for key in keys) == identity
++    )
+```
+
+#### [修改 / Modified] `PhyAgentOS/agent/plan_proposal.py` L193-L197, L225-L239, L246-L250
+
+```diff
+diff --git a/PhyAgentOS/agent/plan_proposal.py b/PhyAgentOS/agent/plan_proposal.py
+index c979baa..bc0c3dc 100644
+--- a/PhyAgentOS/agent/plan_proposal.py
++++ b/PhyAgentOS/agent/plan_proposal.py
+@@ -193,5 +193,5 @@ def _complete_persisted_runtime_bindings(
+     consumers must not depend on the model copying a destination or capability
+     URI into every later selection.  Only values already frozen in this graph
+-    or a unique current-revision capabilities result are propagated; ambiguous or
++    or a unique current-capture capabilities result are propagated; ambiguous or
+     stale values remain absent and are rejected by normal selection validation.
+     """
+@@ -225,10 +225,15 @@ def _complete_persisted_runtime_bindings(
+                             goal_entities_by_destination.setdefault(destination, set()).add(entity)
+
+-    # Scene-bound facts must come from the revision being compiled. Task goals
++    # Scene-bound facts may cross segments only within the current capture. Task goals
+     # are task-specification facts and may outlive a scene; capabilities,
+     # identity correspondence, targets, and candidates may not.
+     active_revision = task.active_revision
++    scene_records = active_revision.execution_records
++    if getattr(task, "execution_records", None):
++        from PhyAgentOS.agent.planning_context import current_scene_query_records
++
++        scene_records = current_scene_query_records(task)
+     latest_observation_identity: tuple[str, str, str] | None = None
+-    for record in reversed(active_revision.execution_records):
++    for record in reversed(scene_records):
+         if record.status != "succeeded" or record.tool_id != "scene.observe":
+             continue
+@@ -241,5 +246,5 @@ def _complete_persisted_runtime_bindings(
+             latest_observation_identity = identity  # type: ignore[assignment]
+             break
+-    for record in active_revision.execution_records:
++    for record in scene_records:
+         facts = response_facts(record.response)
+         if record.status != "succeeded":
+```
+
+#### [修改 / Modified] `PhyAgentOS/agent/prompt_context.py` L801-L838, L861-L867
+
+```diff
+diff --git a/PhyAgentOS/agent/prompt_context.py b/PhyAgentOS/agent/prompt_context.py
+index 2e94da1..0ab494a 100644
+--- a/PhyAgentOS/agent/prompt_context.py
++++ b/PhyAgentOS/agent/prompt_context.py
+@@ -801,6 +801,38 @@ def continuation_task_prompt_projection(task: Any | None) -> dict[str, Any] | No
+     )
+     effect = response_facts(getattr(latest_effect, "response", None)) if latest_effect else {}
++    from PhyAgentOS.agent.planning_context import current_scene_query_records
++
++    current_records = current_scene_query_records(task)
++    summaries = []
++    for record in current_records:
++        facts = response_facts(record.response)
++        summary = {
++            "record_id": record.record_id,
++            "tool_id": record.tool_id,
++            "evidence_refs": list(record.evidence_refs),
++            "facts": {key: facts[key] for key in (
++                "observation_ref", "scene_revision", "calibration_ref", "frame",
++                "binding_ref", "snapshot_ref", "candidate_set_ref", "preparation_ref",
++                "destination_ref", "entity_ref", "funnel",
++            ) if key in facts},
++        }
++        if record.tool_id in {"scene.bind", "scene.understand"}:
++            summary["entities"] = [
++                {key: entity[key] for key in ("entity_ref", "execution_entity_ref", "category") if key in entity}
++                for entity in facts.get("entities", ()) if isinstance(entity, dict)
++            ]
++        summaries.append(summary)
++    goals = [
++        {"record_id": record.record_id, "goals": [
++            {key: goal[key] for key in ("execution_entity_ref", "destination_ref") if key in goal}
++            for goal in response_facts(record.response).get("goals", ()) if isinstance(goal, dict)
++        ]}
++        for record in getattr(task, "execution_records", ())
++        if record.tool_id == "task.goal" and record.status == "succeeded"
++    ]
+     return {
+         "version": "agent_continuation_prompt_projection_v1",
++        "current_scene_queries": summaries,
++        "task_goals": goals,
+         "authority": "read_only_projection_from_AgentTaskCoordinator",
+         "task_id": getattr(task, "task_id", None),
+@@ -829,5 +861,7 @@ def continuation_task_prompt_projection(task: Any | None) -> dict[str, Any] | No
+             "Submit only the next scene-bound semantic segment or finalize. "
+             "Do not repeat completed nodes, cite future node IDs, or copy prior "
+-            "execution arguments, digests, assignments, candidates, or refs."
++            "execution arguments, digests, assignments or candidates. Use the current "
++            "scene query summaries and exact evidence refs for node bindings; "
++            "dependencies may only name nodes in the newly submitted segment."
+         ),
+         "motion_authorized": False,
+```
+
+#### [修改 / Modified] `tests/test_planning_context.py` L210-L265
+
+```diff
+diff --git a/tests/test_planning_context.py b/tests/test_planning_context.py
+index 28d2f87..0085f69 100644
+--- a/tests/test_planning_context.py
++++ b/tests/test_planning_context.py
+@@ -210,2 +210,56 @@ def test_context_does_not_restore_unselected_historical_discovery_evidence() ->
+     assert "tool:selected" in context.evidence_refs
+     assert "tool:historical" not in context.evidence_refs
++
++
++def test_continuation_keeps_same_capture_records_and_excludes_stale_captures():
++    from PhyAgentOS.agent.planning_context import current_scene_query_records
++    from PhyAgentOS.agent.prompt_context import continuation_task_prompt_projection
++
++    def query(name, tool, capture):
++        return _record(name, tool_id=tool, arguments={}, response={"data": {
++            "scene_revision": "scene", "observation_ref": "observation://same-scene",
++            "calibration_ref": f"artifact://{capture}/calibration",
++            "entities": [{"entity_ref": "entity://red", "category": "red cube", "world_T_object": [12345]}],
++        }})
++
++    observation = query("observe", "scene.observe", "first")
++    binding = query("bind", "scene.bind", "first")
++    task = _task(observation, binding)
++    # Queries remain available even though the active continuation has no records.
++    task.active_revision.execution_records = ()
++    assert current_scene_query_records(task) == (observation, binding)
++    projection = continuation_task_prompt_projection(task)
++    assert projection["current_scene_queries"][1]["entities"] == [{"entity_ref": "entity://red", "category": "red cube"}]
++    assert "12345" not in str(projection)
++    newer = query("observe-new", "scene.observe", "second")
++    task.execution_records += (newer,)
++    assert current_scene_query_records(task) == (newer,)
++    effect = _record("action", tool_id="object.place", arguments={}, response={"data": {"world_change_started": True}})
++    effect.semantics = "action"
++    task.execution_records += (effect,)
++    task.active_revision.discovery_evidence_refs = newer.evidence_refs
++    assert current_scene_query_records(task) == ()
++    effect.response["data"]["new_scene_revision"] = "scene-after-place"
++    assert current_scene_query_records(task) == ()
++
++
++def test_compiler_resolves_entity_from_previous_segment_current_capture():
++    from PhyAgentOS.agent.plan_proposal import _complete_persisted_runtime_bindings
++    from PhyAgentOS.planning import PlanNode
++
++    identity = {"scene_revision": "scene", "observation_ref": "observation://current",
++                "calibration_ref": "artifact://current/calibration"}
++    observation = _record("observe", tool_id="scene.observe", arguments={}, response={"data": identity})
++    binding = _record("bind", tool_id="scene.bind", arguments={}, response={"data": {
++        **identity, "entities": [{"entity_ref": "entity://observed-red",
++                                 "execution_entity_ref": "entity://block-red-1"}],
++    }})
++    observation.node_id = "observe"
++    binding.node_id = "bind"
++    task = _task(observation, binding)
++    task.revisions = (SimpleNamespace(execution_records=task.execution_records),)
++    task.active_revision.execution_records = ()
++    prepare = PlanNode(node_id="prepare", obligation_id="prepare", capability="manipulation.prepare",
++                       input_bindings={"execution_entity_ref": "entity://block-red-1"})
++    completed = _complete_persisted_runtime_bindings(task, (prepare,))
++    assert completed[0].input_bindings["entity_ref"] == "entity://observed-red"
+```
+
+### Git 提交 / Git commit
+
+- Branch: `feature/planning-loop`. Implementation commit recorded after commit.
+
 ## v11.6.6 (2026-09-24 18:08) - codex
 
 ### 实际修改 / Completed changes
@@ -124,21 +349,3 @@
 - `/home/yanxu/.PhyAgentOS/config.json:L5`、`/home/yanxu/.PhyAgentOS/config-rgb-no-evolution.json:L5`、`/home/yanxu/.PhyAgentOS/config-rgb-no-evolution-long.json:L5`：`"model": "gpt-6-sol"` → `"model": "gpt-5.6-sol"`。
 - 三份外部配置经 `PhyAgentOS.config.loader.load_config` 加载，均确认 `gpt-5.6-sol/high`。配置含本地凭据，Git 仅记录本次变更说明。
 - All three external configurations resolve to `gpt-5.6-sol/high` through `load_config`; only the change record is tracked in Git because local configurations contain credentials.
-
-## v11.6.3 (2026-09-24 12:22) - codex
-
-- [agent] [fix] [完成] `PhyAgentOS/agent/loop.py:L809-L878` 在任务创建与 discovery 的无 Tool call `provider_timeout` 后复用同一模型请求一次；节点执行器仍单独管理 node turn 与 Action 对账。(local)
-- [Agent] [Fix] [Completed] `PhyAgentOS/agent/loop.py:L809-L878` retries the same model request once after a tool-free `provider_timeout` in task creation or discovery; the node executor still owns node turns and Action reconciliation. (local)
-- [tests] [feat] [完成] `tests/test_agent_foundation.py:L333-L381` 覆盖两个阶段的恢复/连续失败与节点不叠加重试；相关测试 `158 passed`、Ruff、diff 检查通过。(local)
-- [Tests] [Feat] [Completed] `tests/test_agent_foundation.py:L333-L381` covers recovery/repeated failure in both phases and no layered node retry; `158` related tests, Ruff, and diff checks passed. (local)
-- Diff: `single preplanning model timeout -> turn failure` -> `one bounded same-request retry`.
-- Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md). Live RGB acceptance remains incomplete.
-
-## v11.6.2 (2026-09-24 12:05) - codex
-
-- [agent] [fix] [完成] `PhyAgentOS/agent/planning_loop.py:L606-L623` 在无 selection、无执行记录的 `provider_timeout` 后使用现有一次 node-turn continuation，保留已固化选择和 Action 对账语义。(local)
-- [Agent] [Fix] [Completed] `PhyAgentOS/agent/planning_loop.py:L606-L623` uses the existing single node-turn continuation after a pre-selection `provider_timeout` without an execution record, preserving persisted-selection and Action reconciliation behavior. (local)
-- [tests] [feat] [完成] `tests/test_planning_loop.py:L1857-L1914` 覆盖一次超时后成功及连续超时阻塞；专项 `144 passed`，Ruff 与 diff 检查通过。(local)
-- [Tests] [Feat] [Completed] `tests/test_planning_loop.py:L1857-L1914` covers success after one timeout and blocking after repeated timeouts; focused tests passed `144`, with Ruff and diff checks passing. (local)
-- Diff: `pre-selection provider_timeout -> blocked` -> `one bounded same-node continuation`.
-- Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md). Live RGB acceptance remains incomplete.

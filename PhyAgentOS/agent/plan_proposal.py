@@ -192,7 +192,7 @@ def _complete_persisted_runtime_bindings(
     Coordinator owns exact persisted producer facts.  Preparation/acquisition
     consumers must not depend on the model copying a destination or capability
     URI into every later selection.  Only values already frozen in this graph
-    or a unique current-revision capabilities result are propagated; ambiguous or
+    or a unique current-capture capabilities result are propagated; ambiguous or
     stale values remain absent and are rejected by normal selection validation.
     """
     destination_by_entity: dict[str, set[str]] = {}
@@ -224,12 +224,17 @@ def _complete_persisted_runtime_bindings(
                             goal_sources.setdefault(entity, set()).add(destination)
                             goal_entities_by_destination.setdefault(destination, set()).add(entity)
 
-    # Scene-bound facts must come from the revision being compiled. Task goals
+    # Scene-bound facts may cross segments only within the current capture. Task goals
     # are task-specification facts and may outlive a scene; capabilities,
     # identity correspondence, targets, and candidates may not.
     active_revision = task.active_revision
+    scene_records = active_revision.execution_records
+    if getattr(task, "execution_records", None):
+        from PhyAgentOS.agent.planning_context import current_scene_query_records
+
+        scene_records = current_scene_query_records(task)
     latest_observation_identity: tuple[str, str, str] | None = None
-    for record in reversed(active_revision.execution_records):
+    for record in reversed(scene_records):
         if record.status != "succeeded" or record.tool_id != "scene.observe":
             continue
         facts = response_facts(record.response)
@@ -240,7 +245,7 @@ def _complete_persisted_runtime_bindings(
         if all(isinstance(value, str) and value for value in identity):
             latest_observation_identity = identity  # type: ignore[assignment]
             break
-    for record in active_revision.execution_records:
+    for record in scene_records:
         facts = response_facts(record.response)
         if record.status != "succeeded":
             continue

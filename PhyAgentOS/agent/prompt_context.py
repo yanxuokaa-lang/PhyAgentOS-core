@@ -800,8 +800,40 @@ def continuation_task_prompt_projection(task: Any | None) -> dict[str, Any] | No
         None,
     )
     effect = response_facts(getattr(latest_effect, "response", None)) if latest_effect else {}
+    from PhyAgentOS.agent.planning_context import current_scene_query_records
+
+    current_records = current_scene_query_records(task)
+    summaries = []
+    for record in current_records:
+        facts = response_facts(record.response)
+        summary = {
+            "record_id": record.record_id,
+            "tool_id": record.tool_id,
+            "evidence_refs": list(record.evidence_refs),
+            "facts": {key: facts[key] for key in (
+                "observation_ref", "scene_revision", "calibration_ref", "frame",
+                "binding_ref", "snapshot_ref", "candidate_set_ref", "preparation_ref",
+                "destination_ref", "entity_ref", "funnel",
+            ) if key in facts},
+        }
+        if record.tool_id in {"scene.bind", "scene.understand"}:
+            summary["entities"] = [
+                {key: entity[key] for key in ("entity_ref", "execution_entity_ref", "category") if key in entity}
+                for entity in facts.get("entities", ()) if isinstance(entity, dict)
+            ]
+        summaries.append(summary)
+    goals = [
+        {"record_id": record.record_id, "goals": [
+            {key: goal[key] for key in ("execution_entity_ref", "destination_ref") if key in goal}
+            for goal in response_facts(record.response).get("goals", ()) if isinstance(goal, dict)
+        ]}
+        for record in getattr(task, "execution_records", ())
+        if record.tool_id == "task.goal" and record.status == "succeeded"
+    ]
     return {
         "version": "agent_continuation_prompt_projection_v1",
+        "current_scene_queries": summaries,
+        "task_goals": goals,
         "authority": "read_only_projection_from_AgentTaskCoordinator",
         "task_id": getattr(task, "task_id", None),
         "active_revision_id": getattr(task, "active_revision_id", None),
@@ -828,7 +860,9 @@ def continuation_task_prompt_projection(task: Any | None) -> dict[str, Any] | No
         "instruction_boundary": (
             "Submit only the next scene-bound semantic segment or finalize. "
             "Do not repeat completed nodes, cite future node IDs, or copy prior "
-            "execution arguments, digests, assignments, candidates, or refs."
+            "execution arguments, digests, assignments or candidates. Use the current "
+            "scene query summaries and exact evidence refs for node bindings; "
+            "dependencies may only name nodes in the newly submitted segment."
         ),
         "motion_authorized": False,
     }
