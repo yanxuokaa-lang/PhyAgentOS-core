@@ -18,6 +18,15 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v11.6.3 (2026-09-24 12:22) - codex
+
+- [agent] [fix] [完成] `PhyAgentOS/agent/loop.py:L809-L878` 在任务创建与 discovery 的无 Tool call `provider_timeout` 后复用同一模型请求一次；节点执行器仍单独管理 node turn 与 Action 对账。(local)
+- [Agent] [Fix] [Completed] `PhyAgentOS/agent/loop.py:L809-L878` retries the same model request once after a tool-free `provider_timeout` in task creation or discovery; the node executor still owns node turns and Action reconciliation. (local)
+- [tests] [feat] [完成] `tests/test_agent_foundation.py:L333-L381` 覆盖两个阶段的恢复/连续失败与节点不叠加重试；相关测试 `158 passed`、Ruff、diff 检查通过。(local)
+- [Tests] [Feat] [Completed] `tests/test_agent_foundation.py:L333-L381` covers recovery/repeated failure in both phases and no layered node retry; `158` related tests, Ruff, and diff checks passed. (local)
+- Diff: `single preplanning model timeout -> turn failure` -> `one bounded same-request retry`.
+- Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md). Live RGB acceptance remains incomplete.
+
 ## v11.6.2 (2026-09-24 12:05) - codex
 
 - [agent] [fix] [完成] `PhyAgentOS/agent/planning_loop.py:L606-L623` 在无 selection、无执行记录的 `provider_timeout` 后使用现有一次 node-turn continuation，保留已固化选择和 Action 对账语义。(local)
@@ -60,6 +69,8 @@
 - Diff: `all forge_task_*` -> `forge_task_create/get`; `schema projection` -> `schema projection + $ref/$defs/planning`.
 - Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md). RGB physical acceptance remains incomplete.
 
+## Historical Entries
+
 ## v11.5.14 (2026-09-24 10:00) - codex
 
 - [agent] [fix] [完成] `PhyAgentOS/agent/loop.py:L21-L25,L1741-L1764` 在 session 持久化前结构化压缩 Forge 结果，保留可解析 `ok/data/error` envelope，修复原 16,016 字符截断生成非法 JSON。(local)
@@ -68,8 +79,6 @@
 - [Agent] [Fix] [Completed] `PhyAgentOS/agent/prompt_context.py:L445-L470` retains top-level `ok`; `tests/test_agent_foundation.py:L65-L87` covers interruption recovery and large-result compaction, with `138` focused tests passing. (local)
 - Diff: `result[:16000] + truncated` -> `compact_tool_result(result)["result"]`; commit `7eda145`.
 - Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md).
-
-## Historical Entries
 
 ## v11.5.13 (2026-09-24 09:30) - codex
 

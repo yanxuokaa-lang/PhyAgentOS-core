@@ -330,6 +330,57 @@ def test_pick_place_creation_projection_restores_after_task_creation(tmp_path):
     asyncio.run(exercise())
 
 
+@pytest.mark.parametrize("phase", ["task_creation", "discovery"])
+@pytest.mark.parametrize("recover", [False, True])
+def test_task_preplanning_model_timeout_retries_same_request_once(tmp_path, phase, recover):
+    async def exercise():
+        timeout = LLMResponse(content="LLM request timed out after 50 seconds", finish_reason="error")
+        provider = ScriptedProvider([
+            timeout,
+            LLMResponse(content="Continue planning") if recover else timeout,
+        ])
+        coordinator = setup_task(tmp_path)[0] if phase == "discovery" else None
+        loop = AgentLoop(
+            bus=MessageBus(), provider=provider, workspace=tmp_path,
+            forge_task_coordinator=coordinator, max_iterations=1,
+        )
+        result = await loop._run_agent_loop(
+            [{"role": "user", "content": "Arrange RGB blocks"}],
+            active_task_id=coordinator.store.active().task_id if coordinator else None,
+        )
+
+        assert len(provider.requests) == 2
+        assert provider.requests[0] == provider.requests[1]
+        assert result.tools_used == []
+        assert result.model_failure_code is (None if recover else "provider_timeout")
+        assert result.content == ("Continue planning" if recover else timeout.content)
+
+    asyncio.run(exercise())
+
+
+def test_node_turn_does_not_layer_model_timeout_retry(tmp_path):
+    async def exercise():
+        coordinator, task = setup_task(tmp_path)
+        provider = ScriptedProvider([
+            LLMResponse(content="LLM request timed out after 50 seconds", finish_reason="error"),
+            LLMResponse(content="must remain unused"),
+        ])
+        loop = AgentLoop(
+            bus=MessageBus(), provider=provider, workspace=tmp_path,
+            forge_task_coordinator=coordinator,
+        )
+        result = await loop.run_node_turn(
+            task_id=task.task_id, revision_id=task.active_revision_id,
+            node_id="red_prepare", prompt="Use current evidence",
+        )
+
+        assert len(provider.requests) == 1
+        assert result.model_failure_code == "provider_timeout"
+        assert result.tools_used == []
+
+    asyncio.run(exercise())
+
+
 def test_node_turn_yields_after_selection_requires_replan(tmp_path):
     async def exercise():
         provider = ScriptedProvider([

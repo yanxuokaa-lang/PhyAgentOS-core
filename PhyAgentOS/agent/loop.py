@@ -806,58 +806,76 @@ class AgentLoop:
                 request_view.compacted,
             )
 
-            started = monotonic()
-            logger.info("Agent model start session={} iteration={}", experience_session_key, iteration)
-            if on_progress:
-                await on_progress(
-                    f"Model request started: phase={request_view.phase}, "
-                    f"prompt≈{estimated_tokens} tokens, iteration={iteration}.",
-                    tool_hint=False,
-                )
-            try:
-                response = await bounded_decision(self.provider.chat_with_retry(
-                    messages=request_view.messages,
-                    tools=tool_defs,
-                    model=self.model,
-                ))
-            except asyncio.TimeoutError:
-                return decision_timeout_result()
-            except asyncio.CancelledError:
-                logger.warning("Agent model cancelled session={} iteration={}", experience_session_key, iteration)
-                raise
-            finally:
-                logger.info("Agent model exit session={} iteration={} elapsed_s={:.3f}",
-                            experience_session_key, iteration, monotonic() - started)
-
-            timing = response.timing
-            if timing is not None:
-                headers = (
-                    f"{timing.request_to_headers_s:.3f}s"
-                    if timing.request_to_headers_s is not None
-                    else "unavailable"
-                )
-                first_token = (
-                    f"{timing.time_to_first_token_s:.3f}s"
-                    if timing.time_to_first_token_s is not None
-                    else "unavailable"
-                )
-                logger.info(
-                    "Agent model timing session={} iteration={} "
-                    "request_to_headers={} first_token={} complete_s={:.3f} mode={}",
-                    experience_session_key,
-                    iteration,
-                    headers,
-                    first_token,
-                    timing.complete_response_s,
-                    timing.observation_mode,
-                )
+            retry_timeout = (
+                projection_scope == "task"
+                and request_view.phase in {"task_creation", "discovery"}
+            )
+            for model_attempt in range(2 if retry_timeout else 1):
+                started = monotonic()
+                logger.info("Agent model start session={} iteration={} attempt={}",
+                            experience_session_key, iteration, model_attempt + 1)
                 if on_progress:
                     await on_progress(
-                        "Model request timing: "
-                        f"headers={headers}, first_token={first_token}, "
-                        f"complete={timing.complete_response_s:.3f}s.",
+                        f"Model request started: phase={request_view.phase}, "
+                        f"prompt≈{estimated_tokens} tokens, iteration={iteration}.",
                         tool_hint=False,
                     )
+                try:
+                    response = await bounded_decision(self.provider.chat_with_retry(
+                        messages=request_view.messages,
+                        tools=tool_defs,
+                        model=self.model,
+                    ))
+                except asyncio.TimeoutError:
+                    return decision_timeout_result()
+                except asyncio.CancelledError:
+                    logger.warning("Agent model cancelled session={} iteration={}", experience_session_key, iteration)
+                    raise
+                finally:
+                    logger.info("Agent model exit session={} iteration={} attempt={} elapsed_s={:.3f}",
+                                experience_session_key, iteration, model_attempt + 1, monotonic() - started)
+
+                timing = response.timing
+                if timing is not None:
+                    headers = (
+                        f"{timing.request_to_headers_s:.3f}s"
+                        if timing.request_to_headers_s is not None
+                        else "unavailable"
+                    )
+                    first_token = (
+                        f"{timing.time_to_first_token_s:.3f}s"
+                        if timing.time_to_first_token_s is not None
+                        else "unavailable"
+                    )
+                    logger.info(
+                        "Agent model timing session={} iteration={} attempt={} "
+                        "request_to_headers={} first_token={} complete_s={:.3f} mode={}",
+                        experience_session_key,
+                        iteration,
+                        model_attempt + 1,
+                        headers,
+                        first_token,
+                        timing.complete_response_s,
+                        timing.observation_mode,
+                    )
+                    if on_progress:
+                        await on_progress(
+                            "Model request timing: "
+                            f"headers={headers}, first_token={first_token}, "
+                            f"complete={timing.complete_response_s:.3f}s.",
+                            tool_hint=False,
+                        )
+                if not (
+                    retry_timeout
+                    and model_attempt == 0
+                    and response.finish_reason == "error"
+                    and not response.has_tool_calls
+                    and self.provider.classify_error(response.content) == "provider_timeout"
+                ):
+                    break
+                logger.warning("Agent model timeout before planning; retrying same request once")
+                if on_progress:
+                    await on_progress("Model request timed out; retrying once.", tool_hint=False)
 
             if response.has_tool_calls:
                 if on_progress:
