@@ -50,7 +50,7 @@
 
 ### Git 提交 / Git commit
 
-- pending until live GraspGen acceptance completes.
+- Implementation commit: `332b683`; branch: `feature/planning-loop`; pushed. Live acceptance remains pending.
 
 
 ### 变更计划 / Planned changes
