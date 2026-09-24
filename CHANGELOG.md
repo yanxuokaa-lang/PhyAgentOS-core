@@ -22,6 +22,28 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v11.7.5 (2026-09-25 02:30) - codex
+
+- [agent] [fix] 在未物化任务上下文中投影 discovery 阶段、缺失前置 Query 和下一步动作，避免模型把暂时隐藏的 PlanGraph 控制工具误判为未注册并取消任务。(local)
+- [Agent] [Fix] Project the discovery phase, missing prerequisite Queries, and next action for unmaterialized tasks so the model does not mistake gated PlanGraph controls for unregistered tools and cancel the task. (local)
+
+#### [修改 / Modified] `PhyAgentOS/agent/prompt_context.py` L612-L630, L698-L702
+
+```diff
++    missing_queries = tuple(sorted(missing_preplan_queries(task))) if graph is None else ()
++    planning_phase = "discovery" | "materialization_ready" | "plan_execution"
++    planning_next_step = "Run forge_tool_query ..." or "Submit ... forge_task_materialize_plan"
+...
++        "planning_phase": planning_phase,
++        "missing_preplan_queries": list(missing_queries),
++        "planning_next_step": planning_next_step,
+```
+
+#### [新增 / Added] `tests/test_prompt_context.py` L490-L521
+
+- Regression covers discovery guidance and post-discovery materialization guidance.
+- Validation: 34 passed; Ruff and `git diff --check` passed.
+
 ## v11.7.4 (2026-09-25 02:09) - codex
 
 - [agent] [fix] 当 planning Query 失败且 replan budget 耗尽时，将任务落到 `failed` 终态并清除 deadline，避免失败图无 ready 节点却持续占用唯一任务槽；有剩余预算时保持 `awaiting_replan`。(local)

@@ -610,6 +610,22 @@ def task_prompt_projection(task: Any | None) -> dict[str, Any] | None:
         )
 
     status = _task_status(task)
+    missing_queries = tuple(sorted(missing_preplan_queries(task))) if graph is None else ()
+    if graph is None and missing_queries:
+        planning_phase = "discovery"
+        planning_next_step = (
+            "Run forge_tool_query for each missing prerequisite Query using its live "
+            "ToolSpec. Do not cancel the task because PlanGraph controls are hidden; "
+            "forge_task_materialize_plan becomes visible after those Queries succeed."
+        )
+    elif graph is None:
+        planning_phase = "materialization_ready"
+        planning_next_step = "Submit the semantic PlanGraph with forge_task_materialize_plan."
+    else:
+        planning_phase = "plan_execution"
+        planning_next_step = (
+            "Use forge_plan_activate, forge_plan_ready, and forge_plan_select for the active graph."
+        )
     settlements = []
     if revision is not None:
         settlements = [_safe_json(item) for item in getattr(revision, "node_settlements", ())]
@@ -681,6 +697,9 @@ def task_prompt_projection(task: Any | None) -> dict[str, Any] | None:
         "active_revision_id": getattr(task, "active_revision_id", None),
         "active_revision": revision_projection,
         "plan_materialized": graph is not None,
+        "planning_phase": planning_phase,
+        "missing_preplan_queries": list(missing_queries),
+        "planning_next_step": planning_next_step,
         "nodes": nodes,
         "settlements": settlements,
         "tool_records": records,
