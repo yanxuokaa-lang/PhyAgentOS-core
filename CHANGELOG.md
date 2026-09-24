@@ -2,6 +2,8 @@
 
 ## Archive
 
+- [2026-09 Part 14](changelog/2026-09_part14.md)
+
 - [2026-09 Part 13](changelog/2026-09_part13.md)
 
 - [2026-09 Part 12](changelog/2026-09_part12.md)
@@ -17,6 +19,88 @@
 - [2026-09 Part 4](changelog/2026-09_part4.md)
 
 ## 最近 5 条 / Latest Five Versions
+
+## v11.6.8 (2026-09-24 19:45) - codex
+
+- [agent] [fix] [完成] 实际恢复把跨 revision 的 retry_of 当成本图引用，错误反馈促使模型复制失败节点并耗尽 deadline。保留现有图约束和重试预算，仅在 contracts.py 与 forge_task.py 明确恢复 Query 的历史记录由前一 revision 保存，不能为满足 retry_of 复制旧节点；补充错误反馈断言。(local)
+- [Agent] [Fix] [Completed] Recovery confused cross-revision history with local retry_of links and copied failed nodes until the deadline elapsed. Preserve graph validation and retry limits; clarify historical Query recovery in contracts.py and forge_task.py and test the actionable error. (local)
+- Files: `PhyAgentOS/planning/contracts.py`, `PhyAgentOS/agent/tools/forge_task.py`, `tests/test_planning_task_integration.py`, `CHANGELOG.md`.
+
+### 验证 / Validation
+
+- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -p pytest_asyncio.plugin -q tests/test_planning_task_integration.py`: 27 passed; Ruff passed.
+- 初次未加载 asyncio plugin 的三项异步测试未运行；显式加载后全部通过。 / Three async tests could not run without the plugin; all passed with the explicit asyncio plugin.
+
+### 文件变更详情 / File changes
+
+#### [修改 / Modified] `PhyAgentOS/planning/contracts.py` L229-L240
+
+```diff
+diff --git a/PhyAgentOS/planning/contracts.py b/PhyAgentOS/planning/contracts.py
+index 2b26f9e..9907dcf 100644
+--- a/PhyAgentOS/planning/contracts.py
++++ b/PhyAgentOS/planning/contracts.py
+@@ -229,5 +229,12 @@ class PlanGraph(_Frozen):
+                 raise ValueError("plan graph dependency references an unknown node")
+             if node.retry_of is not None and node.retry_of not in known:
+-                raise ValueError("plan graph retry_of references an unknown node")
++                raise ValueError(
++                    "plan graph retry_of references an unknown node; retry_of is a link "
++                    "within this graph, not a prior-revision history reference. Prior "
++                    "failures remain persisted in their original revision: do not copy "
++                    "failed nodes merely to represent history. For a recovery Query, "
++                    "omit cross-revision retry_of and cite its failure in reason/evidence. "
++                    "Action reconciliation and retry admission still apply."
++                )
+         if self.graph_digest != plan_graph_digest(self):
+             raise ValueError("plan graph digest does not match its content")
+```
+
+#### [修改 / Modified] `PhyAgentOS/agent/tools/forge_task.py` L166-L173
+
+```diff
+diff --git a/PhyAgentOS/agent/tools/forge_task.py b/PhyAgentOS/agent/tools/forge_task.py
+index 66cca65..0331e98 100644
+--- a/PhyAgentOS/agent/tools/forge_task.py
++++ b/PhyAgentOS/agent/tools/forge_task.py
+@@ -166,5 +166,8 @@ class ForgeTaskBeginRevisionTool(Tool):
+             "for coordinator-owned callers. This call only changes the planning revision and "
+             "never invokes a Tool or motion. retry_of may reference only a node included in "
+-            "this replacement graph; use reason and evidence refs for prior-revision history."
++            "this replacement graph; use reason and evidence refs for prior-revision history. "
++            "Do not copy failed nodes merely to preserve history. For a recovery Query, "
++            "omit prior-revision retry_of and submit only the recovery work; original "
++            "execution records remain persisted. Action retry admission is unchanged."
+         )
+
+```
+
+#### [修改 / Modified] `tests/test_planning_task_integration.py` L697-L701, L708-L713
+
+```diff
+diff --git a/tests/test_planning_task_integration.py b/tests/test_planning_task_integration.py
+index db7e8ab..295a0df 100644
+--- a/tests/test_planning_task_integration.py
++++ b/tests/test_planning_task_integration.py
+@@ -697,5 +697,5 @@ def test_recovery_graph_retry_of_cannot_reference_prior_revision(tmp_path):
+     coordinator.store.update(task.task_id, attach_binding, event_type="test_binding")
+     coordinator.request_replan(task.task_id, reason="retry")
+-    with pytest.raises(ValueError, match="retry_of references an unknown node"):
++    with pytest.raises(ValueError, match="retry_of references an unknown node") as rejected:
+         asyncio.run(ForgeTaskBeginRevisionTool(coordinator).execute(
+             task.task_id,
+@@ -708,4 +708,6 @@ def test_recovery_graph_retry_of_cannot_reference_prior_revision(tmp_path):
+             ).model_dump(mode="json")],
+         ))
++    assert "do not copy failed nodes" in str(rejected.value)
++    assert "Action reconciliation and retry admission still apply" in str(rejected.value)
+     assert coordinator.get_task(task.task_id).replan_extension_used is False
+
+```
+
+### Git 提交 / Git commit
+
+- Branch: `feature/planning-loop`; commit recorded after submission.
 
 ## v11.6.7 (2026-09-24 19:29) - codex
 
@@ -336,16 +420,3 @@ index 28d2f87..0085f69 100644
 - `tests/test_agent_foundation.py:L384-L420`：验证修正物化成功和重复文字的有界终止。 / Verify successful corrected materialization and bounded termination on repeated prose.
 - Validation: Agent foundation, PlanningLoop, prompt context, turn timeout and provider timing suites: `160 passed`; Ruff and `git diff --check`: passed.
 - RGB 三块验收尚未完成。 / Live RGB acceptance remains incomplete.
-
-## v11.6.4 (2026-09-24 17:04) - codex
-
-### 变更记录 / Changes [完成]
-
-- [env] [tune] 按用户要求，将外部 PAOS 默认、RGB 短配置及 RGB 长配置的 `agents.defaults.model` 从 `gpt-6-sol` 改为 `gpt-5.6-sol`，推理强度保持 `high`。使用实际配置加载器验证。(local)
-- [Env] [Tune] Change the external default, short RGB, and long RGB PAOS configurations from `gpt-6-sol` to `gpt-5.6-sol` with `high` reasoning as requested; validate through the configuration loader. (local)
-
-### 文件与 Diff / Files and diff
-
-- `/home/yanxu/.PhyAgentOS/config.json:L5`、`/home/yanxu/.PhyAgentOS/config-rgb-no-evolution.json:L5`、`/home/yanxu/.PhyAgentOS/config-rgb-no-evolution-long.json:L5`：`"model": "gpt-6-sol"` → `"model": "gpt-5.6-sol"`。
-- 三份外部配置经 `PhyAgentOS.config.loader.load_config` 加载，均确认 `gpt-5.6-sol/high`。配置含本地凭据，Git 仅记录本次变更说明。
-- All three external configurations resolve to `gpt-5.6-sol/high` through `load_config`; only the change record is tracked in Git because local configurations contain credentials.

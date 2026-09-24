@@ -696,7 +696,7 @@ def test_recovery_graph_retry_of_cannot_reference_prior_revision(tmp_path):
 
     coordinator.store.update(task.task_id, attach_binding, event_type="test_binding")
     coordinator.request_replan(task.task_id, reason="retry")
-    with pytest.raises(ValueError, match="retry_of references an unknown node"):
+    with pytest.raises(ValueError, match="retry_of references an unknown node") as rejected:
         asyncio.run(ForgeTaskBeginRevisionTool(coordinator).execute(
             task.task_id,
             reason="retry with corrected inputs",
@@ -707,6 +707,8 @@ def test_recovery_graph_retry_of_cannot_reference_prior_revision(tmp_path):
                 retry_of="old-revision-node",
             ).model_dump(mode="json")],
         ))
+    assert "do not copy failed nodes" in str(rejected.value)
+    assert "Action reconciliation and retry admission still apply" in str(rejected.value)
     assert coordinator.get_task(task.task_id).replan_extension_used is False
 
 

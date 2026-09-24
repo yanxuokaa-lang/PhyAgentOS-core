@@ -228,7 +228,14 @@ class PlanGraph(_Frozen):
             if not set(node.dependencies).issubset(known):
                 raise ValueError("plan graph dependency references an unknown node")
             if node.retry_of is not None and node.retry_of not in known:
-                raise ValueError("plan graph retry_of references an unknown node")
+                raise ValueError(
+                    "plan graph retry_of references an unknown node; retry_of is a link "
+                    "within this graph, not a prior-revision history reference. Prior "
+                    "failures remain persisted in their original revision: do not copy "
+                    "failed nodes merely to represent history. For a recovery Query, "
+                    "omit cross-revision retry_of and cite its failure in reason/evidence. "
+                    "Action reconciliation and retry admission still apply."
+                )
         if self.graph_digest != plan_graph_digest(self):
             raise ValueError("plan graph digest does not match its content")
         return self

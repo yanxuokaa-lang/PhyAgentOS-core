@@ -165,7 +165,10 @@ class ForgeTaskBeginRevisionTool(Tool):
             "revision IDs and integrity metadata. A complete plan_graph remains available "
             "for coordinator-owned callers. This call only changes the planning revision and "
             "never invokes a Tool or motion. retry_of may reference only a node included in "
-            "this replacement graph; use reason and evidence refs for prior-revision history."
+            "this replacement graph; use reason and evidence refs for prior-revision history. "
+            "Do not copy failed nodes merely to preserve history. For a recovery Query, "
+            "omit prior-revision retry_of and submit only the recovery work; original "
+            "execution records remain persisted. Action retry admission is unchanged."
         )
 
     @property
