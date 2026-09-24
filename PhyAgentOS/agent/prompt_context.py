@@ -442,10 +442,11 @@ def _task_result_projection(payload: dict[str, Any]) -> dict[str, Any]:
     ):
         if key in data:
             projected_data[key] = _reference_projection(data[key])
+    result = {"data": projected_data}
     for key in ("ok", "error", "status"):
         if key in payload:
-            projected_data[key] = _reference_projection(payload[key])
-    return {"data": projected_data}
+            result[key] = _reference_projection(payload[key])
+    return result
 
 
 def compact_tool_result(tool_name: str, content: str) -> str:
@@ -465,6 +466,8 @@ def compact_tool_result(tool_name: str, content: str) -> str:
         projection = _task_result_projection(payload)
     else:
         projection = _reference_projection(payload)
+    if isinstance(payload, dict) and isinstance(projection, dict) and "ok" in payload:
+        projection["ok"] = payload["ok"]
     return json.dumps(
         {
             "version": "agent_tool_result_summary_v1",

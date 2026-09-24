@@ -17,6 +17,7 @@ from PhyAgentOS.agent.plan_proposal import (
     compile_task_plan,
 )
 from PhyAgentOS.agent.planning_loop import _planning_record_status
+from PhyAgentOS.agent.prompt_context import compact_tool_result
 from PhyAgentOS.agent.recovery_decisions import AgentRecoveryDecisions
 from PhyAgentOS.agent.tools.forge_task import (
     ForgeTaskClarificationTool,
@@ -41,6 +42,7 @@ from PhyAgentOS.forge.task import (
 )
 from PhyAgentOS.planning import NodeSettlement, PlanNode, ToolSpecPolicy, build_replan_delta
 from PhyAgentOS.providers.base import LLMProvider, LLMResponse, ToolCallRequest
+from PhyAgentOS.session.manager import Session
 from PhyAgentOS.verification.contracts import TaskVerificationContract
 
 
@@ -58,6 +60,31 @@ class ScriptedProvider(LLMProvider):
 
     def get_default_model(self):
         return "fixture-model"
+
+
+def test_save_turn_persists_parseable_forge_task_projection() -> None:
+    loop = object.__new__(AgentLoop)
+    session = Session(key="cli:rgb")
+    raw = json.dumps({
+        "ok": True,
+        "data": {
+            "task_id": "task-rgb",
+            "status": "executing",
+            "revision_id": "revision-rgb",
+            "plan_graph_ref": "artifact://plan/rgb",
+            "required_tools": [{"input_schema": {"large": "x" * 20_000}}],
+        },
+    })
+    loop._save_turn(session, [{"role": "tool", "name": "forge_task_get", "content": raw}], 0)
+
+    persisted = session.messages[0]["content"]
+    payload = json.loads(persisted)
+    assert payload["ok"] is True
+    assert payload["data"]["task_id"] == "task-rgb"
+    assert payload["data"]["revision_id"] == "revision-rgb"
+    assert payload["data"]["plan_graph_ref"] == "artifact://plan/rgb"
+    assert "required_tools" not in persisted
+    assert compact_tool_result("forge_task_get", persisted) != raw
 
 
 def setup_task(tmp_path, goal="Move the left red object into the tray"):

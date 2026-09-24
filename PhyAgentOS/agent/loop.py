@@ -21,6 +21,7 @@ from PhyAgentOS.agent.memory import MemoryConsolidator
 from PhyAgentOS.agent.prompt_context import (
     AgentPromptContextManager,
     PromptBudgetExceededError,
+    compact_tool_result,
 )
 from PhyAgentOS.agent.subagent import SubagentManager
 from PhyAgentOS.agent.tools.agent import AgentModeTool
@@ -1737,7 +1738,25 @@ class AgentLoop:
             role, content = entry.get("role"), entry.get("content")
             if role == "assistant" and not content and not entry.get("tool_calls"):
                 continue  # skip empty assistant messages — they poison session context
-            if (
+            if role == "tool" and isinstance(content, str) and str(entry.get("name", "")).startswith("forge_"):
+                projected = compact_tool_result(entry["name"], content)
+                try:
+                    projected_payload = json.loads(projected)
+                except (TypeError, json.JSONDecodeError):
+                    projected_payload = None
+                if (
+                    isinstance(projected_payload, dict)
+                    and projected_payload.get("version") == "agent_tool_result_summary_v1"
+                    and isinstance(projected_payload.get("result"), dict)
+                ):
+                    # Session history keeps the original Forge envelope shape;
+                    # prompt assembly adds the non-authoritative summary wrapper.
+                    entry["content"] = json.dumps(
+                        projected_payload["result"], ensure_ascii=False, separators=(",", ":")
+                    )
+                else:
+                    entry["content"] = projected
+            elif (
                 role == "tool"
                 and isinstance(content, str)
                 and len(content) > self._TOOL_RESULT_MAX_CHARS
