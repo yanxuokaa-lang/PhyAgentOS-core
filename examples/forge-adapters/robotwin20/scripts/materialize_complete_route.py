@@ -228,6 +228,7 @@ def _load_runtime_identity(path: Path) -> Mapping[str, str]:
         "gripper_identity",
         "embodiment_topology",
         "planner_profile",
+        "max_observation_age_ms",
     }
     required_identity = {
         "task_name",
@@ -241,6 +242,8 @@ def _load_runtime_identity(path: Path) -> Mapping[str, str]:
         for key in required_identity
     ):
         raise MaterializationError("runtime profile identity fields are invalid")
+    if type(value["max_observation_age_ms"]) is not int or value["max_observation_age_ms"] < 1:
+        raise MaterializationError("runtime profile observation age is invalid")
     embodiment = value["embodiment"]
     if (
         value["schema_version"] != "paos-robotwin20-runtime-profile/v1"

@@ -69,3 +69,18 @@ def test_cli_persists_public_failure_and_exits_unsuccessfully(tmp_path, monkeypa
     assert diagnostic["code"] == code
     assert response["motion_authorized"] is False
     assert not (tmp_path / "route_request.json").exists()
+
+
+def test_runtime_identity_accepts_shipped_observation_profile(tmp_path):
+    from pathlib import Path
+
+    import yaml
+
+    profile = Path(__file__).resolve().parents[1] / 'profiles/robotwin20/franka-blocks-ranking.yaml'
+    assert cli._load_runtime_identity(profile)['robot_identity'] == 'franka-panda'
+    value = yaml.safe_load(profile.read_text())
+    value['max_observation_age_ms'] = 0
+    invalid = tmp_path / 'invalid.yaml'
+    invalid.write_text(yaml.safe_dump(value))
+    with pytest.raises(cli.MaterializationError, match='observation age'):
+        cli._load_runtime_identity(invalid)

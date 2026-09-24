@@ -1462,3 +1462,16 @@ def test_diagnostic_query_does_not_invent_task_receipt():
         client = SimpleNamespace(invoke_query_tool=AsyncMock(return_value=result))
         assert json.loads(await ForgeToolQueryTool(client, None).execute("scene.observe", {})) == result
     asyncio.run(exercise())
+
+
+def test_semantic_submission_rejects_untrusted_predecessor_effect_condition(tmp_path):
+    _c, task = setup_task(tmp_path)
+    nodes = semantic_nodes(1)
+    nodes[0]["effects"] = ["candidates_available"]
+    nodes[1]["dependencies"] = [nodes[0]["node_id"]]
+    nodes[1]["conditions"] = ["candidates_available"]
+    with pytest.raises(ValueError, match="descriptive effects are not trusted"):
+        compile_task_plan(task, nodes, reason="effect is not fact", initial_condition_facts={})
+    assert nodes[1]["conditions"] == ["candidates_available"]
+    graph = compile_task_plan(task, nodes, reason="trusted fact", initial_condition_facts={"candidates_available": True})
+    assert graph.nodes[1].conditions == ("candidates_available",)

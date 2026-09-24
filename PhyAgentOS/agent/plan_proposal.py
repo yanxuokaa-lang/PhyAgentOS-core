@@ -124,6 +124,25 @@ def compile_task_plan(
                 "for current evidence and dependencies for future Tool results"
             )
     if initial_condition_facts is not None:
+        effects_by_node = {node.node_id: set(node.effects) for node in parsed}
+        unsupported_effect_conditions = {
+            node.node_id: tuple(
+                condition for condition in node.conditions
+                if condition not in initial_condition_facts
+                and any(condition in effects_by_node.get(dep, set()) for dep in node.dependencies)
+            )
+            for node in parsed
+        }
+        unsupported_effect_conditions = {
+            key: value for key, value in unsupported_effect_conditions.items() if value
+        }
+        if unsupported_effect_conditions:
+            raise ValueError(
+                "descriptive effects are not trusted condition facts: "
+                f"{unsupported_effect_conditions}; use dependencies for predecessor "
+                "completion and leave conditions empty unless backed by Runtime facts; "
+                "retain physical requirements in obligation/input_bindings and Tool admission"
+            )
         root_condition_errors = {
             node.node_id: tuple(
                 condition for condition in node.conditions

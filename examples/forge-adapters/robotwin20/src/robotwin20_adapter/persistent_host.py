@@ -25,7 +25,6 @@ from .openai_scene_understanding import (
     OpenAIResponsesConfig,
     OpenAIResponsesSceneUnderstandingInference,
 )
-from .oracle_grasp import PersistentOracleGraspProvider
 from .perception_profile import build_single_view_perception, load_perception_profile
 from .persistent_action_approval import (
     DISABLED_ACTION_MODE,
@@ -543,20 +542,6 @@ def build_persistent_host(
                 raise PersistentHostConfigurationError(
                     "persistent Runtime task_name is invalid"
                 )
-        if route_geometry_source == "oracle":
-            try:
-                route_profile = yaml.safe_load(
-                    Path(materializer_arguments["route-input-profile"]).read_text(
-                        encoding="utf-8"
-                    )
-                )
-                provider_transform = route_profile["grasp_adaptation"][
-                    "provider_T_contact_center"
-                ]
-            except (KeyError, TypeError, OSError, UnicodeError, yaml.YAMLError) as exc:
-                raise PersistentHostConfigurationError(
-                    "oracle grasp adaptation profile is unavailable"
-                ) from exc
         deployment = build_persistent_deployment(
             client=client,
             artifact_root=artifact_root,
@@ -581,16 +566,11 @@ def build_persistent_host(
             goal_source=goal_source,
             task_name=task_name,
         )
-        if route_geometry_source == "oracle":
-            grasp = PersistentOracleGraspProvider(
-                client,
-                provider_to_contact_flat=provider_transform,
-                grounding=deployment.grounding,
-            )
-        else:
-            grasp = build_grasp_provider(
-                load_grasp_profile(grasp_profile), environ=variables
-            )
+        # Grasp proposals are observation-owned even when route geometry or
+        # benchmark destinations come from the simulator.
+        grasp = build_grasp_provider(
+            load_grasp_profile(grasp_profile), environ=variables
+        )
 
         def context(tool_id: str) -> dict[str, Any]:
             transport_lost = getattr(client, "_transport_lost", False) is True
