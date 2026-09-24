@@ -87,6 +87,18 @@ _NODE_TURN_EXECUTION_TOOLS = frozenset({
     "forge_tool_start_session",
 })
 
+# A named pick-place workflow must establish its AgentTask before the model can
+# use general-purpose tools.  Without this small creation boundary, a model
+# that has not received a task identity can fall back to shell help or local
+# state inspection and spend the whole turn rebuilding an identity that only
+# the Coordinator can issue.
+_PICK_PLACE_CREATION_TOOLS = frozenset({
+    "activate_skill",
+    "forge_task_create",
+    "forge_tool_context",
+    "forge_tool_query",
+})
+
 
 class AgentLoop:
     """
@@ -714,6 +726,7 @@ class AgentLoop:
         decision_deadline = (
             monotonic() + decision_timeout_s if decision_timeout_s is not None else None
         )
+        pick_place_creation_mode = False
 
         async def bounded_decision(operation):
             if decision_deadline is None:
@@ -740,6 +753,11 @@ class AgentLoop:
                 if active_task_id is not None and self.forge_task_coordinator is not None
                 else self._task_for_session(experience_session_key)
             )
+            creation_tool_names = prompt_tool_names
+            if pick_place_creation_mode and active_task is None:
+                creation_tool_names = tuple(
+                    name for name in prompt_tool_names if name in _PICK_PLACE_CREATION_TOOLS
+                )
 
             def estimate(request_messages, visible_names):
                 definitions = self.tools.get_definitions(set(visible_names))
@@ -751,7 +769,7 @@ class AgentLoop:
                 request_view = self.prompt_context.build(
                     messages=messages,
                     turn_start_index=turn_start_index,
-                    all_tool_names=prompt_tool_names,
+                    all_tool_names=creation_tool_names,
                     task=active_task,
                     estimate_tokens=estimate,
                     projection_scope=projection_scope,
@@ -897,6 +915,32 @@ class AgentLoop:
                             ),
                         )
                         continue
+                    if (
+                        pick_place_creation_mode
+                        and active_task is None
+                        and tool_call.name not in _PICK_PLACE_CREATION_TOOLS
+                    ):
+                        messages = self.context.add_tool_result(
+                            messages,
+                            tool_call.id,
+                            tool_call.name,
+                            json.dumps(
+                                {
+                                    "ok": False,
+                                    "error": {
+                                        "type": "forge_task_creation_required",
+                                        "message": (
+                                            "Create the Coordinator-owned AgentTask before using "
+                                            "general-purpose tools."
+                                        ),
+                                    },
+                                    "motion_authorized": False,
+                                },
+                                ensure_ascii=False,
+                                separators=(",", ":"),
+                            ),
+                        )
+                        continue
                     tools_used.append(tool_call.name)
                     if experience_session_key is not None:
                         self.skill_activation.record_tool(
@@ -928,6 +972,36 @@ class AgentLoop:
                     messages = self.context.add_tool_result(
                         messages, tool_call.id, tool_call.name, result
                     )
+                    if tool_call.name == "activate_skill":
+                        try:
+                            activation_result = json.loads(result)
+                        except (TypeError, json.JSONDecodeError):
+                            activation_result = {}
+                        activation = (
+                            activation_result.get("activation")
+                            if isinstance(activation_result, dict)
+                            else None
+                        )
+                        pick_place_creation_mode = (
+                            activation_result.get("ok") is True
+                            and isinstance(activation, dict)
+                            and activation.get("skill_name") == "pick-place-workflow"
+                        )
+                    elif tool_call.name == "forge_task_create":
+                        try:
+                            create_result = json.loads(result)
+                        except (TypeError, json.JSONDecodeError):
+                            create_result = {}
+                        data = create_result.get("data") if isinstance(create_result, dict) else None
+                        if (
+                            create_result.get("ok") is True
+                            and isinstance(data, dict)
+                            and isinstance(data.get("task_id"), str)
+                            and data["task_id"]
+                        ):
+                            # The next iteration resolves the persisted task by
+                            # session and restores the normal phase projection.
+                            pick_place_creation_mode = False
                     if (
                         projection_scope == "node"
                         and tool_call.name == "forge_plan_select"

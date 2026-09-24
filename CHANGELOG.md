@@ -18,6 +18,14 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v11.5.11 (2026-09-24 15:00) - codex
+
+- [agent] [fix] [完成] `PhyAgentOS/agent/loop.py:L90-L100,L729,L751-L777,L918-L943,L975-L1004` 在 `pick-place-workflow` 创建阶段限制工具投影，阻止无 task ID 时调用 shell/本地状态查询；Coordinator 返回 task ID 后恢复正常工具集。(local)
+- [Agent] [Fix] [Completed] `PhyAgentOS/agent/loop.py:L90-L100,L729,L751-L777,L918-L943,L975-L1004` restricts the `pick-place-workflow` creation-phase projection, preventing shell/local-state queries without a task ID; normal tools return after the Coordinator issues the task ID. (local)
+- [tests] [feat] [完成] `tests/test_agent_foundation.py:L209-L268` 覆盖激活后的受限创建工具与创建成功后的恢复；Prompt/Agent 专项 `81 passed`，compileall、Ruff、`git diff --check` 通过。(local)
+- [Tests] [Feat] [Completed] `tests/test_agent_foundation.py:L209-L268` covers the restricted creation set after activation and restoration after successful creation; Prompt/Agent focused tests passed `81`, with compileall, Ruff, and `git diff --check` passing. (local)
+- Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md).
+
 ## v11.5.10 (2026-09-24 07:24) - codex
 
 - [agent] [fix] [完成] discovery 门禁与 Runtime binding 按最新 `scene.observe` 的 capture/calibration 身份筛选场景绑定 Query 和 capability snapshot，避免 stale 参数进入 `manipulation.prepare`。(local)
@@ -42,18 +50,6 @@
 
 - [env] [tune] [完成] Oracle RGB AgentLoop model `gpt-5.6-sol` -> `gpt-6-sol`, reasoning effort remains `high`; current active task continues in place。(local)
 - [Env] [Tune] [Completed] Oracle RGB AgentLoop model `gpt-5.6-sol` -> `gpt-6-sol`, with reasoning effort remaining `high`; the current active task continues in place. (local)
-- Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md).
-
-## v11.5.6 (2026-09-24 05:20) - codex
-
-- [sense] [fix] [完成] OpenAI 场景理解加强彩色几何积木检查；空实体且无歧义时投影 `entity_count_uncertain`，不虚构实体。(local)
-- [Sense] [Fix] [Completed] OpenAI scene understanding now checks colored geometric blocks; empty entities with no ambiguity become `entity_count_uncertain` without fabricated entities. (local)
-- [agent] [fix] [完成] 模型 turn timeout/error 在无未终态 Action/Session 时由 Coordinator 收敛为 `failed`；未决物理执行继续保留对账。(local)
-- [Agent] [Fix] [Completed] Model turn timeout/error now settles to `failed` through the Coordinator when no non-terminal Action/Session exists; unresolved physical execution remains subject to reconciliation. (local)
-- [tests] [feat] [完成] Core `581 passed`、Skill `347 passed`、Adapter `14 passed`；Node `0.7.1`、Skill `2.6.20` 已构建安装并锁定校验。(local)
-- [Tests] [Feat] [Completed] Core `581 passed`, Skill `347 passed`, Adapter `14 passed`; Node `0.7.1` and Skill `2.6.20` were built, installed, and lock-verified. (local)
-- 运行时新任务在旧代码安装期间于 discovery provider timeout，零 Query/Action，已取消；完整 RGB 三方块与视频验收仍待修复代码下重新运行。(local)
-- A fresh runtime task timed out during discovery while the old code was installed, with zero Queries/Actions, and was cancelled; full RGB three-block and video acceptance remains pending for a post-fix run. (local)
 - Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md).
 
 ## v11.5.4 (2026-09-24 03:56) - codex

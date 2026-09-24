@@ -206,6 +206,68 @@ def test_prepare_bindings_do_not_reuse_scene_facts_from_closed_revision():
     assert completed[0].input_bindings == {}
 
 
+def test_pick_place_creation_projection_restores_after_task_creation(tmp_path):
+    async def exercise():
+        provider = ScriptedProvider([
+            LLMResponse(content=None, tool_calls=[ToolCallRequest(
+                "activate", "activate_skill", {"name": "pick-place-workflow", "role": "primary"},
+            )]),
+            LLMResponse(content=None, tool_calls=[ToolCallRequest(
+                "create", "forge_task_create", {
+                    "task_description": "Arrange the observed RGB blocks",
+                    "verification": {"mode": "off"},
+                },
+            )]),
+            LLMResponse(content="Task creation completed."),
+        ])
+        coordinator = AgentTaskCoordinator(
+            workspace=tmp_path, config=ForgeConfig(), client=object()
+        )
+        loop = AgentLoop(
+            bus=MessageBus(), provider=provider, workspace=tmp_path,
+            forge_task_coordinator=coordinator, max_iterations=4,
+        )
+
+        async def execute(name, arguments):
+            if name == "activate_skill":
+                return json.dumps({
+                    "ok": True,
+                    "activation": {
+                        "skill_name": "pick-place-workflow",
+                        "activation_id": "activation_test",
+                    },
+                })
+            if name == "forge_task_create":
+                task = coordinator.create_task(
+                    task_description="Arrange the observed RGB blocks",
+                    verification=TaskVerificationContract(mode="off"),
+                    origin_session_key="cli:test",
+                )
+                return json.dumps({"ok": True, "data": {"task_id": task.task_id}})
+            raise AssertionError(f"unexpected tool execution: {name}")
+
+        loop.tools.execute = AsyncMock(side_effect=execute)
+        result = await loop._run_agent_loop(
+            [{"role": "user", "content": "Create the RGB pick-place task."}],
+            experience_session_key="cli:test",
+        )
+
+        assert result.content == "Task creation completed."
+        assert [call.args[0] for call in loop.tools.execute.await_args_list] == [
+            "activate_skill", "forge_task_create",
+        ]
+        first_names = {tool["function"]["name"] for tool in provider.requests[0]["tools"]}
+        creation_names = {tool["function"]["name"] for tool in provider.requests[1]["tools"]}
+        restored_names = {tool["function"]["name"] for tool in provider.requests[2]["tools"]}
+        assert "exec" in first_names
+        assert creation_names <= {
+            "activate_skill", "forge_task_create", "forge_tool_context", "forge_tool_query",
+        }
+        assert "exec" in restored_names
+
+    asyncio.run(exercise())
+
+
 def test_node_turn_yields_after_selection_requires_replan(tmp_path):
     async def exercise():
         provider = ScriptedProvider([
