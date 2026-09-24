@@ -728,6 +728,7 @@ class AgentLoop:
             monotonic() + decision_timeout_s if decision_timeout_s is not None else None
         )
         pick_place_creation_mode = False
+        discovery_continuation_used = False
 
         async def bounded_decision(operation):
             if decision_deadline is None:
@@ -1109,6 +1110,32 @@ class AgentLoop:
                     reasoning_content=response.reasoning_content,
                     thinking_blocks=response.thinking_blocks,
                 )
+                if (
+                    projection_scope == "task"
+                    and not discovery_continuation_used
+                    and "forge_task_materialize_plan" in tools_used
+                    and active_task is not None
+                    and self.forge_task_coordinator is not None
+                    and iteration < self.max_iterations
+                ):
+                    current_task = self.forge_task_coordinator.get_task(active_task.task_id)
+                    if (
+                        current_task.status.value == "executing"
+                        and self.prompt_context.phase(current_task) == "discovery"
+                    ):
+                        discovery_continuation_used = True
+                        messages.append({
+                            "role": "system",
+                            "content": (
+                                "The Coordinator still has no materialized PlanGraph for this task. "
+                                "The previous materialization attempt was not accepted. Use its "
+                                "diagnostic and persisted discovery evidence to submit a corrected "
+                                "plan through forge_task_materialize_plan, or use the task "
+                                "clarification tool if required information is missing. A prose "
+                                "promise to correct the plan does not advance the task."
+                            ),
+                        })
+                        continue
                 final_content = clean
                 break
 

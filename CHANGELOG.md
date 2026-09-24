@@ -18,6 +18,20 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v11.6.5 (2026-09-24 17:10) - codex
+
+### 变更记录 / Changes [完成]
+
+- [agent] [fix] 真实任务 `task_f0d1c32d75fc494a` 在计划物化拒绝后以“将修正”文字结束，图仍为空。AgentLoop 在本回合尝试物化、任务仍处于 discovery 时允许一次文字后 continuation，要求通过正式工具修正或明确请求澄清；不重复已有 Tool。(local)
+- [Agent] [Fix] Task `task_f0d1c32d75fc494a` ended with a promised correction after rejected materialization while its graph remained empty. Allow one continuation after prose when this turn attempted materialization and the task remains in discovery; use normal tools to correct or request clarification without replaying Tools. (local)
+
+### 文件与 Diff / Files and diff
+
+- `PhyAgentOS/agent/loop.py:L731,L1113-L1141`：`prose -> return` → `rejected materialization + discovery -> one model continuation`。仅使用现有模型与 Coordinator 工具；不重发 Tool。
+- `tests/test_agent_foundation.py:L384-L420`：验证修正物化成功和重复文字的有界终止。 / Verify successful corrected materialization and bounded termination on repeated prose.
+- Validation: Agent foundation, PlanningLoop, prompt context, turn timeout and provider timing suites: `160 passed`; Ruff and `git diff --check`: passed.
+- RGB 三块验收尚未完成。 / Live RGB acceptance remains incomplete.
+
 ## v11.6.4 (2026-09-24 17:04) - codex
 
 ### 变更记录 / Changes [完成]
@@ -62,6 +76,8 @@
 - Diff: `arbitrary ambiguity code` -> `semantic enum + provider validation`; `lifecycle fallback` -> `lifecycle or semantic contract fallback`.
 - Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md). The new live task hit main-model timeout before scene understanding; RGB acceptance remains incomplete.
 
+## Historical Entries
+
 ## v11.6.0 (2026-09-24 11:40) - codex
 
 - [agent] [fix] [完成] `PhyAgentOS/agent/loop.py:L1759-L1765` 保留 `activate_skill` 的可解析完整结果，任务建立后由现有 prompt 投影压缩 Skill 正文。(local)
@@ -72,8 +88,6 @@
 - [Env] [Tune] [Completed] External PAOS default and short RGB configs now use `gpt-6-sol`; all three configs read `gpt-6-sol/high`. (local)
 - Diff: `large activate_skill result -> truncated invalid JSON` -> `intact JSON -> bounded prompt projection`.
 - Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md). Live RGB acceptance remains incomplete.
-
-## Historical Entries
 
 ## v11.5.15 (2026-09-24 11:15) - codex
 

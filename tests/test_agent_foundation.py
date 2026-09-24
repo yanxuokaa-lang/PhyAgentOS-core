@@ -381,6 +381,45 @@ def test_node_turn_does_not_layer_model_timeout_retry(tmp_path):
     asyncio.run(exercise())
 
 
+@pytest.mark.parametrize("recover", [False, True])
+def test_rejected_materialization_prose_gets_one_discovery_continuation(tmp_path, recover):
+    async def exercise():
+        coordinator, task = setup_task(tmp_path)
+        attempt = LLMResponse(content=None, tool_calls=[ToolCallRequest(
+            "materialize", "forge_task_materialize_plan", {"task_id": task.task_id},
+        )])
+        provider = ScriptedProvider([
+            attempt, LLMResponse(content="I will correct the plan"),
+            attempt if recover else LLMResponse(content="Still cannot submit"),
+        ])
+        loop = AgentLoop(bus=MessageBus(), provider=provider, workspace=tmp_path,
+                         forge_task_coordinator=coordinator, max_iterations=4)
+        calls = []
+
+        async def execute(name, arguments):
+            calls.append(name)
+            if len(calls) == 1:
+                return 'Error: root conditions are not true'
+            return await ForgeTaskMaterializePlanTool(coordinator).execute(
+                task.task_id, nodes=semantic_nodes(1), reason="correct rejected graph",
+            )
+
+        loop.tools.execute = AsyncMock(side_effect=execute)
+        result = await loop._run_agent_loop(
+            [{"role": "user", "content": task.task_description}],
+            active_task_id=task.task_id,
+            yield_after_tools=frozenset({"forge_task_materialize_plan"}),
+        )
+        assert len(provider.requests) == 3
+        assert len(calls) == (2 if recover else 1)
+        assert (coordinator.get_task(task.task_id).active_revision.plan_graph is not None) == recover
+        assert result.model_failure_code is None
+        if not recover:
+            assert result.content == "Still cannot submit"
+
+    asyncio.run(exercise())
+
+
 def test_node_turn_yields_after_selection_requires_replan(tmp_path):
     async def exercise():
         provider = ScriptedProvider([
