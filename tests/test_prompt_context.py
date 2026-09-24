@@ -949,6 +949,51 @@ def test_task_projection_preserves_all_action_invocation_identities() -> None:
         assert f"input-digest-{index}" in encoded
 
 
+def test_task_projection_preserves_benchmark_goal_destination_bindings() -> None:
+    goal_record = SimpleNamespace(
+        record_id="goal-record",
+        revision_id="revision-1",
+        tool_id="task.goal",
+        semantics="query",
+        status="succeeded",
+        skill_binding_id="skill-binding-1",
+        runtime_binding_id="runtime-binding-1",
+        skill_use_ids=(),
+        tool_spec_sha256="goal-tool-spec",
+        caller_id="agent:test",
+        node_id=None,
+        node_digest=None,
+        obligation_id=None,
+        input_binding_digest=None,
+        decision_trace_ref=None,
+        ownership="runtime",
+        invocation_id=None,
+        attempt_id=None,
+        evidence_refs=["artifact://goal-evidence"],
+        arguments={},
+        response={
+            "ok": True,
+            "data": {
+                "status": "available",
+                "goals": [
+                    {
+                        "execution_entity_ref": "entity://block-red-1",
+                        "destination_ref": "destination://blocks-ranking-rgb/red-slot",
+                        "world_T_object_target": [1.0] * 16,
+                    }
+                ],
+            },
+        },
+        error=None,
+    )
+
+    encoded = json.dumps(task_prompt_projection(_task(records=(goal_record,))))
+
+    assert "destination://blocks-ranking-rgb/red-slot" in encoded
+    assert "entity://block-red-1" in encoded
+    assert "world_T_object_target" in encoded
+
+
 def test_task_projection_preserves_revision_bindings_and_node_obligations() -> None:
     node = SimpleNamespace(
         node_id="node-place",

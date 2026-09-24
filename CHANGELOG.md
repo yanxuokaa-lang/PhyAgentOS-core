@@ -20,6 +20,58 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v11.7.0 (2026-09-25 01:05) - codex
+
+- [agent] [fix] Coordinator 已持久化完整 `task.goal.data.goals`，但 AgentLoop 语义投影遗漏 `goals`，导致模型看不到实体/目标配对并错误请求用户澄清。将 `goals` 加入既有语义投影，并验证 benchmark `destination_ref` 与目标位姿能到达规划上下文。(local)
+- [Agent] [Fix] The AgentLoop semantic projection omitted `goals` even though the Coordinator persisted them, hiding entity/destination bindings and prompting unnecessary clarification. Include `goals` in the existing semantic projection and verify benchmark `destination_ref` and target pose reach planning context. (local)
+
+### 文件变更详情 / File Change Details
+
+#### [修改 / Modified] `PhyAgentOS/agent/prompt_context.py` L171-L175
+
+```diff
+ _SEMANTIC_KEYS = {
+     "entities",
++    "goals",
+     "relations",
+```
+
+#### [新增 / Added] `tests/test_prompt_context.py` L952-L995
+
+```python
+def test_task_projection_preserves_benchmark_goal_destination_bindings():
+    # A successful task.goal record retains its entity/destination binding.
+    ...
+```
+
+- Validation: `tests/test_prompt_context.py`: 32 passed; Ruff passed.
+
+## v11.6.15 (2026-09-25 01:00) - codex
+
+- [model] [fix] GraspGen previously applied `score_threshold=0.02` during inference and returned only 23 of 24 requested poses. Generate all 24 real model poses before the existing score/NMS filtering and ten-candidate cap; Adapter `0.7.9`, Skill `2.7.6`, Node SHA-256 verified.
+- [Model] [Fix] GraspGen applied `score_threshold=0.02` during inference and returned only 23 of 24 requested poses. Generate all 24 real model poses before existing score/NMS filtering and the ten-candidate cap; Adapter `0.7.9`, Skill `2.7.6`, Node SHA-256 verified.
+
+### 文件变更详情 / File Change Details
+
+#### [修改 / Modified] `examples/forge-adapters/robotwin20/runtime/graspgen_worker.py` L76-L84
+
+```diff
+-grasp_threshold=float(threshold)
++grasp_threshold=-1.0
+ num_grasps=max_candidates
+ topk_num_grasps=max_candidates
+```
+
+#### [新增 / Added] `examples/forge-adapters/robotwin20/tests/test_process_worker.py` L113-L155
+
+```python
+def test_graspgen_generates_requested_pool_before_score_filter(...):
+    # Verify all 24 generated poses reach the post-generation score filter.
+    ...
+```
+
+- Validation: worker/provider/profile tests: 22 passed; Node SHA-256 verified; Skill `2.7.6` installed. Real run exposed `decoded=23` on the prior version and was cancelled before preparation; corrected live acceptance is pending.
+
 ## v11.6.14 (2026-09-24) - codex
 
 - [model] [tune] GraspGen samples 24 genuine candidates before scoring/NMS and retains at most 10 for preparation; Adapter `0.7.8`, Skill `2.7.5`, Node SHA-256 verified.

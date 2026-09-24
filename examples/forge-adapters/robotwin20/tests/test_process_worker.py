@@ -110,6 +110,52 @@ def test_graspgen_model_output_isolated_from_jsonl_stdout(monkeypatch, capsys):
     assert observed["schema_version"] == "paos-grasp-worker/v1"
 
 
+def test_graspgen_generates_requested_pool_before_score_filter(tmp_path, monkeypatch):
+    import importlib.util
+    import numpy as np
+
+    worker_path = Path(__file__).parents[1] / "runtime" / "graspgen_worker.py"
+    monkeypatch.syspath_prepend(str(worker_path.parent))
+    spec = importlib.util.spec_from_file_location("graspgen_worker_pool_test", worker_path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    points_path = tmp_path / "points.npy"
+    np.save(points_path, np.asarray([[0.1, 0.0, 0.5], [0.11, 0.0, 0.5]], dtype=np.float32))
+    observed = {}
+
+    class Model:
+        def run_inference(self, _points, _model, **kwargs):
+            observed.update(kwargs)
+            matrices = np.repeat(np.eye(4, dtype=np.float64)[None, :, :], 24, axis=0)
+            scores = np.full(24, 0.8, dtype=np.float64)
+            scores[-1] = 0.01
+            return matrices, scores
+
+    module._MODEL = Model()
+    result = module._handle({
+        "schema_version": "paos-grasp-worker/v1",
+        "request_id": "request-24",
+        "provider": "graspgen",
+        "model_variant": "ptv3",
+        "point_cloud_path": str(points_path),
+        "max_candidates": 24,
+        "score_threshold": 0.02,
+        "apply_model_collision": False,
+    })
+
+    assert observed["grasp_threshold"] == -1.0
+    assert observed["num_grasps"] == observed["topk_num_grasps"] == 24
+    assert result["funnel"] == {
+        "decoded": 24,
+        "canonicalized": 23,
+        "deduplicated": 23,
+        "retained": 23,
+    }
+    assert len(result["candidates"]) == 23
+
+
 def test_graspnet_worker_reports_unavailable_for_missing_checkpoint():
     worker_path = Path(__file__).parents[1] / "runtime" / "graspnet_worker.py"
     result = subprocess.run(

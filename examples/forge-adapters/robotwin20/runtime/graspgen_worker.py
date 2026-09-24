@@ -76,7 +76,8 @@ def _handle(request: Mapping[str, Any]) -> Mapping[str, Any]:
         grasps, scores = _MODEL.run_inference(
             points,
             _MODEL,
-            grasp_threshold=float(threshold),
+            # Generate the requested pool before applying the adapter's score filter.
+            grasp_threshold=-1.0,
             num_grasps=max_candidates,
             topk_num_grasps=max_candidates,
             min_grasps=1,

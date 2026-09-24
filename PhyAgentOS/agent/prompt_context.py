@@ -170,6 +170,7 @@ _FULL_VALUE_KEYS = {
 }
 _SEMANTIC_KEYS = {
     "entities",
+    "goals",
     "relations",
     "spatial_envelopes",
     "ambiguities",
