@@ -78,6 +78,7 @@ class GraspProposalProvider:
         *,
         artifact_store: PointCloudArtifactResolver,
         max_candidates: int = 24,
+        sample_count: int | None = None,
         score_threshold: float = 0.0,
         apply_nms: bool = True,
         nms_position_threshold_m: float = 0.005,
@@ -95,6 +96,10 @@ class GraspProposalProvider:
             raise TypeError("artifact_store must expose resolve_point_cloud(artifact_ref)")
         if isinstance(max_candidates, bool) or not isinstance(max_candidates, int) or not 1 <= max_candidates <= 512:
             raise ValueError("max_candidates must be between 1 and 512")
+        if sample_count is None:
+            sample_count = max_candidates
+        if isinstance(sample_count, bool) or not isinstance(sample_count, int) or not max_candidates <= sample_count <= 512:
+            raise ValueError("sample_count must be between max_candidates and 512")
         if not _unit_interval(score_threshold):
             raise ValueError("score_threshold must be between 0 and 1")
         for name, value in (
@@ -117,6 +122,7 @@ class GraspProposalProvider:
         self.client = client
         self.artifact_store = artifact_store
         self.max_candidates = max_candidates
+        self.sample_count = sample_count
         self.score_threshold = float(score_threshold)
         self.apply_nms = apply_nms
         self.nms_position_threshold_m = float(nms_position_threshold_m)
@@ -238,7 +244,7 @@ class GraspProposalProvider:
                 "point_cloud_frame": request["frame_id"],
                 "point_units": "m",
                 "point_cloud_path": str(points_path),
-                "max_candidates": self.max_candidates,
+                "max_candidates": self.sample_count,
                 "score_threshold": self.score_threshold,
                 "apply_nms": False,
                 "apply_model_collision": self.apply_model_collision,

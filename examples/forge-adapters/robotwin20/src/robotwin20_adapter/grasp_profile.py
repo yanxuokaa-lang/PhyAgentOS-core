@@ -75,6 +75,7 @@ def build_grasp_provider(
             client,
             artifact_store=FilesystemPointCloudArtifactResolver(artifact_root),
             max_candidates=profile["max_candidates"],
+            sample_count=profile.get("sample_count"),
             score_threshold=profile["score_threshold"],
             apply_nms=profile["apply_nms"],
             nms_position_threshold_m=profile["nms_position_threshold_m"],

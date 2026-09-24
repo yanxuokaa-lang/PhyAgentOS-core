@@ -200,3 +200,27 @@ def test_invalid_worker_grasp_geometry_is_rejected(tmp_path):
     )
     with pytest.raises(GraspProposalAdapterError, match="geometry is invalid"):
         provider.propose(REQUEST)
+
+
+def test_sample_pool_is_filtered_before_retained_limit(tmp_path):
+    class PoolWorker(Worker):
+        def request(self, payload):
+            self.requests.append(payload)
+            candidates = []
+            for i in range(20):
+                pose = np.eye(4)
+                pose[0, 3] = i * 0.01
+                candidates.append({"matrix": pose.tolist(), "score": (i + 1) / 20})
+            return {"request_id": payload["request_id"], "status": "available",
+                    "candidates": candidates,
+                    "funnel": {"decoded": 20, "canonicalized": 20, "deduplicated": 20, "retained": 20}}
+
+    worker = PoolWorker()
+    provider = GraspGenProposalProvider(worker, artifact_store=_store(tmp_path),
+                                        sample_count=200, max_candidates=10)
+    data = provider.propose(REQUEST)
+    assert worker.requests[0]["max_candidates"] == 200
+    assert data["funnel"] == {"decoded": 20, "canonicalized": 20, "deduplicated": 20, "retained": 10}
+    assert len(data["candidates"]) == 10
+    assert data["candidates"][0]["score"] == 1.0
+    assert data["candidates"][-1]["score"] == 0.55
