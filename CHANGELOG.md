@@ -18,6 +18,19 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v11.6.4 (2026-09-24 17:04) - codex
+
+### 变更记录 / Changes [完成]
+
+- [env] [tune] 按用户要求，将外部 PAOS 默认、RGB 短配置及 RGB 长配置的 `agents.defaults.model` 从 `gpt-6-sol` 改为 `gpt-5.6-sol`，推理强度保持 `high`。使用实际配置加载器验证。(local)
+- [Env] [Tune] Change the external default, short RGB, and long RGB PAOS configurations from `gpt-6-sol` to `gpt-5.6-sol` with `high` reasoning as requested; validate through the configuration loader. (local)
+
+### 文件与 Diff / Files and diff
+
+- `/home/yanxu/.PhyAgentOS/config.json:L5`、`/home/yanxu/.PhyAgentOS/config-rgb-no-evolution.json:L5`、`/home/yanxu/.PhyAgentOS/config-rgb-no-evolution-long.json:L5`：`"model": "gpt-6-sol"` → `"model": "gpt-5.6-sol"`。
+- 三份外部配置经 `PhyAgentOS.config.loader.load_config` 加载，均确认 `gpt-5.6-sol/high`。配置含本地凭据，Git 仅记录本次变更说明。
+- All three external configurations resolve to `gpt-5.6-sol/high` through `load_config`; only the change record is tracked in Git because local configurations contain credentials.
+
 ## v11.6.3 (2026-09-24 12:22) - codex
 
 - [agent] [fix] [完成] `PhyAgentOS/agent/loop.py:L809-L878` 在任务创建与 discovery 的无 Tool call `provider_timeout` 后复用同一模型请求一次；节点执行器仍单独管理 node turn 与 Action 对账。(local)
@@ -60,6 +73,8 @@
 - Diff: `large activate_skill result -> truncated invalid JSON` -> `intact JSON -> bounded prompt projection`.
 - Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md). Live RGB acceptance remains incomplete.
 
+## Historical Entries
+
 ## v11.5.15 (2026-09-24 11:15) - codex
 
 - [agent] [fix] [完成] `PhyAgentOS/agent/prompt_context.py:L147-L150,L212-L245,L377-L418,L488-L492` 保留 ToolSpec `$ref/$defs`、planning policy 与缺失 Query 诊断，并只对 `forge_task_create/get` 使用完整任务压缩。(local)
@@ -68,8 +83,6 @@
 - [Tests] [Feat] [Completed] `tests/test_prompt_context.py:L561-L671` covers schema variants and lifecycle errors; focused tests passed `139`, with Ruff, compileall, and diff checks passing. (local)
 - Diff: `all forge_task_*` -> `forge_task_create/get`; `schema projection` -> `schema projection + $ref/$defs/planning`.
 - Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md). RGB physical acceptance remains incomplete.
-
-## Historical Entries
 
 ## v11.5.14 (2026-09-24 10:00) - codex
 
