@@ -18,6 +18,19 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v11.6.1 (2026-09-24 11:19) - codex
+
+- [sense] [fix] [完成] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/qwen3_vl_vllm_scene_understanding.py:L20-L58,L315-L323` 限制并验证本地视觉模型的语义歧义码，拒绝 `e1` 等非法码。(local)
+- [Sense] [Fix] [Completed] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/qwen3_vl_vllm_scene_understanding.py:L20-L58,L315-L323` constrains and validates local vision semantic ambiguity codes, rejecting invalid values such as `e1`. (local)
+- [sense] [fix] [完成] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_host.py:L49-L53,L462-L469` 只对本地输出契约错误启用已有 fallback。(local)
+- [Sense] [Fix] [Completed] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_host.py:L49-L53,L462-L469` routes local output contract failures to the existing fallback. (local)
+- [tests] [feat] [完成] `examples/forge-adapters/robotwin20/tests/test_qwen3_vl_vllm_scene_understanding.py:L14-L18,L115-L118,L223-L259`、`examples/forge-adapters/robotwin20/tests/test_scene_understanding_fallback.py:L5-L9,L124-L135` 覆盖非法码与 fallback；Grounding 合并专项 `64 passed`。(local)
+- [Tests] [Feat] [Completed] `examples/forge-adapters/robotwin20/tests/test_qwen3_vl_vllm_scene_understanding.py:L14-L18,L115-L118,L223-L259` and `examples/forge-adapters/robotwin20/tests/test_scene_understanding_fallback.py:L5-L9,L124-L135` cover invalid codes and fallback; the focused suite including Grounding passed `64`. (local)
+- [env] [chore] [完成] `examples/forge-skills/pick-place-workflow/skill.yaml:L3,L151-L158` 锁定 Skill `2.6.21` 与 Node `0.7.2`；构建、安装与 verify 通过。(local)
+- [Env] [Chore] [Completed] `examples/forge-skills/pick-place-workflow/skill.yaml:L3,L151-L158` locks Skill `2.6.21` and Node `0.7.2`; build, installation, and verification passed. (local)
+- Diff: `arbitrary ambiguity code` -> `semantic enum + provider validation`; `lifecycle fallback` -> `lifecycle or semantic contract fallback`.
+- Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md). The new live task hit main-model timeout before scene understanding; RGB acceptance remains incomplete.
+
 ## v11.6.0 (2026-09-24 11:40) - codex
 
 - [agent] [fix] [完成] `PhyAgentOS/agent/loop.py:L1759-L1765` 保留 `activate_skill` 的可解析完整结果，任务建立后由现有 prompt 投影压缩 Skill 正文。(local)
@@ -56,6 +69,8 @@
 - Diff: `full ToolSpec/task record` -> `bounded schema/readiness/identity projection`; implementation commit `27a3a60`.
 - Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md).
 
+## Historical Entries
+
 ## v11.5.12 (2026-09-24 15:30) - codex
 
 - [agent] [fix] [完成] `PhyAgentOS/agent/prompt_context.py:L748-L779,L871-L874` 在 AgentTask 已创建后压缩 `activate_skill` 结果，保留 activation/lessons 身份和 SkillUse 持久化提示，避免 discovery prompt 重复携带完整 Skill 文档。(local)
@@ -63,8 +78,6 @@
 - [tests] [feat] [完成] `tests/test_prompt_context.py:L173-L193` 覆盖激活结果压缩；Prompt/Agent 专项 `82 passed`，Ruff、compileall、`git diff --check` 通过。(local)
 - [Tests] [Feat] [Completed] `tests/test_prompt_context.py:L173-L193` covers activation-result compaction; Prompt/Agent focused tests passed `82`, with Ruff, compileall, and `git diff --check` passing. (local)
 - Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md).
-
-## Historical Entries
 
 ## v11.5.11 (2026-09-24 15:00) - codex
 

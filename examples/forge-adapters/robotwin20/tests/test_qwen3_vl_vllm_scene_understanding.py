@@ -12,6 +12,7 @@ from robotwin20_adapter import (
     Qwen3VLVLLMSceneUnderstandingInference,
 )
 from robotwin20_adapter.qwen3_vl_vllm_scene_understanding import (
+    Qwen3VLVLLMContractError,
     Qwen3VLVLLMInferenceError,
     _default_client_factory,
     _project_vllm_claims,
@@ -111,6 +112,10 @@ def test_vllm_provider_uses_openai_compatible_multimodal_schema():
     payload = client.chat.completions.calls[0]
     assert payload["model"] == "qwen3-vl-4b-awq"
     assert payload["response_format"]["json_schema"]["strict"] is True
+    assert payload["response_format"]["json_schema"]["schema"]["properties"]["ambiguities"]["items"]["properties"]["code"]["enum"] == [
+        "entity_identity_uncertain", "entity_category_uncertain", "entity_count_uncertain",
+        "visual_attribute_uncertain", "spatial_relation_uncertain", "occlusion_uncertain",
+    ]
     assert payload["messages"][0]["content"][1]["type"] == "image_url"
     prompt = payload["messages"][0]["content"][0]["text"]
     assert "identifying attributes such as color in the category" in prompt
@@ -215,7 +220,7 @@ def test_vllm_config_rejects_non_http_endpoint():
         raise AssertionError("invalid endpoint must fail closed")
 
 
-def test_vllm_projection_preserves_ambiguity_for_unmodeled_partial_object():
+def test_vllm_projection_preserves_canonical_semantic_ambiguity():
     result = _project_vllm_claims(
         {
             "entities": [
@@ -224,7 +229,7 @@ def test_vllm_projection_preserves_ambiguity_for_unmodeled_partial_object():
             "relations": [],
             "ambiguities": [
                 {
-                    "code": "partial_object",
+                    "code": "entity_identity_uncertain",
                     "message": "foreground object is not identifiable",
                     "entity_ids": ["e0", "e1"],
                 }
@@ -235,11 +240,23 @@ def test_vllm_projection_preserves_ambiguity_for_unmodeled_partial_object():
 
     assert result["ambiguities"] == [
         {
-            "code": "partial_object",
+            "code": "entity_identity_uncertain",
             "message": "foreground object is not identifiable",
             "entity_refs": ["entity://e1"],
         }
     ]
+
+
+def test_vllm_projection_rejects_entity_id_used_as_ambiguity_code():
+    with pytest.raises(Qwen3VLVLLMContractError, match="semantic contract"):
+        _project_vllm_claims(
+            {
+                "entities": [{"local_id": "e1", "category": "green cube", "attributes": [], "confidence": 0.95}],
+                "relations": [],
+                "ambiguities": [{"code": "e1", "message": "position unclear", "entity_ids": ["e1"]}],
+            },
+            REQUEST["artifacts"][0],
+        )
 
 
 def test_vllm_projection_still_rejects_unknown_relation_entity():

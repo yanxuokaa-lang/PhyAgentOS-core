@@ -4,6 +4,7 @@ import pytest
 
 from robotwin20_adapter.qwen3_vl_vllm_lifecycle import Qwen3VLVLLMLifecycleError
 from robotwin20_adapter.qwen3_vl_vllm_scene_understanding import (
+    Qwen3VLVLLMContractError,
     Qwen3VLVLLMInferenceError,
 )
 from robotwin20_adapter.scene_understanding_fallback import (
@@ -118,6 +119,20 @@ def test_lifecycle_only_route_does_not_hide_qwen_inference_failure():
 
     with pytest.raises(Qwen3VLVLLMInferenceError, match="invalid output"):
         route.infer({})
+
+
+def test_local_semantic_contract_failure_uses_existing_fallback():
+    route = FallbackSceneUnderstandingInference(
+        _Provider(error=Qwen3VLVLLMContractError("ambiguity code violated the semantic contract")),
+        _Provider({"entities": [{"entity_ref": "entity://fallback"}]}),
+        primary_name="qwen3-vl-4b-vllm",
+        fallback_name="gpt-6-sol-high",
+        fallback_exceptions=(Qwen3VLVLLMLifecycleError, Qwen3VLVLLMContractError),
+        fallback_on_empty=False,
+    )
+
+    assert route.infer({})["entities"][0]["entity_ref"] == "entity://fallback"
+    assert route.last_error_class == "contract"
 
 
 def test_lifecycle_only_route_uses_gpt_for_lifecycle_failure():

@@ -17,7 +17,11 @@ from urllib.parse import urlparse
 
 import httpx
 
-from .openai_scene_understanding import ArtifactPayload, ArtifactResolver
+from .openai_scene_understanding import (
+    SCENE_SEMANTIC_AMBIGUITY_CODES,
+    ArtifactPayload,
+    ArtifactResolver,
+)
 
 _VLLM_SCENE_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -40,7 +44,7 @@ _VLLM_SCENE_SCHEMA: dict[str, Any] = {
                            "confidence": {"type": "number", "minimum": 0, "maximum": 1}}}},
         "ambiguities": {"type": "array", "items": {"type": "object", "additionalProperties": False,
             "required": ["code", "message", "entity_ids"],
-            "properties": {"code": {"type": "string"}, "message": {"type": "string"},
+            "properties": {"code": {"type": "string", "enum": list(SCENE_SEMANTIC_AMBIGUITY_CODES)}, "message": {"type": "string"},
                            "entity_ids": {"type": "array", "items": {"type": "string"}}}}},
     },
 }
@@ -48,6 +52,10 @@ _VLLM_SCENE_SCHEMA: dict[str, Any] = {
 
 class Qwen3VLVLLMInferenceError(RuntimeError):
     """Bounded local vLLM failure safe to route to the configured fallback."""
+
+
+class Qwen3VLVLLMContractError(Qwen3VLVLLMInferenceError):
+    """The local model returned an invalid semantic scene contract."""
 
 
 class ChatCompletionsClient(Protocol):
@@ -308,6 +316,8 @@ def _project_vllm_claims(value: Any, image_ref: str) -> dict[str, Any]:
     for item in value["ambiguities"]:
         if not isinstance(item, Mapping) or set(item) != {"code", "message", "entity_ids"}:
             raise Qwen3VLVLLMInferenceError("qwen vLLM ambiguity fields are invalid")
+        if item["code"] not in SCENE_SEMANTIC_AMBIGUITY_CODES:
+            raise Qwen3VLVLLMContractError("qwen vLLM ambiguity code violated the semantic contract")
         refs = [id_map[ref] for ref in item["entity_ids"] if ref in id_map]
         ambiguities.append({"code": item["code"], "message": item["message"], "entity_refs": refs})
     return {"entities": entities, "relations": relations, "spatial_envelopes": [], "ambiguities": ambiguities, "provider_available": True}

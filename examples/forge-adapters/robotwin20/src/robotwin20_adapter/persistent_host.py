@@ -48,6 +48,7 @@ from .qwen3_vl_vllm_lifecycle import (
 )
 from .qwen3_vl_vllm_scene_understanding import (
     Qwen3VLVLLMConfig,
+    Qwen3VLVLLMContractError,
     Qwen3VLVLLMSceneUnderstandingInference,
 )
 from .scene_understanding_fallback import FallbackSceneUnderstandingInference
@@ -463,7 +464,7 @@ def build_persistent_host(
                 gpt_inference,
                 primary_name="qwen3-vl-4b-vllm",
                 fallback_name=f"{fallback['model']}-{fallback['reasoning_effort']}",
-                fallback_exceptions=(Qwen3VLVLLMLifecycleError,),
+                fallback_exceptions=(Qwen3VLVLLMLifecycleError, Qwen3VLVLLMContractError),
                 fallback_on_empty=False,
                 diagnostic_sink=diagnostic_sink,
             )
