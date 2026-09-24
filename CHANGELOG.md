@@ -241,7 +241,7 @@ index 28d2f87..0085f69 100644
 
 ### Git 提交 / Git commit
 
-- Branch: `feature/planning-loop`. Implementation commit recorded after commit.
+- Implementation commit: `2e9dd6f`; branch: `feature/planning-loop`; pushed. / 实现已提交并推送，动作验收仍在进行。
 
 ## v11.6.6 (2026-09-24 18:08) - codex
 
