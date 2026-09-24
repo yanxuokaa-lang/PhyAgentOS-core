@@ -17,7 +17,7 @@ from PhyAgentOS.agent.plan_proposal import (
     compile_task_plan,
 )
 from PhyAgentOS.agent.planning_loop import _planning_record_status
-from PhyAgentOS.agent.prompt_context import compact_tool_result
+from PhyAgentOS.agent.prompt_context import _compact_activation_results, compact_tool_result
 from PhyAgentOS.agent.recovery_decisions import AgentRecoveryDecisions
 from PhyAgentOS.agent.tools.forge_task import (
     ForgeTaskClarificationTool,
@@ -85,6 +85,41 @@ def test_save_turn_persists_parseable_forge_task_projection() -> None:
     assert payload["data"]["plan_graph_ref"] == "artifact://plan/rgb"
     assert "required_tools" not in persisted
     assert compact_tool_result("forge_task_get", persisted) != raw
+
+
+def test_save_turn_keeps_activation_parseable_for_task_creation_and_recovery() -> None:
+    loop = object.__new__(AgentLoop)
+    session = Session(key="cli:rgb")
+    activation = json.dumps({
+        "ok": True,
+        "activation": {"activation_id": "activation-rgb", "skill_name": "pick-place-workflow"},
+        "skill": "workflow instructions " * 2_000,
+        "applicable_lessons": [{"lesson_id": "lesson-rgb"}],
+    })
+    task = json.dumps({"ok": True, "data": {"task_id": "task-rgb"}})
+
+    loop._save_turn(session, [
+        {"role": "tool", "name": "activate_skill", "content": activation},
+        {"role": "tool", "name": "forge_task_create", "content": task},
+    ], 0)
+
+    history = session.get_history()
+    assert json.loads(history[0]["content"])["skill"].startswith("workflow instructions")
+    assert json.loads(history[1]["content"])["data"]["task_id"] == "task-rgb"
+    compacted = _compact_activation_results(history, enabled=True)
+    result = json.loads(compacted[0]["content"])
+    assert result["activation"]["activation_id"] == "activation-rgb"
+    assert result["applicable_lessons"] == [{"lesson_id": "lesson-rgb"}]
+    assert result["skill"]["status"] == "persisted_in_coordinator_skill_use"
+    assert "workflow instructions" not in compacted[0]["content"]
+
+    activation_only = Session(key="cli:activation-only")
+    loop._save_turn(activation_only, [
+        {"role": "tool", "name": "activate_skill", "content": activation},
+    ], 0)
+    history_without_task = activation_only.get_history()
+    assert _compact_activation_results(history_without_task, enabled=False) == history_without_task
+    assert json.loads(history_without_task[0]["content"])["skill"].startswith("workflow instructions")
 
 
 def setup_task(tmp_path, goal="Move the left red object into the tray"):

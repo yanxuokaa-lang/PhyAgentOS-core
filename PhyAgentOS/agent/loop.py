@@ -1759,6 +1759,7 @@ class AgentLoop:
             elif (
                 role == "tool"
                 and isinstance(content, str)
+                and entry.get("name") != "activate_skill"
                 and len(content) > self._TOOL_RESULT_MAX_CHARS
             ):
                 entry["content"] = content[: self._TOOL_RESULT_MAX_CHARS] + "\n... (truncated)"

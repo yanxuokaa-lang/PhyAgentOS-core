@@ -18,6 +18,17 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v11.6.0 (2026-09-24 11:40) - codex
+
+- [agent] [fix] [完成] `PhyAgentOS/agent/loop.py:L1759-L1765` 保留 `activate_skill` 的可解析完整结果，任务建立后由现有 prompt 投影压缩 Skill 正文。(local)
+- [Agent] [Fix] [Completed] `PhyAgentOS/agent/loop.py:L1759-L1765` preserves parseable full `activate_skill` results; existing prompt projection compacts Skill prose after task creation. (local)
+- [tests] [feat] [完成] `tests/test_agent_foundation.py:L20,L90-L122` 覆盖同回合激活与任务创建、无任务恢复；专项 `112 passed`，Ruff 与 diff 检查通过。(local)
+- [Tests] [Feat] [Completed] `tests/test_agent_foundation.py:L20,L90-L122` covers activation and task creation in one turn and recovery without a task; `112` focused tests, Ruff, and diff checks passed. (local)
+- [env] [tune] [完成] 外部 PAOS 默认与短 RGB 配置改为 `gpt-6-sol`，三份配置均为 `gpt-6-sol/high`。(local)
+- [Env] [Tune] [Completed] External PAOS default and short RGB configs now use `gpt-6-sol`; all three configs read `gpt-6-sol/high`. (local)
+- Diff: `large activate_skill result -> truncated invalid JSON` -> `intact JSON -> bounded prompt projection`.
+- Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md). Live RGB acceptance remains incomplete.
+
 ## v11.5.15 (2026-09-24 11:15) - codex
 
 - [agent] [fix] [完成] `PhyAgentOS/agent/prompt_context.py:L147-L150,L212-L245,L377-L418,L488-L492` 保留 ToolSpec `$ref/$defs`、planning policy 与缺失 Query 诊断，并只对 `forge_task_create/get` 使用完整任务压缩。(local)
@@ -53,6 +64,8 @@
 - [Tests] [Feat] [Completed] `tests/test_prompt_context.py:L173-L193` covers activation-result compaction; Prompt/Agent focused tests passed `82`, with Ruff, compileall, and `git diff --check` passing. (local)
 - Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md).
 
+## Historical Entries
+
 ## v11.5.11 (2026-09-24 15:00) - codex
 
 - [agent] [fix] [完成] `PhyAgentOS/agent/loop.py:L90-L100,L729,L751-L777,L918-L943,L975-L1004` 在 `pick-place-workflow` 创建阶段限制工具投影，阻止无 task ID 时调用 shell/本地状态查询；Coordinator 返回 task ID 后恢复正常工具集。(local)
@@ -60,8 +73,6 @@
 - [tests] [feat] [完成] `tests/test_agent_foundation.py:L209-L268` 覆盖激活后的受限创建工具与创建成功后的恢复；Prompt/Agent 专项 `81 passed`，compileall、Ruff、`git diff --check` 通过。(local)
 - [Tests] [Feat] [Completed] `tests/test_agent_foundation.py:L209-L268` covers the restricted creation set after activation and restoration after successful creation; Prompt/Agent focused tests passed `81`, with compileall, Ruff, and `git diff --check` passing. (local)
 - Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md).
-
-## Historical Entries
 
 ## v11.5.10 (2026-09-24 07:24) - codex
 
