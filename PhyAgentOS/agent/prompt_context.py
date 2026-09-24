@@ -205,6 +205,24 @@ _SEMANTIC_KEYS = {
     "scene_write",
 }
 
+_SCHEMA_KEYS = {
+    "type",
+    "required",
+    "properties",
+    "items",
+    "enum",
+    "const",
+    "minItems",
+    "maxItems",
+    "minLength",
+    "maxLength",
+    "minimum",
+    "maximum",
+    "uniqueItems",
+    "additionalProperties",
+    "pattern",
+}
+
 
 class PromptBudgetExceededError(RuntimeError):
     """The temporary model request still exceeds the configured hard window."""
@@ -335,6 +353,101 @@ def _reference_projection(value: Any, *, keep_semantics: bool = True) -> Any:
     return value
 
 
+def _schema_projection(value: Any) -> Any:
+    """Keep invocation shape while dropping prose and provider extensions."""
+
+    value = _safe_json(value)
+    if isinstance(value, dict):
+        projected: dict[str, Any] = {}
+        for key, child in value.items():
+            if key == "properties" and isinstance(child, dict):
+                projected[key] = {
+                    str(property_name): _schema_projection(property_schema)
+                    for property_name, property_schema in child.items()
+                }
+            elif key in _SCHEMA_KEYS:
+                projected[key] = _schema_projection(child)
+        return projected
+    if isinstance(value, list):
+        return [_schema_projection(child) for child in value]
+    return value
+
+
+def _context_result_projection(payload: dict[str, Any]) -> dict[str, Any]:
+    """Project one ToolSpec without duplicating the model-visible wrapper schema."""
+
+    data = payload.get("data")
+    if not isinstance(data, dict):
+        return _reference_projection(payload)
+    tool = data.get("tool")
+    context = data.get("context")
+    projected_tool: dict[str, Any] = {}
+    if isinstance(tool, dict):
+        for key in ("tool_id", "implementation_id", "endpoint_id", "operation", "semantics"):
+            if key in tool:
+                projected_tool[key] = tool[key]
+        if isinstance(tool.get("planning"), dict):
+            projected_tool["planning"] = _reference_projection(tool["planning"])
+        for key in ("input_schema", "output_schema"):
+            if key in tool:
+                projected_tool[key] = _schema_projection(tool[key])
+    projected_context = {}
+    if isinstance(context, dict):
+        for key in (
+            "ready",
+            "binding_error",
+            "motion_authorized",
+            "tool_id",
+            "runtime_profile",
+            "runtime_instance_id",
+        ):
+            if key in context:
+                projected_context[key] = _reference_projection(context[key])
+    result: dict[str, Any] = {"data": {"tool": projected_tool, "context": projected_context}}
+    paos_record = payload.get("paos_record")
+    if paos_record is not None:
+        result["paos_record"] = _reference_projection(paos_record)
+    for key in ("ok", "error", "status"):
+        if key in payload:
+            result[key] = _reference_projection(payload[key])
+    return result
+
+
+def _task_result_projection(payload: dict[str, Any]) -> dict[str, Any]:
+    """Keep task-read lifecycle facts; the injected task projection owns the rest."""
+
+    data = payload.get("data")
+    if not isinstance(data, dict):
+        return _reference_projection(payload)
+    projected_data: dict[str, Any] = {}
+    for key in (
+        "task_id",
+        "status",
+        "terminal",
+        "active_revision_id",
+        "active_revision_number",
+        "revision_id",
+        "plan_graph_ref",
+        "invocation_id",
+        "destination_ref",
+        "plan_materialized",
+        "motion_authorized",
+        "verdict",
+        "before_snapshot_ref",
+        "after_snapshot_ref",
+        "evidence_bundle_ref",
+        "evidence_bundle_id",
+        "evidence_errors",
+        "error",
+    ):
+        if key in data:
+            projected_data[key] = _reference_projection(data[key])
+    for key in ("ok", "error", "status"):
+        if key in payload:
+            projected_data[key] = _reference_projection(payload[key])
+    return {"data": projected_data}
+
+
 def compact_tool_result(tool_name: str, content: str) -> str:
     """Create a deterministic non-authoritative prompt summary of a Tool result."""
 
@@ -346,7 +459,12 @@ def compact_tool_result(tool_name: str, content: str) -> str:
         # This is already a bounded catalog, not an unabridged producer payload.
         # Earlier pages remain necessary to match identities across source arrays.
         return content
-    projection = _reference_projection(payload)
+    if tool_name == "forge_tool_context" and isinstance(payload, dict):
+        projection = _context_result_projection(payload)
+    elif tool_name.startswith("forge_task_") and isinstance(payload, dict):
+        projection = _task_result_projection(payload)
+    else:
+        projection = _reference_projection(payload)
     return json.dumps(
         {
             "version": "agent_tool_result_summary_v1",

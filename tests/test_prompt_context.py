@@ -558,6 +558,83 @@ def test_compaction_preserves_visual_and_execution_references() -> None:
     assert "irrelevant_provider_debug" not in encoded
 
 
+def test_context_compaction_keeps_schema_shape_and_readiness_without_prose() -> None:
+    content = json.dumps(
+        {
+            "ok": True,
+            "data": {
+                "tool": {
+                    "tool_id": "scene.understand",
+                    "endpoint_id": "scene_understanding",
+                    "operation": "understand",
+                    "semantics": "query",
+                    "description": "provider prose " * 200,
+                    "input_schema": {
+                        "type": "object",
+                        "required": ["observation_ref", "artifacts"],
+                        "properties": {
+                            "observation_ref": {
+                                "type": "string",
+                                "pattern": "^observation://",
+                                "description": "long field prose " * 100,
+                            },
+                            "artifacts": {
+                                "type": "array",
+                                "items": {"type": "string", "description": "drop"},
+                            },
+                        },
+                    },
+                    "output_schema": {
+                        "type": "object",
+                        "required": ["status"],
+                        "properties": {"status": {"enum": ["available", "unavailable"]}},
+                    },
+                },
+                "context": {
+                    "ready": True,
+                    "binding_error": None,
+                    "motion_authorized": False,
+                    "provider_debug": "drop-me",
+                },
+            },
+        }
+    )
+    summary = json.loads(compact_tool_result("forge_tool_context", content))
+    encoded = json.dumps(summary)
+    schema = summary["result"]["data"]["tool"]["input_schema"]
+    assert schema["required"] == ["observation_ref", "artifacts"]
+    assert schema["properties"]["observation_ref"]["pattern"] == "^observation://"
+    assert "description" not in encoded
+    assert "provider_debug" not in encoded
+    assert summary["result"]["data"]["context"]["ready"] is True
+    assert summary["result"]["data"]["context"]["motion_authorized"] is False
+
+
+def test_task_lifecycle_compaction_keeps_identity_and_drops_duplicate_record() -> None:
+    content = json.dumps(
+        {
+            "ok": True,
+            "data": {
+                "task_id": "task-rgb",
+                "status": "executing",
+                "terminal": False,
+                "active_revision_id": "revision-1",
+                "task_description": "duplicate task prose " * 200,
+                "verification": {"goal": "duplicate verification"},
+                "tool_records": [{"record_id": "record-1", "response": {"status": "available"}}],
+                "motion_authorized": False,
+            },
+        }
+    )
+    summary = json.loads(compact_tool_result("forge_task_get", content))
+    encoded = json.dumps(summary)
+    assert summary["result"]["data"]["task_id"] == "task-rgb"
+    assert summary["result"]["data"]["active_revision_id"] == "revision-1"
+    assert summary["result"]["data"]["motion_authorized"] is False
+    assert "duplicate task prose" not in encoded
+    assert "tool_records" not in encoded
+
+
 def test_compaction_preserves_frozen_plan_ready_contract() -> None:
     content = json.dumps({
         "ok": True,
