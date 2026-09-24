@@ -18,6 +18,15 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v11.6.2 (2026-09-24 12:05) - codex
+
+- [agent] [fix] [完成] `PhyAgentOS/agent/planning_loop.py:L606-L623` 在无 selection、无执行记录的 `provider_timeout` 后使用现有一次 node-turn continuation，保留已固化选择和 Action 对账语义。(local)
+- [Agent] [Fix] [Completed] `PhyAgentOS/agent/planning_loop.py:L606-L623` uses the existing single node-turn continuation after a pre-selection `provider_timeout` without an execution record, preserving persisted-selection and Action reconciliation behavior. (local)
+- [tests] [feat] [完成] `tests/test_planning_loop.py:L1857-L1914` 覆盖一次超时后成功及连续超时阻塞；专项 `144 passed`，Ruff 与 diff 检查通过。(local)
+- [Tests] [Feat] [Completed] `tests/test_planning_loop.py:L1857-L1914` covers success after one timeout and blocking after repeated timeouts; focused tests passed `144`, with Ruff and diff checks passing. (local)
+- Diff: `pre-selection provider_timeout -> blocked` -> `one bounded same-node continuation`.
+- Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md). Live RGB acceptance remains incomplete.
+
 ## v11.6.1 (2026-09-24 11:19) - codex
 
 - [sense] [fix] [完成] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/qwen3_vl_vllm_scene_understanding.py:L20-L58,L315-L323` 限制并验证本地视觉模型的语义歧义码，拒绝 `e1` 等非法码。(local)
@@ -60,6 +69,8 @@
 - Diff: `result[:16000] + truncated` -> `compact_tool_result(result)["result"]`; commit `7eda145`.
 - Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md).
 
+## Historical Entries
+
 ## v11.5.13 (2026-09-24 09:30) - codex
 
 - [agent] [fix] [完成] `PhyAgentOS/agent/prompt_context.py:L208-L224,L356-L448,L462-L467` 为 discovery ToolSpec 与任务读取添加有界 prompt 投影，保留 schema 结构、readiness 和身份引用。(local)
@@ -68,8 +79,6 @@
 - [Tests] [Feat] [Completed] `tests/test_prompt_context.py:L561-L635` verifies varied input shapes; focused tests passed `137`, with Ruff, compileall, and diff checks passing. (local)
 - Diff: `full ToolSpec/task record` -> `bounded schema/readiness/identity projection`; implementation commit `27a3a60`.
 - Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md).
-
-## Historical Entries
 
 ## v11.5.12 (2026-09-24 15:30) - codex
 

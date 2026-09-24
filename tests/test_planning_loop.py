@@ -1854,6 +1854,66 @@ def test_node_executor_provider_failure_does_not_consume_continuation():
     assert task.active_revision.execution_records == []
 
 
+def test_node_executor_retries_model_timeout_before_selection():
+    records = []
+    task = SimpleNamespace(
+        active_revision_id="revision-resume",
+        active_revision=SimpleNamespace(execution_records=records),
+    )
+
+    class Coordinator:
+        def get_task(self, _task_id):
+            return task
+
+        def pending_planning_selection(self, *_args, **_kwargs):
+            return None
+
+    class Loop:
+        calls = 0
+
+        async def run_node_turn(self, **_kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                return SimpleNamespace(model_failure_code="provider_timeout")
+            records.append(_terminal_record())
+            return SimpleNamespace(model_failure_code=None, turn_failure_code=None)
+
+    loop = Loop()
+    result = asyncio.run(AgentLoopNodeExecutor(loop, Coordinator())(_executor_context()))
+
+    assert result.status == "succeeded"
+    assert loop.calls == 2
+    assert len(records) == 1
+
+
+def test_node_executor_blocks_after_bounded_model_timeouts_before_selection():
+    task = SimpleNamespace(
+        active_revision_id="revision-resume",
+        active_revision=SimpleNamespace(execution_records=[]),
+    )
+
+    class Coordinator:
+        def get_task(self, _task_id):
+            return task
+
+        def pending_planning_selection(self, *_args, **_kwargs):
+            return None
+
+    class Loop:
+        calls = 0
+
+        async def run_node_turn(self, **_kwargs):
+            self.calls += 1
+            return SimpleNamespace(model_failure_code="provider_timeout")
+
+    loop = Loop()
+    with pytest.raises(NodeTurnProviderError, match="provider_timeout"):
+        asyncio.run(AgentLoopNodeExecutor(loop, Coordinator())(_executor_context()))
+
+    assert loop.calls == 2
+    assert task.active_revision.execution_records == []
+
+
 def test_node_executor_retries_provider_failure_after_selection_is_persisted():
     records = []
     pending = {"value": None}

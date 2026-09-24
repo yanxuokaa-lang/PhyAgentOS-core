@@ -606,9 +606,18 @@ class AgentLoopNodeExecutor:
             model_failure_code = getattr(turn_result, "model_failure_code", None)
             if model_failure_code:
                 if (
-                    not had_pending_selection
-                    and self._pending_selection(context) is not None
-                    and _attempt + 1 < attempts
+                    _attempt + 1 < attempts
+                    and (
+                        (
+                            model_failure_code == "provider_timeout"
+                            and not had_pending_selection
+                            and self._pending_selection(context) is None
+                        )
+                        or (
+                            not had_pending_selection
+                            and self._pending_selection(context) is not None
+                        )
+                    )
                 ):
                     continue
                 raise NodeTurnProviderError(context.node_id, model_failure_code)
