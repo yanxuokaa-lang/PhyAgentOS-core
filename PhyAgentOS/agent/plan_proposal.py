@@ -312,6 +312,8 @@ def _complete_persisted_runtime_bindings(
     grasp_execution_targets: dict[str, set[str]] = {}
     for node in nodes:
         execution = node.input_bindings.get("execution_entity_ref")
+        if not isinstance(execution, str):
+            execution = node.input_bindings.get("target_execution_entity_ref")
         destination = node.input_bindings.get("destination_ref")
         if not isinstance(execution, str) and isinstance(destination, str):
             destination_entities = goal_entities_by_destination.get(destination, set())
@@ -350,6 +352,8 @@ def _complete_persisted_runtime_bindings(
         if node.capability in {"manipulation.prepare", "object.acquire", "object.place"}:
             entity = bindings.get("entity_ref")
             execution_entity = bindings.get("execution_entity_ref")
+            if not isinstance(execution_entity, str):
+                execution_entity = bindings.get("target_execution_entity_ref")
             destination = bindings.get("destination_ref")
             if not isinstance(execution_entity, str) and isinstance(destination, str):
                 destination_entities = goal_entities_by_destination.get(destination, set())

@@ -117,7 +117,7 @@ def _nodes(*, allowed_arms=None):
         capability="grasp.propose",
     )
     bindings = {
-        "execution_entity_ref": "entity://block-red-1",
+        "target_execution_entity_ref": "entity://block-red-1",
         "coordination_mode": "alternative_arm",
     }
     if allowed_arms is not None:
