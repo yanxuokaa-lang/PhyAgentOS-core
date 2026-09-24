@@ -10,6 +10,7 @@ from PhyAgentOS.agent.loop import AgentLoop
 from PhyAgentOS.agent.prompt_context import (
     AgentPromptContextManager,
     PromptBudgetExceededError,
+    _compact_activation_results,
     _compact_forge_results,
     compact_tool_result,
     node_task_prompt_projection,
@@ -167,6 +168,29 @@ def test_latest_task_lifecycle_result_is_compacted_to_bounded_projection(tool_na
     assert result["destination_ref"] == "benchmark://rgb/red-slot"
     assert "instructions" not in content
     assert "input_schema" not in content
+
+
+def test_activation_result_is_compacted_after_task_creation():
+    raw = json.dumps({
+        "ok": True,
+        "activation": {
+            "activation_id": "activation-rgb",
+            "skill_name": "pick-place-workflow",
+            "skill_version": "2.6.20",
+            "content_sha256": "a" * 64,
+        },
+        "skill": "full workflow instructions " * 2_000,
+        "applicable_lessons": [{"lesson_id": "lesson-1", "summary": "keep receipts"}],
+    })
+    messages = [{"role": "tool", "name": "activate_skill", "content": raw}]
+
+    projected = _compact_activation_results(messages, enabled=True)
+    payload = json.loads(projected[0]["content"])
+    assert payload["activation"]["activation_id"] == "activation-rgb"
+    assert payload["applicable_lessons"] == [{"lesson_id": "lesson-1", "summary": "keep receipts"}]
+    assert payload["skill"]["status"] == "persisted_in_coordinator_skill_use"
+    assert len(projected[0]["content"]) < len(raw) / 10
+    assert _compact_activation_results(messages, enabled=False) == messages
 
 
 def test_agent_loop_does_not_fallback_to_unbound_legacy_active_task():

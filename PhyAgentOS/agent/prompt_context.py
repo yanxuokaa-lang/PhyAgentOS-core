@@ -745,6 +745,40 @@ def _compact_forge_results(
     return compacted
 
 
+def _compact_activation_results(
+    messages: list[dict[str, Any]], *, enabled: bool
+) -> list[dict[str, Any]]:
+    """Drop repeated Skill prose once Coordinator task identity exists."""
+    if not enabled:
+        return messages
+    compacted: list[dict[str, Any]] = []
+    for message in messages:
+        entry = dict(message)
+        if entry.get("role") == "tool" and entry.get("name") == "activate_skill":
+            try:
+                payload = json.loads(entry.get("content", ""))
+            except (TypeError, json.JSONDecodeError):
+                payload = None
+            if isinstance(payload, dict) and payload.get("ok") is True:
+                compacted_payload = {
+                    "ok": True,
+                    "activation": payload.get("activation"),
+                    "applicable_lessons": payload.get("applicable_lessons", []),
+                    "skill": {
+                        "status": "persisted_in_coordinator_skill_use",
+                        "message": (
+                            "Full Skill instructions were supplied during activation and "
+                            "remain authoritative in the persisted SkillUse."
+                        ),
+                    },
+                }
+                entry["content"] = json.dumps(
+                    compacted_payload, ensure_ascii=False, separators=(",", ":")
+                )
+        compacted.append(entry)
+    return compacted
+
+
 def _current_turn_units(
     messages: list[dict[str, Any]], turn_start_index: int
 ) -> tuple[dict[str, Any], list[list[dict[str, Any]]]]:
@@ -835,6 +869,9 @@ class AgentPromptContextManager:
         else:
             raise ValueError(f"unsupported prompt projection scope: {projection_scope}")
         compacted_messages = _compact_forge_results(messages, aggressive=False)
+        compacted_messages = _compact_activation_results(
+            compacted_messages, enabled=task is not None
+        )
         compacted = compacted_messages != messages
         view = _with_task_projection(compacted_messages, projection)
         compaction_threshold = min(

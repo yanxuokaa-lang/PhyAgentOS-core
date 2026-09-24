@@ -18,6 +18,14 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v11.5.12 (2026-09-24 15:30) - codex
+
+- [agent] [fix] [完成] `PhyAgentOS/agent/prompt_context.py:L748-L779,L871-L874` 在 AgentTask 已创建后压缩 `activate_skill` 结果，保留 activation/lessons 身份和 SkillUse 持久化提示，避免 discovery prompt 重复携带完整 Skill 文档。(local)
+- [Agent] [Fix] [Completed] `PhyAgentOS/agent/prompt_context.py:L748-L779,L871-L874` compacts `activate_skill` results after AgentTask creation, retaining activation/lesson identity and the persisted SkillUse notice so discovery prompts do not repeat the full Skill document. (local)
+- [tests] [feat] [完成] `tests/test_prompt_context.py:L173-L193` 覆盖激活结果压缩；Prompt/Agent 专项 `82 passed`，Ruff、compileall、`git diff --check` 通过。(local)
+- [Tests] [Feat] [Completed] `tests/test_prompt_context.py:L173-L193` covers activation-result compaction; Prompt/Agent focused tests passed `82`, with Ruff, compileall, and `git diff --check` passing. (local)
+- Detailed entry: [`changelog/2026-09_part13.md`](changelog/2026-09_part13.md).
+
 ## v11.5.11 (2026-09-24 15:00) - codex
 
 - [agent] [fix] [完成] `PhyAgentOS/agent/loop.py:L90-L100,L729,L751-L777,L918-L943,L975-L1004` 在 `pick-place-workflow` 创建阶段限制工具投影，阻止无 task ID 时调用 shell/本地状态查询；Coordinator 返回 task ID 后恢复正常工具集。(local)
