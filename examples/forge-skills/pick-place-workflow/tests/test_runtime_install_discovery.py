@@ -344,6 +344,6 @@ def test_graspnet_acceptance_profile_preserves_observed_action_boundaries():
     assert not any(name.startswith("GRASPGEN_") for name in profile.required_environment)
     adapter = BUNDLE_ROOT.parents[1] / "forge-adapters/robotwin20"
     grasp = yaml.safe_load((adapter / "profiles/robotwin20/graspnet.yaml").read_text())
-    assert grasp["sample_count"] == 24
-    assert grasp["max_candidates"] == 10
+    assert grasp["sample_count"] == 128
+    assert grasp["max_candidates"] == 32
     assert grasp["apply_nms"] is True

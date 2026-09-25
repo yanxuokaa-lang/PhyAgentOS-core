@@ -1,6 +1,6 @@
 [project]
 name = "paos-pick-place-workflow"
-version = "2.7.14"
+version = "2.7.15"
 description = "Provider-neutral Forge capability contracts and no-motion conformance fixtures."
 requires-python = ">=3.11"
 dependencies = ["httpx>=0.28,<1.0"]

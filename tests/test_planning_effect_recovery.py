@@ -12,8 +12,8 @@ from PhyAgentOS.forge.capability_runtime import ActionAdmission, CapabilityRunti
 from PhyAgentOS.planning import PlanNode, ToolResultEnvelope, ToolSpecPolicy, settle_node
 
 
-def result(**kwargs):
-    return ToolResultEnvelope(task_id="task", revision_id="revision", node_id="relocate", tool_id="place", **kwargs)
+def result(*, node_id="relocate", **kwargs):
+    return ToolResultEnvelope(task_id="task", revision_id="revision", node_id=node_id, tool_id="place", **kwargs)
 
 
 @pytest.mark.parametrize("status", ["failed", "cancelled", "stopped", "unknown"])
@@ -96,6 +96,54 @@ def test_query_error_survives_live_and_persisted_settlement_and_recovery_prompt(
 def test_observation_only_cannot_settle_declared_relocation_evidence():
     node = PlanNode(node_id="relocate", obligation_id="move", capability="object.relocate", produced_evidence=("placed",))
     settlement = settle_node(node, result(status="succeeded", evidence_refs=("observed",)), current_scene_revision="scene-1")
+    assert settlement.status == "failed"
+    assert settlement.failure_code == "missing_produced_evidence"
+
+
+def test_semantic_query_postcondition_uses_coordinator_evidence_ref():
+    node = PlanNode(
+        node_id="understand",
+        obligation_id="understand",
+        capability="scene.understand",
+        produced_evidence=("initial_scene_understood",),
+    )
+    settlement = settle_node(
+        node,
+        result(node_id="understand", status="succeeded", evidence_refs=("tool:understand-record",)),
+        current_scene_revision="scene-1",
+    )
+    assert settlement.status == "completed"
+    assert settlement.evidence_refs == ("tool:understand-record",)
+
+
+def test_semantic_postcondition_without_real_evidence_remains_fail_closed():
+    node = PlanNode(
+        node_id="understand",
+        obligation_id="understand",
+        capability="scene.understand",
+        produced_evidence=("initial_scene_understood",),
+    )
+    settlement = settle_node(
+        node,
+        result(node_id="understand", status="succeeded", evidence_refs=()),
+        current_scene_revision="scene-1",
+    )
+    assert settlement.status == "failed"
+    assert settlement.failure_code == "missing_produced_evidence"
+
+
+def test_opaque_produced_evidence_still_requires_exact_ref():
+    node = PlanNode(
+        node_id="place",
+        obligation_id="place",
+        capability="object.place",
+        produced_evidence=("artifact://place/terminal",),
+    )
+    settlement = settle_node(
+        node,
+        result(node_id="place", status="succeeded", evidence_refs=("tool:place-record",)),
+        current_scene_revision="scene-1",
+    )
     assert settlement.status == "failed"
     assert settlement.failure_code == "missing_produced_evidence"
 

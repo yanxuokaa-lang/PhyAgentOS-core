@@ -95,26 +95,26 @@ def test_graspgen_provider_maps_bound_geometry_to_neutral_candidates(tmp_path):
     assert worker.requests[0]["point_units"] == "m"
 
 
-def test_provider_sampling_order_survives_nms_and_ten_candidate_cap(tmp_path):
+def test_provider_sampling_order_survives_nms_and_expanded_candidate_cap(tmp_path):
     class SampledWorker(Worker):
         def request(self, payload):
             reply = super().request(payload)
             reply["candidates"] = []
-            for index in range(24):
+            for index in range(128):
                 matrix = np.eye(4)
                 matrix[0, 3] = index * .01
-                reply["candidates"].append({"matrix": matrix.tolist(), "score": .1 + index * .03})
-            reply["funnel"] = {"decoded": 1024, "canonicalized": 1024, "deduplicated": 1024, "retained": 24}
+                reply["candidates"].append({"matrix": matrix.tolist(), "score": .1 + index * .003})
+            reply["funnel"] = {"decoded": 1024, "canonicalized": 1024, "deduplicated": 1024, "retained": 128}
             return reply
 
     worker = SampledWorker()
     provider = GraspNetProposalProvider(worker, artifact_store=_store(tmp_path),
-        max_candidates=10, sample_count=24, apply_nms=True, selection_order="provider")
+        max_candidates=32, sample_count=128, apply_nms=True, selection_order="provider")
     result = provider.propose(REQUEST)
-    assert worker.requests[0]["max_candidates"] == 24
-    assert result["funnel"] == {"decoded": 1024, "canonicalized": 24, "deduplicated": 24, "retained": 10}
-    assert [c["grasp_frame"]["position_m"][0] for c in result["candidates"]] == pytest.approx([i * .01 for i in range(10)])
-    assert [c["score"] for c in result["candidates"]] == pytest.approx([.1 + i * .03 for i in range(10)])
+    assert worker.requests[0]["max_candidates"] == 128
+    assert result["funnel"] == {"decoded": 1024, "canonicalized": 128, "deduplicated": 128, "retained": 32}
+    assert [c["grasp_frame"]["position_m"][0] for c in result["candidates"]] == pytest.approx([i * .01 for i in range(32)])
+    assert [c["score"] for c in result["candidates"]] == pytest.approx([.1 + i * .003 for i in range(32)])
     assert worker.released is True
 
 

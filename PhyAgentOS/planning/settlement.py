@@ -5,6 +5,42 @@ from __future__ import annotations
 from .contracts import NodeSettlement, PlanNode, ToolResultEnvelope
 
 
+_COORDINATOR_EVIDENCE_PREFIXES = (
+    "artifact://",
+    "invocation:",
+    "session:",
+    "tool:",
+)
+
+
+def _is_coordinator_evidence_ref(value: str) -> bool:
+    """Recognize references emitted by Coordinator or a persisted Runtime record."""
+    return value.startswith(_COORDINATOR_EVIDENCE_PREFIXES)
+
+
+def _missing_produced_evidence(node: PlanNode, result: ToolResultEnvelope) -> set[str]:
+    """Validate opaque postconditions without treating semantic labels as facts.
+
+    ``PlanNode.produced_evidence`` predates the opaque Runtime evidence refs and
+    is still used for semantic postcondition labels.  A terminal Tool result may
+    therefore satisfy those labels by producing a Coordinator-owned evidence
+    ref, while an explicitly opaque declaration must still match exactly.
+    """
+    actual = set(result.evidence_refs)
+    missing = set(node.produced_evidence) - actual
+    if not missing:
+        return set()
+    missing_opaque = {
+        value for value in missing if _is_coordinator_evidence_ref(value)
+    }
+    has_real_result_evidence = any(
+        _is_coordinator_evidence_ref(value) for value in actual
+    )
+    if not missing_opaque and has_real_result_evidence:
+        return set()
+    return missing
+
+
 def settle_node(
     node: PlanNode,
     result: ToolResultEnvelope,
@@ -40,7 +76,7 @@ def settle_node(
             and result.new_scene_revision == current_scene_revision
         ):
             return NodeSettlement(**facts, status="stale", failure_code="scene_revision_not_advanced")
-        missing = set(node.produced_evidence) - set(result.evidence_refs)
+        missing = _missing_produced_evidence(node, result)
         if missing:
             return NodeSettlement(**facts, status="failed", failure_code="missing_produced_evidence")
         return NodeSettlement(**facts, status="completed")

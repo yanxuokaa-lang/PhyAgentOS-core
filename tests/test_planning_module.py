@@ -239,6 +239,35 @@ def test_new_revision_tool_requires_confirmed_world_change_to_complete():
     assert completed.status == "completed"
 
 
+def test_completed_semantic_query_unlocks_dependent_node_with_real_evidence():
+    graph = _graph()
+    observe = graph.nodes[0].model_copy(
+        update={"produced_evidence": ("initial_observation_current",)}
+    )
+    downstream = graph.nodes[1].model_copy(
+        update={"required_evidence": (), "dependencies": (observe.node_id,)}
+    )
+    graph = graph.model_copy(update={"nodes": (observe, downstream, *graph.nodes[2:])})
+    settlement = settle_node(
+        observe,
+        ToolResultEnvelope(
+            task_id="task-1",
+            revision_id="revision-1",
+            node_id=observe.node_id,
+            tool_id="scene.observe",
+            status="succeeded",
+            evidence_refs=("tool:observe-record",),
+        ),
+        current_scene_revision="scene-1",
+    )
+    assert settlement.status == "completed"
+    assert derive_ready_nodes(
+        graph,
+        {observe.node_id: settlement.status},
+        set(settlement.evidence_refs),
+    ) == (downstream.node_id,)
+
+
 def test_refresh_query_can_recover_without_old_evidence_or_arm_claim():
     context = AdmissionContext(scene_revision="scene-1", resources_in_use=frozenset({"arm:right"}), condition_facts={"scene_current": False})
     assert admit_tool_call(_graph(), _call(), _tool(), context).code == "observation_required"

@@ -485,7 +485,13 @@ true.
 
 Use `dependencies` for workflow ordering. A declared `effects` or
 `produced_evidence` entry is an expected postcondition, not a fact that the
-planner can assert before a Tool reaches a terminal result. After activation,
+planner can assert before a Tool reaches a terminal result. Semantic
+`produced_evidence` labels (for example, `initial_scene_understood`) are
+settled when the terminal result contains at least one Coordinator-owned
+opaque evidence reference. An explicitly opaque declaration such as
+`artifact://...`, `tool:...`, `invocation:...`, or `session:...` must match the
+returned reference exactly. An empty result evidence set never satisfies a
+semantic label. After activation,
 inspect `forge_plan_ready.node_diagnostics` before selecting a Tool. The
 diagnostic distinguishes dependency, evidence, condition, and Tool-candidate
 blockers without invoking Gateway or changing task state. It separately reports
