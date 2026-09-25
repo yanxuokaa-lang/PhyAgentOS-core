@@ -224,3 +224,34 @@ def test_sample_pool_is_filtered_before_retained_limit(tmp_path):
     assert len(data["candidates"]) == 10
     assert data["candidates"][0]["score"] == 1.0
     assert data["candidates"][-1]["score"] == 0.55
+
+
+def test_graspnet_geometry_crosses_public_proposal_and_prepare_boundary(tmp_path):
+    from jsonschema import validate
+    from PhyAgentOS.forge.capability_runtime.grasp_proposal import (
+        GRASP_TOOL_SPEC,
+        GraspProposalEndpoint,
+    )
+    from PhyAgentOS.forge.capability_runtime.manipulation_prepare import (
+        MANIPULATION_TOOL_SPEC,
+        validate_arguments,
+    )
+
+    class GeometryWorker(Worker):
+        def request(self, payload):
+            reply = super().request(payload)
+            for item in reply["candidates"]:
+                item["grasp_geometry"] = {"width_m": .04, "height_m": .02, "depth_m": .01}
+            return reply
+
+    provider = GraspNetProposalProvider(GeometryWorker(), artifact_store=_store(tmp_path))
+    proposed = GraspProposalEndpoint(provider).invoke(REQUEST)
+    assert proposed["status"] == "available"
+    validate(proposed, GRASP_TOOL_SPEC["output_schema"])
+    prepared = {key: REQUEST[key] for key in (
+        "observation_ref", "scene_revision", "frame_id", "calibration_ref", "freshness_ms", "max_age_ms",
+    )}
+    prepared.update(candidate_set_ref=proposed["candidate_set_ref"], candidates=proposed["candidates"])
+    assert validate_arguments(prepared) is None
+    validate(prepared, MANIPULATION_TOOL_SPEC["input_schema"])
+    assert prepared["candidates"][0]["grasp_geometry"]["depth_m"] == .01

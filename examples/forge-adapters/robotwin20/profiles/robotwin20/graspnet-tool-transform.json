@@ -6,7 +6,7 @@
   "origin_frame": "grasp_center",
   "target_frame": "canonical_contact_center",
   "units": "m",
-  "provider_T_contact_center": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+  "provider_T_contact_center": [0, 0, 1, 0, 0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 0, 1],
   "source_chain": [
     {
       "path": "models/graspnet.py",

@@ -30,6 +30,16 @@ _CANDIDATE_KEYS = {
 }
 _QUALIFICATIONS = ("proposed", "low_confidence", "ambiguous")
 _FUNNEL_STAGES = ("decoded", "canonicalized", "deduplicated", "retained")
+GRASP_GEOMETRY_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["width_m", "height_m", "depth_m"],
+    "properties": {
+        name: {"type": "number", "exclusiveMinimum": 0}
+        for name in ("width_m", "height_m", "depth_m")
+    },
+    "description": "Optional provider-predicted grasp dimensions in metres; not motion admission.",
+}
 
 
 class GraspProposalProvider(Protocol):
@@ -239,6 +249,7 @@ GRASP_TOOL_SPEC: dict[str, Any] = {
                                 },
                             },
                         },
+                        "grasp_geometry": deepcopy(GRASP_GEOMETRY_SCHEMA),
                         "score": {"type": "number", "minimum": 0, "maximum": 1},
                         "confidence": {"type": "number", "minimum": 0, "maximum": 1},
                         "provenance": {
@@ -496,8 +507,20 @@ def _validate_candidate(
     allowed_provenance: set[str] | None = None,
     allowed_provenance_by_entity: Mapping[str, set[str]] | None = None,
 ) -> str | None:
-    if not isinstance(candidate, dict) or set(candidate) != _CANDIDATE_KEYS:
+    if (
+        not isinstance(candidate, dict)
+        or not _CANDIDATE_KEYS <= set(candidate)
+        or set(candidate) - _CANDIDATE_KEYS - {"grasp_geometry"}
+    ):
         return "invalid_candidate"
+    if "grasp_geometry" in candidate:
+        geometry = candidate["grasp_geometry"]
+        if (
+            not isinstance(geometry, dict)
+            or set(geometry) != {"width_m", "height_m", "depth_m"}
+            or any(not _finite_number(value) or value <= 0 for value in geometry.values())
+        ):
+            return "invalid_candidate_geometry"
     candidate_ref = candidate.get("candidate_ref")
     if not isinstance(candidate_ref, str) or _CANDIDATE_REF.fullmatch(candidate_ref) is None:
         return "invalid_candidate_ref"

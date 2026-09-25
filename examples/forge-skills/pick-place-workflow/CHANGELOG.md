@@ -1,5 +1,17 @@
 # Change Log
 
+## v2.7.12 (2026-09-25) - codex
+
+- [model] [fix] Correct GraspNet X-forward to canonical Z-forward mapping and native RoboTwin fingertip-depth conversion; publish Node 0.7.15.
+- [model] [fix] 修复 GraspNet X-forward 到 canonical Z-forward 旋转及 RoboTwin 实际指尖深度转换；发布 Node 0.7.15。
+
+
+## v2.7.11 (2026-09-25) - codex
+
+- [model] [fix] Carry optional metric grasp_geometry through public proposal/preparation contracts; publish Node 0.7.14.
+- [model] [fix] 公共候选生成与准备契约保留可选米制 grasp_geometry，发布 Node 0.7.14。
+
+
 ## v2.7.10 (2026-09-25) - codex
 
 - [policy] [feat] Add observed GraspNet benchmark profile and publish Node 0.7.13; retain independent GraspGen closure.

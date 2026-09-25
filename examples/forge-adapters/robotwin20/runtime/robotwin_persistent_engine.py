@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import gc
 import json
 import math
+import sys
 import time
 from dataclasses import asdict
 from pathlib import Path
@@ -249,6 +251,27 @@ class RoboTwinPersistentEngine:
         return self.backend._scene_revision
 
     def query(self, operation: str, arguments: Mapping[str, Any]) -> dict[str, Any]:
+        try:
+            return self._query(operation, arguments)
+        finally:
+            if operation in {"route_readiness", "contact_qualification", "observe"}:
+                # The provider serializes Queries against Actions. Retain the
+                # world and live planner tensors, but return unused allocator
+                # memory to the GPU before another perception process loads.
+                torch = sys.modules.get("torch")
+                if torch is not None and torch.cuda.is_initialized():
+                    gc.collect()
+                    before = torch.cuda.memory_reserved()
+                    torch.cuda.empty_cache()
+                    print(
+                        f"planner idle CUDA cache: operation={operation} "
+                        f"reserved_before={before} "
+                        f"reserved_after={torch.cuda.memory_reserved()} "
+                        f"allocated={torch.cuda.memory_allocated()}",
+                        file=sys.stderr,
+                    )
+
+    def _query(self, operation: str, arguments: Mapping[str, Any]) -> dict[str, Any]:
         if operation == "oracle_grasp_candidates":
             if set(arguments) != {
                 "request", "provider_T_contact_center", "binding_ref"

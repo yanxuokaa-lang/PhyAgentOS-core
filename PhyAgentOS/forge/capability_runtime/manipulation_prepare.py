@@ -7,7 +7,10 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Mapping, Protocol
 
-from PhyAgentOS.forge.capability_runtime.grasp_proposal import _validate_candidate
+from PhyAgentOS.forge.capability_runtime.grasp_proposal import (
+    GRASP_GEOMETRY_SCHEMA,
+    _validate_candidate,
+)
 from PhyAgentOS.forge.manipulation import ArmAssignment, ManipulationIntent
 
 PREPARATION_TOOL_ID = "manipulation.prepare"
@@ -113,6 +116,7 @@ MANIPULATION_TOOL_SPEC: dict[str, Any] = {
                                 },
                             },
                         },
+                        "grasp_geometry": deepcopy(GRASP_GEOMETRY_SCHEMA),
                         "score": {"type": "number", "minimum": 0, "maximum": 1},
                         "confidence": {"type": "number", "minimum": 0, "maximum": 1},
                         "provenance": {

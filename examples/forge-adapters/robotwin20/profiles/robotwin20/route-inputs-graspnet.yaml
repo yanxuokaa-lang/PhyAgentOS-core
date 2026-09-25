@@ -17,9 +17,9 @@ workspace_bounds_m:
   z_max_m: 1.40
 grasp_adaptation:
   extrinsic_semantics: world_to_camera_cv
-  # GraspNet reports grasp_center directly in the observation frame.
-  # No GraspGen depth reconstruction is applied.
-  provider_T_contact_center: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
+  # GraspNet: X approach, Y closing. Canonical hand: Z approach, Y closing.
+  # Preserve grasp_center; rotate axes only. No GraspGen backoff is applied.
+  provider_T_contact_center: [0, 0, 1, 0, 0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 0, 1]
   # RoboTwin Robot.*_plan_path consumes its standard gripper target. Internally
   # it converts that target to the Curobo panda_hand endlink using these values.
   robot_target_frame: robotwin_gripper

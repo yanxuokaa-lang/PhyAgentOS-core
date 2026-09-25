@@ -127,6 +127,15 @@ output_schema:
               frame_id: {type: string, minLength: 1}
               unit: {const: unitless}
               vector: {type: array, minItems: 3, maxItems: 3, items: {type: number}}
+          grasp_geometry:
+            type: object
+            additionalProperties: false
+            required: [width_m, height_m, depth_m]
+            properties:
+              width_m: {type: number, exclusiveMinimum: 0}
+              height_m: {type: number, exclusiveMinimum: 0}
+              depth_m: {type: number, exclusiveMinimum: 0}
+            description: Optional provider-predicted grasp dimensions in metres; not motion admission.
           score: {type: number, minimum: 0, maximum: 1}
           confidence: {type: number, minimum: 0, maximum: 1}
           provenance:

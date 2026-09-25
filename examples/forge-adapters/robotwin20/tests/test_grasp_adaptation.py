@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from copy import deepcopy
+from pathlib import Path
 
 import pytest
 
@@ -101,12 +102,47 @@ def test_graspnet_depth_aligns_provider_tip_depth_without_world_z_offset():
 
     result = adapt_grasp_candidate(proposal, payload, base, profile)
 
-    expected_reference = 0.11224903 + 0.08 - 0.01
+    expected_reference = 0.12 - 0.08 + 0.11224903 - 0.01
     assert result["contact_center_pose"]["position_m"] == pytest.approx([1.11, 2.22, 3.33])
     assert result["robot_target_pose"]["position_m"] == pytest.approx(
         [1.11, 2.22, 3.33 - expected_reference]
     )
     assert result["robot_target_round_trip_residual_m"] < 1e-8
+
+
+@pytest.mark.parametrize("depth", [0.01, 0.02, 0.03, 0.04])
+@pytest.mark.parametrize("quaternion", [[0, 0, 0, 1], [0, 2 ** -0.5, 0, 2 ** -0.5]])
+def test_graspnet_profile_matches_native_robot_axes_and_fingertip(depth, quaternion):
+    import numpy as np
+    import yaml
+
+    from robotwin20_adapter.grasp_postprocessing import (
+        _quaternion_rotation,
+        derive_robot_hand_pose,
+    )
+
+    proposal, payload, base, profile = _inputs()
+    deployed = yaml.safe_load((Path(__file__).parents[1] /
+        "profiles/robotwin20/route-inputs-graspnet.yaml").read_text())["grasp_adaptation"]
+    profile["provider_T_contact_center"] = deployed["provider_T_contact_center"]
+    profile["grasp_depth_adaptation"] = deployed["grasp_depth_adaptation"]
+    proposal["grasp_geometry"] = {"width_m": 0.04, "height_m": 0.02, "depth_m": depth}
+    proposal["grasp_frame"]["orientation_xyzw"] = quaternion
+    provider_rotation = np.asarray(_quaternion_rotation(quaternion, "provider"))
+    proposal["approach_direction"]["vector"] = provider_rotation[:, 0].tolist()
+    result = adapt_grasp_candidate(proposal, payload, base, profile)
+    hand = derive_robot_hand_pose(result["robot_target_pose"],
+        reference_distance_m=0.12, gripper_bias_m=0.08,
+        delta_matrix=deployed["robot_delta_matrix"])
+    rotation = np.asarray(_quaternion_rotation(hand["orientation_xyzw"], "hand"))
+    center = np.array([1.1, 2.2, 3.3])
+    # Independently apply the robot's fixed conversion, then URDF finger reach.
+    fingertip = np.asarray(hand["position_m"]) + rotation[:, 2] * 0.11224903
+    assert rotation[:, 2] == pytest.approx(provider_rotation[:, 0])
+    assert rotation[:, 1] == pytest.approx(provider_rotation[:, 1])
+    assert result["ingress_direction"]["vector"] == pytest.approx(rotation[:, 2])
+    assert fingertip == pytest.approx(center + depth * provider_rotation[:, 0])
+    assert result["contact_center_pose"]["position_m"] == pytest.approx(center)
 
 
 def test_adaptation_is_deterministic_and_does_not_mutate_inputs():

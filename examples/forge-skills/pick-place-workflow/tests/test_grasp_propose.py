@@ -266,7 +266,7 @@ def test_bundle_and_package_versions_match_the_feature_revision():
     )
     import tomllib
 
-    assert bundle_manifest["version"] == "2.7.10"
+    assert bundle_manifest["version"] == "2.7.12"
     assert tomllib.loads(package_text)["project"]["version"] == bundle_manifest["version"]
 
 
@@ -742,3 +742,22 @@ async def test_grasp_propose_never_creates_action_session_or_motion_routes():
     ]
     assert all(not path.endswith("/grasp.propose:invoke") for path in paths)
     assert all(not path.startswith("/invocations/") for path in paths)
+
+
+@pytest.mark.parametrize("geometry", [
+    None, {}, {"width_m": .04, "height_m": .02},
+    {"width_m": .04, "height_m": .02, "depth_m": 0},
+    {"width_m": .04, "height_m": .02, "depth_m": -.01},
+    {"width_m": .04, "height_m": .02, "depth_m": True},
+    {"width_m": .04, "height_m": .02, "depth_m": float("nan")},
+    {"width_m": .04, "height_m": .02, "depth_m": float("inf")},
+    {"width_m": .04, "height_m": .02, "depth_m": .01, "motion_authorized": True},
+])
+def test_optional_grasp_dimensions_reject_malformed_geometry(geometry):
+    from PhyAgentOS.forge.capability_runtime.grasp_proposal import _validate_candidate
+
+    result = _validate_candidate(
+        candidate(grasp_geometry=geometry), frame_id="camera_front",
+        requested_entity_refs={"entity://bottle-1"}, seen_candidate_refs=set(),
+    )
+    assert result == "invalid_candidate_geometry"

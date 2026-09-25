@@ -1,7 +1,7 @@
 """Calibration-bound conversion from provider grasps to RoboTwin targets.
 
 The adapter owns two deterministic frame conversions: provider base to the
-GraspGen canonical contact center, then canonical contact center to the
+canonical contact center (Z approach, Y closing), then contact center to the
 RoboTwin standard gripper target consumed by ``Robot.*_plan_path``. It performs
 no planning, simulation, Gateway invocation, or motion authorization.
 """
@@ -261,6 +261,7 @@ def adapt_grasp_candidate(
             raise GraspAdaptationError(f"{label} must be positive")
     reference_distance = float(reference_distance)
     gripper_bias = float(gripper_bias)
+    hand_to_contact = gripper_bias
     depth_adaptation = profile.get("grasp_depth_adaptation")
     if depth_adaptation is not None:
         if (
@@ -287,10 +288,10 @@ def adapt_grasp_candidate(
             or float(tip_forward) <= float(depth)
         ):
             raise GraspAdaptationError("provider grasp depth or tool tip distance is invalid")
-        # GraspNet defines depth as the finger-tip x coordinate relative to
-        # grasp_center.  Choose the standard RoboTwin target whose panda_hand
-        # plus the URDF-derived finger reach reproduces that same depth.
-        reference_distance = float(tip_forward) + gripper_bias - float(depth)
+        # Provider depth is fingertip insertion past its contact origin.
+        # Keep RoboTwin's target-to-hand reference fixed; only the physical
+        # hand-to-contact offset depends on the provider's predicted depth.
+        hand_to_contact = float(tip_forward) - float(depth)
     if reference_distance <= gripper_bias:
         raise GraspAdaptationError("robot target reference distance must exceed gripper bias")
     robot_delta = _matrix(profile["robot_delta_matrix"], 3, 3, "robot_delta_matrix")
@@ -304,7 +305,8 @@ def adapt_grasp_candidate(
         raise GraspAdaptationError("robot_delta_matrix does not bind RoboTwin gripper x to endlink z")
     canonical_rotation = [row[:3] for row in world_from_canonical[:3]]
     robot_target_rotation = _multiply_rotation(canonical_rotation, robot_delta)
-    target_offset = _mat_vec(robot_target_rotation, [-reference_distance, 0.0, 0.0])
+    target_to_contact = reference_distance - gripper_bias + hand_to_contact
+    target_offset = _mat_vec(robot_target_rotation, [-target_to_contact, 0.0, 0.0])
     robot_target_position = [
         world_from_canonical[index][3] + target_offset[index] for index in range(3)
     ]
@@ -314,7 +316,7 @@ def adapt_grasp_candidate(
     planner_offset = _mat_vec(robot_target_rotation, [reference_distance - gripper_bias, 0.0, 0.0])
     planner_position = [robot_target_position[index] + planner_offset[index] for index in range(3)]
     reconstructed_contact = [
-        planner_position[index] + planner_rotation[index][2] * gripper_bias for index in range(3)
+        planner_position[index] + planner_rotation[index][2] * hand_to_contact for index in range(3)
     ]
     round_trip_residual = max(
         abs(reconstructed_contact[index] - world_from_canonical[index][3]) for index in range(3)
