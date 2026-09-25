@@ -611,7 +611,7 @@ index dd88570..f36034f 100644
 - End-to-end RGB acceptance remains incomplete; source changes are not deployed, the live task is unchanged, and the complete route plus at least one successful RGB task/video among three runs remain outstanding.
 
 ### Git 提交 / Git Commit
-- Commit: pending source commit receipt
+- Commit: d179cde (source and review); recorded 2026-09-25 18:34 Asia/Shanghai
 - Branch: feature/planning-loop
 
 ## v11.7.10 (2026-09-25 15:58) - codex
