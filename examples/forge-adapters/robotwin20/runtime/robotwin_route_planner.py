@@ -10,6 +10,7 @@ from robotwin_curobo_world_port import (
     apply_collision_world,
     bind_scene_table,
     capture_peer_projection,
+    restore_collision_world,
 )
 from robotwin_gripper_geometry import planner_gripper_state
 from robotwin_planning_geometry import (
@@ -178,6 +179,15 @@ def evaluate_route_arm(
     previous_worlds = []
     gripper = []
     try:
+        from robotwin_observed_collision import released_target_mesh
+
+        observed = getattr(task, "_paos_observed_bindings", {}).get(candidate.get("entity_ref"))
+        if observed is not None:
+            actor = ObservedGeometryActor(observed["model"]["world_T_object"])
+        if getattr(task, "_paos_observed_collision", None) is not None and not isinstance(actor, ObservedGeometryActor):
+            raise SimulationProbeError("observed route requires an observation-owned source pose")
+        mesh = (released_target_mesh(task, candidate, actor.get_pose().to_transformation_matrix())
+                if getattr(task, "_paos_observed_collision", None) is not None else None)
         limits = _joint_limits(planner)
         for phase in planned_candidate["route"]:
             phase_name = phase["phase"]
@@ -189,6 +199,7 @@ def evaluate_route_arm(
                     planner,
                     released_pose,
                     released_extents,
+                    **({"observed_mesh": mesh} if mesh is not None else {}),
                 )
             for index, waypoint in enumerate(phase["waypoints"]):
                 pose = _route_pose(waypoint, request["frame_id"])
@@ -224,6 +235,14 @@ def evaluate_route_arm(
         return {"arm": arm, "status": "pass", "segments": segments, "motion_authorized": False}
     except Exception as exc:
         diagnostic = None
+        if diagnose_failure and phase_name == "retreat":
+            from robotwin_descent_diagnostic import diagnose_start_collisions
+
+            try:
+                with planner_gripper_state(task, arm, phase["gripper_state"]):
+                    diagnostic = diagnose_start_collisions(task, arm, predicted)
+            except Exception as diagnostic_error:
+                diagnostic = {"error": str(diagnostic_error), "diagnostic_only": True}
         if diagnose_failure and attached and phase_name == "descent":
             from robotwin_descent_diagnostic import diagnose_attached_segment
 
@@ -251,7 +270,7 @@ def evaluate_route_arm(
         finally:
             try:
                 for model, world in previous_worlds:
-                    model.update_world(world)
+                    restore_collision_world(model, world)
             finally:
                 entity.set_qpos(original.tolist())
 

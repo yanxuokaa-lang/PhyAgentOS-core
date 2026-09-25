@@ -22,6 +22,16 @@ from PhyAgentOS.planning import (
     validate_graph,
 )
 
+RECOVERY_NODE_GUIDANCE = (
+    "retry_of may reference only a node included in this replacement graph; "
+    "use reason and evidence refs for prior-revision history. Do not copy failed "
+    "nodes merely to preserve history. For a recovery Query, omit prior-revision "
+    "retry_of and submit only the recovery work; original execution records remain "
+    "persisted. Action retry admission is unchanged. Materialize only the current "
+    "scene-bound segment, or the next refresh Query when fresh evidence is needed; "
+    "continue after its result instead of inventing future bindings or evidence."
+)
+
 
 def compile_task_plan(
     task: AgentTaskRecord,

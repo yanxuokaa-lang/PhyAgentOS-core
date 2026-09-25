@@ -2,10 +2,35 @@ from __future__ import annotations
 
 import asyncio
 import json
+from unittest.mock import Mock
+
+import pytest
 
 from PhyAgentOS.agent.tools.forge_task import ForgeTaskCreateTool
 from PhyAgentOS.config.schema import ForgeConfig
 from PhyAgentOS.forge.task import AgentTaskBusyError, AgentTaskCoordinator
+from PhyAgentOS.verification.contracts import TaskVerificationContract
+
+
+def test_task_create_requires_explicit_verification_choice():
+    coordinator = Mock()
+    tool = ForgeTaskCreateTool(coordinator)
+    assert tool.parameters["properties"]["verification"]["required"] == ["mode"]
+    with pytest.raises(ValueError, match="verification.mode must be explicit"):
+        asyncio.run(tool.execute("Arrange RGB and verify", {}))
+    coordinator.create_task.assert_not_called()
+    assert TaskVerificationContract().mode == "off"
+
+
+def test_task_create_preserves_enforced_verification(tmp_path):
+    coordinator = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=object(), verifier=Mock())
+    tool = ForgeTaskCreateTool(coordinator)
+    contract = {"mode": "enforce", "goal": "Arrange RGB",
+                "success_criteria": ["All three blocks occupy their destinations"]}
+    created = json.loads(asyncio.run(tool.execute("Arrange RGB", contract)))
+    task = coordinator.get_task(created["data"]["task_id"])
+    assert task.verification.mode == "enforce"
+    assert task.verification.success_criteria == contract["success_criteria"]
 
 
 def test_task_create_reports_cross_session_owner_without_takeover(tmp_path):

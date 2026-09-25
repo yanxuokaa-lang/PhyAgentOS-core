@@ -9,12 +9,18 @@ from robotwin20_adapter.collision_world import build_collision_world, collision_
 
 
 class FakeWorld:
-    def __init__(self, cuboid=None):
+    def __init__(self, cuboid=None, mesh=None):
         self.cuboid = list(cuboid or [])
+        self.mesh = list(mesh or [])
         self.objects = self.cuboid
 
     def clone(self):
-        return FakeWorld(list(self.cuboid))
+        return FakeWorld(list(self.cuboid), list(self.mesh))
+
+
+class FakeMesh:
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
 
 
 class FakeCuboid:
@@ -30,8 +36,12 @@ class FakeMotionGen:
             [FakeCuboid(name="table", dims=[1, 1, 1], pose=[0, 0, 0, 1, 0, 0, 0])]
         )
         self.fail = fail
-        self.collision_cache = {"obb": capacity}
+        self.collision_cache = {"obb": capacity, "mesh": 1}
         self.updates = []
+        self.clears = 0
+
+    def clear_world_cache(self):
+        self.clears += 1
 
     def update_world(self, world):
         if self.fail:
@@ -55,6 +65,7 @@ class FakePlanner:
 def fake_curobo(monkeypatch):
     module = ModuleType("curobo.geom.types")
     module.Cuboid = FakeCuboid
+    module.Mesh = FakeMesh
     module.WorldConfig = FakeWorld
     monkeypatch.setitem(sys.modules, "curobo.geom.types", module)
 
@@ -119,6 +130,35 @@ def test_released_target_cannot_silently_overflow_collision_cache():
     with pytest.raises(CuroboWorldPortError, match="no slot"):
         add_released_object(planner, {"position_m": [.1, .2, .8], "orientation_xyzw": [0, 0, 0, 1]}, [.02] * 3)
     assert len(planner.motion_gen.world_model.cuboid) == 1
+
+
+def test_observed_release_mesh_keeps_world_and_clears_mesh_on_restoration():
+    from robotwin_curobo_world_port import add_released_object, restore_collision_world
+
+    planner = FakePlanner()
+    mesh = {"vertices": [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]],
+            "faces": [[0, 2, 1], [0, 1, 3], [0, 3, 2], [1, 2, 3]]}
+    previous = add_released_object(planner, {}, [], observed_mesh=mesh)
+    for model, old_world in previous:
+        assert [x.name for x in model.world_model.cuboid] == ["table"]
+        assert model.world_model.mesh[0].vertices == mesh["vertices"]
+        assert model.world_model.mesh[0].pose == [0, 0, 0, 1, 0, 0, 0]
+        assert model.clears == 1
+        restore_collision_world(model, old_world)
+        assert not model.world_model.mesh
+        assert model.clears == 2
+        assert [x.name for x in model.world_model.cuboid] == ["table"]
+
+
+def test_observed_release_mesh_requires_reserved_capacity_and_rolls_back():
+    from robotwin_curobo_world_port import add_released_object
+
+    planner = FakePlanner()
+    planner.motion_gen_batch.collision_cache["mesh"] = 0
+    with pytest.raises(CuroboWorldPortError, match="no slot for released mesh"):
+        add_released_object(planner, {}, [], observed_mesh={"vertices": [], "faces": []})
+    assert not planner.motion_gen.world_model.mesh
+    assert planner.motion_gen.clears == 2
 
 
 def test_port_projects_bound_scene_table_pose_into_each_planner_frame():

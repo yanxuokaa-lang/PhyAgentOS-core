@@ -10,6 +10,37 @@ from robotwin_planning_geometry import SimulationProbeError, _validate_gripper_t
 from robotwin20_adapter.observed_collision import ObservedCollisionPolicy
 
 
+def test_released_mesh_encloses_all_observed_points_uncertainty_and_release_sweep():
+    from scipy.spatial import ConvexHull
+
+    points = np.array(list(product([-.02, .02], [-.01, .01], [-.015, .015])))
+    source = np.eye(4)
+    source[:3, 3] = [.3, -.2, .8]
+    scene = {"descriptor": {"target_entity_ref": "red"}, "target": points + source[:3, 3],
+             "policy": ObservedCollisionPolicy(), "evidence": {"target_mask_ref": "mask"}}
+    task = SimpleNamespace(_paos_observed_collision=scene)
+    candidate = {"entity_ref": "red", "placement_target": {
+        "target_object_pose": {"position_m": [-.1, .2, .8],
+                               "orientation_xyzw": [0, 0, np.sqrt(.5), np.sqrt(.5)]},
+        "release_clearance_m": .005},
+        "execution_grasp": {"support_clear_direction": {"vector": [0, 0, 1]}}}
+    mesh = observed.released_target_mesh(task, candidate, source.reshape(-1).tolist())
+    vertices = np.array(mesh["vertices"])
+    hull = ConvexHull(vertices)
+    transformed = points @ np.array([[0, 1, 0], [-1, 0, 0], [0, 0, 1]]) + [-.1, .2, .8]
+    for shift in (0., .005):
+        for offset in product([-.001, .001], repeat=3):
+            samples = transformed + [0, 0, shift] + offset
+            assert np.max(samples @ hull.equations[:, :3].T + hull.equations[:, 3]) < 1e-10
+    triangles = vertices[mesh["faces"]]
+    normals = np.cross(triangles[:, 1] - triangles[:, 0], triangles[:, 2] - triangles[:, 0])
+    assert np.all(np.sum(normals * (triangles.mean(axis=1) - vertices.mean(axis=0)), axis=1) > 0)
+    assert mesh["source"] == scene["evidence"]
+    candidate["entity_ref"] = "blue"
+    with pytest.raises(ValueError, match="differs from observed collision binding"):
+        observed.released_target_mesh(task, candidate, source.reshape(-1).tolist())
+
+
 class Link:
     def __init__(self, position, name="panda_hand"):
         self.position = np.asarray(position, dtype=float)

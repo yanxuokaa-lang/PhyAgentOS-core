@@ -1357,6 +1357,14 @@ def execute_candidate_phases(
 
     actor = _actor_for_entity(task, candidate["entity_ref"])
     before_actor = np.asarray(actor.get_pose().p, dtype=np.float64).copy()
+    released_mesh = None
+    if getattr(task, "_paos_observed_collision", None) is not None:
+        from robotwin_observed_collision import released_target_mesh
+
+        observed = getattr(task, "_paos_observed_bindings", {}).get(candidate["entity_ref"])
+        if observed is None:
+            raise SimulationProbeError("observed release geometry requires a current entity binding")
+        released_mesh = released_target_mesh(task, candidate, observed["model"]["world_T_object"])
     route_records: list[dict[str, Any]] = []
     contact_trace: list[dict[str, Any]] = []
     execution_state["contact_trace"] = contact_trace
@@ -1504,11 +1512,15 @@ def execute_candidate_phases(
                 planner.motion_gen.detach_object_from_robot()
                 detached = True
                 execution_state["planner_object_attached"] = False
-                observed = actor.get_pose()
-                add_released_object(planner, {
-                    "position_m": [float(v) for v in observed.p],
-                    "orientation_xyzw": [float(observed.q[i]) for i in (1, 2, 3, 0)],
-                }, half_extents)
+                if released_mesh is not None:
+                    add_released_object(planner, candidate["placement_target"]["target_object_pose"],
+                                        half_extents, observed_mesh=released_mesh)
+                else:
+                    observed = actor.get_pose()
+                    add_released_object(planner, {
+                        "position_m": [float(v) for v in observed.p],
+                        "orientation_xyzw": [float(observed.q[i]) for i in (1, 2, 3, 0)],
+                    }, half_extents)
             except Exception as exc:
                 raise SimulationProbeError("planner could not detach object after release") from exc
         route_records.append(

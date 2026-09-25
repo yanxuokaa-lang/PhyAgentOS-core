@@ -15,6 +15,46 @@ from robotwin20_adapter.observed_collision import (
 from robotwin20_adapter.route_evidence import _artifact_path
 
 
+def released_target_mesh(task, candidate, source_matrix):
+    """Conservative observed convex hull swept over release-to-settled motion.
+
+    The same target mask/cloud and uncertainty already used for contact
+    qualification own this geometry. No actor shape or pose is queried.
+    """
+    from itertools import product
+
+    from scipy.spatial import ConvexHull
+
+    scene = getattr(task, "_paos_observed_collision", None)
+    if scene is None:
+        return None
+    if scene["descriptor"]["target_entity_ref"] != candidate["entity_ref"]:
+        raise ValueError("released target differs from observed collision binding")
+    source = rigid_transform(source_matrix)
+    target = candidate["placement_target"]["target_object_pose"]
+    q = target["orientation_xyzw"]
+    rotation = _quat_matrix_wxyz([q[3], *q[:3]])
+    local = (scene["target"] - source[:3, 3]) @ source[:3, :3]
+    settled = local @ rotation.T + np.asarray(target["position_m"])
+    clearance = candidate["placement_target"].get("release_clearance_m", 0.)
+    shift = np.asarray(candidate["execution_grasp"]["support_clear_direction"]["vector"]) * clearance
+    swept = np.concatenate((settled, settled + shift))
+    padding = np.asarray(list(product((-1., 1.), repeat=3))) * scene["policy"].uncertainty_m
+    points = (swept[:, None, :] + padding[None, :, :]).reshape(-1, 3)
+    hull = ConvexHull(points)
+    triangles = hull.simplices.copy()
+    vertices = points[triangles]
+    inward = (np.cross(vertices[:, 1] - vertices[:, 0], vertices[:, 2] - vertices[:, 0])
+              * hull.equations[:, :3]).sum(axis=1) < 0
+    triangles[inward] = triangles[inward][:, [0, 2, 1]]
+    used, faces = np.unique(triangles, return_inverse=True)
+    return {
+        "vertices": points[used].tolist(), "faces": faces.reshape(-1, 3).tolist(),
+        "source": scene["evidence"], "geometry": "observed_convex_release_sweep",
+        "uncertainty_m": scene["policy"].uncertainty_m,
+    }
+
+
 def collision_components(component):
     """Keep separate convex shapes separate instead of filling their union hull."""
     pose = component.get_pose()

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 
 from PhyAgentOS.agent.experience.redaction import redact_text
-from PhyAgentOS.agent.plan_proposal import compile_task_plan
+from PhyAgentOS.agent.plan_proposal import RECOVERY_NODE_GUIDANCE, compile_task_plan
 from PhyAgentOS.agent.planner_plugin import ReplanProposal
 from PhyAgentOS.agent.planning_facts import response_facts
 from PhyAgentOS.planning import PlanNode
@@ -22,7 +22,7 @@ class AgentRecoveryDecisions:
         self.model = model
         self.coordinator = coordinator
 
-    async def _ask(self, graph, settlement, delta, context, *, replan=False):
+    async def _ask(self, graph, settlement, delta, context, *, replan=False, repair=None):
         task = self.coordinator.get_task(graph.task_id)
         failed_executions = []
         for record in task.execution_records:
@@ -62,7 +62,7 @@ class AgentRecoveryDecisions:
                     "configuration faults; stop when replanning cannot remedy the reported cause. "
                     "For replanning return the full replacement semantic node list. Preserve only "
                     "the delta's allowed nodes unchanged; refresh stale evidence before actions. "
-                    "Use submit_recovery to return the decision."
+                    + RECOVERY_NODE_GUIDANCE + " Use submit_recovery to return the decision."
                 )},
                 {"role": "user", "content": json.dumps({
                     "goal": task.task_description,
@@ -74,6 +74,7 @@ class AgentRecoveryDecisions:
                     "failed_executions": failed_executions,
                     "delta": delta.model_dump(mode="json"),
                     "context": context.model_dump(mode="json"),
+                    **({"repair": repair} if repair is not None else {}),
                 }, ensure_ascii=False)},
             ],
             tools=[{"type": "function", "function": {
@@ -109,8 +110,25 @@ class AgentRecoveryDecisions:
 
     async def propose_replan(self, *, graph, settlement, delta, context):
         value = await self._ask(graph, settlement, delta, context, replan=True)
-        task = self.coordinator.get_task(graph.task_id)
-        replacement = compile_task_plan(task, value["nodes"], reason=value["reason"])
+        for attempt in range(2):
+            task = self.coordinator.get_task(graph.task_id)
+            try:
+                replacement = compile_task_plan(task, value["nodes"], reason=value["reason"])
+                break
+            except ValueError as exc:
+                error = redact_text(str(exc))[:4000]
+                self.coordinator.store.update(
+                    graph.task_id, lambda task: None, event_type="agent_replan_proposal_rejected",
+                    payload={"revision_id": graph.revision_id, "node_id": settlement.node_id,
+                             "attempt": attempt + 1, "error": error},
+                )
+                if attempt == 1:
+                    raise
+                value = await self._ask(
+                    graph, settlement, delta, context, replan=True,
+                    repair={"rejected_proposal": value, "validation_error": error,
+                            "instruction": "Correct the rejected semantic proposal. No Tool was executed."},
+                )
         return ReplanProposal(
             delta=delta, plan_graph=replacement,
             plan_graph_ref=f"artifact://plans/{task.task_id}/{replacement.revision_id}",

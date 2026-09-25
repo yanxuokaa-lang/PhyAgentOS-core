@@ -56,6 +56,8 @@ requires `attempt_id`. A timeout leaves an unknown record and recovery never rep
 
 Task lifecycle:
 
+Task creation requires an explicit verification.mode. Use enforce with goal and success_criteria for requested outcome verification; use off only when intentionally disabling verification. An empty verification object is rejected before task creation.
+
 - `forge_task_create(task_description, verification, activation_id)`;
 - `forge_task_get(task_id)`;
 - `forge_task_begin_revision(task_id, reason)`;

@@ -25,6 +25,35 @@ def sphere_box_clearance(center, radius, pose, dimensions):
     return float(np.linalg.norm(np.maximum(distance, 0)) + min(float(distance.max()), 0) - radius)
 
 
+def diagnose_start_collisions(task, arm, start_qpos):
+    """Measure the unchanged planning start state against its loaded world."""
+    planner = getattr(task.robot, f"{arm}_planner")
+    model = planner.motion_gen
+    config = model.kinematics.kinematics_config
+    q = model.tensor_args.to_device(np.asarray(start_qpos[:7]).reshape(1, -1))
+    spheres = model.kinematics.get_state(q).get_link_spheres()[0].cpu().numpy()
+    links = {}
+    for name in config.link_name_to_idx_map:
+        for index in config.get_sphere_index_from_link_name(name).tolist():
+            links[index] = name
+    collisions = []
+    for index, sphere in enumerate(spheres):
+        if sphere[3] <= 0:
+            continue
+        for box in model.world_model.cuboid:
+            distance = sphere_box_clearance(sphere[:3], sphere[3], box.pose, box.dims)
+            if distance < 0:
+                collisions.append({
+                    "link": links.get(index), "sphere_index": index,
+                    "obstacle": box.name, "clearance_m": distance,
+                    "radius_m": float(sphere[3]),
+                })
+    return {
+        "diagnostic_only": True, "motion_authorized": False,
+        "start_qpos": list(start_qpos[:7]), "collisions": collisions,
+    }
+
+
 def diagnose_attached_segment(task: Any, candidate, arm, actor, pose, start_qpos):
     from curobo.types.robot import JointState
 

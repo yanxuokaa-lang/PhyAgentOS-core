@@ -158,3 +158,26 @@ def test_retreat_obstacle_covers_both_release_and_landing(route):
     assert pose["position_m"] == pytest.approx([0, 0, 1.0025])
     assert extents == pytest.approx([.02, .02, .0225])
     assert candidate["placement_target"]["target_object_pose"]["position_m"] == [0, 0, 1]
+
+
+def test_retreat_diagnostic_keeps_world_and_never_promotes_failure(route, monkeypatch):
+    task, request, candidate, entity, events, starts = route
+    original_plan = task.robot.left_plan_path
+
+    def plan(pose, last_qpos):
+        if len(starts) == 7:
+            return {"status": "Fail"}
+        return original_plan(pose, last_qpos)
+
+    def diagnose(task, arm, qpos):
+        assert events[-1] == "released_obstacle"
+        assert qpos[:7] == pytest.approx([.07] * 7)
+        return {"collisions": [{"obstacle": "released_target"}], "diagnostic_only": True}
+
+    task.robot.left_plan_path = plan
+    monkeypatch.setattr("robotwin_descent_diagnostic.diagnose_start_collisions", diagnose)
+    result = module.evaluate_route_arm(task, request, candidate, "left", object(), diagnose_failure=True)
+    assert result["status"] == "fail"
+    assert result["diagnostic"]["collisions"][0]["obstacle"] == "released_target"
+    assert entity.qpos == [0.] * 9
+    assert result["motion_authorized"] is False

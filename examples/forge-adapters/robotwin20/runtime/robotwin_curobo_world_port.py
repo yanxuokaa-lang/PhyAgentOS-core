@@ -150,7 +150,7 @@ def _rebuild_motion_generators(
     common: dict[str, Any] = {
         "interpolation_dt": 1 / 250,
         "num_trajopt_seeds": 1,
-        "collision_cache": {"obb": cache_capacity},
+        "collision_cache": {"obb": cache_capacity, "mesh": 1},
         "use_cuda_graph": bool(getattr(existing, "use_cuda_graph", True)),
     }
     tensor_args = getattr(existing, "tensor_args", None)
@@ -335,7 +335,15 @@ def _world_config(
     return WorldConfig(cuboid=cuboids)
 
 
-def add_released_object(planner: Any, pose: Mapping[str, Any], half_extents: Sequence[float]) -> list[tuple[Any, Any]]:
+def restore_collision_world(model: Any, world: Any) -> None:
+    """Replace the complete world, clearing CuRobo's lingering mesh entries."""
+    if getattr(model.world_model, "mesh", []) or getattr(world, "mesh", []):
+        model.clear_world_cache()
+    model.update_world(world)
+
+
+def add_released_object(planner: Any, pose: Mapping[str, Any], half_extents: Sequence[float],
+                        *, observed_mesh=None) -> list[tuple[Any, Any]]:
     """Make the detached object an obstacle for retreat; return worlds to restore."""
     from curobo.geom.types import Cuboid
 
@@ -343,14 +351,25 @@ def add_released_object(planner: Any, pose: Mapping[str, Any], half_extents: Seq
     try:
         for model in (planner.motion_gen, planner.motion_gen_batch):
             world = model.world_model.clone()
-            if len(world.cuboid) + 1 > _obb_capacity(model):
+            if observed_mesh is not None:
+                from curobo.geom.types import Mesh
+
+                if len(world.mesh) + 1 > model.collision_cache.get("mesh", 0):
+                    raise CuroboWorldPortError("collision cache has no slot for released mesh")
+                world.mesh.append(Mesh(
+                    name="released_target", vertices=observed_mesh["vertices"],
+                    faces=observed_mesh["faces"], pose=_world_pose_for_planner(
+                        planner, {"position_m": [0., 0., 0.], "orientation_xyzw": [0., 0., 0., 1.]}),
+                ))
+            elif len(world.cuboid) + 1 > _obb_capacity(model):
                 raise CuroboWorldPortError("collision cache has no slot for released object")
+            else:
+                world.cuboid.append(Cuboid(name="released_target", dims=[2 * float(v) for v in half_extents], pose=_world_pose_for_planner(planner, pose)))
             previous.append((model, model.world_model.clone()))
-            world.cuboid.append(Cuboid(name="released_target", dims=[2 * float(v) for v in half_extents], pose=_world_pose_for_planner(planner, pose)))
-            model.update_world(world)
+            restore_collision_world(model, world)
     except Exception:
         for model, world in reversed(previous):
-            model.update_world(world)
+            restore_collision_world(model, world)
         raise
     return previous
 
@@ -413,6 +432,8 @@ def apply_collision_world(
         )
     rebuild_required = any(
         min(_obb_capacity(motion_gen), _obb_capacity(batch)) < required_capacity
+        or ("observed_collision" in world_artifact and any(
+            model.collision_cache.get("mesh", 0) < 1 for model in (motion_gen, batch)))
         for _, motion_gen, batch, _, required_capacity, _, _ in prepared
     )
     receipts = []
@@ -432,9 +453,9 @@ def apply_collision_world(
                 planner.motion_gen_batch = rebuilt_batch
         else:
             for planner, motion_gen, batch, world, _, old_world, old_batch_world in prepared:
-                motion_gen.update_world(world)
+                restore_collision_world(motion_gen, world)
                 applied.append((motion_gen, old_world))
-                batch.update_world(world)
+                restore_collision_world(batch, world)
                 applied.append((batch, old_batch_world))
         for planner, *_ in prepared:
             receipts.append({
@@ -448,7 +469,7 @@ def apply_collision_world(
     except Exception as exc:
         for motion_gen, previous_world in reversed(applied):
             try:
-                motion_gen.update_world(previous_world)
+                restore_collision_world(motion_gen, previous_world)
             except Exception:
                 pass
         if rebuild_required:

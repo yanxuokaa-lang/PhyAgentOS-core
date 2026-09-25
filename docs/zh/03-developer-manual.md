@@ -56,6 +56,8 @@ Timeout 形成 unknown record，恢复不会重复 POST。
 
 Task lifecycle：
 
+创建工具要求显式提供 verification.mode。用户要求结果验收时使用 enforce，并填写 goal 和 success_criteria；只有明确不需要验收时才使用 off。空 verification 对象会在创建任务前返回可修复错误。
+
 - `forge_task_create(task_description, verification, activation_id)`；
 - `forge_task_get(task_id)`；
 - `forge_task_begin_revision(task_id, reason)`；

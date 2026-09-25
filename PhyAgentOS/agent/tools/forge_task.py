@@ -8,6 +8,7 @@ from collections.abc import Mapping, Sequence
 from enum import Enum
 from typing import Any
 
+from PhyAgentOS.agent.plan_proposal import RECOVERY_NODE_GUIDANCE
 from PhyAgentOS.agent.tools.base import Tool
 from PhyAgentOS.forge.binding import missing_preplan_queries
 from PhyAgentOS.forge.task import (
@@ -61,7 +62,9 @@ class ForgeTaskCreateTool(Tool):
     def description(self) -> str:
         return (
             "Create the single active AgentTask before a task-bound Forge Tool sequence. "
-            "This records planning and verification context but does not execute the robot."
+            "This records planning and verification context but does not execute the robot. "
+            "Set verification.mode explicitly; requested verification needs enforce, goal "
+            "and success_criteria."
         )
 
     @property
@@ -100,6 +103,12 @@ class ForgeTaskCreateTool(Tool):
     ) -> str:
         if task_description.strip().casefold() in {"noop", "no-op", "none"}:
             raise ValueError("AgentTask description must state an executable user task")
+        if "mode" not in verification:
+            raise ValueError(
+                "verification.mode must be explicit: use enforce with goal and "
+                "success_criteria when the user requests verification; use off only "
+                "when verification is intentionally disabled"
+            )
         try:
             task = self.coordinator.create_task(
                 task_description=task_description,
@@ -164,11 +173,7 @@ class ForgeTaskBeginRevisionTool(Tool):
             "replanning. Supply semantic nodes for a model-directed recovery; PAOS compiles "
             "revision IDs and integrity metadata. A complete plan_graph remains available "
             "for coordinator-owned callers. This call only changes the planning revision and "
-            "never invokes a Tool or motion. retry_of may reference only a node included in "
-            "this replacement graph; use reason and evidence refs for prior-revision history. "
-            "Do not copy failed nodes merely to preserve history. For a recovery Query, "
-            "omit prior-revision retry_of and submit only the recovery work; original "
-            "execution records remain persisted. Action retry admission is unchanged."
+            "never invokes a Tool or motion. " + RECOVERY_NODE_GUIDANCE
         )
 
     @property
@@ -567,6 +572,11 @@ def _task_id_schema() -> dict[str, Any]:
 def _verification_schema() -> dict[str, Any]:
     return {
         "type": "object",
+        "description": (
+            "Explicit task verification contract. For user-requested verification, "
+            "set mode=enforce and provide goal and success_criteria. An empty object "
+            "does not enable verification."
+        ),
         "properties": {
             "mode": {
                 "type": "string",
@@ -595,6 +605,7 @@ def _verification_schema() -> dict[str, Any]:
                 "additionalProperties": False,
             },
         },
+        "required": ["mode"],
         "additionalProperties": False,
     }
 

@@ -1224,6 +1224,38 @@ def test_model_replan_preserves_task_identity_without_executing(tmp_path):
     asyncio.run(exercise())
 
 
+@pytest.mark.parametrize("repaired", [True, False])
+def test_automatic_replan_repairs_cross_revision_retry_once_without_execution(tmp_path, repaired):
+    async def exercise():
+        c, task = setup_task(tmp_path)
+        graph = compile_task_plan(task, semantic_nodes(2), reason="first")
+        settlement = NodeSettlement(task_id=task.task_id, revision_id=graph.revision_id,
+                                    node_id="chosen-0", status="failed")
+        invalid = semantic_nodes(2)
+        invalid[0]["retry_of"] = "prior-revision-prepare"
+        provider = ScriptedProvider([LLMResponse(content=None, tool_calls=[ToolCallRequest(
+            str(i), "submit_recovery", {"nodes": nodes, "reason": "Refresh current evidence"},
+        )]) for i, nodes in enumerate((invalid, semantic_nodes(2) if repaired else invalid))])
+        operation = AgentRecoveryDecisions(provider, "fixture", c).propose_replan(
+            graph=graph, settlement=settlement, delta=build_replan_delta(graph, settlement), context=settlement)
+        if repaired:
+            proposal = await operation
+            assert proposal.plan_graph.nodes[0].retry_of is None
+        else:
+            with pytest.raises(ValueError, match="retry_of references an unknown node"):
+                await operation
+        assert len(provider.requests) == 2
+        context = json.loads(provider.requests[1]["messages"][1]["content"])
+        assert "retry_of references an unknown node" in context["repair"]["validation_error"]
+        assert context["repair"]["rejected_proposal"]["nodes"] == invalid
+        assert "omit prior-revision retry_of" in provider.requests[0]["messages"][0]["content"]
+        current = c.get_task(task.task_id)
+        assert len(current.revisions) == 1
+        assert current.execution_records == []
+        assert any(e["event_type"] == "agent_replan_proposal_rejected" for e in c.store.events(task.task_id))
+    asyncio.run(exercise())
+
+
 @pytest.mark.parametrize("status", ["available", "unavailable"])
 def test_query_receipt_is_persisted_identity_not_gateway_verdict(tmp_path, status):
     async def exercise():
