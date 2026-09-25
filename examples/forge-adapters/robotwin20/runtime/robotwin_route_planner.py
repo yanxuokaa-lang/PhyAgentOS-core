@@ -107,6 +107,7 @@ def _evaluate_contact(
     import numpy as np
 
     planner = getattr(task.robot, f"{arm}_planner")
+    phase = "approach"
     try:
         pose = _route_pose(execution_grasp["robot_target_pose"], "world")
         approach = list(pose)
@@ -119,15 +120,18 @@ def _evaluate_contact(
         )
         predicted = np.asarray(getattr(task.robot, f"{arm}_entity").get_qpos()).copy()
         predicted[:7] = np.asarray(ingress["position"])[-1]
+        phase = "contact"
         result = plan_path_with_status(task, arm, pose, last_qpos=predicted.tolist())
         _validate_trajectory(result, _joint_limits(planner))
         _validate_gripper_table_clearance(
             task, arm, result["position"], phase="contact", gripper_state="open"
         )
+        phase = "contact_support_clearance"
         clearance = sphere_support_clearance(task, arm, result["position"][-1])
         return {"planner_status": "success", "clearance_m": clearance}
     except Exception as exc:
-        return {"planner_status": "failed", "clearance_m": None, "reason": str(exc)}
+        return {"planner_status": "failed", "clearance_m": None,
+                "failed_phase": phase, "reason": str(exc)}
 
 
 def released_object_envelope(candidate):

@@ -160,6 +160,31 @@ def test_retreat_obstacle_covers_both_release_and_landing(route):
     assert candidate["placement_target"]["target_object_pose"]["position_m"] == [0, 0, 1]
 
 
+@pytest.mark.parametrize("failed_phase", ["approach", "contact"])
+def test_contact_reports_exact_failed_phase_and_preserves_joint_state(route, monkeypatch, failed_phase):
+    task, _, _, entity, _, _ = route
+    calls = []
+
+    def plan(*args, **kwargs):
+        phase = "approach" if not calls else "contact"
+        calls.append(phase)
+        if phase == failed_phase:
+            return {"status": "Fail", "native_planner_status": "MotionGenStatus.IK_FAIL"}
+        return {"status": "Success", "position": np.zeros((2, 7)),
+                "velocity": np.zeros((2, 7))}
+
+    monkeypatch.setattr(module, "plan_path_with_status", plan)
+    grasp = {"robot_target_pose": {"frame_id": "world", "position_m": [0, 0, 1],
+                                   "orientation_xyzw": [0, 0, 0, 1]},
+             "ingress_direction": {"vector": [0, 0, -1]}}
+    result = module.evaluate_contact(task, grasp, "left", .05)
+    assert result["planner_status"] == "failed"
+    assert result["failed_phase"] == failed_phase
+    assert "IK_FAIL" in result["reason"]
+    assert calls == (["approach"] if failed_phase == "approach" else ["approach", "contact"])
+    assert entity.qpos == [0.] * 9
+
+
 def test_retreat_diagnostic_keeps_world_and_never_promotes_failure(route, monkeypatch):
     task, request, candidate, entity, events, starts = route
     original_plan = task.robot.left_plan_path

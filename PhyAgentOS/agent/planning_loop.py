@@ -24,7 +24,11 @@ from PhyAgentOS.agent.argument_sources import (
 from PhyAgentOS.agent.experience.redaction import redact_text
 from PhyAgentOS.agent.planner_plugin import ReplanProposal
 from PhyAgentOS.agent.planning_facts import explicit_scene_revision, response_facts
-from PhyAgentOS.forge.task import AgentTaskCoordinator
+from PhyAgentOS.forge.task import (
+    AgentTaskCoordinator,
+    AgentTaskError,
+    has_unsettled_owned_execution,
+)
 from PhyAgentOS.planning import (
     AdmissionContext,
     ArgumentProjectionError,
@@ -1249,6 +1253,29 @@ class PlanningLoopAdapter:
             if decision not in {"stop", "replay", "replan"}:
                 raise PlanningLoopError("recovery policy must return stop, replay, or replan")
         if decision == "stop":
+            if settlement.status == "failed":
+                current = self.coordinator.get_task(task_id)
+                if has_unsettled_owned_execution(current):
+                    return PlanningLoopResult(
+                        task_id, "blocked", tuple(completed), len(current.revisions), replans,
+                        f"reconciliation_required:{settlement.node_id}",
+                    )
+                try:
+                    current = self.coordinator.fail_task(
+                        task_id, reason=f"recovery_stopped:{settlement.node_id}:{settlement.failure_code}",
+                    )
+                except AgentTaskError:
+                    # Coordinator rechecks unresolved invocations transactionally.
+                    # A concurrent ownership change must retain reconciliation.
+                    return PlanningLoopResult(
+                        task_id, "blocked", tuple(completed),
+                        len(self.coordinator.get_task(task_id).revisions), replans,
+                        f"reconciliation_required:{settlement.node_id}",
+                    )
+                return PlanningLoopResult(
+                    task_id, current.status.value, tuple(completed), len(current.revisions), replans,
+                    settlement.failure_code,
+                )
             return PlanningLoopResult(
                 task_id, settlement.status, tuple(completed), len(self.coordinator.get_task(task_id).revisions), replans,
                 settlement.failure_code,

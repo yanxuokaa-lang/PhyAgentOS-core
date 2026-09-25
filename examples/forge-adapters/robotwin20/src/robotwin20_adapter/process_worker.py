@@ -131,7 +131,7 @@ class JsonlProcessWorkerClient:
         if self._process is not None and self._process.poll() is None:
             return
         self._stdout_queue = queue.Queue()
-        self._stderr_tail.clear()
+        self._stderr_tail = deque(maxlen=40)
         environment = os.environ.copy()
         environment.update(self.config.environment)
         try:
@@ -152,8 +152,10 @@ class JsonlProcessWorkerClient:
             raise ProcessWorkerError("worker process could not be started") from exc
         self._process = process
         assert process.stdout is not None and process.stderr is not None
-        threading.Thread(target=self._drain_stdout, args=(process,), daemon=True).start()
-        threading.Thread(target=self._drain_stderr, args=(process,), daemon=True).start()
+        # Readers retain this process's sinks even if a later request restarts
+        # the worker before the old reader publishes its final EOF.
+        threading.Thread(target=self._drain_stdout, args=(process, self._stdout_queue), daemon=True).start()
+        threading.Thread(target=self._drain_stderr, args=(process, self._stderr_tail), daemon=True).start()
         startup_deadline = monotonic() + self.config.startup_timeout_s
         deadline = startup_deadline if deadline is None else min(deadline, startup_deadline)
         while True:
@@ -207,18 +209,18 @@ class JsonlProcessWorkerClient:
             raise ProcessWorkerError("worker response must be a JSON object")
         return value
 
-    def _drain_stdout(self, process: subprocess.Popen[str]) -> None:
+    def _drain_stdout(self, process: subprocess.Popen[str], output: queue.Queue[str | None]) -> None:
         assert process.stdout is not None
         try:
             for line in process.stdout:
-                self._stdout_queue.put(line.rstrip("\n"))
+                output.put(line.rstrip("\n"))
         finally:
-            self._stdout_queue.put(None)
+            output.put(None)
 
-    def _drain_stderr(self, process: subprocess.Popen[str]) -> None:
+    def _drain_stderr(self, process: subprocess.Popen[str], tail: deque[str]) -> None:
         assert process.stderr is not None
         for line in process.stderr:
-            self._stderr_tail.append(line.rstrip("\n")[:2000])
+            tail.append(line.rstrip("\n")[:2000])
 
     def _abort(self) -> None:
         process, self._process = self._process, None

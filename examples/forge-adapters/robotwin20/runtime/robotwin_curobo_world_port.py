@@ -336,8 +336,11 @@ def _world_config(
 
 
 def restore_collision_world(model: Any, world: Any) -> None:
-    """Replace the complete world, clearing CuRobo's lingering mesh entries."""
-    if getattr(model.world_model, "mesh", []) or getattr(world, "mesh", []):
+    """Replace the complete world, including stale meshes and empty OBB worlds."""
+    # CuRobo's OBB loader returns early for an empty list without disabling
+    # the prior cache, so update_world alone is not a complete replacement.
+    if (getattr(model.world_model, "mesh", []) or getattr(world, "mesh", [])
+            or not world.cuboid):
         model.clear_world_cache()
     model.update_world(world)
 

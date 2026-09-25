@@ -289,6 +289,34 @@ def test_single_view_composition_crosses_the_generic_gateway_without_motion(tmp_
     ]
 
 
+@pytest.mark.parametrize("stage", ["proposal", "segmentation"])
+def test_downstream_failure_overrides_semantic_success_without_logging_payload(tmp_path, monkeypatch, caplog, stage):
+    from robotwin20_adapter.process_worker import ProcessWorkerError
+
+    inference, proposal, segmentation = _inference(tmp_path)
+    inference.semantic_inference.diagnostic_summary = lambda: {
+        "provider_route": "primary", "provider_error_class": "none",
+    }
+    provider, method = (proposal, "propose") if stage == "proposal" else (segmentation, "segment")
+    original = getattr(provider, method)
+
+    def fail(request):
+        raise ProcessWorkerError("private-token-and-model-payload")
+
+    monkeypatch.setattr(provider, method, fail)
+    with pytest.raises(ProcessWorkerError):
+        inference.infer(REQUEST)
+    assert inference.diagnostic_summary() == {
+        "provider_route": "primary", "provider_error_class": "transport",
+    }
+    assert f"stage={stage}" in caplog.text
+    assert "private-token-and-model-payload" not in caplog.text
+    assert "ProcessWorkerError" in caplog.text
+    monkeypatch.setattr(provider, method, original)
+    assert inference.infer(REQUEST)["derived_artifacts"]
+    assert inference.diagnostic_summary()["provider_error_class"] == "none"
+
+
 def test_handoff_fallback_skips_downstream_gpu_providers(tmp_path):
     proposal = ProposalProvider()
     segmentation = SegmentationProvider(np.ones((3, 4), dtype=bool))

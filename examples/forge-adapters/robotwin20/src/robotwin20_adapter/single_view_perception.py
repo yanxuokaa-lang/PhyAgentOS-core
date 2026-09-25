@@ -9,6 +9,7 @@ cross back into the generic ``scene.understand`` endpoint.
 from __future__ import annotations
 
 import json
+import logging
 import math
 import os
 from dataclasses import dataclass
@@ -18,6 +19,10 @@ from tempfile import NamedTemporaryFile
 from typing import Any, Mapping, Protocol, Sequence
 from urllib.parse import urlparse
 from uuid import uuid4
+
+from .process_worker import ProcessWorkerError
+
+logger = logging.getLogger(__name__)
 
 
 class SingleViewPerceptionError(RuntimeError):
@@ -471,9 +476,30 @@ class SingleViewPerceptionInference:
         self.localization_provider = localization_provider
         self.geometry_provider = geometry_provider or NumpyVisualGeometryProvider()
         self.artifact_store = artifact_store
+        self._failure_class: str | None = None
+        self._stage = "semantic"
 
     def infer(self, request: Mapping[str, Any]) -> Mapping[str, Any]:
+        self._failure_class = None
+        self._stage = "semantic"
+        try:
+            return self._infer(request)
+        except Exception as exc:
+            self._failure_class = (
+                "timeout" if isinstance(exc, TimeoutError) else
+                "transport" if isinstance(exc, ProcessWorkerError) else "provider_failure"
+            )
+            # Do not log model text, credentials, or arbitrary exception messages.
+            logger.warning(
+                "single-view perception failed: stage=%s error_type=%s cause_type=%s",
+                self._stage, type(exc).__name__,
+                type(exc.__cause__).__name__ if exc.__cause__ is not None else "none",
+            )
+            raise
+
+    def _infer(self, request: Mapping[str, Any]) -> Mapping[str, Any]:
         base = self._semantic_result(request)
+        self._stage = "semantic_release"
         handoff_result = _release_provider(
             self.semantic_inference, "semantic", request=request
         )
@@ -488,6 +514,7 @@ class SingleViewPerceptionInference:
                 "reconciliations": list(base.get("reconciliations", [])),
                 "provider_available": base.get("provider_available", True),
             }
+        self._stage = "source_artifacts"
         artifacts = request.get("artifacts")
         if not isinstance(artifacts, list):
             raise SingleViewPerceptionError("scene understanding artifacts must be an array")
@@ -498,6 +525,7 @@ class SingleViewPerceptionInference:
         pending: list[tuple[Mapping[str, Any], Proposal]] = []
         ambiguities = _normalize_ambiguities(base.get("ambiguities", []))
         reconciliations = list(base.get("reconciliations", []))
+        self._stage = "proposal"
         try:
             for entity in base["entities"]:
                 entity_ref = entity.get("entity_ref")
@@ -550,6 +578,7 @@ class SingleViewPerceptionInference:
             }
         materialized: list[tuple[str, str]] = []
         reconciled_entities: dict[int, set[str]] = {}
+        self._stage = "depth_calibration"
         try:
             try:
                 depth = self.artifact_store.load_depth(depth_ref)
@@ -557,6 +586,7 @@ class SingleViewPerceptionInference:
                 calibration = self.artifact_store.load_calibration(calibration_ref)
                 for entity, proposal in pending:
                     entity_ref = str(entity["entity_ref"])
+                    self._stage = "segmentation"
                     segmentation = self.segmentation_provider.segment(
                         SegmentationRequest(
                             observation_ref=str(request["observation_ref"]),
@@ -580,6 +610,7 @@ class SingleViewPerceptionInference:
                     foreground = int(mask.sum())
                     if foreground < 1:
                         raise SingleViewPerceptionError("segmentation mask is empty")
+                    self._stage = "localization"
                     localization = self.localization_provider.localize(
                         LocalizationRequest(
                             mask=mask,
@@ -588,6 +619,7 @@ class SingleViewPerceptionInference:
                             frame_id=str(request["frame_id"]),
                         )
                     )
+                    self._stage = "derived_artifacts"
                     mask_ref, points_ref, localization_ref, geometry_ref = _derived_refs(rgb_ref, entity_ref)
                     self.artifact_store.materialize_numpy(mask_ref, mask.astype(np.uint8))
                     materialized.append((mask_ref, ".npy"))
@@ -700,13 +732,14 @@ class SingleViewPerceptionInference:
 
     def diagnostic_summary(self) -> dict[str, str]:
         summary = getattr(self.semantic_inference, "diagnostic_summary", None)
-        if not callable(summary):
-            return {}
         try:
-            value = summary()
+            value = summary() if callable(summary) else {}
         except Exception:
-            return {}
-        return dict(value) if isinstance(value, Mapping) else {}
+            value = {}
+        result = dict(value) if isinstance(value, Mapping) else {}
+        if self._failure_class is not None and self._stage != "semantic":
+            result["provider_error_class"] = self._failure_class
+        return result
 
     def _semantic_result(self, request: Mapping[str, Any]) -> Mapping[str, Any]:
         infer = getattr(self.semantic_inference, "infer", None)

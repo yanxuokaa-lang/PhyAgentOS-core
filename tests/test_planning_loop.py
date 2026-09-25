@@ -1137,6 +1137,10 @@ def test_recovery_stop_does_not_advance_to_dependent_node(tmp_path):
     assert result.status == "failed"
     assert result.completed_nodes == ()
     assert calls == ["arrange-red"]
+    current = c.get_task(task.task_id)
+    assert current.status.value == result.status
+    assert current.terminal is True
+    assert current.replan_deadline is None
 
 
 def test_recovery_replay_only_reduces_persisted_facts(tmp_path):

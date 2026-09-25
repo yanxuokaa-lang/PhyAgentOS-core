@@ -61,6 +61,33 @@ class FakePlanner:
         return world_pose[:3], world_pose[3:]
 
 
+def test_empty_world_replacement_clears_stale_obb_cache():
+    from robotwin_curobo_world_port import restore_collision_world
+
+    class CachedModel(FakeMotionGen):
+        def __init__(self):
+            super().__init__()
+            self.active_obstacles = list(self.world_model.cuboid)
+
+        def clear_world_cache(self):
+            super().clear_world_cache()
+            self.active_obstacles = []
+
+        def update_world(self, world):
+            super().update_world(world)
+            # Match CuRobo: an empty OBB load does not disable the old cache.
+            if world.cuboid:
+                self.active_obstacles = list(world.cuboid)
+
+    model = CachedModel()
+    saved = model.world_model.clone()
+    restore_collision_world(model, FakeWorld())
+    assert model.active_obstacles == []
+    assert model.clears == 1
+    restore_collision_world(model, saved)
+    assert [x.name for x in model.active_obstacles] == ["table"]
+
+
 @pytest.fixture(autouse=True)
 def fake_curobo(monkeypatch):
     module = ModuleType("curobo.geom.types")

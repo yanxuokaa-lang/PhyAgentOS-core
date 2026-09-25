@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import queue
 import subprocess
 import sys
+import threading
+from collections import deque
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -31,6 +35,38 @@ def test_worker_client_starts_lazily_releases_and_can_restart():
     client.release()
     assert first["status"] == second["status"] == "available"
     assert first["pid"] != second["pid"]
+
+
+@pytest.mark.parametrize("stream", ["stdout", "stderr"])
+def test_late_reader_output_cannot_cross_worker_generations(stream):
+    client = _client()
+    entered, finish = threading.Event(), threading.Event()
+
+    class LateOutput:
+        def __iter__(self):
+            entered.set()
+            assert finish.wait(2)
+            return iter(["old output\n"])
+
+    sink = client._stdout_queue if stream == "stdout" else client._stderr_tail
+    reader = getattr(client, f"_drain_{stream}")
+    thread = threading.Thread(target=reader, args=(SimpleNamespace(**{stream: LateOutput()}), sink))
+    thread.start()
+    try:
+        assert entered.wait(2)
+        client._stdout_queue = queue.Queue()
+        client._stderr_tail = deque(maxlen=40)
+    finally:
+        finish.set()
+        thread.join(2)
+    assert not thread.is_alive()
+    assert client._stdout_queue.empty()
+    assert not client.stderr_tail
+    if stream == "stdout":
+        assert sink.get_nowait() == "old output"
+        assert sink.get_nowait() is None
+    else:
+        assert list(sink) == ["old output"]
 
 
 @pytest.mark.parametrize(
@@ -112,6 +148,7 @@ def test_graspgen_model_output_isolated_from_jsonl_stdout(monkeypatch, capsys):
 
 def test_graspgen_generates_requested_pool_before_score_filter(tmp_path, monkeypatch):
     import importlib.util
+
     import numpy as np
 
     worker_path = Path(__file__).parents[1] / "runtime" / "graspgen_worker.py"
