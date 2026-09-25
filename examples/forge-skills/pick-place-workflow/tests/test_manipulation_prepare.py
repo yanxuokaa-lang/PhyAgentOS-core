@@ -147,6 +147,58 @@ class TimeoutProvider:
         raise TimeoutError("complete preparation budget exhausted")
 
 
+@pytest.mark.parametrize("failure", ["declared", "timeout", "exception", "none", "invalid", "unavailable"])
+def test_provider_failure_preserves_scene_and_unlocks_recovery_observation(failure):
+    from types import SimpleNamespace
+
+    from PhyAgentOS.agent.planning_context import context_from_task
+    from PhyAgentOS.forge.capability_runtime.manipulation_prepare import PreparationProviderError
+    from PhyAgentOS.planning import PlanGraph, PlanNode, derive_ready_nodes, plan_graph_digest
+
+    class FailingProvider:
+        def prepare(self, request):
+            if failure == "declared":
+                raise PreparationProviderError("no_qualified_contacts", "All contacts rejected")
+            if failure == "timeout":
+                raise TimeoutError("budget")
+            if failure == "exception":
+                raise RuntimeError("private backend detail")
+            if failure == "none":
+                return None
+            if failure == "invalid":
+                return {"bad_snapshot": True}
+            return PreparationSnapshot(provider_available=False)
+
+    arguments = request_payload()
+    result = ManipulationPreparationEndpoint(FailingProvider()).invoke(arguments)
+    assert result["status"] in {"invalid", "unavailable"}
+    for name in ("observation_ref", "scene_revision", "calibration_ref", "candidate_set_ref"):
+        assert result[name] == arguments[name]
+    assert result["prepared_candidates"] == []
+    assert result["motion_authorized"] is False
+    assert set(result["checks"].values()) == {"unknown"}
+    observe = SimpleNamespace(terminal=True, tool_id="scene.observe", semantics="query",
+        status="succeeded", arguments={}, response={"scene_revision": "scene-7"},
+        evidence_refs=("tool:observe",))
+    prepare = SimpleNamespace(terminal=True, tool_id="manipulation.prepare", semantics="query",
+        status="succeeded", arguments=arguments, response={"ok": True, "data": result},
+        evidence_refs=("tool:prepare-failed",))
+    task = SimpleNamespace(execution_records=[observe, prepare], tool_bindings=(),
+        primary_skill_binding=None, active_revision=SimpleNamespace(node_settlements=(),
+        discovery_evidence_refs=()))
+    context = context_from_task(task, allow_refresh=True)
+    node = PlanNode(node_id="refresh-observation", obligation_id="refresh",
+        capability="scene.observe", required_evidence=("tool:prepare-failed",))
+    payload = dict(schema_version="paos-plan-graph/v1", task_id="task-recovery",
+        revision_id="revision-recovery", graph_digest="0" * 64,
+        planner_decision_digest="1" * 64, policy_snapshot_digest="2" * 64,
+        nodes=[node.model_dump(mode="json")])
+    payload["graph_digest"] = plan_graph_digest(payload)
+    graph = PlanGraph.model_validate(payload)
+    assert context.scene_revision == "scene-7"
+    assert derive_ready_nodes(graph, {}, context.evidence_refs, {}) == ("refresh-observation",)
+
+
 def _observation_stub():
     return type("Observation", (), {"observe": lambda self, sensor_ref: None})()
 

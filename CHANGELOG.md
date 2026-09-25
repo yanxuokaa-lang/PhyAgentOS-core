@@ -25,6 +25,506 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v11.8.0 (2026-09-25 22:04) - codex
+
+### 预期修改 / Planned changes
+- [policy] [fix] [完成：实现与回归；真实验收进行中] 修复 manipulation.prepare 已校验请求的失败响应丢失场景、观察和候选集身份；第三轮响应 scene_revision=unknown 导致可信上下文排除失败记录，恢复节点 required_evidence 永不 ready。保持 Coordinator/AgentLoop 现有权限和恢复路径。(local)
+- [Policy] [Fix] [Implemented and regression-tested; live acceptance active] Preserve validated scene, observation and candidate-set identity on preparation provider failures; trial 3 emitted unknown scene identity, so trusted context excluded the failure needed by its recovery node. Retain Coordinator ownership and existing admission. (local)
+- [model] [exp] [完成：实现与回归；真实验收进行中] 基于第三轮原始点云与 Panda 原生碰撞网格，测量 GraspNet 候选分布、真实支撑穿透与可用候选覆盖；仅在实测支持时调整 provider 的候选选择，24 个真实候选进入 Adapter 后再筛选至最多 10 个，禁止模板或放宽碰撞。(local)
+- [Model] [Exp] [Implemented and regression-tested; live acceptance active] Measure GraspNet proposal coverage using trial 3 observed cloud and native Panda meshes; change provider selection only if measured evidence supports it, preserving 24 real proposals before Adapter screening to at most 10, with no templates or relaxed collision checks. (local)
+- [eval] [exp] [完成：实现与回归；真实验收进行中] 增加失败响应至恢复 ready 的回归，完成七维审查，按新版本部署后继续独立 RGB 验收；本轮此前三次均未完成任何动作，不计成功。(local)
+- [Eval] [Exp] [Implemented and regression-tested; live acceptance active] Add unavailable-response-to-recovery-readiness regressions, complete seven-dimension review and redeploy for independent RGB acceptance; none of the first three trials completed an Action. (local)
+
+### 验证 / Validation
+- [eval] [exp] 77 项失败响应/上下文回归通过；完整 Adapter/Skill/context 测试 1069 passed, 1 skipped。原生 URDF 无运动测量证实几何拒绝；1024 原生候选中 402 支撑有效、57 接触有效，按分数前 24 全拒绝。新配置 24→10 中保留 1 个接触有效候选；IK 与全路线仍需 Runtime 验证。(local)
+- [Eval] [Exp] 77 focused and 1069 integrated tests passed, with one existing Pillow-related skip. Native no-step geometry reproduces rejection; 402/1024 support-valid and 57 contact-valid versus zero in score-top-24. New 24-to-10 sampling retains one contact-valid pose; IK/full-route and final task outcome remain to verify. (local)
+- Command: PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=.:examples/forge-adapters/robotwin20/src:examples/forge-adapters/robotwin20/runtime:examples/forge-adapters/robotwin20/scripts:examples/forge-skills/pick-place-workflow/src /home/yanxu/miniconda3/envs/paos/bin/python -m pytest -p pytest_asyncio.plugin examples/forge-adapters/robotwin20/tests examples/forge-skills/pick-place-workflow/tests tests/test_planning_context.py -q
+- Review: docs/forge/IMPLEMENTATION_REVIEW_V11_8_0.md
+- Acceptance root: /home/yanxu/robotwin20-runtime/artifacts/rgb-graspnet-acceptance-20260925T211115/run4
+
+### 文件变更详情 / Exact changes
+#### [修改 / Modified] PhyAgentOS/forge/capability_runtime/manipulation_prepare.py L452-L467, L496-L531, L534-L540
+~~~diff
+diff --git a/PhyAgentOS/forge/capability_runtime/manipulation_prepare.py b/PhyAgentOS/forge/capability_runtime/manipulation_prepare.py
+index 24195f5..cb3c82f 100644
+--- a/PhyAgentOS/forge/capability_runtime/manipulation_prepare.py
++++ b/PhyAgentOS/forge/capability_runtime/manipulation_prepare.py
+@@ -452,4 +452,16 @@ class ManipulationPreparationEndpoint:
+                 observation_ref=observation_ref,
+             )
++        # A failed Query still belongs to its validated request scene. Dropping
++        # that identity makes recovery evidence look stale to Coordinator.
++        def bound_error(code: str, message: str) -> dict[str, Any]:
++            return {
++                **_error(code, message, observation_ref=observation_ref),
++                "preparation_ref": preparation_ref,
++                "candidate_set_ref": arguments["candidate_set_ref"],
++                "scene_revision": arguments["scene_revision"],
++                "frame": {"frame_id": arguments["frame_id"], "unit": "m"},
++                "calibration_ref": arguments["calibration_ref"],
++            }
++
+         if arguments["freshness_ms"] > arguments["max_age_ms"]:
+             return {
+@@ -484,42 +496,36 @@ class ManipulationPreparationEndpoint:
+             snapshot = self.provider.prepare(deepcopy(arguments))
+         except PreparationProviderError as exc:
+-            return _error(exc.code, str(exc), observation_ref=observation_ref)
++            return bound_error(exc.code, str(exc))
+         except TimeoutError:
+-            return _error(
++            return bound_error(
+                 "preparation_timeout",
+                 "manipulation preparation exceeded its total time budget",
+-                observation_ref=observation_ref,
+             )
+         except Exception:
+             # Provider failures are unavailable, never an implicit Gateway 500 or success.
+-            return _error(
++            return bound_error(
+                 "preparation_provider_error",
+                 "manipulation preparation provider failed",
+-                observation_ref=observation_ref,
+             )
+         if snapshot is None:
+-            return _error(
++            return bound_error(
+                 "preparation_unavailable",
+                 "manipulation preparation provider is unavailable",
+-                observation_ref=observation_ref,
+             )
+         snapshot = normalize_snapshot(snapshot)
+         if snapshot is None:
+-            return _error(
++            return bound_error(
+                 "invalid_snapshot",
+                 "manipulation preparation provider returned an invalid snapshot",
+-                observation_ref=observation_ref,
+             )
+         if not isinstance(snapshot.provider_available, bool):
+-            return _error(
++            return bound_error(
+                 "invalid_snapshot",
+                 "manipulation preparation provider returned an invalid availability flag",
+-                observation_ref=observation_ref,
+             )
+         if not snapshot.provider_available:
+-            return _error(
++            return bound_error(
+                 "preparation_unavailable",
+                 "manipulation preparation provider is unavailable",
+-                observation_ref=observation_ref,
+             )
+         candidate_entities = {
+@@ -528,8 +534,7 @@ class ManipulationPreparationEndpoint:
+         snapshot_error = validate_snapshot(snapshot, candidate_entities=candidate_entities)
+         if snapshot_error:
+-            return _error(
++            return bound_error(
+                 snapshot_error,
+                 "manipulation preparation result failed contract validation",
+-                observation_ref=observation_ref,
+             )
+         prepared = [dict(item) for item in snapshot.prepared_candidates]
+~~~
+
+#### [修改 / Modified] examples/forge-adapters/robotwin20/README.md L267-L279
+~~~diff
+diff --git a/examples/forge-adapters/robotwin20/README.md b/examples/forge-adapters/robotwin20/README.md
+index ca88101..035d36a 100644
+--- a/examples/forge-adapters/robotwin20/README.md
++++ b/examples/forge-adapters/robotwin20/README.md
+@@ -267,5 +267,13 @@ point-cloud path and returns 4x4 matrices plus scores; the adapter validates the
+ homogeneous transform, converts it to a normalized quaternion and approach
+ vector, applies deterministic confidence-ordered SE(3) NMS, and projects the
+-candidate funnel. GraspGen/Torch/checkpoint settings remain in the external
++candidate funnel. The shipped GraspNet profile samples 24 unchanged native
++poses with orientation coverage (native X approach and symmetric Y closing),
++starting from the highest score and maximizing distance from selected directions.
++NMS still removes duplicates using native scores; provider order then retains
++at most 10 survivors. Native scores and geometry are never rewritten. This avoids
++spending the entire proposal budget on one colliding orientation family. It is
++advisory sampling only: manipulation.prepare still owns contact/IK/complete-route
++qualification. Set worker --sampling-policy=score and selection_order=score for
++the original score-only policy. GraspGen/Torch/checkpoint settings remain in the external
+ worker profile. GraspGen remains available only through the explicit
+ `graspgen.yaml` and `persistent-materializer-graspgen.yaml` closure; its depth
+~~~
+
+#### [修改 / Modified] examples/forge-adapters/robotwin20/profiles/robotwin20/graspnet.yaml L5-L10, L31-L34
+~~~diff
+diff --git a/examples/forge-adapters/robotwin20/profiles/robotwin20/graspnet.yaml b/examples/forge-adapters/robotwin20/profiles/robotwin20/graspnet.yaml
+index 6db4ffb..fa0461e 100644
+--- a/examples/forge-adapters/robotwin20/profiles/robotwin20/graspnet.yaml
++++ b/examples/forge-adapters/robotwin20/profiles/robotwin20/graspnet.yaml
+@@ -5,4 +5,6 @@ artifact_root: ${ROBOTWIN20_ARTIFACT_ROOT}
+ max_candidates: 10
+ sample_count: 24
++# Preserve native pose coverage; score-only truncation loses feasible families.
++selection_order: provider
+ score_threshold: 0.02
+ apply_nms: true
+@@ -29,2 +31,4 @@ worker:
+     - --device
+     - ${GRASPNET_DEVICE}
++    - --sampling-policy
++    - orientation_diverse
+~~~
+
+#### [修改 / Modified] examples/forge-adapters/robotwin20/runtime/graspnet_worker.py L24-L55, L156-L162, L173-L177
+~~~diff
+diff --git a/examples/forge-adapters/robotwin20/runtime/graspnet_worker.py b/examples/forge-adapters/robotwin20/runtime/graspnet_worker.py
+index 2a23aad..4494f74 100644
+--- a/examples/forge-adapters/robotwin20/runtime/graspnet_worker.py
++++ b/examples/forge-adapters/robotwin20/runtime/graspnet_worker.py
+@@ -24,4 +24,32 @@ _MODEL: tuple[Any, Any, Any] | None = None
+
+
++def _sample_candidates(candidates, limit, policy):
++    """Select unchanged native poses; diversity is advisory, never admission.
++
++    GraspNet decodes many spatial seeds with the same preferred orientation.
++    Score-only truncation can spend the entire budget on one colliding family.
++    Start with its best score, then cover approach/closing directions. Parallel
++    jaw closing-axis sign is symmetric; ties keep native score order.
++    """
++    import numpy as np
++
++    ranked = sorted(candidates, key=lambda item: item["score"], reverse=True)
++    if policy == "score" or not ranked:
++        return ranked[:limit]
++    if policy != "orientation_diverse":
++        raise WorkerUnavailableError("unsupported GraspNet sampling policy")
++    rotations = np.asarray([item["matrix"] for item in ranked])[:, :3, :3]
++    selected = [0]
++    nearest = np.full(len(ranked), np.inf)
++    while len(selected) < min(limit, len(ranked)):
++        index = selected[-1]
++        distances = (1 - np.clip(rotations[:, :, 0] @ rotations[index, :, 0], -1, 1)
++                     + 1 - np.abs(np.clip(rotations[:, :, 1] @ rotations[index, :, 1], -1, 1)))
++        nearest = np.minimum(nearest, distances)
++        nearest[selected] = -1
++        selected.append(int(np.argmax(nearest)))
++    return [ranked[index] for index in selected]
++
++
+ def _load() -> None:
+     global _MODEL
+@@ -128,6 +156,7 @@ def _handle(request: Mapping[str, Any]) -> Mapping[str, Any]:
+         )
+     canonical_count = len(candidates)
+-    candidates.sort(key=lambda candidate: candidate["score"], reverse=True)
+-    candidates = candidates[:max_candidates]
++    candidates = _sample_candidates(
++        candidates, max_candidates, getattr(_OPTIONS, "sampling_policy", "score")
++    )[:max_candidates]
+     return {
+         "request_id": request["request_id"],
+@@ -144,4 +173,5 @@ def _parser() -> argparse.ArgumentParser:
+     parser.add_argument("--source-root")
+     parser.add_argument("--device", default="cuda:0")
++    parser.add_argument("--sampling-policy", choices=("score", "orientation_diverse"), default="score")
+     return parser
+
+~~~
+
+#### [修改 / Modified] examples/forge-adapters/robotwin20/src/robotwin20_adapter/grasp_profile.py L85-L89
+~~~diff
+diff --git a/examples/forge-adapters/robotwin20/src/robotwin20_adapter/grasp_profile.py b/examples/forge-adapters/robotwin20/src/robotwin20_adapter/grasp_profile.py
+index ff162dd..27a026e 100644
+--- a/examples/forge-adapters/robotwin20/src/robotwin20_adapter/grasp_profile.py
++++ b/examples/forge-adapters/robotwin20/src/robotwin20_adapter/grasp_profile.py
+@@ -85,4 +85,5 @@ def build_grasp_provider(
+             nms_closing_angle_deg=profile["nms_closing_angle_deg"],
+             apply_model_collision=profile["apply_model_collision"],
++            selection_order=profile.get("selection_order", "score"),
+             model_variant=model_variant,
+         )
+~~~
+
+#### [修改 / Modified] examples/forge-adapters/robotwin20/src/robotwin20_adapter/grasp_proposal.py L86-L90, L113-L118, L133-L137, L180-L187
+~~~diff
+diff --git a/examples/forge-adapters/robotwin20/src/robotwin20_adapter/grasp_proposal.py b/examples/forge-adapters/robotwin20/src/robotwin20_adapter/grasp_proposal.py
+index 5175861..3d2b57f 100644
+--- a/examples/forge-adapters/robotwin20/src/robotwin20_adapter/grasp_proposal.py
++++ b/examples/forge-adapters/robotwin20/src/robotwin20_adapter/grasp_proposal.py
+@@ -86,4 +86,5 @@ class GraspProposalProvider:
+         nms_closing_angle_deg: float = 10.0,
+         apply_model_collision: bool = False,
++        selection_order: str = "score",
+         provider_id: str = "graspgen",
+         model_variant: str = "ptv3",
+@@ -112,4 +113,6 @@ class GraspProposalProvider:
+         if not isinstance(apply_nms, bool) or not isinstance(apply_model_collision, bool):
+             raise TypeError("grasp filtering flags must be booleans")
++        if selection_order not in {"score", "provider"}:
++            raise ValueError("selection_order must be score or provider")
+         if not isinstance(provider_id, str) or not provider_id or not provider_id.isidentifier():
+             raise ValueError("provider_id must be a non-empty identifier")
+@@ -130,4 +133,5 @@ class GraspProposalProvider:
+         self.nms_closing_angle_deg = float(nms_closing_angle_deg)
+         self.apply_model_collision = apply_model_collision
++        self.selection_order = selection_order
+         self.provider_id = provider_id
+         self.model_variant = model_variant
+@@ -176,4 +180,8 @@ class GraspProposalProvider:
+                     )
+                 funnel["deduplicated"] += len(canonical)
++                if self.selection_order == "provider":
++                    # Keep provider sampling coverage after normal NMS. Scores
++                    # stay unchanged; only preparation can qualify a contact.
++                    canonical.sort(key=lambda item: item[2])
+                 for matrix, score, index in canonical[: self.max_candidates]:
+                     grasp_geometry = raw_candidates[index].get("grasp_geometry")
+~~~
+
+#### [修改 / Modified] examples/forge-adapters/robotwin20/tests/test_grasp_proposal.py L94-L119
+~~~diff
+diff --git a/examples/forge-adapters/robotwin20/tests/test_grasp_proposal.py b/examples/forge-adapters/robotwin20/tests/test_grasp_proposal.py
+index 7e1a86a..967e75b 100644
+--- a/examples/forge-adapters/robotwin20/tests/test_grasp_proposal.py
++++ b/examples/forge-adapters/robotwin20/tests/test_grasp_proposal.py
+@@ -94,4 +94,26 @@ def test_graspgen_provider_maps_bound_geometry_to_neutral_candidates(tmp_path):
+     assert worker.requests[0]["provider"] == "graspgen"
+     assert worker.requests[0]["point_units"] == "m"
++
++
++def test_provider_sampling_order_survives_nms_and_ten_candidate_cap(tmp_path):
++    class SampledWorker(Worker):
++        def request(self, payload):
++            reply = super().request(payload)
++            reply["candidates"] = []
++            for index in range(24):
++                matrix = np.eye(4)
++                matrix[0, 3] = index * .01
++                reply["candidates"].append({"matrix": matrix.tolist(), "score": .1 + index * .03})
++            reply["funnel"] = {"decoded": 1024, "canonicalized": 1024, "deduplicated": 1024, "retained": 24}
++            return reply
++
++    worker = SampledWorker()
++    provider = GraspNetProposalProvider(worker, artifact_store=_store(tmp_path),
++        max_candidates=10, sample_count=24, apply_nms=True, selection_order="provider")
++    result = provider.propose(REQUEST)
++    assert worker.requests[0]["max_candidates"] == 24
++    assert result["funnel"] == {"decoded": 1024, "canonicalized": 24, "deduplicated": 24, "retained": 10}
++    assert [c["grasp_frame"]["position_m"][0] for c in result["candidates"]] == pytest.approx([i * .01 for i in range(10)])
++    assert [c["score"] for c in result["candidates"]] == pytest.approx([.1 + i * .03 for i in range(10)])
+     assert worker.released is True
+
+~~~
+
+#### [修改 / Modified] examples/forge-adapters/robotwin20/tests/test_graspnet_worker.py L54-L82
+~~~diff
+diff --git a/examples/forge-adapters/robotwin20/tests/test_graspnet_worker.py b/examples/forge-adapters/robotwin20/tests/test_graspnet_worker.py
+index 3fcf28f..edbd17a 100644
+--- a/examples/forge-adapters/robotwin20/tests/test_graspnet_worker.py
++++ b/examples/forge-adapters/robotwin20/tests/test_graspnet_worker.py
+@@ -54,2 +54,29 @@ def test_graspnet_ranks_before_limit_and_reports_full_threshold_funnel(tmp_path,
+         "decoded": 5, "canonicalized": 4, "deduplicated": 4, "retained": 2,
+     }
++
++
++def test_orientation_sampling_covers_native_poses_without_rewriting_scores_or_geometry():
++    module = _module("graspnet_worker")
++    candidates = []
++    for index in range(30):
++        matrix = np.eye(4)
++        matrix[0, 3] = index * .001
++        candidates.append({"matrix": matrix.tolist(), "score": 1 - index * .001})
++    matrix = np.diag([-1., -1., 1., 1.])
++    distinct = {"matrix": matrix.tolist(), "score": .2}
++    candidates.append(distinct)
++    sampled = module._sample_candidates(candidates, 24, "orientation_diverse")
++    assert len(sampled) == 24
++    assert sampled[0] is candidates[0]
++    assert sampled[1] is distinct
++    assert len({id(item) for item in sampled}) == 24
++    assert all(any(item is source for source in candidates) for item in sampled)
++    assert module._sample_candidates(candidates[:3], 24, "orientation_diverse") == candidates[:3]
++
++
++def test_sampling_treats_parallel_jaw_closing_sign_as_equivalent():
++    module = _module("graspnet_worker")
++    same = {"matrix": np.eye(4).tolist(), "score": .9}
++    mirrored = {"matrix": np.diag([1., -1., -1., 1.]).tolist(), "score": .8}
++    different = {"matrix": np.diag([-1., -1., 1., 1.]).tolist(), "score": .1}
++    assert module._sample_candidates([same, mirrored, different], 2, "orientation_diverse") == [same, different]
+~~~
+
+#### [修改 / Modified] examples/forge-skills/pick-place-workflow/skill.yaml L1-L5, L240-L248
+~~~diff
+diff --git a/examples/forge-skills/pick-place-workflow/skill.yaml b/examples/forge-skills/pick-place-workflow/skill.yaml
+index 63d7751..f0c819c 100644
+--- a/examples/forge-skills/pick-place-workflow/skill.yaml
++++ b/examples/forge-skills/pick-place-workflow/skill.yaml
+@@ -1,5 +1,5 @@
+ manifest_version: 2
+ name: pick-place-workflow
+-version: "2.7.12"
++version: "2.7.13"
+ description: Provider-neutral perception, preparation, acquisition, placement, and long-horizon workflow contracts.
+ skill_document: SKILL.md
+@@ -240,9 +240,9 @@ artifacts:
+   nodes:
+     robotwin20_persistent_host:
+-      artifact_id: robotwin20_persistent_host-0.7.15-linux-x86_64
+-      version: "0.7.15"
++      artifact_id: robotwin20_persistent_host-0.8.0-linux-x86_64
++      version: "0.8.0"
+       platform: linux
+       arch: x86_64
+       artifact_type: executable_tar_gz
+       entrypoint: robotwin20_persistent_host
+-      sha256: d63e4cce65e037511bf2156db471e5b9ed1d117cac69816912070c5371d9a15a
++      sha256: 2d6970374e5f5541ac9e7080326788d32598e383173e92df9c872c6ca8642e5b
+~~~
+
+#### [修改 / Modified] examples/forge-skills/pick-place-workflow/tests/test_grasp_propose.py L267-L271
+~~~diff
+diff --git a/examples/forge-skills/pick-place-workflow/tests/test_grasp_propose.py b/examples/forge-skills/pick-place-workflow/tests/test_grasp_propose.py
+index 3bf5544..7895957 100644
+--- a/examples/forge-skills/pick-place-workflow/tests/test_grasp_propose.py
++++ b/examples/forge-skills/pick-place-workflow/tests/test_grasp_propose.py
+@@ -267,5 +267,5 @@ def test_bundle_and_package_versions_match_the_feature_revision():
+     import tomllib
+
+-    assert bundle_manifest["version"] == "2.7.12"
++    assert bundle_manifest["version"] == "2.7.13"
+     assert tomllib.loads(package_text)["project"]["version"] == bundle_manifest["version"]
+
+~~~
+
+#### [修改 / Modified] examples/forge-skills/pick-place-workflow/tests/test_manipulation_prepare.py L148-L203
+~~~diff
+diff --git a/examples/forge-skills/pick-place-workflow/tests/test_manipulation_prepare.py b/examples/forge-skills/pick-place-workflow/tests/test_manipulation_prepare.py
+index eb98018..200278e 100644
+--- a/examples/forge-skills/pick-place-workflow/tests/test_manipulation_prepare.py
++++ b/examples/forge-skills/pick-place-workflow/tests/test_manipulation_prepare.py
+@@ -148,4 +148,56 @@ class TimeoutProvider:
+
+
++@pytest.mark.parametrize("failure", ["declared", "timeout", "exception", "none", "invalid", "unavailable"])
++def test_provider_failure_preserves_scene_and_unlocks_recovery_observation(failure):
++    from types import SimpleNamespace
++
++    from PhyAgentOS.agent.planning_context import context_from_task
++    from PhyAgentOS.forge.capability_runtime.manipulation_prepare import PreparationProviderError
++    from PhyAgentOS.planning import PlanGraph, PlanNode, derive_ready_nodes, plan_graph_digest
++
++    class FailingProvider:
++        def prepare(self, request):
++            if failure == "declared":
++                raise PreparationProviderError("no_qualified_contacts", "All contacts rejected")
++            if failure == "timeout":
++                raise TimeoutError("budget")
++            if failure == "exception":
++                raise RuntimeError("private backend detail")
++            if failure == "none":
++                return None
++            if failure == "invalid":
++                return {"bad_snapshot": True}
++            return PreparationSnapshot(provider_available=False)
++
++    arguments = request_payload()
++    result = ManipulationPreparationEndpoint(FailingProvider()).invoke(arguments)
++    assert result["status"] in {"invalid", "unavailable"}
++    for name in ("observation_ref", "scene_revision", "calibration_ref", "candidate_set_ref"):
++        assert result[name] == arguments[name]
++    assert result["prepared_candidates"] == []
++    assert result["motion_authorized"] is False
++    assert set(result["checks"].values()) == {"unknown"}
++    observe = SimpleNamespace(terminal=True, tool_id="scene.observe", semantics="query",
++        status="succeeded", arguments={}, response={"scene_revision": "scene-7"},
++        evidence_refs=("tool:observe",))
++    prepare = SimpleNamespace(terminal=True, tool_id="manipulation.prepare", semantics="query",
++        status="succeeded", arguments=arguments, response={"ok": True, "data": result},
++        evidence_refs=("tool:prepare-failed",))
++    task = SimpleNamespace(execution_records=[observe, prepare], tool_bindings=(),
++        primary_skill_binding=None, active_revision=SimpleNamespace(node_settlements=(),
++        discovery_evidence_refs=()))
++    context = context_from_task(task, allow_refresh=True)
++    node = PlanNode(node_id="refresh-observation", obligation_id="refresh",
++        capability="scene.observe", required_evidence=("tool:prepare-failed",))
++    payload = dict(schema_version="paos-plan-graph/v1", task_id="task-recovery",
++        revision_id="revision-recovery", graph_digest="0" * 64,
++        planner_decision_digest="1" * 64, policy_snapshot_digest="2" * 64,
++        nodes=[node.model_dump(mode="json")])
++    payload["graph_digest"] = plan_graph_digest(payload)
++    graph = PlanGraph.model_validate(payload)
++    assert context.scene_revision == "scene-7"
++    assert derive_ready_nodes(graph, {}, context.evidence_refs, {}) == ("refresh-observation",)
++
++
+ def _observation_stub():
+     return type("Observation", (), {"observe": lambda self, sensor_ref: None})()
+~~~
+
+#### [新增 / Added] docs/forge/IMPLEMENTATION_REVIEW_V11_8_0.md L1-L58
+~~~diff
++# v11.8.0 GraspNet coverage and recovery evidence review
++
++Date: 2026-09-25. Acceptance remains active.
++
++## Findings and dispositions
++
++1. **Blocker: preparation failure loses the request scene.** The public endpoint
++   returned scene_revision=unknown after a validated request failed in its provider.
++   Task task_803ae1a6cae1449d then built a recovery observation depending on the
++   failed prepare record. The trusted scene projector correctly excluded the
++   conflicting response, leaving no ready node. Preserve validated request identity
++   in all provider-failure responses. No successful checks or motion authority are
++   fabricated. Six failure variants now test endpoint-to-context-to-ready recovery.
++2. **Major: early score truncation discards useful orientation families.** Offline
++   analysis uses the exact run3 observed red cloud and unmodified native Panda
++   meshes. A fresh GraspNet inference decoded 1024 real poses: 402 pass support
++   clearance and 57 pass observed swept contact checks. All score-top-24 collide;
++   the first contact-valid native pose ranks 389. These are no-motion diagnostics,
++   not IK/route success, and inference is stochastic.
++   GraspNet now offers orientation-diverse budget sampling, selected in its profile:
++   keep the highest native score, then maximize approach/closing angular coverage.
++   All matrices, scores and dimensions remain original model outputs. Closing-axis
++   sign is symmetric. The Adapter keeps normal NMS, then preserves provider order
++   while retaining at most ten of the 24 actual proposals. The captured diagnostic
++   retains one contact-valid pose after the exact shipped two-stage selection.
++3. **Ruled out: a new collision frame or scale defect.** Independent SAPIEN URDF
++   loading without simulator steps reproduces the run3 support penetrations.
++   Component get_pose equals get_entity_pose here; native mesh scale is one.
++   Palm and finger collisions are physical candidate rejections, not a reason to
++   alter the robot mesh, support height, margins, or permitted contacts.
++
++## Seven dimensions
++
++| Dimension | Result and scope |
++|---|---|
++| Architecture integration | Public prepare owns response identity; isolated provider owns sampling; Adapter owns NMS/retention. Coordinator, readiness and Gateway retain their authorities. |
++| Recovery/idempotency | Existing recovery sees failed Query evidence with the correct scene. No old receipts edited; no Action reissued. Trial 3 was cancelled through Coordinator after confirming no Actions. |
++| Robotics safety | No motion in offline diagnostics. No collision, IK, complete-route, stop or unknown-outcome check relaxed. Sampling is advisory. |
++| Configuration/reproducibility | GraspNet-only sampling-policy CLI and profile selection_order; default score order unchanged for other providers. Unique run4 artifacts, source diff, installed versions, same checkpoint and observed inputs retained. |
++| Maintainability | Small helper reuses native candidate objects; generic provider order has two explicit choices. No new service, schema, frozen contract or hash mechanism. |
++| Observability | Persisted raw diagnostic decoder, per-link support bounds, full contact results and retained native indices. Trial logs and independent final verifier remain the task evidence. |
++| AgentLoop autonomy | Regression proves failed prepare can make its refresh node ready through existing trusted context. Live recovery and full RGB completion remain acceptance requirements. |
++
++## Validation
++
++- Focused prepare/context regressions: 77 passed.
++- Integrated Adapter/Skill/context suite: 1069 passed, 1 skipped.
++- Existing Pillow-dependent perception-worker module remains skipped in PAOS Python.
++- Ruff and git diff --check pass; exact commands are in the monthly changelog.
++- Raw candidate diagnostic: no motion, no simulator steps, unchanged loaded Panda meshes.
++
++## Acceptance status
++
++Run4 starts Skill 2.7.13 and Node 0.8.0 using robotwin-blocks-ranking-graspnet.
++Three prior independent tasks did not reach physical Actions; they are failures,
++not RGB successes. Required finish remains three tasks with at least one full
++RGB arrangement, terminal acquire/place evidence, release-retreat-return checks,
++fresh final observation, independent ForgeTaskVerifier and playable cumulative video.
+~~~
+
+### Git 提交 / Git Commit
+- Branch: feature/planning-loop
+- Commit receipt will be appended after the source commit.
+
 ## v11.7.15 (2026-09-25 21:40) - codex
 
 ### 变更摘要 / Change Summary [完成 / Completed]
@@ -1219,593 +1719,3 @@ The deployment boundary now propagates one selected provider and rejects route/p
 - Commit: `6115ab5`
 - Branch: `feature/planning-loop`
 - 时间 / Time: 2026-09-25 19:30 Asia/Shanghai
-
-## v11.7.11 (2026-09-25 17:59) - codex
-
-### 预期修改 / Planned Changes [完成：源码修复与七维审查；全链路未验收]
-- [eval] [exp] 按既有七维审查 v11.7.8–v11.7.10，逐轮核对准备阶段、真实规划器拒绝、AgentLoop 恢复、感知二次调用和验收元数据；仅进行无动作回放与回归，不启动新全链路任务。(local)
-- [Eval] [Exp] Review v11.7.8–v11.7.10 against the established seven dimensions, auditing preparation, planner rejection, AgentLoop recovery, repeated understanding, and run metadata with no-action replay and regressions; do not launch a new end-to-end task. (local)
-- [policy] [fix] 对源码与捕获证据共同确认的 Blocker/Major，在现有 Runtime/Coordinator 所有者边界修复并增加对应回归；不改碰撞阈值、不添加真值几何或新门禁。(local)
-- [Policy] [Fix] Repair evidenced Blocker/Major findings within existing Runtime/Coordinator owners with focused regressions, preserving collision thresholds and observation ownership without new gates. (local)
-- [docs] [docs] 新增七维审查报告，区分物理拒绝、软件错误与未验证项，记录精确行号、Diff、验证命令和 Git 回执；纠正之前未被证据支持的原因判断。(local)
-- [Docs] [Docs] Add a seven-dimension review report separating physical rejections, software defects and unverified results; record exact lines, diffs, commands and Git receipts, correcting earlier unsupported causal claims. (local)
-
-### 预计影响 / Expected Files
-- docs/forge/IMPLEMENTATION_REVIEW_V11_7_11.md; CHANGELOG.md; this archive.
-- Runtime contact qualification/understanding and their owning modules/tests only where captured evidence confirms a defect.
-
-### 补充证据与修复计划 / Additional Evidence and Repair Plan
-- [policy] [fix] 真实 CuRobo 回放确认：update_world(empty) 提前返回而保留旧 OBB；v11.7.10 的完整世界替换仅清理 Mesh，不能正确恢复空世界。复用现有 clear_world_cache 后再加载空世界，并验证旧障碍不再参与下一次查询；不修改碰撞阈值。(local)
-- [Policy] [Fix] Real CuRobo replay confirms update_world(empty) retains old OBBs; the v11.7.10 replacement clears meshes only. Reuse clear_world_cache before loading an empty world and verify stale obstacles no longer affect queries, without changing collision thresholds. (local)
-
-### 实际结果 / Completed Changes
-
-- [docs] [docs] 计划首先写入 Part 16；预计加入完整代码 Diff 后超过 1500 行，故本版本完整记录轮转至 Part 17，历史版本原文保持不变。(local)
-- [Docs] [Docs] The plan was first recorded in Part 16; the projected full diff exceeds 1500 lines, so this complete entry rotates into Part 17 without changing prior versions. (local)
-- [policy] [fix] 已知失败的 recovery stop 通过 Coordinator 终结并落盘；未结清 invocation 保留对账。空世界替换清理 CuRobo 遗留 OBB 缓存。(local)
-- [Policy] [Fix] Persist known recovery-stop failure through the Coordinator while retaining unresolved invocation reconciliation; clear stale CuRobo OBB caches on empty-world replacement. (local)
-- [sense] [fix] Worker 读线程绑定所属进程的 queue/deque，防止旧 EOF 污染新请求；感知下游错误覆盖语义阶段的 none，按阶段记录类型并在成功后复位。(local)
-- [Sense] [Fix] Bind worker readers to process-specific sinks so old EOF cannot corrupt a new request; report downstream perception failure class and stage, resetting after success. (local)
-- [policy] [fix] contact 评估保留原生拒绝并区分 approach/contact/support-clearance；不改变准入或碰撞阈值。(local)
-- [Policy] [Fix] Preserve native contact rejection while identifying approach/contact/support-clearance phases without changing admission or collision tolerances. (local)
-- [eval] [exp] 捕获回放确认右臂接触球与桌面净空为 -2.687179/-3.100772 mm；25.27314 mm backoff 诊断仅让一个接触前缀通过，另一个仍目标碰撞。未扩大生产 backoff，未部署或启动新任务。(local)
-- [Eval] [Exp] Captured replay measures right-finger table clearance of -2.687179/-3.100772 mm; a 25.27314 mm backoff diagnostic admits one contact prefix while another still hits the target. No production backoff change, deployment or new task. (local)
-
-### 精确文件范围与 Diff / Exact File Ranges and Diffs
-
-#### [修改 / Modified] `PhyAgentOS/agent/planning_loop.py` L27-L31, L1256-L1278
-
-```diff
-diff --git a/PhyAgentOS/agent/planning_loop.py b/PhyAgentOS/agent/planning_loop.py
-index a04985f..8ee1411 100644
---- a/PhyAgentOS/agent/planning_loop.py
-+++ b/PhyAgentOS/agent/planning_loop.py
-@@ -24,7 +24,11 @@ from PhyAgentOS.agent.argument_sources import (
- from PhyAgentOS.agent.experience.redaction import redact_text
- from PhyAgentOS.agent.planner_plugin import ReplanProposal
- from PhyAgentOS.agent.planning_facts import explicit_scene_revision, response_facts
--from PhyAgentOS.forge.task import AgentTaskCoordinator
-+from PhyAgentOS.forge.task import (
-+    AgentTaskCoordinator,
-+    AgentTaskError,
-+    has_unsettled_owned_execution,
-+)
- from PhyAgentOS.planning import (
-     AdmissionContext,
-     ArgumentProjectionError,
-@@ -1249,6 +1253,29 @@ class PlanningLoopAdapter:
-             if decision not in {"stop", "replay", "replan"}:
-                 raise PlanningLoopError("recovery policy must return stop, replay, or replan")
-         if decision == "stop":
-+            if settlement.status == "failed":
-+                current = self.coordinator.get_task(task_id)
-+                if has_unsettled_owned_execution(current):
-+                    return PlanningLoopResult(
-+                        task_id, "blocked", tuple(completed), len(current.revisions), replans,
-+                        f"reconciliation_required:{settlement.node_id}",
-+                    )
-+                try:
-+                    current = self.coordinator.fail_task(
-+                        task_id, reason=f"recovery_stopped:{settlement.node_id}:{settlement.failure_code}",
-+                    )
-+                except AgentTaskError:
-+                    # Coordinator rechecks unresolved invocations transactionally.
-+                    # A concurrent ownership change must retain reconciliation.
-+                    return PlanningLoopResult(
-+                        task_id, "blocked", tuple(completed),
-+                        len(self.coordinator.get_task(task_id).revisions), replans,
-+                        f"reconciliation_required:{settlement.node_id}",
-+                    )
-+                return PlanningLoopResult(
-+                    task_id, current.status.value, tuple(completed), len(current.revisions), replans,
-+                    settlement.failure_code,
-+                )
-             return PlanningLoopResult(
-                 task_id, settlement.status, tuple(completed), len(self.coordinator.get_task(task_id).revisions), replans,
-                 settlement.failure_code,
-```
-
-#### [修改 / Modified] `examples/forge-adapters/robotwin20/runtime/robotwin_curobo_world_port.py` L339-L343
-
-```diff
-diff --git a/examples/forge-adapters/robotwin20/runtime/robotwin_curobo_world_port.py b/examples/forge-adapters/robotwin20/runtime/robotwin_curobo_world_port.py
-index 3b7b8ff..6667889 100644
---- a/examples/forge-adapters/robotwin20/runtime/robotwin_curobo_world_port.py
-+++ b/examples/forge-adapters/robotwin20/runtime/robotwin_curobo_world_port.py
-@@ -336,8 +336,11 @@ def _world_config(
-
-
- def restore_collision_world(model: Any, world: Any) -> None:
--    """Replace the complete world, clearing CuRobo's lingering mesh entries."""
--    if getattr(model.world_model, "mesh", []) or getattr(world, "mesh", []):
-+    """Replace the complete world, including stale meshes and empty OBB worlds."""
-+    # CuRobo's OBB loader returns early for an empty list without disabling
-+    # the prior cache, so update_world alone is not a complete replacement.
-+    if (getattr(model.world_model, "mesh", []) or getattr(world, "mesh", [])
-+            or not world.cuboid):
-         model.clear_world_cache()
-     model.update_world(world)
-
-```
-
-#### [修改 / Modified] `examples/forge-adapters/robotwin20/runtime/robotwin_route_planner.py` L110-L110, L123-L123, L129-L129, L133-L134
-
-```diff
-diff --git a/examples/forge-adapters/robotwin20/runtime/robotwin_route_planner.py b/examples/forge-adapters/robotwin20/runtime/robotwin_route_planner.py
-index b96a5d8..e817624 100644
---- a/examples/forge-adapters/robotwin20/runtime/robotwin_route_planner.py
-+++ b/examples/forge-adapters/robotwin20/runtime/robotwin_route_planner.py
-@@ -107,6 +107,7 @@ def _evaluate_contact(
-     import numpy as np
-
-     planner = getattr(task.robot, f"{arm}_planner")
-+    phase = "approach"
-     try:
-         pose = _route_pose(execution_grasp["robot_target_pose"], "world")
-         approach = list(pose)
-@@ -119,15 +120,18 @@ def _evaluate_contact(
-         )
-         predicted = np.asarray(getattr(task.robot, f"{arm}_entity").get_qpos()).copy()
-         predicted[:7] = np.asarray(ingress["position"])[-1]
-+        phase = "contact"
-         result = plan_path_with_status(task, arm, pose, last_qpos=predicted.tolist())
-         _validate_trajectory(result, _joint_limits(planner))
-         _validate_gripper_table_clearance(
-             task, arm, result["position"], phase="contact", gripper_state="open"
-         )
-+        phase = "contact_support_clearance"
-         clearance = sphere_support_clearance(task, arm, result["position"][-1])
-         return {"planner_status": "success", "clearance_m": clearance}
-     except Exception as exc:
--        return {"planner_status": "failed", "clearance_m": None, "reason": str(exc)}
-+        return {"planner_status": "failed", "clearance_m": None,
-+                "failed_phase": phase, "reason": str(exc)}
-
-
- def released_object_envelope(candidate):
-```
-
-#### [修改 / Modified] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/process_worker.py` L134-L134, L155-L158, L212-L212, L216-L216, L218-L218, L220-L220, L223-L223
-
-```diff
-diff --git a/examples/forge-adapters/robotwin20/src/robotwin20_adapter/process_worker.py b/examples/forge-adapters/robotwin20/src/robotwin20_adapter/process_worker.py
-index 377fcd4..96b1044 100644
---- a/examples/forge-adapters/robotwin20/src/robotwin20_adapter/process_worker.py
-+++ b/examples/forge-adapters/robotwin20/src/robotwin20_adapter/process_worker.py
-@@ -131,7 +131,7 @@ class JsonlProcessWorkerClient:
-         if self._process is not None and self._process.poll() is None:
-             return
-         self._stdout_queue = queue.Queue()
--        self._stderr_tail.clear()
-+        self._stderr_tail = deque(maxlen=40)
-         environment = os.environ.copy()
-         environment.update(self.config.environment)
-         try:
-@@ -152,8 +152,10 @@ class JsonlProcessWorkerClient:
-             raise ProcessWorkerError("worker process could not be started") from exc
-         self._process = process
-         assert process.stdout is not None and process.stderr is not None
--        threading.Thread(target=self._drain_stdout, args=(process,), daemon=True).start()
--        threading.Thread(target=self._drain_stderr, args=(process,), daemon=True).start()
-+        # Readers retain this process's sinks even if a later request restarts
-+        # the worker before the old reader publishes its final EOF.
-+        threading.Thread(target=self._drain_stdout, args=(process, self._stdout_queue), daemon=True).start()
-+        threading.Thread(target=self._drain_stderr, args=(process, self._stderr_tail), daemon=True).start()
-         startup_deadline = monotonic() + self.config.startup_timeout_s
-         deadline = startup_deadline if deadline is None else min(deadline, startup_deadline)
-         while True:
-@@ -207,18 +209,18 @@ class JsonlProcessWorkerClient:
-             raise ProcessWorkerError("worker response must be a JSON object")
-         return value
-
--    def _drain_stdout(self, process: subprocess.Popen[str]) -> None:
-+    def _drain_stdout(self, process: subprocess.Popen[str], output: queue.Queue[str | None]) -> None:
-         assert process.stdout is not None
-         try:
-             for line in process.stdout:
--                self._stdout_queue.put(line.rstrip("\n"))
-+                output.put(line.rstrip("\n"))
-         finally:
--            self._stdout_queue.put(None)
-+            output.put(None)
-
--    def _drain_stderr(self, process: subprocess.Popen[str]) -> None:
-+    def _drain_stderr(self, process: subprocess.Popen[str], tail: deque[str]) -> None:
-         assert process.stderr is not None
-         for line in process.stderr:
--            self._stderr_tail.append(line.rstrip("\n")[:2000])
-+            tail.append(line.rstrip("\n")[:2000])
-
-     def _abort(self) -> None:
-         process, self._process = self._process, None
-```
-
-#### [修改 / Modified] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/single_view_perception.py` L12-L12, L23-L26, L479-L480, L483-L500, L502-L502, L517-L517, L528-L528, L581-L581, L589-L589, L613-L613, L622-L622, L734-L734, L736-L736, L738-L742
-
-```diff
-diff --git a/examples/forge-adapters/robotwin20/src/robotwin20_adapter/single_view_perception.py b/examples/forge-adapters/robotwin20/src/robotwin20_adapter/single_view_perception.py
-index 153c0d6..886c2fd 100644
---- a/examples/forge-adapters/robotwin20/src/robotwin20_adapter/single_view_perception.py
-+++ b/examples/forge-adapters/robotwin20/src/robotwin20_adapter/single_view_perception.py
-@@ -9,6 +9,7 @@ cross back into the generic ``scene.understand`` endpoint.
- from __future__ import annotations
-
- import json
-+import logging
- import math
- import os
- from dataclasses import dataclass
-@@ -19,6 +20,10 @@ from typing import Any, Mapping, Protocol, Sequence
- from urllib.parse import urlparse
- from uuid import uuid4
-
-+from .process_worker import ProcessWorkerError
-+
-+logger = logging.getLogger(__name__)
-+
-
- class SingleViewPerceptionError(RuntimeError):
-     """The adapter cannot produce a contract-valid perception result."""
-@@ -471,9 +476,30 @@ class SingleViewPerceptionInference:
-         self.localization_provider = localization_provider
-         self.geometry_provider = geometry_provider or NumpyVisualGeometryProvider()
-         self.artifact_store = artifact_store
-+        self._failure_class: str | None = None
-+        self._stage = "semantic"
-
-     def infer(self, request: Mapping[str, Any]) -> Mapping[str, Any]:
-+        self._failure_class = None
-+        self._stage = "semantic"
-+        try:
-+            return self._infer(request)
-+        except Exception as exc:
-+            self._failure_class = (
-+                "timeout" if isinstance(exc, TimeoutError) else
-+                "transport" if isinstance(exc, ProcessWorkerError) else "provider_failure"
-+            )
-+            # Do not log model text, credentials, or arbitrary exception messages.
-+            logger.warning(
-+                "single-view perception failed: stage=%s error_type=%s cause_type=%s",
-+                self._stage, type(exc).__name__,
-+                type(exc.__cause__).__name__ if exc.__cause__ is not None else "none",
-+            )
-+            raise
-+
-+    def _infer(self, request: Mapping[str, Any]) -> Mapping[str, Any]:
-         base = self._semantic_result(request)
-+        self._stage = "semantic_release"
-         handoff_result = _release_provider(
-             self.semantic_inference, "semantic", request=request
-         )
-@@ -488,6 +514,7 @@ class SingleViewPerceptionInference:
-                 "reconciliations": list(base.get("reconciliations", [])),
-                 "provider_available": base.get("provider_available", True),
-             }
-+        self._stage = "source_artifacts"
-         artifacts = request.get("artifacts")
-         if not isinstance(artifacts, list):
-             raise SingleViewPerceptionError("scene understanding artifacts must be an array")
-@@ -498,6 +525,7 @@ class SingleViewPerceptionInference:
-         pending: list[tuple[Mapping[str, Any], Proposal]] = []
-         ambiguities = _normalize_ambiguities(base.get("ambiguities", []))
-         reconciliations = list(base.get("reconciliations", []))
-+        self._stage = "proposal"
-         try:
-             for entity in base["entities"]:
-                 entity_ref = entity.get("entity_ref")
-@@ -550,6 +578,7 @@ class SingleViewPerceptionInference:
-             }
-         materialized: list[tuple[str, str]] = []
-         reconciled_entities: dict[int, set[str]] = {}
-+        self._stage = "depth_calibration"
-         try:
-             try:
-                 depth = self.artifact_store.load_depth(depth_ref)
-@@ -557,6 +586,7 @@ class SingleViewPerceptionInference:
-                 calibration = self.artifact_store.load_calibration(calibration_ref)
-                 for entity, proposal in pending:
-                     entity_ref = str(entity["entity_ref"])
-+                    self._stage = "segmentation"
-                     segmentation = self.segmentation_provider.segment(
-                         SegmentationRequest(
-                             observation_ref=str(request["observation_ref"]),
-@@ -580,6 +610,7 @@ class SingleViewPerceptionInference:
-                     foreground = int(mask.sum())
-                     if foreground < 1:
-                         raise SingleViewPerceptionError("segmentation mask is empty")
-+                    self._stage = "localization"
-                     localization = self.localization_provider.localize(
-                         LocalizationRequest(
-                             mask=mask,
-@@ -588,6 +619,7 @@ class SingleViewPerceptionInference:
-                             frame_id=str(request["frame_id"]),
-                         )
-                     )
-+                    self._stage = "derived_artifacts"
-                     mask_ref, points_ref, localization_ref, geometry_ref = _derived_refs(rgb_ref, entity_ref)
-                     self.artifact_store.materialize_numpy(mask_ref, mask.astype(np.uint8))
-                     materialized.append((mask_ref, ".npy"))
-@@ -700,13 +732,14 @@ class SingleViewPerceptionInference:
-
-     def diagnostic_summary(self) -> dict[str, str]:
-         summary = getattr(self.semantic_inference, "diagnostic_summary", None)
--        if not callable(summary):
--            return {}
-         try:
--            value = summary()
-+            value = summary() if callable(summary) else {}
-         except Exception:
--            return {}
--        return dict(value) if isinstance(value, Mapping) else {}
-+            value = {}
-+        result = dict(value) if isinstance(value, Mapping) else {}
-+        if self._failure_class is not None and self._stage != "semantic":
-+            result["provider_error_class"] = self._failure_class
-+        return result
-
-     def _semantic_result(self, request: Mapping[str, Any]) -> Mapping[str, Any]:
-         infer = getattr(self.semantic_inference, "infer", None)
-```
-
-#### [修改 / Modified] `examples/forge-adapters/robotwin20/tests/test_curobo_world_port.py` L64-L90
-
-```diff
-diff --git a/examples/forge-adapters/robotwin20/tests/test_curobo_world_port.py b/examples/forge-adapters/robotwin20/tests/test_curobo_world_port.py
-index b9d9017..8277e96 100644
---- a/examples/forge-adapters/robotwin20/tests/test_curobo_world_port.py
-+++ b/examples/forge-adapters/robotwin20/tests/test_curobo_world_port.py
-@@ -61,6 +61,33 @@ class FakePlanner:
-         return world_pose[:3], world_pose[3:]
-
-
-+def test_empty_world_replacement_clears_stale_obb_cache():
-+    from robotwin_curobo_world_port import restore_collision_world
-+
-+    class CachedModel(FakeMotionGen):
-+        def __init__(self):
-+            super().__init__()
-+            self.active_obstacles = list(self.world_model.cuboid)
-+
-+        def clear_world_cache(self):
-+            super().clear_world_cache()
-+            self.active_obstacles = []
-+
-+        def update_world(self, world):
-+            super().update_world(world)
-+            # Match CuRobo: an empty OBB load does not disable the old cache.
-+            if world.cuboid:
-+                self.active_obstacles = list(world.cuboid)
-+
-+    model = CachedModel()
-+    saved = model.world_model.clone()
-+    restore_collision_world(model, FakeWorld())
-+    assert model.active_obstacles == []
-+    assert model.clears == 1
-+    restore_collision_world(model, saved)
-+    assert [x.name for x in model.active_obstacles] == ["table"]
-+
-+
- @pytest.fixture(autouse=True)
- def fake_curobo(monkeypatch):
-     module = ModuleType("curobo.geom.types")
-```
-
-#### [修改 / Modified] `examples/forge-adapters/robotwin20/tests/test_process_worker.py` L3-L3, L6-L7, L9-L9, L40-L71, L151-L151
-
-```diff
-diff --git a/examples/forge-adapters/robotwin20/tests/test_process_worker.py b/examples/forge-adapters/robotwin20/tests/test_process_worker.py
-index c205fe6..349e544 100644
---- a/examples/forge-adapters/robotwin20/tests/test_process_worker.py
-+++ b/examples/forge-adapters/robotwin20/tests/test_process_worker.py
-@@ -1,8 +1,12 @@
- from __future__ import annotations
-
-+import queue
- import subprocess
- import sys
-+import threading
-+from collections import deque
- from pathlib import Path
-+from types import SimpleNamespace
-
- import pytest
-
-@@ -33,6 +37,38 @@ def test_worker_client_starts_lazily_releases_and_can_restart():
-     assert first["pid"] != second["pid"]
-
-
-+@pytest.mark.parametrize("stream", ["stdout", "stderr"])
-+def test_late_reader_output_cannot_cross_worker_generations(stream):
-+    client = _client()
-+    entered, finish = threading.Event(), threading.Event()
-+
-+    class LateOutput:
-+        def __iter__(self):
-+            entered.set()
-+            assert finish.wait(2)
-+            return iter(["old output\n"])
-+
-+    sink = client._stdout_queue if stream == "stdout" else client._stderr_tail
-+    reader = getattr(client, f"_drain_{stream}")
-+    thread = threading.Thread(target=reader, args=(SimpleNamespace(**{stream: LateOutput()}), sink))
-+    thread.start()
-+    try:
-+        assert entered.wait(2)
-+        client._stdout_queue = queue.Queue()
-+        client._stderr_tail = deque(maxlen=40)
-+    finally:
-+        finish.set()
-+        thread.join(2)
-+    assert not thread.is_alive()
-+    assert client._stdout_queue.empty()
-+    assert not client.stderr_tail
-+    if stream == "stdout":
-+        assert sink.get_nowait() == "old output"
-+        assert sink.get_nowait() is None
-+    else:
-+        assert list(sink) == ["old output"]
-+
-+
- @pytest.mark.parametrize(
-     ("mode", "message"),
-     [
-@@ -112,6 +148,7 @@ def test_graspgen_model_output_isolated_from_jsonl_stdout(monkeypatch, capsys):
-
- def test_graspgen_generates_requested_pool_before_score_filter(tmp_path, monkeypatch):
-     import importlib.util
-+
-     import numpy as np
-
-     worker_path = Path(__file__).parents[1] / "runtime" / "graspgen_worker.py"
-```
-
-#### [修改 / Modified] `examples/forge-adapters/robotwin20/tests/test_route_planner.py` L163-L187
-
-```diff
-diff --git a/examples/forge-adapters/robotwin20/tests/test_route_planner.py b/examples/forge-adapters/robotwin20/tests/test_route_planner.py
-index fbf2df3..a8ecd7f 100644
---- a/examples/forge-adapters/robotwin20/tests/test_route_planner.py
-+++ b/examples/forge-adapters/robotwin20/tests/test_route_planner.py
-@@ -160,6 +160,31 @@ def test_retreat_obstacle_covers_both_release_and_landing(route):
-     assert candidate["placement_target"]["target_object_pose"]["position_m"] == [0, 0, 1]
-
-
-+@pytest.mark.parametrize("failed_phase", ["approach", "contact"])
-+def test_contact_reports_exact_failed_phase_and_preserves_joint_state(route, monkeypatch, failed_phase):
-+    task, _, _, entity, _, _ = route
-+    calls = []
-+
-+    def plan(*args, **kwargs):
-+        phase = "approach" if not calls else "contact"
-+        calls.append(phase)
-+        if phase == failed_phase:
-+            return {"status": "Fail", "native_planner_status": "MotionGenStatus.IK_FAIL"}
-+        return {"status": "Success", "position": np.zeros((2, 7)),
-+                "velocity": np.zeros((2, 7))}
-+
-+    monkeypatch.setattr(module, "plan_path_with_status", plan)
-+    grasp = {"robot_target_pose": {"frame_id": "world", "position_m": [0, 0, 1],
-+                                   "orientation_xyzw": [0, 0, 0, 1]},
-+             "ingress_direction": {"vector": [0, 0, -1]}}
-+    result = module.evaluate_contact(task, grasp, "left", .05)
-+    assert result["planner_status"] == "failed"
-+    assert result["failed_phase"] == failed_phase
-+    assert "IK_FAIL" in result["reason"]
-+    assert calls == (["approach"] if failed_phase == "approach" else ["approach", "contact"])
-+    assert entity.qpos == [0.] * 9
-+
-+
- def test_retreat_diagnostic_keeps_world_and_never_promotes_failure(route, monkeypatch):
-     task, request, candidate, entity, events, starts = route
-     original_plan = task.robot.left_plan_path
-```
-
-#### [修改 / Modified] `examples/forge-adapters/robotwin20/tests/test_single_view_perception.py` L292-L319
-
-```diff
-diff --git a/examples/forge-adapters/robotwin20/tests/test_single_view_perception.py b/examples/forge-adapters/robotwin20/tests/test_single_view_perception.py
-index aaddaef..eca85bf 100644
---- a/examples/forge-adapters/robotwin20/tests/test_single_view_perception.py
-+++ b/examples/forge-adapters/robotwin20/tests/test_single_view_perception.py
-@@ -289,6 +289,34 @@ def test_single_view_composition_crosses_the_generic_gateway_without_motion(tmp_
-     ]
-
-
-+@pytest.mark.parametrize("stage", ["proposal", "segmentation"])
-+def test_downstream_failure_overrides_semantic_success_without_logging_payload(tmp_path, monkeypatch, caplog, stage):
-+    from robotwin20_adapter.process_worker import ProcessWorkerError
-+
-+    inference, proposal, segmentation = _inference(tmp_path)
-+    inference.semantic_inference.diagnostic_summary = lambda: {
-+        "provider_route": "primary", "provider_error_class": "none",
-+    }
-+    provider, method = (proposal, "propose") if stage == "proposal" else (segmentation, "segment")
-+    original = getattr(provider, method)
-+
-+    def fail(request):
-+        raise ProcessWorkerError("private-token-and-model-payload")
-+
-+    monkeypatch.setattr(provider, method, fail)
-+    with pytest.raises(ProcessWorkerError):
-+        inference.infer(REQUEST)
-+    assert inference.diagnostic_summary() == {
-+        "provider_route": "primary", "provider_error_class": "transport",
-+    }
-+    assert f"stage={stage}" in caplog.text
-+    assert "private-token-and-model-payload" not in caplog.text
-+    assert "ProcessWorkerError" in caplog.text
-+    monkeypatch.setattr(provider, method, original)
-+    assert inference.infer(REQUEST)["derived_artifacts"]
-+    assert inference.diagnostic_summary()["provider_error_class"] == "none"
-+
-+
- def test_handoff_fallback_skips_downstream_gpu_providers(tmp_path):
-     proposal = ProposalProvider()
-     segmentation = SegmentationProvider(np.ones((3, 4), dtype=bool))
-```
-
-#### [修改 / Modified] `tests/test_planning_loop.py` L1140-L1143
-
-```diff
-diff --git a/tests/test_planning_loop.py b/tests/test_planning_loop.py
-index dd88570..f36034f 100644
---- a/tests/test_planning_loop.py
-+++ b/tests/test_planning_loop.py
-@@ -1137,6 +1137,10 @@ def test_recovery_stop_does_not_advance_to_dependent_node(tmp_path):
-     assert result.status == "failed"
-     assert result.completed_nodes == ()
-     assert calls == ["arrange-red"]
-+    current = c.get_task(task.task_id)
-+    assert current.status.value == result.status
-+    assert current.terminal is True
-+    assert current.replan_deadline is None
-
-
- def test_recovery_replay_only_reduces_persisted_facts(tmp_path):
-```
-
-#### [新增 / Added] `docs/forge/IMPLEMENTATION_REVIEW_V11_7_11.md` L1-L182
-
-- [docs] [docs] 七维审查、六项发现、三轮漏斗、有效/无效消融边界、深度诊断、复测命令和未完成项。(local)
-- [Docs] [Docs] Seven-dimension review, six findings, three captured funnels, ablation validity, depth diagnosis, validation commands and remaining work. (local)
-
-```diff
-+# v11.7.11：RGB 规划失败与既有七维度审查
-+
-+日期：2026-09-25，Asia/Shanghai。分支：`feature/planning-loop`。
-+
-+## 1. 范围与结论 / Scope and conclusion
-+
-+审查 v11.7.8–v11.7.10 的观测几何、GraspGen、恢复规划和验收契约改动，以及本次 v11.7.11 修复。沿用 v10.9.4 / v10.10.0 的七个维度，不重新定义通过标准。
-+
-+**结论：本次源码回归和无动作诊断完成；RGB 全链路验收未通过。** 最近三次有抓取候选的任务均在 preparation 阶段结束，没有进入完整路线准入，也没有执行 acquire/place。不能把 Query 成功、回归通过或单个 contact 前缀通过算成三方块任务成功。
-+
-+本次未启动新的 AgentTask，未重启在线 Runtime，未部署新的 Node/Skill，也未修改现有任务状态。源代码修复尚未进入正在运行的 Node 0.7.12 / Skill 2.7.9。
-+
-+Review complete at source/regression and no-action diagnostic scope. End-to-end RGB acceptance remains incomplete; the patched source has not been deployed to the running packages.
-+
-+## 2. Findings：具体问题、边界与修复
-+
-+### F1 — High，仍待解决：候选接触深度与实际碰撞模型没有形成可通过的完整路线
-+
-```
-
-#### [修改 / Modified] CHANGELOG.md L5-L5, L27-L616, L2078-L2078, L2099-L2099
-
-- [docs] [docs] Archive 新增 Part 17；最近五版本由 v11.7.10/v11.7.9/v11.7.8/v11.7.6/v11.7.5 更新为 v11.7.11/v11.7.10/v11.7.9/v11.7.8/v11.7.6，完整记录与归档一致。精确变更行号见本节标题。(local)
-- [Docs] [Docs] Add the Part 17 archive link and roll the five complete entries forward to v11.7.11/v11.7.10/v11.7.9/v11.7.8/v11.7.6, identical to their archives; exact changed index ranges are in this section heading. (local)
-
-### 验证 / Validation
-
-- 333 passed in 8.16s；最后状态返回调整后聚焦复核 74 passed in 2.85s（重复覆盖，不相加）。
-- 333 tests passed in 8.16s; 74 focused tests passed in 2.85s after the final status-return adjustment, overlapping the main suite.
-- Changed-file Ruff 与 git diff --check 通过；完整命令见七维审查报告第 5 节，主日志 /tmp/paos-review-v11711-tests.log。
-- Changed-file Ruff and git diff --check passed; full commands are in review section 5, with the main log at /tmp/paos-review-v11711-tests.log.
-- 无动作证据：/home/yanxu/robotwin20-runtime/artifacts/rgb-review-contact-20260925/；Gateway Actions=0，路线执行步数=0；模拟器初始化/reset 确实发生。
-- No-action evidence: /home/yanxu/robotwin20-runtime/artifacts/rgb-review-contact-20260925/; zero Gateway Actions and route execution steps, with simulator initialization/reset performed.
-- 七维总体未通过 RGB 全链路验收；新源码未部署，在线任务未改动；完整路线与三次任务至少一次 RGB 成功及视频仍待完成。
-- End-to-end RGB acceptance remains incomplete; source changes are not deployed, the live task is unchanged, and the complete route plus at least one successful RGB task/video among three runs remain outstanding.
-
-### Git 提交 / Git Commit
-- Commit: d179cde (source and review); recorded 2026-09-25 18:34 Asia/Shanghai
-- Branch: feature/planning-loop

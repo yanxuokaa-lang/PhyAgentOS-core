@@ -23,6 +23,34 @@ _OPTIONS: argparse.Namespace | None = None
 _MODEL: tuple[Any, Any, Any] | None = None
 
 
+def _sample_candidates(candidates, limit, policy):
+    """Select unchanged native poses; diversity is advisory, never admission.
+
+    GraspNet decodes many spatial seeds with the same preferred orientation.
+    Score-only truncation can spend the entire budget on one colliding family.
+    Start with its best score, then cover approach/closing directions. Parallel
+    jaw closing-axis sign is symmetric; ties keep native score order.
+    """
+    import numpy as np
+
+    ranked = sorted(candidates, key=lambda item: item["score"], reverse=True)
+    if policy == "score" or not ranked:
+        return ranked[:limit]
+    if policy != "orientation_diverse":
+        raise WorkerUnavailableError("unsupported GraspNet sampling policy")
+    rotations = np.asarray([item["matrix"] for item in ranked])[:, :3, :3]
+    selected = [0]
+    nearest = np.full(len(ranked), np.inf)
+    while len(selected) < min(limit, len(ranked)):
+        index = selected[-1]
+        distances = (1 - np.clip(rotations[:, :, 0] @ rotations[index, :, 0], -1, 1)
+                     + 1 - np.abs(np.clip(rotations[:, :, 1] @ rotations[index, :, 1], -1, 1)))
+        nearest = np.minimum(nearest, distances)
+        nearest[selected] = -1
+        selected.append(int(np.argmax(nearest)))
+    return [ranked[index] for index in selected]
+
+
 def _load() -> None:
     global _MODEL
     assert _OPTIONS is not None
@@ -127,8 +155,9 @@ def _handle(request: Mapping[str, Any]) -> Mapping[str, Any]:
             }
         )
     canonical_count = len(candidates)
-    candidates.sort(key=lambda candidate: candidate["score"], reverse=True)
-    candidates = candidates[:max_candidates]
+    candidates = _sample_candidates(
+        candidates, max_candidates, getattr(_OPTIONS, "sampling_policy", "score")
+    )[:max_candidates]
     return {
         "request_id": request["request_id"],
         "status": "available" if candidates else "empty",
@@ -143,6 +172,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--source-root")
     parser.add_argument("--device", default="cuda:0")
+    parser.add_argument("--sampling-policy", choices=("score", "orientation_diverse"), default="score")
     return parser
 
 

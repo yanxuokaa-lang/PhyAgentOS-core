@@ -451,6 +451,18 @@ class ManipulationPreparationEndpoint:
                 "scene_revision and frame_id must form a preparation:// reference",
                 observation_ref=observation_ref,
             )
+        # A failed Query still belongs to its validated request scene. Dropping
+        # that identity makes recovery evidence look stale to Coordinator.
+        def bound_error(code: str, message: str) -> dict[str, Any]:
+            return {
+                **_error(code, message, observation_ref=observation_ref),
+                "preparation_ref": preparation_ref,
+                "candidate_set_ref": arguments["candidate_set_ref"],
+                "scene_revision": arguments["scene_revision"],
+                "frame": {"frame_id": arguments["frame_id"], "unit": "m"},
+                "calibration_ref": arguments["calibration_ref"],
+            }
+
         if arguments["freshness_ms"] > arguments["max_age_ms"]:
             return {
                 **_error(
@@ -483,54 +495,47 @@ class ManipulationPreparationEndpoint:
         try:
             snapshot = self.provider.prepare(deepcopy(arguments))
         except PreparationProviderError as exc:
-            return _error(exc.code, str(exc), observation_ref=observation_ref)
+            return bound_error(exc.code, str(exc))
         except TimeoutError:
-            return _error(
+            return bound_error(
                 "preparation_timeout",
                 "manipulation preparation exceeded its total time budget",
-                observation_ref=observation_ref,
             )
         except Exception:
             # Provider failures are unavailable, never an implicit Gateway 500 or success.
-            return _error(
+            return bound_error(
                 "preparation_provider_error",
                 "manipulation preparation provider failed",
-                observation_ref=observation_ref,
             )
         if snapshot is None:
-            return _error(
+            return bound_error(
                 "preparation_unavailable",
                 "manipulation preparation provider is unavailable",
-                observation_ref=observation_ref,
             )
         snapshot = normalize_snapshot(snapshot)
         if snapshot is None:
-            return _error(
+            return bound_error(
                 "invalid_snapshot",
                 "manipulation preparation provider returned an invalid snapshot",
-                observation_ref=observation_ref,
             )
         if not isinstance(snapshot.provider_available, bool):
-            return _error(
+            return bound_error(
                 "invalid_snapshot",
                 "manipulation preparation provider returned an invalid availability flag",
-                observation_ref=observation_ref,
             )
         if not snapshot.provider_available:
-            return _error(
+            return bound_error(
                 "preparation_unavailable",
                 "manipulation preparation provider is unavailable",
-                observation_ref=observation_ref,
             )
         candidate_entities = {
             candidate["candidate_ref"]: candidate["entity_ref"] for candidate in arguments["candidates"]
         }
         snapshot_error = validate_snapshot(snapshot, candidate_entities=candidate_entities)
         if snapshot_error:
-            return _error(
+            return bound_error(
                 snapshot_error,
                 "manipulation preparation result failed contract validation",
-                observation_ref=observation_ref,
             )
         prepared = [dict(item) for item in snapshot.prepared_candidates]
         route_result = {}

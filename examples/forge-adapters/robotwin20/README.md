@@ -266,7 +266,15 @@ The default grasp provider is configured independently through
 point-cloud path and returns 4x4 matrices plus scores; the adapter validates the
 homogeneous transform, converts it to a normalized quaternion and approach
 vector, applies deterministic confidence-ordered SE(3) NMS, and projects the
-candidate funnel. GraspGen/Torch/checkpoint settings remain in the external
+candidate funnel. The shipped GraspNet profile samples 24 unchanged native
+poses with orientation coverage (native X approach and symmetric Y closing),
+starting from the highest score and maximizing distance from selected directions.
+NMS still removes duplicates using native scores; provider order then retains
+at most 10 survivors. Native scores and geometry are never rewritten. This avoids
+spending the entire proposal budget on one colliding orientation family. It is
+advisory sampling only: manipulation.prepare still owns contact/IK/complete-route
+qualification. Set worker --sampling-policy=score and selection_order=score for
+the original score-only policy. GraspGen/Torch/checkpoint settings remain in the external
 worker profile. GraspGen remains available only through the explicit
 `graspgen.yaml` and `persistent-materializer-graspgen.yaml` closure; its depth
 and frame adaptation are not included in the GraspNet route. Until either

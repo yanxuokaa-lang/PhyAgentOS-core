@@ -4,6 +4,8 @@ model_variant: baseline
 artifact_root: ${ROBOTWIN20_ARTIFACT_ROOT}
 max_candidates: 10
 sample_count: 24
+# Preserve native pose coverage; score-only truncation loses feasible families.
+selection_order: provider
 score_threshold: 0.02
 apply_nms: true
 nms_position_threshold_m: 0.005
@@ -28,3 +30,5 @@ worker:
     - ${GRASPNET_SOURCE_ROOT}
     - --device
     - ${GRASPNET_DEVICE}
+    - --sampling-policy
+    - orientation_diverse

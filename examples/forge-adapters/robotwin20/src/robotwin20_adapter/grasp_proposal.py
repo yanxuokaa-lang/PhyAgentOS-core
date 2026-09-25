@@ -85,6 +85,7 @@ class GraspProposalProvider:
         nms_approach_angle_deg: float = 10.0,
         nms_closing_angle_deg: float = 10.0,
         apply_model_collision: bool = False,
+        selection_order: str = "score",
         provider_id: str = "graspgen",
         model_variant: str = "ptv3",
         approach_axis: int = 2,
@@ -111,6 +112,8 @@ class GraspProposalProvider:
                 raise ValueError(f"{name} must be finite and positive")
         if not isinstance(apply_nms, bool) or not isinstance(apply_model_collision, bool):
             raise TypeError("grasp filtering flags must be booleans")
+        if selection_order not in {"score", "provider"}:
+            raise ValueError("selection_order must be score or provider")
         if not isinstance(provider_id, str) or not provider_id or not provider_id.isidentifier():
             raise ValueError("provider_id must be a non-empty identifier")
         if not isinstance(model_variant, str) or not model_variant or not model_variant.isidentifier():
@@ -129,6 +132,7 @@ class GraspProposalProvider:
         self.nms_approach_angle_deg = float(nms_approach_angle_deg)
         self.nms_closing_angle_deg = float(nms_closing_angle_deg)
         self.apply_model_collision = apply_model_collision
+        self.selection_order = selection_order
         self.provider_id = provider_id
         self.model_variant = model_variant
         self.approach_axis = approach_axis
@@ -175,6 +179,10 @@ class GraspProposalProvider:
                         closing_axis=self.closing_axis,
                     )
                 funnel["deduplicated"] += len(canonical)
+                if self.selection_order == "provider":
+                    # Keep provider sampling coverage after normal NMS. Scores
+                    # stay unchanged; only preparation can qualify a contact.
+                    canonical.sort(key=lambda item: item[2])
                 for matrix, score, index in canonical[: self.max_candidates]:
                     grasp_geometry = raw_candidates[index].get("grasp_geometry")
                     all_candidates.append(

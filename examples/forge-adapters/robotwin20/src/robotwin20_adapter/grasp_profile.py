@@ -84,6 +84,7 @@ def build_grasp_provider(
             nms_approach_angle_deg=profile["nms_approach_angle_deg"],
             nms_closing_angle_deg=profile["nms_closing_angle_deg"],
             apply_model_collision=profile["apply_model_collision"],
+            selection_order=profile.get("selection_order", "score"),
             model_variant=model_variant,
         )
     except (TypeError, ValueError) as exc:
