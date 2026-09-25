@@ -797,3 +797,42 @@ def test_observed_targets_do_not_fall_back_to_benchmark_goals(tmp_path):
     with pytest.raises(ValueError, match="not an observation-owned target"):
         g.scene_facts({**request, "intent": {"entity_ref": "entity://seen"},
                        "destination_ref": "destination://blocks-ranking-rgb/red-slot"})
+
+
+@pytest.mark.parametrize("predicate", ["on", "is_on", "is_near"])
+@pytest.mark.parametrize("defect", [None, "stale_cloud", "ambiguous_support"])
+def test_observed_support_consumes_semantic_relation_and_preserves_lineage(tmp_path, predicate, defect):
+    g, request, _ = setup(tmp_path)
+    understanding = next(iter(g.understandings.values()))
+    understanding["relations"] = [{"subject_ref": "entity://seen", "predicate": predicate,
+                                  "object_ref": "entity://support"}]
+    points = np.array([[x, y, -.025] for x in np.linspace(-.4, .4, 8)
+                       for y in np.linspace(-.3, .3, 8)])
+    np.save(tmp_path / "capture/support.npy", points)
+    cloud = {k: request[k] for k in ("observation_ref", "scene_revision", "calibration_ref")}
+    cloud.update(kind="object_point_cloud", entity_ref="entity://support", frame_id="camera",
+                 artifact_ref="artifact://capture/support")
+    understanding["derived_artifacts"].append(cloud)
+    if defect == "stale_cloud":
+        cloud["scene_revision"] = "old-scene"
+    if defect == "ambiguous_support":
+        understanding["relations"].append({"subject_ref": "entity://seen", "predicate": predicate,
+                                           "object_ref": "entity://other-support"})
+    bound = g.bind(request)
+    target = g.target(dict(binding_ref=bound["binding_ref"], entity_ref="entity://seen",
+                          frame_id="world", unit="m", frame_T_object_target=pose(.35)))
+    inputs = {**request, "intent": {"entity_ref": "entity://seen"},
+              "destination_ref": target["destination_ref"]}
+    if predicate != "is_near" and defect:
+        match = "lineage differs" if defect == "stale_cloud" else "surface is ambiguous"
+        with pytest.raises(ValueError, match=match):
+            g.scene_facts(inputs)
+    else:
+        facts = g.scene_facts(inputs)
+        if predicate == "is_near":
+            assert "support_surface" not in facts
+        else:
+            support = facts["support_surface"]
+            assert support["evidence_ref"] == "artifact://capture/support"
+            assert support["estimation"]["point_count"] == len(points)
+            assert support["estimation"]["height_m"] == pytest.approx(-.025)

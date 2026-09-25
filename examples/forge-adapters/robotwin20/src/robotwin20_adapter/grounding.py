@@ -620,7 +620,7 @@ class Grounding:
         identity = tuple(binding[k] for k in IDENTITY_KEYS)
         understanding = self.understandings[identity]
         refs = {r["object_ref"] for r in understanding.get("relations", [])
-                if r.get("predicate") == "on" and r.get("subject_ref") in binding["objects"]}
+                if r.get("predicate") in {"on", "is_on"} and r.get("subject_ref") in binding["objects"]}
         if not refs:
             return None  # Consumers requiring support must reject missing evidence.
         if len(refs) != 1:
