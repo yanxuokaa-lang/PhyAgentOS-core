@@ -48,7 +48,7 @@
 架构、恢复、机器人安全、配置复现、可维护性、可观察性、AgentLoop 自主性均 PASS；未改变碰撞/规划/运动准入。
 
 ### Git 提交 / Git Commit
-- Commit: `0cac4ea`
+- Commit: `6115ab5`
 - Branch: `feature/planning-loop`
 
 ## v11.7.11 (2026-09-25 17:59) - codex
