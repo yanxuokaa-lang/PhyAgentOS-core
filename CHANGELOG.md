@@ -163,6 +163,10 @@ index e681d73..d9e4f36 100644
 - 真实点云重放 / Captured-cloud replay: 70,606 points, 65,117 plane inliers, 5,489 residual points retained in 47 boxes; estimated height 0.7405762693 m. Read-only replay, no motion or fabricated support.
 - Command: PYTHONPATH=examples/forge-adapters/robotwin20/src:examples/forge-adapters/robotwin20/runtime:examples/forge-skills/pick-place-workflow/src PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /home/yanxu/miniconda3/envs/paos/bin/python -m pytest -q -p pytest_asyncio.plugin examples/forge-adapters/robotwin20/tests/test_grounding.py examples/forge-adapters/robotwin20/tests/test_observed_support.py examples/forge-adapters/robotwin20/tests/test_persistent_preparation.py
 
+### Git 提交 / Git Commit
+- Commit: 952fe6b
+- Branch: feature/planning-loop
+
 ## v11.7.8 (2026-09-25 13:42) - codex
 
 ### 实际修改 / Implemented Changes [完成代码；验收运行中]
