@@ -22,34 +22,482 @@
 
 ## 最近 5 条 / Latest Five Versions
 
-## v11.7.5 (2026-09-25 02:30) - codex
+## v11.7.8 (2026-09-25 13:42) - codex
 
-- [agent] [fix] 在未物化任务上下文中投影 discovery 阶段、缺失前置 Query 和下一步动作，避免模型把暂时隐藏的 PlanGraph 控制工具误判为未注册并取消任务。(local)
-- [Agent] [Fix] Project the discovery phase, missing prerequisite Queries, and next action for unmaterialized tasks so the model does not mistake gated PlanGraph controls for unregistered tools and cancel the task. (local)
+### 实际修改 / Implemented Changes [完成代码；验收运行中]
+- [eval] [fix] 为本轮全链路验收补齐观测几何与 benchmark 目标的显式 Adapter 组合：当前 host 把 runtime_monitored 硬限定为 oracle，observed 路径也无法解析 task.goal 的 destination_ref，导致用户要求的纯感知几何路线不可执行。复用完整路线准入、仿真 Action approval、接触和停止监测，不新增 hash、gate 或独立任务控制器。(local)
+- [Eval] [Fix] Compose observation-owned geometry with benchmark destinations explicitly for this acceptance run: the current host restricts runtime_monitored to oracle and observed grounding cannot resolve task.goal destinations. Reuse complete-route admission, simulation Action approval, contact and stop monitoring; introduce no additional hashes, gates or task controllers. (local)
+- [eval] [exp] 启动一个独立 RGB 全链路任务，记录 GraspGen 24 个真实样本生成后才筛选、最多 10 个进入 prepare、动作终态、Verifier 和累计视频；不把软件测试或 oracle 路线结果计作本轮通过。(local)
+- [Eval] [Exp] Launch an independent RGB end-to-end task and preserve evidence for generation of 24 real GraspGen samples before filtering, at most ten prepare candidates, terminal Actions, verifier and cumulative video; software tests and oracle routes do not constitute acceptance. (local)
+- 预期影响 / Expected files: adapter grounding, persistent host/deployment, Skill runtime profile, corresponding tests, acceptance documentation and this changelog.
 
-#### [修改 / Modified] `PhyAgentOS/agent/prompt_context.py` L612-L630, L698-L702
+### 文件变更详情 / File Change Details
+
+#### [修改 / Modified] `docs/forge/GRASPGEN_RGB_ACCEPTANCE.md` L20-L34
 
 ```diff
-+    missing_queries = tuple(sorted(missing_preplan_queries(task))) if graph is None else ()
-+    planning_phase = "discovery" | "materialization_ready" | "plan_execution"
-+    planning_next_step = "Run forge_tool_query ..." or "Submit ... forge_task_materialize_plan"
-...
-+        "planning_phase": planning_phase,
-+        "missing_preplan_queries": list(missing_queries),
-+        "planning_next_step": planning_next_step,
+diff --git a/docs/forge/GRASPGEN_RGB_ACCEPTANCE.md b/docs/forge/GRASPGEN_RGB_ACCEPTANCE.md
+index 4c91605..e447d50 100644
+--- a/docs/forge/GRASPGEN_RGB_ACCEPTANCE.md
++++ b/docs/forge/GRASPGEN_RGB_ACCEPTANCE.md
+@@ -20,5 +20,15 @@ Run three independent tasks with current observations and fresh task identities.
+ ## Ownership and remaining simulation scope
+
+-The grasp provider is selected from the adapter grasp profile independently of route geometry. The supplied graspgen profile names GraspGen and samples 200 real candidates and retains at most ten after existing score/NMS filtering. Sampling and retained counts are configured separately; shortages are reported without padding. Benchmark destination_ref may still originate from task.goal. Existing oracle route/collision geometry and simulation Action admission remain explicitly simulator-owned; they are not sensor evidence and do not generate grasp poses. This stage is simulation execution, not hardware acceptance.
++The grasp provider is selected from the adapter grasp profile independently of route geometry. The supplied graspgen profile names GraspGen and samples 24 real candidates and retains at most ten after existing score/NMS filtering. Sampling and retained counts are configured separately; shortages are reported without padding. Benchmark destination_ref may still originate from task.goal. The acceptance profile uses observed route/collision geometry. Benchmark destinations remain task-specification input, while simulation dynamics and Action monitoring remain Runtime-owned. This stage is simulation execution, not hardware acceptance.
+
+ PAOS remains gpt-5.6-sol/high. Preserve architecture, extension boundaries, developer guidance, Coordinator ownership and AgentLoop recovery. The existing external goal has an unfinished objective and the goal tool cannot edit its text; this document records the user's supplemental acceptance requirements without falsely completing that goal.
++
++## Observed geometry acceptance profile (2026-09-25)
++
++Use `robotwin-blocks-ranking-graspgen` for the requested full-chain run.
++Its explicit profile uses observation-owned route/collision geometry,
++benchmark task destinations and monitored simulation Actions. The old oracle
++profile is retained for diagnostic comparisons and is not a passing result for
++this acceptance. Generate all 24 GraspGen candidates before canonicalization,
++deduplication and filtering retain at most ten. Run the normal Coordinator and
++AgentLoop, retain each invocation and require the final verifier/video evidence.
 ```
 
-#### [新增 / Added] `tests/test_prompt_context.py` L490-L521
+#### [修改 / Modified] `examples/forge-adapters/robotwin20/pyproject.toml` L1-L5
 
-- Regression covers discovery guidance and post-discovery materialization guidance.
-- Validation: 34 passed; Ruff and `git diff --check` passed.
+```diff
+diff --git a/examples/forge-adapters/robotwin20/pyproject.toml b/examples/forge-adapters/robotwin20/pyproject.toml
+index 9e3fa39..614f803 100644
+--- a/examples/forge-adapters/robotwin20/pyproject.toml
++++ b/examples/forge-adapters/robotwin20/pyproject.toml
+@@ -1,5 +1,5 @@
+ [project]
+ name = "paos-robotwin20-adapter"
+-version = "0.7.9"
++version = "0.7.10"
+ description = "PAOS EnvironmentAdapter seam for RoboTwin20 sensor-backed observations."
+ requires-python = ">=3.10"
+```
 
+#### [修改 / Modified] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/grounding.py` L24-L33, L440-L448, L554-L558, L562-L566, L577-L584, L589-L596, L598-L605
+
+```diff
+diff --git a/examples/forge-adapters/robotwin20/src/robotwin20_adapter/grounding.py b/examples/forge-adapters/robotwin20/src/robotwin20_adapter/grounding.py
+index 913b80a..0829b37 100644
+--- a/examples/forge-adapters/robotwin20/src/robotwin20_adapter/grounding.py
++++ b/examples/forge-adapters/robotwin20/src/robotwin20_adapter/grounding.py
+@@ -24,8 +24,10 @@ _DEFERRED_BINDING_AMBIGUITIES = {
+
+ class Grounding:
+-    def __init__(self, client, root, scene_source, *, support_policy=None, collision_policy=None):
++    def __init__(self, client, root, scene_source, *, support_policy=None, collision_policy=None,
++                 goal_source="observation_owned"):
+         self.client, self.root, self.source = client, root, scene_source
+         self.support_policy = support_policy or SupportEstimationPolicy()
+         self.collision_policy = collision_policy
++        self.goal_source = goal_source
+         self.observations = {}
+         self.understandings = {}
+@@ -438,5 +440,9 @@ class Grounding:
+
+     def scene_facts(self, request, *, deadline=None):
+-        value = self.targets[request["destination_ref"]]
++        value = self.targets.get(request["destination_ref"])
++        if value is None:
++            if self.goal_source != "benchmark_task_definition":
++                raise ValueError("destination is not an observation-owned target")
++            value = self._benchmark_goal_target(request, deadline=deadline)
+         if any(value[k] != request[k] for k in IDENTITY_KEYS):
+             raise ValueError("target observation identity mismatch")
+@@ -548,5 +554,5 @@ class Grounding:
+         destination_ref = request.get("destination_ref")
+         if not isinstance(target_entity, str) or not isinstance(destination_ref, str):
+-            raise ValueError("oracle benchmark target request is incomplete")
++            raise ValueError("benchmark target request is incomplete")
+         matches = [
+             (reference, binding)
+@@ -556,5 +562,5 @@ class Grounding:
+         ]
+         if len(matches) != 1:
+-            raise ValueError("oracle benchmark target binding is absent or ambiguous")
++            raise ValueError("benchmark target binding is absent or ambiguous")
+         binding_ref, binding = matches[0]
+         observed_object = binding["objects"][target_entity]
+@@ -571,8 +577,8 @@ class Grounding:
+             or goal_facts.get("geometry_source") != "benchmark_task_definition"
+         ):
+-            raise ValueError("oracle benchmark goal facts are unavailable")
++            raise ValueError("benchmark goal facts are unavailable")
+         goals = goal_facts.get("goals")
+         if not isinstance(goals, list):
+-            raise ValueError("oracle benchmark goals are invalid")
++            raise ValueError("benchmark goals are invalid")
+         goal_matches = [
+             goal
+@@ -583,8 +589,8 @@ class Grounding:
+         ]
+         if len(goal_matches) != 1:
+-            raise ValueError("oracle benchmark destination does not uniquely match binding")
++            raise ValueError("benchmark destination does not uniquely match binding")
+         goal = goal_matches[0]
+         if goal.get("frame_id") != "world" or goal.get("unit") != "m":
+-            raise ValueError("oracle benchmark destination frame or unit is invalid")
++            raise ValueError("benchmark destination frame or unit is invalid")
+         pose = rigid_transform(goal.get("world_T_object_target"))
+         target = deepcopy(observed_object)
+@@ -592,4 +598,8 @@ class Grounding:
+             entity_ref=target_entity,
+             world_T_object_target=pose.reshape(-1).tolist(),
++            world_T_functional_target=(
++                pose @ np.linalg.inv(rigid_transform(observed_object["world_T_object"]))
++                @ rigid_transform(observed_object["world_T_functional_point"])
++            ).reshape(-1).tolist(),
+         )
+         return {
+```
+
+#### [修改 / Modified] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_deployment.py` L174-L178, L191-L194
+
+```diff
+diff --git a/examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_deployment.py b/examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_deployment.py
+index b72ec99..ad406ea 100644
+--- a/examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_deployment.py
++++ b/examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_deployment.py
+@@ -174,4 +174,5 @@ def build_persistent_deployment(*, client, artifact_root: Path, scene_source,
+     )
+     grounding = Grounding(client, artifact_root, scene_source,
++                          goal_source=goal_source,
+                           support_policy=SupportEstimationPolicy(**profile.get("observed_support", {})),
+                           collision_policy=(ObservedCollisionPolicy(**profile["observed_collision"])
+@@ -190,6 +191,4 @@ def build_persistent_deployment(*, client, artifact_root: Path, scene_source,
+     if goal_source not in {"benchmark_task_definition", "observation_owned"}:
+         raise ValueError("goal_source must be benchmark_task_definition or observation_owned")
+-    if simulation_action_mode == RUNTIME_MONITORED_ACTION_MODE and route_geometry_source != "oracle":
+-        raise ValueError("runtime_monitored simulation Actions require oracle route geometry")
+     routes = PreparedRoutes(client, artifact_root)
+     evaluator = readiness_evaluator if readiness_evaluator is not None else RouteReadinessEvaluationAdapter(
+```
+
+#### [修改 / Modified] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_host.py` L228-L231
+
+```diff
+diff --git a/examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_host.py b/examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_host.py
+index 24e4a88..7894af7 100644
+--- a/examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_host.py
++++ b/examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_host.py
+@@ -228,11 +228,4 @@ def build_persistent_host(
+             "simulation_action_mode must be disabled or runtime_monitored"
+         )
+-    if (
+-        simulation_action_mode == RUNTIME_MONITORED_ACTION_MODE
+-        and route_geometry_source != "oracle"
+-    ):
+-        raise PersistentHostConfigurationError(
+-            "runtime_monitored simulation Actions require oracle route geometry"
+-        )
+     goal_source = profile.get("goal_source", "observation_owned")
+     if goal_source not in {"benchmark_task_definition", "observation_owned"}:
+```
+
+#### [修改 / Modified] `examples/forge-adapters/robotwin20/tests/test_grounding.py` L149-L157, L175-L180, L184-L190, L787-L799
+
+```diff
+diff --git a/examples/forge-adapters/robotwin20/tests/test_grounding.py b/examples/forge-adapters/robotwin20/tests/test_grounding.py
+index c47cbdb..365ce5b 100644
+--- a/examples/forge-adapters/robotwin20/tests/test_grounding.py
++++ b/examples/forge-adapters/robotwin20/tests/test_grounding.py
+@@ -149,7 +149,9 @@ def test_oracle_scene_uses_bound_actor_geometry_without_changing_observed_identi
+
+
+-def test_oracle_scene_resolves_runtime_goal_without_target_matrix_transcription(tmp_path):
++@pytest.mark.parametrize("geometry_source", ["oracle", "observed"])
++def test_scene_resolves_runtime_goal_without_target_matrix_transcription(tmp_path, geometry_source):
+     g, request, _ = setup(tmp_path)
+     g.bind(request)
++    g.goal_source = "benchmark_task_definition"
+     destination = "destination://blocks-ranking-rgb/red-slot"
+     calls = []
+@@ -173,5 +175,6 @@ def test_oracle_scene_resolves_runtime_goal_without_target_matrix_transcription(
+
+     g.client.query = query
+-    facts = g.oracle_scene_facts({
++    resolve = g.oracle_scene_facts if geometry_source == "oracle" else g.scene_facts
++    facts = resolve({
+         **request,
+         "intent": {"entity_ref": "entity://seen"},
+@@ -181,5 +184,7 @@ def test_oracle_scene_resolves_runtime_goal_without_target_matrix_transcription(
+     assert facts["objects"][0]["target_ref"] == destination
+     assert facts["objects"][0]["world_T_object_target"] == pose(0.35)
+-    assert facts["geometry_source"] == "oracle_actor"
++    assert facts["geometry_source"] == ("oracle_actor" if geometry_source == "oracle" else "observation")
++    assert facts["objects"][0]["half_extents_m"] == ([0.04] * 3 if geometry_source == "oracle" else [0.02] * 3)
++    assert facts["objects"][0]["world_T_functional_target"] == pose(0.35)
+     assert not g.targets
+     assert calls.count("task_goal_facts") == 1
+@@ -782,2 +787,13 @@ def test_correspondence_and_target_fail_closed(tmp_path, failure):
+     assert GroundingEndpoint(g.target).invoke(args)["status"] == "unavailable"
+     assert not g.targets
++
++
++def test_observed_targets_do_not_fall_back_to_benchmark_goals(tmp_path):
++    g, request, _ = setup(tmp_path)
++    g.bind(request)
++    def query(*args, **kwargs):
++        raise AssertionError("unexpected Runtime request")
++    g.client.query = query
++    with pytest.raises(ValueError, match="not an observation-owned target"):
++        g.scene_facts({**request, "intent": {"entity_ref": "entity://seen"},
++                       "destination_ref": "destination://blocks-ranking-rgb/red-slot"})
+```
+
+#### [修改 / Modified] `examples/forge-adapters/robotwin20/tests/test_persistent_deployment.py` L55-L69
+
+```diff
+diff --git a/examples/forge-adapters/robotwin20/tests/test_persistent_deployment.py b/examples/forge-adapters/robotwin20/tests/test_persistent_deployment.py
+index 56079f1..79c3fb4 100644
+--- a/examples/forge-adapters/robotwin20/tests/test_persistent_deployment.py
++++ b/examples/forge-adapters/robotwin20/tests/test_persistent_deployment.py
+@@ -55,11 +55,15 @@ def test_deployment_wires_shared_cache_and_requires_persistent_stop_policy(tmp_p
+         {"contact_dynamics", "stop_control"}
+     )
+-    with pytest.raises(ValueError, match="require oracle route geometry"):
+-        build_persistent_deployment(
+-            client=client, artifact_root=tmp_path, scene_source=lambda request: None,
+-            materializer_command=("python", "materializer.py"), materializer_arguments=arguments,
+-            arm_profile_digest="a" * 64, route_geometry_source="observed",
+-            simulation_action_mode="runtime_monitored", task_name="blocks_ranking_rgb",
+-        )
++    observed = build_persistent_deployment(
++        client=client, artifact_root=tmp_path, scene_source=lambda request: None,
++        materializer_command=("python", "materializer.py"), materializer_arguments=arguments,
++        arm_profile_digest="a" * 64, route_geometry_source="observed",
++        simulation_action_mode="runtime_monitored", task_name="blocks_ranking_rgb",
++        goal_source="benchmark_task_definition",
++    )
++    assert observed.preparation_provider.route_builder.scene_source.__name__ == "scene_facts"
++    assert observed.grounding.goal_source == "benchmark_task_definition"
++    assert isinstance(observed.preparation_provider.approval_issuer, PersistentSimulationActionApprover)
++    assert observed.preparation_provider.selector.deferred_checks == monitored.preparation_provider.selector.deferred_checks
+     with pytest.raises(ValueError, match="observed or oracle"):
+         build_persistent_deployment(
+```
+
+#### [修改 / Modified] `examples/forge-adapters/robotwin20/tests/test_persistent_host.py` L219-L228, L286-L290
+
+```diff
+diff --git a/examples/forge-adapters/robotwin20/tests/test_persistent_host.py b/examples/forge-adapters/robotwin20/tests/test_persistent_host.py
+index 03ae28d..020200b 100644
+--- a/examples/forge-adapters/robotwin20/tests/test_persistent_host.py
++++ b/examples/forge-adapters/robotwin20/tests/test_persistent_host.py
+@@ -219,19 +219,10 @@ def test_host_rejects_unknown_route_geometry_source(tmp_path):
+
+
+-def test_host_rejects_runtime_monitored_observed_profile_before_worker_start(tmp_path):
+-    profile, environ = _profile(tmp_path)
+-    profile["simulation_action_mode"] = "runtime_monitored"
+-
+-    with pytest.raises(
+-        PersistentHostConfigurationError,
+-        match="require oracle route geometry",
+-    ):
+-        build_persistent_host(profile, environ=environ)
+-
+-
+ @pytest.mark.parametrize("route_source", ["observed", "oracle"])
+-def test_host_composes_tools_around_one_persistent_worker_client(tmp_path, monkeypatch, route_source):
++@pytest.mark.parametrize("action_mode", ["disabled", "runtime_monitored"])
++def test_host_composes_tools_around_one_persistent_worker_client(tmp_path, monkeypatch, route_source, action_mode):
+     profile, environ = _profile(tmp_path)
+     profile["route_geometry_source"] = route_source
++    profile["simulation_action_mode"] = action_mode
+     closed = []
+
+@@ -295,4 +286,5 @@ def test_host_composes_tools_around_one_persistent_worker_client(tmp_path, monke
+     assert captured["preparation_timeout_s"] == 4.0
+     assert captured["route_geometry_source"] == route_source
++    assert captured["simulation_action_mode"] == action_mode
+     assert grasp_profiles == [{"provider_id": "graspgen", "max_candidates": 10}]
+     assert captured["goal_source"] == "observation_owned"
+```
+
+#### [修改 / Modified] `examples/forge-skills/pick-place-workflow/SKILL.md` L50-L62
+
+```diff
+diff --git a/examples/forge-skills/pick-place-workflow/SKILL.md b/examples/forge-skills/pick-place-workflow/SKILL.md
+index 9c7440e..4f2eed0 100644
+--- a/examples/forge-skills/pick-place-workflow/SKILL.md
++++ b/examples/forge-skills/pick-place-workflow/SKILL.md
+@@ -50,4 +50,13 @@ evidence, task success, readiness, or motion approval. The Runtime must not fall
+ back between oracle and observed profiles.
+
++The explicitly named `robotwin-blocks-ranking-graspgen` profile combines
++observation-owned object geometry, support and collision occupancy with only
++benchmark task descriptions and destinations. GraspGen generates 24 real samples
++before canonicalization and filtering retains at most ten for preparation.
++Use `task.goal` destinations directly; do not add `manipulation.target` nodes.
++The profile retains complete-route readiness and monitored simulation Action
++approval, contact/stop checks, reconciliation and cumulative video. It does not
++fall back to oracle geometry or template grasps.
++
+ The graph represents your chosen obligations and dependencies. One PlanNode is one
+ settlement unit completed by one selected Tool. A composite intention such as
+```
+
+#### [修改 / Modified] `examples/forge-skills/pick-place-workflow/pyproject.toml` L1-L5
+
+```diff
+diff --git a/examples/forge-skills/pick-place-workflow/pyproject.toml b/examples/forge-skills/pick-place-workflow/pyproject.toml
+index 7048766..c807e18 100644
+--- a/examples/forge-skills/pick-place-workflow/pyproject.toml
++++ b/examples/forge-skills/pick-place-workflow/pyproject.toml
+@@ -1,5 +1,5 @@
+ [project]
+ name = "paos-pick-place-workflow"
+-version = "2.7.6"
++version = "2.7.7"
+ description = "Provider-neutral Forge capability contracts and no-motion conformance fixtures."
+ requires-python = ">=3.11"
+```
+
+#### [修改 / Modified] `examples/forge-skills/pick-place-workflow/skill.yaml` L1-L5, L23-L67, L191-L199
+
+```diff
+diff --git a/examples/forge-skills/pick-place-workflow/skill.yaml b/examples/forge-skills/pick-place-workflow/skill.yaml
+index 620e6ba..e681d73 100644
+--- a/examples/forge-skills/pick-place-workflow/skill.yaml
++++ b/examples/forge-skills/pick-place-workflow/skill.yaml
+@@ -1,5 +1,5 @@
+ manifest_version: 2
+ name: pick-place-workflow
+-version: "2.7.6"
++version: "2.7.7"
+ description: Provider-neutral perception, preparation, acquisition, placement, and long-horizon workflow contracts.
+ skill_document: SKILL.md
+@@ -23,4 +23,45 @@ profiles:
+     required_environment: []
+     environment: {}
++  robotwin-blocks-ranking-graspgen:
++    dataflow: profiles/robotwin-persistent/dataflow.yaml
++    required_binaries:
++      - robotwin20_persistent_host
++    required_assets: []
++    required_environment:
++      - ROBOTWIN20_PAOS_PYTHON
++      - ROBOTWIN20_ARTIFACT_ROOT
++      - ROBOTWIN20_RUNTIME_ROOT
++      - ROBOTWIN20_RUNTIME_PROFILE
++      - ROBOTWIN20_WORKER_PYTHON
++      - ROBOTWIN20_MATERIALIZER_PYTHON
++      - ROBOTWIN20_MODEL_API_BASE
++      - ROBOTWIN20_MODEL_API_KEY
++      - ROBOTWIN20_MODEL
++      - ROBOTWIN20_REASONING_EFFORT
++      - ROBOTWIN20_ROUTE_GEOMETRY_SOURCE
++      - ROBOTWIN20_SIMULATION_ACTION_MODE
++      - ROBOTWIN20_GOAL_SOURCE
++      - LOCATEANYTHING_PYTHON
++      - LOCATEANYTHING_CACHE_DIR
++      - LOCATEANYTHING_MODULES_CACHE_DIR
++      - SAM2_PYTHON
++      - SAM2_REPO_ROOT
++      - SAM2_CHECKPOINT
++      - GRASPGEN_PYTHON
++      - GRASPGEN_CHECKPOINT
++      - GRASPGEN_CONFIG
++      - GRASPGEN_SOURCE_ROOT
++      - ROBOTWIN20_CONTROLLER_QUALIFICATION
++      - ROBOTWIN20_CONTROLLER_QUALIFICATION_PLAN
++      - ROBOTWIN20_CONTROLLER_QUALIFICATION_EVIDENCE
++      - ROBOTWIN20_CONTROLLER_QUALIFICATION_VALIDATION
++      - ROBOTWIN20_LEFT_MOTION_CAPABILITY
++      - ROBOTWIN20_LEFT_MOTION_CAPABILITY_VALIDATION
++      - ROBOTWIN20_RIGHT_MOTION_CAPABILITY
++      - ROBOTWIN20_RIGHT_MOTION_CAPABILITY_VALIDATION
++    environment:
++      ROBOTWIN20_ROUTE_GEOMETRY_SOURCE: observed
++      ROBOTWIN20_SIMULATION_ACTION_MODE: runtime_monitored
++      ROBOTWIN20_GOAL_SOURCE: benchmark_task_definition
+   robotwin-blocks-ranking-observed:
+     dataflow: profiles/robotwin-persistent/dataflow.yaml
+@@ -150,9 +191,9 @@ artifacts:
+   nodes:
+     robotwin20_persistent_host:
+-      artifact_id: robotwin20_persistent_host-0.7.9-linux-x86_64
+-      version: "0.7.9"
++      artifact_id: robotwin20_persistent_host-0.7.10-linux-x86_64
++      version: "0.7.10"
+       platform: linux
+       arch: x86_64
+       artifact_type: executable_tar_gz
+       entrypoint: robotwin20_persistent_host
+-      sha256: 02a6786f93605302a6a22d5d49ca6cab2e247d6eaab767f06b9243afb9332a8a
++      sha256: 369d1aa9f50bbace48bafec363907c5ccedfe557d93a369a8f062e8f23045fa8
+```
+
+#### [修改 / Modified] `examples/forge-skills/pick-place-workflow/tests/test_runtime_install_discovery.py` L70-L78
+
+```diff
+diff --git a/examples/forge-skills/pick-place-workflow/tests/test_runtime_install_discovery.py b/examples/forge-skills/pick-place-workflow/tests/test_runtime_install_discovery.py
+index 4ec1427..11f5b07 100644
+--- a/examples/forge-skills/pick-place-workflow/tests/test_runtime_install_discovery.py
++++ b/examples/forge-skills/pick-place-workflow/tests/test_runtime_install_discovery.py
+@@ -70,4 +70,9 @@ def test_manifest_v2_bundle_installs_and_catalog_reloads_required_tools(tmp_path
+         "ROBOTWIN20_GOAL_SOURCE": "benchmark_task_definition",
+     }
++    assert manifest.profiles["robotwin-blocks-ranking-graspgen"].environment == {
++        "ROBOTWIN20_ROUTE_GEOMETRY_SOURCE": "observed",
++        "ROBOTWIN20_SIMULATION_ACTION_MODE": "runtime_monitored",
++        "ROBOTWIN20_GOAL_SOURCE": "benchmark_task_definition",
++    }
+     assert (tmp_path / "skills" / "pick-place-workflow" / "SKILL.md").is_file()
+
+```
+
+### 验证与架构复核 / Validation and Architecture Review
+- 112 tests passed: Grounding, persistent host/deployment/preparation, Action approval, candidate admission and Skill install/discovery. The first collection attempts lacked package/runtime PYTHONPATH; rerunning with the declared source and runtime roots passed. Ruff and git diff --check passed.
+- 验证命令 / Command: PYTHONPATH=examples/forge-adapters/robotwin20/src:examples/forge-adapters/robotwin20/runtime:examples/forge-skills/pick-place-workflow/src PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /home/yanxu/miniconda3/envs/paos/bin/python -m pytest -q -p pytest_asyncio.plugin examples/forge-adapters/robotwin20/tests/test_grounding.py examples/forge-adapters/robotwin20/tests/test_persistent_deployment.py examples/forge-adapters/robotwin20/tests/test_persistent_host.py examples/forge-adapters/robotwin20/tests/test_persistent_action_approval.py examples/forge-adapters/robotwin20/tests/test_persistent_preparation.py examples/forge-adapters/robotwin20/tests/test_arm_candidates.py examples/forge-skills/pick-place-workflow/tests/test_runtime_install_discovery.py.
+- [eval] [fix] 目标事实独立于感知几何；新 profile 显式组合已有 provider。原 observed 和 oracle profile 不变。完整路线、碰撞、assignment、Action approval 与运行中接触/停止检查仍负责准入；无新增哈希/门禁/任务调度器。(local)
+- [Eval] [Fix] Goal facts remain separate from observed geometry; the new profile explicitly composes existing providers. Existing observed and oracle profiles remain unchanged. Complete-route, collision, assignment, Action approval and runtime contact/stop checks still own admission; no new hashes, gates or task scheduler. (local)
+- Runtime installed: Node 0.7.10, Skill 2.7.7, profile robotwin-blocks-ranking-graspgen.
+- 验收运行中 / Acceptance running: cli:rgb-e2e-observed-20260925T134706; artifact root /home/yanxu/robotwin20-runtime/artifacts/paos-rgb-e2e-observed-20260925T134706. Tests are not a physical success claim.
+## v11.7.6 (2026-09-25 05:15) - codex
+
+### 预期修改 / Planned Changes [计划]
+- [agent] [fix] 在 `waiting_for_user` 恢复上下文重新暴露已有 `forge_task_begin_revision` Coordinator 入口，使错误的语义 `produced_evidence` 计划可通过追加 revision 修复；不改变 Gateway、Action 或运动授权。
+- [Agent] [Fix] Re-expose the existing `forge_task_begin_revision` Coordinator entry in the `waiting_for_user` recovery context so a plan with semantic `produced_evidence` can be repaired through an appended revision, without changing Gateway, Action, or motion authorization.
+- [eval] [test] 增加 prompt visibility 回归，验证 waiting-for-user 任务可见追加修订工具，且普通工具集合保持不变。
+- [Eval] [Test] Add prompt-visibility regression coverage proving waiting-for-user tasks see the append-revision tool while the ordinary tool set remains unchanged.
+
+### 实际修改 / Implemented Changes [完成]
+- [agent] [fix] `PhyAgentOS/agent/prompt_context.py:L321-L327` 在 `waiting_for_user` 可见工具集合中加入 Coordinator-owned `forge_task_begin_revision`；仍隐藏 Gateway Query/Action，避免恢复阶段越权执行。
+- [Agent] [Fix] `PhyAgentOS/agent/prompt_context.py:L321-L327` adds Coordinator-owned `forge_task_begin_revision` to the `waiting_for_user` visible tools while keeping Gateway Query/Action hidden during recovery.
+- [eval] [test] `tests/test_prompt_context.py:L407-L412` 验证 waiting-for-user 任务可见追加修订工具；测试 `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/test_prompt_context.py` 通过 34 项，Ruff 与 `git diff --check` 通过。
+- [Eval] [Test] `tests/test_prompt_context.py:L407-L412` verifies append-revision visibility for waiting-for-user tasks; `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/test_prompt_context.py` passed 34 tests, with Ruff and `git diff --check` passing.
+
+### Git 提交 / Git Commit
+- Commit: `b220bc5`
+- Branch: `feature/planning-loop`
+## v11.7.5 (2026-09-25 02:30) - codex
+
+### 预期修改 / Planned Changes [计划]
+- [agent] [fix] 在未物化 AgentTask 的模型上下文中明确投影当前 discovery 阶段、缺失前置 Query 和下一步 `forge_tool_query` 路径，避免模型把尚未满足前置条件的 PlanGraph 工具误判为未注册并取消任务。
+- [Agent] [Fix] Project the active discovery phase, missing prerequisite Queries, and the next `forge_tool_query` path into the model context for unmaterialized AgentTasks, preventing the model from mistaking gated PlanGraph tools for unregistered tools and cancelling the task.
+- [eval] [test] 增加 prompt projection 回归，验证未完成 discovery 时保留 Query guidance，完成 discovery 后切换为 PlanGraph guidance。
+- [Eval] [Test] Add prompt projection regressions proving Query guidance remains visible before discovery completion and switches to PlanGraph guidance after discovery completion.
+
+### 实际修改 / Implemented Changes [完成]
+- [agent] [fix] `PhyAgentOS/agent/prompt_context.py:L612-L630,L698-L702` 增加只读 `planning_phase`、`missing_preplan_queries` 和 `planning_next_step` 投影；在前置 Query 未完成时明确要求使用 `forge_tool_query`，并说明 PlanGraph 工具会在 discovery 完成后出现。
+- [Agent] [Fix] `PhyAgentOS/agent/prompt_context.py:L612-L630,L698-L702` adds read-only `planning_phase`, `missing_preplan_queries`, and `planning_next_step` projections; before prerequisite Queries complete it explicitly directs the model to use `forge_tool_query` and explains that PlanGraph tools appear after discovery.
+- [eval] [test] `tests/test_prompt_context.py:L490-L521` 覆盖 discovery 阶段和物化就绪阶段的上下文切换；`tests/test_prompt_context.py`: 34 passed，Ruff 和 `git diff --check` 通过。
+- [Eval] [Test] `tests/test_prompt_context.py:L490-L521` covers discovery and materialization-ready context transitions; 34 tests passed, with Ruff and `git diff --check` passing.
+- [Eval] [Test] `tests/test_prompt_context.py:L490-L521` covers discovery and materialization-ready context transitions; 34 tests passed, with Ruff and `git diff --check` passing.
 ## v11.7.4 (2026-09-25 02:09) - codex
 
-- [agent] [fix] 当 planning Query 失败且 replan budget 耗尽时，将任务落到 `failed` 终态并清除 deadline，避免失败图无 ready 节点却持续占用唯一任务槽；有剩余预算时保持 `awaiting_replan`。(local)
-- [Agent] [Fix] When a planning Query fails after the replan budget is exhausted, settle the task as terminal `failed` and clear its deadline so a failed graph cannot occupy the unique task slot; preserve `awaiting_replan` while budget remains. (local)
+### 实际修改 / Implemented Changes [完成]
+- [agent] [fix] 修复规划 Query 失败且 replan budget 已耗尽时 Coordinator 仍保留 `executing` 的生命周期漏洞；改为清除 deadline 并落到 `failed` 终态，释放唯一活动任务槽，不改变仍有预算时进入 `awaiting_replan` 的行为。
+- [Agent] [Fix] Fix the lifecycle gap where a failed planning Query leaves the Coordinator in `executing` after the replan budget is exhausted; clear the deadline and settle as terminal `failed`, releasing the single active-task slot while preserving `awaiting_replan` when budget remains.
+- [eval] [test] 增加预算耗尽回归测试，验证失败 settlement、终态记录及后续新任务可创建。
+- [Eval] [Test] Add a replan-budget exhaustion regression covering the failed settlement, terminal task record, and successful creation of a subsequent task.
 
-#### [修改 / Modified] `PhyAgentOS/forge/task.py` L3087-L3128
+#### 文件变更详情 / File Change Details
+
+##### [修改 / Modified] `PhyAgentOS/forge/task.py` L3087-L3128
 
 ```diff
 -            or _replan_count(task) >= self.max_replans
@@ -68,7 +516,7 @@
 +            self._schedule_experience(result)
 ```
 
-#### [新增 / Added] `tests/test_planning_task_integration.py` L333-L383
+##### [新增 / Added] `tests/test_planning_task_integration.py` L333-L383
 
 ```python
 def test_terminal_planning_query_failure_exhausting_replans_fails_task_and_releases_slot(...):
@@ -78,467 +526,23 @@ def test_terminal_planning_query_failure_exhausting_replans_fails_task_and_relea
     assert coordinator.create_task(...).status == AgentTaskStatus.EXECUTING
 ```
 
-- Validation: `tests/test_planning_task_integration.py`: 28 passed; Ruff and `git diff --check` passed.
-- Commit: `f70123b` on `feature/planning-loop`.
+- 验证 / Validation: `tests/test_planning_task_integration.py`: 28 passed; `ruff check` and `git diff --check` passed.
+- 复核 / Review: Coordinator lifecycle ownership, no Action/motion admission changes, within-budget recovery behavior retained.
 
+### Git 提交 / Git Commit
+- Commit: `f70123b`
+- Branch: `feature/planning-loop`
 ## v11.7.3 (2026-09-25 02:09) - codex
 
-- [agent] [tune] 将 RGB 长任务的 replan 窗口从 120 秒增至 600 秒；真实恢复请求耗时 155 秒，原 Coordinator 截止时间先于恢复计划提交而过期。只调整恢复等待时间，不变更执行策略。(local)
-- [Agent] [Tune] Increase the RGB long-task replan window from 120 to 600 seconds; a measured recovery request took 155 seconds and the Coordinator deadline expired before plan submission. This changes only the recovery wait duration. (local)
+### 实际修改 / Implemented Changes [完成]
+- [agent] [tune] 将当前 RGB 长任务配置的 `replanTimeoutS` 从 120 秒调至 600 秒；实际恢复请求耗时 155 秒，原窗口在 Coordinator 可提交 revision 前过期。仅调整恢复等待时间，不改变规划、候选、准入或运动策略。
+- [Agent] [Tune] Increase `replanTimeoutS` in the current RGB long-task config from 120 to 600 seconds; a measured recovery request took 155 seconds and the existing window expired before the Coordinator could accept a revision. Change only the recovery wait duration, with no changes to planning, candidates, admission, or motion policy.
 
-#### [修改 / Modified] `/home/yanxu/.PhyAgentOS/config-rgb-no-evolution-long.json` L29
+#### 配置变更 / Configuration Change
+
+- [修改 / Modified] `/home/yanxu/.PhyAgentOS/config-rgb-no-evolution-long.json:L29`：`replanTimeoutS` 从 `120.0` 调整至 `600.0`。JSON 解析通过。
 
 ```diff
 -      "replanTimeoutS": 120.0,
 +      "replanTimeoutS": 600.0,
 ```
-
-- Validation: JSON parsing passed; configured value reads back as `600.0`.
-
-## v11.7.2 (2026-09-25 01:36) - codex
-
-- [agent] [fix] Replan now inherits discovery evidence refs from the prior revision when none are supplied, so still-current scene Query records remain available to NodeContext and consumer projections; stale evidence remains rejected by existing scene-freshness checks.
-- [Agent] [Fix] Replan now inherits discovery evidence refs from the prior revision when none are supplied, so still-current scene Query records remain available to NodeContext and consumer projections; stale evidence remains rejected by existing scene-freshness checks.
-
-#### [修改 / Modified] `PhyAgentOS/forge/task.py` L1555-L1608
-
-```diff
--discovery_evidence_refs: tuple[str, ...] = ()
-+discovery_evidence_refs: tuple[str, ...] | None = None
-...
-+discovery_evidence_refs=tuple(
-+    current.active_revision.discovery_evidence_refs
-+    if discovery_evidence_refs is None else discovery_evidence_refs
-+)
-```
-
-#### [修改 / Modified] `tests/test_planning_task_integration.py` L371-L429
-
-- Regression exercises `ForgeTaskBeginRevisionTool` and confirms prior-revision Query evidence is visible in the new node context.
-- Validation: planning task integration and planning context: 35 passed; Ruff passed.
-
-## v11.7.1 (2026-09-25 01:14) - codex
-
-- [agent] [fix] `forge_task_get` now returns only the active revision's successful `task.goal` record/evidence identity and semantic goals, allowing Coordinator-approved entity/destination binding without exposing full execution records.
-- [Agent] [Fix] `forge_task_get` now returns only the active revision's successful `task.goal` record/evidence identity and semantic goals, allowing Coordinator-approved entity/destination binding without exposing full execution records.
-
-#### [修改 / Modified] `PhyAgentOS/agent/prompt_context.py` L442-L499
-
-```diff
-    projected_data["task_goals"] = [{
-        "record_id": record.get("record_id"),
-        "evidence_refs": record.get("evidence_refs", []),
-        "goals": _reference_projection(goals),
-    }]
-```
-
-- Validation: `tests/test_prompt_context.py`: 33 passed; Ruff passed.
-
-## v11.7.0 (2026-09-25 01:05) - codex
-
-- [agent] [fix] Coordinator 已持久化完整 `task.goal.data.goals`，但 AgentLoop 语义投影遗漏 `goals`，导致模型看不到实体/目标配对并错误请求用户澄清。将 `goals` 加入既有语义投影，并验证 benchmark `destination_ref` 与目标位姿能到达规划上下文。(local)
-- [Agent] [Fix] The AgentLoop semantic projection omitted `goals` even though the Coordinator persisted them, hiding entity/destination bindings and prompting unnecessary clarification. Include `goals` in the existing semantic projection and verify benchmark `destination_ref` and target pose reach planning context. (local)
-
-### 文件变更详情 / File Change Details
-
-#### [修改 / Modified] `PhyAgentOS/agent/prompt_context.py` L171-L175
-
-```diff
- _SEMANTIC_KEYS = {
-     "entities",
-+    "goals",
-     "relations",
-```
-
-#### [新增 / Added] `tests/test_prompt_context.py` L952-L995
-
-```python
-def test_task_projection_preserves_benchmark_goal_destination_bindings():
-    # A successful task.goal record retains its entity/destination binding.
-    ...
-```
-
-- Validation: `tests/test_prompt_context.py`: 32 passed; Ruff passed.
-
-## v11.6.11 (2026-09-25 01:00) - codex
-
-- [agent] [fix] [完成] GraspGen projection 节点把 `target_execution_entity_ref` 留在语义绑定中，但编译器只识别 `execution_entity_ref`，导致 Coordinator 无法补齐唯一观察 `entity_ref`。统一读取两种已存在的执行身份字段，仍只接受当前 scene.bind 的唯一对应关系；补充 projection 绑定回归测试。(local)
-- [Agent] [Fix] [Completed] GraspGen projection nodes retained `target_execution_entity_ref`, while the compiler recognized only `execution_entity_ref`, so the Coordinator could not fill the unique observed `entity_ref`. Read both existing execution identity fields and still require a unique current scene.bind correspondence; add a projection-binding regression test. (local)
-
-### 验证 / Validation
-
-- Plan proposal bindings and planning context: 17 passed; Ruff passed. Existing unique scene identity regression now uses `target_execution_entity_ref`.
-- 第十一轮实际错误为 projection 缺失 observed entity；任务未调用 Gateway。 / Round eleven stopped before Gateway because the projection lacked an observed entity binding.
-
-### 文件变更详情 / File changes
-
-#### [修改 / Modified] `PhyAgentOS/agent/plan_proposal.py` L313-L318, L353-L358
-
-```diff
-diff --git a/PhyAgentOS/agent/plan_proposal.py b/PhyAgentOS/agent/plan_proposal.py
-index 1e8f4bf..945e5fb 100644
---- a/PhyAgentOS/agent/plan_proposal.py
-+++ b/PhyAgentOS/agent/plan_proposal.py
-@@ -313,4 +313,6 @@ def _complete_persisted_runtime_bindings(
-     for node in nodes:
-         execution = node.input_bindings.get("execution_entity_ref")
-+        if not isinstance(execution, str):
-+            execution = node.input_bindings.get("target_execution_entity_ref")
-         destination = node.input_bindings.get("destination_ref")
-         if not isinstance(execution, str) and isinstance(destination, str):
-@@ -351,4 +353,6 @@ def _complete_persisted_runtime_bindings(
-             entity = bindings.get("entity_ref")
-             execution_entity = bindings.get("execution_entity_ref")
-+            if not isinstance(execution_entity, str):
-+                execution_entity = bindings.get("target_execution_entity_ref")
-             destination = bindings.get("destination_ref")
-             if not isinstance(execution_entity, str) and isinstance(destination, str):
-```
-
-#### [修改 / Modified] `tests/test_plan_proposal_bindings.py` L118-L122
-
-```diff
-diff --git a/tests/test_plan_proposal_bindings.py b/tests/test_plan_proposal_bindings.py
-index 95cca2b..a29b999 100644
---- a/tests/test_plan_proposal_bindings.py
-+++ b/tests/test_plan_proposal_bindings.py
-@@ -118,5 +118,5 @@ def _nodes(*, allowed_arms=None):
-     )
-     bindings = {
--        "execution_entity_ref": "entity://block-red-1",
-+        "target_execution_entity_ref": "entity://block-red-1",
-         "coordination_mode": "alternative_arm",
-     }
-```
-
-### Git 提交 / Git commit
-
-- Commit recorded after commit; branch: `feature/planning-loop`.
-
-## v11.6.10 (2026-09-25 00:00) - codex
-
-- [agent] [fix] [完成] `manipulation.prepare` 节点同时携带嵌套 intent coordination_mode 与 capability 推导的扁平 coordination_mode，导致规划选择反复被拒绝。计划编译器保留显式 intent 语义并跳过冲突的自动补全；补充跨语义来源回归测试。(local)
-- [Agent] [Fix] [Completed] A preparation node carried nested intent coordination_mode together with a capability-derived flat coordination_mode, causing repeated planning-selection rejection. Preserve explicit nested intent semantics and skip conflicting derived completion; add a regression test. (local)
-
-### 验证 / Validation
-
-- `tests/test_plan_proposal_bindings.py tests/test_planning_context.py`: 17 passed; Ruff passed.
-- Explicit nested `intent.coordination_mode=single_arm` no longer conflicts with derived flat topology mode; omitted intent mode still receives capability-derived mode.
-
-### 文件变更详情 / File changes
-
-#### [修改 / Modified] `PhyAgentOS/agent/plan_proposal.py` L395-L411
-
-```diff
-diff --git a/PhyAgentOS/agent/plan_proposal.py b/PhyAgentOS/agent/plan_proposal.py
-index bc0c3dc..1e8f4bf 100644
---- a/PhyAgentOS/agent/plan_proposal.py
-+++ b/PhyAgentOS/agent/plan_proposal.py
-@@ -395,5 +395,17 @@ def _complete_persisted_runtime_bindings(
-                     available_arms = capability_arm_ids.get(capability_ref, ())
-                     topology = capability_topologies.get(capability_ref)
--                    if "coordination_mode" not in bindings and topology is not None:
-+                    # An explicit nested intent is the model's semantic choice.
-+                    # Do not add a derived flat field that would conflict during
-+                    # dispatch normalization; the capability topology only fills
-+                    # an omitted coordination mode.
-+                    nested_intent = bindings.get("intent")
-+                    explicit_nested_mode = (
-+                        isinstance(nested_intent, Mapping)
-+                        and isinstance(nested_intent.get("coordination_mode"), str)
-+                    )
-+                    if explicit_nested_mode and "coordination_mode" in bindings:
-+                        if bindings["coordination_mode"] != nested_intent["coordination_mode"]:
-+                            bindings.pop("coordination_mode")
-+                    if "coordination_mode" not in bindings and not explicit_nested_mode and topology is not None:
-                         bindings["coordination_mode"] = {
-                             "single_arm": CoordinationMode.SINGLE_ARM.value,
-```
-
-#### [修改 / Modified] `tests/test_plan_proposal_bindings.py` 
-
-```diff
-```
-
-### Git 提交 / Git commit
-
-- Implementation commit recorded after commit; branch: `feature/planning-loop`.
-
-## v11.6.9 (2026-09-24 19:56) - codex
-
-- [model] [fix] [完成] 本轮真实十候选的 20 条臂路线全部 IK_FAIL；max_candidates 同时控制采样数和保留数，导致 NMS 前仅有十个样本。新增独立 sample_count 配置（默认兼容旧行为），GraspGen profile 采样 200、NMS 后保留最多 10；不合成候选、不改变位姿、不放宽路线检查。该改动用于验证候选池不足的假设，不将 IK 失败宣称为已修复。(local)
-- [Model] [Fix] [Completed] All twenty arm routes from ten genuine candidates failed IK. Separate sampling count from retained count with backward-compatible defaults; sample 200 genuine GraspGen candidates and retain at most ten after existing NMS. No pose synthesis or admission relaxation; candidate-pool insufficiency remains a hypothesis until measured. (local)
-- Files: grasp_proposal.py, grasp_profile.py, profiles/robotwin20/graspgen.yaml, adapter tests, release versions and Skill node lock, acceptance documentation.
-
-### 验证 / Validation
-
-- Grasp proposal/profile/persistent host: 22 passed; Ruff passed. Installed Skill 2.7.3 and Node 0.7.6; runtime started. Live acceptance pending.
-- 上轮 / Previous: `task_f920d81e0fcf4f04`, ten candidates, 20 rejected arm routes, IK_FAIL at approach/contact; no Action. Cancelled through Coordinator before normal Runtime stop. Evidence: `/home/yanxu/robotwin20-runtime/artifacts/paos-graspgen-agent-20260924T191725/preparation-rejections/0d0d86b475024f0296d5b37500ec8f3d.json`.
-
-### 文件变更详情 / File changes
-
-#### [修改 / Modified] `docs/forge/GRASPGEN_RGB_ACCEPTANCE.md` L20-L24
-
-```diff
-diff --git a/docs/forge/GRASPGEN_RGB_ACCEPTANCE.md b/docs/forge/GRASPGEN_RGB_ACCEPTANCE.md
-index e63bf2a..4c91605 100644
---- a/docs/forge/GRASPGEN_RGB_ACCEPTANCE.md
-+++ b/docs/forge/GRASPGEN_RGB_ACCEPTANCE.md
-@@ -20,5 +20,5 @@ Run three independent tasks with current observations and fresh task identities.
- ## Ownership and remaining simulation scope
-
--The grasp provider is selected from the adapter grasp profile independently of route geometry. The supplied graspgen profile names GraspGen and retains at most ten candidates. Benchmark destination_ref may still originate from task.goal. Existing oracle route/collision geometry and simulation Action admission remain explicitly simulator-owned; they are not sensor evidence and do not generate grasp poses. This stage is simulation execution, not hardware acceptance.
-+The grasp provider is selected from the adapter grasp profile independently of route geometry. The supplied graspgen profile names GraspGen and samples 200 real candidates and retains at most ten after existing score/NMS filtering. Sampling and retained counts are configured separately; shortages are reported without padding. Benchmark destination_ref may still originate from task.goal. Existing oracle route/collision geometry and simulation Action admission remain explicitly simulator-owned; they are not sensor evidence and do not generate grasp poses. This stage is simulation execution, not hardware acceptance.
-
- PAOS remains gpt-5.6-sol/high. Preserve architecture, extension boundaries, developer guidance, Coordinator ownership and AgentLoop recovery. The existing external goal has an unfinished objective and the goal tool cannot edit its text; this document records the user's supplemental acceptance requirements without falsely completing that goal.
-```
-
-#### [修改 / Modified] `examples/forge-adapters/robotwin20/profiles/robotwin20/graspgen.yaml` L3-L7
-
-```diff
-diff --git a/examples/forge-adapters/robotwin20/profiles/robotwin20/graspgen.yaml b/examples/forge-adapters/robotwin20/profiles/robotwin20/graspgen.yaml
-index 7f87f33..2bef046 100644
---- a/examples/forge-adapters/robotwin20/profiles/robotwin20/graspgen.yaml
-+++ b/examples/forge-adapters/robotwin20/profiles/robotwin20/graspgen.yaml
-@@ -3,4 +3,5 @@ artifact_root: ${ROBOTWIN20_ARTIFACT_ROOT}
- provider_id: graspgen
- max_candidates: 10
-+sample_count: 200
- score_threshold: 0.02
- apply_nms: true
-```
-
-#### [修改 / Modified] `examples/forge-adapters/robotwin20/pyproject.toml` L1-L5
-
-```diff
-diff --git a/examples/forge-adapters/robotwin20/pyproject.toml b/examples/forge-adapters/robotwin20/pyproject.toml
-index 7fe1e3e..9bcff31 100644
---- a/examples/forge-adapters/robotwin20/pyproject.toml
-+++ b/examples/forge-adapters/robotwin20/pyproject.toml
-@@ -1,5 +1,5 @@
- [project]
- name = "paos-robotwin20-adapter"
--version = "0.7.5"
-+version = "0.7.6"
- description = "PAOS EnvironmentAdapter seam for RoboTwin20 sensor-backed observations."
- requires-python = ">=3.10"
-```
-
-#### [修改 / Modified] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/grasp_profile.py` L76-L80
-
-```diff
-diff --git a/examples/forge-adapters/robotwin20/src/robotwin20_adapter/grasp_profile.py b/examples/forge-adapters/robotwin20/src/robotwin20_adapter/grasp_profile.py
-index 14d0839..6a6230e 100644
---- a/examples/forge-adapters/robotwin20/src/robotwin20_adapter/grasp_profile.py
-+++ b/examples/forge-adapters/robotwin20/src/robotwin20_adapter/grasp_profile.py
-@@ -76,4 +76,5 @@ def build_grasp_provider(
-             artifact_store=FilesystemPointCloudArtifactResolver(artifact_root),
-             max_candidates=profile["max_candidates"],
-+            sample_count=profile.get("sample_count"),
-             score_threshold=profile["score_threshold"],
-             apply_nms=profile["apply_nms"],
-```
-
-#### [修改 / Modified] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/grasp_proposal.py` L79-L83, L97-L104, L123-L127, L245-L249
-
-```diff
-diff --git a/examples/forge-adapters/robotwin20/src/robotwin20_adapter/grasp_proposal.py b/examples/forge-adapters/robotwin20/src/robotwin20_adapter/grasp_proposal.py
-index 4c32d4c..5175861 100644
---- a/examples/forge-adapters/robotwin20/src/robotwin20_adapter/grasp_proposal.py
-+++ b/examples/forge-adapters/robotwin20/src/robotwin20_adapter/grasp_proposal.py
-@@ -79,4 +79,5 @@ class GraspProposalProvider:
-         artifact_store: PointCloudArtifactResolver,
-         max_candidates: int = 24,
-+        sample_count: int | None = None,
-         score_threshold: float = 0.0,
-         apply_nms: bool = True,
-@@ -96,4 +97,8 @@ class GraspProposalProvider:
-         if isinstance(max_candidates, bool) or not isinstance(max_candidates, int) or not 1 <= max_candidates <= 512:
-             raise ValueError("max_candidates must be between 1 and 512")
-+        if sample_count is None:
-+            sample_count = max_candidates
-+        if isinstance(sample_count, bool) or not isinstance(sample_count, int) or not max_candidates <= sample_count <= 512:
-+            raise ValueError("sample_count must be between max_candidates and 512")
-         if not _unit_interval(score_threshold):
-             raise ValueError("score_threshold must be between 0 and 1")
-@@ -118,4 +123,5 @@ class GraspProposalProvider:
-         self.artifact_store = artifact_store
-         self.max_candidates = max_candidates
-+        self.sample_count = sample_count
-         self.score_threshold = float(score_threshold)
-         self.apply_nms = apply_nms
-@@ -239,5 +245,5 @@ class GraspProposalProvider:
-                 "point_units": "m",
-                 "point_cloud_path": str(points_path),
--                "max_candidates": self.max_candidates,
-+                "max_candidates": self.sample_count,
-                 "score_threshold": self.score_threshold,
-                 "apply_nms": False,
-```
-
-#### [修改 / Modified] `examples/forge-adapters/robotwin20/tests/test_grasp_proposal.py` L201-L226
-
-```diff
-diff --git a/examples/forge-adapters/robotwin20/tests/test_grasp_proposal.py b/examples/forge-adapters/robotwin20/tests/test_grasp_proposal.py
-index 0b36798..4af5923 100644
---- a/examples/forge-adapters/robotwin20/tests/test_grasp_proposal.py
-+++ b/examples/forge-adapters/robotwin20/tests/test_grasp_proposal.py
-@@ -201,2 +201,26 @@ def test_invalid_worker_grasp_geometry_is_rejected(tmp_path):
-     with pytest.raises(GraspProposalAdapterError, match="geometry is invalid"):
-         provider.propose(REQUEST)
-+
-+
-+def test_sample_pool_is_filtered_before_retained_limit(tmp_path):
-+    class PoolWorker(Worker):
-+        def request(self, payload):
-+            self.requests.append(payload)
-+            candidates = []
-+            for i in range(20):
-+                pose = np.eye(4)
-+                pose[0, 3] = i * 0.01
-+                candidates.append({"matrix": pose.tolist(), "score": (i + 1) / 20})
-+            return {"request_id": payload["request_id"], "status": "available",
-+                    "candidates": candidates,
-+                    "funnel": {"decoded": 20, "canonicalized": 20, "deduplicated": 20, "retained": 20}}
-+
-+    worker = PoolWorker()
-+    provider = GraspGenProposalProvider(worker, artifact_store=_store(tmp_path),
-+                                        sample_count=200, max_candidates=10)
-+    data = provider.propose(REQUEST)
-+    assert worker.requests[0]["max_candidates"] == 200
-+    assert data["funnel"] == {"decoded": 20, "canonicalized": 20, "deduplicated": 20, "retained": 10}
-+    assert len(data["candidates"]) == 10
-+    assert data["candidates"][0]["score"] == 1.0
-+    assert data["candidates"][-1]["score"] == 0.55
-```
-
-#### [修改 / Modified] `examples/forge-skills/pick-place-workflow/pyproject.toml` L1-L5
-
-```diff
-diff --git a/examples/forge-skills/pick-place-workflow/pyproject.toml b/examples/forge-skills/pick-place-workflow/pyproject.toml
-index bbd7351..8bf7da9 100644
---- a/examples/forge-skills/pick-place-workflow/pyproject.toml
-+++ b/examples/forge-skills/pick-place-workflow/pyproject.toml
-@@ -1,5 +1,5 @@
- [project]
- name = "paos-pick-place-workflow"
--version = "2.7.2"
-+version = "2.7.3"
- description = "Provider-neutral Forge capability contracts and no-motion conformance fixtures."
- requires-python = ">=3.11"
-```
-
-#### [修改 / Modified] `examples/forge-skills/pick-place-workflow/skill.yaml` L1-L5, L150-L158
-
-```diff
-diff --git a/examples/forge-skills/pick-place-workflow/skill.yaml b/examples/forge-skills/pick-place-workflow/skill.yaml
-index 92a61a8..93efda1 100644
---- a/examples/forge-skills/pick-place-workflow/skill.yaml
-+++ b/examples/forge-skills/pick-place-workflow/skill.yaml
-@@ -1,5 +1,5 @@
- manifest_version: 2
- name: pick-place-workflow
--version: "2.7.2"
-+version: "2.7.3"
- description: Provider-neutral perception, preparation, acquisition, placement, and long-horizon workflow contracts.
- skill_document: SKILL.md
-@@ -150,9 +150,9 @@ artifacts:
-   nodes:
-     robotwin20_persistent_host:
--      artifact_id: robotwin20_persistent_host-0.7.5-linux-x86_64
--      version: "0.7.5"
-+      artifact_id: robotwin20_persistent_host-0.7.6-linux-x86_64
-+      version: "0.7.6"
-       platform: linux
-       arch: x86_64
-       artifact_type: executable_tar_gz
-       entrypoint: robotwin20_persistent_host
--      sha256: d051b41b7fc98cf8ea9d9266a42fc5029db0abafb575bbda5d6259bb48d1a418
-+      sha256: f8c69ac006f5b7519869e5164839de572a81ac12d8e7a4e333319167ab93de0e
-```
-
-### Git 提交 / Git commit
-
-- Branch: `feature/planning-loop`; commit recorded after submission.
-
-## v11.6.8 (2026-09-24 19:45) - codex
-
-- [agent] [fix] [完成] 实际恢复把跨 revision 的 retry_of 当成本图引用，错误反馈促使模型复制失败节点并耗尽 deadline。保留现有图约束和重试预算，仅在 contracts.py 与 forge_task.py 明确恢复 Query 的历史记录由前一 revision 保存，不能为满足 retry_of 复制旧节点；补充错误反馈断言。(local)
-- [Agent] [Fix] [Completed] Recovery confused cross-revision history with local retry_of links and copied failed nodes until the deadline elapsed. Preserve graph validation and retry limits; clarify historical Query recovery in contracts.py and forge_task.py and test the actionable error. (local)
-- Files: `PhyAgentOS/planning/contracts.py`, `PhyAgentOS/agent/tools/forge_task.py`, `tests/test_planning_task_integration.py`, `CHANGELOG.md`.
-
-### 验证 / Validation
-
-- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -p pytest_asyncio.plugin -q tests/test_planning_task_integration.py`: 27 passed; Ruff passed.
-- 初次未加载 asyncio plugin 的三项异步测试未运行；显式加载后全部通过。 / Three async tests could not run without the plugin; all passed with the explicit asyncio plugin.
-
-### 文件变更详情 / File changes
-
-#### [修改 / Modified] `PhyAgentOS/planning/contracts.py` L229-L240
-
-```diff
-diff --git a/PhyAgentOS/planning/contracts.py b/PhyAgentOS/planning/contracts.py
-index 2b26f9e..9907dcf 100644
---- a/PhyAgentOS/planning/contracts.py
-+++ b/PhyAgentOS/planning/contracts.py
-@@ -229,5 +229,12 @@ class PlanGraph(_Frozen):
-                 raise ValueError("plan graph dependency references an unknown node")
-             if node.retry_of is not None and node.retry_of not in known:
--                raise ValueError("plan graph retry_of references an unknown node")
-+                raise ValueError(
-+                    "plan graph retry_of references an unknown node; retry_of is a link "
-+                    "within this graph, not a prior-revision history reference. Prior "
-+                    "failures remain persisted in their original revision: do not copy "
-+                    "failed nodes merely to represent history. For a recovery Query, "
-+                    "omit cross-revision retry_of and cite its failure in reason/evidence. "
-+                    "Action reconciliation and retry admission still apply."
-+                )
-         if self.graph_digest != plan_graph_digest(self):
-             raise ValueError("plan graph digest does not match its content")
-```
-
-#### [修改 / Modified] `PhyAgentOS/agent/tools/forge_task.py` L166-L173
-
-```diff
-diff --git a/PhyAgentOS/agent/tools/forge_task.py b/PhyAgentOS/agent/tools/forge_task.py
-index 66cca65..0331e98 100644
---- a/PhyAgentOS/agent/tools/forge_task.py
-+++ b/PhyAgentOS/agent/tools/forge_task.py
-@@ -166,5 +166,8 @@ class ForgeTaskBeginRevisionTool(Tool):
-             "for coordinator-owned callers. This call only changes the planning revision and "
-             "never invokes a Tool or motion. retry_of may reference only a node included in "
--            "this replacement graph; use reason and evidence refs for prior-revision history."
-+            "this replacement graph; use reason and evidence refs for prior-revision history. "
-+            "Do not copy failed nodes merely to preserve history. For a recovery Query, "
-+            "omit prior-revision retry_of and submit only the recovery work; original "
-+            "execution records remain persisted. Action retry admission is unchanged."
-         )
-
-```
-
-#### [修改 / Modified] `tests/test_planning_task_integration.py` L697-L701, L708-L713
-
-```diff
-diff --git a/tests/test_planning_task_integration.py b/tests/test_planning_task_integration.py
-index db7e8ab..295a0df 100644
---- a/tests/test_planning_task_integration.py
-+++ b/tests/test_planning_task_integration.py
-@@ -697,5 +697,5 @@ def test_recovery_graph_retry_of_cannot_reference_prior_revision(tmp_path):
-     coordinator.store.update(task.task_id, attach_binding, event_type="test_binding")
-     coordinator.request_replan(task.task_id, reason="retry")
--    with pytest.raises(ValueError, match="retry_of references an unknown node"):
-+    with pytest.raises(ValueError, match="retry_of references an unknown node") as rejected:
-         asyncio.run(ForgeTaskBeginRevisionTool(coordinator).execute(
-             task.task_id,
-@@ -708,4 +708,6 @@ def test_recovery_graph_retry_of_cannot_reference_prior_revision(tmp_path):
-             ).model_dump(mode="json")],
-         ))
-+    assert "do not copy failed nodes" in str(rejected.value)
-+    assert "Action reconciliation and retry admission still apply" in str(rejected.value)
-     assert coordinator.get_task(task.task_id).replan_extension_used is False
-
-```
-
-### Git 提交 / Git commit
-
-- Implementation: `52ecb4b`; branch: `feature/planning-loop`; pushed. / 已提交并推送。

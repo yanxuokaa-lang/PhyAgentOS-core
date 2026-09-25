@@ -49,6 +49,15 @@ matrix into a `manipulation.target` node. Never call `task.goal` output sensor
 evidence, task success, readiness, or motion approval. The Runtime must not fall
 back between oracle and observed profiles.
 
+The explicitly named `robotwin-blocks-ranking-graspgen` profile combines
+observation-owned object geometry, support and collision occupancy with only
+benchmark task descriptions and destinations. GraspGen generates 24 real samples
+before canonicalization and filtering retains at most ten for preparation.
+Use `task.goal` destinations directly; do not add `manipulation.target` nodes.
+The profile retains complete-route readiness and monitored simulation Action
+approval, contact/stop checks, reconciliation and cumulative video. It does not
+fall back to oracle geometry or template grasps.
+
 The graph represents your chosen obligations and dependencies. One PlanNode is one
 settlement unit completed by one selected Tool. A composite intention such as
 `object.relocate` is not an executable node unless the Runtime publishes one atomic

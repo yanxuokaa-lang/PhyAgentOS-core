@@ -227,13 +227,6 @@ def build_persistent_host(
         raise PersistentHostConfigurationError(
             "simulation_action_mode must be disabled or runtime_monitored"
         )
-    if (
-        simulation_action_mode == RUNTIME_MONITORED_ACTION_MODE
-        and route_geometry_source != "oracle"
-    ):
-        raise PersistentHostConfigurationError(
-            "runtime_monitored simulation Actions require oracle route geometry"
-        )
     goal_source = profile.get("goal_source", "observation_owned")
     if goal_source not in {"benchmark_task_definition", "observation_owned"}:
         raise PersistentHostConfigurationError(

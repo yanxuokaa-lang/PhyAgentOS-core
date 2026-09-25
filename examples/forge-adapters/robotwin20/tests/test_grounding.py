@@ -148,9 +148,11 @@ def test_oracle_scene_uses_bound_actor_geometry_without_changing_observed_identi
     assert "observed_collision" not in facts
 
 
-def test_oracle_scene_resolves_runtime_goal_without_target_matrix_transcription(tmp_path):
+@pytest.mark.parametrize("geometry_source", ["oracle", "observed"])
+def test_scene_resolves_runtime_goal_without_target_matrix_transcription(tmp_path, geometry_source):
     g, request, _ = setup(tmp_path)
     g.bind(request)
+    g.goal_source = "benchmark_task_definition"
     destination = "destination://blocks-ranking-rgb/red-slot"
     calls = []
     original_query = g.client.query
@@ -172,7 +174,8 @@ def test_oracle_scene_resolves_runtime_goal_without_target_matrix_transcription(
         return original_query(operation, arguments, **kwargs)
 
     g.client.query = query
-    facts = g.oracle_scene_facts({
+    resolve = g.oracle_scene_facts if geometry_source == "oracle" else g.scene_facts
+    facts = resolve({
         **request,
         "intent": {"entity_ref": "entity://seen"},
         "destination_ref": destination,
@@ -180,7 +183,9 @@ def test_oracle_scene_resolves_runtime_goal_without_target_matrix_transcription(
 
     assert facts["objects"][0]["target_ref"] == destination
     assert facts["objects"][0]["world_T_object_target"] == pose(0.35)
-    assert facts["geometry_source"] == "oracle_actor"
+    assert facts["geometry_source"] == ("oracle_actor" if geometry_source == "oracle" else "observation")
+    assert facts["objects"][0]["half_extents_m"] == ([0.04] * 3 if geometry_source == "oracle" else [0.02] * 3)
+    assert facts["objects"][0]["world_T_functional_target"] == pose(0.35)
     assert not g.targets
     assert calls.count("task_goal_facts") == 1
 
@@ -781,3 +786,14 @@ def test_correspondence_and_target_fail_closed(tmp_path, failure):
         args["entity_ref"] = "entity://other"
     assert GroundingEndpoint(g.target).invoke(args)["status"] == "unavailable"
     assert not g.targets
+
+
+def test_observed_targets_do_not_fall_back_to_benchmark_goals(tmp_path):
+    g, request, _ = setup(tmp_path)
+    g.bind(request)
+    def query(*args, **kwargs):
+        raise AssertionError("unexpected Runtime request")
+    g.client.query = query
+    with pytest.raises(ValueError, match="not an observation-owned target"):
+        g.scene_facts({**request, "intent": {"entity_ref": "entity://seen"},
+                       "destination_ref": "destination://blocks-ranking-rgb/red-slot"})

@@ -23,10 +23,12 @@ _DEFERRED_BINDING_AMBIGUITIES = {
 
 
 class Grounding:
-    def __init__(self, client, root, scene_source, *, support_policy=None, collision_policy=None):
+    def __init__(self, client, root, scene_source, *, support_policy=None, collision_policy=None,
+                 goal_source="observation_owned"):
         self.client, self.root, self.source = client, root, scene_source
         self.support_policy = support_policy or SupportEstimationPolicy()
         self.collision_policy = collision_policy
+        self.goal_source = goal_source
         self.observations = {}
         self.understandings = {}
         self.bindings = {}
@@ -437,7 +439,11 @@ class Grounding:
         return reference
 
     def scene_facts(self, request, *, deadline=None):
-        value = self.targets[request["destination_ref"]]
+        value = self.targets.get(request["destination_ref"])
+        if value is None:
+            if self.goal_source != "benchmark_task_definition":
+                raise ValueError("destination is not an observation-owned target")
+            value = self._benchmark_goal_target(request, deadline=deadline)
         if any(value[k] != request[k] for k in IDENTITY_KEYS):
             raise ValueError("target observation identity mismatch")
         if value["object"]["entity_ref"] != request["intent"]["entity_ref"]:
@@ -547,7 +553,7 @@ class Grounding:
         target_entity = request.get("intent", {}).get("entity_ref")
         destination_ref = request.get("destination_ref")
         if not isinstance(target_entity, str) or not isinstance(destination_ref, str):
-            raise ValueError("oracle benchmark target request is incomplete")
+            raise ValueError("benchmark target request is incomplete")
         matches = [
             (reference, binding)
             for reference, binding in self.bindings.items()
@@ -555,7 +561,7 @@ class Grounding:
             and target_entity in binding.get("objects", {})
         ]
         if len(matches) != 1:
-            raise ValueError("oracle benchmark target binding is absent or ambiguous")
+            raise ValueError("benchmark target binding is absent or ambiguous")
         binding_ref, binding = matches[0]
         observed_object = binding["objects"][target_entity]
         execution_entity = observed_object.get("entity_ref")
@@ -570,10 +576,10 @@ class Grounding:
             or goal_facts.get("status") != "available"
             or goal_facts.get("geometry_source") != "benchmark_task_definition"
         ):
-            raise ValueError("oracle benchmark goal facts are unavailable")
+            raise ValueError("benchmark goal facts are unavailable")
         goals = goal_facts.get("goals")
         if not isinstance(goals, list):
-            raise ValueError("oracle benchmark goals are invalid")
+            raise ValueError("benchmark goals are invalid")
         goal_matches = [
             goal
             for goal in goals
@@ -582,15 +588,19 @@ class Grounding:
             and goal.get("execution_entity_ref") == execution_entity
         ]
         if len(goal_matches) != 1:
-            raise ValueError("oracle benchmark destination does not uniquely match binding")
+            raise ValueError("benchmark destination does not uniquely match binding")
         goal = goal_matches[0]
         if goal.get("frame_id") != "world" or goal.get("unit") != "m":
-            raise ValueError("oracle benchmark destination frame or unit is invalid")
+            raise ValueError("benchmark destination frame or unit is invalid")
         pose = rigid_transform(goal.get("world_T_object_target"))
         target = deepcopy(observed_object)
         target.update(
             entity_ref=target_entity,
             world_T_object_target=pose.reshape(-1).tolist(),
+            world_T_functional_target=(
+                pose @ np.linalg.inv(rigid_transform(observed_object["world_T_object"]))
+                @ rigid_transform(observed_object["world_T_functional_point"])
+            ).reshape(-1).tolist(),
         )
         return {
             **{key: request[key] for key in IDENTITY_KEYS},

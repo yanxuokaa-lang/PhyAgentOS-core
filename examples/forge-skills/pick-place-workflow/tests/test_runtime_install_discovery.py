@@ -69,6 +69,11 @@ def test_manifest_v2_bundle_installs_and_catalog_reloads_required_tools(tmp_path
         "ROBOTWIN20_SIMULATION_ACTION_MODE": "runtime_monitored",
         "ROBOTWIN20_GOAL_SOURCE": "benchmark_task_definition",
     }
+    assert manifest.profiles["robotwin-blocks-ranking-graspgen"].environment == {
+        "ROBOTWIN20_ROUTE_GEOMETRY_SOURCE": "observed",
+        "ROBOTWIN20_SIMULATION_ACTION_MODE": "runtime_monitored",
+        "ROBOTWIN20_GOAL_SOURCE": "benchmark_task_definition",
+    }
     assert (tmp_path / "skills" / "pick-place-workflow" / "SKILL.md").is_file()
 
 

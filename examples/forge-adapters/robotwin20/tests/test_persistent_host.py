@@ -218,21 +218,12 @@ def test_host_rejects_unknown_route_geometry_source(tmp_path):
         build_persistent_host(profile, environ=environ)
 
 
-def test_host_rejects_runtime_monitored_observed_profile_before_worker_start(tmp_path):
-    profile, environ = _profile(tmp_path)
-    profile["simulation_action_mode"] = "runtime_monitored"
-
-    with pytest.raises(
-        PersistentHostConfigurationError,
-        match="require oracle route geometry",
-    ):
-        build_persistent_host(profile, environ=environ)
-
-
 @pytest.mark.parametrize("route_source", ["observed", "oracle"])
-def test_host_composes_tools_around_one_persistent_worker_client(tmp_path, monkeypatch, route_source):
+@pytest.mark.parametrize("action_mode", ["disabled", "runtime_monitored"])
+def test_host_composes_tools_around_one_persistent_worker_client(tmp_path, monkeypatch, route_source, action_mode):
     profile, environ = _profile(tmp_path)
     profile["route_geometry_source"] = route_source
+    profile["simulation_action_mode"] = action_mode
     closed = []
 
     class Client:
@@ -294,6 +285,7 @@ def test_host_composes_tools_around_one_persistent_worker_client(tmp_path, monke
     assert captured["client"] is client
     assert captured["preparation_timeout_s"] == 4.0
     assert captured["route_geometry_source"] == route_source
+    assert captured["simulation_action_mode"] == action_mode
     assert grasp_profiles == [{"provider_id": "graspgen", "max_candidates": 10}]
     assert captured["goal_source"] == "observation_owned"
     assert len(worker_configs) == 1

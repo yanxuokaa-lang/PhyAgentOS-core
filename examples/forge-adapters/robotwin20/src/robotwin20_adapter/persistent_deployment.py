@@ -173,6 +173,7 @@ def build_persistent_deployment(*, client, artifact_root: Path, scene_source,
         timeout_s=materializer_timeout_s,
     )
     grounding = Grounding(client, artifact_root, scene_source,
+                          goal_source=goal_source,
                           support_policy=SupportEstimationPolicy(**profile.get("observed_support", {})),
                           collision_policy=(ObservedCollisionPolicy(**profile["observed_collision"])
                                             if "observed_collision" in profile else None))
@@ -189,8 +190,6 @@ def build_persistent_deployment(*, client, artifact_root: Path, scene_source,
         raise ValueError("simulation_action_mode must be disabled or runtime_monitored")
     if goal_source not in {"benchmark_task_definition", "observation_owned"}:
         raise ValueError("goal_source must be benchmark_task_definition or observation_owned")
-    if simulation_action_mode == RUNTIME_MONITORED_ACTION_MODE and route_geometry_source != "oracle":
-        raise ValueError("runtime_monitored simulation Actions require oracle route geometry")
     routes = PreparedRoutes(client, artifact_root)
     evaluator = readiness_evaluator if readiness_evaluator is not None else RouteReadinessEvaluationAdapter(
         build_persistent_route_readiness(client))

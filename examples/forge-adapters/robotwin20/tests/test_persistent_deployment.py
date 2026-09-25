@@ -54,13 +54,17 @@ def test_deployment_wires_shared_cache_and_requires_persistent_stop_policy(tmp_p
     assert monitored.preparation_provider.selector.deferred_checks == frozenset(
         {"contact_dynamics", "stop_control"}
     )
-    with pytest.raises(ValueError, match="require oracle route geometry"):
-        build_persistent_deployment(
-            client=client, artifact_root=tmp_path, scene_source=lambda request: None,
-            materializer_command=("python", "materializer.py"), materializer_arguments=arguments,
-            arm_profile_digest="a" * 64, route_geometry_source="observed",
-            simulation_action_mode="runtime_monitored", task_name="blocks_ranking_rgb",
-        )
+    observed = build_persistent_deployment(
+        client=client, artifact_root=tmp_path, scene_source=lambda request: None,
+        materializer_command=("python", "materializer.py"), materializer_arguments=arguments,
+        arm_profile_digest="a" * 64, route_geometry_source="observed",
+        simulation_action_mode="runtime_monitored", task_name="blocks_ranking_rgb",
+        goal_source="benchmark_task_definition",
+    )
+    assert observed.preparation_provider.route_builder.scene_source.__name__ == "scene_facts"
+    assert observed.grounding.goal_source == "benchmark_task_definition"
+    assert isinstance(observed.preparation_provider.approval_issuer, PersistentSimulationActionApprover)
+    assert observed.preparation_provider.selector.deferred_checks == monitored.preparation_provider.selector.deferred_checks
     with pytest.raises(ValueError, match="observed or oracle"):
         build_persistent_deployment(
             client=client, artifact_root=tmp_path, scene_source=lambda request: None,
