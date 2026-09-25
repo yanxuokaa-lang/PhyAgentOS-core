@@ -669,7 +669,11 @@ index aa2f8ab..3bf5544 100644
 
 ### Git 提交 / Git Commit
 - Branch: feature/planning-loop
-- 本版本与 v11.7.14 一并提交；源码提交号在后续提交收据补全。 / This version includes v11.7.14; the source commit is recorded in the follow-up receipt.
+- Source commit: 44fa473a50697d206c6563a2d4e8cd3791d8a8e1; pushed to origin/feature/planning-loop. Includes v11.7.14 public geometry repair.
+
+### 部署收据 / Deployment receipt
+- [env] [exp] Skill 2.7.12 与 Node 0.7.15 安装、校验并启动成功；第三轮独立任务使用本版本运行。动作与最终验收结论待实测。(local)
+- [Env] [Exp] Skill 2.7.12 and Node 0.7.15 installed, verified and started; third independent task launched on this source. Motion and final acceptance results remain pending. (local)
 
 ## v11.7.14 (2026-09-25 21:18) - codex
 
