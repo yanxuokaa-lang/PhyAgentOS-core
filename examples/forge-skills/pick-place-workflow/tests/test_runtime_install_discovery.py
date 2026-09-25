@@ -98,6 +98,31 @@ def test_robotwin_dataflow_forwards_profile_owned_route_geometry_source():
     )
 
 
+def test_generic_robotwin_dataflow_uses_graspnet_without_graspgen_inputs():
+    root = Path(__file__).parents[1]
+    generic = (root / "profiles/robotwin-persistent/dataflow.yaml").read_text(encoding="utf-8")
+    explicit_graspgen = (root / "profiles/robotwin-persistent/dataflow-graspgen.yaml").read_text(encoding="utf-8")
+    assert "GRASPNET_PYTHON" in generic
+    assert "GRASPNET_DEVICE" in generic
+    assert "GRASPGEN_" not in generic
+    assert "GRASPGEN_PYTHON" in explicit_graspgen
+    assert "GRASPNET_" not in explicit_graspgen
+
+
+def test_generic_materializer_closure_is_graspnet_owned():
+    adapter_profiles = Path(__file__).parents[3] / "forge-adapters/robotwin20/profiles/robotwin20"
+    materializer = yaml.safe_load(
+        (adapter_profiles / "persistent-materializer.yaml").read_text(encoding="utf-8")
+    )
+    graspgen_materializer = yaml.safe_load(
+        (adapter_profiles / "persistent-materializer-graspgen.yaml").read_text(encoding="utf-8")
+    )
+    assert materializer["route-input-profile"].endswith("route-inputs-graspnet.yaml")
+    assert materializer["grasp-transform-attestation"].endswith("graspnet-tool-transform.json")
+    assert "GRASPNET_SOURCE_ROOT" in materializer["grasp-provider-source-root"]
+    assert "GRASPGEN_SOURCE_ROOT" in graspgen_materializer["grasp-provider-source-root"]
+
+
 def test_robotwin_profile_declares_every_external_environment_used_by_dataflow():
     manifest = load_manifest(BUNDLE_ROOT / "skill.yaml")
     profile = manifest.profiles["robotwin-persistent"]

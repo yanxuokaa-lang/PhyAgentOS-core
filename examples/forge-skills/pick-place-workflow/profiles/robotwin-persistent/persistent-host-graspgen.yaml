@@ -12,8 +12,8 @@ runtime_profile: ${ROBOTWIN20_RUNTIME_PROFILE}
 worker_python: ${ROBOTWIN20_WORKER_PYTHON}
 materializer_python: ${ROBOTWIN20_MATERIALIZER_PYTHON}
 perception_profile: ${ROBOTWIN20_EMBEDDED_ADAPTER_ROOT}/profiles/robotwin20/perception.yaml
-grasp_profile: ${ROBOTWIN20_GRASP_PROFILE}
-materializer_arguments: ${ROBOTWIN20_MATERIALIZER_ARGUMENTS}
+grasp_profile: ${ROBOTWIN20_EMBEDDED_ADAPTER_ROOT}/profiles/robotwin20/graspgen.yaml
+materializer_arguments: ${ROBOTWIN20_EMBEDDED_ADAPTER_ROOT}/profiles/robotwin20/persistent-materializer-graspgen.yaml
 model:
   provider: qwen3_vl_vllm_fallback
   primary:

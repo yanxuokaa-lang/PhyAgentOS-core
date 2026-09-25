@@ -1,5 +1,11 @@
 schema_version: paos-robotwin20-route-input-profile/v3
 route_frame_id: world
+observed_collision:
+  depth_scale_to_m: 0.001
+  voxel_size_m: 0.01
+  uncertainty_m: 0.001
+  support_refinement_band_m: 0.02
+  minimum_inner_points: 3
 calibration_revision: robotwin20-head-camera-seed0-v1
 workspace_bounds_m:
   frame_id: world
@@ -34,6 +40,7 @@ grasp_adaptation:
   contact_shell_tolerance_m: 0.015
   support_clear_direction: [0.0, 0.0, 1.0]
 route_policy:
+  release_clearance_m: 0.005
   approach_clearance_m: 0.08
   lift_clearance_m: 0.10
   transport_clearance_m: 0.12
@@ -50,7 +57,7 @@ stop_policy:
   max_duration_s: 300
   stop_file_required: true
   poll_each_step: true
-  failure_recovery: reset_simulation
+  failure_recovery: hold_and_reconcile
 semantic_tolerance:
   target_position_m: 0.04
   target_orientation_rad: 0.35

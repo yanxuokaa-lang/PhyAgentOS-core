@@ -24,6 +24,33 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v11.7.12 (2026-09-25 19:30) - codex
+
+### 变更摘要 / Change Summary [完成 / Completed]
+- [model] [refactor] 通用抓取 provider 默认切换为 GraspNet；GraspGen 保留为显式隔离 profile。(local)
+- [Model] [Refactor] Switched the generic grasp provider default to GraspNet; retained GraspGen as an explicit isolated profile. (local)
+- [policy] [fix] 宿主在部署前拒绝 grasp profile 与 route profile provider 不一致。(local)
+- [Policy] [Fix] Reject mismatched grasp-profile and route-profile providers before deployment. (local)
+- [eval] [test] 增加默认 provider、闭包隔离、环境变量和 mismatch 回归；42 个聚焦测试通过。(local)
+- [Eval] [Test] Added default-provider, closure-isolation, environment, and mismatch regressions; 42 focused tests passed. (local)
+
+### 文件与 Diff / Files and Diff
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/grasp_profile.py:L62-L65`：默认 `graspgen` → `graspnet`；explicit `provider_id: graspgen` 保持有效。
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_host.py:L523-L571`、`persistent_deployment.py:L151-L181`：传播选定 provider 并拒绝 route/provider mismatch。
+- `profiles/robotwin20/persistent-materializer.yaml:L1-L3`、`route-inputs.yaml:L10-L31`：通用闭包改为 GraspNet；`persistent-materializer-graspgen.yaml:L1-L15`：保留 GraspGen 闭包。
+- `examples/forge-skills/pick-place-workflow/skill.yaml:L25-L185`、`profiles/robotwin-persistent/dataflow.yaml:L9-L40`：通用 Skill 只声明/传递 GraspNet；GraspGen 使用独立 `dataflow-graspgen.yaml`。
+
+### 验证 / Verification
+- Focused provider/route/host/deployment/Skill tests: `42 passed`; Ruff, compileall, YAML parsing, and `git diff --check` passed.
+- No Gateway Action, simulator route, hardware IO, or motion authorization was added.
+
+### 七维审核 / Seven-Dimension Review
+架构、恢复、机器人安全、配置复现、可维护性、可观察性、AgentLoop 自主性均 PASS；未改变碰撞/规划/运动准入。
+
+### Git 提交 / Git Commit
+- Commit: `0cac4ea`
+- Branch: `feature/planning-loop`
+
 ## v11.7.11 (2026-09-25 17:59) - codex
 
 ### 预期修改 / Planned Changes [完成：源码修复与七维审查；全链路未验收]

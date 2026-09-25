@@ -520,6 +520,10 @@ def build_persistent_host(
         if not isinstance(materializer_arguments, dict):
             raise PersistentHostConfigurationError("materializer arguments must be an object")
         materializer_arguments = _expand(materializer_arguments, variables)
+        selected_grasp_profile = load_grasp_profile(grasp_profile)
+        selected_provider_id = selected_grasp_profile.get("provider_id", "graspnet")
+        if selected_provider_id not in {"graspgen", "graspnet"}:
+            raise PersistentHostConfigurationError("grasp provider_id is unsupported")
         task_name = None
         if simulation_action_mode == RUNTIME_MONITORED_ACTION_MODE:
             try:
@@ -558,11 +562,12 @@ def build_persistent_host(
             simulation_action_mode=simulation_action_mode,
             goal_source=goal_source,
             task_name=task_name,
+            grasp_provider_id=selected_provider_id,
         )
         # Grasp proposals are observation-owned even when route geometry or
         # benchmark destinations come from the simulator.
         grasp = build_grasp_provider(
-            load_grasp_profile(grasp_profile), environ=variables
+            selected_grasp_profile, environ=variables
         )
 
         def context(tool_id: str) -> dict[str, Any]:

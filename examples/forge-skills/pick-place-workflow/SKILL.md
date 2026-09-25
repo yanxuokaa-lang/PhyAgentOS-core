@@ -49,6 +49,12 @@ matrix into a `manipulation.target` node. Never call `task.goal` output sensor
 evidence, task success, readiness, or motion approval. The Runtime must not fall
 back between oracle and observed profiles.
 
+The generic `robotwin-persistent`, `robotwin-blocks-ranking-observed`, and
+`robotwin-blocks-ranking-oracle` profiles use GraspNet for pose generation.
+Their route input, transform attestation, and worker source root are selected
+as one GraspNet configuration closure. They do not require or pass GraspGen
+environment variables.
+
 The explicitly named `robotwin-blocks-ranking-graspgen` profile combines
 observation-owned object geometry, support and collision occupancy with only
 benchmark task descriptions and destinations. GraspGen generates 24 real samples

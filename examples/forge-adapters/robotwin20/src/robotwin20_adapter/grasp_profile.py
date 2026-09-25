@@ -59,8 +59,10 @@ def build_grasp_provider(
         worker_config = _worker_config(profile.get("worker"), variables, "grasp_worker")
     except PerceptionProfileError as exc:
         raise GraspProfileError(str(exc)) from exc
-    provider_id = profile.get("provider_id", "graspgen")
-    model_variant = profile.get("model_variant", "ptv3" if provider_id == "graspgen" else "baseline")
+    # GraspNet is the provider-neutral default. GraspGen remains available only
+    # when an explicit provider profile opts into it.
+    provider_id = profile.get("provider_id", "graspnet")
+    model_variant = profile.get("model_variant", "baseline" if provider_id == "graspnet" else "ptv3")
     if not isinstance(provider_id, str) or not provider_id:
         raise GraspProfileError("grasp provider_id is invalid")
     if not isinstance(model_variant, str) or not model_variant:

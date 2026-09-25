@@ -71,7 +71,14 @@ def test_deployment_wires_shared_cache_and_requires_persistent_stop_policy(tmp_p
             materializer_command=("python",), materializer_arguments=arguments,
             arm_profile_digest="a" * 64, route_geometry_source="automatic",
         )
-    arguments["route-input-profile"] = str(profiles / "route-inputs.yaml")
+    invalid_route = tmp_path / "invalid-route.yaml"
+    invalid_route.write_text(
+        (profiles / "route-inputs.yaml").read_text(encoding="utf-8").replace(
+            "failure_recovery: hold_and_reconcile", "failure_recovery: reset_simulation"
+        ),
+        encoding="utf-8",
+    )
+    arguments["route-input-profile"] = str(invalid_route)
     with pytest.raises(ValueError, match="hold_and_reconcile"):
         build_persistent_deployment(
             client=client, artifact_root=tmp_path, scene_source=lambda request: None,
@@ -80,6 +87,20 @@ def test_deployment_wires_shared_cache_and_requires_persistent_stop_policy(tmp_p
         )
 
 
+def test_deployment_rejects_provider_route_mismatch(tmp_path):
+    arm = tmp_path / "arms.yaml"
+    arm.write_text(yaml.safe_dump(_profile()))
+    profiles = Path(__file__).parents[1] / "profiles/robotwin20"
+    arguments = {
+        "arm-planning-profile": str(arm),
+        "route-input-profile": str(profiles / "route-inputs-graspnet.yaml"),
+    }
+    with pytest.raises(ValueError, match="provider and route input"):
+        build_persistent_deployment(
+            client=object(), artifact_root=tmp_path, scene_source=lambda request: None,
+            materializer_command=("python",), materializer_arguments=arguments,
+            arm_profile_digest="a" * 64, grasp_provider_id="graspgen",
+        )
 def test_task_goal_endpoint_preserves_worker_rejection_but_not_transport_loss():
     class Client:
         error = None

@@ -156,7 +156,8 @@ def build_persistent_deployment(*, client, artifact_root: Path, scene_source,
                                 simulation_action_mode=DISABLED_ACTION_MODE,
                                 goal_source="observation_owned",
                                 task_name=None,
-                                readiness_evaluator=None):
+                                readiness_evaluator=None,
+                                grasp_provider_id=None):
     """Build real adapter components, retaining caller-owned client lifetime.
 
     The default evaluator only proves no-motion readiness; unavailable contact
@@ -165,6 +166,17 @@ def build_persistent_deployment(*, client, artifact_root: Path, scene_source,
     """
     profile_path = Path(materializer_arguments["route-input-profile"])
     profile = yaml.safe_load(profile_path.read_text(encoding="utf-8"))
+    route_provider = (
+        profile.get("grasp_adaptation", {})
+        .get("provider_transform_source", {})
+        .get("provider")
+        if isinstance(profile, Mapping)
+        else None
+    )
+    if grasp_provider_id is not None and route_provider is not None and route_provider != grasp_provider_id:
+        raise ValueError(
+            "grasp provider and route input profile provider must match"
+        )
     if profile["stop_policy"]["failure_recovery"] != "hold_and_reconcile":
         raise ValueError("persistent deployment requires hold_and_reconcile route policy")
     builder = PersistentRouteBuilder(

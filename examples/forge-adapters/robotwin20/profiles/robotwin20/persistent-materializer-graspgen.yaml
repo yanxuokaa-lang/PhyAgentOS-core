@@ -1,6 +1,6 @@
-route-input-profile: ${PAOS_ROBOTWIN20_ADAPTER_ROOT}/profiles/robotwin20/route-inputs-graspnet.yaml
-grasp-transform-attestation: ${PAOS_ROBOTWIN20_ADAPTER_ROOT}/profiles/robotwin20/graspnet-tool-transform.json
-grasp-provider-source-root: ${GRASPNET_SOURCE_ROOT}
+route-input-profile: ${PAOS_ROBOTWIN20_ADAPTER_ROOT}/profiles/robotwin20/route-inputs-persistent.yaml
+grasp-transform-attestation: ${PAOS_ROBOTWIN20_ADAPTER_ROOT}/profiles/robotwin20/graspgen-tool-transform.json
+grasp-provider-source-root: ${GRASPGEN_SOURCE_ROOT}
 simulation-probe-profile: ${PAOS_ROBOTWIN20_ADAPTER_ROOT}/profiles/robotwin20/simulation-probe.yaml
 simulation-probe-worker: ${PAOS_ROBOTWIN20_ADAPTER_ROOT}/runtime/robotwin_simulation_probe_worker.py
 runtime-profile: ${ROBOTWIN20_RUNTIME_PROFILE}

@@ -11,25 +11,23 @@ workspace_bounds_m:
   z_max_m: 1.40
 grasp_adaptation:
   extrinsic_semantics: world_to_camera_cv
-  # GraspGen decodes gripper_base_link at contact - depth * approach. This
-  # transform reconstructs the canonical contact center; it is not a planner TCP.
-  provider_T_contact_center: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0.10527314, 0, 0, 0, 1]
+  # GraspNet reports grasp_center directly in the observation frame.
+  provider_T_contact_center: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
   # RoboTwin Robot.*_plan_path consumes its standard gripper target. Internally
   # it converts that target to the Curobo panda_hand endlink using these values.
   robot_target_frame: robotwin_gripper
   robot_target_reference_distance_m: 0.12
   robot_gripper_bias_m: 0.08
   robot_delta_matrix: [[0, 0, 1], [0, -1, 0], [1, 0, 0]]
-  # Provider-declared shallower contact variants; qualification selects only
-  # variants that clear the support plane while retaining pinch validity.
-  contact_backoff_candidates_m: [0.0, 0.005, 0.010, 0.015, 0.016, 0.01625, 0.01645, 0.020]
+  grasp_depth_adaptation:
+    source: provider_grasp_depth
+    tool_tip_forward_m: 0.11224903
   provider_transform_source:
-    provider: graspgen
-    upstream_commit: 2dd8852e1be60f5f9d277fafcc621835cdf59110
-    origin_frame: gripper_base_link
+    provider: graspnet
+    upstream_commit: 280c215129f759ed8649cb4e89fc5dfee55f4f80
+    origin_frame: grasp_center
     target_frame: canonical_contact_center
-    depth_m: 0.10527314
-    evidence_ref: artifact://provider-attestation/graspgen-ptv3-tool-tcp
+    evidence_ref: artifact://provider-attestation/graspnet-transform
   contact_shell_tolerance_m: 0.015
   support_clear_direction: [0.0, 0.0, 1.0]
 route_policy:
@@ -50,7 +48,7 @@ stop_policy:
   max_duration_s: 300
   stop_file_required: true
   poll_each_step: true
-  failure_recovery: reset_simulation
+  failure_recovery: hold_and_reconcile
 semantic_tolerance:
   target_position_m: 0.04
   target_orientation_rad: 0.35

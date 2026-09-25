@@ -49,6 +49,14 @@ def test_grasp_profile_builds_without_starting_worker(tmp_path):
     profile, environment = _profile(tmp_path)
     (tmp_path / "artifacts").mkdir()
     provider = build_grasp_provider(profile, environ=environment)
+    assert isinstance(provider, GraspNetProposalProvider)
+
+
+def test_grasp_profile_selects_graspgen_only_when_explicit(tmp_path):
+    profile, environment = _profile(tmp_path)
+    (tmp_path / "artifacts").mkdir()
+    profile = {**profile, "provider_id": "graspgen", "model_variant": "ptv3"}
+    provider = build_grasp_provider(profile, environ=environment)
     assert isinstance(provider, GraspGenProposalProvider)
 
 

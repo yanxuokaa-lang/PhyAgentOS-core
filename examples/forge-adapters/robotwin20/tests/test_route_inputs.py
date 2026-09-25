@@ -165,3 +165,13 @@ def test_graspnet_route_profile_uses_grasp_center_without_graspgen_depth():
     assert adaptation["provider_T_contact_center"][3] == 0
     assert adaptation["provider_T_contact_center"][7] == 0
     assert adaptation["provider_T_contact_center"][11] == 0
+
+
+def test_generic_route_profile_is_graspnet_owned():
+    import yaml
+
+    path = Path(__file__).parents[1] / "profiles" / "robotwin20" / "route-inputs.yaml"
+    adaptation = yaml.safe_load(path.read_text(encoding="utf-8"))["grasp_adaptation"]
+    assert adaptation["provider_transform_source"]["provider"] == "graspnet"
+    assert "contact_backoff_candidates_m" not in adaptation
+    assert "grasp_depth_adaptation" in adaptation

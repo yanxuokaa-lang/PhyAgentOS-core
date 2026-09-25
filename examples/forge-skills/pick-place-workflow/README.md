@@ -76,8 +76,14 @@ current scene validated by Runtime before the held route continues. Its terminal
 `post_release_evidence` for downstream verification, without exposing
 coordinates, simulator parameters, or controller details.
 
-The legacy `robotwin-persistent` and explicit
-`robotwin-blocks-ranking-observed` profiles use observation-owned route geometry.
+The `robotwin-persistent` and `robotwin-blocks-ranking-observed` profiles use
+observation-owned route geometry and GraspNet by default. Their provider,
+route-transform attestation, and source-root inputs are passed together through
+the deployment profile. The explicit `robotwin-blocks-ranking-graspgen` profile
+keeps the GraspGen worker and GraspGen-only route adaptation isolated in its own
+dataflow. `robotwin-blocks-ranking-oracle` keeps observation-owned semantic identity but
+uses bound actor geometry and task-definition goals for the `blocks_ranking_rgb`
+development baseline. No profile automatically falls back to another.
 `robotwin-blocks-ranking-oracle` keeps observation-owned semantic identity but
 uses bound actor geometry and task-definition goals for the `blocks_ranking_rgb`
 development baseline. No profile automatically falls back to another.

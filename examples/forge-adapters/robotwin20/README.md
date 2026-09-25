@@ -261,15 +261,16 @@ a fixed semantic entity as composition input; it was not a fresh GPT invocation
 and does not validate grasp proposal or execution. Both model processes exited
 after their bounded stage and no worker remained resident.
 
-The grasp provider is configured independently through
-`profiles/robotwin20/graspgen.yaml`. Its worker receives only an adapter-resolved
+The default grasp provider is configured independently through
+`profiles/robotwin20/graspnet.yaml`. Its worker receives only an adapter-resolved
 point-cloud path and returns 4x4 matrices plus scores; the adapter validates the
 homogeneous transform, converts it to a normalized quaternion and approach
 vector, applies deterministic confidence-ordered SE(3) NMS, and projects the
 candidate funnel. GraspGen/Torch/checkpoint settings remain in the external
-worker profile. The repository currently contains the worker protocol and
-conformance tests, but no local GraspGen checkpoint is assumed; until the
-profile points at a verified external model environment the provider must stay
+worker profile. GraspGen remains available only through the explicit
+`graspgen.yaml` and `persistent-materializer-graspgen.yaml` closure; its depth
+and frame adaptation are not included in the GraspNet route. Until either
+profile points at a verified external model environment, the provider must stay
 `unavailable` rather than fabricate candidates.
 
 Although this reference wiring lives beside the RoboTwin adapter example, the
@@ -634,7 +635,7 @@ export ROBOTWIN20_RUNTIME_ROOT=/home/yanxu/robotwin20-runtime/RoboTwin
 export ROBOTWIN20_RUNTIME_PROFILE="$PAOS_ROBOTWIN20_ADAPTER_ROOT/profiles/robotwin20/franka-blocks-ranking.yaml"
 export ROBOTWIN20_ARTIFACT_ROOT=/absolute/path/to/a/new/artifact-root
 export ROBOTWIN20_PERCEPTION_PROFILE="$PAOS_ROBOTWIN20_ADAPTER_ROOT/profiles/robotwin20/perception.yaml"
-export ROBOTWIN20_GRASP_PROFILE="$PAOS_ROBOTWIN20_ADAPTER_ROOT/profiles/robotwin20/graspgen.yaml"
+export ROBOTWIN20_GRASP_PROFILE="$PAOS_ROBOTWIN20_ADAPTER_ROOT/profiles/robotwin20/graspnet.yaml"
 export ROBOTWIN20_MATERIALIZER_ARGUMENTS="$PAOS_ROBOTWIN20_ADAPTER_ROOT/profiles/robotwin20/persistent-materializer.yaml"
 export ROBOTWIN20_MODEL_API_BASE=https://api.openai.com/v1
 export ROBOTWIN20_MODEL=gpt-5
