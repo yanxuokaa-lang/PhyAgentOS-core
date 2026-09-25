@@ -84,9 +84,6 @@ keeps the GraspGen worker and GraspGen-only route adaptation isolated in its own
 dataflow. `robotwin-blocks-ranking-oracle` keeps observation-owned semantic identity but
 uses bound actor geometry and task-definition goals for the `blocks_ranking_rgb`
 development baseline. No profile automatically falls back to another.
-`robotwin-blocks-ranking-oracle` keeps observation-owned semantic identity but
-uses bound actor geometry and task-definition goals for the `blocks_ranking_rgb`
-development baseline. No profile automatically falls back to another.
 
 All persistent profiles enable adapter-owned task video. All
 `object.acquire` and `object.place` Actions with the same PAOS task owner are
@@ -145,3 +142,14 @@ PYTHONPATH=src:/home/yanxu/PhyAgentOS-forge \
 The tests use PAOS's real `ForgeToolClient` with an `httpx.MockTransport` and therefore
 exercise discovery, readiness/context, ToolSpec binding, and Query invocation through
 the documented Gateway routes. No test enables or performs motion.
+
+### Observed RGB acceptance with GraspNet
+
+Use robotwin-blocks-ranking-graspnet for benchmark-injected task goals and
+monitored simulation Actions with observed geometry. The provider takes segmented
+RGB-D object point clouds; GraspNet decodes its native output, selects the best
+24 scored candidates, and the adapter applies NMS and retains at most 10 for
+manipulation.prepare. No GraspGen backoff or contact offset is used.
+Select graspnet.yaml and persistent-materializer.yaml together via the
+existing deployment environment. Rebuild and install Node 0.7.13 and Skill 2.7.10
+before running this profile; install readiness does not prove task success.

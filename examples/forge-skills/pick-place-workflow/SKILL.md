@@ -388,3 +388,13 @@ append-only revision. Once execution facts exist, use failure replan only for
 failed or unknown execution. For successful dynamic-scene progress, complete
 the current checkpoint graph and call `forge_task_continue_plan`; discovery
 correction and failure replan are not normal forward-progression mechanisms.
+
+### GraspNet observed benchmark profile
+
+The robotwin-blocks-ranking-graspnet profile uses observed scene geometry,
+real GraspNet pose candidates and monitored simulation Actions. Only task
+descriptions and benchmark destination regions come from the benchmark task
+definition. Use task.goal destination references and reobserve after world
+changes; never replace observed point clouds or provider output with simulator
+actor geometry or template grasps. Candidate preparation, Action admission and
+verification remain owned by the existing Runtime/Coordinator boundaries.

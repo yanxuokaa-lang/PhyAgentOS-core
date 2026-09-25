@@ -2,7 +2,8 @@ schema_version: paos-robotwin20-grasp/v1
 provider_id: graspnet
 model_variant: baseline
 artifact_root: ${ROBOTWIN20_ARTIFACT_ROOT}
-max_candidates: 24
+max_candidates: 10
+sample_count: 24
 score_threshold: 0.02
 apply_nms: true
 nms_position_threshold_m: 0.005

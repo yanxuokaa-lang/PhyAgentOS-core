@@ -1,5 +1,13 @@
 # Change Log
 
+## v2.7.10 (2026-09-25) - codex
+
+- [policy] [feat] Add observed GraspNet benchmark profile and publish Node 0.7.13; retain independent GraspGen closure.
+- [policy] [feat] 新增 GraspNet 观测几何 benchmark profile，发布 Node 0.7.13，保留独立 GraspGen 配置。
+- [model] [fix] Rank native GraspNet output before the 24-candidate cap, then apply adapter NMS and retain at most 10 candidates.
+- [model] [fix] GraspNet 原生候选排序后取 24 个，再由 adapter NMS 后保留最多 10 个。
+
+
 ## v2.6.19 (2026-09-24) - codex
 
 - [sense] [fix] [completed] Remove the stale desktop-organization task label from visual scene-understanding requests so task-independent RGB scenes are described without domain bias; publish Node lock `0.7.0`.

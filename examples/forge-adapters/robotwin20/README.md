@@ -642,7 +642,7 @@ export ROBOTWIN20_MODEL=gpt-5
 export ROBOTWIN20_MODEL_API_KEY=...
 ```
 
-The perception, GraspGen, route, controller-qualification, and motion-capability variables
+The perception, GraspNet, route, controller-qualification, and motion-capability variables
 referenced by those profiles must also be set. Then run from the development profile
 directory:
 

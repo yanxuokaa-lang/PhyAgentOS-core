@@ -126,12 +126,14 @@ def _handle(request: Mapping[str, Any]) -> Mapping[str, Any]:
                 },
             }
         )
+    canonical_count = len(candidates)
+    candidates.sort(key=lambda candidate: candidate["score"], reverse=True)
     candidates = candidates[:max_candidates]
     return {
         "request_id": request["request_id"],
         "status": "available" if candidates else "empty",
         "candidates": candidates,
-        "funnel": {"decoded": len(group), "canonicalized": len(candidates), "deduplicated": len(candidates), "retained": len(candidates)},
+        "funnel": {"decoded": len(group), "canonicalized": canonical_count, "deduplicated": canonical_count, "retained": len(candidates)},
     }
 
 

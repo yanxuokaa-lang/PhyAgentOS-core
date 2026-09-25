@@ -329,3 +329,21 @@ def test_runtime_manager_status_reads_http_health_and_fails_closed_on_missing_co
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+
+
+def test_graspnet_acceptance_profile_preserves_observed_action_boundaries():
+    manifest = load_manifest(BUNDLE_ROOT / "skill.yaml")
+    profile = manifest.profiles["robotwin-blocks-ranking-graspnet"]
+    assert profile.environment == {
+        "ROBOTWIN20_ROUTE_GEOMETRY_SOURCE": "observed",
+        "ROBOTWIN20_SIMULATION_ACTION_MODE": "runtime_monitored",
+        "ROBOTWIN20_GOAL_SOURCE": "benchmark_task_definition",
+    }
+    assert profile.dataflow == manifest.profiles["robotwin-blocks-ranking-observed"].dataflow
+    assert "GRASPNET_CHECKPOINT" in profile.required_environment
+    assert not any(name.startswith("GRASPGEN_") for name in profile.required_environment)
+    adapter = BUNDLE_ROOT.parents[1] / "forge-adapters/robotwin20"
+    grasp = yaml.safe_load((adapter / "profiles/robotwin20/graspnet.yaml").read_text())
+    assert grasp["sample_count"] == 24
+    assert grasp["max_candidates"] == 10
+    assert grasp["apply_nms"] is True
