@@ -653,6 +653,7 @@ def test_prepare_selection_reports_all_missing_runtime_arguments_and_persists_ev
         capability="manipulation.prepare",
         input_bindings={
             "entity_ref": "entity://green",
+            "binding_ref": "artifact://bindings/scene-1",
             "destination_ref": "destination://targets/middle",
             "capability_snapshot_ref": "artifact://capabilities/current",
             "goal": "prepare green",
@@ -1122,6 +1123,7 @@ def test_prepare_selection_builds_coordinator_owned_manipulation_intent():
         capability="manipulation.prepare",
         input_bindings={
             "entity_ref": "entity://green",
+            "binding_ref": "artifact://bindings/scene-1",
             "destination_ref": "destination://targets/middle",
             "capability_snapshot_ref": "artifact://capabilities/current",
             "intent": {
@@ -1192,6 +1194,7 @@ def test_prepare_selection_rejects_model_owned_coordinator_identity():
         capability="manipulation.prepare",
         input_bindings={
             "entity_ref": "entity://green",
+            "binding_ref": "artifact://bindings/scene-1",
             "destination_ref": "destination://targets/middle",
             "capability_snapshot_ref": "artifact://capabilities/current",
         },
@@ -1237,6 +1240,7 @@ def test_prepare_selection_accepts_documented_flat_intent_fields():
         capability="manipulation.prepare",
         input_bindings={
             "entity_ref": "entity://green",
+            "binding_ref": "artifact://bindings/scene-flat",
             "destination_ref": "destination://targets/middle",
             "capability_snapshot_ref": "artifact://capabilities/current",
             "goal": "place green in the middle",
@@ -1313,6 +1317,7 @@ def test_prepare_selection_rejects_non_object_nested_intent_as_contract_error():
         capability="manipulation.prepare",
         input_bindings={
             "entity_ref": "entity://green",
+            "binding_ref": "artifact://bindings/scene-invalid",
             "destination_ref": "destination://targets/middle",
             "capability_snapshot_ref": "artifact://capabilities/current",
         },
@@ -1348,3 +1353,64 @@ def test_prepare_selection_rejects_non_object_nested_intent_as_contract_error():
         assert "must be an object" in str(exc)
     else:
         raise AssertionError("non-object nested intent must be rejected as a contract error")
+
+
+def test_prepare_selection_demotes_legacy_prose_node_intent_to_constraint():
+    node = PlanNode(
+        node_id="prepare-legacy",
+        obligation_id="prepare-legacy",
+        capability="manipulation.prepare",
+        input_bindings={
+            "entity_ref": "entity://green",
+            "binding_ref": "artifact://bindings/scene-legacy",
+            "destination_ref": "destination://targets/middle",
+            "capability_snapshot_ref": "artifact://capabilities/current",
+            "intent": "Use the current observed green point cloud only.",
+        },
+    )
+    payload = {
+        "task_id": "task-legacy",
+        "revision_id": "revision-legacy",
+        "graph_digest": "0" * 64,
+        "planner_decision_digest": "1" * 64,
+        "policy_snapshot_digest": "2" * 64,
+        "nodes": [node.model_dump(mode="json")],
+    }
+    payload["graph_digest"] = plan_graph_digest(payload)
+    dispatch = AgentComposedDispatch(
+        PlanGraph.model_validate(payload),
+        (ToolSpecPolicy(
+            tool_id="manipulation.prepare",
+            semantics="query",
+            spec_digest="3" * 64,
+            capabilities=("manipulation.prepare",),
+            trusted_argument_builder="manipulation_intent_v2",
+        ),),
+        AdmissionContext(scene_revision="scene-legacy"),
+    )
+    arguments = {
+        "observation_ref": "observation://scene-legacy/camera",
+        "scene_revision": "scene-legacy",
+        "frame_id": "camera",
+        "calibration_ref": "artifact://calibration/camera",
+        "freshness_ms": 0,
+        "max_age_ms": 1000,
+        "candidate_set_ref": "candidate-set://scene-legacy/camera",
+        "candidates": [{"entity_ref": "entity://green"}],
+        "destination_ref": "destination://targets/middle",
+        "capability_snapshot_ref": "artifact://capabilities/current",
+        "goal": "place green in the middle",
+        "success_criteria": ["green reaches the resolved destination"],
+        "allowed_arms": ["left"],
+        "coordination_mode": "single_arm",
+    }
+    proposal = dispatch.prepare_selection(
+        node_id=node.node_id,
+        tool_id="manipulation.prepare",
+        arguments=arguments,
+        decision_reason="accept legacy prose as a constraint",
+    )
+    assert proposal["tool_arguments"]["intent"]["goal"] == "place green in the middle"
+    assert proposal["tool_arguments"]["intent"]["constraints"] == [
+        "Use the current observed green point cloud only."
+    ]

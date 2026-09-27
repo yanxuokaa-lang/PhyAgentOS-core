@@ -234,6 +234,9 @@ For an agent-composed preparation node, include semantic fields directly in
 `forge_plan_select.arguments` (or as a nested `intent` object): `goal`, non-empty
 `success_criteria`, one or more exact `allowed_arms`, `coordination_mode` (`single_arm`,
 `alternative_arm`, or `bimanual`), and optional `constraints`. Do not provide
+a natural-language sentence or another scalar under `input_bindings.intent`; that
+field is reserved for an object with semantic fields. Put descriptive prose in
+`constraints` and provide the structured fields during selection. Do not provide
 task/revision/node identity, node digest, observation bindings, entity identity,
 or `motion_authorized`; PAOS derives those fields from the active graph and final
 Tool arguments. Flat and nested forms must not conflict with each other or with
@@ -378,7 +381,10 @@ the task-bound references already persisted by Coordinator; it cannot create or
 rename evidence. Use `dependencies` for ordering and keep prose in the
 obligation or `input_bindings`. A `conditions` key is legal only when the same
 key is already true in trusted Coordinator `condition_facts`, or when a prior
-Tool node will persist it before the dependent node is evaluated. Read
+Tool node will persist it before the dependent node is evaluated. Proposal
+Queries may publish `grasp_candidates_retained` after Runtime validation; this
+fact only unlocks preparation and never means that contact, IK, complete-route,
+or motion admission succeeded. Read
 `forge_plan_ready.node_diagnostics` to distinguish missing dependencies,
 evidence, conditions, and Tool candidates; never bypass an empty ready set.
 

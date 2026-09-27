@@ -521,13 +521,13 @@ class AgentComposedDispatch:
         # becoming an unsupported argument for object.acquire.
         arguments = dict(arguments)
         input_schema = self._input_schemas.get(tool_id)
-        accepted_binding_keys = {"destination_ref", "capability_snapshot_ref"}
+        accepted_binding_keys = {"binding_ref", "destination_ref", "capability_snapshot_ref"}
         if isinstance(input_schema, Mapping):
             accepted_binding_keys = set()
             properties = input_schema.get("properties")
             if isinstance(properties, Mapping):
                 accepted_binding_keys = set(properties)
-        for key in ("destination_ref", "capability_snapshot_ref"):
+        for key in ("binding_ref", "destination_ref", "capability_snapshot_ref"):
             if (
                 key in accepted_binding_keys
                 and key not in arguments
@@ -677,6 +677,19 @@ class AgentComposedDispatch:
             for key in semantic_keys
             if key in node.input_bindings
         }
+        # Preserve compatibility with graphs materialized before the intent
+        # shape was made explicit. A prose scalar is a constraint, never a
+        # trusted semantic object; the current selection must supply the
+        # structured manipulation fields.
+        if isinstance(node_intent, str):
+            node_intent = None
+            prose = node.input_bindings["intent"].strip()
+            if prose:
+                constraints = flat_node.get("constraints", [])
+                if not isinstance(constraints, list):
+                    constraints = [constraints]
+                if prose not in constraints:
+                    flat_node["constraints"] = [*constraints, prose]
         if supplied is not None and not isinstance(supplied, Mapping):
             raise PlanningDispatchError(
                 "nested Tool intent semantics must be an object",
@@ -784,7 +797,7 @@ class AgentComposedDispatch:
                 code="candidate_entity_mismatch",
                 missing_fields=("candidates", "entity_ref"),
             )
-        for required in ("destination_ref", "capability_snapshot_ref"):
+        for required in ("binding_ref", "destination_ref", "capability_snapshot_ref"):
             if not isinstance(final_arguments.get(required), str):
                 raise PlanningDispatchError(
                     f"manipulation preparation requires {required}",
@@ -830,6 +843,7 @@ class AgentComposedDispatch:
             "max_age_ms",
             "candidate_set_ref",
             "candidates",
+            "binding_ref",
             "destination_ref",
             "capability_snapshot_ref",
         )

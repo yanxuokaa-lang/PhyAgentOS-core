@@ -220,6 +220,7 @@ def _complete_persisted_runtime_bindings(
     predecessor_destinations: dict[str, set[str]] = {}
     predecessor_entities: dict[str, set[str]] = {}
     observed_to_execution: dict[str, set[str]] = {}
+    binding_refs_by_entity: dict[str, set[str]] = {}
     for revision in task.revisions:
         for record in revision.execution_records:
             facts = response_facts(record.response)
@@ -260,6 +261,7 @@ def _complete_persisted_runtime_bindings(
         if record.status != "succeeded":
             continue
         if record.tool_id == "scene.bind":
+            binding_ref = facts.get("binding_ref")
             for item in facts.get("entities", ()):
                 if not isinstance(item, Mapping):
                     continue
@@ -267,6 +269,8 @@ def _complete_persisted_runtime_bindings(
                 execution = item.get("execution_entity_ref")
                 if isinstance(observed, str) and isinstance(execution, str):
                     observed_to_execution.setdefault(observed, set()).add(execution)
+                    if isinstance(binding_ref, str) and binding_ref.startswith("artifact://"):
+                        binding_refs_by_entity.setdefault(observed, set()).add(binding_ref)
         if record.tool_id in {"grasp.propose", "manipulation.target", "scene.bind"}:
             entities = set()
             entity = facts.get("entity_ref")
@@ -347,6 +351,20 @@ def _complete_persisted_runtime_bindings(
     completed: list[PlanNode] = []
     for node in nodes:
         bindings = dict(node.input_bindings)
+        # Older Agent turns sometimes put a natural-language description in
+        # ``intent``. It is not a manipulation intent and must not reach the
+        # trusted argument builder as one. Preserve the text as a constraint;
+        # structured semantic fields remain selected from current capability
+        # context.
+        prose_intent = bindings.get("intent")
+        if isinstance(prose_intent, str):
+            bindings.pop("intent")
+            constraints = bindings.get("constraints", [])
+            if not isinstance(constraints, list):
+                constraints = [constraints]
+            if prose_intent.strip() and prose_intent not in constraints:
+                constraints.append(prose_intent)
+            bindings["constraints"] = constraints
         if node.capability == "grasp.propose":
             execution_targets = grasp_execution_targets.get(node.node_id, set())
             if len(execution_targets) == 1:
@@ -402,6 +420,10 @@ def _complete_persisted_runtime_bindings(
             destinations |= predecessor_destinations.get(entity, set())
             if node.capability in {"manipulation.prepare", "object.place"} and len(destinations) == 1:
                 bindings.setdefault("destination_ref", next(iter(destinations)))
+            if node.capability == "manipulation.prepare":
+                scene_bindings = binding_refs_by_entity.get(entity, set())
+                if len(scene_bindings) == 1:
+                    bindings.setdefault("binding_ref", next(iter(scene_bindings)))
             if len(capability_refs) == 1:
                 capability_ref = next(iter(capability_refs))
                 bindings.setdefault("capability_snapshot_ref", capability_ref)
