@@ -898,6 +898,63 @@ def test_superseded_forge_results_compact_before_global_trigger() -> None:
     assert "latest-full-result" in view.messages[5]["content"]
 
 
+def test_discovery_compacts_before_global_trigger_and_keeps_task_projection() -> None:
+    record = SimpleNamespace(
+        tool_id="scene.observe",
+        status="succeeded",
+        response={"data": {"status": "available", "observation_ref": "observation://current"}},
+        record_id="record-observe",
+        evidence_refs=["tool:record-observe"],
+    )
+    messages = [
+        {"role": "system", "content": "system"},
+        {"role": "user", "content": "arrange RGB"},
+    ]
+    for index in range(4):
+        messages.extend(
+            [
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [{"id": f"call-{index}"}],
+                },
+                {
+                    "role": "tool",
+                    "name": "forge_tool_query",
+                    "tool_call_id": f"call-{index}",
+                    "content": json.dumps(
+                        {
+                            "ok": True,
+                            "data": {
+                                "status": "available",
+                                "debug": f"history-{index}-" + "x" * 7_000,
+                            },
+                        }
+                    ),
+                },
+            ]
+        )
+
+    manager = AgentPromptContextManager(
+        context_window_tokens=100_000,
+        compaction_trigger_tokens=90_000,
+    )
+    view = manager.build(
+        messages=messages,
+        turn_start_index=1,
+        all_tool_names=("forge_tool_query",),
+        task=_task(records=(record,)),
+        estimate_tokens=_estimate,
+    )
+
+    encoded = json.dumps(view.messages)
+    assert view.phase == "discovery"
+    assert view.compacted is True
+    assert "history-0-" not in encoded
+    assert "observation://current" in encoded
+    assert "read_only_projection_from_AgentTaskCoordinator" in encoded
+
+
 def test_prompt_budget_fails_locally_when_current_required_input_exceeds_window() -> None:
     manager = AgentPromptContextManager(context_window_tokens=100, compaction_trigger_tokens=80)
     with pytest.raises(PromptBudgetExceededError, match="exceeds context window"):

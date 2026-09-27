@@ -25,6 +25,125 @@
 
 ## 最近 5 条 / Latest Five Versions
 
+## v11.9.8 (2026-09-27 23:40) - codex
+
+### 实际修改 / Implemented changes
+- [agent] [fix] [完成] `PhyAgentOS/agent/loop.py:L118-L131,L825-L829` 让 task-scope 的 `planning_execution` Provider 超时在 Tool dispatch 前只重试同一决策一次；node-scope 保持单次决策，避免重放 Action/Query。(local)
+- [Agent] [Fix] [Completed] `PhyAgentOS/agent/loop.py:L118-L131,L825-L829` retries the same task-scope `planning_execution` provider decision once before Tool dispatch; node-scope decisions remain single-shot, preventing Action/Query replay. (local)
+- [eval] [test] [完成] `tests/test_agent_foundation.py:L65-L81` 覆盖 task creation/discovery/planning_execution 与 node/verification 边界；聚焦回归 `7 passed`，compileall 与 `git diff --check` 通过。(local)
+- [Eval] [Test] [Completed] `tests/test_agent_foundation.py:L65-L81` covers task creation/discovery/planning_execution and node/verification boundaries; focused regression `7 passed`, compileall and `git diff --check` passed. (local)
+- [env] [tune] [完成] 外部验收配置 `/home/yanxu/.PhyAgentOS/config-rgb-no-evolution-long.json:L25` 的 `requestTimeoutS` 从 `600` 调整为 `240`，为 1800 秒外层预算保留多轮决策恢复空间。(local)
+- [Env] [Tune] [Completed] Changed `requestTimeoutS` from `600` to `240` at `/home/yanxu/.PhyAgentOS/config-rgb-no-evolution-long.json:L25` so the 1800-second outer budget retains room for multiple decision recoveries. (local)
+
+### 失败场景依据 / Failure scenario
+上一轮 `rgb-graspnet-acceptance-20260927T2230` 在 `r01-prepare-red` 的 planning request 停滞超过外层 1800 秒，未产生 Gateway 动作；当前只对 task creation/discovery 超时重试，planning_execution 超时直接结束，因此一次 Provider 卡顿会阻断 AgentLoop。/ The previous `rgb-graspnet-acceptance-20260927T2230` stalled during the `r01-prepare-red` planning request until the outer 1800-second timeout, before any Gateway action; only task creation/discovery timeouts were retried, so a Provider stall in `planning_execution` terminated the loop.
+
+### 文件变更详情 / File change details
+#### [修改 / Modified] `PhyAgentOS/agent/loop.py:L118-L131,L825-L829`
+**修改前 / Before:** only `task_creation` and `discovery` enabled the bounded timeout retry.
+**修改后 / After:** the centralized retry predicate also admits `planning_execution` for task-scope turns; the existing two-attempt loop remains unchanged.
+**修改说明 / Notes:** the retry is before any returned ToolCall is dispatched, so it cannot replay a Gateway invocation.
+
+#### [新增 / Added] `tests/test_agent_foundation.py:L65-L81`
+**新增代码 / Added:** parameterized coverage of retry eligibility across task and node scopes.
+
+### Git 提交 / Git Commit
+- Commit: `e4a36e9`
+- Branch: `feature/planning-loop`
+- 时间 / Time: 2026-09-27 23:46 CST
+
+## v11.9.9 (2026-09-28 00:20) - codex
+
+### 预期修改 / Planned changes
+- [env] [tune] [计划] 将外部 GraspNet RGB 验收配置的单次 Provider 请求预算从 240 秒降为 120 秒，使一次超时重试不会长期占用 1800 秒外层预算；不改变源码动作、对账或安全门禁。(local)
+- [Env] [Tune] [Planned] Lower the external GraspNet RGB acceptance configuration's per-provider request budget from 240 seconds to 120 seconds so one timeout retry cannot consume the 1800-second outer budget; source action, reconciliation, and safety gates remain unchanged. (local)
+- [eval] [exp] [计划] 使用新的独立 AgentTask 重启全链路验收，确认实时感知、GraspNet 候选、prepare 与三块动作仍按既有契约推进。(local)
+- [Eval] [Exp] [Planned] Restart end-to-end acceptance with a fresh AgentTask and confirm realtime sensing, GraspNet candidates, preparation, and three-block actions still follow the existing contracts. (local)
+
+### 失败场景依据 / Failure scenario
+`rgb-graspnet-acceptance-20260928T0000` 在首轮 bind 决策连续两次 240 秒 Provider timeout 后失败，未产生动作；缩短外部请求预算可以让一次长轮在 1800 秒内留下更多恢复机会。(local)
+The `rgb-graspnet-acceptance-20260928T0000` run failed after two consecutive 240-second provider timeouts during the initial bind decision, before any action; lowering the external request budget leaves more recovery opportunities within the 1800-second run.
+
+## v11.9.10 (2026-09-28 01:05) - codex
+
+### 预期修改 / Planned changes
+- [env] [tune] [计划] 将 GraspNet RGB 验收配置的单次 Provider 请求预算恢复为 240 秒；120 秒在 35k token 的 discovery 契约读取中连续超时，未能到达物理阶段。保持 AgentLoop 单次重试和所有动作门禁不变。(local)
+- [Env] [Tune] [Planned] Restore the GraspNet RGB acceptance configuration's per-provider request budget to 240 seconds; 120 seconds repeatedly timed out while reading the 35k-token discovery contract and never reached the physical stage. Keep the AgentLoop single retry and all action gates unchanged. (local)
+## v11.9.11 (2026-09-28 02:10) - codex
+
+### 预期修改 / Planned changes [完成]
+- [sense] [fix] 修复持久化 RGB 验收的 scene-understand Provider 运行条件：保持 Agent/规划模型为 `gpt-5.6-sol/high`，恢复 operator-owned `qwen3-vl-4b-vllm` 在 `127.0.0.1:8012` 的可用性；不把 GPT 规划模型当作视觉 Provider，不加入 collision-world 或动作重试。(local)
+- [Sense] [Fix] Restore the runtime precondition for scene understanding in persistent RGB acceptance: keep the Agent/planning model on `gpt-5.6-sol/high` and restore the operator-owned `qwen3-vl-4b-vllm` service at `127.0.0.1:8012`; do not use the GPT planning model as the visual provider, add collision-world, or retry Actions.(local)
+- [eval] [exp] 先完成 Qwen `/health`、`/v1/models` 与真实 RGB 请求的无运动检查，再用全新 AgentTask 发起至少三次 GraspNet RGB 全链路验收；仅在取得三块、每块至少十个候选进入 prepare、Action 终态、release/retreat 证据、Verifier 和视频 manifest 时宣称通过。(local)
+- [Eval] [Exp] Run no-motion Qwen `/health`, `/v1/models`, and real RGB request checks first, then execute at least three independent GraspNet RGB end-to-end acceptances with fresh AgentTasks; claim success only with three blocks, at least ten candidates per block entering prepare, terminal Actions, release/retreat evidence, Verifier, and a video manifest.(local)
+
+### 失败场景与依据 / Failure scenario and rationale
+最近运行的持久化 Host profile 已声明 Qwen primary，但当前 `127.0.0.1:8012` 无监听；`scene.understand` 因此落到外部 GPT fallback 并出现 `transport+transport`，没有产生实体或点云。现有代码已经保留双 Provider、bounded error 和 fail-closed 行为，缺失的是 operator-owned 服务实例；本轮先恢复该运行条件，不新增 hash、baseline、额外 gate 或碰撞世界。(local)
+The recent persistent Host profile already declares Qwen as primary, but nothing is listening at `127.0.0.1:8012`; `scene.understand` therefore falls back to the external GPT provider and reports `transport+transport`, producing no entities or point clouds. Existing code already provides dual-provider routing, bounded errors, and fail-closed behavior; the missing condition is the operator-owned service instance, so this change restores that condition without adding hashes, baselines, extra gates, or collision-world.(local)
+
+### 预期影响文件 / Expected files
+- `/home/yanxu/.PhyAgentOS/skills/pick-place-workflow/profiles/robotwin-persistent/persistent-host.yaml`（仅运行时核对，保持现有 Qwen primary 配置）
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_host.py`（仅在健康检查暴露具体装配缺陷时修改）
+- `examples/forge-adapters/robotwin20/tests/test_scene_understanding_fallback.py`
+- `examples/forge-adapters/robotwin20/tests/test_qwen3_vl_vllm_scene_understanding.py`
+
+### 实际修改与验证 / Completed changes and validation
+- [sense] [fix] [完成] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/qwen3_vl_vllm_lifecycle.py:L65-L76`：移除 Host 启动时无请求 idle timer；只有成功进入并离开一次请求，或一次受控失败需要恢复检查时，才安排 idle sleep，避免服务晚于 Host 启动时被旧 timer 睡眠。(local)
+- [Sense] [Fix] [Completed] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/qwen3_vl_vllm_lifecycle.py:L65-L76`: remove the no-request idle timer scheduled at Host startup; schedule idle sleep only after a request completes or a controlled failure requires recovery checking, preventing a newly started service from being slept by a stale timer.(local)
+- [tests] [fix] [完成] `examples/forge-adapters/robotwin20/tests/test_qwen3_vl_vllm_lifecycle.py:L145-L153`：将启动空闲测试改为验证无请求不调用 `/sleep`；现有 wake、handoff、并发和恢复失败回归保持通过。(local)
+- [Tests] [Fix] [Completed] `examples/forge-adapters/robotwin20/tests/test_qwen3_vl_vllm_lifecycle.py:L145-L153`: replace the startup-idle test with a no-request assertion that `/sleep` is not called; existing wake, handoff, concurrency, and recovery-failure regressions remain covered.(local)
+- [eval] [test] [完成] Qwen lifecycle/fallback/vLLM adapter 聚焦套件 `30 passed`；`compileall` 与 `git diff --check` 通过。已按 README 启动 Qwen 服务并确认 `/health`、`/v1/models`；直接请求暴露了旧 Host timer 竞态，修复后需重启 Host 再做真实请求。(local)
+- [Eval] [Test] [Completed] Qwen lifecycle/fallback/vLLM adapter focused suite passed `30`; `compileall` and `git diff --check` passed. The Qwen service was started with the README command and `/health` and `/v1/models` were confirmed; a direct request exposed the stale Host timer race, so the Host must be restarted before the real request check.(local)
+
+### 文件变更详情 / File change details
+#### [修改 / Modified] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/qwen3_vl_vllm_lifecycle.py:L65-L76`
+**修改前 / Before:**
+```python
+self._idle_timer: Timer | None = None
+self.last_state = "unknown"
+self.last_error = None
+with self._condition:
+    self._schedule_idle_timer_locked()
+```
+**修改后 / After:**
+```python
+self._idle_timer: Timer | None = None
+self.last_state = "unknown"
+self.last_error = None
+```
+**修改说明 / Rationale:** 没有已完成请求时不产生 idle sleep 副作用；请求退出路径仍负责安排 idle timer。/ No idle-sleep side effect occurs before any completed request; request-exit paths continue to arm the idle timer.
+
+#### [修改 / Modified] `examples/forge-adapters/robotwin20/tests/test_qwen3_vl_vllm_lifecycle.py:L145-L153`
+**修改前 / Before:** `test_manager_sleeps_after_startup_idle_without_a_request` expected `/sleep` before any request.
+**修改后 / After:** `test_manager_does_not_sleep_before_a_request` asserts no `/sleep` call before the first request.
+
+## v11.9.12 (2026-09-28 10:00) - codex
+
+### 实际修改 / Implemented changes
+- [agent] [fix] [完成] `PhyAgentOS/agent/prompt_context.py:L1051-L1185` 为 discovery 请求增加默认 16,000 token 压缩阈值；压缩重复历史 Forge 查询和模型叙述，同时保留 Coordinator 当前 AgentTask projection 与最近完整 turn。(local)
+- [Agent] [Fix] [Completed] `PhyAgentOS/agent/prompt_context.py:L1051-L1185` adds a default 16,000-token discovery compaction threshold; repeated historical Forge results and narration are compacted while the Coordinator's current AgentTask projection and recent complete turns remain.(local)
+- [eval] [test] [完成] `tests/test_prompt_context.py:L901-L955` 增加 discovery 回归，确认全局阈值触发前已压缩历史结果且保留当前 observation/task projection。(local)
+- [Eval] [Test] [Completed] `tests/test_prompt_context.py:L901-L955` adds a discovery regression proving historical results compact before the global threshold while the current observation and task projection remain.(local)
+- [eval] [test] [完成] `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/test_prompt_context.py tests/test_agent_foundation.py tests/test_turn_timeouts.py`：`114 passed`；`compileall` 与 `git diff --check` 通过。(local)
+- [Eval] [Test] [Completed] Focused prompt-context, agent-foundation, and timeout tests passed `114`; `compileall` and `git diff --check` passed.(local)
+
+### 失败场景依据 / Failure scenario
+第二次 GraspNet RGB 验收在 discovery 第 12 次请求约 31k prompt tokens 时达到 240 秒 provider timeout，重试请求仍 timeout；全局 258k 压缩阈值未触发，导致历史 discovery 交互持续进入后续请求。/ The second GraspNet RGB acceptance reached a 240-second provider timeout on discovery iteration 12 at roughly 31k prompt tokens and timed out again on retry; the global 258k compaction threshold never activated, so historical discovery interaction kept flowing into later requests.
+
+### 文件变更详情 / Exact changes
+- `PhyAgentOS/agent/prompt_context.py`
+- `tests/test_prompt_context.py`
+
+#### [修改 / Modified] `PhyAgentOS/agent/prompt_context.py:L1051-L1067,L1121-L1147,L1149-L1172`
+**修改前 / Before:** discovery 使用与普通阶段相同的全局 `compaction_trigger_tokens`，在约 31k token 的历史 discovery 请求中不会提前压缩。
+
+**修改后 / After:** `AgentPromptContextManager` 提供 `DEFAULT_DISCOVERY_COMPACTION_TRIGGER_TOKENS = 16_000` 和可配置构造参数；`build()` 按 discovery phase 取更低阈值，触发既有 aggressive Forge 结果压缩，并重新注入当前 Coordinator projection。
+
+**修改说明 / Rationale:** 失败场景是 discovery 查询结果逐轮累积，Provider 在动作前 timeout；持久化 task projection 已是权威事实来源，因此可以压缩重复 transcript 而不丢失当前绑定事实。/ The failure was discovery transcript growth causing provider timeout before actions; the persisted task projection is authoritative, so repeated transcript can be compacted without losing current bindings.
+
+#### [新增 / Added] `tests/test_prompt_context.py:L901-L955`
+**新增代码 / Added:** 构造四轮大型 `forge_tool_query` 历史，断言 phase 为 discovery、发生压缩、旧 debug 消失而 `observation://current` 与 `read_only_projection_from_AgentTaskCoordinator` 保留。/ Builds four large historical query turns and asserts discovery compaction, removal of old debug text, and preservation of the current observation and Coordinator projection.
+
 ## v11.8.1 (2026-09-25 22:19) - codex
 
 ### 预期修改 / Planned changes

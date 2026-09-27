@@ -1051,16 +1051,26 @@ def _current_turn_units(
 class AgentPromptContextManager:
     """Build phase-scoped, budgeted request views without changing source facts."""
 
+    # Discovery is query-heavy and its durable facts are re-injected through
+    # task_prompt_projection.  Keep repeated model/tool narration bounded well
+    # before the global context-window limit; otherwise high-reasoning
+    # providers can time out while still receiving an otherwise valid prompt.
+    DEFAULT_DISCOVERY_COMPACTION_TRIGGER_TOKENS = 16_000
+
     def __init__(
         self,
         *,
         context_window_tokens: int,
         compaction_trigger_tokens: int,
         reserved_output_tokens: int = 0,
+        discovery_compaction_trigger_tokens: int = DEFAULT_DISCOVERY_COMPACTION_TRIGGER_TOKENS,
     ) -> None:
         self.context_window_tokens = int(context_window_tokens)
         self.compaction_trigger_tokens = int(compaction_trigger_tokens)
         self.reserved_output_tokens = max(0, int(reserved_output_tokens))
+        self.discovery_compaction_trigger_tokens = max(
+            1, int(discovery_compaction_trigger_tokens)
+        )
         self.prompt_token_limit = self.context_window_tokens - self.reserved_output_tokens
         if self.prompt_token_limit <= 0:
             raise ValueError("reserved output tokens must be smaller than the context window")
@@ -1108,6 +1118,7 @@ class AgentPromptContextManager:
         projection_scope: str = "task",
         projection_node_id: str | None = None,
     ) -> PromptRequestView:
+        phase = self.phase(task)
         visible = visible_tool_names(all_tool_names, task)
         if projection_scope == "task":
             projection = task_prompt_projection(task)
@@ -1129,6 +1140,11 @@ class AgentPromptContextManager:
             self.compaction_trigger_tokens,
             self.prompt_token_limit,
         )
+        if phase == "discovery":
+            compaction_threshold = min(
+                compaction_threshold,
+                self.discovery_compaction_trigger_tokens,
+            )
 
         if estimate_tokens(view, visible) >= compaction_threshold:
             user, units = _current_turn_units(messages, turn_start_index)
@@ -1165,7 +1181,7 @@ class AgentPromptContextManager:
         return PromptRequestView(
             messages=view,
             visible_tool_names=visible,
-            phase=self.phase(task),
+            phase=phase,
             compacted=compacted,
         )
 
