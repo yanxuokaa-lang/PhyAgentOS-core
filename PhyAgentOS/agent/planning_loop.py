@@ -189,9 +189,12 @@ class NodeContextProvider:
                 failure_code=settlement.failure_code,
                 executions=execution_context,
             ))
-        selected_discovery_evidence = (
-            set(node.required_evidence) & set(revision.discovery_evidence_refs)
-        )
+        # A continuation revision explicitly carries the prior segment's
+        # discovery evidence_refs so consumers can project exact fields from
+        # a completed Query (for example GraspNet -> manipulation.prepare).
+        # Keep that authorization explicit, but do not require the model to
+        # duplicate every producer reference in the new node's required list.
+        selected_discovery_evidence = set(revision.discovery_evidence_refs)
         binding = getattr(task, "primary_skill_binding", None)
         bound_tools = (
             getattr(binding, "required_tools", ())
