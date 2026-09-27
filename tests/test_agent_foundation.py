@@ -31,7 +31,10 @@ from PhyAgentOS.agent.tools.forge_tool_api import (
     ForgeToolSessionResultTool,
     ForgeToolSessionStatusTool,
 )
-from PhyAgentOS.agent.tools.forge_tool_api import _resolve_observation_bound_query_arguments
+from PhyAgentOS.agent.tools.forge_tool_api import (
+    _resolve_observation_bound_query_arguments,
+    _scene_bind_argument_error,
+)
 from PhyAgentOS.bus.queue import MessageBus
 from PhyAgentOS.config.schema import ForgeConfig
 from PhyAgentOS.forge.binding import BoundToolSpec, ForgeSkillBinding
@@ -1412,6 +1415,34 @@ def test_scene_bind_query_copies_observation_identity_without_overriding_entitie
         "scene_revision": "scene-1",
         "calibration_ref": "artifact://calibration/1",
     }
+
+
+def test_scene_bind_rejects_alias_and_ambiguous_understanding_entities():
+    understanding = SimpleNamespace(
+        tool_id="scene.understand",
+        status="succeeded",
+        revision_id="revision-1",
+        record_id="understand-1",
+        response={"data": {
+            "entities": [
+                {"entity_ref": "entity://e1", "category": "green cube"},
+                {"entity_ref": "entity://e4", "category": "white surface"},
+            ],
+            "ambiguities": [{
+                "code": "entity_identity_uncertain",
+                "entity_refs": ["entity://e4"],
+            }],
+        }},
+    )
+    task = SimpleNamespace(active_revision_id="revision-1", execution_records=[understanding])
+    alias_error = _scene_bind_argument_error(task, {"entities": []})
+    assert alias_error["code"] == "scene_bind_requires_entity_refs"
+    ambiguous_error = _scene_bind_argument_error(
+        task, {"entity_refs": ["entity://e1", "entity://e4"]}
+    )
+    assert ambiguous_error["code"] == "ambiguous_entity_selection"
+    assert ambiguous_error["ambiguous_entity_refs"] == ["entity://e4"]
+    assert ambiguous_error["recommended_unambiguous_entity_refs"] == ["entity://e1"]
 
 
 def test_discovery_receipt_can_materialize_without_task_get(tmp_path):

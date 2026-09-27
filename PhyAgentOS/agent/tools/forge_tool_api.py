@@ -106,7 +106,14 @@ async def _call(operation: Callable[[], Awaitable[dict[str, Any]]]) -> str:
             )
         return _json({"ok": False, "error": error})
     except AgentTaskError as exc:
-        return _json({"ok": False, "error": {"type": "agent_task", "message": str(exc)}})
+        message = str(exc)
+        try:
+            detail = json.loads(message)
+        except (TypeError, json.JSONDecodeError):
+            detail = None
+        if isinstance(detail, dict) and isinstance(detail.get("code"), str):
+            return _json({"ok": False, "error": {"type": "agent_task", **detail}})
+        return _json({"ok": False, "error": {"type": "agent_task", "message": message}})
     except RuntimeError as exc:
         return _json({"ok": False, "error": {"type": "runtime", "message": str(exc)}})
 
@@ -218,6 +225,10 @@ class ForgeToolQueryTool(Tool):
                 resolved_arguments = arguments
                 resolved_binding = planning_binding
                 task = self.coordinator.get_task(task_id)
+                if tool_id == "scene.bind":
+                    selection_error = _scene_bind_argument_error(task, arguments)
+                    if selection_error is not None:
+                        raise AgentTaskError(_json({"code": selection_error["code"], **selection_error}))
                 sources = _task_query_source_records(task)
                 if (
                     tool_id in _OBSERVATION_BOUND_QUERY_ARGUMENTS
@@ -686,6 +697,66 @@ def _resolve_observation_bound_query_arguments(
         for name, selector in bindings.items()
     }
     return resolve_argument_sources(sources, literals, selectors)
+
+
+def _scene_bind_argument_error(task: Any, arguments: dict[str, Any]) -> dict[str, Any] | None:
+    """Return a recoverable selection error before Runtime grounding."""
+
+    if "entities" in arguments and "entity_refs" not in arguments:
+        return {
+            "code": "scene_bind_requires_entity_refs",
+            "message": "scene.bind accepts the selected entity_refs array, not entities; choose refs from the current scene.understand result",
+            "required_field": "entity_refs",
+        }
+    entity_refs = arguments.get("entity_refs")
+    if (
+        not isinstance(entity_refs, list)
+        or not entity_refs
+        or not all(isinstance(ref, str) for ref in entity_refs)
+    ):
+        return {
+            "code": "scene_bind_missing_entity_refs",
+            "message": "scene.bind requires a non-empty entity_refs array selected from the current scene.understand result",
+            "required_field": "entity_refs",
+        }
+    understanding = next(
+        (
+            record
+            for record in reversed(task.execution_records)
+            if record.tool_id == "scene.understand"
+            and record.status == "succeeded"
+            and record.revision_id == task.active_revision_id
+        ),
+        None,
+    )
+    if understanding is None:
+        return None
+    facts = response_facts(understanding.response)
+    ambiguous_refs = sorted({
+        ref
+        for ambiguity in facts.get("ambiguities", ())
+        if isinstance(ambiguity, dict)
+        for ref in ambiguity.get("entity_refs", ())
+        if isinstance(ref, str)
+    })
+    selected_ambiguous = sorted(set(entity_refs) & set(ambiguous_refs))
+    if not selected_ambiguous:
+        return None
+    entity_refs_from_understanding = [
+        entity.get("entity_ref")
+        for entity in facts.get("entities", ())
+        if isinstance(entity, dict) and isinstance(entity.get("entity_ref"), str)
+    ]
+    return {
+        "code": "ambiguous_entity_selection",
+        "message": "scene.bind selection includes entities with unresolved perception ambiguity; select only the required unambiguous entity_refs",
+        "ambiguous_entity_refs": selected_ambiguous,
+        "candidate_entity_refs": entity_refs_from_understanding,
+        "recommended_unambiguous_entity_refs": [
+            ref for ref in entity_refs_from_understanding if ref not in ambiguous_refs
+        ],
+        "source_record_id": understanding.record_id,
+    }
 
 
 __all__ = [

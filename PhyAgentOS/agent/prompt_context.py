@@ -391,6 +391,52 @@ def _task_status(task: Any) -> Any:
     return getattr(status, "value", status)
 
 
+def _scene_bind_selection_projection(task: Any) -> dict[str, Any] | None:
+    """Project current understanding choices without selecting for the Agent."""
+
+    records = tuple(getattr(task, "execution_records", ()))
+    understanding = next(
+        (
+            record
+            for record in reversed(records)
+            if getattr(record, "tool_id", None) == "scene.understand"
+            and getattr(record, "status", None) == "succeeded"
+            and getattr(record, "revision_id", None) == getattr(task, "active_revision_id", None)
+        ),
+        None,
+    )
+    if understanding is None:
+        return None
+    facts = response_facts(getattr(understanding, "response", None))
+    entities = [
+        entity
+        for entity in facts.get("entities", ())
+        if isinstance(entity, dict) and isinstance(entity.get("entity_ref"), str)
+    ]
+    ambiguities = [
+        ambiguity
+        for ambiguity in facts.get("ambiguities", ())
+        if isinstance(ambiguity, dict)
+    ]
+    ambiguous_refs = sorted({
+        ref
+        for ambiguity in ambiguities
+        for ref in ambiguity.get("entity_refs", ())
+        if isinstance(ref, str)
+    })
+    entity_refs = [entity["entity_ref"] for entity in entities]
+    return {
+        "source_record_id": getattr(understanding, "record_id", None),
+        "candidate_entity_refs": entity_refs,
+        "recommended_unambiguous_entity_refs": [
+            ref for ref in entity_refs if ref not in ambiguous_refs
+        ],
+        "ambiguous_entity_refs": ambiguous_refs,
+        "ambiguities": _reference_projection(ambiguities),
+        "selection_required": True,
+    }
+
+
 def _reference_projection(value: Any, *, keep_semantics: bool = True) -> Any:
     """Retain execution identities and bounded semantic evidence from JSON data."""
 
@@ -754,6 +800,7 @@ def task_prompt_projection(task: Any | None) -> dict[str, Any] | None:
         "planning_phase": planning_phase,
         "missing_preplan_queries": list(missing_queries),
         "planning_next_step": planning_next_step,
+        "scene_bind_selection": _scene_bind_selection_projection(task),
         "nodes": nodes,
         "settlements": settlements,
         "tool_records": records,

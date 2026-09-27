@@ -484,6 +484,39 @@ def test_task_projection_guides_scene_bind_consumer_arguments() -> None:
     assert "`calibration_ref`" in projection["planning_next_step"]
 
 
+def test_task_projection_exposes_scene_bind_selection_from_understanding() -> None:
+    understanding = SimpleNamespace(
+        record_id="understand-1",
+        revision_id="revision-1",
+        tool_id="scene.understand",
+        status="succeeded",
+        response={"data": {
+            "entities": [
+                {"entity_ref": "entity://e1", "category": "green cube"},
+                {"entity_ref": "entity://e4", "category": "white surface"},
+            ],
+            "ambiguities": [{
+                "code": "entity_identity_uncertain",
+                "message": "surface identity inferred",
+                "entity_refs": ["entity://e4"],
+            }],
+        }},
+    )
+    projection = task_prompt_projection(_task(records=(understanding,)))
+    assert projection["scene_bind_selection"] == {
+        "source_record_id": "understand-1",
+        "candidate_entity_refs": ["entity://e1", "entity://e4"],
+        "recommended_unambiguous_entity_refs": ["entity://e1"],
+        "ambiguous_entity_refs": ["entity://e4"],
+        "ambiguities": [{
+            "code": "entity_identity_uncertain",
+            "message": "surface identity inferred",
+            "entity_refs": ["entity://e4"],
+        }],
+        "selection_required": True,
+    }
+
+
 def test_terminal_task_exposes_only_reconciliation_for_unknown_action_invocation() -> None:
     names = (
         "forge_task_create",
