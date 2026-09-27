@@ -115,6 +115,21 @@ class AgentLoop:
 
     _TOOL_RESULT_MAX_CHARS = 16_000
 
+    @staticmethod
+    def _retry_provider_timeout(*, projection_scope: str, phase: str) -> bool:
+        """Retry a timed-out model decision before any Tool dispatch.
+
+        A model timeout cannot have executed a local Tool call because the
+        response was never returned to this loop.  Applying the same bounded
+        retry to planning execution lets a transient provider stall recover
+        without replaying an Action or Query.
+        """
+        return projection_scope == "task" and phase in {
+            "task_creation",
+            "discovery",
+            "planning_execution",
+        }
+
     def __init__(
         self,
         bus: MessageBus,
@@ -807,9 +822,9 @@ class AgentLoop:
                 request_view.compacted,
             )
 
-            retry_timeout = (
-                projection_scope == "task"
-                and request_view.phase in {"task_creation", "discovery"}
+            retry_timeout = self._retry_provider_timeout(
+                projection_scope=projection_scope,
+                phase=request_view.phase,
             )
             for model_attempt in range(2 if retry_timeout else 1):
                 started = monotonic()

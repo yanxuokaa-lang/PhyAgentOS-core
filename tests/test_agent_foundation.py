@@ -62,6 +62,25 @@ class ScriptedProvider(LLMProvider):
         return "fixture-model"
 
 
+@pytest.mark.parametrize(
+    ("projection_scope", "phase", "expected"),
+    [
+        ("task", "task_creation", True),
+        ("task", "discovery", True),
+        ("task", "planning_execution", True),
+        ("node", "planning_execution", False),
+        ("task", "verification", False),
+    ],
+)
+def test_agent_loop_retries_provider_timeout_before_tool_dispatch(
+    projection_scope, phase, expected
+):
+    assert AgentLoop._retry_provider_timeout(
+        projection_scope=projection_scope,
+        phase=phase,
+    ) is expected
+
+
 def test_save_turn_persists_parseable_forge_task_projection() -> None:
     loop = object.__new__(AgentLoop)
     session = Session(key="cli:rgb")
