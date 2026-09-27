@@ -67,8 +67,6 @@ class Qwen3VLVLLMLifecycleManager:
         self._idle_timer: Timer | None = None
         self.last_state: str = "unknown"
         self.last_error: str | None = None
-        with self._condition:
-            self._schedule_idle_timer_locked()
 
     @property
     def active_requests(self) -> int:

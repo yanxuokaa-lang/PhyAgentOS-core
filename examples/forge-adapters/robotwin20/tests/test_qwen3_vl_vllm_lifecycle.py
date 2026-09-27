@@ -127,12 +127,12 @@ def test_gpu_handoff_refuses_to_sleep_with_active_request():
     manager.close()
 
 
-def test_manager_sleeps_after_startup_idle_without_a_request():
+def test_manager_does_not_sleep_before_a_request():
     client = _Client(sleeping=False)
     manager = _manager(client, idle=0.01)
 
-    assert client.slept.wait(1)
-    assert manager.last_state == "sleeping"
+    assert not client.slept.wait(0.05)
+    assert not any(call[1] == "/sleep" for call in client.calls)
     manager.close()
 
 
