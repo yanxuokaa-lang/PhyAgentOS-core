@@ -49,6 +49,11 @@ _OBSERVATION_BOUND_QUERY_ARGUMENTS: dict[str, dict[str, dict[str, Any]]] = {
             "map_field": "ref",
         },
     },
+    "scene.bind": {
+        "observation_ref": {"path": ["response", "data", "observation_ref"]},
+        "scene_revision": {"path": ["response", "data", "scene_revision"]},
+        "calibration_ref": {"path": ["response", "data", "calibration_ref"]},
+    },
 }
 
 
@@ -157,8 +162,10 @@ class ForgeToolQueryTool(Tool):
             "and optional target_path. For scene.understand, copy observation_ref, "
             "scene_revision, frame.frame_id to frame_id, calibration_ref, freshness_ms, "
             "and artifacts from the same scene.observe record; set artifact source "
-            "map_field to 'ref' to pass the required string references. Supply "
-            "max_age_ms as a literal."
+            "map_field to 'ref' to pass the required string references. For "
+            "scene.bind, provide only the selected `entity_refs`; PAOS copies the "
+            "observation_ref, scene_revision, and calibration_ref identity from "
+            "the current successful scene.observe record. Supply max_age_ms as a literal."
         )
 
     @property

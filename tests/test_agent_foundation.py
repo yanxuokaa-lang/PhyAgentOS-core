@@ -31,6 +31,7 @@ from PhyAgentOS.agent.tools.forge_tool_api import (
     ForgeToolSessionResultTool,
     ForgeToolSessionStatusTool,
 )
+from PhyAgentOS.agent.tools.forge_tool_api import _resolve_observation_bound_query_arguments
 from PhyAgentOS.bus.queue import MessageBus
 from PhyAgentOS.config.schema import ForgeConfig
 from PhyAgentOS.forge.binding import BoundToolSpec, ForgeSkillBinding
@@ -1387,6 +1388,30 @@ def test_terminal_task_reconciles_original_unknown_action_without_reopening(
         assert ("binding-test" in coordinator.runtime_task_binding_ids) is binding_retained
 
     asyncio.run(exercise())
+
+
+def test_scene_bind_query_copies_observation_identity_without_overriding_entities():
+    observation = ToolExecutionRecord(
+        record_id="observe-1",
+        revision_id="revision-1",
+        tool_id="scene.observe",
+        semantics="query",
+        caller_id="paos:test",
+        status="succeeded",
+        arguments={"sensor_ref": "camera/head"},
+        response={"data": {"status": "available", "observation_ref": "observation://scene/head",
+                            "scene_revision": "scene-1", "calibration_ref": "artifact://calibration/1"}},
+    )
+    task = SimpleNamespace(active_revision_id="revision-1", execution_records=[observation])
+    resolved = _resolve_observation_bound_query_arguments(
+        "scene.bind", task, {"entity_refs": ["entity://red"]}
+    )
+    assert resolved == {
+        "entity_refs": ["entity://red"],
+        "observation_ref": "observation://scene/head",
+        "scene_revision": "scene-1",
+        "calibration_ref": "artifact://calibration/1",
+    }
 
 
 def test_discovery_receipt_can_materialize_without_task_get(tmp_path):

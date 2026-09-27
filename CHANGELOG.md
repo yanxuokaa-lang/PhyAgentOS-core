@@ -1,52 +1,4 @@
 # Changelog
-## v11.9.11 (2026-09-28 02:10) - codex
-
-### 预期修改 / Planned changes [完成]
-- [sense] [fix] 修复持久化 RGB 验收的 scene-understand Provider 运行条件：保持 Agent/规划模型为 `gpt-5.6-sol/high`，恢复 operator-owned `qwen3-vl-4b-vllm` 在 `127.0.0.1:8012` 的可用性；不把 GPT 规划模型当作视觉 Provider，不加入 collision-world 或动作重试。(local)
-- [Sense] [Fix] Restore the runtime precondition for scene understanding in persistent RGB acceptance: keep the Agent/planning model on `gpt-5.6-sol/high` and restore the operator-owned `qwen3-vl-4b-vllm` service at `127.0.0.1:8012`; do not use the GPT planning model as the visual provider, add collision-world, or retry Actions.(local)
-- [eval] [exp] 先完成 Qwen `/health`、`/v1/models` 与真实 RGB 请求的无运动检查，再用全新 AgentTask 发起至少三次 GraspNet RGB 全链路验收；仅在取得三块、每块至少十个候选进入 prepare、Action 终态、release/retreat 证据、Verifier 和视频 manifest 时宣称通过。(local)
-- [Eval] [Exp] Run no-motion Qwen `/health`, `/v1/models`, and real RGB request checks first, then execute at least three independent GraspNet RGB end-to-end acceptances with fresh AgentTasks; claim success only with three blocks, at least ten candidates per block entering prepare, terminal Actions, release/retreat evidence, Verifier, and a video manifest.(local)
-
-### 失败场景与依据 / Failure scenario and rationale
-最近运行的持久化 Host profile 已声明 Qwen primary，但当前 `127.0.0.1:8012` 无监听；`scene.understand` 因此落到外部 GPT fallback 并出现 `transport+transport`，没有产生实体或点云。现有代码已经保留双 Provider、bounded error 和 fail-closed 行为，缺失的是 operator-owned 服务实例；本轮先恢复该运行条件，不新增 hash、baseline、额外 gate 或碰撞世界。(local)
-The recent persistent Host profile already declares Qwen as primary, but nothing is listening at `127.0.0.1:8012`; `scene.understand` therefore falls back to the external GPT provider and reports `transport+transport`, producing no entities or point clouds. Existing code already provides dual-provider routing, bounded errors, and fail-closed behavior; the missing condition is the operator-owned service instance, so this change restores that condition without adding hashes, baselines, extra gates, or collision-world.(local)
-
-### 预期影响文件 / Expected files
-- `/home/yanxu/.PhyAgentOS/skills/pick-place-workflow/profiles/robotwin-persistent/persistent-host.yaml`（仅运行时核对，保持现有 Qwen primary 配置）
-- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_host.py`（仅在健康检查暴露具体装配缺陷时修改）
-- `examples/forge-adapters/robotwin20/tests/test_scene_understanding_fallback.py`
-- `examples/forge-adapters/robotwin20/tests/test_qwen3_vl_vllm_scene_understanding.py`
-
-### 实际修改与验证 / Completed changes and validation
-- [sense] [fix] [完成] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/qwen3_vl_vllm_lifecycle.py:L65-L76`：移除 Host 启动时无请求 idle timer；只有成功进入并离开一次请求，或一次受控失败需要恢复检查时，才安排 idle sleep，避免服务晚于 Host 启动时被旧 timer 睡眠。(local)
-- [Sense] [Fix] [Completed] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/qwen3_vl_vllm_lifecycle.py:L65-L76`: remove the no-request idle timer scheduled at Host startup; schedule idle sleep only after a request completes or a controlled failure requires recovery checking, preventing a newly started service from being slept by a stale timer.(local)
-- [tests] [fix] [完成] `examples/forge-adapters/robotwin20/tests/test_qwen3_vl_vllm_lifecycle.py:L145-L153`：将启动空闲测试改为验证无请求不调用 `/sleep`；现有 wake、handoff、并发和恢复失败回归保持通过。(local)
-- [Tests] [Fix] [Completed] `examples/forge-adapters/robotwin20/tests/test_qwen3_vl_vllm_lifecycle.py:L145-L153`: replace the startup-idle test with a no-request assertion that `/sleep` is not called; existing wake, handoff, concurrency, and recovery-failure regressions remain covered.(local)
-- [eval] [test] [完成] Qwen lifecycle/fallback/vLLM adapter 聚焦套件 `30 passed`；`compileall` 与 `git diff --check` 通过。已按 README 启动 Qwen 服务并确认 `/health`、`/v1/models`；直接请求暴露了旧 Host timer 竞态，修复后需重启 Host 再做真实请求。(local)
-- [Eval] [Test] [Completed] Qwen lifecycle/fallback/vLLM adapter focused suite passed `30`; `compileall` and `git diff --check` passed. The Qwen service was started with the README command and `/health` and `/v1/models` were confirmed; a direct request exposed the stale Host timer race, so the Host must be restarted before the real request check.(local)
-
-### 文件变更详情 / File change details
-#### [修改 / Modified] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/qwen3_vl_vllm_lifecycle.py:L65-L76`
-**修改前 / Before:**
-```python
-self._idle_timer: Timer | None = None
-self.last_state = "unknown"
-self.last_error = None
-with self._condition:
-    self._schedule_idle_timer_locked()
-```
-**修改后 / After:**
-```python
-self._idle_timer: Timer | None = None
-self.last_state = "unknown"
-self.last_error = None
-```
-**修改说明 / Rationale:** 没有已完成请求时不产生 idle sleep 副作用；请求退出路径仍负责安排 idle timer。/ No idle-sleep side effect occurs before any completed request; request-exit paths continue to arm the idle timer.
-
-#### [修改 / Modified] `examples/forge-adapters/robotwin20/tests/test_qwen3_vl_vllm_lifecycle.py:L145-L153`
-**修改前 / Before:** `test_manager_sleeps_after_startup_idle_without_a_request` expected `/sleep` before any request.
-**修改后 / After:** `test_manager_does_not_sleep_before_a_request` asserts no `/sleep` call before the first request.
-
 ## v11.9.12 (2026-09-28 10:00) - codex
 
 ### 实际修改 / Implemented changes
@@ -152,164 +104,31 @@ Recovery session `cli:rgb-graspnet-v11-9-12-r1-20260928` had successful current 
 
 #### [新增 / Added] `tests/test_prompt_context.py:L463-L485`
 **新增代码 / Added:** binds a fixture `scene.bind` prerequisite and asserts the projection contains the exact consumer field and identity-source guidance. / Binds a fixture prerequisite and asserts exact consumer field and identity-source guidance.
-## Archive
-- [2026-09 Part 18](changelog/2026-09_part18.md)
 
-- [2026-09 Part 17](changelog/2026-09_part17.md)
-- [2026-09 Part 16](changelog/2026-09_part16.md)
-- [2026-09 Part 15](changelog/2026-09_part15.md)
-
-- [2026-09 Part 14](changelog/2026-09_part14.md)
-
-- [2026-09 Part 13](changelog/2026-09_part13.md)
-
-- [2026-09 Part 12](changelog/2026-09_part12.md)
-
-- [2026-09 Part 11](changelog/2026-09_part11.md)
-
-- [2026-09 Part 10](changelog/2026-09_part10.md)
-- [2026-09 Part 8](changelog/2026-09_part8.md)
-- [2026-09 Part 9](changelog/2026-09_part9.md)
-- [2026-09 Part 7](changelog/2026-09_part7.md)
-- [2026-09 Part 6](changelog/2026-09_part6.md)
-- [2026-09 Part 5](changelog/2026-09_part5.md)
-- [2026-09 Part 4](changelog/2026-09_part4.md)
-
-## 最近 5 条 / Latest Five Versions
-
-## v11.9.10 (2026-09-28 01:05) - codex
-
-### 预期修改 / Planned changes
-- [env] [tune] [计划] 将 GraspNet RGB 验收配置的单次 Provider 请求预算恢复为 240 秒；120 秒在 35k token 的 discovery 契约读取中连续超时，未能到达物理阶段。保持 AgentLoop 单次重试和所有动作门禁不变。(local)
-- [Env] [Tune] [Planned] Restore the GraspNet RGB acceptance configuration's per-provider request budget to 240 seconds; 120 seconds repeatedly timed out while reading the 35k-token discovery contract and never reached the physical stage. Keep the AgentLoop single retry and all action gates unchanged. (local)
-## v11.9.11 (2026-09-28 02:10) - codex
-
-### 预期修改 / Planned changes [完成]
-- [sense] [fix] 修复持久化 RGB 验收的 scene-understand Provider 运行条件：保持 Agent/规划模型为 `gpt-5.6-sol/high`，恢复 operator-owned `qwen3-vl-4b-vllm` 在 `127.0.0.1:8012` 的可用性；不把 GPT 规划模型当作视觉 Provider，不加入 collision-world 或动作重试。(local)
-- [Sense] [Fix] Restore the runtime precondition for scene understanding in persistent RGB acceptance: keep the Agent/planning model on `gpt-5.6-sol/high` and restore the operator-owned `qwen3-vl-4b-vllm` service at `127.0.0.1:8012`; do not use the GPT planning model as the visual provider, add collision-world, or retry Actions.(local)
-- [eval] [exp] 先完成 Qwen `/health`、`/v1/models` 与真实 RGB 请求的无运动检查，再用全新 AgentTask 发起至少三次 GraspNet RGB 全链路验收；仅在取得三块、每块至少十个候选进入 prepare、Action 终态、release/retreat 证据、Verifier 和视频 manifest 时宣称通过。(local)
-- [Eval] [Exp] Run no-motion Qwen `/health`, `/v1/models`, and real RGB request checks first, then execute at least three independent GraspNet RGB end-to-end acceptances with fresh AgentTasks; claim success only with three blocks, at least ten candidates per block entering prepare, terminal Actions, release/retreat evidence, Verifier, and a video manifest.(local)
-
-### 失败场景与依据 / Failure scenario and rationale
-最近运行的持久化 Host profile 已声明 Qwen primary，但当前 `127.0.0.1:8012` 无监听；`scene.understand` 因此落到外部 GPT fallback 并出现 `transport+transport`，没有产生实体或点云。现有代码已经保留双 Provider、bounded error 和 fail-closed 行为，缺失的是 operator-owned 服务实例；本轮先恢复该运行条件，不新增 hash、baseline、额外 gate 或碰撞世界。(local)
-The recent persistent Host profile already declares Qwen as primary, but nothing is listening at `127.0.0.1:8012`; `scene.understand` therefore falls back to the external GPT provider and reports `transport+transport`, producing no entities or point clouds. Existing code already provides dual-provider routing, bounded errors, and fail-closed behavior; the missing condition is the operator-owned service instance, so this change restores that condition without adding hashes, baselines, extra gates, or collision-world.(local)
-
-### 预期影响文件 / Expected files
-- `/home/yanxu/.PhyAgentOS/skills/pick-place-workflow/profiles/robotwin-persistent/persistent-host.yaml`（仅运行时核对，保持现有 Qwen primary 配置）
-- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_host.py`（仅在健康检查暴露具体装配缺陷时修改）
-- `examples/forge-adapters/robotwin20/tests/test_scene_understanding_fallback.py`
-- `examples/forge-adapters/robotwin20/tests/test_qwen3_vl_vllm_scene_understanding.py`
-
-### 实际修改与验证 / Completed changes and validation
-- [sense] [fix] [完成] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/qwen3_vl_vllm_lifecycle.py:L65-L76`：移除 Host 启动时无请求 idle timer；只有成功进入并离开一次请求，或一次受控失败需要恢复检查时，才安排 idle sleep，避免服务晚于 Host 启动时被旧 timer 睡眠。(local)
-- [Sense] [Fix] [Completed] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/qwen3_vl_vllm_lifecycle.py:L65-L76`: remove the no-request idle timer scheduled at Host startup; schedule idle sleep only after a request completes or a controlled failure requires recovery checking, preventing a newly started service from being slept by a stale timer.(local)
-- [tests] [fix] [完成] `examples/forge-adapters/robotwin20/tests/test_qwen3_vl_vllm_lifecycle.py:L145-L153`：将启动空闲测试改为验证无请求不调用 `/sleep`；现有 wake、handoff、并发和恢复失败回归保持通过。(local)
-- [Tests] [Fix] [Completed] `examples/forge-adapters/robotwin20/tests/test_qwen3_vl_vllm_lifecycle.py:L145-L153`: replace the startup-idle test with a no-request assertion that `/sleep` is not called; existing wake, handoff, concurrency, and recovery-failure regressions remain covered.(local)
-- [eval] [test] [完成] Qwen lifecycle/fallback/vLLM adapter 聚焦套件 `30 passed`；`compileall` 与 `git diff --check` 通过。已按 README 启动 Qwen 服务并确认 `/health`、`/v1/models`；直接请求暴露了旧 Host timer 竞态，修复后需重启 Host 再做真实请求。(local)
-- [Eval] [Test] [Completed] Qwen lifecycle/fallback/vLLM adapter focused suite passed `30`; `compileall` and `git diff --check` passed. The Qwen service was started with the README command and `/health` and `/v1/models` were confirmed; a direct request exposed the stale Host timer race, so the Host must be restarted before the real request check.(local)
-
-### 文件变更详情 / File change details
-#### [修改 / Modified] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/qwen3_vl_vllm_lifecycle.py:L65-L76`
-**修改前 / Before:**
-```python
-self._idle_timer: Timer | None = None
-self.last_state = "unknown"
-self.last_error = None
-with self._condition:
-    self._schedule_idle_timer_locked()
-```
-**修改后 / After:**
-```python
-self._idle_timer: Timer | None = None
-self.last_state = "unknown"
-self.last_error = None
-```
-**修改说明 / Rationale:** 没有已完成请求时不产生 idle sleep 副作用；请求退出路径仍负责安排 idle timer。/ No idle-sleep side effect occurs before any completed request; request-exit paths continue to arm the idle timer.
-
-#### [修改 / Modified] `examples/forge-adapters/robotwin20/tests/test_qwen3_vl_vllm_lifecycle.py:L145-L153`
-**修改前 / Before:** `test_manager_sleeps_after_startup_idle_without_a_request` expected `/sleep` before any request.
-**修改后 / After:** `test_manager_does_not_sleep_before_a_request` asserts no `/sleep` call before the first request.
-
-## v11.9.12 (2026-09-28 10:00) - codex
+## v11.9.16 (2026-09-28 18:00) - codex
 
 ### 实际修改 / Implemented changes
-- [agent] [fix] [完成] `PhyAgentOS/agent/prompt_context.py:L1051-L1185` 为 discovery 请求增加默认 16,000 token 压缩阈值；压缩重复历史 Forge 查询和模型叙述，同时保留 Coordinator 当前 AgentTask projection 与最近完整 turn。(local)
-- [Agent] [Fix] [Completed] `PhyAgentOS/agent/prompt_context.py:L1051-L1185` adds a default 16,000-token discovery compaction threshold; repeated historical Forge results and narration are compacted while the Coordinator's current AgentTask projection and recent complete turns remain.(local)
-- [eval] [test] [完成] `tests/test_prompt_context.py:L901-L955` 增加 discovery 回归，确认全局阈值触发前已压缩历史结果且保留当前 observation/task projection。(local)
-- [Eval] [Test] [Completed] `tests/test_prompt_context.py:L901-L955` adds a discovery regression proving historical results compact before the global threshold while the current observation and task projection remain.(local)
-- [eval] [test] [完成] `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/test_prompt_context.py tests/test_agent_foundation.py tests/test_turn_timeouts.py`：`114 passed`；`compileall` 与 `git diff --check` 通过。(local)
-- [Eval] [Test] [Completed] Focused prompt-context, agent-foundation, and timeout tests passed `114`; `compileall` and `git diff --check` passed.(local)
+- [agent] [fix] [完成] `PhyAgentOS/agent/tools/forge_tool_api.py:L35-L57,L150-L170,L651-L688` 将 `scene.bind` 加入 observation-bound Query 归一化；Coordinator 自动复制当前成功 observe 的 `observation_ref`、`scene_revision`、`calibration_ref`，模型只提供 `entity_refs`。(local)
+- [Agent] [Fix] [Completed] `PhyAgentOS/agent/tools/forge_tool_api.py:L35-L57,L150-L170,L651-L688` adds `scene.bind` to observation-bound Query normalization; Coordinator copies `observation_ref`, `scene_revision`, and `calibration_ref` from the current successful observation while the model supplies only `entity_refs`.(local)
+- [eval] [test] [完成] `tests/test_agent_foundation.py:L1403-L1425` 增加归一化回归；聚焦套件 `117 passed`，`compileall` 与 `git diff --check` 通过。(local)
+- [Eval] [Test] [Completed] `tests/test_agent_foundation.py:L1403-L1425` adds normalization coverage; focused suite passed `117`, with `compileall` and `git diff --check` passing.(local)
 
 ### 失败场景依据 / Failure scenario
-第二次 GraspNet RGB 验收在 discovery 第 12 次请求约 31k prompt tokens 时达到 240 秒 provider timeout，重试请求仍 timeout；全局 258k 压缩阈值未触发，导致历史 discovery 交互持续进入后续请求。/ The second GraspNet RGB acceptance reached a 240-second provider timeout on discovery iteration 12 at roughly 31k prompt tokens and timed out again on retry; the global 258k compaction threshold never activated, so historical discovery interaction kept flowing into later requests.
+The recovery task repeatedly reached `scene.bind`, but Coordinator rejected payloads with `arguments cannot be both literal and sourced` or `argument source is not visible to this consumer`; no binding or Action was created. The consumer identity is already determined by the current task's successful observation, so requiring the model to resend it creates an avoidable merge failure.
 
 ### 文件变更详情 / Exact changes
-- `PhyAgentOS/agent/prompt_context.py`
-- `tests/test_prompt_context.py`
+- `PhyAgentOS/agent/tools/forge_tool_api.py`
+- `tests/test_agent_foundation.py`
 
-#### [修改 / Modified] `PhyAgentOS/agent/prompt_context.py:L1051-L1067,L1121-L1147,L1149-L1172`
-**修改前 / Before:** discovery 使用与普通阶段相同的全局 `compaction_trigger_tokens`，在约 31k token 的历史 discovery 请求中不会提前压缩。
+#### [修改 / Modified] `PhyAgentOS/agent/tools/forge_tool_api.py:L35-L57,L150-L170,L651-L688`
+**修改前 / Before:** `scene.bind` was not part of the observation-bound query path, so the model had to resend identity fields and could submit the same field both literally and through `argument_sources`.
 
-**修改后 / After:** `AgentPromptContextManager` 提供 `DEFAULT_DISCOVERY_COMPACTION_TRIGGER_TOKENS = 16_000` 和可配置构造参数；`build()` 按 discovery phase 取更低阈值，触发既有 aggressive Forge 结果压缩，并重新注入当前 Coordinator projection。
+**修改后 / After:** `scene.bind` identity fields are coordinator-projected from the latest successful observation; literal `entity_refs` remain intact and any duplicate identity source is ignored by the bound-field filter.
 
-**修改说明 / Rationale:** 失败场景是 discovery 查询结果逐轮累积，Provider 在动作前 timeout；持久化 task projection 已是权威事实来源，因此可以压缩重复 transcript 而不丢失当前绑定事实。/ The failure was discovery transcript growth causing provider timeout before actions; the persisted task projection is authoritative, so repeated transcript can be compacted without losing current bindings.
+**修改说明 / Rationale:** the concrete failure was a local `arguments cannot be both literal and sourced` rejection followed by Runtime grounding failures before any binding; normalization removes only duplicate transport assembly and preserves all Runtime validation. / The concrete failure was a local merge rejection followed by Runtime grounding failures before binding; normalization removes duplicate transport assembly while preserving Runtime validation.
 
-#### [新增 / Added] `tests/test_prompt_context.py:L901-L955`
-**新增代码 / Added:** 构造四轮大型 `forge_tool_query` 历史，断言 phase 为 discovery、发生压缩、旧 debug 消失而 `observation://current` 与 `read_only_projection_from_AgentTaskCoordinator` 保留。/ Builds four large historical `forge_tool_query` turns and asserts discovery compaction, removal of old debug text, and preservation of the current observation and Coordinator projection.
-
-## v11.9.13 (2026-09-28 11:30) - codex
-
-### 实际修改 / Implemented changes
-- [agent] [fix] [完成] `PhyAgentOS/agent/prompt_context.py:L261-L345,L1157-L1158` 让已创建 AgentTask 的 discovery 阶段隐藏重复 `activate_skill`/`forge_task_get`；在重复读取 ToolSpec 达到有界次数后隐藏 `forge_tool_context`，保留 `forge_tool_query` 作为唯一前进入口。(local)
-- [Agent] [Fix] [Completed] `PhyAgentOS/agent/prompt_context.py:L261-L345,L1157-L1158` hides repeated `activate_skill`/`forge_task_get` after AgentTask creation; after bounded repeated ToolSpec reads it hides `forge_tool_context` while retaining `forge_tool_query` as the progress path.(local)
-- [eval] [test] [完成] `tests/test_prompt_context.py:L363-L460` 增加 reassembly 可见性回归；`PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/test_prompt_context.py tests/test_agent_foundation.py tests/test_turn_timeouts.py`：`115 passed`，`compileall` 与 `git diff --check` 通过。(local)
-- [Eval] [Test] [Completed] `tests/test_prompt_context.py:L363-L460` adds the reassembly visibility regression; focused prompt-context, agent-foundation, and timeout tests passed `115`, with `compileall` and `git diff --check` passing.(local)
-
-### 失败场景依据 / Failure scenario
-`rgb-graspnet-v11-9-12-r1-20260928` 创建 `task_109513a10fef4d8e` 后 40 次迭代调用了 14 次 `activate_skill`、18 次 `forge_tool_context`、7 次 `forge_task_get`，但没有一次 `forge_tool_query`；任务保持 executing、无 Gateway Action。/ After creating `task_109513a10fef4d8e`, `rgb-graspnet-v11-9-12-r1-20260928` spent all 40 iterations on 14 `activate_skill`, 18 `forge_tool_context`, and 7 `forge_task_get` calls with zero `forge_tool_query` calls; the task stayed executing and no Gateway Action occurred.
-
-### 文件变更详情 / Exact changes
-- `PhyAgentOS/agent/prompt_context.py`
-- `tests/test_prompt_context.py`
-- `PhyAgentOS/agent/loop.py` 未修改；AgentLoop 继续使用 PromptContextManager 的 phase-scoped visible tool projection。/ unchanged; AgentLoop continues to consume the phase-scoped visible tool projection from PromptContextManager.
-
-#### [新增 / Added] `PhyAgentOS/agent/prompt_context.py:L261-L275`
-**新增代码 / Added:** `_tool_call_names` 从当前 turn 读取已请求的 tool 名称，供 discovery 可见性边界判断重组次数。/ Reads tool names requested in the current turn for the discovery visibility boundary.
-
-#### [修改 / Modified] `PhyAgentOS/agent/prompt_context.py:L278-L345,L1157-L1158`
-**修改前 / Before:** task-scoped discovery 保持 `activate_skill`、`forge_task_get` 和 `forge_tool_context` 一直可见，模型可以反复重建控制面上下文并耗尽迭代。
-
-**修改后 / After:** non-creation task turns remove `activate_skill`; graph-less discovery removes `forge_task_get`; after `max(5, 2 * missing_preplan_queries)` context reads, `forge_tool_context` is hidden and `forge_tool_query` remains visible.
-
-**修改说明 / Rationale:** 该边界只改变模型可见性，不执行 Query、不生成参数、不授权动作；Coordinator 仍验证所有 task-bound Query、opaque refs 和 PlanGraph admission。/ This boundary changes only model visibility; it does not execute Queries, generate arguments, or authorize Actions, and Coordinator still validates task-bound Queries, opaque refs, and PlanGraph admission.
-
-#### [新增 / Added] `tests/test_prompt_context.py:L425-L460`
-**新增代码 / Added:** 模拟任务创建后一次 Skill/task 组装和十次 context 读取，确认 reassembly 工具隐藏而 `forge_tool_query` 保留。/ Simulates post-creation Skill/task assembly and ten context reads, proving reassembly tools are hidden while `forge_tool_query` remains.
-
-## v11.9.14 (2026-09-28 12:10) - codex
-
-### 实际修改 / Implemented changes
-- [agent] [fix] [完成] `PhyAgentOS/agent/prompt_context.py:L290-L296` 将 `activate_skill` 从 task-scoped generic 工具中移除，而在 `task is None` 的 task_creation 阶段保留；避免重复激活同时保留初始 Skill activation。(local)
-- [Agent] [Fix] [Completed] `PhyAgentOS/agent/prompt_context.py:L290-L296` removes `activate_skill` only from task-scoped generic tools while retaining it for task creation; this prevents repeated activation without blocking initial Skill activation.(local)
-- [eval] [test] [完成] `tests/test_prompt_context.py:L352-L360` 增加 task_creation 必须暴露 `activate_skill` 的断言；聚焦回归 `115 passed`，`compileall` 与 `git diff --check` 通过。(local)
-- [Eval] [Test] [Completed] `tests/test_prompt_context.py:L352-L360` asserts `activate_skill` remains visible during task creation; focused regression passed `115`, with `compileall` and `git diff --check` passing.(local)
-
-### 失败场景依据 / Failure scenario
-`rgb-graspnet-v11-9-13-r2-20260928` 在第一个模型请求后无法看到 `activate_skill`，因此 fail-closed 停止；没有创建 AgentTask、没有 Gateway Query/Action。/ After the first model request, `rgb-graspnet-v11-9-13-r2-20260928` could not see `activate_skill` and stopped fail-closed; no AgentTask, Gateway Query, or Action was created.
-
-### 文件变更详情 / Exact changes
-- `PhyAgentOS/agent/prompt_context.py`
-- `tests/test_prompt_context.py`
-
-#### [修改 / Modified] `PhyAgentOS/agent/prompt_context.py:L290-L296`
-**修改前 / Before:** `activate_skill` was removed while building the generic set for every phase, including task creation.
-
-**修改后 / After:** the task-creation branch returns before the task-scoped `generic.discard("activate_skill")`, so initial Skill activation remains model-visible; only existing-task phases hide it.
-
-**修改说明 / Rationale:** the failed acceptance stopped before AgentTask creation because activation was not visible; no Runtime or Action state was changed. / The failed acceptance stopped before AgentTask creation because activation was hidden; no Runtime or Action state changed.
-
-#### [修改 / Modified] `tests/test_prompt_context.py:L352-L360`
-**修改后 / After:** task-creation visibility now explicitly requires `activate_skill`, while discovery continues to expose `forge_tool_query` and no execution Action tools.
+#### [新增 / Added] `tests/test_agent_foundation.py:L1403-L1425`
+**新增代码 / Added:** verifies `scene.bind` receives the exact current observation identity while retaining the selected entity list. / Verifies exact current observation identity projection while retaining selected entities.
 
 ## v11.8.1 (2026-09-25 22:19) - codex
 
