@@ -288,14 +288,12 @@ def visible_tool_names(
     """
 
     names = tuple(all_names)
-    generic = {
-        name for name in names
-        if not name.startswith("forge_") and name != "activate_skill"
-    }
+    generic = {name for name in names if not name.startswith("forge_")}
     if task is None:
         allowed = generic | {"forge_task_create", "forge_tool_context", "forge_tool_query"}
         return tuple(name for name in names if name in allowed)
 
+    generic.discard("activate_skill")
     status = _task_status(task)
     if getattr(task, "terminal", False):
         allowed = generic | {"forge_task_create", "forge_task_get", "forge_tool_context"}

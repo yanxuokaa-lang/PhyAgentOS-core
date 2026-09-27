@@ -350,6 +350,7 @@ def test_visible_forge_tools_follow_task_phase() -> None:
         "forge_tool_stop_session",
     )
     creation = visible_tool_names(names, None)
+    assert "activate_skill" in creation
     assert "forge_task_create" in creation
     assert "forge_tool_query" in creation
     assert "forge_tool_start_action" not in creation
