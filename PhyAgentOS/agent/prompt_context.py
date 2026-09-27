@@ -258,7 +258,29 @@ class PromptRequestView:
     compacted: bool
 
 
-def visible_tool_names(all_names: Iterable[str], task: Any | None) -> tuple[str, ...]:
+def _tool_call_names(messages: Iterable[dict[str, Any]] | None) -> tuple[str, ...]:
+    """Return model-requested tool names from the current in-memory turn."""
+    if messages is None:
+        return ()
+    names: list[str] = []
+    for message in messages:
+        name = message.get("name")
+        if isinstance(name, str):
+            names.append(name)
+        for call in message.get("tool_calls", ()) or ():
+            function = call.get("function", {}) if isinstance(call, dict) else {}
+            call_name = function.get("name") if isinstance(function, dict) else None
+            if isinstance(call_name, str):
+                names.append(call_name)
+    return tuple(names)
+
+
+def visible_tool_names(
+    all_names: Iterable[str],
+    task: Any | None,
+    *,
+    messages: Iterable[dict[str, Any]] | None = None,
+) -> tuple[str, ...]:
     """Select Forge wrappers by lifecycle phase without changing execution access.
 
     Non-Forge tools retain their existing availability.  Registry admission and
@@ -266,7 +288,10 @@ def visible_tool_names(all_names: Iterable[str], task: Any | None) -> tuple[str,
     """
 
     names = tuple(all_names)
-    generic = {name for name in names if not name.startswith("forge_")}
+    generic = {
+        name for name in names
+        if not name.startswith("forge_") and name != "activate_skill"
+    }
     if task is None:
         allowed = generic | {"forge_task_create", "forge_tool_context", "forge_tool_query"}
         return tuple(name for name in names if name in allowed)
@@ -306,6 +331,17 @@ def visible_tool_names(all_names: Iterable[str], task: Any | None) -> tuple[str,
     graph = getattr(revision, "plan_graph", None) if revision is not None else None
     if graph is None:
         allowed = generic | _TASK_COMMON | _DISCOVERY
+        # Skill activation and task projection are already persisted on the
+        # AgentTask. Keeping them visible after creation lets a model spend its
+        # bounded discovery turn rebuilding control-plane context indefinitely
+        # instead of issuing the required task-bound Query.
+        allowed.discard("activate_skill")
+        allowed.discard("forge_task_get")
+        discovery_context_calls = _tool_call_names(messages).count("forge_tool_context")
+        if discovery_context_calls >= max(5, len(missing_preplan_queries(task)) * 2):
+            # A live ToolSpec has already been read repeatedly; force progress
+            # toward the persisted discovery Query without bypassing Coordinator.
+            allowed.discard("forge_tool_context")
         if _discovery_complete(task):
             allowed.add("forge_task_materialize_plan")
     elif status == "awaiting_replan":
@@ -1119,7 +1155,7 @@ class AgentPromptContextManager:
         projection_node_id: str | None = None,
     ) -> PromptRequestView:
         phase = self.phase(task)
-        visible = visible_tool_names(all_tool_names, task)
+        visible = visible_tool_names(all_tool_names, task, messages=messages)
         if projection_scope == "task":
             projection = task_prompt_projection(task)
         elif projection_scope == "node":

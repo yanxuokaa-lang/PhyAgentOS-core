@@ -25,33 +25,6 @@
 
 ## 最近 5 条 / Latest Five Versions
 
-## v11.9.8 (2026-09-27 23:40) - codex
-
-### 实际修改 / Implemented changes
-- [agent] [fix] [完成] `PhyAgentOS/agent/loop.py:L118-L131,L825-L829` 让 task-scope 的 `planning_execution` Provider 超时在 Tool dispatch 前只重试同一决策一次；node-scope 保持单次决策，避免重放 Action/Query。(local)
-- [Agent] [Fix] [Completed] `PhyAgentOS/agent/loop.py:L118-L131,L825-L829` retries the same task-scope `planning_execution` provider decision once before Tool dispatch; node-scope decisions remain single-shot, preventing Action/Query replay. (local)
-- [eval] [test] [完成] `tests/test_agent_foundation.py:L65-L81` 覆盖 task creation/discovery/planning_execution 与 node/verification 边界；聚焦回归 `7 passed`，compileall 与 `git diff --check` 通过。(local)
-- [Eval] [Test] [Completed] `tests/test_agent_foundation.py:L65-L81` covers task creation/discovery/planning_execution and node/verification boundaries; focused regression `7 passed`, compileall and `git diff --check` passed. (local)
-- [env] [tune] [完成] 外部验收配置 `/home/yanxu/.PhyAgentOS/config-rgb-no-evolution-long.json:L25` 的 `requestTimeoutS` 从 `600` 调整为 `240`，为 1800 秒外层预算保留多轮决策恢复空间。(local)
-- [Env] [Tune] [Completed] Changed `requestTimeoutS` from `600` to `240` at `/home/yanxu/.PhyAgentOS/config-rgb-no-evolution-long.json:L25` so the 1800-second outer budget retains room for multiple decision recoveries. (local)
-
-### 失败场景依据 / Failure scenario
-上一轮 `rgb-graspnet-acceptance-20260927T2230` 在 `r01-prepare-red` 的 planning request 停滞超过外层 1800 秒，未产生 Gateway 动作；当前只对 task creation/discovery 超时重试，planning_execution 超时直接结束，因此一次 Provider 卡顿会阻断 AgentLoop。/ The previous `rgb-graspnet-acceptance-20260927T2230` stalled during the `r01-prepare-red` planning request until the outer 1800-second timeout, before any Gateway action; only task creation/discovery timeouts were retried, so a Provider stall in `planning_execution` terminated the loop.
-
-### 文件变更详情 / File change details
-#### [修改 / Modified] `PhyAgentOS/agent/loop.py:L118-L131,L825-L829`
-**修改前 / Before:** only `task_creation` and `discovery` enabled the bounded timeout retry.
-**修改后 / After:** the centralized retry predicate also admits `planning_execution` for task-scope turns; the existing two-attempt loop remains unchanged.
-**修改说明 / Notes:** the retry is before any returned ToolCall is dispatched, so it cannot replay a Gateway invocation.
-
-#### [新增 / Added] `tests/test_agent_foundation.py:L65-L81`
-**新增代码 / Added:** parameterized coverage of retry eligibility across task and node scopes.
-
-### Git 提交 / Git Commit
-- Commit: `e4a36e9`
-- Branch: `feature/planning-loop`
-- 时间 / Time: 2026-09-27 23:46 CST
-
 ## v11.9.9 (2026-09-28 00:20) - codex
 
 ### 预期修改 / Planned changes
@@ -142,7 +115,37 @@ self.last_error = None
 **修改说明 / Rationale:** 失败场景是 discovery 查询结果逐轮累积，Provider 在动作前 timeout；持久化 task projection 已是权威事实来源，因此可以压缩重复 transcript 而不丢失当前绑定事实。/ The failure was discovery transcript growth causing provider timeout before actions; the persisted task projection is authoritative, so repeated transcript can be compacted without losing current bindings.
 
 #### [新增 / Added] `tests/test_prompt_context.py:L901-L955`
-**新增代码 / Added:** 构造四轮大型 `forge_tool_query` 历史，断言 phase 为 discovery、发生压缩、旧 debug 消失而 `observation://current` 与 `read_only_projection_from_AgentTaskCoordinator` 保留。/ Builds four large historical query turns and asserts discovery compaction, removal of old debug text, and preservation of the current observation and Coordinator projection.
+**新增代码 / Added:** 构造四轮大型 `forge_tool_query` 历史，断言 phase 为 discovery、发生压缩、旧 debug 消失而 `observation://current` 与 `read_only_projection_from_AgentTaskCoordinator` 保留。/ Builds four large historical `forge_tool_query` turns and asserts discovery compaction, removal of old debug text, and preservation of the current observation and Coordinator projection.
+
+## v11.9.13 (2026-09-28 11:30) - codex
+
+### 实际修改 / Implemented changes
+- [agent] [fix] [完成] `PhyAgentOS/agent/prompt_context.py:L261-L345,L1157-L1158` 让已创建 AgentTask 的 discovery 阶段隐藏重复 `activate_skill`/`forge_task_get`；在重复读取 ToolSpec 达到有界次数后隐藏 `forge_tool_context`，保留 `forge_tool_query` 作为唯一前进入口。(local)
+- [Agent] [Fix] [Completed] `PhyAgentOS/agent/prompt_context.py:L261-L345,L1157-L1158` hides repeated `activate_skill`/`forge_task_get` after AgentTask creation; after bounded repeated ToolSpec reads it hides `forge_tool_context` while retaining `forge_tool_query` as the progress path.(local)
+- [eval] [test] [完成] `tests/test_prompt_context.py:L363-L460` 增加 reassembly 可见性回归；`PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/test_prompt_context.py tests/test_agent_foundation.py tests/test_turn_timeouts.py`：`115 passed`，`compileall` 与 `git diff --check` 通过。(local)
+- [Eval] [Test] [Completed] `tests/test_prompt_context.py:L363-L460` adds the reassembly visibility regression; focused prompt-context, agent-foundation, and timeout tests passed `115`, with `compileall` and `git diff --check` passing.(local)
+
+### 失败场景依据 / Failure scenario
+`rgb-graspnet-v11-9-12-r1-20260928` 创建 `task_109513a10fef4d8e` 后 40 次迭代调用了 14 次 `activate_skill`、18 次 `forge_tool_context`、7 次 `forge_task_get`，但没有一次 `forge_tool_query`；任务保持 executing、无 Gateway Action。/ After creating `task_109513a10fef4d8e`, `rgb-graspnet-v11-9-12-r1-20260928` spent all 40 iterations on 14 `activate_skill`, 18 `forge_tool_context`, and 7 `forge_task_get` calls with zero `forge_tool_query` calls; the task stayed executing and no Gateway Action occurred.
+
+### 文件变更详情 / Exact changes
+- `PhyAgentOS/agent/prompt_context.py`
+- `tests/test_prompt_context.py`
+- `PhyAgentOS/agent/loop.py` 未修改；AgentLoop 继续使用 PromptContextManager 的 phase-scoped visible tool projection。/ unchanged; AgentLoop continues to consume the phase-scoped visible tool projection from PromptContextManager.
+
+#### [新增 / Added] `PhyAgentOS/agent/prompt_context.py:L261-L275`
+**新增代码 / Added:** `_tool_call_names` 从当前 turn 读取已请求的 tool 名称，供 discovery 可见性边界判断重组次数。/ Reads tool names requested in the current turn for the discovery visibility boundary.
+
+#### [修改 / Modified] `PhyAgentOS/agent/prompt_context.py:L278-L345,L1157-L1158`
+**修改前 / Before:** task-scoped discovery 保持 `activate_skill`、`forge_task_get` 和 `forge_tool_context` 一直可见，模型可以反复重建控制面上下文并耗尽迭代。
+
+**修改后 / After:** non-creation task turns remove `activate_skill`; graph-less discovery removes `forge_task_get`; after `max(5, 2 * missing_preplan_queries)` context reads, `forge_tool_context` is hidden and `forge_tool_query` remains visible.
+
+**修改说明 / Rationale:** 该边界只改变模型可见性，不执行 Query、不生成参数、不授权动作；Coordinator 仍验证所有 task-bound Query、opaque refs 和 PlanGraph admission。/ This boundary changes only model visibility; it does not execute Queries, generate arguments, or authorize Actions, and Coordinator still validates task-bound Queries, opaque refs, and PlanGraph admission.
+
+#### [新增 / Added] `tests/test_prompt_context.py:L425-L460`
+**新增代码 / Added:** 模拟任务创建后一次 Skill/task 组装和十次 context 读取，确认 reassembly 工具隐藏而 `forge_tool_query` 保留。/ Simulates post-creation Skill/task assembly and ten context reads, proving reassembly tools are hidden while `forge_tool_query` remains.
+- `tests/test_agent_foundation.py`
 
 ## v11.8.1 (2026-09-25 22:19) - codex
 

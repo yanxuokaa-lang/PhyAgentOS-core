@@ -359,6 +359,7 @@ def test_visible_forge_tools_follow_task_phase() -> None:
     assert "forge_task_materialize_plan" in discovery
     assert "forge_tool_start_action" not in discovery
 
+
     completed = (
         SimpleNamespace(tool_id="scene.observe", status="succeeded"),
         SimpleNamespace(tool_id="scene.understand", status="succeeded"),
@@ -431,6 +432,32 @@ def test_visible_forge_tools_follow_task_phase() -> None:
     assert "forge_task_begin_revision" in waiting_tools
     assert "forge_tool_query" not in waiting_tools
     assert AgentPromptContextManager.phase(waiting) == "waiting_for_user"
+
+
+def test_discovery_hides_reassembly_tools_after_task_creation() -> None:
+    names = (
+        "activate_skill",
+        "forge_task_create",
+        "forge_task_get",
+        "forge_tool_context",
+        "forge_tool_query",
+        "forge_task_materialize_plan",
+    )
+    messages = [
+        {"role": "assistant", "tool_calls": [
+            {"function": {"name": "activate_skill"}},
+            {"function": {"name": "forge_task_create"}},
+        ]},
+    ]
+    messages.extend(
+        {"role": "assistant", "tool_calls": [{"function": {"name": "forge_tool_context"}}]}
+        for _ in range(10)
+    )
+    visible = set(visible_tool_names(names, _task(), messages=messages))
+    assert "activate_skill" not in visible
+    assert "forge_task_get" not in visible
+    assert "forge_tool_context" not in visible
+    assert "forge_tool_query" in visible
 
 
 def test_terminal_task_exposes_only_reconciliation_for_unknown_action_invocation() -> None:
