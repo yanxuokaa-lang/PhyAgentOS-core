@@ -229,6 +229,9 @@ input_schema:
       - candidate_set_ref
       title: ManipulationIntent
       type: object
+    binding_ref:
+      type: string
+      pattern: ^artifact://[^/]+/.+$
     destination_ref:
       type: string
       pattern: ^destination://[^/]+.*$

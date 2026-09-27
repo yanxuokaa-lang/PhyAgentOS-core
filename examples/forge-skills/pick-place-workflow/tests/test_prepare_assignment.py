@@ -12,7 +12,11 @@ from test_manipulation_prepare import prepared, request_payload
 
 def request_and_result():
     request = request_payload()
-    request.update(destination_ref="destination://shelf", capability_snapshot_ref="artifact://scene/capabilities")
+    request.update(
+        binding_ref="artifact://scene/binding",
+        destination_ref="destination://shelf",
+        capability_snapshot_ref="artifact://scene/capabilities",
+    )
     intent = {key: request[key] for key in ("observation_ref", "scene_revision", "calibration_ref", "candidate_set_ref")}
     intent.update(task_id="task", revision_id="revision", node_id="relocate", node_digest="a" * 64,
                   entity_ref="entity://bottle-1", goal="place bottle", success_criteria=["on shelf"], allowed_arms=["left"],

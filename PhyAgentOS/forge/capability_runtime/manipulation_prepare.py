@@ -222,6 +222,7 @@ _intent_schema["properties"]["allowed_arms"]["description"] = (
 )
 MANIPULATION_TOOL_SPEC["input_schema"]["properties"].update({
     "intent": _intent_schema,
+    "binding_ref": {"type": "string", "pattern": _ARTIFACT_REF.pattern},
     "destination_ref": {"type": "string", "pattern": r"^destination://[^/]+.*$"},
     "capability_snapshot_ref": {"type": "string", "pattern": _ARTIFACT_REF.pattern},
 })
@@ -264,14 +265,17 @@ def validate_arguments(arguments: Any) -> dict[str, Any] | None:
     allowed = {
         "observation_ref", "scene_revision", "frame_id", "calibration_ref",
         "freshness_ms", "max_age_ms", "candidate_set_ref", "candidates",
-        "intent", "destination_ref", "capability_snapshot_ref",
+        "intent", "binding_ref", "destination_ref", "capability_snapshot_ref",
     }
     if set(arguments) - allowed:
         return _error("invalid_arguments", "unknown manipulation.prepare argument")
-    route_keys = {"intent", "destination_ref", "capability_snapshot_ref"}
+    route_keys = {"intent", "binding_ref", "destination_ref", "capability_snapshot_ref"}
     if route_keys & arguments.keys():
         if not route_keys <= arguments.keys():
-            return _error("invalid_intent_binding", "route preparation requires intent, destination and capability snapshot")
+            return _error(
+                "invalid_intent_binding",
+                "route preparation requires intent, scene binding, destination and capability snapshot",
+            )
         try:
             intent = ManipulationIntent.model_validate(arguments["intent"])
         except ValueError:
@@ -283,6 +287,8 @@ def validate_arguments(arguments: Any) -> dict[str, Any] | None:
             return _error("invalid_intent_binding", "intent observation frame differs from preparation")
         if not isinstance(arguments["destination_ref"], str) or re.fullmatch(r"destination://[^/]+.*", arguments["destination_ref"]) is None:
             return _error("invalid_destination", "destination_ref is invalid")
+        if not isinstance(arguments["binding_ref"], str) or _ARTIFACT_REF.fullmatch(arguments["binding_ref"]) is None:
+            return _error("invalid_scene_binding", "binding_ref is invalid")
         if not isinstance(arguments["capability_snapshot_ref"], str) or _ARTIFACT_REF.fullmatch(arguments["capability_snapshot_ref"]) is None:
             return _error("invalid_capability_binding", "capability_snapshot_ref is invalid")
     observation_ref = arguments.get("observation_ref")

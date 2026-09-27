@@ -18,6 +18,45 @@ class PlanningContextUnavailableError(RuntimeError):
     """No authoritative scene fact is available for admission yet."""
 
 
+def _derived_query_condition_facts(record: Any, payload: dict[str, Any]) -> dict[str, bool]:
+    """Replay facts owned by a persisted, terminal Runtime Query.
+
+    Older grasp.propose receipts predate the explicit ``condition_facts`` output
+    field.  Replaying a validated terminal result is safe here because the
+    record identity, Tool binding, status, funnel, candidate count, and
+    candidate provenance are all Coordinator-owned; Agent ``effects`` and
+    natural-language fields are never consulted.
+    """
+    if (
+        getattr(record, "tool_id", None) != "grasp.propose"
+        or getattr(record, "semantics", None) != "query"
+        or getattr(record, "status", None) != "succeeded"
+        or payload.get("status") != "available"
+    ):
+        return {}
+    candidates = payload.get("candidates")
+    funnel = payload.get("funnel")
+    if not isinstance(candidates, list) or not candidates or not isinstance(funnel, dict):
+        return {}
+    stages = ("decoded", "canonicalized", "deduplicated", "retained")
+    values = [funnel.get(stage) for stage in stages]
+    if (
+        any(isinstance(value, bool) or not isinstance(value, int) or value < 0 for value in values)
+        or not values[0] >= values[1] >= values[2] >= values[3]
+        or values[3] != len(candidates)
+    ):
+        return {}
+    if any(
+        not isinstance(candidate, dict)
+        or not isinstance(candidate.get("provenance"), list)
+        or not candidate["provenance"]
+        or any(not isinstance(ref, str) or not ref.startswith("artifact://") for ref in candidate["provenance"])
+        for candidate in candidates
+    ):
+        return {}
+    return {"grasp_candidates_retained": True}
+
+
 def context_from_task(task: Any, *, allow_refresh: bool = False) -> AdmissionContext:
     """Build an admission context from persisted task facts.
 
@@ -103,6 +142,7 @@ def context_from_task(task: Any, *, allow_refresh: bool = False) -> AdmissionCon
         facts = payload.get("condition_facts")
         if isinstance(facts, dict):
             condition_facts.update({key: value for key, value in facts.items() if isinstance(key, str) and isinstance(value, bool)})
+        condition_facts.update(_derived_query_condition_facts(record, payload))
         resources = payload.get("resources_in_use")
         if isinstance(resources, (list, tuple, set)):
             resources_in_use = {item for item in resources if isinstance(item, str) and item}

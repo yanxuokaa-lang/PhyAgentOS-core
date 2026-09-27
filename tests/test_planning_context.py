@@ -243,6 +243,104 @@ def test_continuation_keeps_same_capture_records_and_excludes_stale_captures():
     assert current_scene_query_records(task) == ()
 
 
+def test_runtime_grasp_query_projects_retained_fact_for_downstream_prepare():
+    observation = _record(
+        "observe-current",
+        tool_id="scene.observe",
+        arguments={"sensor_ref": "camera/head"},
+        response={"ok": True, "data": {"scene_revision": "scene-current"}},
+    )
+    grasp = _record(
+        "grasp-current",
+        tool_id="grasp.propose",
+        arguments={"scene_revision": "scene-current"},
+        response={
+            "ok": True,
+            "data": {
+                "status": "available",
+                "scene_revision": "scene-current",
+                "condition_facts": {"grasp_candidates_retained": True},
+            },
+        },
+    )
+    context = context_from_task(_task(observation, grasp), allow_refresh=True)
+    assert dict(context.condition_facts) == {"grasp_candidates_retained": True}
+
+
+def test_empty_grasp_query_cannot_unlock_downstream_prepare():
+    observation = _record(
+        "observe-current",
+        tool_id="scene.observe",
+        arguments={"sensor_ref": "camera/head"},
+        response={"ok": True, "data": {"scene_revision": "scene-current"}},
+    )
+    grasp = _record(
+        "grasp-empty",
+        tool_id="grasp.propose",
+        arguments={"scene_revision": "scene-current"},
+        response={
+            "ok": True,
+            "data": {
+                "status": "empty",
+                "scene_revision": "scene-current",
+                "condition_facts": {"grasp_candidates_retained": False},
+            },
+        },
+    )
+    context = context_from_task(_task(observation, grasp), allow_refresh=True)
+    assert dict(context.condition_facts) == {"grasp_candidates_retained": False}
+
+
+def test_legacy_successful_grasp_receipt_replays_retained_fact():
+    observation = _record(
+        "observe-current",
+        tool_id="scene.observe",
+        arguments={"sensor_ref": "camera/head"},
+        response={"ok": True, "data": {"scene_revision": "scene-current"}},
+    )
+    grasp = _record(
+        "legacy-grasp",
+        tool_id="grasp.propose",
+        arguments={"scene_revision": "scene-current"},
+        response={
+            "ok": True,
+            "data": {
+                "status": "available",
+                "scene_revision": "scene-current",
+                "candidates": [{"provenance": ["artifact://obs/points"]}],
+                "funnel": {"decoded": 8, "canonicalized": 4, "deduplicated": 2, "retained": 1},
+            },
+        },
+    )
+    context = context_from_task(_task(observation, grasp), allow_refresh=True)
+    assert dict(context.condition_facts) == {"grasp_candidates_retained": True}
+
+
+def test_legacy_grasp_receipt_with_invalid_funnel_stays_untrusted():
+    observation = _record(
+        "observe-current",
+        tool_id="scene.observe",
+        arguments={"sensor_ref": "camera/head"},
+        response={"ok": True, "data": {"scene_revision": "scene-current"}},
+    )
+    grasp = _record(
+        "bad-grasp",
+        tool_id="grasp.propose",
+        arguments={"scene_revision": "scene-current"},
+        response={
+            "ok": True,
+            "data": {
+                "status": "available",
+                "scene_revision": "scene-current",
+                "candidates": [{"provenance": ["artifact://obs/points"]}],
+                "funnel": {"decoded": 1, "canonicalized": 2, "deduplicated": 1, "retained": 1},
+            },
+        },
+    )
+    context = context_from_task(_task(observation, grasp), allow_refresh=True)
+    assert dict(context.condition_facts) == {}
+
+
 def test_compiler_resolves_entity_from_previous_segment_current_capture():
     from PhyAgentOS.agent.plan_proposal import _complete_persisted_runtime_bindings
     from PhyAgentOS.planning import PlanNode
@@ -251,7 +349,8 @@ def test_compiler_resolves_entity_from_previous_segment_current_capture():
                 "calibration_ref": "artifact://current/calibration"}
     observation = _record("observe", tool_id="scene.observe", arguments={}, response={"data": identity})
     binding = _record("bind", tool_id="scene.bind", arguments={}, response={"data": {
-        **identity, "entities": [{"entity_ref": "entity://observed-red",
+        **identity, "binding_ref": "artifact://entity-bindings/current",
+        "entities": [{"entity_ref": "entity://observed-red",
                                  "execution_entity_ref": "entity://block-red-1"}],
     }})
     observation.node_id = "observe"
@@ -263,3 +362,33 @@ def test_compiler_resolves_entity_from_previous_segment_current_capture():
                        input_bindings={"execution_entity_ref": "entity://block-red-1"})
     completed = _complete_persisted_runtime_bindings(task, (prepare,))
     assert completed[0].input_bindings["entity_ref"] == "entity://observed-red"
+    assert completed[0].input_bindings["binding_ref"] == "artifact://entity-bindings/current"
+
+
+def test_compiler_refuses_to_guess_between_overlapping_scene_bindings():
+    from PhyAgentOS.agent.plan_proposal import _complete_persisted_runtime_bindings
+    from PhyAgentOS.planning import PlanNode
+
+    identity = {"scene_revision": "scene", "observation_ref": "observation://current",
+                "calibration_ref": "artifact://current/calibration"}
+    observation = _record("observe", tool_id="scene.observe", arguments={}, response={"data": identity})
+    records = [observation]
+    for index in (1, 2):
+        record = _record(f"bind-{index}", tool_id="scene.bind", arguments={}, response={"data": {
+            **identity, "binding_ref": f"artifact://entity-bindings/{index}",
+            "entities": [{"entity_ref": "entity://observed-red",
+                           "execution_entity_ref": "entity://block-red-1"}],
+        }})
+        record.node_id = f"bind-{index}"
+        records.append(record)
+    observation.node_id = "observe"
+    task = _task(*records)
+    task.revisions = (SimpleNamespace(execution_records=task.execution_records),)
+    task.active_revision.execution_records = ()
+    prepare = PlanNode(node_id="prepare", obligation_id="prepare", capability="manipulation.prepare",
+                       input_bindings={"execution_entity_ref": "entity://block-red-1"})
+
+    completed = _complete_persisted_runtime_bindings(task, (prepare,))
+
+    assert completed[0].input_bindings["entity_ref"] == "entity://observed-red"
+    assert "binding_ref" not in completed[0].input_bindings

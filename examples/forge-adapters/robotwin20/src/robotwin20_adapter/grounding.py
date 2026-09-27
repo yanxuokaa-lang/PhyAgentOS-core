@@ -135,6 +135,37 @@ class Grounding:
                 selected=selected,
                 observed_entities=[e.get("entity_ref") for e in understanding["entities"]],
             )
+        # AgentLoop retries may assemble the same bind node more than once.
+        # Reuse the existing current binding for an identical identity and
+        # entity set; distinct selections still receive distinct bindings.
+        for reference, binding in self.bindings.items():
+            if (
+                all(binding.get(key) == request[key] for key in IDENTITY_KEYS)
+                and set(binding.get("objects", {})) == set(selected)
+            ):
+                self._current(request)
+                return {
+                    "status": "available",
+                    "binding_ref": reference,
+                    "motion_authorized": False,
+                    **{key: request[key] for key in IDENTITY_KEYS},
+                    "frame_id": "world",
+                    "unit": "m",
+                    "observation_frame_id": binding["frame_id"],
+                    "world_T_observation": binding["world_T_observation"],
+                    "captured_at": binding["captured_at"],
+                    "validity": "current_action_driven_scene",
+                    "entities": [
+                        {
+                            "entity_ref": ref,
+                            "execution_entity_ref": item["entity_ref"],
+                            "world_T_object": item["world_T_object"],
+                            "half_extents_m": item["half_extents_m"],
+                        }
+                        for ref, item in binding["objects"].items()
+                    ],
+                    "evidence_refs": [reference],
+                }
         selected_set = set(selected)
         envelopes = {}
         for item in understanding.get("spatial_envelopes", []):
@@ -444,6 +475,9 @@ class Grounding:
             if self.goal_source != "benchmark_task_definition":
                 raise ValueError("destination is not an observation-owned target")
             value = self._benchmark_goal_target(request, deadline=deadline)
+        request_binding_ref = request.get("binding_ref")
+        if request_binding_ref is not None and value["binding_ref"] != request_binding_ref:
+            raise ValueError("target scene binding differs from preparation")
         if any(value[k] != request[k] for k in IDENTITY_KEYS):
             raise ValueError("target observation identity mismatch")
         if value["object"]["entity_ref"] != request["intent"]["entity_ref"]:
@@ -496,6 +530,9 @@ class Grounding:
         value = self.targets.get(request["destination_ref"])
         if value is None:
             value = self._benchmark_goal_target(request, deadline=deadline)
+        request_binding_ref = request.get("binding_ref")
+        if request_binding_ref is not None and value["binding_ref"] != request_binding_ref:
+            raise ValueError("target scene binding differs from preparation")
         if any(value[key] != request[key] for key in IDENTITY_KEYS):
             raise ValueError("target observation identity mismatch")
         target_entity = request["intent"]["entity_ref"]
@@ -552,17 +589,21 @@ class Grounding:
 
         target_entity = request.get("intent", {}).get("entity_ref")
         destination_ref = request.get("destination_ref")
-        if not isinstance(target_entity, str) or not isinstance(destination_ref, str):
+        binding_ref = request.get("binding_ref")
+        if (
+            not isinstance(target_entity, str)
+            or not isinstance(destination_ref, str)
+            or not isinstance(binding_ref, str)
+        ):
             raise ValueError("benchmark target request is incomplete")
-        matches = [
-            (reference, binding)
-            for reference, binding in self.bindings.items()
-            if all(binding.get(key) == request.get(key) for key in IDENTITY_KEYS)
-            and target_entity in binding.get("objects", {})
-        ]
-        if len(matches) != 1:
-            raise ValueError("benchmark target binding is absent or ambiguous")
-        binding_ref, binding = matches[0]
+        binding = self.bindings.get(binding_ref)
+        if binding is None:
+            raise ValueError("benchmark target scene binding is unavailable")
+        if (
+            any(binding.get(key) != request.get(key) for key in IDENTITY_KEYS)
+            or target_entity not in binding.get("objects", {})
+        ):
+            raise ValueError("benchmark target scene binding differs from preparation")
         observed_object = binding["objects"][target_entity]
         execution_entity = observed_object.get("entity_ref")
         kwargs = (

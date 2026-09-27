@@ -86,7 +86,7 @@ input_schema:
 output_schema:
   type: object
   additionalProperties: false
-  required: [status, candidate_set_ref, observation_ref, scene_revision, frame, calibration_ref, candidates, funnel, ambiguities]
+  required: [status, candidate_set_ref, observation_ref, scene_revision, frame, calibration_ref, candidates, funnel, ambiguities, condition_facts]
   properties:
     status:
       enum: [available, empty, unavailable, stale, invalid]
@@ -164,6 +164,13 @@ output_schema:
           entity_refs:
             type: array
             items: {type: string, pattern: '^entity://[^/]+$'}
+    condition_facts:
+      type: object
+      additionalProperties: {type: boolean}
+      description: >-
+        Coordinator-readable facts emitted by this terminal Query. They describe
+        proposal availability only; preparation, IK, collision, and motion
+        readiness remain separate.
     error:
       type: object
       additionalProperties: false

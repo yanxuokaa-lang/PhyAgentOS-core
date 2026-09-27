@@ -191,6 +191,7 @@ GRASP_TOOL_SPEC: dict[str, Any] = {
         "required": [
             "status", "candidate_set_ref", "observation_ref", "scene_revision", "frame",
             "calibration_ref", "candidates", "funnel", "ambiguities",
+            "condition_facts",
         ],
         "properties": {
             "status": {"enum": ["available", "empty", "unavailable", "stale", "invalid"]},
@@ -288,6 +289,15 @@ GRASP_TOOL_SPEC: dict[str, Any] = {
                     },
                 },
             },
+            "condition_facts": {
+                "type": "object",
+                "additionalProperties": {"type": "boolean"},
+                "description": (
+                    "Coordinator-readable facts emitted by this terminal Query. "
+                    "They describe proposal availability only; preparation, IK, "
+                    "collision, and motion readiness remain separate."
+                ),
+            },
             "error": {
                 "type": "object",
                 "additionalProperties": False,
@@ -323,6 +333,7 @@ def _error(
         "candidates": [],
         "funnel": {"decoded": 0, "canonicalized": 0, "deduplicated": 0, "retained": 0},
         "ambiguities": [],
+        "condition_facts": {"grasp_candidates_retained": False},
         "error": {"code": code, "message": message},
     }
 
@@ -749,6 +760,7 @@ class GraspProposalEndpoint:
                 "candidates": [],
                 "funnel": {"decoded": 0, "canonicalized": 0, "deduplicated": 0, "retained": 0},
                 "ambiguities": [],
+                "condition_facts": {"grasp_candidates_retained": False},
             }
         try:
             snapshot = self.provider.propose(deepcopy(arguments))
@@ -813,6 +825,9 @@ class GraspProposalEndpoint:
                 arguments=arguments,
                 candidate_set_ref=candidate_set_ref,
             )
+        condition_facts = {
+            "grasp_candidates_retained": bool(snapshot.candidates),
+        }
         return {
             "status": "available" if snapshot.candidates else "empty",
             "candidate_set_ref": candidate_set_ref,
@@ -823,6 +838,8 @@ class GraspProposalEndpoint:
             "candidates": [dict(candidate) for candidate in snapshot.candidates],
             "funnel": dict(snapshot.funnel or {}),
             "ambiguities": [dict(ambiguity) for ambiguity in snapshot.ambiguities],
+            # Runtime-owned fact; this does not authorize preparation or motion.
+            "condition_facts": condition_facts,
         }
 
 

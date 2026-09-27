@@ -111,6 +111,36 @@ def test_single_object_binding_needs_no_goal_and_target_preserves_explicit_pose(
     assert target["motion_authorized"] is False
 
 
+def test_repeated_bind_reuses_current_binding_for_same_entity_set(tmp_path):
+    g, request, _ = setup(tmp_path)
+    first = g.bind(request)
+    second = g.bind(request)
+    assert second["binding_ref"] == first["binding_ref"]
+    assert len(g.bindings) == 1
+    assert second["evidence_refs"] == first["evidence_refs"]
+
+
+def test_distinct_entity_sets_remain_separate_bindings(tmp_path):
+    g, request, facts = setup(tmp_path)
+    understanding = next(iter(g.understandings.values()))
+    understanding["entities"].append({"entity_ref": "entity://seen-2"})
+    understanding["spatial_envelopes"].append({
+        "entity_ref": "entity://seen-2", "frame_id": "camera", "unit": "m",
+        "min_xyz_m": [0.18, -0.02, -0.02], "max_xyz_m": [0.22, 0.02, 0.02],
+    })
+    second_object = deepcopy(facts["objects"][0])
+    second_object.update(entity_ref="entity://execution-2", actor_name="block2",
+                         world_T_object=pose(0.2), world_T_functional_point=pose(0.2))
+    facts["objects"].append(second_object)
+    g.source = lambda _: deepcopy(facts)
+
+    combined = g.bind({**request, "entity_refs": ["entity://seen", "entity://seen-2"]})
+    first_only = g.bind(request)
+
+    assert combined["binding_ref"] != first_only["binding_ref"]
+    assert len(g.bindings) == 2
+
+
 def test_oracle_scene_uses_bound_actor_geometry_without_changing_observed_identity(tmp_path):
     g, request, _ = setup(tmp_path)
     bound = g.bind(request)
@@ -151,7 +181,7 @@ def test_oracle_scene_uses_bound_actor_geometry_without_changing_observed_identi
 @pytest.mark.parametrize("geometry_source", ["oracle", "observed"])
 def test_scene_resolves_runtime_goal_without_target_matrix_transcription(tmp_path, geometry_source):
     g, request, _ = setup(tmp_path)
-    g.bind(request)
+    bound = g.bind(request)
     g.goal_source = "benchmark_task_definition"
     destination = "destination://blocks-ranking-rgb/red-slot"
     calls = []
@@ -177,6 +207,7 @@ def test_scene_resolves_runtime_goal_without_target_matrix_transcription(tmp_pat
     resolve = g.oracle_scene_facts if geometry_source == "oracle" else g.scene_facts
     facts = resolve({
         **request,
+        "binding_ref": bound["binding_ref"],
         "intent": {"entity_ref": "entity://seen"},
         "destination_ref": destination,
     })
@@ -188,6 +219,35 @@ def test_scene_resolves_runtime_goal_without_target_matrix_transcription(tmp_pat
     assert facts["objects"][0]["world_T_functional_target"] == pose(0.35)
     assert not g.targets
     assert calls.count("task_goal_facts") == 1
+
+
+def test_benchmark_goal_uses_exact_binding_when_overlapping_binding_exists(tmp_path):
+    g, request, _ = setup(tmp_path)
+    bound = g.bind(request)
+    duplicate = "artifact://entity-bindings/historical-duplicate"
+    g.bindings[duplicate] = deepcopy(g.bindings[bound["binding_ref"]])
+    g.goal_source = "benchmark_task_definition"
+    destination = "destination://blocks-ranking-rgb/red-slot"
+    original_query = g.client.query
+
+    def query(operation, arguments, **kwargs):
+        if operation == "task_goal_facts":
+            return {"status": "available", "geometry_source": "benchmark_task_definition",
+                    "goals": [{"execution_entity_ref": "entity://execution",
+                               "destination_ref": destination, "frame_id": "world", "unit": "m",
+                               "world_T_object_target": pose(0.35)}]}
+        return original_query(operation, arguments, **kwargs)
+
+    g.client.query = query
+    facts = g.scene_facts({**request, "binding_ref": bound["binding_ref"],
+                           "intent": {"entity_ref": "entity://seen"},
+                           "destination_ref": destination})
+    assert facts["objects"][0]["target_ref"] == destination
+
+    with pytest.raises(ValueError, match="binding is unavailable"):
+        g.scene_facts({**request, "binding_ref": "artifact://entity-bindings/missing",
+                       "intent": {"entity_ref": "entity://seen"},
+                       "destination_ref": destination})
 
 
 def test_oracle_grasp_activation_reuses_one_current_persisted_binding(tmp_path):

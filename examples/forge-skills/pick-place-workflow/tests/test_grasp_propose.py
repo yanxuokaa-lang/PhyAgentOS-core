@@ -266,7 +266,7 @@ def test_bundle_and_package_versions_match_the_feature_revision():
     )
     import tomllib
 
-    assert bundle_manifest["version"] == "2.7.15"
+    assert bundle_manifest["version"] == "2.8.2"
     assert tomllib.loads(package_text)["project"]["version"] == bundle_manifest["version"]
 
 
@@ -296,6 +296,7 @@ async def test_successful_proposal_binds_candidates_to_observation_evidence():
     assert all(item["provenance"] == ["artifact://obs-7/rgb"] for item in data["candidates"])
     assert data["funnel"] == {"decoded": 10, "canonicalized": 8, "deduplicated": 3, "retained": 2}
     assert data["ambiguities"] == []
+    assert data["condition_facts"] == {"grasp_candidates_retained": True}
     assert _motion_keys(data) == set()
     assert provider.calls == 1
     assert provider.requests[0]["observation_ref"] == "observation://scene-7/camera_front"
@@ -321,6 +322,7 @@ async def test_empty_provider_result_returns_explicit_empty_status():
     assert data["status"] == "empty"
     assert data["candidates"] == []
     assert data["funnel"] == {"decoded": 4, "canonicalized": 2, "deduplicated": 0, "retained": 0}
+    assert data["condition_facts"] == {"grasp_candidates_retained": False}
     assert provider.calls == 1
 
 
@@ -333,6 +335,7 @@ async def test_empty_targets_return_empty_without_fabricated_candidates():
     assert data["candidates"] == []
     assert data["candidate_set_ref"] == "candidate-set://scene-7/camera_front"
     assert data["funnel"]["retained"] == 0
+    assert data["condition_facts"] == {"grasp_candidates_retained": False}
 
 
 @pytest.mark.asyncio
@@ -343,6 +346,7 @@ async def test_stale_input_is_rejected_before_the_provider_call():
     assert data["status"] == "stale"
     assert data["error"]["code"] == "stale_observation"
     assert data["candidates"] == []
+    assert data["condition_facts"] == {"grasp_candidates_retained": False}
     assert data["candidate_set_ref"] == "candidate-set://scene-7/camera_front"
 
 
@@ -385,6 +389,7 @@ def test_candidate_provenance_must_bind_to_requested_target_artifacts():
     assert result["scene_revision"] == "scene-7"
     assert result["frame"] == {"frame_id": "camera_front", "unit": "m"}
     assert result["calibration_ref"] == "calibration://front/v3"
+    assert result["condition_facts"] == {"grasp_candidates_retained": False}
 
 
 def test_candidate_provenance_may_cite_provider_declared_evidence():

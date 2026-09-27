@@ -31,6 +31,7 @@ def composition(tmp_path, *, status="pass", node_id="pick-red"):
         "scene_revision", "observation_ref", "calibration_ref", "candidate_set_ref",
     )}
     request.update(intent=intent.model_dump(mode="json"), frame_id=intent.observation_frame_id,
+                   binding_ref="artifact://entity-bindings/current",
                    destination_ref="destination://slot", capability_snapshot_ref=capability.snapshot_ref,
                    candidates=deepcopy(route["candidates"]))
 

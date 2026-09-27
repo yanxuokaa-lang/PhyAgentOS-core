@@ -190,6 +190,7 @@ def test_prepare_node_without_runtime_owned_references_is_not_model_ready():
         "manipulation.prepare": (
             "destination_ref",
             "capability_snapshot_ref",
+            "binding_ref",
         )
     }
     assert projection["ready_nodes"] == []
