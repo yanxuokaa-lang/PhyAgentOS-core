@@ -394,6 +394,27 @@ def test_visible_forge_tools_follow_task_phase() -> None:
     assert "forge_task_begin_revision" in awaiting
     assert "forge_tool_start_action" not in awaiting
 
+    unknown_awaiting = SimpleNamespace(
+        semantics="action", status="unknown", invocation_id="invocation://acquire/1"
+    )
+    awaiting_with_unknown = set(
+        visible_tool_names(
+            names,
+            _task(graph=graph, status="awaiting_replan", records=(unknown_awaiting,)),
+        )
+    )
+    assert {
+        "forge_tool_action_status",
+        "forge_tool_action_result",
+        "forge_tool_cancel_action",
+    } <= awaiting_with_unknown
+    assert "forge_tool_start_action" not in awaiting_with_unknown
+
+    awaiting_without_unknown = set(
+        visible_tool_names(names, _task(graph=graph, status="awaiting_replan"))
+    )
+    assert "forge_tool_action_result" not in awaiting_without_unknown
+
     paused_task = _task(graph=graph)
     paused_task.pause_requested = True
     paused = visible_tool_names(names, paused_task)

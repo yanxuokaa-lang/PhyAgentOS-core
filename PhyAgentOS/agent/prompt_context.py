@@ -318,6 +318,11 @@ def visible_tool_names(all_names: Iterable[str], task: Any | None) -> tuple[str,
                 "forge_tool_query",
             }
         )
+        # ``unknown`` is a terminal accounting state, but it is not a settled
+        # physical outcome.  Keep the owned invocation read tools visible while
+        # the task waits for a governed recovery/replan decision.
+        if _has_reconcilable_action(task):
+            allowed |= _ACTION_RECONCILIATION
     elif status == "waiting_for_user":
         # A clarification pause must still permit the user-authorized recovery
         # turn to append a Coordinator-owned revision.  The tool only mutates
