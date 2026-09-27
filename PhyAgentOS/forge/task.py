@@ -1723,7 +1723,13 @@ class AgentTaskCoordinator:
                     plan_graph_digest=plan_graph.graph_digest,
                     planner_decision_digest=plan_graph.planner_decision_digest,
                     policy_snapshot_digest=plan_graph.policy_snapshot_digest,
-                    discovery_evidence_refs=tuple(evidence_refs),
+                    # A continuation keeps the prior segment's explicitly
+                    # authorized discovery receipts available to downstream
+                    # consumers in the same scene.  New evidence is additive;
+                    # undeclared historical records remain unavailable.
+                    discovery_evidence_refs=tuple(dict.fromkeys(
+                        current_revision.discovery_evidence_refs + tuple(evidence_refs)
+                    )),
                 )
             )
             current.active_revision_id = plan_graph.revision_id
