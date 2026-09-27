@@ -664,6 +664,14 @@ def task_prompt_projection(task: Any | None) -> dict[str, Any] | None:
             "ToolSpec. Do not cancel the task because PlanGraph controls are hidden; "
             "forge_task_materialize_plan becomes visible after those Queries succeed."
         )
+        if "scene.bind" in missing_queries:
+            planning_next_step += (
+                " For scene.bind, follow its consumer ToolSpec exactly: pass the "
+                "top-level `entity_refs` array (not `entities`) and map the same "
+                "current observation record into top-level `observation_ref`, "
+                "`scene_revision`, and `calibration_ref` via argument_sources; "
+                "do not invent or rename identity references."
+            )
     elif graph is None:
         planning_phase = "materialization_ready"
         planning_next_step = "Submit the semantic PlanGraph with forge_task_materialize_plan."

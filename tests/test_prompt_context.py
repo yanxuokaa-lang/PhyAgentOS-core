@@ -461,6 +461,29 @@ def test_discovery_hides_reassembly_tools_after_task_creation() -> None:
     assert "forge_tool_query" in visible
 
 
+def test_task_projection_guides_scene_bind_consumer_arguments() -> None:
+    task = _task()
+    policy = ToolSpecPolicy(
+        tool_id="scene.bind", semantics="query", spec_digest="a" * 64,
+        requires_before_plan=True,
+    )
+    task.primary_skill_binding = ForgeSkillBinding(
+        binding_id="binding-bind", skill_name="fixture", skill_version="1",
+        manifest_sha256="b" * 64, skill_document_sha256="c" * 64,
+        runtime_profile="fixture", runtime_instance_id="runtime-1",
+        gateway_url="http://fixture", required_tools=(
+            BoundToolSpec(tool_id="scene.bind", semantics="query", spec_sha256="d" * 64,
+                          ready_at_binding=True, planning_policy=policy),
+        ),
+    )
+    projection = task_prompt_projection(task)
+    assert "scene.bind" in projection["planning_next_step"]
+    assert "`entity_refs` array (not `entities`)" in projection["planning_next_step"]
+    assert "`observation_ref`" in projection["planning_next_step"]
+    assert "`scene_revision`" in projection["planning_next_step"]
+    assert "`calibration_ref`" in projection["planning_next_step"]
+
+
 def test_terminal_task_exposes_only_reconciliation_for_unknown_action_invocation() -> None:
     names = (
         "forge_task_create",
