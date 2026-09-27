@@ -13,6 +13,7 @@ from PhyAgentOS.agent.prompt_context import (
     _compact_activation_results,
     _compact_forge_results,
     compact_tool_result,
+    continuation_task_prompt_projection,
     node_task_prompt_projection,
     task_prompt_projection,
     visible_tool_names,
@@ -515,6 +516,14 @@ def test_task_projection_exposes_scene_bind_selection_from_understanding() -> No
         }],
         "selection_required": True,
     }
+
+
+def test_continuation_projection_forbids_stale_pre_action_query_evidence() -> None:
+    projection = continuation_task_prompt_projection(_task())
+    boundary = projection["instruction_boundary"]
+    assert "must not carry" in boundary
+    assert "pre-Action grasp, prepare, acquire, or place evidence" in boundary
+    assert "leave required_evidence empty" in boundary
 
 
 def test_terminal_task_exposes_only_reconciliation_for_unknown_action_invocation() -> None:

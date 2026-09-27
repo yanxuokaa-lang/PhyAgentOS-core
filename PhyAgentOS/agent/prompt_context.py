@@ -1022,7 +1022,11 @@ def continuation_task_prompt_projection(task: Any | None) -> dict[str, Any] | No
             "submit the missing discovery node(s) before downstream manipulation and "
             "continue after their terminal results; do not ask the user to supply "
             "discoverable task-bound refs. planning_binding is Coordinator-generated "
-            "during selection and is not an input to plan continuation."
+            "during selection and is not an input to plan continuation. After a "
+            "world-changing Action, the next scene.observe/scene.understand/scene.bind "
+            "nodes must use dependencies to order after that Action and must not carry "
+            "pre-Action grasp, prepare, acquire, or place evidence in required_evidence; "
+            "leave required_evidence empty until the fresh Query produces its own receipt."
         ),
         "motion_authorized": False,
     }

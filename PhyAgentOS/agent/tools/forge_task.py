@@ -9,6 +9,7 @@ from enum import Enum
 from typing import Any
 
 from PhyAgentOS.agent.plan_proposal import RECOVERY_NODE_GUIDANCE
+from PhyAgentOS.agent.planning_facts import explicit_scene_revision, response_facts
 from PhyAgentOS.agent.tools.base import Tool
 from PhyAgentOS.forge.binding import missing_preplan_queries
 from PhyAgentOS.forge.task import (
@@ -432,6 +433,48 @@ class ForgeTaskContinuePlanTool(Tool):
                 "unknown or fabricated refs: " + ", ".join(fabricated)
             )
         selected_evidence = requested_evidence or tuple(sorted(trusted_evidence))
+        # A post-world-change perception node must not carry evidence from the
+        # scene that an Action just invalidated.  Reject this at continuation
+        # submission so the Agent can correct the semantic segment in place;
+        # waiting until selection would consume recovery budget for a graph
+        # assembly error and can strand an otherwise recoverable task.
+        refreshing_tools = {
+            tool.tool_id
+            for tool in (
+                getattr(task.primary_skill_binding, "required_tools", ())
+                if task.primary_skill_binding is not None
+                else getattr(task, "tool_bindings", ())
+            )
+            if getattr(getattr(tool, "planning_policy", None), "refreshes_scene", False)
+        }
+        if refreshing_tools:
+            current_scene = context.scene_revision
+            records_by_evidence = {
+                evidence_ref: record
+                for record in task.execution_records
+                for evidence_ref in getattr(record, "evidence_refs", ())
+            }
+            stale_refresh_evidence = []
+            for node in nodes:
+                if not isinstance(node, dict) or node.get("capability") not in refreshing_tools:
+                    continue
+                for evidence_ref in node.get("required_evidence", ()):
+                    record = records_by_evidence.get(evidence_ref)
+                    if record is None:
+                        continue
+                    facts = response_facts(record.response)
+                    record_scene = explicit_scene_revision(facts)
+                    if record_scene and record_scene != current_scene:
+                        stale_refresh_evidence.append(
+                            f"{node.get('node_id')}: {evidence_ref} ({record_scene})"
+                        )
+            if stale_refresh_evidence:
+                raise ValueError(
+                    "post-world-change Query nodes cannot require stale evidence; "
+                    "use dependencies for the preceding Action and leave required_evidence "
+                    "empty until the new scene Query succeeds: "
+                    + ", ".join(sorted(stale_refresh_evidence))
+                )
         graph = compile_task_plan(
             task,
             nodes,
