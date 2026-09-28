@@ -245,7 +245,7 @@ def test_host_composes_tools_around_one_persistent_worker_client(tmp_path, monke
         lambda config: worker_configs.append(config) or object(),
     )
     monkeypatch.setattr(host_module, "PersistentWorkerClient", lambda _worker: client)
-    monkeypatch.setattr(host_module, "load_perception_profile", lambda _path: {})
+    monkeypatch.setattr(host_module, "load_perception_profile", lambda _path: {"depth_scale_to_m": 0.001})
     monkeypatch.setattr(host_module, "build_single_view_perception", lambda *_args, **_kwargs: lambda _request: {})
     grasp_profiles = []
     monkeypatch.setattr(host_module, "load_grasp_profile", lambda _path: {"provider_id": "graspgen", "max_candidates": 10})
@@ -288,6 +288,7 @@ def test_host_composes_tools_around_one_persistent_worker_client(tmp_path, monke
     assert captured["simulation_action_mode"] == action_mode
     assert grasp_profiles == [{"provider_id": "graspgen", "max_candidates": 10}]
     assert captured["goal_source"] == "observation_owned"
+    assert captured["depth_scale_to_m"] == pytest.approx(0.001)
     assert len(worker_configs) == 1
     assert {item["tool_id"] for item in host.bundle.runtime.list_tools()["tools"]} == {
         "scene.observe",

@@ -26,8 +26,18 @@ def setup(tmp_path):
     )
     (tmp_path / "capture").mkdir()
     (tmp_path / "capture/calibration.json").write_text(
-        json.dumps({"camera_name": "camera", "extrinsic_cv": np.eye(4).tolist()})
+        json.dumps({
+            "camera_name": "camera",
+            "intrinsic_cv": [[100.0, 0.0, 4.5], [0.0, 100.0, 4.5], [0.0, 0.0, 1.0]],
+            "extrinsic_cv": np.eye(4).tolist(),
+        })
     )
+    depth = np.full((10, 10), 740.0)
+    mask = np.zeros((10, 10), dtype=bool)
+    mask[4:6, 4:6] = True
+    depth[mask] = 180.0
+    np.save(tmp_path / "capture/depth.npy", depth, allow_pickle=False)
+    np.save(tmp_path / "capture/seen-mask.npy", mask, allow_pickle=False)
     obj = dict(
         entity_ref="entity://execution",
         actor_name="block1",
@@ -56,6 +66,8 @@ def setup(tmp_path):
             **identity,
             "status": "available",
             "frame": {"frame_id": "camera"},
+            "artifacts": [{"kind": "depth", "ref": "artifact://capture/depth",
+                           **identity, "frame_id": "camera"}],
             "captured_at": "2000-01-01T00:00:00Z",
         },
     )
@@ -72,6 +84,12 @@ def setup(tmp_path):
                 "kind": "object_geometry",
                 "entity_ref": "entity://seen",
                 "descriptor": {"dimensions_m": [0.04, 0.04, 0.04]},
+            }, {
+                "artifact_ref": "artifact://capture/seen-mask",
+                "kind": "instance_mask",
+                "entity_ref": "entity://seen",
+                **identity,
+                "frame_id": "camera",
             }],
             "spatial_envelopes": [
                 dict(
@@ -634,12 +652,19 @@ def test_real_route_builder_consumes_target_from_nested_intent(tmp_path, monkeyp
     identities = {k: request[k] for k in ("observation_ref", "scene_revision", "calibration_ref")}
     g.remember("scene.observe", {**identities, "status": "available", "frame": {"frame_id": "head_camera"},
                                 "captured_at": "2000-01-01T00:00:00Z"})
+    support_points = np.array([[x, y, 0.0] for x in np.linspace(-.4, .4, 8)
+                               for y in np.linspace(-.3, .3, 8)])
+    (tmp_path / "capture").mkdir(parents=True, exist_ok=True)
+    np.save(tmp_path / "capture/support.npy", support_points, allow_pickle=False)
     g.remember("scene.understand", {**identities, "status": "available", "frame": {"frame_id": "head_camera"},
-        "entities": [{"entity_ref": ref}], "ambiguities": [], "spatial_envelopes": [{
-            "entity_ref": ref, "frame_id": "head_camera", "unit": "m",
-            "min_xyz_m": (center-.01).tolist(), "max_xyz_m": (center+.01).tolist()}],
-        "derived_artifacts": [{"entity_ref": ref, "kind": "object_geometry",
-            "descriptor": {"dimensions_m": [0.02, 0.02, 0.02]}}]})
+            "entities": [{"entity_ref": ref}], "ambiguities": [], "spatial_envelopes": [{
+                "entity_ref": ref, "frame_id": "head_camera", "unit": "m",
+                "min_xyz_m": (center-.01).tolist(), "max_xyz_m": (center+.01).tolist()}],
+            "relations": [{"subject_ref": ref, "predicate": "on", "object_ref": "entity://support"}],
+            "derived_artifacts": [{"entity_ref": ref, "kind": "object_geometry",
+                "descriptor": {"dimensions_m": [0.02, 0.02, 0.02]}},
+                {**identities, "entity_ref": "entity://support", "kind": "object_point_cloud",
+                 "artifact_ref": "artifact://capture/support", "frame_id": "head_camera"}]})
     b = g.bind({**identities, "entity_refs": [ref]})
     target = g.target(dict(binding_ref=b["binding_ref"], entity_ref=ref, frame_id="world",
                            unit="m", frame_T_object_target=obj["world_T_object_target"]))
@@ -786,6 +811,15 @@ def test_route_contract_uses_observed_geometry_without_hidden_functional_offset(
             "entity_ref": ref, "frame_id": "camera", "unit": "m",
             "min_xyz_m": (center - 0.025).tolist(), "max_xyz_m": (center + 0.025).tolist(),
         })
+        mask_ref = f"artifact://capture/obstacle-mask-{i}"
+        mask = np.zeros((10, 10), dtype=bool)
+        mask[i * 2:i * 2 + 2, :2] = True
+        np.save(tmp_path / f"capture/obstacle-mask-{i}.npy", mask, allow_pickle=False)
+        understanding["derived_artifacts"].append({
+            "entity_ref": ref, "kind": "instance_mask", "artifact_ref": mask_ref,
+            **{key: req[key] for key in ("observation_ref", "scene_revision", "calibration_ref")},
+            "frame_id": "camera",
+        })
         req["entity_refs"].append(ref)
     b = g.bind(req)
     t = g.target(
@@ -890,9 +924,79 @@ def test_observed_support_consumes_semantic_relation_and_preserves_lineage(tmp_p
     else:
         facts = g.scene_facts(inputs)
         if predicate == "is_near":
-            assert "support_surface" not in facts
+            assert facts["support_surface"]["evidence_ref"] == "artifact://capture/depth"
         else:
             support = facts["support_surface"]
             assert support["evidence_ref"] == "artifact://capture/support"
             assert support["estimation"]["point_count"] == len(points)
             assert support["estimation"]["height_m"] == pytest.approx(-.025)
+
+
+def _add_depth_support_evidence(g, request, tmp_path):
+    observed = g.observations[tuple(request[key] for key in ("observation_ref", "scene_revision", "calibration_ref"))]
+    understanding = g.understandings[tuple(request[key] for key in ("observation_ref", "scene_revision", "calibration_ref"))]
+    depth_ref, mask_ref = "artifact://capture/depth", "artifact://capture/seen-mask"
+    depth = np.full((10, 10), 740.0)
+    depth[4:6, 4:6] = 180.0
+    mask = np.zeros((10, 10), dtype=bool)
+    mask[4:6, 4:6] = True
+    np.save(tmp_path / "capture/depth.npy", depth, allow_pickle=False)
+    np.save(tmp_path / "capture/seen-mask.npy", mask, allow_pickle=False)
+    (tmp_path / "capture/calibration.json").write_text(json.dumps({
+        "camera_name": "camera",
+        "intrinsic_cv": [[100.0, 0.0, 4.5], [0.0, 100.0, 4.5], [0.0, 0.0, 1.0]],
+        "extrinsic_cv": np.eye(4).tolist(),
+    }))
+    observed["artifacts"] = [{
+        "kind": "depth", "ref": depth_ref,
+        **{key: request[key] for key in ("observation_ref", "scene_revision", "calibration_ref")},
+        "frame_id": "camera",
+    }]
+    understanding["entities"] = [{"entity_ref": "entity://seen"}]
+    understanding["derived_artifacts"] = [{
+        "kind": "instance_mask", "artifact_ref": mask_ref, "entity_ref": "entity://seen",
+        **{key: request[key] for key in ("observation_ref", "scene_revision", "calibration_ref")},
+        "frame_id": "camera",
+    }]
+    understanding["relations"] = [{"subject_ref": "entity://seen", "predicate": "right_of",
+                                  "object_ref": "entity://another"}]
+
+
+def test_observed_support_falls_back_to_current_depth_and_all_instance_masks(tmp_path):
+    g, request, _ = setup(tmp_path)
+    _add_depth_support_evidence(g, request, tmp_path)
+    bound = g.bind(request)
+    target = g.target(dict(binding_ref=bound["binding_ref"], entity_ref="entity://seen",
+                           frame_id="world", unit="m", frame_T_object_target=pose(.35)))
+
+    facts = g.scene_facts({**request, "intent": {"entity_ref": "entity://seen"},
+                           "destination_ref": target["destination_ref"]})
+
+    support = facts["support_surface"]
+    assert support["estimation"]["point_count"] == 96
+    assert support["estimation"]["height_m"] == pytest.approx(.74)
+    assert support["source_refs"] == ["artifact://capture/depth", "artifact://capture/seen-mask"]
+
+
+@pytest.mark.parametrize("defect", ["missing_mask", "stale_mask", "missing_depth"])
+def test_depth_support_fallback_fails_closed_on_incomplete_current_evidence(tmp_path, defect):
+    g, request, _ = setup(tmp_path)
+    _add_depth_support_evidence(g, request, tmp_path)
+    identity = tuple(request[key] for key in ("observation_ref", "scene_revision", "calibration_ref"))
+    understanding = g.understandings[identity]
+    observed = g.observations[identity]
+    if defect == "missing_mask":
+        understanding["derived_artifacts"] = []
+    elif defect == "stale_mask":
+        understanding["derived_artifacts"][0]["scene_revision"] = "old-scene"
+    else:
+        observed["artifacts"] = []
+    bound = g.bind(request)
+    target = g.target(dict(binding_ref=bound["binding_ref"], entity_ref="entity://seen",
+                           frame_id="world", unit="m", frame_T_object_target=pose(.35)))
+
+    from PhyAgentOS.forge.capability_runtime.manipulation_prepare import PreparationProviderError
+
+    with pytest.raises(PreparationProviderError):
+        g.scene_facts({**request, "intent": {"entity_ref": "entity://seen"},
+                       "destination_ref": target["destination_ref"]})

@@ -155,6 +155,7 @@ def build_persistent_deployment(*, client, artifact_root: Path, scene_source,
                                 route_geometry_source="observed",
                                 simulation_action_mode=DISABLED_ACTION_MODE,
                                 goal_source="observation_owned",
+                                depth_scale_to_m=0.001,
                                 task_name=None,
                                 readiness_evaluator=None,
                                 grasp_provider_id=None):
@@ -186,6 +187,7 @@ def build_persistent_deployment(*, client, artifact_root: Path, scene_source,
     )
     grounding = Grounding(client, artifact_root, scene_source,
                           goal_source=goal_source,
+                          depth_scale_to_m=depth_scale_to_m,
                           support_policy=SupportEstimationPolicy(**profile.get("observed_support", {})),
                           collision_policy=(ObservedCollisionPolicy(**profile["observed_collision"])
                                             if "observed_collision" in profile else None))

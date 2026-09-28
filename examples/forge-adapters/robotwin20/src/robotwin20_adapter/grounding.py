@@ -11,7 +11,7 @@ from PhyAgentOS.forge.capability_runtime.manipulation_prepare import Preparation
 from pick_place_workflow.grounding import IDENTITY_KEYS
 
 from .observed_binding import correspond, rigid_transform
-from .observed_support import SupportEstimationPolicy, estimate_support
+from .observed_support import SupportEstimationPolicy, estimate_support, estimate_support_from_depth
 from .route_evidence import _artifact_path
 
 _DEFERRED_BINDING_AMBIGUITIES = {
@@ -24,11 +24,15 @@ _DEFERRED_BINDING_AMBIGUITIES = {
 
 class Grounding:
     def __init__(self, client, root, scene_source, *, support_policy=None, collision_policy=None,
-                 goal_source="observation_owned"):
+                 goal_source="observation_owned", depth_scale_to_m=0.001):
         self.client, self.root, self.source = client, root, scene_source
         self.support_policy = support_policy or SupportEstimationPolicy()
         self.collision_policy = collision_policy
         self.goal_source = goal_source
+        if (isinstance(depth_scale_to_m, bool) or not isinstance(depth_scale_to_m, (int, float))
+                or not np.isfinite(depth_scale_to_m) or depth_scale_to_m <= 0):
+            raise ValueError("support depth scale must be finite and positive")
+        self.depth_scale_to_m = float(depth_scale_to_m)
         self.observations = {}
         self.understandings = {}
         self.bindings = {}
@@ -663,7 +667,7 @@ class Grounding:
         refs = {r["object_ref"] for r in understanding.get("relations", [])
                 if r.get("predicate") in {"on", "is_on"} and r.get("subject_ref") in binding["objects"]}
         if not refs:
-            return None  # Consumers requiring support must reject missing evidence.
+            return self._observed_support_from_depth(binding, understanding)
         if len(refs) != 1:
             raise ValueError("observed support surface is ambiguous")
         ref = next(iter(refs))
@@ -682,6 +686,68 @@ class Grounding:
         try:
             return estimate_support(world, cloud["artifact_ref"], self.support_policy)
         except ValueError as exc:
+            raise PreparationProviderError("observed_support_unavailable", str(exc)) from exc
+
+    def _observed_support_from_depth(self, binding, understanding):
+        identity = tuple(binding[k] for k in IDENTITY_KEYS)
+        observed = self.observations[identity]
+        depths = [item for item in observed.get("artifacts", []) if item.get("kind") == "depth"]
+        if len(depths) != 1:
+            raise PreparationProviderError(
+                "observed_support_unavailable", "one current scene depth artifact is required"
+            )
+        depth_artifact = depths[0]
+        if (any(depth_artifact.get(key) != binding[key] for key in IDENTITY_KEYS)
+                or depth_artifact.get("frame_id") != binding["frame_id"]):
+            raise PreparationProviderError(
+                "observed_support_unavailable", "scene depth lineage differs from binding"
+            )
+
+        entities = understanding.get("entities", [])
+        masks = [item for item in understanding.get("derived_artifacts", [])
+                 if item.get("kind") == "instance_mask"]
+        entity_refs = [item.get("entity_ref") for item in entities if isinstance(item, Mapping)]
+        if (len(entity_refs) != len(entities)
+                or any(not isinstance(ref, str) or not ref for ref in entity_refs)
+                or len(set(entity_refs)) != len(entity_refs)):
+            raise PreparationProviderError(
+                "observed_support_unavailable", "current scene entities have invalid identities"
+            )
+        mask_refs = [item.get("entity_ref") for item in masks]
+        if (not entity_refs or len(masks) != len(entity_refs)
+                or any(not isinstance(ref, str) or not ref for ref in mask_refs)
+                or set(mask_refs) != set(entity_refs)):
+            raise PreparationProviderError(
+                "observed_support_unavailable", "one current instance mask per observed entity is required"
+            )
+        for mask in masks:
+            if (any(mask.get(key) != binding[key] for key in IDENTITY_KEYS)
+                    or mask.get("frame_id") != binding["frame_id"]):
+                raise PreparationProviderError(
+                    "observed_support_unavailable", "instance mask lineage differs from binding"
+                )
+
+        try:
+            calibration = json.loads(
+                _artifact_path(self.root, binding["calibration_ref"]).read_text(encoding="utf-8")
+            )
+            intrinsic = calibration["intrinsic_cv"]
+            depth = np.load(_artifact_path(self.root, depth_artifact["ref"] + ".npy"), allow_pickle=False)
+            excluded_masks = [
+                np.load(_artifact_path(self.root, item["artifact_ref"] + ".npy"), allow_pickle=False)
+                for item in masks
+            ]
+            return estimate_support_from_depth(
+                depth,
+                intrinsic,
+                binding["world_T_observation"],
+                excluded_masks,
+                depth_artifact["ref"],
+                excluded_mask_refs=[item["artifact_ref"] for item in masks],
+                depth_scale_to_m=self.depth_scale_to_m,
+                policy=self.support_policy,
+            )
+        except (KeyError, OSError, TypeError, ValueError) as exc:
             raise PreparationProviderError("observed_support_unavailable", str(exc)) from exc
 
 

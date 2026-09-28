@@ -26,13 +26,14 @@ def test_deployment_wires_shared_cache_and_requires_persistent_stop_policy(tmp_p
     deployment = build_persistent_deployment(
         client=client, artifact_root=tmp_path, scene_source=lambda request: None,
         materializer_command=("python", "materializer.py"), materializer_arguments=arguments,
-        arm_profile_digest="a" * 64,
+        arm_profile_digest="a" * 64, depth_scale_to_m=0.002,
     )
     assert deployment.preparation_provider.client is client
     assert deployment.preparation_provider.prepared_routes is deployment.prepared_routes
     assert deployment.runtime_arguments()["resolve_preparation"] is deployment.prepared_routes
     assert deployment.capability_provider.client is client
     assert deployment.preparation_provider.route_builder.scene_source.__name__ == "scene_facts"
+    assert deployment.grounding.depth_scale_to_m == pytest.approx(0.002)
     oracle = build_persistent_deployment(
         client=client, artifact_root=tmp_path, scene_source=lambda request: None,
         materializer_command=("python", "materializer.py"), materializer_arguments=arguments,

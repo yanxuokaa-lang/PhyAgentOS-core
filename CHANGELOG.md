@@ -1,4 +1,59 @@
 # Changelog
+## v11.10.3 (2026-09-28 23:10) - codex
+
+### 实际修改 / Implemented changes
+- [sense] [fix] [完成] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/observed_support.py:L62-L126` 从校准深度图估计水平支撑面，排除当前所有非空实例 mask，并保留 depth/mask 来源；保留既有点数、平面一致性和坡度限制。(local)
+- [Sense] [Fix] [Completed] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/observed_support.py:L62-L126` estimates horizontal support from calibrated depth, excludes every current non-empty instance mask, and preserves depth/mask provenance while retaining existing point-count, plane-consensus, and slope limits.(local)
+- [sense] [fix] [完成] `grounding.py:L25-L40,L663-L751` 保持显式 `on/is_on` 支撑点云优先；缺少语义关系时只接受当前 scene identity 的 depth 和每实体 mask，lineage、frame、尺寸及稀疏证据错误均 fail closed。(local)
+- [Sense] [Fix] [Completed] `grounding.py:L25-L40,L663-L751` preserves explicit `on/is_on` support clouds as the preferred source; when absent, it accepts only depth and per-entity masks from the current scene identity and fails closed on lineage, frame, shape, or sparse-evidence errors.(local)
+- [sense] [fix] [完成] `persistent_host.py:L499-L501,L558-L562` 将 perception profile 的 depth scale 传递至 `persistent_deployment.py:L151-L193` 和 Grounding，统一 perception/planning 单位。(local)
+- [Sense] [Fix] [Completed] `persistent_host.py:L499-L501,L558-L562` passes the perception profile depth scale through `persistent_deployment.py:L151-L193` into Grounding, keeping perception and planning units aligned.(local)
+- [eval] [test] [完成] `test_observed_support.py:L29-L73`、`test_grounding.py:L965-L993`、deployment/host 测试覆盖反投影、mask 排除、provenance、fail-closed 和配置传递；adapter 全套 `708 passed, 1 skipped`，AgentLoop 聚焦 `8 passed`。(local)
+- [Eval] [Test] [Completed] Support and Grounding tests cover projection, mask exclusion, provenance, fail-closed behavior, and configuration propagation; the full adapter suite passed `708` with `1` skipped, and focused AgentLoop tests passed `8`.(local)
+
+### 关键 Diff / Key Diff
+```diff
+- if not refs:
+-     return None
++ if not refs:
++     return self._observed_support_from_depth(binding, understanding)
+...
++ depth scale comes from the perception profile
++ depth is projected through the bound calibration outside current masks
++ estimated support records depth and mask artifact refs
+```
+
+### 验证 / Verification
+- Robotwin adapter: `708 passed, 1 skipped`。
+- AgentLoop: `8 passed, 67 deselected`。
+- `compileall` and `git diff --check` passed.
+
+### Git 提交
+- Commit: 待提交
+- Branch: `feature/planning-loop`
+
+## v11.10.2 (2026-09-28 19:30) - codex
+
+### 实际修改 / Implemented changes
+- [agent] [fix] [完成] `PhyAgentOS/agent/loop.py:L133-L146,L840-L924` 对 task-scoped task_creation/discovery/planning_execution 的空 `finish_reason=stop` 响应执行一次有界重试，只在无内容且无 Tool call 时生效；不重放已返回的 Tool call、Action 或 node turn。(local)
+- [Agent] [Fix] [Completed] `PhyAgentOS/agent/loop.py:L133-L146,L840-L924` retries an empty `finish_reason=stop` response once in task-scoped task_creation/discovery/planning_execution, only when there is no content or Tool call; returned Tool calls, Actions, and node turns are never replayed.(local)
+- [eval] [test] [完成] `tests/test_agent_foundation.py:L88-L124` 覆盖空响应重试与非空 stop 不重试；`8 passed`，compileall 和 diff check 通过。(local)
+- [Eval] [Test] [Completed] `tests/test_agent_foundation.py:L88-L124` covers retrying empty responses and not retrying non-empty stops; `8 passed`, with compileall and diff check passing.(local)
+
+### 关键 Diff / Key Diff
+```diff
+- for model_attempt in range(2 if retry_timeout else 1):
++ retry_empty = self._retry_empty_model_response(...)
++ for model_attempt in range(2 if (retry_timeout or retry_empty) else 1):
+...
++ if empty stop response has no tool calls or content:
++     retry the identical model request once
+```
+
+### Git 提交
+- Commit: `23dd15e`
+- Branch: `feature/planning-loop`
+
 ## v11.10.1 (2026-09-28 17:03) - codex
 
 ### 实际修改 / Implemented changes

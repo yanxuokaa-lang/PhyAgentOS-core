@@ -496,12 +496,9 @@ def build_persistent_host(
             )
         else:
             raise PersistentHostConfigurationError(f"unsupported semantic provider: {provider}")
+        perception_settings = load_perception_profile(perception_profile)
         understanding = RoboTwinSceneUnderstandingProvider(
-            build_single_view_perception(
-                inference,
-                load_perception_profile(perception_profile),
-                environ=variables,
-            )
+            build_single_view_perception(inference, perception_settings, environ=variables)
         )
         try:
             import yaml
@@ -561,6 +558,7 @@ def build_persistent_host(
             route_geometry_source=route_geometry_source,
             simulation_action_mode=simulation_action_mode,
             goal_source=goal_source,
+            depth_scale_to_m=float(perception_settings["depth_scale_to_m"]),
             task_name=task_name,
             grasp_provider_id=selected_provider_id,
         )
