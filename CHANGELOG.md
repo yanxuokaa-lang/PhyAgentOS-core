@@ -1,4 +1,16 @@
 # Changelog
+## v11.10.9 (2026-09-29 05:10) - codex
+
+### 实际修改 / Implemented changes
+- [agent] [fix] [完成] `PhyAgentOS/forge/capability_runtime/manipulation_prepare.py:L52-L78` 将 `candidate_set_for_entity_v1` 注册到 Gateway 实际返回的 core ToolSpec，避免只改 Bundle YAML 而运行时仍无 projection。(local)
+- [Agent] [Fix] [Completed] `PhyAgentOS/forge/capability_runtime/manipulation_prepare.py:L52-L78` registers `candidate_set_for_entity_v1` in the core ToolSpec actually returned by Gateway, avoiding a YAML-only change that leaves the runtime without the projection.(local)
+- [eval] [test] [完成] runtime composition 回归与规划/Agent 聚焦测试通过 `22`；重启的 `2.8.3` GraspNet Runtime `/tools/manipulation.prepare` 已返回 projection。(local)
+- [Eval] [Test] [Completed] Runtime composition and focused planning/Agent tests passed `22`; the restarted `2.8.3` GraspNet Runtime `/tools/manipulation.prepare` returned the projection.(local)
+
+### Git 提交
+- Commit: `b71321c`
+- Branch: `feature/planning-loop`
+
 ## v11.10.8 (2026-09-29 04:43) - codex
 
 ### 实际修改 / Implemented changes

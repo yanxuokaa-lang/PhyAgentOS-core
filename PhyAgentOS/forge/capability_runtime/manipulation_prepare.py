@@ -55,6 +55,27 @@ MANIPULATION_TOOL_SPEC: dict[str, Any] = {
     "endpoint_id": PREPARATION_ENDPOINT_ID,
     "operation": PREPARATION_OPERATION,
     "semantics": "query",
+    "planning": {
+        "schema_version": "paos-tool-spec-policy/v1",
+        "capabilities": [PREPARATION_TOOL_ID],
+        "argument_projection": "candidate_set_for_entity_v1",
+        "argument_projection_plan": {
+            "projection_id": "candidate_set_for_entity_v1",
+            "join_field": "entity_ref",
+            "source_field_map": {
+                "observation_ref": ["observation_ref"],
+                "scene_revision": ["scene_revision"],
+                "frame_id": ["frame", "frame_id"],
+                "calibration_ref": ["calibration_ref"],
+                "freshness_ms": ["freshness_ms"],
+                "max_age_ms": ["max_age_ms"],
+                "candidate_set_ref": ["candidate_set_ref"],
+            },
+            "filtered_collection": "candidates",
+            "filtered_output_field": "candidates",
+            "filtered_join_field": "entity_ref",
+        },
+    },
     "description": (
         "Evaluate non-mutating workspace, kinematic, and collision readiness for one grasp "
         "candidate set without authorizing or producing motion."

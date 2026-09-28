@@ -104,6 +104,10 @@ def test_composition_registers_all_seven_required_tools():
         if tool["tool_id"] == "manipulation.prepare"
     )
     assert prepare["default_timeout_ms"] == 360_000
+    prepare_policy = project_tool_spec(prepare)
+    assert prepare_policy.argument_projection == "candidate_set_for_entity_v1"
+    assert prepare_policy.argument_projection_plan is not None
+    assert prepare_policy.argument_projection_plan.filtered_output_field == "candidates"
     assert all(runtime.get_context(tool["tool_id"])["ready"] is False for tool in runtime.list_tools()["tools"])
 
 
