@@ -1,4 +1,14 @@
 # Changelog
+## v11.10.7 (2026-09-29 16:35) - codex
+
+### 实际修改 / Implemented changes
+- [docs] [chore] [完成] `changelog/2026-09_part19.md:L61-L63`、`CHANGELOG.md:L24-L26` 回填 `v11.10.6` 的真实提交 `3683d7c`。(local)
+- [Docs] [Chore] [Completed] `changelog/2026-09_part19.md:L61-L63` and `CHANGELOG.md:L24-L26` fill in the real `v11.10.6` commit `3683d7c`.(local)
+
+### Git 提交
+- Commit: 待提交
+- Branch: `feature/planning-loop`
+
 ## v11.10.6 (2026-09-29 16:20) - codex
 
 ### 实际修改 / Implemented changes
@@ -22,7 +32,7 @@
 - `compileall` and `git diff --check` -> passed.
 
 ### Git 提交
-- Commit: 待提交
+- Commit: `3683d7c`
 - Branch: `feature/planning-loop`
 
 ## v11.10.5 (2026-09-29 02:35) - codex
