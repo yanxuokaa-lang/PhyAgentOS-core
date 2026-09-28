@@ -85,6 +85,45 @@ def test_agent_loop_retries_provider_timeout_before_tool_dispatch(
     ) is expected
 
 
+def test_agent_loop_retries_empty_stop_before_task_creation_dispatch(tmp_path):
+    async def exercise():
+        provider = ScriptedProvider([
+            LLMResponse(content=None, finish_reason="stop"),
+            LLMResponse(content="Recovered control-plane turn."),
+        ])
+        loop = AgentLoop(
+            bus=MessageBus(), provider=provider, workspace=tmp_path, max_iterations=1,
+        )
+        result = await loop._run_agent_loop(
+            [{"role": "user", "content": "Create the RGB pick-place task."}],
+        )
+
+        assert len(provider.requests) == 2
+        assert provider.requests[0] == provider.requests[1]
+        assert result.content == "Recovered control-plane turn."
+        assert result.model_failure_code is None
+
+    asyncio.run(exercise())
+
+
+def test_agent_loop_does_not_retry_nonempty_stop_response(tmp_path):
+    async def exercise():
+        provider = ScriptedProvider([
+            LLMResponse(content="No action is required.", finish_reason="stop"),
+        ])
+        loop = AgentLoop(
+            bus=MessageBus(), provider=provider, workspace=tmp_path, max_iterations=1,
+        )
+        result = await loop._run_agent_loop(
+            [{"role": "user", "content": "Create the RGB pick-place task."}],
+        )
+
+        assert len(provider.requests) == 1
+        assert result.content == "No action is required."
+
+    asyncio.run(exercise())
+
+
 def test_save_turn_persists_parseable_forge_task_projection() -> None:
     loop = object.__new__(AgentLoop)
     session = Session(key="cli:rgb")

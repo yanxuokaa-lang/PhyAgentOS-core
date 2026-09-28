@@ -130,6 +130,21 @@ class AgentLoop:
             "planning_execution",
         }
 
+    @staticmethod
+    def _retry_empty_model_response(*, projection_scope: str, phase: str) -> bool:
+        """Retry a bounded empty model turn before any Tool dispatch.
+
+        Some providers return a successful ``stop`` envelope without content or
+        tool calls.  There is no execution receipt to replay in that case, and
+        ending a task-creation/discovery turn would incorrectly strand the task
+        before its first governed control-plane call.
+        """
+        return projection_scope == "task" and phase in {
+            "task_creation",
+            "discovery",
+            "planning_execution",
+        }
+
     def __init__(
         self,
         bus: MessageBus,
@@ -826,7 +841,11 @@ class AgentLoop:
                 projection_scope=projection_scope,
                 phase=request_view.phase,
             )
-            for model_attempt in range(2 if retry_timeout else 1):
+            retry_empty = self._retry_empty_model_response(
+                projection_scope=projection_scope,
+                phase=request_view.phase,
+            )
+            for model_attempt in range(2 if (retry_timeout or retry_empty) else 1):
                 started = monotonic()
                 logger.info("Agent model start session={} iteration={} attempt={}",
                             experience_session_key, iteration, model_attempt + 1)
@@ -888,7 +907,18 @@ class AgentLoop:
                     and not response.has_tool_calls
                     and self.provider.classify_error(response.content) == "provider_timeout"
                 ):
-                    break
+                    if not (
+                        retry_empty
+                        and model_attempt == 0
+                        and response.finish_reason == "stop"
+                        and not response.has_tool_calls
+                        and not self._strip_think(response.content)
+                    ):
+                        break
+                    logger.warning("LLM returned an empty stop response before planning; retrying same request once")
+                    if on_progress:
+                        await on_progress("Model request returned no content; retrying once.", tool_hint=False)
+                    continue
                 logger.warning("Agent model timeout before planning; retrying same request once")
                 if on_progress:
                     await on_progress("Model request timed out; retrying once.", tool_hint=False)
