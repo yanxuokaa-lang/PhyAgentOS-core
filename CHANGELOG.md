@@ -1,4 +1,30 @@
 # Changelog
+## v11.10.6 (2026-09-29 16:20) - codex
+
+### 实际修改 / Implemented changes
+- [agent] [fix] [完成] `PhyAgentOS/agent/tools/forge_tool_api.py:L121-L196,L595-L608` 将 `forge_task_*`/`forge_plan_*` lifecycle context 请求留在本地 ToolRegistry；未注册时 fail closed，不再向 Gateway 查询本地名。(local)
+- [Agent] [Fix] [Completed] `PhyAgentOS/agent/tools/forge_tool_api.py:L121-L196,L595-L608` keeps `forge_task_*`/`forge_plan_*` lifecycle context requests in the local ToolRegistry; unregistered names fail closed instead of querying the Gateway.(local)
+- [agent] [fix] [完成] `PhyAgentOS/agent/loop.py:L375-L380` 注入 Registry lookup，使 `awaiting_replan` 恢复回合可直接发现 `forge_task_begin_revision`。(local)
+- [Agent] [Fix] [Completed] `PhyAgentOS/agent/loop.py:L375-L380` injects the Registry lookup so `awaiting_replan` recovery turns can directly discover `forge_task_begin_revision`.(local)
+- [eval] [test] [完成] `tests/test_forge_tool_api.py:L9-L56` 覆盖本地恢复 context 无 Gateway 调用；Forge Tool API `21 passed`，AgentLoop `77 passed`。(local)
+- [Eval] [Test] [Completed] `tests/test_forge_tool_api.py:L9-L56` covers local recovery context with no Gateway call; Forge Tool API passed `21` and AgentLoop passed `77`.(local)
+
+### 关键 Diff / Key Diff
+```diff
++ if tool_id.startswith(("forge_task_", "forge_plan_")):
++     return local_registry_schema_or_local_tool_unavailable(tool_id)
+  return await gateway_tool_spec_and_context(tool_id)
+```
+
+### 验证 / Verification
+- `tests/test_forge_tool_api.py` -> `21 passed`。
+- `tests/test_agent_foundation.py` -> `77 passed`。
+- `compileall` and `git diff --check` -> passed.
+
+### Git 提交
+- Commit: 待提交
+- Branch: `feature/planning-loop`
+
 ## v11.10.5 (2026-09-29 02:35) - codex
 
 ### 实际修改 / Implemented changes

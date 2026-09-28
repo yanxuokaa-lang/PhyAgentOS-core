@@ -376,6 +376,7 @@ class AgentLoop:
                 self.forge_tool_client,
                 invocation_ids=self.forge_tool_invocation_ids,
                 coordinator=self.forge_task_coordinator,
+                local_tool_provider=self.tools.get,
             ):
                 self.tools.register(tool)
         if self._planning_dispatch is not None:

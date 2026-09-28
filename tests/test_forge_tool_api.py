@@ -7,13 +7,53 @@ from types import SimpleNamespace
 import pytest
 
 from PhyAgentOS.agent.tools.forge_tool_api import (
+    ForgeToolContextTool,
     ForgeToolQueryTool,
     ForgeToolStartActionTool,
     _call,
     _effective_query_timeout_ms,
     _task_query_source_records,
 )
+from PhyAgentOS.agent.tools.forge_task import ForgeTaskBeginRevisionTool
 from PhyAgentOS.forge.tool_client import ForgeToolAPITimeoutError
+
+
+def test_local_lifecycle_context_uses_agent_registry_instead_of_gateway():
+    class GatewayMustNotBeCalled:
+        async def get_tool(self, _tool_id):
+            raise AssertionError("local lifecycle context must not query Gateway")
+
+        async def get_tool_context(self, _tool_id):
+            raise AssertionError("local lifecycle context must not query Gateway")
+
+    local = ForgeTaskBeginRevisionTool(object())
+    tool = ForgeToolContextTool(
+        GatewayMustNotBeCalled(),
+        local_tool_provider=lambda name: local if name == local.name else None,
+    )
+
+    result = json.loads(asyncio.run(tool.execute(local.name)))
+
+    assert result["ok"] is True
+    assert result["data"]["tool"]["name"] == "forge_task_begin_revision"
+    assert result["data"]["context"]["transport"] == "local_agent_tool_registry"
+    assert result["data"]["context"]["gateway"] is False
+
+
+def test_unregistered_local_lifecycle_context_fails_closed_without_gateway_call():
+    class GatewayMustNotBeCalled:
+        async def get_tool(self, _tool_id):
+            raise AssertionError("unregistered local lifecycle name must not query Gateway")
+
+        async def get_tool_context(self, _tool_id):
+            raise AssertionError("unregistered local lifecycle name must not query Gateway")
+
+    result = json.loads(asyncio.run(ForgeToolContextTool(
+        GatewayMustNotBeCalled(), local_tool_provider=lambda _name: None
+    ).execute("forge_task_begin_revision")))
+
+    assert result["ok"] is False
+    assert result["error"]["code"] == "local_tool_unavailable"
 
 
 def test_scene_understand_timeout_has_provider_safe_floor():

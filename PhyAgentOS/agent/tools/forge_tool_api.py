@@ -119,8 +119,14 @@ async def _call(operation: Callable[[], Awaitable[dict[str, Any]]]) -> str:
 
 
 class ForgeToolContextTool(Tool):
-    def __init__(self, client: ForgeToolClient) -> None:
+    def __init__(
+        self,
+        client: ForgeToolClient,
+        *,
+        local_tool_provider: Callable[[str], Tool | None] | None = None,
+    ) -> None:
         self.client = client
+        self.local_tool_provider = local_tool_provider
 
     @property
     def name(self) -> str:
@@ -128,13 +134,59 @@ class ForgeToolContextTool(Tool):
 
     @property
     def description(self) -> str:
-        return "Read a Forge ToolSpec and its live readiness/context before invocation."
+        return (
+            "Read a Runtime Forge ToolSpec and live readiness/context before invocation. "
+            "Local forge_task_* and forge_plan_* lifecycle tools are PAOS control-plane tools; "
+            "invoke those registered tools directly instead of passing their names here."
+        )
 
     @property
     def parameters(self) -> dict[str, Any]:
         return _single_schema("tool_id")
 
     async def execute(self, tool_id: str) -> str:
+        # Lifecycle tools are registered in the Agent ToolRegistry, not in the
+        # Runtime Gateway. Keep the model-visible context path total so a
+        # recovery turn cannot turn a valid local tool into a Gateway 404.
+        if tool_id.startswith(("forge_task_", "forge_plan_")):
+            local_tool = (
+                self.local_tool_provider(tool_id)
+                if self.local_tool_provider is not None
+                else None
+            )
+            if local_tool is None:
+                return _json(
+                    {
+                        "ok": False,
+                        "error": {
+                            "type": "agent_control_plane",
+                            "code": "local_tool_unavailable",
+                            "message": (
+                                f"{tool_id} is a PAOS-local lifecycle tool and is not "
+                                "registered in this AgentLoop. Do not send it to the Gateway."
+                            ),
+                        },
+                    }
+                )
+            return _json(
+                {
+                    "ok": True,
+                    "data": {
+                        "tool": local_tool.to_schema()["function"],
+                        "context": {
+                            "owner": "paos_agent_control_plane",
+                            "transport": "local_agent_tool_registry",
+                            "readiness": "registered",
+                            "gateway": False,
+                            "instruction": (
+                                "Invoke this local lifecycle tool directly; do not call "
+                                "forge_tool_context with its name again."
+                            ),
+                        },
+                    },
+                }
+            )
+
         async def describe() -> dict[str, Any]:
             spec, context = await asyncio.gather(
                 self.client.get_tool(tool_id), self.client.get_tool_context(tool_id)
@@ -545,13 +597,14 @@ def build_forge_tool_api_tools(
     *,
     invocation_ids: Any | None = None,
     coordinator: AgentTaskCoordinator | None = None,
+    local_tool_provider: Callable[[str], Tool | None] | None = None,
 ) -> list[Tool]:
     """Build Query/Action/Session wrappers; all mutation requires a Coordinator."""
     del invocation_ids
     if coordinator is None:
-        return [ForgeToolContextTool(client)]
+        return [ForgeToolContextTool(client, local_tool_provider=local_tool_provider)]
     return [
-        ForgeToolContextTool(client),
+        ForgeToolContextTool(client, local_tool_provider=local_tool_provider),
         ForgeToolQueryTool(client, coordinator),
         ForgeToolStartActionTool(coordinator),
         ForgeToolActionStatusTool(client, coordinator),
