@@ -229,6 +229,8 @@ def test_default_node_prompt_distinguishes_geometry_and_producer_projection_sour
     assert "successful direct-predecessor record (grasp.propose)" in prompt
     assert "candidate_set_ref and candidates" in prompt
     assert "Never assume every projection source is an understanding record" in prompt
+    assert "match the producer candidate entity_ref byte-for-byte" in prompt
+    assert "do not reuse an alias from an older rejected continuation" in prompt
 
 
 def test_unqualified_source_field_resolves_from_predecessor_arguments():

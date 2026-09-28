@@ -1,4 +1,16 @@
 # Changelog
+## v11.10.12 (2026-09-29 07:10) - codex
+
+### 实际修改 / Implemented changes
+- [agent] [fix] [完成] `PhyAgentOS/agent/planning_loop.py:L944-L951` 增加 projection join identity 逐字匹配和旧 continuation 别名拒绝提示。(local)
+- [Agent] [Fix] [Completed] `PhyAgentOS/agent/planning_loop.py:L944-L951` adds exact projection join-identity matching and rejects reuse of aliases from old continuations.(local)
+- [eval] [test] [完成] projection prompt 回归 `2 passed`，Ruff、compileall、diff check 通过。(local)
+- [Eval] [Test] [Completed] Projection prompt regression passed `2`, with Ruff, compileall, and diff check passing.(local)
+
+### Git 提交
+- Commit: 待提交
+- Branch: `feature/planning-loop`
+
 ## v11.10.11 (2026-09-29 06:55) - codex
 
 ### 实际修改 / Implemented changes
