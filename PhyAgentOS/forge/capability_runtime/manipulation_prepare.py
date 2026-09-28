@@ -74,6 +74,7 @@ MANIPULATION_TOOL_SPEC: dict[str, Any] = {
             "filtered_collection": "candidates",
             "filtered_output_field": "candidates",
             "filtered_join_field": "entity_ref",
+            "top_level_fields": [],
         },
     },
     "description": (

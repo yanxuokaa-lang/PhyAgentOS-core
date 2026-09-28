@@ -210,6 +210,27 @@ def test_node_prompt_catalog_surfaces_opaque_arm_identity():
     assert '"arm_id": "right"' in encoded
 
 
+def test_default_node_prompt_distinguishes_geometry_and_producer_projection_sources():
+    context = NodeExecutionContext(
+        task_id="task-1",
+        revision_id="revision-1",
+        node_id="prepare-red",
+        capability="manipulation.prepare",
+        dependencies=("grasp-red",),
+        required_evidence=(),
+        input_bindings={"entity_ref": "entity://red"},
+        scene_revision="scene-1",
+        predecessor_context=(),
+    )
+
+    prompt = AgentLoopNodeExecutor._default_prompt(context)
+
+    assert "entity geometry (such as grasp.propose)" in prompt
+    assert "successful direct-predecessor record (grasp.propose)" in prompt
+    assert "candidate_set_ref and candidates" in prompt
+    assert "Never assume every projection source is an understanding record" in prompt
+
+
 def test_unqualified_source_field_resolves_from_predecessor_arguments():
     context = NodeExecutionContext(
         task_id="task-source-fields",

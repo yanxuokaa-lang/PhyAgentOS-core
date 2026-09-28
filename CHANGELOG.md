@@ -1,4 +1,18 @@
 # Changelog
+## v11.10.11 (2026-09-29 06:55) - codex
+
+### 实际修改 / Implemented changes
+- [agent] [fix] [完成] `PhyAgentOS/agent/planning_loop.py:L938-L949` 按 projection 声明字段选择 source：`grasp.propose` 使用当前 understanding，`manipulation.prepare` 使用直接前驱 `grasp.propose` 的 `candidate_set_ref/candidates`。(local)
+- [Agent] [Fix] [Completed] `PhyAgentOS/agent/planning_loop.py:L938-L949` selects projection sources by declared fields: `grasp.propose` uses current understanding, while `manipulation.prepare` uses the direct predecessor `grasp.propose` `candidate_set_ref/candidates`.(local)
+- [runtime] [fix] [完成] `PhyAgentOS/forge/capability_runtime/manipulation_prepare.py:L65-L78` 对齐 core ToolSpec 与 Bundle YAML 的 `top_level_fields: []`。(local)
+- [Runtime] [Fix] [Completed] `PhyAgentOS/forge/capability_runtime/manipulation_prepare.py:L65-L78` aligns the core ToolSpec and Bundle YAML `top_level_fields: []` declaration.(local)
+- [eval] [test] [完成] projection/Agent/Runtime 回归共 `263 passed`，Ruff、compileall、diff check 通过。(local)
+- [Eval] [Test] [Completed] Projection/Agent/Runtime regressions passed `263`, with Ruff, compileall, and diff check passing.(local)
+
+### Git 提交
+- Commit: 待提交
+- Branch: `feature/planning-loop`
+
 ## v11.10.10 (2026-09-29 05:35) - codex
 
 ### 实际修改 / Implemented changes
