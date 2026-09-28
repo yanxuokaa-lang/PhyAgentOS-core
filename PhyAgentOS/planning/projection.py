@@ -153,8 +153,8 @@ def execute_argument_projection(
         raise ArgumentProjectionError("consumer projection source has no structured result")
 
     if plan.source_field_map:
-        def read_path(path: tuple[str | int, ...]) -> Any:
-            value: Any = facts
+        def read_path(root: Mapping[str, Any], path: tuple[str | int, ...]) -> Any:
+            value: Any = root
             for part in path:
                 if isinstance(value, Mapping) and isinstance(part, str):
                     if part not in value:
@@ -176,7 +176,16 @@ def execute_argument_projection(
 
         result: dict[str, Any] = {}
         for output_field, source_path in plan.source_field_map.items():
-            value = read_path(source_path)
+            try:
+                value = read_path(facts, source_path)
+            except ArgumentProjectionError as response_error:
+                # Query inputs are part of the same authorized record.  Some
+                # producers echo only identity/results in response data while
+                # freshness or bounds remain request-owned facts.
+                try:
+                    value = read_path(arguments, source_path)
+                except ArgumentProjectionError:
+                    raise response_error
             if output_field in literals and literals[output_field] != value:
                 raise ArgumentProjectionError(
                     f"projection field {output_field!r} conflicts with its source"

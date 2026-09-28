@@ -1,4 +1,18 @@
 # Changelog
+## v11.10.10 (2026-09-29 05:35) - codex
+
+### 实际修改 / Implemented changes
+- [agent] [fix] [完成] `PhyAgentOS/planning/projection.py:L155-L190` 对声明字段先读同一成功 record 的 response data，缺失时读取同一 record 的 request arguments；`grasp.propose` 的 freshness/max-age 不再被误报缺失。(local)
+- [Agent] [Fix] [Completed] `PhyAgentOS/planning/projection.py:L155-L190` reads declared fields from the same successful record's response data first, then request arguments when absent; `grasp.propose` freshness/max-age are no longer falsely reported missing.(local)
+- [skill] [fix] [完成] Skill `2.8.4` 生成新的 binding，避免 blocked task 复用旧 ToolSpec digest。(local)
+- [Skill] [Fix] [Completed] Skill `2.8.4` creates a fresh binding so the blocked task cannot reuse the old ToolSpec digest.(local)
+- [eval] [test] [完成] 聚焦 projection/Agent/Runtime 测试 `120 passed`，Ruff、compileall、diff check 通过。(local)
+- [Eval] [Test] [Completed] Focused projection/Agent/Runtime tests passed `120`, with Ruff, compileall, and diff check passing.(local)
+
+### Git 提交
+- Commit: `34bcd8a`
+- Branch: `feature/planning-loop`
+
 ## v11.10.9 (2026-09-29 05:10) - codex
 
 ### 实际修改 / Implemented changes

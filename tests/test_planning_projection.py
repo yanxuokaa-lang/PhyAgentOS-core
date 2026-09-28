@@ -38,7 +38,7 @@ def test_direct_projection_filters_large_candidate_collection_by_bound_entity():
         _plan(),
         records={
             "grasp-1": (
-                {},
+                {"freshness_ms": 12, "max_age_ms": 1000},
                 {
                     "ok": True,
                     "data": {
@@ -46,8 +46,6 @@ def test_direct_projection_filters_large_candidate_collection_by_bound_entity():
                         "scene_revision": "scene-1",
                         "frame": {"frame_id": "camera", "unit": "m"},
                         "calibration_ref": "artifact://scene/calibration",
-                        "freshness_ms": 12,
-                        "max_age_ms": 1000,
                         "candidate_set_ref": "candidate-set://scene/all",
                         "candidates": candidates,
                     },
