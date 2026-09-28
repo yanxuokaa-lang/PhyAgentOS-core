@@ -349,6 +349,13 @@ def _complete_persisted_runtime_bindings(
     }
 
     completed: list[PlanNode] = []
+    verification = getattr(task, "verification", None)
+    verification_goal = getattr(verification, "goal", None)
+    verification_criteria = getattr(verification, "success_criteria", None)
+    if not isinstance(verification_goal, str) or not verification_goal.strip():
+        verification_goal = None
+    if not isinstance(verification_criteria, (list, tuple)) or not verification_criteria:
+        verification_criteria = None
     for node in nodes:
         bindings = dict(node.input_bindings)
         # Older Agent turns sometimes put a natural-language description in
@@ -378,6 +385,13 @@ def _complete_persisted_runtime_bindings(
                     # authoritative and compiles the observed key here.
                     bindings["entity_ref"] = expected_entity
         if node.capability in {"manipulation.prepare", "object.acquire", "object.place"}:
+            # The task verification contract is the Coordinator-owned source
+            # for the semantic intent shared by every manipulation node. Keep
+            # model selection focused on scene-bound identities and candidates.
+            if verification_goal is not None:
+                bindings.setdefault("goal", verification_goal)
+            if verification_criteria is not None:
+                bindings.setdefault("success_criteria", list(verification_criteria))
             entity = bindings.get("entity_ref")
             execution_entity = bindings.get("execution_entity_ref")
             if not isinstance(execution_entity, str):

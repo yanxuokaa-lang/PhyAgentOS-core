@@ -200,6 +200,20 @@ def test_capability_topology_materializes_missing_prepare_semantics():
     assert completed[0].input_bindings["allowed_arms"] == ["left", "right"]
 
 
+def test_manipulation_nodes_inherit_task_verification_intent_fields():
+    _, prepare = _nodes()
+    task = _task((_record("manipulation.capabilities", _snapshot_response()),))
+    task.verification = SimpleNamespace(
+        goal="Arrange the three observed blocks in RGB order",
+        success_criteria=["all three blocks occupy their benchmark destinations"],
+    )
+
+    completed = _complete_persisted_runtime_bindings(task, (prepare,))
+
+    assert completed[0].input_bindings["goal"] == task.verification.goal
+    assert completed[0].input_bindings["success_criteria"] == task.verification.success_criteria
+
+
 def test_single_arm_capability_materializes_single_arm_semantics():
     response = _snapshot_response()
     snapshot = dict(response["data"])

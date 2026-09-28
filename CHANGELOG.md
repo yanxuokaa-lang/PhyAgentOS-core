@@ -1,4 +1,22 @@
 # Changelog
+## v11.10.5 (2026-09-29 02:35) - codex
+
+### 实际修改 / Implemented changes
+- [agent] [fix] [完成] `PhyAgentOS/agent/plan_proposal.py:L351-L358,L387-L395` 将任务 verification contract 的 `goal/success_criteria` 由 Coordinator 继承到 manipulation 节点，避免模型重复组装导致 intent 缺字段。(local)
+- [Agent] [Fix] [Completed] `PhyAgentOS/agent/plan_proposal.py:L351-L358,L387-L395` lets the Coordinator inherit verification `goal/success_criteria` into manipulation nodes, avoiding missing intent fields caused by repeated model assembly.(local)
+- [eval] [test] [完成] `tests/test_plan_proposal_bindings.py:L203-L214` 新增继承回归；planning selection/intent focused suite `26 passed`，compileall 和 diff check 通过。(local)
+- [Eval] [Test] [Completed] `tests/test_plan_proposal_bindings.py:L203-L214` adds inheritance regression; planning selection/intent focused suite passed `26`, with compileall and diff check passing.(local)
+
+### 关键 Diff / Key Diff
+```diff
++ Coordinator adds task.verification.goal and success_criteria to manipulation node bindings
++ before trusted ManipulationIntent validation
+```
+
+### Git 提交
+- Commit: 待提交
+- Branch: `feature/planning-loop`
+
 ## v11.10.4 (2026-09-29 01:20) - codex
 
 ### 实际修改 / Implemented changes
