@@ -7,7 +7,11 @@ from contextlib import nullcontext
 from types import SimpleNamespace
 
 from PhyAgentOS.agent.long_horizon import LongHorizonTaskController
-from PhyAgentOS.agent.planning_loop import NodeContextProvider, PlanningLoopAdapter
+from PhyAgentOS.agent.planning_loop import (
+    NodeContextProvider,
+    PlanningLoopAdapter,
+    StaleNodeContextError,
+)
 from PhyAgentOS.cli import commands
 from PhyAgentOS.cli.commands import _interactive_task_control
 from PhyAgentOS.config.schema import ForgeConfig
@@ -117,6 +121,39 @@ def test_controller_does_not_run_while_replan_is_awaited(tmp_path):
     result = asyncio.run(_controller(c, calls).run(task.task_id))
     assert result.status == "awaiting_replan"
     assert calls == []
+
+
+def test_controller_transitions_stale_context_to_coordinator_replan(tmp_path):
+    c = _coordinator(tmp_path)
+    task = c.create_task(
+        task_description="recover stale scene context",
+        verification=TaskVerificationContract(mode="off"),
+    )
+    c.expand_discovery_revision(
+        task.task_id,
+        plan_graph=_graph(task.task_id, "revision-stale"),
+        plan_graph_ref="artifact://plan/stale",
+    )
+
+    class StaleAdapter:
+        async def run(self, *_args, **_kwargs):
+            raise StaleNodeContextError(
+                "required evidence record-old belongs to stale scene revision"
+            )
+
+    controller = LongHorizonTaskController(
+        c,
+        StaleAdapter(),
+        scene_revision_provider=lambda _: "scene-new",
+    )
+
+    result = asyncio.run(controller.run(task.task_id))
+
+    assert result.status == "awaiting_replan"
+    persisted = c.get_task(task.task_id)
+    assert persisted.status == AgentTaskStatus.AWAITING_REPLAN
+    assert any("stale_node_context" in item for item in persisted.evidence_errors)
+    assert [event["event_type"] for event in c.store.events(task.task_id)][-1] == "plan_replan_requested"
 
 
 def test_control_only_controller_uses_persisted_coordinator_state(tmp_path):

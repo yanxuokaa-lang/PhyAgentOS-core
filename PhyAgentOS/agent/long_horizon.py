@@ -14,8 +14,12 @@ from typing import Awaitable, Callable
 from loguru import logger
 
 from PhyAgentOS.agent.planning_context import PlanningContextUnavailableError
-from PhyAgentOS.agent.planning_loop import PlanningLoopAdapter, PlanningLoopResult
-from PhyAgentOS.forge.task import AgentTaskCoordinator, AgentTaskStatus
+from PhyAgentOS.agent.planning_loop import (
+    PlanningLoopAdapter,
+    PlanningLoopResult,
+    StaleNodeContextError,
+)
+from PhyAgentOS.forge.task import AgentTaskCoordinator, AgentTaskError, AgentTaskStatus
 from PhyAgentOS.planning import derive_ready_nodes
 
 
@@ -198,6 +202,8 @@ class LongHorizonTaskController:
                     )
                 except asyncio.CancelledError:
                     raise
+                except StaleNodeContextError as exc:
+                    return self._request_replan(task_id, str(exc))
                 except Exception as exc:
                     logger.exception(
                         "Long-horizon runner blocked by internal error: task_id={} error={}",
@@ -232,6 +238,8 @@ class LongHorizonTaskController:
                         continuation = await continuation  # type: ignore[assignment,misc]
                 except asyncio.CancelledError:
                     raise
+                except StaleNodeContextError as exc:
+                    return self._request_replan(task_id, str(exc))
                 except Exception as exc:
                     logger.exception(
                         "Long-horizon segment continuation failed: task_id={} error={}",
@@ -334,6 +342,28 @@ class LongHorizonTaskController:
             replans=snapshot.replans,
             last_failure=reason,
         )
+
+    def _request_replan(self, task_id: str, reason: str) -> LongHorizonTaskResult:
+        """Persist stale-context recovery without replaying a completed Action."""
+        task = self.coordinator.get_task(task_id)
+        if task.status == AgentTaskStatus.AWAITING_REPLAN:
+            return self._snapshot(task_id, status="awaiting_replan")
+        try:
+            self.coordinator.request_replan(
+                task_id,
+                reason=f"stale_node_context:{reason.strip()}",
+            )
+        except AgentTaskError as exc:
+            logger.exception(
+                "Unable to persist stale-context recovery: task_id={} error={}",
+                task_id,
+                exc,
+            )
+            return self._blocked(
+                task_id,
+                f"stale_context_replan_failed:{type(exc).__name__}:{exc}",
+            )
+        return self._snapshot(task_id, status="awaiting_replan")
 
     def _snapshot(self, task_id: str, *, status: str | None = None) -> LongHorizonTaskResult:
         task = self.coordinator.get_task(task_id)

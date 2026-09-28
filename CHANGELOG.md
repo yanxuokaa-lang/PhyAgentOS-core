@@ -1,4 +1,46 @@
 # Changelog
+## v11.10.0 (2026-09-28 16:28) - codex
+
+### 实际修改 / Implemented changes
+- [agent] [fix] [完成] `PhyAgentOS/agent/long_horizon.py:L16-L22,L197-L216,L232-L250,L346-L366` 捕获 stale scene context 并通过 Coordinator 持久化 `awaiting_replan`，不重发已成功 Action；重复恢复请求幂等，持久化失败才返回 blocked。(local)
+- [Agent] [Fix] [Completed] `PhyAgentOS/agent/long_horizon.py:L16-L22,L197-L216,L232-L250,L346-L366` catches stale scene context and persists `awaiting_replan` through the Coordinator without replaying successful Actions; repeated recovery is idempotent and persistence failure remains blocked.(local)
+- [eval] [test] [完成] `tests/test_long_horizon_controller.py:L10-L14,L126-L156` 增加 stale-to-replan 回归；相关套件 `192 passed`，`compileall` 与 `git diff --check` 通过。(local)
+- [Eval] [Test] [Completed] `tests/test_long_horizon_controller.py:L10-L14,L126-L156` adds stale-to-replan regression coverage; related suites passed `192`, with `compileall` and `git diff --check` passing.(local)
+
+### 失败场景依据 / Failure scenario
+`object.acquire` terminal succeeded 后推进 scene revision，旧 continuation 携带旧 discovery evidence 被正确拒绝；控制器此前只返回 blocked，任务保持 executing，下一 turn 无法看到 `forge_task_begin_revision`。/ After terminal-successful `object.acquire` advanced the scene revision, the old continuation correctly failed stale-evidence validation; the controller previously returned only blocked, leaving the task executing and hiding `forge_task_begin_revision` from the next turn.
+
+### 关键 Diff / Key diff
+~~~diff
++ except StaleNodeContextError as exc:
++     return self._request_replan(task_id, str(exc))
++ self.coordinator.request_replan(task_id, reason=f"stale_node_context:{reason.strip()}")
+~~~
+
+## v11.9.19 (2026-09-28 23:00) - codex
+
+### 实际修改 / Implemented changes
+- [agent] [fix] [完成] `PhyAgentOS/agent/tools/forge_task.py:L430-L477` continuation 物化前拒绝刷新 Query 携带旧 scene evidence；`PhyAgentOS/agent/prompt_context.py:L1020-L1028` 明确 world-changing Action 后只能通过 dependency 等待 fresh Query。(local)
+- [Agent] [Fix] [Completed] `PhyAgentOS/agent/tools/forge_task.py:L430-L477` rejects stale evidence on refresh Queries before continuation materialization; `PhyAgentOS/agent/prompt_context.py:L1020-L1028` requires dependencies and fresh Queries after world-changing Actions.(local)
+- [eval] [test] [完成] `tests/test_prompt_context.py:L520-L527` continuation guidance 回归；聚焦 Agent foundation/prompt/timeout `120 passed`。(local)
+- [Eval] [Test] [Completed] `tests/test_prompt_context.py:L520-L527` adds continuation guidance regression; focused Agent foundation/prompt/timeout suite passed `120`.(local)
+
+## v11.9.18 (2026-09-28 22:00) - codex
+
+### 实际修改 / Implemented changes
+- [agent] [fix] [完成] `PhyAgentOS/agent/planning_loop.py:L191-L198` 允许 continuation 显式授权的 discovery refs 进入 consumer context，同时保留 scene freshness 校验；`PhyAgentOS/forge/task.py:L1705-L1712` 继承并去重 refs。(local)
+- [Agent] [Fix] [Completed] `PhyAgentOS/agent/planning_loop.py:L191-L198` admits explicitly authorized continuation discovery refs into consumer context while retaining scene freshness checks; `PhyAgentOS/forge/task.py:L1705-L1712` inherits and deduplicates refs.(local)
+- [eval] [test] [完成] 聚焦 Agent foundation/prompt/timeout `119 passed`，`compileall` 与 `git diff --check` 通过。(local)
+- [Eval] [Test] [Completed] Focused Agent foundation/prompt/timeout tests passed `119`, with `compileall` and `git diff --check` passing.(local)
+
+## v11.9.17 (2026-09-28 19:00) - codex
+
+### 实际修改 / Implemented changes
+- [agent] [fix] [完成] `PhyAgentOS/agent/tools/forge_tool_api.py:L102-L117,L223-L229,L702-L755` 将 `scene.bind` 错误字段、缺失选择和歧义实体转换为结构化可恢复错误；`PhyAgentOS/agent/prompt_context.py:L394-L437,L802-L804` 投影候选实体及来源。(local)
+- [Agent] [Fix] [Completed] `PhyAgentOS/agent/tools/forge_tool_api.py:L102-L117,L223-L229,L702-L755` turns `scene.bind` alias, missing-selection, and ambiguous-entity errors into structured recoverable responses; `PhyAgentOS/agent/prompt_context.py:L394-L437,L802-L804` projects candidate entities and provenance.(local)
+- [eval] [test] [完成] alias/ambiguity regressions added; focused Agent foundation/prompt/timeout suite passed `119`。(local)
+- [Eval] [Test] [Completed] Added alias and ambiguity regressions; focused Agent foundation/prompt/timeout suite passed `119`.(local)
+
 ## v11.9.12 (2026-09-28 10:00) - codex
 
 ### 实际修改 / Implemented changes
