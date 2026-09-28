@@ -63,10 +63,10 @@ class ArgumentProjectionPlan(_Frozen):
 
     projection_id: str = Field(min_length=1)
     join_field: str = Field(default="entity_ref", min_length=1)
-    entity_collection: str = Field(min_length=1)
-    envelope_collection: str = Field(min_length=1)
+    entity_collection: str = ""
+    envelope_collection: str = ""
     artifact_collection: str | None = None
-    output_collection: str = Field(min_length=1)
+    output_collection: str = ""
     entity_fields: tuple[str, ...] = ()
     envelope_output_field: str = Field(default="spatial_envelope", min_length=1)
     envelope_fields: tuple[str, ...] = ()
@@ -75,6 +75,12 @@ class ArgumentProjectionPlan(_Frozen):
     artifact_kind_value: str | None = None
     artifact_fields: tuple[str, ...] = ()
     top_level_fields: tuple[str, ...] = ()
+    # Direct projections copy declared response fields without exposing the
+    # producer payload to the Agent. Paths are relative to response ``data``.
+    source_field_map: dict[str, tuple[str | int, ...]] = Field(default_factory=dict)
+    filtered_collection: str | None = None
+    filtered_output_field: str | None = None
+    filtered_join_field: str | None = None
 
     @field_validator(
         "entity_fields", "envelope_fields", "artifact_fields", "top_level_fields"
@@ -84,6 +90,27 @@ class ArgumentProjectionPlan(_Frozen):
         if len(value) != len(set(value)) or any(not field.strip() for field in value):
             raise ValueError("projection fields must be unique non-empty strings")
         return value
+
+    @model_validator(mode="after")
+    def validate_projection_shape(self) -> "ArgumentProjectionPlan":
+        if self.source_field_map:
+            for output_field, source_path in self.source_field_map.items():
+                if not output_field.strip() or not source_path:
+                    raise ValueError("direct projection fields require non-empty paths")
+                if any(
+                    not isinstance(part, (str, int)) or (isinstance(part, str) and not part)
+                    for part in source_path
+                ):
+                    raise ValueError("direct projection paths must contain strings or indexes")
+            if bool(self.filtered_collection) != bool(self.filtered_output_field):
+                raise ValueError(
+                    "filtered_collection and filtered_output_field must be provided together"
+                )
+        elif not self.entity_collection or not self.envelope_collection or not self.output_collection:
+            raise ValueError(
+                "entity/envelope/output collections are required for entity projections"
+            )
+        return self
 
 
 class PlanNode(_Frozen):

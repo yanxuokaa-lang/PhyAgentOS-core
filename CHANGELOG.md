@@ -1,4 +1,18 @@
 # Changelog
+## v11.10.8 (2026-09-29 04:43) - codex
+
+### 实际修改 / Implemented changes
+- [agent] [fix] [完成] `PhyAgentOS/planning/contracts.py:L61-L113`、`PhyAgentOS/planning/projection.py:L140-L214` 增加通用 direct-field/filtered-collection projection；Coordinator 从授权 `grasp.propose` record 生成 `manipulation.prepare` 完整参数并按节点实体过滤候选，不把大数组交给模型。(local)
+- [Agent] [Fix] [Completed] `PhyAgentOS/planning/contracts.py:L61-L113` and `PhyAgentOS/planning/projection.py:L140-L214` add generic direct-field/filtered-collection projection; the Coordinator builds complete `manipulation.prepare` arguments from an authorized `grasp.propose` record and filters by node entity without sending the large array to the model.(local)
+- [skill] [fix] [完成] `examples/forge-skills/pick-place-workflow/contracts/manipulation.prepare.tool.yaml:L6-L24` 声明 `candidate_set_for_entity_v1`；Skill `2.8.3` 生成新的冻结 ToolSpec digest，旧任务不复用新契约。(local)
+- [Skill] [Fix] [Completed] `examples/forge-skills/pick-place-workflow/contracts/manipulation.prepare.tool.yaml:L6-L24` declares `candidate_set_for_entity_v1`; Skill `2.8.3` produces a fresh frozen ToolSpec digest and existing tasks do not reuse the new contract.(local)
+- [eval] [test] [完成] 规划 projection 3 passed，Forge Tool API 21 passed，AgentLoop/基础 101 passed，pick-place planning/runtime/discovery 31 passed；Ruff、compileall、diff check 通过。(local)
+- [Eval] [Test] [Completed] Planning projection passed 3, Forge Tool API passed 21, AgentLoop/foundation passed 101, pick-place planning/runtime/discovery passed 31; Ruff, compileall, and diff check passed.(local)
+
+### Git 提交
+- Commit: `28a6e32`
+- Branch: `feature/planning-loop`
+
 ## v11.10.7 (2026-09-29 16:35) - codex
 
 ### 实际修改 / Implemented changes

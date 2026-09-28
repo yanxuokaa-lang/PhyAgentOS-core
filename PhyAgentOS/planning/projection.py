@@ -152,6 +152,67 @@ def execute_argument_projection(
     if not isinstance(facts, Mapping):
         raise ArgumentProjectionError("consumer projection source has no structured result")
 
+    if plan.source_field_map:
+        def read_path(path: tuple[str | int, ...]) -> Any:
+            value: Any = facts
+            for part in path:
+                if isinstance(value, Mapping) and isinstance(part, str):
+                    if part not in value:
+                        raise ArgumentProjectionError(
+                            f"projection source is missing field {'.'.join(map(str, path))}"
+                        )
+                    value = value[part]
+                elif isinstance(value, (list, tuple)) and isinstance(part, int):
+                    if part < 0 or part >= len(value):
+                        raise ArgumentProjectionError(
+                            f"projection source index is out of range for {path!r}"
+                        )
+                    value = value[part]
+                else:
+                    raise ArgumentProjectionError(
+                        f"projection source path is invalid at {part!r}"
+                    )
+            return value
+
+        result: dict[str, Any] = {}
+        for output_field, source_path in plan.source_field_map.items():
+            value = read_path(source_path)
+            if output_field in literals and literals[output_field] != value:
+                raise ArgumentProjectionError(
+                    f"projection field {output_field!r} conflicts with its source"
+                )
+            result[output_field] = value
+        for field in plan.top_level_fields:
+            if field in literals:
+                if field in result and result[field] != literals[field]:
+                    raise ArgumentProjectionError(
+                        f"projection top-level field {field!r} conflicts with its source"
+                    )
+                result[field] = literals[field]
+        if plan.filtered_collection is not None:
+            collection = facts.get(plan.filtered_collection)
+            if not isinstance(collection, (list, tuple)):
+                raise ArgumentProjectionError(
+                    f"projection source collection {plan.filtered_collection!r} is not an array"
+                )
+            join_value = literals.get(plan.join_field)
+            if not isinstance(join_value, str) or not join_value:
+                raise ArgumentProjectionError(
+                    f"consumer projection requires selected {plan.join_field}"
+                )
+            join_field = plan.filtered_join_field or plan.join_field
+            filtered = [
+                dict(item)
+                for item in collection
+                if isinstance(item, Mapping) and item.get(join_field) == join_value
+            ]
+            if not filtered:
+                raise ArgumentProjectionError(
+                    f"projection source collection has no {join_field} matching selected entity"
+                )
+            result[plan.filtered_output_field] = filtered
+        return result
+
     def collection(name: str) -> list[Mapping[str, Any]]:
         value = facts.get(name, ())
         if not isinstance(value, (list, tuple)):
