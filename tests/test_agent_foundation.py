@@ -85,6 +85,15 @@ def test_agent_loop_retries_provider_timeout_before_tool_dispatch(
     ) is expected
 
 
+@pytest.mark.parametrize(
+    ("status", "expected"),
+    [(AgentTaskStatus.AWAITING_REPLAN, False), (AgentTaskStatus.EXECUTING, True)],
+)
+def test_model_failure_preserves_coordinator_replan_checkpoint(status, expected):
+    task = SimpleNamespace(status=status)
+    assert AgentLoop._should_fail_task_after_model_failure(task) is expected
+
+
 def test_agent_loop_retries_empty_stop_before_task_creation_dispatch(tmp_path):
     async def exercise():
         provider = ScriptedProvider([

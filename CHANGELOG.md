@@ -1,4 +1,29 @@
 # Changelog
+## v11.10.4 (2026-09-29 01:20) - codex
+
+### 实际修改 / Implemented changes
+- [agent] [fix] [完成] `PhyAgentOS/agent/loop.py:L148-L162,L1770-L1795` 在任务已经由 Coordinator 持久化为 `awaiting_replan` 时保留恢复状态，不再被 model timeout 二次终结；普通执行中失败仍 fail closed。(local)
+- [Agent] [Fix] [Completed] `PhyAgentOS/agent/loop.py:L148-L162,L1770-L1795` preserves a Coordinator-persisted `awaiting_replan` state instead of terminalizing it after a model timeout; ordinary executing failures remain fail closed.(local)
+- [eval] [test] [完成] `tests/test_agent_foundation.py:L82-L91` 覆盖两种状态分支；聚焦 `10 passed`，compileall 和 diff check 通过。(local)
+- [Eval] [Test] [Completed] `tests/test_agent_foundation.py:L82-L91` covers both task-state branches; focused tests passed `10`, with compileall and diff check passing.(local)
+
+### 关键 Diff / Key Diff
+```diff
+- fail_task(task_id, reason)
++ if task.status != awaiting_replan:
++     fail_task(task_id, reason)
++ else:
++     preserve Coordinator recovery checkpoint
+```
+
+### 验证 / Verification
+- AgentLoop focused tests: `10 passed, 67 deselected`。
+- `compileall` and `git diff --check` passed.
+
+### Git 提交
+- Commit: 待提交
+- Branch: `feature/planning-loop`
+
 ## v11.10.3 (2026-09-28 23:10) - codex
 
 ### 实际修改 / Implemented changes

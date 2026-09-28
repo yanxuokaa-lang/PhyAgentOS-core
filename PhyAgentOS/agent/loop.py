@@ -145,6 +145,17 @@ class AgentLoop:
             "planning_execution",
         }
 
+    @staticmethod
+    def _should_fail_task_after_model_failure(task) -> bool:
+        """Keep a Coordinator-owned replan checkpoint recoverable.
+
+        PlanningLoop persists ``awaiting_replan`` before returning a node-turn
+        provider failure.  Terminalizing that same task here would discard the
+        durable recovery handoff even though no new Tool call was authorized.
+        Other control-plane failures retain the existing fail-closed behavior.
+        """
+        return getattr(getattr(task, "status", None), "value", None) != "awaiting_replan"
+
     def __init__(
         self,
         bus: MessageBus,
@@ -1762,20 +1773,26 @@ class AgentLoop:
         if failure_code is not None and self.forge_task_coordinator is not None:
             failed_task = self._task_for_session(key, include_terminal=False)
             if failed_task is not None:
-                try:
-                    self.forge_task_coordinator.fail_task(
-                        failed_task.task_id,
-                        reason=(
-                            f"agent model/control-plane failure: {failure_code}; "
-                            "no new tool call was authorized"
-                        ),
-                    )
-                except AgentTaskError:
-                    # An unresolved Action/Session keeps physical reconciliation
-                    # authoritative; the task remains recoverable for polling.
-                    logger.warning(
-                        "Could not terminally settle AgentTask %s after model failure; "
-                        "physical reconciliation remains required",
+                if self._should_fail_task_after_model_failure(failed_task):
+                    try:
+                        self.forge_task_coordinator.fail_task(
+                            failed_task.task_id,
+                            reason=(
+                                f"agent model/control-plane failure: {failure_code}; "
+                                "no new tool call was authorized"
+                            ),
+                        )
+                    except AgentTaskError:
+                        # An unresolved Action/Session keeps physical reconciliation
+                        # authoritative; the task remains recoverable for polling.
+                        logger.warning(
+                            "Could not terminally settle AgentTask %s after model failure; "
+                            "physical reconciliation remains required",
+                            failed_task.task_id,
+                        )
+                else:
+                    logger.info(
+                        "Preserving AgentTask %s in Coordinator replan state after model failure",
                         failed_task.task_id,
                     )
         self._save_turn(session, run_result.messages, 1 + len(history))
