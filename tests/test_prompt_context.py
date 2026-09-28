@@ -1048,6 +1048,53 @@ def test_discovery_compacts_before_global_trigger_and_keeps_task_projection() ->
     assert "read_only_projection_from_AgentTaskCoordinator" in encoded
 
 
+def test_replan_compacts_before_global_trigger_and_keeps_task_projection() -> None:
+    record = SimpleNamespace(
+        tool_id="scene.observe",
+        status="succeeded",
+        response={"data": {"status": "available", "observation_ref": "observation://replan-current"}},
+        record_id="record-replan-observe",
+        evidence_refs=["tool:record-replan-observe"],
+    )
+    task = _task(records=(record,), status="awaiting_replan")
+    task.active_revision = SimpleNamespace(plan_graph=object())
+    messages = [
+        {"role": "system", "content": "system"},
+        {"role": "user", "content": "recover stale scene"},
+    ]
+    for index in range(4):
+        messages.extend(
+            [
+                {"role": "assistant", "content": None, "tool_calls": [{"id": f"replan-{index}"}]},
+                {
+                    "role": "tool",
+                    "name": "forge_tool_context",
+                    "tool_call_id": f"replan-{index}",
+                    "content": json.dumps({"ok": True, "data": {"debug": f"replan-history-{index}-" + "x" * 7_000}}),
+                },
+            ]
+        )
+
+    manager = AgentPromptContextManager(
+        context_window_tokens=100_000,
+        compaction_trigger_tokens=90_000,
+    )
+    view = manager.build(
+        messages=messages,
+        turn_start_index=1,
+        all_tool_names=("forge_task_begin_revision", "forge_tool_context"),
+        task=task,
+        estimate_tokens=_estimate,
+    )
+
+    encoded = json.dumps(view.messages)
+    assert view.phase == "replan"
+    assert view.compacted is True
+    assert "replan-history-0-" not in encoded
+    assert "observation://replan-current" in encoded
+    assert "read_only_projection_from_AgentTaskCoordinator" in encoded
+
+
 def test_prompt_budget_fails_locally_when_current_required_input_exceeds_window() -> None:
     manager = AgentPromptContextManager(context_window_tokens=100, compaction_trigger_tokens=80)
     with pytest.raises(PromptBudgetExceededError, match="exceeds context window"):

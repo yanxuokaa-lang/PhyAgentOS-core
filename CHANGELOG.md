@@ -1,4 +1,12 @@
 # Changelog
+## v11.10.1 (2026-09-28 17:03) - codex
+
+### 实际修改 / Implemented changes
+- [agent] [fix] [完成] `PhyAgentOS/agent/prompt_context.py:L1232-L1240` 将 `replan` 纳入 16,000 token 早期压缩，保留 Coordinator task projection，避免恢复 turn 在 `forge_task_begin_revision` 前 provider timeout。(local)
+- [Agent] [Fix] [Completed] `PhyAgentOS/agent/prompt_context.py:L1232-L1240` includes `replan` in the 16,000-token early compaction while retaining the Coordinator task projection, preventing provider timeout before `forge_task_begin_revision`.(local)
+- [eval] [test] [完成] `tests/test_prompt_context.py:L1051-L1095` 新增 replan 回归；聚焦测试 `121 passed`，`compileall` 与 `git diff --check` 通过。(local)
+- [Eval] [Test] [Completed] `tests/test_prompt_context.py:L1051-L1095` adds replan regression; focused tests passed `121`, with `compileall` and `git diff --check` passing.(local)
+
 ## v11.10.0 (2026-09-28 16:28) - codex
 
 ### 实际修改 / Implemented changes

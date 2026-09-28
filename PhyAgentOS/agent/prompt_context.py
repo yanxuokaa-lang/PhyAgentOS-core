@@ -1233,7 +1233,7 @@ class AgentPromptContextManager:
             self.compaction_trigger_tokens,
             self.prompt_token_limit,
         )
-        if phase == "discovery":
+        if phase in {"discovery", "replan"}:
             compaction_threshold = min(
                 compaction_threshold,
                 self.discovery_compaction_trigger_tokens,
