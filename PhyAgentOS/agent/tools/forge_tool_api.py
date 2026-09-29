@@ -923,6 +923,11 @@ def _scene_bind_argument_error(task: Any, arguments: dict[str, Any]) -> dict[str
         "recommended_unambiguous_entity_refs": [
             ref for ref in entity_refs_from_understanding if ref not in ambiguous_refs
         ],
+        "selection_constraints": {
+            "recommendation_scope": "perception_ambiguity_only",
+            "must_match_task_entities": True,
+            "environment_only_substitution_forbidden": True,
+        },
         "source_record_id": understanding.record_id,
     }
 

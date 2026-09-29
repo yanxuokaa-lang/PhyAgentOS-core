@@ -124,6 +124,7 @@ def test_vllm_provider_uses_openai_compatible_multimodal_schema():
     assert payload["model"] == "qwen3-vl-4b-awq"
     assert payload["response_format"]["json_schema"]["strict"] is True
     assert payload["response_format"]["json_schema"]["schema"]["properties"]["relations"]["maxItems"] == 8
+    assert payload["response_format"]["json_schema"]["schema"]["properties"]["ambiguities"]["items"]["properties"]["entity_ids"]["minItems"] == 1
     assert payload["response_format"]["json_schema"]["schema"]["properties"]["ambiguities"]["items"]["properties"]["code"]["enum"] == [
         "entity_identity_uncertain", "entity_category_uncertain", "entity_count_uncertain",
         "visual_attribute_uncertain", "spatial_relation_uncertain", "occlusion_uncertain",
@@ -139,7 +140,10 @@ def test_vllm_provider_uses_openai_compatible_multimodal_schema():
     assert "do not return transitive relations" in prompt
     assert "broad uniform background may still be a physical structure" in prompt
     assert "Do not infer metric depth, coordinates, plane equations" in prompt
-    assert "Do not report an ambiguity solely because" not in prompt
+    assert "absence or occlusion in another view is not by itself an identity ambiguity" in prompt
+    assert "return them as separate entities" in prompt
+    assert "Never assign multiple source views" in prompt
+    assert "never emit an ambiguity with empty entity_ids" in prompt
     assert "observation://scene/camera" not in prompt
     assert "scene-1" not in prompt
     assert client.closed is True
@@ -359,6 +363,10 @@ def test_vllm_config_rejects_non_http_endpoint():
         raise AssertionError("invalid endpoint must fail closed")
 
 
+def test_vllm_config_defaults_to_complete_multiview_output_budget():
+    assert Qwen3VLVLLMConfig().max_output_tokens == 1536
+
+
 def test_vllm_projection_preserves_canonical_semantic_ambiguity():
     result = _project_vllm_claims(
         {
@@ -384,6 +392,123 @@ def test_vllm_projection_preserves_canonical_semantic_ambiguity():
             "entity_refs": ["entity://e1"],
         }
     ]
+
+
+def test_vllm_projection_rejects_identity_ambiguity_for_merged_multiview_entity():
+    with pytest.raises(Qwen3VLVLLMContractError, match="canonical multi-view entity"):
+        _project_vllm_claims(
+            {
+                "entities": [{
+                    "local_id": "e1", "category": "cube", "attributes": [],
+                    "confidence": 0.95, "source_view_indexes": [0, 1],
+                }],
+                "relations": [],
+                "ambiguities": [{
+                    "code": "entity_identity_uncertain",
+                    "message": "cross-view correspondence is unconfirmed",
+                    "entity_ids": ["e1"],
+                }],
+            },
+            ["artifact://scene/front/rgb", "artifact://scene/wrist/rgb"],
+        )
+
+
+def test_vllm_projection_filters_overbroad_identity_ambiguity_when_attributes_disambiguate():
+    result = _project_vllm_claims(
+        {
+            "entities": [
+                {
+                    "local_id": "e1", "category": "cube",
+                    "attributes": [{"name": "color", "value": "red", "confidence": 0.95}],
+                    "confidence": 0.95, "source_view_indexes": [0, 1],
+                },
+                {
+                    "local_id": "e2", "category": "cube",
+                    "attributes": [{"name": "color", "value": "blue", "confidence": 0.95}],
+                    "confidence": 0.95, "source_view_indexes": [0, 1],
+                },
+                {
+                    "local_id": "e3", "category": "cube",
+                    "attributes": [{"name": "color", "value": "green", "confidence": 0.95}],
+                    "confidence": 0.95, "source_view_indexes": [0, 1],
+                },
+            ],
+            "relations": [],
+            "ambiguities": [{
+                "code": "entity_identity_uncertain",
+                "message": "the cube identities are visually similar",
+                "entity_ids": ["e1", "e2", "e3"],
+            }],
+        },
+        ["artifact://scene/front/rgb", "artifact://scene/wrist/rgb"],
+    )
+
+    assert result["ambiguities"] == []
+
+
+def test_vllm_projection_keeps_identity_ambiguity_for_duplicate_semantic_signatures():
+    result = _project_vllm_claims(
+        {
+            "entities": [
+                {
+                    "local_id": "e1", "category": "surface", "attributes": [],
+                    "confidence": 0.95, "source_view_indexes": [0, 1],
+                },
+                {
+                    "local_id": "e2", "category": "surface", "attributes": [],
+                    "confidence": 0.95, "source_view_indexes": [0, 1],
+                },
+            ],
+            "relations": [],
+            "ambiguities": [{
+                "code": "entity_identity_uncertain",
+                "message": "the surfaces cannot be distinguished",
+                "entity_ids": ["e1", "e2"],
+            }],
+        },
+        ["artifact://scene/front/rgb", "artifact://scene/wrist/rgb"],
+    )
+
+    assert result["ambiguities"][0]["entity_refs"] == ["entity://e1", "entity://e2"]
+
+
+def test_vllm_projection_drops_explicit_negative_identity_placeholder():
+    result = _project_vllm_claims(
+        {
+            "entities": [{
+                "local_id": "e1", "category": "cube", "attributes": [],
+                "confidence": 0.95, "source_view_indexes": [0],
+            }],
+            "relations": [],
+            "ambiguities": [{
+                "code": "entity_identity_uncertain",
+                "message": "No cross-view identity uncertainty detected.",
+                "entity_ids": [],
+            }],
+        },
+        ["artifact://scene/front/rgb", "artifact://scene/wrist/rgb"],
+    )
+
+    assert result["ambiguities"] == []
+
+
+def test_vllm_projection_rejects_unscoped_non_placeholder_identity_ambiguity():
+    with pytest.raises(Qwen3VLVLLMContractError, match="must reference a known entity"):
+        _project_vllm_claims(
+            {
+                "entities": [{
+                    "local_id": "e1", "category": "cube", "attributes": [],
+                    "confidence": 0.95, "source_view_indexes": [0],
+                }],
+                "relations": [],
+                "ambiguities": [{
+                    "code": "entity_identity_uncertain",
+                    "message": "No clear identity; uncertainty detected.",
+                    "entity_ids": [],
+                }],
+            },
+            ["artifact://scene/front/rgb", "artifact://scene/wrist/rgb"],
+        )
 
 
 def test_vllm_projection_rejects_entity_id_used_as_ambiguity_code():

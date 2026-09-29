@@ -432,10 +432,23 @@ def _scene_bind_selection_projection(task: Any) -> dict[str, Any] | None:
     entity_refs = [entity["entity_ref"] for entity in entities]
     return {
         "source_record_id": getattr(understanding, "record_id", None),
+        "candidate_entities": [
+            {
+                key: entity[key]
+                for key in ("entity_ref", "category", "confidence", "provenance")
+                if key in entity
+            }
+            for entity in entities
+        ],
         "candidate_entity_refs": entity_refs,
         "recommended_unambiguous_entity_refs": [
             ref for ref in entity_refs if ref not in ambiguous_refs
         ],
+        "selection_constraints": {
+            "recommendation_scope": "perception_ambiguity_only",
+            "must_match_task_entities": True,
+            "environment_only_substitution_forbidden": True,
+        },
         "ambiguous_entity_refs": ambiguous_refs,
         "ambiguities": _reference_projection(ambiguities),
         "selection_required": True,
@@ -725,7 +738,12 @@ def task_prompt_projection(task: Any | None) -> dict[str, Any] | None:
                 "top-level `entity_refs` array (not `entities`) and map the same "
                 "current observation record into top-level `observation_ref`, "
                 "`scene_revision`, and `calibration_ref` via argument_sources; "
-                "do not invent or rename identity references."
+                "do not invent or rename identity references. The "
+                "recommended_unambiguous_entity_refs list only filters perception ambiguity; "
+                "it does not establish task relevance. Never substitute support surfaces, "
+                "fixtures, containers, or other environment entities for unresolved task "
+                "objects. If the required task entities remain ambiguous or absent, stop "
+                "discovery or obtain a new observation instead of binding environment-only entities."
             )
         if "scene.understand" in missing_queries:
             planning_next_step += (

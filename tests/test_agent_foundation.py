@@ -1522,12 +1522,13 @@ def test_invocation_read_tools_settle_only_from_result(
 ):
     response = {"data": {"status": "succeeded"}}
     client = SimpleNamespace(
-        invocation_status=AsyncMock(return_value=response),
-        invocation_result=AsyncMock(return_value=response),
+        base_url="http://test.invalid",
     )
     coordinator = SimpleNamespace(
         require_action_invocation=Mock(),
         require_session_invocation=Mock(),
+        read_invocation=AsyncMock(return_value=response),
+        read_session_invocation=AsyncMock(return_value=response),
         observe_action=Mock(),
         observe_session=Mock(),
     )
@@ -1537,7 +1538,14 @@ def test_invocation_read_tools_settle_only_from_result(
     ))
 
     assert output == response
-    getattr(client, f"invocation_{operation}").assert_awaited_once_with("invocation-1")
+    read_method = (
+        coordinator.read_invocation
+        if semantics == "action"
+        else coordinator.read_session_invocation
+    )
+    read_method.assert_awaited_once_with(
+        "task-1", "invocation-1", result=operation == "result"
+    )
     getattr(coordinator, f"require_{semantics}_invocation").assert_called_once_with(
         "task-1", "invocation-1"
     )
@@ -1562,6 +1570,7 @@ def test_terminal_task_reconciles_original_unknown_action_without_reopening(
         coordinator.runtime_invocation_ids = {invocation_id}
         coordinator.runtime_task_binding_ids = {"binding-test"}
         coordinator.client = SimpleNamespace(
+            base_url="http://test.invalid",
             invocation_result=AsyncMock(return_value={"data": {"status": gateway_status}})
         )
 
@@ -1646,6 +1655,11 @@ def test_scene_bind_rejects_alias_and_ambiguous_understanding_entities():
     assert ambiguous_error["code"] == "ambiguous_entity_selection"
     assert ambiguous_error["ambiguous_entity_refs"] == ["entity://e4"]
     assert ambiguous_error["recommended_unambiguous_entity_refs"] == ["entity://e1"]
+    assert ambiguous_error["selection_constraints"] == {
+        "recommendation_scope": "perception_ambiguity_only",
+        "must_match_task_entities": True,
+        "environment_only_substitution_forbidden": True,
+    }
 
 
 def test_discovery_receipt_can_materialize_without_task_get(tmp_path):

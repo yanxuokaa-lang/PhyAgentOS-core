@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 import time
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping, Protocol
@@ -24,6 +25,11 @@ from .openai_scene_understanding import (
 )
 
 _MAX_RELATIONS = 8
+_NEGATIVE_AMBIGUITY_PLACEHOLDER = re.compile(
+    r"^no (?:cross[- ]view )?(?:entity |identity )?"
+    r"(?:uncertainty|ambiguity)(?: was)? (?:detected|found|present|observed)[.!]?$",
+    re.IGNORECASE,
+)
 
 _VLLM_SCENE_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -52,7 +58,7 @@ _VLLM_SCENE_SCHEMA: dict[str, Any] = {
         "ambiguities": {"type": "array", "items": {"type": "object", "additionalProperties": False,
             "required": ["code", "message", "entity_ids"],
             "properties": {"code": {"type": "string", "enum": list(SCENE_SEMANTIC_AMBIGUITY_CODES)}, "message": {"type": "string"},
-                           "entity_ids": {"type": "array", "items": {"type": "string"}}}}},
+                           "entity_ids": {"type": "array", "minItems": 1, "items": {"type": "string"}}}}},
     },
 }
 
@@ -78,7 +84,7 @@ class Qwen3VLVLLMConfig:
     model: str = "qwen3-vl-4b-awq"
     api_key_env: str = ""
     timeout_seconds: float = 30.0
-    max_output_tokens: int = 768
+    max_output_tokens: int = 1536
 
     def validate(self) -> None:
         parsed = urlparse(self.api_base)
@@ -289,8 +295,16 @@ class Qwen3VLVLLMSceneUnderstandingInference:
             "attributes. Do not infer metric depth, coordinates, plane equations, simulator "
             "truth, task success, IK, or motion authorization. For every entity and relation, "
             "source_view_indexes must list exactly the zero-based input views that visibly support "
-            "the claim. Do not merge cross-view identities when correspondence is uncertain. Preserve semantic uncertainty "
-            "in ambiguities. Do not return empty entities when visible entities are present. "
+            "the claim. Each entity is one canonical physical entity, and source_view_indexes may "
+            "contain one view when that entity is visible in only one camera; absence or occlusion "
+            "in another view is not by itself an identity ambiguity. When two view-local detections "
+            "cannot be confidently matched, return them as separate entities with their own source "
+            "views and reference both in entity_identity_uncertain. Never assign multiple source "
+            "views to one canonical entity and also report that entity as cross-view identity "
+            "uncertain. Include only actual ambiguities: never emit an ambiguity with empty "
+            "entity_ids or a message saying that uncertainty was not detected. Preserve other "
+            "semantic uncertainty in ambiguities. Do not return empty "
+            "entities when visible entities are present. "
             "Artifact provenance is assigned by the adapter from source_view_indexes."
         )
 
@@ -336,6 +350,8 @@ def _project_vllm_claims(value: Any, image_refs: str | list[str]) -> dict[str, A
         raise Qwen3VLVLLMInferenceError("qwen vLLM output violated the provider contract")
     entities = []
     id_map: dict[str, str] = {}
+    entity_view_counts: dict[str, int] = {}
+    entity_identity_signatures: dict[str, tuple[str, tuple[tuple[str, str], ...]]] = {}
     for item in value["entities"]:
         if (
             not isinstance(item, Mapping)
@@ -351,7 +367,19 @@ def _project_vllm_claims(value: Any, image_refs: str | list[str]) -> dict[str, A
         ref = f"entity://{local_id}"
         id_map[local_id] = ref
         category, confidence = _public_entity_category(item)
-        entities.append({"entity_ref": ref, "category": category, "confidence": confidence, "provenance": provenance(item)})
+        item_provenance = provenance(item)
+        entity_view_counts[ref] = len(item_provenance)
+        attributes = tuple(
+            sorted(
+                (
+                    str(attribute["name"]).strip().casefold(),
+                    " ".join(str(attribute["value"]).split()).casefold(),
+                )
+                for attribute in item["attributes"]
+            )
+        )
+        entity_identity_signatures[ref] = (category.casefold(), attributes)
+        entities.append({"entity_ref": ref, "category": category, "confidence": confidence, "provenance": item_provenance})
     relation_values = value["relations"]
     if not isinstance(relation_values, list) or len(relation_values) > _MAX_RELATIONS:
         raise Qwen3VLVLLMInferenceError("qwen vLLM relation count is invalid")
@@ -377,7 +405,37 @@ def _project_vllm_claims(value: Any, image_refs: str | list[str]) -> dict[str, A
             raise Qwen3VLVLLMInferenceError("qwen vLLM ambiguity fields are invalid")
         if item["code"] not in SCENE_SEMANTIC_AMBIGUITY_CODES:
             raise Qwen3VLVLLMContractError("qwen vLLM ambiguity code violated the semantic contract")
+        if (
+            item["code"] == "entity_identity_uncertain"
+            and not item["entity_ids"]
+            and _NEGATIVE_AMBIGUITY_PLACEHOLDER.fullmatch(item["message"].strip())
+        ):
+            continue
         refs = [id_map[ref] for ref in item["entity_ids"] if ref in id_map]
+        if item["code"] == "entity_identity_uncertain" and not refs:
+            raise Qwen3VLVLLMContractError(
+                "qwen vLLM identity ambiguity must reference a known entity"
+            )
+        if item["code"] == "entity_identity_uncertain":
+            if len(refs) < 2 and any(entity_view_counts.get(ref, 0) > 1 for ref in refs):
+                raise Qwen3VLVLLMContractError(
+                    "qwen vLLM canonical multi-view entity conflicts with identity ambiguity"
+                )
+            if len(refs) < 2:
+                ambiguities.append(
+                    {"code": item["code"], "message": item["message"], "entity_refs": refs}
+                )
+                continue
+            signature_counts: dict[tuple[str, tuple[tuple[str, str], ...]], int] = {}
+            for ref in refs:
+                signature = entity_identity_signatures[ref]
+                signature_counts[signature] = signature_counts.get(signature, 0) + 1
+            refs = [
+                ref for ref in refs
+                if signature_counts[entity_identity_signatures[ref]] > 1
+            ]
+            if not refs:
+                continue
         ambiguities.append({"code": item["code"], "message": item["message"], "entity_refs": refs})
     return {"entities": entities, "relations": relations, "spatial_envelopes": [], "ambiguities": ambiguities, "provider_available": True}
 

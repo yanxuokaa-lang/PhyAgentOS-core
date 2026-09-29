@@ -506,8 +506,17 @@ def test_task_projection_exposes_scene_bind_selection_from_understanding() -> No
     projection = task_prompt_projection(_task(records=(understanding,)))
     assert projection["scene_bind_selection"] == {
         "source_record_id": "understand-1",
+        "candidate_entities": [
+            {"entity_ref": "entity://e1", "category": "green cube"},
+            {"entity_ref": "entity://e4", "category": "white surface"},
+        ],
         "candidate_entity_refs": ["entity://e1", "entity://e4"],
         "recommended_unambiguous_entity_refs": ["entity://e1"],
+        "selection_constraints": {
+            "recommendation_scope": "perception_ambiguity_only",
+            "must_match_task_entities": True,
+            "environment_only_substitution_forbidden": True,
+        },
         "ambiguous_entity_refs": ["entity://e4"],
         "ambiguities": [{
             "code": "entity_identity_uncertain",
@@ -516,6 +525,28 @@ def test_task_projection_exposes_scene_bind_selection_from_understanding() -> No
         }],
         "selection_required": True,
     }
+
+
+def test_scene_bind_guidance_forbids_environment_only_substitution() -> None:
+    task = _task()
+    policy = ToolSpecPolicy(
+        tool_id="scene.bind", semantics="query", spec_digest="a" * 64,
+        requires_before_plan=True,
+    )
+    task.primary_skill_binding = ForgeSkillBinding(
+        binding_id="binding-bind", skill_name="fixture", skill_version="1",
+        manifest_sha256="b" * 64, skill_document_sha256="c" * 64,
+        runtime_profile="fixture", runtime_instance_id="runtime-1",
+        gateway_url="http://fixture", required_tools=(
+            BoundToolSpec(tool_id="scene.bind", semantics="query", spec_sha256="d" * 64,
+                          ready_at_binding=True, planning_policy=policy),
+        ),
+    )
+
+    guidance = task_prompt_projection(task)["planning_next_step"]
+    assert "does not establish task relevance" in guidance
+    assert "Never substitute support surfaces" in guidance
+    assert "environment-only entities" in guidance
 
 
 def test_continuation_projection_forbids_stale_pre_action_query_evidence() -> None:

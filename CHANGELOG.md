@@ -1,6 +1,59 @@
 # Changelog
 ## Archive
 - [2026-09 part20](changelog/2026-09_part20.md)
+## v12.3.4 (2026-09-29 06:10) - codex
+
+### 变更摘要 / Change Summary
+- [sense] [fix] Qwen 多视角 canonical 实体使用通用 category/attribute 签名过滤宽泛 identity ambiguity；重复语义签名和 merged 单实体继续 fail-closed。
+- [model] [fix] 本地 Qwen provider/profile 输出预算统一为 1536，避免双图 JSON 截断。
+- [docs] [docs] 保存 10 轮无运动双相机稳定性与 task-relevant scene.bind 证据，并完成七维 Review。
+- [Sense] [Fix] Filter overbroad Qwen identity ambiguity using generic category/attribute signatures; retain duplicate-signature and merged-entity fail-closed behavior.
+- [Model] [Fix] Align the local Qwen provider/profile output budget at 1536 to prevent dual-view JSON truncation.
+- [Docs] [Docs] Record 10-round no-motion synchronized-camera stability and task-relevant scene.bind evidence, with the seven-dimension Review.
+
+### 影响文件 / Affected Files
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/qwen3_vl_vllm_scene_understanding.py:L27-L32,L81-L87,L279-L309,L327-L440`
+- `examples/forge-adapters/robotwin20/profiles/forge-persistent/persistent-host.yaml:L17-L29`
+- `PhyAgentOS/forge/capability_runtime/understanding.py:L823-L869,L957-L968`
+- `PhyAgentOS/agent/prompt_context.py:L433-L455,L735-L746`
+- `PhyAgentOS/agent/tools/forge_tool_api.py:L918-L932`
+- `docs/forge/MULTIVIEW_SEMANTIC_BINDING_DIAGNOSIS_20260929.md:L66-L86`
+- `docs/forge/IMPLEMENTATION_REVIEW_V12_3_4.md:L1-L123`
+
+### 七维 Review / Seven-Dimension Review
+- 架构、恢复/幂等、机器人安全、配置/可复现性、可维护性、可观测性和 AgentLoop 均通过；Blocker 0、Major 0。
+- Architecture, recovery/idempotency, robotics safety, configuration/reproducibility, maintainability, observability, and AgentLoop all pass; Blocker 0, Major 0.
+- Minor residuals: first geometry cold-start latency and operator-owned Runtime lifecycle; no physical Action or final RGB acceptance is claimed.
+
+### 验证 / Validation
+- Qwen: `22 passed`; Agent scene-bind projection: `12 passed, 30 deselected`; Skill scene-understand/grasp-propose: `100 passed`。
+- Prior full relevant Adapter + Skill evidence: `1120 passed, 1 skipped, 3 existing baseline failures`。
+- Ruff、compileall、`git diff --check` passed；现场只读验证为 observe/understand 10/10、capture skew 0 ms、task-relevant bind available。
+
+### Git 提交 / Git Commit
+- Implementation commit: pending
+- Branch: `feature/planning-loop`
+
+## v12.3.3 (2026-09-29 04:32) - codex
+
+### 变更摘要 / Change Summary
+- [sense] [fix] 规范化空否定 identity ambiguity，保持 canonical 多视角冲突和未知实体 fail-closed。
+- [policy] [fix] 禁止 Agent 以环境支撑面替代未解析任务实体；scene.bind 仍为只读 Query。
+- [env] [chore] 发布 `pick-place-workflow 2.9.3` / `robotwin20_persistent_host 0.9.2`。
+- [Sense] [Fix] Normalize the strict negative identity-ambiguity placeholder while keeping canonical multi-view conflicts and unknown entities fail-closed.
+- [Policy] [Fix] Forbid environment-support substitution for unresolved task entities; scene.bind remains a read-only Query.
+- [Env] [Chore] Released `pick-place-workflow 2.9.3` / `robotwin20_persistent_host 0.9.2`.
+
+### 影响文件 / Affected Files
+- `docs/forge/MULTIVIEW_SEMANTIC_BINDING_DIAGNOSIS_20260929.md`
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/qwen3_vl_vllm_scene_understanding.py`
+- `PhyAgentOS/agent/prompt_context.py`
+- `PhyAgentOS/agent/tools/forge_tool_api.py`
+
+### Git 提交 / Git Commit
+- Implementation commit: recorded in `changelog/2026-09_part20.md`
+- Branch: `feature/planning-loop`
+
 ## v12.3.2 (2026-09-30 04:21) - codex
 
 ### 变更摘要 / Change Summary

@@ -394,3 +394,31 @@
 - [sense] [fix] [completed] Treat an empty OpenAI scene-understanding result with no ambiguity as `entity_count_uncertain`; explicitly inspect colored geometric blocks and preserve the existing available/ambiguity contract.
 - [sense] [fix] [完成] OpenAI 场景理解返回空实体且无歧义时标记为 `entity_count_uncertain`；明确检查彩色几何积木，并保持现有 available/ambiguity 契约。
 - Adapter and persistent Node version: `0.7.1`.
+## v2.9.1 (2026-09-29)
+
+- 中文：澄清同步多视角 Qwen 输出中的 canonical 实体语义：单视角可见不构成身份歧义；不确定的跨视角检测必须保持为独立实体，已合并的多视角实体不得同时声明 identity uncertainty。
+- English: Clarify canonical entity semantics for synchronized multi-view Qwen output: single-view visibility is not an identity ambiguity, uncertain cross-view detections remain separate entities, and a merged multi-view entity cannot simultaneously claim identity uncertainty.
+- 中文：理解端将共享同一精确度量包络的多个语义实体标记为身份歧义；Agent 绑定选择明确禁止用环境支撑体替代未解析的任务实体。
+- English: Mark multiple semantic entities sharing one exact metric envelope as identity-ambiguous, and explicitly forbid Agent binding selection from substituting environment supports for unresolved task entities.
+- 中文：发布 Node `0.9.0`，SHA-256 为 `5daff79951a9f13f5cc1afa57c1158b8606e829cc37cfea6295060ced9b1c4c9`。
+- English: Publish Node `0.9.0` with SHA-256 `5daff79951a9f13f5cc1afa57c1158b8606e829cc37cfea6295060ced9b1c4c9`。
+## v2.9.2 (2026-09-29)
+
+- 中文：拒绝空 entity_refs 的 entity_identity_uncertain，并要求 Qwen 只输出真实歧义，避免“No uncertainty detected”被 Grounding 按全局阻塞处理。
+- English: Reject entity_identity_uncertain with empty entity_refs and require Qwen to emit only actual ambiguity, preventing “No uncertainty detected” from becoming a global Grounding blocker.
+- 中文：发布 Node `0.9.1`，SHA-256 为 `e33035a64731c84fecc3e967d633084509cb0c113b6e03080f32acb4e4a3e851`。
+- English: Publish Node `0.9.1` with SHA-256 `e33035a64731c84fecc3e967d633084509cb0c113b6e03080f32acb4e4a3e851`.
+## v2.9.3 (2026-09-29)
+
+- 中文：仅规范化空 `entity_ids` 且严格匹配“未检测到跨视角身份歧义”的 Qwen 否定占位符；其他空、未知实体或 canonical 多视角冲突继续 fail-closed。
+- English: Normalize only an empty-`entity_ids` Qwen negative placeholder that strictly states no cross-view identity ambiguity; other empty, unknown-entity, or canonical multi-view conflicts remain fail-closed.
+- 中文：Agent 绑定上下文明确区分感知无歧义与任务相关性，禁止以支撑面或其他环境实体替代未解析任务对象。
+- English: Distinguish perception-unambiguous candidates from task relevance in Agent binding context and forbid substituting supports or other environment entities for unresolved task objects.
+- 中文：发布 Node `0.9.2`，SHA-256 为 `2f875df0fb73125a006fea0fcb77a48af9f2a8215491e43fb317286e4dc78c63`。
+- English: Publish Node `0.9.2` with SHA-256 `2f875df0fb73125a006fea0fcb77a48af9f2a8215491e43fb317286e4dc78c63`.
+## v2.9.4 (2026-09-29)
+
+- 中文：过滤 Qwen 对不同 canonical category/attributes 实体的宽泛跨视角身份歧义，保留重复语义签名的真实歧义；本地语义默认输出预算统一为 1536。
+- English: Filter overbroad cross-view identity ambiguity for entities with distinct canonical category/attributes, retain real ambiguity for duplicate semantic signatures, and align the local semantic default output budget at 1536.
+- 中文：发布 Node `0.9.3`，SHA-256 为 `ccdbbb3cd6049169e2f07c35fa7cae9fcab5638e1e57f0c84c74031fc1d4118a`。
+- English: Publish Node `0.9.3` with SHA-256 `ccdbbb3cd6049169e2f07c35fa7cae9fcab5638e1e57f0c84c74031fc1d4118a`.

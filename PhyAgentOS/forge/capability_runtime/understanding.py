@@ -828,9 +828,45 @@ def validate_snapshot(
             or not isinstance(ambiguity.get("message"), str) or not ambiguity["message"].strip()
             or not isinstance(ambiguity.get("entity_refs"), list)
             or any(ref not in entity_refs for ref in ambiguity["entity_refs"])
+            or ambiguity.get("code") == "entity_identity_uncertain"
+            and not ambiguity["entity_refs"]
         ):
             return "invalid_ambiguity"
     return None
+
+
+def _metric_alias_ambiguities(
+    snapshot: UnderstandingSnapshot,
+) -> list[dict[str, Any]]:
+    """Mark distinct semantic entities that share one exact metric localization."""
+
+    groups: dict[tuple[Any, ...], list[str]] = {}
+    for envelope in snapshot.spatial_envelopes:
+        signature = (
+            envelope.get("frame_id"),
+            envelope.get("unit"),
+            tuple(envelope.get("min_xyz_m", ())),
+            tuple(envelope.get("max_xyz_m", ())),
+        )
+        groups.setdefault(signature, []).append(envelope["entity_ref"])
+    existing = [
+        set(item.get("entity_refs", ()))
+        for item in snapshot.ambiguities
+        if item.get("code") == "entity_identity_uncertain"
+    ]
+    additions = []
+    for refs in groups.values():
+        unique_refs = sorted(set(refs))
+        if len(unique_refs) < 2 or any(set(unique_refs) <= group for group in existing):
+            continue
+        additions.append(
+            {
+                "code": "entity_identity_uncertain",
+                "message": "multiple semantic entities share one metric localization",
+                "entity_refs": unique_refs,
+            }
+        )
+    return additions
 
 
 class SceneUnderstandingEndpoint:
@@ -918,6 +954,8 @@ class SceneUnderstandingEndpoint:
                     "evidence_refs": list(item["effect_evidence_refs"]),
                 }
             )
+        ambiguities = [dict(item) for item in normalized.ambiguities]
+        ambiguities.extend(_metric_alias_ambiguities(normalized))
         return {
             "status": "available", "observation_ref": observation_ref,
             "scene_revision": arguments["scene_revision"],
@@ -927,7 +965,7 @@ class SceneUnderstandingEndpoint:
             "relations": [dict(item) for item in normalized.relations],
             "spatial_envelopes": [dict(item) for item in normalized.spatial_envelopes],
             "derived_artifacts": [dict(item) for item in normalized.derived_artifacts],
-            "ambiguities": [dict(item) for item in normalized.ambiguities],
+            "ambiguities": ambiguities,
             "reconciliations": reconciliations,
             "carried_forward": carried_forward,
             "views": deepcopy(arguments.get("views", [])),

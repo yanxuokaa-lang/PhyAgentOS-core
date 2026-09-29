@@ -93,6 +93,43 @@ async def test_understanding_query_is_bound_to_observation_and_provider_neutral(
     ]
 
 
+def test_exact_duplicate_metric_localizations_become_identity_ambiguity():
+    first = understanding_snapshot()
+    second_entity = {
+        "entity_ref": "entity://surface-alias",
+        "category": "support surface",
+        "confidence": 0.91,
+        "provenance": ["artifact://obs-7/rgb"],
+    }
+    second_envelope = dict(first.spatial_envelopes[0])
+    second_envelope["entity_ref"] = second_entity["entity_ref"]
+    result = SceneUnderstandingEndpoint(Provider(UnderstandingSnapshot(
+        entities=(*first.entities, second_entity),
+        spatial_envelopes=(*first.spatial_envelopes, second_envelope),
+    ))).invoke(request_payload())
+
+    assert result["status"] == "available"
+    assert result["ambiguities"] == [{
+        "code": "entity_identity_uncertain",
+        "message": "multiple semantic entities share one metric localization",
+        "entity_refs": ["entity://bottle-1", "entity://surface-alias"],
+    }]
+
+
+def test_vacuous_identity_ambiguity_fails_provider_contract():
+    snapshot = understanding_snapshot(ambiguities=({
+        "code": "entity_identity_uncertain",
+        "message": "No identity uncertainty detected.",
+        "entity_refs": [],
+    },))
+
+    result = SceneUnderstandingEndpoint(Provider(snapshot)).invoke(request_payload())
+
+    assert result["status"] == "invalid"
+    assert result["error"]["code"] == "invalid_ambiguity"
+    assert result["error"]["reason"] == "contract"
+
+
 @pytest.mark.asyncio
 async def test_agent_tool_context_exposes_bounded_provider_recovery_guidance():
     transport = FakeGatewayTransport(
