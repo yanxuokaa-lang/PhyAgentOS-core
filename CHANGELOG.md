@@ -2,6 +2,38 @@
 ## Archive
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.2.7 (2026-09-29 23:40) - codex
+
+### 变更摘要 [完成]
+- [eval] [fix] 恢复 v12.2.6 误覆盖的 `tests/test_planning_context.py` 全部既有测试，并在原文件末尾追加世界变化后 discovery evidence 投影回归；生产逻辑保持不变。 (local)
+- [Eval] [Fix] Restore every pre-existing test accidentally overwritten in v12.2.6's `tests/test_planning_context.py`, append the post-world-change discovery-evidence regressions, and keep the validated production logic unchanged. (local)
+
+### 文件变更详情
+
+#### [修改] `tests/test_planning_context.py` L393-L475
+
+**修改前：**
+```python
+# v12.2.6 had replaced the existing planning-context coverage.
+```
+
+**修改后：**
+```python
+# All pre-existing tests restored; two stale-discovery projection tests appended.
+```
+
+**修改说明：** 修复测试文件覆盖错误，保留原有规划上下文、证据刷新、绑定推导和安全回归覆盖，并追加本次世界变化后 stale evidence 行为测试。
+
+### 验证
+- `PYTHONPATH=PhyAgentOS:examples/forge-skills/pick-place-workflow/src:examples/forge-skills/pick-place-workflow:. PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /home/yanxu/miniconda3/envs/paos/bin/python -m pytest -p pytest_asyncio.plugin -q tests/test_planning_context.py examples/forge-skills/pick-place-workflow/tests/test_long_horizon.py tests/test_planning_task_integration.py`: `64 passed`。
+- Ruff、compileall、`git diff --check`: passed。
+- 相对 b04b9e0 基线，`tests/test_planning_context.py` 仅新增 83 行，无既有测试删除。
+
+### Git 提交
+- Commit: `PENDING`
+- Branch: `feature/planning-loop`
+- 时间: 2026-09-29 23:42
+
 ## v12.2.6 (2026-09-29 23:36) - codex
 
 ### 变更摘要 [完成]
@@ -218,192 +250,6 @@ if ownership_binding_id is not None and self.runtime_task_binding_ids is not Non
 - Commit: `c6b6d1d`
 - Branch: `feature/planning-loop`
 - 时间 / Time: 2026-09-29 21:21
-
-
-
-## v12.2.2 (2026-09-29 20:19) - codex
-
-### 变更摘要
-- [sense] [fix] 中文：修复模型所有权混用；PAOS 主 Agent 继续使用 `custom/gpt-5.6-sol`（shuaiapi），RobotWin `scene.understand` 独立使用本地 `qwen3_vl_vllm`，不再把主模型 fallback 或 secret 传入 Dora。 (local)
-- [Sense] [Fix] English: Fix model-ownership mixing; keep the PAOS main Agent on `custom/gpt-5.6-sol` (shuaiapi), while RobotWin `scene.understand` independently uses local `qwen3_vl_vllm` without forwarding the main-model fallback or secret into Dora. (local)
-- [env] [chore] 中文：发布并安装 `pick-place-workflow 2.8.8` / `robotwin20_persistent_host 0.8.7`，经用户授权强制停止带非终态绑定的旧 Runtime，并使用相同 `robotwin-blocks-ranking-graspnet` profile 恢复。 (local)
-- [Env] [Chore] English: Publish and install `pick-place-workflow 2.8.8` / `robotwin20_persistent_host 0.8.7`, force-stop the old Runtime with non-terminal bindings under user authorization, and restore the same `robotwin-blocks-ranking-graspnet` profile. (local)
-- [eval] [exp] 中文：完成 discovery/readiness 和一次用户要求的只读 `scene.observe → scene.understand` 实测；未创建 AgentTask，未调用 Action/Session，未执行仿真或硬件运动。 (local)
-- [Eval] [Exp] English: Complete discovery/readiness and one user-requested read-only `scene.observe → scene.understand` run; create no AgentTask, invoke no Action/Session, and perform no simulation or hardware motion. (local)
-
-### 发布产物
-- Node: `/home/yanxu/paos-release/nodes/robotwin20_persistent_host-0.8.7-linux-x86_64.tar.gz`
-- Node SHA-256: `cb5f6c09b07f86d8f91f2bcfa9a186c351ed4b2de879527d84eed1d295ef1781`
-- Node size: `386938` bytes
-- Skill: `/home/yanxu/paos-release/skills/pick-place-workflow-2.8.8.tar.gz`
-- Skill SHA-256: `b6eeefac4f5f5f573cb64ca4deaba145748d8eb62c117e94791ea6339466a7bd`
-- Skill size: `114479` bytes
-
-### 验证结果
-- Adapter/Skill 聚焦测试：`201 passed in 3.58s`。
-- Artifact lock / install discovery 回归：`100 passed in 3.29s`。
-- Ruff：`All checks passed!`；`git diff --check` 通过。
-- 隔离安装：独立 HOME 成功安装 `pick-place-workflow 2.8.8`。
-- Live Runtime：Skill `2.8.8`、Node `0.8.7`，Gateway ready，10/10 Tool context ready。
-- 模型分层：PAOS main Agent 为 `custom/gpt-5.6-sol`；`scene.understand` context 为本地 Qwen provider，`ready=true`、`motion_authorized=false`。
-- 实际只读查询：`scene.observe` 与 `scene.understand` 均 HTTP 200 / available；4 entities、6 relations、4 spatial envelopes、16 derived artifacts、1 ambiguity，未执行运动。
-- Qwen service：MainPID `1403439`，`active/running`，`NRestarts=0`；推理前为 sleep，按需唤醒后 lifecycle 自动回到 `is_sleeping=true`。
-- Secret 分离：当前 Dora session 未包含 `ROBOTWIN20_MODEL_API_BASE`、`ROBOTWIN20_MODEL_API_KEY`、`ROBOTWIN20_MODEL` 或 `ROBOTWIN20_REASONING_EFFORT`。
-
-### 残留安全事项
-- 修复前的历史失败启动日志曾展开 fallback 环境变量，应视为凭据日志；2.8.8 已阻止新日志继续携带该 secret。历史日志清理与 provider key 轮换需另行明确授权。
-
-### 文件变更详情
-
-#### [修改] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/grounding.py` L698-L709
-
-**修改前：**
-```text
-        if (any(depth_artifact.get(key) != binding[key] for key in IDENTITY_KEYS)
-                or depth_artifact.get("frame_id") != binding["frame_id"]):
-                "observed_support_unavailable", "scene depth lineage differs from binding"
-```
-
-**修改后：**
-```text
-        observed_frame = observed.get("frame")
-        if (
-            any(observed.get(key) != binding[key] for key in IDENTITY_KEYS)
-            or not isinstance(observed_frame, Mapping)
-            or observed_frame.get("frame_id") != binding["frame_id"]
-        ):
-                "observed_support_unavailable", "scene observation lineage differs from binding"
-```
-
-**修改说明**：保留 observed-depth lineage 修复。
-
----
-
-#### [修改] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/openai_scene_understanding.py` L510-L516, L525-L530, L534-L541
-
-**修改前：**
-```text
-            response = client.chat.completions.create(
-                model=self.config.model,
-                messages=[
-                max_completion_tokens=self.config.max_output_tokens,
-                response_format={
-            )
-```
-
-**修改后：**
-```text
-            payload: dict[str, Any] = {
-                "model": self.config.model,
-                "messages": [
-                "max_completion_tokens": self.config.max_output_tokens,
-                "response_format": {
-            }
-            if self.config.reasoning_effort is not None:
-```
-
-**修改说明**：保留 2.8.7 已验证的 Chat Completions 兼容实现。
-
----
-
-#### [修改] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_host.py` L118-L122, L456-L517
-
-**修改前：**
-```text
-    if model_provider == "qwen3_vl_vllm_fallback":
-```
-
-**修改后：**
-```text
-    if model_provider in {"qwen3_vl_vllm", "qwen3_vl_vllm_fallback"}:
-        elif provider == "qwen3_vl_vllm":
-            required = {
-                "provider", "api_base", "model", "api_key_env",
-                "timeout_seconds", "max_output_tokens", "lifecycle",
-            }
-            if set(model) != required:
-```
-
-**修改说明**：新增纯 qwen3_vl_vllm provider，并让纯 Qwen 与兼容 fallback 模式共享 operator_recovery context 语义。
-
----
-
-#### [修改] `examples/forge-adapters/robotwin20/tests/test_grounding.py` L948-L952, L975-L979, L986-L993, L996-L1001
-
-**修改前：**
-```text
-    observed["artifacts"] = [{
-        "kind": "depth", "ref": depth_ref,
-        **{key: request[key] for key in ("observation_ref", "scene_revision", "calibration_ref")},
-        "frame_id": "camera",
-    }]
-@pytest.mark.parametrize("defect", ["missing_mask", "stale_mask", "missing_depth"])
-    else:
-```
-
-**修改后：**
-```text
-    observed["artifacts"] = [{"kind": "depth", "ref": depth_ref, "media_type": "application/x-npy"}]
-@pytest.mark.parametrize("defect", ["missing_mask", "stale_mask", "missing_depth", "stale_observation"])
-    elif defect == "missing_depth":
-    else:
-        observed["scene_revision"] = "old-scene"
-    expected_message = "scene observation lineage differs from binding" if defect == "stale_observation" else None
-    with pytest.raises(PreparationProviderError, match=expected_message):
-```
-
-**修改说明**：同步发布实现、测试或版本元数据。
-
----
-
-#### [修改] `examples/forge-adapters/robotwin20/tests/test_openai_scene_understanding.py` L150-L154
-
-**修改前：**
-```text
-（无删除行；新增内容）
-```
-
-**修改后：**
-```text
-    assert payload["reasoning_effort"] == "high"
-```
-
-**修改说明**：同步发布实现、测试或版本元数据。
-
----
-
-#### [修改] `examples/forge-adapters/robotwin20/tests/test_persistent_host.py` L220-L229, L242-L246, L289-L308, L328-L336
-
-**修改前：**
-```text
-def test_qwen_provider_context_exposes_operator_owned_recovery_without_side_effects():
-        model_provider="qwen3_vl_vllm_fallback",
-```
-
-**修改后：**
-```text
-@pytest.mark.parametrize(
-    "model_provider", ["qwen3_vl_vllm", "qwen3_vl_vllm_fallback"]
-)
-def test_qwen_provider_context_exposes_operator_owned_recovery_without_side_effects(
-    model_provider,
-):
-        model_provider=model_provider,
-```
-
-**修改说明**：覆盖纯 Qwen provider 构建与两种 Qwen 模式的 operator_recovery。
-
----
-
-#### [修改] `examples/forge-skills/pick-place-workflow/CHANGELOG.md` L1-L28
-
-**修改前：**
-```text
-（无删除行；新增内容）
-```
-
-**修改后：**
-```text
 
 ## v12.2.1 (2026-09-29 18:46) - codex
 
