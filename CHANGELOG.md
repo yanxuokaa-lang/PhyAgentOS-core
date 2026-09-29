@@ -1,6 +1,38 @@
 # Changelog
 ## Archive
 - [2026-09 part20](changelog/2026-09_part20.md)
+## v12.3.2 (2026-09-30 04:21) - codex
+
+### 变更摘要 / Change Summary
+- [policy] [fix] Coordinator Query 默认参数物化改为 oneOf-aware，并在 record/Gateway 前校验最终参数。 (local)
+- [Policy] [Fix] Made Coordinator Query default materialization oneOf-aware and validated final arguments before record/Gateway boundaries. (local)
+- [sense] [fix] 保存双视角失败与单视角成功诊断，跨视角身份继续 fail-closed。 (local)
+- [Sense] [Fix] Persisted the dual-view failure versus single-view success diagnosis and kept cross-view identity fail-closed. (local)
+
+### 影响文件 / Affected Files
+- `docs/forge/SCENE_OBSERVE_ONEOF_DIAGNOSIS_20260930.md` L1-L35
+- `PhyAgentOS/forge/task.py` L70-L133, L2453-L2472
+- `tests/test_planning_task_integration.py` L335-L449
+- `changelog/2026-09_part20.md`
+
+### 关键 Diff / Key Diff
+**Before:** Coordinator materialized every property default, so explicit `sensor_refs` gained the sibling default `sensor_ref`.
+
+**After:** oneOf-aware materialization suppresses only sibling discriminator defaults, then validates final arguments before record creation and Gateway invocation.
+
+### 七维 Review / Seven-Dimension Review
+- 架构、契约、安全、provenance、失败语义、扩展性、测试发布七个维度均通过；无 RGB/相机/Tool ID 专用分支，身份不确定继续 fail-closed。
+- Architecture, contract, safety, provenance, failure semantics, extensibility, and release testing passed; no RGB/camera/Tool-ID special case and ambiguous identity remains fail-closed.
+
+### 验证 / Validation
+- Coordinator / observation / Forge Tool API / RobotWin 多视角测试：122 passed
+- Ruff、compileall、`git diff --check`：passed
+
+### Git 提交 / Git Commit
+- Implementation commit: `PENDING_IMPLEMENTATION_COMMIT`
+- Branch: `feature/planning-loop`
+
+
 ## v12.3.1 (2026-09-30 03:51) - codex
 
 ### 变更状态 / Change Status
@@ -222,35 +254,3 @@ Request validation is corrected in-task; read-only motion_authorized=false is ex
 ### Git 提交 / Git commit
 - Production commit: `60d2b47`
 - Branch: `feature/planning-loop`
-
-## v12.2.7 (2026-09-29 23:40) - codex
-
-### 变更摘要 [完成]
-- [eval] [fix] 恢复 v12.2.6 误覆盖的 `tests/test_planning_context.py` 全部既有测试，并在原文件末尾追加世界变化后 discovery evidence 投影回归；生产逻辑保持不变。 (local)
-- [Eval] [Fix] Restore every pre-existing test accidentally overwritten in v12.2.6's `tests/test_planning_context.py`, append the post-world-change discovery-evidence regressions, and keep the validated production logic unchanged. (local)
-
-### 文件变更详情
-
-#### [修改] `tests/test_planning_context.py` L393-L475
-
-**修改前：**
-```python
-# v12.2.6 had replaced the existing planning-context coverage.
-```
-
-**修改后：**
-```python
-# All pre-existing tests restored; two stale-discovery projection tests appended.
-```
-
-**修改说明：** 修复测试文件覆盖错误，保留原有规划上下文、证据刷新、绑定推导和安全回归覆盖，并追加本次世界变化后 stale evidence 行为测试。
-
-### 验证
-- `PYTHONPATH=PhyAgentOS:examples/forge-skills/pick-place-workflow/src:examples/forge-skills/pick-place-workflow:. PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /home/yanxu/miniconda3/envs/paos/bin/python -m pytest -p pytest_asyncio.plugin -q tests/test_planning_context.py examples/forge-skills/pick-place-workflow/tests/test_long_horizon.py tests/test_planning_task_integration.py`: `64 passed`。
-- Ruff、compileall、`git diff --check`: passed。
-- 相对 b04b9e0 基线，`tests/test_planning_context.py` 仅新增 83 行，无既有测试删除。
-
-### Git 提交
-- Commit: `45afaaa`
-- Branch: `feature/planning-loop`
-- 时间: 2026-09-29 23:42

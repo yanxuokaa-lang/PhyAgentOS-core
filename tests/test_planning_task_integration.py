@@ -15,7 +15,12 @@ from PhyAgentOS.agent.tools.forge_task import (
 from PhyAgentOS.agent.tools.forge_tool_api import ForgeToolQueryTool
 from PhyAgentOS.config.schema import ForgeConfig
 from PhyAgentOS.forge.binding import BoundToolSpec, RuntimeBinding
-from PhyAgentOS.forge.task import AgentTaskCoordinator, AgentTaskStatus, DiscoveryRequiredError
+from PhyAgentOS.forge.task import (
+    AgentTaskCoordinator,
+    AgentTaskError,
+    AgentTaskStatus,
+    DiscoveryRequiredError,
+)
 from PhyAgentOS.planning import (
     NodeSettlement,
     PlanGraph,
@@ -41,9 +46,7 @@ class _QueryClient:
         self.timeout_ms = None
         self.arguments = None
 
-    async def invoke_query_tool(
-        self, tool_id, arguments, *, caller_id=None, timeout_ms=None
-    ):
+    async def invoke_query_tool(self, tool_id, arguments, *, caller_id=None, timeout_ms=None):
         self.timeout_ms = timeout_ms
         self.arguments = dict(arguments)
         return {"ok": True, "data": {"status": "available"}}
@@ -71,9 +74,7 @@ def _graph(task_id: str, revision_id: str) -> PlanGraph:
 
 def test_coordinator_persists_concrete_graph_and_complete_execution_attribution(tmp_path):
     graph = _graph("task-1", "revision-1")
-    coordinator = AgentTaskCoordinator(
-        workspace=tmp_path, config=ForgeConfig(), client=_Client()
-    )
+    coordinator = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=_Client())
     task = coordinator.create_task(
         task_description="relocate red",
         verification=TaskVerificationContract(mode="off"),
@@ -131,9 +132,7 @@ def test_coordinator_persists_concrete_graph_and_complete_execution_attribution(
 @pytest.mark.parametrize("semantics", ["query", "action", "session"])
 def test_terminal_planning_records_settle_all_tool_semantics(tmp_path, semantics):
     graph = _graph("task-1", "revision-1")
-    coordinator = AgentTaskCoordinator(
-        workspace=tmp_path, config=ForgeConfig(), client=_Client()
-    )
+    coordinator = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=_Client())
     task = coordinator.create_task(
         task_description="settle one semantic node",
         verification=TaskVerificationContract(mode="off"),
@@ -167,18 +166,14 @@ def test_terminal_planning_records_settle_all_tool_semantics(tmp_path, semantics
         response={"status": "succeeded", "scene_revision": "scene-1"},
     )
     settlements = coordinator.get_task(task.task_id).active_revision.node_settlements
-    assert [(item.node_id, item.status) for item in settlements] == [
-        ("relocate-red", "completed")
-    ]
+    assert [(item.node_id, item.status) for item in settlements] == [("relocate-red", "completed")]
     coordinator.reconcile_terminal_settlements(task.task_id)
     assert len(coordinator.get_task(task.task_id).active_revision.node_settlements) == 1
 
 
 def test_unknown_settlement_resolves_only_from_same_known_invocation(tmp_path):
     graph = _graph("task-1", "revision-1")
-    coordinator = AgentTaskCoordinator(
-        workspace=tmp_path, config=ForgeConfig(), client=_Client()
-    )
+    coordinator = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=_Client())
     task = coordinator.create_task(
         task_description="late action result reconciliation",
         verification=TaskVerificationContract(mode="off"),
@@ -198,7 +193,9 @@ def test_unknown_settlement_resolves_only_from_same_known_invocation(tmp_path):
         "action",
         {},
         tool=BoundToolSpec(
-            tool_id="object.place", semantics="action", spec_sha256="4" * 64,
+            tool_id="object.place",
+            semantics="action",
+            spec_sha256="4" * 64,
             ready_at_binding=True,
         ),
         planning_binding=binding,
@@ -219,7 +216,10 @@ def test_unknown_settlement_resolves_only_from_same_known_invocation(tmp_path):
         invocation_id=invocation_id,
         response={"status": "unknown", "outcome_known": False},
     )
-    assert coordinator.get_task(task.task_id).active_revision.node_settlements[0].status == "outcome_unknown"
+    assert (
+        coordinator.get_task(task.task_id).active_revision.node_settlements[0].status
+        == "outcome_unknown"
+    )
     assert coordinator.effective_node_settlements(task.task_id)[0].status == "outcome_unknown"
     coordinator.record_planning_node_blocked(
         task.task_id, "revision-1", "relocate-red", "reconciliation_required:relocate-red"
@@ -245,9 +245,7 @@ def test_unknown_settlement_resolves_only_from_same_known_invocation(tmp_path):
 @pytest.mark.asyncio
 async def test_bound_query_timeout_cannot_be_shorter_than_tool_spec_default(tmp_path):
     client = _QueryClient()
-    coordinator = AgentTaskCoordinator(
-        workspace=tmp_path, config=ForgeConfig(), client=client
-    )
+    coordinator = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=client)
     task = coordinator.create_task(
         task_description="run one bounded model Query",
         verification=TaskVerificationContract(mode="off"),
@@ -277,9 +275,7 @@ async def test_bound_query_timeout_cannot_be_shorter_than_tool_spec_default(tmp_
 @pytest.mark.asyncio
 async def test_bound_query_fills_missing_arguments_from_frozen_tool_schema(tmp_path):
     client = _QueryClient()
-    coordinator = AgentTaskCoordinator(
-        workspace=tmp_path, config=ForgeConfig(), client=client
-    )
+    coordinator = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=client)
     task = coordinator.create_task(
         task_description="observe with runtime-owned profile defaults",
         verification=TaskVerificationContract(mode="off"),
@@ -314,11 +310,112 @@ async def test_bound_query_fills_missing_arguments_from_frozen_tool_schema(tmp_p
 
 
 @pytest.mark.asyncio
+async def test_bound_query_one_of_defaults_preserve_explicit_multi_view_branch(tmp_path):
+    client = _QueryClient()
+    coordinator = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=client)
+    task = coordinator.create_task(
+        task_description="observe with synchronized cameras",
+        verification=TaskVerificationContract(mode="off"),
+    )
+
+    async def require_tool(_task_id, tool_id, semantics):
+        return BoundToolSpec(
+            tool_id=tool_id,
+            semantics=semantics,
+            spec_sha256="4" * 64,
+            ready_at_binding=True,
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "sensor_ref": {"type": "string", "default": "camera/head"},
+                    "sensor_refs": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
+                    "max_age_ms": {"type": "integer", "default": 1000},
+                    "max_capture_skew_ms": {"type": "integer", "default": 50},
+                },
+                "required": ["max_age_ms"],
+                "oneOf": [
+                    {
+                        "required": ["sensor_ref"],
+                        "not": {"required": ["sensor_refs"]},
+                    },
+                    {
+                        "required": ["sensor_refs"],
+                        "not": {"required": ["sensor_ref"]},
+                    },
+                ],
+                "additionalProperties": False,
+            },
+        )
+
+    coordinator._require_binding_tool = require_tool
+    await coordinator.invoke_query(
+        task.task_id,
+        "scene.observe",
+        {"sensor_refs": ["camera/head", "camera/front"]},
+    )
+
+    assert client.arguments == {
+        "sensor_refs": ["camera/head", "camera/front"],
+        "max_age_ms": 1000,
+        "max_capture_skew_ms": 50,
+    }
+    record = coordinator.get_task(task.task_id).execution_records[-1]
+    assert record.arguments == client.arguments
+
+
+@pytest.mark.asyncio
+async def test_bound_query_invalid_one_of_arguments_stop_before_record_and_gateway(tmp_path):
+    client = _QueryClient()
+    coordinator = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=client)
+    task = coordinator.create_task(
+        task_description="reject ambiguous observation sensor selection",
+        verification=TaskVerificationContract(mode="off"),
+    )
+
+    async def require_tool(_task_id, tool_id, semantics):
+        return BoundToolSpec(
+            tool_id=tool_id,
+            semantics=semantics,
+            spec_sha256="4" * 64,
+            ready_at_binding=True,
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "sensor_ref": {"type": "string", "default": "camera/head"},
+                    "sensor_refs": {"type": "array", "items": {"type": "string"}},
+                    "max_age_ms": {"type": "integer", "default": 1000},
+                },
+                "required": ["max_age_ms"],
+                "oneOf": [
+                    {"required": ["sensor_ref"], "not": {"required": ["sensor_refs"]}},
+                    {"required": ["sensor_refs"], "not": {"required": ["sensor_ref"]}},
+                ],
+                "additionalProperties": False,
+            },
+        )
+
+    coordinator._require_binding_tool = require_tool
+    with pytest.raises(AgentTaskError, match="tool_input_schema_invalid"):
+        await coordinator.invoke_query(
+            task.task_id,
+            "scene.observe",
+            {
+                "sensor_ref": "camera/head",
+                "sensor_refs": ["camera/head", "camera/front"],
+            },
+        )
+
+    assert client.arguments is None
+    assert coordinator.get_task(task.task_id).execution_records == []
+
+
+@pytest.mark.asyncio
 async def test_bound_query_explicit_arguments_override_frozen_defaults(tmp_path):
     client = _QueryClient()
-    coordinator = AgentTaskCoordinator(
-        workspace=tmp_path, config=ForgeConfig(), client=client
-    )
+    coordinator = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=client)
     task = coordinator.create_task(
         task_description="preserve explicit observation arguments",
         verification=TaskVerificationContract(mode="off"),
@@ -351,9 +448,7 @@ async def test_bound_query_explicit_arguments_override_frozen_defaults(tmp_path)
 
 def test_terminal_planning_query_failure_enters_replan_without_motion(tmp_path):
     graph = _graph("task-1", "revision-1")
-    coordinator = AgentTaskCoordinator(
-        workspace=tmp_path, config=ForgeConfig(), client=_Client()
-    )
+    coordinator = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=_Client())
     task = coordinator.create_task(
         task_description="recover one failed planning Query",
         verification=TaskVerificationContract(mode="off"),
@@ -445,16 +540,17 @@ def test_terminal_planning_query_failure_exhausting_replans_fails_task_and_relea
     assert failed.replan_deadline is None
     assert failed.active_revision.node_settlements[0].status == "failed"
     assert any("exhausted replan budget (0)" in item for item in failed.evidence_errors)
-    assert coordinator.create_task(
-        task_description="start the next independent attempt",
-        verification=TaskVerificationContract(mode="off"),
-    ).status == AgentTaskStatus.EXECUTING
+    assert (
+        coordinator.create_task(
+            task_description="start the next independent attempt",
+            verification=TaskVerificationContract(mode="off"),
+        ).status
+        == AgentTaskStatus.EXECUTING
+    )
 
 
 def test_agent_recovery_nodes_are_compiled_by_paos_without_motion(tmp_path):
-    coordinator = AgentTaskCoordinator(
-        workspace=tmp_path, config=ForgeConfig(), client=_Client()
-    )
+    coordinator = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=_Client())
     task = coordinator.create_task(
         task_description="compile a semantic recovery revision",
         verification=TaskVerificationContract(mode="off"),
@@ -506,12 +602,15 @@ def test_agent_recovery_nodes_are_compiled_by_paos_without_motion(tmp_path):
         task.task_id,
         evidence_record_id,
         status="succeeded",
-        response={"ok": True, "data": {
-            "status": "available",
-            "scene_revision": "scene-1",
-            "observation_ref": "observation://scene-1/camera",
-            "calibration_ref": "calibration://scene-1/camera",
-        }},
+        response={
+            "ok": True,
+            "data": {
+                "status": "available",
+                "scene_revision": "scene-1",
+                "observation_ref": "observation://scene-1/camera",
+                "calibration_ref": "calibration://scene-1/camera",
+            },
+        },
     )
     evidence_ref = f"tool:{evidence_record_id}"
     coordinator.store.update(
@@ -537,28 +636,37 @@ def test_agent_recovery_nodes_are_compiled_by_paos_without_motion(tmp_path):
         task.task_id,
         fresh_observation_record_id,
         status="succeeded",
-        response={"ok": True, "data": {
-            "status": "available",
-            "scene_revision": "scene-2",
-            "observation_ref": "observation://scene-2/camera",
-            "calibration_ref": "calibration://scene-2/camera",
-        }},
+        response={
+            "ok": True,
+            "data": {
+                "status": "available",
+                "scene_revision": "scene-2",
+                "observation_ref": "observation://scene-2/camera",
+                "calibration_ref": "calibration://scene-2/camera",
+            },
+        },
     )
     fresh_evidence_ref = f"tool:{fresh_observation_record_id}"
     coordinator.request_replan(task.task_id, reason="replace failed semantic node")
     tool = ForgeTaskBeginRevisionTool(coordinator)
     assert tool.parameters["properties"]["discovery_evidence_refs"]["type"] == "array"
-    result = json.loads(asyncio.run(tool.execute(
-        task.task_id,
-        reason="retry with corrected semantic inputs",
-        nodes=[PlanNode(
-            node_id="retry-relocate",
-            obligation_id="retry-relocate",
-            capability="object.relocate",
-            required_evidence=(fresh_evidence_ref,),
-        ).model_dump(mode="json")],
-        discovery_evidence_refs=[fresh_evidence_ref],
-    )))
+    result = json.loads(
+        asyncio.run(
+            tool.execute(
+                task.task_id,
+                reason="retry with corrected semantic inputs",
+                nodes=[
+                    PlanNode(
+                        node_id="retry-relocate",
+                        obligation_id="retry-relocate",
+                        capability="object.relocate",
+                        required_evidence=(fresh_evidence_ref,),
+                    ).model_dump(mode="json")
+                ],
+                discovery_evidence_refs=[fresh_evidence_ref],
+            )
+        )
+    )
 
     assert result["ok"] is True
     current = coordinator.get_task(task.task_id)
@@ -577,16 +685,22 @@ def test_agent_recovery_nodes_are_compiled_by_paos_without_motion(tmp_path):
     assert [item.record_id for item in context.evidence_context] == [fresh_observation_record_id]
 
     coordinator.request_replan(task.task_id, reason="verify inherited recovery evidence")
-    inherited = json.loads(asyncio.run(tool.execute(
-        task.task_id,
-        reason="keep the current recovery evidence set",
-        nodes=[PlanNode(
-            node_id="retry-relocate-again",
-            obligation_id="retry-relocate-again",
-            capability="object.relocate",
-            required_evidence=(fresh_evidence_ref,),
-        ).model_dump(mode="json")],
-    )))
+    inherited = json.loads(
+        asyncio.run(
+            tool.execute(
+                task.task_id,
+                reason="keep the current recovery evidence set",
+                nodes=[
+                    PlanNode(
+                        node_id="retry-relocate-again",
+                        obligation_id="retry-relocate-again",
+                        capability="object.relocate",
+                        required_evidence=(fresh_evidence_ref,),
+                    ).model_dump(mode="json")
+                ],
+            )
+        )
+    )
     assert inherited["ok"] is True
     assert coordinator.get_task(task.task_id).active_revision.discovery_evidence_refs == (
         fresh_evidence_ref,
@@ -594,9 +708,7 @@ def test_agent_recovery_nodes_are_compiled_by_paos_without_motion(tmp_path):
 
 
 def test_compile_rejects_future_action_nodes_without_frozen_runtime_bindings(tmp_path):
-    coordinator = AgentTaskCoordinator(
-        workspace=tmp_path, config=ForgeConfig(), client=_Client()
-    )
+    coordinator = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=_Client())
     task = coordinator.create_task(
         task_description="reject a statically unbindable rearrangement",
         verification=TaskVerificationContract(mode="off"),
@@ -682,15 +794,17 @@ def test_completed_plan_can_continue_without_gateway_or_replan_budget(tmp_path):
         plan_graph=first,
         plan_graph_ref="artifact://plans/task-segmented-rgb/revision-segment-1",
     )
-    coordinator.record_node_settlement(NodeSettlement(
-        task_id=task_id,
-        revision_id=first.revision_id,
-        node_id=first.nodes[0].node_id,
-        status="completed",
-        scene_revision="scene-2",
-        world_change_started=False,
-        outcome_known=True,
-    ))
+    coordinator.record_node_settlement(
+        NodeSettlement(
+            task_id=task_id,
+            revision_id=first.revision_id,
+            node_id=first.nodes[0].node_id,
+            status="completed",
+            scene_revision="scene-2",
+            world_change_started=False,
+            outcome_known=True,
+        )
+    )
     second = _graph(task_id, "revision-segment-2")
 
     continued = coordinator.begin_continuation_revision(
@@ -742,13 +856,15 @@ def test_continue_plan_agent_tool_compiles_next_trusted_segment_without_gateway(
     def attach_binding(current):
         current.runtime_binding = runtime
         current.active_revision.runtime_binding_id = runtime.binding_id
-        current.tool_bindings = [BoundToolSpec(
-            tool_id=policy.tool_id,
-            semantics=policy.semantics,
-            spec_sha256=policy.spec_digest,
-            ready_at_binding=True,
-            planning_policy=policy,
-        )]
+        current.tool_bindings = [
+            BoundToolSpec(
+                tool_id=policy.tool_id,
+                semantics=policy.semantics,
+                spec_sha256=policy.spec_digest,
+                ready_at_binding=True,
+                planning_policy=policy,
+            )
+        ]
 
     coordinator.store.update(task_id, attach_binding, event_type="test_binding")
     record_id, _caller = coordinator._append_execution(
@@ -768,24 +884,32 @@ def test_continue_plan_agent_tool_compiles_next_trusted_segment_without_gateway(
             "evidence_refs": ["artifact://scene/agent-2"],
         },
     )
-    coordinator.record_node_settlement(NodeSettlement(
-        task_id=task_id,
-        revision_id=first.revision_id,
-        node_id=first.nodes[0].node_id,
-        status="completed",
-        scene_revision="scene-agent-2",
-    ))
+    coordinator.record_node_settlement(
+        NodeSettlement(
+            task_id=task_id,
+            revision_id=first.revision_id,
+            node_id=first.nodes[0].node_id,
+            status="completed",
+            scene_revision="scene-agent-2",
+        )
+    )
 
-    result = json.loads(asyncio.run(ForgeTaskContinuePlanTool(coordinator).execute(
-        task_id,
-        nodes=[PlanNode(
-            node_id="observe-next-segment",
-            obligation_id="observe-next-segment",
-            capability="scene.observe",
-        ).model_dump(mode="json")],
-        reason="continue from the fresh scene checkpoint",
-        evidence_refs=["artifact://scene/agent-2"],
-    )))
+    result = json.loads(
+        asyncio.run(
+            ForgeTaskContinuePlanTool(coordinator).execute(
+                task_id,
+                nodes=[
+                    PlanNode(
+                        node_id="observe-next-segment",
+                        obligation_id="observe-next-segment",
+                        capability="scene.observe",
+                    ).model_dump(mode="json")
+                ],
+                reason="continue from the fresh scene checkpoint",
+                evidence_refs=["artifact://scene/agent-2"],
+            )
+        )
+    )
 
     assert result["ok"] is True
     assert result["motion_authorized"] is False
@@ -799,9 +923,7 @@ def test_continue_plan_agent_tool_compiles_next_trusted_segment_without_gateway(
 def test_continuation_rejects_incomplete_graph_and_pending_task_action(tmp_path):
     task_id = "task-continuation-guards"
     first = _graph(task_id, "revision-guard-1")
-    coordinator = AgentTaskCoordinator(
-        workspace=tmp_path, config=ForgeConfig(), client=_Client()
-    )
+    coordinator = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=_Client())
     coordinator.create_task(
         task_description="guard continuation",
         verification=TaskVerificationContract(mode="off"),
@@ -817,12 +939,14 @@ def test_continuation_rejects_incomplete_graph_and_pending_task_action(tmp_path)
             plan_graph_ref="artifact://plans/task-continuation-guards/revision-guard-2",
         )
 
-    coordinator.record_node_settlement(NodeSettlement(
-        task_id=task_id,
-        revision_id=first.revision_id,
-        node_id=first.nodes[0].node_id,
-        status="completed",
-    ))
+    coordinator.record_node_settlement(
+        NodeSettlement(
+            task_id=task_id,
+            revision_id=first.revision_id,
+            node_id=first.nodes[0].node_id,
+            status="completed",
+        )
+    )
     coordinator._append_execution(
         task_id,
         "object.acquire",
@@ -869,9 +993,7 @@ def test_replan_submission_claims_only_one_bounded_extension(tmp_path):
 
 
 def test_recovery_graph_retry_of_cannot_reference_prior_revision(tmp_path):
-    coordinator = AgentTaskCoordinator(
-        workspace=tmp_path, config=ForgeConfig(), client=_Client()
-    )
+    coordinator = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=_Client())
     task = coordinator.create_task(
         task_description="recover one node",
         verification=TaskVerificationContract(mode="off"),
@@ -891,36 +1013,40 @@ def test_recovery_graph_retry_of_cannot_reference_prior_revision(tmp_path):
             gateway_url="http://fake",
         )
         current.active_revision.runtime_binding_id = "runtime_binding_retry"
-        current.tool_bindings = [BoundToolSpec(
-            tool_id="object.relocate",
-            semantics="action",
-            spec_sha256="4" * 64,
-            ready_at_binding=True,
-            planning_policy=policy,
-        )]
+        current.tool_bindings = [
+            BoundToolSpec(
+                tool_id="object.relocate",
+                semantics="action",
+                spec_sha256="4" * 64,
+                ready_at_binding=True,
+                planning_policy=policy,
+            )
+        ]
 
     coordinator.store.update(task.task_id, attach_binding, event_type="test_binding")
     coordinator.request_replan(task.task_id, reason="retry")
     with pytest.raises(ValueError, match="retry_of references an unknown node") as rejected:
-        asyncio.run(ForgeTaskBeginRevisionTool(coordinator).execute(
-            task.task_id,
-            reason="retry with corrected inputs",
-            nodes=[PlanNode(
-                node_id="new-node",
-                obligation_id="new-node",
-                capability="object.relocate",
-                retry_of="old-revision-node",
-            ).model_dump(mode="json")],
-        ))
+        asyncio.run(
+            ForgeTaskBeginRevisionTool(coordinator).execute(
+                task.task_id,
+                reason="retry with corrected inputs",
+                nodes=[
+                    PlanNode(
+                        node_id="new-node",
+                        obligation_id="new-node",
+                        capability="object.relocate",
+                        retry_of="old-revision-node",
+                    ).model_dump(mode="json")
+                ],
+            )
+        )
     assert "do not copy failed nodes" in str(rejected.value)
     assert "Action reconciliation and retry admission still apply" in str(rejected.value)
     assert coordinator.get_task(task.task_id).replan_extension_used is False
 
 
 def test_discovery_failure_stays_open_but_planning_unknown_requests_replan(tmp_path):
-    coordinator = AgentTaskCoordinator(
-        workspace=tmp_path, config=ForgeConfig(), client=_Client()
-    )
+    coordinator = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=_Client())
     task = coordinator.create_task(
         task_description="continue open discovery",
         verification=TaskVerificationContract(mode="off"),
@@ -986,9 +1112,7 @@ def test_discovery_failure_stays_open_but_planning_unknown_requests_replan(tmp_p
 
 
 def test_discovery_expansion_rejects_provider_failure_response(tmp_path):
-    coordinator = AgentTaskCoordinator(
-        workspace=tmp_path, config=ForgeConfig(), client=_Client()
-    )
+    coordinator = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=_Client())
     task = coordinator.create_task(
         task_description="reject failed discovery evidence",
         verification=TaskVerificationContract(mode="off"),
@@ -1041,9 +1165,7 @@ def test_discovery_expansion_rejects_provider_failure_response(tmp_path):
 
 def test_reconcile_terminal_settlement_repairs_legacy_missing_projection(tmp_path):
     graph = _graph("task-1", "revision-1")
-    coordinator = AgentTaskCoordinator(
-        workspace=tmp_path, config=ForgeConfig(), client=_Client()
-    )
+    coordinator = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=_Client())
     task = coordinator.create_task(
         task_description="repair an old terminal record",
         verification=TaskVerificationContract(mode="off"),
@@ -1091,9 +1213,7 @@ def test_reconcile_terminal_settlement_repairs_legacy_missing_projection(tmp_pat
 @pytest.mark.parametrize("semantics", ["action", "session"])
 def test_terminal_observation_paths_settle_planning_nodes(tmp_path, semantics):
     graph = _graph("task-1", "revision-1")
-    coordinator = AgentTaskCoordinator(
-        workspace=tmp_path, config=ForgeConfig(), client=_Client()
-    )
+    coordinator = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=_Client())
     task = coordinator.create_task(
         task_description="settle an observed invocation",
         verification=TaskVerificationContract(mode="off"),
@@ -1163,9 +1283,7 @@ def test_terminal_settlement_unlocks_downstream_node(tmp_path):
     }
     payload["graph_digest"] = plan_graph_digest(payload)
     graph = PlanGraph.model_validate(payload)
-    coordinator = AgentTaskCoordinator(
-        workspace=tmp_path, config=ForgeConfig(), client=_Client()
-    )
+    coordinator = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=_Client())
     task = coordinator.create_task(
         task_description="unlock the dependent grasp node",
         verification=TaskVerificationContract(mode="off"),
@@ -1207,9 +1325,7 @@ def test_terminal_settlement_unlocks_downstream_node(tmp_path):
 
 
 def test_partial_planning_binding_and_unbound_graph_ref_fail_closed(tmp_path):
-    coordinator = AgentTaskCoordinator(
-        workspace=tmp_path, config=ForgeConfig(), client=_Client()
-    )
+    coordinator = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=_Client())
     try:
         coordinator.create_task(
             task_description="invalid",
@@ -1248,9 +1364,7 @@ def test_partial_planning_binding_and_unbound_graph_ref_fail_closed(tmp_path):
 @pytest.mark.parametrize("semantics", ["query", "action", "session"])
 def test_complete_planning_binding_is_shared_by_all_tool_semantics(tmp_path, semantics):
     graph = _graph("task-1", "revision-1")
-    coordinator = AgentTaskCoordinator(
-        workspace=tmp_path, config=ForgeConfig(), client=_Client()
-    )
+    coordinator = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=_Client())
     task = coordinator.create_task(
         task_description="attribute tool",
         verification=TaskVerificationContract(mode="off"),
@@ -1323,9 +1437,7 @@ def test_replan_delta_adapter_creates_new_coordinator_revision(tmp_path):
 
 
 def test_query_tool_does_not_drop_planning_binding_in_unbound_diagnostic_mode(tmp_path):
-    coordinator = AgentTaskCoordinator(
-        workspace=tmp_path, config=ForgeConfig(), client=_Client()
-    )
+    coordinator = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=_Client())
     result = json.loads(
         asyncio.run(
             ForgeToolQueryTool(_Client(), coordinator).execute(

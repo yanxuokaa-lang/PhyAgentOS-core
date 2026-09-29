@@ -42,6 +42,7 @@ from PhyAgentOS.planning import (
     tool_input_binding_digest,
     validate_condition_keys,
     validate_graph,
+    validate_tool_arguments,
 )
 from PhyAgentOS.utils.atomic_file import atomic_write_text
 from PhyAgentOS.verification.contracts import (
@@ -64,6 +65,67 @@ class DiscoveryRequiredError(AgentTaskError):
     def __init__(self, message: str, *, missing: tuple[str, ...] = ()) -> None:
         self.missing = missing
         super().__init__(message)
+
+
+def _selected_one_of_sibling_keys(
+    input_schema: Mapping[str, Any],
+    explicit_arguments: Mapping[str, Any],
+) -> set[str]:
+    """Return sibling discriminator keys excluded by explicit oneOf input."""
+    branches = input_schema.get("oneOf")
+    if not isinstance(branches, list) or not branches:
+        return set()
+
+    explicit_keys = set(explicit_arguments)
+    candidates: list[tuple[int, set[str], set[str]]] = []
+    discriminator_keys: set[str] = set()
+    for branch in branches:
+        if not isinstance(branch, Mapping):
+            continue
+        required = set(branch.get("required") or ())
+        not_schema = branch.get("not")
+        forbidden = (
+            set(not_schema.get("required") or ()) if isinstance(not_schema, Mapping) else set()
+        )
+        discriminator_keys.update(required)
+        if forbidden & explicit_keys:
+            continue
+        score = len(required & explicit_keys)
+        if score:
+            candidates.append((score, required, forbidden))
+
+    if not candidates:
+        return set()
+    best_score = max(score for score, _required, _forbidden in candidates)
+    winners = [item for item in candidates if item[0] == best_score]
+    if len(winners) != 1:
+        return set()
+    _score, selected_required, selected_forbidden = winners[0]
+    return selected_forbidden | (discriminator_keys - selected_required)
+
+
+def _materialize_query_arguments(
+    input_schema: Mapping[str, Any] | None,
+    arguments: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Apply frozen schema defaults without changing an explicit oneOf branch."""
+    effective_arguments = deepcopy(dict(arguments))
+    if not isinstance(input_schema, Mapping):
+        return effective_arguments
+    suppressed_defaults = _selected_one_of_sibling_keys(input_schema, effective_arguments)
+    properties = input_schema.get("properties", {})
+    if not isinstance(properties, Mapping):
+        return effective_arguments
+    for name, definition in properties.items():
+        if (
+            isinstance(name, str)
+            and name not in effective_arguments
+            and name not in suppressed_defaults
+            and isinstance(definition, Mapping)
+            and "default" in definition
+        ):
+            effective_arguments[name] = deepcopy(definition["default"])
+    return effective_arguments
 
 
 class TaskNotReadyForFinalizationError(AgentTaskError):
@@ -99,8 +161,7 @@ class AgentTaskOriginConflictError(AgentTaskError):
         self.origin_session_key = origin_dedup_key
         self.existing_task_id = existing_task_id
         super().__init__(
-            f"AgentTask origin {origin_dedup_key!r} already belongs to "
-            f"{existing_task_id}"
+            f"AgentTask origin {origin_dedup_key!r} already belongs to {existing_task_id}"
         )
 
 
@@ -127,6 +188,7 @@ TERMINAL_TOOL_STATUSES = {
     "stopped",
     "unknown",
 }
+
 
 class ToolExecutionRecord(BaseModel):
     """One Query execution or one Gateway-owned Action invocation reference."""
@@ -232,7 +294,9 @@ class PlanRevision(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    version: Literal["plan_revision_v2", "plan_revision_v3", "plan_revision_v4"] = "plan_revision_v4"
+    version: Literal["plan_revision_v2", "plan_revision_v3", "plan_revision_v4"] = (
+        "plan_revision_v4"
+    )
     revision_id: str
     number: int = Field(ge=1)
     reason: str = Field(min_length=1)
@@ -316,8 +380,7 @@ class PlanRevision(BaseModel):
             item.node_id
             for item in self.planning_selections
             if item.resumable_selection is not None
-            and item.resumable_selection.planning_binding.decision_trace_ref
-            not in used_trace_refs
+            and item.resumable_selection.planning_binding.decision_trace_ref not in used_trace_refs
         ]
         if len(pending_node_ids) != len(set(pending_node_ids)):
             raise ValueError(
@@ -332,9 +395,7 @@ class AgentTaskOriginApproval(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     version: Literal["agent_task_origin_approval_v1"] = "agent_task_origin_approval_v1"
-    source_kind: Literal["paos.state-file.v1/sessions"] = (
-        "paos.state-file.v1/sessions"
-    )
+    source_kind: Literal["paos.state-file.v1/sessions"] = "paos.state-file.v1/sessions"
     source_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     declaration_id: str = Field(min_length=1)
     approval_id: str = Field(min_length=1)
@@ -345,12 +406,7 @@ class AgentTaskOriginApproval(BaseModel):
     @classmethod
     def validate_audit_identity(cls, value: str) -> str:
         normalized = value.strip()
-        if (
-            not normalized
-            or normalized in {".", ".."}
-            or "/" in normalized
-            or "\\" in normalized
-        ):
+        if not normalized or normalized in {".", ".."} or "/" in normalized or "\\" in normalized:
             raise ValueError("origin approval identities must be non-empty and path-safe")
         return normalized
 
@@ -431,9 +487,7 @@ class AgentTaskRecord(BaseModel):
                 f"{self.origin_approval.declaration_id}"
             )
             if self.origin_session_key != expected or self.origin_dedup_key != expected:
-                raise ValueError(
-                    "origin approval must match the state-file session identities"
-                )
+                raise ValueError("origin approval must match the state-file session identities")
         revision_ids = [revision.revision_id for revision in self.revisions]
         if len(revision_ids) != len(set(revision_ids)):
             raise ValueError("AgentTask revision identities must be unique")
@@ -454,9 +508,7 @@ class AgentTaskRecord(BaseModel):
                 raise ValueError("PlanRevision Runtime binding must match AgentTask binding")
             for execution in revision.execution_records:
                 if execution.revision_id != revision.revision_id:
-                    raise ValueError(
-                        "ToolExecutionRecord revision_id must match its PlanRevision"
-                    )
+                    raise ValueError("ToolExecutionRecord revision_id must match its PlanRevision")
                 if execution.record_id in execution_ids:
                     raise ValueError("Tool execution record identities must be unique")
                 if execution.runtime_binding_id != expected_runtime:
@@ -537,16 +589,11 @@ class AgentTaskStore:
                 for row in connection.execute("PRAGMA table_info(agent_tasks)").fetchall()
             }
             if "origin_session_key" not in columns:
-                connection.execute(
-                    "ALTER TABLE agent_tasks ADD COLUMN origin_session_key TEXT"
-                )
+                connection.execute("ALTER TABLE agent_tasks ADD COLUMN origin_session_key TEXT")
             if "origin_dedup_key" not in columns:
-                connection.execute(
-                    "ALTER TABLE agent_tasks ADD COLUMN origin_dedup_key TEXT"
-                )
+                connection.execute("ALTER TABLE agent_tasks ADD COLUMN origin_dedup_key TEXT")
             legacy_rows = connection.execute(
-                "SELECT task_id, record_json FROM agent_tasks "
-                "WHERE origin_session_key IS NULL"
+                "SELECT task_id, record_json FROM agent_tasks WHERE origin_session_key IS NULL"
             ).fetchall()
             for row in legacy_rows:
                 try:
@@ -554,9 +601,7 @@ class AgentTaskStore:
                 except (TypeError, json.JSONDecodeError):
                     continue
                 origin_session_key = (
-                    payload.get("origin_session_key")
-                    if isinstance(payload, dict)
-                    else None
+                    payload.get("origin_session_key") if isinstance(payload, dict) else None
                 )
                 if isinstance(origin_session_key, str) and origin_session_key:
                     connection.execute(
@@ -653,9 +698,7 @@ class AgentTaskStore:
                 (*record.active_revision.skill_use_ids, use.use_id)
             )
             try:
-                record = AgentTaskRecord.model_validate(
-                    record.model_dump(mode="python")
-                )
+                record = AgentTaskRecord.model_validate(record.model_dump(mode="python"))
             except Exception as exc:
                 raise AgentTaskError(
                     "SkillUse mutation violates the authoritative record schema"
@@ -710,14 +753,16 @@ class AgentTaskStore:
             )
             mutate(record)
             try:
-                record = AgentTaskRecord.model_validate(
-                    record.model_dump(mode="python")
-                )
+                record = AgentTaskRecord.model_validate(record.model_dump(mode="python"))
             except Exception as exc:
                 raise AgentTaskError(
                     "AgentTask mutation violates the authoritative record schema"
                 ) from exc
-            if (record.task_id, record.created_at, record.primary_skill_instructions) != task_identity:
+            if (
+                record.task_id,
+                record.created_at,
+                record.primary_skill_instructions,
+            ) != task_identity:
                 raise AgentTaskError("AgentTask identity is immutable")
             mutated_origin = (
                 record.origin_session_key,
@@ -779,7 +824,9 @@ class AgentTaskStore:
             ).fetchall()
         return [AgentTaskRecord.model_validate_json(row["record_json"]) for row in rows]
 
-    def find_invocation(self, invocation_id: str) -> tuple[AgentTaskRecord, ToolExecutionRecord] | None:
+    def find_invocation(
+        self, invocation_id: str
+    ) -> tuple[AgentTaskRecord, ToolExecutionRecord] | None:
         with self._lock, self._connection() as connection:
             rows = connection.execute("SELECT record_json FROM agent_tasks").fetchall()
         for row in rows:
@@ -903,10 +950,18 @@ class AgentTaskCoordinator:
         else:
             gateway_url = binding.gateway_url
         if gateway_url.rstrip("/") == client.base_url.rstrip("/"):
-            return await (client.invocation_result(invocation_id) if result else client.invocation_status(invocation_id))
+            return await (
+                client.invocation_result(invocation_id)
+                if result
+                else client.invocation_status(invocation_id)
+            )
         frozen_client = ForgeToolClient(gateway_url)
         try:
-            return await (frozen_client.invocation_result(invocation_id) if result else frozen_client.invocation_status(invocation_id))
+            return await (
+                frozen_client.invocation_result(invocation_id)
+                if result
+                else frozen_client.invocation_status(invocation_id)
+            )
         finally:
             await frozen_client.close()
 
@@ -919,15 +974,25 @@ class AgentTaskCoordinator:
         task = self.store.get(task_id)
         binding = task.primary_skill_binding
         gateway_url = (
-            binding.gateway_url if binding is not None
-            else task.runtime_binding.gateway_url if task.runtime_binding is not None
+            binding.gateway_url
+            if binding is not None
+            else task.runtime_binding.gateway_url
+            if task.runtime_binding is not None
             else client.base_url
         )
         if gateway_url.rstrip("/") == client.base_url.rstrip("/"):
-            return await (client.invocation_result(invocation_id) if result else client.invocation_status(invocation_id))
+            return await (
+                client.invocation_result(invocation_id)
+                if result
+                else client.invocation_status(invocation_id)
+            )
         frozen_client = ForgeToolClient(gateway_url)
         try:
-            return await (frozen_client.invocation_result(invocation_id) if result else frozen_client.invocation_status(invocation_id))
+            return await (
+                frozen_client.invocation_result(invocation_id)
+                if result
+                else frozen_client.invocation_status(invocation_id)
+            )
         finally:
             await frozen_client.close()
 
@@ -938,22 +1003,27 @@ class AgentTaskCoordinator:
         self.activation_manager = activation_manager
 
     def selected_execution_arguments(
-        self, task_id: str, tool_id: str, semantics: str,
-        arguments: dict[str, Any], planning_binding: dict[str, Any] | None,
+        self,
+        task_id: str,
+        tool_id: str,
+        semantics: str,
+        arguments: dict[str, Any],
+        planning_binding: dict[str, Any] | None,
     ) -> dict[str, Any]:
         """Read exact durable arguments for an explicit receipt-based execution."""
         if arguments:
             raise AgentTaskError("selected execution requires empty literal arguments")
-        binding = self.selected_execution_binding(
-            task_id, tool_id, semantics, planning_binding
-        )
+        binding = self.selected_execution_binding(task_id, tool_id, semantics, planning_binding)
         task = self.get_task(task_id)
         pending = self.pending_planning_selection(task_id, binding.node_id)
         assert pending is not None
         resolved = deepcopy(pending["arguments"])
         _validate_planning_execution_selection(
-            task.active_revision, binding, tool_id=tool_id,
-            semantics=semantics, arguments=resolved,
+            task.active_revision,
+            binding,
+            tool_id=tool_id,
+            semantics=semantics,
+            arguments=resolved,
         )
         return resolved
 
@@ -995,9 +1065,9 @@ class AgentTaskCoordinator:
                     if pending is not None:
                         candidates.append(pending)
         candidates = [
-            pending for pending in candidates
-            if pending["tool_id"] == tool_id
-            and pending["execution_tool"] == wrapper
+            pending
+            for pending in candidates
+            if pending["tool_id"] == tool_id and pending["execution_tool"] == wrapper
         ]
         if not candidates:
             raise AgentTaskError("selected execution has no matching unconsumed selection")
@@ -1014,7 +1084,14 @@ class AgentTaskCoordinator:
             raise AgentTaskError("planning selection is not bound to the active revision")
         if task.active_revision.plan_graph is None:
             raise AgentTaskError("planning selection requires a materialized PlanGraph")
-        node = next((item for item in task.active_revision.plan_graph.nodes if item.node_id == proposal.get("node_id")), None)
+        node = next(
+            (
+                item
+                for item in task.active_revision.plan_graph.nodes
+                if item.node_id == proposal.get("node_id")
+            ),
+            None,
+        )
         if node is None or plan_node_digest(node) != proposal.get("node_digest"):
             raise AgentTaskError("planning selection node digest does not match the active graph")
         tool_arguments = proposal.get("tool_arguments")
@@ -1033,9 +1110,7 @@ class AgentTaskCoordinator:
             if item.resumable_selection is not None
         }
         pending_trace_ref = (
-            pending["planning_binding"]["decision_trace_ref"]
-            if pending is not None
-            else None
+            pending["planning_binding"]["decision_trace_ref"] if pending is not None else None
         )
         if pending is not None and pending_trace_ref not in durable_trace_refs:
             expected_execution_tool = {
@@ -1079,21 +1154,23 @@ class AgentTaskCoordinator:
             tool_arguments=tool_arguments,
         )
         try:
-            trace = DecisionTrace.model_validate({
-                "schema_version": "paos-decision-trace/v1",
-                "task_id": task.task_id,
-                "revision_id": task.active_revision_id,
-                "node_id": node.node_id,
-                "candidate_tool_ids": list(proposal.get("candidate_tool_ids", ())),
-                "selected_tool_id": proposal.get("tool_id"),
-                "input_binding_digest": proposal.get("input_binding_digest"),
-                "scene_revision": proposal.get("scene_revision"),
-                "context_digest": proposal.get("context_digest"),
-                "decision_reason": proposal.get("decision_reason"),
-                "evidence_refs": list(proposal.get("evidence_refs", ())),
-                "created_at": utc_now().isoformat(),
-                "resumable_selection": resumable.model_dump(mode="json"),
-            })
+            trace = DecisionTrace.model_validate(
+                {
+                    "schema_version": "paos-decision-trace/v1",
+                    "task_id": task.task_id,
+                    "revision_id": task.active_revision_id,
+                    "node_id": node.node_id,
+                    "candidate_tool_ids": list(proposal.get("candidate_tool_ids", ())),
+                    "selected_tool_id": proposal.get("tool_id"),
+                    "input_binding_digest": proposal.get("input_binding_digest"),
+                    "scene_revision": proposal.get("scene_revision"),
+                    "context_digest": proposal.get("context_digest"),
+                    "decision_reason": proposal.get("decision_reason"),
+                    "evidence_refs": list(proposal.get("evidence_refs", ())),
+                    "created_at": utc_now().isoformat(),
+                    "resumable_selection": resumable.model_dump(mode="json"),
+                }
+            )
         except Exception as exc:
             raise AgentTaskError(f"planning DecisionTrace is invalid: {exc}") from exc
 
@@ -1116,9 +1193,7 @@ class AgentTaskCoordinator:
                     *current.active_revision.node_settlements,
                 )
             ):
-                raise AgentTaskError(
-                    "planning node already has an execution record or settlement"
-                )
+                raise AgentTaskError("planning node already has an execution record or settlement")
             used_trace_refs = {
                 item.decision_trace_ref
                 for item in current.active_revision.execution_records
@@ -1160,7 +1235,13 @@ class AgentTaskCoordinator:
         assert persisted_selection is not None
         persisted_binding = persisted_selection.planning_binding
         persisted_trace_id = persisted_binding.decision_trace_ref.rsplit("/", 1)[-1]
-        relative = Path("artifacts") / "planning-traces" / task.task_id / task.active_revision_id / node.node_id
+        relative = (
+            Path("artifacts")
+            / "planning-traces"
+            / task.task_id
+            / task.active_revision_id
+            / node.node_id
+        )
         path = (self.workspace / relative).resolve()
         if not path.is_relative_to(self.workspace):
             raise AgentTaskError("planning trace path escapes workspace")
@@ -1221,8 +1302,7 @@ class AgentTaskCoordinator:
             for trace in revision.planning_selections
             if trace.node_id == node_id
             and trace.resumable_selection is not None
-            and trace.resumable_selection.planning_binding.decision_trace_ref
-            not in used_trace_refs
+            and trace.resumable_selection.planning_binding.decision_trace_ref not in used_trace_refs
             and (scene_revision is None or trace.scene_revision == scene_revision)
         ]
         known_trace_refs = {
@@ -1267,18 +1347,26 @@ class AgentTaskCoordinator:
         }
 
     def planning_selection_rejections(
-        self, task_id: str, revision_id: str, node_id: str,
+        self,
+        task_id: str,
+        revision_id: str,
+        node_id: str,
     ) -> list[dict[str, Any]]:
         """Return recent durable diagnostics for this exact node/revision."""
         return [
-            event["payload"]["error"] for event in self.store.events(task_id)
+            event["payload"]["error"]
+            for event in self.store.events(task_id)
             if event["event_type"] == "planning_selection_rejected"
             and event["payload"].get("revision_id") == revision_id
             and event["payload"].get("node_id") == node_id
         ][-4:]
 
     def record_planning_node_blocked(
-        self, task_id: str, revision_id: str, node_id: str, reason: str,
+        self,
+        task_id: str,
+        revision_id: str,
+        node_id: str,
+        reason: str,
     ) -> None:
         """Persist a blocked node and enter the existing bounded recovery state.
 
@@ -1287,6 +1375,7 @@ class AgentTaskCoordinator:
         task must not remain visibly ``executing`` after that runner has stopped;
         ``awaiting_replan`` is the existing recovery owner for this boundary.
         """
+
         def check(current: AgentTaskRecord) -> None:
             if current.active_revision_id != revision_id:
                 raise AgentTaskError("blocked node is not bound to the active revision")
@@ -1295,12 +1384,12 @@ class AgentTaskCoordinator:
             current.status = AgentTaskStatus.AWAITING_REPLAN
             current.replan_deadline = utc_now() + timedelta(seconds=self.replan_timeout_s)
             current.replan_extension_used = False
-            current.evidence_errors.append(
-                f"planning node blocked: {node_id}: {reason.strip()}"
-            )
+            current.evidence_errors.append(f"planning node blocked: {node_id}: {reason.strip()}")
 
         self.store.update(
-            task_id, check, event_type="planning_node_blocked",
+            task_id,
+            check,
+            event_type="planning_node_blocked",
             payload={"revision_id": revision_id, "node_id": node_id, "reason": reason},
         )
 
@@ -1399,11 +1488,11 @@ class AgentTaskCoordinator:
                 plan_graph_ref=plan_graph_ref,
             )
         if verification.mode != "off" and self.verifier is None:
-            raise AgentTaskError(
-                "non-off AgentTask verification requires the verification service"
-            )
+            raise AgentTaskError("non-off AgentTask verification requires the verification service")
         task_id = plan_graph.task_id if plan_graph is not None else f"task_{uuid4().hex[:16]}"
-        revision_id = plan_graph.revision_id if plan_graph is not None else f"revision_{uuid4().hex[:16]}"
+        revision_id = (
+            plan_graph.revision_id if plan_graph is not None else f"revision_{uuid4().hex[:16]}"
+        )
         _validate_plan_graph_input(plan_graph, plan_graph_ref, task_id, revision_id)
         task = AgentTaskRecord(
             task_id=task_id,
@@ -1411,16 +1500,22 @@ class AgentTaskCoordinator:
             verification=verification,
             parent_task_id=parent_task_id,
             retry_limit=retry_limit,
-            revisions=[PlanRevision(
-                revision_id=revision_id,
-                number=1,
-                reason="initial plan",
-                plan_graph=plan_graph,
-                plan_graph_ref=plan_graph_ref,
-                plan_graph_digest=plan_graph.graph_digest if plan_graph is not None else None,
-                planner_decision_digest=plan_graph.planner_decision_digest if plan_graph is not None else None,
-                policy_snapshot_digest=plan_graph.policy_snapshot_digest if plan_graph is not None else None,
-            )],
+            revisions=[
+                PlanRevision(
+                    revision_id=revision_id,
+                    number=1,
+                    reason="initial plan",
+                    plan_graph=plan_graph,
+                    plan_graph_ref=plan_graph_ref,
+                    plan_graph_digest=plan_graph.graph_digest if plan_graph is not None else None,
+                    planner_decision_digest=plan_graph.planner_decision_digest
+                    if plan_graph is not None
+                    else None,
+                    policy_snapshot_digest=plan_graph.policy_snapshot_digest
+                    if plan_graph is not None
+                    else None,
+                )
+            ],
             active_revision_id=revision_id,
             origin_session_key=origin_session_key,
             origin_dedup_key=origin_dedup_key,
@@ -1449,11 +1544,11 @@ class AgentTaskCoordinator:
         plan_graph_ref: str | None = None,
     ) -> AgentTaskRecord:
         if verification.mode != "off" and self.verifier is None:
-            raise AgentTaskError(
-                "non-off AgentTask verification requires the verification service"
-            )
+            raise AgentTaskError("non-off AgentTask verification requires the verification service")
         task_id = plan_graph.task_id if plan_graph is not None else f"task_{uuid4().hex[:16]}"
-        revision_id = plan_graph.revision_id if plan_graph is not None else f"revision_{uuid4().hex[:16]}"
+        revision_id = (
+            plan_graph.revision_id if plan_graph is not None else f"revision_{uuid4().hex[:16]}"
+        )
         _validate_plan_graph_input(plan_graph, plan_graph_ref, task_id, revision_id)
         binding: ForgeSkillBinding | None = None
         runtime_binding: RuntimeBinding | None = None
@@ -1480,7 +1575,8 @@ class AgentTaskCoordinator:
                         "activated SKILL.md does not match the installed Runtime binding"
                     )
                 skill_instructions = self.activation_manager.instructions_for_activation(
-                    session_key=origin_session_key, activation_id=activation_id,
+                    session_key=origin_session_key,
+                    activation_id=activation_id,
                 )
                 initial_skill_use = SkillUseRecord(
                     use_id=f"skill_use_{uuid4().hex[:16]}",
@@ -1517,8 +1613,12 @@ class AgentTaskCoordinator:
                     ),
                     plan_graph_ref=plan_graph_ref,
                     plan_graph_digest=plan_graph.graph_digest if plan_graph is not None else None,
-                    planner_decision_digest=plan_graph.planner_decision_digest if plan_graph is not None else None,
-                    policy_snapshot_digest=plan_graph.policy_snapshot_digest if plan_graph is not None else None,
+                    planner_decision_digest=plan_graph.planner_decision_digest
+                    if plan_graph is not None
+                    else None,
+                    policy_snapshot_digest=plan_graph.policy_snapshot_digest
+                    if plan_graph is not None
+                    else None,
                 )
             ],
             active_revision_id=revision_id,
@@ -1530,15 +1630,18 @@ class AgentTaskCoordinator:
                 f"runtime:{binding.runtime_instance_id}"
                 if binding is not None
                 else f"runtime:{runtime_binding.runtime_instance_id}"
-                if runtime_binding is not None else None
+                if runtime_binding is not None
+                else None
             ),
             origin_session_key=origin_session_key,
             origin_dedup_key=origin_dedup_key,
             origin_approval=origin_approval,
         )
         ownership_binding_id = (
-            binding.binding_id if binding is not None
-            else runtime_binding.binding_id if runtime_binding is not None
+            binding.binding_id
+            if binding is not None
+            else runtime_binding.binding_id
+            if runtime_binding is not None
             else None
         )
         if ownership_binding_id is not None and self.runtime_task_binding_ids is not None:
@@ -1610,16 +1713,16 @@ class AgentTaskCoordinator:
         if task.replan_deadline is not None and utc_now() >= task.replan_deadline:
             failed = self.store.update(
                 task_id,
-                lambda current: _fail_replan(
-                    current, "AgentTask replan deadline expired"
-                ),
+                lambda current: _fail_replan(current, "AgentTask replan deadline expired"),
                 event_type="plan_revision_expired",
             )
             self._schedule_experience(failed)
             raise AgentTaskError("AgentTask replan deadline expired")
         if _replan_count(task) >= self.max_replans:
             raise AgentTaskError(f"replan budget exhausted ({self.max_replans})")
-        revision_id = plan_graph.revision_id if plan_graph is not None else f"revision_{uuid4().hex[:16]}"
+        revision_id = (
+            plan_graph.revision_id if plan_graph is not None else f"revision_{uuid4().hex[:16]}"
+        )
         _validate_plan_graph_input(plan_graph, plan_graph_ref, task_id, revision_id)
 
         def mutate(current: AgentTaskRecord) -> None:
@@ -1637,12 +1740,17 @@ class AgentTaskCoordinator:
                 ),
                 runtime_binding_id=(
                     current.runtime_binding.binding_id
-                    if current.runtime_binding is not None else None
+                    if current.runtime_binding is not None
+                    else None
                 ),
                 plan_graph_ref=plan_graph_ref,
                 plan_graph_digest=plan_graph.graph_digest if plan_graph is not None else None,
-                planner_decision_digest=plan_graph.planner_decision_digest if plan_graph is not None else None,
-                policy_snapshot_digest=plan_graph.policy_snapshot_digest if plan_graph is not None else None,
+                planner_decision_digest=plan_graph.planner_decision_digest
+                if plan_graph is not None
+                else None,
+                policy_snapshot_digest=plan_graph.policy_snapshot_digest
+                if plan_graph is not None
+                else None,
                 node_settlements=list(node_settlements or []),
                 preserved_node_ids=tuple(preserved_node_ids),
                 invalidated_node_ids=tuple(invalidated_node_ids),
@@ -1684,8 +1792,7 @@ class AgentTaskCoordinator:
         if revision.plan_graph is None:
             raise AgentTaskError("plan continuation requires a materialized active PlanGraph")
         settlements = {
-            item.node_id: item.status
-            for item in self.effective_node_settlements(task_id)
+            item.node_id: item.status for item in self.effective_node_settlements(task_id)
         }
         incomplete = tuple(
             node.node_id
@@ -1729,11 +1836,15 @@ class AgentTaskCoordinator:
             current_settlements = {
                 item.node_id: item.status for item in current_revision.node_settlements
             }
-            current_incomplete = tuple(
-                node.node_id
-                for node in current_revision.plan_graph.nodes
-                if current_settlements.get(node.node_id) != "completed"
-            ) if current_revision.plan_graph is not None else ("<missing-plan-graph>",)
+            current_incomplete = (
+                tuple(
+                    node.node_id
+                    for node in current_revision.plan_graph.nodes
+                    if current_settlements.get(node.node_id) != "completed"
+                )
+                if current_revision.plan_graph is not None
+                else ("<missing-plan-graph>",)
+            )
             if current_incomplete:
                 raise AgentTaskError(
                     "plan continuation requires every active graph node to be completed; "
@@ -1777,9 +1888,11 @@ class AgentTaskCoordinator:
                     # authorized discovery receipts available to downstream
                     # consumers in the same scene.  New evidence is additive;
                     # undeclared historical records remain unavailable.
-                    discovery_evidence_refs=tuple(dict.fromkeys(
-                        current_revision.discovery_evidence_refs + tuple(evidence_refs)
-                    )),
+                    discovery_evidence_refs=tuple(
+                        dict.fromkeys(
+                            current_revision.discovery_evidence_refs + tuple(evidence_refs)
+                        )
+                    ),
                 )
             )
             current.active_revision_id = plan_graph.revision_id
@@ -1869,32 +1982,34 @@ class AgentTaskCoordinator:
 
         def mutate(current: AgentTaskRecord) -> None:
             current.active_revision.closed_at = utc_now()
-            current.revisions.append(PlanRevision(
-                revision_id=plan_graph.revision_id,
-                number=len(current.revisions) + 1,
-                reason=reason.strip(),
-                counts_toward_replan_budget=False,
-                skill_binding_id=(
-                    current.primary_skill_binding.binding_id
-                    if current.primary_skill_binding is not None else None
-                ),
-                runtime_binding_id=(
-                    current.runtime_binding.binding_id
-                    if current.runtime_binding is not None else None
-                ),
-                plan_graph=plan_graph,
-                plan_graph_ref=plan_graph_ref,
-                plan_graph_digest=plan_graph.graph_digest,
-                planner_decision_digest=plan_graph.planner_decision_digest,
-                policy_snapshot_digest=plan_graph.policy_snapshot_digest,
-                discovery_evidence_refs=tuple(discovery_evidence_refs),
-            ))
+            current.revisions.append(
+                PlanRevision(
+                    revision_id=plan_graph.revision_id,
+                    number=len(current.revisions) + 1,
+                    reason=reason.strip(),
+                    counts_toward_replan_budget=False,
+                    skill_binding_id=(
+                        current.primary_skill_binding.binding_id
+                        if current.primary_skill_binding is not None
+                        else None
+                    ),
+                    runtime_binding_id=(
+                        current.runtime_binding.binding_id
+                        if current.runtime_binding is not None
+                        else None
+                    ),
+                    plan_graph=plan_graph,
+                    plan_graph_ref=plan_graph_ref,
+                    plan_graph_digest=plan_graph.graph_digest,
+                    planner_decision_digest=plan_graph.planner_decision_digest,
+                    policy_snapshot_digest=plan_graph.policy_snapshot_digest,
+                    discovery_evidence_refs=tuple(discovery_evidence_refs),
+                )
+            )
             current.active_revision_id = plan_graph.revision_id
 
         event_type = (
-            "plan_discovery_corrected"
-            if existing_graph is not None
-            else "plan_discovery_expanded"
+            "plan_discovery_corrected" if existing_graph is not None else "plan_discovery_expanded"
         )
         return self.store.update(task_id, mutate, event_type=event_type)
 
@@ -1926,7 +2041,11 @@ class AgentTaskCoordinator:
         }:
             raise AgentTaskError("NodeSettlement references no active PlanGraph node")
         existing = next(
-            (item for item in task.active_revision.node_settlements if item.node_id == settlement.node_id),
+            (
+                item
+                for item in task.active_revision.node_settlements
+                if item.node_id == settlement.node_id
+            ),
             None,
         )
         if existing is not None:
@@ -1990,7 +2109,8 @@ class AgentTaskCoordinator:
             raise AgentTaskError("settlement resolution invocation identity does not match")
         record = next(
             (
-                item for item in task.active_revision.execution_records
+                item
+                for item in task.active_revision.execution_records
                 if item.invocation_id == invocation_id
                 and item.revision_id == revision_id
                 and item.node_id == node_id
@@ -2017,6 +2137,7 @@ class AgentTaskCoordinator:
                 and payload.get("invocation_id") == invocation_id
             ):
                 return task
+
         def resume(current: AgentTaskRecord) -> None:
             if current.status == AgentTaskStatus.AWAITING_REPLAN:
                 current.status = AgentTaskStatus.EXECUTING
@@ -2063,15 +2184,19 @@ class AgentTaskCoordinator:
                 and isinstance(payload.get("node_id"), str)
                 and isinstance(payload.get("invocation_id"), str)
             ):
-                resolved[(revision.revision_id, payload["node_id"], payload["invocation_id"])] = payload["to_status"]
-        return tuple(
-            item.model_copy(update={
-                "status": resolved.get(
-                    (item.revision_id, item.node_id, item.invocation_id), item.status
+                resolved[(revision.revision_id, payload["node_id"], payload["invocation_id"])] = (
+                    payload["to_status"]
                 )
-                if item.status == "outcome_unknown" and item.invocation_id
-                else item.status
-            })
+        return tuple(
+            item.model_copy(
+                update={
+                    "status": resolved.get(
+                        (item.revision_id, item.node_id, item.invocation_id), item.status
+                    )
+                    if item.status == "outcome_unknown" and item.invocation_id
+                    else item.status
+                }
+            )
             for item in revision.node_settlements
         )
 
@@ -2090,12 +2215,18 @@ class AgentTaskCoordinator:
             return task
         settled = {item.node_id for item in revision.node_settlements}
         for record in revision.execution_records:
-            if not record.terminal or record.node_id is None or record.revision_id != revision.revision_id:
+            if (
+                not record.terminal
+                or record.node_id is None
+                or record.revision_id != revision.revision_id
+            ):
                 continue
             result = _tool_result_from_execution(task, record)
             if result is None:
                 continue
-            existing = next((item for item in revision.node_settlements if item.node_id == record.node_id), None)
+            existing = next(
+                (item for item in revision.node_settlements if item.node_id == record.node_id), None
+            )
             if existing is not None:
                 if (
                     existing.status == "outcome_unknown"
@@ -2182,9 +2313,7 @@ class AgentTaskCoordinator:
             AgentTaskStatus.AWAITING_REPLAN,
         }
         if task.status not in recoverable_statuses:
-            raise AgentTaskError(
-                f"cannot fail replan while AgentTask is {task.status.value}"
-            )
+            raise AgentTaskError(f"cannot fail replan while AgentTask is {task.status.value}")
 
         def mutate(current: AgentTaskRecord) -> None:
             if current.status not in recoverable_statuses:
@@ -2326,9 +2455,7 @@ class AgentTaskCoordinator:
             raise AgentTaskError("ReplanDelta is not bound to the active AgentTask revision")
         if plan_graph.task_id != task_id or plan_graph.revision_id == task.active_revision_id:
             raise AgentTaskError("replacement PlanGraph must target this task and a new revision")
-        active_settlements = {
-            item.node_id: item for item in task.active_revision.node_settlements
-        }
+        active_settlements = {item.node_id: item for item in task.active_revision.node_settlements}
         active_nodes = {
             node.node_id: node
             for node in (
@@ -2339,15 +2466,11 @@ class AgentTaskCoordinator:
         }
         replacement_nodes = {node.node_id: node for node in plan_graph.nodes}
         for node_id in (
-            set(delta.preserve_node_ids)
-            & set(active_settlements)
-            & set(replacement_nodes)
+            set(delta.preserve_node_ids) & set(active_settlements) & set(replacement_nodes)
         ):
-            if (
-                node_id not in active_nodes
-                or plan_node_digest(active_nodes[node_id])
-                != plan_node_digest(replacement_nodes[node_id])
-            ):
+            if node_id not in active_nodes or plan_node_digest(
+                active_nodes[node_id]
+            ) != plan_node_digest(replacement_nodes[node_id]):
                 raise AgentTaskError(
                     f"cannot preserve node {node_id!r}: replacement content changed"
                 )
@@ -2370,7 +2493,8 @@ class AgentTaskCoordinator:
             replan_evidence_refs=tuple(counterevidence_refs),
             counterevidence=(
                 [counterevidence.model_copy(update={"revision_id": plan_graph.revision_id})]
-                if counterevidence is not None else []
+                if counterevidence is not None
+                else []
             ),
         )
 
@@ -2384,21 +2508,23 @@ class AgentTaskCoordinator:
         planning_binding: PlanningExecutionBinding | dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         tool = await self._require_binding_tool(task_id, tool_id, "query")
-        effective_arguments = deepcopy(arguments)
-        properties = (
-            tool.input_schema.get("properties", {})
-            if isinstance(tool.input_schema, Mapping)
-            else {}
-        )
-        if isinstance(properties, Mapping):
-            for name, definition in properties.items():
-                if (
-                    isinstance(name, str)
-                    and name not in effective_arguments
-                    and isinstance(definition, Mapping)
-                    and "default" in definition
-                ):
-                    effective_arguments[name] = deepcopy(definition["default"])
+        effective_arguments = _materialize_query_arguments(tool.input_schema, arguments)
+        if isinstance(tool.input_schema, Mapping):
+            issues = validate_tool_arguments(tool.input_schema, effective_arguments)
+            if issues:
+                raise AgentTaskError(
+                    json.dumps(
+                        {
+                            "code": "tool_input_schema_invalid",
+                            "message": (
+                                "Query arguments violate the frozen Tool input schema: "
+                                + "; ".join(issues)
+                            ),
+                            "issues": issues,
+                        },
+                        ensure_ascii=False,
+                    )
+                )
         if tool.default_timeout_ms is not None:
             timeout_ms = max(timeout_ms or 0, tool.default_timeout_ms)
         record_id, caller = self._append_execution(
@@ -2482,8 +2608,7 @@ class AgentTaskCoordinator:
                 raise AgentTaskError("Gateway Action response omitted invocation_id")
             if not isinstance(attempt_id, str) or not attempt_id:
                 raise ForgeToolAPIError(
-                    "Gateway Action response omitted attempt_id for invocation "
-                    f"{invocation_id}",
+                    f"Gateway Action response omitted attempt_id for invocation {invocation_id}",
                     payload=response,
                 )
         except Exception as exc:
@@ -2542,11 +2667,12 @@ class AgentTaskCoordinator:
         task = self.store.get(task_id)
         record = _owned_execution(task, invocation_id, semantics="action")
         observed_status = _tool_status(response, default=record.status)
-        status = record.status if (
-            record.status == "unknown" and observed_status not in TERMINAL_TOOL_STATUSES
-        ) or (
-            not reconcile_settlement and observed_status in TERMINAL_TOOL_STATUSES
-        ) else observed_status
+        status = (
+            record.status
+            if (record.status == "unknown" and observed_status not in TERMINAL_TOOL_STATUSES)
+            or (not reconcile_settlement and observed_status in TERMINAL_TOOL_STATUSES)
+            else observed_status
+        )
 
         def mutate(current: AgentTaskRecord) -> None:
             target = _task_execution(current, record.record_id)
@@ -2564,15 +2690,14 @@ class AgentTaskCoordinator:
         ):
             self.runtime_invocation_ids.discard(invocation_id)
         if reconcile_settlement:
-            self._release_terminal_runtime_binding_if_reconciled(
-                self.store.get(task_id)
-            )
-            if status in TERMINAL_TOOL_STATUSES - {"unknown"} and self._reconciliation_callback is not None:
+            self._release_terminal_runtime_binding_if_reconciled(self.store.get(task_id))
+            if (
+                status in TERMINAL_TOOL_STATUSES - {"unknown"}
+                and self._reconciliation_callback is not None
+            ):
                 self._reconciliation_callback(task_id)
 
-    def _release_terminal_runtime_binding_if_reconciled(
-        self, task: AgentTaskRecord
-    ) -> None:
+    def _release_terminal_runtime_binding_if_reconciled(self, task: AgentTaskRecord) -> None:
         if (
             not task.terminal
             or self.runtime_task_binding_ids is None
@@ -2604,19 +2729,11 @@ class AgentTaskCoordinator:
             error={"type": "ExecutionUnknown", "code": code, "message": message},
         )
 
-    def require_action_invocation(
-        self, task_id: str, invocation_id: str
-    ) -> ToolExecutionRecord:
-        return _owned_execution(
-            self.store.get(task_id), invocation_id, semantics="action"
-        )
+    def require_action_invocation(self, task_id: str, invocation_id: str) -> ToolExecutionRecord:
+        return _owned_execution(self.store.get(task_id), invocation_id, semantics="action")
 
-    def require_session_invocation(
-        self, task_id: str, invocation_id: str
-    ) -> ToolExecutionRecord:
-        return _owned_execution(
-            self.store.get(task_id), invocation_id, semantics="session"
-        )
+    def require_session_invocation(self, task_id: str, invocation_id: str) -> ToolExecutionRecord:
+        return _owned_execution(self.store.get(task_id), invocation_id, semantics="session")
 
     def record_cancel_response(
         self, task_id: str, invocation_id: str, response: dict[str, Any]
@@ -2657,9 +2774,7 @@ class AgentTaskCoordinator:
         invocation_id: str | None = None
         attempt_id: str | None = None
         try:
-            response = await self.client.start_session(
-                tool_id, arguments, caller_id=caller
-            )
+            response = await self.client.start_session(tool_id, arguments, caller_id=caller)
             data = _response_data(response)
             invocation_id = data.get("invocation_id")
             attempt_id = data.get("attempt_id")
@@ -2723,11 +2838,12 @@ class AgentTaskCoordinator:
         task = self.store.get(task_id)
         record = _owned_execution(task, invocation_id, semantics="session")
         observed_status = _tool_status(response, default=record.status)
-        status = record.status if (
-            record.status == "unknown" and observed_status not in TERMINAL_TOOL_STATUSES
-        ) or (
-            not reconcile_settlement and observed_status in TERMINAL_TOOL_STATUSES
-        ) else observed_status
+        status = (
+            record.status
+            if (record.status == "unknown" and observed_status not in TERMINAL_TOOL_STATUSES)
+            or (not reconcile_settlement and observed_status in TERMINAL_TOOL_STATUSES)
+            else observed_status
+        )
 
         def mutate(current: AgentTaskRecord) -> None:
             target = _task_execution(current, record.record_id)
@@ -2804,14 +2920,14 @@ class AgentTaskCoordinator:
             current.evidence_errors.append(f"task cancellation requested: {reason.strip()}")
             for invocation_id, response in responses.items():
                 target = next(
-                    item for item in current.execution_records if item.invocation_id == invocation_id
+                    item
+                    for item in current.execution_records
+                    if item.invocation_id == invocation_id
                 )
                 target.response = response
                 target.updated_at = utc_now()
 
-        result = self.store.update(
-            task_id, mutate, event_type="task_cancel_requested"
-        )
+        result = self.store.update(task_id, mutate, event_type="task_cancel_requested")
         if result.terminal:
             self._schedule_experience(result)
         return result
@@ -2838,13 +2954,10 @@ class AgentTaskCoordinator:
         graph = task.active_revision.plan_graph
         if graph is not None:
             settlements = {
-                item.node_id: item.status
-                for item in self.effective_node_settlements(task_id)
+                item.node_id: item.status for item in self.effective_node_settlements(task_id)
             }
             incomplete = tuple(
-                node.node_id
-                for node in graph.nodes
-                if settlements.get(node.node_id) != "completed"
+                node.node_id for node in graph.nodes if settlements.get(node.node_id) != "completed"
             )
             if incomplete:
                 raise TaskNotReadyForFinalizationError(
@@ -2902,9 +3015,7 @@ class AgentTaskCoordinator:
                 mode="apply",
             )
         except Exception as exc:
-            return self._verification_error(
-                task_id, str(exc) or type(exc).__name__
-            )
+            return self._verification_error(task_id, str(exc) or type(exc).__name__)
 
         def mutate(current: AgentTaskRecord) -> None:
             current.verdict = verdict
@@ -2925,9 +3036,7 @@ class AgentTaskCoordinator:
                     )
                 else:
                     current.status = AgentTaskStatus.AWAITING_REPLAN
-                    current.replan_deadline = utc_now() + timedelta(
-                        seconds=self.replan_timeout_s
-                    )
+                    current.replan_deadline = utc_now() + timedelta(seconds=self.replan_timeout_s)
             elif verdict.verdict == "success":
                 current.status = AgentTaskStatus.SUCCEEDED
             else:
@@ -2964,9 +3073,7 @@ class AgentTaskCoordinator:
                 event_type="evidence_retention_failed",
                 payload={"error_type": error_type},
             )
-        error_count = (
-            len(summary.get("errors", [])) if isinstance(summary, dict) else 0
-        )
+        error_count = len(summary.get("errors", [])) if isinstance(summary, dict) else 0
         status = summary.get("status", "unknown") if isinstance(summary, dict) else "unknown"
 
         def record_retention_summary(current: AgentTaskRecord) -> None:
@@ -2986,8 +3093,7 @@ class AgentTaskCoordinator:
         task = self.store.get(task_id)
         status = (
             AgentTaskStatus.SUCCEEDED
-            if task.verification.mode == "audit"
-            and _execution_facts_succeeded(task)
+            if task.verification.mode == "audit" and _execution_facts_succeeded(task)
             else AgentTaskStatus.FAILED
         )
 
@@ -3000,9 +3106,7 @@ class AgentTaskCoordinator:
                     error=message,
                 )
             )
-            current.active_revision.verification_attempts.append(
-                current.verification_attempts[-1]
-            )
+            current.active_revision.verification_attempts.append(current.verification_attempts[-1])
 
         result = self.store.update(
             task_id,
@@ -3032,7 +3136,9 @@ class AgentTaskCoordinator:
         ownership_binding_id = (
             task.primary_skill_binding.binding_id
             if task.primary_skill_binding is not None
-            else task.runtime_binding.binding_id if task.runtime_binding is not None else None
+            else task.runtime_binding.binding_id
+            if task.runtime_binding is not None
+            else None
         )
         if ownership_binding_id is not None and self.runtime_task_binding_ids is not None:
             self.runtime_task_binding_ids.add(ownership_binding_id)
@@ -3064,9 +3170,7 @@ class AgentTaskCoordinator:
             try:
                 status_response = await self.client.invocation_status(record.invocation_id)
                 observer = (
-                    self.observe_session
-                    if record.semantics == "session"
-                    else self.observe_action
+                    self.observe_session if record.semantics == "session" else self.observe_action
                 )
                 observer(
                     task.task_id,
@@ -3137,6 +3241,7 @@ class AgentTaskCoordinator:
             enrolled = await self.binding_resolver.enroll_tool(
                 task.runtime_binding, tool_id, semantics
             )
+
             def enroll(current: AgentTaskRecord) -> None:
                 existing = next(
                     (item for item in current.tool_bindings if item.tool_id == tool_id), None
@@ -3173,7 +3278,9 @@ class AgentTaskCoordinator:
         task = self._require_executable(task_id)
         binding = _normalize_planning_binding(planning_binding)
         if binding is not None and task.active_revision.plan_graph_digest is None:
-            raise AgentTaskError("planning-bound Tool execution requires a PlanGraph-bound revision")
+            raise AgentTaskError(
+                "planning-bound Tool execution requires a PlanGraph-bound revision"
+            )
         record_id = f"tool_{uuid4().hex[:16]}"
         caller_id = f"paos:{task_id}:{task.active_revision_id}:{record_id}"
 
@@ -3183,9 +3290,7 @@ class AgentTaskCoordinator:
                     item.node_id == binding.node_id
                     for item in current.active_revision.execution_records
                 ):
-                    raise AgentTaskError(
-                        "planning node already has an execution record"
-                    )
+                    raise AgentTaskError("planning node already has an execution record")
                 _validate_planning_execution_selection(
                     current.active_revision,
                     binding,
@@ -3409,9 +3514,7 @@ class AgentTaskCoordinator:
                     timeout_s=self.config.evidence.post_capture_timeout_s,
                 )
             else:
-                after = await collector.wait_for_before(
-                    self.config.evidence.post_capture_timeout_s
-                )
+                after = await collector.wait_for_before(self.config.evidence.post_capture_timeout_s)
             after_ref = writer.write_snapshot("after", after)
         except Exception as exc:
             errors.append(str(exc) or type(exc).__name__)
@@ -3450,9 +3553,7 @@ class AgentTaskCoordinator:
             else getattr(self.client, "base_url", None)
         )
         if not isinstance(gateway_url, str) or not gateway_url:
-            raise AgentTaskError(
-                "Forge evidence collection requires the bound Runtime Gateway URL"
-            )
+            raise AgentTaskError("Forge evidence collection requires the bound Runtime Gateway URL")
         return ForgeObservationCollector(
             gateway_url,
             required_image_sources=list(self.config.evidence.required_image_sources),
@@ -3546,9 +3647,7 @@ def _validate_planning_execution_selection(
         or selection.semantics != semantics
         or selection.tool_arguments != arguments
     ):
-        raise AgentTaskError(
-            "planning execution does not match the active revision selection"
-        )
+        raise AgentTaskError("planning execution does not match the active revision selection")
 
 
 def _owned_execution(
@@ -3570,8 +3669,7 @@ def _cancel_terminal_status(task: AgentTaskRecord) -> AgentTaskStatus:
     owned = [
         item
         for item in task.execution_records
-        if item.semantics == "action"
-        or (item.semantics == "session" and item.ownership == "task")
+        if item.semantics == "action" or (item.semantics == "session" and item.ownership == "task")
     ]
     if not owned or all(item.status in {"cancelled", "stopped"} for item in owned):
         return AgentTaskStatus.CANCELLED
@@ -3586,10 +3684,7 @@ def has_unsettled_owned_execution(task: AgentTaskRecord) -> bool:
     Action or Session may still require a Runtime-side stop/cancel request.
     """
     return any(
-        (
-            item.semantics == "action"
-            or (item.semantics == "session" and item.ownership == "task")
-        )
+        (item.semantics == "action" or (item.semantics == "session" and item.ownership == "task"))
         and not item.terminal
         for item in task.execution_records
     )
