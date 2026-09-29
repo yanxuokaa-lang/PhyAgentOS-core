@@ -404,3 +404,11 @@ definition. Use task.goal destination references and reobserve after world
 changes; never replace observed point clouds or provider output with simulator
 actor geometry or template grasps. Candidate preparation, Action admission and
 verification remain owned by the existing Runtime/Coordinator boundaries.
+
+## Discovery Evidence and Selection Continuation
+
+- Decide the required sensor set before the first scene.observe call from the live ToolSpec schema. Use only listed sensor references; never invent aliases such as camera/wrist.
+- Within one task revision, one successful observation is authoritative until a world-changing Action succeeds. Parameter-validation failures create no observation evidence, but after success do not issue another observation merely to upgrade or replace its views. If the required sensor set was wrong, use Coordinator recovery or revision semantics.
+- Multi-view discovery preserves one synchronized observation record and carries its scene revision, calibration, frame, freshness, and entity provenance together through scene.understand and scene.bind. Bind only the explicit entity array from that current understanding result.
+- After forge_plan_select admits a selection, consume that exact selection immediately. Across a model or process boundary, resume the existing pending selection with use_selected_arguments=true; do not select again, reconstruct arguments, rerun discovery, or create a replacement invocation.
+- A successful world-changing Action still invalidates scene-dependent evidence. Begin the next observation chain only after authoritative terminal settlement and all required release or retreat checks.
