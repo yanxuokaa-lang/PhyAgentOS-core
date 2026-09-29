@@ -453,16 +453,43 @@ def test_agent_recovery_nodes_are_compiled_by_paos_without_motion(tmp_path):
         ),
         event_type="test_current_discovery_evidence",
     )
+    fresh_observation_record_id, _caller = coordinator._append_execution(
+        task.task_id,
+        "scene.observe",
+        "query",
+        {"sensor_ref": "camera/front", "max_age_ms": 1000},
+        tool=BoundToolSpec(
+            tool_id="scene.observe",
+            semantics="query",
+            spec_sha256="7" * 64,
+            ready_at_binding=True,
+        ),
+    )
+    coordinator._finish_execution(
+        task.task_id,
+        fresh_observation_record_id,
+        status="succeeded",
+        response={"ok": True, "data": {
+            "status": "available",
+            "scene_revision": "scene-2",
+            "observation_ref": "observation://scene-2/camera",
+            "calibration_ref": "calibration://scene-2/camera",
+        }},
+    )
+    fresh_evidence_ref = f"tool:{fresh_observation_record_id}"
     coordinator.request_replan(task.task_id, reason="replace failed semantic node")
-    result = json.loads(asyncio.run(ForgeTaskBeginRevisionTool(coordinator).execute(
+    tool = ForgeTaskBeginRevisionTool(coordinator)
+    assert tool.parameters["properties"]["discovery_evidence_refs"]["type"] == "array"
+    result = json.loads(asyncio.run(tool.execute(
         task.task_id,
         reason="retry with corrected semantic inputs",
         nodes=[PlanNode(
             node_id="retry-relocate",
             obligation_id="retry-relocate",
             capability="object.relocate",
-            required_evidence=(evidence_ref,),
+            required_evidence=(fresh_evidence_ref,),
         ).model_dump(mode="json")],
+        discovery_evidence_refs=[fresh_evidence_ref],
     )))
 
     assert result["ok"] is True
@@ -473,13 +500,29 @@ def test_agent_recovery_nodes_are_compiled_by_paos_without_motion(tmp_path):
     assert current.active_revision.plan_graph_ref.startswith("artifact://plans/")
     assert current.active_revision.execution_records == []
     assert current.active_revision.node_settlements == []
-    assert current.active_revision.discovery_evidence_refs == (evidence_ref,)
+    assert current.active_revision.discovery_evidence_refs == (fresh_evidence_ref,)
     context = NodeContextProvider(lambda _task_id: current).build(
         task.task_id,
         "retry-relocate",
-        scene_revision="scene-1",
+        scene_revision="scene-2",
     )
-    assert [item.record_id for item in context.evidence_context] == [evidence_record_id]
+    assert [item.record_id for item in context.evidence_context] == [fresh_observation_record_id]
+
+    coordinator.request_replan(task.task_id, reason="verify inherited recovery evidence")
+    inherited = json.loads(asyncio.run(tool.execute(
+        task.task_id,
+        reason="keep the current recovery evidence set",
+        nodes=[PlanNode(
+            node_id="retry-relocate-again",
+            obligation_id="retry-relocate-again",
+            capability="object.relocate",
+            required_evidence=(fresh_evidence_ref,),
+        ).model_dump(mode="json")],
+    )))
+    assert inherited["ok"] is True
+    assert coordinator.get_task(task.task_id).active_revision.discovery_evidence_refs == (
+        fresh_evidence_ref,
+    )
 
 
 def test_compile_rejects_future_action_nodes_without_frozen_runtime_bindings(tmp_path):

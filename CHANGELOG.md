@@ -1,4 +1,7 @@
 # Changelog
+## Archive
+- [2026-09 part20](changelog/2026-09_part20.md)
+
 ## v11.10.12 (2026-09-29 07:10) - codex
 
 ### 实际修改 / Implemented changes

@@ -189,6 +189,15 @@ class ForgeTaskBeginRevisionTool(Tool):
                 "Full replacement semantic node list. PAOS supplies revision and digest metadata."
             ),
         }
+        schema["properties"]["discovery_evidence_refs"] = {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1},
+            "description": (
+                "Optional replacement for the prior revision's discovery evidence refs. "
+                "Use exact persisted evidence refs from the current scene when recovering "
+                "after a world change; omit to preserve the prior revision's refs."
+            ),
+        }
         schema["required"].extend(["reason", "nodes"])
         return schema
 
@@ -199,6 +208,7 @@ class ForgeTaskBeginRevisionTool(Tool):
         plan_graph: dict[str, Any] | None = None,
         plan_graph_ref: str | None = None,
         nodes: list[dict[str, Any]] | None = None,
+        discovery_evidence_refs: list[str] | None = None,
     ) -> str:
         if nodes is not None and plan_graph is not None:
             raise ValueError("supply either nodes or plan_graph")
@@ -225,6 +235,11 @@ class ForgeTaskBeginRevisionTool(Tool):
                     reason=reason,
                     plan_graph=(PlanGraph.model_validate(plan_graph) if plan_graph is not None else None),
                     plan_graph_ref=plan_graph_ref,
+                    discovery_evidence_refs=(
+                        tuple(discovery_evidence_refs)
+                        if discovery_evidence_refs is not None
+                        else None
+                    ),
                 ),
             }
         )
