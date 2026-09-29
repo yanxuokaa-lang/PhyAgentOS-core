@@ -59,6 +59,69 @@ PROFILE_SCHEMA_VERSION = "paos-robotwin20-persistent-host/v1"
 MAX_REQUEST_BYTES = 1_048_576
 
 
+def _qwen_vllm_operator_recovery() -> dict[str, Any]:
+    return {
+        "when": "scene_understanding_provider_unavailable",
+        "owner": "operator",
+        "diagnose": [
+            "systemctl --user status --no-pager paos-qwen3vl-vllm.service",
+            "curl --fail --silent --show-error http://127.0.0.1:8012/is_sleeping",
+        ],
+        "recover": [
+            "systemctl --user start paos-qwen3vl-vllm.service",
+        ],
+        "verify": [
+            "curl --fail --silent --show-error http://127.0.0.1:8012/v1/models",
+            "forge_tool_context(tool_id=scene.understand) must report context.ready=true",
+        ],
+        "constraints": [
+            "Do not refresh scene.observe for an unchanged provider outage.",
+            "Do not retry scene.understand until provider readiness changes.",
+            "Tool invocation must not start the provider service.",
+            "motion_authorized remains false.",
+        ],
+    }
+
+
+def _persistent_tool_context(
+    tool_id: str,
+    *,
+    transport_lost: bool,
+    understanding: Any,
+    model_provider: str,
+) -> dict[str, Any]:
+    context_value: dict[str, Any] = {
+        "ready": not transport_lost,
+        "binding_error": "persistent_world_connection_lost" if transport_lost else None,
+        "max_concurrency": 1,
+        "motion_authorized": False,
+        "provider_lifetime": "persistent",
+        "tool_id": tool_id,
+    }
+    if tool_id != "scene.understand" or transport_lost:
+        return context_value
+
+    readiness = understanding.readiness_summary()
+    if readiness.get("ready") is not True:
+        context_value["ready"] = False
+        context_value["binding_error"] = str(
+            readiness.get("binding_error")
+            or "scene_understanding_provider_unavailable"
+        )
+    for key in (
+        "provider_state",
+        "provider_route",
+        "provider_error_class",
+        "primary_ready",
+        "primary_error_class",
+    ):
+        if key in readiness:
+            context_value[key] = readiness[key]
+    if model_provider == "qwen3_vl_vllm_fallback":
+        context_value["operator_recovery"] = _qwen_vllm_operator_recovery()
+    return context_value
+
+
 def _scene_diagnostic_sink(artifact_root: Path):
     """Return an append-only bounded diagnostic writer for semantic inference."""
     path = artifact_root / "scene-understanding-diagnostics.jsonl"
@@ -586,32 +649,12 @@ def build_persistent_host(
         )
 
         def context(tool_id: str) -> dict[str, Any]:
-            transport_lost = getattr(client, "_transport_lost", False) is True
-            context_value: dict[str, Any] = {
-                "ready": not transport_lost,
-                "binding_error": (
-                    "persistent_world_connection_lost" if transport_lost else None
-                ),
-                "max_concurrency": 1,
-                "motion_authorized": False,
-                "provider_lifetime": "persistent",
-                "tool_id": tool_id,
-            }
-            if tool_id == "scene.understand" and not transport_lost:
-                readiness = understanding.readiness_summary()
-                if readiness.get("ready") is not True:
-                    context_value["ready"] = False
-                    context_value["binding_error"] = str(
-                        readiness.get("binding_error")
-                        or "scene_understanding_provider_unavailable"
-                    )
-                for key in (
-                    "provider_state", "provider_route", "provider_error_class",
-                    "primary_ready", "primary_error_class",
-                ):
-                    if key in readiness:
-                        context_value[key] = readiness[key]
-            return context_value
+            return _persistent_tool_context(
+                tool_id,
+                transport_lost=getattr(client, "_transport_lost", False) is True,
+                understanding=understanding,
+                model_provider=provider,
+            )
 
         bundle = build_persistent_runtime_bundle(
             deployment=deployment,

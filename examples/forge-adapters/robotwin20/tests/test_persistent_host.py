@@ -18,6 +18,7 @@ from robotwin20_adapter.persistent_deployment import PersistentDeployment
 from robotwin20_adapter.persistent_host import (
     PersistentHost,
     PersistentHostConfigurationError,
+    _persistent_tool_context,
     build_http_server,
     build_persistent_host,
     load_persistent_host_profile,
@@ -216,6 +217,66 @@ def test_host_rejects_unknown_route_geometry_source(tmp_path):
         match="route_geometry_source must be observed or oracle",
     ):
         build_persistent_host(profile, environ=environ)
+
+
+def test_qwen_provider_context_exposes_operator_owned_recovery_without_side_effects():
+    calls = []
+
+    class Understanding:
+        def readiness_summary(self):
+            calls.append("readiness")
+            return {
+                "ready": False,
+                "provider_state": "unavailable",
+                "provider_error_class": "transport",
+                "binding_error": "scene_understanding_provider_unavailable",
+            }
+
+    context = _persistent_tool_context(
+        "scene.understand",
+        transport_lost=False,
+        understanding=Understanding(),
+        model_provider="qwen3_vl_vllm_fallback",
+    )
+
+    assert calls == ["readiness"]
+    assert context["ready"] is False
+    assert context["binding_error"] == "scene_understanding_provider_unavailable"
+    assert context["operator_recovery"] == {
+        "when": "scene_understanding_provider_unavailable",
+        "owner": "operator",
+        "diagnose": [
+            "systemctl --user status --no-pager paos-qwen3vl-vllm.service",
+            "curl --fail --silent --show-error http://127.0.0.1:8012/is_sleeping",
+        ],
+        "recover": ["systemctl --user start paos-qwen3vl-vllm.service"],
+        "verify": [
+            "curl --fail --silent --show-error http://127.0.0.1:8012/v1/models",
+            "forge_tool_context(tool_id=scene.understand) must report context.ready=true",
+        ],
+        "constraints": [
+            "Do not refresh scene.observe for an unchanged provider outage.",
+            "Do not retry scene.understand until provider readiness changes.",
+            "Tool invocation must not start the provider service.",
+            "motion_authorized remains false.",
+        ],
+    }
+
+
+def test_non_qwen_provider_context_does_not_expose_qwen_recovery_commands():
+    class Understanding:
+        def readiness_summary(self):
+            return {"ready": True, "provider_state": "ready"}
+
+    context = _persistent_tool_context(
+        "scene.understand",
+        transport_lost=False,
+        understanding=Understanding(),
+        model_provider="openai_responses",
+    )
+
+    assert context["ready"] is True
+    assert "operator_recovery" not in context
 
 
 @pytest.mark.parametrize("route_source", ["observed", "oracle"])

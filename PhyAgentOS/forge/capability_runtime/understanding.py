@@ -137,7 +137,21 @@ TOOL_SPEC: dict[str, Any] = {
         "schema_version": "paos-tool-spec-policy/v1",
         "requires_before_plan": True,
     },
-    "description": "Derive provider-neutral entity and relation claims from one named observation.",
+    "description": (
+        "Derive provider-neutral entity and relation claims from one named observation. "
+        "If context reports scene_understanding_provider_unavailable, keep the current "
+        "observation when the scene is unchanged, do not retry until readiness changes, "
+        "and follow any operator_recovery instructions in context. Invocation never starts "
+        "a provider process and never authorizes motion."
+    ),
+    "recovery": {
+        "binding_error": "scene_understanding_provider_unavailable",
+        "owner": "operator",
+        "retry": "only_after_context_readiness_changes",
+        "observation": "reuse_named_observation_when_scene_unchanged",
+        "implicit_provider_start": False,
+        "motion_authorized": False,
+    },
     "input_schema": {
         "type": "object",
         "additionalProperties": False,

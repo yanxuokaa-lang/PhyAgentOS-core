@@ -2,6 +2,52 @@
 ## Archive
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.2.1 (2026-09-29 18:46) - codex
+
+### 实际修改 / Implemented changes [完成]
+- [env] [fix] 部署 operator-owned `paos-qwen3vl-vllm.service`，使用已验收的本地 AWQ/vLLM 0.11.2/sleep-mode 参数并仅监听 `127.0.0.1:8012`；PAOS 保持 provider consumer，不拥有模型进程。(local)
+- [Env] [Fix] Deploy the operator-owned `paos-qwen3vl-vllm.service` with the accepted local AWQ, vLLM 0.11.2, and sleep-mode parameters on loopback-only `127.0.0.1:8012`; PAOS remains a provider consumer and does not own the model process.(local)
+- [env] [fix] 根分区 100% 导致通用 unit verifier 无法创建工作目录；服务使用 `/home/yanxu/tmp/paos-qwen3vl-vllm` 专用 `TMPDIR`，未删除用户数据。(local)
+- [Env] [Fix] The full root filesystem prevented the generic unit verifier from creating a working directory; the service uses dedicated `/home/yanxu/tmp/paos-qwen3vl-vllm` temporary storage, and no user data was deleted.(local)
+- [eval] [exp] 服务 active/enabled 且无重启；模型 API、sleep/wake、7.01 秒 RGB structured-output smoke 与全部 PAOS Tool context 通过，无 AgentTask、PAOS Query/Action/Session 或运动。(local)
+- [Eval] [Exp] The service is active/enabled with no restart; model API, sleep/wake, a 7.01-second RGB structured-output smoke, and every PAOS Tool context passed, with no AgentTask, PAOS Query/Action/Session, or motion.(local)
+- [docs] [docs] 保存 Qwen provider outage 的 connection-refused 根因、systemd 恢复、sleep API、`TMPDIR` 磁盘分叉与 no-motion 运维边界。(local)
+- [Docs] [Docs] Preserve the connection-refused root cause, systemd recovery, sleep API, `TMPDIR` storage branch, and no-motion operations boundary for Qwen provider outages.(local)
+- [sense] [fix] `scene.understand` ToolSpec 发布通用恢复语义，Qwen deployment context 发布 operator-owned 诊断/恢复命令；Tool 不隐式启动 provider，不刷新未变化场景，不在 readiness 改变前重试。(local)
+- [Sense] [Fix] The `scene.understand` ToolSpec publishes generic recovery semantics while the Qwen deployment context publishes operator-owned diagnosis/recovery commands; the Tool does not implicitly start providers, refresh an unchanged scene, or retry before readiness changes.(local)
+- [eval] [test] ToolSpec、Qwen/non-Qwen context 与 contract 测试 `36 passed`，Ruff、compileall、diff check 通过；未调用 Query/Action/Session 或运动。(local)
+- [Eval] [Test] ToolSpec, Qwen/non-Qwen context, and contract tests passed `36`, with Ruff, compileall, and diff check passing; no Query, Action, Session, or motion was invoked.(local)
+
+### 影响文件 / Affected files
+- `/home/yanxu/.config/systemd/user/paos-qwen3vl-vllm.service:L1-L20`
+- `PhyAgentOS/forge/capability_runtime/understanding.py:L140-L154`
+- `examples/forge-skills/pick-place-workflow/contracts/scene.understand.tool.yaml:L9-L21`
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_host.py:L62-L122,L651-L657`
+- `examples/forge-adapters/robotwin20/README.md:L208-L253`
+- `examples/forge-skills/pick-place-workflow/tests/test_scene_understand.py:L95-L115`
+- `examples/forge-adapters/robotwin20/tests/test_persistent_host.py:L222-L279`
+- `changelog/2026-09_part20.md:L3-L59`
+- `CHANGELOG.md:L5-L49`
+
+### 关键 Diff / Key diff
+```diff
+- 127.0.0.1:8012: connection refused
++ user service: active + enabled, model API healthy
++ level-1 sleeping=true, GPU memory=276 MiB
++ PAOS scene.understand context=ready
++ ToolSpec: bounded provider recovery, unchanged-observation reuse, no implicit start
++ Qwen context: operator diagnosis/start/verification commands, motion_authorized=false
+```
+
+### 验证 / Verification
+- Focused ToolSpec/context/contract suite: `36 passed`.
+- Ruff, compileall, and `git diff --check`: passed.
+- Existing Runtime PID `1235822` and worker `1235873` were not restarted.
+
+### Git 提交
+- Commit: 待提交
+- Branch: `feature/planning-loop`
+
 ## v12.2.0 (2026-09-29 18:10) - codex
 
 ### 实际修改 / Implemented changes [完成]

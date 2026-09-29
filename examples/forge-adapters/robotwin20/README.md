@@ -205,6 +205,53 @@ provider-contract failure is returned as a failed scene-understanding Query and
 does not silently switch models. Cold start remains an operator-owned PAOS
 Runtime startup concern.
 
+#### Qwen vLLM outage diagnosis and recovery
+
+The recurring `scene_understanding_provider_unavailable` failure seen in this
+deployment was not an Agent reasoning failure or a missing observation. The
+profile configured a local provider at `127.0.0.1:8012`, but the operator-owned
+vLLM process was absent, so readiness and inference both failed at the transport
+boundary. Repeating `scene.understand` or taking a new observation cannot repair
+that process state.
+
+The accepted deployment is the user service
+`~/.config/systemd/user/paos-qwen3vl-vllm.service`. It owns the local AWQ model,
+vLLM `0.11.2`, loopback listener, and level-1 sleep support. vLLM `0.11.2`
+requires both `--enable-sleep-mode` and `VLLM_SERVER_DEV_MODE=1`; without the
+environment flag, `/sleep`, `/wake_up`, and `/is_sleeping` return HTTP 404 even
+though inference may still be available.
+
+Diagnose without changing provider state:
+
+```bash
+systemctl --user status --no-pager paos-qwen3vl-vllm.service
+curl --fail --silent --show-error http://127.0.0.1:8012/is_sleeping
+journalctl --user -u paos-qwen3vl-vllm.service -n 100 --no-pager
+```
+
+When the operator has authorized provider recovery, start the service and verify
+the exact model endpoint before allowing another scene-understanding attempt:
+
+```bash
+systemctl --user start paos-qwen3vl-vllm.service
+curl --fail --silent --show-error http://127.0.0.1:8012/v1/models
+curl --fail --silent --show-error http://127.0.0.1:8012/is_sleeping
+```
+
+Then read `forge_tool_context` for `scene.understand`; continue only when its
+context reports `ready=true`. A sleeping response is healthy because the request
+lifecycle performs the explicit wake. Do not make Tool discovery or invocation
+start the systemd service, do not refresh `scene.observe` while the scene is
+unchanged, and do not retry the same provider failure until readiness changes.
+This route remains Query-only and `motion_authorized=false` throughout recovery.
+
+On this host the root filesystem was full while `/home` still had capacity, so
+the service uses `TMPDIR=/home/yanxu/tmp/paos-qwen3vl-vllm`. A failure from
+`systemd-analyze --user verify` saying `No space left on device` is therefore a
+host-storage issue, not evidence that the loaded user unit is invalid. Do not
+delete user data as part of model recovery; root-filesystem cleanup is a separate
+operator maintenance task.
+
 The perception boundary is intentionally split by PAOS use case:
 
 | Capability | ToolSpec | Adapter/provider responsibility |

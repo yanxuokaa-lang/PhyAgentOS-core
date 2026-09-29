@@ -1,7 +1,9 @@
+import json
 from pathlib import Path
 
 import pytest
 import yaml
+from PhyAgentOS.agent.tools.forge_tool_api import ForgeToolContextTool
 from PhyAgentOS.forge.tool_client import ForgeToolClient
 
 from pick_place_workflow.fake_gateway import FakeGatewayTransport
@@ -88,6 +90,29 @@ async def test_understanding_query_is_bound_to_observation_and_provider_neutral(
         "/tools/scene.understand",
         "/tools/scene_understanding/understand:invoke",
     ]
+
+
+@pytest.mark.asyncio
+async def test_agent_tool_context_exposes_bounded_provider_recovery_guidance():
+    transport = FakeGatewayTransport(
+        provider=type("Observation", (), {"observe": lambda self, sensor_ref: None})(),
+        understanding_provider=Provider(understanding_snapshot()),
+    )
+    async with ForgeToolClient("http://fake", transport=transport) as client:
+        payload = json.loads(await ForgeToolContextTool(client).execute("scene.understand"))
+
+    tool = payload["data"]["tool"]
+    recovery = tool["recovery"]
+    assert recovery == {
+        "binding_error": "scene_understanding_provider_unavailable",
+        "owner": "operator",
+        "retry": "only_after_context_readiness_changes",
+        "observation": "reuse_named_observation_when_scene_unchanged",
+        "implicit_provider_start": False,
+        "motion_authorized": False,
+    }
+    assert "do not retry until readiness changes" in tool["description"]
+    assert payload["data"]["context"]["motion_authorized"] is False
 
 
 def test_stale_observation_is_rejected_before_provider_call():
