@@ -80,6 +80,62 @@ class FallbackSceneUnderstandingInference:
             "provider_error_class": self.last_error_class or "none",
         }
 
+    def readiness_summary(self) -> dict[str, Any]:
+        """Project provider-chain readiness without invoking inference.
+
+        A primary Qwen outage does not block the configured fallback before a
+        Query is attempted. Once both providers have failed, however, the
+        chain is unavailable until a provider state changes; the Runtime
+        context then prevents another identical discovery POST.
+        """
+        summary = getattr(self.primary, "readiness_summary", None)
+        primary: Mapping[str, Any] | None = None
+        if callable(summary):
+            try:
+                value = summary()
+                primary = value if isinstance(value, Mapping) else None
+            except Exception:
+                primary = {"ready": False, "provider_error_class": "transport"}
+            if primary.get("ready") is True and self.last_route is None:
+                # A successful health check is the explicit state transition
+                # that releases a previously latched dual-provider failure.
+                self.last_error = None
+                self.last_error_class = None
+            elif self.last_route is None and self.last_error_class is not None:
+                return {
+                    "ready": False,
+                    "provider_state": "unavailable",
+                    "provider_route": "none",
+                    "provider_error_class": self.last_error_class,
+                    "binding_error": "scene_understanding_provider_unavailable",
+                }
+            if primary.get("ready") is False:
+                # The fallback remains an explicit provider option. Let one
+                # Query attempt it; a dual failure is latched above.
+                return {
+                    "ready": True,
+                    "provider_state": "fallback_pending",
+                    "primary_ready": False,
+                    "primary_error_class": primary.get("provider_error_class", "transport"),
+                    "provider_route": self.last_route or "none",
+                    "provider_error_class": self.last_error_class or "none",
+                }
+        elif self.last_route is None and self.last_error_class is not None:
+            return {
+                "ready": False,
+                "provider_state": "unavailable",
+                "provider_route": "none",
+                "provider_error_class": self.last_error_class,
+                "binding_error": "scene_understanding_provider_unavailable",
+            }
+        return {
+            "ready": True,
+            "provider_state": "ready",
+            "primary_ready": True,
+            "provider_route": self.last_route or "none",
+            "provider_error_class": self.last_error_class or "none",
+        }
+
     def _emit(self, event: Mapping[str, Any]) -> None:
         if self.diagnostic_sink is None:
             return
@@ -140,8 +196,10 @@ class FallbackSceneUnderstandingInference:
             raise SceneUnderstandingFallbackError(
                 "local and fallback scene understanding providers failed",
                 provider_error_class=self.last_error_class,
-                retryable=("timeout" in self.last_error_class.split("+")
-                            or "transport" in self.last_error_class.split("+")),
+                # Neither provider produced evidence. A new observation cannot
+                # repair an unchanged provider outage; resume only after the
+                # Runtime context reports a changed provider state.
+                retryable=False,
             ) from exc
 
     def release(self) -> None:

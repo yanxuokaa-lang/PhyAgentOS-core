@@ -30,8 +30,6 @@ from PhyAgentOS.agent.tools.forge_tool_api import (
     ForgeToolQueryTool,
     ForgeToolSessionResultTool,
     ForgeToolSessionStatusTool,
-)
-from PhyAgentOS.agent.tools.forge_tool_api import (
     _resolve_observation_bound_query_arguments,
     _scene_bind_argument_error,
 )
@@ -531,6 +529,95 @@ def test_node_turn_yields_after_selection_requires_replan(tmp_path):
         assert "replacement plan segment" in result.content
 
     asyncio.run(exercise())
+
+
+def test_discovery_yields_after_non_retryable_scene_understanding_failure(tmp_path):
+    async def exercise():
+        provider = ScriptedProvider([
+            LLMResponse(content=None, tool_calls=[
+                ToolCallRequest(
+                    "understand",
+                    "forge_tool_query",
+                    {"task_id": "task-1", "tool_id": "scene.understand", "arguments": {}},
+                ),
+                ToolCallRequest(
+                    "refresh-observation",
+                    "forge_tool_query",
+                    {"task_id": "task-1", "tool_id": "scene.observe", "arguments": {}},
+                ),
+            ]),
+            LLMResponse(content="must remain unused"),
+        ])
+        loop = AgentLoop(
+            bus=MessageBus(), provider=provider, workspace=tmp_path, max_iterations=4
+        )
+        loop.tools.execute = AsyncMock(return_value=json.dumps({
+            "ok": True,
+            "data": {
+                "status": "unavailable",
+                "error": {
+                    "code": "understanding_provider_error",
+                    "reason": "transport+timeout",
+                    "failure_stage": "provider",
+                    "retryable": False,
+                },
+                "motion_authorized": False,
+            },
+            "paos_record": {
+                "task_id": "task-1",
+                "revision_id": "revision-1",
+                "record_id": "record-1",
+                "evidence_refs": [],
+            },
+        }))
+
+        result = await loop._run_agent_loop(
+            [{"role": "user", "content": "understand the current scene"}],
+            projection_scope="task",
+        )
+
+        assert len(provider.requests) == 1
+        loop.tools.execute.assert_awaited_once_with(
+            "forge_tool_query",
+            {"task_id": "task-1", "tool_id": "scene.understand", "arguments": {}},
+        )
+        assert result.tools_used == ["forge_tool_query"]
+        assert "provider readiness recovers" in result.content
+        deferred = next(
+            message for message in result.messages
+            if message.get("tool_call_id") == "refresh-observation"
+        )
+        deferred_payload = json.loads(deferred["content"])
+        assert deferred_payload["status"] == "deferred_to_provider_recovery"
+        assert deferred_payload["motion_authorized"] is False
+
+    asyncio.run(exercise())
+
+
+@pytest.mark.parametrize(
+    "result",
+    [
+        "[]",
+        json.dumps({"ok": True}),
+        json.dumps({
+            "ok": True,
+            "data": {
+                "status": "unavailable",
+                "error": {
+                    "code": "missing_calibration",
+                    "failure_stage": "request",
+                    "retryable": False,
+                },
+            },
+        }),
+    ],
+)
+def test_scene_understanding_request_errors_do_not_wait_for_provider_recovery(result):
+    assert AgentLoop._scene_understanding_provider_blocked(
+        tool_name="forge_tool_query",
+        arguments={"tool_id": "scene.understand"},
+        result=result,
+    ) is False
 
 
 def test_node_turn_can_correct_selection_input_without_replan(tmp_path):

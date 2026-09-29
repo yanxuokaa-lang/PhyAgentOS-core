@@ -246,7 +246,23 @@ def test_host_composes_tools_around_one_persistent_worker_client(tmp_path, monke
     )
     monkeypatch.setattr(host_module, "PersistentWorkerClient", lambda _worker: client)
     monkeypatch.setattr(host_module, "load_perception_profile", lambda _path: {"depth_scale_to_m": 0.001})
-    monkeypatch.setattr(host_module, "build_single_view_perception", lambda *_args, **_kwargs: lambda _request: {})
+    class UnderstandingInference:
+        def infer(self, _request):
+            return {}
+
+        def readiness_summary(self):
+            return {
+                "ready": False,
+                "provider_state": "unavailable",
+                "provider_error_class": "transport+timeout",
+                "binding_error": "scene_understanding_provider_unavailable",
+            }
+
+    monkeypatch.setattr(
+        host_module,
+        "build_single_view_perception",
+        lambda *_args, **_kwargs: UnderstandingInference(),
+    )
     grasp_profiles = []
     monkeypatch.setattr(host_module, "load_grasp_profile", lambda _path: {"provider_id": "graspgen", "max_candidates": 10})
     monkeypatch.setattr(
@@ -302,6 +318,10 @@ def test_host_composes_tools_around_one_persistent_worker_client(tmp_path, monke
     assert all(
         host.bundle.runtime.get_context(item["tool_id"])["motion_authorized"] is False
         for item in host.bundle.runtime.list_tools()["tools"]
+    )
+    assert host.bundle.runtime.get_context("scene.understand")["ready"] is False
+    assert host.bundle.runtime.get_context("scene.understand")["binding_error"] == (
+        "scene_understanding_provider_unavailable"
     )
     observe = next(
         item for item in host.bundle.runtime.list_tools()["tools"]

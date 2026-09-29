@@ -73,6 +73,32 @@ def test_lifecycle_control_bypasses_environment_proxy_for_local_endpoint():
     manager.close()
 
 
+def test_readiness_summary_is_read_only_for_sleeping_server():
+    client = _Client(sleeping=True)
+    manager = _manager(client)
+
+    assert manager.readiness_summary() == {
+        "ready": True,
+        "provider_state": "sleeping",
+        "provider_error_class": "none",
+    }
+    assert client.calls == [("GET", "/is_sleeping", None)]
+    manager.close()
+
+
+def test_readiness_summary_reports_unreachable_server_without_waking_it():
+    client = _Client(status_error=ConnectionError("down"))
+    manager = _manager(client)
+
+    assert manager.readiness_summary() == {
+        "ready": False,
+        "provider_state": "unavailable",
+        "provider_error_class": "transport",
+    }
+    assert client.calls == [("GET", "/is_sleeping", None)]
+    manager.close()
+
+
 def test_sleeping_request_wakes_before_inference_and_arms_idle_sleep():
     client = _Client(sleeping=True)
     manager = _manager(client)

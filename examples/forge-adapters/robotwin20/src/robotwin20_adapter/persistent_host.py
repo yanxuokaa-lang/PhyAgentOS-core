@@ -587,7 +587,7 @@ def build_persistent_host(
 
         def context(tool_id: str) -> dict[str, Any]:
             transport_lost = getattr(client, "_transport_lost", False) is True
-            return {
+            context_value: dict[str, Any] = {
                 "ready": not transport_lost,
                 "binding_error": (
                     "persistent_world_connection_lost" if transport_lost else None
@@ -597,6 +597,21 @@ def build_persistent_host(
                 "provider_lifetime": "persistent",
                 "tool_id": tool_id,
             }
+            if tool_id == "scene.understand" and not transport_lost:
+                readiness = understanding.readiness_summary()
+                if readiness.get("ready") is not True:
+                    context_value["ready"] = False
+                    context_value["binding_error"] = str(
+                        readiness.get("binding_error")
+                        or "scene_understanding_provider_unavailable"
+                    )
+                for key in (
+                    "provider_state", "provider_route", "provider_error_class",
+                    "primary_ready", "primary_error_class",
+                ):
+                    if key in readiness:
+                        context_value[key] = readiness[key]
+            return context_value
 
         bundle = build_persistent_runtime_bundle(
             deployment=deployment,

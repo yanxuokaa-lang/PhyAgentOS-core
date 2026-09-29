@@ -99,6 +99,25 @@ class RoboTwinSceneUnderstandingProvider:
             return {}
         return dict(value) if isinstance(value, Mapping) else {}
 
+    def readiness_summary(self) -> dict[str, Any]:
+        """Expose adapter/provider readiness without invoking scene inference."""
+        summary = getattr(self.inference, "readiness_summary", None)
+        if not callable(summary):
+            return {"ready": True, "provider_state": "ready"}
+        try:
+            value = summary()
+        except Exception:
+            return {
+                "ready": False,
+                "provider_state": "unavailable",
+                "binding_error": "scene_understanding_provider_unavailable",
+            }
+        return dict(value) if isinstance(value, Mapping) else {
+            "ready": False,
+            "provider_state": "unavailable",
+            "binding_error": "scene_understanding_provider_unavailable",
+        }
+
 
 def _tuple_of_mappings(value: Any, field_name: str) -> tuple[dict[str, Any], ...]:
     if not isinstance(value, (list, tuple)):

@@ -75,10 +75,69 @@ def test_both_provider_failures_are_bounded():
     assert route.last_route is None
     assert route.last_error == "TimeoutError; ConnectionError"
     assert failure.value.provider_error_class == "timeout+transport"
-    assert failure.value.retryable is True
+    assert failure.value.retryable is False
     assert route.diagnostic_summary() == {
         "provider_route": "none",
         "provider_error_class": "timeout+transport",
+    }
+    assert route.readiness_summary() == {
+        "ready": False,
+        "provider_state": "unavailable",
+        "provider_route": "none",
+        "provider_error_class": "timeout+transport",
+        "binding_error": "scene_understanding_provider_unavailable",
+    }
+
+
+def test_primary_health_failure_keeps_one_explicit_fallback_attempt_available():
+    class UnhealthyPrimary(_Provider):
+        def readiness_summary(self):
+            return {"ready": False, "provider_error_class": "transport"}
+
+    route = FallbackSceneUnderstandingInference(
+        UnhealthyPrimary(),
+        _Provider({"entities": [{"entity_ref": "entity://fallback"}]}),
+        primary_name="qwen3-vl-4b-vllm",
+        fallback_name="gpt-5.6-sol-high",
+    )
+
+    assert route.readiness_summary() == {
+        "ready": True,
+        "provider_state": "fallback_pending",
+        "primary_ready": False,
+        "primary_error_class": "transport",
+        "provider_route": "none",
+        "provider_error_class": "none",
+    }
+
+
+def test_primary_recovery_releases_latched_dual_provider_failure():
+    class RecoveringPrimary(_Provider):
+        def __init__(self):
+            super().__init__(error=TimeoutError())
+            self.healthy = False
+
+        def readiness_summary(self):
+            return {"ready": self.healthy, "provider_error_class": "transport"}
+
+    primary = RecoveringPrimary()
+    route = FallbackSceneUnderstandingInference(
+        primary,
+        _Provider(error=ConnectionError()),
+        primary_name="qwen3-vl-4b-vllm",
+        fallback_name="gpt-5.6-sol-high",
+    )
+    with pytest.raises(SceneUnderstandingFallbackError):
+        route.infer({})
+    assert route.readiness_summary()["ready"] is False
+
+    primary.healthy = True
+    assert route.readiness_summary() == {
+        "ready": True,
+        "provider_state": "ready",
+        "primary_ready": True,
+        "provider_route": "none",
+        "provider_error_class": "none",
     }
 
 

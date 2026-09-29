@@ -344,7 +344,8 @@ def _provider_diagnostics(provider: Any) -> dict[str, str]:
             "gpt-5.6-sol-high", "gpt-5.6-terra-medium", "authentication",
             "timeout", "transport", "contract", "provider_failure",
             "authentication+timeout", "authentication+transport",
-            "timeout+transport", "provider_failure+provider_failure",
+            "timeout+transport", "transport+timeout", "transport+transport",
+            "provider_failure+provider_failure",
         }:
             result[key] = item
     return result

@@ -73,6 +73,32 @@ class Qwen3VLVLLMLifecycleManager:
         with self._condition:
             return self._active_requests
 
+    def readiness_summary(self) -> dict[str, object]:
+        """Read operator-owned vLLM health without changing its lifecycle.
+
+        The adapter may report whether the external server is reachable, but it
+        must not start or wake that server as a side effect of Tool discovery.
+        A normal sleeping response is healthy: the next provider request owns
+        the explicit wake transition.
+        """
+        try:
+            sleeping = self._is_sleeping()
+        except Exception as exc:
+            self.last_state = "error"
+            self.last_error = type(exc).__name__
+            return {
+                "ready": False,
+                "provider_state": "unavailable",
+                "provider_error_class": "transport",
+            }
+        self.last_state = "sleeping" if sleeping else "awake"
+        self.last_error = None
+        return {
+            "ready": True,
+            "provider_state": self.last_state,
+            "provider_error_class": "none",
+        }
+
     @contextmanager
     def request(self) -> Iterator[None]:
         self._enter_request()
@@ -244,6 +270,10 @@ class LifecycleManagedSceneUnderstandingInference:
     def infer(self, request: Mapping[str, Any]) -> Mapping[str, Any] | None:
         with self.lifecycle.request():
             return self.provider.infer(request)
+
+    def readiness_summary(self) -> dict[str, object]:
+        """Expose lifecycle health while keeping wake/sleep ownership local."""
+        return self.lifecycle.readiness_summary()
 
     def release(self) -> None:
         self.lifecycle.sleep_for_handoff()

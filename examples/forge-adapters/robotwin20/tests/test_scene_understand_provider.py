@@ -123,7 +123,7 @@ async def test_declared_fallback_failure_class_survives_public_projection():
     class FailingInference:
         def infer(self, request):
             raise SceneUnderstandingFallbackError(
-                "providers failed", provider_error_class="timeout+transport", retryable=True
+                "providers failed", provider_error_class="timeout+transport", retryable=False
             )
 
     result = SceneUnderstandingEndpoint(
@@ -134,7 +134,7 @@ async def test_declared_fallback_failure_class_survives_public_projection():
         "message": "scene understanding provider failed",
         "reason": "timeout+transport",
         "failure_stage": "provider",
-        "retryable": True,
+        "retryable": False,
     }
 
 

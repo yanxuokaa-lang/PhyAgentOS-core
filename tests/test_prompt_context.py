@@ -524,6 +524,8 @@ def test_continuation_projection_forbids_stale_pre_action_query_evidence() -> No
     assert "must not carry" in boundary
     assert "pre-Action grasp, prepare, acquire, or place evidence" in boundary
     assert "leave required_evidence empty" in boundary
+    assert "error.retryable=false" in boundary
+    assert "do not take a fresh observation" in boundary
 
 
 def test_terminal_task_exposes_only_reconciliation_for_unknown_action_invocation() -> None:
@@ -633,6 +635,30 @@ def test_task_projection_guides_query_before_plan_materialization() -> None:
     assert projection["planning_phase"] == "materialization_ready"
     assert projection["missing_preplan_queries"] == []
     assert "forge_task_materialize_plan" in projection["planning_next_step"]
+
+
+def test_discovery_projection_stops_on_non_retryable_understanding_provider_failure() -> None:
+    task = _task()
+    policy = ToolSpecPolicy(
+        tool_id="scene.understand", semantics="query", spec_digest="a" * 64,
+        requires_before_plan=True,
+    )
+    task.primary_skill_binding = ForgeSkillBinding(
+        binding_id="binding-1", skill_name="fixture", skill_version="1",
+        manifest_sha256="b" * 64, skill_document_sha256="c" * 64,
+        runtime_profile="fixture", runtime_instance_id="runtime-1",
+        gateway_url="http://fixture", required_tools=(
+            BoundToolSpec(
+                tool_id="scene.understand", semantics="query", spec_sha256="d" * 64,
+                ready_at_binding=True, planning_policy=policy,
+            ),
+        ),
+    )
+
+    projection = task_prompt_projection(task)
+    assert projection is not None
+    assert "error.retryable=false" in projection["planning_next_step"]
+    assert "do not take a fresh observation" in projection["planning_next_step"]
 
 
 def test_discovery_visibility_does_not_count_provider_failure_as_success() -> None:
