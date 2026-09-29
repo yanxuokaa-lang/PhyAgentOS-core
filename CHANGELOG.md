@@ -25,7 +25,7 @@
 ```
 
 ### Git 提交
-- Commit: 待提交
+- Commit: `2be84db`
 - Branch: `feature/planning-loop`
 
 ## v12.1.0 (2026-09-29 19:05) - codex
