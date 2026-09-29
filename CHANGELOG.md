@@ -30,7 +30,7 @@
 - 相对 b04b9e0 基线，`tests/test_planning_context.py` 仅新增 83 行，无既有测试删除。
 
 ### Git 提交
-- Commit: `PENDING`
+- Commit: `45afaaa`
 - Branch: `feature/planning-loop`
 - 时间: 2026-09-29 23:42
 
