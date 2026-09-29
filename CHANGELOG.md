@@ -26,7 +26,7 @@
 - v12.3.5 控制面回归：`117 passed`；Ruff、compileall、`git diff --check` passed。
 
 ### Git 提交 / Git Commit
-- Commit: `ab0ba42`
+- Commit: `aefaad0`
 - Branch: `feature/planning-loop`
 
 ## v12.3.5 (2026-09-30 05:43) - codex
