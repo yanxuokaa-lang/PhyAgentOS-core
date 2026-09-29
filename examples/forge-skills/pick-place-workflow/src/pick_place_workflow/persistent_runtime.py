@@ -124,7 +124,18 @@ class _ProjectedDriver:
         refs = list(raw.get("artifact_refs", ()))
         outcome_known = raw.get("outcome_known", False)
         missing_evidence = success and not refs
-        if missing_evidence:
+        missing_place_postconditions = False
+        if self.phase == "place" and success:
+            missing_place_postconditions = not all(
+                raw.get(name) is True
+                for name in (
+                    "release_confirmed",
+                    "retreat_completed",
+                    "clear_of_target",
+                    "observation_ready",
+                )
+            ) or not isinstance(raw.get("new_scene_revision"), str)
+        if missing_evidence or missing_place_postconditions:
             status, success = "unknown", False
             outcome_known = False
         self.possession.settle(
@@ -134,20 +145,35 @@ class _ProjectedDriver:
         summary = {
             "version": "capability_outcome_summary_v1",
             "capability_phase": ("hold" if self.phase == "acquire" else "retreat") if success else "none",
-            "status": status, "failure_owner": "execution" if missing_evidence else raw.get("failure_owner"),
-            "failure_code": "missing_execution_evidence" if missing_evidence else raw.get("failure_code"), "world_change_started": raw.get("world_change_started"),
+            "status": status, "failure_owner": "execution" if (missing_evidence or missing_place_postconditions) else raw.get("failure_owner"),
+            "failure_code": ("missing_execution_evidence" if missing_evidence else "missing_place_postconditions" if missing_place_postconditions else raw.get("failure_code")), "world_change_started": raw.get("world_change_started"),
             "outcome_known": outcome_known,
             "evidence_availability": "complete" if success and refs else "partial" if refs else "none",
             "artifact_refs": refs, "bounded_metric_names": [],
         }
         if self.phase == "place":
             summary["post_release_evidence"] = {"availability": "complete" if success and refs else "none", "artifact_refs": refs if success else []}
+            summary.update(
+                release_confirmed=raw.get("release_confirmed") is True,
+                retreat_completed=raw.get("retreat_completed") is True,
+                clear_of_target=raw.get("clear_of_target") is True,
+                observation_ready=raw.get("observation_ready") is True,
+                new_scene_revision=raw.get("new_scene_revision"),
+            )
         result = {key: value for key, value in self.arguments.items() if key not in {"freshness_ms", "max_age_ms", "frame_id"}}
         if self.phase == "acquire":
             result["acquire_invocation_ref"] = self.invocation_id
         elif self.current_scene_revision is not None:
             result["current_scene_revision"] = self.current_scene_revision
         result.update(status=status, frame={"frame_id": self.arguments["frame_id"], "unit": "m"}, capability_outcome_summary=summary)
+        if self.phase == "place":
+            result.update(
+                release_confirmed=raw.get("release_confirmed") is True,
+                retreat_completed=raw.get("retreat_completed") is True,
+                clear_of_target=raw.get("clear_of_target") is True,
+                observation_ready=raw.get("observation_ready") is True,
+                new_scene_revision=raw.get("new_scene_revision"),
+            )
         if raw.get("new_scene_revision"):
             result["new_scene_revision"] = raw["new_scene_revision"]
         result["evidence_refs"] = refs + ([f"placed:{self.arguments['entity_ref']}"] if success and self.phase == "place" else [])

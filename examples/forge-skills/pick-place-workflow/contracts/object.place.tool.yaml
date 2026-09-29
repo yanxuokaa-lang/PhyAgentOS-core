@@ -37,7 +37,7 @@ output_schema:
     result:
       type: object
       additionalProperties: false
-      required: [status, observation_ref, scene_revision, frame, calibration_ref, candidate_set_ref, preparation_ref, candidate_ref, entity_ref, acquire_invocation_ref, destination_ref, capability_snapshot_ref, assignment_ref, capability_outcome_summary]
+      required: [status, observation_ref, scene_revision, frame, calibration_ref, candidate_set_ref, preparation_ref, candidate_ref, entity_ref, acquire_invocation_ref, destination_ref, capability_snapshot_ref, assignment_ref, capability_outcome_summary, release_confirmed, retreat_completed, clear_of_target, observation_ready, new_scene_revision]
       properties:
         status: {enum: [succeeded, failed, cancelled, stopped, unknown]}
         observation_ref: {type: string, pattern: '^observation://[^/]+/[^/]+$'}
@@ -58,10 +58,15 @@ output_schema:
         destination_ref: {type: string, pattern: '^destination://[^\s]+$'}
         capability_snapshot_ref: {type: string, pattern: '^artifact://[^/]+/.+$'}
         assignment_ref: {type: string, pattern: '^artifact://[^/]+/.+$'}
+        release_confirmed: {type: boolean}
+        retreat_completed: {type: boolean}
+        clear_of_target: {type: boolean}
+        observation_ready: {type: boolean}
+        new_scene_revision: {type: [string, 'null']}
         capability_outcome_summary:
           type: object
           additionalProperties: false
-          required: [version, capability_phase, status, failure_owner, failure_code, world_change_started, outcome_known, evidence_availability, artifact_refs, post_release_evidence, bounded_metric_names]
+          required: [version, capability_phase, status, failure_owner, failure_code, world_change_started, outcome_known, evidence_availability, artifact_refs, post_release_evidence, release_confirmed, retreat_completed, clear_of_target, observation_ready, new_scene_revision, bounded_metric_names]
           properties:
             version: {const: capability_outcome_summary_v1}
             capability_phase: {enum: [transport, descent, release, retreat, none]}
@@ -83,6 +88,11 @@ output_schema:
                 artifact_refs:
                   type: array
                   items: {type: string, pattern: '^artifact://[^/]+/.+$'}
+            release_confirmed: {type: boolean}
+            retreat_completed: {type: boolean}
+            clear_of_target: {type: boolean}
+            observation_ready: {type: boolean}
+            new_scene_revision: {type: [string, 'null']}
             bounded_metric_names:
               type: array
               items: {type: string, pattern: '^[a-z][a-z0-9_]{0,63}$'}

@@ -883,6 +883,53 @@ class AgentTaskCoordinator:
         self.store = store or AgentTaskStore(self.workspace)
         self.max_replans = max(0, int(max_replans))
         self.replan_timeout_s = max(0.1, float(replan_timeout_s))
+        self._reconciliation_callback: Callable[[str], Any] | None = None
+
+    def set_reconciliation_callback(self, callback: Callable[[str], Any] | None) -> None:
+        """Register the existing LongHorizon wake-up seam."""
+        self._reconciliation_callback = callback
+
+    async def read_invocation(
+        self, task_id: str, invocation_id: str, *, result: bool
+    ) -> dict[str, Any]:
+        """Read a frozen invocation route without requiring a new Runtime admission."""
+        record = self.require_action_invocation(task_id, invocation_id)
+        del record
+        client = self.client
+        binding = self.store.get(task_id).primary_skill_binding
+        if binding is None:
+            runtime = self.store.get(task_id).runtime_binding
+            gateway_url = runtime.gateway_url if runtime is not None else client.base_url
+        else:
+            gateway_url = binding.gateway_url
+        if gateway_url.rstrip("/") == client.base_url.rstrip("/"):
+            return await (client.invocation_result(invocation_id) if result else client.invocation_status(invocation_id))
+        frozen_client = ForgeToolClient(gateway_url)
+        try:
+            return await (frozen_client.invocation_result(invocation_id) if result else frozen_client.invocation_status(invocation_id))
+        finally:
+            await frozen_client.close()
+
+    async def read_session_invocation(
+        self, task_id: str, invocation_id: str, *, result: bool
+    ) -> dict[str, Any]:
+        """Read a frozen Session route without requiring new Runtime readiness."""
+        self.require_session_invocation(task_id, invocation_id)
+        client = self.client
+        task = self.store.get(task_id)
+        binding = task.primary_skill_binding
+        gateway_url = (
+            binding.gateway_url if binding is not None
+            else task.runtime_binding.gateway_url if task.runtime_binding is not None
+            else client.base_url
+        )
+        if gateway_url.rstrip("/") == client.base_url.rstrip("/"):
+            return await (client.invocation_result(invocation_id) if result else client.invocation_status(invocation_id))
+        frozen_client = ForgeToolClient(gateway_url)
+        try:
+            return await (frozen_client.invocation_result(invocation_id) if result else frozen_client.invocation_status(invocation_id))
+        finally:
+            await frozen_client.close()
 
     def set_experience(self, experience: Any | None) -> None:
         self.experience = experience
@@ -1636,7 +1683,10 @@ class AgentTaskCoordinator:
         revision = task.active_revision
         if revision.plan_graph is None:
             raise AgentTaskError("plan continuation requires a materialized active PlanGraph")
-        settlements = {item.node_id: item.status for item in revision.node_settlements}
+        settlements = {
+            item.node_id: item.status
+            for item in self.effective_node_settlements(task_id)
+        }
         incomplete = tuple(
             node.node_id
             for node in revision.plan_graph.nodes
@@ -1910,7 +1960,119 @@ class AgentTaskCoordinator:
                 "revision_id": settlement.revision_id,
                 "node_id": settlement.node_id,
                 "status": settlement.status,
+                "invocation_id": settlement.invocation_id,
             },
+        )
+
+    def record_node_settlement_resolution(
+        self,
+        task_id: str,
+        *,
+        revision_id: str,
+        node_id: str,
+        invocation_id: str,
+        status: Literal["completed", "failed"],
+        outcome_known: bool,
+    ) -> AgentTaskRecord:
+        """Append a narrow late-result resolution without rewriting the audit fact."""
+        if not outcome_known or status not in {"completed", "failed"}:
+            raise AgentTaskError("settlement resolution requires a known completed/failed result")
+        task = self.store.get(task_id)
+        if task.active_revision_id != revision_id:
+            raise AgentTaskError("settlement resolution is not bound to the active revision")
+        settlement = next(
+            (item for item in task.active_revision.node_settlements if item.node_id == node_id),
+            None,
+        )
+        if settlement is None or settlement.status != "outcome_unknown":
+            raise AgentTaskError("only an existing outcome_unknown settlement can be resolved")
+        if settlement.revision_id != revision_id or settlement.invocation_id != invocation_id:
+            raise AgentTaskError("settlement resolution invocation identity does not match")
+        record = next(
+            (
+                item for item in task.active_revision.execution_records
+                if item.invocation_id == invocation_id
+                and item.revision_id == revision_id
+                and item.node_id == node_id
+            ),
+            None,
+        )
+        result = _tool_result_from_execution(task, record) if record is not None else None
+        expected = "completed" if result is not None and result.status == "succeeded" else "failed"
+        if (
+            record is None
+            or not record.terminal
+            or result is None
+            or result.status not in {"succeeded", "failed"}
+            or result.outcome_known is not True
+            or expected != status
+        ):
+            raise AgentTaskError("settlement resolution lacks a matching known terminal result")
+        for event in self.store.events(task_id, limit=10000):
+            payload = event.get("payload", {})
+            if (
+                event.get("event_type") == "node_settlement_resolved"
+                and payload.get("revision_id") == revision_id
+                and payload.get("node_id") == node_id
+                and payload.get("invocation_id") == invocation_id
+            ):
+                return task
+        def resume(current: AgentTaskRecord) -> None:
+            if current.status == AgentTaskStatus.AWAITING_REPLAN:
+                current.status = AgentTaskStatus.EXECUTING
+                current.replan_deadline = None
+                current.replan_extension_used = False
+
+        return self.store.update(
+            task_id,
+            resume,
+            event_type="node_settlement_resolved",
+            payload={
+                "revision_id": revision_id,
+                "node_id": node_id,
+                "invocation_id": invocation_id,
+                "from_status": "outcome_unknown",
+                "to_status": status,
+                "outcome_known": True,
+            },
+        )
+
+    def effective_node_settlements(
+        self, task_id: str, revision_id: str | None = None
+    ) -> tuple[NodeSettlement, ...]:
+        """Reduce immutable settlements plus validated late-result events."""
+        task = self.store.get(task_id)
+        revision = (
+            next(
+                (item for item in task.revisions if item.revision_id == revision_id),
+                task.active_revision,
+            )
+            if revision_id is not None
+            else task.active_revision
+        )
+        resolved: dict[tuple[str, str, str], str] = {}
+        for event in self.store.events(task_id, limit=10000):
+            if event.get("event_type") != "node_settlement_resolved":
+                continue
+            payload = event.get("payload", {})
+            if (
+                payload.get("revision_id") == revision.revision_id
+                and payload.get("from_status") == "outcome_unknown"
+                and payload.get("to_status") in {"completed", "failed"}
+                and payload.get("outcome_known") is True
+                and isinstance(payload.get("node_id"), str)
+                and isinstance(payload.get("invocation_id"), str)
+            ):
+                resolved[(revision.revision_id, payload["node_id"], payload["invocation_id"])] = payload["to_status"]
+        return tuple(
+            item.model_copy(update={
+                "status": resolved.get(
+                    (item.revision_id, item.node_id, item.invocation_id), item.status
+                )
+                if item.status == "outcome_unknown" and item.invocation_id
+                else item.status
+            })
+            for item in revision.node_settlements
         )
 
     def reconcile_terminal_settlements(self, task_id: str) -> AgentTaskRecord:
@@ -1928,15 +2090,28 @@ class AgentTaskCoordinator:
             return task
         settled = {item.node_id for item in revision.node_settlements}
         for record in revision.execution_records:
-            if (
-                not record.terminal
-                or record.node_id is None
-                or record.revision_id != revision.revision_id
-                or record.node_id in settled
-            ):
+            if not record.terminal or record.node_id is None or record.revision_id != revision.revision_id:
                 continue
             result = _tool_result_from_execution(task, record)
             if result is None:
+                continue
+            existing = next((item for item in revision.node_settlements if item.node_id == record.node_id), None)
+            if existing is not None:
+                if (
+                    existing.status == "outcome_unknown"
+                    and record.invocation_id
+                    and existing.invocation_id == record.invocation_id
+                    and result.outcome_known is True
+                    and result.status in {"succeeded", "failed"}
+                ):
+                    self.record_node_settlement_resolution(
+                        task_id,
+                        revision_id=revision.revision_id,
+                        node_id=record.node_id,
+                        invocation_id=record.invocation_id,
+                        status="completed" if result.status == "succeeded" else "failed",
+                        outcome_known=True,
+                    )
                 continue
             node = next(
                 (item for item in graph.nodes if item.node_id == record.node_id),
@@ -2367,11 +2542,11 @@ class AgentTaskCoordinator:
         task = self.store.get(task_id)
         record = _owned_execution(task, invocation_id, semantics="action")
         observed_status = _tool_status(response, default=record.status)
-        status = (
-            record.status
-            if not reconcile_settlement and observed_status in TERMINAL_TOOL_STATUSES
-            else observed_status
-        )
+        status = record.status if (
+            record.status == "unknown" and observed_status not in TERMINAL_TOOL_STATUSES
+        ) or (
+            not reconcile_settlement and observed_status in TERMINAL_TOOL_STATUSES
+        ) else observed_status
 
         def mutate(current: AgentTaskRecord) -> None:
             target = _task_execution(current, record.record_id)
@@ -2392,6 +2567,8 @@ class AgentTaskCoordinator:
             self._release_terminal_runtime_binding_if_reconciled(
                 self.store.get(task_id)
             )
+            if status in TERMINAL_TOOL_STATUSES - {"unknown"} and self._reconciliation_callback is not None:
+                self._reconciliation_callback(task_id)
 
     def _release_terminal_runtime_binding_if_reconciled(
         self, task: AgentTaskRecord
@@ -2546,11 +2723,11 @@ class AgentTaskCoordinator:
         task = self.store.get(task_id)
         record = _owned_execution(task, invocation_id, semantics="session")
         observed_status = _tool_status(response, default=record.status)
-        status = (
-            record.status
-            if not reconcile_settlement and observed_status in TERMINAL_TOOL_STATUSES
-            else observed_status
-        )
+        status = record.status if (
+            record.status == "unknown" and observed_status not in TERMINAL_TOOL_STATUSES
+        ) or (
+            not reconcile_settlement and observed_status in TERMINAL_TOOL_STATUSES
+        ) else observed_status
 
         def mutate(current: AgentTaskRecord) -> None:
             target = _task_execution(current, record.record_id)
@@ -2662,7 +2839,7 @@ class AgentTaskCoordinator:
         if graph is not None:
             settlements = {
                 item.node_id: item.status
-                for item in task.active_revision.node_settlements
+                for item in self.effective_node_settlements(task_id)
             }
             incomplete = tuple(
                 node.node_id
@@ -2840,28 +3017,17 @@ class AgentTaskCoordinator:
         task = self.store.active()
         if task is None:
             return None
-        binding = task.primary_skill_binding
-        if binding is not None and self.binding_resolver is not None:
-            try:
-                self.binding_resolver.validate_runtime(binding)
-            except ForgeSkillBindingError:
-                # Leave persisted facts untouched until their owning Runtime returns.
-                # Startup must still allow status inspection and user-directed recovery.
-                return task
-        runtime_binding = task.runtime_binding
-        if runtime_binding is not None and self.binding_resolver is not None:
-            try:
-                self.binding_resolver.validate_runtime_binding(runtime_binding)
-            except ForgeSkillBindingError:
-                return task
         ownership_binding_id = (
-            binding.binding_id if binding is not None
-            else runtime_binding.binding_id if runtime_binding is not None else None
+            task.primary_skill_binding.binding_id
+            if task.primary_skill_binding is not None
+            else task.runtime_binding.binding_id if task.runtime_binding is not None else None
         )
         if ownership_binding_id is not None and self.runtime_task_binding_ids is not None:
             self.runtime_task_binding_ids.add(ownership_binding_id)
         for record in task.execution_records:
-            if record.terminal or record.semantics == "query":
+            known = _planning_response_facts(record.response).get("outcome_known")
+            late_unknown = record.status == "unknown" and known is not True
+            if (record.terminal and not late_unknown) or record.semantics == "query":
                 continue
             if not record.invocation_id:
                 self._finish_execution(
@@ -3583,6 +3749,7 @@ def _tool_result_from_execution(
         revision_id=record.revision_id,
         node_id=record.node_id,
         tool_id=record.tool_id,
+        invocation_id=record.invocation_id,
         status=status,
         scene_write_behavior=scene_write_behavior,
         world_changed=world_changed,

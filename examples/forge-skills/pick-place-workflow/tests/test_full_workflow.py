@@ -160,6 +160,11 @@ class PlaceProvider:
             artifact_refs=("artifact://place-7/trajectory",),
             post_release_evidence_availability="complete",
             post_release_evidence_refs=("artifact://place-7/post-release",),
+            release_confirmed=True,
+            retreat_completed=True,
+            clear_of_target=True,
+            observation_ready=True,
+            new_scene_revision="scene-8",
             bounded_metric_names=("release_height",),
         )
 

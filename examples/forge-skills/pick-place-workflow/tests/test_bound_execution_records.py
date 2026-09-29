@@ -43,7 +43,17 @@ class Provider:
         )
 
     def place(self, request):
-        return PlaceSnapshot(status="succeeded", world_change_started=True)
+        return PlaceSnapshot(
+            status="succeeded",
+            world_change_started=True,
+            post_release_evidence_availability="complete",
+            post_release_evidence_refs=("artifact://place/post-release",),
+            release_confirmed=True,
+            retreat_completed=True,
+            clear_of_target=True,
+            observation_ready=True,
+            new_scene_revision="scene-8",
+        )
 
 
 class Analyzer:

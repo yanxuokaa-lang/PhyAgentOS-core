@@ -2,6 +2,34 @@
 ## Archive
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.1.0 (2026-09-29 19:05) - codex
+
+### 实际修改 / Implemented changes [完成]
+- [policy] [feat] Coordinator 追加窄范围 `node_settlement_resolved` 事件与 effective settlement reducer；保留原 `outcome_unknown` 审计事实，仅接受同 task/revision/node/invocation 且 `outcome_known=true` 的 `completed|failed` late result。(local)
+- [Policy] [Feat] Coordinator adds a narrow `node_settlement_resolved` event and effective settlement reducer; the original `outcome_unknown` audit fact remains intact, and only a same task/revision/node/invocation late result with `outcome_known=true` may resolve to `completed|failed`.(local)
+- [agent] [fix] unknown invocation 对账保持 GET-only 并按冻结 Gateway binding 路由；LongHorizon 在启动/resume/PlanningLoop 前对账，终态后复用既有 controller 唤醒；continuation 强制 fresh observe -> understand -> capabilities -> bind。(local)
+- [Agent] [Fix] Keep unknown invocation reconciliation GET-only and route it by frozen Gateway binding; reconcile on LongHorizon start/resume/before PlanningLoop and wake the existing controller after terminal settlement; continuation requires fresh observe -> understand -> capabilities -> bind.(local)
+- [policy] [fix] `object.place` 成功必须同时具备 release/retreat/clear/observation、新 scene revision 和完整 post-release evidence；exact return pose 不进入 PAOS core。(local)
+- [Policy] [Fix] `object.place` success now requires release/retreat/clearance/observation, a new scene revision, and complete post-release evidence; exact return pose is not a PAOS core requirement.(local)
+- [eval] [test] 83 项 Fake Gateway/no-motion 回归、专项 unknown resolution 回归、Ruff、compileall、diff-check 全部通过；七维审查见 `docs/forge/IMPLEMENTATION_REVIEW_V12_1_0.md`。(local)
+- [Eval] [Test] 83 Fake Gateway/no-motion regressions, the focused unknown-resolution regression, Ruff, compileall, and diff-check passed; see `docs/forge/IMPLEMENTATION_REVIEW_V12_1_0.md` for the seven-dimension review.(local)
+
+## v12.0.1 (2026-09-29 16:17) - codex
+
+### 实际修改 / Implemented changes
+- [env] [fix] [完成] 本地安装并验证 `pick-place-workflow 2.8.6`，包含 `robotwin-blocks-ranking-graspnet` profile 与 Node `0.8.5`；目标 Runtime 启动因未配置 `ROBOTWIN20_MODEL_API_KEY` 在进程启动前 fail closed。(local)
+- [Env] [Fix] [Completed] Locally installed and verified `pick-place-workflow 2.8.6` with the `robotwin-blocks-ranking-graspnet` profile and Node `0.8.5`; target Runtime failed closed before process launch because `ROBOTWIN20_MODEL_API_KEY` was not configured.(local)
+- [eval] [exp] Bundle archive validation、`paos skill install/inspect/list` 通过；未创建 AgentTask，未调用 Query/Action/Session，未产生运动或视频 manifest。(local)
+- [Eval] [Exp] Bundle archive validation and `paos skill install/inspect/list` passed; no AgentTask, Query/Action/Session, motion, or video manifest was created.(local)
+
+### 影响文件 / Affected files
+- `changelog/2026-09_part20.md:L3-L20`
+- `examples/forge-skills/pick-place-workflow/skill.yaml:L1-L12,L238-L248` (source read/packaged, not modified in this turn)
+
+### Git 提交
+- Commit: 待提交
+- Branch: `feature/planning-loop`
+
 ## v11.10.12 (2026-09-29 07:10) - codex
 
 ### 实际修改 / Implemented changes

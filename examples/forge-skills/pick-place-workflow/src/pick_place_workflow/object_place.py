@@ -87,6 +87,11 @@ class PlaceSnapshot:
     artifact_refs: tuple[str, ...] = field(default_factory=tuple)
     post_release_evidence_availability: str = "none"
     post_release_evidence_refs: tuple[str, ...] = field(default_factory=tuple)
+    release_confirmed: bool = False
+    retreat_completed: bool = False
+    clear_of_target: bool = False
+    observation_ready: bool = False
+    new_scene_revision: str | None = None
     bounded_metric_names: tuple[str, ...] = field(default_factory=tuple)
     pending_polls: int = 0
     provider_available: bool = True
@@ -139,6 +144,11 @@ def _summary_schema() -> dict[str, Any]:
             "evidence_availability",
             "artifact_refs",
             "post_release_evidence",
+            "release_confirmed",
+            "retreat_completed",
+            "clear_of_target",
+            "observation_ready",
+            "new_scene_revision",
             "bounded_metric_names",
         ],
         "properties": {
@@ -155,6 +165,11 @@ def _summary_schema() -> dict[str, Any]:
                 "items": {"type": "string", "pattern": r"^artifact://[^/]+/.+$"},
             },
             "post_release_evidence": _evidence_schema(),
+            "release_confirmed": {"type": "boolean"},
+            "retreat_completed": {"type": "boolean"},
+            "clear_of_target": {"type": "boolean"},
+            "observation_ready": {"type": "boolean"},
+            "new_scene_revision": {"type": ["string", "null"]},
             "bounded_metric_names": {
                 "type": "array",
                 "items": {"type": "string", "pattern": r"^[a-z][a-z0-9_]{0,63}$"},
@@ -182,6 +197,11 @@ def _terminal_result_schema() -> dict[str, Any]:
             "capability_snapshot_ref",
             "assignment_ref",
             "capability_outcome_summary",
+            "release_confirmed",
+            "retreat_completed",
+            "clear_of_target",
+            "observation_ready",
+            "new_scene_revision",
         ],
         "properties": {
             "status": {"enum": list(_TERMINAL_STATUSES)},
@@ -218,6 +238,11 @@ def _terminal_result_schema() -> dict[str, Any]:
             "capability_snapshot_ref": {"type": "string", "pattern": r"^artifact://[^/]+/.+$"},
             "assignment_ref": {"type": "string", "pattern": r"^artifact://[^/]+/.+$"},
             "capability_outcome_summary": _summary_schema(),
+            "release_confirmed": {"type": "boolean"},
+            "retreat_completed": {"type": "boolean"},
+            "clear_of_target": {"type": "boolean"},
+            "observation_ready": {"type": "boolean"},
+            "new_scene_revision": {"type": ["string", "null"]},
         },
     }
 
@@ -400,6 +425,8 @@ def _error_message(code: str) -> str:
         "invalid_destination_ref": "destination_ref must use destination:// scheme",
         "invalid_capability_snapshot_ref": "capability_snapshot_ref must use artifact:// scheme",
         "invalid_assignment_ref": "assignment_ref must use artifact:// scheme",
+        "missing_place_postconditions": "release, retreat, clearance, and observation postconditions are incomplete",
+        "missing_new_scene_revision": "successful placement must publish a new scene revision",
     }.get(code, "object.place request failed contract validation")
 
 
@@ -439,6 +466,15 @@ def _validate_snapshot(snapshot: PlaceSnapshot) -> str | None:
         return "invalid_summary_boolean"
     if snapshot.status == "unknown" and snapshot.outcome_known:
         return "invalid_unknown_outcome"
+    if snapshot.status == "succeeded":
+        if snapshot.post_release_evidence_availability != "complete":
+            return "invalid_post_release_evidence"
+        if not snapshot.post_release_evidence_refs:
+            return "invalid_post_release_evidence"
+        if not all((snapshot.release_confirmed, snapshot.retreat_completed, snapshot.clear_of_target, snapshot.observation_ready)):
+            return "missing_place_postconditions"
+        if not isinstance(snapshot.new_scene_revision, str) or not snapshot.new_scene_revision.strip():
+            return "missing_new_scene_revision"
     if snapshot.status == "succeeded" and (
         snapshot.failure_owner not in {None, "none"} or snapshot.failure_code is not None
     ):
@@ -494,6 +530,11 @@ def terminal_result(arguments: dict[str, Any], snapshot: PlaceSnapshot) -> dict[
             "availability": snapshot.post_release_evidence_availability,
             "artifact_refs": list(snapshot.post_release_evidence_refs),
         },
+        "release_confirmed": snapshot.release_confirmed,
+        "retreat_completed": snapshot.retreat_completed,
+        "clear_of_target": snapshot.clear_of_target,
+        "observation_ready": snapshot.observation_ready,
+        "new_scene_revision": snapshot.new_scene_revision,
         "bounded_metric_names": list(snapshot.bounded_metric_names),
     }
     return {
@@ -510,6 +551,11 @@ def terminal_result(arguments: dict[str, Any], snapshot: PlaceSnapshot) -> dict[
         "destination_ref": arguments["destination_ref"],
         "capability_snapshot_ref": arguments["capability_snapshot_ref"],
         "assignment_ref": arguments["assignment_ref"],
+        "release_confirmed": snapshot.release_confirmed,
+        "retreat_completed": snapshot.retreat_completed,
+        "clear_of_target": snapshot.clear_of_target,
+        "observation_ready": snapshot.observation_ready,
+        "new_scene_revision": snapshot.new_scene_revision,
         "capability_outcome_summary": summary,
     }
 

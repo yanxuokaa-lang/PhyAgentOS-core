@@ -502,7 +502,10 @@ class AgentLoop:
 
         adapter = PlanningLoopAdapter(
             self.forge_task_coordinator,
-            context_provider=NodeContextProvider(self.forge_task_coordinator.get_task),
+            context_provider=NodeContextProvider(
+                self.forge_task_coordinator.get_task,
+                self.forge_task_coordinator.effective_node_settlements,
+            ),
             node_executor=AgentLoopNodeExecutor(
                 self,
                 self.forge_task_coordinator,
@@ -1112,6 +1115,40 @@ class AgentLoop:
                         )
                         yield_to_host = True
                         break
+                    if self._scene_understanding_provider_blocked(
+                        tool_name=tool_call.name,
+                        arguments=tool_call.arguments,
+                        result=result,
+                    ):
+                        for deferred in response.tool_calls[call_index + 1 :]:
+                            messages = self.context.add_tool_result(
+                                messages,
+                                deferred.id,
+                                deferred.name,
+                                json.dumps(
+                                    {
+                                        "ok": False,
+                                        "status": "deferred_to_provider_recovery",
+                                        "error": {
+                                            "type": "control_handoff",
+                                            "message": (
+                                                "Tool was not executed because scene understanding "
+                                                "is waiting for Runtime provider readiness."
+                                            ),
+                                        },
+                                        "motion_authorized": False,
+                                    },
+                                    ensure_ascii=False,
+                                    separators=(",", ":"),
+                                ),
+                            )
+                        final_content = (
+                            "Scene understanding is blocked by a non-retryable "
+                            "Runtime/provider failure; returning control until provider "
+                            "readiness recovers."
+                        )
+                        yield_to_host = True
+                        break
                     if (
                         tool_call.name in yield_after_tools
                         and self._tool_result_succeeded(result)
@@ -1229,6 +1266,36 @@ class AgentLoop:
         error = payload.get("error") if isinstance(payload, dict) else None
         return isinstance(error, dict) and error.get("requires_replan") is True
 
+    @staticmethod
+    def _scene_understanding_provider_blocked(
+        *, tool_name: str, arguments: Any, result: str
+    ) -> bool:
+        """Stop discovery after Runtime declares scene understanding unavailable."""
+        if (
+            tool_name != "forge_tool_query"
+            or not isinstance(arguments, Mapping)
+            or arguments.get("tool_id") != "scene.understand"
+        ):
+            return False
+        try:
+            payload = json.loads(result)
+        except (TypeError, json.JSONDecodeError):
+            return False
+        if not isinstance(payload, dict):
+            return False
+        data = payload.get("data")
+        if not isinstance(data, dict):
+            return False
+        error = data.get("error")
+        return (
+            payload.get("ok") is True
+            and data.get("status") == "unavailable"
+            and isinstance(error, dict)
+            and error.get("code") == "understanding_provider_error"
+            and error.get("failure_stage") == "provider"
+            and error.get("retryable") is False
+        )
+
     async def run_node_turn(
         self,
         *,
@@ -1338,7 +1405,10 @@ class AgentLoop:
         graph = revision.plan_graph
         if graph is None:
             raise ValueError("segment continuation requires a materialized PlanGraph")
-        settlements = {item.node_id: item.status for item in revision.node_settlements}
+        settlements = {
+            item.node_id: item.status
+            for item in self.forge_task_coordinator.effective_node_settlements(task_id)
+        }
         if any(settlements.get(node.node_id) != "completed" for node in graph.nodes):
             raise ValueError("segment continuation requires every active node to be completed")
 
@@ -1351,7 +1421,11 @@ class AgentLoop:
                 "instruction": (
                     "The current scene-bound PlanGraph segment is fully settled. Use only "
                     "persisted Coordinator facts. If the user-level goal still requires work, "
-                    "call forge_task_continue_plan with exactly the next scene-bound segment. "
+                    "first refresh the world deterministically with a fresh scene.observe, "
+                    "then scene.understand, manipulation.capabilities, and scene.bind; only "
+                    "after those reads succeed call forge_task_continue_plan with exactly the "
+                    "next scene-bound segment. These reads are mandatory after object.place "
+                    "and must use current evidence, never a video guess. "
                     "Use the active revision's recovery reason only as diagnostic context; the "
                     "original user request and verification criteria remain authoritative. "
                     "Check fresh-evidence requirements and current Coordinator facts. If required "
@@ -1380,6 +1454,8 @@ class AgentLoop:
             projection_scope="continuation",
             allowed_tool_names=frozenset(
                 {
+                    "forge_tool_context",
+                    "forge_tool_query",
                     "forge_task_continue_plan",
                     "forge_task_finalize",
                     "forge_task_request_clarification",
@@ -1387,6 +1463,8 @@ class AgentLoop:
             ),
             yield_after_tools=frozenset(
                 {
+                    "forge_tool_context",
+                    "forge_tool_query",
                     "forge_task_continue_plan",
                     "forge_task_finalize",
                     "forge_task_request_clarification",

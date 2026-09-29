@@ -357,6 +357,7 @@ class ToolResultEnvelope(_Frozen):
     task_id: str
     revision_id: str
     node_id: str
+    invocation_id: str | None = None
     tool_id: str
     status: _STATUS
     scene_write_behavior: Literal["none", "new_revision", "unknown"] = "unknown"
@@ -390,6 +391,7 @@ class NodeSettlement(_Frozen):
     task_id: str
     revision_id: str
     node_id: str
+    invocation_id: str | None = None
     status: Literal[
         "completed", "failed", "outcome_unknown", "blocked_by_dependency", "stale", "cancelled_before_start"
     ]

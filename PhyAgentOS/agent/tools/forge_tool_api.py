@@ -148,7 +148,14 @@ class ForgeToolContextTool(Tool):
         # Lifecycle tools are registered in the Agent ToolRegistry, not in the
         # Runtime Gateway. Keep the model-visible context path total so a
         # recovery turn cannot turn a valid local tool into a Gateway 404.
-        if tool_id.startswith(("forge_task_", "forge_plan_")):
+        if tool_id.startswith(("forge_task_", "forge_plan_")) or tool_id in {
+            "forge_tool_action_status",
+            "forge_tool_action_result",
+            "forge_tool_session_status",
+            "forge_tool_session_result",
+            "forge_tool_cancel_action",
+            "forge_tool_stop_session",
+        }:
             local_tool = (
                 self.local_tool_provider(tool_id)
                 if self.local_tool_provider is not None
@@ -397,10 +404,9 @@ class _ActionReadTool(Tool):
         async def read() -> dict[str, Any]:
             # Reject cross-task identifiers before disclosing Gateway state.
             self.coordinator.require_action_invocation(task_id, invocation_id)
-            if self.operation == "status":
-                response = await self.client.invocation_status(invocation_id)
-            else:
-                response = await self.client.invocation_result(invocation_id)
+            response = await self.coordinator.read_invocation(
+                task_id, invocation_id, result=self.operation == "result"
+            )
             self.coordinator.observe_action(
                 task_id,
                 invocation_id,
@@ -529,10 +535,8 @@ class _SessionReadTool(Tool):
         async def read() -> dict[str, Any]:
             # Reject cross-task identifiers before disclosing Gateway state.
             self.coordinator.require_session_invocation(task_id, invocation_id)
-            response = (
-                await self.client.invocation_status(invocation_id)
-                if self.operation == "status"
-                else await self.client.invocation_result(invocation_id)
+            response = await self.coordinator.read_session_invocation(
+                task_id, invocation_id, result=self.operation == "result"
             )
             self.coordinator.observe_session(
                 task_id,

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from .contracts import NodeSettlement, PlanNode, ToolResultEnvelope
 
-
 _COORDINATOR_EVIDENCE_PREFIXES = (
     "artifact://",
     "invocation:",
@@ -51,6 +50,7 @@ def settle_node(
         raise ValueError("Tool result node does not match the settled node")
     facts = dict(
         task_id=result.task_id, revision_id=result.revision_id, node_id=node.node_id,
+        invocation_id=result.invocation_id,
         evidence_refs=result.evidence_refs,
         scene_revision=result.new_scene_revision or current_scene_revision,
         source_tool_id=result.tool_id,

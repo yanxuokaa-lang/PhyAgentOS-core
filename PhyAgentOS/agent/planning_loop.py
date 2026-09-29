@@ -131,8 +131,13 @@ class NodeExecutionContext(BaseModel):
 class NodeContextProvider:
     """Project trusted task facts into a bounded node prompt context."""
 
-    def __init__(self, task_loader: Callable[[str], Any]) -> None:
+    def __init__(
+        self,
+        task_loader: Callable[[str], Any],
+        settlement_loader: Callable[[str], tuple[NodeSettlement, ...]] | None = None,
+    ) -> None:
         self._task_loader = task_loader
+        self._settlement_loader = settlement_loader
 
     def build(
         self,
@@ -151,7 +156,12 @@ class NodeContextProvider:
         node = next((item for item in graph.nodes if item.node_id == node_id), None)
         if node is None:
             raise PlanningLoopError(f"unknown planning node: {node_id}")
-        settlements = {item.node_id: item for item in revision.node_settlements}
+        settled_items = (
+            self._settlement_loader(task_id)
+            if self._settlement_loader is not None
+            else tuple(revision.node_settlements)
+        )
+        settlements = {item.node_id: item for item in settled_items}
         predecessors: list[PredecessorContext] = []
         for dependency in node.dependencies:
             settlement = settlements.get(dependency)
@@ -1055,7 +1065,10 @@ class PlanningLoopAdapter:
             graph = revision.plan_graph
             if graph is None:
                 raise PlanningLoopError("planning loop requires a materialized PlanGraph")
-            settlements = {item.node_id: item.status for item in revision.node_settlements}
+            settlements = {
+                item.node_id: item.status
+                for item in self.coordinator.effective_node_settlements(task_id)
+            }
             admission = self.admission_context_provider(task_id)
             if not isinstance(admission, AdmissionContext):
                 raise PlanningLoopError("admission context provider returned an invalid context")
@@ -1129,7 +1142,9 @@ class PlanningLoopAdapter:
                     )
                 failed_settlement = next(
                     (
-                        item for item in reversed(revision.node_settlements)
+                        item for item in reversed(
+                            self.coordinator.effective_node_settlements(task_id)
+                        )
                         if item.status != "completed"
                         and item.node_id in {node.node_id for node in graph.nodes}
                     ),
@@ -1238,7 +1253,10 @@ class PlanningLoopAdapter:
                 continue
             replay[revision.revision_id] = derive_ready_nodes(
                 revision.plan_graph,
-                {item.node_id: item.status for item in revision.node_settlements},
+                {
+                    item.node_id: item.status
+                    for item in self.coordinator.effective_node_settlements(task_id)
+                },
                 set(evidence_refs),
                 condition_facts or {},
             )

@@ -59,6 +59,9 @@ class LongHorizonTaskController:
         self._runs: dict[str, asyncio.Task[LongHorizonTaskResult]] = {}
         self._on_result = on_result
         self._segment_continuation = segment_continuation
+        set_callback = getattr(self.coordinator, "set_reconciliation_callback", None)
+        if callable(set_callback):
+            set_callback(self._ensure_started)
 
     @classmethod
     def for_control(cls, coordinator: AgentTaskCoordinator) -> "LongHorizonTaskController":
@@ -142,7 +145,12 @@ class LongHorizonTaskController:
                     evidence.update(ref for ref in payload["evidence_refs"] if isinstance(ref, str))
             replay[revision.revision_id] = derive_ready_nodes(
                 graph,
-                {item.node_id: item.status for item in revision.node_settlements},
+                {
+                    item.node_id: item.status
+                    for item in self.coordinator.effective_node_settlements(
+                        task_id, revision.revision_id
+                    )
+                },
                 evidence,
                 {},
             )
@@ -171,6 +179,7 @@ class LongHorizonTaskController:
             raise RuntimeError("this controller is control-only; execution adapter is not configured")
         lock = self._locks.setdefault(task_id, asyncio.Lock())
         async with lock:
+            await self.coordinator.reconcile_nonterminal()
             task = self.coordinator.get_task(task_id)
             if task.terminal:
                 return self._snapshot(task_id)
@@ -185,6 +194,10 @@ class LongHorizonTaskController:
                 task = self.coordinator.get_task(current)
                 return not task.pause_requested and not task.cancellation_requested
             while True:
+                await self.coordinator.reconcile_nonterminal()
+                task = self.coordinator.get_task(task_id)
+                if task.terminal:
+                    return self._snapshot(task_id)
                 try:
                     scene_revision = self.scene_revision_provider(task_id)
                     if not isinstance(scene_revision, str) or not scene_revision.strip():

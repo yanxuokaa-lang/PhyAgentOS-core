@@ -174,6 +174,74 @@ def test_terminal_planning_records_settle_all_tool_semantics(tmp_path, semantics
     assert len(coordinator.get_task(task.task_id).active_revision.node_settlements) == 1
 
 
+def test_unknown_settlement_resolves_only_from_same_known_invocation(tmp_path):
+    graph = _graph("task-1", "revision-1")
+    coordinator = AgentTaskCoordinator(
+        workspace=tmp_path, config=ForgeConfig(), client=_Client()
+    )
+    task = coordinator.create_task(
+        task_description="late action result reconciliation",
+        verification=TaskVerificationContract(mode="off"),
+        plan_graph=graph,
+        plan_graph_ref="artifact://plans/task-1/revision-1",
+    )
+    binding = {
+        "node_id": "relocate-red",
+        "node_digest": plan_node_digest(graph.nodes[0]),
+        "obligation_id": "relocate-red",
+        "input_binding_digest": "3" * 64,
+        "decision_trace_ref": "artifact://traces/task-1/record-1",
+    }
+    record_id, _ = coordinator._append_execution(
+        task.task_id,
+        "object.place",
+        "action",
+        {},
+        tool=BoundToolSpec(
+            tool_id="object.place", semantics="action", spec_sha256="4" * 64,
+            ready_at_binding=True,
+        ),
+        planning_binding=binding,
+    )
+    invocation_id = "invocation://object-place/late-1"
+    coordinator.store.update(
+        task.task_id,
+        lambda current: (
+            setattr(current.active_revision.execution_records[0], "invocation_id", invocation_id),
+            setattr(current.active_revision.execution_records[0], "attempt_id", "attempt://late-1"),
+        ),
+        event_type="test_invocation_attached",
+    )
+    coordinator._finish_execution(
+        task.task_id,
+        record_id,
+        status="unknown",
+        invocation_id=invocation_id,
+        response={"status": "unknown", "outcome_known": False},
+    )
+    assert coordinator.get_task(task.task_id).active_revision.node_settlements[0].status == "outcome_unknown"
+    assert coordinator.effective_node_settlements(task.task_id)[0].status == "outcome_unknown"
+    coordinator.record_planning_node_blocked(
+        task.task_id, "revision-1", "relocate-red", "reconciliation_required:relocate-red"
+    )
+
+    coordinator.observe_action(
+        task.task_id,
+        invocation_id,
+        {
+            "status": "succeeded",
+            "invocation_id": invocation_id,
+            "result": {"status": "succeeded", "outcome_known": True},
+        },
+    )
+    current = coordinator.get_task(task.task_id)
+    assert current.status == AgentTaskStatus.EXECUTING
+    assert current.active_revision.node_settlements[0].status == "outcome_unknown"
+    assert coordinator.effective_node_settlements(task.task_id)[0].status == "completed"
+    events = coordinator.store.events(task.task_id)
+    assert [item["event_type"] for item in events].count("node_settlement_resolved") == 1
+
+
 @pytest.mark.asyncio
 async def test_bound_query_timeout_cannot_be_shorter_than_tool_spec_default(tmp_path):
     client = _QueryClient()
