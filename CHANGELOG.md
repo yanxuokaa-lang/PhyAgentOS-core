@@ -87,7 +87,7 @@ Request validation is corrected in-task; read-only motion_authorized=false is ex
 - 未增加自动仿真复位、跨任务持物转移或静默语义模型 fallback。
 
 ### Git 提交 / Git commit
-- Production commit: `pending`
+- Production commit: `60d2b47`
 - Branch: `feature/planning-loop`
 
 ## v12.2.7 (2026-09-29 23:40) - codex
