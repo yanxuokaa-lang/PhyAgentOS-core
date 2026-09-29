@@ -10,6 +10,8 @@ from pick_place_workflow.fake_gateway import FakeGatewayTransport
 from robotwin20_adapter import (
     ArtifactPayload,
     FilesystemArtifactResolver,
+    OpenAIChatCompletionsConfig,
+    OpenAIChatCompletionsSceneUnderstandingInference,
     OpenAIResponsesConfig,
     OpenAIResponsesInferenceError,
     OpenAIResponsesSceneUnderstandingInference,
@@ -63,6 +65,34 @@ class Client:
         self.closed = True
 
 
+class ChatMessage:
+    def __init__(self, content):
+        self.content = content
+
+
+class ChatChoice:
+    def __init__(self, content):
+        self.message = ChatMessage(content)
+
+
+class ChatCompletions:
+    def __init__(self):
+        self.calls = []
+
+    def create(self, **payload):
+        self.calls.append(payload)
+        return type("ChatResponse", (), {"choices": [ChatChoice(Response.output_text)]})()
+
+
+class ChatClient:
+    def __init__(self):
+        self.chat = type("Chat", (), {"completions": ChatCompletions()})()
+        self.closed = False
+
+    def close(self):
+        self.closed = True
+
+
 class Resolver:
     def resolve(self, ref):
         assert ref == REQUEST["artifacts"][0]
@@ -101,6 +131,27 @@ def test_responses_provider_builds_structured_image_request_and_projects_result(
     image = payload["input"][0]["content"][1]
     assert image["type"] == "input_image"
     assert image["image_url"] == "data:image/png;base64," + base64.b64encode(b"rgb-bytes").decode()
+    assert client.closed is True
+
+
+def test_chat_completions_provider_uses_compatible_request_and_same_contract(monkeypatch):
+    monkeypatch.setenv("CUSTOM_API_KEY", "test-key")
+    client = ChatClient()
+    inference = OpenAIChatCompletionsSceneUnderstandingInference(
+        Resolver(),
+        config=OpenAIChatCompletionsConfig(model="gpt-5.6-sol"),
+        client_factory=lambda **kwargs: client,
+    )
+
+    result = inference.infer(REQUEST)
+
+    assert result["entities"][0]["provenance"] == REQUEST["artifacts"]
+    payload = client.chat.completions.calls[0]
+    assert payload["model"] == "gpt-5.6-sol"
+    assert payload["max_completion_tokens"] == 512
+    assert payload["response_format"]["type"] == "json_schema"
+    assert payload["response_format"]["json_schema"]["strict"] is True
+    assert payload["messages"][1]["content"][1]["type"] == "image_url"
     assert client.closed is True
 
 

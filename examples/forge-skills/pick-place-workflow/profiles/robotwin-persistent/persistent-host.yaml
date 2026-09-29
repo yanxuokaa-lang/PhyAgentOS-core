@@ -31,6 +31,7 @@ model:
   fallback:
     api_base: ${ROBOTWIN20_MODEL_API_BASE}
     model: ${ROBOTWIN20_MODEL}
+    api_mode: chat_completions
     api_key_env: ROBOTWIN20_MODEL_API_KEY
     reasoning_effort: ${ROBOTWIN20_REASONING_EFFORT}
     timeout_seconds: 120

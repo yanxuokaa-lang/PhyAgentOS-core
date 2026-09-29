@@ -22,6 +22,8 @@ import httpx
 from .grasp_profile import build_grasp_provider, load_grasp_profile
 from .openai_scene_understanding import (
     FilesystemArtifactResolver,
+    OpenAIChatCompletionsConfig,
+    OpenAIChatCompletionsSceneUnderstandingInference,
     OpenAIResponsesConfig,
     OpenAIResponsesSceneUnderstandingInference,
 )
@@ -399,9 +401,11 @@ def build_persistent_host(
                 raise PersistentHostConfigurationError("qwen vLLM primary/fallback settings are invalid")
             if set(primary) != {"api_base", "model", "api_key_env", "timeout_seconds", "max_output_tokens", "lifecycle"}:
                 raise PersistentHostConfigurationError("qwen vLLM primary settings are invalid")
-            if set(fallback) != {
-                "api_base", "model", "api_key_env", "reasoning_effort", "timeout_seconds", "max_output_tokens"
-            }:
+            fallback_fields = {
+                "api_base", "model", "api_key_env", "reasoning_effort",
+                "timeout_seconds", "max_output_tokens",
+            }
+            if set(fallback) not in (fallback_fields, fallback_fields | {"api_mode"}):
                 raise PersistentHostConfigurationError("GPT fallback settings are invalid")
             qwen_inference = Qwen3VLVLLMSceneUnderstandingInference(
                 resolver,
@@ -439,18 +443,31 @@ def build_persistent_host(
                 raise PersistentHostConfigurationError(
                     f"model credential environment is unavailable: {fallback_key_env}"
                 )
-            gpt_inference = OpenAIResponsesSceneUnderstandingInference(
-                resolver,
-                config=OpenAIResponsesConfig(
-                    api_base=str(fallback["api_base"]),
-                    model=str(fallback["model"]),
-                    api_key_env=fallback_key_env,
-                    reasoning_effort=str(fallback["reasoning_effort"]),
-                    timeout_seconds=_positive_number(fallback["timeout_seconds"], "model.fallback.timeout_seconds"),
-                    max_output_tokens=int(_positive_number(fallback["max_output_tokens"], "model.fallback.max_output_tokens")),
-                ),
-                diagnostic_sink=diagnostic_sink,
+            fallback_common = dict(
+                api_base=str(fallback["api_base"]),
+                model=str(fallback["model"]),
+                api_key_env=fallback_key_env,
+                reasoning_effort=str(fallback["reasoning_effort"]),
+                timeout_seconds=_positive_number(fallback["timeout_seconds"], "model.fallback.timeout_seconds"),
+                max_output_tokens=int(_positive_number(fallback["max_output_tokens"], "model.fallback.max_output_tokens")),
             )
+            api_mode = str(fallback.get("api_mode", "responses"))
+            if api_mode == "responses":
+                gpt_inference = OpenAIResponsesSceneUnderstandingInference(
+                    resolver,
+                    config=OpenAIResponsesConfig(**fallback_common),
+                    diagnostic_sink=diagnostic_sink,
+                )
+            elif api_mode == "chat_completions":
+                gpt_inference = OpenAIChatCompletionsSceneUnderstandingInference(
+                    resolver,
+                    config=OpenAIChatCompletionsConfig(**fallback_common),
+                    diagnostic_sink=diagnostic_sink,
+                )
+            else:
+                raise PersistentHostConfigurationError(
+                    "model.fallback.api_mode must be responses or chat_completions"
+                )
             inference = FallbackSceneUnderstandingInference(
                 qwen_inference,
                 gpt_inference,

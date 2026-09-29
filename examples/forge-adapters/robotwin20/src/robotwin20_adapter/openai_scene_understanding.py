@@ -466,6 +466,171 @@ class OpenAIResponsesSceneUnderstandingInference:
         return parsed
 
 
+@dataclass(frozen=True)
+class OpenAIChatCompletionsConfig(OpenAIResponsesConfig):
+    """Configuration for OpenAI-compatible Chat Completions endpoints."""
+
+
+class OpenAIChatCompletionsSceneUnderstandingInference(
+    OpenAIResponsesSceneUnderstandingInference
+):
+    """Use the Chat Completions route while preserving the Responses contract.
+
+    Several OpenAI-compatible gateways expose ``/chat/completions`` without
+    implementing ``/responses``.  This adapter keeps the PAOS query contract,
+    strict schema, artifact resolution, and provenance handling identical while
+    changing only the provider transport envelope.
+    """
+
+    def diagnostic_summary(self) -> dict[str, str]:
+        return {
+            "provider_route": "openai-chat-completions",
+            "provider_error_class": self._last_error_class,
+        }
+
+    def infer(self, request: Mapping[str, Any]) -> Mapping[str, Any]:
+        if not isinstance(request, Mapping):
+            raise OpenAIResponsesInferenceError("scene understanding request must be an object")
+        unknown = set(request) - self._REQUEST_KEYS
+        if unknown:
+            raise OpenAIResponsesInferenceError("scene understanding request contains unknown fields")
+        artifacts = request.get("artifacts")
+        if not isinstance(artifacts, list) or not artifacts:
+            raise OpenAIResponsesInferenceError("scene understanding request has no artifacts")
+        image = self._resolve_image(artifacts)
+        api_key = os.environ.get(self.config.api_key_env)
+        if not api_key:
+            raise OpenAIResponsesInferenceError(f"Missing {self.config.api_key_env} for scene understanding")
+        client = None
+        try:
+            client = self.client_factory(
+                api_key=api_key,
+                base_url=self.config.api_base,
+                timeout=self.config.timeout_seconds,
+                max_retries=0,
+            )
+            response = client.chat.completions.create(
+                model=self.config.model,
+                messages=[
+                    {"role": "system", "content": self._system_prompt()},
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": self._user_prompt(request)},
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": self._data_url(image)},
+                            },
+                        ],
+                    },
+                ],
+                max_completion_tokens=self.config.max_output_tokens,
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "scene_understanding",
+                        "strict": True,
+                        "schema": SCENE_UNDERSTANDING_JSON_SCHEMA,
+                    },
+                },
+            )
+            content = self._chat_content(response)
+            parsed = dict(self._parse_response_text(content))
+            self._last_error_class = "none"
+            rgb_refs = [
+                ref for ref in artifacts
+                if isinstance(ref, str) and ref.rsplit("/", 1)[-1] == "rgb"
+            ]
+            if len(rgb_refs) != 1:
+                raise OpenAIResponsesInferenceError(
+                    "scene understanding requires exactly one rgb artifact"
+                )
+            rgb_ref = rgb_refs[0]
+            for field in ("entities", "relations", "spatial_envelopes"):
+                for claim in parsed[field]:
+                    if isinstance(claim, dict) and not claim.get("provenance"):
+                        claim["provenance"] = [rgb_ref]
+            if not parsed["entities"] and not parsed["ambiguities"]:
+                parsed["ambiguities"].append(
+                    {
+                        "code": "entity_count_uncertain",
+                        "message": (
+                            "No entities were returned; verify whether visible objects were missed "
+                            "or whether the image contains no identifiable entities."
+                        ),
+                        "entity_refs": [],
+                    }
+                )
+            return parsed
+        except OpenAIResponsesInferenceError:
+            self._last_error_class = "contract"
+            raise
+        except Exception as exc:
+            text = f"{type(exc).__name__} {exc}".lower()
+            self._last_error_class = (
+                "authentication" if "auth" in text or "401" in text or "403" in text
+                else "timeout" if "timeout" in text or "timed out" in text
+                else "transport" if "connection" in text or "http" in text
+                else "provider_failure"
+            )
+            raise OpenAIResponsesInferenceError(
+                "scene understanding Chat Completions request failed"
+            ) from exc
+        finally:
+            close = getattr(client, "close", None)
+            if callable(close):
+                close()
+
+    @staticmethod
+    def _chat_content(response: Any) -> str:
+        choices = getattr(response, "choices", None)
+        if not isinstance(choices, list) or not choices:
+            raise OpenAIResponsesInferenceError(
+                "Chat Completions result did not contain a choice"
+            )
+        message = getattr(choices[0], "message", None)
+        content = getattr(message, "content", None)
+        if isinstance(content, str) and content.strip():
+            return content
+        if isinstance(content, list):
+            parts = [
+                item.get("text", "") for item in content
+                if isinstance(item, Mapping) and isinstance(item.get("text"), str)
+            ]
+            joined = "".join(parts)
+            if joined.strip():
+                return joined
+        raise OpenAIResponsesInferenceError(
+            "Chat Completions result did not contain structured output"
+        )
+
+    @staticmethod
+    def _parse_response_text(content: str) -> Mapping[str, Any]:
+        try:
+            parsed = json.loads(content)
+        except json.JSONDecodeError as exc:
+            raise OpenAIResponsesInferenceError(
+                "Chat Completions structured output was not valid JSON"
+            ) from exc
+        if not isinstance(parsed, dict):
+            raise OpenAIResponsesInferenceError(
+                "Chat Completions structured output must be an object"
+            )
+        allowed = {"entities", "relations", "spatial_envelopes", "ambiguities"}
+        if set(parsed) - allowed or any(
+            not isinstance(parsed.get(key), list) for key in allowed
+        ):
+            raise OpenAIResponsesInferenceError(
+                "Chat Completions structured output violated the provider contract"
+            )
+        for ambiguity in parsed["ambiguities"]:
+            if not isinstance(ambiguity, dict) or ambiguity.get("code") not in SCENE_SEMANTIC_AMBIGUITY_CODES:
+                raise OpenAIResponsesInferenceError(
+                    "Chat Completions structured output used a non-semantic ambiguity code"
+                )
+        return parsed
+
+
 __all__ = [
     "ArtifactPayload",
     "ArtifactResolver",
@@ -473,6 +638,8 @@ __all__ = [
     "OpenAIResponsesConfig",
     "OpenAIResponsesInferenceError",
     "OpenAIResponsesSceneUnderstandingInference",
+    "OpenAIChatCompletionsConfig",
+    "OpenAIChatCompletionsSceneUnderstandingInference",
     "SCENE_SEMANTIC_AMBIGUITY_CODES",
     "SCENE_UNDERSTANDING_JSON_SCHEMA",
 ]
