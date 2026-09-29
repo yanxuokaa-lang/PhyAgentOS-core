@@ -2,6 +2,66 @@
 ## Archive
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.2.6 (2026-09-29 23:36) - codex
+
+### 变更摘要 [完成]
+- [policy] [fix] 区分 revision discovery evidence 授权池与节点显式 required evidence：世界变化后，当前节点未要求的旧场景证据只从上下文投影中省略，不再阻断合法的新 scene.observe；显式要求旧证据仍 fail-closed。 (local)
+- [Policy] [Fix] Distinguish the revision discovery-evidence authorization pool from node-explicit required evidence: after a world change, unrelated stale records are omitted from context rather than blocking a valid fresh scene.observe, while explicitly required stale evidence remains fail-closed. (local)
+
+### 根因 / Root Cause
+- `object.acquire` 已 terminal succeeded，`red_acquire` settlement 为 completed，并产生新 scene revision；随后 `NodeContextProvider` 把 revision 级 `discovery_evidence_refs` 误当成每个节点的隐式 required evidence。
+- 构建无 required evidence 的 `red_acquire_observe` 上下文时，初始 scene 的 `tool_42b5982303af45e9` 被错误判定为该节点必须消费的旧证据，LongHorizonRunner 因而请求 `stale_node_context` replan。
+- 修复不恢复、不重发已成功 Action；只修正下一节点上下文的证据投影语义。
+
+### 文件变更详情
+
+#### [修改] `PhyAgentOS/agent/planning_loop.py` L207-L267
+
+**修改前：**
+```python
+selected_discovery_evidence = set(revision.discovery_evidence_refs)
+...
+if stale_scene_record:
+    raise StaleNodeContextError(
+        f"required evidence {record.record_id} belongs to stale scene revision"
+    )
+```
+
+**修改后：**
+```python
+selected_discovery_evidence = set(revision.discovery_evidence_refs)
+explicitly_required_evidence = set(node.required_evidence)
+...
+if stale_scene_record:
+    if matched & explicitly_required_evidence:
+        raise StaleNodeContextError(...)
+    continue
+```
+
+**修改说明：** revision discovery evidence 仅表示 Coordinator 授权的候选证据池。旧场景记录若未被当前节点显式要求，则不暴露到上下文；若节点显式要求，仍拒绝并进入既有恢复生命周期。现有 scene.bind 不变身份例外保持不变。
+
+#### [新增] `tests/test_planning_context.py` L1-L82
+
+**新增测试：**
+- 世界变化后，fresh `scene.observe` 节点未要求旧证据时，旧 discovery record 被省略且上下文使用新 scene revision。
+- 节点显式要求同一旧证据时，仍抛出 `StaleNodeContextError`。
+
+### 验证
+- `PYTHONPATH=PhyAgentOS:examples/forge-skills/pick-place-workflow/src:examples/forge-skills/pick-place-workflow:. PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /home/yanxu/miniconda3/envs/paos/bin/python -m pytest -p pytest_asyncio.plugin -q tests/test_planning_context.py examples/forge-skills/pick-place-workflow/tests/test_long_horizon.py tests/test_planning_task_integration.py`: `51 passed`。
+- `/home/yanxu/miniconda3/envs/paos/bin/python -m ruff check PhyAgentOS/agent/planning_loop.py tests/test_planning_context.py`: passed.
+- `/home/yanxu/miniconda3/envs/paos/bin/python -m compileall -q PhyAgentOS/agent/planning_loop.py`: passed.
+- `git diff --check`: passed.
+
+### 安全边界
+- 未调用 Runtime、Gateway、仿真器或机械臂；未修改当前任务 SQLite。
+- 已成功的 `invocation://object-acquire/97c3f1278cb54138` 未重发、未取消、未改写。
+- ready/select、Action terminal result、世界变化后 fresh observation 和 replan revision 边界全部保留。
+
+### Git 提交
+- Commit: `PENDING`
+- Branch: `feature/planning-loop`
+- 时间: 2026-09-29 23:39
+
 ## v12.2.5 (2026-09-29 23:28) - codex
 
 ### 变更摘要 [完成]
@@ -344,10 +404,6 @@ def test_qwen_provider_context_exposes_operator_owned_recovery_without_side_effe
 
 **修改后：**
 ```text
-## v2.8.8 (2026-09-29)
-
-- 中文：将 RobotWin 场景理解切换为纯本地 Qwen vLLM provider，移除 shuaiapi fallback 及 Dora 环境中的主模型 secret；PAOS 主 Agent provider 保持独立。
-- English: Move RobotWin scene understanding to a local-Qwen-only vLLM provider, remove the shuaiapi fallback and main-model secret from Dora, and keep the PAOS main-Agent provider independent.
 
 ## v12.2.1 (2026-09-29 18:46) - codex
 

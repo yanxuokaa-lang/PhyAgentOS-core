@@ -1,46 +1,41 @@
-from __future__ import annotations
-
 from types import SimpleNamespace
 
 import pytest
 
-from PhyAgentOS.agent.planning_context import (
-    PlanningContextUnavailableError,
-    context_from_task,
-)
+from PhyAgentOS.agent.planning_loop import NodeContextProvider, StaleNodeContextError
 
 
-def _record(
-    record_id: str,
-    *,
-    tool_id: str,
-    arguments: dict,
-    response: dict,
-) -> SimpleNamespace:
-    return SimpleNamespace(
-        record_id=record_id,
-        tool_id=tool_id,
-        terminal=True,
-        status="succeeded",
-        semantics="query",
-        arguments=arguments,
-        response=response,
-        evidence_refs=(f"tool:{record_id}",),
+def _task_with_stale_discovery_evidence(*, required_evidence: tuple[str, ...]):
+    stale_ref = "tool:tool_old_scene_understanding"
+    node = SimpleNamespace(
+        node_id="observe_after_acquire",
+        capability="scene.observe",
+        dependencies=(),
+        required_evidence=required_evidence,
+        input_bindings={"sensor_ref": "camera/head", "max_age_ms": 1000},
     )
-
-
-def _task(
-    *records: SimpleNamespace,
-    discovery_evidence_refs: tuple[str, ...] = (),
-) -> SimpleNamespace:
-    return SimpleNamespace(
-        execution_records=records,
-        active_revision=SimpleNamespace(
-            node_settlements=(),
-            discovery_evidence_refs=discovery_evidence_refs,
-        ),
-        primary_skill_binding=None,
-        tool_bindings=(
+    stale_record = SimpleNamespace(
+        revision_id="revision-1",
+        record_id="tool_old_scene_understanding",
+        tool_id="scene.understand",
+        semantics="query",
+        status="succeeded",
+        evidence_refs=(stale_ref,),
+        arguments={"scene_revision": "scene-old"},
+        response={"data": {"status": "available", "scene_revision": "scene-old"}},
+        error=None,
+    )
+    revision = SimpleNamespace(
+        revision_id="revision-1",
+        plan_graph=SimpleNamespace(task_id="task-1", nodes=(node,)),
+        node_settlements=(),
+        discovery_evidence_refs=(stale_ref,),
+        execution_records=(stale_record,),
+        fresh_evidence_requirements=(),
+        replan_evidence_refs=(),
+    )
+    binding = SimpleNamespace(
+        required_tools=(
             SimpleNamespace(
                 tool_id="scene.observe",
                 planning_policy=SimpleNamespace(refreshes_scene=True),
@@ -49,346 +44,38 @@ def _task(
                 tool_id="scene.understand",
                 planning_policy=SimpleNamespace(refreshes_scene=False),
             ),
-        ),
+        )
+    )
+    return SimpleNamespace(
+        active_revision=revision,
+        revisions=(revision,),
+        primary_skill_binding=binding,
     )
 
 
-def test_context_excludes_query_evidence_bound_to_an_older_scene() -> None:
-    observation = _record(
-        "observe-current",
-        tool_id="scene.observe",
-        arguments={"sensor_ref": "camera/head"},
-        response={
-            "ok": True,
-            "data": {"status": "available", "scene_revision": "scene-new"},
-        },
-    )
-    stale_query = _record(
-        "understand-stale",
-        tool_id="scene.understand",
-        arguments={
-            "scene_revision": "scene-old",
-            "observation_ref": "observation://old",
-        },
-        response={"ok": True, "data": {"status": "available", "entities": []}},
-    )
-    current_query = _record(
-        "capabilities-current",
-        tool_id="scene.understand",
-        arguments={"scene_revision": "scene-new"},
-        response={"ok": True, "data": {"status": "available"}},
+def test_context_skips_unrequired_stale_discovery_evidence_after_world_change():
+    task = _task_with_stale_discovery_evidence(required_evidence=())
+
+    context = NodeContextProvider(lambda _task_id: task).build(
+        "task-1",
+        "observe_after_acquire",
+        scene_revision="scene-new",
     )
 
-    context = context_from_task(
-        _task(observation, stale_query, current_query),
-        allow_refresh=True,
-    )
-
+    assert context.evidence_context == ()
     assert context.scene_revision == "scene-new"
-    assert context.evidence_refs == frozenset({"tool:observe-current", "tool:capabilities-current"})
 
 
-def test_context_rejects_query_whose_request_and_response_scenes_conflict() -> None:
-    conflicting_query = _record(
-        "understand-conflict",
-        tool_id="scene.understand",
-        arguments={"scene_revision": "scene-old"},
-        response={
-            "ok": True,
-            "data": {"status": "available", "scene_revision": "scene-new"},
-        },
-    )
+def test_context_rejects_explicitly_required_stale_discovery_evidence():
+    stale_ref = "tool:tool_old_scene_understanding"
+    task = _task_with_stale_discovery_evidence(required_evidence=(stale_ref,))
 
-    with pytest.raises(PlanningContextUnavailableError):
-        context_from_task(_task(conflicting_query), allow_refresh=True)
-
-
-def test_context_accepts_refresh_scene_but_rejects_old_nonrefresh_response() -> None:
-    first_observation = _record(
-        "observe-first",
-        tool_id="scene.observe",
-        arguments={"sensor_ref": "camera/head"},
-        response={"ok": True, "data": {"scene_revision": "scene-1"}},
-    )
-    refreshed_observation = _record(
-        "observe-second",
-        tool_id="scene.observe",
-        arguments={"sensor_ref": "camera/head"},
-        response={"ok": True, "data": {"scene_revision": "scene-2"}},
-    )
-    stale_response = _record(
-        "understand-old-response",
-        tool_id="scene.understand",
-        arguments={},
-        response={"ok": True, "data": {"scene_revision": "scene-1"}},
-    )
-
-    context = context_from_task(
-        _task(first_observation, refreshed_observation, stale_response),
-        allow_refresh=True,
-    )
-
-    assert context.scene_revision == "scene-2"
-    assert context.evidence_refs == frozenset({"tool:observe-second"})
-
-
-def test_context_accepts_refresh_query_from_current_to_new_scene() -> None:
-    first_observation = _record(
-        "observe-first",
-        tool_id="scene.observe",
-        arguments={"sensor_ref": "camera/head"},
-        response={"ok": True, "data": {"scene_revision": "scene-1"}},
-    )
-    refreshed_observation = _record(
-        "observe-second",
-        tool_id="scene.observe",
-        arguments={"scene_revision": "scene-1"},
-        response={"ok": True, "data": {"scene_revision": "scene-2"}},
-    )
-
-    context = context_from_task(
-        _task(first_observation, refreshed_observation),
-        allow_refresh=True,
-    )
-
-    assert context.scene_revision == "scene-2"
-    assert context.evidence_refs == frozenset({"tool:observe-second"})
-
-
-def test_context_restores_only_selected_discovery_evidence_after_world_change() -> None:
-    observation = _record(
-        "observe-current",
-        tool_id="scene.observe",
-        arguments={"sensor_ref": "camera/head"},
-        response={"ok": True, "data": {"scene_revision": "scene-new"}},
-    )
-    acquire = _record(
-        "acquire",
-        tool_id="object.acquire",
-        arguments={"scene_revision": "scene-old"},
-        response={
-            "ok": True,
-            "data": {
-                "status": "succeeded",
-                "world_changed": True,
-                "new_scene_revision": "scene-new",
-            },
-        },
-    )
-
-    context = context_from_task(
-        _task(
-            observation,
-            acquire,
-            discovery_evidence_refs=("tool:goal", "tool:bind"),
-        ),
-        allow_refresh=True,
-    )
-
-    assert context.scene_revision == "scene-new"
-    assert context.evidence_refs == frozenset(
-        {"tool:observe-current", "tool:acquire", "tool:goal", "tool:bind"}
-    )
-
-
-def test_context_does_not_restore_unselected_historical_discovery_evidence() -> None:
-    observation = _record(
-        "observe-current",
-        tool_id="scene.observe",
-        arguments={"sensor_ref": "camera/head"},
-        response={"ok": True, "data": {"scene_revision": "scene-new"}},
-    )
-
-    context = context_from_task(
-        _task(
-            observation,
-            discovery_evidence_refs=("tool:selected",),
-        ),
-        allow_refresh=True,
-    )
-
-    assert "tool:selected" in context.evidence_refs
-    assert "tool:historical" not in context.evidence_refs
-
-
-def test_continuation_keeps_same_capture_records_and_excludes_stale_captures():
-    from PhyAgentOS.agent.planning_context import current_scene_query_records
-    from PhyAgentOS.agent.prompt_context import continuation_task_prompt_projection
-
-    def query(name, tool, capture):
-        return _record(name, tool_id=tool, arguments={}, response={"data": {
-            "scene_revision": "scene", "observation_ref": "observation://same-scene",
-            "calibration_ref": f"artifact://{capture}/calibration",
-            "entities": [{"entity_ref": "entity://red", "category": "red cube", "world_T_object": [12345]}],
-        }})
-
-    observation = query("observe", "scene.observe", "first")
-    binding = query("bind", "scene.bind", "first")
-    task = _task(observation, binding)
-    # Queries remain available even though the active continuation has no records.
-    task.active_revision.execution_records = ()
-    assert current_scene_query_records(task) == (observation, binding)
-    projection = continuation_task_prompt_projection(task)
-    assert projection["current_scene_queries"][1]["entities"] == [{"entity_ref": "entity://red", "category": "red cube"}]
-    assert "12345" not in str(projection)
-    newer = query("observe-new", "scene.observe", "second")
-    task.execution_records += (newer,)
-    assert current_scene_query_records(task) == (newer,)
-    effect = _record("action", tool_id="object.place", arguments={}, response={"data": {"world_change_started": True}})
-    effect.semantics = "action"
-    task.execution_records += (effect,)
-    task.active_revision.discovery_evidence_refs = newer.evidence_refs
-    assert current_scene_query_records(task) == ()
-    effect.response["data"]["new_scene_revision"] = "scene-after-place"
-    assert current_scene_query_records(task) == ()
-
-
-def test_runtime_grasp_query_projects_retained_fact_for_downstream_prepare():
-    observation = _record(
-        "observe-current",
-        tool_id="scene.observe",
-        arguments={"sensor_ref": "camera/head"},
-        response={"ok": True, "data": {"scene_revision": "scene-current"}},
-    )
-    grasp = _record(
-        "grasp-current",
-        tool_id="grasp.propose",
-        arguments={"scene_revision": "scene-current"},
-        response={
-            "ok": True,
-            "data": {
-                "status": "available",
-                "scene_revision": "scene-current",
-                "condition_facts": {"grasp_candidates_retained": True},
-            },
-        },
-    )
-    context = context_from_task(_task(observation, grasp), allow_refresh=True)
-    assert dict(context.condition_facts) == {"grasp_candidates_retained": True}
-
-
-def test_empty_grasp_query_cannot_unlock_downstream_prepare():
-    observation = _record(
-        "observe-current",
-        tool_id="scene.observe",
-        arguments={"sensor_ref": "camera/head"},
-        response={"ok": True, "data": {"scene_revision": "scene-current"}},
-    )
-    grasp = _record(
-        "grasp-empty",
-        tool_id="grasp.propose",
-        arguments={"scene_revision": "scene-current"},
-        response={
-            "ok": True,
-            "data": {
-                "status": "empty",
-                "scene_revision": "scene-current",
-                "condition_facts": {"grasp_candidates_retained": False},
-            },
-        },
-    )
-    context = context_from_task(_task(observation, grasp), allow_refresh=True)
-    assert dict(context.condition_facts) == {"grasp_candidates_retained": False}
-
-
-def test_legacy_successful_grasp_receipt_replays_retained_fact():
-    observation = _record(
-        "observe-current",
-        tool_id="scene.observe",
-        arguments={"sensor_ref": "camera/head"},
-        response={"ok": True, "data": {"scene_revision": "scene-current"}},
-    )
-    grasp = _record(
-        "legacy-grasp",
-        tool_id="grasp.propose",
-        arguments={"scene_revision": "scene-current"},
-        response={
-            "ok": True,
-            "data": {
-                "status": "available",
-                "scene_revision": "scene-current",
-                "candidates": [{"provenance": ["artifact://obs/points"]}],
-                "funnel": {"decoded": 8, "canonicalized": 4, "deduplicated": 2, "retained": 1},
-            },
-        },
-    )
-    context = context_from_task(_task(observation, grasp), allow_refresh=True)
-    assert dict(context.condition_facts) == {"grasp_candidates_retained": True}
-
-
-def test_legacy_grasp_receipt_with_invalid_funnel_stays_untrusted():
-    observation = _record(
-        "observe-current",
-        tool_id="scene.observe",
-        arguments={"sensor_ref": "camera/head"},
-        response={"ok": True, "data": {"scene_revision": "scene-current"}},
-    )
-    grasp = _record(
-        "bad-grasp",
-        tool_id="grasp.propose",
-        arguments={"scene_revision": "scene-current"},
-        response={
-            "ok": True,
-            "data": {
-                "status": "available",
-                "scene_revision": "scene-current",
-                "candidates": [{"provenance": ["artifact://obs/points"]}],
-                "funnel": {"decoded": 1, "canonicalized": 2, "deduplicated": 1, "retained": 1},
-            },
-        },
-    )
-    context = context_from_task(_task(observation, grasp), allow_refresh=True)
-    assert dict(context.condition_facts) == {}
-
-
-def test_compiler_resolves_entity_from_previous_segment_current_capture():
-    from PhyAgentOS.agent.plan_proposal import _complete_persisted_runtime_bindings
-    from PhyAgentOS.planning import PlanNode
-
-    identity = {"scene_revision": "scene", "observation_ref": "observation://current",
-                "calibration_ref": "artifact://current/calibration"}
-    observation = _record("observe", tool_id="scene.observe", arguments={}, response={"data": identity})
-    binding = _record("bind", tool_id="scene.bind", arguments={}, response={"data": {
-        **identity, "binding_ref": "artifact://entity-bindings/current",
-        "entities": [{"entity_ref": "entity://observed-red",
-                                 "execution_entity_ref": "entity://block-red-1"}],
-    }})
-    observation.node_id = "observe"
-    binding.node_id = "bind"
-    task = _task(observation, binding)
-    task.revisions = (SimpleNamespace(execution_records=task.execution_records),)
-    task.active_revision.execution_records = ()
-    prepare = PlanNode(node_id="prepare", obligation_id="prepare", capability="manipulation.prepare",
-                       input_bindings={"execution_entity_ref": "entity://block-red-1"})
-    completed = _complete_persisted_runtime_bindings(task, (prepare,))
-    assert completed[0].input_bindings["entity_ref"] == "entity://observed-red"
-    assert completed[0].input_bindings["binding_ref"] == "artifact://entity-bindings/current"
-
-
-def test_compiler_refuses_to_guess_between_overlapping_scene_bindings():
-    from PhyAgentOS.agent.plan_proposal import _complete_persisted_runtime_bindings
-    from PhyAgentOS.planning import PlanNode
-
-    identity = {"scene_revision": "scene", "observation_ref": "observation://current",
-                "calibration_ref": "artifact://current/calibration"}
-    observation = _record("observe", tool_id="scene.observe", arguments={}, response={"data": identity})
-    records = [observation]
-    for index in (1, 2):
-        record = _record(f"bind-{index}", tool_id="scene.bind", arguments={}, response={"data": {
-            **identity, "binding_ref": f"artifact://entity-bindings/{index}",
-            "entities": [{"entity_ref": "entity://observed-red",
-                           "execution_entity_ref": "entity://block-red-1"}],
-        }})
-        record.node_id = f"bind-{index}"
-        records.append(record)
-    observation.node_id = "observe"
-    task = _task(*records)
-    task.revisions = (SimpleNamespace(execution_records=task.execution_records),)
-    task.active_revision.execution_records = ()
-    prepare = PlanNode(node_id="prepare", obligation_id="prepare", capability="manipulation.prepare",
-                       input_bindings={"execution_entity_ref": "entity://block-red-1"})
-
-    completed = _complete_persisted_runtime_bindings(task, (prepare,))
-
-    assert completed[0].input_bindings["entity_ref"] == "entity://observed-red"
-    assert "binding_ref" not in completed[0].input_bindings
+    with pytest.raises(
+        StaleNodeContextError,
+        match="required evidence tool_old_scene_understanding belongs to stale scene revision",
+    ):
+        NodeContextProvider(lambda _task_id: task).build(
+            "task-1",
+            "observe_after_acquire",
+            scene_revision="scene-new",
+        )

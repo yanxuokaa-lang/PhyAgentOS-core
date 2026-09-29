@@ -205,6 +205,7 @@ class NodeContextProvider:
         # Keep that authorization explicit, but do not require the model to
         # duplicate every producer reference in the new node's required list.
         selected_discovery_evidence = set(revision.discovery_evidence_refs)
+        explicitly_required_evidence = set(node.required_evidence)
         binding = getattr(task, "primary_skill_binding", None)
         bound_tools = (
             getattr(binding, "required_tools", ())
@@ -255,9 +256,15 @@ class NodeContextProvider:
                             and isinstance(node.input_bindings.get("entity_ref"), str)
                         ):
                             continue
-                        raise StaleNodeContextError(
-                            f"required evidence {record.record_id} belongs to stale scene revision"
-                        )
+                        # Revision discovery evidence is an authorized source pool, not an
+                        # implicit requirement on every node.  After a world-changing Action,
+                        # omit unrelated old-scene records so the explicit refresh node can
+                        # run.  A node that names the old evidence remains fail-closed.
+                        if matched & explicitly_required_evidence:
+                            raise StaleNodeContextError(
+                                f"required evidence {record.record_id} belongs to stale scene revision"
+                            )
+                        continue
                     evidence_context.append(EvidenceExecutionContext(
                         revision_id=source_revision.revision_id,
                         record_id=record.record_id,
