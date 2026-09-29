@@ -32,7 +32,7 @@
 
 ### Git 提交 / Git Commit
 - Implementation commit: `f7487ef`
-- Documentation/review metadata commit: pending
+- Documentation/review metadata commit: `fb3c756`
 - Branch: `feature/planning-loop`
 
 ## v12.3.3 (2026-09-29 04:32) - codex
