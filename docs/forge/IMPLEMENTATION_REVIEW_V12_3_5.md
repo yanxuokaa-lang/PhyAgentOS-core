@@ -1,6 +1,6 @@
 # v12.3.5 Seven-Dimension Implementation Review
 
-日期：2026-09-30（Asia/Shanghai）  
+日期：2026-09-30（Asia/Shanghai）
 范围：discovery-prefix pruning for semantic PlanGraph materialization
 
 ## Findings
