@@ -45,7 +45,7 @@
 - Existing Runtime PID `1235822` and worker `1235873` were not restarted.
 
 ### Git 提交
-- Commit: 待提交
+- Commit: `2b40c13`
 - Branch: `feature/planning-loop`
 
 ## v12.2.0 (2026-09-29 18:10) - codex
