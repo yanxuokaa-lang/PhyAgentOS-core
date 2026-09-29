@@ -38,9 +38,20 @@ OBSERVATION_TOOL_SPEC: dict[str, Any] = {
     "input_schema": {
         "type": "object",
         "additionalProperties": False,
-        "required": ["sensor_ref", "max_age_ms"],
+        "required": ["max_age_ms"],
+        "oneOf": [
+            {"required": ["sensor_ref"], "not": {"required": ["sensor_refs"]}},
+            {"required": ["sensor_refs"], "not": {"required": ["sensor_ref"]}},
+        ],
         "properties": {
             "sensor_ref": {"type": "string", "minLength": 1},
+            "sensor_refs": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": True,
+                "items": {"type": "string", "minLength": 1},
+                "description": "Ordered sensors captured in one synchronized observation set.",
+            },
             "requested_frame": {
                 "type": "string",
                 "minLength": 1,
@@ -51,6 +62,7 @@ OBSERVATION_TOOL_SPEC: dict[str, Any] = {
                 ),
             },
             "max_age_ms": {"type": "integer", "minimum": 1},
+            "max_capture_skew_ms": {"type": "integer", "minimum": 0, "default": 50},
         },
     },
     "output_schema": {
@@ -58,7 +70,8 @@ OBSERVATION_TOOL_SPEC: dict[str, Any] = {
         "additionalProperties": False,
         "required": [
             "status", "observation_ref", "captured_at", "scene_revision", "frame",
-            "calibration_ref", "freshness_ms", "artifacts",
+            "calibration_ref", "freshness_ms", "artifacts", "views",
+            "capture_skew_ms",
         ],
         "properties": {
             "status": {"enum": ["available", "unavailable", "stale", "invalid"]},
@@ -90,6 +103,46 @@ OBSERVATION_TOOL_SPEC: dict[str, Any] = {
                     },
                 },
             },
+            "views": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": [
+                        "sensor_ref", "observation_ref", "captured_at", "frame",
+                        "calibration_ref", "freshness_ms", "artifacts",
+                    ],
+                    "properties": {
+                        "sensor_ref": {"type": "string", "minLength": 1},
+                        "observation_ref": {"type": "string", "pattern": _OBSERVATION_REF.pattern},
+                        "captured_at": {"type": "string", "format": "date-time"},
+                        "frame": {
+                            "type": "object", "additionalProperties": False,
+                            "required": ["frame_id", "unit"],
+                            "properties": {
+                                "frame_id": {"type": "string", "minLength": 1},
+                                "unit": {"const": "m"},
+                            },
+                        },
+                        "calibration_ref": {"type": "string", "minLength": 1},
+                        "freshness_ms": {"type": "integer", "minimum": 0},
+                        "artifacts": {
+                            "type": "array", "minItems": 1,
+                            "items": {
+                                "type": "object", "additionalProperties": False,
+                                "required": ["ref", "kind", "media_type"],
+                                "properties": {
+                                    "ref": {"type": "string", "pattern": _ARTIFACT_REF.pattern},
+                                    "kind": {"enum": sorted(_KINDS)},
+                                    "media_type": {"type": "string", "minLength": 1},
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+            "capture_skew_ms": {"type": "integer", "minimum": 0},
             "error": {
                 "type": "object",
                 "additionalProperties": False,
@@ -125,17 +178,40 @@ class ObservationEndpoint:
         self._now = now or (lambda: datetime.now(timezone.utc))
 
     def invoke(self, arguments: Any) -> dict[str, Any]:
-        if not isinstance(arguments, dict) or set(arguments) - {"sensor_ref", "requested_frame", "max_age_ms"}:
+        allowed = {
+            "sensor_ref", "sensor_refs", "requested_frame", "max_age_ms",
+            "max_capture_skew_ms",
+        }
+        if not isinstance(arguments, dict) or set(arguments) - allowed:
             return self._error("invalid_arguments", "scene.observe arguments must be an object")
         sensor_ref = arguments.get("sensor_ref")
+        sensor_refs = arguments.get("sensor_refs")
         max_age_ms = arguments.get("max_age_ms")
+        max_capture_skew_ms = arguments.get("max_capture_skew_ms", 50)
         requested_frame = arguments.get("requested_frame")
-        if not isinstance(sensor_ref, str) or not sensor_ref.strip():
+        if (sensor_ref is None) == (sensor_refs is None):
+            return self._error("invalid_sensor_ref", "provide exactly one of sensor_ref or sensor_refs")
+        if sensor_ref is not None and (not isinstance(sensor_ref, str) or not sensor_ref.strip()):
             return self._error("invalid_sensor_ref", "sensor_ref must be a non-empty string")
+        if sensor_refs is not None and (
+            not isinstance(sensor_refs, list) or not sensor_refs
+            or any(not isinstance(item, str) or not item.strip() for item in sensor_refs)
+            or len(set(sensor_refs)) != len(sensor_refs)
+        ):
+            return self._error("invalid_sensor_ref", "sensor_refs must contain distinct non-empty strings")
+        ordered_sensor_refs = [sensor_ref] if sensor_ref is not None else list(sensor_refs)
         if isinstance(max_age_ms, bool) or not isinstance(max_age_ms, int) or max_age_ms < 1:
             return self._error("invalid_max_age", "max_age_ms must be a positive integer")
+        if (
+            isinstance(max_capture_skew_ms, bool)
+            or not isinstance(max_capture_skew_ms, int)
+            or max_capture_skew_ms < 0
+        ):
+            return self._error("invalid_capture_skew", "max_capture_skew_ms must be a non-negative integer")
         if requested_frame is not None and (not isinstance(requested_frame, str) or not requested_frame.strip()):
             return self._error("invalid_frame", "requested_frame must be a non-empty string")
+        if requested_frame is not None and len(ordered_sensor_refs) != 1:
+            return self._error("invalid_frame", "requested_frame is only valid for a single sensor_ref")
         try:
             raw = self.source.capture(dict(arguments))
         except Exception:
@@ -146,7 +222,7 @@ class ObservationEndpoint:
         if raw is None:
             return self._error("sensor_unavailable", "requested sensor is unavailable")
         try:
-            result = self._normalize(raw)
+            result = self._normalize(raw, ordered_sensor_refs)
         except ObservationContractError as exc:
             return self._error(str(exc), "observation failed contract validation")
         if requested_frame is not None and requested_frame != result["frame"]["frame_id"]:
@@ -155,23 +231,60 @@ class ObservationEndpoint:
                 "requested_frame must match the concrete Runtime frame_id returned "
                 "for sensor_ref; omit it for the initial observation",
             )
-        captured_at = datetime.fromisoformat(result["captured_at"].replace("Z", "+00:00"))
         now = self._now()
         if not isinstance(now, datetime) or now.tzinfo is None:
             raise ObservationContractError("observation clock must be timezone-aware")
-        age_ms = max(0, int((now - captured_at).total_seconds() * 1000))
-        result["freshness_ms"] = age_ms
-        result["status"] = "stale" if age_ms > max_age_ms else "available"
+        for view in result["views"]:
+            view_time = datetime.fromisoformat(view["captured_at"].replace("Z", "+00:00"))
+            view["freshness_ms"] = max(0, int((now - view_time).total_seconds() * 1000))
+        result["freshness_ms"] = max(view["freshness_ms"] for view in result["views"])
+        if result["capture_skew_ms"] > max_capture_skew_ms:
+            return self._error("capture_skew_exceeded", "observation set exceeds max_capture_skew_ms")
+        result["status"] = "stale" if result["freshness_ms"] > max_age_ms else "available"
         if result["status"] == "stale":
             result["error"] = {"code": "stale_observation", "message": "observation exceeds max_age_ms"}
         return result
 
     @staticmethod
-    def _normalize(raw: Mapping[str, Any]) -> dict[str, Any]:
+    def _normalize(raw: Mapping[str, Any], sensor_refs: list[str]) -> dict[str, Any]:
         if not isinstance(raw, Mapping):
             raise ObservationContractError("invalid_observation")
         if raw.get("sensor_available", True) is not True:
             raise ObservationContractError("sensor_unavailable")
+        raw_views = raw.get("views")
+        if raw_views is None:
+            raw_views = [{**dict(raw), "sensor_ref": sensor_refs[0]}]
+        if not isinstance(raw_views, (list, tuple)) or len(raw_views) != len(sensor_refs):
+            raise ObservationContractError("invalid_views")
+        views = [ObservationEndpoint._normalize_view(item, expected) for item, expected in zip(raw_views, sensor_refs, strict=True)]
+        scene_revisions = {item["scene_revision"] for item in views}
+        if len(scene_revisions) != 1:
+            raise ObservationContractError("mixed_scene_revision")
+        timestamps = [datetime.fromisoformat(item["captured_at"].replace("Z", "+00:00")) for item in views]
+        capture_skew_ms = int((max(timestamps) - min(timestamps)).total_seconds() * 1000)
+        primary = views[0]
+        artifacts = [artifact for view in views for artifact in view["artifacts"]]
+        if len({item["ref"] for item in artifacts}) != len(artifacts):
+            raise ObservationContractError("invalid_artifact")
+        return {
+            "status": "available",
+            "observation_ref": primary["observation_ref"],
+            "captured_at": min(timestamps).astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "scene_revision": primary["scene_revision"],
+            "frame": primary["frame"],
+            "calibration_ref": primary["calibration_ref"],
+            "freshness_ms": 0,
+            "artifacts": artifacts,
+            "views": [{key: value for key, value in view.items() if key != "scene_revision"} for view in views],
+            "capture_skew_ms": capture_skew_ms,
+        }
+
+    @staticmethod
+    def _normalize_view(raw: Mapping[str, Any], sensor_ref: str) -> dict[str, Any]:
+        if not isinstance(raw, Mapping) or raw.get("sensor_available", True) is not True:
+            raise ObservationContractError("sensor_unavailable")
+        if raw.get("sensor_ref", sensor_ref) != sensor_ref:
+            raise ObservationContractError("invalid_sensor_ref")
         captured_at = raw.get("captured_at")
         if isinstance(captured_at, str):
             try:
@@ -212,7 +325,7 @@ class ObservationEndpoint:
         if observation_ref != f"observation://{scene_revision}/{frame_id}":
             raise ObservationContractError("invalid_observation_binding")
         return {
-            "status": "available",
+            "sensor_ref": sensor_ref,
             "observation_ref": observation_ref,
             "captured_at": captured_at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
             "scene_revision": scene_revision,
@@ -235,6 +348,8 @@ class ObservationEndpoint:
             "calibration_ref": None,
             "freshness_ms": 0,
             "artifacts": [],
+            "views": [],
+            "capture_skew_ms": 0,
             "error": {"code": code, "message": message},
         }
 

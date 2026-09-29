@@ -120,8 +120,12 @@ class PersistentPreparationProvider:
         current = self.client.query(
             "snapshot", {}, timeout_s=deadline.remaining("initial_snapshot")
         )
-        if current["scene_revision"] != intent.scene_revision or current["holding_state"] != "empty":
-            raise ValueError("preparation requires the current empty world")
+        if (
+            current["scene_revision"] != intent.scene_revision
+            or current["holding_state"] not in {"empty", "holding"}
+        ):
+            raise ValueError("preparation requires the current stable world")
+        initial_holding_state = current["holding_state"]
         capability = CapabilitySnapshot.model_validate(json.loads(_artifact_path(
             self.prepared_routes.artifact_root, request["capability_snapshot_ref"]
         ).read_text(encoding="utf-8")))
@@ -182,7 +186,10 @@ class PersistentPreparationProvider:
             "snapshot", {}, timeout_s=deadline.remaining("final_snapshot")
         )
         deadline.remaining("result_publication")
-        if current["scene_revision"] != intent.scene_revision or current["holding_state"] != "empty":
+        if (
+            current["scene_revision"] != intent.scene_revision
+            or current["holding_state"] != initial_holding_state
+        ):
             raise ValueError("world changed during preparation")
         value = assignment.model_dump(mode="json")
         parts = assignment.assignment_ref.removeprefix("artifact://").split("/")

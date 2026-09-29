@@ -448,7 +448,14 @@ class FilesystemPerceptionArtifactStore:
 
 
 class SingleViewPerceptionInference:
-    """Compose semantic claims with replaceable single-view geometry providers."""
+    """Compose multi-view semantics with primary-view metric geometry providers.
+
+    Semantic inference receives the complete synchronized observation set.  The
+    existing proposal/segmentation/localization workers remain explicitly
+    single-view and operate only on the primary view whose identity is mirrored
+    by the top-level observation fields.  Entities supported only by another
+    view retain semantic evidence but do not receive fabricated metric geometry.
+    """
 
     def __init__(
         self,
@@ -515,9 +522,8 @@ class SingleViewPerceptionInference:
                 "provider_available": base.get("provider_available", True),
             }
         self._stage = "source_artifacts"
-        artifacts = request.get("artifacts")
-        if not isinstance(artifacts, list):
-            raise SingleViewPerceptionError("scene understanding artifacts must be an array")
+        metric_request = _primary_metric_request(request)
+        artifacts = metric_request["artifacts"]
         rgb_ref = _unique_artifact(artifacts, "rgb")
         depth_ref = _unique_artifact(artifacts, "depth")
         rgb_path = self.artifact_store.resolve_source(rgb_ref, "rgb")
@@ -532,14 +538,27 @@ class SingleViewPerceptionInference:
                 query = entity.get("category")
                 if not isinstance(entity_ref, str) or not isinstance(query, str) or not query.strip():
                     raise SingleViewPerceptionError("semantic entity cannot bind a proposal query")
+                provenance = entity.get("provenance")
+                if isinstance(provenance, (list, tuple)) and rgb_ref not in provenance:
+                    ambiguities.append(
+                        {
+                            "code": "primary_view_metric_evidence_unavailable",
+                            "message": (
+                                "entity is supported only by a non-primary synchronized view; "
+                                "single-view metric localization was not fabricated"
+                            ),
+                            "entity_refs": [entity_ref],
+                        }
+                    )
+                    continue
                 proposals = tuple(
                     self.proposal_provider.propose(
                         ProposalRequest(
-                            observation_ref=str(request["observation_ref"]),
-                            scene_revision=str(request["scene_revision"]),
+                            observation_ref=str(metric_request["observation_ref"]),
+                            scene_revision=str(metric_request["scene_revision"]),
                             entity_ref=entity_ref,
                             query=query,
-                            frame_id=str(request["frame_id"]),
+                            frame_id=str(metric_request["frame_id"]),
                             rgb_artifact_ref=rgb_ref,
                             rgb_path=rgb_path,
                             width_px=width,
@@ -582,17 +601,17 @@ class SingleViewPerceptionInference:
         try:
             try:
                 depth = self.artifact_store.load_depth(depth_ref)
-                calibration_ref = str(request["calibration_ref"])
+                calibration_ref = str(metric_request["calibration_ref"])
                 calibration = self.artifact_store.load_calibration(calibration_ref)
                 for entity, proposal in pending:
                     entity_ref = str(entity["entity_ref"])
                     self._stage = "segmentation"
                     segmentation = self.segmentation_provider.segment(
                         SegmentationRequest(
-                            observation_ref=str(request["observation_ref"]),
-                            scene_revision=str(request["scene_revision"]),
+                            observation_ref=str(metric_request["observation_ref"]),
+                            scene_revision=str(metric_request["scene_revision"]),
                             entity_ref=entity_ref,
-                            frame_id=str(request["frame_id"]),
+                            frame_id=str(metric_request["frame_id"]),
                             rgb_artifact_ref=rgb_ref,
                             rgb_path=rgb_path,
                             width_px=width,
@@ -616,7 +635,7 @@ class SingleViewPerceptionInference:
                             mask=mask,
                             depth=depth,
                             calibration=calibration,
-                            frame_id=str(request["frame_id"]),
+                            frame_id=str(metric_request["frame_id"]),
                         )
                     )
                     self._stage = "derived_artifacts"
@@ -651,7 +670,7 @@ class SingleViewPerceptionInference:
                     materialized.append((geometry_ref, ".json"))
                     derived.extend(
                         _derived_records(
-                            request=request,
+                            request=metric_request,
                             entity_ref=entity_ref,
                             rgb_ref=rgb_ref,
                             depth_ref=depth_ref,
@@ -761,6 +780,35 @@ class SingleViewPerceptionInference:
         if len(refs) != len(raw["entities"]) or len(refs) != len(set(refs)):
             raise SingleViewPerceptionError("semantic inference entity identities are invalid")
         return raw
+
+
+def _primary_metric_request(request: Mapping[str, Any]) -> dict[str, Any]:
+    artifacts = request.get("artifacts")
+    if not isinstance(artifacts, list):
+        raise SingleViewPerceptionError("scene understanding artifacts must be an array")
+    views = request.get("views")
+    if views is None:
+        return dict(request)
+    if not isinstance(views, list) or not views or not isinstance(views[0], Mapping):
+        raise SingleViewPerceptionError("scene understanding views must be a non-empty array")
+    primary = views[0]
+    frame = primary.get("frame")
+    primary_artifacts = primary.get("artifacts")
+    if (
+        primary.get("observation_ref") != request.get("observation_ref")
+        or not isinstance(frame, Mapping)
+        or frame.get("frame_id") != request.get("frame_id")
+        or primary.get("calibration_ref") != request.get("calibration_ref")
+        or not isinstance(primary_artifacts, list)
+        or not primary_artifacts
+    ):
+        raise SingleViewPerceptionError("primary view identity differs from the top-level observation")
+    refs = []
+    for item in primary_artifacts:
+        if not isinstance(item, Mapping) or not isinstance(item.get("ref"), str):
+            raise SingleViewPerceptionError("primary view artifacts are invalid")
+        refs.append(item["ref"])
+    return {**dict(request), "artifacts": refs}
 
 
 def _derived_records(

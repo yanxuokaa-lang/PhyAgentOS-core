@@ -1,6 +1,35 @@
 # Changelog
 ## Archive
 - [2026-09 part20](changelog/2026-09_part20.md)
+## v12.3.0 (2026-09-29 01:39) - codex
+
+### 变更状态 / Change Status
+- [完成] PAOS 通用场景状态链路已支持同步多视角语义、持物状态只读绑定和 Runtime 证明的实体级 carry-forward；无 RGB 排列专用规则。
+- [Completed] The general PAOS scene-state path now supports synchronized multi-view semantics, read-only binding while holding, and Runtime-proven entity-scoped carry-forward, with no RGB-sorting-specific rule.
+
+### 关键修改 / Key Changes
+- `scene.observe`：兼容单 `sensor_ref`，新增同步 `sensor_refs`、逐视角 provenance 和 capture-skew 校验。
+- `scene.understand`：Qwen/OpenAI 语义 provider 一次消费全部 RGB；primary view 保留现有 metric RGB-D 边界，secondary-only 实体不伪造几何。
+- Action/Coordinator：Runtime terminal `scene_effects` 证明 changed/unaffected entities；Agent 不能注入 carry-forward。
+- Grounding/preparation/route：稳定 `holding` 可执行只读计算，旧实体继承必须通过 execution identity、effect evidence 和当前 pose 复核。
+- Tool YAML、Core、Adapter、Skill 和 AgentLoop 回归同步更新。
+
+### 七维 Review / Seven-Dimension Review
+- `docs/forge/IMPLEMENTATION_REVIEW_V12_3_0.md:L1-L136` 覆盖架构集成、恢复/幂等、机器人安全、配置/可复现性、可维护性、可观测性和 AgentLoop 自主性。
+- 已修复 1 个 Blocker 和 4 个 Major；未解决 Blocker/Major 为 0。
+- 诊断基线：`docs/forge/MULTIVIEW_POSSESSION_SCENE_STATE_DIAGNOSIS_20260929.md:L1-L124`。
+
+### 验证 / Validation
+- 聚焦套件：`53 + 54 + 117 + 59 + 304` passed。
+- 合并修改树：`1745 passed, 1 skipped, 25 failed`；干净 `HEAD`：`1695 passed, 1 skipped, 26 failed`。
+- 修改树新增 50 个通过用例并减少 1 个基线失败；剩余 25 项均可在干净 `HEAD` 复现。
+- No-motion only：未启动 Qwen、RobotWin simulator、Runtime 或物理 Action；未放宽任何运动门禁。
+
+### 影响文件 / Affected Files
+- Core：`PhyAgentOS/forge/capability_runtime/observation.py:L41-L354`、`understanding.py:L141-L938`、`PhyAgentOS/agent/tools/forge_tool_api.py:L259-L869`。
+- Adapter/Runtime：`robotwin_backend.py:L195-L493`、`robotwin_persistent_engine.py:L400-L728`、`grounding.py:L73-L397`、各语义 provider 与 primary-view perception seam。
+- Contracts/tests/docs：scene Tool YAML、Core/Adapter/Skill tests、诊断与七维 Review。
+
 ## v12.2.9 (2026-09-30 01:11) - codex
 
 ### 变更状态

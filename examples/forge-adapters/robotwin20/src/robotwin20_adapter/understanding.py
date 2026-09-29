@@ -40,6 +40,8 @@ class RoboTwinSceneUnderstandingProvider:
             "freshness_ms",
             "max_age_ms",
             "artifacts",
+            "views",
+            "capture_skew_ms",
         }
     )
     _RESULT_KEYS = frozenset(

@@ -1,5 +1,7 @@
 from threading import Event, get_ident
+from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
 from robotwin20_adapter.persistent_manipulation import (
@@ -84,3 +86,78 @@ def test_cancelled_motion_retains_uncertain_possession_without_release():
             provider.start("acquire", "b", "owner", {"entity_ref": "entity://two"})
     finally:
         provider.close()
+
+
+class _Actor:
+    def __init__(self, name, x=0.0):
+        self.name = name
+        self.matrix = np.eye(4)
+        self.matrix[0, 3] = x
+
+    def get_name(self):
+        return self.name
+
+    def get_pose(self):
+        return SimpleNamespace(to_transformation_matrix=lambda: self.matrix)
+
+
+def _effect_engine(actors, trace=()):
+    from robotwin_persistent_engine import RoboTwinPersistentEngine
+
+    engine = object.__new__(RoboTwinPersistentEngine)
+    engine.backend = SimpleNamespace(_task=SimpleNamespace(_paos_observed_entities=actors))
+    engine._state = {"contact_trace": list(trace)}
+    return engine
+
+
+def _success_result():
+    return {
+        "status": "succeeded",
+        "outcome_known": True,
+        "world_change_started": True,
+        "source_scene_revision": "scene-1",
+        "new_scene_revision": "scene-2",
+    }
+
+
+def test_scene_effects_authorize_only_pose_stable_uncontacted_entities():
+    actors = {"entity://target": _Actor("target"), "entity://other": _Actor("other", 0.2)}
+    engine = _effect_engine(actors)
+    before = engine._bound_entity_poses()
+
+    effects = engine._scene_effects(
+        {"entity_ref": "entity://target"}, before, _success_result(),
+        evidence_ref="artifact://persistent/action-1",
+    )
+
+    assert effects["changed_entity_refs"] == ["entity://target"]
+    assert effects["unaffected_entity_refs"] == ["entity://other"]
+    assert effects["effect_scope_complete"] is True
+    assert effects["carry_forward_authorized"] is True
+
+
+@pytest.mark.parametrize("change", ["contact", "move", "missing", "unknown"])
+def test_scene_effects_fail_closed_when_entity_impact_is_not_proven(change):
+    actors = {"entity://target": _Actor("target"), "entity://other": _Actor("other", 0.2)}
+    trace = [{"pair": ["gripper", "other"], "active_contact": True}] if change == "contact" else []
+    engine = _effect_engine(actors, trace)
+    before = engine._bound_entity_poses()
+    result = _success_result()
+    if change == "move":
+        actors["entity://other"].matrix[0, 3] += 0.01
+    elif change == "missing":
+        del actors["entity://other"]
+    elif change == "unknown":
+        result.update(status="cancelled", outcome_known=False, new_scene_revision=None)
+
+    effects = engine._scene_effects(
+        {"entity_ref": "entity://target"}, before, result,
+        evidence_ref="artifact://persistent/action-1",
+    )
+
+    assert "entity://other" not in effects["unaffected_entity_refs"]
+    if change in {"contact", "move"}:
+        assert "entity://other" in effects["changed_entity_refs"]
+    else:
+        assert effects["effect_scope_complete"] is False
+        assert effects["carry_forward_authorized"] is False

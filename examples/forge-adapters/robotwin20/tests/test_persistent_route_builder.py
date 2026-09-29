@@ -149,7 +149,7 @@ def test_scene_changed_during_build_never_imports_artifacts(tmp_path, monkeypatc
         builder.client.snapshot["scene_revision"] = "changed"
 
     monkeypatch.setattr(subprocess, "run", run)
-    with pytest.raises(ValueError, match="current empty scene"):
+    with pytest.raises(ValueError, match="current stable scene"):
         builder.build(request)
     assert not (tmp_path / "shared").exists()
 

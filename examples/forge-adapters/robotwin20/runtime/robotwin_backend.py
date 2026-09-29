@@ -192,6 +192,35 @@ class RoboTwinObservationProvider:
             ),
         )
 
+    def observe_many(self, sensor_refs: list[str]) -> tuple[RoboTwinObservationSnapshot, ...]:
+        capture_sensor_set = getattr(self.backend, "capture_sensor_set", None)
+        if not callable(capture_sensor_set):
+            raise RoboTwinRuntimeError(
+                "observation provider backend must expose capture_sensor_set for synchronized capture"
+            )
+        captures = capture_sensor_set(sensor_refs)
+        if not isinstance(captures, (list, tuple)) or len(captures) != len(sensor_refs):
+            raise RoboTwinRuntimeError("RoboTwin backend returned an invalid sensor set")
+        snapshots = []
+        for capture in captures:
+            if not isinstance(capture, SensorCapture):
+                raise RoboTwinRuntimeError("RoboTwin backend returned an invalid sensor capture")
+            snapshots.append(
+                RoboTwinObservationSnapshot(
+                    captured_at=capture.captured_at,
+                    scene_revision=capture.scene_revision,
+                    frame_id=capture.frame_id,
+                    calibration_ref=capture.calibration_ref,
+                    artifacts=tuple(
+                        {"ref": item.ref, "kind": item.kind, "media_type": item.media_type}
+                        for item in capture.artifacts
+                    ),
+                    sensor_available=capture.sensor_available,
+                    observation_ref=f"observation://{capture.scene_revision}/{capture.frame_id}",
+                )
+            )
+        return tuple(snapshots)
+
 
 @dataclass(frozen=True)
 class RoboTwinRuntimeProfile:
@@ -400,16 +429,40 @@ class RoboTwinSensorBackend:
         return {"scene_revision": self._scene_revision}
 
     def capture_sensors(self, sensor_ref: str) -> SensorCapture:
+        return self.capture_sensor_set([sensor_ref])[0]
+
+    def capture_sensor_set(self, sensor_refs: list[str]) -> tuple[SensorCapture, ...]:
         if self._task is None or self._scene_revision is None:
             raise RoboTwinRuntimeError("RoboTwin runtime has not been reset")
-        camera_name = _CAMERA_REFS.get(sensor_ref)
-        if camera_name is None:
-            raise RoboTwinRuntimeError(f"unsupported sensor_ref: {sensor_ref}")
+        if (
+            not isinstance(sensor_refs, list) or not sensor_refs
+            or any(ref not in _CAMERA_REFS for ref in sensor_refs)
+            or len(set(sensor_refs)) != len(sensor_refs)
+        ):
+            raise RoboTwinRuntimeError("sensor_refs must name distinct supported cameras")
         try:
             with self._runtime_cwd():
                 observation = self._task.get_obs()
         except Exception as exc:
             raise RoboTwinRuntimeError("RoboTwin sensor capture failed") from exc
+        captured_at = datetime.now(timezone.utc)
+        capture_id = f"{self._scene_revision}-{self._capture_index:06d}"
+        self._capture_index += 1
+        return tuple(
+            self._persist_camera_capture(
+                observation, sensor_ref, _CAMERA_REFS[sensor_ref], capture_id, captured_at
+            )
+            for sensor_ref in sensor_refs
+        )
+
+    def _persist_camera_capture(
+        self,
+        observation: Mapping[str, Any],
+        sensor_ref: str,
+        camera_name: str,
+        capture_id: str,
+        captured_at: datetime,
+    ) -> SensorCapture:
         camera = observation.get("observation", {}).get(camera_name)
         if not isinstance(camera, Mapping):
             raise RoboTwinRuntimeError(f"RoboTwin observation lacks {camera_name}")
@@ -419,9 +472,7 @@ class RoboTwinSensorBackend:
             raise RoboTwinRuntimeError("RoboTwin RGB/depth capture has invalid arrays")
         state = self._state_artifact(observation)
         calibration = self._calibration_artifact(camera, camera_name)
-        capture_id = f"{self._scene_revision}-{self._capture_index:06d}"
-        self._capture_index += 1
-        capture_dir = self.profile.artifact_root / self._scene_revision / capture_id
+        capture_dir = self.profile.artifact_root / self._scene_revision / capture_id / camera_name
         capture_dir.mkdir(parents=True, exist_ok=True)
         rgb_path = capture_dir / "rgb.png"
         depth_path = capture_dir / "depth.npy"
@@ -433,14 +484,14 @@ class RoboTwinSensorBackend:
         state_path.write_text(json.dumps(state, sort_keys=True), encoding="utf-8")
         calibration_path.write_text(json.dumps(calibration, sort_keys=True), encoding="utf-8")
         return SensorCapture(
-            captured_at=datetime.now(timezone.utc),
+            captured_at=captured_at,
             scene_revision=self._scene_revision,
             frame_id=camera_name,
-            calibration_ref=f"artifact://{self._scene_revision}/{capture_id}/calibration",
+            calibration_ref=f"artifact://{self._scene_revision}/{capture_id}/{camera_name}/calibration",
             artifacts=(
-                SensorArtifact(f"artifact://{self._scene_revision}/{capture_id}/rgb", "rgb", "image/png"),
-                SensorArtifact(f"artifact://{self._scene_revision}/{capture_id}/depth", "depth", "application/numpy"),
-                SensorArtifact(f"artifact://{self._scene_revision}/{capture_id}/state", "state", "application/json"),
+                SensorArtifact(f"artifact://{self._scene_revision}/{capture_id}/{camera_name}/rgb", "rgb", "image/png"),
+                SensorArtifact(f"artifact://{self._scene_revision}/{capture_id}/{camera_name}/depth", "depth", "application/numpy"),
+                SensorArtifact(f"artifact://{self._scene_revision}/{capture_id}/{camera_name}/state", "state", "application/json"),
             ),
         )
 

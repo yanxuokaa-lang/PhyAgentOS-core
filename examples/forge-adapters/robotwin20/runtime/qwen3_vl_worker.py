@@ -58,52 +58,64 @@ class Qwen3VLWorker:
         request_id = request["request_id"]
         expected = {
             "request_id", "operation", "observation_ref", "scene_revision", "frame_id",
-            "rgb_artifact_ref", "rgb_path", "max_output_tokens",
+            "rgb_artifact_refs", "rgb_paths", "max_output_tokens",
         }
         if set(request) != expected or request.get("operation") != "understand_scene":
             return {"request_id": request_id, "status": "unavailable"}
-        path = Path(request["rgb_path"])
-        if not path.is_absolute() or not path.is_file():
-            raise ValueError("rgb_path must be an existing absolute file")
+        refs = request["rgb_artifact_refs"]
+        raw_paths = request["rgb_paths"]
+        if (
+            not isinstance(refs, list)
+            or not refs
+            or not isinstance(raw_paths, list)
+            or len(raw_paths) != len(refs)
+        ):
+            raise ValueError("rgb_artifact_refs and rgb_paths must be aligned non-empty arrays")
+        paths = [Path(item) for item in raw_paths]
+        if any(not path.is_absolute() or not path.is_file() for path in paths):
+            raise ValueError("rgb_paths must contain existing absolute files")
         from PIL import Image
 
-        with Image.open(path) as source:
-            image = source.convert("RGB")
-        messages = [{"role": "user", "content": [
-            {"type": "image", "image": image},
-            {"type": "text", "text": _prompt()},
-        ]}]
-        with contextlib.redirect_stdout(sys.stderr):
-            import torch
+        with contextlib.ExitStack() as stack:
+            images = [stack.enter_context(Image.open(path)).convert("RGB") for path in paths]
+            content = [
+                {"type": "image", "image": image}
+                for image in images
+            ]
+            content.append({"type": "text", "text": _prompt()})
+            messages = [{"role": "user", "content": content}]
+            with contextlib.redirect_stdout(sys.stderr):
+                import torch
 
-            inputs = self.processor.apply_chat_template(
-                messages, tokenize=True, add_generation_prompt=True,
-                return_dict=True, return_tensors="pt",
-            )
-            model_device = next(self.model.parameters()).device
-            inputs = {
-                key: value.to(model_device) if hasattr(value, "to") else value
-                for key, value in inputs.items()
-            }
-            with torch.inference_mode():
-                generated = self.model.generate(
-                    **inputs, max_new_tokens=int(request["max_output_tokens"]), do_sample=False
+                inputs = self.processor.apply_chat_template(
+                    messages, tokenize=True, add_generation_prompt=True,
+                    return_dict=True, return_tensors="pt",
                 )
-            prompt_length = inputs["input_ids"].shape[1]
-            output = self.processor.batch_decode(
-                generated[:, prompt_length:], skip_special_tokens=True,
-                clean_up_tokenization_spaces=False,
-            )[0]
+                model_device = next(self.model.parameters()).device
+                inputs = {
+                    key: value.to(model_device) if hasattr(value, "to") else value
+                    for key, value in inputs.items()
+                }
+                with torch.inference_mode():
+                    generated = self.model.generate(
+                        **inputs, max_new_tokens=int(request["max_output_tokens"]), do_sample=False
+                    )
+                prompt_length = inputs["input_ids"].shape[1]
+                output = self.processor.batch_decode(
+                    generated[:, prompt_length:], skip_special_tokens=True,
+                    clean_up_tokenization_spaces=False,
+                )[0]
         result = _parse_json(output)
         return {"request_id": request_id, "status": "available", "result": result}
 
 
 def _prompt() -> str:
     return (
-        "Inspect this single RGB observation for a robot scene. Return one JSON object only, with exactly these keys: "
+        "Inspect all ordered RGB views jointly for one robot scene. Return one JSON object only, with exactly these keys: "
         "entities, relations, spatial_envelopes, ambiguities. Entities must be objects with entity_ref "
-        "(entity://name), category, confidence. Relations must be objects with relation_ref, subject_ref, "
-        "predicate, object_ref, confidence. spatial_envelopes must be an empty array because metric geometry "
+        "(entity://name), category, confidence, source_view_indexes. Relations must be objects with relation_ref, subject_ref, "
+        "predicate, object_ref, confidence, source_view_indexes. source_view_indexes must list the zero-based "
+        "ordered views that visibly support each claim. spatial_envelopes must be an empty array because metric geometry "
         "comes from RGB-D perception. Every one of entities, relations, spatial_envelopes, and ambiguities "
         "must be an array (use [] when empty). Ambiguities items must contain code, message, entity_refs. "
         "Inspect the complete image including corners and small or low-contrast objects; do not "
@@ -112,7 +124,7 @@ def _prompt() -> str:
         "clearly visible objects; never invent simulator IDs, poses, dimensions, collision geometry, IK, "
         "motion authorization, or task success. Use this task-neutral JSON shape exactly: "
         '{"entities":[{"entity_ref":"entity://object-1","category":"visible category",'
-        '"confidence":0.9}],"relations":[],"spatial_envelopes":[],"ambiguities":[]}'
+        '"confidence":0.9,"source_view_indexes":[0]}],"relations":[],"spatial_envelopes":[],"ambiguities":[]}'
     )
 
 

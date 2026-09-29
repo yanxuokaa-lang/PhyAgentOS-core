@@ -12,6 +12,7 @@ from PhyAgentOS.agent.tools.forge_tool_api import (
     ForgeToolQueryTool,
     ForgeToolStartActionTool,
     _call,
+    _coordinator_carried_entities,
     _effective_query_timeout_ms,
     _task_query_source_records,
 )
@@ -459,3 +460,130 @@ def test_query_sources_require_a_task_owner():
 
     assert result["ok"] is False
     assert result["error"]["message"] == "argument_sources require task_id"
+
+
+def _execution_record(record_id, tool_id, semantics, revision_id, response, *, arguments=None):
+    return SimpleNamespace(
+        record_id=record_id,
+        tool_id=tool_id,
+        semantics=semantics,
+        status="succeeded",
+        revision_id=revision_id,
+        arguments=arguments or {},
+        response=response,
+    )
+
+
+def _carry_task(*, effect_overrides=None, include_effect=True):
+    old_claim = {
+        "entity_ref": "entity://unchanged",
+        "category": "blue block",
+        "confidence": 0.9,
+        "provenance": ["artifact://scene-1/front/rgb"],
+    }
+    effect = {
+        "schema_version": "paos-scene-effects/v1",
+        "source_scene_revision": "scene-1",
+        "new_scene_revision": "scene-2",
+        "changed_entity_refs": ["entity://held"],
+        "unaffected_entity_refs": ["entity://unchanged"],
+        "changed_resources": ["possession_state"],
+        "effect_evidence_refs": ["artifact://persistent/action-1"],
+        "effect_scope_complete": True,
+        "carry_forward_authorized": True,
+    }
+    effect.update(effect_overrides or {})
+    action_result = {"status": "succeeded"}
+    if include_effect:
+        action_result["scene_effects"] = effect
+    observation = {
+        "status": "available",
+        "observation_ref": "observation://scene-2/front",
+        "scene_revision": "scene-2",
+        "frame": {"frame_id": "front", "unit": "m"},
+        "calibration_ref": "artifact://scene-2/front/calibration",
+        "freshness_ms": 1,
+        "artifacts": [{
+            "ref": "artifact://scene-2/front/rgb", "kind": "rgb", "media_type": "image/png",
+        }],
+    }
+    return SimpleNamespace(
+        active_revision_id="revision-current",
+        execution_records=[
+            _execution_record(
+                "understand-old", "scene.understand", "query", "revision-old",
+                {"data": {"scene_revision": "scene-1", "entities": [old_claim]}},
+            ),
+            _execution_record(
+                "bind-old", "scene.bind", "query", "revision-old",
+                {"data": {
+                    "scene_revision": "scene-1",
+                    "binding_ref": "artifact://entity-bindings/source",
+                    "entities": [{
+                        "entity_ref": "entity://unchanged",
+                        "execution_entity_ref": "entity://runtime-unchanged",
+                    }],
+                }},
+            ),
+            _execution_record(
+                "action-1", "object.acquire", "action", "revision-old",
+                {"data": {"result": action_result}},
+            ),
+            _execution_record(
+                "observe-new", "scene.observe", "query", "revision-current",
+                {"data": observation}, arguments={"sensor_ref": "camera/front", "max_age_ms": 1000},
+            ),
+        ],
+    )
+
+
+def test_scene_understand_rejects_agent_supplied_carried_entities():
+    class Coordinator:
+        def get_task(self, _task_id):
+            raise AssertionError("Coordinator must not inspect an Agent-injected carry-forward")
+
+    result = json.loads(asyncio.run(ForgeToolQueryTool(object(), Coordinator()).execute(
+        task_id="task-1",
+        tool_id="scene.understand",
+        arguments={"carried_entities": []},
+    )))
+
+    assert result["ok"] is False
+    assert result["error"]["type"] == "agent_arguments"
+    assert "Coordinator-owned" in result["error"]["message"]
+
+
+def test_scene_understand_injects_only_coordinator_authorized_carry_forward():
+    task = _carry_task()
+
+    class Coordinator:
+        def get_task(self, task_id):
+            assert task_id == "task-1"
+            return task
+
+        async def invoke_query(self, task_id, tool_id, arguments, **kwargs):
+            assert (task_id, tool_id) == ("task-1", "scene.understand")
+            return {"ok": True, "arguments": arguments}
+
+    result = json.loads(asyncio.run(ForgeToolQueryTool(object(), Coordinator()).execute(
+        task_id="task-1", tool_id="scene.understand", arguments={},
+    )))
+
+    carried = result["arguments"]["carried_entities"]
+    assert len(carried) == 1
+    assert carried[0]["entity"]["entity_ref"] == "entity://unchanged"
+    assert carried[0]["execution_entity_ref"] == "entity://runtime-unchanged"
+    assert carried[0]["effect_evidence_refs"] == ["artifact://persistent/action-1"]
+
+
+@pytest.mark.parametrize(
+    "task",
+    [
+        _carry_task(include_effect=False),
+        _carry_task(effect_overrides={"effect_scope_complete": False}),
+        _carry_task(effect_overrides={"carry_forward_authorized": False}),
+        _carry_task(effect_overrides={"unaffected_entity_refs": []}),
+    ],
+)
+def test_coordinator_does_not_carry_entities_without_complete_runtime_evidence(task):
+    assert _coordinator_carried_entities(task, "scene-2") == []

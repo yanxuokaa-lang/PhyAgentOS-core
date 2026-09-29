@@ -49,6 +49,8 @@ _OBSERVATION_BOUND_QUERY_ARGUMENTS: dict[str, dict[str, dict[str, Any]]] = {
             "path": ["response", "data", "artifacts"],
             "map_field": "ref",
         },
+        "views": {"path": ["response", "data", "views"]},
+        "capture_skew_ms": {"path": ["response", "data", "capture_skew_ms"]},
     },
     "scene.bind": {
         "observation_ref": {"path": ["response", "data", "observation_ref"]},
@@ -228,7 +230,7 @@ class ForgeToolQueryTool(Tool):
             "entry names record_id, an explicit path such as ['response','scene_revision'], "
             "and optional target_path. For scene.understand, copy observation_ref, "
             "scene_revision, frame.frame_id to frame_id, calibration_ref, freshness_ms, "
-            "the observation request's max_age_ms, and artifacts from the same "
+            "the observation request's max_age_ms, artifacts, views, and capture skew from the same "
             "scene.observe record; set artifact source map_field to 'ref' to pass the "
             "required string references. For "
             "scene.bind, provide only the selected `entity_refs`; PAOS copies the "
@@ -254,6 +256,14 @@ class ForgeToolQueryTool(Tool):
         use_selected_arguments: bool = False,
         argument_sources: dict[str, Any] | None = None,
     ) -> str:
+        if tool_id == "scene.understand" and "carried_entities" in arguments:
+            return _json({
+                "ok": False,
+                "error": {
+                    "type": "agent_arguments",
+                    "message": "carried_entities is Coordinator-owned and cannot be supplied by the Agent",
+                },
+            })
         if argument_sources and not task_id:
             return _json({
                 "ok": False,
@@ -329,6 +339,14 @@ class ForgeToolQueryTool(Tool):
                     resolved_arguments = self.coordinator.selected_execution_arguments(
                         task_id, tool_id, "query", {}, resolved_binding
                     )
+                if tool_id == "scene.understand":
+                    resolved_arguments.pop("carried_entities", None)
+                    carried = _coordinator_carried_entities(
+                        task,
+                        resolved_arguments.get("scene_revision"),
+                    )
+                    if carried:
+                        resolved_arguments["carried_entities"] = carried
                 return await self.coordinator.invoke_query(
                     task_id, tool_id,
                     resolved_arguments,
@@ -751,11 +769,102 @@ def _resolve_observation_bound_query_arguments(
         )
 
     literals = {key: value for key, value in arguments.items() if key not in bindings}
+    observation_facts = response_facts(observation_record.response)
+    optional_observation_fields = {"views", "capture_skew_ms"}
     selectors = {
         name: {"record_id": observation_record.record_id, **selector}
         for name, selector in bindings.items()
+        if name not in optional_observation_fields or name in observation_facts
     }
     return resolve_argument_sources(sources, literals, selectors)
+
+
+def _coordinator_carried_entities(task: Any, scene_revision: Any) -> list[dict[str, Any]]:
+    """Project Runtime-proven unchanged entities into one fresh understanding Query.
+
+    The Agent cannot supply or edit this field.  The projection joins one terminal
+    Action effect summary to prior Coordinator-persisted understanding and binding
+    records. Unknown or incomplete effects produce no carry-forward.
+    """
+
+    if not isinstance(scene_revision, str) or not scene_revision:
+        return []
+    effect = None
+    for record in reversed(task.execution_records):
+        if record.semantics != "action" or record.status != "succeeded":
+            continue
+        facts = response_facts(record.response)
+        candidate = facts.get("scene_effects")
+        if (
+            isinstance(candidate, dict)
+            and candidate.get("schema_version") == "paos-scene-effects/v1"
+            and candidate.get("new_scene_revision") == scene_revision
+            and candidate.get("effect_scope_complete") is True
+            and candidate.get("carry_forward_authorized") is True
+        ):
+            effect = candidate
+            break
+    if effect is None:
+        return []
+    source_scene = effect.get("source_scene_revision")
+    unaffected = effect.get("unaffected_entity_refs")
+    effect_refs = effect.get("effect_evidence_refs")
+    if (
+        not isinstance(source_scene, str) or not source_scene
+        or not isinstance(unaffected, list) or not unaffected
+        or any(not isinstance(ref, str) for ref in unaffected)
+        or not isinstance(effect_refs, list) or not effect_refs
+        or any(not isinstance(ref, str) for ref in effect_refs)
+    ):
+        return []
+    understanding = None
+    binding = None
+    for record in reversed(task.execution_records):
+        if record.status != "succeeded" or record.semantics != "query":
+            continue
+        facts = response_facts(record.response)
+        if facts.get("scene_revision") != source_scene:
+            continue
+        if understanding is None and record.tool_id == "scene.understand":
+            understanding = facts
+        if binding is None and record.tool_id == "scene.bind":
+            binding = facts
+        if understanding is not None and binding is not None:
+            break
+    if understanding is None or binding is None:
+        return []
+    claims = {
+        item.get("entity_ref"): item
+        for item in understanding.get("entities", [])
+        if isinstance(item, dict) and isinstance(item.get("entity_ref"), str)
+    }
+    models = {
+        item.get("entity_ref"): item
+        for item in binding.get("entities", [])
+        if isinstance(item, dict) and isinstance(item.get("entity_ref"), str)
+    }
+    binding_ref = binding.get("binding_ref")
+    if not isinstance(binding_ref, str) or not binding_ref.startswith("artifact://"):
+        return []
+    carried = []
+    for entity_ref in unaffected:
+        claim = claims.get(entity_ref)
+        model = models.get(entity_ref)
+        if claim is None or model is None:
+            continue
+        execution_ref = model.get("execution_entity_ref")
+        if not isinstance(execution_ref, str):
+            continue
+        carried.append(
+            {
+                "entity": dict(claim),
+                "source_scene_revision": source_scene,
+                "source_binding_ref": binding_ref,
+                "execution_entity_ref": execution_ref,
+                "effect_evidence_refs": list(effect_refs),
+            }
+        )
+    return carried
 
 
 def _scene_bind_argument_error(task: Any, arguments: dict[str, Any]) -> dict[str, Any] | None:

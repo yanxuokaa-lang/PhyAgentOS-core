@@ -176,6 +176,8 @@ class _ProjectedDriver:
             )
         if raw.get("new_scene_revision"):
             result["new_scene_revision"] = raw["new_scene_revision"]
+        if isinstance(raw.get("scene_effects"), Mapping):
+            result["scene_effects"] = deepcopy(dict(raw["scene_effects"]))
         result["evidence_refs"] = refs + ([f"placed:{self.arguments['entity_ref']}"] if success and self.phase == "place" else [])
         return result
 
@@ -215,6 +217,7 @@ def _spec(spec, *, argument_defaults=None):
         properties = spec["output_schema"]["properties"]["result"]["properties"]
         properties["new_scene_revision"] = {"type": "string", "minLength": 1}
         properties["evidence_refs"] = {"type": "array", "items": {"type": "string"}}
+        properties["scene_effects"] = {"type": "object"}
         properties["capability_outcome_summary"]["properties"]["world_change_started"] = {"type": ["boolean", "null"]}
         if spec["tool_id"] == "object.acquire":
             properties["acquire_invocation_ref"] = {"type": "string", "pattern": r"^invocation://object-acquire/[^/]+$"}

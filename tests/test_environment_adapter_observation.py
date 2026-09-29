@@ -37,6 +37,28 @@ def observation(**overrides):
     return value
 
 
+def observation_set(*, second_scene="scene-1", second_calibration="calibration://wrist/v1", skew_ms=5):
+    return {
+        "views": [
+            {**observation(), "sensor_ref": "camera/front"},
+            {
+                **observation(
+                    captured_at=datetime(2026, 9, 4, 0, 0, 0, skew_ms * 1000, tzinfo=timezone.utc),
+                    scene_revision=second_scene,
+                    frame_id="camera-wrist",
+                    calibration_ref=second_calibration,
+                    artifacts=[{
+                        "ref": "artifact://scene-1/wrist/rgb",
+                        "kind": "rgb",
+                        "media_type": "image/jpeg",
+                    }],
+                ),
+                "sensor_ref": "camera/wrist",
+            },
+        ]
+    }
+
+
 def test_observation_endpoint_projects_adapter_capture_and_freshness():
     source = Source(observation())
     endpoint = ObservationEndpoint(
@@ -48,6 +70,39 @@ def test_observation_endpoint_projects_adapter_capture_and_freshness():
     assert result["observation_ref"] == "observation://scene-1/camera-front"
     assert result["freshness_ms"] == 500
     assert source.calls == 1
+
+
+def test_observation_endpoint_projects_synchronized_ordered_views():
+    source = Source(observation_set())
+    result = ObservationEndpoint(
+        source,
+        now=lambda: datetime(2026, 9, 4, 0, 0, 0, 500000, tzinfo=timezone.utc),
+    ).invoke({
+        "sensor_refs": ["camera/front", "camera/wrist"],
+        "max_age_ms": 1000,
+        "max_capture_skew_ms": 10,
+    })
+
+    assert result["status"] == "available"
+    assert [item["sensor_ref"] for item in result["views"]] == ["camera/front", "camera/wrist"]
+    assert result["capture_skew_ms"] == 5
+    assert [item["ref"] for item in result["artifacts"]] == [
+        "artifact://scene-1/rgb", "artifact://scene-1/wrist/rgb",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("arguments", "raw", "code"),
+    [
+        ({"sensor_refs": ["camera/front", "camera/front"], "max_age_ms": 1000}, observation_set(), "invalid_sensor_ref"),
+        ({"sensor_refs": ["camera/front", "camera/wrist"], "max_age_ms": 1000}, observation_set(second_scene="scene-2"), "mixed_scene_revision"),
+        ({"sensor_refs": ["camera/front", "camera/wrist"], "max_age_ms": 1000}, observation_set(second_calibration=""), "missing_calibration"),
+        ({"sensor_refs": ["camera/front", "camera/wrist"], "max_age_ms": 1000, "max_capture_skew_ms": 4}, observation_set(), "capture_skew_exceeded"),
+    ],
+)
+def test_observation_endpoint_rejects_invalid_observation_sets(arguments, raw, code):
+    result = ObservationEndpoint(Source(raw)).invoke(arguments)
+    assert result["error"]["code"] == code
 
 
 def test_observation_endpoint_accepts_the_concrete_returned_frame_id():

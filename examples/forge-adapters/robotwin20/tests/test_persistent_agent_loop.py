@@ -102,7 +102,7 @@ class PersistentFixtureDriver:
             self.client.holding = None
         self.client.revision += 1
         self.client.scene_revision = f"runtime-{self.client.revision}"
-        return {
+        result = {
             "status": "succeeded",
             "outcome_known": True,
             "world_change_started": True,
@@ -111,6 +111,14 @@ class PersistentFixtureDriver:
                 f"artifact://persistent/{self.client.scene_revision}/{self.phase}"
             ],
         }
+        if self.phase == "place":
+            result.update(
+                release_confirmed=True,
+                retreat_completed=True,
+                clear_of_target=True,
+                observation_ready=True,
+            )
+        return result
 
     def cancel(self):
         raise AssertionError("success-path fixture must not cancel")

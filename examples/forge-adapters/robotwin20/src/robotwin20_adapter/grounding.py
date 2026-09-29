@@ -71,17 +71,18 @@ class Grounding:
             )
         expected = {
             "scene_revision": identity.get("scene_revision"),
-            "holding_state": "empty",
             "scene_validity": "action_driven",
         }
         actual = {key: state.get(key) for key in expected}
-        if actual != expected:
+        holding_state = state.get("holding_state")
+        if actual != expected or holding_state not in {"empty", "holding"}:
             self._reject(
-                "grounding requires the current idle action-driven scene",
+                "grounding requires the current stable action-driven scene",
                 stage="current_scene",
-                expected=expected,
-                actual=actual,
+                expected={**expected, "holding_state": ["empty", "holding"]},
+                actual={**actual, "holding_state": holding_state},
             )
+        return state
 
     def _write(self, kind, value):
         ref = f"artifact://{kind}/{uuid4().hex}"
@@ -171,6 +172,11 @@ class Grounding:
                     "evidence_refs": [reference],
                 }
         selected_set = set(selected)
+        carried_by_ref = {
+            item.get("entity", {}).get("entity_ref"): item
+            for item in understanding.get("carried_forward", [])
+            if isinstance(item, Mapping) and isinstance(item.get("entity"), Mapping)
+        }
         envelopes = {}
         for item in understanding.get("spatial_envelopes", []):
             if not isinstance(item, Mapping) or not item.get("entity_ref"):
@@ -213,6 +219,8 @@ class Grounding:
                 ],
             )
         for entity_ref in selected:
+            if entity_ref in carried_by_ref:
+                continue
             envelope = envelopes.get(entity_ref)
             if not envelope or envelope.get("unit") != "m":
                 self._reject(
@@ -281,8 +289,9 @@ class Grounding:
                 expected=expected_identity,
                 actual=actual_identity,
             )
+        observed_selected = [ref for ref in selected if ref not in carried_by_ref]
         try:
-            objects = correspond(selected, understanding, facts["objects"], camera_to_world)
+            objects = correspond(observed_selected, understanding, facts["objects"], camera_to_world)
         except (KeyError, TypeError, ValueError) as exc:
             self._reject(
                 "execution correspondence is unavailable or ambiguous",
@@ -291,7 +300,15 @@ class Grounding:
                 error_type=type(exc).__name__,
                 reason=str(exc),
             )
-        objects = self._project_visual_geometry(selected, objects, understanding, camera_to_world)
+        objects = self._project_visual_geometry(
+            observed_selected, objects, understanding, camera_to_world
+        )
+        selected_carried = {
+            entity_ref: carried_by_ref[entity_ref]
+            for entity_ref in selected
+            if entity_ref in carried_by_ref
+        }
+        objects.update(self._carried_objects(selected_carried, facts))
         facts = deepcopy(facts)
         # Keep captured execution poses intact for Runtime drift checks. Visual
         # route geometry lives in objects, in its own observation-derived frame.
@@ -312,6 +329,71 @@ class Grounding:
                               "world_T_object": obj["world_T_object"],
                               "half_extents_m": obj["half_extents_m"]} for ref, obj in objects.items()],
                 "evidence_refs": [ref]}
+
+    def _carried_objects(self, carried_by_ref, current_facts):
+        projected = {}
+        current_objects = current_facts.get("objects", [])
+        for entity_ref, carried in carried_by_ref.items():
+            source_binding_ref = carried.get("source_binding_ref")
+            execution_ref = carried.get("execution_entity_ref")
+            try:
+                source_binding = json.loads(
+                    _artifact_path(self.root, source_binding_ref).read_text(encoding="utf-8")
+                )
+            except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+                self._reject(
+                    "carried entity source binding is unavailable",
+                    stage="carry_forward",
+                    entity_ref=entity_ref,
+                    error_type=type(exc).__name__,
+                )
+            if (
+                source_binding.get("scene_revision") != carried.get("source_scene_revision")
+                or source_binding.get("motion_authorized") is not False
+            ):
+                self._reject(
+                    "carried entity source binding identity is invalid",
+                    stage="carry_forward",
+                    entity_ref=entity_ref,
+                )
+            source_model = source_binding.get("objects", {}).get(entity_ref)
+            source_runtime = [
+                item for item in source_binding.get("scene_facts", {}).get("objects", [])
+                if isinstance(item, Mapping) and item.get("entity_ref") == execution_ref
+            ]
+            current_runtime = [
+                item for item in current_objects
+                if isinstance(item, Mapping) and item.get("entity_ref") == execution_ref
+            ]
+            if (
+                not isinstance(source_model, Mapping)
+                or source_model.get("entity_ref") != execution_ref
+                or len(source_runtime) != 1
+                or len(current_runtime) != 1
+            ):
+                self._reject(
+                    "carried entity execution identity is unavailable",
+                    stage="carry_forward",
+                    entity_ref=entity_ref,
+                )
+            try:
+                source_pose = rigid_transform(source_runtime[0]["world_T_object"])
+                current_pose = rigid_transform(current_runtime[0]["world_T_object"])
+            except (KeyError, TypeError, ValueError) as exc:
+                self._reject(
+                    "carried entity execution pose is invalid",
+                    stage="carry_forward",
+                    entity_ref=entity_ref,
+                    error_type=type(exc).__name__,
+                )
+            if not np.allclose(source_pose, current_pose, atol=1e-6, rtol=0):
+                self._reject(
+                    "carried entity moved despite unchanged effect evidence",
+                    stage="carry_forward",
+                    entity_ref=entity_ref,
+                )
+            projected[entity_ref] = deepcopy(dict(source_model))
+        return projected
 
     def _project_visual_geometry(self, selected, objects, understanding, camera_to_world):
         """Project visual evidence into route geometry; Runtime remains identity-only."""

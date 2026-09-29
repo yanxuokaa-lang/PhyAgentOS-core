@@ -397,9 +397,22 @@ class RoboTwinPersistentEngine:
         if operation == "snapshot":
             return {**dict(self.backend.snapshot()), "scene_validity": "action_driven"}
         if operation == "observe":
-            captured = asdict(self.observation.observe(arguments["sensor_ref"]))
-            captured["captured_at"] = captured["captured_at"].isoformat()
-            return captured
+            sensor_refs = arguments.get("sensor_refs")
+            if sensor_refs is None:
+                captured = asdict(self.observation.observe(arguments["sensor_ref"]))
+                captured["sensor_ref"] = arguments["sensor_ref"]
+                captured["captured_at"] = captured["captured_at"].isoformat()
+                return captured
+            snapshots = self.observation.observe_many(sensor_refs)
+            views = []
+            for sensor_ref, snapshot in zip(sensor_refs, snapshots, strict=True):
+                view = asdict(snapshot)
+                view["sensor_ref"] = sensor_ref
+                view["captured_at"] = view["captured_at"].isoformat()
+                views.append(view)
+            primary = dict(views[0])
+            primary["views"] = views
+            return primary
         if operation in {"route_readiness", "contact_qualification"}:
             from robotwin_route_planner import RoboTwinRouteEvaluator
             from robotwin_route_readiness_worker import _handle_factory
@@ -540,6 +553,7 @@ class RoboTwinPersistentEngine:
         advancing = False
         video_refs: tuple[str, ...] = ()
         physical_phase_completed = False
+        before_entity_poses = self._bound_entity_poses()
         try:
             if self.stop.exists():
                 return {"status": "cancelled", "world_change_started": False, "outcome_known": True}
@@ -617,6 +631,12 @@ class RoboTwinPersistentEngine:
                 result["new_scene_revision"] = self._advance_scene()
         self._state.pop("video_recorder", None)
         reference = f"artifact://persistent/{self.epoch}/action-{uuid4().hex}"
+        result["scene_effects"] = self._scene_effects(
+            arguments,
+            before_entity_poses,
+            result,
+            evidence_ref=reference,
+        )
         probe._json_artifact(self.root, reference, {**result, "phase": phase, "phases": phases,
                             "simulator_steps": self._state.get("simulator_steps", 0),
                             "placement_measurement": self._state.get("placement_measurement"),
@@ -624,6 +644,86 @@ class RoboTwinPersistentEngine:
                             "task_video_refs": list(video_refs)})
         result["artifact_refs"] = [reference, *video_refs]
         return result
+
+    def _bound_entity_poses(self) -> dict[str, list[float]]:
+        import numpy as np
+
+        bindings = getattr(self.backend._task, "_paos_observed_entities", {})
+        if not isinstance(bindings, Mapping):
+            return {}
+        poses: dict[str, list[float]] = {}
+        for entity_ref, actor in bindings.items():
+            if not isinstance(entity_ref, str) or not callable(getattr(actor, "get_pose", None)):
+                continue
+            try:
+                matrix = np.asarray(actor.get_pose().to_transformation_matrix(), dtype=float).reshape(4, 4)
+            except (TypeError, ValueError):
+                continue
+            if np.isfinite(matrix).all():
+                poses[entity_ref] = matrix.reshape(-1).tolist()
+        return poses
+
+    def _scene_effects(
+        self,
+        arguments: Mapping[str, Any],
+        before: Mapping[str, list[float]],
+        result: Mapping[str, Any],
+        *,
+        evidence_ref: str,
+    ) -> dict[str, Any]:
+        import numpy as np
+
+        source_revision = result.get("source_scene_revision") or arguments.get("scene_revision")
+        new_revision = result.get("new_scene_revision")
+        known_success = (
+            result.get("status") == "succeeded"
+            and result.get("outcome_known") is True
+            and isinstance(source_revision, str)
+            and isinstance(new_revision, str)
+        )
+        changed: set[str] = set()
+        unaffected: set[str] = set()
+        target = arguments.get("entity_ref")
+        if isinstance(target, str):
+            changed.add(target)
+        trace = self._state.get("contact_trace", [])
+        active_pairs = [
+            set(item.get("pair", ()))
+            for item in trace
+            if isinstance(item, Mapping) and item.get("active_contact") is True
+        ]
+        after = self._bound_entity_poses() if known_success else {}
+        actors = getattr(self.backend._task, "_paos_observed_entities", {})
+        complete = known_success and bool(before) and set(after) == set(before) and isinstance(actors, Mapping)
+        if complete:
+            for entity_ref, pose in before.items():
+                actor = actors.get(entity_ref)
+                actor_name = str(actor.get_name()) if callable(getattr(actor, "get_name", None)) else ""
+                contacted = bool(actor_name) and any(actor_name in pair for pair in active_pairs)
+                same_pose = np.allclose(
+                    np.asarray(pose, dtype=float),
+                    np.asarray(after[entity_ref], dtype=float),
+                    atol=1e-6,
+                    rtol=0,
+                )
+                if entity_ref == target or contacted or not same_pose:
+                    changed.add(entity_ref)
+                else:
+                    unaffected.add(entity_ref)
+        return {
+            "schema_version": "paos-scene-effects/v1",
+            "source_scene_revision": source_revision,
+            "new_scene_revision": new_revision,
+            "changed_entity_refs": sorted(changed),
+            "unaffected_entity_refs": sorted(unaffected),
+            "changed_resources": [
+                "robot_configuration", "end_effector_pose", "camera_visibility",
+                "possession_state",
+            ] if result.get("world_change_started") is True else [],
+            "effect_evidence_refs": [evidence_ref],
+            "effect_scope_complete": complete,
+            "carry_forward_authorized": complete and bool(unaffected),
+        }
 
     def _verify_release(self) -> None:
         import numpy as np

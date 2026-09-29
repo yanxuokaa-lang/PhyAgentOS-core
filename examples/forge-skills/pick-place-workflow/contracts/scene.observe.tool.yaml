@@ -1,40 +1,78 @@
 tool_id: scene.observe
-planning:
-  schema_version: paos-tool-spec-policy/v1
-  requires_before_plan: true
 implementation_id: scene.observation
 endpoint_id: scene_observation
 operation: observe
 semantics: query
-description: Return a measured, calibrated scene observation without causing a physical effect.
+planning:
+  schema_version: paos-tool-spec-policy/v1
+  requires_before_plan: true
+description: Return a measured, calibrated scene observation without causing a physical
+  effect.
 input_schema:
   type: object
   additionalProperties: false
-  required: [sensor_ref, max_age_ms]
+  required:
+  - max_age_ms
+  oneOf:
+  - required:
+    - sensor_ref
+    not:
+      required:
+      - sensor_refs
+  - required:
+    - sensor_refs
+    not:
+      required:
+      - sensor_ref
   properties:
     sensor_ref:
       type: string
       minLength: 1
+    sensor_refs:
+      type: array
+      minItems: 1
+      uniqueItems: true
+      items:
+        type: string
+        minLength: 1
+      description: Ordered sensors captured in one synchronized observation set.
     requested_frame:
       type: string
       minLength: 1
-      description: >-
-        Optional concrete Runtime frame_id to validate against the returned
-        frame. Omit for the initial observation; do not use abstract labels
-        such as 'sensor' or 'observation'.
+      description: Optional concrete Runtime frame_id to validate against the returned
+        frame. Omit for the initial observation; do not use abstract labels such as
+        'sensor' or 'observation'.
     max_age_ms:
       type: integer
       minimum: 1
+    max_capture_skew_ms:
+      type: integer
+      minimum: 0
+      default: 50
 output_schema:
   type: object
   additionalProperties: false
-  required: [status, observation_ref, captured_at, scene_revision, frame, calibration_ref, freshness_ms, artifacts]
+  required:
+  - status
+  - observation_ref
+  - captured_at
+  - scene_revision
+  - frame
+  - calibration_ref
+  - freshness_ms
+  - artifacts
+  - views
+  - capture_skew_ms
   properties:
     status:
-      enum: [available, unavailable, stale, invalid]
+      enum:
+      - available
+      - unavailable
+      - stale
+      - invalid
     observation_ref:
       type: string
-      pattern: '^observation://[^/]+/[^/]+$'
+      pattern: ^observation://[^/]+/[^/]+$
     captured_at:
       type: string
       format: date-time
@@ -44,32 +82,126 @@ output_schema:
     frame:
       type: object
       additionalProperties: false
-      required: [frame_id]
+      required:
+      - frame_id
+      - unit
       properties:
-        frame_id: {type: string, minLength: 1}
-        unit: {const: m}
+        frame_id:
+          type: string
+          minLength: 1
+        unit:
+          const: m
     calibration_ref:
-      type: [string, 'null']
+      type:
+      - string
+      - 'null'
     freshness_ms:
       type: integer
       minimum: 0
     artifacts:
       type: array
+      minItems: 1
       items:
         type: object
         additionalProperties: false
-        required: [ref, kind, media_type]
+        required:
+        - ref
+        - kind
+        - media_type
         properties:
-          ref: {type: string, pattern: '^artifact://[^/]+/.+$'}
-          kind: {enum: [rgb, depth, point_cloud, state]}
-          media_type: {type: string, minLength: 1}
+          ref:
+            type: string
+            pattern: ^artifact://[^/]+/.+$
+          kind:
+            enum:
+            - depth
+            - point_cloud
+            - rgb
+            - state
+          media_type:
+            type: string
+            minLength: 1
+    views:
+      type: array
+      minItems: 1
+      items:
+        type: object
+        additionalProperties: false
+        required:
+        - sensor_ref
+        - observation_ref
+        - captured_at
+        - frame
+        - calibration_ref
+        - freshness_ms
+        - artifacts
+        properties:
+          sensor_ref:
+            type: string
+            minLength: 1
+          observation_ref:
+            type: string
+            pattern: ^observation://[^/]+/[^/]+$
+          captured_at:
+            type: string
+            format: date-time
+          frame:
+            type: object
+            additionalProperties: false
+            required:
+            - frame_id
+            - unit
+            properties:
+              frame_id:
+                type: string
+                minLength: 1
+              unit:
+                const: m
+          calibration_ref:
+            type: string
+            minLength: 1
+          freshness_ms:
+            type: integer
+            minimum: 0
+          artifacts:
+            type: array
+            minItems: 1
+            items:
+              type: object
+              additionalProperties: false
+              required:
+              - ref
+              - kind
+              - media_type
+              properties:
+                ref:
+                  type: string
+                  pattern: ^artifact://[^/]+/.+$
+                kind:
+                  enum:
+                  - depth
+                  - point_cloud
+                  - rgb
+                  - state
+                media_type:
+                  type: string
+                  minLength: 1
+    capture_skew_ms:
+      type: integer
+      minimum: 0
     error:
       type: object
       additionalProperties: false
-      required: [code, message]
+      required:
+      - code
+      - message
       properties:
-        code: {type: string, minLength: 1}
-        message: {type: string, minLength: 1}
+        code:
+          type: string
+          minLength: 1
+        message:
+          type: string
+          minLength: 1
 robot_frame_profile:
   observation_frame: sensor
   frame_id_source: result.frame.frame_id

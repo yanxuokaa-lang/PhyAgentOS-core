@@ -99,6 +99,15 @@ class Resolver:
         return ArtifactPayload(b"rgb-bytes", "image/png")
 
 
+class MultiResolver:
+    def resolve(self, ref):
+        payloads = {
+            "artifact://scene/front/rgb": b"front",
+            "artifact://scene/wrist/rgb": b"wrist",
+        }
+        return ArtifactPayload(payloads[ref], "image/png")
+
+
 def test_responses_provider_builds_structured_image_request_and_projects_result(monkeypatch):
     monkeypatch.setenv("CUSTOM_API_KEY", "test-key")
     client = Client()
@@ -154,6 +163,55 @@ def test_chat_completions_provider_uses_compatible_request_and_same_contract(mon
     assert payload["response_format"]["json_schema"]["strict"] is True
     assert payload["messages"][1]["content"][1]["type"] == "image_url"
     assert client.closed is True
+
+
+@pytest.mark.parametrize("transport", ["responses", "chat"])
+def test_openai_providers_send_all_ordered_views_and_bind_missing_provenance(monkeypatch, transport):
+    monkeypatch.setenv("CUSTOM_API_KEY", "test-key")
+    request = {
+        **REQUEST,
+        "artifacts": ["artifact://scene/front/rgb", "artifact://scene/wrist/rgb"],
+    }
+    empty_provenance = json.dumps({
+        "entities": [{
+            "entity_ref": "entity://bottle-1",
+            "category": "container",
+            "confidence": 0.91,
+            "provenance": [],
+        }],
+        "relations": [],
+        "spatial_envelopes": [],
+        "ambiguities": [],
+    })
+    if transport == "responses":
+        client = Client()
+        client.responses.create = lambda **payload: (
+            client.responses.calls.append(payload)
+            or type("MultiResponse", (), {"output_text": empty_provenance})()
+        )
+        inference = OpenAIResponsesSceneUnderstandingInference(
+            MultiResolver(), client_factory=lambda **kwargs: client
+        )
+        def content():
+            return client.responses.calls[0]["input"][0]["content"]
+        expected_types = ["input_image", "input_image"]
+    else:
+        client = ChatClient()
+        client.chat.completions.create = lambda **payload: (
+            client.chat.completions.calls.append(payload)
+            or type("MultiChat", (), {"choices": [ChatChoice(empty_provenance)]})()
+        )
+        inference = OpenAIChatCompletionsSceneUnderstandingInference(
+            MultiResolver(), client_factory=lambda **kwargs: client
+        )
+        def content():
+            return client.chat.completions.calls[0]["messages"][1]["content"]
+        expected_types = ["image_url", "image_url"]
+
+    result = inference.infer(request)
+
+    assert [item["type"] for item in content()][1:] == expected_types
+    assert result["entities"][0]["provenance"] == request["artifacts"]
 
 
 def test_provider_composes_with_generic_scene_understanding_endpoint(monkeypatch):

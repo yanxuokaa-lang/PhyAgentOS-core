@@ -35,6 +35,15 @@ class _Resolver:
         return ArtifactPayload(b"png", "image/png")
 
 
+class _MultiResolver:
+    def resolve(self, ref):
+        payloads = {
+            "artifact://scene/capture/front/rgb": b"front",
+            "artifact://scene/capture/wrist/rgb": b"wrist",
+        }
+        return ArtifactPayload(payloads[ref], "image/png")
+
+
 class _Response:
     choices = [
         type(
@@ -128,6 +137,49 @@ def test_vllm_provider_uses_openai_compatible_multimodal_schema():
     assert "observation://scene/camera" not in prompt
     assert "scene-1" not in prompt
     assert client.closed is True
+
+
+def test_vllm_provider_sends_all_views_and_maps_source_view_provenance():
+    response = type("Response", (), {"choices": [type("Choice", (), {
+        "message": type("Message", (), {"content": json.dumps({
+            "entities": [{
+                "local_id": "e1", "category": "cube", "attributes": [],
+                "confidence": 0.9, "source_view_indexes": [1],
+            }],
+            "relations": [],
+            "ambiguities": [],
+        })})()
+    })()]})()
+    client = _Client()
+    client.chat.completions.create = lambda **payload: (client.chat.completions.calls.append(payload) or response)
+    provider = Qwen3VLVLLMSceneUnderstandingInference(
+        _MultiResolver(), client_factory=lambda **kwargs: client
+    )
+    request = {
+        **REQUEST,
+        "artifacts": [
+            "artifact://scene/capture/front/rgb",
+            "artifact://scene/capture/wrist/rgb",
+        ],
+    }
+
+    result = provider.infer(request)
+
+    content = client.chat.completions.calls[0]["messages"][0]["content"]
+    assert [item["type"] for item in content] == ["text", "image_url", "image_url"]
+    assert result["entities"][0]["provenance"] == ["artifact://scene/capture/wrist/rgb"]
+
+
+def test_vllm_projection_rejects_missing_multiview_provenance():
+    with pytest.raises(Qwen3VLVLLMInferenceError, match="source view provenance"):
+        _project_vllm_claims(
+            {
+                "entities": [{"local_id": "e1", "category": "cube", "attributes": [], "confidence": 0.9}],
+                "relations": [],
+                "ambiguities": [],
+            },
+            ["artifact://front/rgb", "artifact://wrist/rgb"],
+        )
 
 
 def test_vllm_provider_emits_optional_raw_to_projected_diagnostic_without_changing_result():

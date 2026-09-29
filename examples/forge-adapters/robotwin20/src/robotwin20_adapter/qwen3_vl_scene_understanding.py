@@ -1,9 +1,9 @@
 """Local Qwen3-VL semantic provider for the RoboTwin adapter.
 
 The model is deliberately isolated behind the same ``infer(request)`` seam as
-the GPT provider.  It sees only the current RGB artifact and returns semantic
-claims.  It never supplies metric geometry, simulator identity, or motion
-authorization.
+the GPT provider.  It sees the ordered RGB artifacts from the current
+observation set and returns semantic claims with per-view provenance.  It never
+supplies metric geometry, simulator identity, or motion authorization.
 """
 
 from __future__ import annotations
@@ -50,7 +50,7 @@ class Qwen3VLSceneUnderstandingInference:
     _REQUEST_KEYS = frozenset(
         {
             "observation_ref", "scene_revision", "frame_id", "calibration_ref",
-            "freshness_ms", "max_age_ms", "artifacts",
+            "freshness_ms", "max_age_ms", "artifacts", "views", "capture_skew_ms",
         }
     )
 
@@ -78,11 +78,15 @@ class Qwen3VLSceneUnderstandingInference:
         artifacts = request.get("artifacts")
         if not isinstance(artifacts, list) or not artifacts:
             raise Qwen3VLInferenceError("scene understanding request has no artifacts")
-        image_ref, image = self._resolve_image(artifacts)
-        if image.path is None:
-            raise Qwen3VLInferenceError(
-                "qwen local provider requires a filesystem-backed RGB artifact"
-            )
+        images = self._resolve_images(artifacts)
+        image_refs = [ref for ref, _ in images]
+        image_paths = []
+        for _, image in images:
+            if image.path is None:
+                raise Qwen3VLInferenceError(
+                    "qwen local provider requires filesystem-backed RGB artifacts"
+                )
+            image_paths.append(str(image.path))
         request_id = os.urandom(16).hex()
         primary_error = False
         try:
@@ -93,8 +97,8 @@ class Qwen3VLSceneUnderstandingInference:
                     "observation_ref": request.get("observation_ref"),
                     "scene_revision": request.get("scene_revision"),
                     "frame_id": request.get("frame_id"),
-                    "rgb_artifact_ref": image_ref,
-                    "rgb_path": str(image.path) if image.path is not None else None,
+                    "rgb_artifact_refs": image_refs,
+                    "rgb_paths": image_paths,
                     "max_output_tokens": self.config.max_output_tokens,
                 }
             )
@@ -102,7 +106,7 @@ class Qwen3VLSceneUnderstandingInference:
                 raise Qwen3VLInferenceError("qwen worker response identity mismatch")
             if reply.get("status") != "available":
                 raise Qwen3VLInferenceError("qwen worker reported unavailable")
-            return _project_claims(reply.get("result"), image_ref)
+            return _project_claims(reply.get("result"), image_refs)
         except Qwen3VLInferenceError:
             primary_error = True
             raise
@@ -116,8 +120,9 @@ class Qwen3VLSceneUnderstandingInference:
                 if not primary_error:
                     raise Qwen3VLInferenceError("qwen worker release failed") from exc
 
-    def _resolve_image(self, refs: list[Any]) -> tuple[str, ArtifactPayload]:
+    def _resolve_images(self, refs: list[Any]) -> list[tuple[str, ArtifactPayload]]:
         resolve = getattr(self.resolver, "resolve", None)
+        images = []
         for ref in refs:
             if not isinstance(ref, str):
                 continue
@@ -128,11 +133,37 @@ class Qwen3VLSceneUnderstandingInference:
             if payload is not None:
                 if not isinstance(payload, ArtifactPayload):
                     raise Qwen3VLInferenceError("artifact resolver returned an invalid payload")
-                return ref, payload
+                if payload.media_type.startswith("image/"):
+                    images.append((ref, payload))
+        if images:
+            return images
         raise Qwen3VLInferenceError("no image artifact was available for scene understanding")
 
 
-def _project_claims(value: Any, image_ref: str) -> dict[str, Any]:
+def _project_claims(value: Any, image_refs: str | list[str]) -> dict[str, Any]:
+    if isinstance(image_refs, str):
+        image_refs = [image_refs]
+    if not image_refs:
+        raise Qwen3VLInferenceError("qwen projection requires image provenance")
+
+    def provenance(item: Mapping[str, Any]) -> list[str]:
+        indexes = item.get("source_view_indexes")
+        if indexes is None and len(image_refs) == 1:
+            indexes = [0]
+        if (
+            not isinstance(indexes, list)
+            or not indexes
+            or len(set(indexes)) != len(indexes)
+            or any(
+                isinstance(index, bool)
+                or not isinstance(index, int)
+                or not 0 <= index < len(image_refs)
+                for index in indexes
+            )
+        ):
+            raise Qwen3VLInferenceError("qwen source view provenance is invalid")
+        return [image_refs[index] for index in indexes]
+
     if not isinstance(value, Mapping):
         raise Qwen3VLInferenceError("qwen output must be an object")
     required = {"entities", "relations", "spatial_envelopes", "ambiguities"}
@@ -145,7 +176,10 @@ def _project_claims(value: Any, image_ref: str) -> dict[str, Any]:
     for item in value["entities"]:
         if not isinstance(item, Mapping):
             raise Qwen3VLInferenceError("qwen entity is invalid")
-        if set(item) != {"entity_ref", "category", "confidence"}:
+        if set(item) not in (
+            {"entity_ref", "category", "confidence"},
+            {"entity_ref", "category", "confidence", "source_view_indexes"},
+        ):
             raise Qwen3VLInferenceError("qwen entity fields are invalid")
         ref, category, confidence = item["entity_ref"], item["category"], item["confidence"]
         if not isinstance(ref, str) or not ref.startswith("entity://") or ref in refs:
@@ -155,12 +189,17 @@ def _project_claims(value: Any, image_ref: str) -> dict[str, Any]:
         if isinstance(confidence, bool) or not isinstance(confidence, (int, float)) or not 0 <= confidence <= 1:
             raise Qwen3VLInferenceError("qwen entity confidence is invalid")
         refs.add(ref)
-        entities.append({**dict(item), "provenance": [image_ref]})
+        public = {key: item[key] for key in ("entity_ref", "category", "confidence")}
+        entities.append({**public, "provenance": provenance(item)})
     relations = []
     for item in value["relations"]:
-        if not isinstance(item, Mapping) or set(item) != {
-            "relation_ref", "subject_ref", "predicate", "object_ref", "confidence"
-        }:
+        if not isinstance(item, Mapping) or set(item) not in (
+            {"relation_ref", "subject_ref", "predicate", "object_ref", "confidence"},
+            {
+                "relation_ref", "subject_ref", "predicate", "object_ref", "confidence",
+                "source_view_indexes",
+            },
+        ):
             raise Qwen3VLInferenceError("qwen relation fields are invalid")
         if any(not isinstance(item.get(key), str) for key in ("relation_ref", "subject_ref", "predicate", "object_ref")):
             raise Qwen3VLInferenceError("qwen relation values are invalid")
@@ -169,7 +208,11 @@ def _project_claims(value: Any, image_ref: str) -> dict[str, Any]:
         confidence = item["confidence"]
         if isinstance(confidence, bool) or not isinstance(confidence, (int, float)) or not 0 <= confidence <= 1:
             raise Qwen3VLInferenceError("qwen relation confidence is invalid")
-        relations.append({**dict(item), "provenance": [image_ref]})
+        public = {
+            key: item[key]
+            for key in ("relation_ref", "subject_ref", "predicate", "object_ref", "confidence")
+        }
+        relations.append({**public, "provenance": provenance(item)})
     ambiguities = []
     for item in value["ambiguities"]:
         if not isinstance(item, Mapping) or set(item) != {"code", "message", "entity_refs"}:

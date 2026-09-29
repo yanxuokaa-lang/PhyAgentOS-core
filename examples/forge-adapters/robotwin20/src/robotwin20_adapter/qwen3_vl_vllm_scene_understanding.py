@@ -29,19 +29,23 @@ _VLLM_SCENE_SCHEMA: dict[str, Any] = {
     "required": ["entities", "relations", "ambiguities"],
     "properties": {
         "entities": {"type": "array", "items": {"type": "object", "additionalProperties": False,
-            "required": ["local_id", "category", "attributes", "confidence"],
+            "required": ["local_id", "category", "attributes", "confidence", "source_view_indexes"],
             "properties": {"local_id": {"type": "string", "pattern": "^e[1-9][0-9]*$"},
                            "category": {"type": "string", "minLength": 1},
                            "attributes": {"type": "array", "items": {"type": "object", "additionalProperties": False,
                                "required": ["name", "value", "confidence"],
                                "properties": {"name": {"type": "string"}, "value": {"type": ["string", "number", "boolean"]},
                                               "confidence": {"type": "number", "minimum": 0, "maximum": 1}}}},
-                           "confidence": {"type": "number", "minimum": 0, "maximum": 1}}}},
+                           "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                           "source_view_indexes": {"type": "array", "minItems": 1, "uniqueItems": True,
+                               "items": {"type": "integer", "minimum": 0}}}}},
         "relations": {"type": "array", "items": {"type": "object", "additionalProperties": False,
-            "required": ["subject_id", "predicate", "object_id", "relation_space", "confidence"],
+            "required": ["subject_id", "predicate", "object_id", "relation_space", "confidence", "source_view_indexes"],
             "properties": {"subject_id": {"type": "string"}, "predicate": {"type": "string"},
                            "object_id": {"type": "string"}, "relation_space": {"type": "string"},
-                           "confidence": {"type": "number", "minimum": 0, "maximum": 1}}}},
+                           "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                           "source_view_indexes": {"type": "array", "minItems": 1, "uniqueItems": True,
+                               "items": {"type": "integer", "minimum": 0}}}}},
         "ambiguities": {"type": "array", "items": {"type": "object", "additionalProperties": False,
             "required": ["code", "message", "entity_ids"],
             "properties": {"code": {"type": "string", "enum": list(SCENE_SEMANTIC_AMBIGUITY_CODES)}, "message": {"type": "string"},
@@ -97,7 +101,7 @@ class Qwen3VLVLLMSceneUnderstandingInference:
     _REQUEST_KEYS = frozenset(
         {
             "observation_ref", "scene_revision", "frame_id", "calibration_ref",
-            "freshness_ms", "max_age_ms", "artifacts",
+            "freshness_ms", "max_age_ms", "artifacts", "views", "capture_skew_ms",
         }
     )
 
@@ -132,7 +136,8 @@ class Qwen3VLVLLMSceneUnderstandingInference:
         artifacts = request.get("artifacts")
         if not isinstance(artifacts, list) or not artifacts:
             raise Qwen3VLVLLMInferenceError("scene understanding request has no artifacts")
-        image_ref, image = self._resolve_image(artifacts)
+        images = self._resolve_images(artifacts)
+        image_refs = [ref for ref, _ in images]
         started = time.perf_counter()
         api_key = os.environ.get(self.config.api_key_env, "EMPTY") if self.config.api_key_env else "EMPTY"
         client = None
@@ -149,10 +154,10 @@ class Qwen3VLVLLMSceneUnderstandingInference:
                         "role": "user",
                         "content": [
                             {"type": "text", "text": self._prompt(request)},
-                            {
-                                "type": "image_url",
-                                "image_url": {"url": self._data_url(image)},
-                            },
+                            *[
+                                {"type": "image_url", "image_url": {"url": self._data_url(image)}}
+                                for _, image in images
+                            ],
                         ],
                     }
                 ],
@@ -173,7 +178,7 @@ class Qwen3VLVLLMSceneUnderstandingInference:
                 parsed = json.loads(content)
             except json.JSONDecodeError as exc:
                 raise Qwen3VLVLLMInferenceError("qwen vLLM output was not valid JSON") from exc
-            projected = _project_vllm_claims(parsed, image_ref)
+            projected = _project_vllm_claims(parsed, image_refs)
             self._emit_diagnostic(
                 {
                     "status": "available",
@@ -183,7 +188,7 @@ class Qwen3VLVLLMSceneUnderstandingInference:
                     "observation_ref": request.get("observation_ref"),
                     "scene_revision": request.get("scene_revision"),
                     "frame_id": request.get("frame_id"),
-                    "image_ref": image_ref,
+                    "image_refs": image_refs,
                     "elapsed_ms": round((time.perf_counter() - started) * 1000, 3),
                     "raw": parsed,
                     "projected": projected,
@@ -202,7 +207,7 @@ class Qwen3VLVLLMSceneUnderstandingInference:
                     "observation_ref": request.get("observation_ref"),
                     "scene_revision": request.get("scene_revision"),
                     "frame_id": request.get("frame_id"),
-                    "image_ref": image_ref,
+                    "image_refs": image_refs,
                     "elapsed_ms": round((time.perf_counter() - started) * 1000, 3),
                     "error": "qwen_vllm_inference_error",
                 }
@@ -219,7 +224,7 @@ class Qwen3VLVLLMSceneUnderstandingInference:
                     "observation_ref": request.get("observation_ref"),
                     "scene_revision": request.get("scene_revision"),
                     "frame_id": request.get("frame_id"),
-                    "image_ref": image_ref,
+                    "image_refs": image_refs,
                     "elapsed_ms": round((time.perf_counter() - started) * 1000, 3),
                     "error": type(exc).__name__,
                 }
@@ -230,8 +235,9 @@ class Qwen3VLVLLMSceneUnderstandingInference:
             if callable(close):
                 close()
 
-    def _resolve_image(self, refs: list[Any]) -> tuple[str, ArtifactPayload]:
+    def _resolve_images(self, refs: list[Any]) -> list[tuple[str, ArtifactPayload]]:
         resolve = getattr(self.resolver, "resolve", None)
+        images = []
         for ref in refs:
             if not isinstance(ref, str):
                 continue
@@ -242,7 +248,10 @@ class Qwen3VLVLLMSceneUnderstandingInference:
             if payload is not None:
                 if not isinstance(payload, ArtifactPayload):
                     raise Qwen3VLVLLMInferenceError("artifact resolver returned an invalid payload")
-                return ref, payload
+                if payload.media_type.startswith("image/"):
+                    images.append((ref, payload))
+        if images:
+            return images
         raise Qwen3VLVLLMInferenceError("no image artifact was available for scene understanding")
 
     @staticmethod
@@ -261,7 +270,7 @@ class Qwen3VLVLLMSceneUnderstandingInference:
     @staticmethod
     def _prompt(request: Mapping[str, Any]) -> str:
         return (
-            "Inspect the entire RGB image and return an open-world semantic scene graph using "
+            "Inspect all ordered RGB views jointly and return one open-world semantic scene graph using "
             "exactly the requested JSON schema. List every clearly visible entity, including "
             "salient objects and large or low-contrast physical structures such as visible "
             "surfaces, shelves, trays, containers, hooks, rails, or articulated parts. A broad "
@@ -271,9 +280,11 @@ class Qwen3VLVLLMSceneUnderstandingInference:
             "visually evident, not from color or relative image position alone. Use confidence "
             "in [0,1] and include identifying attributes such as color in the category and "
             "attributes. Do not infer metric depth, coordinates, plane equations, simulator "
-            "truth, task success, IK, or motion authorization. Preserve semantic uncertainty "
+            "truth, task success, IK, or motion authorization. For every entity and relation, "
+            "source_view_indexes must list exactly the zero-based input views that visibly support "
+            "the claim. Do not merge cross-view identities when correspondence is uncertain. Preserve semantic uncertainty "
             "in ambiguities. Do not return empty entities when visible entities are present. "
-            "All provenance is assigned by the adapter."
+            "Artifact provenance is assigned by the adapter from source_view_indexes."
         )
 
     @staticmethod
@@ -287,13 +298,40 @@ class Qwen3VLVLLMSceneUnderstandingInference:
         return content
 
 
-def _project_vllm_claims(value: Any, image_ref: str) -> dict[str, Any]:
+def _project_vllm_claims(value: Any, image_refs: str | list[str]) -> dict[str, Any]:
+    if isinstance(image_refs, str):
+        image_refs = [image_refs]
+    if not image_refs:
+        raise Qwen3VLVLLMInferenceError("qwen vLLM projection requires image provenance")
+
+    def provenance(item: Mapping[str, Any]) -> list[str]:
+        indexes = item.get("source_view_indexes")
+        if indexes is None and len(image_refs) == 1:
+            indexes = [0]
+        if (
+            not isinstance(indexes, list) or not indexes
+            or len(set(indexes)) != len(indexes)
+            or any(
+                isinstance(index, bool) or not isinstance(index, int)
+                or not 0 <= index < len(image_refs)
+                for index in indexes
+            )
+        ):
+            raise Qwen3VLVLLMInferenceError("qwen vLLM source view provenance is invalid")
+        return [image_refs[index] for index in indexes]
+
     if not isinstance(value, Mapping) or set(value) != {"entities", "relations", "ambiguities"}:
         raise Qwen3VLVLLMInferenceError("qwen vLLM output violated the provider contract")
     entities = []
     id_map: dict[str, str] = {}
     for item in value["entities"]:
-        if not isinstance(item, Mapping) or set(item) != {"local_id", "category", "attributes", "confidence"}:
+        if (
+            not isinstance(item, Mapping)
+            or set(item) not in {
+                frozenset({"local_id", "category", "attributes", "confidence"}),
+                frozenset({"local_id", "category", "attributes", "confidence", "source_view_indexes"}),
+            }
+        ):
             raise Qwen3VLVLLMInferenceError("qwen vLLM entity fields are invalid")
         local_id = item["local_id"]
         if not isinstance(local_id, str) or local_id in id_map:
@@ -301,17 +339,23 @@ def _project_vllm_claims(value: Any, image_ref: str) -> dict[str, Any]:
         ref = f"entity://{local_id}"
         id_map[local_id] = ref
         category, confidence = _public_entity_category(item)
-        entities.append({"entity_ref": ref, "category": category, "confidence": confidence, "provenance": [image_ref]})
+        entities.append({"entity_ref": ref, "category": category, "confidence": confidence, "provenance": provenance(item)})
     relations = []
     for item in value["relations"]:
-        if not isinstance(item, Mapping) or set(item) != {"subject_id", "predicate", "object_id", "relation_space", "confidence"}:
+        if (
+            not isinstance(item, Mapping)
+            or set(item) not in {
+                frozenset({"subject_id", "predicate", "object_id", "relation_space", "confidence"}),
+                frozenset({"subject_id", "predicate", "object_id", "relation_space", "confidence", "source_view_indexes"}),
+            }
+        ):
             raise Qwen3VLVLLMInferenceError("qwen vLLM relation fields are invalid")
         subject, obj = id_map.get(item["subject_id"]), id_map.get(item["object_id"])
         if subject is None or obj is None or subject == obj:
             raise Qwen3VLVLLMInferenceError("qwen vLLM relation references unknown entity")
         relations.append({"relation_ref": f"relation://{item['subject_id']}-{item['predicate']}-{item['object_id']}",
                           "subject_ref": subject, "predicate": item["predicate"], "object_ref": obj,
-                          "confidence": item["confidence"], "provenance": [image_ref]})
+                          "confidence": item["confidence"], "provenance": provenance(item)})
     ambiguities = []
     for item in value["ambiguities"]:
         if not isinstance(item, Mapping) or set(item) != {"code", "message", "entity_ids"}:

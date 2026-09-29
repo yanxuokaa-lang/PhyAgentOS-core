@@ -255,7 +255,7 @@ class OpenAIResponsesSceneUnderstandingInference:
             "calibration_ref",
             "freshness_ms",
             "max_age_ms",
-            "artifacts",
+            "artifacts", "views", "capture_skew_ms",
         }
     )
 
@@ -292,7 +292,7 @@ class OpenAIResponsesSceneUnderstandingInference:
         artifacts = request.get("artifacts")
         if not isinstance(artifacts, list) or not artifacts:
             raise OpenAIResponsesInferenceError("scene understanding request has no artifacts")
-        image = self._resolve_image(artifacts)
+        images = self._resolve_images(artifacts)
         api_key = os.environ.get(self.config.api_key_env)
         if not api_key:
             raise OpenAIResponsesInferenceError(f"Missing {self.config.api_key_env} for scene understanding")
@@ -315,11 +315,10 @@ class OpenAIResponsesSceneUnderstandingInference:
                         "role": "user",
                         "content": [
                             {"type": "input_text", "text": self._user_prompt(request)},
-                            {
-                                "type": "input_image",
-                                "image_url": self._data_url(image),
-                                "detail": "high",
-                            },
+                            *[
+                                {"type": "input_image", "image_url": self._data_url(image), "detail": "high"}
+                                for _, image in images
+                            ],
                         ],
                     }
                 ],
@@ -348,15 +347,14 @@ class OpenAIResponsesSceneUnderstandingInference:
                 ref for ref in artifacts
                 if isinstance(ref, str) and ref.rsplit("/", 1)[-1] == "rgb"
             ]
-            if len(rgb_refs) != 1:
+            if not rgb_refs:
                 raise OpenAIResponsesInferenceError(
-                    "scene understanding requires exactly one rgb artifact"
+                    "scene understanding requires at least one rgb artifact"
                 )
-            rgb_ref = rgb_refs[0]
             for field in ("entities", "relations", "spatial_envelopes"):
                 for claim in parsed[field]:
                     if isinstance(claim, dict) and not claim.get("provenance"):
-                        claim["provenance"] = [rgb_ref]
+                        claim["provenance"] = list(rgb_refs)
             if not parsed["entities"] and not parsed["ambiguities"]:
                 parsed["ambiguities"].append(
                     {
@@ -386,7 +384,8 @@ class OpenAIResponsesSceneUnderstandingInference:
             if callable(close):
                 close()
 
-    def _resolve_image(self, artifact_refs: list[Any]) -> ArtifactPayload:
+    def _resolve_images(self, artifact_refs: list[Any]) -> list[tuple[str, ArtifactPayload]]:
+        images = []
         for ref in artifact_refs:
             if not isinstance(ref, str):
                 continue
@@ -399,7 +398,10 @@ class OpenAIResponsesSceneUnderstandingInference:
                 continue
             if not isinstance(payload, ArtifactPayload):
                 raise OpenAIResponsesInferenceError("artifact resolver returned an invalid payload")
-            return payload
+            if payload.media_type.startswith("image/"):
+                images.append((ref, payload))
+        if images:
+            return images
         raise OpenAIResponsesInferenceError("no image artifact was available for scene understanding")
 
     @staticmethod
@@ -410,7 +412,7 @@ class OpenAIResponsesSceneUnderstandingInference:
     def _system_prompt() -> str:
         return (
             "You are a query-only RGB visual scene understanding service. Infer only claims supported by the "
-            "provided observation image. Return the requested JSON schema. Use opaque entity:// references, "
+            "provided synchronized observation views. Return the requested JSON schema. Use opaque entity:// references, "
             "confidence values in [0,1], and artifact:// provenance supplied by the caller. Your scope is "
             "visible semantic content: entity identity, category, count, visual attributes, occlusion, and "
             "relative spatial relations. Do not report or speculate about metric scale, depth, 3-D extents, "
@@ -436,7 +438,7 @@ class OpenAIResponsesSceneUnderstandingInference:
                 "calibration_ref": request.get("calibration_ref"),
                 "artifact_refs": request.get("artifacts"),
                 "task": (
-                    "Inspect the full RGB image and identify each visible object, including simple colored "
+                    "Inspect all RGB views jointly and identify each visible object, including simple colored "
                     "geometric blocks or cubes; report its color, count, and relative left-to-right layout."
                 ),
             },
@@ -497,7 +499,7 @@ class OpenAIChatCompletionsSceneUnderstandingInference(
         artifacts = request.get("artifacts")
         if not isinstance(artifacts, list) or not artifacts:
             raise OpenAIResponsesInferenceError("scene understanding request has no artifacts")
-        image = self._resolve_image(artifacts)
+        images = self._resolve_images(artifacts)
         api_key = os.environ.get(self.config.api_key_env)
         if not api_key:
             raise OpenAIResponsesInferenceError(f"Missing {self.config.api_key_env} for scene understanding")
@@ -517,10 +519,10 @@ class OpenAIChatCompletionsSceneUnderstandingInference(
                         "role": "user",
                         "content": [
                             {"type": "text", "text": self._user_prompt(request)},
-                            {
-                                "type": "image_url",
-                                "image_url": {"url": self._data_url(image)},
-                            },
+                            *[
+                                {"type": "image_url", "image_url": {"url": self._data_url(image)}}
+                                for _, image in images
+                            ],
                         ],
                     },
                 ],
@@ -544,15 +546,14 @@ class OpenAIChatCompletionsSceneUnderstandingInference(
                 ref for ref in artifacts
                 if isinstance(ref, str) and ref.rsplit("/", 1)[-1] == "rgb"
             ]
-            if len(rgb_refs) != 1:
+            if not rgb_refs:
                 raise OpenAIResponsesInferenceError(
-                    "scene understanding requires exactly one rgb artifact"
+                    "scene understanding requires at least one rgb artifact"
                 )
-            rgb_ref = rgb_refs[0]
             for field in ("entities", "relations", "spatial_envelopes"):
                 for claim in parsed[field]:
                     if isinstance(claim, dict) and not claim.get("provenance"):
-                        claim["provenance"] = [rgb_ref]
+                        claim["provenance"] = list(rgb_refs)
             if not parsed["entities"] and not parsed["ambiguities"]:
                 parsed["ambiguities"].append(
                     {

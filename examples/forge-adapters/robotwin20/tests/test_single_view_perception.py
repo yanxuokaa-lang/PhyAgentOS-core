@@ -43,8 +43,10 @@ REQUEST = {
 class SemanticInference:
     def __init__(self):
         self.released = 0
+        self.requests = []
 
     def infer(self, request):
+        self.requests.append(request)
         return {
             "entities": [
                 {
@@ -287,6 +289,91 @@ def test_single_view_composition_crosses_the_generic_gateway_without_motion(tmp_
         "/tools/scene.understand",
         "/tools/scene_understanding/understand:invoke",
     ]
+
+
+def test_multiview_semantics_use_all_views_while_metric_geometry_stays_primary(tmp_path):
+    class MultiViewSemanticInference(SemanticInference):
+        def infer(self, request):
+            self.requests.append(request)
+            return {
+                "entities": [
+                    {
+                        "entity_ref": "entity://red-block",
+                        "category": "red block",
+                        "confidence": 0.9,
+                        "provenance": [RGB_REF],
+                    },
+                    {
+                        "entity_ref": "entity://blue-block",
+                        "category": "blue block",
+                        "confidence": 0.9,
+                        "provenance": ["artifact://scene-7/capture-1/wrist/rgb"],
+                    },
+                ],
+                "relations": [],
+                "spatial_envelopes": [],
+                "ambiguities": [],
+            }
+
+    semantic = MultiViewSemanticInference()
+    proposal = ProposalProvider()
+    segmentation = SegmentationProvider(np.ones((3, 4), dtype=bool))
+    inference = SingleViewPerceptionInference(
+        semantic,
+        proposal_provider=proposal,
+        segmentation_provider=segmentation,
+        localization_provider=NumpyMetricLocalizationProvider(),
+        artifact_store=_artifacts(tmp_path),
+    )
+    request = {
+        **REQUEST,
+        "artifacts": [
+            RGB_REF, DEPTH_REF, STATE_REF,
+            "artifact://scene-7/capture-1/wrist/rgb",
+            "artifact://scene-7/capture-1/wrist/depth",
+        ],
+        "views": [
+            {
+                "sensor_ref": "camera/head",
+                "observation_ref": OBSERVATION_REF,
+                "captured_at": "2026-09-29T00:00:00Z",
+                "frame": {"frame_id": "head_camera", "unit": "m"},
+                "calibration_ref": CALIBRATION_REF,
+                "freshness_ms": 5,
+                "artifacts": [
+                    {"ref": RGB_REF, "kind": "rgb", "media_type": "image/png"},
+                    {"ref": DEPTH_REF, "kind": "depth", "media_type": "application/numpy"},
+                    {"ref": STATE_REF, "kind": "state", "media_type": "application/json"},
+                ],
+            },
+            {
+                "sensor_ref": "camera/wrist",
+                "observation_ref": "observation://scene-7/wrist_camera",
+                "captured_at": "2026-09-29T00:00:00Z",
+                "frame": {"frame_id": "wrist_camera", "unit": "m"},
+                "calibration_ref": "artifact://scene-7/capture-1/wrist/calibration",
+                "freshness_ms": 5,
+                "artifacts": [
+                    {"ref": "artifact://scene-7/capture-1/wrist/rgb", "kind": "rgb", "media_type": "image/png"},
+                    {"ref": "artifact://scene-7/capture-1/wrist/depth", "kind": "depth", "media_type": "application/numpy"},
+                ],
+            },
+        ],
+        "capture_skew_ms": 0,
+    }
+
+    result = RoboTwinSceneUnderstandingProvider(inference).understand(request)
+
+    assert semantic.requests[0]["views"] == request["views"]
+    assert [item["entity_ref"] for item in result["entities"]] == [
+        "entity://red-block", "entity://blue-block",
+    ]
+    assert {item["entity_ref"] for item in result["spatial_envelopes"]} == {
+        "entity://red-block",
+    }
+    assert [item.query for item in proposal.requests] == ["red block"]
+    assert result["ambiguities"][-1]["code"] == "primary_view_metric_evidence_unavailable"
+    assert result["ambiguities"][-1]["entity_refs"] == ["entity://blue-block"]
 
 
 @pytest.mark.parametrize("stage", ["proposal", "segmentation"])

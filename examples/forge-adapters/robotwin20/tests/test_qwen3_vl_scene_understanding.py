@@ -10,6 +10,7 @@ from robotwin20_adapter import (
 )
 
 REF = "artifact://scene-1/capture-1/rgb"
+REF_2 = "artifact://scene-1/capture-1/wrist-rgb"
 REQUEST = {
     "observation_ref": "observation://scene-1/head_camera",
     "scene_revision": "scene-1",
@@ -25,6 +26,12 @@ class Resolver:
     def resolve(self, ref):
         assert ref == REF
         return ArtifactPayload(b"png", "image/png", Path("/tmp/rgb.png"))
+
+
+class MultiViewResolver:
+    def resolve(self, ref):
+        paths = {REF: Path("/tmp/rgb.png"), REF_2: Path("/tmp/wrist-rgb.png")}
+        return ArtifactPayload(b"png", "image/png", paths[ref])
 
 
 class Worker:
@@ -69,8 +76,44 @@ def test_qwen_provider_projects_semantic_claims_and_releases_worker(tmp_path):
     result = inference.infer(REQUEST)
     assert result["entities"][0]["provenance"] == [REF]
     assert result["spatial_envelopes"] == []
-    assert worker.requests[0]["rgb_path"] == "/tmp/rgb.png"
+    assert worker.requests[0]["rgb_paths"] == ["/tmp/rgb.png"]
+    assert worker.requests[0]["rgb_artifact_refs"] == [REF]
     assert worker.released == 1
+
+
+def test_qwen_provider_sends_all_ordered_views_and_projects_precise_provenance(tmp_path):
+    result = _result()
+    result["entities"][0]["source_view_indexes"] = [1]
+    result["relations"] = [{
+        "relation_ref": "relation://same-object",
+        "subject_ref": "entity://red-block",
+        "predicate": "visible_from",
+        "object_ref": "entity://red-block",
+        "confidence": 0.8,
+        "source_view_indexes": [0, 1],
+    }]
+    worker = Worker(result)
+    inference = Qwen3VLSceneUnderstandingInference(
+        MultiViewResolver(), config=_config(tmp_path), worker=worker
+    )
+    request = {**REQUEST, "artifacts": [REF, REF_2], "views": [], "capture_skew_ms": 0}
+
+    projected = inference.infer(request)
+
+    assert worker.requests[0]["rgb_artifact_refs"] == [REF, REF_2]
+    assert worker.requests[0]["rgb_paths"] == ["/tmp/rgb.png", "/tmp/wrist-rgb.png"]
+    assert projected["entities"][0]["provenance"] == [REF_2]
+    assert projected["relations"][0]["provenance"] == [REF, REF_2]
+
+
+def test_qwen_provider_requires_explicit_provenance_for_multiple_views(tmp_path):
+    inference = Qwen3VLSceneUnderstandingInference(
+        MultiViewResolver(), config=_config(tmp_path), worker=Worker(_result())
+    )
+    request = {**REQUEST, "artifacts": [REF, REF_2]}
+
+    with pytest.raises(Qwen3VLInferenceError, match="source view provenance"):
+        inference.infer(request)
 
 
 def test_qwen_provider_rejects_metric_claims(tmp_path):

@@ -90,7 +90,11 @@ def test_composition_registers_all_seven_required_tools():
     observe_schema = tools["scene.observe"]["input_schema"]
     assert observe_schema["properties"]["sensor_ref"]["default"] == "camera/head"
     assert observe_schema["properties"]["max_age_ms"]["default"] == 1000
-    assert observe_schema["required"] == ["sensor_ref", "max_age_ms"]
+    assert observe_schema["required"] == ["max_age_ms"]
+    assert observe_schema["oneOf"] == [
+        {"required": ["sensor_ref"], "not": {"required": ["sensor_refs"]}},
+        {"required": ["sensor_refs"], "not": {"required": ["sensor_ref"]}},
+    ]
     for tool in runtime.list_tools()["tools"]:
         capabilities = project_tool_spec(tool).capabilities
         if tool["tool_id"] == "scene.observe":

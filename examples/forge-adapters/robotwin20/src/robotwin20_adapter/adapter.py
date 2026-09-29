@@ -46,6 +46,8 @@ class RoboTwinSensorBackend(Protocol):
 
     def capture_sensors(self, sensor_ref: str) -> SensorCapture | Mapping[str, Any] | None: ...
 
+    def capture_sensor_set(self, sensor_refs: list[str]) -> list[SensorCapture | Mapping[str, Any]]: ...
+
     def snapshot(self) -> Mapping[str, Any]: ...
 
 
@@ -115,6 +117,30 @@ class RoboTwin20Adapter:
         _validate_capture(capture, self.required_sensor_kinds)
         return capture
 
+    def capture_many(self, sensor_refs: list[str]) -> tuple[SensorCapture, ...]:
+        if not self._started:
+            raise AdapterSensorError("RoboTwin20 environment has not been reset")
+        if (
+            not isinstance(sensor_refs, list) or not sensor_refs
+            or any(not isinstance(item, str) or not item.strip() for item in sensor_refs)
+            or len(set(sensor_refs)) != len(sensor_refs)
+        ):
+            raise AdapterSensorError("sensor_refs must contain distinct non-empty strings")
+        capture_set = getattr(self.backend, "capture_sensor_set", None)
+        if not callable(capture_set):
+            raise AdapterConfigurationError(
+                "RoboTwin20 backend must expose capture_sensor_set(sensor_refs) for synchronized capture"
+            )
+        raw = capture_set(sensor_refs)
+        if not isinstance(raw, (list, tuple)) or len(raw) != len(sensor_refs):
+            raise AdapterSensorError("synchronized sensor capture returned an invalid view set")
+        captures = tuple(_normalize_capture(item) for item in raw)
+        for capture in captures:
+            _validate_capture(capture, self.required_sensor_kinds)
+        if len({capture.scene_revision for capture in captures}) != 1:
+            raise AdapterSensorError("synchronized sensor captures have mixed scene revisions")
+        return captures
+
 
 class RoboTwinObservationSource:
     """Structural implementation of the generic runtime ObservationSource port."""
@@ -126,10 +152,31 @@ class RoboTwinObservationSource:
         if not isinstance(request, Mapping):
             return None
         sensor_ref = request.get("sensor_ref")
+        sensor_refs = request.get("sensor_refs")
         try:
-            snapshot = self.adapter.capture(sensor_ref)
+            snapshots = (
+                self.adapter.capture_many(sensor_refs)
+                if isinstance(sensor_refs, list)
+                else (self.adapter.capture(sensor_ref),)
+            )
         except AdapterSensorError:
             return None
+        snapshot = snapshots[0]
+        views = [
+            {
+                "sensor_ref": requested,
+                "captured_at": item.captured_at,
+                "scene_revision": item.scene_revision,
+                "frame_id": item.frame_id,
+                "calibration_ref": item.calibration_ref,
+                "artifacts": [
+                    {"ref": artifact.ref, "kind": artifact.kind, "media_type": artifact.media_type}
+                    for artifact in item.artifacts
+                ],
+                "sensor_available": item.sensor_available,
+            }
+            for requested, item in zip(sensor_refs or [sensor_ref], snapshots, strict=True)
+        ]
         return {
             "captured_at": snapshot.captured_at,
             "scene_revision": snapshot.scene_revision,
@@ -140,6 +187,7 @@ class RoboTwinObservationSource:
                 for item in snapshot.artifacts
             ],
             "sensor_available": snapshot.sensor_available,
+            "views": views,
         }
 
 

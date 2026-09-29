@@ -105,6 +105,77 @@ def setup(tmp_path):
     return grounding, {**identity, "entity_refs": ["entity://seen"]}, facts
 
 
+def setup_carried_scene(tmp_path, *, move_selected=False):
+    grounding, request, facts = setup(tmp_path)
+    understanding = next(iter(grounding.understandings.values()))
+    second = deepcopy(facts["objects"][0])
+    second.update(
+        entity_ref="entity://execution-2",
+        actor_name="block2",
+        world_T_object=pose(0.2),
+        world_T_functional_point=pose(0.2),
+    )
+    facts["objects"].append(second)
+    understanding["entities"].append({"entity_ref": "entity://seen-2"})
+    understanding["spatial_envelopes"].append({
+        "entity_ref": "entity://seen-2", "frame_id": "camera", "unit": "m",
+        "min_xyz_m": [0.18, -0.02, -0.02], "max_xyz_m": [0.22, 0.02, 0.02],
+    })
+    understanding["derived_artifacts"].append({
+        "artifact_ref": "artifact://capture/geometry-2",
+        "kind": "object_geometry",
+        "entity_ref": "entity://seen-2",
+        "descriptor": {"dimensions_m": [0.04, 0.04, 0.04]},
+    })
+    grounding.source = lambda _: deepcopy(facts)
+    source = grounding.bind({**request, "entity_refs": ["entity://seen", "entity://seen-2"]})
+    execution_by_ref = {
+        item["entity_ref"]: item["execution_entity_ref"]
+        for item in source["entities"]
+    }
+    current_identity = {
+        "observation_ref": "observation://s2/camera",
+        "scene_revision": "s2",
+        "calibration_ref": request["calibration_ref"],
+    }
+    current_facts = deepcopy(facts)
+    current_facts.update(current_identity)
+    if move_selected:
+        current_facts["objects"][0]["world_T_object"] = pose(0.01)
+    grounding.client.revision = "s2"
+    grounding.client.holding = "holding"
+    grounding.source = lambda _: deepcopy(current_facts)
+    grounding.remember("scene.observe", {
+        **current_identity,
+        "status": "available",
+        "frame": {"frame_id": "camera"},
+        "artifacts": [],
+        "captured_at": "2000-01-01T00:00:01Z",
+    })
+    carried_forward = [
+        {
+            "entity": {"entity_ref": entity_ref},
+            "source_scene_revision": "s1",
+            "source_binding_ref": source["binding_ref"],
+            "execution_entity_ref": execution_by_ref[entity_ref],
+            "effect_evidence_refs": ["artifact://persistent/action-1"],
+            "target_scene_revision": "s2",
+        }
+        for entity_ref in ("entity://seen", "entity://seen-2")
+    ]
+    grounding.remember("scene.understand", {
+        **current_identity,
+        "status": "available",
+        "frame": {"frame_id": "camera"},
+        "entities": [{"entity_ref": "entity://seen"}, {"entity_ref": "entity://seen-2"}],
+        "ambiguities": [],
+        "derived_artifacts": [],
+        "spatial_envelopes": [],
+        "carried_forward": carried_forward,
+    })
+    return grounding, {**current_identity, "entity_refs": ["entity://seen"]}
+
+
 def test_single_object_binding_needs_no_goal_and_target_preserves_explicit_pose(tmp_path):
     g, request, _ = setup(tmp_path)
     bound = g.bind(request)
@@ -127,6 +198,29 @@ def test_single_object_binding_needs_no_goal_and_target_preserves_explicit_pose(
     assert facts["objects"][0]["world_T_object_target"] == pose(0.35)
     assert facts["objects"][0]["actor_name"] == "block1"
     assert target["motion_authorized"] is False
+
+
+def test_holding_scene_binding_inherits_only_selected_runtime_proven_entity(tmp_path):
+    grounding, request = setup_carried_scene(tmp_path)
+
+    result = grounding.bind(request)
+
+    assert result["motion_authorized"] is False
+    assert [item["entity_ref"] for item in result["entities"]] == ["entity://seen"]
+    record = json.loads(
+        (tmp_path / (result["binding_ref"].removeprefix("artifact://") + ".json")).read_text()
+    )
+    assert set(record["objects"]) == {"entity://seen"}
+
+
+def test_holding_scene_binding_rejects_carried_entity_pose_drift(tmp_path):
+    grounding, request = setup_carried_scene(tmp_path, move_selected=True)
+
+    result = GroundingEndpoint(grounding.bind).invoke(request)
+
+    assert result["status"] == "unavailable"
+    assert result["motion_authorized"] is False
+    assert "moved despite unchanged effect evidence" in result["error"]["message"]
 
 
 def test_repeated_bind_reuses_current_binding_for_same_entity_set(tmp_path):
@@ -689,14 +783,12 @@ def test_real_route_builder_consumes_target_from_nested_intent(tmp_path, monkeyp
 
 
 @pytest.mark.parametrize(
-    "failure", ["revision", "holding", "clock_driven", "ambiguous", "missing", "calibration"]
+    "failure", ["revision", "clock_driven", "ambiguous", "missing", "calibration"]
 )
 def test_binding_rejects_unusable_scene_without_creating_receipt(tmp_path, failure):
     g, req, facts = setup(tmp_path)
     if failure == "revision":
         g.client.revision = "s2"
-    if failure == "holding":
-        g.client.holding = "holding"
     if failure == "clock_driven":
         g.client.validity = "clock_driven"
     if failure == "ambiguous":
@@ -707,6 +799,16 @@ def test_binding_rejects_unusable_scene_without_creating_receipt(tmp_path, failu
         (tmp_path / "capture/calibration.json").write_text("{}")
     assert GroundingEndpoint(g.bind).invoke(req)["status"] == "unavailable"
     assert not g.bindings
+
+
+def test_binding_is_read_only_and_available_while_runtime_is_holding(tmp_path):
+    g, req, _ = setup(tmp_path)
+    g.client.holding = "holding"
+
+    result = GroundingEndpoint(g.bind).invoke(req)
+
+    assert result["status"] == "available"
+    assert result["motion_authorized"] is False
 
 
 def test_target_transform_and_stale_preparation(tmp_path):

@@ -138,7 +138,7 @@ TOOL_SPEC: dict[str, Any] = {
         "requires_before_plan": True,
     },
     "description": (
-        "Derive provider-neutral entity and relation claims from one named observation. "
+        "Derive provider-neutral entity and relation claims from one synchronized observation set. "
         "If context reports scene_understanding_provider_unavailable, keep the current "
         "observation when the scene is unchanged, do not retry until readiness changes, "
         "and follow any operator_recovery instructions in context. Invocation never starts "
@@ -169,6 +169,61 @@ TOOL_SPEC: dict[str, Any] = {
             "artifacts": {
                 "type": "array", "minItems": 1,
                 "items": {"type": "string", "pattern": _ARTIFACT_REF.pattern},
+            },
+            "views": {
+                "type": "array", "minItems": 1,
+                "items": {
+                    "type": "object", "additionalProperties": False,
+                    "required": [
+                        "sensor_ref", "observation_ref", "captured_at", "frame",
+                        "calibration_ref", "freshness_ms", "artifacts",
+                    ],
+                    "properties": {
+                        "sensor_ref": {"type": "string", "minLength": 1},
+                        "observation_ref": {"type": "string", "pattern": _OBSERVATION_REF.pattern},
+                        "captured_at": {"type": "string", "format": "date-time"},
+                        "frame": {
+                            "type": "object", "additionalProperties": False,
+                            "required": ["frame_id", "unit"],
+                            "properties": {
+                                "frame_id": {"type": "string", "minLength": 1},
+                                "unit": {"const": "m"},
+                            },
+                        },
+                        "calibration_ref": {"type": "string", "minLength": 1},
+                        "freshness_ms": {"type": "integer", "minimum": 0},
+                        "artifacts": {
+                            "type": "array", "minItems": 1,
+                            "items": {
+                                "type": "object", "additionalProperties": False,
+                                "required": ["ref", "kind", "media_type"],
+                                "properties": {
+                                    "ref": {"type": "string", "pattern": _ARTIFACT_REF.pattern},
+                                    "kind": {"enum": ["rgb", "depth", "point_cloud", "state"]},
+                                    "media_type": {"type": "string", "minLength": 1},
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+            "capture_skew_ms": {"type": "integer", "minimum": 0},
+            "carried_entities": {
+                "type": "array",
+                "items": {
+                    "type": "object", "additionalProperties": False,
+                    "required": [
+                        "entity", "source_scene_revision", "source_binding_ref",
+                        "execution_entity_ref", "effect_evidence_refs",
+                    ],
+                    "properties": {
+                        "entity": {"type": "object"},
+                        "source_scene_revision": {"type": "string", "minLength": 1},
+                        "source_binding_ref": {"type": "string", "pattern": _ARTIFACT_REF.pattern},
+                        "execution_entity_ref": {"type": "string", "pattern": _ENTITY_REF.pattern},
+                        "effect_evidence_refs": _PROVENANCE_SCHEMA,
+                    },
+                },
             },
         },
     },
@@ -271,6 +326,7 @@ TOOL_SPEC: dict[str, Any] = {
                 },
             },
             "reconciliations": {"type": "array", "items": {"type": "object"}},
+            "carried_forward": {"type": "array", "items": {"type": "object"}},
             "error": {
                 "type": "object",
                 "additionalProperties": False,
@@ -370,7 +426,8 @@ def validate_arguments(arguments: Any) -> dict[str, Any] | None:
         return _error("invalid_arguments", "arguments must be an object")
     allowed = {
         "observation_ref", "scene_revision", "frame_id", "calibration_ref",
-        "freshness_ms", "max_age_ms", "artifacts",
+        "freshness_ms", "max_age_ms", "artifacts", "views", "capture_skew_ms",
+        "carried_entities",
     }
     if set(arguments) - allowed:
         return _error("invalid_arguments", "unknown scene.understand argument")
@@ -403,6 +460,86 @@ def validate_arguments(arguments: Any) -> dict[str, Any] | None:
         return _error("invalid_artifact_ref", "artifacts must contain valid artifact references", observation_ref=observation_ref)
     if len(set(artifacts)) != len(artifacts):
         return _error("invalid_artifact_ref", "artifacts must not contain duplicates", observation_ref=observation_ref)
+    views = arguments.get("views")
+    if views is not None:
+        if not isinstance(views, list) or not views:
+            return _error("invalid_views", "views must be a non-empty array", observation_ref=observation_ref)
+        view_artifacts: list[str] = []
+        sensor_refs: set[str] = set()
+        for index, view in enumerate(views):
+            if not isinstance(view, dict) or set(view) != {
+                "sensor_ref", "observation_ref", "captured_at", "frame",
+                "calibration_ref", "freshness_ms", "artifacts",
+            }:
+                return _error("invalid_views", "view fields are invalid", observation_ref=observation_ref)
+            sensor_ref = view.get("sensor_ref")
+            frame = view.get("frame")
+            calibration = view.get("calibration_ref")
+            if (
+                not isinstance(sensor_ref, str) or not sensor_ref or sensor_ref in sensor_refs
+                or not isinstance(frame, dict) or set(frame) != {"frame_id", "unit"}
+                or not isinstance(frame.get("frame_id"), str) or not frame["frame_id"]
+                or frame.get("unit") != "m"
+                or view.get("observation_ref")
+                != f"observation://{arguments['scene_revision']}/{frame['frame_id']}"
+                or not isinstance(calibration, str) or not calibration
+                or isinstance(view.get("freshness_ms"), bool)
+                or not isinstance(view.get("freshness_ms"), int)
+                or view["freshness_ms"] < 0
+                or not isinstance(view.get("captured_at"), str)
+                or not isinstance(view.get("artifacts"), list) or not view["artifacts"]
+            ):
+                return _error("invalid_views", "view identity is invalid", observation_ref=observation_ref)
+            sensor_refs.add(sensor_ref)
+            for artifact in view["artifacts"]:
+                if (
+                    not isinstance(artifact, dict)
+                    or set(artifact) != {"ref", "kind", "media_type"}
+                    or not isinstance(artifact.get("ref"), str)
+                    or _ARTIFACT_REF.fullmatch(artifact["ref"]) is None
+                ):
+                    return _error("invalid_views", "view artifact is invalid", observation_ref=observation_ref)
+                view_artifacts.append(artifact["ref"])
+            if index == 0 and (
+                view["observation_ref"] != observation_ref
+                or frame["frame_id"] != arguments["frame_id"]
+                or calibration != arguments["calibration_ref"]
+            ):
+                return _error("invalid_views", "primary view differs from top-level identity", observation_ref=observation_ref)
+        if view_artifacts != artifacts or len(set(view_artifacts)) != len(view_artifacts):
+            return _error("invalid_views", "view artifacts must exactly match artifacts", observation_ref=observation_ref)
+    capture_skew_ms = arguments.get("capture_skew_ms")
+    if capture_skew_ms is not None and (
+        isinstance(capture_skew_ms, bool) or not isinstance(capture_skew_ms, int) or capture_skew_ms < 0
+    ):
+        return _error("invalid_views", "capture_skew_ms must be non-negative", observation_ref=observation_ref)
+    carried_entities = arguments.get("carried_entities", [])
+    if not isinstance(carried_entities, list):
+        return _error("invalid_carry_forward", "carried_entities must be an array", observation_ref=observation_ref)
+    seen_carried: set[str] = set()
+    for item in carried_entities:
+        if not isinstance(item, dict) or set(item) != {
+            "entity", "source_scene_revision", "source_binding_ref",
+            "execution_entity_ref", "effect_evidence_refs",
+        }:
+            return _error("invalid_carry_forward", "carried entity fields are invalid", observation_ref=observation_ref)
+        entity = item.get("entity")
+        entity_ref = entity.get("entity_ref") if isinstance(entity, dict) else None
+        if (
+            not isinstance(entity, dict)
+            or set(entity) != {"entity_ref", "category", "confidence", "provenance"}
+            or not isinstance(entity_ref, str) or _ENTITY_REF.fullmatch(entity_ref) is None
+            or entity_ref in seen_carried
+            or not isinstance(item.get("source_scene_revision"), str)
+            or not item["source_scene_revision"]
+            or not isinstance(item.get("source_binding_ref"), str)
+            or _ARTIFACT_REF.fullmatch(item["source_binding_ref"]) is None
+            or not isinstance(item.get("execution_entity_ref"), str)
+            or _ENTITY_REF.fullmatch(item["execution_entity_ref"]) is None
+            or not _provenance_is_bound(item.get("effect_evidence_refs"), None)
+        ):
+            return _error("invalid_carry_forward", "carried entity is invalid", observation_ref=observation_ref)
+        seen_carried.add(entity_ref)
     return None
 
 
@@ -716,7 +853,9 @@ class SceneUnderstandingEndpoint:
                 "calibration_ref": arguments["calibration_ref"],
             }
         try:
-            snapshot = self.provider.understand(deepcopy(arguments))
+            provider_arguments = deepcopy(arguments)
+            carried_entities = provider_arguments.pop("carried_entities", [])
+            snapshot = self.provider.understand(provider_arguments)
         except Exception as exc:
             reason, retryable = _provider_failure(exc)
             return {
@@ -757,17 +896,42 @@ class SceneUnderstandingEndpoint:
                 failure_stage="provider",
                 retryable=False,
             )
+        entities = [dict(item) for item in normalized.entities]
+        entity_refs = {item["entity_ref"] for item in entities}
+        carried_forward = []
+        reconciliations = [dict(item) for item in normalized.reconciliations]
+        for item in carried_entities:
+            entity = dict(item["entity"])
+            if entity["entity_ref"] in entity_refs:
+                continue
+            entities.append(entity)
+            entity_refs.add(entity["entity_ref"])
+            carried = deepcopy(item)
+            carried["target_scene_revision"] = arguments["scene_revision"]
+            carried_forward.append(carried)
+            reconciliations.append(
+                {
+                    "code": "runtime_proven_entity_unchanged",
+                    "entity_refs": [entity["entity_ref"]],
+                    "source_scene_revision": item["source_scene_revision"],
+                    "target_scene_revision": arguments["scene_revision"],
+                    "evidence_refs": list(item["effect_evidence_refs"]),
+                }
+            )
         return {
             "status": "available", "observation_ref": observation_ref,
             "scene_revision": arguments["scene_revision"],
             "frame": {"frame_id": arguments["frame_id"], "unit": "m"},
             "calibration_ref": arguments["calibration_ref"],
-            "entities": [dict(item) for item in normalized.entities],
+            "entities": entities,
             "relations": [dict(item) for item in normalized.relations],
             "spatial_envelopes": [dict(item) for item in normalized.spatial_envelopes],
             "derived_artifacts": [dict(item) for item in normalized.derived_artifacts],
             "ambiguities": [dict(item) for item in normalized.ambiguities],
-            "reconciliations": [dict(item) for item in normalized.reconciliations],
+            "reconciliations": reconciliations,
+            "carried_forward": carried_forward,
+            "views": deepcopy(arguments.get("views", [])),
+            "capture_skew_ms": arguments.get("capture_skew_ms", 0),
         }
 
 

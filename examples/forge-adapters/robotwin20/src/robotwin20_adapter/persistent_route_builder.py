@@ -65,13 +65,27 @@ class PersistentRouteBuilder:
             raise ValueError("materializer configuration overrides dynamic scene arguments")
         self.arm_profile = load_arm_planning_profile(Path(self.arguments["arm-planning-profile"]))
 
-    def _current(self, scene_revision, *, deadline: PreparationDeadline | None = None):
+    def _current(
+        self,
+        scene_revision,
+        *,
+        expected_holding_state: str | None = None,
+        deadline: PreparationDeadline | None = None,
+    ):
         kwargs = {} if deadline is None else {
             "timeout_s": deadline.remaining("route_snapshot")
         }
         current = self.client.query("snapshot", {}, **kwargs)
-        if current["scene_revision"] != scene_revision or current["holding_state"] != "empty":
-            raise ValueError("route building requires the current empty scene")
+        if (
+            current["scene_revision"] != scene_revision
+            or current["holding_state"] not in {"empty", "holding"}
+            or (
+                expected_holding_state is not None
+                and current["holding_state"] != expected_holding_state
+            )
+        ):
+            raise ValueError("route building requires the current stable scene")
+        return current["holding_state"]
 
     def build(
         self,
@@ -84,7 +98,7 @@ class PersistentRouteBuilder:
         intent = ManipulationIntent.model_validate(request["intent"])
         if deadline is not None:
             deadline.remaining("route_materialization")
-        self._current(intent.scene_revision, deadline=deadline)
+        initial_holding_state = self._current(intent.scene_revision, deadline=deadline)
         # Validate the candidate/arm budget before invoking an expensive materializer.
         enumerate_arm_candidates(intent, request["candidates"], self.arm_profile)
         source_kwargs = {} if deadline is None else {"deadline": deadline}
@@ -190,7 +204,11 @@ class PersistentRouteBuilder:
             candidates.append(generated)
             reviews[candidate["candidate_ref"]] = str(output / "human_review_request.json")
             output_roots.append(output)
-        self._current(intent.scene_revision, deadline=deadline)
+        self._current(
+            intent.scene_revision,
+            expected_holding_state=initial_holding_state,
+            deadline=deadline,
+        )
         if deadline is not None:
             deadline.remaining("route_materialization")
         if base is None:

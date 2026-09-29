@@ -63,6 +63,7 @@ class Provider:
 
     def understand(self, request):
         self.calls += 1
+        self.last_request = request
         return self.result
 
 
@@ -175,6 +176,34 @@ def test_missing_calibration_and_unknown_provider_fields_fail_closed():
     assert missing["error"]["code"] == "missing_calibration"
     assert unknown["error"]["code"] == "invalid_arguments"
     assert provider.calls == 0
+
+
+def test_runtime_proven_unchanged_entity_is_merged_without_reaching_visual_provider():
+    provider = Provider(understanding_snapshot())
+    carried = {
+        "entity": {
+            "entity_ref": "entity://unchanged-block",
+            "category": "blue block",
+            "confidence": 0.9,
+            "provenance": ["artifact://old-scene/rgb"],
+        },
+        "source_scene_revision": "old-scene",
+        "source_binding_ref": "artifact://entity-bindings/source",
+        "execution_entity_ref": "entity://runtime-blue",
+        "effect_evidence_refs": ["artifact://persistent/action-1"],
+    }
+
+    output = SceneUnderstandingEndpoint(provider).invoke(
+        request_payload(carried_entities=[carried])
+    )
+
+    assert output["status"] == "available"
+    assert {item["entity_ref"] for item in output["entities"]} == {
+        "entity://bottle-1", "entity://unchanged-block",
+    }
+    assert output["carried_forward"][0]["target_scene_revision"] == "scene-7"
+    assert output["reconciliations"][-1]["code"] == "runtime_proven_entity_unchanged"
+    assert "carried_entities" not in provider.last_request
 
 
 def test_observation_ref_must_bind_to_scene_revision_and_frame():
