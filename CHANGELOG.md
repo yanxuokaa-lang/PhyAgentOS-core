@@ -53,7 +53,9 @@ assert schema["properties"]["arguments"]["default"] == {}
 **修改说明：** 覆盖真实 Agent-loop 省略场景与 Tool Schema 默认值，确保结构性省略不再产生额外模型重试，同时仍在选择结果后 yield。
 
 ### 验证
-- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /home/yanxu/miniconda3/envs/paos/bin/python -m pytest -q tests/test_agent_foundation.py`: `passed`
+- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /home/yanxu/miniconda3/envs/paos/bin/python -m pytest -q tests/test_agent_foundation.py::test_node_turn_yields_after_selection_requires_replan tests/test_agent_foundation.py::test_forge_plan_select_contract_defaults_projection_only_arguments`: `2 passed`
+- 完整 `tests/test_agent_foundation.py`：`76 passed, 6 failed`；失败位于既有 invocation-read / outcome_unknown 测试夹具，缺少 `read_invocation`、`read_session_invocation` 或 client `base_url`，与本次规划选择空参数路径无关，未纳入本修复范围。
+- Full `tests/test_agent_foundation.py`: `76 passed, 6 failed`; failures are in pre-existing invocation-read/outcome_unknown fixtures missing `read_invocation`, `read_session_invocation`, or client `base_url`, outside this planning-selection fix.
 - `/home/yanxu/miniconda3/envs/paos/bin/python -m ruff check PhyAgentOS/agent/tools/planning.py tests/test_agent_foundation.py`
 - `/home/yanxu/miniconda3/envs/paos/bin/python -m compileall -q PhyAgentOS/agent/tools/planning.py`
 - `git diff --check`
