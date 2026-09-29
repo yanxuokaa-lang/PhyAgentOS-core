@@ -2,6 +2,32 @@
 ## Archive
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.2.0 (2026-09-29 18:10) - codex
+
+### 实际修改 / Implemented changes [完成]
+- [sense] [fix] operator-owned Qwen vLLM readiness 只读 `/is_sleeping`；双 provider 失败后 `scene.understand` 动态 context fail closed，并返回不可重试 provider error。(local)
+- [Sense] [Fix] Operator-owned Qwen vLLM readiness reads only `/is_sleeping`; after both providers fail, the dynamic `scene.understand` context fails closed and returns a non-retryable provider error.(local)
+- [agent] [fix] AgentLoop 持久化精确 provider failure 后立即交还控制权，不重复模型请求、不刷新 observation，并延迟同批剩余 Tool；非 provider 请求错误保持可修正。(local)
+- [Agent] [Fix] AgentLoop immediately returns control after persisting the exact provider failure, without another model request or observation refresh, and defers remaining Tools in the same response; non-provider request errors remain correctable.(local)
+- [eval] [test] adapter/provider/Skill `66 passed`，AgentLoop/prompt 聚焦 `5 passed`；Ruff、compileall、diff check 通过，全程 Query-only 且 `motion_authorized=false`。(local)
+- [Eval] [Test] Adapter/provider/Skill tests passed `66`, focused AgentLoop/prompt tests passed `5`, and Ruff, compileall, and diff check passed; execution remained Query-only with `motion_authorized=false`.(local)
+
+### 影响文件 / Affected files
+- `qwen3_vl_vllm_lifecycle.py:L76-L100,L274-L276`；`scene_understanding_fallback.py:L83-L137,L196-L203`；`understanding.py:L102-L119`；`persistent_host.py:L588-L614`。
+- `PhyAgentOS/agent/loop.py:L1118-L1150,L1269-L1302`；`PhyAgentOS/agent/prompt_context.py:L726-L732,L1032-L1035`；`PhyAgentOS/forge/capability_runtime/understanding.py:L342-L350`。
+- `test_qwen3_vl_vllm_lifecycle.py:L76-L100`；`test_scene_understanding_fallback.py:L65-L141`；`test_persistent_host.py:L246-L269,L319-L325`；`test_scene_understand_provider.py:L121-L138`；`tests/test_agent_foundation.py:L27-L36,L534-L620`；`tests/test_prompt_context.py:L521-L528,L640-L661`。
+
+### 关键 Diff / Key diff
+```diff
+- retryable provider outage -> repeated model/discovery attempts
++ read-only provider readiness -> dynamic Tool not-ready
++ exact non-retryable provider failure -> persisted handoff, no observation refresh
+```
+
+### Git 提交
+- Commit: 待提交
+- Branch: `feature/planning-loop`
+
 ## v12.1.0 (2026-09-29 19:05) - codex
 
 ### 实际修改 / Implemented changes [完成]
@@ -13,6 +39,7 @@
 - [Policy] [Fix] `object.place` success now requires release/retreat/clearance/observation, a new scene revision, and complete post-release evidence; exact return pose is not a PAOS core requirement.(local)
 - [eval] [test] 83 项 Fake Gateway/no-motion 回归、专项 unknown resolution 回归、Ruff、compileall、diff-check 全部通过；七维审查见 `docs/forge/IMPLEMENTATION_REVIEW_V12_1_0.md`。(local)
 - [Eval] [Test] 83 Fake Gateway/no-motion regressions, the focused unknown-resolution regression, Ruff, compileall, and diff-check passed; see `docs/forge/IMPLEMENTATION_REVIEW_V12_1_0.md` for the seven-dimension review.(local)
+- Git commit: `1fdbe5f` on `feature/planning-loop` (2026-09-29 19:05 Asia/Shanghai)
 
 ## v12.0.1 (2026-09-29 16:17) - codex
 
