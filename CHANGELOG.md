@@ -58,7 +58,7 @@ if stale_scene_record:
 - ready/select、Action terminal result、世界变化后 fresh observation 和 replan revision 边界全部保留。
 
 ### Git 提交
-- Commit: `PENDING`
+- Commit: `5b3eb37`
 - Branch: `feature/planning-loop`
 - 时间: 2026-09-29 23:39
 
