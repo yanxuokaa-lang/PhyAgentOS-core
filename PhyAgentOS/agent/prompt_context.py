@@ -713,7 +713,11 @@ def task_prompt_projection(task: Any | None) -> dict[str, Any] | None:
         planning_next_step = (
             "Run forge_tool_query for each missing prerequisite Query using its live "
             "ToolSpec. Do not cancel the task because PlanGraph controls are hidden; "
-            "forge_task_materialize_plan becomes visible after those Queries succeed."
+            "forge_task_materialize_plan becomes visible after those Queries succeed. "
+            "A read-only Query returning motion_authorized=false is expected: it does "
+            "not authorize motion and does not block remaining read-only discovery or "
+            "plan materialization. Motion permission is evaluated later by preparation, "
+            "planning admission, Coordinator, and Gateway Action gates."
         )
         if "scene.bind" in missing_queries:
             planning_next_step += (
@@ -725,10 +729,12 @@ def task_prompt_projection(task: Any | None) -> dict[str, Any] | None:
             )
         if "scene.understand" in missing_queries:
             planning_next_step += (
-                " If scene.understand returns error.retryable=false, treat the "
-                "provider/runtime as blocked: stop this discovery attempt and wait "
-                "for Runtime readiness; do not take a fresh observation or repeat "
-                "the same understanding Query."
+                " Only a scene.understand error with code=understanding_provider_error, "
+                "failure_stage=provider, and retryable=false blocks on Runtime provider "
+                "readiness. A request-validation error such as invalid_freshness is "
+                "correctable in this task: keep the current successful observation, "
+                "fix the arguments from its receipt and ToolSpec, and submit one corrected "
+                "Query without repeating the identical invalid request."
             )
     elif graph is None:
         planning_phase = "materialization_ready"

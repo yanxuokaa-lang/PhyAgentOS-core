@@ -637,7 +637,7 @@ def test_task_projection_guides_query_before_plan_materialization() -> None:
     assert "forge_task_materialize_plan" in projection["planning_next_step"]
 
 
-def test_discovery_projection_stops_on_non_retryable_understanding_provider_failure() -> None:
+def test_discovery_projection_distinguishes_provider_and_request_failures() -> None:
     task = _task()
     policy = ToolSpecPolicy(
         tool_id="scene.understand", semantics="query", spec_digest="a" * 64,
@@ -657,8 +657,11 @@ def test_discovery_projection_stops_on_non_retryable_understanding_provider_fail
 
     projection = task_prompt_projection(task)
     assert projection is not None
-    assert "error.retryable=false" in projection["planning_next_step"]
-    assert "do not take a fresh observation" in projection["planning_next_step"]
+    guidance = projection["planning_next_step"]
+    assert "code=understanding_provider_error" in guidance
+    assert "failure_stage=provider" in guidance
+    assert "invalid_freshness is correctable" in guidance
+    assert "motion_authorized=false is expected" in guidance
 
 
 def test_discovery_visibility_does_not_count_provider_failure_as_success() -> None:

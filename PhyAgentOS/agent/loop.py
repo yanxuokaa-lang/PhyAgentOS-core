@@ -1082,6 +1082,23 @@ class AgentLoop:
                             # The next iteration resolves the persisted task by
                             # session and restores the normal phase projection.
                             pick_place_creation_mode = False
+                    if self._scene_understanding_request_invalid(
+                        tool_name=tool_call.name,
+                        arguments=tool_call.arguments,
+                        result=result,
+                    ):
+                        messages.append({
+                            "role": "system",
+                            "content": (
+                                "The scene.understand request was rejected before any "
+                                "provider inference. Keep the current task and current "
+                                "successful scene.observe receipt, inspect the ToolSpec "
+                                "and returned validation error, then submit one corrected "
+                                "scene.understand Query. Do not repeat the identical invalid "
+                                "request, do not wait for provider readiness, and do not "
+                                "treat this request error as Qwen or Runtime unavailability."
+                            ),
+                        })
                     if (
                         projection_scope == "node"
                         and tool_call.name == "forge_plan_select"
@@ -1294,6 +1311,41 @@ class AgentLoop:
             and error.get("code") == "understanding_provider_error"
             and error.get("failure_stage") == "provider"
             and error.get("retryable") is False
+        )
+
+    @staticmethod
+    def _scene_understanding_request_invalid(
+        *, tool_name: str, arguments: Any, result: str
+    ) -> bool:
+        """Recognize correctable pre-provider scene-understanding request errors."""
+        if (
+            tool_name != "forge_tool_query"
+            or not isinstance(arguments, Mapping)
+            or arguments.get("tool_id") != "scene.understand"
+        ):
+            return False
+        try:
+            payload = json.loads(result)
+        except (TypeError, json.JSONDecodeError):
+            return False
+        data = payload.get("data") if isinstance(payload, dict) else None
+        error = data.get("error") if isinstance(data, dict) else None
+        request_error_codes = {
+            "invalid_arguments",
+            "invalid_observation_ref",
+            "invalid_scene_revision",
+            "invalid_frame",
+            "invalid_observation_binding",
+            "missing_calibration",
+            "invalid_freshness",
+            "invalid_artifact_ref",
+        }
+        return (
+            payload.get("ok") is True
+            and data.get("status") == "invalid"
+            and isinstance(error, dict)
+            and error.get("code") in request_error_codes
+            and error.get("failure_stage") != "provider"
         )
 
     async def run_node_turn(

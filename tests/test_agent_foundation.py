@@ -629,6 +629,65 @@ def test_scene_understanding_request_errors_do_not_wait_for_provider_recovery(re
     ) is False
 
 
+def test_scene_understanding_invalid_request_is_corrected_in_same_task(tmp_path):
+    async def exercise():
+        provider = ScriptedProvider([
+            LLMResponse(content=None, tool_calls=[ToolCallRequest(
+                "invalid-understand",
+                "forge_tool_query",
+                {"task_id": "task-1", "tool_id": "scene.understand", "arguments": {}},
+            )]),
+            LLMResponse(content=None, tool_calls=[ToolCallRequest(
+                "corrected-understand",
+                "forge_tool_query",
+                {
+                    "task_id": "task-1",
+                    "tool_id": "scene.understand",
+                    "arguments": {"max_age_ms": 1000},
+                },
+            )]),
+            LLMResponse(content="Scene understanding request corrected."),
+        ])
+        loop = AgentLoop(
+            bus=MessageBus(), provider=provider, workspace=tmp_path, max_iterations=4
+        )
+        loop.tools.execute = AsyncMock(side_effect=[
+            json.dumps({
+                "ok": True,
+                "data": {
+                    "status": "invalid",
+                    "error": {
+                        "code": "invalid_freshness",
+                        "reason": "validation",
+                        "retryable": False,
+                    },
+                    "motion_authorized": False,
+                },
+            }),
+            json.dumps({
+                "ok": True,
+                "data": {"status": "available", "entities": []},
+            }),
+        ])
+
+        result = await loop._run_agent_loop(
+            [{"role": "user", "content": "understand the current scene"}],
+            projection_scope="task",
+        )
+
+        assert result.tools_used == ["forge_tool_query", "forge_tool_query"]
+        assert result.content == "Scene understanding request corrected."
+        correction_messages = provider.requests[1]["messages"]
+        assert any(
+            message.get("role") == "system"
+            and "rejected before any provider inference" in message.get("content", "")
+            and "do not wait for provider readiness" in message.get("content", "")
+            for message in correction_messages
+        )
+
+    asyncio.run(exercise())
+
+
 def test_node_turn_can_correct_selection_input_without_replan(tmp_path):
     async def exercise():
         provider = ScriptedProvider([

@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from PhyAgentOS.agent.tools.forge_task import ForgeTaskBeginRevisionTool
 from PhyAgentOS.agent.tools.forge_tool_api import (
     ForgeToolContextTool,
     ForgeToolQueryTool,
@@ -14,7 +15,6 @@ from PhyAgentOS.agent.tools.forge_tool_api import (
     _effective_query_timeout_ms,
     _task_query_source_records,
 )
-from PhyAgentOS.agent.tools.forge_task import ForgeTaskBeginRevisionTool
 from PhyAgentOS.forge.tool_client import ForgeToolAPITimeoutError
 
 
@@ -116,7 +116,7 @@ def test_task_query_source_map_contains_only_latest_successful_query_in_active_r
         ("scene-5", "observer_camera", ("rgb", "depth", "state")),
     ],
 )
-def test_task_query_copies_exact_source_fields_and_keeps_literal_arguments(
+def test_task_query_copies_exact_source_fields_and_inherits_observation_max_age(
     scene_id, frame_id, artifact_names
 ):
     artifact_refs = [f"artifact://{scene_id}/{name}" for name in artifact_names]
@@ -139,7 +139,7 @@ def test_task_query_copies_exact_source_fields_and_keeps_literal_arguments(
             semantics="query",
             status="succeeded",
             revision_id="revision-current",
-            arguments={},
+            arguments={"sensor_ref": "camera/head", "max_age_ms": 1000},
             response={"ok": True, "data": observation},
         )],
     )
@@ -173,7 +173,7 @@ def test_task_query_copies_exact_source_fields_and_keeps_literal_arguments(
     result = json.loads(asyncio.run(ForgeToolQueryTool(object(), Coordinator()).execute(
         task_id="task-1",
         tool_id="scene.understand",
-        arguments={"max_age_ms": 1000},
+        arguments={},
         argument_sources=sources,
     )))
 
@@ -242,7 +242,6 @@ def test_scene_followup_queries_use_observation_receipt_instead_of_retyped_refs(
         "calibration_ref": "artifact://wrong/calibration",
     }
     if tool_id == "scene.understand":
-        supplied["max_age_ms"] = 1000
         supplied["agent_owned_option"] = "preserved"
 
     result = json.loads(asyncio.run(ForgeToolQueryTool(object(), Coordinator()).execute(
@@ -297,6 +296,62 @@ def test_scene_followup_query_requires_available_active_revision_observation():
 
     assert result["ok"] is False
     assert "successful scene.observe Query" in result["error"]["message"]
+
+
+def test_scene_understand_explicit_sources_still_inherit_observation_max_age():
+    observation = {
+        "status": "available",
+        "observation_ref": "observation://scene-9/head_camera",
+        "scene_revision": "scene-9",
+        "frame": {"frame_id": "head_camera", "unit": "m"},
+        "calibration_ref": "artifact://scene-9/calibration",
+        "freshness_ms": 9,
+        "artifacts": [
+            {"ref": "artifact://scene-9/rgb", "kind": "rgb"},
+            {"ref": "artifact://scene-9/depth", "kind": "depth"},
+        ],
+    }
+    task = SimpleNamespace(
+        active_revision_id="revision-current",
+        execution_records=[SimpleNamespace(
+            record_id="observe-1",
+            tool_id="scene.observe",
+            semantics="query",
+            status="succeeded",
+            revision_id="revision-current",
+            arguments={"sensor_ref": "camera/head", "max_age_ms": 1250},
+            response={"ok": True, "data": observation},
+        )],
+    )
+
+    class Coordinator:
+        def get_task(self, task_id):
+            assert task_id == "task-1"
+            return task
+
+        async def invoke_query(self, task_id, tool_id, arguments, **kwargs):
+            assert (task_id, tool_id) == ("task-1", "scene.understand")
+            return {"ok": True, "arguments": arguments}
+
+    sources = {
+        "observation_ref": {"record_id": "observe-1", "path": ["response", "data", "observation_ref"]},
+        "scene_revision": {"record_id": "observe-1", "path": ["response", "data", "scene_revision"]},
+        "frame_id": {"record_id": "observe-1", "path": ["response", "data", "frame", "frame_id"]},
+        "calibration_ref": {"record_id": "observe-1", "path": ["response", "data", "calibration_ref"]},
+        "freshness_ms": {"record_id": "observe-1", "path": ["response", "data", "freshness_ms"]},
+        "artifacts": {"record_id": "observe-1", "path": ["response", "data", "artifacts"], "map_field": "ref"},
+    }
+
+    result = json.loads(asyncio.run(ForgeToolQueryTool(object(), Coordinator()).execute(
+        task_id="task-1",
+        tool_id="scene.understand",
+        arguments={},
+        argument_sources=sources,
+    )))
+
+    assert result["ok"] is True
+    assert result["arguments"]["max_age_ms"] == 1250
+    assert result["arguments"]["freshness_ms"] == 9
 
 
 def test_task_query_rejects_unavailable_sources_without_gateway_call():

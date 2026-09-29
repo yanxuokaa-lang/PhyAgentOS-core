@@ -2,6 +2,94 @@
 ## Archive
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.2.8 (2026-09-29 23:59) - codex
+
+### 变更摘要 [完成]
+- [policy] [fix] 中文：让 `scene.understand` 从当前任务最新成功的 `scene.observe` 收据同时投影 `freshness_ms` 与该观测请求使用的 `max_age_ms`，避免模型遗漏字面量后在 provider 调用前触发 `invalid_freshness`。 (local)
+- [Policy] [Fix] English: Project both `freshness_ms` and the observation request's `max_age_ms` from the latest successful task-owned `scene.observe` receipt into `scene.understand`, preventing a model-omitted literal from causing pre-provider `invalid_freshness`. (local)
+- [policy] [fix] 中文：修正 AgentLoop discovery 语义，只把明确的 provider-stage 不可重试错误交给 Runtime readiness 恢复；请求校验错误在同一任务中获得一次明确的参数修正机会，不再误报 Qwen/Runtime 不可用。 (local)
+- [Policy] [Fix] English: Correct AgentLoop discovery semantics so only explicit non-retryable provider-stage failures yield to Runtime readiness recovery; request-validation failures receive one explicit same-task correction path instead of being misreported as Qwen/Runtime unavailability. (local)
+- [policy] [fix] 中文：明确只读 Query 的 `motion_authorized=false` 不授予运动、也不阻塞剩余只读发现；真实运动许可仍由 prepare、planning admission、Coordinator 与 Gateway Action 边界裁决。 (local)
+- [Policy] [Fix] English: Clarify that read-only Query `motion_authorized=false` neither grants motion nor blocks remaining read-only discovery; actual motion permission remains owned by prepare, planning admission, Coordinator, and the Gateway Action boundary. (local)
+
+### 根因与架构边界 / Root cause and architecture boundary
+- 真实失败：Agent 已从当前 observation 投影 scene/calibration/artifact 与 `freshness_ms`，却遗漏必填 `max_age_ms`；Runtime 在 provider 前返回 `invalid_freshness`，过宽的 discovery 提示又把所有 `retryable=false` 错误解释成 provider 阻塞。
+- 修复位于 PAOS Agent Tool 参数投影与 AgentLoop 错误处置边界：Runtime freshness、calibration、scene identity、artifact 与 Action admission 校验保持不变。
+- `max_age_ms` 从同一 task-owned `scene.observe` 的持久化请求参数复制，模型不能用另一个字面量覆盖当前 observation 的新鲜度预算。
+- 未增加场景语义 fallback：合法但任务不充分的视觉结果不能静默改由另一个模型重解释；GPT/Qwen fallback 仍只适用于显式定义的 provider/infrastructure 故障。
+
+### 文件变更详情 / File changes
+
+#### [修改] `PhyAgentOS/agent/tools/forge_tool_api.py` L32-L58, L217-L237
+**修改前 / Before:**
+```python
+"freshness_ms": {"path": ["response", "data", "freshness_ms"]},
+# max_age_ms had to be authored as a literal by the model.
+```
+**修改后 / After:**
+```python
+"freshness_ms": {"path": ["response", "data", "freshness_ms"]},
+"max_age_ms": {"path": ["arguments", "max_age_ms"]},
+```
+**修改说明：** 标准 observation-bound discovery Query 现在从同一成功 observation 收据复制身份、来源、新鲜度测量和原始新鲜度预算；显式 `argument_sources` 不能把这些字段切换到其他记录。
+
+#### [修改] `PhyAgentOS/agent/loop.py` L1085-L1101, L1286-L1349
+**修改前 / Before:**
+```python
+# Only provider blocking had an explicit control handoff.
+# Request-validation errors were left to model interpretation.
+```
+**修改后 / After:**
+```python
+if self._scene_understanding_request_invalid(...):
+    messages.append({"role": "system", "content": "...submit one corrected Query..."})
+```
+**修改说明：** 仅白名单中的 pre-provider request errors 获得修正指导；provider contract 错误、不可用和 Action 路径不被误归类。相同非法请求不得盲目重复。
+
+#### [修改] `PhyAgentOS/agent/prompt_context.py` L711-L738
+**修改前 / Before:**
+```text
+If scene.understand returns error.retryable=false, treat provider/runtime as blocked.
+```
+**修改后 / After:**
+```text
+Only understanding_provider_error + failure_stage=provider + retryable=false blocks.
+Request validation is corrected in-task; read-only motion_authorized=false is expected.
+```
+**修改说明：** discovery 提示与 AgentLoop 的实际 provider-block predicate 对齐，并保持 Action motion admission fail-closed。
+
+#### [修改] `tests/test_forge_tool_api.py` L111-L189, L192-L274, L301-L354
+- 覆盖自动从 observation 请求继承 `max_age_ms`。
+- 覆盖模型显式传入 observation 字段或 `argument_sources` 时仍使用当前任务最新成功 observation 的完整参数闭包。
+
+#### [修改] `tests/test_agent_foundation.py` L543-L688
+- 保留真实 provider-stage 不可重试错误立即 yield 的回归。
+- 新增 `invalid_freshness` 在同一任务中进入一次修正模型回合的回归，证明不会误等 Runtime readiness。
+
+#### [修改] `tests/test_prompt_context.py` L640-L664
+- 验证 discovery 提示明确区分 provider failure、request validation 与只读 `motion_authorized=false`。
+
+### 验证 / Validation
+- 定向回归：`16 passed`。
+- 完整 `tests/test_forge_tool_api.py tests/test_prompt_context.py`：`63 passed`。
+- AgentLoop 场景理解相关回归：`5 passed, 78 deselected`。
+- 扩展三文件测试：`140 passed, 6 failed`；6 个失败与 v12.2.5 时已记录的一致，均为 invocation-read/outcome_unknown 测试夹具缺少 `read_invocation`、`read_session_invocation` 或 client `base_url`，未经过本次修改路径。
+- Ruff、compileall、`git diff --check`：通过。
+
+### Implementation Review
+- Blocker：无。
+- Major：无。
+- Minor：修正参数投影注释以包含 freshness budget；同步测试命名，不再声称验证已移除的模型字面量。
+
+### 安全边界 / Safety boundary
+- 未调用 Runtime、Gateway、Qwen、仿真器、机械臂或任何 Action；未修改任务 SQLite。
+- 未降低 freshness、calibration、workspace、collision、IK、motion authorization、planning admission 或 terminal-result 门禁。
+- 未增加自动仿真复位、跨任务持物转移或静默语义模型 fallback。
+
+### Git 提交 / Git commit
+- Production commit: `pending`
+- Branch: `feature/planning-loop`
+
 ## v12.2.7 (2026-09-29 23:40) - codex
 
 ### 变更摘要 [完成]
@@ -215,41 +303,6 @@ if ownership_binding_id is not None and self.runtime_task_binding_ids is not Non
 - Branch: `feature/planning-loop`
 - 时间 / Time: 2026-09-29 23:00
 
-
-## v12.2.3 (2026-09-29 21:14) - codex
-
-### 实际修改 / Implemented changes [完成]
-- [eval] [fix] 中文：经用户授权，通过 Coordinator 取消 Runtime binding 已失效的旧任务 `task_f07d89c196bb45e2`，并创建绑定当前 Runtime `runtime_5dbc5429884b4698` 的恢复任务 `task_aec44953a71343ce`；未复用旧任务证据。 (local)
-- [Eval] [Fix] English: With user authorization, cancel stale-bound task `task_f07d89c196bb45e2` through the Coordinator and create recovery task `task_aec44953a71343ce` bound to current Runtime `runtime_5dbc5429884b4698`; no old-task evidence was reused. (local)
-- [sense] [exp] 中文：新任务唯一一次 `scene.observe` 与由其派生的唯一一次 `scene.understand` 均成功并落盘；返回 4 entities、6 relations、4 spatial envelopes，provider 为 `available`。 (local)
-- [Sense] [Exp] English: The new task's single `scene.observe` and single derived `scene.understand` both succeeded and were persisted; the result contains 4 entities, 6 relations, 4 spatial envelopes, with provider `available`. (local)
-
-### 验证结果 / Validation
-- 旧任务状态：`cancelled`；新任务：`task_aec44953a71343ce`，当前保留用于后续显式授权的验收阶段。
-- Observation record：`tool_6d7b32a7b7d14a51`。
-- Understanding record：`tool_72b181752e044c4d`。
-- Scene revision：`a948db781dcd4539bf2802ecbf47eb9f-1`。
-- Runtime 与 Qwen user service 均为 `active`；Qwen 推理结束后 `is_sleeping=true`。
-- Session Tool call 清单确认未调用 `scene.bind`、`task.goal`、GraspNet、`manipulation.prepare`、Action、Session 或 simulator step。
-
-### 文件变更详情 / File changes
-- [修改] `changelog/2026-09_part20.md:L3-L38`：记录任务迁移、只读实测记录和无运动边界。
-- [修改] `CHANGELOG.md:L5-L40`：同步最近版本 v12.2.3 的完整记录。
-
-### 关键 Diff / Key diff
-**修改前 / Before:**
-```text
-旧 AgentTask 冻结的 Runtime binding 已失效，scene.understand 被 Coordinator 拒绝。
-```
-
-**修改后 / After:**
-```text
-旧任务经 Coordinator 取消；新任务绑定当前 Runtime，并以全新 observation 完成唯一一次 scene.observe → scene.understand 无运动验收。
-```
-### Git 提交 / Git commit
-- Commit: `c6b6d1d`
-- Branch: `feature/planning-loop`
-- 时间 / Time: 2026-09-29 21:21
 
 ## v12.2.1 (2026-09-29 18:46) - codex
 

@@ -29,9 +29,9 @@ from PhyAgentOS.forge.tool_client import (
 # unchanged.
 _SCENE_UNDERSTAND_TIMEOUT_MS = 180_000
 
-# These are identity and provenance inputs owned by the current scene
-# observation. Resolve them from its receipt instead of asking the model to
-# retype opaque references between standard discovery Queries.
+# These are scene identity, provenance, and freshness-budget inputs owned by
+# the current scene observation receipt. Resolve them from that receipt instead
+# of asking the model to retype references between standard discovery Queries.
 _OBSERVATION_BOUND_QUERY_ARGUMENTS: dict[str, dict[str, dict[str, Any]]] = {
     "manipulation.capabilities": {
         "scene_revision": {"path": ["response", "data", "scene_revision"]},
@@ -44,6 +44,7 @@ _OBSERVATION_BOUND_QUERY_ARGUMENTS: dict[str, dict[str, dict[str, Any]]] = {
         "frame_id": {"path": ["response", "data", "frame", "frame_id"]},
         "calibration_ref": {"path": ["response", "data", "calibration_ref"]},
         "freshness_ms": {"path": ["response", "data", "freshness_ms"]},
+        "max_age_ms": {"path": ["arguments", "max_age_ms"]},
         "artifacts": {
             "path": ["response", "data", "artifacts"],
             "map_field": "ref",
@@ -227,11 +228,12 @@ class ForgeToolQueryTool(Tool):
             "entry names record_id, an explicit path such as ['response','scene_revision'], "
             "and optional target_path. For scene.understand, copy observation_ref, "
             "scene_revision, frame.frame_id to frame_id, calibration_ref, freshness_ms, "
-            "and artifacts from the same scene.observe record; set artifact source "
-            "map_field to 'ref' to pass the required string references. For "
+            "the observation request's max_age_ms, and artifacts from the same "
+            "scene.observe record; set artifact source map_field to 'ref' to pass the "
+            "required string references. For "
             "scene.bind, provide only the selected `entity_refs`; PAOS copies the "
             "observation_ref, scene_revision, and calibration_ref identity from "
-            "the current successful scene.observe record. Supply max_age_ms as a literal."
+            "the current successful scene.observe record."
         )
 
     @property
