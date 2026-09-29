@@ -2,20 +2,22 @@ import asyncio
 import base64
 import importlib.util
 import io
-from pathlib import Path
-from types import SimpleNamespace
-import zipfile
 import threading
 import time
+import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import httpx
 import pytest
+from test_agent_foundation import setup_task
 
 from PhyAgentOS.forge.binding import ForgeSkillBindingResolver
+from PhyAgentOS.forge.task import ToolExecutionRecord
 from PhyAgentOS.forge.tool_client import ForgeToolClient
 from PhyAgentOS.skill_runtime.integration import ActiveRuntimeRegistry, DynamicRuntimeSet
-from test_agent_foundation import setup_task
 
 
 def test_query_timeout_reaches_http_without_changing_discovery_or_action():
@@ -85,6 +87,53 @@ def test_recovery_registers_only_owning_runtime(tmp_path, runtime_state):
     assert result.model_dump(mode='json') == before
     if runtime is not None:
         assert runtime.task_binding_ids == ({binding.binding_id} if runtime_state == 'same' else set())
+
+
+@pytest.mark.parametrize('runtime_state', ['absent', 'different'])
+def test_recovery_does_not_query_invocation_through_nonowning_runtime(
+    tmp_path, runtime_state
+):
+    coordinator, task = setup_task(tmp_path)
+    binding = task.primary_skill_binding
+    runtime = None if runtime_state == 'absent' else SimpleNamespace(
+        runtime_instance_id='replacement',
+        gateway_url=binding.gateway_url,
+        skill_name=binding.skill_name,
+        skill_version=binding.skill_version,
+        profile=binding.runtime_profile,
+        gateway_identity=binding.gateway_identity,
+        task_binding_ids=set(),
+    )
+    registry = ActiveRuntimeRegistry(runtime)
+    coordinator.binding_resolver = ForgeSkillBindingResolver(registry)
+    coordinator.runtime_task_binding_ids = DynamicRuntimeSet(registry, 'task_binding_ids')
+    coordinator.client = SimpleNamespace(
+        invocation_status=AsyncMock(side_effect=AssertionError('wrong Runtime status read')),
+        invocation_result=AsyncMock(side_effect=AssertionError('wrong Runtime result read')),
+    )
+
+    def add_running_action(current):
+        current.active_revision.execution_records.append(ToolExecutionRecord(
+            record_id='action-record-1',
+            revision_id=current.active_revision_id,
+            tool_id='object.place',
+            semantics='action',
+            caller_id='paos:test',
+            status='running',
+            invocation_id='invocation://object-place/original',
+        ))
+
+    coordinator.store.update(
+        task.task_id, add_running_action, event_type='test_running_action'
+    )
+    before = coordinator.get_task(task.task_id).model_dump(mode='json')
+    result = asyncio.run(coordinator.reconcile_nonterminal())
+
+    assert result.model_dump(mode='json') == before
+    coordinator.client.invocation_status.assert_not_awaited()
+    coordinator.client.invocation_result.assert_not_awaited()
+    if runtime is not None:
+        assert runtime.task_binding_ids == set()
 
 
 def test_node_archive_includes_materializer_and_runtime_dependencies():

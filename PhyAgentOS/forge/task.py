@@ -3017,6 +3017,18 @@ class AgentTaskCoordinator:
         task = self.store.active()
         if task is None:
             return None
+        if self.binding_resolver is not None:
+            try:
+                if task.primary_skill_binding is not None:
+                    self.binding_resolver.validate_runtime(task.primary_skill_binding)
+                elif task.runtime_binding is not None:
+                    self.binding_resolver.validate_runtime_binding(task.runtime_binding)
+            except ForgeSkillBindingError:
+                # Startup may precede Runtime activation, or another Runtime may
+                # currently be selected. Neither may adopt or reconcile execution
+                # owned by the frozen task binding. Preserve persisted facts until
+                # the owning Runtime is active again.
+                return task
         ownership_binding_id = (
             task.primary_skill_binding.binding_id
             if task.primary_skill_binding is not None
