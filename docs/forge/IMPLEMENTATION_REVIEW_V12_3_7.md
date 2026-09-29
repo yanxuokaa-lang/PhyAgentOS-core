@@ -18,11 +18,11 @@ Pass. Validation failures create no evidence. Successful observation is not repl
 
 ## 5. Multi-view Grounding and Binding
 
-Pass. The contract exposes valid cameras, requires a unique multi-view set, and requires a nonempty unique entity list while retaining synchronized provenance.
+Pass. The observation contract exposes valid cameras and requires a unique multi-view set. The workflow preserves the complete explicit entity_refs array from the current understanding result, while the existing Runtime rejects missing entity references.
 
 ## 6. Validation and Regression Coverage
 
-Pass when recorded pytest, compile, and diff checks succeed. The regression test reads the published YAML contracts to detect schema drift.
+Pass when recorded pytest, compile, and diff checks succeed. The regression test reads the published scene.observe YAML contract to detect sensor-inventory and multi-view schema drift.
 
 ## 7. Deployability and Operability
 

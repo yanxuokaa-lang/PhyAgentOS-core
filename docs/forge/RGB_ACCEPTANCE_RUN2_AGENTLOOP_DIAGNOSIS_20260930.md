@@ -16,12 +16,12 @@ This diagnosis covers task_f710b414d6c2480b and the preceding cancelled task_65a
 1. The scene.observe schema accepted arbitrary nonempty sensor strings but did not enumerate the RobotWin inventory.
 2. The workflow did not state a single authoritative-observation invariant strongly enough, allowing a second observation attempt without a world change.
 3. Pending-selection continuation was not an immediate mandatory workflow step, so a turn boundary could leave a legal selection admitted but unconsumed.
-4. scene.bind.entity_refs lacked explicit nonempty and uniqueness constraints in the model-facing contract.
+4. The first scene.bind selection did not preserve the complete entity_refs array. Runtime correctly rejected the missing field; the corrected persisted selection proved that literal top-level arrays are supported.
 
 ## Generic Fix
 
 - Publish the finite RobotWin sensor inventory in both single-view and multi-view ToolSpec arguments.
-- Require at least two unique sensors for multi-view observation and a nonempty unique entity array for binding.
+- Require at least two unique sensors for multi-view observation, and require the workflow to preserve the complete explicit entity_refs array selected from the current understanding result.
 - Reuse one successful observation until a world-changing Action reaches terminal success.
 - Preserve synchronized scene, calibration, frame, freshness, and entity provenance through understand and bind.
 - Consume a pending Coordinator selection exactly once with selected arguments instead of reselecting or rediscovering.
