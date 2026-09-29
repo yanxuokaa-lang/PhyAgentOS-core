@@ -32,6 +32,12 @@
 ```text
 旧任务经 Coordinator 取消；新任务绑定当前 Runtime，并以全新 observation 完成唯一一次 scene.observe → scene.understand 无运动验收。
 ```
++
+### Git 提交 / Git commit
+- Commit: `c6b6d1d`
+- Branch: `feature/planning-loop`
+- 时间 / Time: 2026-09-29 21:21
+
 
 
 ## v12.2.2 (2026-09-29 20:19) - codex
