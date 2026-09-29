@@ -2,6 +2,71 @@
 ## Archive
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.2.5 (2026-09-29 23:28) - codex
+
+### 变更摘要 [完成]
+- [policy] [fix] 统一 forge_plan_select 模型侧 Schema 与内部空参数语义：投影型选择可省略 arguments，并在规划工具边界规范化为显式空对象；保留 ready/select、Gateway 执行和 terminal-result 对账边界。 (local)
+- [Policy] [Fix] Align the model-facing forge_plan_select schema with internal empty-argument semantics: projection-only selections may omit arguments, normalized at the planning-tool boundary, while preserving ready/select, Gateway execution, and terminal-result reconciliation boundaries. (local)
+
+### 文件变更详情
+
+#### [修改] `PhyAgentOS/agent/tools/planning.py` L164-L235
+
+**修改前：**
+```python
+"arguments": {"type": "object"}
+"required": ["task_id", "node_id", "tool_id", "arguments", "decision_reason"]
+
+async def execute(..., arguments: dict[str, Any], decision_reason: str, ...):
+    ...
+```
+
+**修改后：**
+```python
+"arguments": {
+    "type": "object",
+    "default": {},
+    "description": "Projection-backed selections may omit model-authored arguments.",
+}
+"required": ["task_id", "node_id", "tool_id", "decision_reason"]
+
+async def execute(..., decision_reason: str, arguments: dict[str, Any] | None = None, ...):
+    arguments = dict(arguments or {})
+```
+
+**修改说明：** 修复模型工具契约与 Coordinator 下游显式字典契约的不一致。默认值只在模型侧规划工具边界应用，不放宽节点 ready、投影来源、revision、Tool 兼容性或 Gateway admission。
+
+#### [修改] `tests/test_agent_foundation.py` L492-L541
+
+**修改前：**
+```python
+{"arguments": {}, "decision_reason": "prepare current candidates"}
+```
+
+**修改后：**
+```python
+{"decision_reason": "prepare current candidates"}
+assert "arguments" not in schema["required"]
+assert schema["properties"]["arguments"]["default"] == {}
+```
+
+**修改说明：** 覆盖真实 Agent-loop 省略场景与 Tool Schema 默认值，确保结构性省略不再产生额外模型重试，同时仍在选择结果后 yield。
+
+### 验证
+- `/home/yanxu/miniconda3/envs/paos/bin/python -m pytest tests/test_agent_foundation.py -q`
+- `/home/yanxu/miniconda3/envs/paos/bin/python -m ruff check PhyAgentOS/agent/tools/planning.py tests/test_agent_foundation.py`
+- `/home/yanxu/miniconda3/envs/paos/bin/python -m compileall -q PhyAgentOS/agent/tools/planning.py`
+- `git diff --check`
+
+### 安全边界
+- 未调用 Runtime、Gateway、仿真器或机械臂；无物理动作。
+- 未合并 select 与执行，未绕过 Coordinator 或 terminal-result 对账。
+
+### Git 提交
+- Commit: `PENDING`
+- Branch: `feature/planning-loop`
+- 时间: 2026-09-29 23:31
+
 ## v12.2.4 (2026-09-29 22:49) - codex
 
 ### 实际修改 / Implemented changes [完成]
@@ -281,218 +346,6 @@ def test_qwen_provider_context_exposes_operator_owned_recovery_without_side_effe
 
 - 中文：将 RobotWin 场景理解切换为纯本地 Qwen vLLM provider，移除 shuaiapi fallback 及 Dora 环境中的主模型 secret；PAOS 主 Agent provider 保持独立。
 - English: Move RobotWin scene understanding to a local-Qwen-only vLLM provider, remove the shuaiapi fallback and main-model secret from Dora, and keep the PAOS main-Agent provider independent.
-
-## v2.8.7 (2026-09-29)
-
-```
-
-**修改说明**：同步发布实现、测试或版本元数据。
-
----
-
-#### [修改] `examples/forge-skills/pick-place-workflow/profiles/robotwin-persistent/dataflow-graspgen.yaml` L10-L13
-
-**修改前：**
-```text
-      ROBOTWIN20_MODEL_API_BASE: ${ROBOTWIN20_MODEL_API_BASE}
-      ROBOTWIN20_MODEL_API_KEY: ${ROBOTWIN20_MODEL_API_KEY}
-      ROBOTWIN20_MODEL: ${ROBOTWIN20_MODEL}
-      ROBOTWIN20_REASONING_EFFORT: ${ROBOTWIN20_REASONING_EFFORT}
-```
-
-**修改后：**
-```text
-（无新增行；删除内容）
-```
-
-**修改说明**：从 GraspGen Dora 环境移除主模型与 secret 变量。
-
----
-
-#### [修改] `examples/forge-skills/pick-place-workflow/profiles/robotwin-persistent/dataflow.yaml` L12-L15
-
-**修改前：**
-```text
-      ROBOTWIN20_MODEL_API_BASE: ${ROBOTWIN20_MODEL_API_BASE}
-      ROBOTWIN20_MODEL_API_KEY: ${ROBOTWIN20_MODEL_API_KEY}
-      ROBOTWIN20_MODEL: ${ROBOTWIN20_MODEL}
-      ROBOTWIN20_REASONING_EFFORT: ${ROBOTWIN20_REASONING_EFFORT}
-```
-
-**修改后：**
-```text
-（无新增行；删除内容）
-```
-
-**修改说明**：从 Dora 环境移除主模型 endpoint/model/key/reasoning 变量。
-
----
-
-#### [修改] `examples/forge-skills/pick-place-workflow/profiles/robotwin-persistent/persistent-host-graspgen.yaml` L16-L31
-
-**修改前：**
-```text
-  provider: qwen3_vl_vllm_fallback
-  primary:
-    api_base: http://127.0.0.1:8012/v1
-    model: qwen3-vl-4b-awq
-    api_key_env: ""
-    timeout_seconds: 30
-    max_output_tokens: 768
-```
-
-**修改后：**
-```text
-  provider: qwen3_vl_vllm
-  api_base: http://127.0.0.1:8012/v1
-  model: qwen3-vl-4b-awq
-  api_key_env: ""
-  timeout_seconds: 30
-  max_output_tokens: 768
-  lifecycle:
-```
-
-**修改说明**：GraspGen profile 同步采用纯本地 Qwen provider。
-
----
-
-#### [修改] `examples/forge-skills/pick-place-workflow/profiles/robotwin-persistent/persistent-host.yaml` L16-L31
-
-**修改前：**
-```text
-  provider: qwen3_vl_vllm_fallback
-  primary:
-    api_base: http://127.0.0.1:8012/v1
-    model: qwen3-vl-4b-awq
-    api_key_env: ""
-    timeout_seconds: 30
-    max_output_tokens: 768
-```
-
-**修改后：**
-```text
-  provider: qwen3_vl_vllm
-  api_base: http://127.0.0.1:8012/v1
-  model: qwen3-vl-4b-awq
-  api_key_env: ""
-  timeout_seconds: 30
-  max_output_tokens: 768
-  lifecycle:
-```
-
-**修改说明**：当前 GraspNet 场景理解只使用本地 Qwen vLLM，不再定义 shuaiapi fallback。
-
----
-
-#### [修改] `examples/forge-skills/pick-place-workflow/profiles/robotwin-persistent/runtime.env.example` L11-L14, L33-L37
-
-**修改前：**
-```text
-ROBOTWIN20_MODEL_API_BASE=
-ROBOTWIN20_MODEL=gpt-5.6-sol
-ROBOTWIN20_REASONING_EFFORT=high
-# Supply ROBOTWIN20_MODEL_API_KEY through the operator secret environment. Do
-# not store the credential in this template, the Skill Bundle, logs, or traces.
-```
-
-**修改后：**
-```text
-# Scene understanding is profile-owned and uses the local Qwen vLLM endpoint.
-# PAOS main-Agent provider credentials remain in the PAOS provider configuration
-# and must not be forwarded through this Runtime environment.
-```
-
-**修改说明**：说明 PAOS 主 Agent provider 与 Runtime 场景 provider 独立。
-
----
-
-#### [修改] `examples/forge-skills/pick-place-workflow/pyproject.toml` L1-L5
-
-**修改前：**
-```text
-version = "2.8.4"
-```
-
-**修改后：**
-```text
-version = "2.8.8"
-```
-
-**修改说明**：同步发布实现、测试或版本元数据。
-
----
-
-#### [修改] `examples/forge-skills/pick-place-workflow/skill.yaml` L1-L5, L35-L38, L74-L77, L113-L116, L152-L155, L191-L194, L220-L228
-
-**修改前：**
-```text
-version: "2.8.4"
-      - ROBOTWIN20_MODEL_API_BASE
-      - ROBOTWIN20_MODEL_API_KEY
-      - ROBOTWIN20_MODEL
-      - ROBOTWIN20_REASONING_EFFORT
-      - ROBOTWIN20_MODEL_API_BASE
-      - ROBOTWIN20_MODEL_API_KEY
-```
-
-**修改后：**
-```text
-version: "2.8.8"
-      artifact_id: robotwin20_persistent_host-0.8.7-linux-x86_64
-      version: "0.8.7"
-      sha256: cb5f6c09b07f86d8f91f2bcfa9a186c351ed4b2de879527d84eed1d295ef1781
-```
-
-**修改说明**：发布 Skill 2.8.8 / Node 0.8.7，移除 Runtime 对主模型变量的 required_environment。
-
----
-
-#### [修改] `examples/forge-skills/pick-place-workflow/tests/test_grasp_propose.py` L267-L271
-
-**修改前：**
-```text
-    assert bundle_manifest["version"] == "2.8.4"
-```
-
-**修改后：**
-```text
-    assert bundle_manifest["version"] == "2.8.8"
-```
-
-**修改说明**：同步发布实现、测试或版本元数据。
-
----
-
-#### [修改] `examples/forge-skills/pick-place-workflow/tests/test_runtime_install_discovery.py` L78-L82, L93-L110, L160-L164
-
-**修改前：**
-```text
-def test_robotwin_dataflow_forwards_profile_owned_route_geometry_source():
-    assert dataflow["nodes"][0]["env"]["ROBOTWIN20_MODEL"] == "${ROBOTWIN20_MODEL}"
-    assert dataflow["nodes"][0]["env"]["ROBOTWIN20_REASONING_EFFORT"] == (
-        "${ROBOTWIN20_REASONING_EFFORT}"
-    assert template_names == set(profile.required_environment) - {
-        "ROBOTWIN20_MODEL_API_KEY",
-        *profile.environment,
-```
-
-**修改后：**
-```text
-def test_robotwin_dataflow_keeps_scene_model_profile_owned():
-    assert {
-        "ROBOTWIN20_MODEL_API_BASE",
-        "ROBOTWIN20_MODEL_API_KEY",
-        "ROBOTWIN20_MODEL",
-        "ROBOTWIN20_REASONING_EFFORT",
-    }.isdisjoint(dataflow["nodes"][0]["env"])
-```
-
-**修改说明**：验证 Qwen 配置由 profile 所有且主模型 secret 不进入 Dora。
-
-### Git 提交
-- Commit: `3061288`
-- Branch: `feature/planning-loop`
-- 时间: 2026-09-29 20:19
 
 ## v12.2.1 (2026-09-29 18:46) - codex
 

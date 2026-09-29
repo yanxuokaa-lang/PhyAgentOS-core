@@ -499,7 +499,6 @@ def test_node_turn_yields_after_selection_requires_replan(tmp_path):
                     "task_id": "task-1",
                     "node_id": "prepare-green",
                     "tool_id": "manipulation.prepare",
-                    "arguments": {},
                     "decision_reason": "prepare current candidates",
                 },
             )]),
@@ -529,6 +528,16 @@ def test_node_turn_yields_after_selection_requires_replan(tmp_path):
         assert "replacement plan segment" in result.content
 
     asyncio.run(exercise())
+
+
+def test_forge_plan_select_contract_defaults_projection_only_arguments():
+    from PhyAgentOS.agent.tools.planning import ForgePlanSelectTool
+
+    tool = ForgePlanSelectTool(coordinator=Mock(), dispatch_getter=lambda: None)
+    schema = tool.parameters
+
+    assert "arguments" not in schema["required"]
+    assert schema["properties"]["arguments"]["default"] == {}
 
 
 def test_discovery_yields_after_non_retryable_scene_understanding_failure(tmp_path):

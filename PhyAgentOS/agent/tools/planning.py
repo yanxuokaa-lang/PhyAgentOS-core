@@ -167,7 +167,9 @@ class ForgePlanSelectTool(Tool):
             "binding plus the final Tool arguments without invoking a Gateway. For a Tool "
             "with a declared argument projection, pass projection_source only; a legacy "
             "argument_sources map is accepted only for compatible top-level fields from "
-            "that same record. For a Tool without a projection, use arguments and/or "
+            "that same record. Projection-only selections may omit arguments; omission is "
+            "normalized to an empty object at this planning boundary. For a Tool without a "
+            "projection, use arguments and/or "
             "argument_sources, never projection_source. Pass the returned binding and "
             "selection unchanged."
         )
@@ -180,7 +182,14 @@ class ForgePlanSelectTool(Tool):
                 "task_id": {"type": "string", "minLength": 1},
                 "node_id": {"type": "string", "minLength": 1},
                 "tool_id": {"type": "string", "minLength": 1},
-                "arguments": {"type": "object"},
+                "arguments": {
+                    "type": "object",
+                    "default": {},
+                    "description": (
+                        "Direct Tool arguments. Omit this field when projection_source or "
+                        "argument_sources provides every Tool argument."
+                    ),
+                },
                 "argument_sources": {
                     "type": "object",
                     "additionalProperties": {
@@ -207,7 +216,7 @@ class ForgePlanSelectTool(Tool):
                 },
                 "decision_reason": {"type": "string", "minLength": 1},
             },
-            "required": ["task_id", "node_id", "tool_id", "arguments", "decision_reason"],
+            "required": ["task_id", "node_id", "tool_id", "decision_reason"],
             "additionalProperties": False,
         }
 
@@ -216,11 +225,15 @@ class ForgePlanSelectTool(Tool):
         task_id: str,
         node_id: str,
         tool_id: str,
-        arguments: dict[str, Any],
         decision_reason: str,
+        arguments: dict[str, Any] | None = None,
         argument_sources: dict[str, Any] | None = None,
         projection_source: dict[str, Any] | None = None,
     ) -> str:
+        # Projection-only selections have no model-authored Tool arguments. Normalize the
+        # omission before Coordinator validation so all downstream planning records retain
+        # the existing explicit-dictionary contract.
+        arguments = dict(arguments or {})
         dispatch = self.dispatch_getter()
         if dispatch is None or dispatch.graph.task_id != task_id:
             error = PlanningDispatchError(
