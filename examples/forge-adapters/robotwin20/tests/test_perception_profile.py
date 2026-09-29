@@ -48,6 +48,15 @@ def test_profile_builds_composition_without_starting_model_workers(tmp_path):
     assert isinstance(composition, SingleViewPerceptionInference)
 
 
+def test_profile_accepts_opt_in_worker_hibernation(tmp_path):
+    profile, environment = _profile(tmp_path)
+    profile["proposal_worker"]["hibernate_on_release"] = True
+    profile["segmentation_worker"]["hibernate_on_release"] = True
+    composition = build_single_view_perception(lambda request: {}, profile, environ=environment)
+    assert composition.proposal_provider.client.config.hibernate_on_release is True
+    assert composition.segmentation_provider.client.config.hibernate_on_release is True
+
+
 def test_profile_requires_all_environment_bindings(tmp_path):
     profile, environment = _profile(tmp_path)
     environment.pop("WORKER_SCRIPT")

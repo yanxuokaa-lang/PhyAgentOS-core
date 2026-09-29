@@ -165,9 +165,9 @@ conda run -n paos-qwen3vl-4b-vllm vllm serve \
   --host 127.0.0.1 --port 8012 \
   --quantization compressed-tensors --dtype bfloat16 \
   --max-model-len 2048 --max-num-seqs 1 --max-num-batched-tokens 2048 \
-  --gpu-memory-utilization 0.65 --kv-cache-memory-bytes 536870912 \
-  --limit-mm-per-prompt '{"image":1,"video":0}' \
-  --structured-outputs-config '{"backend":"xgrammar"}' \
+  --gpu-memory-utilization 0.55 --kv-cache-memory-bytes 536870912 \
+  --limit-mm-per-prompt '{"image":2,"video":0}' \
+  --structured-outputs-config '{"backend":"xgrammar","disable_any_whitespace":true}' \
   --enable-sleep-mode
 ```
 
@@ -263,9 +263,10 @@ The perception boundary is intentionally split by PAOS use case:
 | IK/collision/workspace readiness | `manipulation.prepare` | Evaluate candidates before any bounded Action. |
 
 The GPT Responses provider covers RGB semantic recognition and relations. The
-adapter now also contains a single-view composition that binds each semantic
-entity to a LocateAnything proposal, releases that model process, invokes SAM2
-with the exact box, and deterministically localizes the mask with aligned depth
+adapter now also contains a provider-neutral metric composition that binds each
+semantic entity to a LocateAnything proposal, moves LocateAnything back to CPU,
+invokes SAM2 with the exact box, moves SAM2 back to CPU, and deterministically
+localizes the mask with aligned depth
 and calibration. It materializes provider-neutral `instance_mask`,
 `object_point_cloud`, and `metric_localization` records through the existing
 `scene.understand` contract. The adapter also exposes a separate
@@ -293,20 +294,36 @@ Load `profiles/robotwin20/perception.yaml`, then pass the mapping and the
 semantic inference provider to `build_single_view_perception`. Inject the
 resulting inference object into `RoboTwinSceneUnderstandingProvider`; PAOS
 continues to call it only through the generic Gateway endpoint. Worker startup,
-request, shutdown, model revision, checkpoint, device, and timeout settings are
-profile-owned. Commands never use a shell. The proposal process exits before
-the SAM2 process starts, so the two existing model environments remain
-independently replaceable.
+wake, request, sleep, shutdown, model revision, checkpoint, device, and timeout
+settings are profile-owned. Commands never use a shell. The generic
+`hibernate_on_release` option defaults to `false`; the shipped perception
+profile enables it only for LocateAnything and SAM2. Each request stage retains
+the worker process and CPU checkpoint but releases its GPU allocation before the
+next model starts, so Qwen, proposal, and segmentation preserve serial GPU
+ownership while the two model environments remain independently replaceable.
+`PersistentHost.close()` owns the terminal boundary and explicitly shuts down
+both retained workers.
 
 The shipped unit/conformance path remains reproducible with fake model workers.
-A no-motion live run has also exercised the configured LocateAnything revision
-and SAM2 checkpoint against an existing `320x240` RoboTwin RGB-D observation.
-LocateAnything returned one `red block` proposal, SAM2 materialized an aligned
-mask, and the complete Fake Gateway route returned all three derived artifacts
-plus a camera-frame metric envelope with `motion_authorized=false`. The run used
-a fixed semantic entity as composition input; it was not a fresh GPT invocation
-and does not validate grasp proposal or execution. Both model processes exited
-after their bounded stage and no worker remained resident.
+A no-motion live release benchmark exercised the installed Qwen, LocateAnything,
+SAM2, depth, and calibration composition twice against the same Runtime. The
+cold `scene.understand` call completed in `111.435 s`; the warm call completed
+in `14.320 s` (about `7.8x` faster). Both returned `status=available`, five
+semantic entities, and twenty derived geometry artifacts. LocateAnything cold
+startup was `91.394 s`, while warm wake was `0.973 s` and inference was about
+`0.14 s` per entity. SAM2 cold startup was `4.191 s`, while warm wake was
+`0.119 s` and inference was about `0.28 s` per entity. No grasp proposal or
+physical Action was executed, and `motion_authorized=false` remained unchanged.
+
+CPU hibernation trades RAM for latency. In the measured sleeping state,
+LocateAnything retained approximately `9.5 GB` CPU RSS and a `260 MiB` GPU
+context; SAM2 retained approximately `2.6 GB` CPU RSS and a `386 MiB` GPU
+context; the sleeping Qwen service retained approximately `276 MiB` GPU.
+Operators that prefer lower CPU use may leave `hibernate_on_release` disabled
+and accept full worker/checkpoint cold starts. Runtime shutdown removes the
+retained perception workers; the outer Dora Host may still exceed its existing
+stop deadline and be reported as SIGKILLed, which is tracked separately from
+worker cleanup.
 
 The default grasp provider is configured independently through
 `profiles/robotwin20/graspnet.yaml`. Its worker receives only an adapter-resolved

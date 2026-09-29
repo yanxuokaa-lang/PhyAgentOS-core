@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import queue
 import subprocess
 import sys
@@ -35,6 +36,55 @@ def test_worker_client_starts_lazily_releases_and_can_restart():
     client.release()
     assert first["status"] == second["status"] == "available"
     assert first["pid"] != second["pid"]
+
+
+def test_hibernating_worker_reuses_process_until_explicit_shutdown():
+    client = _client(hibernate_on_release=True)
+    first = client.request({"request_id": "request-1"})
+    client.release()
+    second = client.request({"request_id": "request-2"})
+    assert first["pid"] == second["pid"]
+    client.shutdown()
+    third = client.request({"request_id": "request-3"})
+    client.shutdown()
+    assert third["pid"] != second["pid"]
+
+
+def test_provider_terminal_shutdown_does_not_reinterpret_as_hibernate(tmp_path):
+    from robotwin20_adapter.single_view_perception import WorkerProposalProvider
+
+    client = _client(hibernate_on_release=True)
+    provider = WorkerProposalProvider(client)
+    client.request({"request_id": "request-1"})
+    provider.release()
+    assert client._process is not None
+    provider.shutdown()
+    assert client._process is None
+
+
+def test_hibernating_worker_logs_startup_sleep_wake_and_request_timings(caplog):
+    client = _client(hibernate_on_release=True)
+    with caplog.at_level(logging.INFO, logger="robotwin20_adapter.process_worker"):
+        client.request({"request_id": "request-1"})
+        client.release()
+        client.request({"request_id": "request-2"})
+        client.shutdown()
+    messages = [record.getMessage() for record in caplog.records]
+    for phase in ("startup", "request", "sleep", "wake", "shutdown"):
+        assert any(f"phase={phase}" in message for message in messages)
+
+
+def test_hibernation_failure_aborts_worker_and_fails_closed():
+    client = _client("sleep-fail", hibernate_on_release=True)
+    client.request({"request_id": "request-1"})
+    with pytest.raises(ProcessWorkerError, match="rejected sleep"):
+        client.release()
+    assert client._process is None
+
+
+def test_worker_config_rejects_non_boolean_hibernation_flag():
+    with pytest.raises(ValueError, match="hibernate_on_release"):
+        _client(hibernate_on_release="true")
 
 
 @pytest.mark.parametrize("stream", ["stdout", "stderr"])

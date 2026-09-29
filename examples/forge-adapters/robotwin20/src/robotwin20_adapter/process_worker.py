@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
 import os
 import queue
@@ -14,6 +15,8 @@ from pathlib import Path
 from time import monotonic
 from typing import Any, Mapping
 from uuid import uuid4
+
+logger = logging.getLogger(__name__)
 
 
 class ProcessWorkerError(RuntimeError):
@@ -33,6 +36,7 @@ class ProcessWorkerConfig:
     request_timeout_s: float = 60.0
     shutdown_timeout_s: float = 10.0
     max_line_bytes: int = 1_048_576
+    hibernate_on_release: bool = False
 
     def __post_init__(self) -> None:
         if not self.command or any(not isinstance(item, str) or not item for item in self.command):
@@ -54,6 +58,8 @@ class ProcessWorkerConfig:
             or self.max_line_bytes < 256
         ):
             raise ValueError("max_line_bytes must be at least 256")
+        if not isinstance(self.hibernate_on_release, bool):
+            raise ValueError("hibernate_on_release must be boolean")
 
 
 class JsonlProcessWorkerClient:
@@ -67,6 +73,7 @@ class JsonlProcessWorkerClient:
         self._stdout_queue: queue.Queue[str | None] = queue.Queue()
         self._stderr_tail: deque[str] = deque(maxlen=40)
         self._lock = threading.Lock()
+        self._sleeping = False
 
     def request(
         self,
@@ -87,6 +94,8 @@ class JsonlProcessWorkerClient:
             raise ProcessWorkerTimeoutError("worker request timed out waiting for transport")
         try:
             try:
+                startup_started = monotonic()
+                was_running = self._process is not None and self._process.poll() is None
                 if expires_at is None:
                     self._ensure_started()
                 else:
@@ -94,10 +103,24 @@ class JsonlProcessWorkerClient:
                     request_timeout = expires_at - monotonic()
                     if request_timeout <= 0:
                         raise ProcessWorkerTimeoutError("worker request timed out during startup")
+                if not was_running:
+                    self._log_timing("startup", startup_started)
+                if self._sleeping:
+                    wake_started = monotonic()
+                    self._lifecycle_command("wake", "awake", request_timeout)
+                    self._sleeping = False
+                    self._log_timing("wake", wake_started)
+                    if expires_at is not None:
+                        request_timeout = expires_at - monotonic()
+                        if request_timeout <= 0:
+                            raise ProcessWorkerTimeoutError("worker request timed out during wake")
+                request_started = monotonic()
                 self._write(dict(payload))
                 if expires_at is not None:
                     request_timeout = expires_at - monotonic()
-                return self._read_reply(request_id, request_timeout)
+                reply = self._read_reply(request_id, request_timeout)
+                self._log_timing("request", request_started)
+                return reply
             except Exception:
                 self._abort()
                 raise
@@ -105,11 +128,29 @@ class JsonlProcessWorkerClient:
             self._lock.release()
 
     def release(self) -> None:
+        if not self.config.hibernate_on_release:
+            self.shutdown()
+            return
+        with self._lock:
+            process = self._process
+            if process is None or self._sleeping:
+                return
+            try:
+                sleep_started = monotonic()
+                self._lifecycle_command("sleep", "sleeping", self.config.shutdown_timeout_s)
+                self._sleeping = True
+                self._log_timing("sleep", sleep_started)
+            except Exception:
+                self._abort()
+                raise
+
+    def shutdown(self) -> None:
         with self._lock:
             process = self._process
             if process is None:
                 return
             request_id = uuid4().hex
+            shutdown_started = monotonic()
             try:
                 if process.poll() is None:
                     self._write({"command": "shutdown", "request_id": request_id})
@@ -120,6 +161,7 @@ class JsonlProcessWorkerClient:
                         process.wait(timeout=self.config.shutdown_timeout_s)
                     except subprocess.TimeoutExpired as exc:
                         raise ProcessWorkerError("worker did not exit after shutdown") from exc
+                self._log_timing("shutdown", shutdown_started)
             finally:
                 self._abort()
 
@@ -151,6 +193,7 @@ class JsonlProcessWorkerClient:
         except OSError as exc:
             raise ProcessWorkerError("worker process could not be started") from exc
         self._process = process
+        self._sleeping = False
         assert process.stdout is not None and process.stderr is not None
         # Readers retain this process's sinks even if a later request restarts
         # the worker before the old reader publishes its final EOF.
@@ -164,6 +207,23 @@ class JsonlProcessWorkerClient:
                 return
             if message.get("event") == "worker_unavailable":
                 raise ProcessWorkerError("worker reported unavailable during startup")
+
+    def _lifecycle_command(self, command: str, expected_status: str, timeout_s: float) -> None:
+        request_id = uuid4().hex
+        self._write({"command": command, "request_id": request_id})
+        reply = self._read_reply(request_id, timeout_s)
+        if reply.get("status") != expected_status:
+            raise ProcessWorkerError(f"worker rejected {command}")
+
+    def _log_timing(self, phase: str, started_at: float) -> None:
+        command = self.config.command
+        worker = Path(command[1] if len(command) > 1 else command[0]).name
+        logger.info(
+            "isolated worker timing worker=%s phase=%s elapsed_s=%.3f",
+            worker,
+            phase,
+            monotonic() - started_at,
+        )
 
     def _write(self, payload: Mapping[str, Any]) -> None:
         process = self._process
@@ -224,6 +284,7 @@ class JsonlProcessWorkerClient:
 
     def _abort(self) -> None:
         process, self._process = self._process, None
+        self._sleeping = False
         if process is None:
             return
         if process.poll() is None:

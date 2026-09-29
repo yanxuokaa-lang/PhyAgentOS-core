@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import hashlib
 import json
+import logging
 import os
 import signal
 import threading
@@ -57,6 +58,20 @@ from .understanding import RoboTwinSceneUnderstandingProvider
 
 PROFILE_SCHEMA_VERSION = "paos-robotwin20-persistent-host/v1"
 MAX_REQUEST_BYTES = 1_048_576
+
+
+def _configure_operational_logging() -> None:
+    """Expose bounded perception lifecycle timings without raising global verbosity."""
+
+    timing_logger = logging.getLogger("robotwin20_adapter.process_worker")
+    if any(getattr(handler, "_paos_perception_timing", False) for handler in timing_logger.handlers):
+        return
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    handler._paos_perception_timing = True  # type: ignore[attr-defined]
+    timing_logger.addHandler(handler)
+    timing_logger.setLevel(logging.INFO)
+    timing_logger.propagate = False
 
 
 def _qwen_vllm_operator_recovery() -> dict[str, Any]:
@@ -157,11 +172,28 @@ class PersistentHost:
     lifecycle_managers: tuple[Qwen3VLVLLMLifecycleManager, ...] = field(
         default_factory=tuple
     )
+    owned_resources: tuple[Any, ...] = field(default_factory=tuple)
 
     def close(self) -> None:
+        failures: list[Exception] = []
+        for resource in reversed(self.owned_resources):
+            close = getattr(resource, "shutdown", None) or getattr(resource, "close", None)
+            if callable(close):
+                try:
+                    close()
+                except Exception as exc:
+                    failures.append(exc)
         for manager in self.lifecycle_managers:
-            manager.close()
-        self.client.close()
+            try:
+                manager.close()
+            except Exception as exc:
+                failures.append(exc)
+        try:
+            self.client.close()
+        except Exception as exc:
+            failures.append(exc)
+        if failures:
+            raise RuntimeError("persistent host resource shutdown failed") from failures[0]
 
 
 def _expand(value: Any, environ: Mapping[str, str]) -> Any:
@@ -635,9 +667,10 @@ def build_persistent_host(
         else:
             raise PersistentHostConfigurationError(f"unsupported semantic provider: {provider}")
         perception_settings = load_perception_profile(perception_profile)
-        understanding = RoboTwinSceneUnderstandingProvider(
-            build_single_view_perception(inference, perception_settings, environ=variables)
+        perception = build_single_view_perception(
+            inference, perception_settings, environ=variables
         )
+        understanding = RoboTwinSceneUnderstandingProvider(perception)
         try:
             import yaml
         except ImportError as exc:
@@ -736,6 +769,7 @@ def build_persistent_host(
         client=client,
         bundle=bundle,
         lifecycle_managers=tuple(lifecycle_managers),
+        owned_resources=(perception,),
     )
 
 
@@ -820,6 +854,7 @@ def serve_persistent_host(host: PersistentHost, bind_host: str, port: int) -> No
 
 
 def main() -> int:
+    _configure_operational_logging()
     parser = argparse.ArgumentParser()
     parser.add_argument("--profile", required=True, type=Path)
     args = parser.parse_args()

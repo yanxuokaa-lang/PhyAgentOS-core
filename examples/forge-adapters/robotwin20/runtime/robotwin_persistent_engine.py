@@ -226,7 +226,9 @@ class RoboTwinPersistentEngine:
         self._goal_facts_ref: str | None = None
         self.backend = RoboTwinSensorBackend(RoboTwinRuntimeProfile(
             runtime_root=Path(profile["runtime_root"]), artifact_root=self.root,
-            task_name=runtime["task_name"], task_config=runtime["task_config"], embodiment=runtime["embodiment"],
+            task_name=runtime["task_name"], task_config=runtime["task_config"],
+            embodiment=runtime["embodiment"],
+            additional_static_cameras=runtime["additional_static_cameras"],
         ))
         self.backend.reset(seed=runtime["seed"])
         self.epoch = uuid4().hex

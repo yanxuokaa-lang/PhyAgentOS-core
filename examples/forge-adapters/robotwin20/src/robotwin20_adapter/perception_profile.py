@@ -122,7 +122,12 @@ def _worker_config(value: Any, environ: Mapping[str, str], label: str) -> Proces
         "python", "script", "arguments", "cwd", "environment",
         "startup_timeout_s", "request_timeout_s", "shutdown_timeout_s",
     }
-    if not isinstance(value, Mapping) or set(value) != required:
+    optional = {"hibernate_on_release"}
+    if (
+        not isinstance(value, Mapping)
+        or not required.issubset(value)
+        or set(value).difference(required | optional)
+    ):
         raise PerceptionProfileError(f"{label} fields are invalid")
     python = _absolute_path(value.get("python"), environ, f"{label}.python", must_be_file=True)
     script = _absolute_path(value.get("script"), environ, f"{label}.script", must_be_file=True)
@@ -143,6 +148,7 @@ def _worker_config(value: Any, environ: Mapping[str, str], label: str) -> Proces
             startup_timeout_s=float(value["startup_timeout_s"]),
             request_timeout_s=float(value["request_timeout_s"]),
             shutdown_timeout_s=float(value["shutdown_timeout_s"]),
+            hibernate_on_release=value.get("hibernate_on_release", False),
         )
     except (TypeError, ValueError) as exc:
         raise PerceptionProfileError(f"{label} process configuration is invalid") from exc

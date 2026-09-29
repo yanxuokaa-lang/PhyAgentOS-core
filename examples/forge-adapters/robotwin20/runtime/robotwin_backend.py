@@ -71,6 +71,51 @@ def _normalize_embodiment(value: EmbodimentSpec | list[Any]) -> EmbodimentSpec:
     )
 
 
+def _normalize_additional_static_cameras(value: Any) -> tuple[dict[str, Any], ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, (list, tuple)):
+        raise RoboTwinRuntimeError("additional_static_cameras must be an array")
+    result: list[dict[str, Any]] = []
+    names: set[str] = set()
+    required = {"name", "type", "position", "forward", "left"}
+    for camera in value:
+        if not isinstance(camera, Mapping) or set(camera) != required:
+            raise RoboTwinRuntimeError(
+                "additional_static_cameras entries must define name, type, position, forward, left"
+            )
+        name = camera["name"]
+        camera_type = camera["type"]
+        if (
+            not isinstance(name, str)
+            or _IDENTIFIER.fullmatch(name) is None
+            or name in names
+            or not isinstance(camera_type, str)
+            or _IDENTIFIER.fullmatch(camera_type) is None
+        ):
+            raise RoboTwinRuntimeError("additional static camera identity is invalid")
+        normalized: dict[str, Any] = {"name": name, "type": camera_type}
+        for field in ("position", "forward", "left"):
+            vector = camera[field]
+            if (
+                not isinstance(vector, (list, tuple))
+                or len(vector) != 3
+                or any(
+                    not isinstance(item, (int, float))
+                    or isinstance(item, bool)
+                    or not math.isfinite(float(item))
+                    for item in vector
+                )
+            ):
+                raise RoboTwinRuntimeError(
+                    f"additional static camera {field} must contain three finite numbers"
+                )
+            normalized[field] = [float(item) for item in vector]
+        names.add(name)
+        result.append(normalized)
+    return tuple(result)
+
+
 def load_runtime_profile(path: Path) -> dict[str, Any]:
     """Load one adapter-owned task/embodiment profile without importing PAOS."""
     if not path.is_absolute() or not path.is_file() or path.is_symlink():
@@ -105,7 +150,12 @@ def load_runtime_profile(path: Path) -> dict[str, Any]:
         "max_observation_age_ms", "seed",
         "robot_identity", "gripper_identity", "embodiment_topology", "planner_profile",
     }
-    if not isinstance(value, Mapping) or set(value) != required:
+    optional = {"additional_static_cameras"}
+    if (
+        not isinstance(value, Mapping)
+        or not required.issubset(value)
+        or set(value) - required - optional
+    ):
         raise RoboTwinRuntimeError("runtime profile fields are invalid")
     if value["schema_version"] != RUNTIME_PROFILE_SCHEMA_VERSION:
         raise RoboTwinRuntimeError("runtime profile schema_version is unsupported")
@@ -132,7 +182,14 @@ def load_runtime_profile(path: Path) -> dict[str, Any]:
     expected_topology = "native-dual-arm" if isinstance(embodiment, str) else "two-single-arm"
     if value["embodiment_topology"] != expected_topology:
         raise RoboTwinRuntimeError("runtime profile embodiment_topology does not match embodiment")
-    return {**value, "embodiment": embodiment}
+    additional_static_cameras = _normalize_additional_static_cameras(
+        value.get("additional_static_cameras")
+    )
+    return {
+        **value,
+        "embodiment": embodiment,
+        "additional_static_cameras": additional_static_cameras,
+    }
 
 
 @dataclass(frozen=True)
@@ -229,6 +286,7 @@ class RoboTwinRuntimeProfile:
     task_name: str = "beat_block_hammer"
     task_config: str = "demo_clean"
     embodiment: EmbodimentSpec = "aloha-agilex"
+    additional_static_cameras: tuple[Mapping[str, Any], ...] = ()
     forbidden_roots: tuple[Path, ...] = ()
 
     def validate(self) -> None:
@@ -236,6 +294,7 @@ class RoboTwinRuntimeProfile:
             if not isinstance(value, str) or _IDENTIFIER.fullmatch(value) is None:
                 raise RoboTwinRuntimeError(f"{label} must be a safe identifier")
         spec = _normalize_embodiment(self.embodiment)
+        _normalize_additional_static_cameras(self.additional_static_cameras)
         names = (spec,) if isinstance(spec, str) else spec[:2]
         for name in names:
             if _IDENTIFIER.fullmatch(name) is None:
@@ -364,6 +423,26 @@ class RoboTwinSensorBackend:
                 raise RoboTwinRuntimeError("RoboTwin embodiment path escapes runtime_root")
             robot_files.append(robot_file)
             configs.append(self._read_embodiment(robot_path))
+        if self.profile.additional_static_cameras:
+            static_cameras = configs[0].get("static_camera_list")
+            if not isinstance(static_cameras, list):
+                raise RoboTwinRuntimeError(
+                    "primary embodiment static_camera_list is unavailable"
+                )
+            existing_names = {
+                camera.get("name")
+                for camera in static_cameras
+                if isinstance(camera, Mapping)
+            }
+            for camera in _normalize_additional_static_cameras(
+                self.profile.additional_static_cameras
+            ):
+                if camera["name"] in existing_names:
+                    raise RoboTwinRuntimeError(
+                        f"additional static camera already exists: {camera['name']}"
+                    )
+                static_cameras.append(dict(camera))
+                existing_names.add(camera["name"])
         if isinstance(spec, str):
             if configs[0].get("dual_arm") is not True:
                 raise RoboTwinRuntimeError(
@@ -594,6 +673,9 @@ def main() -> int:
                 task_name=task_name,
                 task_config=task_config,
                 embodiment=embodiment,
+                additional_static_cameras=(
+                    profile["additional_static_cameras"] if profile else ()
+                ),
                 forbidden_roots=tuple(path.resolve() for path in args.forbidden_root),
             )
         )

@@ -179,6 +179,7 @@ def _handle_factory(
             task_name=profile["task_name"],
             task_config=profile["task_config"],
             embodiment=profile["embodiment"],
+            additional_static_cameras=profile["additional_static_cameras"],
         )
     )
     backend.reset(seed=profile["seed"])

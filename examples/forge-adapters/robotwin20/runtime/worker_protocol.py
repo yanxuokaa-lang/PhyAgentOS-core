@@ -27,6 +27,8 @@ def serve(
     load: Callable[[], None],
     handle: Callable[[Mapping[str, Any]], Mapping[str, Any]],
     *,
+    sleep: Callable[[], None] | None = None,
+    wake: Callable[[], None] | None = None,
     schema_version: str = SCHEMA_VERSION,
 ) -> int:
     try:
@@ -51,6 +53,22 @@ def serve(
                 emit_event(provider, "shutdown_started", request_id=request_id, schema_version=schema_version)
                 _emit({"request_id": request_id, "status": "shutdown"})
                 return 0
+            if request.get("command") == "sleep":
+                if sleep is None:
+                    raise ValueError("worker does not support sleep")
+                emit_event(provider, "sleep_started", request_id=request_id, schema_version=schema_version)
+                sleep()
+                _emit({"request_id": request_id, "status": "sleeping"})
+                emit_event(provider, "sleep_completed", request_id=request_id, schema_version=schema_version)
+                continue
+            if request.get("command") == "wake":
+                if wake is None:
+                    raise ValueError("worker does not support wake")
+                emit_event(provider, "wake_started", request_id=request_id, schema_version=schema_version)
+                wake()
+                _emit({"request_id": request_id, "status": "awake"})
+                emit_event(provider, "wake_completed", request_id=request_id, schema_version=schema_version)
+                continue
             emit_event(provider, "request_started", request_id=request_id, schema_version=schema_version)
             reply = dict(handle(request))
             if reply.get("request_id") != request_id:

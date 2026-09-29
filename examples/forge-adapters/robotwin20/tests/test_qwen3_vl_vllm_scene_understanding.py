@@ -63,6 +63,8 @@ class _Response:
                         )
                     },
                 )()
+                ,
+                "finish_reason": "stop",
             },
         )()
     ]
@@ -121,6 +123,7 @@ def test_vllm_provider_uses_openai_compatible_multimodal_schema():
     payload = client.chat.completions.calls[0]
     assert payload["model"] == "qwen3-vl-4b-awq"
     assert payload["response_format"]["json_schema"]["strict"] is True
+    assert payload["response_format"]["json_schema"]["schema"]["properties"]["relations"]["maxItems"] == 8
     assert payload["response_format"]["json_schema"]["schema"]["properties"]["ambiguities"]["items"]["properties"]["code"]["enum"] == [
         "entity_identity_uncertain", "entity_category_uncertain", "entity_count_uncertain",
         "visual_attribute_uncertain", "spatial_relation_uncertain", "occlusion_uncertain",
@@ -131,12 +134,37 @@ def test_vllm_provider_uses_openai_compatible_multimodal_schema():
     assert "open-world semantic scene graph" in prompt
     assert "large or low-contrast physical structures" in prompt
     assert "contact/support, attachment" in prompt
+    assert "at most 8 highest-confidence" in prompt
+    assert "Never return both inverse directional descriptions" in prompt
+    assert "do not return transitive relations" in prompt
     assert "broad uniform background may still be a physical structure" in prompt
     assert "Do not infer metric depth, coordinates, plane equations" in prompt
     assert "Do not report an ambiguity solely because" not in prompt
     assert "observation://scene/camera" not in prompt
     assert "scene-1" not in prompt
     assert client.closed is True
+
+
+def test_vllm_scene_schema_avoids_xgrammar_unsupported_unique_items():
+    client = _Client()
+    provider = Qwen3VLVLLMSceneUnderstandingInference(
+        _Resolver(), client_factory=lambda **kwargs: client
+    )
+
+    provider.infer(REQUEST)
+
+    schema = client.chat.completions.calls[0]["response_format"]["json_schema"]["schema"]
+
+    def collect_unique_items(value):
+        if isinstance(value, dict):
+            return [value["uniqueItems"]] if "uniqueItems" in value else sum(
+                (collect_unique_items(item) for item in value.values()), []
+            )
+        if isinstance(value, list):
+            return sum((collect_unique_items(item) for item in value), [])
+        return []
+
+    assert collect_unique_items(schema) == []
 
 
 def test_vllm_provider_sends_all_views_and_maps_source_view_provenance():
@@ -170,6 +198,23 @@ def test_vllm_provider_sends_all_views_and_maps_source_view_provenance():
     assert result["entities"][0]["provenance"] == ["artifact://scene/capture/wrist/rgb"]
 
 
+def test_vllm_provider_reports_output_token_truncation_explicitly():
+    response = type("Response", (), {"choices": [type("Choice", (), {
+        "message": type("Message", (), {"content": '{"entities": ['})(),
+        "finish_reason": "length",
+    })()]})()
+    client = _Client()
+    client.chat.completions.create = lambda **payload: (
+        client.chat.completions.calls.append(payload) or response
+    )
+    provider = Qwen3VLVLLMSceneUnderstandingInference(
+        _Resolver(), client_factory=lambda **kwargs: client
+    )
+
+    with pytest.raises(Qwen3VLVLLMInferenceError, match="truncated by the output token limit"):
+        provider.infer(REQUEST)
+
+
 def test_vllm_projection_rejects_missing_multiview_provenance():
     with pytest.raises(Qwen3VLVLLMInferenceError, match="source view provenance"):
         _project_vllm_claims(
@@ -179,6 +224,48 @@ def test_vllm_projection_rejects_missing_multiview_provenance():
                 "ambiguities": [],
             },
             ["artifact://front/rgb", "artifact://wrist/rgb"],
+        )
+
+
+def test_vllm_projection_rejects_duplicate_multiview_provenance():
+    with pytest.raises(Qwen3VLVLLMInferenceError, match="source view provenance"):
+        _project_vllm_claims(
+            {
+                "entities": [{
+                    "local_id": "e1",
+                    "category": "cube",
+                    "attributes": [],
+                    "confidence": 0.9,
+                    "source_view_indexes": [0, 0],
+                }],
+                "relations": [],
+                "ambiguities": [],
+            },
+            ["artifact://front/rgb", "artifact://wrist/rgb"],
+        )
+
+
+def test_vllm_projection_rejects_more_than_eight_relations():
+    with pytest.raises(Qwen3VLVLLMInferenceError, match="relation count"):
+        _project_vllm_claims(
+            {
+                "entities": [
+                    {"local_id": "e1", "category": "cube", "attributes": [], "confidence": 0.9},
+                    {"local_id": "e2", "category": "surface", "attributes": [], "confidence": 0.9},
+                ],
+                "relations": [
+                    {
+                        "subject_id": "e1",
+                        "predicate": f"relation_{index}",
+                        "object_id": "e2",
+                        "relation_space": "visible",
+                        "confidence": 0.9,
+                    }
+                    for index in range(9)
+                ],
+                "ambiguities": [],
+            },
+            REQUEST["artifacts"][0],
         )
 
 

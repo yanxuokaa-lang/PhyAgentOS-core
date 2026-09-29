@@ -1915,6 +1915,7 @@ def _handle_factory(
             task_name=runtime_profile["task_name"],
             task_config=runtime_profile["task_config"],
             embodiment=runtime_profile["embodiment"],
+            additional_static_cameras=runtime_profile.get("additional_static_cameras", ()),
         )
     )
     request_consumed = False

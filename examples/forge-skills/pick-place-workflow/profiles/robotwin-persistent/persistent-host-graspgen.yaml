@@ -20,7 +20,7 @@ model:
   model: qwen3-vl-4b-awq
   api_key_env: ""
   timeout_seconds: 30
-  max_output_tokens: 768
+  max_output_tokens: 1536
   lifecycle:
     enabled: true
     control_api_base: http://127.0.0.1:8012

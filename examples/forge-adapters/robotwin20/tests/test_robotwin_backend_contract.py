@@ -69,6 +69,74 @@ planner_profile: curobo
     assert loaded["embodiment"] == ("franka-panda", "franka-panda", 0.8)
     assert loaded["sensor_ref"] == "camera/head"
     assert loaded["max_observation_age_ms"] == 1000
+    assert loaded["additional_static_cameras"] == ()
+
+
+def test_runtime_profile_loader_accepts_profile_owned_additional_static_camera(tmp_path):
+    profile_path = tmp_path / "profile.yaml"
+    profile_path.write_text(
+        """
+schema_version: paos-robotwin20-runtime-profile/v1
+task_name: blocks_ranking_rgb
+task_config: demo_clean
+embodiment: [franka-panda, franka-panda, 0.8]
+additional_static_cameras:
+  - name: front_camera
+    type: D435
+    position: [0.0, -0.45, 0.85]
+    forward: [0.0, 1.0, -0.1]
+    left: [-1.0, 0.0, 0.0]
+sensor_ref: camera/head
+max_observation_age_ms: 1000
+seed: 0
+robot_identity: franka-panda
+gripper_identity: panda-gripper
+embodiment_topology: two-single-arm
+planner_profile: curobo
+""",
+        encoding="utf-8",
+    )
+
+    loaded = backend_module.load_runtime_profile(profile_path)
+
+    assert loaded["additional_static_cameras"] == (
+        {
+            "name": "front_camera",
+            "type": "D435",
+            "position": [0.0, -0.45, 0.85],
+            "forward": [0.0, 1.0, -0.1],
+            "left": [-1.0, 0.0, 0.0],
+        },
+    )
+
+
+def test_runtime_profile_loader_rejects_invalid_additional_static_camera(tmp_path):
+    profile_path = tmp_path / "profile.yaml"
+    profile_path.write_text(
+        """
+schema_version: paos-robotwin20-runtime-profile/v1
+task_name: blocks_ranking_rgb
+task_config: demo_clean
+embodiment: [franka-panda, franka-panda, 0.8]
+additional_static_cameras:
+  - name: front_camera
+    type: D435
+    position: [0.0, false, 0.85]
+    forward: [0.0, 1.0, -0.1]
+    left: [-1.0, 0.0, 0.0]
+sensor_ref: camera/head
+max_observation_age_ms: 1000
+seed: 0
+robot_identity: franka-panda
+gripper_identity: panda-gripper
+embodiment_topology: two-single-arm
+planner_profile: curobo
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(backend_module.RoboTwinRuntimeError, match="three finite numbers"):
+        backend_module.load_runtime_profile(profile_path)
 
 
 def test_runtime_profile_loader_rejects_topology_drift(tmp_path):
@@ -165,6 +233,73 @@ def test_public_camera_refs_do_not_include_truth_channels():
         "camera/right_wrist",
     }
     assert all("segmentation" not in name for name in backend_module._CAMERA_REFS)
+
+
+def test_reset_applies_additional_static_camera_to_in_memory_embodiment_copy(
+    tmp_path, monkeypatch
+):
+    runtime_root = tmp_path / "RoboTwin"
+    (runtime_root / "env_cfg" / "task_config").mkdir(parents=True)
+    (runtime_root / "env_cfg" / "task_config" / "demo_clean.yml").write_text(
+        "{}\n", encoding="utf-8"
+    )
+    (runtime_root / "env_cfg" / "task_config" / "_embodiment_config.yml").write_text(
+        "franka-panda:\n  file_path: assets/embodiments/franka-panda\n",
+        encoding="utf-8",
+    )
+    (runtime_root / "assets" / "embodiments" / "franka-panda").mkdir(parents=True)
+    front = {
+        "name": "front_camera",
+        "type": "D435",
+        "position": [0.0, -0.45, 0.85],
+        "forward": [0.0, 1.0, -0.1],
+        "left": [-1.0, 0.0, 0.0],
+    }
+    backend = object.__new__(backend_module.RoboTwinSensorBackend)
+    backend.profile = backend_module.RoboTwinRuntimeProfile(
+        runtime_root=runtime_root,
+        artifact_root=tmp_path / "artifacts",
+        task_name="blocks_ranking_rgb",
+        task_config="demo_clean",
+        embodiment=("franka-panda", "franka-panda", 0.8),
+        additional_static_cameras=(front,),
+    )
+    backend._task = None
+    backend._scene_revision = None
+    backend._seed = None
+    backend._generation = 0
+    backend._capture_index = 0
+    source_camera = {
+        "name": "head_camera",
+        "position": [0.0, 0.0, 1.0],
+        "forward": [0.0, 0.0, -1.0],
+        "left": [-1.0, 0.0, 0.0],
+    }
+    monkeypatch.setattr(
+        backend,
+        "_read_embodiment",
+        lambda _path: {
+            "dual_arm": False,
+            "static_camera_list": [dict(source_camera)],
+        },
+    )
+    captured = {}
+
+    class Task:
+        def setup_demo(self, **arguments):
+            captured.update(arguments)
+
+    backend._class_decorator = lambda _task_name: Task()
+
+    backend.reset(seed=0)
+
+    assert captured["left_embodiment_config"]["static_camera_list"] == [
+        source_camera,
+        front,
+    ]
+    assert captured["right_embodiment_config"]["static_camera_list"] == [
+        source_camera
+    ]
 
 
 def test_runtime_calls_use_external_root_without_leaking_process_cwd(tmp_path):

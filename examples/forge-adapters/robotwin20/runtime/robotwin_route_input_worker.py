@@ -39,6 +39,7 @@ def capture_scene_facts(
             task_name=profile["task_name"],
             task_config=profile["task_config"],
             embodiment=profile["embodiment"],
+            additional_static_cameras=profile["additional_static_cameras"],
         )
     )
     try:

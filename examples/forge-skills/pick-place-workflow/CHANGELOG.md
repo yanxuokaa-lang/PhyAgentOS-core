@@ -1,5 +1,65 @@
 # Change Log
 
+## v2.9.0 (2026-09-29)
+
+- 中文：完成感知 worker 生命周期所有权：请求结束继续使用 CPU hibernate 复用，PersistentHost 终止时则显式 shutdown LocateAnything 与 SAM2 子进程；即使一个资源关闭失败，也继续关闭其余资源并最终 fail-closed。
+- English: Complete perception-worker lifecycle ownership: retain CPU hibernation reuse after requests, but explicitly shut down LocateAnything and SAM2 child processes when PersistentHost terminates; continue closing remaining resources after one failure and then fail closed.
+- 中文：发布 Node `0.8.15`，SHA-256 为 `5fa1d5afdb9aca2d4162a2e5464e9eeee44a9ac6e6e4f3291c0fa7ddee65420e`；依据项目版本规则，Skill patch 从 `2.8.15` 进位到 `2.9.0`。
+- English: Publish Node `0.8.15` with SHA-256 `5fa1d5afdb9aca2d4162a2e5464e9eeee44a9ac6e6e4f3291c0fa7ddee65420e`; advance the Skill from `2.8.15` to `2.9.0` under the repository's patch-carry rule.
+
+## v2.8.15 (2026-09-29)
+
+- 中文：将隔离感知 worker 的 startup、wake、request、sleep 与 shutdown 耗时接入持久 Runtime 的专用 INFO logger；仅提升该 logger 的可见性，不提高全局日志噪声。
+- English: Route isolated-perception worker startup, wake, request, sleep, and shutdown timings through a dedicated persistent-Runtime INFO logger without increasing global log verbosity.
+- 中文：发布 Node `0.8.14`，SHA-256 为 `2ea8bfe46561ce6caca4b27193ebf82db7cabe580a9cdd60e7bd3cf97de840ea`；`2.8.14/0.8.13` 保持不可变。
+- English: Publish Node `0.8.14` with SHA-256 `2ea8bfe46561ce6caca4b27193ebf82db7cabe580a9cdd60e7bd3cf97de840ea`; retain `2.8.14/0.8.13` as immutable artifacts.
+
+## v2.8.14 (2026-09-29)
+
+- 中文：为 LocateAnything 与 SAM2 增加显式 GPU sleep/wake 协议；请求阶段结束后模型迁移到 CPU 并释放 CUDA cache，下一次请求复用同一 worker 进程和已读取的 checkpoint，避免重复 Python/模块/checkpoint 冷启动。
+- English: Add explicit GPU sleep/wake lifecycle support for LocateAnything and SAM2; move models to CPU and release the CUDA cache after each stage, then reuse the same worker process and already-loaded checkpoint on the next request instead of repeating Python/module/checkpoint cold start.
+- 中文：该行为由 perception profile 的 `hibernate_on_release` 显式启用，默认 worker 语义保持不变；sleep/wake 失败会终止 worker 并 fail-closed，Qwen、proposal 与 segmentation 继续串行占用 GPU。
+- English: Enable the behavior explicitly through perception-profile `hibernate_on_release` while preserving default worker semantics; sleep/wake failures terminate the worker and fail closed, and Qwen, proposal, and segmentation retain serial GPU ownership.
+- 中文：发布 Node `0.8.13`，SHA-256 为 `5304500c3da536fb1c1e42ae2829c2e65d736de8441645014b52370d755423e8`。
+- English: Publish Node `0.8.13` with SHA-256 `5304500c3da536fb1c1e42ae2829c2e65d736de8441645014b52370d755423e8`.
+
+## v2.8.13 (2026-09-29)
+
+- 中文：将多视角语义关系限定为最多 8 条最高置信、非冗余、非传递关系，并在生成 schema、模型提示和 Adapter 投影三层一致执行；全部可见实体仍保持开放世界枚举。
+- English: Bound multi-view semantic relations to at most 8 highest-confidence, non-redundant, non-transitive relations and enforce the rule consistently in the generation schema, model prompt, and Adapter projection while retaining open-world enumeration of all visible entities.
+- 中文：真实双图 A/B 请求从 1536-token 截断恢复为 826-token 完整 JSON，识别红、蓝、绿方块及支撑面；发布 Node `0.8.12`，SHA-256 为 `eff451481315dea34ff54a17aac24eb7dbb602fe385096ed0d8974e3ea3d2989`。
+- English: The live two-image A/B request moved from 1536-token truncation to complete 826-token JSON recognizing red, blue, and green cubes plus the support surface; publish Node `0.8.12` with SHA-256 `eff451481315dea34ff54a17aac24eb7dbb602fe385096ed0d8974e3ea3d2989`.
+
+## v2.8.12 (2026-09-29)
+
+- 中文：将持久 Qwen 场景理解的输出预算从 768 提升到 1536；真实双图请求的 prompt 为 397 tokens，总预算仍低于 2048 context，避免实体与关系 JSON 在 768 tokens 处截断。
+- English: Raise the persistent Qwen scene-understanding output budget from 768 to 1536; the live two-image prompt used 397 tokens, keeping the total below the 2048 context while preventing entity/relation JSON truncation at 768 tokens.
+- 中文：Provider 显式识别 `finish_reason=length` 并报告输出预算截断；发布 Node `0.8.11`，SHA-256 为 `652d8b96e5cd1ce32a22fabf62fde36624e232c0c5af1c52d09a1fccbe61c3c1`。
+- English: Make the Provider explicitly report `finish_reason=length` as output-budget truncation; publish Node `0.8.11` with SHA-256 `652d8b96e5cd1ce32a22fabf62fde36624e232c0c5af1c52d09a1fccbe61c3c1`.
+
+## v2.8.11 (2026-09-29)
+
+- 中文：修复本地 Qwen vLLM 的结构化输出兼容性：生成侧 JSON Schema 不再使用 xgrammar 不支持的 `uniqueItems`，Adapter 投影层继续严格拒绝重复 `source_view_indexes`。
+- English: Fix local Qwen vLLM structured-output compatibility by removing xgrammar-unsupported `uniqueItems` from the generation schema while retaining strict duplicate `source_view_indexes` rejection in the Adapter projection layer.
+- 中文：发布包含该兼容修复的 Node `0.8.10`，SHA-256 为 `28d7c59c742933b6c1ea900bc697178572266711c30808ff046e30f186b3bcb2`；旧 `2.8.10`/`0.8.9` artifact 保持不可变。
+- English: Publish Node `0.8.10` with the compatibility fix, SHA-256 `28d7c59c742933b6c1ea900bc697178572266711c30808ff046e30f186b3bcb2`; prior `2.8.10`/`0.8.9` artifacts remain immutable.
+
+## v2.8.10 (2026-09-29)
+
+- 中文：新增 runtime-profile-owned `additional_static_cameras` 扩展点，在不修改第三方 RoboTwin checkout 的情况下为 embodiment 实例化额外的渲染 RGB-D 相机；配置身份、向量有限性和原生名称冲突均 fail-closed。
+- English: Add the runtime-profile-owned `additional_static_cameras` extension to instantiate extra rendered RGB-D cameras without modifying the third-party RoboTwin checkout; configuration identity, finite vectors, and native-name collisions fail closed.
+- 中文：为通用 Franka 双臂 profile 启用原生 `front_camera`，使 `camera/head + camera/front` 同步观察在真实 Runtime 中可用；发布 Node `0.8.9`，SHA-256 为 `5fff258c5ef99eabbdc0909b55178399586ea5d350e115cbcc655c52fb662e9f`。
+- English: Enable native `front_camera` in the general dual-Franka profile so synchronized `camera/head + camera/front` observations are available in the live Runtime; publish Node `0.8.9` with SHA-256 `5fff258c5ef99eabbdc0909b55178399586ea5d350e115cbcc655c52fb662e9f`.
+
+## v2.8.9 (2026-09-29)
+
+- 中文：发布通用同步多视角场景观测与多图 Qwen/OpenAI 语义理解；metric RGB-D 仍仅由 primary view 生成，secondary-only 实体不伪造三维几何。
+- English: Release general synchronized multi-view scene observation and multi-image Qwen/OpenAI semantic understanding; metric RGB-D remains primary-view-only and secondary-only entities do not receive fabricated 3D geometry.
+- 中文：发布 Runtime terminal `scene_effects`、Coordinator 所有的未变化实体 carry-forward，以及持物状态下只读 grounding/preparation/route；所有 identity、pose、calibration、freshness 与未知 effect 继续 fail-closed。
+- English: Release Runtime terminal `scene_effects`, Coordinator-owned unchanged-entity carry-forward, and read-only grounding/preparation/route while holding; identity, pose, calibration, freshness, and unknown-effect checks remain fail-closed.
+- 中文：锁定 RobotWin20 Node `0.8.8`，artifact SHA-256 为 `16912f2fdbe66fa6227df337650eca750dfab4714d58c5f206c53f90fa887053`；旧 `2.8.8`/`0.8.7` 包保持不可变。
+- English: Lock RobotWin20 Node `0.8.8` with artifact SHA-256 `16912f2fdbe66fa6227df337650eca750dfab4714d58c5f206c53f90fa887053`; prior `2.8.8`/`0.8.7` packages remain immutable.
+
 ## v2.8.8 (2026-09-29)
 
 - 中文：将 RobotWin 场景理解切换为纯本地 Qwen vLLM provider，移除 shuaiapi fallback 及 Dora 环境中的主模型 secret；PAOS 主 Agent provider 保持独立。

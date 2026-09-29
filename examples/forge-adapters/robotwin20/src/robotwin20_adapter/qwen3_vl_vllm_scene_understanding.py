@@ -23,6 +23,8 @@ from .openai_scene_understanding import (
     ArtifactResolver,
 )
 
+_MAX_RELATIONS = 8
+
 _VLLM_SCENE_SCHEMA: dict[str, Any] = {
     "type": "object",
     "additionalProperties": False,
@@ -37,14 +39,15 @@ _VLLM_SCENE_SCHEMA: dict[str, Any] = {
                                "properties": {"name": {"type": "string"}, "value": {"type": ["string", "number", "boolean"]},
                                               "confidence": {"type": "number", "minimum": 0, "maximum": 1}}}},
                            "confidence": {"type": "number", "minimum": 0, "maximum": 1},
-                           "source_view_indexes": {"type": "array", "minItems": 1, "uniqueItems": True,
+                           "source_view_indexes": {"type": "array", "minItems": 1,
                                "items": {"type": "integer", "minimum": 0}}}}},
-        "relations": {"type": "array", "items": {"type": "object", "additionalProperties": False,
+        "relations": {"type": "array", "maxItems": _MAX_RELATIONS,
+            "items": {"type": "object", "additionalProperties": False,
             "required": ["subject_id", "predicate", "object_id", "relation_space", "confidence", "source_view_indexes"],
             "properties": {"subject_id": {"type": "string"}, "predicate": {"type": "string"},
                            "object_id": {"type": "string"}, "relation_space": {"type": "string"},
                            "confidence": {"type": "number", "minimum": 0, "maximum": 1},
-                           "source_view_indexes": {"type": "array", "minItems": 1, "uniqueItems": True,
+                           "source_view_indexes": {"type": "array", "minItems": 1,
                                "items": {"type": "integer", "minimum": 0}}}}},
         "ambiguities": {"type": "array", "items": {"type": "object", "additionalProperties": False,
             "required": ["code", "message", "entity_ids"],
@@ -276,7 +279,11 @@ class Qwen3VLVLLMSceneUnderstandingInference:
             "surfaces, shelves, trays, containers, hooks, rails, or articulated parts. A broad "
             "uniform background may still be a physical structure; do not discard it as void. "
             "Report visible directional, topology, containment, contact/support, attachment, "
-            "occlusion, and visible-state relations. Report on/support only when contact is "
+            "occlusion, and visible-state relations. Return at most 8 highest-confidence, "
+            "non-redundant relations. Never return both inverse directional descriptions for "
+            "the same entity pair, and do not return transitive relations. Prioritize "
+            "support/contact, containment, attachment, and occlusion over image-plane ordering. "
+            "Report on/support only when contact is "
             "visually evident, not from color or relative image position alone. Use confidence "
             "in [0,1] and include identifying attributes such as color in the category and "
             "attributes. Do not infer metric depth, coordinates, plane equations, simulator "
@@ -290,9 +297,14 @@ class Qwen3VLVLLMSceneUnderstandingInference:
     @staticmethod
     def _content(response: Any) -> str:
         try:
-            content = response.choices[0].message.content
+            choice = response.choices[0]
+            content = choice.message.content
         except (AttributeError, IndexError, KeyError, TypeError) as exc:
             raise Qwen3VLVLLMInferenceError("qwen vLLM response did not contain chat content") from exc
+        if getattr(choice, "finish_reason", None) == "length":
+            raise Qwen3VLVLLMInferenceError(
+                "qwen vLLM response was truncated by the output token limit"
+            )
         if not isinstance(content, str) or not content.strip():
             raise Qwen3VLVLLMInferenceError("qwen vLLM response content was empty")
         return content
@@ -340,8 +352,11 @@ def _project_vllm_claims(value: Any, image_refs: str | list[str]) -> dict[str, A
         id_map[local_id] = ref
         category, confidence = _public_entity_category(item)
         entities.append({"entity_ref": ref, "category": category, "confidence": confidence, "provenance": provenance(item)})
+    relation_values = value["relations"]
+    if not isinstance(relation_values, list) or len(relation_values) > _MAX_RELATIONS:
+        raise Qwen3VLVLLMInferenceError("qwen vLLM relation count is invalid")
     relations = []
-    for item in value["relations"]:
+    for item in relation_values:
         if (
             not isinstance(item, Mapping)
             or set(item) not in {

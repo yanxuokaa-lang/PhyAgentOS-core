@@ -237,9 +237,14 @@ def _load_runtime_identity(path: Path) -> Mapping[str, str]:
         "embodiment_topology",
         "planner_profile",
     }
-    if set(value) != expected or any(
-        not isinstance(value[key], str) or not value[key].strip()
-        for key in required_identity
+    optional = {"additional_static_cameras"}
+    if (
+        not expected.issubset(value)
+        or set(value).difference(expected | optional)
+        or any(
+            not isinstance(value[key], str) or not value[key].strip()
+            for key in required_identity
+        )
     ):
         raise MaterializationError("runtime profile identity fields are invalid")
     if type(value["max_observation_age_ms"]) is not int or value["max_observation_age_ms"] < 1:

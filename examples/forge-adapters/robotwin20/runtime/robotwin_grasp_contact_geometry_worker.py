@@ -28,6 +28,7 @@ def capture_contact_geometry(*, runtime_root: Path, runtime_profile: Path, artif
             task_name=profile["task_name"],
             task_config=profile["task_config"],
             embodiment=profile["embodiment"],
+            additional_static_cameras=profile.get("additional_static_cameras", ()),
         )
     )
     try:

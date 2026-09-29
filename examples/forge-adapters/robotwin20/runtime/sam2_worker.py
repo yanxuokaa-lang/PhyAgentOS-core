@@ -40,6 +40,7 @@ class Sam2BoxWorker:
         self.source_artifact_root = source_artifact_root.resolve()
         self.worker_artifact_root = worker_artifact_root.resolve()
         self._predictor: Any = None
+        self._sleeping = False
 
     def load(self) -> None:
         if self._predictor is not None:
@@ -61,9 +62,42 @@ class Sam2BoxWorker:
                 mode="eval",
             )
             self._predictor = SAM2ImagePredictor(model)
+            self._sleeping = False
+
+    def sleep(self) -> None:
+        if self._predictor is None or self._sleeping:
+            return
+        import torch
+
+        reset = getattr(self._predictor, "reset_predictor", None)
+        if callable(reset):
+            reset()
+        model = getattr(self._predictor, "model", None)
+        if model is None or not callable(getattr(model, "to", None)):
+            raise RuntimeError("SAM2 predictor model cannot be hibernated")
+        with contextlib.redirect_stdout(sys.stderr):
+            model.to("cpu")
+        if self.device.startswith("cuda"):
+            torch.cuda.empty_cache()
+        self._sleeping = True
+
+    def wake(self) -> None:
+        if self._predictor is None:
+            self.load()
+            return
+        if not self._sleeping:
+            return
+        model = getattr(self._predictor, "model", None)
+        if model is None or not callable(getattr(model, "to", None)):
+            raise RuntimeError("SAM2 predictor model cannot be awakened")
+        with contextlib.redirect_stdout(sys.stderr):
+            model.to(self.device).eval()
+        self._sleeping = False
 
     def handle(self, request: Mapping[str, Any]) -> Mapping[str, Any]:
         request_id = request["request_id"]
+        if self._sleeping:
+            raise RuntimeError("SAM2 worker is sleeping")
         bbox_value = request.get("bbox_xyxy_px")
         unavailable = {
             "request_id": request_id,
@@ -179,7 +213,13 @@ def main() -> int:
         source_artifact_root=args.source_artifact_root.expanduser().resolve(),
         worker_artifact_root=args.worker_artifact_root.expanduser().resolve(),
     )
-    return serve("sam2", worker.load, worker.handle)
+    return serve(
+        "sam2",
+        worker.load,
+        worker.handle,
+        sleep=worker.sleep,
+        wake=worker.wake,
+    )
 
 
 if __name__ == "__main__":

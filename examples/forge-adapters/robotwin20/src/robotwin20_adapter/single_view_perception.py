@@ -185,6 +185,13 @@ class WorkerProposalProvider:
         if callable(release):
             release()
 
+    def shutdown(self) -> None:
+        shutdown = getattr(self.client, "shutdown", None)
+        if callable(shutdown):
+            shutdown()
+        else:
+            self.release()
+
 
 class WorkerSegmentationProvider:
     """Materialize a configured segmentation worker's bounded NumPy mask."""
@@ -240,6 +247,13 @@ class WorkerSegmentationProvider:
         release = getattr(self.client, "release", None)
         if callable(release):
             release()
+
+    def shutdown(self) -> None:
+        shutdown = getattr(self.client, "shutdown", None)
+        if callable(shutdown):
+            shutdown()
+        else:
+            self.release()
 
 
 class NumpyMetricLocalizationProvider:
@@ -503,6 +517,22 @@ class SingleViewPerceptionInference:
                 type(exc.__cause__).__name__ if exc.__cause__ is not None else "none",
             )
             raise
+
+    def shutdown(self) -> None:
+        """Terminate retained metric workers at the Runtime ownership boundary."""
+
+        failures: list[Exception] = []
+        for provider in (self.proposal_provider, self.segmentation_provider):
+            try:
+                shutdown = getattr(provider, "shutdown", None)
+                if callable(shutdown):
+                    shutdown()
+                else:
+                    _release_provider(provider, type(provider).__name__)
+            except Exception as exc:
+                failures.append(exc)
+        if failures:
+            raise SingleViewPerceptionError("perception worker shutdown failed") from failures[0]
 
     def _infer(self, request: Mapping[str, Any]) -> Mapping[str, Any]:
         base = self._semantic_result(request)

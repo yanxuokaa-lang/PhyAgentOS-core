@@ -25,6 +25,13 @@ def main():
         if request.get("command") == "shutdown":
             emit({"request_id": request["request_id"], "status": "shutdown"})
             return 0
+        if request.get("command") == "sleep":
+            status = "unavailable" if args.mode == "sleep-fail" else "sleeping"
+            emit({"request_id": request["request_id"], "status": status})
+            continue
+        if request.get("command") == "wake":
+            emit({"request_id": request["request_id"], "status": "awake"})
+            continue
         if args.mode == "timeout":
             time.sleep(2)
         elif args.mode == "invalid-json":

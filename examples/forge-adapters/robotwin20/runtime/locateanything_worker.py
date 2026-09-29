@@ -55,6 +55,7 @@ class LocateAnythingProposalWorker:
         self._tokenizer: Any = None
         self._processor: Any = None
         self._model: Any = None
+        self._sleeping = False
 
     def load(self) -> None:
         if self._model is not None:
@@ -82,9 +83,33 @@ class LocateAnythingProposalWorker:
                 torch_dtype=dtype,
                 **common,
             ).to(self.device).eval()
+            self._sleeping = False
+
+    def sleep(self) -> None:
+        if self._model is None or self._sleeping:
+            return
+        import torch
+
+        with contextlib.redirect_stdout(sys.stderr):
+            self._model.to("cpu")
+        if self.device.startswith("cuda"):
+            torch.cuda.empty_cache()
+        self._sleeping = True
+
+    def wake(self) -> None:
+        if self._model is None:
+            self.load()
+            return
+        if not self._sleeping:
+            return
+        with contextlib.redirect_stdout(sys.stderr):
+            self._model.to(self.device).eval()
+        self._sleeping = False
 
     def handle(self, request: Mapping[str, Any]) -> Mapping[str, Any]:
         request_id = request["request_id"]
+        if self._sleeping:
+            raise RuntimeError("LocateAnything worker is sleeping")
         if set(request) != {
             "request_id", "operation", "observation_ref", "scene_revision",
             "entity_ref", "query", "rgb_path", "image_size_px",
@@ -235,7 +260,13 @@ def main() -> int:
         decode_seed=args.decode_seed,
         local_files_only=not args.allow_download,
     )
-    return serve("locateanything", worker.load, worker.handle)
+    return serve(
+        "locateanything",
+        worker.load,
+        worker.handle,
+        sleep=worker.sleep,
+        wake=worker.wake,
+    )
 
 
 if __name__ == "__main__":

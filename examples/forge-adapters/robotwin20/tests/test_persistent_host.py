@@ -26,6 +26,53 @@ from robotwin20_adapter.persistent_host import (
 )
 
 
+def test_operational_timing_logging_is_scoped_and_idempotent():
+    logger = __import__("logging").getLogger("robotwin20_adapter.process_worker")
+    original_handlers = list(logger.handlers)
+    original_level = logger.level
+    original_propagate = logger.propagate
+    try:
+        logger.handlers = []
+        host_module._configure_operational_logging()
+        host_module._configure_operational_logging()
+        marked = [
+            handler for handler in logger.handlers
+            if getattr(handler, "_paos_perception_timing", False)
+        ]
+        assert len(marked) == 1
+        assert logger.level == __import__("logging").INFO
+        assert logger.propagate is False
+    finally:
+        logger.handlers = original_handlers
+        logger.setLevel(original_level)
+        logger.propagate = original_propagate
+
+
+def test_persistent_host_closes_owned_resources_before_client():
+    calls = []
+
+    class Resource:
+        def shutdown(self):
+            calls.append("resource")
+
+    class Manager:
+        def close(self):
+            calls.append("manager")
+
+    class Client:
+        def close(self):
+            calls.append("client")
+
+    host = host_module.PersistentHost(
+        client=Client(),
+        bundle=object(),
+        lifecycle_managers=(Manager(),),
+        owned_resources=(Resource(),),
+    )
+    host.close()
+    assert calls == ["resource", "manager", "client"]
+
+
 def _profile(tmp_path: Path) -> tuple[dict, dict[str, str]]:
     adapter_root = Path(__file__).resolve().parents[1]
     runtime_root = tmp_path / "runtime"
