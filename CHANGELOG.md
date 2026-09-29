@@ -30,6 +30,11 @@
 - Adapter/Runtime：`robotwin_backend.py:L195-L493`、`robotwin_persistent_engine.py:L400-L728`、`grounding.py:L73-L397`、各语义 provider 与 primary-view perception seam。
 - Contracts/tests/docs：scene Tool YAML、Core/Adapter/Skill tests、诊断与七维 Review。
 
+### Git 提交 / Git Commit
+- Implementation commit: `b0648eb10d6828ef392d2dba1e79f78fd84797ab`
+- Branch: `feature/planning-loop`
+- Git metadata time: 2026-09-30 02:36:13 +0800
+
 ## v12.2.9 (2026-09-30 01:11) - codex
 
 ### 变更状态
