@@ -19,7 +19,7 @@
 
 ### 七维 Review / Seven-Dimension Review
 
-- `docs/forge/IMPLEMENTATION_REVIEW_V12_3_1.md:L1-L178` 覆盖架构集成、恢复/幂等、机器人安全、配置/可复现性、可维护性、可观测性和 AgentLoop 自主性。
+- `docs/forge/IMPLEMENTATION_REVIEW_V12_3_1.md:L1-L179` 覆盖架构集成、恢复/幂等、机器人安全、配置/可复现性、可维护性、可观测性和 AgentLoop 自主性。
 - 已修复 3 个 Major：timing 不可见、hibernate/shutdown 所有权不清、可选相机字段兼容性。
 - 未解决 Blocker/Major：0。
 - Residual：首次 LocateAnything 冷启动约 91 秒；CPU hibernate 占用约 12.1 GB RSS；Dora 外层 Host 仍可能超过既有 stop deadline 并报告 SIGKILL。
@@ -40,7 +40,7 @@
 - Profiles/runtime：`perception_profile.py:L125-L156`、`robotwin_backend.py:L74-L118,L153-L192,L289-L297,L426-L445,L676-L678`、`materialize_complete_route.py:L240-L247`、runtime consumer compatibility lines。
 - Qwen/multiview：`qwen3_vl_vllm_scene_understanding.py:L26-L50,L282-L309,L355-L359`、`franka-blocks-ranking.yaml:L5-L10`。
 - Release/docs/tests：Skill manifest/version/lock, adapter and Skill regressions, `README.md:L168-L170,L266-L270,L297-L326`, and the v12.3.1 review.
-- 完整逐文件行号和关键 before/after Diff 见 `changelog/2026-09_part20.md:L1161-L1315`。
+- 完整逐文件行号和关键 before/after Diff 见 `changelog/2026-09_part20.md:L1161-L1321`。
 
 ### 关键 Diff / Key Diff
 
@@ -58,8 +58,9 @@
 
 ### Git 提交 / Git Commit
 
-- Implementation commit: pending
+- Implementation commit: `98dbf7a8cd01cfa8d6038d3f381f90f0d04580f5`
 - Branch: `feature/planning-loop`
+- Git metadata time: 2026-09-30 04:03:34 +0800
 
 ## v12.3.0 (2026-09-29 01:39) - codex
 
