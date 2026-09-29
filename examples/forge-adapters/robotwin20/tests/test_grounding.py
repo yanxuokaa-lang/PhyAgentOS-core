@@ -947,11 +947,7 @@ def _add_depth_support_evidence(g, request, tmp_path):
         "intrinsic_cv": [[100.0, 0.0, 4.5], [0.0, 100.0, 4.5], [0.0, 0.0, 1.0]],
         "extrinsic_cv": np.eye(4).tolist(),
     }))
-    observed["artifacts"] = [{
-        "kind": "depth", "ref": depth_ref,
-        **{key: request[key] for key in ("observation_ref", "scene_revision", "calibration_ref")},
-        "frame_id": "camera",
-    }]
+    observed["artifacts"] = [{"kind": "depth", "ref": depth_ref, "media_type": "application/x-npy"}]
     understanding["entities"] = [{"entity_ref": "entity://seen"}]
     understanding["derived_artifacts"] = [{
         "kind": "instance_mask", "artifact_ref": mask_ref, "entity_ref": "entity://seen",
@@ -978,7 +974,7 @@ def test_observed_support_falls_back_to_current_depth_and_all_instance_masks(tmp
     assert support["source_refs"] == ["artifact://capture/depth", "artifact://capture/seen-mask"]
 
 
-@pytest.mark.parametrize("defect", ["missing_mask", "stale_mask", "missing_depth"])
+@pytest.mark.parametrize("defect", ["missing_mask", "stale_mask", "missing_depth", "stale_observation"])
 def test_depth_support_fallback_fails_closed_on_incomplete_current_evidence(tmp_path, defect):
     g, request, _ = setup(tmp_path)
     _add_depth_support_evidence(g, request, tmp_path)
@@ -989,14 +985,17 @@ def test_depth_support_fallback_fails_closed_on_incomplete_current_evidence(tmp_
         understanding["derived_artifacts"] = []
     elif defect == "stale_mask":
         understanding["derived_artifacts"][0]["scene_revision"] = "old-scene"
-    else:
+    elif defect == "missing_depth":
         observed["artifacts"] = []
+    else:
+        observed["scene_revision"] = "old-scene"
     bound = g.bind(request)
     target = g.target(dict(binding_ref=bound["binding_ref"], entity_ref="entity://seen",
                            frame_id="world", unit="m", frame_T_object_target=pose(.35)))
 
     from PhyAgentOS.forge.capability_runtime.manipulation_prepare import PreparationProviderError
 
-    with pytest.raises(PreparationProviderError):
+    expected_message = "scene observation lineage differs from binding" if defect == "stale_observation" else None
+    with pytest.raises(PreparationProviderError, match=expected_message):
         g.scene_facts({**request, "intent": {"entity_ref": "entity://seen"},
                        "destination_ref": target["destination_ref"]})

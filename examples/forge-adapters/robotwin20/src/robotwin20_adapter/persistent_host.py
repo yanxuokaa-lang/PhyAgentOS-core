@@ -117,7 +117,7 @@ def _persistent_tool_context(
     ):
         if key in readiness:
             context_value[key] = readiness[key]
-    if model_provider == "qwen3_vl_vllm_fallback":
+    if model_provider in {"qwen3_vl_vllm", "qwen3_vl_vllm_fallback"}:
         context_value["operator_recovery"] = _qwen_vllm_operator_recovery()
     return context_value
 
@@ -455,6 +455,64 @@ def build_persistent_host(
                 ),
                 diagnostic_sink=diagnostic_sink,
             )
+        elif provider == "qwen3_vl_vllm":
+            required = {
+                "provider", "api_base", "model", "api_key_env",
+                "timeout_seconds", "max_output_tokens", "lifecycle",
+            }
+            if set(model) != required:
+                raise PersistentHostConfigurationError(
+                    "qwen vLLM model settings are invalid"
+                )
+            qwen_inference = Qwen3VLVLLMSceneUnderstandingInference(
+                resolver,
+                config=Qwen3VLVLLMConfig(
+                    api_base=str(model["api_base"]),
+                    model=str(model["model"]),
+                    api_key_env=str(model["api_key_env"]),
+                    timeout_seconds=_positive_number(
+                        model["timeout_seconds"], "model.timeout_seconds"
+                    ),
+                    max_output_tokens=int(
+                        _positive_number(
+                            model["max_output_tokens"], "model.max_output_tokens"
+                        )
+                    ),
+                ),
+                diagnostic_sink=diagnostic_sink,
+            )
+            lifecycle = model.get("lifecycle")
+            if not isinstance(lifecycle, Mapping) or set(lifecycle) != {
+                "enabled", "control_api_base", "idle_timeout_s",
+                "control_timeout_s", "sleep_level",
+            }:
+                raise PersistentHostConfigurationError(
+                    "qwen vLLM lifecycle settings are invalid"
+                )
+            if not isinstance(lifecycle["enabled"], bool):
+                raise PersistentHostConfigurationError(
+                    "qwen vLLM lifecycle enabled must be boolean"
+                )
+            if lifecycle["enabled"]:
+                manager = Qwen3VLVLLMLifecycleManager(
+                    Qwen3VLVLLMLifecycleConfig(
+                        control_api_base=str(lifecycle["control_api_base"]),
+                        idle_timeout_s=_positive_number(
+                            lifecycle["idle_timeout_s"],
+                            "model.lifecycle.idle_timeout_s",
+                        ),
+                        control_timeout_s=_positive_number(
+                            lifecycle["control_timeout_s"],
+                            "model.lifecycle.control_timeout_s",
+                        ),
+                        sleep_level=int(lifecycle["sleep_level"]),
+                    )
+                )
+                lifecycle_managers.append(manager)
+                qwen_inference = LifecycleManagedSceneUnderstandingInference(
+                    qwen_inference, manager
+                )
+            inference = qwen_inference
         elif provider == "qwen3_vl_vllm_fallback":
             if set(model) != {"provider", "primary", "fallback"}:
                 raise PersistentHostConfigurationError("qwen vLLM fallback model settings are invalid")

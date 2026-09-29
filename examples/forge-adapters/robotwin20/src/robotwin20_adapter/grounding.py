@@ -697,10 +697,14 @@ class Grounding:
                 "observed_support_unavailable", "one current scene depth artifact is required"
             )
         depth_artifact = depths[0]
-        if (any(depth_artifact.get(key) != binding[key] for key in IDENTITY_KEYS)
-                or depth_artifact.get("frame_id") != binding["frame_id"]):
+        observed_frame = observed.get("frame")
+        if (
+            any(observed.get(key) != binding[key] for key in IDENTITY_KEYS)
+            or not isinstance(observed_frame, Mapping)
+            or observed_frame.get("frame_id") != binding["frame_id"]
+        ):
             raise PreparationProviderError(
-                "observed_support_unavailable", "scene depth lineage differs from binding"
+                "observed_support_unavailable", "scene observation lineage differs from binding"
             )
 
         entities = understanding.get("entities", [])

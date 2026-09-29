@@ -509,9 +509,9 @@ class OpenAIChatCompletionsSceneUnderstandingInference(
                 timeout=self.config.timeout_seconds,
                 max_retries=0,
             )
-            response = client.chat.completions.create(
-                model=self.config.model,
-                messages=[
+            payload: dict[str, Any] = {
+                "model": self.config.model,
+                "messages": [
                     {"role": "system", "content": self._system_prompt()},
                     {
                         "role": "user",
@@ -524,8 +524,8 @@ class OpenAIChatCompletionsSceneUnderstandingInference(
                         ],
                     },
                 ],
-                max_completion_tokens=self.config.max_output_tokens,
-                response_format={
+                "max_completion_tokens": self.config.max_output_tokens,
+                "response_format": {
                     "type": "json_schema",
                     "json_schema": {
                         "name": "scene_understanding",
@@ -533,7 +533,10 @@ class OpenAIChatCompletionsSceneUnderstandingInference(
                         "schema": SCENE_UNDERSTANDING_JSON_SCHEMA,
                     },
                 },
-            )
+            }
+            if self.config.reasoning_effort is not None:
+                payload["reasoning_effort"] = self.config.reasoning_effort
+            response = client.chat.completions.create(**payload)
             content = self._chat_content(response)
             parsed = dict(self._parse_response_text(content))
             self._last_error_class = "none"

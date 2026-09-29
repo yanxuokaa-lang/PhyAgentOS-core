@@ -1,5 +1,29 @@
 # Change Log
 
+## v2.8.8 (2026-09-29)
+
+- 中文：将 RobotWin 场景理解切换为纯本地 Qwen vLLM provider，移除 shuaiapi fallback 及 Dora 环境中的主模型 secret；PAOS 主 Agent provider 保持独立。
+- English: Move RobotWin scene understanding to a local-Qwen-only vLLM provider, remove the shuaiapi fallback and main-model secret from Dora, and keep the PAOS main-Agent provider independent.
+
+## v2.8.7 (2026-09-29)
+
+- 中文：发布 Qwen vLLM 场景理解恢复语义与 RobotWin20 Node 0.8.6；保持 provider 进程由 operator 管理，服务未就绪时复用未变化观测、停止无效重试并维持 motion_authorized=false。
+- English: Release Qwen vLLM scene-understanding recovery semantics with RobotWin20 Node 0.8.6; keep provider lifecycle operator-owned, reuse unchanged observations while unavailable, suppress ineffective retries, and preserve motion_authorized=false.
+
+## v2.8.6 (2026-09-29) - codex
+
+- [sense] [fix] Align observed-depth support lineage validation with `scene.observe`: validate observation/revision/calibration/frame on the enclosing observation and consume its sole depth artifact; publish Node 0.8.5.
+- [Sense] [Fix] 让观测深度支撑面 lineage 校验符合 `scene.observe`：在外层 observation 校验 observation/revision/calibration/frame 身份并消费其中唯一 depth artifact；发布 Node 0.8.5。
+- [eval] [fix] Add a regression using the public artifact shape (`ref/kind/media_type`) and retain fail-closed coverage for stale observation identity.
+- [Eval] [Fix] 增加使用公开 artifact 形状（`ref/kind/media_type`）的回归，并保留过期 observation 身份的 fail-closed 覆盖。
+
+## v2.8.5 (2026-09-29) - codex
+
+- [sense] [fix] Publish Node 0.8.4 with the observed-depth support fallback already implemented in Grounding; this prevents an observation-owned route from silently omitting `support_surface` when no semantic `on` relation is available.
+- [Sense] [Fix] 发布包含 Grounding 既有观测深度支撑面 fallback 的 Node 0.8.4，避免缺少语义 `on` 关系时 observation-owned route 静默遗漏 `support_surface`。
+- [eval] [exp] Local no-motion and full RGB AgentLoop acceptance remains in progress; package release alone is not task acceptance.
+- [Eval] [Exp] 本地 no-motion 与 RGB AgentLoop 全链路验收仍在进行中；仅发布包不构成任务验收通过。
+
 ## v2.7.12 (2026-09-25) - codex
 
 - [model] [fix] Correct GraspNet X-forward to canonical Z-forward mapping and native RoboTwin fingertip-depth conversion; publish Node 0.7.15.

@@ -149,6 +149,7 @@ def test_chat_completions_provider_uses_compatible_request_and_same_contract(mon
     payload = client.chat.completions.calls[0]
     assert payload["model"] == "gpt-5.6-sol"
     assert payload["max_completion_tokens"] == 512
+    assert payload["reasoning_effort"] == "high"
     assert payload["response_format"]["type"] == "json_schema"
     assert payload["response_format"]["json_schema"]["strict"] is True
     assert payload["messages"][1]["content"][1]["type"] == "image_url"

@@ -77,7 +77,7 @@ def test_manifest_v2_bundle_installs_and_catalog_reloads_required_tools(tmp_path
     assert (tmp_path / "skills" / "pick-place-workflow" / "SKILL.md").is_file()
 
 
-def test_robotwin_dataflow_forwards_profile_owned_route_geometry_source():
+def test_robotwin_dataflow_keeps_scene_model_profile_owned():
     root = Path(__file__).parents[1]
     dataflow = yaml.safe_load(
         (root / "profiles/robotwin-persistent/dataflow.yaml").read_text(encoding="utf-8")
@@ -92,10 +92,20 @@ def test_robotwin_dataflow_forwards_profile_owned_route_geometry_source():
     assert dataflow["nodes"][0]["env"]["ROBOTWIN20_GOAL_SOURCE"] == (
         "${ROBOTWIN20_GOAL_SOURCE}"
     )
-    assert dataflow["nodes"][0]["env"]["ROBOTWIN20_MODEL"] == "${ROBOTWIN20_MODEL}"
-    assert dataflow["nodes"][0]["env"]["ROBOTWIN20_REASONING_EFFORT"] == (
-        "${ROBOTWIN20_REASONING_EFFORT}"
+    assert {
+        "ROBOTWIN20_MODEL_API_BASE",
+        "ROBOTWIN20_MODEL_API_KEY",
+        "ROBOTWIN20_MODEL",
+        "ROBOTWIN20_REASONING_EFFORT",
+    }.isdisjoint(dataflow["nodes"][0]["env"])
+    host = yaml.safe_load(
+        (root / "profiles/robotwin-persistent/persistent-host.yaml").read_text(
+            encoding="utf-8"
+        )
     )
+    assert host["model"]["provider"] == "qwen3_vl_vllm"
+    assert host["model"]["api_base"] == "http://127.0.0.1:8012/v1"
+    assert "fallback" not in host["model"]
 
 
 def test_generic_robotwin_dataflow_uses_graspnet_without_graspgen_inputs():
@@ -149,10 +159,7 @@ def test_robotwin_environment_template_tracks_non_secret_required_inputs():
         if line.strip() and not line.lstrip().startswith("#")
     }
 
-    assert template_names == set(profile.required_environment) - {
-        "ROBOTWIN20_MODEL_API_KEY",
-        *profile.environment,
-    }
+    assert template_names == set(profile.required_environment) - set(profile.environment)
 
 
 def test_prepare_contract_requires_verbatim_capability_arm_ids():

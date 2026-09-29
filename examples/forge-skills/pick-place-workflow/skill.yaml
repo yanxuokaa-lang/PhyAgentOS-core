@@ -1,6 +1,6 @@
 manifest_version: 2
 name: pick-place-workflow
-version: "2.8.4"
+version: "2.8.8"
 description: Provider-neutral perception, preparation, acquisition, placement, and long-horizon workflow contracts.
 skill_document: SKILL.md
 gateway_url: http://127.0.0.1:19020
@@ -34,10 +34,6 @@ profiles:
       - ROBOTWIN20_RUNTIME_PROFILE
       - ROBOTWIN20_WORKER_PYTHON
       - ROBOTWIN20_MATERIALIZER_PYTHON
-      - ROBOTWIN20_MODEL_API_BASE
-      - ROBOTWIN20_MODEL_API_KEY
-      - ROBOTWIN20_MODEL
-      - ROBOTWIN20_REASONING_EFFORT
       - ROBOTWIN20_ROUTE_GEOMETRY_SOURCE
       - ROBOTWIN20_SIMULATION_ACTION_MODE
       - ROBOTWIN20_GOAL_SOURCE
@@ -77,10 +73,6 @@ profiles:
       - ROBOTWIN20_MATERIALIZER_PYTHON
       - ROBOTWIN20_GRASP_PROFILE
       - ROBOTWIN20_MATERIALIZER_ARGUMENTS
-      - ROBOTWIN20_MODEL_API_BASE
-      - ROBOTWIN20_MODEL_API_KEY
-      - ROBOTWIN20_MODEL
-      - ROBOTWIN20_REASONING_EFFORT
       - ROBOTWIN20_ROUTE_GEOMETRY_SOURCE
       - ROBOTWIN20_SIMULATION_ACTION_MODE
       - ROBOTWIN20_GOAL_SOURCE
@@ -120,10 +112,6 @@ profiles:
       - ROBOTWIN20_MATERIALIZER_PYTHON
       - ROBOTWIN20_GRASP_PROFILE
       - ROBOTWIN20_MATERIALIZER_ARGUMENTS
-      - ROBOTWIN20_MODEL_API_BASE
-      - ROBOTWIN20_MODEL_API_KEY
-      - ROBOTWIN20_MODEL
-      - ROBOTWIN20_REASONING_EFFORT
       - ROBOTWIN20_ROUTE_GEOMETRY_SOURCE
       - ROBOTWIN20_SIMULATION_ACTION_MODE
       - ROBOTWIN20_GOAL_SOURCE
@@ -163,10 +151,6 @@ profiles:
       - ROBOTWIN20_MATERIALIZER_PYTHON
       - ROBOTWIN20_GRASP_PROFILE
       - ROBOTWIN20_MATERIALIZER_ARGUMENTS
-      - ROBOTWIN20_MODEL_API_BASE
-      - ROBOTWIN20_MODEL_API_KEY
-      - ROBOTWIN20_MODEL
-      - ROBOTWIN20_REASONING_EFFORT
       - ROBOTWIN20_ROUTE_GEOMETRY_SOURCE
       - ROBOTWIN20_SIMULATION_ACTION_MODE
       - ROBOTWIN20_GOAL_SOURCE
@@ -206,10 +190,6 @@ profiles:
       - ROBOTWIN20_MATERIALIZER_PYTHON
       - ROBOTWIN20_GRASP_PROFILE
       - ROBOTWIN20_MATERIALIZER_ARGUMENTS
-      - ROBOTWIN20_MODEL_API_BASE
-      - ROBOTWIN20_MODEL_API_KEY
-      - ROBOTWIN20_MODEL
-      - ROBOTWIN20_REASONING_EFFORT
       - ROBOTWIN20_ROUTE_GEOMETRY_SOURCE
       - ROBOTWIN20_SIMULATION_ACTION_MODE
       - ROBOTWIN20_GOAL_SOURCE
@@ -239,10 +219,10 @@ artifacts:
   resolver: local
   nodes:
     robotwin20_persistent_host:
-      artifact_id: robotwin20_persistent_host-0.8.3-linux-x86_64
-      version: "0.8.3"
+      artifact_id: robotwin20_persistent_host-0.8.7-linux-x86_64
+      version: "0.8.7"
       platform: linux
       arch: x86_64
       artifact_type: executable_tar_gz
       entrypoint: robotwin20_persistent_host
-      sha256: 0c07e9719524a05393ce6a259bf432a0275ab50676002540d725db9949acbdb5
+      sha256: cb5f6c09b07f86d8f91f2bcfa9a186c351ed4b2de879527d84eed1d295ef1781

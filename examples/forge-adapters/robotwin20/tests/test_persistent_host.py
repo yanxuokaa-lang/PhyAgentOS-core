@@ -219,7 +219,12 @@ def test_host_rejects_unknown_route_geometry_source(tmp_path):
         build_persistent_host(profile, environ=environ)
 
 
-def test_qwen_provider_context_exposes_operator_owned_recovery_without_side_effects():
+@pytest.mark.parametrize(
+    "model_provider", ["qwen3_vl_vllm", "qwen3_vl_vllm_fallback"]
+)
+def test_qwen_provider_context_exposes_operator_owned_recovery_without_side_effects(
+    model_provider,
+):
     calls = []
 
     class Understanding:
@@ -236,7 +241,7 @@ def test_qwen_provider_context_exposes_operator_owned_recovery_without_side_effe
         "scene.understand",
         transport_lost=False,
         understanding=Understanding(),
-        model_provider="qwen3_vl_vllm_fallback",
+        model_provider=model_provider,
     )
 
     assert calls == ["readiness"]
@@ -283,6 +288,22 @@ def test_non_qwen_provider_context_does_not_expose_qwen_recovery_commands():
 @pytest.mark.parametrize("action_mode", ["disabled", "runtime_monitored"])
 def test_host_composes_tools_around_one_persistent_worker_client(tmp_path, monkeypatch, route_source, action_mode):
     profile, environ = _profile(tmp_path)
+    profile["model"] = {
+        "provider": "qwen3_vl_vllm",
+        "api_base": "http://127.0.0.1:8012/v1",
+        "model": "qwen3-vl-4b-awq",
+        "api_key_env": "",
+        "timeout_seconds": 5,
+        "max_output_tokens": 128,
+        "lifecycle": {
+            "enabled": False,
+            "control_api_base": "http://127.0.0.1:8012",
+            "idle_timeout_s": 60,
+            "control_timeout_s": 5,
+            "sleep_level": 1,
+        },
+    }
+    environ = {}
     profile["route_geometry_source"] = route_source
     profile["simulation_action_mode"] = action_mode
     closed = []
@@ -306,6 +327,11 @@ def test_host_composes_tools_around_one_persistent_worker_client(tmp_path, monke
         lambda config: worker_configs.append(config) or object(),
     )
     monkeypatch.setattr(host_module, "PersistentWorkerClient", lambda _worker: client)
+    monkeypatch.setattr(
+        host_module,
+        "Qwen3VLVLLMSceneUnderstandingInference",
+        lambda *_args, **_kwargs: SimpleNamespace(close=lambda: None),
+    )
     monkeypatch.setattr(host_module, "load_perception_profile", lambda _path: {"depth_scale_to_m": 0.001})
     class UnderstandingInference:
         def infer(self, _request):
