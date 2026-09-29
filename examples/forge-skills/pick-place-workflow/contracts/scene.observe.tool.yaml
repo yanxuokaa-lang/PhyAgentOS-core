@@ -33,8 +33,6 @@ input_schema:
       type: array
       minItems: 2
       uniqueItems: true
-      minItems: 2
-      uniqueItems: true
       items:
         type: string
         enum: [camera/head, camera/front, camera/left_wrist, camera/right_wrist]
