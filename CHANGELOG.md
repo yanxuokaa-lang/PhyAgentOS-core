@@ -1,6 +1,61 @@
 # Changelog
 ## Archive
 - [2026-09 part20](changelog/2026-09_part20.md)
+## v12.3.6 (2026-09-30 06:22) - codex
+
+### 变更摘要 / Change Summary
+- [docs] [fix] 保存新版 Runtime 直接 Dora 启动失败与正式 `paos skill start` 成功的诊断；明确环境占位符只能由 `RuntimeManager` 物化，未执行任何物理 Action。 (local)
+- [Docs] [Fix] Record the raw-Dora launch failure and successful official `paos skill start` launch; clarify that RuntimeManager must materialize environment placeholders; no physical Action was executed. (local)
+- [docs] [review] 完成本轮七维 Review：Blocker 0、Major 0，完整 RGB 物理验收保留为后续任务。 (local)
+- [Docs] [Review] Completed the seven-dimension review: Blocker 0, Major 0; full RGB physical acceptance remains a subsequent task. (local)
+
+### 影响文件 / Affected Files
+- `docs/forge/RUNTIME_LAUNCH_DIAGNOSIS_V12_3_6.md:L1-L46`
+- `docs/forge/IMPLEMENTATION_REVIEW_V12_3_6.md:L1-L38`
+- `changelog/2026-09_part20.md:L1536-L1543`
+
+### 关键 Diff / Key Diff
+**Before:** 操作员直接对生成的 `dataflow.yaml` 调用 Dora，未展开 `${ROBOTWIN20_*}`，在 YAML admission 阶段失败。
+
+**After:** 通过 `paos skill start ... --env-file ...` 进入 `RuntimeManager`，完成环境合成、Node 预检、Dora admission 和 Gateway readiness。
+
+### 验证 / Validation
+- `paos skill status pick-place-workflow`：running，Gateway ready，10/10 Tool context ready。
+- `paos forge-node verify pick-place-workflow robotwin20_persistent_host`：Node 0.9.3 SHA verified。
+- `curl --noproxy '*' -fsS http://127.0.0.1:19020/tools`：Gateway ready。
+- v12.3.5 控制面回归：`117 passed`；Ruff、compileall、`git diff --check` passed。
+
+### Git 提交 / Git Commit
+- Commit: `ab0ba42`
+- Branch: `feature/planning-loop`
+
+## v12.3.5 (2026-09-30 05:43) - codex
+
+### 变更摘要 / Change Summary
+- [policy] [fix] 为 PlanGraph 物化增加 provider-neutral settled discovery prefix pruning；只裁剪当前 revision 中已成功且输入匹配的 Query，并重接 suffix 依赖。 (local)
+- [Policy] [Fix] Added provider-neutral settled discovery-prefix pruning during PlanGraph materialization, retaining only current-revision successful Query evidence and rewiring suffix dependencies. (local)
+- [docs] [docs] 保存首轮 AgentLoop 诊断与七维 Review。 (local)
+- [Docs] [Docs] Persisted the first AgentLoop diagnosis and seven-dimension Review. (local)
+
+### 影响文件 / Affected Files
+- `PhyAgentOS/agent/tools/forge_task.py:L24-L132,L443-L495`
+- `tests/test_agent_foundation.py:L220-L354`
+- `docs/forge/RGB_ACCEPTANCE_RUN1_AGENTLOOP_DIAGNOSIS_20260930.md:L1-L43`
+- `docs/forge/IMPLEMENTATION_REVIEW_V12_3_5.md:L1-L39`
+
+### 关键 Diff / Key Diff
+**Before:** 完整 discovery 前缀再次进入 Coordinator selection。
+
+**After:** `_prune_satisfied_discovery_prefix` 裁剪已 settlement 的 leading Query prefix，不复制 settlement、不重发 Query/Action、不构造 opaque ref。
+
+### 验证 / Validation
+- `tests/test_agent_foundation.py tests/test_planning_task_integration.py`：`117 passed`。
+- Ruff、compileall、`git diff --check` passed。
+
+### Git 提交 / Git Commit
+- Commit: `1847975`（实现）、`42cdc2d`（文档格式）、`2aec847`（提交元数据）
+- Branch: `feature/planning-loop`
+
 ## v12.3.4 (2026-09-29 06:10) - codex
 
 ### 变更摘要 / Change Summary
