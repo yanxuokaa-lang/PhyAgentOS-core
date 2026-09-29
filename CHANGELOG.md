@@ -36,7 +36,7 @@
 - `systemd-analyze verify` 因根分区 100% 无法创建临时工作目录；实际 daemon-reload、start、health、models 和 10 次推理均通过。
 
 ### Git 提交
-- Commit: `PENDING_PRIMARY_COMMIT`
+- Commit: `51bac3302123`
 - Branch: `feature/planning-loop`
 - 时间: 2026-09-30 01:11
 
