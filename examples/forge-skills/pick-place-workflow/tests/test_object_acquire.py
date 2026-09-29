@@ -127,7 +127,8 @@ async def test_action_discovery_context_admission_pending_and_terminal_result():
         "manipulation.prepare",
         "object.acquire",
         "object.place",
-        "scene.bind",
+        "scene.bind",        "manipulation.staging",
+
         "manipulation.target",
         "task.goal",
     ]

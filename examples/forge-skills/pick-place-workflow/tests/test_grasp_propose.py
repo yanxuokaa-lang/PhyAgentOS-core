@@ -174,7 +174,8 @@ async def test_grasp_propose_is_discovered_with_the_perception_queries():
         "manipulation.prepare",
         "object.acquire",
         "object.place",
-        "scene.bind",
+        "scene.bind",        "manipulation.staging",
+
         "manipulation.target",
         "task.goal",
     ]
@@ -266,7 +267,7 @@ def test_bundle_and_package_versions_match_the_feature_revision():
     )
     import tomllib
 
-    assert bundle_manifest["version"] == "2.9.4"
+    assert bundle_manifest["version"] == "2.10.0"
     assert tomllib.loads(package_text)["project"]["version"] == bundle_manifest["version"]
 
 

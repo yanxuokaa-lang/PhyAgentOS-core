@@ -76,6 +76,14 @@ BIND_TOOL_SPEC = _spec(
     "Resolve selected observed entities to execution objects using calibrated geometry. "
     "Returns binding_ref and world geometry; does not choose goals or authorize motion.",
 )
+STAGING_TOOL_SPEC = _spec(
+    "manipulation.staging",
+    {"binding_ref": _REF, "entity_ref": _REF},
+    ["binding_ref", "entity_ref"],
+    "Choose an observation-owned temporary destination on current free support space. "
+    "Returns an opaque destination_ref and clearance evidence; does not authorize motion.",
+)
+STAGING_TOOL_SPEC["planning"]["requires_before_plan"] = True
 TARGET_TOOL_SPEC = _spec(
     "manipulation.target",
     {"binding_ref": _REF, "entity_ref": _REF, "frame_id": _REF, "unit": {"const": "m"},
@@ -99,6 +107,11 @@ BIND_TOOL_SPEC["output_schema"]["properties"].update({
         "entity_ref": _REF, "execution_entity_ref": _REF, "world_T_object": _POSE,
         "half_extents_m": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number"}},
     }}},
+})
+STAGING_TOOL_SPEC["output_schema"]["properties"].update({
+    **_COMMON_OUTPUT, "entity_ref": _REF, "destination_ref": _REF,
+    "world_T_object_target": _POSE, "support_evidence_ref": _REF,
+    "clearance_m": {"type": "number", "minimum": 0},
 })
 TARGET_TOOL_SPEC["output_schema"]["properties"].update({
     **_COMMON_OUTPUT, "entity_ref": _REF, "destination_ref": _REF, "world_T_object_target": _POSE,

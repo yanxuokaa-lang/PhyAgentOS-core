@@ -7,7 +7,12 @@ from typing import Any, Callable, Mapping
 
 import yaml
 from PhyAgentOS.forge.capability_runtime import CapabilityRuntime, CapabilityRuntimeTransport
-from pick_place_workflow.grounding import BIND_TOOL_SPEC, TARGET_TOOL_SPEC, TASK_GOAL_TOOL_SPEC
+from pick_place_workflow.grounding import (
+    BIND_TOOL_SPEC,
+    STAGING_TOOL_SPEC,
+    TARGET_TOOL_SPEC,
+    TASK_GOAL_TOOL_SPEC,
+)
 from pick_place_workflow.persistent_runtime import build_persistent_runtime
 
 from .arm_candidates import CompleteRouteSelector
@@ -131,8 +136,11 @@ def build_persistent_runtime_bundle(
         if deployment.grounding is not None else None,
     )
     if deployment.grounding is not None:
-        for spec, resolve in ((BIND_TOOL_SPEC, deployment.grounding.bind),
-                              (TARGET_TOOL_SPEC, deployment.grounding.target)):
+        for spec, resolve in (
+            (BIND_TOOL_SPEC, deployment.grounding.bind),
+            (STAGING_TOOL_SPEC, deployment.grounding.staging),
+            (TARGET_TOOL_SPEC, deployment.grounding.target),
+        ):
             runtime.register_tool(spec, GroundingEndpoint(resolve),
                                   context_provider=lambda tool_id=spec["tool_id"]: tool_context_provider(tool_id))
     if deployment.task_goal_provider is not None:

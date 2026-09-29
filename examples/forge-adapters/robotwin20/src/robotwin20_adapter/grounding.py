@@ -505,6 +505,98 @@ class Grounding:
             projected[ref] = updated
         return projected
 
+    def staging(self, request):
+        if not isinstance(request, Mapping):
+            self._reject("staging request must be an object", stage="input_validation")
+        binding_ref = request.get("binding_ref")
+        entity_ref = request.get("entity_ref")
+        if not isinstance(binding_ref, str) or binding_ref not in self.bindings:
+            self._reject("staging binding is unavailable", stage="input_validation")
+        binding = self.bindings[binding_ref]
+        if not isinstance(entity_ref, str) or entity_ref not in binding["objects"]:
+            self._reject("staging entity is not in the binding", stage="input_validation")
+        self._current(binding)
+        try:
+            support = self._observed_support(binding)
+        except PreparationProviderError:
+            raise
+        except ValueError as exc:
+            raise PreparationProviderError("observed_support_unavailable", str(exc)) from exc
+        center = np.asarray(support.get("position_m"), dtype=float)
+        support_half = np.asarray(support.get("half_extents_m"), dtype=float)
+        moving = deepcopy(binding["objects"][entity_ref])
+        moving_half = np.asarray(moving.get("half_extents_m"), dtype=float)
+        if (center.shape != (3,) or support_half.shape != (3,) or moving_half.shape != (3,)
+                or not np.isfinite([center, support_half, moving_half]).all()
+                or np.any(support_half <= 0) or np.any(moving_half <= 0)):
+            self._reject("staging geometry is invalid", stage="staging_geometry")
+        clearance = max(0.015, float(self.support_policy.uncertainty_m) * 4.0)
+        low = center[:2] - support_half[:2] + moving_half[:2] + clearance
+        high = center[:2] + support_half[:2] - moving_half[:2] - clearance
+        if np.any(high <= low):
+            self._reject("observed support has no staging footprint", stage="staging_search")
+        obstacles = []
+        for ref, item in binding["objects"].items():
+            pose = rigid_transform(item["world_T_object"])
+            half = np.asarray(item["half_extents_m"], dtype=float)
+            obstacles.append((pose[:2, 3], half[:2], ref))
+        for index, item in enumerate(support.get("residual_boxes", [])):
+            position = np.asarray(item.get("position_m"), dtype=float)
+            half = np.asarray(item.get("half_extents_m"), dtype=float)
+            if position.shape == (3,) and half.shape == (3,) and np.isfinite([position, half]).all():
+                obstacles.append((position[:2], half[:2], f"residual:{index}"))
+        span = np.maximum(high - low, 1e-6)
+        footprint = max(float(np.max(moving_half[:2])) * 2.0 + clearance, 0.03)
+        counts = np.clip(np.ceil(span / footprint).astype(int) + 1, 3, 11)
+        candidates = []
+        for x in np.linspace(low[0], high[0], int(counts[0])):
+            for y in np.linspace(low[1], high[1], int(counts[1])):
+                point = np.asarray([x, y])
+                margins = [float(np.max(np.abs(point - position) - (moving_half[:2] + half)))
+                           for position, half, _ in obstacles]
+                if margins and min(margins) < clearance:
+                    continue
+                score = min(margins) if margins else float(np.min(span))
+                candidates.append((score, float(x), float(y)))
+        if not candidates:
+            self._reject("no observation-owned staging destination is clear",
+                         stage="staging_search", obstacle_count=len(obstacles))
+        score, x, y = max(candidates, key=lambda item: (item[0], -abs(item[1] - center[0]),
+                                                        -abs(item[2] - center[1]), -item[1], -item[2]))
+        pose = rigid_transform(moving["world_T_object"])
+        pose[:3, 3] = [x, y, center[2] + support_half[2] + moving_half[2]]
+        moving.update(
+            entity_ref=entity_ref,
+            world_T_object_target=pose.reshape(-1).tolist(),
+            world_T_functional_target=(
+                pose @ np.linalg.inv(rigid_transform(moving["world_T_object"]))
+                @ rigid_transform(moving["world_T_functional_point"])
+            ).reshape(-1).tolist(),
+        )
+        value = {
+            **{key: binding[key] for key in IDENTITY_KEYS},
+            "binding_ref": binding_ref,
+            "requested_pose": {"method": "observed_free_support", "entity_ref": entity_ref},
+            "object": moving,
+            "support": deepcopy(support),
+            "clearance_m": score,
+            "motion_authorized": False,
+        }
+        evidence_ref = self._write("staging-targets", value)
+        destination_ref = evidence_ref.replace("artifact://", "destination://", 1)
+        self.targets[destination_ref] = value
+        return {
+            "status": "available", "motion_authorized": False,
+            "binding_ref": binding_ref, "entity_ref": entity_ref,
+            **{key: binding[key] for key in IDENTITY_KEYS},
+            "frame_id": "world", "unit": "m",
+            "destination_ref": destination_ref,
+            "world_T_object_target": moving["world_T_object_target"],
+            "support_evidence_ref": support["evidence_ref"],
+            "clearance_m": score,
+            "evidence_refs": [binding_ref, support["evidence_ref"], evidence_ref],
+        }
+
     def target(self, request):
         binding = self.bindings[request["binding_ref"]]
         self._current(binding)

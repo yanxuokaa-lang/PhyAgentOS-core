@@ -412,3 +412,9 @@ verification remain owned by the existing Runtime/Coordinator boundaries.
 - Multi-view discovery preserves one synchronized observation record and carries its scene revision, calibration, frame, freshness, and entity provenance together through scene.understand and scene.bind. Bind only the explicit entity array from that current understanding result.
 - After forge_plan_select admits a selection, consume that exact selection immediately. Across a model or process boundary, resume the existing pending selection with use_selected_arguments=true; do not select again, reconstruct arguments, rerun discovery, or create a replacement invocation.
 - A successful world-changing Action still invalidates scene-dependent evidence. Begin the next observation chain only after authoritative terminal settlement and all required release or retreat checks.
+
+### Occupied destination cycles and temporary staging
+
+When a required destination is occupied by another bound movable entity, do not invent a pose, use simulator truth, or hand-author an opaque reference. Query `manipulation.staging` with the current `binding_ref` and moving `entity_ref`. Use only the Runtime-registered opaque `destination_ref` derived from current observed support geometry. The Query remains non-motion evidence with `motion_authorized=false`; the result must still pass `manipulation.prepare`, Coordinator selection, Gateway admission, workspace, collision, IK, authorization, and terminal Action gates.
+
+If no clearance-valid observed-free candidate exists, stop fail-closed instead of lowering clearance or blindly retrying. A successful staging place changes the world and requires the full fresh `scene.observe → scene.understand → manipulation.capabilities → scene.bind` chain before subsequent planning.

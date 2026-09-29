@@ -181,7 +181,7 @@ def test_runtime_bundle_registers_persistent_tools_behind_one_transport(tmp_path
     assert set(tools) == {
         "scene.observe", "manipulation.capabilities", "scene.understand",
         "grasp.propose", "manipulation.prepare", "object.acquire", "object.place",
-        "scene.bind", "task.goal", "manipulation.target",
+        "scene.bind", "task.goal", "manipulation.staging", "manipulation.target",
     }
     assert tools["scene.observe"]["input_schema"]["properties"]["sensor_ref"]["default"] == "camera/head"
     assert tools["scene.observe"]["input_schema"]["properties"]["max_age_ms"]["default"] == 1000

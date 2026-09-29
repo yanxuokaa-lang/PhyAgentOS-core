@@ -33,7 +33,12 @@ from .grasp_proposal import (
     GraspProposalEndpoint,
     GraspProposalProvider,
 )
-from .grounding import BIND_TOOL_SPEC, TARGET_TOOL_SPEC, TASK_GOAL_TOOL_SPEC
+from .grounding import (
+    BIND_TOOL_SPEC,
+    STAGING_TOOL_SPEC,
+    TARGET_TOOL_SPEC,
+    TASK_GOAL_TOOL_SPEC,
+)
 from .manipulation_prepare import (
     MANIPULATION_TOOL_SPEC,
     PREPARATION_ENDPOINT_ID,
@@ -433,6 +438,7 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
                         ACQUIRE_TOOL_SPEC,
                         PLACE_TOOL_SPEC,
                         BIND_TOOL_SPEC,
+                        STAGING_TOOL_SPEC,
                         TARGET_TOOL_SPEC,
                         TASK_GOAL_TOOL_SPEC,
                     ]
@@ -440,7 +446,11 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
             )
         if request.method == "GET" and path == f"/tools/{TOOL_ID}":
             return self._ok(TOOL_SPEC)
-        for spec, method in ((BIND_TOOL_SPEC, "bind"), (TARGET_TOOL_SPEC, "target")):
+        for spec, method in (
+            (BIND_TOOL_SPEC, "bind"),
+            (STAGING_TOOL_SPEC, "staging"),
+            (TARGET_TOOL_SPEC, "target"),
+        ):
             if request.method == "GET" and path == f"/tools/{spec['tool_id']}":
                 return self._ok(spec)
             if request.method == "GET" and path == f"/tools/{spec['tool_id']}/context":

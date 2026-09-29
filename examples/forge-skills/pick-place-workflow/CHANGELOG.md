@@ -420,5 +420,5 @@
 
 - 中文：过滤 Qwen 对不同 canonical category/attributes 实体的宽泛跨视角身份歧义，保留重复语义签名的真实歧义；本地语义默认输出预算统一为 1536。
 - English: Filter overbroad cross-view identity ambiguity for entities with distinct canonical category/attributes, retain real ambiguity for duplicate semantic signatures, and align the local semantic default output budget at 1536.
-- 中文：发布 Node `0.9.3`，SHA-256 为 `ccdbbb3cd6049169e2f07c35fa7cae9fcab5638e1e57f0c84c74031fc1d4118a`。
-- English: Publish Node `0.9.3` with SHA-256 `ccdbbb3cd6049169e2f07c35fa7cae9fcab5638e1e57f0c84c74031fc1d4118a`.
+- 中文：发布 Node `0.10.0`，SHA-256 为 `ccdbbb3cd6049169e2f07c35fa7cae9fcab5638e1e57f0c84c74031fc1d4118a`。
+- English: Publish Node `0.10.0` with SHA-256 `ccdbbb3cd6049169e2f07c35fa7cae9fcab5638e1e57f0c84c74031fc1d4118a`.

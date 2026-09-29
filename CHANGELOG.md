@@ -1,6 +1,15 @@
 # Changelog
 ## Archive
 - [2026-09 part20](changelog/2026-09_part20.md)
+## v12.4.0 (2026-09-30 08:30) - codex
+
+### 变更摘要 / Summary
+- 新增 provider-neutral manipulation.staging，解决通用占位目标循环。
+- 保留所有 AgentLoop、Coordinator、运动和安全门禁。
+- 发布并安装 Node 0.10.0 / Skill 2.10.0，完成七维 Review。
+
+详细 Diff 与行号见 changelog/2026-09_part20.md。
+
 ## v12.3.6 (2026-09-30 06:22) - codex
 
 ### 变更摘要 / Change Summary
@@ -21,7 +30,7 @@
 
 ### 验证 / Validation
 - `paos skill status pick-place-workflow`：running，Gateway ready，10/10 Tool context ready。
-- `paos forge-node verify pick-place-workflow robotwin20_persistent_host`：Node 0.9.3 SHA verified。
+- `paos forge-node verify pick-place-workflow robotwin20_persistent_host`：Node 0.10.0 SHA verified。
 - `curl --noproxy '*' -fsS http://127.0.0.1:19020/tools`：Gateway ready。
 - v12.3.5 控制面回归：`117 passed`；Ruff、compileall、`git diff --check` passed。
 
