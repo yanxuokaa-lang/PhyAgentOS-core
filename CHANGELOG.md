@@ -19,8 +19,8 @@
 - Session Tool call 清单确认未调用 `scene.bind`、`task.goal`、GraspNet、`manipulation.prepare`、Action、Session 或 simulator step。
 
 ### 文件变更详情 / File changes
-- [修改] `changelog/2026-09_part20.md:L3-L37`：记录任务迁移、只读实测记录和无运动边界。
-- [修改] `CHANGELOG.md:L5-L39`：同步最近版本 v12.2.3 的完整记录。
+- [修改] `changelog/2026-09_part20.md:L3-L39`：记录任务迁移、只读实测记录和无运动边界。
+- [修改] `CHANGELOG.md:L5-L41`：同步最近版本 v12.2.3 的完整记录。
 
 ### 关键 Diff / Key diff
 **修改前 / Before:**
