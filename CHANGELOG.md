@@ -2,6 +2,38 @@
 ## Archive
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.2.3 (2026-09-29 21:14) - codex
+
+### 实际修改 / Implemented changes [完成]
+- [eval] [fix] 中文：经用户授权，通过 Coordinator 取消 Runtime binding 已失效的旧任务 `task_f07d89c196bb45e2`，并创建绑定当前 Runtime `runtime_5dbc5429884b4698` 的恢复任务 `task_aec44953a71343ce`；未复用旧任务证据。 (local)
+- [Eval] [Fix] English: With user authorization, cancel stale-bound task `task_f07d89c196bb45e2` through the Coordinator and create recovery task `task_aec44953a71343ce` bound to current Runtime `runtime_5dbc5429884b4698`; no old-task evidence was reused. (local)
+- [sense] [exp] 中文：新任务唯一一次 `scene.observe` 与由其派生的唯一一次 `scene.understand` 均成功并落盘；返回 4 entities、6 relations、4 spatial envelopes，provider 为 `available`。 (local)
+- [Sense] [Exp] English: The new task's single `scene.observe` and single derived `scene.understand` both succeeded and were persisted; the result contains 4 entities, 6 relations, 4 spatial envelopes, with provider `available`. (local)
+
+### 验证结果 / Validation
+- 旧任务状态：`cancelled`；新任务：`task_aec44953a71343ce`，当前保留用于后续显式授权的验收阶段。
+- Observation record：`tool_6d7b32a7b7d14a51`。
+- Understanding record：`tool_72b181752e044c4d`。
+- Scene revision：`a948db781dcd4539bf2802ecbf47eb9f-1`。
+- Runtime 与 Qwen user service 均为 `active`；Qwen 推理结束后 `is_sleeping=true`。
+- Session Tool call 清单确认未调用 `scene.bind`、`task.goal`、GraspNet、`manipulation.prepare`、Action、Session 或 simulator step。
+
+### 文件变更详情 / File changes
+- [修改] `changelog/2026-09_part20.md:L3-L37`：记录任务迁移、只读实测记录和无运动边界。
+- [修改] `CHANGELOG.md:L5-L39`：同步最近版本 v12.2.3 的完整记录。
+
+### 关键 Diff / Key diff
+**修改前 / Before:**
+```text
+旧 AgentTask 冻结的 Runtime binding 已失效，scene.understand 被 Coordinator 拒绝。
+```
+
+**修改后 / After:**
+```text
+旧任务经 Coordinator 取消；新任务绑定当前 Runtime，并以全新 observation 完成唯一一次 scene.observe → scene.understand 无运动验收。
+```
+
+
 ## v12.2.2 (2026-09-29 20:19) - codex
 
 ### 变更摘要
