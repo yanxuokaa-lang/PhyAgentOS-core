@@ -23,6 +23,7 @@ from PhyAgentOS.agent.tools.forge_task import (
     ForgeTaskClarificationTool,
     ForgeTaskGetTool,
     ForgeTaskMaterializePlanTool,
+    _prune_satisfied_discovery_prefix,
 )
 from PhyAgentOS.agent.tools.forge_tool_api import (
     ForgeToolActionResultTool,
@@ -214,6 +215,143 @@ def semantic_nodes(count):
     nodes.append({"node_id": "final-observation", "obligation_id": "verify-goal", "capability": "task.verify",
                   "dependencies": [node["node_id"] for node in nodes]})
     return nodes
+
+
+def test_materialize_prunes_only_settled_discovery_prefix_and_rewires_dependencies():
+    query_tools = []
+    for tool_id in (
+        "scene.observe", "scene.understand", "manipulation.capabilities", "scene.bind"
+    ):
+        policy = ToolSpecPolicy(
+            tool_id=tool_id, semantics="query", spec_digest="a" * 64,
+            capabilities=(tool_id,), requires_before_plan=True,
+        )
+        query_tools.append(BoundToolSpec(
+            tool_id=tool_id, semantics="query", spec_sha256="a" * 64,
+            ready_at_binding=True, planning_policy=policy,
+        ))
+    query_tools.append(BoundToolSpec(
+        tool_id="grasp.propose", semantics="query", spec_sha256="a" * 64,
+        ready_at_binding=True, planning_policy=ToolSpecPolicy(
+            tool_id="grasp.propose", semantics="query", spec_digest="a" * 64,
+            capabilities=("grasp.propose",),
+        ),
+    ))
+    evidence = {
+        "scene.observe": "tool:observe", "scene.understand": "tool:understand",
+        "manipulation.capabilities": "tool:capabilities", "scene.bind": "tool:bind",
+    }
+    records = [SimpleNamespace(
+        tool_id=tool_id, semantics="query", status="succeeded",
+        arguments=(
+            {"sensor_refs": ["camera/head", "camera/front"], "max_age_ms": 1000}
+            if tool_id == "scene.observe"
+            else {"entity_refs": ["entity://e1", "entity://e2", "entity://e3"]}
+            if tool_id == "scene.bind" else {}
+        ), response={"data": {"status": "available"}},
+        evidence_refs=[evidence[tool_id]],
+    ) for tool_id in evidence]
+    task = SimpleNamespace(
+        active_revision=SimpleNamespace(plan_graph=None, execution_records=records),
+        primary_skill_binding=SimpleNamespace(required_tools=tuple(query_tools)),
+    )
+    nodes = [
+        {"node_id": "observe", "obligation_id": "observe", "capability": "scene.observe",
+         "input_bindings": {"sensor_refs": ["camera/head", "camera/front"], "max_age_ms": 1000}},
+        {"node_id": "understand", "obligation_id": "understand", "capability": "scene.understand",
+         "dependencies": ["observe"], "required_evidence": ["tool:observe"]},
+        {"node_id": "capabilities", "obligation_id": "capabilities", "capability": "manipulation.capabilities",
+         "dependencies": ["understand"], "required_evidence": ["tool:understand"]},
+        {"node_id": "bind", "obligation_id": "bind", "capability": "scene.bind",
+         "dependencies": ["capabilities"], "required_evidence": ["tool:capabilities"],
+         "input_bindings": {"entity_refs": ["entity://e1", "entity://e2", "entity://e3"]}},
+        {"node_id": "grasp", "obligation_id": "grasp", "capability": "grasp.propose",
+         "dependencies": ["bind"], "required_evidence": ["tool:bind"]},
+    ]
+    retained, pruned = _prune_satisfied_discovery_prefix(task, nodes)
+    assert pruned == ("observe", "understand", "capabilities", "bind")
+    assert [node["node_id"] for node in retained] == ["grasp"]
+    assert retained[0]["dependencies"] == []
+
+
+def test_materialize_does_not_prune_mismatched_observation_inputs():
+    policy = ToolSpecPolicy(
+        tool_id="scene.observe", semantics="query", spec_digest="a" * 64,
+        capabilities=("scene.observe",), requires_before_plan=True,
+    )
+    task = SimpleNamespace(
+        active_revision=SimpleNamespace(plan_graph=None, execution_records=[SimpleNamespace(
+            tool_id="scene.observe", semantics="query", status="succeeded",
+            arguments={"sensor_refs": ["camera/head"], "max_age_ms": 1000},
+            response={"data": {"status": "available"}}, evidence_refs=["tool:observe"],
+        )]),
+        primary_skill_binding=SimpleNamespace(required_tools=(BoundToolSpec(
+            tool_id="scene.observe", semantics="query", spec_sha256="a" * 64,
+            ready_at_binding=True, planning_policy=policy,
+        ),)),
+    )
+    nodes = [{
+        "node_id": "observe", "obligation_id": "observe", "capability": "scene.observe",
+        "input_bindings": {"sensor_refs": ["camera/head", "camera/front"], "max_age_ms": 1000},
+    }]
+    retained, pruned = _prune_satisfied_discovery_prefix(task, nodes)
+    assert pruned == ()
+    assert retained == nodes
+
+
+def test_materialize_reports_pruned_prefix_and_submits_suffix(monkeypatch):
+    observe_policy = ToolSpecPolicy(
+        tool_id="scene.observe", semantics="query", spec_digest="a" * 64,
+        capabilities=("scene.observe",), requires_before_plan=True,
+    )
+    grasp_policy = ToolSpecPolicy(
+        tool_id="grasp.propose", semantics="query", spec_digest="b" * 64,
+        capabilities=("grasp.propose",),
+    )
+    observe = SimpleNamespace(
+        tool_id="scene.observe", semantics="query", ownership="task", status="succeeded",
+        arguments={"sensor_refs": ["camera/head"], "max_age_ms": 1000},
+        response={"data": {"status": "available", "scene_revision": "scene-1"}},
+        evidence_refs=["tool:observe"],
+    )
+    active_revision = SimpleNamespace(plan_graph=None, execution_records=[observe])
+    task = SimpleNamespace(
+        task_id="task-prefix",
+        active_revision=active_revision,
+        revisions=(active_revision,),
+        runtime_binding=None,
+        primary_skill_binding=SimpleNamespace(
+            skill_document_sha256="c" * 64,
+            required_tools=(
+                BoundToolSpec(tool_id="scene.observe", semantics="query", spec_sha256="a" * 64,
+                              ready_at_binding=True, planning_policy=observe_policy),
+                BoundToolSpec(tool_id="grasp.propose", semantics="query", spec_sha256="b" * 64,
+                              ready_at_binding=True, planning_policy=grasp_policy),
+            ),
+        ),
+    )
+    coordinator = Mock()
+    coordinator.get_task.return_value = task
+    coordinator.materialize_plan_revision.return_value = {"revision_id": "revision-suffix"}
+    monkeypatch.setattr(
+        "PhyAgentOS.agent.planning_context.context_from_task",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            evidence_refs=frozenset({"tool:observe"}), condition_facts={},
+        ),
+    )
+    nodes = [
+        {"node_id": "observe", "obligation_id": "observe", "capability": "scene.observe",
+         "input_bindings": {"sensor_refs": ["camera/head"], "max_age_ms": 1000}},
+        {"node_id": "grasp", "obligation_id": "grasp", "capability": "grasp.propose",
+         "dependencies": ["observe"], "required_evidence": ["tool:observe"]},
+    ]
+    result = json.loads(asyncio.run(ForgeTaskMaterializePlanTool(coordinator).execute(
+        task.task_id, nodes=nodes, reason="continue after discovery",
+    )))
+    assert result["diagnostics"] == {"pruned_discovery_node_ids": ["observe"]}
+    submitted = coordinator.materialize_plan_revision.call_args.kwargs["plan_graph"]
+    assert [node.node_id for node in submitted.nodes] == ["grasp"]
+    assert submitted.nodes[0].dependencies == ()
 
 
 def test_prepare_bindings_reuse_unique_current_capability_and_destination_facts():

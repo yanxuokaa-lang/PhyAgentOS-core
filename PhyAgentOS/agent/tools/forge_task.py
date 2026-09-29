@@ -21,6 +21,116 @@ from PhyAgentOS.forge.task import (
 from PhyAgentOS.planning import PlanGraph, PlanNode
 from PhyAgentOS.verification.contracts import TaskVerificationContract, utc_now
 
+_DISCOVERY_ARGUMENT_KEYS = frozenset({
+    "sensor_ref", "sensor_refs", "requested_frame", "max_age_ms",
+    "max_capture_skew_ms", "observation_ref", "scene_revision",
+    "calibration_ref", "frame_id", "entity_refs", "artifacts", "views",
+    "freshness_ms", "capture_skew_ms",
+})
+_NON_SUCCESS_QUERY_STATUSES = frozenset({
+    "unavailable", "invalid", "stale", "empty", "failed", "unknown",
+})
+
+
+def _query_response_payload(record: Any) -> dict[str, Any]:
+    response = getattr(record, "response", None)
+    if not isinstance(response, Mapping):
+        return {}
+    payload = response.get("data")
+    if not isinstance(payload, Mapping):
+        payload = response
+    result = payload.get("result")
+    if isinstance(result, Mapping):
+        payload = {**payload, **result}
+    return dict(payload)
+
+
+def _successful_discovery_record(record: Any) -> bool:
+    if (
+        getattr(record, "semantics", None) != "query"
+        or getattr(record, "status", None) != "succeeded"
+    ):
+        return False
+    return _query_response_payload(record).get("status") not in _NON_SUCCESS_QUERY_STATUSES
+
+
+def _same_discovery_input(node: PlanNode, record: Any) -> bool:
+    """Compare stable Query inputs and ignore natural-language constraints."""
+    bindings = node.input_bindings
+    arguments = getattr(record, "arguments", {})
+    if not isinstance(arguments, Mapping):
+        return False
+    compared = False
+    for key in _DISCOVERY_ARGUMENT_KEYS:
+        if key not in bindings:
+            continue
+        compared = True
+        if key not in arguments or bindings[key] != arguments[key]:
+            return False
+    # An unbound observation node must not consume an arbitrary capture.
+    return compared or node.capability != "scene.observe"
+
+
+def _discovery_node_matches(node: PlanNode, task: Any, records: tuple[Any, ...]) -> bool:
+    """Return whether a semantic Query node is already settled in this revision."""
+    binding = getattr(task, "primary_skill_binding", None)
+    tools = (
+        getattr(binding, "required_tools", ())
+        if binding is not None
+        else getattr(task, "tool_bindings", ())
+    )
+    tool = next((item for item in tools if item.tool_id == node.capability), None)
+    if tool is None or tool.semantics != "query":
+        return False
+    candidates = tuple(
+        record for record in records
+        if getattr(record, "tool_id", None) == node.capability
+        and getattr(record, "ownership", "task") == "task"
+        and _successful_discovery_record(record)
+        and _same_discovery_input(node, record)
+    )
+    if not candidates:
+        return False
+    required = set(node.required_evidence)
+    if required:
+        available = {
+            reference
+            for record in records
+            if getattr(record, "ownership", "task") == "task"
+            for reference in getattr(record, "evidence_refs", ())
+        }
+        return required.issubset(available)
+    return node.capability == "scene.observe"
+
+
+def _prune_satisfied_discovery_prefix(
+    task: Any, nodes: list[dict[str, Any]]
+) -> tuple[list[dict[str, Any]], tuple[str, ...]]:
+    """Drop only a settled leading Query prefix and rewire retained dependencies."""
+    revision = getattr(task, "active_revision", None)
+    if revision is None or getattr(revision, "plan_graph", None) is not None:
+        return nodes, ()
+    records = tuple(getattr(revision, "execution_records", ()))
+    if not records:
+        return nodes, ()
+    parsed = [PlanNode.model_validate(node) for node in nodes]
+    pruned: list[str] = []
+    for node in parsed:
+        if not _discovery_node_matches(node, task, records):
+            break
+        pruned.append(node.node_id)
+    if not pruned:
+        return nodes, ()
+    removed = set(pruned)
+    retained = []
+    for node in parsed[len(pruned):]:
+        value = node.model_dump(mode="json")
+        value["dependencies"] = [
+            dependency for dependency in value["dependencies"] if dependency not in removed
+        ]
+        retained.append(value)
+    return retained, tuple(pruned)
+
 
 def _json(value: Any) -> str:
     """Serialize tool responses, including Pydantic records nested in envelopes.
@@ -265,6 +375,9 @@ class ForgeTaskMaterializePlanTool(Tool):
             "no extra task read is needed just to recover their IDs. If evidence is insufficient, "
             "obtain the missing facts or request clarification. PlanNode.conditions must be "
             "Runtime-published condition-fact keys, not prose or predecessor effects. "
+            "When task-owned discovery Queries already succeeded in the active revision, PAOS "
+            "conservatively prunes a matching leading Query prefix and continues the submitted "
+            "suffix; it never replays those Queries or synthesizes their settlements. "
             "Use dependencies for predecessor completion; effects never become facts. "
             "Keep natural-language constraints in "
             "obligation/evidence/input_bindings. Root discovery nodes must leave "
@@ -327,10 +440,17 @@ class ForgeTaskMaterializePlanTool(Tool):
                 "plan evidence_refs must be exact task-bound Coordinator references; "
                 "unknown or fabricated refs: " + ", ".join(fabricated)
             )
+        pruned_discovery_nodes: tuple[str, ...] = ()
         if nodes is not None:
             from PhyAgentOS.agent.plan_proposal import compile_task_plan
             if plan_graph_ref is not None:
                 raise ValueError("PAOS supplies the plan reference for semantic nodes")
+            nodes, pruned_discovery_nodes = _prune_satisfied_discovery_prefix(task, nodes)
+            if not nodes:
+                raise ValueError(
+                    "semantic plan contains only discovery Queries already settled in the current task; "
+                    "submit the remaining execution suffix"
+                )
             selected_evidence = requested_evidence or tuple(sorted(trusted_evidence))
             graph = compile_task_plan(
                 task,
@@ -368,7 +488,11 @@ class ForgeTaskMaterializePlanTool(Tool):
                     "motion_authorized": False,
                 })
             raise
-        return _json({"ok": True, "data": materialized})
+        return _json({
+            "ok": True,
+            "data": materialized,
+            "diagnostics": {"pruned_discovery_node_ids": list(pruned_discovery_nodes)},
+        })
 
 
 class ForgeTaskContinuePlanTool(Tool):
