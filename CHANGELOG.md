@@ -1,6 +1,65 @@
 # Changelog
 ## Archive
 - [2026-09 part20](changelog/2026-09_part20.md)
+## v12.4.3 (2026-09-30 08:20) - codex
+
+### 变更摘要 / Summary
+- [policy] [fix] 成功 Runtime rebind 后在同一持久化事务内消费活动 clarification，避免同一授权再次暴露或驱动 rebind。 (local)
+- [Policy] [Fix] Consume the active clarification in the same persistence transaction after a successful Runtime rebind so the same authorization cannot expose or drive rebind again. (local)
+- [eval] [exp] 增加返回记录、重载记录与 Tool 投影回归，保存 Run-4 诊断并完成七维实现 Review。 (local)
+- [Eval] [Exp] Add returned-record, reloaded-record, and Tool-projection regressions, persist the Run-4 diagnosis, and complete the seven-dimension implementation review. (local)
+
+### 影响文件 / Affected Files
+- PhyAgentOS/forge/task.py
+- tests/test_task_runtime_rebind.py
+- docs/forge/RGB_ACCEPTANCE_RUN4_REBIND_AUTHORIZATION_CONSUMPTION_DIAGNOSIS_20260930.md
+- docs/forge/IMPLEMENTATION_REVIEW_V12_4_3.md
+
+### 文件变更详情 / File Changes
+
+#### [修改] PhyAgentOS/forge/task.py L1115-L1122
+
+修改前 / Before: successful rebind persisted Runtime and revision state while leaving the answered clarification active.
+
+修改后 / After:
+~~~python
+# A successful rebind consumes the one-shot user authorization.
+current.clarification_id = None
+current.clarification_question = None
+current.clarification_node_id = None
+current.clarification_answer = None
+~~~
+
+修改说明 / Rationale: Runtime 迁移、revision 创建和一次性授权消费保持在同一 AgentTaskStore.update 状态转换中；task_runtime_rebound 事件继续保留历史 clarification_id。
+
+#### [修改] tests/test_task_runtime_rebind.py L91-L117
+
+- 验证返回记录和重新加载记录均已清除四个活动 clarification 字段。
+- 验证成功 rebind 后 activate_skill 与 forge_task_rebind_runtime 均不再出现在 AgentLoop Tool 投影中。
+- Verifies both returned and reloaded records clear the four active clarification fields and both rebind-related tools disappear from AgentLoop projection.
+
+#### [新增] docs/forge/RGB_ACCEPTANCE_RUN4_REBIND_AUTHORIZATION_CONSUMPTION_DIAGNOSIS_20260930.md L1-L35
+
+- 记录现场、根因、现有机制不足、遗漏后果与验收边界。
+- Records the incident, root cause, existing-mechanism gap, omission impact, and acceptance boundary.
+
+#### [新增] docs/forge/IMPLEMENTATION_REVIEW_V12_4_3.md L1-L65
+
+- 从需求完整性、架构边界、状态机并发、机器人安全、兼容扩展、测试可观测性、发布验收七个维度完成 Review。
+- Reviews requirement completeness, architecture, state and concurrency, robotics safety, compatibility, tests and observability, and release acceptance.
+
+### 验证 / Validation
+- Focused rebind and Tool-projection pytest files: passed with PYTEST_DISABLE_PLUGIN_AUTOLOAD=1.
+- Ruff: passed.
+- compileall: passed.
+- git diff check: passed.
+- Broad grep-selected pytest run was non-authoritative because plugin autoload was disabled and unrelated async plugins were unavailable.
+
+### Git 提交 / Git Commit
+- Commit: 528ff02
+- Branch: feature/planning-loop
+- Time: 2026-09-30
+
 ## v12.4.2 (2026-09-30 08:15) - codex
 
 ### 变更摘要 / Summary
@@ -68,33 +127,6 @@
 
 ### Git 提交 / Git Commit
 - Commit: `aefaad0`
-- Branch: `feature/planning-loop`
-
-## v12.3.5 (2026-09-30 05:43) - codex
-
-### 变更摘要 / Change Summary
-- [policy] [fix] 为 PlanGraph 物化增加 provider-neutral settled discovery prefix pruning；只裁剪当前 revision 中已成功且输入匹配的 Query，并重接 suffix 依赖。 (local)
-- [Policy] [Fix] Added provider-neutral settled discovery-prefix pruning during PlanGraph materialization, retaining only current-revision successful Query evidence and rewiring suffix dependencies. (local)
-- [docs] [docs] 保存首轮 AgentLoop 诊断与七维 Review。 (local)
-- [Docs] [Docs] Persisted the first AgentLoop diagnosis and seven-dimension Review. (local)
-
-### 影响文件 / Affected Files
-- `PhyAgentOS/agent/tools/forge_task.py:L24-L132,L443-L495`
-- `tests/test_agent_foundation.py:L220-L354`
-- `docs/forge/RGB_ACCEPTANCE_RUN1_AGENTLOOP_DIAGNOSIS_20260930.md:L1-L43`
-- `docs/forge/IMPLEMENTATION_REVIEW_V12_3_5.md:L1-L39`
-
-### 关键 Diff / Key Diff
-**Before:** 完整 discovery 前缀再次进入 Coordinator selection。
-
-**After:** `_prune_satisfied_discovery_prefix` 裁剪已 settlement 的 leading Query prefix，不复制 settlement、不重发 Query/Action、不构造 opaque ref。
-
-### 验证 / Validation
-- `tests/test_agent_foundation.py tests/test_planning_task_integration.py`：`117 passed`。
-- Ruff、compileall、`git diff --check` passed。
-
-### Git 提交 / Git Commit
-- Commit: `1847975`（实现）、`42cdc2d`（文档格式）、`2aec847`（提交元数据）
 - Branch: `feature/planning-loop`
 
 ## v12.3.4 (2026-09-29 06:10) - codex
