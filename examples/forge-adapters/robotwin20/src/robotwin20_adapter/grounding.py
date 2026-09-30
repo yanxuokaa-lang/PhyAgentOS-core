@@ -43,6 +43,15 @@ class Grounding:
         self.last_diagnostics = {"stage": stage, "message": message, **details}
         raise ValueError(message)
 
+    def _require_observation_owned_goal(self):
+        if self.goal_source != "observation_owned":
+            self._reject(
+                "benchmark profile requires a task.goal destination",
+                stage="goal_policy",
+                code="benchmark_goal_only",
+                goal_source=self.goal_source,
+            )
+
     def remember(self, tool_id, result):
         if result.get("status") == "available":
             key = tuple(result[k] for k in IDENTITY_KEYS)
@@ -506,6 +515,7 @@ class Grounding:
         return projected
 
     def staging(self, request):
+        self._require_observation_owned_goal()
         if not isinstance(request, Mapping):
             self._reject("staging request must be an object", stage="input_validation")
         binding_ref = request.get("binding_ref")
@@ -598,6 +608,7 @@ class Grounding:
         }
 
     def target(self, request):
+        self._require_observation_owned_goal()
         binding = self.bindings[request["binding_ref"]]
         self._current(binding)
         if request["unit"] != "m":
@@ -648,11 +659,12 @@ class Grounding:
         return reference
 
     def scene_facts(self, request, *, deadline=None):
-        value = self.targets.get(request["destination_ref"])
-        if value is None:
-            if self.goal_source != "benchmark_task_definition":
-                raise ValueError("destination is not an observation-owned target")
+        if self.goal_source == "benchmark_task_definition":
             value = self._benchmark_goal_target(request, deadline=deadline)
+        else:
+            value = self.targets.get(request["destination_ref"])
+            if value is None:
+                raise ValueError("destination is not an observation-owned target")
         request_binding_ref = request.get("binding_ref")
         if request_binding_ref is not None and value["binding_ref"] != request_binding_ref:
             raise ValueError("target scene binding differs from preparation")
@@ -705,9 +717,12 @@ class Grounding:
 
     def oracle_scene_facts(self, request, *, deadline=None):
         """Bind simulator actor geometry to Agent-selected observed identities."""
-        value = self.targets.get(request["destination_ref"])
-        if value is None:
+        if self.goal_source == "benchmark_task_definition":
             value = self._benchmark_goal_target(request, deadline=deadline)
+        else:
+            value = self.targets.get(request["destination_ref"])
+            if value is None:
+                raise ValueError("destination is not an observation-owned target")
         request_binding_ref = request.get("binding_ref")
         if request_binding_ref is not None and value["binding_ref"] != request_binding_ref:
             raise ValueError("target scene binding differs from preparation")
@@ -939,8 +954,13 @@ class GroundingEndpoint:
         except (KeyError, ValueError, TypeError, OSError) as exc:
             owner = getattr(self.resolve, "__self__", None)
             diagnostics = getattr(owner, "last_diagnostics", None)
+            code = (
+                diagnostics.get("code", "grounding_unavailable")
+                if isinstance(diagnostics, dict)
+                else "grounding_unavailable"
+            )
             value = {"status": "unavailable", "motion_authorized": False,
-                     "error": {"code": "grounding_unavailable", "message": str(exc)}}
+                     "error": {"code": code, "message": str(exc)}}
             if isinstance(diagnostics, dict):
                 value["diagnostics"] = deepcopy(diagnostics)
             return value

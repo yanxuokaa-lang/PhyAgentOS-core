@@ -212,6 +212,32 @@ def test_graspnet_uses_its_approach_axis_without_reusing_graspgen_semantics(tmp_
     }
 
 
+def test_graspnet_accepts_native_score_diagnostics_without_leaking_provider_fields(tmp_path):
+    class NormalizedGraspNetWorker(Worker):
+        def request(self, payload):
+            return {
+                "request_id": payload["request_id"],
+                "status": "available",
+                "candidates": [{
+                    "matrix": np.eye(4).tolist(),
+                    "score": 1.0,
+                    "native_score": 2.4,
+                }],
+                "funnel": {
+                    "decoded": 1, "canonicalized": 1,
+                    "deduplicated": 1, "retained": 1,
+                },
+            }
+
+    provider = GraspNetProposalProvider(
+        NormalizedGraspNetWorker(), artifact_store=_store(tmp_path), apply_nms=False
+    )
+    result = provider.propose(REQUEST)
+
+    assert result["candidates"][0]["score"] == 1.0
+    assert "native_score" not in result["candidates"][0]
+
+
 def test_invalid_worker_grasp_geometry_is_rejected(tmp_path):
     class InvalidGeometryWorker(Worker):
         def request(self, payload):

@@ -59,7 +59,11 @@ The explicitly named `robotwin-blocks-ranking-graspgen` profile combines
 observation-owned object geometry, support and collision occupancy with only
 benchmark task descriptions and destinations. GraspGen generates 24 real samples
 before canonicalization and filtering retains at most ten for preparation.
-Use `task.goal` destinations directly; do not add `manipulation.target` nodes.
+Use `task.goal` destinations directly; do not add `manipulation.target` or
+`manipulation.staging` nodes. These regions are externally injected
+task-definition inputs, not sensor evidence, scene geometry, motion approval or
+an Oracle replacement. The Agent may choose operation order and grasp/route
+candidates, but it may not replace an injected placement destination.
 The profile retains complete-route readiness and monitored simulation Action
 approval, contact/stop checks, reconciliation and cumulative video. It does not
 fall back to oracle geometry or template grasps.
@@ -123,10 +127,14 @@ When the active Runtime publishes `task.goal`, call it as a task-bound read-only
 discovery Query before materializing goal-bound nodes. It may expose exact goals
 from a simulator task definition or another deployment-owned task specification;
 its provenance is distinct from observation. The Agent remains responsible for
-matching each goal to a bound entity and choosing order, staging, and recovery.
-For the explicit benchmark profile, preserve the matched opaque
-`destination_ref`; do not reproduce its numeric pose through
-`manipulation.target`.
+matching each goal to a bound entity and choosing order and recovery. In an
+observation-owned profile, autonomous `manipulation.target` and
+`manipulation.staging` remain available. In an explicit benchmark profile,
+preserve the matched opaque `destination_ref`; do not reproduce its numeric pose
+through `manipulation.target` and do not replace it with an observation-owned
+staging destination. If the injected destination is occupied or cannot pass
+preparation, stop or revise operation ordering while keeping the same
+destination.
 
 Choose task relations, reference frames, destinations, intermediate placements
 and dependencies from the user goal and observed evidence. Never equate camera
@@ -406,10 +414,12 @@ correction and failure replan are not normal forward-progression mechanisms.
 The robotwin-blocks-ranking-graspnet profile uses observed scene geometry,
 real GraspNet pose candidates and monitored simulation Actions. Only task
 descriptions and benchmark destination regions come from the benchmark task
-definition. Use task.goal destination references and reobserve after world
-changes; never replace observed point clouds or provider output with simulator
-actor geometry or template grasps. Candidate preparation, Action admission and
-verification remain owned by the existing Runtime/Coordinator boundaries.
+definition. Treat those regions as externally injected task inputs: use
+`task.goal` destination references and do not substitute `manipulation.target`
+or `manipulation.staging`. Reobserve after world changes; never replace observed
+point clouds or provider output with simulator actor geometry or template
+grasps. Candidate preparation, Action admission and verification remain owned
+by the existing Runtime/Coordinator boundaries.
 
 ## Discovery Evidence and Selection Continuation
 
@@ -421,6 +431,19 @@ verification remain owned by the existing Runtime/Coordinator boundaries.
 
 ### Occupied destination cycles and temporary staging
 
-When a required destination is occupied by another bound movable entity, do not invent a pose, use simulator truth, or hand-author an opaque reference. Query `manipulation.staging` with the current `binding_ref` and moving `entity_ref`. Use only the Runtime-registered opaque `destination_ref` derived from current observed support geometry. The Query remains non-motion evidence with `motion_authorized=false`; the result must still pass `manipulation.prepare`, Coordinator selection, Gateway admission, workspace, collision, IK, authorization, and terminal Action gates.
+This section applies only when the active Runtime declares
+`goal_source=observation_owned`. When a required destination is occupied by
+another bound movable entity, do not invent a pose, use simulator truth, or
+hand-author an opaque reference. Query `manipulation.staging` with the current
+`binding_ref` and moving `entity_ref`. Use only the Runtime-registered opaque
+`destination_ref` derived from current observed support geometry. The Query
+remains non-motion evidence with `motion_authorized=false`; the result must still
+pass `manipulation.prepare`, Coordinator selection, Gateway admission, workspace,
+collision, IK, authorization, and terminal Action gates.
+
+In `benchmark_task_definition` mode, `task.goal` is the external placement-goal
+injection boundary. Do not call autonomous target or staging tools; an occupied
+or unreachable injected destination is a fail-closed planning result, not
+permission to generate a replacement goal.
 
 If no clearance-valid observed-free candidate exists, stop fail-closed instead of lowering clearance or blindly retrying. A successful staging place changes the world and requires the full fresh `scene.observe → scene.understand → manipulation.capabilities → scene.bind` chain before subsequent planning.

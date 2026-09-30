@@ -8,9 +8,9 @@ from uuid import uuid4
 
 from PhyAgentOS.agent.planning_facts import response_facts
 from PhyAgentOS.forge.manipulation import (
+    MANIPULATION_INTENT_SEMANTIC_KEYS,
     CapabilitySnapshot,
     CoordinationMode,
-    MANIPULATION_INTENT_SEMANTIC_KEYS,
 )
 from PhyAgentOS.forge.task import AgentTaskRecord
 from PhyAgentOS.planning import (
@@ -269,6 +269,7 @@ def _complete_persisted_runtime_bindings(
                         if isinstance(entity, str) and isinstance(destination, str):
                             goal_sources.setdefault(entity, set()).add(destination)
                             goal_entities_by_destination.setdefault(destination, set()).add(entity)
+    benchmark_goal_mode = bool(goal_sources)
 
     # Scene-bound facts may cross segments only within the current capture. Task goals
     # are task-specification facts and may outlive a scene; capabilities,
@@ -460,16 +461,28 @@ def _complete_persisted_runtime_bindings(
                 if len(merged) == 1:
                     entity = next(iter(merged))
                     bindings["entity_ref"] = entity
-            destinations = set(destination_by_entity.get(entity, set()))
+            benchmark_destinations: set[str] = set()
             if isinstance(execution_entity, str):
-                destinations |= goal_sources.get(execution_entity, set())
-            destinations |= goal_sources.get(entity, set())
+                benchmark_destinations |= goal_sources.get(execution_entity, set())
+            benchmark_destinations |= goal_sources.get(entity, set())
             execution_entities = observed_to_execution.get(entity, set())
             if len(execution_entities) == 1:
-                destinations |= goal_sources.get(next(iter(execution_entities)), set())
-            destinations |= predecessor_destinations.get(entity, set())
+                benchmark_destinations |= goal_sources.get(
+                    next(iter(execution_entities)), set()
+                )
+            if benchmark_goal_mode:
+                destinations = benchmark_destinations
+            else:
+                destinations = set(destination_by_entity.get(entity, set()))
+                destinations |= predecessor_destinations.get(entity, set())
             if node.capability in {"manipulation.prepare", "object.place"} and len(destinations) == 1:
-                bindings.setdefault("destination_ref", next(iter(destinations)))
+                destination = next(iter(destinations))
+                if benchmark_goal_mode:
+                    bindings["destination_ref"] = destination
+                else:
+                    bindings.setdefault("destination_ref", destination)
+            elif node.capability in {"manipulation.prepare", "object.place"} and benchmark_goal_mode:
+                bindings.pop("destination_ref", None)
             if node.capability == "manipulation.prepare":
                 scene_bindings = binding_refs_by_entity.get(entity, set())
                 if len(scene_bindings) == 1:

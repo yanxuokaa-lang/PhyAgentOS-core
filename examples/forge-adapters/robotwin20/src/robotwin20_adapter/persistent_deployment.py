@@ -143,6 +143,17 @@ def build_persistent_runtime_bundle(
             (STAGING_TOOL_SPEC, deployment.grounding.staging),
             (TARGET_TOOL_SPEC, deployment.grounding.target),
         ):
+            spec = deepcopy(spec)
+            if (
+                deployment.grounding.goal_source == "benchmark_task_definition"
+                and spec["tool_id"] in {"manipulation.staging", "manipulation.target"}
+            ):
+                spec["description"] = (
+                    "Unavailable in benchmark-goal mode. Use the externally injected "
+                    "task.goal destination_ref; this compatibility endpoint never authorizes motion."
+                )
+                spec["planning"]["capabilities"] = []
+                spec["planning"]["requires_before_plan"] = False
             runtime.register_tool(spec, GroundingEndpoint(resolve),
                                   context_provider=lambda tool_id=spec["tool_id"]: tool_context_provider(tool_id))
     if deployment.task_goal_provider is not None:

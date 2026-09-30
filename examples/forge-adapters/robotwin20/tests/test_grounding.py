@@ -333,6 +333,67 @@ def test_scene_resolves_runtime_goal_without_target_matrix_transcription(tmp_pat
     assert calls.count("task_goal_facts") == 1
 
 
+def test_benchmark_goal_mode_rejects_observation_owned_target_and_staging(tmp_path):
+    g, request, _ = setup(tmp_path)
+    bound = g.bind(request)
+    g.goal_source = "benchmark_task_definition"
+
+    target_result = GroundingEndpoint(g.target).invoke({
+        "binding_ref": bound["binding_ref"],
+        "entity_ref": "entity://seen",
+        "frame_id": "world",
+        "unit": "m",
+        "frame_T_object_target": pose(.2),
+    })
+    staging_result = GroundingEndpoint(g.staging).invoke({
+        "binding_ref": bound["binding_ref"],
+        "entity_ref": "entity://seen",
+    })
+
+    assert target_result["error"]["code"] == "benchmark_goal_only"
+    assert staging_result["error"]["code"] == "benchmark_goal_only"
+    assert target_result["motion_authorized"] is False
+    assert staging_result["motion_authorized"] is False
+
+
+def test_benchmark_goal_ignores_cached_observation_owned_target(tmp_path):
+    g, request, _ = setup(tmp_path)
+    bound = g.bind(request)
+    destination = "destination://blocks-ranking-rgb/red-slot"
+    g.targets[destination] = {
+        **request,
+        "binding_ref": bound["binding_ref"],
+        "object": {"entity_ref": "entity://seen", "world_T_object_target": pose(.9)},
+    }
+    g.goal_source = "benchmark_task_definition"
+    original_query = g.client.query
+
+    def query(operation, arguments, **kwargs):
+        if operation == "task_goal_facts":
+            return {
+                "status": "available",
+                "geometry_source": "benchmark_task_definition",
+                "goals": [{
+                    "execution_entity_ref": "entity://execution",
+                    "destination_ref": destination,
+                    "frame_id": "world",
+                    "unit": "m",
+                    "world_T_object_target": pose(.35),
+                }],
+            }
+        return original_query(operation, arguments, **kwargs)
+
+    g.client.query = query
+    facts = g.scene_facts({
+        **request,
+        "binding_ref": bound["binding_ref"],
+        "intent": {"entity_ref": "entity://seen"},
+        "destination_ref": destination,
+    })
+
+    assert facts["objects"][0]["world_T_object_target"] == pose(.35)
+
+
 def test_benchmark_goal_uses_exact_binding_when_overlapping_binding_exists(tmp_path):
     g, request, _ = setup(tmp_path)
     bound = g.bind(request)

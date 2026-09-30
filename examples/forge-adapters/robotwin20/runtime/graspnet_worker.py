@@ -33,7 +33,11 @@ def _sample_candidates(candidates, limit, policy):
     """
     import numpy as np
 
-    ranked = sorted(candidates, key=lambda item: item["score"], reverse=True)
+    ranked = sorted(
+        candidates,
+        key=lambda item: item.get("native_score", item["score"]),
+        reverse=True,
+    )
     if policy == "score" or not ranked:
         return ranked[:limit]
     if policy != "orientation_diverse":
@@ -138,9 +142,16 @@ def _handle(request: Mapping[str, Any]) -> Mapping[str, Any]:
     for grasp in group:
         center = np.asarray(grasp.translation, dtype=np.float64).reshape(3)
         rotation = np.asarray(grasp.rotation_matrix, dtype=np.float64).reshape(3, 3)
-        score = float(grasp.score)
-        if not np.isfinite(center).all() or not np.isfinite(rotation).all() or not np.isfinite(score):
+        native_score = float(grasp.score)
+        if (
+            not np.isfinite(center).all()
+            or not np.isfinite(rotation).all()
+            or not np.isfinite(native_score)
+        ):
             raise WorkerUnavailableError("graspnet model returned malformed candidates")
+        if native_score < 0:
+            continue
+        score = min(native_score, 1.0)
         if score < float(threshold):
             continue
         matrix = np.eye(4, dtype=np.float64)
@@ -150,6 +161,7 @@ def _handle(request: Mapping[str, Any]) -> Mapping[str, Any]:
             {
                 "matrix": matrix.tolist(),
                 "score": score,
+                "native_score": native_score,
                 "grasp_geometry": {
                     "width_m": float(grasp.width),
                     "height_m": float(grasp.height),

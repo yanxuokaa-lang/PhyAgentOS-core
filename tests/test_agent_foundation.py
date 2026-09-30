@@ -598,6 +598,81 @@ def test_prepare_bindings_map_observed_identity_to_benchmark_destination():
     }
 
 
+def test_benchmark_destination_overrides_agent_authored_target():
+    discovery = SimpleNamespace(execution_records=[
+        SimpleNamespace(
+            tool_id="task.goal", status="succeeded",
+            response={
+                "status": "available",
+                "goal_source": "benchmark_task_definition",
+                "goals": [{
+                    "execution_entity_ref": "entity://block-green-1",
+                    "destination_ref": "destination://benchmark/green",
+                }],
+            },
+        ),
+        SimpleNamespace(
+            tool_id="scene.bind", node_id="bind-scene", status="succeeded",
+            response={
+                "status": "available",
+                "binding_ref": "artifact://binding/current",
+                "entities": [{
+                    "entity_ref": "entity://observed-green",
+                    "execution_entity_ref": "entity://block-green-1",
+                }],
+            },
+        ),
+    ])
+    task = SimpleNamespace(revisions=[discovery], active_revision=discovery)
+    nodes = (PlanNode(
+        node_id="green-prepare", obligation_id="green-prepare",
+        capability="manipulation.prepare",
+        input_bindings={
+            "entity_ref": "entity://observed-green",
+            "destination_ref": "destination://agent-authored/staging",
+        },
+    ),)
+
+    completed = _complete_persisted_runtime_bindings(task, nodes)
+
+    assert completed[0].input_bindings["destination_ref"] == (
+        "destination://benchmark/green"
+    )
+
+
+def test_ambiguous_benchmark_destinations_remove_agent_authored_target():
+    discovery = SimpleNamespace(execution_records=[SimpleNamespace(
+        tool_id="task.goal", status="succeeded",
+        response={
+            "status": "available",
+            "goal_source": "benchmark_task_definition",
+            "goals": [
+                {
+                    "execution_entity_ref": "entity://block-green-1",
+                    "destination_ref": "destination://benchmark/green-a",
+                },
+                {
+                    "execution_entity_ref": "entity://block-green-1",
+                    "destination_ref": "destination://benchmark/green-b",
+                },
+            ],
+        },
+    )])
+    task = SimpleNamespace(revisions=[discovery], active_revision=discovery)
+    nodes = (PlanNode(
+        node_id="green-prepare", obligation_id="green-prepare",
+        capability="manipulation.prepare",
+        input_bindings={
+            "execution_entity_ref": "entity://block-green-1",
+            "destination_ref": "destination://agent-authored/staging",
+        },
+    ),)
+
+    completed = _complete_persisted_runtime_bindings(task, nodes)
+
+    assert "destination_ref" not in completed[0].input_bindings
+
+
 def test_prepare_bindings_do_not_reuse_scene_facts_from_closed_revision():
     closed = SimpleNamespace(execution_records=[
         SimpleNamespace(

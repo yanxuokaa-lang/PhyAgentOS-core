@@ -338,9 +338,16 @@ def _validate_worker_reply(reply: Mapping[str, Any]) -> tuple[list[Mapping[str, 
     for item in candidates:
         if not isinstance(item, Mapping) or set(item) not in (
             {"matrix", "score"},
+            {"matrix", "score", "native_score"},
             {"matrix", "score", "grasp_geometry"},
+            {"matrix", "score", "native_score", "grasp_geometry"},
         ):
             raise GraspProposalAdapterError("grasp worker candidate shape is invalid")
+        native_score = item.get("native_score")
+        if native_score is not None and (
+            not _finite(native_score) or float(native_score) < 0
+        ):
+            raise GraspProposalAdapterError("grasp worker native score is invalid")
         geometry = item.get("grasp_geometry")
         if geometry is not None and (
             not isinstance(geometry, Mapping)

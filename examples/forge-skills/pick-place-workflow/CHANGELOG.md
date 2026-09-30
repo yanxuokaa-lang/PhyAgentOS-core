@@ -1,5 +1,14 @@
 # Change Log
 
+## v2.10.1 (2026-09-30)
+
+- 中文：在 GraspNet worker/provider 边界将非负 native score 上界饱和到 provider-neutral `[0,1]`，保留 `native_score` 诊断和原始排序；负分过滤、非有限值 fail-closed，IK、碰撞与动作授权不变。
+- English: Saturate non-negative GraspNet native scores to the provider-neutral `[0,1]` range at the worker/provider boundary while retaining `native_score` diagnostics and native ordering; filter negative scores, fail closed on non-finite values, and leave IK, collision, and Action authorization unchanged.
+- 中文：benchmark profile 将 `task.goal` 作为放置目标外部注入边界；自主 target/staging 不再作为可规划能力，Grounding 和 Coordinator 均拒绝或覆盖替代目标。`observation_owned` profile 保持自主目标规划兼容。
+- English: Make `task.goal` the external placement-goal injection boundary for benchmark profiles; autonomous target/staging are no longer plannable, and Grounding/Coordinator reject or override replacement goals. Preserve autonomous planning for `observation_owned` profiles.
+- 中文：发布 Node `0.10.1`，SHA-256 为 `5b61b5630109d676c6a29376016b50a6e135fddeab24477274b9216dd6985140`。
+- English: Publish Node `0.10.1` with SHA-256 `5b61b5630109d676c6a29376016b50a6e135fddeab24477274b9216dd6985140`.
+
 ## v2.9.0 (2026-09-29)
 
 - 中文：完成感知 worker 生命周期所有权：请求结束继续使用 CPU hibernate 复用，PersistentHost 终止时则显式 shutdown LocateAnything 与 SAM2 子进程；即使一个资源关闭失败，也继续关闭其余资源并最终 fail-closed。

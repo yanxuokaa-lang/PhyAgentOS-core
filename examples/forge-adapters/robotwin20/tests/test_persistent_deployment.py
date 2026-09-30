@@ -196,3 +196,42 @@ def test_runtime_bundle_registers_persistent_tools_behind_one_transport(tmp_path
             understanding_provider=object(), grasp_provider=object(),
             tool_context_provider=lambda tool_id: {"ready": True},
         )
+
+
+@pytest.mark.parametrize(
+    ("goal_source", "expected_capabilities"),
+    [
+        ("benchmark_task_definition", []),
+        ("observation_owned", None),
+    ],
+)
+def test_goal_source_controls_autonomous_goal_tool_planning(
+    tmp_path, goal_source, expected_capabilities
+):
+    arm = tmp_path / "arms.yaml"
+    arm.write_text(yaml.safe_dump(_profile()))
+    profiles = Path(__file__).parents[1] / "profiles/robotwin20"
+    arguments = {
+        "arm-planning-profile": str(arm),
+        "route-input-profile": str(profiles / "route-inputs-persistent.yaml"),
+    }
+    client = object()
+    deployment = build_persistent_deployment(
+        client=client, artifact_root=tmp_path, scene_source=lambda request: None,
+        materializer_command=("python",), materializer_arguments=arguments,
+        arm_profile_digest="a" * 64, goal_source=goal_source,
+    )
+    bundle = build_persistent_runtime_bundle(
+        deployment=deployment, client=client, understanding_provider=object(),
+        grasp_provider=object(),
+        tool_context_provider=lambda tool_id: {"ready": True, "tool_id": tool_id},
+    )
+    tools = {item["tool_id"]: item for item in bundle.runtime.list_tools()["tools"]}
+
+    for tool_id in ("manipulation.target", "manipulation.staging"):
+        capabilities = tools[tool_id]["planning"]["capabilities"]
+        if expected_capabilities is None:
+            assert capabilities == [tool_id]
+        else:
+            assert capabilities == expected_capabilities
+            assert tools[tool_id]["planning"]["requires_before_plan"] is False

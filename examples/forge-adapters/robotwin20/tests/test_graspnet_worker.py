@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 
 def _module(name):
@@ -53,6 +54,82 @@ def test_graspnet_ranks_before_limit_and_reports_full_threshold_funnel(tmp_path,
     assert result["funnel"] == {
         "decoded": 5, "canonicalized": 4, "deduplicated": 4, "retained": 2,
     }
+    assert [candidate["native_score"] for candidate in result["candidates"]] == [.9, .8]
+
+
+def test_graspnet_saturates_native_scores_and_filters_negative_scores(tmp_path, monkeypatch):
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+
+    module = _module("graspnet_worker")
+    points = tmp_path / "observed.npy"
+    np.save(points, np.ones((20, 3), dtype=np.float32))
+    grasps = [SimpleNamespace(
+        translation=np.array([index * .01, 0, 1]), rotation_matrix=np.eye(3),
+        score=score, width=.04, height=.02, depth=.01,
+    ) for index, score in enumerate([2.4, 1.3, .6, -.2])]
+
+    class Network:
+        def parameters(self):
+            return iter([SimpleNamespace(device="cpu")])
+
+        def __call__(self, inputs):
+            return inputs
+
+    decoded = SimpleNamespace(detach=lambda: SimpleNamespace(
+        cpu=lambda: SimpleNamespace(numpy=lambda: grasps)))
+    module._MODEL = (Network(), lambda _: [decoded], lambda values: values)
+    monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(
+        no_grad=nullcontext,
+        from_numpy=lambda array: SimpleNamespace(to=lambda device: array),
+    ))
+
+    result = module._handle({
+        "schema_version": "paos-grasp-worker/v1", "provider": "graspnet",
+        "request_id": "normalization-test", "point_cloud_path": str(points),
+        "max_candidates": 4, "score_threshold": .5,
+    })
+
+    assert [item["native_score"] for item in result["candidates"]] == [2.4, 1.3, .6]
+    assert [item["score"] for item in result["candidates"]] == [1.0, 1.0, .6]
+    assert result["funnel"] == {
+        "decoded": 4, "canonicalized": 3, "deduplicated": 3, "retained": 3,
+    }
+
+
+def test_graspnet_rejects_non_finite_native_score(tmp_path, monkeypatch):
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+
+    module = _module("graspnet_worker")
+    points = tmp_path / "observed.npy"
+    np.save(points, np.ones((20, 3), dtype=np.float32))
+    grasps = [SimpleNamespace(
+        translation=np.array([0, 0, 1]), rotation_matrix=np.eye(3),
+        score=float("nan"), width=.04, height=.02, depth=.01,
+    )]
+
+    class Network:
+        def parameters(self):
+            return iter([SimpleNamespace(device="cpu")])
+
+        def __call__(self, inputs):
+            return inputs
+
+    decoded = SimpleNamespace(detach=lambda: SimpleNamespace(
+        cpu=lambda: SimpleNamespace(numpy=lambda: grasps)))
+    module._MODEL = (Network(), lambda _: [decoded], lambda values: values)
+    monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(
+        no_grad=nullcontext,
+        from_numpy=lambda array: SimpleNamespace(to=lambda device: array),
+    ))
+
+    with pytest.raises(module.WorkerUnavailableError, match="malformed candidates"):
+        module._handle({
+            "schema_version": "paos-grasp-worker/v1", "provider": "graspnet",
+            "request_id": "non-finite-test", "point_cloud_path": str(points),
+            "max_candidates": 1, "score_threshold": 0,
+        })
 
 
 def test_orientation_sampling_covers_native_poses_without_rewriting_scores_or_geometry():
