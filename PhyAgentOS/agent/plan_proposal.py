@@ -10,6 +10,7 @@ from PhyAgentOS.agent.planning_facts import response_facts
 from PhyAgentOS.forge.manipulation import (
     CapabilitySnapshot,
     CoordinationMode,
+    MANIPULATION_INTENT_SEMANTIC_KEYS,
 )
 from PhyAgentOS.forge.task import AgentTaskRecord
 from PhyAgentOS.planning import (
@@ -46,6 +47,24 @@ def _inject_task_verification_semantics(
         bindings.setdefault("goal", verification_goal)
     if verification_criteria is not None:
         bindings.setdefault("success_criteria", list(verification_criteria))
+
+
+def _validate_structured_node_intent(node: PlanNode, policies: tuple[Any, ...]) -> None:
+    """Reject malformed manipulation semantics before revision acceptance."""
+    if not any(
+        policy.trusted_argument_builder == "manipulation_intent_v2"
+        for policy in policies
+    ):
+        return
+    intent = node.input_bindings.get("intent")
+    if not isinstance(intent, Mapping):
+        return
+    unexpected = set(intent) - MANIPULATION_INTENT_SEMANTIC_KEYS
+    if unexpected:
+        raise ValueError(
+            f"semantic plan node {node.node_id} manipulation intent contains "
+            f"unsupported fields: {', '.join(sorted(unexpected))}"
+        )
 
 
 def compile_task_plan(
@@ -93,6 +112,7 @@ def compile_task_plan(
             if tool.planning_policy is not None
             and node.capability in tool.planning_policy.capabilities
         )
+        _validate_structured_node_intent(node, candidates)
         if any(
             set(required_node_binding_keys(policy)).issubset(node.input_bindings)
             for policy in candidates

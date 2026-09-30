@@ -14,7 +14,10 @@ from collections.abc import Mapping
 from copy import deepcopy
 from typing import Any, Callable
 
-from PhyAgentOS.forge.manipulation import ManipulationIntent
+from PhyAgentOS.forge.manipulation import (
+    MANIPULATION_INTENT_SEMANTIC_KEYS,
+    ManipulationIntent,
+)
 from PhyAgentOS.planning import (
     AdmissionContext,
     AdmissionDecision,
@@ -659,13 +662,7 @@ class AgentComposedDispatch:
             )
 
         supplied = final_arguments.pop("intent", None)
-        semantic_keys = {
-            "goal",
-            "success_criteria",
-            "allowed_arms",
-            "coordination_mode",
-            "constraints",
-        }
+        semantic_keys = MANIPULATION_INTENT_SEMANTIC_KEYS
         flat_supplied = {
             key: final_arguments.pop(key)
             for key in semantic_keys

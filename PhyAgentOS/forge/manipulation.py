@@ -387,6 +387,15 @@ class CoordinationGroup(BaseModel):
         return self
 
 
+MANIPULATION_INTENT_SEMANTIC_KEYS = frozenset({
+    "goal",
+    "success_criteria",
+    "allowed_arms",
+    "coordination_mode",
+    "constraints",
+})
+
+
 class ManipulationIntent(BaseModel):
     """Immutable semantic input for one adapter-owned capability query."""
 

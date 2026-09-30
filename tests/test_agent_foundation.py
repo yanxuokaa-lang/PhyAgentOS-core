@@ -16,6 +16,7 @@ from PhyAgentOS.agent.loop import AgentLoop
 from PhyAgentOS.agent.plan_proposal import (
     _complete_persisted_runtime_bindings,
     _inject_task_verification_semantics,
+    _validate_structured_node_intent,
     compile_task_plan,
 )
 from PhyAgentOS.agent.planning_loop import _planning_record_status
@@ -324,6 +325,47 @@ def test_legacy_node_receives_flat_task_verification_semantics():
         "goal": "Verify the complete task",
         "success_criteria": ["All final outputs pass verification."],
     }
+
+
+def test_structured_manipulation_intent_rejects_unknown_fields_before_revision():
+    class Policy:
+        trusted_argument_builder = "manipulation_intent_v2"
+
+    node = PlanNode(
+        node_id="prepare-red",
+        obligation_id="prepare-red",
+        capability="manipulation.prepare",
+        input_bindings={"intent": {
+            "goal": "prepare the observed red block",
+            "success_criteria": ["one candidate is prepared"],
+            "allowed_arms": ["left"],
+            "coordination_mode": "single_arm",
+            "operation": "prepare",
+        }},
+    )
+
+    with pytest.raises(ValueError, match=r"prepare-red.*unsupported fields: operation"):
+        _validate_structured_node_intent(node, (Policy(),))
+
+
+def test_structured_manipulation_intent_accepts_shared_semantic_fields():
+    class Policy:
+        trusted_argument_builder = "manipulation_intent_v2"
+
+    node = PlanNode(
+        node_id="prepare-red",
+        obligation_id="prepare-red",
+        capability="manipulation.prepare",
+        input_bindings={"intent": {
+            "goal": "prepare the observed red block",
+            "success_criteria": ["one candidate is prepared"],
+            "allowed_arms": ["left"],
+            "coordination_mode": "single_arm",
+            "constraints": ["preserve current scene evidence"],
+        }},
+    )
+
+    _validate_structured_node_intent(node, (Policy(),))
 
 
 def test_materialize_prunes_only_settled_discovery_prefix_and_rewires_dependencies():
