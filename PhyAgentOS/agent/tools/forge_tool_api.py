@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, Mapping
 from uuid import uuid4
 
 from PhyAgentOS.agent.argument_sources import (
@@ -66,6 +66,40 @@ def _effective_query_timeout_ms(tool_id: str, timeout_ms: int | None) -> int | N
     if timeout_ms is None:
         return _SCENE_UNDERSTAND_TIMEOUT_MS
     return max(timeout_ms, _SCENE_UNDERSTAND_TIMEOUT_MS)
+
+
+def _stale_retry_relaxes_freshness(task: Any, tool_id: str, arguments: Mapping[str, Any]) -> str | None:
+    """Reject a stale Query retry that weakens its declared freshness limit."""
+
+    if tool_id != "scene.observe":
+        return None
+    current_limit = arguments.get("max_age_ms")
+    if isinstance(current_limit, bool) or not isinstance(current_limit, int):
+        return None
+    for record in reversed(tuple(getattr(task.active_revision, "execution_records", ()))):
+        if record.tool_id != tool_id or record.status != "succeeded":
+            continue
+        facts = response_facts(record.response)
+        error = facts.get("error")
+        if not (
+            facts.get("status") == "stale"
+            and isinstance(error, Mapping)
+            and error.get("code") == "stale_observation"
+        ):
+            continue
+        prior_limit = record.arguments.get("max_age_ms")
+        if (
+            not isinstance(prior_limit, bool)
+            and isinstance(prior_limit, int)
+            and current_limit > prior_limit
+        ):
+            return (
+                "a stale scene.observe retry cannot increase max_age_ms "
+                f"from {prior_limit} to {current_limit}; request a new capture "
+                "with the same or stricter freshness limit"
+            )
+        return None
+    return None
 
 
 def _json(value: Any) -> str:
@@ -296,6 +330,9 @@ class ForgeToolQueryTool(Tool):
                 resolved_arguments = arguments
                 resolved_binding = planning_binding
                 task = self.coordinator.get_task(task_id)
+                stale_retry_error = _stale_retry_relaxes_freshness(task, tool_id, arguments)
+                if stale_retry_error is not None:
+                    raise AgentTaskError(stale_retry_error)
                 if tool_id == "scene.bind":
                     selection_error = _scene_bind_argument_error(task, arguments)
                     if selection_error is not None:
@@ -322,6 +359,12 @@ class ForgeToolQueryTool(Tool):
                         for name, selector in remaining_sources.items()
                         if name not in bound_fields
                     }
+                    if remaining_sources:
+                        unexpected = ", ".join(sorted(remaining_sources))
+                        raise AgentTaskError(
+                            f"{tool_id} observation lineage is Coordinator-owned; "
+                            "omit argument_sources for unsupported fields: " + unexpected
+                        )
                 if remaining_sources:
                     try:
                         resolved_arguments = resolve_argument_sources(

@@ -1,7 +1,16 @@
 # Changelog
 ## Archive
+- [2026-10](changelog/2026-10.md)
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
+
+## v12.5.4 (2026-10-01 00:20) - codex
+
+### 变更摘要 / Summary
+- 修复 AgentLoop discovery 连续性、重复 Skill 读取和 benchmark `destination_ref` 传播；Query lineage/freshness 继续由 Coordinator 投影。
+- Fixed AgentLoop discovery continuity, repeated Skill reads, and benchmark `destination_ref` propagation; Query lineage/freshness remain Coordinator-projected.
+- 完整 Diff、七维 Review 和验证记录见 `changelog/2026-10.md`。
+- Full Diff, seven-dimension review, and validation are recorded in `changelog/2026-10.md`.
 
 ## v12.5.3 (2026-09-30 23:20) - codex
 

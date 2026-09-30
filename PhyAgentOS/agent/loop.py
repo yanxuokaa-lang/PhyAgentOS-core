@@ -800,6 +800,11 @@ class AgentLoop:
                 if active_task_id is not None and self.forge_task_coordinator is not None
                 else self._task_for_session(experience_session_key)
             )
+            if active_task_id is None and active_task is not None:
+                # Once the Coordinator associates this turn with one task, pin
+                # that identity for every later model iteration. Session history
+                # remains context, not a second task-selection authority.
+                active_task_id = active_task.task_id
             if (
                 iteration == 1
                 and active_task is not None
@@ -1233,26 +1238,45 @@ class AgentLoop:
                 if (
                     projection_scope == "task"
                     and not discovery_continuation_used
-                    and "forge_task_materialize_plan" in tools_used
+                    and "forge_task_materialize_plan" in visible_tool_names
                     and active_task is not None
                     and self.forge_task_coordinator is not None
                     and iteration < self.max_iterations
                 ):
                     current_task = self.forge_task_coordinator.get_task(active_task.task_id)
+                    has_discovery_evidence = any(
+                        record.semantics == "query" and record.status == "succeeded"
+                        for record in current_task.active_revision.execution_records
+                    )
                     if (
                         current_task.status.value == "executing"
                         and self.prompt_context.phase(current_task) == "discovery"
+                        and (
+                            has_discovery_evidence
+                            or "forge_task_materialize_plan" in tools_used
+                        )
                     ):
+                        logger.warning(
+                            "Agent prose termination rejected before PlanGraph materialization "
+                            "task={} revision={} discovery_evidence={} materialization_attempted={}",
+                            current_task.task_id,
+                            current_task.active_revision_id,
+                            has_discovery_evidence,
+                            "forge_task_materialize_plan" in tools_used,
+                        )
                         discovery_continuation_used = True
                         messages.append({
                             "role": "system",
                             "content": (
-                                "The Coordinator still has no materialized PlanGraph for this task. "
-                                "The previous materialization attempt was not accepted. Use its "
-                                "diagnostic and persisted discovery evidence to submit a corrected "
-                                "plan through forge_task_materialize_plan, or use the task "
-                                "clarification tool if required information is missing. A prose "
-                                "promise to correct the plan does not advance the task."
+                                f"The active Coordinator task is {current_task.task_id}; it remains "
+                                "executing and has no materialized PlanGraph. The currently visible "
+                                "forge_task_materialize_plan tool is the required forward transition. "
+                                "Use persisted discovery evidence to submit the semantic execution "
+                                "suffix, or use the task clarification tool only when required facts "
+                                "are genuinely unavailable. Do not claim that the active task, its "
+                                "Skill binding, or the materialization tool is absent without an "
+                                "authoritative Coordinator or Tool-registry error. A prose response "
+                                "does not advance or terminate this executing task."
                             ),
                         })
                         continue

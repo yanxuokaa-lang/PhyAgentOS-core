@@ -346,11 +346,14 @@ def visible_tool_names(
     if graph is None:
         allowed = generic | _TASK_COMMON | _DISCOVERY
         # Skill activation and task projection are already persisted on the
-        # AgentTask. Keeping them visible after creation lets a model spend its
-        # bounded discovery turn rebuilding control-plane context indefinitely
-        # instead of issuing the required task-bound Query.
+        # AgentTask. Do not expose the filesystem reader after a Skill binding
+        # exists: the activation receipt already contains the authoritative
+        # Skill document, and repeated SKILL.md reads can strand discovery
+        # before the required task-bound Query or semantic materialization.
         allowed.discard("activate_skill")
         allowed.discard("forge_task_get")
+        if getattr(task, "primary_skill_binding", None) is not None:
+            allowed.discard("read_file")
         if _runtime_rebind_authorized(task):
             allowed |= _RUNTIME_REBIND
         discovery_context_calls = _tool_call_names(messages).count("forge_tool_context")

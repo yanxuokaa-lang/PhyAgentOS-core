@@ -553,6 +553,69 @@ def test_scene_understand_rejects_agent_supplied_carried_entities():
     assert "Coordinator-owned" in result["error"]["message"]
 
 
+def test_observation_bound_query_rejects_agent_authored_lineage_field():
+    task = _carry_task()
+
+    class Coordinator:
+        def get_task(self, task_id):
+            assert task_id == "task-1"
+            return task
+
+        async def invoke_query(self, *_args, **_kwargs):
+            raise AssertionError("invalid lineage must be rejected before Gateway invocation")
+
+    result = json.loads(asyncio.run(ForgeToolQueryTool(object(), Coordinator()).execute(
+        task_id="task-1",
+        tool_id="scene.understand",
+        arguments={},
+        argument_sources={
+            "max_capture_skew_ms": {
+                "record_id": "observe-new",
+                "path": ["arguments", "max_capture_skew_ms"],
+            },
+        },
+    )))
+
+    assert result["ok"] is False
+    assert "observation lineage is Coordinator-owned" in result["error"]["message"]
+
+
+def test_stale_observation_retry_cannot_relax_max_age():
+    stale = _execution_record(
+        "observe-stale",
+        "scene.observe",
+        "query",
+        "revision-current",
+        {"data": {
+            "status": "stale",
+            "error": {"code": "stale_observation", "message": "too old"},
+        }},
+        arguments={"sensor_ref": "camera/front", "max_age_ms": 1000},
+    )
+    task = SimpleNamespace(
+        active_revision_id="revision-current",
+        active_revision=SimpleNamespace(execution_records=[stale]),
+        execution_records=[stale],
+    )
+
+    class Coordinator:
+        def get_task(self, task_id):
+            assert task_id == "task-1"
+            return task
+
+        async def invoke_query(self, *_args, **_kwargs):
+            raise AssertionError("relaxed freshness must be rejected before Gateway invocation")
+
+    result = json.loads(asyncio.run(ForgeToolQueryTool(object(), Coordinator()).execute(
+        task_id="task-1",
+        tool_id="scene.observe",
+        arguments={"sensor_ref": "camera/front", "max_age_ms": 5000},
+    )))
+
+    assert result["ok"] is False
+    assert "cannot increase max_age_ms from 1000 to 5000" in result["error"]["message"]
+
+
 def test_scene_understand_injects_only_coordinator_authorized_carry_forward():
     task = _carry_task()
 

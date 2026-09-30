@@ -20,7 +20,11 @@ from PhyAgentOS.agent.plan_proposal import (
     compile_task_plan,
 )
 from PhyAgentOS.agent.planning_loop import _planning_record_status
-from PhyAgentOS.agent.prompt_context import _compact_activation_results, compact_tool_result
+from PhyAgentOS.agent.prompt_context import (
+    _compact_activation_results,
+    compact_tool_result,
+    visible_tool_names,
+)
 from PhyAgentOS.agent.recovery_decisions import AgentRecoveryDecisions
 from PhyAgentOS.agent.tools.forge_task import (
     ForgeTaskClarificationTool,
@@ -95,6 +99,33 @@ def test_agent_loop_retries_provider_timeout_before_tool_dispatch(
 def test_model_failure_preserves_coordinator_replan_checkpoint(status, expected):
     task = SimpleNamespace(status=status)
     assert AgentLoop._should_fail_task_after_model_failure(task) is expected
+
+
+def test_bound_discovery_hides_redundant_skill_reads_but_unbound_turn_keeps_filesystem_tools():
+    names = (
+        "read_file",
+        "list_dir",
+        "forge_task_get",
+        "forge_tool_context",
+        "forge_tool_query",
+        "forge_task_materialize_plan",
+    )
+    unbound = set(visible_tool_names(names, None))
+    assert "read_file" in unbound
+
+    bound_task = SimpleNamespace(
+        status="executing",
+        terminal=False,
+        cancellation_requested=False,
+        pause_requested=False,
+        primary_skill_binding=SimpleNamespace(required_tools=()),
+        active_revision=SimpleNamespace(plan_graph=None, execution_records=()),
+        execution_records=(),
+    )
+    visible = set(visible_tool_names(names, bound_task))
+    assert "read_file" not in visible
+    assert "forge_task_materialize_plan" in visible
+    assert "forge_tool_query" in visible
 
 
 def test_replan_turn_claims_bounded_lease_before_model_request(tmp_path):
@@ -598,6 +629,47 @@ def test_prepare_bindings_map_observed_identity_to_benchmark_destination():
     }
 
 
+def test_task_goal_identity_injects_destination_without_optional_goal_source():
+    discovery = SimpleNamespace(execution_records=[
+        SimpleNamespace(
+            tool_id="task.goal",
+            status="succeeded",
+            response={
+                "status": "available",
+                "goals": [{
+                    "execution_entity_ref": "entity://runtime-object",
+                    "destination_ref": "destination://external/slot",
+                }],
+            },
+        ),
+        SimpleNamespace(
+            tool_id="scene.bind",
+            node_id="bind-scene",
+            status="succeeded",
+            response={
+                "status": "available",
+                "entities": [{
+                    "entity_ref": "entity://observed-object",
+                    "execution_entity_ref": "entity://runtime-object",
+                }],
+            },
+        ),
+    ])
+    task = SimpleNamespace(revisions=[discovery], active_revision=discovery)
+    nodes = (PlanNode(
+        node_id="prepare-object",
+        obligation_id="prepare-object",
+        capability="manipulation.prepare",
+        input_bindings={"entity_ref": "entity://observed-object"},
+    ),)
+
+    completed = _complete_persisted_runtime_bindings(task, nodes)
+
+    assert completed[0].input_bindings["destination_ref"] == (
+        "destination://external/slot"
+    )
+
+
 def test_benchmark_destination_overrides_agent_authored_target():
     discovery = SimpleNamespace(execution_records=[
         SimpleNamespace(
@@ -849,6 +921,69 @@ def test_rejected_materialization_prose_gets_one_discovery_continuation(tmp_path
         assert result.model_failure_code is None
         if not recover:
             assert result.content == "Still cannot submit"
+
+    asyncio.run(exercise())
+
+
+def test_discovery_complete_prose_cannot_abandon_active_task_before_materialization(tmp_path):
+    async def exercise():
+        coordinator, task = setup_task(tmp_path)
+        coordinator.store.update(
+            task.task_id,
+            lambda current: current.active_revision.execution_records.append(
+                ToolExecutionRecord(
+                    record_id="tool-observe",
+                    revision_id=current.active_revision_id,
+                    tool_id="scene.observe",
+                    semantics="query",
+                    caller_id="paos:test",
+                    status="succeeded",
+                    arguments={"sensor_ref": "camera/front", "max_age_ms": 1000},
+                    response={"data": {
+                        "status": "available",
+                        "observation_ref": "observation://scene/front",
+                        "scene_revision": "scene-1",
+                        "calibration_ref": "artifact://scene/calibration",
+                    }},
+                    evidence_refs=["tool:tool-observe"],
+                )
+            ),
+            event_type="test_discovery_complete",
+        )
+        provider = ScriptedProvider([
+            LLMResponse(content=(
+                "The active task and materialization tool are unavailable; create a new task."
+            )),
+            LLMResponse(content=None, tool_calls=[ToolCallRequest(
+                "materialize",
+                "forge_task_materialize_plan",
+                {
+                    "task_id": task.task_id,
+                    "nodes": semantic_nodes(1),
+                    "reason": "continue the persisted active task",
+                },
+            )]),
+        ])
+        loop = AgentLoop(
+            bus=MessageBus(),
+            provider=provider,
+            workspace=tmp_path,
+            forge_task_coordinator=coordinator,
+            max_iterations=3,
+        )
+
+        result = await loop._run_agent_loop(
+            [{"role": "user", "content": task.task_description}],
+            active_task_id=task.task_id,
+            yield_after_tools=frozenset({"forge_task_materialize_plan"}),
+        )
+
+        assert len(provider.requests) == 2
+        assert result.tools_used == ["forge_task_materialize_plan"]
+        assert coordinator.get_task(task.task_id).active_revision.plan_graph is not None
+        correction = provider.requests[1]["messages"][-1]["content"]
+        assert task.task_id in correction
+        assert "currently visible forge_task_materialize_plan" in correction
 
     asyncio.run(exercise())
 

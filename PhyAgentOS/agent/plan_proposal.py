@@ -259,16 +259,28 @@ def _complete_persisted_runtime_bindings(
     for revision in task.revisions:
         for record in revision.execution_records:
             facts = response_facts(record.response)
-            if record.status == "succeeded" and record.tool_id == "task.goal":
-                if facts.get("goal_source", facts.get("geometry_source")) == "benchmark_task_definition":
-                    for goal in facts.get("goals", ()):
-                        if not isinstance(goal, Mapping):
-                            continue
-                        entity = goal.get("execution_entity_ref")
-                        destination = goal.get("destination_ref")
-                        if isinstance(entity, str) and isinstance(destination, str):
-                            goal_sources.setdefault(entity, set()).add(destination)
-                            goal_entities_by_destination.setdefault(destination, set()).add(entity)
+            if (
+                record.status == "succeeded"
+                and record.tool_id == "task.goal"
+                and facts.get("status") in {None, "available"}
+            ):
+                # task.goal is the task-specification boundary by Tool identity.
+                # Providers may additionally report goal_source/geometry_source,
+                # but goal propagation must not depend on an optional extension
+                # that an output-schema projection may omit.
+                for goal in facts.get("goals", ()):
+                    if not isinstance(goal, Mapping):
+                        continue
+                    entity = goal.get("execution_entity_ref")
+                    destination = goal.get("destination_ref")
+                    if (
+                        isinstance(entity, str)
+                        and entity.startswith("entity://")
+                        and isinstance(destination, str)
+                        and destination.startswith("destination://")
+                    ):
+                        goal_sources.setdefault(entity, set()).add(destination)
+                        goal_entities_by_destination.setdefault(destination, set()).add(entity)
     benchmark_goal_mode = bool(goal_sources)
 
     # Scene-bound facts may cross segments only within the current capture. Task goals
