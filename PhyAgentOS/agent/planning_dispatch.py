@@ -374,6 +374,28 @@ class AgentComposedDispatch:
                         )
                         else {}
                     ),
+                    **(
+                        {"argument_projection_sources": {
+                            policy.tool_id: {
+                                slot: {
+                                    "tool_id": source.tool_id,
+                                    "source_scope": source.source_scope,
+                                }
+                                for slot, source in policy.argument_projection_plan.source_slots.items()
+                            }
+                            for policy in self.policies
+                            if nodes[node_id].capability in policy.capabilities
+                            and policy.argument_projection_plan is not None
+                            and policy.argument_projection_plan.source_slots
+                        }}
+                        if any(
+                            nodes[node_id].capability in policy.capabilities
+                            and policy.argument_projection_plan is not None
+                            and policy.argument_projection_plan.source_slots
+                            for policy in self.policies
+                        )
+                        else {}
+                    ),
                 }
                 for node_id in ready
                 if any(

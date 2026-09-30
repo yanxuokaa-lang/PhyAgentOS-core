@@ -10,17 +10,32 @@ planning:
   argument_projection_plan:
     projection_id: candidate_set_for_entity_v1
     join_field: entity_ref
-    source_field_map:
-      observation_ref: [observation_ref]
-      scene_revision: [scene_revision]
-      frame_id: [frame, frame_id]
-      calibration_ref: [calibration_ref]
-      freshness_ms: [freshness_ms]
-      max_age_ms: [max_age_ms]
-      candidate_set_ref: [candidate_set_ref]
-    filtered_collection: candidates
-    filtered_output_field: candidates
-    filtered_join_field: entity_ref
+    source_slots:
+      candidates:
+        tool_id: grasp.propose
+        source_scope: predecessor
+        source_field_map:
+          observation_ref: [observation_ref]
+          scene_revision: [scene_revision]
+          frame_id: [frame, frame_id]
+          calibration_ref: [calibration_ref]
+          freshness_ms: [freshness_ms]
+          max_age_ms: [max_age_ms]
+          candidate_set_ref: [candidate_set_ref]
+        filtered_collection: candidates
+        filtered_output_field: candidates
+        filtered_join_field: entity_ref
+      capabilities:
+        tool_id: manipulation.capabilities
+        source_scope: evidence
+        source_field_map:
+          capability_snapshot_ref: [snapshot_ref]
+        list_field_map:
+          allowed_arms:
+            source_path: [arms]
+            item_field: arm_id
+            where_field: availability
+            where_equals: available
     top_level_fields: []
 description: Evaluate non-mutating workspace, kinematic, and collision readiness for
   one grasp candidate set without authorizing or producing motion.

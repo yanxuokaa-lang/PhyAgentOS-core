@@ -165,12 +165,12 @@ class ForgePlanSelectTool(Tool):
         return (
             "Select one ready semantic node and Tool; returns a PAOS-generated planning "
             "binding plus the final Tool arguments without invoking a Gateway. For a Tool "
-            "with a declared argument projection, pass projection_source only; a legacy "
-            "argument_sources map is accepted only for compatible top-level fields from "
-            "that same record. Projection-only selections may omit arguments; omission is "
+            "with named projection source slots, pass projection_sources using only the "
+            "ToolSpec-declared slot names and authorized record IDs. Legacy single-source "
+            "projections use projection_source. Projection-only selections may omit arguments; omission is "
             "normalized to an empty object at this planning boundary. For a Tool without a "
             "projection, use arguments and/or "
-            "argument_sources, never projection_source. Pass the returned binding and "
+            "argument_sources, never projection_source/projection_sources. Pass the returned binding and "
             "selection unchanged."
         )
 
@@ -186,8 +186,8 @@ class ForgePlanSelectTool(Tool):
                     "type": "object",
                     "default": {},
                     "description": (
-                        "Direct Tool arguments. Omit this field when projection_source or "
-                        "argument_sources provides every Tool argument."
+                        "Direct Tool arguments. Omit this field when projection_source, "
+                        "projection_sources, or argument_sources provides every Tool argument."
                     ),
                 },
                 "argument_sources": {
@@ -209,10 +209,25 @@ class ForgePlanSelectTool(Tool):
                 },
                 "projection_source": {
                     "type": "object",
-                    "description": "For a ToolSpec projection, the one authorized understanding record. Do not manually source targets or geometry fields.",
+                    "description": "For a legacy single-source ToolSpec projection, the one authorized record. Do not manually source targets or geometry fields.",
                     "properties": {"record_id": {"type": "string", "minLength": 1}},
                     "required": ["record_id"],
                     "additionalProperties": False,
+                },
+                "projection_sources": {
+                    "type": "object",
+                    "description": (
+                        "For a named ToolSpec projection, map each declared source slot to "
+                        "one authorized record. Do not provide paths or projected values."
+                    ),
+                    "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                            "record_id": {"type": "string", "minLength": 1}
+                        },
+                        "required": ["record_id"],
+                        "additionalProperties": False,
+                    },
                 },
                 "decision_reason": {"type": "string", "minLength": 1},
             },
@@ -229,6 +244,7 @@ class ForgePlanSelectTool(Tool):
         arguments: dict[str, Any] | None = None,
         argument_sources: dict[str, Any] | None = None,
         projection_source: dict[str, Any] | None = None,
+        projection_sources: dict[str, Any] | None = None,
     ) -> str:
         # Projection-only selections have no model-authored Tool arguments. Normalize the
         # omission before Coordinator validation so all downstream planning records retain
@@ -309,13 +325,38 @@ class ForgePlanSelectTool(Tool):
                         node_id,
                         scene_revision=dispatch.current_scene_revision,
                     )
-                    final_arguments = _merge_projection_compatible_sources(
-                        context,
-                        literals=final_arguments,
-                        argument_sources=argument_sources,
-                        projection_source=projection_source,
-                        projection_plan=projection_plan,
+                    named_sources = bool(
+                        projection_plan is not None and projection_plan.source_slots
                     )
+                    if named_sources:
+                        if projection_source is not None or argument_sources:
+                            raise PlanningLoopError(
+                                "named consumer projection accepts projection_sources only"
+                            )
+                        normalized_sources = {}
+                        if isinstance(projection_sources, Mapping):
+                            for slot, selector in projection_sources.items():
+                                if (
+                                    not isinstance(selector, Mapping)
+                                    or set(selector) != {"record_id"}
+                                ):
+                                    raise PlanningLoopError(
+                                        "named projection source selectors require only record_id"
+                                    )
+                                normalized_sources[slot] = selector.get("record_id")
+                    else:
+                        if projection_sources is not None:
+                            raise PlanningLoopError(
+                                "legacy consumer projection does not declare named source slots"
+                            )
+                        normalized_sources = None
+                        final_arguments = _merge_projection_compatible_sources(
+                            context,
+                            literals=final_arguments,
+                            argument_sources=argument_sources,
+                            projection_source=projection_source,
+                            projection_plan=projection_plan,
+                        )
                     final_arguments = project_consumer_arguments(
                         context,
                         projection=projection,
@@ -326,6 +367,7 @@ class ForgePlanSelectTool(Tool):
                             if isinstance(projection_source, dict)
                             else None
                         ),
+                        source_record_ids=normalized_sources,
                     )
                 except PlanningLoopError as exc:
                     raise PlanningDispatchError(
@@ -334,10 +376,10 @@ class ForgePlanSelectTool(Tool):
                         failure_owner="agent_arguments",
                         retryable_in_revision=False,
                         requires_replan=True,
-                        recommended_action="use_one_understanding_record_for_projection_and_top_level_fields",
+                        recommended_action="use_exact_tool_spec_projection_source_slots",
                     ) from exc
             else:
-                if projection_source is not None:
+                if projection_source is not None or projection_sources is not None:
                     raise PlanningDispatchError(
                         "projection_source was supplied for a Tool without a declared projection",
                         code="consumer_projection_invalid",
@@ -386,7 +428,7 @@ class ForgePlanSelectTool(Tool):
                 for field in ("task_id", "revision_id", "scene_revision", "tool_arguments")
                 if field in receipt
             }
-            if argument_sources or projection_source:
+            if argument_sources or projection_source or projection_sources:
                 selection["tool_arguments"] = {}
                 selection["use_selected_arguments"] = True
             return json.dumps(

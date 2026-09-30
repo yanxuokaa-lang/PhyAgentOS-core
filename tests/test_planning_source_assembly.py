@@ -447,12 +447,12 @@ def test_schema_selection_receipt_and_query_execute_identical_assembled_values(
     rejected = json.loads(
         asyncio.run(
             ForgePlanSelectTool(coordinator, lambda: dispatch).execute(
-                task.task_id,
-                "grasp",
-                "grasp.propose",
-                arguments,
-                "incompatible whole-array selection",
-                {
+                task_id=task.task_id,
+                node_id="grasp",
+                tool_id="grasp.propose",
+                decision_reason="incompatible whole-array selection",
+                arguments=arguments,
+                argument_sources={
                     "targets": {
                         "record_id": "understanding",
                         "path": ["response", "data", "entities"],
@@ -468,12 +468,12 @@ def test_schema_selection_receipt_and_query_execute_identical_assembled_values(
     selected = json.loads(
         asyncio.run(
             ForgePlanSelectTool(coordinator, lambda: dispatch).execute(
-                task.task_id,
-                "grasp",
-                "grasp.propose",
-                arguments,
-                "select observed object by identity",
-                source_map(),
+                task_id=task.task_id,
+                node_id="grasp",
+                tool_id="grasp.propose",
+                decision_reason="select observed object by identity",
+                arguments=arguments,
+                argument_sources=source_map(),
             )
         )
     )

@@ -130,7 +130,11 @@ def test_plan_select_is_control_plane_only_and_returns_binding():
     tool = ForgePlanSelectTool(coordinator, lambda: _Dispatch())
 
     result = json.loads(asyncio.run(tool.execute(
-        "task-1", "observe", "scene.observe", {}, "initial observation"
+        task_id="task-1",
+        node_id="observe",
+        tool_id="scene.observe",
+        decision_reason="initial observation",
+        arguments={},
     )))
 
     assert result["ok"] is True
@@ -168,7 +172,11 @@ def test_plan_select_resumes_existing_unconsumed_selection_without_reselecting()
     result = json.loads(asyncio.run(ForgePlanSelectTool(
         coordinator, lambda: _Dispatch()
     ).execute(
-        "task-1", "observe", "scene.observe", {"sensor_ref": "wrong"}, "retry selection"
+        task_id="task-1",
+        node_id="observe",
+        tool_id="scene.observe",
+        decision_reason="retry selection",
+        arguments={"sensor_ref": "wrong"},
     )))
 
     assert result["ok"] is True
@@ -254,8 +262,12 @@ def test_plan_select_resolves_catalogued_predecessor_source_before_persistence(c
     coordinator = Coordinator()
     tool = ForgePlanSelectTool(coordinator, lambda: _Dispatch())
     wrong_mode = json.loads(asyncio.run(tool.execute(
-        "task-1", "prepare", "manipulation.prepare", {"entity_ref": "entity://green"},
-        "use persisted proposal", projection_source={"record_id": "tool-proposal"},
+        task_id="task-1",
+        node_id="prepare",
+        tool_id="manipulation.prepare",
+        decision_reason="use persisted proposal",
+        arguments={"entity_ref": "entity://green"},
+        projection_source={"record_id": "tool-proposal"},
     )))
     assert wrong_mode["error"]["code"] == "consumer_projection_invalid"
     assert wrong_mode["error"]["retryable_in_revision"] is True
@@ -263,8 +275,12 @@ def test_plan_select_resolves_catalogued_predecessor_source_before_persistence(c
     assert coordinator.proposals == []
 
     hidden_source = json.loads(asyncio.run(tool.execute(
-        "task-1", "prepare", "manipulation.prepare", {"entity_ref": "entity://green"},
-        "use persisted proposal", argument_sources={
+        task_id="task-1",
+        node_id="prepare",
+        tool_id="manipulation.prepare",
+        decision_reason="use persisted proposal",
+        arguments={"entity_ref": "entity://green"},
+        argument_sources={
             "candidates": {"record_id": "unrelated-record", "path": ["response", "data", "candidates"]},
         },
     )))
@@ -275,12 +291,12 @@ def test_plan_select_resolves_catalogued_predecessor_source_before_persistence(c
     result = json.loads(
         asyncio.run(
             tool.execute(
-                "task-1",
-                "prepare",
-                "manipulation.prepare",
-                {"entity_ref": "entity://green"},
-                "use persisted proposal",
-                {
+                task_id="task-1",
+                node_id="prepare",
+                tool_id="manipulation.prepare",
+                decision_reason="use persisted proposal",
+                arguments={"entity_ref": "entity://green"},
+                argument_sources={
                     "candidates": {
                         "record_id": "tool-proposal",
                         "path": ["response", "data", "candidates"],
@@ -397,11 +413,11 @@ def test_plan_select_projects_authorized_understanding_into_persisted_consumer_a
     result = json.loads(asyncio.run(ForgePlanSelectTool(
         coordinator, lambda: dispatch
     ).execute(
-        "task-1",
-        "grasp-green",
-        "grasp.propose",
-        {},
-        "select the current green entity",
+        task_id="task-1",
+        node_id="grasp-green",
+        tool_id="grasp.propose",
+        decision_reason="select the current green entity",
+        arguments={},
         argument_sources={
             "observation_ref": {
                 "record_id": "understanding-record",
@@ -429,11 +445,11 @@ def test_plan_select_projects_authorized_understanding_into_persisted_consumer_a
     conflict = json.loads(asyncio.run(ForgePlanSelectTool(
         coordinator, lambda: dispatch
     ).execute(
-        "task-1",
-        "grasp-green",
-        "grasp.propose",
-        {"entity_ref": "entity://renamed-green"},
-        "reject a renamed entity",
+        task_id="task-1",
+        node_id="grasp-green",
+        tool_id="grasp.propose",
+        decision_reason="reject a renamed entity",
+        arguments={"entity_ref": "entity://renamed-green"},
         projection_source={"record_id": "understanding-record"},
     )))
     assert conflict["ok"] is False
@@ -495,7 +511,11 @@ def test_plan_select_rejects_when_task_is_not_active_graph():
     tool = ForgePlanSelectTool(coordinator, lambda: None)
 
     result = json.loads(asyncio.run(tool.execute(
-        "task-1", "observe", "scene.observe", {}, "initial observation"
+        task_id="task-1",
+        node_id="observe",
+        tool_id="scene.observe",
+        decision_reason="initial observation",
+        arguments={},
     )))
 
     assert result["ok"] is False
@@ -514,7 +534,11 @@ def test_plan_select_reports_rejection_persistence_failure():
     result = json.loads(asyncio.run(ForgePlanSelectTool(
         FailingCoordinator(), lambda: None
     ).execute(
-        "task-1", "observe", "scene.observe", {}, "initial observation"
+        task_id="task-1",
+        node_id="observe",
+        tool_id="scene.observe",
+        decision_reason="initial observation",
+        arguments={},
     )))
 
     assert result["ok"] is False
@@ -633,7 +657,11 @@ def test_missing_node_source_context_requires_plan_recovery():
     result = json.loads(asyncio.run(ForgePlanSelectTool(
         coordinator, lambda: _Dispatch()
     ).execute(
-        "task-1", "prepare", "manipulation.prepare", {}, "copy predecessor candidates",
+        task_id="task-1",
+        node_id="prepare",
+        tool_id="manipulation.prepare",
+        decision_reason="copy predecessor candidates",
+        arguments={},
         argument_sources={
             "candidates": {"record_id": "tool-proposal", "path": ["response", "data", "candidates"]},
         },
@@ -694,11 +722,11 @@ def test_prepare_selection_reports_all_missing_runtime_arguments_and_persists_ev
     tool = ForgePlanSelectTool(coordinator, lambda: dispatch)
 
     result = json.loads(asyncio.run(tool.execute(
-        task_id,
-        node.node_id,
-        policy.tool_id,
-        {},
-        "prepare current candidates",
+        task_id=task_id,
+        node_id=node.node_id,
+        tool_id=policy.tool_id,
+        decision_reason="prepare current candidates",
+        arguments={},
     )))
 
     assert result["ok"] is False
@@ -782,11 +810,11 @@ def test_incomplete_grasp_selection_is_rejected_before_tool_record(tmp_path):
     result = json.loads(asyncio.run(ForgePlanSelectTool(
         coordinator, lambda: dispatch
     ).execute(
-        task_id,
-        node.node_id,
-        policy.tool_id,
-        {"entity_ref": "entity://green"},
-        "select the current green entity",
+        task_id=task_id,
+        node_id=node.node_id,
+        tool_id=policy.tool_id,
+        decision_reason="select the current green entity",
+        arguments={"entity_ref": "entity://green"},
     )))
 
     assert result["ok"] is False
@@ -840,11 +868,11 @@ def test_unbindable_historical_selection_enters_bounded_replan(tmp_path):
     result = json.loads(asyncio.run(ForgePlanSelectTool(
         coordinator, lambda: dispatch
     ).execute(
-        task_id,
-        node.node_id,
-        policy.tool_id,
-        {},
-        "select historical node",
+        task_id=task_id,
+        node_id=node.node_id,
+        tool_id=policy.tool_id,
+        decision_reason="select historical node",
+        arguments={},
     )))
 
     assert result["error"]["code"] == "node_tool_binding_incompatible"

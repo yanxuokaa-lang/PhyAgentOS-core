@@ -58,6 +58,76 @@ class ResourceClaim(_Frozen):
     quantity: int = Field(default=1, ge=1)
 
 
+class ArgumentProjectionListPlan(_Frozen):
+    """Project a list by copying one field from each source collection item."""
+
+    source_path: tuple[str | int, ...]
+    item_field: str = Field(min_length=1)
+    where_field: str | None = None
+    where_equals: bool | str | int | float | None = None
+    require_non_empty: bool = True
+    unique: bool = True
+
+    @field_validator("source_path")
+    @classmethod
+    def validate_source_path(
+        cls, value: tuple[str | int, ...]
+    ) -> tuple[str | int, ...]:
+        if not value or any(
+            not isinstance(part, (str, int))
+            or (isinstance(part, str) and not part)
+            for part in value
+        ):
+            raise ValueError("projection list source_path must contain strings or indexes")
+        return value
+
+    @model_validator(mode="after")
+    def validate_predicate(self) -> "ArgumentProjectionListPlan":
+        if self.where_field is not None and not self.where_field.strip():
+            raise ValueError("projection list where_field must be non-empty")
+        if (self.where_field is None) != (self.where_equals is None):
+            raise ValueError(
+                "projection list where_field and where_equals must be provided together"
+            )
+        return self
+
+
+class ArgumentProjectionSourcePlan(_Frozen):
+    """One ToolSpec-declared authorized source role for a projection."""
+
+    tool_id: str = Field(min_length=1)
+    source_scope: Literal["authorized", "predecessor", "evidence"] = "authorized"
+    source_field_map: dict[str, tuple[str | int, ...]] = Field(default_factory=dict)
+    list_field_map: dict[str, ArgumentProjectionListPlan] = Field(default_factory=dict)
+    filtered_collection: str | None = None
+    filtered_output_field: str | None = None
+    filtered_join_field: str | None = None
+
+    @model_validator(mode="after")
+    def validate_source_shape(self) -> "ArgumentProjectionSourcePlan":
+        for output_field, source_path in self.source_field_map.items():
+            if not output_field.strip() or not source_path:
+                raise ValueError("projection source fields require non-empty paths")
+            if any(
+                not isinstance(part, (str, int))
+                or (isinstance(part, str) and not part)
+                for part in source_path
+            ):
+                raise ValueError("projection source paths must contain strings or indexes")
+        if bool(self.filtered_collection) != bool(self.filtered_output_field):
+            raise ValueError(
+                "filtered_collection and filtered_output_field must be provided together"
+            )
+        outputs = [
+            *self.source_field_map,
+            *self.list_field_map,
+            *([self.filtered_output_field] if self.filtered_output_field else []),
+        ]
+        if not outputs or len(outputs) != len(set(outputs)):
+            raise ValueError("projection source outputs must be non-empty and unique")
+        return self
+
+
 class ArgumentProjectionPlan(_Frozen):
     """Provider-neutral declaration for compiling producer facts for one consumer."""
 
@@ -81,6 +151,7 @@ class ArgumentProjectionPlan(_Frozen):
     filtered_collection: str | None = None
     filtered_output_field: str | None = None
     filtered_join_field: str | None = None
+    source_slots: dict[str, ArgumentProjectionSourcePlan] = Field(default_factory=dict)
 
     @field_validator(
         "entity_fields", "envelope_fields", "artifact_fields", "top_level_fields"
@@ -93,7 +164,30 @@ class ArgumentProjectionPlan(_Frozen):
 
     @model_validator(mode="after")
     def validate_projection_shape(self) -> "ArgumentProjectionPlan":
-        if self.source_field_map:
+        if self.source_slots:
+            if any(not slot.strip() for slot in self.source_slots):
+                raise ValueError("projection source slot names must be non-empty")
+            if (
+                self.source_field_map
+                or self.entity_collection
+                or self.envelope_collection
+                or self.artifact_collection
+                or self.output_collection
+                or self.filtered_collection
+                or self.filtered_output_field
+            ):
+                raise ValueError(
+                    "named projection source slots cannot mix with legacy source fields"
+                )
+            outputs: list[str] = []
+            for source in self.source_slots.values():
+                outputs.extend(source.source_field_map)
+                outputs.extend(source.list_field_map)
+                if source.filtered_output_field:
+                    outputs.append(source.filtered_output_field)
+            if len(outputs) != len(set(outputs)):
+                raise ValueError("named projection source outputs must be unique")
+        elif self.source_field_map:
             for output_field, source_path in self.source_field_map.items():
                 if not output_field.strip() or not source_path:
                     raise ValueError("direct projection fields require non-empty paths")
@@ -311,7 +405,18 @@ def required_node_binding_keys(policy: ToolSpecPolicy) -> tuple[str, ...]:
         required.extend(("entity_ref", "destination_ref", "capability_snapshot_ref"))
         if policy.tool_id == "manipulation.prepare":
             required.append("binding_ref")
-    return tuple(dict.fromkeys(required))
+    projected: set[str] = set()
+    plan = policy.argument_projection_plan
+    if plan is not None:
+        projected.update(plan.source_field_map)
+        if plan.filtered_output_field:
+            projected.add(plan.filtered_output_field)
+        for source in plan.source_slots.values():
+            projected.update(source.source_field_map)
+            projected.update(source.list_field_map)
+            if source.filtered_output_field:
+                projected.add(source.filtered_output_field)
+    return tuple(key for key in dict.fromkeys(required) if key not in projected)
 
 
 class ToolCallEnvelope(_Frozen):

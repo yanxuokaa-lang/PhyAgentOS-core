@@ -7,7 +7,9 @@ execution and persistence.
 
 from .admission import AdmissionContext, AdmissionDecision, admit_tool_call
 from .contracts import (
+    ArgumentProjectionListPlan,
     ArgumentProjectionPlan,
+    ArgumentProjectionSourcePlan,
     DecisionTrace,
     NodeSettlement,
     PlanGraph,
@@ -55,7 +57,9 @@ from .trace import make_decision_trace
 
 __all__ = [
     "AdmissionContext",
+    "ArgumentProjectionListPlan",
     "ArgumentProjectionPlan",
+    "ArgumentProjectionSourcePlan",
     "AdmissionDecision",
     "DecisionTrace",
     "NodeSettlement",

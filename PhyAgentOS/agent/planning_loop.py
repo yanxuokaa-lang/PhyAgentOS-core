@@ -418,9 +418,10 @@ def project_consumer_arguments(
     projection: str | None,
     projection_plan: ArgumentProjectionPlan | None,
     literals: Mapping[str, Any],
-    source_record_id: str | None,
+    source_record_id: str | None = None,
+    source_record_ids: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
-    """Compile a ToolSpec-declared projection from one authorized record."""
+    """Compile a ToolSpec projection from declared authorized source roles."""
     if projection is None and projection_plan is None:
         return dict(literals)
     if projection_plan is None:
@@ -430,7 +431,13 @@ def project_consumer_arguments(
     if projection is not None and projection_plan.projection_id != projection:
         raise PlanningLoopError("ToolSpec projection name does not match its projection plan")
     records = _node_source_records(context)
-    if not isinstance(source_record_id, str) or not source_record_id:
+    if projection_plan.source_slots:
+        source_record_ids = _validate_named_projection_sources(
+            context,
+            projection_plan,
+            source_record_ids,
+        )
+    elif not isinstance(source_record_id, str) or not source_record_id:
         raise PlanningLoopError("consumer projection requires an authorized source record_id")
     try:
         return execute_argument_projection(
@@ -438,9 +445,123 @@ def project_consumer_arguments(
             records=records,
             literals=literals,
             source_record_id=source_record_id,
+            source_record_ids=source_record_ids,
         )
     except ArgumentProjectionError as exc:
         raise PlanningLoopError(str(exc)) from exc
+
+
+def _validate_named_projection_sources(
+    context: NodeExecutionContext,
+    plan: ArgumentProjectionPlan,
+    selectors: Mapping[str, str] | None,
+) -> dict[str, str]:
+    if not isinstance(selectors, Mapping):
+        raise PlanningLoopError("consumer projection requires named source records")
+    if set(selectors) != set(plan.source_slots):
+        raise PlanningLoopError("named projection sources must match ToolSpec source slots")
+
+    records: dict[str, tuple[str, str, Mapping[str, Any], Mapping[str, Any] | None]] = {}
+    for predecessor in context.predecessor_context:
+        for execution in predecessor.executions:
+            if execution.status == "succeeded":
+                records[execution.record_id] = (
+                    "predecessor",
+                    execution.tool_id,
+                    execution.arguments,
+                    execution.response,
+                )
+    for evidence in context.evidence_context:
+        if evidence.status == "succeeded" and evidence.record_id not in records:
+            records[evidence.record_id] = (
+                "evidence",
+                evidence.tool_id,
+                evidence.arguments,
+                evidence.response,
+            )
+
+    identities: list[tuple[str, dict[str, str | None]]] = []
+    resolved: dict[str, str] = {}
+    for slot, source in plan.source_slots.items():
+        record_id = selectors.get(slot)
+        if not isinstance(record_id, str) or not record_id:
+            raise PlanningLoopError(f"projection source slot {slot!r} requires record_id")
+        record = records.get(record_id)
+        if record is None:
+            raise PlanningLoopError(f"projection source slot {slot!r} is not authorized")
+        scope, tool_id, arguments, response = record
+        if source.source_scope != "authorized" and scope != source.source_scope:
+            raise PlanningLoopError(
+                f"projection source slot {slot!r} requires {source.source_scope} record"
+            )
+        if tool_id != source.tool_id:
+            raise PlanningLoopError(
+                f"projection source slot {slot!r} requires Tool {source.tool_id}"
+            )
+        identity = _projection_world_identity(arguments, response)
+        if identity["scene_revision"] != context.scene_revision:
+            raise PlanningLoopError(
+                f"projection source slot {slot!r} belongs to stale scene revision"
+            )
+        identities.append((slot, identity))
+        resolved[slot] = record_id
+
+    baseline_slot, baseline = identities[0]
+    for slot, identity in identities[1:]:
+        for field in (
+            "scene_revision",
+            "observation_ref",
+            "frame_id",
+            "calibration_ref",
+        ):
+            if (
+                identity[field] is not None
+                and baseline[field] is not None
+                and identity[field] != baseline[field]
+            ):
+                raise PlanningLoopError(
+                    f"projection source slots {baseline_slot!r} and {slot!r} "
+                    f"have mismatched {field}"
+                )
+    return resolved
+
+
+def _projection_world_identity(
+    arguments: Mapping[str, Any], response: Mapping[str, Any] | None
+) -> dict[str, str | None]:
+    facts = response_facts(response)
+    scene_revision = explicit_scene_revision(facts) or explicit_scene_revision(arguments)
+    observation_ref = facts.get("observation_ref") or arguments.get("observation_ref")
+    calibration_ref = facts.get("calibration_ref") or arguments.get("calibration_ref")
+    frame = facts.get("frame")
+    frame_id = facts.get("frame_id") or arguments.get("frame_id")
+    if not isinstance(frame_id, str) and isinstance(frame, Mapping):
+        frame_id = frame.get("frame_id")
+    if isinstance(observation_ref, str) and observation_ref.startswith("observation://"):
+        payload = observation_ref.removeprefix("observation://").split("/", 1)
+        if len(payload) == 2:
+            observed_scene, _observation_identity = payload
+            if scene_revision is not None and observed_scene != scene_revision:
+                raise PlanningLoopError(
+                    "projection source observation_ref conflicts with scene_revision"
+                )
+            scene_revision = scene_revision or observed_scene
+    identity = {
+        "scene_revision": scene_revision,
+        "observation_ref": observation_ref,
+        "frame_id": frame_id,
+        "calibration_ref": calibration_ref,
+    }
+    missing = [
+        key
+        for key in ("scene_revision", "observation_ref", "calibration_ref")
+        if not isinstance(identity[key], str) or not identity[key]
+    ]
+    if missing:
+        raise PlanningLoopError(
+            "projection source omits world identity fields: " + ", ".join(missing)
+        )
+    return identity
 
 
 def _source_path(value: Any, *, allow_empty: bool = False) -> tuple[str | int, ...]:
@@ -952,14 +1073,21 @@ class AgentLoopNodeExecutor:
             "provenance-only when entity_ref is already frozen in input_bindings; do not browse "
             "its stale geometry. Use direct predecessor records and the current observation for "
             "all current-scene arguments. "
-            "If forge_plan_ready declares an argument_projection, select only the semantic entity_ref "
-            "and pass one visible source record that actually contains every field declared by that "
-            "projection; do not pass argument_sources for nested targets or geometry. For a projection "
+            "If forge_plan_ready declares argument_projection_sources, pass projection_sources with "
+            "exactly those declared slot names and one visible authorized record_id per slot; do not "
+            "provide source paths or projected values. The Coordinator compiles candidates, arm IDs, "
+            "geometry, and opaque references from those records. If forge_plan_ready declares only a "
+            "legacy argument_projection, select the semantic entity_ref and pass one visible source "
+            "record that contains every declared field; do not pass argument_sources for nested targets "
+            "or geometry. For a projection "
             "that consumes entity geometry (such as grasp.propose), use the authorized current "
             "scene.understand record. For a projection that consumes producer output (such as "
-            "manipulation.prepare), use the successful direct-predecessor record (grasp.propose) "
-            "that contains candidate_set_ref and candidates. Never assume every projection source "
-            "is an understanding record, and never use a record missing a declared source field. "
+            "manipulation.prepare), follow its named slots: use the successful direct-predecessor "
+            "record (grasp.propose) containing candidate_set_ref and candidates for the candidate "
+            "slot, and the authorized current-scene "
+            "manipulation.capabilities evidence record for available arms and its capability snapshot. "
+            "Never assume every projection source is an understanding record, and never use a record "
+            "missing a declared source field. "
             "The projection join field is Coordinator-owned: the consumer node entity_ref must "
             "match the producer candidate entity_ref byte-for-byte. Compare the source catalog "
             "identifiers before selecting; if no candidate matches the frozen entity, do not reuse "

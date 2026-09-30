@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from .contracts import (
     ArgumentProjectionPlan,
+    ArgumentProjectionSourcePlan,
     ResourceClaim,
     ToolSpecPolicy,
     canonical_sha256,
@@ -141,39 +142,171 @@ def execute_argument_projection(
     *,
     records: Mapping[str, tuple[Mapping[str, Any], Mapping[str, Any] | None]],
     literals: Mapping[str, Any],
-    source_record_id: str,
+    source_record_id: str | None = None,
+    source_record_ids: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """Execute a declarative projection without provider-specific field logic."""
 
-    if not isinstance(source_record_id, str) or source_record_id not in records:
-        raise ArgumentProjectionError("consumer projection source record is not visible")
-    arguments, response = records[source_record_id]
-    facts = response.get("data", response) if isinstance(response, Mapping) else {}
-    if not isinstance(facts, Mapping):
-        raise ArgumentProjectionError("consumer projection source has no structured result")
+    def read_path(root: Mapping[str, Any], path: tuple[str | int, ...]) -> Any:
+        value: Any = root
+        for part in path:
+            if isinstance(value, Mapping) and isinstance(part, str):
+                if part not in value:
+                    raise ArgumentProjectionError(
+                        f"projection source is missing field {'.'.join(map(str, path))}"
+                    )
+                value = value[part]
+            elif isinstance(value, (list, tuple)) and isinstance(part, int):
+                if part < 0 or part >= len(value):
+                    raise ArgumentProjectionError(
+                        f"projection source index is out of range for {path!r}"
+                    )
+                value = value[part]
+            else:
+                raise ArgumentProjectionError(
+                    f"projection source path is invalid at {part!r}"
+                )
+        return value
+
+    def read_record(record_id: str | None) -> tuple[Mapping[str, Any], Mapping[str, Any]]:
+        if not isinstance(record_id, str) or record_id not in records:
+            raise ArgumentProjectionError("consumer projection source record is not visible")
+        arguments, response = records[record_id]
+        facts = response.get("data", response) if isinstance(response, Mapping) else {}
+        if not isinstance(facts, Mapping):
+            raise ArgumentProjectionError("consumer projection source has no structured result")
+        return arguments, facts
+
+    def project_source(
+        source: ArgumentProjectionSourcePlan,
+        record_id: str,
+        *,
+        reject_owned_literals: bool,
+    ) -> dict[str, Any]:
+        arguments, facts = read_record(record_id)
+        outputs = {
+            *source.source_field_map,
+            *source.list_field_map,
+            *([source.filtered_output_field] if source.filtered_output_field else []),
+        }
+        authored = sorted(field for field in outputs if field in literals)
+        if reject_owned_literals and authored:
+            raise ArgumentProjectionError(
+                "named projection fields are Coordinator-owned: " + ", ".join(authored)
+            )
+        result: dict[str, Any] = {}
+        for output_field, source_path in source.source_field_map.items():
+            try:
+                value = read_path(facts, source_path)
+            except ArgumentProjectionError as response_error:
+                try:
+                    value = read_path(arguments, source_path)
+                except ArgumentProjectionError:
+                    raise response_error
+            if output_field in literals and literals[output_field] != value:
+                raise ArgumentProjectionError(
+                    f"projection field {output_field!r} conflicts with its source"
+                )
+            result[output_field] = value
+        for output_field, list_plan in source.list_field_map.items():
+            try:
+                collection = read_path(facts, list_plan.source_path)
+            except ArgumentProjectionError as response_error:
+                try:
+                    collection = read_path(arguments, list_plan.source_path)
+                except ArgumentProjectionError:
+                    raise response_error
+            if not isinstance(collection, (list, tuple)):
+                raise ArgumentProjectionError(
+                    f"projection list source {list_plan.source_path!r} is not an array"
+                )
+            values = []
+            for item in collection:
+                if not isinstance(item, Mapping):
+                    continue
+                if (
+                    list_plan.where_field is not None
+                    and item.get(list_plan.where_field) != list_plan.where_equals
+                ):
+                    continue
+                value = item.get(list_plan.item_field)
+                if isinstance(value, str) and value:
+                    values.append(value)
+            if list_plan.require_non_empty and not values:
+                raise ArgumentProjectionError(
+                    f"projection list field {output_field!r} is empty"
+                )
+            if list_plan.unique and len(values) != len(set(values)):
+                raise ArgumentProjectionError(
+                    f"projection list field {output_field!r} contains duplicates"
+                )
+            result[output_field] = values
+        if source.filtered_collection is not None:
+            collection = facts.get(source.filtered_collection)
+            if not isinstance(collection, (list, tuple)):
+                raise ArgumentProjectionError(
+                    f"projection source collection {source.filtered_collection!r} is not an array"
+                )
+            join_value = literals.get(plan.join_field)
+            if not isinstance(join_value, str) or not join_value:
+                raise ArgumentProjectionError(
+                    f"consumer projection requires selected {plan.join_field}"
+                )
+            join_field = source.filtered_join_field or plan.join_field
+            filtered = [
+                dict(item)
+                for item in collection
+                if isinstance(item, Mapping) and item.get(join_field) == join_value
+            ]
+            if not filtered:
+                raise ArgumentProjectionError(
+                    f"projection source collection has no {join_field} matching selected entity"
+                )
+            result[source.filtered_output_field] = filtered
+        return result
+
+    if plan.source_slots:
+        if source_record_id is not None:
+            raise ArgumentProjectionError(
+                "named projection sources do not accept legacy source_record_id"
+            )
+        if not isinstance(source_record_ids, Mapping):
+            raise ArgumentProjectionError("consumer projection requires named source records")
+        expected = set(plan.source_slots)
+        supplied = set(source_record_ids)
+        if supplied != expected:
+            missing = sorted(expected - supplied)
+            extra = sorted(supplied - expected)
+            details = []
+            if missing:
+                details.append("missing " + ", ".join(missing))
+            if extra:
+                details.append("undeclared " + ", ".join(extra))
+            raise ArgumentProjectionError(
+                "named projection sources do not match ToolSpec slots: " + "; ".join(details)
+            )
+        result: dict[str, Any] = {}
+        for slot, source in plan.source_slots.items():
+            values = project_source(
+                source,
+                source_record_ids[slot],
+                reject_owned_literals=True,
+            )
+            overlap = set(result) & set(values)
+            if overlap:
+                raise ArgumentProjectionError(
+                    "named projection sources produced duplicate fields: "
+                    + ", ".join(sorted(overlap))
+                )
+            result.update(values)
+        for field in plan.top_level_fields:
+            if field in literals:
+                result[field] = literals[field]
+        return result
+
+    arguments, facts = read_record(source_record_id)
 
     if plan.source_field_map:
-        def read_path(root: Mapping[str, Any], path: tuple[str | int, ...]) -> Any:
-            value: Any = root
-            for part in path:
-                if isinstance(value, Mapping) and isinstance(part, str):
-                    if part not in value:
-                        raise ArgumentProjectionError(
-                            f"projection source is missing field {'.'.join(map(str, path))}"
-                        )
-                    value = value[part]
-                elif isinstance(value, (list, tuple)) and isinstance(part, int):
-                    if part < 0 or part >= len(value):
-                        raise ArgumentProjectionError(
-                            f"projection source index is out of range for {path!r}"
-                        )
-                    value = value[part]
-                else:
-                    raise ArgumentProjectionError(
-                        f"projection source path is invalid at {part!r}"
-                    )
-            return value
-
         result: dict[str, Any] = {}
         for output_field, source_path in plan.source_field_map.items():
             try:

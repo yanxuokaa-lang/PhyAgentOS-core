@@ -1,6 +1,28 @@
 # Changelog
 ## Archive
+- [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
+## v12.5.0 (2026-09-30 14:36) - codex
+
+### 变更摘要 / Summary
+- 为 ToolSpec 增加具名多来源参数投影；`manipulation.prepare` 从直接前驱 `grasp.propose` 获取实体候选，从同场景 `manipulation.capabilities` 获取可用 arm 和 capability snapshot，Agent 不再手工组装参数。
+- Add named multi-source ToolSpec projection; `manipulation.prepare` consumes entity candidates from direct-predecessor `grasp.propose` and available arms plus capability snapshot from same-scene `manipulation.capabilities`, without Agent value assembly.
+- Coordinator 按 node-bound `entity_ref` 筛选候选，并校验来源 Tool、授权范围、scene、observation、frame 与 calibration；未声明/跨场景/Agent 手写投影字段 fail closed。
+- Coordinator filters candidates by node-bound `entity_ref` and validates source Tool, scope, scene, observation, frame, and calibration; undeclared, cross-scene, or Agent-authored projected values fail closed.
+
+### 影响文件 / Affected Files
+- `PhyAgentOS/{planning,agent,forge/capability_runtime}` 多来源投影、选择、ready 描述与准备契约。
+- `examples/forge-skills/pick-place-workflow/contracts/manipulation.prepare.tool.yaml`
+- `tests/test_multi_source_projection.py`, planning selection/source regressions
+- `docs/diagnostics/multi-source-prepare-projection-20260930.md`
+- `docs/forge/IMPLEMENTATION_REVIEW_V12_5_0.md`
+
+### 验证 / Validation
+- Control-plane/AgentLoop: 201 passed, 1 unrelated reducer replay test deselected.
+- Skill/Runtime: 84 passed.
+- Ruff, compileall, and `git diff --check`: passed.
+- Seven-dimension review: Blocker 0, Major 0, Minor 1 unrelated pre-existing reducer replay failure.
+
 ## v12.4.8 (2026-09-30 13:35) - codex
 
 ### 变更摘要 / Summary
@@ -74,22 +96,3 @@
 - tests/test_agent_foundation.py L102-L187
 - docs/diagnostics/replan-lease-and-expired-task-recovery-20260930.md
 - docs/reviews/v12.4.5-replan-lease-recovery-seven-dimension-review.md
-
-## v12.4.4 (2026-09-30 08:32) - codex
-
-### 变更摘要 / Summary
-- 隔离结构化节点 intent 与 AgentTask 级验证语义，修复 Coordinator 嵌套/扁平语义冲突。
-- Separate structured node intent from AgentTask-level verification semantics, fixing Coordinator nested/flat semantic conflicts.
-- 新增结构化 intent、旧式扁平兼容及 manipulation_intent_v2 构造回归；107 项通过并完成七维 Review。
-- Add structured-intent, legacy-flat compatibility, and manipulation_intent_v2 construction regressions; 107 tests pass with seven-dimension review complete.
-
-### 影响文件 / Affected Files
-- PhyAgentOS/agent/plan_proposal.py L36-L48, L402-L410
-- tests/test_agent_foundation.py L221-L251
-- tests/test_planning_dispatch.py L199-L265
-- docs/diagnostics/local-node-intent-task-verification-contamination-20260930.md L1-L40
-- docs/reviews/v12.4.4-plan-materialization-seven-dimension-review.md L1-L33
-
-### 验证 / Validation
-- Focused pytest: 107 passed.
-- Ruff, compileall, and git diff --check: passed.
