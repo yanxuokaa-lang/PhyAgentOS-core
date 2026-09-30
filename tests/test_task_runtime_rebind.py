@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from PhyAgentOS.agent.prompt_context import visible_tool_names
 from PhyAgentOS.agent.tools.forge_task import (
     ForgeTaskRebindRuntimeTool,
     build_forge_task_tools,
@@ -87,6 +88,8 @@ def test_explicit_runtime_rebind_preserves_history_and_forces_fresh_discovery(tm
         current.primary_skill_binding = prior
         current.active_revision.skill_binding_id = prior.binding_id
         current.runtime_snapshot_ref = "runtime:runtime-prior"
+        current.clarification_id = "clarification-rebind"
+        current.clarification_answer = "Continue on the replacement Runtime."
 
     coordinator.store.update(task.task_id, bind_prior, event_type="test_prior_binding")
     coordinator.binding_resolver = _Resolver(replacement)
@@ -97,6 +100,7 @@ def test_explicit_runtime_rebind_preserves_history_and_forces_fresh_discovery(tm
         coordinator.rebind_active_runtime(
             task.task_id,
             activation_id="activation-current",
+            clarification_id="clarification-rebind",
             reason="user authorized replacement Runtime",
         )
     )
@@ -124,7 +128,12 @@ def test_runtime_rebind_tool_is_explicitly_exposed():
     names = [tool.name for tool in tools]
     assert "forge_task_rebind_runtime" in names
     tool = next(item for item in tools if isinstance(item, ForgeTaskRebindRuntimeTool))
-    assert tool.parameters["required"] == ["task_id", "activation_id", "reason"]
+    assert tool.parameters["required"] == [
+        "task_id",
+        "activation_id",
+        "clarification_id",
+        "reason",
+    ]
 
 
 def test_runtime_rebind_rejects_unsettled_action(tmp_path):
@@ -143,6 +152,8 @@ def test_runtime_rebind_rejects_unsettled_action(tmp_path):
     def add_pending_action(current):
         current.primary_skill_binding = prior
         current.active_revision.skill_binding_id = prior.binding_id
+        current.clarification_id = "clarification-rebind"
+        current.clarification_answer = "Continue on the replacement Runtime."
         current.active_revision.execution_records.append(
             ToolExecutionRecord(
                 record_id="tool-pending",
@@ -171,6 +182,91 @@ def test_runtime_rebind_rejects_unsettled_action(tmp_path):
             coordinator.rebind_active_runtime(
                 task.task_id,
                 activation_id="activation-current",
+                clarification_id="clarification-rebind",
                 reason="unsafe migration attempt",
             )
         )
+
+
+def test_runtime_rebind_requires_persisted_clarification(tmp_path):
+    coordinator = AgentTaskCoordinator(
+        workspace=tmp_path,
+        config=ForgeConfig(),
+        client=object(),
+    )
+    task = coordinator.create_task(
+        task_description="Arrange blocks",
+        verification=TaskVerificationContract(mode="off"),
+        origin_session_key="cli:rgb",
+    )
+    prior = _binding("binding-prior", "runtime-prior", "2.9.5")
+    coordinator.store.update(
+        task.task_id,
+        lambda current: (
+            setattr(current, "primary_skill_binding", prior),
+            setattr(current.active_revision, "skill_binding_id", prior.binding_id),
+        ),
+        event_type="test_prior_binding_without_authorization",
+    )
+    coordinator.binding_resolver = _Resolver(
+        _binding("binding-current", "runtime-current", "2.10.0")
+    )
+    coordinator.activation_manager = _ActivationManager()
+
+    with pytest.raises(AgentTaskError, match="clarification authorization"):
+        asyncio.run(
+            coordinator.rebind_active_runtime(
+                task.task_id,
+                activation_id="activation-current",
+                clarification_id="missing",
+                reason="unauthorized migration attempt",
+            )
+        )
+
+
+def test_runtime_rebind_tools_are_visible_only_after_authorized_clarification(tmp_path):
+    coordinator = AgentTaskCoordinator(
+        workspace=tmp_path,
+        config=ForgeConfig(),
+        client=object(),
+    )
+    task = coordinator.create_task(
+        task_description="Arrange blocks",
+        verification=TaskVerificationContract(mode="off"),
+        origin_session_key="cli:rgb",
+    )
+    names = (
+        "activate_skill",
+        "forge_task_get",
+        "forge_task_rebind_runtime",
+        "forge_tool_context",
+        "forge_tool_query",
+    )
+    assert "forge_task_rebind_runtime" not in visible_tool_names(names, task)
+    assert "activate_skill" not in visible_tool_names(names, task)
+
+    authorized = task.model_copy(
+        update={
+            "clarification_id": "clarification-rebind",
+            "clarification_answer": "Continue on the replacement Runtime.",
+        }
+    )
+    visible = visible_tool_names(names, authorized)
+    assert "activate_skill" in visible
+    assert "forge_task_rebind_runtime" in visible
+
+    in_flight = authorized.model_copy(deep=True)
+    in_flight.active_revision.execution_records.append(
+        ToolExecutionRecord(
+            record_id="tool-pending",
+            revision_id=in_flight.active_revision_id,
+            tool_id="object.acquire",
+            semantics="action",
+            caller_id="paos:test",
+            status="running",
+            invocation_id="invocation://object-acquire/pending",
+        )
+    )
+    hidden = visible_tool_names(names, in_flight)
+    assert "activate_skill" not in hidden
+    assert "forge_task_rebind_runtime" not in hidden

@@ -1,6 +1,13 @@
 # Changelog
 ## Archive
 - [2026-09 part20](changelog/2026-09_part20.md)
+## v12.4.2 (2026-09-30 08:15) - codex
+
+### 变更摘要 / Summary
+- 修复既有 AgentTask discovery phase 隐藏 rebind 所需 Tool 的问题。
+- 仅在持久化 clarification answer 后显示 activate_skill / forge_task_rebind_runtime，并要求精确 clarification_id。
+- 170 项回归和七维 Review 通过；完整 RGB 物理验收继续使用同一任务。
+
 ## v12.4.1 (2026-09-30 08:00) - codex
 
 ### 变更摘要 / Summary

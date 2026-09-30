@@ -17,3 +17,7 @@ The task correctly freezes Runtime instance identity, Gateway identity, Runtime 
 Add an explicit control-plane rebind transition rather than relaxing execution validation. The transition must require a current primary Skill activation, reject terminal tasks and unsettled task-owned Actions/Sessions, archive the old primary binding as historical support, open a new immutable revision bound to the new Runtime, clear discovery evidence for that new revision, and leave every old revision and Tool record attached to its original binding. The transition is non-motion and must remain auditable.
 
 Verification must validate each revision against its own historical binding, not rewrite all revisions to match the newest primary binding. All Tool execution after rebind must use the new revision and fresh discovery chain.
+
+## AgentLoop projection finding
+
+The first post-fix continuation still stopped before rebind because discovery-phase Tool projection deliberately removed activate_skill after task creation and did not know forge_task_rebind_runtime. The Tool was registered in the Coordinator but absent from the model-visible set. The fix exposes activation and rebind only when the task contains a persisted clarification ID and answer and has no in-flight Action/Session. Coordinator rebind additionally requires the exact clarification ID, so visibility never becomes authorization by itself.

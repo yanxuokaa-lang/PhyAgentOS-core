@@ -295,19 +295,27 @@ class ForgeTaskRebindRuntimeTool(Tool):
         schema["properties"].update(
             {
                 "activation_id": {"type": "string", "minLength": 1},
+                "clarification_id": {"type": "string", "minLength": 1},
                 "reason": {"type": "string", "minLength": 1},
             }
         )
-        schema["required"].extend(["activation_id", "reason"])
+        schema["required"].extend(["activation_id", "clarification_id", "reason"])
         return schema
 
-    async def execute(self, task_id: str, activation_id: str, reason: str) -> str:
+    async def execute(
+        self,
+        task_id: str,
+        activation_id: str,
+        clarification_id: str,
+        reason: str,
+    ) -> str:
         return _json(
             {
                 "ok": True,
                 "data": await self.coordinator.rebind_active_runtime(
                     task_id,
                     activation_id=activation_id,
+                    clarification_id=clarification_id,
                     reason=reason,
                 ),
             }

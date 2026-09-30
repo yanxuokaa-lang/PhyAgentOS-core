@@ -25,6 +25,17 @@ _DISCOVERY = {
     "forge_tool_context",
     "forge_tool_query",
 }
+_RUNTIME_REBIND = {
+    "activate_skill",
+    "forge_task_rebind_runtime",
+}
+
+
+def _runtime_rebind_authorized(task: Any) -> bool:
+    return bool(
+        getattr(task, "clarification_id", None)
+        and getattr(task, "clarification_answer", None)
+    )
 
 
 def _discovery_complete(task: Any) -> bool:
@@ -340,6 +351,8 @@ def visible_tool_names(
         # instead of issuing the required task-bound Query.
         allowed.discard("activate_skill")
         allowed.discard("forge_task_get")
+        if _runtime_rebind_authorized(task):
+            allowed |= _RUNTIME_REBIND
         discovery_context_calls = _tool_call_names(messages).count("forge_tool_context")
         if discovery_context_calls >= max(5, len(missing_preplan_queries(task)) * 2):
             # A live ToolSpec has already been read repeatedly; force progress
@@ -362,6 +375,8 @@ def visible_tool_names(
         # the task waits for a governed recovery/replan decision.
         if _has_reconcilable_action(task):
             allowed |= _ACTION_RECONCILIATION
+        elif _runtime_rebind_authorized(task):
+            allowed |= _RUNTIME_REBIND
     elif status == "waiting_for_user":
         # A clarification pause must still permit the user-authorized recovery
         # turn to append a Coordinator-owned revision.  The tool only mutates
@@ -375,6 +390,8 @@ def visible_tool_names(
         allowed = (
             generic | _TASK_COMMON | _PLANNING | _ACTION_RECONCILIATION | _SESSION_RECONCILIATION
         )
+        if _runtime_rebind_authorized(task):
+            allowed |= _RUNTIME_REBIND
         if _active_graph_completed(task):
             allowed.add("forge_task_continue_plan")
     return tuple(name for name in names if name in allowed)

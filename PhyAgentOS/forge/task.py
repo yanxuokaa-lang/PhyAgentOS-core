@@ -1008,6 +1008,7 @@ class AgentTaskCoordinator:
         task_id: str,
         *,
         activation_id: str,
+        clarification_id: str,
         reason: str,
     ) -> AgentTaskRecord:
         """Explicitly move a durable task to the currently activated Runtime.
@@ -1033,6 +1034,14 @@ class AgentTaskCoordinator:
             raise AgentTaskError("Runtime rebind services are unavailable")
         if not task.origin_session_key:
             raise AgentTaskError("Runtime rebind requires the AgentTask origin session")
+        if (
+            not task.clarification_id
+            or task.clarification_id != clarification_id
+            or not task.clarification_answer
+        ):
+            raise AgentTaskError(
+                "Runtime rebind requires the persisted user clarification authorization"
+            )
 
         activation = self.activation_manager.require_activation(
             session_key=task.origin_session_key,
@@ -1115,6 +1124,7 @@ class AgentTaskCoordinator:
                 "prior_binding_id": prior.binding_id,
                 "replacement_binding_id": replacement.binding_id,
                 "revision_id": revision_id,
+                "clarification_id": clarification_id,
                 "reason": reason,
             },
         )
