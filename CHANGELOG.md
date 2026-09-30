@@ -13,8 +13,8 @@
 - PhyAgentOS/agent/plan_proposal.py L36-L48, L402-L410
 - tests/test_agent_foundation.py L221-L251
 - tests/test_planning_dispatch.py L199-L265
-- docs/diagnostics/local-node-intent-task-verification-contamination-20260930.md L1-L43
-- docs/reviews/v12.4.4-plan-materialization-seven-dimension-review.md L1-L35
+- docs/diagnostics/local-node-intent-task-verification-contamination-20260930.md L1-L40
+- docs/reviews/v12.4.4-plan-materialization-seven-dimension-review.md L1-L33
 
 ### 验证 / Validation
 - Focused pytest: 107 passed.
