@@ -19,9 +19,10 @@
 
 ### 验证 / Validation
 - Release pytest: 309 passed; Ruff, compileall and git diff check passed.
-- Node `0.10.1` SHA: `5b61b5630109d676c6a29376016b50a6e135fddeab24477274b9216dd6985140`; Skill `2.10.1` bundle SHA: `8b175652c54544d4ed54dd7141a21cff95ac61f35e464ee6451687699b935d29`, containing only the locked Node 0.10.1 archive.
+- Node `0.10.1` SHA: `5b61b5630109d676c6a29376016b50a6e135fddeab24477274b9216dd6985140`; Skill `2.10.1` bundle SHA: `dbd33301581a67a22b8132a2f39666156fb142371297a7ef3407958b4aba9749`, containing only the locked Node 0.10.1 archive.
 - Seven-dimension review: Blocker 0, Major 0, Minor 1.
-- Implementation commit: `2039287` on `feature/planning-loop`.
+- Implementation commit: `2039287`; release packaging fix commit: `a5ceb5e` on `feature/planning-loop`.
+- Deployment verification: installed Skill `2.10.1` and Node `0.10.1`, restarted `robotwin-blocks-ranking-graspnet`, confirmed live benchmark target/staging are non-plannable, and left Qwen service PID `2283011` unchanged; no AgentTask or Action was created.
 
 ## v12.4.7 (2026-09-30 09:20) - codex
 
