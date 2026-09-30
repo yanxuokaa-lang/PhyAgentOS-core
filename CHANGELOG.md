@@ -22,6 +22,7 @@
 - Skill/Runtime: 84 passed.
 - Ruff, compileall, and `git diff --check`: passed.
 - Seven-dimension review: Blocker 0, Major 0, Minor 1 unrelated pre-existing reducer replay failure.
+- Implementation commit: `cd487d4` on `feature/planning-loop`.
 
 ## v12.4.8 (2026-09-30 13:35) - codex
 
