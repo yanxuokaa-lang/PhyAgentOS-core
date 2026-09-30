@@ -20,7 +20,7 @@
 ### 验证 / Validation
 - Focused pytest: 106 passed; release package smoke: 83 passed.
 - Ruff, compileall, git diff --check, Node and Skill bundle builds: passed.
-- Commit: `7b926b8` on `feature/planning-loop`.
+- Implementation commit: `d635af1` on `feature/planning-loop`.
 
 ## v12.4.6 (2026-09-30 08:51) - codex
 
