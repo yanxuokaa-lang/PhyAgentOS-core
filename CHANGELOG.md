@@ -3,6 +3,18 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.5.3 (2026-09-30 23:20) - codex
+
+### 变更摘要 / Summary
+- 将 v12.5.2 的通用 Query 阶段语义与证据型 Agent 取消修复以 editable、no-deps 方式安装到专用 `paos` 环境。
+- Installed the generic v12.5.2 Query-phase semantics and evidence-bound Agent cancellation fix into the dedicated `paos` environment in editable no-deps mode.
+- 验证模块路径、Coordinator 签名、取消 Tool schema 和聚焦回归；现有 RobotWin Runtime 与 Qwen 服务未重启，未创建任务或动作。
+- Verified module provenance, Coordinator signature, cancellation Tool schema, and focused regressions; the existing RobotWin Runtime and Qwen service were not restarted, and no task or action was created.
+
+### 详细记录 / Detailed Record
+- 完整安装证据、安全边界和七维复核见 `changelog/2026-09_part21.md`。
+- Complete installation evidence, safety boundary, and seven-dimension recheck are in `changelog/2026-09_part21.md`.
+
 ## v12.5.1 (2026-09-30 15:18) - codex
 
 ### 变更摘要 / Summary
