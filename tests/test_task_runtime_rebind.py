@@ -121,6 +121,27 @@ def test_explicit_runtime_rebind_preserves_history_and_forces_fresh_discovery(tm
     )
     assert coordinator.runtime_task_binding_ids == {replacement.binding_id}
     assert VerificationRequestBuilder._validate_agent_task_lineage(rebound) == frozenset()
+    assert rebound.clarification_id is None
+    assert rebound.clarification_question is None
+    assert rebound.clarification_node_id is None
+    assert rebound.clarification_answer is None
+
+    persisted = coordinator.store.get(task.task_id)
+    assert persisted.clarification_id is None
+    assert persisted.clarification_question is None
+    assert persisted.clarification_node_id is None
+    assert persisted.clarification_answer is None
+
+    names = (
+        "activate_skill",
+        "forge_task_get",
+        "forge_task_rebind_runtime",
+        "forge_tool_context",
+        "forge_tool_query",
+    )
+    hidden = visible_tool_names(names, persisted)
+    assert "activate_skill" not in hidden
+    assert "forge_task_rebind_runtime" not in hidden
 
 
 def test_runtime_rebind_tool_is_explicitly_exposed():

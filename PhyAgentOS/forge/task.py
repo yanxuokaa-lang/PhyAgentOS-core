@@ -1115,6 +1115,11 @@ class AgentTaskCoordinator:
             current.verdict = None
             current.replan_deadline = None
             current.replan_extension_used = False
+            # A successful rebind consumes the one-shot user authorization.
+            current.clarification_id = None
+            current.clarification_question = None
+            current.clarification_node_id = None
+            current.clarification_answer = None
 
         rebound = self.store.update(
             task_id,
