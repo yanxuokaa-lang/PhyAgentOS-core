@@ -30,6 +30,15 @@ def build_bundle(repository: Path, output_dir: Path, node_archive: Path) -> Path
     with tempfile.TemporaryDirectory(prefix="paos-robotwin20-skill-") as temporary:
         staging = Path(temporary) / "pick-place-workflow"
         shutil.copytree(workflow, staging)
+        node_lock = manifest["artifacts"]["nodes"]["robotwin20_persistent_host"]
+        node_directory = staging / "nodes"
+        node_directory.mkdir(exist_ok=True)
+        for stale in node_directory.glob("*.tar.gz"):
+            stale.unlink()
+        embedded_node = node_directory / (
+            f"robotwin20_persistent_host-{node_lock['version']}.tar.gz"
+        )
+        shutil.copy2(node_archive, embedded_node)
         return package(staging, output_dir, force=True)
 
 
