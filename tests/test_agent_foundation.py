@@ -4,6 +4,7 @@ import asyncio
 import json
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -43,6 +44,7 @@ from PhyAgentOS.forge.task import (
     AgentTaskError,
     AgentTaskStatus,
     ToolExecutionRecord,
+    utc_now,
 )
 from PhyAgentOS.planning import NodeSettlement, PlanNode, ToolSpecPolicy, build_replan_delta
 from PhyAgentOS.providers.base import LLMProvider, LLMResponse, ToolCallRequest
@@ -92,6 +94,79 @@ def test_agent_loop_retries_provider_timeout_before_tool_dispatch(
 def test_model_failure_preserves_coordinator_replan_checkpoint(status, expected):
     task = SimpleNamespace(status=status)
     assert AgentLoop._should_fail_task_after_model_failure(task) is expected
+
+
+def test_replan_turn_claims_bounded_lease_before_model_request(tmp_path):
+    async def exercise():
+        coordinator, task = setup_task(tmp_path)
+        coordinator.record_planning_node_blocked(
+            task.task_id, task.active_revision_id, "prepare-red", "semantic repair required"
+        )
+        before = coordinator.get_task(task.task_id).replan_deadline
+        loop = AgentLoop(
+            bus=MessageBus(),
+            provider=ScriptedProvider([LLMResponse(content="Replan inspected.")]),
+            workspace=tmp_path,
+            forge_task_coordinator=coordinator,
+            max_iterations=1,
+        )
+        await loop._run_agent_loop(
+            [{"role": "user", "content": "Continue the existing task."}],
+            active_task_id=task.task_id,
+        )
+        current = coordinator.get_task(task.task_id)
+        assert current.replan_extension_used is True
+        assert current.replan_deadline is not None
+        assert before is not None and current.replan_deadline > before
+        assert sum(
+            event["event_type"] == "plan_revision_attempt_lease_claimed"
+            for event in coordinator.store.events(task.task_id)
+        ) == 1
+
+    asyncio.run(exercise())
+
+
+def test_operator_retry_restores_only_expired_replan_same_task(tmp_path):
+    coordinator, task = setup_task(tmp_path)
+    coordinator.record_planning_node_blocked(
+        task.task_id, task.active_revision_id, "prepare-red", "semantic repair required"
+    )
+    coordinator.store.update(
+        task.task_id,
+        lambda current: setattr(
+            current, "replan_deadline", utc_now() - timedelta(seconds=1)
+        ),
+        event_type="test_expire_replan",
+    )
+    with pytest.raises(AgentTaskError, match="replan deadline expired"):
+        coordinator.begin_revision(task.task_id, reason="expired recovery")
+    failed = coordinator.get_task(task.task_id)
+    revision_ids = tuple(item.revision_id for item in failed.revisions)
+    restored = coordinator.retry_expired_replan(
+        task.task_id, reason="operator continues the same acceptance task"
+    )
+    assert restored.task_id == task.task_id
+    assert restored.status == AgentTaskStatus.AWAITING_REPLAN
+    assert tuple(item.revision_id for item in restored.revisions) == revision_ids
+    assert restored.replan_deadline is not None and restored.replan_deadline > utc_now()
+    assert restored.replan_extension_used is False
+    assert coordinator.store.events(task.task_id)[-1]["event_type"] == (
+        "plan_revision_retry_authorized"
+    )
+
+
+def test_operator_retry_rejects_unrelated_failed_task(tmp_path):
+    coordinator, task = setup_task(tmp_path)
+    coordinator.store.update(
+        task.task_id,
+        lambda current: (
+            setattr(current, "status", AgentTaskStatus.FAILED),
+            current.evidence_errors.append("unrelated failure"),
+        ),
+        event_type="test_unrelated_failure",
+    )
+    with pytest.raises(AgentTaskError, match="did not fail"):
+        coordinator.retry_expired_replan(task.task_id, reason="not permitted")
 
 
 def test_agent_loop_retries_empty_stop_before_task_creation_dispatch(tmp_path):

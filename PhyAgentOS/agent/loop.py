@@ -37,7 +37,7 @@ from PhyAgentOS.agent.tools.web import WebFetchTool, WebSearchTool
 from PhyAgentOS.bus.events import InboundMessage, OutboundMessage
 from PhyAgentOS.bus.queue import MessageBus
 from PhyAgentOS.embodiment_registry import EmbodimentRegistry
-from PhyAgentOS.forge.task import AgentTaskError
+from PhyAgentOS.forge.task import AgentTaskError, AgentTaskStatus
 from PhyAgentOS.providers.base import LLMProvider
 from PhyAgentOS.providers.providers_manager import ProvidersManager
 from PhyAgentOS.session.manager import Session, SessionManager
@@ -800,6 +800,15 @@ class AgentLoop:
                 if active_task_id is not None and self.forge_task_coordinator is not None
                 else self._task_for_session(experience_session_key)
             )
+            if (
+                iteration == 1
+                and active_task is not None
+                and active_task.status == AgentTaskStatus.AWAITING_REPLAN
+                and self.forge_task_coordinator is not None
+            ):
+                active_task = self.forge_task_coordinator.claim_replan_attempt(
+                    active_task.task_id
+                )
             creation_tool_names = prompt_tool_names
             if pick_place_creation_mode and active_task is None:
                 creation_tool_names = tuple(

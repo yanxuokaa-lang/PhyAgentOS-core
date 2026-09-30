@@ -1,6 +1,23 @@
 # Changelog
 ## Archive
 - [2026-09 part20](changelog/2026-09_part20.md)
+## v12.4.5 (2026-09-30 08:42) - codex
+
+### 变更摘要 / Summary
+- AgentLoop 在首个 replan 模型请求前领取 bounded lease，避免 provider 决策时间消耗原始恢复窗口。
+- AgentLoop claims the bounded lease before the first replan model request so provider decision time does not consume the original recovery window.
+- 增加仅限 exact deadline-expired 且无在途执行的同 AgentTask 操作员恢复入口；91 项通过并完成七维 Review。
+- Add same-AgentTask operator recovery only for exact deadline expiry with no in-flight execution; 91 tests pass with seven-dimension review complete.
+
+### 影响文件 / Affected Files
+- PhyAgentOS/agent/loop.py L825-L834
+- PhyAgentOS/forge/task.py L2585-L2627
+- PhyAgentOS/agent/long_horizon.py L89-L92
+- PhyAgentOS/cli/commands.py L273-L292
+- tests/test_agent_foundation.py L102-L187
+- docs/diagnostics/replan-lease-and-expired-task-recovery-20260930.md
+- docs/reviews/v12.4.5-replan-lease-recovery-seven-dimension-review.md
+
 ## v12.4.4 (2026-09-30 08:32) - codex
 
 ### 变更摘要 / Summary

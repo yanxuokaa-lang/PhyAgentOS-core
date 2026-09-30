@@ -86,6 +86,11 @@ class LongHorizonTaskController:
         self._ensure_started(task_id)
         return self._snapshot(task_id)
 
+    def retry_expired_replan(self, task_id: str, *, reason: str) -> LongHorizonTaskResult:
+        """Operator-authorize bounded replanning for an exact deadline expiry."""
+        self.coordinator.retry_expired_replan(task_id, reason=reason)
+        return self._snapshot(task_id)
+
     def start(self, task_id: str) -> LongHorizonTaskResult:
         """Start one persisted task in the current event loop.
 

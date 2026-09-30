@@ -2582,6 +2582,49 @@ class AgentTaskCoordinator:
             event_type="task_pause_resumed",
         )
 
+    def retry_expired_replan(self, task_id: str, *, reason: str) -> AgentTaskRecord:
+        """Restore one deadline-expired task to bounded replan under the same identity."""
+        reason = reason.strip()
+        if not reason:
+            raise AgentTaskError("expired replan retry reason must be non-empty")
+        task = self.store.get(task_id)
+        if task.status != AgentTaskStatus.FAILED:
+            raise AgentTaskError("expired replan retry requires failed status")
+        if not task.evidence_errors or task.evidence_errors[-1] != (
+            "AgentTask replan deadline expired"
+        ):
+            raise AgentTaskError("task did not fail from an expired replan deadline")
+        if task.cancellation_requested:
+            raise AgentTaskError("cancelled task cannot retry an expired replan")
+        if has_unsettled_owned_execution(task):
+            raise AgentTaskError("task has an unsettled Action or Session")
+        if _replan_count(task) >= self.max_replans:
+            raise AgentTaskError(f"replan budget exhausted ({self.max_replans})")
+
+        def mutate(current: AgentTaskRecord) -> None:
+            if current.status != AgentTaskStatus.FAILED:
+                raise AgentTaskError("expired replan retry requires failed status")
+            if not current.evidence_errors or current.evidence_errors[-1] != (
+                "AgentTask replan deadline expired"
+            ):
+                raise AgentTaskError("task did not fail from an expired replan deadline")
+            if current.cancellation_requested or has_unsettled_owned_execution(current):
+                raise AgentTaskError("task is not safe to restore for replanning")
+            current.status = AgentTaskStatus.AWAITING_REPLAN
+            current.replan_deadline = utc_now() + timedelta(seconds=self.replan_timeout_s)
+            current.replan_extension_used = False
+            current.verdict = None
+            current.evidence_errors.append(
+                f"operator-authorized expired replan retry: {reason}"
+            )
+
+        return self.store.update(
+            task_id,
+            mutate,
+            event_type="plan_revision_retry_authorized",
+            payload={"reason": reason},
+        )
+
     def begin_revision_from_delta(
         self,
         task_id: str,

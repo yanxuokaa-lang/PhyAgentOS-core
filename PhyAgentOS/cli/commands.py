@@ -268,6 +268,26 @@ def task_resume(
         raise typer.Exit(1) from exc
 
 
+@task_app.command("retry-replan")
+def task_retry_replan(
+    task_id: str = typer.Argument(..., help="Persisted AgentTask identifier"),
+    reason: str = typer.Option(..., "--reason", help="Operator authorization reason"),
+    workspace: Optional[str] = typer.Option(None, "--workspace", "-w"),
+    config: Optional[str] = typer.Option(None, "--config", "-c"),
+):
+    """Retry only a task failed by an expired replan deadline."""
+    from PhyAgentOS.agent.long_horizon import LongHorizonTaskController
+
+    loaded = _load_command_config(config, workspace)
+    try:
+        _print_task_result(LongHorizonTaskController.for_control(
+            _task_control_coordinator(loaded)
+        ).retry_expired_replan(task_id, reason=reason))
+    except Exception as exc:
+        console.print(f"[red]Error: {exc}[/red]")
+        raise typer.Exit(1) from exc
+
+
 @task_app.command("stop")
 def task_stop(
     task_id: str = typer.Argument(..., help="Persisted AgentTask identifier"),
