@@ -1,6 +1,27 @@
 # Changelog
 ## Archive
 - [2026-09 part20](changelog/2026-09_part20.md)
+## v12.4.1 (2026-09-30 08:00) - codex
+
+### 变更摘要 / Summary
+- 增加用户明确授权的 AgentTask Runtime/Skill rebind，禁止 replacement Runtime 静默接管。
+- 保留历史 binding/revision/Tool 记录，并为 replacement Runtime 创建强制全新 discovery 的 revision。
+- 新增未结算 Action/Session 拒绝、binding lineage 验证、126 项回归和七维 Review。
+
+### 影响文件 / Affected Files
+- PhyAgentOS/forge/task.py L433-L435,L1006-L1131,L1753-L1756
+- PhyAgentOS/agent/tools/forge_task.py L272-L314,L783-L794,L847-L858
+- PhyAgentOS/agent/recovery_decisions.py L67-L80
+- PhyAgentOS/verification/request_builder.py L383-L431
+- tests/test_task_runtime_rebind.py L1-L170
+- docs/forge/RGB_ACCEPTANCE_RUN3_RUNTIME_REBIND_DIAGNOSIS_20260930.md L1-L23
+- docs/forge/IMPLEMENTATION_REVIEW_V12_4_1.md L1-L83
+
+### 验证 / Validation
+- Focused AgentTask and verification suite: 126 passed.
+- Ruff, compileall, git diff --check: passed.
+- Full RGB physical acceptance remains pending on the same AgentTask.
+
 ## v12.4.0 (2026-09-30 08:30) - codex
 
 ### 变更摘要 / Summary

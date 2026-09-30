@@ -382,11 +382,15 @@ class VerificationRequestBuilder:
 
     @staticmethod
     def _validate_agent_task_lineage(task: AgentTaskRecord) -> frozenset[str]:
-        expected_binding_id = (
-            task.primary_skill_binding.binding_id
-            if task.primary_skill_binding is not None
-            else None
-        )
+        known_binding_ids = {
+            item.binding_id
+            for item in (
+                ([task.primary_skill_binding] if task.primary_skill_binding is not None else [])
+                + list(task.supporting_skill_bindings)
+            )
+        }
+        if not known_binding_ids:
+            known_binding_ids.add(None)
         expected_runtime_binding_id = (
             task.runtime_binding.binding_id if task.runtime_binding is not None else None
         )
@@ -397,9 +401,9 @@ class VerificationRequestBuilder:
             if revision.revision_id in revision_ids:
                 raise VerificationEvidenceError("AgentTask PlanRevision IDs must be unique")
             revision_ids.add(revision.revision_id)
-            if revision.skill_binding_id != expected_binding_id:
+            if revision.skill_binding_id not in known_binding_ids:
                 raise VerificationEvidenceError(
-                    f"PlanRevision binding does not match frozen AgentTask binding: "
+                    f"PlanRevision binding is not in the AgentTask binding lineage: "
                     f"{revision.revision_id}"
                 )
             if revision.runtime_binding_id != expected_runtime_binding_id:
@@ -416,9 +420,10 @@ class VerificationRequestBuilder:
                     raise VerificationEvidenceError(
                         f"ToolExecutionRecord revision mismatch: {record.record_id}"
                     )
-                if record.skill_binding_id != expected_binding_id:
+                if record.skill_binding_id != revision.skill_binding_id:
                     raise VerificationEvidenceError(
-                        f"ToolExecutionRecord binding mismatch: {record.record_id}"
+                        f"ToolExecutionRecord binding does not match its PlanRevision: "
+                        f"{record.record_id}"
                     )
                 if record.runtime_binding_id != expected_runtime_binding_id:
                     raise VerificationEvidenceError(

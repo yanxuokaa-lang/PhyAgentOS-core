@@ -269,6 +269,51 @@ class ForgeTaskGetTool(Tool):
         return _json({"ok": True, "data": self.coordinator.get_task(task_id)})
 
 
+class ForgeTaskRebindRuntimeTool(Tool):
+    """Explicitly migrate one durable task after its frozen Runtime is gone."""
+
+    def __init__(self, coordinator: AgentTaskCoordinator) -> None:
+        self.coordinator = coordinator
+
+    @property
+    def name(self) -> str:
+        return "forge_task_rebind_runtime"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Use only after the user explicitly authorizes continuing the same AgentTask on a "
+            "replacement Runtime. Activate the current primary Skill first and supply its "
+            "activation_id. The Coordinator rejects terminal tasks and unsettled Actions/Sessions, "
+            "preserves the prior binding and revisions, and opens a fresh-discovery revision. "
+            "This operation never invokes a Runtime Tool or motion."
+        )
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        schema = _task_id_schema()
+        schema["properties"].update(
+            {
+                "activation_id": {"type": "string", "minLength": 1},
+                "reason": {"type": "string", "minLength": 1},
+            }
+        )
+        schema["required"].extend(["activation_id", "reason"])
+        return schema
+
+    async def execute(self, task_id: str, activation_id: str, reason: str) -> str:
+        return _json(
+            {
+                "ok": True,
+                "data": await self.coordinator.rebind_active_runtime(
+                    task_id,
+                    activation_id=activation_id,
+                    reason=reason,
+                ),
+            }
+        )
+
+
 class ForgeTaskBeginRevisionTool(Tool):
     def __init__(self, coordinator: AgentTaskCoordinator) -> None:
         self.coordinator = coordinator
@@ -739,6 +784,7 @@ def build_forge_task_tools(coordinator: AgentTaskCoordinator) -> list[Tool]:
     return [
         ForgeTaskCreateTool(coordinator),
         ForgeTaskGetTool(coordinator),
+        ForgeTaskRebindRuntimeTool(coordinator),
         ForgeTaskBeginRevisionTool(coordinator),
         ForgeTaskMaterializePlanTool(coordinator),
         ForgeTaskContinuePlanTool(coordinator),
@@ -806,6 +852,7 @@ __all__ = [
     "ForgeTaskCreateTool",
     "ForgeTaskFinalizeTool",
     "ForgeTaskGetTool",
+    "ForgeTaskRebindRuntimeTool",
     "ForgeTaskMaterializePlanTool",
     "build_forge_task_tools",
 ]

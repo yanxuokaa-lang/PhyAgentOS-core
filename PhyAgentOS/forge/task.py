@@ -432,6 +432,7 @@ class AgentTaskRecord(BaseModel):
     active_revision_id: str
     primary_skill_binding: ForgeSkillBinding | None = None
     primary_skill_instructions: str | None = None
+    active_skill_instructions: str | None = None
     runtime_binding: RuntimeBinding | None = None
     tool_bindings: list[BoundToolSpec] = Field(default_factory=list)
     skill_uses: list[SkillUseRecord] = Field(default_factory=list)
@@ -1001,6 +1002,133 @@ class AgentTaskCoordinator:
 
     def set_activation_manager(self, activation_manager: Any) -> None:
         self.activation_manager = activation_manager
+
+    async def rebind_active_runtime(
+        self,
+        task_id: str,
+        *,
+        activation_id: str,
+        reason: str,
+    ) -> AgentTaskRecord:
+        """Explicitly move a durable task to the currently activated Runtime.
+
+        This is a control-plane recovery transition, not Runtime adoption.  It
+        preserves every prior revision under its original binding and opens an
+        empty revision so the replacement Runtime must collect fresh discovery
+        evidence before any new plan or motion can be admitted.
+        """
+        reason = reason.strip()
+        if not reason:
+            raise AgentTaskError("Runtime rebind reason must be non-empty")
+        task = self.store.get(task_id)
+        if task.terminal:
+            raise AgentTaskError("cannot rebind a terminal AgentTask")
+        if task.primary_skill_binding is None:
+            raise AgentTaskError("Runtime rebind requires a Skill-bound AgentTask")
+        if has_unsettled_owned_execution(task):
+            raise AgentTaskError(
+                "cannot rebind while a task-owned Action/Session invocation is non-terminal"
+            )
+        if self.binding_resolver is None or self.activation_manager is None:
+            raise AgentTaskError("Runtime rebind services are unavailable")
+        if not task.origin_session_key:
+            raise AgentTaskError("Runtime rebind requires the AgentTask origin session")
+
+        activation = self.activation_manager.require_activation(
+            session_key=task.origin_session_key,
+            activation_id=activation_id,
+            role="primary",
+        )
+        if not activation.binding_candidate_id:
+            raise AgentTaskError("primary Skill activation has no Forge binding candidate")
+        try:
+            replacement = await self.binding_resolver.freeze(
+                activation.binding_candidate_id,
+                task_id=task_id,
+            )
+        except ForgeSkillBindingError as exc:
+            raise AgentTaskError(str(exc)) from exc
+        instructions = self.activation_manager.instructions_for_activation(
+            session_key=task.origin_session_key,
+            activation_id=activation_id,
+        )
+        if activation.content_sha256 != replacement.skill_document_sha256:
+            raise AgentTaskError(
+                "activated SKILL.md does not match the replacement Runtime binding"
+            )
+        prior = task.primary_skill_binding
+        if replacement.binding_id == prior.binding_id:
+            raise AgentTaskError("AgentTask is already bound to the active Runtime")
+
+        revision_id = f"revision_{uuid4().hex[:16]}"
+        skill_use = SkillUseRecord(
+            use_id=f"skill_use_{uuid4().hex[:16]}",
+            activation_id=activation.activation_id,
+            skill_name=activation.skill_name,
+            skill_version=activation.skill_version,
+            content_sha256=activation.content_sha256,
+            instructions=instructions,
+            decision_ref=f"task:{task_id}:runtime-rebind",
+        )
+
+        def mutate(current: AgentTaskRecord) -> None:
+            if current.terminal or has_unsettled_owned_execution(current):
+                raise AgentTaskError("AgentTask became unsafe to rebind")
+            current.active_revision.closed_at = utc_now()
+            if all(
+                item.binding_id != current.primary_skill_binding.binding_id
+                for item in current.supporting_skill_bindings
+            ):
+                current.supporting_skill_bindings.append(current.primary_skill_binding)
+            current.primary_skill_binding = replacement
+            current.active_skill_instructions = instructions
+            current.skill_uses.append(skill_use)
+            current.revisions.append(
+                PlanRevision(
+                    revision_id=revision_id,
+                    number=len(current.revisions) + 1,
+                    reason=reason,
+                    counts_toward_replan_budget=False,
+                    skill_binding_id=replacement.binding_id,
+                    skill_use_ids=(skill_use.use_id,),
+                    discovery_evidence_refs=(),
+                    fresh_evidence_requirements=(
+                        "scene.observe",
+                        "scene.understand",
+                        "manipulation.capabilities",
+                        "scene.bind",
+                    ),
+                )
+            )
+            current.active_revision_id = revision_id
+            current.status = AgentTaskStatus.EXECUTING
+            current.runtime_snapshot_ref = f"runtime:{replacement.runtime_instance_id}"
+            current.verdict = None
+            current.replan_deadline = None
+            current.replan_extension_used = False
+
+        rebound = self.store.update(
+            task_id,
+            mutate,
+            event_type="task_runtime_rebound",
+            payload={
+                "prior_binding_id": prior.binding_id,
+                "replacement_binding_id": replacement.binding_id,
+                "revision_id": revision_id,
+                "reason": reason,
+            },
+        )
+        if self.runtime_task_binding_ids is not None:
+            self.runtime_task_binding_ids.discard(prior.binding_id)
+            self.runtime_task_binding_ids.add(replacement.binding_id)
+        if self.experience is not None:
+            self.experience.bind_forge_task(
+                task_id,
+                session_key=task.origin_session_key,
+                forge_binding=replacement,
+                skill_uses=rebound.skill_uses,
+            )
+        return rebound
 
     def selected_execution_arguments(
         self,
@@ -1624,6 +1752,7 @@ class AgentTaskCoordinator:
             active_revision_id=revision_id,
             primary_skill_binding=binding,
             primary_skill_instructions=skill_instructions,
+            active_skill_instructions=skill_instructions,
             runtime_binding=runtime_binding,
             skill_uses=([initial_skill_use] if initial_skill_use is not None else []),
             runtime_snapshot_ref=(

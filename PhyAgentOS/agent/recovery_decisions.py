@@ -67,7 +67,11 @@ class AgentRecoveryDecisions:
                 {"role": "user", "content": json.dumps({
                     "goal": task.task_description,
                     "verification": task.verification.model_dump(mode="json"),
-                    "skill_instructions": task.primary_skill_instructions,
+                    "skill_instructions": (
+                        task.active_skill_instructions
+                        if task.active_skill_instructions is not None
+                        else task.primary_skill_instructions
+                    ),
                     "skill_uses": [item.model_dump(mode="json") for item in task.skill_uses],
                     "graph": graph.model_dump(mode="json"),
                     "settlement": settlement.model_dump(mode="json"),
