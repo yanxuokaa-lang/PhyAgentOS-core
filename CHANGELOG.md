@@ -1,6 +1,25 @@
 # Changelog
 ## Archive
 - [2026-09 part20](changelog/2026-09_part20.md)
+## v12.4.4 (2026-09-30 08:32) - codex
+
+### 变更摘要 / Summary
+- 隔离结构化节点 intent 与 AgentTask 级验证语义，修复 Coordinator 嵌套/扁平语义冲突。
+- Separate structured node intent from AgentTask-level verification semantics, fixing Coordinator nested/flat semantic conflicts.
+- 新增结构化 intent、旧式扁平兼容及 manipulation_intent_v2 构造回归；107 项通过并完成七维 Review。
+- Add structured-intent, legacy-flat compatibility, and manipulation_intent_v2 construction regressions; 107 tests pass with seven-dimension review complete.
+
+### 影响文件 / Affected Files
+- PhyAgentOS/agent/plan_proposal.py L36-L48, L402-L410
+- tests/test_agent_foundation.py L221-L251
+- tests/test_planning_dispatch.py L199-L265
+- docs/diagnostics/local-node-intent-task-verification-contamination-20260930.md L1-L43
+- docs/reviews/v12.4.4-plan-materialization-seven-dimension-review.md L1-L35
+
+### 验证 / Validation
+- Focused pytest: 107 passed.
+- Ruff, compileall, and git diff --check: passed.
+
 ## v12.4.3 (2026-09-30 08:20) - codex
 
 ### 变更摘要 / Summary

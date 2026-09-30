@@ -196,6 +196,75 @@ def test_prepare_node_without_runtime_owned_references_is_not_model_ready():
     assert projection["ready_nodes"] == []
 
 
+def test_structured_node_intent_builds_manipulation_intent_v2():
+    node = PlanNode(
+        node_id="prepare-red",
+        obligation_id="prepare-red",
+        capability="manipulation.prepare",
+        input_bindings={
+            "entity_ref": "entity://red",
+            "destination_ref": "destination://staging",
+            "capability_snapshot_ref": "artifact://capabilities/current",
+            "binding_ref": "artifact://bindings/current",
+            "intent": {
+                "goal": "Prepare the selected acquire route",
+                "success_criteria": ["The selected candidate is qualified prepared."],
+                "allowed_arms": ["right_arm"],
+                "coordination_mode": "single_arm",
+                "constraints": ["Preserve collision clearance."],
+            },
+        },
+    )
+    payload = {
+        "task_id": "task-prepare-red",
+        "revision_id": "revision-prepare-red",
+        "graph_digest": "0" * 64,
+        "planner_decision_digest": "1" * 64,
+        "policy_snapshot_digest": "2" * 64,
+        "nodes": [node.model_dump(mode="json")],
+    }
+    payload["graph_digest"] = plan_graph_digest(payload)
+    policy = ToolSpecPolicy(
+        tool_id="manipulation.prepare",
+        semantics="query",
+        spec_digest="3" * 64,
+        capabilities=("manipulation.prepare",),
+        trusted_argument_builder="manipulation_intent_v2",
+    )
+    dispatch = AgentComposedDispatch(
+        PlanGraph.model_validate(payload),
+        (policy,),
+        AdmissionContext(scene_revision="scene-red"),
+    )
+
+    arguments = {
+        "observation_ref": "observation://scene-red/head_camera",
+        "scene_revision": "scene-red",
+        "frame_id": "head_camera",
+        "calibration_ref": "artifact://scene-red/calibration",
+        "freshness_ms": 0,
+        "max_age_ms": 1000,
+        "candidate_set_ref": "candidate-set://scene-red/head_camera",
+        "candidates": [{"entity_ref": "entity://red"}],
+        "binding_ref": "artifact://bindings/current",
+        "destination_ref": "destination://staging",
+        "capability_snapshot_ref": "artifact://capabilities/current",
+    }
+
+    trusted = dispatch._build_trusted_arguments(
+        policy=policy,
+        node=node,
+        arguments=arguments,
+    )
+
+    assert trusted["intent"]["version"] == "manipulation_intent_v2"
+    assert trusted["intent"]["goal"] == "Prepare the selected acquire route"
+    assert trusted["intent"]["success_criteria"] == [
+        "The selected candidate is qualified prepared."
+    ]
+    assert trusted["intent"]["motion_authorized"] is False
+
+
 def test_ready_diagnostics_explain_evidence_and_condition_blockers():
     node = PlanNode(
         node_id="target",

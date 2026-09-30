@@ -33,6 +33,21 @@ RECOVERY_NODE_GUIDANCE = (
 )
 
 
+def _inject_task_verification_semantics(
+    bindings: dict[str, Any],
+    *,
+    verification_goal: str | None,
+    verification_criteria: list[str] | tuple[str, ...] | None,
+) -> None:
+    """Add legacy flat task semantics without overriding structured node intent."""
+    if isinstance(bindings.get("intent"), Mapping):
+        return
+    if verification_goal is not None:
+        bindings.setdefault("goal", verification_goal)
+    if verification_criteria is not None:
+        bindings.setdefault("success_criteria", list(verification_criteria))
+
+
 def compile_task_plan(
     task: AgentTaskRecord,
     nodes: list[dict[str, Any]],
@@ -385,13 +400,14 @@ def _complete_persisted_runtime_bindings(
                     # authoritative and compiles the observed key here.
                     bindings["entity_ref"] = expected_entity
         if node.capability in {"manipulation.prepare", "object.acquire", "object.place"}:
-            # The task verification contract is the Coordinator-owned source
-            # for the semantic intent shared by every manipulation node. Keep
-            # model selection focused on scene-bound identities and candidates.
-            if verification_goal is not None:
-                bindings.setdefault("goal", verification_goal)
-            if verification_criteria is not None:
-                bindings.setdefault("success_criteria", list(verification_criteria))
+            # Structured intent owns this node's immediate operation semantics.
+            # Task verification remains the compatibility source only for
+            # legacy nodes that do not provide a structured local intent.
+            _inject_task_verification_semantics(
+                bindings,
+                verification_goal=verification_goal,
+                verification_criteria=verification_criteria,
+            )
             entity = bindings.get("entity_ref")
             execution_entity = bindings.get("execution_entity_ref")
             if not isinstance(execution_entity, str):

@@ -14,6 +14,7 @@ from PhyAgentOS.agent.experience.store import ExperienceStore
 from PhyAgentOS.agent.loop import AgentLoop
 from PhyAgentOS.agent.plan_proposal import (
     _complete_persisted_runtime_bindings,
+    _inject_task_verification_semantics,
     compile_task_plan,
 )
 from PhyAgentOS.agent.planning_loop import _planning_record_status
@@ -215,6 +216,39 @@ def semantic_nodes(count):
     nodes.append({"node_id": "final-observation", "obligation_id": "verify-goal", "capability": "task.verify",
                   "dependencies": [node["node_id"] for node in nodes]})
     return nodes
+
+
+def test_structured_node_intent_excludes_flat_task_verification_semantics():
+    local_intent = {
+        "goal": "Prepare the selected acquire route",
+        "success_criteria": ["The selected candidate is qualified prepared."],
+        "allowed_arms": ["right_arm"],
+        "coordination_mode": "single_arm",
+    }
+    bindings = {"intent": local_intent}
+
+    _inject_task_verification_semantics(
+        bindings,
+        verification_goal="Verify the complete task",
+        verification_criteria=["All final outputs pass verification."],
+    )
+
+    assert bindings == {"intent": local_intent}
+
+
+def test_legacy_node_receives_flat_task_verification_semantics():
+    bindings = {}
+
+    _inject_task_verification_semantics(
+        bindings,
+        verification_goal="Verify the complete task",
+        verification_criteria=["All final outputs pass verification."],
+    )
+
+    assert bindings == {
+        "goal": "Verify the complete task",
+        "success_criteria": ["All final outputs pass verification."],
+    }
 
 
 def test_materialize_prunes_only_settled_discovery_prefix_and_rewires_dependencies():
