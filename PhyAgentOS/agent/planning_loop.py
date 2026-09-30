@@ -24,6 +24,7 @@ from PhyAgentOS.agent.argument_sources import (
 from PhyAgentOS.agent.experience.redaction import redact_text
 from PhyAgentOS.agent.planner_plugin import ReplanProposal
 from PhyAgentOS.agent.planning_facts import explicit_scene_revision, response_facts
+from PhyAgentOS.forge.binding import query_record_status
 from PhyAgentOS.forge.task import (
     AgentTaskCoordinator,
     AgentTaskError,
@@ -1112,15 +1113,7 @@ class AgentLoopNodeExecutor:
 
 def _planning_record_status(record: Any) -> str:
     """Project provider-level Query availability into node execution status."""
-
-    if getattr(record, "semantics", None) != "query" or record.status != "succeeded":
-        return record.status
-    status = response_facts(record.response).get("status")
-    if status in {"unavailable", "invalid", "stale", "empty", "failed"}:
-        return "failed"
-    if status == "unknown":
-        return "unknown"
-    return record.status
+    return query_record_status(record)
 
 
 def _string_refs(value: object) -> list[str]:

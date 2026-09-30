@@ -1772,7 +1772,11 @@ def test_record_skill_use_is_atomic_across_store_instances(tmp_path):
 
 @pytest.mark.parametrize("status,expected", [("unavailable", "failed"), ("empty", "failed"), ("stale", "failed"), ("unknown", "unknown"), ("available", "succeeded")])
 def test_query_availability_is_not_transport_success(status, expected):
-    record = SimpleNamespace(semantics="query", status="succeeded", response={"status": status})
+    record = SimpleNamespace(
+        semantics="query",
+        status="succeeded",
+        response={"status": status, "motion_authorized": False},
+    )
     assert _planning_record_status(record) == expected
 
 

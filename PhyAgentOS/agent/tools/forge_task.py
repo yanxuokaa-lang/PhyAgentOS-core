@@ -11,8 +11,9 @@ from typing import Any
 from PhyAgentOS.agent.plan_proposal import RECOVERY_NODE_GUIDANCE
 from PhyAgentOS.agent.planning_facts import explicit_scene_revision, response_facts
 from PhyAgentOS.agent.tools.base import Tool
-from PhyAgentOS.forge.binding import missing_preplan_queries
+from PhyAgentOS.forge.binding import missing_preplan_queries, query_record_status
 from PhyAgentOS.forge.task import (
+    AgentCancellationEvidenceError,
     AgentTaskBusyError,
     AgentTaskCoordinator,
     DiscoveryRequiredError,
@@ -27,31 +28,11 @@ _DISCOVERY_ARGUMENT_KEYS = frozenset({
     "calibration_ref", "frame_id", "entity_refs", "artifacts", "views",
     "freshness_ms", "capture_skew_ms",
 })
-_NON_SUCCESS_QUERY_STATUSES = frozenset({
-    "unavailable", "invalid", "stale", "empty", "failed", "unknown",
-})
-
-
-def _query_response_payload(record: Any) -> dict[str, Any]:
-    response = getattr(record, "response", None)
-    if not isinstance(response, Mapping):
-        return {}
-    payload = response.get("data")
-    if not isinstance(payload, Mapping):
-        payload = response
-    result = payload.get("result")
-    if isinstance(result, Mapping):
-        payload = {**payload, **result}
-    return dict(payload)
-
-
 def _successful_discovery_record(record: Any) -> bool:
-    if (
-        getattr(record, "semantics", None) != "query"
-        or getattr(record, "status", None) != "succeeded"
-    ):
-        return False
-    return _query_response_payload(record).get("status") not in _NON_SUCCESS_QUERY_STATUSES
+    return (
+        getattr(record, "semantics", None) == "query"
+        and query_record_status(record) == "succeeded"
+    )
 
 
 def _same_discovery_input(node: PlanNode, record: Any) -> bool:
@@ -731,21 +712,53 @@ class ForgeTaskCancelTool(Tool):
     @property
     def description(self) -> str:
         return (
-            "Request cancellation for every non-terminal Action bound to an AgentTask. "
-            "Cancellation acceptance is not proof that motion stopped."
+            "Request evidence-bound Agent cancellation for an AgentTask. Cite one persisted "
+            "current-task blocker record. A successful read-only Query with status=available "
+            "is not a blocker even when motion_authorized=false. User/operator cancellation "
+            "uses the external control path. Cancellation acceptance is not proof that motion stopped."
         )
 
     @property
     def parameters(self) -> dict[str, Any]:
         schema = _task_id_schema()
-        schema["properties"]["reason"] = {"type": "string", "minLength": 1}
+        schema["properties"].update({
+            "reason": {"type": "string", "minLength": 1},
+            "blocker_record_id": {"type": "string", "minLength": 1},
+        })
+        schema["required"].append("blocker_record_id")
         return schema
 
-    async def execute(self, task_id: str, reason: str = "agent_requested") -> str:
+    async def execute(
+        self,
+        task_id: str,
+        blocker_record_id: str,
+        reason: str = "agent_requested",
+    ) -> str:
+        try:
+            task = await self.coordinator.cancel_task(
+                task_id,
+                reason=reason,
+                requester="agent",
+                blocker_record_id=blocker_record_id,
+            )
+        except AgentCancellationEvidenceError as exc:
+            return _json({
+                "ok": False,
+                "error": {
+                    "code": exc.code,
+                    "record_id": exc.record_id,
+                    "message": str(exc),
+                    "action": (
+                        "Continue discovery or materialize the plan when prerequisites are complete; "
+                        "do not reinterpret motion_authorized=false as Query failure."
+                    ),
+                },
+                "motion_authorized": False,
+            })
         return _json(
             {
                 "ok": True,
-                "data": await self.coordinator.cancel_task(task_id, reason=reason),
+                "data": task,
             }
         )
 

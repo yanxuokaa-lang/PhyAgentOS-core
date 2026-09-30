@@ -25,6 +25,7 @@ from PhyAgentOS.forge.binding import (
     RuntimeBinding,
     canonical_sha256,
     missing_preplan_queries,
+    query_record_blocks_progress,
 )
 from PhyAgentOS.forge.evidence import ForgeEvidenceWriter
 from PhyAgentOS.forge.observation import ForgeObservationCollector
@@ -64,6 +65,16 @@ class DiscoveryRequiredError(AgentTaskError):
 
     def __init__(self, message: str, *, missing: tuple[str, ...] = ()) -> None:
         self.missing = missing
+        super().__init__(message)
+
+
+class AgentCancellationEvidenceError(AgentTaskError):
+    """An autonomous cancellation request does not cite an objective blocker."""
+
+    code = "agent_cancel_blocker_invalid"
+
+    def __init__(self, message: str, *, record_id: str | None = None) -> None:
+        self.record_id = record_id
         super().__init__(message)
 
 
@@ -3065,11 +3076,20 @@ class AgentTaskCoordinator:
         self.store.update(task_id, mutate, event_type="session_stop_requested")
         return response
 
-    async def cancel_task(self, task_id: str, *, reason: str) -> AgentTaskRecord:
+    async def cancel_task(
+        self,
+        task_id: str,
+        *,
+        reason: str,
+        requester: Literal["operator", "agent"] = "operator",
+        blocker_record_id: str | None = None,
+    ) -> AgentTaskRecord:
         task = self.store.get(task_id)
         if task.terminal:
             self._schedule_experience(task)
             return task
+        if requester == "agent":
+            self._validate_agent_cancellation(task, blocker_record_id)
         pending = [
             item
             for item in task.execution_records
@@ -3118,6 +3138,39 @@ class AgentTaskCoordinator:
         if result.terminal:
             self._schedule_experience(result)
         return result
+
+    @staticmethod
+    def _validate_agent_cancellation(
+        task: AgentTaskRecord,
+        blocker_record_id: str | None,
+    ) -> None:
+        if not blocker_record_id:
+            raise AgentCancellationEvidenceError(
+                "Agent cancellation requires a persisted blocker_record_id"
+            )
+        record = next(
+            (item for item in task.execution_records if item.record_id == blocker_record_id),
+            None,
+        )
+        if record is None or record.revision_id != task.active_revision_id:
+            raise AgentCancellationEvidenceError(
+                "Agent cancellation blocker must belong to the active task revision",
+                record_id=blocker_record_id,
+            )
+        if record.ownership != "task":
+            raise AgentCancellationEvidenceError(
+                "Agent cancellation blocker must be task-owned",
+                record_id=blocker_record_id,
+            )
+        if record.semantics == "query":
+            blocks = query_record_blocks_progress(record)
+        else:
+            blocks = record.status in {"failed", "cancelled", "stopped", "unknown"}
+        if not blocks:
+            raise AgentCancellationEvidenceError(
+                "cited record is not a persisted progress blocker",
+                record_id=blocker_record_id,
+            )
 
     async def finalize_task(self, task_id: str) -> AgentTaskRecord:
         task = self.store.get(task_id)
@@ -4098,6 +4151,7 @@ def _tool_status(response: dict[str, Any], *, default: str) -> str:
 
 
 __all__ = [
+    "AgentCancellationEvidenceError",
     "AgentTaskBusyError",
     "AgentTaskCoordinator",
     "AgentTaskError",

@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import threading
+from collections.abc import Mapping
 from datetime import datetime
 from typing import Any, Literal
 
@@ -119,12 +120,17 @@ _SCENE_BOUND_PREPLAN_QUERIES = frozenset({
     "manipulation.capabilities",
     "scene.bind",
 })
-_NON_SUCCESS_QUERY_STATES = frozenset({
+NON_SUCCESS_QUERY_STATES = frozenset({
     "unavailable", "invalid", "stale", "empty", "failed", "unknown",
+})
+_RESOURCE_COLLECTION_KEYS = frozenset({"arms", "resources"})
+_UNAVAILABLE_RESOURCE_STATES = frozenset({
+    "unavailable", "disabled", "busy", "offline", "invalid", "blocked",
 })
 
 
-def _query_facts(record: Any) -> dict[str, Any]:
+def query_response_facts(record: Any) -> dict[str, Any]:
+    """Return provider facts from a persisted Query response envelope."""
     response = getattr(record, "response", None)
     if not isinstance(response, dict):
         return {}
@@ -136,16 +142,61 @@ def _query_facts(record: Any) -> dict[str, Any]:
     return payload
 
 
+def query_record_status(record: Any) -> str:
+    """Normalize transport and provider status without treating safety flags as failures.
+
+    Query payload fields such as motion_authorized describe what the Query did
+    not authorize. They are evidence, not phase status. Only the persisted
+    execution status and the provider's explicit status field determine
+    whether discovery may continue.
+    """
+    status = getattr(record, "status", "unknown")
+    if getattr(record, "semantics", "query") != "query" or status != "succeeded":
+        return status
+    provider_status = query_response_facts(record).get("status")
+    if provider_status in NON_SUCCESS_QUERY_STATES - {"unknown"}:
+        return "failed"
+    if provider_status == "unknown":
+        return "unknown"
+    if _query_has_no_available_resources(query_response_facts(record)):
+        return "failed"
+    return "succeeded"
+
+
+def query_record_blocks_progress(record: Any) -> bool:
+    """Return whether a persisted Query is an objective discovery blocker."""
+    return query_record_status(record) != "succeeded"
+
+
+def _query_has_no_available_resources(payload: Mapping[str, Any]) -> bool:
+    """Recognize explicit empty/unavailable resource collections generically."""
+    for key in _RESOURCE_COLLECTION_KEYS:
+        values = payload.get(key)
+        if not isinstance(values, list):
+            continue
+        if not values:
+            return True
+        states = []
+        for value in values:
+            if not isinstance(value, Mapping):
+                break
+            state = value.get("availability", value.get("status"))
+            if isinstance(state, str):
+                states.append(state.lower())
+        else:
+            if states and all(state in _UNAVAILABLE_RESOURCE_STATES for state in states):
+                return True
+    return False
+
+
 def _query_succeeded(record: Any) -> bool:
     if getattr(record, "semantics", "query") != "query":
         return False
-    if getattr(record, "status", None) != "succeeded":
-        return False
-    return _query_facts(record).get("status") not in _NON_SUCCESS_QUERY_STATES
+    return query_record_status(record) == "succeeded"
 
 
 def _scene_identity(record: Any) -> tuple[str | None, str | None, str | None]:
-    facts = _query_facts(record)
+    facts = query_response_facts(record)
     return (
         facts.get("scene_revision") if isinstance(facts.get("scene_revision"), str) else None,
         facts.get("observation_ref") if isinstance(facts.get("observation_ref"), str) else None,
@@ -455,6 +506,10 @@ __all__ = [
     "RuntimeBinding",
     "canonical_sha256",
     "missing_preplan_queries",
+    "NON_SUCCESS_QUERY_STATES",
+    "query_record_blocks_progress",
+    "query_record_status",
+    "query_response_facts",
     "required_preplan_queries",
     "validate_runtime_identity",
 ]

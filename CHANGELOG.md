@@ -108,3 +108,14 @@
 
 ### 验证 / Validation
 - Planning/proposal/selection regressions, Ruff, compileall, and git diff check passed.
+## v12.5.2 (2026-09-30 09:45) - codex
+
+### 变更摘要 / Change Summary
+- [policy] [fix] 统一 Query 阶段语义，`motion_authorized=false` 不再误阻塞成功的只读发现结果。 (local)
+- [Policy] [Fix] Unified Query phase semantics so `motion_authorized=false` no longer blocks successful read-only discovery. (local)
+- [policy] [fix] Agent 自主取消必须引用 Coordinator 验证的当前阻塞记录；操作员取消保持兼容。 (local)
+- [Policy] [Fix] Agent cancellation must cite a Coordinator-validated current blocker record; operator cancellation remains compatible. (local)
+
+### 详细记录 / Detailed Record
+- 完整文件 Diff、行号、验证和七维审查见 `changelog/2026-09_part21.md`。
+- Full file diffs, line ranges, validation, and seven-dimension review are in `changelog/2026-09_part21.md`.
