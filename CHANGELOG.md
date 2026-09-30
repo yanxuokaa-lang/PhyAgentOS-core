@@ -21,6 +21,7 @@
 - Release pytest: 308 passed; Ruff, compileall and git diff check passed.
 - Node `0.10.1` SHA: `5b61b5630109d676c6a29376016b50a6e135fddeab24477274b9216dd6985140`; Skill `2.10.1` bundle SHA: `bebc83fee136c00964a3e7d23e12896140cec528843a0f3e0042c42e92e94673`.
 - Seven-dimension review: Blocker 0, Major 0, Minor 1.
+- Implementation commit: `2039287` on `feature/planning-loop`.
 
 ## v12.4.7 (2026-09-30 09:20) - codex
 
