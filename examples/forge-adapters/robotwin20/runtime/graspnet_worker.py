@@ -109,9 +109,12 @@ def _handle(request: Mapping[str, Any]) -> Mapping[str, Any]:
     if _MODEL is None:
         raise WorkerUnavailableError("graspnet model is unavailable")
     max_candidates = request.get("max_candidates")
+    max_points = request.get("max_points", 20_000)
     threshold = request.get("score_threshold")
     if isinstance(max_candidates, bool) or not isinstance(max_candidates, int) or not 1 <= max_candidates <= 512:
         raise WorkerUnavailableError("max_candidates is invalid")
+    if isinstance(max_points, bool) or not isinstance(max_points, int) or not 1 <= max_points <= 20_000:
+        raise WorkerUnavailableError("max_points is invalid")
     if isinstance(threshold, bool) or not isinstance(threshold, (int, float)) or not 0 <= float(threshold) <= 1:
         raise WorkerUnavailableError("score_threshold is invalid")
     if request.get("apply_model_collision") is True:
@@ -120,10 +123,10 @@ def _handle(request: Mapping[str, Any]) -> Mapping[str, Any]:
         import torch
 
         network, pred_decode, grasp_group_type = _MODEL
-        if points.shape[0] >= 20000:
-            sampled = points[np.random.choice(points.shape[0], 20000, replace=False)]
+        if points.shape[0] >= max_points:
+            sampled = points[np.random.choice(points.shape[0], max_points, replace=False)]
         else:
-            sampled = np.concatenate([points, points[np.random.choice(points.shape[0], 20000 - points.shape[0], replace=True)]])
+            sampled = np.concatenate([points, points[np.random.choice(points.shape[0], max_points - points.shape[0], replace=True)]])
         with torch.no_grad():
             device = next(network.parameters()).device
             end_points = network({"point_clouds": torch.from_numpy(sampled[None]).to(device)})

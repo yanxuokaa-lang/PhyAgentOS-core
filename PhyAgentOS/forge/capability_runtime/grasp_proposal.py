@@ -764,11 +764,22 @@ class GraspProposalEndpoint:
             }
         try:
             snapshot = self.provider.propose(deepcopy(arguments))
-        except Exception:
-            # Provider failures are unavailable, never an implicit Gateway 500 or success.
+        except Exception as exc:
+            # Provider failures are unavailable, never an implicit Gateway 500
+            # or success. Adapter-owned exceptions may carry a bounded public
+            # code/message so resource exhaustion is distinguishable from a
+            # malformed proposal without exposing arbitrary worker internals.
+            provider_code = getattr(exc, "code", None)
+            if not isinstance(provider_code, str) or not provider_code.startswith("grasp_proposal_"):
+                provider_code = "grasp_proposal_provider_error"
+            provider_message = (
+                str(exc)
+                if provider_code != "grasp_proposal_provider_error" and str(exc).strip()
+                else "grasp proposal provider failed"
+            )
             return _bound_error(
-                "grasp_proposal_provider_error",
-                "grasp proposal provider failed",
+                provider_code,
+                provider_message,
                 arguments=arguments,
                 candidate_set_ref=candidate_set_ref,
             )

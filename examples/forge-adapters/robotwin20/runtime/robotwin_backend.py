@@ -146,11 +146,11 @@ def load_runtime_profile(path: Path) -> dict[str, Any]:
     except (OSError, UnicodeError, profile_yaml.YAMLError) as exc:
         raise RoboTwinRuntimeError("runtime profile could not be loaded") from exc
     required = {
-        "schema_version", "task_name", "task_config", "embodiment", "sensor_ref",
+        "schema_version", "task_name", "task_config", "embodiment",
         "max_observation_age_ms", "seed",
         "robot_identity", "gripper_identity", "embodiment_topology", "planner_profile",
     }
-    optional = {"additional_static_cameras"}
+    optional = {"additional_static_cameras", "sensor_ref", "sensor_refs"}
     if (
         not isinstance(value, Mapping)
         or not required.issubset(value)
@@ -159,6 +159,24 @@ def load_runtime_profile(path: Path) -> dict[str, Any]:
         raise RoboTwinRuntimeError("runtime profile fields are invalid")
     if value["schema_version"] != RUNTIME_PROFILE_SCHEMA_VERSION:
         raise RoboTwinRuntimeError("runtime profile schema_version is unsupported")
+    sensor_ref = value.get("sensor_ref")
+    sensor_refs = value.get("sensor_refs")
+    if (sensor_ref is None) == (sensor_refs is None):
+        raise RoboTwinRuntimeError("runtime profile must define exactly one of sensor_ref or sensor_refs")
+    if sensor_refs is not None:
+        if (
+            not isinstance(sensor_refs, (list, tuple))
+            or not sensor_refs
+            or len(set(sensor_refs)) != len(sensor_refs)
+            or any(not isinstance(item, str) or item not in _CAMERA_REFS for item in sensor_refs)
+        ):
+            raise RoboTwinRuntimeError("runtime profile sensor_refs must name distinct supported cameras")
+        normalized_sensor_refs = tuple(sensor_refs)
+        sensor_ref = normalized_sensor_refs[0]
+    else:
+        if not isinstance(sensor_ref, str) or sensor_ref not in _CAMERA_REFS:
+            raise RoboTwinRuntimeError("runtime profile sensor_ref is invalid")
+        normalized_sensor_refs = (sensor_ref,)
     try:
         embodiment = _normalize_embodiment(value["embodiment"])
     except RoboTwinRuntimeError:
@@ -168,8 +186,6 @@ def load_runtime_profile(path: Path) -> dict[str, Any]:
         or not _IDENTIFIER.fullmatch(value["task_name"])
         or not isinstance(value["task_config"], str)
         or not _IDENTIFIER.fullmatch(value["task_config"])
-        or not isinstance(value["sensor_ref"], str)
-        or value["sensor_ref"] not in _CAMERA_REFS
         or type(value["max_observation_age_ms"]) is not int
         or value["max_observation_age_ms"] < 1
         or not isinstance(value["seed"], int)
@@ -188,6 +204,8 @@ def load_runtime_profile(path: Path) -> dict[str, Any]:
     return {
         **value,
         "embodiment": embodiment,
+        "sensor_ref": sensor_ref,
+        "sensor_refs": normalized_sensor_refs,
         "additional_static_cameras": additional_static_cameras,
     }
 

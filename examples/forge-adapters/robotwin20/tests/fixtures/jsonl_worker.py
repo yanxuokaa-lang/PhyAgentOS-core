@@ -34,6 +34,8 @@ def main():
             continue
         if args.mode == "timeout":
             time.sleep(2)
+        elif args.mode == "kill":
+            os.kill(os.getpid(), 9)
         elif args.mode == "invalid-json":
             sys.stdout.write("not-json\n")
             sys.stdout.flush()

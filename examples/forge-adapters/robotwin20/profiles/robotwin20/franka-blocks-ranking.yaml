@@ -8,7 +8,9 @@ additional_static_cameras:
     position: [0.0, -0.45, 0.85]
     forward: [0.0, 1.0, -0.1]
     left: [-1.0, 0.0, 0.0]
-sensor_ref: camera/head
+# Pick-place requires one synchronized observation set so occluded entities are
+# not later misrepresented as single-view or cross-view identities.
+sensor_refs: [camera/head, camera/front]
 max_observation_age_ms: 1000
 seed: 0
 

@@ -4,6 +4,9 @@ model_variant: baseline
 artifact_root: ${ROBOTWIN20_ARTIFACT_ROOT}
 max_candidates: 32
 sample_count: 128
+# Bound the model input after the observed Runtime OOM at the native 20k-point
+# path; this is a resource budget, not a grasp-quality threshold.
+point_budget: 12000
 # Preserve native pose coverage; score-only truncation loses feasible families.
 selection_order: provider
 score_threshold: 0.02

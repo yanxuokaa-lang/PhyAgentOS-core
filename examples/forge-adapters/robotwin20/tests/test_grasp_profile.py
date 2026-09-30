@@ -85,3 +85,19 @@ def test_grasp_profile_selects_graspnet_provider(tmp_path):
     profile = {**profile, "provider_id": "graspnet", "model_variant": "baseline"}
     provider = build_grasp_provider(profile, environ=environment)
     assert isinstance(provider, GraspNetProposalProvider)
+
+
+def test_grasp_profile_propagates_point_budget(tmp_path):
+    profile, environment = _profile(tmp_path)
+    (tmp_path / "artifacts").mkdir()
+    profile = {**profile, "point_budget": 12000}
+    provider = build_grasp_provider(profile, environ=environment)
+    assert provider.point_budget == 12000
+
+
+def test_grasp_profile_rejects_unbounded_point_budget(tmp_path):
+    profile, environment = _profile(tmp_path)
+    (tmp_path / "artifacts").mkdir()
+    profile = {**profile, "point_budget": 20001}
+    with pytest.raises(GraspProfileError, match="point_budget"):
+        build_grasp_provider(profile, environ=environment)

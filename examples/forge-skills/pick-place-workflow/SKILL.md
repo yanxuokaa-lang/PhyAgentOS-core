@@ -156,7 +156,10 @@ camera driver, robot SDK, or task-specific success rule.
 
 Use `scene.observe` only to obtain measured observation artifacts. Before invocation,
 read the ToolSpec and live context through `forge_tool_context`; use the declared
-sensor reference and freshness fields. On the initial observation, omit the optional
+sensor references and freshness fields. The RobotWin persistent profile requires
+one synchronized observation set containing at least two unique sensors; the
+provider-neutral Core contract still permits a single `sensor_ref` for compatible
+non-RobotWin deployments. On the initial observation, omit the optional
 `requested_frame`: `robot_frame_profile.observation_frame` is an abstract sensor
 role, not a concrete frame identifier. If a later call must constrain the frame,
 `requested_frame` must exactly equal a concrete `frame.frame_id` returned by an
@@ -168,6 +171,9 @@ The Query returns an explicit status, capture timestamp, scene revision, frame i
 calibration reference, freshness measurement, and opaque artifact references. Treat
 `unavailable`, `stale`, and `invalid` as blockers. Do not retry a stale or missing-
 calibration result by weakening `max_age_ms`; obtain a new observation or operator input.
+The returned `views` array must contain the requested unique sensors, share one scene
+revision and calibration lineage, and satisfy `capture_skew_ms`; timestamp skew alone
+does not turn a single view into multi-view evidence.
 
 After a successful `scene.observe` result, the Agent may call
 `manipulation.capabilities` or `scene.understand`; these are independent Query

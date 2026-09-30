@@ -1,5 +1,6 @@
 import jsonschema
 import pytest
+from PhyAgentOS.forge.capability_runtime import OBSERVATION_TOOL_SPEC
 from PhyAgentOS.planning import project_tool_spec
 
 from pick_place_workflow.object_acquire import ACQUIRE_TOOL_SPEC
@@ -118,6 +119,24 @@ def test_composition_registers_all_seven_required_tools():
 def test_tool_defaults_must_target_declared_input_fields():
     with pytest.raises(ValueError, match="declared input fields"):
         _spec(ACQUIRE_TOOL_SPEC, argument_defaults={"sensor_ref": "camera/head"})
+
+
+def test_pick_place_runtime_can_require_synchronized_observations_without_globalizing_core_policy():
+    spec = _spec(
+        OBSERVATION_TOOL_SPEC,
+        argument_defaults={"sensor_refs": ["camera/head", "camera/front"], "max_age_ms": 1000},
+        require_synchronized_views=True,
+    )
+    schema = spec["input_schema"]
+    assert "sensor_ref" not in schema["properties"]
+    assert schema["properties"]["sensor_refs"]["minItems"] == 2
+    assert schema["oneOf"] == [{"required": ["sensor_refs"]}]
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate({"sensor_ref": "camera/head", "max_age_ms": 1000}, schema)
+    jsonschema.validate(
+        {"sensor_refs": ["camera/head", "camera/front"], "max_age_ms": 1000},
+        schema,
+    )
 
 
 def test_unknown_place_cannot_produce_semantic_completion_evidence():

@@ -350,10 +350,26 @@ def build_persistent_host(
         ) from exc
     if not isinstance(runtime_definition, Mapping):
         raise PersistentHostConfigurationError("persistent Runtime profile must contain an object")
+    sensor_refs = runtime_definition.get("sensor_refs")
     sensor_ref = runtime_definition.get("sensor_ref")
+    if sensor_refs is not None:
+        if (
+            not isinstance(sensor_refs, list)
+            or len(sensor_refs) < 2
+            or len(set(sensor_refs)) != len(sensor_refs)
+            or any(not isinstance(item, str) or not item.strip() for item in sensor_refs)
+        ):
+            raise PersistentHostConfigurationError(
+                "runtime profile sensor_refs must contain at least two distinct non-empty strings"
+            )
+        observation_defaults = {"sensor_refs": list(sensor_refs)}
+        require_synchronized_views = True
+    else:
+        if not isinstance(sensor_ref, str) or not sensor_ref.strip():
+            raise PersistentHostConfigurationError("runtime profile sensor_ref must be non-empty")
+        observation_defaults = {"sensor_ref": sensor_ref}
+        require_synchronized_views = False
     max_observation_age_ms = runtime_definition.get("max_observation_age_ms")
-    if not isinstance(sensor_ref, str) or not sensor_ref.strip():
-        raise PersistentHostConfigurationError("runtime profile sensor_ref must be non-empty")
     if (
         type(max_observation_age_ms) is not int
         or max_observation_age_ms < 1
@@ -755,10 +771,11 @@ def build_persistent_host(
             tool_context_provider=context,
             tool_input_defaults={
                 "scene.observe": {
-                    "sensor_ref": sensor_ref,
+                    **observation_defaults,
                     "max_age_ms": max_observation_age_ms,
                 }
             },
+            require_synchronized_views=require_synchronized_views,
         )
     except Exception:
         for manager in lifecycle_managers:

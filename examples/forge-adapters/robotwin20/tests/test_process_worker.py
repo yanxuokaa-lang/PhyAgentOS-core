@@ -11,7 +11,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from robotwin20_adapter import JsonlProcessWorkerClient, ProcessWorkerConfig, ProcessWorkerError
+from robotwin20_adapter import (
+    JsonlProcessWorkerClient,
+    ProcessWorkerConfig,
+    ProcessWorkerError,
+    ProcessWorkerResourceError,
+)
 
 FIXTURE = Path(__file__).parent / "fixtures" / "jsonl_worker.py"
 
@@ -132,6 +137,14 @@ def test_worker_protocol_failures_are_typed_and_fail_closed(mode, message):
     client = _client(mode, request_timeout_s=0.05)
     with pytest.raises(ProcessWorkerError, match=message):
         client.request({"request_id": "request-1"})
+
+
+def test_worker_sigkill_is_classified_as_resource_exhaustion():
+    client = _client("kill")
+    with pytest.raises(ProcessWorkerResourceError, match="resource exhaustion") as failure:
+        client.request({"request_id": "request-1"})
+    assert failure.value.code == "worker_resource_exhausted"
+    assert failure.value.returncode == -9
 
 
 def test_worker_config_rejects_path_lookup_and_relative_cwd(tmp_path):

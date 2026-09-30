@@ -226,4 +226,4 @@ artifacts:
       arch: x86_64
       artifact_type: executable_tar_gz
       entrypoint: robotwin20_persistent_host
-      sha256: 914dc5ce3f004a67a644b1341e3b291c6d9255b6ecf94122c65be3d995688794
+      sha256: c83d8a8ccb86d2fd10373aecdee738c76f80130cb48afc506efbd8954443ca08

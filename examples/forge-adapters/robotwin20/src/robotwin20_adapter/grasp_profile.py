@@ -67,6 +67,9 @@ def build_grasp_provider(
         raise GraspProfileError("grasp provider_id is invalid")
     if not isinstance(model_variant, str) or not model_variant:
         raise GraspProfileError("grasp model_variant is invalid")
+    point_budget = profile.get("point_budget", 20_000)
+    if isinstance(point_budget, bool) or not isinstance(point_budget, int) or not 1 <= point_budget <= 20_000:
+        raise GraspProfileError("grasp point_budget must be between 1 and 20000")
     providers = {"graspgen": GraspGenProposalProvider, "graspnet": GraspNetProposalProvider}
     provider_type = providers.get(provider_id)
     if provider_type is None:
@@ -86,6 +89,7 @@ def build_grasp_provider(
             apply_model_collision=profile["apply_model_collision"],
             selection_order=profile.get("selection_order", "score"),
             model_variant=model_variant,
+            point_budget=point_budget,
         )
     except (TypeError, ValueError) as exc:
         raise GraspProfileError("grasp profile values are invalid") from exc

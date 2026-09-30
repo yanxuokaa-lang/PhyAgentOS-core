@@ -10,6 +10,7 @@ from robotwin20_adapter.grasp_proposal import (
     GraspNetProposalProvider,
     GraspProposalAdapterError,
 )
+from robotwin20_adapter.process_worker import ProcessWorkerResourceError
 
 REQUEST = {
     "observation_ref": "observation://scene-7/camera_front",
@@ -154,6 +155,25 @@ def test_worker_cleanup_failure_is_fail_closed(tmp_path):
     provider = GraspGenProposalProvider(CleanupFailureWorker(), artifact_store=_store(tmp_path))
     with pytest.raises(GraspProposalAdapterError, match="cleanup failed"):
         provider.propose(REQUEST)
+
+
+def test_resource_exhaustion_keeps_a_distinct_provider_error(tmp_path):
+    class OOMWorker(Worker):
+        def request(self, payload):
+            raise ProcessWorkerResourceError(
+                "worker was terminated by resource exhaustion",
+                code="worker_resource_exhausted",
+                returncode=-9,
+                stderr_tail=("Killed",),
+            )
+
+    provider = GraspNetProposalProvider(OOMWorker(), artifact_store=_store(tmp_path))
+    with pytest.raises(GraspProposalAdapterError) as failure:
+        provider.propose(REQUEST)
+    assert failure.value.code == "grasp_proposal_resource_exhausted"
+    response = GraspProposalEndpoint(provider).invoke(REQUEST)
+    assert response["status"] == "unavailable"
+    assert response["error"]["code"] == "grasp_proposal_resource_exhausted"
 
 
 def test_graspnet_uses_its_approach_axis_without_reusing_graspgen_semantics(tmp_path):

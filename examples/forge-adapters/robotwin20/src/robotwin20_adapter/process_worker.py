@@ -22,6 +22,27 @@ logger = logging.getLogger(__name__)
 class ProcessWorkerError(RuntimeError):
     """An isolated worker failed its lifecycle or request protocol."""
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "worker_error",
+        returncode: int | None = None,
+        stderr_tail: tuple[str, ...] = (),
+    ) -> None:
+        super().__init__(message)
+        self.code = code
+        self.returncode = returncode
+        self.stderr_tail = tuple(stderr_tail)
+
+
+class ProcessWorkerTerminatedError(ProcessWorkerError):
+    """The worker exited before completing a response."""
+
+
+class ProcessWorkerResourceError(ProcessWorkerTerminatedError):
+    """The worker was killed in a way consistent with resource exhaustion."""
+
 
 class ProcessWorkerTimeoutError(ProcessWorkerError, TimeoutError):
     """A bounded worker exchange exhausted its request budget."""
@@ -257,8 +278,26 @@ class JsonlProcessWorkerClient:
         except queue.Empty as exc:
             raise ProcessWorkerTimeoutError("worker response timed out") from exc
         if line is None:
-            detail = self._stderr_tail[-1] if self._stderr_tail else "no stderr"
-            raise ProcessWorkerError(f"worker exited before a complete response: {detail}")
+            process = self._process
+            returncode = process.poll() if process is not None else None
+            stderr_tail = tuple(self._stderr_tail)
+            detail = stderr_tail[-1] if stderr_tail else "no stderr"
+            # A SIGKILL/137 is the observable signature of the Linux OOM
+            # killer in the Runtime cgroup. Preserve that fact at the process
+            # seam so adapters do not turn it into an opaque provider error.
+            if returncode in {-9, 137}:
+                raise ProcessWorkerResourceError(
+                    f"worker was terminated by resource exhaustion (returncode={returncode}; {detail})",
+                    code="worker_resource_exhausted",
+                    returncode=returncode,
+                    stderr_tail=stderr_tail,
+                )
+            raise ProcessWorkerTerminatedError(
+                f"worker exited before a complete response (returncode={returncode}; {detail})",
+                code="worker_terminated",
+                returncode=returncode,
+                stderr_tail=stderr_tail,
+            )
         if len(line.encode("utf-8")) > self.config.max_line_bytes:
             raise ProcessWorkerError("worker response exceeds max_line_bytes")
         try:
@@ -299,4 +338,10 @@ class JsonlProcessWorkerClient:
                 stream.close()
 
 
-__all__ = ["JsonlProcessWorkerClient", "ProcessWorkerConfig", "ProcessWorkerError"]
+__all__ = [
+    "JsonlProcessWorkerClient",
+    "ProcessWorkerConfig",
+    "ProcessWorkerError",
+    "ProcessWorkerResourceError",
+    "ProcessWorkerTerminatedError",
+]

@@ -188,8 +188,14 @@ class _ProjectedDriver:
         self.driver.stop()
 
 
-def _spec(spec, *, argument_defaults=None):
+def _spec(spec, *, argument_defaults=None, require_synchronized_views: bool = False):
     spec = deepcopy(spec)
+    if spec["tool_id"] == "scene.observe" and require_synchronized_views:
+        input_schema = spec["input_schema"]
+        properties = input_schema["properties"]
+        properties.pop("sensor_ref", None)
+        properties["sensor_refs"]["minItems"] = 2
+        input_schema["oneOf"] = [{"required": ["sensor_refs"]}]
     if argument_defaults:
         properties = spec.get("input_schema", {}).get("properties", {})
         if not isinstance(properties, dict) or set(argument_defaults) - set(properties):
@@ -300,7 +306,8 @@ class PersistentActionEndpoint:
 def build_persistent_runtime(*, client, understanding_provider, grasp_provider,
                              preparation_provider, capability_provider, resolve_preparation,
                              tool_context_provider, possession: PersistentPossession | None = None,
-                             query_decorator=None, tool_input_defaults=None) -> CapabilityRuntime:
+                             query_decorator=None, tool_input_defaults=None,
+                             require_synchronized_views: bool = False) -> CapabilityRuntime:
     """Use injected model providers and one persistent manipulation process.
 
     resolve_preparation belongs to the adapter and supplies the approved route
@@ -323,6 +330,13 @@ def build_persistent_runtime(*, client, understanding_provider, grasp_provider,
         defaults = (tool_input_defaults or {}).get(spec["tool_id"])
         if query_decorator is not None and spec["semantics"] == "query":
             endpoint = query_decorator(spec["tool_id"], endpoint)
-        runtime.register_tool(_spec(spec, argument_defaults=defaults), endpoint,
-                              context_provider=lambda tool_id=spec["tool_id"]: tool_context_provider(tool_id))
+        runtime.register_tool(
+            _spec(
+                spec,
+                argument_defaults=defaults,
+                require_synchronized_views=require_synchronized_views,
+            ),
+            endpoint,
+            context_provider=lambda tool_id=spec["tool_id"]: tool_context_provider(tool_id),
+        )
     return runtime

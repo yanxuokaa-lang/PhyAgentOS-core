@@ -1,6 +1,40 @@
 # Changelog
 ## Archive
 - [2026-09 part20](changelog/2026-09_part20.md)
+## v12.4.7 (2026-09-30 09:20) - codex
+
+### 变更摘要 / Summary
+- 修复 GraspNet worker OOM 后 IPC 错误被压成通用 provider failure；增加 12,000 点 profile 预算、typed worker termination/resource errors 和 fail-closed provider code。
+- Fix opaque GraspNet provider failures after Runtime OOM; add the 12,000-point profile budget, typed worker termination/resource errors, and fail-closed provider codes.
+- RobotWin persistent profile now projects a live ToolSpec requiring at least two unique synchronized sensor views while preserving Core/legacy single-view compatibility.
+- 新增 106 项 focused regression、诊断和七维 Review；Node SHA 更新为 `c83d8a8ccb86d2fd10373aecdee738c76f80130cb48afc506efbd8954443ca08`，正式 Skill bundle 构建通过。
+
+### 影响文件 / Affected Files
+- `PhyAgentOS/forge/capability_runtime/grasp_proposal.py`
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/{process_worker.py,grasp_proposal.py,persistent_host.py}`
+- `examples/forge-adapters/robotwin20/runtime/{graspnet_worker.py,robotwin_backend.py}`
+- `examples/forge-skills/pick-place-workflow/{skill.yaml,SKILL.md}`
+- `docs/diagnostics/rgb-run-graspnet-oom-and-single-view-20260930.md`
+- `docs/reviews/v12.4.7-graspnet-multiview-seven-dimension-review.md`
+
+### 验证 / Validation
+- Focused pytest: 106 passed; release package smoke: 83 passed.
+- Ruff, compileall, git diff --check, Node and Skill bundle builds: passed.
+- Commit: `7b926b8` on `feature/planning-loop`.
+
+## v12.4.6 (2026-09-30 08:51) - codex
+
+### 变更摘要 / Summary
+- 在 PlanProposal 到 Coordinator revision 接受边界验证结构化 manipulation intent，统一选择错误与 revision 状态语义，增加未知字段/合法 intent/旧式兼容回归。
+- Validate structured manipulation intent at revision acceptance, align selection errors with authoritative revision state, and add unknown-field, valid-intent, and legacy compatibility regressions.
+
+### 影响文件 / Affected Files
+- `PhyAgentOS/forge/manipulation.py`, `PhyAgentOS/agent/planning_dispatch.py`, `PhyAgentOS/agent/plan_proposal.py`
+- `tests/test_agent_foundation.py`, `docs/diagnostics/structured-intent-schema-and-revision-correction-20260930.md`, `docs/reviews/v12.4.6-structured-intent-admission-seven-dimension-review.md`
+
+### 验证 / Validation
+- Planning/proposal/selection regressions, Ruff, compileall, and git diff check passed.
+
 ## v12.4.5 (2026-09-30 08:42) - codex
 
 ### 变更摘要 / Summary

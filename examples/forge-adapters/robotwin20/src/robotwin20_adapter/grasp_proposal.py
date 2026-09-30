@@ -10,14 +10,21 @@ admission, or motion.
 
 from __future__ import annotations
 
+import logging
 import math
 from pathlib import Path
 from typing import Any, Mapping, Protocol
 from uuid import uuid4
 
+from .process_worker import ProcessWorkerError
+
 
 class GraspProposalAdapterError(RuntimeError):
     """The adapter cannot produce provider-neutral grasp evidence."""
+
+    def __init__(self, message: str, *, code: str = "grasp_proposal_adapter_error") -> None:
+        super().__init__(message)
+        self.code = code
 
 
 class GraspWorkerClient(Protocol):
@@ -90,6 +97,7 @@ class GraspProposalProvider:
         model_variant: str = "ptv3",
         approach_axis: int = 2,
         closing_axis: int = 0,
+        point_budget: int = 20_000,
     ) -> None:
         if not callable(getattr(client, "request", None)):
             raise TypeError("grasp worker client must expose request(payload)")
@@ -122,6 +130,8 @@ class GraspProposalProvider:
             raise ValueError("approach_axis must be 0, 1, or 2")
         if isinstance(closing_axis, bool) or not isinstance(closing_axis, int) or closing_axis not in (0, 1, 2) or closing_axis == approach_axis:
             raise ValueError("closing_axis must be a different axis from approach_axis")
+        if isinstance(point_budget, bool) or not isinstance(point_budget, int) or not 1 <= point_budget <= 20_000:
+            raise ValueError("point_budget must be between 1 and 20000")
         self.client = client
         self.artifact_store = artifact_store
         self.max_candidates = max_candidates
@@ -137,6 +147,7 @@ class GraspProposalProvider:
         self.model_variant = model_variant
         self.approach_axis = approach_axis
         self.closing_axis = closing_axis
+        self.point_budget = point_budget
 
     def propose(self, request: Mapping[str, Any]) -> Mapping[str, Any]:
         if not isinstance(request, Mapping):
@@ -240,25 +251,43 @@ class GraspProposalProvider:
         points_path: Path,
     ) -> Mapping[str, Any]:
         request_id = uuid4().hex
-        reply = self.client.request(
-            {
-                "schema_version": "paos-grasp-worker/v1",
-                "request_id": request_id,
-                "provider": self.provider_id,
-                "model_variant": self.model_variant,
-                "observation_ref": request["observation_ref"],
-                "scene_revision": request["scene_revision"],
-                "entity_ref": target["entity_ref"],
-                "point_cloud_frame": request["frame_id"],
-                "point_units": "m",
-                "point_cloud_path": str(points_path),
-                "max_candidates": self.sample_count,
-                "score_threshold": self.score_threshold,
-                "apply_nms": False,
-                "apply_model_collision": self.apply_model_collision,
-                "geometry_artifact_ref": geometry["artifact_ref"],
-            }
-        )
+        try:
+            reply = self.client.request(
+                {
+                    "schema_version": "paos-grasp-worker/v1",
+                    "request_id": request_id,
+                    "provider": self.provider_id,
+                    "model_variant": self.model_variant,
+                    "observation_ref": request["observation_ref"],
+                    "scene_revision": request["scene_revision"],
+                    "entity_ref": target["entity_ref"],
+                    "point_cloud_frame": request["frame_id"],
+                    "point_units": "m",
+                    "point_cloud_path": str(points_path),
+                    "max_candidates": self.sample_count,
+                    "max_points": self.point_budget,
+                    "score_threshold": self.score_threshold,
+                    "apply_nms": False,
+                    "apply_model_collision": self.apply_model_collision,
+                    "geometry_artifact_ref": geometry["artifact_ref"],
+                }
+            )
+        except ProcessWorkerError as exc:
+            code = (
+                "grasp_proposal_resource_exhausted"
+                if exc.code == "worker_resource_exhausted"
+                else "grasp_proposal_worker_terminated"
+            )
+            logging.getLogger(__name__).error(
+                "grasp worker failure code=%s returncode=%s stderr_tail=%s",
+                exc.code,
+                exc.returncode,
+                exc.stderr_tail[-3:],
+            )
+            raise GraspProposalAdapterError(
+                f"grasp worker {exc.code} (returncode={exc.returncode})",
+                code=code,
+            ) from exc
         if not isinstance(reply, Mapping) or reply.get("request_id") != request_id:
             raise GraspProposalAdapterError("grasp worker response identity mismatch")
         return reply

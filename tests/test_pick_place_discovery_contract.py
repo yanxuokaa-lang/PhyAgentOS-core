@@ -2,7 +2,6 @@ from pathlib import Path
 
 import yaml
 
-
 ROOT = Path(__file__).resolve()
 while ROOT.name != 'PhyAgentOS-forge' and ROOT.parent != ROOT:
     ROOT = ROOT.parent

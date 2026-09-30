@@ -126,7 +126,13 @@ from .perception_profile import (
     build_single_view_perception,
     load_perception_profile,
 )
-from .process_worker import JsonlProcessWorkerClient, ProcessWorkerConfig, ProcessWorkerError
+from .process_worker import (
+    JsonlProcessWorkerClient,
+    ProcessWorkerConfig,
+    ProcessWorkerError,
+    ProcessWorkerResourceError,
+    ProcessWorkerTerminatedError,
+)
 from .qwen3_vl_scene_understanding import (
     Qwen3VLConfig,
     Qwen3VLInferenceError,
@@ -329,6 +335,8 @@ __all__ = [
     "JsonlProcessWorkerClient",
     "ProcessWorkerConfig",
     "ProcessWorkerError",
+    "ProcessWorkerResourceError",
+    "ProcessWorkerTerminatedError",
     "GraspGenProposalProvider",
     "GraspProposalProvider",
     "GraspNetProposalProvider",
