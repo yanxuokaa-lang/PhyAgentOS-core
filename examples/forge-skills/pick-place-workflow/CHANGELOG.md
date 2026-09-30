@@ -1,5 +1,12 @@
 # Change Log
 
+## v2.10.2 (2026-09-30)
+
+- 中文：发布 Coordinator 具名多来源 projection 支持，使 `manipulation.prepare` 从 `grasp.propose` 获取当前实体候选、从同场景 `manipulation.capabilities` 获取可用机械臂；Agent 只选择授权记录，不再组装候选或 arm 参数。
+- English: Publish Coordinator named multi-source projection support so `manipulation.prepare` consumes current-entity candidates from `grasp.propose` and available arms from same-scene `manipulation.capabilities`; the Agent selects authorized records without assembling candidate or arm arguments.
+- 中文：继续锁定已验证的 Node `0.10.1`（SHA-256 `5b61b5630109d676c6a29376016b50a6e135fddeab24477274b9216dd6985140`）；不改变 Runtime 感知、运动、碰撞、IK 或授权逻辑。
+- English: Retain the verified Node `0.10.1` lock (SHA-256 `5b61b5630109d676c6a29376016b50a6e135fddeab24477274b9216dd6985140`) without changing Runtime perception, motion, collision, IK, or authorization logic.
+
 ## v2.10.1 (2026-09-30)
 
 - 中文：在 GraspNet worker/provider 边界将非负 native score 上界饱和到 provider-neutral `[0,1]`，保留 `native_score` 诊断和原始排序；负分过滤、非有限值 fail-closed，IK、碰撞与动作授权不变。

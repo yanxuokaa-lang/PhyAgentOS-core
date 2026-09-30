@@ -34,7 +34,7 @@ def test_bundle_embeds_only_the_node_archive_locked_by_the_manifest(tmp_path):
         yaml.safe_dump({
             "manifest_version": 2,
             "name": "pick-place-workflow",
-            "version": "2.10.1",
+            "version": "2.10.2",
             "skill_document": "SKILL.md",
             "artifacts": {
                 "resolver": "local",

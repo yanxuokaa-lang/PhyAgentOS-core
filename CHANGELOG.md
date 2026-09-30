@@ -2,6 +2,34 @@
 ## Archive
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
+
+## v12.5.1 (2026-09-30 15:18) - codex
+
+### 变更摘要 / Summary
+- 发布并重新安装 `pick-place-workflow 2.10.2`，继续锁定已验证的 `robotwin20_persistent_host 0.10.1`。
+- Publish and reinstall `pick-place-workflow 2.10.2` while retaining the verified `robotwin20_persistent_host 0.10.1` lock.
+- Live `manipulation.prepare` 已加载具名多来源投影：候选来自 `grasp.propose`，可用机械臂来自 `manipulation.capabilities`，Coordinator 负责实体过滤和合并。
+- Live `manipulation.prepare` now loads named multi-source projection: candidates come from `grasp.propose`, available arms come from `manipulation.capabilities`, and the Coordinator performs entity filtering and assembly.
+
+### 影响文件 / Affected Files
+- `examples/forge-skills/pick-place-workflow/CHANGELOG.md:L3-L9`
+- `examples/forge-skills/pick-place-workflow/pyproject.toml:L3`
+- `examples/forge-skills/pick-place-workflow/skill.yaml:L3`
+- `examples/forge-skills/pick-place-workflow/tests/test_grasp_propose.py:L270`
+- `examples/forge-skills/pick-place-workflow/tests/test_release_bundle.py:L37`
+- `changelog/2026-09_part21.md`
+
+### 关键 Diff / Key Diff
+```diff
+-version: "2.10.1"
++version: "2.10.2"
+```
+
+### 验证 / Validation
+- Release tests: 159 passed; Ruff, compileall, and `git diff --check` passed.
+- Installed Skill `2.10.2`, Node `0.10.1`, Gateway/Tool contexts ready, and no active task/invocation/binding.
+- No AgentTask, Gateway Query/Action, or physical motion was created during deployment verification.
+
 ## v12.5.0 (2026-09-30 14:36) - codex
 
 ### 变更摘要 / Summary
@@ -80,20 +108,3 @@
 
 ### 验证 / Validation
 - Planning/proposal/selection regressions, Ruff, compileall, and git diff check passed.
-
-## v12.4.5 (2026-09-30 08:42) - codex
-
-### 变更摘要 / Summary
-- AgentLoop 在首个 replan 模型请求前领取 bounded lease，避免 provider 决策时间消耗原始恢复窗口。
-- AgentLoop claims the bounded lease before the first replan model request so provider decision time does not consume the original recovery window.
-- 增加仅限 exact deadline-expired 且无在途执行的同 AgentTask 操作员恢复入口；91 项通过并完成七维 Review。
-- Add same-AgentTask operator recovery only for exact deadline expiry with no in-flight execution; 91 tests pass with seven-dimension review complete.
-
-### 影响文件 / Affected Files
-- PhyAgentOS/agent/loop.py L825-L834
-- PhyAgentOS/forge/task.py L2585-L2627
-- PhyAgentOS/agent/long_horizon.py L89-L92
-- PhyAgentOS/cli/commands.py L273-L292
-- tests/test_agent_foundation.py L102-L187
-- docs/diagnostics/replan-lease-and-expired-task-recovery-20260930.md
-- docs/reviews/v12.4.5-replan-lease-recovery-seven-dimension-review.md
