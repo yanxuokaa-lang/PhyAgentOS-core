@@ -22,6 +22,10 @@
 - Ruff, compileall, git diff --check: passed.
 - Full RGB physical acceptance remains pending on the same AgentTask.
 
+### Git 提交 / Git Commit
+- Implementation: 7068773
+- Branch: feature/planning-loop
+
 ## v12.4.0 (2026-09-30 08:30) - codex
 
 ### 变更摘要 / Summary
