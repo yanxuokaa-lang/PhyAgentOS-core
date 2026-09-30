@@ -4,6 +4,14 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.5.5 (2026-10-01 01:30) - codex
+
+### 变更摘要 / Summary
+- benchmark profile 的放置目标现在只能来自成功的 `task.goal` 外部注入；计划物化前拒绝 Agent 自写 destination 和 autonomous target/staging。
+- Benchmark placement destinations now come only from successful external `task.goal` injection; Agent-authored destinations and autonomous target/staging are rejected before materialization.
+- 完整 Diff、七维 Review 和验证记录见 `changelog/2026-10.md`。
+- Full diff, seven-dimension review, and validation are recorded in `changelog/2026-10.md`。
+
 ## v12.5.4 (2026-10-01 00:20) - codex
 
 ### 变更摘要 / Summary

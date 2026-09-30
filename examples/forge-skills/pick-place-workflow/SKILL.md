@@ -16,13 +16,19 @@ task-bound observation, capability discovery and scene understanding, then call
 the graph identity and integrity metadata. Do not invent digests or executable
 references. Preserve all discovery records in the same task.
 
-Select entities and destinations from sensor-backed attributes and relations.
-Resolve phrases such as "the left red object" against the observed scene; request
-clarification or another observation when selection is ambiguous or a target is
-missing. Never rewrite an entity or geometry reference to match a benchmark ID.
-Calibrated named regions may be deployment data; which region serves this user's
-goal is a task decision. Object count, order and goals must not come from a fixed
-two-object template.
+Select entities from the current sensor-backed scene and resolve phrases such as
+"the left red object" against observed identity. For a Runtime profile whose
+`goal_source` is `benchmark_task_definition` (including
+`robotwin-blocks-ranking-graspnet`), placement destinations are not Agent
+decisions: call `task.goal`, match its `execution_entity_ref` through the current
+`scene.bind`, and omit `destination_ref` from semantic PlanNodes so Coordinator
+injects the exact opaque benchmark reference. Never write, replace, or infer a
+benchmark destination, temporary staging URI, pose, or matrix. If the injected
+goal is missing, ambiguous, occupied, or rejected by readiness, stop or revise
+operation order while retaining the same injected destination; do not create a
+replacement target. Only an explicitly observation-owned profile may let the
+Agent choose a destination. Never rewrite an entity or geometry reference to
+match a benchmark ID. Object count and goals must not come from a fixed template.
 
 Use observed geometry for the target and relevant collision obstacles; preserve
 support relations and their metric evidence. If preparation reports incomplete
@@ -41,9 +47,9 @@ baseline exception: identity still comes from `scene.observe`,
 `scene.understand`, and `scene.bind`, while preparation uses the bound Runtime
 actor geometry and collision world. `task.goal` returns task-specification goal
 facts separately from observations. Match its `execution_entity_ref` to the
-mapping returned by `scene.bind` and choose the operation order yourself. Use the
-opaque benchmark `destination_ref` directly in `manipulation.prepare` and
-`object.place`; the Coordinator propagates the uniquely matched reference and the
+mapping returned by `scene.bind` and choose only the operation order yourself.
+Omit destination fields; the Coordinator propagates the uniquely matched opaque
+benchmark `destination_ref` into `manipulation.prepare` and `object.place`, and the
 Oracle Adapter resolves its Runtime-owned pose. Do not copy the benchmark 4x4
 matrix into a `manipulation.target` node. Never call `task.goal` output sensor
 evidence, task success, readiness, or motion approval. The Runtime must not fall
@@ -63,7 +69,9 @@ Use `task.goal` destinations directly; do not add `manipulation.target` or
 `manipulation.staging` nodes. These regions are externally injected
 task-definition inputs, not sensor evidence, scene geometry, motion approval or
 an Oracle replacement. The Agent may choose operation order and grasp/route
-candidates, but it may not replace an injected placement destination.
+candidates, but it may not choose, write, replace, or stage a placement
+destination. A benchmark profile with no unique `task.goal` match is a planning
+blocker.
 The profile retains complete-route readiness and monitored simulation Action
 approval, contact/stop checks, reconciliation and cumulative video. It does not
 fall back to oracle geometry or template grasps.
@@ -96,14 +104,14 @@ requested placements. Keep the original success criteria; do not weaken them
 during recovery. Each node turn uses the task's activated Skill instructions, not
 a later revision loaded silently during execution.
 
-Before materializing a multi-object rearrangement, check whether a selected
+Before materializing a multi-object rearrangement, check whether an injected
 destination is still occupied by another object that must move. A sequential
-place must not overwrite an occupied destination. Break each relocation cycle
-through an unoccupied staging destination whose free space, support geometry,
-object fit, and later recovery path are supported by the current observation
-and binding evidence. Re-observe and rebind after every staged placement. If no
-such destination is evidenced, request clarification or stop; do not invent a
-buffer pose. A simultaneous multi-arm swap is admissible only when the Runtime
+place must not overwrite an occupied benchmark destination. In an
+`observation_owned` profile, a Runtime-provided staging Query may supply a
+temporary destination. In benchmark mode, no staging Query, target Query, pose,
+or hand-authored URI is allowed; revise operation order while retaining the
+injected destination or stop. Re-observe and rebind after each world-changing
+Action. A simultaneous multi-arm swap is admissible only when the Runtime
 exposes one atomic synchronized capability with inter-arm collision evidence.
 
 Use settled results and postcondition evidence to decide whether to advance.
@@ -127,24 +135,27 @@ When the active Runtime publishes `task.goal`, call it as a task-bound read-only
 discovery Query before materializing goal-bound nodes. It may expose exact goals
 from a simulator task definition or another deployment-owned task specification;
 its provenance is distinct from observation. The Agent remains responsible for
-matching each goal to a bound entity and choosing order and recovery. In an
+matching each goal to a bound entity and choosing order only. In an
 observation-owned profile, autonomous `manipulation.target` and
-`manipulation.staging` remain available. In an explicit benchmark profile,
-preserve the matched opaque `destination_ref`; do not reproduce its numeric pose
-through `manipulation.target` and do not replace it with an observation-owned
-staging destination. If the injected destination is occupied or cannot pass
-preparation, stop or revise operation ordering while keeping the same
-destination.
+`manipulation.staging` remain available. In an explicit benchmark profile, omit
+all destination fields and let Coordinator inject the matched opaque
+`destination_ref`; do not reproduce its numeric pose, call target/staging, or
+replace it with an observation-owned destination. If the injected destination is
+occupied or cannot pass preparation, stop or revise operation ordering while
+keeping that exact destination.
 
-Choose task relations, reference frames, destinations, intermediate placements
-and dependencies from the user goal and observed evidence. Never equate camera
+Choose task relations, reference frames, and dependencies from the user goal and
+observed evidence. In benchmark mode, destination and intermediate placement
+selection are Coordinator-owned facts, not Agent planning decisions. Never equate camera
 left with world+x. When the user's reference frame is ambiguous, clarify it.
-Use `manipulation.target` to resolve a chosen object pose: supply binding_ref,
+Only in an `observation_owned` profile, use `manipulation.target` to resolve a
+chosen object pose: supply binding_ref,
 entity_ref, frame_id, unit=m and a row-major 4x4 frame_T_object_target. Supported
 frames are world and the bound observation frame. The resolver does not sort,
 choose slots, preserve a height implicitly or create an execution sequence.
 Derive proposed poses from returned geometry and explicit task constraints;
-do not invent benchmark coordinates or opaque destination references.
+do not invent benchmark coordinates or opaque destination references. In
+`benchmark_task_definition` mode, this target-resolution branch is disabled.
 
 The resulting destination_ref is a geometric proposal, not permission or proof
 of feasibility. Pass it through manipulation.prepare and existing Action

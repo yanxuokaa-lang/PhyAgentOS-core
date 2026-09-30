@@ -1,5 +1,10 @@
 # Change Log
 
+## v2.10.3 (2026-10-01)
+
+- 中文：将 benchmark `task.goal` 设为唯一放置目标来源；Agent 必须省略 `destination_ref`，不得创建 target/staging 或替代目标，由 Coordinator 在计划物化时注入并校验。
+- English: Make benchmark `task.goal` the sole placement-goal source; Agents must omit `destination_ref` and may not create target/staging or replacement goals, while Coordinator injects and validates destinations during plan materialization.
+
 ## v2.10.2 (2026-09-30)
 
 - 中文：发布 Coordinator 具名多来源 projection 支持，使 `manipulation.prepare` 从 `grasp.propose` 获取当前实体候选、从同场景 `manipulation.capabilities` 获取可用机械臂；Agent 只选择授权记录，不再组装候选或 arm 参数。

@@ -4,7 +4,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from PhyAgentOS.agent.plan_proposal import _complete_persisted_runtime_bindings
+from PhyAgentOS.agent.plan_proposal import (
+    _complete_persisted_runtime_bindings,
+    _validate_benchmark_plan_inputs,
+)
 from PhyAgentOS.forge.binding import BoundToolSpec, missing_preplan_queries
 from PhyAgentOS.forge.manipulation import capability_snapshot_digest
 from PhyAgentOS.planning import PlanNode, ToolSpecPolicy
@@ -318,3 +321,66 @@ def test_explicit_nested_intent_mode_wins_over_derived_topology_mode():
     bindings = completed[1].input_bindings
     assert bindings["intent"]["coordination_mode"] == "single_arm"
     assert "coordination_mode" not in bindings
+
+
+def _benchmark_task(records):
+    task = _task(records)
+    task.runtime_binding = SimpleNamespace(
+        runtime_profile="robotwin-blocks-ranking-graspnet",
+    )
+    return task
+
+
+def test_benchmark_plan_rejects_agent_authored_destination_before_selection():
+    task = _benchmark_task((_record(
+        "task.goal",
+        {"data": {"status": "available", "goals": [{
+            "execution_entity_ref": "entity://block-red-1",
+            "destination_ref": "destination://blocks-ranking-rgb/red-slot",
+        }]}},
+    ),))
+    node = PlanNode(
+        node_id="red-prepare",
+        obligation_id="red-prepare",
+        capability="manipulation.prepare",
+        input_bindings={
+            "execution_entity_ref": "entity://block-red-1",
+            "destination_ref": "destination://agent/staging",
+        },
+    )
+
+    with pytest.raises(ValueError, match="omit destination_ref"):
+        _validate_benchmark_plan_inputs(task, (node,))
+
+
+def test_benchmark_plan_rejects_autonomous_target_and_staging_nodes():
+    task = _benchmark_task((_record(
+        "task.goal",
+        {"data": {"status": "available", "goals": [{
+            "execution_entity_ref": "entity://block-red-1",
+            "destination_ref": "destination://blocks-ranking-rgb/red-slot",
+        }]}},
+    ),))
+    node = PlanNode(
+        node_id="red-staging",
+        obligation_id="red-staging",
+        capability="manipulation.staging",
+    )
+
+    with pytest.raises(ValueError, match="manipulation.staging"):
+        _validate_benchmark_plan_inputs(task, (node,))
+
+
+def test_benchmark_profile_requires_task_goal_before_materialization():
+    task = _benchmark_task((_record("task.goal", {"data": {
+        "goal_source": "benchmark_task_definition", "goals": [],
+    }}),))
+    node = PlanNode(
+        node_id="red-prepare",
+        obligation_id="red-prepare",
+        capability="manipulation.prepare",
+        input_bindings={"execution_entity_ref": "entity://block-red-1"},
+    )
+
+    with pytest.raises(ValueError, match="successful task.goal"):
+        _validate_benchmark_plan_inputs(task, (node,))

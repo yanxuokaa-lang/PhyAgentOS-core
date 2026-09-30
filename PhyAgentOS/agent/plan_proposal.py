@@ -33,6 +33,83 @@ RECOVERY_NODE_GUIDANCE = (
     "continue after its result instead of inventing future bindings or evidence."
 )
 
+_BENCHMARK_DESTINATION_NODES = frozenset({
+    "manipulation.prepare",
+    "object.place",
+})
+_BENCHMARK_AUTONOMOUS_TARGET_NODES = frozenset({
+    "manipulation.target",
+    "manipulation.staging",
+})
+
+
+def _task_goal_destinations(task: Any) -> tuple[bool, dict[str, set[str]]]:
+    """Read task-owned external goals without coupling Core to a provider/profile."""
+    mode = False
+    destinations: dict[str, set[str]] = {}
+    for revision in getattr(task, "revisions", ()):
+        for record in getattr(revision, "execution_records", ()):
+            if getattr(record, "status", None) != "succeeded":
+                continue
+            if getattr(record, "tool_id", None) != "task.goal":
+                continue
+            facts = response_facts(getattr(record, "response", {}))
+            if facts.get("goal_source") == "observation_owned":
+                continue
+            if facts.get("goal_source", facts.get("geometry_source")) == "benchmark_task_definition":
+                mode = True
+            if facts.get("status") not in {None, "available"}:
+                continue
+            for goal in facts.get("goals", ()):
+                if not isinstance(goal, Mapping):
+                    continue
+                entity = goal.get("execution_entity_ref")
+                destination = goal.get("destination_ref")
+                if (
+                    isinstance(entity, str) and entity.startswith("entity://")
+                    and isinstance(destination, str) and destination.startswith("destination://")
+                ):
+                    mode = True
+                    destinations.setdefault(entity, set()).add(destination)
+    return mode, destinations
+
+
+def _validate_benchmark_plan_inputs(
+    task: Any,
+    nodes: tuple[PlanNode, ...],
+) -> None:
+    """Keep benchmark placement destinations Coordinator-owned.
+
+    This is a plan-boundary integrity check, not a motion gate. It prevents a
+    syntactically valid but semantically model-authored destination from reaching
+    selection or the Gateway when the active profile explicitly supplies goals.
+    """
+    mode, destinations = _task_goal_destinations(task)
+    if not mode:
+        return
+    if not destinations and any(node.capability in _BENCHMARK_DESTINATION_NODES for node in nodes):
+        raise ValueError(
+            "benchmark goal mode requires a successful task.goal destination injection "
+            "before materialization; do not self-plan a placement target"
+        )
+    errors: list[str] = []
+    for node in nodes:
+        if node.capability in _BENCHMARK_AUTONOMOUS_TARGET_NODES:
+            errors.append(
+                f"{node.node_id}: {node.capability} is disabled in benchmark goal mode; "
+                "use task.goal destination injection"
+            )
+        if (
+            node.capability in _BENCHMARK_DESTINATION_NODES
+            and "destination_ref" in node.input_bindings
+        ):
+            errors.append(
+                f"{node.node_id}: omit destination_ref in benchmark goal mode; "
+                "Coordinator injects the unique task.goal destination"
+            )
+    if errors:
+        raise ValueError("benchmark placement binding rejected: " + "; ".join(errors))
+
 
 def _inject_task_verification_semantics(
     bindings: dict[str, Any],
@@ -81,7 +158,20 @@ def compile_task_plan(
     if binding is None and task.runtime_binding is None:
         raise ValueError("semantic plan submission requires a bound Runtime")
     parsed = tuple(PlanNode.model_validate(node) for node in nodes)
+    _validate_benchmark_plan_inputs(task, parsed)
     parsed = _complete_persisted_runtime_bindings(task, parsed)
+    if _task_goal_destinations(task)[0]:
+        unresolved = [
+            node.node_id
+            for node in parsed
+            if node.capability in _BENCHMARK_DESTINATION_NODES
+            and not isinstance(node.input_bindings.get("destination_ref"), str)
+        ]
+        if unresolved:
+            raise ValueError(
+                "benchmark destination injection could not uniquely bind task.goal "
+                f"for node(s): {', '.join(unresolved)}; stop instead of self-planning"
+            )
     for node in parsed:
         validate_condition_keys(node.conditions)
     capabilities = {
@@ -250,38 +340,15 @@ def _complete_persisted_runtime_bindings(
     capability_refs: set[str] = set()
     capability_arm_ids: dict[str, tuple[str, ...]] = {}
     capability_topologies: dict[str, str] = {}
-    goal_sources: dict[str, set[str]] = {}
+    benchmark_goal_mode, goal_sources = _task_goal_destinations(task)
     goal_entities_by_destination: dict[str, set[str]] = {}
     predecessor_destinations: dict[str, set[str]] = {}
     predecessor_entities: dict[str, set[str]] = {}
     observed_to_execution: dict[str, set[str]] = {}
     binding_refs_by_entity: dict[str, set[str]] = {}
-    for revision in task.revisions:
-        for record in revision.execution_records:
-            facts = response_facts(record.response)
-            if (
-                record.status == "succeeded"
-                and record.tool_id == "task.goal"
-                and facts.get("status") in {None, "available"}
-            ):
-                # task.goal is the task-specification boundary by Tool identity.
-                # Providers may additionally report goal_source/geometry_source,
-                # but goal propagation must not depend on an optional extension
-                # that an output-schema projection may omit.
-                for goal in facts.get("goals", ()):
-                    if not isinstance(goal, Mapping):
-                        continue
-                    entity = goal.get("execution_entity_ref")
-                    destination = goal.get("destination_ref")
-                    if (
-                        isinstance(entity, str)
-                        and entity.startswith("entity://")
-                        and isinstance(destination, str)
-                        and destination.startswith("destination://")
-                    ):
-                        goal_sources.setdefault(entity, set()).add(destination)
-                        goal_entities_by_destination.setdefault(destination, set()).add(entity)
-    benchmark_goal_mode = bool(goal_sources)
+    for entity, destinations in goal_sources.items():
+        for destination in destinations:
+            goal_entities_by_destination.setdefault(destination, set()).add(entity)
 
     # Scene-bound facts may cross segments only within the current capture. Task goals
     # are task-specification facts and may outlive a scene; capabilities,
