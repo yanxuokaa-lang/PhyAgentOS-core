@@ -22,6 +22,7 @@
 - Ruff, compileall, and `git diff --check` passed. Bundle SHA-256: `6fd4fa98b6fa4583c2bb55fbac913742cccb386df4eee57802ee689c4da37a33`.
 - 完整 Diff、失败分支和七维 Review 见 `changelog/2026-10.md`。
 - Full diff, failure branches, and seven-dimension review are recorded in `changelog/2026-10.md`.
+- Git commit: `67d8b1c` on `feature/planning-loop`.
 
 ## v12.5.5 (2026-10-01 01:30) - codex
 
