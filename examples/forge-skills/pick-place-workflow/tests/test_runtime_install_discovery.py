@@ -104,9 +104,11 @@ def test_robotwin_dataflow_keeps_scene_model_profile_owned():
             encoding="utf-8"
         )
     )
-    assert host["model"]["provider"] == "qwen3_vl_vllm"
-    assert host["model"]["api_base"] == "http://127.0.0.1:8012/v1"
-    assert "fallback" not in host["model"]
+    assert host["model"]["provider"] == "qwen3_vl_vllm_fallback"
+    assert host["model"]["primary"]["api_base"] == "http://127.0.0.1:8012/v1"
+    assert host["model"]["primary"]["model"] == "qwen3-vl-4b-awq"
+    assert host["model"]["fallback"]["model"] == "${ROBOTWIN20_MODEL}"
+    assert host["model"]["fallback"]["reasoning_effort"] == "${ROBOTWIN20_REASONING_EFFORT}"
 
 
 def test_generic_robotwin_dataflow_uses_graspnet_without_graspgen_inputs():

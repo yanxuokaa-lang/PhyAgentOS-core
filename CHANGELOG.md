@@ -4,6 +4,26 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.5.8 (2026-10-01 11:30) - codex
+
+### 变更摘要 / Summary
+- 保持本地 Qwen vLLM 为场景理解主模型，将 fallback 和 PAOS Agent 备用路径切换为 `gpt-6.1-sol/high`；发布 Skill `2.10.5` 与 Node `0.10.2`。
+- Keep local Qwen vLLM as the scene-understanding primary, switch fallback and PAOS Agent backup paths to `gpt-6.1-sol/high`, and publish Skill `2.10.5` with Node `0.10.2`.
+
+### 验证 / Validation
+- `107 passed`; Ruff, compileall, `git diff --check`, and Node SHA verification passed.
+- Runtime running, 11 ToolSpecs ready, Qwen loopback healthy, and no non-terminal AgentTask.
+- Full diff, exact ranges, and seven-dimension review are recorded in `changelog/2026-10.md`.
+
+## v12.5.7 (2026-10-01 10:30) - codex
+
+### 变更摘要 / Summary
+- 修复 named projection 的 AgentLoop selector 描述与同 revision 纠正路径。
+- Fixed named-projection selector descriptions and same-revision AgentLoop correction.
+
+### 验证 / Validation
+- Focused control-plane tests passed; full diff and seven-dimension review are recorded in `changelog/2026-10.md`.
+
 ## v12.5.6 (2026-10-01 10:00) - codex
 
 ### 变更摘要 / Summary

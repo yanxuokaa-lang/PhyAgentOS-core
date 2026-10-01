@@ -1,5 +1,10 @@
 # Change Log
 
+## v2.10.5 (2026-10-01)
+
+- 中文：保留本地 Qwen vLLM 作为 RobotWin 场景理解主路径，并将 provider fallback 统一切换为 `gpt-6.1-sol`、`reasoning_effort=high`；PAOS Agent 默认模型同步切换为 `gpt-6.1-sol/high`，不把凭据写入 Skill 或日志。
+- English: Keep local Qwen vLLM as the primary RobotWin scene-understanding route and switch the provider fallback to `gpt-6.1-sol` with `reasoning_effort=high`; switch the PAOS Agent default to `gpt-6.1-sol/high` without writing credentials into the Skill or logs.
+
 ## v2.10.4 (2026-10-01)
 
 - 中文：明确只读 Query 的 `motion_authorized=false` 是非运动证据而非授权失败；发现 Query 全部成功后必须继续计划物化，不得请求 clarification、取消任务或等待外部运动授权。

@@ -411,7 +411,7 @@ def _provider_diagnostics(provider: Any) -> dict[str, str]:
         item = value.get(key)
         if isinstance(item, str) and item in {
             "none", "primary", "fallback", "qwen3-vl-4b-vllm",
-            "gpt-5.6-sol-high", "gpt-5.6-terra-medium", "authentication",
+            "gpt-6.1-sol-high", "gpt-5.6-sol-high", "gpt-5.6-terra-medium", "authentication",
             "timeout", "transport", "contract", "provider_failure",
             "authentication+timeout", "authentication+transport",
             "timeout+transport", "transport+timeout", "transport+transport",

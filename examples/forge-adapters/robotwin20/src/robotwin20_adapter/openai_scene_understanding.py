@@ -85,7 +85,7 @@ class OpenAIResponsesConfig:
     """External model configuration; no credential value is persisted here."""
 
     api_base: str = "https://api.shuaiapi.com/v1"
-    model: str = "gpt-5.6-sol"
+    model: str = "gpt-6.1-sol"
     api_key_env: str = "CUSTOM_API_KEY"
     reasoning_effort: str | None = "high"
     timeout_seconds: float = 60.0

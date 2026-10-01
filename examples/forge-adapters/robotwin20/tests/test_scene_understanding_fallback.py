@@ -41,7 +41,7 @@ def test_local_provider_is_primary_and_route_is_diagnostic_only():
         _Provider({"entities": []}),
         _Provider({"entities": [{"entity_ref": "entity://fallback"}]}),
         primary_name="qwen3-vl-4b-vllm",
-        fallback_name="gpt-5.6-sol-high",
+        fallback_name="gpt-6.1-sol-high",
     )
 
     assert route.infer({}) == {"entities": []}
@@ -54,11 +54,11 @@ def test_gpt_fallback_runs_after_local_failure():
         _Provider(error=TimeoutError()),
         _Provider({"entities": [{"entity_ref": "entity://fallback"}]}),
         primary_name="qwen3-vl-4b-vllm",
-        fallback_name="gpt-5.6-sol-high",
+        fallback_name="gpt-6.1-sol-high",
     )
 
     assert route.infer({})["entities"][0]["entity_ref"] == "entity://fallback"
-    assert route.last_route == "gpt-5.6-sol-high"
+    assert route.last_route == "gpt-6.1-sol-high"
     assert route.last_error == "TimeoutError"
 
 
@@ -67,7 +67,7 @@ def test_both_provider_failures_are_bounded():
         _Provider(error=TimeoutError()),
         _Provider(error=ConnectionError()),
         primary_name="qwen3-vl-4b-vllm",
-        fallback_name="gpt-5.6-sol-high",
+        fallback_name="gpt-6.1-sol-high",
     )
 
     with pytest.raises(SceneUnderstandingFallbackError) as failure:

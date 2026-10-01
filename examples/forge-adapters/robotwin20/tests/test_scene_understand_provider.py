@@ -105,7 +105,7 @@ async def test_provider_failure_projects_only_bounded_adapter_diagnostics():
 
         def diagnostic_summary(self):
             return {
-                "provider_route": "gpt-5.6-sol-high",
+                "provider_route": "gpt-6.1-sol-high",
                 "provider_error_class": "timeout",
                 "raw_exception": "must not cross the boundary",
             }
@@ -113,7 +113,7 @@ async def test_provider_failure_projects_only_bounded_adapter_diagnostics():
     result = SceneUnderstandingEndpoint(
         RoboTwinSceneUnderstandingProvider(FailingInference())
     ).invoke(OBSERVE_INPUT)
-    assert result["provider_route"] == "gpt-5.6-sol-high"
+    assert result["provider_route"] == "gpt-6.1-sol-high"
     assert result["provider_error_class"] == "timeout"
     assert "raw_exception" not in result
 

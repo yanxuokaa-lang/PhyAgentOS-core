@@ -115,7 +115,7 @@ Construct `OpenAIResponsesSceneUnderstandingInference` with an injected
 implementing the same port) and wrap it with
 `RoboTwinSceneUnderstandingProvider`. The
 default configuration follows the existing Hephaestus relay format
-(`gpt-5.6-sol`, Responses API, `https://api.shuaiapi.com/v1`) but is owned by
+(`gpt-6.1-sol`, Responses API, `https://api.shuaiapi.com/v1`) but is owned by
 this adapter and can be overridden through `OpenAIResponsesConfig`. The API
 key is read at invocation time and is never persisted or sent through PAOS.
 The provider emits only `entities`, `relations`, `spatial_envelopes`, and
@@ -180,7 +180,7 @@ Use `profiles/forge-persistent/persistent-host.yaml` with
 `model.provider: qwen3_vl_vllm_fallback`.  PAOS sends semantic RGB queries to
 `http://127.0.0.1:8012/v1`; if the endpoint is unavailable or returns a
 contract-invalid response, the adapter explicitly routes the same observation
-to `gpt-5.6-sol` with `reasoning_effort: high`.  Both providers return only
+to `gpt-6.1-sol` with `reasoning_effort: high`.  Both providers return only
 provider-neutral claims, and neither provider can authorize motion.
 
 The local vLLM endpoint is loopback-only and does not use an API key.  The GPT
@@ -394,7 +394,7 @@ is recorded under
 `/home/yanxu/robotwin20-runtime/artifacts/paos-real-chain-20260905T0020Z/`.
 It binds RoboTwin `beat_block_hammer/demo_clean`, seed `0`, and
 `aloha-agilex`. The run manifest records preflight, scene observation, real
-`gpt-5.6-sol` scene understanding, LocateAnything/SAM2/RGB-D derived
+`gpt-6.1-sol` scene understanding, LocateAnything/SAM2/RGB-D derived
 artifacts, profile digests, source/derived artifact hashes, and raw worker
 stdout/stderr. The first three stages passed; GraspGen and readiness are
 explicitly unavailable because their required profile environment variables are
