@@ -1139,6 +1139,16 @@ class AgentLoop:
                                     "and Gateway admission evaluate that gate."
                                 ),
                             })
+                    selection_correction = self._planning_selection_correction(result)
+                    if (
+                        projection_scope == "node"
+                        and tool_call.name == "forge_plan_select"
+                        and selection_correction is not None
+                    ):
+                        messages.append({
+                            "role": "system",
+                            "content": selection_correction,
+                        })
                     if (
                         projection_scope == "node"
                         and tool_call.name == "forge_plan_select"
@@ -1341,6 +1351,39 @@ class AgentLoop:
             return False
         error = payload.get("error") if isinstance(payload, dict) else None
         return isinstance(error, dict) and error.get("requires_replan") is True
+
+    @staticmethod
+    def _planning_selection_correction(result: str) -> str | None:
+        """Give the model a bounded same-node correction for selector-shape errors."""
+        try:
+            payload = json.loads(result)
+        except (TypeError, json.JSONDecodeError):
+            return None
+        error = payload.get("error") if isinstance(payload, dict) else None
+        if not isinstance(error, dict):
+            return None
+        if (
+            error.get("code") != "consumer_projection_invalid"
+            or error.get("requires_replan") is True
+        ):
+            return None
+        message = error.get("message")
+        if message not in {
+            "named consumer projection accepts projection_sources only",
+            "named consumer projection requires projection_sources",
+            "named projection sources must match ToolSpec source slots",
+            "named projection source selectors require only record_id",
+            "named projection source selectors require non-empty record_id",
+        }:
+            return None
+        return (
+            "The Coordinator rejected the selector shape without executing a Tool. "
+            "The active ToolSpec declares named projection slots. Retry the same node "
+            "with projection_sources using exactly the slot names shown by forge_plan_ready; "
+            "each value must contain only one authorized record_id. Do not use "
+            "projection_source or argument_sources, do not assemble candidates or other "
+            "projected values, and do not request a replan."
+        )
 
     @staticmethod
     def _scene_understanding_provider_blocked(

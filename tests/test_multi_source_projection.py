@@ -299,6 +299,7 @@ def test_forge_plan_select_compiles_named_sources_without_agent_value_assembly()
         input_schemas={"manipulation.prepare": spec["input_schema"]},
     )
     ready = dispatch.describe()["ready_nodes"][-1]
+    assert ready["selection_source_modes"]["manipulation.prepare"] == "projection_sources"
     assert ready["argument_projection_sources"]["manipulation.prepare"] == {
         "candidates": {
             "tool_id": "grasp.propose",
@@ -374,6 +375,37 @@ def test_forge_plan_select_compiles_named_sources_without_agent_value_assembly()
                 **proposal,
                 "decision_trace_ref": "artifact://planning/trace",
             }
+
+    wrong_mode = json.loads(
+        asyncio.run(
+            ForgePlanSelectTool(Coordinator(), lambda: dispatch).execute(
+                task_id="task-1",
+                node_id="prepare",
+                tool_id="manipulation.prepare",
+                decision_reason="reject legacy selector shape",
+                projection_source={"record_id": "grasp-record"},
+            )
+        )
+    )
+    assert wrong_mode["error"]["code"] == "consumer_projection_invalid"
+    assert wrong_mode["error"]["requires_replan"] is False
+    assert wrong_mode["error"]["retryable_in_revision"] is True
+
+    missing_slot = json.loads(
+        asyncio.run(
+            ForgePlanSelectTool(Coordinator(), lambda: dispatch).execute(
+                task_id="task-1",
+                node_id="prepare",
+                tool_id="manipulation.prepare",
+                decision_reason="reject incomplete named selector",
+                projection_sources={"candidates": {"record_id": "grasp-record"}},
+            )
+        )
+    )
+    assert missing_slot["error"]["message"] == (
+        "named projection sources must match ToolSpec source slots"
+    )
+    assert missing_slot["error"]["requires_replan"] is False
 
     result = json.loads(
         asyncio.run(

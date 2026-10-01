@@ -330,20 +330,57 @@ class ForgePlanSelectTool(Tool):
                     )
                     if named_sources:
                         if projection_source is not None or argument_sources:
-                            raise PlanningLoopError(
-                                "named consumer projection accepts projection_sources only"
+                            raise PlanningDispatchError(
+                                "named consumer projection accepts projection_sources only",
+                                code="consumer_projection_invalid",
+                                failure_owner="agent_arguments",
+                                retryable_in_revision=True,
+                                requires_replan=False,
+                                recommended_action="use_named_projection_sources",
+                            )
+                        if not isinstance(projection_sources, Mapping):
+                            raise PlanningDispatchError(
+                                "named consumer projection requires projection_sources",
+                                code="consumer_projection_invalid",
+                                failure_owner="agent_arguments",
+                                retryable_in_revision=True,
+                                requires_replan=False,
+                                recommended_action="use_named_projection_sources",
+                            )
+                        if set(projection_sources) != set(projection_plan.source_slots):
+                            raise PlanningDispatchError(
+                                "named projection sources must match ToolSpec source slots",
+                                code="consumer_projection_invalid",
+                                failure_owner="agent_arguments",
+                                retryable_in_revision=True,
+                                requires_replan=False,
+                                recommended_action="use_named_projection_sources",
                             )
                         normalized_sources = {}
-                        if isinstance(projection_sources, Mapping):
-                            for slot, selector in projection_sources.items():
-                                if (
-                                    not isinstance(selector, Mapping)
-                                    or set(selector) != {"record_id"}
-                                ):
-                                    raise PlanningLoopError(
-                                        "named projection source selectors require only record_id"
-                                    )
-                                normalized_sources[slot] = selector.get("record_id")
+                        for slot, selector in projection_sources.items():
+                            if (
+                                not isinstance(selector, Mapping)
+                                or set(selector) != {"record_id"}
+                            ):
+                                raise PlanningDispatchError(
+                                    "named projection source selectors require only record_id",
+                                    code="consumer_projection_invalid",
+                                    failure_owner="agent_arguments",
+                                    retryable_in_revision=True,
+                                    requires_replan=False,
+                                    recommended_action="use_named_projection_sources",
+                                )
+                            record_id = selector.get("record_id")
+                            if not isinstance(record_id, str) or not record_id:
+                                raise PlanningDispatchError(
+                                    "named projection source selectors require non-empty record_id",
+                                    code="consumer_projection_invalid",
+                                    failure_owner="agent_arguments",
+                                    retryable_in_revision=True,
+                                    requires_replan=False,
+                                    recommended_action="use_named_projection_sources",
+                                )
+                            normalized_sources[slot] = record_id
                     else:
                         if projection_sources is not None:
                             raise PlanningLoopError(

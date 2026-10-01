@@ -1194,8 +1194,8 @@ def test_node_turn_can_correct_selection_input_without_replan(tmp_path):
                 "wrong-mode", "forge_plan_select", {"projection_source": {"record_id": "proposal"}},
             )]),
             LLMResponse(content=None, tool_calls=[ToolCallRequest(
-                "correct-mode", "forge_plan_select", {"argument_sources": {
-                    "candidates": {"record_id": "proposal", "path": ["response", "data", "candidates"]},
+                "correct-mode", "forge_plan_select", {"projection_sources": {
+                    "candidates": {"record_id": "proposal"},
                 }},
             )]),
             LLMResponse(content="Selection persisted."),
@@ -1205,6 +1205,7 @@ def test_node_turn_can_correct_selection_input_without_replan(tmp_path):
             json.dumps({"ok": False, "error": {
                 "code": "consumer_projection_invalid", "retryable_in_revision": True,
                 "requires_replan": False,
+                "message": "named consumer projection accepts projection_sources only",
             }, "motion_authorized": False}),
             json.dumps({"ok": True, "data": {"selection": {"use_selected_arguments": True}},
                         "motion_authorized": False}),
@@ -1223,6 +1224,12 @@ def test_node_turn_can_correct_selection_input_without_replan(tmp_path):
         assert any(message.get("tool_call_id") == "wrong-mode" and
                    json.loads(message["content"])["error"]["code"] == "consumer_projection_invalid"
                    for message in correction_context)
+        assert any(
+            message.get("role") == "system"
+            and "named projection slots" in message.get("content", "")
+            and "Do not use projection_source" in message.get("content", "")
+            for message in correction_context
+        )
         assert loop.tools.execute.await_count == 2
 
     asyncio.run(exercise())

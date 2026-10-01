@@ -82,6 +82,16 @@ class AgentComposedDispatch:
         "forge_tool_start_session": "session",
     }
 
+    @staticmethod
+    def _selection_source_mode(policy: ToolSpecPolicy) -> str:
+        """Describe the exact source selector accepted by the frozen ToolSpec."""
+        plan = policy.argument_projection_plan
+        if plan is not None and plan.source_slots:
+            return "projection_sources"
+        if policy.argument_projection is not None:
+            return "projection_source"
+        return "arguments_or_argument_sources"
+
     def __init__(
         self,
         graph: PlanGraph,
@@ -224,10 +234,7 @@ class AgentComposedDispatch:
                 "candidate_tool_ids": candidates,
                 "bindable_tool_ids": bindable,
                 "selection_source_modes": {
-                    policy.tool_id: (
-                        "projection_source" if policy.argument_projection is not None
-                        else "arguments_or_argument_sources"
-                    )
+                    policy.tool_id: self._selection_source_mode(policy)
                     for policy in candidate_policies
                 },
                 "missing_node_bindings": missing_node_bindings,
@@ -261,10 +268,7 @@ class AgentComposedDispatch:
                         and set(required_node_binding_keys(policy)).issubset(nodes[node_id].input_bindings)
                     ],
                     "selection_source_modes": {
-                        policy.tool_id: (
-                            "projection_source" if policy.argument_projection is not None
-                            else "arguments_or_argument_sources"
-                        )
+                        policy.tool_id: self._selection_source_mode(policy)
                         for policy in self.policies
                         if nodes[node_id].capability in policy.capabilities
                         and (conditions.get("scene_current") is not False or policy.refreshes_scene)

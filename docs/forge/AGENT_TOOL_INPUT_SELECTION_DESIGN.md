@@ -63,8 +63,9 @@ before revision identity was added remain readable as legacy records.
    top-level arguments only for current candidate Tools. Live
    `forge_tool_context` remains the readiness source and a legacy schema
    fallback; it does not replace the task-bound contract. Each candidate also
-   reports `selection_source_modes`: `projection_source` only when its frozen
-   ToolSpec declares a projection, otherwise `arguments_or_argument_sources`.
+   reports `selection_source_modes`: `projection_sources` when its frozen
+   ToolSpec declares named source slots, `projection_source` for a legacy
+   single-source projection, and `arguments_or_argument_sources` otherwise.
 4. `forge_plan_select` accepts literal arguments plus optional
    `argument_sources`. Each source contains one prompt-visible `record_id` and
    exact `path` of object-field strings and non-negative integer array indexes.
