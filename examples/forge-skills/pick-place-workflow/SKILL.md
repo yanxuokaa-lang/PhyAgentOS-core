@@ -279,7 +279,12 @@ Preparation evidence is not an IK guarantee, collision guarantee for a future
 trajectory, or execution admission. Treat `stale`, `unavailable`, and `invalid` as
 blockers. Never call `invoke_action` or start a Session with this Query, and never
 interpret `motion_authorized: false` as permission to bypass the Gateway/Runtime
-admission path.
+admission path. Every read-only Query may legitimately return
+`motion_authorized: false`: it means that the Query did not authorize motion, not
+that discovery failed or that an operator must grant motion authorization. Do not
+request clarification, cancel, or stop discovery for that flag. Continue to
+`forge_task_materialize_plan` after all required Queries are successful; only
+Action/Gateway admission evaluates motion authorization.
 
 Use `object.acquire` only after `manipulation.prepare` returned a selected prepared
 candidate and the current Tool context is ready. Create one AgentTask binding and

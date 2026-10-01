@@ -11,7 +11,11 @@ from typing import Any
 from PhyAgentOS.agent.plan_proposal import RECOVERY_NODE_GUIDANCE
 from PhyAgentOS.agent.planning_facts import explicit_scene_revision, response_facts
 from PhyAgentOS.agent.tools.base import Tool
-from PhyAgentOS.forge.binding import missing_preplan_queries, query_record_status
+from PhyAgentOS.forge.binding import (
+    missing_preplan_queries,
+    query_record_status,
+    query_response_facts,
+)
 from PhyAgentOS.forge.task import (
     AgentCancellationEvidenceError,
     AgentTaskBusyError,
@@ -28,6 +32,25 @@ _DISCOVERY_ARGUMENT_KEYS = frozenset({
     "calibration_ref", "frame_id", "entity_refs", "artifacts", "views",
     "freshness_ms", "capture_skew_ms",
 })
+
+
+def _read_only_query_motion_flag_is_not_blocker(task: Any) -> bool:
+    """Reject the false-blocker transition seen after complete discovery."""
+    revision = getattr(task, "active_revision", None)
+    if revision is None or getattr(revision, "plan_graph", None) is not None:
+        return False
+    if missing_preplan_queries(task):
+        return False
+    records = tuple(getattr(revision, "execution_records", ()))
+    return any(
+        getattr(record, "semantics", None) == "query"
+        and query_record_status(record) == "succeeded"
+        and query_response_facts(record).get("status") == "available"
+        and query_response_facts(record).get("motion_authorized") is False
+        for record in records
+    )
+
+
 def _successful_discovery_record(record: Any) -> bool:
     return (
         getattr(record, "semantics", None) == "query"
@@ -794,6 +817,22 @@ class ForgeTaskClarificationTool(Tool):
         return schema
 
     async def execute(self, task_id: str, question: str, node_id: str | None = None) -> str:
+        task = self.coordinator.get_task(task_id)
+        if _read_only_query_motion_flag_is_not_blocker(task):
+            return _json({
+                "ok": False,
+                "error": {
+                    "code": "query_motion_authorization_not_blocker",
+                    "message": (
+                        "Successful read-only Query records with status=available and "
+                        "motion_authorized=false do not require user clarification. "
+                        "That flag means the Query did not authorize motion; it is not "
+                        "an Action/Gateway authorization failure."
+                    ),
+                    "next_step": "forge_task_materialize_plan",
+                },
+                "motion_authorized": False,
+            })
         return _json({
             "ok": True,
             "data": self.coordinator.request_clarification(

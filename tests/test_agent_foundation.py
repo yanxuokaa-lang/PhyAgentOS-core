@@ -1747,6 +1747,146 @@ def test_forge_task_tool_responses_json_encode_nested_task_records(tmp_path):
     asyncio.run(exercise())
 
 
+def test_clarification_rejects_successful_query_motion_flag(tmp_path):
+    c, task = setup_task(tmp_path)
+    c.store.update(
+        task.task_id,
+        lambda current: current.active_revision.execution_records.append(
+            ToolExecutionRecord(
+                record_id="tool-observe-available",
+                revision_id=current.active_revision_id,
+                tool_id="scene.observe",
+                semantics="query",
+                caller_id="agent-task-test",
+                status="succeeded",
+                arguments={"sensor_ref": "camera/front", "max_age_ms": 1000},
+                response={"data": {
+                    "status": "available",
+                    "motion_authorized": False,
+                    "observation_ref": "observation://scene/front",
+                    "scene_revision": "scene-1",
+                    "calibration_ref": "artifact://scene/calibration",
+                }},
+                evidence_refs=["tool:tool-observe-available"],
+            )
+        ),
+        event_type="test_available_query_motion_flag",
+    )
+
+    result = json.loads(asyncio.run(ForgeTaskClarificationTool(c).execute(
+        task.task_id,
+        question="motion_authorized=false requires external authorization",
+    )))
+
+    assert result["ok"] is False
+    assert result["error"]["code"] == "query_motion_authorization_not_blocker"
+    assert result["error"]["next_step"] == "forge_task_materialize_plan"
+    assert c.get_task(task.task_id).status == AgentTaskStatus.EXECUTING
+
+
+def test_clarification_still_accepts_unavailable_query_blocker(tmp_path):
+    c, task = setup_task(tmp_path)
+    c.store.update(
+        task.task_id,
+        lambda current: current.active_revision.execution_records.append(
+            ToolExecutionRecord(
+                record_id="tool-observe-unavailable",
+                revision_id=current.active_revision_id,
+                tool_id="scene.observe",
+                semantics="query",
+                caller_id="agent-task-test",
+                status="succeeded",
+                arguments={"sensor_ref": "camera/front", "max_age_ms": 1000},
+                response={"data": {
+                    "status": "unavailable",
+                    "motion_authorized": False,
+                }},
+                evidence_refs=["tool:tool-observe-unavailable"],
+            )
+        ),
+        event_type="test_unavailable_query_motion_flag",
+    )
+
+    result = json.loads(asyncio.run(ForgeTaskClarificationTool(c).execute(
+        task.task_id,
+        question="The scene provider is unavailable; should I wait?",
+    )))
+
+    assert result["ok"] is True
+    assert result["data"]["status"] == "waiting_for_user"
+
+
+def test_agent_loop_continues_to_materialization_after_false_query_blocker(tmp_path):
+    async def exercise():
+        c, task = setup_task(tmp_path)
+        c.store.update(
+            task.task_id,
+            lambda current: current.active_revision.execution_records.append(
+                ToolExecutionRecord(
+                    record_id="tool-observe-available-loop",
+                    revision_id=current.active_revision_id,
+                    tool_id="scene.observe",
+                    semantics="query",
+                    caller_id="agent-task-test",
+                    status="succeeded",
+                    arguments={"sensor_ref": "camera/front", "max_age_ms": 1000},
+                    response={"data": {
+                        "status": "available",
+                        "motion_authorized": False,
+                        "observation_ref": "observation://scene/front",
+                        "scene_revision": "scene-1",
+                        "calibration_ref": "artifact://scene/calibration",
+                    }},
+                    evidence_refs=["tool:tool-observe-available-loop"],
+                )
+            ),
+            event_type="test_loop_available_query_motion_flag",
+        )
+        provider = ScriptedProvider([
+            LLMResponse(content=None, tool_calls=[ToolCallRequest(
+                "clarify",
+                "forge_task_request_clarification",
+                {
+                    "task_id": task.task_id,
+                    "question": "motion_authorized=false needs external authorization",
+                },
+            )]),
+            LLMResponse(content=None, tool_calls=[ToolCallRequest(
+                "materialize",
+                "forge_task_materialize_plan",
+                {
+                    "task_id": task.task_id,
+                    "nodes": semantic_nodes(1),
+                    "reason": "continue after read-only discovery",
+                },
+            )]),
+        ])
+        loop = AgentLoop(
+            bus=MessageBus(),
+            provider=provider,
+            workspace=tmp_path,
+            forge_task_coordinator=c,
+            max_iterations=3,
+        )
+
+        result = await loop._run_agent_loop(
+            [{"role": "user", "content": task.task_description}],
+            active_task_id=task.task_id,
+            yield_after_tools=frozenset({"forge_task_materialize_plan"}),
+        )
+
+        current = c.get_task(task.task_id)
+        assert len(provider.requests) == 2
+        assert result.tools_used == [
+            "forge_task_request_clarification",
+            "forge_task_materialize_plan",
+        ]
+        assert current.status == AgentTaskStatus.EXECUTING
+        assert current.active_revision.plan_graph is not None
+
+    asyncio.run(exercise())
+
+
 def test_activation_retains_instructions_when_source_changes(tmp_path):
     skill_dir = tmp_path / "skills" / "test-skill"
     skill_dir.mkdir(parents=True)

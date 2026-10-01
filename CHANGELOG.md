@@ -4,6 +4,25 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.5.6 (2026-10-01 10:00) - codex
+
+### 变更摘要 / Summary
+- 修复成功只读 Query 的 `motion_authorized=false` 被误判为运动授权失败并把 AgentTask 置为 `waiting_for_user`；Coordinator 现在拒绝该错误 clarification，AgentLoop 继续同一任务进入 PlanGraph 物化。
+- Fix the false transition from successful read-only Query `motion_authorized=false` to `waiting_for_user`; the Coordinator now rejects that invalid clarification and AgentLoop continues the same task to PlanGraph materialization.
+
+### 影响文件 / Affected Files
+- `PhyAgentOS/agent/tools/forge_task.py:L37-L51,L819-L843`
+- `PhyAgentOS/agent/loop.py:L1116-L1141`
+- `examples/forge-skills/pick-place-workflow/{SKILL.md,skill.yaml,pyproject.toml,CHANGELOG.md}`
+- `tests/test_agent_foundation.py:L1750-L1887`
+
+### 验证 / Validation
+- Core focused: `143 passed`; full Core with explicit async plugin: `721 passed, 2 pre-existing unrelated failures`.
+- Skill/runtime release checks: `13 passed`; full Skill suite: `369 passed, 2 pre-existing unrelated failures`.
+- Ruff, compileall, and `git diff --check` passed. Bundle SHA-256: `6fd4fa98b6fa4583c2bb55fbac913742cccb386df4eee57802ee689c4da37a33`.
+- 完整 Diff、失败分支和七维 Review 见 `changelog/2026-10.md`。
+- Full diff, failure branches, and seven-dimension review are recorded in `changelog/2026-10.md`.
+
 ## v12.5.5 (2026-10-01 01:30) - codex
 
 ### 变更摘要 / Summary

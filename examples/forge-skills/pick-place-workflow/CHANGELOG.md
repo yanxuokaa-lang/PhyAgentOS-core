@@ -1,5 +1,10 @@
 # Change Log
 
+## v2.10.4 (2026-10-01)
+
+- 中文：明确只读 Query 的 `motion_authorized=false` 是非运动证据而非授权失败；发现 Query 全部成功后必须继续计划物化，不得请求 clarification、取消任务或等待外部运动授权。
+- English: Clarify that `motion_authorized=false` from a read-only Query is non-motion evidence, not an authorization failure; after discovery Queries succeed, continue to plan materialization and do not request clarification, cancel the task, or wait for external motion authorization.
+
 ## v2.10.3 (2026-10-01)
 
 - 中文：将 benchmark `task.goal` 设为唯一放置目标来源；Agent 必须省略 `destination_ref`，不得创建 target/staging 或替代目标，由 Coordinator 在计划物化时注入并校验。

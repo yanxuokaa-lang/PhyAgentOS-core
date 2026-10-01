@@ -1113,6 +1113,32 @@ class AgentLoop:
                                 "treat this request error as Qwen or Runtime unavailability."
                             ),
                         })
+                    if tool_call.name == "forge_task_request_clarification":
+                        try:
+                            clarification_result = json.loads(result)
+                        except (TypeError, json.JSONDecodeError):
+                            clarification_result = {}
+                        clarification_error = (
+                            clarification_result.get("error")
+                            if isinstance(clarification_result, dict)
+                            else None
+                        )
+                        if (
+                            isinstance(clarification_error, dict)
+                            and clarification_error.get("code")
+                            == "query_motion_authorization_not_blocker"
+                        ):
+                            messages.append({
+                                "role": "system",
+                                "content": (
+                                    "The clarification request was rejected by the Coordinator: "
+                                    "successful read-only Query motion_authorized=false is not a "
+                                    "blocker. Keep the same AgentTask executing and submit the "
+                                    "visible forge_task_materialize_plan tool now. Do not request "
+                                    "external motion authorization during discovery; only Action "
+                                    "and Gateway admission evaluate that gate."
+                                ),
+                            })
                     if (
                         projection_scope == "node"
                         and tool_call.name == "forge_plan_select"
