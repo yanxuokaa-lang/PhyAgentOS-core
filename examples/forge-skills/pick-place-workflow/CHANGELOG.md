@@ -1,5 +1,10 @@
 # Change Log
 
+## v2.10.7 (2026-10-02)
+
+- 中文：发布与 PAOS Core v12.5.13 配套的 Skill。Core 在模型 turn 前后恢复已持久化选择，并优先对账执行终态；standalone grasp 实体别名使用唯一当前 scene.bind 映射。Core 修复由 PAOS 安装提供，不嵌入 Skill 包；Node 保持 0.10.2，Runtime 感知、运动和 benchmark 目标来源不变。
+- English: Publish the Skill alongside PAOS Core v12.5.13. Core recovers persisted selections before and after model turns, prioritizes durable execution facts, and resolves standalone grasp aliases through the unique current scene.bind mapping. Core fixes are supplied by the PAOS installation, not embedded in the Skill bundle; retain Node 0.10.2 and unchanged Runtime perception, motion, and benchmark goal source.
+
 ## v2.10.6 (2026-10-02)
 
 - 中文：发布包含通用 AgentLoop continuation 路由修复的 Skill；只有成功结算的 `object.place` 才允许放置后验证语义，Query-only 与普通 Action 刷新保持独立。
