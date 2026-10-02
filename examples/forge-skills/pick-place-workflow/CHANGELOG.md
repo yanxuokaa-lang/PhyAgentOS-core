@@ -1,5 +1,10 @@
 # Change Log
 
+## v2.10.6 (2026-10-02)
+
+- 中文：发布包含通用 AgentLoop continuation 路由修复的 Skill；只有成功结算的 `object.place` 才允许放置后验证语义，Query-only 与普通 Action 刷新保持独立。
+- English: Publish the Skill with the provider-neutral AgentLoop continuation routing fix; only a successfully settled `object.place` permits post-placement semantics, while Query-only and ordinary Action refreshes remain distinct.
+
 ## v2.10.5 (2026-10-01)
 
 - 中文：保留本地 Qwen vLLM 作为 RobotWin 场景理解主路径，并将 provider fallback 统一切换为 `gpt-6.1-sol`、`reasoning_effort=high`；PAOS Agent 默认模型同步切换为 `gpt-6.1-sol/high`，不把凭据写入 Skill 或日志。
