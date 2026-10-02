@@ -30,6 +30,8 @@
 ### 完整记录 / Full Record
 - 详见 [`changelog/2026-10.md`](changelog/2026-10.md) v12.5.12。
 - See v12.5.12 in [`changelog/2026-10.md`](changelog/2026-10.md).
+- Git commit: `5288018` on `feature/planning-loop`.
+- Git commit: `5288018` on `feature/planning-loop`.
 
 ## v12.5.10 (2026-10-02 09:03) - codex
 
