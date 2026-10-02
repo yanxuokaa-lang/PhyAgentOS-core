@@ -44,7 +44,7 @@
 ### 完整记录 / Full Record
 - 详见 [`changelog/2026-10.md`](changelog/2026-10.md) v12.5.13 与 [`IMPLEMENTATION_REVIEW_V12_5_13.md`](docs/forge/IMPLEMENTATION_REVIEW_V12_5_13.md)。
 - See v12.5.13 in [`changelog/2026-10.md`](changelog/2026-10.md) and [`IMPLEMENTATION_REVIEW_V12_5_13.md`](docs/forge/IMPLEMENTATION_REVIEW_V12_5_13.md).
-- Git commit: pending (to be recorded after commit).
+- Git commit: `9d72a3d` on `feature/planning-loop`.
 
 ## v12.5.12 (2026-10-02 19:38) - codex
 
