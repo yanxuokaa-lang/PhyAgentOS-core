@@ -723,6 +723,43 @@ class AgentLoopNodeExecutor:
                 )
             return self._result_from_records(context, existing)
 
+        # A selection is a durable Coordinator checkpoint.  Consume it before
+        # asking the model for another turn so a provider interruption cannot
+        # cause rediscovery, reselection, or an invocation replay.
+        pending = self._pending_selection(context)
+        if pending is not None:
+            registry = getattr(self.agent_loop, "tools", None)
+            execute_tool = getattr(registry, "execute", None)
+            if callable(execute_tool):
+                params = {
+                    "task_id": context.task_id,
+                    "tool_id": pending["tool_id"],
+                    "arguments": {},
+                    "use_selected_arguments": True,
+                    "planning_binding": pending["planning_binding"],
+                }
+                result = execute_tool(pending["execution_tool"], params)
+                if hasattr(result, "__await__"):
+                    result = await result
+                if isinstance(result, str) and result.startswith("Error"):
+                    raise NodeTurnIncompleteError(
+                        context.node_id,
+                        "persisted selection execution was rejected: " + result,
+                    )
+                await self._reconcile_executions(context.task_id, context.node_id)
+                records = self._node_records(context)
+                if records:
+                    if any(not item.terminal for item in records):
+                        raise NodeTurnIncompleteError(
+                            context.node_id,
+                            "persisted selection execution did not reach a durable terminal state",
+                        )
+                    return self._result_from_records(context, records)
+                raise NodeTurnIncompleteError(
+                    context.node_id,
+                    "persisted selection execution produced no task-bound record",
+                )
+
         attempts = 1 + self.max_node_turn_continuations
         for _attempt in range(attempts):
             # A model/provider failure after forge_plan_select is recoverable:

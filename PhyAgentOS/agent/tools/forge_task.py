@@ -391,6 +391,11 @@ class ForgeTaskBeginRevisionTool(Tool):
             graph = compile_task_plan(task, nodes, reason=reason)
             plan_graph = graph.model_dump(mode="json")
             plan_graph_ref = f"artifact://plans/{task_id}/{graph.revision_id}"
+        else:
+            from PhyAgentOS.agent.plan_proposal import canonicalize_plan_graph
+
+            graph = canonicalize_plan_graph(task, PlanGraph.model_validate(plan_graph))
+            plan_graph = graph.model_dump(mode="json")
         self.coordinator.claim_replan_attempt(
             task_id, attempt_started_at=attempt_started_at
         )
@@ -525,7 +530,9 @@ class ForgeTaskMaterializePlanTool(Tool):
             )
             plan_graph_ref = f"artifact://plans/{task_id}/{graph.revision_id}"
         else:
-            graph = PlanGraph.model_validate(plan_graph)
+            from PhyAgentOS.agent.plan_proposal import canonicalize_plan_graph
+
+            graph = canonicalize_plan_graph(task, PlanGraph.model_validate(plan_graph))
         try:
             materialized = self.coordinator.materialize_plan_revision(
                 task_id,

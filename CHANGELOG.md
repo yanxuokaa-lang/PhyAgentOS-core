@@ -4,6 +4,33 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.5.12 (2026-10-02 19:38) - codex
+
+### 变更摘要 / Summary
+- 保存两次 AgentLoop 失败诊断；统一完整 graph 与 semantic node 的 entity canonicalization；pending selection 在模型 turn 前自动沿受治理 wrapper 消费；Query-only continuation 改为显式继续/重规划/完成/停止/等待决策。
+- Persisted the two repeated AgentLoop diagnoses; unified entity canonicalization for complete graphs and semantic nodes; consumed pending selections through the governed wrapper before model turns; made Query-only continuation an explicit continue/replan/finalize/stop/wait decision.
+
+### 影响文件 / Affected Files
+- `PhyAgentOS/agent/plan_proposal.py:L321-L335,L528-L536`
+- `PhyAgentOS/agent/tools/forge_task.py:L394-L398,L532-L535`
+- `PhyAgentOS/agent/planning_loop.py:L726-L756`
+- `PhyAgentOS/agent/loop.py:L1634-L1671`
+- `tests/test_plan_proposal_bindings.py:L162-L214`
+- `tests/test_agent_foundation.py:L1520-L1526`
+- `docs/forge/AGENTLOOP_DIAGNOSIS_ENTITY_PROJECTION_20261002.md`
+- `docs/forge/AGENTLOOP_DIAGNOSIS_CONTINUATION_CONVERGENCE_20261002.md`
+- `docs/forge/IMPLEMENTATION_REVIEW_V12_5_12.md`
+
+### 验证 / Validation
+- 聚焦回归 `178 passed`；全量显式 async plugin `726 passed`，2 个既有失败详见月志与 review。
+- Focused regression: `178 passed`; full suite with explicit async plugin: `726 passed`, with 2 pre-existing failures documented in the monthly log and review.
+- Ruff、compileall、`git diff --check` passed；未创建任务、未调用 Gateway、未执行物理动作。
+- Ruff, compileall, and `git diff --check` passed; no task, Gateway call, or physical motion was created.
+
+### 完整记录 / Full Record
+- 详见 [`changelog/2026-10.md`](changelog/2026-10.md) v12.5.12。
+- See v12.5.12 in [`changelog/2026-10.md`](changelog/2026-10.md).
+
 ## v12.5.10 (2026-10-02 09:03) - codex
 
 ### 变更摘要 / Summary

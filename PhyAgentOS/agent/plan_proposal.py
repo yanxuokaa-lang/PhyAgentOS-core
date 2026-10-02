@@ -318,6 +318,23 @@ def compile_task_plan(
     return graph
 
 
+def canonicalize_plan_graph(task: AgentTaskRecord, graph: PlanGraph) -> PlanGraph:
+    """Apply Coordinator-owned runtime bindings to a complete Agent graph.
+
+    Semantic-node submission already uses ``compile_task_plan``.  Complete graph
+    callers must pass through the same binding seam before the graph reaches a
+    persisted revision; otherwise a model-authored execution alias can bypass
+    the observed-entity correspondence used by projection.
+    """
+    nodes = tuple(graph.nodes)
+    _validate_benchmark_plan_inputs(task, nodes)
+    normalized = _complete_persisted_runtime_bindings(task, nodes)
+    payload = graph.model_dump(mode="json")
+    payload["nodes"] = [node.model_dump(mode="json") for node in normalized]
+    payload["graph_digest"] = plan_graph_digest(payload)
+    return PlanGraph.model_validate(payload)
+
+
 def _complete_persisted_runtime_bindings(
     task: AgentTaskRecord, nodes: tuple[PlanNode, ...]
 ) -> tuple[PlanNode, ...]:
@@ -509,6 +526,14 @@ def _complete_persisted_runtime_bindings(
                 verification_criteria=verification_criteria,
             )
             entity = bindings.get("entity_ref")
+            # A Runtime-facing alias may have been copied into a complete graph
+            # by an Agent turn.  Resolve it through the unique scene.bind
+            # correspondence before any producer projection performs its join.
+            if isinstance(entity, str):
+                observed_aliases = execution_to_observed.get(entity, set())
+                if len(observed_aliases) == 1:
+                    entity = next(iter(observed_aliases))
+                    bindings["entity_ref"] = entity
             execution_entity = bindings.get("execution_entity_ref")
             if not isinstance(execution_entity, str):
                 execution_entity = bindings.get("target_execution_entity_ref")

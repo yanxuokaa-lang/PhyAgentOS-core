@@ -1519,7 +1519,9 @@ def test_segment_continuation_turn_appends_next_revision_without_execution_tools
         assert "forge_tool_query" not in visible
         assert prompt_tool_sets == [frozenset({
             "forge_task_continue_plan",
+            "forge_task_begin_revision",
             "forge_task_finalize",
+            "forge_task_cancel",
             "forge_task_request_clarification",
         })]
         assert result.tools_used == ["forge_task_continue_plan"]

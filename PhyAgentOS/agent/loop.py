@@ -1633,11 +1633,28 @@ class AgentLoop:
                     "during selection. "
                     "If current evidence proves the complete goal is ready for verification, "
                     "call forge_task_finalize. Do not repeat completed Query, Action, or Session "
-                    "executions and do not access Runtime or SQLite internals."
+                    "executions and do not access Runtime or SQLite internals. Choose exactly one "
+                    "control outcome: forge_task_continue_plan=CONTINUE, "
+                    "forge_task_begin_revision=REPLAN, forge_task_finalize=FINALIZE, "
+                    "forge_task_cancel=STOP, or forge_task_request_clarification=WAIT_FOR_USER."
                 ),
             },
             ensure_ascii=False,
         )
+        continuation_tools = {
+            "forge_tool_context",
+            "forge_task_continue_plan",
+            "forge_task_begin_revision",
+            "forge_task_finalize",
+            "forge_task_cancel",
+            "forge_task_request_clarification",
+        }
+        # A new observation chain is authorized only by a settled
+        # world-changing Action. Query-only and reconciliation turns must choose
+        # a semantic segment or recovery action through task tools instead of
+        # issuing an implicit refresh Query.
+        if continuation_route == "refresh_scene_before_next_segment":
+            continuation_tools.add("forge_tool_query")
         messages = self.context.build_messages(
             history=[],
             current_message=prompt,
@@ -1650,24 +1667,8 @@ class AgentLoop:
             experience_session_key=task.origin_session_key or f"agent_task:{task_id}",
             active_task_id=task_id,
             projection_scope="continuation",
-            allowed_tool_names=frozenset(
-                {
-                    "forge_tool_context",
-                    "forge_tool_query",
-                    "forge_task_continue_plan",
-                    "forge_task_finalize",
-                    "forge_task_request_clarification",
-                }
-            ),
-            yield_after_tools=frozenset(
-                {
-                    "forge_tool_context",
-                    "forge_tool_query",
-                    "forge_task_continue_plan",
-                    "forge_task_finalize",
-                    "forge_task_request_clarification",
-                }
-            ),
+            allowed_tool_names=frozenset(continuation_tools),
+            yield_after_tools=frozenset(continuation_tools),
         )
 
     async def run(self) -> None:

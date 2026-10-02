@@ -7,10 +7,11 @@ import pytest
 from PhyAgentOS.agent.plan_proposal import (
     _complete_persisted_runtime_bindings,
     _validate_benchmark_plan_inputs,
+    canonicalize_plan_graph,
 )
 from PhyAgentOS.forge.binding import BoundToolSpec, missing_preplan_queries
 from PhyAgentOS.forge.manipulation import capability_snapshot_digest
-from PhyAgentOS.planning import PlanNode, ToolSpecPolicy
+from PhyAgentOS.planning import PlanGraph, PlanNode, ToolSpecPolicy, plan_graph_digest
 
 
 def _record(tool_id: str, response: dict, *, node_id: str | None = None):
@@ -155,6 +156,61 @@ def test_unique_scene_identity_and_capability_ids_are_bound_before_agent_selecti
     assert completed[0].input_bindings["entity_ref"] == "entity://observed-red"
     assert completed[1].input_bindings["entity_ref"] == "entity://observed-red"
     assert completed[1].input_bindings["allowed_arms"] == ["left", "right"]
+
+
+def test_execution_alias_in_entity_ref_is_normalized_before_projection_join():
+    prepare = PlanNode(
+        node_id="red.prepare",
+        obligation_id="red.prepare",
+        capability="manipulation.prepare",
+        input_bindings={
+            "entity_ref": "entity://block-red-1",
+            "coordination_mode": "alternative_arm",
+        },
+    )
+    task = _task((
+        _record(
+            "scene.bind",
+            {"data": {"entities": [{
+                "entity_ref": "entity://e1",
+                "execution_entity_ref": "entity://block-red-1",
+            }]}},
+        ),
+        _record("manipulation.capabilities", _snapshot_response()),
+    ))
+
+    completed = _complete_persisted_runtime_bindings(task, (prepare,))
+
+    assert completed[0].input_bindings["entity_ref"] == "entity://e1"
+
+
+def test_complete_graph_entry_uses_the_same_canonical_binding_boundary():
+    task = _task((_record(
+        "scene.bind",
+        {"data": {"entities": [{
+            "entity_ref": "entity://e1",
+            "execution_entity_ref": "entity://block-red-1",
+        }]}},
+    ),))
+    node = PlanNode(
+        node_id="red.prepare",
+        obligation_id="red.prepare",
+        capability="manipulation.prepare",
+        input_bindings={"entity_ref": "entity://block-red-1"},
+    )
+    payload = {
+        "task_id": "task-test",
+        "revision_id": "revision-test",
+        "graph_digest": "0" * 64,
+        "planner_decision_digest": "1" * 64,
+        "policy_snapshot_digest": "2" * 64,
+        "nodes": [node.model_dump(mode="json")],
+    }
+    payload["graph_digest"] = plan_graph_digest(payload)
+
+    normalized = canonicalize_plan_graph(task, PlanGraph.model_validate(payload))
+
+    assert normalized.nodes[0].input_bindings["entity_ref"] == "entity://e1"
 
 
 def test_discovery_requires_scene_bound_queries_from_latest_capture():

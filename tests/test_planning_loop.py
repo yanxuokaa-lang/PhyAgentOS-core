@@ -1757,6 +1757,50 @@ def test_node_executor_reuses_pending_selection_on_bounded_continuation():
     assert len(records) == 1
 
 
+def test_node_executor_consumes_pending_selection_before_model_turn():
+    records = []
+    task = SimpleNamespace(
+        active_revision_id="revision-resume",
+        active_revision=SimpleNamespace(execution_records=records),
+    )
+
+    class Coordinator:
+        def get_task(self, _task_id):
+            return task
+
+        def pending_planning_selection(self, *_args, **_kwargs):
+            return {
+                "execution_tool": "forge_tool_query",
+                "task_id": "task-resume",
+                "tool_id": "manipulation.prepare",
+                "planning_binding": {"node_id": "prepare"},
+            }
+
+    class Registry:
+        calls = []
+
+        async def execute(self, name, params):
+            self.calls.append((name, params))
+            records.append(_terminal_record())
+            return '{"ok":true}'
+
+    class Loop:
+        def __init__(self):
+            self.tools = Registry()
+            self.model_calls = 0
+
+        async def run_node_turn(self, **_kwargs):
+            self.model_calls += 1
+
+    loop = Loop()
+    result = asyncio.run(AgentLoopNodeExecutor(loop, Coordinator())(_executor_context()))
+
+    assert result.status == "succeeded"
+    assert loop.model_calls == 0
+    assert loop.tools.calls[0][0] == "forge_tool_query"
+    assert loop.tools.calls[0][1]["use_selected_arguments"] is True
+
+
 def test_node_executor_reconciles_existing_terminal_record_without_model_call():
     record = _terminal_record(semantics="action", status="unknown")
     task = SimpleNamespace(
