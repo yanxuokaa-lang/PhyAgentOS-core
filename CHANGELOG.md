@@ -17,6 +17,17 @@
 - Full diff, exact ranges, seven-dimension review, and the pre-existing RGB reducer failure are recorded in `changelog/2026-10.md`.
 - Git commits: `4faa3ac` (implementation), `ab66827` (documentation) on `feature/planning-loop`.
 
+## v12.5.11 (2026-10-02 09:30) - codex
+
+### 变更摘要 / Summary
+- 卸载旧 `pick-place-workflow 2.10.5`，安装并启动包含 AgentLoop 修复的 `2.10.6`；Node `0.10.2` 重新安装并校验。
+- Removed old `pick-place-workflow 2.10.5`, installed and started `2.10.6` containing the AgentLoop fix, and reinstalled and verified Node `0.10.2`.
+
+### 验证 / Validation
+- Gateway 和 11 个 ToolSpec ready，Qwen loopback 健康，任务数据库非终态为 `0`，Skill 发布回归 `87 passed`。
+- Gateway and all 11 ToolSpecs are ready, Qwen loopback is healthy, non-terminal task count is `0`, and Skill release regression passed `87` tests.
+- Git commit: `ca42b87` on `feature/planning-loop`。
+
 ## v12.5.9 (2026-10-02 08:06) - codex
 
 ### 变更摘要 / Summary
