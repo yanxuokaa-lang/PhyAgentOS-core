@@ -15,6 +15,7 @@
 - Gateway and all 11 ToolSpecs are ready, Node SHA is verified, Qwen loopback is healthy, and there are no non-terminal tasks; no task or physical action was created.
 - 完整记录、包 SHA、精确行号和约束见 `changelog/2026-10.md:L415-L451`。
 - Full package hashes, exact ranges, and safety constraints are recorded in `changelog/2026-10.md:L415-L451`.
+- Git commit: `a70d228` on `feature/planning-loop`.
 
 ## v12.5.8 (2026-10-01 11:30) - codex
 
