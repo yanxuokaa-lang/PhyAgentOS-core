@@ -11,7 +11,15 @@ from PhyAgentOS.agent.plan_proposal import (
 )
 from PhyAgentOS.forge.binding import BoundToolSpec, missing_preplan_queries
 from PhyAgentOS.forge.manipulation import capability_snapshot_digest
-from PhyAgentOS.planning import PlanGraph, PlanNode, ToolSpecPolicy, plan_graph_digest
+from PhyAgentOS.planning import (
+    ArgumentProjectionError,
+    ArgumentProjectionPlan,
+    PlanGraph,
+    PlanNode,
+    ToolSpecPolicy,
+    execute_argument_projection,
+    plan_graph_digest,
+)
 
 
 def _record(tool_id: str, response: dict, *, node_id: str | None = None):
@@ -184,7 +192,96 @@ def test_execution_alias_in_entity_ref_is_normalized_before_projection_join():
     assert completed[0].input_bindings["entity_ref"] == "entity://e1"
 
 
-def test_complete_graph_entry_uses_the_same_canonical_binding_boundary():
+@pytest.mark.parametrize("observed", ["entity://observed-object", "entity://custom-part-42"])
+def test_standalone_grasp_execution_alias_joins_observed_geometry(observed):
+    task = _task((_record("scene.bind", {"data": {"entities": [{
+        "entity_ref": observed,
+        "execution_entity_ref": "entity://runtime-object",
+    }]}}),))
+    grasp = PlanNode(
+        node_id="grasp", obligation_id="grasp", capability="grasp.propose",
+        input_bindings={"entity_ref": "entity://runtime-object"},
+    )
+    normalized = _complete_persisted_runtime_bindings(task, (grasp,))[0]
+    plan = ArgumentProjectionPlan(
+        projection_id="entity_geometry_target_v1",
+        entity_collection="entities", envelope_collection="spatial_envelopes",
+        output_collection="targets", entity_fields=("entity_ref", "category"),
+        envelope_fields=("entity_ref", "frame_id"),
+    )
+    projected = execute_argument_projection(
+        plan,
+        records={"understood": ({}, {"data": {
+            "entities": [{"entity_ref": observed, "category": "part"}],
+            "spatial_envelopes": [{"entity_ref": observed, "frame_id": "world"}],
+        }})},
+        literals=normalized.input_bindings,
+        source_record_id="understood",
+    )
+
+    assert projected["targets"][0]["entity_ref"] == observed
+    assert grasp.input_bindings["entity_ref"] == "entity://runtime-object"
+
+
+def test_standalone_grasp_ambiguous_alias_cannot_join_observed_geometry():
+    task = _task((_record("scene.bind", {"data": {"entities": [
+        {"entity_ref": entity, "execution_entity_ref": "entity://runtime-object"}
+        for entity in ("entity://observed-a", "entity://observed-b")
+    ]}}),))
+    grasp = PlanNode(
+        node_id="grasp", obligation_id="grasp", capability="grasp.propose",
+        input_bindings={"entity_ref": "entity://runtime-object"},
+    )
+    normalized = _complete_persisted_runtime_bindings(task, (grasp,))[0]
+    assert normalized.input_bindings["entity_ref"] == "entity://runtime-object"
+    plan = ArgumentProjectionPlan(
+        projection_id="entity_geometry_target_v1",
+        entity_collection="entities", envelope_collection="spatial_envelopes",
+        output_collection="targets",
+    )
+    with pytest.raises(ArgumentProjectionError, match="one uniquely matched entity"):
+        execute_argument_projection(
+            plan,
+            records={"understood": ({}, {"data": {
+                "entities": [{"entity_ref": "entity://observed-a"}, {"entity_ref": "entity://observed-b"}],
+                "spatial_envelopes": [],
+            }})},
+            literals=normalized.input_bindings,
+            source_record_id="understood",
+        )
+
+
+def test_standalone_grasp_cannot_resolve_alias_from_previous_capture():
+    old_binding = _scene_response("capture-old")
+    old_binding["data"]["entities"] = [{
+        "entity_ref": "entity://old-observed", "execution_entity_ref": "entity://runtime-object",
+    }]
+    records = (
+        _record("scene.observe", _scene_response("capture-old")),
+        _record("scene.bind", old_binding),
+        _record("scene.observe", _scene_response("capture-new")),
+    )
+    for index, record in enumerate(records):
+        record.record_id = f"record-{index}"
+        record.terminal = True
+        record.semantics = "query"
+        record.invocation_id = None
+        record.arguments = {}
+        record.evidence_refs = (f"tool:record-{index}",)
+    task = _task(records)
+    task.execution_records = records
+    grasp = PlanNode(
+        node_id="grasp", obligation_id="grasp", capability="grasp.propose",
+        input_bindings={"entity_ref": "entity://runtime-object"},
+    )
+
+    normalized = _complete_persisted_runtime_bindings(task, (grasp,))[0]
+
+    assert normalized.input_bindings["entity_ref"] == "entity://runtime-object"
+
+
+@pytest.mark.parametrize("capability", ["grasp.propose", "manipulation.prepare", "object.acquire", "object.place"])
+def test_complete_graph_entry_uses_the_same_canonical_binding_boundary(capability):
     task = _task((_record(
         "scene.bind",
         {"data": {"entities": [{
@@ -195,7 +292,7 @@ def test_complete_graph_entry_uses_the_same_canonical_binding_boundary():
     node = PlanNode(
         node_id="red.prepare",
         obligation_id="red.prepare",
-        capability="manipulation.prepare",
+        capability=capability,
         input_bindings={"entity_ref": "entity://block-red-1"},
     )
     payload = {

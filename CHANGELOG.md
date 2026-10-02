@@ -4,6 +4,48 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.5.13 (2026-10-02 20:57) - codex
+
+### 变更摘要 / Summary
+- 修复模型 turn 中生成 selection 后重复请求模型、wrapper 错误覆盖持久化终态，以及 standalone grasp execution alias 无法接入当前几何投影。
+- Fixed duplicate model turns after a persisted selection, wrapper errors overriding durable terminal facts, and standalone grasp execution aliases failing to join current geometry.
+
+### 影响文件 / Affected Files
+- `PhyAgentOS/agent/planning_loop.py:L715-L816`
+- `PhyAgentOS/agent/plan_proposal.py:L507-L514`
+- `tests/test_planning_loop.py:L1719-L2217`
+- `tests/test_plan_proposal_bindings.py:L195-L310`
+- `docs/forge/AGENTLOOP_DIAGNOSIS_RECOVERY_PRIORITY_20261002.md`
+- `docs/forge/IMPLEMENTATION_REVIEW_V12_5_13.md`
+
+### 关键 Diff / Key Diff
+```diff
+- await self.agent_loop.run_node_turn(...)
++ resumed = await self._resume_node(context)
++ if resumed is not None: return resumed
++ turn_result = await self.agent_loop.run_node_turn(...)
++ resumed = await self._resume_node(context)
+```
+```diff
+- wrapper Error text is interpreted first
++ reconcile original records, then inspect wrapper text
+```
+```diff
+- standalone grasp keeps an execution alias
++ unique scene.bind alias is normalized to the observed entity
+```
+
+### 验证 / Validation
+- 聚焦 `35 passed, 58 deselected`；全量 `748 passed, 2 failed`，两项失败已在父版本 `b83cb88` 隔离复现并记录于月志与 Review。
+- Focused: `35 passed, 58 deselected`; full: `748 passed, 2 failed`; both failures reproduce at parent `b83cb88` and are documented in the monthly log and review.
+- Ruff、compileall、`git diff --check` 通过；无 AgentTask、Gateway、Runtime 重启或物理动作。
+- Ruff, compileall, and `git diff --check` passed; no AgentTask, Gateway call, Runtime restart, or physical motion.
+
+### 完整记录 / Full Record
+- 详见 [`changelog/2026-10.md`](changelog/2026-10.md) v12.5.13 与 [`IMPLEMENTATION_REVIEW_V12_5_13.md`](docs/forge/IMPLEMENTATION_REVIEW_V12_5_13.md)。
+- See v12.5.13 in [`changelog/2026-10.md`](changelog/2026-10.md) and [`IMPLEMENTATION_REVIEW_V12_5_13.md`](docs/forge/IMPLEMENTATION_REVIEW_V12_5_13.md).
+- Git commit: pending (to be recorded after commit).
+
 ## v12.5.12 (2026-10-02 19:38) - codex
 
 ### 变更摘要 / Summary

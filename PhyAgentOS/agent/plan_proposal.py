@@ -505,6 +505,13 @@ def _complete_persisted_runtime_bindings(
                 constraints.append(prose_intent)
             bindings["constraints"] = constraints
         if node.capability == "grasp.propose":
+            # A standalone grasp segment has no downstream execution field to
+            # propagate. Its entity_ref may still be a Runtime execution alias.
+            entity = bindings.get("entity_ref")
+            if isinstance(entity, str):
+                observed_aliases = execution_to_observed.get(entity, set())
+                if len(observed_aliases) == 1:
+                    bindings["entity_ref"] = next(iter(observed_aliases))
             execution_targets = grasp_execution_targets.get(node.node_id, set())
             if len(execution_targets) == 1:
                 observed_entities = execution_to_observed.get(next(iter(execution_targets)), set())

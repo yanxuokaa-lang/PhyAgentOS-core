@@ -712,61 +712,11 @@ class AgentLoopNodeExecutor:
             activation = activate(context.task_id)
             if hasattr(activation, "__await__"):
                 await activation
-        existing = self._node_records(context)
-        if existing:
-            await self._reconcile_executions(context.task_id, context.node_id)
-            existing = self._node_records(context)
-            if any(not item.terminal for item in existing):
-                raise NodeTurnIncompleteError(
-                    context.node_id,
-                    "existing planning-bound execution requires reconciliation",
-                )
-            return self._result_from_records(context, existing)
-
-        # A selection is a durable Coordinator checkpoint.  Consume it before
-        # asking the model for another turn so a provider interruption cannot
-        # cause rediscovery, reselection, or an invocation replay.
-        pending = self._pending_selection(context)
-        if pending is not None:
-            registry = getattr(self.agent_loop, "tools", None)
-            execute_tool = getattr(registry, "execute", None)
-            if callable(execute_tool):
-                params = {
-                    "task_id": context.task_id,
-                    "tool_id": pending["tool_id"],
-                    "arguments": {},
-                    "use_selected_arguments": True,
-                    "planning_binding": pending["planning_binding"],
-                }
-                result = execute_tool(pending["execution_tool"], params)
-                if hasattr(result, "__await__"):
-                    result = await result
-                if isinstance(result, str) and result.startswith("Error"):
-                    raise NodeTurnIncompleteError(
-                        context.node_id,
-                        "persisted selection execution was rejected: " + result,
-                    )
-                await self._reconcile_executions(context.task_id, context.node_id)
-                records = self._node_records(context)
-                if records:
-                    if any(not item.terminal for item in records):
-                        raise NodeTurnIncompleteError(
-                            context.node_id,
-                            "persisted selection execution did not reach a durable terminal state",
-                        )
-                    return self._result_from_records(context, records)
-                raise NodeTurnIncompleteError(
-                    context.node_id,
-                    "persisted selection execution produced no task-bound record",
-                )
-
         attempts = 1 + self.max_node_turn_continuations
         for _attempt in range(attempts):
-            # A model/provider failure after forge_plan_select is recoverable:
-            # the Coordinator has already persisted the exact execution
-            # arguments, so the bounded continuation can issue the normal
-            # governed wrapper without asking the model to select again.
-            had_pending_selection = self._pending_selection(context) is not None
+            resumed = await self._resume_node(context)
+            if resumed is not None:
+                return resumed
             turn_result = await self.agent_loop.run_node_turn(
                 task_id=context.task_id,
                 revision_id=context.revision_id,
@@ -774,44 +724,22 @@ class AgentLoopNodeExecutor:
                 prompt=self._prompt_for_turn(context),
                 on_progress=self.on_progress,
             )
-            # A Tool may have been accepted before a later model iteration
-            # failed while producing narration.  Persisted execution facts
-            # outrank that model failure and Actions must be reconciled now.
-            await self._reconcile_executions(context.task_id, context.node_id)
-            records = self._node_records(context)
-            if records:
-                if any(not item.terminal for item in records):
-                    raise NodeTurnIncompleteError(
-                        context.node_id,
-                        "planning-bound Tool execution did not reach a durable terminal state",
-                    )
-                return self._result_from_records(context, records)
+            # Selection/execution may have been persisted before the provider
+            # failed. Recovery uses those facts even on the final model turn;
+            # consuming a selection does not spend another model-turn budget.
+            resumed = await self._resume_node(context)
+            if resumed is not None:
+                return resumed
             model_failure_code = getattr(turn_result, "model_failure_code", None)
             if model_failure_code:
                 if (
                     _attempt + 1 < attempts
-                    and (
-                        (
-                            model_failure_code == "provider_timeout"
-                            and not had_pending_selection
-                            and self._pending_selection(context) is None
-                        )
-                        or (
-                            not had_pending_selection
-                            and self._pending_selection(context) is not None
-                        )
-                    )
+                    and model_failure_code == "provider_timeout"
                 ):
                     continue
                 raise NodeTurnProviderError(context.node_id, model_failure_code)
             turn_failure_code = getattr(turn_result, "turn_failure_code", None)
             if turn_failure_code:
-                if (
-                    not had_pending_selection
-                    and self._pending_selection(context) is not None
-                    and _attempt + 1 < attempts
-                ):
-                    continue
                 raise NodeTurnIncompleteError(context.node_id, turn_failure_code)
             rejections = self._selection_rejections(context)
             if rejections and self._pending_selection(context) is None:
@@ -844,6 +772,49 @@ class AgentLoopNodeExecutor:
         )
         raise NodeTurnIncompleteError(context.node_id, reason)
 
+    async def _resume_node(
+        self, context: NodeExecutionContext,
+    ) -> ToolResultEnvelope | None:
+        """Reconcile existing execution before consuming a selection or asking the model."""
+        if self._node_records(context):
+            await self._reconcile_executions(context.task_id, context.node_id)
+            return self._result_from_records(context, self._node_records(context))
+
+        pending = self._pending_selection(context)
+        if pending is None:
+            return None
+        registry = getattr(self.agent_loop, "tools", None)
+        execute_tool = getattr(registry, "execute", None)
+        if not callable(execute_tool):
+            raise NodeTurnIncompleteError(
+                context.node_id,
+                "persisted selection requires the governed Tool registry",
+            )
+        result = execute_tool(pending["execution_tool"], {
+            "task_id": context.task_id,
+            "tool_id": pending["tool_id"],
+            "arguments": {},
+            "use_selected_arguments": True,
+            "planning_binding": pending["planning_binding"],
+        })
+        if hasattr(result, "__await__"):
+            result = await result
+        # Wrapper errors can follow durable acceptance or a terminal result.
+        # Original-invocation facts outrank transport/narration failures.
+        await self._reconcile_executions(context.task_id, context.node_id)
+        records = self._node_records(context)
+        if records:
+            return self._result_from_records(context, records)
+        if isinstance(result, str) and result.startswith("Error"):
+            raise NodeTurnIncompleteError(
+                context.node_id,
+                "persisted selection execution was rejected: " + result,
+            )
+        raise NodeTurnIncompleteError(
+            context.node_id,
+            "persisted selection execution produced no task-bound record",
+        )
+
     def _node_records(self, context: NodeExecutionContext) -> list[Any]:
         task = self.coordinator.get_task(context.task_id)
         if task.active_revision_id != context.revision_id:
@@ -867,7 +838,7 @@ class AgentLoopNodeExecutor:
         if any(not item.terminal for item in records):
             raise NodeTurnIncompleteError(
                 context.node_id,
-                "planning-bound Tool execution is not terminal",
+                "planning-bound Tool execution did not reach a durable terminal state",
             )
         statuses = {_planning_record_status(item) for item in records}
         if "unknown" in statuses:

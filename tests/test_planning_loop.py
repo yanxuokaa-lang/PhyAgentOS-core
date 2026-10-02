@@ -24,7 +24,9 @@ from PhyAgentOS.agent.planning_loop import (
     node_context_prompt_projection,
     resolve_node_argument_sources,
 )
+from PhyAgentOS.agent.tools.base import Tool
 from PhyAgentOS.agent.tools.forge_task import build_forge_task_tools
+from PhyAgentOS.agent.tools.registry import ToolRegistry
 from PhyAgentOS.config.schema import ForgeConfig
 from PhyAgentOS.forge.task import (
     AgentTaskCoordinator,
@@ -1700,7 +1702,7 @@ def _terminal_record(*, semantics="query", status="succeeded"):
         semantics=semantics,
         status=status,
         tool_id="manipulation.prepare",
-        invocation_id="invocation-1" if semantics == "action" else None,
+        invocation_id="invocation-1" if semantics in {"action", "session"} else None,
         evidence_refs=("tool:tool-1",),
         response={
             "ok": status == "succeeded",
@@ -1712,6 +1714,178 @@ def _terminal_record(*, semantics="query", status="succeeded"):
         },
         error=None,
     )
+
+
+class _SelectionTool(Tool):
+    name = "forge_tool_query"
+    description = "Local no-motion selection execution fixture"
+    parameters = {
+        "type": "object",
+        "properties": {
+            "task_id": {"type": "string"},
+            "tool_id": {"type": "string"},
+            "arguments": {"type": "object"},
+            "use_selected_arguments": {"type": "boolean"},
+            "planning_binding": {"type": "object"},
+        },
+        "required": ["task_id", "tool_id", "arguments", "use_selected_arguments", "planning_binding"],
+    }
+
+    def __init__(self, records, *, record=None, wrapper_error=False):
+        self.records = records
+        self.record = record
+        self.wrapper_error = wrapper_error
+        self.calls = []
+
+    async def execute(self, **kwargs):
+        self.calls.append(kwargs)
+        self.records.append(self.record if self.record is not None else _terminal_record())
+        if self.wrapper_error:
+            raise RuntimeError("transport failed after persistence")
+        return '{"ok":true}'
+
+
+@pytest.fixture
+def selected_node():
+    records = []
+    task = SimpleNamespace(
+        active_revision_id="revision-resume",
+        active_revision=SimpleNamespace(execution_records=records),
+        execution_records=records,
+    )
+    selection = {
+        "execution_tool": "forge_tool_query",
+        "tool_id": "manipulation.prepare",
+        "planning_binding": {"node_id": "prepare"},
+    }
+
+    class Client:
+        def __init__(self):
+            self.calls = []
+            self.result = {
+                "status": "succeeded",
+                "data": {"world_change_started": True, "outcome_known": True},
+            }
+
+        async def invocation_status(self, invocation_id):
+            self.calls.append(("status", invocation_id))
+            return {"status": "running"}
+
+        async def invocation_result(self, invocation_id):
+            self.calls.append(("result", invocation_id))
+            return self.result
+
+    class Coordinator:
+        def __init__(self):
+            self.client = Client()
+
+        def get_task(self, _task_id):
+            return task
+
+        def pending_planning_selection(self, *_args, **_kwargs):
+            return selection
+
+        def observe_action(self, _task_id, invocation_id, response, *, reconcile_settlement=True):
+            record = records[0]
+            assert invocation_id == record.invocation_id
+            record.response = response
+            if reconcile_settlement:
+                record.status = response["status"]
+                record.terminal = record.status in {"succeeded", "failed", "unknown"}
+
+        observe_session = observe_action
+
+    class Loop:
+        def __init__(self):
+            self.tools = ToolRegistry()
+            self.model_calls = 0
+
+        async def run_node_turn(self, **_kwargs):
+            self.model_calls += 1
+            raise AssertionError("pending selection must not call the model")
+
+    return SimpleNamespace(
+        records=records, coordinator=Coordinator(), loop=Loop(), selection=selection,
+    )
+
+
+@pytest.mark.parametrize("status", ["succeeded", "failed", "unknown"])
+def test_pending_selection_durable_terminal_result_outranks_wrapper_exception(selected_node, status):
+    state = selected_node
+    state.loop.tools.register(_SelectionTool(
+        state.records, record=_terminal_record(status=status), wrapper_error=True,
+    ))
+    executor = AgentLoopNodeExecutor(state.loop, state.coordinator)
+
+    result = asyncio.run(executor(_executor_context()))
+    replay = asyncio.run(executor(_executor_context()))
+
+    assert result.status == replay.status == status
+    assert state.loop.model_calls == 0
+    assert len(state.loop.tools.get("forge_tool_query").calls) == 1
+    assert len(state.records) == 1
+
+
+@pytest.mark.parametrize("semantics", ["action", "session"])
+@pytest.mark.parametrize("status", ["succeeded", "unknown"])
+def test_pending_selection_wrapper_error_reconciles_original_invocation(selected_node, semantics, status):
+    state = selected_node
+    record = _terminal_record(semantics=semantics, status="accepted")
+    record.terminal = False
+    state.selection["execution_tool"] = "forge_tool_start"
+    state.coordinator.client.result = {
+        "status": status,
+        "data": {"world_change_started": True, "outcome_known": status != "unknown"},
+    }
+    tool = _SelectionTool(state.records, record=record, wrapper_error=True)
+    tool.name = "forge_tool_start"
+    state.loop.tools.register(tool)
+    executor = AgentLoopNodeExecutor(state.loop, state.coordinator, max_action_polls=1)
+
+    result = asyncio.run(executor(_executor_context()))
+    replay = asyncio.run(executor(_executor_context()))
+
+    assert result.status == replay.status == status
+    assert result.world_change_started is True
+    assert result.outcome_known is (status != "unknown")
+    assert state.loop.model_calls == 0
+    assert len(tool.calls) == 1
+    assert state.coordinator.client.calls == [
+        ("status", "invocation-1"), ("result", "invocation-1"),
+    ]
+
+
+def test_pending_selection_still_uses_registry_guard_without_blind_retry(selected_node):
+    state = selected_node
+    tool = _SelectionTool(state.records)
+    state.loop.tools.register(tool)
+    guarded = []
+
+    def reject(name, params):
+        guarded.append((name, params))
+        return "Error: motion authorization denied"
+
+    state.loop.tools.set_execution_guard(reject)
+    with pytest.raises(NodeTurnIncompleteError, match="motion authorization denied"):
+        asyncio.run(AgentLoopNodeExecutor(state.loop, state.coordinator)(_executor_context()))
+
+    assert len(guarded) == 1
+    assert guarded[0][1]["planning_binding"] == state.selection["planning_binding"]
+    assert guarded[0][1]["use_selected_arguments"] is True
+    assert state.records == tool.calls == []
+    assert state.loop.model_calls == 0
+
+
+def test_pending_selection_without_execution_record_remains_incomplete(selected_node):
+    state = selected_node
+    state.loop.tools.register(_SelectionTool(state.records))
+    state.loop.tools.set_execution_guard(lambda *_args: '{"ok":false}')
+
+    with pytest.raises(NodeTurnIncompleteError, match="produced no task-bound record"):
+        asyncio.run(AgentLoopNodeExecutor(state.loop, state.coordinator)(_executor_context()))
+
+    assert state.records == []
+    assert state.loop.model_calls == 0
 
 
 def test_node_executor_reuses_pending_selection_on_bounded_continuation():
@@ -1731,6 +1905,10 @@ def test_node_executor_reuses_pending_selection_on_bounded_continuation():
             return pending["value"]
 
     class Loop:
+        def __init__(self):
+            self.tools = ToolRegistry()
+            self.tools.register(_SelectionTool(records))
+
         def activate_planning_task(self, _task_id):
             return None
 
@@ -1744,16 +1922,14 @@ def test_node_executor_reuses_pending_selection_on_bounded_continuation():
                     "arguments": {"candidate_set_ref": "candidate-set://1"},
                     "planning_binding": {"node_id": "prepare"},
                 }
-            else:
-                records.append(_terminal_record())
 
-    result = asyncio.run(AgentLoopNodeExecutor(Loop(), Coordinator())(_executor_context()))
+    loop = Loop()
+    result = asyncio.run(AgentLoopNodeExecutor(loop, Coordinator())(_executor_context()))
 
     assert result.status == "succeeded"
-    assert len(prompts) == 2
+    assert len(prompts) == 1
     assert "forge_tool_query" not in prompts[0]
-    assert "forge_tool_query" in prompts[1]
-    assert "Do not select again" in prompts[1]
+    assert len(loop.tools.get("forge_tool_query").calls) == 1
     assert len(records) == 1
 
 
@@ -1886,7 +2062,7 @@ def test_node_executor_carries_rejections_and_does_not_restart_failed_selection(
     assert task.active_revision.execution_records == []
 
 
-def test_node_executor_provider_failure_does_not_consume_continuation():
+def test_node_executor_pending_selection_without_registry_does_not_call_model():
     task = SimpleNamespace(
         active_revision_id="revision-resume",
         active_revision=SimpleNamespace(execution_records=[]),
@@ -1916,12 +2092,12 @@ def test_node_executor_provider_failure_does_not_consume_continuation():
     executor = AgentLoopNodeExecutor(loop, Coordinator())
 
     with pytest.raises(
-        NodeTurnProviderError,
-        match="node_turn_provider_error:prepare:provider_timeout",
+        NodeTurnIncompleteError,
+        match="persisted selection requires the governed Tool registry",
     ):
         asyncio.run(executor(_executor_context()))
 
-    assert loop.calls == 1
+    assert loop.calls == 0
     assert task.active_revision.execution_records == []
 
 
@@ -1985,7 +2161,9 @@ def test_node_executor_blocks_after_bounded_model_timeouts_before_selection():
     assert task.active_revision.execution_records == []
 
 
-def test_node_executor_retries_provider_failure_after_selection_is_persisted():
+@pytest.mark.parametrize("continuations", [0, 1])
+@pytest.mark.parametrize("failure", ["provider_timeout", "provider_error", "turn_error"])
+def test_node_executor_consumes_new_selection_before_retrying_model(continuations, failure):
     records = []
     pending = {"value": None}
     task = SimpleNamespace(
@@ -2001,30 +2179,41 @@ def test_node_executor_retries_provider_failure_after_selection_is_persisted():
             return pending["value"]
 
     class Loop:
-        calls = 0
-        prompts = []
+        def __init__(self):
+            self.calls = 0
+            self.tools = ToolRegistry()
+            self.tools.register(_SelectionTool(records))
 
         async def run_node_turn(self, *, prompt, **_kwargs):
             self.calls += 1
-            self.prompts.append(prompt)
-            if self.calls == 1:
-                pending["value"] = {
-                    "execution_tool": "forge_tool_query",
-                    "task_id": "task-resume",
-                    "tool_id": "manipulation.prepare",
-                    "arguments": {"candidate_set_ref": "candidate-set://1"},
-                    "planning_binding": {"node_id": "prepare"},
-                }
-                return SimpleNamespace(model_failure_code="provider_timeout")
-            records.append(_terminal_record())
-            return SimpleNamespace(model_failure_code=None, turn_failure_code=None)
+            assert self.calls == 1, "a durable selection must not require another model turn"
+            pending["value"] = {
+                "execution_tool": "forge_tool_query",
+                "task_id": "task-resume",
+                "tool_id": "manipulation.prepare",
+                "arguments": {"candidate_set_ref": "candidate-set://1"},
+                "planning_binding": {"node_id": "prepare"},
+            }
+            return SimpleNamespace(
+                model_failure_code=failure if failure != "turn_error" else None,
+                turn_failure_code=failure if failure == "turn_error" else None,
+            )
 
     loop = Loop()
-    result = asyncio.run(AgentLoopNodeExecutor(loop, Coordinator())(_executor_context()))
+    executor = AgentLoopNodeExecutor(
+        loop, Coordinator(), max_node_turn_continuations=continuations,
+    )
+    result = asyncio.run(executor(_executor_context()))
 
     assert result.status == "succeeded"
-    assert loop.calls == 2
-    assert "Do not select again" in loop.prompts[1]
+    assert loop.calls == 1
+    assert loop.tools.get("forge_tool_query").calls == [{
+        "task_id": "task-resume",
+        "tool_id": "manipulation.prepare",
+        "arguments": {},
+        "use_selected_arguments": True,
+        "planning_binding": {"node_id": "prepare"},
+    }]
     assert len(records) == 1
 
 
