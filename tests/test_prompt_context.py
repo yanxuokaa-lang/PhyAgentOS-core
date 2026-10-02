@@ -559,6 +559,110 @@ def test_continuation_projection_forbids_stale_pre_action_query_evidence() -> No
     assert "do not take a fresh observation" in boundary
 
 
+def test_query_only_settlement_routes_directly_to_agent_choice() -> None:
+    node = SimpleNamespace(node_id="query-node", dependencies=())
+    settlement = SimpleNamespace(
+        node_id="query-node",
+        status="completed",
+        world_change_started=False,
+        outcome_known=True,
+        scene_revision="scene-1",
+        invocation_id=None,
+    )
+    record = SimpleNamespace(
+        revision_id="revision-1",
+        node_id="query-node",
+        tool_id="grasp.propose",
+        semantics="query",
+        status="succeeded",
+        response={"data": {"scene_revision": "scene-1"}},
+        evidence_refs=["tool:query-node"],
+    )
+    task = _task(
+        graph=SimpleNamespace(nodes=(node,)),
+        records=(record,),
+        settlements=(settlement,),
+    )
+    projection = continuation_task_prompt_projection(task)
+    assert projection["continuation_route"] == "agent_choose_next_or_replan"
+    assert projection["latest_settled_result"] == {
+        "node_id": "query-node",
+        "tool_id": "grasp.propose",
+        "semantics": "query",
+        "status": "completed",
+        "scene_write_behavior": "none",
+        "world_change_started": False,
+        "outcome_known": True,
+        "new_scene_revision": "scene-1",
+        "invocation_id": None,
+        "placement_terminal": False,
+    }
+
+
+def test_world_changing_action_settlement_requires_refresh_route() -> None:
+    node = SimpleNamespace(node_id="acquire-node", dependencies=())
+    settlement = SimpleNamespace(
+        node_id="acquire-node",
+        status="completed",
+        world_change_started=True,
+        outcome_known=True,
+        scene_revision="scene-2",
+        invocation_id="invocation://acquire/1",
+    )
+    record = SimpleNamespace(
+        revision_id="revision-1",
+        node_id="acquire-node",
+        tool_id="object.acquire",
+        semantics="action",
+        status="succeeded",
+        response={"data": {"new_scene_revision": "scene-2"}},
+        evidence_refs=["invocation:acquire/1"],
+    )
+    task = _task(
+        graph=SimpleNamespace(nodes=(node,)),
+        records=(record,),
+        settlements=(settlement,),
+    )
+    projection = continuation_task_prompt_projection(task)
+    assert projection["continuation_route"] == "refresh_scene_before_next_segment"
+    assert projection["latest_settled_result"]["world_change_started"] is True
+    assert projection["placement_terminal"] is False
+    assert projection["latest_settled_result"]["placement_terminal"] is False
+
+
+def test_successfully_settled_place_exposes_post_placement_fact() -> None:
+    node = SimpleNamespace(node_id="place-node", dependencies=())
+    settlement = SimpleNamespace(
+        node_id="place-node",
+        status="completed",
+        world_change_started=True,
+        outcome_known=True,
+        scene_revision="scene-3",
+        invocation_id="invocation://place/1",
+    )
+    record = SimpleNamespace(
+        revision_id="revision-1",
+        node_id="place-node",
+        tool_id="object.place",
+        semantics="action",
+        status="succeeded",
+        response={"data": {"new_scene_revision": "scene-3"}},
+        evidence_refs=["invocation:place/1"],
+    )
+    task = _task(
+        graph=SimpleNamespace(nodes=(node,)),
+        records=(record,),
+        settlements=(settlement,),
+    )
+
+    projection = continuation_task_prompt_projection(task)
+
+    assert projection["continuation_route"] == "refresh_scene_before_next_segment"
+    assert projection["placement_terminal"] is True
+    assert projection["latest_settled_result"]["placement_terminal"] is True
+    assert "post-placement" in projection["instruction_boundary"]
+
+
 def test_terminal_task_exposes_only_reconciliation_for_unknown_action_invocation() -> None:
     names = (
         "forge_task_create",

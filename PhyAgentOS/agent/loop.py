@@ -22,6 +22,7 @@ from PhyAgentOS.agent.prompt_context import (
     AgentPromptContextManager,
     PromptBudgetExceededError,
     compact_tool_result,
+    continuation_task_prompt_projection,
 )
 from PhyAgentOS.agent.subagent import SubagentManager
 from PhyAgentOS.agent.tools.agent import AgentModeTool
@@ -1566,20 +1567,63 @@ class AgentLoop:
         if any(settlements.get(node.node_id) != "completed" for node in graph.nodes):
             raise ValueError("segment continuation requires every active node to be completed")
 
+        continuation_projection = continuation_task_prompt_projection(task) or {}
+        continuation_route = continuation_projection.get("continuation_route")
+        latest_settled_result = continuation_projection.get("latest_settled_result")
+        if continuation_route == "refresh_scene_before_next_segment":
+            if continuation_projection.get("placement_terminal") is True:
+                route_instruction = (
+                    "The latest settled result is a successfully settled object.place terminal. "
+                    "Before any downstream segment, you must submit fresh scene.observe, "
+                    "scene.understand, manipulation.capabilities, and scene.bind nodes in "
+                    "dependency order. Post-placement verification may be described only from "
+                    "those fresh Query results; do not reuse pre-Action evidence."
+                )
+            else:
+                route_instruction = (
+                    "The latest settled result is a successful world-changing Action, but it "
+                    "is not a settled object.place terminal. Before any downstream segment, "
+                    "you must submit fresh scene.observe, scene.understand, "
+                    "manipulation.capabilities, and scene.bind nodes in dependency order. "
+                    "This is ordinary post-action refresh; do not describe it as post-placement "
+                    "verification or claim placement completion."
+                )
+        elif continuation_route == "agent_choose_next_or_replan":
+            route_instruction = (
+                "The latest settled result is read-only or did not start a world-changing "
+                "Action. Do not refresh the scene merely because the segment completed. Use "
+                "the persisted facts to choose the next valid semantic segment, request a "
+                "replan, or finalize if the verification contract is already proven. Do not "
+                "describe this as post-action or post-placement evidence."
+            )
+        elif continuation_route == "reconcile_or_replan":
+            route_instruction = (
+                "The latest node did not settle as a completed known result. Do not append "
+                "downstream manipulation or retry an Action. Choose governed reconciliation, "
+                "replanning, clarification, or stop using the persisted failure/unknown facts."
+            )
+        else:
+            route_instruction = (
+                "No settled result authorizes a world-change refresh. Use only persisted facts "
+                "and choose whether a next semantic segment, replan, or finalization is valid."
+            )
+
         prompt = json.dumps(
             {
                 "task_id": task_id,
                 "original_goal": task.task_description,
                 "verification": task.verification.model_dump(mode="json"),
                 "active_revision_id": task.active_revision_id,
+                "latest_settled_result": latest_settled_result,
+                "continuation_route": continuation_route,
                 "instruction": (
                     "The current scene-bound PlanGraph segment is fully settled. Use only "
-                    "persisted Coordinator facts. If the user-level goal still requires work, "
-                    "first refresh the world deterministically with a fresh scene.observe, "
-                    "then scene.understand, manipulation.capabilities, and scene.bind; only "
-                    "after those reads succeed call forge_task_continue_plan with exactly the "
-                    "next scene-bound segment. These reads are mandatory after object.place "
-                    "and must use current evidence, never a video guess. "
+                    "persisted Coordinator facts. A completed segment is not proof that the "
+                    "user-level goal, a grasp, or a placement is complete. "
+                    + route_instruction + " "
+                    "When a new segment is valid, call forge_task_continue_plan with exactly "
+                    "that segment; these reads are mandatory after a successful world-changing "
+                    "Action and must use current evidence, never a video guess. "
                     "Use the active revision's recovery reason only as diagnostic context; the "
                     "original user request and verification criteria remain authoritative. "
                     "Check fresh-evidence requirements and current Coordinator facts. If required "

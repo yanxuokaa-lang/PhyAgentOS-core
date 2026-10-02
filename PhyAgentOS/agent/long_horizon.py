@@ -350,10 +350,33 @@ class LongHorizonTaskController:
         )
 
     def _blocked(self, task_id: str, reason: str) -> LongHorizonTaskResult:
-        snapshot = self._snapshot(task_id)
+        reason = reason.strip()
+        task = self.coordinator.get_task(task_id)
+        # A blocked planning/control turn must not leave a task looking
+        # executable.  Reconcile unresolved Gateway-owned work first; an
+        # unknown Action remains owned by the Runtime and cannot be re-planned
+        # by this outer loop.
+        unresolved_execution = any(
+            getattr(record, "semantics", None) in {"action", "session"}
+            and not getattr(record, "terminal", False)
+            for record in getattr(task, "execution_records", ())
+        )
+        if not task.terminal and not unresolved_execution and task.status == AgentTaskStatus.EXECUTING:
+            try:
+                self.coordinator.request_replan(task_id, reason=reason)
+            except AgentTaskError:
+                try:
+                    self.coordinator.fail_task(task_id, reason=reason)
+                except AgentTaskError:
+                    logger.exception(
+                        "Unable to persist blocked long-horizon state: task_id={} reason={}",
+                        task_id,
+                        reason,
+                    )
+        snapshot = self._snapshot(task_id, last_failure=reason)
         return LongHorizonTaskResult(
             task_id=task_id,
-            status="blocked",
+            status=snapshot.status,
             revision_id=snapshot.revision_id,
             completed_nodes=snapshot.completed_nodes,
             revisions=snapshot.revisions,
@@ -383,7 +406,13 @@ class LongHorizonTaskController:
             )
         return self._snapshot(task_id, status="awaiting_replan")
 
-    def _snapshot(self, task_id: str, *, status: str | None = None) -> LongHorizonTaskResult:
+    def _snapshot(
+        self,
+        task_id: str,
+        *,
+        status: str | None = None,
+        last_failure: str | None = None,
+    ) -> LongHorizonTaskResult:
         task = self.coordinator.get_task(task_id)
         return LongHorizonTaskResult(
             task_id=task_id,
@@ -395,6 +424,7 @@ class LongHorizonTaskController:
             ),
             revisions=len(task.revisions),
             replans=max(0, sum(item.counts_toward_replan_budget for item in task.revisions) - 1),
+            last_failure=last_failure,
         )
 
 

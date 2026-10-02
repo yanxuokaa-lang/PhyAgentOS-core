@@ -335,9 +335,9 @@ def test_controller_blocks_when_segment_continuation_makes_no_state_transition(t
 
     result = asyncio.run(controller.run(task.task_id))
 
-    assert result.status == "blocked"
+    assert result.status == "awaiting_replan"
     assert result.last_failure == "segment_continuation_incomplete:provider_timeout"
-    assert c.get_task(task.task_id).status == AgentTaskStatus.EXECUTING
+    assert c.get_task(task.task_id).status == AgentTaskStatus.AWAITING_REPLAN
 
 
 def test_interactive_async_stop_uses_coordinator_cancellation(tmp_path):
@@ -431,9 +431,9 @@ def test_background_runner_exception_is_visible_to_tui_callback(tmp_path):
         await asyncio.sleep(0)
 
     asyncio.run(exercise())
-    assert results and results[0].status == "blocked"
+    assert results and results[0].status == "awaiting_replan"
     assert results[0].last_failure == "runner_error:RuntimeError:node executor exploded"
-    assert c.get_task(task.task_id).status == AgentTaskStatus.EXECUTING
+    assert c.get_task(task.task_id).status == AgentTaskStatus.AWAITING_REPLAN
 
 
 def test_background_runner_consumes_exception_without_callback(tmp_path):
@@ -490,9 +490,9 @@ def test_wait_returns_structured_block_instead_of_runner_exception(tmp_path):
         return await controller.wait(task.task_id)
 
     result = asyncio.run(exercise())
-    assert result.status == "blocked"
+    assert result.status == "awaiting_replan"
     assert result.last_failure == "runner_error:RuntimeError:bounded node turn failed"
-    assert c.get_task(task.task_id).status == AgentTaskStatus.EXECUTING
+    assert c.get_task(task.task_id).status == AgentTaskStatus.AWAITING_REPLAN
 
 
 def test_one_shot_prints_initial_response_before_waiting_for_long_horizon(monkeypatch):

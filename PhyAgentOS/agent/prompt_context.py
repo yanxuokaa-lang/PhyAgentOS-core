@@ -991,6 +991,84 @@ def continuation_task_prompt_projection(task: Any | None) -> dict[str, Any] | No
         getattr(item, "node_id", None): getattr(item, "status", None)
         for item in getattr(revision, "node_settlements", ())
     }
+    revision_records = tuple(getattr(revision, "execution_records", ())) if revision is not None else ()
+    all_records = tuple(getattr(task, "execution_records", ())) or revision_records
+    latest_settlement = next(
+        (
+            item for item in reversed(tuple(getattr(revision, "node_settlements", ())))
+            if getattr(item, "status", None) in {
+                "completed", "failed", "outcome_unknown", "stale", "cancelled_before_start"
+            }
+        ),
+        None,
+    )
+    latest_record = next(
+        (
+            item for item in reversed(all_records)
+            if latest_settlement is not None
+            and getattr(item, "revision_id", None) == getattr(revision, "revision_id", None)
+            and getattr(item, "node_id", None) == getattr(latest_settlement, "node_id", None)
+            and getattr(item, "status", None) in {
+                "succeeded", "failed", "cancelled", "stopped", "unknown"
+            }
+        ),
+        None,
+    )
+    latest_record_facts = response_facts(getattr(latest_record, "response", None))
+    latest_semantics = getattr(latest_record, "semantics", None)
+    latest_world_change_started = (
+        getattr(latest_settlement, "world_change_started", None)
+        if latest_settlement is not None
+        else latest_record_facts.get("world_change_started")
+    )
+    latest_outcome_known = (
+        getattr(latest_settlement, "outcome_known", None)
+        if latest_settlement is not None
+        else latest_record_facts.get("outcome_known")
+    )
+    latest_scene_write_behavior = latest_record_facts.get("scene_write_behavior")
+    if latest_scene_write_behavior is None:
+        latest_scene_write_behavior = (
+            "new_revision"
+            if latest_semantics == "action" and latest_world_change_started is True
+            else "none"
+            if latest_semantics == "query" and latest_world_change_started is not True
+            else "unknown"
+        )
+    elif latest_scene_write_behavior not in {"none", "new_revision", "unknown"}:
+        latest_scene_write_behavior = "unknown"
+    placement_terminal = bool(
+        latest_settlement is not None
+        and getattr(latest_settlement, "status", None) == "completed"
+        and latest_record is not None
+        and getattr(latest_record, "tool_id", None) == "object.place"
+        and getattr(latest_record, "semantics", None) == "action"
+        and getattr(latest_record, "status", None) == "succeeded"
+        and latest_outcome_known is not False
+    )
+    if (
+        latest_settlement is not None
+        and getattr(latest_settlement, "status", None) == "completed"
+        and latest_semantics == "action"
+        and latest_world_change_started is True
+        and latest_outcome_known is not False
+    ):
+        continuation_route = "refresh_scene_before_next_segment"
+    elif latest_settlement is not None and latest_semantics == "query" and latest_world_change_started is not True:
+        continuation_route = "agent_choose_next_or_replan"
+    elif latest_settlement is not None and getattr(latest_settlement, "status", None) != "completed":
+        continuation_route = "reconcile_or_replan"
+    else:
+        continuation_route = "agent_choose_next_or_replan"
+    completed_node_ids = {
+        node_id for node_id, status in settlements.items() if status == "completed"
+    }
+    available_successors = [
+        getattr(node, "node_id", None)
+        for node in getattr(graph, "nodes", ())
+        if getattr(node, "node_id", None) not in completed_node_ids
+        and all(dependency in completed_node_ids for dependency in getattr(node, "dependencies", ()))
+    ]
     latest_effect = next(
         (
             record for record in reversed(tuple(getattr(task, "execution_records", ())))
@@ -1032,7 +1110,7 @@ def continuation_task_prompt_projection(task: Any | None) -> dict[str, Any] | No
         if record.tool_id == "task.goal" and record.status == "succeeded"
     ]
     return {
-        "version": "agent_continuation_prompt_projection_v1",
+        "version": "agent_continuation_prompt_projection_v2",
         "current_scene_queries": summaries,
         "task_goals": goals,
         "authority": "read_only_projection_from_AgentTaskCoordinator",
@@ -1052,6 +1130,21 @@ def continuation_task_prompt_projection(task: Any | None) -> dict[str, Any] | No
             for node in getattr(graph, "nodes", ())
             if settlements.get(getattr(node, "node_id", None)) == "completed"
         ],
+        "available_successors": available_successors,
+        "continuation_route": continuation_route,
+        "latest_settled_result": {
+            "node_id": getattr(latest_settlement, "node_id", None),
+            "tool_id": getattr(latest_record, "tool_id", None),
+            "semantics": latest_semantics,
+            "status": getattr(latest_settlement, "status", None),
+            "scene_write_behavior": latest_scene_write_behavior,
+            "world_change_started": latest_world_change_started,
+            "outcome_known": latest_outcome_known,
+            "new_scene_revision": latest_record_facts.get("new_scene_revision")
+            or getattr(latest_settlement, "scene_revision", None),
+            "invocation_id": getattr(latest_settlement, "invocation_id", None),
+            "placement_terminal": placement_terminal,
+        } if latest_settlement is not None else None,
         "latest_effect": {
             "node_id": getattr(latest_effect, "node_id", None),
             "tool_id": getattr(latest_effect, "tool_id", None),
@@ -1065,6 +1158,7 @@ def continuation_task_prompt_projection(task: Any | None) -> dict[str, Any] | No
                 )[:8],
             } if isinstance(effect.get("post_release_evidence"), dict) else None,
         } if latest_effect else None,
+        "placement_terminal": placement_terminal,
         "instruction_boundary": (
             "Submit only the next scene-bound semantic segment or finalize. "
             "Do not repeat completed nodes, cite future node IDs, or copy prior "
@@ -1086,7 +1180,11 @@ def continuation_task_prompt_projection(task: Any | None) -> dict[str, Any] | No
             "world-changing Action, the next scene.observe/scene.understand/scene.bind "
             "nodes must use dependencies to order after that Action and must not carry "
             "pre-Action grasp, prepare, acquire, or place evidence in required_evidence; "
-            "leave required_evidence empty until the fresh Query produces its own receipt."
+            "leave required_evidence empty until the fresh Query produces its own receipt. "
+            "A post-placement verification description is permitted only when the current "
+            "revision's latest settled result has placement_terminal=true, meaning a "
+            "successfully settled object.place terminal record; an acquire or any other "
+            "world-changing Action authorizes ordinary post-action refresh only."
         ),
         "motion_authorized": False,
     }

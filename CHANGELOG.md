@@ -4,6 +4,19 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.5.10 (2026-10-02 09:03) - codex
+
+### 变更摘要 / Summary
+- 修复 LongHorizon/AgentLoop 将 Query-only 续接误导为场景刷新、将 acquire 刷新误述为放置后证据，以及 continuation 失败后 Coordinator 状态不收敛的问题。
+- Fixes Query-only continuation being forced into scene refresh, acquire refresh being described as post-placement evidence, and Coordinator state divergence after continuation failure.
+
+### 验证 / Validation
+- 聚焦控制面 `62 passed`；扩展控制面 `217 passed`；Ruff、compileall、`git diff --check` 通过。
+- Focused control-plane: `62 passed`; extended control-plane: `217 passed`; Ruff, compileall, and `git diff --check` passed.
+- 完整 Diff、精确行号、七维 Review 与既有 RGB reducer 遗留失败见 `changelog/2026-10.md`。
+- Full diff, exact ranges, seven-dimension review, and the pre-existing RGB reducer failure are recorded in `changelog/2026-10.md`.
+- Git commit: pending on `feature/planning-loop`.
+
 ## v12.5.9 (2026-10-02 08:06) - codex
 
 ### 变更摘要 / Summary
