@@ -4,6 +4,18 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.5.9 (2026-10-02 08:06) - codex
+
+### 变更摘要 / Summary
+- 停止旧 Runtime，重新安装 Skill `2.10.5` 与 Node `0.10.2`，并启动 `robotwin-blocks-ranking-graspnet` 新 Runtime；本地 Qwen vLLM 保持运行。
+- Stopped the old Runtime, reinstalled Skill `2.10.5` and Node `0.10.2`, and started the new `robotwin-blocks-ranking-graspnet` Runtime while keeping local Qwen vLLM running.
+
+### 验证 / Validation
+- Gateway ready，11 个 ToolSpec ready，Node SHA verified，Qwen `qwen3-vl-4b-awq` loopback healthy，任务数据库非终态任务为 `0`；未创建任务或执行物理动作。
+- Gateway and all 11 ToolSpecs are ready, Node SHA is verified, Qwen loopback is healthy, and there are no non-terminal tasks; no task or physical action was created.
+- 完整记录、包 SHA、精确行号和约束见 `changelog/2026-10.md:L415-L451`。
+- Full package hashes, exact ranges, and safety constraints are recorded in `changelog/2026-10.md:L415-L451`.
+
 ## v12.5.8 (2026-10-01 11:30) - codex
 
 ### 变更摘要 / Summary
