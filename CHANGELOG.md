@@ -15,7 +15,7 @@
 - Focused control-plane: `62 passed`; extended control-plane: `217 passed`; Ruff, compileall, and `git diff --check` passed.
 - 完整 Diff、精确行号、七维 Review 与既有 RGB reducer 遗留失败见 `changelog/2026-10.md`。
 - Full diff, exact ranges, seven-dimension review, and the pre-existing RGB reducer failure are recorded in `changelog/2026-10.md`.
-- Git commit: pending on `feature/planning-loop`.
+- Git commit: `4faa3ac` on `feature/planning-loop`.
 
 ## v12.5.9 (2026-10-02 08:06) - codex
 
