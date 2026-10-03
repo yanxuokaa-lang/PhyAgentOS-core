@@ -148,14 +148,26 @@ class AgentLoop:
 
     @staticmethod
     def _should_fail_task_after_model_failure(task) -> bool:
-        """Keep a Coordinator-owned replan checkpoint recoverable.
+        """Keep Coordinator recovery, clarification and physical ownership intact.
 
         PlanningLoop persists ``awaiting_replan`` before returning a node-turn
         provider failure.  Terminalizing that same task here would discard the
         durable recovery handoff even though no new Tool call was authorized.
-        Other control-plane failures retain the existing fail-closed behavior.
+        Clarification/cancellation checkpoints and uncertain physical outcomes
+        also remain recoverable. Other failures use Coordinator settlement.
         """
-        return getattr(getattr(task, "status", None), "value", None) != "awaiting_replan"
+        status = getattr(getattr(task, "status", None), "value", None)
+        if status in {"awaiting_replan", "waiting_for_user", "cancelling"}:
+            return False
+        if getattr(task, "pause_requested", False) or getattr(task, "cancellation_requested", False):
+            return False
+        # Unknown is terminal accounting, not a confirmed physical outcome.
+        return not any(
+            record.semantics in {"action", "session"}
+            and record.status == "unknown"
+            and getattr(record, "invocation_id", None)
+            for record in getattr(task, "execution_records", ())
+        )
 
     def __init__(
         self,
@@ -187,6 +199,7 @@ class AgentLoop:
         planning_dispatch: AgentComposedDispatch | None = None,
         planning_context_provider: Callable[[str], AdmissionContext] | None = None,
         planner_plugin: PlannerPlugin | None = None,
+        discovery_no_progress_limit: int = 6,
     ):
         from PhyAgentOS.config.schema import ExecToolConfig
 
@@ -196,6 +209,9 @@ class AgentLoop:
         self.workspace = workspace
         self.model = model or provider.get_default_model()
         self.max_iterations = max_iterations
+        if discovery_no_progress_limit < 1:
+            raise ValueError("discovery_no_progress_limit must be positive")
+        self.discovery_no_progress_limit = discovery_no_progress_limit
         self.turn_timeout_s = max(1.0, float(turn_timeout_s))
         self.context_window_tokens = context_window_tokens
         self.context_compaction_trigger_tokens = (
@@ -775,6 +791,10 @@ class AgentLoop:
         )
         pick_place_creation_mode = False
         discovery_continuation_used = False
+        discovery_progress = None
+        discovery_stalled_rounds = 0
+        discovery_correction_used = False
+        described_contracts: set[tuple[str, str, str]] = set()
 
         async def bounded_decision(operation):
             if decision_deadline is None:
@@ -806,6 +826,68 @@ class AgentLoop:
                 # that identity for every later model iteration. Session history
                 # remains context, not a second task-selection authority.
                 active_task_id = active_task.task_id
+            if (
+                projection_scope == "task"
+                and active_task is not None
+                and active_task.status == AgentTaskStatus.EXECUTING
+                and self._should_fail_task_after_model_failure(active_task)
+                and self.prompt_context.phase(active_task) == "discovery"
+            ):
+                revision = active_task.active_revision
+                progress = (
+                    active_task.task_id,
+                    active_task.active_revision_id,
+                    getattr(active_task.primary_skill_binding, "binding_id", None),
+                    getattr(active_task.runtime_binding, "binding_id", None),
+                    tuple((r.record_id, r.status) for r in revision.execution_records),
+                    tuple(sorted(
+                        tool_id for task_id, revision_id, tool_id in described_contracts
+                        if task_id == active_task.task_id
+                        and revision_id == active_task.active_revision_id
+                    )),
+                )
+                if progress != discovery_progress:
+                    discovery_progress = progress
+                    discovery_stalled_rounds = 0
+                    discovery_correction_used = False
+                else:
+                    discovery_stalled_rounds += 1
+                if discovery_stalled_rounds >= self.discovery_no_progress_limit:
+                    logger.warning(
+                        "Discovery has no Coordinator/contract progress task={} revision={} "
+                        "rounds={} correction_used={}",
+                        active_task.task_id, active_task.active_revision_id,
+                        discovery_stalled_rounds, discovery_correction_used,
+                    )
+                    if discovery_correction_used:
+                        turn_failure_code = "discovery_no_progress"
+                        final_content = (
+                            f"Task {active_task.task_id} discovery stopped: repeated checks "
+                            "produced no new Coordinator evidence after a corrective turn. "
+                            "No next Query or Action was automatically dispatched."
+                        )
+                        break
+                    discovery_correction_used = True
+                    discovery_stalled_rounds = 0
+                    messages.append({
+                        "role": "system",
+                        "content": (
+                            "Discovery has made no Coordinator progress. Repeated shell, "
+                            "status or Skill reads do not execute a Query. Use the visible "
+                            "forge_tool_context to recover a missing live contract, then "
+                            "choose a task-bound forge_tool_query from current evidence; "
+                            "forge_task_get(include_skill_instructions=true) recovers this "
+                            "task's persisted Skill constraints if needed. "
+                            "if required facts are unavailable, use task clarification. "
+                            "Do not invent parameters, bypass admission, or claim an Action "
+                            "occurred. You own the next-step decision; the host will not "
+                            "schedule an observation or a plan for you."
+                        ),
+                    })
+            else:
+                discovery_progress = None
+                discovery_stalled_rounds = 0
+                discovery_correction_used = False
             if (
                 iteration == 1
                 and active_task is not None
@@ -1067,6 +1149,29 @@ class AgentLoop:
                     messages = self.context.add_tool_result(
                         messages, tool_call.id, tool_call.name, result
                     )
+                    if (
+                        tool_call.name == "forge_tool_context"
+                        and active_task is not None
+                        and self._tool_result_succeeded(result)
+                        and isinstance(tool_call.arguments.get("tool_id"), str)
+                    ):
+                        described_contracts.add((
+                            active_task.task_id, active_task.active_revision_id,
+                            tool_call.arguments["tool_id"],
+                        ))
+                    elif (
+                        tool_call.name == "forge_task_get"
+                        and active_task is not None
+                        and tool_call.arguments.get("task_id") == active_task.task_id
+                        and tool_call.arguments.get("include_skill_instructions") is True
+                        and self._tool_result_succeeded(result)
+                    ):
+                        data = json.loads(result).get("data", {})
+                        if isinstance(data, dict) and data.get("requested_skill_instructions"):
+                            described_contracts.add((
+                                active_task.task_id, active_task.active_revision_id,
+                                "forge_task_get:skill_instructions",
+                            ))
                     if tool_call.name == "activate_skill":
                         try:
                             activation_result = json.loads(result)
@@ -1322,6 +1427,7 @@ class AgentLoop:
 
         if final_content is None and iteration >= self.max_iterations:
             logger.warning("Max iterations ({}) reached", self.max_iterations)
+            turn_failure_code = "tool_iteration_limit"
             final_content = (
                 f"I reached the maximum number of tool call iterations ({self.max_iterations}) "
                 "without completing the task. You can try breaking the task into smaller steps."
@@ -1844,6 +1950,32 @@ class AgentLoop:
             self.forge_task_coordinator.verifier.stop()
         logger.info("Agent loop stopping")
 
+    def _settle_turn_failure(self, run_result: AgentLoopRunResult, session_key: str) -> None:
+        failure_code = run_result.turn_failure_code or run_result.model_failure_code
+        if failure_code is None or self.forge_task_coordinator is None:
+            return
+        task = self._task_for_session(session_key, include_terminal=False)
+        if task is None:
+            return
+        if not self._should_fail_task_after_model_failure(task):
+            logger.info(
+                "Preserving AgentTask {} recovery/wait state={} after {}",
+                task.task_id, task.status, failure_code,
+            )
+            return
+        try:
+            self.forge_task_coordinator.fail_task(
+                task.task_id,
+                reason=f"agent model/control-plane failure: {failure_code}; no further tool dispatched",
+            )
+        except AgentTaskError:
+            # Only the Coordinator can settle ownership; unresolved physical
+            # invocations remain recoverable through their original handles.
+            logger.warning(
+                "Could not settle AgentTask {} after {}; physical reconciliation remains required",
+                task.task_id, failure_code,
+            )
+
     async def _process_message(
         self,
         msg: InboundMessage,
@@ -1880,6 +2012,7 @@ class AgentLoop:
             run_result = await self._run_agent_loop(
                 messages, experience_session_key=key
             )
+            self._settle_turn_failure(run_result, key)
             final_content = run_result.content
             self._save_turn(session, run_result.messages, 1 + len(history))
             self.sessions.save(session)
@@ -2047,32 +2180,7 @@ class AgentLoop:
         final_content = run_result.content
         if final_content is None:
             final_content = "I've completed processing but have no response to give."
-        failure_code = run_result.turn_failure_code or run_result.model_failure_code
-        if failure_code is not None and self.forge_task_coordinator is not None:
-            failed_task = self._task_for_session(key, include_terminal=False)
-            if failed_task is not None:
-                if self._should_fail_task_after_model_failure(failed_task):
-                    try:
-                        self.forge_task_coordinator.fail_task(
-                            failed_task.task_id,
-                            reason=(
-                                f"agent model/control-plane failure: {failure_code}; "
-                                "no new tool call was authorized"
-                            ),
-                        )
-                    except AgentTaskError:
-                        # An unresolved Action/Session keeps physical reconciliation
-                        # authoritative; the task remains recoverable for polling.
-                        logger.warning(
-                            "Could not terminally settle AgentTask %s after model failure; "
-                            "physical reconciliation remains required",
-                            failed_task.task_id,
-                        )
-                else:
-                    logger.info(
-                        "Preserving AgentTask %s in Coordinator replan state after model failure",
-                        failed_task.task_id,
-                    )
+        self._settle_turn_failure(run_result, key)
         self._save_turn(session, run_result.messages, 1 + len(history))
         self.sessions.save(session)
         await self.memory_consolidator.maybe_consolidate_by_tokens(session)

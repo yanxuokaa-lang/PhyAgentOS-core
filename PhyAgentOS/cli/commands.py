@@ -811,6 +811,7 @@ def gateway(
         workspace=config.workspace_path,
         model=config.agents.defaults.model,
         max_iterations=config.agents.defaults.max_tool_iterations,
+        discovery_no_progress_limit=config.agents.defaults.discovery_no_progress_limit,
         turn_timeout_s=config.agents.defaults.turn_timeout_s,
         context_window_tokens=config.agents.defaults.context_window_tokens,
         context_compaction_trigger_tokens=(
@@ -1025,6 +1026,7 @@ def agent(
         workspace=config.workspace_path,
         model=config.agents.defaults.model,
         max_iterations=config.agents.defaults.max_tool_iterations,
+        discovery_no_progress_limit=config.agents.defaults.discovery_no_progress_limit,
         turn_timeout_s=config.agents.defaults.turn_timeout_s,
         context_window_tokens=config.agents.defaults.context_window_tokens,
         context_compaction_trigger_tokens=(

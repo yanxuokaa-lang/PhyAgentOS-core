@@ -436,7 +436,7 @@ def test_visible_forge_tools_follow_task_phase() -> None:
     assert AgentPromptContextManager.phase(waiting) == "waiting_for_user"
 
 
-def test_discovery_hides_reassembly_tools_after_task_creation() -> None:
+def test_discovery_keeps_contract_recovery_after_paired_context_reads() -> None:
     names = (
         "activate_skill",
         "forge_task_create",
@@ -451,15 +451,63 @@ def test_discovery_hides_reassembly_tools_after_task_creation() -> None:
             {"function": {"name": "forge_task_create"}},
         ]},
     ]
-    messages.extend(
-        {"role": "assistant", "tool_calls": [{"function": {"name": "forge_tool_context"}}]}
-        for _ in range(10)
-    )
+    for index in range(5):
+        messages.extend([
+            {"role": "assistant", "tool_calls": [{
+                "id": f"context-{index}",
+                "function": {"name": "forge_tool_context", "arguments": json.dumps({
+                    "tool_id": f"fixture.query.{index}",
+                })},
+            }]},
+            {"role": "tool", "tool_call_id": f"context-{index}",
+             "name": "forge_tool_context", "content": '{"ok":true}'},
+        ])
     visible = set(visible_tool_names(names, _task(), messages=messages))
     assert "activate_skill" not in visible
-    assert "forge_task_get" not in visible
-    assert "forge_tool_context" not in visible
+    assert "forge_task_get" in visible
+    assert "forge_tool_context" in visible
     assert "forge_tool_query" in visible
+
+
+def test_compaction_can_drop_context_without_hiding_formal_recovery() -> None:
+    messages = [{"role": "user", "content": "Continue the current task"}]
+    for index in range(5):
+        messages.extend([
+            {"role": "assistant", "content": None, "tool_calls": [{
+                "id": f"context-{index}", "type": "function",
+                "function": {"name": "forge_tool_context", "arguments": "{}"},
+            }]},
+            {"role": "tool", "name": "forge_tool_context",
+             "tool_call_id": f"context-{index}", "content": json.dumps({
+                 "ok": True, "data": {"tool": {"tool_id": f"fixture.{index}",
+                    "input_schema": {"type": "object"}}, "context": {"ready": True}},
+             })},
+        ])
+    messages.extend([
+        {"role": "assistant", "tool_calls": [{"id": "read", "type": "function",
+         "function": {"name": "read_file", "arguments": "{}"}}]},
+        {"role": "tool", "name": "read_file", "tool_call_id": "read", "content": "instructions"},
+    ])
+    manager = AgentPromptContextManager(context_window_tokens=30_000, compaction_trigger_tokens=20_000)
+    view = manager.build(
+        messages=messages, turn_start_index=0,
+        all_tool_names=("forge_tool_context", "forge_tool_query", "read_file"),
+        task=_task(),
+        estimate_tokens=lambda request, names: 17_000 if any(
+            m.get("name") == "forge_tool_context" for m in request
+        ) else 15_000,
+    )
+    assert view.compacted
+    assert not any(m.get("name") == "forge_tool_context" for m in view.messages)
+    assert set(view.visible_tool_names) == {"forge_tool_context", "forge_tool_query", "read_file"}
+    assert "Current persisted AgentTask projection" in json.dumps(view.messages)
+
+
+def test_discovery_progress_budget_has_validated_config_alias() -> None:
+    assert AgentDefaults().discovery_no_progress_limit == 6
+    assert AgentDefaults.model_validate({"discoveryNoProgressLimit": 3}).discovery_no_progress_limit == 3
+    with pytest.raises(ValueError):
+        AgentDefaults(discovery_no_progress_limit=0)
 
 
 def test_task_projection_guides_scene_bind_consumer_arguments() -> None:

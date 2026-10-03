@@ -4,6 +4,91 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.5.15 (2026-10-03 10:58) - codex
+
+### 预期修改 / Planned Changes [完成]
+- [docs] [docs] 保存契约可用性丢失与无进展循环/任务状态分歧两份诊断，区分日志事实与压缩复现。 (local)
+- [docs] [docs] Save both contract-availability and no-progress/status-divergence diagnoses, separating recorded facts from compaction reproductions. (local)
+- [policy] [fix] 保留 discovery 正式 context/Skill 读取入口，按 Coordinator 事实与首次成功的不同契约获取识别进展；停滞一次纠正后明确失败，不自动观察、规划或重放动作。 (local)
+- [policy] [fix] Keep discovery context/Skill retrieval available; track Coordinator facts and first successful distinct contract reads, correct stagnation once, and return explicit failure without automatic queries, planning, or action replay. (local)
+- [eval] [fix] 补充无运动回归和七维 Review；保留未结算 Action 与 replan 恢复边界，不改 RGB、目标注入、Runtime 或已安装 Skill。 (local)
+- [eval] [fix] Add no-motion regressions and seven-dimension review; retain unresolved Action/replan recovery boundaries and leave RGB, goal injection, Runtime and installed Skill unchanged. (local)
+
+### 影响文件 / Planned Files
+- `PhyAgentOS/agent/prompt_context.py`, `PhyAgentOS/agent/loop.py`, configuration/CLI wiring if needed, related tests.
+- `docs/forge/DISCOVERY_CONTRACT_DIAGNOSIS_20261003.md`, `docs/forge/DISCOVERY_PROGRESS_DIAGNOSIS_20261003.md`, `docs/forge/IMPLEMENTATION_REVIEW_V12_5_15.md`, `CHANGELOG.md`.
+
+### Review 补充计划 / Review Follow-up Plan
+- [policy] [fix] 复用 `forge_task_get(include_skill_instructions=true)` 按需恢复 Coordinator 已保存的当前 Skill 约束；默认回执保持压缩。恢复正式任务读取入口，不依赖可能已更新的文件版本。 (local)
+- [policy] [fix] Reuse an opt-in task getter to recover persisted current Skill instructions; keep default receipts compact and restore formal task reads instead of depending on potentially updated files. (local)
+- 影响 / Affected: `PhyAgentOS/agent/tools/forge_task.py`, prompt compaction and related tests; no new Tool or execution gate.
+
+### 防御机制说明 / Control-loop Rationale
+- 具体失败：37 次 shell 核查未产生任何 Query，40 轮耗尽仍 executing。已有 iteration 上限不足，因为它不识别 Coordinator 进展且未返回失败码。本次只修复现有循环停止策略与状态收敛，不新增 hash、冻结契约或物理门禁。
+- Concrete failure: 37 shell reads produced no Query; iteration exhaustion left the task executing. The existing cap neither measures Coordinator progress nor returns a failure code. Repair loop termination/status convergence only; add no hashes, frozen contracts or physical gates.
+
+### 实际修改 / Completed Changes
+- [policy] [fix] discovery 不再按历史计数隐藏正式 context、task getter 或文件读取；按需取回已保存的当前 Skill 约束，不重复注入默认请求。 (local)
+- [policy] [fix] Discovery keeps formal context/task/file reads available; an opt-in getter restores persisted current Skill constraints without adding prose to ordinary requests. (local)
+- [policy] [fix] 使用任务/revision/binding、执行记录和首次不同契约读取识别进展；连续无进展默认 6 轮纠正一次，再连续 6 轮返回 `discovery_no_progress`。总轮数耗尽返回 `tool_iteration_limit`。 (local)
+- [policy] [fix] Track task/revision/binding/record facts and first distinct contract reads; default to one correction after six unchanged rounds, then fail after another unchanged window. Overall exhaustion returns `tool_iteration_limit`. (local)
+- [policy] [fix] 用户与 system 两入口共用 Coordinator 状态收敛；保护 replan、等待用户、暂停/取消以及 uncertain invocation，不自动生成后续观察或动作。 (local)
+- [policy] [fix] Both entrypoints converge through Coordinator while preserving replan, clarification, pause/cancellation and uncertain invocation ownership; never auto-generate a next observation or Action. (local)
+
+### 文件变更详情 / File Changes
+- [修改 / Modified] `PhyAgentOS/agent/loop.py` L150-L170、L202-L214、L794-L797、L829-L890、L1152-L1174、L1430、L1953-L1978、L2015、L2183：恢复边界、可配置预算、进展检测与共享失败收敛 / recovery boundaries, configurable budget, progress detection and shared failure convergence.
+- [修改 / Modified] `PhyAgentOS/agent/prompt_context.py` L277-L339、L574-L577、L724-L730：删除双计数工具隐藏，保留按需 Skill 文本和正式恢复指引 / remove double-count hiding and retain opt-in Skill prose/formal recovery guidance.
+- [修改 / Modified] `PhyAgentOS/agent/tools/forge_task.py` L256-L288：现有 getter 增加默认 false 的约束恢复选项 / opt-in persisted constraints on the existing getter.
+- [修改 / Modified] `PhyAgentOS/config/schema.py` L245；`PhyAgentOS/cli/commands.py` L814、L1029：`discovery_no_progress_limit` 默认 6，CLI/Gateway 均接线 / validated default and both entrypoints wired.
+- [修改 / Modified] `tests/test_agent_foundation.py` L15、L104-L128、L304-L308、L2445-L2630；`tests/test_prompt_context.py` L439-L512：配对回执、压缩、正式 Query、纠正恢复、反复核查、两入口收敛及安全恢复回归 / paired receipts, compaction, real local Query wrapper, corrective recovery, repeated reads, entrypoint settlement and ownership regressions.
+- [新增 / Added] `docs/forge/DISCOVERY_CONTRACT_DIAGNOSIS_20261003.md` L1-L30；`docs/forge/DISCOVERY_PROGRESS_DIAGNOSIS_20261003.md` L1-L27；`docs/forge/IMPLEMENTATION_REVIEW_V12_5_15.md` L1-L39：两份诊断与七维 Review / two diagnoses and seven-dimension review.
+- [修改 / Modified] 本月日志的新 v12.5.15 节与 `CHANGELOG.md` 最近五条同步 / this new monthly entry and the latest five complete index entries.
+
+### 关键 Diff / Key Diff
+```diff
+-discovery_context_calls = _tool_call_names(messages).count("forge_tool_context")
+-if discovery_context_calls >= max(5, len(missing_preplan_queries(task)) * 2):
+-    allowed.discard("forge_tool_context")
++# Keep formal context/task reads available after compaction.
+
+-async def execute(self, task_id: str) -> str:
++async def execute(self, task_id: str, include_skill_instructions: bool = False) -> str:
++    if include_skill_instructions:
++        data["requested_skill_instructions"] = (
++            task.active_skill_instructions
++            if task.active_skill_instructions is not None
++            else task.primary_skill_instructions
++        )
+
++if progress != discovery_progress:
++    discovery_progress = progress
++    discovery_stalled_rounds = 0
++    discovery_correction_used = False
++else:
++    discovery_stalled_rounds += 1
++# Existing loop dispatch remains model-selected; stagnation returns a failure.
+
+ if final_content is None and iteration >= self.max_iterations:
++    turn_failure_code = "tool_iteration_limit"
++self._settle_turn_failure(run_result, key)
+```
+
+### 验证 / Validation
+- 专项 / Focused: `179 passed`; full Core: `764 passed, 2 failed`; Ruff and `git diff --check` passed.
+- 两项已知基线失败保持原样：`tests/test_planning_effect_recovery.py:66` 的夹具缺少 `invocation_id`；`tests/test_planning_loop.py:909` 的 reducer 断言不匹配。之前已在 parent `b83cb88` 隔离复现；本轮不修改这些文件，不宣称全绿。
+- Two known baseline failures remain: missing fixture invocation identity and the reducer expectation mismatch, previously reproduced on the parent. Neither file is changed and the full suite is not claimed green.
+- 验证命令 / Commands:
+```bash
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /home/yanxu/miniconda3/envs/paos/bin/python -m pytest -p pytest_asyncio.plugin -q tests/test_prompt_context.py tests/test_agent_foundation.py tests/test_long_horizon_controller.py
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /home/yanxu/miniconda3/envs/paos/bin/python -m pytest -p pytest_asyncio.plugin -q tests
+```
+- 七维 Review 已完成，新增路径无未修复 Blocker/Major；脚本模型只证明控制流，不证明真实 provider 的任务成功。 / Seven-dimension review is complete with no remaining new-path Blocker/Major; fixture providers prove control flow, not real-model task success.
+- 不取消当前部署任务、不安装/重启 Skill/Node/Runtime/Qwen/Clash，不执行真实 Query/Action，不修改外部 benchmark 目标来源。 / No live-task cancellation, installation, service restart, live Query/Action or benchmark-goal mutation.
+
+### Git 提交 / Git Commit
+- Branch: `feature/planning-loop`
+- Commit: pending implementation commit; record its identity in the documentation follow-up.
+
 ## v12.5.14 (2026-10-02 22:43) - codex
 
 ### 预期修改 / Planned Changes [完成]
@@ -226,76 +311,3 @@
 ### 验证边界 / Validation Boundary
 - 未创建新的 AgentTask，未调用 Gateway Query/Action，未执行物理动作；本次仅做 Runtime 生命周期、安装、版本和 readiness 验证。
 - No new AgentTask, Gateway Query/Action, or physical motion was created; validation was limited to Runtime lifecycle, installation, version, and readiness checks.
-
-## v12.5.10 (2026-10-02 09:03) - codex
-
-### 诊断基线 / Diagnostic Baseline
-- [agent] [诊断] 保存诊断一：只读 `grasp.propose` 成功且 `world_change_started=false` 后，AgentLoop continuation 仍要求先执行 `scene.observe → scene.understand → manipulation.capabilities → scene.bind`，导致没有进入直接后继的 `manipulation.prepare`。 (local)
-- [agent] [diagnosis] Saved diagnosis one: after read-only `grasp.propose` succeeded with `world_change_started=false`, AgentLoop continuation still required `scene.observe → scene.understand → manipulation.capabilities → scene.bind`, preventing direct continuation to `manipulation.prepare`. (local)
-- [agent] [诊断] 保存诊断二：未产生 `object.acquire/object.place` terminal result 时，模型仍把 continuation 描述为“放置后的实时证据链”；LongHorizon 返回 `blocked` 但 Coordinator 任务仍为 `executing`，形成状态分裂。 (local)
-- [agent] [diagnosis] Saved diagnosis two: before any terminal `object.acquire/object.place` result, the model still described continuation as a post-placement evidence chain; LongHorizon returned `blocked` while the Coordinator task remained `executing`, creating state divergence. (local)
-
-### 预期修改 / Planned Changes
-- [agent] [fix] 将 continuation 路由改为读取最近结算节点的 `semantics`、`scene_write_behavior`、`world_change_started`、`new_scene_revision` 和可用后继节点；只有成功世界变化 Action 才强制刷新场景，Query-only 节点允许 Agent 直接选择后继或 replan。 (local)
-- [agent] [fix] 将 continuation prompt 的“强制先观察”改为 Coordinator 事实驱动的选择边界，明确未发生 Action 时不得声称进入放置后证据链；保留 Agent 选择 continue/replan/stop 的自主权。 (local)
-- [agent] [fix] 让 LongHorizon 的 blocked/continuation failure 通过 Coordinator 持久化收敛，并补充结构化诊断字段；不重发 Action、不改变 Runtime/Gateway 安全门禁。 (local)
-- [eval] [test] 增加通用回归：Query-only 后直接续接、world-changing Action 后强制刷新、未发生 place 时禁止 post-place 路由、continuation blocked 状态收敛。 (local)
-- [agent] [fix] 补充通用 `placement_terminal` 事实投影；只有当前 revision 中已成功结算且来源工具为 `object.place` 的 terminal record 才允许 continuation 描述放置后验证，其他 world-changing Action 仍只触发普通场景刷新。 (local)
-- [eval] [test] 增加 acquire 与 place 的 continuation 路由回归，确保未完成放置不会进入 post-placement evidence chain。 (local)
-- [Agent] [Fix] Route continuation from the latest settled node's `semantics`, `scene_write_behavior`, `world_change_started`, `new_scene_revision`, and available successors; only a successful world-changing Action mandates refresh, while Query-only nodes let the Agent choose continuation or replan. (local)
-- [Agent] [Fix] Replace the unconditional refresh instruction with a Coordinator-fact-driven choice boundary; prohibit post-placement claims without an Action while preserving Agent autonomy to choose continue/replan/stop. (local)
-- [Agent] [Fix] Persist LongHorizon blocked/continuation failures through the Coordinator with structured diagnostics; do not replay Actions or alter Runtime/Gateway safety gates. (local)
-- [Eval] [Test] Add provider-neutral regressions for direct Query-only continuation, mandatory refresh after world-changing Actions, rejection of post-place routing before a place result, and blocked-state convergence. (local)
-- [Agent] [Fix] Add the provider-neutral `placement_terminal` fact projection; continuation may describe post-placement verification only when the current revision has a successfully settled `object.place` terminal record, while other world-changing Actions still require ordinary scene refresh. (local)
-- [Eval] [Test] Add acquire/place continuation regressions to keep incomplete placement out of the post-placement evidence chain. (local)
-
-### 实际修改 / Completed Changes
-- [agent] [完成] `PhyAgentOS/agent/prompt_context.py:L1040-L1048,L1135-L1147,L1161-L1187` 增加当前 revision 的 `placement_terminal` 投影；仅成功结算的 `object.place` Action 允许 post-placement 语义，`object.acquire` 和其他世界变化 Action 只允许普通 post-action 刷新。 (local)
-- [agent] [完成] `PhyAgentOS/agent/loop.py:L1573-L1590,L1617-L1626` 按 Coordinator 事实分别生成 place 后验证、普通 Action 刷新、Query-only 续接和 reconcile/replan 提示；删除把所有刷新都描述为放置后证据的路径。 (local)
-- [agent] [完成] `PhyAgentOS/agent/long_horizon.py:L352-L385,L409-L428` 将 continuation/runner 失败持久化为 `awaiting_replan` 或终态失败，并把 `last_failure` 写入结构化结果；存在未结算 Action/Session 时不重规划或重发。 (local)
-- [eval] [完成] `tests/test_prompt_context.py:L559-L664` 覆盖 Query-only、acquire 与成功 place terminal 三种路由；`tests/test_long_horizon_controller.py:L302-L343,L420-L496` 覆盖 continuation/runner 状态收敛。 (local)
-- [Agent] [Complete] `PhyAgentOS/agent/prompt_context.py:L1040-L1048,L1135-L1147,L1161-L1187` adds the current-revision `placement_terminal` projection; only a successfully settled `object.place` Action permits post-placement semantics, while acquire and other world-changing Actions permit ordinary post-action refresh only. (local)
-- [Agent] [Complete] `PhyAgentOS/agent/loop.py:L1573-L1590,L1617-L1626` emits Coordinator-fact-driven instructions for place verification, ordinary Action refresh, Query-only continuation, and reconciliation/replan; it no longer labels every refresh as post-placement evidence. (local)
-- [Agent] [Complete] `PhyAgentOS/agent/long_horizon.py:L352-L385,L409-L428` persists continuation/runner failures as `awaiting_replan` or terminal failure and exposes structured `last_failure`; unresolved Action/Session records are never replanned or replayed. (local)
-- [Eval] [Complete] `tests/test_prompt_context.py:L559-L664` covers Query-only, acquire, and successful place-terminal routes; `tests/test_long_horizon_controller.py:L302-L343,L420-L496` covers continuation/runner state convergence. (local)
-
-### 关键 Diff / Key Diff
-```diff
-+placement_terminal = (
-+    latest_settlement.status == "completed"
-+    and latest_record.tool_id == "object.place"
-+    and latest_record.semantics == "action"
-+    and latest_record.status == "succeeded"
-+)
-```
-```diff
--These reads are mandatory after object.place ...
-+This is ordinary post-action refresh; do not describe it as post-placement verification.
-```
-
-### 七维 Code Review / Seven-Dimension Review
-- 架构 Architecture：通过。事实投影位于 AgentLoop 控制面，Coordinator/Runtime/Gateway 仍是状态、证据和动作所有者；没有 RGB 或 benchmark 分支。
-- 正确性 Correctness：通过。`placement_terminal` 同时要求当前 revision settlement、`object.place`、成功 Action 和已知终态；Query-only 不触发观察刷新，world-changing Action 仍触发刷新。
-- 恢复与幂等 Recovery/Idempotency：通过。续接失败收敛到 Coordinator 的 `awaiting_replan`/失败状态；未结算 Action/Session 不自动 replan、不重发 invocation。
-- 机器人安全 Robotics Safety：通过。未改变 motion authorization、freshness、workspace、collision、IK、Gateway admission 或 terminal settlement 门禁。
-- 扩展兼容 Extension Compatibility：通过。逻辑按通用 `object.place` capability 和 execution record 工作，不依赖颜色、任务名或 RobotWin profile。
-- 可观测性与可维护性 Observability/Maintainability：通过。投影暴露 route、latest settlement、placement terminal 和 `last_failure`，提示与结构化事实一致。
-- AgentLoop 自主性 AgentLoop Autonomy：通过。Query-only 后由 Agent 选择后继/replan/finalize；只有已证明的世界变化或失败事实约束下一步，不硬编码 RGB 流程。
-- Review result：Blocker 0，Major 0，Minor 0（本次改动范围）。
-
-### 验证 / Validation
-- 聚焦回归：`PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /home/yanxu/miniconda3/envs/paos/bin/python -m pytest -q tests/test_prompt_context.py tests/test_long_horizon_controller.py`：`62 passed`。
-- 控制面回归：同环境运行 `tests/test_agent_foundation.py tests/test_planning_dispatch.py tests/test_planning_selection.py tests/test_multi_source_projection.py`：`217 passed`。
-- Ruff、compileall、`git diff --check`：通过。
-- 三文件扩展回归另有既有失败：`tests/test_planning_loop.py::test_rgb_attribute_sorting_loop_replans_after_drop_and_reducer_replays`，断言期望 `('verify',)`、实际 `('arrange-green',)`；本次未修改 `planning_loop.py`，不归因于本修复。
-- 未启动 Runtime、未创建 AgentTask、未调用 Gateway Query/Action、未执行物理动作。
-- Focused regression: `... tests/test_prompt_context.py tests/test_long_horizon_controller.py`: `62 passed`.
-- Control-plane regression: `... tests/test_agent_foundation.py tests/test_planning_dispatch.py tests/test_planning_selection.py tests/test_multi_source_projection.py`: `217 passed`.
-- Ruff, compileall, and `git diff --check`: passed.
-- The wider three-file run retains one pre-existing failure in `tests/test_planning_loop.py::test_rgb_attribute_sorting_loop_replans_after_drop_and_reducer_replays`; expected `('verify',)`, actual `('arrange-green',)`. `planning_loop.py` was not modified.
-- No Runtime restart, AgentTask creation, Gateway Query/Action, or physical motion was performed.
-
-### Git 提交 / Git Commit
-- Commit: `4faa3ac` (implementation and changelog), `ab66827` (documentation follow-up)
-- Branch: `feature/planning-loop`
-- 时间 / Time: 2026-10-02 Asia/Shanghai

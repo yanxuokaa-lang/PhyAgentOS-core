@@ -274,23 +274,6 @@ class PromptRequestView:
     compacted: bool
 
 
-def _tool_call_names(messages: Iterable[dict[str, Any]] | None) -> tuple[str, ...]:
-    """Return model-requested tool names from the current in-memory turn."""
-    if messages is None:
-        return ()
-    names: list[str] = []
-    for message in messages:
-        name = message.get("name")
-        if isinstance(name, str):
-            names.append(name)
-        for call in message.get("tool_calls", ()) or ():
-            function = call.get("function", {}) if isinstance(call, dict) else {}
-            call_name = function.get("name") if isinstance(function, dict) else None
-            if isinstance(call_name, str):
-                names.append(call_name)
-    return tuple(names)
-
-
 def visible_tool_names(
     all_names: Iterable[str],
     task: Any | None,
@@ -345,22 +328,12 @@ def visible_tool_names(
     graph = getattr(revision, "plan_graph", None) if revision is not None else None
     if graph is None:
         allowed = generic | _TASK_COMMON | _DISCOVERY
-        # Skill activation and task projection are already persisted on the
-        # AgentTask. Do not expose the filesystem reader after a Skill binding
-        # exists: the activation receipt already contains the authoritative
-        # Skill document, and repeated SKILL.md reads can strand discovery
-        # before the required task-bound Query or semantic materialization.
+        # Activation is persisted, but the original document and ToolSpecs can
+        # leave the model request during compaction. Keep their read paths
+        # available; invocation counts cannot prove the model still has them.
         allowed.discard("activate_skill")
-        allowed.discard("forge_task_get")
-        if getattr(task, "primary_skill_binding", None) is not None:
-            allowed.discard("read_file")
         if _runtime_rebind_authorized(task):
             allowed |= _RUNTIME_REBIND
-        discovery_context_calls = _tool_call_names(messages).count("forge_tool_context")
-        if discovery_context_calls >= max(5, len(missing_preplan_queries(task)) * 2):
-            # A live ToolSpec has already been read repeatedly; force progress
-            # toward the persisted discovery Query without bypassing Coordinator.
-            allowed.discard("forge_tool_context")
         if _discovery_complete(task):
             allowed.add("forge_task_materialize_plan")
     elif status == "awaiting_replan":
@@ -598,6 +571,10 @@ def _task_result_projection(payload: dict[str, Any]) -> dict[str, Any]:
     ):
         if key in data:
             projected_data[key] = _reference_projection(data[key])
+    # Only an explicit opt-in read restores prose; ordinary lifecycle receipts
+    # still rely on the compact task projection rather than repeating a Skill.
+    if isinstance(data.get("requested_skill_instructions"), str):
+        projected_data["requested_skill_instructions"] = data["requested_skill_instructions"]
     active_revision_id = data.get("active_revision_id")
     for revision in data.get("revisions", ()):
         if not isinstance(revision, dict) or revision.get("revision_id") != active_revision_id:
@@ -745,7 +722,11 @@ def task_prompt_projection(task: Any | None) -> dict[str, Any] | None:
         planning_phase = "discovery"
         planning_next_step = (
             "Run forge_tool_query for each missing prerequisite Query using its live "
-            "ToolSpec. Do not cancel the task because PlanGraph controls are hidden; "
+            "ToolSpec. If its contract was compacted away, reacquire it with "
+            "forge_tool_context; forge_task_get(include_skill_instructions=true) restores "
+            "the current task's persisted Skill constraints. "
+            "Contract reads are preparation, not Query execution. "
+            "Do not cancel the task because PlanGraph controls are hidden; "
             "forge_task_materialize_plan becomes visible after those Queries succeed. "
             "A read-only Query returning motion_authorized=false is expected: it does "
             "not authorize motion and does not block remaining read-only discovery or "

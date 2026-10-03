@@ -263,14 +263,28 @@ class ForgeTaskGetTool(Tool):
 
     @property
     def description(self) -> str:
-        return "Read persisted AgentTask, PlanRevision, Tool execution, evidence and verdict state."
+        return (
+            "Read persisted AgentTask, PlanRevision, Tool execution, evidence and verdict state. "
+            "Use include_skill_instructions=true to recover this task's persisted Skill "
+            "constraints if activation instructions were compacted away."
+        )
 
     @property
     def parameters(self) -> dict[str, Any]:
-        return _task_id_schema()
+        schema = _task_id_schema()
+        schema["properties"]["include_skill_instructions"] = {"type": "boolean", "default": False}
+        return schema
 
-    async def execute(self, task_id: str) -> str:
-        return _json({"ok": True, "data": self.coordinator.get_task(task_id)})
+    async def execute(self, task_id: str, include_skill_instructions: bool = False) -> str:
+        task = self.coordinator.get_task(task_id)
+        data = task.model_dump(mode="json", exclude_none=True)
+        if include_skill_instructions:
+            data["requested_skill_instructions"] = (
+                task.active_skill_instructions
+                if task.active_skill_instructions is not None
+                else task.primary_skill_instructions
+            )
+        return _json({"ok": True, "data": data})
 
 
 class ForgeTaskRebindRuntimeTool(Tool):

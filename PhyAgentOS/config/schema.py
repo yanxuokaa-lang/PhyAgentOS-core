@@ -242,6 +242,7 @@ class AgentDefaults(Base):
     context_compaction_trigger_tokens: int = Field(default=260_000, gt=0)
     temperature: float = 0.1
     max_tool_iterations: int = 40
+    discovery_no_progress_limit: int = Field(default=6, gt=0)
     request_timeout_s: float = Field(default=180.0, gt=0)
     turn_timeout_s: float = Field(default=300.0, gt=0)
     # Deprecated compatibility field: accepted from old configs but ignored at runtime.

@@ -12,7 +12,7 @@ import pytest
 
 from PhyAgentOS.agent.experience.activation import SkillActivationManager
 from PhyAgentOS.agent.experience.store import ExperienceStore
-from PhyAgentOS.agent.loop import AgentLoop
+from PhyAgentOS.agent.loop import AgentLoop, AgentLoopRunResult
 from PhyAgentOS.agent.plan_proposal import (
     _complete_persisted_runtime_bindings,
     _inject_task_verification_semantics,
@@ -101,7 +101,7 @@ def test_model_failure_preserves_coordinator_replan_checkpoint(status, expected)
     assert AgentLoop._should_fail_task_after_model_failure(task) is expected
 
 
-def test_bound_discovery_hides_redundant_skill_reads_but_unbound_turn_keeps_filesystem_tools():
+def test_bound_discovery_can_recover_compacted_skill_and_contracts():
     names = (
         "read_file",
         "list_dir",
@@ -123,7 +123,8 @@ def test_bound_discovery_hides_redundant_skill_reads_but_unbound_turn_keeps_file
         execution_records=(),
     )
     visible = set(visible_tool_names(names, bound_task))
-    assert "read_file" not in visible
+    assert "read_file" in visible
+    assert "forge_tool_context" in visible
     assert "forge_task_materialize_plan" in visible
     assert "forge_tool_query" in visible
 
@@ -300,9 +301,10 @@ def test_save_turn_keeps_activation_parseable_for_task_creation_and_recovery() -
     assert json.loads(history_without_task[0]["content"])["skill"].startswith("workflow instructions")
 
 
-def setup_task(tmp_path, goal="Move the left red object into the tray"):
+def setup_task(tmp_path, goal="Move the left red object into the tray", *, origin_session_key=None):
     c = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=object())
-    task = c.create_task(task_description=goal, verification=TaskVerificationContract(mode="off"))
+    task = c.create_task(task_description=goal, verification=TaskVerificationContract(mode="off"),
+                         origin_session_key=origin_session_key)
     policy = ToolSpecPolicy(tool_id="scene.observe", semantics="query", spec_digest="a" * 64,
                             capabilities=("scene.observe", "object.relocate", "task.verify"))
     binding = ForgeSkillBinding(
@@ -2438,6 +2440,194 @@ def test_diagnostic_query_does_not_invent_task_receipt():
         client = SimpleNamespace(invoke_query_tool=AsyncMock(return_value=result))
         assert json.loads(await ForgeToolQueryTool(client, None).execute("scene.observe", {})) == result
     asyncio.run(exercise())
+
+
+def test_opt_in_skill_recovery_reads_persisted_current_instructions_and_survives_compaction(tmp_path):
+    async def exercise():
+        c, task = setup_task(tmp_path, goal="Inspect")
+        instructions = "Current Coordinator-owned Skill constraints. " * 1000
+        c.store.update(task.task_id, lambda t: setattr(t, "active_skill_instructions", instructions),
+                       event_type="fixture_active_instructions")
+        getter = ForgeTaskGetTool(c)
+        default = json.loads(compact_tool_result("forge_task_get", await getter.execute(task.task_id)))["result"]
+        assert "requested_skill_instructions" not in default["data"]
+        recovered = json.loads(compact_tool_result("forge_task_get", await getter.execute(
+            task.task_id, include_skill_instructions=True,
+        )))["result"]
+        assert recovered["data"]["requested_skill_instructions"] == instructions
+        assert getter.parameters["properties"]["include_skill_instructions"]["default"] is False
+        provider = ScriptedProvider([
+            _tool_response(0, "forge_task_get", {
+                "task_id": task.task_id, "include_skill_instructions": True,
+            }),
+            LLMResponse(content="Constraints recovered"),
+        ])
+        loop = AgentLoop(bus=MessageBus(), provider=provider, workspace=tmp_path,
+                         forge_task_coordinator=c, max_iterations=2, discovery_no_progress_limit=1)
+        result = await loop._run_agent_loop(
+            [{"role": "user", "content": "Recover constraints"}], active_task_id=task.task_id,
+        )
+        assert result.turn_failure_code is None
+        assert instructions in json.loads(next(m["content"] for m in provider.requests[1]["messages"]
+            if m.get("name") == "forge_task_get"))["result"]["data"]["requested_skill_instructions"]
+        assert "Discovery has made no Coordinator progress" not in json.dumps(provider.requests[1]["messages"])
+    asyncio.run(exercise())
+
+
+def _tool_response(index, name, arguments):
+    return LLMResponse(content=None, tool_calls=[ToolCallRequest(str(index), name, arguments)])
+
+
+def test_distinct_live_contracts_then_real_task_bound_query_advance_discovery(tmp_path):
+    async def exercise():
+        c, task = setup_task(tmp_path, goal="Inspect the current workspace")
+        client = SimpleNamespace(
+            get_tool=AsyncMock(return_value={"data": {"input_schema": {"type": "object"}}}),
+            get_tool_context=AsyncMock(return_value={"data": {"readiness": "ready"}}),
+            invoke_query_tool=AsyncMock(return_value={"ok": True, "data": {
+                "status": "available", "scene_revision": "fixture-scene-1",
+            }}),
+        )
+        c.client = client
+        c._require_binding_tool = AsyncMock(return_value=task.primary_skill_binding.required_tools[0])
+        provider = ScriptedProvider([
+            *[_tool_response(i, "forge_tool_context", {"tool_id": f"fixture.query.{i}"}) for i in range(5)],
+            _tool_response(5, "forge_tool_query", {
+                "task_id": task.task_id, "tool_id": "scene.observe", "arguments": {},
+            }),
+        ])
+        loop = AgentLoop(
+            bus=MessageBus(), provider=provider, workspace=tmp_path,
+            forge_task_coordinator=c, forge_tool_client=client,
+            max_iterations=6, discovery_no_progress_limit=1,
+        )
+        result = await loop._run_agent_loop(
+            [{"role": "user", "content": "Inspect"}], active_task_id=task.task_id,
+            yield_after_tools=frozenset({"forge_tool_query"}),
+        )
+        assert result.turn_failure_code is None
+        assert len(provider.requests) == 6
+        assert client.invoke_query_tool.await_count == 1
+        assert len(c.get_task(task.task_id).execution_records) == 1
+        assert c.get_task(task.task_id).execution_records[0].status == "succeeded"
+        for request in provider.requests:
+            assert "forge_tool_context" in {t["function"]["name"] for t in request["tools"]}
+            assert "Discovery has made no Coordinator progress" not in json.dumps(request["messages"])
+    asyncio.run(exercise())
+
+
+@pytest.mark.parametrize("repeated_tool", ["exec", "forge_tool_context"])
+def test_discovery_repeated_reads_correct_once_then_stop(tmp_path, repeated_tool):
+    async def exercise():
+        c, task = setup_task(tmp_path, goal="Inspect the workspace")
+        client = SimpleNamespace(
+            get_tool=AsyncMock(return_value={"data": {"input_schema": {"type": "object"}}}),
+            get_tool_context=AsyncMock(return_value={"data": {"readiness": "ready"}}),
+        )
+        arguments = {"command": "read status"} if repeated_tool == "exec" else {"tool_id": "scene.observe"}
+        provider = ScriptedProvider([_tool_response(i, repeated_tool, arguments) for i in range(20)])
+        loop = AgentLoop(bus=MessageBus(), provider=provider, workspace=tmp_path,
+                         forge_task_coordinator=c, forge_tool_client=client,
+                         max_iterations=20, discovery_no_progress_limit=2)
+        if repeated_tool == "exec":
+            loop.tools.get("exec").execute = AsyncMock(return_value="status unchanged")
+        result = await loop._run_agent_loop(
+            [{"role": "user", "content": "Inspect"}], active_task_id=task.task_id,
+        )
+        assert result.turn_failure_code == "discovery_no_progress"
+        assert len(provider.requests) == (4 if repeated_tool == "exec" else 5)
+        assert sum(m.get("role") == "system" and "Discovery has made no Coordinator progress" in
+                   m.get("content", "") for m in result.messages) == 1
+        assert c.get_task(task.task_id).execution_records == []
+        assert c.get_task(task.task_id).active_revision.plan_graph is None
+    asyncio.run(exercise())
+
+
+def test_discovery_correction_leaves_next_query_to_model_and_recovers(tmp_path):
+    async def exercise():
+        c, task = setup_task(tmp_path, goal="Inspect")
+        client = SimpleNamespace(invoke_query_tool=AsyncMock(return_value={
+            "ok": True, "data": {"status": "available", "scene_revision": "fixture-scene"},
+        }))
+        c.client = client
+        c._require_binding_tool = AsyncMock(return_value=task.primary_skill_binding.required_tools[0])
+        provider = ScriptedProvider([
+            _tool_response(0, "exec", {"command": "read status"}),
+            _tool_response(1, "exec", {"command": "read status"}),
+            _tool_response(2, "forge_tool_query", {
+                "task_id": task.task_id, "tool_id": "scene.observe", "arguments": {},
+            }),
+        ])
+        loop = AgentLoop(bus=MessageBus(), provider=provider, workspace=tmp_path,
+                         forge_task_coordinator=c, forge_tool_client=client,
+                         max_iterations=10, discovery_no_progress_limit=2)
+        loop.tools.get("exec").execute = AsyncMock(return_value="unchanged")
+        result = await loop._run_agent_loop(
+            [{"role": "user", "content": "Inspect"}], active_task_id=task.task_id,
+            yield_after_tools=frozenset({"forge_tool_query"}),
+        )
+        assert result.turn_failure_code is None
+        assert len(provider.requests) == 3
+        assert "Discovery has made no Coordinator progress" in json.dumps(provider.requests[2]["messages"])
+        assert result.tools_used == ["exec", "exec", "forge_tool_query"]
+        assert client.invoke_query_tool.await_count == 1
+        assert c.get_task(task.task_id).execution_records[0].status == "succeeded"
+    asyncio.run(exercise())
+
+
+@pytest.mark.parametrize("system_turn", [False, True])
+@pytest.mark.parametrize("failure", ["tool_iteration_limit", "discovery_no_progress"])
+def test_iteration_exhaustion_settles_both_entrypoints(tmp_path, system_turn, failure):
+    async def exercise():
+        c, task = setup_task(tmp_path, goal="Inspect", origin_session_key="cli:budget")
+        provider = ScriptedProvider([
+            _tool_response(i, "exec", {"command": "read status"}) for i in range(20)
+        ])
+        loop = AgentLoop(bus=MessageBus(), provider=provider, workspace=tmp_path,
+                         forge_task_coordinator=c,
+                         max_iterations=1 if failure == "tool_iteration_limit" else 20,
+                         discovery_no_progress_limit=2)
+        loop.tools.get("exec").execute = AsyncMock(return_value="unchanged")
+        if system_turn:
+            from PhyAgentOS.bus.events import InboundMessage
+            await loop._process_message(InboundMessage(
+                channel="system", sender_id="fixture", chat_id="cli:budget", content="Inspect",
+            ))
+        else:
+            await loop.process_direct("Inspect", session_key="cli:budget")
+        current = c.get_task(task.task_id)
+        assert current.status == AgentTaskStatus.FAILED
+        assert failure in current.evidence_errors[-1]
+        assert current.execution_records == []
+    asyncio.run(exercise())
+
+
+@pytest.mark.parametrize("recovery_state", [
+    "pending", "unknown", "awaiting_replan", "waiting_for_user", "cancelling",
+])
+def test_loop_failure_convergence_preserves_owned_recovery(tmp_path, recovery_state):
+    c, task = setup_task(tmp_path, origin_session_key="cli:recovery")
+    if recovery_state == "awaiting_replan":
+        c.record_planning_node_blocked(task.task_id, task.active_revision_id, "fixture", "repair")
+    elif recovery_state == "waiting_for_user":
+        c.request_clarification(task.task_id, question="Provide the missing capability")
+    elif recovery_state == "cancelling":
+        c.store.update(task.task_id, lambda t: setattr(t, "status", AgentTaskStatus.CANCELLING),
+                       event_type="fixture_cancelling")
+    else:
+        c.store.update(task.task_id, lambda t: t.active_revision.execution_records.append(
+            ToolExecutionRecord(
+                record_id="owned", revision_id=t.active_revision_id, tool_id="object.place",
+                semantics="action", caller_id="fixture", invocation_id="original-invocation",
+                status="accepted" if recovery_state == "pending" else "unknown",
+            )), event_type="fixture_owned_execution")
+    before = c.get_task(task.task_id).status
+    loop = AgentLoop(bus=MessageBus(), provider=ScriptedProvider(), workspace=tmp_path,
+                     forge_task_coordinator=c)
+    loop._settle_turn_failure(AgentLoopRunResult(
+        content="Stopped", tools_used=[], messages=[], turn_failure_code="tool_iteration_limit",
+    ), "cli:recovery")
+    assert c.get_task(task.task_id).status == before
 
 
 def test_semantic_submission_rejects_untrusted_predecessor_effect_condition(tmp_path):
