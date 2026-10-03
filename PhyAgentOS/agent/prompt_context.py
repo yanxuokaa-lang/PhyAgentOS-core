@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from PhyAgentOS.agent.planning_facts import response_facts
-from PhyAgentOS.forge.binding import missing_preplan_queries
+from PhyAgentOS.forge.binding import missing_preplan_queries, required_preplan_queries
 
 TERMINAL_EXECUTION_STATUSES = {"succeeded", "failed", "cancelled", "stopped", "unknown"}
 
@@ -539,6 +539,111 @@ def _context_result_projection(payload: dict[str, Any]) -> dict[str, Any]:
     for key in ("ok", "error", "status"):
         if key in payload:
             result[key] = _reference_projection(payload[key])
+    return result
+
+
+def _decode_tool_payload(content: Any) -> dict[str, Any] | None:
+    """Decode a persisted tool receipt without treating it as authority."""
+
+    if not isinstance(content, str):
+        return None
+    try:
+        payload = json.loads(content)
+    except (TypeError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _discovery_working_set_projection(
+    messages: list[dict[str, Any]], task: Any | None, *, turn_start_index: int
+) -> dict[str, Any] | None:
+    """Keep the current discovery decision set visible after history compaction.
+
+    This is a prompt-only view. It does not create Coordinator records or imply
+    that an observed ToolSpec has been executed. Context receipts are keyed by
+    their returned ``tool_id`` rather than by the generic ``forge_tool_context``
+    wrapper, so distinct contracts cannot evict one another during compaction.
+    """
+
+    if task is None:
+        return None
+    required = set(required_preplan_queries(task))
+    missing = set(missing_preplan_queries(task))
+    latest_contexts: dict[str, dict[str, Any]] = {}
+    recovered_skill: str | None = None
+    scan_start = turn_start_index
+    # A task can span user turns.  When its creation receipt is still in the
+    # session, use that durable identity boundary; otherwise only inspect the
+    # current turn rather than borrowing an unrelated historical task.
+    for index, message in enumerate(messages):
+        if message.get("role") != "tool" or message.get("name") != "forge_task_create":
+            continue
+        payload = _decode_tool_payload(message.get("content"))
+        data = payload.get("data") if isinstance(payload, dict) else None
+        if isinstance(data, dict) and data.get("task_id") == getattr(task, "task_id", None):
+            scan_start = max(scan_start, index + 1)
+    for message in messages[scan_start:]:
+        if message.get("role") != "tool":
+            continue
+        name = message.get("name")
+        payload = _decode_tool_payload(message.get("content"))
+        if payload is None or payload.get("ok") is not True:
+            continue
+        data = payload.get("data")
+        if not isinstance(data, dict):
+            continue
+        if name == "forge_task_create" and data.get("task_id") == task.task_id:
+            # Context reads have no task identity. Do not relabel pre-task
+            # receipts as the newly created task's working set.
+            latest_contexts.clear()
+            recovered_skill = None
+        elif name == "forge_tool_context":
+            tool = data.get("tool")
+            context = data.get("context")
+            tool_id = (
+                tool.get("tool_id") if isinstance(tool, dict) else None
+            ) or (
+                context.get("tool_id") if isinstance(context, dict) else None
+            )
+            if isinstance(tool_id, str) and tool_id:
+                latest_contexts[tool_id] = payload
+        elif name == "forge_task_get" and data.get("task_id") == task.task_id:
+            instructions = data.get("requested_skill_instructions")
+            if isinstance(instructions, str) and instructions:
+                # The getter signals explicit recovery; Coordinator state owns
+                # the text, including any Skill change after the original read.
+                recovered_skill = getattr(task, "active_skill_instructions", None)
+                if recovered_skill is None:
+                    recovered_skill = getattr(task, "primary_skill_instructions", None)
+
+    # Only Skill-declared prerequisites form the bounded working set. A model
+    # may inspect unrelated contexts during diagnosis, but those reads must not
+    # expand the next discovery prompt or become a new source of authority.
+    relevant_ids = required | missing
+    tool_specs = {
+        tool_id: _context_result_projection(latest_contexts[tool_id])
+        for tool_id in sorted(relevant_ids)
+        if tool_id in latest_contexts
+    }
+    if not tool_specs and recovered_skill is None:
+        return None
+    result: dict[str, Any] = {
+        "version": "agent_discovery_working_set_v1",
+        "authority": "read_only_prompt_projection_from_AgentTaskCoordinator_and_Forge_Gateway",
+        "required_tool_ids": sorted(required),
+        "missing_tool_ids": sorted(missing),
+        "tool_specs": tool_specs,
+        "instruction": (
+            "These are the current task's bounded discovery inputs. ToolSpec entries are "
+            "read-only contract projections; they do not execute a Query. Choose the next "
+            "task-bound forge_tool_query yourself, or use clarification/stop when facts are "
+            "insufficient. These are previously read snapshots, not fresh readiness or "
+            "motion authorization. Do not reread a ToolSpec already present here solely to "
+            "recover it; refresh context when Runtime or binding facts have changed."
+        ),
+    }
+    if recovered_skill is not None:
+        result["skill_instructions"] = recovered_skill
     return result
 
 
@@ -1158,9 +1263,10 @@ def continuation_task_prompt_projection(task: Any | None) -> dict[str, Any] | No
             "continue after their terminal results; do not ask the user to supply "
             "discoverable task-bound refs. planning_binding is Coordinator-generated "
             "during selection and is not an input to plan continuation. After a "
-            "world-changing Action, the next scene.observe/scene.understand/scene.bind "
-            "nodes must use dependencies to order after that Action and must not carry "
-            "pre-Action grasp, prepare, acquire, or place evidence in required_evidence; "
+            "world-changing Action, any newly required evidence nodes declared by the "
+            "active Skill, ToolSpec, or fresh_evidence_requirements must depend on that "
+            "Action and must not carry pre-Action grasp, prepare, acquire, or place "
+            "evidence in required_evidence; "
             "leave required_evidence empty until the fresh Query produces its own receipt. "
             "A post-placement verification description is permitted only when the current "
             "revision's latest settled result has placement_terminal=true, meaning a "
@@ -1362,6 +1468,13 @@ class AgentPromptContextManager:
             projection = continuation_task_prompt_projection(task)
         else:
             raise ValueError(f"unsupported prompt projection scope: {projection_scope}")
+        if phase in {"discovery", "replan"} and task is not None:
+            working_set = _discovery_working_set_projection(
+                messages, task, turn_start_index=turn_start_index
+            )
+            if working_set is not None:
+                projection = dict(projection or {})
+                projection["discovery_working_set"] = working_set
         compacted_messages = _compact_forge_results(messages, aggressive=False)
         compacted_messages = _compact_activation_results(
             compacted_messages, enabled=task is not None

@@ -1680,17 +1680,17 @@ class AgentLoop:
             if continuation_projection.get("placement_terminal") is True:
                 route_instruction = (
                     "The latest settled result is a successfully settled object.place terminal. "
-                    "Before any downstream segment, you must submit fresh scene.observe, "
-                    "scene.understand, manipulation.capabilities, and scene.bind nodes in "
-                    "dependency order. Post-placement verification may be described only from "
-                    "those fresh Query results; do not reuse pre-Action evidence."
+                    "Use the Skill, ToolSpec and fresh_evidence_requirements to identify "
+                    "which facts the Action invalidated. Obtain the required fresh evidence "
+                    "before consumers that depend on it. Post-placement verification must "
+                    "use current evidence; a successful Action alone does not prove the goal."
                 )
             else:
                 route_instruction = (
                     "The latest settled result is a successful world-changing Action, but it "
-                    "is not a settled object.place terminal. Before any downstream segment, "
-                    "you must submit fresh scene.observe, scene.understand, "
-                    "manipulation.capabilities, and scene.bind nodes in dependency order. "
+                    "is not a settled object.place terminal. Use the Skill, ToolSpec and "
+                    "fresh_evidence_requirements to identify invalidated facts and choose "
+                    "the required fresh Queries before their dependent consumers. "
                     "This is ordinary post-action refresh; do not describe it as post-placement "
                     "verification or claim placement completion."
                 )
@@ -1728,8 +1728,8 @@ class AgentLoop:
                     "user-level goal, a grasp, or a placement is complete. "
                     + route_instruction + " "
                     "When a new segment is valid, call forge_task_continue_plan with exactly "
-                    "that segment; these reads are mandatory after a successful world-changing "
-                    "Action and must use current evidence, never a video guess. "
+                    "that segment. Refresh evidence invalidated by a world-changing Action "
+                    "before its dependent consumers, using declared contracts and current facts. "
                     "Use the active revision's recovery reason only as diagnostic context; the "
                     "original user request and verification criteria remain authoritative. "
                     "Check fresh-evidence requirements and current Coordinator facts. If required "
@@ -1747,14 +1747,14 @@ class AgentLoop:
             },
             ensure_ascii=False,
         )
-        continuation_tools = {
-            "forge_tool_context",
+        continuation_outcomes = {
             "forge_task_continue_plan",
             "forge_task_begin_revision",
             "forge_task_finalize",
             "forge_task_cancel",
             "forge_task_request_clarification",
         }
+        continuation_tools = continuation_outcomes | {"forge_tool_context"}
         # A new observation chain is authorized only by a settled
         # world-changing Action. Query-only and reconciliation turns must choose
         # a semantic segment or recovery action through task tools instead of
@@ -1774,7 +1774,9 @@ class AgentLoop:
             active_task_id=task_id,
             projection_scope="continuation",
             allowed_tool_names=frozenset(continuation_tools),
-            yield_after_tools=frozenset(continuation_tools),
+            # Reading context or Query evidence is an intermediate decision
+            # step, not the revision/status transition the outer loop awaits.
+            yield_after_tools=frozenset(continuation_outcomes),
         )
 
     async def run(self) -> None:

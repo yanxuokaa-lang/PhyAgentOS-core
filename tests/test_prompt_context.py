@@ -605,6 +605,8 @@ def test_continuation_projection_forbids_stale_pre_action_query_evidence() -> No
     assert "leave required_evidence empty" in boundary
     assert "error.retryable=false" in boundary
     assert "do not take a fresh observation" in boundary
+    assert "declared by the active Skill, ToolSpec, or fresh_evidence_requirements" in boundary
+    assert "scene.observe/scene.understand/scene.bind" not in boundary
 
 
 def test_query_only_settlement_routes_directly_to_agent_choice() -> None:
@@ -1258,6 +1260,158 @@ def test_discovery_compacts_before_global_trigger_and_keeps_task_projection() ->
     assert "history-0-" not in encoded
     assert "observation://current" in encoded
     assert "read_only_projection_from_AgentTaskCoordinator" in encoded
+
+
+def test_discovery_working_set_keeps_distinct_specs_and_skill_after_compaction() -> None:
+    task = _task()
+    policies = tuple(
+        ToolSpecPolicy(
+            tool_id=tool_id,
+            semantics="query",
+            spec_digest="a" * 64,
+            requires_before_plan=True,
+        )
+        for tool_id in ("scene.observe", "scene.understand", "scene.bind")
+    )
+    task.primary_skill_binding = ForgeSkillBinding(
+        binding_id="binding-working-set",
+        skill_name="fixture",
+        skill_version="1",
+        manifest_sha256="b" * 64,
+        skill_document_sha256="c" * 64,
+        runtime_profile="fixture",
+        runtime_instance_id="runtime-1",
+        gateway_url="http://fixture",
+        required_tools=tuple(
+            BoundToolSpec(
+                tool_id=policy.tool_id,
+                semantics="query",
+                spec_sha256="d" * 64,
+                ready_at_binding=True,
+                planning_policy=policy,
+            )
+            for policy in policies
+        ),
+    )
+    messages = [
+        {"role": "system", "content": "system"},
+        {"role": "user", "content": "discover"},
+    ]
+    for index, tool_id in enumerate(("scene.observe", "scene.understand", "scene.bind")):
+        call_id = f"context-{index}"
+        messages.extend([
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [{"id": call_id}],
+            },
+            {
+                "role": "tool",
+                "name": "forge_tool_context",
+                "tool_call_id": call_id,
+                "content": json.dumps({
+                    "ok": True,
+                    "data": {
+                        "tool": {
+                            "tool_id": tool_id,
+                            "input_schema": {
+                                "type": "object",
+                                "properties": {"source": {"type": "string"}},
+                            },
+                        },
+                        "context": {"tool_id": tool_id, "ready": True},
+                    },
+                }),
+            },
+        ])
+    messages.extend([
+        {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [{"id": "skill-recovery"}],
+        },
+        {
+            "role": "tool",
+            "name": "forge_task_get",
+            "tool_call_id": "skill-recovery",
+            "content": json.dumps({
+                "ok": True,
+                "data": {
+                    "requested_skill_instructions": "persisted discovery constraint",
+                },
+            }),
+        },
+    ])
+    manager = AgentPromptContextManager(
+        context_window_tokens=12_000,
+        compaction_trigger_tokens=1_000,
+    )
+    view = manager.build(
+        messages=messages,
+        turn_start_index=1,
+        all_tool_names=("forge_tool_context", "forge_tool_query"),
+        task=task,
+        estimate_tokens=_estimate,
+    )
+    encoded = json.dumps(view.messages)
+    assert view.compacted is True
+    assert "agent_discovery_working_set_v1" in encoded
+    assert "persisted discovery constraint" in encoded
+    for tool_id in ("scene.observe", "scene.understand", "scene.bind"):
+        assert tool_id in encoded
+
+
+def test_discovery_working_set_drops_pre_task_context_receipts() -> None:
+    task = _task()
+    binding = ForgeSkillBinding(
+        binding_id="binding-working-set-boundary",
+        skill_name="fixture",
+        skill_version="1",
+        manifest_sha256="b" * 64,
+        skill_document_sha256="c" * 64,
+        runtime_profile="fixture",
+        runtime_instance_id="runtime-1",
+        gateway_url="http://fixture",
+        required_tools=(BoundToolSpec(
+            tool_id="scene.observe",
+            semantics="query",
+            spec_sha256="d" * 64,
+            ready_at_binding=True,
+            planning_policy=ToolSpecPolicy(
+                tool_id="scene.observe", semantics="query", spec_digest="a" * 64,
+                requires_before_plan=True,
+            ),
+        ),),
+    )
+    task.primary_skill_binding = binding
+    messages = [
+        {"role": "user", "content": "old task"},
+        {"role": "tool", "name": "forge_tool_context", "content": json.dumps({
+            "ok": True, "data": {"tool": {"tool_id": "scene.observe", "operation": "old-read"},
+            "context": {"tool_id": "scene.observe", "ready": True}},
+        })},
+        {"role": "user", "content": "new task"},
+        {"role": "tool", "name": "forge_task_create", "content": json.dumps({
+            "ok": True, "data": {"task_id": task.task_id},
+        })},
+        {"role": "tool", "name": "forge_tool_context", "content": json.dumps({
+            "ok": True, "data": {"tool": {"tool_id": "scene.observe", "operation": "new-read"},
+            "context": {"tool_id": "scene.observe", "ready": True}},
+        })},
+    ]
+    manager = AgentPromptContextManager(context_window_tokens=12_000, compaction_trigger_tokens=1_000)
+    view = manager.build(
+        messages=messages,
+        turn_start_index=2,
+        all_tool_names=("forge_tool_context", "forge_tool_query"),
+        task=task,
+        estimate_tokens=_estimate,
+    )
+    encoded = json.dumps(view.messages)
+    # The working set is embedded in a system message, so JSON encoding escapes
+    # the quotes around the operation value.
+    assert "new-read" in encoded
+    assert "old-read" not in encoded
 
 
 def test_replan_compacts_before_global_trigger_and_keeps_task_projection() -> None:

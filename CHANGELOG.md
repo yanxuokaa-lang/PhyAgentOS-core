@@ -4,6 +4,80 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.6.2 (2026-10-04 03:10) - codex
+
+### 变更摘要 / Change Summary
+- [policy] [fix] 移除 continuation projection 中固定的 `scene.observe/scene.understand/scene.bind` 提示，改由 Skill、ToolSpec 与 freshness contract 决定证据需求；新增通用回归断言。 (local)
+- [policy] [fix] Removed fixed observation-chain wording from continuation projection; Skill, ToolSpec, and freshness contracts now determine evidence needs, with a generic regression assertion. (local)
+
+### 文件变更详情 / File Changes
+- [修改 / Modified] `PhyAgentOS/agent/prompt_context.py:L1266-L1274`：使用 active Skill、ToolSpec 与 `fresh_evidence_requirements` 的通用依赖约束 / use a generic dependency constraint from the active Skill, ToolSpec, and `fresh_evidence_requirements`.
+- [修改 / Modified] `tests/test_prompt_context.py:L600-L609`：确认固定观察链不再出现在 continuation 边界提示 / verify the fixed observation chain is absent from the continuation boundary prompt.
+
+### 七维 Code Review / Seven-Dimension Review
+- 七个维度均通过；无新 Blocker/Major。该修复不增加 Query、PlanGraph、Action、hash 或专用任务分支 / all seven dimensions pass with no new Blocker/Major; no Query, PlanGraph, Action, hash, or task-specific branch was added.
+
+### 验证 / Validation
+- 核心回归 `165 passed`；聚焦套件 `301 passed, 2 failed`，两项均为既有基线失败 / core regressions passed; focused suite had two unchanged baseline failures.
+
+### Git 提交 / Git Commit
+- Branch: `feature/planning-loop`
+- Commit: `da71b4f`
+
+## v12.6.1 (2026-10-04 02:30) - codex
+
+### 变更摘要 / Change Summary
+- [policy] [fix] 只读 context/Query 保持在 Agent 当前决策回合；task-scoped discovery working set 防止历史任务 ToolSpec 污染；不自动调度 Query、PlanGraph 或 Action。 (local)
+- [policy] [fix] Kept read-only context/Query in the current Agent decision turn and isolated the task-scoped discovery working set from historical ToolSpecs; no Query, PlanGraph, or Action is auto-dispatched. (local)
+
+### 文件变更详情 / File Changes
+- [修改 / Modified] `PhyAgentOS/agent/loop.py:L1750-L1779`：区分只读工具与显式 long-horizon 状态转换 / separate read-only tools from explicit long-horizon state transitions.
+- [修改 / Modified] `PhyAgentOS/agent/prompt_context.py:L548-L647,L1471-L1477`：压缩后保留当前任务所需 ToolSpec/Skill 投影 / retain current-task ToolSpec/Skill projections after compaction.
+- [修改 / Modified] `tests/test_agent_foundation.py:L1536-L1581`、`tests/test_prompt_context.py:L1265-L1415`：增加 continuation、compaction、跨任务隔离回归 / add continuation, compaction, and cross-task isolation regressions.
+
+### 七维 Code Review / Seven-Dimension Review
+- 架构、正确性、恢复/幂等、机器人安全、扩展兼容、可观测性/可维护性、AgentLoop 自主性均通过；无新 Blocker/Major / architecture, correctness, recovery/idempotency, robotics safety, extension compatibility, observability/maintainability, and AgentLoop autonomy all pass with no new Blocker/Major.
+
+### 验证 / Validation
+- 核心回归 `165 passed`；聚焦套件 `301 passed, 2 failed`，两项为既有基线失败 / core regressions passed; focused suite had two unchanged baseline failures.
+
+### Git 提交 / Git Commit
+- Branch: `feature/planning-loop`
+- Commit: `da71b4f`
+
+## v12.6.0 (2026-10-04 01:10) - codex
+
+### 变更摘要 / Change Summary
+- [policy] [fix] 发现阶段新增 provider-neutral working-set 投影，在压缩后同时保留当前任务所需的不同 ToolSpec 与显式恢复的 Skill 约束；不自动调度 Query、PlanGraph 或 Action。 (local)
+- [policy] [fix] Add a provider-neutral discovery working-set projection that retains distinct required ToolSpecs and explicitly recovered Skill constraints after compaction; it does not auto-dispatch a Query, PlanGraph, or Action. (local)
+
+### 文件变更详情 / File Changes
+- [修改 / Modified] `PhyAgentOS/agent/prompt_context.py:L15,L545-L625,L1447-L1452`：按 Skill binding 的 `required_preplan_queries`/`missing_preplan_queries` 汇总各 `tool_id` 最新成功 context，并在 discovery/replan 的只读任务投影中保留 recovered Skill text / collect each required `tool_id`'s latest successful context and retain recovered Skill text in the read-only discovery/replan task projection.
+- [修改 / Modified] `tests/test_prompt_context.py:L1263-L1359`：验证多个不同 ToolSpec 与恢复 Skill 在强制 compaction 后同一请求中可见 / verify multiple distinct ToolSpecs and recovered Skill content remain visible in one request after forced compaction.
+- [修改 / Modified] `changelog/2026-10.md:L3-L64` 与 `CHANGELOG.md:L7-L30`：记录诊断、实现、七维 Review 和验证 / record diagnosis, implementation, seven-dimension review, and validation.
+
+### 关键 Diff / Key Diff
+```diff
++working_set = _discovery_working_set_projection(messages, task)
++projection["discovery_working_set"] = working_set
+
++relevant_ids = required | missing
++tool_specs = {tool_id: latest_successful_context[tool_id] ...}
+```
+
+### 七维 Code Review / Seven-Dimension Review
+- 架构、正确性、恢复/幂等、机器人安全、扩展兼容、可观测性/可维护性、AgentLoop 自主性：通过。无 RGB/benchmark/相机专用逻辑，Coordinator/Gateway 仍是权威，Host 不执行自动动作。
+- Architecture, correctness, recovery/idempotency, robotics safety, extension compatibility, observability/maintainability, and AgentLoop autonomy: pass. No RGB/benchmark/camera specialization; Coordinator/Gateway remain authoritative and the host performs no automatic action.
+
+### 验证 / Validation
+- `tests/test_prompt_context.py tests/test_agent_foundation.py`: `163 passed`。
+- Focused AgentLoop/planning suite: `299 passed, 2 known baseline failures` (`test_planning_loop` reducer expectation; `test_planning_effect_recovery` fixture missing `invocation_id`)。
+- Ruff、compileall、`git diff --check`: passed; no Runtime, AgentTask, Gateway Query/Action, or physical motion.
+
+### Git 提交 / Git Commit
+- Branch: `feature/planning-loop`
+- Commit: `da71b4f`
+
 ## v12.5.15 (2026-10-03 10:58) - codex
 
 ### 预期修改 / Planned Changes [完成]

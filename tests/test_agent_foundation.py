@@ -1533,6 +1533,54 @@ def test_segment_continuation_turn_appends_next_revision_without_execution_tools
     asyncio.run(exercise())
 
 
+def test_segment_continuation_keeps_read_only_context_in_agent_turn(tmp_path):
+    async def exercise():
+        c, task = setup_task(tmp_path, goal="Choose the next segment from current facts")
+        await ForgeTaskMaterializePlanTool(c).execute(
+            task.task_id, nodes=semantic_nodes(1), reason="first segment",
+        )
+        current = c.get_task(task.task_id)
+        current_revision_id = current.active_revision_id
+        for node in current.active_revision.plan_graph.nodes:
+            c.record_node_settlement(NodeSettlement(
+                task_id=task.task_id, revision_id=current.active_revision_id,
+                node_id=node.node_id, status="completed", scene_revision="scene-1",
+            ))
+        provider = ScriptedProvider([
+            _tool_response(0, "forge_tool_context", {"tool_id": "scene.observe"}),
+            _tool_response(1, "forge_task_continue_plan", {
+                "task_id": task.task_id, "nodes": semantic_nodes(1),
+                "reason": "context read completed; continue",
+            }),
+            LLMResponse(content="done"),
+        ])
+        client = SimpleNamespace(
+            get_tool=AsyncMock(return_value={"data": {"input_schema": {"type": "object"}}}),
+            get_tool_context=AsyncMock(return_value={"data": {"ready": True}}),
+        )
+        c.client = client
+        loop = AgentLoop(
+            bus=MessageBus(), provider=provider, workspace=tmp_path,
+            forge_task_coordinator=c, forge_tool_client=client, max_iterations=3,
+        )
+        result = await loop.run_segment_continuation_turn(task_id=task.task_id)
+        assert result.turn_failure_code is None
+        assert result.tools_used[:2] == ["forge_tool_context", "forge_task_continue_plan"]
+        # Context is an intermediate read. The model receives another turn;
+        # the attempted control outcome is then rejected by the Coordinator
+        # because this fixture has no scene evidence, with no Action dispatch.
+        assert len(provider.requests) == 3
+        continue_result = next(
+            message for message in result.messages
+            if message.get("name") == "forge_task_continue_plan"
+        )
+        assert "no persisted scene revision" in continue_result["content"]
+        updated = c.get_task(task.task_id)
+        assert updated.active_revision_id == current_revision_id
+
+    asyncio.run(exercise())
+
+
 def test_semantic_submission_rejects_cycle_undeclared_capability_and_ambiguous_input(tmp_path):
     c, task = setup_task(tmp_path)
     nodes = semantic_nodes(2)
