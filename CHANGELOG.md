@@ -4,6 +4,32 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.6.3 (2026-10-04 02:32) - codex
+
+### 变更摘要 / Change Summary
+- [chore] [release] 发布并安装 `pick-place-workflow 2.10.8`，配套已提交的 PAOS Core v12.6.2 task-scoped AgentLoop 修复；复用未修改的 Node `0.10.2`。 (local)
+- [chore] [release] Published and installed `pick-place-workflow 2.10.8` alongside the committed PAOS Core v12.6.2 task-scoped AgentLoop repair, retaining the unchanged Node `0.10.2`. (local)
+
+### 文件变更详情 / File Changes
+- [修改 / Modified] `examples/forge-skills/pick-place-workflow/skill.yaml:L3`、`pyproject.toml:L3`：`2.10.7` -> `2.10.8`。
+- [修改 / Modified] `examples/forge-skills/pick-place-workflow/CHANGELOG.md:L3-L6`：新增中英文配套发布说明 / add bilingual compatibility release notes.
+- [修改 / Modified] `examples/forge-skills/pick-place-workflow/tests/test_grasp_propose.py:L270`：更新版本一致性断言 / update the version consistency assertion.
+- [修改 / Modified] `changelog/2026-10.md:L3-L45`：记录停止、安装、Dora 环境诊断、实际加载与 no-motion 验证 / record stop, installation, Dora environment diagnosis, actual loading, and no-motion validation.
+
+### 关键 Diff / Key Diff
+```diff
+-version: "2.10.7"
++version: "2.10.8"
+-version = "2.10.7"
++version = "2.10.8"
+-assert bundle_manifest["version"] == "2.10.7"
++assert bundle_manifest["version"] == "2.10.8"
+```
+
+### 验证 / Validation
+- Skill `2.10.8` running；11 个 Tool context ready；host PID `2144506` 加载 `PAOS_SKILL_VERSION=2.10.8`；Node `0.10.2` SHA-256 verified；聚焦 no-motion 测试 `87 passed`。
+- Runtime ownership sets and non-terminal AgentTasks are empty; local `qwen3-vl-4b-awq` remains available. No AgentTask, Gateway Query/Action, or physical motion was created.
+
 ## v12.6.2 (2026-10-04 03:10) - codex
 
 ### 变更摘要 / Change Summary
