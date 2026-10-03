@@ -14,7 +14,7 @@
 - [修改 / Modified] `examples/forge-skills/pick-place-workflow/skill.yaml:L3`、`pyproject.toml:L3`：`2.10.7` -> `2.10.8`。
 - [修改 / Modified] `examples/forge-skills/pick-place-workflow/CHANGELOG.md:L3-L6`：新增中英文配套发布说明 / add bilingual compatibility release notes.
 - [修改 / Modified] `examples/forge-skills/pick-place-workflow/tests/test_grasp_propose.py:L270`：更新版本一致性断言 / update the version consistency assertion.
-- [修改 / Modified] `changelog/2026-10.md:L3-L45`：记录停止、安装、Dora 环境诊断、实际加载与 no-motion 验证 / record stop, installation, Dora environment diagnosis, actual loading, and no-motion validation.
+- [修改 / Modified] `changelog/2026-10.md:L3-L50`：记录停止、安装、Dora 环境诊断、实际加载、no-motion 验证与 Git 提交 / record stop, installation, Dora environment diagnosis, actual loading, no-motion validation, and the Git commit.
 
 ### 关键 Diff / Key Diff
 ```diff
@@ -29,6 +29,10 @@
 ### 验证 / Validation
 - Skill `2.10.8` running；11 个 Tool context ready；host PID `2144506` 加载 `PAOS_SKILL_VERSION=2.10.8`；Node `0.10.2` SHA-256 verified；聚焦 no-motion 测试 `87 passed`。
 - Runtime ownership sets and non-terminal AgentTasks are empty; local `qwen3-vl-4b-awq` remains available. No AgentTask, Gateway Query/Action, or physical motion was created.
+
+### Git 提交 / Git Commit
+- Commit: `50adbf8` (Skill release and installation record)
+- Branch: `feature/planning-loop`
 
 ## v12.6.2 (2026-10-04 03:10) - codex
 
