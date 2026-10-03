@@ -22,7 +22,7 @@
 
 ### Git 提交 / Git Commit
 - Branch: `feature/planning-loop`
-- Commit: `da71b4f`
+- Commit: `e6d1392`
 
 ## v12.6.1 (2026-10-04 02:30) - codex
 
@@ -43,7 +43,7 @@
 
 ### Git 提交 / Git Commit
 - Branch: `feature/planning-loop`
-- Commit: `da71b4f`
+- Commit: `e6d1392`
 
 ## v12.6.0 (2026-10-04 01:10) - codex
 
@@ -76,7 +76,7 @@
 
 ### Git 提交 / Git Commit
 - Branch: `feature/planning-loop`
-- Commit: `da71b4f`
+- Commit: `e6d1392`
 
 ## v12.5.15 (2026-10-03 10:58) - codex
 
