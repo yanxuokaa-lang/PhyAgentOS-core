@@ -1,5 +1,10 @@
 # Change Log
 
+## v2.10.9 (2026-10-05)
+
+- 中文：配套 PAOS Core v12.7.0，按 observation/frame/calibration 血缘选择多视角 depth，发布 Node `0.10.3` 与 Adapter `0.7.16`；ToolSpec 增加 preparation failure 的责任、重试、replan 与证据刷新语义。Coordinator 在计划 admission 校验 projection source 可达性，AgentLoop 对重复读取有界收敛，不自动观察、选择、replan 或执行 Action。
+- English: Pair with PAOS Core v12.7.0, select multi-view depth by observation/frame/calibration lineage, and publish Node `0.10.3` with Adapter `0.7.16`; the ToolSpec now exposes preparation-failure ownership, retry, replan, and evidence-refresh semantics. Coordinator validates projection-source reachability during plan admission, while AgentLoop bounds repeated reads without automatically observing, selecting, replanning, or executing an Action.
+
 ## v2.10.8 (2026-10-04)
 
 - 中文：发布与 PAOS Core v12.6.2 配套的 Skill。Core 将只读 context/Query 保留在当前 Agent 决策回合，并把 discovery ToolSpec working set 限定在当前 AgentTask；后续证据由 Skill、ToolSpec 与 freshness contract 声明，不再固定观察链。Core 修复不嵌入 Skill 包；Node 保持 `0.10.2`，Runtime 感知、运动、安全门禁与 benchmark 目标来源不变。

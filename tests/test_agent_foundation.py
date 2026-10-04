@@ -51,7 +51,13 @@ from PhyAgentOS.forge.task import (
     ToolExecutionRecord,
     utc_now,
 )
-from PhyAgentOS.planning import NodeSettlement, PlanNode, ToolSpecPolicy, build_replan_delta
+from PhyAgentOS.planning import (
+    NodeSettlement,
+    PlanNode,
+    ToolSpecPolicy,
+    build_replan_delta,
+    plan_node_digest,
+)
 from PhyAgentOS.providers.base import LLMProvider, LLMResponse, ToolCallRequest
 from PhyAgentOS.session.manager import Session
 from PhyAgentOS.verification.contracts import TaskVerificationContract
@@ -884,6 +890,52 @@ def test_node_turn_does_not_layer_model_timeout_retry(tmp_path):
         assert len(provider.requests) == 1
         assert result.model_failure_code == "provider_timeout"
         assert result.tools_used == []
+
+    asyncio.run(exercise())
+
+
+def test_node_turn_repeated_reads_correct_once_then_converge_without_execution(tmp_path):
+    async def exercise():
+        coordinator, task = setup_task(tmp_path, goal="Execute one semantic node")
+        await ForgeTaskMaterializePlanTool(coordinator).execute(
+            task.task_id,
+            nodes=semantic_nodes(1),
+            reason="fixture node",
+        )
+        current = coordinator.get_task(task.task_id)
+        node_id = current.active_revision.plan_graph.nodes[0].node_id
+        provider = ScriptedProvider([
+            _tool_response(index, "forge_tool_context", {"tool_id": "scene.observe"})
+            for index in range(10)
+        ])
+        loop = AgentLoop(
+            bus=MessageBus(),
+            provider=provider,
+            workspace=tmp_path,
+            forge_task_coordinator=coordinator,
+            max_iterations=10,
+        )
+        loop.tools.execute = AsyncMock(return_value=json.dumps({
+            "ok": True, "data": {"readiness": "ready"}, "motion_authorized": False,
+        }))
+
+        result = await loop.run_node_turn(
+            task_id=task.task_id,
+            revision_id=current.active_revision_id,
+            node_id=node_id,
+            prompt="Execute only the current node.",
+        )
+
+        assert result.turn_failure_code == "node_selection_no_progress"
+        assert len(provider.requests) == 3
+        assert sum(
+            message.get("role") == "system"
+            and "current planning node has made no Coordinator progress"
+            in message.get("content", "")
+            for message in result.messages
+        ) == 1
+        assert coordinator.get_task(task.task_id).active_revision.execution_records == []
+        assert coordinator.get_task(task.task_id).active_revision.planning_selections == []
 
     asyncio.run(exercise())
 
@@ -2131,6 +2183,65 @@ def test_model_recovery_is_read_only_and_invalid_output_stops(tmp_path, decision
         assert len(c.get_task(task.task_id).revisions) == 1
         assert c.get_task(task.task_id).execution_records == []
         assert "NEVER repeats" in provider.requests[0]["messages"][0]["content"]
+    asyncio.run(exercise())
+
+
+def test_runtime_owned_non_replannable_failure_stops_without_model_recovery(tmp_path):
+    async def exercise():
+        c, task = setup_task(tmp_path)
+        graph = compile_task_plan(task, semantic_nodes(1), reason="test plan")
+        c.expand_discovery_revision(
+            task.task_id,
+            plan_graph=graph,
+            plan_graph_ref="artifact://plans/runtime-owned-failure",
+        )
+
+        def add_failure(current):
+            current.active_revision.execution_records.append(ToolExecutionRecord(
+                record_id="prepare-runtime-failure",
+                revision_id=graph.revision_id,
+                node_id="chosen-0",
+                node_digest=plan_node_digest(graph.nodes[0]),
+                obligation_id=graph.nodes[0].obligation_id,
+                input_binding_digest="d" * 64,
+                decision_trace_ref="artifact://planning-traces/runtime-owned-failure",
+                tool_id="consumer.query",
+                semantics="query",
+                caller_id="paos:test",
+                status="succeeded",
+                response={"data": {
+                    "status": "unavailable",
+                    "failure_owner": "runtime_adapter",
+                    "retryable_in_revision": False,
+                    "requires_replan": False,
+                    "recommended_action": "fix_runtime_contract",
+                }},
+            ))
+
+        c.store.update(task.task_id, add_failure, event_type="fixture_runtime_failure")
+        settlement = NodeSettlement(
+            task_id=task.task_id,
+            revision_id=graph.revision_id,
+            node_id="chosen-0",
+            status="failed",
+            failure_code="provider_contract_error",
+        )
+        provider = ScriptedProvider([])
+        chooser = AgentRecoveryDecisions(provider, "fixture-model", c)
+
+        result = await chooser.select_recovery(
+            graph=graph,
+            settlement=settlement,
+            delta=build_replan_delta(graph, settlement),
+            context=settlement,
+        )
+
+        assert result == "stop"
+        assert provider.requests == []
+        event = c.store.events(task.task_id)[-1]
+        assert event["event_type"] == "agent_recovery_decided"
+        assert event["payload"]["reason"].endswith("fix_runtime_contract")
+
     asyncio.run(exercise())
 
 

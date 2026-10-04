@@ -1137,6 +1137,81 @@ def test_observed_support_falls_back_to_current_depth_and_all_instance_masks(tmp
     assert support["source_refs"] == ["artifact://capture/depth", "artifact://capture/seen-mask"]
 
 
+def test_multiview_collision_and_support_use_the_uniquely_bound_depth_view(tmp_path):
+    g, request, _ = setup(tmp_path)
+    from robotwin20_adapter.observed_collision import ObservedCollisionPolicy
+
+    g.collision_policy = ObservedCollisionPolicy()
+    _add_depth_support_evidence(g, request, tmp_path)
+    observed = g.observations[tuple(request[key] for key in (
+        "observation_ref", "scene_revision", "calibration_ref"
+    ))]
+    secondary_depth_ref = "artifact://capture/secondary-depth"
+    np.save(tmp_path / "capture/secondary-depth.npy", np.full((10, 10), 500.0), allow_pickle=False)
+    observed["artifacts"].append({
+        "kind": "depth", "ref": secondary_depth_ref, "media_type": "application/x-npy"
+    })
+    observed["views"] = [
+        {
+            "sensor_ref": "sensor://primary",
+            "observation_ref": request["observation_ref"],
+            "calibration_ref": request["calibration_ref"],
+            "frame": {"frame_id": "camera", "unit": "m"},
+            "artifacts": [observed["artifacts"][0]],
+        },
+        {
+            "sensor_ref": "sensor://secondary",
+            "observation_ref": "observation://s1/secondary",
+            "calibration_ref": "artifact://capture/secondary-calibration",
+            "frame": {"frame_id": "secondary", "unit": "m"},
+            "artifacts": [observed["artifacts"][1]],
+        },
+    ]
+    bound = g.bind(request)
+    target = g.target(dict(
+        binding_ref=bound["binding_ref"], entity_ref="entity://seen",
+        frame_id="world", unit="m", frame_T_object_target=pose(.35),
+    ))
+
+    facts = g.scene_facts({
+        **request,
+        "intent": {"entity_ref": "entity://seen"},
+        "destination_ref": target["destination_ref"],
+    })
+
+    assert facts["observed_collision"]["depth_ref"] == "artifact://capture/depth"
+    assert facts["support_surface"]["evidence_ref"] == "artifact://capture/depth"
+
+
+def test_multiview_depth_resolution_fails_closed_when_bound_view_is_ambiguous(tmp_path):
+    g, request, _ = setup(tmp_path)
+    observed = g.observations[tuple(request[key] for key in (
+        "observation_ref", "scene_revision", "calibration_ref"
+    ))]
+    view = {
+        "sensor_ref": "sensor://primary",
+        "observation_ref": request["observation_ref"],
+        "calibration_ref": request["calibration_ref"],
+        "frame": {"frame_id": "camera", "unit": "m"},
+        "artifacts": [observed["artifacts"][0]],
+    }
+    observed["views"] = [view, {**view, "sensor_ref": "sensor://duplicate"}]
+    bound = g.bind(request)
+    target = g.target(dict(
+        binding_ref=bound["binding_ref"], entity_ref="entity://seen",
+        frame_id="world", unit="m", frame_T_object_target=pose(.35),
+    ))
+
+    from PhyAgentOS.forge.capability_runtime.manipulation_prepare import PreparationProviderError
+
+    with pytest.raises(PreparationProviderError, match="absent or ambiguous"):
+        g.scene_facts({
+            **request,
+            "intent": {"entity_ref": "entity://seen"},
+            "destination_ref": target["destination_ref"],
+        })
+
+
 @pytest.mark.parametrize("defect", ["missing_mask", "stale_mask", "missing_depth", "stale_observation"])
 def test_depth_support_fallback_fails_closed_on_incomplete_current_evidence(tmp_path, defect):
     g, request, _ = setup(tmp_path)

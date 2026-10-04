@@ -7,6 +7,7 @@ import pytest
 from PhyAgentOS.agent.plan_proposal import (
     _complete_persisted_runtime_bindings,
     _validate_benchmark_plan_inputs,
+    _validate_projection_source_reachability,
     canonicalize_plan_graph,
 )
 from PhyAgentOS.forge.binding import BoundToolSpec, missing_preplan_queries
@@ -537,3 +538,64 @@ def test_benchmark_profile_requires_task_goal_before_materialization():
 
     with pytest.raises(ValueError, match="successful task.goal"):
         _validate_benchmark_plan_inputs(task, (node,))
+
+
+def test_projection_admission_rejects_unreachable_predecessor_source_slot():
+    producer = ToolSpecPolicy(
+        tool_id="producer.query",
+        semantics="query",
+        spec_digest="1" * 64,
+        capabilities=("produce.facts",),
+    )
+    consumer = ToolSpecPolicy(
+        tool_id="consumer.query",
+        semantics="query",
+        spec_digest="2" * 64,
+        capabilities=("consume.facts",),
+        argument_projection="joined_v1",
+        argument_projection_plan={
+            "projection_id": "joined_v1",
+            "source_slots": {
+                "producer": {
+                    "tool_id": "producer.query",
+                    "source_scope": "predecessor",
+                    "source_field_map": {"value": ["value"]},
+                },
+                "capability": {
+                    "tool_id": "capability.query",
+                    "source_scope": "evidence",
+                    "source_field_map": {"capability_ref": ["capability_ref"]},
+                },
+            },
+        },
+    )
+    capability = ToolSpecPolicy(
+        tool_id="capability.query",
+        semantics="query",
+        spec_digest="3" * 64,
+        capabilities=("discover.capability",),
+    )
+    tools = tuple(
+        SimpleNamespace(tool_id=policy.tool_id, planning_policy=policy)
+        for policy in (producer, consumer, capability)
+    )
+    task = _task((_record("capability.query", {"data": {"capability_ref": "artifact://cap/1"}}),))
+    consumer_node = PlanNode(
+        node_id="consume",
+        obligation_id="consume",
+        capability="consume.facts",
+    )
+
+    with pytest.raises(ValueError, match=(
+        r"projection_source_unreachable: consume\.consumer\.query\.producer "
+        r"requires predecessor source Tool producer\.query"
+    )):
+        _validate_projection_source_reachability(task, (consumer_node,), tools)
+
+    producer_node = PlanNode(
+        node_id="produce",
+        obligation_id="produce",
+        capability="produce.facts",
+    )
+    connected = consumer_node.model_copy(update={"dependencies": ("produce",)})
+    _validate_projection_source_reachability(task, (producer_node, connected), tools)

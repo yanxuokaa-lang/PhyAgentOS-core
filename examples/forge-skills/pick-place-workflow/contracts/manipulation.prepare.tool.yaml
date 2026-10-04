@@ -403,6 +403,22 @@ output_schema:
         pattern: ^artifact://[^/]+/.+$
     motion_authorized:
       const: false
+    failure_owner:
+      type: string
+      minLength: 1
+    retryable_in_revision:
+      type: boolean
+    requires_replan:
+      type: boolean
+    recommended_action:
+      type: string
+      minLength: 1
+    fresh_evidence_requirements:
+      type: array
+      uniqueItems: true
+      items:
+        type: string
+        minLength: 1
     error:
       type: object
       additionalProperties: false

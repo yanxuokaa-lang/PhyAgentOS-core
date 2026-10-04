@@ -200,6 +200,7 @@ class AgentLoop:
         planning_context_provider: Callable[[str], AdmissionContext] | None = None,
         planner_plugin: PlannerPlugin | None = None,
         discovery_no_progress_limit: int = 6,
+        planning_no_progress_limit: int = 2,
     ):
         from PhyAgentOS.config.schema import ExecToolConfig
 
@@ -212,6 +213,9 @@ class AgentLoop:
         if discovery_no_progress_limit < 1:
             raise ValueError("discovery_no_progress_limit must be positive")
         self.discovery_no_progress_limit = discovery_no_progress_limit
+        if planning_no_progress_limit < 1:
+            raise ValueError("planning_no_progress_limit must be positive")
+        self.planning_no_progress_limit = planning_no_progress_limit
         self.turn_timeout_s = max(1.0, float(turn_timeout_s))
         self.context_window_tokens = context_window_tokens
         self.context_compaction_trigger_tokens = (
@@ -794,6 +798,9 @@ class AgentLoop:
         discovery_progress = None
         discovery_stalled_rounds = 0
         discovery_correction_used = False
+        planning_progress = None
+        planning_stalled_rounds = 0
+        planning_correction_used = False
         described_contracts: set[tuple[str, str, str]] = set()
 
         async def bounded_decision(operation):
@@ -888,6 +895,82 @@ class AgentLoop:
                 discovery_progress = None
                 discovery_stalled_rounds = 0
                 discovery_correction_used = False
+            if (
+                projection_scope == "node"
+                and active_task is not None
+                and self.forge_task_coordinator is not None
+            ):
+                revision = active_task.active_revision
+                node_records = tuple(
+                    (record.record_id, record.status, record.terminal)
+                    for record in revision.execution_records
+                    if record.node_id == projection_node_id
+                )
+                node_selections = tuple(
+                    item.resumable_selection.planning_binding.decision_trace_ref
+                    if item.resumable_selection is not None
+                    else None
+                    for item in getattr(revision, "planning_selections", ())
+                    if item.node_id == projection_node_id
+                )
+                rejection_loader = getattr(
+                    self.forge_task_coordinator, "planning_selection_rejections", None
+                )
+                node_rejections = (
+                    rejection_loader(
+                        active_task.task_id,
+                        active_task.active_revision_id,
+                        projection_node_id,
+                    )
+                    if callable(rejection_loader)
+                    else ()
+                )
+                progress = (
+                    active_task.task_id,
+                    active_task.active_revision_id,
+                    node_records,
+                    node_selections,
+                    len(node_rejections),
+                    node_rejections[-1].get("code") if node_rejections else None,
+                )
+                if progress != planning_progress:
+                    planning_progress = progress
+                    planning_stalled_rounds = 0
+                    planning_correction_used = False
+                else:
+                    planning_stalled_rounds += 1
+                if planning_stalled_rounds >= self.planning_no_progress_limit:
+                    logger.warning(
+                        "Planning node has no Coordinator progress task={} revision={} node={} "
+                        "rounds={} correction_used={}",
+                        active_task.task_id,
+                        active_task.active_revision_id,
+                        projection_node_id,
+                        planning_stalled_rounds,
+                        planning_correction_used,
+                    )
+                    if planning_correction_used:
+                        turn_failure_code = "node_selection_no_progress"
+                        final_content = (
+                            f"Planning node {projection_node_id} stopped: repeated reads "
+                            "produced no new selection, rejection, or execution fact. "
+                            "No Tool or Action was automatically dispatched."
+                        )
+                        break
+                    planning_correction_used = True
+                    # The next unchanged turn is the single corrective turn's
+                    # outcome; retain the threshold so it converges immediately.
+                    planning_stalled_rounds = self.planning_no_progress_limit - 1
+                    messages.append({
+                        "role": "system",
+                        "content": (
+                            "The current planning node has made no Coordinator progress. "
+                            "A context/readiness read is not progress. Re-evaluate the visible "
+                            "ToolSpec source slots and submit one governed selection, or choose "
+                            "a declared recovery outcome. Do not repeat the same read, assemble "
+                            "provider arguments, or execute a Tool without a persisted selection."
+                        ),
+                    })
             if (
                 iteration == 1
                 and active_task is not None

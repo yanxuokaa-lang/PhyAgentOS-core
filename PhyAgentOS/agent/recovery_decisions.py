@@ -98,14 +98,36 @@ class AgentRecoveryDecisions:
         return value
 
     async def select_recovery(self, *, graph, settlement, delta, context):
-        try:
-            value = await self._ask(graph, settlement, delta, context)
-            if value["decision"] not in {"stop", "replay", "replan"}:
-                raise ValueError("unsupported recovery decision")
-        except Exception as exc:
-            value = {"decision": "stop", "reason": (
-                f"recovery unavailable: {type(exc).__name__}: {redact_text(str(exc))[:2000]}"
-            )}
+        task = self.coordinator.get_task(graph.task_id)
+        non_replannable = []
+        for record in task.execution_records:
+            if record.revision_id != graph.revision_id or record.node_id != settlement.node_id:
+                continue
+            facts = response_facts(record.response)
+            if (
+                facts.get("retryable_in_revision") is False
+                and facts.get("requires_replan") is False
+                and isinstance(facts.get("recommended_action"), str)
+            ):
+                non_replannable.append(facts)
+        if non_replannable:
+            latest = non_replannable[-1]
+            value = {
+                "decision": "stop",
+                "reason": (
+                    "Tool result declares automatic recovery unavailable: "
+                    + latest["recommended_action"]
+                ),
+            }
+        else:
+            try:
+                value = await self._ask(graph, settlement, delta, context)
+                if value["decision"] not in {"stop", "replay", "replan"}:
+                    raise ValueError("unsupported recovery decision")
+            except Exception as exc:
+                value = {"decision": "stop", "reason": (
+                    f"recovery unavailable: {type(exc).__name__}: {redact_text(str(exc))[:2000]}"
+                )}
         self.coordinator.store.update(
             graph.task_id, lambda task: None, event_type="agent_recovery_decided",
             payload={"revision_id": graph.revision_id, "node_id": settlement.node_id, **value},

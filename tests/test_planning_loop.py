@@ -989,6 +989,41 @@ def test_replan_rejects_preserving_changed_node_content(tmp_path):
         )
 
 
+def test_replan_rejects_preserved_node_missing_from_replacement_graph(tmp_path):
+    c = coordinator(tmp_path)
+    task = c.create_task(
+        task_description="missing preserved node",
+        verification=TaskVerificationContract(mode="off"),
+    )
+    original = make_graph(task.task_id, "revision-1", ("arrange-red", "verify"))
+    c.expand_discovery_revision(
+        task.task_id,
+        plan_graph=original,
+        plan_graph_ref="artifact://plans/preserve/1",
+    )
+    c.record_node_settlement(NodeSettlement(
+        task_id=task.task_id,
+        revision_id=original.revision_id,
+        node_id="arrange-red",
+        status="completed",
+    ))
+    c.request_replan(task.task_id, reason="replace remaining work")
+    replacement = make_graph(task.task_id, "revision-2", ("verify",))
+
+    with pytest.raises(AgentTaskError, match="absent from replacement graph: arrange-red"):
+        c.begin_revision_from_delta(
+            task.task_id,
+            ReplanDelta(
+                task_id=task.task_id,
+                revision_id=original.revision_id,
+                preserve_node_ids=("arrange-red",),
+                reason="replace remaining work",
+            ),
+            plan_graph=replacement,
+            plan_graph_ref="artifact://plans/preserve/2",
+        )
+
+
 def test_loop_rejects_result_bound_to_another_node(tmp_path):
     c = coordinator(tmp_path)
     task = c.create_task(task_description="result identity", verification=TaskVerificationContract(mode="off"))

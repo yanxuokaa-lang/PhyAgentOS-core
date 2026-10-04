@@ -53,6 +53,15 @@ def test_provider_public_failure_preserves_diagnostic_without_leaking_unknown_er
     assert result["motion_authorized"] is False
     assert result["error"]["code"] == ("binding_pose_changed" if declared else "preparation_provider_error")
     assert "private" not in result["error"]["message"]
+    assert result["failure_owner"] == (
+        "runtime_provider" if declared else "runtime_adapter"
+    )
+    assert result["retryable_in_revision"] is False
+    assert result["requires_replan"] is declared
+    assert result["recommended_action"] == (
+        "replan_from_provider_result" if declared else "fix_runtime_contract"
+    )
+    assert result["fresh_evidence_requirements"] == []
 
 
 def request_payload(**overrides):
@@ -394,6 +403,11 @@ async def test_stale_input_is_rejected_before_the_provider_call():
     assert data["error"]["code"] == "stale_observation"
     assert data["prepared_candidates"] == []
     assert data["preparation_ref"] == "preparation://scene-7/camera_front"
+    assert data["failure_owner"] == "evidence"
+    assert data["retryable_in_revision"] is False
+    assert data["requires_replan"] is True
+    assert data["recommended_action"] == "refresh_declared_evidence"
+    assert data["fresh_evidence_requirements"] == ["current_observation_lineage"]
 
 
 @pytest.mark.asyncio
@@ -449,6 +463,10 @@ async def test_provider_timeout_has_stable_no_motion_failure_code():
     assert data["error"]["code"] == "preparation_timeout"
     assert data["prepared_candidates"] == []
     assert data["motion_authorized"] is False
+    assert data["failure_owner"] == "runtime_provider"
+    assert data["retryable_in_revision"] is True
+    assert data["requires_replan"] is False
+    assert data["recommended_action"] == "retry_after_provider_ready"
 
 
 @pytest.mark.parametrize(

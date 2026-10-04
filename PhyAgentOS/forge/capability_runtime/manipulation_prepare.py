@@ -32,9 +32,24 @@ _PREPARED_KEYS = {"candidate_ref", "entity_ref", "checks", "evidence", "qualific
 class PreparationProviderError(RuntimeError):
     """Provider-declared public diagnostic, safe to include in a Query result."""
 
-    def __init__(self, code: str, message: str):
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        *,
+        failure_owner: str = "runtime_provider",
+        retryable_in_revision: bool = False,
+        requires_replan: bool = True,
+        recommended_action: str = "replan_from_provider_result",
+        fresh_evidence_requirements: tuple[str, ...] = (),
+    ):
         super().__init__(message)
         self.code = code
+        self.failure_owner = failure_owner
+        self.retryable_in_revision = retryable_in_revision
+        self.requires_replan = requires_replan
+        self.recommended_action = recommended_action
+        self.fresh_evidence_requirements = fresh_evidence_requirements
 
 
 class PreparationProvider(Protocol):
@@ -240,6 +255,15 @@ MANIPULATION_TOOL_SPEC: dict[str, Any] = {
                 "items": {"type": "string", "pattern": r"^artifact://[^/]+/.+$"},
             },
             "motion_authorized": {"const": False},
+            "failure_owner": {"type": "string", "minLength": 1},
+            "retryable_in_revision": {"type": "boolean"},
+            "requires_replan": {"type": "boolean"},
+            "recommended_action": {"type": "string", "minLength": 1},
+            "fresh_evidence_requirements": {
+                "type": "array",
+                "items": {"type": "string", "minLength": 1},
+                "uniqueItems": True,
+            },
             "error": {
                 "type": "object",
                 "additionalProperties": False,
@@ -502,15 +526,30 @@ class ManipulationPreparationEndpoint:
             )
         # A failed Query still belongs to its validated request scene. Dropping
         # that identity makes recovery evidence look stale to Coordinator.
-        def bound_error(code: str, message: str) -> dict[str, Any]:
-            return {
+        def bound_error(
+            code: str,
+            message: str,
+            *,
+            failure_owner: str = "runtime_provider",
+            retryable_in_revision: bool = False,
+            requires_replan: bool = True,
+            recommended_action: str = "replan_from_provider_result",
+            fresh_evidence_requirements: tuple[str, ...] = (),
+        ) -> dict[str, Any]:
+            result = {
                 **_error(code, message, observation_ref=observation_ref),
                 "preparation_ref": preparation_ref,
                 "candidate_set_ref": arguments["candidate_set_ref"],
                 "scene_revision": arguments["scene_revision"],
                 "frame": {"frame_id": arguments["frame_id"], "unit": "m"},
                 "calibration_ref": arguments["calibration_ref"],
+                "failure_owner": failure_owner,
+                "retryable_in_revision": retryable_in_revision,
+                "requires_replan": requires_replan,
+                "recommended_action": recommended_action,
+                "fresh_evidence_requirements": list(fresh_evidence_requirements),
             }
+            return result
 
         if arguments["freshness_ms"] > arguments["max_age_ms"]:
             return {
@@ -525,6 +564,11 @@ class ManipulationPreparationEndpoint:
                 "scene_revision": arguments["scene_revision"],
                 "frame": {"frame_id": arguments["frame_id"], "unit": "m"},
                 "calibration_ref": arguments["calibration_ref"],
+                "failure_owner": "evidence",
+                "retryable_in_revision": False,
+                "requires_replan": True,
+                "recommended_action": "refresh_declared_evidence",
+                "fresh_evidence_requirements": ["current_observation_lineage"],
             }
         if not arguments["candidates"]:
             # An empty candidate list is a complete request; no preparation may be fabricated.
@@ -544,17 +588,33 @@ class ManipulationPreparationEndpoint:
         try:
             snapshot = self.provider.prepare(deepcopy(arguments))
         except PreparationProviderError as exc:
-            return bound_error(exc.code, str(exc))
+            return bound_error(
+                exc.code,
+                str(exc),
+                failure_owner=exc.failure_owner,
+                retryable_in_revision=exc.retryable_in_revision,
+                requires_replan=exc.requires_replan,
+                recommended_action=exc.recommended_action,
+                fresh_evidence_requirements=exc.fresh_evidence_requirements,
+            )
         except TimeoutError:
             return bound_error(
                 "preparation_timeout",
                 "manipulation preparation exceeded its total time budget",
+                failure_owner="runtime_provider",
+                retryable_in_revision=True,
+                requires_replan=False,
+                recommended_action="retry_after_provider_ready",
             )
         except Exception:
             # Provider failures are unavailable, never an implicit Gateway 500 or success.
             return bound_error(
                 "preparation_provider_error",
                 "manipulation preparation provider failed",
+                failure_owner="runtime_adapter",
+                retryable_in_revision=False,
+                requires_replan=False,
+                recommended_action="fix_runtime_contract",
             )
         if snapshot is None:
             return bound_error(

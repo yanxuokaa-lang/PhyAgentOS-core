@@ -44,7 +44,8 @@ def test_query_error_survives_live_and_persisted_settlement_and_recovery_prompt(
     execution = SimpleNamespace(
         record_id="prepare-record", revision_id="revision", node_id="prepare",
         tool_id="manipulation.prepare", semantics="query", terminal=True,
-        status="succeeded", error=None, evidence_refs=("tool:prepare-record",),
+        status="succeeded", invocation_id=None, error=None,
+        evidence_refs=("tool:prepare-record",),
         response={"data": {"status": "unavailable", "error": {
             "code": "binding_pose_unavailable", "message": "Repair binding before retrying",
         }, "prepared_candidates": []}},
@@ -53,7 +54,8 @@ def test_query_error_survives_live_and_persisted_settlement_and_recovery_prompt(
     saved = SimpleNamespace(
         task_id="task", primary_skill_binding=None, tool_bindings=(),
         execution_records=[execution], task_description="move object",
-        verification=dump, primary_skill_instructions="workflow", skill_uses=[],
+        verification=dump, active_skill_instructions=None,
+        primary_skill_instructions="workflow", skill_uses=[],
     )
     coordinator = SimpleNamespace(get_task=lambda _: saved)
     context = NodeExecutionContext(

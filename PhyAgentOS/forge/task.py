@@ -2663,10 +2663,26 @@ class AgentTaskCoordinator:
             )
         }
         replacement_nodes = {node.node_id: node for node in plan_graph.nodes}
-        for node_id in (
-            set(delta.preserve_node_ids) & set(active_settlements) & set(replacement_nodes)
-        ):
-            if node_id not in active_nodes or plan_node_digest(
+        preserved_ids = set(delta.preserve_node_ids)
+        missing_from_replacement = preserved_ids - set(replacement_nodes)
+        if missing_from_replacement:
+            raise AgentTaskError(
+                "cannot preserve node(s) absent from replacement graph: "
+                + ", ".join(sorted(missing_from_replacement))
+            )
+        missing_from_active = preserved_ids - set(active_nodes)
+        if missing_from_active:
+            raise AgentTaskError(
+                "cannot preserve node(s) absent from active graph: "
+                + ", ".join(sorted(missing_from_active))
+            )
+        unsettled = preserved_ids - set(active_settlements)
+        if unsettled:
+            raise AgentTaskError(
+                "cannot preserve unsettled node(s): " + ", ".join(sorted(unsettled))
+            )
+        for node_id in preserved_ids:
+            if plan_node_digest(
                 active_nodes[node_id]
             ) != plan_node_digest(replacement_nodes[node_id]):
                 raise AgentTaskError(
@@ -2675,8 +2691,7 @@ class AgentTaskCoordinator:
         preserved = tuple(
             item.model_copy(update={"revision_id": plan_graph.revision_id})
             for node_id, item in active_settlements.items()
-            if node_id in set(delta.preserve_node_ids)
-            and node_id in {node.node_id for node in plan_graph.nodes}
+            if node_id in preserved_ids
         )
         return self.begin_revision(
             task_id,

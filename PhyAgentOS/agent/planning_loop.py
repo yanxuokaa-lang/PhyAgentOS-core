@@ -713,7 +713,9 @@ class AgentLoopNodeExecutor:
             if hasattr(activation, "__await__"):
                 await activation
         attempts = 1 + self.max_node_turn_continuations
+        previous_fingerprint: tuple[Any, ...] | None = None
         for _attempt in range(attempts):
+            before_fingerprint = self._planning_fact_fingerprint(context)
             resumed = await self._resume_node(context)
             if resumed is not None:
                 return resumed
@@ -741,6 +743,17 @@ class AgentLoopNodeExecutor:
             turn_failure_code = getattr(turn_result, "turn_failure_code", None)
             if turn_failure_code:
                 raise NodeTurnIncompleteError(context.node_id, turn_failure_code)
+            after_fingerprint = self._planning_fact_fingerprint(context)
+            if after_fingerprint == before_fingerprint:
+                if previous_fingerprint == after_fingerprint:
+                    raise NodeTurnIncompleteError(
+                        context.node_id,
+                        "node_selection_no_progress: Coordinator facts did not change "
+                        "after a corrective planning turn",
+                    )
+                previous_fingerprint = after_fingerprint
+            else:
+                previous_fingerprint = None
             rejections = self._selection_rejections(context)
             if rejections and self._pending_selection(context) is None:
                 code = str(rejections[-1].get("code", "planning_selection_rejected"))
@@ -771,6 +784,48 @@ class AgentLoopNodeExecutor:
             else "Agent produced no planning-bound Tool execution; retry the current revision"
         )
         raise NodeTurnIncompleteError(context.node_id, reason)
+
+    def _planning_fact_fingerprint(self, context: NodeExecutionContext) -> tuple[Any, ...]:
+        """Summarize durable node facts; repeated reads are not progress."""
+        task = self.coordinator.get_task(context.task_id)
+        revision = task.active_revision
+        records = tuple(
+            (
+                getattr(item, "record_id", None),
+                item.status,
+                getattr(item, "terminal", None),
+                getattr(item, "error", {}).get("code")
+                if isinstance(getattr(item, "error", None), dict)
+                else None,
+            )
+            for item in getattr(revision, "execution_records", ())
+            if getattr(item, "node_id", None) == context.node_id
+        )
+        selections = tuple(
+            (
+                item.node_id,
+                item.resumable_selection.tool_id
+                if item.resumable_selection is not None
+                else None,
+                item.resumable_selection.planning_binding.decision_trace_ref
+                if item.resumable_selection is not None
+                else None,
+            )
+            for item in getattr(revision, "planning_selections", ())
+            if getattr(item, "node_id", None) == context.node_id
+        )
+        rejections = self._selection_rejections(context)
+        latest_rejection = rejections[-1] if rejections else {}
+        return (
+            getattr(revision, "revision_id", context.revision_id),
+            len(records),
+            records[-1] if records else None,
+            len(selections),
+            selections[-1] if selections else None,
+            len(rejections),
+            latest_rejection.get("code"),
+            latest_rejection.get("message"),
+        )
 
     async def _resume_node(
         self, context: NodeExecutionContext,
@@ -1391,7 +1446,9 @@ class PlanningLoopAdapter:
                 revision.plan_graph,
                 {
                     item.node_id: item.status
-                    for item in self.coordinator.effective_node_settlements(task_id)
+                    for item in self.coordinator.effective_node_settlements(
+                        task_id, revision.revision_id
+                    )
                 },
                 set(evidence_refs),
                 condition_facts or {},

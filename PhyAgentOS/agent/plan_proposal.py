@@ -153,13 +153,18 @@ def compile_task_plan(
     initial_condition_facts: dict[str, bool] | None = None,
 ) -> PlanGraph:
     """Own protocol metadata, never select entities, Tools, or dependencies."""
-    binding = task.primary_skill_binding
-    tools = binding.required_tools if binding is not None else tuple(task.tool_bindings)
+    binding = getattr(task, "primary_skill_binding", None)
+    tools = (
+        binding.required_tools
+        if binding is not None
+        else tuple(getattr(task, "tool_bindings", ()))
+    )
     if binding is None and task.runtime_binding is None:
         raise ValueError("semantic plan submission requires a bound Runtime")
     parsed = tuple(PlanNode.model_validate(node) for node in nodes)
     _validate_benchmark_plan_inputs(task, parsed)
     parsed = _complete_persisted_runtime_bindings(task, parsed)
+    _validate_projection_source_reachability(task, parsed, tools)
     if _task_goal_destinations(task)[0]:
         unresolved = [
             node.node_id
@@ -329,10 +334,97 @@ def canonicalize_plan_graph(task: AgentTaskRecord, graph: PlanGraph) -> PlanGrap
     nodes = tuple(graph.nodes)
     _validate_benchmark_plan_inputs(task, nodes)
     normalized = _complete_persisted_runtime_bindings(task, nodes)
+    binding = getattr(task, "primary_skill_binding", None)
+    tools = (
+        binding.required_tools
+        if binding is not None
+        else tuple(getattr(task, "tool_bindings", ()))
+    )
+    _validate_projection_source_reachability(task, normalized, tools)
     payload = graph.model_dump(mode="json")
     payload["nodes"] = [node.model_dump(mode="json") for node in normalized]
     payload["graph_digest"] = plan_graph_digest(payload)
     return PlanGraph.model_validate(payload)
+
+
+def _validate_projection_source_reachability(
+    task: AgentTaskRecord,
+    nodes: tuple[PlanNode, ...],
+    tools: tuple[Any, ...],
+) -> None:
+    """Reject semantic graphs whose declared projection inputs cannot be consumed.
+
+    This is a structural admission check. It does not choose a producer record or
+    inject arguments; it only proves that a named source slot has a reachable
+    authority in the graph or in the task's already persisted evidence.
+    """
+    policies = {
+        tool.tool_id: tool.planning_policy
+        for tool in tools
+        if getattr(tool, "planning_policy", None) is not None
+    }
+    record_pool = tuple(
+        record
+        for revision in getattr(task, "revisions", ())
+        for record in getattr(revision, "execution_records", ())
+    )
+    if getattr(task, "execution_records", None):
+        from PhyAgentOS.agent.planning_context import current_scene_query_records
+
+        record_pool = current_scene_query_records(task)
+    successful_records = {
+        record.tool_id
+        for record in record_pool
+        if getattr(record, "status", None) == "succeeded"
+    }
+    by_id = {node.node_id: node for node in nodes}
+    errors: list[str] = []
+    for node in nodes:
+        consumer_policies = tuple(
+            policy for policy in policies.values()
+            if node.capability in getattr(policy, "capabilities", ())
+            and getattr(policy, "argument_projection_plan", None) is not None
+            and policy.argument_projection_plan.source_slots
+        )
+        policy_errors: list[list[str]] = []
+        for policy in consumer_policies:
+            errors_for_policy: list[str] = []
+            for slot, source in policy.argument_projection_plan.source_slots.items():
+                if source.source_scope == "predecessor":
+                    reachable = any(
+                        dependency in by_id
+                        and source.tool_id in policies
+                        and by_id[dependency].capability
+                        in getattr(policies[source.tool_id], "capabilities", ())
+                        for dependency in node.dependencies
+                    )
+                elif source.source_scope == "evidence":
+                    reachable = source.tool_id in successful_records
+                else:
+                    reachable = (
+                        source.tool_id in successful_records
+                        or any(
+                            dependency in by_id
+                            and source.tool_id in policies
+                            and by_id[dependency].capability
+                            in getattr(policies[source.tool_id], "capabilities", ())
+                            for dependency in node.dependencies
+                        )
+                    )
+                if not reachable:
+                    errors_for_policy.append(
+                        f"{node.node_id}.{policy.tool_id}.{slot} requires "
+                        f"{source.source_scope} source Tool {source.tool_id}"
+                    )
+            policy_errors.append(errors_for_policy)
+        if policy_errors and all(policy_errors):
+            errors.extend(item for group in policy_errors for item in group)
+    if errors:
+        raise ValueError(
+            "projection_source_unreachable: "
+            + "; ".join(errors)
+            + "; materialize a graph with reachable dependencies or authorized evidence"
+        )
 
 
 def _complete_persisted_runtime_bindings(

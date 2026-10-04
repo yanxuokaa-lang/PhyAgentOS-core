@@ -13,6 +13,7 @@ from PhyAgentOS.forge.binding import BoundToolSpec, ForgeSkillBinding
 from PhyAgentOS.forge.task import AgentTaskCoordinator, AgentTaskStatus
 from PhyAgentOS.planning import (
     AdmissionContext,
+    NodeSettlement,
     PlanGraph,
     PlanNode,
     ToolResultEnvelope,
@@ -182,6 +183,12 @@ def test_agent_composed_plan_is_effectively_wired_without_motion(tmp_path):
         },
     )
     assert observe is not None and observe.allowed and observe.motion_authorized is False
+    coordinator.record_node_settlement(NodeSettlement(
+        task_id=task.task_id,
+        revision_id=graph.revision_id,
+        node_id="observe",
+        status="completed",
+    ))
 
     context["value"] = AdmissionContext(
         scene_revision="scene-1",
@@ -200,6 +207,12 @@ def test_agent_composed_plan_is_effectively_wired_without_motion(tmp_path):
         },
     )
     assert understand is not None and understand.allowed
+    coordinator.record_node_settlement(NodeSettlement(
+        task_id=task.task_id,
+        revision_id=graph.revision_id,
+        node_id="understand",
+        status="completed",
+    ))
 
     context["value"] = AdmissionContext(
         scene_revision="scene-1",

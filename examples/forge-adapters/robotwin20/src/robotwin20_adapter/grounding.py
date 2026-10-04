@@ -22,6 +22,18 @@ _DEFERRED_BINDING_AMBIGUITIES = {
 }
 
 
+def _evidence_error(code, message):
+    return PreparationProviderError(
+        code,
+        message,
+        failure_owner="evidence",
+        retryable_in_revision=False,
+        requires_replan=True,
+        recommended_action="refresh_declared_evidence",
+        fresh_evidence_requirements=("current_observation_lineage",),
+    )
+
+
 class Grounding:
     def __init__(self, client, root, scene_source, *, support_policy=None, collision_policy=None,
                  goal_source="observation_owned", depth_scale_to_m=0.001):
@@ -684,8 +696,10 @@ class Grounding:
         by_execution = {item["entity_ref"]: (ref, item) for ref, item in binding["objects"].items()}
         missing = [item["entity_ref"] for item in facts["objects"] if item["entity_ref"] not in by_execution]
         if missing:
-            raise PreparationProviderError("observed_collision_coverage_incomplete",
-                                           "observed collision coverage is incomplete; bind all observed obstacles")
+            raise _evidence_error(
+                "observed_collision_coverage_incomplete",
+                "observed collision coverage is incomplete; bind all observed obstacles",
+            )
         facts["objects"] = []
         for ref, model in by_execution.values():
             item = deepcopy(model)
@@ -697,15 +711,22 @@ class Grounding:
             observed, understanding = self.observations[identity], self.understandings[identity]
             masks = [a for a in understanding.get("derived_artifacts", [])
                      if a.get("kind") == "instance_mask" and a.get("entity_ref") == obj["entity_ref"]]
-            depths = [a for a in observed.get("artifacts", []) if a.get("kind") == "depth"]
-            if len(masks) != 1 or len(depths) != 1:
-                raise PreparationProviderError("observed_collision_unavailable", "one target mask and complete scene depth are required")
+            depth = self._depth_artifact_for_binding(
+                observed, binding, code="observed_collision_unavailable"
+            )
+            if len(masks) != 1:
+                raise _evidence_error(
+                    "observed_collision_unavailable",
+                    "one target mask in the bound observation view is required",
+                )
             mask = masks[0]
             if any(mask.get(k) != binding[k] for k in IDENTITY_KEYS) or mask.get("frame_id") != binding["frame_id"]:
-                raise PreparationProviderError("observed_collision_unavailable", "target mask lineage differs from binding")
+                raise _evidence_error(
+                    "observed_collision_unavailable", "target mask lineage differs from binding"
+                )
             facts["observed_collision"] = {
                 **{k: binding[k] for k in IDENTITY_KEYS}, "frame_id": binding["frame_id"],
-                "world_T_camera": binding["world_T_observation"], "depth_ref": depths[0]["ref"],
+                "world_T_camera": binding["world_T_observation"], "depth_ref": depth["ref"],
                 "target_mask_ref": mask["artifact_ref"], "target_entity_ref": obj["entity_ref"],
                 "policy": self.collision_policy.to_dict(), "visibility_scope": "observed_only",
                 "unknown_space_policy": "report_for_agent_recovery",
@@ -880,21 +901,9 @@ class Grounding:
     def _observed_support_from_depth(self, binding, understanding):
         identity = tuple(binding[k] for k in IDENTITY_KEYS)
         observed = self.observations[identity]
-        depths = [item for item in observed.get("artifacts", []) if item.get("kind") == "depth"]
-        if len(depths) != 1:
-            raise PreparationProviderError(
-                "observed_support_unavailable", "one current scene depth artifact is required"
-            )
-        depth_artifact = depths[0]
-        observed_frame = observed.get("frame")
-        if (
-            any(observed.get(key) != binding[key] for key in IDENTITY_KEYS)
-            or not isinstance(observed_frame, Mapping)
-            or observed_frame.get("frame_id") != binding["frame_id"]
-        ):
-            raise PreparationProviderError(
-                "observed_support_unavailable", "scene observation lineage differs from binding"
-            )
+        depth_artifact = self._depth_artifact_for_binding(
+            observed, binding, code="observed_support_unavailable"
+        )
 
         entities = understanding.get("entities", [])
         masks = [item for item in understanding.get("derived_artifacts", [])
@@ -903,20 +912,20 @@ class Grounding:
         if (len(entity_refs) != len(entities)
                 or any(not isinstance(ref, str) or not ref for ref in entity_refs)
                 or len(set(entity_refs)) != len(entity_refs)):
-            raise PreparationProviderError(
+            raise _evidence_error(
                 "observed_support_unavailable", "current scene entities have invalid identities"
             )
         mask_refs = [item.get("entity_ref") for item in masks]
         if (not entity_refs or len(masks) != len(entity_refs)
                 or any(not isinstance(ref, str) or not ref for ref in mask_refs)
                 or set(mask_refs) != set(entity_refs)):
-            raise PreparationProviderError(
+            raise _evidence_error(
                 "observed_support_unavailable", "one current instance mask per observed entity is required"
             )
         for mask in masks:
             if (any(mask.get(key) != binding[key] for key in IDENTITY_KEYS)
                     or mask.get("frame_id") != binding["frame_id"]):
-                raise PreparationProviderError(
+                raise _evidence_error(
                     "observed_support_unavailable", "instance mask lineage differs from binding"
                 )
 
@@ -941,7 +950,63 @@ class Grounding:
                 policy=self.support_policy,
             )
         except (KeyError, OSError, TypeError, ValueError) as exc:
-            raise PreparationProviderError("observed_support_unavailable", str(exc)) from exc
+            raise _evidence_error("observed_support_unavailable", str(exc)) from exc
+
+    @staticmethod
+    def _depth_artifact_for_binding(observed, binding, *, code):
+        """Resolve one depth artifact from the observation view bound to planning."""
+
+        observed_frame = observed.get("frame")
+        if (
+            any(observed.get(key) != binding[key] for key in IDENTITY_KEYS)
+            or not isinstance(observed_frame, Mapping)
+            or observed_frame.get("frame_id") != binding["frame_id"]
+        ):
+            raise _evidence_error(code, "scene observation lineage differs from binding")
+
+        views = observed.get("views")
+        if isinstance(views, list) and views:
+            matching_views = [
+                view
+                for view in views
+                if isinstance(view, Mapping)
+                and view.get("observation_ref") == binding["observation_ref"]
+                and view.get("calibration_ref") == binding["calibration_ref"]
+                and isinstance(view.get("frame"), Mapping)
+                and view["frame"].get("frame_id") == binding["frame_id"]
+            ]
+            if len(matching_views) != 1:
+                raise _evidence_error(
+                    code, "bound observation view is absent or ambiguous"
+                )
+            depths = [
+                item
+                for item in matching_views[0].get("artifacts", [])
+                if isinstance(item, Mapping) and item.get("kind") == "depth"
+            ]
+        else:
+            depths = [
+                item
+                for item in observed.get("artifacts", [])
+                if isinstance(item, Mapping) and item.get("kind") == "depth"
+            ]
+        if len(depths) != 1 or not isinstance(depths[0].get("ref"), str):
+            raise _evidence_error(
+                code, "one depth artifact from the bound observation view is required"
+            )
+        depth = depths[0]
+        artifact_lineage = {
+            "observation_ref": binding["observation_ref"],
+            "scene_revision": binding["scene_revision"],
+            "calibration_ref": binding["calibration_ref"],
+            "frame_id": binding["frame_id"],
+        }
+        if any(
+            key in depth and depth.get(key) != value
+            for key, value in artifact_lineage.items()
+        ):
+            raise _evidence_error(code, "depth artifact lineage differs from binding")
+        return depth
 
 
 class GroundingEndpoint:
