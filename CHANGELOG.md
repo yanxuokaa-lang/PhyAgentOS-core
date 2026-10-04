@@ -39,6 +39,11 @@
 - 聚焦 Core `263 passed`、完整 Core `773 passed`；聚焦 Adapter/Skill `250 passed`；完整 Adapter/Skill `1136 passed, 1 skipped, 5 个在干净 HEAD 同样失败的既有基线`；Ruff、compileall、`git diff --check` 通过。
 - Node SHA-256 `f1379e2aff8162397bab08e313118f6222f7b0f5192673e7a7b82ea1543fb69a`；Skill SHA-256 `be328fdc12f9a8065365e1be8c2da1017ef660bdb9430119a8bc964a5b59e28a`。未安装、未启动 Runtime/Gateway、未创建任务、未调用 Query/Action、未执行运动。
 
+### Git 提交 / Git Commit
+- Commit: `7e23edf`
+- Branch: `feature/planning-loop`
+- 时间 / Time: 2026-10-05 Asia/Shanghai
+
 ## v12.6.3 (2026-10-04 02:32) - codex
 
 ### 变更摘要 / Change Summary
