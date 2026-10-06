@@ -38,6 +38,11 @@
 - 聚焦 recovery/planning `54 passed, 143 deselected`；完整 Core `780 passed`；Ruff、compileall、`git diff --check` 通过。
 - 未安装/重启 Runtime，未变更 live AgentTask，未调用 Gateway Query/Action，未执行 simulator step 或物理运动。
 
+### Git 提交 / Git Commit
+- Commit: `cf7ed3a`
+- Branch: `feature/planning-loop`
+- 时间 / Time: 2026-10-06 15:18 Asia/Shanghai
+
 ## v12.7.3 (2026-10-06 14:43) - codex
 
 ### 变更摘要 / Change Summary
