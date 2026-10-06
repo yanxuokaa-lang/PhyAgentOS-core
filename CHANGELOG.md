@@ -38,6 +38,11 @@
 - Ruff、compileall、`git diff --check` 通过；Node `0.10.4` SHA-256 `074edf599aafae8cf820feee777550e05cdec0fe1148b314ba8769c1664cc440`；Skill `2.10.10` SHA-256 `fe6ef2db9bd02bca339003267d0f8e3927ee8ff5cb041126c4b4b1bee2b5e18b`。
 - 未安装/重启 Runtime，未创建 AgentTask，未调用 Gateway Query/Action，未执行仿真或物理运动 / no Runtime install/restart, AgentTask, Gateway Query/Action, simulator motion, or physical motion.
 
+### Git 提交 / Git Commit
+- Commit: `c52a5c4`
+- Branch: `feature/planning-loop`
+- 时间 / Time: 2026-10-06 14:38 Asia/Shanghai
+
 ## v12.7.1 (2026-10-06 00:00) - codex
 
 ### 变更摘要 / Change Summary
