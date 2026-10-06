@@ -5,6 +5,43 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.8.2 (2026-10-06 20:10) - codex
+
+### 变更摘要 / Change Summary
+- [sense] [fix] Readiness 持久化选定机械臂的可执行路线，Persistent Action 校验 scene/route/assignment/arm/frame/起始关节状态后直接消费，禁止对同一路线二次规划。 (local)
+- [sense] [fix] Persist the selected arm's executable route in readiness and make Persistent Action consume it after scene/route/assignment/arm/frame/start-state validation, prohibiting a second solve of the same route. (local)
+- [comm] [fix] Action 失败以 provider-neutral owner/retry/replan/phase 事实进入 AgentLoop；零步失败不声明实体变化，公开结果不泄露私有轨迹。 (local)
+- [comm] [fix] Feed provider-neutral owner/retry/replan/phase facts to the AgentLoop; zero-step failures claim no entity changes and public results expose no private trajectory. (local)
+
+### 文件变更详情 / File Changes
+- [新增 / Added] `PREPARE_ACTION_ROUTE_PLAN_DIAGNOSIS_20261006.md:L1-L49`、`ACTION_FAILURE_EVIDENCE_AGENTLOOP_DIAGNOSIS_20261006.md:L1-L57`、`IMPLEMENTATION_REVIEW_V12_8_2.md:L1-L68`：两份诊断与七维审核 / two diagnoses and seven-dimension review.
+- [修改 / Modified] `robotwin_route_planner.py:L180-L299`、`robotwin_simulation_probe_worker.py:L104-L121,L533-L660,L1500-L1640`、`robotwin_persistent_engine.py:L487-L564,L627-L730`：Readiness 产出、Action 校验/消费 prepared execution plan，结构化失败并修正零步 effects / produce, validate, and consume the prepared plan, structure failures, and correct zero-step effects.
+- [修改 / Modified] `recovery_decisions.py:L25-L46,L107-L139`、`outcome_projection.py:L24-L69,L189-L310` 与 Skill Action contract/projection：将有界失败事实交给 Agent，自主选择恢复且不暴露轨迹 / present bounded failure facts to the Agent for autonomous recovery decisions without exposing trajectories.
+- [修改 / Modified] Adapter `0.9.2`、Skill `2.10.13`、Node `0.10.7` manifests, profiles, tests, and release records.
+
+### 关键 Diff / Key Diff
+```diff
+-Action calls evaluate_route_arm() again
++Action loads readiness execution_plan and executes its validated segments
+-zero-step failure changed_entity_refs=[target]
++zero-step failure changed_entity_refs=[]
++owner/retry/replan/phase/arm failure facts -> AgentLoop
+```
+
+### 七维 Code Review / Seven-Dimension Review
+- Blocker 0、Major 0。七个维度均通过；未增加 RGB/任务/相机硬编码或自动观察、选择、重试、replan、Action。保留限制是简化世界仍不覆盖未识别及 unknown/occluded 障碍物。
+- Zero Blocker or Major findings. All seven dimensions pass; no RGB/task/camera hardcoding or automatic observation, selection, retry, replan, or Action was added. The simplified world still excludes unidentified and unknown/occluded obstacles.
+
+### 验证 / Validation
+- Core `781 passed`；Skill `375 passed`；Adapter changed path `79 passed, 5 deselected`；Ruff、compileall、`git diff --check` 通过。
+- Node SHA-256 `cf2b799baa5283efbd74f24126fea7890423ec198598814bacfea53bef420084`；Skill bundle SHA-256 `1bb7f5803a910889c6fe2d2c29e1b829b75acba8ef289d81b7ce1255aaf2f99f`。
+- 未创建/恢复 AgentTask，未调用 Gateway Query/Action，未执行 simulator step 或物理运动，未安装或重启 Runtime。
+
+### Git 提交 / Git Commit
+- Commit: `ed49b7a`（实现与诊断 / implementation and diagnoses）
+- Branch: `feature/planning-loop`
+- 时间 / Time: 2026-10-06 21:27 Asia/Shanghai
+
 ## v12.8.1 (2026-10-06 18:30) - codex
 
 ### 变更摘要 / Change Summary
@@ -150,31 +187,3 @@
 - Commit: `cf7ed3a`
 - Branch: `feature/planning-loop`
 - 时间 / Time: 2026-10-06 15:18 Asia/Shanghai
-
-## v12.7.3 (2026-10-06 14:43) - codex
-
-### 变更摘要 / Change Summary
-- [env] [chore] 在零 active ownership 和零非终态 AgentTask 下正常停止旧 Skill `2.10.9`，安装 Skill `2.10.10` 与 Node `0.10.4`，并使用原 profile 和 operator-owned env 文件启动新 Runtime。 (local)
-- [env] [chore] With zero active ownership and zero non-terminal AgentTasks, normally stop old Skill `2.10.9`, install Skill `2.10.10` and Node `0.10.4`, and start the new Runtime with the existing profile and operator-owned env file. (local)
-
-### 文件变更详情 / File Changes
-- [修改 / Modified] `changelog/2026-10.md:L3-L43`：记录部署计划、停止条件、实际停止/安装/启动、无动作验收与提交 / record deployment planning, stop conditions, actual stop/install/start, no-motion acceptance, and the commit.
-- [修改 / Modified] `CHANGELOG.md:L7-L33`：维护最近五个版本的完整记录 / maintain complete records for the latest five versions.
-
-### 关键 Diff / Key Diff
-```diff
--pick-place-workflow 2.10.9 (running)
-+pick-place-workflow 2.10.10 (running)
--robotwin20_persistent_host 0.10.3
-+robotwin20_persistent_host 0.10.4 (SHA-256 verified)
-```
-
-### 验证 / Validation
-- `paos skill status`：Skill `2.10.10`、Dora running、Gateway ready、11 个 Tool context ready；实际 host 路径为 `robotwin20_persistent_host-0.10.4-linux-x86_64`，Node lock SHA-256 verified。
-- Runtime ownership 为空、非终态 AgentTask 为 0、本地 Qwen 为 `qwen3-vl-4b-awq`；未创建任务、未调用 Query/Action、未执行仿真或物理运动。
-- Skill archive SHA-256 `fe6ef2db9bd02bca339003267d0f8e3927ee8ff5cb041126c4b4b1bee2b5e18b`；Node archive SHA-256 `074edf599aafae8cf820feee777550e05cdec0fe1148b314ba8769c1664cc440`。
-
-### Git 提交 / Git Commit
-- Commit: `a3fa0d5`
-- Branch: `feature/planning-loop`
-- 时间 / Time: 2026-10-06 14:48 Asia/Shanghai
