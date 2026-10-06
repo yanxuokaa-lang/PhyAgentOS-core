@@ -4,6 +4,35 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.7.1 (2026-10-06 00:00) - codex
+
+### 变更摘要 / Change Summary
+- [env] [chore] 停止无 ownership 的旧 `pick-place-workflow 2.10.8`，安装 Skill `2.10.9` 与 Node `0.10.3`，保留 `robotwin-blocks-ranking-graspnet` profile 和本地 Qwen。 (local)
+- [env] [chore] Gracefully stop the old ownership-free `pick-place-workflow 2.10.8`, install Skill `2.10.9` and Node `0.10.3`, and retain the `robotwin-blocks-ranking-graspnet` profile and local Qwen. (local)
+
+### 文件变更详情 / File Changes
+- [修改 / Modified] `changelog/2026-10.md:L3-L43`：记录停止、安装、preflight 分支、启动和运行验证 / record stop, installation, preflight branch, startup, and runtime validation.
+- [修改 / Modified] `CHANGELOG.md:L7-L25`：加入最近版本的完整部署摘要 / add the latest deployment summary to the recent-version index.
+
+### 关键 Diff / Key Diff
+```diff
+-pick-place-workflow 2.10.8 (running)
++pick-place-workflow 2.10.9 (running)
+-robotwin20_persistent_host 0.10.2
++robotwin20_persistent_host 0.10.3
+```
+
+### 验证 / Validation
+- `paos skill status`：Skill `2.10.9`、Dora running、Gateway ready，11 个 Tool context 全部 ready；`paos forge-node verify`：Node `0.10.3` SHA-256 verified。
+- `paos skill status`: Skill `2.10.9`, Dora running, Gateway ready, all 11 Tool contexts ready; `paos forge-node verify`: Node `0.10.3` SHA-256 verified.
+- Runtime ownership 为空，AgentTask 无非终态；Qwen `/v1/models` 返回 `qwen3-vl-4b-awq`；未创建 AgentTask、未调用 Query/Action、未执行运动。
+- Runtime ownership is empty with no non-terminal AgentTask; Qwen `/v1/models` returns `qwen3-vl-4b-awq`; no AgentTask, Query/Action, or motion was performed.
+- Skill SHA-256 `be328fdc12f9a8065365e1be8c2da1017ef660bdb9430119a8bc964a5b59e28a`；Node SHA-256 `f1379e2aff8162397bab08e313118f6222f7b0f5192673e7a7b82ea1543fb69a`。
+
+### Git 提交 / Git Commit
+- Commit: pending (deployment log commit)
+- Branch: `feature/planning-loop`
+
 ## v12.7.0 (2026-10-04 23:44) - codex
 
 ### 变更摘要 / Change Summary
