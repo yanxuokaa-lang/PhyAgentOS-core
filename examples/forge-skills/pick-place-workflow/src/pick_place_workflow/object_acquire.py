@@ -28,6 +28,7 @@ _FAILURE_OWNERS = (
     "readiness",
     "planner",
     "execution",
+    "evidence",
     "settlement",
     "operator",
     "infrastructure",
@@ -45,6 +46,14 @@ _SUMMARY_KEYS = {
     "evidence_availability",
     "artifact_refs",
     "bounded_metric_names",
+    "retryable_in_revision",
+    "requires_replan",
+    "recommended_action",
+    "phase",
+    "selected_arm",
+    "failed_phase",
+    "arm_attempts",
+    "evidence_refs",
 }
 
 
@@ -73,6 +82,14 @@ class AcquireSnapshot:
     evidence_availability: str = "none"
     artifact_refs: tuple[str, ...] = field(default_factory=tuple)
     bounded_metric_names: tuple[str, ...] = field(default_factory=tuple)
+    retryable_in_revision: bool = False
+    requires_replan: bool = False
+    recommended_action: str = "continue"
+    phase: str = "acquire"
+    selected_arm: str | None = None
+    failed_phase: str | None = None
+    arm_attempts: tuple[dict[str, Any], ...] = field(default_factory=tuple)
+    evidence_refs: tuple[str, ...] = field(default_factory=tuple)
     pending_polls: int = 0
     provider_available: bool = True
 
@@ -132,8 +149,57 @@ def _summary_schema() -> dict[str, Any]:
                 "type": "array",
                 "items": {"type": "string", "pattern": r"^[a-z][a-z0-9_]{0,63}$"},
             },
+            "retryable_in_revision": {"type": "boolean"},
+            "requires_replan": {"type": "boolean"},
+            "recommended_action": {"type": "string", "minLength": 1},
+            "phase": {"type": "string", "minLength": 1},
+            "selected_arm": {"type": ["string", "null"]},
+            "failed_phase": {"type": ["string", "null"]},
+            "arm_attempts": {"type": "array", "items": _arm_attempt_schema()},
+            "evidence_refs": {
+                "type": "array",
+                "items": {"type": "string", "pattern": r"^artifact://[^/]+/.+$"},
+            },
         },
     }
+
+
+def _arm_attempt_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["arm", "status"],
+        "properties": {
+            "arm": {"type": "string", "minLength": 1},
+            "status": {"enum": ["pass", "fail"]},
+            "failed_phase": {"type": ["string", "null"]},
+            "failed_waypoint_index": {"type": ["integer", "null"], "minimum": 0},
+            "detail": {"type": ["string", "null"]},
+        },
+    }
+
+
+def validate_recovery_arm_attempts(value: Any) -> bool:
+    allowed = {"arm", "status", "failed_phase", "failed_waypoint_index", "detail"}
+    if not isinstance(value, (tuple, list)):
+        return False
+    for item in value:
+        if not isinstance(item, dict) or set(item) - allowed:
+            return False
+        if not isinstance(item.get("arm"), str) or not item["arm"].strip():
+            return False
+        if item.get("status") not in {"pass", "fail"}:
+            return False
+        if item.get("failed_phase") is not None and not isinstance(item["failed_phase"], str):
+            return False
+        index = item.get("failed_waypoint_index")
+        if index is not None and (
+            isinstance(index, bool) or not isinstance(index, int) or index < 0
+        ):
+            return False
+        if item.get("detail") is not None and not isinstance(item["detail"], str):
+            return False
+    return True
 
 
 def _terminal_result_schema() -> dict[str, Any]:
@@ -391,6 +457,23 @@ def _validate_snapshot(snapshot: AcquireSnapshot) -> str | None:
         return "invalid_snapshot"
     if not isinstance(snapshot.provider_available, bool):
         return "invalid_snapshot"
+    if not isinstance(snapshot.retryable_in_revision, bool) or not isinstance(snapshot.requires_replan, bool):
+        return "invalid_recovery_facts"
+    if not isinstance(snapshot.recommended_action, str) or not snapshot.recommended_action.strip():
+        return "invalid_recovery_facts"
+    if not isinstance(snapshot.phase, str) or not snapshot.phase.strip():
+        return "invalid_recovery_facts"
+    if snapshot.selected_arm is not None and (not isinstance(snapshot.selected_arm, str) or not snapshot.selected_arm.strip()):
+        return "invalid_recovery_facts"
+    if snapshot.failed_phase is not None and (not isinstance(snapshot.failed_phase, str) or not snapshot.failed_phase.strip()):
+        return "invalid_recovery_facts"
+    if not validate_recovery_arm_attempts(snapshot.arm_attempts):
+        return "invalid_recovery_facts"
+    if not isinstance(snapshot.evidence_refs, (tuple, list)) or any(
+        not isinstance(ref, str) or _ARTIFACT_REF.fullmatch(ref) is None
+        for ref in snapshot.evidence_refs
+    ):
+        return "invalid_recovery_facts"
     return None
 
 
@@ -408,6 +491,14 @@ def terminal_result(arguments: dict[str, Any], snapshot: AcquireSnapshot) -> dic
         "evidence_availability": snapshot.evidence_availability,
         "artifact_refs": list(snapshot.artifact_refs),
         "bounded_metric_names": list(snapshot.bounded_metric_names),
+        "retryable_in_revision": snapshot.retryable_in_revision,
+        "requires_replan": snapshot.requires_replan,
+        "recommended_action": snapshot.recommended_action,
+        "phase": snapshot.phase,
+        "selected_arm": snapshot.selected_arm,
+        "failed_phase": snapshot.failed_phase,
+        "arm_attempts": list(snapshot.arm_attempts),
+        "evidence_refs": list(snapshot.evidence_refs),
     }
     return {
         "status": snapshot.status,

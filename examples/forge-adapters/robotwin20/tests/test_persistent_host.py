@@ -471,6 +471,7 @@ def test_host_composes_tools_around_one_persistent_worker_client(tmp_path, monke
     assert worker_profile["allow_benchmark_scene_facts"] is True
     assert worker_profile["goal_source"] == "observation_owned"
     assert worker_profile["max_duration_s"] == 7
+    assert worker_profile["start_state_tolerance_rad"] == pytest.approx(1e-4)
     assert worker_profile["video"] == {
         "enabled": True,
         "fps": 25.0,

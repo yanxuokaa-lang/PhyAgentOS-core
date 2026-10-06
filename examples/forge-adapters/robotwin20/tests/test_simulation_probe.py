@@ -4,6 +4,7 @@ import hashlib
 import json
 import sys
 import time
+from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -56,6 +57,7 @@ from robotwin20_adapter import (
     load_simulation_probe_profile,
     motion_capability_digest,
 )
+from robotwin20_adapter.route_readiness import route_geometry_digest
 
 QUALIFICATION_TEST_IDS = (
     "nominal_position_command",
@@ -1733,14 +1735,26 @@ def execution_route(tmp_path, monkeypatch):
         "status": "pass", "unexpected_robot_environment_contacts": [],
     })
 
-    def run():
-        return probe_worker._run_candidate(
+    def run(*, require_prepared_plan=False):
+        if not require_prepared_plan:
+            return probe_worker._run_candidate(
+                task, request, candidate, {"joint_limit_policy": {}},
+                deadline=time.monotonic() + 10, stop_file=None, execution_state=state,
+            )[0]
+        phases = probe_worker.execute_candidate_phases(
             task, request, candidate, {"joint_limit_policy": {}},
             deadline=time.monotonic() + 10, stop_file=None, execution_state=state,
-        )[0]
+            require_prepared_plan=True,
+        )
+        while True:
+            try:
+                next(phases)
+            except StopIteration as completed:
+                return completed.value[0]
 
     return SimpleNamespace(
         run=run, state=state, task=task, phases=phases, planned=planned, gripped=gripped, commands=commands,
+        request=request, candidate=candidate,
     )
 
 
@@ -1773,6 +1787,105 @@ def test_persistent_assignment_limits_complete_route_qualification(execution_rou
     monkeypatch.setattr(probe_worker, "evaluate_route_arm", evaluate)
     execution_route.run()
     assert checked == ["left"]
+
+
+def test_persistent_action_consumes_prepared_plan_without_route_solve(execution_route, monkeypatch):
+    route = execution_route
+    request = route.request
+    candidate = route.candidate
+    planned_route = deepcopy(candidate["route"])
+    planned_route[-1]["waypoints"].append(
+        {"frame_id": "world", "position_m": [0.0, 0.0, 0.8],
+         "orientation_xyzw": [0.0, 0.0, 0.0, 1.0]}
+    )
+    segments = []
+    for phase in planned_route:
+        for index, waypoint in enumerate(phase["waypoints"]):
+            pose = probe_worker._route_pose(waypoint, request["frame_id"])
+            segments.append({
+                "phase": phase["phase"], "gripper_state": phase["gripper_state"],
+                "waypoint_index": index, "route_waypoint": deepcopy(waypoint),
+                "world_pose_pq_wxyz": pose, "position": [pose],
+                "velocity": [[0.0] * 7], "gripper_geometry": [],
+            })
+    route.state.update(
+        _assigned_arm="left",
+        _prepared_execution_plan={
+            "arm": "left", "arm_attempts": [{"arm": "left", "status": "pass"}],
+            "plan": {"segments": segments},
+        },
+    )
+    monkeypatch.setattr(
+        probe_worker, "evaluate_route_arm",
+        lambda *_args, **_kwargs: pytest.fail("Action replanned a readiness-owned route"),
+    )
+    trajectory = route.run(require_prepared_plan=True)
+    assert trajectory["arm"] == "left"
+    assert route.planned == []
+
+
+def _prepared_readiness_artifact(tmp_path, request, candidate):
+    route = deepcopy(candidate["route"])
+    route[-1]["waypoints"].append(
+        {"frame_id": request["frame_id"], "position_m": [0.0, 0.0, 0.8],
+         "orientation_xyzw": [0.0, 0.0, 0.0, 1.0]}
+    )
+    segments = []
+    for phase in route:
+        for index, waypoint in enumerate(phase["waypoints"]):
+            segments.append({
+                "phase": phase["phase"], "gripper_state": phase["gripper_state"],
+                "waypoint_index": index, "route_waypoint": deepcopy(waypoint),
+                "position": [[0.0] * 7], "velocity": [[0.0] * 7],
+            })
+    plan = {
+        "schema_version": "paos-robotwin20-prepared-execution-plan/v1",
+        "request_id": request["request_id"], "candidate_ref": candidate["candidate_ref"],
+        "entity_ref": candidate["entity_ref"], "scene_revision": request["scene_revision"],
+        "frame_id": request["frame_id"], "arm": "left", "initial_qpos": [0.0] * 7,
+        "segments": segments, "motion_authorized": False,
+    }
+    artifact = {
+        "route_geometry_digest": route_geometry_digest(request),
+        "request_id": request["request_id"], "candidate_ref": candidate["candidate_ref"],
+        "entity_ref": candidate["entity_ref"], "scene_revision": request["scene_revision"],
+        "motion_authorized": False, "world_change_started": False,
+        "planner_evaluation": {"arm_attempts": [{"arm": "left", "status": "pass", "execution_plan": plan}]},
+    }
+    ref = "artifact://prepared/readiness"
+    probe_worker._json_artifact(tmp_path, ref, artifact)
+    return ref, plan
+
+
+def test_prepared_plan_loader_rejects_legacy_artifact(tmp_path):
+    request = _route_request(tmp_path)
+    candidate = request["candidates"][0]
+    ref = "artifact://prepared/legacy"
+    probe_worker._json_artifact(tmp_path, ref, {
+        "route_geometry_digest": route_geometry_digest(request),
+        "request_id": request["request_id"], "candidate_ref": candidate["candidate_ref"],
+        "entity_ref": candidate["entity_ref"], "scene_revision": request["scene_revision"],
+        "motion_authorized": False, "world_change_started": False,
+        "planner_evaluation": {"arm_attempts": [{"arm": "left", "status": "pass", "segments": []}]},
+    })
+    with pytest.raises(SimulationProbeError, match="missing or legacy"):
+        probe_worker.load_prepared_execution_plan(
+            tmp_path, ref, request=request, candidate=candidate,
+            assignment={"readiness_evidence_ref": ref, "selected_arm_ids": ["left"]},
+            start_qpos=[0.0] * 7, start_tolerance_rad=1e-4,
+        )
+
+
+def test_prepared_plan_loader_rejects_start_state_drift(tmp_path):
+    request = _route_request(tmp_path)
+    candidate = request["candidates"][0]
+    ref, _plan = _prepared_readiness_artifact(tmp_path, request, candidate)
+    with pytest.raises(SimulationProbeError, match="start joint state drifted"):
+        probe_worker.load_prepared_execution_plan(
+            tmp_path, ref, request=request, candidate=candidate,
+            assignment={"readiness_evidence_ref": ref, "selected_arm_ids": ["left"]},
+            start_qpos=[0.1] * 7, start_tolerance_rad=1e-4,
+        )
 
 
 def test_failed_assigned_arm_never_falls_back_or_moves(execution_route, monkeypatch):

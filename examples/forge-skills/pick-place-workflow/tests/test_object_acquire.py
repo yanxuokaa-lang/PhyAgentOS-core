@@ -162,9 +162,17 @@ async def test_action_discovery_context_admission_pending_and_terminal_result():
         "world_change_started": True,
         "outcome_known": True,
         "evidence_availability": "partial",
-        "artifact_refs": ["artifact://acquire-7/settlement"],
-        "bounded_metric_names": ["lift_height", "gripper_closure"],
-    }
+            "artifact_refs": ["artifact://acquire-7/settlement"],
+            "bounded_metric_names": ["lift_height", "gripper_closure"],
+            "retryable_in_revision": False,
+            "requires_replan": False,
+            "recommended_action": "continue",
+            "phase": "acquire",
+            "selected_arm": None,
+            "failed_phase": None,
+            "arm_attempts": [],
+            "evidence_refs": [],
+        }
     assert provider.calls == 1
     assert provider.requests == [request_payload()]
     paths = [request.url.path for request in transport.requests]

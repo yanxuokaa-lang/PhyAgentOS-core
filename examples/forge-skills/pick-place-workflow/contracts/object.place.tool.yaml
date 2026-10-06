@@ -66,12 +66,12 @@ output_schema:
         capability_outcome_summary:
           type: object
           additionalProperties: false
-          required: [version, capability_phase, status, failure_owner, failure_code, world_change_started, outcome_known, evidence_availability, artifact_refs, post_release_evidence, release_confirmed, retreat_completed, clear_of_target, observation_ready, new_scene_revision, bounded_metric_names]
+          required: [version, capability_phase, status, failure_owner, failure_code, world_change_started, outcome_known, evidence_availability, artifact_refs, post_release_evidence, release_confirmed, retreat_completed, clear_of_target, observation_ready, new_scene_revision, bounded_metric_names, retryable_in_revision, requires_replan, recommended_action, phase, selected_arm, failed_phase, arm_attempts, evidence_refs]
           properties:
             version: {const: capability_outcome_summary_v1}
             capability_phase: {enum: [transport, descent, release, retreat, none]}
             status: {enum: [succeeded, failed, cancelled, stopped, unknown]}
-            failure_owner: {enum: [none, input, binding, readiness, planner, execution, settlement, operator, infrastructure, null]}
+            failure_owner: {enum: [none, input, binding, readiness, planner, execution, evidence, settlement, operator, infrastructure, null]}
             failure_code: {type: [string, 'null']}
             world_change_started: {type: boolean}
             outcome_known: {type: boolean}
@@ -96,6 +96,27 @@ output_schema:
             bounded_metric_names:
               type: array
               items: {type: string, pattern: '^[a-z][a-z0-9_]{0,63}$'}
+            retryable_in_revision: {type: boolean}
+            requires_replan: {type: boolean}
+            recommended_action: {type: string, minLength: 1}
+            phase: {type: string, minLength: 1}
+            selected_arm: {type: [string, 'null']}
+            failed_phase: {type: [string, 'null']}
+            arm_attempts:
+              type: array
+              items:
+                type: object
+                additionalProperties: false
+                required: [arm, status]
+                properties:
+                  arm: {type: string, minLength: 1}
+                  status: {enum: [pass, fail]}
+                  failed_phase: {type: [string, 'null']}
+                  failed_waypoint_index: {type: [integer, 'null'], minimum: 0}
+                  detail: {type: [string, 'null']}
+            evidence_refs:
+              type: array
+              items: {type: string, pattern: '^artifact://[^/]+/.+$'}
 robot_frame_profile:
   observation_frame: observation
   unit: m

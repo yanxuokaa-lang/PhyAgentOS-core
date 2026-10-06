@@ -50,4 +50,5 @@ preparation_timeout_s: 330
 allow_benchmark_scene_facts: true
 route_geometry_source: ${ROBOTWIN20_ROUTE_GEOMETRY_SOURCE}
 simulation_action_mode: ${ROBOTWIN20_SIMULATION_ACTION_MODE}
+start_state_tolerance_rad: 0.0001
 goal_source: ${ROBOTWIN20_GOAL_SOURCE}

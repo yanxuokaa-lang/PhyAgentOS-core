@@ -79,6 +79,7 @@ class CapabilityOutcomeFact(ExperienceModel):
         "readiness",
         "planner",
         "execution",
+        "evidence",
         "settlement",
         "operator",
         "infrastructure",

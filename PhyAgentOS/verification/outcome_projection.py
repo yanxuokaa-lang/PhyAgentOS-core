@@ -27,6 +27,7 @@ _FAILURE_OWNERS = {
     "readiness",
     "planner",
     "execution",
+    "evidence",
     "settlement",
     "operator",
     "infrastructure",
@@ -46,7 +47,22 @@ _SUMMARY_KEYS = {
     "artifact_refs",
     "bounded_metric_names",
 }
-_OPTIONAL_SUMMARY_KEYS = {"post_release_evidence"}
+_OPTIONAL_SUMMARY_KEYS = {
+    "post_release_evidence",
+    "release_confirmed",
+    "retreat_completed",
+    "clear_of_target",
+    "observation_ready",
+    "new_scene_revision",
+    "retryable_in_revision",
+    "requires_replan",
+    "recommended_action",
+    "phase",
+    "selected_arm",
+    "failed_phase",
+    "arm_attempts",
+    "evidence_refs",
+}
 
 
 @dataclass(frozen=True)
@@ -234,6 +250,69 @@ def _validate_summary(summary: dict[str, Any], *, record_status: Any) -> str | N
             or _validate_refs(evidence["artifact_refs"], evidence["availability"]) is not None
         ):
             return "invalid_post_release_evidence"
+    place_flags = (
+        "release_confirmed",
+        "retreat_completed",
+        "clear_of_target",
+        "observation_ready",
+    )
+    if any(name in summary for name in (*place_flags, "new_scene_revision")):
+        if not all(name in summary for name in (*place_flags, "new_scene_revision")):
+            return "invalid_place_outcome_fields"
+        if any(not isinstance(summary[name], bool) for name in place_flags):
+            return "invalid_place_outcome_fields"
+        revision = summary["new_scene_revision"]
+        if revision is not None and (not isinstance(revision, str) or not revision.strip()):
+            return "invalid_place_outcome_fields"
+    for name in ("retryable_in_revision", "requires_replan"):
+        if name in summary and not isinstance(summary[name], bool):
+            return "invalid_recovery_fields"
+    for name in ("recommended_action", "phase"):
+        if name in summary and (
+            not isinstance(summary[name], str) or not summary[name].strip()
+        ):
+            return "invalid_recovery_fields"
+    for name in ("selected_arm", "failed_phase"):
+        if name in summary and summary[name] is not None and (
+            not isinstance(summary[name], str) or not summary[name].strip()
+        ):
+            return "invalid_recovery_fields"
+    if "arm_attempts" in summary and not _valid_arm_attempts(summary["arm_attempts"]):
+        return "invalid_recovery_fields"
+    if "evidence_refs" in summary and _validate_optional_refs(summary["evidence_refs"]) is not None:
+        return "invalid_recovery_fields"
+    return None
+
+
+def _valid_arm_attempts(value: Any) -> bool:
+    allowed = {"arm", "status", "failed_phase", "failed_waypoint_index", "detail"}
+    if not isinstance(value, list):
+        return False
+    for item in value:
+        if not isinstance(item, dict) or set(item) - allowed:
+            return False
+        if not isinstance(item.get("arm"), str) or not item["arm"].strip():
+            return False
+        if item.get("status") not in {"pass", "fail"}:
+            return False
+        if item.get("failed_phase") is not None and not isinstance(item["failed_phase"], str):
+            return False
+        if item.get("failed_waypoint_index") is not None and (
+            isinstance(item["failed_waypoint_index"], bool)
+            or not isinstance(item["failed_waypoint_index"], int)
+            or item["failed_waypoint_index"] < 0
+        ):
+            return False
+        if item.get("detail") is not None and not isinstance(item["detail"], str):
+            return False
+    return True
+
+
+def _validate_optional_refs(refs: Any) -> str | None:
+    if not isinstance(refs, list) or any(not isinstance(ref, str) for ref in refs):
+        return "invalid"
+    if len(set(refs)) != len(refs) or any(_ARTIFACT_REF.fullmatch(ref) is None for ref in refs):
+        return "invalid"
     return None
 
 

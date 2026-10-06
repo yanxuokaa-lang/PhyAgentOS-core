@@ -2245,6 +2245,72 @@ def test_runtime_owned_non_replannable_failure_stops_without_model_recovery(tmp_
     asyncio.run(exercise())
 
 
+def test_successful_action_does_not_trigger_non_replannable_failure_shortcut(tmp_path):
+    async def exercise():
+        c, task = setup_task(tmp_path)
+        graph = compile_task_plan(task, semantic_nodes(1), reason="test plan")
+        c.expand_discovery_revision(
+            task.task_id,
+            plan_graph=graph,
+            plan_graph_ref="artifact://plans/successful-action-recovery",
+        )
+
+        def add_success(current):
+            current.active_revision.execution_records.append(ToolExecutionRecord(
+                record_id="successful-action",
+                revision_id=graph.revision_id,
+                node_id="chosen-0",
+                node_digest=plan_node_digest(graph.nodes[0]),
+                obligation_id=graph.nodes[0].obligation_id,
+                input_binding_digest="d" * 64,
+                decision_trace_ref="artifact://planning-traces/successful-action",
+                tool_id="object.acquire",
+                semantics="action",
+                caller_id="paos:test",
+                status="succeeded",
+                response={"data": {"result": {
+                    "status": "succeeded",
+                    "retryable_in_revision": False,
+                    "requires_replan": False,
+                    "recommended_action": "continue",
+                }}},
+            ))
+
+        c.store.update(task.task_id, add_success, event_type="fixture_successful_action")
+        settlement = NodeSettlement(
+            task_id=task.task_id,
+            revision_id=graph.revision_id,
+            node_id="chosen-0",
+            status="failed",
+            failure_code="postcondition_requires_review",
+        )
+        provider = ScriptedProvider([LLMResponse(
+            content=None,
+            tool_calls=[ToolCallRequest(
+                "decision",
+                "submit_recovery",
+                {"decision": "stop", "reason": "postcondition needs review"},
+            )],
+        )])
+
+        result = await AgentRecoveryDecisions(
+            provider, "fixture-model", c
+        ).select_recovery(
+            graph=graph,
+            settlement=settlement,
+            delta=build_replan_delta(graph, settlement),
+            context=settlement,
+        )
+
+        assert result == "stop"
+        assert len(provider.requests) == 1
+        assert c.store.events(task.task_id)[-1]["payload"]["reason"] == (
+            "postcondition needs review"
+        )
+
+    asyncio.run(exercise())
+
+
 def test_model_replan_preserves_task_identity_without_executing(tmp_path):
     async def exercise():
         c, task = setup_task(tmp_path)

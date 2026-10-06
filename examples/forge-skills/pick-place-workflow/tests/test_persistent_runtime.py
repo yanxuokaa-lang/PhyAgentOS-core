@@ -112,8 +112,44 @@ def test_composition_registers_all_seven_required_tools():
     prepare_policy = project_tool_spec(prepare)
     assert prepare_policy.argument_projection == "candidate_set_for_entity_v1"
     assert prepare_policy.argument_projection_plan is not None
-    assert prepare_policy.argument_projection_plan.filtered_output_field == "candidates"
+    assert (
+        prepare_policy.argument_projection_plan.source_slots["candidates"].filtered_output_field
+        == "candidates"
+    )
     assert all(runtime.get_context(tool["tool_id"])["ready"] is False for tool in runtime.list_tools()["tools"])
+
+
+def test_projected_action_diagnostics_do_not_expose_prepared_trajectory():
+    class Driver:
+        def poll(self):
+            return {
+                "status": "failed",
+                "outcome_known": True,
+                "world_change_started": False,
+                "failure_owner": "planner",
+                "failure_code": "route_failed",
+                "recommended_action": "stop",
+                "arm_attempts": [{
+                    "arm": "arm-a",
+                    "status": "fail",
+                    "failed_phase": "approach",
+                    "failed_waypoint_index": 0,
+                    "detail": "no route",
+                    "execution_plan": {"segments": [[[1.0] * 7]]},
+                    "segments": [{"end_qpos": [1.0] * 7}],
+                }],
+            }
+
+    result = _ProjectedDriver(Driver(), "acquire", arguments()).poll()
+    attempts = result["capability_outcome_summary"]["arm_attempts"]
+    assert attempts == [{
+        "arm": "arm-a",
+        "status": "fail",
+        "failed_phase": "approach",
+        "failed_waypoint_index": 0,
+        "detail": "no route",
+    }]
+    assert "execution_plan" not in str(result)
 
 
 def test_tool_defaults_must_target_declared_input_fields():

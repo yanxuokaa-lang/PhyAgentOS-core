@@ -1,5 +1,12 @@
 # Change Log
 
+## v2.10.13 (2026-10-06)
+
+- 中文：发布 Adapter `0.9.2` 与 Node `0.10.7`。`manipulation.prepare` 的 readiness artifact 现在持有选定机械臂的执行轨迹，Persistent Action 校验 scene、route、assignment 与起始关节状态后直接消费，不再对同一路线进行第二次数值规划。
+- English: Publish Adapter `0.9.2` and Node `0.10.7`. The `manipulation.prepare` readiness artifact now owns the selected arm's executable trajectory, which Persistent Action consumes after validating scene, route, assignment, and initial joint state instead of numerically planning the same route again.
+- 中文：Action 失败以 provider-neutral owner/retry/replan/phase 事实进入 AgentLoop；零步失败不声明实体变化，公开 arm attempts 不包含私有轨迹。未增加自动观察、换臂、换候选、重试、replan 或 Action，也未增加颜色、排列、benchmark ID、实体或相机专用分支。
+- English: Action failures reach the AgentLoop as provider-neutral owner, retry, replan, and phase facts; zero-step failures claim no entity changes and public arm attempts contain no private trajectory. No automatic observation, arm or candidate switching, retry, replan, or Action was added, nor any color, arrangement, benchmark-ID, entity, or camera-specific branch.
+
 ## v2.10.12 (2026-10-06)
 
 - 中文：发布 Adapter `0.9.1` 与 Node `0.10.6`，将 planner-world contact qualification diagnostic 引用传播到最终 prepared candidate evidence，并增加 Runtime planning-world 安装后选择 `planner_world_only` 分支的无运动集成回归。

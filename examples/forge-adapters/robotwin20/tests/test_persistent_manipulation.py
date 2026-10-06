@@ -136,6 +136,21 @@ def test_scene_effects_authorize_only_pose_stable_uncontacted_entities():
     assert effects["carry_forward_authorized"] is True
 
 
+def test_zero_step_failure_claims_no_changed_entities():
+    actors = {"entity://target": _Actor("target"), "entity://other": _Actor("other", 0.2)}
+    engine = _effect_engine(actors)
+    before = engine._bound_entity_poses()
+    effects = engine._scene_effects(
+        {"entity_ref": "entity://target", "scene_revision": "scene-1"},
+        before,
+        {"status": "failed", "outcome_known": True, "world_change_started": False},
+        evidence_ref="artifact://persistent/action-zero-step",
+    )
+    assert effects["changed_entity_refs"] == []
+    assert effects["new_scene_revision"] is None
+    assert effects["carry_forward_authorized"] is False
+
+
 @pytest.mark.parametrize("change", ["contact", "move", "missing", "unknown"])
 def test_scene_effects_fail_closed_when_entity_impact_is_not_proven(change):
     actors = {"entity://target": _Actor("target"), "entity://other": _Actor("other", 0.2)}

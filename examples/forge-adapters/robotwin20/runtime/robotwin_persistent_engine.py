@@ -492,6 +492,15 @@ class RoboTwinPersistentEngine:
         policies["execution_input_digests"][arguments["assignment_ref"]] = probe._sha_bytes(
             probe._artifact_path(self.root, arguments["assignment_ref"]).read_bytes()
         )
+        readiness_ref = assignment.get("readiness_evidence_ref")
+        if not isinstance(readiness_ref, str):
+            raise probe.PreparedExecutionPlanError(
+                "assignment has no prepared execution plan reference",
+                code="prepared_execution_plan_missing",
+            )
+        policies["execution_input_digests"][readiness_ref] = probe._sha_bytes(
+            probe._artifact_path(self.root, readiness_ref).read_bytes()
+        )
         inputs = probe._validate_route_input_artifacts(self.root, request, candidate)
         geometry = probe._artifact_path(self.root, candidate["attached_object"]["geometry_ref"])
         if probe._sha_bytes(geometry.read_bytes()) != candidate["attached_object"]["geometry_sha256"]:
@@ -535,10 +544,24 @@ class RoboTwinPersistentEngine:
         )
         probe._label_probe_actors(task)
         probe._validate_runtime_route_input_binding(task, candidate, inputs)
+        selected_arm = arms[0]
+        start_entity = getattr(task.robot, f"{selected_arm}_entity")
+        prepared_plan = probe.load_prepared_execution_plan(
+            self.root,
+            readiness_ref,
+            request=request,
+            candidate=candidate,
+            assignment=assignment,
+            start_qpos=start_entity.get_qpos()[:7],
+            start_tolerance_rad=float(self.profile["start_state_tolerance_rad"]),
+        )
+        self._state["_prepared_execution_plan"] = prepared_plan
+        self._state["prepared_execution_plan_ref"] = readiness_ref
         self._request, self._candidate = request, candidate
         self._phases = probe.execute_candidate_phases(
             task, request, candidate, policies, deadline=self._state["action_deadline"],
             stop_file=self.stop, execution_state=self._state,
+            require_prepared_plan=True,
         )
 
     def execute(
@@ -604,7 +627,14 @@ class RoboTwinPersistentEngine:
             except Exception as exc:
                 raise PersistentVideoError(str(exc)) from exc
             result = {"status": "succeeded", "world_change_started": True, "outcome_known": True,
-                      "new_scene_revision": self._advance_scene(), "source_scene_revision": self._request["scene_revision"]}
+                      "new_scene_revision": self._advance_scene(), "source_scene_revision": self._request["scene_revision"],
+                      "failure_owner": "none", "failure_code": None,
+                      "retryable_in_revision": False, "requires_replan": False,
+                      "recommended_action": "continue", "phase": phase,
+                      "selected_arm": self._state.get("_assigned_arm"),
+                      "failed_phase": None,
+                      "arm_attempts": list(self._state.get("arm_selection_attempts", [])),
+                      "evidence_refs": []}
         except Exception as exc:
             changed = self._state.get("simulator_steps", 0) > start_steps
             stop_errors = []
@@ -617,9 +647,18 @@ class RoboTwinPersistentEngine:
             evidence_failure = isinstance(exc, PersistentVideoError) and physical_phase_completed
             result = {"status": "failed" if evidence_failure else "unknown" if changed else "failed", "world_change_started": changed,
                       "outcome_known": True if evidence_failure else not changed,
-                      "failure_owner": "evidence" if evidence_failure else "execution", "failure_code": type(exc).__name__,
+                      "failure_owner": "evidence" if evidence_failure else getattr(exc, "failure_owner", "execution"),
+                      "failure_code": getattr(exc, "failure_code", type(exc).__name__),
                       "error_detail": str(exc), "stop_confirmed": not stop_errors,
-                      "stop_errors": stop_errors, "continuation_valid": not advancing}
+                      "stop_errors": stop_errors, "continuation_valid": not advancing,
+                      "retryable_in_revision": getattr(exc, "retryable_in_revision", False),
+                      "requires_replan": getattr(exc, "requires_replan", False if not changed else True),
+                      "recommended_action": getattr(exc, "recommended_action", "fix_runtime_contract" if not changed else "reconcile_world"),
+                      "phase": self._state.get("phase", phase),
+                      "selected_arm": self._state.get("_assigned_arm"),
+                      "failed_phase": self._state.get("phase", phase),
+                      "arm_attempts": list(self._state.get("arm_selection_attempts", [])),
+                      "evidence_refs": []}
             if not evidence_failure:
                 try:
                     video_refs = self.video.finish_action(
@@ -646,6 +685,7 @@ class RoboTwinPersistentEngine:
                             "contacts": self._state.get("contact_trace", []),
                             "task_video_refs": list(video_refs)})
         result["artifact_refs"] = [reference, *video_refs]
+        result["evidence_refs"] = list(result["artifact_refs"])
         return result
 
     def _bound_entity_poses(self) -> dict[str, list[float]]:
@@ -687,7 +727,7 @@ class RoboTwinPersistentEngine:
         changed: set[str] = set()
         unaffected: set[str] = set()
         target = arguments.get("entity_ref")
-        if isinstance(target, str):
+        if isinstance(target, str) and result.get("world_change_started") is True:
             changed.add(target)
         trace = self._state.get("contact_trace", [])
         active_pairs = [

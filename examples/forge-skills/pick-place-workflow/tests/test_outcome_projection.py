@@ -59,6 +59,42 @@ def test_success_projection_is_execution_fact_only_and_artifacts_stay_opaque():
     assert value["tool_id"] == "object.place"
 
 
+def test_recovery_extension_is_accepted_without_projecting_private_trajectory_data():
+    payload = summary(
+        retryable_in_revision=False,
+        requires_replan=True,
+        recommended_action="refresh_declared_evidence",
+        phase="acquire",
+        selected_arm="arm-a",
+        failed_phase="approach",
+        arm_attempts=[{
+            "arm": "arm-a",
+            "status": "fail",
+            "failed_phase": "approach",
+            "failed_waypoint_index": 0,
+            "detail": "route invalid",
+        }],
+        evidence_refs=["artifact://action-1/failure"],
+    )
+    result = project_terminal_outcomes([record(response=response(payload))])
+    assert not result.errors
+    assert len(result.projections) == 1
+    assert "arm_attempts" not in projection_to_dict(result.projections[0])
+
+
+def test_recovery_extension_rejects_private_execution_plan_payload():
+    payload = summary(
+        arm_attempts=[{
+            "arm": "arm-a",
+            "status": "pass",
+            "execution_plan": {"segments": [[0.0] * 7]},
+        }]
+    )
+    result = project_terminal_outcomes([record(response=response(payload))])
+    assert not result.projections
+    assert result.errors[0].code == "invalid_recovery_fields"
+
+
 def test_non_action_and_non_terminal_records_are_not_projected():
     assert not project_terminal_outcomes(
         [
@@ -96,7 +132,12 @@ def test_place_post_release_evidence_is_projected_without_entering_evidence_allo
         post_release_evidence={
             "availability": "complete",
             "artifact_refs": ["artifact://place-1/post-release"],
-        }
+        },
+        release_confirmed=True,
+        retreat_completed=True,
+        clear_of_target=True,
+        observation_ready=True,
+        new_scene_revision="scene-2",
     )
     result = project_terminal_outcomes([record(response=response(payload))])
     projection = result.projections[0]
@@ -105,6 +146,14 @@ def test_place_post_release_evidence_is_projected_without_entering_evidence_allo
         "artifact://place-1/post-release",
     )
     assert "artifact://place-1/post-release" not in projection_to_dict(projection)["opaque_artifact_refs"]
+
+
+def test_partial_place_outcome_extension_is_rejected():
+    result = project_terminal_outcomes([
+        record(response=response(summary(release_confirmed=True)))
+    ])
+    assert not result.projections
+    assert result.errors[0].code == "invalid_place_outcome_fields"
 
 
 def test_missing_summary_on_terminal_action_is_an_explicit_error():

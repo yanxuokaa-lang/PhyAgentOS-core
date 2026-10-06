@@ -101,6 +101,26 @@ _GRIPPER_VALUES = {"open": 1.0, "contact": 1.0, "closed": 0.0, "released": 1.0}
 _SAFE_TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 
 
+class PreparedExecutionPlanError(SimulationProbeError):
+    """A readiness-produced plan cannot be admitted for Action execution."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "prepared_execution_plan_invalid",
+        failure_owner: str = "readiness",
+        requires_replan: bool = False,
+        recommended_action: str = "fix_runtime_contract",
+    ) -> None:
+        super().__init__(message)
+        self.failure_code = code
+        self.failure_owner = failure_owner
+        self.retryable_in_revision = False
+        self.requires_replan = requires_replan
+        self.recommended_action = recommended_action
+
+
 @dataclass(frozen=True)
 class ArrivalPolicy:
     position_tolerance_m: float = 0.005
@@ -508,6 +528,136 @@ def _load_json_artifact(root: Path, ref: str) -> Mapping[str, Any]:
     if not isinstance(value, Mapping):
         raise SimulationProbeError("probe JSON artifact must be an object")
     return value
+
+
+def load_prepared_execution_plan(
+    root: Path,
+    readiness_ref: str,
+    *,
+    request: Mapping[str, Any],
+    candidate: Mapping[str, Any],
+    assignment: Mapping[str, Any],
+    start_qpos: Any,
+    start_tolerance_rad: float,
+) -> dict[str, Any]:
+    """Load the route produced by readiness; never invoke a planner.
+
+    The readiness evidence artifact is the ownership boundary between static
+    route planning and Action execution.  A missing or divergent plan is an
+    admission failure, not a reason for Action to solve the route again.
+    """
+    import numpy as np
+
+    if not isinstance(readiness_ref, str) or not readiness_ref.startswith("artifact://"):
+        raise PreparedExecutionPlanError("prepared execution plan reference is invalid")
+    if isinstance(start_tolerance_rad, bool) or not math.isfinite(start_tolerance_rad) or start_tolerance_rad <= 0:
+        raise PreparedExecutionPlanError("prepared execution start tolerance is invalid")
+    artifact = _load_json_artifact(root, readiness_ref)
+    if (
+        artifact.get("route_geometry_digest") != route_geometry_digest(request)
+        or artifact.get("request_id") != request.get("request_id")
+        or artifact.get("candidate_ref") != candidate.get("candidate_ref")
+        or artifact.get("entity_ref") != candidate.get("entity_ref")
+        or artifact.get("scene_revision") != request.get("scene_revision")
+        or artifact.get("motion_authorized") is not False
+        or artifact.get("world_change_started") is not False
+    ):
+        raise PreparedExecutionPlanError(
+            "prepared execution plan evidence binding is invalid",
+            code="prepared_execution_plan_binding_drift",
+            failure_owner="binding",
+            requires_replan=True,
+            recommended_action="refresh_declared_evidence",
+        )
+    if assignment.get("readiness_evidence_ref") != readiness_ref:
+        raise PreparedExecutionPlanError(
+            "assignment readiness evidence binding is invalid",
+            code="prepared_execution_plan_binding_drift",
+            failure_owner="binding",
+            requires_replan=True,
+            recommended_action="refresh_declared_evidence",
+        )
+    evaluation = artifact.get("planner_evaluation")
+    if not isinstance(evaluation, Mapping):
+        raise PreparedExecutionPlanError("prepared execution plan is unavailable in readiness evidence")
+    attempts = evaluation.get("arm_attempts")
+    selected_arm = assignment.get("selected_arm_ids")
+    if not isinstance(attempts, list) or not isinstance(selected_arm, list) or len(selected_arm) != 1:
+        raise PreparedExecutionPlanError("prepared execution plan arm binding is invalid")
+    arm = selected_arm[0]
+    attempt = next((item for item in attempts if isinstance(item, Mapping) and item.get("arm") == arm), None)
+    if not isinstance(attempt, Mapping) or attempt.get("status") != "pass":
+        raise PreparedExecutionPlanError("prepared execution plan has no passing selected arm")
+    plan = attempt.get("execution_plan")
+    required = {
+        "schema_version", "request_id", "candidate_ref", "entity_ref", "scene_revision",
+        "frame_id", "arm", "initial_qpos", "segments", "motion_authorized",
+    }
+    if not isinstance(plan, Mapping) or set(plan) != required:
+        raise PreparedExecutionPlanError(
+            "prepared execution plan is missing or legacy",
+            code="prepared_execution_plan_missing",
+        )
+    if (
+        plan["schema_version"] != "paos-robotwin20-prepared-execution-plan/v1"
+        or plan["request_id"] != request["request_id"]
+        or plan["candidate_ref"] != candidate["candidate_ref"]
+        or plan["entity_ref"] != candidate["entity_ref"]
+        or plan["scene_revision"] != request["scene_revision"]
+        or plan["frame_id"] != request["frame_id"]
+        or plan["arm"] != arm
+        or plan["motion_authorized"] is not False
+    ):
+        raise PreparedExecutionPlanError(
+            "prepared execution plan identity binding is invalid",
+            code="prepared_execution_plan_binding_drift",
+            failure_owner="binding",
+            requires_replan=True,
+            recommended_action="refresh_declared_evidence",
+        )
+    initial = np.asarray(plan["initial_qpos"], dtype=float)
+    current = np.asarray(start_qpos, dtype=float).reshape(-1)
+    if initial.shape != (7,) or current.shape != (7,) or not np.isfinite(initial).all() or not np.isfinite(current).all():
+        raise PreparedExecutionPlanError("prepared execution start joint state is invalid")
+    if float(np.max(np.abs(initial - current))) > start_tolerance_rad:
+        raise PreparedExecutionPlanError(
+            "prepared execution start joint state drifted",
+            code="prepared_execution_start_state_drift",
+            failure_owner="binding",
+            requires_replan=True,
+            recommended_action="refresh_declared_evidence",
+        )
+    segments = plan["segments"]
+    if not isinstance(segments, list) or not segments:
+        raise SimulationProbeError("prepared execution plan has no trajectory segments")
+    expected = [
+        (phase["phase"], phase["gripper_state"], index, waypoint)
+        for phase in candidate["route"]
+        for index, waypoint in enumerate(phase["waypoints"])
+    ]
+    if len(segments) != len(expected) + 1:
+        raise SimulationProbeError("prepared execution plan waypoint cardinality is invalid")
+    for index, item in enumerate(segments):
+        if not isinstance(item, Mapping):
+            raise SimulationProbeError("prepared execution plan segment is invalid")
+        if index < len(expected):
+            phase, gripper_state, waypoint_index, waypoint = expected[index]
+            if (
+                item.get("phase") != phase
+                or item.get("gripper_state") != gripper_state
+                or item.get("waypoint_index") != waypoint_index
+                or item.get("route_waypoint") != waypoint
+            ):
+                raise SimulationProbeError("prepared execution plan waypoint binding is invalid")
+        elif item.get("phase") != "retreat" or item.get("waypoint_index") != len(candidate["route"][-1]["waypoints"]):
+            raise SimulationProbeError("prepared execution plan final retreat binding is invalid")
+        position = np.asarray(item.get("position"), dtype=float)
+        velocity = np.asarray(item.get("velocity"), dtype=float)
+        if position.ndim != 2 or velocity.shape != position.shape or position.shape[1] != 7:
+            raise SimulationProbeError("prepared execution trajectory shape is invalid")
+        if not np.isfinite(position).all() or not np.isfinite(velocity).all():
+            raise SimulationProbeError("prepared execution trajectory contains non-finite values")
+    return {"plan": dict(plan), "arm_attempts": attempts, "arm": arm}
 
 
 def _validate_route_input_artifacts(
@@ -1351,6 +1501,7 @@ def execute_candidate_phases(
     deadline: float,
     stop_file: Path | None,
     execution_state: dict[str, Any],
+    require_prepared_plan: bool = False,
 ):
     """Yield settled phases, retaining attachment and route state between Actions."""
     import numpy as np
@@ -1369,17 +1520,25 @@ def execute_candidate_phases(
     contact_trace: list[dict[str, Any]] = []
     execution_state["contact_trace"] = contact_trace
     assigned_arm = execution_state.get("_assigned_arm")
-    if assigned_arm is None:
+    prepared = execution_state.get("_prepared_execution_plan")
+    if require_prepared_plan and not isinstance(prepared, Mapping):
+        raise SimulationProbeError("Action requires a readiness-produced execution plan")
+    if prepared is not None:
+        arm = prepared["arm"]
+        arm_attempts = prepared.get("arm_attempts", [])
+        execution_state["arm_selection_attempts"] = arm_attempts
+    elif assigned_arm is None:
         qualification = evaluate_route(task, request, candidate, actor)
+        arm_attempts = qualification["arm_attempts"]
+        execution_state["arm_selection_attempts"] = arm_attempts
+        arm = qualification["selected_arm"]
     else:
         if assigned_arm not in {"left", "right"}:
             raise SimulationProbeError("unsupported assigned arm")
         attempt = evaluate_route_arm(task, request, candidate, assigned_arm, actor)
-        qualification = {"selected_arm": assigned_arm if attempt["status"] == "pass" else None,
-                         "arm_attempts": [attempt]}
-    arm_attempts = qualification["arm_attempts"]
-    execution_state["arm_selection_attempts"] = qualification["arm_attempts"]
-    arm = qualification["selected_arm"]
+        arm_attempts = [attempt]
+        execution_state["arm_selection_attempts"] = arm_attempts
+        arm = assigned_arm if attempt["status"] == "pass" else None
     if arm is None:
         raise SimulationProbeError("no arm can plan complete candidate route")
     execution_state["held_arm"] = "right" if arm == "left" else "left"
@@ -1396,6 +1555,12 @@ def execute_candidate_phases(
     )
     limits = _joint_limits(planner)
     fn = task.robot.left_plan_path if arm == "left" else task.robot.right_plan_path
+    prepared_segments = {}
+    if prepared is not None:
+        prepared_segments = {
+            (item["phase"], item["waypoint_index"]): item
+            for item in prepared["plan"]["segments"]
+        }
     task.need_plan = True
     half_extents = [float(item) for item in candidate["attached_object"]["half_extents_m"]]
     attached_model: dict[str, Any] | None = None
@@ -1443,7 +1608,19 @@ def execute_candidate_phases(
             # Execution uses freshly measured joints, never a phase label or
             # the controller's beyond-limit effort target as geometry.
             with planner_gripper_state(task, arm) as measured_gripper:
-                result = fn(waypoint)
+                if prepared is None:
+                    result = fn(waypoint)
+                else:
+                    item = prepared_segments.get((phase_name, index))
+                    if item is None:
+                        raise SimulationProbeError(
+                            f"prepared execution plan lacks {phase_name}[{index}]"
+                        )
+                    result = {
+                        "status": "Success",
+                        "position": np.asarray(item["position"], dtype=np.float64),
+                        "velocity": np.asarray(item["velocity"], dtype=np.float64),
+                    }
             _validate_trajectory(result, limits)
             planned_segments.append(
                 {

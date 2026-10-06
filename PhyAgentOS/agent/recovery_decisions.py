@@ -35,6 +35,13 @@ class AgentRecoveryDecisions:
                 "error": record.error or facts.get("error"),
                 "failure_code": facts.get("failure_code"),
                 "failure_owner": facts.get("failure_owner"),
+                "retryable_in_revision": facts.get("retryable_in_revision"),
+                "requires_replan": facts.get("requires_replan"),
+                "recommended_action": facts.get("recommended_action"),
+                "phase": facts.get("phase"),
+                "selected_arm": facts.get("selected_arm"),
+                "failed_phase": facts.get("failed_phase"),
+                "arm_attempts": facts.get("arm_attempts", []),
                 "evidence_refs": list(record.evidence_refs),
             })
         parameters = {
@@ -105,7 +112,11 @@ class AgentRecoveryDecisions:
                 continue
             facts = response_facts(record.response)
             if (
-                facts.get("retryable_in_revision") is False
+                (
+                    record.status != "succeeded"
+                    or facts.get("status") != "succeeded"
+                )
+                and facts.get("retryable_in_revision") is False
                 and facts.get("requires_replan") is False
                 and isinstance(facts.get("recommended_action"), str)
             ):

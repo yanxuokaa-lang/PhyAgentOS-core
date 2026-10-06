@@ -142,6 +142,23 @@ class _ProjectedDriver:
             self.phase,
             {**raw, "status": status, "outcome_known": outcome_known},
         )
+        arm_attempts = []
+        for attempt in raw.get("arm_attempts", []):
+            if not isinstance(attempt, Mapping):
+                continue
+            projected = {
+                key: deepcopy(attempt[key])
+                for key in (
+                    "arm",
+                    "status",
+                    "failed_phase",
+                    "failed_waypoint_index",
+                    "detail",
+                )
+                if key in attempt
+            }
+            if "arm" in projected and "status" in projected:
+                arm_attempts.append(projected)
         summary = {
             "version": "capability_outcome_summary_v1",
             "capability_phase": ("hold" if self.phase == "acquire" else "retreat") if success else "none",
@@ -150,6 +167,14 @@ class _ProjectedDriver:
             "outcome_known": outcome_known,
             "evidence_availability": "complete" if success and refs else "partial" if refs else "none",
             "artifact_refs": refs, "bounded_metric_names": [],
+            "retryable_in_revision": raw.get("retryable_in_revision", False),
+            "requires_replan": raw.get("requires_replan", False),
+            "recommended_action": raw.get("recommended_action", "continue" if success else "stop"),
+            "phase": raw.get("phase", self.phase),
+            "selected_arm": raw.get("selected_arm"),
+            "failed_phase": raw.get("failed_phase"),
+            "arm_attempts": arm_attempts,
+            "evidence_refs": list(raw.get("evidence_refs", refs)),
         }
         if self.phase == "place":
             summary["post_release_evidence"] = {"availability": "complete" if success and refs else "none", "artifact_refs": refs if success else []}

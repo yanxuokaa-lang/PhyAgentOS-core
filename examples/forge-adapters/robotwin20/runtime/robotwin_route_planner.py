@@ -180,6 +180,7 @@ def evaluate_route_arm(
     phase_name = "approach"
     index = 0
     segments = []
+    execution_plan = []
     previous_worlds = []
     gripper = []
     try:
@@ -236,7 +237,36 @@ def evaluate_route_arm(
                         "gripper_geometry": gripper,
                     }
                 )
-        return {"arm": arm, "status": "pass", "segments": segments, "motion_authorized": False}
+                execution_plan.append(
+                    {
+                        "phase": phase_name,
+                        "gripper_state": phase["gripper_state"],
+                        "waypoint_index": index,
+                        "route_waypoint": deepcopy(waypoint),
+                        "world_pose_pq_wxyz": list(pose),
+                        "position": np.asarray(result["position"], dtype=float).tolist(),
+                        "velocity": np.asarray(result["velocity"], dtype=float).tolist(),
+                        "gripper_geometry": gripper,
+                    }
+                )
+        return {
+            "arm": arm,
+            "status": "pass",
+            "segments": segments,
+            "execution_plan": {
+                "schema_version": "paos-robotwin20-prepared-execution-plan/v1",
+                "request_id": request.get("request_id"),
+                "candidate_ref": candidate["candidate_ref"],
+                "entity_ref": candidate.get("entity_ref"),
+                "scene_revision": request.get("scene_revision"),
+                "frame_id": request["frame_id"],
+                "arm": arm,
+                "initial_qpos": original[:7].tolist(),
+                "segments": execution_plan,
+                "motion_authorized": False,
+            },
+            "motion_authorized": False,
+        }
     except Exception as exc:
         diagnostic = None
         if diagnose_failure and phase_name == "retreat":
@@ -265,6 +295,7 @@ def evaluate_route_arm(
             "gripper_geometry": gripper,
             "diagnostic": diagnostic,
             "segments": segments,
+            "execution_plan": None,
             "motion_authorized": False,
         }
     finally:

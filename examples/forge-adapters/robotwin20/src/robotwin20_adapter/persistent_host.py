@@ -264,6 +264,7 @@ def load_persistent_host_profile(
             "route_geometry_source",
             "simulation_action_mode",
             "goal_source",
+            "start_state_tolerance_rad",
         }
         or profile.get("schema_version") != PROFILE_SCHEMA_VERSION
     ):
@@ -329,6 +330,10 @@ def build_persistent_host(
         raise PersistentHostConfigurationError(
             "goal_source must be benchmark_task_definition or observation_owned"
         )
+    start_state_tolerance_rad = _positive_number(
+        profile.get("start_state_tolerance_rad", 1e-4),
+        "start_state_tolerance_rad",
+    )
     adapter_root = _path(profile.get("adapter_root"), "adapter_root", directory=True)
     artifact_root = Path(str(profile.get("artifact_root")))
     if not artifact_root.is_absolute():
@@ -431,6 +436,7 @@ def build_persistent_host(
                 "allow_benchmark_scene_facts": True,
                 "simulation_action_mode": simulation_action_mode,
                 "goal_source": goal_source,
+                "start_state_tolerance_rad": start_state_tolerance_rad,
                 "video": {
                     "enabled": video_settings["enabled"],
                     "fps": video_fps,
