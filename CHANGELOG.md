@@ -4,6 +4,30 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.7.5 (2026-10-06 16:09) - codex
+
+### 变更摘要 / Change Summary
+- [env] [chore] 取消旧 `awaiting_replan` 任务并确认 ownership/非终态任务清空后，正常停止旧 flow；旧 host 超过 Dora 停止宽限期后被 Dora SIGKILL 清理，无残留 flow 或在途 Action。 (local)
+- [env] [chore] Cancel the old `awaiting_replan` task and clear ownership/non-terminal tasks before normally stopping the old flow; Dora cleaned up the old host with SIGKILL after its stop grace period, with no residual flow or in-flight Action. (local)
+- [chore] [release] 将 Core distribution 从 `PhyAgentOS-ai 1.0.1` 更新为当前 editable `1.0.2`，保留未变的 Skill `2.10.10` 与 Node `0.10.4`，并启动新 Runtime `runtime_d3c5b3210a094cb9`。 (local)
+- [chore] [release] Upgrade the Core distribution from `PhyAgentOS-ai 1.0.1` to current editable `1.0.2`, retain unchanged Skill `2.10.10` and Node `0.10.4`, and start new Runtime `runtime_d3c5b3210a094cb9`. (local)
+
+### 文件变更详情 / File Changes
+- [修改 / Modified] `changelog/2026-10.md:L3-L51`：记录任务取消、停止告警、Core 安装、Runtime 启动与 no-motion 验收 / record task cancellation, stop warning, Core installation, Runtime startup, and no-motion validation.
+- [修改 / Modified] `CHANGELOG.md:L7-L29`：维护最近五个版本 / maintain the latest five versions.
+
+### 关键 Diff / Key Diff
+```diff
+-PhyAgentOS-ai 1.0.1; runtime_029203e0cad84b94
++PhyAgentOS-ai 1.0.2 editable; runtime_d3c5b3210a094cb9
+-task_444c570eae644b9a awaiting_replan
++task_444c570eae644b9a cancelled; nonterminal_count=0
+```
+
+### 验证 / Validation
+- Skill `2.10.10`、Node `0.10.4` verified、Dora running、Gateway ready、11/11 Tool context ready；ownership 为空，非终态任务为 0，本地 Qwen 为 `qwen3-vl-4b-awq`。
+- 未创建新任务、未调用 Gateway Query/Action、未执行 simulator step 或物理运动。
+
 ## v12.7.4 (2026-10-06 15:05) - codex
 
 ### 变更摘要 / Change Summary
@@ -139,43 +163,3 @@
 - Commit: `7daa161`
 - Branch: `feature/planning-loop`
 - 时间 / Time: 2026-10-06 Asia/Shanghai
-
-## v12.7.0 (2026-10-04 23:44) - codex
-
-### 变更摘要 / Change Summary
-- [sense] [fix] Adapter 按当前 binding 的 observation/frame/calibration 血缘唯一选择多视角 depth，support 与 collision 共用解析边界；缺失或歧义仍 fail-closed。 (local)
-- [sense] [fix] The Adapter uniquely selects multi-view depth from current binding observation/frame/calibration lineage, sharing the resolver across support and collision while failing closed on missing or ambiguous lineage. (local)
-- [policy] [fix] Coordinator 在 materialize/replan admission 校验 ToolSpec projection source 可达性与 preserve 事务语义；preparation 暴露结构化失败所有权，planning loop 依据持久化事实有界收敛。 (local)
-- [policy] [fix] Coordinator validates ToolSpec projection-source reachability and preserve transaction semantics during materialize/replan admission; preparation exposes structured failure ownership and the planning loop converges from persisted facts. (local)
-- [chore] [release] 发布源码与临时包元数据：Skill `2.10.9`、Node `0.10.3`、Adapter `0.7.16`；未安装或启动 Runtime。 (local)
-- [chore] [release] Publish source and temporary package metadata for Skill `2.10.9`, Node `0.10.3`, and Adapter `0.7.16`; no Runtime installation or startup was performed. (local)
-
-### 文件变更详情 / File Changes
-- [新增 / Added] `docs/forge/MULTIVIEW_PREPARATION_LINEAGE_DIAGNOSIS_20261004.md:L1-L64`、`REPLAN_PROJECTION_CONVERGENCE_DIAGNOSIS_20261004.md:L1-L95`、`IMPLEMENTATION_REVIEW_V12_7_0.md:L1-L80`：两份诊断与七维审核 / two diagnoses and seven-dimension review.
-- [修改 / Modified] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/grounding.py:L25-L36,L673-L724,L901-L1001`：通用多视角血缘解析与 evidence-owned failure / generic multi-view lineage resolution and evidence-owned failures.
-- [修改 / Modified] `PhyAgentOS/agent/plan_proposal.py:L147-L168,L326-L431`、`PhyAgentOS/forge/task.py:L2663-L2695`：projection source admission 与 preserve 一致性 / projection-source admission and preserve consistency.
-- [修改 / Modified] `PhyAgentOS/agent/loop.py:L200-L221,L798-L801,L898-L973`、`planning_loop.py:L715-L828,L1437-L1455`、`recovery_decisions.py:L100-L135`：planning no-progress、历史 replay 与 failure-guided recovery / planning no-progress, historical replay, and failure-guided recovery.
-- [修改 / Modified] `PhyAgentOS/forge/capability_runtime/manipulation_prepare.py:L32-L53,L529-L623` 与 `manipulation.prepare.tool.yaml:L406-L421`：结构化失败语义 / structured failure semantics.
-- [修改 / Modified] Adapter/Skill/Core tests：覆盖多视角、projection、preserve、Runtime failure 与默认一次纠正后收敛 / cover multi-view, projection, preserve, Runtime failure, and convergence after one corrective turn.
-
-### 关键 Diff / Key Diff
-```diff
--assert len(depths) == 1
-+depth = resolve_by(observation_ref, frame_id, calibration_ref)
-+validate_projection_source_reachability(tool_spec.source_slots)
-+failure_owner, retryable_in_revision, requires_replan, recommended_action
-+node_selection_no_progress  # after one unchanged corrective turn
-```
-
-### 七维 Code Review / Seven-Dimension Review
-- 七个维度通过，无未处理 Blocker/Major。没有 RGB/颜色/布局/相机专用分支；Host 不自动观察、筛选、replan 或执行 Action；既有 freshness、calibration、collision、IK、authorization、Gateway 与 terminal settlement 门禁保持不变。
-- All seven dimensions pass with no unresolved Blocker/Major. No RGB/color/layout/camera-specific branch and no host-driven observation, selection, replan, or Action; existing safety and settlement gates remain unchanged.
-
-### 验证 / Validation
-- 聚焦 Core `263 passed`、完整 Core `773 passed`；聚焦 Adapter/Skill `250 passed`；完整 Adapter/Skill `1136 passed, 1 skipped, 5 个在干净 HEAD 同样失败的既有基线`；Ruff、compileall、`git diff --check` 通过。
-- Node SHA-256 `f1379e2aff8162397bab08e313118f6222f7b0f5192673e7a7b82ea1543fb69a`；Skill SHA-256 `be328fdc12f9a8065365e1be8c2da1017ef660bdb9430119a8bc964a5b59e28a`。未安装、未启动 Runtime/Gateway、未创建任务、未调用 Query/Action、未执行运动。
-
-### Git 提交 / Git Commit
-- Commit: `7e23edf`
-- Branch: `feature/planning-loop`
-- 时间 / Time: 2026-10-05 Asia/Shanghai
