@@ -57,9 +57,9 @@ def test_provider_public_failure_preserves_diagnostic_without_leaking_unknown_er
         "runtime_provider" if declared else "runtime_adapter"
     )
     assert result["retryable_in_revision"] is False
-    assert result["requires_replan"] is declared
+    assert result["requires_replan"] is False
     assert result["recommended_action"] == (
-        "replan_from_provider_result" if declared else "fix_runtime_contract"
+        "fix_runtime_contract"
     )
     assert result["fresh_evidence_requirements"] == []
 

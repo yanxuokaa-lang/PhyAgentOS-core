@@ -4,6 +4,40 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.7.2 (2026-10-06 14:11) - codex
+
+### 变更摘要 / Change Summary
+- [sense] [fix] 将 RoboTwin Runtime profile 的解析收敛到 Adapter `0.8.0` 共享边界，使 Runtime backend 与 route materializer 同时支持 `sensor_ref`/`sensor_refs`，修复候选成功后稳定失败的 `route_materialization_invalid`。 (local)
+- [sense] [fix] Consolidate RoboTwin Runtime-profile parsing in the shared Adapter `0.8.0` boundary so the Runtime backend and route materializer both support `sensor_ref`/`sensor_refs`, fixing deterministic `route_materialization_invalid` after successful proposal generation. (local)
+- [policy] [fix] 静态 profile/schema/materializer 故障明确为 Runtime-provider 所有、不可同 revision 重试且不要求 replan；候选耗尽与 evidence refresh 保留各自恢复语义。 (local)
+- [policy] [fix] Classify static profile/schema/materializer faults as Runtime-provider-owned, non-retryable in the same revision, and non-replannable while retaining candidate-exhaustion and evidence-refresh semantics. (local)
+- [chore] [release] 构建 Skill `2.10.10`、Node `0.10.4` 与 Adapter `0.8.0`，未安装或重启 Runtime。 (local)
+- [chore] [release] Build Skill `2.10.10`, Node `0.10.4`, and Adapter `0.8.0` without installing or restarting the Runtime. (local)
+
+### 文件变更详情 / File Changes
+- [新增 / Added] `runtime_profile.py:L1-L209`：共享 Runtime profile schema 与规范化 / shared Runtime-profile schema and normalization.
+- [修改 / Modified] `robotwin_backend.py:L30-L83`、`materialize_complete_route.py:L52-L233`：共同消费共享 parser / consume the shared parser.
+- [修改 / Modified] `manipulation_prepare.py:L35-L52,L528-L557`、`persistent_route_builder.py:L162-L226,L311-L321`、`persistent_preparation.py:L73-L116,L158-L192`：一致的结构化恢复语义 / consistent structured recovery semantics.
+- [新增 / Added] `RUNTIME_PROFILE_CONSUMER_DRIFT_DIAGNOSIS_20261006.md:L1-L109`、`PREPARATION_FAILURE_RECOVERY_CONTRACT_DIAGNOSIS_20261006.md:L1-L103`、`IMPLEMENTATION_REVIEW_V12_7_2.md:L1-L87`：两份诊断与七维审核 / two diagnoses and seven-dimension review.
+
+### 关键 Diff / Key Diff
+```diff
+-materializer requires only legacy sensor_ref
++Runtime backend and materializer use one Adapter-owned profile parser
+-failure_owner=runtime_provider, requires_replan=true
++failure_owner=runtime_provider, retryable_in_revision=false
++requires_replan=false, recommended_action=fix_runtime_contract
+```
+
+### 七维 Code Review / Seven-Dimension Review
+- 架构、正确性、恢复/幂等、机器人安全、扩展兼容、可观测性/可维护性、AgentLoop 自主性与收敛均通过；Blocker 0、Major 0、Minor 0。无 RGB/颜色/排列/benchmark/task ID/provider/具体相机组合分支，不自动观察、筛选、replan 或执行 Action。
+- Architecture, correctness, recovery/idempotency, robotics safety, extension compatibility, observability/maintainability, and AgentLoop autonomy/convergence pass with zero Blocker, Major, or Minor findings. No RGB/color/arrangement/benchmark/task-ID/provider/concrete-camera-combination branch and no automatic observation, selection, replan, or Action.
+
+### 验证 / Validation
+- 聚焦回归 `348 passed`；发布聚焦 `435 passed`；完整 Core `773 passed`；完整 Adapter/Skill `1144 passed, 1 skipped, 4 个既有基线失败`，原 runtime profile identity 基线已修复。
+- Ruff、compileall、`git diff --check` 通过；Node `0.10.4` SHA-256 `074edf599aafae8cf820feee777550e05cdec0fe1148b314ba8769c1664cc440`；Skill `2.10.10` SHA-256 `fe6ef2db9bd02bca339003267d0f8e3927ee8ff5cb041126c4b4b1bee2b5e18b`。
+- 未安装/重启 Runtime，未创建 AgentTask，未调用 Gateway Query/Action，未执行仿真或物理运动 / no Runtime install/restart, AgentTask, Gateway Query/Action, simulator motion, or physical motion.
+
 ## v12.7.1 (2026-10-06 00:00) - codex
 
 ### 变更摘要 / Change Summary
@@ -119,60 +153,6 @@
 
 ### 验证 / Validation
 - 核心回归 `165 passed`；聚焦套件 `301 passed, 2 failed`，两项均为既有基线失败 / core regressions passed; focused suite had two unchanged baseline failures.
-
-### Git 提交 / Git Commit
-- Branch: `feature/planning-loop`
-- Commit: `e6d1392`
-
-## v12.6.1 (2026-10-04 02:30) - codex
-
-### 变更摘要 / Change Summary
-- [policy] [fix] 只读 context/Query 保持在 Agent 当前决策回合；task-scoped discovery working set 防止历史任务 ToolSpec 污染；不自动调度 Query、PlanGraph 或 Action。 (local)
-- [policy] [fix] Kept read-only context/Query in the current Agent decision turn and isolated the task-scoped discovery working set from historical ToolSpecs; no Query, PlanGraph, or Action is auto-dispatched. (local)
-
-### 文件变更详情 / File Changes
-- [修改 / Modified] `PhyAgentOS/agent/loop.py:L1750-L1779`：区分只读工具与显式 long-horizon 状态转换 / separate read-only tools from explicit long-horizon state transitions.
-- [修改 / Modified] `PhyAgentOS/agent/prompt_context.py:L548-L647,L1471-L1477`：压缩后保留当前任务所需 ToolSpec/Skill 投影 / retain current-task ToolSpec/Skill projections after compaction.
-- [修改 / Modified] `tests/test_agent_foundation.py:L1536-L1581`、`tests/test_prompt_context.py:L1265-L1415`：增加 continuation、compaction、跨任务隔离回归 / add continuation, compaction, and cross-task isolation regressions.
-
-### 七维 Code Review / Seven-Dimension Review
-- 架构、正确性、恢复/幂等、机器人安全、扩展兼容、可观测性/可维护性、AgentLoop 自主性均通过；无新 Blocker/Major / architecture, correctness, recovery/idempotency, robotics safety, extension compatibility, observability/maintainability, and AgentLoop autonomy all pass with no new Blocker/Major.
-
-### 验证 / Validation
-- 核心回归 `165 passed`；聚焦套件 `301 passed, 2 failed`，两项为既有基线失败 / core regressions passed; focused suite had two unchanged baseline failures.
-
-### Git 提交 / Git Commit
-- Branch: `feature/planning-loop`
-- Commit: `e6d1392`
-
-## v12.6.0 (2026-10-04 01:10) - codex
-
-### 变更摘要 / Change Summary
-- [policy] [fix] 发现阶段新增 provider-neutral working-set 投影，在压缩后同时保留当前任务所需的不同 ToolSpec 与显式恢复的 Skill 约束；不自动调度 Query、PlanGraph 或 Action。 (local)
-- [policy] [fix] Add a provider-neutral discovery working-set projection that retains distinct required ToolSpecs and explicitly recovered Skill constraints after compaction; it does not auto-dispatch a Query, PlanGraph, or Action. (local)
-
-### 文件变更详情 / File Changes
-- [修改 / Modified] `PhyAgentOS/agent/prompt_context.py:L15,L545-L625,L1447-L1452`：按 Skill binding 的 `required_preplan_queries`/`missing_preplan_queries` 汇总各 `tool_id` 最新成功 context，并在 discovery/replan 的只读任务投影中保留 recovered Skill text / collect each required `tool_id`'s latest successful context and retain recovered Skill text in the read-only discovery/replan task projection.
-- [修改 / Modified] `tests/test_prompt_context.py:L1263-L1359`：验证多个不同 ToolSpec 与恢复 Skill 在强制 compaction 后同一请求中可见 / verify multiple distinct ToolSpecs and recovered Skill content remain visible in one request after forced compaction.
-- [修改 / Modified] `changelog/2026-10.md:L3-L64` 与 `CHANGELOG.md:L7-L30`：记录诊断、实现、七维 Review 和验证 / record diagnosis, implementation, seven-dimension review, and validation.
-
-### 关键 Diff / Key Diff
-```diff
-+working_set = _discovery_working_set_projection(messages, task)
-+projection["discovery_working_set"] = working_set
-
-+relevant_ids = required | missing
-+tool_specs = {tool_id: latest_successful_context[tool_id] ...}
-```
-
-### 七维 Code Review / Seven-Dimension Review
-- 架构、正确性、恢复/幂等、机器人安全、扩展兼容、可观测性/可维护性、AgentLoop 自主性：通过。无 RGB/benchmark/相机专用逻辑，Coordinator/Gateway 仍是权威，Host 不执行自动动作。
-- Architecture, correctness, recovery/idempotency, robotics safety, extension compatibility, observability/maintainability, and AgentLoop autonomy: pass. No RGB/benchmark/camera specialization; Coordinator/Gateway remain authoritative and the host performs no automatic action.
-
-### 验证 / Validation
-- `tests/test_prompt_context.py tests/test_agent_foundation.py`: `163 passed`。
-- Focused AgentLoop/planning suite: `299 passed, 2 known baseline failures` (`test_planning_loop` reducer expectation; `test_planning_effect_recovery` fixture missing `invocation_id`)。
-- Ruff、compileall、`git diff --check`: passed; no Runtime, AgentTask, Gateway Query/Action, or physical motion.
 
 ### Git 提交 / Git Commit
 - Branch: `feature/planning-loop`

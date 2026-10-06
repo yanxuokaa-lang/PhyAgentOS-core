@@ -179,6 +179,10 @@ class PersistentRouteBuilder:
                     raise PreparationProviderError(
                         code,
                         f"{message}; diagnostic log: preparation-builds/{run.name}/materializer-{index}.log",
+                        failure_owner="runtime_provider",
+                        retryable_in_revision=False,
+                        requires_replan=False,
+                        recommended_action="fix_runtime_contract",
                     ) from exc
                 finally:
                     if metrics is not None:
@@ -215,6 +219,10 @@ class PersistentRouteBuilder:
             raise PreparationProviderError(
                 "no_materializable_candidates",
                 f"All candidates were rejected during route construction; diagnostics: preparation-builds/{run.name}",
+                failure_owner="planning",
+                retryable_in_revision=False,
+                requires_replan=True,
+                recommended_action="replan_from_provider_result",
             )
         base["candidates"] = candidates
         validate_route_request(base)
@@ -302,9 +310,15 @@ class PersistentRouteBuilder:
                     if option["arm_ids"] == [arm]:
                         options.append({**option, "option_id": f"qualified-{index}-{arm}"})
         if base is None:
-            raise PreparationProviderError("no_qualified_contacts",
+            raise PreparationProviderError(
+                "no_qualified_contacts",
                 f"No observed candidate passed contact qualification and route construction: {dict(rejections)}; "
-                f"diagnostics: artifact://preparation-builds/{run.name}")
+                f"diagnostics: artifact://preparation-builds/{run.name}",
+                failure_owner="planning",
+                retryable_in_revision=False,
+                requires_replan=True,
+                recommended_action="replan_from_provider_result",
+            )
         base["candidates"] = list(qualified.values())
         return {"destination_ref": request["destination_ref"], "base_request": base,
                 "options": options, "reviews": reviews}

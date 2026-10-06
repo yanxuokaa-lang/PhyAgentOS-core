@@ -543,7 +543,7 @@ class Grounding:
         except PreparationProviderError:
             raise
         except ValueError as exc:
-            raise PreparationProviderError("observed_support_unavailable", str(exc)) from exc
+            raise _evidence_error("observed_support_unavailable", str(exc)) from exc
         center = np.asarray(support.get("position_m"), dtype=float)
         support_half = np.asarray(support.get("half_extents_m"), dtype=float)
         moving = deepcopy(binding["objects"][entity_ref])
@@ -770,7 +770,7 @@ class Grounding:
         }
         missing = sorted(set(originals) - set(observed_by_execution))
         if missing:
-            raise PreparationProviderError(
+            raise _evidence_error(
                 "oracle_collision_coverage_incomplete",
                 "oracle route requires every execution object to have an observed identity binding",
             )
@@ -896,7 +896,7 @@ class Grounding:
         try:
             return estimate_support(world, cloud["artifact_ref"], self.support_policy)
         except ValueError as exc:
-            raise PreparationProviderError("observed_support_unavailable", str(exc)) from exc
+            raise _evidence_error("observed_support_unavailable", str(exc)) from exc
 
     def _observed_support_from_depth(self, binding, understanding):
         identity = tuple(binding[k] for k in IDENTITY_KEYS)

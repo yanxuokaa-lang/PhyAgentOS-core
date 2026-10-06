@@ -176,6 +176,10 @@ def test_failed_materializer_retains_log_and_returns_no_route(tmp_path, monkeypa
     with pytest.raises(PreparationProviderError, match="Route materializer exited with status 1") as caught:
         builder.build(request)
     assert caught.value.code == "route_materialization_failed"
+    assert caught.value.failure_owner == "runtime_provider"
+    assert caught.value.retryable_in_revision is False
+    assert caught.value.requires_replan is False
+    assert caught.value.recommended_action == "fix_runtime_contract"
     logs = list((tmp_path / "preparation-builds").glob("*/materializer-0.log"))
     assert logs[0].read_text() == "calibration unavailable"
     assert not (tmp_path / "shared").exists()
@@ -200,6 +204,10 @@ def test_materializer_qualification_error_reaches_public_provider_boundary(tmp_p
     with pytest.raises(PreparationProviderError) as caught:
         builder.build(request)
     assert caught.value.code == "motion_capability_qualification_mismatch"
+    assert caught.value.failure_owner == "runtime_provider"
+    assert caught.value.retryable_in_revision is False
+    assert caught.value.requires_replan is False
+    assert caught.value.recommended_action == "fix_runtime_contract"
     assert "approved qualification package" in str(caught.value)
     assert "materializer-0.log" in str(caught.value)
     assert not (tmp_path / "shared").exists()
@@ -234,6 +242,9 @@ def test_geometry_rejection_continues_but_never_becomes_a_route(tmp_path, monkey
         with pytest.raises(PreparationProviderError) as caught:
             builder.build(request, metrics=metrics)
         assert caught.value.code == "no_materializable_candidates"
+        assert caught.value.failure_owner == "planning"
+        assert caught.value.requires_replan is True
+        assert caught.value.recommended_action == "replan_from_provider_result"
         assert not (tmp_path / "shared").exists()
     else:
         result = builder.build(request, metrics=metrics)

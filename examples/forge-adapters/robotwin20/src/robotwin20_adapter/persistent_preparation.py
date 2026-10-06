@@ -83,7 +83,13 @@ class PersistentPreparationProvider:
                     raise PreparationProviderError(exc.code,
                         f"{exc}; observed-only contact/approach endpoint samples "
                         f"(summed over evaluated variants): {dict(visibility)}; "
-                        f"unobserved space remains unknown; contact evidence: {refs}") from exc
+                        f"unobserved space remains unknown; contact evidence: {refs}",
+                        failure_owner=exc.failure_owner,
+                        retryable_in_revision=exc.retryable_in_revision,
+                        requires_replan=exc.requires_replan,
+                        recommended_action=exc.recommended_action,
+                        fresh_evidence_requirements=exc.fresh_evidence_requirements,
+                    ) from exc
             if isinstance(exc, PersistentWorkerError):
                 if exc.code == "PreparationDeadlineExceededError":
                     from .preparation_deadline import PreparationDeadlineExceededError
@@ -100,7 +106,14 @@ class PersistentPreparationProvider:
                     ),
                 }
                 if exc.code in public_errors:
-                    raise PreparationProviderError(*public_errors[exc.code]) from exc
+                    raise PreparationProviderError(
+                        *public_errors[exc.code],
+                        failure_owner="evidence",
+                        retryable_in_revision=False,
+                        requires_replan=True,
+                        recommended_action="refresh_declared_evidence",
+                        fresh_evidence_requirements=("current_observation_lineage",),
+                    ) from exc
             raise
         finally:
             measured["total_s"] = monotonic() - started
@@ -158,14 +171,24 @@ class PersistentPreparationProvider:
             path = directory / (ref.rsplit("/", 1)[1] + ".json")
             with path.open("x", encoding="utf-8") as stream:
                 json.dump(selected.model_dump(mode="json"), stream, ensure_ascii=False)
-            infrastructure = any(f.owner in {"infrastructure", "input", "binding"}
-                                 for f in selected.failed_routes)
+            infrastructure = any(
+                f.owner in {"infrastructure", "input", "binding"}
+                for f in selected.failed_routes
+            )
             counts = Counter(f.code for f in selected.failed_routes)
             details = list(dict.fromkeys(f.detail for f in selected.failed_routes))
             raise PreparationProviderError(
                 "readiness_provider_unavailable" if infrastructure else "no_admissible_route",
                 f"Preparation produced no assignment: {dict(counts)}; "
                 f"{'; '.join(details[:2])[:1500]}; diagnostics: {ref}",
+                failure_owner="runtime_provider" if infrastructure else "planning",
+                retryable_in_revision=False,
+                requires_replan=not infrastructure,
+                recommended_action=(
+                    "fix_runtime_contract"
+                    if infrastructure
+                    else "replan_from_provider_result"
+                ),
             )
         assignment = project_arm_assignment(intent, capability, selected)
         proposed = {item["candidate_ref"]: item["entity_ref"] for item in request["candidates"]}

@@ -39,8 +39,8 @@ class PreparationProviderError(RuntimeError):
         *,
         failure_owner: str = "runtime_provider",
         retryable_in_revision: bool = False,
-        requires_replan: bool = True,
-        recommended_action: str = "replan_from_provider_result",
+        requires_replan: bool = False,
+        recommended_action: str = "fix_runtime_contract",
         fresh_evidence_requirements: tuple[str, ...] = (),
     ):
         super().__init__(message)
@@ -532,8 +532,8 @@ class ManipulationPreparationEndpoint:
             *,
             failure_owner: str = "runtime_provider",
             retryable_in_revision: bool = False,
-            requires_replan: bool = True,
-            recommended_action: str = "replan_from_provider_result",
+            requires_replan: bool = False,
+            recommended_action: str = "fix_runtime_contract",
             fresh_evidence_requirements: tuple[str, ...] = (),
         ) -> dict[str, Any]:
             result = {

@@ -95,6 +95,42 @@ planner_profile: curobo
     assert loaded["sensor_ref"] == "camera/head"
 
 
+@pytest.mark.parametrize(
+    ("sensor_fields", "message"),
+    [
+        ("", "exactly one"),
+        ("sensor_ref: camera/head\nsensor_refs: [camera/front]", "exactly one"),
+        ("sensor_refs: []", "distinct supported cameras"),
+        ("sensor_refs: [camera/head, camera/head]", "distinct supported cameras"),
+        ("sensor_refs: [camera/head, camera/unknown]", "distinct supported cameras"),
+        ("sensor_refs: [{bad: value}]", "distinct supported cameras"),
+    ],
+)
+def test_runtime_profile_loader_rejects_invalid_sensor_set_contract(
+    tmp_path, sensor_fields, message
+):
+    profile_path = tmp_path / "profile.yaml"
+    profile_path.write_text(
+        f"""
+schema_version: paos-robotwin20-runtime-profile/v1
+task_name: generic_task
+task_config: demo_clean
+embodiment: [franka-panda, franka-panda, 0.8]
+{sensor_fields}
+max_observation_age_ms: 1000
+seed: 0
+robot_identity: franka-panda
+gripper_identity: panda-gripper
+embodiment_topology: two-single-arm
+planner_profile: curobo
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(backend_module.RoboTwinRuntimeError, match=message):
+        backend_module.load_runtime_profile(profile_path)
+
+
 def test_runtime_profile_loader_accepts_profile_owned_additional_static_camera(tmp_path):
     profile_path = tmp_path / "profile.yaml"
     profile_path.write_text(
@@ -203,7 +239,7 @@ planner_profile: curobo
 """,
         encoding="utf-8",
     )
-    with pytest.raises(backend_module.RoboTwinRuntimeError, match="task or sensor"):
+    with pytest.raises(backend_module.RoboTwinRuntimeError, match="observation age"):
         backend_module.load_runtime_profile(profile_path)
 
 

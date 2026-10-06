@@ -12,9 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 import os
-import re
 import sys
 from contextlib import contextmanager, redirect_stdout
 from dataclasses import asdict, dataclass
@@ -32,182 +30,56 @@ except ModuleNotFoundError:  # pragma: no cover - exercised by PAOS boundary tes
     yaml = None  # type: ignore[assignment]
 
 from robotwin20_adapter import SensorArtifact, SensorCapture
+from robotwin20_adapter.runtime_profile import (
+    CAMERA_REFS as _CAMERA_REFS,
+)
+from robotwin20_adapter.runtime_profile import (
+    IDENTIFIER_PATTERN as _IDENTIFIER,
+)
+from robotwin20_adapter.runtime_profile import (
+    RUNTIME_PROFILE_SCHEMA_VERSION as _RUNTIME_PROFILE_SCHEMA_VERSION,
+)
+from robotwin20_adapter.runtime_profile import (
+    EmbodimentSpec,
+    RuntimeProfileError,
+)
+from robotwin20_adapter.runtime_profile import (
+    load_runtime_profile as _load_runtime_profile,
+)
+from robotwin20_adapter.runtime_profile import (
+    normalize_additional_static_cameras as _normalize_additional_static_cameras_shared,
+)
+from robotwin20_adapter.runtime_profile import (
+    normalize_embodiment as _normalize_embodiment_shared,
+)
+
+RUNTIME_PROFILE_SCHEMA_VERSION = _RUNTIME_PROFILE_SCHEMA_VERSION
 
 
 class RoboTwinRuntimeError(RuntimeError):
     """The external RoboTwin runtime cannot provide a safe observation."""
 
 
-_IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
-_CAMERA_REFS = {
-    "camera/head": "head_camera",
-    "camera/front": "front_camera",
-    "camera/left_wrist": "left_camera",
-    "camera/right_wrist": "right_camera",
-}
-
-
-EmbodimentSpec = str | tuple[str, str, float]
-RUNTIME_PROFILE_SCHEMA_VERSION = "paos-robotwin20-runtime-profile/v1"
-
-
 def _normalize_embodiment(value: EmbodimentSpec | list[Any]) -> EmbodimentSpec:
-    """Normalize RoboTwin's single- or two-single-arm embodiment syntax."""
-    if isinstance(value, str):
-        return value
-    if isinstance(value, (tuple, list)) and len(value) == 3:
-        left, right, interval = value
-        if (
-            isinstance(left, str)
-            and isinstance(right, str)
-            and isinstance(interval, (int, float))
-            and not isinstance(interval, bool)
-            and math.isfinite(float(interval))
-            and interval > 0
-        ):
-            return (left, right, float(interval))
-    raise RoboTwinRuntimeError(
-        "embodiment must be a name or [left_name, right_name, positive_interval]"
-    )
+    try:
+        return _normalize_embodiment_shared(value)
+    except RuntimeProfileError as exc:
+        raise RoboTwinRuntimeError(str(exc)) from exc
 
 
 def _normalize_additional_static_cameras(value: Any) -> tuple[dict[str, Any], ...]:
-    if value is None:
-        return ()
-    if not isinstance(value, (list, tuple)):
-        raise RoboTwinRuntimeError("additional_static_cameras must be an array")
-    result: list[dict[str, Any]] = []
-    names: set[str] = set()
-    required = {"name", "type", "position", "forward", "left"}
-    for camera in value:
-        if not isinstance(camera, Mapping) or set(camera) != required:
-            raise RoboTwinRuntimeError(
-                "additional_static_cameras entries must define name, type, position, forward, left"
-            )
-        name = camera["name"]
-        camera_type = camera["type"]
-        if (
-            not isinstance(name, str)
-            or _IDENTIFIER.fullmatch(name) is None
-            or name in names
-            or not isinstance(camera_type, str)
-            or _IDENTIFIER.fullmatch(camera_type) is None
-        ):
-            raise RoboTwinRuntimeError("additional static camera identity is invalid")
-        normalized: dict[str, Any] = {"name": name, "type": camera_type}
-        for field in ("position", "forward", "left"):
-            vector = camera[field]
-            if (
-                not isinstance(vector, (list, tuple))
-                or len(vector) != 3
-                or any(
-                    not isinstance(item, (int, float))
-                    or isinstance(item, bool)
-                    or not math.isfinite(float(item))
-                    for item in vector
-                )
-            ):
-                raise RoboTwinRuntimeError(
-                    f"additional static camera {field} must contain three finite numbers"
-                )
-            normalized[field] = [float(item) for item in vector]
-        names.add(name)
-        result.append(normalized)
-    return tuple(result)
+    try:
+        return _normalize_additional_static_cameras_shared(value)
+    except RuntimeProfileError as exc:
+        raise RoboTwinRuntimeError(str(exc)) from exc
 
 
 def load_runtime_profile(path: Path) -> dict[str, Any]:
     """Load one adapter-owned task/embodiment profile without importing PAOS."""
-    if not path.is_absolute() or not path.is_file() or path.is_symlink():
-        raise RoboTwinRuntimeError("runtime profile must be an absolute regular file")
-    profile_yaml = yaml
-    if profile_yaml is None:
-        try:
-            import yaml as profile_yaml
-        except ModuleNotFoundError as exc:
-            raise RoboTwinRuntimeError("PyYAML is required to load a runtime profile") from exc
-    class _UniqueKeyLoader(profile_yaml.SafeLoader):
-        pass
-
-    def construct_mapping(loader, node, deep=False):
-        result = {}
-        for key_node, value_node in node.value:
-            key = loader.construct_object(key_node, deep=deep)
-            if key in result:
-                raise RoboTwinRuntimeError("runtime profile contains duplicate YAML keys")
-            result[key] = loader.construct_object(value_node, deep=deep)
-        return result
-
-    _UniqueKeyLoader.add_constructor(
-        profile_yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, construct_mapping
-    )
     try:
-        value = profile_yaml.load(path.read_text(encoding="utf-8"), Loader=_UniqueKeyLoader)
-    except (OSError, UnicodeError, profile_yaml.YAMLError) as exc:
-        raise RoboTwinRuntimeError("runtime profile could not be loaded") from exc
-    required = {
-        "schema_version", "task_name", "task_config", "embodiment",
-        "max_observation_age_ms", "seed",
-        "robot_identity", "gripper_identity", "embodiment_topology", "planner_profile",
-    }
-    optional = {"additional_static_cameras", "sensor_ref", "sensor_refs"}
-    if (
-        not isinstance(value, Mapping)
-        or not required.issubset(value)
-        or set(value) - required - optional
-    ):
-        raise RoboTwinRuntimeError("runtime profile fields are invalid")
-    if value["schema_version"] != RUNTIME_PROFILE_SCHEMA_VERSION:
-        raise RoboTwinRuntimeError("runtime profile schema_version is unsupported")
-    sensor_ref = value.get("sensor_ref")
-    sensor_refs = value.get("sensor_refs")
-    if (sensor_ref is None) == (sensor_refs is None):
-        raise RoboTwinRuntimeError("runtime profile must define exactly one of sensor_ref or sensor_refs")
-    if sensor_refs is not None:
-        if (
-            not isinstance(sensor_refs, (list, tuple))
-            or not sensor_refs
-            or len(set(sensor_refs)) != len(sensor_refs)
-            or any(not isinstance(item, str) or item not in _CAMERA_REFS for item in sensor_refs)
-        ):
-            raise RoboTwinRuntimeError("runtime profile sensor_refs must name distinct supported cameras")
-        normalized_sensor_refs = tuple(sensor_refs)
-        sensor_ref = normalized_sensor_refs[0]
-    else:
-        if not isinstance(sensor_ref, str) or sensor_ref not in _CAMERA_REFS:
-            raise RoboTwinRuntimeError("runtime profile sensor_ref is invalid")
-        normalized_sensor_refs = (sensor_ref,)
-    try:
-        embodiment = _normalize_embodiment(value["embodiment"])
-    except RoboTwinRuntimeError:
-        raise
-    if (
-        not isinstance(value["task_name"], str)
-        or not _IDENTIFIER.fullmatch(value["task_name"])
-        or not isinstance(value["task_config"], str)
-        or not _IDENTIFIER.fullmatch(value["task_config"])
-        or type(value["max_observation_age_ms"]) is not int
-        or value["max_observation_age_ms"] < 1
-        or not isinstance(value["seed"], int)
-        or isinstance(value["seed"], bool)
-    ):
-        raise RoboTwinRuntimeError("runtime profile task or sensor fields are invalid")
-    for field in ("robot_identity", "gripper_identity", "embodiment_topology", "planner_profile"):
-        if not isinstance(value[field], str) or not value[field].strip():
-            raise RoboTwinRuntimeError(f"runtime profile {field} is invalid")
-    expected_topology = "native-dual-arm" if isinstance(embodiment, str) else "two-single-arm"
-    if value["embodiment_topology"] != expected_topology:
-        raise RoboTwinRuntimeError("runtime profile embodiment_topology does not match embodiment")
-    additional_static_cameras = _normalize_additional_static_cameras(
-        value.get("additional_static_cameras")
-    )
-    return {
-        **value,
-        "embodiment": embodiment,
-        "sensor_ref": sensor_ref,
-        "sensor_refs": normalized_sensor_refs,
-        "additional_static_cameras": additional_static_cameras,
-    }
+        return _load_runtime_profile(path)
+    except RuntimeProfileError as exc:
+        raise RoboTwinRuntimeError(str(exc)) from exc
 
 
 @dataclass(frozen=True)

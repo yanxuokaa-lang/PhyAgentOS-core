@@ -158,6 +158,9 @@ def test_failed_complete_routes_produce_no_prepared_assignment(tmp_path):
     with pytest.raises(PreparationProviderError, match="route collides") as caught:
         provider.prepare(request)
     assert caught.value.code == "no_admissible_route"
+    assert caught.value.failure_owner == "planning"
+    assert caught.value.requires_replan is True
+    assert caught.value.recommended_action == "replan_from_provider_result"
     saved = json.loads(next((tmp_path / "preparation-rejections").glob("*.json")).read_text())
     assert len(saved["failed_routes"]) == 2
     assert not routes._routes
@@ -175,6 +178,9 @@ def test_observed_uncertainty_reaches_public_failure_without_changing_recovery_c
     with pytest.raises(PreparationProviderError, match="unobserved space remains unknown") as caught:
         provider.prepare(request, metrics=metrics)
     assert caught.value.code == "no_admissible_route"
+    assert caught.value.failure_owner == "planning"
+    assert caught.value.requires_replan is True
+    assert caught.value.recommended_action == "replan_from_provider_result"
     assert "artifact://contact/0" in str(caught.value)
     assert "'occluded_samples': 12" in str(caught.value)
 
@@ -191,6 +197,10 @@ def test_readiness_infrastructure_failure_is_not_an_empty_candidate_set(tmp_path
     with pytest.raises(PreparationProviderError, match="observation model provenance mismatch") as caught:
         provider.prepare(request)
     assert caught.value.code == "readiness_provider_unavailable"
+    assert caught.value.failure_owner == "runtime_provider"
+    assert caught.value.retryable_in_revision is False
+    assert caught.value.requires_replan is False
+    assert caught.value.recommended_action == "fix_runtime_contract"
     assert not routes._routes
 
 
@@ -297,6 +307,10 @@ def test_worker_binding_rejection_is_a_public_preparation_failure(tmp_path, work
     with pytest.raises(PreparationProviderError) as caught:
         provider.prepare(request, metrics=metrics)
     assert caught.value.code == public_code
+    assert caught.value.failure_owner == "evidence"
+    assert caught.value.requires_replan is True
+    assert caught.value.recommended_action == "refresh_declared_evidence"
+    assert caught.value.fresh_evidence_requirements == ("current_observation_lineage",)
     assert "/private" not in str(caught.value)
     assert not client._transport_lost
     assert metrics["status"] == "failed"

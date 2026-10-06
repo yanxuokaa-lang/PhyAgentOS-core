@@ -84,3 +84,35 @@ def test_runtime_identity_accepts_shipped_observation_profile(tmp_path):
     invalid.write_text(yaml.safe_dump(value))
     with pytest.raises(cli.MaterializationError, match='observation age'):
         cli._load_runtime_identity(invalid)
+
+
+def test_runtime_and_materializer_share_the_same_sensor_profile_contract(tmp_path):
+    from pathlib import Path
+
+    from robotwin20_adapter.runtime_profile import RuntimeProfileError, load_runtime_profile
+
+    profile = Path(__file__).resolve().parents[1] / "profiles/robotwin20/franka-blocks-ranking.yaml"
+    loaded = load_runtime_profile(profile)
+    identity = cli._load_runtime_identity(profile)
+    assert loaded["sensor_refs"] == ("camera/head", "camera/front")
+    assert identity == {
+        key: loaded[key]
+        for key in (
+            "task_name",
+            "robot_identity",
+            "gripper_identity",
+            "embodiment_topology",
+            "planner_profile",
+        )
+    }
+
+    invalid = tmp_path / "invalid.yaml"
+    invalid.write_text(
+        profile.read_text(encoding="utf-8")
+        + "sensor_ref: camera/head\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(RuntimeProfileError, match="exactly one"):
+        load_runtime_profile(invalid)
+    with pytest.raises(cli.MaterializationError, match="exactly one"):
+        cli._load_runtime_identity(invalid)

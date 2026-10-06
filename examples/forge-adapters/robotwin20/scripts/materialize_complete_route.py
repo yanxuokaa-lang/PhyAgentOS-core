@@ -39,7 +39,6 @@ from robotwin20_adapter.motion_capabilities import (
     canonical_motion_capability,
     motion_capability_digest,
 )
-from robotwin20_adapter.perception_profile import _read_unique_yaml
 from robotwin20_adapter.route_generation import RouteCandidateRejectedError, generate_route_request
 from robotwin20_adapter.route_inputs import (
     ROUTE_INPUT_PROFILE_SCHEMA_VERSION,
@@ -52,6 +51,10 @@ from robotwin20_adapter.route_readiness import (
     ROUTE_REQUEST_SCHEMA_VERSION,
     route_geometry_digest,
     validate_route_request,
+)
+from robotwin20_adapter.runtime_profile import (
+    RuntimeProfileError,
+    load_runtime_profile,
 )
 
 _REQUEST_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
@@ -210,26 +213,10 @@ def _load_profile(path: Path) -> Mapping[str, Any]:
 
 def _load_runtime_identity(path: Path) -> Mapping[str, str]:
     """Load the benchmark runtime identity used to cross-bind capability artifacts."""
-    if not path.is_absolute() or not path.is_file() or path.is_symlink():
-        raise MaterializationError("runtime profile must be an absolute regular file")
-    value = _read_unique_yaml(
-        path,
-        error_type=MaterializationError,
-        label="runtime profile",
-    )
-    expected = {
-        "schema_version",
-        "task_name",
-        "task_config",
-        "embodiment",
-        "sensor_ref",
-        "seed",
-        "robot_identity",
-        "gripper_identity",
-        "embodiment_topology",
-        "planner_profile",
-        "max_observation_age_ms",
-    }
+    try:
+        value = load_runtime_profile(path)
+    except RuntimeProfileError as exc:
+        raise MaterializationError(str(exc)) from exc
     required_identity = {
         "task_name",
         "robot_identity",
@@ -237,24 +224,10 @@ def _load_runtime_identity(path: Path) -> Mapping[str, str]:
         "embodiment_topology",
         "planner_profile",
     }
-    optional = {"additional_static_cameras"}
-    if (
-        not expected.issubset(value)
-        or set(value).difference(expected | optional)
-        or any(
-            not isinstance(value[key], str) or not value[key].strip()
-            for key in required_identity
-        )
-    ):
-        raise MaterializationError("runtime profile identity fields are invalid")
-    if type(value["max_observation_age_ms"]) is not int or value["max_observation_age_ms"] < 1:
-        raise MaterializationError("runtime profile observation age is invalid")
     embodiment = value["embodiment"]
-    if (
-        value["schema_version"] != "paos-robotwin20-runtime-profile/v1"
-        or not isinstance(embodiment, list)
-        or len(embodiment) != 3
-        or embodiment[:2] != [value["robot_identity"], value["robot_identity"]]
+    if not isinstance(embodiment, tuple) or embodiment[:2] != (
+        value["robot_identity"],
+        value["robot_identity"],
     ):
         raise MaterializationError("runtime profile embodiment binding is invalid")
     return {key: value[key] for key in required_identity}
