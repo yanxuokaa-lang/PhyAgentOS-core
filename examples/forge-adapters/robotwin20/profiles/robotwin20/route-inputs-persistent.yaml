@@ -1,5 +1,7 @@
-schema_version: paos-robotwin20-route-input-profile/v3
+schema_version: paos-robotwin20-route-input-profile/v4
 route_frame_id: world
+contact_qualification:
+  mode: observed_occupancy
 observed_collision:
   depth_scale_to_m: 0.001
   voxel_size_m: 0.01

@@ -34,6 +34,7 @@ def test_deployment_wires_shared_cache_and_requires_persistent_stop_policy(tmp_p
     assert deployment.capability_provider.client is client
     assert deployment.preparation_provider.route_builder.scene_source.__name__ == "scene_facts"
     assert deployment.grounding.depth_scale_to_m == pytest.approx(0.002)
+    assert deployment.preparation_provider.route_builder.contact_qualification_mode == "observed_occupancy"
     oracle = build_persistent_deployment(
         client=client, artifact_root=tmp_path, scene_source=lambda request: None,
         materializer_command=("python", "materializer.py"), materializer_arguments=arguments,
@@ -101,6 +102,53 @@ def test_deployment_rejects_provider_route_mismatch(tmp_path):
             client=object(), artifact_root=tmp_path, scene_source=lambda request: None,
             materializer_command=("python",), materializer_arguments=arguments,
             arm_profile_digest="a" * 64, grasp_provider_id="graspgen",
+        )
+
+
+def test_deployment_wires_explicit_planner_world_policy_without_depth_collision(tmp_path):
+    arm = tmp_path / "arms.yaml"
+    arm.write_text(yaml.safe_dump(_profile()))
+    profiles = Path(__file__).parents[1] / "profiles/robotwin20"
+    deployment = build_persistent_deployment(
+        client=object(), artifact_root=tmp_path, scene_source=lambda request: None,
+        materializer_command=("python",),
+        materializer_arguments={
+            "arm-planning-profile": str(arm),
+            "route-input-profile": str(profiles / "route-inputs-graspnet.yaml"),
+        },
+        arm_profile_digest="a" * 64,
+    )
+
+    assert deployment.preparation_provider.route_builder.contact_qualification_mode == (
+        "planner_world_only"
+    )
+    assert deployment.grounding.collision_policy is None
+
+
+@pytest.mark.parametrize(
+    "policy",
+    [
+        {"contact_qualification": {"mode": "unknown"}},
+        {"contact_qualification": {"mode": "observed_occupancy"}, "observed_collision": None},
+    ],
+)
+def test_deployment_rejects_invalid_contact_qualification_policy(tmp_path, policy):
+    arm = tmp_path / "arms.yaml"
+    arm.write_text(yaml.safe_dump(_profile()))
+    source = Path(__file__).parents[1] / "profiles/robotwin20/route-inputs-graspnet.yaml"
+    profile = yaml.safe_load(source.read_text(encoding="utf-8"))
+    profile.update(policy)
+    invalid = tmp_path / "invalid-contact-policy.yaml"
+    invalid.write_text(yaml.safe_dump(profile), encoding="utf-8")
+
+    with pytest.raises((TypeError, ValueError), match="contact_qualification|observed_collision"):
+        build_persistent_deployment(
+            client=object(), artifact_root=tmp_path, scene_source=lambda request: None,
+            materializer_command=("python",),
+            materializer_arguments={
+                "arm-planning-profile": str(arm), "route-input-profile": str(invalid)
+            },
+            arm_profile_digest="a" * 64,
         )
 def test_task_goal_endpoint_preserves_worker_rejection_but_not_transport_loss():
     class Client:

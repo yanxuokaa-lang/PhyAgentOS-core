@@ -312,13 +312,15 @@ class RoboTwinRouteEvaluator:
     """Injected implementation for the existing route-readiness worker."""
 
     def __init__(self, runtime_root, runtime_profile, artifact_root, *, diagnose_failure=False, backend=None,
-                 contact_arms=None, deadline=None):
+                 contact_arms=None, contact_qualification_mode=None, deadline=None):
         self.runtime_root = runtime_root
         self.runtime_profile = runtime_profile
         self.artifact_root = artifact_root
         self.diagnose_failure = diagnose_failure
         self.backend = backend
-        self.contact_arms, self.deadline = contact_arms, deadline
+        self.contact_arms = contact_arms
+        self.contact_qualification_mode = contact_qualification_mode
+        self.deadline = deadline
 
     def __call__(self, request):
         import hashlib
@@ -395,15 +397,37 @@ class RoboTwinRouteEvaluator:
                     if item["entity_ref"] == candidate["entity_ref"]
                 )
                 if self.contact_arms is not None:
-                    from robotwin_contact_qualification import qualify_observed_contact
+                    from robotwin_contact_qualification import (
+                        qualify_observed_contact,
+                        qualify_planner_world_contact,
+                    )
                     from robotwin_simulation_probe_worker import _load_json_artifact
+
+                    from robotwin20_adapter.contact_qualification import (
+                        OBSERVED_OCCUPANCY,
+                        PLANNER_WORLD_ONLY,
+                    )
 
                     if scene.get("geometry_source") != "observation":
                         raise SimulationProbeError("persistent contact qualification requires observed geometry")
                     adaptation = _load_json_artifact(self.artifact_root, candidate["execution_grasp"]["adaptation_provenance_ref"])
-                    results[candidate["candidate_ref"]] = qualify_observed_contact(
-                        task, request, candidate, record, adaptation, self.contact_arms, self.deadline,
-                        runtime_profile=dict(profile))
+                    if self.contact_qualification_mode == OBSERVED_OCCUPANCY:
+                        if getattr(task, "_paos_observed_collision", None) is None:
+                            raise SimulationProbeError(
+                                "observed_occupancy contact qualification requires observed collision data"
+                            )
+                        result = qualify_observed_contact(
+                            task, request, candidate, record, adaptation,
+                            self.contact_arms, self.deadline, runtime_profile=dict(profile),
+                        )
+                    elif self.contact_qualification_mode == PLANNER_WORLD_ONLY:
+                        result = qualify_planner_world_contact(
+                            task, request, candidate, adaptation,
+                            self.contact_arms, self.deadline,
+                        )
+                    else:
+                        raise SimulationProbeError("contact qualification mode is unsupported")
+                    results[candidate["candidate_ref"]] = result
                     continue
                 actor = (ObservedGeometryActor(record["world_T_object"])
                          if scene.get("geometry_source") == "observation"

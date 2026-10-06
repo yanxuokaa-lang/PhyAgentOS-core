@@ -44,6 +44,7 @@ def test_persistent_contacts_are_rematerialized_before_full_readiness(tmp_path, 
         if operation == "snapshot":
             return dict(builder.client.snapshot)
         assert operation == "contact_qualification"
+        assert arguments["mode"] == "observed_occupancy"
         candidate = arguments["route_request"]["candidates"][0]
         return {"candidates": {candidate["candidate_ref"]: {
             "status": "qualified" if qualified else "unavailable", "motion_authorized": False,
@@ -58,7 +59,7 @@ def test_persistent_contacts_are_rematerialized_before_full_readiness(tmp_path, 
     run.mkdir()
     metrics = {}
     if not qualified:
-        with pytest.raises(PreparationProviderError, match="No observed candidate"):
+        with pytest.raises(PreparationProviderError, match="No candidate passed observed_occupancy"):
             builder._qualify_contacts(request, nominal, run, PreparationDeadline.start(30), metrics)
         assert len(calls) == 2
     else:
@@ -69,7 +70,11 @@ def test_persistent_contacts_are_rematerialized_before_full_readiness(tmp_path, 
         assert {tuple(o["arm_ids"]) for o in rebuilt["options"]} == {("left",), ("right",)}
         assert len(rebuilt["reviews"]) == 4
     assert operation_log.count("contact_qualification") == 2
+    assert builder.contact_qualification_mode == "observed_occupancy"
     assert len(metrics["contact_qualification"]) == 2
+    assert {item["mode"] for item in metrics["contact_qualification"]} == {
+        "observed_occupancy"
+    }
     assert len(list(run.glob("contact-*.json"))) == 2
 
 

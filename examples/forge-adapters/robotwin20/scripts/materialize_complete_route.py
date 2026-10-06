@@ -17,6 +17,7 @@ import yaml
 
 from robotwin20_adapter.arm_candidates import ArmPlanningError, load_arm_planning_profile
 from robotwin20_adapter.collision_world import build_collision_world
+from robotwin20_adapter.contact_qualification import contact_qualification_mode
 from robotwin20_adapter.controller_qualification import (
     ControllerQualification,
     ControllerQualificationError,
@@ -143,12 +144,16 @@ def _load_profile(path: Path) -> Mapping[str, Any]:
     required = {
         "schema_version", "route_frame_id", "calibration_revision", "workspace_bounds_m",
         "grasp_adaptation", "route_policy", "joint_limit_policy", "stop_policy",
-        "semantic_tolerance",
+        "semantic_tolerance", "contact_qualification",
     }
     if not isinstance(value, Mapping) or not required <= set(value) or set(value) - required - {"observed_support", "observed_collision"}:
         raise MaterializationError("route input profile fields are invalid")
     if value["schema_version"] != ROUTE_INPUT_PROFILE_SCHEMA_VERSION or value["route_frame_id"] != "world":
         raise MaterializationError("route input profile schema/frame is unsupported")
+    try:
+        contact_qualification_mode(value)
+    except ValueError as exc:
+        raise MaterializationError(str(exc)) from exc
     workspace = value["workspace_bounds_m"]
     if not isinstance(workspace, Mapping) or set(workspace) != {
         "frame_id", "x_min_m", "x_max_m", "y_min_m", "y_max_m", "z_min_m", "z_max_m"

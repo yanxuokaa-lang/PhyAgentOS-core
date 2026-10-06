@@ -16,6 +16,7 @@ from PhyAgentOS.forge.capability_runtime.manipulation_prepare import Preparation
 from PhyAgentOS.forge.manipulation import ManipulationIntent
 
 from .arm_candidates import enumerate_arm_candidates, load_arm_planning_profile
+from .contact_qualification import CONTACT_QUALIFICATION_MODES, OBSERVED_OCCUPANCY
 from .preparation_deadline import PreparationDeadline, PreparationDeadlineExceededError
 from .route_evidence import _artifact_path
 from .route_inputs import canonical_json, validate_scene_facts
@@ -50,15 +51,19 @@ class PersistentRouteBuilder:
     """
 
     def __init__(self, *, client, artifact_root: Path, scene_source, command,
-                 materializer_arguments: Mapping[str, str], timeout_s: float = 120):
+                 materializer_arguments: Mapping[str, str], timeout_s: float = 120,
+                 contact_qualification_mode: str = OBSERVED_OCCUPANCY):
         self.client = client
         self.root = artifact_root.resolve()
         self.scene_source = scene_source
         self.command = tuple(command)
         self.arguments = dict(materializer_arguments)
         self.timeout_s = timeout_s
+        self.contact_qualification_mode = contact_qualification_mode
         if not self.command or not math.isfinite(timeout_s) or timeout_s <= 0:
             raise ValueError("materializer command and finite positive timeout are required")
+        if contact_qualification_mode not in CONTACT_QUALIFICATION_MODES:
+            raise ValueError("contact qualification mode is unsupported")
         reserved = {"scene-facts", "source-capture-root", "grasp-results", "artifact-root",
                     "candidate-ref", "entity-ref", "request-id"}
         if reserved & self.arguments.keys():
@@ -249,7 +254,7 @@ class PersistentRouteBuilder:
             started = monotonic()
             response = self.client.query("contact_qualification", {
                 "route_request": route, "allowed_arms": request["intent"]["allowed_arms"],
-                "timeout_s": timeout}, timeout_s=timeout)
+                "mode": self.contact_qualification_mode, "timeout_s": timeout}, timeout_s=timeout)
             result = response["candidates"][candidate["candidate_ref"]]
             diagnostic = run / f"contact-{index}.json"
             diagnostic.write_text(json.dumps(result), encoding="utf-8")
@@ -264,6 +269,7 @@ class PersistentRouteBuilder:
             if metrics is not None:
                 metrics.setdefault("contact_qualification", []).append({
                     "candidate_ref": candidate["candidate_ref"], "status": result["status"],
+                    "mode": self.contact_qualification_mode,
                     "elapsed_s": monotonic() - started, "evidence_ref": diagnostic_ref,
                     **({"observed_collision": occupancy, "visibility": dict(visibility),
                         "visibility_sampling": "convex_vertices_at_contact_and_approach_endpoints",
@@ -291,6 +297,7 @@ class PersistentRouteBuilder:
                 qualification.write_text(json.dumps(value), encoding="utf-8")
                 child = PersistentRouteBuilder(client=self.client, artifact_root=self.root,
                     scene_source=self.scene_source, command=self.command, timeout_s=self.timeout_s,
+                    contact_qualification_mode=self.contact_qualification_mode,
                     materializer_arguments={**self.arguments, "contact-qualification": str(qualification),
                         "contact-qualification-ref": f"artifact://preparation-builds/{run.name}/qualification-{index}-{arm}"})
                 try:
@@ -312,7 +319,8 @@ class PersistentRouteBuilder:
         if base is None:
             raise PreparationProviderError(
                 "no_qualified_contacts",
-                f"No observed candidate passed contact qualification and route construction: {dict(rejections)}; "
+                f"No candidate passed {self.contact_qualification_mode} contact qualification and route construction: "
+                f"{dict(rejections)}; "
                 f"diagnostics: artifact://preparation-builds/{run.name}",
                 failure_owner="planning",
                 retryable_in_revision=False,

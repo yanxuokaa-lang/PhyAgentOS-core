@@ -686,6 +686,25 @@ zero-velocity arm hold. Native controller, changed source, stale approval, input
 or normalized gripper values outside `[0, 1]` fail closed. This remains simulation-only and
 never grants PAOS Gateway, benchmark, or hardware motion authority.
 
+### Contact qualification modes
+
+Route-input profile v4 requires an explicit `contact_qualification.mode`:
+
+- `planner_world_only` evaluates each declared contact/backoff with Curobo after the
+  Adapter installs the normal planning world. That world retains every non-target bound
+  object, observed support residuals, the native table, and peer-arm projections. It does
+  not construct depth occupancy, classify unknown/occluded samples, or run local
+  palm/finger point-cloud sweeps. Planner failure or missing, non-finite, or negative table
+  clearance still rejects the contact, and complete pick-place route readiness remains a
+  separate required stage.
+- `observed_occupancy` retains the full depth-owned local contact and visibility policy and
+  therefore requires an `observed_collision` section in the same profile.
+
+The two modes change only Adapter-owned no-motion contact qualification. They do not change
+frames, calibration, freshness, workspace, IK, joint limits, motion authorization, Gateway
+admission, Action execution, stop/reconciliation, or settlement. The policy is independent
+of task names, colors, camera names, object counts, and benchmark goal sources.
+
 ### Persistent Tool host development deployment
 
 `profiles/forge-persistent/` runs the existing seven Tool endpoints behind one

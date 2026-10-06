@@ -1,5 +1,12 @@
 # Change Log
 
+## v2.10.11 (2026-10-06)
+
+- 中文：发布 Adapter `0.9.0` 与 Node `0.10.5`（SHA-256 `a431812a48ab34a9aab77142bacb4a3583133da585361351f94e24f97c052088`），为 contact qualification 增加 profile-owned `observed_occupancy` / `planner_world_only` 模式。当前 GraspNet 路线使用 `planner_world_only`，不构造完整深度 occupancy、不分类 unknown/occluded，也不执行局部手掌/手指点云扫掠。
+- English: Publish Adapter `0.9.0` and Node `0.10.5` (SHA-256 `a431812a48ab34a9aab77142bacb4a3583133da585361351f94e24f97c052088`) with profile-owned `observed_occupancy` and `planner_world_only` contact-qualification modes. The current GraspNet route uses `planner_world_only`, avoiding full-depth occupancy, unknown/occluded classification, and local palm/finger point-cloud sweeps.
+- 中文：简化模式仍通过 Curobo 规划世界保留其他绑定对象、原生桌面/观测支撑面与 peer-arm 投影，并继续执行接触与完整搬放路线的碰撞、IK、关节限位和桌面净空检查；不改变 benchmark 目标注入、Agent 决策、运动授权、Gateway、Action 或 settlement。
+- English: Simplified mode still retains other bound objects, the native table/observed support, and peer-arm projections in the Curobo planning world, and continues collision, IK, joint-limit, and table-clearance checks for contact and the complete pick-place route; benchmark goal injection, Agent decisions, motion authorization, Gateway, Action, and settlement are unchanged.
+
 ## v2.10.10 (2026-10-06)
 
 - 中文：配套 PAOS Core v12.7.2，将 Runtime profile 解析收敛到 Adapter `0.8.0` 的共享边界，Runtime backend 与 route materializer 同时支持单视角 `sensor_ref` 和同步多视角 `sensor_refs`，发布 Node `0.10.4`（SHA-256 `074edf599aafae8cf820feee777550e05cdec0fe1148b314ba8769c1664cc440`）。静态 profile/schema/materializer 配置故障现在明确为 Runtime-provider 所有、不可同 revision 重试且不要求 replan；证据刷新和候选耗尽仍保留各自显式恢复语义。未增加自动观察、筛选、replan 或 Action。

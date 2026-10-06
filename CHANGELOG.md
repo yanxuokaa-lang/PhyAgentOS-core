@@ -4,6 +4,43 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.8.0 (2026-10-06 17:49) - codex
+
+### 变更摘要 / Change Summary
+- [policy] [feat] 新增 Adapter-owned `contact_qualification.mode`：当前 GraspNet profile 使用 `planner_world_only`，关闭完整 depth occupancy、unknown/occluded 分类及局部手掌/手指点云扫掠；完整 `observed_occupancy` 模式保持可选。 (local)
+- [policy] [feat] Add Adapter-owned `contact_qualification.mode`: the current GraspNet profile uses `planner_world_only`, disabling full-depth occupancy, unknown/occluded classification, and local palm/finger point-cloud sweeps while retaining optional `observed_occupancy`. (local)
+- [sense] [fix] 简化模式仍先安装 Curobo planning world，保留其他绑定对象、原生桌面/观测支撑面与 peer arms，并继续执行接触和完整搬放路线的碰撞、IK、关节限位及桌面净空检查。 (local)
+- [sense] [fix] Simplified mode still installs the Curobo planning world first, retaining other bound objects, the native table/observed support, and peer arms, and continues collision, IK, joint-limit, and table-clearance checks for contact and the complete route. (local)
+
+### 文件变更详情 / File Changes
+- [新增 / Added] `robotwin20_adapter/contact_qualification.py:L1-L36`：共享策略枚举与 profile 组合校验 / shared policy enum and profile-combination validation.
+- [修改 / Modified] `persistent_deployment.py:L19,L192-L212`、`persistent_route_builder.py:L19,L54-L66,L257-L323`、`robotwin_persistent_engine.py:L428`、`robotwin_route_planner.py:L311-L437`：从 profile 到 Runtime 传播并分派策略 / propagate and dispatch policy from profile to Runtime.
+- [修改 / Modified] `robotwin_contact_qualification.py:L75-L160`：新增仅由规划世界执行的接触资格路径 / add planner-world-only contact qualification.
+- [修改 / Modified] route-input profiles `L1-L10` 与 materializer/replay：schema v4、显式模式和一致 replay / schema v4, explicit mode, and consistent replay.
+- [修改 / Modified] Adapter tests：新增模式、planner fail-closed、无 observed 指标与非法 profile 回归；`README.md:L689-L707` 记录范围 / add mode, planner-failure, no-observed-metric, and invalid-profile regressions and document scope.
+- [新增 / Added] `docs/forge/IMPLEMENTATION_REVIEW_V12_8_0.md:L1-L63`：七维审核 / seven-dimension review.
+
+### 关键 Diff / Key Diff
+```diff
+-observed_collision: {depth/voxel/unknown policy...}
++contact_qualification:
++  mode: planner_world_only
+```
+```diff
+-local_contact(...) + visibility_counts(...)
++evaluate_contact(...) + finite non-negative table clearance
+```
+
+### 七维 Code Review / Seven-Dimension Review
+- Blocker 0、Major 0、Minor 1。架构、正确性、恢复/幂等、声明范围内机器人安全、扩展、可观测性和 AgentLoop 自主性通过；Minor 是简化世界不保证未识别或 unknown/occluded 障碍物，不能作为开放场景/硬件完整安全证明。
+- Zero Blocker, zero Major, one Minor. Architecture, correctness, recovery/idempotency, robotics safety within scope, extensibility, observability, and AgentLoop autonomy pass; simplified mode does not cover unidentified or unknown/occluded obstacles and is not an open-world or hardware safety proof.
+
+### 验证 / Validation
+- Adapter focused `79 passed`; Skill/release/install `87 passed`; Ruff、compileall、`git diff --check` passed.
+- Full Adapter `773 passed, 17 failed`; failures are existing environment/fixture gaps (`scipy`, `cv2`, unrelated Action/Backend fixtures), not changed-path regressions.
+- Adapter `0.9.0`、Skill `2.10.11`、Node `0.10.5`; Node SHA-256 `a431812a48ab34a9aab77142bacb4a3583133da585361351f94e24f97c052088`，Skill bundle SHA-256 `86bcffb6d484f88e9dd453006cfca3a128f33c6e60680bc50fcc64ce099aee40`。
+- No AgentTask, Gateway Query/Action, simulator step, physical motion, install, or Runtime restart.
+
 ## v12.7.5 (2026-10-06 16:09) - codex
 
 ### 变更摘要 / Change Summary
@@ -138,33 +175,3 @@
 - Commit: `c52a5c4`
 - Branch: `feature/planning-loop`
 - 时间 / Time: 2026-10-06 14:38 Asia/Shanghai
-
-## v12.7.1 (2026-10-06 00:00) - codex
-
-### 变更摘要 / Change Summary
-- [env] [chore] 停止无 ownership 的旧 `pick-place-workflow 2.10.8`，安装 Skill `2.10.9` 与 Node `0.10.3`，保留 `robotwin-blocks-ranking-graspnet` profile 和本地 Qwen。 (local)
-- [env] [chore] Gracefully stop the old ownership-free `pick-place-workflow 2.10.8`, install Skill `2.10.9` and Node `0.10.3`, and retain the `robotwin-blocks-ranking-graspnet` profile and local Qwen. (local)
-
-### 文件变更详情 / File Changes
-- [修改 / Modified] `changelog/2026-10.md:L3-L43`：记录停止、安装、preflight 分支、启动和运行验证 / record stop, installation, preflight branch, startup, and runtime validation.
-- [修改 / Modified] `CHANGELOG.md:L7-L25`：加入最近版本的完整部署摘要 / add the latest deployment summary to the recent-version index.
-
-### 关键 Diff / Key Diff
-```diff
--pick-place-workflow 2.10.8 (running)
-+pick-place-workflow 2.10.9 (running)
--robotwin20_persistent_host 0.10.2
-+robotwin20_persistent_host 0.10.3
-```
-
-### 验证 / Validation
-- `paos skill status`：Skill `2.10.9`、Dora running、Gateway ready，11 个 Tool context 全部 ready；`paos forge-node verify`：Node `0.10.3` SHA-256 verified。
-- `paos skill status`: Skill `2.10.9`, Dora running, Gateway ready, all 11 Tool contexts ready; `paos forge-node verify`: Node `0.10.3` SHA-256 verified.
-- Runtime ownership 为空，AgentTask 无非终态；Qwen `/v1/models` 返回 `qwen3-vl-4b-awq`；未创建 AgentTask、未调用 Query/Action、未执行运动。
-- Runtime ownership is empty with no non-terminal AgentTask; Qwen `/v1/models` returns `qwen3-vl-4b-awq`; no AgentTask, Query/Action, or motion was performed.
-- Skill SHA-256 `be328fdc12f9a8065365e1be8c2da1017ef660bdb9430119a8bc964a5b59e28a`；Node SHA-256 `f1379e2aff8162397bab08e313118f6222f7b0f5192673e7a7b82ea1543fb69a`。
-
-### Git 提交 / Git Commit
-- Commit: `7daa161`
-- Branch: `feature/planning-loop`
-- 时间 / Time: 2026-10-06 Asia/Shanghai

@@ -36,6 +36,7 @@ def reexpress_target(target_world, old_model_world, new_model_world):
 def build(args):
     import yaml
 
+    from robotwin20_adapter.contact_qualification import contact_qualification_mode
     from robotwin20_adapter.grounding import Grounding
     from robotwin20_adapter.observed_collision import ObservedCollisionPolicy
     from robotwin20_adapter.observed_support import SupportEstimationPolicy
@@ -95,7 +96,8 @@ def build(args):
         request["candidates"] = request["candidates"][:args.limit]
     builder = PersistentRouteBuilder(client=client, artifact_root=root, scene_source=grounding.scene_facts,
                                      command=(sys.executable, str(Path(__file__).with_name("materialize_complete_route.py"))),
-                                     materializer_arguments=arguments, timeout_s=300)
+                                     materializer_arguments=arguments, timeout_s=300,
+                                     contact_qualification_mode=contact_qualification_mode(profile))
     metrics = {}
     start = monotonic()
     # Offline stage contains nominal materialization only. Runtime-dependent
@@ -115,7 +117,10 @@ def build(args):
 
 
 def evaluate(args):
+    import yaml
+
     from robotwin20_adapter.arm_candidates import CompleteRouteSelector, load_arm_planning_profile
+    from robotwin20_adapter.contact_qualification import contact_qualification_mode
     from robotwin20_adapter.persistent_client import (
         PersistentWorkerClient,
         build_persistent_route_readiness,
@@ -160,11 +165,15 @@ def evaluate(args):
         arguments = dict(zip((x.removeprefix("--") for x in argv[2::2]), argv[3::2]))
         for key in ("scene-facts", "source-capture-root", "grasp-results", "artifact-root", "candidate-ref", "entity-ref", "request-id"):
             arguments.pop(key)
+        route_profile = yaml.safe_load(
+            Path(arguments["route-input-profile"]).read_text(encoding="utf-8")
+        )
         facts = json.loads(next((root / "preparation-builds").glob("*/scene-facts.json")).read_text())
         builder = PersistentRouteBuilder(client=client, artifact_root=root,
             scene_source=lambda request, **kwargs: deepcopy(facts),
             command=(sys.executable, str(snapshot / "scripts/materialize_complete_route.py")),
-            materializer_arguments=arguments, timeout_s=args.deadline)
+            materializer_arguments=arguments, timeout_s=args.deadline,
+            contact_qualification_mode=contact_qualification_mode(route_profile))
         qualification_run = root / "preparation-builds" / "contact-qualification"
         qualification_run.mkdir()
 

@@ -16,6 +16,7 @@ from pick_place_workflow.grounding import (
 from pick_place_workflow.persistent_runtime import build_persistent_runtime
 
 from .arm_candidates import CompleteRouteSelector
+from .contact_qualification import contact_qualification_mode
 from .grounding import Grounding, GroundingEndpoint, RememberObservation
 from .observed_collision import ObservedCollisionPolicy
 from .observed_support import SupportEstimationPolicy
@@ -188,6 +189,9 @@ def build_persistent_deployment(*, client, artifact_root: Path, scene_source,
     """
     profile_path = Path(materializer_arguments["route-input-profile"])
     profile = yaml.safe_load(profile_path.read_text(encoding="utf-8"))
+    if not isinstance(profile, Mapping):
+        raise ValueError("route input profile must contain an object")
+    qualification_mode = contact_qualification_mode(profile)
     route_provider = (
         profile.get("grasp_adaptation", {})
         .get("provider_transform_source", {})
@@ -205,6 +209,7 @@ def build_persistent_deployment(*, client, artifact_root: Path, scene_source,
         client=client, artifact_root=artifact_root, scene_source=scene_source,
         command=materializer_command, materializer_arguments=materializer_arguments,
         timeout_s=materializer_timeout_s,
+        contact_qualification_mode=qualification_mode,
     )
     grounding = Grounding(client, artifact_root, scene_source,
                           goal_source=goal_source,

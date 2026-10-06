@@ -425,6 +425,7 @@ class RoboTwinPersistentEngine:
                 Path(self.profile["runtime_root"]), Path(self.profile["runtime_profile"]),
                 self.root, backend=self.backend,
                 contact_arms=arguments["allowed_arms"] if operation == "contact_qualification" else None,
+                contact_qualification_mode=arguments.get("mode") if operation == "contact_qualification" else None,
                 deadline=PreparationDeadline.start(arguments["timeout_s"]) if operation == "contact_qualification" else None,
             )
             if operation == "contact_qualification":

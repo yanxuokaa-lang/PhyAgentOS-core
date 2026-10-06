@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from robotwin20_adapter.contact_qualification import contact_qualification_mode
 from robotwin20_adapter.route_inputs import (
     CURRENT_SCENE_FACTS_SCHEMA_VERSION,
     OBJECT_GEOMETRY_SCHEMA_VERSION,
@@ -160,6 +161,8 @@ def test_graspnet_route_profile_uses_grasp_center_without_graspgen_depth():
     path = Path(__file__).parents[1] / "profiles" / "robotwin20" / "route-inputs-graspnet.yaml"
     profile = yaml.safe_load(path.read_text(encoding="utf-8"))
     adaptation = profile["grasp_adaptation"]
+    assert profile["contact_qualification"] == {"mode": "planner_world_only"}
+    assert "observed_collision" not in profile
     assert adaptation["provider_transform_source"]["provider"] == "graspnet"
     assert adaptation["provider_transform_source"]["origin_frame"] == "grasp_center"
     assert adaptation["provider_T_contact_center"][3] == 0
@@ -171,7 +174,29 @@ def test_generic_route_profile_is_graspnet_owned():
     import yaml
 
     path = Path(__file__).parents[1] / "profiles" / "robotwin20" / "route-inputs.yaml"
-    adaptation = yaml.safe_load(path.read_text(encoding="utf-8"))["grasp_adaptation"]
+    profile = yaml.safe_load(path.read_text(encoding="utf-8"))
+    adaptation = profile["grasp_adaptation"]
+    assert profile["contact_qualification"] == {"mode": "planner_world_only"}
     assert adaptation["provider_transform_source"]["provider"] == "graspnet"
     assert "contact_backoff_candidates_m" not in adaptation
     assert "grasp_depth_adaptation" in adaptation
+
+
+@pytest.mark.parametrize(
+    "profile,message",
+    [
+        ({}, "exactly one mode"),
+        ({"contact_qualification": {"mode": "unsupported"}}, "must be"),
+        ({"contact_qualification": {"mode": "observed_occupancy"}}, "requires"),
+        (
+            {
+                "contact_qualification": {"mode": "planner_world_only"},
+                "observed_collision": {},
+            },
+            "must not configure",
+        ),
+    ],
+)
+def test_contact_qualification_policy_is_explicit_and_unambiguous(profile, message):
+    with pytest.raises(ValueError, match=message):
+        contact_qualification_mode(profile)

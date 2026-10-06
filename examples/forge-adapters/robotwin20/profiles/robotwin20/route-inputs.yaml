@@ -1,5 +1,7 @@
-schema_version: paos-robotwin20-route-input-profile/v3
+schema_version: paos-robotwin20-route-input-profile/v4
 route_frame_id: world
+contact_qualification:
+  mode: planner_world_only
 calibration_revision: robotwin20-head-camera-seed0-v1
 workspace_bounds_m:
   frame_id: world

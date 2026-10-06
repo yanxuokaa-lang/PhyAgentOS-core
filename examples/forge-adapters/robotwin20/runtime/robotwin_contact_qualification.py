@@ -72,6 +72,92 @@ def qualify_point_contact(task, candidate, geometry, arm, hand, distances, appro
             "qualification_scope": "observed_convex_contact_and_approach", "observed_collision": scene["evidence"]}
 
 
+def qualify_planner_world_contact(task, request, candidate, adaptation, arms, deadline):
+    """Qualify contact using only the installed planner collision world.
+
+    This deliberately does not load depth, observed point clouds, gripper mesh
+    sweeps, or visibility classifications. The planner world has already been
+    installed by ``prepare_planning_world`` and contains peer objects and the
+    support/table geometry. Full route readiness remains a separate check.
+    """
+    if not arms or any(arm not in {"left", "right"} for arm in arms):
+        raise ValueError("contact qualification requires explicit supported arms")
+    deadline.remaining("contact_qualification")
+    distances = adaptation.get("contact_backoff_candidates_m", [0.])
+    if not isinstance(distances, list) or not distances:
+        raise ValueError("contact backoff candidates are unavailable")
+    import numpy as np
+
+    candidate_ref = candidate["candidate_ref"]
+    execution = candidate["execution_grasp"]
+    target = np.asarray(execution["robot_target_pose"]["position_m"], dtype=float)
+    contact = np.asarray(execution["contact_center_pose"]["position_m"], dtype=float)
+    ingress = np.asarray(execution["ingress_direction"]["vector"], dtype=float)
+    approach = np.asarray(candidate["route"][0]["waypoints"][0]["position_m"], dtype=float)
+    clearance = float(np.linalg.norm(approach - target))
+    attempts, qualified = [], []
+    for arm in arms:
+        variants, evaluations = [], []
+        for distance in distances:
+            deadline.remaining("contact_qualification")
+            distance = float(distance)
+            delta = -distance * ingress
+            grasp = deepcopy(execution)
+            grasp["robot_target_pose"]["position_m"] = (target + delta).tolist()
+            grasp["contact_center_pose"]["position_m"] = (contact + delta).tolist()
+            result = evaluate_contact(task, grasp, arm, clearance)
+            status = (
+                result.get("planner_status") == "success"
+                and isinstance(result.get("clearance_m"), (int, float))
+                and not isinstance(result.get("clearance_m"), bool)
+                and isfinite(float(result["clearance_m"]))
+                and float(result["clearance_m"]) >= 0
+            )
+            reasons = [] if status else [
+                "contact_planner_rejected"
+                if result.get("planner_status") != "success"
+                else "contact_clearance_unproven_or_negative"
+            ]
+            variants.append({
+                "backoff_m": distance,
+                "robot_target_position_m": (target + delta).tolist(),
+                "contact_center_position_m": (contact + delta).tolist(),
+                "planner_status": result.get("planner_status"),
+                "curobo_clearance_m": result.get("clearance_m"),
+                "rejection_reasons": reasons,
+                "status": "valid" if status else "rejected",
+            })
+            evaluations.append({"backoff_m": distance, **result})
+        selected = next((item for item in variants if item["status"] == "valid"), None)
+        qualification = {
+            "schema_version": GRASP_POSTPROCESSING_SCHEMA_VERSION,
+            "parent_candidate_ref": candidate_ref,
+            "variants": variants,
+            "selected_backoff_m": None if selected is None else selected["backoff_m"],
+            "status": "qualified" if selected else "unavailable",
+            "motion_authorized": False,
+            "qualification_scope": "planner_world_contact",
+            "provider_evaluation": {
+                "arm_id": arm, "variants": evaluations,
+                "scene_revision": request["scene_revision"],
+                "motion_authorized": False, "simulator_steps": 0,
+            },
+        }
+        attempts.append({"arm_id": arm, "qualification": qualification})
+        if selected is not None:
+            qualified.append((selected["backoff_m"], arm, qualification))
+    selected = min(qualified, key=lambda item: item[:2]) if qualified else None
+    return {
+        "status": "qualified" if selected else "unavailable",
+        "motion_authorized": False,
+        "scene_revision": request["scene_revision"],
+        "candidate_ref": candidate_ref,
+        "arm_id": selected[1] if selected else None,
+        "qualification": selected[2] if selected else None,
+        "arm_attempts": attempts,
+    }
+
+
 def qualify_observed_contact(task, request, candidate, record, adaptation, arms, deadline, *, runtime_profile):
     if not arms or any(arm not in {"left", "right"} for arm in arms):
         raise ValueError("contact qualification requires explicit supported arms")

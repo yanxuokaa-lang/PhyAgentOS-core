@@ -89,3 +89,69 @@ def test_observed_contact_requires_finite_nonnegative_planner_clearance(monkeypa
     assert result["status"] == expected
     if expected == "unavailable":
         assert result["arm_attempts"][0]["qualification"]["variants"][0]["rejection_reasons"] == ["contact_clearance_unproven_or_negative"]
+
+
+def test_planner_world_contact_skips_observed_geometry_and_uses_planner_for_every_variant(
+    monkeypatch,
+):
+    candidate, _, _, adaptation = inputs()
+    calls = []
+
+    def evaluate(_task, grasp, arm, clearance):
+        calls.append((arm, grasp["robot_target_pose"]["position_m"], clearance))
+        return {
+            "planner_status": "success" if arm == "right" else "failed",
+            "clearance_m": 0.0 if arm == "right" else None,
+        }
+
+    monkeypatch.setattr(contact, "evaluate_contact", evaluate)
+    monkeypatch.setattr(
+        contact,
+        "capture_task_geometry",
+        lambda *_args, **_kwargs: pytest.fail("planner-world mode must not capture gripper mesh"),
+    )
+    result = contact.qualify_planner_world_contact(
+        object(), {"scene_revision": "scene"}, candidate, adaptation,
+        ["left", "right"], PreparationDeadline.start(10),
+    )
+
+    assert result["status"] == "qualified"
+    assert result["arm_id"] == "right"
+    assert result["motion_authorized"] is False
+    assert len(calls) == 4
+    for attempt in result["arm_attempts"]:
+        qualification = attempt["qualification"]
+        assert qualification["qualification_scope"] == "planner_world_contact"
+        assert qualification["provider_evaluation"]["simulator_steps"] == 0
+        assert "observed_collision" not in qualification
+        assert all("visibility" not in variant for variant in qualification["variants"])
+
+
+@pytest.mark.parametrize(
+    "planner_status,clearance,reason",
+    [
+        ("failed", None, "contact_planner_rejected"),
+        ("success", -0.001, "contact_clearance_unproven_or_negative"),
+        ("success", float("nan"), "contact_clearance_unproven_or_negative"),
+    ],
+)
+def test_planner_world_contact_fails_closed_on_route_or_table_clearance(
+    monkeypatch, planner_status, clearance, reason
+):
+    candidate, _, _, adaptation = inputs()
+    adaptation["contact_backoff_candidates_m"] = [0.0]
+    monkeypatch.setattr(
+        contact,
+        "evaluate_contact",
+        lambda *_args: {"planner_status": planner_status, "clearance_m": clearance},
+    )
+
+    result = contact.qualify_planner_world_contact(
+        object(), {"scene_revision": "scene"}, candidate, adaptation,
+        ["right"], PreparationDeadline.start(10),
+    )
+
+    assert result["status"] == "unavailable"
+    variant = result["arm_attempts"][0]["qualification"]["variants"][0]
+    assert variant["status"] == "rejected"
+    assert variant["rejection_reasons"] == [reason]

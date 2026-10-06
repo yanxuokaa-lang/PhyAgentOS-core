@@ -15,7 +15,7 @@ from typing import Any
 
 ROUTE_SCENE_FACTS_SCHEMA_VERSION = "paos-robotwin20-route-scene-facts/v1"
 CURRENT_SCENE_FACTS_SCHEMA_VERSION = "paos-robotwin20-route-scene-facts/v2"
-ROUTE_INPUT_PROFILE_SCHEMA_VERSION = "paos-robotwin20-route-input-profile/v3"
+ROUTE_INPUT_PROFILE_SCHEMA_VERSION = "paos-robotwin20-route-input-profile/v4"
 OBJECT_GEOMETRY_SCHEMA_VERSION = "paos-robotwin20-object-geometry/v1"
 OBJECT_ROBOT_TARGET_TRANSFORM_SCHEMA_VERSION = "paos-robotwin20-object-robot-target-transform/v1"
 PLACEMENT_TARGET_SCHEMA_VERSION = "paos-robotwin20-placement-target/v1"
