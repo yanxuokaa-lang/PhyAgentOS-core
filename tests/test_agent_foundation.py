@@ -2263,6 +2263,96 @@ def test_model_replan_preserves_task_identity_without_executing(tmp_path):
     asyncio.run(exercise())
 
 
+def test_model_replan_reconciles_omitted_historical_node_without_executing(tmp_path):
+    async def exercise():
+        c, task = setup_task(tmp_path)
+        graph = compile_task_plan(task, semantic_nodes(2), reason="first")
+        settlement = NodeSettlement(
+            task_id=task.task_id,
+            revision_id=graph.revision_id,
+            node_id="chosen-1",
+            status="failed",
+        )
+        recovery_nodes = [{
+            "node_id": "recovery-observe",
+            "obligation_id": "refresh-current-evidence",
+            "capability": "scene.observe",
+        }]
+        provider = ScriptedProvider([LLMResponse(content=None, tool_calls=[ToolCallRequest(
+            "proposal",
+            "submit_recovery",
+            {"nodes": recovery_nodes, "reason": "refresh current evidence"},
+        )])])
+
+        proposal = await AgentRecoveryDecisions(provider, "fixture-model", c).propose_replan(
+            graph=graph,
+            settlement=settlement,
+            delta=build_replan_delta(graph, settlement),
+            context=settlement,
+        )
+
+        assert proposal.delta.preserve_node_ids == ()
+        assert tuple(node.node_id for node in proposal.plan_graph.nodes) == ("recovery-observe",)
+        current = c.get_task(task.task_id)
+        assert len(current.revisions) == 1
+        assert current.execution_records == []
+
+    asyncio.run(exercise())
+
+
+def test_model_replan_repairs_changed_preserve_candidate_without_executing(tmp_path):
+    async def exercise():
+        c, task = setup_task(tmp_path)
+        graph = compile_task_plan(task, semantic_nodes(2), reason="first")
+        settlement = NodeSettlement(
+            task_id=task.task_id,
+            revision_id=graph.revision_id,
+            node_id="chosen-1",
+            status="failed",
+        )
+        changed = semantic_nodes(2)
+        changed[0]["obligation_id"] = "changed-completed-obligation"
+        repaired = [{
+            "node_id": "recovery-observe",
+            "obligation_id": "refresh-current-evidence",
+            "capability": "scene.observe",
+        }]
+        provider = ScriptedProvider([
+            LLMResponse(content=None, tool_calls=[ToolCallRequest(
+                "invalid",
+                "submit_recovery",
+                {"nodes": changed, "reason": "changed preserved work"},
+            )]),
+            LLMResponse(content=None, tool_calls=[ToolCallRequest(
+                "repaired",
+                "submit_recovery",
+                {"nodes": repaired, "reason": "refresh current evidence"},
+            )]),
+        ])
+
+        proposal = await AgentRecoveryDecisions(provider, "fixture-model", c).propose_replan(
+            graph=graph,
+            settlement=settlement,
+            delta=build_replan_delta(graph, settlement),
+            context=settlement,
+        )
+
+        assert proposal.delta.preserve_node_ids == ()
+        assert tuple(node.node_id for node in proposal.plan_graph.nodes) == ("recovery-observe",)
+        assert len(provider.requests) == 2
+        repair_context = json.loads(provider.requests[1]["messages"][1]["content"])
+        assert "replacement content changed" in repair_context["repair"]["validation_error"]
+        current = c.get_task(task.task_id)
+        assert len(current.revisions) == 1
+        assert current.execution_records == []
+        assert any(
+            event["event_type"] == "agent_replan_proposal_rejected"
+            for event in c.store.events(task.task_id)
+        )
+
+    asyncio.run(exercise())
+
+
 @pytest.mark.parametrize("repaired", [True, False])
 def test_automatic_replan_repairs_cross_revision_retry_once_without_execution(tmp_path, repaired):
     async def exercise():

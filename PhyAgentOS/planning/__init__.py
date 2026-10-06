@@ -51,7 +51,7 @@ from .projection import (
     execute_argument_projection,
     project_tool_spec,
 )
-from .replan import build_replan_delta
+from .replan import build_replan_delta, reconcile_replan_delta
 from .settlement import settle_node
 from .trace import make_decision_trace
 
@@ -82,6 +82,7 @@ __all__ = [
     "validate_input_schema",
     "validate_tool_arguments",
     "build_replan_delta",
+    "reconcile_replan_delta",
     "canonical_sha256",
     "plan_graph_digest",
     "plan_node_digest",

@@ -4,6 +4,40 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.7.4 (2026-10-06 15:05) - codex
+
+### 变更摘要 / Change Summary
+- [policy] [fix] 在 replacement graph 产生后计算 effective replan delta：省略的历史节点不再虚假声明 preserved，原样节点继续 carry settlement，同名变更节点在 admission 前被拒绝。 (local)
+- [policy] [fix] Derive the effective replan delta after the replacement graph exists: omitted historical nodes are no longer falsely declared preserved, unchanged nodes continue to carry settlement, and changed same-ID nodes are rejected before admission. (local)
+- [policy] [fix] 默认 Agent recovery 与通用 `PlannerPlugin` 接纳边界共享同一纯 planning 规则；Coordinator 的严格 settlement 校验保持不变。 (local)
+- [policy] [fix] Apply the same pure planning rule to default Agent recovery and the generic `PlannerPlugin` admission boundary while retaining strict Coordinator settlement validation. (local)
+
+### 文件变更详情 / File Changes
+- [修改 / Modified] `PhyAgentOS/planning/replan.py:L43-L83`、`planning/__init__.py:L54-L85`：新增并导出 effective-delta 归一化 / add and export effective-delta reconciliation.
+- [修改 / Modified] `PhyAgentOS/agent/recovery_decisions.py:L137-L163`、`planning_loop.py:L1547-L1622`：接入默认模型纠正与通用 plugin 边界 / integrate default-model correction and generic plugin handling.
+- [修改 / Modified] `tests/test_planning_loop.py:L958-L1011,L1085-L1180`、`test_agent_foundation.py:L2266-L2353`：覆盖 recovery-only、严格 admission、preserve 三态、纠正与无副作用 / cover recovery-only flow, strict admission, preserve states, correction, and no side effects.
+- [新增 / Added] `REPLAN_PRESERVE_EVENT_DIAGNOSIS_20261006.md:L1-L68`、`REPLAN_EFFECTIVE_DELTA_CONTRACT_DIAGNOSIS_20261006.md:L1-L93`、`IMPLEMENTATION_REVIEW_V12_7_4.md:L1-L108`：两份诊断与七维审核 / two diagnoses and seven-dimension review.
+
+### 关键 Diff / Key Diff
+```diff
+-return ReplanProposal(delta=delta, plan_graph=replacement, ...)
++effective_delta = reconcile_replan_delta(graph, delta, replacement)
++return ReplanProposal(delta=effective_delta, plan_graph=replacement, ...)
+```
+```diff
++absent preserve candidate -> historical only
++unchanged included candidate -> preserve settlement
++changed included candidate -> reject before admission
+```
+
+### 七维 Code Review / Seven-Dimension Review
+- 架构、正确性、恢复/幂等、机器人安全、扩展兼容、可观测性/可维护性、AgentLoop 自主性与收敛均通过；Blocker 0、Major 0、Minor 0。无任务、Tool、provider 或相机专用分支，不自动观察、复制节点、选择 Tool 或执行 Action。
+- Architecture, correctness, recovery/idempotency, robotics safety, extension compatibility, observability/maintainability, and AgentLoop autonomy/convergence pass with zero Blocker, Major, or Minor findings. No task, Tool, provider, or camera-specific branch and no automatic observation, node copying, Tool selection, or Action.
+
+### 验证 / Validation
+- 聚焦 recovery/planning `54 passed, 143 deselected`；完整 Core `780 passed`；Ruff、compileall、`git diff --check` 通过。
+- 未安装/重启 Runtime，未变更 live AgentTask，未调用 Gateway Query/Action，未执行 simulator step 或物理运动。
+
 ## v12.7.3 (2026-10-06 14:43) - codex
 
 ### 变更摘要 / Change Summary
@@ -140,33 +174,3 @@
 - Commit: `7e23edf`
 - Branch: `feature/planning-loop`
 - 时间 / Time: 2026-10-05 Asia/Shanghai
-
-## v12.6.3 (2026-10-04 02:32) - codex
-
-### 变更摘要 / Change Summary
-- [chore] [release] 发布并安装 `pick-place-workflow 2.10.8`，配套已提交的 PAOS Core v12.6.2 task-scoped AgentLoop 修复；复用未修改的 Node `0.10.2`。 (local)
-- [chore] [release] Published and installed `pick-place-workflow 2.10.8` alongside the committed PAOS Core v12.6.2 task-scoped AgentLoop repair, retaining the unchanged Node `0.10.2`. (local)
-
-### 文件变更详情 / File Changes
-- [修改 / Modified] `examples/forge-skills/pick-place-workflow/skill.yaml:L3`、`pyproject.toml:L3`：`2.10.7` -> `2.10.8`。
-- [修改 / Modified] `examples/forge-skills/pick-place-workflow/CHANGELOG.md:L3-L6`：新增中英文配套发布说明 / add bilingual compatibility release notes.
-- [修改 / Modified] `examples/forge-skills/pick-place-workflow/tests/test_grasp_propose.py:L270`：更新版本一致性断言 / update the version consistency assertion.
-- [修改 / Modified] `changelog/2026-10.md:L3-L50`：记录停止、安装、Dora 环境诊断、实际加载、no-motion 验证与 Git 提交 / record stop, installation, Dora environment diagnosis, actual loading, no-motion validation, and the Git commit.
-
-### 关键 Diff / Key Diff
-```diff
--version: "2.10.7"
-+version: "2.10.8"
--version = "2.10.7"
-+version = "2.10.8"
--assert bundle_manifest["version"] == "2.10.7"
-+assert bundle_manifest["version"] == "2.10.8"
-```
-
-### 验证 / Validation
-- Skill `2.10.8` running；11 个 Tool context ready；host PID `2144506` 加载 `PAOS_SKILL_VERSION=2.10.8`；Node `0.10.2` SHA-256 verified；聚焦 no-motion 测试 `87 passed`。
-- Runtime ownership sets and non-terminal AgentTasks are empty; local `qwen3-vl-4b-awq` remains available. No AgentTask, Gateway Query/Action, or physical motion was created.
-
-### Git 提交 / Git Commit
-- Commit: `50adbf8` (Skill release and installation record)
-- Branch: `feature/planning-loop`

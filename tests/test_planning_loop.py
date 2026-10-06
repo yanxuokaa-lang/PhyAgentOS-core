@@ -42,8 +42,10 @@ from PhyAgentOS.planning import (
     ReplanDelta,
     ToolResultEnvelope,
     ToolSpecPolicy,
+    build_replan_delta,
     plan_graph_digest,
     plan_node_digest,
+    reconcile_replan_delta,
     tool_input_binding_digest,
 )
 from PhyAgentOS.verification.contracts import TaskVerificationContract
@@ -953,6 +955,62 @@ def test_failed_node_replan_preserves_completed_predecessor(tmp_path):
     assert active.fresh_evidence_requirements == ("scene:fresh",)
 
 
+def test_planning_loop_reconciles_recovery_only_plugin_delta(tmp_path):
+    c = coordinator(tmp_path)
+    task = c.create_task(
+        task_description="replace failed work with recovery query",
+        verification=TaskVerificationContract(mode="off"),
+    )
+    source = make_graph(task.task_id, "revision-1", ("completed", "failed"))
+    c.expand_discovery_revision(
+        task.task_id,
+        plan_graph=source,
+        plan_graph_ref="artifact://plans/plugin-effective/1",
+    )
+    calls: list[tuple[str, str]] = []
+
+    def execute(context):
+        calls.append((context.revision_id, context.node_id))
+        failed = context.revision_id == source.revision_id and context.node_id == "failed"
+        return ToolResultEnvelope(
+            task_id=context.task_id,
+            revision_id=context.revision_id,
+            node_id=context.node_id,
+            tool_id="test.query",
+            status="failed" if failed else "succeeded",
+            failure_code="no_result" if failed else None,
+            evidence_refs=() if failed else (f"placed:{context.node_id}",),
+        )
+
+    def replan(_graph, _settlement, delta, _context):
+        return ReplanProposal(
+            delta=delta,
+            plan_graph=make_graph(task.task_id, "revision-2", ("recovery-query",)),
+            plan_graph_ref="artifact://plans/plugin-effective/2",
+        )
+
+    result = asyncio.run(PlanningLoopAdapter(
+        c,
+        context_provider=NodeContextProvider(c.get_task),
+        node_executor=execute,
+        admission_context_provider=lambda _: AdmissionContext(
+            scene_revision="scene-1",
+            evidence_refs=frozenset({"scene:inventory"}),
+        ),
+        replan_proposer=replan,
+    ).run(task.task_id, scene_revision="scene-1"))
+
+    assert result.status == "completed"
+    assert calls == [
+        ("revision-1", "completed"),
+        ("revision-1", "failed"),
+        ("revision-2", "recovery-query"),
+    ]
+    active = c.get_task(task.task_id).active_revision
+    assert active.preserved_node_ids == ()
+    assert [item.node_id for item in active.node_settlements] == ["recovery-query"]
+
+
 def test_replan_rejects_preserving_changed_node_content(tmp_path):
     c = coordinator(tmp_path)
     task = c.create_task(task_description="changed obligation", verification=TaskVerificationContract(mode="off"))
@@ -1022,6 +1080,104 @@ def test_replan_rejects_preserved_node_missing_from_replacement_graph(tmp_path):
             plan_graph=replacement,
             plan_graph_ref="artifact://plans/preserve/2",
         )
+
+
+def test_replan_effective_delta_omits_historical_node_absent_from_replacement():
+    source = make_graph("task-effective", "revision-1", ("completed", "failed"))
+    settlement = NodeSettlement(
+        task_id=source.task_id,
+        revision_id=source.revision_id,
+        node_id="failed",
+        status="failed",
+    )
+    delta = build_replan_delta(source, settlement)
+    replacement = make_graph(source.task_id, "revision-2", ("recovery-query",))
+
+    effective = reconcile_replan_delta(source, delta, replacement)
+
+    assert delta.preserve_node_ids == ("completed",)
+    assert effective.preserve_node_ids == ()
+    assert effective.retry_parent_node_id == "failed"
+
+
+def test_recovery_only_effective_delta_passes_strict_revision_admission(tmp_path):
+    c = coordinator(tmp_path)
+    task = c.create_task(
+        task_description="replace failed work with current recovery",
+        verification=TaskVerificationContract(mode="off"),
+    )
+    source = make_graph(task.task_id, "revision-1", ("completed", "failed"))
+    c.expand_discovery_revision(
+        task.task_id,
+        plan_graph=source,
+        plan_graph_ref="artifact://plans/effective/1",
+    )
+    c.record_node_settlement(NodeSettlement(
+        task_id=task.task_id,
+        revision_id=source.revision_id,
+        node_id="completed",
+        status="completed",
+    ))
+    failed = NodeSettlement(
+        task_id=task.task_id,
+        revision_id=source.revision_id,
+        node_id="failed",
+        status="failed",
+    )
+    c.record_node_settlement(failed)
+    replacement = make_graph(task.task_id, "revision-2", ("recovery-query",))
+    effective = reconcile_replan_delta(source, build_replan_delta(source, failed), replacement)
+
+    c.request_replan(task.task_id, reason="current recovery query")
+    c.begin_revision_from_delta(
+        task.task_id,
+        effective,
+        plan_graph=replacement,
+        plan_graph_ref="artifact://plans/effective/2",
+    )
+
+    active = c.get_task(task.task_id).active_revision
+    assert active.preserved_node_ids == ()
+    assert active.node_settlements == []
+    assert tuple(node.node_id for node in active.plan_graph.nodes) == ("recovery-query",)
+    assert active.execution_records == []
+
+
+def test_replan_effective_delta_preserves_unchanged_included_node():
+    source = make_graph("task-effective", "revision-1", ("completed", "failed"))
+    settlement = NodeSettlement(
+        task_id=source.task_id,
+        revision_id=source.revision_id,
+        node_id="failed",
+        status="failed",
+    )
+    replacement = make_graph(source.task_id, "revision-2", ("completed", "recovery-query"))
+
+    effective = reconcile_replan_delta(
+        source,
+        build_replan_delta(source, settlement),
+        replacement,
+    )
+
+    assert effective.preserve_node_ids == ("completed",)
+
+
+def test_replan_effective_delta_rejects_changed_preserve_candidate():
+    source = make_graph("task-effective", "revision-1", ("completed", "failed"))
+    settlement = NodeSettlement(
+        task_id=source.task_id,
+        revision_id=source.revision_id,
+        node_id="failed",
+        status="failed",
+    )
+    replacement = make_graph(source.task_id, "revision-2", ("completed", "recovery-query"))
+    payload = replacement.model_dump(mode="json")
+    payload["nodes"][0]["capability"] = "different.obligation"
+    payload["graph_digest"] = plan_graph_digest(payload)
+    changed = PlanGraph.model_validate(payload)
+
+    with pytest.raises(ValueError, match="replacement content changed"):
+        reconcile_replan_delta(source, build_replan_delta(source, settlement), changed)
 
 
 def test_loop_rejects_result_bound_to_another_node(tmp_path):

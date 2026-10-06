@@ -8,7 +8,7 @@ from PhyAgentOS.agent.experience.redaction import redact_text
 from PhyAgentOS.agent.plan_proposal import RECOVERY_NODE_GUIDANCE, compile_task_plan
 from PhyAgentOS.agent.planner_plugin import ReplanProposal
 from PhyAgentOS.agent.planning_facts import response_facts
-from PhyAgentOS.planning import PlanNode
+from PhyAgentOS.planning import PlanNode, reconcile_replan_delta
 
 
 class AgentRecoveryDecisions:
@@ -140,6 +140,7 @@ class AgentRecoveryDecisions:
             task = self.coordinator.get_task(graph.task_id)
             try:
                 replacement = compile_task_plan(task, value["nodes"], reason=value["reason"])
+                effective_delta = reconcile_replan_delta(graph, delta, replacement)
                 break
             except ValueError as exc:
                 error = redact_text(str(exc))[:4000]
@@ -156,7 +157,7 @@ class AgentRecoveryDecisions:
                             "instruction": "Correct the rejected semantic proposal. No Tool was executed."},
                 )
         return ReplanProposal(
-            delta=delta, plan_graph=replacement,
+            delta=effective_delta, plan_graph=replacement,
             plan_graph_ref=f"artifact://plans/{task.task_id}/{replacement.revision_id}",
             reason=value["reason"],
         )

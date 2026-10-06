@@ -41,6 +41,7 @@ from PhyAgentOS.planning import (
     build_replan_delta,
     derive_ready_nodes,
     execute_argument_projection,
+    reconcile_replan_delta,
     settle_node,
 )
 
@@ -1547,6 +1548,12 @@ class PlanningLoopAdapter:
             proposal = self.replan_proposer(graph, settlement, delta, context)
             if hasattr(proposal, "__await__"):
                 proposal = await proposal  # type: ignore[assignment]
+            if not isinstance(proposal, ReplanProposal):
+                raise PlanningLoopError("replan proposer must return a ReplanProposal")
+            replacement = proposal.plan_graph
+            plan_ref = proposal.plan_graph_ref
+            reason = proposal.reason
+            effective_delta = reconcile_replan_delta(graph, proposal.delta, replacement)
         except Exception as exc:
             failure = settlement.failure_code or settlement.status
             try:
@@ -1595,15 +1602,10 @@ class PlanningLoopAdapter:
                     f"{settlement.node_id}:{failure}"
                 ),
             )
-        if not isinstance(proposal, ReplanProposal):
-            raise PlanningLoopError("replan proposer must return a ReplanProposal")
-        replacement, plan_ref, reason = proposal.plan_graph, proposal.plan_graph_ref, proposal.reason
-        if proposal.delta.task_id != task_id or proposal.delta.revision_id != graph.revision_id:
-            raise PlanningLoopError("replan proposal delta is not bound to the active graph")
-        self.coordinator.request_replan(task_id, reason=reason or proposal.delta.reason)
+        self.coordinator.request_replan(task_id, reason=reason or effective_delta.reason)
         self.coordinator.begin_revision_from_delta(
             task_id,
-            proposal.delta,
+            effective_delta,
             plan_graph=replacement,
             plan_graph_ref=plan_ref,
             reason=reason,

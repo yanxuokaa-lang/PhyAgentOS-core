@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from .contracts import NodeSettlement, PlanGraph, ReplanDelta
+from .contracts import NodeSettlement, PlanGraph, ReplanDelta, plan_node_digest
 
 
 def build_replan_delta(
@@ -40,4 +40,44 @@ def build_replan_delta(
     )
 
 
-__all__ = ["build_replan_delta"]
+def reconcile_replan_delta(
+    graph: PlanGraph,
+    delta: ReplanDelta,
+    replacement: PlanGraph,
+) -> ReplanDelta:
+    """Bind preserve declarations to the Agent-selected replacement graph.
+
+    ``build_replan_delta`` can only produce preserve *candidates* because the
+    replacement graph does not exist yet. A recovery-only graph may therefore
+    omit completed historical nodes without making their settlements part of
+    the new revision. Nodes that are included must remain semantically
+    unchanged; otherwise the proposal is rejected instead of carrying a
+    settlement across changed obligations.
+    """
+    if delta.task_id != graph.task_id or delta.revision_id != graph.revision_id:
+        raise ValueError("replan delta is not bound to the source graph")
+    if replacement.task_id != graph.task_id or replacement.revision_id == graph.revision_id:
+        raise ValueError("replacement graph is not a new graph for the source task")
+
+    source_nodes = {node.node_id: node for node in graph.nodes}
+    replacement_nodes = {node.node_id: node for node in replacement.nodes}
+    effective: list[str] = []
+    seen: set[str] = set()
+    for node_id in delta.preserve_node_ids:
+        if node_id in seen:
+            continue
+        seen.add(node_id)
+        source = source_nodes.get(node_id)
+        if source is None:
+            raise ValueError(f"preserve node {node_id!r} is absent from source graph")
+        candidate = replacement_nodes.get(node_id)
+        if candidate is None:
+            continue
+        if plan_node_digest(source) != plan_node_digest(candidate):
+            raise ValueError(f"cannot preserve node {node_id!r}: replacement content changed")
+        effective.append(node_id)
+
+    return delta.model_copy(update={"preserve_node_ids": tuple(effective)})
+
+
+__all__ = ["build_replan_delta", "reconcile_replan_delta"]
