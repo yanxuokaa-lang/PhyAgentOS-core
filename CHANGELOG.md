@@ -5,6 +5,53 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.8.3 (2026-10-06 23:39) - codex
+
+### 变更摘要 / Change Summary
+- [sense] [fix] prepared execution plan v2 绑定 Readiness 的完整 provider-owned 双臂动态状态；Persistent Action 在任何 simulator step 前验证当前规划世界。 (local)
+- [sense] [fix] Bind prepared execution plan v2 to Readiness's complete provider-owned dual-arm dynamic state and validate the current planning world before any Persistent Action simulator step. (local)
+- [eval] [test] 增加真实 Readiness artifact → Persistent `_prepare()` 的无运动回归，证明 Action 不二次规划并在 peer-arm/world drift 时零步拒绝。 (local)
+- [eval] [test] Add a no-motion regression through the real Readiness-artifact-to-Persistent-`_prepare()` path, proving no second solve and zero-step rejection on peer-arm/world drift. (local)
+
+### 文件变更详情 / File Changes
+- [修改 / Modified] `dual_arm_state.py:L138-L199,L346`：比较 scene/state/frame/policy/provenance identity、两臂 qpos/drive target/gripper、link identity 与 link pose / compare complete planning-relevant dual-arm state.
+- [修改 / Modified] `robotwin_route_planner.py:L155-L340,L471-L481`：Readiness 将同源 `dual_arm_state` 写入 prepared plan v2 / persist the source `dual_arm_state` in prepared plan v2.
+- [修改 / Modified] `robotwin_simulation_probe_worker.py:L534-L687`、`robotwin_persistent_engine.py:L520-L560`：Action `_prepare()` 全状态校验和结构化零步拒绝 / full-state Action admission and structured zero-step rejection.
+- [新增测试 / Added Tests] `test_dual_arm_state.py:L57-L93`、`test_route_planner.py:L89-L124`、`test_simulation_probe.py:L1828-L1968`、`test_persistent_action_approval.py:L31-L115,L347-L444`、`test_persistent_route_evaluator.py:L135-L185`：v2、动态漂移、真实 `_prepare()`、不二次规划回归 / v2, drift, real `_prepare()`, and no-second-solve regressions.
+- [新增 / Added] `PREPARED_PLAN_DYNAMIC_WORLD_DIAGNOSIS_20261006.md:L1-L41`、`PREPARED_PLAN_INTEGRATION_REGRESSION_DIAGNOSIS_20261006.md:L1-L43`、`IMPLEMENTATION_REVIEW_V12_8_3.md:L1-L61`：两份诊断与七维审核 / two diagnoses and seven-dimension review.
+- [修改 / Modified] Adapter `0.9.3`、Node `0.10.8`、Skill `2.10.14` manifests, release notes, and version tests.
+
+### 关键 Diff / Key Diff
+```diff
+-prepared plan v1: selected-arm initial_qpos only
++prepared plan v2: initial_dual_arm_state
+-Action loader compares selected-arm qpos
++Action loader compares complete dynamic planning world
++prepared_execution_world_state_drift -> Agent recovery facts
+```
+```diff
+-unit test injects internal _prepared_execution_plan
++RoboTwinPersistentEngine._prepare loads the Readiness artifact
++Action evaluate_route_arm() is forbidden by the integration regression
+```
+
+### 七维 Code Review / Seven-Dimension Review
+- Blocker 0、Major 0、Minor 0。架构、正确性、恢复/幂等、机器人安全、扩展兼容、可观测性和 AgentLoop 自主性/收敛全部通过。
+- Zero Blocker, Major, or Minor findings. Architecture, correctness, recovery/idempotency, robotics safety, extensibility, observability, and AgentLoop autonomy/convergence pass.
+- 未加入颜色/排列/benchmark/相机/实体/固定机械臂分支，未自动观察、换臂、换候选、重试、replan 或 Action。
+- No color/arrangement/benchmark/camera/entity/fixed-arm branch and no automatic observation, arm/candidate switch, retry, replan, or Action.
+
+### 验证 / Validation
+- Adapter changed path `126 passed, 1 deselected`；Core `781 passed`；Skill `375 passed`；release/package `87 passed`；Ruff、compileall、digest 校验和 `git diff --check` 通过。
+- Full Adapter `796 passed, 16 failed, 1 deselected`; the 16 failures are existing missing-dependency/fixture issues outside the changed path.
+- Node SHA-256 `6b5fd5c92d0fd420013a59ee69bffcc87a807c9a7e8b5b48e2883718fb423dc8`；Skill bundle SHA-256 `dc2714336fc85141f1d416605bbd42cee39d4acbe427fa336a9b67561571a8c0`。
+- 未安装/停止/重启 Runtime，未创建/恢复 AgentTask，未调用 Gateway Query/Action，未执行 simulator step 或物理运动。
+
+### Git 提交 / Git Commit
+- Commit: `6baf973`（实现、诊断与七维审核 / implementation, diagnoses, and seven-dimension review）
+- Branch: `feature/planning-loop`
+- 时间 / Time: 2026-10-07 Asia/Shanghai
+
 ## v12.8.2 (2026-10-06 20:10) - codex
 
 ### 变更摘要 / Change Summary
@@ -148,42 +195,3 @@
 - Commit: `abd192e`
 - Branch: `feature/planning-loop`
 - 时间 / Time: 2026-10-06 16:09 Asia/Shanghai
-
-## v12.7.4 (2026-10-06 15:05) - codex
-
-### 变更摘要 / Change Summary
-- [policy] [fix] 在 replacement graph 产生后计算 effective replan delta：省略的历史节点不再虚假声明 preserved，原样节点继续 carry settlement，同名变更节点在 admission 前被拒绝。 (local)
-- [policy] [fix] Derive the effective replan delta after the replacement graph exists: omitted historical nodes are no longer falsely declared preserved, unchanged nodes continue to carry settlement, and changed same-ID nodes are rejected before admission. (local)
-- [policy] [fix] 默认 Agent recovery 与通用 `PlannerPlugin` 接纳边界共享同一纯 planning 规则；Coordinator 的严格 settlement 校验保持不变。 (local)
-- [policy] [fix] Apply the same pure planning rule to default Agent recovery and the generic `PlannerPlugin` admission boundary while retaining strict Coordinator settlement validation. (local)
-
-### 文件变更详情 / File Changes
-- [修改 / Modified] `PhyAgentOS/planning/replan.py:L43-L83`、`planning/__init__.py:L54-L85`：新增并导出 effective-delta 归一化 / add and export effective-delta reconciliation.
-- [修改 / Modified] `PhyAgentOS/agent/recovery_decisions.py:L137-L163`、`planning_loop.py:L1547-L1622`：接入默认模型纠正与通用 plugin 边界 / integrate default-model correction and generic plugin handling.
-- [修改 / Modified] `tests/test_planning_loop.py:L958-L1011,L1085-L1180`、`test_agent_foundation.py:L2266-L2353`：覆盖 recovery-only、严格 admission、preserve 三态、纠正与无副作用 / cover recovery-only flow, strict admission, preserve states, correction, and no side effects.
-- [新增 / Added] `REPLAN_PRESERVE_EVENT_DIAGNOSIS_20261006.md:L1-L68`、`REPLAN_EFFECTIVE_DELTA_CONTRACT_DIAGNOSIS_20261006.md:L1-L93`、`IMPLEMENTATION_REVIEW_V12_7_4.md:L1-L108`：两份诊断与七维审核 / two diagnoses and seven-dimension review.
-
-### 关键 Diff / Key Diff
-```diff
--return ReplanProposal(delta=delta, plan_graph=replacement, ...)
-+effective_delta = reconcile_replan_delta(graph, delta, replacement)
-+return ReplanProposal(delta=effective_delta, plan_graph=replacement, ...)
-```
-```diff
-+absent preserve candidate -> historical only
-+unchanged included candidate -> preserve settlement
-+changed included candidate -> reject before admission
-```
-
-### 七维 Code Review / Seven-Dimension Review
-- 架构、正确性、恢复/幂等、机器人安全、扩展兼容、可观测性/可维护性、AgentLoop 自主性与收敛均通过；Blocker 0、Major 0、Minor 0。无任务、Tool、provider 或相机专用分支，不自动观察、复制节点、选择 Tool 或执行 Action。
-- Architecture, correctness, recovery/idempotency, robotics safety, extension compatibility, observability/maintainability, and AgentLoop autonomy/convergence pass with zero Blocker, Major, or Minor findings. No task, Tool, provider, or camera-specific branch and no automatic observation, node copying, Tool selection, or Action.
-
-### 验证 / Validation
-- 聚焦 recovery/planning `54 passed, 143 deselected`；完整 Core `780 passed`；Ruff、compileall、`git diff --check` 通过。
-- 未安装/重启 Runtime，未变更 live AgentTask，未调用 Gateway Query/Action，未执行 simulator step 或物理运动。
-
-### Git 提交 / Git Commit
-- Commit: `cf7ed3a`
-- Branch: `feature/planning-loop`
-- 时间 / Time: 2026-10-06 15:18 Asia/Shanghai
