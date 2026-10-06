@@ -41,6 +41,11 @@
 - Adapter `0.9.0`、Skill `2.10.11`、Node `0.10.5`; Node SHA-256 `a431812a48ab34a9aab77142bacb4a3583133da585361351f94e24f97c052088`，Skill bundle SHA-256 `86bcffb6d484f88e9dd453006cfca3a128f33c6e60680bc50fcc64ce099aee40`。
 - No AgentTask, Gateway Query/Action, simulator step, physical motion, install, or Runtime restart.
 
+### Git 提交 / Git Commit
+- Commit: `28700b0`（implementation）
+- Branch: `feature/planning-loop`
+- 时间 / Time: 2026-10-06 17:50 Asia/Shanghai
+
 ## v12.7.5 (2026-10-06 16:09) - codex
 
 ### 变更摘要 / Change Summary
