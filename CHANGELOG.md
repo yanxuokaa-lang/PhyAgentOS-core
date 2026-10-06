@@ -1,5 +1,6 @@
 # Changelog
 ## Archive
+- [2026-10 part2](changelog/2026-10_part2.md)
 - [2026-10](changelog/2026-10.md)
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
@@ -32,9 +33,12 @@
 - 专项 `73 passed`；相关链路 `93 passed`；Skill/release/install `87 passed`；完整 Adapter `788 passed, 2 failed, 1 skipped`，两项失败位于既有无关 fixture。
 - Node SHA-256 `fd67b41c0d575e7b8d3a9d4da0d0c23f8c6d8df96a4a6ee981f9689ee7ef2412`；Skill bundle SHA-256 `f086762539bfbc2b4388c4e5a0fc44bdda1befb9b97bbd74942c032367dc3ca3`。
 - 构建和回归无 AgentTask、Gateway Query/Action、simulator step 或物理运动。
+- 已通过 Coordinator 取消旧 `awaiting_replan` 任务并清空 ownership，再无 `--force` 停止旧 Runtime；Dora 在停止宽限期后 SIGKILL 未响应的旧 host，当时无在途 invocation、session、task binding 或 world change。
+- Installed Skill `2.10.12` and Node `0.10.6`; Runtime `runtime_e8d8a9855ce641bf`, Dora, Gateway, and 11/11 Tool contexts are ready with zero active ownership and zero non-terminal tasks.
+- 启动日志确认实际 host 路径为 `robotwin20_persistent_host-0.10.6-linux-x86_64`；本地场景理解 primary 为 `qwen3-vl-4b-awq`，fallback 为 `gpt-6.1-sol` 且 `reasoning_effort=high`。部署验收未调用 Query/Action 或执行仿真/物理运动。
 
 ### Git 提交 / Git Commit
-- Commit: pending
+- Commit: `715e8e9`（实现 / implementation）
 - Branch: `feature/planning-loop`
 
 ## v12.8.0 (2026-10-06 17:49) - codex
