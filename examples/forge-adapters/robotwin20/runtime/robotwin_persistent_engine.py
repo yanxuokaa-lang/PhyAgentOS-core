@@ -544,15 +544,13 @@ class RoboTwinPersistentEngine:
         )
         probe._label_probe_actors(task)
         probe._validate_runtime_route_input_binding(task, candidate, inputs)
-        selected_arm = arms[0]
-        start_entity = getattr(task.robot, f"{selected_arm}_entity")
         prepared_plan = probe.load_prepared_execution_plan(
             self.root,
             readiness_ref,
             request=request,
             candidate=candidate,
             assignment=assignment,
-            start_qpos=start_entity.get_qpos()[:7],
+            current_dual_arm_state=state,
             start_tolerance_rad=float(self.profile["start_state_tolerance_rad"]),
         )
         self._state["_prepared_execution_plan"] = prepared_plan

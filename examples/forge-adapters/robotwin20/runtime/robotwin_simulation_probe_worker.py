@@ -80,6 +80,7 @@ from robotwin20_adapter.controller_qualification import (
 )
 from robotwin20_adapter.dual_arm_state import (
     DualArmStateError,
+    compare_dual_arm_states,
     hold_drift,
     validate_dual_arm_state,
 )
@@ -537,7 +538,7 @@ def load_prepared_execution_plan(
     request: Mapping[str, Any],
     candidate: Mapping[str, Any],
     assignment: Mapping[str, Any],
-    start_qpos: Any,
+    current_dual_arm_state: Mapping[str, Any],
     start_tolerance_rad: float,
 ) -> dict[str, Any]:
     """Load the route produced by readiness; never invoke a planner.
@@ -591,7 +592,8 @@ def load_prepared_execution_plan(
     plan = attempt.get("execution_plan")
     required = {
         "schema_version", "request_id", "candidate_ref", "entity_ref", "scene_revision",
-        "frame_id", "arm", "initial_qpos", "segments", "motion_authorized",
+        "frame_id", "arm", "initial_qpos", "initial_dual_arm_state", "segments",
+        "motion_authorized",
     }
     if not isinstance(plan, Mapping) or set(plan) != required:
         raise PreparedExecutionPlanError(
@@ -599,7 +601,7 @@ def load_prepared_execution_plan(
             code="prepared_execution_plan_missing",
         )
     if (
-        plan["schema_version"] != "paos-robotwin20-prepared-execution-plan/v1"
+        plan["schema_version"] != "paos-robotwin20-prepared-execution-plan/v2"
         or plan["request_id"] != request["request_id"]
         or plan["candidate_ref"] != candidate["candidate_ref"]
         or plan["entity_ref"] != candidate["entity_ref"]
@@ -615,14 +617,33 @@ def load_prepared_execution_plan(
             requires_replan=True,
             recommended_action="refresh_declared_evidence",
         )
-    initial = np.asarray(plan["initial_qpos"], dtype=float)
-    current = np.asarray(start_qpos, dtype=float).reshape(-1)
-    if initial.shape != (7,) or current.shape != (7,) or not np.isfinite(initial).all() or not np.isfinite(current).all():
-        raise PreparedExecutionPlanError("prepared execution start joint state is invalid")
-    if float(np.max(np.abs(initial - current))) > start_tolerance_rad:
+    try:
+        initial_state = validate_dual_arm_state(plan["initial_dual_arm_state"])
+        comparison = compare_dual_arm_states(
+            initial_state,
+            current_dual_arm_state,
+            tolerance=start_tolerance_rad,
+        )
+    except DualArmStateError as exc:
         raise PreparedExecutionPlanError(
-            "prepared execution start joint state drifted",
-            code="prepared_execution_start_state_drift",
+            "prepared execution dynamic world state is invalid",
+            code="prepared_execution_world_state_drift",
+            failure_owner="binding",
+            requires_replan=True,
+            recommended_action="refresh_declared_evidence",
+        ) from exc
+    if plan["initial_qpos"] != initial_state[arm]["qpos"]:
+        raise PreparedExecutionPlanError(
+            "prepared execution selected-arm state is not bound to its dynamic world",
+            code="prepared_execution_plan_binding_drift",
+            failure_owner="binding",
+            requires_replan=True,
+            recommended_action="refresh_declared_evidence",
+        )
+    if not comparison["within_tolerance"]:
+        raise PreparedExecutionPlanError(
+            "prepared execution dynamic world state drifted",
+            code="prepared_execution_world_state_drift",
             failure_owner="binding",
             requires_replan=True,
             recommended_action="refresh_declared_evidence",
@@ -657,7 +678,12 @@ def load_prepared_execution_plan(
             raise SimulationProbeError("prepared execution trajectory shape is invalid")
         if not np.isfinite(position).all() or not np.isfinite(velocity).all():
             raise SimulationProbeError("prepared execution trajectory contains non-finite values")
-    return {"plan": dict(plan), "arm_attempts": attempts, "arm": arm}
+    return {
+        "plan": dict(plan),
+        "arm_attempts": attempts,
+        "arm": arm,
+        "world_state_comparison": comparison,
+    }
 
 
 def _validate_route_input_artifacts(

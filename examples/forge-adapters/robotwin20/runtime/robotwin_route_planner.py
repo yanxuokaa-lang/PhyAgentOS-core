@@ -160,6 +160,7 @@ def evaluate_route_arm(
     actor: Any,
     *,
     diagnose_failure: bool = False,
+    initial_dual_arm_state: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Plan serially from predicted endpoints, restoring geometry in all cases.
 
@@ -254,7 +255,7 @@ def evaluate_route_arm(
             "status": "pass",
             "segments": segments,
             "execution_plan": {
-                "schema_version": "paos-robotwin20-prepared-execution-plan/v1",
+                "schema_version": "paos-robotwin20-prepared-execution-plan/v2",
                 "request_id": request.get("request_id"),
                 "candidate_ref": candidate["candidate_ref"],
                 "entity_ref": candidate.get("entity_ref"),
@@ -262,9 +263,10 @@ def evaluate_route_arm(
                 "frame_id": request["frame_id"],
                 "arm": arm,
                 "initial_qpos": original[:7].tolist(),
+                "initial_dual_arm_state": deepcopy(dict(initial_dual_arm_state)),
                 "segments": execution_plan,
                 "motion_authorized": False,
-            },
+            } if initial_dual_arm_state is not None else None,
             "motion_authorized": False,
         }
     except Exception as exc:
@@ -317,7 +319,13 @@ def evaluate_route(
     actor: Any,
     *,
     diagnose_failure: bool = False,
+    initial_dual_arm_state: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
+    options: dict[str, Any] = {}
+    if diagnose_failure:
+        options["diagnose_failure"] = True
+    if initial_dual_arm_state is not None:
+        options["initial_dual_arm_state"] = initial_dual_arm_state
     attempts = [
         evaluate_route_arm(
             task,
@@ -325,7 +333,7 @@ def evaluate_route(
             candidate,
             arm,
             actor,
-            **({"diagnose_failure": True} if diagnose_failure else {}),
+            **options,
         )
         for arm in ("left", "right")
     ]
@@ -464,7 +472,12 @@ class RoboTwinRouteEvaluator:
                          if scene.get("geometry_source") == "observation"
                          else getattr(task, record["actor_name"]))
                 results[candidate["candidate_ref"]] = evaluate_route(
-                    task, request, candidate, actor, diagnose_failure=self.diagnose_failure
+                    task,
+                    request,
+                    candidate,
+                    actor,
+                    diagnose_failure=self.diagnose_failure,
+                    initial_dual_arm_state=world_evidence["dual_arm_state"],
                 )
             return {
                 "candidates": results,

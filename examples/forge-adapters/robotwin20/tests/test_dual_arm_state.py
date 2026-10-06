@@ -7,6 +7,7 @@ from robotwin20_adapter.dual_arm_state import (
     build_dual_arm_state,
     build_peer_arm_projection,
     build_peer_arm_sphere_projection,
+    compare_dual_arm_states,
     hold_drift,
     validate_dual_arm_state,
     validate_peer_arm_projection,
@@ -51,6 +52,43 @@ def test_hold_drift_reports_target_change():
     drift = hold_drift(before, after, arm_id="right")
     assert drift["max_qpos_delta_rad"] == 0.02
     assert drift["drive_target_unchanged"] is False
+
+
+@pytest.mark.parametrize(
+    ("path", "value"),
+    [
+        (("left", "qpos", 0), 0.02),
+        (("right", "drive_target", 1), 0.02),
+        (("right", "gripper"), 0.8),
+        (("left", "links", 0, "pose_wxyz", 0), 0.02),
+    ],
+)
+def test_complete_state_comparison_detects_planning_world_drift(path, value):
+    before = _state()
+    after = copy.deepcopy(before)
+    target = after
+    for item in path[:-1]:
+        target = target[item]
+    target[path[-1]] = value
+    comparison = compare_dual_arm_states(before, after, tolerance=1e-4)
+    assert comparison["within_tolerance"] is False
+    assert comparison["max_dynamic_delta"] >= 0.02
+
+
+def test_complete_state_comparison_detects_identity_and_link_set_drift():
+    before = _state()
+    after = copy.deepcopy(before)
+    after["state_revision"] = "another-state"
+    after["right"]["links"].append(
+        {
+            "link_id": "right:panda_link8",
+            "link_name": "panda_link8",
+            "pose_wxyz": [0, 0, 0, 1, 0, 0, 0],
+        }
+    )
+    comparison = compare_dual_arm_states(before, after, tolerance=1e-4)
+    assert comparison["within_tolerance"] is False
+    assert comparison["identity_drift"] == ["state_revision", "right.links"]
 
 
 def test_peer_projection_is_bound_to_selected_arm_and_peer_identity():

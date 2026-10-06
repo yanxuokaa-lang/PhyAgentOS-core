@@ -135,6 +135,68 @@ def hold_drift(
             "drive_target_unchanged": target_delta == 0.0}
 
 
+def compare_dual_arm_states(
+    initial: Mapping[str, Any],
+    current: Mapping[str, Any],
+    *,
+    tolerance: float,
+) -> dict[str, Any]:
+    """Compare every dynamic value used to construct the dual-arm planning world."""
+    before = validate_dual_arm_state(initial)
+    after = validate_dual_arm_state(current)
+    if isinstance(tolerance, bool) or not math.isfinite(tolerance) or tolerance <= 0:
+        raise DualArmStateError("dual-arm state tolerance must be finite and positive")
+    identity_fields = (
+        "scene_revision",
+        "state_revision",
+        "frame_id",
+        "selected_arm",
+        "held_arm_policy",
+        "provenance_refs",
+    )
+    identity_drift = [field for field in identity_fields if before[field] != after[field]]
+    arm_drift: dict[str, dict[str, Any]] = {}
+    maximum = 0.0
+    for arm_id in ("left", "right"):
+        initial_arm = before[arm_id]
+        current_arm = after[arm_id]
+        initial_links = [(item["link_id"], item["link_name"]) for item in initial_arm["links"]]
+        current_links = [(item["link_id"], item["link_name"]) for item in current_arm["links"]]
+        if initial_links != current_links:
+            identity_drift.append(f"{arm_id}.links")
+            link_pose_delta = math.inf
+        else:
+            link_pose_delta = max(
+                abs(left - right)
+                for initial_link, current_link in zip(initial_arm["links"], current_arm["links"])
+                for left, right in zip(initial_link["pose_wxyz"], current_link["pose_wxyz"])
+            )
+        qpos_delta = max(
+            abs(left - right)
+            for left, right in zip(initial_arm["qpos"], current_arm["qpos"])
+        )
+        drive_target_delta = max(
+            abs(left - right)
+            for left, right in zip(initial_arm["drive_target"], current_arm["drive_target"])
+        )
+        gripper_delta = abs(initial_arm["gripper"] - current_arm["gripper"])
+        arm_maximum = max(qpos_delta, drive_target_delta, gripper_delta, link_pose_delta)
+        maximum = max(maximum, arm_maximum)
+        arm_drift[arm_id] = {
+            "max_qpos_delta": qpos_delta,
+            "max_drive_target_delta": drive_target_delta,
+            "gripper_delta": gripper_delta,
+            "max_link_pose_delta": link_pose_delta,
+            "within_tolerance": arm_maximum <= tolerance,
+        }
+    return {
+        "identity_drift": identity_drift,
+        "arms": arm_drift,
+        "max_dynamic_delta": maximum,
+        "within_tolerance": not identity_drift and maximum <= tolerance,
+    }
+
+
 def build_peer_arm_projection(
     *, scene_revision: str, state_revision: str, frame_id: str,
     selected_arm: str, links: Sequence[Mapping[str, Any]], source_ref: str,
@@ -281,6 +343,7 @@ def validate_peer_arm_sphere_projection(value: Mapping[str, Any]) -> dict[str, A
 __all__ = [
     "DUAL_ARM_STATE_SCHEMA_VERSION", "PEER_ARM_PROJECTION_SCHEMA_VERSION",
     "DualArmStateError", "build_dual_arm_state", "validate_dual_arm_state", "hold_drift",
+    "compare_dual_arm_states",
     "qualified_link_id", "build_peer_arm_projection", "validate_peer_arm_projection",
     "PEER_ARM_SPHERE_PROJECTION_SCHEMA_VERSION", "build_peer_arm_sphere_projection",
     "validate_peer_arm_sphere_projection",

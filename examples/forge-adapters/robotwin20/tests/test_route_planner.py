@@ -6,6 +6,8 @@ import numpy as np
 import pytest
 import robotwin_route_planner as module
 
+from robotwin20_adapter.dual_arm_state import build_dual_arm_state
+
 
 class Entity:
     def __init__(self):
@@ -82,6 +84,44 @@ def test_route_chains_predicted_endpoints_and_restores_without_scene_steps(route
     assert entity.qpos == [0.0] * 9
     assert events == ["attach", "attached_check", "detach", "released_obstacle"]
     assert result["motion_authorized"] is False
+
+
+def test_readiness_plan_binds_complete_dual_arm_state(route):
+    task, request, candidate, *_ = route
+
+    def arm(name):
+        return {
+            "qpos": [0.0] * 7,
+            "drive_target": [0.0] * 7,
+            "gripper": 1.0,
+            "links": [{
+                "link_id": f"{name}:panda_hand",
+                "link_name": "panda_hand",
+                "pose_wxyz": [0.0, 0.0, 0.8, 1.0, 0.0, 0.0, 0.0],
+            }],
+        }
+
+    state = build_dual_arm_state(
+        scene_revision="scene-1",
+        state_revision="state-1",
+        frame_id="world",
+        left=arm("left"),
+        right=arm("right"),
+        provenance_refs=["artifact://scene/state-1"],
+    )
+    result = module.evaluate_route_arm(
+        task,
+        request,
+        candidate,
+        "left",
+        object(),
+        initial_dual_arm_state=state,
+    )
+    assert result["execution_plan"]["schema_version"] == (
+        "paos-robotwin20-prepared-execution-plan/v2"
+    )
+    assert result["execution_plan"]["initial_dual_arm_state"] == state
+    assert result["execution_plan"]["motion_authorized"] is False
 
 
 def test_contact_success_does_not_hide_retreat_failure(route):

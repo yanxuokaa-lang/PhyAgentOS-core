@@ -57,6 +57,7 @@ from robotwin20_adapter import (
     load_simulation_probe_profile,
     motion_capability_digest,
 )
+from robotwin20_adapter.dual_arm_state import build_dual_arm_state
 from robotwin20_adapter.route_readiness import route_geometry_digest
 
 QUALIFICATION_TEST_IDS = (
@@ -1824,6 +1825,31 @@ def test_persistent_action_consumes_prepared_plan_without_route_solve(execution_
     assert route.planned == []
 
 
+def _prepared_dual_arm_state(request):
+    def arm(arm_id):
+        return {
+            "qpos": [0.0] * 7,
+            "drive_target": [0.0] * 7,
+            "gripper": 1.0,
+            "links": [{
+                "link_id": f"{arm_id}:panda_hand",
+                "link_name": "panda_hand",
+                "pose_wxyz": [0.0, 0.0, 0.8, 1.0, 0.0, 0.0, 0.0],
+            }],
+        }
+
+    return build_dual_arm_state(
+        scene_revision=request["scene_revision"],
+        state_revision=f"{request['scene_revision']}:stabilized",
+        frame_id=request["frame_id"],
+        left=arm("left"),
+        right=arm("right"),
+        provenance_refs=[
+            f"artifact://simulation-probe/{request['scene_revision']}/dual-arm-state"
+        ],
+    )
+
+
 def _prepared_readiness_artifact(tmp_path, request, candidate):
     route = deepcopy(candidate["route"])
     route[-1]["waypoints"].append(
@@ -1839,10 +1865,11 @@ def _prepared_readiness_artifact(tmp_path, request, candidate):
                 "position": [[0.0] * 7], "velocity": [[0.0] * 7],
             })
     plan = {
-        "schema_version": "paos-robotwin20-prepared-execution-plan/v1",
+        "schema_version": "paos-robotwin20-prepared-execution-plan/v2",
         "request_id": request["request_id"], "candidate_ref": candidate["candidate_ref"],
         "entity_ref": candidate["entity_ref"], "scene_revision": request["scene_revision"],
         "frame_id": request["frame_id"], "arm": "left", "initial_qpos": [0.0] * 7,
+        "initial_dual_arm_state": _prepared_dual_arm_state(request),
         "segments": segments, "motion_authorized": False,
     }
     artifact = {
@@ -1872,20 +1899,73 @@ def test_prepared_plan_loader_rejects_legacy_artifact(tmp_path):
         probe_worker.load_prepared_execution_plan(
             tmp_path, ref, request=request, candidate=candidate,
             assignment={"readiness_evidence_ref": ref, "selected_arm_ids": ["left"]},
-            start_qpos=[0.0] * 7, start_tolerance_rad=1e-4,
+            current_dual_arm_state=_prepared_dual_arm_state(request),
+            start_tolerance_rad=1e-4,
         )
 
 
-def test_prepared_plan_loader_rejects_start_state_drift(tmp_path):
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda state: state["left"]["qpos"].__setitem__(0, 0.1),
+        lambda state: state["right"]["qpos"].__setitem__(0, 0.1),
+        lambda state: state["right"]["drive_target"].__setitem__(0, 0.1),
+        lambda state: state["right"].__setitem__("gripper", 0.5),
+        lambda state: state["left"]["links"][0]["pose_wxyz"].__setitem__(0, 0.1),
+        lambda state: state.__setitem__("state_revision", "another-state"),
+    ],
+)
+def test_prepared_plan_loader_rejects_dynamic_world_drift(tmp_path, mutate):
     request = _route_request(tmp_path)
     candidate = request["candidates"][0]
     ref, _plan = _prepared_readiness_artifact(tmp_path, request, candidate)
-    with pytest.raises(SimulationProbeError, match="start joint state drifted"):
+    current = _prepared_dual_arm_state(request)
+    mutate(current)
+    with pytest.raises(
+        probe_worker.PreparedExecutionPlanError,
+        match="dynamic world state drifted",
+    ) as rejected:
         probe_worker.load_prepared_execution_plan(
             tmp_path, ref, request=request, candidate=candidate,
             assignment={"readiness_evidence_ref": ref, "selected_arm_ids": ["left"]},
-            start_qpos=[0.1] * 7, start_tolerance_rad=1e-4,
+            current_dual_arm_state=current, start_tolerance_rad=1e-4,
         )
+    assert rejected.value.failure_code == "prepared_execution_world_state_drift"
+    assert rejected.value.failure_owner == "binding"
+    assert rejected.value.retryable_in_revision is False
+    assert rejected.value.requires_replan is True
+    assert rejected.value.recommended_action == "refresh_declared_evidence"
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda state: state.__setitem__("frame_id", "another-frame"),
+        lambda state: state["right"]["links"][0].__setitem__(
+            "link_id", "left:panda_hand"
+        ),
+    ],
+)
+def test_prepared_plan_loader_rejects_invalid_world_identity(tmp_path, mutate):
+    request = _route_request(tmp_path)
+    candidate = request["candidates"][0]
+    ref, _plan = _prepared_readiness_artifact(tmp_path, request, candidate)
+    current = _prepared_dual_arm_state(request)
+    mutate(current)
+    with pytest.raises(probe_worker.PreparedExecutionPlanError) as rejected:
+        probe_worker.load_prepared_execution_plan(
+            tmp_path,
+            ref,
+            request=request,
+            candidate=candidate,
+            assignment={"readiness_evidence_ref": ref, "selected_arm_ids": ["left"]},
+            current_dual_arm_state=current,
+            start_tolerance_rad=1e-4,
+        )
+    assert rejected.value.failure_code == "prepared_execution_world_state_drift"
+    assert rejected.value.failure_owner == "binding"
+    assert rejected.value.retryable_in_revision is False
+    assert rejected.value.requires_replan is True
 
 
 def test_failed_assigned_arm_never_falls_back_or_moves(execution_route, monkeypatch):

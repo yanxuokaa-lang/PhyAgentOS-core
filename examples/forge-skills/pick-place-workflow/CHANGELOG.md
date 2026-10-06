@@ -1,5 +1,10 @@
 # Change Log
 
+## v2.10.14 (2026-10-06)
+
+- 中文：发布 Adapter `0.9.3` 与 Node `0.10.8`。Readiness 的 prepared execution plan v2 绑定完整 provider-owned 双臂动态状态；Persistent Action 在生成执行器前比较 scene/frame/state identity、双臂 qpos/drive target/gripper/link pose，漂移时结构化零步拒绝且不二次规划。
+- English: Publish Adapter `0.9.3` and Node `0.10.8`. The readiness-produced prepared execution plan v2 binds the complete provider-owned dual-arm dynamic state; Persistent Action compares scene/frame/state identity and both arms' qpos, drive targets, gripper, and link poses before creating the execution generator, rejecting drift with a structured zero-step result and no second solve.
+
 ## v2.10.13 (2026-10-06)
 
 - 中文：发布 Adapter `0.9.2` 与 Node `0.10.7`。`manipulation.prepare` 的 readiness artifact 现在持有选定机械臂的执行轨迹，Persistent Action 校验 scene、route、assignment 与起始关节状态后直接消费，不再对同一路线进行第二次数值规划。

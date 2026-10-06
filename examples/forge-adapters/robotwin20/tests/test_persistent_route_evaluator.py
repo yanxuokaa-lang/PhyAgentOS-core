@@ -132,8 +132,21 @@ def test_current_route_evaluation_reuses_world_and_rejects_stale_inputs(tmp_path
     checked = []
     monkeypatch.setattr(probe, "_validate_route_input_artifacts", lambda root, request, candidate: candidate)
     monkeypatch.setattr(probe, "_validate_runtime_route_input_binding", lambda task, candidate, inputs: checked.append(candidate["entity_ref"]))
-    monkeypatch.setattr(planner, "prepare_planning_world", lambda task, world: {"scene_revision": world["scene_revision"]})
-    monkeypatch.setattr(planner, "evaluate_route", lambda *args, **kwargs: {"status": "pass"})
+    monkeypatch.setattr(
+        planner,
+        "prepare_planning_world",
+        lambda task, world: {
+            "scene_revision": world["scene_revision"],
+            "dual_arm_state": {"scene_revision": world["scene_revision"]},
+        },
+    )
+    evaluated_states = []
+
+    def evaluate(*args, **kwargs):
+        evaluated_states.append(kwargs["initial_dual_arm_state"])
+        return {"status": "pass"}
+
+    monkeypatch.setattr(planner, "evaluate_route", evaluate)
 
     def artifact(name, value):
         data = json.dumps(value).encode()
@@ -166,6 +179,10 @@ def test_current_route_evaluation_reuses_world_and_rejects_stale_inputs(tmp_path
         with pytest.raises(planner.SimulationProbeError, match="requires observed collision geometry"):
             evaluator({**request, "collision_world": {"artifact_ref": observed_ref, "sha256": observed_digest}})
     assert checked == ["entity://block", "entity://block"]
+    assert evaluated_states == [
+        {"scene_revision": "scene-2"},
+        {"scene_revision": "scene-3"},
+    ]
 
 
 def test_readiness_client_validates_live_world_evidence(tmp_path):
