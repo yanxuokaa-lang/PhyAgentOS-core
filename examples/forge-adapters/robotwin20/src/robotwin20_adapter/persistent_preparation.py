@@ -254,7 +254,7 @@ class PersistentPreparationProvider:
                                           "evidence": [*selected["evidence_refs"], *([review_ref] if review_ref else []),
                                                        *[item["evidence_ref"] for item in metrics.get("contact_qualification", [])
                                                          if item["candidate_ref"] == assignment.candidate_ref
-                                                         and "observed_collision" in item]],
+                                                         and isinstance(item.get("evidence_ref"), str)]],
                                           # Core's public preparation contract describes
                                           # static readiness only.  Dynamic checks deferred
                                           # to an admitted simulation Action remain owned by

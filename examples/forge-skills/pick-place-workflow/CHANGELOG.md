@@ -1,5 +1,10 @@
 # Change Log
 
+## v2.10.12 (2026-10-06)
+
+- 中文：发布 Adapter `0.9.1` 与 Node `0.10.6`，将 planner-world contact qualification diagnostic 引用传播到最终 prepared candidate evidence，并增加 Runtime planning-world 安装后选择 `planner_world_only` 分支的无运动集成回归。
+- English: Publish Adapter `0.9.1` and Node `0.10.6`, propagate planner-world contact-qualification diagnostic references into final prepared-candidate evidence, and add a no-motion integration regression proving that `planner_world_only` is selected after Runtime planning-world installation.
+
 ## v2.10.11 (2026-10-06)
 
 - 中文：发布 Adapter `0.9.0` 与 Node `0.10.5`（SHA-256 `a431812a48ab34a9aab77142bacb4a3583133da585361351f94e24f97c052088`），为 contact qualification 增加 profile-owned `observed_occupancy` / `planner_world_only` 模式。当前 GraspNet 路线使用 `planner_world_only`，不构造完整深度 occupancy、不分类 unknown/occluded，也不执行局部手掌/手指点云扫掠。

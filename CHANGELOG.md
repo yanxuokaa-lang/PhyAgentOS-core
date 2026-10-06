@@ -4,6 +4,39 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.8.1 (2026-10-06 18:30) - codex
+
+### 变更摘要 / Change Summary
+- [sense] [fix] 将 `planner_world_only` contact diagnostic 与旧 observed 模式一样传播到最终 prepared candidate evidence，补齐审计链。 (local)
+- [sense] [fix] Propagate `planner_world_only` contact diagnostics into final prepared-candidate evidence alongside legacy observed-mode diagnostics, completing the audit chain. (local)
+- [eval] [test] 新增真实 artifact 边界的 Runtime 回归，验证 collision configuration、planning-world 安装、planner-world qualification 顺序及 no-motion 结果。 (local)
+- [eval] [test] Add a Runtime regression using real artifact boundaries to verify collision configuration, planning-world installation, planner-world qualification ordering, and no-motion results. (local)
+
+### 文件变更详情 / File Changes
+- [修改 / Modified] `persistent_preparation.py:L251-L263`：传播所有同候选 contact diagnostic refs / propagate all same-candidate contact diagnostic refs.
+- [新增测试 / Added Tests] `test_persistent_preparation.py:L216-L231`、`test_persistent_route_evaluator.py:L10-L123`：公共 evidence 与 Runtime 顺序回归 / public-evidence and Runtime-ordering regressions.
+- [修改 / Modified] Adapter `0.9.1`、Skill `2.10.12`、Node `0.10.6` manifests and release records.
+
+### 关键 Diff / Key Diff
+```diff
+-and "observed_collision" in item
++and isinstance(item.get("evidence_ref"), str)
++assert events == ["configure_collision_world", "prepare_planning_world", "qualify_planner_world_contact"]
+```
+
+### 七维 Code Review / Seven-Dimension Review
+- Blocker 0、Major 0。七个维度均通过；未增加 RGB/任务/相机硬编码，未自动观察、选择、replan 或执行 Action。简化世界仍不覆盖未识别及 unknown/occluded 障碍物。
+- Zero Blocker or Major findings. All seven dimensions pass; no RGB/task/camera hardcoding and no automatic observe, select, replan, or Action. The simplified world still excludes unidentified and unknown/occluded obstacles.
+
+### 验证 / Validation
+- 专项 `73 passed`；相关链路 `93 passed`；Skill/release/install `87 passed`；完整 Adapter `788 passed, 2 failed, 1 skipped`，两项失败位于既有无关 fixture。
+- Node SHA-256 `fd67b41c0d575e7b8d3a9d4da0d0c23f8c6d8df96a4a6ee981f9689ee7ef2412`；Skill bundle SHA-256 `f086762539bfbc2b4388c4e5a0fc44bdda1befb9b97bbd74942c032367dc3ca3`。
+- 构建和回归无 AgentTask、Gateway Query/Action、simulator step 或物理运动。
+
+### Git 提交 / Git Commit
+- Commit: pending
+- Branch: `feature/planning-loop`
+
 ## v12.8.0 (2026-10-06 17:49) - codex
 
 ### 变更摘要 / Change Summary
@@ -141,42 +174,3 @@
 - Commit: `a3fa0d5`
 - Branch: `feature/planning-loop`
 - 时间 / Time: 2026-10-06 14:48 Asia/Shanghai
-
-## v12.7.2 (2026-10-06 14:11) - codex
-
-### 变更摘要 / Change Summary
-- [sense] [fix] 将 RoboTwin Runtime profile 的解析收敛到 Adapter `0.8.0` 共享边界，使 Runtime backend 与 route materializer 同时支持 `sensor_ref`/`sensor_refs`，修复候选成功后稳定失败的 `route_materialization_invalid`。 (local)
-- [sense] [fix] Consolidate RoboTwin Runtime-profile parsing in the shared Adapter `0.8.0` boundary so the Runtime backend and route materializer both support `sensor_ref`/`sensor_refs`, fixing deterministic `route_materialization_invalid` after successful proposal generation. (local)
-- [policy] [fix] 静态 profile/schema/materializer 故障明确为 Runtime-provider 所有、不可同 revision 重试且不要求 replan；候选耗尽与 evidence refresh 保留各自恢复语义。 (local)
-- [policy] [fix] Classify static profile/schema/materializer faults as Runtime-provider-owned, non-retryable in the same revision, and non-replannable while retaining candidate-exhaustion and evidence-refresh semantics. (local)
-- [chore] [release] 构建 Skill `2.10.10`、Node `0.10.4` 与 Adapter `0.8.0`，未安装或重启 Runtime。 (local)
-- [chore] [release] Build Skill `2.10.10`, Node `0.10.4`, and Adapter `0.8.0` without installing or restarting the Runtime. (local)
-
-### 文件变更详情 / File Changes
-- [新增 / Added] `runtime_profile.py:L1-L209`：共享 Runtime profile schema 与规范化 / shared Runtime-profile schema and normalization.
-- [修改 / Modified] `robotwin_backend.py:L30-L83`、`materialize_complete_route.py:L52-L233`：共同消费共享 parser / consume the shared parser.
-- [修改 / Modified] `manipulation_prepare.py:L35-L52,L528-L557`、`persistent_route_builder.py:L162-L226,L311-L321`、`persistent_preparation.py:L73-L116,L158-L192`：一致的结构化恢复语义 / consistent structured recovery semantics.
-- [新增 / Added] `RUNTIME_PROFILE_CONSUMER_DRIFT_DIAGNOSIS_20261006.md:L1-L109`、`PREPARATION_FAILURE_RECOVERY_CONTRACT_DIAGNOSIS_20261006.md:L1-L103`、`IMPLEMENTATION_REVIEW_V12_7_2.md:L1-L87`：两份诊断与七维审核 / two diagnoses and seven-dimension review.
-
-### 关键 Diff / Key Diff
-```diff
--materializer requires only legacy sensor_ref
-+Runtime backend and materializer use one Adapter-owned profile parser
--failure_owner=runtime_provider, requires_replan=true
-+failure_owner=runtime_provider, retryable_in_revision=false
-+requires_replan=false, recommended_action=fix_runtime_contract
-```
-
-### 七维 Code Review / Seven-Dimension Review
-- 架构、正确性、恢复/幂等、机器人安全、扩展兼容、可观测性/可维护性、AgentLoop 自主性与收敛均通过；Blocker 0、Major 0、Minor 0。无 RGB/颜色/排列/benchmark/task ID/provider/具体相机组合分支，不自动观察、筛选、replan 或执行 Action。
-- Architecture, correctness, recovery/idempotency, robotics safety, extension compatibility, observability/maintainability, and AgentLoop autonomy/convergence pass with zero Blocker, Major, or Minor findings. No RGB/color/arrangement/benchmark/task-ID/provider/concrete-camera-combination branch and no automatic observation, selection, replan, or Action.
-
-### 验证 / Validation
-- 聚焦回归 `348 passed`；发布聚焦 `435 passed`；完整 Core `773 passed`；完整 Adapter/Skill `1144 passed, 1 skipped, 4 个既有基线失败`，原 runtime profile identity 基线已修复。
-- Ruff、compileall、`git diff --check` 通过；Node `0.10.4` SHA-256 `074edf599aafae8cf820feee777550e05cdec0fe1148b314ba8769c1664cc440`；Skill `2.10.10` SHA-256 `fe6ef2db9bd02bca339003267d0f8e3927ee8ff5cb041126c4b4b1bee2b5e18b`。
-- 未安装/重启 Runtime，未创建 AgentTask，未调用 Gateway Query/Action，未执行仿真或物理运动 / no Runtime install/restart, AgentTask, Gateway Query/Action, simulator motion, or physical motion.
-
-### Git 提交 / Git Commit
-- Commit: `c52a5c4`
-- Branch: `feature/planning-loop`
-- 时间 / Time: 2026-10-06 14:38 Asia/Shanghai

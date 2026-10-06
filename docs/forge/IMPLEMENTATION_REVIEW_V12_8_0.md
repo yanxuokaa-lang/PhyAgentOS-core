@@ -55,9 +55,10 @@ full observed-occupancy policy or another validated environment representation.
 - Node `0.10.5` deterministic build: SHA-256
   `a431812a48ab34a9aab77142bacb4a3583133da585361351f94e24f97c052088`.
 - Skill bundle `2.10.11` built successfully.
-- Full Adapter suite in the project virtual environment: `773 passed, 17 failed`; the
-  failures are pre-existing environment/fixture gaps (`scipy`, `cv2`, and unrelated
-  Action/Backend fixtures), not failures in the changed qualification path.
+- Full Adapter suite rerun with the complete script/runtime import paths and explicit
+  `pytest_asyncio`: `788 passed, 2 failed, 1 skipped`. The two failures reproduce in
+  unrelated Action-result and task-video projection fixtures and do not call the changed
+  qualification path. Focused planner-world/runtime regressions pass independently.
 
 No AgentTask was created or resumed, no Gateway Query or Action was invoked, and no simulator
 step or physical motion occurred during this implementation and review.

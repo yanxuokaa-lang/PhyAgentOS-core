@@ -213,6 +213,24 @@ def test_finalized_review_is_exposed_as_preparation_evidence(tmp_path):
     assert next(iter(routes._routes.values()))["review_request_ref"] == ref
 
 
+def test_planner_contact_diagnostic_is_exposed_as_preparation_evidence(tmp_path):
+    request, provider, _ = composition(tmp_path)
+    ref = "artifact://contact/planner-world-0"
+    result = provider.prepare(
+        request,
+        metrics={
+            "contact_qualification": [
+                {
+                    "candidate_ref": request["candidates"][0]["candidate_ref"],
+                    "mode": "planner_world_only",
+                    "evidence_ref": ref,
+                }
+            ]
+        },
+    )
+    assert ref in result["prepared_candidates"][0]["evidence"]
+
+
 def test_finalization_failure_does_not_register_executable_route(tmp_path):
     request, provider, routes = composition(tmp_path)
 
