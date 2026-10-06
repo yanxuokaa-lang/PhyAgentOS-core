@@ -13,8 +13,8 @@
 - [chore] [release] Upgrade the Core distribution from `PhyAgentOS-ai 1.0.1` to current editable `1.0.2`, retain unchanged Skill `2.10.10` and Node `0.10.4`, and start new Runtime `runtime_d3c5b3210a094cb9`. (local)
 
 ### 文件变更详情 / File Changes
-- [修改 / Modified] `changelog/2026-10.md:L3-L51`：记录任务取消、停止告警、Core 安装、Runtime 启动与 no-motion 验收 / record task cancellation, stop warning, Core installation, Runtime startup, and no-motion validation.
-- [修改 / Modified] `CHANGELOG.md:L7-L29`：维护最近五个版本 / maintain the latest five versions.
+- [修改 / Modified] `changelog/2026-10.md:L3-L56`：记录任务取消、停止告警、Core 安装、Runtime 启动与 no-motion 验收 / record task cancellation, stop warning, Core installation, Runtime startup, and no-motion validation.
+- [修改 / Modified] `CHANGELOG.md:L7-L34`：维护最近五个版本 / maintain the latest five versions.
 
 ### 关键 Diff / Key Diff
 ```diff
@@ -27,6 +27,11 @@
 ### 验证 / Validation
 - Skill `2.10.10`、Node `0.10.4` verified、Dora running、Gateway ready、11/11 Tool context ready；ownership 为空，非终态任务为 0，本地 Qwen 为 `qwen3-vl-4b-awq`。
 - 未创建新任务、未调用 Gateway Query/Action、未执行 simulator step 或物理运动。
+
+### Git 提交 / Git Commit
+- Commit: `abd192e`
+- Branch: `feature/planning-loop`
+- 时间 / Time: 2026-10-06 16:09 Asia/Shanghai
 
 ## v12.7.4 (2026-10-06 15:05) - codex
 
