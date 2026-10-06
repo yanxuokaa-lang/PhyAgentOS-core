@@ -11,8 +11,8 @@
 - [env] [chore] With zero active ownership and zero non-terminal AgentTasks, normally stop old Skill `2.10.9`, install Skill `2.10.10` and Node `0.10.4`, and start the new Runtime with the existing profile and operator-owned env file. (local)
 
 ### 文件变更详情 / File Changes
-- [修改 / Modified] `changelog/2026-10.md:L3-L38`：记录部署计划、停止条件、实际停止/安装/启动和无动作验收 / record deployment planning, stop conditions, actual stop/install/start, and no-motion acceptance.
-- [修改 / Modified] `CHANGELOG.md:L7-L28`：维护最近五个版本的完整记录 / maintain complete records for the latest five versions.
+- [修改 / Modified] `changelog/2026-10.md:L3-L43`：记录部署计划、停止条件、实际停止/安装/启动、无动作验收与提交 / record deployment planning, stop conditions, actual stop/install/start, no-motion acceptance, and the commit.
+- [修改 / Modified] `CHANGELOG.md:L7-L33`：维护最近五个版本的完整记录 / maintain complete records for the latest five versions.
 
 ### 关键 Diff / Key Diff
 ```diff
@@ -26,6 +26,11 @@
 - `paos skill status`：Skill `2.10.10`、Dora running、Gateway ready、11 个 Tool context ready；实际 host 路径为 `robotwin20_persistent_host-0.10.4-linux-x86_64`，Node lock SHA-256 verified。
 - Runtime ownership 为空、非终态 AgentTask 为 0、本地 Qwen 为 `qwen3-vl-4b-awq`；未创建任务、未调用 Query/Action、未执行仿真或物理运动。
 - Skill archive SHA-256 `fe6ef2db9bd02bca339003267d0f8e3927ee8ff5cb041126c4b4b1bee2b5e18b`；Node archive SHA-256 `074edf599aafae8cf820feee777550e05cdec0fe1148b314ba8769c1664cc440`。
+
+### Git 提交 / Git Commit
+- Commit: `a3fa0d5`
+- Branch: `feature/planning-loop`
+- 时间 / Time: 2026-10-06 14:48 Asia/Shanghai
 
 ## v12.7.2 (2026-10-06 14:11) - codex
 
