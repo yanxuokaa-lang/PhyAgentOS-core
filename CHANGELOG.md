@@ -43,6 +43,11 @@
 - Node SHA-256 `091b074cf378eaa4ca7661848de0b210d2560017f577d1d1ff8ec43895dd6db8`；Skill SHA-256 `741a171c19a1db343dbacba927e3c70afe81fcd0a73ee2e7ecf594dff5a95fd8`。 (local)
 - 未创建/恢复 AgentTask，未调用 Gateway Query/Action，未推进 simulator/物理运动，也未改变 Runtime 生命周期。 (local)
 
+### Git 提交 / Git Commit
+- Commit: `4224d65`（实现、回归与七维审核 / implementation, regression coverage, and seven-dimension review）
+- Branch: `feature/planning-loop`
+- 时间 / Time: `2026-10-07 Asia/Shanghai`
+
 ## v12.9.5 (2026-10-07 19:07) - codex
 
 ### 变更摘要 / Change Summary
