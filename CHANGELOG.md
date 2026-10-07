@@ -5,6 +5,44 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.9.6 (2026-10-07 20:35) - codex
+
+### 变更摘要 / Change Summary
+- [sense] [fix] 将当前 Runtime 实际导入的 bounded-controller source 纳入共享 motion-policy 准入；Readiness、Action 和 monitored startup 均拒绝旧 capability snapshot。 (local)
+- [sense] [fix] Bind the bounded-controller source imported by the current Runtime into shared motion-policy admission so Readiness, Action, and monitored startup all reject stale capability snapshots. (local)
+- [comm] [fix] 保留执行期间逐 command source digest 复验；不可恢复的 Runtime contract failure 仍由 AgentLoop 确定停止，不触发自动恢复。 (local)
+- [comm] [fix] Retain per-command source-digest revalidation during execution; non-recoverable Runtime contract failures still stop deterministically in AgentLoop without automatic recovery. (local)
+
+### 文件变更详情 / File Changes
+- [修改 / Modified] `robotwin_capability_controller.py:L10-L18`、`robotwin_motion_policy.py:L46-L113,L126-L255`：由 controller owner 捕获 import-time identity，并共享配置启动检查与 Readiness/Action 准入。 (local)
+- [修改 / Modified] `robotwin_simulation_probe_worker.py:L45-L50,L1081-L1154,L1284-L1289,L1342-L1347,L2141-L2149`、`robotwin_persistent_engine.py:L484-L530`：消费共享 digest，删除重复 admission，保留 execution guard。 (local)
+- [修改 / Modified] `persistent_host.py:L705-L721`：monitored Runtime composition 前校验配置的左右臂 source binding。 (local)
+- [新增测试 / Added Tests] Adapter source/provider/version/arm/startup/Readiness/Action no-motion 回归；同步 Adapter `0.9.6`、Node `0.10.11`、Skill `3.0.3`。 (local)
+- [新增 / Added] `docs/forge/IMPLEMENTATION_REVIEW_V12_9_6.md:L1-L104`：七维 finding、修复与验收。 (local)
+
+### 关键 Diff / Key Diff
+```diff
+-evidence package internal consistency only
++shared admission compares evidence with the live imported controller source
++monitored startup rejects stale configured left/right capability sources
+```
+```diff
+-worker-private source-binding admission
++shared validator output consumed by Readiness and Action
++execution-time digest guard remains before every provider command
+```
+
+### 七维 Code Review / Seven-Dimension Review
+- 四个 Major 与一个 Minor 均已修复：live source 比较缺失、启动可接受旧 snapshot、配置左右臂身份未校验、磁盘 source 不代表进程加载身份，以及非法路径泄漏 `TypeError`。修复后七个维度全部通过，Blocker 0、Major 0、Minor 0。 (local)
+- Four Major findings and one Minor finding are fixed: missing live-source comparison, startup acceptance of stale snapshots, missing configured-arm identity validation, disk source not representing loaded-process identity, and raw `TypeError` leakage for invalid paths. All seven dimensions pass with zero remaining findings. (local)
+- 无 RGB/颜色/排列/benchmark/实体/候选/相机/固定机械臂分支；无自动观察、换候选、换臂、重试、replan 或 Action。 (local)
+- No RGB/color/order/benchmark/entity/candidate/camera/fixed-arm branch and no automatic observation, candidate/arm switch, retry, replan, or Action was added. (local)
+
+### 验证 / Validation
+- Adapter changed path `120 passed`；Skill full `379 passed`；Core planning/recovery `174 passed`；release/version `88 passed`；Ruff、compileall、`git diff --check` 通过。 (local)
+- Node SHA-256 `091b074cf378eaa4ca7661848de0b210d2560017f577d1d1ff8ec43895dd6db8`；Skill SHA-256 `741a171c19a1db343dbacba927e3c70afe81fcd0a73ee2e7ecf594dff5a95fd8`。 (local)
+- 未创建/恢复 AgentTask，未调用 Gateway Query/Action，未推进 simulator/物理运动，也未改变 Runtime 生命周期。 (local)
+
 ## v12.9.5 (2026-10-07 19:07) - codex
 
 ### 变更摘要 / Change Summary
@@ -138,46 +176,3 @@
 - Commit: `10daf18`（部署记录 / deployment record）
 - Branch: `feature/planning-loop`
 - 时间 / Time: 2026-10-07 16:09 Asia/Shanghai
-
-## v12.9.1 (2026-10-07 15:37) - codex
-
-### 变更摘要 / Change Summary
-- [policy] [fix] 修正 `object.place` 从 acquisition effect scene 投影 `scene_revision`，并从 Gateway envelope 的 `invocation_id` 投影 acquisition identity；移除对 Persistent Runtime 私有业务结果字段的依赖。 (local)
-- [policy] [fix] Correct `object.place` projection to consume the acquisition effect scene and Gateway-envelope `invocation_id`, removing dependence on Persistent Runtime-private business result fields. (local)
-- [policy] [fix] 将成功且已知世界变化的 `object.acquire` effect scene 纳入 provider-neutral output contract；缺失时 fail-closed/unknown。 (local)
-- [policy] [fix] Add the effect scene to the provider-neutral successful world-changing `object.acquire` output contract; missing identity remains fail-closed/unknown. (local)
-- [eval] [test] 增加公开 producer schema compatibility、Persistent missing-effect、effect-scene projection 与 DSL 结构校验回归；Skill 版本按上限规则进位到 `3.0.0`。 (local)
-- [eval] [test] Add public producer-schema compatibility, Persistent missing-effect, effect-scene projection, and DSL-shape regressions; roll the Skill version to `3.0.0` under the repository version cap. (local)
-
-### 文件变更详情 / File Changes
-- [修改 / Modified] `PhyAgentOS/planning/contracts.py:L112-L152`：拒绝 evidence/effect scope 冲突和不完整 unique-item join / reject incoherent source scope and incomplete unique-item joins.
-- [修改 / Modified] `examples/forge-skills/pick-place-workflow/contracts/object.acquire.tool.yaml:L63-L90`、`object_acquire.py:L207-L250,L480-L585`：公开声明 effect scene，并要求已知成功 world change 发布 `new_scene_revision` / publish the effect scene and require it for known successful world changes.
-- [修改 / Modified] `examples/forge-skills/pick-place-workflow/contracts/object.place.tool.yaml:L21-L33`、`object_place.py:L302-L315`：从 effect scene 与 outer `invocation_id` 编译 place 参数 / compile place arguments from the effect scene and outer invocation identity.
-- [修改 / Modified] `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/persistent_runtime.py:L124-L229,L268-L276`：移除 acquire 私有 invocation 输出，缺 effect scene 时生成结构化 unknown / remove private invocation output and produce structured unknown when the effect scene is missing.
-- [新增 / Added] `docs/forge/IMPLEMENTATION_REVIEW_V12_9_1.md:L1-L58`：记录三个发现、修复与七维验收 / record the three findings, fixes, and seven-dimension acceptance.
-- [新增测试 / Added Tests] `tests/test_action_selection_projection.py:L78-L130,L380-L400`、`tests/test_planning_projection.py:L10-L30`、Skill Action/Persistent tests：公开 schema、effect scene、invalid DSL 与 no-motion failure-path regression / public schema, effect scene, invalid DSL, and no-motion failure-path regressions.
-
-### 关键 Diff / Key Diff
-```diff
--scene_revision: [result, scene_revision]
--acquire_invocation_ref: [result, acquire_invocation_ref]
-+scene_revision: [result, new_scene_revision]
-+acquire_invocation_ref: [invocation_id]
-```
-```diff
-+successful + world_change_started + outcome_known + missing new_scene_revision
-+-> structured unknown, world_change_started=true, outcome_known=false
-```
-
-### 七维 Code Review / Seven-Dimension Review
-- Blocker 0、Major 0、Minor 0。v12.9.0 的两个 Major 和一个 Minor 均已修复；AgentLoop 仍保持显式选择与有界 no-progress 收敛，不自动选择、执行、重试、续接、刷新或 replan。 / Zero Blocker, Major, or Minor findings. The two Major and one Minor findings from v12.9.0 are fixed; AgentLoop keeps explicit selection and bounded no-progress convergence with no automatic selection, execution, retry, continuation, refresh, or replan.
-- 无 RGB/颜色/排列/benchmark/实体/候选/相机/机械臂专用分支。 / No RGB, color, arrangement, benchmark, entity, candidate, camera, or arm-specific branch was added.
-
-### 验证 / Validation
-- Core focused `129 passed`；Core full `787 passed in 28.12s`；Skill full `379 passed in 8.12s`；Ruff、compileall、`git diff --check` 通过。 / Core focused `129 passed`; Core full `787 passed in 28.12s`; Skill full `379 passed in 8.12s`; Ruff, compileall, and `git diff --check` passed.
-- 未创建/恢复 AgentTask，未调用 Gateway Query/Action，未启动/停止 Runtime，未执行 simulator step 或物理运动。 / No AgentTask, Gateway Query/Action, Runtime lifecycle operation, simulator step, or physical motion was performed.
-
-### Git 提交 / Git Commit
-- Commit: `b6afdc7`（实现与七维审核 / implementation and seven-dimension review）
-- Branch: `feature/planning-loop`
-- 时间 / Time: 2026-10-07 15:37 Asia/Shanghai

@@ -526,7 +526,7 @@ class RoboTwinPersistentEngine:
             "world_change_started": False, "simulator_steps": 0, "planner_object_attached": False,
             "object_lifted": False, "dual_arm_state": state, "held_arm": "left",
             "_controllers": probe._build_route_controllers(task, policies["motion_capability_documents"]),
-            "_controller_source_sha256": probe._guard_controller_source_binding(policies["motion_capability_documents"]),
+            "_controller_source_sha256": policies["controller_source_sha256"],
             "_artifact_root": self.root, "_execution_input_digests": policies["execution_input_digests"],
             "action_deadline": time.monotonic() + self.duration,
         }

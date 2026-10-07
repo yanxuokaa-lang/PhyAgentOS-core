@@ -353,6 +353,12 @@ def test_host_composes_tools_around_one_persistent_worker_client(tmp_path, monke
     environ = {}
     profile["route_geometry_source"] = route_source
     profile["simulation_action_mode"] = action_mode
+    source_checks = []
+    monkeypatch.setattr(
+        host_module,
+        "validate_configured_controller_sources",
+        lambda paths: source_checks.append(paths) or "source",
+    )
     closed = []
 
     class Client:
@@ -436,6 +442,7 @@ def test_host_composes_tools_around_one_persistent_worker_client(tmp_path, monke
     assert captured["preparation_timeout_s"] == 4.0
     assert captured["route_geometry_source"] == route_source
     assert captured["simulation_action_mode"] == action_mode
+    assert len(source_checks) == (1 if action_mode == "runtime_monitored" else 0)
     assert grasp_profiles == [{"provider_id": "graspgen", "max_candidates": 10}]
     assert captured["goal_source"] == "observation_owned"
     assert captured["depth_scale_to_m"] == pytest.approx(0.001)

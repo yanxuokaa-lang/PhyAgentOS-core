@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
 from pathlib import Path
 from typing import Any, Mapping
 
-from robotwin_capability_controller import ControllerLimits
+from robotwin_capability_controller import CONTROLLER_SOURCE_SHA256, ControllerLimits
 from robotwin_planning_geometry import SimulationProbeError
 
 from robotwin20_adapter.controller_qualification import (
@@ -40,6 +41,76 @@ def _artifact(root: Path, ref: str) -> tuple[Path, Mapping[str, Any]]:
     if not isinstance(value, Mapping):
         raise SimulationProbeError("motion policy artifact must be an object")
     return path, value
+
+
+def controller_source_path() -> Path:
+    """Return the regular file imported as the live bounded controller."""
+    module = sys.modules.get(ControllerLimits.__module__)
+    module_path = Path(getattr(module, "__file__", "")) if module is not None else None
+    if (
+        module_path is None
+        or not module_path.is_absolute()
+        or not module_path.is_file()
+        or module_path.is_symlink()
+    ):
+        raise SimulationProbeError("qualified controller source is unavailable")
+    return module_path
+
+
+def controller_source_digest() -> str:
+    """Read the current on-disk source identity for execution-time guards."""
+    return _sha_bytes(controller_source_path().read_bytes())
+
+
+def guard_controller_source_digest(expected_digest: str) -> None:
+    """Reject source replacement after a route has been admitted."""
+    if controller_source_digest() != expected_digest:
+        raise SimulationProbeError("qualified controller source digest drifted")
+
+
+def validate_controller_source_binding(
+    capabilities: Mapping[str, MotionCapabilityDocument],
+) -> str:
+    """Bind capability evidence to the controller imported by this Runtime."""
+    controller_source_path()
+    source_digest = CONTROLLER_SOURCE_SHA256
+    expected_version = f"source-{source_digest[:16]}"
+    for capability in capabilities.values():
+        if capability.provider.controller_id != "paos-robotwin-capability-bounded-drive-target":
+            raise SimulationProbeError("route controller is not the qualified bounded provider")
+        controller_sources = [
+            item for item in capability.sources if item.role == "controller_source"
+        ]
+        if len(controller_sources) != 1:
+            raise SimulationProbeError("qualified controller source binding is incomplete")
+        source = controller_sources[0]
+        if (
+            source.sha256 != source_digest
+            or capability.provider.controller_version != expected_version
+        ):
+            raise SimulationProbeError("qualified controller source digest drifted")
+    return source_digest
+
+
+def validate_configured_controller_sources(
+    paths: Mapping[str, str | Path],
+) -> str:
+    """Validate configured capability files before a monitored Runtime starts."""
+    required = ("left-motion-capability", "right-motion-capability")
+    if any(key not in paths for key in required):
+        raise SimulationProbeError("configured motion capability sources are incomplete")
+    capabilities: dict[str, MotionCapabilityDocument] = {}
+    for arm_id, key in (("left", required[0]), ("right", required[1])):
+        try:
+            path = Path(paths[key])
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            capability = MotionCapabilityDocument.model_validate(payload)
+        except (TypeError, OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
+            raise SimulationProbeError("configured motion capability source is invalid") from exc
+        if capability.arm_id != arm_id:
+            raise SimulationProbeError("configured motion capability arm binding is invalid")
+        capabilities[arm_id] = capability
+    return validate_controller_source_binding(capabilities)
 
 
 def controller_limits(capability: MotionCapabilityDocument) -> ControllerLimits:
@@ -149,9 +220,11 @@ def validate_motion_policy_bindings(
             or identity.robotwin_git_revision != provider.robotwin_git_revision
         ):
             raise SimulationProbeError("controller qualification provider identity drifted")
+    source_digest = validate_controller_source_binding(capabilities)
     return {
         "controller_qualification": qualification_binding,
         "motion_capability_documents": capabilities,
+        "controller_source_sha256": source_digest,
         "execution_input_digests": {
             **{
                 item[field]: item[digest_field]
@@ -171,4 +244,12 @@ def validate_motion_policy_bindings(
     }
 
 
-__all__ = ["controller_limits", "validate_motion_policy_bindings"]
+__all__ = [
+    "controller_limits",
+    "controller_source_digest",
+    "controller_source_path",
+    "guard_controller_source_digest",
+    "validate_configured_controller_sources",
+    "validate_controller_source_binding",
+    "validate_motion_policy_bindings",
+]

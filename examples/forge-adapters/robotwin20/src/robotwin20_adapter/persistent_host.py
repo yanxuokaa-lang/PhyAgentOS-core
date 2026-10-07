@@ -19,6 +19,8 @@ from typing import Any, Mapping
 from urllib.parse import urlsplit
 
 import httpx
+from robotwin_motion_policy import validate_configured_controller_sources
+from robotwin_planning_geometry import SimulationProbeError
 
 from .grasp_profile import build_grasp_provider, load_grasp_profile
 from .openai_scene_understanding import (
@@ -710,6 +712,13 @@ def build_persistent_host(
         if not isinstance(materializer_arguments, dict):
             raise PersistentHostConfigurationError("materializer arguments must be an object")
         materializer_arguments = _expand(materializer_arguments, variables)
+        if simulation_action_mode == RUNTIME_MONITORED_ACTION_MODE:
+            try:
+                validate_configured_controller_sources(materializer_arguments)
+            except SimulationProbeError as exc:
+                raise PersistentHostConfigurationError(
+                    f"configured motion capability source is not bound to the live controller: {exc}"
+                ) from exc
         selected_grasp_profile = load_grasp_profile(grasp_profile)
         selected_provider_id = selected_grasp_profile.get("provider_id", "graspnet")
         if selected_provider_id not in {"graspgen", "graspnet"}:

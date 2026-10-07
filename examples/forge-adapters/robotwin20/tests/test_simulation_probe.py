@@ -15,13 +15,17 @@ from robotwin_capability_controller import (
     CapabilityBoundedDriveController,
     ControllerLimits,
 )
+from robotwin_motion_policy import (
+    guard_controller_source_digest,
+    validate_configured_controller_sources,
+    validate_controller_source_binding,
+)
 from robotwin_simulation_probe_worker import (
     APPROVAL_SCHEMA_VERSION,
     SimulationProbeError,
     _artifact_record,
     _capture_peer_projection,
     _execute_segment,
-    _guard_controller_source_binding,
     _handle_factory,
     _joint_limits,
     _label_probe_actors,
@@ -351,8 +355,14 @@ def _profile() -> dict[str, object]:
 
 
 def _materialize_motion_capabilities(
-    root: Path, request: dict[str, object]
+    root: Path,
+    request: dict[str, object],
+    *,
+    controller_digest: str | None = None,
 ) -> dict[str, MotionCapabilityDocument]:
+    controller_digest = controller_digest or hashlib.sha256(
+        Path(probe_worker.__file__).with_name("robotwin_capability_controller.py").read_bytes()
+    ).hexdigest()
     checks = (
         "source_digests",
         "runtime_identity",
@@ -382,7 +392,8 @@ def _materialize_motion_capabilities(
                     "robotwin_git_revision": "a" * 40,
                     "simulator_version": "3.0.0b1",
                     "planner_version": "0.7.8",
-                    "controller_version": "source-0123456789abcdef",
+                    "controller_id": "paos-robotwin-capability-bounded-drive-target",
+                    "controller_version": f"source-{controller_digest[:16]}",
                     "runtime_python_version": "3.10.0",
                 },
                 "joint_order": [f"panda_joint{index}" for index in range(1, 8)],
@@ -415,7 +426,11 @@ def _materialize_motion_capabilities(
                     {
                         "role": role,
                         "relative_path": f"provider/{role}",
-                        "sha256": f"{index + 5:x}" * 64,
+                        "sha256": (
+                            controller_digest
+                            if role == "controller_source"
+                            else f"{index + 5:x}" * 64
+                        ),
                     }
                     for index, role in enumerate(source_roles)
                 ],
@@ -791,6 +806,44 @@ def test_request_policies_accept_approved_controller_qualification(
         robot_identity="franka-panda",
     )
     assert policies["controller_qualification"]["qualification_id"] == "qualification-1"
+    assert policies["controller_source_sha256"] == hashlib.sha256(
+        Path(probe_worker.__file__).with_name("robotwin_capability_controller.py").read_bytes()
+    ).hexdigest()
+
+
+def test_configured_controller_sources_reject_stale_snapshot(tmp_path: Path):
+    request = _route_request(tmp_path)
+    _materialize_motion_capabilities(tmp_path, request, controller_digest="0" * 64)
+    with pytest.raises(SimulationProbeError, match="source digest drifted"):
+        validate_configured_controller_sources(
+            {
+                "left-motion-capability": tmp_path / "blocks/motion-capability-left.json",
+                "right-motion-capability": tmp_path / "blocks/motion-capability-right.json",
+            }
+        )
+
+
+def test_configured_controller_sources_reject_wrong_arm_binding(tmp_path: Path):
+    request = _route_request(tmp_path)
+    _materialize_motion_capabilities(tmp_path, request)
+    left = tmp_path / "blocks/motion-capability-left.json"
+    with pytest.raises(SimulationProbeError, match="arm binding is invalid"):
+        validate_configured_controller_sources(
+            {
+                "left-motion-capability": left,
+                "right-motion-capability": left,
+            }
+        )
+
+
+def test_configured_controller_sources_normalize_invalid_path_value():
+    with pytest.raises(SimulationProbeError, match="configured motion capability source is invalid"):
+        validate_configured_controller_sources(
+            {
+                "left-motion-capability": object(),
+                "right-motion-capability": object(),
+            }
+        )
 
 
 def test_request_policies_reject_tampered_controller_qualification(tmp_path: Path):
@@ -893,33 +946,55 @@ def test_route_controller_requires_the_exact_qualified_provider_source(tmp_path:
     request = _route_request(tmp_path)
     capabilities = _materialize_motion_capabilities(tmp_path, request)
 
+    native = {
+        arm_id: capability.model_copy(
+            update={
+                "provider": capability.provider.model_copy(
+                    update={"controller_id": "robotwin-sapien-drive-target"}
+                )
+            }
+        )
+        for arm_id, capability in capabilities.items()
+    }
     with pytest.raises(SimulationProbeError, match="qualified bounded provider"):
-        _guard_controller_source_binding(capabilities)
+        validate_controller_source_binding(native)
 
     module_digest = hashlib.sha256(Path(probe_worker.__file__).with_name(
         "robotwin_capability_controller.py"
     ).read_bytes()).hexdigest()
-    qualified = {}
-    for arm_id, capability in capabilities.items():
-        value = capability.model_dump(mode="json")
-        value["provider"]["controller_id"] = (
-            "paos-robotwin-capability-bounded-drive-target"
-        )
-        value["provider"]["controller_version"] = f"source-{module_digest[:16]}"
-        for source in value["sources"]:
-            if source["role"] == "controller_source":
-                source["sha256"] = module_digest
-        qualified[arm_id] = MotionCapabilityDocument.model_validate(value)
-    _guard_controller_source_binding(qualified)
+    assert validate_controller_source_binding(capabilities) == module_digest
 
-    qualified["left"] = MotionCapabilityDocument.model_validate(
-        qualified["left"].model_dump(mode="json")
-        | {"provider": qualified["left"].provider.model_copy(
+    capabilities["left"] = MotionCapabilityDocument.model_validate(
+        capabilities["left"].model_dump(mode="json")
+        | {"provider": capabilities["left"].provider.model_copy(
             update={"controller_version": "source-0000000000000000"}
         ).model_dump(mode="json")}
     )
     with pytest.raises(SimulationProbeError, match="source digest drifted"):
-        _guard_controller_source_binding(qualified)
+        validate_controller_source_binding(capabilities)
+
+
+def test_source_admission_uses_imported_identity_while_execution_checks_disk(
+    tmp_path: Path, monkeypatch
+):
+    request = _route_request(tmp_path)
+    capabilities = _materialize_motion_capabilities(tmp_path, request)
+    assert validate_controller_source_binding(capabilities)
+
+    changed = tmp_path / "changed-controller.py"
+    changed.write_text("# replaced after import\n", encoding="utf-8")
+    monkeypatch.setattr("robotwin_motion_policy.controller_source_path", lambda: changed)
+
+    assert validate_controller_source_binding(capabilities)
+    with pytest.raises(SimulationProbeError, match="source digest drifted"):
+        guard_controller_source_digest(
+            next(
+                item.sha256
+                for item in capabilities["left"].sources
+                if item.role == "controller_source"
+            )
+        )
+
 
 def test_execute_segment_passes_planner_velocity_through_bounded_controller(tmp_path: Path):
     np = pytest.importorskip("numpy")
@@ -1358,6 +1433,7 @@ def test_worker_is_single_use_after_an_authorized_attempt(tmp_path: Path, monkey
             "joint_limit_policy": {},
             "stop_policy": {},
             "motion_capability_documents": {},
+            "controller_source_sha256": "controller-source",
             "execution_input_digests": {},
         },
     )

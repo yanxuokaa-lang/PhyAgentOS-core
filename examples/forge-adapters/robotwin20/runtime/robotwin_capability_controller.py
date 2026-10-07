@@ -7,11 +7,15 @@ forwarding it to SAPIEN drive targets and tracks stop/fault/step settlement.
 
 from __future__ import annotations
 
+import hashlib
 import math
 import struct
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from typing import Callable, Sequence
+
+CONTROLLER_SOURCE_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
 
 class ControllerCommandError(RuntimeError):

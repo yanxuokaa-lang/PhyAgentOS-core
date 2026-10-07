@@ -1,5 +1,12 @@
 # Change Log
 
+## v3.0.3 (2026-10-07)
+
+- 中文：发布 Adapter `0.9.6` 与 Node `0.10.11`。共享 motion-policy 准入现在将 capability/qualification evidence 绑定到当前 Runtime 实际导入的 bounded controller source；旧 snapshot 在 Readiness 与 Runtime 启动前置检查阶段零步拒绝，不再推迟到 Action。
+- English: Publish Adapter `0.9.6` and Node `0.10.11`. Shared motion-policy admission now binds capability and qualification evidence to the bounded controller source imported by the current Runtime; stale snapshots are rejected with zero steps during Readiness and Runtime startup preflight instead of being deferred to Action.
+- 中文：执行期间继续复验同一 source digest，AgentLoop 对不可恢复 Runtime contract failure 保持确定性停止；不自动观察、换候选、换臂、重试、replan 或执行 Action，也不增加 RGB、颜色、排列、相机或固定机械臂分支。
+- English: Execution continues to recheck the same source digest while the AgentLoop deterministically stops non-recoverable Runtime contract failures; no automatic observation, candidate or arm switch, retry, replan, or Action and no RGB, color, arrangement, camera, or fixed-arm branch is added.
+
 ## v3.0.2 (2026-10-07)
 
 - 中文：Readiness 与 Action 现在复用同一 capability validation/controller qualification 证据校验入口；Readiness 不再只读取 capability artifact 后提前判定路线通过。

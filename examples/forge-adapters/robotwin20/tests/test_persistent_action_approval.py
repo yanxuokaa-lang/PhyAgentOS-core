@@ -388,6 +388,7 @@ def _engine_prepare_fixture(tmp_path, monkeypatch, *, drift=False):
     monkeypatch.setattr(module, "validate_persistent_action_approval", lambda *args, **kwargs: {})
     monkeypatch.setattr(probe, "_validate_request_policies", lambda *args, **kwargs: {
         "execution_input_digests": {}, "motion_capability_documents": {"left": object()},
+        "controller_source_sha256": "controller-source",
     })
     monkeypatch.setattr(probe, "_controller_limits", lambda *_: ControllerLimits(
         joint_order=tuple(f"joint-{index}" for index in range(7)),
@@ -404,7 +405,6 @@ def _engine_prepare_fixture(tmp_path, monkeypatch, *, drift=False):
     monkeypatch.setattr(probe, "apply_collision_world", lambda *args, **kwargs: {"applied": True})
     monkeypatch.setattr(probe, "_label_probe_actors", lambda *args: None)
     monkeypatch.setattr(probe, "_build_route_controllers", lambda *args: {})
-    monkeypatch.setattr(probe, "_guard_controller_source_binding", lambda *args: "controller-source")
     monkeypatch.setattr(robotwin_observed_collision, "configure_observed_collision", lambda *args: None)
     monkeypatch.setattr(probe, "evaluate_route_arm", lambda *args, **kwargs: pytest.fail("Action replanned a route"))
 

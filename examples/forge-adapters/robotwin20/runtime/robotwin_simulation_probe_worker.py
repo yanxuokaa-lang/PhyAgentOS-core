@@ -44,6 +44,9 @@ from robotwin_curobo_world_port import (
 )
 from robotwin_motion_policy import controller_limits as _controller_limits
 from robotwin_motion_policy import (
+    guard_controller_source_digest as _guard_controller_source_digest,
+)
+from robotwin_motion_policy import (
     validate_motion_policy_bindings as _validate_motion_policy_bindings,
 )
 from robotwin_planning_geometry import (
@@ -1120,6 +1123,7 @@ def _validate_request_policies(
         "stop_policy": dict(stop),
         "controller_qualification": motion["controller_qualification"],
         "motion_capability_documents": motion["motion_capability_documents"],
+        "controller_source_sha256": motion["controller_source_sha256"],
         "execution_input_digests": {
             request["joint_limits_ref"]: _sha_bytes(
                 _artifact_path(root, request["joint_limits_ref"]).read_bytes()
@@ -1136,7 +1140,6 @@ def _build_route_controllers(
     task: Any,
     capabilities: Mapping[str, MotionCapabilityDocument],
 ) -> dict[str, CapabilityBoundedDriveController]:
-    _guard_controller_source_binding(capabilities)
     controllers: dict[str, CapabilityBoundedDriveController] = {}
     for arm_id in ("left", "right"):
         capability = capabilities.get(arm_id)
@@ -1149,50 +1152,6 @@ def _build_route_controllers(
             ),
         )
     return controllers
-
-
-def _controller_source_path() -> Path:
-    module = sys.modules.get(CapabilityBoundedDriveController.__module__)
-    module_path = Path(getattr(module, "__file__", "")) if module is not None else None
-    if (
-        module_path is None
-        or not module_path.is_absolute()
-        or not module_path.is_file()
-        or module_path.is_symlink()
-    ):
-        raise SimulationProbeError("qualified controller source is unavailable")
-    return module_path
-
-
-def _guard_controller_source_digest(expected_digest: str) -> None:
-    if _sha_bytes(_controller_source_path().read_bytes()) != expected_digest:
-        raise SimulationProbeError("qualified controller source digest drifted")
-
-
-def _guard_controller_source_binding(
-    capabilities: Mapping[str, MotionCapabilityDocument],
-) -> str:
-    """Bind the controller imported by this worker to the qualified source.
-
-    Qualification is meaningful only for the exact provider controller that
-    will receive route commands.  A changed module, stale import, or a
-    capability that still describes RoboTwin's unqualified native drive
-    target must therefore fail before the first simulator step.
-    """
-    source_digest = _sha_bytes(_controller_source_path().read_bytes())
-    expected_version = f"source-{source_digest[:16]}"
-    for capability in capabilities.values():
-        if capability.provider.controller_id != "paos-robotwin-capability-bounded-drive-target":
-            raise SimulationProbeError("route controller is not the qualified bounded provider")
-        controller_sources = [
-            item for item in capability.sources if item.role == "controller_source"
-        ]
-        if len(controller_sources) != 1:
-            raise SimulationProbeError("qualified controller source binding is incomplete")
-        source = controller_sources[0]
-        if source.sha256 != source_digest or capability.provider.controller_version != expected_version:
-            raise SimulationProbeError("qualified controller source digest drifted")
-    return source_digest
 
 
 def _guard_execution_inputs(root: Path, bindings: Mapping[str, str]) -> None:
@@ -2182,11 +2141,9 @@ def _handle_factory(
             execution_state["_controllers"] = _build_route_controllers(
                 task, policies["motion_capability_documents"]
             )
-            execution_state["_controller_source_sha256"] = (
-                _guard_controller_source_binding(
-                    policies["motion_capability_documents"]
-                )
-            )
+            execution_state["_controller_source_sha256"] = policies[
+                "controller_source_sha256"
+            ]
             execution_state["_artifact_root"] = artifact_root
             execution_state["_execution_input_digests"] = policies[
                 "execution_input_digests"

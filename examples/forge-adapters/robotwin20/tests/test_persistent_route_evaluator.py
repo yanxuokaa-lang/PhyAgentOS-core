@@ -44,6 +44,45 @@ def test_readiness_requires_validated_motion_policy_bindings(tmp_path, monkeypat
     assert calls == [(tmp_path, "fixture-robot")]
 
 
+def test_readiness_rejects_internally_valid_stale_controller_evidence(
+    tmp_path, monkeypatch
+):
+    import robotwin_backend
+    from test_route_readiness import _request
+    from test_simulation_probe import (
+        _materialize_controller_qualification,
+        _materialize_motion_capabilities,
+    )
+
+    monkeypatch.setattr(
+        robotwin_backend,
+        "load_runtime_profile",
+        lambda path: {
+            "task_name": "blocks",
+            "seed": 0,
+            "robot_identity": "franka-panda",
+        },
+    )
+    request = _request(tmp_path)
+    capabilities = _materialize_motion_capabilities(
+        tmp_path, request, controller_digest="0" * 64
+    )
+    _materialize_controller_qualification(tmp_path, request, capabilities)
+    evaluator = planner.RoboTwinRouteEvaluator(
+        tmp_path,
+        tmp_path / "profile.yaml",
+        tmp_path,
+        backend=SimpleNamespace(
+            snapshot=lambda: {"scene_revision": request["scene_revision"]}
+        ),
+    )
+
+    with pytest.raises(
+        planner.SimulationProbeError, match="qualified controller source digest drifted"
+    ):
+        evaluator(request)
+
+
 def test_planner_world_contact_mode_is_wired_after_world_installation(tmp_path, monkeypatch):
     import robotwin_backend
     import robotwin_contact_qualification as contact
