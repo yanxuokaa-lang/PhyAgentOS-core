@@ -5,6 +5,40 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.9.7 (2026-10-07 21:36) - codex
+
+### 变更摘要 / Change Summary
+- [env] [chore] 停止旧 Runtime，安装 Skill `3.0.3` 与 Node `0.10.11`，从最终 controller source 重建并审批 qualification evidence，更新八个 operator evidence 路径后启动新 Runtime。 (local)
+- [env] [chore] Stopped the old Runtime, installed Skill `3.0.3` and Node `0.10.11`, rebuilt and approved qualification evidence from the final controller source, updated the eight operator evidence paths, and started the new Runtime. (local)
+- [docs] [docs] 保存 controller-source qualification deployment diagnosis，并完成七维验收；没有 RGB/颜色/排列/相机/固定机械臂专用逻辑。 (local)
+- [docs] [docs] Added the controller-source qualification deployment diagnosis and completed the seven-dimension acceptance review; no RGB/color/order/camera/fixed-arm-specific logic was added. (local)
+
+### 文件变更详情 / File Changes
+- [新增 / Added] `docs/forge/CONTROLLER_SOURCE_QUALIFICATION_DEPLOYMENT_DIAGNOSIS_20261007.md:L1-L133`：记录通用根因、PAOS 所有权边界、source-bound evidence rollover、部署证据、七维验收和剩余任务级边界。 (local)
+- [修改 / Modified] `changelog/2026-10_part2.md:L3-L65`：记录旧 Runtime 停止、新制品安装、两次人工审批、8/8 qualification、env 路径更新和新 Runtime 验收。 (local)
+- [修改 / Modified] `/home/yanxu/.PhyAgentOS/deployments/robotwin-persistent/runtime-rgb-graspnet-run5.env:L34-L42`：仅更新八个 capability/qualification 路径，保持 `0600`，不提交凭据文件。 (local)
+- [修改 / Modified] `CHANGELOG.md:L8-L37`：维护最近五个版本索引。 (local)
+
+### 关键 Diff / Key Diff
+```diff
+-old qualification evidence bound to controller source 6a1e9cdc...
++new approved qualification bound to controller source a693ada4...
+-Runtime stopped with stale evidence
++runtime_7791dd9a1eb94972 running after validated evidence promotion
+```
+
+### 验证 / Validation
+- Runtime `runtime_7791dd9a1eb94972` running；Dora、Gateway、11/11 Tool contexts ready；ownership 为空，AgentTask 非终态为 0。 (local)
+- Runtime `runtime_7791dd9a1eb94972` is running; Dora, Gateway, and all 11 Tool contexts are ready; ownership is empty and non-terminal AgentTasks are 0. (local)
+- Qualification `approved_pass`，8/8 isolated SAPIEN tests passed；最终 qualification SHA-256 `beb6733e51afb6d0d3277c761599b5d3a34c07d819b3aac17200c9b6154e8350`。 (local)
+- Qualification is `approved_pass` with all 8/8 isolated SAPIEN tests passing; final qualification SHA-256 is `beb6733e51afb6d0d3277c761599b5d3a34c07d819b3aac17200c9b6154e8350`. (local)
+- 任务级抓取/放置未执行；本次部署验收未调用 Gateway Query/Action 或创建 AgentTask。 (local)
+- No task-level grasp/place was executed; deployment acceptance created no AgentTask and invoked no Gateway Query/Action. (local)
+
+### Git 提交 / Git Commit
+- Commit: 待提交 / pending
+- Branch: `feature/planning-loop`
+
 ## v12.9.6 (2026-10-07 20:35) - codex
 
 ### 变更摘要 / Change Summary
@@ -151,33 +185,3 @@
 - Commit: `3a1014a`（实现、诊断与七维审核 / implementation, diagnoses, and seven-dimension review）
 - Branch: `feature/planning-loop`
 - 时间 / Time: 2026-10-07 18:36 Asia/Shanghai
-
-## v12.9.2 (2026-10-07 15:45) - codex
-
-### 变更摘要 / Change Summary
-- [env] [chore] 正常取消唯一 `awaiting_replan` 旧任务；在 invocation/session/task-binding ownership 清空且非终态任务为 0 后，无 `--force` 停止旧 Runtime。 (local)
-- [env] [chore] Normally cancel the only old `awaiting_replan` task and stop the old Runtime without `--force` after invocation/session/task-binding ownership is empty and non-terminal tasks reach zero. (local)
-- [chore] [release] 安装 Skill `pick-place-workflow 3.0.0`，保持 Node `robotwin20_persistent_host 0.10.8`、profile、operator env、权限和模型配置不变。 (local)
-- [chore] [release] Install Skill `pick-place-workflow 3.0.0` while preserving Node `robotwin20_persistent_host 0.10.8`, the runtime profile, operator environment, permissions, and model configuration. (local)
-
-### 文件变更详情 / File Changes
-- [修改 / Modified] `changelog/2026-10_part2.md:L3-L57`：记录任务取消、正常 stop、安装/启动、版本/摘要和 no-motion 验收 / record task cancellation, normal stop, install/start, versions/digests, and no-motion acceptance.
-- [修改 / Modified] `CHANGELOG.md:L8-L37`：维护最近五个版本 / maintain the latest five versions.
-
-### 部署关键 Diff / Deployment Key Diff
-```diff
--pick-place-workflow 2.10.14; runtime_1c512b49353c4b23; task_cb2ff2de02cd44ca awaiting_replan
-+pick-place-workflow 3.0.0; runtime_c1c591d68c0b46aa; nonterminal_tasks=0
- robotwin20_persistent_host 0.10.8; robotwin-blocks-ranking-graspnet
-```
-
-### 验证 / Validation
-- Runtime `runtime_c1c591d68c0b46aa` running，Dora flow running，Gateway ready，11/11 Tool context ready；Node lock 与实际 spawn 均为 `0.10.8`，Runtime ownership 为空，非终态任务为 0。
-- 本地场景理解 primary 保持 `qwen3-vl-4b-awq`；fallback 保持 `gpt-6.1-sol`、`reasoning_effort=high`；operator env 权限保持 `0600`。
-- Skill bundle SHA-256 `5b05405ba07e0831260ef2cd8e6fde2d42355c0299656ea693a1807d288b8805`；Node archive SHA-256 `6b5fd5c92d0fd420013a59ee69bffcc87a807c9a7e8b5b48e2883718fb423dc8`。
-- 未创建/恢复 AgentTask，未调用 Gateway Query/Action，未执行 simulator step 或物理运动。
-
-### Git 提交 / Git Commit
-- Commit: `10daf18`（部署记录 / deployment record）
-- Branch: `feature/planning-loop`
-- 时间 / Time: 2026-10-07 16:09 Asia/Shanghai
