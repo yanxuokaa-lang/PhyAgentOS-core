@@ -27,6 +27,11 @@
 - Node SHA-256 `d807b1b3e6b9a86f6cc597da8ab6de9643b8b23a75bc72372889ac1d45fd195e`；Skill SHA-256 `c9992caa9c256780307e1a4de33a15f90971292e5db82c7ebd5f49f0800f1772`。 (local)
 - 未创建/恢复新 AgentTask，未调用 Gateway Query/Action，未推进 simulator step 或物理运动。 (local)
 
+### Git 提交 / Git Commit
+- Commit: `409e0e2`（部署与验收记录 / deployment and acceptance record）
+- Branch: `feature/planning-loop`
+- 时间 / Time: `2026-10-07 Asia/Shanghai`
+
 ## v12.9.4 (2026-10-07 18:45) - codex
 
 ### 变更摘要 / Change Summary
