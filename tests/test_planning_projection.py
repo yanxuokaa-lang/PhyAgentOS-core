@@ -5,9 +5,27 @@ import pytest
 from PhyAgentOS.planning import (
     ArgumentProjectionError,
     ArgumentProjectionPlan,
+    ArgumentProjectionSourcePlan,
     execute_argument_projection,
     project_tool_spec,
 )
+
+
+def test_projection_source_rejects_incoherent_effect_and_unique_item_configuration():
+    with pytest.raises(ValueError, match="predecessor source scope"):
+        ArgumentProjectionSourcePlan(
+            tool_id="object.acquire",
+            source_scope="evidence",
+            scene_relation="predecessor_effect",
+            source_field_map={"scene_revision": ("result", "new_scene_revision")},
+        )
+
+    with pytest.raises(ValueError, match="unique_item_join_field requires"):
+        ArgumentProjectionSourcePlan(
+            tool_id="manipulation.prepare",
+            source_field_map={"preparation_ref": ("preparation_ref",)},
+            unique_item_join_field="entity_ref",
+        )
 
 
 def _plan() -> ArgumentProjectionPlan:

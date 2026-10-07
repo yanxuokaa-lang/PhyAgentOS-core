@@ -1,5 +1,12 @@
 # Change Log
 
+## v3.0.0 (2026-10-07)
+
+- 中文：修正 Action 前驱投影的公开契约：`object.acquire` 的成功 effect 现在发布 `new_scene_revision`，`object.place` 从该 effect scene 与 Gateway 外层 `invocation_id` 编译准入参数，不再依赖 Persistent Runtime 私有结果字段或旧输入 scene。
+- English: Correct the public Action predecessor-projection contract: successful `object.acquire` effects now publish `new_scene_revision`, and `object.place` compiles admission arguments from that effect scene and the outer Gateway `invocation_id` instead of depending on Persistent Runtime-private result fields or the stale input scene.
+- 中文：投影 DSL 在加载时拒绝 evidence/effect scope 冲突和不完整 unique-item join；Agent 仍显式选择 Action 与来源，Coordinator 不自动执行、重试、续接或 replan。
+- English: Reject evidence/effect scope conflicts and incomplete unique-item joins when loading the projection DSL; the Agent still explicitly selects the Action and source, and the Coordinator never automatically executes, retries, continues, or replans.
+
 ## v2.10.15 (2026-10-07)
 
 - 中文：为 `object.acquire` 与 `object.place` 增加 provider-neutral 前驱投影；Agent 只选择授权 producer record，Coordinator 按唯一实体 join 编译 Action 参数，不再要求模型手工拼装 12/14 个字段。

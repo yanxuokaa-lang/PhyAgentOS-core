@@ -302,7 +302,7 @@ PLACE_TOOL_SPEC: dict[str, Any] = {
                     "join_field_path": ["result", "entity_ref"],
                     "source_field_map": {
                         "observation_ref": ["result", "observation_ref"],
-                        "scene_revision": ["result", "scene_revision"],
+                        "scene_revision": ["result", "new_scene_revision"],
                         "frame_id": ["result", "frame", "frame_id"],
                         "calibration_ref": ["result", "calibration_ref"],
                         "freshness_ms": ["freshness_ms"],
@@ -310,7 +310,7 @@ PLACE_TOOL_SPEC: dict[str, Any] = {
                         "candidate_set_ref": ["result", "candidate_set_ref"],
                         "preparation_ref": ["result", "preparation_ref"],
                         "candidate_ref": ["result", "candidate_ref"],
-                        "acquire_invocation_ref": ["result", "acquire_invocation_ref"],
+                        "acquire_invocation_ref": ["invocation_id"],
                         "capability_snapshot_ref": ["result", "capability_snapshot_ref"],
                         "assignment_ref": ["result", "assignment_ref"],
                     },

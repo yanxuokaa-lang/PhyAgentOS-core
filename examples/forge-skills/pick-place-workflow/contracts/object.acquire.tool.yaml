@@ -62,11 +62,24 @@ output_schema:
     result:
       type: object
       additionalProperties: false
+      allOf:
+        - if:
+            properties:
+              status: {const: succeeded}
+              capability_outcome_summary:
+                properties:
+                  world_change_started: {const: true}
+                  outcome_known: {const: true}
+                required: [world_change_started, outcome_known]
+            required: [status, capability_outcome_summary]
+          then:
+            required: [new_scene_revision]
       required: [status, observation_ref, scene_revision, frame, calibration_ref, candidate_set_ref, preparation_ref, candidate_ref, entity_ref, capability_snapshot_ref, assignment_ref, capability_outcome_summary]
       properties:
         status: {enum: [succeeded, failed, cancelled, stopped, unknown]}
         observation_ref: {type: string, pattern: '^observation://[^/]+/[^/]+$'}
         scene_revision: {type: string, minLength: 1}
+        new_scene_revision: {type: string, minLength: 1}
         frame:
           type: object
           additionalProperties: false

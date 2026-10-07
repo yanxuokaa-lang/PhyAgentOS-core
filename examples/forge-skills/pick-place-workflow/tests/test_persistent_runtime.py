@@ -254,6 +254,46 @@ def test_place_projects_current_scene_while_retaining_acquire_provenance():
     assert result["acquire_invocation_ref"] == source["acquire_invocation_ref"]
 
 
+def test_acquire_result_uses_gateway_envelope_for_invocation_identity():
+    class Driver:
+        def poll(self):
+            return {
+                "status": "succeeded",
+                "outcome_known": True,
+                "world_change_started": True,
+                "artifact_refs": ["artifact://scene-2/acquire"],
+                "new_scene_revision": "scene-2",
+            }
+
+    result = _ProjectedDriver(
+        Driver(), "acquire", arguments(), invocation_id="invocation://object-acquire/1"
+    ).poll()
+
+    assert result["new_scene_revision"] == "scene-2"
+    assert "acquire_invocation_ref" not in result
+
+
+def test_acquire_world_change_without_effect_scene_remains_physically_unknown():
+    class Driver:
+        def poll(self):
+            return {
+                "status": "succeeded",
+                "outcome_known": True,
+                "world_change_started": True,
+                "artifact_refs": ["artifact://scene-2/acquire"],
+            }
+
+    result = _ProjectedDriver(Driver(), "acquire", arguments()).poll()
+    summary = result["capability_outcome_summary"]
+
+    assert result["status"] == "unknown"
+    assert "new_scene_revision" not in result
+    assert summary["failure_owner"] == "execution"
+    assert summary["failure_code"] == "missing_new_scene_revision"
+    assert summary["world_change_started"] is True
+    assert summary["outcome_known"] is False
+
+
 def test_restart_reconciliation_restores_only_explicit_matching_holding():
     possession = PersistentPossession(
         state="uncertain",

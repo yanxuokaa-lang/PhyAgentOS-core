@@ -79,6 +79,7 @@ class AcquireSnapshot:
     failure_code: str | None = None
     world_change_started: bool = False
     outcome_known: bool = True
+    new_scene_revision: str | None = None
     evidence_availability: str = "none"
     artifact_refs: tuple[str, ...] = field(default_factory=tuple)
     bounded_metric_names: tuple[str, ...] = field(default_factory=tuple)
@@ -206,6 +207,24 @@ def _terminal_result_schema() -> dict[str, Any]:
     return {
         "type": "object",
         "additionalProperties": False,
+        "allOf": [
+            {
+                "if": {
+                    "properties": {
+                        "status": {"const": "succeeded"},
+                        "capability_outcome_summary": {
+                            "properties": {
+                                "world_change_started": {"const": True},
+                                "outcome_known": {"const": True},
+                            },
+                            "required": ["world_change_started", "outcome_known"],
+                        },
+                    },
+                    "required": ["status", "capability_outcome_summary"],
+                },
+                "then": {"required": ["new_scene_revision"]},
+            }
+        ],
         "required": [
             "status",
             "observation_ref",
@@ -227,6 +246,7 @@ def _terminal_result_schema() -> dict[str, Any]:
                 "pattern": r"^observation://[^/]+/[^/]+$",
             },
             "scene_revision": {"type": "string", "minLength": 1},
+            "new_scene_revision": {"type": "string", "minLength": 1},
             "frame": {
                 "type": "object",
                 "additionalProperties": False,
@@ -460,6 +480,18 @@ def _validate_snapshot(snapshot: AcquireSnapshot) -> str | None:
         snapshot.failure_owner not in {None, "none"} or snapshot.failure_code is not None
     ):
         return "invalid_success_failure_fields"
+    if snapshot.new_scene_revision is not None and (
+        not isinstance(snapshot.new_scene_revision, str)
+        or not snapshot.new_scene_revision.strip()
+    ):
+        return "invalid_new_scene_revision"
+    if (
+        snapshot.status == "succeeded"
+        and snapshot.world_change_started
+        and snapshot.outcome_known
+        and snapshot.new_scene_revision is None
+    ):
+        return "missing_new_scene_revision"
     if snapshot.status != "succeeded" and snapshot.failure_owner in {None, "none"}:
         return "invalid_failure_owner"
     if snapshot.status != "succeeded" and snapshot.failure_code is None:
@@ -535,7 +567,7 @@ def terminal_result(arguments: dict[str, Any], snapshot: AcquireSnapshot) -> dic
         "arm_attempts": list(snapshot.arm_attempts),
         "evidence_refs": list(snapshot.evidence_refs),
     }
-    return {
+    result = {
         "status": snapshot.status,
         "observation_ref": arguments["observation_ref"],
         "scene_revision": arguments["scene_revision"],
@@ -549,6 +581,9 @@ def terminal_result(arguments: dict[str, Any], snapshot: AcquireSnapshot) -> dic
         "assignment_ref": arguments["assignment_ref"],
         "capability_outcome_summary": summary,
     }
+    if snapshot.new_scene_revision is not None:
+        result["new_scene_revision"] = snapshot.new_scene_revision
+    return result
 
 
 class ObjectAcquireEndpoint:

@@ -124,6 +124,16 @@ class _ProjectedDriver:
         refs = list(raw.get("artifact_refs", ()))
         outcome_known = raw.get("outcome_known", False)
         missing_evidence = success and not refs
+        missing_acquire_effect = (
+            self.phase == "acquire"
+            and success
+            and raw.get("world_change_started") is True
+            and outcome_known is True
+            and (
+                not isinstance(raw.get("new_scene_revision"), str)
+                or not raw["new_scene_revision"].strip()
+            )
+        )
         missing_place_postconditions = False
         if self.phase == "place" and success:
             missing_place_postconditions = not all(
@@ -135,7 +145,7 @@ class _ProjectedDriver:
                     "observation_ready",
                 )
             ) or not isinstance(raw.get("new_scene_revision"), str)
-        if missing_evidence or missing_place_postconditions:
+        if missing_evidence or missing_acquire_effect or missing_place_postconditions:
             status, success = "unknown", False
             outcome_known = False
         self.possession.settle(
@@ -162,8 +172,22 @@ class _ProjectedDriver:
         summary = {
             "version": "capability_outcome_summary_v1",
             "capability_phase": ("hold" if self.phase == "acquire" else "retreat") if success else "none",
-            "status": status, "failure_owner": "execution" if (missing_evidence or missing_place_postconditions) else raw.get("failure_owner"),
-            "failure_code": ("missing_execution_evidence" if missing_evidence else "missing_place_postconditions" if missing_place_postconditions else raw.get("failure_code")), "world_change_started": raw.get("world_change_started"),
+            "status": status,
+            "failure_owner": (
+                "execution"
+                if missing_evidence or missing_acquire_effect or missing_place_postconditions
+                else raw.get("failure_owner")
+            ),
+            "failure_code": (
+                "missing_execution_evidence"
+                if missing_evidence
+                else "missing_new_scene_revision"
+                if missing_acquire_effect
+                else "missing_place_postconditions"
+                if missing_place_postconditions
+                else raw.get("failure_code")
+            ),
+            "world_change_started": raw.get("world_change_started"),
             "outcome_known": outcome_known,
             "evidence_availability": "complete" if success and refs else "partial" if refs else "none",
             "artifact_refs": refs, "bounded_metric_names": [],
@@ -186,9 +210,7 @@ class _ProjectedDriver:
                 new_scene_revision=raw.get("new_scene_revision"),
             )
         result = {key: value for key, value in self.arguments.items() if key not in {"freshness_ms", "max_age_ms", "frame_id"}}
-        if self.phase == "acquire":
-            result["acquire_invocation_ref"] = self.invocation_id
-        elif self.current_scene_revision is not None:
+        if self.phase == "place" and self.current_scene_revision is not None:
             result["current_scene_revision"] = self.current_scene_revision
         result.update(status=status, frame={"frame_id": self.arguments["frame_id"], "unit": "m"}, capability_outcome_summary=summary)
         if self.phase == "place":
@@ -246,13 +268,10 @@ def _spec(spec, *, argument_defaults=None, require_synchronized_views: bool = Fa
         spec["planning"]["capabilities"].append("task.verify")
     if action:
         properties = spec["output_schema"]["properties"]["result"]["properties"]
-        properties["new_scene_revision"] = {"type": "string", "minLength": 1}
         properties["evidence_refs"] = {"type": "array", "items": {"type": "string"}}
         properties["scene_effects"] = {"type": "object"}
         properties["capability_outcome_summary"]["properties"]["world_change_started"] = {"type": ["boolean", "null"]}
-        if spec["tool_id"] == "object.acquire":
-            properties["acquire_invocation_ref"] = {"type": "string", "pattern": r"^invocation://object-acquire/[^/]+$"}
-        elif spec["tool_id"] == "object.place":
+        if spec["tool_id"] == "object.place":
             properties["current_scene_revision"] = {"type": "string", "minLength": 1}
     return spec
 

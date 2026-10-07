@@ -37,6 +37,7 @@ class Provider:
             status="succeeded",
             world_change_started=True,
             outcome_known=True,
+            new_scene_revision="scene-8",
             evidence_availability="partial",
             artifact_refs=("artifact://acquire-7/settlement",),
             bounded_metric_names=("lift_height",),

@@ -5,6 +5,44 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.9.1 (2026-10-07 15:37) - codex
+
+### 变更摘要 / Change Summary
+- [policy] [fix] 修正 `object.place` 从 acquisition effect scene 投影 `scene_revision`，并从 Gateway envelope 的 `invocation_id` 投影 acquisition identity；移除对 Persistent Runtime 私有业务结果字段的依赖。 (local)
+- [policy] [fix] Correct `object.place` projection to consume the acquisition effect scene and Gateway-envelope `invocation_id`, removing dependence on Persistent Runtime-private business result fields. (local)
+- [policy] [fix] 将成功且已知世界变化的 `object.acquire` effect scene 纳入 provider-neutral output contract；缺失时 fail-closed/unknown。 (local)
+- [policy] [fix] Add the effect scene to the provider-neutral successful world-changing `object.acquire` output contract; missing identity remains fail-closed/unknown. (local)
+- [eval] [test] 增加公开 producer schema compatibility、Persistent missing-effect、effect-scene projection 与 DSL 结构校验回归；Skill 版本按上限规则进位到 `3.0.0`。 (local)
+- [eval] [test] Add public producer-schema compatibility, Persistent missing-effect, effect-scene projection, and DSL-shape regressions; roll the Skill version to `3.0.0` under the repository version cap. (local)
+
+### 文件变更详情 / File Changes
+- [修改 / Modified] `PhyAgentOS/planning/contracts.py:L112-L152`：拒绝 evidence/effect scope 冲突和不完整 unique-item join / reject incoherent source scope and incomplete unique-item joins.
+- [修改 / Modified] `examples/forge-skills/pick-place-workflow/contracts/object.acquire.tool.yaml:L63-L90`、`object_acquire.py:L207-L250,L480-L585`：公开声明 effect scene，并要求已知成功 world change 发布 `new_scene_revision` / publish the effect scene and require it for known successful world changes.
+- [修改 / Modified] `examples/forge-skills/pick-place-workflow/contracts/object.place.tool.yaml:L21-L33`、`object_place.py:L302-L315`：从 effect scene 与 outer `invocation_id` 编译 place 参数 / compile place arguments from the effect scene and outer invocation identity.
+- [修改 / Modified] `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/persistent_runtime.py:L124-L229,L268-L276`：移除 acquire 私有 invocation 输出，缺 effect scene 时生成结构化 unknown / remove private invocation output and produce structured unknown when the effect scene is missing.
+- [新增 / Added] `docs/forge/IMPLEMENTATION_REVIEW_V12_9_1.md:L1-L58`：记录三个发现、修复与七维验收 / record the three findings, fixes, and seven-dimension acceptance.
+- [新增测试 / Added Tests] `tests/test_action_selection_projection.py:L78-L130,L380-L400`、`tests/test_planning_projection.py:L10-L30`、Skill Action/Persistent tests：公开 schema、effect scene、invalid DSL 与 no-motion failure-path regression / public schema, effect scene, invalid DSL, and no-motion failure-path regressions.
+
+### 关键 Diff / Key Diff
+```diff
+-scene_revision: [result, scene_revision]
+-acquire_invocation_ref: [result, acquire_invocation_ref]
++scene_revision: [result, new_scene_revision]
++acquire_invocation_ref: [invocation_id]
+```
+```diff
++successful + world_change_started + outcome_known + missing new_scene_revision
++-> structured unknown, world_change_started=true, outcome_known=false
+```
+
+### 七维 Code Review / Seven-Dimension Review
+- Blocker 0、Major 0、Minor 0。v12.9.0 的两个 Major 和一个 Minor 均已修复；AgentLoop 仍保持显式选择与有界 no-progress 收敛，不自动选择、执行、重试、续接、刷新或 replan。 / Zero Blocker, Major, or Minor findings. The two Major and one Minor findings from v12.9.0 are fixed; AgentLoop keeps explicit selection and bounded no-progress convergence with no automatic selection, execution, retry, continuation, refresh, or replan.
+- 无 RGB/颜色/排列/benchmark/实体/候选/相机/机械臂专用分支。 / No RGB, color, arrangement, benchmark, entity, candidate, camera, or arm-specific branch was added.
+
+### 验证 / Validation
+- Core focused `129 passed`；Core full `787 passed in 28.12s`；Skill full `379 passed in 8.12s`；Ruff、compileall、`git diff --check` 通过。 / Core focused `129 passed`; Core full `787 passed in 28.12s`; Skill full `379 passed in 8.12s`; Ruff, compileall, and `git diff --check` passed.
+- 未创建/恢复 AgentTask，未调用 Gateway Query/Action，未启动/停止 Runtime，未执行 simulator step 或物理运动。 / No AgentTask, Gateway Query/Action, Runtime lifecycle operation, simulator step, or physical motion was performed.
+
 ## v12.9.0 (2026-10-07 14:59) - codex
 
 ### 变更摘要 / Change Summary
@@ -160,39 +198,3 @@
 - Commit: `ed49b7a`（实现与诊断 / implementation and diagnoses）
 - Branch: `feature/planning-loop`
 - 时间 / Time: 2026-10-06 21:27 Asia/Shanghai
-
-## v12.8.1 (2026-10-06 18:30) - codex
-
-### 变更摘要 / Change Summary
-- [sense] [fix] 将 `planner_world_only` contact diagnostic 与旧 observed 模式一样传播到最终 prepared candidate evidence，补齐审计链。 (local)
-- [sense] [fix] Propagate `planner_world_only` contact diagnostics into final prepared-candidate evidence alongside legacy observed-mode diagnostics, completing the audit chain. (local)
-- [eval] [test] 新增真实 artifact 边界的 Runtime 回归，验证 collision configuration、planning-world 安装、planner-world qualification 顺序及 no-motion 结果。 (local)
-- [eval] [test] Add a Runtime regression using real artifact boundaries to verify collision configuration, planning-world installation, planner-world qualification ordering, and no-motion results. (local)
-
-### 文件变更详情 / File Changes
-- [修改 / Modified] `persistent_preparation.py:L251-L263`：传播所有同候选 contact diagnostic refs / propagate all same-candidate contact diagnostic refs.
-- [新增测试 / Added Tests] `test_persistent_preparation.py:L216-L231`、`test_persistent_route_evaluator.py:L10-L123`：公共 evidence 与 Runtime 顺序回归 / public-evidence and Runtime-ordering regressions.
-- [修改 / Modified] Adapter `0.9.1`、Skill `2.10.12`、Node `0.10.6` manifests and release records.
-
-### 关键 Diff / Key Diff
-```diff
--and "observed_collision" in item
-+and isinstance(item.get("evidence_ref"), str)
-+assert events == ["configure_collision_world", "prepare_planning_world", "qualify_planner_world_contact"]
-```
-
-### 七维 Code Review / Seven-Dimension Review
-- Blocker 0、Major 0。七个维度均通过；未增加 RGB/任务/相机硬编码，未自动观察、选择、replan 或执行 Action。简化世界仍不覆盖未识别及 unknown/occluded 障碍物。
-- Zero Blocker or Major findings. All seven dimensions pass; no RGB/task/camera hardcoding and no automatic observe, select, replan, or Action. The simplified world still excludes unidentified and unknown/occluded obstacles.
-
-### 验证 / Validation
-- 专项 `73 passed`；相关链路 `93 passed`；Skill/release/install `87 passed`；完整 Adapter `788 passed, 2 failed, 1 skipped`，两项失败位于既有无关 fixture。
-- Node SHA-256 `fd67b41c0d575e7b8d3a9d4da0d0c23f8c6d8df96a4a6ee981f9689ee7ef2412`；Skill bundle SHA-256 `f086762539bfbc2b4388c4e5a0fc44bdda1befb9b97bbd74942c032367dc3ca3`。
-- 构建和回归无 AgentTask、Gateway Query/Action、simulator step 或物理运动。
-- 已通过 Coordinator 取消旧 `awaiting_replan` 任务并清空 ownership，再无 `--force` 停止旧 Runtime；Dora 在停止宽限期后 SIGKILL 未响应的旧 host，当时无在途 invocation、session、task binding 或 world change。
-- Installed Skill `2.10.12` and Node `0.10.6`; Runtime `runtime_e8d8a9855ce641bf`, Dora, Gateway, and 11/11 Tool contexts are ready with zero active ownership and zero non-terminal tasks.
-- 启动日志确认实际 host 路径为 `robotwin20_persistent_host-0.10.6-linux-x86_64`；本地场景理解 primary 为 `qwen3-vl-4b-awq`，fallback 为 `gpt-6.1-sol` 且 `reasoning_effort=high`。部署验收未调用 Query/Action 或执行仿真/物理运动。
-
-### Git 提交 / Git Commit
-- Commit: `715e8e9`（实现 / implementation）
-- Branch: `feature/planning-loop`

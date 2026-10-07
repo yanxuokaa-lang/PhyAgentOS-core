@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 import yaml
+from jsonschema import validate as validate_json_schema
 
 from PhyAgentOS.agent.planning_dispatch import AgentComposedDispatch
 from PhyAgentOS.agent.tools.planning import ForgePlanSelectTool
@@ -78,8 +79,9 @@ def _acquire_response(*, new_scene_revision: str = "scene-2") -> dict:
     return {
         "ok": True,
         "data": {
-            "status": "succeeded",
             "invocation_id": INVOCATION,
+            "attempt_id": "attempt://object-acquire/attempt-1",
+            "phase": "completed",
             "result": {
                 "status": "succeeded",
                 "entity_ref": ENTITY,
@@ -92,11 +94,37 @@ def _acquire_response(*, new_scene_revision: str = "scene-2") -> dict:
                 "candidate_ref": CANDIDATE,
                 "capability_snapshot_ref": CAPABILITIES,
                 "assignment_ref": ASSIGNMENT,
-                "acquire_invocation_ref": INVOCATION,
                 "new_scene_revision": new_scene_revision,
+                "capability_outcome_summary": {
+                    "version": "capability_outcome_summary_v1",
+                    "capability_phase": "hold",
+                    "status": "succeeded",
+                    "failure_owner": None,
+                    "failure_code": None,
+                    "world_change_started": True,
+                    "outcome_known": True,
+                    "evidence_availability": "partial",
+                    "artifact_refs": ["artifact://acquire/settlement"],
+                    "bounded_metric_names": [],
+                    "retryable_in_revision": False,
+                    "requires_replan": False,
+                    "recommended_action": "continue",
+                    "phase": "acquire",
+                    "selected_arm": None,
+                    "failed_phase": None,
+                    "arm_attempts": [],
+                    "evidence_refs": [],
+                },
             },
         },
     }
+
+
+def test_acquire_fixture_conforms_to_public_producer_schema():
+    validate_json_schema(
+        _acquire_response()["data"],
+        ACQUIRE_TOOL_SPEC["output_schema"],
+    )
 
 
 def _graph(nodes: list[PlanNode]) -> PlanGraph:
@@ -367,7 +395,7 @@ def test_successful_acquire_record_compiles_place_selection_from_effect_scene():
     arguments = coordinator.proposals[0]["tool_arguments"]
     assert arguments["acquire_invocation_ref"] == INVOCATION
     assert arguments["destination_ref"] == DESTINATION
-    assert arguments["scene_revision"] == "scene-1"
+    assert arguments["scene_revision"] == "scene-2"
     assert result["motion_authorized"] is False
 
 

@@ -110,6 +110,10 @@ class ArgumentProjectionSourcePlan(_Frozen):
 
     @model_validator(mode="after")
     def validate_source_shape(self) -> "ArgumentProjectionSourcePlan":
+        if self.scene_relation == "predecessor_effect" and self.source_scope != "predecessor":
+            raise ValueError(
+                "predecessor_effect scene relation requires predecessor source scope"
+            )
         for output_field, source_path in {
             **self.source_field_map,
             **self.unique_item_field_map,
@@ -141,6 +145,10 @@ class ArgumentProjectionSourcePlan(_Frozen):
             )
         if self.unique_item_join_field is not None and not self.unique_item_join_field.strip():
             raise ValueError("unique_item_join_field must be non-empty")
+        if self.unique_item_join_field is not None and self.unique_item_collection is None:
+            raise ValueError(
+                "unique_item_join_field requires unique_item_collection and unique_item_field_map"
+            )
         outputs = [
             *self.source_field_map,
             *self.list_field_map,

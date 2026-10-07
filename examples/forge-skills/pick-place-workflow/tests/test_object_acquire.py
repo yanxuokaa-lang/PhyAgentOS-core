@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import jsonschema
 import pytest
 import yaml
 from PhyAgentOS.forge.tool_client import ForgeToolAPIError, ForgeToolClient
@@ -10,6 +11,7 @@ from pick_place_workflow.object_acquire import (
     ACQUIRE_TOOL_SPEC,
     AcquireSnapshot,
     ObjectAcquireEndpoint,
+    terminal_result,
 )
 
 _FORBIDDEN_TOKENS = (
@@ -52,6 +54,7 @@ def successful_snapshot(**overrides):
         "failure_code": None,
         "world_change_started": True,
         "outcome_known": True,
+        "new_scene_revision": "scene-8",
         "evidence_availability": "partial",
         "artifact_refs": ("artifact://acquire-7/settlement",),
         "bounded_metric_names": ("lift_height", "gripper_closure"),
@@ -107,6 +110,31 @@ def test_contract_yaml_matches_the_published_tool_spec():
     assert yaml.safe_load(contract_path.read_text(encoding="utf-8")) == ACQUIRE_TOOL_SPEC
 
 
+def test_successful_world_change_requires_effect_scene_in_public_result_schema():
+    endpoint = ObjectAcquireEndpoint(Provider(successful_snapshot()))
+    admitted = endpoint.admit(request_payload())
+    result_schema = ACQUIRE_TOOL_SPEC["output_schema"]["properties"]["result"]
+    jsonschema.validate(admitted.terminal_result, result_schema)
+
+    missing_effect = dict(admitted.terminal_result)
+    missing_effect.pop("new_scene_revision")
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(missing_effect, result_schema)
+
+    failed_result = terminal_result(
+        request_payload(),
+        successful_snapshot(
+            status="failed",
+            capability_phase="none",
+            failure_owner="execution",
+            failure_code="grasp_lost",
+            world_change_started=False,
+            new_scene_revision=None,
+        ),
+    )
+    jsonschema.validate(failed_result, result_schema)
+
+
 @pytest.mark.asyncio
 async def test_action_discovery_context_admission_pending_and_terminal_result():
     provider = Provider(successful_snapshot(pending_polls=1))
@@ -152,6 +180,7 @@ async def test_action_discovery_context_admission_pending_and_terminal_result():
     assert data["phase"] == "completed"
     assert data["invocation_id"] == invocation_id
     assert data["result"]["status"] == "succeeded"
+    assert data["result"]["new_scene_revision"] == "scene-8"
     assert data["result"]["candidate_ref"] == "candidate://bottle-1/1"
     assert data["result"]["capability_outcome_summary"] == {
         "version": "capability_outcome_summary_v1",
@@ -301,6 +330,7 @@ async def test_unknown_result_remains_explicitly_physically_uncertain():
         successful_snapshot(status="unknown", outcome_known=True, failure_owner="execution", failure_code="x"),
         successful_snapshot(evidence_availability="complete", artifact_refs=()),
         successful_snapshot(bounded_metric_names=("bad-metric",)),
+        successful_snapshot(new_scene_revision=None),
     ],
 )
 @pytest.mark.asyncio
