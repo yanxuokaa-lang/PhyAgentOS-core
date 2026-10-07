@@ -31,7 +31,7 @@
 - 未创建/恢复 AgentTask，未调用 Gateway Query/Action，未执行 simulator step 或物理运动。
 
 ### Git 提交 / Git Commit
-- Commit: `pending`（部署记录 / deployment record）
+- Commit: `10daf18`（部署记录 / deployment record）
 - Branch: `feature/planning-loop`
 - 时间 / Time: 2026-10-07 16:09 Asia/Shanghai
 
