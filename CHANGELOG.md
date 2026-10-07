@@ -40,6 +40,11 @@
 - Node `0.10.10` SHA-256 `d807b1b3e6b9a86f6cc597da8ab6de9643b8b23a75bc72372889ac1d45fd195e`；Skill `3.0.2` SHA-256 `c9992caa9c256780307e1a4de33a15f90971292e5db82c7ebd5f49f0800f1772`。未安装或启动。 (local)
 - 当前解释器缺少 `cv2`，4 个既有 video 用例未计入通过证据；未创建任务、调用 Gateway、推进模拟器/物理运动或改变 Runtime 生命周期。 (local)
 
+### Git 提交 / Git Commit
+- Commit: `b0fa615`（实现、修复与七维审核 / implementation, fixes, and seven-dimension review）
+- Branch: `feature/planning-loop`
+- 时间 / Time: `2026-10-07 Asia/Shanghai`
+
 ## v12.9.3 (2026-10-07 18:09) - codex
 
 ### 变更摘要 / Change Summary
