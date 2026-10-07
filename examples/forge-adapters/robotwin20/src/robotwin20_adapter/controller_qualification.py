@@ -23,7 +23,10 @@ from .motion_capabilities import (
     motion_capability_digest,
 )
 
-CONTROLLER_QUALIFICATION_PLAN_SCHEMA_VERSION = "paos-robotwin20-controller-qualification-plan/v1"
+CONTROLLER_QUALIFICATION_PLAN_SCHEMA_VERSION = "paos-robotwin20-controller-qualification-plan/v2"
+LEGACY_CONTROLLER_QUALIFICATION_PLAN_SCHEMA_VERSION = (
+    "paos-robotwin20-controller-qualification-plan/v1"
+)
 CONTROLLER_QUALIFICATION_SOURCE_MANIFEST_SCHEMA_VERSION = (
     "paos-robotwin20-controller-qualification-source-manifest/v1"
 )
@@ -106,6 +109,13 @@ def _identity_text(value: str, label: str) -> str:
     return value.strip()
 
 
+def _artifact_segment(value: str, label: str) -> str:
+    normalized = _identity_text(value, label)
+    if normalized in {".", ".."} or "/" in normalized or "\\" in normalized:
+        raise ValueError(f"{label} must be one artifact path segment")
+    return normalized
+
+
 def qualification_capability_ref(
     qualification_id: str,
     arm_id: str,
@@ -114,8 +124,10 @@ def qualification_capability_ref(
 ) -> str:
     """Return the qualification-owned alias for one capability evidence item."""
 
-    qualification = _identity_text(qualification_id, "qualification capability identity")
-    arm = _identity_text(arm_id, "qualification capability arm")
+    qualification = _artifact_segment(
+        qualification_id, "qualification capability identity"
+    )
+    arm = _artifact_segment(arm_id, "qualification capability arm")
     if arm not in {"left", "right"}:
         raise ValueError("qualification capability arm is unsupported")
     leaf = "validation" if validation else "document"
@@ -242,7 +254,10 @@ class ControllerQualificationPlan(BaseModel):
     """Digest-bound plan for a future isolated simulation qualification run."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
-    schema_version: Literal["paos-robotwin20-controller-qualification-plan/v1"] = (
+    schema_version: Literal[
+        "paos-robotwin20-controller-qualification-plan/v1",
+        "paos-robotwin20-controller-qualification-plan/v2",
+    ] = (
         CONTROLLER_QUALIFICATION_PLAN_SCHEMA_VERSION
     )
     qualification_id: str
@@ -305,6 +320,27 @@ class ControllerQualificationPlan(BaseModel):
             _REQUIRED_SIGNALS
         ):
             raise ValueError("qualification required signals are incomplete or duplicated")
+        if self.schema_version == CONTROLLER_QUALIFICATION_PLAN_SCHEMA_VERSION:
+            qualification = _artifact_segment(
+                self.qualification_id, "controller qualification plan identity"
+            )
+            prefix = f"artifact://controller-qualification/{qualification}"
+            if self.source_manifest_ref != f"{prefix}/source-manifest":
+                raise ValueError(
+                    "qualification source manifest reference must be package-owned"
+                )
+            for binding in self.capability_bindings:
+                if (
+                    binding.artifact_ref
+                    != qualification_capability_ref(qualification, binding.arm_id)
+                    or binding.validation_ref
+                    != qualification_capability_ref(
+                        qualification, binding.arm_id, validation=True
+                    )
+                ):
+                    raise ValueError(
+                        "qualification capability references must be package-owned"
+                    )
         return self
 
 
@@ -814,6 +850,7 @@ __all__ = [
     "QualificationIdentity",
     "QualificationTestEvidence",
     "QualificationTestSpec",
+    "LEGACY_CONTROLLER_QUALIFICATION_PLAN_SCHEMA_VERSION",
     "canonical_controller_qualification",
     "controller_qualification_digest",
     "qualification_capability_ref",

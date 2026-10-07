@@ -42,6 +42,7 @@ from robotwin_simulation_probe_worker import (
 from test_route_readiness import _request as _route_request
 
 from robotwin20_adapter import (
+    LEGACY_CONTROLLER_QUALIFICATION_PLAN_SCHEMA_VERSION,
     SIMULATION_PROBE_PROFILE_SCHEMA_VERSION,
     ControllerQualification,
     ControllerQualificationEvidence,
@@ -506,6 +507,7 @@ def _materialize_controller_qualification(
         for test_id in QUALIFICATION_TEST_IDS
     )
     plan = ControllerQualificationPlan(
+        schema_version=LEGACY_CONTROLLER_QUALIFICATION_PLAN_SCHEMA_VERSION,
         qualification_id=binding["qualification_id"],
         producer_id="qualification-producer/v1",
         created_at="2026-09-06T08:00:00+00:00",

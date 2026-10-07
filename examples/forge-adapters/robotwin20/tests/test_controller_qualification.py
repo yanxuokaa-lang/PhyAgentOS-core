@@ -8,6 +8,8 @@ from pathlib import Path
 import pytest
 
 from robotwin20_adapter.controller_qualification import (
+    CONTROLLER_QUALIFICATION_PLAN_SCHEMA_VERSION,
+    LEGACY_CONTROLLER_QUALIFICATION_PLAN_SCHEMA_VERSION,
     ControllerQualification,
     ControllerQualificationEvidence,
     ControllerQualificationPlan,
@@ -68,6 +70,9 @@ def test_qualification_capability_refs_are_package_owned():
     ) == "artifact://controller-qualification/qualification-q1/capabilities/right/validation"
     with pytest.raises(ValueError, match="unsupported"):
         qualification_capability_ref("qualification-q1", "center")
+    for unsafe in (".", "..", "nested/id", "nested\\id"):
+        with pytest.raises(ValueError, match="one artifact path segment"):
+            qualification_capability_ref(unsafe, "left")
 
 
 def _plan() -> ControllerQualificationPlan:
@@ -82,6 +87,7 @@ def _plan() -> ControllerQualificationPlan:
         for test_id in TEST_IDS
     )
     return ControllerQualificationPlan(
+        schema_version=LEGACY_CONTROLLER_QUALIFICATION_PLAN_SCHEMA_VERSION,
         qualification_id="blocks-ranking-rgb-controller-q1",
         producer_id="robotwin20-controller-qualification-worker/v1",
         created_at="2026-09-06T08:00:00+00:00",
@@ -104,6 +110,51 @@ def _plan() -> ControllerQualificationPlan:
             "stop_error_reset_status",
         ),
     )
+
+
+def test_v2_plan_contract_owns_capability_and_manifest_refs():
+    legacy = _plan()
+    qualification_id = legacy.qualification_id
+    bindings = tuple(
+        QualificationCapabilityBinding(
+            **{
+                **item.model_dump(mode="json"),
+                "artifact_ref": qualification_capability_ref(
+                    qualification_id, item.arm_id
+                ),
+                "validation_ref": qualification_capability_ref(
+                    qualification_id, item.arm_id, validation=True
+                ),
+            }
+        )
+        for item in legacy.capability_bindings
+    )
+    payload = {
+        **legacy.model_dump(mode="json"),
+        "schema_version": CONTROLLER_QUALIFICATION_PLAN_SCHEMA_VERSION,
+        "capability_bindings": bindings,
+        "source_manifest_ref": (
+            f"artifact://controller-qualification/{qualification_id}/source-manifest"
+        ),
+    }
+
+    current = ControllerQualificationPlan.model_validate(payload)
+    assert current.schema_version == CONTROLLER_QUALIFICATION_PLAN_SCHEMA_VERSION
+    with pytest.raises(ValueError, match="capability references must be package-owned"):
+        ControllerQualificationPlan.model_validate({
+            **payload,
+            "capability_bindings": legacy.capability_bindings,
+        })
+    with pytest.raises(ValueError, match="source manifest reference must be package-owned"):
+        ControllerQualificationPlan.model_validate({
+            **payload,
+            "source_manifest_ref": "artifact://legacy/source-manifest",
+        })
+    with pytest.raises(ValueError, match="one artifact path segment"):
+        ControllerQualificationPlan.model_validate({
+            **payload,
+            "qualification_id": "../unsafe",
+        })
 
 
 def _evidence(outcome: str = "pass") -> ControllerQualificationEvidence:
@@ -472,6 +523,9 @@ def test_materializer_creates_no_motion_review_package(tmp_path: Path):
         ).qualification_motion_authorized
         is False
     )
+    assert json.loads((output_dir / "qualification_plan.json").read_text())["schema_version"].endswith(
+        "plan/v2"
+    )
     bad_args = list(args)
     ref_index = bad_args.index(
         "artifact://controller-qualification/qualification-q1/capabilities/left/document"
@@ -493,7 +547,7 @@ def test_materializer_creates_no_motion_review_package(tmp_path: Path):
         text=True,
     )
     assert rejected.returncode != 0
-    assert "qualification namespace" in rejected.stderr
+    assert "capability references must be package-owned" in rejected.stderr
     validation_path = output_dir / "no-motion-validation.json"
     verify = subprocess.run(
         [

@@ -1,5 +1,12 @@
 # Change Log
 
+## v3.0.5 (2026-10-07)
+
+- 中文：发布 Adapter `0.9.8` 与 Node `0.10.13`。controller qualification plan v2 在公开 contract owner 中强制 package-owned capability、validation 与 source-manifest refs；显式 v1 继续读取已有批准的 legacy package。
+- English: Publish Adapter `0.9.8` and Node `0.10.13`. Controller qualification plan v2 enforces package-owned capability, validation, and source-manifest refs in the public contract owner, while explicit v1 remains readable for approved legacy packages.
+- 中文：qualification artifact identity 在生成 alias 前拒绝 `.`、`..` 与路径分隔符；删除 CLI 重复 ownership gate。该变更不自动 observe、retry、replan、换候选、换臂或执行 Action。
+- English: Qualification artifact identities reject `.`, `..`, and path separators before alias generation, and the duplicate CLI ownership gate is removed. The change does not automatically observe, retry, replan, switch candidates/arms, or dispatch Actions.
+
 ## v3.0.4 (2026-10-07)
 
 - 中文：发布 Adapter `0.9.7` 与 Node `0.10.12`，修复长期 Runtime 中旧 capability evidence 与新 qualification 证据共存时的身份投影；保留不可变 artifact 冲突拒绝和 no-motion 准入。
