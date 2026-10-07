@@ -33,7 +33,7 @@
 - [修改 / Modified] `changelog/2026-10_part2.md:L3-L51`、`CHANGELOG.md:L8-L38`：部署与验收记录；Runtime/Skill/Node 安装状态位于 operator-owned `~/.PhyAgentOS`，不提交凭据或生成状态。 (local)
 
 ### Git 提交 / Git Commit
-- Commit: `f220a13`（部署日志与 Runtime 验收 / deployment log and Runtime acceptance）
+- Commit: `200be8b`（部署日志与 Runtime 验收及日志收尾 / deployment acceptance and changelog closeout）
 - Branch: `feature/planning-loop`
 
 ## v12.9.9 (2026-10-07 23:15) - codex
