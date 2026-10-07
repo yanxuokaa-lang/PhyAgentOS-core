@@ -5,6 +5,27 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.8.4 (2026-10-07 13:52) - codex
+
+### 变更摘要 / Change Summary
+- [env] [chore] 在三类 ownership 为空且非终态任务为 0 后，无 `--force` 正常停止旧 Runtime，安装 Skill `2.10.14` 与 Node `0.10.8`，并启动新 Runtime `runtime_1c512b49353c4b23`。 (local)
+- [env] [chore] After proving all three ownership collections empty and zero non-terminal tasks, normally stopped the old Runtime without `--force`, installed Skill `2.10.14` and Node `0.10.8`, and started new Runtime `runtime_1c512b49353c4b23`. (local)
+
+### 文件变更详情 / File Changes
+- [修改 / Modified] `changelog/2026-10_part2.md:L3-L47`：记录停止、安装、启动、版本/哈希与 no-motion 验收 / record stop, install, start, version/hash, and no-motion acceptance.
+- [修改 / Modified] `CHANGELOG.md:L8-L27`：维护最近五个版本 / maintain the latest five versions.
+
+### 关键 Diff / Key Diff
+```diff
+-Skill 2.10.12; Node 0.10.6; runtime_e8d8a9855ce641bf
++Skill 2.10.14; Node 0.10.8; runtime_1c512b49353c4b23
+```
+
+### 验证 / Validation
+- Dora running、Gateway ready、11/11 Tool context ready；Node lock 和运行环境 binary 均验证为 `0.10.8`，ownership 为空，非终态任务为 0。
+- 本地场景理解 primary 为 `qwen3-vl-4b-awq`；fallback 与 Agent 默认均为 `gpt-6.1-sol`、`reasoning_effort=high`；operator env 保持 `0600`。
+- 未创建/恢复 AgentTask，未调用 Gateway Query/Action，未执行 simulator step 或物理运动。
+
 ## v12.8.3 (2026-10-06 23:39) - codex
 
 ### 变更摘要 / Change Summary
@@ -166,32 +187,3 @@
 - Commit: `28700b0`（implementation）
 - Branch: `feature/planning-loop`
 - 时间 / Time: 2026-10-06 17:50 Asia/Shanghai
-
-## v12.7.5 (2026-10-06 16:09) - codex
-
-### 变更摘要 / Change Summary
-- [env] [chore] 取消旧 `awaiting_replan` 任务并确认 ownership/非终态任务清空后，正常停止旧 flow；旧 host 超过 Dora 停止宽限期后被 Dora SIGKILL 清理，无残留 flow 或在途 Action。 (local)
-- [env] [chore] Cancel the old `awaiting_replan` task and clear ownership/non-terminal tasks before normally stopping the old flow; Dora cleaned up the old host with SIGKILL after its stop grace period, with no residual flow or in-flight Action. (local)
-- [chore] [release] 将 Core distribution 从 `PhyAgentOS-ai 1.0.1` 更新为当前 editable `1.0.2`，保留未变的 Skill `2.10.10` 与 Node `0.10.4`，并启动新 Runtime `runtime_d3c5b3210a094cb9`。 (local)
-- [chore] [release] Upgrade the Core distribution from `PhyAgentOS-ai 1.0.1` to current editable `1.0.2`, retain unchanged Skill `2.10.10` and Node `0.10.4`, and start new Runtime `runtime_d3c5b3210a094cb9`. (local)
-
-### 文件变更详情 / File Changes
-- [修改 / Modified] `changelog/2026-10.md:L3-L56`：记录任务取消、停止告警、Core 安装、Runtime 启动与 no-motion 验收 / record task cancellation, stop warning, Core installation, Runtime startup, and no-motion validation.
-- [修改 / Modified] `CHANGELOG.md:L7-L34`：维护最近五个版本 / maintain the latest five versions.
-
-### 关键 Diff / Key Diff
-```diff
--PhyAgentOS-ai 1.0.1; runtime_029203e0cad84b94
-+PhyAgentOS-ai 1.0.2 editable; runtime_d3c5b3210a094cb9
--task_444c570eae644b9a awaiting_replan
-+task_444c570eae644b9a cancelled; nonterminal_count=0
-```
-
-### 验证 / Validation
-- Skill `2.10.10`、Node `0.10.4` verified、Dora running、Gateway ready、11/11 Tool context ready；ownership 为空，非终态任务为 0，本地 Qwen 为 `qwen3-vl-4b-awq`。
-- 未创建新任务、未调用 Gateway Query/Action、未执行 simulator step 或物理运动。
-
-### Git 提交 / Git Commit
-- Commit: `abd192e`
-- Branch: `feature/planning-loop`
-- 时间 / Time: 2026-10-06 16:09 Asia/Shanghai
