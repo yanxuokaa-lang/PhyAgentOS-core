@@ -46,6 +46,11 @@
 - 未创建/恢复 AgentTask，未调用 Gateway Query/Action，未执行 simulator step、物理运动或 Runtime 生命周期操作。
 - No AgentTask, Gateway Query/Action, simulator step, physical motion, or Runtime lifecycle operation was performed.
 
+### Git 提交 / Git Commit
+- Commit: `3550c50`（implementation, diagnoses, and review）
+- Branch: `feature/planning-loop`
+- 时间 / Time: 2026-10-07 Asia/Shanghai
+
 ## v12.8.4 (2026-10-07 13:52) - codex
 
 ### 变更摘要 / Change Summary
