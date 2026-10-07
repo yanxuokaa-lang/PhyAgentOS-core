@@ -1850,7 +1850,7 @@ def _prepared_dual_arm_state(request):
     )
 
 
-def _prepared_readiness_artifact(tmp_path, request, candidate):
+def _prepared_readiness_artifact(tmp_path, request, candidate, *, joint5=0.0):
     route = deepcopy(candidate["route"])
     route[-1]["waypoints"].append(
         {"frame_id": request["frame_id"], "position_m": [0.0, 0.0, 0.8],
@@ -1862,7 +1862,8 @@ def _prepared_readiness_artifact(tmp_path, request, candidate):
             segments.append({
                 "phase": phase["phase"], "gripper_state": phase["gripper_state"],
                 "waypoint_index": index, "route_waypoint": deepcopy(waypoint),
-                "position": [[0.0] * 7], "velocity": [[0.0] * 7],
+                "position": [[0.0] * 4 + [joint5] + [0.0] * 2],
+                "velocity": [[0.0] * 7],
             })
     plan = {
         "schema_version": "paos-robotwin20-prepared-execution-plan/v2",
@@ -1902,6 +1903,75 @@ def test_prepared_plan_loader_rejects_legacy_artifact(tmp_path):
             current_dual_arm_state=_prepared_dual_arm_state(request),
             start_tolerance_rad=1e-4,
         )
+
+
+def test_prepared_plan_loader_and_controller_share_boundary_admission(tmp_path):
+    request = _route_request(tmp_path)
+    candidate = request["candidates"][0]
+    upper = 2.8973
+    ref, _plan = _prepared_readiness_artifact(
+        tmp_path, request, candidate, joint5=2.8973000049591064
+    )
+    limits = ControllerLimits(
+        joint_order=tuple(f"joint-{index}" for index in range(7)),
+        position_lower_rad=(-upper,) * 7,
+        position_upper_rad=(upper,) * 7,
+        velocity_lower_radps=(-2.0,) * 7,
+        velocity_upper_radps=(2.0,) * 7,
+    )
+
+    loaded = probe_worker.load_prepared_execution_plan(
+        tmp_path,
+        ref,
+        request=request,
+        candidate=candidate,
+        assignment={"readiness_evidence_ref": ref, "selected_arm_ids": ["left"]},
+        current_dual_arm_state=_prepared_dual_arm_state(request),
+        start_tolerance_rad=1e-4,
+        capability_limits=limits,
+    )
+    writes = []
+    controller = CapabilityBoundedDriveController(
+        limits, lambda q, dq: writes.append((q, dq))
+    )
+    segment = loaded["plan"]["segments"][0]
+    controller.command(segment["position"][0], segment["velocity"][0])
+
+    assert segment["position"][0][4] == upper
+    assert writes[0][0][4] == upper
+
+
+def test_prepared_plan_loader_rejects_material_capability_violation(tmp_path):
+    request = _route_request(tmp_path)
+    candidate = request["candidates"][0]
+    ref, _plan = _prepared_readiness_artifact(
+        tmp_path, request, candidate, joint5=2.89731
+    )
+    limits = ControllerLimits(
+        joint_order=tuple(f"joint-{index}" for index in range(7)),
+        position_lower_rad=(-2.8973,) * 7,
+        position_upper_rad=(2.8973,) * 7,
+        velocity_lower_radps=(-2.0,) * 7,
+        velocity_upper_radps=(2.0,) * 7,
+    )
+
+    with pytest.raises(
+        probe_worker.PreparedExecutionPlanError,
+        match="exceeds capability bounds",
+    ) as rejected:
+        probe_worker.load_prepared_execution_plan(
+            tmp_path,
+            ref,
+            request=request,
+            candidate=candidate,
+            assignment={"readiness_evidence_ref": ref, "selected_arm_ids": ["left"]},
+            current_dual_arm_state=_prepared_dual_arm_state(request),
+            start_tolerance_rad=1e-4,
+            capability_limits=limits,
+        )
+    assert rejected.value.failure_code == "prepared_execution_capability_mismatch"
+    assert rejected.value.retryable_in_revision is False
+    assert rejected.value.requires_replan is True
 
 
 @pytest.mark.parametrize(

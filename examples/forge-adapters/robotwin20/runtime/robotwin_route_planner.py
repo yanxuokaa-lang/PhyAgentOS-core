@@ -5,6 +5,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any, Mapping
 
+from robotwin_capability_controller import ControllerLimits
 from robotwin_curobo_world_port import (
     add_released_object,
     apply_collision_world,
@@ -16,6 +17,7 @@ from robotwin_gripper_geometry import planner_gripper_state
 from robotwin_planning_geometry import (
     ObservedGeometryActor,
     SimulationProbeError,
+    _admit_capability_trajectory,
     _attach_object_to_planner,
     _capture_dual_arm_state,
     _initial_gripper_waypoint,
@@ -161,6 +163,7 @@ def evaluate_route_arm(
     *,
     diagnose_failure: bool = False,
     initial_dual_arm_state: Mapping[str, Any] | None = None,
+    capability_limits: ControllerLimits | None = None,
 ) -> dict[str, Any]:
     """Plan serially from predicted endpoints, restoring geometry in all cases.
 
@@ -217,6 +220,8 @@ def evaluate_route_arm(
                 with planner_gripper_state(task, arm, phase["gripper_state"]) as gripper:
                     result = plan_path_with_status(task, arm, pose, last_qpos=predicted.tolist())
                     _validate_trajectory(result, limits)
+                    if capability_limits is not None:
+                        result = _admit_capability_trajectory(result, capability_limits)
                     _validate_gripper_table_clearance(
                         task, arm, result["position"], phase=phase_name,
                         gripper_state=phase["gripper_state"],
@@ -320,23 +325,24 @@ def evaluate_route(
     *,
     diagnose_failure: bool = False,
     initial_dual_arm_state: Mapping[str, Any] | None = None,
+    capability_limits: Mapping[str, ControllerLimits] | None = None,
 ) -> dict[str, Any]:
     options: dict[str, Any] = {}
     if diagnose_failure:
         options["diagnose_failure"] = True
     if initial_dual_arm_state is not None:
         options["initial_dual_arm_state"] = initial_dual_arm_state
-    attempts = [
-        evaluate_route_arm(
-            task,
-            request,
-            candidate,
-            arm,
-            actor,
-            **options,
-        )
-        for arm in ("left", "right")
-    ]
+    attempts = []
+    for arm in ("left", "right"):
+        arm_options = dict(options)
+        if capability_limits is not None:
+            limit = capability_limits.get(arm)
+            if limit is None:
+                raise SimulationProbeError("route capability limit coverage is incomplete")
+            arm_options["capability_limits"] = limit
+        attempts.append(evaluate_route_arm(
+            task, request, candidate, arm, actor, **arm_options,
+        ))
     selected = next((item["arm"] for item in attempts if item["status"] == "pass"), None)
     return {
         "candidate_ref": candidate["candidate_ref"],
@@ -379,6 +385,28 @@ class RoboTwinRouteEvaluator:
             if hashlib.sha256(data).hexdigest() != digest:
                 raise SimulationProbeError("route input artifact digest mismatch")
             return json.loads(data)
+
+        from robotwin20_adapter.motion_capabilities import MotionCapabilityDocument
+
+        capability_limits = {}
+        for binding in request.get("motion_capabilities", []):
+            try:
+                capability = MotionCapabilityDocument.model_validate(
+                    artifact(binding["artifact_ref"], binding["sha256"])
+                )
+            except ValueError as exc:
+                raise SimulationProbeError("route motion capability is invalid") from exc
+            if capability.arm_id != binding["arm_id"]:
+                raise SimulationProbeError("route motion capability arm binding is invalid")
+            capability_limits[capability.arm_id] = ControllerLimits(
+                joint_order=capability.joint_order,
+                position_lower_rad=capability.limits.position_lower_rad,
+                position_upper_rad=capability.limits.position_upper_rad,
+                velocity_lower_radps=capability.limits.velocity_lower_radps,
+                velocity_upper_radps=capability.limits.velocity_upper_radps,
+            )
+        if request.get("motion_capabilities") is not None and set(capability_limits) != {"left", "right"}:
+            raise SimulationProbeError("route motion capability coverage is incomplete")
 
         profile = load_runtime_profile(self.runtime_profile)
         owned = self.backend is None
@@ -471,13 +499,14 @@ class RoboTwinRouteEvaluator:
                 actor = (ObservedGeometryActor(record["world_T_object"])
                          if scene.get("geometry_source") == "observation"
                          else getattr(task, record["actor_name"]))
+                route_options = {
+                    "diagnose_failure": self.diagnose_failure,
+                    "initial_dual_arm_state": world_evidence["dual_arm_state"],
+                }
+                if capability_limits:
+                    route_options["capability_limits"] = capability_limits
                 results[candidate["candidate_ref"]] = evaluate_route(
-                    task,
-                    request,
-                    candidate,
-                    actor,
-                    diagnose_failure=self.diagnose_failure,
-                    initial_dual_arm_state=world_evidence["dual_arm_state"],
+                    task, request, candidate, actor, **route_options,
                 )
             return {
                 "candidates": results,

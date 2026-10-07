@@ -5,6 +5,38 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.9.3 (2026-10-07 18:09) - codex
+
+### 变更摘要 / Change Summary
+- [sense] [fix] 统一 route readiness、prepared-plan admission 与 live controller 的 MotionCapability 数值边界语义，仅规范化 float32 往返边界误差，实质越界继续 fail-closed。 (local)
+- [sense] [fix] Unify MotionCapability numerical-bound semantics across route readiness, prepared-plan admission, and the live controller, canonicalizing only float32 round-trip boundary error while material violations remain fail-closed. (local)
+- [comm] [fix] 未知 Action 结果的 stop/replan 决策现在进入 `reconciliation_required` 阻塞投影；不自动重试、观察、放置、换臂、换候选或 replan。 (local)
+- [comm] [fix] Stop/replan decisions after an unknown Action outcome now enter `reconciliation_required`; no automatic retry, observation, placement, arm/candidate switch, or replan is introduced. (local)
+
+### 文件变更详情 / File Changes
+- [修改 / Modified] `robotwin_capability_controller.py:L11-L65,L148-L169`、`robotwin_planning_geometry.py:L136-L174`、`robotwin_route_planner.py:L166-L224,L328-L410,L502-L509`：共享 capability-bound 规范化并接入逐臂 Readiness。 (local)
+- [修改 / Modified] `robotwin_simulation_probe_worker.py:L554-L709,L1580-L1604`、`robotwin_persistent_engine.py:L555-L557`：Action 前重验并执行规范化的持久化轨迹。 (local)
+- [修改 / Modified] `PhyAgentOS/agent/planning_loop.py:L1488-L1536`：未知结果优先进入 reconciliation；replay 保持 reducer-only。 (local)
+- [新增测试 / Added Tests] `tests/test_planning_loop.py:L1291-L1350` 及 Adapter controller/planner/simulation/persistent tests：边界一致性、实质越界和未知结果收敛的 no-motion 回归。 (local)
+- [新增 / Added] `CAPABILITY_BOUND_ADMISSION_DIAGNOSIS_20261007.md:L1-L75`、`OUTCOME_UNKNOWN_RECONCILIATION_DIAGNOSIS_20261007.md:L1-L74`、`IMPLEMENTATION_REVIEW_V12_9_3.md:L1-L74`：两份诊断与七维审核。 (local)
+
+### 关键 Diff / Key Diff
+```diff
+-planner/controller use different numerical admission
++one controller-owned rule is reused before persistence, before Action, and before provider write
+-outcome_unknown stop/replan can bypass lifecycle convergence
++outcome_unknown stop/replan -> blocked: reconciliation_required:<node>
+```
+
+### 七维 Code Review / Seven-Dimension Review
+- Blocker 0、Major 0、Minor 0；七个维度全部通过。没有 RGB/颜色/排列/benchmark/实体/候选/相机/固定机械臂专用分支，也没有自动 Action 或 replan。 (local)
+- Zero Blocker, Major, or Minor findings; all seven dimensions pass. No RGB/color/order/benchmark/entity/candidate/camera/fixed-arm branch or automatic Action/replan was added. (local)
+
+### 验证 / Validation
+- Core `187 passed`；Adapter capability/Persistent chains `93 passed, 4 deselected` 与 `78 passed`；Skill/release `75 passed`；Ruff、compileall、`git diff --check` 通过。 (local)
+- Node `0.10.9` SHA-256 `523ce506eeee3ffc143715ddd1bb98671dfa3ef7847d6de143da45214bfe4d8f`；Skill `3.0.1` SHA-256 `b323781c830e98259b8bb47b65a08f627b3b80ebd1fa1733a177f9f78da8865f`。未安装或启动。 (local)
+- 当前解释器缺少现有视频测试依赖 `cv2`；验证未创建 AgentTask、调用 Gateway、推进 simulator/物理运动或改变 Runtime 生命周期。 (local)
+
 ## v12.9.2 (2026-10-07 15:45) - codex
 
 ### 变更摘要 / Change Summary
@@ -149,50 +181,3 @@
 - Commit: `de2dcb6`（deployment record）
 - Branch: `feature/planning-loop`
 - 时间 / Time: `2026-10-07 13:59 Asia/Shanghai`
-
-## v12.8.3 (2026-10-06 23:39) - codex
-
-### 变更摘要 / Change Summary
-- [sense] [fix] prepared execution plan v2 绑定 Readiness 的完整 provider-owned 双臂动态状态；Persistent Action 在任何 simulator step 前验证当前规划世界。 (local)
-- [sense] [fix] Bind prepared execution plan v2 to Readiness's complete provider-owned dual-arm dynamic state and validate the current planning world before any Persistent Action simulator step. (local)
-- [eval] [test] 增加真实 Readiness artifact → Persistent `_prepare()` 的无运动回归，证明 Action 不二次规划并在 peer-arm/world drift 时零步拒绝。 (local)
-- [eval] [test] Add a no-motion regression through the real Readiness-artifact-to-Persistent-`_prepare()` path, proving no second solve and zero-step rejection on peer-arm/world drift. (local)
-
-### 文件变更详情 / File Changes
-- [修改 / Modified] `dual_arm_state.py:L138-L199,L346`：比较 scene/state/frame/policy/provenance identity、两臂 qpos/drive target/gripper、link identity 与 link pose / compare complete planning-relevant dual-arm state.
-- [修改 / Modified] `robotwin_route_planner.py:L155-L340,L471-L481`：Readiness 将同源 `dual_arm_state` 写入 prepared plan v2 / persist the source `dual_arm_state` in prepared plan v2.
-- [修改 / Modified] `robotwin_simulation_probe_worker.py:L534-L687`、`robotwin_persistent_engine.py:L520-L560`：Action `_prepare()` 全状态校验和结构化零步拒绝 / full-state Action admission and structured zero-step rejection.
-- [新增测试 / Added Tests] `test_dual_arm_state.py:L57-L93`、`test_route_planner.py:L89-L124`、`test_simulation_probe.py:L1828-L1968`、`test_persistent_action_approval.py:L31-L115,L347-L444`、`test_persistent_route_evaluator.py:L135-L185`：v2、动态漂移、真实 `_prepare()`、不二次规划回归 / v2, drift, real `_prepare()`, and no-second-solve regressions.
-- [新增 / Added] `PREPARED_PLAN_DYNAMIC_WORLD_DIAGNOSIS_20261006.md:L1-L41`、`PREPARED_PLAN_INTEGRATION_REGRESSION_DIAGNOSIS_20261006.md:L1-L43`、`IMPLEMENTATION_REVIEW_V12_8_3.md:L1-L61`：两份诊断与七维审核 / two diagnoses and seven-dimension review.
-- [修改 / Modified] Adapter `0.9.3`、Node `0.10.8`、Skill `2.10.14` manifests, release notes, and version tests.
-
-### 关键 Diff / Key Diff
-```diff
--prepared plan v1: selected-arm initial_qpos only
-+prepared plan v2: initial_dual_arm_state
--Action loader compares selected-arm qpos
-+Action loader compares complete dynamic planning world
-+prepared_execution_world_state_drift -> Agent recovery facts
-```
-```diff
--unit test injects internal _prepared_execution_plan
-+RoboTwinPersistentEngine._prepare loads the Readiness artifact
-+Action evaluate_route_arm() is forbidden by the integration regression
-```
-
-### 七维 Code Review / Seven-Dimension Review
-- Blocker 0、Major 0、Minor 0。架构、正确性、恢复/幂等、机器人安全、扩展兼容、可观测性和 AgentLoop 自主性/收敛全部通过。
-- Zero Blocker, Major, or Minor findings. Architecture, correctness, recovery/idempotency, robotics safety, extensibility, observability, and AgentLoop autonomy/convergence pass.
-- 未加入颜色/排列/benchmark/相机/实体/固定机械臂分支，未自动观察、换臂、换候选、重试、replan 或 Action。
-- No color/arrangement/benchmark/camera/entity/fixed-arm branch and no automatic observation, arm/candidate switch, retry, replan, or Action.
-
-### 验证 / Validation
-- Adapter changed path `126 passed, 1 deselected`；Core `781 passed`；Skill `375 passed`；release/package `87 passed`；Ruff、compileall、digest 校验和 `git diff --check` 通过。
-- Full Adapter `796 passed, 16 failed, 1 deselected`; the 16 failures are existing missing-dependency/fixture issues outside the changed path.
-- Node SHA-256 `6b5fd5c92d0fd420013a59ee69bffcc87a807c9a7e8b5b48e2883718fb423dc8`；Skill bundle SHA-256 `dc2714336fc85141f1d416605bbd42cee39d4acbe427fa336a9b67561571a8c0`。
-- 未安装/停止/重启 Runtime，未创建/恢复 AgentTask，未调用 Gateway Query/Action，未执行 simulator step 或物理运动。
-
-### Git 提交 / Git Commit
-- Commit: `6baf973`（实现、诊断与七维审核 / implementation, diagnoses, and seven-dimension review）
-- Branch: `feature/planning-loop`
-- 时间 / Time: 2026-10-07 Asia/Shanghai

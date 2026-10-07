@@ -122,6 +122,17 @@ class PreparedExecutionPlanError(SimulationProbeError):
         self.recommended_action = recommended_action
 
 
+def _controller_limits(capability: MotionCapabilityDocument) -> ControllerLimits:
+    """Adapt the validated public capability document to controller admission."""
+    return ControllerLimits(
+        joint_order=capability.joint_order,
+        position_lower_rad=capability.limits.position_lower_rad,
+        position_upper_rad=capability.limits.position_upper_rad,
+        velocity_lower_radps=capability.limits.velocity_lower_radps,
+        velocity_upper_radps=capability.limits.velocity_upper_radps,
+    )
+
+
 @dataclass(frozen=True)
 class ArrivalPolicy:
     position_tolerance_m: float = 0.005
@@ -540,6 +551,7 @@ def load_prepared_execution_plan(
     assignment: Mapping[str, Any],
     current_dual_arm_state: Mapping[str, Any],
     start_tolerance_rad: float,
+    capability_limits: ControllerLimits | None = None,
 ) -> dict[str, Any]:
     """Load the route produced by readiness; never invoke a planner.
 
@@ -678,6 +690,23 @@ def load_prepared_execution_plan(
             raise SimulationProbeError("prepared execution trajectory shape is invalid")
         if not np.isfinite(position).all() or not np.isfinite(velocity).all():
             raise SimulationProbeError("prepared execution trajectory contains non-finite values")
+        if capability_limits is not None:
+            try:
+                from robotwin_planning_geometry import _admit_capability_trajectory
+
+                admitted = _admit_capability_trajectory(
+                    {"position": position, "velocity": velocity}, capability_limits
+                )
+            except SimulationProbeError as exc:
+                raise PreparedExecutionPlanError(
+                    "prepared execution plan exceeds capability bounds",
+                    code="prepared_execution_capability_mismatch",
+                    failure_owner="readiness",
+                    requires_replan=True,
+                    recommended_action="reprepare_route",
+                ) from exc
+            item["position"] = admitted["position"].tolist()
+            item["velocity"] = admitted["velocity"].tolist()
     return {
         "plan": dict(plan),
         "arm_attempts": attempts,
@@ -1232,13 +1261,7 @@ def _build_route_controllers(
         if capability is None:
             raise SimulationProbeError("route controller capability coverage is incomplete")
         controllers[arm_id] = CapabilityBoundedDriveController(
-            ControllerLimits(
-                joint_order=capability.joint_order,
-                position_lower_rad=capability.limits.position_lower_rad,
-                position_upper_rad=capability.limits.position_upper_rad,
-                velocity_lower_radps=capability.limits.velocity_lower_radps,
-                velocity_upper_radps=capability.limits.velocity_upper_radps,
-            ),
+            _controller_limits(capability),
             lambda q, dq, selected_arm=arm_id: task.robot.set_arm_joints(
                 q, dq, selected_arm
             ),
@@ -1554,14 +1577,31 @@ def execute_candidate_phases(
         arm_attempts = prepared.get("arm_attempts", [])
         execution_state["arm_selection_attempts"] = arm_attempts
     elif assigned_arm is None:
-        qualification = evaluate_route(task, request, candidate, actor)
+        capability_documents = policies.get("motion_capability_documents")
+        route_options = {}
+        if isinstance(capability_documents, Mapping):
+            route_options["capability_limits"] = {
+                arm_id: _controller_limits(capability)
+                for arm_id, capability in capability_documents.items()
+            }
+        qualification = evaluate_route(
+            task, request, candidate, actor, **route_options,
+        )
         arm_attempts = qualification["arm_attempts"]
         execution_state["arm_selection_attempts"] = arm_attempts
         arm = qualification["selected_arm"]
     else:
         if assigned_arm not in {"left", "right"}:
             raise SimulationProbeError("unsupported assigned arm")
-        attempt = evaluate_route_arm(task, request, candidate, assigned_arm, actor)
+        capability_documents = policies.get("motion_capability_documents")
+        arm_options = {}
+        if isinstance(capability_documents, Mapping) and assigned_arm in capability_documents:
+            arm_options["capability_limits"] = _controller_limits(
+                capability_documents[assigned_arm]
+            )
+        attempt = evaluate_route_arm(
+            task, request, candidate, assigned_arm, actor, **arm_options,
+        )
         arm_attempts = [attempt]
         execution_state["arm_selection_attempts"] = arm_attempts
         arm = assigned_arm if attempt["status"] == "pass" else None

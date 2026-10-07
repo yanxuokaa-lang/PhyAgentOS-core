@@ -552,6 +552,9 @@ class RoboTwinPersistentEngine:
             assignment=assignment,
             current_dual_arm_state=state,
             start_tolerance_rad=float(self.profile["start_state_tolerance_rad"]),
+            capability_limits=probe._controller_limits(
+                policies["motion_capability_documents"][arms[0]]
+            ),
         )
         self._state["_prepared_execution_plan"] = prepared_plan
         self._state["prepared_execution_plan_ref"] = readiness_ref

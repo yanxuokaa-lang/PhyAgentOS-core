@@ -1,5 +1,12 @@
 # Change Log
 
+## v3.0.1 (2026-10-07)
+
+- 中文：发布 Adapter `0.9.4` 与 Node `0.10.9`。Readiness、prepared-plan admission 和 live controller 现在共享 MotionCapability 数值边界语义，仅将 float32 往返造成的边界漂移规范化到声明限位，实质越界仍在 Action 前拒绝。
+- English: Publish Adapter `0.9.4` and Node `0.10.9`. Readiness, prepared-plan admission, and the live controller now share MotionCapability numerical-bound semantics, canonicalizing only float32 round-trip boundary drift to declared limits while rejecting material violations before Action execution.
+- 中文：Core AgentLoop 在未知 Action 结果选择 stop 或执行 replan 时进入 `reconciliation_required` 阻塞状态；不自动重试、观察、换候选、换臂、放置或 replan，reducer replay 仍为只读重算。
+- English: Core AgentLoop enters a `reconciliation_required` blocked state when an unknown Action outcome selects stop or execution replan; it adds no automatic retry, observation, candidate/arm switch, placement, or replan, while reducer replay remains read-only recomputation.
+
 ## v3.0.0 (2026-10-07)
 
 - 中文：修正 Action 前驱投影的公开契约：`object.acquire` 的成功 effect 现在发布 `new_scene_revision`，`object.place` 从该 effect scene 与 Gateway 外层 `invocation_id` 编译准入参数，不再依赖 Persistent Runtime 私有结果字段或旧输入 scene。

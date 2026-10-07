@@ -42,6 +42,54 @@ def test_over_limit_is_rejected_before_provider_write():
     assert controller.counters["rejected_commands"] == 1
 
 
+def test_float32_boundary_roundoff_is_canonicalized_before_provider_write():
+    writes = []
+    upper = 2.8973
+    controller = CapabilityBoundedDriveController(
+        ControllerLimits(
+            joint_order=("j1",),
+            position_lower_rad=(-upper,),
+            position_upper_rad=(upper,),
+            velocity_lower_radps=(-1.0,),
+            velocity_upper_radps=(1.0,),
+        ),
+        lambda q, dq: writes.append((q, dq)),
+    )
+
+    controller.command((2.8973000049591064,), (0.0,))
+
+    assert writes == [((upper,), (0.0,))]
+
+
+@pytest.mark.parametrize("position", [-1.0, 1.0])
+def test_exact_position_bounds_are_admitted(position):
+    controller, writes = _controller()
+
+    controller.command((position, 0.0), (0.0, 0.0))
+
+    assert writes[0][0][0] == position
+
+
+def test_material_boundary_violation_remains_rejected():
+    writes = []
+    upper = 2.8973
+    controller = CapabilityBoundedDriveController(
+        ControllerLimits(
+            joint_order=("j1",),
+            position_lower_rad=(-upper,),
+            position_upper_rad=(upper,),
+            velocity_lower_radps=(-1.0,),
+            velocity_upper_radps=(1.0,),
+        ),
+        lambda q, dq: writes.append((q, dq)),
+    )
+
+    with pytest.raises(ControllerCommandError, match="position exceeds"):
+        controller.command((2.89731,), (0.0,))
+
+    assert writes == []
+
+
 def test_nan_and_bad_length_fail_as_controller_fault():
     controller, writes = _controller()
     with pytest.raises(ControllerCommandError, match="non-finite"):

@@ -1,6 +1,6 @@
 [project]
 name = "paos-robotwin20-adapter"
-version = "0.9.3"
+version = "0.9.4"
 description = "PAOS EnvironmentAdapter seam for RoboTwin20 sensor-backed observations."
 requires-python = ">=3.10"
 dependencies = []

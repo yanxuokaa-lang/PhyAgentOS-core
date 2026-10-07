@@ -5,6 +5,12 @@ from __future__ import annotations
 import math
 from typing import Any, Mapping
 
+from robotwin_capability_controller import (
+    CapabilityBoundError,
+    ControllerLimits,
+    canonicalize_capability_values,
+)
+
 from robotwin20_adapter.dual_arm_state import build_dual_arm_state
 
 _GRIPPER_VALUES = {"open": 1.0, "contact": 1.0, "closed": 0.0, "released": 1.0}
@@ -125,6 +131,45 @@ def _validate_trajectory(
     low, high = np.asarray(limits[0]), np.asarray(limits[1])
     if bool((positions < low - 1e-5).any()) or bool((positions > high + 1e-5).any()):
         raise SimulationProbeError("planner trajectory exceeds joint limits")
+
+
+def _admit_capability_trajectory(
+    result: Mapping[str, Any],
+    limits: ControllerLimits,
+) -> dict[str, Any]:
+    """Admit the exact persisted trajectory with controller-owned limit semantics."""
+    import numpy as np
+
+    positions = np.asarray(result.get("position"), dtype=np.float64)
+    velocities = np.asarray(result.get("velocity"), dtype=np.float64)
+    if positions.ndim != 2 or velocities.shape != positions.shape:
+        raise SimulationProbeError("capability trajectory shape is invalid")
+    try:
+        admitted_positions = [
+            canonicalize_capability_values(
+                row,
+                limits.position_lower_rad,
+                limits.position_upper_rad,
+                label="joint position",
+            )
+            for row in positions
+        ]
+        admitted_velocities = [
+            canonicalize_capability_values(
+                row,
+                limits.velocity_lower_radps,
+                limits.velocity_upper_radps,
+                label="joint velocity",
+            )
+            for row in velocities
+        ]
+    except CapabilityBoundError as exc:
+        raise SimulationProbeError(str(exc)) from exc
+    return {
+        **result,
+        "position": np.asarray(admitted_positions, dtype=np.float64),
+        "velocity": np.asarray(admitted_velocities, dtype=np.float64),
+    }
 
 
 def _validate_support_departure_results(results: list[tuple[bool, Any]]) -> None:

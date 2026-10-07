@@ -1288,8 +1288,64 @@ def test_unknown_outcome_stops_without_implicit_replay(tmp_path):
         node_executor=execute,
         admission_context_provider=lambda _: AdmissionContext(scene_revision="scene-1", evidence_refs=frozenset({"scene:inventory"})),
     ).run(task.task_id, scene_revision="scene-1"))
-    assert result.status == "outcome_unknown"
+    current = c.get_task(task.task_id)
+    assert result.status == "blocked"
+    assert result.last_failure == "reconciliation_required:arrange-red"
+    assert current.status.value == "awaiting_replan"
     assert calls["count"] == 1
+
+
+@pytest.mark.parametrize("decision", ["stop", "replan"])
+def test_unknown_outcome_always_requires_reconciliation_before_recovery_decision(
+    tmp_path, decision
+):
+    c = coordinator(tmp_path)
+    task = c.create_task(
+        task_description="unknown action decision",
+        verification=TaskVerificationContract(mode="off"),
+    )
+    graph = make_graph(task.task_id, "revision-unknown-decision", ("move", "verify"))
+    c.expand_discovery_revision(
+        task.task_id,
+        plan_graph=graph,
+        plan_graph_ref="artifact://plans/unknown-decision",
+    )
+    calls = {"execute": 0, "replan": 0}
+
+    def execute(context):
+        calls["execute"] += 1
+        return ToolResultEnvelope(
+            task_id=context.task_id,
+            revision_id=context.revision_id,
+            node_id=context.node_id,
+            tool_id="object.move",
+            status="unknown",
+            world_change_started=True,
+            outcome_known=False,
+            invocation_id="invocation://move/unknown",
+            failure_code="controller_command_error",
+        )
+
+    def replan(*_):
+        calls["replan"] += 1
+        raise AssertionError("unknown outcome must reconcile before replan")
+
+    adapter = PlanningLoopAdapter(
+        c,
+        context_provider=NodeContextProvider(c.get_task),
+        node_executor=execute,
+        recovery_policy=lambda *_: decision,
+        replan_proposer=replan,
+        admission_context_provider=lambda _: AdmissionContext(
+            scene_revision="scene-1", evidence_refs=frozenset({"scene:inventory"})
+        ),
+    )
+    result = asyncio.run(adapter.run(task.task_id, scene_revision="scene-1"))
+
+    assert result.status == "blocked"
+    assert result.last_failure == "reconciliation_required:move"
+    assert calls == {"execute": 1, "replan": 0}
+    assert c.get_task(task.task_id).status.value == "awaiting_replan"
 
 
 def test_unknown_outcome_converges_task_to_recovery_state_without_retry(tmp_path):

@@ -8,6 +8,7 @@ forwarding it to SAPIEN drive targets and tracks stop/fault/step settlement.
 from __future__ import annotations
 
 import math
+import struct
 from dataclasses import dataclass
 from enum import Enum
 from typing import Callable, Sequence
@@ -15,6 +16,51 @@ from typing import Callable, Sequence
 
 class ControllerCommandError(RuntimeError):
     """A command was rejected before reaching the SAPIEN drive API."""
+
+
+class CapabilityBoundError(ValueError):
+    """A finite command cannot be represented inside declared capability bounds."""
+
+
+def _float32_boundary_error(value: float) -> float:
+    """Return only the round-trip error introduced by a float32 trajectory."""
+    try:
+        quantized = struct.unpack("!f", struct.pack("!f", value))[0]
+    except (OverflowError, struct.error):
+        return 0.0
+    return abs(quantized - value) + math.ulp(value)
+
+
+def canonicalize_capability_values(
+    values: Sequence[float],
+    lower: Sequence[float],
+    upper: Sequence[float],
+    *,
+    label: str,
+) -> tuple[float, ...]:
+    """Canonicalize float32 boundary round-off without expanding capability limits."""
+    converted = tuple(float(value) for value in values)
+    lows = tuple(float(value) for value in lower)
+    highs = tuple(float(value) for value in upper)
+    if not converted or len(converted) != len(lows) or len(converted) != len(highs):
+        raise CapabilityBoundError(f"{label} vector length is invalid")
+    if any(not math.isfinite(value) for value in (*converted, *lows, *highs)):
+        raise CapabilityBoundError(f"{label} vector is non-finite")
+    if any(low >= high for low, high in zip(lows, highs)):
+        raise CapabilityBoundError(f"{label} capability bounds are invalid")
+
+    admitted: list[float] = []
+    for value, low, high in zip(converted, lows, highs):
+        if value < low:
+            if low - value > _float32_boundary_error(low):
+                raise CapabilityBoundError(f"{label} exceeds capability bounds")
+            value = low
+        elif value > high:
+            if value - high > _float32_boundary_error(high):
+                raise CapabilityBoundError(f"{label} exceeds capability bounds")
+            value = high
+        admitted.append(value)
+    return tuple(admitted)
 
 
 class ControllerState(str, Enum):
@@ -99,14 +145,21 @@ class CapabilityBoundedDriveController:
             self._reject("previous command has no settled simulator step", fault=True)
         q = self._vector(position, "position")
         dq = self._vector(velocity, "velocity")
-        if any(value < low or value > high for value, low, high in zip(
-            q, self.limits.position_lower_rad, self.limits.position_upper_rad
-        )):
-            self._reject("joint position exceeds capability bounds", fault=False)
-        if any(value < low or value > high for value, low, high in zip(
-            dq, self.limits.velocity_lower_radps, self.limits.velocity_upper_radps
-        )):
-            self._reject("joint velocity exceeds capability bounds", fault=False)
+        try:
+            q = canonicalize_capability_values(
+                q,
+                self.limits.position_lower_rad,
+                self.limits.position_upper_rad,
+                label="joint position",
+            )
+            dq = canonicalize_capability_values(
+                dq,
+                self.limits.velocity_lower_radps,
+                self.limits.velocity_upper_radps,
+                label="joint velocity",
+            )
+        except CapabilityBoundError as exc:
+            self._reject(str(exc), fault=False, cause=exc)
         try:
             self._write_target(q, dq)
         except Exception as exc:
@@ -193,8 +246,10 @@ class CapabilityBoundedDriveController:
 
 
 __all__ = [
+    "CapabilityBoundError",
     "CapabilityBoundedDriveController",
     "ControllerCommandError",
     "ControllerLimits",
     "ControllerState",
+    "canonicalize_capability_values",
 ]

@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 import robotwin_simulation_probe_worker as probe_worker
+from robotwin_capability_controller import ControllerLimits
 from test_route_readiness import _request
 
 from robotwin20_adapter.dual_arm_state import build_dual_arm_state
@@ -386,8 +387,15 @@ def _engine_prepare_fixture(tmp_path, monkeypatch, *, drift=False):
     )
     monkeypatch.setattr(module, "validate_persistent_action_approval", lambda *args, **kwargs: {})
     monkeypatch.setattr(probe, "_validate_request_policies", lambda *args, **kwargs: {
-        "execution_input_digests": {}, "motion_capability_documents": [],
+        "execution_input_digests": {}, "motion_capability_documents": {"left": object()},
     })
+    monkeypatch.setattr(probe, "_controller_limits", lambda *_: ControllerLimits(
+        joint_order=tuple(f"joint-{index}" for index in range(7)),
+        position_lower_rad=(-3.0,) * 7,
+        position_upper_rad=(3.0,) * 7,
+        velocity_lower_radps=(-3.0,) * 7,
+        velocity_upper_radps=(3.0,) * 7,
+    ))
     monkeypatch.setattr(probe, "_validate_route_input_artifacts", lambda *args: {})
     monkeypatch.setattr(probe, "_validate_runtime_route_input_binding", lambda *args: None)
     monkeypatch.setattr(probe, "bind_scene_table", lambda *args: None)

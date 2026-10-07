@@ -1485,6 +1485,18 @@ class PlanningLoopAdapter:
                 decision = await decision  # type: ignore[assignment]
             if decision not in {"stop", "replay", "replan"}:
                 raise PlanningLoopError("recovery policy must return stop, replay, or replan")
+        if settlement.status == "outcome_unknown" and decision != "replay":
+            self.coordinator.record_planning_node_blocked(
+                task_id,
+                context.revision_id,
+                context.node_id,
+                "reconciliation_required:" + settlement.node_id,
+            )
+            return PlanningLoopResult(
+                task_id, "blocked", tuple(completed),
+                len(self.coordinator.get_task(task_id).revisions), replans,
+                f"reconciliation_required:{settlement.node_id}",
+            )
         if decision == "stop":
             if settlement.status == "failed":
                 current = self.coordinator.get_task(task_id)
@@ -1522,18 +1534,6 @@ class PlanningLoopAdapter:
                 task_id, "replay_required", tuple(completed),
                 len(self.coordinator.get_task(task_id).revisions), replans,
                 f"reducer_replay_only:{settlement.node_id}",
-            )
-        if settlement.status == "outcome_unknown":
-            self.coordinator.record_planning_node_blocked(
-                task_id,
-                context.revision_id,
-                context.node_id,
-                "reconciliation_required:" + settlement.node_id,
-            )
-            return PlanningLoopResult(
-                task_id, "blocked", tuple(completed),
-                len(self.coordinator.get_task(task_id).revisions), replans,
-                f"reconciliation_required:{settlement.node_id}",
             )
         if self.replan_proposer is None:
             return PlanningLoopResult(
