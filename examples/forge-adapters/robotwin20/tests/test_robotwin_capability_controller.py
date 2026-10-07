@@ -90,6 +90,26 @@ def test_material_boundary_violation_remains_rejected():
     assert writes == []
 
 
+def test_near_boundary_value_not_produced_by_float32_roundtrip_is_rejected():
+    writes = []
+    upper = 2.8973
+    controller = CapabilityBoundedDriveController(
+        ControllerLimits(
+            joint_order=("j1",),
+            position_lower_rad=(-upper,),
+            position_upper_rad=(upper,),
+            velocity_lower_radps=(-1.0,),
+            velocity_upper_radps=(1.0,),
+        ),
+        lambda q, dq: writes.append((q, dq)),
+    )
+
+    with pytest.raises(ControllerCommandError, match="position exceeds"):
+        controller.command((upper + 1e-9,), (0.0,))
+
+    assert writes == []
+
+
 def test_nan_and_bad_length_fail_as_controller_fault():
     controller, writes = _controller()
     with pytest.raises(ControllerCommandError, match="non-finite"):

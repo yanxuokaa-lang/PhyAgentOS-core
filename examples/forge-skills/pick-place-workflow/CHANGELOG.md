@@ -1,5 +1,12 @@
 # Change Log
 
+## v3.0.2 (2026-10-07)
+
+- 中文：Readiness 与 Action 现在复用同一 capability validation/controller qualification 证据校验入口；Readiness 不再只读取 capability artifact 后提前判定路线通过。
+- English: Readiness and Action now reuse the same capability-validation and controller-qualification evidence admission; Readiness no longer passes a route after reading only the capability artifact.
+- 中文：float32 边界规范化仅接受声明限位的真实 float32 往返表示；未知 Action 结果选择 replay 时先只读重算，再进入 reconciliation 阻塞状态。
+- English: Float32 boundary canonicalization now admits only the exact float32 round-trip representation of a declared limit; replay after an unknown Action outcome performs read-only reduction and then enters reconciliation blocking.
+
 ## v3.0.1 (2026-10-07)
 
 - 中文：发布 Adapter `0.9.4` 与 Node `0.10.9`。Readiness、prepared-plan admission 和 live controller 现在共享 MotionCapability 数值边界语义，仅将 float32 往返造成的边界漂移规范化到声明限位，实质越界仍在 Action 前拒绝。

@@ -22,13 +22,13 @@ class CapabilityBoundError(ValueError):
     """A finite command cannot be represented inside declared capability bounds."""
 
 
-def _float32_boundary_error(value: float) -> float:
-    """Return only the round-trip error introduced by a float32 trajectory."""
+def _float32_boundary_value(value: float) -> float | None:
+    """Return the exact finite float32 representation of one declared bound."""
     try:
         quantized = struct.unpack("!f", struct.pack("!f", value))[0]
     except (OverflowError, struct.error):
-        return 0.0
-    return abs(quantized - value) + math.ulp(value)
+        return None
+    return quantized if math.isfinite(quantized) else None
 
 
 def canonicalize_capability_values(
@@ -52,11 +52,11 @@ def canonicalize_capability_values(
     admitted: list[float] = []
     for value, low, high in zip(converted, lows, highs):
         if value < low:
-            if low - value > _float32_boundary_error(low):
+            if value != _float32_boundary_value(low):
                 raise CapabilityBoundError(f"{label} exceeds capability bounds")
             value = low
         elif value > high:
-            if value - high > _float32_boundary_error(high):
+            if value != _float32_boundary_value(high):
                 raise CapabilityBoundError(f"{label} exceeds capability bounds")
             value = high
         admitted.append(value)

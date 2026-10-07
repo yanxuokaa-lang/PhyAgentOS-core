@@ -7,6 +7,43 @@ import robotwin_route_planner as planner
 import robotwin_simulation_probe_worker as probe
 
 
+def test_readiness_requires_validated_motion_policy_bindings(tmp_path, monkeypatch):
+    import robotwin_backend
+
+    monkeypatch.setattr(
+        robotwin_backend,
+        "load_runtime_profile",
+        lambda path: {
+            "task_name": "blocks",
+            "seed": 0,
+            "robot_identity": "fixture-robot",
+        },
+    )
+    calls = []
+
+    def reject(root, request, *, robot_identity):
+        calls.append((root, robot_identity))
+        raise planner.SimulationProbeError(
+            "controller qualification package is invalid"
+        )
+
+    monkeypatch.setattr(planner, "validate_motion_policy_bindings", reject)
+    evaluator = planner.RoboTwinRouteEvaluator(
+        tmp_path,
+        tmp_path / "profile.yaml",
+        tmp_path,
+        backend=SimpleNamespace(snapshot=lambda: {"scene_revision": "scene-2"}),
+    )
+
+    with pytest.raises(
+        planner.SimulationProbeError,
+        match="controller qualification package is invalid",
+    ):
+        evaluator({"scene_revision": "scene-2"})
+
+    assert calls == [(tmp_path, "fixture-robot")]
+
+
 def test_planner_world_contact_mode_is_wired_after_world_installation(tmp_path, monkeypatch):
     import robotwin_backend
     import robotwin_contact_qualification as contact
@@ -20,7 +57,16 @@ def test_planner_world_contact_mode_is_wired_after_world_installation(tmp_path, 
     monkeypatch.setattr(
         robotwin_backend,
         "load_runtime_profile",
-        lambda path: {"task_name": "blocks", "seed": 0},
+        lambda path: {
+            "task_name": "blocks",
+            "seed": 0,
+            "robot_identity": "fixture-robot",
+        },
+    )
+    monkeypatch.setattr(
+        planner,
+        "validate_motion_policy_bindings",
+        lambda *args, **kwargs: {"motion_capability_documents": {}},
     )
     monkeypatch.setattr(
         observed_collision,
@@ -127,7 +173,20 @@ def test_current_route_evaluation_reuses_world_and_rejects_stale_inputs(tmp_path
     import robotwin_backend
     backend = SimpleNamespace(_task=SimpleNamespace(block=object()), revision="scene-2")
     backend.snapshot = lambda: {"scene_revision": backend.revision}
-    monkeypatch.setattr(robotwin_backend, "load_runtime_profile", lambda path: {"task_name": "blocks", "seed": 0})
+    monkeypatch.setattr(
+        robotwin_backend,
+        "load_runtime_profile",
+        lambda path: {
+            "task_name": "blocks",
+            "seed": 0,
+            "robot_identity": "fixture-robot",
+        },
+    )
+    monkeypatch.setattr(
+        planner,
+        "validate_motion_policy_bindings",
+        lambda *args, **kwargs: {"motion_capability_documents": {}},
+    )
     monkeypatch.setattr(robotwin_backend, "RoboTwinSensorBackend", lambda *args: pytest.fail("must not create a world"))
     checked = []
     monkeypatch.setattr(probe, "_validate_route_input_artifacts", lambda root, request, candidate: candidate)

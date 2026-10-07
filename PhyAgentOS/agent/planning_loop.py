@@ -1485,7 +1485,12 @@ class PlanningLoopAdapter:
                 decision = await decision  # type: ignore[assignment]
             if decision not in {"stop", "replay", "replan"}:
                 raise PlanningLoopError("recovery policy must return stop, replay, or replan")
-        if settlement.status == "outcome_unknown" and decision != "replay":
+        if settlement.status == "outcome_unknown":
+            if decision == "replay":
+                self.reducer_replay(
+                    task_id,
+                    evidence_refs=set(settlement.evidence_refs),
+                )
             self.coordinator.record_planning_node_blocked(
                 task_id,
                 context.revision_id,

@@ -14,6 +14,7 @@ from robotwin_curobo_world_port import (
     restore_collision_world,
 )
 from robotwin_gripper_geometry import planner_gripper_state
+from robotwin_motion_policy import controller_limits, validate_motion_policy_bindings
 from robotwin_planning_geometry import (
     ObservedGeometryActor,
     SimulationProbeError,
@@ -386,29 +387,16 @@ class RoboTwinRouteEvaluator:
                 raise SimulationProbeError("route input artifact digest mismatch")
             return json.loads(data)
 
-        from robotwin20_adapter.motion_capabilities import MotionCapabilityDocument
-
-        capability_limits = {}
-        for binding in request.get("motion_capabilities", []):
-            try:
-                capability = MotionCapabilityDocument.model_validate(
-                    artifact(binding["artifact_ref"], binding["sha256"])
-                )
-            except ValueError as exc:
-                raise SimulationProbeError("route motion capability is invalid") from exc
-            if capability.arm_id != binding["arm_id"]:
-                raise SimulationProbeError("route motion capability arm binding is invalid")
-            capability_limits[capability.arm_id] = ControllerLimits(
-                joint_order=capability.joint_order,
-                position_lower_rad=capability.limits.position_lower_rad,
-                position_upper_rad=capability.limits.position_upper_rad,
-                velocity_lower_radps=capability.limits.velocity_lower_radps,
-                velocity_upper_radps=capability.limits.velocity_upper_radps,
-            )
-        if request.get("motion_capabilities") is not None and set(capability_limits) != {"left", "right"}:
-            raise SimulationProbeError("route motion capability coverage is incomplete")
-
         profile = load_runtime_profile(self.runtime_profile)
+        motion = validate_motion_policy_bindings(
+            self.artifact_root,
+            request,
+            robot_identity=profile["robot_identity"],
+        )
+        capability_limits = {
+            arm_id: controller_limits(capability)
+            for arm_id, capability in motion["motion_capability_documents"].items()
+        }
         owned = self.backend is None
         expected_scene = (f"{profile['task_name']}-{profile['seed']}-1" if owned
                           else self.backend.snapshot()["scene_revision"])

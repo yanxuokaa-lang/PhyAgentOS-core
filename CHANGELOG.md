@@ -5,6 +5,41 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.9.4 (2026-10-07 18:45) - codex
+
+### 变更摘要 / Change Summary
+- [sense] [fix] Readiness 与 Action 复用同一 capability validation/controller qualification evidence 准入，并仅接受声明限位的精确 float32 往返表示。 (local)
+- [sense] [fix] Make Readiness and Action reuse the same capability-validation/controller-qualification evidence admission and admit only exact float32 round-trip representations of declared limits. (local)
+- [comm] [fix] `outcome_unknown + replay` 在一次只读 reducer replay 后进入 `reconciliation_required`，不重发 Action。 (local)
+- [comm] [fix] Make `outcome_unknown + replay` enter `reconciliation_required` after one read-only reducer replay without resending the Action. (local)
+
+### 文件变更详情 / File Changes
+- [新增 / Added] `robotwin_motion_policy.py:L1-L174`：共享 capability/qualification evidence 准入与 controller-limit 适配。 (local)
+- [修改 / Modified] `robotwin_route_planner.py:L17,L389-L399`、`robotwin_simulation_probe_worker.py:L45-L49,L1113-L1135`：Readiness 与 Action 共用 motion-policy validator。 (local)
+- [修改 / Modified] `robotwin_capability_controller.py:L25-L61`：精确 float32 boundary encoding 匹配；`planning_loop.py:L1488-L1503`：未知结果 replay 后统一阻塞对账。 (local)
+- [新增测试 / Added Tests] controller、persistent route evaluator 与 planning-loop 回归覆盖伪近界值、evidence gate、单次 replay 与任务收敛。 (local)
+- [新增 / Added] `docs/forge/IMPLEMENTATION_REVIEW_V12_9_4.md:L1-L84`：两个 Major、一个 Minor、修复与七维验收。 (local)
+
+### 关键 Diff / Key Diff
+```diff
+-Readiness validates capability JSON only
++Readiness and Action call validate_motion_policy_bindings()
+-outcome_unknown + replay -> replay_required
++outcome_unknown + replay -> reducer-only replay -> reconciliation_required
+-near-bound distance window
++exact float32(bound) match
+```
+
+### 七维 Code Review / Seven-Dimension Review
+- 初审 Blocker 0、Major 2、Minor 1；全部修复。修复后七个维度均通过，Blocker 0、Major 0、Minor 0。 (local)
+- Initial review found zero Blocker, two Major, and one Minor issue; all are fixed. All seven dimensions pass after fixes with zero remaining findings. (local)
+- 没有 RGB/颜色/排列/benchmark/实体/候选/相机/固定机械臂分支，也没有自动观察、Action、重试、放置或 replan。 (local)
+
+### 验证 / Validation
+- Adapter `143 passed, 4 deselected`；Core `164 passed`；Skill/release `75 passed`；Ruff、compileall、`git diff --check` 通过。 (local)
+- Node `0.10.10` SHA-256 `d807b1b3e6b9a86f6cc597da8ab6de9643b8b23a75bc72372889ac1d45fd195e`；Skill `3.0.2` SHA-256 `c9992caa9c256780307e1a4de33a15f90971292e5db82c7ebd5f49f0800f1772`。未安装或启动。 (local)
+- 当前解释器缺少 `cv2`，4 个既有 video 用例未计入通过证据；未创建任务、调用 Gateway、推进模拟器/物理运动或改变 Runtime 生命周期。 (local)
+
 ## v12.9.3 (2026-10-07 18:09) - codex
 
 ### 变更摘要 / Change Summary
@@ -160,29 +195,3 @@
 - Commit: `3550c50`（implementation, diagnoses, and review）
 - Branch: `feature/planning-loop`
 - 时间 / Time: 2026-10-07 Asia/Shanghai
-
-## v12.8.4 (2026-10-07 13:52) - codex
-
-### 变更摘要 / Change Summary
-- [env] [chore] 在三类 ownership 为空且非终态任务为 0 后，无 `--force` 正常停止旧 Runtime，安装 Skill `2.10.14` 与 Node `0.10.8`，并启动新 Runtime `runtime_1c512b49353c4b23`。 (local)
-- [env] [chore] After proving all three ownership collections empty and zero non-terminal tasks, normally stopped the old Runtime without `--force`, installed Skill `2.10.14` and Node `0.10.8`, and started new Runtime `runtime_1c512b49353c4b23`. (local)
-
-### 文件变更详情 / File Changes
-- [修改 / Modified] `changelog/2026-10_part2.md:L3-L52`：记录停止、安装、启动、版本/哈希与 no-motion 验收 / record stop, install, start, version/hash, and no-motion acceptance.
-- [修改 / Modified] `CHANGELOG.md:L8-L32`：维护最近五个版本 / maintain the latest five versions.
-
-### 关键 Diff / Key Diff
-```diff
--Skill 2.10.12; Node 0.10.6; runtime_e8d8a9855ce641bf
-+Skill 2.10.14; Node 0.10.8; runtime_1c512b49353c4b23
-```
-
-### 验证 / Validation
-- Dora running、Gateway ready、11/11 Tool context ready；Node lock 和运行环境 binary 均验证为 `0.10.8`，ownership 为空，非终态任务为 0。
-- 本地场景理解 primary 为 `qwen3-vl-4b-awq`；fallback 与 Agent 默认均为 `gpt-6.1-sol`、`reasoning_effort=high`；operator env 保持 `0600`。
-- 未创建/恢复 AgentTask，未调用 Gateway Query/Action，未执行 simulator step 或物理运动。
-
-### Git 提交 / Git Commit
-- Commit: `de2dcb6`（deployment record）
-- Branch: `feature/planning-loop`
-- 时间 / Time: `2026-10-07 13:59 Asia/Shanghai`

@@ -1348,6 +1348,58 @@ def test_unknown_outcome_always_requires_reconciliation_before_recovery_decision
     assert c.get_task(task.task_id).status.value == "awaiting_replan"
 
 
+def test_unknown_outcome_replay_is_read_only_then_requires_reconciliation(tmp_path):
+    c = coordinator(tmp_path)
+    task = c.create_task(
+        task_description="unknown action reducer replay",
+        verification=TaskVerificationContract(mode="off"),
+    )
+    graph = make_graph(task.task_id, "revision-unknown-replay", ("move", "verify"))
+    c.expand_discovery_revision(
+        task.task_id,
+        plan_graph=graph,
+        plan_graph_ref="artifact://plans/unknown-replay",
+    )
+    calls = {"execute": 0, "replay": 0}
+
+    def execute(context):
+        calls["execute"] += 1
+        return ToolResultEnvelope(
+            task_id=context.task_id,
+            revision_id=context.revision_id,
+            node_id=context.node_id,
+            tool_id="object.move",
+            status="unknown",
+            world_change_started=True,
+            outcome_known=False,
+            invocation_id="invocation://move/unknown-replay",
+            failure_code="controller_command_error",
+        )
+
+    adapter = PlanningLoopAdapter(
+        c,
+        context_provider=NodeContextProvider(c.get_task),
+        node_executor=execute,
+        recovery_policy=lambda *_: "replay",
+        admission_context_provider=lambda _: AdmissionContext(
+            scene_revision="scene-1", evidence_refs=frozenset({"scene:inventory"})
+        ),
+    )
+    original_replay = adapter.reducer_replay
+
+    def replay(*args, **kwargs):
+        calls["replay"] += 1
+        return original_replay(*args, **kwargs)
+
+    adapter.reducer_replay = replay
+    result = asyncio.run(adapter.run(task.task_id, scene_revision="scene-1"))
+
+    assert result.status == "blocked"
+    assert result.last_failure == "reconciliation_required:move"
+    assert calls == {"execute": 1, "replay": 1}
+    assert c.get_task(task.task_id).status.value == "awaiting_replan"
+
+
 def test_unknown_outcome_converges_task_to_recovery_state_without_retry(tmp_path):
     c = coordinator(tmp_path)
     task = c.create_task(task_description="unknown action recovery", verification=TaskVerificationContract(mode="off"))
@@ -1588,9 +1640,10 @@ def test_reducer_replay_does_not_require_scene_refresh_or_execute_again(tmp_path
         ),
         recovery_policy=lambda *_: "replay",
     ).run(task.task_id, scene_revision="scene-1"))
-    assert result.status == "replay_required"
-    assert result.last_failure == "reducer_replay_only:arrange-red"
+    assert result.status == "blocked"
+    assert result.last_failure == "reconciliation_required:arrange-red"
     assert calls == ["arrange-red"]
+    assert c.get_task(task.task_id).status.value == "awaiting_replan"
 
 
 def test_world_changing_failure_requires_scene_refresh_before_replan(tmp_path):
