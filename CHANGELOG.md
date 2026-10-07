@@ -36,7 +36,7 @@
 - No task-level grasp/place was executed; deployment acceptance created no AgentTask and invoked no Gateway Query/Action. (local)
 
 ### Git 提交 / Git Commit
-- Commit: 待提交 / pending
+- Commit: `2e9e371`（部署诊断、资格证据与 Runtime 验收 / deployment diagnosis, qualification evidence, and Runtime acceptance）
 - Branch: `feature/planning-loop`
 
 ## v12.9.6 (2026-10-07 20:35) - codex
