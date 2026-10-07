@@ -5,6 +5,36 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.9.2 (2026-10-07 15:45) - codex
+
+### 变更摘要 / Change Summary
+- [env] [chore] 正常取消唯一 `awaiting_replan` 旧任务；在 invocation/session/task-binding ownership 清空且非终态任务为 0 后，无 `--force` 停止旧 Runtime。 (local)
+- [env] [chore] Normally cancel the only old `awaiting_replan` task and stop the old Runtime without `--force` after invocation/session/task-binding ownership is empty and non-terminal tasks reach zero. (local)
+- [chore] [release] 安装 Skill `pick-place-workflow 3.0.0`，保持 Node `robotwin20_persistent_host 0.10.8`、profile、operator env、权限和模型配置不变。 (local)
+- [chore] [release] Install Skill `pick-place-workflow 3.0.0` while preserving Node `robotwin20_persistent_host 0.10.8`, the runtime profile, operator environment, permissions, and model configuration. (local)
+
+### 文件变更详情 / File Changes
+- [修改 / Modified] `changelog/2026-10_part2.md:L3-L57`：记录任务取消、正常 stop、安装/启动、版本/摘要和 no-motion 验收 / record task cancellation, normal stop, install/start, versions/digests, and no-motion acceptance.
+- [修改 / Modified] `CHANGELOG.md:L8-L37`：维护最近五个版本 / maintain the latest five versions.
+
+### 部署关键 Diff / Deployment Key Diff
+```diff
+-pick-place-workflow 2.10.14; runtime_1c512b49353c4b23; task_cb2ff2de02cd44ca awaiting_replan
++pick-place-workflow 3.0.0; runtime_c1c591d68c0b46aa; nonterminal_tasks=0
+ robotwin20_persistent_host 0.10.8; robotwin-blocks-ranking-graspnet
+```
+
+### 验证 / Validation
+- Runtime `runtime_c1c591d68c0b46aa` running，Dora flow running，Gateway ready，11/11 Tool context ready；Node lock 与实际 spawn 均为 `0.10.8`，Runtime ownership 为空，非终态任务为 0。
+- 本地场景理解 primary 保持 `qwen3-vl-4b-awq`；fallback 保持 `gpt-6.1-sol`、`reasoning_effort=high`；operator env 权限保持 `0600`。
+- Skill bundle SHA-256 `5b05405ba07e0831260ef2cd8e6fde2d42355c0299656ea693a1807d288b8805`；Node archive SHA-256 `6b5fd5c92d0fd420013a59ee69bffcc87a807c9a7e8b5b48e2883718fb423dc8`。
+- 未创建/恢复 AgentTask，未调用 Gateway Query/Action，未执行 simulator step 或物理运动。
+
+### Git 提交 / Git Commit
+- Commit: `pending`（部署记录 / deployment record）
+- Branch: `feature/planning-loop`
+- 时间 / Time: 2026-10-07 16:09 Asia/Shanghai
+
 ## v12.9.1 (2026-10-07 15:37) - codex
 
 ### 变更摘要 / Change Summary
@@ -166,40 +196,3 @@
 - Commit: `6baf973`（实现、诊断与七维审核 / implementation, diagnoses, and seven-dimension review）
 - Branch: `feature/planning-loop`
 - 时间 / Time: 2026-10-07 Asia/Shanghai
-
-## v12.8.2 (2026-10-06 20:10) - codex
-
-### 变更摘要 / Change Summary
-- [sense] [fix] Readiness 持久化选定机械臂的可执行路线，Persistent Action 校验 scene/route/assignment/arm/frame/起始关节状态后直接消费，禁止对同一路线二次规划。 (local)
-- [sense] [fix] Persist the selected arm's executable route in readiness and make Persistent Action consume it after scene/route/assignment/arm/frame/start-state validation, prohibiting a second solve of the same route. (local)
-- [comm] [fix] Action 失败以 provider-neutral owner/retry/replan/phase 事实进入 AgentLoop；零步失败不声明实体变化，公开结果不泄露私有轨迹。 (local)
-- [comm] [fix] Feed provider-neutral owner/retry/replan/phase facts to the AgentLoop; zero-step failures claim no entity changes and public results expose no private trajectory. (local)
-
-### 文件变更详情 / File Changes
-- [新增 / Added] `PREPARE_ACTION_ROUTE_PLAN_DIAGNOSIS_20261006.md:L1-L49`、`ACTION_FAILURE_EVIDENCE_AGENTLOOP_DIAGNOSIS_20261006.md:L1-L57`、`IMPLEMENTATION_REVIEW_V12_8_2.md:L1-L68`：两份诊断与七维审核 / two diagnoses and seven-dimension review.
-- [修改 / Modified] `robotwin_route_planner.py:L180-L299`、`robotwin_simulation_probe_worker.py:L104-L121,L533-L660,L1500-L1640`、`robotwin_persistent_engine.py:L487-L564,L627-L730`：Readiness 产出、Action 校验/消费 prepared execution plan，结构化失败并修正零步 effects / produce, validate, and consume the prepared plan, structure failures, and correct zero-step effects.
-- [修改 / Modified] `recovery_decisions.py:L25-L46,L107-L139`、`outcome_projection.py:L24-L69,L189-L310` 与 Skill Action contract/projection：将有界失败事实交给 Agent，自主选择恢复且不暴露轨迹 / present bounded failure facts to the Agent for autonomous recovery decisions without exposing trajectories.
-- [修改 / Modified] Adapter `0.9.2`、Skill `2.10.13`、Node `0.10.7` manifests, profiles, tests, and release records.
-
-### 关键 Diff / Key Diff
-```diff
--Action calls evaluate_route_arm() again
-+Action loads readiness execution_plan and executes its validated segments
--zero-step failure changed_entity_refs=[target]
-+zero-step failure changed_entity_refs=[]
-+owner/retry/replan/phase/arm failure facts -> AgentLoop
-```
-
-### 七维 Code Review / Seven-Dimension Review
-- Blocker 0、Major 0。七个维度均通过；未增加 RGB/任务/相机硬编码或自动观察、选择、重试、replan、Action。保留限制是简化世界仍不覆盖未识别及 unknown/occluded 障碍物。
-- Zero Blocker or Major findings. All seven dimensions pass; no RGB/task/camera hardcoding or automatic observation, selection, retry, replan, or Action was added. The simplified world still excludes unidentified and unknown/occluded obstacles.
-
-### 验证 / Validation
-- Core `781 passed`；Skill `375 passed`；Adapter changed path `79 passed, 5 deselected`；Ruff、compileall、`git diff --check` 通过。
-- Node SHA-256 `cf2b799baa5283efbd74f24126fea7890423ec198598814bacfea53bef420084`；Skill bundle SHA-256 `1bb7f5803a910889c6fe2d2c29e1b829b75acba8ef289d81b7ce1255aaf2f99f`。
-- 未创建/恢复 AgentTask，未调用 Gateway Query/Action，未执行 simulator step 或物理运动，未安装或重启 Runtime。
-
-### Git 提交 / Git Commit
-- Commit: `ed49b7a`（实现与诊断 / implementation and diagnoses）
-- Branch: `feature/planning-loop`
-- 时间 / Time: 2026-10-06 21:27 Asia/Shanghai
