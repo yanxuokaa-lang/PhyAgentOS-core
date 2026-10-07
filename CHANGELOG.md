@@ -36,7 +36,7 @@
 - Node `0.10.13` SHA-256 `ecb7f18857e9b42ee21eee92bc6936151d71fb0e90df88c4ba89a054fa1d38d2`；Skill `3.0.5` SHA-256 `61f7625b39868241f23baad482a35d006cdf00deecb3b41cf22523e641056fc4`；未安装或启动。 (local)
 
 ### Git 提交 / Git Commit
-- Commit: `PENDING`（qualification plan v2 contract ownership, regressions, and seven-dimension review）
+- Commit: `b511e42`（qualification plan v2 contract ownership, regressions, and seven-dimension review）
 - Branch: `feature/planning-loop`
 
 ## v12.9.8 (2026-10-07 22:30) - codex
