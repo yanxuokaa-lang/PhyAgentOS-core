@@ -24,6 +24,7 @@ from robotwin20_adapter.controller_qualification import (
     ControllerQualificationEvidence,
     ControllerQualificationPlan,
     ControllerQualificationValidation,
+    qualification_capability_ref,
     validate_controller_qualification_result_package,
 )
 from robotwin20_adapter.grasp_adaptation import (
@@ -437,16 +438,17 @@ def materialize(args: argparse.Namespace) -> dict[str, Any]:
         item.arm_id: item.model_dump(mode="json")
         for item in qualification_plan.capability_bindings
     }
-    for arm_id, arm in arm_profiles.items():
-        approved_binding = qualification_bindings[arm_id]
-        if arm["motion_capabilities_ref"] != approved_binding["artifact_ref"]:
-            raise MaterializationError(
-                "arm planning capability reference does not match controller qualification"
-            )
-        refs[f"{arm_id}-motion-capability"] = approved_binding["artifact_ref"]
-        refs[f"{arm_id}-motion-capability-validation"] = approved_binding[
-            "validation_ref"
-        ]
+    if set(qualification_bindings) != set(arm_profiles):
+        raise MaterializationError(
+            "arm planning profile and controller qualification arm coverage differ"
+        )
+    for arm_id in arm_profiles:
+        refs[f"{arm_id}-motion-capability"] = qualification_capability_ref(
+            qualification.qualification_id, arm_id
+        )
+        refs[f"{arm_id}-motion-capability-validation"] = qualification_capability_ref(
+            qualification.qualification_id, arm_id, validation=True
+        )
     qualification_ref = (
         f"artifact://controller-qualification/{qualification.qualification_id}/qualification"
     )
@@ -492,9 +494,13 @@ def materialize(args: argparse.Namespace) -> dict[str, Any]:
         })
         loaded_capabilities[arm_id] = capability
         capability_payloads[arm_id] = (capability_payload, validation_payload)
-    if qualification_bindings != {
-        item["arm_id"]: item for item in capability_bindings
-    }:
+    route_bindings = {item["arm_id"]: item for item in capability_bindings}
+    if any(
+        qualification_bindings[arm_id]["sha256"] != route_bindings[arm_id]["sha256"]
+        or qualification_bindings[arm_id]["validation_sha256"]
+        != route_bindings[arm_id]["validation_sha256"]
+        for arm_id in route_bindings
+    ):
         raise MaterializationError(
             "route motion capabilities do not match controller qualification; "
             "configure capability and validation files from the approved qualification package",

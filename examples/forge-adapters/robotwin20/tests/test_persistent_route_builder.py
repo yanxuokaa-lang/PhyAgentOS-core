@@ -160,13 +160,38 @@ def test_scene_changed_during_build_never_imports_artifacts(tmp_path, monkeypatc
 
 
 def test_conflicting_artifact_is_preserved(tmp_path, monkeypatch):
+    from PhyAgentOS.forge.capability_runtime.manipulation_prepare import PreparationProviderError
+
     request, builder, _ = setup_builder(tmp_path, monkeypatch)
     (tmp_path / "shared").mkdir()
     target = tmp_path / "shared/calibration.json"
     target.write_text("original")
-    with pytest.raises(ValueError, match="conflicts"):
+    with pytest.raises(PreparationProviderError, match="shared/calibration.json") as caught:
         builder.build(request)
+    assert caught.value.code == "artifact_identity_conflict"
+    assert caught.value.failure_owner == "runtime_provider"
+    assert caught.value.retryable_in_revision is False
+    assert caught.value.requires_replan is False
+    assert caught.value.recommended_action == "fix_runtime_contract"
     assert target.read_text() == "original"
+
+
+def test_qualification_alias_coexists_with_legacy_capability_evidence(tmp_path, monkeypatch):
+    _, builder, _ = setup_builder(tmp_path, monkeypatch)
+    legacy = tmp_path / "robotwin/franka-bounded-q4/left-motion-capabilities.json"
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text("legacy", encoding="utf-8")
+    output = tmp_path / "candidate-output"
+    alias = output / "controller-qualification/q1/capabilities/left/document.json"
+    alias.parent.mkdir(parents=True)
+    alias.write_text("current", encoding="utf-8")
+
+    builder._import_artifacts([output])
+
+    assert legacy.read_text(encoding="utf-8") == "legacy"
+    assert (
+        tmp_path / "controller-qualification/q1/capabilities/left/document.json"
+    ).read_text(encoding="utf-8") == "current"
 
 
 def test_failed_materializer_retains_log_and_returns_no_route(tmp_path, monkeypatch):

@@ -18,6 +18,7 @@ from robotwin20_adapter.controller_qualification import (
     QualificationTestEvidence,
     QualificationTestSpec,
     controller_qualification_digest,
+    qualification_capability_ref,
     validate_controller_qualification_plan_package,
     validate_controller_qualification_result_package,
 )
@@ -56,6 +57,17 @@ def _binding(arm: str) -> QualificationCapabilityBinding:
         validation_ref=f"artifact://robotwin/franka/{arm}-motion-capabilities-source-validation",
         validation_sha256="b" * 64,
     )
+
+
+def test_qualification_capability_refs_are_package_owned():
+    assert qualification_capability_ref("qualification-q1", "left") == (
+        "artifact://controller-qualification/qualification-q1/capabilities/left/document"
+    )
+    assert qualification_capability_ref(
+        "qualification-q1", "right", validation=True
+    ) == "artifact://controller-qualification/qualification-q1/capabilities/right/validation"
+    with pytest.raises(ValueError, match="unsupported"):
+        qualification_capability_ref("qualification-q1", "center")
 
 
 def _plan() -> ControllerQualificationPlan:
@@ -428,9 +440,9 @@ def test_materializer_creates_no_motion_review_package(tmp_path: Path):
                 f"--{arm}-validation",
                 str(validation_path),
                 f"--{arm}-capability-ref",
-                f"artifact://robotwin/franka/{arm}-motion-capabilities",
+                f"artifact://controller-qualification/qualification-q1/capabilities/{arm}/document",
                 f"--{arm}-validation-ref",
-                f"artifact://robotwin/franka/{arm}-source-validation",
+                f"artifact://controller-qualification/qualification-q1/capabilities/{arm}/validation",
             ]
         )
     output_dir = tmp_path / "qualification-package"
@@ -460,6 +472,28 @@ def test_materializer_creates_no_motion_review_package(tmp_path: Path):
         ).qualification_motion_authorized
         is False
     )
+    bad_args = list(args)
+    ref_index = bad_args.index(
+        "artifact://controller-qualification/qualification-q1/capabilities/left/document"
+    )
+    bad_args[ref_index] = "artifact://robotwin/franka/left-motion-capabilities"
+    rejected = subprocess.run(
+        [
+            sys.executable,
+            "examples/forge-adapters/robotwin20/scripts/materialize_controller_qualification_plan.py",
+            "--qualification-id",
+            "qualification-q1",
+            "--created-at",
+            "2026-09-06T08:00:00+00:00",
+            "--output-dir",
+            str(tmp_path / "rejected-package"),
+            *bad_args,
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert rejected.returncode != 0
+    assert "qualification namespace" in rejected.stderr
     validation_path = output_dir / "no-motion-validation.json"
     verify = subprocess.run(
         [

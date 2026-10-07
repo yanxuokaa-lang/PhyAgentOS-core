@@ -62,6 +62,7 @@ from robotwin20_adapter import (
     motion_capability_digest,
 )
 from robotwin20_adapter.dual_arm_state import build_dual_arm_state
+from robotwin20_adapter.route_evidence import _artifact_path
 from robotwin20_adapter.route_readiness import route_geometry_digest
 
 QUALIFICATION_TEST_IDS = (
@@ -485,7 +486,11 @@ def _materialize_controller_qualification(
     )
     binding = request["controller_qualification"]
     capability_bindings = tuple(
-        QualificationCapabilityBinding.model_validate(item)
+        QualificationCapabilityBinding.model_validate({
+            **item,
+            "artifact_ref": f"artifact://legacy-capabilities/{item['arm_id']}/document",
+            "validation_ref": f"artifact://legacy-capabilities/{item['arm_id']}/validation",
+        })
         for item in request["motion_capabilities"]
     )
     tests = tuple(
@@ -814,11 +819,15 @@ def test_request_policies_accept_approved_controller_qualification(
 def test_configured_controller_sources_reject_stale_snapshot(tmp_path: Path):
     request = _route_request(tmp_path)
     _materialize_motion_capabilities(tmp_path, request, controller_digest="0" * 64)
+    paths = {
+        item["arm_id"]: _artifact_path(tmp_path, item["artifact_ref"])
+        for item in request["motion_capabilities"]
+    }
     with pytest.raises(SimulationProbeError, match="source digest drifted"):
         validate_configured_controller_sources(
             {
-                "left-motion-capability": tmp_path / "blocks/motion-capability-left.json",
-                "right-motion-capability": tmp_path / "blocks/motion-capability-right.json",
+                "left-motion-capability": paths["left"],
+                "right-motion-capability": paths["right"],
             }
         )
 
@@ -826,7 +835,7 @@ def test_configured_controller_sources_reject_stale_snapshot(tmp_path: Path):
 def test_configured_controller_sources_reject_wrong_arm_binding(tmp_path: Path):
     request = _route_request(tmp_path)
     _materialize_motion_capabilities(tmp_path, request)
-    left = tmp_path / "blocks/motion-capability-left.json"
+    left = _artifact_path(tmp_path, request["motion_capabilities"][0]["artifact_ref"])
     with pytest.raises(SimulationProbeError, match="arm binding is invalid"):
         validate_configured_controller_sources(
             {
@@ -885,7 +894,9 @@ def test_request_policies_reject_tampered_controller_qualification(tmp_path: Pat
             robot_identity="other-robot",
         )
 
-    capability_path = tmp_path / "blocks" / "motion-capability-left.json"
+    capability_path = _artifact_path(
+        tmp_path, request["motion_capabilities"][0]["artifact_ref"]
+    )
     capability_payload = capability_path.read_bytes()
     capability_path.write_text("{}\n", encoding="utf-8")
     with pytest.raises(SimulationProbeError, match="artifact is invalid"):

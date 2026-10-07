@@ -15,7 +15,11 @@ from typing import Any, Mapping
 from PhyAgentOS.forge.capability_runtime.manipulation_prepare import PreparationProviderError
 from PhyAgentOS.forge.manipulation import ManipulationIntent
 
-from .arm_candidates import enumerate_arm_candidates, load_arm_planning_profile
+from .arm_candidates import (
+    bind_motion_capability_refs,
+    enumerate_arm_candidates,
+    load_arm_planning_profile,
+)
 from .contact_qualification import CONTACT_QUALIFICATION_MODES, OBSERVED_OCCUPANCY
 from .preparation_deadline import PreparationDeadline, PreparationDeadlineExceededError
 from .route_evidence import _artifact_path
@@ -52,7 +56,8 @@ class PersistentRouteBuilder:
 
     def __init__(self, *, client, artifact_root: Path, scene_source, command,
                  materializer_arguments: Mapping[str, str], timeout_s: float = 120,
-                 contact_qualification_mode: str = OBSERVED_OCCUPANCY):
+                 contact_qualification_mode: str = OBSERVED_OCCUPANCY,
+                 motion_capability_refs: Mapping[str, str] | None = None):
         self.client = client
         self.root = artifact_root.resolve()
         self.scene_source = scene_source
@@ -68,7 +73,10 @@ class PersistentRouteBuilder:
                     "candidate-ref", "entity-ref", "request-id"}
         if reserved & self.arguments.keys():
             raise ValueError("materializer configuration overrides dynamic scene arguments")
-        self.arm_profile = load_arm_planning_profile(Path(self.arguments["arm-planning-profile"]))
+        self.arm_profile = bind_motion_capability_refs(
+            load_arm_planning_profile(Path(self.arguments["arm-planning-profile"])),
+            motion_capability_refs,
+        )
 
     def _current(
         self,
@@ -414,9 +422,27 @@ class PersistentRouteBuilder:
                     raise ValueError("materializer artifact escapes runtime root")
                 data = source.read_bytes()
                 if destination in pending and pending[destination] != data:
-                    raise ValueError("materialized artifacts conflict across candidates")
+                    relative = source.relative_to(output).as_posix()
+                    raise PreparationProviderError(
+                        "artifact_identity_conflict",
+                        "Candidate materializers produced different evidence for artifact ref: "
+                        f"{relative}; diagnostics: artifact://preparation-builds/{output.parent.name}",
+                        failure_owner="runtime_provider",
+                        retryable_in_revision=False,
+                        requires_replan=False,
+                        recommended_action="fix_runtime_contract",
+                    )
                 if destination.exists() and (destination.is_symlink() or destination.read_bytes() != data):
-                    raise ValueError("materialized artifact conflicts with runtime evidence")
+                    relative = source.relative_to(output).as_posix()
+                    raise PreparationProviderError(
+                        "artifact_identity_conflict",
+                        "Materialized artifact ref identifies different runtime evidence: "
+                        f"{relative}; diagnostics: artifact://preparation-builds/{output.parent.name}",
+                        failure_owner="runtime_provider",
+                        retryable_in_revision=False,
+                        requires_replan=False,
+                        recommended_action="fix_runtime_contract",
+                    )
                 pending[destination] = data
         for destination, data in pending.items():
             if not destination.exists():

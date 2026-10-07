@@ -2,18 +2,26 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 from uuid import uuid4
 
-from .arm_candidates import build_capability_snapshot, load_arm_planning_profile
+from .arm_candidates import (
+    bind_motion_capability_refs,
+    build_capability_snapshot,
+    load_arm_planning_profile,
+)
 from .route_evidence import _artifact_path
 
 
 class PersistentCapabilityProvider:
-    def __init__(self, *, client, artifact_root: Path, arm_profile: Path, profile_digest: str):
+    def __init__(self, *, client, artifact_root: Path, arm_profile: Path, profile_digest: str,
+                 motion_capability_refs: Mapping[str, str] | None = None):
         self.client = client
         self.root = artifact_root.resolve()
-        self.profile = load_arm_planning_profile(arm_profile)
+        self.profile = bind_motion_capability_refs(
+            load_arm_planning_profile(arm_profile), motion_capability_refs
+        )
         self.profile_digest = profile_digest
         self._snapshots = {}
 

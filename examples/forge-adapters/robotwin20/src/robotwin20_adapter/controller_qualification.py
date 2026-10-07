@@ -106,6 +106,22 @@ def _identity_text(value: str, label: str) -> str:
     return value.strip()
 
 
+def qualification_capability_ref(
+    qualification_id: str,
+    arm_id: str,
+    *,
+    validation: bool = False,
+) -> str:
+    """Return the qualification-owned alias for one capability evidence item."""
+
+    qualification = _identity_text(qualification_id, "qualification capability identity")
+    arm = _identity_text(arm_id, "qualification capability arm")
+    if arm not in {"left", "right"}:
+        raise ValueError("qualification capability arm is unsupported")
+    leaf = "validation" if validation else "document"
+    return f"artifact://controller-qualification/{qualification}/capabilities/{arm}/{leaf}"
+
+
 def _timestamp(value: str, label: str) -> str:
     try:
         # Python 3.10 (the supported RoboTwin20 runtime) does not accept the
@@ -800,6 +816,7 @@ __all__ = [
     "QualificationTestSpec",
     "canonical_controller_qualification",
     "controller_qualification_digest",
+    "qualification_capability_ref",
     "validate_controller_qualification_result_package",
     "validate_controller_qualification_plan_package",
 ]

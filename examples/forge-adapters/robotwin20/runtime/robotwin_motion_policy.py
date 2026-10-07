@@ -18,6 +18,7 @@ from robotwin20_adapter.controller_qualification import (
     ControllerQualificationPlan,
     ControllerQualificationValidation,
     controller_qualification_digest,
+    qualification_capability_ref,
     validate_controller_qualification_result_package,
 )
 from robotwin20_adapter.motion_capabilities import (
@@ -205,7 +206,18 @@ def validate_motion_policy_bindings(
     route_bindings = {
         item["arm_id"]: dict(item) for item in request["motion_capabilities"]
     }
-    if plan_bindings != route_bindings:
+    if set(plan_bindings) != set(route_bindings) or any(
+        route_bindings[arm_id]["artifact_ref"]
+        != qualification_capability_ref(qualification.qualification_id, arm_id)
+        or route_bindings[arm_id]["validation_ref"]
+        != qualification_capability_ref(
+            qualification.qualification_id, arm_id, validation=True
+        )
+        or route_bindings[arm_id]["sha256"] != plan_bindings[arm_id]["sha256"]
+        or route_bindings[arm_id]["validation_sha256"]
+        != plan_bindings[arm_id]["validation_sha256"]
+        for arm_id in route_bindings
+    ):
         raise SimulationProbeError("controller qualification capability binding drifted")
     for capability in capabilities.values():
         provider = capability.provider

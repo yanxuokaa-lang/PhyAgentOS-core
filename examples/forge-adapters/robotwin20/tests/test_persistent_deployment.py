@@ -3,7 +3,9 @@ from pathlib import Path
 import pytest
 import yaml
 from test_arm_candidates import _profile
+from test_controller_qualification import _plan
 
+from robotwin20_adapter.controller_qualification import qualification_capability_ref
 from robotwin20_adapter.persistent_action_approval import (
     PersistentSimulationActionApprover,
 )
@@ -87,6 +89,39 @@ def test_deployment_wires_shared_cache_and_requires_persistent_stop_policy(tmp_p
             materializer_command=("python",), materializer_arguments=arguments,
             arm_profile_digest="a" * 64,
         )
+
+
+def test_deployment_projects_qualification_capability_refs_into_both_consumers(tmp_path):
+    arm = tmp_path / "arms.yaml"
+    arm.write_text(yaml.safe_dump(_profile()))
+    plan = _plan()
+    plan_path = tmp_path / "qualification-plan.json"
+    plan_path.write_text(plan.model_dump_json(), encoding="utf-8")
+    profiles = Path(__file__).parents[1] / "profiles/robotwin20"
+
+    deployment = build_persistent_deployment(
+        client=object(), artifact_root=tmp_path, scene_source=lambda request: None,
+        materializer_command=("python", "materializer.py"),
+        materializer_arguments={
+            "arm-planning-profile": str(arm),
+            "route-input-profile": str(profiles / "route-inputs-graspnet.yaml"),
+            "controller-qualification-plan": str(plan_path),
+        },
+        arm_profile_digest="a" * 64,
+    )
+    expected = {
+        item.arm_id: qualification_capability_ref(plan.qualification_id, item.arm_id)
+        for item in plan.capability_bindings
+    }
+
+    assert {
+        item["arm_id"]: item["motion_capabilities_ref"]
+        for item in deployment.preparation_provider.route_builder.arm_profile["arms"]
+    } == expected
+    assert {
+        item["arm_id"]: item["motion_capabilities_ref"]
+        for item in deployment.capability_provider.profile["arms"]
+    } == expected
 
 
 def test_deployment_rejects_provider_route_mismatch(tmp_path):

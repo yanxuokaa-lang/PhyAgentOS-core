@@ -26,6 +26,7 @@ from robotwin20_adapter import (
     project_arm_assignment,
     validate_arm_planning_profile,
 )
+from robotwin20_adapter.arm_candidates import bind_motion_capability_refs
 from robotwin20_adapter.route_readiness import (
     ROUTE_CHECKS,
     project_route_evidence,
@@ -81,6 +82,27 @@ def _intent() -> ManipulationIntent:
         candidate_set_ref="candidate-set://blocks_ranking_rgb-0-1/head_camera",
         constraints=("preserve_scene_revision",),
     )
+
+
+def test_qualification_bindings_override_only_capability_evidence_refs():
+    profile = _profile()
+    bound = bind_motion_capability_refs(
+        profile,
+        {
+            "left": "artifact://qualification/q1/capabilities/left",
+            "right": "artifact://qualification/q1/capabilities/right",
+        },
+    )
+
+    assert profile["arms"][0]["motion_capabilities_ref"] == "artifact://motion/left"
+    assert bound["arms"][0]["motion_capabilities_ref"] == (
+        "artifact://qualification/q1/capabilities/left"
+    )
+    assert bound["arms"][1]["motion_capabilities_ref"] == (
+        "artifact://qualification/q1/capabilities/right"
+    )
+    with pytest.raises(ArmPlanningError, match="arm coverage"):
+        bind_motion_capability_refs(profile, {"left": "artifact://qualification/q1/left"})
 
 
 def _result(request, option, *, status="pass"):

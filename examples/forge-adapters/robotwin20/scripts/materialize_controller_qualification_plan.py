@@ -24,6 +24,7 @@ from robotwin20_adapter import (
     canonical_controller_qualification,
     motion_capability_digest,
 )
+from robotwin20_adapter.controller_qualification import qualification_capability_ref
 
 TESTS = (
     ("nominal_position_command", "position_drive_target"),
@@ -100,11 +101,21 @@ def _binding(args: argparse.Namespace, arm: str):
         raise MaterializationError(
             f"{arm} capability source is not an unqualified canonical binding"
         )
+    capability_ref = getattr(args, f"{arm}_capability_ref")
+    validation_ref = getattr(args, f"{arm}_validation_ref")
+    if capability_ref != qualification_capability_ref(
+        args.qualification_id, arm
+    ) or validation_ref != qualification_capability_ref(
+        args.qualification_id, arm, validation=True
+    ):
+        raise MaterializationError(
+            f"{arm} capability references must be owned by the qualification namespace"
+        )
     binding = QualificationCapabilityBinding(
         arm_id=arm,
-        artifact_ref=getattr(args, f"{arm}_capability_ref"),
+        artifact_ref=capability_ref,
         sha256=canonical_sha,
-        validation_ref=getattr(args, f"{arm}_validation_ref"),
+        validation_ref=validation_ref,
         validation_sha256=_file_sha(validation_path),
     )
     return capability, binding

@@ -5,6 +5,40 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.9.8 (2026-10-07 22:30) - codex
+
+### 变更摘要 / Change Summary
+- [sense] [fix] 修复长期 Runtime 中旧 capability evidence 与新 qualification evidence 复用同一 artifact ref 的冲突；路线、能力快照和 Runtime admission 统一使用 qualification-owned aliases。 (local)
+- [sense] [fix] Fix conflicts where legacy and new qualification capability evidence reused one artifact ref in a long-lived Runtime; route materialization, capability snapshots, and Runtime admission now use qualification-owned aliases. (local)
+- [comm] [fix] artifact publication conflict 结构化为不可重试 Runtime contract failure；AgentLoop 不自动 observe、retry、replan、换候选、换臂或执行 Action。 (local)
+- [comm] [fix] Structure artifact publication conflicts as non-retryable Runtime contract failures; the AgentLoop does not automatically observe, retry, replan, switch candidates/arms, or dispatch Actions. (local)
+
+### 文件变更详情 / File Changes
+- [修改 / Modified] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/controller_qualification.py:L109-L120,L819`、`arm_candidates.py:L86-L109,L859`、`persistent_capabilities.py:L5-L24`：qualification alias 公共导出、投影与类型契约。 (local)
+- [修改 / Modified] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_deployment.py:L210-L229,L285-L289`、`persistent_route_builder.py:L56-L79,L414-L447`、`runtime/robotwin_motion_policy.py:L206-L225`：部署、路线和 Runtime admission 统一证据引用。 (local)
+- [新增 / Added] `docs/forge/IMPLEMENTATION_REVIEW_V12_9_8.md:L1-L121`：七维审查和剩余风险。 (local)
+- [新增测试 / Added Tests] Adapter alias、artifact conflict、legacy coexistence、qualification binding 与 no-motion replay regressions. (local)
+
+### 关键 Diff / Key Diff
+```diff
+- artifact://robotwin/<legacy-profile>/motion-capabilities
++ artifact://controller-qualification/<qualification-id>/capabilities/<arm>/document
+- ValueError: materialized artifact conflicts with runtime evidence
++ artifact_identity_conflict / fix_runtime_contract / no automatic replan
+```
+
+### 七维 Code Review / Seven-Dimension Review
+- Blocker 0、Major 0、Minor 0；架构、正确性、恢复幂等、机器人安全、扩展性、可观测性和 AgentLoop 收敛全部通过。 (local)
+- Zero Blocker, Major, or Minor findings; architecture, correctness, recovery/idempotency, robotics safety, extensibility, observability, and AgentLoop convergence all pass. (local)
+
+### 验证 / Validation
+- Adapter changed path `150 passed, 1 deselected`；Skill full `379 passed`；Ruff changed paths、compileall、`git diff --check` 通过。 (local)
+- Node `0.10.12` SHA-256 `912bed56c4d1dfd8627186f0e78fb2eb10f55dea6fb2ebf2825c496905835903`；Skill `3.0.4` SHA-256 `3917e65fa0e2372b18e0405ce60ac901bea7cf4d629ba48942c93209e1f2d4e4`；未安装或启动。 (local)
+
+### Git 提交 / Git Commit
+- Commit: pending
+- Branch: `feature/planning-loop`
+
 ## v12.9.7 (2026-10-07 21:36) - codex
 
 ### 变更摘要 / Change Summary
@@ -148,40 +182,3 @@
 - Commit: `b0fa615`（实现、修复与七维审核 / implementation, fixes, and seven-dimension review）
 - Branch: `feature/planning-loop`
 - 时间 / Time: `2026-10-07 Asia/Shanghai`
-
-## v12.9.3 (2026-10-07 18:09) - codex
-
-### 变更摘要 / Change Summary
-- [sense] [fix] 统一 route readiness、prepared-plan admission 与 live controller 的 MotionCapability 数值边界语义，仅规范化 float32 往返边界误差，实质越界继续 fail-closed。 (local)
-- [sense] [fix] Unify MotionCapability numerical-bound semantics across route readiness, prepared-plan admission, and the live controller, canonicalizing only float32 round-trip boundary error while material violations remain fail-closed. (local)
-- [comm] [fix] 未知 Action 结果的 stop/replan 决策现在进入 `reconciliation_required` 阻塞投影；不自动重试、观察、放置、换臂、换候选或 replan。 (local)
-- [comm] [fix] Stop/replan decisions after an unknown Action outcome now enter `reconciliation_required`; no automatic retry, observation, placement, arm/candidate switch, or replan is introduced. (local)
-
-### 文件变更详情 / File Changes
-- [修改 / Modified] `robotwin_capability_controller.py:L11-L65,L148-L169`、`robotwin_planning_geometry.py:L136-L174`、`robotwin_route_planner.py:L166-L224,L328-L410,L502-L509`：共享 capability-bound 规范化并接入逐臂 Readiness。 (local)
-- [修改 / Modified] `robotwin_simulation_probe_worker.py:L554-L709,L1580-L1604`、`robotwin_persistent_engine.py:L555-L557`：Action 前重验并执行规范化的持久化轨迹。 (local)
-- [修改 / Modified] `PhyAgentOS/agent/planning_loop.py:L1488-L1536`：未知结果优先进入 reconciliation；replay 保持 reducer-only。 (local)
-- [新增测试 / Added Tests] `tests/test_planning_loop.py:L1291-L1350` 及 Adapter controller/planner/simulation/persistent tests：边界一致性、实质越界和未知结果收敛的 no-motion 回归。 (local)
-- [新增 / Added] `CAPABILITY_BOUND_ADMISSION_DIAGNOSIS_20261007.md:L1-L75`、`OUTCOME_UNKNOWN_RECONCILIATION_DIAGNOSIS_20261007.md:L1-L74`、`IMPLEMENTATION_REVIEW_V12_9_3.md:L1-L74`：两份诊断与七维审核。 (local)
-
-### 关键 Diff / Key Diff
-```diff
--planner/controller use different numerical admission
-+one controller-owned rule is reused before persistence, before Action, and before provider write
--outcome_unknown stop/replan can bypass lifecycle convergence
-+outcome_unknown stop/replan -> blocked: reconciliation_required:<node>
-```
-
-### 七维 Code Review / Seven-Dimension Review
-- Blocker 0、Major 0、Minor 0；七个维度全部通过。没有 RGB/颜色/排列/benchmark/实体/候选/相机/固定机械臂专用分支，也没有自动 Action 或 replan。 (local)
-- Zero Blocker, Major, or Minor findings; all seven dimensions pass. No RGB/color/order/benchmark/entity/candidate/camera/fixed-arm branch or automatic Action/replan was added. (local)
-
-### 验证 / Validation
-- Core `187 passed`；Adapter capability/Persistent chains `93 passed, 4 deselected` 与 `78 passed`；Skill/release `75 passed`；Ruff、compileall、`git diff --check` 通过。 (local)
-- Node `0.10.9` SHA-256 `523ce506eeee3ffc143715ddd1bb98671dfa3ef7847d6de143da45214bfe4d8f`；Skill `3.0.1` SHA-256 `b323781c830e98259b8bb47b65a08f627b3b80ebd1fa1733a177f9f78da8865f`。未安装或启动。 (local)
-- 当前解释器缺少现有视频测试依赖 `cv2`；验证未创建 AgentTask、调用 Gateway、推进 simulator/物理运动或改变 Runtime 生命周期。 (local)
-
-### Git 提交 / Git Commit
-- Commit: `3a1014a`（实现、诊断与七维审核 / implementation, diagnoses, and seven-dimension review）
-- Branch: `feature/planning-loop`
-- 时间 / Time: 2026-10-07 18:36 Asia/Shanghai

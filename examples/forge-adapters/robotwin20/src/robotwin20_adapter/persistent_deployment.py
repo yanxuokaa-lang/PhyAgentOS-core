@@ -1,5 +1,6 @@
 """Compose adapter providers for the existing pick-place Skill runtime."""
 
+import json
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
@@ -17,6 +18,10 @@ from pick_place_workflow.persistent_runtime import build_persistent_runtime
 
 from .arm_candidates import CompleteRouteSelector
 from .contact_qualification import contact_qualification_mode
+from .controller_qualification import (
+    ControllerQualificationPlan,
+    qualification_capability_ref,
+)
 from .grounding import Grounding, GroundingEndpoint, RememberObservation
 from .observed_collision import ObservedCollisionPolicy
 from .observed_support import SupportEstimationPolicy
@@ -205,11 +210,30 @@ def build_persistent_deployment(*, client, artifact_root: Path, scene_source,
         )
     if profile["stop_policy"]["failure_recovery"] != "hold_and_reconcile":
         raise ValueError("persistent deployment requires hold_and_reconcile route policy")
+    motion_capability_refs = None
+    qualification_plan_path = materializer_arguments.get("controller-qualification-plan")
+    if qualification_plan_path is not None:
+        plan_path = Path(qualification_plan_path)
+        if not plan_path.is_absolute() or not plan_path.is_file() or plan_path.is_symlink():
+            raise ValueError("controller qualification plan must be an absolute regular file")
+        try:
+            qualification_plan = ControllerQualificationPlan.model_validate(
+                json.loads(plan_path.read_text(encoding="utf-8"))
+            )
+        except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
+            raise ValueError("controller qualification plan is invalid") from exc
+        motion_capability_refs = {
+            binding.arm_id: qualification_capability_ref(
+                qualification_plan.qualification_id, binding.arm_id
+            )
+            for binding in qualification_plan.capability_bindings
+        }
     builder = PersistentRouteBuilder(
         client=client, artifact_root=artifact_root, scene_source=scene_source,
         command=materializer_command, materializer_arguments=materializer_arguments,
         timeout_s=materializer_timeout_s,
         contact_qualification_mode=qualification_mode,
+        motion_capability_refs=motion_capability_refs,
     )
     grounding = Grounding(client, artifact_root, scene_source,
                           goal_source=goal_source,
@@ -261,6 +285,7 @@ def build_persistent_deployment(*, client, artifact_root: Path, scene_source,
     capabilities = PersistentCapabilityProvider(
         client=client, artifact_root=artifact_root,
         arm_profile=Path(materializer_arguments["arm-planning-profile"]), profile_digest=arm_profile_digest,
+        motion_capability_refs=motion_capability_refs,
     )
     return PersistentDeployment(
         preparation,

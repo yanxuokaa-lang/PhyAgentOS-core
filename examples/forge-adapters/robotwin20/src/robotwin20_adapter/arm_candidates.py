@@ -83,6 +83,30 @@ def load_arm_planning_profile(path: str | os.PathLike[str]) -> dict[str, Any]:
     return dict(profile)
 
 
+def bind_motion_capability_refs(
+    profile: Mapping[str, Any],
+    bindings: Mapping[str, str] | None,
+) -> dict[str, Any]:
+    """Project deployment-owned capability evidence refs into an arm profile."""
+
+    validate_arm_planning_profile(profile)
+    result = deepcopy(dict(profile))
+    if bindings is None:
+        return result
+    arm_ids = {item["arm_id"] for item in result["arms"]}
+    if set(bindings) != arm_ids:
+        raise ArmPlanningError(
+            "controller qualification and arm planning profile arm coverage differ"
+        )
+    for arm in result["arms"]:
+        reference = bindings[arm["arm_id"]]
+        if not isinstance(reference, str) or not reference.startswith("artifact://"):
+            raise ArmPlanningError("qualified motion capability reference is invalid")
+        arm["motion_capabilities_ref"] = reference
+    validate_arm_planning_profile(result)
+    return result
+
+
 def build_capability_snapshot(
     profile: Mapping[str, Any],
     *,
@@ -832,6 +856,7 @@ __all__ = [
     "ArmPlanningError",
     "CompleteRouteSelector",
     "RouteReadinessProvider",
+    "bind_motion_capability_refs",
     "build_capability_snapshot",
     "enumerate_arm_candidates",
     "load_arm_planning_profile",

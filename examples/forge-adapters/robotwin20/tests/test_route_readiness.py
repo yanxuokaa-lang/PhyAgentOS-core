@@ -67,16 +67,16 @@ def _request(tmp_path: Path) -> dict:
         "motion_capabilities": [
             {
                 "arm_id": "left",
-                "artifact_ref": "artifact://blocks/motion-capability-left",
+                "artifact_ref": "artifact://controller-qualification/qualification-1/capabilities/left/document",
                 "sha256": "1" * 64,
-                "validation_ref": "artifact://blocks/motion-capability-left-validation",
+                "validation_ref": "artifact://controller-qualification/qualification-1/capabilities/left/validation",
                 "validation_sha256": "2" * 64,
             },
             {
                 "arm_id": "right",
-                "artifact_ref": "artifact://blocks/motion-capability-right",
+                "artifact_ref": "artifact://controller-qualification/qualification-1/capabilities/right/document",
                 "sha256": "3" * 64,
-                "validation_ref": "artifact://blocks/motion-capability-right-validation",
+                "validation_ref": "artifact://controller-qualification/qualification-1/capabilities/right/validation",
                 "validation_sha256": "4" * 64,
             },
         ],

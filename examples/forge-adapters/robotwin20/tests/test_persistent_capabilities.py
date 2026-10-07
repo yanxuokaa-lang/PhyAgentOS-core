@@ -38,3 +38,30 @@ def test_public_capability_snapshot_persists_and_rejects_previous_scene(tmp_path
     second = endpoint.invoke(request)
     assert second["status"] == "available"
     assert second["snapshot_ref"] != first["snapshot_ref"]
+
+
+def test_public_capability_snapshot_projects_qualification_owned_refs(tmp_path):
+    profile = tmp_path / "arms.yaml"
+    profile.write_text(yaml.safe_dump(_profile()))
+    (tmp_path / "capture").mkdir()
+    (tmp_path / "capture/calibration.json").write_text("{}")
+
+    class Client:
+        def query(self, operation, arguments):
+            return {"scene_revision": "scene-1"}
+
+    refs = {
+        "left": "artifact://controller-qualification/q1/capabilities/left/document",
+        "right": "artifact://controller-qualification/q1/capabilities/right/document",
+    }
+    provider = PersistentCapabilityProvider(
+        client=Client(), artifact_root=tmp_path, arm_profile=profile,
+        profile_digest="a" * 64, motion_capability_refs=refs,
+    )
+    result = CapabilitySnapshotEndpoint(provider).invoke({
+        "scene_revision": "scene-1",
+        "observation_ref": "observation://scene-1/camera",
+        "calibration_ref": "artifact://capture/calibration",
+    })
+
+    assert {arm["arm_id"]: arm["motion_capabilities_ref"] for arm in result["arms"]} == refs

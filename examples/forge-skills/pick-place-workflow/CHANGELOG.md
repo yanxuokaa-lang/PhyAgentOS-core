@@ -1,5 +1,12 @@
 # Change Log
 
+## v3.0.4 (2026-10-07)
+
+- 中文：发布 Adapter `0.9.7` 与 Node `0.10.12`，修复长期 Runtime 中旧 capability evidence 与新 qualification 证据共存时的身份投影；保留不可变 artifact 冲突拒绝和 no-motion 准入。
+- English: Publish Adapter `0.9.7` and Node `0.10.12`, fixing identity projection when legacy capability evidence coexists with new qualification evidence in a long-lived Runtime while retaining immutable-artifact conflict rejection and no-motion admission.
+- 中文：公开 qualification-owned capability alias helper，补充类型契约与共存回归；AgentLoop 不自动重试、观察、replan、换候选、换臂或执行 Action。
+- English: Expose the qualification-owned capability alias helper and add its type contract and coexistence regression; the AgentLoop does not automatically retry, observe, replan, switch candidates/arms, or dispatch Actions.
+
 ## v3.0.3 (2026-10-07)
 
 - 中文：发布 Adapter `0.9.6` 与 Node `0.10.11`。共享 motion-policy 准入现在将 capability/qualification evidence 绑定到当前 Runtime 实际导入的 bounded controller source；旧 snapshot 在 Readiness 与 Runtime 启动前置检查阶段零步拒绝，不再推迟到 Action。

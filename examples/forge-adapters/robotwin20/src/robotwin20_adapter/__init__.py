@@ -51,6 +51,7 @@ from .controller_qualification import (
     QualificationTestSpec,
     canonical_controller_qualification,
     controller_qualification_digest,
+    qualification_capability_ref,
     validate_controller_qualification_plan_package,
     validate_controller_qualification_result_package,
 )
@@ -386,6 +387,7 @@ __all__ = [
     "QualificationTestSpec",
     "canonical_controller_qualification",
     "controller_qualification_digest",
+    "qualification_capability_ref",
     "SCENE_COLLISION_WORLD_SCHEMA_VERSION",
     "CollisionWorldError",
     "build_collision_world",
