@@ -3,6 +3,35 @@ implementation_id: object.acquisition
 endpoint_id: object_acquisition
 operation: acquire
 semantics: action
+planning:
+  schema_version: paos-tool-spec-policy/v1
+  capabilities: [object.acquire]
+  scene_write_behavior: new_revision
+  input_binding_keys: [entity_ref]
+  argument_projection: prepared_assignment_action_v1
+  argument_projection_plan:
+    projection_id: prepared_assignment_action_v1
+    join_field: entity_ref
+    source_slots:
+      preparation:
+        tool_id: manipulation.prepare
+        source_scope: predecessor
+        source_field_map:
+          observation_ref: [observation_ref]
+          scene_revision: [scene_revision]
+          frame_id: [frame, frame_id]
+          calibration_ref: [calibration_ref]
+          freshness_ms: [freshness_ms]
+          max_age_ms: [max_age_ms]
+          candidate_set_ref: [candidate_set_ref]
+          preparation_ref: [preparation_ref]
+        unique_item_collection: [assignments]
+        unique_item_join_field: entity_ref
+        unique_item_field_map:
+          candidate_ref: [candidate_ref]
+          capability_snapshot_ref: [capability_snapshot_ref]
+          assignment_ref: [assignment_ref]
+    top_level_fields: [entity_ref]
 description: Admit one bounded object acquisition workflow using a prepared grasp reference; approach, contact, close, lift, and hold remain internal Gateway phases.
 input_schema:
   type: object

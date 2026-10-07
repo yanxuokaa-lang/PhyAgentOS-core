@@ -188,6 +188,7 @@ def execute_argument_projection(
             *source.source_field_map,
             *source.list_field_map,
             *([source.filtered_output_field] if source.filtered_output_field else []),
+            *source.unique_item_field_map,
         }
         authored = sorted(field for field in outputs if field in literals)
         if reject_owned_literals and authored:
@@ -195,6 +196,23 @@ def execute_argument_projection(
                 "named projection fields are Coordinator-owned: " + ", ".join(authored)
             )
         result: dict[str, Any] = {}
+        join_value = literals.get(plan.join_field)
+        if source.join_field_path is not None:
+            if not isinstance(join_value, str) or not join_value:
+                raise ArgumentProjectionError(
+                    f"consumer projection requires selected {plan.join_field}"
+                )
+            try:
+                source_join_value = read_path(facts, source.join_field_path)
+            except ArgumentProjectionError as response_error:
+                try:
+                    source_join_value = read_path(arguments, source.join_field_path)
+                except ArgumentProjectionError:
+                    raise response_error
+            if source_join_value != join_value:
+                raise ArgumentProjectionError(
+                    f"projection source {plan.join_field} does not match selected entity"
+                )
         for output_field, source_path in source.source_field_map.items():
             try:
                 value = read_path(facts, source_path)
@@ -247,7 +265,6 @@ def execute_argument_projection(
                 raise ArgumentProjectionError(
                     f"projection source collection {source.filtered_collection!r} is not an array"
                 )
-            join_value = literals.get(plan.join_field)
             if not isinstance(join_value, str) or not join_value:
                 raise ArgumentProjectionError(
                     f"consumer projection requires selected {plan.join_field}"
@@ -263,6 +280,42 @@ def execute_argument_projection(
                     f"projection source collection has no {join_field} matching selected entity"
                 )
             result[source.filtered_output_field] = filtered
+        if source.unique_item_collection is not None:
+            try:
+                collection = read_path(facts, source.unique_item_collection)
+            except ArgumentProjectionError as response_error:
+                try:
+                    collection = read_path(arguments, source.unique_item_collection)
+                except ArgumentProjectionError:
+                    raise response_error
+            if not isinstance(collection, (list, tuple)):
+                raise ArgumentProjectionError(
+                    f"projection unique-item source {source.unique_item_collection!r} "
+                    "is not an array"
+                )
+            if not isinstance(join_value, str) or not join_value:
+                raise ArgumentProjectionError(
+                    f"consumer projection requires selected {plan.join_field}"
+                )
+            join_field = source.unique_item_join_field or plan.join_field
+            matches = [
+                item
+                for item in collection
+                if isinstance(item, Mapping) and item.get(join_field) == join_value
+            ]
+            if len(matches) != 1:
+                raise ArgumentProjectionError(
+                    "projection unique-item source requires exactly one "
+                    f"{join_field} match; found {len(matches)}"
+                )
+            matched = matches[0]
+            for output_field, source_path in source.unique_item_field_map.items():
+                value = read_path(matched, source_path)
+                if output_field in literals and literals[output_field] != value:
+                    raise ArgumentProjectionError(
+                        f"projection field {output_field!r} conflicts with its source"
+                    )
+                result[output_field] = value
         return result
 
     if plan.source_slots:

@@ -3,6 +3,35 @@ implementation_id: object.placement
 endpoint_id: object_placement
 operation: place
 semantics: action
+planning:
+  schema_version: paos-tool-spec-policy/v1
+  capabilities: [object.place]
+  scene_write_behavior: new_revision
+  input_binding_keys: [entity_ref, destination_ref]
+  argument_projection: completed_acquisition_action_v1
+  argument_projection_plan:
+    projection_id: completed_acquisition_action_v1
+    join_field: entity_ref
+    source_slots:
+      acquisition:
+        tool_id: object.acquire
+        source_scope: predecessor
+        scene_relation: predecessor_effect
+        join_field_path: [result, entity_ref]
+        source_field_map:
+          observation_ref: [result, observation_ref]
+          scene_revision: [result, scene_revision]
+          frame_id: [result, frame, frame_id]
+          calibration_ref: [result, calibration_ref]
+          freshness_ms: [freshness_ms]
+          max_age_ms: [max_age_ms]
+          candidate_set_ref: [result, candidate_set_ref]
+          preparation_ref: [result, preparation_ref]
+          candidate_ref: [result, candidate_ref]
+          acquire_invocation_ref: [result, acquire_invocation_ref]
+          capability_snapshot_ref: [result, capability_snapshot_ref]
+          assignment_ref: [result, assignment_ref]
+    top_level_fields: [entity_ref, destination_ref]
 description: >-
   Admit one bounded object placement workflow using a completed acquisition and a destination
   reference; transport, descent, release, and retreat remain internal Gateway phases.

@@ -97,15 +97,23 @@ class ArgumentProjectionSourcePlan(_Frozen):
 
     tool_id: str = Field(min_length=1)
     source_scope: Literal["authorized", "predecessor", "evidence"] = "authorized"
+    scene_relation: Literal["current", "predecessor_effect"] = "current"
+    join_field_path: tuple[str | int, ...] | None = None
     source_field_map: dict[str, tuple[str | int, ...]] = Field(default_factory=dict)
     list_field_map: dict[str, ArgumentProjectionListPlan] = Field(default_factory=dict)
     filtered_collection: str | None = None
     filtered_output_field: str | None = None
     filtered_join_field: str | None = None
+    unique_item_collection: tuple[str | int, ...] | None = None
+    unique_item_field_map: dict[str, tuple[str | int, ...]] = Field(default_factory=dict)
+    unique_item_join_field: str | None = None
 
     @model_validator(mode="after")
     def validate_source_shape(self) -> "ArgumentProjectionSourcePlan":
-        for output_field, source_path in self.source_field_map.items():
+        for output_field, source_path in {
+            **self.source_field_map,
+            **self.unique_item_field_map,
+        }.items():
             if not output_field.strip() or not source_path:
                 raise ValueError("projection source fields require non-empty paths")
             if any(
@@ -114,14 +122,30 @@ class ArgumentProjectionSourcePlan(_Frozen):
                 for part in source_path
             ):
                 raise ValueError("projection source paths must contain strings or indexes")
+        if self.join_field_path is not None and (
+            not self.join_field_path
+            or any(
+                not isinstance(part, (str, int))
+                or (isinstance(part, str) and not part)
+                for part in self.join_field_path
+            )
+        ):
+            raise ValueError("projection source join_field_path must contain strings or indexes")
         if bool(self.filtered_collection) != bool(self.filtered_output_field):
             raise ValueError(
                 "filtered_collection and filtered_output_field must be provided together"
             )
+        if bool(self.unique_item_collection) != bool(self.unique_item_field_map):
+            raise ValueError(
+                "unique_item_collection and unique_item_field_map must be provided together"
+            )
+        if self.unique_item_join_field is not None and not self.unique_item_join_field.strip():
+            raise ValueError("unique_item_join_field must be non-empty")
         outputs = [
             *self.source_field_map,
             *self.list_field_map,
             *([self.filtered_output_field] if self.filtered_output_field else []),
+            *self.unique_item_field_map,
         ]
         if not outputs or len(outputs) != len(set(outputs)):
             raise ValueError("projection source outputs must be non-empty and unique")
@@ -185,6 +209,7 @@ class ArgumentProjectionPlan(_Frozen):
                 outputs.extend(source.list_field_map)
                 if source.filtered_output_field:
                     outputs.append(source.filtered_output_field)
+                outputs.extend(source.unique_item_field_map)
             if len(outputs) != len(set(outputs)):
                 raise ValueError("named projection source outputs must be unique")
         elif self.source_field_map:
@@ -416,6 +441,7 @@ def required_node_binding_keys(policy: ToolSpecPolicy) -> tuple[str, ...]:
             projected.update(source.list_field_map)
             if source.filtered_output_field:
                 projected.add(source.filtered_output_field)
+            projected.update(source.unique_item_field_map)
     return tuple(key for key in dict.fromkeys(required) if key not in projected)
 
 

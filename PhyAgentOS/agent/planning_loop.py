@@ -482,7 +482,7 @@ def _validate_named_projection_sources(
                 evidence.response,
             )
 
-    identities: list[tuple[str, dict[str, str | None]]] = []
+    identities: list[tuple[str, str, dict[str, str | None]]] = []
     resolved: dict[str, str] = {}
     for slot, source in plan.source_slots.items():
         record_id = selectors.get(slot)
@@ -501,15 +501,24 @@ def _validate_named_projection_sources(
                 f"projection source slot {slot!r} requires Tool {source.tool_id}"
             )
         identity = _projection_world_identity(arguments, response)
-        if identity["scene_revision"] != context.scene_revision:
-            raise PlanningLoopError(
-                f"projection source slot {slot!r} belongs to stale scene revision"
-            )
-        identities.append((slot, identity))
+        if source.scene_relation == "current":
+            if identity["scene_revision"] != context.scene_revision:
+                raise PlanningLoopError(
+                    f"projection source slot {slot!r} belongs to stale scene revision"
+                )
+        else:
+            effect_scene = response_facts(response).get("new_scene_revision")
+            if effect_scene != context.scene_revision:
+                raise PlanningLoopError(
+                    f"projection source slot {slot!r} does not produce the current scene"
+                )
+        identities.append((slot, source.scene_relation, identity))
         resolved[slot] = record_id
 
-    baseline_slot, baseline = identities[0]
-    for slot, identity in identities[1:]:
+    baseline_slot, baseline_relation, baseline = identities[0]
+    for slot, relation, identity in identities[1:]:
+        if relation != baseline_relation:
+            continue
         for field in (
             "scene_revision",
             "observation_ref",

@@ -1,5 +1,12 @@
 # Change Log
 
+## v2.10.15 (2026-10-07)
+
+- 中文：为 `object.acquire` 与 `object.place` 增加 provider-neutral 前驱投影；Agent 只选择授权 producer record，Coordinator 按唯一实体 join 编译 Action 参数，不再要求模型手工拼装 12/14 个字段。
+- English: Add provider-neutral predecessor projections for `object.acquire` and `object.place`; the Agent selects an authorized producer record and the Coordinator compiles Action arguments through a unique entity join instead of requiring the model to assemble 12/14 fields manually.
+- 中文：Core 投影协议支持从集合中唯一匹配并展开字段，以及 world-changing 前驱的 effect-scene 血缘校验；零匹配、多匹配、错误 Tool/scope/scene 均在 selection 前 fail-closed。未自动选择、执行、重试或 replan，Node `0.10.8` 与 Adapter `0.9.3` 保持不变。
+- English: The Core projection protocol now supports unique collection-item expansion and effect-scene lineage for world-changing predecessors; zero matches, duplicate matches, or wrong Tool, scope, or scene fail closed before selection. No automatic selection, execution, retry, or replan is added, and Node `0.10.8` and Adapter `0.9.3` remain unchanged.
+
 ## v2.10.14 (2026-10-06)
 
 - 中文：发布 Adapter `0.9.3` 与 Node `0.10.8`。Readiness 的 prepared execution plan v2 绑定完整 provider-owned 双臂动态状态；Persistent Action 在生成执行器前比较 scene/frame/state identity、双臂 qpos/drive target/gripper/link pose，漂移时结构化零步拒绝且不二次规划。

@@ -384,6 +384,11 @@ class AgentComposedDispatch:
                                 slot: {
                                     "tool_id": source.tool_id,
                                     "source_scope": source.source_scope,
+                                    **(
+                                        {"scene_relation": source.scene_relation}
+                                        if source.scene_relation != "current"
+                                        else {}
+                                    ),
                                 }
                                 for slot, source in policy.argument_projection_plan.source_slots.items()
                             }

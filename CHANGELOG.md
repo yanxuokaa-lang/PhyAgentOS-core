@@ -5,6 +5,47 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.9.0 (2026-10-07 14:59) - codex
+
+### 变更摘要 / Change Summary
+- [policy] [feat] 扩展 provider-neutral named projection：按 Coordinator-owned identity 从 producer 集合唯一匹配并展开 consumer 字段，同时支持 world-changing predecessor effect scene。 (local)
+- [policy] [feat] Extend provider-neutral named projections to uniquely match and expand producer collection items by Coordinator-owned identity and support world-changing predecessor effect scenes. (local)
+- [policy] [fix] 为 `object.acquire` 与 `object.place` 声明前驱投影；Agent 显式选择 Action/source record，Coordinator 只编译受权事实，不自动执行、重试或 replan。 (local)
+- [policy] [fix] Declare predecessor projections for `object.acquire` and `object.place`; the Agent explicitly selects the Action/source record while the Coordinator only compiles authorized facts and never auto-executes, retries, or replans. (local)
+
+### 文件变更详情 / File Changes
+- [修改 / Modified] `PhyAgentOS/planning/contracts.py:L95-L152,L206-L214,L426-L445`、`projection.py:L180-L319`：新增 `scene_relation`、source entity join 与 unique-item collection field map / add scene relations, source-entity joins, and unique-item collection field maps.
+- [修改 / Modified] `PhyAgentOS/agent/planning_loop.py:L456-L530`、`planning_dispatch.py:L382-L396`：校验并暴露 Tool/scope/current-or-effect scene/identity 来源语义 / validate and expose Tool, scope, current-or-effect scene, and identity source semantics.
+- [修改 / Modified] `object.acquire.tool.yaml:L6-L34`、`object_acquire.py:L263-L297`、`object.place.tool.yaml:L6-L34`、`object_place.py:L288-L321`：声明 prepare→acquire 与 acquire-effect→place 投影 / declare prepare-to-acquire and acquisition-effect-to-place projections.
+- [新增测试 / Added Tests] `tests/test_action_selection_projection.py:L1-L446`：唯一/零/重复 join、两段 Action selection 与 effect-scene mismatch fail-closed 回归 / unique, zero, duplicate joins, two Action selections, and effect-scene mismatch regressions.
+- [新增 / Added] `ACTION_SELECTION_PROJECTION_DIAGNOSIS_20261007.md:L1-L54`、`ACTION_NODE_AGENTLOOP_CONVERGENCE_DIAGNOSIS_20261007.md:L1-L45`、`IMPLEMENTATION_REVIEW_V12_9_0.md:L1-L69`：两份诊断与七维审核 / two diagnoses and a seven-dimension review.
+- [修改 / Modified] Skill manifests/release notes/version test：发布 `pick-place-workflow 2.10.15`；Node `0.10.8`、Adapter `0.9.3` 不变 / publish Skill `2.10.15`; Node and Adapter remain unchanged.
+
+### 关键 Diff / Key Diff
+```diff
+-Agent browses a predecessor and manually assembles 12/14 Action fields
++ToolSpec declares named predecessor slots and projection paths
++Agent selects one authorized record_id
++Coordinator validates Tool/scope/scene/entity and compiles arguments
+```
+```diff
+-all projection sources must belong to the current scene
++scene_relation=current | predecessor_effect
++predecessor_effect.new_scene_revision must equal the current scene
+```
+
+### 七维 Code Review / Seven-Dimension Review
+- Blocker 0、Major 0、Minor 0。架构、正确性、恢复/幂等、机器人安全、扩展兼容、可观测性/可维护性、AgentLoop 自主性/收敛全部通过。
+- Zero Blocker, Major, or Minor findings. Architecture, correctness, recovery/idempotency, robotics safety, extensibility, observability/maintainability, and AgentLoop autonomy/convergence pass.
+- `node_selection_no_progress` 保持为有界收敛保护；没有 RGB/颜色/排列/benchmark/实体/相机/机械臂硬编码，也没有自动选择、Action、重试或 replan。
+- `node_selection_no_progress` remains the bounded convergence guard; no RGB/color/order/benchmark/entity/camera/arm hardcoding or automatic selection, Action, retry, or replan was added.
+
+### 验证 / Validation
+- Focused planning/projection: `118 passed`; full Core: `785 passed`; full Skill: `375 passed`.
+- Ruff、compileall、`git diff --check` passed.
+- 未创建/恢复 AgentTask，未调用 Gateway Query/Action，未执行 simulator step、物理运动或 Runtime 生命周期操作。
+- No AgentTask, Gateway Query/Action, simulator step, physical motion, or Runtime lifecycle operation was performed.
+
 ## v12.8.4 (2026-10-07 13:52) - codex
 
 ### 变更摘要 / Change Summary
@@ -150,45 +191,3 @@
 ### Git 提交 / Git Commit
 - Commit: `715e8e9`（实现 / implementation）
 - Branch: `feature/planning-loop`
-
-## v12.8.0 (2026-10-06 17:49) - codex
-
-### 变更摘要 / Change Summary
-- [policy] [feat] 新增 Adapter-owned `contact_qualification.mode`：当前 GraspNet profile 使用 `planner_world_only`，关闭完整 depth occupancy、unknown/occluded 分类及局部手掌/手指点云扫掠；完整 `observed_occupancy` 模式保持可选。 (local)
-- [policy] [feat] Add Adapter-owned `contact_qualification.mode`: the current GraspNet profile uses `planner_world_only`, disabling full-depth occupancy, unknown/occluded classification, and local palm/finger point-cloud sweeps while retaining optional `observed_occupancy`. (local)
-- [sense] [fix] 简化模式仍先安装 Curobo planning world，保留其他绑定对象、原生桌面/观测支撑面与 peer arms，并继续执行接触和完整搬放路线的碰撞、IK、关节限位及桌面净空检查。 (local)
-- [sense] [fix] Simplified mode still installs the Curobo planning world first, retaining other bound objects, the native table/observed support, and peer arms, and continues collision, IK, joint-limit, and table-clearance checks for contact and the complete route. (local)
-
-### 文件变更详情 / File Changes
-- [新增 / Added] `robotwin20_adapter/contact_qualification.py:L1-L36`：共享策略枚举与 profile 组合校验 / shared policy enum and profile-combination validation.
-- [修改 / Modified] `persistent_deployment.py:L19,L192-L212`、`persistent_route_builder.py:L19,L54-L66,L257-L323`、`robotwin_persistent_engine.py:L428`、`robotwin_route_planner.py:L311-L437`：从 profile 到 Runtime 传播并分派策略 / propagate and dispatch policy from profile to Runtime.
-- [修改 / Modified] `robotwin_contact_qualification.py:L75-L160`：新增仅由规划世界执行的接触资格路径 / add planner-world-only contact qualification.
-- [修改 / Modified] route-input profiles `L1-L10` 与 materializer/replay：schema v4、显式模式和一致 replay / schema v4, explicit mode, and consistent replay.
-- [修改 / Modified] Adapter tests：新增模式、planner fail-closed、无 observed 指标与非法 profile 回归；`README.md:L689-L707` 记录范围 / add mode, planner-failure, no-observed-metric, and invalid-profile regressions and document scope.
-- [新增 / Added] `docs/forge/IMPLEMENTATION_REVIEW_V12_8_0.md:L1-L63`：七维审核 / seven-dimension review.
-
-### 关键 Diff / Key Diff
-```diff
--observed_collision: {depth/voxel/unknown policy...}
-+contact_qualification:
-+  mode: planner_world_only
-```
-```diff
--local_contact(...) + visibility_counts(...)
-+evaluate_contact(...) + finite non-negative table clearance
-```
-
-### 七维 Code Review / Seven-Dimension Review
-- Blocker 0、Major 0、Minor 1。架构、正确性、恢复/幂等、声明范围内机器人安全、扩展、可观测性和 AgentLoop 自主性通过；Minor 是简化世界不保证未识别或 unknown/occluded 障碍物，不能作为开放场景/硬件完整安全证明。
-- Zero Blocker, zero Major, one Minor. Architecture, correctness, recovery/idempotency, robotics safety within scope, extensibility, observability, and AgentLoop autonomy pass; simplified mode does not cover unidentified or unknown/occluded obstacles and is not an open-world or hardware safety proof.
-
-### 验证 / Validation
-- Adapter focused `79 passed`; Skill/release/install `87 passed`; Ruff、compileall、`git diff --check` passed.
-- Full Adapter `773 passed, 17 failed`; failures are existing environment/fixture gaps (`scipy`, `cv2`, unrelated Action/Backend fixtures), not changed-path regressions.
-- Adapter `0.9.0`、Skill `2.10.11`、Node `0.10.5`; Node SHA-256 `a431812a48ab34a9aab77142bacb4a3583133da585361351f94e24f97c052088`，Skill bundle SHA-256 `86bcffb6d484f88e9dd453006cfca3a128f33c6e60680bc50fcc64ce099aee40`。
-- No AgentTask, Gateway Query/Action, simulator step, physical motion, install, or Runtime restart.
-
-### Git 提交 / Git Commit
-- Commit: `28700b0`（implementation）
-- Branch: `feature/planning-loop`
-- 时间 / Time: 2026-10-06 17:50 Asia/Shanghai
