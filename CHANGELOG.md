@@ -12,8 +12,8 @@
 - [env] [chore] After proving all three ownership collections empty and zero non-terminal tasks, normally stopped the old Runtime without `--force`, installed Skill `2.10.14` and Node `0.10.8`, and started new Runtime `runtime_1c512b49353c4b23`. (local)
 
 ### 文件变更详情 / File Changes
-- [修改 / Modified] `changelog/2026-10_part2.md:L3-L47`：记录停止、安装、启动、版本/哈希与 no-motion 验收 / record stop, install, start, version/hash, and no-motion acceptance.
-- [修改 / Modified] `CHANGELOG.md:L8-L27`：维护最近五个版本 / maintain the latest five versions.
+- [修改 / Modified] `changelog/2026-10_part2.md:L3-L52`：记录停止、安装、启动、版本/哈希与 no-motion 验收 / record stop, install, start, version/hash, and no-motion acceptance.
+- [修改 / Modified] `CHANGELOG.md:L8-L32`：维护最近五个版本 / maintain the latest five versions.
 
 ### 关键 Diff / Key Diff
 ```diff
@@ -25,6 +25,11 @@
 - Dora running、Gateway ready、11/11 Tool context ready；Node lock 和运行环境 binary 均验证为 `0.10.8`，ownership 为空，非终态任务为 0。
 - 本地场景理解 primary 为 `qwen3-vl-4b-awq`；fallback 与 Agent 默认均为 `gpt-6.1-sol`、`reasoning_effort=high`；operator env 保持 `0600`。
 - 未创建/恢复 AgentTask，未调用 Gateway Query/Action，未执行 simulator step 或物理运动。
+
+### Git 提交 / Git Commit
+- Commit: `de2dcb6`（deployment record）
+- Branch: `feature/planning-loop`
+- 时间 / Time: `2026-10-07 13:59 Asia/Shanghai`
 
 ## v12.8.3 (2026-10-06 23:39) - codex
 
