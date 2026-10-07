@@ -36,7 +36,7 @@
 - Node `0.10.12` SHA-256 `912bed56c4d1dfd8627186f0e78fb2eb10f55dea6fb2ebf2825c496905835903`；Skill `3.0.4` SHA-256 `3917e65fa0e2372b18e0405ce60ac901bea7cf4d629ba48942c93209e1f2d4e4`；未安装或启动。 (local)
 
 ### Git 提交 / Git Commit
-- Commit: pending
+- Commit: `4ce9f45`（qualification evidence identity fix, diagnostics, seven-dimension review, and no-motion regressions）
 - Branch: `feature/planning-loop`
 
 ## v12.9.7 (2026-10-07 21:36) - codex
