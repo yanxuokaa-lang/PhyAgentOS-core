@@ -5,6 +5,28 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.9.5 (2026-10-07 19:07) - codex
+
+### 变更摘要 / Change Summary
+- [env] [chore] 将唯一非终态旧任务终结为 `failed`；旧 Runtime 保留的未知 Action ownership 经受支持的强制停止进入审计记录，未重发 Action，也未声明物理结果已对账。 (local)
+- [env] [chore] Settle the only non-terminal old task as `failed`; preserve the old Runtime's unknown-Action ownership in the supported forced-stop audit without resending the Action or claiming physical reconciliation. (local)
+- [chore] [release] 安装并启动 Skill `3.0.2`、Node `0.10.10`，保留 `robotwin-blocks-ranking-graspnet` profile、operator env、模型配置和权限。 (local)
+- [chore] [release] Install and start Skill `3.0.2` and Node `0.10.10` while preserving the GraspNet profile, operator environment, model configuration, and permissions. (local)
+
+### 部署关键 Diff / Deployment Key Diff
+```diff
+-pick-place-workflow 3.0.0; robotwin20_persistent_host 0.10.8; runtime_c1c591d68c0b46aa
++pick-place-workflow 3.0.2; robotwin20_persistent_host 0.10.10; runtime_4e1e061c14614c73
+-task_e3949a368fad4e3d executing; retained invocation/task binding
++task_e3949a368fad4e3d failed; nonterminal_tasks=0; new runtime ownership=[]
+```
+
+### 验证 / Validation
+- Dora flow、Gateway 与 11/11 Tool context ready；Node receipt 和实际 spawn 路径均验证为 `0.10.10`，新 Runtime ownership 为空。 (local)
+- 本地场景理解 primary 保持 `qwen3-vl-4b-awq`；fallback 保持 `gpt-6.1-sol/high`；operator env 权限为 `0600`。 (local)
+- Node SHA-256 `d807b1b3e6b9a86f6cc597da8ab6de9643b8b23a75bc72372889ac1d45fd195e`；Skill SHA-256 `c9992caa9c256780307e1a4de33a15f90971292e5db82c7ebd5f49f0800f1772`。 (local)
+- 未创建/恢复新 AgentTask，未调用 Gateway Query/Action，未推进 simulator step 或物理运动。 (local)
+
 ## v12.9.4 (2026-10-07 18:45) - codex
 
 ### 变更摘要 / Change Summary
@@ -154,49 +176,3 @@
 - Commit: `b6afdc7`（实现与七维审核 / implementation and seven-dimension review）
 - Branch: `feature/planning-loop`
 - 时间 / Time: 2026-10-07 15:37 Asia/Shanghai
-
-## v12.9.0 (2026-10-07 14:59) - codex
-
-### 变更摘要 / Change Summary
-- [policy] [feat] 扩展 provider-neutral named projection：按 Coordinator-owned identity 从 producer 集合唯一匹配并展开 consumer 字段，同时支持 world-changing predecessor effect scene。 (local)
-- [policy] [feat] Extend provider-neutral named projections to uniquely match and expand producer collection items by Coordinator-owned identity and support world-changing predecessor effect scenes. (local)
-- [policy] [fix] 为 `object.acquire` 与 `object.place` 声明前驱投影；Agent 显式选择 Action/source record，Coordinator 只编译受权事实，不自动执行、重试或 replan。 (local)
-- [policy] [fix] Declare predecessor projections for `object.acquire` and `object.place`; the Agent explicitly selects the Action/source record while the Coordinator only compiles authorized facts and never auto-executes, retries, or replans. (local)
-
-### 文件变更详情 / File Changes
-- [修改 / Modified] `PhyAgentOS/planning/contracts.py:L95-L152,L206-L214,L426-L445`、`projection.py:L180-L319`：新增 `scene_relation`、source entity join 与 unique-item collection field map / add scene relations, source-entity joins, and unique-item collection field maps.
-- [修改 / Modified] `PhyAgentOS/agent/planning_loop.py:L456-L530`、`planning_dispatch.py:L382-L396`：校验并暴露 Tool/scope/current-or-effect scene/identity 来源语义 / validate and expose Tool, scope, current-or-effect scene, and identity source semantics.
-- [修改 / Modified] `object.acquire.tool.yaml:L6-L34`、`object_acquire.py:L263-L297`、`object.place.tool.yaml:L6-L34`、`object_place.py:L288-L321`：声明 prepare→acquire 与 acquire-effect→place 投影 / declare prepare-to-acquire and acquisition-effect-to-place projections.
-- [新增测试 / Added Tests] `tests/test_action_selection_projection.py:L1-L446`：唯一/零/重复 join、两段 Action selection 与 effect-scene mismatch fail-closed 回归 / unique, zero, duplicate joins, two Action selections, and effect-scene mismatch regressions.
-- [新增 / Added] `ACTION_SELECTION_PROJECTION_DIAGNOSIS_20261007.md:L1-L54`、`ACTION_NODE_AGENTLOOP_CONVERGENCE_DIAGNOSIS_20261007.md:L1-L45`、`IMPLEMENTATION_REVIEW_V12_9_0.md:L1-L69`：两份诊断与七维审核 / two diagnoses and a seven-dimension review.
-- [修改 / Modified] Skill manifests/release notes/version test：发布 `pick-place-workflow 2.10.15`；Node `0.10.8`、Adapter `0.9.3` 不变 / publish Skill `2.10.15`; Node and Adapter remain unchanged.
-
-### 关键 Diff / Key Diff
-```diff
--Agent browses a predecessor and manually assembles 12/14 Action fields
-+ToolSpec declares named predecessor slots and projection paths
-+Agent selects one authorized record_id
-+Coordinator validates Tool/scope/scene/entity and compiles arguments
-```
-```diff
--all projection sources must belong to the current scene
-+scene_relation=current | predecessor_effect
-+predecessor_effect.new_scene_revision must equal the current scene
-```
-
-### 七维 Code Review / Seven-Dimension Review
-- Blocker 0、Major 0、Minor 0。架构、正确性、恢复/幂等、机器人安全、扩展兼容、可观测性/可维护性、AgentLoop 自主性/收敛全部通过。
-- Zero Blocker, Major, or Minor findings. Architecture, correctness, recovery/idempotency, robotics safety, extensibility, observability/maintainability, and AgentLoop autonomy/convergence pass.
-- `node_selection_no_progress` 保持为有界收敛保护；没有 RGB/颜色/排列/benchmark/实体/相机/机械臂硬编码，也没有自动选择、Action、重试或 replan。
-- `node_selection_no_progress` remains the bounded convergence guard; no RGB/color/order/benchmark/entity/camera/arm hardcoding or automatic selection, Action, retry, or replan was added.
-
-### 验证 / Validation
-- Focused planning/projection: `118 passed`; full Core: `785 passed`; full Skill: `375 passed`.
-- Ruff、compileall、`git diff --check` passed.
-- 未创建/恢复 AgentTask，未调用 Gateway Query/Action，未执行 simulator step、物理运动或 Runtime 生命周期操作。
-- No AgentTask, Gateway Query/Action, simulator step, physical motion, or Runtime lifecycle operation was performed.
-
-### Git 提交 / Git Commit
-- Commit: `3550c50`（implementation, diagnoses, and review）
-- Branch: `feature/planning-loop`
-- 时间 / Time: 2026-10-07 Asia/Shanghai
