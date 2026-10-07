@@ -5,6 +5,37 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.9.10 (2026-10-07 23:47) - codex
+
+### 变更摘要 / Change Summary
+- [env] [chore] 在任务全部终态且 Runtime ownership 为空后正常停止 Skill `3.0.3`/Node `0.10.11`，安装 Skill `3.0.5`/Node `0.10.13`，并沿用现有 profile、operator env 与模型配置启动新 Runtime。 (local)
+- [env] [chore] After all tasks were terminal and Runtime ownership was empty, normally stopped Skill `3.0.3`/Node `0.10.11`, installed Skill `3.0.5`/Node `0.10.13`, and started a new Runtime with the existing profile, operator environment, and model configuration. (local)
+- [eval] [test] 只读验收 Runtime `runtime_d8fa6bfad3044c80`、Dora、Gateway、11/11 Tool context、Node receipt、实际 spawn 路径和空 ownership；未创建任务或调用 Query/Action。 (local)
+- [eval] [test] Read-only accepted Runtime `runtime_d8fa6bfad3044c80`, Dora, Gateway, all 11 Tool contexts, the Node receipt, actual spawn path, and empty ownership; no task or Query/Action was created or invoked. (local)
+
+### 部署详情 / Deployment Details
+- 旧 Runtime `runtime_7791dd9a1eb94972` 停止前：`187 cancelled + 67 failed`、非终态 0，active invocation/session/task-binding 为空。普通 stop 返回 stopped；旧 host 未在 Dora 宽限期响应并由 Dora SIGKILL 清理，但没有未决 Action ownership。 (local)
+- 新 Skill archive SHA-256 `61f7625b39868241f23baad482a35d006cdf00deecb3b41cf22523e641056fc4`；Node archive SHA-256 `ecb7f18857e9b42ee21eee92bc6936151d71fb0e90df88c4ba89a054fa1d38d2`，installed executable SHA-256 `cd7069a90ae95e75e27ee48a67d123acd038f0dab220efa523bac7b5d912eb63`。 (local)
+- Runtime lock 与生命周期日志确认 Skill `3.0.5`、Node `0.10.13`，实际 spawn 路径为版本化 `robotwin20_persistent_host-0.10.13-linux-x86_64`。 (local)
+- 模型配置保持本地 Qwen 场景理解 primary，`gpt-6.1-sol/high` fallback；operator env 权限保持 `0600`。 (local)
+
+### 关键 Diff / Key Diff
+```diff
+-pick-place-workflow 3.0.3; node 0.10.11; runtime_7791dd9a1eb94972
++pick-place-workflow 3.0.5; node 0.10.13; runtime_d8fa6bfad3044c80
+```
+
+### 安全与验收 / Safety and Acceptance
+- 新 Runtime running，Dora running、Gateway ready、11/11 Tool contexts ready；active invocation/session/task-binding 为空、`last_error=null`。 (local)
+- 未创建/恢复 AgentTask，未调用 Gateway Query/Action，未推进 simulator step 或物理运动；qualification、frame/calibration、碰撞、IK、限位、workspace、stop、Action admission 与 reconciliation 门禁保持不变。 (local)
+
+### 文件变更详情 / File Changes
+- [修改 / Modified] `changelog/2026-10_part2.md:L3-L51`、`CHANGELOG.md:L8-L38`：部署与验收记录；Runtime/Skill/Node 安装状态位于 operator-owned `~/.PhyAgentOS`，不提交凭据或生成状态。 (local)
+
+### Git 提交 / Git Commit
+- Commit: `PENDING`（部署日志与 Runtime 验收 / deployment log and Runtime acceptance）
+- Branch: `feature/planning-loop`
+
 ## v12.9.9 (2026-10-07 23:15) - codex
 
 ### 变更摘要 / Change Summary
@@ -147,32 +178,5 @@
 
 ### Git 提交 / Git Commit
 - Commit: `4224d65`（实现、回归与七维审核 / implementation, regression coverage, and seven-dimension review）
-- Branch: `feature/planning-loop`
-- 时间 / Time: `2026-10-07 Asia/Shanghai`
-
-## v12.9.5 (2026-10-07 19:07) - codex
-
-### 变更摘要 / Change Summary
-- [env] [chore] 将唯一非终态旧任务终结为 `failed`；旧 Runtime 保留的未知 Action ownership 经受支持的强制停止进入审计记录，未重发 Action，也未声明物理结果已对账。 (local)
-- [env] [chore] Settle the only non-terminal old task as `failed`; preserve the old Runtime's unknown-Action ownership in the supported forced-stop audit without resending the Action or claiming physical reconciliation. (local)
-- [chore] [release] 安装并启动 Skill `3.0.2`、Node `0.10.10`，保留 `robotwin-blocks-ranking-graspnet` profile、operator env、模型配置和权限。 (local)
-- [chore] [release] Install and start Skill `3.0.2` and Node `0.10.10` while preserving the GraspNet profile, operator environment, model configuration, and permissions. (local)
-
-### 部署关键 Diff / Deployment Key Diff
-```diff
--pick-place-workflow 3.0.0; robotwin20_persistent_host 0.10.8; runtime_c1c591d68c0b46aa
-+pick-place-workflow 3.0.2; robotwin20_persistent_host 0.10.10; runtime_4e1e061c14614c73
--task_e3949a368fad4e3d executing; retained invocation/task binding
-+task_e3949a368fad4e3d failed; nonterminal_tasks=0; new runtime ownership=[]
-```
-
-### 验证 / Validation
-- Dora flow、Gateway 与 11/11 Tool context ready；Node receipt 和实际 spawn 路径均验证为 `0.10.10`，新 Runtime ownership 为空。 (local)
-- 本地场景理解 primary 保持 `qwen3-vl-4b-awq`；fallback 保持 `gpt-6.1-sol/high`；operator env 权限为 `0600`。 (local)
-- Node SHA-256 `d807b1b3e6b9a86f6cc597da8ab6de9643b8b23a75bc72372889ac1d45fd195e`；Skill SHA-256 `c9992caa9c256780307e1a4de33a15f90971292e5db82c7ebd5f49f0800f1772`。 (local)
-- 未创建/恢复新 AgentTask，未调用 Gateway Query/Action，未推进 simulator step 或物理运动。 (local)
-
-### Git 提交 / Git Commit
-- Commit: `409e0e2`（部署与验收记录 / deployment and acceptance record）
 - Branch: `feature/planning-loop`
 - 时间 / Time: `2026-10-07 Asia/Shanghai`
