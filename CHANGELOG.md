@@ -37,6 +37,11 @@
 - Node `0.10.9` SHA-256 `523ce506eeee3ffc143715ddd1bb98671dfa3ef7847d6de143da45214bfe4d8f`；Skill `3.0.1` SHA-256 `b323781c830e98259b8bb47b65a08f627b3b80ebd1fa1733a177f9f78da8865f`。未安装或启动。 (local)
 - 当前解释器缺少现有视频测试依赖 `cv2`；验证未创建 AgentTask、调用 Gateway、推进 simulator/物理运动或改变 Runtime 生命周期。 (local)
 
+### Git 提交 / Git Commit
+- Commit: `3a1014a`（实现、诊断与七维审核 / implementation, diagnoses, and seven-dimension review）
+- Branch: `feature/planning-loop`
+- 时间 / Time: 2026-10-07 18:36 Asia/Shanghai
+
 ## v12.9.2 (2026-10-07 15:45) - codex
 
 ### 变更摘要 / Change Summary
