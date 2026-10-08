@@ -20,7 +20,7 @@
 - `grounding.py:L93-L121,L1028-L1061`, `loop.py:L801,L1233-L1310,L1719-L1754`; Adapter/Core focused `192 passed`, planning/recovery `177 passed`, Core `803 passed`; Ruff, compileall, and diff check passed. (local)
 
 ### Git 提交 / Git Commit
-- Commit: `a7e9c76`; Branch: `feature/planning-loop`; 时间 / Time: 2026-10-08 Asia/Shanghai
+- Commit: `c86d736`; Branch: `feature/planning-loop`; 时间 / Time: 2026-10-08 Asia/Shanghai
 
 ## v12.10.6 (2026-10-08 18:00) - codex
 
