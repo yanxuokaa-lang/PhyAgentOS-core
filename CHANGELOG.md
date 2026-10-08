@@ -5,6 +5,20 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.10.6 (2026-10-08 18:00) - codex
+
+### 变更摘要 / Change Summary
+- [env] [chore] 授权 force-stop 清理残留 Runtime binding，刷新 Core editable 安装并启动新 Runtime `runtime_fe96f3c9efae4935`。 (local)
+- [env] [chore] User-authorized force-stop cleared the stale Runtime binding, refreshed the Core editable installation, and started Runtime `runtime_fe96f3c9efae4935`. (local)
+- [eval] [test] Gateway `/tools`、Dora、11/11 Tool contexts ready；Node `1.0.1` SHA-256 `947c2815fe1f9bb18b4c5794112259f792612e9963314c01df2f49d81ecbc63`；ownership 与非终态任务均为空。 (local)
+- [eval] [test] Gateway `/tools`, Dora, and all 11/11 Tool contexts are ready; Node `1.0.1` SHA-256 is `947c2815fe1f9fbb18b4c5794112259f792612e9963314c01df2f49d81ecbc63`; Runtime ownership and non-terminal tasks are empty. (local)
+
+### 验证边界 / Validation Boundary
+- 仅执行 lifecycle、editable install 和只读健康检查；未创建/恢复任务，未调用 Query/Action，未推进 simulator 或物理运动。 / Only lifecycle, editable install, and read-only health checks ran; no task was created/resumed, no Query/Action was invoked, and no simulator or physical motion advanced.
+
+### Git 提交 / Git Commit
+- Commit: 待提交；Branch: `feature/planning-loop`; 时间 / Time: 2026-10-08 Asia/Shanghai
+
 ## v12.10.5 (2026-10-08 18:00) - codex
 
 ### 变更摘要 / Change Summary
