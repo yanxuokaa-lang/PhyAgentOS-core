@@ -798,6 +798,7 @@ class AgentLoop:
         discovery_progress = None
         discovery_stalled_rounds = 0
         discovery_correction_used = False
+        stale_lineage_signature = None
         planning_progress = None
         planning_stalled_rounds = 0
         planning_correction_used = False
@@ -1232,6 +1233,81 @@ class AgentLoop:
                     messages = self.context.add_tool_result(
                         messages, tool_call.id, tool_call.name, result
                     )
+                    stale_lineage = self._scene_revision_mismatch(result)
+                    if stale_lineage is not None:
+                        if stale_lineage_signature == stale_lineage:
+                            for deferred in response.tool_calls[call_index + 1 :]:
+                                messages = self.context.add_tool_result(
+                                    messages,
+                                    deferred.id,
+                                    deferred.name,
+                                    json.dumps(
+                                        {
+                                            "ok": False,
+                                            "status": "deferred_to_stale_lineage_recovery",
+                                            "error": {
+                                                "type": "control_handoff",
+                                                "message": (
+                                                    "Tool was not executed because the same stale "
+                                                    "scene lineage was rejected twice."
+                                                ),
+                                            },
+                                            "motion_authorized": False,
+                                        },
+                                        ensure_ascii=False,
+                                        separators=(",", ":"),
+                                    ),
+                                )
+                            turn_failure_code = "scene_lineage_no_progress"
+                            final_content = (
+                                "Discovery stopped: the same stale scene lineage was rejected "
+                                "again without a successful fresh observation or understanding "
+                                "record. Choose a new declared evidence path; no observation, "
+                                "binding, or Action was automatically dispatched."
+                            )
+                            yield_to_host = True
+                            break
+                        stale_lineage_signature = stale_lineage
+                        messages.append({
+                            "role": "system",
+                            "content": (
+                                "The Runtime rejected this binding because its declared scene "
+                                "lineage is stale: expected scene revision "
+                                f"{stale_lineage[0]}, actual {stale_lineage[1]}. The Tool is "
+                                "available, but this input is not admissible. Choose a fresh "
+                                "declared observation/understanding Query before binding; the "
+                                "host will not observe, bind, replan, or retry an Action for you."
+                            ),
+                        })
+                        for deferred in response.tool_calls[call_index + 1 :]:
+                            messages = self.context.add_tool_result(
+                                messages,
+                                deferred.id,
+                                deferred.name,
+                                json.dumps(
+                                    {
+                                        "ok": False,
+                                        "status": "deferred_to_stale_lineage_recovery",
+                                        "error": {
+                                            "type": "control_handoff",
+                                            "message": (
+                                                "Tool was not executed because the current "
+                                                "scene lineage is stale."
+                                            ),
+                                        },
+                                        "motion_authorized": False,
+                                    },
+                                    ensure_ascii=False,
+                                    separators=(",", ":"),
+                                ),
+                            )
+                        break
+                    elif self._scene_evidence_query_succeeded(
+                        tool_name=tool_call.name,
+                        arguments=tool_call.arguments,
+                        result=result,
+                    ):
+                        stale_lineage_signature = None
                     if (
                         tool_call.name == "forge_tool_context"
                         and active_task is not None
@@ -1639,6 +1715,39 @@ class AgentLoop:
             and error.get("code") in request_error_codes
             and error.get("failure_stage") != "provider"
         )
+
+    @staticmethod
+    def _scene_revision_mismatch(result: str) -> tuple[str, str] | None:
+        """Return the provider-neutral stale scene lineage, if one was reported."""
+        try:
+            payload = json.loads(result)
+        except (TypeError, json.JSONDecodeError):
+            return None
+        data = payload.get("data") if isinstance(payload, dict) else None
+        error = data.get("error") if isinstance(data, dict) else None
+        if not isinstance(error, dict) or error.get("code") != "scene_revision_mismatch":
+            return None
+        expected = error.get("expected_scene_revision")
+        actual = error.get("actual_scene_revision")
+        if not isinstance(expected, str) or not isinstance(actual, str):
+            return None
+        return expected, actual
+
+    @staticmethod
+    def _scene_evidence_query_succeeded(
+        *, tool_name: str, arguments: Any, result: str
+    ) -> bool:
+        """Recognize a successful evidence Query that can establish a new lineage."""
+        if tool_name != "forge_tool_query" or not isinstance(arguments, Mapping):
+            return False
+        if arguments.get("tool_id") not in {"scene.observe", "scene.understand"}:
+            return False
+        try:
+            payload = json.loads(result)
+        except (TypeError, json.JSONDecodeError):
+            return False
+        data = payload.get("data") if isinstance(payload, dict) else None
+        return isinstance(data, dict) and data.get("status") == "available"
 
     async def run_node_turn(
         self,

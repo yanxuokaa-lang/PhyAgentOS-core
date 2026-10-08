@@ -5,6 +5,23 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.10.7 (2026-10-08 19:33) - codex
+
+### 变更摘要 / Change Summary
+- [comm] [fix] 动作后 scene revision 变化时，Adapter 返回结构化 `scene_revision_mismatch`（expected/actual、stage、恢复建议），旧 binding 继续 fail-closed，不自动替换 lineage。 (local)
+- [comm] [fix] After an action-driven scene revision changes, the Adapter returns structured `scene_revision_mismatch` (expected/actual, stage, recovery advice); stale bindings remain fail-closed and are never silently rewritten. (local)
+- [Core] [fix] AgentLoop 对相同 stale lineage 只允许一次纠正回合；没有成功新 observation/understanding 时以 `scene_lineage_no_progress` 收敛，并延迟同批后续 Tool。 (local)
+- [Core] [fix] AgentLoop allows one corrective turn for the same stale lineage; without a successful new observation/understanding it converges as `scene_lineage_no_progress` and defers later Tools in that batch. (local)
+- [docs] [docs] 保存 `SCENE_BIND_STALE_LINEAGE_DIAGNOSIS_20261008.md` 与 `DISCOVERY_STALE_LINEAGE_CONVERGENCE_DIAGNOSIS_20261008.md`，覆盖 PAOS ownership、AgentLoop 和七维验收。 (local)
+- [docs] [docs] Persist `SCENE_BIND_STALE_LINEAGE_DIAGNOSIS_20261008.md` and `DISCOVERY_STALE_LINEAGE_CONVERGENCE_DIAGNOSIS_20261008.md` covering PAOS ownership, AgentLoop behavior, and seven-dimension acceptance. (local)
+
+### 文件与验证 / Files and Validation
+- `grounding.py:L93-L121,L1028-L1061`、`loop.py:L801,L1233-L1310,L1719-L1754`；Adapter/Core focused `192 passed`，planning/recovery `177 passed`，Core `803 passed`；Ruff、compileall、diff check 通过。 (local)
+- `grounding.py:L93-L121,L1028-L1061`, `loop.py:L801,L1233-L1310,L1719-L1754`; Adapter/Core focused `192 passed`, planning/recovery `177 passed`, Core `803 passed`; Ruff, compileall, and diff check passed. (local)
+
+### Git 提交 / Git Commit
+- Commit: `a7e9c76`; Branch: `feature/planning-loop`; 时间 / Time: 2026-10-08 Asia/Shanghai
+
 ## v12.10.6 (2026-10-08 18:00) - codex
 
 ### 变更摘要 / Change Summary

@@ -232,6 +232,26 @@ def test_repeated_bind_reuses_current_binding_for_same_entity_set(tmp_path):
     assert second["evidence_refs"] == first["evidence_refs"]
 
 
+def test_stale_binding_reports_expected_and_actual_scene_lineage(tmp_path):
+    grounding, request, _ = setup(tmp_path)
+    grounding.client.revision = "s2"
+
+    result = GroundingEndpoint(grounding.bind).invoke(request)
+
+    assert result["status"] == "unavailable"
+    assert result["motion_authorized"] is False
+    error = result["error"]
+    assert error["code"] == "scene_revision_mismatch"
+    assert error["failure_stage"] == "current_scene"
+    assert error["retryable"] is True
+    assert error["retryable_in_revision"] is False
+    assert error["requires_replan"] is True
+    assert error["recommended_action"] == "refresh_declared_evidence"
+    assert error["expected_scene_revision"] == "s1"
+    assert error["actual_scene_revision"] == "s2"
+    assert grounding.bindings == {}
+
+
 def test_distinct_entity_sets_remain_separate_bindings(tmp_path):
     g, request, facts = setup(tmp_path)
     understanding = next(iter(g.understandings.values()))

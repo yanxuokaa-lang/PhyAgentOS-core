@@ -2858,6 +2858,66 @@ def test_discovery_repeated_reads_correct_once_then_stop(tmp_path, repeated_tool
     asyncio.run(exercise())
 
 
+def test_discovery_stale_scene_lineage_corrects_once_then_stops_without_refresh(tmp_path):
+    async def exercise():
+        c, task = setup_task(tmp_path, goal="Bind the current scene")
+        provider = ScriptedProvider([
+            _tool_response(0, "forge_tool_query", {
+                "task_id": task.task_id,
+                "tool_id": "scene.bind",
+                "arguments": {"entity_refs": ["entity://seen"]},
+            }),
+            _tool_response(1, "forge_tool_query", {
+                "task_id": task.task_id,
+                "tool_id": "scene.bind",
+                "arguments": {"entity_refs": ["entity://seen"]},
+            }),
+        ])
+        loop = AgentLoop(
+            bus=MessageBus(), provider=provider, workspace=tmp_path,
+            forge_task_coordinator=c, max_iterations=4, discovery_no_progress_limit=6,
+        )
+        stale = json.dumps({
+            "ok": True,
+            "data": {
+                "status": "unavailable",
+                "motion_authorized": False,
+                "error": {
+                    "code": "scene_revision_mismatch",
+                    "failure_stage": "current_scene",
+                    "retryable": True,
+                    "retryable_in_revision": False,
+                    "requires_replan": True,
+                    "recommended_action": "refresh_declared_evidence",
+                    "expected_scene_revision": "scene-1",
+                    "actual_scene_revision": "scene-3",
+                },
+            },
+        })
+        loop.tools.execute = AsyncMock(return_value=stale)
+
+        result = await loop._run_agent_loop(
+            [{"role": "user", "content": "Bind the current scene"}],
+            active_task_id=task.task_id,
+        )
+
+        assert result.turn_failure_code == "scene_lineage_no_progress"
+        assert len(provider.requests) == 2
+        assert result.tools_used == ["forge_tool_query", "forge_tool_query"]
+        assert all(
+            call.args[1]["tool_id"] == "scene.bind"
+            for call in loop.tools.execute.await_args_list
+        )
+        assert "no observation, binding, or Action was automatically dispatched" in result.content
+        assert sum(
+            message.get("role") == "system"
+            and "declared scene lineage is stale" in message.get("content", "")
+            for message in result.messages
+        ) == 1
+
+    asyncio.run(exercise())
+
+
 def test_discovery_correction_leaves_next_query_to_model_and_recovers(tmp_path):
     async def exercise():
         c, task = setup_task(tmp_path, goal="Inspect")

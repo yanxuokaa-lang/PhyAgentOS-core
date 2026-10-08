@@ -96,6 +96,22 @@ class Grounding:
         }
         actual = {key: state.get(key) for key in expected}
         holding_state = state.get("holding_state")
+        if actual["scene_revision"] != expected["scene_revision"]:
+            self._reject(
+                "scene binding lineage is stale for the current action-driven scene",
+                stage="current_scene",
+                code="scene_revision_mismatch",
+                failure_stage="current_scene",
+                retryable=True,
+                retryable_in_revision=False,
+                requires_replan=True,
+                recommended_action="refresh_declared_evidence",
+                fresh_evidence_requirements=("current_observation_lineage",),
+                expected_scene_revision=expected["scene_revision"],
+                actual_scene_revision=actual["scene_revision"],
+                expected={**expected, "holding_state": ["empty", "holding"]},
+                actual={**actual, "holding_state": holding_state},
+            )
         if actual != expected or holding_state not in {"empty", "holding"}:
             self._reject(
                 "grounding requires the current stable action-driven scene",
@@ -1024,8 +1040,22 @@ class GroundingEndpoint:
                 if isinstance(diagnostics, dict)
                 else "grounding_unavailable"
             )
+            error = {"code": code, "message": str(exc)}
+            if isinstance(diagnostics, dict):
+                for key in (
+                    "failure_stage",
+                    "retryable",
+                    "retryable_in_revision",
+                    "requires_replan",
+                    "recommended_action",
+                    "fresh_evidence_requirements",
+                    "expected_scene_revision",
+                    "actual_scene_revision",
+                ):
+                    if key in diagnostics:
+                        error[key] = deepcopy(diagnostics[key])
             value = {"status": "unavailable", "motion_authorized": False,
-                     "error": {"code": code, "message": str(exc)}}
+                     "error": error}
             if isinstance(diagnostics, dict):
                 value["diagnostics"] = deepcopy(diagnostics)
             return value
