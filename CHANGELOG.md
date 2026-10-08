@@ -19,7 +19,7 @@
 - 初审 2 项 Major 已修复；最终 Blocker 0、Major 0、Minor 0。 / Two initial Major findings were fixed; final Blocker 0, Major 0, Minor 0.
 
 ### Git 提交 / Git Commit
-- 待提交 / Pending commit: `feature/planning-loop`
+- Commit: `5aa2883`; Branch: `feature/planning-loop`; 时间 / Time: 2026-10-08 Asia/Shanghai
 
 ## v12.10.7 (2026-10-08 19:33) - codex
 
