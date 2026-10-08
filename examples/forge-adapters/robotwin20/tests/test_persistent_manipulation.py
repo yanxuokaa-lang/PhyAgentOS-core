@@ -151,6 +151,100 @@ def test_zero_step_failure_claims_no_changed_entities():
     assert effects["carry_forward_authorized"] is False
 
 
+def test_place_engine_projects_verified_postconditions_without_video_encoder(tmp_path):
+    from json import loads
+    from pathlib import Path
+
+    from robotwin_persistent_engine import RoboTwinPersistentEngine, _StopSignal
+    from robotwin_simulation_probe_worker import _artifact_path
+
+    class Video:
+        recorder = None
+
+        def start_action(self, *_args, **_kwargs):
+            return None
+
+        def finish_action(self, *_args, **_kwargs):
+            return ()
+
+    engine = object.__new__(RoboTwinPersistentEngine)
+    engine.root = Path(tmp_path)
+    engine.epoch = "postconditions"
+    engine.duration = 30
+    engine.stop = _StopSignal(engine.root / "stop")
+    engine.backend = SimpleNamespace(_task=SimpleNamespace(), snapshot=lambda: {"scene_revision": "scene-2"})
+    engine.video = Video()
+    engine._state = {"simulator_steps": 4, "assignment_ref": "assignment-1"}
+    engine._request = {"scene_revision": "scene-1"}
+    engine._advance_scene = lambda: "scene-3"
+    engine._verify_release = lambda: None
+
+    def phases():
+        yield {"phase": "retreat"}
+        return {"trajectory": True}
+
+    engine._phases = phases()
+    result = engine.execute(
+        "place",
+        {"scene_revision": "scene-2", "assignment_ref": "assignment-1", "entity_ref": "entity://one"},
+        Event(),
+        owner="paos:task-1",
+        invocation_id="invocation://object-place/1",
+    )
+
+    assert result["status"] == "succeeded"
+    assert result["release_confirmed"] is True
+    assert result["retreat_completed"] is True
+    assert result["clear_of_target"] is True
+    assert result["observation_ready"] is True
+    artifact = loads(_artifact_path(engine.root, result["artifact_refs"][0]).read_text())
+    assert artifact["observation_ready"] is True
+
+
+def test_place_engine_does_not_claim_clearance_without_retreat(tmp_path):
+    from robotwin_persistent_engine import RoboTwinPersistentEngine, _StopSignal
+
+    class Video:
+        recorder = None
+
+        def start_action(self, *_args, **_kwargs):
+            return None
+
+        def finish_action(self, *_args, **_kwargs):
+            return ()
+
+    engine = object.__new__(RoboTwinPersistentEngine)
+    engine.root = tmp_path
+    engine.epoch = "incomplete-route"
+    engine.duration = 30
+    engine.stop = _StopSignal(tmp_path / "stop")
+    engine.backend = SimpleNamespace(_task=SimpleNamespace(), snapshot=lambda: {"scene_revision": "scene-2"})
+    engine.video = Video()
+    engine._state = {"simulator_steps": 1, "assignment_ref": "assignment-1"}
+    engine._request = {"scene_revision": "scene-1"}
+    engine._advance_scene = lambda: "scene-3"
+    engine._verify_release = lambda: None
+
+    def phases():
+        yield {"phase": "descent"}
+        return {"trajectory": True}
+
+    engine._phases = phases()
+    result = engine.execute(
+        "place",
+        {"scene_revision": "scene-2", "assignment_ref": "assignment-1", "entity_ref": "entity://one"},
+        Event(),
+        owner="paos:task-1",
+        invocation_id="invocation://object-place/incomplete",
+    )
+
+    assert result["status"] == "succeeded"
+    assert result["release_confirmed"] is True
+    assert result["retreat_completed"] is False
+    assert result["clear_of_target"] is False
+    assert result["observation_ready"] is False
+
+
 @pytest.mark.parametrize("change", ["contact", "move", "missing", "unknown"])
 def test_scene_effects_fail_closed_when_entity_impact_is_not_proven(change):
     actors = {"entity://target": _Actor("target"), "entity://other": _Actor("other", 0.2)}

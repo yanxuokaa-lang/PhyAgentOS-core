@@ -580,6 +580,10 @@ class RoboTwinPersistentEngine:
         advancing = False
         video_refs: tuple[str, ...] = ()
         physical_phase_completed = False
+        release_confirmed = False
+        retreat_completed = False
+        clear_of_target = False
+        observation_ready = False
         before_entity_poses = self._bound_entity_poses()
         try:
             if self.stop.exists():
@@ -616,6 +620,14 @@ class RoboTwinPersistentEngine:
                     if phases_result is None:
                         raise ValueError("route completed without contact validation")
                     self._verify_release()
+                    release_confirmed = True
+                    retreat_completed = any(
+                        isinstance(record, Mapping) and record.get("phase") == "retreat"
+                        for record in phases
+                    )
+                    # The route planner's retreat phase performs the existing
+                    # clearance and contact checks before yielding its record.
+                    clear_of_target = retreat_completed
                     self._phases = None
                     break
             physical_phase_completed = True
@@ -635,7 +647,11 @@ class RoboTwinPersistentEngine:
                       "selected_arm": self._state.get("_assigned_arm"),
                       "failed_phase": None,
                       "arm_attempts": list(self._state.get("arm_selection_attempts", [])),
-                      "evidence_refs": []}
+                      "evidence_refs": [],
+                      "release_confirmed": release_confirmed if phase == "place" else False,
+                      "retreat_completed": retreat_completed if phase == "place" else False,
+                      "clear_of_target": clear_of_target if phase == "place" else False,
+                      "observation_ready": False}
         except Exception as exc:
             changed = self._state.get("simulator_steps", 0) > start_steps
             stop_errors = []
@@ -659,7 +675,11 @@ class RoboTwinPersistentEngine:
                       "selected_arm": self._state.get("_assigned_arm"),
                       "failed_phase": self._state.get("phase", phase),
                       "arm_attempts": list(self._state.get("arm_selection_attempts", [])),
-                      "evidence_refs": []}
+                      "evidence_refs": [],
+                      "release_confirmed": False,
+                      "retreat_completed": False,
+                      "clear_of_target": False,
+                      "observation_ready": False}
             if not evidence_failure:
                 try:
                     video_refs = self.video.finish_action(
@@ -680,6 +700,18 @@ class RoboTwinPersistentEngine:
             result,
             evidence_ref=reference,
         )
+        if phase == "place" and result.get("status") == "succeeded":
+            # The action artifact below is the observation/evidence boundary;
+            # publish readiness only after the route and scene revision are
+            # already known, while keeping the public contract provider-neutral.
+            observation_ready = bool(
+                isinstance(result.get("new_scene_revision"), str)
+                and result["new_scene_revision"].strip()
+                and release_confirmed
+                and retreat_completed
+                and clear_of_target
+            )
+            result["observation_ready"] = observation_ready
         probe._json_artifact(self.root, reference, {**result, "phase": phase, "phases": phases,
                             "simulator_steps": self._state.get("simulator_steps", 0),
                             "placement_measurement": self._state.get("placement_measurement"),

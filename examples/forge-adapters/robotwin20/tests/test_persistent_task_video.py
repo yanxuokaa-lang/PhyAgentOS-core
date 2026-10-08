@@ -63,10 +63,19 @@ def test_engine_records_intermediate_execution_frames(tmp_path):
             owner="paos:task-1", invocation_id=f"invocation://{phase}/1",
         )
         assert result["status"] == "succeeded"
+        if phase == "place":
+            assert result["release_confirmed"] is True
+            assert result["retreat_completed"] is True
+            assert result["clear_of_target"] is True
+            assert result["observation_ready"] is True
     manifest = json.loads(_artifact_path(tmp_path, result["artifact_refs"][1]).read_text())
     assert manifest["action_count"] == 2
     assert manifest["video_metadata"]["head_camera"]["frame_count"] == 10
     assert manifest["video_metadata"]["observer_camera"]["frame_count"] == 10
+    assert manifest["release_confirmed"] is True
+    assert manifest["retreat_completed"] is True
+    assert manifest["clear_of_target"] is True
+    assert manifest["observation_ready"] is True
     assert "video_recorder" not in engine._state
     from pick_place_workflow.persistent_runtime import _ProjectedDriver
 

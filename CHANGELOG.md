@@ -5,6 +5,22 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.9.13 (2026-10-08 12:27) - codex
+
+### 变更摘要 / Change Summary
+- [comm] [fix] persistent place producer 现在将已验证的 release、retreat、clearance 与 observation postconditions 投影到 public result 和 action artifact，避免真实成功被 `_ProjectedDriver` 错误降级为 `unknown`。 (local)
+- [comm] [fix] The persistent place producer now projects verified release, retreat, clearance, and observation postconditions into the public result and action artifact, preventing a real success from being downgraded to `unknown` by `_ProjectedDriver`. (local)
+- [eval] [test] 增加 no-video producer、不完整 route、逐字段缺失 fail-closed、视频 artifact 字段回归；focused `59 passed`，视频测试因环境缺少 `cv2` 未计入成功证据。 (local)
+- [eval] [test] Add no-video producer, incomplete-route, per-field fail-closed, and video-artifact field regressions; focused tests passed (`59 passed`), while video tests are not counted because `cv2` is unavailable in the environment. (local)
+
+### 文件与审查 / Files and Review
+- `robotwin_persistent_engine.py:L580-L721`、`test_persistent_manipulation.py:L154-L245`、`test_persistent_task_video.py:L63-L78`、`test_persistent_runtime.py:L189-L213`。
+- `docs/forge/PLACE_POSTCONDITION_PROJECTION_DIAGNOSIS_20261008.md:L1-L47`、`docs/forge/IMPLEMENTATION_REVIEW_V12_9_13.md:L1-L49`；复审修复 scene revision 类型边界，七维审查 Blocker 0、Major 0。
+
+### Git 提交 / Git Commit
+- Commit: `5808d03`（放置后置条件结果投影与无运动回归 / place postcondition projection and no-motion regressions）
+- Branch: `feature/planning-loop`
+
 ## v12.9.12 (2026-10-08 11:58) - codex
 
 ### 变更摘要 / Change Summary

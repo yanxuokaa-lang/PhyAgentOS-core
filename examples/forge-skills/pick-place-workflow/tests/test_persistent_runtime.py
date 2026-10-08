@@ -186,6 +186,33 @@ def test_unknown_place_cannot_produce_semantic_completion_evidence():
     assert result["capability_outcome_summary"]["post_release_evidence"]["availability"] == "none"
 
 
+@pytest.mark.parametrize(
+    "missing_field",
+    ["release_confirmed", "retreat_completed", "clear_of_target", "observation_ready"],
+)
+def test_place_success_without_any_postcondition_remains_unknown(missing_field):
+    class Driver:
+        def poll(self):
+            result = {
+                "status": "succeeded",
+                "outcome_known": True,
+                "world_change_started": True,
+                "new_scene_revision": "scene-2",
+                "artifact_refs": ["artifact://scene-2/place"],
+                "release_confirmed": True,
+                "retreat_completed": True,
+                "clear_of_target": True,
+                "observation_ready": True,
+            }
+            result[missing_field] = False
+            return result
+
+    result = _ProjectedDriver(Driver(), "place", arguments(True)).poll()
+    assert result["status"] == "unknown"
+    assert result["capability_outcome_summary"]["failure_code"] == "missing_place_postconditions"
+    assert result["capability_outcome_summary"]["outcome_known"] is False
+
+
 def test_evidence_free_success_does_not_complete_relocate():
     class Driver:
         def poll(self):
