@@ -28,6 +28,9 @@
 - focused `230 passed`，完整 Core `802 passed in 28.49s`；Ruff、compileall、diff check 通过。全部 no-motion，未恢复任务、调用真实 Gateway、重启 Runtime或推进 simulator/物理运动。 (local)
 - Focused tests passed (`230 passed`) and full Core passed (`802 passed in 28.49s`); Ruff, compileall, and diff checks passed. All validation was no-motion with no task resume, real Gateway call, Runtime restart, or simulator/physical motion. (local)
 
+### Git 提交 / Git Commit
+- Commit: `d24f6cb`; Branch: `feature/planning-loop`; 时间 / Time: 2026-10-08 Asia/Shanghai
+
 ## v12.10.3 (2026-10-08 15:54) - codex
 
 ### 变更摘要 / Change Summary
