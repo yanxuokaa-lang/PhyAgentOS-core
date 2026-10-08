@@ -33,7 +33,8 @@
 ```
 
 ### Git 提交 / Git Commit
-- 待本次修改提交后回填 / To be filled after this change is committed.
+- Commit: `1e3d4a8`（实现与七维审查 / implementation and seven-dimension review）
+- Branch: `feature/planning-loop`; 时间 / Time: 2026-10-09 Asia/Shanghai
 
 ## v12.10.10 (2026-10-08 23:20) - codex
 
