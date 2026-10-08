@@ -37,7 +37,7 @@
 - Seven-dimension review: zero Blocker and Major; no RGB/color/order/benchmark/camera/entity/candidate/fixed-arm-specific logic. All validation was no-motion; no AgentTask, Gateway Query/Action, simulator/physical motion, installation, or Runtime restart occurred. (local)
 
 ### Git 提交 / Git Commit
-- Commit: pending (implementation and review files are prepared; commit hash will be recorded after commit)
+- Commit: `488ab97`（preparation capability lineage、结构化 Runtime failure、诊断与七维审核 / preparation capability lineage, structured Runtime failure, diagnosis, and seven-dimension review）
 - Branch: `feature/planning-loop`
 
 ## v12.9.10 (2026-10-07 23:47) - codex
