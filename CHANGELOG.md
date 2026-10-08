@@ -5,6 +5,29 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.10.4 (2026-10-08 17:18) - codex
+
+### 变更摘要 / Change Summary
+- [policy] [fix] 统一 planning selection 与 Query/Action/Session execution 的 ToolSpec 默认参数规范化，修复持久化 selection 因执行阶段新增默认字段而被 binding 拒绝的问题。 (local)
+- [policy] [fix] Unify ToolSpec default argument canonicalization across planning selection and Query/Action/Session execution, fixing persisted selections rejected when defaults were added only at execution time. (local)
+- [policy] [fix] 历史 raw selection 仅在原 binding 身份不变且冻结 schema 规范化后参数完全等价时兼容；业务参数变化仍在 Gateway 前 fail-closed。 (local)
+- [policy] [fix] Legacy raw selections are compatible only when the original binding identity is unchanged and frozen-schema canonical arguments are exactly equivalent; business-argument changes still fail closed before Gateway. (local)
+
+### 文件与审查 / Files and Review
+- `PhyAgentOS/planning/input_schema.py:L42-L128`、`PhyAgentOS/agent/planning_dispatch.py:L630-L660`、`PhyAgentOS/forge/task.py:L2654-L2995,L3475-L3540,L3824-L3917`。
+- `tests/test_planning_module.py:L34-L66`、`tests/test_planning_dispatch.py:L100-L128`、`tests/test_planning_task_integration.py:L48-L345`、`docs/forge/PLANNING_ARGUMENT_CANONICALIZATION_DIAGNOSIS_20261008.md:L1-L82`。
+- 七维初审发现 Action validation 顺序 Major 1，已修复；最终 Blocker 0、Major 0、Minor 0。 / Seven-dimension review found and fixed one Major Action-validation ordering issue; final Blocker 0, Major 0, Minor 0.
+
+### 关键 Diff / Key Diff
+```diff
+- digest(raw selection) != digest(execution plus ToolSpec defaults)
++ digest(canonical selection) == digest(canonical execution)
+```
+
+### 验证边界 / Validation Boundary
+- focused `230 passed`，完整 Core `802 passed in 28.49s`；Ruff、compileall、diff check 通过。全部 no-motion，未恢复任务、调用真实 Gateway、重启 Runtime或推进 simulator/物理运动。 (local)
+- Focused tests passed (`230 passed`) and full Core passed (`802 passed in 28.49s`); Ruff, compileall, and diff checks passed. All validation was no-motion with no task resume, real Gateway call, Runtime restart, or simulator/physical motion. (local)
+
 ## v12.10.3 (2026-10-08 15:54) - codex
 
 ### 变更摘要 / Change Summary
@@ -72,7 +95,9 @@
 ### Git 提交 / Git Commit
 - Commit: `ac5ef79`; Branch: `feature/planning-loop`; 时间: 2026-10-08 Asia/Shanghai
 
-## v12.9.15 (2026-10-08 13:43) - codex
+## Older Summaries (full details remain in monthly archives)
+
+### v12.9.15 (2026-10-08 13:43) - codex
 
 ### 变更摘要 / Change Summary
 - [comm] [fix] 修复持久化 `scene.bind` selection 的消费顺序：先解析 Coordinator 参数，再执行实体引用校验，避免合法空参数在 Gateway 前被拒绝。 (local)
@@ -90,8 +115,6 @@
 
 ### Git 提交 / Git Commit
 - Commit: `3d89785`; Branch: `feature/planning-loop`; 时间: 2026-10-08 Asia/Shanghai
-
-## Older Summaries (full details remain in monthly archives)
 
 ### v12.9.14 (2026-10-08 13:08) - codex
 

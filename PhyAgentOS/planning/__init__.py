@@ -40,6 +40,7 @@ from .dag import (
 )
 from .input_schema import (
     ToolInputSchemaError,
+    materialize_tool_arguments,
     required_argument_keys,
     validate_input_schema,
     validate_tool_arguments,
@@ -72,6 +73,7 @@ __all__ = [
     "ToolCallEnvelope",
     "ToolResultEnvelope",
     "ToolInputSchemaError",
+    "materialize_tool_arguments",
     "ToolSpecPolicy",
     "WorkflowPolicy",
     "WorkflowPolicyCandidate",

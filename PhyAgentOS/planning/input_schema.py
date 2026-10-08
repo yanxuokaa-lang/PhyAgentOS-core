@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from copy import deepcopy
 from typing import Any
 
 from jsonschema import SchemaError
@@ -38,6 +39,74 @@ def required_argument_keys(schema: Mapping[str, Any] | None) -> tuple[str, ...]:
     return tuple(item for item in required if isinstance(item, str) and item)
 
 
+def _selected_one_of_sibling_keys(
+    input_schema: Mapping[str, Any],
+    explicit_arguments: Mapping[str, Any],
+) -> set[str]:
+    """Return sibling discriminator keys excluded by the selected oneOf branch."""
+    branches = input_schema.get("oneOf")
+    if not isinstance(branches, list) or not branches:
+        return set()
+
+    explicit_keys = set(explicit_arguments)
+    candidates: list[tuple[int, set[str], set[str]]] = []
+    discriminator_keys: set[str] = set()
+    for branch in branches:
+        if not isinstance(branch, Mapping):
+            continue
+        required = set(branch.get("required") or ())
+        not_schema = branch.get("not")
+        forbidden = (
+            set(not_schema.get("required") or ())
+            if isinstance(not_schema, Mapping)
+            else set()
+        )
+        discriminator_keys.update(required)
+        if forbidden & explicit_keys:
+            continue
+        score = len(required & explicit_keys)
+        if score:
+            candidates.append((score, required, forbidden))
+
+    if not candidates:
+        return set()
+    best_score = max(score for score, _required, _forbidden in candidates)
+    winners = [item for item in candidates if item[0] == best_score]
+    if len(winners) != 1:
+        return set()
+    _score, selected_required, selected_forbidden = winners[0]
+    return selected_forbidden | (discriminator_keys - selected_required)
+
+
+def materialize_tool_arguments(
+    input_schema: Mapping[str, Any] | None,
+    arguments: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Return one canonical Tool argument representation for planning and execution.
+
+    Defaults are applied only at the top level because that is the supported
+    PAOS ToolSpec boundary.  ``oneOf`` sibling fields from non-selected branches
+    remain suppressed, matching JSON Schema branch semantics.
+    """
+    effective_arguments = deepcopy(dict(arguments))
+    if not isinstance(input_schema, Mapping):
+        return effective_arguments
+    suppressed_defaults = _selected_one_of_sibling_keys(input_schema, effective_arguments)
+    properties = input_schema.get("properties", {})
+    if not isinstance(properties, Mapping):
+        return effective_arguments
+    for name, definition in properties.items():
+        if (
+            isinstance(name, str)
+            and name not in effective_arguments
+            and name not in suppressed_defaults
+            and isinstance(definition, Mapping)
+            and "default" in definition
+        ):
+            effective_arguments[name] = deepcopy(definition["default"])
+    return effective_arguments
+
+
 def validate_tool_arguments(
     schema: Mapping[str, Any],
     arguments: Mapping[str, Any],
@@ -60,6 +129,7 @@ def validate_tool_arguments(
 
 __all__ = [
     "ToolInputSchemaError",
+    "materialize_tool_arguments",
     "required_argument_keys",
     "validate_input_schema",
     "validate_tool_arguments",

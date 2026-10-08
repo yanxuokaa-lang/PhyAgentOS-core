@@ -30,6 +30,7 @@ from PhyAgentOS.planning import (
     canonical_sha256,
     derive_ready_nodes,
     explain_node_readiness,
+    materialize_tool_arguments,
     plan_node_digest,
     required_argument_keys,
     required_node_binding_keys,
@@ -630,6 +631,9 @@ class AgentComposedDispatch:
             arguments=arguments,
         )
         if input_schema is not None:
+            # Freeze the same schema-default representation that the Coordinator
+            # will pass to Gateway and persist in the execution record.
+            final_arguments = materialize_tool_arguments(input_schema, final_arguments)
             issues = validate_tool_arguments(input_schema, final_arguments)
             if issues:
                 missing = tuple(

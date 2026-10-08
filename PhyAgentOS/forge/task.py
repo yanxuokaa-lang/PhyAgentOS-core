@@ -38,6 +38,7 @@ from PhyAgentOS.planning import (
     ReplanDelta,
     ResumablePlanningSelection,
     ToolResultEnvelope,
+    materialize_tool_arguments,
     plan_node_digest,
     settle_node,
     tool_input_binding_digest,
@@ -76,67 +77,6 @@ class AgentCancellationEvidenceError(AgentTaskError):
     def __init__(self, message: str, *, record_id: str | None = None) -> None:
         self.record_id = record_id
         super().__init__(message)
-
-
-def _selected_one_of_sibling_keys(
-    input_schema: Mapping[str, Any],
-    explicit_arguments: Mapping[str, Any],
-) -> set[str]:
-    """Return sibling discriminator keys excluded by explicit oneOf input."""
-    branches = input_schema.get("oneOf")
-    if not isinstance(branches, list) or not branches:
-        return set()
-
-    explicit_keys = set(explicit_arguments)
-    candidates: list[tuple[int, set[str], set[str]]] = []
-    discriminator_keys: set[str] = set()
-    for branch in branches:
-        if not isinstance(branch, Mapping):
-            continue
-        required = set(branch.get("required") or ())
-        not_schema = branch.get("not")
-        forbidden = (
-            set(not_schema.get("required") or ()) if isinstance(not_schema, Mapping) else set()
-        )
-        discriminator_keys.update(required)
-        if forbidden & explicit_keys:
-            continue
-        score = len(required & explicit_keys)
-        if score:
-            candidates.append((score, required, forbidden))
-
-    if not candidates:
-        return set()
-    best_score = max(score for score, _required, _forbidden in candidates)
-    winners = [item for item in candidates if item[0] == best_score]
-    if len(winners) != 1:
-        return set()
-    _score, selected_required, selected_forbidden = winners[0]
-    return selected_forbidden | (discriminator_keys - selected_required)
-
-
-def _materialize_query_arguments(
-    input_schema: Mapping[str, Any] | None,
-    arguments: Mapping[str, Any],
-) -> dict[str, Any]:
-    """Apply frozen schema defaults without changing an explicit oneOf branch."""
-    effective_arguments = deepcopy(dict(arguments))
-    if not isinstance(input_schema, Mapping):
-        return effective_arguments
-    suppressed_defaults = _selected_one_of_sibling_keys(input_schema, effective_arguments)
-    properties = input_schema.get("properties", {})
-    if not isinstance(properties, Mapping):
-        return effective_arguments
-    for name, definition in properties.items():
-        if (
-            isinstance(name, str)
-            and name not in effective_arguments
-            and name not in suppressed_defaults
-            and isinstance(definition, Mapping)
-            and "default" in definition
-        ):
-            effective_arguments[name] = deepcopy(definition["default"])
-    return effective_arguments
 
 
 class TaskNotReadyForFinalizationError(AgentTaskError):
@@ -2721,23 +2661,9 @@ class AgentTaskCoordinator:
         planning_binding: PlanningExecutionBinding | dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         tool = await self._require_binding_tool(task_id, tool_id, "query")
-        effective_arguments = _materialize_query_arguments(tool.input_schema, arguments)
-        if isinstance(tool.input_schema, Mapping):
-            issues = validate_tool_arguments(tool.input_schema, effective_arguments)
-            if issues:
-                raise AgentTaskError(
-                    json.dumps(
-                        {
-                            "code": "tool_input_schema_invalid",
-                            "message": (
-                                "Query arguments violate the frozen Tool input schema: "
-                                + "; ".join(issues)
-                            ),
-                            "issues": issues,
-                        },
-                        ensure_ascii=False,
-                    )
-                )
+        effective_arguments = _materialize_and_validate_tool_arguments(
+            tool, arguments, semantics="query"
+        )
         if tool.default_timeout_ms is not None:
             timeout_ms = max(timeout_ms or 0, tool.default_timeout_ms)
         record_id, caller = self._append_execution(
@@ -2784,35 +2710,57 @@ class AgentTaskCoordinator:
     ) -> dict[str, Any]:
         task = self._require_executable(task_id)
         binding = _normalize_planning_binding(planning_binding)
+        frozen_tool = next(
+            (
+                item
+                for item in task.tool_bindings
+                if item.tool_id == tool_id and item.semantics == "action"
+            ),
+            None,
+        )
+        if _has_unknown_action(
+            task,
+            tool_id,
+            arguments,
+            input_schema=frozen_tool.input_schema if frozen_tool is not None else None,
+        ):
+            raise AgentTaskError(
+                "an identical Action has unknown remote state; reconcile it instead of resending"
+            )
+        tool = await self._require_binding_tool(task_id, tool_id, "action")
+        effective_arguments = _materialize_and_validate_tool_arguments(
+            tool, arguments, semantics="action"
+        )
         if binding is not None:
             _validate_planning_execution_selection(
                 task.active_revision,
                 binding,
                 tool_id=tool_id,
                 semantics="action",
-                arguments=arguments,
+                arguments=effective_arguments,
+                input_schema=tool.input_schema,
             )
-        if any(
-            item.semantics == "action"
-            and item.tool_id == tool_id
-            and item.arguments == arguments
-            and item.status == "unknown"
-            for item in task.execution_records
+        if _has_unknown_action(
+            task, tool_id, effective_arguments, input_schema=tool.input_schema
         ):
             raise AgentTaskError(
                 "an identical Action has unknown remote state; reconcile it instead of resending"
             )
-        tool = await self._require_binding_tool(task_id, tool_id, "action")
         if task.before_snapshot_ref is None:
             await self._capture_before(task_id)
         record_id, caller = self._append_execution(
-            task_id, tool_id, "action", arguments, tool=tool, planning_binding=binding
+            task_id,
+            tool_id,
+            "action",
+            effective_arguments,
+            tool=tool,
+            planning_binding=binding,
         )
         invocation_id: str | None = None
         attempt_id: str | None = None
         try:
             response = await self.client.invoke_action(
-                tool_id, arguments, caller_id=caller, timeout_ms=timeout_ms
+                tool_id, effective_arguments, caller_id=caller, timeout_ms=timeout_ms
             )
             data = _response_data(response)
             invocation_id = data.get("invocation_id")
@@ -2975,11 +2923,14 @@ class AgentTaskCoordinator:
         if ownership not in {"task", "shared"}:
             raise AgentTaskError("runtime-owned Sessions may only be created by RuntimeManager")
         tool = await self._require_binding_tool(task_id, tool_id, "session")
+        effective_arguments = _materialize_and_validate_tool_arguments(
+            tool, arguments, semantics="session"
+        )
         record_id, caller = self._append_execution(
             task_id,
             tool_id,
             "session",
-            arguments,
+            effective_arguments,
             tool=tool,
             ownership=ownership,
             planning_binding=planning_binding,
@@ -2987,7 +2938,9 @@ class AgentTaskCoordinator:
         invocation_id: str | None = None
         attempt_id: str | None = None
         try:
-            response = await self.client.start_session(tool_id, arguments, caller_id=caller)
+            response = await self.client.start_session(
+                tool_id, effective_arguments, caller_id=caller
+            )
             data = _response_data(response)
             invocation_id = data.get("invocation_id")
             attempt_id = data.get("attempt_id")
@@ -3552,6 +3505,7 @@ class AgentTaskCoordinator:
                     tool_id=tool_id,
                     semantics=semantics,
                     arguments=arguments,
+                    input_schema=tool.input_schema,
                 )
             current.active_revision.execution_records.append(
                 ToolExecutionRecord(
@@ -3867,6 +3821,51 @@ def _normalize_planning_binding(
         raise AgentTaskError(f"invalid planning execution binding: {exc}") from exc
 
 
+def _materialize_and_validate_tool_arguments(
+    tool: BoundToolSpec,
+    arguments: Mapping[str, Any],
+    *,
+    semantics: Literal["query", "action", "session"],
+) -> dict[str, Any]:
+    """Canonicalize and validate arguments at every Gateway admission boundary."""
+    effective_arguments = materialize_tool_arguments(tool.input_schema, arguments)
+    if not isinstance(tool.input_schema, Mapping):
+        return effective_arguments
+    issues = validate_tool_arguments(tool.input_schema, effective_arguments)
+    if issues:
+        raise AgentTaskError(
+            json.dumps(
+                {
+                    "code": "tool_input_schema_invalid",
+                    "message": (
+                        f"{semantics.title()} arguments violate the frozen Tool input schema: "
+                        + "; ".join(issues)
+                    ),
+                    "issues": issues,
+                },
+                ensure_ascii=False,
+            )
+        )
+    return effective_arguments
+
+
+def _has_unknown_action(
+    task: AgentTaskRecord,
+    tool_id: str,
+    arguments: Mapping[str, Any],
+    *,
+    input_schema: Mapping[str, Any] | None,
+) -> bool:
+    effective_arguments = materialize_tool_arguments(input_schema, arguments)
+    return any(
+        item.semantics == "action"
+        and item.tool_id == tool_id
+        and item.status == "unknown"
+        and materialize_tool_arguments(input_schema, item.arguments) == effective_arguments
+        for item in task.execution_records
+    )
+
+
 def _validate_planning_execution_selection(
     revision: PlanRevision,
     binding: PlanningExecutionBinding,
@@ -3874,6 +3873,7 @@ def _validate_planning_execution_selection(
     tool_id: str,
     semantics: Literal["query", "action", "session"],
     arguments: dict[str, Any],
+    input_schema: Mapping[str, Any] | None = None,
 ) -> None:
     """Match an execution to the durable Agent selection when one exists."""
     if binding.revision_id is not None and binding.revision_id != revision.revision_id:
@@ -3889,10 +3889,20 @@ def _validate_planning_execution_selection(
                 "revision-bound planning execution has no active persisted selection"
             )
         return
-    if binding.input_binding_digest != tool_input_binding_digest(arguments):
-        raise AgentTaskError("planning execution arguments do not match their binding")
     selected = active_selections.get(binding.decision_trace_ref)
     selection = selected.resumable_selection if selected is not None else None
+    if selection is not None and input_schema is not None:
+        selected_arguments = selection.tool_arguments
+        canonical_arguments = materialize_tool_arguments(input_schema, arguments)
+        canonical_selected = materialize_tool_arguments(input_schema, selected_arguments)
+        arguments_match = canonical_selected == canonical_arguments
+        digest_match = binding.input_binding_digest in {
+            tool_input_binding_digest(selected_arguments),
+            tool_input_binding_digest(canonical_selected),
+        }
+    else:
+        arguments_match = selection is not None and selection.tool_arguments == arguments
+        digest_match = binding.input_binding_digest == tool_input_binding_digest(arguments)
     if (
         selected is None
         or selected.node_id != binding.node_id
@@ -3900,9 +3910,10 @@ def _validate_planning_execution_selection(
         or selection.planning_binding != binding
         or selection.tool_id != tool_id
         or selection.semantics != semantics
-        or selection.tool_arguments != arguments
     ):
         raise AgentTaskError("planning execution does not match the active revision selection")
+    if not digest_match or not arguments_match:
+        raise AgentTaskError("planning execution arguments do not match their binding")
 
 
 def _owned_execution(

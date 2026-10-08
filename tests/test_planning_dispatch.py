@@ -11,6 +11,7 @@ from PhyAgentOS.agent.tools.planning import ForgePlanActivateTool
 from PhyAgentOS.agent.tools.registry import ToolRegistry
 from PhyAgentOS.forge.binding import BoundToolSpec, RuntimeBinding
 from PhyAgentOS.forge.capability_runtime.grasp_proposal import GRASP_TOOL_SPEC
+from PhyAgentOS.forge.capability_runtime.observation import OBSERVATION_TOOL_SPEC
 from PhyAgentOS.planning import (
     AdmissionContext,
     PlanGraph,
@@ -94,6 +95,36 @@ def test_ready_tool_is_read_only_and_reports_candidates():
     assert data["node_diagnostics"][0]["ready"] is True
     assert data["node_diagnostics"][0]["blockers"] == ()
     assert data["motion_authorized"] is False
+
+
+def test_prepare_selection_digests_schema_canonical_arguments():
+    policy = ToolSpecPolicy(
+        tool_id="scene.observe",
+        semantics="query",
+        spec_digest="3" * 64,
+        capabilities=("scene.observe",),
+    )
+    dispatch = AgentComposedDispatch(
+        _graph(),
+        (policy,),
+        AdmissionContext(scene_revision="scene-1"),
+        input_schemas={"scene.observe": OBSERVATION_TOOL_SPEC["input_schema"]},
+    )
+
+    proposal = dispatch.prepare_selection(
+        node_id="observe",
+        tool_id="scene.observe",
+        arguments={
+            "sensor_refs": ["camera/head", "camera/front"],
+            "max_age_ms": 1000,
+        },
+        decision_reason="capture a synchronized observation",
+    )
+
+    assert proposal["tool_arguments"]["max_capture_skew_ms"] == 50
+    assert proposal["input_binding_digest"] == tool_input_binding_digest(
+        proposal["tool_arguments"]
+    )
 
 
 def test_historical_unbindable_node_is_dependency_ready_but_not_selection_ready():

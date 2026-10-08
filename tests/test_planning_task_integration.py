@@ -7,6 +7,7 @@ import pytest
 
 from PhyAgentOS.agent.experience.source import AgentTaskOutcomeSource
 from PhyAgentOS.agent.plan_proposal import compile_task_plan
+from PhyAgentOS.agent.planning_dispatch import AgentComposedDispatch
 from PhyAgentOS.agent.planning_loop import NodeContextProvider
 from PhyAgentOS.agent.tools.forge_task import (
     ForgeTaskBeginRevisionTool,
@@ -15,6 +16,7 @@ from PhyAgentOS.agent.tools.forge_task import (
 from PhyAgentOS.agent.tools.forge_tool_api import ForgeToolQueryTool
 from PhyAgentOS.config.schema import ForgeConfig
 from PhyAgentOS.forge.binding import BoundToolSpec, RuntimeBinding
+from PhyAgentOS.forge.capability_runtime.observation import OBSERVATION_TOOL_SPEC
 from PhyAgentOS.forge.task import (
     AgentTaskCoordinator,
     AgentTaskError,
@@ -22,6 +24,7 @@ from PhyAgentOS.forge.task import (
     DiscoveryRequiredError,
 )
 from PhyAgentOS.planning import (
+    AdmissionContext,
     NodeSettlement,
     PlanGraph,
     PlanningExecutionBinding,
@@ -33,6 +36,7 @@ from PhyAgentOS.planning import (
     plan_graph_digest,
     plan_node_digest,
     settle_node,
+    tool_input_binding_digest,
 )
 from PhyAgentOS.verification.contracts import TaskVerificationContract
 
@@ -50,6 +54,295 @@ class _QueryClient:
         self.timeout_ms = timeout_ms
         self.arguments = dict(arguments)
         return {"ok": True, "data": {"status": "available"}}
+
+
+class _InvocationClient:
+    def __init__(self):
+        self.arguments = None
+
+    async def invoke_action(self, tool_id, arguments, *, caller_id=None, timeout_ms=None):
+        self.arguments = dict(arguments)
+        return {
+            "ok": True,
+            "data": {"invocation_id": "invocation-canonical", "attempt_id": "attempt-1"},
+        }
+
+    async def start_session(self, tool_id, arguments, *, caller_id=None):
+        self.arguments = dict(arguments)
+        return {
+            "ok": True,
+            "data": {"invocation_id": "session-canonical", "attempt_id": "attempt-1"},
+        }
+
+
+def _observation_graph(task_id: str, revision_id: str) -> PlanGraph:
+    node = PlanNode(
+        node_id="checkpoint-observe",
+        obligation_id="refresh-scene",
+        capability="scene.observe",
+    )
+    payload = {
+        "schema_version": "paos-plan-graph/v1",
+        "task_id": task_id,
+        "revision_id": revision_id,
+        "graph_digest": "0" * 64,
+        "planner_decision_digest": "1" * 64,
+        "policy_snapshot_digest": "2" * 64,
+        "nodes": [node.model_dump(mode="json")],
+    }
+    payload["graph_digest"] = plan_graph_digest(payload)
+    return PlanGraph.model_validate(payload)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("legacy_raw_selection", [False, True])
+async def test_persisted_query_selection_uses_one_canonical_default_representation(
+    tmp_path, legacy_raw_selection
+):
+    task_id = "task-canonical-selection"
+    revision_id = "revision-canonical-selection"
+    graph = _observation_graph(task_id, revision_id)
+    client = _QueryClient()
+    coordinator = AgentTaskCoordinator(
+        workspace=tmp_path, config=ForgeConfig(), client=client
+    )
+    coordinator.create_task(
+        task_description="capture one checkpoint observation",
+        verification=TaskVerificationContract(mode="off"),
+        plan_graph=graph,
+        plan_graph_ref=f"artifact://plans/{task_id}/{revision_id}",
+    )
+    policy = ToolSpecPolicy(
+        tool_id="scene.observe",
+        semantics="query",
+        spec_digest="3" * 64,
+        capabilities=("scene.observe",),
+    )
+    dispatch = AgentComposedDispatch(
+        graph,
+        (policy,),
+        AdmissionContext(scene_revision="scene-after-action"),
+        input_schemas={"scene.observe": OBSERVATION_TOOL_SPEC["input_schema"]},
+    )
+    proposal = dispatch.prepare_selection(
+        node_id="checkpoint-observe",
+        tool_id="scene.observe",
+        arguments={
+            "sensor_refs": ["camera/head", "camera/front"],
+            "max_age_ms": 1000,
+        },
+        decision_reason="refresh scene evidence after a known world change",
+    )
+    if legacy_raw_selection:
+        proposal["tool_arguments"].pop("max_capture_skew_ms")
+        proposal["input_binding_digest"] = tool_input_binding_digest(
+            proposal["tool_arguments"]
+        )
+    receipt = coordinator.persist_planning_selection(proposal)
+    binding = {
+        key: receipt[key] for key in PlanningExecutionBinding.model_fields
+    }
+
+    async def require_tool(_task_id, tool_id, semantics):
+        return BoundToolSpec(
+            tool_id=tool_id,
+            semantics=semantics,
+            spec_sha256="4" * 64,
+            ready_at_binding=True,
+            input_schema=OBSERVATION_TOOL_SPEC["input_schema"],
+        )
+
+    coordinator._require_binding_tool = require_tool
+    selected = coordinator.selected_execution_arguments(
+        task_id, "scene.observe", "query", {}, binding
+    )
+    changed = dict(selected)
+    changed["max_age_ms"] = 999
+    with pytest.raises(AgentTaskError, match="arguments do not match"):
+        await coordinator.invoke_query(
+            task_id,
+            "scene.observe",
+            changed,
+            planning_binding=binding,
+        )
+    assert client.arguments is None
+    assert coordinator.get_task(task_id).execution_records == []
+
+    await coordinator.invoke_query(
+        task_id,
+        "scene.observe",
+        selected,
+        planning_binding=binding,
+    )
+
+    expected = {
+        "sensor_refs": ["camera/head", "camera/front"],
+        "max_age_ms": 1000,
+        "max_capture_skew_ms": 50,
+    }
+    assert client.arguments == expected
+    records = coordinator.get_task(task_id).execution_records
+    assert len(records) == 1
+    assert records[0].arguments == expected
+    assert coordinator.pending_planning_selection(
+        task_id, "checkpoint-observe", scene_revision="scene-after-action"
+    ) is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("semantics", ["action", "session"])
+async def test_persisted_invocation_selection_canonicalizes_defaults_before_gateway(
+    tmp_path, semantics
+):
+    task_id = f"task-canonical-{semantics}"
+    revision_id = f"revision-canonical-{semantics}"
+    graph = _observation_graph(task_id, revision_id)
+    client = _InvocationClient()
+    coordinator = AgentTaskCoordinator(
+        workspace=tmp_path, config=ForgeConfig(), client=client
+    )
+    coordinator.create_task(
+        task_description=f"start one canonical {semantics}",
+        verification=TaskVerificationContract(mode="off"),
+        plan_graph=graph,
+        plan_graph_ref=f"artifact://plans/{task_id}/{revision_id}",
+    )
+    input_schema = {
+        "type": "object",
+        "properties": {
+            "entity_ref": {"type": "string"},
+            "execution_mode": {"type": "string", "default": "bounded"},
+        },
+        "required": ["entity_ref"],
+        "additionalProperties": False,
+    }
+    tool_id = f"test.{semantics}"
+    policy = ToolSpecPolicy(
+        tool_id=tool_id,
+        semantics=semantics,
+        spec_digest="3" * 64,
+        capabilities=("scene.observe",),
+    )
+    dispatch = AgentComposedDispatch(
+        graph,
+        (policy,),
+        AdmissionContext(scene_revision="scene-current"),
+        input_schemas={tool_id: input_schema},
+    )
+    proposal = dispatch.prepare_selection(
+        node_id="checkpoint-observe",
+        tool_id=tool_id,
+        arguments={"entity_ref": "entity://generic"},
+        decision_reason=f"exercise canonical {semantics} admission",
+    )
+    # Model a selection persisted before canonical defaults were introduced.
+    proposal["tool_arguments"].pop("execution_mode")
+    proposal["input_binding_digest"] = tool_input_binding_digest(
+        proposal["tool_arguments"]
+    )
+    receipt = coordinator.persist_planning_selection(proposal)
+    binding = {key: receipt[key] for key in PlanningExecutionBinding.model_fields}
+
+    async def require_tool(_task_id, requested_tool_id, requested_semantics):
+        return BoundToolSpec(
+            tool_id=requested_tool_id,
+            semantics=requested_semantics,
+            spec_sha256="4" * 64,
+            ready_at_binding=True,
+            input_schema=input_schema,
+        )
+
+    coordinator._require_binding_tool = require_tool
+    selected = coordinator.selected_execution_arguments(
+        task_id, tool_id, semantics, {}, binding
+    )
+    if semantics == "action":
+        coordinator.store.update(
+            task_id,
+            lambda current: setattr(current, "before_snapshot_ref", "snapshot://before"),
+            event_type="test_before_snapshot",
+        )
+        await coordinator.start_action(
+            task_id, tool_id, selected, planning_binding=binding
+        )
+    else:
+        await coordinator.start_session(
+            task_id, tool_id, selected, planning_binding=binding
+        )
+
+    expected = {
+        "entity_ref": "entity://generic",
+        "execution_mode": "bounded",
+    }
+    assert client.arguments == expected
+    records = coordinator.get_task(task_id).execution_records
+    assert len(records) == 1
+    assert records[0].arguments == expected
+    assert records[0].status == "accepted"
+
+
+@pytest.mark.asyncio
+async def test_unknown_legacy_action_with_omitted_default_cannot_be_resent(tmp_path):
+    task_id = "task-unknown-legacy-action"
+    revision_id = "revision-unknown-legacy-action"
+    graph = _observation_graph(task_id, revision_id)
+    client = _InvocationClient()
+    coordinator = AgentTaskCoordinator(
+        workspace=tmp_path, config=ForgeConfig(), client=client
+    )
+    coordinator.create_task(
+        task_description="do not resend an unknown legacy action",
+        verification=TaskVerificationContract(mode="off"),
+        plan_graph=graph,
+        plan_graph_ref=f"artifact://plans/{task_id}/{revision_id}",
+    )
+    input_schema = {
+        "type": "object",
+        "properties": {
+            "entity_ref": {"type": "string"},
+            "execution_mode": {"type": "string", "default": "bounded"},
+        },
+        "required": ["entity_ref"],
+        "additionalProperties": False,
+    }
+    tool = BoundToolSpec(
+        tool_id="object.acquire",
+        semantics="action",
+        spec_sha256="4" * 64,
+        ready_at_binding=True,
+        input_schema=input_schema,
+    )
+    coordinator.store.update(
+        task_id,
+        lambda current: current.tool_bindings.append(tool),
+        event_type="test_tool_binding",
+    )
+
+    async def require_tool(*_args):
+        raise AssertionError("unknown Action must block before live Tool readiness")
+
+    coordinator._require_binding_tool = require_tool
+    record_id, _caller = coordinator._append_execution(
+        task_id,
+        tool.tool_id,
+        "action",
+        {"entity_ref": "entity://generic"},
+        tool=tool,
+    )
+    coordinator._finish_execution(
+        task_id,
+        record_id,
+        status="unknown",
+        error={"type": "ConnectionError", "message": "remote state unknown"},
+    )
+
+    with pytest.raises(AgentTaskError, match="unknown remote state"):
+        await coordinator.start_action(
+            task_id,
+            tool.tool_id,
+            {"entity_ref": "entity://generic", "execution_mode": "bounded"},
+        )
+    assert client.arguments is None
 
 
 def _graph(task_id: str, revision_id: str) -> PlanGraph:

@@ -21,6 +21,7 @@ from PhyAgentOS.planning import (
     evaluate_conditions,
     invalidate_stale_nodes,
     make_decision_trace,
+    materialize_tool_arguments,
     plan_graph_digest,
     settle_node,
     tool_input_binding_digest,
@@ -28,6 +29,40 @@ from PhyAgentOS.planning import (
     validate_policy_edges,
     workflow_policy_digest,
 )
+
+
+def test_tool_arguments_materialize_defaults_without_crossing_one_of_branch():
+    schema = {
+        "type": "object",
+        "properties": {
+            "sensor_ref": {"type": "string", "default": "camera/head"},
+            "sensor_refs": {"type": "array", "items": {"type": "string"}},
+            "max_age_ms": {"type": "integer", "default": 1000},
+            "max_capture_skew_ms": {"type": "integer", "default": 50},
+        },
+        "required": ["max_age_ms"],
+        "oneOf": [
+            {"required": ["sensor_ref"], "not": {"required": ["sensor_refs"]}},
+            {"required": ["sensor_refs"], "not": {"required": ["sensor_ref"]}},
+        ],
+        "additionalProperties": False,
+    }
+
+    implicit = materialize_tool_arguments(
+        schema, {"sensor_refs": ["camera/head", "camera/front"]}
+    )
+    explicit = materialize_tool_arguments(
+        schema,
+        {
+            "sensor_refs": ["camera/head", "camera/front"],
+            "max_age_ms": 1000,
+            "max_capture_skew_ms": 50,
+        },
+    )
+
+    assert implicit == explicit
+    assert "sensor_ref" not in implicit
+    assert tool_input_binding_digest(implicit) == tool_input_binding_digest(explicit)
 
 
 def _graph() -> PlanGraph:
