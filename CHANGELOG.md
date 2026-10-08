@@ -18,7 +18,7 @@
 - Only task stop, Runtime lifecycle, editable installation, and read-only state checks ran; no task was created/resumed, no Query/Action was invoked, and no simulator or physical motion advanced. (local)
 
 ### Git 提交 / Git Commit
-- Commit: `PENDING`; Branch: `feature/planning-loop`; 时间: 2026-10-08 Asia/Shanghai
+- Commit: `e9cf9a0`; Branch: `feature/planning-loop`; 时间: 2026-10-08 Asia/Shanghai
 
 ## v12.10.0 (2026-10-08 14:33) - codex
 
