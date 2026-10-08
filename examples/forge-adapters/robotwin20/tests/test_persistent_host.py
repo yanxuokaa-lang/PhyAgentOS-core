@@ -19,11 +19,28 @@ from robotwin20_adapter.persistent_host import (
     PersistentHost,
     PersistentHostConfigurationError,
     _persistent_tool_context,
+    _scene_diagnostic_sink,
     build_http_server,
     build_persistent_host,
     load_persistent_host_profile,
     serve_persistent_host,
 )
+
+
+def test_scene_diagnostic_sink_drops_unbounded_provider_tokens(tmp_path):
+    sink = _scene_diagnostic_sink(tmp_path)
+    sink(
+        {
+            "status": "error",
+            "route": "secret endpoint " + ("x" * 200),
+            "provider_error_class": "timeout ",
+            "observation_ref": "observation://scene/camera",
+        }
+    )
+
+    event = json.loads((tmp_path / "scene-understanding-diagnostics.jsonl").read_text())
+    assert "route" not in event
+    assert "provider_error_class" not in event
 
 
 def test_operational_timing_logging_is_scoped_and_idempotent():

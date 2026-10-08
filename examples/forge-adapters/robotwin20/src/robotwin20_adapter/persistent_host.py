@@ -8,6 +8,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import signal
 import threading
 from dataclasses import dataclass, field
@@ -61,6 +62,7 @@ from .understanding import RoboTwinSceneUnderstandingProvider
 
 PROFILE_SCHEMA_VERSION = "paos-robotwin20-persistent-host/v1"
 MAX_REQUEST_BYTES = 1_048_576
+_DIAGNOSTIC_TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/+@-]{0,127}$")
 
 
 def _configure_operational_logging() -> None:
@@ -138,8 +140,9 @@ def _persistent_tool_context(
         "primary_ready",
         "primary_error_class",
     ):
-        if key in readiness:
-            context_value[key] = readiness[key]
+        item = readiness.get(key)
+        if isinstance(item, str) and _DIAGNOSTIC_TOKEN.fullmatch(item) is not None:
+            context_value[key] = item
     if model_provider in {"qwen3_vl_vllm", "qwen3_vl_vllm_fallback"}:
         context_value["operator_recovery"] = _qwen_vllm_operator_recovery()
     return context_value
@@ -156,8 +159,10 @@ def _scene_diagnostic_sink(artifact_root: Path):
             "scene_revision", "frame_id", "elapsed_ms", "image_ref",
         }
         value = {key: event[key] for key in allowed if key in event}
-        if "provider_error_class" in value and not isinstance(value["provider_error_class"], str):
-            value["provider_error_class"] = "provider_failure"
+        for key in ("route", "provider_error_class"):
+            item = value.get(key)
+            if not isinstance(item, str) or _DIAGNOSTIC_TOKEN.fullmatch(item) is None:
+                value.pop(key, None)
         value["captured_at"] = datetime.now(timezone.utc).isoformat()
         line = json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n"
         with lock:

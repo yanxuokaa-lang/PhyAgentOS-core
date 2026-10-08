@@ -5,6 +5,36 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.10.11 (2026-10-09 00:10) - codex
+
+### 变更摘要 / Change Summary
+- [comm] [fix] 保留 Qwen/vLLM transport、timeout、authentication 分类穿过异常包装；Core route 改为配置无关的有界 token，Adapter lifecycle/readiness/JSONL seam 拒绝超长或非结构化诊断值。(local)
+- [comm] [fix] Preserve Qwen/vLLM transport, timeout, and authentication classes through exception wrapping; make Core routes bounded provider-neutral tokens and reject oversized or unstructured Adapter diagnostics at lifecycle/readiness/JSONL seams. (local)
+- [eval] [test] Adapter focused `80 passed`；Core focused `118 passed`；Ruff、compileall、`git diff --check` 通过。(local)
+- [eval] [test] Adapter focused `80 passed`; Core focused `118 passed`; Ruff, compileall, and `git diff --check` passed. (local)
+- [eval] [test] Adapter 全量 `844 passed, 18 failed`；失败为可选依赖和既有 fixture，变更路径无失败。(local)
+- [eval] [test] Full Adapter `844 passed, 18 failed`; failures were optional dependencies and existing fixtures, with no changed-path failure. (local)
+- [docs] [docs] 新增 `docs/forge/IMPLEMENTATION_REVIEW_V12_10_11.md`，记录三项 Major 发现和七维验收；无任务、无 Gateway Query/Action、无 simulator/物理运动。(local)
+- [docs] [docs] Add `docs/forge/IMPLEMENTATION_REVIEW_V12_10_11.md` with three Major findings and seven-dimension acceptance; no task, Gateway Query/Action, simulator, or physical motion was used. (local)
+
+### Findings / 发现与处置
+- Major fixed: wrapped Qwen transport/timeout errors previously reached PAOS as `provider_failure`; exception metadata now preserves the stable class and retryability.
+- Major fixed: Core silently dropped configured fallback routes not present in a fixed model-name allowlist; bounded provider-neutral route validation now preserves valid configuration.
+- Major fixed: lifecycle and persistent diagnostic seams accepted unbounded strings; 128-character printable token bounds now fail closed.
+
+### 文件与关键 Diff / Files and Key Diff
+- `qwen3_vl_vllm_scene_understanding.py:L27-L87,L128-L144,L265-L286`：异常分类和包装元数据。(local)
+- `understanding.py:L24-L27,L379-L429`：Core route/error-class 边界。(local)
+- `qwen3_vl_vllm_lifecycle.py:L15-L20,L281-L299`、`persistent_host.py:L63-L65,L136-L170`：Adapter diagnostics bounds。(local)
+```diff
+-raise Qwen3VLVLLMInferenceError("qwen vLLM scene understanding request failed") from exc
++raise Qwen3VLVLLMInferenceError(..., provider_error_class=error_class,
++    retryable=error_class in {"timeout", "transport"}) from exc
+```
+
+### Git 提交 / Git Commit
+- 待本次修改提交后回填 / To be filled after this change is committed.
+
 ## v12.10.10 (2026-10-08 23:20) - codex
 
 ### 变更摘要 / Change Summary

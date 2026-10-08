@@ -21,6 +21,10 @@ _OBSERVATION_REF = re.compile(r"^observation://[^/]+/[^/]+$")
 _ARTIFACT_REF = re.compile(r"^artifact://[^/]+/.+$")
 _ENTITY_REF = re.compile(r"^entity://[^/]+$")
 _RELATION_REF = re.compile(r"^relation://[^/]+$")
+_DIAGNOSTIC_TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/+@-]{0,127}$")
+_PROVIDER_ERROR_CLASSES = frozenset(
+    {"authentication", "timeout", "transport", "contract", "provider_failure"}
+)
 
 
 class SceneUnderstandingProvider(Protocol):
@@ -372,11 +376,18 @@ def _error(
     }
 
 
+def _valid_provider_error_class(value: Any) -> bool:
+    if not isinstance(value, str) or _DIAGNOSTIC_TOKEN.fullmatch(value) is None:
+        return False
+    parts = value.split("+")
+    return len(parts) <= 4 and all(part in _PROVIDER_ERROR_CLASSES for part in parts)
+
+
 def _provider_failure(exc: Exception) -> tuple[str, bool]:
     """Return a stable, secret-free provider failure category."""
     declared_class = getattr(exc, "provider_error_class", None)
     declared_retryable = getattr(exc, "retryable", None)
-    if isinstance(declared_class, str) and declared_class.strip():
+    if _valid_provider_error_class(declared_class):
         if isinstance(declared_retryable, bool):
             return declared_class, declared_retryable
     text = str(exc).lower()
@@ -409,15 +420,12 @@ def _provider_diagnostics(provider: Any) -> dict[str, str]:
     result: dict[str, str] = {}
     for key in ("provider_route", "provider_error_class"):
         item = value.get(key)
-        if isinstance(item, str) and item in {
-            "none", "primary", "fallback", "qwen3-vl-4b-vllm",
-            "gpt-6.1-sol-high", "gpt-5.6-sol-high", "gpt-5.6-terra-medium", "authentication",
-            "timeout", "transport", "contract", "provider_failure",
-            "authentication+timeout", "authentication+transport",
-            "timeout+transport", "transport+timeout", "transport+transport",
-            "provider_failure+provider_failure",
-        }:
-            result[key] = item
+        if not isinstance(item, str) or _DIAGNOSTIC_TOKEN.fullmatch(item) is None:
+            continue
+        if key == "provider_error_class":
+            if not _valid_provider_error_class(item):
+                continue
+        result[key] = item
     return result
 
 

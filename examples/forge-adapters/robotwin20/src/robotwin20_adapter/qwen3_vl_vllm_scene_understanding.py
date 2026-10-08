@@ -25,6 +25,9 @@ from .openai_scene_understanding import (
 )
 
 _MAX_RELATIONS = 8
+_PROVIDER_ERROR_CLASSES = frozenset(
+    {"authentication", "timeout", "transport", "contract", "provider_failure"}
+)
 _NEGATIVE_AMBIGUITY_PLACEHOLDER = re.compile(
     r"^no (?:cross[- ]view )?(?:entity |identity )?"
     r"(?:uncertainty|ambiguity)(?: was)? (?:detected|found|present|observed)[.!]?$",
@@ -67,6 +70,23 @@ class Qwen3VLVLLMInferenceError(RuntimeError):
     """Bounded local vLLM failure safe to route to the configured fallback."""
 
     provider_error_class = "provider_failure"
+    retryable = False
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        provider_error_class: str | None = None,
+        retryable: bool | None = None,
+    ) -> None:
+        super().__init__(message)
+        if (
+            isinstance(provider_error_class, str)
+            and provider_error_class in _PROVIDER_ERROR_CLASSES
+        ):
+            self.provider_error_class = provider_error_class
+        if isinstance(retryable, bool):
+            self.retryable = retryable
 
 
 class Qwen3VLVLLMContractError(Qwen3VLVLLMInferenceError):
@@ -118,6 +138,8 @@ def _provider_error_class(exc: BaseException) -> str:
     names = " ".join(
         f"{type(item).__name__} {item}".lower() for item in chain
     )
+    if re.search(r"\b(?:401|403|unauthorized|forbidden|authentication)\b", names):
+        return "authentication"
     if "timeout" in names or "timed out" in names:
         return "timeout"
     if "connection" in names or "connecterror" in names or "http" in names:
@@ -244,7 +266,8 @@ class Qwen3VLVLLMSceneUnderstandingInference:
             )
             raise
         except Exception as exc:
-            self._last_error_class = _provider_error_class(exc)
+            error_class = _provider_error_class(exc)
+            self._last_error_class = error_class
             self._emit_diagnostic(
                 {
                     "status": "error",
@@ -259,7 +282,11 @@ class Qwen3VLVLLMSceneUnderstandingInference:
                     "error": type(exc).__name__,
                 }
             )
-            raise Qwen3VLVLLMInferenceError("qwen vLLM scene understanding request failed") from exc
+            raise Qwen3VLVLLMInferenceError(
+                "qwen vLLM scene understanding request failed",
+                provider_error_class=error_class,
+                retryable=error_class in {"timeout", "transport"},
+            ) from exc
         finally:
             close = getattr(client, "close", None)
             if callable(close):

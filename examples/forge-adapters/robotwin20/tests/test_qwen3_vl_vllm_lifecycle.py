@@ -151,7 +151,7 @@ def test_lifecycle_wrapper_preserves_provider_diagnostics():
             {
                 "infer": lambda _self, _request: {"ok": True},
                 "diagnostic_summary": lambda _self: {
-                    "provider_route": "qwen3-vl-4b-vllm",
+                    "provider_route": "vendor-model:v2@fallback",
                     "provider_error_class": "contract",
                     "raw_exception": "must not cross the seam",
                 },
@@ -161,7 +161,7 @@ def test_lifecycle_wrapper_preserves_provider_diagnostics():
     )
 
     assert provider.diagnostic_summary() == {
-        "provider_route": "qwen3-vl-4b-vllm",
+        "provider_route": "vendor-model:v2@fallback",
         "provider_error_class": "contract",
     }
     manager.close()

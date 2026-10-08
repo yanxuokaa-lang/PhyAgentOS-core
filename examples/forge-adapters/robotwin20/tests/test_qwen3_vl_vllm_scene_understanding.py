@@ -183,6 +183,55 @@ def test_malformed_model_output_is_reported_as_bounded_contract_failure():
     }
 
 
+def test_transport_exception_class_survives_qwen_error_wrapping():
+    class FailingCompletions:
+        def create(self, **_payload):
+            raise TimeoutError("provider endpoint timed out")
+
+    client = type(
+        "Client",
+        (),
+        {
+            "chat": type("Chat", (), {"completions": FailingCompletions()})(),
+            "close": lambda _self: None,
+        },
+    )()
+    provider = Qwen3VLVLLMSceneUnderstandingInference(
+        _Resolver(), client_factory=lambda **_kwargs: client
+    )
+
+    with pytest.raises(Qwen3VLVLLMInferenceError) as failure:
+        provider.infer(REQUEST)
+
+    assert failure.value.provider_error_class == "timeout"
+    assert failure.value.retryable is True
+    assert provider.diagnostic_summary()["provider_error_class"] == "timeout"
+
+
+def test_authentication_exception_class_is_not_collapsed_to_transport():
+    class FailingCompletions:
+        def create(self, **_payload):
+            raise RuntimeError("HTTP 401 Unauthorized")
+
+    client = type(
+        "Client",
+        (),
+        {
+            "chat": type("Chat", (), {"completions": FailingCompletions()})(),
+            "close": lambda _self: None,
+        },
+    )()
+    provider = Qwen3VLVLLMSceneUnderstandingInference(
+        _Resolver(), client_factory=lambda **_kwargs: client
+    )
+
+    with pytest.raises(Qwen3VLVLLMInferenceError) as failure:
+        provider.infer(REQUEST)
+
+    assert failure.value.provider_error_class == "authentication"
+    assert failure.value.retryable is False
+
+
 def test_vllm_scene_schema_avoids_xgrammar_unsupported_unique_items():
     client = _Client()
     provider = Qwen3VLVLLMSceneUnderstandingInference(

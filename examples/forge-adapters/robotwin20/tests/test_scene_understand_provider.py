@@ -11,6 +11,7 @@ from robotwin20_adapter import (
     RoboTwinSceneUnderstandingProvider,
     RoboTwinUnderstandingSnapshot,
 )
+from robotwin20_adapter.qwen3_vl_vllm_scene_understanding import Qwen3VLVLLMInferenceError
 from robotwin20_adapter.scene_understanding_fallback import SceneUnderstandingFallbackError
 
 OBSERVE_INPUT = {
@@ -105,7 +106,7 @@ async def test_provider_failure_projects_only_bounded_adapter_diagnostics():
 
         def diagnostic_summary(self):
             return {
-                "provider_route": "gpt-6.1-sol-high",
+                "provider_route": "vendor-model:v2@fallback",
                 "provider_error_class": "timeout",
                 "raw_exception": "must not cross the boundary",
             }
@@ -113,9 +114,46 @@ async def test_provider_failure_projects_only_bounded_adapter_diagnostics():
     result = SceneUnderstandingEndpoint(
         RoboTwinSceneUnderstandingProvider(FailingInference())
     ).invoke(OBSERVE_INPUT)
-    assert result["provider_route"] == "gpt-6.1-sol-high"
+    assert result["provider_route"] == "vendor-model:v2@fallback"
     assert result["provider_error_class"] == "timeout"
     assert "raw_exception" not in result
+
+
+@pytest.mark.asyncio
+async def test_provider_diagnostics_reject_unbounded_or_unstructured_tokens():
+    class FailingInference:
+        def infer(self, request):
+            raise RuntimeError("provider failed")
+
+        def diagnostic_summary(self):
+            return {
+                "provider_route": "secret endpoint " + ("x" * 200),
+                "provider_error_class": "timeout ",
+            }
+
+    result = SceneUnderstandingEndpoint(
+        RoboTwinSceneUnderstandingProvider(FailingInference())
+    ).invoke(OBSERVE_INPUT)
+
+    assert "provider_route" not in result
+    assert "provider_error_class" not in result
+
+
+@pytest.mark.asyncio
+async def test_invalid_declared_provider_error_class_fails_closed_to_generic_reason():
+    class FailingInference:
+        def infer(self, request):
+            error = RuntimeError("provider failed")
+            error.provider_error_class = "private-secret"  # type: ignore[attr-defined]
+            error.retryable = True  # type: ignore[attr-defined]
+            raise error
+
+    result = SceneUnderstandingEndpoint(
+        RoboTwinSceneUnderstandingProvider(FailingInference())
+    ).invoke(OBSERVE_INPUT)
+
+    assert result["error"]["reason"] == "provider_failure"
+    assert result["error"]["retryable"] is False
 
 
 @pytest.mark.asyncio
@@ -136,6 +174,22 @@ async def test_declared_fallback_failure_class_survives_public_projection():
         "failure_stage": "provider",
         "retryable": False,
     }
+
+
+@pytest.mark.asyncio
+async def test_wrapped_qwen_transport_class_survives_public_projection():
+    class FailingInference:
+        def infer(self, request):
+            raise Qwen3VLVLLMInferenceError(
+                "request failed", provider_error_class="transport", retryable=True
+            )
+
+    result = SceneUnderstandingEndpoint(
+        RoboTwinSceneUnderstandingProvider(FailingInference())
+    ).invoke(OBSERVE_INPUT)
+
+    assert result["error"]["reason"] == "transport"
+    assert result["error"]["retryable"] is True
 
 
 @pytest.mark.asyncio

@@ -15,6 +15,9 @@ from .qwen3_vl_vllm_scene_understanding import Qwen3VLVLLMInferenceError
 class Qwen3VLVLLMLifecycleError(Qwen3VLVLLMInferenceError):
     """The local engine lifecycle is unavailable or internally inconsistent."""
 
+    provider_error_class = "transport"
+    retryable = True
+
 
 class _Response(Protocol):
     def raise_for_status(self) -> None: ...
@@ -290,6 +293,9 @@ class LifecycleManagedSceneUnderstandingInference:
             key: value[key]
             for key in ("provider_route", "provider_error_class")
             if isinstance(value.get(key), str)
+            and 0 < len(value[key]) <= 128
+            and value[key].isprintable()
+            and not any(char.isspace() for char in value[key])
         }
 
     def release(self) -> None:
