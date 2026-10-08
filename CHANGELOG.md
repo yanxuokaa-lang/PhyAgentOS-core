@@ -18,7 +18,7 @@
 - `docs/forge/PLACE_POSTCONDITION_PROJECTION_DIAGNOSIS_20261008.md:L1-L47`、`docs/forge/IMPLEMENTATION_REVIEW_V12_9_13.md:L1-L49`；复审修复 scene revision 类型边界，七维审查 Blocker 0、Major 0。
 
 ### Git 提交 / Git Commit
-- Commit: `5808d03`（放置后置条件结果投影与无运动回归 / place postcondition projection and no-motion regressions）
+- Commit: `464cebd`（放置后置条件结果投影与无运动回归 / place postcondition projection and no-motion regressions）
 - Branch: `feature/planning-loop`
 
 ## v12.9.12 (2026-10-08 11:58) - codex
