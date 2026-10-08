@@ -20,7 +20,7 @@
 - `qwen3_vl_vllm_scene_understanding.py:L66-L75,L111-L124,L206-L262,L332-L455`, `qwen3_vl_vllm_lifecycle.py:L278-L293`, and `persistent_host.py:L53-L58,L654-L666`; no task was created/resumed, no real Gateway Query/Action was invoked, and no simulator or physical motion advanced. (local)
 
 ### Git 提交 / Git Commit
-- Pending until implementation commit; Branch: `feature/planning-loop`; 时间 / Time: 2026-10-08 Asia/Shanghai
+- Commit: `66a9d07`（implementation）; Branch: `feature/planning-loop`; 时间 / Time: 2026-10-08 Asia/Shanghai
 
 ## v12.10.9 (2026-10-08 21:00) - codex
 
