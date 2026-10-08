@@ -1,5 +1,10 @@
 # Change Log
 
+## v3.0.6 (2026-10-08)
+
+- 中文：发布 Adapter `0.9.9` 与 Node `0.10.14`；修复 contact qualification 子路线丢失 qualification-owned arm capability 血缘，并将 profile-binding contract failure 结构化为不可自动 replan 的 Runtime 错误。
+- English: Publish Adapter `0.9.9` and Node `0.10.14`; preserve qualification-owned arm capability lineage during contact-qualification child route builds and structure profile-binding contract failures as non-replannable Runtime errors.
+
 ## v3.0.5 (2026-10-07)
 
 - 中文：发布 Adapter `0.9.8` 与 Node `0.10.13`。controller qualification plan v2 在公开 contract owner 中强制 package-owned capability、validation 与 source-manifest refs；显式 v1 继续读取已有批准的 legacy package。

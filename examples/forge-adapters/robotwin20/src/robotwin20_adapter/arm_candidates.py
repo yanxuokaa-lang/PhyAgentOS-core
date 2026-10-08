@@ -49,6 +49,10 @@ class ArmPlanningError(ValueError):
     """An arm profile, route option, or selector result is unsafe or malformed."""
 
 
+class ArmProfileBindingError(ArmPlanningError):
+    """A route option no longer matches the deployment-owned arm profile."""
+
+
 class RouteReadinessProvider(Protocol):
     """Evaluate one complete candidate/arm route without changing the world."""
 
@@ -594,7 +598,7 @@ class CompleteRouteSelector:
             raise ArmPlanningError("route option arm binding is invalid")
         configured = {item["arm_id"]: dict(item) for item in self.profile["arms"]}
         if option["arm_profiles"] != [configured[arm_id] for arm_id in arm_ids]:
-            raise ArmPlanningError("route option arm profile binding is invalid")
+            raise ArmProfileBindingError("route option arm profile binding is invalid")
         candidate = option["candidate"]
         if (
             not isinstance(candidate, Mapping)
@@ -851,6 +855,7 @@ def project_arm_assignment(
 
 __all__ = [
     "ARM_PLANNING_PROFILE_SCHEMA_VERSION",
+    "ArmProfileBindingError",
     "ROUTE_EVALUATION_SCHEMA_VERSION",
     "ROUTE_SELECTION_SCHEMA_VERSION",
     "ArmPlanningError",

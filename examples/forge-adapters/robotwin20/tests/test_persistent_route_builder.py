@@ -5,10 +5,11 @@ from copy import deepcopy
 
 import pytest
 import yaml
-from test_arm_candidates import _intent, _profile
+from test_arm_candidates import _intent, _profile, _result
 from test_route_inputs import _facts
 from test_route_readiness import _request
 
+from robotwin20_adapter.arm_candidates import CompleteRouteSelector
 from robotwin20_adapter.persistent_route_builder import BenchmarkSceneSource, PersistentRouteBuilder
 from robotwin20_adapter.route_evidence import _artifact_path
 from robotwin20_adapter.route_inputs import canonical_json
@@ -78,7 +79,71 @@ def test_persistent_contacts_are_rematerialized_before_full_readiness(tmp_path, 
     assert len(list(run.glob("contact-*.json"))) == 2
 
 
-def setup_builder(tmp_path, monkeypatch):
+def test_contact_rematerialization_preserves_qualification_capability_bindings(
+    tmp_path, monkeypatch
+):
+    from robotwin20_adapter.preparation_deadline import PreparationDeadline
+
+    qualification_refs = {
+        arm_id: f"artifact://controller-qualification/current/capabilities/{arm_id}/document"
+        for arm_id in ("left", "right")
+    }
+    request, builder, _ = setup_builder(
+        tmp_path, monkeypatch, motion_capability_refs=qualification_refs
+    )
+    nominal = builder.build(request)
+
+    def query(operation, arguments, **kwargs):
+        if operation == "snapshot":
+            return dict(builder.client.snapshot)
+        candidate = arguments["route_request"]["candidates"][0]
+        return {
+            "candidates": {
+                candidate["candidate_ref"]: {
+                    "status": "qualified",
+                    "motion_authorized": False,
+                    "scene_revision": request["scene_revision"],
+                    "candidate_ref": candidate["candidate_ref"],
+                    "arm_id": "left",
+                    "arm_attempts": [
+                        {
+                            "arm_id": "left",
+                            "qualification": {
+                                "parent_candidate_ref": candidate["candidate_ref"],
+                                "status": "qualified",
+                                "variants": [],
+                            },
+                        }
+                    ],
+                }
+            }
+        }
+
+    builder.client.query = query
+    original_source = builder.scene_source
+    builder.scene_source = lambda value, **kwargs: original_source(value)
+    run = tmp_path / "preparation-builds/qualification-lineage"
+    run.mkdir()
+
+    rebuilt = builder._qualify_contacts(
+        request, nominal, run, PreparationDeadline.start(30), {}
+    )
+
+    assert rebuilt["options"]
+    assert all(option["arm_ids"] == ["left"] for option in rebuilt["options"])
+    assert all(
+        option["arm_profiles"][0]["motion_capabilities_ref"]
+        == qualification_refs["left"]
+        for option in rebuilt["options"]
+    )
+    selected = CompleteRouteSelector(
+        lambda route, option: _result(route, option), builder.arm_profile
+    ).select(_intent(), rebuilt["base_request"], rebuilt["options"])
+    assert selected["status"] == "selected"
+    assert selected["motion_authorized"] is False
+
+
+def setup_builder(tmp_path, monkeypatch, *, motion_capability_refs=None):
     profile = tmp_path / "arms.yaml"
     profile.write_text(yaml.safe_dump(_profile()))
     route = _request(tmp_path)
@@ -118,6 +183,7 @@ def setup_builder(tmp_path, monkeypatch):
     builder = PersistentRouteBuilder(
         client=Client(), artifact_root=tmp_path, scene_source=lambda request: deepcopy(facts),
         command=("materializer",), materializer_arguments={"arm-planning-profile": str(profile)},
+        motion_capability_refs=motion_capability_refs,
     )
     return request, builder, calls
 

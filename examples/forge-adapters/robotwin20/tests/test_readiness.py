@@ -1,5 +1,6 @@
 import pytest
 from PhyAgentOS.forge.capability_runtime import ManipulationPreparationEndpoint
+from PhyAgentOS.forge.capability_runtime.manipulation_prepare import PreparationProviderError
 
 from robotwin20_adapter import ReadinessAdapterError, RoboTwinReadinessEvaluator
 
@@ -79,6 +80,32 @@ def test_mapping_result_is_accepted_by_paos_preparation_endpoint():
     adapter = RoboTwinReadinessEvaluator(Evaluator({"prepared_candidates": [prepared()]}))
     result = ManipulationPreparationEndpoint(adapter).invoke(request())
     assert result["status"] == "available"
+    assert result["motion_authorized"] is False
+
+
+def test_structured_provider_failure_reaches_paos_preparation_result():
+    class Provider:
+        def prepare(self, _request):
+            raise PreparationProviderError(
+                "arm_planning_contract_invalid",
+                "route option capability binding is invalid",
+                failure_owner="runtime_adapter",
+                retryable_in_revision=False,
+                requires_replan=False,
+                recommended_action="fix_runtime_contract",
+            )
+
+    result = ManipulationPreparationEndpoint(Provider()).invoke(request())
+
+    assert result["status"] == "unavailable"
+    assert result["error"] == {
+        "code": "arm_planning_contract_invalid",
+        "message": "route option capability binding is invalid",
+    }
+    assert result["failure_owner"] == "runtime_adapter"
+    assert result["retryable_in_revision"] is False
+    assert result["requires_replan"] is False
+    assert result["recommended_action"] == "fix_runtime_contract"
     assert result["motion_authorized"] is False
 
 

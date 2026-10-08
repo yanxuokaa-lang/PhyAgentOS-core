@@ -77,6 +77,10 @@ class PersistentRouteBuilder:
             load_arm_planning_profile(Path(self.arguments["arm-planning-profile"])),
             motion_capability_refs,
         )
+        self.motion_capability_refs = {
+            arm["arm_id"]: arm["motion_capabilities_ref"]
+            for arm in self.arm_profile["arms"]
+        }
 
     def _current(
         self,
@@ -306,6 +310,7 @@ class PersistentRouteBuilder:
                 child = PersistentRouteBuilder(client=self.client, artifact_root=self.root,
                     scene_source=self.scene_source, command=self.command, timeout_s=self.timeout_s,
                     contact_qualification_mode=self.contact_qualification_mode,
+                    motion_capability_refs=self.motion_capability_refs,
                     materializer_arguments={**self.arguments, "contact-qualification": str(qualification),
                         "contact-qualification-ref": f"artifact://preparation-builds/{run.name}/qualification-{index}-{arm}"})
                 try:

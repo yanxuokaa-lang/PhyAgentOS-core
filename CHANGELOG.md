@@ -5,6 +5,41 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.9.11 (2026-10-08 00:11) - codex
+
+### 变更摘要 / Change Summary
+- [sense] [fix] 修复 contact qualification 子路线丢失 deployment-owned 逐臂 capability refs 的血缘错误；child route builder 现在复用父 builder 的 capability mapping，避免候选生成后因 profile mismatch 在 preparation 阶段失败。 (local)
+- [sense] [fix] Fix the lineage defect where contact-qualification child routes dropped deployment-owned per-arm capability refs; child route builders now reuse the parent capability mapping so preparation does not fail on a profile mismatch after candidate generation. (local)
+- [comm] [fix] 仅将精确 `ArmProfileBindingError` 结构化为 `arm_planning_contract_invalid`、`runtime_adapter`、不可 retry/replan 的 Runtime contract failure；其他 `ArmPlanningError` 保持 Agent 可判定的原有语义。 (local)
+- [comm] [fix] Structure only the narrow `ArmProfileBindingError` as `arm_planning_contract_invalid`, owned by `runtime_adapter` and not retryable/replannable; other `ArmPlanningError` values retain their Agent-visible semantics. (local)
+
+### 文件变更详情 / File Changes
+- [修改 / Modified] `persistent_route_builder.py:L76-L83,L310-L315`：保存并传递 capability mapping 到 contact qualification child builder。 (local)
+- [修改 / Modified] `arm_candidates.py:L48-L53,L598-L601,L856-L865`、`__init__.py:L263-L291`：新增并公开 `ArmProfileBindingError`。 (local)
+- [修改 / Modified] `persistent_preparation.py:L93-L101`：保留结构化 Runtime failure code/owner/retry/replan/recommended action。 (local)
+- [新增测试 / Added Tests] `test_persistent_route_builder.py:L82-L143`、`test_persistent_preparation.py:L207-L243`、`test_readiness.py:L86-L109`：覆盖血缘传递、真实 selector、窄异常分类与 Core endpoint 字段。 (local)
+- [新增 / Added] `docs/forge/PREPARATION_CAPABILITY_LINEAGE_DIAGNOSIS_20261008.md`、`docs/forge/IMPLEMENTATION_REVIEW_V12_9_11.md`：保存两次诊断与七维验收。 (local)
+
+### 关键 Diff / Key Diff
+```diff
+- child PersistentRouteBuilder(... materializer_arguments=...)
++ child PersistentRouteBuilder(... motion_capability_refs=self.motion_capability_refs, ...)
+```
+```diff
+- raise ArmPlanningError("route option arm profile binding is invalid")
++ raise ArmProfileBindingError("route option arm profile binding is invalid")
+```
+
+### 验证与安全边界 / Validation and Safety Boundary
+- Adapter focused `48 passed`；Core AgentLoop/manipulation/recovery `254 passed`；Skill full `379 passed`；Ruff、compileall、`git diff --check` 通过。此前完整 Adapter suite `821 passed, 18 failed` 的失败是既有环境/fixture 问题，不涉及 changed path。 (local)
+- Adapter focused `48 passed`; Core AgentLoop/manipulation/recovery `254 passed`; full Skill `379 passed`; Ruff, compileall, and `git diff --check` passed. The earlier full Adapter suite had `821 passed, 18 failed` from existing environment/fixture issues outside the changed path. (local)
+- 七维复审：Blocker 0、Major 0；无 RGB/颜色/排列/benchmark/相机/实体/候选/固定机械臂专用逻辑。所有验证均 no-motion，未创建/恢复 AgentTask、未调用 Gateway Query/Action、未推进 simulator/物理运动；制品仅构建，未安装或重启。 (local)
+- Seven-dimension review: zero Blocker and Major; no RGB/color/order/benchmark/camera/entity/candidate/fixed-arm-specific logic. All validation was no-motion; no AgentTask, Gateway Query/Action, simulator/physical motion, installation, or Runtime restart occurred. (local)
+
+### Git 提交 / Git Commit
+- Commit: pending (implementation and review files are prepared; commit hash will be recorded after commit)
+- Branch: `feature/planning-loop`
+
 ## v12.9.10 (2026-10-07 23:47) - codex
 
 ### 变更摘要 / Change Summary

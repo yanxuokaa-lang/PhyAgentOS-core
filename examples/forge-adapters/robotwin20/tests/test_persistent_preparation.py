@@ -204,6 +204,44 @@ def test_readiness_infrastructure_failure_is_not_an_empty_candidate_set(tmp_path
     assert not routes._routes
 
 
+def test_arm_planning_contract_failure_is_public_and_not_replanned(tmp_path):
+    from PhyAgentOS.forge.capability_runtime.manipulation_prepare import PreparationProviderError
+
+    from robotwin20_adapter.arm_candidates import ArmProfileBindingError
+
+    request, provider, routes = composition(tmp_path)
+
+    def fail_build(*_args, **_kwargs):
+        raise ArmProfileBindingError("route option arm profile binding is invalid")
+
+    provider.route_builder.build = fail_build
+    metrics = {}
+    with pytest.raises(PreparationProviderError) as caught:
+        provider.prepare(request, metrics=metrics)
+
+    assert caught.value.code == "arm_planning_contract_invalid"
+    assert str(caught.value) == "route option arm profile binding is invalid"
+    assert caught.value.failure_owner == "runtime_adapter"
+    assert caught.value.retryable_in_revision is False
+    assert caught.value.requires_replan is False
+    assert caught.value.recommended_action == "fix_runtime_contract"
+    assert metrics["failure"]["type"] == "ArmProfileBindingError"
+    assert not routes._routes
+
+
+def test_other_arm_planning_failures_are_not_misclassified_as_binding_contracts(tmp_path):
+    from robotwin20_adapter.arm_candidates import ArmPlanningError
+
+    request, provider, _ = composition(tmp_path)
+
+    def fail_build(*_args, **_kwargs):
+        raise ArmPlanningError("arm candidate enumeration exceeds configured max_options")
+
+    provider.route_builder.build = fail_build
+    with pytest.raises(ArmPlanningError, match="exceeds configured max_options"):
+        provider.prepare(request)
+
+
 def test_finalized_review_is_exposed_as_preparation_evidence(tmp_path):
     request, provider, routes = composition(tmp_path)
     ref = "artifact://selected/review"

@@ -14,7 +14,7 @@ from uuid import uuid4
 from PhyAgentOS.forge.capability_runtime.manipulation_prepare import PreparationProviderError
 from PhyAgentOS.forge.manipulation import CapabilitySnapshot, ManipulationIntent, ReplanSignal
 
-from .arm_candidates import project_arm_assignment
+from .arm_candidates import ArmProfileBindingError, project_arm_assignment
 from .persistent_client import PersistentWorkerError
 from .preparation_deadline import PreparationDeadline
 from .route_evidence import _artifact_path
@@ -90,6 +90,15 @@ class PersistentPreparationProvider:
                         recommended_action=exc.recommended_action,
                         fresh_evidence_requirements=exc.fresh_evidence_requirements,
                     ) from exc
+            if isinstance(exc, ArmProfileBindingError):
+                raise PreparationProviderError(
+                    "arm_planning_contract_invalid",
+                    str(exc),
+                    failure_owner="runtime_adapter",
+                    retryable_in_revision=False,
+                    requires_replan=False,
+                    recommended_action="fix_runtime_contract",
+                ) from exc
             if isinstance(exc, PersistentWorkerError):
                 if exc.code == "PreparationDeadlineExceededError":
                     from .preparation_deadline import PreparationDeadlineExceededError
