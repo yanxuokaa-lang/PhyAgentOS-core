@@ -17,7 +17,7 @@
 - 仅执行 lifecycle、editable install 和只读健康检查；未创建/恢复任务，未调用 Query/Action，未推进 simulator 或物理运动。 / Only lifecycle, editable install, and read-only health checks ran; no task was created/resumed, no Query/Action was invoked, and no simulator or physical motion advanced.
 
 ### Git 提交 / Git Commit
-- Commit: 待提交；Branch: `feature/planning-loop`; 时间 / Time: 2026-10-08 Asia/Shanghai
+- Commit: `a9814a1`; Branch: `feature/planning-loop`; 时间 / Time: 2026-10-08 Asia/Shanghai
 
 ## v12.10.5 (2026-10-08 18:00) - codex
 
