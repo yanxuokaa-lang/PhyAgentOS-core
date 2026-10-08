@@ -14,7 +14,7 @@
 - [eval] [test] Read-only accepted Skill `3.0.6`, Node `0.10.14` receipt, Dora/Gateway, all 11 Tool contexts, active ownership, and model configuration; no task or Query/Action was created or invoked. (local)
 
 ### Git 提交 / Git Commit
-- Commit: pending (deployment acceptance log will be committed after this entry)
+- Commit: `ccb9231`（停止旧 Runtime、安装 Skill/Node、启动并验收新 Runtime / stop old Runtime, install Skill/Node, start and accept new Runtime）
 - Branch: `feature/planning-loop`
 
 ## v12.9.11 (2026-10-08 00:11) - codex
