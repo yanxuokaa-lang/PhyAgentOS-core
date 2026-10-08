@@ -22,7 +22,7 @@
 - Node `1.0.1` and Skill `3.0.9` were built; review evidence: `docs/forge/IMPLEMENTATION_REVIEW_V12_10_3.md`. Runtime was not stopped, installed, or restarted. (local)
 
 ### Git 提交 / Git Commit
-- 待提交 / Pending commit; Branch: `feature/planning-loop`
+- Commit: `d1d02c3`; Branch: `feature/planning-loop`; 时间 / Time: 2026-10-08 Asia/Shanghai
 
 ## v12.10.2 (2026-10-08 15:24) - codex
 
