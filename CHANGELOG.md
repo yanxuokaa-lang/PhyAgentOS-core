@@ -19,7 +19,7 @@
 - 实际 spawn: `robotwin20_persistent_host-0.10.15-linux-x86_64` / Actual spawn: `robotwin20_persistent_host-0.10.15-linux-x86_64`
 
 ### Git 提交 / Git Commit
-- 待提交 / Pending: `feature/planning-loop`
+- Commit: `82e078a` / Branch: `feature/planning-loop`
 
 ## v12.9.13 (2026-10-08 12:27) - codex
 
