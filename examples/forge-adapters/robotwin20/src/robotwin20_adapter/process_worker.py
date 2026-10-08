@@ -48,6 +48,10 @@ class ProcessWorkerTimeoutError(ProcessWorkerError, TimeoutError):
     """A bounded worker exchange exhausted its request budget."""
 
 
+class ProcessWorkerProtocolLimitError(ProcessWorkerError):
+    """A request or response exceeded the configured JSONL message budget."""
+
+
 @dataclass(frozen=True)
 class ProcessWorkerConfig:
     command: tuple[str, ...]
@@ -142,8 +146,14 @@ class JsonlProcessWorkerClient:
                 reply = self._read_reply(request_id, request_timeout)
                 self._log_timing("request", request_started)
                 return reply
-            except Exception:
-                self._abort()
+            except Exception as exc:
+                # This limit is checked before writing any request bytes, so the
+                # current worker protocol generation remains synchronized.
+                if not (
+                    isinstance(exc, ProcessWorkerProtocolLimitError)
+                    and exc.code == "worker_request_too_large"
+                ):
+                    self._abort()
                 raise
         finally:
             self._lock.release()
@@ -253,7 +263,10 @@ class JsonlProcessWorkerClient:
         try:
             line = json.dumps(payload, ensure_ascii=True, separators=(",", ":"))
             if len(line.encode("utf-8")) > self.config.max_line_bytes:
-                raise ProcessWorkerError("worker request exceeds max_line_bytes")
+                raise ProcessWorkerProtocolLimitError(
+                    "worker request exceeds max_line_bytes",
+                    code="worker_request_too_large",
+                )
             process.stdin.write(line + "\n")
             process.stdin.flush()
         except (BrokenPipeError, OSError) as exc:
@@ -299,7 +312,10 @@ class JsonlProcessWorkerClient:
                 stderr_tail=stderr_tail,
             )
         if len(line.encode("utf-8")) > self.config.max_line_bytes:
-            raise ProcessWorkerError("worker response exceeds max_line_bytes")
+            raise ProcessWorkerProtocolLimitError(
+                "worker response exceeds max_line_bytes",
+                code="worker_response_too_large",
+            )
         try:
             value = json.loads(line)
         except json.JSONDecodeError as exc:
@@ -342,6 +358,7 @@ __all__ = [
     "JsonlProcessWorkerClient",
     "ProcessWorkerConfig",
     "ProcessWorkerError",
+    "ProcessWorkerProtocolLimitError",
     "ProcessWorkerResourceError",
     "ProcessWorkerTerminatedError",
 ]

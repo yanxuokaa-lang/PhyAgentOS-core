@@ -493,6 +493,10 @@ def test_host_composes_tools_around_one_persistent_worker_client(tmp_path, monke
         "provider_lifetime": "persistent",
         "tool_id": "scene.observe",
     }
+    client.transport_failure_code = "worker_response_too_large"
+    assert host.bundle.runtime.get_context("scene.observe")["binding_error"] == (
+        "worker_response_too_large"
+    )
     host.close()
     assert closed == [True]
 

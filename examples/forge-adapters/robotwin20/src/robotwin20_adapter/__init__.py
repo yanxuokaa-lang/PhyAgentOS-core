@@ -132,6 +132,7 @@ from .process_worker import (
     JsonlProcessWorkerClient,
     ProcessWorkerConfig,
     ProcessWorkerError,
+    ProcessWorkerProtocolLimitError,
     ProcessWorkerResourceError,
     ProcessWorkerTerminatedError,
 )
@@ -339,6 +340,7 @@ __all__ = [
     "JsonlProcessWorkerClient",
     "ProcessWorkerConfig",
     "ProcessWorkerError",
+    "ProcessWorkerProtocolLimitError",
     "ProcessWorkerResourceError",
     "ProcessWorkerTerminatedError",
     "GraspGenProposalProvider",

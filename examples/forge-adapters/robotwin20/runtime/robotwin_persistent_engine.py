@@ -712,13 +712,14 @@ class RoboTwinPersistentEngine:
                 and clear_of_target
             )
             result["observation_ready"] = observation_ready
+        result["artifact_refs"] = [reference, *video_refs]
+        result["evidence_refs"] = list(result["artifact_refs"])
         probe._json_artifact(self.root, reference, {**result, "phase": phase, "phases": phases,
+                            "invocation_id": invocation_id, "owner": owner,
                             "simulator_steps": self._state.get("simulator_steps", 0),
                             "placement_measurement": self._state.get("placement_measurement"),
                             "contacts": self._state.get("contact_trace", []),
                             "task_video_refs": list(video_refs)})
-        result["artifact_refs"] = [reference, *video_refs]
-        result["evidence_refs"] = list(result["artifact_refs"])
         return result
 
     def _bound_entity_poses(self) -> dict[str, list[float]]:

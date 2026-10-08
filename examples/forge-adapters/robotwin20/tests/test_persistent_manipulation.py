@@ -1,3 +1,4 @@
+import json
 from threading import Event, get_ident
 from types import SimpleNamespace
 
@@ -5,8 +6,10 @@ import numpy as np
 import pytest
 
 from robotwin20_adapter.persistent_manipulation import (
+    ACTION_RECEIPT_MAX_BYTES,
     ManipulationStateError,
     PersistentManipulationProvider,
+    bounded_action_receipt,
 )
 
 
@@ -86,6 +89,147 @@ def test_cancelled_motion_retains_uncertain_possession_without_release():
             provider.start("acquire", "b", "owner", {"entity_ref": "entity://two"})
     finally:
         provider.close()
+
+
+def test_large_engine_diagnostics_stay_out_of_the_terminal_receipt(tmp_path):
+    artifact = tmp_path / "complete-action.json"
+    execution_plan = {"segments": [[float(index) for index in range(150_000)]]}
+
+    class DiagnosticEngine(Engine):
+        def execute(self, phase, arguments, cancel, *, owner, invocation_id):
+            del phase, arguments, cancel, owner, invocation_id
+            complete = {
+                "status": "succeeded",
+                "world_change_started": True,
+                "outcome_known": True,
+                "new_scene_revision": "scene-2",
+                "failure_owner": "none",
+                "failure_code": None,
+                "retryable_in_revision": False,
+                "requires_replan": False,
+                "recommended_action": "continue",
+                "phase": "acquire",
+                "selected_arm": "arm-a",
+                "failed_phase": None,
+                "arm_attempts": [{
+                    "arm": "arm-a",
+                    "status": "pass",
+                    "execution_plan": execution_plan,
+                }],
+                "artifact_refs": ["artifact://persistent/action-complete"],
+                "evidence_refs": ["artifact://persistent/action-complete"],
+            }
+            artifact.write_text(json.dumps(complete), encoding="utf-8")
+            return complete
+
+    provider = PersistentManipulationProvider(DiagnosticEngine)
+    try:
+        provider.start("acquire", "large", "owner", {"entity_ref": "entity://one"})
+        receipt = settle(provider, "large")
+        assert receipt["status"] == "succeeded"
+        assert receipt["outcome_known"] is True
+        assert receipt["holding_state"] == "holding"
+        assert receipt["arm_attempts"] == [{"arm": "arm-a", "status": "pass"}]
+        assert "execution_plan" not in receipt
+        assert len(json.dumps(receipt).encode("utf-8")) < ACTION_RECEIPT_MAX_BYTES
+        assert artifact.stat().st_size > 1_048_576
+        assert "execution_plan" in json.loads(artifact.read_text(encoding="utf-8"))["arm_attempts"][0]
+    finally:
+        provider.close()
+
+
+def test_oversized_scene_effects_disable_carry_forward_instead_of_expanding_receipt():
+    result = {
+        "status": "succeeded",
+        "world_change_started": True,
+        "outcome_known": True,
+        "new_scene_revision": "scene-2",
+        "artifact_refs": ["artifact://persistent/action-complete"],
+        "scene_effects": {
+            "schema_version": "paos-scene-effects/v1",
+            "source_scene_revision": "scene-1",
+            "new_scene_revision": "scene-2",
+            "changed_entity_refs": [],
+            "unaffected_entity_refs": [f"entity://{index}-{'x' * 2000}" for index in range(200)],
+            "changed_resources": [],
+            "effect_evidence_refs": ["artifact://persistent/action-complete"],
+            "effect_scope_complete": True,
+            "carry_forward_authorized": True,
+        },
+    }
+
+    receipt = bounded_action_receipt(result)
+
+    assert len(json.dumps(receipt).encode("utf-8")) < ACTION_RECEIPT_MAX_BYTES
+    assert receipt["receipt_truncated"] is True
+    assert receipt["scene_effects"]["effect_scope_complete"] is False
+    assert receipt["scene_effects"]["carry_forward_authorized"] is False
+
+
+def test_receipt_marks_truncated_refs_and_rejects_nested_terminal_values():
+    receipt = bounded_action_receipt({
+        "status": "succeeded",
+        "outcome_known": True,
+        "world_change_started": True,
+        "error_detail": {"unbounded": ["private", "nested", "payload"]},
+        "artifact_refs": [f"artifact://persistent/{index}" for index in range(18)],
+        "evidence_refs": ["x" * 2049],
+    })
+
+    assert receipt["status"] == "succeeded"
+    assert receipt["outcome_known"] is True
+    assert "error_detail" not in receipt
+    assert len(receipt["artifact_refs"]) == 16
+    assert receipt["evidence_refs"] == []
+    assert receipt["receipt_truncated"] is True
+
+
+def test_receipt_does_not_serialize_non_finite_terminal_number():
+    receipt = bounded_action_receipt({
+        "status": "succeeded",
+        "outcome_known": True,
+        "world_change_started": True,
+        "phase": float("nan"),
+    })
+
+    assert "phase" not in receipt
+    assert receipt["receipt_truncated"] is True
+    json.dumps(receipt, allow_nan=False)
+
+
+def test_receipt_projection_failure_keeps_durable_evidence_and_uncertain_state(monkeypatch):
+    import robotwin20_adapter.persistent_manipulation as module
+
+    class SettledEngine(Engine):
+        def execute(self, phase, arguments, cancel, *, owner, invocation_id):
+            del phase, arguments, cancel, owner, invocation_id
+            return {
+                "status": "succeeded",
+                "world_change_started": True,
+                "outcome_known": True,
+                "artifact_refs": ["artifact://persistent/action-complete"],
+                "evidence_refs": ["artifact://persistent/action-complete"],
+            }
+
+    monkeypatch.setattr(
+        module,
+        "bounded_action_receipt",
+        lambda _result: (_ for _ in ()).throw(ValueError("invalid receipt field")),
+    )
+    provider = PersistentManipulationProvider(SettledEngine)
+    try:
+        provider.start("acquire", "projection", "owner", {"entity_ref": "entity://one"})
+        result = settle(provider, "projection")
+    finally:
+        provider.close()
+
+    assert result["status"] == "unknown"
+    assert result["world_change_started"] is True
+    assert result["outcome_known"] is False
+    assert result["failure_owner"] == "infrastructure"
+    assert result["failure_code"] == "action_receipt_projection_failed"
+    assert result["artifact_refs"] == ["artifact://persistent/action-complete"]
+    assert result["holding_state"] == "uncertain"
 
 
 class _Actor:
@@ -199,6 +343,10 @@ def test_place_engine_projects_verified_postconditions_without_video_encoder(tmp
     assert result["observation_ready"] is True
     artifact = loads(_artifact_path(engine.root, result["artifact_refs"][0]).read_text())
     assert artifact["observation_ready"] is True
+    assert artifact["invocation_id"] == "invocation://object-place/1"
+    assert artifact["owner"] == "paos:task-1"
+    assert artifact["artifact_refs"] == result["artifact_refs"]
+    assert artifact["evidence_refs"] == result["evidence_refs"]
 
 
 def test_place_engine_does_not_claim_clearance_without_retreat(tmp_path):

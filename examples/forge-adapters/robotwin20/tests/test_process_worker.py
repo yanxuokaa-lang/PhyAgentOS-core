@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
 import logging
 import queue
 import subprocess
 import sys
 import threading
+import time
 from collections import deque
 from pathlib import Path
 from types import SimpleNamespace
@@ -15,6 +17,7 @@ from robotwin20_adapter import (
     JsonlProcessWorkerClient,
     ProcessWorkerConfig,
     ProcessWorkerError,
+    ProcessWorkerProtocolLimitError,
     ProcessWorkerResourceError,
 )
 
@@ -145,6 +148,59 @@ def test_worker_sigkill_is_classified_as_resource_exhaustion():
         client.request({"request_id": "request-1"})
     assert failure.value.code == "worker_resource_exhausted"
     assert failure.value.returncode == -9
+
+
+def test_worker_response_limit_is_typed_and_aborts_the_protocol_generation():
+    client = _client("large-response")
+    with pytest.raises(ProcessWorkerProtocolLimitError) as failure:
+        client.request({"request_id": "request-1"})
+    assert failure.value.code == "worker_response_too_large"
+    assert client._process is None
+
+
+def test_oversized_request_is_rejected_without_aborting_worker_generation():
+    client = _client(max_line_bytes=256)
+    first = client.request({"request_id": "small-before"})
+    with pytest.raises(ProcessWorkerProtocolLimitError) as failure:
+        client.request({"request_id": "too-large", "payload": "x" * 512})
+    assert failure.value.code == "worker_request_too_large"
+    second = client.request({"request_id": "small-after"})
+    assert first["pid"] == second["pid"]
+    assert client._process is not None and client._process.poll() is None
+    client.shutdown()
+
+
+def test_persistent_provider_compacts_large_terminal_result_before_jsonl_transport():
+    client = _client(
+        "persistent-large",
+        environment={"PYTHONPATH": str(Path(__file__).parents[1] / "src")},
+    )
+    client.request({
+        "request_id": "start",
+        "command": "start",
+        "phase": "acquire",
+        "invocation_id": "invocation-large",
+        "owner": "owner",
+        "arguments": {"entity_ref": "entity://one"},
+    })
+    result = None
+    for index in range(20):
+        response = client.request({
+            "request_id": f"poll-{index}",
+            "command": "poll",
+            "invocation_id": "invocation-large",
+        })
+        result = response["result"]
+        if result is not None:
+            break
+        time.sleep(0.01)
+
+    assert result is not None
+    assert result["status"] == "succeeded"
+    assert result["arm_attempts"] == [{"arm": "arm-a", "status": "pass"}]
+    assert len(json.dumps(response).encode("utf-8")) < client.config.max_line_bytes
+    assert client._process is not None and client._process.poll() is None
+    client.shutdown()
 
 
 def test_worker_config_rejects_path_lookup_and_relative_cwd(tmp_path):

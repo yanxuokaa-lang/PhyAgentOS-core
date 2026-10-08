@@ -1,5 +1,19 @@
 # Change Log
 
+## v3.0.9 (2026-10-08)
+
+- 中文：发布 Adapter `0.9.12` 与 Node `1.0.1`；发送前超限请求不再终止 persistent worker，Action receipt 对被丢弃或约束的字段显式标记截断。
+- English: Publish Adapter `0.9.12` and Node `1.0.1`; oversized requests rejected before transmission no longer terminate the persistent worker, and Action receipts explicitly mark fields that are omitted or bounded.
+- 中文：保持 unknown Action 的 reconciliation-only 语义，不新增自动重试、replan、候选切换、机械臂切换或后续 Action dispatch。
+- English: Preserve reconciliation-only semantics for unknown Actions; add no automatic retry, replan, candidate switch, arm switch, or subsequent Action dispatch.
+
+## v3.0.8 (2026-10-08)
+
+- 中文：发布 Adapter `0.9.11` 与 Node `1.0.0`；完整 persistent Action 诊断保留在 Runtime artifact，worker/Gateway 仅传输有界 terminal receipt，避免成功 Action 因 JSONL 响应超过 1 MiB 而降级为 unknown。
+- English: Publish Adapter `0.9.11` and Node `1.0.0`; retain complete persistent Action diagnostics in Runtime artifacts while sending only bounded terminal receipts across worker/Gateway, preventing successful Actions from degrading to unknown when a JSONL response exceeds 1 MiB.
+- 中文：transport limit、进程终止和资源耗尽保留各自结构化错误，AgentLoop 继续对 unknown 结果 fail-closed，不自动重试、replan、换候选、换臂或执行后续 Action。
+- English: Preserve distinct structured errors for transport limits, process termination, and resource exhaustion; AgentLoop remains fail-closed for unknown outcomes and does not automatically retry, replan, switch candidates or arms, or dispatch subsequent Actions.
+
 ## v3.0.7 (2026-10-08)
 
 - 中文：发布 Adapter `0.9.10` 与 Node `0.10.15`；将 persistent place 的四项已验证 postcondition 投影修复打包到可安装制品。

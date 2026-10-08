@@ -2,10 +2,194 @@
 
 from __future__ import annotations
 
+import json
 from concurrent.futures import Future, ThreadPoolExecutor
 from copy import deepcopy
 from threading import Event, RLock
 from typing import Any, Callable, Mapping
+
+ACTION_RECEIPT_MAX_BYTES = 262_144
+_RECEIPT_TEXT_MAX_BYTES = 2_048
+_RECEIPT_REF_MAX_ITEMS = 16
+_TERMINAL_FIELDS = (
+    "status",
+    "world_change_started",
+    "outcome_known",
+    "new_scene_revision",
+    "source_scene_revision",
+    "failure_owner",
+    "failure_code",
+    "error_detail",
+    "stop_confirmed",
+    "stop_errors",
+    "continuation_valid",
+    "retryable_in_revision",
+    "requires_replan",
+    "recommended_action",
+    "phase",
+    "selected_arm",
+    "failed_phase",
+    "release_confirmed",
+    "retreat_completed",
+    "clear_of_target",
+    "observation_ready",
+    "video_evidence_error",
+)
+_ATTEMPT_FIELDS = (
+    "arm",
+    "status",
+    "failed_phase",
+    "failed_waypoint_index",
+    "detail",
+)
+
+
+def _json_size(value: Mapping[str, Any]) -> int:
+    return len(
+        json.dumps(
+            value, ensure_ascii=True, allow_nan=False, separators=(",", ":")
+        ).encode("utf-8")
+    )
+
+
+def _bounded_text(value: Any) -> Any:
+    if not isinstance(value, str):
+        return deepcopy(value)
+    encoded = value.encode("utf-8")
+    if len(encoded) <= _RECEIPT_TEXT_MAX_BYTES:
+        return value
+    return encoded[:_RECEIPT_TEXT_MAX_BYTES].decode("utf-8", errors="ignore")
+
+
+def _bounded_refs(value: Any) -> list[str]:
+    return _project_refs(value)[0]
+
+
+def _project_refs(value: Any) -> tuple[list[str], bool]:
+    if not isinstance(value, (list, tuple)):
+        return [], value is not None
+    refs = []
+    truncated = len(value) > _RECEIPT_REF_MAX_ITEMS
+    for item in value[:_RECEIPT_REF_MAX_ITEMS]:
+        if not isinstance(item, str) or not item:
+            truncated = True
+            continue
+        if len(item.encode("utf-8")) > _RECEIPT_TEXT_MAX_BYTES:
+            truncated = True
+            continue
+        refs.append(item)
+    return refs, truncated
+
+
+def _project_terminal_value(value: Any) -> tuple[Any, bool]:
+    if isinstance(value, str):
+        bounded = _bounded_text(value)
+        return bounded, bounded != value
+    if value is None or isinstance(value, (bool, int)):
+        return value, False
+    if isinstance(value, float):
+        return (value, False) if value == value and abs(value) != float("inf") else (None, True)
+    return None, True
+
+
+def _fail_closed_scene_effects(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Retain scene lineage but disable carry-forward when an effect record is oversized."""
+
+    def scene_revision(key: str) -> str | None:
+        revision = value.get(key)
+        if not isinstance(revision, str):
+            return None
+        bounded = _bounded_text(revision)
+        return bounded if len(revision.encode("utf-8")) <= _RECEIPT_TEXT_MAX_BYTES else None
+
+    return {
+        "schema_version": "paos-scene-effects/v1",
+        "source_scene_revision": scene_revision("source_scene_revision"),
+        "new_scene_revision": scene_revision("new_scene_revision"),
+        "changed_entity_refs": [],
+        "unaffected_entity_refs": [],
+        "changed_resources": [],
+        "effect_evidence_refs": _bounded_refs(value.get("effect_evidence_refs")),
+        "effect_scope_complete": False,
+        "carry_forward_authorized": False,
+    }
+
+
+def bounded_action_receipt(result: Mapping[str, Any]) -> dict[str, Any]:
+    """Project one provider result into the bounded cross-process Action contract.
+
+    Engines retain complete planner, trajectory, contact, and controller diagnostics
+    in their Action artifact. The persistent provider sends only lifecycle facts,
+    evidence references, conservative scene effects, and bounded arm summaries to
+    the Gateway.
+    """
+
+    receipt = {}
+    truncated = False
+    for key in _TERMINAL_FIELDS:
+        if key not in result:
+            continue
+        if key == "stop_errors":
+            receipt[key], field_truncated = _project_refs(result[key])
+        else:
+            receipt[key], field_truncated = _project_terminal_value(result[key])
+        truncated = truncated or field_truncated
+        if field_truncated and receipt[key] is None:
+            receipt.pop(key)
+    receipt["artifact_refs"], refs_truncated = _project_refs(result.get("artifact_refs"))
+    truncated = truncated or refs_truncated
+    evidence_refs = result.get("evidence_refs", receipt["artifact_refs"])
+    receipt["evidence_refs"], refs_truncated = _project_refs(evidence_refs)
+    truncated = truncated or refs_truncated
+    effects = result.get("scene_effects")
+    if isinstance(effects, Mapping):
+        try:
+            receipt["scene_effects"] = deepcopy(dict(effects))
+            oversized_effects = _json_size(receipt) > ACTION_RECEIPT_MAX_BYTES // 2
+        except (TypeError, ValueError):
+            oversized_effects = True
+        if oversized_effects:
+            receipt["scene_effects"] = _fail_closed_scene_effects(effects)
+            truncated = True
+
+    receipt["arm_attempts"] = []
+    attempts = result.get("arm_attempts")
+    attempt_count = len(attempts) if isinstance(attempts, (list, tuple)) else 0
+    if isinstance(attempts, (list, tuple)):
+        for attempt in attempts:
+            if not isinstance(attempt, Mapping):
+                continue
+            projected = {}
+            for key in _ATTEMPT_FIELDS:
+                if key not in attempt:
+                    continue
+                projected[key], field_truncated = _project_terminal_value(attempt[key])
+                truncated = truncated or field_truncated
+                if field_truncated and projected[key] is None:
+                    projected.pop(key)
+            if not isinstance(projected.get("arm"), str) or not isinstance(
+                projected.get("status"), str
+            ):
+                truncated = True
+                continue
+            candidate = {**receipt, "arm_attempts": [*receipt["arm_attempts"], projected]}
+            if _json_size(candidate) > ACTION_RECEIPT_MAX_BYTES:
+                truncated = True
+                break
+            receipt["arm_attempts"].append(projected)
+    if len(receipt["arm_attempts"]) < attempt_count:
+        truncated = True
+    receipt["arm_attempt_count"] = attempt_count
+    if _json_size(receipt) > ACTION_RECEIPT_MAX_BYTES:
+        # All complete diagnostics remain in artifact_refs. Removing summaries is
+        # conservative and does not change outcome or motion authorization facts.
+        receipt["arm_attempts"] = []
+        truncated = True
+    if truncated:
+        receipt["receipt_truncated"] = True
+    if _json_size(receipt) > ACTION_RECEIPT_MAX_BYTES:
+        raise ManipulationStateError("bounded Action receipt exceeds transport budget")
+    return receipt
 
 
 class ManipulationStateError(RuntimeError):
@@ -90,7 +274,7 @@ class PersistentManipulationProvider:
         cancel: Event,
     ) -> dict[str, Any]:
         try:
-            result = dict(
+            complete_result = dict(
                 self._engine.execute(
                     phase,
                     arguments,
@@ -103,6 +287,25 @@ class PersistentManipulationProvider:
             # An exception is not evidence that nothing happened.
             result = {"status": "unknown", "outcome_known": False,
                       "failure_owner": "execution", "failure_code": type(exc).__name__}
+        else:
+            try:
+                result = bounded_action_receipt(complete_result)
+            except Exception as exc:
+                # The engine already settled and may have changed the world. Keep
+                # its durable evidence reachable while refusing to infer outcome.
+                result = {
+                    "status": "unknown",
+                    "outcome_known": False,
+                    "world_change_started": complete_result.get("world_change_started"),
+                    "failure_owner": "infrastructure",
+                    "failure_code": "action_receipt_projection_failed",
+                    "error_detail": str(exc)[:_RECEIPT_TEXT_MAX_BYTES],
+                    "artifact_refs": _bounded_refs(complete_result.get("artifact_refs")),
+                    "evidence_refs": _bounded_refs(complete_result.get("evidence_refs")),
+                    "retryable_in_revision": False,
+                    "requires_replan": False,
+                    "recommended_action": "stop",
+                }
         with self._lock:
             status = result.get("status")
             if status == "succeeded" and result.get("outcome_known") is True:
@@ -148,4 +351,9 @@ class PersistentManipulationProvider:
                     self._state = "uncertain"
 
 
-__all__ = ["ManipulationStateError", "PersistentManipulationProvider"]
+__all__ = [
+    "ACTION_RECEIPT_MAX_BYTES",
+    "ManipulationStateError",
+    "PersistentManipulationProvider",
+    "bounded_action_receipt",
+]

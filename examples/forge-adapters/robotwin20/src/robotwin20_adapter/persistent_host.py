@@ -104,12 +104,17 @@ def _persistent_tool_context(
     tool_id: str,
     *,
     transport_lost: bool,
+    transport_failure_code: str | None = None,
     understanding: Any,
     model_provider: str,
 ) -> dict[str, Any]:
     context_value: dict[str, Any] = {
         "ready": not transport_lost,
-        "binding_error": "persistent_world_connection_lost" if transport_lost else None,
+        "binding_error": (
+            transport_failure_code or "persistent_world_connection_lost"
+            if transport_lost
+            else None
+        ),
         "max_concurrency": 1,
         "motion_authorized": False,
         "provider_lifetime": "persistent",
@@ -774,6 +779,7 @@ def build_persistent_host(
             return _persistent_tool_context(
                 tool_id,
                 transport_lost=getattr(client, "_transport_lost", False) is True,
+                transport_failure_code=getattr(client, "transport_failure_code", None),
                 understanding=understanding,
                 model_provider=provider,
             )

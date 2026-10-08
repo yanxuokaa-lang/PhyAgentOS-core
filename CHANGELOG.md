@@ -5,6 +5,38 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.10.3 (2026-10-08 15:54) - codex
+
+### 变更摘要 / Change Summary
+- [comm] [fix] 发送前 JSONL 请求超限不再误终止仍同步的 persistent worker，也不再将明确未发送的请求标记为 world connection lost。 (local)
+- [comm] [fix] JSONL requests rejected before transmission no longer terminate a synchronized persistent worker or mark an explicitly unsent request as a lost world connection. (local)
+- [comm] [fix] receipt 限制引用数量/长度和终态字段类型；所有字段省略或约束均可由 `receipt_truncated` 观察，非有限数值不进入 JSON。 (local)
+- [comm] [fix] Bound receipt reference counts/lengths and terminal field types; all omissions or constraints are visible through `receipt_truncated`, and non-finite numbers are excluded from JSON. (local)
+- [chore] [release] Adapter `0.9.12`、Node `1.0.1`、Skill `3.0.9`；Node SHA-256 `947c2815fe1f9fbb18b4c5794112259f792612e9963314c01df2f49d81ecbc63`、Skill SHA-256 `8704dc608c6d20d1440a306c5bef180cd076e009b172c46e0cf0f4f218849ba7`。 (local)
+- [chore] [release] Adapter `0.9.12`, Node `1.0.1`, Skill `3.0.9`; Node SHA-256 `947c2815fe1f9fbb18b4c5794112259f792612e9963314c01df2f49d81ecbc63`, Skill SHA-256 `8704dc608c6d20d1440a306c5bef180cd076e009b172c46e0cf0f4f218849ba7`. (local)
+
+### 七维审查 / Seven-Dimension Review
+- 架构、正确性、恢复幂等、机器人安全、扩展兼容、可观测性和 AgentLoop 自主性/收敛全部通过；初审发现发送前请求误杀 worker 的 Major 与 receipt 截断不可观察的 Minor，均已修复；最终 Blocker 0、Major 0、Minor 0。 (local)
+- Architecture, correctness, recovery/idempotency, robotics safety, extensibility, observability, and AgentLoop autonomy/convergence pass; the initial Major worker-termination bug for pre-write request rejection and Minor unobservable receipt truncation were fixed; final Blocker 0, Major 0, Minor 0. (local)
+- Node `1.0.1` 与 Skill `3.0.9` 已构建；review evidence: `docs/forge/IMPLEMENTATION_REVIEW_V12_10_3.md`。未停止、安装或重启 Runtime。 (local)
+- Node `1.0.1` and Skill `3.0.9` were built; review evidence: `docs/forge/IMPLEMENTATION_REVIEW_V12_10_3.md`. Runtime was not stopped, installed, or restarted. (local)
+
+### Git 提交 / Git Commit
+- 待提交 / Pending commit; Branch: `feature/planning-loop`
+
+## v12.10.2 (2026-10-08 15:24) - codex
+
+### 变更摘要 / Change Summary
+- [comm] [fix] 将 persistent Action 的完整执行诊断留在 Runtime artifact，worker/Gateway 只传输 256 KiB 内 terminal receipt；避免 `green_acquire` 已成功却因约 1.05 MiB JSONL 响应超限而成为 unknown。 (local)
+- [comm] [fix] Keep complete persistent Action diagnostics in Runtime artifacts and send only a terminal receipt capped at 256 KiB across worker/Gateway; prevent a successful `green_acquire` from becoming unknown because its approximately 1.05 MiB JSONL response exceeds the limit. (local)
+- [comm] [fix] 传输错误保留具体协议码；receipt 生成失败保留 artifact refs、状态转 uncertain，AgentLoop 仍不自动重试或推进。 (local)
+- [comm] [fix] Preserve concrete transport error codes; receipt projection failures retain artifact references and mark state uncertain, while AgentLoop still does not auto-retry or advance. (local)
+- 七维审查记录于 `docs/forge/IMPLEMENTATION_REVIEW_V12_10_2.md`。Node `1.0.0` SHA-256 `36b81dc7ad6db5dcd430c817913fbfb8e138554070bc442d31ae3b4e6b618e45`；Skill `3.0.8` SHA-256 `9de90d504777afcdeb5ec47d5deaa03cface5210e8dbee883b4f10a5eb3ff64a`。 (local)
+- Seven-dimension review is recorded in `docs/forge/IMPLEMENTATION_REVIEW_V12_10_2.md`. Node `1.0.0` SHA-256 `36b81dc7ad6db5dcd430c817913fbfb8e138554070bc442d31ae3b4e6b618e45`; Skill `3.0.8` SHA-256 `9de90d504777afcdeb5ec47d5deaa03cface5210e8dbee883b4f10a5eb3ff64a`. (local)
+
+### Git 提交 / Git Commit
+- 实现与制品已包含在后续 v12.10.3 审查收尾中 / Implementation and artifacts are included in the v12.10.3 review closeout.
+
 ## v12.10.1 (2026-10-08 14:46) - codex
 
 ### 变更摘要 / Change Summary
@@ -59,7 +91,9 @@
 ### Git 提交 / Git Commit
 - Commit: `3d89785`; Branch: `feature/planning-loop`; 时间: 2026-10-08 Asia/Shanghai
 
-## v12.9.14 (2026-10-08 13:08) - codex
+## Older Summaries (full details remain in monthly archives)
+
+### v12.9.14 (2026-10-08 13:08) - codex
 
 ### 变更摘要 / Change Summary
 - [env] [chore] 停止旧 Runtime 后安装 Adapter `0.9.10`、Skill `3.0.7`、Node `0.10.15`，启动并只读验收新 Runtime `runtime_3d10c4dfaf5c4382`；Gateway 和 11/11 Tool contexts ready，ownership 为空。 (local)
@@ -75,7 +109,7 @@
 ### Git 提交 / Git Commit
 - Commit: `82e078a` / Branch: `feature/planning-loop`
 
-## v12.9.13 (2026-10-08 12:27) - codex
+### v12.9.13 (2026-10-08 12:27) - codex
 
 ### 变更摘要 / Change Summary
 - [comm] [fix] persistent place producer 现在将已验证的 release、retreat、clearance 与 observation postconditions 投影到 public result 和 action artifact，避免真实成功被 `_ProjectedDriver` 错误降级为 `unknown`。 (local)
