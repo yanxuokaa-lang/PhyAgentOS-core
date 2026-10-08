@@ -5,6 +5,38 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.10.12 (2026-10-09 00:35) - codex
+
+### 变更摘要 / Change Summary
+- [env] [chore] 用户授权 force-stop 旧 `pick-place-workflow`，完成 Core editable 安装，并在旧 host/worker 退出后安装 Skill `3.0.10` 与 Node `1.0.2`。(local)
+- [env] [chore] With user authorization, force-stopped the old `pick-place-workflow`, refreshed the Core editable install, and installed Skill `3.0.10` and Node `1.0.2` after the old host/worker exited. (local)
+- [eval] [test] Node SHA-256 `e2361540634d9a9d950864caffa4a26cbdc05835daa12a1073373f84ad25e9e2`、Skill bundle SHA-256 `e2d1c54c21bc49d1800675eb8e1f6861edce9530fbc3bb3a329120fdd557f360`；`forge-node verify` 通过。(local)
+- [eval] [test] 新 profile running，Gateway `/tools` ready，11/11 Tool contexts ready，非终态任务为 0；旧 flow 的 SIGKILL 只出现在停止前日志，新 worker 已完成启动并存活。(local)
+- [eval] [test] 仅执行 lifecycle、安装/验证和只读健康检查；未创建/恢复任务，未调用 Query/Action，未推进 simulator 或物理运动。(local)
+- [env] [release] Node archive `414538` bytes；Adapter `0.9.13`、Skill `3.0.10`。详细行号、Diff 和验证证据见 `changelog/2026-10_part2.md`。(local)
+
+### Change Summary (English)
+- [env] [chore] User-authorized force-stop of the old `pick-place-workflow`, Core editable refresh, and installation of Skill `3.0.10` plus Node `1.0.2` after the old host/worker exited. (local)
+- [eval] [test] Node SHA-256 `e2361540634d9a9d950864caffa4a26cbdc05835daa12a1073373f84ad25e9e2` and Skill bundle SHA-256 `e2d1c54c21bc49d1800675eb8e1f6861edce9530fbc3bb3a329120fdd557f360`; Forge node verification passed. (local)
+- [eval] [test] The new profile is running with Gateway `/tools` ready, all 11/11 Tool contexts ready, and zero non-terminal tasks; the old flow's SIGKILL remains only in pre-stop logs and the new worker completed startup and remains alive. (local)
+- [eval] [test] Validation was limited to lifecycle, install/verification, and read-only health checks; no task was created/resumed, no Query/Action was invoked, and no simulator or physical motion advanced. (local)
+- [env] [release] Node archive size is `414538` bytes; Adapter `0.9.13`, Skill `3.0.10`. Exact line references, diff, and validation evidence are in `changelog/2026-10_part2.md`. (local)
+
+### 文件与关键 Diff / Files and Key Diff
+- `examples/forge-adapters/robotwin20/pyproject.toml:L1-L6`：Adapter `0.9.12` → `0.9.13`。(local)
+- `examples/forge-skills/pick-place-workflow/pyproject.toml:L1-L6`、`skill.yaml:L1-L8,L220-L231`：Skill/Node 版本与 Node SHA 锁更新。(local)
+- `changelog/2026-10_part2.md:L3-L65`：完整部署、产物和 no-motion 记录。(local)
+```diff
+-version = "0.9.12"
++version = "0.9.13"
+-version: "3.0.9"
++version: "3.0.10"
+```
+
+### Git 提交 / Git Commit
+- Commit: 待提交 / pending
+- Branch: `feature/planning-loop`; 时间 / Time: 2026-10-09 Asia/Shanghai
+
 ## v12.10.11 (2026-10-09 00:10) - codex
 
 ### 变更摘要 / Change Summary

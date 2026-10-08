@@ -1,5 +1,12 @@
 # Change Log
 
+## v3.0.10 (2026-10-09)
+
+- 中文：发布 Adapter `0.9.13`、Node `1.0.2`，保留 Provider transport/timeout/authentication 分类，允许 Core 观测非固定模型名的有界 provider route，并限制 persistent diagnostics token。
+- English: Publish Adapter `0.9.13` and Node `1.0.2`; preserve Provider transport/timeout/authentication classes, allow Core to observe bounded routes beyond a fixed model-name list, and constrain persistent diagnostic tokens.
+- 中文：不改变 fallback policy、Tool admission、AgentLoop 决策权或物理动作授权。
+- English: Do not change fallback policy, Tool admission, AgentLoop decision authority, or physical-action authorization.
+
 ## v3.0.9 (2026-10-08)
 
 - 中文：发布 Adapter `0.9.12` 与 Node `1.0.1`；发送前超限请求不再终止 persistent worker，Action receipt 对被丢弃或约束的字段显式标记截断。
