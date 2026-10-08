@@ -26,6 +26,7 @@ from PhyAgentOS.agent.planning_loop import (
 )
 from PhyAgentOS.agent.tools.base import Tool
 from PhyAgentOS.agent.tools.forge_task import build_forge_task_tools
+from PhyAgentOS.agent.tools.forge_tool_api import ForgeToolQueryTool
 from PhyAgentOS.agent.tools.registry import ToolRegistry
 from PhyAgentOS.config.schema import ForgeConfig
 from PhyAgentOS.forge.task import (
@@ -2181,11 +2182,140 @@ def test_pending_selection_without_execution_record_remains_incomplete(selected_
     state.loop.tools.register(_SelectionTool(state.records))
     state.loop.tools.set_execution_guard(lambda *_args: '{"ok":false}')
 
-    with pytest.raises(NodeTurnIncompleteError, match="produced no task-bound record"):
+    with pytest.raises(NodeTurnIncompleteError, match="tool_wrapper_rejected"):
         asyncio.run(AgentLoopNodeExecutor(state.loop, state.coordinator)(_executor_context()))
 
     assert state.records == []
     assert state.loop.model_calls == 0
+
+
+@pytest.mark.parametrize(
+    ("entity_refs", "expected_status", "expected_error"),
+    [
+        (["entity://e1", "entity://e2"], "succeeded", None),
+        ([], None, "scene_bind_missing_entity_refs"),
+    ],
+)
+def test_scene_bind_pending_selection_crosses_wrapper_boundary_or_reports_exact_rejection(
+    entity_refs, expected_status, expected_error,
+):
+    records = [SimpleNamespace(
+        record_id="understand-1",
+        node_id="understand",
+        tool_id="scene.understand",
+        semantics="query",
+        status="succeeded",
+        terminal=True,
+        revision_id="revision-bind",
+        arguments={},
+        response={
+            "data": {
+                "entities": [
+                    {"entity_ref": "entity://e1", "category": "cube"},
+                    {"entity_ref": "entity://e2", "category": "cube"},
+                ],
+                "ambiguities": [],
+            }
+        },
+    )]
+    task = SimpleNamespace(
+        active_revision_id="revision-bind",
+        active_revision=SimpleNamespace(execution_records=records),
+        execution_records=records,
+    )
+    binding = {
+        "revision_id": "revision-bind",
+        "node_id": "bind",
+        "node_digest": "1" * 64,
+        "obligation_id": "bind",
+        "input_binding_digest": "2" * 64,
+        "decision_trace_ref": "artifact://planning-traces/task-bind/revision-bind/bind/t1",
+    }
+
+    class Binding:
+        def model_dump(self, mode="json"):
+            assert mode == "json"
+            return binding
+
+    class Coordinator:
+        gateway_calls = 0
+
+        def get_task(self, task_id):
+            assert task_id == "task-bind"
+            return task
+
+        def pending_planning_selection(self, task_id, node_id, **_kwargs):
+            assert (task_id, node_id) == ("task-bind", "bind")
+            return {
+                "execution_tool": "forge_tool_query",
+                "tool_id": "scene.bind",
+                "planning_binding": binding,
+            }
+
+        def selected_execution_binding(self, task_id, tool_id, semantics, planning_binding):
+            assert (task_id, tool_id, semantics) == ("task-bind", "scene.bind", "query")
+            assert planning_binding == binding
+            return Binding()
+
+        def selected_execution_arguments(self, *_args):
+            return {"entity_refs": entity_refs}
+
+        async def invoke_query(
+            self, task_id, tool_id, arguments, *, timeout_ms, planning_binding,
+        ):
+            self.gateway_calls += 1
+            assert (task_id, tool_id) == ("task-bind", "scene.bind")
+            assert arguments == {"entity_refs": entity_refs}
+            assert timeout_ms is None
+            assert planning_binding == binding
+            records.append(SimpleNamespace(
+                record_id="bind-1",
+                node_id="bind",
+                tool_id="scene.bind",
+                semantics="query",
+                status="succeeded",
+                terminal=True,
+                invocation_id=None,
+                evidence_refs=("tool:bind-1",),
+                response={"ok": True, "data": {"status": "available"}},
+                error=None,
+            ))
+            return {"ok": True, "data": {"status": "available"}}
+
+    class Loop:
+        def __init__(self, coordinator):
+            self.tools = ToolRegistry()
+            self.tools.register(ForgeToolQueryTool(object(), coordinator))
+            self.model_calls = 0
+
+        async def run_node_turn(self, **_kwargs):
+            self.model_calls += 1
+            raise AssertionError("persisted selection must not call the model")
+
+    context = NodeExecutionContext(
+        task_id="task-bind",
+        revision_id="revision-bind",
+        node_id="bind",
+        capability="scene.bind",
+        dependencies=("understand",),
+        required_evidence=(),
+        input_bindings={},
+        scene_revision="scene-1",
+    )
+    coordinator = Coordinator()
+    loop = Loop(coordinator)
+    executor = AgentLoopNodeExecutor(loop, coordinator)
+
+    if expected_error is not None:
+        with pytest.raises(NodeTurnIncompleteError, match=expected_error):
+            asyncio.run(executor(context))
+        assert coordinator.gateway_calls == 0
+    else:
+        result = asyncio.run(executor(context))
+        assert result.status == expected_status
+        assert coordinator.gateway_calls == 1
+        assert [record.record_id for record in records] == ["understand-1", "bind-1"]
+    assert loop.model_calls == 0
 
 
 def test_node_executor_reuses_pending_selection_on_bounded_continuation():

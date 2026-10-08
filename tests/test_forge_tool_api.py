@@ -711,6 +711,54 @@ def test_stale_observation_retry_cannot_relax_max_age():
     assert "cannot increase max_age_ms from 1000 to 5000" in result["error"]["message"]
 
 
+def test_selected_stale_observation_retry_validates_resolved_max_age():
+    stale = _execution_record(
+        "observe-stale",
+        "scene.observe",
+        "query",
+        "revision-current",
+        {"data": {
+            "status": "stale",
+            "error": {"code": "stale_observation", "message": "too old"},
+        }},
+        arguments={"sensor_ref": "camera/front", "max_age_ms": 1000},
+    )
+    task = SimpleNamespace(
+        active_revision_id="revision-current",
+        active_revision=SimpleNamespace(execution_records=[stale]),
+        execution_records=[stale],
+    )
+
+    class Binding:
+        def model_dump(self, mode="json"):
+            assert mode == "json"
+            return {"node_id": "observe", "revision_id": "revision-current"}
+
+    class Coordinator:
+        def get_task(self, _task_id):
+            return task
+
+        def selected_execution_binding(self, *_args):
+            return Binding()
+
+        def selected_execution_arguments(self, *_args):
+            return {"sensor_ref": "camera/front", "max_age_ms": 5000}
+
+        async def invoke_query(self, *_args, **_kwargs):
+            raise AssertionError("relaxed selected freshness must not reach Gateway")
+
+    result = json.loads(asyncio.run(ForgeToolQueryTool(object(), Coordinator()).execute(
+        task_id="task-1",
+        tool_id="scene.observe",
+        arguments={},
+        planning_binding={"node_id": "observe"},
+        use_selected_arguments=True,
+    )))
+
+    assert result["ok"] is False
+    assert "cannot increase max_age_ms from 1000 to 5000" in result["error"]["message"]
+
+
 def test_scene_understand_injects_only_coordinator_authorized_carry_forward():
     task = _carry_task()
 

@@ -870,10 +870,11 @@ class AgentLoopNodeExecutor:
         records = self._node_records(context)
         if records:
             return self._result_from_records(context, records)
-        if isinstance(result, str) and result.startswith("Error"):
+        rejection = _persisted_selection_rejection(result)
+        if rejection is not None:
             raise NodeTurnIncompleteError(
                 context.node_id,
-                "persisted selection execution was rejected: " + result,
+                "persisted selection execution was rejected: " + rejection,
             )
         raise NodeTurnIncompleteError(
             context.node_id,
@@ -1187,6 +1188,42 @@ class AgentLoopNodeExecutor:
 def _planning_record_status(record: Any) -> str:
     """Project provider-level Query availability into node execution status."""
     return query_record_status(record)
+
+
+def _persisted_selection_rejection(result: Any) -> str | None:
+    """Return a bounded reason when a Tool wrapper rejects before record creation."""
+
+    if not isinstance(result, str):
+        return None
+    if result.startswith("Error"):
+        return redact_text(result)[:2000]
+    try:
+        payload = json.loads(result)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, Mapping) or payload.get("ok") is not False:
+        return None
+    error = payload.get("error")
+    if not isinstance(error, Mapping):
+        return "tool_wrapper_rejected"
+    code = next(
+        (
+            value.strip()
+            for value in (error.get("code"), error.get("type"))
+            if isinstance(value, str) and value.strip()
+        ),
+        "tool_wrapper_rejected",
+    )
+    detail = next(
+        (
+            value.strip()
+            for value in (error.get("message"), error.get("detail"), error.get("reason"))
+            if isinstance(value, str) and value.strip()
+        ),
+        None,
+    )
+    reason = code if detail is None or detail == code else f"{code}: {detail}"
+    return redact_text(reason)[:2000]
 
 
 def _string_refs(value: object) -> list[str]:

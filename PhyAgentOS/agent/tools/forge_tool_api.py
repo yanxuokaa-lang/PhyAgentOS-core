@@ -330,9 +330,6 @@ class ForgeToolQueryTool(Tool):
                 resolved_arguments = arguments
                 resolved_binding = planning_binding
                 task = self.coordinator.get_task(task_id)
-                stale_retry_error = _stale_retry_relaxes_freshness(task, tool_id, arguments)
-                if stale_retry_error is not None:
-                    raise AgentTaskError(stale_retry_error)
                 sources = _task_query_source_records(task)
                 if (
                     tool_id in _OBSERVATION_BOUND_QUERY_ARGUMENTS
@@ -378,6 +375,11 @@ class ForgeToolQueryTool(Tool):
                     resolved_arguments = self.coordinator.selected_execution_arguments(
                         task_id, tool_id, "query", {}, resolved_binding
                     )
+                stale_retry_error = _stale_retry_relaxes_freshness(
+                    task, tool_id, resolved_arguments
+                )
+                if stale_retry_error is not None:
+                    raise AgentTaskError(stale_retry_error)
                 if tool_id == "scene.bind":
                     # A resumed planning selection intentionally passes empty
                     # literal arguments. Validate the Coordinator-resolved
