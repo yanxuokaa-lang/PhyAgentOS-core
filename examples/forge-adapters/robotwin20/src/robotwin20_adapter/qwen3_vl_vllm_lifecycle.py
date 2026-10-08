@@ -275,6 +275,23 @@ class LifecycleManagedSceneUnderstandingInference:
         """Expose lifecycle health while keeping wake/sleep ownership local."""
         return self.lifecycle.readiness_summary()
 
+    def diagnostic_summary(self) -> dict[str, str]:
+        """Preserve bounded provider diagnostics across the lifecycle seam."""
+        summary = getattr(self.provider, "diagnostic_summary", None)
+        if not callable(summary):
+            return {}
+        try:
+            value = summary()
+        except Exception:
+            return {}
+        if not isinstance(value, Mapping):
+            return {}
+        return {
+            key: value[key]
+            for key in ("provider_route", "provider_error_class")
+            if isinstance(value.get(key), str)
+        }
+
     def release(self) -> None:
         self.lifecycle.sleep_for_handoff()
 

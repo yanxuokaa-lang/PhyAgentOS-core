@@ -66,9 +66,13 @@ _VLLM_SCENE_SCHEMA: dict[str, Any] = {
 class Qwen3VLVLLMInferenceError(RuntimeError):
     """Bounded local vLLM failure safe to route to the configured fallback."""
 
+    provider_error_class = "provider_failure"
+
 
 class Qwen3VLVLLMContractError(Qwen3VLVLLMInferenceError):
     """The local model returned an invalid semantic scene contract."""
+
+    provider_error_class = "contract"
 
 
 class ChatCompletionsClient(Protocol):
@@ -102,6 +106,23 @@ def _default_client_factory(**kwargs: Any) -> ChatCompletionsClient:
     except ImportError as exc:  # pragma: no cover - deployment-only dependency
         raise Qwen3VLVLLMInferenceError("OpenAI SDK is not installed in the vLLM adapter environment") from exc
     return OpenAI(http_client=httpx.Client(trust_env=False), **kwargs)
+
+
+def _provider_error_class(exc: BaseException) -> str:
+    """Classify transport failures without exposing provider exception text."""
+    chain: list[BaseException] = []
+    current: BaseException | None = exc
+    while current is not None and len(chain) < 8:
+        chain.append(current)
+        current = current.__cause__
+    names = " ".join(
+        f"{type(item).__name__} {item}".lower() for item in chain
+    )
+    if "timeout" in names or "timed out" in names:
+        return "timeout"
+    if "connection" in names or "connecterror" in names or "http" in names:
+        return "transport"
+    return "provider_failure"
 
 
 class Qwen3VLVLLMSceneUnderstandingInference:
@@ -186,7 +207,7 @@ class Qwen3VLVLLMSceneUnderstandingInference:
             try:
                 parsed = json.loads(content)
             except json.JSONDecodeError as exc:
-                raise Qwen3VLVLLMInferenceError("qwen vLLM output was not valid JSON") from exc
+                raise Qwen3VLVLLMContractError("qwen vLLM output was not valid JSON") from exc
             projected = _project_vllm_claims(parsed, image_refs)
             self._emit_diagnostic(
                 {
@@ -205,8 +226,8 @@ class Qwen3VLVLLMSceneUnderstandingInference:
             )
             self._last_error_class = "none"
             return projected
-        except Qwen3VLVLLMInferenceError:
-            self._last_error_class = "contract"
+        except Qwen3VLVLLMInferenceError as exc:
+            self._last_error_class = getattr(exc, "provider_error_class", "provider_failure")
             self._emit_diagnostic(
                 {
                     "status": "error",
@@ -223,7 +244,7 @@ class Qwen3VLVLLMSceneUnderstandingInference:
             )
             raise
         except Exception as exc:
-            self._last_error_class = "provider_failure"
+            self._last_error_class = _provider_error_class(exc)
             self._emit_diagnostic(
                 {
                     "status": "error",
@@ -314,13 +335,13 @@ class Qwen3VLVLLMSceneUnderstandingInference:
             choice = response.choices[0]
             content = choice.message.content
         except (AttributeError, IndexError, KeyError, TypeError) as exc:
-            raise Qwen3VLVLLMInferenceError("qwen vLLM response did not contain chat content") from exc
+            raise Qwen3VLVLLMContractError("qwen vLLM response did not contain chat content") from exc
         if getattr(choice, "finish_reason", None) == "length":
-            raise Qwen3VLVLLMInferenceError(
+            raise Qwen3VLVLLMContractError(
                 "qwen vLLM response was truncated by the output token limit"
             )
         if not isinstance(content, str) or not content.strip():
-            raise Qwen3VLVLLMInferenceError("qwen vLLM response content was empty")
+            raise Qwen3VLVLLMContractError("qwen vLLM response content was empty")
         return content
 
 
@@ -328,7 +349,7 @@ def _project_vllm_claims(value: Any, image_refs: str | list[str]) -> dict[str, A
     if isinstance(image_refs, str):
         image_refs = [image_refs]
     if not image_refs:
-        raise Qwen3VLVLLMInferenceError("qwen vLLM projection requires image provenance")
+        raise Qwen3VLVLLMContractError("qwen vLLM projection requires image provenance")
 
     def provenance(item: Mapping[str, Any]) -> list[str]:
         indexes = item.get("source_view_indexes")
@@ -343,11 +364,11 @@ def _project_vllm_claims(value: Any, image_refs: str | list[str]) -> dict[str, A
                 for index in indexes
             )
         ):
-            raise Qwen3VLVLLMInferenceError("qwen vLLM source view provenance is invalid")
+            raise Qwen3VLVLLMContractError("qwen vLLM source view provenance is invalid")
         return [image_refs[index] for index in indexes]
 
     if not isinstance(value, Mapping) or set(value) != {"entities", "relations", "ambiguities"}:
-        raise Qwen3VLVLLMInferenceError("qwen vLLM output violated the provider contract")
+        raise Qwen3VLVLLMContractError("qwen vLLM output violated the provider contract")
     entities = []
     id_map: dict[str, str] = {}
     entity_view_counts: dict[str, int] = {}
@@ -360,10 +381,10 @@ def _project_vllm_claims(value: Any, image_refs: str | list[str]) -> dict[str, A
                 frozenset({"local_id", "category", "attributes", "confidence", "source_view_indexes"}),
             }
         ):
-            raise Qwen3VLVLLMInferenceError("qwen vLLM entity fields are invalid")
+            raise Qwen3VLVLLMContractError("qwen vLLM entity fields are invalid")
         local_id = item["local_id"]
         if not isinstance(local_id, str) or local_id in id_map:
-            raise Qwen3VLVLLMInferenceError("qwen vLLM entity identity is invalid")
+            raise Qwen3VLVLLMContractError("qwen vLLM entity identity is invalid")
         ref = f"entity://{local_id}"
         id_map[local_id] = ref
         category, confidence = _public_entity_category(item)
@@ -382,7 +403,7 @@ def _project_vllm_claims(value: Any, image_refs: str | list[str]) -> dict[str, A
         entities.append({"entity_ref": ref, "category": category, "confidence": confidence, "provenance": item_provenance})
     relation_values = value["relations"]
     if not isinstance(relation_values, list) or len(relation_values) > _MAX_RELATIONS:
-        raise Qwen3VLVLLMInferenceError("qwen vLLM relation count is invalid")
+        raise Qwen3VLVLLMContractError("qwen vLLM relation count is invalid")
     relations = []
     for item in relation_values:
         if (
@@ -392,17 +413,17 @@ def _project_vllm_claims(value: Any, image_refs: str | list[str]) -> dict[str, A
                 frozenset({"subject_id", "predicate", "object_id", "relation_space", "confidence", "source_view_indexes"}),
             }
         ):
-            raise Qwen3VLVLLMInferenceError("qwen vLLM relation fields are invalid")
+            raise Qwen3VLVLLMContractError("qwen vLLM relation fields are invalid")
         subject, obj = id_map.get(item["subject_id"]), id_map.get(item["object_id"])
         if subject is None or obj is None or subject == obj:
-            raise Qwen3VLVLLMInferenceError("qwen vLLM relation references unknown entity")
+            raise Qwen3VLVLLMContractError("qwen vLLM relation references unknown entity")
         relations.append({"relation_ref": f"relation://{item['subject_id']}-{item['predicate']}-{item['object_id']}",
                           "subject_ref": subject, "predicate": item["predicate"], "object_ref": obj,
                           "confidence": item["confidence"], "provenance": provenance(item)})
     ambiguities = []
     for item in value["ambiguities"]:
         if not isinstance(item, Mapping) or set(item) != {"code", "message", "entity_ids"}:
-            raise Qwen3VLVLLMInferenceError("qwen vLLM ambiguity fields are invalid")
+            raise Qwen3VLVLLMContractError("qwen vLLM ambiguity fields are invalid")
         if item["code"] not in SCENE_SEMANTIC_AMBIGUITY_CODES:
             raise Qwen3VLVLLMContractError("qwen vLLM ambiguity code violated the semantic contract")
         if (
@@ -452,7 +473,7 @@ def _public_entity_category(item: Mapping[str, Any]) -> tuple[str, float]:
     confidence = float(item["confidence"])
     for attribute in item["attributes"]:
         if not isinstance(attribute, Mapping) or set(attribute) != {"name", "value", "confidence"}:
-            raise Qwen3VLVLLMInferenceError("qwen vLLM entity attribute fields are invalid")
+            raise Qwen3VLVLLMContractError("qwen vLLM entity attribute fields are invalid")
         if str(attribute["name"]).strip().casefold() != "color":
             continue
         value = attribute["value"]

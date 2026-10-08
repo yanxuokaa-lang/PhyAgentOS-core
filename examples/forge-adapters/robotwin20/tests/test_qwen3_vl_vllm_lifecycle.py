@@ -141,6 +141,32 @@ def test_provider_release_sleeps_synchronously_for_gpu_handoff():
     manager.close()
 
 
+def test_lifecycle_wrapper_preserves_provider_diagnostics():
+    client = _Client(sleeping=False)
+    manager = _manager(client)
+    provider = LifecycleManagedSceneUnderstandingInference(
+        type(
+            "Provider",
+            (),
+            {
+                "infer": lambda _self, _request: {"ok": True},
+                "diagnostic_summary": lambda _self: {
+                    "provider_route": "qwen3-vl-4b-vllm",
+                    "provider_error_class": "contract",
+                    "raw_exception": "must not cross the seam",
+                },
+            },
+        )(),
+        manager,
+    )
+
+    assert provider.diagnostic_summary() == {
+        "provider_route": "qwen3-vl-4b-vllm",
+        "provider_error_class": "contract",
+    }
+    manager.close()
+
+
 def test_gpu_handoff_refuses_to_sleep_with_active_request():
     client = _Client(sleeping=False)
     manager = _manager(client)

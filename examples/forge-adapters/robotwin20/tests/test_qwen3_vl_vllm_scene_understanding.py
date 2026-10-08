@@ -149,6 +149,40 @@ def test_vllm_provider_uses_openai_compatible_multimodal_schema():
     assert client.closed is True
 
 
+def test_malformed_model_output_is_reported_as_bounded_contract_failure():
+    class BadResponse:
+        choices = [
+            type(
+                "Choice",
+                (),
+                {
+                    "message": type("Message", (), {"content": "not-json"})(),
+                    "finish_reason": "stop",
+                },
+            )()
+        ]
+
+    class BadCompletions:
+        def create(self, **_payload):
+            return BadResponse()
+
+    client = type(
+        "Client",
+        (),
+        {"chat": type("Chat", (), {"completions": BadCompletions()})(), "close": lambda _self: None},
+    )()
+    provider = Qwen3VLVLLMSceneUnderstandingInference(
+        _Resolver(), client_factory=lambda **_kwargs: client
+    )
+
+    with pytest.raises(Qwen3VLVLLMContractError):
+        provider.infer(REQUEST)
+    assert provider.diagnostic_summary() == {
+        "provider_route": "qwen3-vl-4b-vllm",
+        "provider_error_class": "contract",
+    }
+
+
 def test_vllm_scene_schema_avoids_xgrammar_unsupported_unique_items():
     client = _Client()
     provider = Qwen3VLVLLMSceneUnderstandingInference(

@@ -208,6 +208,24 @@ def test_lifecycle_only_route_uses_gpt_for_lifecycle_failure():
     assert route.last_error == "Qwen3VLVLLMLifecycleError"
 
 
+def test_configured_fallback_catches_generic_qwen_inference_failure():
+    route = FallbackSceneUnderstandingInference(
+        _Provider(error=Qwen3VLVLLMInferenceError("provider request failed")),
+        _Provider({"entities": [{"entity_ref": "entity://fallback"}]}),
+        primary_name="qwen3-vl-4b-vllm",
+        fallback_name="gpt-6.1-sol-high",
+        fallback_exceptions=(
+            Qwen3VLVLLMLifecycleError,
+            Qwen3VLVLLMContractError,
+            Qwen3VLVLLMInferenceError,
+        ),
+        fallback_on_empty=False,
+    )
+
+    assert route.infer({})["entities"][0]["entity_ref"] == "entity://fallback"
+    assert route.last_error_class == "provider_failure"
+
+
 def test_release_is_forwarded_only_after_primary_route():
     primary = _ReleasableProvider({"entities": []})
     route = FallbackSceneUnderstandingInference(

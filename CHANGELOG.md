@@ -5,6 +5,23 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.10.10 (2026-10-08 23:20) - codex
+
+### 变更摘要 / Change Summary
+- [comm] [fix] 修复 Qwen/vLLM lifecycle wrapper 丢失 bounded provider diagnostics，并让 fallback 覆盖基础 `Qwen3VLVLLMInferenceError`；合同/transport/timeout 分类保持在 Adapter 边界。 (local)
+- [comm] [fix] Preserve bounded Qwen/vLLM diagnostics through the lifecycle wrapper and cover base `Qwen3VLVLLMInferenceError` in fallback; contract/transport/timeout classes remain Adapter-owned. (local)
+- [eval] [test] Changed Adapter path `74 passed`；compileall、Ruff、diff check 通过；全程 no-motion。 (local)
+- [eval] [test] Changed Adapter path passed (`74`); compileall, Ruff, and diff check passed; validation was no-motion. (local)
+- [docs] [docs] 新增 `docs/forge/SCENE_UNDERSTANDING_PROVIDER_FAILURE_DIAGNOSIS_20261008.md`，不含任务专用分支。 (local)
+- [docs] [docs] Added `docs/forge/SCENE_UNDERSTANDING_PROVIDER_FAILURE_DIAGNOSIS_20261008.md` with no task-specific branch. (local)
+
+### 文件与验证 / Files and Validation
+- `qwen3_vl_vllm_scene_understanding.py:L66-L75,L111-L124,L206-L262,L332-L455`、`qwen3_vl_vllm_lifecycle.py:L278-L293`、`persistent_host.py:L53-L58,L654-L666`；未创建/恢复任务，未调用真实 Gateway Query/Action，未推进 simulator 或物理运动。 (local)
+- `qwen3_vl_vllm_scene_understanding.py:L66-L75,L111-L124,L206-L262,L332-L455`, `qwen3_vl_vllm_lifecycle.py:L278-L293`, and `persistent_host.py:L53-L58,L654-L666`; no task was created/resumed, no real Gateway Query/Action was invoked, and no simulator or physical motion advanced. (local)
+
+### Git 提交 / Git Commit
+- Pending until implementation commit; Branch: `feature/planning-loop`; 时间 / Time: 2026-10-08 Asia/Shanghai
+
 ## v12.10.9 (2026-10-08 21:00) - codex
 
 ### 变更摘要 / Change Summary
