@@ -80,3 +80,33 @@ Validation was no-motion and Gateway-free:
 
 No task was resumed, no Runtime was restarted, no real Gateway was called, and
 no simulator or physical motion advanced.
+
+## Follow-up review / 后续审查
+
+The v12.10.4 review found one Major in the unknown-Action guard. The early
+deduplication path read only `AgentTaskRecord.tool_bindings`, but a Skill-bound
+task stores its authoritative frozen ToolSpecs in
+`primary_skill_binding.required_tools`. When the Runtime was unavailable, a
+canonical-equivalent legacy unknown Action could therefore reach live Tool
+readiness before reconciliation was required.
+
+The generic fix is `PhyAgentOS/forge/task.py:L2702-L2748,L3845-L3874`:
+`_task_bound_tool_spec()` reads the authoritative primary Skill binding first
+and falls back to runtime-enrolled `tool_bindings` only when no primary Skill
+binding exists. `_has_unknown_action()` uses that schema for canonical
+comparison before `_require_binding_tool()`. It changes neither Action
+authorization nor the Runtime state; it only preserves the existing
+no-resend-before-reconciliation rule across both binding shapes.
+
+Regression coverage is in
+`tests/test_planning_task_integration.py:L285-L345`: a real
+`ForgeSkillBinding.required_tools` contains a legacy raw unknown Action, while
+live Tool readiness is deliberately made unavailable. The test proves the
+canonical-equivalent explicit-default Action is rejected before readiness and
+before the fake Gateway receives arguments.
+
+The follow-up seven-dimension review is now clean: architecture ownership,
+correctness, recovery/idempotency, robotics safety, extensibility/compatibility,
+observability, and AgentLoop convergence all pass. Focused planning tests pass
+`230`, the full Core suite passes `802`, and Ruff, compileall, and diff checks
+pass. Validation remains no-motion and Gateway-free.

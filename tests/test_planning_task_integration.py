@@ -15,7 +15,7 @@ from PhyAgentOS.agent.tools.forge_task import (
 )
 from PhyAgentOS.agent.tools.forge_tool_api import ForgeToolQueryTool
 from PhyAgentOS.config.schema import ForgeConfig
-from PhyAgentOS.forge.binding import BoundToolSpec, RuntimeBinding
+from PhyAgentOS.forge.binding import BoundToolSpec, ForgeSkillBinding, RuntimeBinding
 from PhyAgentOS.forge.capability_runtime.observation import OBSERVATION_TOOL_SPEC
 from PhyAgentOS.forge.task import (
     AgentTaskCoordinator,
@@ -312,10 +312,21 @@ async def test_unknown_legacy_action_with_omitted_default_cannot_be_resent(tmp_p
         ready_at_binding=True,
         input_schema=input_schema,
     )
+    skill_binding = ForgeSkillBinding(
+        binding_id="binding_test_unknown_action",
+        skill_name="generic-skill",
+        skill_version="1.0.0",
+        manifest_sha256="1" * 64,
+        skill_document_sha256="2" * 64,
+        runtime_profile="test",
+        runtime_instance_id="runtime-test",
+        gateway_url="http://test.invalid",
+        required_tools=(tool,),
+    )
     coordinator.store.update(
         task_id,
-        lambda current: current.tool_bindings.append(tool),
-        event_type="test_tool_binding",
+        lambda current: setattr(current, "primary_skill_binding", skill_binding),
+        event_type="test_skill_binding",
     )
 
     async def require_tool(*_args):

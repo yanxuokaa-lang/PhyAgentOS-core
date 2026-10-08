@@ -2710,14 +2710,7 @@ class AgentTaskCoordinator:
     ) -> dict[str, Any]:
         task = self._require_executable(task_id)
         binding = _normalize_planning_binding(planning_binding)
-        frozen_tool = next(
-            (
-                item
-                for item in task.tool_bindings
-                if item.tool_id == tool_id and item.semantics == "action"
-            ),
-            None,
-        )
+        frozen_tool = _task_bound_tool_spec(task, tool_id, "action")
         if _has_unknown_action(
             task,
             tool_id,
@@ -3863,6 +3856,23 @@ def _has_unknown_action(
         and item.status == "unknown"
         and materialize_tool_arguments(input_schema, item.arguments) == effective_arguments
         for item in task.execution_records
+    )
+
+
+def _task_bound_tool_spec(
+    task: AgentTaskRecord,
+    tool_id: str,
+    semantics: Literal["query", "action", "session"],
+) -> BoundToolSpec | None:
+    """Read a ToolSpec from the task's authoritative frozen binding."""
+    tools = (
+        task.primary_skill_binding.required_tools
+        if task.primary_skill_binding is not None
+        else tuple(task.tool_bindings)
+    )
+    return next(
+        (item for item in tools if item.tool_id == tool_id and item.semantics == semantics),
+        None,
     )
 
 

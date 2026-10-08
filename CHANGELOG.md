@@ -5,6 +5,22 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.10.5 (2026-10-08 18:00) - codex
+
+### 变更摘要 / Change Summary
+- [policy] [fix] 修复 Skill-bound task 的 unknown Action canonical 去重遗漏 `primary_skill_binding.required_tools` 的问题；冻结 ToolSpec 现在从任务的权威 Skill binding 解析，且在实时 readiness 前要求 reconciliation。 (local)
+- [policy] [fix] Fix unknown-Action canonical de-duplication for Skill-bound tasks by resolving frozen ToolSpecs from `primary_skill_binding.required_tools`; reconciliation is required before live readiness. (local)
+- [eval] [test] 增加 Skill-bound frozen binding、Runtime 不可用和历史 raw Action canonical 等价回归；证明 Action 不重发。 (local)
+- [eval] [test] Add Skill-bound frozen-binding, unavailable-Runtime, and legacy raw Action canonical-equivalence regressions proving no Action resend. (local)
+
+### 文件与审查 / Files and Review
+- `PhyAgentOS/forge/task.py:L2702-L2748,L3845-L3874`、`tests/test_planning_task_integration.py:L285-L345`、`docs/forge/PLANNING_ARGUMENT_CANONICALIZATION_DIAGNOSIS_20261008.md:L84-L111`。
+- 七维复审初审发现一项 Major，已修复；最终 Blocker 0、Major 0、Minor 0。 / Follow-up seven-dimension review found and fixed one Major; final Blocker 0, Major 0, Minor 0.
+
+### 验证边界 / Validation Boundary
+- focused `230 passed`，完整 Core `802 passed in 28.45s`；Ruff、compileall、diff check 通过。全部 no-motion，未恢复任务、调用真实 Gateway、重启 Runtime或推进 simulator/物理运动。 (local)
+- Focused tests passed (`230 passed`) and full Core passed (`802 passed in 28.45s`); Ruff, compileall, and diff checks passed. All validation was no-motion with no task resume, real Gateway call, Runtime restart, or simulator/physical motion. (local)
+
 ## v12.10.4 (2026-10-08 17:18) - codex
 
 ### 变更摘要 / Change Summary
