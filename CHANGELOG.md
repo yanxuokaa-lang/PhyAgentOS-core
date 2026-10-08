@@ -5,6 +5,20 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.10.9 (2026-10-08 21:00) - codex
+
+### 变更摘要 / Change Summary
+- [env] [chore] 用户授权 force-stop 旧 `pick-place-workflow`，确认旧 Runtime、Dora、persistent worker 已停止；刷新当前分支 Core editable 安装并重启 profile，Runtime instance 为 `runtime_4cb91725948c4f16`。 (local)
+- [env] [chore] User-authorized force-stop stopped the old `pick-place-workflow` Runtime, Dora flow, and persistent workers; refreshed the current-branch Core editable installation and restarted the profile as Runtime instance `runtime_4cb91725948c4f16`. (local)
+- [eval] [test] Gateway `/tools` `ok=true`、11/11 Tool contexts ready、Node `1.0.1` verify passed；ownership 与非终态任务均为空。 (local)
+- [eval] [test] Gateway `/tools` returned `ok=true`, all 11/11 Tool contexts are ready, and Node `1.0.1` verification passed; Runtime ownership and non-terminal tasks are empty. (local)
+
+### 验证边界 / Validation Boundary
+- 仅执行 lifecycle、editable install、bundle install、Node verify 与只读健康检查；未创建/恢复任务，未调用 Query/Action，未推进 simulator 或物理运动。 / Only lifecycle, editable installation, bundle installation, Node verification, and read-only health checks ran; no task was created/resumed, no Query/Action was invoked, and no simulator or physical motion advanced.
+
+### Git 提交 / Git Commit
+- Commit: `ca986ff`; Branch: `feature/planning-loop`; 时间 / Time: 2026-10-08 Asia/Shanghai
+
 ## v12.10.8 (2026-10-08 20:40) - codex
 
 ### 变更摘要 / Change Summary
