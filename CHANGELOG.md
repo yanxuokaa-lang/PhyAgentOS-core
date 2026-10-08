@@ -23,7 +23,7 @@
 - Focused tests passed (`139 passed`) and the full Core suite passed (`795 passed`); Ruff, compileall, and diff checks passed. All validation was no-motion with no task creation, real Gateway invocation, or simulator/physical motion. (local)
 
 ### Git 提交 / Git Commit
-- Commit: 待提交 / pending; Branch: `feature/planning-loop`
+- Commit: `ac5ef79`; Branch: `feature/planning-loop`; 时间: 2026-10-08 Asia/Shanghai
 
 ## v12.9.15 (2026-10-08 13:43) - codex
 
