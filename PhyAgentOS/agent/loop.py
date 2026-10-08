@@ -18,6 +18,7 @@ from loguru import logger
 
 from PhyAgentOS.agent.context import ContextBuilder
 from PhyAgentOS.agent.memory import MemoryConsolidator
+from PhyAgentOS.agent.planning_facts import response_facts
 from PhyAgentOS.agent.prompt_context import (
     AgentPromptContextManager,
     PromptBudgetExceededError,
@@ -829,6 +830,8 @@ class AgentLoop:
                 if active_task_id is not None and self.forge_task_coordinator is not None
                 else self._task_for_session(experience_session_key)
             )
+            if active_task is not None and stale_lineage_signature is None:
+                stale_lineage_signature = self._persisted_scene_lineage_mismatch(active_task)
             if active_task_id is None and active_task is not None:
                 # Once the Coordinator associates this turn with one task, pin
                 # that identity for every later model iteration. Session history
@@ -1260,10 +1263,10 @@ class AgentLoop:
                                 )
                             turn_failure_code = "scene_lineage_no_progress"
                             final_content = (
-                                "Discovery stopped: the same stale scene lineage was rejected "
+                                "Control loop stopped: the same stale scene lineage was rejected "
                                 "again without a successful fresh observation or understanding "
-                                "record. Choose a new declared evidence path; no observation, "
-                                "binding, or Action was automatically dispatched."
+                                "record. Choose a new declared evidence path for this operation; "
+                                "no Tool or Action was automatically dispatched."
                             )
                             yield_to_host = True
                             break
@@ -1271,12 +1274,12 @@ class AgentLoop:
                         messages.append({
                             "role": "system",
                             "content": (
-                                "The Runtime rejected this binding because its declared scene "
+                                "The Runtime rejected this operation because its declared scene "
                                 "lineage is stale: expected scene revision "
                                 f"{stale_lineage[0]}, actual {stale_lineage[1]}. The Tool is "
                                 "available, but this input is not admissible. Choose a fresh "
-                                "declared observation/understanding Query before binding; the "
-                                "host will not observe, bind, replan, or retry an Action for you."
+                                "declared evidence Query before retrying the dependent operation; "
+                                "the host will not observe, bind, replan, or retry an Action for you."
                             ),
                         })
                         for deferred in response.tool_calls[call_index + 1 :]:
@@ -1732,6 +1735,34 @@ class AgentLoop:
         if not isinstance(expected, str) or not isinstance(actual, str):
             return None
         return expected, actual
+
+    @staticmethod
+    def _persisted_scene_lineage_mismatch(task: Any) -> tuple[str, str] | None:
+        """Recover the latest stale-lineage fact from the active revision.
+
+        A bounded AgentLoop turn can end after a Query response is persisted.
+        Reconstructing the signature from durable records prevents the next
+        turn from treating the same stale selection as a new recovery attempt.
+        A successful scene evidence Query clears an earlier stale fact.
+        """
+        signature = None
+        revision = getattr(task, "active_revision", None)
+        for record in getattr(revision, "execution_records", ()):
+            facts = response_facts(getattr(record, "response", None))
+            error = facts.get("error")
+            if isinstance(error, Mapping) and error.get("code") == "scene_revision_mismatch":
+                expected = error.get("expected_scene_revision")
+                actual = error.get("actual_scene_revision")
+                if isinstance(expected, str) and isinstance(actual, str):
+                    signature = (expected, actual)
+                continue
+            if (
+                getattr(record, "tool_id", None) in {"scene.observe", "scene.understand"}
+                and getattr(record, "status", None) == "succeeded"
+                and facts.get("status") == "available"
+            ):
+                signature = None
+        return signature
 
     @staticmethod
     def _scene_evidence_query_succeeded(

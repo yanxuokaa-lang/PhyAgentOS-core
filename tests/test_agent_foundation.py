@@ -2908,12 +2908,70 @@ def test_discovery_stale_scene_lineage_corrects_once_then_stops_without_refresh(
             call.args[1]["tool_id"] == "scene.bind"
             for call in loop.tools.execute.await_args_list
         )
-        assert "no observation, binding, or Action was automatically dispatched" in result.content
+        assert "no Tool or Action was automatically dispatched" in result.content
         assert sum(
             message.get("role") == "system"
             and "declared scene lineage is stale" in message.get("content", "")
             for message in result.messages
         ) == 1
+        correction = next(
+            message for message in result.messages
+            if message.get("role") == "system"
+            and "declared scene lineage is stale" in message.get("content", "")
+        )
+        assert "this operation" in correction["content"]
+        assert "dependent operation" in correction["content"]
+
+    asyncio.run(exercise())
+
+
+def test_stale_scene_lineage_persists_across_bounded_agent_turns(tmp_path):
+    async def exercise():
+        c, task = setup_task(tmp_path, goal="Resume the current scene binding")
+        stale_response = {
+            "data": {
+                "status": "unavailable",
+                "error": {
+                    "code": "scene_revision_mismatch",
+                    "expected_scene_revision": "scene-1",
+                    "actual_scene_revision": "scene-3",
+                },
+            },
+        }
+
+        def persist_stale(current):
+            current.active_revision.execution_records.append(ToolExecutionRecord(
+                record_id="stale-record",
+                revision_id=current.active_revision_id,
+                tool_id="scene.bind",
+                semantics="query",
+                caller_id="fixture",
+                arguments={"entity_refs": ["entity://seen"]},
+                status="succeeded",
+                response=stale_response,
+            ))
+
+        c.store.update(task.task_id, persist_stale, event_type="test_stale_lineage")
+        provider = ScriptedProvider([_tool_response(0, "forge_tool_query", {
+            "task_id": task.task_id,
+            "tool_id": "scene.bind",
+            "arguments": {"entity_refs": ["entity://seen"]},
+        })])
+        loop = AgentLoop(
+            bus=MessageBus(), provider=provider, workspace=tmp_path,
+            forge_task_coordinator=c, max_iterations=2,
+        )
+        result_payload = json.dumps({"ok": True, "data": stale_response["data"]})
+        loop.tools.execute = AsyncMock(return_value=result_payload)
+
+        result = await loop._run_agent_loop(
+            [{"role": "user", "content": "Resume the current scene binding"}],
+            active_task_id=task.task_id,
+        )
+
+        assert result.turn_failure_code == "scene_lineage_no_progress"
+        assert len(provider.requests) == 1
+        assert "same stale scene lineage" in result.content
 
     asyncio.run(exercise())
 

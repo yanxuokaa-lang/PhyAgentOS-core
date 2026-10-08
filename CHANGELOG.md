@@ -5,6 +5,22 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.10.8 (2026-10-08 20:40) - codex
+
+### 变更摘要 / Change Summary
+- [Core] [fix] stale-lineage recovery 改为 operation-level，并从 active revision 持久化 Query response 恢复跨 bounded turn 的 stale signature。 (local)
+- [Core] [fix] Make stale-lineage recovery operation-level and restore the stale signature across bounded turns from persisted Query responses in the active revision. (local)
+- [eval] [test] 新增跨 turn stale record、通用 operation 文案和同批 Tool 延迟回归；Core `804 passed`，focused Adapter/Core `193 passed`。 (local)
+- [eval] [test] Add cross-turn stale-record, generic operation wording, and same-batch deferral regressions; Core `804 passed`, focused Adapter/Core `193 passed`. (local)
+- [docs] [docs] 增加七维审查记录 `IMPLEMENTATION_REVIEW_V12_10_8.md`。 (local)
+- [docs] [docs] Add the seven-dimension review record `IMPLEMENTATION_REVIEW_V12_10_8.md`. (local)
+
+### 七维复审 / Seven-Dimension Review
+- 初审 2 项 Major 已修复；最终 Blocker 0、Major 0、Minor 0。 / Two initial Major findings were fixed; final Blocker 0, Major 0, Minor 0.
+
+### Git 提交 / Git Commit
+- 待提交 / Pending commit: `feature/planning-loop`
+
 ## v12.10.7 (2026-10-08 19:33) - codex
 
 ### 变更摘要 / Change Summary
