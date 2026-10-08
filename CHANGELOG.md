@@ -5,6 +5,18 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.9.12 (2026-10-08 11:58) - codex
+
+### 变更摘要 / Change Summary
+- [env] [chore] 在非终态任务和 Runtime ownership 均为空后停止旧 Runtime，安装 Skill `3.0.6` 与 Node `0.10.14`，并使用原 profile/env 启动新 Runtime `runtime_566f395e1cbf4dfe`。 (local)
+- [env] [chore] After non-terminal tasks and Runtime ownership were empty, stopped the old Runtime, installed Skill `3.0.6` and Node `0.10.14`, and started Runtime `runtime_566f395e1cbf4dfe` with the existing profile/environment. (local)
+- [eval] [test] 只读验收 Skill `3.0.6`、Node `0.10.14` receipt、Dora/Gateway、11/11 Tool context、active ownership 与模型配置；未创建任务或调用 Query/Action。 (local)
+- [eval] [test] Read-only accepted Skill `3.0.6`, Node `0.10.14` receipt, Dora/Gateway, all 11 Tool contexts, active ownership, and model configuration; no task or Query/Action was created or invoked. (local)
+
+### Git 提交 / Git Commit
+- Commit: pending (deployment acceptance log will be committed after this entry)
+- Branch: `feature/planning-loop`
+
 ## v12.9.11 (2026-10-08 00:11) - codex
 
 ### 变更摘要 / Change Summary
