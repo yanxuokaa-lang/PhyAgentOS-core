@@ -1,5 +1,10 @@
 # Change Log
 
+## v3.0.7 (2026-10-08)
+
+- 中文：发布 Adapter `0.9.10` 与 Node `0.10.15`；将 persistent place 的四项已验证 postcondition 投影修复打包到可安装制品。
+- English: Publish Adapter `0.9.10` and Node `0.10.15`; package the persistent-place projection fix for the four verified postconditions into installable artifacts.
+
 ## v3.0.6 (2026-10-08)
 
 - 中文：发布 Adapter `0.9.9` 与 Node `0.10.14`；修复 contact qualification 子路线丢失 qualification-owned arm capability 血缘，并将 profile-binding contract failure 结构化为不可自动 replan 的 Runtime 错误。

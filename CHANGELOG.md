@@ -5,6 +5,22 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.9.14 (2026-10-08 13:08) - codex
+
+### 变更摘要 / Change Summary
+- [env] [chore] 停止旧 Runtime 后安装 Adapter `0.9.10`、Skill `3.0.7`、Node `0.10.15`，启动并只读验收新 Runtime `runtime_3d10c4dfaf5c4382`；Gateway 和 11/11 Tool contexts ready，ownership 为空。 (local)
+- [env] [chore] After stopping the old Runtime, install Adapter `0.9.10`, Skill `3.0.7`, and Node `0.10.15`, then start and read-only accept new Runtime `runtime_3d10c4dfaf5c4382`; Gateway and all 11/11 Tool contexts are ready with empty ownership. (local)
+- [eval] [test] 未创建任务、未调用 Query/Action、未推进 simulator 或物理运动；旧 Runtime 残留 binding 按用户授权 force-stop，未重试未知的旧 `object.place` Action。 (local)
+- [eval] [test] No task was created, no Query/Action was invoked, and no simulator or physical motion was advanced; the old Runtime's residual binding was force-stopped under user authorization, without retrying the unknown old `object.place` Action. (local)
+
+### 制品 / Artifacts
+- Skill bundle SHA-256: `cfa6854d2dceaae5c07d364de8d9556284a3537254199439efb3268fb85a9f86`
+- Node SHA-256: `b7557228b537b7cb73c46dcee288d3c31e90729cef40bd9c70d40bf20ffa14b5`
+- 实际 spawn: `robotwin20_persistent_host-0.10.15-linux-x86_64` / Actual spawn: `robotwin20_persistent_host-0.10.15-linux-x86_64`
+
+### Git 提交 / Git Commit
+- 待提交 / Pending: `feature/planning-loop`
+
 ## v12.9.13 (2026-10-08 12:27) - codex
 
 ### 变更摘要 / Change Summary
