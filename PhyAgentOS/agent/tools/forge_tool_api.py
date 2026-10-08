@@ -333,10 +333,6 @@ class ForgeToolQueryTool(Tool):
                 stale_retry_error = _stale_retry_relaxes_freshness(task, tool_id, arguments)
                 if stale_retry_error is not None:
                     raise AgentTaskError(stale_retry_error)
-                if tool_id == "scene.bind":
-                    selection_error = _scene_bind_argument_error(task, arguments)
-                    if selection_error is not None:
-                        raise AgentTaskError(_json({"code": selection_error["code"], **selection_error}))
                 sources = _task_query_source_records(task)
                 if (
                     tool_id in _OBSERVATION_BOUND_QUERY_ARGUMENTS
@@ -382,6 +378,13 @@ class ForgeToolQueryTool(Tool):
                     resolved_arguments = self.coordinator.selected_execution_arguments(
                         task_id, tool_id, "query", {}, resolved_binding
                     )
+                if tool_id == "scene.bind":
+                    # A resumed planning selection intentionally passes empty
+                    # literal arguments. Validate the Coordinator-resolved
+                    # entity_refs, not that transport placeholder.
+                    selection_error = _scene_bind_argument_error(task, resolved_arguments)
+                    if selection_error is not None:
+                        raise AgentTaskError(_json({"code": selection_error["code"], **selection_error}))
                 if tool_id == "scene.understand":
                     resolved_arguments.pop("carried_entities", None)
                     carried = _coordinator_carried_entities(

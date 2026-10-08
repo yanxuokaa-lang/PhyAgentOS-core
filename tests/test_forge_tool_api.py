@@ -299,6 +299,101 @@ def test_scene_followup_query_requires_available_active_revision_observation():
     assert "successful scene.observe Query" in result["error"]["message"]
 
 
+def test_selected_scene_bind_query_resolves_entity_refs_before_validation():
+    understanding = SimpleNamespace(
+        record_id="understand-1",
+        tool_id="scene.understand",
+        semantics="query",
+        status="succeeded",
+        revision_id="revision-current",
+        arguments={},
+        response={
+            "data": {
+                "entities": [
+                    {"entity_ref": "entity://e1", "category": "cube"},
+                    {"entity_ref": "entity://e2", "category": "cube"},
+                ],
+                "ambiguities": [],
+            }
+        },
+    )
+    task = SimpleNamespace(
+        active_revision_id="revision-current",
+        execution_records=[understanding],
+    )
+
+    class Binding:
+        def model_dump(self, mode="json"):
+            assert mode == "json"
+            return {"node_id": "bind", "revision_id": "revision-current"}
+
+    class Coordinator:
+        def get_task(self, task_id):
+            assert task_id == "task-1"
+            return task
+
+        def selected_execution_binding(self, task_id, tool_id, semantics, planning_binding):
+            assert (task_id, tool_id, semantics) == ("task-1", "scene.bind", "query")
+            assert planning_binding == {"node_id": "bind"}
+            return Binding()
+
+        def selected_execution_arguments(self, task_id, tool_id, semantics, arguments, binding):
+            assert (task_id, tool_id, semantics, arguments) == (
+                "task-1", "scene.bind", "query", {},
+            )
+            assert binding == {"node_id": "bind", "revision_id": "revision-current"}
+            return {"entity_refs": ["entity://e1", "entity://e2"]}
+
+        async def invoke_query(self, task_id, tool_id, arguments, **kwargs):
+            assert (task_id, tool_id) == ("task-1", "scene.bind")
+            assert arguments == {"entity_refs": ["entity://e1", "entity://e2"]}
+            return {"ok": True, "data": {"status": "available"}}
+
+    result = json.loads(asyncio.run(ForgeToolQueryTool(object(), Coordinator()).execute(
+        task_id="task-1",
+        tool_id="scene.bind",
+        arguments={},
+        planning_binding={"node_id": "bind"},
+        use_selected_arguments=True,
+    )))
+
+    assert result == {"ok": True, "data": {"status": "available"}}
+
+
+def test_selected_scene_bind_query_keeps_invalid_resolved_selection_fail_closed():
+    task = SimpleNamespace(active_revision_id="revision-current", execution_records=[])
+
+    class Binding:
+        def model_dump(self, mode="json"):
+            assert mode == "json"
+            return {"node_id": "bind", "revision_id": "revision-current"}
+
+    class Coordinator:
+        def get_task(self, _task_id):
+            return task
+
+        def selected_execution_binding(self, *_args):
+            return Binding()
+
+        def selected_execution_arguments(self, *_args):
+            return {"entity_refs": []}
+
+        async def invoke_query(self, *_args, **_kwargs):
+            raise AssertionError("invalid selected entity_refs must not reach Gateway")
+
+    result = json.loads(asyncio.run(ForgeToolQueryTool(object(), Coordinator()).execute(
+        task_id="task-1",
+        tool_id="scene.bind",
+        arguments={},
+        planning_binding={"node_id": "bind"},
+        use_selected_arguments=True,
+    )))
+
+    assert result["ok"] is False
+    assert result["error"]["type"] == "agent_task"
+    assert result["error"]["code"] == "scene_bind_missing_entity_refs"
+
+
 def test_scene_understand_explicit_sources_still_inherit_observation_max_age():
     observation = {
         "status": "available",

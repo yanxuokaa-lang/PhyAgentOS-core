@@ -5,6 +5,25 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.9.15 (2026-10-08 13:43) - codex
+
+### 变更摘要 / Change Summary
+- [comm] [fix] 修复持久化 `scene.bind` selection 的消费顺序：先解析 Coordinator 参数，再执行实体引用校验，避免合法空参数在 Gateway 前被拒绝。 (local)
+- [comm] [fix] Fix persisted `scene.bind` selection consumption ordering by resolving Coordinator arguments before entity-reference validation, preventing valid empty arguments from being rejected before Gateway admission. (local)
+- [eval] [test] 新增成功消费和非法 selection fail-closed 回归；Core focused suite `136 passed`，Ruff、compileall 与 diff check 通过。 (local)
+- [eval] [test] Add successful-consumption and invalid-selection fail-closed regressions; the Core focused suite passed (`136 passed`) with Ruff, compileall, and diff checks. (local)
+
+### 文件与诊断 / Files and Diagnosis
+- `PhyAgentOS/agent/tools/forge_tool_api.py:L373-L387`、`tests/test_forge_tool_api.py:L302-L395`。
+- `docs/forge/SCENE_BIND_SELECTION_CONSUMPTION_DIAGNOSIS_20261008.md:L1-L51`、`docs/forge/IMPLEMENTATION_REVIEW_V12_9_15.md:L1-L39`。
+
+### 验证边界 / Validation Boundary
+- 仅 Query/no-motion 验证；未创建任务、未调用真实 Gateway、未推进 simulator 或物理运动；未改变 Action admission、Runtime 安全门禁或运动授权。 (local)
+- Query-only/no-motion validation; no task was created, no real Gateway was invoked, and no simulator or physical motion advanced; Action admission, Runtime safety gates, and motion authorization were unchanged.
+
+### Git 提交 / Git Commit
+- Commit: `a0ab29c`; Branch: `feature/planning-loop`; 时间: 2026-10-08 Asia/Shanghai
+
 ## v12.9.14 (2026-10-08 13:08) - codex
 
 ### 变更摘要 / Change Summary
