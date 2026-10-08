@@ -5,6 +5,21 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.10.1 (2026-10-08 14:46) - codex
+
+### 变更摘要 / Change Summary
+- [env] [chore] 通过 Coordinator 将旧任务置为终态并清空 Runtime ownership 后正常停止旧实例，刷新 Core editable 安装，并使用原 profile/env 启动新 Runtime `runtime_b08a1a96e9f74415`。 (local)
+- [env] [chore] After moving the old task to a terminal state through the Coordinator and clearing Runtime ownership, normally stopped the old instance, refreshed the Core editable installation, and started Runtime `runtime_b08a1a96e9f74415` with the existing profile/environment. (local)
+- [eval] [test] Skill `3.0.7`、Node `0.10.15`、Dora、Gateway 与 11/11 Tool contexts ready；ownership 与非终态任务均为空。 (local)
+- [eval] [test] Skill `3.0.7`, Node `0.10.15`, Dora, Gateway, and all 11 Tool contexts are ready; Runtime ownership and non-terminal tasks are empty. (local)
+
+### 验证边界 / Validation Boundary
+- 仅执行 task stop、Runtime lifecycle、editable install 与只读状态检查；未创建/恢复任务，未调用 Query/Action，未推进 simulator 或物理运动。 (local)
+- Only task stop, Runtime lifecycle, editable installation, and read-only state checks ran; no task was created/resumed, no Query/Action was invoked, and no simulator or physical motion advanced. (local)
+
+### Git 提交 / Git Commit
+- Commit: `PENDING`; Branch: `feature/planning-loop`; 时间: 2026-10-08 Asia/Shanghai
+
 ## v12.10.0 (2026-10-08 14:33) - codex
 
 ### 变更摘要 / Change Summary
@@ -74,16 +89,4 @@
 
 ### Git 提交 / Git Commit
 - Commit: `464cebd`（放置后置条件结果投影与无运动回归 / place postcondition projection and no-motion regressions）
-- Branch: `feature/planning-loop`
-
-## v12.9.12 (2026-10-08 11:58) - codex
-
-### 变更摘要 / Change Summary
-- [env] [chore] 在非终态任务和 Runtime ownership 均为空后停止旧 Runtime，安装 Skill `3.0.6` 与 Node `0.10.14`，并使用原 profile/env 启动新 Runtime `runtime_566f395e1cbf4dfe`。 (local)
-- [env] [chore] After non-terminal tasks and Runtime ownership were empty, stopped the old Runtime, installed Skill `3.0.6` and Node `0.10.14`, and started Runtime `runtime_566f395e1cbf4dfe` with the existing profile/environment. (local)
-- [eval] [test] 只读验收 Skill `3.0.6`、Node `0.10.14` receipt、Dora/Gateway、11/11 Tool context、active ownership 与模型配置；未创建任务或调用 Query/Action。 (local)
-- [eval] [test] Read-only accepted Skill `3.0.6`, Node `0.10.14` receipt, Dora/Gateway, all 11 Tool contexts, active ownership, and model configuration; no task or Query/Action was created or invoked. (local)
-
-### Git 提交 / Git Commit
-- Commit: `ccb9231`（停止旧 Runtime、安装 Skill/Node、启动并验收新 Runtime / stop old Runtime, install Skill/Node, start and accept new Runtime）
 - Branch: `feature/planning-loop`
