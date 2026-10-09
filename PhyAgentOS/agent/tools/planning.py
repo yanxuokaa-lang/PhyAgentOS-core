@@ -73,7 +73,12 @@ class ForgePlanReadyTool(Tool):
                 task = self.coordinator.get_task(self.dispatch.graph.task_id)
                 if task.active_revision_id != self.dispatch.graph.revision_id:
                     raise PlanningLoopError("source browsing requires the active revision")
-                context = NodeContextProvider(lambda _: task).build(
+                context = NodeContextProvider(
+                    lambda _: task,
+                    execution_record_loader=(
+                        self.coordinator.effective_planning_execution_records
+                    ),
+                ).build(
                     task.task_id, node_id, scene_revision=self.dispatch.current_scene_revision,
                 )
                 page = node_source_page(context, source_record_id, source_path or [], offset=offset, limit=limit)
@@ -320,7 +325,12 @@ class ForgePlanSelectTool(Tool):
                     final_arguments = {**final_arguments, "entity_ref": bound_entity}
                 try:
                     task = self.coordinator.get_task(task_id)
-                    context = NodeContextProvider(lambda _task_id: task).build(
+                    context = NodeContextProvider(
+                        lambda _task_id: task,
+                        execution_record_loader=(
+                            self.coordinator.effective_planning_execution_records
+                        ),
+                    ).build(
                         task_id,
                         node_id,
                         scene_revision=dispatch.current_scene_revision,
@@ -426,7 +436,12 @@ class ForgePlanSelectTool(Tool):
                     )
                 if argument_sources:
                     task = self.coordinator.get_task(task_id)
-                    context = NodeContextProvider(lambda _task_id: task).build(
+                    context = NodeContextProvider(
+                        lambda _task_id: task,
+                        execution_record_loader=(
+                            self.coordinator.effective_planning_execution_records
+                        ),
+                    ).build(
                         task_id,
                         node_id,
                         scene_revision=dispatch.current_scene_revision,

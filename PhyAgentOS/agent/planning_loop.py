@@ -24,7 +24,7 @@ from PhyAgentOS.agent.argument_sources import (
 from PhyAgentOS.agent.experience.redaction import redact_text
 from PhyAgentOS.agent.planner_plugin import ReplanProposal
 from PhyAgentOS.agent.planning_facts import explicit_scene_revision, response_facts
-from PhyAgentOS.forge.binding import query_record_status
+from PhyAgentOS.forge.binding import query_record_provider_blocked, query_record_status
 from PhyAgentOS.forge.task import (
     AgentTaskCoordinator,
     AgentTaskError,
@@ -137,9 +137,11 @@ class NodeContextProvider:
         self,
         task_loader: Callable[[str], Any],
         settlement_loader: Callable[[str], tuple[NodeSettlement, ...]] | None = None,
+        execution_record_loader: Callable[[str, str], tuple[Any, ...]] | None = None,
     ) -> None:
         self._task_loader = task_loader
         self._settlement_loader = settlement_loader
+        self._execution_record_loader = execution_record_loader
 
     def build(
         self,
@@ -164,6 +166,11 @@ class NodeContextProvider:
             else tuple(revision.node_settlements)
         )
         settlements = {item.node_id: item for item in settled_items}
+        revision_records = (
+            self._execution_record_loader(task_id, revision.revision_id)
+            if self._execution_record_loader is not None
+            else tuple(revision.execution_records)
+        )
         predecessors: list[PredecessorContext] = []
         for dependency in node.dependencies:
             settlement = settlements.get(dependency)
@@ -189,7 +196,7 @@ class NodeContextProvider:
                     response=record.response,
                     error=record.error,
                 )
-                for record in revision.execution_records
+                for record in revision_records
                 if record.node_id == dependency
             )
             predecessors.append(PredecessorContext(
@@ -222,7 +229,12 @@ class NodeContextProvider:
         evidence_context: list[EvidenceExecutionContext] = []
         if selected_discovery_evidence:
             for source_revision in task.revisions:
-                for record in source_revision.execution_records:
+                source_records = (
+                    self._execution_record_loader(task_id, source_revision.revision_id)
+                    if self._execution_record_loader is not None
+                    else tuple(source_revision.execution_records)
+                )
+                for record in source_records:
                     matched = selected_discovery_evidence & set(record.evidence_refs)
                     if (
                         not matched
@@ -885,6 +897,9 @@ class AgentLoopNodeExecutor:
         task = self.coordinator.get_task(context.task_id)
         if task.active_revision_id != context.revision_id:
             raise PlanningLoopError("Agent node turn changed the active PlanRevision")
+        loader = getattr(self.coordinator, "planning_node_execution_records", None)
+        if callable(loader):
+            return list(loader(context.task_id, context.revision_id, context.node_id))
         return [
             item
             for item in task.active_revision.execution_records
@@ -1466,6 +1481,65 @@ class PlanningLoopAdapter:
             ):
                 raise PlanningLoopError(
                     "node executor returned a result bound to a different task, revision, or node"
+                )
+            task = self.coordinator.get_task(task_id)
+            record_loader = getattr(
+                self.coordinator, "planning_node_execution_records", None
+            )
+            node_records = (
+                record_loader(task_id, context.revision_id, node_id)
+                if callable(record_loader)
+                else tuple(
+                    record
+                    for record in task.active_revision.execution_records
+                    if record.node_id == node_id
+                )
+            )
+            provider_blocked_records = tuple(
+                record
+                for record in node_records
+                if record.tool_id == result.tool_id
+                and query_record_provider_blocked(record)
+            )
+            if provider_blocked_records:
+                reason = (
+                    f"query_provider_blocked:{node_id}:"
+                    f"{result.failure_code or 'provider_unavailable'}"
+                )
+                try:
+                    await self.coordinator.record_query_provider_blocked(
+                        task_id,
+                        context.revision_id,
+                        node_id,
+                        tool_id=result.tool_id,
+                        record_ids=tuple(
+                            item.record_id for item in provider_blocked_records
+                        ),
+                        reason=reason,
+                    )
+                except AgentTaskError:
+                    current = self.coordinator.get_task(task_id)
+                    if not (
+                        current.terminal
+                        or current.pause_requested
+                        or current.cancellation_requested
+                    ):
+                        raise
+                    return PlanningLoopResult(
+                        task_id,
+                        current.status.value,
+                        tuple(completed),
+                        len(current.revisions),
+                        replans,
+                        None,
+                    )
+                return PlanningLoopResult(
+                    task_id,
+                    "waiting_for_runtime",
+                    tuple(completed),
+                    len(self.coordinator.get_task(task_id).revisions),
+                    replans,
+                    reason,
                 )
             settlement = settle_node(
                 graph.nodes[[node.node_id for node in graph.nodes].index(node_id)],

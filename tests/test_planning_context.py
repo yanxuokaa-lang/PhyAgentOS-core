@@ -211,6 +211,36 @@ def test_context_does_not_restore_unselected_historical_discovery_evidence() -> 
     assert "tool:historical" not in context.evidence_refs
 
 
+def test_provider_blocked_query_cannot_contribute_admission_facts() -> None:
+    observation = _record(
+        "observe-current",
+        tool_id="scene.observe",
+        arguments={"sensor_ref": "camera/head"},
+        response={"ok": True, "data": {"scene_revision": "scene-current"}},
+    )
+    blocked = _record(
+        "understand-provider-blocked",
+        tool_id="scene.understand",
+        arguments={"scene_revision": "scene-current"},
+        response={
+            "ok": True,
+            "data": {
+                "status": "unavailable",
+                "scene_revision": "scene-current",
+                "evidence_refs": ["artifact://untrusted-provider-output"],
+                "condition_facts": {"scene_understood": True},
+                "error": {"failure_stage": "provider", "retryable": False},
+            },
+        },
+    )
+
+    context = context_from_task(_task(observation, blocked), allow_refresh=True)
+
+    assert context.scene_revision == "scene-current"
+    assert context.evidence_refs == frozenset({"tool:observe-current"})
+    assert dict(context.condition_facts) == {}
+
+
 def test_continuation_keeps_same_capture_records_and_excludes_stale_captures():
     from PhyAgentOS.agent.planning_context import current_scene_query_records
     from PhyAgentOS.agent.prompt_context import continuation_task_prompt_projection

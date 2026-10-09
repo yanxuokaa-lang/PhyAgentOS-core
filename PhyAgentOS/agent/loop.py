@@ -39,6 +39,7 @@ from PhyAgentOS.agent.tools.web import WebFetchTool, WebSearchTool
 from PhyAgentOS.bus.events import InboundMessage, OutboundMessage
 from PhyAgentOS.bus.queue import MessageBus
 from PhyAgentOS.embodiment_registry import EmbodimentRegistry
+from PhyAgentOS.forge.binding import query_record_status
 from PhyAgentOS.forge.task import AgentTaskError, AgentTaskStatus
 from PhyAgentOS.providers.base import LLMProvider
 from PhyAgentOS.providers.providers_manager import ProvidersManager
@@ -158,7 +159,12 @@ class AgentLoop:
         also remain recoverable. Other failures use Coordinator settlement.
         """
         status = getattr(getattr(task, "status", None), "value", None)
-        if status in {"awaiting_replan", "waiting_for_user", "cancelling"}:
+        if status in {
+            "awaiting_replan",
+            "waiting_for_user",
+            "waiting_for_runtime",
+            "cancelling",
+        }:
             return False
         if getattr(task, "pause_requested", False) or getattr(task, "cancellation_requested", False):
             return False
@@ -335,6 +341,11 @@ class AgentLoop:
             context_window_tokens=context_window_tokens,
             compaction_trigger_tokens=self.context_compaction_trigger_tokens,
             reserved_output_tokens=provider.generation.max_tokens,
+            execution_record_loader=(
+                forge_task_coordinator.effective_planning_execution_records
+                if forge_task_coordinator is not None
+                else None
+            ),
         )
         self._register_default_tools()
         # Load env variables
@@ -527,6 +538,7 @@ class AgentLoop:
             context_provider=NodeContextProvider(
                 self.forge_task_coordinator.get_task,
                 self.forge_task_coordinator.effective_node_settlements,
+                self.forge_task_coordinator.effective_planning_execution_records,
             ),
             node_executor=AgentLoopNodeExecutor(
                 self,
@@ -1549,7 +1561,8 @@ class AgentLoop:
                 ):
                     current_task = self.forge_task_coordinator.get_task(active_task.task_id)
                     has_discovery_evidence = any(
-                        record.semantics == "query" and record.status == "succeeded"
+                        record.semantics == "query"
+                        and query_record_status(record) == "succeeded"
                         for record in current_task.active_revision.execution_records
                     )
                     if (

@@ -7,7 +7,7 @@ temporary request view from those owners immediately before each model call.
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Any
 
@@ -362,6 +362,11 @@ def visible_tool_names(
             "forge_tool_context",
             "forge_task_begin_revision",
         }
+    elif status == "waiting_for_runtime":
+        # Provider recovery is host-owned.  Model turns may inspect the frozen
+        # Tool context or cancel the task, but cannot invoke or reselect the
+        # blocked Query before the LongHorizon runner observes readiness change.
+        allowed = generic | _TASK_COMMON | {"forge_tool_context"}
     else:
         allowed = (
             generic | _TASK_COMMON | _PLANNING | _ACTION_RECONCILIATION | _SESSION_RECONCILIATION
@@ -755,7 +760,11 @@ def _task_binding_projection(binding: Any) -> Any:
     return payload
 
 
-def task_prompt_projection(task: Any | None) -> dict[str, Any] | None:
+def task_prompt_projection(
+    task: Any | None,
+    *,
+    execution_records: Iterable[Any] | None = None,
+) -> dict[str, Any] | None:
     """Project current persisted task state for model orientation between calls."""
 
     if task is None:
@@ -781,7 +790,11 @@ def task_prompt_projection(task: Any | None) -> dict[str, Any] | None:
                 }
             )
 
-    execution_records = list(getattr(task, "execution_records", ()))
+    execution_records = list(
+        getattr(task, "execution_records", ())
+        if execution_records is None
+        else execution_records
+    )
     latest_by_tool: dict[str, int] = {}
     for index, record in enumerate(execution_records):
         tool_id = getattr(record, "tool_id", None)
@@ -1402,6 +1415,7 @@ class AgentPromptContextManager:
         compaction_trigger_tokens: int,
         reserved_output_tokens: int = 0,
         discovery_compaction_trigger_tokens: int = DEFAULT_DISCOVERY_COMPACTION_TRIGGER_TOKENS,
+        execution_record_loader: Callable[[str, str], Iterable[Any]] | None = None,
     ) -> None:
         self.context_window_tokens = int(context_window_tokens)
         self.compaction_trigger_tokens = int(compaction_trigger_tokens)
@@ -1409,6 +1423,7 @@ class AgentPromptContextManager:
         self.discovery_compaction_trigger_tokens = max(
             1, int(discovery_compaction_trigger_tokens)
         )
+        self._execution_record_loader = execution_record_loader
         self.prompt_token_limit = self.context_window_tokens - self.reserved_output_tokens
         if self.prompt_token_limit <= 0:
             raise ValueError("reserved output tokens must be smaller than the context window")
@@ -1443,6 +1458,8 @@ class AgentPromptContextManager:
             return "replan"
         if status == "waiting_for_user":
             return "waiting_for_user"
+        if status == "waiting_for_runtime":
+            return "waiting_for_runtime"
         return "planning_execution"
 
     def build(
@@ -1459,7 +1476,19 @@ class AgentPromptContextManager:
         phase = self.phase(task)
         visible = visible_tool_names(all_tool_names, task, messages=messages)
         if projection_scope == "task":
-            projection = task_prompt_projection(task)
+            projection_records = None
+            if task is not None and callable(self._execution_record_loader):
+                projection_records = tuple(
+                    record
+                    for revision in getattr(task, "revisions", ())
+                    for record in self._execution_record_loader(
+                        task.task_id, revision.revision_id
+                    )
+                )
+            projection = task_prompt_projection(
+                task,
+                execution_records=projection_records,
+            )
         elif projection_scope == "node":
             if not projection_node_id:
                 raise ValueError("node projection requires projection_node_id")

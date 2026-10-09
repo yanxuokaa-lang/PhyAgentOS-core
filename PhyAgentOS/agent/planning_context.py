@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 from PhyAgentOS.agent.planning_facts import explicit_scene_revision, response_facts
+from PhyAgentOS.forge.binding import query_record_provider_blocked, query_record_status
 from PhyAgentOS.planning import AdmissionContext
 
 
@@ -88,6 +89,8 @@ def context_from_task(task: Any, *, allow_refresh: bool = False) -> AdmissionCon
             continue
         response = getattr(record, "response", None)
         if not isinstance(response, dict):
+            continue
+        if query_record_provider_blocked(record):
             continue
         payload = response_facts(response)
         scene = payload.get("new_scene_revision")
@@ -209,7 +212,7 @@ def current_scene_query_records(task):
     records = tuple(getattr(task, "execution_records", ()))
     visible = tuple(
         record for record in records
-        if record.status == "succeeded"
+        if query_record_status(record) == "succeeded"
         and record.semantics == "query"
         and trusted.intersection(record.evidence_refs)
     )

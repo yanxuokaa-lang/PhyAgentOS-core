@@ -19,7 +19,12 @@ from PhyAgentOS.agent.planning_loop import (
     PlanningLoopResult,
     StaleNodeContextError,
 )
-from PhyAgentOS.forge.task import AgentTaskCoordinator, AgentTaskError, AgentTaskStatus
+from PhyAgentOS.forge.task import (
+    AgentTaskCoordinator,
+    AgentTaskError,
+    AgentTaskRecord,
+    AgentTaskStatus,
+)
 from PhyAgentOS.planning import derive_ready_nodes
 
 
@@ -133,13 +138,16 @@ class LongHorizonTaskController:
             if graph is None:
                 replay[revision.revision_id] = ()
                 continue
+            records = self.coordinator.effective_planning_execution_records(
+                task_id, revision.revision_id
+            )
             evidence = {
                 ref
-                for record in revision.execution_records
+                for record in records
                 for ref in record.evidence_refs
                 if isinstance(ref, str)
             }
-            for record in revision.execution_records:
+            for record in records:
                 response = record.response
                 payload = (
                     response.get("data")
@@ -188,6 +196,7 @@ class LongHorizonTaskController:
             task = self.coordinator.get_task(task_id)
             if task.terminal:
                 return self._snapshot(task_id)
+            task = await self._wait_for_runtime(task_id, task)
             if task.status == AgentTaskStatus.AWAITING_REPLAN:
                 return self._snapshot(task_id, status="awaiting_replan")
             if task.status == AgentTaskStatus.WAITING_FOR_USER:
@@ -202,6 +211,11 @@ class LongHorizonTaskController:
                 await self.coordinator.reconcile_nonterminal()
                 task = self.coordinator.get_task(task_id)
                 if task.terminal:
+                    return self._snapshot(task_id)
+                task = await self._wait_for_runtime(task_id, task)
+                if task.terminal:
+                    return self._snapshot(task_id)
+                if task.pause_requested or task.cancellation_requested:
                     return self._snapshot(task_id)
                 try:
                     scene_revision = self.scene_revision_provider(task_id)
@@ -233,6 +247,8 @@ class LongHorizonTaskController:
                         f"runner_error:{type(exc).__name__}:{exc}",
                     )
 
+                if result.status == "waiting_for_runtime":
+                    continue
                 if result.status != "segment_completed":
                     final = self._from_planning_result(result)
                     if self.coordinator.get_task(task_id).cancellation_requested:
@@ -273,6 +289,7 @@ class LongHorizonTaskController:
                 if task.terminal or task.status in {
                     AgentTaskStatus.AWAITING_REPLAN,
                     AgentTaskStatus.WAITING_FOR_USER,
+                    AgentTaskStatus.WAITING_FOR_RUNTIME,
                 }:
                     return self._snapshot(task_id)
                 if task.pause_requested or task.cancellation_requested:
@@ -287,6 +304,34 @@ class LongHorizonTaskController:
                         task_id,
                         f"segment_continuation_incomplete:{failure}",
                     )
+
+    async def _wait_for_runtime(
+        self, task_id: str, task: AgentTaskRecord
+    ) -> AgentTaskRecord:
+        """Poll only Tool context until a provider-blocked Query can be retried."""
+        interval = max(
+            0.1,
+            float(getattr(getattr(self.coordinator, "config", None), "poll_interval_s", 0.5)),
+        )
+        while task.status == AgentTaskStatus.WAITING_FOR_RUNTIME:
+            if task.pause_requested or task.cancellation_requested:
+                return task
+            try:
+                task = await self.coordinator.resume_query_provider_block(task_id)
+            except AgentTaskError:
+                current = self.coordinator.get_task(task_id)
+                if not (
+                    current.terminal
+                    or current.pause_requested
+                    or current.cancellation_requested
+                ):
+                    raise
+                return current
+            if task.status != AgentTaskStatus.WAITING_FOR_RUNTIME:
+                return task
+            await asyncio.sleep(interval)
+            task = self.coordinator.get_task(task_id)
+        return task
 
     def _ensure_started(self, task_id: str) -> None:
         if self.adapter is None:

@@ -332,6 +332,7 @@ def test_visible_forge_tools_follow_task_phase() -> None:
         "activate_skill",
         "forge_task_create",
         "forge_task_get",
+        "forge_task_cancel",
         "forge_task_begin_revision",
         "forge_task_materialize_plan",
         "forge_task_continue_plan",
@@ -434,6 +435,57 @@ def test_visible_forge_tools_follow_task_phase() -> None:
     assert "forge_task_begin_revision" in waiting_tools
     assert "forge_tool_query" not in waiting_tools
     assert AgentPromptContextManager.phase(waiting) == "waiting_for_user"
+
+    runtime_wait = _task(graph=graph, status="waiting_for_runtime")
+    runtime_wait_tools = set(visible_tool_names(names, runtime_wait))
+    assert "forge_tool_context" in runtime_wait_tools
+    assert "forge_task_get" in runtime_wait_tools
+    assert "forge_task_cancel" in runtime_wait_tools
+    assert "forge_plan_select" not in runtime_wait_tools
+    assert "forge_tool_query" not in runtime_wait_tools
+    assert "forge_tool_start_action" not in runtime_wait_tools
+    assert AgentPromptContextManager.phase(runtime_wait) == "waiting_for_runtime"
+
+
+def test_task_prompt_projection_uses_effective_execution_record_view() -> None:
+    graph = SimpleNamespace(nodes=())
+    released = SimpleNamespace(
+        record_id="released-provider-attempt",
+        revision_id="revision-1",
+        tool_id="perception.describe",
+        status="succeeded",
+        semantics="query",
+        response={"data": {"status": "unavailable"}},
+        evidence_refs=("tool:released-provider-attempt",),
+    )
+    current = SimpleNamespace(
+        record_id="current-provider-attempt",
+        revision_id="revision-1",
+        tool_id="perception.describe",
+        status="succeeded",
+        semantics="query",
+        response={"data": {"status": "available"}},
+        evidence_refs=("tool:current-provider-attempt",),
+    )
+    task = _task(graph=graph, records=(released, current))
+    task.revisions = (SimpleNamespace(revision_id="revision-1"),)
+    manager = AgentPromptContextManager(
+        context_window_tokens=30_000,
+        compaction_trigger_tokens=20_000,
+        execution_record_loader=lambda _task_id, _revision_id: (current,),
+    )
+
+    view = manager.build(
+        messages=[{"role": "user", "content": "continue"}],
+        turn_start_index=0,
+        all_tool_names=("forge_task_get",),
+        task=task,
+        estimate_tokens=lambda _messages, _tools: 1,
+    )
+    rendered = json.dumps(view.messages)
+
+    assert "current-provider-attempt" in rendered
+    assert "released-provider-attempt" not in rendered
 
 
 def test_discovery_keeps_contract_recovery_after_paired_context_reads() -> None:

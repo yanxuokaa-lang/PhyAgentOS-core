@@ -168,6 +168,27 @@ def query_record_blocks_progress(record: Any) -> bool:
     return query_record_status(record) != "succeeded"
 
 
+def query_record_provider_blocked(record: Any) -> bool:
+    """Return whether a Query failed only because its provider is unavailable.
+
+    Gateway transport success is not semantic Query success.  This predicate
+    deliberately requires the provider-owned failure stage and an explicit
+    non-retryable fact, so request/schema errors and physical Action outcomes
+    keep their existing recovery paths.
+    """
+    if getattr(record, "semantics", None) != "query" or getattr(record, "status", None) != "succeeded":
+        return False
+    facts = query_response_facts(record)
+    if facts.get("status") != "unavailable":
+        return False
+    error = facts.get("error")
+    return (
+        isinstance(error, Mapping)
+        and error.get("failure_stage") == "provider"
+        and error.get("retryable") is False
+    )
+
+
 def _query_has_no_available_resources(payload: Mapping[str, Any]) -> bool:
     """Recognize explicit empty/unavailable resource collections generically."""
     for key in _RESOURCE_COLLECTION_KEYS:
@@ -508,6 +529,7 @@ __all__ = [
     "missing_preplan_queries",
     "NON_SUCCESS_QUERY_STATES",
     "query_record_blocks_progress",
+    "query_record_provider_blocked",
     "query_record_status",
     "query_response_facts",
     "required_preplan_queries",

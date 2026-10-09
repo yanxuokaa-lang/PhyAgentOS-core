@@ -26,6 +26,7 @@ from PhyAgentOS.forge.binding import (
     canonical_sha256,
     missing_preplan_queries,
     query_record_blocks_progress,
+    query_record_provider_blocked,
 )
 from PhyAgentOS.forge.evidence import ForgeEvidenceWriter
 from PhyAgentOS.forge.observation import ForgeObservationCollector
@@ -119,6 +120,7 @@ class AgentTaskOriginConflictError(AgentTaskError):
 class AgentTaskStatus(StrEnum):
     EXECUTING = "executing"
     WAITING_FOR_USER = "waiting_for_user"
+    WAITING_FOR_RUNTIME = "waiting_for_runtime"
     CANCELLING = "cancelling"
     AWAITING_REPLAN = "awaiting_replan"
     SUCCEEDED = "succeeded"
@@ -139,6 +141,22 @@ TERMINAL_TOOL_STATUSES = {
     "stopped",
     "unknown",
 }
+
+
+def _provider_readiness_state(context: Mapping[str, Any]) -> dict[str, Any]:
+    """Keep only stable scalar Runtime context needed to observe a transition."""
+    return {
+        key: context.get(key)
+        for key in (
+            "ready",
+            "provider_state",
+            "binding_error",
+            "provider_route",
+            "provider_error_class",
+            "primary_ready",
+        )
+        if isinstance(context.get(key), (str, bool, int, float)) or context.get(key) is None
+    }
 
 
 class ToolExecutionRecord(BaseModel):
@@ -1276,12 +1294,22 @@ class AgentTaskCoordinator:
             "decision_trace_ref": trace_ref,
         }
 
+        released_record_ids = self.released_provider_query_record_ids(
+            task.task_id,
+            task.active_revision_id,
+            node.node_id,
+        )
+
         def persist(current: AgentTaskRecord) -> None:
             nonlocal persisted_trace
             if current.active_revision_id != proposal.get("revision_id"):
                 raise AgentTaskError("planning selection is not bound to the active revision")
             if any(
                 item.node_id == node.node_id
+                and (
+                    not isinstance(item, ToolExecutionRecord)
+                    or item.record_id not in released_record_ids
+                )
                 for item in (
                     *current.active_revision.execution_records,
                     *current.active_revision.node_settlements,
@@ -1486,6 +1514,309 @@ class AgentTaskCoordinator:
             event_type="planning_node_blocked",
             payload={"revision_id": revision_id, "node_id": node_id, "reason": reason},
         )
+
+    async def record_query_provider_blocked(
+        self,
+        task_id: str,
+        revision_id: str,
+        node_id: str,
+        *,
+        tool_id: str,
+        record_ids: tuple[str, ...],
+        reason: str,
+    ) -> AgentTaskRecord:
+        """Persist a non-terminal Runtime/provider wait without settling the node."""
+        task = self.store.get(task_id)
+        if task.active_revision_id != revision_id:
+            raise AgentTaskError("provider-blocked Query is not bound to the active revision")
+        if task.terminal:
+            raise AgentTaskError("cannot block a terminal AgentTask on Runtime readiness")
+        unique_ids = tuple(dict.fromkeys(record_ids))
+        records = {
+            item.record_id: item
+            for item in task.active_revision.execution_records
+            if item.node_id == node_id and item.record_id in unique_ids
+        }
+        if not unique_ids or set(records) != set(unique_ids):
+            raise AgentTaskError("provider block must cite persisted node Query records")
+        if any(
+            item.tool_id != tool_id or not query_record_provider_blocked(item)
+            for item in records.values()
+        ):
+            raise AgentTaskError("provider block requires matching non-retryable Query provider facts")
+        reason = reason.strip()
+        if not reason:
+            raise AgentTaskError("provider block reason must be non-empty")
+
+        context: Mapping[str, Any] = {}
+        context_error: str | None = None
+        try:
+            context = await self._bound_tool_context(task, tool_id)
+        except Exception as exc:
+            context_error = type(exc).__name__
+
+        active = self.active_query_provider_block(task_id)
+        if (
+            active is not None
+            and active.get("revision_id") == revision_id
+            and active.get("node_id") == node_id
+            and tuple(active.get("record_ids", ())) == unique_ids
+        ):
+            return task
+
+        def mutate(current: AgentTaskRecord) -> None:
+            if current.active_revision_id != revision_id:
+                raise AgentTaskError("provider-blocked Query is no longer active")
+            if (
+                current.status != AgentTaskStatus.EXECUTING
+                or current.terminal
+                or current.cancellation_requested
+            ):
+                raise AgentTaskError(
+                    "provider-blocked Query task changed state during readiness check"
+                )
+            current.status = AgentTaskStatus.WAITING_FOR_RUNTIME
+            current.replan_deadline = None
+            current.replan_extension_used = False
+            current.evidence_errors.append(
+                f"Query provider blocked: {node_id}: {reason}"
+            )
+
+        return self.store.update(
+            task_id,
+            mutate,
+            event_type="query_provider_blocked",
+            payload={
+                "revision_id": revision_id,
+                "node_id": node_id,
+                "tool_id": tool_id,
+                "record_ids": list(unique_ids),
+                "reason": reason,
+                "readiness": (
+                    "ready" if context.get("ready") is True
+                    else "unavailable" if context.get("ready") is False
+                    else "unconfirmed"
+                ),
+                "binding_error": context.get("binding_error"),
+                "provider_state": context.get("provider_state"),
+                "context_state": _provider_readiness_state(context),
+                "context_error": context_error,
+                "motion_authorized": False,
+            },
+        )
+
+    def active_query_provider_block(self, task_id: str) -> dict[str, Any] | None:
+        """Return the latest provider block that has not been released."""
+        active: dict[tuple[str, str], dict[str, Any]] = {}
+        for event in self.store.events(task_id, limit=10000):
+            payload = event.get("payload", {})
+            key = (payload.get("revision_id"), payload.get("node_id"))
+            if not all(isinstance(item, str) and item for item in key):
+                continue
+            if event.get("event_type") == "query_provider_blocked":
+                active[key] = dict(payload)
+            elif (
+                event.get("event_type") == "query_provider_readiness_transition"
+                and key in active
+            ):
+                active[key]["readiness_transition_observed"] = True
+            elif event.get("event_type") == "query_provider_released":
+                active.pop(key, None)
+        task = self.store.get(task_id)
+        candidates = [
+            payload
+            for (revision_id, _node_id), payload in active.items()
+            if revision_id == task.active_revision_id
+        ]
+        return candidates[-1] if candidates else None
+
+    def released_provider_query_record_ids(
+        self,
+        task_id: str,
+        revision_id: str,
+        node_id: str,
+    ) -> frozenset[str]:
+        """Return immutable failed Query attempts released after provider recovery."""
+        released: set[str] = set()
+        for event in self.store.events(task_id, limit=10000):
+            payload = event.get("payload", {})
+            if (
+                event.get("event_type") == "query_provider_released"
+                and payload.get("revision_id") == revision_id
+                and payload.get("node_id") == node_id
+            ):
+                released.update(
+                    item
+                    for item in payload.get("record_ids", ())
+                    if isinstance(item, str) and item
+                )
+        return frozenset(released)
+
+    def planning_node_execution_records(
+        self,
+        task_id: str,
+        revision_id: str,
+        node_id: str,
+    ) -> tuple[ToolExecutionRecord, ...]:
+        """Return effective attempts for one node, retaining released attempts in history."""
+        task = self.store.get(task_id)
+        revision = next(
+            (item for item in task.revisions if item.revision_id == revision_id),
+            None,
+        )
+        if revision is None:
+            raise AgentTaskError("planning execution records require a known revision")
+        return tuple(
+            item
+            for item in self.effective_planning_execution_records(task_id, revision_id)
+            if item.node_id == node_id
+        )
+
+    def effective_planning_execution_records(
+        self,
+        task_id: str,
+        revision_id: str,
+    ) -> tuple[ToolExecutionRecord, ...]:
+        """Exclude released provider attempts from planning while retaining audit history."""
+        task = self.store.get(task_id)
+        revision = next(
+            (item for item in task.revisions if item.revision_id == revision_id),
+            None,
+        )
+        if revision is None:
+            raise AgentTaskError("planning execution records require a known revision")
+        released: set[str] = set()
+        for event in self.store.events(task_id, limit=10000):
+            payload = event.get("payload", {})
+            if (
+                event.get("event_type") == "query_provider_released"
+                and payload.get("revision_id") == revision_id
+            ):
+                released.update(
+                    item
+                    for item in payload.get("record_ids", ())
+                    if isinstance(item, str) and item
+                )
+        return tuple(
+            item for item in revision.execution_records if item.record_id not in released
+        )
+
+    async def resume_query_provider_block(self, task_id: str) -> AgentTaskRecord:
+        """Release one blocked Query only after its Runtime Tool reports ready."""
+        task = self.store.get(task_id)
+        if task.status != AgentTaskStatus.WAITING_FOR_RUNTIME:
+            return task
+        block = self.active_query_provider_block(task_id)
+        if block is None:
+            raise AgentTaskError("waiting-for-runtime task has no active provider block")
+        tool_id = block.get("tool_id")
+        if not isinstance(tool_id, str) or not tool_id:
+            raise AgentTaskError("provider block omits Tool identity")
+        bound_tool = next(
+            (item for item in task.tool_bindings if item.tool_id == tool_id),
+            None,
+        )
+        if task.primary_skill_binding is not None:
+            bound_tool = task.primary_skill_binding.tool(tool_id)
+        if bound_tool is None or bound_tool.semantics != "query":
+            raise AgentTaskError("provider block does not reference a bound Query Tool")
+
+        try:
+            context = await self._bound_tool_context(task, tool_id)
+        except Exception:
+            return task
+        if context.get("ready") is not True:
+            if (
+                block.get("readiness") == "ready"
+                and block.get("readiness_transition_observed") is not True
+            ):
+                revision_id = str(block["revision_id"])
+                node_id = str(block["node_id"])
+
+                def observe_transition(current: AgentTaskRecord) -> None:
+                    if (
+                        current.status != AgentTaskStatus.WAITING_FOR_RUNTIME
+                        or current.active_revision_id != revision_id
+                        or current.cancellation_requested
+                    ):
+                        raise AgentTaskError(
+                            "provider-blocked task changed state during readiness check"
+                        )
+
+                return self.store.update(
+                    task_id,
+                    observe_transition,
+                    event_type="query_provider_readiness_transition",
+                    payload={
+                        "revision_id": revision_id,
+                        "node_id": node_id,
+                        "tool_id": tool_id,
+                        "readiness": "unavailable",
+                        "provider_state": context.get("provider_state"),
+                        "motion_authorized": False,
+                    },
+                )
+            return task
+        blocked_context = block.get("context_state")
+        if (
+            block.get("readiness") == "ready"
+            and block.get("readiness_transition_observed") is not True
+            and isinstance(blocked_context, Mapping)
+            and _provider_readiness_state(context) == dict(blocked_context)
+        ):
+            return task
+
+        revision_id = str(block["revision_id"])
+        node_id = str(block["node_id"])
+        record_ids = tuple(
+            item for item in block.get("record_ids", ()) if isinstance(item, str) and item
+        )
+
+        def mutate(current: AgentTaskRecord) -> None:
+            if current.status != AgentTaskStatus.WAITING_FOR_RUNTIME:
+                raise AgentTaskError("provider-blocked task changed state during readiness check")
+            if current.active_revision_id != revision_id:
+                raise AgentTaskError("provider-blocked Query is no longer in the active revision")
+            current.status = AgentTaskStatus.EXECUTING
+
+        resumed = self.store.update(
+            task_id,
+            mutate,
+            event_type="query_provider_released",
+            payload={
+                "revision_id": revision_id,
+                "node_id": node_id,
+                "tool_id": tool_id,
+                "record_ids": list(record_ids),
+                "readiness": "ready",
+                "provider_state": context.get("provider_state"),
+                "motion_authorized": False,
+            },
+        )
+        return resumed
+
+    async def _bound_tool_context(
+        self, task: AgentTaskRecord, tool_id: str
+    ) -> Mapping[str, Any]:
+        """Read live context from the task's frozen Runtime without invoking a Tool."""
+        gateway_url = (
+            task.primary_skill_binding.gateway_url
+            if task.primary_skill_binding is not None
+            else task.runtime_binding.gateway_url
+            if task.runtime_binding is not None
+            else self.client.base_url
+        )
+        frozen_client = self.client if gateway_url.rstrip("/") == self.client.base_url.rstrip("/") else ForgeToolClient(gateway_url)
+        try:
+            response = await frozen_client.get_tool_context(tool_id)
+        finally:
+            if frozen_client is not self.client:
+                await frozen_client.close()
+        context = response.get("data") if isinstance(response, Mapping) else None
+        context = context if isinstance(context, Mapping) else response
+        if not isinstance(context, Mapping) or not isinstance(context.get("ready"), bool):
+            raise AgentTaskError("Runtime Tool context omitted explicit readiness")
+        return context
 
     def record_planning_selection_rejection(
         self,
@@ -3582,6 +3913,7 @@ class AgentTaskCoordinator:
             or not record.terminal
             or revision.plan_graph is None
             or task.status != AgentTaskStatus.EXECUTING
+            or query_record_provider_blocked(record)
             or _planning_record_status(record) not in {"failed", "unknown"}
         ):
             return
