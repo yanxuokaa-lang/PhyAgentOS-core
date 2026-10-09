@@ -6,6 +6,112 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v12.10.14 (2026-10-09 11:01) - codex
+
+### 预期修改 / Planned Changes [完成]
+- [policy] [fix] 七维复审 v12.10.13：视觉别名只避开 held/current-visual ID，可能撞上 unchanged carried ID 并使其静默丢失；将所有 Coordinator carried ID 纳入已有别名分配集合，不新增 gate/schema/hash。(local)
+- [policy] [fix] Review v12.10.13 across seven dimensions: visual aliases can collide with unchanged carried IDs and silently drop those identities. Reserve every Coordinator-carried ID in the existing alias allocator; add no gate, schema, or hash. (local)
+- [eval] [fix] 增加 held/unchanged 混合、连续别名冲突回归，验证实体、关系、几何、歧义引用和 provider 原始快照；只使用 fake provider/no-motion。(local)
+- [eval] [fix] Add mixed held/unchanged and consecutive alias-collision regressions covering entities, relations, geometry, ambiguity references, and the original provider snapshot; use fake providers without motion. (local)
+- [docs] [docs] 新增七维复审报告，记录发现、修复行号、关键 Diff、验证命令和部署边界，完成后提交并推送当前 feature/planning-loop 分支。(local)
+- [docs] [docs] Save the seven-dimension follow-up review with findings, line references, key diff, validation commands, and deployment limits; commit and push the current feature/planning-loop branch. (local)
+
+### 影响文件 / Expected Files
+- `PhyAgentOS/agent/tools/forge_tool_api.py`
+- `tests/test_forge_tool_api.py`
+- `PhyAgentOS/forge/capability_runtime/understanding.py`
+- `examples/forge-skills/pick-place-workflow/tests/test_scene_understand.py`
+- `docs/forge/IMPLEMENTATION_REVIEW_V12_10_14.md`
+- `CHANGELOG.md`
+
+### 计划补充 / Additional Plan
+- [policy] [fix] 同一 scene revision 的多次观察可以重用局部 ID；旧 helper 独立选择最新 understanding/binding，可能错接身份。仅从 Action 前的 binding 及其之前、observation/calibration 一致的 understanding 投影，使用既有 lineage 字段，不新增 gate。(local)
+- [policy] [fix] Repeated observations in one scene revision can reuse local IDs; independently selecting the latest understanding/binding can join unrelated identities. Project only from a pre-Action binding and its preceding understanding with matching observation/calibration, using existing lineage fields without a new gate. (local)
+
+### 实际修改 / Completed Changes
+- [policy] [fix] 两项 Major 均已修复：别名保留全部 carried/current-visual ID；carry 来源按既有 observation/scene/calibration 与 Action→binding→understanding 的逆向因果顺序配对。(local)
+- [policy] [fix] Fixed both Major findings: reserve all carried/current-visual IDs and join carry sources by existing observation/scene/calibration with reverse causal Action→binding→understanding ordering. (local)
+- [eval] [fix] 新增 16 项回归；修复前别名 2 项、来源配对 8 项失败，修复后全部通过；最终 Core/AgentLoop + Adapter 448、Skill 389、独立 provider 12，共 849 项通过。(local)
+- [eval] [fix] Added 16 regression cases; the old implementation failed two alias cases and eight source-pairing cases, all passing after repair. Final Core/AgentLoop + Adapter 448, Skill 389, and isolated provider 12: 849 passed. (local)
+- [docs] [docs] 保存七维复审报告，保留旧诊断及视频索引；没有任务专用分支，没有新增 schema/hash/gate。(local)
+- [docs] [docs] Saved the seven-dimension follow-up review and retained prior diagnosis/video references; no task-specific branch, new schema, hash, or gate. (local)
+
+### 文件变更详情 / File Changes
+
+| 文件 / File | 精确行号 / Exact Lines | 变更 / Change |
+| --- | --- | --- |
+| `PhyAgentOS/agent/tools/forge_tool_api.py` | L844-L845, L897-L898, L902-L915 | 在 Action 前配对相同 lineage 的 binding/understanding / Pair pre-Action binding/understanding with matching lineage. |
+| `PhyAgentOS/forge/capability_runtime/understanding.py` | L988-L989 | 视觉别名保留全部 carried/current-visual ID / Reserve all carried/current-visual IDs. |
+| `tests/test_forge_tool_api.py` | L610-L612, L617-L620, L853-L910 | 补全真实来源夹具并增加 14 项来源配对回归 / Complete realistic source fixtures and add 14 source-pairing cases. |
+| `examples/forge-skills/pick-place-workflow/tests/test_scene_understand.py` | L281-L324 | 增加两项连续别名冲突回归 / Add two consecutive alias-collision cases. |
+| `docs/forge/IMPLEMENTATION_REVIEW_V12_10_14.md` | L1-L86 | 新增七维复审报告与完整验证命令 / Add seven-dimension review and complete validation commands. |
+
+### 关键代码 Diff / Key Code Diff
+
+#### [修改 / Modified] `PhyAgentOS/forge/capability_runtime/understanding.py` L988-L989
+
+```diff
+-used = reserved | {item["entity_ref"] for item in normalized.entities}
++used = {item["entity"]["entity_ref"] for item in carried_entities}
++used.update(item["entity_ref"] for item in normalized.entities)
+```
+
+#### [修改 / Modified] `PhyAgentOS/agent/tools/forge_tool_api.py` L844-L845, L897-L898, L902-L915
+
+```diff
+-for record in reversed(task.execution_records):
++for action_index in range(len(task.execution_records) - 1, -1, -1):
++    record = task.execution_records[action_index]
+@@ source pairing
+-for record in reversed(task.execution_records):
++identity_keys = ("observation_ref", "scene_revision", "calibration_ref")
++for record in reversed(task.execution_records[:action_index]):
+-    if facts.get("scene_revision") != source_scene:
++    if facts.get("scene_revision") != source_scene or facts.get("status") != "available":
+         continue
+-    if understanding is None and record.tool_id == "scene.understand":
+-        understanding = facts
+     if binding is None and record.tool_id == "scene.bind":
++        if any(action.arguments.get(key) is not None and action.arguments[key] != facts.get(key)
++               for key in identity_keys):
++            continue
+         binding = facts
+-    if understanding is not None and binding is not None:
++        if any(not isinstance(binding.get(key), str) or not binding[key] for key in identity_keys):
++            return []
++        continue
++    if (binding is not None and record.tool_id == "scene.understand"
++            and all(facts.get(key) == binding[key] for key in identity_keys)):
++        understanding = facts
+         break
+```
+
+#### [新增 / Added] 来源与别名回归 / Source and Alias Regressions
+
+```python
+# tests/test_forge_tool_api.py L853-L910
+task.execution_records[1].response["data"][key] = "different-lineage"
+assert _coordinator_carried_entities(task, "scene-2") == []
+# Post-binding understanding cannot replace the source claim.
+assert carried[0]["entity"]["category"] == "blue block"
+# examples/forge-skills/pick-place-workflow/tests/test_scene_understand.py L281-L324
+assert len(entities) == len(output["entities"]) == unchanged_count + 3
+assert output["relations"][0] == {**relation, "subject_ref": alias}
+assert output["ambiguities"][0]["entity_refs"] == [alias]
+```
+
+### 七维验收与验证 / Seven-Dimension Acceptance and Validation
+- [eval] [fix] 架构、正确性、恢复幂等、机器人安全、扩展兼容、可观测维护、AgentLoop 自主收敛七维已检查；两项 Major 已修复，无未解决 Blocker/Major。完整矩阵与命令见复审报告。(local)
+- [eval] [fix] Reviewed architecture, correctness, recovery/idempotency, robotics safety, extensibility, observability/maintainability, and AgentLoop autonomy/convergence; both Major findings fixed with no outstanding Blocker/Major. Full matrix and commands are in the review. (local)
+- [eval] [fix] Core/AgentLoop + Adapter `448 passed in 11.89s`；Skill `389 passed in 9.39s`；独立 provider `12 passed in 0.32s`；Ruff、compileall、`git diff --check` 通过。(local)
+- [eval] [fix] Core/AgentLoop + Adapter `448 passed in 11.89s`; Skill `389 passed in 9.39s`; isolated provider `12 passed in 0.32s`; Ruff, compileall, and `git diff --check` passed. (local)
+- [env] [chore] 全程 fake/no-motion；未安装、重启 Runtime、创建/恢复任务、调用现场 Gateway Query/Action 或推进模拟/物理运动。后续部署需重建 Node/Skill，不从旧 receipt 补造 held evidence。(local)
+- [env] [chore] All validation was fake/no-motion: no installation, Runtime restart, live task creation/resumption, Gateway Query/Action, simulator, or hardware motion. Deployment must rebuild Node/Skill and must not invent held evidence in old receipts. (local)
+
+### Git 提交 / Git Commit
+- Branch: `feature/planning-loop`
+- Commit: implementation commit recorded after creation / 实现提交生成后记录。
+
 ## v12.10.13 (2026-10-09 10:39) - codex
 
 ### 预期修改 / Planned Changes [完成]
@@ -639,36 +745,3 @@
 
 ### Git 提交 / Git Commit
 - Commit: `66a9d07`（implementation / 实现）; Branch: `feature/planning-loop`; 时间 / Time: 2026-10-08 Asia/Shanghai
-
-## v12.10.9 (2026-10-08 21:00) - codex
-
-### 预期修改 / Planned Changes [完成]
-- [env] [chore] 在用户明确授权下停止旧的 `pick-place-workflow` Runtime，确认不存在活动任务或未对账 Action 后，安装当前分支的 Core/Adapter/Skill 产物并重启既有 profile。(local)
-- [eval] [test] 仅执行 no-motion 生命周期健康检查：Runtime/Dora、Gateway、Tool contexts、运行时所有权及持久化任务状态；不创建任务、不调用 Query/Action、不推进模拟器。(local)
-
-### Planned Changes (English)
-- [env] [chore] Under explicit user authorization, stop the old `pick-place-workflow` Runtime, confirm no active task or unreconciled Action, install the current branch Core/Adapter/Skill artifacts, and restart the existing profile. (local)
-- [eval] [test] Run only no-motion lifecycle health checks for Runtime/Dora, Gateway, Tool contexts, runtime ownership, and persisted task state; create no task, invoke no Query/Action, and advance no simulator. (local)
-
-### 实际执行 / Completed Execution
-- [env] [chore] 用户明确授权后执行 `paos skill stop pick-place-workflow --force`；旧 Runtime 进入 `stopped`，Dora flow down，Gateway unavailable，进程树无 persistent host/worker；停止前任务库仅有 1 个 `cancelled` 任务，非终态任务为 0。 (local)
-- [env] [chore] After explicit user authorization, ran `paos skill stop pick-place-workflow --force`; the old Runtime became `stopped`, the Dora flow went down, Gateway became unavailable, and no persistent host/worker remained; before stopping, the task database contained only one `cancelled` task and zero non-terminal tasks. (local)
-- [env] [chore] `.venv/bin/python -m pip install -e .` 成功；`PhyAgentOS` import 指向当前工作树 `/home/yanxu/PhyAgentOS-forge/PhyAgentOS/__init__.py`，CLI 为 `PhyAgentOS v1.0.2`。使用当前已验证的 Skill `3.0.9` bundle 和 Node `1.0.1`，通过 `paos skill install --local --yes` 保持原子安装状态。 (local)
-- [env] [chore] `.venv/bin/python -m pip install -e .` succeeded; `PhyAgentOS` imports from the current worktree `/home/yanxu/PhyAgentOS-forge/PhyAgentOS/__init__.py` and the CLI reports `PhyAgentOS v1.0.2`. The current verified Skill `3.0.9` bundle and Node `1.0.1` were retained through `paos skill install --local --yes`. (local)
-- [env] [chore] 使用原 operator env `/home/yanxu/.PhyAgentOS/deployments/robotwin-persistent/runtime-rgb-graspnet-run5.env` 启动 profile `robotwin-blocks-ranking-graspnet`。 (local)
-- [env] [chore] Started profile `robotwin-blocks-ranking-graspnet` with the existing operator env `/home/yanxu/.PhyAgentOS/deployments/robotwin-persistent/runtime-rgb-graspnet-run5.env`. (local)
-
-### 文件变更详情 / File Change Details
-- [修改 / Modified] `changelog/2026-10_part2.md:L3-L35`：补全停止旧实例、editable 安装、Skill/Node 安装、重启和 no-motion 验收记录；本次无 Core、Adapter、ToolSpec、Skill source 或 Node source 修改。 (local)
-- [modified] `changelog/2026-10_part2.md:L3-L35`: complete the stop, editable-install, Skill/Node installation, restart, and no-motion acceptance record; no Core, Adapter, ToolSpec, Skill source, or Node source was modified in this deployment. (local)
-
-### 验证 / Validation
-- [eval] [test] 新 Runtime `runtime_4cb91725948c4f16` running；Dora flow running；Gateway `/tools` `ok=true` 且返回 11 个 Tool；`paos skill status` 显示 11/11 Tool contexts ready；实际 spawn 为 `robotwin20_persistent_host-1.0.1-linux-x86_64`。 (local)
-- [eval] [test] New Runtime `runtime_4cb91725948c4f16` is running; the Dora flow is running; Gateway `/tools` returns `ok=true` with 11 Tools; `paos skill status` reports all 11/11 Tool contexts ready; the actual spawn is `robotwin20_persistent_host-1.0.1-linux-x86_64`. (local)
-- [eval] [test] Node lock SHA-256 `947c2815fe1f9fbb18b4c5794112259f792612e9963314c01df2f49d81ecbc63` 通过 `paos forge-node verify`；`active_invocations=[]`、`active_sessions=[]`、`active_task_bindings=[]`；任务库非终态数量为 0。 (local)
-- [eval] [test] Node lock SHA-256 `947c2815fe1f9fbb18b4c5794112259f792612e9963314c01df2f49d81ecbc63` passed `paos forge-node verify`; `active_invocations=[]`, `active_sessions=[]`, and `active_task_bindings=[]`; persisted non-terminal task count is 0. (local)
-- [eval] [test] 全程仅执行 lifecycle、editable install、bundle install、Node verify 与只读 status/inspect/logs/Gateway GET；未创建或恢复任务，未调用 Query/Action，未推进 simulator 或物理运动。 (local)
-- [eval] [test] Only lifecycle, editable installation, bundle installation, Node verification, and read-only status/inspect/logs/Gateway GET were run; no task was created or resumed, no Query/Action was invoked, and no simulator or physical motion advanced. (local)
-
-### Git 提交 / Git Commit
-- Commit: `42b706b`（部署记录 / deployment record）; Branch: `feature/planning-loop`; 时间 / Time: 2026-10-08 Asia/Shanghai

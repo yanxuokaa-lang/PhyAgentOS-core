@@ -985,7 +985,8 @@ class SceneUnderstandingEndpoint:
                 retryable=False,
             )
         reserved = {item["entity"]["entity_ref"] for item in carried_entities if item.get("carry_state") == "held"}
-        used = reserved | {item["entity_ref"] for item in normalized.entities}
+        used = {item["entity"]["entity_ref"] for item in carried_entities}
+        used.update(item["entity_ref"] for item in normalized.entities)
         aliases = {}
         for ref in sorted(reserved & {item["entity_ref"] for item in normalized.entities}):
             index = 1

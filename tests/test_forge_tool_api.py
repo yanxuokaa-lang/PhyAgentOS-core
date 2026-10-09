@@ -607,12 +607,17 @@ def _carry_task(*, effect_overrides=None, include_effect=True):
         execution_records=[
             _execution_record(
                 "understand-old", "scene.understand", "query", "revision-old",
-                {"data": {"scene_revision": "scene-1", "entities": [old_claim]}},
+                {"data": {"status": "available", "scene_revision": "scene-1",
+                          "observation_ref": "observation://scene-1/front",
+                          "calibration_ref": "artifact://scene-1/front/calibration", "entities": [old_claim]}},
             ),
             _execution_record(
                 "bind-old", "scene.bind", "query", "revision-old",
                 {"data": {
+                    "status": "available",
                     "scene_revision": "scene-1",
+                    "observation_ref": "observation://scene-1/front",
+                    "calibration_ref": "artifact://scene-1/front/calibration",
                     "binding_ref": "artifact://entity-bindings/source",
                     "entities": [{
                         "entity_ref": "entity://unchanged",
@@ -843,6 +848,64 @@ def test_unknown_business_outcome_cannot_carry_unchanged_or_held_entities():
     task = _carry_task()
     task.execution_records[2].response["data"]["result"]["outcome_known"] = False
     assert _coordinator_carried_entities(task, "scene-2") == []
+
+
+@pytest.mark.parametrize("factory", [_carry_task, _held_task])
+@pytest.mark.parametrize("key", ["observation_ref", "calibration_ref"])
+def test_carry_requires_matching_understanding_and_binding_lineage(factory, key):
+    task = factory()
+    task.execution_records[1].response["data"][key] = "different-lineage"
+    assert _coordinator_carried_entities(task, "scene-2") == []
+
+
+@pytest.mark.parametrize("factory", [_carry_task, _held_task])
+@pytest.mark.parametrize("after_action", [False, True])
+def test_carry_uses_understanding_that_precedes_its_binding(factory, after_action):
+    from copy import deepcopy
+
+    task = factory()
+    conflicting = deepcopy(task.execution_records[0])
+    conflicting.record_id = "later-understanding"
+    conflicting.response["data"]["entities"][0]["category"] = "robot"
+    # Even the same observation can be understood again after binding. Its
+    # new claims cannot rewrite the meaning of the persisted execution model.
+    task.execution_records.insert(3 if after_action else 2, conflicting)
+    carried = _coordinator_carried_entities(task, "scene-2")
+    assert len(carried) == 1
+    assert carried[0]["entity"]["category"] == "blue block"
+
+
+@pytest.mark.parametrize("key", ["observation_ref", "calibration_ref"])
+def test_carry_source_binding_must_match_action_lineage_when_present(key):
+    task = _held_task()
+    task.execution_records[2].arguments[key] = "different-lineage"
+    assert _coordinator_carried_entities(task, "scene-2") == []
+
+
+@pytest.mark.parametrize("source,change", [(0, "unavailable"), (1, "unavailable"), (1, "missing")])
+def test_carry_rejects_unavailable_or_unattributed_source_evidence(source, change):
+    task = _held_task()
+    facts = task.execution_records[source].response["data"]
+    if change == "missing":
+        facts.pop("observation_ref")
+    else:
+        facts["status"] = "unavailable"
+    assert _coordinator_carried_entities(task, "scene-2") == []
+
+
+def test_post_action_binding_cannot_replace_the_carry_source():
+    from copy import deepcopy
+
+    task = _held_task()
+    conflicting = deepcopy(task.execution_records[1])
+    conflicting.record_id = "later-binding"
+    conflicting.response["data"]["binding_ref"] = "artifact://entity-bindings/later"
+    conflicting.response["data"]["entities"][0]["execution_entity_ref"] = "entity://other"
+    task.execution_records.append(conflicting)
+    carried = _coordinator_carried_entities(task, "scene-2")
+    assert len(carried) == 1
+    assert carried[0]["source_binding_ref"] == "artifact://entity-bindings/source"
+    assert carried[0]["execution_entity_ref"] == "entity://runtime-unchanged"
 
 
 def test_selected_understanding_retains_coordinator_projection_exactly():

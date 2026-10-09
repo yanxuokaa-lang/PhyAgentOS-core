@@ -278,6 +278,50 @@ def test_held_projection_preserves_conflicting_visual_identity_and_geometry():
     assert provider.result.entities[0]["entity_ref"] == "entity://bottle-1"
 
 
+@pytest.mark.parametrize("unchanged_count", [1, 2])
+def test_held_visual_alias_reserves_all_carried_and_observed_identities(unchanged_count):
+    held = held_projection()
+    unchanged = []
+    for index in range(1, unchanged_count + 1):
+        item = held_projection()
+        item.pop("carry_state")
+        item.pop("possession")
+        item["entity"]["entity_ref"] = f"entity://observed-bottle-1-{index}"
+        item["entity"]["category"] = f"unchanged container {index}"
+        unchanged.append(item)
+    observed_ref = f"entity://observed-bottle-1-{unchanged_count + 1}"
+    visual = {**understanding_snapshot().entities[0], "category": "robot"}
+    other_visual = {**visual, "entity_ref": observed_ref, "category": "visible surface"}
+    relation = {
+        "relation_ref": "relation://beside", "subject_ref": visual["entity_ref"],
+        "predicate": "beside", "object_ref": observed_ref, "confidence": 0.9,
+        "provenance": visual["provenance"],
+    }
+    snapshot = understanding_snapshot(
+        entities=(visual, other_visual), relations=(relation,), derived_artifacts=(_derived(),),
+        ambiguities=({"code": "entity_identity_uncertain", "message": "occluded robot",
+                      "entity_refs": [visual["entity_ref"]]},),
+    )
+    output = SceneUnderstandingEndpoint(Provider(snapshot)).invoke(
+        request_payload(carried_entities=[held, *unchanged])
+    )
+    assert output["status"] == "available"
+    alias = f"entity://observed-bottle-1-{unchanged_count + 2}"
+    entities = {item["entity_ref"]: item for item in output["entities"]}
+    assert len(entities) == len(output["entities"]) == unchanged_count + 3
+    assert entities[alias]["category"] == "robot"
+    assert entities[held["entity"]["entity_ref"]] == held["entity"]
+    for item in unchanged:
+        assert entities[item["entity"]["entity_ref"]] == item["entity"]
+    assert len(output["carried_forward"]) == unchanged_count + 1
+    assert output["relations"][0] == {**relation, "subject_ref": alias}
+    assert output["spatial_envelopes"][0]["entity_ref"] == alias
+    assert output["derived_artifacts"][0]["entity_ref"] == alias
+    assert output["ambiguities"][0]["entity_refs"] == [alias]
+    assert snapshot.entities[0]["entity_ref"] == held["entity"]["entity_ref"]
+    assert snapshot.relations[0] == relation
+
+
 @pytest.mark.parametrize("change", ["missing", "uncertain", "other-entity"])
 def test_invalid_held_projection_stops_before_visual_provider(change):
     carried = held_projection()

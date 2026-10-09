@@ -841,7 +841,8 @@ def _coordinator_carried_entities(task: Any, scene_revision: Any) -> list[dict[s
         return []
     effect = None
     action = None
-    for record in reversed(task.execution_records):
+    for action_index in range(len(task.execution_records) - 1, -1, -1):
+        record = task.execution_records[action_index]
         if record.semantics != "action":
             continue
         # Never resurrect an older successful effect across a newer unknown
@@ -893,17 +894,24 @@ def _coordinator_carried_entities(task: Any, scene_revision: Any) -> list[dict[s
         return []
     understanding = None
     binding = None
-    for record in reversed(task.execution_records):
+    identity_keys = ("observation_ref", "scene_revision", "calibration_ref")
+    for record in reversed(task.execution_records[:action_index]):
         if record.status != "succeeded" or record.semantics != "query":
             continue
         facts = response_facts(record.response)
-        if facts.get("scene_revision") != source_scene:
+        if facts.get("scene_revision") != source_scene or facts.get("status") != "available":
             continue
-        if understanding is None and record.tool_id == "scene.understand":
-            understanding = facts
         if binding is None and record.tool_id == "scene.bind":
+            if any(action.arguments.get(key) is not None and action.arguments[key] != facts.get(key)
+                   for key in identity_keys):
+                continue
             binding = facts
-        if understanding is not None and binding is not None:
+            if any(not isinstance(binding.get(key), str) or not binding[key] for key in identity_keys):
+                return []
+            continue
+        if (binding is not None and record.tool_id == "scene.understand"
+                and all(facts.get(key) == binding[key] for key in identity_keys)):
+            understanding = facts
             break
     if understanding is None or binding is None:
         return []
