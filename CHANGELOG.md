@@ -68,7 +68,7 @@
 
 ### Git 提交 / Git Commit
 - Branch: `feature/planning-loop`
-- Commit: `pending`（诊断文档 / diagnosis document）
+- Commit: `0972497`（诊断文档 / diagnosis document）
 - Source inspected: `d9d4c16`
 - 仅 stage 本轮三个文件，保留已有未跟踪内容 / Stage only these three files and preserve existing untracked content.
 
