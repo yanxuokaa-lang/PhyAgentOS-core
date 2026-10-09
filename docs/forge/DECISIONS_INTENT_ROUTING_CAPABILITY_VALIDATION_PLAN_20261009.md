@@ -1,6 +1,7 @@
 # Decisions API：会话入口意图与路由的独立能力验证方案
 
-日期：2026-10-09。状态：方案完成 v13.0.6 七维复审修订；样本集、runner 与付费 API 实验尚未实施。
+日期：2026-10-09。状态：独立 runner 与 80 条合成样本已实现；Laya 三 checkpoint 和 Jev 已完成
+development/evaluation，GPT-6 Luna Decisions 尚未在有效 endpoint 上执行。
 诊断依据：[入口路由诊断](DECISIONS_INTENT_ROUTING_DIAGNOSIS_20261009.md)。
 目标模型：用户将提供的 GPT-6 Luna Decisions API；具体 endpoint、鉴权和响应协议以实际提供信息为准。
 
@@ -13,7 +14,8 @@
 handler 保持原状；任何 route 都只写入结果文件，不执行任务、控制、澄清、工具调用或模型
 回退。实验成功只说明该模型在本数据定义下具有候选路由能力，不授权接入或替换现有链路。
 
-本轮不比较 GPT、Jev、Laya，不生成计划、抽取执行参数或测试线上节省。结果必须同时报告
+初始方案不比较 GPT、Jev、Laya；v13.0.12 扩展为使用同一数据集、输入投影、标签与 scorer 的
+三后端独立对比。实验仍不生成计划、抽取执行参数或测试线上节省。结果必须同时报告
 准确性、简单路径覆盖、System 2 回退比例、状态利用、稳定性和 API 可用性，避免“全部送
 System 2”被误读为安全且有效的路由。
 
@@ -389,7 +391,7 @@ evaluation 前记录最终 dataset/prompt/route-policy/backend config；旧 deve
 | System 2 route rate | 全部样本中 route=system2 的比例 |
 | repeated-call instability | 同一输入三次 intent/route 不一致的样本比例 |
 | state-ablation transition | 完整状态与消融状态的 route 转移矩阵 |
-| confidence/probabilities | 正误分布与带支持数的粗分箱，不宣称完成校准 |
+| probability quality | intent/route 分别报告 probability coverage、10-bin ECE、未缩放 multiclass Brier 与 NLL；评估校准表现，不等同于完成下游温度校准 |
 | latency/usage/cost | p50/p95 端到端耗时、provider usage 与实际账单口径 |
 | API availability | 两题有效应答率、refusal 与 transport/schema error |
 
@@ -401,6 +403,9 @@ evaluation 前记录最终 dataset/prompt/route-policy/backend config；旧 deve
 control false positive 同时报告 intent 与 route 两种口径，分母为无正向控制请求的样本；
 System 2 miss 分母为 gold=system2，excess 分母为 gold!=system2。兼容性分母为两题均有效的
 样本；unsupported 分母为有效简单路径预测。latency 报告有效请求与全量终态请求两种口径。
+概率指标仅使用候选集完整、数值有限非负且总和为正的有效响应；先归一化 provider 四舍五入
+误差。ECE 以最大候选概率及其 argmax 正确性计算，NLL 对零概率使用 `1e-12` 数值截断；每项均
+报告 probability coverage，transport failure 不进入条件概率指标。
 
 ### 8.2 全部回退的诊断对照
 
@@ -424,8 +429,9 @@ coverage 必为 0。这是针对全量回退掩盖能力不足的普通算术对
 
 ## 9. 可观测性、结果文件与复查
 
-后续实现目录为 `research/decision-api-intent-probe/`；每次输出到唯一目录
-`out/decision-api-intent-probe/<timestamp>-<run_id>/`。本轮尚未创建 runner、样本或输出。
+实现目录为 `research/decision-api-intent-probe/`；每次输出到唯一目录
+`out/decision-api-intent-probe/<timestamp>-<run_id>/`。当前已生成 80 条合成样本和本地 dry-run
+输出；真实 API 输出需在提供 `DECISIONS_API_KEY` 后产生。
 
 ```text
 samples.jsonl          样本、人工标签、family/split、标注状态
@@ -519,9 +525,9 @@ estimated_cost = billed_input_tokens / 1_000_000 * effective_provider_rate
 | intent/route 互相矛盾 | 归为 incompatible_pair，保留两个原始答案 |
 | evaluation 标签争议 | 结束当前 run；修订新 dataset version，不按模型答案回写 |
 
-## 13. 后续 runner 的最小 CLI 契约
+## 13. runner CLI 契约
 
-runner 尚未实现；实现时至少提供以下可复查命令：
+runner 已实现；提供以下可复查命令：
 
 ```bash
 python -m decision_intent_probe validate \
@@ -529,7 +535,7 @@ python -m decision_intent_probe validate \
 
 python -m decision_intent_probe run \
   --config research/decision-api-intent-probe/config.json \
-  --phase development
+  --phase development --smoke
 
 python -m decision_intent_probe run \
   --config research/decision-api-intent-probe/config.json \
@@ -544,15 +550,86 @@ python -m decision_intent_probe compare \
 ```
 
 `validate` 只做 schema、split、标签隔离和安全边界检查；`run` 才调用 endpoint；`score` 与
-`compare` 不访问网络。smoke、development、evaluation 和 supplemental run 使用不同 phase/
+`compare` 不访问网络。`--smoke` 选择前 5 条 development；同一 run 使用 `--resume` 完成剩余
+development。smoke、development、evaluation 和 supplemental run 使用不同 phase/
 run 记录（smoke 计入 development）；run 支持 `--resume <run-dir>`，只按原配置续跑未终态
 请求，不覆盖旧输出。相同数据版本允许按 case ID 比较；数据版本不同只对公共 case ID 给配对
 结果，并单列支持数与配置变化。
 
 ## 14. 本轮交付
 
-本轮只修订诊断和验证方案，并保存七维 Review。未创建完整样本、runner、配置或输出目录，
-未调用 API，也未改变当前 PAOS 入口路由。用户提供 endpoint/访问方式后，可按本方案实现独立
-实验；能力报告通过人工审核后，才决定是否设计 shadow 验证。
+本轮已实现独立样本、runner 和配置；完成 Laya 三 checkpoint 的 5 条 smoke、20 条 development
+与 60 条 evaluation，并完成 Jev 20 条 development 与 60 条 evaluation。GPT-6 Luna Decisions
+仍未调用。实验没有改变当前 PAOS 入口路由；能力报告通过人工审核后，才决定是否设计 shadow
+验证。
 
 API 依据：[OpenAI Decisions 官方文档](https://developers.openai.com/api/docs/guides/decisions)。
+
+## 15. Laya 本地、Jev 远程与 Decisions 远程对比扩展
+
+### 15.1 固定项与唯一变量
+
+三路实验固定 `intent-routing-v1` 的 80 条样本、`build_input` 投影、七类 intent、五类 route、
+gold 标签和离线 scorer。每条样本都同时回答 intent 与 route，route 只作为预测标签保存。唯一
+主要变量是 backend 及其原生协议，不把一个 provider 的 confidence 语义强行映射成另一个。
+
+| Backend | 部署与接口 | 本轮调用形态 | 可直接比较 | 单独报告 |
+|---|---|---|---|---|
+| Laya English | 本地 CUDA，root checkpoint | Python `agent.predict(state, questions)` | hard-label accuracy、延迟 | 中文跨语言压力测试 |
+| Laya multilingual | 本地 CUDA，`multilingual/` | 同上 | hard-label accuracy、延迟 | 本地冷加载、显存、校准 |
+| Laya typed-decisions | 本地 CUDA，`typed-decisions/` | 同上 | hard-label accuracy、延迟 | 域迁移与 checkpoint 专门化 |
+| Jev | 远程 `POST /v1/systemone` | `state` + questions 对象 | hard-label accuracy、HTTP 延迟 | Jev probabilities/confidence、用量 |
+| GPT-6 Luna Decisions | 远程 `POST /v1/decisions` | `input` + questions 数组 | hard-label accuracy、HTTP 延迟 | Decisions probabilities/confidence、用量 |
+
+三路不得通过自动降级到 Chat Completions、Responses 或另一个模型来制造成功。Jev 与 Decisions
+使用各自独立 adapter；endpoint/key 不进入数据集、仓库 config 或输出 artifact。
+
+### 15.2 Laya 隔离与三个 checkpoint
+
+Laya Python 包源码发布于 PyPI/GitHub，模型权重由 `convaiinnovations/laya` Hugging Face bundle
+提供。本地运行使用 `/home/yanxu/laya-system1/.venv`，缓存固定为
+`/home/yanxu/laya-system1/huggingface`，不复用 PAOS `.venv`。三个 checkpoint 必须分别核验：
+
+1. root `english`；
+2. `multilingual/`；
+3. `typed-decisions/`。
+
+每个 checkpoint 保存实际 revision、Laya/Torch 版本、Python executable、device、load time、逐例
+latency、原始 answers 与概率。中文主实验优先解释 multilingual；English 与 typed-decisions 是
+受控对照，不能因同仓库或同接口就声称语言适配相同。
+
+### 15.3 Jev 远程协议
+
+Jev 请求使用 `model=jev-latest`、序列化后的 provider-neutral state，以及以问题名为 key 的
+choice questions；每题的有限候选写入 `criteria`。响应要求 `answers.intent.choice` 与
+`answers.route.choice` 均属于请求候选集。服务返回的实际模型版本（例如 `jev-1.13.0`）、概率、
+confidence、usage 和 HTTP latency 原样保存。401/403、schema failure 与分类错误分开统计。
+
+### 15.4 执行顺序和判断门槛
+
+1. 三个 Laya checkpoint 各跑 5 条 development smoke；检查合法输出、加载时间和明显塌缩。
+2. Jev 跑同五条 smoke；仅在 endpoint/schema 通过后运行剩余 development。
+3. GPT-6 Luna Decisions 仅在有效 `/v1/decisions` endpoint 可用后运行；已知
+   `api.shuaiapi.com/v1/decisions` 返回 404，不作协议降级。
+4. development 完成并冻结 prompt 后才运行 60 条 evaluation；任何后端单独失败，不阻止保存
+   其他后端真实结果，也不以缺失值补齐排名。
+
+这轮结论只回答“结构化 System 1 模型对入口 intent/route 是否有离线判别能力”。即便某一路
+优于当前基线，也只能进入后续 shadow 设计，不能直接替换 PAOS 入口、AgentLoop、Coordinator、
+Runtime 或 handler。
+
+### 15.5 实测结果
+
+| Backend / checkpoint | Phase | Cases | Coverage | Intent | Route | Joint | Mean successful latency |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Laya English | evaluation | 60 | 1.00 | 0.70 | 0.333 | 0.25 | 0.055 s |
+| Laya multilingual | evaluation | 60 | 1.00 | 0.75 | 0.483 | 0.383 | 0.034 s |
+| Laya typed-decisions | evaluation | 60 | 1.00 | 0.65 | 0.45 | 0.417 | 0.061 s |
+| Jev `jev-1.13.0` | evaluation | 60 | 0.90 | 1.00 | 0.944 | 0.944 | 1.351 s |
+| GPT-6 Luna Decisions | evaluation | 0 | unavailable | unavailable | unavailable | unavailable | unavailable |
+
+Laya 三路均完成同一 20 条 development 和同一 60 条 evaluation，配置未在 checkpoint 之间变化。
+Multilingual 的 intent/route 单项最高，typed-decisions 的 joint 最高；三者 route 均低于 0.50。
+Jev accuracy 只以 54 条有效响应为分母，另有 6 条在有限重试后 network timeout，因此 0.944
+不是端到端成功率。完整 run ID、混淆矩阵与结论见
+[实验结果](SYSTEM1_INTENT_ROUTING_EXPERIMENT_RESULTS_20261009.md)。

@@ -1,0 +1,16 @@
+{
+  "decision_backend": "laya_local",
+  "model_repository": "convaiinnovations/laya",
+  "checkpoints": [
+    "english",
+    "multilingual",
+    "typed-decisions"
+  ],
+  "device": "cuda",
+  "dataset_version": "intent-routing-v1",
+  "prompt_version": "intent-route-v1-laya",
+  "route_policy_version": "route-policy-v1",
+  "response_schema_version": "laya-choice-v1",
+  "dataset_path": "research/decision-api-intent-probe/samples.jsonl",
+  "output_root": "out/laya-intent-probe"
+}

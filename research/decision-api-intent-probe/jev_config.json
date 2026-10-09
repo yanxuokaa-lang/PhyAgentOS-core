@@ -1,0 +1,15 @@
+{
+  "decision_backend": "jev_systemone",
+  "endpoint_kind": "jev_systemone",
+  "endpoint_base_url": "https://www.1949-x.xn--fiqs8s/v1/systemone",
+  "model_requested": "jev-latest",
+  "dataset_version": "intent-routing-v1",
+  "prompt_version": "intent-route-v1-jev",
+  "route_policy_version": "route-policy-v1",
+  "response_schema_version": "systemone-choice-v1",
+  "timeout_seconds": 30,
+  "max_transport_retries": 2,
+  "inter_request_delay_seconds": 1,
+  "dataset_path": "research/decision-api-intent-probe/samples.jsonl",
+  "output_root": "out/jev-intent-probe"
+}
