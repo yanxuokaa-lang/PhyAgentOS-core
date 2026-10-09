@@ -588,7 +588,7 @@ def _carry_task(*, effect_overrides=None, include_effect=True):
         "carry_forward_authorized": True,
     }
     effect.update(effect_overrides or {})
-    action_result = {"status": "succeeded"}
+    action_result = {"status": "succeeded", "outcome_known": True}
     if include_effect:
         action_result["scene_effects"] = effect
     observation = {
@@ -793,3 +793,242 @@ def test_scene_understand_injects_only_coordinator_authorized_carry_forward():
 )
 def test_coordinator_does_not_carry_entities_without_complete_runtime_evidence(task):
     assert _coordinator_carried_entities(task, "scene-2") == []
+
+
+def _held_task():
+    task = _carry_task(effect_overrides={
+        "unaffected_entity_refs": [], "carry_forward_authorized": False,
+        "held_entity": {
+            "holding_state": "holding", "entity_ref": "entity://held",
+            "owner": "paos:task-1", "acquire_invocation_id": "invocation://acquire/1",
+        },
+    })
+    task.task_id = "task-1"
+    task.execution_records[0].response["data"]["entities"][0]["entity_ref"] = "entity://held"
+    task.execution_records[1].response["data"]["entities"][0]["entity_ref"] = "entity://held"
+    action = task.execution_records[2]
+    action.arguments = {"entity_ref": "entity://held"}
+    action.invocation_id = "invocation://acquire/1"
+    action.response["data"]["result"]["outcome_known"] = True
+    return task
+
+
+def test_held_entity_projection_does_not_require_unchanged_entities():
+    carried = _coordinator_carried_entities(_held_task(), "scene-2")
+    assert len(carried) == 1
+    assert carried[0]["carry_state"] == "held"
+    assert carried[0]["entity"]["entity_ref"] == "entity://held"
+    assert carried[0]["possession"]["owner"] == "paos:task-1"
+
+
+@pytest.mark.parametrize("field,value", [
+    ("holding_state", "uncertain"), ("owner", "paos:another-task"),
+    ("acquire_invocation_id", "invocation://acquire/other"), ("entity_ref", "entity://other"),
+])
+def test_held_projection_rejects_mismatched_possession(field, value):
+    task = _held_task()
+    task.execution_records[2].response["data"]["result"]["scene_effects"]["held_entity"][field] = value
+    assert _coordinator_carried_entities(task, "scene-2") == []
+
+
+def test_unknown_later_action_cannot_resurrect_held_identity():
+    task = _held_task()
+    unknown = _execution_record("later", "custom.action", "action", "revision-current", {})
+    unknown.status = "unknown"
+    task.execution_records.append(unknown)
+    assert _coordinator_carried_entities(task, "scene-2") == []
+
+
+def test_unknown_business_outcome_cannot_carry_unchanged_or_held_entities():
+    task = _carry_task()
+    task.execution_records[2].response["data"]["result"]["outcome_known"] = False
+    assert _coordinator_carried_entities(task, "scene-2") == []
+
+
+def test_selected_understanding_retains_coordinator_projection_exactly():
+    from PhyAgentOS.forge.task import _validate_planning_execution_selection
+    from PhyAgentOS.planning import PlanningExecutionBinding, tool_input_binding_digest
+
+    task = _held_task()
+    arguments = {"scene_revision": "scene-2", "carried_entities": _coordinator_carried_entities(task, "scene-2")}
+    binding = PlanningExecutionBinding(
+        revision_id="revision-current", node_id="understand", obligation_id="understand",
+        node_digest="a" * 64, input_binding_digest=tool_input_binding_digest(arguments),
+        decision_trace_ref="artifact://planning-traces/current",
+    )
+    selection = SimpleNamespace(tool_arguments=arguments, planning_binding=binding,
+                                tool_id="scene.understand", semantics="query")
+    revision = SimpleNamespace(revision_id="revision-current", planning_selections=[
+        SimpleNamespace(node_id="understand", resumable_selection=selection),
+    ])
+
+    class Coordinator:
+        def get_task(self, _task_id):
+            return task
+
+        def selected_execution_binding(self, *_args):
+            return binding
+
+        def selected_execution_arguments(self, *_args):
+            return dict(arguments)
+
+        async def invoke_query(self, task_id, tool_id, resolved, **kwargs):
+            _validate_planning_execution_selection(
+                revision, binding, tool_id=tool_id, semantics="query", arguments=resolved,
+            )
+            return {"ok": True}
+
+    result = json.loads(asyncio.run(ForgeToolQueryTool(object(), Coordinator()).execute(
+        task_id="task-1", tool_id="scene.understand", arguments={}, use_selected_arguments=True,
+    )))
+    assert result["ok"] is True
+
+
+def test_selected_understanding_rejects_changed_coordinator_projection():
+    task = _held_task()
+
+    class Binding:
+        def model_dump(self, **kwargs):
+            return {"node_id": "understand"}
+
+    class Coordinator:
+        def get_task(self, _task_id):
+            return task
+
+        def selected_execution_binding(self, *_args):
+            return Binding()
+
+        def selected_execution_arguments(self, *_args):
+            return {"scene_revision": "scene-2"}
+
+        async def invoke_query(self, *_args, **kwargs):
+            raise AssertionError("changed projection must not reach Gateway")
+
+    result = json.loads(asyncio.run(ForgeToolQueryTool(object(), Coordinator()).execute(
+        task_id="task-1", tool_id="scene.understand", arguments={}, use_selected_arguments=True,
+    )))
+    assert result["ok"] is False
+    assert "changed after selection" in result["error"]["message"]
+
+
+def test_plan_select_injects_held_projection_before_binding_digest():
+    from PhyAgentOS.agent.tools.planning import ForgePlanSelectTool
+    from PhyAgentOS.planning import tool_input_binding_digest
+
+    task = _held_task()
+    proposals = []
+
+    class Dispatch:
+        graph = SimpleNamespace(task_id="task-1", revision_id="revision-current")
+        current_scene_revision = "scene-2"
+
+        def argument_projection(self, _tool_id):
+            return None, None
+
+        def prepare_selection(self, **kwargs):
+            assert kwargs["arguments"]["carried_entities"][0]["carry_state"] == "held"
+            return {
+                "task_id": "task-1", "revision_id": "revision-current", "node_id": "understand",
+                "node_digest": "a" * 64, "obligation_id": "understand",
+                "input_binding_digest": tool_input_binding_digest(kwargs["arguments"]),
+                "tool_arguments": kwargs["arguments"], "scene_revision": "scene-2",
+                "tool_id": "scene.understand", "semantics": "query",
+            }
+
+    class Coordinator:
+        def get_task(self, _task_id):
+            return task
+
+        def persist_planning_selection(self, proposal):
+            proposals.append(proposal)
+            return {**proposal, "decision_trace_ref": "artifact://planning-traces/current"}
+
+    result = json.loads(asyncio.run(ForgePlanSelectTool(Coordinator(), lambda: Dispatch()).execute(
+        task_id="task-1", node_id="understand", tool_id="scene.understand",
+        arguments={"scene_revision": "scene-2"}, decision_reason="fresh evidence",
+    )))
+    assert result["ok"] is True
+    assert proposals[0]["input_binding_digest"] == tool_input_binding_digest(proposals[0]["tool_arguments"])
+
+
+def test_held_selection_executes_through_real_coordinator_persistence(tmp_path, monkeypatch):
+    from PhyAgentOS.agent.planning_dispatch import AgentComposedDispatch
+    from PhyAgentOS.agent.tools.planning import ForgePlanSelectTool
+    from PhyAgentOS.config.schema import ForgeConfig
+    from PhyAgentOS.forge.binding import BoundToolSpec
+    from PhyAgentOS.forge.capability_runtime.understanding import (
+        TOOL_SPEC,
+        SceneUnderstandingEndpoint,
+        UnderstandingSnapshot,
+    )
+    from PhyAgentOS.forge.task import AgentTaskCoordinator, ToolExecutionRecord
+    from PhyAgentOS.planning import (
+        AdmissionContext,
+        PlanGraph,
+        PlanNode,
+        ToolSpecPolicy,
+        plan_graph_digest,
+    )
+    from PhyAgentOS.verification.contracts import TaskVerificationContract
+
+    class Client:
+        calls = 0
+
+        async def invoke_query_tool(self, tool_id, arguments, **kwargs):
+            self.calls += 1
+            snapshot = UnderstandingSnapshot(entities=({
+                "entity_ref": "entity://held", "category": "robot", "confidence": 0.9,
+                "provenance": ["artifact://scene-2/front/rgb"],
+            },))
+            provider = SimpleNamespace(understand=lambda request: snapshot)
+            return {"ok": True, "data": SceneUnderstandingEndpoint(provider).invoke(arguments)}
+
+    node = PlanNode(node_id="understand", obligation_id="understand", capability="scene.understand")
+    payload = dict(task_id="task-1", revision_id="revision-current", graph_digest="0" * 64,
+                   planner_decision_digest="1" * 64, policy_snapshot_digest="2" * 64,
+                   nodes=[node.model_dump(mode="json")])
+    payload["graph_digest"] = plan_graph_digest(payload)
+    graph = PlanGraph.model_validate(payload)
+    client = Client()
+    coordinator = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=client)
+    coordinator.create_task(task_description="retain an occluded held container",
+                            verification=TaskVerificationContract(mode="off"), plan_graph=graph,
+                            plan_graph_ref="artifact://plans/held")
+
+    def seed(task):
+        for record in _held_task().execution_records:
+            task.active_revision.execution_records.append(ToolExecutionRecord(
+                **{key: value for key, value in vars(record).items()
+                   if key in ToolExecutionRecord.model_fields and key != "revision_id"},
+                revision_id=task.active_revision_id,
+                caller_id="paos:task-1:revision-current:seed",
+            ))
+    coordinator.store.update("task-1", seed, event_type="test_held_evidence")
+    dispatch = AgentComposedDispatch(graph, (ToolSpecPolicy(
+        tool_id="scene.understand", semantics="query", spec_digest="3" * 64,
+        capabilities=("scene.understand",),
+    ),), AdmissionContext(scene_revision="scene-2"),
+        input_schemas={"scene.understand": TOOL_SPEC["input_schema"]})
+    arguments = dict(observation_ref="observation://scene-2/front", scene_revision="scene-2",
+                     frame_id="front", calibration_ref="artifact://scene-2/front/calibration",
+                     freshness_ms=1, max_age_ms=1000, artifacts=["artifact://scene-2/front/rgb"])
+    selected = json.loads(asyncio.run(ForgePlanSelectTool(coordinator, lambda: dispatch).execute(
+        task_id="task-1", node_id="understand", tool_id="scene.understand",
+        decision_reason="refresh after known acquisition", arguments=arguments,
+    )))
+    assert selected["ok"], selected
+    assert client.calls == 0
+
+    async def require_tool(*args):
+        return BoundToolSpec(tool_id="scene.understand", semantics="query", spec_sha256="3" * 64,
+                             ready_at_binding=True, input_schema=TOOL_SPEC["input_schema"])
+    monkeypatch.setattr(coordinator, "_require_binding_tool", require_tool)
+    result = json.loads(asyncio.run(ForgeToolQueryTool(client, coordinator).execute(
+        task_id="task-1", tool_id="scene.understand", arguments={}, use_selected_arguments=True,
+    )))
+    assert result["ok"], result
+    saved = coordinator.get_task("task-1").active_revision.execution_records[-1]
+    assert saved.node_id == "understand"
+    assert saved.response["data"]["status"] == "available"
+    assert saved.response["data"]["carried_forward"][0]["carry_state"] == "held"
+    assert client.calls == 1

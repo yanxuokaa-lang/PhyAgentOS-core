@@ -185,7 +185,13 @@ class Grounding:
                 all(binding.get(key) == request[key] for key in IDENTITY_KEYS)
                 and set(binding.get("objects", {})) == set(selected)
             ):
-                self._current(request)
+                state = self._current(request)
+                carried = {
+                    item["entity"]["entity_ref"]: item
+                    for item in understanding.get("carried_forward", [])
+                    if item.get("carry_state") == "held" and item["entity"]["entity_ref"] in selected
+                }
+                self._carried_objects(carried, binding["scene_facts"], state)
                 return {
                     "status": "available",
                     "binding_ref": reference,
@@ -274,7 +280,7 @@ class Grounding:
                     expected_frame=understanding["frame"]["frame_id"],
                     actual_frame=envelope.get("frame_id"),
                 )
-        self._current(request)
+        current_state = self._current(request)
         try:
             calibration = json.loads(_artifact_path(self.root, request["calibration_ref"]).read_text())
         except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
@@ -345,11 +351,15 @@ class Grounding:
             for entity_ref in selected
             if entity_ref in carried_by_ref
         }
-        objects.update(self._carried_objects(selected_carried, facts))
+        objects.update(self._carried_objects(selected_carried, facts, current_state))
         facts = deepcopy(facts)
         # Keep captured execution poses intact for Runtime drift checks. Visual
         # route geometry lives in objects, in its own observation-derived frame.
-        self._current(request)
+        current_state = self._current(request)
+        self._carried_objects(
+            {ref: item for ref, item in selected_carried.items() if item.get("carry_state") == "held"},
+            facts, current_state,
+        )
         bindings = [{"entity_ref": ref, "execution_entity_ref": obj["entity_ref"],
                      "actor_name": obj["actor_name"]} for ref, obj in objects.items()]
         value = {**{k: request[k] for k in IDENTITY_KEYS}, "bindings": bindings,
@@ -367,7 +377,7 @@ class Grounding:
                               "half_extents_m": obj["half_extents_m"]} for ref, obj in objects.items()],
                 "evidence_refs": [ref]}
 
-    def _carried_objects(self, carried_by_ref, current_facts):
+    def _carried_objects(self, carried_by_ref, current_facts, current_state=None):
         projected = {}
         current_objects = current_facts.get("objects", [])
         for entity_ref, carried in carried_by_ref.items():
@@ -423,6 +433,27 @@ class Grounding:
                     entity_ref=entity_ref,
                     error_type=type(exc).__name__,
                 )
+            carry_state = carried.get("carry_state", "unchanged")
+            if carry_state == "held":
+                possession = carried.get("possession")
+                if (not isinstance(possession, Mapping) or not isinstance(current_state, Mapping)
+                        or possession.get("entity_ref") != entity_ref
+                        or possession.get("holding_state") != "holding"
+                        or not possession.get("owner") or not possession.get("acquire_invocation_id")
+                        or any(current_state.get(key) != possession.get(key)
+                               for key in ("holding_state", "owner", "entity_ref", "acquire_invocation_id"))):
+                    self._reject("held entity possession no longer matches Runtime", stage="held_projection", entity_ref=entity_ref)
+                # Transport the existing observation-derived model with the
+                # physical object's rigid displacement. Never substitute actor
+                # dimensions or pretend this is a fresh visual measurement.
+                delta = current_pose @ np.linalg.inv(source_pose)
+                model = deepcopy(dict(source_model))
+                for key in ("world_T_object", "world_T_functional_point"):
+                    model[key] = (delta @ rigid_transform(model[key])).reshape(-1).tolist()
+                projected[entity_ref] = model
+                continue
+            if carry_state != "unchanged":
+                self._reject("carried entity state is invalid", stage="carry_forward", entity_ref=entity_ref)
             if not np.allclose(source_pose, current_pose, atol=1e-6, rtol=0):
                 self._reject(
                     "carried entity moved despite unchanged effect evidence",

@@ -700,6 +700,13 @@ class RoboTwinPersistentEngine:
             result,
             evidence_ref=reference,
         )
+        if (phase == "acquire" and result.get("status") == "succeeded"
+                and result.get("outcome_known") is True
+                and result["scene_effects"]["effect_scope_complete"] is True):
+            result["scene_effects"]["held_entity"] = {
+                "holding_state": "holding", "entity_ref": arguments["entity_ref"],
+                "owner": owner, "acquire_invocation_id": invocation_id,
+            }
         if phase == "place" and result.get("status") == "succeeded":
             # The action artifact below is the observation/evidence boundary;
             # publish readiness only after the route and scene revision are

@@ -444,6 +444,19 @@ class ForgePlanSelectTool(Tool):
                             failure_owner="agent_arguments",
                             recommended_action="browse_authorized_source_and_correct_path",
                         ) from exc
+            if tool_id == "scene.understand":
+                from PhyAgentOS.agent.tools.forge_tool_api import _coordinator_carried_entities
+
+                if "carried_entities" in final_arguments:
+                    raise PlanningDispatchError(
+                        "carried_entities is Coordinator-owned and cannot be supplied by the Agent",
+                        code="invalid_selection_arguments",
+                    )
+                carried = _coordinator_carried_entities(
+                    self.coordinator.get_task(task_id), final_arguments.get("scene_revision")
+                )
+                if carried:
+                    final_arguments = {**final_arguments, "carried_entities": carried}
             proposal = dispatch.prepare_selection(
                 node_id=node_id, tool_id=tool_id, arguments=final_arguments,
                 decision_reason=decision_reason,

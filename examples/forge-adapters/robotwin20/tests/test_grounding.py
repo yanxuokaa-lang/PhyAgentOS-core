@@ -223,6 +223,65 @@ def test_holding_scene_binding_rejects_carried_entity_pose_drift(tmp_path):
     assert "moved despite unchanged effect evidence" in result["error"]["message"]
 
 
+def setup_held_scene(tmp_path):
+    grounding, request = setup_carried_scene(tmp_path, move_selected=True)
+    understanding = next(value for value in grounding.understandings.values() if value["scene_revision"] == "s2")
+    held = understanding["carried_forward"][0]
+    held.update(carry_state="held", possession={
+        "holding_state": "holding", "entity_ref": "entity://seen", "owner": "paos:task-1",
+        "acquire_invocation_id": "invocation://acquire/1",
+    })
+    original_query = grounding.client.query
+    grounding.client.query = lambda operation, arguments: {
+        **original_query(operation, arguments), **held["possession"],
+    }
+    return grounding, request, held
+
+
+def test_held_binding_transports_visual_model_with_runtime_displacement(tmp_path):
+    grounding, request, held = setup_held_scene(tmp_path)
+    source = json.loads((tmp_path / (held["source_binding_ref"].removeprefix("artifact://") + ".json")).read_text())
+    result = grounding.bind(request)
+    assert result["motion_authorized"] is False
+    model = result["entities"][0]
+    assert model["world_T_object"] == pytest.approx(pose(0.01))
+    assert model["half_extents_m"] == source["objects"]["entity://seen"]["half_extents_m"]
+    assert grounding.bind(request)["binding_ref"] == result["binding_ref"]
+
+
+def test_held_projection_preserves_visual_frame_offset_under_rotation(tmp_path):
+    grounding, request, held = setup_held_scene(tmp_path)
+    source_path = tmp_path / (held["source_binding_ref"].removeprefix("artifact://") + ".json")
+    source = json.loads(source_path.read_text())
+    # Use an observation frame displaced from the physical actor frame.
+    source["objects"]["entity://seen"]["world_T_object"] = pose(0.03)
+    original = np.asarray(source["scene_facts"]["objects"][0]["world_T_object"]).reshape(4, 4)
+    current = np.eye(4)
+    current[:2, :2] = [[0, -1], [1, 0]]
+    current[0, 3] = 0.1
+    source_path.write_text(json.dumps(source))
+    facts = grounding.source(request)
+    facts["objects"][0]["world_T_object"] = current.reshape(-1).tolist()
+    grounding.source = lambda _: deepcopy(facts)
+    result = grounding.bind(request)
+    expected = current @ np.linalg.inv(original) @ np.asarray(pose(0.03)).reshape(4, 4)
+    assert result["entities"][0]["world_T_object"] == pytest.approx(expected.reshape(-1).tolist())
+
+
+@pytest.mark.parametrize("key,value", [("owner", "other"), ("acquire_invocation_id", "other"),
+                                      ("entity_ref", "entity://other"), ("holding_state", "empty")])
+def test_held_binding_rejects_current_possession_mismatch_even_when_cached(tmp_path, key, value):
+    grounding, request, held = setup_held_scene(tmp_path)
+    grounding.bind(request)
+    previous = grounding.client.query
+    grounding.client.query = lambda operation, arguments: {**previous(operation, arguments), key: value}
+    result = GroundingEndpoint(grounding.bind).invoke(request)
+    assert result["status"] == "unavailable"
+    assert grounding.last_diagnostics["stage"] == "held_projection"
+
+    assert result["motion_authorized"] is False
+
+
 def test_repeated_bind_reuses_current_binding_for_same_entity_set(tmp_path):
     g, request, _ = setup(tmp_path)
     first = g.bind(request)

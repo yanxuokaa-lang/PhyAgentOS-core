@@ -226,6 +226,17 @@ TOOL_SPEC: dict[str, Any] = {
                         "source_binding_ref": {"type": "string", "pattern": _ARTIFACT_REF.pattern},
                         "execution_entity_ref": {"type": "string", "pattern": _ENTITY_REF.pattern},
                         "effect_evidence_refs": _PROVENANCE_SCHEMA,
+                        "carry_state": {"enum": ["unchanged", "held"]},
+                        "possession": {
+                            "type": "object", "additionalProperties": False,
+                            "required": ["holding_state", "entity_ref", "owner", "acquire_invocation_id"],
+                            "properties": {
+                                "holding_state": {"const": "holding"},
+                                "entity_ref": {"type": "string", "pattern": _ENTITY_REF.pattern},
+                                "owner": {"type": "string", "minLength": 1},
+                                "acquire_invocation_id": {"type": "string", "minLength": 1},
+                            },
+                        },
                     },
                 },
             },
@@ -526,10 +537,12 @@ def validate_arguments(arguments: Any) -> dict[str, Any] | None:
         return _error("invalid_carry_forward", "carried_entities must be an array", observation_ref=observation_ref)
     seen_carried: set[str] = set()
     for item in carried_entities:
-        if not isinstance(item, dict) or set(item) != {
+        required = {
             "entity", "source_scene_revision", "source_binding_ref",
             "execution_entity_ref", "effect_evidence_refs",
-        }:
+        }
+        if (not isinstance(item, dict) or not required <= set(item)
+                or set(item) - required - {"carry_state", "possession"}):
             return _error("invalid_carry_forward", "carried entity fields are invalid", observation_ref=observation_ref)
         entity = item.get("entity")
         entity_ref = entity.get("entity_ref") if isinstance(entity, dict) else None
@@ -547,6 +560,20 @@ def validate_arguments(arguments: Any) -> dict[str, Any] | None:
             or not _provenance_is_bound(item.get("effect_evidence_refs"), None)
         ):
             return _error("invalid_carry_forward", "carried entity is invalid", observation_ref=observation_ref)
+        carry_state = item.get("carry_state", "unchanged")
+        possession = item.get("possession")
+        if carry_state not in {"unchanged", "held"}:
+            return _error("invalid_carry_forward", "carry state is invalid", observation_ref=observation_ref)
+        if carry_state == "held":
+            if (not isinstance(possession, dict)
+                    or set(possession) != {"holding_state", "entity_ref", "owner", "acquire_invocation_id"}
+                    or possession.get("holding_state") != "holding"
+                    or possession.get("entity_ref") != entity_ref
+                    or any(not isinstance(possession.get(key), str) or not possession[key]
+                           for key in ("owner", "acquire_invocation_id"))):
+                return _error("invalid_carry_forward", "held possession is invalid", observation_ref=observation_ref)
+        elif possession is not None:
+            return _error("invalid_carry_forward", "unchanged entity cannot claim possession", observation_ref=observation_ref)
         seen_carried.add(entity_ref)
     return None
 
@@ -877,6 +904,23 @@ def _metric_alias_ambiguities(
     return additions
 
 
+def _remap_visual_identity(value: Any, aliases: dict[str, str]) -> Any:
+    """Keep fresh observation-local IDs distinct from Runtime-proven task IDs."""
+    if isinstance(value, list):
+        return [_remap_visual_identity(item, aliases) for item in value]
+    if isinstance(value, dict):
+        result = {}
+        for key, item in value.items():
+            if key in {"entity_ref", "subject_ref", "object_ref"} and isinstance(item, str):
+                result[key] = aliases.get(item, item)
+            elif key == "entity_refs" and isinstance(item, list):
+                result[key] = [aliases.get(ref, ref) for ref in item]
+            else:
+                result[key] = _remap_visual_identity(item, aliases)
+        return result
+    return deepcopy(value)
+
+
 class SceneUnderstandingEndpoint:
     """PAOS-owned Query projection; it never emits an actuator command."""
 
@@ -940,10 +984,25 @@ class SceneUnderstandingEndpoint:
                 failure_stage="provider",
                 retryable=False,
             )
-        entities = [dict(item) for item in normalized.entities]
+        reserved = {item["entity"]["entity_ref"] for item in carried_entities if item.get("carry_state") == "held"}
+        used = reserved | {item["entity_ref"] for item in normalized.entities}
+        aliases = {}
+        for ref in sorted(reserved & {item["entity_ref"] for item in normalized.entities}):
+            index = 1
+            alias = f"entity://observed-{ref.removeprefix('entity://')}-{index}"
+            while alias in used:
+                index += 1
+                alias = f"entity://observed-{ref.removeprefix('entity://')}-{index}"
+            aliases[ref] = alias
+            used.add(alias)
+        entities = [_remap_visual_identity(item, aliases) for item in normalized.entities]
         entity_refs = {item["entity_ref"] for item in entities}
         carried_forward = []
-        reconciliations = [dict(item) for item in normalized.reconciliations]
+        reconciliations = [_remap_visual_identity(item, aliases) for item in normalized.reconciliations]
+        reconciliations.extend({
+            "code": "observation_local_identity_remapped", "entity_refs": [alias],
+            "source_entity_ref": ref, "observation_ref": observation_ref,
+        } for ref, alias in aliases.items())
         for item in carried_entities:
             entity = dict(item["entity"])
             if entity["entity_ref"] in entity_refs:
@@ -955,24 +1014,24 @@ class SceneUnderstandingEndpoint:
             carried_forward.append(carried)
             reconciliations.append(
                 {
-                    "code": "runtime_proven_entity_unchanged",
+                    "code": "runtime_proven_entity_held" if item.get("carry_state") == "held" else "runtime_proven_entity_unchanged",
                     "entity_refs": [entity["entity_ref"]],
                     "source_scene_revision": item["source_scene_revision"],
                     "target_scene_revision": arguments["scene_revision"],
                     "evidence_refs": list(item["effect_evidence_refs"]),
                 }
             )
-        ambiguities = [dict(item) for item in normalized.ambiguities]
-        ambiguities.extend(_metric_alias_ambiguities(normalized))
+        ambiguities = [_remap_visual_identity(item, aliases) for item in normalized.ambiguities]
+        ambiguities.extend(_remap_visual_identity(_metric_alias_ambiguities(normalized), aliases))
         return {
             "status": "available", "observation_ref": observation_ref,
             "scene_revision": arguments["scene_revision"],
             "frame": {"frame_id": arguments["frame_id"], "unit": "m"},
             "calibration_ref": arguments["calibration_ref"],
             "entities": entities,
-            "relations": [dict(item) for item in normalized.relations],
-            "spatial_envelopes": [dict(item) for item in normalized.spatial_envelopes],
-            "derived_artifacts": [dict(item) for item in normalized.derived_artifacts],
+            "relations": [_remap_visual_identity(item, aliases) for item in normalized.relations],
+            "spatial_envelopes": [_remap_visual_identity(item, aliases) for item in normalized.spatial_envelopes],
+            "derived_artifacts": [_remap_visual_identity(item, aliases) for item in normalized.derived_artifacts],
             "ambiguities": ambiguities,
             "reconciliations": reconciliations,
             "carried_forward": carried_forward,

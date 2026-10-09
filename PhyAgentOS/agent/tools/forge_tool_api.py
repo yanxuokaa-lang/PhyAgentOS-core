@@ -388,12 +388,14 @@ class ForgeToolQueryTool(Tool):
                     if selection_error is not None:
                         raise AgentTaskError(_json({"code": selection_error["code"], **selection_error}))
                 if tool_id == "scene.understand":
-                    resolved_arguments.pop("carried_entities", None)
                     carried = _coordinator_carried_entities(
                         task,
                         resolved_arguments.get("scene_revision"),
                     )
-                    if carried:
+                    if resolved_binding is not None:
+                        if resolved_arguments.get("carried_entities", []) != carried:
+                            raise AgentTaskError("Coordinator carry-forward changed after selection; select current evidence again")
+                    elif carried:
                         resolved_arguments["carried_entities"] = carried
                 return await self.coordinator.invoke_query(
                     task_id, tool_id,
@@ -828,7 +830,7 @@ def _resolve_observation_bound_query_arguments(
 
 
 def _coordinator_carried_entities(task: Any, scene_revision: Any) -> list[dict[str, Any]]:
-    """Project Runtime-proven unchanged entities into one fresh understanding Query.
+    """Project Runtime-proven unchanged and held identities into fresh understanding.
 
     The Agent cannot supply or edit this field.  The projection joins one terminal
     Action effect summary to prior Coordinator-persisted understanding and binding
@@ -838,9 +840,14 @@ def _coordinator_carried_entities(task: Any, scene_revision: Any) -> list[dict[s
     if not isinstance(scene_revision, str) or not scene_revision:
         return []
     effect = None
+    action = None
     for record in reversed(task.execution_records):
-        if record.semantics != "action" or record.status != "succeeded":
+        if record.semantics != "action":
             continue
+        # Never resurrect an older successful effect across a newer unknown
+        # Action, even if it did not report a new scene revision.
+        if record.status != "succeeded":
+            return []
         facts = response_facts(record.response)
         candidate = facts.get("scene_effects")
         if (
@@ -848,22 +855,41 @@ def _coordinator_carried_entities(task: Any, scene_revision: Any) -> list[dict[s
             and candidate.get("schema_version") == "paos-scene-effects/v1"
             and candidate.get("new_scene_revision") == scene_revision
             and candidate.get("effect_scope_complete") is True
-            and candidate.get("carry_forward_authorized") is True
+            and facts.get("status") == "succeeded"
+            and facts.get("outcome_known") is True
         ):
             effect = candidate
-            break
+            action = record
+        break
     if effect is None:
         return []
     source_scene = effect.get("source_scene_revision")
-    unaffected = effect.get("unaffected_entity_refs")
+    unaffected = effect.get("unaffected_entity_refs", []) if effect.get("carry_forward_authorized") is True else []
     effect_refs = effect.get("effect_evidence_refs")
     if (
         not isinstance(source_scene, str) or not source_scene
-        or not isinstance(unaffected, list) or not unaffected
+        or not isinstance(unaffected, list)
         or any(not isinstance(ref, str) for ref in unaffected)
         or not isinstance(effect_refs, list) or not effect_refs
         or any(not isinstance(ref, str) for ref in effect_refs)
     ):
+        return []
+    held = effect.get("held_entity")
+    held_ref = None
+    changed = effect.get("changed_entity_refs")
+    if isinstance(held, dict) and action is not None:
+        facts = response_facts(action.response)
+        entity_ref = held.get("entity_ref")
+        if (facts.get("status") == "succeeded" and facts.get("outcome_known") is True
+                and held.get("holding_state") == "holding"
+                and held.get("owner") == f"paos:{getattr(task, 'task_id', '')}"
+                and held.get("acquire_invocation_id") == getattr(action, "invocation_id", None)
+                and isinstance(held.get("acquire_invocation_id"), str)
+                and entity_ref == action.arguments.get("entity_ref")
+                and isinstance(entity_ref, str)
+                and isinstance(changed, list) and entity_ref in changed):
+            held_ref = entity_ref
+    if not unaffected and held_ref is None:
         return []
     understanding = None
     binding = None
@@ -895,7 +921,7 @@ def _coordinator_carried_entities(task: Any, scene_revision: Any) -> list[dict[s
     if not isinstance(binding_ref, str) or not binding_ref.startswith("artifact://"):
         return []
     carried = []
-    for entity_ref in unaffected:
+    for entity_ref in dict.fromkeys([*unaffected, *([held_ref] if held_ref else [])]):
         claim = claims.get(entity_ref)
         model = models.get(entity_ref)
         if claim is None or model is None:
@@ -903,15 +929,16 @@ def _coordinator_carried_entities(task: Any, scene_revision: Any) -> list[dict[s
         execution_ref = model.get("execution_entity_ref")
         if not isinstance(execution_ref, str):
             continue
-        carried.append(
-            {
-                "entity": dict(claim),
-                "source_scene_revision": source_scene,
-                "source_binding_ref": binding_ref,
-                "execution_entity_ref": execution_ref,
-                "effect_evidence_refs": list(effect_refs),
-            }
-        )
+        item = {
+            "entity": dict(claim),
+            "source_scene_revision": source_scene,
+            "source_binding_ref": binding_ref,
+            "execution_entity_ref": execution_ref,
+            "effect_evidence_refs": list(effect_refs),
+        }
+        if entity_ref == held_ref:
+            item.update(carry_state="held", possession=dict(held))
+        carried.append(item)
     return carried
 
 

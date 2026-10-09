@@ -1,0 +1,132 @@
+{
+  "task_id": "task_27ae6821f50643f9",
+  "active_revision_id": "revision_f6529405127d43db",
+  "status_at_read": "failed",
+  "updated_at": "2026-10-09T01:07:53.227170Z",
+  "diagnosed_node": "red_acquired_bind",
+  "records": [
+    {
+      "record_id": "tool_ad32f7025b414a49",
+      "node_id": "red_acquire",
+      "tool_id": "object.acquire",
+      "status": "succeeded",
+      "invocation_id": "invocation://object-acquire/c7e09749373548d2",
+      "facts": {
+        "status": "succeeded",
+        "observation_ref": "observation://7b0f5684bd5a4cdaa40dcc6eef4f6c7a-1/head_camera",
+        "scene_revision": "7b0f5684bd5a4cdaa40dcc6eef4f6c7a-1",
+        "new_scene_revision": "7b0f5684bd5a4cdaa40dcc6eef4f6c7a-2",
+        "outcome_known": true,
+        "world_change_started": true,
+        "scene_effects": {
+          "schema_version": "paos-scene-effects/v1",
+          "source_scene_revision": "7b0f5684bd5a4cdaa40dcc6eef4f6c7a-1",
+          "new_scene_revision": "7b0f5684bd5a4cdaa40dcc6eef4f6c7a-2",
+          "changed_entity_refs": [
+            "entity://e1",
+            "entity://e2",
+            "entity://e3"
+          ],
+          "unaffected_entity_refs": [],
+          "changed_resources": [
+            "robot_configuration",
+            "end_effector_pose",
+            "camera_visibility",
+            "possession_state"
+          ],
+          "effect_evidence_refs": [
+            "artifact://persistent/7b0f5684bd5a4cdaa40dcc6eef4f6c7a/action-f79383f01d324f61863b203117a1c3be"
+          ],
+          "effect_scope_complete": true,
+          "carry_forward_authorized": false
+        }
+      }
+    },
+    {
+      "record_id": "tool_d85aad197cd44a7d",
+      "node_id": "red_acquired_observe",
+      "tool_id": "scene.observe",
+      "status": "succeeded",
+      "invocation_id": null,
+      "facts": {
+        "status": "available",
+        "observation_ref": "observation://7b0f5684bd5a4cdaa40dcc6eef4f6c7a-2/head_camera",
+        "scene_revision": "7b0f5684bd5a4cdaa40dcc6eef4f6c7a-2"
+      }
+    },
+    {
+      "record_id": "tool_fecc1009ca064139",
+      "node_id": "red_acquired_capabilities",
+      "tool_id": "manipulation.capabilities",
+      "status": "succeeded",
+      "invocation_id": null,
+      "facts": {
+        "status": "available",
+        "observation_ref": "observation://7b0f5684bd5a4cdaa40dcc6eef4f6c7a-2/head_camera",
+        "scene_revision": "7b0f5684bd5a4cdaa40dcc6eef4f6c7a-2"
+      }
+    },
+    {
+      "record_id": "tool_366ef0847c0948b7",
+      "node_id": "red_acquired_understand",
+      "tool_id": "scene.understand",
+      "status": "succeeded",
+      "invocation_id": null,
+      "facts": {
+        "status": "available",
+        "observation_ref": "observation://7b0f5684bd5a4cdaa40dcc6eef4f6c7a-2/head_camera",
+        "scene_revision": "7b0f5684bd5a4cdaa40dcc6eef4f6c7a-2",
+        "ambiguities": [
+          {
+            "code": "entity_identity_uncertain",
+            "message": "e1 is partially occluded in view 1, but its shape and position relative to e2 and e3 are consistent with a single robot entity.",
+            "entity_refs": [
+              "entity://e1"
+            ]
+          }
+        ],
+        "carried_forward": []
+      },
+      "entities": [
+        {
+          "entity_ref": "entity://e1",
+          "category": "white and black robot"
+        },
+        {
+          "entity_ref": "entity://e2",
+          "category": "blue cube"
+        },
+        {
+          "entity_ref": "entity://e3",
+          "category": "green cube"
+        },
+        {
+          "entity_ref": "entity://e4",
+          "category": "white floor"
+        }
+      ]
+    }
+  ],
+  "videos": [
+    {
+      "ref": "artifact://persistent/7b0f5684bd5a4cdaa40dcc6eef4f6c7a/task-video-aded5fb28275484ca9642e5f7abba76f/cumulative/action-0001/manifest",
+      "path": "/home/yanxu/robotwin20-runtime/artifacts/rgb-graspnet-acceptance-20260926T0015/persistent/7b0f5684bd5a4cdaa40dcc6eef4f6c7a/task-video-aded5fb28275484ca9642e5f7abba76f/cumulative/action-0001/manifest.json",
+      "exists": true,
+      "bytes": 1019
+    },
+    {
+      "ref": "artifact://persistent/7b0f5684bd5a4cdaa40dcc6eef4f6c7a/task-video-aded5fb28275484ca9642e5f7abba76f/cumulative/action-0001/video/head-camera.mp4",
+      "path": "/home/yanxu/robotwin20-runtime/artifacts/rgb-graspnet-acceptance-20260926T0015/persistent/7b0f5684bd5a4cdaa40dcc6eef4f6c7a/task-video-aded5fb28275484ca9642e5f7abba76f/cumulative/action-0001/video/head-camera.mp4",
+      "exists": true,
+      "bytes": 918627
+    },
+    {
+      "ref": "artifact://persistent/7b0f5684bd5a4cdaa40dcc6eef4f6c7a/task-video-aded5fb28275484ca9642e5f7abba76f/cumulative/action-0001/video/observer-camera.mp4",
+      "path": "/home/yanxu/robotwin20-runtime/artifacts/rgb-graspnet-acceptance-20260926T0015/persistent/7b0f5684bd5a4cdaa40dcc6eef4f6c7a/task-video-aded5fb28275484ca9642e5f7abba76f/cumulative/action-0001/video/observer-camera.mp4",
+      "exists": true,
+      "bytes": 747198
+    }
+  ],
+  "binding_selection_count": 0,
+  "read_only": true
+}

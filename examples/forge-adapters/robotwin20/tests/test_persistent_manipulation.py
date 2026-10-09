@@ -91,6 +91,28 @@ def test_cancelled_motion_retains_uncertain_possession_without_release():
         provider.close()
 
 
+@pytest.mark.parametrize("mismatch", [False, True])
+def test_provider_publishes_held_receipt_only_with_matching_settled_possession(mismatch):
+    class HeldEngine(Engine):
+        def execute(self, phase, arguments, cancel, *, owner, invocation_id):
+            return {
+                **super().execute(phase, arguments, cancel, owner=owner, invocation_id=invocation_id),
+                "scene_effects": {"held_entity": {
+                    "holding_state": "holding", "entity_ref": arguments["entity_ref"],
+                    "owner": "other" if mismatch else owner,
+                    "acquire_invocation_id": invocation_id,
+                }},
+            }
+    provider = PersistentManipulationProvider(HeldEngine)
+    try:
+        provider.start("acquire", "invocation://acquire/1", "paos:task-1", {"entity_ref": "entity://container"})
+        receipt = settle(provider, "invocation://acquire/1")
+        assert receipt["holding_state"] == "holding"
+        assert ("held_entity" in receipt["scene_effects"]) is not mismatch
+    finally:
+        provider.close()
+
+
 def test_large_engine_diagnostics_stay_out_of_the_terminal_receipt(tmp_path):
     artifact = tmp_path / "complete-action.json"
     execution_plan = {"segments": [[float(index) for index in range(150_000)]]}
@@ -155,6 +177,8 @@ def test_oversized_scene_effects_disable_carry_forward_instead_of_expanding_rece
             "effect_evidence_refs": ["artifact://persistent/action-complete"],
             "effect_scope_complete": True,
             "carry_forward_authorized": True,
+            "held_entity": {"holding_state": "holding", "entity_ref": "entity://container",
+                            "owner": "paos:task-1", "acquire_invocation_id": "invocation://acquire/1"},
         },
     }
 
@@ -164,6 +188,7 @@ def test_oversized_scene_effects_disable_carry_forward_instead_of_expanding_rece
     assert receipt["receipt_truncated"] is True
     assert receipt["scene_effects"]["effect_scope_complete"] is False
     assert receipt["scene_effects"]["carry_forward_authorized"] is False
+    assert "held_entity" not in receipt["scene_effects"]
 
 
 def test_receipt_marks_truncated_refs_and_rejects_nested_terminal_values():
@@ -391,6 +416,40 @@ def test_place_engine_does_not_claim_clearance_without_retreat(tmp_path):
     assert result["retreat_completed"] is False
     assert result["clear_of_target"] is False
     assert result["observation_ready"] is False
+
+
+def test_acquire_engine_persists_held_identity_separately_from_unchanged(tmp_path):
+    from robotwin_persistent_engine import _StopSignal
+    from robotwin_simulation_probe_worker import _artifact_path
+
+    actors = {"entity://container": _Actor("container")}
+    engine = _effect_engine(actors)
+    engine.root, engine.epoch, engine.duration = tmp_path, "held-test", 30
+    engine.stop = _StopSignal(tmp_path / "stop")
+    engine._request = {"scene_revision": "scene-1"}
+    engine._advance_scene = lambda: "scene-2"
+    engine.video = SimpleNamespace(
+        recorder=None, start_action=lambda *a, **k: None, finish_action=lambda *a, **k: (),
+    )
+
+    def prepare(arguments):
+        def phases():
+            actors["entity://container"].matrix[0, 3] = 0.1
+            yield {"phase": "lift"}
+        engine._phases = phases()
+    engine._prepare = prepare
+    result = engine.execute("acquire", {"entity_ref": "entity://container"}, Event(),
+                            owner="paos:task-1", invocation_id="invocation://acquire/1")
+    effects = result["scene_effects"]
+    assert result["status"] == "succeeded"
+    assert effects["unaffected_entity_refs"] == []
+    assert effects["carry_forward_authorized"] is False
+    assert effects["held_entity"] == {
+        "holding_state": "holding", "entity_ref": "entity://container",
+        "owner": "paos:task-1", "acquire_invocation_id": "invocation://acquire/1",
+    }
+    artifact = json.loads(_artifact_path(tmp_path, result["artifact_refs"][0]).read_text())
+    assert artifact["scene_effects"] == effects
 
 
 @pytest.mark.parametrize("change", ["contact", "move", "missing", "unknown"])

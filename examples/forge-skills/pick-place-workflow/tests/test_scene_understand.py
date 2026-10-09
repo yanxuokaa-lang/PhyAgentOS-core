@@ -243,6 +243,56 @@ def test_runtime_proven_unchanged_entity_is_merged_without_reaching_visual_provi
     assert "carried_entities" not in provider.last_request
 
 
+def held_projection():
+    return {
+        "entity": {"entity_ref": "entity://bottle-1", "category": "held container",
+                   "confidence": 0.92, "provenance": ["artifact://old/rgb"]},
+        "source_scene_revision": "old", "source_binding_ref": "artifact://bindings/old",
+        "execution_entity_ref": "entity://runtime-container",
+        "effect_evidence_refs": ["artifact://action/acquire"], "carry_state": "held",
+        "possession": {"holding_state": "holding", "entity_ref": "entity://bottle-1",
+                       "owner": "paos:task-1", "acquire_invocation_id": "invocation://acquire/1"},
+    }
+
+
+def test_held_projection_preserves_conflicting_visual_identity_and_geometry():
+    snapshot = understanding_snapshot(
+        entities=({**understanding_snapshot().entities[0], "category": "robot"},),
+        derived_artifacts=(_derived(),),
+        ambiguities=({"code": "entity_identity_uncertain", "message": "occluded robot",
+                      "entity_refs": ["entity://bottle-1"]},),
+    )
+    provider = Provider(snapshot)
+    output = SceneUnderstandingEndpoint(provider).invoke(request_payload(carried_entities=[held_projection()]))
+    assert output["status"] == "available"
+    by_ref = {item["entity_ref"]: item for item in output["entities"]}
+    assert by_ref["entity://bottle-1"]["category"] == "held container"
+    visual_ref = "entity://observed-bottle-1-1"
+    assert by_ref[visual_ref]["category"] == "robot"
+    assert output["spatial_envelopes"][0]["entity_ref"] == visual_ref
+    assert output["derived_artifacts"][0]["entity_ref"] == visual_ref
+    assert output["ambiguities"][0]["entity_refs"] == [visual_ref]
+    assert output["carried_forward"][0]["carry_state"] == "held"
+    assert output["reconciliations"][-1]["code"] == "runtime_proven_entity_held"
+    assert "carried_entities" not in provider.last_request
+    assert provider.result.entities[0]["entity_ref"] == "entity://bottle-1"
+
+
+@pytest.mark.parametrize("change", ["missing", "uncertain", "other-entity"])
+def test_invalid_held_projection_stops_before_visual_provider(change):
+    carried = held_projection()
+    if change == "missing":
+        carried.pop("possession")
+    elif change == "uncertain":
+        carried["possession"]["holding_state"] = "uncertain"
+    else:
+        carried["possession"]["entity_ref"] = "entity://other"
+    provider = Provider(understanding_snapshot())
+    result = SceneUnderstandingEndpoint(provider).invoke(request_payload(carried_entities=[carried]))
+    assert result["error"]["code"] == "invalid_carry_forward"
+    assert provider.calls == 0
+
+
 def test_observation_ref_must_bind_to_scene_revision_and_frame():
     provider = Provider(understanding_snapshot())
     result = SceneUnderstandingEndpoint(provider).invoke(

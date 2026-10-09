@@ -318,6 +318,15 @@ class PersistentManipulationProvider:
                 self._owner = self._acquire_id = self._entity = None
             result.update(self.snapshot())
             result["invocation_id"] = invocation_id
+            effects = result.get("scene_effects")
+            if isinstance(effects, dict) and "held_entity" in effects:
+                # A historical engine receipt alone does not prove possession.
+                # Publish it only when the provider's settled ownership agrees.
+                held = effects["held_entity"]
+                if (self._state != "holding" or result.get("outcome_known") is not True
+                        or status != "succeeded" or not isinstance(held, dict)
+                        or held != self.snapshot()):
+                    effects.pop("held_entity")
             return result
 
     def poll(self, invocation_id: str) -> dict[str, Any] | None:
