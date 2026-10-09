@@ -8,6 +8,52 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v13.1.2 (2026-10-09 22:33) - codex
+
+### 变更摘要 / Summary
+- [policy] [fix] 将非重试型 Query provider unavailable 从 failed settlement 分流为 Coordinator-owned `waiting_for_runtime`，只在冻结 Runtime Tool readiness 发生可观测转换后释放旧失败尝试并重试同一未结算节点。 (local)
+- [Policy] [Fix] Divert non-retryable Query provider unavailability from failed settlement into Coordinator-owned `waiting_for_runtime`, releasing the old failed attempt and retrying the same unsettled node only after an observable readiness transition on the frozen Runtime Tool. (local)
+- [policy] [fix] 保持失败 Query append-only 审计，同时从 predecessor、source browsing、projection、reducer、admission evidence 和 discovery progress 的有效视图排除；并发 stop、prompt 工具可见性和 `ready -> unavailable -> ready` 均按 fail-closed 状态机处理。 (local)
+- [Policy] [Fix] Preserve the failed Query as append-only audit history while excluding it from effective predecessor, source-browsing, projection, reducer, admission-evidence, and discovery-progress views; handle concurrent stop, prompt-tool visibility, and `ready -> unavailable -> ready` through the fail-closed state machine. (local)
+- [eval] [test] 七维审查发现并修复 11 项 Major；provider-neutral fake/no-motion 回归覆盖任务占用、下游关闭、同节点恢复、证据隔离、operator stop 与 AgentLoop 自主收敛。 (local)
+- [Eval] [Test] The seven-dimension review found and fixed eleven Major issues; provider-neutral fake/no-motion regressions cover active-task ownership, downstream closure, same-node recovery, evidence isolation, operator stop, and AgentLoop convergence. (local)
+
+### 文件与关键 Diff / Files and Key Diff
+
+| 文件 / File | 行号 / Lines | 摘要 / Summary |
+| --- | --- | --- |
+| `PhyAgentOS/forge/binding.py` | L171-L189 | provider-neutral block 分类 / Provider-neutral block classification |
+| `PhyAgentOS/forge/task.py` | L120-L159, L1297-L1318, L1518-L1821, L3895-L3916 | 等待态、事件、状态转换、有效记录视图与并发复核 / Wait state, events, transitions, effective-record view, and concurrency validation |
+| `PhyAgentOS/agent/planning_loop.py` | L133-L245, L897-L906, L1485-L1548 | settlement 前分流、有效上下文与 stop 收敛 / Pre-settlement diversion, effective context, and stop convergence |
+| `PhyAgentOS/agent/long_horizon.py` | L138-L169, L189-L334 | 只读 readiness 轮询与可中断恢复 / Read-only readiness polling and interruptible recovery |
+| `PhyAgentOS/agent/loop.py` | L42, L152-L176, L340-L349, L537-L541, L1562-L1567 | 等待态保护、生产/prompt wiring 和语义 discovery progress / Wait-state protection, production/prompt wiring, and semantic discovery progress |
+| `PhyAgentOS/agent/planning_context.py` | L13-L15, L61-L151, L203-L230 | admission/current-capture 证据隔离 / Admission and current-capture evidence isolation |
+| `PhyAgentOS/agent/prompt_context.py` | L763-L835, L1402-L1491 | 等待 phase、最小只读工具面与有效任务投影 / Wait phase, minimal read-only tool surface, and effective task projection |
+| `PhyAgentOS/agent/tools/planning.py` | L73-L84, L322-L338, L433-L449 | source/projection 有效视图 / Effective source and projection view |
+| `tests/test_planning_loop.py` | L92-L190, L3094-L3629 | provider recovery 与并发无运动回归 / Provider recovery and concurrency no-motion regressions |
+| `tests/test_planning_context.py` | L214-L244 | 失败 Query admission 隔离 / Failed-Query admission isolation |
+| `tests/test_prompt_context.py` | L329-L485 | Runtime wait phase/tool visibility and released-receipt isolation / Runtime-wait phase/tool visibility and released-receipt isolation |
+| `docs/forge/QUERY_PROVIDER_BLOCK_RECOVERY_DIAGNOSIS_20261009.md` | L1-L175 | 事故诊断、通用状态机、权责与审查 / Incident diagnosis, generic state machine, ownership, and review |
+| `changelog/2026-10_part5.md` | L3-L112 | 完整双语变更、七维审查、Diff 与验证 / Full bilingual changes, seven-dimension review, diff, and validation |
+
+```diff
+- semantic Query unavailable -> failed settlement -> stop -> failed task
++ provider-blocked Query -> waiting_for_runtime -> GET Tool context only
++ observable readiness transition -> release old attempt -> retry same node
+- failed Query receipt could leak into planning/admission evidence
++ immutable audit record retained; effective planning and admission views exclude it
+- concurrent operator stop could race the awaited context read
++ post-await state validation preserves cancelled/cancelling as authoritative
+```
+
+### 验证 / Validation
+- No-motion Core/AgentLoop/Skill suites: `452 passed in 11.64s`.
+- Ruff、compileall、`git diff --check` 通过；未创建/恢复 live AgentTask，未调用 Gateway Query/Action，未推进 simulator、读取相机或产生物理运动。 / Ruff, compileall, and `git diff --check` passed; no live AgentTask was created or resumed, no Gateway Query/Action was invoked, and no simulator, camera, or physical motion was used.
+- Implementation, diagnosis, and tests commit: `d482828`.
+
+详见 [v13.1.2 月度日志](changelog/2026-10_part5.md)和[诊断](docs/forge/QUERY_PROVIDER_BLOCK_RECOVERY_DIAGNOSIS_20261009.md)。
+See the [v13.1.2 detailed log](changelog/2026-10_part5.md) and [diagnosis](docs/forge/QUERY_PROVIDER_BLOCK_RECOVERY_DIAGNOSIS_20261009.md).
+
 ## v13.1.1 (2026-10-09 21:20) - codex
 
 ### 变更摘要 / Summary
@@ -118,26 +164,3 @@ See the [v13.0.15 detailed log](changelog/2026-10_part4.md) and [formal experime
 
 详见 [v13.0.14 月度日志](changelog/2026-10_part5.md)和[诊断](docs/forge/UNKNOWN_ACTION_REFRESH_BOOTSTRAP_DIAGNOSIS_20261009.md)。
 See the [v13.0.14 detailed log](changelog/2026-10_part5.md) and [diagnosis](docs/forge/UNKNOWN_ACTION_REFRESH_BOOTSTRAP_DIAGNOSIS_20261009.md).
-
-## v13.0.12 (2026-10-09 18:50) - codex
-
-### 变更摘要 / Summary
-- [eval] [feat] 增加独立 Laya/Jev intent-routing adapters，与 GPT-6 Luna Decisions probe 共享 80 条样本和评分口径；不导入或执行 PAOS 路由。(local)
-- [eval] [feat] Add standalone Laya/Jev intent-routing adapters sharing the 80-case dataset and scoring contract with the GPT-6 Luna Decisions probe; never import or execute PAOS routing. (local)
-- [eval] [exp] 三个 Laya checkpoint 各完成 60 条 evaluation（route `0.333/0.483/0.45`）；Jev 完成 60 条 evaluation，coverage `0.90`、有效响应 joint `0.944`。(local)
-- [eval] [exp] Complete 60-case evaluation for all three Laya checkpoints (route `0.333/0.483/0.45`) and 60-case Jev evaluation with coverage `0.90` and valid-response joint accuracy `0.944`. (local)
-- [env] [chore] Laya 使用独立 `/home/yanxu/laya-system1/.venv` 和缓存；三个 checkpoint 固定到 snapshot `7b928d8...`，项目 `.venv` 的误装依赖已清理。(local)
-- [env] [chore] Run Laya from dedicated `/home/yanxu/laya-system1/.venv` and cache; pin all three downloaded checkpoints to snapshot `7b928d8...` and clean accidental packages from the project `.venv`. (local)
-
-### 文件与关键 Diff / Files and Key Diff
-`research/decision-api-intent-probe/{jev,laya}_intent_probe.py`, corresponding configs and README,
-the capability-validation plan, and `docs/forge/SYSTEM1_INTENT_ROUTING_EXPERIMENT_RESULTS_20261009.md`.
-
-```diff
-+ local Laya English/multilingual/typed-decisions adapters and smoke artifacts
-+ remote Jev System One adapter with connection reuse, bounded retry, resume, usage and coverage
-+ measured comparison report; no PAOS routing integration or replacement
-```
-
-详见 [v13.0.12 月度日志](changelog/2026-10_part3.md)和[实验结果](docs/forge/SYSTEM1_INTENT_ROUTING_EXPERIMENT_RESULTS_20261009.md)。
-See the [v13.0.12 detailed log](changelog/2026-10_part3.md) and [experiment results](docs/forge/SYSTEM1_INTENT_ROUTING_EXPERIMENT_RESULTS_20261009.md).
