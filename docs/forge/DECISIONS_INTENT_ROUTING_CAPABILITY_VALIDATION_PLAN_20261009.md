@@ -1,6 +1,6 @@
 # Decisions API：会话入口意图与路由的独立能力验证方案
 
-日期：2026-10-09。状态：方案完成七维 Review 修订；样本集、runner 与付费 API 实验尚未实施。
+日期：2026-10-09。状态：方案完成 v13.0.6 七维复审修订；样本集、runner 与付费 API 实验尚未实施。
 诊断依据：[入口路由诊断](DECISIONS_INTENT_ROUTING_DIAGNOSIS_20261009.md)。
 目标模型：用户将提供的 GPT-6 Luna Decisions API；具体 endpoint、鉴权和响应协议以实际提供信息为准。
 
@@ -147,7 +147,7 @@ standalone runner 不导入 `PhyAgentOS.agent`、Coordinator、Gateway、Runtime
 
 | 预测 intent | 可兼容 route | 附加状态条件 |
 | --- | --- | --- |
-| `status_query` | `status_read`、`system2` | status_read 需要 active task + read_status |
+| `status_query` | `status_read`、`system2` | status_read 需要当前关联任务（包括可查询的 terminal task）+ read_status |
 | `task_control` | `task_control`、`system2` | task_control 需要对应 operation capability |
 | `clarification_answer` | `clarification_reply`、`system2` | clarification_reply 需要 pending clarification |
 | `new_task` | `system2` | 无 |
@@ -243,10 +243,19 @@ provider 未返回的字段记为 unavailable，不能伪造 OpenAI 字段或套
 也可能返回 refusal。独立问题可放在同一 request；依赖前题答案的判断应拆成不同 request。
 本实验的 intent 和 route 都直接读取原始输入，不依赖对方答案，因此保持一请求两题。
 
+当前官方指南的图片示例使用 inline base64，而官方 OpenAPI `createDecision` 描述也列出公开
+HTTP(S) 图片 URL；两处资料存在差异。本轮只发送文本 input，不把图片 URL 能力计入实验结论；
+未来若扩展图片，必须先在 development smoke 中单独验证并记录实际协议，不能从任一处文档
+推断另一处行为。
+
 若实际服务与官方协议不同，先用 5 条 development smoke 记录真实 schema，再实现薄 adapter；
 不得仅因 URL 或 chat 接口兼容就假定支持 Decisions。
 完整请求 URL 从 `DECISIONS_API_URL` 环境变量读取并与 config 主机名对照，密钥从
-`DECISIONS_API_KEY` 读取；两者不打印。SDK/HTTP 库自带 retry 关闭，由 runner 单独管理 attempts。
+`DECISIONS_API_KEY` 读取；两者不打印。默认要求 URL 使用 `https` 且路径为
+`/v1/decisions`；兼容代理必须由 operator 明确选择 `endpoint_kind` 和 host，不能静默改发
+到其他路径。初始 smoke 推荐使用标准 HTTP 客户端，避免项目 Python 3.11/3.12 环境误装
+官方文档所列 Python 3.26.0+ SDK；若选 SDK，必须记录实际版本并确认其支持 Decisions。
+SDK/HTTP 库自带 retry 关闭，由 runner 单独管理 attempts。
 两题有效应答要求：intent/route 名称各恰好一次、type=choice、所选值属于各自选项。
 若只有一题有效，保存该题并报告 per-question availability，基础 joint 有效口径视为无效；
 refusal、缺题、重复题名、未知值和 schema failure 不自动重试。
@@ -279,7 +288,7 @@ refusal、缺题、重复题名、未知值和 schema failure 不自动重试。
       "name": "route",
       "instructions": "根据原始消息、相关短对话和 capability_state 选择处理路径。只有对象明确且对应 capability 为 true 时选择简单状态、控制或澄清路径；新任务、分析、多意图、歧义、对象缺失或能力不可用时选择 system2。只判断，不执行操作。",
       "choices": [
-        {"value": "status_read", "description": "查询当前任务，且 active task 与 read_status 能力可用。"},
+        {"value": "status_read", "description": "查询当前关联任务（包括可查询的 terminal task），且 read_status 能力可用。"},
         {"value": "task_control", "description": "明确控制当前任务，且请求的具体控制能力可用。"},
         {"value": "clarification_reply", "description": "存在待回答问题，用户消息确实在回答该问题。"},
         {"value": "conversation", "description": "简单对话，不处理任务或复杂问题。"},

@@ -6,6 +6,62 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v13.0.6 (2026-10-09 12:47) - codex
+
+### 预期修改 / Planned Changes [完成]
+- [docs] [review] 按七维复审 Decisions 入口能力验证方案，修复状态条件、官方协议记录、endpoint 传输边界和实验阶段定义。(local)
+- [docs] [review] Re-review the Decisions validation plan across seven dimensions and repair state conditions, protocol records, endpoint transport boundaries, and experiment-stage definition. (local)
+- [eval] [fix] `status_read` 统一为当前关联任务（含可查询 terminal task）加 `read_status`；本轮限定文本 input；明确 HTTPS、单 endpoint 和 SDK/HTTP 选择边界。(local)
+- [eval] [fix] Align `status_read` to the current associated task (including queryable terminal tasks) plus `read_status`; keep this round text-only; clarify HTTPS, single-endpoint, and SDK/HTTP boundaries. (local)
+- [docs] [docs] 新增 findings-first 七维复审报告，保留无 API 调用、无 PAOS 路由变化边界。(local)
+- [docs] [docs] Add the findings-first seven-dimension re-review while preserving the no-API-call and no-PAOS-routing-change boundaries. (local)
+
+### 具体失败场景与结论 / Failure Scenarios and Conclusion
+- `has_current_task` 与 active task 用语不一致；官方图片指南与 OpenAPI 对公开图片 URL 有差异；任意 URL 与 SDK 版本选择可能导致密钥误发或 smoke 不可复现。(local)
+- `has_current_task` disagreed with active-task wording; official image guide and OpenAPI differ on public image URLs; unrestricted URLs and SDK selection could misroute keys or make smoke runs irreproducible. (local)
+- 0 Blocker、3 Major 已在方案级修复，2 Minor 保留为限制；本轮未创建 runner、样本或调用 API。(local)
+- 0 Blockers and 3 Majors were fixed at design level, with 2 Minors retained as limits; no runner, dataset, or API call was created this round. (local)
+
+### 实际修改 / Implemented Changes
+- [eval] [fix] `status_read` 矩阵与 choice 描述统一为当前关联任务（含可查询 terminal task）加 `read_status`。(local)
+- [eval] [fix] Align the `status_read` matrix and choice description to the current associated task (including queryable terminal tasks) plus `read_status`. (local)
+- [eval] [fix] 记录图片 URL 资料差异；本轮限定文本 input，未来图片必须独立 development smoke。(local)
+- [eval] [fix] Record the image-URL documentation discrepancy; keep this run text-only and require a separate development smoke for future images. (local)
+- [docs] [fix] 默认 HTTPS 与 `/v1/decisions`；兼容代理显式记录 endpoint kind/host；初始 smoke 推荐标准 HTTP，SDK 需确认版本/runtime/Decisions 支持。(local)
+- [docs] [fix] Require HTTPS and `/v1/decisions` by default, record proxy endpoint kind/host, recommend standard HTTP for initial smoke, and verify SDK version/runtime/Decisions support. (local)
+- [docs] [docs] 新增 `docs/forge/IMPLEMENTATION_REVIEW_V13_0_6.md`。(local)
+- [docs] [docs] Add `docs/forge/IMPLEMENTATION_REVIEW_V13_0_6.md`. (local)
+
+### 文件变更详情 / File Change Details
+
+| 文件 / File | 精确行号 / Exact Lines | 操作与摘要 / Operation and Summary |
+| --- | --- | --- |
+| `docs/forge/DECISIONS_INTENT_ROUTING_CAPABILITY_VALIDATION_PLAN_20261009.md` | L3, L150, L239-L261, L291, L552-L556 | 修改 / Align state semantics, protocol boundary, endpoint/client, and no-run scope |
+| `docs/forge/IMPLEMENTATION_REVIEW_V13_0_6.md` | L1-L53 | 新增 / Add seven-dimension re-review |
+| `changelog/2026-10_part3.md` | L3-L84 | 修改 / Add detailed bilingual archive entry |
+| `CHANGELOG.md` | L9-L63 | 新增 / Keep v13.0.6 in latest-five detailed entries |
+
+### 关键内容 Diff / Key Content Diff
+
+```diff
+- status_read: active task + read_status
++ status_read: current associated task (including queryable terminal task) + read_status
++ Official guide/OpenAPI image URL discrepancy is explicit; this run is text-only
++ Default endpoint requires https and /v1/decisions; proxy kind/host is explicit
++ Initial smoke prefers standard HTTP; SDK use requires version/runtime confirmation
+```
+
+### 验证 / Validation
+- [docs] [chore] Markdown fence、3 个 JSON block、UTF-8、本地链接与 `git diff --check` 通过；route 矩阵与 choice 描述一致。(local)
+- [docs] [chore] Markdown fences, 3 JSON blocks, UTF-8, local links, and `git diff --check` pass; route matrix and choice description agree. (local)
+- [docs] [chore] 只读核对官方 Decisions guide 与 OpenAPI；未调用 API、未创建 runner、未修改 PAOS 入口或执行链。(local)
+- [docs] [chore] Read-only verification of the official Decisions guide and OpenAPI; no API call, runner, PAOS entry, or execution-chain change. (local)
+
+### Git 提交 / Git Commit
+- Branch: `feature/planning-loop`
+- Commit: `(pending)`
+- Source baseline: `8d3f069`
+
 ## v13.0.5 (2026-10-09 12:24) - codex
 
 ### 预期修改 / Planned Changes [完成]
