@@ -139,6 +139,90 @@ English: record the Major finding, shared repair across three entry points, old-
 - Branch: `feature/planning-loop`
 - Commit: `05261e6`（实现、回归与七维审查 / implementation, regressions and seven-dimension review）
 
+## v13.0.4 (2026-10-09 12:20) - codex
+
+### 预期修改 / Planned Changes [完成]
+- [docs] [fix] 按既有七个维度审核入口意图与路由诊断及独立 Decisions 能力验证方案，先列出 Blocker/Major/Minor，再直接修复全部 Blocker 与 Major。(local)
+- [docs] [fix] Review the entry-intent diagnosis and independent Decisions capability-validation plan across the established seven dimensions, report Blocker/Major/Minor findings first, and directly fix every Blocker and Major. (local)
+- [eval] [fix] 补齐 provider-neutral 能力状态、人工标注裁决、intent/route 一致性矩阵、逻辑请求与 transport attempt 幂等、离线安全边界、可复查字段及 AgentLoop 收敛指标。(local)
+- [eval] [fix] Add provider-neutral capability state, annotation adjudication, an intent/route compatibility matrix, logical-request and transport-attempt idempotency, enforceable offline boundaries, auditable fields, and AgentLoop convergence metrics. (local)
+- [docs] [docs] 新增 v13.0.4 七维实施审查，更新双语详细日志和最近五条；仅提交本轮文档与日志并推送当前分支，不调用付费 API 或改变运行时路由。(local)
+- [docs] [docs] Add the v13.0.4 seven-dimension implementation review, update the bilingual detailed log and latest five entries, commit only this task's documents/logs, and push the current branch without paid API calls or runtime-routing changes. (local)
+
+### 失败场景与边界 / Failure Scenarios and Boundaries
+- 逐样本自由编写 `available_handlers` 可能按 gold route 描述能力；intent 与 route 独立返回也可能形成矛盾。固定事实状态、配置化兼容矩阵和人工标注复核足以解决，不新增 hash、冻结 contract、baseline 或发布 gate。
+- Per-case free-form `available_handlers` can encode capabilities around the gold route, while independent intent and route answers can contradict one another. Fixed factual state, a configured compatibility matrix, and annotation review are sufficient; no hash, frozen contract, baseline, or release gate is added.
+- timeout 后重试若作为第二次预测计入基础指标，会把一次逻辑样本变成多次选择并污染准确率；稳定 run/case/logical-request ID、repeat index 和 attempt index 足以恢复，预测错误不触发重试。
+- Counting a timeout retry as a second prediction turns one logical case into multiple choices and corrupts accuracy. Stable run/case/logical-request IDs, repeat indexes, and attempt indexes provide recovery; prediction errors never trigger retries.
+- 若未来 runner 导入 AgentLoop/Coordinator/Runtime 或连接真实任务，标签实验可能产生副作用；本轮把 standalone、synthetic-first、单 endpoint、无 PAOS 写连接定义为实验边界，不增加生产运行时门禁。
+- A future runner importing AgentLoop/Coordinator/Runtime or connecting to live tasks could turn a label probe into side effects. This review defines standalone, synthetic-first, single-endpoint, no-PAOS-write experiment boundaries without adding production runtime gates.
+
+### 范围与结论 / Scope and Conclusion
+- 七维 findings：0 Blocker、7 Major、3 Minor；全部 Major 已修复。通过仅限方案设计和静态文档，不代表 GPT-6 Luna 能力已验证。
+- Seven-dimension findings: 0 Blockers, 7 Majors, and 3 Minors; all Majors are fixed. Passing applies only to design/static documentation and does not establish GPT-6 Luna capability.
+- 保留 80 条基础样本（20 development / 60 evaluation）、每样本两题和 110 条选做请求预算；未创建样本、runner、配置或输出，未调用 API，未改变 PAOS 入口。
+- Retain 80 core cases (20 development / 60 evaluation), two questions per case, and the 110-request optional budget; no dataset, runner, config, output, API call, or PAOS entry change is introduced.
+
+### 实际修改 / Completed Changes
+- [docs] [fix] 诊断补充固定能力事实、一次入站一次判断、System 2 保留原消息、不回环及 standalone/synthetic/retry 边界。(local)
+- [docs] [fix] Extend the diagnosis with fixed capability facts, one decision per inbound turn, original-message preservation for System 2, no route recursion, and standalone/synthetic/retry boundaries. (local)
+- [eval] [fix] 用 `capability_state` 替代逐样本自由 handler 文本，定义单值标签、tie-break、双人 evaluation 复核、七类 intent/五类 route 兼容矩阵及 capability 约束；scorer 只报告矛盾，不改写原始答案。(local)
+- [eval] [fix] Replace per-case free-form handler text with `capability_state`; define single-value labels, tie-breaks, two-person evaluation review, the seven-intent/five-route compatibility matrix, and capability constraints; the scorer reports contradictions without rewriting predictions. (local)
+- [eval] [fix] 区分逻辑 request、重复预测和 transport attempt，定义有限 retry、partial/refusal/schema 处理、崩溃恢复、resume/supplemental run 与全量/有效应答统计分母。(local)
+- [eval] [fix] Separate logical requests, repeated predictions, and transport attempts; define bounded retries, partial/refusal/schema handling, crash recovery, resume/supplemental runs, and all-request/valid-response denominators. (local)
+- [eval] [fix] 增加 simple-path coverage/correctness、System 2 miss/excess、unsupported route、incompatible pair、重复不稳定性与全部回退算术对照；全送 System 2 不能支持替换结论。(local)
+- [eval] [fix] Add simple-path coverage/correctness, System 2 miss/excess, unsupported-route, incompatible-pair, repeat-instability, and all-fallback arithmetic diagnostics; routing everything to System 2 cannot support replacement. (local)
+- [docs] [fix] 增加 provider-neutral backend/config、per-attempt 可观测字段、错误分类、唯一输出目录、建议 CLI、安全数据边界和未来 AgentLoop proposal/owner/收敛原则。(local)
+- [docs] [fix] Add provider-neutral backend/config, per-attempt observability, error taxonomy, unique output directories, proposed CLI commands, data-safety boundaries, and future AgentLoop proposal/owner/convergence principles. (local)
+- [docs] [docs] 新增 findings-first 七维审查，记录 7 Major 的失败方式、修复和方案级验收，并保留样本量、taxonomy、endpoint 与未实施 runner 四项限制。(local)
+- [docs] [docs] Add a findings-first seven-dimension review recording each Major failure, repair, and design-level acceptance while retaining sample-size, taxonomy, endpoint, and unimplemented-runner limitations. (local)
+
+### 文件变更详情 / File Changes
+
+| 文件 / File | 精确行号 / Exact Lines | 操作与摘要 / Operation and Summary |
+| --- | --- | --- |
+| `docs/forge/DECISIONS_INTENT_ROUTING_DIAGNOSIS_20261009.md` | L3-L4, L25-L28, L90-L96, L118-L129 | 修改 / Clarify source baseline, capability facts, one-turn route proposal and offline boundary |
+| `docs/forge/DECISIONS_INTENT_ROUTING_CAPABILITY_VALIDATION_PLAN_20261009.md` | L1-L549 | 重写 / Rewrite the independent experiment contract across all seven dimensions |
+| `docs/forge/IMPLEMENTATION_REVIEW_V13_0_4.md` | L1-L105 | 新增 / Add findings, repairs, seven-dimension acceptance and limitations |
+| `changelog/2026-10_part3.md` | L136-L219 | 新增 / Add this complete bilingual entry while preserving v13.0.5 |
+| `CHANGELOG.md` | L142-L225；按当前最近五条滚动 / roll within current latest five | 更新 / Keep v13.0.4 in the completed latest-five list |
+
+### 关键内容 Diff / Key Content Diff
+
+```diff
+# input and ownership
+-task_state + available_handlers (per-case free text)
++capability_state (fixed factual schema; labels excluded)
++dataset -> builder -> backend adapter -> scorer ownership
+# correctness
++single-value tie-break + independent evaluation review/adjudication
++intent/route compatibility matrix + capability constraints
++report incompatible/unsupported predictions without rewriting answers
+# recovery and observability
++run_id + case_id + logical_request_id + repeat_index + attempt_index
++bounded transport retry + resume/supplemental-run policy
++requests/attempts/responses/predictions/environment artifacts
+# AgentLoop boundary
++one decision per inbound turn; route is proposal only
++System 2 receives the original message/state and does not recurse to Decisions
++simple-path coverage and all-system2 diagnostic prevent false replacement claims
+```
+
+### 验证 / Validation
+- [docs] [chore] UTF-8、Markdown fences、本地链接及三段 JSON 通过；请求示例只含 message/recent_turns/capability_state，7/5 choice 唯一。(local)
+- [docs] [chore] UTF-8, Markdown fences, local links, and all three JSON blocks pass; the request example contains only message/recent_turns/capability_state, with unique 7/5 choices. (local)
+- [eval] [chore] 20/60/80 样本表、80/110 请求预算、七类兼容矩阵、恢复字段、安全边界、指标分母和七维审查数量检查通过。(local)
+- [eval] [chore] The 20/60/80 case table, 80/110 request budget, seven-intent compatibility matrix, recovery fields, safety boundaries, metric denominators, and seven-dimension review counts pass. (local)
+- [docs] [chore] 官方 OpenAI Decisions 文档只读核对 endpoint、命名 questions、choice probabilities/confidence/refusal、独立问题同请求和输入计费；未调用 API 或运行代码回归。(local)
+- [docs] [chore] Read-only official OpenAI Decisions verification covers the endpoint, named questions, choice probabilities/confidence/refusal, independent questions in one request, and input pricing; no API call or code regression ran. (local)
+- [docs] [chore] 最近五条归档一致性与 `git diff --check` 通过；仅 stage 本轮三份文档和 v13.0.4 日志内容，保留并行 v13.0.5 与其他工作区修改。(local)
+- [docs] [chore] Latest-five archive consistency and `git diff --check` pass; stage only this task's three documents and v13.0.4 log content, preserving concurrent v13.0.5 and other worktree changes. (local)
+
+### Git 提交 / Git Commit
+- Branch: `feature/planning-loop`
+- Commit: `(pending)`
+- Source baseline: `c14f2a5`
+
 ## v13.0.3 (2026-10-09 12:09) - codex
 
 ### 预期修改 / Planned Changes [完成]
@@ -389,72 +473,3 @@ English: record the Major finding, shared repair across three entry points, old-
 - Commit: `0972497`（诊断文档 / diagnosis document）
 - Source inspected: `d9d4c16`
 - 仅 stage 本轮三个文件，保留已有未跟踪内容 / Stage only these three files and preserve existing untracked content.
-
-## v13.0.0 (2026-10-09 11:18) - codex
-
-### 预期修改 / Planned Changes [完成]
-- [docs] [docs] 保存 GPT-6 Luna Decisions API 使用诊断，记录三类问题、调用示例、费用、概率语义及官方资料差异。(local)
-- [docs] [docs] Save the GPT-6 Luna Decisions API usage diagnosis, covering question types, examples, pricing, probability semantics, and differences between official sources. (local)
-- [docs] [docs] 依据当前 PAOS 架构、开发者手册、扩展规范与 Agent Loop 代码，分析可新增/部分替换/保留的功能，给出职责边界、具体接入点和分阶段验证方案。(local)
-- [docs] [docs] Analyze additions, partial replacements, and retained functions against current PAOS architecture, developer guidance, extension rules, and Agent Loop code, with ownership, concrete integration points, and staged validation. (local)
-- [docs] [chore] 更新最近五条详细日志；仅提交本轮文档与日志，并推送当前 feature/planning-loop 分支。(local)
-- [docs] [chore] Update the latest five detailed changelog entries; commit only this task's documents and logs and push the current feature/planning-loop branch. (local)
-
-### 影响文件 / Files
-- `docs/diagnostics/gpt-6-luna-decisions-api-usage-20261009.md`
-- `docs/forge/GPT6_LUNA_DECISIONS_PAOS_FIT_ANALYSIS_20261009.md`
-- `changelog/2026-10_part3.md`
-- `CHANGELOG.md`
-
-### 范围与版本 / Scope and Version
-- 本轮只保存分析文档，不修改运行逻辑、依赖、配置或部署，不发起付费模型调用或现场任务。
-- This task saves analysis only; runtime behavior, dependencies, configuration, and deployments are unchanged, with no paid model calls or live tasks.
-- 变更定级为 patch；按项目上限规则，v12.10.15 的 patch 进位为 v13.0.0，Major 数字变化不表示本轮进行了架构重构。
-- Classified as a patch; repository rollover rules advance v12.10.15 to v13.0.0, without implying an architectural rewrite.
-
-### 实际修改 / Completed Changes
-- [docs] [docs] 新增 API 诊断：协议与 Python 示例、概率/评分解释、适用范围、输入计费、官方 URL 支持差异及未确认能力。(local)
-- [docs] [docs] Add the API diagnosis with protocol, Python example, probability/score interpretation, use cases, input pricing, official URL-support conflict, and unresolved capabilities. (local)
-- [docs] [docs] 新增 PAOS 架构适配分析：依据八组文档与当前源码，给出 11 类候选功能、保留职责、插件/provider 接入、Agent loop 失败语义及四阶段验证。(local)
-- [docs] [docs] Add PAOS fit analysis grounded in eight documentation groups and current code, covering 11 candidate functions, retained responsibilities, provider/plugin integration, Agent loop failure semantics, and four validation stages. (local)
-- [docs] [docs] 明确 select_recovery 有限策略选择可部分替换，propose_replan 完整图生成保留；held-entity 事实链问题不能由分类 API 修复；continuation 当前有条件开放刷新 Query。(local)
-- [docs] [docs] Identify the bounded select_recovery choice as a partial replacement while retaining full propose_replan generation; classification cannot repair held-entity fact lineage, and current continuation conditionally allows refresh Queries. (local)
-- [docs] [chore] 最近五条更新为 v13.0.0、v12.10.15、v12.10.14、v12.10.13、v12.10.12，完整条目与月度归档一致；原 v12.10.11 继续保留在 part2。(local)
-- [docs] [chore] Roll the latest five entries to v13.0.0, v12.10.15, v12.10.14, v12.10.13, and v12.10.12 with complete archive-identical records; preserve v12.10.11 in part2. (local)
-
-### 文件变更详情 / File Changes
-
-| 文件 / File | 精确行号 / Exact Lines | 操作与摘要 / Operation and Summary |
-| --- | --- | --- |
-| `docs/diagnostics/gpt-6-luna-decisions-api-usage-20261009.md` | L1-L182 | 新增 / Add API usage diagnosis and sources |
-| `docs/forge/GPT6_LUNA_DECISIONS_PAOS_FIT_ANALYSIS_20261009.md` | L1-L349 | 新增 / Add architecture fit, replacement matrix, and phased plan |
-| `changelog/2026-10_part3.md` | L3-L70 | 新增本版本双语完整记录 / Add this complete bilingual record |
-| `CHANGELOG.md` | L9-L76；末尾移出旧 fifth entry / remove prior fifth entry at tail | 更新完整最近五条 / Update complete latest five |
-
-### 关键内容 Diff / Key Content Diff
-
-```diff
-# docs/diagnostics/gpt-6-luna-decisions-api-usage-20261009.md: absent → new
-+# GPT-6 Luna Decisions API 使用诊断
-+Decisions API 面向高频、低延迟、答案空间明确的语义判断。
-+当前为 public beta，只支持 gpt-6-luna，专用端点 POST /v1/decisions。
-# docs/forge/GPT6_LUNA_DECISIONS_PAOS_FIT_ANALYSIS_20261009.md: absent → new
-+# GPT-6 Luna Decisions API：PAOS 架构适配与替换分析
-+首个具体替换点：select_recovery 的 stop/replay/replan 模型选择。
-+保留 propose_replan、Coordinator、Gateway、Evidence、Verifier 与晋升职责。
-# CHANGELOG.md: latest complete entries
--v12.10.15 / v12.10.14 / v12.10.13 / v12.10.12 / v12.10.11
-+v13.0.0 / v12.10.15 / v12.10.14 / v12.10.13 / v12.10.12
-```
-
-### 验证 / Validation
-- [docs] [chore] 两份文档的 UTF-8、Markdown fence、本地链接、引用文档与测试路径、Python 示例语法检查通过；最近五条与月度归档全文一致，git diff --check 通过。(local)
-- [docs] [chore] UTF-8, Markdown fences, local links, referenced docs/test paths, and Python example syntax passed; the latest five entries match their monthly archives in full, and git diff --check passed. (local)
-- [docs] [chore] 未运行代码回归、付费 benchmark 或现场 Query/Action；文档中的后续测试命令使用已存在路径，不作为本轮执行结果。(local)
-- [docs] [chore] No code regressions, paid benchmark, or live Query/Action ran; future test commands name existing files and are not reported as executed. (local)
-
-### Git 提交 / Git Commit
-- Branch: `feature/planning-loop`
-- Commit: `ece4f5f`（诊断与架构适配分析 / diagnosis and architecture fit analysis）
-- Source inspected: `e76506c`
-- 仅 stage 本轮四个文件，保留已有未跟踪工作内容 / Stage only these four files and preserve pre-existing untracked work.

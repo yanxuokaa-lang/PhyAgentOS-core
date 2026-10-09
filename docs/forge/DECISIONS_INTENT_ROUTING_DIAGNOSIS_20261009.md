@@ -1,7 +1,7 @@
 # Decisions API：PAOS 会话入口意图识别与路由诊断
 
-日期：2026-10-09。已提交源码参考：`9880080`，分支 `feature/planning-loop`。
-工作区另有进行中的 v13.0.2 修改；本文不修改或评价该轮运行代码。
+日期：2026-10-09。初次诊断源码参考：`9880080`，分支 `feature/planning-loop`。
+v13.0.4 在 `c14f2a5` 基础上修订实验边界；v13.0.2 已提交，本轮不修改或评价其运行代码。
 
 ## 1. 结论与优先级
 
@@ -22,8 +22,10 @@ Decisions 判断用户当前想做什么，以及应进入哪条现有路径；G
 例如“继续”在当前任务已暂停时可指向 resume，在等待用户回答时可能没有补齐澄清条件，
 没有当前任务时也不足以确定继续对象。只分类一句裸文本，无法验证这种状态依赖能力。
 
-System 1 的输入应包含最新用户消息、相关短对话、当前任务摘要、待回答问题和当前可用
-处理能力。状态由程序提供；模型解释文本与状态之间的关系。
+System 1 的输入应包含最新用户消息、相关短对话、当前任务摘要、待回答问题和固定结构的
+能力状态。能力状态只表达 `has_current_task`、`task_status`、`pending_clarification`、
+`read_status` 与 pause/resume/stop 可用性，避免逐样本写出预期 route 的能力描述。固定的全量
+候选说明不构成标签泄漏；状态由程序提供，模型解释文本与状态之间的关系。
 
 ## 3. Laya / Jev 应用提供了哪些依据
 
@@ -87,6 +89,12 @@ flowchart TD
 
 图是后续架构方向。当前能力验证只保留输入、System 1 调用与结果记录，不连任何下游路径。
 
+若后续进入集成讨论，System 1 输出仍只是一次入站消息的路由提议：显式命令先走现有确定性
+处理；每个入站回合最多做一次入口判断；System 2 接收原始消息、相关上下文与状态，而不是只
+接收一个 route 标签；Decision → System 2 后不再次回到 Decision，避免形成无状态递归路由。
+任何 confidence、概率或简单路径标签都不能创建任务、回答澄清、控制任务、选择 Runtime、
+调用 Tool 或结束 AgentLoop。
+
 建议优先识别处理路径，再考虑 Skill 路由与节点 Tool 路由。
 开始就把全部 Tool、所有参数和完整 Skill 文档塞进一次分类，会混淆入口识别与执行选参。
 
@@ -109,10 +117,15 @@ flowchart TD
 
 ## 7. 对独立验证的要求
 
-- 输入来自手工场景和明确选择的只读样本；避免调用 `_process_message()` 创建或修改任务。
-- 仅调用 Decisions endpoint；输出意图、路由、概率和 confidence，不执行 handler。
+- 输入优先使用 synthetic 场景；任务 ID 使用不会命中真实记录的 synthetic namespace。选用
+  真实消息前先做人工选择与脱敏，不保存凭据、私有任务正文或鉴权 header。
+- standalone runner 不导入 AgentLoop、Coordinator、Gateway、Runtime 或 PAOS 写连接，只
+  调用配置中的 Decisions endpoint；输出意图、路由、概率和 confidence，不执行 handler。
 - 重点覆盖状态依赖、等待澄清、否定/引用、多意图、复杂分析和无活动任务。
-- 类别定义与人工标签作为评估对象；程序状态检查不能掩盖模型原始错误。
+- evaluation 标签在 API 调用前完成独立复核与争议裁决；类别定义和人工标签作为评估对象，
+  程序的一致性检查只报告矛盾，不改写模型原始答案。
+- 一个逻辑样本使用稳定 run/case/request ID；transport attempt 单独编号，timeout 重试不产生
+  第二个基础预测，也不因预测错误而重试。
 - 当前方案、配置、provider、Skill、Runtime 与部署保持原状。
 
 ## 8. 资料

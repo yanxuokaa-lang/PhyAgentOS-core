@@ -1,90 +1,173 @@
 # Decisions API：会话入口意图与路由的独立能力验证方案
 
-日期：2026-10-09。状态：方案已写，样本集、runner 与付费 API 实验尚未实施。
+日期：2026-10-09。状态：方案完成七维 Review 修订；样本集、runner 与付费 API 实验尚未实施。
 诊断依据：[入口路由诊断](DECISIONS_INTENT_ROUTING_DIAGNOSIS_20261009.md)。
-目标模型：用户将提供的 GPT-6 Luna Decisions API；具体 endpoint 与访问能力以届时提供的信息为准。
+目标模型：用户将提供的 GPT-6 Luna Decisions API；具体 endpoint、鉴权和响应协议以实际提供信息为准。
 
-## 1. 要回答的问题
+## 1. 验证问题与结论边界
 
-这次验证回答：给定用户消息、相关短对话和当前任务状态，Decisions API 能否正确识别
-意图，并判断应进入简单处理、澄清回答、普通对话或复杂理解路径。
+本实验回答一个问题：给定用户消息、相关短对话和固定结构的当前任务状态，Decisions API
+能否正确识别用户意图，并判断应进入状态读取、任务控制、澄清回答、普通对话或 System 2。
 
-只评估分类与路由建议。现有 PAOS 方案不被替换，实验不注册 provider、不调用 AgentLoop、
-Coordinator 控制方法、Skill activation、Gateway、Runtime 或任何真实 handler。
-路由中的 `task_control` 仅是记录下来的标签。
+实验只评估预测。现有 PAOS 入口、AgentLoop、Coordinator、Skill、Gateway、Runtime 和
+handler 保持原状；任何 route 都只写入结果文件，不执行任务、控制、澄清、工具调用或模型
+回退。实验成功只说明该模型在本数据定义下具有候选路由能力，不授权接入或替换现有链路。
 
-当前阶段不比较 GPT、Jev、Laya，也不生成新计划、抽取任意参数或执行任务。
-用人工标签验证 Decisions 本身，减少额外模型调用与解释成本。
+本轮不比较 GPT、Jev、Laya，不生成计划、抽取执行参数或测试线上节省。结果必须同时报告
+准确性、简单路径覆盖、System 2 回退比例、状态利用、稳定性和 API 可用性，避免“全部送
+System 2”被误读为安全且有效的路由。
 
-## 2. 最小实验形态
+## 2. 最小实验架构与所有权
 
 ```text
-本地标注样本：消息 + 相关对话 + 任务状态
-  → 独立请求构造器：只取输入字段
-  → Decisions API：intent 和 route 两个独立 choice 问题
-  → 保存原始 answers、耗时与用量
-  → 本地比较人工标签，生成统计与错误清单
+人工标注样本
+  message + recent_turns + capability_state
+        │
+        ▼
+standalone request builder ──► Decisions backend adapter ──► endpoint
+        │                              │
+        │                              └─ raw request/response/attempt metadata
+        ▼
+local scorer
+  ├─ intent/route metrics
+  ├─ compatibility/state checks（只报告，不改答案）
+  └─ errors/report
 ```
 
-每条样本一请求；两个问题都直接依据同一输入，不依赖对方答案。
-官方文档要求依赖前一答案的判断分开请求，本方案不假设请求内存在顺序推理。
-暂不加 complexity score：最小实验先看直接 route 是否能把复杂问题送入 System 2。
+| 组件 | 拥有的职责 | 明确不拥有 |
+| --- | --- | --- |
+| dataset | 原始输入、人工标签、split、family 与标注理由 | 模型输出、运行时状态 |
+| request builder | 固定序列化输入和两题定义 | PAOS 会话读取、handler 执行 |
+| backend adapter | HTTP/SDK 调用、响应原样保存、provider 字段归一化 | 标签解释、重写预测 |
+| scorer | 标签对比、兼容性与指标计算 | API 重试、自动修复模型答案 |
+| operator | 提供 endpoint/key、启动实验、审阅报告 | 用模型结果回改 evaluation 标签 |
 
-## 3. 输入与标签
+standalone runner 不导入 `PhyAgentOS.agent`、Coordinator、Gateway、Runtime 或 PAOS 写连接。
+它只读取实验目录内的样本/config，并只向配置的 Decisions endpoint 发出请求。
 
-每条样本包含以下普通 JSON 字段。标签存本地，构造 API input 时不发送它们。
+## 3. 输入、状态与标签契约
 
-| 字段 | 内容 |
-| --- | --- |
-| `case_id`、`family_id`、`split` | 样本主键、语义家族、development/evaluation |
-| `message` | 最新用户原话 |
-| `recent_turns` | 仅与当前指代或澄清有关的短对话 |
-| `task_state` | 有无当前任务、status、简短目标、待回答问题、暂停标志 |
-| `available_handlers` | 此场景真实提供的处理能力；常规回退路径也列出 |
-| `gold_intent`、`gold_route` | 人工意图与处理路径标签 |
-| `gold_reason`、`tags` | 标注理由与状态/否定/引用/多意图等标签，仅供评估 |
+### 3.1 数据集字段
 
-状态用手工构造的 PAOS 场景先行验证，不访问活动任务数据库。
-后续若加入真实消息，只导出用户明确选定的脱敏只读记录，并单独报告其来源与结果。
-人工补写的状态标为 synthetic，不当成现场观测。
+每条 JSONL 样本包含：
 
-### 3.1 intent：七个类别
+| 字段 | 内容 | 是否发送给 API |
+| --- | --- | --- |
+| `case_id`、`family_id`、`split` | 样本主键、语义家族、development/evaluation | 否 |
+| `message` | 最新用户原话 | 是 |
+| `recent_turns` | 仅保留当前指代或澄清所需的短对话 | 是 |
+| `capability_state` | 固定 schema 的任务与可用能力状态 | 是 |
+| `gold_intent`、`gold_route` | 人工单值标签 | 否 |
+| `gold_control_operations` | pause/resume/stop 的人工标注数组，无正向控制要求时为空；混合消息也标 | 否 |
+| `gold_reason`、`tags` | 标注理由与状态/否定/引用/多意图标签 | 否 |
+| `annotation_status` | drafted/reviewed/adjudicated | 否 |
+| `source_kind` | synthetic 或 selected_redacted_real | 否 |
+
+`gold_*`、标注理由、split 名称和 `annotation_status` 不得进入 API input。请求构造测试必须验证
+这一点；程序状态检查也不能覆盖或掩盖模型原始错误。
+
+### 3.2 provider-neutral `capability_state`
+
+移除逐样本自由编写的 `available_handlers`。若描述按预期答案写成“该请求应交复杂理解”，
+会把标签写进输入；固定的全量候选说明本身不构成泄漏。所有 provider 使用同一事实结构：
+
+```json
+{
+  "has_current_task": true,
+  "task_ref": "synthetic:task:0001",
+  "task_status": "paused",
+  "task_goal_summary": "整理桌面物品",
+  "pending_clarification": {
+    "present": false,
+    "question_summary": null
+  },
+  "capabilities": {
+    "read_status": true,
+    "pause": false,
+    "resume": true,
+    "stop": true
+  }
+}
+```
+
+字段不描述“应该进入哪条路径”。固定约束如下：
+
+- 本实验的 `has_current_task` 表示会话有确定的当前关联任务，包括可查询的终态任务，不表示
+  该任务正在执行。未来 adapter 应从会话关联投影，不直接复制 PAOS active lifecycle 字段。
+- `has_current_task=false` 时，`task_ref=null`、`task_status=none`，四项 task capability 为 false，
+  pending clarification 为 false。终态任务仅可按场景提供 read_status，控制能力全部为 false。
+- `pending_clarification.present=true` 时，`question_summary` 非空；本轮场景中 task status 为
+  `waiting_for_user`。
+- `task_ref` 只使用 `synthetic:` namespace；不引用当前 PAOS 数据库中的真实 task ID。
+- `task_status` 只允许 `none/executing/paused/waiting_for_user/terminal`。
+- capability 表示该场景是否具备具体能力，不表示用户是否请求它，也不提供 route 名称。
+- `task_goal_summary` 只保留理解指代所需信息，不复制私有任务正文。
+- state 先按场景事实编写，再标消息；同一场景中的控制请求、否定、引用与问候共享同一 state。
+  不为使某条 gold 成立而按消息开关 capability；task_ref 为不含场景/route 词的普通合成编号。
+
+状态 schema 与 route policy 作为普通版本化 JSON 配置保存，供 Luna、Laya、Jev 或后续 backend
+复用；不为本实验增加 hash、冻结 contract 或发布 gate。
+
+### 3.3 intent：七个类别
 
 | 值 | 含义 |
 | --- | --- |
 | `status_query` | 查询当前任务进度、状态或结果 |
-| `task_control` | 明确要求控制当前任务，如暂停、恢复、停止 |
+| `task_control` | 明确要求暂停、恢复或停止当前任务 |
 | `clarification_answer` | 回答当前明确的待回答问题 |
 | `new_task` | 提出新的执行目标或任务要求 |
-| `analysis` | 解释、比较、诊断、讨论或计划分析 |
+| `analysis` | 请求解释、比较、诊断、讨论或计划分析 |
 | `conversation` | 问候与简单对话，不请求执行任务 |
-| `mixed_or_unclear` | 多个独立意图，或当前信息不足以确定意图 |
+| `mixed_or_unclear` | 多个独立正向意图，或信息不足以确定意图 |
 
-意图表示用户要求，未必表示当前能处理。例如用户明确要求恢复任务，即使没有活动任务，
-也可能属于 task_control；因恢复对象缺失，route 应升级处理。
+意图描述用户要求，不表示当前一定可处理。例如明确要求恢复但没有活动任务，intent 仍可为
+`task_control`，route 应为 `system2`。否定、引用或解释一个操作词不自动形成控制意图。
 
-### 3.2 route：五个处理路径
+### 3.4 route：五个语义路径
 
-| 值 | 选择条件 |
+| 值 | 单值标注条件 |
 | --- | --- |
-| `status_read` | 确定在查询当前任务，且状态可由已有读取能力提供 |
-| `task_control` | 要求明确、当前控制对象确定，场景提供相应控制能力 |
-| `clarification_reply` | 当前有待回答问题，消息确实在回答该问题 |
-| `conversation` | 简单对话，不需要处理任务或复杂理解 |
-| `system2` | 新目标、复杂分析、多意图、语义歧义、缺少控制对象或没有匹配处理路径 |
+| `status_read` | intent 为 status_query，且有当前任务和 read_status 能力 |
+| `task_control` | intent 为 task_control，控制对象明确，且请求的具体 capability 可用 |
+| `clarification_reply` | intent 为 clarification_answer，且存在当前待回答问题 |
+| `conversation` | intent 为 conversation；该实验路径始终可用 |
+| `system2` | 新任务、分析、多意图、歧义、缺少对象、能力不可用或其他无法直接匹配的情况 |
 
-`system2` 是后续复杂理解/澄清入口；实验仅记录标签，不调用 GPT。
-这五类是实验中的语义路径，不声明 PAOS 已有同名 handler。
-`available_handlers` 用能力描述列明状态读取、暂停、恢复等具体条件；选择 task_control
-仍须符合具体控制需求，不能因“有停止能力”就把暂停请求视为可直接处理。
+每条样本只有一个 `gold_route`。出现竞争路径时按以下顺序标注：
 
-多意图样本暂归 system2，用来发现单路由的表达边界。包含明确停止要求的混合消息仍单独
-报告其控制意图；这一实验分类约定不作为未来在线延迟或忽略用户停止要求的依据。
+1. 明确 `/stop`、`/restart` 等现有确定性命令不进入本实验。
+2. 两个独立正向要求标为 `mixed_or_unclear/system2`；否定约束不算第二个正向要求。
+3. 单一 status/control/clarification 意图只有在对象和相应 capability 都满足时进入简单路径。
+4. 简单问候进入 conversation；需要解释、知识分析或制定方案的对话进入 analysis/system2。
+5. 仍无法单值标注的样本只留在 development；evaluation 前必须裁决或移除。
 
-## 4. 样本规模与覆盖
+### 3.5 intent/route 兼容矩阵
 
-建议第一轮 80 条：20 条 development 用于修正题目与类别定义，60 条 evaluation 用于
-独立报告。中文为主；本轮结论限于会话入口文字输入。
+两个 choice 问题仍独立读取同一输入，但 scorer 使用配置化矩阵报告矛盾：
+
+| 预测 intent | 可兼容 route | 附加状态条件 |
+| --- | --- | --- |
+| `status_query` | `status_read`、`system2` | status_read 需要 active task + read_status |
+| `task_control` | `task_control`、`system2` | task_control 需要对应 operation capability |
+| `clarification_answer` | `clarification_reply`、`system2` | clarification_reply 需要 pending clarification |
+| `new_task` | `system2` | 无 |
+| `analysis` | `system2` | 无 |
+| `conversation` | `conversation` | 无 |
+| `mixed_or_unclear` | `system2` | 无 |
+
+兼容矩阵与 capability 约束分别计算。`intent=task_control, route=system2` 可以是正确组合，因为
+控制对象或能力可能缺失；`route=task_control` 但对应 pause/resume/stop capability 为 false 则是
+unsupported simple-route prediction。所有矛盾写入报告，原始答案不被程序改写。
+对应 operations 从人工只读标注 `gold_control_operations` 获取，不从 intent/route 两题臆造。
+未请求控制且数组为空时，route=task_control 计 control false positive；仅当所有控制能力均不可用
+时同时计 unsupported。请求多项控制却选单一路由仍计混合意图错误；模型参数选择留给后续实验。
+
+## 4. 样本、标注与 split
+
+### 4.1 规模与场景覆盖
+
+第一轮共 80 条：20 条 development 用于修正题目与类别定义，60 条 evaluation 用于独立
+报告。中文为主，结论限于会话入口文字输入。
 
 | 场景家族 | Development | Evaluation | 合计 |
 | --- | ---: | ---: | ---: |
@@ -96,218 +179,371 @@ Coordinator 控制方法、Skill activation、Gateway、Runtime 或任何真实 
 | 普通对话与未匹配请求 | 3 | 7 | 10 |
 | 合计 | 20 | 60 | 80 |
 
-表按场景分组，不强求每个 intent 数量相同。每个标签在 evaluation 中应有可报告的样本；
-支持数写入指标，避免只给总体准确率。
+每个 intent 和 route 在 evaluation 中必须有支持数；若某类样本不足，报告实际支持数，不用
+总体准确率替代逐类结果。同义改写、同一句不同状态、否定/引用变体共享 `family_id`，整个
+family 进入同一 split，避免近重复泄漏。
 
-同义改写、同一句不同状态、否定/引用变体共用 family_id，整组进入同一 split。
-不能把“暂停一下”放 development，再把“先暂停一下”当独立 evaluation。
-development/evaluation 的区别是用途，不需要新增哈希、冻结机制或发布 gate。
+### 4.2 标注与裁决
 
-### 4.1 应包含的关键对照
+1. 主标注者按本方案给 80 条样本写标签与理由。
+2. development 可在题目修改过程中同步修订，保留修订记录。
+3. evaluation 由第二名审阅者在看不到模型输出时独立复核 intent、route 和 control operation。
+4. 分歧在第一次 evaluation API 调用前裁决；记录初始一致数、分歧数、裁决结果和移除样本。
+5. 模型输出不得用于修改本次 evaluation 标签；发现 taxonomy 问题时，结束当前 run，并在
+   新 dataset version 中修订，另备未参与修改的 evaluation 样本。
 
-| 消息 | 状态/相关上下文 | 预期路径 |
+80 条是可行性样本，不证明线上可靠性。标注一致性、支持数和全部错误必须与准确率一起报告。
+
+### 4.3 关键对照
+
+| 消息 | 状态/上下文 | gold intent / route |
 | --- | --- | --- |
-| “继续” | 有明确已暂停任务，提供 resume | task_control |
-| “继续” | 没有当前任务，也无相关历史 | system2 |
-| “红色那个” | 正在问“选红色还是蓝色目标？” | clarification_reply |
-| “红色那个” | 当前无澄清问题，指代对象不明 | system2 |
-| “现在做到哪一步？” | waiting_for_user，但消息没有回答待回答问题 | status_read |
-| “不要停，查一下进度” | 有任务与状态读取能力 | status_read |
-| “文档里的‘停止任务’是什么意思？” | 在讨论文档 | system2 |
-| “把这些东西分类放好” | 新执行目标 | system2；intent=new_task |
-| “分析一下怎么分类比较合理” | 请求分析 | system2；intent=analysis |
+| “继续” | paused，resume=true | task_control / task_control |
+| “继续” | 无当前任务，也无可解释其含义的历史 | mixed_or_unclear / system2 |
+| “恢复当前任务” | 无当前任务 | task_control / system2 |
+| “红色那个” | 正在问“选红色还是蓝色？” | clarification_answer / clarification_reply |
+| “红色那个” | 无待回答问题，指代不明 | mixed_or_unclear / system2 |
+| “现在做到哪一步？” | waiting_for_user，read_status=true | status_query / status_read |
+| “不要停，查一下进度” | active，read_status=true | status_query / status_read |
+| “文档里的‘停止任务’是什么意思？” | 讨论文档 | analysis / system2 |
+| “把这些东西分类放好” | 新执行目标 | new_task / system2 |
+| “分析一下怎么分类比较合理” | 请求分析 | analysis / system2 |
+| “停止任务并分析原因” | active，stop=true | mixed_or_unclear / system2 |
 
-“不要停，查一下进度”的负面约束是对当前行为的限制，不按两个待执行正向操作标为 mixed。
-真正的两个正向要求，如“停止任务并分析原因”，按 mixed_or_unclear/system2 单独报告。
-无法一致标注的样本先在 development 澄清类别；evaluation 的争议记录单列，不能挑选
-最符合模型输出的标签。
+## 5. Backend、API 与问题定义
 
-## 5. API 请求约定与连通检查
+### 5.1 provider-neutral config
 
-公开 OpenAI 协议为 `POST /v1/decisions`，model 为 `gpt-6-luna`，questions 为命名数组。
-若用户提供代理服务，先确认完整 endpoint、鉴权方式、模型名与 questions/answers 协议；
-按实际协议处理，不假设 OpenAI-compatible chat endpoint 就支持 Decisions。
+每次 run 保存以下配置：
 
-建议题目 wording：
+```json
+{
+  "decision_backend": "openai_decisions",
+  "endpoint_kind": "openai_v1_decisions",
+  "endpoint_host": "api.openai.com",
+  "model_requested": "gpt-6-luna",
+  "response_schema_version": "observed-at-smoke",
+  "dataset_version": "intent-routing-v1",
+  "prompt_version": "intent-route-v1",
+  "route_policy_version": "route-policy-v1",
+  "timeout_seconds": 30,
+  "max_transport_retries": 2
+}
+```
 
-- intent：依据最新用户消息和相关上下文识别意图；区分操作请求与否定、引用、讨论。
-- route：依据原始消息、当前 task_state 和 available_handlers 直接选处理路径；需要新目标
-  理解、分析、缺少对象或无法明确匹配时选 system2；不要执行任何操作。
+`endpoint_host` 记录主机名，不保存完整密钥、鉴权 header 或含秘密的 URL query。若用户提供
+代理或兼容服务，替换 backend adapter 与 endpoint_kind，保持 dataset、标签和 scorer 不变。
+adapter 保存原始响应，再归一化 answer type、choice、probabilities、confidence、refusal 与 usage；
+provider 未返回的字段记为 unavailable，不能伪造 OpenAI 字段或套用同一 confidence 语义。
 
-选项含义采用上面两张表，两个问题分别给完整描述。route 不引用 intent 的返回值。
+### 5.2 OpenAI Decisions 官方协议
 
-以下是后续连通检查的两题请求示例；完整评估使用相同题型并逐条替换 input。
+按 2026-10-09 官方文档，OpenAI Decisions 使用 `POST /v1/decisions`，请求包含 `model`、
+共享 `input` 和命名 `questions`；choice 返回所选值、各选项 probabilities 与 confidence，
+也可能返回 refusal。独立问题可放在同一 request；依赖前题答案的判断应拆成不同 request。
+本实验的 intent 和 route 都直接读取原始输入，不依赖对方答案，因此保持一请求两题。
+
+若实际服务与官方协议不同，先用 5 条 development smoke 记录真实 schema，再实现薄 adapter；
+不得仅因 URL 或 chat 接口兼容就假定支持 Decisions。
+完整请求 URL 从 `DECISIONS_API_URL` 环境变量读取并与 config 主机名对照，密钥从
+`DECISIONS_API_KEY` 读取；两者不打印。SDK/HTTP 库自带 retry 关闭，由 runner 单独管理 attempts。
+两题有效应答要求：intent/route 名称各恰好一次、type=choice、所选值属于各自选项。
+若只有一题有效，保存该题并报告 per-question availability，基础 joint 有效口径视为无效；
+refusal、缺题、重复题名、未知值和 schema failure 不自动重试。
+
+### 5.3 两题请求示例
+
+完整评估将同一结构稳定序列化为 input。示例中的 `capability_state` 没有 route 描述：
 
 ```json
 {
   "model": "gpt-6-luna",
-  "input": "最新用户消息：现在做到哪一步了？\n当前任务：存在，状态 executing，目标为物品分类。\n当前可用处理能力：读取当前任务状态；复杂理解；普通对话。\n待回答问题：无。",
+  "input": "{\"message\":\"现在做到哪一步了？\",\"recent_turns\":[],\"capability_state\":{\"has_current_task\":true,\"task_ref\":\"synthetic:task:0002\",\"task_status\":\"executing\",\"task_goal_summary\":\"整理物品\",\"pending_clarification\":{\"present\":false,\"question_summary\":null},\"capabilities\":{\"read_status\":true,\"pause\":true,\"resume\":false,\"stop\":true}}}",
   "questions": [
     {
       "type": "choice",
       "name": "intent",
-      "instructions": "依据最新用户消息和相关上下文识别用户意图，区分操作请求与否定、引用、讨论。多个独立意图或无法确定时选 mixed_or_unclear。",
+      "instructions": "依据最新用户消息、相关短对话和任务状态识别用户意图。区分正向操作请求与否定、引用、讨论；多个独立正向意图或无法确定时选 mixed_or_unclear。",
       "choices": [
         {"value": "status_query", "description": "查询当前任务进度、状态或结果。"},
-        {"value": "task_control", "description": "明确要求暂停、恢复或停止当前任务等控制。"},
+        {"value": "task_control", "description": "明确要求暂停、恢复或停止当前任务。"},
         {"value": "clarification_answer", "description": "回答当前明确的待回答问题。"},
         {"value": "new_task", "description": "提出新的执行目标或任务要求。"},
         {"value": "analysis", "description": "请求解释、比较、诊断、讨论或计划分析。"},
         {"value": "conversation", "description": "问候与简单对话，不请求执行任务。"},
-        {"value": "mixed_or_unclear", "description": "多个独立意图或信息不足以确定意图。"}
+        {"value": "mixed_or_unclear", "description": "多个独立正向意图或信息不足以确定意图。"}
       ]
     },
     {
       "type": "choice",
       "name": "route",
-      "instructions": "根据用户消息、当前状态和可用处理能力选择处理路径。需要新目标理解、分析、缺少对象或无法明确匹配时选 system2。只判断，不执行操作。",
+      "instructions": "根据原始消息、相关短对话和 capability_state 选择处理路径。只有对象明确且对应 capability 为 true 时选择简单状态、控制或澄清路径；新任务、分析、多意图、歧义、对象缺失或能力不可用时选择 system2。只判断，不执行操作。",
       "choices": [
-        {"value": "status_read", "description": "查询当前任务，已有读取能力能提供状态。"},
-        {"value": "task_control", "description": "明确控制当前任务，且对象和所需控制能力都可用。"},
-        {"value": "clarification_reply", "description": "当前有待回答问题，用户消息在回答该问题。"},
+        {"value": "status_read", "description": "查询当前任务，且 active task 与 read_status 能力可用。"},
+        {"value": "task_control", "description": "明确控制当前任务，且请求的具体控制能力可用。"},
+        {"value": "clarification_reply", "description": "存在待回答问题，用户消息确实在回答该问题。"},
         {"value": "conversation", "description": "简单对话，不处理任务或复杂问题。"},
-        {"value": "system2", "description": "复杂理解、新任务、分析、多意图、歧义或缺少必要对象。"}
+        {"value": "system2", "description": "新任务、分析、多意图、歧义、对象缺失或能力不可用。"}
       ]
     }
   ]
 }
 ```
 
-后续实施时，将该 JSON 保存为独立实验的 smoke-request.json；由操作者设置完整 endpoint
-和 API key，再运行以下命令。该文件与环境变量本轮尚未创建。
-
-```bash
-curl --silent --show-error --fail-with-body \
-  --request POST "$DECISIONS_API_URL" \
-  --header "Authorization: Bearer $DECISIONS_API_KEY" \
-  --header "Content-Type: application/json" \
-  --data-binary @smoke-request.json
-```
-
-API key 仅用于请求鉴权，不进入样本、config、request/response 日志或 Git。
-可用标准 HTTP 调用完成验证，当前项目无需升级 openai 依赖；若采用 SDK，应满足官方
-文档要求的 Python openai 3.26.0 或更新版本，并置于独立实验环境。
+API key 只从环境变量读取，不进入样本、config、requests/responses 日志或 Git。标准 HTTP 足以
+完成验证；若采用 SDK，使用官方文档要求的最低版本或更新版本，并记录实际 SDK 版本。
 
 ## 6. 分阶段执行
 
-### A. 准备与标注
+### A. 样本与静态校验
 
-建立 80 条样本，人工先标注，记录规则与歧义。样本审阅由用户或指定审阅者进行；模型
-输出不作为人工标签来源。先检查输入字段与标签隔离、家族分组和数量。
+- 完成标注、独立复核和 evaluation 裁决。
+- 校验 schema、state invariant、family split、类别支持数和 gold 字段不进入请求。
+- 检查 synthetic task namespace、脱敏状态和无凭据文件。
+- 保存 dataset/prompt/route-policy 的普通版本号和 runner commit。
 
-请求构造只序列化 message/recent_turns/task_state/available_handlers。
-工具描述、历史消息和用户文本均为待分析数据，不能覆盖 route instructions。
+### B. 五条 development smoke
 
-### B. 连通与 development
+从 development 选择覆盖五种 route 的 5 条样本，检查 endpoint、鉴权、两题命名、answer type、
+choice、probabilities、confidence、refusal、usage、HTTP 状态和 provider request ID。smoke 使用的
+5 条计入 development 20 条，不重复调用以凑数。
+smoke 使用 phase=development，并在本地记录 smoke 标志；最终版本不变时剩余只跑 15 条。
 
-从 development 中选 5 条做最小连通检查，再补齐剩余 15 条。
-检查 named answers、choice、概率、confidence、refusal/HTTP error 和实际用量。
-请求已经覆盖的 5 条无需为了凑满 20 再调用一遍。
+若返回 schema 与预期不同，只修改 backend adapter；若题目或类别定义有问题，记录新
+prompt_version。任何题目修订都只使用 development 结果。
 
-仅在 development 修正题目、选项描述与输入表达。最后使用的 wording 记录为一个普通
-prompt_version；若修订，使用新版本并明确哪些 development 结果来自旧版本。
-进入 evaluation 前，该版本至少完整覆盖 20 条 development 样本。
+### C. 完成 20 条 development
 
-### C. 独立 evaluation
+用候选最终 wording 覆盖全部 20 条 development，分析类别混淆和 confidence 分布。进入
+evaluation 前记录最终 dataset/prompt/route-policy/backend config；旧 development 结果保留并
+标明版本，不混入最终版本统计。
 
-按最终题目对 60 条 evaluation 每条调用一次，顺序调用便于测单请求耗时；使用固定样本
-顺序，记录 request index。evaluation 标签只进入本地 scorer。
+### D. 独立运行 60 条 evaluation
 
-测试结果揭示问题后保存错误分析。本次 evaluation 不用于改提示词后继续声称独立测试；
-修改后作为新实验，后续另备未用于修改的样本。
+按固定 case 顺序，每条一个逻辑 request，两个问题同请求。evaluation 标签仅由本地 scorer
+读取。运行后生成 metrics、全部错误与标注一致性报告；不能修改 prompt 后继续把同一 60 条
+称为独立 evaluation。
 
-### D. 状态利用与稳定性补充
+### E. 选做状态消融与重复稳定性
 
-基础结果可解释后，从 evaluation 中选择预先按 family_id 指定的 10 条，将 task_state
-和与它绑定的历史/待回答问题移除，比较与完整输入的答案差异；该结果是信息消融，不
-直接评价模型在缺少事实时“应该猜对”原标签。重点看是否转为 system2。
+- 预先按 family 指定 10 条 evaluation，移除 capability_state 与绑定的 recent turns，比较完整
+  与消融输入。消融阶段使用缺少状态的输入变体，不填 false 冒充“无任务”，不参与基础 schema/
+  capability 评分；问题指令明确“状态未知时不能确认任务简单路径”。消融不要求匹配原 gold，
+  重点观察是否转向 system2。
+- 预先选择 10 条明确/歧义样本，各额外调用 2 次，与基础调用组成三次预测，计算 route/intent
+  不一致率和概率变化。
+- 10 次消融和 20 次重复独立报告，不并入基础 60 条准确率。
 
-另选 10 条明确/歧义样本，各额外调用 2 次，比较三次答案一致性。
-这 30 次额外请求单独报告，不混入基础 60 条准确率。
-如果基础表现已经显示类别不清或输入不足，先分析原因，暂不追加调用。
+## 7. 恢复、重试与幂等
 
-## 7. 记录与统计
+一个样本在一个 phase 中只有一个逻辑预测：
 
-原始预测和后处理结果分开保存。第一次有效 answers 用于基础统计；不因为预测错误
-重试。refusal、timeout、HTTP failure 独立计数；可恢复 transport 重试记录每次 attempt，
-其总耗时计入端到端耗时。
+| 字段 | 作用 |
+| --- | --- |
+| `run_id` | 唯一输出目录对应的实验运行 |
+| `case_id` | 数据集样本身份 |
+| `logical_request_id` | run + phase + case + repeat_index 的稳定请求身份；基础 repeat_index=0 |
+| `attempt_index` | 从 0 开始的 transport 尝试序号 |
+
+重试规则：
+
+- 只对连接错误、timeout、HTTP 408/429/5xx 重试，最多额外 2 次，并遵守 `Retry-After`。
+- HTTP 4xx（408/429 除外）、schema error、refusal 和有效但错误的预测不重试。
+- timeout 可能意味着服务端已完成，但 API 调用无 PAOS 副作用；后续 attempt 仍属于同一个
+  `logical_request_id`，不能作为第二个基础预测。
+- 按 attempt_index 选择第一个完整且 schema-valid 的两题响应用于基础统计；所有 attempt 原样
+  保留，总耗时计入端到端 latency。
+- 进程恢复时，若同一 run/config/case 已有选中的有效响应则跳过；已耗尽重试的 terminal failure
+  也不自动重跑。补测失败样本使用新的 supplemental run，不混入原基础指标。
+- 预测错误永远不触发重试。旧输出目录不覆盖。
+
+稳定 ID、普通版本号和完成状态已足以恢复实验；不新增 hash、冻结 baseline 或额外 gate。
+一个 run 目录中的 config/题目/数据版本和精确输入不得被 resume 改写；版本改变使用新 run。
+先写 request/attempt-start，再调用；收到响应先原子保存原始响应，再生成预测。崩溃后已有原始
+响应则离线解析；只有 start 没有 response 时记 interrupted/unknown，并消耗一个 attempt，不猜成功。
+
+## 8. 指标与收敛解释
+
+### 8.1 主要指标
 
 | 指标 | 含义 |
 | --- | --- |
-| intent accuracy / macro-F1 | 七类意图是否正确，逐类支持数与混淆矩阵 |
-| route accuracy / macro-F1 | 五类路径是否正确；同时给有效应答条件下与全部请求口径 |
-| intent+route joint accuracy | 同一样本两个结果均符合标签 |
-| control false positive | 未请求控制却预测 task_control，重点列否定与引用错误 |
-| clarification confusion | waiting_for_user 场景把查询/控制/新请求误作澄清回答 |
-| System 2 miss / excess | 应升级却走简单路径；可简单处理却全部升级 |
-| unavailable-handler selection | 标签指向当前场景不提供的具体处理能力 |
-| confidence 与正确性 | 正确/错误预测的 confidence 分布和带支持数的粗分箱 |
-| p50 / p95 latency、用量与费用 | 实际 endpoint 的请求耗时、usage 与当前计费 |
-| API availability | 有效两题应答率、refusal/error 数量与类型 |
+| intent accuracy / macro-F1 | 七类意图准确率、逐类支持数与混淆矩阵 |
+| route accuracy / macro-F1 | 五类 route；分别报告全部逻辑请求与有效应答口径 |
+| intent+route joint accuracy | 两个预测同时命中单值 gold |
+| incompatible pair rate | 预测 intent/route 不符合兼容矩阵的比例 |
+| unsupported simple-route rate | 预测简单路径但 capability_state 不支持的比例 |
+| control false positive | 未请求控制却预测 task_control，重点列否定/引用 |
+| clarification confusion | waiting_for_user 时把查询、控制或新请求误作 clarification_reply |
+| System 2 miss / excess | 应升级却走简单路径；可简单处理却升级 |
+| simple-path coverage / correctness | gold_route 非 system2 的样本中，预测也为非 system2 的比例；另报告这些简单预测的准确率 |
+| System 2 route rate | 全部样本中 route=system2 的比例 |
+| repeated-call instability | 同一输入三次 intent/route 不一致的样本比例 |
+| state-ablation transition | 完整状态与消融状态的 route 转移矩阵 |
+| confidence/probabilities | 正误分布与带支持数的粗分箱，不宣称完成校准 |
+| latency/usage/cost | p50/p95 端到端耗时、provider usage 与实际账单口径 |
+| API availability | 两题有效应答率、refusal 与 transport/schema error |
 
-80 条主要验证可行性，60 条 evaluation 的总体统计不能证明线上可靠性。
-报告实际分子/分母和全部错误，避免用稀疏分箱声称已经完成概率校准。
+`unsupported simple-route` 检查模型预测，不检查 gold 标签。例如 message 要求 resume、
+`capabilities.resume=false`，模型仍预测 task_control 时计错；gold 应为 system2。
+所有指标给分子/分母。单题 accuracy 的全量分母为该 split 全部逻辑样本，无效题计未命中；
+条件 accuracy/macro-F1 仅用该题有效答案，joint 条件口径要求两题有效。all-request macro-F1
+将缺失/refusal 作为真实类的 false negative，另报无效数，不伪造一个有效 route。
+control false positive 同时报告 intent 与 route 两种口径，分母为无正向控制请求的样本；
+System 2 miss 分母为 gold=system2，excess 分母为 gold!=system2。兼容性分母为两题均有效的
+样本；unsupported 分母为有效简单路径预测。latency 报告有效请求与全量终态请求两种口径。
 
-confidence 与 options probabilities 分开记录。OpenAI 官方文档没有给出可直接复制的
-通用校准保证；Jev/Laya 的字段含义与阈值也不能照搬。
-可在 development 选择一个升级阈值，在 evaluation 额外报告覆盖率/覆盖部分准确率；
-没有足够 development 证据时只报告分布，不强行设置阈值。
-阈值处理的分数另列，不能掩盖原始路由错误。
+### 8.2 全部回退的诊断对照
 
-本轮没有正式上线验收门槛。供人工评估的重点是：能否区分关键类别、是否利用状态、
-是否发生明显控制误判，以及 system2 回退是否吞掉几乎所有简单请求。
+以 gold=system2 支持数/60 计算“全部送 system2”会得到的 route accuracy，同时其 simple-path
+coverage 必为 0。这是针对全量回退掩盖能力不足的普通算术对照，不建立冻结 baseline 或新增
+门禁，也不增加 API 请求。
 
-## 8. 结果文件与可复查性
+一个模型即使没有 System 2 miss，只要 simple-path coverage 接近 0 或 System 2 excess 很高，就
+不能支持“可替换入口简单判断”的结论。兼容率高也不能替代逐类正确率。
 
-后续实现建议使用独立目录 `research/decision-api-intent-probe/`，只新增实验文件；
-每次输出到唯一时间目录 `out/decision-api-intent-probe/<timestamp>/`。
-本轮只写方案，这些目录中的 runner、数据与报告尚未创建。
+### 8.3 结论等级
+
+本轮不设生产上线阈值。报告按证据分为：
+
+1. `invalid_or_inconclusive`：标注/split 泄漏、有效应答不足或 schema 无法稳定解析。
+2. `capability_not_supported`：关键类别、状态对照或简单路径覆盖明显失败。
+3. `promising_for_next_validation`：各关键类别有有效证据，状态对照和简单路径覆盖成立，且
+   没有明显控制误判或不支持能力选择。
+
+第三类也只允许设计下一轮 shadow/integration proposal，不授权改变 PAOS 路由。
+
+## 9. 可观测性、结果文件与复查
+
+后续实现目录为 `research/decision-api-intent-probe/`；每次输出到唯一目录
+`out/decision-api-intent-probe/<timestamp>-<run_id>/`。本轮尚未创建 runner、样本或输出。
 
 ```text
-samples.jsonl       全部样本、人工标签、family_id 与 split
-questions.json     两题完整定义和选项描述
-config.json        实际 endpoint、model、prompt/dataset 版本、split IDs、调用设置
-requests.jsonl     精确输入、请求序号、case_id；不含鉴权 header
-responses.jsonl    原始 answers/usage、attempt 状态和耗时；不含密钥
-predictions.jsonl  提取的 intent/route、分布与 confidence
-metrics.json       指标、支持数、混淆矩阵与统计口径
-errors.md          错误样本、人工理由与错误类型
-report.md          能力结论、费用、局限与后续选择
+samples.jsonl          样本、人工标签、family/split、标注状态
+state-schema.json      capability_state schema 与 invariant
+questions.json         两题定义和选项
+route-policy.json      单值标注规则、兼容矩阵、状态约束
+config.json            backend/model/endpoint host/版本/timeout/retry
+environment.json       Python、SDK、runner commit、操作系统时间信息
+requests.jsonl         logical_request_id、精确 input、case/order；无鉴权
+attempts.jsonl         每次 transport attempt 的开始/结束、HTTP/error/latency
+responses.jsonl        原始 provider 响应；无密钥
+predictions.jsonl      归一化 intent/route/probabilities/confidence/refusal
+metrics.json           指标、支持数、混淆矩阵、统计口径
+errors.md              全部错误、人工理由与错误分类
+report.md              能力结论、成本、限制与下一步
 ```
 
-config 记录源码 commit、实验文件版本、数据来源、模型实际标识、HTTP/SDK 版本、日期、
-调用顺序、超时与重试设置；若进行了随机分组，记录 seed，否则注明按 family_id 人工分组。
-模型没有暴露 seed 或 checkpoint 时注明 unavailable，不给接口添加未支持参数。
+每次 attempt 至少记录：wall-clock start/end、monotonic duration、HTTP status、provider request
+ID（若返回）、requested/reported model、answer type/name、raw probabilities、confidence、refusal、
+usage、attempt count、exception category 和 endpoint host。错误分类区分：
 
-复查使用同一版本 samples/questions 和相同 case IDs，对比预测与错误清单。
-API beta、服务端模型更新、网络延迟及重复调用差异是主要漂移来源；旧输出不覆盖。
+- `annotation_disagreement`
+- `state_insufficient_or_invalid`
+- `intent_error`
+- `route_error`
+- `incompatible_pair`
+- `unsupported_simple_route`
+- `refusal`
+- `transport_or_http_failure`
+- `response_schema_failure`
 
-## 9. 请求量、费用与失败分叉
+environment 记录 Python/SDK 版本、runner commit、dataset/prompt/route-policy/backend schema 版本。
+模型没有暴露 seed、checkpoint、usage 或 provider request ID 时记为 unavailable，不添加接口不支持
+的参数。主要漂移来源是 beta API、服务端模型更新、provider adapter、网络和重复调用差异。
 
-无题目修订时，基础为 20 development + 60 evaluation = 80 请求，正式两题合计 160 个
-问题；最初 5 条连通检查计入 development 的 20 条。
-选做消融 10 请求与重复 20 请求后，共 110 请求。
-development 修订、最终版本重测和 transport 重试另计，报告实际请求量。
+## 10. 实验安全与数据边界
 
-OpenAI 公共价格为 $0.10 / 1M 输入 tokens。若实际每请求计费约 1,000 tokens，80 请求
-估算为 $0.008，110 请求约 $0.011；这是按 token 假设估算，实际费用读 usage 与账单，
-代理服务及区域/长上下文额外费用按提供方计费。
+- synthetic-first：基础 80 条全部可用 synthetic 场景完成，不访问活动任务数据库。
+- 真实样本需用户明确选择、人工脱敏并标记 `selected_redacted_real`；凭据、个人信息、私有任务
+  正文和真实 task ID 不进入数据或输出。
+- runner 没有 PAOS database URL、workspace、Coordinator/Runtime/Gateway client 或 write-capable
+  connector；实验配置只允许一个 Decisions endpoint host。
+- route 结果不映射 handler，runner 中不存在 status/pause/resume/stop/clarification/AgentLoop 调用。
+- input 中的用户文本、recent turns 和 tool-like 字符串均作为待分类数据，不能覆盖 questions。
+- 失败时只记录 API/实验错误，不创建任务、恢复任务、暂停/停止任务或写 PAOS 状态。
+
+这些是实验实现边界，不是新增生产运行时 gate。现有安全、权限、数据完整性和发布控制保持原状。
+
+## 11. AgentLoop 自主性与未来集成原则
+
+若能力结果值得进入下一轮，集成设计仍须满足：
+
+1. 显式命令继续由现有确定性入口处理，不经过概率路由。
+2. 每个入站 user turn 最多产生一次 Decisions 入口建议；除非外部状态发生可证明变化，否则
+   不在同一回合反复调用 router。
+3. route 是 proposal。它不能创建/绑定任务、回答澄清、pause/resume/stop、选择 Runtime、
+   调用 Tool、提交 PlanGraph 或 finalize。
+   包含正向停止要求的混合消息须保留停止语义；mixed/system2 的实验约定不授权在线延迟或忽略
+   用户停止，未来需单独设计现有用户中断入口的优先处理。
+4. System 2 接收原始 user message、relevant turns 和 capability_state；不能只收到 route 标签。
+5. Decision → System 2 后不返回 Decision，避免 Decision↔System 2 递归；System 2 的现有
+   AgentLoop 收敛、等待用户、取消和失败语义保持权威。
+6. waiting_for_user 的现有行为本轮只被样本测量，不被实验改变。
+7. confidence 只能参与后续 shadow 阶段的升级策略研究，不能绕过现有 owner 或扩大 tools。
+
+## 12. 请求量、费用与失败分叉
+
+基础逻辑请求为 20 development + 60 evaluation = 80；每个请求包含两题，共 160 个 answers
+目标。最初 5 条 smoke 计入 development。选做 10 条消融与 20 次重复后，共 110 个逻辑请求。
+题目修订、supplemental run 和 transport attempts 另计，报告逻辑请求数与实际 HTTP 次数。
+
+按 2026-10-09 OpenAI 官方文档，`/v1/decisions` 的 GPT-6 Luna 只计输入 tokens，公开基准价
+为每 100 万 input tokens 0.10 美元，区域处理和长上下文可能有额外倍率。方案只保存公式：
+
+```text
+estimated_cost = billed_input_tokens / 1_000_000 * effective_provider_rate
+```
+
+最终报告使用实际 endpoint 的 usage、provider rate 和账单；代理服务不套用 OpenAI 价格。
 
 | 发现 | 下一步 |
 | --- | --- |
-| 401/403 | 核对密钥与 Decisions 权限；不把访问失败记成分类能力差 |
-| 404/不识别 questions | 核对是否真正支持 Decisions endpoint，停止套用 chat 协议 |
-| 429/timeout | 记录失败与重试；降低调用频率，区分网络与模型质量 |
-| 同意图不同状态全部同路由 | 检查状态是否实际进入 input、题目是否明确引用状态 |
-| 否定/引用频繁误作控制 | 查看原始消息与选项描述，归为控制语义识别不足 |
-| 全部送 system2 | 检查简单路径条件是否清楚；报告低简单路径覆盖率 |
-| intent 正确但 route 错 | 检查 available_handlers 与状态关系，归为路由而非意图错误 |
-| 人工标签本身存在争议 | 保留争议，修正下一版分类规则，勿按模型答案重写测试标签 |
+| 401/403 | 核对密钥与 Decisions 权限；不计为分类能力错误 |
+| 404/不识别 questions | 确认 endpoint_kind；停止套用 chat 协议 |
+| 408/429/5xx/timeout | 按 transport policy 重试并保存 attempts |
+| schema 与官方不同 | 保存原始响应，实现/修正薄 adapter，再重跑 development |
+| 同一句不同状态仍同路由 | 检查 state 是否进入 input，再判断状态利用不足 |
+| 否定/引用频繁误作控制 | 归为 control false positive，不靠规则静默修正 |
+| 全部送 system2 | 报告 simple-path coverage 和全部回退的算术对照，不判定有替换价值 |
+| intent 正确但 route 错 | 检查 capability/state 关系，归为 route error |
+| intent/route 互相矛盾 | 归为 incompatible_pair，保留两个原始答案 |
+| evaluation 标签争议 | 结束当前 run；修订新 dataset version，不按模型答案回写 |
 
-## 10. 本轮与后续交付
+## 13. 后续 runner 的最小 CLI 契约
 
-本轮保存诊断与这份方案，未调用 API、生成完整样本集或编写 runner。
-用户提供 endpoint/访问方式后，可按上述步骤另行实现独立实验，先给出 Decisions 本身
-的能力报告，再决定是否值得讨论与 PAOS 集成。当前系统无需为实验变更。
+runner 尚未实现；实现时至少提供以下可复查命令：
 
-API 依据：[Decisions 官方文档](https://developers.openai.com/api/docs/guides/decisions)。
+```bash
+python -m decision_intent_probe validate \
+  --config research/decision-api-intent-probe/config.json
+
+python -m decision_intent_probe run \
+  --config research/decision-api-intent-probe/config.json \
+  --phase development
+
+python -m decision_intent_probe run \
+  --config research/decision-api-intent-probe/config.json \
+  --phase evaluation
+
+python -m decision_intent_probe score \
+  --run-dir out/decision-api-intent-probe/<timestamp>-<run_id>
+
+python -m decision_intent_probe compare \
+  --left out/decision-api-intent-probe/<run-a> \
+  --right out/decision-api-intent-probe/<run-b>
+```
+
+`validate` 只做 schema、split、标签隔离和安全边界检查；`run` 才调用 endpoint；`score` 与
+`compare` 不访问网络。smoke、development、evaluation 和 supplemental run 使用不同 phase/
+run 记录（smoke 计入 development）；run 支持 `--resume <run-dir>`，只按原配置续跑未终态
+请求，不覆盖旧输出。相同数据版本允许按 case ID 比较；数据版本不同只对公共 case ID 给配对
+结果，并单列支持数与配置变化。
+
+## 14. 本轮交付
+
+本轮只修订诊断和验证方案，并保存七维 Review。未创建完整样本、runner、配置或输出目录，
+未调用 API，也未改变当前 PAOS 入口路由。用户提供 endpoint/访问方式后，可按本方案实现独立
+实验；能力报告通过人工审核后，才决定是否设计 shadow 验证。
+
+API 依据：[OpenAI Decisions 官方文档](https://developers.openai.com/api/docs/guides/decisions)。
