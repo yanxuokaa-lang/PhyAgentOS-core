@@ -505,7 +505,7 @@
 
 ### Git 提交 / Git Commit
 - Branch: `feature/planning-loop`
-- Commit: implementation commit recorded after creation / 实现提交生成后记录。
+- Commit: `859d1b8`（实现、诊断与七维审查 / implementation, diagnosis, and seven-dimension review）
 
 ## v12.10.12 (2026-10-09 00:35) - codex
 
