@@ -15,6 +15,7 @@
 - [Env] [Chore] Under user authorization, stop the old Runtime, install the checkout Core in editable mode, verify the `pick-place-workflow 3.0.12` payload, and start the new `robotwin-blocks-ranking-graspnet` Runtime with the existing operator-owned profile environment. (local)
 - [eval] [test] 启动后只做状态验收：Runtime/Dora/Gateway 与 11/11 Tool context ready；任务库无非终态任务，未创建 AgentTask、调用 Query/Action、读取相机或推进物理运动。 (local)
 - [Eval] [Test] Post-start validation only checked Runtime/Dora/Gateway and 11/11 Tool contexts ready; the task store has no non-terminal tasks, and no AgentTask, Query/Action, camera read, or physical motion was performed. (local)
+- Git commit: `55478bc` on `feature/planning-loop`; detailed deployment record is in `changelog/2026-10_part5.md`.
 
 ### 文件与关键 Diff / Files and Key Diff
 | 对象 / Object | 位置 / Location | 结果 / Result |
