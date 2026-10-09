@@ -4143,6 +4143,22 @@ def _tool_result_from_execution(
         new_scene_revision=new_scene_revision,
         failure_code=failure_code,
         failure_owner=failure_owner,
+        retryable_in_revision=(
+            facts["retryable_in_revision"]
+            if isinstance(facts.get("retryable_in_revision"), bool)
+            else None
+        ),
+        requires_replan=(
+            facts["requires_replan"]
+            if isinstance(facts.get("requires_replan"), bool)
+            else None
+        ),
+        recommended_action=(
+            facts["recommended_action"].strip()
+            if isinstance(facts.get("recommended_action"), str)
+            and facts["recommended_action"].strip()
+            else None
+        ),
     )
 
 

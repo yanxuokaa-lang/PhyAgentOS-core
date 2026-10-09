@@ -508,6 +508,9 @@ class ToolResultEnvelope(_Frozen):
     new_scene_revision: str | None = None
     failure_code: str | None = None
     failure_owner: str | None = None
+    retryable_in_revision: bool | None = None
+    requires_replan: bool | None = None
+    recommended_action: str | None = None
 
     @field_validator("task_id", "revision_id", "node_id", "tool_id")
     @classmethod
@@ -540,6 +543,9 @@ class NodeSettlement(_Frozen):
     source_tool_id: str | None = None
     world_change_started: bool | None = None
     outcome_known: bool | None = None
+    retryable_in_revision: bool | None = None
+    requires_replan: bool | None = None
+    recommended_action: str | None = None
 
 
 class ReplanDelta(_Frozen):

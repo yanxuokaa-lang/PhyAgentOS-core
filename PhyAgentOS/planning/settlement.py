@@ -56,6 +56,9 @@ def settle_node(
         source_tool_id=result.tool_id,
         world_change_started=True if result.world_changed else result.world_change_started,
         outcome_known=result.outcome_known,
+        retryable_in_revision=result.retryable_in_revision,
+        requires_replan=result.requires_replan,
+        recommended_action=result.recommended_action,
     )
     if result.outcome_known is False:
         return NodeSettlement(**facts, status="outcome_unknown", failure_code=result.failure_code or "outcome_unknown")

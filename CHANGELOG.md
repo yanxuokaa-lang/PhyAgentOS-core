@@ -6,6 +6,29 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v13.0.8 (2026-10-09 13:30) - codex
+
+### 变更摘要 / Summary
+- [policy] [fix] Runtime 明确要求重规划的 world-changing unknown Action 不再被 PlanningLoop 无条件阻断；Runtime 恢复事实贯穿 receipt、ToolResultEnvelope 与 NodeSettlement。(local)
+- [policy] [fix] Do not unconditionally block a world-changing unknown Action when Runtime explicitly requires replanning; preserve recovery facts across receipt, ToolResultEnvelope, and NodeSettlement. (local)
+- [policy] [fix] 仅允许 `world_change_started=true` 且 `requires_replan=true` 的 unknown 进入 Coordinator 追加 revision；恢复图必须有新 Query，所有新 Action 都依赖该 Query，原 Action 永不自动重试。(local)
+- [policy] [fix] Only unknown outcomes with `world_change_started=true` and `requires_replan=true` enter a Coordinator append-only revision; recovery graphs require a new Query gating every new Action, and never retry the original Action. (local)
+- [eval] [test] 新增无运动恢复与图依赖回归；178 项聚焦 Runtime/AgentLoop/Skill 测试通过。完整诊断与七维审查见月度日志及审查文档。(local)
+- [eval] [test] Add no-motion recovery and graph-dependency regressions; 178 focused Runtime/AgentLoop/Skill tests pass. See the monthly log and review document for full diagnosis and seven-dimension review. (local)
+
+### 文件与关键 Diff / Files and Key Diff
+`PhyAgentOS/planning/contracts.py`, `PhyAgentOS/planning/settlement.py`, `PhyAgentOS/forge/task.py`, `PhyAgentOS/agent/planning_loop.py`, `PhyAgentOS/agent/recovery_decisions.py`, and `examples/forge-skills/pick-place-workflow/tests/test_unknown_action_recovery.py`.
+
+```diff
+- unknown outcome -> reconciliation_required unconditionally
+- Runtime recovery facts dropped before reaching PlanningLoop
++ unknown + Runtime requires_replan + world_change_started -> governed replan
++ preserve Runtime recovery facts through receipt -> result -> settlement
++ require a new Query ancestor for each new Action; never redispatch old Action
+```
+
+See [the full bilingual entry](changelog/2026-10_part3.md) and [seven-dimension review](docs/forge/IMPLEMENTATION_REVIEW_V13_0_8.md) for exact line ranges, evidence, tests, and known unrelated failures.
+
 ## v13.0.6 (2026-10-09 12:47) - codex
 
 ### 预期修改 / Planned Changes [完成]

@@ -925,6 +925,9 @@ class AgentLoopNodeExecutor:
         world_changed = False
         started_facts: list[bool | None] = []
         known_facts: list[bool | None] = []
+        retryable_facts: list[bool | None] = []
+        replan_facts: list[bool | None] = []
+        recommended_actions: list[str] = []
         failure_code = None
         failure_owner = None
         task = self.coordinator.get_task(context.task_id)
@@ -950,6 +953,13 @@ class AgentLoopNodeExecutor:
             response = response_facts(record.response)
             started_facts.append(response.get("world_change_started"))
             known_facts.append(response.get("outcome_known"))
+            retryable = response.get("retryable_in_revision")
+            retryable_facts.append(retryable if isinstance(retryable, bool) else None)
+            requires_replan = response.get("requires_replan")
+            replan_facts.append(requires_replan if isinstance(requires_replan, bool) else None)
+            recommended = response.get("recommended_action")
+            if isinstance(recommended, str) and recommended.strip():
+                recommended_actions.append(recommended.strip())
             evidence_refs.extend(_string_refs(response.get("evidence_refs")))
             evidence_refs.extend(_string_refs(response.get("artifact_refs")))
             output_refs.extend(_string_refs(response.get("output_refs")))
@@ -1006,6 +1016,17 @@ class AgentLoopNodeExecutor:
             new_scene_revision=new_scene_revision,
             failure_code=failure_code or (status if status != "succeeded" else None),
             failure_owner=failure_owner,
+            retryable_in_revision=(
+                False if any(value is False for value in retryable_facts)
+                else True if retryable_facts and all(value is True for value in retryable_facts)
+                else None
+            ),
+            requires_replan=(
+                True if any(value is True for value in replan_facts)
+                else False if replan_facts and all(value is False for value in replan_facts)
+                else None
+            ),
+            recommended_action=recommended_actions[-1] if recommended_actions else None,
         )
 
     def _prompt_for_turn(self, context: NodeExecutionContext) -> str:
@@ -1528,17 +1549,32 @@ class PlanningLoopAdapter:
                     task_id,
                     evidence_refs=set(settlement.evidence_refs),
                 )
-            self.coordinator.record_planning_node_blocked(
-                task_id,
-                context.revision_id,
-                context.node_id,
-                "reconciliation_required:" + settlement.node_id,
+            # Unknown physical effects remain fail-closed. The only allowed
+            # escape is an explicit Runtime recovery declaration: the world
+            # changed, the outcome is unknown, and a replacement plan is
+            # required. The replacement must obtain fresh evidence before any
+            # physical Action is admitted.
+            recovery_replan_allowed = (
+                decision == "replan"
+                and settlement.world_change_started is True
+                and settlement.requires_replan is True
             )
-            return PlanningLoopResult(
-                task_id, "blocked", tuple(completed),
-                len(self.coordinator.get_task(task_id).revisions), replans,
-                f"reconciliation_required:{settlement.node_id}",
-            )
+            if not recovery_replan_allowed:
+                self.coordinator.record_planning_node_blocked(
+                    task_id,
+                    context.revision_id,
+                    context.node_id,
+                    "reconciliation_required:" + settlement.node_id,
+                )
+                return PlanningLoopResult(
+                    task_id, "blocked", tuple(completed),
+                    len(self.coordinator.get_task(task_id).revisions), replans,
+                    f"reconciliation_required:{settlement.node_id}",
+                )
+            # The replacement graph itself owns its fresh Query nodes.  Do not
+            # invent an opaque evidence token here: the Coordinator can only
+            # admit evidence actually returned by a Runtime Tool.
+            delta = build_replan_delta(graph, settlement)
         if decision == "stop":
             if settlement.status == "failed":
                 current = self.coordinator.get_task(task_id)
@@ -1605,6 +1641,12 @@ class PlanningLoopAdapter:
             plan_ref = proposal.plan_graph_ref
             reason = proposal.reason
             effective_delta = reconcile_replan_delta(graph, proposal.delta, replacement)
+            if settlement.status == "outcome_unknown":
+                self._validate_unknown_recovery_graph(
+                    task_id,
+                    replacement,
+                    preserved_node_ids=set(effective_delta.preserve_node_ids),
+                )
         except Exception as exc:
             failure = settlement.failure_code or settlement.status
             try:
@@ -1671,6 +1713,79 @@ class PlanningLoopAdapter:
             pending_scene_refresh=pending_scene_refresh,
             checkpoint=checkpoint,
         )
+
+    def _validate_unknown_recovery_graph(
+        self,
+        task_id: str,
+        graph: PlanGraph,
+        *,
+        preserved_node_ids: set[str],
+    ) -> None:
+        """Require fresh Query evidence before any Action after unknown effects.
+
+        This is deliberately derived from the active Runtime ToolSpec.  It does
+        not name a sensor, provider, object, or workflow: a replacement graph
+        must introduce at least one new Query, and every new physical Action
+        must be downstream of that Query.  The Query may still fail closed at
+        Runtime admission if possession or scene validity remains unresolved.
+        """
+        task = self.coordinator.get_task(task_id)
+        binding = getattr(task, "primary_skill_binding", None)
+        tools = (
+            getattr(binding, "required_tools", ())
+            if binding is not None
+            else getattr(task, "tool_bindings", ())
+        )
+        capability_semantics: dict[str, set[str]] = {}
+        for tool in tools:
+            policy = getattr(tool, "planning_policy", None)
+            capabilities = getattr(policy, "capabilities", ()) if policy is not None else ()
+            semantics = getattr(tool, "semantics", None) or getattr(policy, "semantics", None)
+            if not isinstance(semantics, str):
+                continue
+            for capability in capabilities:
+                if isinstance(capability, str):
+                    capability_semantics.setdefault(capability, set()).add(semantics)
+        semantics_by_capability = {
+            capability: next(iter(values))
+            for capability, values in capability_semantics.items()
+            if len(values) == 1
+        }
+        if not semantics_by_capability or len(semantics_by_capability) != len(capability_semantics):
+            raise PlanningLoopError(
+                "unknown world effect recovery requires unambiguous Runtime ToolSpec semantics"
+            )
+
+        new_nodes = [node for node in graph.nodes if node.node_id not in preserved_node_ids]
+        new_query_ids = {
+            node.node_id
+            for node in new_nodes
+            if semantics_by_capability.get(node.capability) == "query"
+        }
+        if not new_query_ids:
+            raise PlanningLoopError(
+                "unknown world effect recovery requires a new Query before Action"
+            )
+
+        by_id = {node.node_id: node for node in graph.nodes}
+
+        def ancestors(node_id: str, seen: set[str] | None = None) -> set[str]:
+            seen = set() if seen is None else seen
+            if node_id in seen:
+                return seen
+            seen.add(node_id)
+            for dependency in by_id[node_id].dependencies:
+                if dependency in by_id:
+                    ancestors(dependency, seen)
+            return seen
+
+        for node in new_nodes:
+            if semantics_by_capability.get(node.capability) != "action":
+                continue
+            if not ancestors(node.node_id) & new_query_ids:
+                raise PlanningLoopError(
+                    f"recovery Action {node.node_id!r} is not gated by a new Query"
+                )
 
 
 __all__ = [
