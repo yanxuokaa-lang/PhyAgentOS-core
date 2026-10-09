@@ -71,7 +71,7 @@
 
 ### Git 提交 / Git Commit
 - Branch: `feature/planning-loop`
-- Commit: 待首次文档提交后回填 / fill after the first documentation commit
+- Commit: `ece4f5f`（诊断与架构适配分析 / diagnosis and architecture fit analysis）
 - Source inspected: `e76506c`
 - 仅 stage 本轮四个文件，保留已有未跟踪工作内容 / Stage only these four files and preserve pre-existing untracked work.
 
