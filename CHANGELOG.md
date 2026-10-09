@@ -6,6 +6,72 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v13.0.1 (2026-10-09 11:54) - codex
+
+### 预期修改 / Planned Changes [完成]
+- [docs] [docs] 按用户提出的 System 2 复杂理解 / System 1 局部直觉判断重新保存 PAOS 诊断，明确确定性程序职责及各功能的部分替换范围。(local)
+- [docs] [docs] Save a revised PAOS diagnosis under the user's System 2 complex-understanding / System 1 local-judgment split, identifying deterministic responsibilities and partial replacement boundaries. (local)
+- [docs] [docs] 修正恢复三选一的优先级，展开 Lesson 排序与当前 Agent Loop 的适配；保留早期分析，能力验证方案在用户审核诊断后另写。(local)
+- [docs] [docs] Revise the recovery-choice priority and explain Lesson ranking and Agent Loop fit; preserve earlier analysis and defer the capability-validation proposal until the user reviews this diagnosis. (local)
+- [docs] [chore] 更新最近五条完整双语日志，检查文档与日志一致性，仅提交本轮文档与日志并推送当前分支。(local)
+- [docs] [chore] Update the latest five complete bilingual changelog entries, check document/log consistency, and commit and push only this task's documents and logs on the current branch. (local)
+
+### 影响文件 / Files
+- `docs/forge/SYSTEM1_SYSTEM2_DECISIONS_DIAGNOSIS_20261009.md`
+- `changelog/2026-10_part3.md`
+- `CHANGELOG.md`
+
+### 范围与版本 / Scope and Version
+- 本轮为文档 patch：v13.0.0 → v13.0.1；只保存诊断，能力验证方案等待用户审核后另写。
+- Documentation patch: v13.0.0 → v13.0.1; save diagnosis only and defer the capability-validation proposal until user review.
+- 运行代码、配置、依赖与部署保持原状；没有模型 API 实验、现场 Query/Action 或新增防御机制。
+- Runtime code, configuration, dependencies, and deployment remain unchanged; no model API experiments, live Query/Action, or new defensive mechanisms.
+
+### 实际修改 / Completed Changes
+- [docs] [docs] 新增三类职责诊断：System 2 复杂理解、System 1 局部语义判断、确定性程序；依据当前有界节点回合与既有 owner 给出协作关系。(local)
+- [docs] [docs] Add a three-way diagnosis of System 2 complex understanding, System 1 local semantic judgments, and deterministic logic, grounded in current bounded node turns and existing owners. (local)
+- [docs] [docs] 给出八类功能的部分替换范围，修正恢复三选一优先级，区分 Lesson 语义增强与生成式模型调用替换。(local)
+- [docs] [docs] Identify partial replacement scope for eight functions, revise recovery-choice priority, and distinguish Lesson semantic enhancement from substitution of generative-model calls. (local)
+- [docs] [docs] 展开 Lesson 词重叠过滤、同义/否定/跨语言/缺失条件、候选召回与激活快照边界；概念示例明确未实测。(local)
+- [docs] [docs] Explain Lesson overlap filtering, synonyms/negation/cross-language/missing conditions, candidate recall, and activation snapshots; identify conceptual examples as unmeasured. (local)
+- [docs] [chore] 最近五条更新为 v13.0.1、v13.0.0、v12.10.15、v12.10.14、v12.10.13；完整条目与归档一致，v12.10.12 留在归档。(local)
+- [docs] [chore] Update the latest five to v13.0.1, v13.0.0, v12.10.15, v12.10.14, and v12.10.13, with complete archive-identical entries and v12.10.12 retained in its archive. (local)
+
+### 文件变更详情 / File Changes
+
+| 文件 / File | 精确行号 / Exact Lines | 操作与摘要 / Operation and Summary |
+| --- | --- | --- |
+| `docs/forge/SYSTEM1_SYSTEM2_DECISIONS_DIAGNOSIS_20261009.md` | L1-L262 | 新增三类分工、功能矩阵、Lesson 与恢复诊断 / Add responsibility split, function matrix, Lesson and recovery diagnosis |
+| `changelog/2026-10_part3.md` | L3-L67 | 新增本版本完整双语日志 / Add this complete bilingual record |
+| `CHANGELOG.md` | L9-L73；删除原 L772-L814 / remove original L772-L814 | 加入最新完整记录并移出旧 fifth entry / Insert latest complete record and remove old fifth entry |
+
+### 关键内容 Diff / Key Content Diff
+
+```diff
+# docs/forge/SYSTEM1_SYSTEM2_DECISIONS_DIAGNOSIS_20261009.md: absent → new
++# PAOS：System 2 / System 1 分工诊断
++System 2：复杂目标理解、方法选择、计划构建与异常分析。
++System 1：已有事实与候选内的局部语义判断。
++确定性程序：精确状态、参数投影、执行事实与现有约束。
++优先考察 Lesson 相关性与现成候选匹配；恢复整体保留 System 2。
++能力验证方案在用户审核诊断后另写。
+# CHANGELOG.md: latest complete entries
+-v13.0.0 / v12.10.15 / v12.10.14 / v12.10.13 / v12.10.12
++v13.0.1 / v13.0.0 / v12.10.15 / v12.10.14 / v12.10.13
+```
+
+### 验证 / Validation
+- [docs] [chore] 文档 UTF-8、Markdown fences 与本地链接检查通过；最近五条全文与月度归档一致，git diff --check 通过。(local)
+- [docs] [chore] Document UTF-8, Markdown fences, and local links passed; the latest five entries match monthly archives in full, and git diff --check passed. (local)
+- [docs] [chore] 源码/官方文档只读核对；未运行代码回归或能力实验，本轮不编写验证用例、阈值、脚本或运行步骤。(local)
+- [docs] [chore] Read-only source/official-doc checks only; no code regressions or capability experiments, and no validation cases, thresholds, scripts, or run steps were written. (local)
+
+### Git 提交 / Git Commit
+- Branch: `feature/planning-loop`
+- Commit: `pending`（诊断文档 / diagnosis document）
+- Source inspected: `d9d4c16`
+- 仅 stage 本轮三个文件，保留已有未跟踪内容 / Stage only these three files and preserve existing untracked content.
+
 ## v13.0.0 (2026-10-09 11:18) - codex
 
 ### 预期修改 / Planned Changes [完成]
@@ -768,47 +834,3 @@ assert output["ambiguities"][0]["entity_refs"] == [alias]
 ### Git 提交 / Git Commit
 - Branch: `feature/planning-loop`
 - Commit: `859d1b8`（实现、诊断与七维审查 / implementation, diagnosis, and seven-dimension review）
-
-## v12.10.12 (2026-10-09 00:35) - codex
-
-### 预期修改 / Planned Changes [完成]
-- [env] [chore] 用户授权后停止旧 `pick-place-workflow` Runtime；先确认 AgentTask 均为终态，再核验 invocation/session/task-binding ownership，旧 host/worker 退出后才安装新产物。(local)
-- [env] [release] 将 Core editable 安装更新到当前已推送分支；从当前 Adapter/Core source 构建 Node `1.0.2`，更新 Skill 锁与版本至 `3.0.10`，构建并验证本地 Skill bundle 后原子安装。(local)
-- [eval] [test] 启动同一 `robotwin-blocks-ranking-graspnet` profile，验证新 Skill/Node 锁、Gateway、Dora flow、所有 Tool readiness 与零活动任务/ownership；不恢复旧任务、不调用 Query/Action、不推进 simulator 或物理运动。(local)
-
-### Planned Changes (English)
-- [env] [chore] Under the user's authorization, stop the old `pick-place-workflow` Runtime; confirm all AgentTasks are terminal, inspect invocation/session/task-binding ownership, and install only after the old host/worker exit. (local)
-- [env] [release] Refresh the Core editable installation from the current pushed branch; build Node `1.0.2` from current Adapter/Core sources, update the Skill lock/version to `3.0.10`, build and verify the local Skill bundle, then install atomically. (local)
-- [eval] [test] Start the same `robotwin-blocks-ranking-graspnet` profile and verify the new Skill/Node lock, Gateway, Dora flow, all Tool readiness, and zero active task/ownership; do not resume old tasks, invoke Query/Action, or advance simulator/physical motion. (local)
-
-### 实际修改 / Completed Changes
-- [env] [chore] `paos skill stop pick-place-workflow --force` 在用户授权后完成；旧 Dora flow、host/worker 和 Runtime binding 已退出后才安装新产物。当前任务库仅有 1 个历史 `cancelled` 任务，非终态任务为 0。(local)
-- [env] [chore] `.venv/bin/python -m pip install -e .` 完成当前 Core editable 安装；未改变 AgentTask、Gateway 或 Action 状态。(local)
-- [env] [release] `examples/forge-adapters/robotwin20/pyproject.toml:L1-L6` Adapter `0.9.12` → `0.9.13`；`examples/forge-skills/pick-place-workflow/pyproject.toml:L1-L6` Skill `3.0.9` → `3.0.10`。(local)
-- [env] [release] `examples/forge-skills/pick-place-workflow/skill.yaml:L1-L8,L220-L231` 锁定 Skill `3.0.10`、Node `1.0.2` 及 Node SHA-256 `e2361540634d9a9d950864caffa4a26cbdc05835daa12a1073373f84ad25e9e2`；Node archive `robotwin20_persistent_host-1.0.2-linux-x86_64.tar.gz` 为 `414538` bytes。(local)
-- [env] [release] 本地 Skill bundle `pick-place-workflow-3.0.10.tar.gz` 已构建并安装，SHA-256 为 `e2d1c54c21bc49d1800675eb8e1f6861edce9530fbc3bb3a329120fdd557f360`；`paos forge-node verify pick-place-workflow robotwin20_persistent_host` 通过。(local)
-- [eval] [test] 同一 `robotwin-blocks-ranking-graspnet` profile 已启动新 flow；日志确认 spawner 使用 `robotwin20_persistent_host-1.0.2`，`paos skill status` 显示 running、Gateway `/tools` ready、11/11 Tool context ready。启动前日志中的旧 SIGKILL/semantic failure 属于被 force-stop 的旧 flow；新 flow 在 `00:45:18` 完成 spawning，当前 worker 仍存活。(local)
-- [eval] [test] 全程只做 lifecycle、editable install、bundle/node verify、SQLite 状态检查和 health/readiness 读取；未创建或恢复 AgentTask，未调用 Gateway Query/Action，未推进 simulator 或物理运动。(local)
-
-### Completed Changes (English)
-- [env] [chore] With user authorization, `paos skill stop pick-place-workflow --force` completed before installation; the old Dora flow, host/worker, and Runtime binding exited first. The task store contains only one historical `cancelled` task and zero non-terminal tasks. (local)
-- [env] [chore] Refreshed the current Core editable installation with `.venv/bin/python -m pip install -e .`; no AgentTask, Gateway, or Action state was changed. (local)
-- [env] [release] Bumped the Adapter from `0.9.12` to `0.9.13` and the Skill from `3.0.9` to `3.0.10` in the listed project files. (local)
-- [env] [release] Locked Skill `3.0.10`, Node `1.0.2`, and Node SHA-256 `e2361540634d9a9d950864caffa4a26cbdc05835daa12a1073373f84ad25e9e2`; the Node archive is `414538` bytes. (local)
-- [env] [release] Built and installed the local `pick-place-workflow-3.0.10.tar.gz` bundle with SHA-256 `e2d1c54c21bc49d1800675eb8e1f6861edce9530fbc3bb3a329120fdd557f360`; `paos forge-node verify pick-place-workflow robotwin20_persistent_host` passed. (local)
-- [eval] [test] Restarted the same `robotwin-blocks-ranking-graspnet` profile; logs confirm the spawner uses `robotwin20_persistent_host-1.0.2`, while status reports running, Gateway `/tools` ready, and all 11/11 Tool contexts ready. The earlier SIGKILL/semantic failure belongs to the force-stopped flow; the new flow spawned at `00:45:18` and its worker remains alive. (local)
-- [eval] [test] Validation was limited to lifecycle, editable install, bundle/node verification, SQLite status, and health/readiness reads; no AgentTask was created or resumed, no Gateway Query/Action was invoked, and no simulator or physical motion advanced. (local)
-
-### 关键 Diff / Key Diff
-```diff
--version = "0.9.12"
-+version = "0.9.13"
--version = "3.0.9"
-+version = "3.0.10"
--artifact_id: robotwin20_persistent_host-1.0.1-linux-x86_64
-+artifact_id: robotwin20_persistent_host-1.0.2-linux-x86_64
-```
-
-### Git 提交 / Git Commit
-- Commit: `db2e148`（部署记录 / deployment record）
-- Branch: `feature/planning-loop`; 时间 / Time: 2026-10-09 Asia/Shanghai
