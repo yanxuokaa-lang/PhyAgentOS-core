@@ -8,6 +8,32 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v13.1.3 (2026-10-09 23:00) - codex
+
+### 变更摘要 / Summary
+- [env] [chore] 在用户授权下停止旧 Runtime，完成当前 checkout 的 editable Core 安装，复核 `pick-place-workflow 3.0.12` payload，并使用既有 operator-owned profile environment 启动新的 `robotwin-blocks-ranking-graspnet` Runtime。 (local)
+- [Env] [Chore] Under user authorization, stop the old Runtime, install the checkout Core in editable mode, verify the `pick-place-workflow 3.0.12` payload, and start the new `robotwin-blocks-ranking-graspnet` Runtime with the existing operator-owned profile environment. (local)
+- [eval] [test] 启动后只做状态验收：Runtime/Dora/Gateway 与 11/11 Tool context ready；任务库无非终态任务，未创建 AgentTask、调用 Query/Action、读取相机或推进物理运动。 (local)
+- [Eval] [Test] Post-start validation only checked Runtime/Dora/Gateway and 11/11 Tool contexts ready; the task store has no non-terminal tasks, and no AgentTask, Query/Action, camera read, or physical motion was performed. (local)
+
+### 文件与关键 Diff / Files and Key Diff
+| 对象 / Object | 位置 / Location | 结果 / Result |
+| --- | --- | --- |
+| PAOS Core | `PhyAgentOS/` | editable import from current checkout |
+| Skill | `pick-place-workflow 3.0.12` | local installer returned `already ready` |
+| Runtime | `pick-place-workflow:robotwin-blocks-ranking-graspnet` | running; Dora running; Gateway ready |
+| Task store | `/home/yanxu/.PhyAgentOS/workspace/.paos/agent_tasks/tasks.sqlite3` | non-terminal tasks = 0 |
+| Detailed log | `changelog/2026-10_part5.md` | v13.1.3 deployment, exact runtime state, and no-motion boundary |
+
+```diff
+- Runtime stopped; Dora down; Gateway unavailable
++ Runtime running; Dora flow running; Gateway /tools ready; 11/11 Tool contexts ready
+  Core editable-installed; Skill 3.0.12 unchanged; no live task or motion during validation
+```
+
+详见 [v13.1.3 月度日志](changelog/2026-10_part5.md)。
+See the [v13.1.3 detailed log](changelog/2026-10_part5.md).
+
 ## v13.1.2 (2026-10-09 22:33) - codex
 
 ### 变更摘要 / Summary
