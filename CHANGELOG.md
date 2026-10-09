@@ -6,6 +6,72 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v13.0.3 (2026-10-09 12:09) - codex
+
+### 预期修改 / Planned Changes [完成]
+- [docs] [docs] 保存 Laya/Jev 应用与 PAOS 会话入口路由诊断，将意图识别和处理路径选择列为 System 1 优先方向。(local)
+- [docs] [docs] Save the Laya/Jev application and PAOS entry-routing diagnosis, prioritizing intent recognition and handler selection for System 1. (local)
+- [docs] [docs] 编写独立 Decisions API 能力验证方案，明确样本、题型、标注、执行阶段、指标与结果保存；只评估预测，不接入或替换当前处理链。(local)
+- [docs] [docs] Write an independent Decisions API capability-validation plan covering samples, question types, labels, execution phases, metrics, and saved results; evaluate predictions without integrating or replacing current routing. (local)
+- [docs] [chore] 更新双语详细日志与最近五条；保留工作区其他任务的代码和 v13.0.2 记录，仅提交本轮文档及对应日志内容并推送当前分支。(local)
+- [docs] [chore] Update detailed bilingual logs and the latest five entries; preserve other worktree code and the v13.0.2 entry, commit only this task's documents and log content, and push the current branch. (local)
+
+### 影响文件 / Files
+- `docs/forge/DECISIONS_INTENT_ROUTING_DIAGNOSIS_20261009.md`
+- `docs/forge/DECISIONS_INTENT_ROUTING_CAPABILITY_VALIDATION_PLAN_20261009.md`
+- `changelog/2026-10_part3.md`
+- `CHANGELOG.md`
+
+### 范围与版本 / Scope and Version
+- 文档 patch；v13.0.2 已被其他进行中任务使用，本轮使用 v13.0.3，保留该任务计划与工作区代码。
+- Documentation patch; v13.0.2 is reserved by other ongoing work, so this task uses v13.0.3 and preserves that task's plan and worktree code.
+- 本轮只交付诊断与方案；没有生成完整样本集、runner、API 调用、接入、替换、配置或部署变更。
+- Deliver diagnosis and plan only; no full dataset, runner, API calls, integration, replacement, configuration, or deployment changes.
+
+### 实际修改 / Completed Changes
+- [docs] [docs] 保存 Laya/Jev 的六类应用机制、PAOS 入口/澄清/控制边界与优先级调整；区分外部报告和本项目实测。(local)
+- [docs] [docs] Save six Laya/Jev application mechanisms, PAOS entry/clarification/control boundaries, and revised priorities, distinguishing external reports from project measurements. (local)
+- [docs] [docs] 新增独立验证方案：80 条样本（20 development / 60 evaluation）、七类 intent、五类 route、每样本两题、状态/否定/引用/多意图对照、指标与输出结构。(local)
+- [docs] [docs] Add an independent validation plan with 80 cases (20 development / 60 evaluation), seven intents, five routes, two questions per case, state/negation/quotation/mixed-intent contrasts, metrics, and output layout. (local)
+- [docs] [docs] 给出后续 HTTP 连通命令、完整两题 JSON、80 基础/110 选做请求预算与费用假设，所有未来实验文件均标为尚未创建。(local)
+- [docs] [docs] Provide a future HTTP smoke command, complete two-question JSON, an 80-request core/110-request optional budget and cost assumptions, marking all future experiment files as not yet created. (local)
+- [docs] [chore] 本次提交中的最近五条为 v13.0.3、v13.0.1、v13.0.0、v12.10.15、v12.10.14；v13.0.2 的其他任务记录保留于工作区，不纳入本次提交。
+- [docs] [chore] The latest five in this commit are v13.0.3, v13.0.1, v13.0.0, v12.10.15, and v12.10.14; the other task's v13.0.2 record remains in the worktree and is excluded from this commit.
+
+### 文件变更详情 / File Changes
+
+| 文件 / File | 精确行号 / Exact Lines | 操作与摘要 / Operation and Summary |
+| --- | --- | --- |
+| `docs/forge/DECISIONS_INTENT_ROUTING_DIAGNOSIS_20261009.md` | L1-L129 | 新增来源、应用诊断与项目结合边界 / Add sources, application diagnosis, and project boundaries |
+| `docs/forge/DECISIONS_INTENT_ROUTING_CAPABILITY_VALIDATION_PLAN_20261009.md` | L1-L313 | 新增独立能力验证方案 / Add independent capability-validation plan |
+| `changelog/2026-10_part3.md` | L3-L67 | 新增本轮完整双语记录 / Add this complete bilingual entry |
+| `CHANGELOG.md` | L9-L73；移出原 L337-L836 / remove prior fifth entry | 更新最近五条已完成记录 / Update latest five completed entries |
+
+### 关键内容 Diff / Key Content Diff
+
+```diff
+# docs/forge/DECISIONS_INTENT_ROUTING_DIAGNOSIS_20261009.md: absent → new
++优先方向：会话入口的意图识别与处理路径选择。
++System 1 判断；GPT 复杂理解；程序管理状态与执行。
+# docs/forge/DECISIONS_INTENT_ROUTING_CAPABILITY_VALIDATION_PLAN_20261009.md: absent → new
++80 条样本 → Decisions 两题 → 保存预测 → 本地与人工标签比较。
++task_control 仅为标签，不触发任何 handler。
+# CHANGELOG.md: latest completed entries
+-v13.0.1 / v13.0.0 / v12.10.15 / v12.10.14 / v12.10.13
++v13.0.3 / v13.0.1 / v13.0.0 / v12.10.15 / v12.10.14
+```
+
+### 验证 / Validation
+- [docs] [chore] 文档 UTF-8、Markdown fences、本地链接与两题 JSON 语法检查通过；样本/请求预算一致，git diff --check 通过。
+- [docs] [chore] Document UTF-8, Markdown fences, local links, and two-question JSON syntax passed; case/request budgets are consistent and git diff --check passed.
+- [docs] [chore] 未运行付费 API、模型能力测试或代码回归；日志提交只包含本轮新增记录，保留其他未提交工作。
+- [docs] [chore] No paid API, model-capability tests, or code regressions ran; staged log content contains only this task's new entry and preserves other uncommitted work.
+
+### Git 提交 / Git Commit
+- Branch: `feature/planning-loop`
+- Commit: `pending`（路由诊断与验证方案 / routing diagnosis and validation plan）
+- Source inspected: `9880080`
+
 ## v13.0.1 (2026-10-09 11:54) - codex
 
 ### 预期修改 / Planned Changes [完成]
@@ -333,504 +399,3 @@ assert output["ambiguities"][0]["entity_refs"] == [alias]
 ### Git 提交 / Git Commit
 - Branch: `feature/planning-loop`
 - Commit: `0f6aaba`（两项 Major 修复与七维复审 / two Major fixes and seven-dimension review）
-
-## v12.10.13 (2026-10-09 10:39) - codex
-
-### 预期修改 / Planned Changes [完成]
-- [policy] [fix] 将成功 Action 的 Runtime 持有实体从 unchanged carry-forward 中分离，Coordinator 仅在权威 `holding_state=holding`、owner、acquire invocation、entity identity 和完整场景效果证据一致时投影 `carry_state=held`；未确认持有时保持 fail-closed。(local)
-- [comm] [fix] 扩展 provider-neutral scene-effects receipt 以表达当前持有实体，并让 bounded receipt 在裁剪或证据不完整时清空该投影，避免伪造 possession。(local)
-- [comm] [fix] Adapter 对 `held` 与 `unchanged` 采用不同验证路径：held 使用当前 Runtime identity/pose，unchanged 继续要求旧新 Runtime pose 不变；两者均不产生 motion authorization。(local)
-- [eval] [fix] 增加 Core、Runtime receipt、Adapter held/unchanged/unknown possession 的 no-motion 回归，证明抓取后的理解可保留实体且未知持有状态仍停止。(local)
-- [docs] [docs] 保存本次持有实体投影缺口、PAOS ownership、AgentLoop fail-closed 边界与七维验收诊断。(local)
-
-### Planned Changes (English)
-- [policy] [fix] Separate a successful Action's Runtime-held entity from unchanged carry-forward; the Coordinator projects `carry_state=held` only when authoritative `holding_state=holding`, owner, acquire invocation, entity identity, and complete scene-effect evidence agree, remaining fail-closed when possession is unconfirmed. (local)
-- [comm] [fix] Extend the provider-neutral scene-effects receipt to express the current held entity, and clear that projection when the bounded receipt is truncated or evidence is incomplete so possession cannot be fabricated. (local)
-- [comm] [fix] Give the Adapter distinct validation paths for `held` and `unchanged`: held uses the current Runtime identity/pose, while unchanged keeps the old/new Runtime pose-stability check; neither path grants motion authorization. (local)
-- [eval] [fix] Add no-motion regressions for Core, Runtime receipt, and Adapter held/unchanged/unknown possession, proving post-acquire understanding retains the entity while unknown possession still stops. (local)
-- [docs] [docs] Preserve the held-entity projection gap diagnosis, PAOS ownership, AgentLoop fail-closed boundary, and seven-dimension acceptance record. (local)
-
-### 具体失败场景与现有机制不足 / Failure Scenario and Gap
-- `object.acquire` succeeded and advanced the action-driven scene, but the acquired entity was listed only in `changed_entity_refs`; `_coordinator_carried_entities()` intentionally consumed only `unaffected_entity_refs`, so the next `scene.understand` omitted the held object and the provider could reinterpret the gripper-occluded pixels as another entity.
-- Ordinary record primary keys and action status cannot establish current possession: a changed entity may be released, lost, or uncertain. The existing Runtime snapshot already owns the necessary owner/invocation/entity facts, but the cross-layer receipt had no field to carry them. Without an explicit, evidence-bound held state, relaxing unchanged pose checks would make stale or fabricated entities eligible for binding.
-- The repair therefore adds no hash or broad gate. It adds only a bounded, provider-neutral field at the existing Runtime-to-Coordinator boundary and keeps all unknown/invalid possession fail-closed; motion admission and authorization remain unchanged.
-
-### 影响文件 / Expected Files
-- `PhyAgentOS/agent/tools/forge_tool_api.py`
-- `PhyAgentOS/forge/capability_runtime/understanding.py`
-- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_manipulation.py`
-- `examples/forge-adapters/robotwin20/runtime/robotwin_persistent_engine.py`
-- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/grounding.py`
-- `tests/test_forge_tool_api.py`
-- `examples/forge-adapters/robotwin20/tests/test_persistent_manipulation.py`
-- `examples/forge-adapters/robotwin20/tests/test_grounding.py`
-- `docs/forge/HELD_ENTITY_PROJECTION_DIAGNOSIS_20261009.md`
-
-### 计划补充 / Additional Plan
-- [policy] [fix] 在 selection 持久化前注入 Coordinator carry-forward，避免执行时参数与 planning binding 不一致；隔离新视觉 ID 与旧任务 ID 的冲突，保留视觉证据。(local)
-- [policy] [fix] Inject Coordinator carry-forward before persisting selection to keep execution arguments consistent with the planning binding; isolate fresh visual IDs that collide with task identities while retaining visual evidence. (local)
-- [docs] [docs] 本次正确版本为 v12.10.13；原暂存计划 v12.10.8 重号已更正，超过 1500 行的 part2 不再追加。(local)
-- [docs] [docs] This change is v12.10.13; corrected the duplicate draft v12.10.8 and rolled the oversized part2 forward to part3. (local)
-- [eval] [fix] 修正 Skill 版本回归仍断言已卸载的 3.0.9 的既有 fixture，使其与当前 3.0.10 manifest/package 一致；provider import-boundary 回归使用独立进程执行，避免 Core Agent 测试加载 OpenAI SDK 后污染 `sys.modules`。(local)
-- [eval] [fix] Correct the existing stale Skill version fixture from 3.0.9 to the current 3.0.10 manifest/package; run provider import-boundary tests in an isolated process so Core Agent tests importing the OpenAI SDK do not contaminate `sys.modules`. (local)
-
-
-### 实际修改 / Completed Changes
-
-- [policy] [fix] 分离 held 与 unchanged，修复五项 Major；Runtime → Coordinator → understanding → Grounding 使用一致持有事实，不包含 RGB 专用分支。(local)
-- [policy] [fix] Separate held from unchanged and resolve five Major findings; Runtime → Coordinator → understanding → Grounding uses consistent possession facts with no RGB-specific branch. (local)
-
-### 文件变更详情 / File Changes
-
-| 文件 / File | 精确行号 / Exact Lines | 修改 / Change |
-| --- | --- | --- |
-| `PhyAgentOS/agent/tools/forge_tool_api.py` | L390-L390, L395-L398, L833-L833, L843-L843, L845-L845, L847-L850, L858-L859, L862-L863, L867-L867, L871-L871, L877-L893, L924-L924, L932-L941 | 投影最新权威 held/unchanged 证据，保留已选参数并拒绝过期投影 / Project latest authoritative held/unchanged facts and preserve selected arguments. |
-| `PhyAgentOS/agent/tools/planning.py` | L447-L459 | 选参持久化前注入 Coordinator 投影 / Inject Coordinator facts before persisting selection. |
-| `PhyAgentOS/forge/capability_runtime/understanding.py` | L229-L239, L540-L540, L543-L545, L563-L576, L907-L923, L987-L998, L1001-L1005, L1017-L1017, L1024-L1025, L1032-L1034 | 扩展 held schema、验证 possession、隔离视觉 ID 并保留原视觉证据 / Extend held schema, validate possession, and isolate conflicting visual IDs. |
-| `examples/forge-adapters/robotwin20/runtime/robotwin_persistent_engine.py` | L703-L709 | 成功 acquire artifact 写入 held_entity / Persist held_entity in a known successful acquisition artifact. |
-| `examples/forge-adapters/robotwin20/src/robotwin20_adapter/grounding.py` | L188-L194, L283-L283, L354-L354, L358-L362, L380-L380, L436-L456 | 核对当前 possession 并刚体搬运旧视觉模型，保留 unchanged 漂移检查 / Verify current possession and transport the visual model while retaining unchanged drift checks. |
-| `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_manipulation.py` | L321-L329 | 仅发布与 settled possession 一致的 held receipt / Publish held receipts only when settled possession agrees. |
-| `examples/forge-adapters/robotwin20/tests/test_grounding.py` | L226-L284 | 覆盖 held 平移、旋转、cached mismatch 与 unchanged drift / Cover held translation, rotation, cached mismatch, and unchanged drift. |
-| `examples/forge-adapters/robotwin20/tests/test_persistent_manipulation.py` | L94-L115, L180-L181, L191-L191, L421-L454 | 覆盖 engine artifact、receipt 裁剪和 possession 对账 / Cover engine artifacts, receipt truncation, and possession agreement. |
-| `examples/forge-skills/pick-place-workflow/contracts/scene.understand.tool.yaml` | L148-L165 | 同步静态 ToolSpec 可选 held 字段 / Synchronize optional held fields in the static ToolSpec. |
-| `examples/forge-skills/pick-place-workflow/tests/test_grasp_propose.py` | L270-L270 | 修正旧版本测试夹具 / Correct the stale release fixture. |
-| `examples/forge-skills/pick-place-workflow/tests/test_scene_understand.py` | L246-L295 | 覆盖视觉 ID 冲突和未确认持有拒绝 / Cover visual ID conflicts and unconfirmed possession rejection. |
-| `tests/test_forge_tool_api.py` | L591-L591, L796-L1034 | 覆盖 held 来源验证、未知 Action、exact binding 和真实 SQLite selection/Query / Cover held sources, unknown Actions, exact bindings, and real SQLite selection/Query execution. |
-| `docs/forge/HELD_ENTITY_PROJECTION_DIAGNOSIS_20261009.md` | L1-L119 | 新增双语根因、阶段、视频与修复边界 / Add bilingual diagnosis, stage, videos, and repair boundaries. |
-| `docs/forge/HELD_ENTITY_DIAGNOSTIC_SNAPSHOT_20261009.json` | L1-L132 | 只读诊断快照，未修改现场记录 / Read-only diagnostic snapshot; live records untouched. |
-| `docs/forge/IMPLEMENTATION_REVIEW_V12_10_13.md` | L1-L71 | 七维审查、发现处置和验证命令 / Seven-dimension review, disposition, and validation commands. |
-
-### 关键代码 Diff / Key Code Diff
-
-#### [修改 / Modified] `PhyAgentOS/agent/tools/forge_tool_api.py` L390-L390, L395-L398, L833-L833, L843-L843, L845-L845, L847-L850, L858-L859, L862-L863, L867-L867, L871-L871, L877-L893, L924-L924, L932-L941
-
-```diff
---- a/PhyAgentOS/agent/tools/forge_tool_api.py
-+++ b/PhyAgentOS/agent/tools/forge_tool_api.py
-@@ -391 +390,0 @@ class ForgeToolQueryTool(Tool):
--                    resolved_arguments.pop("carried_entities", None)
-@@ -396 +395,4 @@ class ForgeToolQueryTool(Tool):
--                    if carried:
-+                    if resolved_binding is not None:
-+                        if resolved_arguments.get("carried_entities", []) != carried:
-+                            raise AgentTaskError("Coordinator carry-forward changed after selection; select current evidence again")
-+                    elif carried:
-@@ -831 +833 @@ def _coordinator_carried_entities(task: Any, scene_revision: Any) -> list[dict[s
--    """Project Runtime-proven unchanged entities into one fresh understanding Query.
-+    """Project Runtime-proven unchanged and held identities into fresh understanding.
-@@ -840,0 +843 @@ def _coordinator_carried_entities(task: Any, scene_revision: Any) -> list[dict[s
-+    action = None
-@@ -842 +845 @@ def _coordinator_carried_entities(task: Any, scene_revision: Any) -> list[dict[s
--        if record.semantics != "action" or record.status != "succeeded":
-+        if record.semantics != "action":
-@@ -843,0 +847,4 @@ def _coordinator_carried_entities(task: Any, scene_revision: Any) -> list[dict[s
-+        # Never resurrect an older successful effect across a newer unknown
-+        # Action, even if it did not report a new scene revision.
-+        if record.status != "succeeded":
-+            return []
-@@ -851 +858,2 @@ def _coordinator_carried_entities(task: Any, scene_revision: Any) -> list[dict[s
--            and candidate.get("carry_forward_authorized") is True
-+            and facts.get("status") == "succeeded"
-+            and facts.get("outcome_known") is True
-@@ -854 +862,2 @@ def _coordinator_carried_entities(task: Any, scene_revision: Any) -> list[dict[s
--            break
-+            action = record
-+        break
-@@ -858 +867 @@ def _coordinator_carried_entities(task: Any, scene_revision: Any) -> list[dict[s
--    unaffected = effect.get("unaffected_entity_refs")
-+    unaffected = effect.get("unaffected_entity_refs", []) if effect.get("carry_forward_authorized") is True else []
-@@ -862 +871 @@ def _coordinator_carried_entities(task: Any, scene_revision: Any) -> list[dict[s
--        or not isinstance(unaffected, list) or not unaffected
-+        or not isinstance(unaffected, list)
-@@ -867,0 +877,17 @@ def _coordinator_carried_entities(task: Any, scene_revision: Any) -> list[dict[s
-+    held = effect.get("held_entity")
-+    held_ref = None
-+    changed = effect.get("changed_entity_refs")
-+    if isinstance(held, dict) and action is not None:
-+        facts = response_facts(action.response)
-+        entity_ref = held.get("entity_ref")
-+        if (facts.get("status") == "succeeded" and facts.get("outcome_known") is True
-+                and held.get("holding_state") == "holding"
-+                and held.get("owner") == f"paos:{getattr(task, 'task_id', '')}"
-+                and held.get("acquire_invocation_id") == getattr(action, "invocation_id", None)
-+                and isinstance(held.get("acquire_invocation_id"), str)
-+                and entity_ref == action.arguments.get("entity_ref")
-+                and isinstance(entity_ref, str)
-+                and isinstance(changed, list) and entity_ref in changed):
-+            held_ref = entity_ref
-+    if not unaffected and held_ref is None:
-+        return []
-@@ -898 +924 @@ def _coordinator_carried_entities(task: Any, scene_revision: Any) -> list[dict[s
--    for entity_ref in unaffected:
-+    for entity_ref in dict.fromkeys([*unaffected, *([held_ref] if held_ref else [])]):
-@@ -906,9 +932,10 @@ def _coordinator_carried_entities(task: Any, scene_revision: Any) -> list[dict[s
--        carried.append(
--            {
--                "entity": dict(claim),
--                "source_scene_revision": source_scene,
--                "source_binding_ref": binding_ref,
--                "execution_entity_ref": execution_ref,
--                "effect_evidence_refs": list(effect_refs),
--            }
--        )
-+        item = {
-+            "entity": dict(claim),
-+            "source_scene_revision": source_scene,
-+            "source_binding_ref": binding_ref,
-+            "execution_entity_ref": execution_ref,
-+            "effect_evidence_refs": list(effect_refs),
-+        }
-+        if entity_ref == held_ref:
-+            item.update(carry_state="held", possession=dict(held))
-+        carried.append(item)
-```
-
-#### [修改 / Modified] `PhyAgentOS/agent/tools/planning.py` L447-L459
-
-```diff
---- a/PhyAgentOS/agent/tools/planning.py
-+++ b/PhyAgentOS/agent/tools/planning.py
-@@ -446,0 +447,13 @@ class ForgePlanSelectTool(Tool):
-+            if tool_id == "scene.understand":
-+                from PhyAgentOS.agent.tools.forge_tool_api import _coordinator_carried_entities
-+
-+                if "carried_entities" in final_arguments:
-+                    raise PlanningDispatchError(
-+                        "carried_entities is Coordinator-owned and cannot be supplied by the Agent",
-+                        code="invalid_selection_arguments",
-+                    )
-+                carried = _coordinator_carried_entities(
-+                    self.coordinator.get_task(task_id), final_arguments.get("scene_revision")
-+                )
-+                if carried:
-+                    final_arguments = {**final_arguments, "carried_entities": carried}
-```
-
-#### [修改 / Modified] `PhyAgentOS/forge/capability_runtime/understanding.py` L229-L239, L540-L540, L543-L545, L563-L576, L907-L923, L987-L998, L1001-L1005, L1017-L1017, L1024-L1025, L1032-L1034
-
-```diff
---- a/PhyAgentOS/forge/capability_runtime/understanding.py
-+++ b/PhyAgentOS/forge/capability_runtime/understanding.py
-@@ -228,0 +229,11 @@ TOOL_SPEC: dict[str, Any] = {
-+                        "carry_state": {"enum": ["unchanged", "held"]},
-+                        "possession": {
-+                            "type": "object", "additionalProperties": False,
-+                            "required": ["holding_state", "entity_ref", "owner", "acquire_invocation_id"],
-+                            "properties": {
-+                                "holding_state": {"const": "holding"},
-+                                "entity_ref": {"type": "string", "pattern": _ENTITY_REF.pattern},
-+                                "owner": {"type": "string", "minLength": 1},
-+                                "acquire_invocation_id": {"type": "string", "minLength": 1},
-+                            },
-+                        },
-@@ -529 +540 @@ def validate_arguments(arguments: Any) -> dict[str, Any] | None:
--        if not isinstance(item, dict) or set(item) != {
-+        required = {
-@@ -532 +543,3 @@ def validate_arguments(arguments: Any) -> dict[str, Any] | None:
--        }:
-+        }
-+        if (not isinstance(item, dict) or not required <= set(item)
-+                or set(item) - required - {"carry_state", "possession"}):
-@@ -549,0 +563,14 @@ def validate_arguments(arguments: Any) -> dict[str, Any] | None:
-+        carry_state = item.get("carry_state", "unchanged")
-+        possession = item.get("possession")
-+        if carry_state not in {"unchanged", "held"}:
-+            return _error("invalid_carry_forward", "carry state is invalid", observation_ref=observation_ref)
-+        if carry_state == "held":
-+            if (not isinstance(possession, dict)
-+                    or set(possession) != {"holding_state", "entity_ref", "owner", "acquire_invocation_id"}
-+                    or possession.get("holding_state") != "holding"
-+                    or possession.get("entity_ref") != entity_ref
-+                    or any(not isinstance(possession.get(key), str) or not possession[key]
-+                           for key in ("owner", "acquire_invocation_id"))):
-+                return _error("invalid_carry_forward", "held possession is invalid", observation_ref=observation_ref)
-+        elif possession is not None:
-+            return _error("invalid_carry_forward", "unchanged entity cannot claim possession", observation_ref=observation_ref)
-@@ -879,0 +907,17 @@ def _metric_alias_ambiguities(
-+def _remap_visual_identity(value: Any, aliases: dict[str, str]) -> Any:
-+    """Keep fresh observation-local IDs distinct from Runtime-proven task IDs."""
-+    if isinstance(value, list):
-+        return [_remap_visual_identity(item, aliases) for item in value]
-+    if isinstance(value, dict):
-+        result = {}
-+        for key, item in value.items():
-+            if key in {"entity_ref", "subject_ref", "object_ref"} and isinstance(item, str):
-+                result[key] = aliases.get(item, item)
-+            elif key == "entity_refs" and isinstance(item, list):
-+                result[key] = [aliases.get(ref, ref) for ref in item]
-+            else:
-+                result[key] = _remap_visual_identity(item, aliases)
-+        return result
-+    return deepcopy(value)
-+
-+
-@@ -943 +987,12 @@ class SceneUnderstandingEndpoint:
--        entities = [dict(item) for item in normalized.entities]
-+        reserved = {item["entity"]["entity_ref"] for item in carried_entities if item.get("carry_state") == "held"}
-+        used = reserved | {item["entity_ref"] for item in normalized.entities}
-+        aliases = {}
-+        for ref in sorted(reserved & {item["entity_ref"] for item in normalized.entities}):
-+            index = 1
-+            alias = f"entity://observed-{ref.removeprefix('entity://')}-{index}"
-+            while alias in used:
-+                index += 1
-+                alias = f"entity://observed-{ref.removeprefix('entity://')}-{index}"
-+            aliases[ref] = alias
-+            used.add(alias)
-+        entities = [_remap_visual_identity(item, aliases) for item in normalized.entities]
-@@ -946 +1001,5 @@ class SceneUnderstandingEndpoint:
--        reconciliations = [dict(item) for item in normalized.reconciliations]
-+        reconciliations = [_remap_visual_identity(item, aliases) for item in normalized.reconciliations]
-+        reconciliations.extend({
-+            "code": "observation_local_identity_remapped", "entity_refs": [alias],
-+            "source_entity_ref": ref, "observation_ref": observation_ref,
-+        } for ref, alias in aliases.items())
-@@ -958 +1017 @@ class SceneUnderstandingEndpoint:
--                    "code": "runtime_proven_entity_unchanged",
-+                    "code": "runtime_proven_entity_held" if item.get("carry_state") == "held" else "runtime_proven_entity_unchanged",
-@@ -965,2 +1024,2 @@ class SceneUnderstandingEndpoint:
--        ambiguities = [dict(item) for item in normalized.ambiguities]
--        ambiguities.extend(_metric_alias_ambiguities(normalized))
-+        ambiguities = [_remap_visual_identity(item, aliases) for item in normalized.ambiguities]
-+        ambiguities.extend(_remap_visual_identity(_metric_alias_ambiguities(normalized), aliases))
-@@ -973,3 +1032,3 @@ class SceneUnderstandingEndpoint:
--            "relations": [dict(item) for item in normalized.relations],
--            "spatial_envelopes": [dict(item) for item in normalized.spatial_envelopes],
--            "derived_artifacts": [dict(item) for item in normalized.derived_artifacts],
-+            "relations": [_remap_visual_identity(item, aliases) for item in normalized.relations],
-+            "spatial_envelopes": [_remap_visual_identity(item, aliases) for item in normalized.spatial_envelopes],
-+            "derived_artifacts": [_remap_visual_identity(item, aliases) for item in normalized.derived_artifacts],
-```
-
-#### [修改 / Modified] `examples/forge-adapters/robotwin20/runtime/robotwin_persistent_engine.py` L703-L709
-
-```diff
---- a/examples/forge-adapters/robotwin20/runtime/robotwin_persistent_engine.py
-+++ b/examples/forge-adapters/robotwin20/runtime/robotwin_persistent_engine.py
-@@ -702,0 +703,7 @@ class RoboTwinPersistentEngine:
-+        if (phase == "acquire" and result.get("status") == "succeeded"
-+                and result.get("outcome_known") is True
-+                and result["scene_effects"]["effect_scope_complete"] is True):
-+            result["scene_effects"]["held_entity"] = {
-+                "holding_state": "holding", "entity_ref": arguments["entity_ref"],
-+                "owner": owner, "acquire_invocation_id": invocation_id,
-+            }
-```
-
-#### [修改 / Modified] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/grounding.py` L188-L194, L283-L283, L354-L354, L358-L362, L380-L380, L436-L456
-
-```diff
---- a/examples/forge-adapters/robotwin20/src/robotwin20_adapter/grounding.py
-+++ b/examples/forge-adapters/robotwin20/src/robotwin20_adapter/grounding.py
-@@ -188 +188,7 @@ class Grounding:
--                self._current(request)
-+                state = self._current(request)
-+                carried = {
-+                    item["entity"]["entity_ref"]: item
-+                    for item in understanding.get("carried_forward", [])
-+                    if item.get("carry_state") == "held" and item["entity"]["entity_ref"] in selected
-+                }
-+                self._carried_objects(carried, binding["scene_facts"], state)
-@@ -277 +283 @@ class Grounding:
--        self._current(request)
-+        current_state = self._current(request)
-@@ -348 +354 @@ class Grounding:
--        objects.update(self._carried_objects(selected_carried, facts))
-+        objects.update(self._carried_objects(selected_carried, facts, current_state))
-@@ -352 +358,5 @@ class Grounding:
--        self._current(request)
-+        current_state = self._current(request)
-+        self._carried_objects(
-+            {ref: item for ref, item in selected_carried.items() if item.get("carry_state") == "held"},
-+            facts, current_state,
-+        )
-@@ -370 +380 @@ class Grounding:
--    def _carried_objects(self, carried_by_ref, current_facts):
-+    def _carried_objects(self, carried_by_ref, current_facts, current_state=None):
-@@ -425,0 +436,21 @@ class Grounding:
-+            carry_state = carried.get("carry_state", "unchanged")
-+            if carry_state == "held":
-+                possession = carried.get("possession")
-+                if (not isinstance(possession, Mapping) or not isinstance(current_state, Mapping)
-+                        or possession.get("entity_ref") != entity_ref
-+                        or possession.get("holding_state") != "holding"
-+                        or not possession.get("owner") or not possession.get("acquire_invocation_id")
-+                        or any(current_state.get(key) != possession.get(key)
-+                               for key in ("holding_state", "owner", "entity_ref", "acquire_invocation_id"))):
-+                    self._reject("held entity possession no longer matches Runtime", stage="held_projection", entity_ref=entity_ref)
-+                # Transport the existing observation-derived model with the
-+                # physical object's rigid displacement. Never substitute actor
-+                # dimensions or pretend this is a fresh visual measurement.
-+                delta = current_pose @ np.linalg.inv(source_pose)
-+                model = deepcopy(dict(source_model))
-+                for key in ("world_T_object", "world_T_functional_point"):
-+                    model[key] = (delta @ rigid_transform(model[key])).reshape(-1).tolist()
-+                projected[entity_ref] = model
-+                continue
-+            if carry_state != "unchanged":
-+                self._reject("carried entity state is invalid", stage="carry_forward", entity_ref=entity_ref)
-```
-
-#### [修改 / Modified] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_manipulation.py` L321-L329
-
-```diff
---- a/examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_manipulation.py
-+++ b/examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_manipulation.py
-@@ -320,0 +321,9 @@ class PersistentManipulationProvider:
-+            effects = result.get("scene_effects")
-+            if isinstance(effects, dict) and "held_entity" in effects:
-+                # A historical engine receipt alone does not prove possession.
-+                # Publish it only when the provider's settled ownership agrees.
-+                held = effects["held_entity"]
-+                if (self._state != "holding" or result.get("outcome_known") is not True
-+                        or status != "succeeded" or not isinstance(held, dict)
-+                        or held != self.snapshot()):
-+                    effects.pop("held_entity")
-```
-
-#### [修改 / Modified] `examples/forge-adapters/robotwin20/tests/test_grounding.py` L226-L284
-
-```diff
---- a/examples/forge-adapters/robotwin20/tests/test_grounding.py
-+++ b/examples/forge-adapters/robotwin20/tests/test_grounding.py
-@@ -225,0 +226,59 @@ def test_holding_scene_binding_rejects_carried_entity_pose_drift(tmp_path):
-+def setup_held_scene(tmp_path):
-+    grounding, request = setup_carried_scene(tmp_path, move_selected=True)
-+    understanding = next(value for value in grounding.understandings.values() if value["scene_revision"] == "s2")
-+    held = understanding["carried_forward"][0]
-+    held.update(carry_state="held", possession={
-+        "holding_state": "holding", "entity_ref": "entity://seen", "owner": "paos:task-1",
-+        "acquire_invocation_id": "invocation://acquire/1",
-+    })
-+    original_query = grounding.client.query
-+    grounding.client.query = lambda operation, arguments: {
-+        **original_query(operation, arguments), **held["possession"],
-+    }
-+    return grounding, request, held
-+
-+
-+... additional held/unknown/persistence regression cases as listed above
-```
-
-#### [修改 / Modified] `examples/forge-adapters/robotwin20/tests/test_persistent_manipulation.py` L94-L115, L180-L181, L191-L191, L421-L454
-
-```diff
---- a/examples/forge-adapters/robotwin20/tests/test_persistent_manipulation.py
-+++ b/examples/forge-adapters/robotwin20/tests/test_persistent_manipulation.py
-@@ -93,0 +94,22 @@ def test_cancelled_motion_retains_uncertain_possession_without_release():
-+@pytest.mark.parametrize("mismatch", [False, True])
-+def test_provider_publishes_held_receipt_only_with_matching_settled_possession(mismatch):
-+    class HeldEngine(Engine):
-+        def execute(self, phase, arguments, cancel, *, owner, invocation_id):
-+            return {
-+                **super().execute(phase, arguments, cancel, owner=owner, invocation_id=invocation_id),
-+                "scene_effects": {"held_entity": {
-+                    "holding_state": "holding", "entity_ref": arguments["entity_ref"],
-+                    "owner": "other" if mismatch else owner,
-+                    "acquire_invocation_id": invocation_id,
-+                }},
-+            }
-+    provider = PersistentManipulationProvider(HeldEngine)
-+    try:
-+        provider.start("acquire", "invocation://acquire/1", "paos:task-1", {"entity_ref": "entity://container"})
-+... additional held/unknown/persistence regression cases as listed above
-```
-
-#### [修改 / Modified] `examples/forge-skills/pick-place-workflow/contracts/scene.understand.tool.yaml` L148-L165
-
-```diff
---- a/examples/forge-skills/pick-place-workflow/contracts/scene.understand.tool.yaml
-+++ b/examples/forge-skills/pick-place-workflow/contracts/scene.understand.tool.yaml
-@@ -147,0 +148,18 @@ input_schema:
-+          carry_state:
-+            enum: [unchanged, held]
-+          possession:
-+            type: object
-+            additionalProperties: false
-+            required: [holding_state, entity_ref, owner, acquire_invocation_id]
-+            properties:
-+              holding_state:
-+                const: holding
-+              entity_ref:
-+                type: string
-+                pattern: ^entity://[^/]+$
-+              owner:
-+                type: string
-+                minLength: 1
-+              acquire_invocation_id:
-+                type: string
-+                minLength: 1
-```
-
-#### [修改 / Modified] `examples/forge-skills/pick-place-workflow/tests/test_grasp_propose.py` L270-L270
-
-```diff
---- a/examples/forge-skills/pick-place-workflow/tests/test_grasp_propose.py
-+++ b/examples/forge-skills/pick-place-workflow/tests/test_grasp_propose.py
-@@ -270 +270 @@ def test_bundle_and_package_versions_match_the_feature_revision():
--    assert bundle_manifest["version"] == "3.0.9"
-+    assert bundle_manifest["version"] == "3.0.10"
-```
-
-#### [修改 / Modified] `examples/forge-skills/pick-place-workflow/tests/test_scene_understand.py` L246-L295
-
-```diff
---- a/examples/forge-skills/pick-place-workflow/tests/test_scene_understand.py
-+++ b/examples/forge-skills/pick-place-workflow/tests/test_scene_understand.py
-@@ -245,0 +246,50 @@ def test_runtime_proven_unchanged_entity_is_merged_without_reaching_visual_provi
-+def held_projection():
-+    return {
-+        "entity": {"entity_ref": "entity://bottle-1", "category": "held container",
-+                   "confidence": 0.92, "provenance": ["artifact://old/rgb"]},
-+        "source_scene_revision": "old", "source_binding_ref": "artifact://bindings/old",
-+        "execution_entity_ref": "entity://runtime-container",
-+        "effect_evidence_refs": ["artifact://action/acquire"], "carry_state": "held",
-+        "possession": {"holding_state": "holding", "entity_ref": "entity://bottle-1",
-+                       "owner": "paos:task-1", "acquire_invocation_id": "invocation://acquire/1"},
-+    }
-+
-+
-+def test_held_projection_preserves_conflicting_visual_identity_and_geometry():
-+    snapshot = understanding_snapshot(
-+        entities=({**understanding_snapshot().entities[0], "category": "robot"},),
-+... additional held/unknown/persistence regression cases as listed above
-```
-
-#### [修改 / Modified] `tests/test_forge_tool_api.py` L591-L591, L796-L1034
-
-```diff
---- a/tests/test_forge_tool_api.py
-+++ b/tests/test_forge_tool_api.py
-@@ -591 +591 @@ def _carry_task(*, effect_overrides=None, include_effect=True):
--    action_result = {"status": "succeeded"}
-+    action_result = {"status": "succeeded", "outcome_known": True}
-@@ -795,0 +796,239 @@ def test_coordinator_does_not_carry_entities_without_complete_runtime_evidence(t
-+
-+
-+def _held_task():
-+    task = _carry_task(effect_overrides={
-+        "unaffected_entity_refs": [], "carry_forward_authorized": False,
-+        "held_entity": {
-+            "holding_state": "holding", "entity_ref": "entity://held",
-+            "owner": "paos:task-1", "acquire_invocation_id": "invocation://acquire/1",
-+        },
-+    })
-+    task.task_id = "task-1"
-+    task.execution_records[0].response["data"]["entities"][0]["entity_ref"] = "entity://held"
-+... additional held/unknown/persistence regression cases as listed above
-```
-
-### 七维验收与验证 / Seven-Dimension Acceptance and Validation
-
-- [eval] [fix] Core/AgentLoop + Adapter focused：`434 passed in 11.30s`；Skill 全量：`387 passed in 9.33s`；独立 provider boundary：`12 passed in 0.33s`；合计 833 项全部通过。(local)
-- [eval] [fix] Core/AgentLoop + Adapter focused: `434 passed in 11.30s`; full Skill: `387 passed in 9.33s`; isolated provider boundary: `12 passed in 0.33s`; 833 tests passed in total. (local)
-- [eval] [fix] Ruff、compileall、`git diff --check` 通过；七维审查五项 Major 已修复，无未解决 Blocker/Major；完整命令见审查文档。(local)
-- [eval] [fix] Ruff, compileall, and `git diff --check` passed; five Major findings resolved with no outstanding Blocker/Major; exact commands are in the review. (local)
-- [eval] [fix] 初次混合测试 `444 passed, 1 failed` 的唯一失败是既有全进程 sys.modules 边界测试；独立进程 12/12 通过。初次 Skill suite 的旧 3.0.9 断言已修正，最终全量通过。(local)
-- [eval] [fix] The initial mixed process had `444 passed, 1 failed` from the existing whole-process sys.modules assertion; isolated provider tests passed 12/12. Corrected the initial stale 3.0.9 Skill assertion and the final full suite passed. (local)
-- [env] [chore] 仅在临时测试库和 fake/no-motion seam 验证；未创建/恢复现场任务、调用 live Gateway Query/Action、推进 simulator/物理运动或安装/重启 Runtime。旧 receipt 不补造 held evidence；下一次部署需一起重建 Node 和 Skill contract。(local)
-- [env] [chore] Validation used temporary test stores and fake/no-motion seams only; no live task creation/resumption, Gateway Query/Action, simulator/physical movement, or Runtime installation/restart. Old receipts receive no fabricated held evidence; the next deployment must rebuild Node and Skill contracts together. (local)
-
-### Git 提交 / Git Commit
-- Branch: `feature/planning-loop`
-- Commit: `859d1b8`（实现、诊断与七维审查 / implementation, diagnosis, and seven-dimension review）
