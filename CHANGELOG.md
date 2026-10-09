@@ -6,6 +6,139 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v13.0.5 (2026-10-09 12:24) - codex
+
+### 预期修改 / Planned Changes [完成]
+- [policy] [fix] 按架构、正确性、恢复与幂等、机器人安全、扩展性、可观测性与维护性、AgentLoop 自主与收敛七维审查 v13.0.2 跨段 Query 证据修复；复现并修复编译可见记录与续接实际授权证据不一致。(local)
+- [policy] [fix] Review the v13.0.2 cross-segment Query repair across architecture, correctness, recovery/idempotency, robotics safety, extensibility, observability/maintainability, and AgentLoop autonomy/convergence; reproduce and fix disagreement between compiler-visible records and continuation-authorized evidence. (local)
+- [eval] [fix] 在真实 Coordinator 临时数据库边界增加遗漏来源、继承授权及同段依赖回归，保留 source_scope、场景一致性和 Action admission；仅执行无运动测试。(local)
+- [eval] [fix] Add real Coordinator temporary-store regressions for omitted sources, inherited authorization, and graph-local dependencies; preserve source_scope, scene consistency, and Action admission using no-motion tests. (local)
+- [docs] [docs] 保存七维审查与精确诊断、行号及 Diff，维护最近五条，仅提交本轮文件并推送当前分支，保留并行 v13.0.4 文档工作。(local)
+- [docs] [docs] Save the seven-dimension review and precise diagnosis, line ranges, and diffs; maintain the latest five, commit only this task's files, and push the current branch while preserving parallel v13.0.4 documentation work. (local)
+
+### 具体失败场景 / Concrete Failure Scenario
+- 编译按全任务成功 Query 判断来源可达，而续接只持久化显式选择的 evidence_refs：遗漏抓取来源仍会接受不可执行计划，直到 selection 才拒绝。应复用现有授权集合校验，不新增 hash、冻结 contract、baseline、schema 或 gate；普通回归测试足以证明修复。
+- Compilation checks all successful task Queries, while continuation persists selected evidence_refs: an omitted grasp source can admit an unusable graph that fails only at selection. Reuse existing authorization-set validation without adding hashes, frozen contracts, baselines, schemas, or gates; ordinary regression tests can prove the repair.
+
+
+### 实际修改 / Implemented Changes
+- [policy] [fix] Major：编译可见来源与新 revision 的证据授权不一致，涉及续接、恢复及完整图入口。现按成功 Query 与实际持久化 evidence_refs 的交集检查可达性；续接使用继承加新增，恢复使用替换或继承，拒绝发生在保存 revision／领取 attempt 之前。(local)
+- [policy] [fix] Major: compiler-visible sources disagreed with revision authorization across continuation, recovery, and full-graph entry points. Check successful Queries intersected with the evidence_refs actually persisted; continuation adds inherited/new refs, recovery replaces or inherits, and rejection precedes revision persistence/attempt claims. (local)
+- [eval] [fix] 新增 11 个真实 Coordinator 无运动用例，证明遗漏来源拒绝、继承与默认池保留、恢复不消耗失败尝试、重载后可选择、同段前驱仍合法。旧观测来源配对被已有观测绑定拒绝，只补测试，不增防御分支。(local)
+- [eval] [fix] Add 11 real Coordinator no-motion cases covering omitted-source rejection, inherited/default pools, recovery rejection without attempt consumption, selection after reload, and graph-local predecessors. Matching old-capture sources are rejected by existing observation binding; add a test, not another defensive branch. (local)
+- [docs] [docs] 保存七维审查，未解决 Blocker/Major 为零；仅修改 Core，不新增 RGB/颜色/任务/机械臂/provider 专用逻辑，不更改 Skill 3.0.12、Node 1.0.3 或 Adapter 0.9.14。(local)
+- [docs] [docs] Save the seven-dimension review with no unresolved Blocker/Major; modify Core only, add no RGB/color/task/arm/provider-specific logic, and retain Skill 3.0.12, Node 1.0.3 and Adapter 0.9.14. (local)
+
+### 文件变更详情 / File Change Details
+
+#### [修改 / Modified] `PhyAgentOS/agent/plan_proposal.py` L167-L169, L328-L352, L359-L450
+
+中文：semantic 编译和完整图 canonicalization 均传递实际授权集合，默认继承 active revision。保留当前 capture 过滤和 predecessor/evidence/authorized 语义。
+English: semantic compilation and full-graph canonicalization receive the actual authorization set, defaulting to active-revision discovery refs. Preserve current-capture filtering and predecessor/evidence/authorized semantics.
+
+```diff
+-    _validate_projection_source_reachability(task, parsed, tools)
++    _validate_projection_source_reachability(
++        task, parsed, tools, authorized_evidence_refs=initial_evidence_refs
++    )
+-def canonicalize_plan_graph(task, graph):
++def canonicalize_plan_graph(task, graph, *, authorized_evidence_refs=None):
+-    _validate_projection_source_reachability(task, normalized, tools)
++    _validate_projection_source_reachability(
++        task, normalized, tools, authorized_evidence_refs=authorized_evidence_refs
++    )
++    authorized = set(
++        getattr(getattr(task, "active_revision", None), "discovery_evidence_refs", ())
++        if authorized_evidence_refs is None else authorized_evidence_refs
++    )
+     successful_records = {
+         record.tool_id for record in record_pool
+         if getattr(record, "status", None) == "succeeded"
++        and getattr(record, "semantics", None) == "query"
++        and authorized.intersection(getattr(record, "evidence_refs", ()))
+     }
++    # Rejection identifies submitted dependencies or discovery evidence_refs.
+```
+
+#### [修改 / Modified] `PhyAgentOS/agent/tools/forge_task.py` L400-L422, L559-L562, L673-L726
+
+中文：三个入口统一传递即将持久化的授权集合；continuation 的继承池不会因显式仅列新增引用而丢失。恢复的检查先于 claim_replan_attempt。
+English: all three entry points pass the authorization pool they will persist; explicit new continuation refs do not discard inherited authorization. Recovery validation precedes claim_replan_attempt.
+
+```diff
++        selected_evidence = (
++            tuple(discovery_evidence_refs)
++            if discovery_evidence_refs is not None
++            else task.active_revision.discovery_evidence_refs
++        )
+-        graph = compile_task_plan(task, nodes, reason=reason)
++        graph = compile_task_plan(
++            task, nodes, reason=reason, initial_evidence_refs=selected_evidence
++        )
+-        graph = canonicalize_plan_graph(task, PlanGraph.model_validate(plan_graph))
++        graph = canonicalize_plan_graph(
++            task, PlanGraph.model_validate(plan_graph),
++            authorized_evidence_refs=selected_evidence,
++        )
++        # Full-graph materialization uses requested_evidence instead.
++        authorized_evidence = tuple(dict.fromkeys(
++            task.active_revision.discovery_evidence_refs + selected_evidence
++        ))
+-            initial_evidence_refs=selected_evidence,
++            initial_evidence_refs=authorized_evidence,
+```
+
+#### [修改 / Modified] `examples/forge-skills/pick-place-workflow/tests/test_planning_continuation_sources.py` L7-L15, L199-L208, L262-L425
+
+中文：增加 11 个场景，边界文件从 15 增至 26 用例；用完整 task record 对比证明失败提交无持久化副作用。
+English: add 11 cases, growing the boundary file from 15 to 26; compare complete task records to prove rejected submissions have no persisted side effects.
+
+```diff
++@pytest.mark.parametrize("omitted", ["grasp", "capabilities"])
++async def test_continuation_rejects_omitted_projection_evidence_before_persistence(tmp_path, omitted):
++    coordinator, client, _ = completed_grasp_task(tmp_path)
++    before = coordinator.get_task("task-container").model_dump(mode="json")
++    with pytest.raises(ValueError, match="projection_source_unreachable"):
++        await ForgeTaskContinuePlanTool(coordinator).execute(
++            "task-container", nodes=[prepare_node().model_dump(mode="json")],
++            evidence_refs=[f"tool:{name}" for name in ("observe", "capabilities", "grasp")
++                           if name != omitted], reason="reuse selected evidence only",
++        )
++    assert coordinator.get_task("task-container").model_dump(mode="json") == before
++    assert client.calls == []
++    # Additional cases cover inherited/default sources, recovery semantic/full graphs,
++    # full-graph materialization, reload, local predecessors and matching old captures.
+```
+
+#### [新增 / Added] `docs/forge/IMPLEMENTATION_REVIEW_V13_0_5.md` L1-L114
+
+中文：记录 Major、三个入口的统一修复、旧观测假设验证、七维结果、完整验证命令与部署限制。
+English: record the Major finding, shared repair across three entry points, old-capture investigation, seven-dimension results, exact validation commands and deployment limits.
+
+```diff
++# Implementation Review v13.0.5 / 七维代码审查
++## Major: compiler reachability disagreed with revision authorization / 编译与授权不一致
++## Investigated hypothesis: old capture pair / 已排除的旧观测假设
++## Seven dimensions / 七个维度
++## Validation / 验证
+```
+
+### 验证 / Validation
+#### [修改 / Modified] `CHANGELOG.md` L9-L141
+- [docs] [docs] 插入 v13.0.5 完整双语记录与 Diff，滚动维护最新五个版本；月度归档保存完整历史，保留并行文档工作的日志。(local)
+- [docs] [docs] Insert the full bilingual v13.0.5 entry and diffs, maintaining the latest five versions; the monthly archive retains complete history and parallel documentation logs. (local)
+
+- [eval] [fix] 修复前遗漏两种来源用例均失败（DID NOT RAISE），继承对照通过。修复后 Core/AgentLoop/Skill/Adapter 联合 `405 passed in 15.62s`，Skill 全量 `415 passed in 14.27s`；存在重叠，不相加。(local)
+- [eval] [fix] Before repair, both omitted-source cases failed (DID NOT RAISE), while inherited authorization passed. After repair: focused Core/AgentLoop/Skill/Adapter `405 passed in 15.62s`, full Skill `415 passed in 14.27s`; suites overlap and are not summed. (local)
+- [eval] [fix] Ruff、compileall 和 diff 检查通过；精确命令见审查文档。禁用第三方 pytest plugin 自动加载并显式加载 asyncio，避开环境中无关 ROS/lark 缺失。(local)
+- [eval] [fix] Ruff, compileall and diff checks pass; exact commands are in the review. Disable third-party pytest plugin autoload and explicitly load asyncio to avoid unrelated ROS/lark environment failures. (local)
+- [env] [chore] 只运行临时库／fake Gateway 回归；未恢复或修改现场任务、调用 live Action、推进 simulator、安装或重启服务。(local)
+- [env] [chore] Use temporary stores/fake Gateway regressions only; no live task resumption/mutation, live Action, simulator advancement, installation or restart. (local)
+
+### Git 提交 / Git Commit
+- Branch: `feature/planning-loop`
+- Commit: 实现提交后记录 / recorded after the implementation commit
+
 ## v13.0.3 (2026-10-09 12:09) - codex
 
 ### 预期修改 / Planned Changes [完成]
@@ -325,90 +458,3 @@
 - Commit: `ece4f5f`（诊断与架构适配分析 / diagnosis and architecture fit analysis）
 - Source inspected: `e76506c`
 - 仅 stage 本轮四个文件，保留已有未跟踪工作内容 / Stage only these four files and preserve pre-existing untracked work.
-
-## v12.10.15 (2026-10-09 11:09) - codex
-
-### 预期修改 / Planned Changes [完成]
-- [env] [chore] 按用户本轮明确授权 force-stop 旧 pick-place-workflow，核对零非终态任务及 invocation/session/task-binding ownership；旧 flow、host/worker 退出后更新部署。(local)
-- [env] [chore] Under the user's explicit authorization, force-stop the old pick-place-workflow and inspect zero non-terminal tasks and invocation/session/task-binding ownership; deploy after the old flow and host/workers exit. (local)
-- [env] [chore] 从当前已推送 v12.10.14 source 更新 Core editable 安装，发布 Adapter 0.9.14、Node 1.0.3、Skill 3.0.11；同步既有 Skill Node lock/归档 SHA，不引入额外 hash/gate。(local)
-- [env] [chore] Refresh the Core editable installation from pushed v12.10.14 sources and release Adapter 0.9.14, Node 1.0.3, and Skill 3.0.11; update the existing Skill Node lock/archive SHA without adding a new hash or gate. (local)
-- [eval] [fix] 构建并验证 Node/Skill，使用原 operator env 与 robotwin-blocks-ranking-graspnet profile 启动；检查新版本、Gateway、11 项 Tool readiness 与零 ownership，不创建/恢复任务或调用 Query/Action。(local)
-- [eval] [fix] Build and verify Node/Skill, start the original robotwin-blocks-ranking-graspnet profile with the existing operator env, and check versions, Gateway, all 11 Tool contexts and zero ownership without task creation/resumption or Query/Action invocation. (local)
-
-### 影响文件 / Expected Files
-- `examples/forge-skills/pick-place-workflow/CHANGELOG.md`
-- `examples/forge-adapters/robotwin20/pyproject.toml`
-- `examples/forge-skills/pick-place-workflow/pyproject.toml`
-- `examples/forge-skills/pick-place-workflow/skill.yaml`
-- `examples/forge-skills/pick-place-workflow/tests/test_grasp_propose.py`
-- `CHANGELOG.md`
-- `changelog/2026-10_part3.md`
-
-### 实际修改 / Completed Changes
-- [env] [chore] 用户本轮授权的 `.venv/bin/paos skill stop pick-place-workflow --force` 完成；旧 runtime_b562aa15b12e40de 进入 stopped、Dora flow down，host 1506184、persistent worker 1506295、视觉 workers 1579557/1580880 均退出；部署前后非终态任务均为 0，ownership 三组均为空。(local)
-- [env] [chore] User-authorized force-stop completed: old runtime_b562aa15b12e40de stopped, Dora flow went down, and host 1506184, persistent worker 1506295, and visual workers 1579557/1580880 exited. Non-terminal tasks stayed zero and all three ownership sets stayed empty. (local)
-- [env] [chore] 项目 .venv 与实际 host `/home/yanxu/miniconda3/envs/paos/bin/python` 均执行 `python -m pip install -e . --no-deps`；两者加载当前 `/home/yanxu/PhyAgentOS-forge/PhyAgentOS`，实际 host 确认 lineage pairing 与全部 carried ID 避冲突修改存在。(local)
-- [env] [chore] Refreshed Core editable installation with `python -m pip install -e . --no-deps` in the project .venv and actual conda paos host environment. Both load current repository sources; host inspection confirmed lineage pairing and all-carried-ID reservation. (local)
-- [env] [chore] 发布 Adapter 0.9.14、Node 1.0.3、Skill 3.0.11；Node archive 415273 bytes、SHA-256 `7108b7e10dff24cbc49451abf1b446aec1bb84e2c958f47b36aef22aa8b94776`；Skill archive 554376 bytes、SHA-256 `366f6c63b15e8b8b54f45676e14788c3b0785373a08e8ca1e5fb8ad75f76242f`，本地安装与 Node verify 通过。(local)
-- [env] [chore] Released Adapter 0.9.14, Node 1.0.3, and Skill 3.0.11. Node archive: 415273 bytes, SHA-256 `7108b7e10dff24cbc49451abf1b446aec1bb84e2c958f47b36aef22aa8b94776`; Skill archive: 554376 bytes, SHA-256 `366f6c63b15e8b8b54f45676e14788c3b0785373a08e8ca1e5fb8ad75f76242f`. Local installation and Node verification passed. (local)
-- [env] [chore] 复用原 operator env（权限 0600）启动同一 robotwin-blocks-ranking-graspnet profile，新 Runtime `runtime_749bef84f9fa4fe8` 于 11:12:45 启动、11:13:03 ready；实际 host 933125、persistent worker 933230，spawn/运行锁均使用 Node 1.0.3、Skill 3.0.11。(local)
-- [env] [chore] Reused the existing operator env (mode 0600) and the same profile. New Runtime `runtime_749bef84f9fa4fe8` started at 11:12:45 and became ready at 11:13:03; actual host 933125 and persistent worker 933230 use the Node 1.0.3/Skill 3.0.11 deployment. (local)
-- [eval] [fix] Gateway GET /tools `ok=true`、11 个 Tool context 全部 ready；新 worker 载入的 engine/grounding 含 held_entity/carry_state、新安装静态 contract 含 possession。Dora 日志前部 SIGKILL 属于被 force-stop 的旧 flow，不是新 Runtime 失败。(local)
-- [eval] [fix] Gateway GET /tools returned ok=true and all 11 Tool contexts are ready. The new embedded engine/grounding contains held_entity/carry_state and the installed contract contains possession. The earlier SIGKILL in the appended Dora log belongs to the old force-stopped flow. (local)
-- [eval] [fix] 发布相关回归 `107 passed in 0.48s`；Ruff、`git diff --check` 通过。只执行 lifecycle、构建、安装和只读 health/readiness/状态检查，未创建/恢复任务、调用 Query/Action 或推进模拟/物理动作。(local)
-- [eval] [fix] Release-related regression: 107 passed in 0.48s; Ruff and git diff --check passed. Only lifecycle/build/install and read-only health/readiness/state checks ran; no task creation/resumption, Query/Action invocation, or simulator/physical action advancement. (local)
-
-### 文件变更详情 / File Changes
-
-| 文件 / File | 精确行号 / Exact Lines | 变更 / Change |
-| --- | --- | --- |
-| `examples/forge-adapters/robotwin20/pyproject.toml` | L3-L3 | Adapter 0.9.13 → 0.9.14 |
-| `examples/forge-skills/pick-place-workflow/pyproject.toml` | L3-L3 | Skill 3.0.10 → 3.0.11 |
-| `examples/forge-skills/pick-place-workflow/skill.yaml` | L3-L3, L223-L224, L229-L229 | Skill/Node 版本及既有 Node archive lock / Skill/Node versions and existing archive lock. |
-| `examples/forge-skills/pick-place-workflow/CHANGELOG.md` | L3-L11 | 新增双语发布记录 / Add bilingual release record. |
-| `examples/forge-skills/pick-place-workflow/tests/test_grasp_propose.py` | L270-L270 | 同步发布版本断言 / Synchronize release-version assertion. |
-
-### 关键代码 Diff / Key Code Diff
-
-```diff
-# examples/forge-adapters/robotwin20/pyproject.toml L3
--version = "0.9.13"
-+version = "0.9.14"
-# examples/forge-skills/pick-place-workflow/pyproject.toml L3
--version = "3.0.10"
-+version = "3.0.11"
-# examples/forge-skills/pick-place-workflow/skill.yaml L3,L223-L224,L229
--version: "3.0.10"
-+version: "3.0.11"
--artifact_id: robotwin20_persistent_host-1.0.2-linux-x86_64
--version: "1.0.2"
--sha256: e2361540634d9a9d950864caffa4a26cbdc05835daa12a1073373f84ad25e9e2
-+artifact_id: robotwin20_persistent_host-1.0.3-linux-x86_64
-+version: "1.0.3"
-+sha256: 7108b7e10dff24cbc49451abf1b446aec1bb84e2c958f47b36aef22aa8b94776
-# examples/forge-skills/pick-place-workflow/tests/test_grasp_propose.py L270
--assert bundle_manifest["version"] == "3.0.10"
-+assert bundle_manifest["version"] == "3.0.11"
-```
-
-### 验证与操作命令 / Validation and Operations
-
-```bash
-.venv/bin/paos skill stop pick-place-workflow --force
-.venv/bin/python -m pip install -e . --no-deps
-/home/yanxu/miniconda3/envs/paos/bin/python -m pip install -e . --no-deps
-.venv/bin/python scripts/build_robotwin20_node.py --adapter-root examples/forge-adapters/robotwin20 --workflow-root examples/forge-skills/pick-place-workflow --output /tmp/paos-v12-10-15-KSHyws/robotwin20_persistent_host-1.0.3-linux-x86_64.tar.gz
-.venv/bin/python scripts/build_robotwin20_skill_bundle.py --node-archive /tmp/paos-v12-10-15-KSHyws/robotwin20_persistent_host-1.0.3-linux-x86_64.tar.gz --output-dir /tmp/paos-v12-10-15-KSHyws/skills
-.venv/bin/paos skill install /tmp/paos-v12-10-15-KSHyws/skills/pick-place-workflow-3.0.11.tar.gz --local --yes
-.venv/bin/paos forge-node install pick-place-workflow robotwin20_persistent_host --archive /tmp/paos-v12-10-15-KSHyws/robotwin20_persistent_host-1.0.3-linux-x86_64.tar.gz
-.venv/bin/paos forge-node verify pick-place-workflow robotwin20_persistent_host
-.venv/bin/paos skill start pick-place-workflow --profile robotwin-blocks-ranking-graspnet --env-file /home/yanxu/.PhyAgentOS/deployments/robotwin-persistent/runtime-rgb-graspnet-run5.env
-.venv/bin/paos skill status pick-place-workflow
-PYTHONPATH=.:examples/forge-adapters/robotwin20/src:examples/forge-adapters/robotwin20/runtime:examples/forge-skills/pick-place-workflow/src .venv/bin/python -m pytest -q examples/forge-skills/pick-place-workflow/tests/test_release_bundle.py examples/forge-skills/pick-place-workflow/tests/test_grasp_propose.py examples/forge-skills/pick-place-workflow/tests/test_scene_understand.py
-```
-
-### Git 提交 / Git Commit
-- Branch: `feature/planning-loop`
-- Source: `3a09e9a`（已推送修复 / pushed repair）
-- Commit: `3f2c04f`（新版本部署与验证 / new-version deployment and validation）

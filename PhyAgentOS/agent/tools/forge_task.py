@@ -397,18 +397,28 @@ class ForgeTaskBeginRevisionTool(Tool):
             raise ValueError("semantic recovery requires replacement nodes")
         attempt_started_at = utc_now()
         task = self.coordinator.get_task(task_id)
+        selected_evidence = (
+            tuple(discovery_evidence_refs)
+            if discovery_evidence_refs is not None
+            else task.active_revision.discovery_evidence_refs
+        )
         if nodes is not None:
             from PhyAgentOS.agent.plan_proposal import compile_task_plan
 
             if plan_graph_ref is not None:
                 raise ValueError("PAOS supplies the plan reference for semantic nodes")
-            graph = compile_task_plan(task, nodes, reason=reason)
+            graph = compile_task_plan(
+                task, nodes, reason=reason, initial_evidence_refs=selected_evidence
+            )
             plan_graph = graph.model_dump(mode="json")
             plan_graph_ref = f"artifact://plans/{task_id}/{graph.revision_id}"
         else:
             from PhyAgentOS.agent.plan_proposal import canonicalize_plan_graph
 
-            graph = canonicalize_plan_graph(task, PlanGraph.model_validate(plan_graph))
+            graph = canonicalize_plan_graph(
+                task, PlanGraph.model_validate(plan_graph),
+                authorized_evidence_refs=selected_evidence,
+            )
             plan_graph = graph.model_dump(mode="json")
         self.coordinator.claim_replan_attempt(
             task_id, attempt_started_at=attempt_started_at
@@ -546,7 +556,10 @@ class ForgeTaskMaterializePlanTool(Tool):
         else:
             from PhyAgentOS.agent.plan_proposal import canonicalize_plan_graph
 
-            graph = canonicalize_plan_graph(task, PlanGraph.model_validate(plan_graph))
+            graph = canonicalize_plan_graph(
+                task, PlanGraph.model_validate(plan_graph),
+                authorized_evidence_refs=requested_evidence,
+            )
         try:
             materialized = self.coordinator.materialize_plan_revision(
                 task_id,
@@ -658,6 +671,11 @@ class ForgeTaskContinuePlanTool(Tool):
                 "unknown or fabricated refs: " + ", ".join(fabricated)
             )
         selected_evidence = requested_evidence or tuple(sorted(trusted_evidence))
+        # Continuation adds to the previous segment's discovery authorization.
+        # Compile against the same pool that begin_continuation_revision saves.
+        authorized_evidence = tuple(dict.fromkeys(
+            task.active_revision.discovery_evidence_refs + selected_evidence
+        ))
         # A post-world-change perception node must not carry evidence from the
         # scene that an Action just invalidated.  Reject this at continuation
         # submission so the Agent can correct the semantic segment in place;
@@ -704,7 +722,7 @@ class ForgeTaskContinuePlanTool(Tool):
             task,
             nodes,
             reason=reason,
-            initial_evidence_refs=selected_evidence,
+            initial_evidence_refs=authorized_evidence,
             initial_condition_facts=dict(context.condition_facts),
         )
         continued = self.coordinator.begin_continuation_revision(

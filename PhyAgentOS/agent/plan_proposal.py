@@ -164,7 +164,9 @@ def compile_task_plan(
     parsed = tuple(PlanNode.model_validate(node) for node in nodes)
     _validate_benchmark_plan_inputs(task, parsed)
     parsed = _complete_persisted_runtime_bindings(task, parsed)
-    _validate_projection_source_reachability(task, parsed, tools)
+    _validate_projection_source_reachability(
+        task, parsed, tools, authorized_evidence_refs=initial_evidence_refs
+    )
     if _task_goal_destinations(task)[0]:
         unresolved = [
             node.node_id
@@ -323,7 +325,12 @@ def compile_task_plan(
     return graph
 
 
-def canonicalize_plan_graph(task: AgentTaskRecord, graph: PlanGraph) -> PlanGraph:
+def canonicalize_plan_graph(
+    task: AgentTaskRecord,
+    graph: PlanGraph,
+    *,
+    authorized_evidence_refs: tuple[str, ...] | None = None,
+) -> PlanGraph:
     """Apply Coordinator-owned runtime bindings to a complete Agent graph.
 
     Semantic-node submission already uses ``compile_task_plan``.  Complete graph
@@ -340,7 +347,9 @@ def canonicalize_plan_graph(task: AgentTaskRecord, graph: PlanGraph) -> PlanGrap
         if binding is not None
         else tuple(getattr(task, "tool_bindings", ()))
     )
-    _validate_projection_source_reachability(task, normalized, tools)
+    _validate_projection_source_reachability(
+        task, normalized, tools, authorized_evidence_refs=authorized_evidence_refs
+    )
     payload = graph.model_dump(mode="json")
     payload["nodes"] = [node.model_dump(mode="json") for node in normalized]
     payload["graph_digest"] = plan_graph_digest(payload)
@@ -351,6 +360,8 @@ def _validate_projection_source_reachability(
     task: AgentTaskRecord,
     nodes: tuple[PlanNode, ...],
     tools: tuple[Any, ...],
+    *,
+    authorized_evidence_refs: tuple[str, ...] | None = None,
 ) -> None:
     """Reject semantic graphs whose declared projection inputs cannot be consumed.
 
@@ -372,10 +383,16 @@ def _validate_projection_source_reachability(
         from PhyAgentOS.agent.planning_context import current_scene_query_records
 
         record_pool = current_scene_query_records(task)
+    authorized = set(
+        getattr(getattr(task, "active_revision", None), "discovery_evidence_refs", ())
+        if authorized_evidence_refs is None else authorized_evidence_refs
+    )
     successful_records = {
         record.tool_id
         for record in record_pool
         if getattr(record, "status", None) == "succeeded"
+        and getattr(record, "semantics", None) == "query"
+        and authorized.intersection(getattr(record, "evidence_refs", ()))
     }
     by_id = {node.node_id: node for node in nodes}
     errors: list[str] = []
@@ -415,6 +432,7 @@ def _validate_projection_source_reachability(
                     errors_for_policy.append(
                         f"{node.node_id}.{policy.tool_id}.{slot} requires "
                         f"{source.source_scope} source Tool {source.tool_id}"
+                        " in submitted dependencies or selected discovery evidence_refs"
                     )
             policy_errors.append(errors_for_policy)
         if policy_errors and all(policy_errors):

@@ -4,9 +4,14 @@ import json
 from copy import deepcopy
 
 import pytest
+from PhyAgentOS.agent.plan_proposal import compile_task_plan
 from PhyAgentOS.agent.planning_context import context_from_task
 from PhyAgentOS.agent.planning_dispatch import AgentComposedDispatch
-from PhyAgentOS.agent.tools.forge_task import ForgeTaskContinuePlanTool
+from PhyAgentOS.agent.tools.forge_task import (
+    ForgeTaskBeginRevisionTool,
+    ForgeTaskContinuePlanTool,
+    ForgeTaskMaterializePlanTool,
+)
 from PhyAgentOS.agent.tools.forge_tool_api import ForgeToolQueryTool
 from PhyAgentOS.agent.tools.planning import ForgePlanSelectTool
 from PhyAgentOS.config.schema import ForgeConfig
@@ -191,7 +196,7 @@ async def continue_prepare(coordinator):
     ))
 
 
-async def select_prepare(coordinator, *, candidate_record="grasp"):
+async def select_prepare(coordinator, *, candidate_record="grasp", capability_record="capabilities"):
     dispatch = AgentComposedDispatch.from_task(
         coordinator.get_task("task-container"),
         context_provider=lambda task_id: context_from_task(coordinator.get_task(task_id)),
@@ -200,7 +205,7 @@ async def select_prepare(coordinator, *, candidate_record="grasp"):
         task_id="task-container", node_id="prepare-container", tool_id="manipulation.prepare",
         decision_reason="reuse the authorized current-scene candidate set",
         arguments={}, projection_sources={"candidates": {"record_id": candidate_record},
-                                           "capabilities": {"record_id": "capabilities"}},
+                                           "capabilities": {"record_id": capability_record}},
     ))
 
 
@@ -252,6 +257,170 @@ async def test_strict_predecessor_contract_still_rejects_cross_segment_evidence(
         await continue_prepare(coordinator)
     assert client.calls == []
     assert len(coordinator.get_task("task-container").revisions) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("omitted", ["grasp", "capabilities"])
+async def test_continuation_rejects_omitted_projection_evidence_before_persistence(tmp_path, omitted):
+    coordinator, client, _ = completed_grasp_task(tmp_path)
+    before = coordinator.get_task("task-container").model_dump(mode="json")
+    with pytest.raises(ValueError, match="projection_source_unreachable"):
+        await ForgeTaskContinuePlanTool(coordinator).execute(
+            "task-container", nodes=[prepare_node().model_dump(mode="json")],
+            evidence_refs=[f"tool:{name}" for name in ("observe", "capabilities", "grasp")
+                           if name != omitted], reason="reuse selected evidence only",
+        )
+    assert coordinator.get_task("task-container").model_dump(mode="json") == before
+    assert client.calls == []
+
+
+@pytest.mark.asyncio
+async def test_continuation_keeps_inherited_projection_authorization(tmp_path):
+    coordinator, client, _ = completed_grasp_task(tmp_path)
+
+    def authorize(current):
+        current.active_revision.discovery_evidence_refs = ("tool:grasp", "tool:capabilities")
+
+    coordinator.store.update("task-container", authorize, event_type="test_inherited_authorization")
+    result = json.loads(await ForgeTaskContinuePlanTool(coordinator).execute(
+        "task-container", nodes=[prepare_node().model_dump(mode="json")],
+        evidence_refs=["tool:observe"], reason="keep inherited authorized Query sources",
+    ))
+    assert result["ok"]
+    assert (await select_prepare(coordinator))["ok"]
+    assert client.calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("full_graph", [False, True])
+async def test_recovery_rejects_unselected_sources_without_consuming_attempt(tmp_path, full_graph):
+    coordinator, client, _ = completed_grasp_task(tmp_path)
+    task = coordinator.get_task("task-container")
+    graph = compile_task_plan(
+        task, [prepare_node().model_dump(mode="json")], reason="build a valid graph",
+        initial_evidence_refs=("tool:observe", "tool:capabilities", "tool:grasp"),
+    )
+    coordinator.request_replan("task-container", reason="test source replacement")
+    before = coordinator.get_task("task-container").model_dump(mode="json")
+    submission = ({"plan_graph": graph.model_dump(mode="json"),
+                   "plan_graph_ref": "artifact://plans/recovery"} if full_graph else {
+                       "nodes": [prepare_node().model_dump(mode="json")],
+                   })
+    with pytest.raises(ValueError, match="projection_source_unreachable"):
+        await ForgeTaskBeginRevisionTool(coordinator).execute(
+            "task-container", reason="omit the candidate Query",
+            discovery_evidence_refs=["tool:observe", "tool:capabilities"], **submission,
+        )
+    assert coordinator.get_task("task-container").model_dump(mode="json") == before
+    assert client.calls == []
+
+
+@pytest.mark.asyncio
+async def test_full_graph_materialization_rejects_unselected_sources(tmp_path):
+    coordinator, client, _ = completed_grasp_task(tmp_path)
+    graph = compile_task_plan(
+        coordinator.get_task("task-container"), [prepare_node().model_dump(mode="json")],
+        reason="build a valid graph",
+        initial_evidence_refs=("tool:observe", "tool:capabilities", "tool:grasp"),
+    )
+
+    def discovery(current):
+        current.active_revision.plan_graph = None
+        current.active_revision.node_settlements = []
+
+    coordinator.store.update("task-container", discovery, event_type="test_discovery")
+    before = coordinator.get_task("task-container").model_dump(mode="json")
+    with pytest.raises(ValueError, match="projection_source_unreachable"):
+        await ForgeTaskMaterializePlanTool(coordinator).execute(
+            "task-container", plan_graph=graph.model_dump(mode="json"),
+            plan_graph_ref="artifact://plans/materialize", reason="omit the candidate Query",
+            evidence_refs=["tool:observe", "tool:capabilities"],
+        )
+    assert coordinator.get_task("task-container").model_dump(mode="json") == before
+    assert client.calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("inherit", [False, True])
+async def test_recovery_preserves_exact_authorized_query_pool(tmp_path, inherit):
+    coordinator, client, _ = completed_grasp_task(tmp_path)
+    evidence = ("tool:observe", "tool:capabilities", "tool:grasp")
+    if inherit:
+        def authorize(current):
+            current.active_revision.discovery_evidence_refs = evidence
+
+        coordinator.store.update("task-container", authorize, event_type="test_recovery_evidence")
+    coordinator.request_replan("task-container", reason="test recovery with valid sources")
+    result = json.loads(await ForgeTaskBeginRevisionTool(coordinator).execute(
+        "task-container", nodes=[prepare_node().model_dump(mode="json")],
+        reason="reuse current-scene Query evidence during recovery",
+        discovery_evidence_refs=None if inherit else list(evidence),
+    ))
+    assert result["ok"]
+    assert coordinator.get_task("task-container").active_revision.discovery_evidence_refs == evidence
+    assert (await select_prepare(coordinator))["ok"]
+    assert client.calls == []
+
+
+@pytest.mark.asyncio
+async def test_continuation_default_pool_survives_coordinator_reload(tmp_path):
+    coordinator, client, _ = completed_grasp_task(tmp_path)
+    result = json.loads(await ForgeTaskContinuePlanTool(coordinator).execute(
+        "task-container", nodes=[prepare_node().model_dump(mode="json")],
+        reason="reuse the current trusted pool by default",
+    ))
+    assert result["ok"]
+    restarted = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=client)
+    assert (await select_prepare(restarted))["ok"]
+    assert restarted.get_task("task-container").active_revision.counts_toward_replan_budget is False
+    assert client.calls == []
+
+
+@pytest.mark.asyncio
+async def test_authorized_candidates_keep_graph_local_predecessor_route(tmp_path):
+    coordinator, client, _ = completed_grasp_task(tmp_path)
+    node = prepare_node().model_copy(update={"dependencies": ("propose-new",)})
+    result = json.loads(await ForgeTaskContinuePlanTool(coordinator).execute(
+        "task-container", nodes=[PlanNode(
+            node_id="propose-new", obligation_id="grasp-new", capability="grasp.propose",
+        ).model_dump(mode="json"), node.model_dump(mode="json")],
+        evidence_refs=["tool:observe", "tool:capabilities"], reason="consume a new predecessor",
+    ))
+    assert result["ok"] and result["motion_authorized"] is False
+    assert client.calls == []
+
+
+@pytest.mark.asyncio
+async def test_selection_rejects_matching_old_capture_pair(tmp_path):
+    coordinator, client, _ = completed_grasp_task(tmp_path)
+
+    def seed_old_capture(current):
+        old = []
+        for record in current.active_revision.execution_records[1:]:
+            copied = record.model_copy(deep=True)
+            copied.record_id = "old-" + record.record_id
+            copied.evidence_refs = ["tool:" + copied.record_id]
+            copied.arguments["observation_ref"] = "observation://scene-1/older-camera"
+            copied.response["data"]["observation_ref"] = "observation://scene-1/older-camera"
+            if copied.tool_id == "grasp.propose":
+                copied.response["data"]["candidate_set_ref"] = "candidate-set://scene-1/older-camera"
+            old.append(copied)
+        current.active_revision.execution_records[0:0] = old
+
+    coordinator.store.update("task-container", seed_old_capture, event_type="test_old_capture")
+    result = json.loads(await ForgeTaskContinuePlanTool(coordinator).execute(
+        "task-container", nodes=[prepare_node().model_dump(mode="json")],
+        evidence_refs=["tool:observe", "tool:capabilities", "tool:grasp",
+                       "tool:old-capabilities", "tool:old-grasp"],
+        reason="reuse current Query sources",
+    ))
+    assert result["ok"]
+    selected = await select_prepare(coordinator, candidate_record="old-grasp",
+                                    capability_record="old-capabilities")
+    assert selected["ok"] is False
+    assert "observation" in selected["error"]["message"], selected["error"]
+    assert coordinator.get_task("task-container").active_revision.planning_selections == []
+    assert client.calls == []
 
 
 @pytest.mark.asyncio
