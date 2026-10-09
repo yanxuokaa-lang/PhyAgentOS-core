@@ -718,6 +718,12 @@ class ObjectPlaceEndpoint:
                 "invalid_snapshot",
                 "object placement provider returned an invalid snapshot",
             )
+        if self.readiness_gate is not None and snapshot.world_change_started is True:
+            return PlaceRejection(
+                502,
+                "motion_started_in_no_motion_mode",
+                "no-motion Action provider reported world change",
+            )
         if not snapshot.provider_available:
             return PlaceRejection(
                 503,
@@ -730,12 +736,6 @@ class ObjectPlaceEndpoint:
                 502,
                 snapshot_error,
                 "object placement result failed contract validation",
-            )
-        if self.readiness_gate is not None and snapshot.world_change_started is not False:
-            return PlaceRejection(
-                502,
-                "motion_started_in_no_motion_mode",
-                "no-motion Action provider reported world change",
             )
         return PlaceAdmission(snapshot, terminal_result(arguments, snapshot))
 

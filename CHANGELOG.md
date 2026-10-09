@@ -6,6 +6,49 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v13.0.10 (2026-10-09 16:08) - codex
+
+### 变更摘要 / Summary
+- [docs] [docs] 为 v13.0.9 七维实现复审补充可复制的完整测试命令与实测结果 `195 passed in 2.16s`。(local)
+- [docs] [docs] Add the reproducible full test command and measured result `195 passed in 2.16s` to the v13.0.9 seven-dimension implementation review.(local)
+
+### 文件与关键 Diff / Files and Key Diff
+| 文件 / File | 行号 / Lines | 变更 / Change |
+| --- | --- | --- |
+| `PhyAgentOS/agent/planning_loop.py` | L1736-L1808 | 以 bound ToolSpec 的 `(semantics, refreshes_scene)` 分类恢复 Query，并要求每个新 Action 依赖场景刷新 Query / Classify recovery Queries by bound ToolSpec profile and require each new Action to depend on a scene-refresh Query |
+| `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/object_acquire.py` | L650-L675 | no-motion provider 报告 world change 时优先给出安全拒绝 / Prioritize safety rejection when a no-motion provider reports world change |
+| `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/object_place.py` | L715-L740 | 同上；保持放置结果契约校验 / Same; preserve placement result validation |
+| `examples/forge-skills/pick-place-workflow/tests/test_unknown_action_recovery.py` | L58-L91, L313-L430 | 覆盖有效刷新 Query、非刷新 Query、未建立依赖及元数据冲突 / Cover refreshing and non-refreshing Queries, missing dependency, and metadata conflict |
+| `examples/forge-adapters/robotwin20/tests/test_action_readiness_gate.py` | L137-L148, L239-L315 | 修正 no-motion fixture 并验证 Acquire/Place 错误优先级 / Correct no-motion fixture and verify Acquire/Place error priority |
+| `docs/forge/IMPLEMENTATION_REVIEW_V13_0_9.md` | L1-L77 | 七维 finding、结论与可复现验证命令 / Seven-dimension findings, conclusions, and reproducible validation command |
+| `changelog/2026-10_part3.md` | L3-L63 | 双语详细日志与失败场景 / Bilingual detailed log and failure scenarios |
+| `docs/forge/UNKNOWN_ACTION_REPLAN_DIAGNOSIS_20261009.md` | L67-L118 | 更新恢复门禁诊断和回归结果 / Update recovery-gate diagnosis and regression results |
+
+```diff
+- any new Query can satisfy unknown-world recovery
++ only a new refreshes_scene Query can gate each new Action
+- validate the whole no-motion result before checking reported motion
++ return motion_started_in_no_motion_mode when world_change_started is true
+  exact focused test invocation: 195 passed in 2.16s
+```
+
+See [the detailed bilingual entry](changelog/2026-10_part3.md) and [seven-dimension review](docs/forge/IMPLEMENTATION_REVIEW_V13_0_9.md).
+
+## v13.0.9 (2026-10-09 15:35) - codex
+
+### 变更摘要 / Summary
+- [policy] [fix] 收紧 unknown world-change 恢复图：必须由绑定 ToolSpec 标记 `refreshes_scene=true` 的新 Query 刷新场景，且每个新 Action 都依赖该 Query。(local)
+- [policy] [fix] Tighten unknown-world-change recovery graphs: a new Query marked `refreshes_scene=true` by the bound ToolSpec must refresh the scene, and every new Action must depend on it. (local)
+- [sense] [fix] no-motion acquire/place 优先报告 provider 已开始运动的安全拒绝；placement fake 使用契约有效的失败结果。(local)
+- [sense] [fix] Prioritize the safety rejection when a no-motion acquire/place provider reports motion; use a contract-valid failure result for the placement fake. (local)
+- [eval] [test] 增加非刷新 Query 与 no-motion Action 拒绝回归；聚焦 Runtime/AgentLoop/Skill/Adapter 测试 `195 passed`。(local)
+- [eval] [test] Add non-refreshing-Query and no-motion Action rejection regressions; focused Runtime/AgentLoop/Skill/Adapter tests: `195 passed`. (local)
+
+```diff
+- any new Query can satisfy unknown-world recovery
++ require a new scene-refresh Query in the dependency ancestry of each new Action
+```
+
 ## v13.0.8 (2026-10-09 13:30) - codex
 
 ### 变更摘要 / Summary

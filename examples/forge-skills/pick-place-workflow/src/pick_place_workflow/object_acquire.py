@@ -653,6 +653,12 @@ class ObjectAcquireEndpoint:
                 "invalid_snapshot",
                 "object acquisition provider returned an invalid snapshot",
             )
+        if self.readiness_gate is not None and snapshot.world_change_started is True:
+            return AcquireRejection(
+                502,
+                "motion_started_in_no_motion_mode",
+                "no-motion Action provider reported world change",
+            )
         if not snapshot.provider_available:
             return AcquireRejection(
                 503,
@@ -665,12 +671,6 @@ class ObjectAcquireEndpoint:
                 502,
                 snapshot_error,
                 "object acquisition result failed contract validation",
-            )
-        if self.readiness_gate is not None and snapshot.world_change_started is not False:
-            return AcquireRejection(
-                502,
-                "motion_started_in_no_motion_mode",
-                "no-motion Action provider reported world change",
             )
         return AcquireAdmission(snapshot, terminal_result(arguments, snapshot))
 

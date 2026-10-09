@@ -64,10 +64,11 @@ decide whether any later operation is admissible.
 3. Make the built-in recovery decision deterministic for this explicit Runtime
    combination. The model is not asked to reinterpret or suppress the Runtime
    recovery declaration.
-4. Require an unknown-world replacement graph to contain a new Query, and
-   require each new Action to have that Query in its dependency ancestry.
-   Tool semantics come from the currently bound Runtime ToolSpecs; ambiguous or
-   missing semantics fail closed.
+4. Require an unknown-world replacement graph to contain a new scene-refresh
+   Query (`semantics=query`, `refreshes_scene=true`), and require each new
+   Action to have such a Query in its dependency ancestry. Tool semantics and
+   scene-refresh metadata come from the currently bound Runtime ToolSpecs;
+   ambiguous or missing metadata fails closed.
 5. Keep the original Action settlement and invocation immutable. No action POST,
    automatic observation, possession inference, world reset, or safety-gate
    bypass is introduced by this change.
@@ -82,8 +83,8 @@ decide whether any later operation is admissible.
   flow.
 - Recovery/idempotency: the original invocation is never resent. Recovery uses
   the existing append-only revision and replan budget.
-- Robotics safety: no assumption of empty/holding state; a fresh Query must
-  precede any new Action and the Runtime/Gateway continue to gate physical work.
+- Robotics safety: no assumption of empty/holding state; a new scene-refresh
+  Query must precede any new Action and Runtime/Gateway continue to gate work.
 - Extensibility/compatibility: no RGB, color, object, camera, or benchmark
   branch; older records deserialize with optional recovery fields unset and
   retain the prior reconciliation-only behavior.
@@ -100,17 +101,18 @@ No live Runtime, Gateway, simulator, or physical Action was invoked. Focused
 no-motion regression coverage verifies receipt projection, settlement
 preservation, replan to a new Query-only revision without redispatch,
 reconciliation blocking when Runtime did not request replanning, and the
-replacement-graph rule that every new Action depends on a new Query.
+replacement-graph rule that every new Action depends on a new scene-refresh
+Query. The follow-up seven-dimension review found and fixed the narrower case
+where a non-refreshing Query could otherwise satisfy the initial gate.
 
-The combined Runtime/AgentLoop/Skill regression command completed with
-`178 passed`. Ruff, Python compilation, and `git diff --check` are recorded in
-the implementation review and changelog. Two separate Adapter readiness tests
-remain failing on this checkout: one expects `motion_started_in_no_motion_mode`
-but receives the earlier `missing_new_scene_revision`; another has a placement
-fixture rejected as `object placement result failed contract validation`. The
-changed recovery files do not include the Adapter gate, provider, or those test
-fixtures; these failures are outside this repair and are not represented as
-passing.
+The v13.0.8 Runtime/AgentLoop/Skill regression command completed with
+`178 passed`; after the initial review fix, that set completed with
+`180 passed`. The follow-up also fixed two Adapter readiness findings: the
+no-motion endpoints now prioritize explicit `world_change_started=true`, and
+the placement fake reports a contract-valid known failure rather than an
+invalid successful no-motion placement. The combined focused
+Runtime/AgentLoop/Skill/Adapter suite now completes with `195 passed`. Ruff,
+Python compilation, and `git diff --check` pass.
 
 The fix does not claim that the stopped task's physical state was reconciled.
 The Runtime still needs an authorized observation/reconciliation or operator

@@ -1736,7 +1736,7 @@ class PlanningLoopAdapter:
             if binding is not None
             else getattr(task, "tool_bindings", ())
         )
-        capability_semantics: dict[str, set[str]] = {}
+        capability_profiles: dict[str, set[tuple[str, bool]]] = {}
         for tool in tools:
             policy = getattr(tool, "planning_policy", None)
             capabilities = getattr(policy, "capabilities", ()) if policy is not None else ()
@@ -1745,26 +1745,46 @@ class PlanningLoopAdapter:
                 continue
             for capability in capabilities:
                 if isinstance(capability, str):
-                    capability_semantics.setdefault(capability, set()).add(semantics)
-        semantics_by_capability = {
+                    refreshes_scene = (
+                        getattr(policy, "refreshes_scene", False) is True
+                    )
+                    capability_profiles.setdefault(capability, set()).add(
+                        (semantics, refreshes_scene)
+                    )
+        profiles_by_capability = {
             capability: next(iter(values))
-            for capability, values in capability_semantics.items()
+            for capability, values in capability_profiles.items()
             if len(values) == 1
         }
-        if not semantics_by_capability or len(semantics_by_capability) != len(capability_semantics):
+        if (
+            not profiles_by_capability
+            or len(profiles_by_capability) != len(capability_profiles)
+        ):
             raise PlanningLoopError(
-                "unknown world effect recovery requires unambiguous Runtime ToolSpec semantics"
+                "unknown world effect recovery requires unambiguous Runtime ToolSpec semantics and scene-refresh metadata"
             )
+        semantics_by_capability = {
+            capability: profile[0]
+            for capability, profile in profiles_by_capability.items()
+        }
+        refreshing_query_capabilities = {
+            capability
+            for capability, profile in profiles_by_capability.items()
+            if profile == ("query", True)
+        }
 
         new_nodes = [node for node in graph.nodes if node.node_id not in preserved_node_ids]
         new_query_ids = {
             node.node_id
             for node in new_nodes
-            if semantics_by_capability.get(node.capability) == "query"
+            if (
+                semantics_by_capability.get(node.capability) == "query"
+                and node.capability in refreshing_query_capabilities
+            )
         }
         if not new_query_ids:
             raise PlanningLoopError(
-                "unknown world effect recovery requires a new Query before Action"
+                "unknown world effect recovery requires a new scene-refresh Query"
             )
 
         by_id = {node.node_id: node for node in graph.nodes}
@@ -1784,7 +1804,7 @@ class PlanningLoopAdapter:
                 continue
             if not ancestors(node.node_id) & new_query_ids:
                 raise PlanningLoopError(
-                    f"recovery Action {node.node_id!r} is not gated by a new Query"
+                    f"recovery Action {node.node_id!r} is not gated by a new scene-refresh Query"
                 )
 
 

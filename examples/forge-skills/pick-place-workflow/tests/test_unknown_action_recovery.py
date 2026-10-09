@@ -76,6 +76,16 @@ class _Coordinator:
                     planning_policy=SimpleNamespace(
                         capabilities=("scene.observe",),
                         scene_write_behavior="none",
+                        refreshes_scene=True,
+                    ),
+                ),
+                SimpleNamespace(
+                    tool_id="task.goal",
+                    semantics="query",
+                    planning_policy=SimpleNamespace(
+                        capabilities=("task.goal",),
+                        scene_write_behavior="none",
+                        refreshes_scene=False,
                     ),
                 ),
             ),
@@ -328,8 +338,34 @@ def test_unknown_recovery_graph_accepts_action_gated_by_new_query():
     adapter._validate_unknown_recovery_graph(task_id, graph, preserved_node_ids=set())
 
 
-def test_unknown_recovery_graph_rejects_unrelated_query_and_action():
+def test_unknown_recovery_graph_rejects_non_refreshing_query_and_action():
     task_id = "task-unknown-query-not-gating"
+    original_action = PlanNode(
+        node_id="acquire", obligation_id="acquire", capability="object.acquire"
+    )
+    original = _graph(task_id, "revision-1", [original_action])
+    coordinator = _Coordinator(original)
+    adapter = PlanningLoopAdapter(
+        coordinator,
+        context_provider=_ContextProvider(coordinator.task),
+        node_executor=lambda _context: pytest.fail("graph validation must not execute Tools"),
+        admission_context_provider=lambda _task_id: AdmissionContext(scene_revision="scene://s1"),
+        finalize_completed_graph=False,
+    )
+    observe = PlanNode(
+        node_id="goal", obligation_id="goal", capability="task.goal"
+    )
+    next_action = PlanNode(
+        node_id="next-action", obligation_id="next-action", capability="object.acquire"
+    )
+    graph = _graph(task_id, "revision-2", [observe, next_action])
+
+    with pytest.raises(PlanningLoopError, match="requires a new scene-refresh Query"):
+        adapter._validate_unknown_recovery_graph(task_id, graph, preserved_node_ids=set())
+
+
+def test_unknown_recovery_graph_requires_scene_refresh_query_ancestor():
+    task_id = "task-unknown-refresh-not-gating"
     original_action = PlanNode(
         node_id="acquire", obligation_id="acquire", capability="object.acquire"
     )
@@ -350,5 +386,45 @@ def test_unknown_recovery_graph_rejects_unrelated_query_and_action():
     )
     graph = _graph(task_id, "revision-2", [observe, next_action])
 
-    with pytest.raises(PlanningLoopError, match="not gated by a new Query"):
+    with pytest.raises(
+        PlanningLoopError,
+        match="is not gated by a new scene-refresh Query",
+    ):
+        adapter._validate_unknown_recovery_graph(task_id, graph, preserved_node_ids=set())
+
+
+def test_unknown_recovery_graph_rejects_ambiguous_scene_refresh_metadata():
+    task_id = "task-unknown-refresh-metadata-conflict"
+    original_action = PlanNode(
+        node_id="acquire", obligation_id="acquire", capability="object.acquire"
+    )
+    original = _graph(task_id, "revision-1", [original_action])
+    coordinator = _Coordinator(original)
+    coordinator.task.tool_bindings += (
+        SimpleNamespace(
+            tool_id="alternate-observer",
+            semantics="query",
+            planning_policy=SimpleNamespace(
+                capabilities=("scene.observe",),
+                scene_write_behavior="none",
+                refreshes_scene=False,
+            ),
+        ),
+    )
+    adapter = PlanningLoopAdapter(
+        coordinator,
+        context_provider=_ContextProvider(coordinator.task),
+        node_executor=lambda _context: pytest.fail("graph validation must not execute Tools"),
+        admission_context_provider=lambda _task_id: AdmissionContext(scene_revision="scene://s1"),
+        finalize_completed_graph=False,
+    )
+    observe = PlanNode(
+        node_id="observe", obligation_id="observe", capability="scene.observe"
+    )
+    graph = _graph(task_id, "revision-2", [observe])
+
+    with pytest.raises(
+        PlanningLoopError,
+        match="unambiguous Runtime ToolSpec semantics and scene-refresh metadata",
+    ):
         adapter._validate_unknown_recovery_graph(task_id, graph, preserved_node_ids=set())

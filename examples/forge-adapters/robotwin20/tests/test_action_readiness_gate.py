@@ -138,9 +138,12 @@ class PlaceProvider:
     def place(self, request):
         return PlaceSnapshot(
             world_change_started=False,
+            outcome_known=True,
+            failure_owner="execution",
+            failure_code="no_motion_test_result",
+            status="failed",
             evidence_availability="none",
             post_release_evidence_availability="none",
-            status="succeeded",
             capability_phase="none",
         )
 
@@ -219,7 +222,9 @@ async def test_gateway_action_is_admitted_only_after_reviewed_readiness_and_stay
         with pytest.raises(ForgeToolAPIError) as excinfo:
             await client.invoke_action("object.acquire", _acquire_request(candidate_ref="candidate://bottle-1/2"))
     assert context["data"]["motion_authorized"] is False
-    assert result["data"]["result"]["capability_outcome_summary"]["world_change_started"] is False
+    summary = result["data"]["result"]["capability_outcome_summary"]
+    assert summary["status"] == "succeeded"
+    assert summary["world_change_started"] is False
     assert provider.calls == 1
     assert excinfo.value.error_code == "readiness_evidence_missing"
     assert len(transport.invocations) == 1
@@ -259,6 +264,35 @@ async def test_no_motion_gate_rejects_provider_that_reports_world_change(tmp_pat
 
 
 @pytest.mark.asyncio
+async def test_no_motion_place_gate_prioritizes_reported_world_change(tmp_path):
+    manifest, review = _write_reviewed_evidence(tmp_path)
+    gate = ReadinessEvidenceGate.from_files(manifest, review)
+
+    class MovingPlaceProvider(PlaceProvider):
+        def place(self, request):
+            return PlaceSnapshot(
+                world_change_started=True,
+                status="succeeded",
+                capability_phase="release",
+            )
+
+    transport = FakeGatewayTransport(
+        type("Observation", (), {"observe": lambda self, sensor_ref: None})(),
+        acquire_provider=AcquireProvider(),
+        place_provider=MovingPlaceProvider(),
+        readiness_gate=gate,
+    )
+    async with ForgeToolClient("http://fake", transport=transport) as client:
+        acquired = await client.invoke_action("object.acquire", _acquire_request())
+        acquire_ref = acquired["data"]["invocation_id"]
+        await client.invocation_result(acquire_ref)
+        with pytest.raises(ForgeToolAPIError) as excinfo:
+            await client.invoke_action("object.place", _place_request(acquire_ref))
+    assert excinfo.value.error_code == "motion_started_in_no_motion_mode"
+    assert len(transport.invocations) == 1
+
+
+@pytest.mark.asyncio
 async def test_place_action_reuses_the_same_reviewed_gate_and_acquire_identity(tmp_path):
     manifest, review = _write_reviewed_evidence(tmp_path)
     gate = ReadinessEvidenceGate.from_files(manifest, review)
@@ -274,7 +308,9 @@ async def test_place_action_reuses_the_same_reviewed_gate_and_acquire_identity(t
         await client.invocation_result(acquire_ref)
         placed = await client.invoke_action("object.place", _place_request(acquire_ref))
         result = await client.invocation_result(placed["data"]["invocation_id"])
-    assert result["data"]["result"]["capability_outcome_summary"]["world_change_started"] is False
+    summary = result["data"]["result"]["capability_outcome_summary"]
+    assert summary["status"] == "failed"
+    assert summary["world_change_started"] is False
 
 
 @pytest.mark.asyncio
