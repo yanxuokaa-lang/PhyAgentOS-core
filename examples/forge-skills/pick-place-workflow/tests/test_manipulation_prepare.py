@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+from PhyAgentOS.forge.capability_runtime.manipulation_prepare import preparation_ref_for_request
 from PhyAgentOS.forge.tool_client import ForgeToolAPIError, ForgeToolClient
 
 from pick_place_workflow.fake_gateway import FakeGatewayTransport
@@ -363,6 +364,35 @@ def test_provider_cannot_mutate_request_used_for_public_binding():
     result = ManipulationPreparationEndpoint(provider).invoke(request_payload())
     assert result["status"] == "available"
     assert result["scene_revision"] == "scene-7"
+
+
+def test_route_preparation_identity_is_runtime_owned_and_task_scoped():
+    request = {
+        "scene_revision": "scene-7",
+        "frame_id": "camera_front",
+        "intent": {
+            "task_id": "task-42",
+            "revision_id": "revision-3",
+            "node_id": "prepare-object",
+            "node_digest": "a" * 64,
+            "entity_ref": "entity://bottle-1",
+            "goal": "move object",
+            "success_criteria": ["object is placed"],
+            "allowed_arms": ["left", "right"],
+            "coordination_mode": "alternative_arm",
+            "observation_ref": "observation://scene-7/camera_front",
+            "scene_revision": "scene-7",
+            "observation_frame_id": "camera_front",
+            "calibration_ref": "artifact://calibration/front",
+            "candidate_set_ref": "candidate-set://scene-7/camera_front",
+        },
+    }
+    assert preparation_ref_for_request(request) == (
+        "preparation://scene-7/task-42/revision-3/prepare-object/camera_front"
+    )
+    assert preparation_ref_for_request({"scene_revision": "scene-7", "frame_id": "camera_front"}) == (
+        "preparation://scene-7/camera_front"
+    )
 
 
 @pytest.mark.asyncio

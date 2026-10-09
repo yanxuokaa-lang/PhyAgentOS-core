@@ -156,6 +156,20 @@ def test_place_keeps_acquire_provenance_when_runtime_scene_has_advanced():
     assert validate_arguments(payload) is None
 
 
+def test_place_accepts_runtime_owned_task_scoped_preparation_reference():
+    payload = request_payload(
+        preparation_ref="preparation://scene-7/task-1/revision-1/acquire/camera_front",
+    )
+    assert validate_arguments(payload) is None
+
+
+def test_place_rejects_task_scoped_preparation_from_another_observation_frame():
+    payload = request_payload(
+        preparation_ref="preparation://scene-7/task-1/revision-1/acquire/camera_side",
+    )
+    assert validate_arguments(payload) == "invalid_preparation_binding"
+
+
 def test_contract_yaml_matches_the_published_tool_spec():
     path = Path(__file__).resolve().parents[1] / "contracts" / "object.place.tool.yaml"
     assert yaml.safe_load(path.read_text(encoding="utf-8")) == PLACE_TOOL_SPEC

@@ -8,6 +8,48 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v13.1.5 (2026-10-10 00:30) - codex
+
+### 变更摘要 / Summary
+- [policy] [fix] 七维 Code Review 修复 `object.acquire`/`object.place` 只校验 preparation scene、未校验 terminal frame 的 lineage 缺口；同一 scene 下跨观察帧 URI 现在 fail-closed。 (local)
+- [Policy] [Fix] The seven-dimension review fixed the lineage gap where `object.acquire`/`object.place` checked only the preparation scene and not its terminal frame; cross-frame URIs in one scene now fail closed. (local)
+- [eval] [test] 增加跨帧拒绝回归；目标 Core/Skill/Adapter suite `134 passed`，Ruff、compileall、`git diff --check` 通过。 (local)
+- [Eval] [Test] Add cross-frame rejection regressions; the targeted Core/Skill/Adapter suite has `134 passed`, with Ruff, compileall, and `git diff --check` passing. (local)
+
+### 文件与关键 Diff / Files and Key Diff
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/object_acquire.py:L38-L43,L420-L428`
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/object_place.py:L9-L14,L440-L447`
+- `examples/forge-skills/pick-place-workflow/tests/test_object_acquire.py:L242` and `test_object_place.py:L166-L170`
+
+```diff
+- preparation_ref scene matched, frame component was not checked
++ preparation_ref scene and terminal frame both match the observation lineage
+```
+
+详见 [v13.1.5 月度日志](changelog/2026-10_part5.md)。
+See the [v13.1.5 detailed log](changelog/2026-10_part5.md).
+
+## v13.1.4 (2026-10-10 00:00) - codex
+
+### 变更摘要 / Summary
+- [comm] [fix] Core/RobotWin 生成 task/revision/node-scoped preparation identity，解决跨任务 route geometry collision；Action route 保持 source scene 校验。 (local)
+- [Comm] [Fix] Core/RobotWin now generate task/revision/node-scoped preparation identities to prevent cross-task route-geometry collisions while Action routes retain source-scene validation. (local)
+- [eval] [test] 增加同输入幂等、跨任务隔离、scoped URI 与 `node_selection_no_progress` no-motion 回归；无 Runtime、AgentTask 或物理运动。 (local)
+- [Eval] [Test] Add idempotency, cross-task isolation, scoped-URI, and `node_selection_no_progress` no-motion regressions; no Runtime, AgentTask, or physical motion was used. (local)
+
+### 文件与关键 Diff / Files and Key Diff
+- `PhyAgentOS/forge/capability_runtime/manipulation_prepare.py:L32-L56,L545-L562`
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_preparation.py:L246-L249`
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/object_acquire.py` and `object_place.py` preparation binding checks
+
+```diff
+- preparation://{scene_revision}/{frame_id}
++ preparation://{scene_revision}/{task_id}/{revision_id}/{node_id}/{frame_id}
+```
+
+详见 [v13.1.4 月度日志](changelog/2026-10_part5.md)。
+See the [v13.1.4 detailed log](changelog/2026-10_part5.md).
+
 ## v13.1.3 (2026-10-09 23:00) - codex
 
 ### 变更摘要 / Summary

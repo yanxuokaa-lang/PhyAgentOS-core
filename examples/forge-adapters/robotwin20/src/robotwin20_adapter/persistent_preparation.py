@@ -11,7 +11,10 @@ from time import monotonic
 from typing import Any, Mapping
 from uuid import uuid4
 
-from PhyAgentOS.forge.capability_runtime.manipulation_prepare import PreparationProviderError
+from PhyAgentOS.forge.capability_runtime.manipulation_prepare import (
+    PreparationProviderError,
+    preparation_ref_for_request,
+)
 from PhyAgentOS.forge.manipulation import CapabilitySnapshot, ManipulationIntent, ReplanSignal
 
 from .arm_candidates import ArmProfileBindingError, project_arm_assignment
@@ -241,7 +244,7 @@ class PersistentPreparationProvider:
             with path.open("x", encoding="utf-8") as stream:
                 stream.write(encoded)
         arguments = {key: request[key] for key in ("observation_ref", "scene_revision", "frame_id", "calibration_ref", "candidate_set_ref", "capability_snapshot_ref")}
-        arguments.update(preparation_ref=f"preparation://{intent.scene_revision}/{intent.observation_frame_id}",
+        arguments.update(preparation_ref=preparation_ref_for_request(request),
                          candidate_ref=assignment.candidate_ref, entity_ref=assignment.entity_ref,
                          assignment_ref=assignment.assignment_ref)
         if review_ref is not None:

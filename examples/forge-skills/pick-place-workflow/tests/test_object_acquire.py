@@ -105,6 +105,14 @@ def test_action_spec_is_strict_provider_neutral_and_keeps_phases_internal():
     assert not any(token in blob for token in _FORBIDDEN_TOKENS)
 
 
+def test_action_accepts_runtime_owned_task_scoped_preparation_reference():
+    from pick_place_workflow.object_acquire import validate_arguments
+
+    assert validate_arguments(request_payload(
+        preparation_ref="preparation://scene-7/task-1/revision-1/acquire/camera_front",
+    )) is None
+
+
 def test_contract_yaml_matches_the_published_tool_spec():
     contract_path = Path(__file__).resolve().parents[1] / "contracts" / "object.acquire.tool.yaml"
     assert yaml.safe_load(contract_path.read_text(encoding="utf-8")) == ACQUIRE_TOOL_SPEC
@@ -231,6 +239,7 @@ async def test_query_client_rejects_the_action_without_a_query_execution_route()
         (request_payload(freshness_ms=101), 409, "stale_observation"),
         (request_payload(calibration_ref=""), 422, "missing_calibration"),
         (request_payload(preparation_ref="preparation://scene-8/camera_front"), 400, "invalid_preparation_binding"),
+        (request_payload(preparation_ref="preparation://scene-7/task-1/revision-1/acquire/camera_side"), 400, "invalid_preparation_binding"),
         (request_payload(candidate_ref="candidate://cup-1/1"), 400, "invalid_candidate_entity_binding"),
         ({**request_payload(), "phase": "lift"}, 400, "invalid_arguments"),
         ({**request_payload(), "task_name": "pick"}, 400, "invalid_arguments"),

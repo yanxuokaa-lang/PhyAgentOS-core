@@ -9,6 +9,7 @@ from typing import Any, Protocol
 from .object_acquire import (
     CAPABILITY_OUTCOME_SUMMARY_VERSION,
     _arm_attempt_schema,
+    _ref_frame_id,
     validate_recovery_arm_attempts,
 )
 
@@ -439,7 +440,10 @@ def validate_arguments(arguments: Any) -> str | None:
     preparation_ref = arguments.get("preparation_ref")
     if not isinstance(preparation_ref, str) or _PREPARATION_REF.fullmatch(preparation_ref) is None:
         return "invalid_preparation_ref"
-    if preparation_ref != f"preparation://{source_scene_revision}/{frame_id}":
+    if (
+        preparation_ref.removeprefix("preparation://").split("/", 1)[0] != source_scene_revision
+        or _ref_frame_id(preparation_ref, "preparation") != frame_id
+    ):
         return "invalid_preparation_binding"
     candidate_ref = arguments.get("candidate_ref")
     if not isinstance(candidate_ref, str) or _CANDIDATE_REF.fullmatch(candidate_ref) is None:

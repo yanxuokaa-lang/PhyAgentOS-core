@@ -3,6 +3,7 @@ import time
 from copy import deepcopy
 
 import pytest
+from PhyAgentOS.forge.capability_runtime.manipulation_prepare import preparation_ref_for_request
 from test_arm_candidates import _intent, _profile, _result
 from test_route_readiness import _request
 
@@ -16,8 +17,8 @@ from robotwin20_adapter.prepared_routes import PreparedRoutes
 from robotwin20_adapter.route_evidence import _artifact_path
 
 
-def composition(tmp_path, *, status="pass", node_id="pick-red"):
-    intent = _intent().model_copy(update={"node_id": node_id})
+def composition(tmp_path, *, status="pass", node_id="pick-red", task_id="task-1"):
+    intent = _intent().model_copy(update={"node_id": node_id, "task_id": task_id})
     route = _request(tmp_path)
     profile = _profile()
     capability = build_capability_snapshot(
@@ -49,7 +50,12 @@ def composition(tmp_path, *, status="pass", node_id="pick-red"):
 
     def evaluate(current_route, option):
         result = _result(current_route, option, status=status)
-        result["node_id"] = node_id
+        result.update(
+            task_id=intent.task_id,
+            revision_id=intent.revision_id,
+            node_id=intent.node_id,
+            node_digest=intent.node_digest,
+        )
         return result
 
     client = Client()
@@ -66,12 +72,16 @@ def test_selection_registers_geometry_but_requires_separate_approval(tmp_path, n
     request, provider, routes = composition(tmp_path, node_id=node_id)
     output = provider.prepare(request)
     assignment = output["assignments"][0]
+    expected_preparation_ref = preparation_ref_for_request(request)
+    assert expected_preparation_ref == (
+        f"preparation://blocks_ranking_rgb-0-1/task-1/revision-1/{node_id}/head_camera"
+    )
     assert json.loads(_artifact_path(tmp_path, assignment["assignment_ref"]).read_text()) == assignment
     assert assignment["motion_authorized"] is False
     arguments = {key: request[key] for key in (
         "scene_revision", "observation_ref", "calibration_ref", "candidate_set_ref", "frame_id", "capability_snapshot_ref",
     )}
-    arguments.update(preparation_ref=f"preparation://{request['scene_revision']}/{request['frame_id']}",
+    arguments.update(preparation_ref=expected_preparation_ref,
                      candidate_ref=assignment["candidate_ref"], entity_ref=assignment["entity_ref"],
                      assignment_ref=assignment["assignment_ref"])
     with pytest.raises(ValueError, match="no execution approval"):
@@ -81,6 +91,29 @@ def test_selection_registers_geometry_but_requires_separate_approval(tmp_path, n
     assert routes("acquire", arguments)["assignment"] == assignment
     assert provider.prepare(request) == output
     assert routes("acquire", arguments)["approval_ref"] == "artifact://scene/approval"
+
+
+def test_preparation_identity_isolated_across_tasks_with_same_scene_and_frame(tmp_path):
+    request_one, provider_one, routes = composition(tmp_path, task_id="task-1")
+    request_two, provider_two, _ = composition(tmp_path, task_id="task-2")
+    provider_two.prepared_routes = routes
+
+    output_one = provider_one.prepare(request_one)
+    preparation_one = next(iter(routes._routes.values()))["preparation_ref"]
+    provider_two.prepare(request_two)
+    preparation_two = next(
+        value for value in routes._routes.values()
+        if value["assignment"]["task_id"] == "task-2"
+    )["preparation_ref"]
+    assert preparation_one != preparation_two
+    assert preparation_one.startswith(
+        "preparation://blocks_ranking_rgb-0-1/task-1/"
+    )
+    assert preparation_two.startswith(
+        "preparation://blocks_ranking_rgb-0-1/task-2/"
+    )
+    assert len(routes._routes) == 2
+    assert provider_one.prepare(request_one) == output_one
 
 
 def test_runtime_monitored_preparation_issues_route_bound_approval(tmp_path):

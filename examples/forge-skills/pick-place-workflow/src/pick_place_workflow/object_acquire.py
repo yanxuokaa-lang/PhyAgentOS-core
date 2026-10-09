@@ -35,6 +35,11 @@ _FAILURE_OWNERS = (
 )
 _EVIDENCE_AVAILABILITY = ("complete", "partial", "none", "unknown")
 
+
+def _ref_frame_id(reference: str, scheme: str) -> str:
+    """Return the terminal observation-frame component of a provenance URI."""
+    return reference.removeprefix(f"{scheme}://").split("/")[-1]
+
 _SUMMARY_KEYS = {
     "version",
     "capability_phase",
@@ -415,7 +420,10 @@ def validate_arguments(arguments: Any) -> str | None:
     preparation_ref = arguments.get("preparation_ref")
     if not isinstance(preparation_ref, str) or _PREPARATION_REF.fullmatch(preparation_ref) is None:
         return "invalid_preparation_ref"
-    if preparation_ref != f"preparation://{scene_revision}/{frame_id}":
+    if (
+        preparation_ref.removeprefix("preparation://").split("/", 1)[0] != scene_revision
+        or _ref_frame_id(preparation_ref, "preparation") != frame_id
+    ):
         return "invalid_preparation_binding"
     candidate_ref = arguments.get("candidate_ref")
     if not isinstance(candidate_ref, str) or _CANDIDATE_REF.fullmatch(candidate_ref) is None:

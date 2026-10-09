@@ -29,6 +29,33 @@ _CHECK_STATUSES = ("pass", "fail", "unknown")
 _PREPARED_KEYS = {"candidate_ref", "entity_ref", "checks", "evidence", "qualification"}
 
 
+def preparation_ref_for_request(arguments: Mapping[str, Any]) -> str:
+    """Build the Runtime-owned preparation identity for one validated request.
+
+    Route preparation carries a task/revision/node intent. Those identities are
+    the smallest existing PAOS scope that separates independent route
+    materializations when the Runtime observes the same scene/frame more than
+    once. Generic provider-only preparation requests retain the historical
+    scene/frame identity because they do not create an executable route.
+    """
+    scene_revision = arguments["scene_revision"]
+    frame_id = arguments["frame_id"]
+    intent_payload = arguments.get("intent")
+    if intent_payload is None:
+        return f"preparation://{scene_revision}/{frame_id}"
+    intent = (
+        intent_payload
+        if isinstance(intent_payload, ManipulationIntent)
+        else ManipulationIntent.model_validate(intent_payload)
+    )
+    if intent.scene_revision != scene_revision or intent.observation_frame_id != frame_id:
+        raise ValueError("intent identity differs from preparation request")
+    return (
+        f"preparation://{scene_revision}/{intent.task_id}/"
+        f"{intent.revision_id}/{intent.node_id}/{frame_id}"
+    )
+
+
 class PreparationProviderError(RuntimeError):
     """Provider-declared public diagnostic, safe to include in a Query result."""
 
@@ -520,7 +547,14 @@ class ManipulationPreparationEndpoint:
             return error
         assert isinstance(arguments, dict)
         observation_ref = arguments["observation_ref"]
-        preparation_ref = f"preparation://{arguments['scene_revision']}/{arguments['frame_id']}"
+        try:
+            preparation_ref = preparation_ref_for_request(arguments)
+        except (KeyError, TypeError, ValueError):
+            return _error(
+                "invalid_preparation_ref",
+                "request identity cannot form a preparation reference",
+                observation_ref=observation_ref,
+            )
         if _PREPARATION_REF.fullmatch(preparation_ref) is None:
             return _error(
                 "invalid_preparation_ref",
@@ -705,6 +739,7 @@ __all__ = [
     "PreparationProvider",
     "PreparationProviderError",
     "PreparationSnapshot",
+    "preparation_ref_for_request",
     "normalize_snapshot",
     "ManipulationPreparationEndpoint",
 ]
