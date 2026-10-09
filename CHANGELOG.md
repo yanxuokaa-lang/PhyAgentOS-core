@@ -220,7 +220,7 @@ English: record the Major finding, shared repair across three entry points, old-
 
 ### Git 提交 / Git Commit
 - Branch: `feature/planning-loop`
-- Commit: `(pending)`
+- Commit: `2d6a8a4`（七维审核与验证方案修复 / seven-dimension review and validation-plan repairs）
 - Source baseline: `c14f2a5`
 
 ## v13.0.3 (2026-10-09 12:09) - codex
