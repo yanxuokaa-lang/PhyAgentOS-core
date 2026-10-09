@@ -1,5 +1,14 @@
 # Change Log
 
+## v3.0.11 (2026-10-09)
+
+- 中文：发布 Adapter `0.9.14`、Node `1.0.3`；成功抓取的 Runtime held receipt 由 Coordinator 独立投影，持有身份与 unchanged carry-forward 分离，Grounding 核对当前 possession 并搬运旧视觉模型。
+- English: Publish Adapter `0.9.14` and Node `1.0.3`; the Coordinator independently projects successful-acquisition Runtime held receipts, separates held identity from unchanged carry-forward, and Grounding checks current possession while transporting the prior visual model.
+- 中文：视觉别名保留全部 carried ID；来源 understanding/binding 按 observation/scene/calibration 与 Action 前记录顺序配对，selection 与执行参数保持一致。
+- English: Visual aliases reserve every carried ID; source understanding/binding records are paired by observation/scene/calibration and pre-Action ordering, keeping selection and execution arguments identical.
+- 中文：保持未知动作对账、碰撞与运动准入，未加入 RGB、颜色、固定机械臂或任务专用分支。
+- English: Preserve unknown-action reconciliation, collision checks, and motion admission without RGB, color, fixed-arm, or task-specific branches.
+
 ## v3.0.10 (2026-10-09)
 
 - 中文：发布 Adapter `0.9.13`、Node `1.0.2`，保留 Provider transport/timeout/authentication 分类，允许 Core 观测非固定模型名的有界 provider route，并限制 persistent diagnostics token。
