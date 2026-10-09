@@ -134,10 +134,10 @@
 | `examples/forge-skills/pick-place-workflow/tests/test_planning_continuation_sources.py` | L1-L381 | 新增 / Fifteen real cross-segment boundary cases |
 | `tests/test_agent_foundation.py` | L1574-L1576 | 新增 / Model-visible segmentation/admission guidance |
 | `docs/forge/AGENT_TOOL_INPUT_SELECTION_DESIGN.md` | L121-L129, L155-L174 | 修改 / Scope semantics and prepare projection documentation |
-| `docs/diagnostics/CROSS_SEGMENT_QUERY_SOURCE_DIAGNOSIS_20261009.md` | L1-L120 | 新增 / Task stage, cause, generic repair and videos |
-| `docs/forge/IMPLEMENTATION_REVIEW_V13_0_2.md` | L1-L122 | 新增 / Findings, seven dimensions and validation |
-| `changelog/2026-10_part3.md` | L69-L184 | 新增 / 本条完整双语记录与 diff / Complete bilingual entry and diff |
-| `CHANGELOG.md` | L75-L190 | 修改 / 本条完整记录，最近五条滚动更新 / Complete entry and latest-five update |
+| `docs/diagnostics/CROSS_SEGMENT_QUERY_SOURCE_DIAGNOSIS_20261009.md` | L1-L124 | 新增 / Task stage, cause, generic repair and videos |
+| `docs/forge/IMPLEMENTATION_REVIEW_V13_0_2.md` | L1-L123 | 新增 / Findings, seven dimensions and validation |
+| `changelog/2026-10_part3.md` | L69-L186 | 新增 / 本条完整双语记录与 diff / Complete bilingual entry and diff |
+| `CHANGELOG.md` | L75-L192 | 修改 / 本条完整记录，最近五条滚动更新 / Complete entry and latest-five update |
 
 ### 关键代码 Diff / Key Code Diff
 
@@ -175,14 +175,16 @@
 ```
 
 ### 验证 / Validation
+- [docs] [docs] 收尾只读核查发现任务于 11:54:38 经外部 task_cancel_requested 转为 failed；计划补正当前状态与部署指引，保留原始 waiting_for_user 阻塞诊断。(local)
+- [docs] [docs] Final read-only verification found an external task_cancel_requested transition to failed at 11:54:38; update current status and deployment guidance while preserving the original waiting_for_user blockage diagnosis. (local)
 - [eval] [fix] 最终聚焦 Core/AgentLoop/Skill/Adapter：394 passed in 14.28s；Skill 全量：404 passed in 12.85s；套件有重叠，不把合计当独立测试数。Ruff、compileall、git diff --check 通过；完整命令见七维审查文档。(local)
 - [eval] [fix] Final focused Core/AgentLoop/Skill/Adapter: 394 passed in 14.28s; full Skill: 404 passed in 12.85s; suites overlap, so counts are not summed as unique tests. Ruff, compileall and git diff --check passed; exact commands are in the review. (local)
 - [eval] [fix] 旧 predecessor 契约的成功续接用例准确复现 projection_source_unreachable；修复后 real Query 链通过，严格 predecessor 对跨段证据仍拒绝。新增回归使用通用 container/arm/camera fixture，无 RGB 分支。(local)
 - [eval] [fix] The old predecessor contract reproduced projection_source_unreachable; the repaired real Query chain passes while strict predecessor still rejects cross-segment evidence. New cases use generic container/arm/camera fixtures without RGB branches. (local)
 - [env] [chore] 初次 pytest 被外部 ROS launch_testing 缺 lark 干扰；禁用外部 autoload 并显式加载 pytest_asyncio。打包时 /tmp 满，产物在工作区生成后移至 out/releases/v13.0.2；检查 manifest、authorized contract 和唯一 Node 1.0.3 成功。(local)
 - [env] [chore] Initial pytest was affected by an external ROS launch_testing plugin missing lark; disabled external autoload and explicitly loaded pytest_asyncio. /tmp was full during packaging; the workspace-built artifact was moved into out/releases/v13.0.2 and its manifest, authorized contract and sole Node 1.0.3 passed inspection. (local)
-- [env] [chore] 现场 task_73ef2b2d38eb4acb 的 waiting_for_user/冻结绑定未修改；本轮无 Gateway 现场调用、动作重试、安装、Runtime 重启或机器人/模拟器运动。修复对新冻结契约生效，既有冻结 predecessor 不自动改写。(local)
-- [env] [chore] Live task_73ef2b2d38eb4acb waiting state/frozen binding is unchanged; no live Gateway call, Action retry, installation, Runtime restart or robot/simulator motion. The repair applies to newly frozen contracts; existing predecessor bindings are not rewritten. (local)
+- [env] [chore] 本轮未修改现场任务/冻结绑定；外部取消后当前 failed，不能按 waiting task 恢复。本轮无 Gateway 现场调用、动作重试、安装、Runtime 重启或运动。新冻结契约生效，既有 predecessor 不自动改写。(local)
+- [env] [chore] This turn did not mutate the live task/frozen binding; it is now externally cancelled and failed, so waiting-task resumption is unavailable. No live Gateway call, Action retry, installation, Runtime restart or motion. New frozen contracts use the repair; old predecessors are not rewritten. (local)
 
 ### Git 提交 / Git Commit
 - Branch: `feature/planning-loop`

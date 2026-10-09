@@ -116,7 +116,8 @@ the release output directory.
 
 ## Deployment boundary / 部署边界
 
-This source change does not mutate the waiting task's frozen Skill binding and
-does not install Skill 3.0.12. A later explicitly authorized deployment must
-build/install the new Skill and start a new or validly resumed task under that
-binding. Do not replay an Action merely to validate this contract repair.
+This source change does not mutate the task's frozen Skill binding and does not
+install Skill 3.0.12. The final database check found external cancellation had
+already made this task terminal failed; it cannot be resumed as a waiting task.
+A later deployment must install the new Skill and use the governed lifecycle
+for a new task. Do not replay an Action merely to validate this contract repair.

@@ -20,8 +20,12 @@ no green Action or new simulator motion was submitted.
 | Green preparation / 绿色准备 | Continuation plan rejected before materialization; no provider query executed |
 | Green/blue actions and final verification / 绿蓝动作与最终验收 | Not executed; whole task success is not established |
 
-- Task status: `waiting_for_user`, active revision
+- Original blockage status: `waiting_for_user`, active revision
   `revision_c2f9020424754646`.
+- Final database check: `failed`, `cancellation_requested=true`, terminal at
+  2026-10-09 11:54:38 Asia/Shanghai. The latest event is `task_cancel_requested`.
+  This external cancellation is subsequent to the source-contract blockage;
+  this diagnosis/repair turn performed no cancellation or task mutation.
 - Red revision `revision_2c9f2299c10546cc`: all eight nodes completed.
 - Green revision: its only node, `green_grasp`, completed as
   `tool_c8004c0034234a13`; 1024 decoded, 128 canonicalized, 51 deduplicated and
