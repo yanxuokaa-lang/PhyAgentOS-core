@@ -6,6 +6,75 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v13.0.0 (2026-10-09 11:18) - codex
+
+### 预期修改 / Planned Changes [完成]
+- [docs] [docs] 保存 GPT-6 Luna Decisions API 使用诊断，记录三类问题、调用示例、费用、概率语义及官方资料差异。(local)
+- [docs] [docs] Save the GPT-6 Luna Decisions API usage diagnosis, covering question types, examples, pricing, probability semantics, and differences between official sources. (local)
+- [docs] [docs] 依据当前 PAOS 架构、开发者手册、扩展规范与 Agent Loop 代码，分析可新增/部分替换/保留的功能，给出职责边界、具体接入点和分阶段验证方案。(local)
+- [docs] [docs] Analyze additions, partial replacements, and retained functions against current PAOS architecture, developer guidance, extension rules, and Agent Loop code, with ownership, concrete integration points, and staged validation. (local)
+- [docs] [chore] 更新最近五条详细日志；仅提交本轮文档与日志，并推送当前 feature/planning-loop 分支。(local)
+- [docs] [chore] Update the latest five detailed changelog entries; commit only this task's documents and logs and push the current feature/planning-loop branch. (local)
+
+### 影响文件 / Files
+- `docs/diagnostics/gpt-6-luna-decisions-api-usage-20261009.md`
+- `docs/forge/GPT6_LUNA_DECISIONS_PAOS_FIT_ANALYSIS_20261009.md`
+- `changelog/2026-10_part3.md`
+- `CHANGELOG.md`
+
+### 范围与版本 / Scope and Version
+- 本轮只保存分析文档，不修改运行逻辑、依赖、配置或部署，不发起付费模型调用或现场任务。
+- This task saves analysis only; runtime behavior, dependencies, configuration, and deployments are unchanged, with no paid model calls or live tasks.
+- 变更定级为 patch；按项目上限规则，v12.10.15 的 patch 进位为 v13.0.0，Major 数字变化不表示本轮进行了架构重构。
+- Classified as a patch; repository rollover rules advance v12.10.15 to v13.0.0, without implying an architectural rewrite.
+
+### 实际修改 / Completed Changes
+- [docs] [docs] 新增 API 诊断：协议与 Python 示例、概率/评分解释、适用范围、输入计费、官方 URL 支持差异及未确认能力。(local)
+- [docs] [docs] Add the API diagnosis with protocol, Python example, probability/score interpretation, use cases, input pricing, official URL-support conflict, and unresolved capabilities. (local)
+- [docs] [docs] 新增 PAOS 架构适配分析：依据八组文档与当前源码，给出 11 类候选功能、保留职责、插件/provider 接入、Agent loop 失败语义及四阶段验证。(local)
+- [docs] [docs] Add PAOS fit analysis grounded in eight documentation groups and current code, covering 11 candidate functions, retained responsibilities, provider/plugin integration, Agent loop failure semantics, and four validation stages. (local)
+- [docs] [docs] 明确 select_recovery 有限策略选择可部分替换，propose_replan 完整图生成保留；held-entity 事实链问题不能由分类 API 修复；continuation 当前有条件开放刷新 Query。(local)
+- [docs] [docs] Identify the bounded select_recovery choice as a partial replacement while retaining full propose_replan generation; classification cannot repair held-entity fact lineage, and current continuation conditionally allows refresh Queries. (local)
+- [docs] [chore] 最近五条更新为 v13.0.0、v12.10.15、v12.10.14、v12.10.13、v12.10.12，完整条目与月度归档一致；原 v12.10.11 继续保留在 part2。(local)
+- [docs] [chore] Roll the latest five entries to v13.0.0, v12.10.15, v12.10.14, v12.10.13, and v12.10.12 with complete archive-identical records; preserve v12.10.11 in part2. (local)
+
+### 文件变更详情 / File Changes
+
+| 文件 / File | 精确行号 / Exact Lines | 操作与摘要 / Operation and Summary |
+| --- | --- | --- |
+| `docs/diagnostics/gpt-6-luna-decisions-api-usage-20261009.md` | L1-L182 | 新增 / Add API usage diagnosis and sources |
+| `docs/forge/GPT6_LUNA_DECISIONS_PAOS_FIT_ANALYSIS_20261009.md` | L1-L349 | 新增 / Add architecture fit, replacement matrix, and phased plan |
+| `changelog/2026-10_part3.md` | L3-L70 | 新增本版本双语完整记录 / Add this complete bilingual record |
+| `CHANGELOG.md` | L9-L76；末尾移出旧 fifth entry / remove prior fifth entry at tail | 更新完整最近五条 / Update complete latest five |
+
+### 关键内容 Diff / Key Content Diff
+
+```diff
+# docs/diagnostics/gpt-6-luna-decisions-api-usage-20261009.md: absent → new
++# GPT-6 Luna Decisions API 使用诊断
++Decisions API 面向高频、低延迟、答案空间明确的语义判断。
++当前为 public beta，只支持 gpt-6-luna，专用端点 POST /v1/decisions。
+# docs/forge/GPT6_LUNA_DECISIONS_PAOS_FIT_ANALYSIS_20261009.md: absent → new
++# GPT-6 Luna Decisions API：PAOS 架构适配与替换分析
++首个具体替换点：select_recovery 的 stop/replay/replan 模型选择。
++保留 propose_replan、Coordinator、Gateway、Evidence、Verifier 与晋升职责。
+# CHANGELOG.md: latest complete entries
+-v12.10.15 / v12.10.14 / v12.10.13 / v12.10.12 / v12.10.11
++v13.0.0 / v12.10.15 / v12.10.14 / v12.10.13 / v12.10.12
+```
+
+### 验证 / Validation
+- [docs] [chore] 两份文档的 UTF-8、Markdown fence、本地链接、引用文档与测试路径、Python 示例语法检查通过；最近五条与月度归档全文一致，git diff --check 通过。(local)
+- [docs] [chore] UTF-8, Markdown fences, local links, referenced docs/test paths, and Python example syntax passed; the latest five entries match their monthly archives in full, and git diff --check passed. (local)
+- [docs] [chore] 未运行代码回归、付费 benchmark 或现场 Query/Action；文档中的后续测试命令使用已存在路径，不作为本轮执行结果。(local)
+- [docs] [chore] No code regressions, paid benchmark, or live Query/Action ran; future test commands name existing files and are not reported as executed. (local)
+
+### Git 提交 / Git Commit
+- Branch: `feature/planning-loop`
+- Commit: 待首次文档提交后回填 / fill after the first documentation commit
+- Source inspected: `e76506c`
+- 仅 stage 本轮四个文件，保留已有未跟踪工作内容 / Stage only these four files and preserve pre-existing untracked work.
+
 ## v12.10.15 (2026-10-09 11:09) - codex
 
 ### 预期修改 / Planned Changes [完成]
@@ -742,58 +811,4 @@ assert output["ambiguities"][0]["entity_refs"] == [alias]
 
 ### Git 提交 / Git Commit
 - Commit: `db2e148`（部署记录 / deployment record）
-- Branch: `feature/planning-loop`; 时间 / Time: 2026-10-09 Asia/Shanghai
-
-## v12.10.11 (2026-10-09 00:10) - codex
-
-### 预期修改 / Planned Changes [完成]
-- [comm] [fix] 保留 Qwen/vLLM transport、timeout 与 authentication 分类穿过异常包装，使 PAOS `scene.understand` 的结构化 `error.reason` 不再退化为 `provider_failure`；不改变 fallback、ToolSpec 或 AgentLoop 的授权边界。(local)
-- [comm] [fix] 将 Core provider diagnostics 的 route 校验从固定模型名白名单改为有界 provider-neutral token，保留任意合法配置 route 的可观测性，同时拒绝异常文本和超长值。(local)
-- [comm] [fix] 为 persistent Adapter diagnostic sink 增加同一有界 token 约束，避免配置化 provider route 造成无界日志记录；失败场景是任意配置 route 或 provider 注入值跨 JSONL/Tool 边界膨胀，现有类型检查不足以限制长度。(local)
-- [eval] [test] 增加 endpoint transport reason、动态 fallback route、恶意/超长 diagnostic token 与异常包装分类回归；全部使用 fake provider/no-motion，不创建任务、不调用真实 Gateway、不推进 simulator 或物理运动。(local)
-- [docs] [docs] 新增七维 Code Review，记录 Blocker/Major/Minor、修复行号、扩展性和 PAOS ownership；不加入 RGB、颜色、排列、相机、对象数量或固定机械臂分支。(local)
-
-### Planned Changes (English)
-- [comm] [fix] Preserve Qwen/vLLM transport, timeout, and authentication classes through exception wrapping so the PAOS `scene.understand` structured `error.reason` does not degrade to `provider_failure`; keep fallback, ToolSpec, and AgentLoop authority unchanged. (local)
-- [comm] [fix] Replace the Core provider-diagnostics route allowlist of fixed model names with a bounded provider-neutral token, preserving observability for any valid configured route while rejecting exception text and oversized values. (local)
-- [comm] [fix] Apply the same bounded token constraint before persistent Adapter diagnostic events are written, preventing a configured provider route from producing unbounded JSONL records; the concrete failure is an arbitrary configured/injected route expanding across the JSONL/Tool seam, which type checks alone do not limit. (local)
-- [eval] [test] Add regressions for endpoint transport reasons, dynamic fallback routes, malicious/oversized diagnostic tokens, and wrapped-exception classification; use only fake providers/no-motion with no task, real Gateway, simulator, or physical motion. (local)
-- [docs] [docs] Add the seven-dimension Code Review with Blocker/Major/Minor findings, fix line references, extensibility, and PAOS ownership; add no RGB, color, arrangement, camera, object-count, or fixed-arm branch. (local)
-
-### 实际修改 / Completed Changes
-- [comm] [fix] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/qwen3_vl_vllm_scene_understanding.py:L27-L87,L128-L144,L265-L286`：异常包装携带有界 `provider_error_class` 与 `retryable`，并在 transport/timeout 前识别 authentication。(local)
-- [comm] [fix] `PhyAgentOS/forge/capability_runtime/understanding.py:L24-L27,L379-L429`：Core route 改为有界 provider-neutral token；错误类别使用稳定词汇组合校验，非法声明 fail-closed。(local)
-- [comm] [fix] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/qwen3_vl_vllm_lifecycle.py:L15-L20,L281-L299`、`persistent_host.py:L63-L65,L136-L170`：lifecycle、readiness 和 JSONL sink 统一拒绝超长、空白或非结构化 diagnostic token。(local)
-- [eval] [test] 新增动态 fallback route、transport/timeout/authentication 分类、异常包装、非法 token 和 JSONL sink 回归；Adapter `80 passed`，Core focused `118 passed`。(local)
-- [docs] [docs] 新增 `docs/forge/IMPLEMENTATION_REVIEW_V12_10_11.md`，记录三项 Major 的发现与修复、七维验收、精确行号和残余风险。(local)
-
-### Completed Changes (English)
-- [comm] [fix] `qwen3_vl_vllm_scene_understanding.py:L27-L87,L128-L144,L265-L286`: preserve bounded `provider_error_class` and `retryable` through exception wrapping, and classify authentication before transport/timeout. (local)
-- [comm] [fix] `understanding.py:L24-L27,L379-L429`: replace the fixed Core route allowlist with bounded provider-neutral tokens and validate composed error classes against the stable vocabulary; invalid declarations fail closed. (local)
-- [comm] [fix] `qwen3_vl_vllm_lifecycle.py:L15-L20,L281-L299` and `persistent_host.py:L63-L65,L136-L170`: reject oversized, whitespace-containing, or unstructured diagnostic tokens at lifecycle, readiness, and JSONL seams. (local)
-- [eval] [test] Add dynamic fallback-route, transport/timeout/authentication, wrapped-exception, invalid-token, and JSONL-sink regressions; Adapter `80 passed`, Core focused `118 passed`. (local)
-- [docs] [docs] Add `docs/forge/IMPLEMENTATION_REVIEW_V12_10_11.md` with the three Major findings, seven-dimension acceptance, exact line references, and residual risks. (local)
-
-### 关键 Diff / Key Diff
-```diff
--raise Qwen3VLVLLMInferenceError("qwen vLLM scene understanding request failed") from exc
-+raise Qwen3VLVLLMInferenceError(
-+    "qwen vLLM scene understanding request failed",
-+    provider_error_class=error_class,
-+    retryable=error_class in {"timeout", "transport"},
-+ ) from exc
-```
-```diff
--item in {"qwen3-vl-4b-vllm", "gpt-6.1-sol-high", ...}
-+_DIAGNOSTIC_TOKEN.fullmatch(item) and _valid_provider_error_class(item)
-```
-
-### 验证 / Validation
-- [eval] [test] `80 passed`（Adapter Provider/lifecycle/fallback/endpoint/host）；`118 passed`（Core planning/tool/runtime focused）；Ruff、compileall、`git diff --check` 通过。全程未创建或恢复任务、未调用 Gateway Query/Action、未推进 simulator 或物理运动，Runtime 未重启。(local)
-- [eval] [test] `80 passed` (Adapter provider/lifecycle/fallback/endpoint/host) and `118 passed` (Core planning/tool/runtime focused); Ruff, compileall, and `git diff --check` passed. No task was created or resumed, no Gateway Query/Action was invoked, no simulator or physical motion advanced, and Runtime was not restarted. (local)
-- [eval] [test] Adapter 全量 collection `844 passed, 18 failed`；失败为当前解释器缺少 `scipy/cv2/PyYAML` 及既有 Action/video/backend fixture，不在本次 Provider diagnostics 改动路径；无 changed-path failure。(local)
-- [eval] [test] Full Adapter collection reported `844 passed, 18 failed`; failures were missing `scipy/cv2/PyYAML` in the current interpreter and existing Action/video/backend fixtures outside the Provider diagnostics path; no changed-path failure. (local)
-
-### Git 提交 / Git Commit
-- Commit: `1e3d4a8`（实现与七维审查 / implementation and seven-dimension review）
 - Branch: `feature/planning-loop`; 时间 / Time: 2026-10-09 Asia/Shanghai
