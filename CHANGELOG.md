@@ -69,7 +69,7 @@
 
 ### Git 提交 / Git Commit
 - Branch: `feature/planning-loop`
-- Commit: `pending`（路由诊断与验证方案 / routing diagnosis and validation plan）
+- Commit: `7f68e4a`（路由诊断与验证方案 / routing diagnosis and validation plan）
 - Source inspected: `9880080`
 
 ## v13.0.1 (2026-10-09 11:54) - codex
