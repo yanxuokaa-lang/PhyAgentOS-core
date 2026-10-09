@@ -118,10 +118,15 @@ as `left_arm` for a snapshot ID `left` are never rewritten.
    scene-bound payloads still undergo the existing stale-scene checks when a
    node context is built, while task-scoped facts such as an opaque benchmark
    destination can authorize a later place node.
-6. A successor receives exact results only from direct predecessor executions.
-   Source selectors cannot reach unrelated nodes, historical revisions, file
-   paths, arbitrary JSONPath expressions, or unpersisted payloads. Explicit
-   descendant paths address only values in the already authorized records.
+6. A `predecessor` slot receives exact results only from direct predecessor
+   executions. An `evidence` slot receives only Coordinator-selected evidence.
+   An `authorized` slot may receive either, including a successful read-only
+   Query preserved into a continuation revision, but it remains subject to the
+   same task authorization, Tool ID, current scene/observation/calibration,
+   identity join, and final consumer-schema checks. Source selectors cannot
+   reach unrelated or unselected historical records, file paths, arbitrary
+   JSONPath expressions, or unpersisted payloads. Explicit descendant paths
+   address only values in already authorized records.
 7. Schema rejection creates no Tool record, Gateway invocation, Action,
    Session, simulator step, or motion authorization.
 8. Recovery-provider failure preserves the original node failure and enters the
@@ -147,7 +152,7 @@ validation still inspect those exact values. Resumed node prompts use the same
 receipt form, so neither selection nor resumption reintroduces geometry into
 the model context.
 
-New benchmark tasks add or replace ToolSpecs and Adapter outputs. PAOS Core does
+New tasks and benchmarks add or replace ToolSpecs and Adapter outputs. PAOS Core does
 not add drawer, bin, shelf, hook, obstacle, tabletop, color, or fixed-object
 branches. A consumer declares its final input schema; any producer may supply
 compatible structured facts through the bounded evidence or predecessor view.
@@ -157,13 +162,16 @@ expressed as Agent selection plus its normal endpoint validation, add a
 consumer-owned argument projection through the existing planning extension
 seam. The projection must declare its accepted semantic selectors, operate only
 on the current node's authorized records, and leave the final consumer schema
-   strict. Do not hard-code a producer Tool ID into Core or add implicit fallback.
+strict. Do not hard-code a producer Tool ID into Core or add implicit fallback.
 
-The legacy `argument_sources` mode remains appropriate for non-projection
-consumers such as `manipulation.prepare`, where a complete candidate array is
-copied from a direct predecessor. It does not apply to a projection consumer
-such as `grasp.propose`: do not combine a candidate-style nested `target_path`
-map with the projection's understanding record.
+The legacy `argument_sources` mode remains appropriate for consumers without a
+declared projection. `manipulation.prepare` instead declares named candidate
+and capability slots: its candidate source is `authorized` so an immediately
+preceding Query or an explicitly preserved same-scene continuation Query may be
+used without repeating candidate generation. This does not apply to a
+single-source projection consumer such as `grasp.propose`: do not combine a
+candidate-style nested `target_path` map with the projection's understanding
+record.
 
 For a non-projection consumer, a supplied `projection_source` is a correctable
 selection input error while no selection has been consumed and no Tool has run.

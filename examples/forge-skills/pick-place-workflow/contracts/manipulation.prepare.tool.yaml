@@ -13,7 +13,7 @@ planning:
     source_slots:
       candidates:
         tool_id: grasp.propose
-        source_scope: predecessor
+        source_scope: authorized
         source_field_map:
           observation_ref: [observation_ref]
           scene_revision: [scene_revision]

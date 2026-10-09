@@ -259,6 +259,11 @@ def test_tool_spec_is_strict_and_never_authorizes_motion():
     assert MANIPULATION_TOOL_SPEC["endpoint_id"] == "manipulation_preparation"
     assert MANIPULATION_TOOL_SPEC["operation"] == "prepare"
     assert MANIPULATION_TOOL_SPEC["input_schema"]["additionalProperties"] is False
+    assert (
+        MANIPULATION_TOOL_SPEC["planning"]["argument_projection_plan"]["source_slots"]
+        ["candidates"]["source_scope"]
+        == "authorized"
+    )
     assert MANIPULATION_TOOL_SPEC["output_schema"]["additionalProperties"] is False
     assert "candidates" in MANIPULATION_TOOL_SPEC["input_schema"]["required"]
     assert MANIPULATION_TOOL_SPEC["output_schema"]["properties"]["status"]["enum"] == [

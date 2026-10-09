@@ -80,7 +80,10 @@ MANIPULATION_TOOL_SPEC: dict[str, Any] = {
             "source_slots": {
                 "candidates": {
                     "tool_id": "grasp.propose",
-                    "source_scope": "predecessor",
+                    # Candidate generation and preparation are both read-only. A
+                    # continuation may therefore consume the Coordinator-authorized
+                    # successful Query from the same current scene without repeating it.
+                    "source_scope": "authorized",
                     "source_field_map": {
                         "observation_ref": ["observation_ref"],
                         "scene_revision": ["scene_revision"],

@@ -72,6 +72,123 @@
 - Commit: `7f68e4a`（路由诊断与验证方案 / routing diagnosis and validation plan）
 - Source inspected: `9880080`
 
+## v13.0.2 (2026-10-09 12:10) - codex
+
+### 预期修改 / Planned Changes [完成]
+- [docs] [docs] 保存 task_73ef2b2d38eb4acb 的阶段、跨段 prepare 拒绝原因和已核验双视角视频；区分参数错误、契约来源范围冲突与执行失败。(local)
+- [docs] [docs] Save task_73ef2b2d38eb4acb stage, cross-segment preparation rejection, and verified dual-view videos; distinguish argument errors, source-scope conflicts, and execution failures. (local)
+- [policy] [fix] 复用现有 authorized 来源语义，让只读 manipulation.prepare 消费同任务当前场景的已授权抓取成功记录；同步 Core ToolSpec 与 Skill contract，保留严格 predecessor 的行为。(local)
+- [policy] [fix] Reuse existing authorized source semantics for read-only manipulation.prepare to consume authorized successful grasp records in the task's current scene; align Core ToolSpec and Skill contract and preserve strict predecessor behavior. (local)
+- [eval] [fix] 验证真实续接→持久化 selection→Query 执行边界，覆盖旧场景、未授权、错误 Tool/实体来源以及动作准入保持；核查架构、正确性、恢复、安全、扩展、可观测、AgentLoop 七维。(local)
+- [eval] [fix] Verify real continuation-to-persisted-selection-to-Query boundaries, stale/unauthorized/wrong Tool or entity sources, and unchanged Action admission across the seven architecture, correctness, recovery, safety, extensibility, observability, and AgentLoop dimensions. (local)
+- [chore] [chore] 更新 Skill 版本、精确行号与 Diff、最近五条；仅提交本轮变更并推送当前分支。本轮不恢复现场任务、安装或执行动作。(local)
+- [chore] [chore] Update the Skill version, exact lines/diffs, and latest five entries; commit/push only this task on the current branch. Do not resume a live task, install, or execute motion in this task. (local)
+
+### 失败场景与边界 / Failure and Boundary
+- 成功 grasp Query 被切分到上一 PlanGraph，续接图依赖只能指向新图节点，而 candidates 槽只接受 predecessor，形成无法复用成功证据的死端。既有 authorized 范围与来源身份检查足以表达安全复用；不新增 hash、schema、baseline 或 gate。
+- A successful grasp Query is in the previous PlanGraph; continuation dependencies are graph-local, while the candidates slot accepts only predecessors, stranding reusable success evidence. Existing authorized scope and source identity checks express safe reuse; no new hash, schema, baseline, or gate is planned.
+
+### 计划影响文件 / Planned Files
+- `PhyAgentOS/agent/tools/forge_task.py`
+- `PhyAgentOS/agent/loop.py`
+- `tests/test_agent_foundation.py`（若既有 AgentLoop 回归无需新增则保持原状 / unchanged if existing AgentLoop regression coverage suffices）
+- `PhyAgentOS/forge/capability_runtime/manipulation_prepare.py`
+- `examples/forge-skills/pick-place-workflow/contracts/manipulation.prepare.tool.yaml`
+- `examples/forge-skills/pick-place-workflow/tests/test_planning_continuation_sources.py`
+- `examples/forge-skills/pick-place-workflow/{skill.yaml,pyproject.toml}`
+- `examples/forge-skills/pick-place-workflow/tests/test_grasp_propose.py`
+- `docs/diagnostics/CROSS_SEGMENT_QUERY_SOURCE_DIAGNOSIS_20261009.md`
+- `docs/forge/AGENT_TOOL_INPUT_SELECTION_DESIGN.md`
+- `docs/forge/IMPLEMENTATION_REVIEW_V13_0_2.md`
+- `changelog/2026-10_part3.md`
+- `CHANGELOG.md`
+
+### 审查补充计划 / Review Follow-up Plan
+- [policy] [fix] AgentLoop 通用续接指引声明按来源范围分段：strict predecessor 生产者/消费者同图，authorized 成功 Query 通过 evidence_refs 复用；预先物化 Action 节点不替代逐节点终态/准入。(local)
+- [policy] [fix] Explain source-aware segmentation in generic AgentLoop continuation guidance: keep strict predecessor producer/consumer nodes in one graph, reuse authorized successful Queries through evidence_refs, and preserve per-node terminal-result/admission checks for materialized Action nodes. (local)
+
+### 实际修改 / Completed Changes
+- [policy] [fix] Core ToolSpec 与 Skill YAML 的 candidates.source_scope 从 predecessor 改为已有 authorized；只读同场景成功记录可跨段复用，不改变严格 Action 前驱、来源匹配、schema 或运动准入。(local)
+- [policy] [fix] Change candidates.source_scope from predecessor to existing authorized in Core ToolSpec and Skill YAML; reuse successful same-scene Query records across segments while preserving strict Action predecessors, source matching, schema validation, and motion admission. (local)
+- [policy] [fix] 通用续接 prompt/Tool 描述要求按 ToolSpec 来源范围分段，避免把 prepare/acquire/place 的严格前驱链再次拆散；物化图不触发执行。(local)
+- [policy] [fix] Generic continuation prompt/Tool description explains segmentation by ToolSpec scope to keep strict preparation/acquisition/placement chains together; materializing a graph does not execute it. (local)
+- [eval] [fix] 新增 15 条跨段回归，覆盖真实 Coordinator、SQLite selection、Query wrapper、真实 endpoint，以及拒绝未授权/失败/旧场景/错误 Tool、实体、frame、calibration 的边界；既有 AgentLoop 用例新增分段指引断言。(local)
+- [eval] [fix] Add 15 cross-segment cases through real Coordinator, SQLite selection, Query wrapper and endpoint, plus unauthorized/failed/stale/wrong Tool/entity/frame/calibration rejection boundaries; extend an existing AgentLoop case with segmentation guidance assertions. (local)
+- [docs] [docs] 保存阶段、错误类型、权威 invocation 和两路累计视频诊断；完成七维审查，修复文档中 prepare 仍被描述为非 projection consumer 的旧说明。(local)
+- [docs] [docs] Save stage, failure classification, authoritative invocations and dual-view cumulative video diagnosis; complete seven-dimension review and correct the outdated description of prepare as a non-projection consumer. (local)
+- [chore] [chore] Skill manifest/package 升为 3.0.12，Node 1.0.3 与 Adapter 0.9.14 不变；构建并检查 558302-byte Skill bundle，未安装或恢复现场任务。(local)
+- [chore] [chore] Advance Skill manifest/package to 3.0.12, retaining Node 1.0.3 and Adapter 0.9.14; build and inspect the 558302-byte Skill bundle without installation or live task resumption. (local)
+
+### 文件变更详情 / File Changes
+
+| 文件 / File | 精确行号 / Exact Lines | 操作与摘要 / Operation and Summary |
+| --- | --- | --- |
+| `PhyAgentOS/forge/capability_runtime/manipulation_prepare.py` | L83-L86 | 修改 / Authorized read-only candidate source |
+| `PhyAgentOS/agent/tools/forge_task.py` | L598-L606 | 修改 / Generic source-aware segment guidance |
+| `PhyAgentOS/agent/loop.py` | L1954-L1960 | 修改 / Continuation source scope and admission guidance |
+| `examples/forge-skills/pick-place-workflow/contracts/manipulation.prepare.tool.yaml` | L16-L16 | 修改 / Match public ToolSpec scope |
+| `examples/forge-skills/pick-place-workflow/skill.yaml` | L3-L3 | 修改 / Skill 3.0.12 |
+| `examples/forge-skills/pick-place-workflow/pyproject.toml` | L3-L3 | 修改 / Package 3.0.12 |
+| `examples/forge-skills/pick-place-workflow/tests/test_grasp_propose.py` | L270-L270 | 修改 / Release-version assertion |
+| `examples/forge-skills/pick-place-workflow/tests/test_manipulation_prepare.py` | L262-L266 | 新增 / Authorized-source contract assertion |
+| `examples/forge-skills/pick-place-workflow/tests/test_planning_continuation_sources.py` | L1-L381 | 新增 / Fifteen real cross-segment boundary cases |
+| `tests/test_agent_foundation.py` | L1574-L1576 | 新增 / Model-visible segmentation/admission guidance |
+| `docs/forge/AGENT_TOOL_INPUT_SELECTION_DESIGN.md` | L121-L129, L155-L174 | 修改 / Scope semantics and prepare projection documentation |
+| `docs/diagnostics/CROSS_SEGMENT_QUERY_SOURCE_DIAGNOSIS_20261009.md` | L1-L120 | 新增 / Task stage, cause, generic repair and videos |
+| `docs/forge/IMPLEMENTATION_REVIEW_V13_0_2.md` | L1-L122 | 新增 / Findings, seven dimensions and validation |
+| `changelog/2026-10_part3.md` | L69-L184 | 新增 / 本条完整双语记录与 diff / Complete bilingual entry and diff |
+| `CHANGELOG.md` | L75-L190 | 修改 / 本条完整记录，最近五条滚动更新 / Complete entry and latest-five update |
+
+### 关键代码 Diff / Key Code Diff
+
+```diff
+# PhyAgentOS/forge/capability_runtime/manipulation_prepare.py
+-"source_scope": "predecessor",
++# Read-only successful Query can be explicitly authorized across segments.
++"source_scope": "authorized",
+# examples/forge-skills/pick-place-workflow/contracts/manipulation.prepare.tool.yaml
+-source_scope: predecessor
++source_scope: authorized
+# PhyAgentOS/agent/loop.py: continuation instruction
+-"that segment. Refresh evidence invalidated by a world-changing Action "
++"that segment. Check ToolSpec source_scope before choosing segment boundaries: "
++"predecessor-only source producers and their consumers must be nodes in the "
++"same submitted graph; dependencies cannot point into a completed prior graph. "
++"Use exact persisted evidence_refs for authorized successful Query sources. "
++"Declaring dependent Action nodes does not execute or authorize them; each "
++"still waits for predecessor terminal results, selection, and Gateway admission. "
+# PhyAgentOS/agent/tools/forge_task.py: description
++"For authorized Query sources, cite the exact persisted evidence_refs instead "
++"of repeating completed Queries. Declaring Action nodes does not execute them; "
++"each still waits for predecessor terminal results and governed admission. "
+# Skill manifest/package and version assertion
+-3.0.11
++3.0.12
+# tests: new boundary regression
++continued = await continue_prepare(coordinator)
++selection = await select_prepare(coordinator)
++# Execute only the saved Coordinator Query binding; no Action path exists.
++assert client.calls == [saved]
++assert result["data"]["motion_authorized"] is False
++# Failures reject before Gateway; strict predecessor-only Action chains stay strict.
++assert current.active_revision.execution_records == []
+```
+
+### 验证 / Validation
+- [eval] [fix] 最终聚焦 Core/AgentLoop/Skill/Adapter：394 passed in 14.28s；Skill 全量：404 passed in 12.85s；套件有重叠，不把合计当独立测试数。Ruff、compileall、git diff --check 通过；完整命令见七维审查文档。(local)
+- [eval] [fix] Final focused Core/AgentLoop/Skill/Adapter: 394 passed in 14.28s; full Skill: 404 passed in 12.85s; suites overlap, so counts are not summed as unique tests. Ruff, compileall and git diff --check passed; exact commands are in the review. (local)
+- [eval] [fix] 旧 predecessor 契约的成功续接用例准确复现 projection_source_unreachable；修复后 real Query 链通过，严格 predecessor 对跨段证据仍拒绝。新增回归使用通用 container/arm/camera fixture，无 RGB 分支。(local)
+- [eval] [fix] The old predecessor contract reproduced projection_source_unreachable; the repaired real Query chain passes while strict predecessor still rejects cross-segment evidence. New cases use generic container/arm/camera fixtures without RGB branches. (local)
+- [env] [chore] 初次 pytest 被外部 ROS launch_testing 缺 lark 干扰；禁用外部 autoload 并显式加载 pytest_asyncio。打包时 /tmp 满，产物在工作区生成后移至 out/releases/v13.0.2；检查 manifest、authorized contract 和唯一 Node 1.0.3 成功。(local)
+- [env] [chore] Initial pytest was affected by an external ROS launch_testing plugin missing lark; disabled external autoload and explicitly loaded pytest_asyncio. /tmp was full during packaging; the workspace-built artifact was moved into out/releases/v13.0.2 and its manifest, authorized contract and sole Node 1.0.3 passed inspection. (local)
+- [env] [chore] 现场 task_73ef2b2d38eb4acb 的 waiting_for_user/冻结绑定未修改；本轮无 Gateway 现场调用、动作重试、安装、Runtime 重启或机器人/模拟器运动。修复对新冻结契约生效，既有冻结 predecessor 不自动改写。(local)
+- [env] [chore] Live task_73ef2b2d38eb4acb waiting state/frozen binding is unchanged; no live Gateway call, Action retry, installation, Runtime restart or robot/simulator motion. The repair applies to newly frozen contracts; existing predecessor bindings are not rewritten. (local)
+
+### Git 提交 / Git Commit
+- Branch: `feature/planning-loop`
+- Commit: pending implementation commit; recorded after commit / 实现提交后记录。
+- 仅提交本轮文件和 v13.0.2 日志，保留另一个文档任务的 v13.0.3 记录及已有未跟踪文件 / Commit only this task and v13.0.2 log; preserve another documentation task's v13.0.3 entry and pre-existing untracked files.
+
 ## v13.0.1 (2026-10-09 11:54) - codex
 
 ### 预期修改 / Planned Changes [完成]
@@ -293,109 +410,3 @@ PYTHONPATH=.:examples/forge-adapters/robotwin20/src:examples/forge-adapters/robo
 - Branch: `feature/planning-loop`
 - Source: `3a09e9a`（已推送修复 / pushed repair）
 - Commit: `3f2c04f`（新版本部署与验证 / new-version deployment and validation）
-
-## v12.10.14 (2026-10-09 11:01) - codex
-
-### 预期修改 / Planned Changes [完成]
-- [policy] [fix] 七维复审 v12.10.13：视觉别名只避开 held/current-visual ID，可能撞上 unchanged carried ID 并使其静默丢失；将所有 Coordinator carried ID 纳入已有别名分配集合，不新增 gate/schema/hash。(local)
-- [policy] [fix] Review v12.10.13 across seven dimensions: visual aliases can collide with unchanged carried IDs and silently drop those identities. Reserve every Coordinator-carried ID in the existing alias allocator; add no gate, schema, or hash. (local)
-- [eval] [fix] 增加 held/unchanged 混合、连续别名冲突回归，验证实体、关系、几何、歧义引用和 provider 原始快照；只使用 fake provider/no-motion。(local)
-- [eval] [fix] Add mixed held/unchanged and consecutive alias-collision regressions covering entities, relations, geometry, ambiguity references, and the original provider snapshot; use fake providers without motion. (local)
-- [docs] [docs] 新增七维复审报告，记录发现、修复行号、关键 Diff、验证命令和部署边界，完成后提交并推送当前 feature/planning-loop 分支。(local)
-- [docs] [docs] Save the seven-dimension follow-up review with findings, line references, key diff, validation commands, and deployment limits; commit and push the current feature/planning-loop branch. (local)
-
-### 影响文件 / Expected Files
-- `PhyAgentOS/agent/tools/forge_tool_api.py`
-- `tests/test_forge_tool_api.py`
-- `PhyAgentOS/forge/capability_runtime/understanding.py`
-- `examples/forge-skills/pick-place-workflow/tests/test_scene_understand.py`
-- `docs/forge/IMPLEMENTATION_REVIEW_V12_10_14.md`
-- `CHANGELOG.md`
-
-### 计划补充 / Additional Plan
-- [policy] [fix] 同一 scene revision 的多次观察可以重用局部 ID；旧 helper 独立选择最新 understanding/binding，可能错接身份。仅从 Action 前的 binding 及其之前、observation/calibration 一致的 understanding 投影，使用既有 lineage 字段，不新增 gate。(local)
-- [policy] [fix] Repeated observations in one scene revision can reuse local IDs; independently selecting the latest understanding/binding can join unrelated identities. Project only from a pre-Action binding and its preceding understanding with matching observation/calibration, using existing lineage fields without a new gate. (local)
-
-### 实际修改 / Completed Changes
-- [policy] [fix] 两项 Major 均已修复：别名保留全部 carried/current-visual ID；carry 来源按既有 observation/scene/calibration 与 Action→binding→understanding 的逆向因果顺序配对。(local)
-- [policy] [fix] Fixed both Major findings: reserve all carried/current-visual IDs and join carry sources by existing observation/scene/calibration with reverse causal Action→binding→understanding ordering. (local)
-- [eval] [fix] 新增 16 项回归；修复前别名 2 项、来源配对 8 项失败，修复后全部通过；最终 Core/AgentLoop + Adapter 448、Skill 389、独立 provider 12，共 849 项通过。(local)
-- [eval] [fix] Added 16 regression cases; the old implementation failed two alias cases and eight source-pairing cases, all passing after repair. Final Core/AgentLoop + Adapter 448, Skill 389, and isolated provider 12: 849 passed. (local)
-- [docs] [docs] 保存七维复审报告，保留旧诊断及视频索引；没有任务专用分支，没有新增 schema/hash/gate。(local)
-- [docs] [docs] Saved the seven-dimension follow-up review and retained prior diagnosis/video references; no task-specific branch, new schema, hash, or gate. (local)
-
-### 文件变更详情 / File Changes
-
-| 文件 / File | 精确行号 / Exact Lines | 变更 / Change |
-| --- | --- | --- |
-| `PhyAgentOS/agent/tools/forge_tool_api.py` | L844-L845, L897-L898, L902-L915 | 在 Action 前配对相同 lineage 的 binding/understanding / Pair pre-Action binding/understanding with matching lineage. |
-| `PhyAgentOS/forge/capability_runtime/understanding.py` | L988-L989 | 视觉别名保留全部 carried/current-visual ID / Reserve all carried/current-visual IDs. |
-| `tests/test_forge_tool_api.py` | L610-L612, L617-L620, L853-L910 | 补全真实来源夹具并增加 14 项来源配对回归 / Complete realistic source fixtures and add 14 source-pairing cases. |
-| `examples/forge-skills/pick-place-workflow/tests/test_scene_understand.py` | L281-L324 | 增加两项连续别名冲突回归 / Add two consecutive alias-collision cases. |
-| `docs/forge/IMPLEMENTATION_REVIEW_V12_10_14.md` | L1-L86 | 新增七维复审报告与完整验证命令 / Add seven-dimension review and complete validation commands. |
-
-### 关键代码 Diff / Key Code Diff
-
-#### [修改 / Modified] `PhyAgentOS/forge/capability_runtime/understanding.py` L988-L989
-
-```diff
--used = reserved | {item["entity_ref"] for item in normalized.entities}
-+used = {item["entity"]["entity_ref"] for item in carried_entities}
-+used.update(item["entity_ref"] for item in normalized.entities)
-```
-
-#### [修改 / Modified] `PhyAgentOS/agent/tools/forge_tool_api.py` L844-L845, L897-L898, L902-L915
-
-```diff
--for record in reversed(task.execution_records):
-+for action_index in range(len(task.execution_records) - 1, -1, -1):
-+    record = task.execution_records[action_index]
-@@ source pairing
--for record in reversed(task.execution_records):
-+identity_keys = ("observation_ref", "scene_revision", "calibration_ref")
-+for record in reversed(task.execution_records[:action_index]):
--    if facts.get("scene_revision") != source_scene:
-+    if facts.get("scene_revision") != source_scene or facts.get("status") != "available":
-         continue
--    if understanding is None and record.tool_id == "scene.understand":
--        understanding = facts
-     if binding is None and record.tool_id == "scene.bind":
-+        if any(action.arguments.get(key) is not None and action.arguments[key] != facts.get(key)
-+               for key in identity_keys):
-+            continue
-         binding = facts
--    if understanding is not None and binding is not None:
-+        if any(not isinstance(binding.get(key), str) or not binding[key] for key in identity_keys):
-+            return []
-+        continue
-+    if (binding is not None and record.tool_id == "scene.understand"
-+            and all(facts.get(key) == binding[key] for key in identity_keys)):
-+        understanding = facts
-         break
-```
-
-#### [新增 / Added] 来源与别名回归 / Source and Alias Regressions
-
-```python
-# tests/test_forge_tool_api.py L853-L910
-task.execution_records[1].response["data"][key] = "different-lineage"
-assert _coordinator_carried_entities(task, "scene-2") == []
-# Post-binding understanding cannot replace the source claim.
-assert carried[0]["entity"]["category"] == "blue block"
-# examples/forge-skills/pick-place-workflow/tests/test_scene_understand.py L281-L324
-assert len(entities) == len(output["entities"]) == unchanged_count + 3
-assert output["relations"][0] == {**relation, "subject_ref": alias}
-assert output["ambiguities"][0]["entity_refs"] == [alias]
-```
-
-### 七维验收与验证 / Seven-Dimension Acceptance and Validation
-- [eval] [fix] 架构、正确性、恢复幂等、机器人安全、扩展兼容、可观测维护、AgentLoop 自主收敛七维已检查；两项 Major 已修复，无未解决 Blocker/Major。完整矩阵与命令见复审报告。(local)
-- [eval] [fix] Reviewed architecture, correctness, recovery/idempotency, robotics safety, extensibility, observability/maintainability, and AgentLoop autonomy/convergence; both Major findings fixed with no outstanding Blocker/Major. Full matrix and commands are in the review. (local)
-- [eval] [fix] Core/AgentLoop + Adapter `448 passed in 11.89s`；Skill `389 passed in 9.39s`；独立 provider `12 passed in 0.32s`；Ruff、compileall、`git diff --check` 通过。(local)
-- [eval] [fix] Core/AgentLoop + Adapter `448 passed in 11.89s`; Skill `389 passed in 9.39s`; isolated provider `12 passed in 0.32s`; Ruff, compileall, and `git diff --check` passed. (local)
-- [env] [chore] 全程 fake/no-motion；未安装、重启 Runtime、创建/恢复任务、调用现场 Gateway Query/Action 或推进模拟/物理运动。后续部署需重建 Node/Skill，不从旧 receipt 补造 held evidence。(local)
-- [env] [chore] All validation was fake/no-motion: no installation, Runtime restart, live task creation/resumption, Gateway Query/Action, simulator, or hardware motion. Deployment must rebuild Node/Skill and must not invent held evidence in old receipts. (local)
-
-### Git 提交 / Git Commit
-- Branch: `feature/planning-loop`
-- Commit: `0f6aaba`（两项 Major 修复与七维复审 / two Major fixes and seven-dimension review）

@@ -1571,6 +1571,9 @@ def test_segment_continuation_turn_appends_next_revision_without_execution_tools
         assert "forge_task_continue_plan" in visible
         assert "forge_task_finalize" in visible
         assert "forge_tool_query" not in visible
+        sent = json.dumps(provider.requests[0])
+        assert "predecessor-only source producers" in sent
+        assert "Declaring dependent Action nodes does not execute or authorize them" in sent
         assert prompt_tool_sets == [frozenset({
             "forge_task_continue_plan",
             "forge_task_begin_revision",
