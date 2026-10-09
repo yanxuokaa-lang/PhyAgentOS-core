@@ -137,7 +137,7 @@ English: record the Major finding, shared repair across three entry points, old-
 
 ### Git 提交 / Git Commit
 - Branch: `feature/planning-loop`
-- Commit: 实现提交后记录 / recorded after the implementation commit
+- Commit: `05261e6`（实现、回归与七维审查 / implementation, regressions and seven-dimension review）
 
 ## v13.0.3 (2026-10-09 12:09) - codex
 
