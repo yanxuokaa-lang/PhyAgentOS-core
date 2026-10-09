@@ -28,6 +28,7 @@
 
 详见 [v13.1.5 月度日志](changelog/2026-10_part5.md)。
 See the [v13.1.5 detailed log](changelog/2026-10_part5.md).
+- Commit: `e1526e9` on `feature/planning-loop`.
 
 ## v13.1.4 (2026-10-10 00:00) - codex
 
