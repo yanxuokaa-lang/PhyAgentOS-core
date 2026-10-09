@@ -6,6 +6,25 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v13.0.11 (2026-10-09 16:45) - codex
+
+### 变更摘要 / Summary
+- [env] [chore] 删除不再使用的 `qwen3vl`、`smolvlm` 和 `minicpm-v` Conda 环境，保留现用 Qwen3-VL-4B 环境与服务。(local)
+- [Env] [Chore] Remove the unused `qwen3vl`, `smolvlm`, and `minicpm-v` Conda environments while preserving the active Qwen3-VL-4B environments and service. (local)
+
+### 文件与关键 Diff / Files and Key Diff
+| 文件 / File | 行号 / Lines | 变更 / Change |
+| --- | --- | --- |
+| `changelog/2026-10.md` | L3-L40 | 记录三套环境删除、保留环境与服务验证 / Record removal of the three environments and retained-service verification |
+
+```diff
+- qwen3vl, smolvlm, minicpm-v
++ removed with conda env remove; qwen3vl-4b and paos-qwen3vl-4b-vllm retained
+```
+
+详见 [2026-10 月度日志](changelog/2026-10.md)。
+See the [October 2026 detailed log](changelog/2026-10.md).
+
 ## v13.0.10 (2026-10-09 16:08) - codex
 
 ### 变更摘要 / Summary
