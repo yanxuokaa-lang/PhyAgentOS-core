@@ -8,6 +8,33 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v13.1.0 (2026-10-09 21:04) - codex
+
+### 变更摘要 / Summary
+- [env] [chore] 按明确授权强制停止旧 `pick-place-workflow` Runtime，并刷新当前仓库的 editable `PhyAgentOS-ai 1.0.2` Core，使 unknown-world scene-refresh bootstrap 修复由 `paos` CLI 加载。 (local)
+- [Env] [Chore] Force-stop the old `pick-place-workflow` Runtime under explicit authorization and refresh the checkout's editable `PhyAgentOS-ai 1.0.2` Core so the `paos` CLI loads the unknown-world scene-refresh bootstrap repair. (local)
+- [env] [chore] 核对已安装 Skill 仍为已验证的 `3.0.12` payload；部署后保持 Runtime stopped、Dora down、Gateway unavailable，未执行 live Query/Action 或推进 simulator。 (local)
+- [Env] [Chore] Confirm that the installed Skill remains the verified `3.0.12` payload; keep the Runtime stopped, Dora down, and Gateway unavailable after deployment, with no live Query/Action or simulator advancement. (local)
+
+### 文件与关键 Diff / Files and Key Diff
+
+| 对象 / Object | 位置 / Location | 结果 / Result |
+| --- | --- | --- |
+| PAOS Core | `PhyAgentOS/agent/recovery_decisions.py` L11-L62, L219-L250 | editable install 从当前 checkout 导入恢复逻辑 / Editable install imports the recovery logic from this checkout |
+| Skill | `pick-place-workflow 3.0.12` | installer 返回 `already ready`；payload 未变 / Installer returned `already ready`; payload unchanged |
+| Runtime | `robotwin-blocks-ranking-graspnet` | stopped；Dora down；Gateway unavailable；非终态任务 0 / Stopped; Dora down; Gateway unavailable; zero non-terminal tasks |
+| 日志 / Log | `changelog/2026-10_part5.md` L3-L58 | 完整双语部署记录 / Complete bilingual deployment record |
+
+```diff
+- old Runtime running against the previous process lifetime
++ old Runtime force-stopped; editable Core refreshed from the repaired checkout
+  Skill payload remains verified version 3.0.12
+  no Runtime restart, live Action, simulator advancement, or physical motion
+```
+
+详见 [v13.1.0 月度日志](changelog/2026-10_part5.md)。
+See the [v13.1.0 detailed log](changelog/2026-10_part5.md).
+
 ## v13.0.15 (2026-10-09 19:22) - codex
 
 ### 变更摘要 / Summary
@@ -107,31 +134,3 @@ See the [v13.0.12 detailed log](changelog/2026-10_part3.md) and [experiment resu
 
 详见 [2026-10 月度日志](changelog/2026-10.md)。
 See the [October 2026 detailed log](changelog/2026-10.md).
-
-## v13.0.10 (2026-10-09 16:08) - codex
-
-### 变更摘要 / Summary
-- [docs] [docs] 为 v13.0.9 七维实现复审补充可复制的完整测试命令与实测结果 `195 passed in 2.16s`。(local)
-- [docs] [docs] Add the reproducible full test command and measured result `195 passed in 2.16s` to the v13.0.9 seven-dimension implementation review.(local)
-
-### 文件与关键 Diff / Files and Key Diff
-| 文件 / File | 行号 / Lines | 变更 / Change |
-| --- | --- | --- |
-| `PhyAgentOS/agent/planning_loop.py` | L1736-L1808 | 以 bound ToolSpec 的 `(semantics, refreshes_scene)` 分类恢复 Query，并要求每个新 Action 依赖场景刷新 Query / Classify recovery Queries by bound ToolSpec profile and require each new Action to depend on a scene-refresh Query |
-| `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/object_acquire.py` | L650-L675 | no-motion provider 报告 world change 时优先给出安全拒绝 / Prioritize safety rejection when a no-motion provider reports world change |
-| `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/object_place.py` | L715-L740 | 同上；保持放置结果契约校验 / Same; preserve placement result validation |
-| `examples/forge-skills/pick-place-workflow/tests/test_unknown_action_recovery.py` | L58-L91, L313-L430 | 覆盖有效刷新 Query、非刷新 Query、未建立依赖及元数据冲突 / Cover refreshing and non-refreshing Queries, missing dependency, and metadata conflict |
-| `examples/forge-adapters/robotwin20/tests/test_action_readiness_gate.py` | L137-L148, L239-L315 | 修正 no-motion fixture 并验证 Acquire/Place 错误优先级 / Correct no-motion fixture and verify Acquire/Place error priority |
-| `docs/forge/IMPLEMENTATION_REVIEW_V13_0_9.md` | L1-L77 | 七维 finding、结论与可复现验证命令 / Seven-dimension findings, conclusions, and reproducible validation command |
-| `changelog/2026-10_part3.md` | L3-L63 | 双语详细日志与失败场景 / Bilingual detailed log and failure scenarios |
-| `docs/forge/UNKNOWN_ACTION_REPLAN_DIAGNOSIS_20261009.md` | L67-L118 | 更新恢复门禁诊断和回归结果 / Update recovery-gate diagnosis and regression results |
-
-```diff
-- any new Query can satisfy unknown-world recovery
-+ only a new refreshes_scene Query can gate each new Action
-- validate the whole no-motion result before checking reported motion
-+ return motion_started_in_no_motion_mode when world_change_started is true
-  exact focused test invocation: 195 passed in 2.16s
-```
-
-See [the detailed bilingual entry](changelog/2026-10_part3.md) and [seven-dimension review](docs/forge/IMPLEMENTATION_REVIEW_V13_0_9.md).
