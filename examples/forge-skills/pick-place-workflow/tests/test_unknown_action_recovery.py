@@ -9,6 +9,8 @@ from PhyAgentOS.agent.planning_loop import (
     PlanningLoopAdapter,
     PlanningLoopError,
 )
+from PhyAgentOS.agent.recovery_decisions import AgentRecoveryDecisions
+from PhyAgentOS.forge.binding import BoundToolSpec
 from PhyAgentOS.forge.task import (
     AgentTaskStatus,
     ToolExecutionRecord,
@@ -19,6 +21,7 @@ from PhyAgentOS.planning import (
     PlanGraph,
     PlanNode,
     ToolResultEnvelope,
+    ToolSpecPolicy,
     build_replan_delta,
     plan_graph_digest,
     settle_node,
@@ -61,28 +64,44 @@ class _Coordinator:
             task_id=graph.task_id,
             status=AgentTaskStatus.EXECUTING,
             primary_skill_binding=None,
+            runtime_binding=SimpleNamespace(binding_id="runtime-test"),
             tool_bindings=(
-                SimpleNamespace(
+                BoundToolSpec(
                     tool_id="object.acquire",
                     semantics="action",
-                    planning_policy=SimpleNamespace(
+                    spec_sha256="1" * 64,
+                    ready_at_binding=True,
+                    planning_policy=ToolSpecPolicy(
+                        tool_id="object.acquire",
+                        semantics="action",
+                        spec_digest="1" * 64,
                         capabilities=("object.acquire",),
                         scene_write_behavior="new_revision",
                     ),
                 ),
-                SimpleNamespace(
+                BoundToolSpec(
                     tool_id="scene.observe",
                     semantics="query",
-                    planning_policy=SimpleNamespace(
+                    spec_sha256="2" * 64,
+                    ready_at_binding=True,
+                    planning_policy=ToolSpecPolicy(
+                        tool_id="scene.observe",
+                        semantics="query",
+                        spec_digest="2" * 64,
                         capabilities=("scene.observe",),
                         scene_write_behavior="none",
                         refreshes_scene=True,
                     ),
                 ),
-                SimpleNamespace(
+                BoundToolSpec(
                     tool_id="task.goal",
                     semantics="query",
-                    planning_policy=SimpleNamespace(
+                    spec_sha256="3" * 64,
+                    ready_at_binding=True,
+                    planning_policy=ToolSpecPolicy(
+                        tool_id="task.goal",
+                        semantics="query",
+                        spec_digest="3" * 64,
                         capabilities=("task.goal",),
                         scene_write_behavior="none",
                         refreshes_scene=False,
@@ -92,6 +111,7 @@ class _Coordinator:
             active_revision=SimpleNamespace(
                 revision_id=graph.revision_id,
                 plan_graph=graph,
+                execution_records=[],
                 node_settlements=[],
                 fresh_evidence_requirements=(),
                 discovery_evidence_refs=(),
@@ -131,6 +151,7 @@ class _Coordinator:
         self.task.active_revision = SimpleNamespace(
             revision_id=plan_graph.revision_id,
             plan_graph=plan_graph,
+            execution_records=[],
             node_settlements=[],
             fresh_evidence_requirements=(),
             discovery_evidence_refs=(),
@@ -280,6 +301,66 @@ async def test_explicit_unknown_replan_enters_recovery_revision_without_action_r
     assert result.status == "segment_completed"
     assert result.replans == 1
     assert calls == ["acquire", "reconcile"]
+    assert coordinator.blocked == []
+
+
+@pytest.mark.asyncio
+async def test_runtime_unknown_effect_bootstraps_refresh_without_recovery_model():
+    task_id = "task-runtime-refresh-bootstrap"
+    action = PlanNode(node_id="acquire", obligation_id="acquire", capability="object.acquire")
+    initial = _graph(task_id, "revision-1", [action])
+    coordinator = _Coordinator(initial)
+    context_provider = _ContextProvider(coordinator.task)
+    calls = []
+    current_scene = {"value": "scene://s1"}
+
+    class Provider:
+        async def chat_with_retry(self, **_kwargs):
+            pytest.fail("structured unknown-effect recovery must not call the model")
+
+    decisions = AgentRecoveryDecisions(Provider(), "fixture-model", coordinator)
+
+    def execute(context):
+        calls.append((context.revision_id, context.node_id, context.capability))
+        if context.node_id == "acquire":
+            current_scene["value"] = "scene://s2"
+            return _action_result(context, requires_replan=True)
+        return ToolResultEnvelope(
+            task_id=context.task_id,
+            revision_id=context.revision_id,
+            node_id=context.node_id,
+            tool_id="scene.observe",
+            status="succeeded",
+            outcome_known=True,
+            evidence_refs=("artifact://observation/recovery-current-scene",),
+        )
+
+    result = await PlanningLoopAdapter(
+        coordinator,
+        context_provider=context_provider,
+        node_executor=execute,
+        admission_context_provider=lambda _task_id: AdmissionContext(
+            scene_revision=current_scene["value"]
+        ),
+        replan_proposer=lambda graph, settlement, delta, context: decisions.propose_replan(
+            graph=graph,
+            settlement=settlement,
+            delta=delta,
+            context=context,
+        ),
+        recovery_policy=lambda *_args: "replan",
+        finalize_completed_graph=False,
+    ).run(task_id, scene_revision="scene://s1")
+
+    assert result.status == "segment_completed"
+    assert result.replans == 1
+    assert calls[0][1:] == ("acquire", "object.acquire")
+    assert calls[1][1].startswith("recovery_scene_refresh_")
+    assert calls[1][2] == "scene.observe"
+    assert calls[0][0] == "revision-1"
+    assert calls[1][0] != "revision-1"
+    assert coordinator.task.status == AgentTaskStatus.EXECUTING
+    assert coordinator.task.active_revision.node_settlements[0].status == "completed"
     assert coordinator.blocked == []
 
 

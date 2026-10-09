@@ -25,7 +25,11 @@ from PhyAgentOS.agent.prompt_context import (
     compact_tool_result,
     visible_tool_names,
 )
-from PhyAgentOS.agent.recovery_decisions import AgentRecoveryDecisions
+from PhyAgentOS.agent.recovery_decisions import (
+    AgentRecoveryDecisions,
+    _scene_refresh_bootstrap_capability,
+    _scene_refresh_bootstrap_node_id,
+)
 from PhyAgentOS.agent.tools.forge_task import (
     ForgeTaskClarificationTool,
     ForgeTaskGetTool,
@@ -2329,6 +2333,214 @@ def test_model_replan_preserves_task_identity_without_executing(tmp_path):
         assert proposal.plan_graph.revision_id != graph.revision_id
         assert proposal.delta.retry_parent_node_id == "chosen-0"
         assert len(c.get_task(task.task_id).revisions) == 1
+    asyncio.run(exercise())
+
+
+def test_unknown_world_change_bootstraps_scene_refresh_without_model_proposal(tmp_path):
+    async def exercise():
+        c, task = setup_task(tmp_path)
+        observe_tool = task.primary_skill_binding.required_tools[0]
+        observe_policy = observe_tool.planning_policy.model_copy(
+            update={"capabilities": ("scene.observe",), "refreshes_scene": True}
+        )
+        work_policy = ToolSpecPolicy(
+            tool_id="fixture.work",
+            semantics="action",
+            spec_digest="d" * 64,
+            capabilities=("object.relocate", "task.verify"),
+        )
+        binding = task.primary_skill_binding.model_copy(update={
+            "required_tools": (
+                observe_tool.model_copy(update={"planning_policy": observe_policy}),
+                BoundToolSpec(
+                    tool_id="fixture.work",
+                    semantics="action",
+                    spec_sha256="d" * 64,
+                    ready_at_binding=True,
+                    planning_policy=work_policy,
+                ),
+            ),
+        })
+        c.store.update(
+            task.task_id,
+            lambda current: setattr(current, "primary_skill_binding", binding),
+            event_type="test_scene_refresh_binding",
+        )
+        task = c.get_task(task.task_id)
+        graph = compile_task_plan(task, semantic_nodes(1), reason="initial action segment")
+        settlement = NodeSettlement(
+            task_id=task.task_id,
+            revision_id=graph.revision_id,
+            node_id="chosen-0",
+            status="outcome_unknown",
+            failure_code="grasp_lift_unverified",
+            world_change_started=True,
+            outcome_known=False,
+            retryable_in_revision=False,
+            requires_replan=True,
+            recommended_action="reconcile_world",
+        )
+        provider = ScriptedProvider([])
+
+        proposal = await AgentRecoveryDecisions(
+            provider, "fixture-model", c
+        ).propose_replan(
+            graph=graph,
+            settlement=settlement,
+            delta=build_replan_delta(graph, settlement),
+            context=settlement,
+        )
+
+        assert provider.requests == []
+        assert proposal.delta.retry_parent_node_id == "chosen-0"
+        assert proposal.delta.preserve_node_ids == ()
+        assert proposal.reason == (
+            "Runtime reported an unknown outcome after a world-changing Action; "
+            "refresh the current scene before planning any further Action"
+        )
+        recovery_node = proposal.plan_graph.nodes[0]
+        assert recovery_node.node_id.startswith("recovery_scene_refresh_")
+        assert recovery_node.node_id not in {node.node_id for node in graph.nodes}
+        assert recovery_node.model_dump(mode="json") == {
+            "node_id": recovery_node.node_id,
+            "obligation_id": "refresh_current_scene_after_unknown_effect",
+            "capability": "scene.observe",
+            "dependencies": [],
+            "conditions": [],
+            "required_evidence": [],
+            "produced_evidence": [],
+            "resources": [],
+            "effects": [],
+            "input_bindings": {},
+            "retry_of": None,
+        }
+        assert len(c.get_task(task.task_id).revisions) == 1
+        assert c.get_task(task.task_id).execution_records == []
+
+    asyncio.run(exercise())
+
+
+def test_scene_refresh_bootstrap_node_identity_is_stable_and_avoids_source_collision():
+    source = SimpleNamespace(
+        revision_id="revision-source",
+        nodes=(SimpleNamespace(node_id="existing-node"),),
+    )
+
+    assert _scene_refresh_bootstrap_node_id(source) == (
+        "recovery_scene_refresh_revision-source"
+    )
+    assert _scene_refresh_bootstrap_node_id(source) == (
+        "recovery_scene_refresh_revision-source"
+    )
+
+    source.nodes = (
+        SimpleNamespace(node_id="recovery_scene_refresh_revision-source"),
+        SimpleNamespace(node_id="recovery_scene_refresh_revision-source_2"),
+    )
+    assert _scene_refresh_bootstrap_node_id(source) == (
+        "recovery_scene_refresh_revision-source_3"
+    )
+
+
+def test_scene_refresh_bootstrap_rejects_capability_bound_to_stale_scene_facts():
+    policy = ToolSpecPolicy(
+        tool_id="fixture.observe",
+        semantics="query",
+        spec_digest="a" * 64,
+        capabilities=("scene.refresh",),
+        input_binding_keys=("scene_revision",),
+        refreshes_scene=True,
+    )
+    task = SimpleNamespace(
+        primary_skill_binding=SimpleNamespace(
+            required_tools=(
+                BoundToolSpec(
+                    tool_id="fixture.observe",
+                    semantics="query",
+                    spec_sha256="a" * 64,
+                    ready_at_binding=True,
+                    planning_policy=policy,
+                ),
+            )
+        )
+    )
+
+    assert _scene_refresh_bootstrap_capability(task) is None
+
+
+def test_unknown_world_change_does_not_guess_ambiguous_refresh_capability(tmp_path):
+    async def exercise():
+        c, task = setup_task(tmp_path)
+        observe_tool = task.primary_skill_binding.required_tools[0]
+        observe_policy = observe_tool.planning_policy.model_copy(
+            update={"capabilities": ("scene.observe",), "refreshes_scene": True}
+        )
+        work_policy = ToolSpecPolicy(
+            tool_id="fixture.work",
+            semantics="action",
+            spec_digest="d" * 64,
+            capabilities=("object.relocate", "task.verify"),
+        )
+        alternate_policy = ToolSpecPolicy(
+            tool_id="alternate.observe",
+            semantics="query",
+            spec_digest="c" * 64,
+            capabilities=("alternate.scene.refresh",),
+            refreshes_scene=True,
+        )
+        binding = task.primary_skill_binding.model_copy(update={
+            "required_tools": (
+                observe_tool.model_copy(update={"planning_policy": observe_policy}),
+                BoundToolSpec(
+                    tool_id="fixture.work",
+                    semantics="action",
+                    spec_sha256="d" * 64,
+                    ready_at_binding=True,
+                    planning_policy=work_policy,
+                ),
+                BoundToolSpec(
+                    tool_id="alternate.observe",
+                    semantics="query",
+                    spec_sha256="c" * 64,
+                    ready_at_binding=True,
+                    planning_policy=alternate_policy,
+                ),
+            ),
+        })
+        c.store.update(
+            task.task_id,
+            lambda current: setattr(current, "primary_skill_binding", binding),
+            event_type="test_ambiguous_scene_refresh_binding",
+        )
+        task = c.get_task(task.task_id)
+        graph = compile_task_plan(task, semantic_nodes(1), reason="initial action segment")
+        settlement = NodeSettlement(
+            task_id=task.task_id,
+            revision_id=graph.revision_id,
+            node_id="chosen-0",
+            status="outcome_unknown",
+            world_change_started=True,
+            outcome_known=False,
+            requires_replan=True,
+        )
+        provider = ScriptedProvider([
+            LLMResponse(content=None, tool_calls=[]),
+        ])
+
+        with pytest.raises(ValueError, match="recovery model returned no unique decision"):
+            await AgentRecoveryDecisions(
+                provider, "fixture-model", c
+            ).propose_replan(
+                graph=graph,
+                settlement=settlement,
+                delta=build_replan_delta(graph, settlement),
+                context=settlement,
+            )
+
+        assert len(provider.requests) == 1
+        assert len(c.get_task(task.task_id).revisions) == 1
+        assert c.get_task(task.task_id).execution_records == []
+
     asyncio.run(exercise())
 
 

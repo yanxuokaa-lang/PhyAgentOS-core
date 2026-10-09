@@ -8,7 +8,58 @@ from PhyAgentOS.agent.experience.redaction import redact_text
 from PhyAgentOS.agent.plan_proposal import RECOVERY_NODE_GUIDANCE, compile_task_plan
 from PhyAgentOS.agent.planner_plugin import ReplanProposal
 from PhyAgentOS.agent.planning_facts import response_facts
-from PhyAgentOS.planning import PlanNode, reconcile_replan_delta
+from PhyAgentOS.planning import (
+    PlanNode,
+    reconcile_replan_delta,
+    required_node_binding_keys,
+)
+
+
+def _scene_refresh_bootstrap_capability(task) -> str | None:
+    """Return one ToolSpec-owned refresh capability that needs no frozen binding.
+
+    The recovery revision deliberately contains only a semantic Query obligation.
+    Agent selection still owns the concrete Tool and its runtime arguments.  If
+    ToolSpec metadata cannot identify exactly one bindable capability, recovery
+    remains model-proposed and fail-closed.
+    """
+    binding = getattr(task, "primary_skill_binding", None)
+    tools = (
+        getattr(binding, "required_tools", ())
+        if binding is not None
+        else getattr(task, "tool_bindings", ())
+    )
+    capabilities: set[str] = set()
+    for tool in tools:
+        policy = getattr(tool, "planning_policy", None)
+        semantics = getattr(tool, "semantics", None) or getattr(policy, "semantics", None)
+        if (
+            policy is None
+            or semantics != "query"
+            or getattr(policy, "refreshes_scene", False) is not True
+            or required_node_binding_keys(policy)
+        ):
+            continue
+        capabilities.update(
+            capability
+            for capability in getattr(policy, "capabilities", ())
+            if isinstance(capability, str) and capability
+        )
+    if len(capabilities) != 1:
+        return None
+    return next(iter(capabilities))
+
+
+def _scene_refresh_bootstrap_node_id(graph) -> str:
+    """Choose a deterministic node identity absent from the source revision."""
+    base = f"recovery_scene_refresh_{graph.revision_id}"
+    existing = {node.node_id for node in graph.nodes}
+    candidate = base
+    suffix = 2
+    while candidate in existing:
+        candidate = f"{base}_{suffix}"
+        suffix += 1
+    return candidate
 
 
 class AgentRecoveryDecisions:
@@ -166,9 +217,40 @@ class AgentRecoveryDecisions:
         return value["decision"]
 
     async def propose_replan(self, *, graph, settlement, delta, context):
+        task = self.coordinator.get_task(graph.task_id)
+        refresh_capability = (
+            _scene_refresh_bootstrap_capability(task)
+            if (
+                settlement.status == "outcome_unknown"
+                and settlement.world_change_started is True
+                and settlement.requires_replan is True
+            )
+            else None
+        )
+        if refresh_capability is not None:
+            reason = (
+                "Runtime reported an unknown outcome after a world-changing Action; "
+                "refresh the current scene before planning any further Action"
+            )
+            replacement = compile_task_plan(
+                task,
+                [{
+                    "node_id": _scene_refresh_bootstrap_node_id(graph),
+                    "obligation_id": "refresh_current_scene_after_unknown_effect",
+                    "capability": refresh_capability,
+                }],
+                reason=reason,
+            )
+            effective_delta = reconcile_replan_delta(graph, delta, replacement)
+            return ReplanProposal(
+                delta=effective_delta,
+                plan_graph=replacement,
+                plan_graph_ref=f"artifact://plans/{task.task_id}/{replacement.revision_id}",
+                reason=reason,
+            )
+
         value = await self._ask(graph, settlement, delta, context, replan=True)
         for attempt in range(2):
-            task = self.coordinator.get_task(graph.task_id)
             try:
                 replacement = compile_task_plan(task, value["nodes"], reason=value["reason"])
                 effective_delta = reconcile_replan_delta(graph, delta, replacement)
