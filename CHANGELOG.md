@@ -8,6 +8,32 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v13.1.1 (2026-10-09 21:20) - codex
+
+### 变更摘要 / Summary
+- [env] [chore] 使用既有 operator-owned profile environment 启动新安装的 `pick-place-workflow 3.0.12`，恢复 `robotwin-blocks-ranking-graspnet` Runtime、Dora flow 与 Gateway readiness。 (local)
+- [Env] [Chore] Start the newly installed `pick-place-workflow 3.0.12` with the existing operator-owned profile environment, restoring `robotwin-blocks-ranking-graspnet` Runtime, Dora flow, and Gateway readiness. (local)
+- [env] [chore] readiness 验收覆盖 11 个 required Tool context，未创建 AgentTask、调用 Query/Action、推进 simulator 或产生物理运动；无 env-file 的首次启动被 PAOS preflight 安全拒绝。 (local)
+- [Env] [Chore] Readiness validation covered all 11 required Tool contexts without creating an AgentTask, invoking Query/Action, advancing the simulator, or producing physical motion; the first start without an env-file was safely rejected by PAOS preflight. (local)
+
+### 文件与关键 Diff / Files and Key Diff
+| 对象 / Object | 位置 / Location | 结果 / Result |
+| --- | --- | --- |
+| Runtime environment | `/home/yanxu/.PhyAgentOS/deployments/robotwin-persistent/runtime-rgb-graspnet-run5.env` | 复用既有 operator-owned 配置，不记录 secret / Reused operator-owned configuration without recording secrets |
+| Runtime | `pick-place-workflow:robotwin-blocks-ranking-graspnet` | `running`；Dora `running`；Gateway `ready` / Running; Dora running; Gateway ready |
+| Tools | Gateway `/tools` | 11/11 required contexts ready / 11/11 required contexts ready |
+| 任务库 / Task store | `/home/yanxu/.PhyAgentOS/workspace/.paos/agent_tasks/tasks.sqlite3` | 非终态任务=`0` / non-terminal tasks=`0` |
+| 日志 / Log | `changelog/2026-10_part5.md` L3-L45 | 双语启动、预检失败分支和无运动验收 / Bilingual startup, preflight-failure branch, and no-motion validation |
+
+```diff
+- Runtime stopped; Gateway unavailable; Agent sees no ready Forge Skill runtime
++ Runtime running; Gateway ready; all 11 required Tool contexts ready
+  no AgentTask, live Query/Action, simulator advancement, or physical motion during readiness check
+```
+
+详见 [v13.1.1 月度日志](changelog/2026-10_part5.md)。
+See the [v13.1.1 detailed log](changelog/2026-10_part5.md).
+
 ## v13.1.0 (2026-10-09 21:04) - codex
 
 ### 变更摘要 / Summary
@@ -115,22 +141,3 @@ the capability-validation plan, and `docs/forge/SYSTEM1_INTENT_ROUTING_EXPERIMEN
 
 详见 [v13.0.12 月度日志](changelog/2026-10_part3.md)和[实验结果](docs/forge/SYSTEM1_INTENT_ROUTING_EXPERIMENT_RESULTS_20261009.md)。
 See the [v13.0.12 detailed log](changelog/2026-10_part3.md) and [experiment results](docs/forge/SYSTEM1_INTENT_ROUTING_EXPERIMENT_RESULTS_20261009.md).
-
-## v13.0.11 (2026-10-09 16:45) - codex
-
-### 变更摘要 / Summary
-- [env] [chore] 删除不再使用的 `qwen3vl`、`smolvlm` 和 `minicpm-v` Conda 环境，保留现用 Qwen3-VL-4B 环境与服务。(local)
-- [Env] [Chore] Remove the unused `qwen3vl`, `smolvlm`, and `minicpm-v` Conda environments while preserving the active Qwen3-VL-4B environments and service. (local)
-
-### 文件与关键 Diff / Files and Key Diff
-| 文件 / File | 行号 / Lines | 变更 / Change |
-| --- | --- | --- |
-| `changelog/2026-10.md` | L3-L40 | 记录三套环境删除、保留环境与服务验证 / Record removal of the three environments and retained-service verification |
-
-```diff
-- qwen3vl, smolvlm, minicpm-v
-+ removed with conda env remove; qwen3vl-4b and paos-qwen3vl-4b-vllm retained
-```
-
-详见 [2026-10 月度日志](changelog/2026-10.md)。
-See the [October 2026 detailed log](changelog/2026-10.md).
