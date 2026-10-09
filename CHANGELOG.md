@@ -49,7 +49,7 @@ See the [v13.0.15 detailed log](changelog/2026-10_part4.md) and [formal experime
 | `tests/test_agent_foundation.py` | L28-L32, L2339-L2544 | bootstrap、歧义、旧绑定、identity 回归 / Bootstrap, ambiguity, stale-binding, and identity regressions |
 | `examples/forge-skills/pick-place-workflow/tests/test_unknown_action_recovery.py` | L12-L24, L61-L155, L307-L364 | 完整 PlanningLoop 新 revision 无运动回归 / Full PlanningLoop replacement-revision no-motion regression |
 | `docs/forge/UNKNOWN_ACTION_REFRESH_BOOTSTRAP_DIAGNOSIS_20261009.md` | L1-L161 | 诊断、架构边界与七维审查 / Diagnosis, architecture boundary, and seven-dimension review |
-| `changelog/2026-10_part4.md` | v13.0.14 | 完整双语记录 / Complete bilingual record |
+| `changelog/2026-10_part5.md` | v13.0.14 | 完整双语记录 / Complete bilingual record |
 
 ```diff
 - unknown world-changing Action -> model must return complete replacement graph
