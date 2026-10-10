@@ -2103,6 +2103,24 @@ def test_model_failure_settlement_closes_task_without_unresolved_execution(tmp_p
     assert coordinator.get_task(task.task_id).status is AgentTaskStatus.FAILED
 
 
+def test_store_update_callable_payload_uses_validated_record(tmp_path):
+    coordinator, task = setup_task(tmp_path)
+
+    updated = coordinator.store.update(
+        task.task_id,
+        lambda current: setattr(current, "pause_requested", True),
+        event_type="test_callable_payload",
+        payload=lambda current: {
+            "status": current.status.value,
+            "pause_requested": current.pause_requested,
+        },
+    )
+
+    assert updated.pause_requested is True
+    event = coordinator.store.events(task.task_id)[-1]
+    assert event["payload"] == {"status": "executing", "pause_requested": True}
+
+
 def test_model_failure_settlement_does_not_bypass_unresolved_action(tmp_path):
     coordinator, task = setup_task(tmp_path)
     coordinator.store.update(

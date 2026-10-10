@@ -4330,7 +4330,11 @@ def _has_unresolved_world_change(task: AgentTaskRecord) -> bool:
         ):
             return True
     for record in task.execution_records:
-        if record.semantics not in {"action", "session"} or record.status != "unknown":
+        if (
+            record.revision_id != task.active_revision_id
+            or record.semantics not in {"action", "session"}
+            or record.status != "unknown"
+        ):
             continue
         facts = _planning_response_facts(record.response)
         if (

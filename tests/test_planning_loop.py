@@ -2186,6 +2186,48 @@ def test_replan_failure_keeps_unknown_world_owned_by_same_task(tmp_path):
     assert event["payload"]["deferred_for_reconciliation"] is True
 
 
+def test_replan_failure_ignores_unknown_execution_from_superseded_revision(tmp_path):
+    c = coordinator(tmp_path)
+    task = c.create_task(
+        task_description="superseded unknown world effect",
+        verification=TaskVerificationContract(mode="off"),
+    )
+    first = make_graph(task.task_id, "revision-old-unknown", ("arrange-red",))
+    c.expand_discovery_revision(
+        task.task_id,
+        plan_graph=first,
+        plan_graph_ref="artifact://plans/old-unknown",
+    )
+    c.store.update(
+        task.task_id,
+        lambda current: current.active_revision.node_settlements.append(
+            NodeSettlement(
+                task_id=task.task_id,
+                revision_id=first.revision_id,
+                node_id="arrange-red",
+                status="outcome_unknown",
+                world_change_started=True,
+                requires_replan=True,
+            )
+        ),
+        event_type="test_superseded_unknown_world_effect",
+    )
+    c.request_replan(task.task_id, reason="fresh scene reconciled")
+    second = make_graph(task.task_id, "revision-after-refresh", ("arrange-red",))
+    c.begin_revision(
+        task.task_id,
+        reason="fresh scene reconciliation",
+        plan_graph=second,
+        plan_graph_ref="artifact://plans/after-refresh",
+    )
+
+    result = c.fail_replan(task.task_id, reason="new revision recovery unavailable")
+
+    assert result.status is AgentTaskStatus.FAILED
+    event = c.store.events(task.task_id)[-1]
+    assert event["payload"]["deferred_for_reconciliation"] is False
+
+
 def test_discovery_revision_does_not_consume_replan_budget(tmp_path):
     c = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=object(), verifier=None, max_replans=1)
     task = c.create_task(task_description="discovery budget", verification=TaskVerificationContract(mode="off"))

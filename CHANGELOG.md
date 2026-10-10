@@ -1,4 +1,16 @@
 # Changelog
+## v13.1.15 (2026-10-10 14:50) - codex
+
+### 变更摘要 / Summary [计划]
+- [policy] [fix] 仅从当前 active revision 判断 unresolved world，避免后续 revision 被历史 unknown Action 阻塞。 (local)
+- [Policy] [Fix] Detect unresolved world effects only from the active revision so later revisions are not blocked by superseded unknown Actions. (local)
+- [eval] [test] 覆盖当前 revision 与旧 revision 的不同生命周期行为。 (local)
+- [Eval] [Test] Cover distinct lifecycle behavior for current- and superseded-revision unknown effects. (local)
+- [eval] [test] 七维审查后 focused suites `257 passed`；补充 Store 事务 payload 回归，Ruff、compileall、diff check 通过。 (local)
+- [Eval] [Test] After the seven-dimension review, focused suites passed (`257`); add the Store transaction payload regression, with Ruff, compileall, and diff check passing. (local)
+
+详见 [2026-10 part5 v13.1.15](changelog/2026-10_part5.md)。See the detailed v13.1.15 record.
+
 ## v13.1.14 (2026-10-10 14:00) - codex
 
 ### 变更摘要 / Summary
