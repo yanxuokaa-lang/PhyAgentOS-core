@@ -4328,6 +4328,21 @@ def _has_unresolved_world_change(task: AgentTaskRecord) -> bool:
             and settlement.world_change_started is True
             and settlement.requires_replan is True
         ):
+            if settlement.invocation_id:
+                resolved_record = next(
+                    (
+                        record
+                        for record in task.active_revision.execution_records
+                        if (
+                            record.invocation_id == settlement.invocation_id
+                            and record.terminal
+                            and _planning_response_facts(record.response).get("outcome_known") is True
+                        )
+                    ),
+                    None,
+                )
+                if resolved_record is not None:
+                    continue
             return True
     for record in task.execution_records:
         if (

@@ -8,6 +8,10 @@
 - [Eval] [Test] Cover distinct lifecycle behavior for current- and superseded-revision unknown effects. (local)
 - [eval] [test] 七维审查后 focused suites `257 passed`；补充 Store 事务 payload 回归，Ruff、compileall、diff check 通过。 (local)
 - [Eval] [Test] After the seven-dimension review, focused suites passed (`257`); add the Store transaction payload regression, with Ruff, compileall, and diff check passing. (local)
+- [policy] [fix] 七维复审补齐 late known settlement 语义，避免同一 revision 已解析的 unknown 继续阻塞恢复。 (local)
+- [Policy] [Fix] Complete late-known-settlement semantics in the seven-dimension review so a resolved unknown in the same revision cannot keep recovery blocked. (local)
+- [eval] [test] Focused suites `258 passed`；Ruff、compileall、diff check 通过；no-motion。 (local)
+- [Eval] [Test] Focused suites passed (`258`); Ruff, compileall, and diff check passed; no-motion. (local)
 
 详见 [2026-10 part5 v13.1.15](changelog/2026-10_part5.md)。See the detailed v13.1.15 record.
 

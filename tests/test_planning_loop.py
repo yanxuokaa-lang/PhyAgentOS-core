@@ -2228,6 +2228,59 @@ def test_replan_failure_ignores_unknown_execution_from_superseded_revision(tmp_p
     assert event["payload"]["deferred_for_reconciliation"] is False
 
 
+def test_replan_failure_ignores_late_known_resolution_of_current_unknown(tmp_path):
+    c = coordinator(tmp_path)
+    task = c.create_task(
+        task_description="late known resolution",
+        verification=TaskVerificationContract(mode="off"),
+    )
+    graph = make_graph(task.task_id, "revision-late-resolution", ("arrange-red",))
+    c.expand_discovery_revision(
+        task.task_id,
+        plan_graph=graph,
+        plan_graph_ref="artifact://plans/late-resolution",
+    )
+    invocation_id = "invocation-late-resolution"
+    c.store.update(
+        task.task_id,
+        lambda current: (
+            current.active_revision.node_settlements.append(
+                NodeSettlement(
+                    task_id=task.task_id,
+                    revision_id=graph.revision_id,
+                    node_id="arrange-red",
+                    status="outcome_unknown",
+                    invocation_id=invocation_id,
+                    world_change_started=True,
+                    requires_replan=True,
+                )
+            ),
+            current.active_revision.execution_records.append(
+                ToolExecutionRecord(
+                    record_id="late-known-record",
+                    revision_id=graph.revision_id,
+                    node_id="arrange-red",
+                    tool_id="object.acquire",
+                    semantics="action",
+                    caller_id="test",
+                    status="succeeded",
+                    invocation_id=invocation_id,
+                    node_digest=plan_node_digest(graph.nodes[0]),
+                    obligation_id=graph.nodes[0].obligation_id,
+                    input_binding_digest="d" * 64,
+                    decision_trace_ref="artifact://planning-traces/late-resolution",
+                    response={"data": {"outcome_known": True, "world_change_started": True}},
+                )
+            ),
+        ),
+        event_type="test_late_known_resolution",
+    )
+
+    result = c.fail_replan(task.task_id, reason="ordinary recovery unavailable")
+
+    assert result.status is AgentTaskStatus.FAILED
+
+
 def test_discovery_revision_does_not_consume_replan_budget(tmp_path):
     c = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=object(), verifier=None, max_replans=1)
     task = c.create_task(task_description="discovery budget", verification=TaskVerificationContract(mode="off"))
