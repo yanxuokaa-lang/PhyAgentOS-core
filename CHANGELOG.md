@@ -17,6 +17,7 @@
 ```
 
 详见 [v13.1.11 月度日志](changelog/2026-10_part5.md)。See the [v13.1.11 detailed log](changelog/2026-10_part5.md).
+- Commit: `1c6db08` on `feature/planning-loop`.
 
 ## Archive
 - [2026-10 part4](changelog/2026-10_part4.md)
