@@ -9,6 +9,8 @@
 - [Eval] [Test] Add regressions for explicit Runtime release evidence in tuple/mapping seams, fail-closed missing evidence, and provider possession projection; focused suite `97 passed`, with no physical motion. (local)
 - [env] [chore] 发布并锁定 Skill `3.0.16` / Node `1.0.6`，Node SHA `28f9386653388a7d3274bb61c3fcaa7bb811b72ba95d26e23742f65ceb83f1c4`。 (local)
 - [Env] [Chore] Publish and lock Skill `3.0.16` / Node `1.0.6`, with Node SHA `28f9386653388a7d3274bb61c3fcaa7bb811b72ba95d26e23742f65ceb83f1c4`. (local)
+- [env] [chore] 旧 Runtime 已停止并部署新 Node；Runtime/Dora running、Gateway ready、11/11 Tool contexts ready；非终态任务为 0，未调用 Query/Action。 (local)
+- [Env] [Chore] The old Runtime was stopped and the new Node deployed; Runtime/Dora are running, Gateway is ready, all 11/11 Tool contexts are ready, with zero non-terminal tasks and no Query/Action calls. (local)
 
 ### 文件与关键 Diff / Files and Key Diff
 - `examples/forge-adapters/robotwin20/runtime/robotwin_persistent_engine.py:L622-L640,L711-L712`、`examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_manipulation.py:L19-L38,L310-L325`：仅 Runtime-owned explicit release evidence 可投影 `possession_state=empty`；缺失证据保持 `uncertain`。 / Only explicit Runtime-owned release evidence projects `possession_state=empty`; missing evidence remains `uncertain`.
