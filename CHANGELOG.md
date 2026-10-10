@@ -22,6 +22,7 @@
 ```
 
 详见 [2026-10 part5 v13.2.4](changelog/2026-10_part5.md)。See the detailed v13.2.4 record.
+- Commit: `2384f6f` on `feature/planning-loop`.
 
 ## v13.2.3 (2026-10-10 19:25) - codex
 
