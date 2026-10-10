@@ -1,5 +1,24 @@
 # Changelog
 
+## v13.2.2 (2026-10-10 18:50) - codex
+
+### 变更摘要 / Summary
+- [eval] [test] 补齐 ready-context Query provider failure 在 replan budget 耗尽时的 bounded terminal 回归，防止重新退化为 `waiting_for_runtime`。 (local)
+- [Eval] [Test] Add a bounded-terminal regression for a ready-context Query provider failure with an exhausted replan budget, preventing regression to `waiting_for_runtime`. (local)
+- [eval] [test] Provider-block 定向测试 `11 passed`；完整套件 `260 passed`；Ruff、compileall、diff check 通过；no-motion。 (local)
+- [Eval] [Test] Provider-block focused tests passed (`11`); full suite passed (`260`); Ruff, compileall, and diff checks passed; no-motion.
+
+### 文件与关键 Diff / Files and Key Diff
+- `PhyAgentOS/forge/task.py:L1610-L1635`、`tests/test_planning_loop.py:L3567-L3649`：修复事务后事件 payload 的预算状态，并增加 `max_replans=0` 的 ready-context provider terminal 回归。 / Fix the post-mutation event payload budget state and add the `max_replans=0` ready-context provider terminal regression.
+- `changelog/2026-10_part5.md:L3-L20`：记录七维审查结论和验证结果。 / Record the seven-dimension review conclusion and validation.
+
+```diff
+- ready-context provider failure with exhausted budget could regress without coverage
++ terminal failed; no runtime wait, no deadline, no settlement, no Action
+```
+
+详见 [2026-10 part5 v13.2.2](changelog/2026-10_part5.md)。See the detailed v13.2.2 record.
+
 ## v13.2.1 (2026-10-10 17:40) - codex
 
 ### 变更摘要 / Summary

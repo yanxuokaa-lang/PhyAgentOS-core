@@ -1611,7 +1611,7 @@ class AgentTaskCoordinator:
             task_id,
             mutate,
             event_type="query_provider_blocked",
-            payload={
+            payload=lambda _current: {
                 "revision_id": revision_id,
                 "node_id": node_id,
                 "tool_id": tool_id,

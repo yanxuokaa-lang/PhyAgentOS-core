@@ -3564,6 +3564,91 @@ def test_planning_loop_hands_ready_context_provider_failure_to_replan(tmp_path):
     )
 
 
+def test_ready_context_provider_failure_exhausts_replan_budget_without_runtime_wait(
+    tmp_path,
+):
+    from PhyAgentOS.forge.binding import BoundToolSpec
+
+    class ReadyClient:
+        base_url = "http://runtime"
+
+        async def get_tool_context(self, _tool_id):
+            return {"data": {"ready": True, "provider_state": "ready"}}
+
+    c = AgentTaskCoordinator(
+        workspace=tmp_path,
+        config=ForgeConfig(),
+        client=ReadyClient(),
+        verifier=None,
+        max_replans=0,
+        replan_timeout_s=10,
+    )
+    task = c.create_task(
+        task_description="bounded provider failure",
+        verification=TaskVerificationContract(mode="off"),
+    )
+    c.store.update(
+        task.task_id,
+        lambda current: current.tool_bindings.append(
+            BoundToolSpec(
+                tool_id="perception.describe",
+                semantics="query",
+                spec_sha256="b" * 64,
+                ready_at_binding=True,
+            )
+        ),
+        event_type="test_bind_query",
+    )
+    graph = make_graph(task.task_id, "revision-ready-provider-budget", ("inspect",))
+    c.expand_discovery_revision(
+        task.task_id,
+        plan_graph=graph,
+        plan_graph_ref="artifact://plans/ready-provider-budget",
+    )
+    record = ToolExecutionRecord(
+        record_id="ready-provider-budget-attempt",
+        revision_id=graph.revision_id,
+        tool_id="perception.describe",
+        semantics="query",
+        caller_id="test",
+        node_id="inspect",
+        node_digest=plan_node_digest(graph.nodes[0]),
+        obligation_id=graph.nodes[0].obligation_id,
+        input_binding_digest=tool_input_binding_digest({}),
+        decision_trace_ref="artifact://trace/ready-provider-budget",
+        status="succeeded",
+        response={
+            "data": {
+                "status": "unavailable",
+                "error": {"failure_stage": "provider", "retryable": False},
+            }
+        },
+    )
+    c.store.update(
+        task.task_id,
+        lambda current: current.active_revision.execution_records.append(record),
+        event_type="test_provider_query",
+    )
+
+    result = asyncio.run(c.record_query_provider_blocked(
+        task.task_id,
+        graph.revision_id,
+        "inspect",
+        tool_id="perception.describe",
+        record_ids=(record.record_id,),
+        reason="provider unavailable",
+    ))
+
+    assert result.status == AgentTaskStatus.FAILED
+    assert result.terminal is True
+    assert result.replan_deadline is None
+    assert result.active_revision.node_settlements == []
+    event = c.store.events(task.task_id)[-1]
+    assert event["event_type"] == "query_provider_blocked"
+    assert event["payload"]["recovery_mode"] == "replan"
+    assert event["payload"]["replan_budget_exhausted"] is True
+
+
 def test_provider_block_cannot_overwrite_concurrent_operator_stop(tmp_path):
     class CancellingClient:
         base_url = "http://runtime"
