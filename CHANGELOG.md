@@ -1,5 +1,27 @@
 # Changelog
 
+## v13.2.1 (2026-10-10 17:40) - codex
+
+### 变更摘要 / Summary
+- [policy] [fix] 将 ready Runtime context 中的通用 Query provider failure 交回同一 AgentTask 的 bounded `awaiting_replan`，仅对 Runtime 明确不可用保留 `waiting_for_runtime`。 (local)
+- [Policy] [Fix] Route generic Query provider failures with a ready Runtime context to the same AgentTask's bounded `awaiting_replan`, while retaining `waiting_for_runtime` only for explicitly unavailable Runtime contexts. (local)
+- [eval] [test] Core recovery/planning/long-horizon/Skill suites `259 passed`；Ruff、compileall、diff check 通过；no-motion。 (local)
+- [Eval] [Test] Core recovery/planning/long-horizon/Skill suites passed (`259`); Ruff, compileall, and diff checks passed; no-motion.
+
+### 文件与关键 Diff / Files and Key Diff
+- `PhyAgentOS/forge/task.py:L1519-L1638`：按 live Tool readiness 将 provider failure 分流为 Runtime wait 或 bounded replan，保留 append-only receipt 和 `motion_authorized=false`。 / Route provider failures by live Tool readiness to Runtime wait or bounded replan while preserving append-only receipts and `motion_authorized=false`.
+- `PhyAgentOS/agent/planning_loop.py:L1645-L1684`：返回 Coordinator 的实际状态，避免 ready-context handoff 被硬编码成 Runtime wait。 / Return the Coordinator's actual status so ready-context handoffs are not hard-coded as Runtime waits.
+- `tests/test_planning_loop.py:L3478-L3570,L3825-L3990`：增加 ready-context replan 及 Runtime transition 回归。 / Add ready-context replan and Runtime-transition regressions.
+- `docs/forge/QUERY_PROVIDER_READY_CONTEXT_FAILURE_DIAGNOSIS_20261010.md:L1-L70`：保存两次任务证据、共同根因和通用修复边界。 / Preserve both task evidence, the common root cause, and the generic repair boundary.
+
+```diff
+- Query provider failure + ready Runtime -> waiting_for_runtime -> poll forever
++ Query provider failure + ready Runtime -> bounded awaiting_replan
++ Query provider failure + unavailable/unconfirmed Runtime -> waiting_for_runtime
+```
+
+详见 [2026-10 part5 v13.2.1](changelog/2026-10_part5.md)。See the detailed v13.2.1 record.
+
 ## v13.2.0 (2026-10-10 15:10) - codex
 
 ### 变更摘要 / Summary
@@ -71,26 +93,6 @@
 
 详见 [v13.1.13 月度日志](changelog/2026-10_part5.md)。See the [v13.1.13 detailed log](changelog/2026-10_part5.md).
 - Commit: `6d35c56` on `feature/planning-loop`.
-
-## v13.1.12 (2026-10-10 13:28) - codex
-
-### 变更摘要 / Summary
-- [sense] [fix] 将非数值、复数或截断的 observed support point cloud 统一报告为结构化 evidence failure，避免格式损坏退化为 generic provider failure。 (local)
-- [Sense] [Fix] Report non-numeric, complex, or truncated observed-support point clouds as structured evidence failures instead of generic provider failures.
-- [eval] [test] Adapter `114 passed`; Core recovery/planning `272 passed`; Ruff、compileall、diff check passed；no-motion。 (local)
-- [Eval] [Test] Adapter `114 passed`; Core recovery/planning `272 passed`; Ruff, compileall, and diff check passed; no-motion.
-
-### 文件与关键 Diff / Files and Key Diff
-- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/grounding.py:L948-L972`：读取时捕获 EOFError，先验证实数数值 dtype 再运行 finite 检查。 / Catch EOFError and validate real numeric dtype before finite checks.
-- `examples/forge-adapters/robotwin20/tests/test_grounding.py:L1253-L1306`：覆盖字符串点云与截断读取的 evidence failure。 / Cover evidence failures for string point clouds and truncated reads.
-
-```diff
-- np.isfinite(points) on any loaded dtype; truncated read escapes as generic error
-+ classify EOF and non-real numeric arrays as observed_support_unavailable
-```
-
-详见 [v13.1.12 月度日志](changelog/2026-10_part5.md)。See the [v13.1.12 detailed log](changelog/2026-10_part5.md).
-- Commit: `f0697f5` on `feature/planning-loop`.
 
 ## v13.1.11 (2026-10-10 13:10) - codex
 

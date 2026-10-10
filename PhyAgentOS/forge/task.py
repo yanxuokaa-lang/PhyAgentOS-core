@@ -1526,7 +1526,13 @@ class AgentTaskCoordinator:
         record_ids: tuple[str, ...],
         reason: str,
     ) -> AgentTaskRecord:
-        """Persist a non-terminal Runtime/provider wait without settling the node."""
+        """Persist a provider failure without settling the Query node.
+
+        A live Runtime that is explicitly ready cannot produce the readiness
+        transition owned by ``resume_query_provider_block``.  In that case the
+        failure is handed to the existing bounded replan lifecycle; an
+        unavailable or unconfirmed Runtime remains host-owned wait state.
+        """
         task = self.store.get(task_id)
         if task.active_revision_id != revision_id:
             raise AgentTaskError("provider-blocked Query is not bound to the active revision")
@@ -1565,7 +1571,11 @@ class AgentTaskCoordinator:
         ):
             return task
 
+        ready_context = context.get("ready") is True
+        replan_budget_exhausted = False
+
         def mutate(current: AgentTaskRecord) -> None:
+            nonlocal replan_budget_exhausted
             if current.active_revision_id != revision_id:
                 raise AgentTaskError("provider-blocked Query is no longer active")
             if (
@@ -1576,14 +1586,28 @@ class AgentTaskCoordinator:
                 raise AgentTaskError(
                     "provider-blocked Query task changed state during readiness check"
                 )
-            current.status = AgentTaskStatus.WAITING_FOR_RUNTIME
-            current.replan_deadline = None
+            if ready_context and _replan_count(current) >= self.max_replans:
+                replan_budget_exhausted = True
+                current.status = AgentTaskStatus.FAILED
+                current.replan_deadline = None
+            elif ready_context:
+                current.status = AgentTaskStatus.AWAITING_REPLAN
+                current.replan_deadline = utc_now() + timedelta(seconds=self.replan_timeout_s)
+            else:
+                current.status = AgentTaskStatus.WAITING_FOR_RUNTIME
+                current.replan_deadline = None
             current.replan_extension_used = False
             current.evidence_errors.append(
-                f"Query provider blocked: {node_id}: {reason}"
+                (
+                    "Query provider failure requires bounded replan: "
+                    if ready_context and not replan_budget_exhausted
+                    else "Query provider failure exhausted replan budget: "
+                    if replan_budget_exhausted
+                    else "Query provider blocked: "
+                ) + f"{node_id}: {reason}"
             )
 
-        return self.store.update(
+        result = self.store.update(
             task_id,
             mutate,
             event_type="query_provider_blocked",
@@ -1602,9 +1626,16 @@ class AgentTaskCoordinator:
                 "provider_state": context.get("provider_state"),
                 "context_state": _provider_readiness_state(context),
                 "context_error": context_error,
+                "recovery_mode": (
+                    "replan" if ready_context else "runtime_wait"
+                ),
+                "replan_budget_exhausted": replan_budget_exhausted,
                 "motion_authorized": False,
             },
         )
+        if result.terminal:
+            self._schedule_experience(result)
+        return result
 
     def active_query_provider_block(self, task_id: str) -> dict[str, Any] | None:
         """Return the latest provider block that has not been released."""

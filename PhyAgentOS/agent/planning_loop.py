@@ -1673,11 +1673,12 @@ class PlanningLoopAdapter:
                         replans,
                         None,
                     )
+                current = self.coordinator.get_task(task_id)
                 return PlanningLoopResult(
                     task_id,
-                    "waiting_for_runtime",
+                    current.status.value,
                     tuple(completed),
-                    len(self.coordinator.get_task(task_id).revisions),
+                    len(current.revisions),
                     replans,
                     reason,
                 )

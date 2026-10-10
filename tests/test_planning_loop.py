@@ -3475,6 +3475,95 @@ def test_query_provider_block_waits_without_failing_task_or_opening_downstream(t
     assert cancelled.status == AgentTaskStatus.CANCELLED
 
 
+def test_planning_loop_hands_ready_context_provider_failure_to_replan(tmp_path):
+    from PhyAgentOS.forge.binding import BoundToolSpec
+
+    class ReadyClient:
+        base_url = "http://runtime"
+
+        async def get_tool_context(self, _tool_id):
+            return {"data": {"ready": True, "provider_state": "ready"}}
+
+    c = coordinator(tmp_path)
+    c.client = ReadyClient()
+    task = c.create_task(
+        task_description="ready context provider failure",
+        verification=TaskVerificationContract(mode="off"),
+    )
+    c.store.update(
+        task.task_id,
+        lambda current: current.tool_bindings.append(
+            BoundToolSpec(
+                tool_id="perception.describe",
+                semantics="query",
+                spec_sha256="a" * 64,
+                ready_at_binding=True,
+            )
+        ),
+        event_type="test_bind_query",
+    )
+    graph = make_graph(task.task_id, "revision-ready-provider-replan", ("inspect", "act"))
+    c.expand_discovery_revision(
+        task.task_id,
+        plan_graph=graph,
+        plan_graph_ref="artifact://plans/ready-provider-replan",
+        discovery_evidence_refs=("scene:inventory",),
+    )
+
+    def execute(context):
+        record = ToolExecutionRecord(
+            record_id="ready-provider-attempt",
+            revision_id=context.revision_id,
+            tool_id="perception.describe",
+            semantics="query",
+            caller_id="test",
+            node_id=context.node_id,
+            node_digest=plan_node_digest(graph.nodes[0]),
+            obligation_id=graph.nodes[0].obligation_id,
+            input_binding_digest=tool_input_binding_digest({}),
+            decision_trace_ref="artifact://trace/ready-provider-attempt",
+            status="succeeded",
+            response={
+                "data": {
+                    "status": "unavailable",
+                    "error": {"failure_stage": "provider", "retryable": False},
+                }
+            },
+        )
+        c.store.update(
+            task.task_id,
+            lambda current: current.active_revision.execution_records.append(record),
+            event_type="test_provider_query",
+        )
+        return ToolResultEnvelope(
+            task_id=context.task_id,
+            revision_id=context.revision_id,
+            node_id=context.node_id,
+            tool_id="perception.describe",
+            status="failed",
+            failure_code="provider_unavailable",
+        )
+
+    adapter = PlanningLoopAdapter(
+        c,
+        context_provider=NodeContextProvider(c.get_task),
+        node_executor=execute,
+        admission_context_provider=lambda _: AdmissionContext(
+            scene_revision="scene-1",
+            evidence_refs=frozenset({"scene:inventory"}),
+        ),
+        finalize_completed_graph=False,
+    )
+    result = asyncio.run(adapter.run(task.task_id, scene_revision="scene-1"))
+
+    assert result.status == "awaiting_replan"
+    assert c.get_task(task.task_id).status == AgentTaskStatus.AWAITING_REPLAN
+    assert c.get_task(task.task_id).active_revision.node_settlements == []
+    assert c.get_task(task.task_id).active_revision.execution_records[0].record_id == (
+        "ready-provider-attempt"
+    )
+
+
 def test_provider_block_cannot_overwrite_concurrent_operator_stop(tmp_path):
     class CancellingClient:
         base_url = "http://runtime"
@@ -3736,7 +3825,7 @@ def test_provider_block_releases_only_after_ready_and_retries_same_node(tmp_path
     ) == frozenset({"provider-attempt"})
 
 
-def test_provider_block_requires_context_transition_when_initial_snapshot_is_ready(
+def test_ready_context_provider_block_enters_bounded_replan(
     tmp_path,
 ):
     from PhyAgentOS.forge.binding import BoundToolSpec
@@ -3811,26 +3900,13 @@ def test_provider_block_requires_context_transition_when_initial_snapshot_is_rea
         reason="provider unavailable",
     ))
 
-    unchanged = asyncio.run(c.resume_query_provider_block(task.task_id))
-    assert unchanged.status == AgentTaskStatus.WAITING_FOR_RUNTIME
-    changed = asyncio.run(c.resume_query_provider_block(task.task_id))
-    assert changed.status == AgentTaskStatus.EXECUTING
-    binding = c.persist_planning_selection({
-        "task_id": task.task_id,
-        "revision_id": graph.revision_id,
-        "node_id": "inspect",
-        "node_digest": plan_node_digest(graph.nodes[0]),
-        "tool_id": "perception.describe",
-        "semantics": "query",
-        "tool_arguments": {},
-        "input_binding_digest": tool_input_binding_digest({}),
-        "candidate_tool_ids": ("perception.describe",),
-        "scene_revision": "scene-1",
-        "context_digest": "c" * 64,
-        "decision_reason": "retry after Runtime readiness changed",
-        "evidence_refs": (),
-    })
-    assert binding["node_id"] == "inspect"
+    current = c.get_task(task.task_id)
+    assert current.status == AgentTaskStatus.AWAITING_REPLAN
+    assert current.replan_deadline is not None
+    assert c.active_query_provider_block(task.task_id)["recovery_mode"] == "replan"
+    assert c.released_provider_query_record_ids(
+        task.task_id, graph.revision_id, "inspect"
+    ) == frozenset()
 
 
 def test_provider_block_releases_after_ready_false_ready_transition(tmp_path):
@@ -3841,7 +3917,7 @@ def test_provider_block_releases_after_ready_false_ready_transition(tmp_path):
 
         def __init__(self):
             self.contexts = [
-                {"data": {"ready": True, "provider_state": "ready"}},
+                {"data": {"ready": False, "provider_state": "unavailable"}},
                 {"data": {"ready": False, "provider_state": "unavailable"}},
                 {"data": {"ready": True, "provider_state": "ready"}},
             ]
@@ -3908,9 +3984,6 @@ def test_provider_block_releases_after_ready_false_ready_transition(tmp_path):
 
     unavailable = asyncio.run(c.resume_query_provider_block(task.task_id))
     assert unavailable.status == AgentTaskStatus.WAITING_FOR_RUNTIME
-    assert c.active_query_provider_block(task.task_id)[
-        "readiness_transition_observed"
-    ] is True
     resumed = asyncio.run(c.resume_query_provider_block(task.task_id))
     assert resumed.status == AgentTaskStatus.EXECUTING
     assert c.released_provider_query_record_ids(
