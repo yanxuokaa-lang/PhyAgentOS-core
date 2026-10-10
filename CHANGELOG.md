@@ -8,6 +8,27 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v13.1.9 (2026-10-10 12:10) - codex
+
+### 变更摘要 / Summary
+- [env] [chore] 按授权强制停止未包含当前 Core 修复的旧 Runtime，刷新 checkout editable Core，核对 Skill `3.0.14` / Node `1.0.4` runtime-lock，并用既有 profile 重启。 (local)
+- [Env] [Chore] Force-stop the old Runtime without the current Core repair, refresh the checkout editable Core, verify the Skill `3.0.14` / Node `1.0.4` runtime lock, and restart with the existing profile. (local)
+- [eval] [chore] Runtime、Dora、Gateway 与 11/11 Tool contexts ready；保留唯一 `awaiting_replan` 任务，未创建 AgentTask、调用 Query/Action、读取相机、推进 simulator 或产生运动。 (local)
+- [Eval] [Chore] Runtime, Dora, Gateway, and all 11 Tool contexts are ready; the sole `awaiting_replan` task was preserved, with no AgentTask, Query/Action, camera, simulator, or motion activity. (local)
+
+### 文件与关键 Diff / Files and Key Diff
+- `changelog/2026-10_part5.md:L584-L615`：记录 stop/install/start 命令、Core 导入路径、runtime-lock SHA、readiness、任务状态和 no-motion 边界。 / Records commands, Core import path, runtime-lock SHA, readiness, task state, and no-motion boundary.
+
+```diff
+- Runtime process started before the current Core repair
++ old Runtime force-stopped; editable Core refreshed; Skill 3.0.14 / Node 1.0.4 lock verified
++ Runtime/Dora/Gateway running and 11/11 Tool contexts ready; awaiting_replan task preserved
+```
+
+详见 [v13.1.9 月度日志](changelog/2026-10_part5.md)。
+See the [v13.1.9 detailed log](changelog/2026-10_part5.md).
+- Commit: pending on `feature/planning-loop`.
+
 ## v13.1.8 (2026-10-10 11:30) - codex
 
 ### 变更摘要 / Summary
