@@ -21,6 +21,7 @@
 ```
 
 详见 [2026-10 part5 v13.2.1](changelog/2026-10_part5.md)。See the detailed v13.2.1 record.
+- Commit: `141ea85` on `feature/planning-loop`.
 
 ## v13.2.0 (2026-10-10 15:10) - codex
 
