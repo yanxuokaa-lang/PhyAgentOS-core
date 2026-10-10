@@ -1250,6 +1250,62 @@ def test_observed_support_rejects_semantic_refs_with_distinct_metric_geometry(tm
     assert caught.value.fresh_evidence_requirements == ("current_observation_lineage",)
 
 
+def test_observed_support_rejects_non_numeric_metric_geometry(tmp_path):
+    g, request, _ = setup(tmp_path)
+    understanding = next(iter(g.understandings.values()))
+    understanding["relations"] = [{
+        "subject_ref": "entity://seen", "predicate": "on", "object_ref": "entity://support"
+    }]
+    np.save(tmp_path / "capture/support.npy", np.array([["x", "y", "z"]] * 3))
+    understanding["derived_artifacts"].append({
+        **{key: request[key] for key in ("observation_ref", "scene_revision", "calibration_ref")},
+        "kind": "object_point_cloud",
+        "entity_ref": "entity://support",
+        "frame_id": "camera",
+        "artifact_ref": "artifact://capture/support",
+    })
+    bound = g.bind(request)
+
+    from PhyAgentOS.forge.capability_runtime.manipulation_prepare import PreparationProviderError
+
+    with pytest.raises(PreparationProviderError, match="point cloud is invalid") as caught:
+        g._observed_support(g.bindings[bound["binding_ref"]])
+    assert caught.value.failure_owner == "evidence"
+    assert caught.value.requires_replan is True
+
+
+def test_observed_support_rejects_truncated_metric_geometry(tmp_path, monkeypatch):
+    g, request, _ = setup(tmp_path)
+    understanding = next(iter(g.understandings.values()))
+    understanding["relations"] = [{
+        "subject_ref": "entity://seen", "predicate": "on", "object_ref": "entity://support"
+    }]
+    np.save(
+        tmp_path / "capture/support.npy",
+        np.array([[0.0, 0.0, -0.025]] * 3),
+        allow_pickle=False,
+    )
+    understanding["derived_artifacts"].append({
+        **{key: request[key] for key in ("observation_ref", "scene_revision", "calibration_ref")},
+        "kind": "object_point_cloud",
+        "entity_ref": "entity://support",
+        "frame_id": "camera",
+        "artifact_ref": "artifact://capture/support",
+    })
+    bound = g.bind(request)
+
+    def truncated_load(*args, **kwargs):
+        raise EOFError("truncated npy")
+
+    monkeypatch.setattr(np, "load", truncated_load)
+    from PhyAgentOS.forge.capability_runtime.manipulation_prepare import PreparationProviderError
+
+    with pytest.raises(PreparationProviderError, match="point cloud is unavailable") as caught:
+        g._observed_support(g.bindings[bound["binding_ref"]])
+    assert caught.value.failure_owner == "evidence"
+    assert caught.value.requires_replan is True
+
+
 def _add_depth_support_evidence(g, request, tmp_path):
     observed = g.observations[tuple(request[key] for key in ("observation_ref", "scene_revision", "calibration_ref"))]
     understanding = g.understandings[tuple(request[key] for key in ("observation_ref", "scene_revision", "calibration_ref"))]

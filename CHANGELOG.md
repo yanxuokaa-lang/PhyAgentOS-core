@@ -1,4 +1,23 @@
 # Changelog
+## v13.1.12 (2026-10-10 13:28) - codex
+
+### 变更摘要 / Summary
+- [sense] [fix] 将非数值、复数或截断的 observed support point cloud 统一报告为结构化 evidence failure，避免格式损坏退化为 generic provider failure。 (local)
+- [Sense] [Fix] Report non-numeric, complex, or truncated observed-support point clouds as structured evidence failures instead of generic provider failures.
+- [eval] [test] Adapter `114 passed`; Core recovery/planning `272 passed`; Ruff、compileall、diff check passed；no-motion。 (local)
+- [Eval] [Test] Adapter `114 passed`; Core recovery/planning `272 passed`; Ruff, compileall, and diff check passed; no-motion.
+
+### 文件与关键 Diff / Files and Key Diff
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/grounding.py:L948-L972`：读取时捕获 EOFError，先验证实数数值 dtype 再运行 finite 检查。 / Catch EOFError and validate real numeric dtype before finite checks.
+- `examples/forge-adapters/robotwin20/tests/test_grounding.py:L1253-L1306`：覆盖字符串点云与截断读取的 evidence failure。 / Cover evidence failures for string point clouds and truncated reads.
+
+```diff
+- np.isfinite(points) on any loaded dtype; truncated read escapes as generic error
++ classify EOF and non-real numeric arrays as observed_support_unavailable
+```
+
+详见 [v13.1.12 月度日志](changelog/2026-10_part5.md)。See the [v13.1.12 detailed log](changelog/2026-10_part5.md).
+
 ## v13.1.11 (2026-10-10 13:10) - codex
 
 ### 变更摘要 / Summary

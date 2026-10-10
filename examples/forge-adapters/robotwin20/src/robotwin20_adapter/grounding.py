@@ -950,12 +950,22 @@ class Grounding:
                     _artifact_path(self.root, cloud["artifact_ref"] + ".npy"),
                     allow_pickle=False,
                 )
-            except (OSError, ValueError) as exc:
+            except (EOFError, OSError, ValueError) as exc:
                 raise _evidence_error(
                     "observed_support_unavailable",
                     "observed support metric point cloud is unavailable",
                 ) from exc
-            if points.ndim != 2 or points.shape[1] != 3 or len(points) < 3 or not np.isfinite(points).all():
+            numeric_points = (
+                np.issubdtype(points.dtype, np.integer)
+                or np.issubdtype(points.dtype, np.floating)
+            )
+            if (
+                points.ndim != 2
+                or points.shape[1] != 3
+                or len(points) < 3
+                or not numeric_points
+                or not np.isfinite(points).all()
+            ):
                 raise _evidence_error(
                     "observed_support_unavailable",
                     "observed support point cloud is invalid",
