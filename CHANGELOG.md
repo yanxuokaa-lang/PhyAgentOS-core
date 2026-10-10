@@ -1,4 +1,23 @@
 # Changelog
+
+## v13.2.0 (2026-10-10 15:10) - codex
+
+### 变更摘要 / Summary
+- [env] [chore] 按用户授权强制停止旧 Runtime，刷新 checkout 的 editable Core，并启动既有 `robotwin-blocks-ranking-graspnet` profile。 (local)
+- [Env] [Chore] Under explicit authorization, force-stop the old Runtime, refresh the checkout editable Core, and start the existing `robotwin-blocks-ranking-graspnet` profile. (local)
+- [eval] [test] Runtime/Dora running、Gateway ready、11/11 Tool contexts ready；活动 runtime-lock 锁定 Skill `3.0.15` / Node `1.0.5`；任务库无非终态任务；全程 no-motion。 (local)
+- [Eval] [Test] Runtime/Dora running, Gateway ready, and all 11/11 Tool contexts ready; the active runtime lock pins Skill `3.0.15` / Node `1.0.5`; no non-terminal task exists; no motion occurred. (local)
+
+### 文件与关键 Diff / Files and Key Diff
+- `changelog/2026-10_part5.md:L3-L22`：补全强停、安装、启动、活动 lock、readiness 与 no-motion 验收。 / Complete stop, install, start, active-lock, readiness, and no-motion evidence.
+
+```diff
+- old Runtime / stale Core
++ Runtime/Dora running; Gateway ready; 11/11 Tool contexts ready
++ Skill 3.0.15 / Node 1.0.5 active; zero non-terminal tasks; no Query/Action or motion
+```
+
+详见 [2026-10 part5 v13.2.0](changelog/2026-10_part5.md)。See the [2026-10 part5 v13.2.0](changelog/2026-10_part5.md).
 ## v13.1.15 (2026-10-10 14:50) - codex
 
 ### 变更摘要 / Summary [计划]
