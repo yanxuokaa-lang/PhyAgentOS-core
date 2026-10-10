@@ -18,7 +18,7 @@
 ```
 
 详见 [2026-10 part5 v13.2.3](changelog/2026-10_part5.md)。See the detailed v13.2.3 record.
-- Commit: pending until this log/index update is committed.
+- Commit: `ac3921a` on `feature/planning-loop`.
 
 ## v13.2.2 (2026-10-10 18:50) - codex
 
