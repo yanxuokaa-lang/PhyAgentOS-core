@@ -8,6 +8,34 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v13.1.7 (2026-10-10 10:30) - codex
+
+### 变更摘要 / Summary
+- [comm] [fix] 将包含 task/revision/node/frame-scoped preparation URI 的 RobotWin persistent-host Node 从 `1.0.3` 发布为 `1.0.4`，Skill 从 `3.0.13` 发布为 `3.0.14`；manifest lock 更新为 Node SHA `e884cbe5bcf208d00a25674b49cd170d46f2efb5e4ab8bcd05de692b407daa20`。 (local)
+- [Comm] [Fix] Publish the RobotWin persistent-host Node containing task/revision/node/frame-scoped preparation URIs as `1.0.4`, bump the Skill from `3.0.13` to `3.0.14`, and update the manifest lock to Node SHA `e884cbe5bcf208d00a25674b49cd170d46f2efb5e4ab8bcd05de692b407daa20`. (local)
+- [eval] [test] 新增从当前 Adapter/Workflow 源码重建 Node 并校验 manifest lock 的发布回归；本次 release/contract/preparation/action 与 persistent-host/deployment focused suites 共 `238 passed`。 (local)
+- [Eval] [Test] Add a release regression that rebuilds the Node from current Adapter/Workflow sources and checks the manifest lock; the release/contract/preparation/action and persistent-host/deployment focused suites pass with `238 passed`. (local)
+- [env] [chore] 按授权强停旧 Runtime，安装 Skill `3.0.14` 与 Node `1.0.4`，用原 profile 环境启动；Runtime/Dora/Gateway running/ready，11/11 Tool contexts ready。 (local)
+- [Env] [Chore] Under authorization, force-stop the old Runtime, install Skill `3.0.14` and Node `1.0.4`, and start with the existing profile environment; Runtime/Dora/Gateway are running/ready with 11/11 Tool contexts ready. (local)
+
+### 文件与关键 Diff / Files and Key Diff
+- `examples/forge-skills/pick-place-workflow/skill.yaml:L1-L4,L219-L229`: Skill `3.0.13` -> `3.0.14`; Node `1.0.3` -> `1.0.4` and lock SHA updated.
+- `examples/forge-skills/pick-place-workflow/pyproject.toml:L1-L3`: package version `3.0.13` -> `3.0.14`.
+- `examples/forge-skills/pick-place-workflow/tests/test_grasp_propose.py:L261-L274`: assert Skill/package/Node lock alignment.
+- `examples/forge-skills/pick-place-workflow/tests/test_release_bundle.py:L21-L27,L73-L87`: rebuild current Node source and compare its SHA/artifact ID to the manifest lock.
+- `examples/forge-skills/pick-place-workflow/CHANGELOG.md:L3-L9`: record Node/Skill release boundary.
+- `docs/forge/PREPARATION_NODE_DEPLOYMENT_DIAGNOSIS_20261010.md:L1-L66`: preserve three-task evidence, ownership analysis, and live deployment result.
+
+```diff
+- Skill 3.0.13 -> Node 1.0.3 (old immutable artifact)
++ Skill 3.0.14 -> Node 1.0.4 (rebuilt from current Adapter source)
+- source-only release check
++ rebuild-and-lock SHA regression plus 238 focused no-motion tests
+```
+
+详见 [v13.1.7 月度日志](changelog/2026-10_part5.md)和[诊断](docs/forge/PREPARATION_NODE_DEPLOYMENT_DIAGNOSIS_20261010.md)。
+See the [v13.1.7 detailed log](changelog/2026-10_part5.md) and [diagnosis](docs/forge/PREPARATION_NODE_DEPLOYMENT_DIAGNOSIS_20261010.md).
+
 ## v13.1.6 (2026-10-10 00:45) - codex
 
 ### 变更摘要 / Summary
@@ -101,52 +129,6 @@ See the [v13.1.4 detailed log](changelog/2026-10_part5.md).
 
 详见 [v13.1.3 月度日志](changelog/2026-10_part5.md)。
 See the [v13.1.3 detailed log](changelog/2026-10_part5.md).
-
-## v13.1.2 (2026-10-09 22:33) - codex
-
-### 变更摘要 / Summary
-- [policy] [fix] 将非重试型 Query provider unavailable 从 failed settlement 分流为 Coordinator-owned `waiting_for_runtime`，只在冻结 Runtime Tool readiness 发生可观测转换后释放旧失败尝试并重试同一未结算节点。 (local)
-- [Policy] [Fix] Divert non-retryable Query provider unavailability from failed settlement into Coordinator-owned `waiting_for_runtime`, releasing the old failed attempt and retrying the same unsettled node only after an observable readiness transition on the frozen Runtime Tool. (local)
-- [policy] [fix] 保持失败 Query append-only 审计，同时从 predecessor、source browsing、projection、reducer、admission evidence 和 discovery progress 的有效视图排除；并发 stop、prompt 工具可见性和 `ready -> unavailable -> ready` 均按 fail-closed 状态机处理。 (local)
-- [Policy] [Fix] Preserve the failed Query as append-only audit history while excluding it from effective predecessor, source-browsing, projection, reducer, admission-evidence, and discovery-progress views; handle concurrent stop, prompt-tool visibility, and `ready -> unavailable -> ready` through the fail-closed state machine. (local)
-- [eval] [test] 七维审查发现并修复 11 项 Major；provider-neutral fake/no-motion 回归覆盖任务占用、下游关闭、同节点恢复、证据隔离、operator stop 与 AgentLoop 自主收敛。 (local)
-- [Eval] [Test] The seven-dimension review found and fixed eleven Major issues; provider-neutral fake/no-motion regressions cover active-task ownership, downstream closure, same-node recovery, evidence isolation, operator stop, and AgentLoop convergence. (local)
-
-### 文件与关键 Diff / Files and Key Diff
-
-| 文件 / File | 行号 / Lines | 摘要 / Summary |
-| --- | --- | --- |
-| `PhyAgentOS/forge/binding.py` | L171-L189 | provider-neutral block 分类 / Provider-neutral block classification |
-| `PhyAgentOS/forge/task.py` | L120-L159, L1297-L1318, L1518-L1821, L3895-L3916 | 等待态、事件、状态转换、有效记录视图与并发复核 / Wait state, events, transitions, effective-record view, and concurrency validation |
-| `PhyAgentOS/agent/planning_loop.py` | L133-L245, L897-L906, L1485-L1548 | settlement 前分流、有效上下文与 stop 收敛 / Pre-settlement diversion, effective context, and stop convergence |
-| `PhyAgentOS/agent/long_horizon.py` | L138-L169, L189-L334 | 只读 readiness 轮询与可中断恢复 / Read-only readiness polling and interruptible recovery |
-| `PhyAgentOS/agent/loop.py` | L42, L152-L176, L340-L349, L537-L541, L1562-L1567 | 等待态保护、生产/prompt wiring 和语义 discovery progress / Wait-state protection, production/prompt wiring, and semantic discovery progress |
-| `PhyAgentOS/agent/planning_context.py` | L13-L15, L61-L151, L203-L230 | admission/current-capture 证据隔离 / Admission and current-capture evidence isolation |
-| `PhyAgentOS/agent/prompt_context.py` | L763-L835, L1402-L1491 | 等待 phase、最小只读工具面与有效任务投影 / Wait phase, minimal read-only tool surface, and effective task projection |
-| `PhyAgentOS/agent/tools/planning.py` | L73-L84, L322-L338, L433-L449 | source/projection 有效视图 / Effective source and projection view |
-| `tests/test_planning_loop.py` | L92-L190, L3094-L3629 | provider recovery 与并发无运动回归 / Provider recovery and concurrency no-motion regressions |
-| `tests/test_planning_context.py` | L214-L244 | 失败 Query admission 隔离 / Failed-Query admission isolation |
-| `tests/test_prompt_context.py` | L329-L485 | Runtime wait phase/tool visibility and released-receipt isolation / Runtime-wait phase/tool visibility and released-receipt isolation |
-| `docs/forge/QUERY_PROVIDER_BLOCK_RECOVERY_DIAGNOSIS_20261009.md` | L1-L175 | 事故诊断、通用状态机、权责与审查 / Incident diagnosis, generic state machine, ownership, and review |
-| `changelog/2026-10_part5.md` | L3-L112 | 完整双语变更、七维审查、Diff 与验证 / Full bilingual changes, seven-dimension review, diff, and validation |
-
-```diff
-- semantic Query unavailable -> failed settlement -> stop -> failed task
-+ provider-blocked Query -> waiting_for_runtime -> GET Tool context only
-+ observable readiness transition -> release old attempt -> retry same node
-- failed Query receipt could leak into planning/admission evidence
-+ immutable audit record retained; effective planning and admission views exclude it
-- concurrent operator stop could race the awaited context read
-+ post-await state validation preserves cancelled/cancelling as authoritative
-```
-
-### 验证 / Validation
-- No-motion Core/AgentLoop/Skill suites: `452 passed in 11.64s`.
-- Ruff、compileall、`git diff --check` 通过；未创建/恢复 live AgentTask，未调用 Gateway Query/Action，未推进 simulator、读取相机或产生物理运动。 / Ruff, compileall, and `git diff --check` passed; no live AgentTask was created or resumed, no Gateway Query/Action was invoked, and no simulator, camera, or physical motion was used.
-- Implementation, diagnosis, and tests commit: `d482828`.
-
-详见 [v13.1.2 月度日志](changelog/2026-10_part5.md)和[诊断](docs/forge/QUERY_PROVIDER_BLOCK_RECOVERY_DIAGNOSIS_20261009.md)。
-See the [v13.1.2 detailed log](changelog/2026-10_part5.md) and [diagnosis](docs/forge/QUERY_PROVIDER_BLOCK_RECOVERY_DIAGNOSIS_20261009.md).
 
 ## v13.1.1 (2026-10-09 21:20) - codex
 

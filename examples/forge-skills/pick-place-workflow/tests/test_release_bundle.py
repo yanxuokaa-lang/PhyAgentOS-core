@@ -18,6 +18,12 @@ assert SPEC and SPEC.loader
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
 
+NODE_SCRIPT = Path(__file__).resolve().parents[4] / "scripts/build_robotwin20_node.py"
+NODE_SPEC = importlib.util.spec_from_file_location("build_robotwin20_node", NODE_SCRIPT)
+assert NODE_SPEC and NODE_SPEC.loader
+NODE_MODULE = importlib.util.module_from_spec(NODE_SPEC)
+NODE_SPEC.loader.exec_module(NODE_MODULE)
+
 
 def test_bundle_embeds_only_the_node_archive_locked_by_the_manifest(tmp_path):
     repository = tmp_path / "repository"
@@ -62,3 +68,20 @@ def test_bundle_embeds_only_the_node_archive_locked_by_the_manifest(tmp_path):
         stream = archive.extractfile(node_members[0])
         assert stream is not None
         assert stream.read() == b"current-node"
+
+
+def test_current_node_source_build_matches_the_immutable_manifest_lock(tmp_path):
+    repository = Path(__file__).resolve().parents[4]
+    workflow = repository / "examples/forge-skills/pick-place-workflow"
+    manifest = yaml.safe_load((workflow / "skill.yaml").read_text(encoding="utf-8"))
+    node_lock = manifest["artifacts"]["nodes"]["robotwin20_persistent_host"]
+    artifact = tmp_path / f"robotwin20_persistent_host-{node_lock['version']}-linux-x86_64.tar.gz"
+
+    NODE_MODULE.build(
+        artifact,
+        adapter_root=repository / "examples/forge-adapters/robotwin20",
+        workflow_root=workflow,
+    )
+
+    assert hashlib.sha256(artifact.read_bytes()).hexdigest() == node_lock["sha256"]
+    assert node_lock["artifact_id"] == artifact.name.removesuffix(".tar.gz")

@@ -1,5 +1,12 @@
 # Change Log
 
+## v3.0.14 (2026-10-10)
+
+- 中文：发布 Adapter Node `1.0.4`，将已审查的 task/revision/node/frame-scoped preparation URI 实现打包进实际运行 artifact；更新 manifest Node lock 和 Skill/package 版本，避免仅升级 Skill 而继续运行旧 Node。
+- English: Publish Adapter Node `1.0.4` with the reviewed task/revision/node/frame-scoped preparation URI implementation in the executable artifact; update the manifest Node lock and Skill/package versions so a Skill-only upgrade cannot keep running the old Node.
+- 中文：增加发布回归，从当前 Adapter/Workflow 源码重建 Node 并核对 manifest SHA；不改变 Action admission、motion authorization 或 unknown-action reconciliation。
+- English: Add a release regression that rebuilds the Node from current Adapter/Workflow sources and checks the manifest SHA; do not change Action admission, motion authorization, or unknown-action reconciliation.
+
 ## v3.0.11 (2026-10-09)
 
 - 中文：发布 Adapter `0.9.14`、Node `1.0.3`；成功抓取的 Runtime held receipt 由 Coordinator 独立投影，持有身份与 unchanged carry-forward 分离，Grounding 核对当前 possession 并搬运旧视觉模型。
