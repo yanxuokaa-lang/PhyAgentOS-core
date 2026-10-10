@@ -65,6 +65,38 @@ def test_provider_public_failure_preserves_diagnostic_without_leaking_unknown_er
     assert result["fresh_evidence_requirements"] == []
 
 
+def test_provider_evidence_failure_preserves_replan_contract_and_no_motion_lineage():
+    from PhyAgentOS.forge.capability_runtime.manipulation_prepare import PreparationProviderError
+
+    class Provider:
+        def prepare(self, request):
+            raise PreparationProviderError(
+                "observed_support_unavailable",
+                "observed support surface is ambiguous across distinct metric geometries",
+                failure_owner="evidence",
+                retryable_in_revision=False,
+                requires_replan=True,
+                recommended_action="refresh_declared_evidence",
+                fresh_evidence_requirements=("current_observation_lineage",),
+            )
+
+    arguments = request_payload()
+    result = ManipulationPreparationEndpoint(Provider()).invoke(arguments)
+
+    assert result["status"] == "unavailable"
+    assert result["error"]["code"] == "observed_support_unavailable"
+    assert result["failure_owner"] == "evidence"
+    assert result["retryable_in_revision"] is False
+    assert result["requires_replan"] is True
+    assert result["recommended_action"] == "refresh_declared_evidence"
+    assert result["fresh_evidence_requirements"] == ["current_observation_lineage"]
+    assert result["observation_ref"] == arguments["observation_ref"]
+    assert result["scene_revision"] == arguments["scene_revision"]
+    assert result["calibration_ref"] == arguments["calibration_ref"]
+    assert result["motion_authorized"] is False
+    assert result["prepared_candidates"] == []
+
+
 def request_payload(**overrides):
     value = {
         "observation_ref": "observation://scene-7/camera_front",

@@ -1160,9 +1160,17 @@ def test_observed_support_consumes_semantic_relation_and_preserves_lineage(tmp_p
     inputs = {**request, "intent": {"entity_ref": "entity://seen"},
               "destination_ref": target["destination_ref"]}
     if predicate != "is_near" and defect:
-        match = "lineage differs" if defect == "stale_cloud" else "surface is ambiguous"
-        with pytest.raises(ValueError, match=match):
+        match = "lineage differs" if defect == "stale_cloud" else "one metric point cloud"
+        from PhyAgentOS.forge.capability_runtime.manipulation_prepare import (
+            PreparationProviderError,
+        )
+
+        with pytest.raises(PreparationProviderError, match=match) as caught:
             g.scene_facts(inputs)
+        assert caught.value.failure_owner == "evidence"
+        assert caught.value.requires_replan is True
+        assert caught.value.recommended_action == "refresh_declared_evidence"
+        assert caught.value.fresh_evidence_requirements == ("current_observation_lineage",)
     else:
         facts = g.scene_facts(inputs)
         if predicate == "is_near":
@@ -1172,6 +1180,74 @@ def test_observed_support_consumes_semantic_relation_and_preserves_lineage(tmp_p
             assert support["evidence_ref"] == "artifact://capture/support"
             assert support["estimation"]["point_count"] == len(points)
             assert support["estimation"]["height_m"] == pytest.approx(-.025)
+
+
+def test_observed_support_collapses_semantic_aliases_only_for_identical_metric_geometry(tmp_path):
+    g, request, _ = setup(tmp_path)
+    understanding = next(iter(g.understandings.values()))
+    understanding["relations"] = [
+        {"subject_ref": "entity://seen", "predicate": "on", "object_ref": ref}
+        for ref in ("entity://support-a", "entity://support-b")
+    ]
+    points = np.array([[x, y, -.025] for x in np.linspace(-.4, .4, 8)
+                       for y in np.linspace(-.3, .3, 8)])
+    identity = {key: request[key] for key in (
+        "observation_ref", "scene_revision", "calibration_ref"
+    )}
+    for suffix in ("a", "b"):
+        np.save(tmp_path / f"capture/support-{suffix}.npy", points)
+        understanding["derived_artifacts"].append({
+            **identity,
+            "kind": "object_point_cloud",
+            "entity_ref": f"entity://support-{suffix}",
+            "frame_id": "camera",
+            "artifact_ref": f"artifact://capture/support-{suffix}",
+        })
+    bound = g.bind(request)
+
+    support = g._observed_support(g.bindings[bound["binding_ref"]])
+
+    assert support["evidence_ref"] == "artifact://capture/support-a"
+    assert support["source_refs"] == [
+        "artifact://capture/support-a",
+        "artifact://capture/support-b",
+    ]
+    assert support["estimation"]["point_count"] == len(points)
+
+
+def test_observed_support_rejects_semantic_refs_with_distinct_metric_geometry(tmp_path):
+    g, request, _ = setup(tmp_path)
+    understanding = next(iter(g.understandings.values()))
+    understanding["relations"] = [
+        {"subject_ref": "entity://seen", "predicate": "on", "object_ref": ref}
+        for ref in ("entity://support-a", "entity://support-b")
+    ]
+    identity = {key: request[key] for key in (
+        "observation_ref", "scene_revision", "calibration_ref"
+    )}
+    for suffix, height in (("a", -.025), ("b", .125)):
+        points = np.array([[x, y, height] for x in np.linspace(-.4, .4, 8)
+                           for y in np.linspace(-.3, .3, 8)])
+        np.save(tmp_path / f"capture/support-{suffix}.npy", points)
+        understanding["derived_artifacts"].append({
+            **identity,
+            "kind": "object_point_cloud",
+            "entity_ref": f"entity://support-{suffix}",
+            "frame_id": "camera",
+            "artifact_ref": f"artifact://capture/support-{suffix}",
+        })
+    bound = g.bind(request)
+
+    from PhyAgentOS.forge.capability_runtime.manipulation_prepare import PreparationProviderError
+
+    with pytest.raises(PreparationProviderError, match="distinct metric geometries") as caught:
+        g._observed_support(g.bindings[bound["binding_ref"]])
+    assert caught.value.code == "observed_support_unavailable"
+    assert caught.value.failure_owner == "evidence"
+    assert caught.value.retryable_in_revision is False
+    assert caught.value.requires_replan is True
+    assert caught.value.recommended_action == "refresh_declared_evidence"
+    assert caught.value.fresh_evidence_requirements == ("current_observation_lineage",)
 
 
 def _add_depth_support_evidence(g, request, tmp_path):

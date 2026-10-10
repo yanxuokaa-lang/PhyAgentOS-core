@@ -921,29 +921,61 @@ class Grounding:
         """Estimate support and retain residual occupancy without actor meshes."""
         identity = tuple(binding[k] for k in IDENTITY_KEYS)
         understanding = self.understandings[identity]
-        refs = {r["object_ref"] for r in understanding.get("relations", [])
-                if r.get("predicate") in {"on", "is_on"} and r.get("subject_ref") in binding["objects"]}
+        refs = sorted({r["object_ref"] for r in understanding.get("relations", [])
+                       if r.get("predicate") in {"on", "is_on"}
+                       and r.get("subject_ref") in binding["objects"]})
         if not refs:
             return self._observed_support_from_depth(binding, understanding)
-        if len(refs) != 1:
-            raise ValueError("observed support surface is ambiguous")
-        ref = next(iter(refs))
-        clouds = [a for a in understanding.get("derived_artifacts", [])
-                  if a.get("kind") == "object_point_cloud" and a.get("entity_ref") == ref]
-        if len(clouds) != 1:
-            raise ValueError("observed support requires one metric point cloud")
-        cloud = clouds[0]
-        if any(cloud.get(k) != binding[k] for k in IDENTITY_KEYS) or cloud.get("frame_id") != binding["frame_id"]:
-            raise ValueError("observed support lineage differs from binding")
-        points = np.load(_artifact_path(self.root, cloud["artifact_ref"] + ".npy"), allow_pickle=False)
-        if points.ndim != 2 or points.shape[1] != 3 or len(points) < 3 or not np.isfinite(points).all():
-            raise ValueError("observed support point cloud is invalid")
+        clouds = []
+        for ref in refs:
+            candidates = [a for a in understanding.get("derived_artifacts", [])
+                          if a.get("kind") == "object_point_cloud" and a.get("entity_ref") == ref]
+            if len(candidates) != 1:
+                raise _evidence_error(
+                    "observed_support_unavailable",
+                    "observed support requires one metric point cloud per semantic support",
+                )
+            cloud = candidates[0]
+            if (
+                any(cloud.get(k) != binding[k] for k in IDENTITY_KEYS)
+                or cloud.get("frame_id") != binding["frame_id"]
+                or not isinstance(cloud.get("artifact_ref"), str)
+            ):
+                raise _evidence_error(
+                    "observed_support_unavailable",
+                    "observed support lineage differs from binding",
+                )
+            try:
+                points = np.load(
+                    _artifact_path(self.root, cloud["artifact_ref"] + ".npy"),
+                    allow_pickle=False,
+                )
+            except (OSError, ValueError) as exc:
+                raise _evidence_error(
+                    "observed_support_unavailable",
+                    "observed support metric point cloud is unavailable",
+                ) from exc
+            if points.ndim != 2 or points.shape[1] != 3 or len(points) < 3 or not np.isfinite(points).all():
+                raise _evidence_error(
+                    "observed_support_unavailable",
+                    "observed support point cloud is invalid",
+                )
+            clouds.append((cloud["artifact_ref"], points))
+        canonical_ref, canonical_points = clouds[0]
+        if any(not np.array_equal(points, canonical_points) for _, points in clouds[1:]):
+            raise _evidence_error(
+                "observed_support_unavailable",
+                "observed support surface is ambiguous across distinct metric geometries",
+            )
         transform = rigid_transform(binding["world_T_observation"])
-        world = points @ transform[:3, :3].T + transform[:3, 3]
+        world = canonical_points @ transform[:3, :3].T + transform[:3, 3]
         try:
-            return estimate_support(world, cloud["artifact_ref"], self.support_policy)
+            support = estimate_support(world, canonical_ref, self.support_policy)
         except ValueError as exc:
             raise _evidence_error("observed_support_unavailable", str(exc)) from exc
+        if len(clouds) > 1:
+            support["source_refs"] = [ref for ref, _ in clouds]
+        return support
 
     def _observed_support_from_depth(self, binding, understanding):
         identity = tuple(binding[k] for k in IDENTITY_KEYS)

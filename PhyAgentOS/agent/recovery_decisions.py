@@ -62,6 +62,32 @@ def _scene_refresh_bootstrap_node_id(graph) -> str:
     return candidate
 
 
+def _query_evidence_refresh_required(task, graph, settlement) -> bool:
+    """Recognize a provider Query that explicitly requires fresh evidence."""
+    if settlement.status != "failed":
+        return False
+    records = [
+        record
+        for record in task.execution_records
+        if (
+            record.revision_id == graph.revision_id
+            and record.node_id == settlement.node_id
+            and record.semantics == "query"
+        )
+    ]
+    if not records:
+        return False
+    # Execution records are append-only and retain retry order. Recovery must
+    # classify the settlement from the latest attempt, not an earlier failure
+    # that a later provider result has superseded.
+    facts = response_facts(records[-1].response)
+    return (
+        facts.get("failure_owner") == "evidence"
+        and facts.get("requires_replan") is True
+        and facts.get("recommended_action") == "refresh_declared_evidence"
+    )
+
+
 class AgentRecoveryDecisions:
     """Propose recovery; the coordinator alone changes revisions or executes."""
 
@@ -177,6 +203,19 @@ class AgentRecoveryDecisions:
                 payload={"revision_id": graph.revision_id, "node_id": settlement.node_id, **value},
             )
             return "replan"
+        if _query_evidence_refresh_required(task, graph, settlement):
+            value = {
+                "decision": "replan",
+                "reason": (
+                    "A read-only Query reported stale or ambiguous evidence; refresh the "
+                    "current scene before continuing preparation or any Action"
+                ),
+            }
+            self.coordinator.store.update(
+                graph.task_id, lambda task: None, event_type="agent_recovery_decided",
+                payload={"revision_id": graph.revision_id, "node_id": settlement.node_id, **value},
+            )
+            return "replan"
         non_replannable = []
         for record in task.execution_records:
             if record.revision_id != graph.revision_id or record.node_id != settlement.node_id:
@@ -218,25 +257,37 @@ class AgentRecoveryDecisions:
 
     async def propose_replan(self, *, graph, settlement, delta, context):
         task = self.coordinator.get_task(graph.task_id)
+        query_evidence_refresh = _query_evidence_refresh_required(task, graph, settlement)
         refresh_capability = (
             _scene_refresh_bootstrap_capability(task)
             if (
-                settlement.status == "outcome_unknown"
-                and settlement.world_change_started is True
-                and settlement.requires_replan is True
+                (
+                    settlement.status == "outcome_unknown"
+                    and settlement.world_change_started is True
+                    and settlement.requires_replan is True
+                )
+                or query_evidence_refresh
             )
             else None
         )
         if refresh_capability is not None:
-            reason = (
-                "Runtime reported an unknown outcome after a world-changing Action; "
-                "refresh the current scene before planning any further Action"
-            )
+            if query_evidence_refresh:
+                reason = (
+                    "A read-only Query reported stale or ambiguous evidence; refresh the "
+                    "current scene before continuing preparation or any Action"
+                )
+                obligation_id = "refresh_current_scene_after_evidence_failure"
+            else:
+                reason = (
+                    "Runtime reported an unknown outcome after a world-changing Action; "
+                    "refresh the current scene before planning any further Action"
+                )
+                obligation_id = "refresh_current_scene_after_unknown_effect"
             replacement = compile_task_plan(
                 task,
                 [{
                     "node_id": _scene_refresh_bootstrap_node_id(graph),
-                    "obligation_id": "refresh_current_scene_after_unknown_effect",
+                    "obligation_id": obligation_id,
                     "capability": refresh_capability,
                 }],
                 reason=reason,

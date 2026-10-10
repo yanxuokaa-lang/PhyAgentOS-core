@@ -27,6 +27,7 @@ from PhyAgentOS.agent.prompt_context import (
 )
 from PhyAgentOS.agent.recovery_decisions import (
     AgentRecoveryDecisions,
+    _query_evidence_refresh_required,
     _scene_refresh_bootstrap_capability,
     _scene_refresh_bootstrap_node_id,
 )
@@ -2420,6 +2421,125 @@ def test_unknown_world_change_bootstraps_scene_refresh_without_model_proposal(tm
     asyncio.run(exercise())
 
 
+def test_query_evidence_failure_bootstraps_scene_refresh_without_model_or_action(tmp_path):
+    async def exercise():
+        c, task = setup_task(tmp_path)
+        observe_tool = task.primary_skill_binding.required_tools[0]
+        observe_policy = observe_tool.planning_policy.model_copy(
+            update={"capabilities": ("scene.observe",), "refreshes_scene": True}
+        )
+        work_policy = ToolSpecPolicy(
+            tool_id="manipulation.prepare",
+            semantics="query",
+            spec_digest="d" * 64,
+            capabilities=("manipulation.prepare", "object.relocate", "task.verify"),
+        )
+        binding = task.primary_skill_binding.model_copy(update={
+            "required_tools": (
+                observe_tool.model_copy(update={"planning_policy": observe_policy}),
+                BoundToolSpec(
+                    tool_id="manipulation.prepare",
+                    semantics="query",
+                    spec_sha256="d" * 64,
+                    ready_at_binding=True,
+                    planning_policy=work_policy,
+                ),
+            ),
+        })
+        c.store.update(
+            task.task_id,
+            lambda current: setattr(current, "primary_skill_binding", binding),
+            event_type="test_query_evidence_refresh_binding",
+        )
+        task = c.get_task(task.task_id)
+        graph = compile_task_plan(task, semantic_nodes(1), reason="prepare current scene")
+        c.expand_discovery_revision(
+            task.task_id,
+            plan_graph=graph,
+            plan_graph_ref="artifact://plans/query-evidence-refresh",
+        )
+
+        def add_failure(current):
+            current.active_revision.execution_records.append(ToolExecutionRecord(
+                record_id="prepare-evidence-failure",
+                revision_id=graph.revision_id,
+                node_id="chosen-0",
+                node_digest=plan_node_digest(graph.nodes[0]),
+                obligation_id=graph.nodes[0].obligation_id,
+                input_binding_digest="d" * 64,
+                decision_trace_ref="artifact://planning-traces/prepare-evidence-failure",
+                tool_id="manipulation.prepare",
+                semantics="query",
+                caller_id="paos:test",
+                status="succeeded",
+                response={"data": {
+                    "status": "unavailable",
+                    "failure_owner": "evidence",
+                    "retryable_in_revision": False,
+                    "requires_replan": True,
+                    "recommended_action": "refresh_declared_evidence",
+                    "fresh_evidence_requirements": ["current_observation_lineage"],
+                    "motion_authorized": False,
+                }},
+            ))
+
+        c.store.update(task.task_id, add_failure, event_type="fixture_evidence_failure")
+        settlement = NodeSettlement(
+            task_id=task.task_id,
+            revision_id=graph.revision_id,
+            node_id="chosen-0",
+            status="failed",
+            failure_code="observed_support_unavailable",
+            retryable_in_revision=False,
+            requires_replan=True,
+            recommended_action="refresh_declared_evidence",
+        )
+        provider = ScriptedProvider([])
+        decisions = AgentRecoveryDecisions(provider, "fixture-model", c)
+
+        decision = await decisions.select_recovery(
+            graph=graph,
+            settlement=settlement,
+            delta=build_replan_delta(graph, settlement),
+            context=settlement,
+        )
+        proposal = await decisions.propose_replan(
+            graph=graph,
+            settlement=settlement,
+            delta=build_replan_delta(graph, settlement),
+            context=settlement,
+        )
+
+        assert decision == "replan"
+        assert provider.requests == []
+        assert proposal.delta.retry_parent_node_id == "chosen-0"
+        assert proposal.delta.fresh_evidence_requirements == ()
+        assert proposal.reason == (
+            "A read-only Query reported stale or ambiguous evidence; refresh the "
+            "current scene before continuing preparation or any Action"
+        )
+        recovery_node = proposal.plan_graph.nodes[0]
+        assert recovery_node.model_dump(mode="json") == {
+            "node_id": recovery_node.node_id,
+            "obligation_id": "refresh_current_scene_after_evidence_failure",
+            "capability": "scene.observe",
+            "dependencies": [],
+            "conditions": [],
+            "required_evidence": [],
+            "produced_evidence": [],
+            "resources": [],
+            "effects": [],
+            "input_bindings": {},
+            "retry_of": None,
+        }
+        assert len(c.get_task(task.task_id).revisions) == 2
+        assert [record.semantics for record in c.get_task(task.task_id).execution_records] == [
+            "query"
+        ]
+
+    asyncio.run(exercise())
+
+
 def test_scene_refresh_bootstrap_node_identity_is_stable_and_avoids_source_collision():
     source = SimpleNamespace(
         revision_id="revision-source",
@@ -2440,6 +2560,35 @@ def test_scene_refresh_bootstrap_node_identity_is_stable_and_avoids_source_colli
     assert _scene_refresh_bootstrap_node_id(source) == (
         "recovery_scene_refresh_revision-source_3"
     )
+
+
+def test_query_evidence_refresh_uses_latest_attempt_not_stale_failure():
+    task = SimpleNamespace(execution_records=[
+        SimpleNamespace(
+            revision_id="revision-1",
+            node_id="prepare",
+            semantics="query",
+            response={"data": {
+                "failure_owner": "evidence",
+                "requires_replan": True,
+                "recommended_action": "refresh_declared_evidence",
+            }},
+        ),
+        SimpleNamespace(
+            revision_id="revision-1",
+            node_id="prepare",
+            semantics="query",
+            response={"data": {
+                "failure_owner": "runtime_adapter",
+                "requires_replan": False,
+                "recommended_action": "fix_runtime_contract",
+            }},
+        ),
+    ])
+    graph = SimpleNamespace(revision_id="revision-1")
+    settlement = SimpleNamespace(status="failed", node_id="prepare")
+
+    assert _query_evidence_refresh_required(task, graph, settlement) is False
 
 
 def test_scene_refresh_bootstrap_rejects_capability_bound_to_stale_scene_facts():

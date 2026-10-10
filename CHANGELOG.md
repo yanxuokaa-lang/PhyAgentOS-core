@@ -1,4 +1,23 @@
 # Changelog
+## v13.1.11 (2026-10-10 13:10) - codex
+
+### 变更摘要 / Summary
+- [policy] [fix] 按当前 revision 中同一 Query 节点的最新执行记录识别 evidence refresh，避免历史 evidence failure 污染后续错误恢复。 (local)
+- [Policy] [Fix] Classify evidence refresh from the latest execution record for the same Query node in the current revision, preventing historical evidence failures from contaminating later recovery.
+- [eval] [test] Core 272、Adapter 112、Skill 88 tests passed；Ruff、compileall、diff check passed；no-motion。 (local)
+- [Eval] [Test] Core 272, Adapter 112, and Skill 88 tests passed; Ruff, compileall, and diff check passed; no-motion.
+
+### 文件与关键 Diff / Files and Key Diff
+- `PhyAgentOS/agent/recovery_decisions.py:L66-L87`：只使用最新 Query execution record 判定 evidence refresh。 / Classify evidence refresh from the latest Query execution record only.
+- `tests/test_agent_foundation.py:L2566-L2591`：验证后续 provider failure 不被旧 evidence failure 覆盖。 / Verify a later provider failure is not overridden by an earlier evidence failure.
+
+```diff
+- any historical evidence-failure record triggers scene refresh
++ only the latest same-revision/node Query result can trigger scene refresh
+```
+
+详见 [v13.1.11 月度日志](changelog/2026-10_part5.md)。See the [v13.1.11 detailed log](changelog/2026-10_part5.md).
+
 ## Archive
 - [2026-10 part4](changelog/2026-10_part4.md)
 - [2026-10 part5](changelog/2026-10_part5.md)
@@ -7,6 +26,30 @@
 - [2026-10](changelog/2026-10.md)
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
+
+## v13.1.10 (2026-10-10 12:42) - codex
+
+### 变更摘要 / Summary
+- [sense] [fix] 仅在当前观测 metric geometry 完全一致时合并重复 semantic support refs；真实不同或不完整的支撑证据结构化为 evidence failure。 (local)
+- [Sense] [Fix] Merge duplicate semantic support refs only when current-observation metric geometry is exactly identical; classify distinct or incomplete support evidence as an evidence failure. (local)
+- [policy] [fix] `manipulation.prepare` evidence failure 进入确定性 scene-refresh replacement revision，不再被 generic provider error 直接终止；不重放 Action。 (local)
+- [Policy] [Fix] Route `manipulation.prepare` evidence failures into a deterministic scene-refresh replacement revision instead of terminal generic provider failure; no Action replay. (local)
+- [eval] [test] Adapter/Skill/Core focused suites `112 + 88 + 271` passed；Ruff、compileall、diff check passed；全程 no-motion。 (local)
+- [Eval] [Test] Adapter/Skill/Core focused suites `112 + 88 + 271` passed; Ruff, compileall, and diff check passed; validation was no-motion throughout. (local)
+
+### 文件与关键 Diff / Files and Key Diff
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/grounding.py:L920-L978`：同几何 support alias 归一化及 evidence error。 / Same-geometry support alias normalization and evidence error.
+- `PhyAgentOS/agent/recovery_decisions.py:L65-L81,L180-L211,L251-L294`：Query evidence failure 的 deterministic scene refresh recovery。 / Deterministic scene-refresh recovery for Query evidence failure.
+- `docs/forge/PREPARATION_SUPPORT_AMBIGUITY_DIAGNOSIS_20261010.md:L1-L111`：证据、根因、七维 review 与 no-motion 边界。 / Evidence, root cause, seven-dimension review, and no-motion boundary.
+
+```diff
+- multiple semantic support refs raised plain ValueError and were flattened to preparation_provider_error
++ identical current metric point clouds are auditable aliases; distinct geometry returns evidence recovery fields
++ Query evidence failure creates one fresh scene-observation revision; no Action replay or motion authorization
+```
+
+详见 [v13.1.10 月度日志](changelog/2026-10_part5.md) 和 [诊断](docs/forge/PREPARATION_SUPPORT_AMBIGUITY_DIAGNOSIS_20261010.md)。
+See the [v13.1.10 detailed log](changelog/2026-10_part5.md) and [diagnosis](docs/forge/PREPARATION_SUPPORT_AMBIGUITY_DIAGNOSIS_20261010.md).
 
 ## v13.1.9 (2026-10-10 12:10) - codex
 
