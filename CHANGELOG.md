@@ -30,6 +30,7 @@
 
 详见 [v13.1.6 月度日志](changelog/2026-10_part5.md)。
 See the [v13.1.6 detailed log](changelog/2026-10_part5.md).
+- Commit: `3751c18` on `feature/planning-loop`.
 
 ## v13.1.5 (2026-10-10 00:30) - codex
 
