@@ -1869,7 +1869,7 @@ def test_replan_provider_and_state_failure_persist_terminal_task(tmp_path):
     assert current.replan_deadline is None
     assert current.active_revision.node_settlements[0].failure_code == "invalid_arguments"
     assert current.active_revision.execution_records == []
-    assert c.store.events(task.task_id)[-1]["event_type"] == "plan_replan_failed"
+    assert c.store.events(task.task_id)[-1]["event_type"] == "plan_replan_outcome_recorded"
 
 
 def test_reducer_replay_does_not_require_scene_refresh_or_execute_again(tmp_path):
@@ -2147,6 +2147,43 @@ def test_replan_failure_does_not_overwrite_waiting_for_user(tmp_path):
         c.fail_replan(task.task_id, reason="concurrent recovery failure")
 
     assert c.get_task(task.task_id).status.value == "waiting_for_user"
+
+
+def test_replan_failure_keeps_unknown_world_owned_by_same_task(tmp_path):
+    c = coordinator(tmp_path)
+    task = c.create_task(
+        task_description="unknown world effect",
+        verification=TaskVerificationContract(mode="off"),
+    )
+    graph = make_graph(task.task_id, "revision-unknown-world", ("arrange-red",))
+    c.expand_discovery_revision(
+        task.task_id,
+        plan_graph=graph,
+        plan_graph_ref="artifact://plans/unknown-world",
+    )
+    c.store.update(
+        task.task_id,
+        lambda current: current.active_revision.node_settlements.append(
+            NodeSettlement(
+                task_id=task.task_id,
+                revision_id=graph.revision_id,
+                node_id="arrange-red",
+                status="outcome_unknown",
+                world_change_started=True,
+                requires_replan=True,
+            )
+        ),
+        event_type="test_unknown_world_effect",
+    )
+
+    result = c.fail_replan(task.task_id, reason="recovery proposal unavailable")
+
+    assert result.status is AgentTaskStatus.AWAITING_REPLAN
+    assert result.replan_deadline is not None
+    assert "world reconciliation remains required" in result.evidence_errors[-1]
+    event = c.store.events(task.task_id)[-1]
+    assert event["event_type"] == "plan_replan_outcome_recorded"
+    assert event["payload"]["deferred_for_reconciliation"] is True
 
 
 def test_discovery_revision_does_not_consume_replan_budget(tmp_path):

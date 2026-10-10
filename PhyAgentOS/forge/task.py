@@ -708,7 +708,7 @@ class AgentTaskStore:
         mutate: Callable[[AgentTaskRecord], None],
         *,
         event_type: str,
-        payload: dict[str, Any] | None = None,
+        payload: dict[str, Any] | Callable[[AgentTaskRecord], dict[str, Any]] | None = None,
     ) -> AgentTaskRecord:
         with self._lock, self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -759,7 +759,8 @@ class AgentTaskStore:
                     task_id,
                 ),
             )
-            self._event(connection, task_id, event_type, payload or {})
+            event_payload = payload(record) if callable(payload) else payload
+            self._event(connection, task_id, event_type, event_payload or {})
             connection.commit()
             return record
 
@@ -2727,7 +2728,13 @@ class AgentTaskCoordinator:
         return self.store.update(task_id, mutate, event_type="plan_replan_requested")
 
     def fail_replan(self, task_id: str, *, reason: str) -> AgentTaskRecord:
-        """Persist a terminal recovery failure through the existing task state."""
+        """Persist recovery failure without terminalizing an unresolved world.
+
+        A failed planner proposal is terminal only when the Runtime has no
+        unknown world-changing result left to reconcile.  Keeping that task in
+        ``awaiting_replan`` preserves the single-task ownership barrier and
+        prevents a new task from issuing discovery against an unstable scene.
+        """
         reason = reason.strip()
         if not reason:
             raise AgentTaskError("replan failure reason must be non-empty")
@@ -2746,16 +2753,31 @@ class AgentTaskCoordinator:
                 raise AgentTaskError(
                     f"cannot fail replan while AgentTask is {current.status.value}"
                 )
-            current.status = AgentTaskStatus.FAILED
-            current.replan_deadline = None
+            unresolved_world = _has_unresolved_world_change(current)
+            current.status = (
+                AgentTaskStatus.AWAITING_REPLAN
+                if unresolved_world
+                else AgentTaskStatus.FAILED
+            )
+            current.replan_deadline = (
+                utc_now() + timedelta(seconds=self.replan_timeout_s)
+                if unresolved_world
+                else None
+            )
             current.replan_extension_used = False
-            current.evidence_errors.append(f"replan failed: {reason}")
+            current.evidence_errors.append(
+                ("replan deferred while world reconciliation remains required: " if unresolved_world
+                 else "replan failed: ") + reason
+            )
 
         result = self.store.update(
             task_id,
             mutate,
-            event_type="plan_replan_failed",
-            payload={"reason": reason},
+            event_type="plan_replan_outcome_recorded",
+            payload=lambda current: {
+                "reason": reason,
+                "deferred_for_reconciliation": _has_unresolved_world_change(current),
+            },
         )
         self._schedule_experience(result)
         return result
@@ -4296,6 +4318,28 @@ def has_unsettled_owned_execution(task: AgentTaskRecord) -> bool:
         and not item.terminal
         for item in task.execution_records
     )
+
+
+def _has_unresolved_world_change(task: AgentTaskRecord) -> bool:
+    """Return whether a Runtime-owned world effect still needs reconciliation."""
+    for settlement in task.active_revision.node_settlements:
+        if (
+            settlement.status == "outcome_unknown"
+            and settlement.world_change_started is True
+            and settlement.requires_replan is True
+        ):
+            return True
+    for record in task.execution_records:
+        if record.semantics not in {"action", "session"} or record.status != "unknown":
+            continue
+        facts = _planning_response_facts(record.response)
+        if (
+            facts.get("world_change_started") is True
+            and facts.get("outcome_known") is not True
+            and facts.get("requires_replan") is True
+        ):
+            return True
+    return False
 
 
 def _execution_facts_succeeded(task: AgentTaskRecord) -> bool:

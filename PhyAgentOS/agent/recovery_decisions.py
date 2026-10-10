@@ -20,8 +20,9 @@ def _scene_refresh_bootstrap_capability(task) -> str | None:
 
     The recovery revision deliberately contains only a semantic Query obligation.
     Agent selection still owns the concrete Tool and its runtime arguments.  If
-    ToolSpec metadata cannot identify exactly one bindable capability, recovery
-    remains model-proposed and fail-closed.
+    ToolSpec metadata must identify exactly one refresh Tool. Auxiliary
+    capabilities on that Tool do not create ambiguity; multiple refresh Tools
+    remain model-proposed and fail-closed.
     """
     binding = getattr(task, "primary_skill_binding", None)
     tools = (
@@ -29,7 +30,7 @@ def _scene_refresh_bootstrap_capability(task) -> str | None:
         if binding is not None
         else getattr(task, "tool_bindings", ())
     )
-    capabilities: set[str] = set()
+    candidates: list[tuple[str, set[str]]] = []
     for tool in tools:
         policy = getattr(tool, "planning_policy", None)
         semantics = getattr(tool, "semantics", None) or getattr(policy, "semantics", None)
@@ -40,14 +41,27 @@ def _scene_refresh_bootstrap_capability(task) -> str | None:
             or required_node_binding_keys(policy)
         ):
             continue
-        capabilities.update(
+        capabilities = {
             capability
             for capability in getattr(policy, "capabilities", ())
             if isinstance(capability, str) and capability
-        )
-    if len(capabilities) != 1:
+        }
+        candidates.append((str(getattr(tool, "tool_id", "")), capabilities))
+    if not candidates:
         return None
-    return next(iter(capabilities))
+    # A ToolSpec may advertise auxiliary capabilities (for example
+    # ``task.verify``) in addition to its semantic tool id.  Recovery needs
+    # the concrete refresh Tool, not an arbitrary capability.  Prefer the
+    # tool id when the binding advertises it; ambiguity between refresh Tools
+    # remains fail-closed.
+    if len(candidates) != 1:
+        return None
+    tool_id, capabilities = candidates[0]
+    if tool_id in capabilities:
+        return tool_id
+    if len(capabilities) == 1:
+        return next(iter(capabilities))
+    return None
 
 
 def _scene_refresh_bootstrap_node_id(graph) -> str:

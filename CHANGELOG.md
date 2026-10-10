@@ -1,4 +1,20 @@
 # Changelog
+## v13.1.14 (2026-10-10 14:00) - codex
+
+### 变更摘要 / Summary
+- [policy] [fix] 修复未知世界变化恢复在多 capability `scene.observe` 上错误回退模型，并在世界未对账时保持同一 AgentTask 的 `awaiting_replan` 所有权。 (local)
+- [Policy] [Fix] Fix unknown-world recovery falling back to the model for multi-capability `scene.observe`, and retain the same AgentTask in `awaiting_replan` while reconciliation is unresolved. (local)
+- [eval] [test] Core recovery/planning/long-horizon/Skill suites `255 passed`；Ruff、compileall、diff check 通过；no-motion。 (local)
+- [Eval] [Test] Core recovery/planning/long-horizon/Skill suites passed (`255`); Ruff, compileall, and diff check passed; no-motion. (local)
+
+### 文件与关键 Diff / Files and key diff
+- `PhyAgentOS/agent/recovery_decisions.py:L18-L67`：单一 refresh Tool 优先使用 `tool_id`，忽略其辅助 capability；多 Tool 保持 fail-closed。 / Prefer the single refresh Tool's `tool_id`, ignore auxiliary capabilities, and keep multiple Tools fail-closed.
+- `PhyAgentOS/forge/task.py:L2729-L2785,L4316-L4341`：未知世界未完成对账时 `fail_replan` 保持 `awaiting_replan`，防止新任务绕过 Runtime 状态。 / Keep `awaiting_replan` when world reconciliation is unresolved so new tasks cannot bypass Runtime state.
+- `tests/test_agent_foundation.py:L2424-L2490`、`tests/test_planning_loop.py:L2152-L2185`：多 capability 恢复和 unresolved world 生命周期回归。 / Add multi-capability recovery and unresolved-world lifecycle regressions.
+- `docs/forge/UNKNOWN_WORLD_RECONCILIATION_DIAGNOSIS_20261010.md:L1-L75`：保存三次任务的证据链、根因与通用修复边界。 / Preserve the evidence chain, root causes, and generic fix boundaries for all three tasks.
+
+详见 [2026-10 part5 v13.1.14](changelog/2026-10_part5.md)。See the detailed v13.1.14 record.
+
 ## v13.1.13 (2026-10-10 13:40) - codex
 
 ### 变更摘要 / Summary

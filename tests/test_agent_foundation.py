@@ -2421,6 +2421,69 @@ def test_unknown_world_change_bootstraps_scene_refresh_without_model_proposal(tm
     asyncio.run(exercise())
 
 
+def test_unknown_world_change_ignores_auxiliary_refresh_capabilities(tmp_path):
+    async def exercise():
+        c, task = setup_task(tmp_path)
+        observe_tool = task.primary_skill_binding.required_tools[0]
+        observe_policy = observe_tool.planning_policy.model_copy(
+            update={
+                "capabilities": ("scene.observe", "task.verify"),
+                "refreshes_scene": True,
+            }
+        )
+        work_policy = ToolSpecPolicy(
+            tool_id="fixture.work",
+            semantics="action",
+            spec_digest="d" * 64,
+            capabilities=("object.relocate", "task.verify"),
+        )
+        binding = task.primary_skill_binding.model_copy(update={
+            "required_tools": (
+                observe_tool.model_copy(
+                    update={"tool_id": "scene.observe", "planning_policy": observe_policy}
+                ),
+                BoundToolSpec(
+                    tool_id="fixture.work",
+                    semantics="action",
+                    spec_sha256="d" * 64,
+                    ready_at_binding=True,
+                    planning_policy=work_policy,
+                ),
+            )
+        })
+        c.store.update(
+            task.task_id,
+            lambda current: setattr(current, "primary_skill_binding", binding),
+            event_type="test_multi_capability_scene_refresh_binding",
+        )
+        task = c.get_task(task.task_id)
+        graph = compile_task_plan(task, semantic_nodes(1), reason="initial action segment")
+        settlement = NodeSettlement(
+            task_id=task.task_id,
+            revision_id=graph.revision_id,
+            node_id="chosen-0",
+            status="outcome_unknown",
+            world_change_started=True,
+            outcome_known=False,
+            requires_replan=True,
+        )
+        provider = ScriptedProvider([])
+
+        proposal = await AgentRecoveryDecisions(
+            provider, "fixture-model", c
+        ).propose_replan(
+            graph=graph,
+            settlement=settlement,
+            delta=build_replan_delta(graph, settlement),
+            context=settlement,
+        )
+
+        assert provider.requests == []
+        assert proposal.plan_graph.nodes[0].capability == "scene.observe"
+
+    asyncio.run(exercise())
+
+
 def test_query_evidence_failure_bootstraps_scene_refresh_without_model_or_action(tmp_path):
     async def exercise():
         c, task = setup_task(tmp_path)
