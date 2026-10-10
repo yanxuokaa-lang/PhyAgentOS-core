@@ -19,7 +19,7 @@
 ```
 
 详见 [v13.1.13 月度日志](changelog/2026-10_part5.md)。See the [v13.1.13 detailed log](changelog/2026-10_part5.md).
-- Commit: 待提交 on `feature/planning-loop`.
+- Commit: `6d35c56` on `feature/planning-loop`.
 
 ## v13.1.12 (2026-10-10 13:28) - codex
 
