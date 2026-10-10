@@ -1,5 +1,10 @@
 # Change Log
 
+## v3.0.15 (2026-10-10)
+
+- 中文：发布 Adapter Node `1.0.5`，将 observed support 点云 dtype/EOF evidence-failure 分类修复打包进实际运行 artifact；更新 Node lock 与 Skill/package 版本，避免继续运行旧 Node。
+- English: Publish Adapter Node `1.0.5` with the observed-support point-cloud dtype/EOF evidence-failure classification fix in the executable artifact; update the Node lock and Skill/package versions so the old Node cannot remain active.
+
 ## v3.0.14 (2026-10-10)
 
 - 中文：发布 Adapter Node `1.0.4`，将已审查的 task/revision/node/frame-scoped preparation URI 实现打包进实际运行 artifact；更新 manifest Node lock 和 Skill/package 版本，避免仅升级 Skill 而继续运行旧 Node。
