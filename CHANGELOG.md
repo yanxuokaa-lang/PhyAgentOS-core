@@ -35,6 +35,7 @@
 
 详见 [v13.1.8 月度日志](changelog/2026-10_part5.md) 和 [诊断](docs/forge/SCENE_BIND_SELECTION_CONVERGENCE_DIAGNOSIS_20261010.md)。
 See the [v13.1.8 detailed log](changelog/2026-10_part5.md) and [diagnosis](docs/forge/SCENE_BIND_SELECTION_CONVERGENCE_DIAGNOSIS_20261010.md).
+- Commit: `4893664` on `feature/planning-loop` (implementation, review, and tests).
 
 ## v13.1.7 (2026-10-10 10:30) - codex
 
