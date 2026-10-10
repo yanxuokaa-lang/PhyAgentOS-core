@@ -17,6 +17,7 @@
 ```
 
 详见 [v13.1.12 月度日志](changelog/2026-10_part5.md)。See the [v13.1.12 detailed log](changelog/2026-10_part5.md).
+- Commit: `f0697f5` on `feature/planning-loop`.
 
 ## v13.1.11 (2026-10-10 13:10) - codex
 
