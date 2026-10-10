@@ -27,7 +27,7 @@
 
 详见 [v13.1.9 月度日志](changelog/2026-10_part5.md)。
 See the [v13.1.9 detailed log](changelog/2026-10_part5.md).
-- Commit: pending on `feature/planning-loop`.
+- Commit: `3832220` on `feature/planning-loop`.
 
 ## v13.1.8 (2026-10-10 11:30) - codex
 
