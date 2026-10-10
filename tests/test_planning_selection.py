@@ -100,6 +100,15 @@ class _Coordinator:
     def record_planning_selection_rejection(self, task_id, **kwargs):
         self.rejections.append((task_id, kwargs))
 
+    def effective_planning_execution_records(self, task_id, revision_id):
+        task = self.get_task(task_id)
+        revisions = task.revisions or (task.active_revision,)
+        revision = next(
+            item for item in revisions
+            if item.revision_id == revision_id
+        )
+        return tuple(revision.execution_records)
+
 
 class _Dispatch:
     graph = SimpleNamespace(task_id="task-1", revision_id="revision-1")

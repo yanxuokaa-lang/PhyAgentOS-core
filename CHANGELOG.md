@@ -8,6 +8,34 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v13.1.8 (2026-10-10 11:30) - codex
+
+### 变更摘要 / Summary
+- [policy] [fix] 为通用 `scene.bind` planning node 投影当前成功 understanding 的候选实体、歧义范围和 selection 行动契约；不自动选择、不放宽 binding 或 motion gate。 (local)
+- [Policy] [Fix] Project current successful understanding candidates, ambiguity scope, and selection action contract into generic `scene.bind` planning nodes; do not auto-select or relax binding or motion gates. (local)
+- [policy] [fix] 将空 `ambiguity.entity_refs` 按全局歧义处理，Core 在 Gateway 前拒绝非空 selection；修复 selection 测试替身的现有 Coordinator record-reader 接口。 (local)
+- [Policy] [Fix] Treat empty `ambiguity.entity_refs` as global ambiguity, reject non-empty selections before Gateway, and align the selection test double with the existing Coordinator record-reader interface. (local)
+- [eval] [test] 新增当前/过期/缺失理解证据及全局歧义 no-motion 回归；377 个 Core/Tool/selection 测试与 54 个 recovery 测试通过。 (local)
+- [Eval] [Test] Add current/stale/absent understanding and global-ambiguity no-motion regressions; 377 Core/Tool/selection tests and 54 recovery tests pass. (local)
+
+### 文件与关键 Diff / Files and Key Diff
+- `PhyAgentOS/agent/planning_loop.py:L115-L131,L294-L430,L510-L539,L1340-L1348`：新增 bounded `scene_bind_selection` projection，并把行动指引加入 node prompt。 / Add bounded projection and actionable node guidance.
+- `PhyAgentOS/agent/prompt_context.py:L410-L460`：统一全局 ambiguity 的推荐与 scope。 / Align global ambiguity recommendations and scope.
+- `PhyAgentOS/agent/tools/forge_tool_api.py:L985-L1030`：`scene.bind` preflight 拒绝全局歧义下的非空选择。 / Reject non-empty selections under global ambiguity.
+- `tests/test_planning_loop.py:L343-L469`、`tests/test_agent_foundation.py:L2816-L2876`、`tests/test_prompt_context.py:L607-L628`：新增候选投影、过期/缺失证据与空范围歧义回归。 / Add projection, stale/absent evidence, and empty-scope ambiguity regressions.
+- `tests/test_planning_selection.py:L103-L110`：测试 Coordinator 提供现有 `effective_planning_execution_records` 接口。 / Align the test Coordinator with the existing record-reader interface.
+- `docs/forge/SCENE_BIND_SELECTION_CONVERGENCE_DIAGNOSIS_20261010.md:L1-L136`：保存证据、七维审查与 no-motion 边界。 / Preserve evidence, seven-dimension review, and no-motion boundary.
+
+```diff
+- node prompt exposed catalogs and prose-only scene.bind constraints
++ node prompt exposes current authorized candidates, ambiguity scope, and one governed selection action
+- empty ambiguity scope was treated as an empty intersection
++ empty ambiguity scope yields no recommendations and rejects non-empty selection before Gateway
+```
+
+详见 [v13.1.8 月度日志](changelog/2026-10_part5.md) 和 [诊断](docs/forge/SCENE_BIND_SELECTION_CONVERGENCE_DIAGNOSIS_20261010.md)。
+See the [v13.1.8 detailed log](changelog/2026-10_part5.md) and [diagnosis](docs/forge/SCENE_BIND_SELECTION_CONVERGENCE_DIAGNOSIS_20261010.md).
+
 ## v13.1.7 (2026-10-10 10:30) - codex
 
 ### 变更摘要 / Summary

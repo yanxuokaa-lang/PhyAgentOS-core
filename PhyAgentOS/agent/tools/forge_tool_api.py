@@ -990,7 +990,17 @@ def _scene_bind_argument_error(task: Any, arguments: dict[str, Any]) -> dict[str
         for ref in ambiguity.get("entity_refs", ())
         if isinstance(ref, str)
     })
-    selected_ambiguous = sorted(set(entity_refs) & set(ambiguous_refs))
+    global_ambiguity = any(
+        isinstance(ambiguity, dict)
+        and isinstance(ambiguity.get("entity_refs"), list)
+        and not ambiguity["entity_refs"]
+        for ambiguity in facts.get("ambiguities", ())
+    )
+    selected_ambiguous = (
+        sorted(set(entity_refs))
+        if global_ambiguity
+        else sorted(set(entity_refs) & set(ambiguous_refs))
+    )
     if not selected_ambiguous:
         return None
     entity_refs_from_understanding = [
@@ -1000,14 +1010,19 @@ def _scene_bind_argument_error(task: Any, arguments: dict[str, Any]) -> dict[str
     ]
     return {
         "code": "ambiguous_entity_selection",
-        "message": "scene.bind selection includes entities with unresolved perception ambiguity; select only the required unambiguous entity_refs",
+        "message": (
+            "scene.bind selection includes entities with unresolved perception ambiguity; "
+            "select only the required unambiguous entity_refs"
+        ),
         "ambiguous_entity_refs": selected_ambiguous,
         "candidate_entity_refs": entity_refs_from_understanding,
         "recommended_unambiguous_entity_refs": [
-            ref for ref in entity_refs_from_understanding if ref not in ambiguous_refs
+            ref for ref in entity_refs_from_understanding
+            if not global_ambiguity and ref not in ambiguous_refs
         ],
         "selection_constraints": {
             "recommendation_scope": "perception_ambiguity_only",
+            "ambiguity_scope": "global" if global_ambiguity else "referenced_entities",
             "must_match_task_entities": True,
             "environment_only_substitution_forbidden": True,
         },

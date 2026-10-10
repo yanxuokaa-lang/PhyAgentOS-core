@@ -22,6 +22,7 @@ from PhyAgentOS.agent.planning_loop import (
     PredecessorContext,
     PredecessorExecutionContext,
     StaleNodeContextError,
+    _scene_bind_selection_context,
     node_context_prompt_projection,
     resolve_node_argument_sources,
 )
@@ -337,6 +338,166 @@ def test_default_node_prompt_distinguishes_geometry_and_producer_projection_sour
     assert "Never assume every projection source is an understanding record" in prompt
     assert "match the producer candidate entity_ref byte-for-byte" in prompt
     assert "do not reuse an alias from an older rejected continuation" in prompt
+
+
+def test_scene_bind_node_context_projects_current_candidates_without_auto_selecting():
+    understand = PlanNode(
+        node_id="understand",
+        obligation_id="understand-current-scene",
+        capability="scene.understand",
+    )
+    bind = PlanNode(
+        node_id="bind",
+        obligation_id="bind-required-task-entities",
+        capability="scene.bind",
+        dependencies=("understand",),
+        input_bindings={"constraints": ["bind only required task entities"]},
+    )
+    graph_payload = {
+        "schema_version": "paos-plan-graph/v1",
+        "task_id": "task-bind-context",
+        "revision_id": "revision-bind-context",
+        "graph_digest": "0" * 64,
+        "planner_decision_digest": "1" * 64,
+        "policy_snapshot_digest": "2" * 64,
+        "nodes": [understand.model_dump(mode="json"), bind.model_dump(mode="json")],
+    }
+    graph_payload["graph_digest"] = plan_graph_digest(graph_payload)
+    graph = PlanGraph.model_validate(graph_payload)
+    record = SimpleNamespace(
+        record_id="understand-current",
+        node_id="understand",
+        tool_id="scene.understand",
+        semantics="query",
+        status="succeeded",
+        arguments={"scene_revision": "scene-current"},
+        response={"data": {
+            "scene_revision": "scene-current",
+            "entities": [
+                {"entity_ref": "entity://task-a", "category": "task object"},
+                {"entity_ref": "entity://task-b", "category": "task object"},
+                {"entity_ref": "entity://surface-a", "category": "support surface"},
+                {"entity_ref": "entity://surface-b", "category": "support surface"},
+            ],
+            "ambiguities": [{
+                "code": "shared_metric_localization",
+                "message": "environment surfaces share a localization",
+                "entity_refs": ["entity://surface-a", "entity://surface-b"],
+            }],
+        }},
+        error=None,
+    )
+    revision = SimpleNamespace(
+        revision_id="revision-bind-context",
+        plan_graph=graph,
+        node_settlements=(SimpleNamespace(
+            node_id="understand",
+            status="completed",
+            scene_revision="scene-current",
+            evidence_refs=("tool:understand-current",),
+            source_tool_id="scene.understand",
+            failure_code=None,
+        ),),
+        execution_records=(record,),
+        discovery_evidence_refs=(),
+        fresh_evidence_requirements=(),
+        replan_evidence_refs=(),
+    )
+    task = SimpleNamespace(
+        task_id="task-bind-context",
+        active_revision=revision,
+        primary_skill_binding=None,
+        tool_bindings=(),
+    )
+
+    context = NodeContextProvider(lambda _: task).build(
+        task.task_id, "bind", scene_revision="scene-current"
+    )
+    projection = node_context_prompt_projection(context)
+    prompt = AgentLoopNodeExecutor._default_prompt(context)
+
+    assert projection["scene_bind_selection"]["status"] == "available"
+    assert projection["scene_bind_selection"]["source_record_id"] == "understand-current"
+    assert projection["scene_bind_selection"]["recommended_unambiguous_entity_refs"] == [
+        "entity://task-a", "entity://task-b"
+    ]
+    assert projection["scene_bind_selection"]["ambiguous_entity_refs"] == [
+        "entity://surface-a", "entity://surface-b"
+    ]
+    assert "submit one forge_plan_select" in prompt
+    assert "Do not bind all candidates" in prompt
+    assert "does not authorize motion" not in projection["scene_bind_selection"]
+
+
+def test_scene_bind_node_context_marks_stale_understanding_unavailable():
+    node = SimpleNamespace(capability="scene.bind")
+    predecessor = PredecessorContext(
+        node_id="understand",
+        status="completed",
+        scene_revision="scene-old",
+        executions=(PredecessorExecutionContext(
+            record_id="understand-old",
+            tool_id="scene.understand",
+            semantics="query",
+            status="succeeded",
+            response={"data": {
+                "scene_revision": "scene-old",
+                "entities": [{"entity_ref": "entity://old"}],
+            }},
+        ),),
+    )
+
+    selection = _scene_bind_selection_context(
+        node, (predecessor,), "scene-current"
+    )
+
+    assert selection == {
+        "status": "unavailable",
+        "reason": "scene.understand predecessor is not from the current scene revision",
+        "source_record_id": "understand-old",
+    }
+
+
+def test_scene_bind_node_context_does_not_fabricate_candidates_without_understanding():
+    node = SimpleNamespace(capability="scene.bind")
+
+    selection = _scene_bind_selection_context(node, (), "scene-current")
+
+    assert selection == {
+        "status": "unavailable",
+        "reason": "scene.bind requires one successful current authorized scene.understand record",
+    }
+
+
+def test_scene_bind_node_context_suppresses_recommendations_for_global_ambiguity():
+    node = SimpleNamespace(capability="scene.bind")
+    predecessor = PredecessorContext(
+        node_id="understand",
+        status="completed",
+        scene_revision="scene-current",
+        executions=(PredecessorExecutionContext(
+            record_id="understand-global",
+            tool_id="scene.understand",
+            semantics="query",
+            status="succeeded",
+            response={"data": {
+                "scene_revision": "scene-current",
+                "entities": [{"entity_ref": "entity://candidate"}],
+                "ambiguities": [{
+                    "code": "correspondence_uncertain",
+                    "message": "global ambiguity",
+                    "entity_refs": [],
+                }],
+            }},
+        ),),
+    )
+
+    selection = _scene_bind_selection_context(
+        node, (predecessor,), "scene-current"
+    )
+
+    assert selection["global_ambiguity"] is True
+    assert selection["recommended_unambiguous_entity_refs"] == []
 
 
 def test_unqualified_source_field_resolves_from_predecessor_arguments():

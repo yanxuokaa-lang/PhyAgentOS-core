@@ -427,6 +427,11 @@ def _scene_bind_selection_projection(task: Any) -> dict[str, Any] | None:
         for ref in ambiguity.get("entity_refs", ())
         if isinstance(ref, str)
     })
+    global_ambiguity = any(
+        isinstance(ambiguity.get("entity_refs"), list)
+        and not ambiguity["entity_refs"]
+        for ambiguity in ambiguities
+    )
     entity_refs = [entity["entity_ref"] for entity in entities]
     return {
         "source_record_id": getattr(understanding, "record_id", None),
@@ -440,10 +445,12 @@ def _scene_bind_selection_projection(task: Any) -> dict[str, Any] | None:
         ],
         "candidate_entity_refs": entity_refs,
         "recommended_unambiguous_entity_refs": [
-            ref for ref in entity_refs if ref not in ambiguous_refs
+            ref for ref in entity_refs
+            if not global_ambiguity and ref not in ambiguous_refs
         ],
         "selection_constraints": {
             "recommendation_scope": "perception_ambiguity_only",
+            "ambiguity_scope": "global" if global_ambiguity else "referenced_entities",
             "must_match_task_entities": True,
             "environment_only_substitution_forbidden": True,
         },

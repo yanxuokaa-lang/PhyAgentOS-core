@@ -2841,9 +2841,39 @@ def test_scene_bind_rejects_alias_and_ambiguous_understanding_entities():
     assert ambiguous_error["recommended_unambiguous_entity_refs"] == ["entity://e1"]
     assert ambiguous_error["selection_constraints"] == {
         "recommendation_scope": "perception_ambiguity_only",
+        "ambiguity_scope": "referenced_entities",
         "must_match_task_entities": True,
         "environment_only_substitution_forbidden": True,
     }
+
+
+def test_scene_bind_treats_empty_ambiguity_scope_as_global():
+    understanding = SimpleNamespace(
+        tool_id="scene.understand",
+        status="succeeded",
+        revision_id="revision-1",
+        record_id="understand-global-ambiguity",
+        response={"data": {
+            "entities": [{"entity_ref": "entity://e1", "category": "object"}],
+            "ambiguities": [{
+                "code": "correspondence_uncertain",
+                "message": "identity scope is global",
+                "entity_refs": [],
+            }],
+        }},
+    )
+    task = SimpleNamespace(
+        active_revision_id="revision-1",
+        execution_records=[understanding],
+    )
+
+    error = _scene_bind_argument_error(
+        task, {"entity_refs": ["entity://e1"]}
+    )
+
+    assert error["code"] == "ambiguous_entity_selection"
+    assert error["ambiguous_entity_refs"] == ["entity://e1"]
+    assert error["recommended_unambiguous_entity_refs"] == []
 
 
 def test_discovery_receipt_can_materialize_without_task_get(tmp_path):
