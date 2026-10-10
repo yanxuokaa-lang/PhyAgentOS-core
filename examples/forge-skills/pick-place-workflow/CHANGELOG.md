@@ -1,5 +1,10 @@
 # Change Log
 
+## v3.0.16 (2026-10-10)
+
+- 中文：发布 Adapter Node `1.0.6`，将 Runtime-owned possession projection 打包进未知 place 恢复路径；释放已确认但放置验证失败时可继续只读对账，证据不足仍保持 uncertain。
+- English: Publish Adapter Node `1.0.6` with Runtime-owned possession projection for unknown-place recovery; a confirmed release with failed placement verification can continue read-only reconciliation, while insufficient evidence remains uncertain.
+
 ## v3.0.15 (2026-10-10)
 
 - 中文：发布 Adapter Node `1.0.5`，将 observed support 点云 dtype/EOF evidence-failure 分类修复打包进实际运行 artifact；更新 Node lock 与 Skill/package 版本，避免继续运行旧 Node。

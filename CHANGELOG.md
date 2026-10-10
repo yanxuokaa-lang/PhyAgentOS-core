@@ -1,5 +1,28 @@
 # Changelog
 
+## v13.2.4 (2026-10-10 19:45) - codex
+
+### 变更摘要 / Summary
+- [policy] [fix] 保留 Runtime 已确认的未知 place 释放事实，避免 persistent provider 将可对账场景错误降级为 `uncertain`。 (local)
+- [Policy] [Fix] Preserve Runtime-confirmed release facts after an unknown place so the persistent provider does not downgrade a reconcilable scene to `uncertain`. (local)
+- [eval] [test] 增加 Runtime tuple/mapping 显式释放证据、缺失证据 fail-closed 和 provider possession projection 回归；定向 `97 passed`，无物理运动。 (local)
+- [Eval] [Test] Add regressions for explicit Runtime release evidence in tuple/mapping seams, fail-closed missing evidence, and provider possession projection; focused suite `97 passed`, with no physical motion. (local)
+- [env] [chore] 发布并锁定 Skill `3.0.16` / Node `1.0.6`，Node SHA `28f9386653388a7d3274bb61c3fcaa7bb811b72ba95d26e23742f65ceb83f1c4`。 (local)
+- [Env] [Chore] Publish and lock Skill `3.0.16` / Node `1.0.6`, with Node SHA `28f9386653388a7d3274bb61c3fcaa7bb811b72ba95d26e23742f65ceb83f1c4`. (local)
+
+### 文件与关键 Diff / Files and Key Diff
+- `examples/forge-adapters/robotwin20/runtime/robotwin_persistent_engine.py:L622-L640,L711-L712`、`examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_manipulation.py:L19-L38,L310-L325`：仅 Runtime-owned explicit release evidence 可投影 `possession_state=empty`；缺失证据保持 `uncertain`。 / Only explicit Runtime-owned release evidence projects `possession_state=empty`; missing evidence remains `uncertain`.
+- `examples/forge-adapters/robotwin20/tests/test_persistent_manipulation.py:L94-L145,L386-L487`：覆盖未知 place 和 mapping seam 的证据边界。 / Cover unknown-place and mapping-seam evidence boundaries.
+- `examples/forge-skills/pick-place-workflow/skill.yaml:L223-L229`、`pyproject.toml:L1-L4`、`CHANGELOG.md:L3-L6`、`tests/test_grasp_propose.py:L267-L275`：发布 Skill `3.0.16` / Node `1.0.6`。 / Publish Skill `3.0.16` / Node `1.0.6`.
+
+```diff
+- arbitrary mapping terminal -> release_confirmed=True
++ mapping terminal with planner_detached_after_release=true -> release_confirmed=True
++ missing release fact -> uncertain
+```
+
+详见 [2026-10 part5 v13.2.4](changelog/2026-10_part5.md)。See the detailed v13.2.4 record.
+
 ## v13.2.3 (2026-10-10 19:25) - codex
 
 ### 变更摘要 / Summary

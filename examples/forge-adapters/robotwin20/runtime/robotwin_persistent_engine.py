@@ -619,15 +619,31 @@ class RoboTwinPersistentEngine:
                     phases_result = terminal.value
                     if phases_result is None:
                         raise ValueError("route completed without contact validation")
-                    self._verify_release()
-                    release_confirmed = True
+                    # Detachment is a Runtime-owned possession fact.  Preserve it
+                    # even when the later placement verification fails, so the
+                    # next read-only reconciliation can distinguish an empty
+                    # gripper from an unresolved held object.
+                    collision_evidence = (
+                        phases_result[2]
+                        if isinstance(phases_result, tuple) and len(phases_result) > 2
+                        else {}
+                    )
+                    release_confirmed = bool(
+                        isinstance(collision_evidence, Mapping)
+                        and collision_evidence.get("planner_detached_after_release") is True
+                    )
+                    if isinstance(phases_result, Mapping):
+                        # The lightweight engine seam must carry the same explicit
+                        # Runtime-owned fact as the real collision record.
+                        release_confirmed = (
+                            phases_result.get("planner_detached_after_release") is True
+                        )
                     retreat_completed = any(
                         isinstance(record, Mapping) and record.get("phase") == "retreat"
                         for record in phases
                     )
-                    # The route planner's retreat phase performs the existing
-                    # clearance and contact checks before yielding its record.
                     clear_of_target = retreat_completed
+                    self._verify_release()
                     self._phases = None
                     break
             physical_phase_completed = True
@@ -692,6 +708,8 @@ class RoboTwinPersistentEngine:
                     result["video_evidence_error"] = type(video_error).__name__
             if changed:
                 result["new_scene_revision"] = self._advance_scene()
+        if phase == "place" and release_confirmed:
+            result["possession_state"] = "empty"
         self._state.pop("video_recorder", None)
         reference = f"artifact://persistent/{self.epoch}/action-{uuid4().hex}"
         result["scene_effects"] = self._scene_effects(

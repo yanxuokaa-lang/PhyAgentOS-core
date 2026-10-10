@@ -91,6 +91,69 @@ def test_cancelled_motion_retains_uncertain_possession_without_release():
         provider.close()
 
 
+def test_unknown_place_with_runtime_confirmed_release_reconciles_empty():
+    class ReleasedButUnverifiedEngine(Engine):
+        def execute(self, phase, arguments, cancel, *, owner, invocation_id):
+            if phase == "acquire":
+                return super().execute(
+                    phase, arguments, cancel, owner=owner, invocation_id=invocation_id
+                )
+            del phase, arguments, cancel, owner, invocation_id
+            return {
+                "status": "unknown",
+                "world_change_started": True,
+                "outcome_known": False,
+                "new_scene_revision": "scene-after-place",
+                "release_confirmed": True,
+                "possession_state": "empty",
+                "requires_replan": True,
+            }
+
+    provider = PersistentManipulationProvider(ReleasedButUnverifiedEngine)
+    try:
+        provider.start("acquire", "acquire", "owner", {"entity_ref": "entity://one"})
+        assert settle(provider, "acquire")["holding_state"] == "holding"
+        provider.start(
+            "place", "place", "owner",
+            {"entity_ref": "entity://one", "acquire_invocation_id": "acquire"},
+        )
+        receipt = settle(provider, "place")
+        assert receipt["status"] == "unknown"
+        assert receipt["holding_state"] == "empty"
+        assert receipt["possession_state"] == "empty"
+    finally:
+        provider.close()
+
+
+def test_unknown_place_without_runtime_possession_fact_remains_uncertain():
+    class UnresolvedPlaceEngine(Engine):
+        def execute(self, phase, arguments, cancel, *, owner, invocation_id):
+            if phase == "acquire":
+                return super().execute(
+                    phase, arguments, cancel, owner=owner, invocation_id=invocation_id
+                )
+            del phase, arguments, cancel, owner, invocation_id
+            return {
+                "status": "unknown",
+                "world_change_started": True,
+                "outcome_known": False,
+                "new_scene_revision": "scene-after-place",
+                "requires_replan": True,
+            }
+
+    provider = PersistentManipulationProvider(UnresolvedPlaceEngine)
+    try:
+        provider.start("acquire", "acquire", "owner", {"entity_ref": "entity://one"})
+        assert settle(provider, "acquire")["holding_state"] == "holding"
+        provider.start(
+            "place", "place", "owner",
+            {"entity_ref": "entity://one", "acquire_invocation_id": "acquire"},
+        )
+        assert settle(provider, "place")["holding_state"] == "uncertain"
+    finally:
+        provider.close()
+
+
 @pytest.mark.parametrize("mismatch", [False, True])
 def test_provider_publishes_held_receipt_only_with_matching_settled_possession(mismatch):
     class HeldEngine(Engine):
@@ -320,7 +383,10 @@ def test_zero_step_failure_claims_no_changed_entities():
     assert effects["carry_forward_authorized"] is False
 
 
-def test_place_engine_projects_verified_postconditions_without_video_encoder(tmp_path):
+@pytest.mark.parametrize("release_evidence", [True, None])
+def test_place_engine_projects_verified_postconditions_without_video_encoder(
+    tmp_path, release_evidence
+):
     from json import loads
     from pathlib import Path
 
@@ -350,7 +416,10 @@ def test_place_engine_projects_verified_postconditions_without_video_encoder(tmp
 
     def phases():
         yield {"phase": "retreat"}
-        return {"trajectory": True}
+        result = {"trajectory": True}
+        if release_evidence is not None:
+            result["planner_detached_after_release"] = release_evidence
+        return result
 
     engine._phases = phases()
     result = engine.execute(
@@ -362,12 +431,12 @@ def test_place_engine_projects_verified_postconditions_without_video_encoder(tmp
     )
 
     assert result["status"] == "succeeded"
-    assert result["release_confirmed"] is True
+    assert result["release_confirmed"] is (release_evidence is True)
     assert result["retreat_completed"] is True
     assert result["clear_of_target"] is True
-    assert result["observation_ready"] is True
+    assert result["observation_ready"] is (release_evidence is True)
     artifact = loads(_artifact_path(engine.root, result["artifact_refs"][0]).read_text())
-    assert artifact["observation_ready"] is True
+    assert artifact["observation_ready"] is (release_evidence is True)
     assert artifact["invocation_id"] == "invocation://object-place/1"
     assert artifact["owner"] == "paos:task-1"
     assert artifact["artifact_refs"] == result["artifact_refs"]
@@ -400,7 +469,7 @@ def test_place_engine_does_not_claim_clearance_without_retreat(tmp_path):
 
     def phases():
         yield {"phase": "descent"}
-        return {"trajectory": True}
+        return {"trajectory": True, "planner_detached_after_release": True}
 
     engine._phases = phases()
     result = engine.execute(

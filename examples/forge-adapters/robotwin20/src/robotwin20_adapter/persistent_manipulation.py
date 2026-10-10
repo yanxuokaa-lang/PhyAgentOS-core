@@ -33,6 +33,7 @@ _TERMINAL_FIELDS = (
     "retreat_completed",
     "clear_of_target",
     "observation_ready",
+    "possession_state",
     "video_evidence_error",
 )
 _ATTEMPT_FIELDS = (
@@ -308,7 +309,12 @@ class PersistentManipulationProvider:
                 }
         with self._lock:
             status = result.get("status")
-            if status == "succeeded" and result.get("outcome_known") is True:
+            explicit_possession = result.get("possession_state")
+            if explicit_possession == "empty" and phase == "place":
+                self._state = "empty"
+            elif explicit_possession == "holding" and phase == "acquire":
+                self._state = "holding"
+            elif status == "succeeded" and result.get("outcome_known") is True:
                 self._state = "holding" if phase == "acquire" else "empty"
             elif result.get("world_change_started") is False and result.get("continuation_valid") is not False:
                 self._state = "empty" if phase == "acquire" else "holding"
