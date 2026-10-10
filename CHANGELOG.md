@@ -8,6 +8,29 @@
 - [2026-09 part21](changelog/2026-09_part21.md)
 - [2026-09 part20](changelog/2026-09_part20.md)
 
+## v13.1.6 (2026-10-10 00:45) - codex
+
+### 变更摘要 / Summary
+- [env] [chore] 在授权下强制停止旧 Runtime，刷新 checkout Core，将已安装 Skill 从不一致的 `3.0.12` 发布为 `3.0.13`，并启动 `robotwin-blocks-ranking-graspnet` 新 Runtime。 (local)
+- [Env] [Chore] Under authorization, force-stop the old Runtime, refresh the checkout Core, publish the inconsistent installed Skill from `3.0.12` to `3.0.13`, and start the new `robotwin-blocks-ranking-graspnet` Runtime. (local)
+- [eval] [test] 新 bundle SHA-256=`529c265a2ec5d2f264e460a4e7ab822973eba8d16c65f056719c9c21ce5dfb33`；Runtime/Dora/Gateway running/ready，11/11 Tool contexts ready；无 AgentTask、Query/Action、simulator 或物理运动。 (local)
+- [Eval] [Test] New bundle SHA-256 is recorded; Runtime/Dora/Gateway are running/ready with 11/11 Tool contexts ready; no AgentTask, Query/Action, simulator, or physical motion was used. (local)
+
+### 文件与关键 Diff / Files and Key Diff
+- `examples/forge-skills/pick-place-workflow/skill.yaml:L1-L4` and `pyproject.toml:L1-L5`: `3.0.12` → `3.0.13`.
+- `examples/forge-skills/pick-place-workflow/tests/test_grasp_propose.py:L270`: bundle/package version assertion updated.
+- `changelog/2026-10_part5.md`: exact stop/install/start commands, bundle path/SHA, readiness, task-store and no-motion boundaries.
+
+```diff
+- installed pick-place-workflow 3.0.12 did not contain the reviewed Action contract
++ installed pick-place-workflow 3.0.13 contains the reviewed frame-lineage fix
+- Runtime old process
++ Runtime 3.0.13 profile running; Gateway /tools ready; 11/11 contexts ready
+```
+
+详见 [v13.1.6 月度日志](changelog/2026-10_part5.md)。
+See the [v13.1.6 detailed log](changelog/2026-10_part5.md).
+
 ## v13.1.5 (2026-10-10 00:30) - codex
 
 ### 变更摘要 / Summary
