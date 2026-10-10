@@ -35,6 +35,7 @@
 
 详见 [v13.1.7 月度日志](changelog/2026-10_part5.md)和[诊断](docs/forge/PREPARATION_NODE_DEPLOYMENT_DIAGNOSIS_20261010.md)。
 See the [v13.1.7 detailed log](changelog/2026-10_part5.md) and [diagnosis](docs/forge/PREPARATION_NODE_DEPLOYMENT_DIAGNOSIS_20261010.md).
+- Commit: `06e3cd9` on `feature/planning-loop` (implementation and release artifacts).
 
 ## v13.1.6 (2026-10-10 00:45) - codex
 
