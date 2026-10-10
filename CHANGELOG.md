@@ -18,6 +18,7 @@
 ```
 
 详见 [2026-10 part5 v13.2.2](changelog/2026-10_part5.md)。See the detailed v13.2.2 record.
+- Commit: `600c2bd` on `feature/planning-loop`.
 
 ## v13.2.1 (2026-10-10 17:40) - codex
 
