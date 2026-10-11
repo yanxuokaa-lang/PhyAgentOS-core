@@ -1,5 +1,10 @@
 # Change Log
 
+## v3.0.18 (2026-10-11)
+
+- 中文：发布 Adapter Node `1.0.8`，将 grounding Query 的结构化 reconciliation 字段投影到 Gateway 顶层，确保 `reconcile_world` 可到达 Core settlement；保留嵌套诊断与 no-motion contract。
+- English: Publish Adapter Node `1.0.8`, projecting structured grounding Query reconciliation fields to the Gateway top level so `reconcile_world` reaches Core settlement; preserve nested diagnostics and the no-motion contract.
+
 ## v3.0.17 (2026-10-11)
 
 - 中文：发布 Adapter Node `1.0.7`，修复未知 place 的后置验证异常仍保留 Runtime-owned 释放证据；动作仍保持 unknown，不伪造 placement success。

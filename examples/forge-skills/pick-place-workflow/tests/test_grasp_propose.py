@@ -267,10 +267,10 @@ def test_bundle_and_package_versions_match_the_feature_revision():
     )
     import tomllib
 
-    assert bundle_manifest["version"] == "3.0.17"
+    assert bundle_manifest["version"] == "3.0.18"
     assert tomllib.loads(package_text)["project"]["version"] == bundle_manifest["version"]
     node = bundle_manifest["artifacts"]["nodes"]["robotwin20_persistent_host"]
-    assert node["version"] == "1.0.7"
+    assert node["version"] == "1.0.8"
     assert node["artifact_id"] == f"robotwin20_persistent_host-{node['version']}-linux-x86_64"
 
 

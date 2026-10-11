@@ -1,5 +1,14 @@
 # Changelog
 
+## v13.2.10 (2026-10-11 18:10) - codex
+
+### 变更摘要 / Summary [完成]
+- [eval] [fix] 同步发布版本一致性测试至 Skill `3.0.18` / Node `1.0.8`，修复部署后测试仍断言 `3.0.17` / `1.0.7` 的问题；不改变 Runtime 或运动行为。 / Align the release-version consistency test with Skill `3.0.18` / Node `1.0.8`, fixing stale `3.0.17` / `1.0.7` assertions after deployment; change no Runtime or motion behavior.
+
+详见 [2026-10 part5 v13.2.10](changelog/2026-10_part5.md)。See the detailed v13.2.10 record.
+- Skill release/install tests: `88 passed`; Ruff、compileall、`git diff --check` passed；Runtime 保持 running，未创建任务或执行运动。 / Skill release/install tests: `88 passed`; Ruff, compileall, and `git diff --check` passed; Runtime remains running, with no task creation or motion.
+- Commit: 待提交 / pending.
+
 ## v13.2.8 (2026-10-11 10:30) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -12,6 +21,19 @@
 
 详见 [2026-10 part5 v13.2.8](changelog/2026-10_part5.md)。See the detailed v13.2.8 record.
 - Commit: `4c626fdb` on `feature/planning-loop`.
+
+## v13.2.9 (2026-10-11 10:45) - codex
+
+### 变更摘要 / Summary [完成]
+- [env] [chore] 在用户授权下强制停止旧 Runtime，刷新 editable Core，并发布包含 v13.2.8 Adapter 修复的 Skill `3.0.18` / Node `1.0.8`；启动既有 `robotwin-blocks-ranking-graspnet` profile。 / Under user authorization, force-stop the old Runtime, refresh editable Core, and publish Skill `3.0.18` / Node `1.0.8` containing the v13.2.8 Adapter fix; start the existing `robotwin-blocks-ranking-graspnet` profile.
+- [eval] [test] 仅验收 Runtime/Dora/Gateway/Tool readiness、active lock、安装版本、任务库非终态数量和 no-motion；不创建 AgentTask、不调用 Query/Action、不读取相机、不推进 simulator。 / Validate only Runtime/Dora/Gateway/Tool readiness, active lock, installed versions, non-terminal task count, and no-motion; create no AgentTask, invoke no Query/Action, read no camera, and advance no simulator.
+
+### 部署结果 / Deployment Result
+- Skill `3.0.18` / Node `1.0.8` installed and verified; Runtime/Dora `running`, Gateway `ready`, 11/11 Tool contexts `ready`; active lock uses Node SHA `c5cf0ce28581b6b4b3739e0fac39864e81bebd4d2a2e8150675574053ebff582`. / Skill `3.0.18` / Node `1.0.8` installed and verified; Runtime/Dora are running, Gateway is ready, all 11/11 Tool contexts are ready, and the active lock uses the recorded Node SHA.
+- Task store remains terminal-only (`cancelled=197`, `failed=92`); no AgentTask, Query/Action, camera, simulator, or motion was used. / The task store remains terminal-only; no AgentTask, Query/Action, camera, simulator, or motion was used.
+
+详见 [2026-10 part5 v13.2.9](changelog/2026-10_part5.md)。See the detailed v13.2.9 record.
+- Commit: 待提交 / pending.
 
 ## v13.2.7 (2026-10-11 09:47) - codex
 
