@@ -11,7 +11,7 @@
 ### 文件与关键 Diff / Files and Key Diff
 - `examples/forge-adapters/robotwin20/src/robotwin20_adapter/grounding.py:L115-L133`、`PhyAgentOS/agent/planning_loop.py:L1753-L1781`：显式传播 `reconcile_world` 并在模型 recovery 前保留对账任务所有权。 / Propagate `reconcile_world` explicitly and retain reconciliation task ownership before model recovery.
 - `examples/forge-adapters/robotwin20/tests/test_grounding.py:L803-L816`、`tests/test_planning_loop.py:L1561-L1614`：覆盖 uncertain possession 和 failed `scene.bind` block。 / Cover uncertain possession and failed `scene.bind` blocking.
-- `docs/forge/UNKNOWN_ACQUIRE_GROUNDING_RECONCILIATION_DIAGNOSIS_20261011.md:L1-L111`、`changelog/2026-10_part5.md:L3-L67`：保存权威诊断、七维审查和 no-motion 验证。 / Record authoritative diagnosis, seven-dimension review, and no-motion validation.
+- `docs/forge/UNKNOWN_ACQUIRE_GROUNDING_RECONCILIATION_DIAGNOSIS_20261011.md:L1-L114`、`changelog/2026-10_part5.md:L3-L51`：保存权威诊断、七维审查和 no-motion 验证。 / Record authoritative diagnosis, seven-dimension review, and no-motion validation.
 
 ```diff
 - uncertain possession -> scene.bind failed -> recovery stop -> task failed
