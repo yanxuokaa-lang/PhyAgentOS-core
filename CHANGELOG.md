@@ -11,7 +11,7 @@
 - 七维复审通过：架构、正确性、可观测性、恢复幂等、机器人安全、扩展兼容、AgentLoop 收敛均保持边界；Core `280 passed`、RobotWin `137 passed`、静态检查通过、全程 no-motion。 / Seven-dimension review passed for architecture, correctness, observability, recovery/idempotency, robotics safety, extension compatibility, and AgentLoop convergence; Core `280 passed`, RobotWin `137 passed`, static checks passed, all no-motion.
 
 详见 [2026-10 part5 v13.2.8](changelog/2026-10_part5.md)。See the detailed v13.2.8 record.
-- Commit: 待提交 / pending.
+- Commit: `4c626fdb` on `feature/planning-loop`.
 
 ## v13.2.7 (2026-10-11 09:47) - codex
 
