@@ -1140,6 +1140,20 @@ class GroundingEndpoint:
                         error[key] = deepcopy(diagnostics[key])
             value = {"status": "unavailable", "motion_authorized": False,
                      "error": error}
+            # Gateway records expose structured Query facts at the response
+            # level. Keep the detailed error/diagnostics payload for operators,
+            # while projecting the recovery fields where Core settlement reads
+            # them instead of making every consumer understand adapter details.
+            for key in (
+                "failure_stage",
+                "retryable",
+                "retryable_in_revision",
+                "requires_replan",
+                "recommended_action",
+                "fresh_evidence_requirements",
+            ):
+                if key in error:
+                    value[key] = deepcopy(error[key])
             if isinstance(diagnostics, dict):
                 value["diagnostics"] = deepcopy(diagnostics)
             return value

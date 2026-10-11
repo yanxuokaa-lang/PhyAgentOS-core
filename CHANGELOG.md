@@ -1,5 +1,18 @@
 # Changelog
 
+## v13.2.8 (2026-10-11 10:30) - codex
+
+### 变更摘要 / Summary [完成]
+- [comm] [fix] 修复 grounding Query 的结构化 `recommended_action` 仅嵌套在 `error`/`diagnostics`、未进入 Core settlement 的响应投影缺口；保持 Runtime 对账语义可达，不改变运动授权或普通 grounding failure 行为。 / Fix the response projection gap where a grounding Query's structured `recommended_action` stayed nested under `error`/`diagnostics` and never reached Core settlement; keep Runtime reconciliation reachable without changing motion authorization or ordinary grounding failures.
+- [eval] [test] 增加真实 GroundingEndpoint 到 Core fact projection 回归，覆盖 `reconcile_world` 字段与 no-motion recovery block。 / Add a real GroundingEndpoint-to-Core fact projection regression covering `reconcile_world` and the no-motion recovery block.
+
+### Code Review Finding / 审查发现
+- **Major：** `recommended_action` 原先只在 `error`/`diagnostics` 内，真实 Gateway 记录进入 Core settlement 时会丢失 `reconcile_world`；已在 `GroundingEndpoint` 顶层投影既有结构化字段，并保留嵌套诊断。 / **Major:** `recommended_action` was nested only under `error`/`diagnostics`, so real Gateway records lost `reconcile_world` before Core settlement; the existing structured fields are now projected at the `GroundingEndpoint` top level while nested diagnostics remain.
+- 七维复审通过：架构、正确性、可观测性、恢复幂等、机器人安全、扩展兼容、AgentLoop 收敛均保持边界；Core `280 passed`、RobotWin `137 passed`、静态检查通过、全程 no-motion。 / Seven-dimension review passed for architecture, correctness, observability, recovery/idempotency, robotics safety, extension compatibility, and AgentLoop convergence; Core `280 passed`, RobotWin `137 passed`, static checks passed, all no-motion.
+
+详见 [2026-10 part5 v13.2.8](changelog/2026-10_part5.md)。See the detailed v13.2.8 record.
+- Commit: 待提交 / pending.
+
 ## v13.2.7 (2026-10-11 09:47) - codex
 
 ### 变更摘要 / Summary

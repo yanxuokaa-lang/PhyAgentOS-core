@@ -809,6 +809,10 @@ def test_uncertain_possession_requires_runtime_reconciliation(tmp_path):
     assert result["status"] == "unavailable"
     assert result["error"]["code"] == "grounding_unavailable"
     assert result["error"]["recommended_action"] == "reconcile_world"
+    assert result["recommended_action"] == "reconcile_world"
+    assert result["fresh_evidence_requirements"] == (
+        "runtime_possession_reconciliation",
+    )
     assert result["diagnostics"]["recommended_action"] == "reconcile_world"
     assert result["diagnostics"]["fresh_evidence_requirements"] == (
         "runtime_possession_reconciliation",
