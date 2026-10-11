@@ -19,7 +19,7 @@
 ```
 
 详见 [2026-10 part5 v13.2.7](changelog/2026-10_part5.md)。See the detailed v13.2.7 record.
-- Commit: 待提交 / pending.
+- Commit: `d2e73e62` on `feature/planning-loop`.
 
 ## v13.2.6 (2026-10-11 00:00) - codex
 
