@@ -1,5 +1,26 @@
 # Changelog
 
+## v13.2.7 (2026-10-11 09:47) - codex
+
+### 变更摘要 / Summary
+- [policy] [fix] 未知 world-changing Action 后的 uncertain possession 不再被 `scene.bind` recovery stop 错误终结；Runtime reconciliation recommendation 现在进入同一 AgentTask 的 blocked/awaiting-replan 生命周期。 (local)
+- [Policy] [Fix] Do not terminalize uncertain possession after an unknown world-changing Action through `scene.bind` recovery stop; route the Runtime reconciliation recommendation into the same AgentTask's blocked/awaiting-replan lifecycle. (local)
+- [eval] [test] 新增 uncertain possession grounding 与 PlanningLoop no-motion 回归；Core `261 passed`，RobotWin `137 passed`，Ruff/compileall/diff check 通过。 (local)
+- [Eval] [Test] Add uncertain-possession grounding and PlanningLoop no-motion regressions; Core `261 passed`, RobotWin `137 passed`, and Ruff/compileall/diff checks pass. (local)
+
+### 文件与关键 Diff / Files and Key Diff
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/grounding.py:L115-L133`、`PhyAgentOS/agent/planning_loop.py:L1753-L1781`：显式传播 `reconcile_world` 并在模型 recovery 前保留对账任务所有权。 / Propagate `reconcile_world` explicitly and retain reconciliation task ownership before model recovery.
+- `examples/forge-adapters/robotwin20/tests/test_grounding.py:L803-L816`、`tests/test_planning_loop.py:L1561-L1614`：覆盖 uncertain possession 和 failed `scene.bind` block。 / Cover uncertain possession and failed `scene.bind` blocking.
+- `docs/forge/UNKNOWN_ACQUIRE_GROUNDING_RECONCILIATION_DIAGNOSIS_20261011.md:L1-L111`、`changelog/2026-10_part5.md:L3-L67`：保存权威诊断、七维审查和 no-motion 验证。 / Record authoritative diagnosis, seven-dimension review, and no-motion validation.
+
+```diff
+- uncertain possession -> scene.bind failed -> recovery stop -> task failed
++ uncertain possession -> reconcile_world -> blocked / awaiting_replan
+```
+
+详见 [2026-10 part5 v13.2.7](changelog/2026-10_part5.md)。See the detailed v13.2.7 record.
+- Commit: 待提交 / pending.
+
 ## v13.2.6 (2026-10-11 00:00) - codex
 
 ### 变更摘要 / Summary
@@ -83,25 +104,7 @@
 详见 [2026-10 part5 v13.2.3](changelog/2026-10_part5.md)。See the detailed v13.2.3 record.
 - Commit: `ac3921a` on `feature/planning-loop`.
 
-## v13.2.2 (2026-10-10 18:50) - codex
-
-### 变更摘要 / Summary
-- [eval] [test] 补齐 ready-context Query provider failure 在 replan budget 耗尽时的 bounded terminal 回归，防止重新退化为 `waiting_for_runtime`。 (local)
-- [Eval] [Test] Add a bounded-terminal regression for a ready-context Query provider failure with an exhausted replan budget, preventing regression to `waiting_for_runtime`. (local)
-- [eval] [test] Provider-block 定向测试 `11 passed`；完整套件 `260 passed`；Ruff、compileall、diff check 通过；no-motion。 (local)
-- [Eval] [Test] Provider-block focused tests passed (`11`); full suite passed (`260`); Ruff, compileall, and diff checks passed; no-motion.
-
-### 文件与关键 Diff / Files and Key Diff
-- `PhyAgentOS/forge/task.py:L1610-L1635`、`tests/test_planning_loop.py:L3567-L3649`：修复事务后事件 payload 的预算状态，并增加 `max_replans=0` 的 ready-context provider terminal 回归。 / Fix the post-mutation event payload budget state and add the `max_replans=0` ready-context provider terminal regression.
-- `changelog/2026-10_part5.md:L3-L20`：记录七维审查结论和验证结果。 / Record the seven-dimension review conclusion and validation.
-
-```diff
-- ready-context provider failure with exhausted budget could regress without coverage
-+ terminal failed; no runtime wait, no deadline, no settlement, no Action
-```
-
-详见 [2026-10 part5 v13.2.2](changelog/2026-10_part5.md)。See the detailed v13.2.2 record.
-- Commit: `600c2bd` on `feature/planning-loop`.
+<!-- v13.2.2 is archived in changelog/2026-10_part5.md. -->
 
 ## v13.2.1 (2026-10-10 17:40) - codex
 

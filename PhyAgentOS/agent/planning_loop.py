@@ -1750,6 +1750,29 @@ class PlanningLoopAdapter:
         pending_scene_refresh: str | None = None,
         checkpoint: Callable[[str], bool] | None = None,
     ) -> PlanningLoopResult:
+        # A Runtime-owned reconciliation recommendation is a safety handoff,
+        # not an ordinary Query failure for the recovery model to reinterpret.
+        # In particular, an uncertain possession snapshot after an unknown
+        # world-changing Action must retain task ownership until Runtime facts
+        # establish empty/holding; no model decision can make scene.bind safe.
+        if (
+            settlement.status == "failed"
+            and settlement.recommended_action == "reconcile_world"
+        ):
+            self.coordinator.record_planning_node_blocked(
+                task_id,
+                context.revision_id,
+                context.node_id,
+                "reconciliation_required:" + settlement.node_id,
+            )
+            return PlanningLoopResult(
+                task_id,
+                "blocked",
+                tuple(completed),
+                len(self.coordinator.get_task(task_id).revisions),
+                replans,
+                f"reconciliation_required:{settlement.node_id}",
+            )
         delta = build_replan_delta(graph, settlement)
         decision: RecoveryDecision = "replan" if self.replan_proposer is not None else "stop"
         if self.recovery_policy is not None:

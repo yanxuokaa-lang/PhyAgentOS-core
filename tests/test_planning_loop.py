@@ -1558,6 +1558,62 @@ def test_unknown_outcome_stops_without_implicit_replay(tmp_path):
     assert calls["count"] == 1
 
 
+def test_runtime_reconciliation_recommendation_blocks_failed_query_without_terminalizing(
+    tmp_path,
+):
+    c = coordinator(tmp_path)
+    task = c.create_task(
+        task_description="uncertain possession grounding",
+        verification=TaskVerificationContract(mode="off"),
+    )
+    graph = make_graph(task.task_id, "revision-grounding-reconcile", ("bind", "act"))
+    c.expand_discovery_revision(
+        task.task_id,
+        plan_graph=graph,
+        plan_graph_ref="artifact://plans/grounding-reconcile",
+    )
+    calls = {"execute": 0, "replan": 0}
+
+    def execute(context):
+        calls["execute"] += 1
+        return ToolResultEnvelope(
+            task_id=context.task_id,
+            revision_id=context.revision_id,
+            node_id=context.node_id,
+            tool_id="scene.bind",
+            status="failed",
+            failure_code="grounding_unavailable",
+            recommended_action="reconcile_world",
+        )
+
+    def replan(*_):
+        calls["replan"] += 1
+        raise AssertionError("Runtime reconciliation must precede model recovery")
+
+    result = asyncio.run(
+        PlanningLoopAdapter(
+            c,
+            context_provider=NodeContextProvider(c.get_task),
+            node_executor=execute,
+            replan_proposer=replan,
+            recovery_policy=lambda *_: "stop",
+            admission_context_provider=lambda _: AdmissionContext(
+                scene_revision="scene-1", evidence_refs=frozenset({"scene:inventory"})
+            ),
+        ).run(task.task_id, scene_revision="scene-1")
+    )
+
+    current = c.get_task(task.task_id)
+    assert result.status == "blocked"
+    assert result.last_failure == "reconciliation_required:bind"
+    assert current.status == AgentTaskStatus.AWAITING_REPLAN
+    assert current.terminal is False
+    assert current.active_revision.node_settlements[-1].failure_code == (
+        "grounding_unavailable"
+    )
+    assert calls == {"execute": 1, "replan": 0}
+
+
 @pytest.mark.parametrize("decision", ["stop", "replan"])
 def test_unknown_outcome_always_requires_reconciliation_before_recovery_decision(
     tmp_path, decision

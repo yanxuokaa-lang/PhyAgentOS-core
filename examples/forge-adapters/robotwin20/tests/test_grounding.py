@@ -800,6 +800,22 @@ def test_binding_diagnostics_identify_entity_scoped_blocking_ambiguity(tmp_path)
     }
 
 
+def test_uncertain_possession_requires_runtime_reconciliation(tmp_path):
+    grounding, request, _ = setup(tmp_path)
+    grounding.client.holding = "uncertain"
+
+    result = GroundingEndpoint(grounding.bind).invoke(request)
+
+    assert result["status"] == "unavailable"
+    assert result["error"]["code"] == "grounding_unavailable"
+    assert result["error"]["recommended_action"] == "reconcile_world"
+    assert result["diagnostics"]["recommended_action"] == "reconcile_world"
+    assert result["diagnostics"]["fresh_evidence_requirements"] == (
+        "runtime_possession_reconciliation",
+    )
+    assert result["diagnostics"]["actual"]["holding_state"] == "uncertain"
+
+
 def test_binding_diagnostics_report_invalid_entity_refs_shape(tmp_path):
     g, request, _ = setup(tmp_path)
     request["entity_refs"] = "entity://seen"

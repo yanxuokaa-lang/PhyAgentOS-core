@@ -113,9 +113,20 @@ class Grounding:
                 actual={**actual, "holding_state": holding_state},
             )
         if actual != expected or holding_state not in {"empty", "holding"}:
+            reconciliation = (
+                {
+                    "recommended_action": "reconcile_world",
+                    "fresh_evidence_requirements": (
+                        "runtime_possession_reconciliation",
+                    ),
+                }
+                if holding_state == "uncertain"
+                else {}
+            )
             self._reject(
                 "grounding requires the current stable action-driven scene",
                 stage="current_scene",
+                **reconciliation,
                 expected={**expected, "holding_state": ["empty", "holding"]},
                 actual={**actual, "holding_state": holding_state},
             )
