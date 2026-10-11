@@ -7,7 +7,7 @@
 
 详见 [2026-10 part5 v13.2.10](changelog/2026-10_part5.md)。See the detailed v13.2.10 record.
 - Skill release/install tests: `88 passed`; Ruff、compileall、`git diff --check` passed；Runtime 保持 running，未创建任务或执行运动。 / Skill release/install tests: `88 passed`; Ruff, compileall, and `git diff --check` passed; Runtime remains running, with no task creation or motion.
-- Commit: 待提交 / pending.
+- Commit: `31c391f9` on `feature/planning-loop`.
 
 ## v13.2.8 (2026-10-11 10:30) - codex
 
@@ -33,7 +33,7 @@
 - Task store remains terminal-only (`cancelled=197`, `failed=92`); no AgentTask, Query/Action, camera, simulator, or motion was used. / The task store remains terminal-only; no AgentTask, Query/Action, camera, simulator, or motion was used.
 
 详见 [2026-10 part5 v13.2.9](changelog/2026-10_part5.md)。See the detailed v13.2.9 record.
-- Commit: 待提交 / pending.
+- Commit: `31c391f9` on `feature/planning-loop`.
 
 ## v13.2.7 (2026-10-11 09:47) - codex
 
