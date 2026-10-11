@@ -1,5 +1,19 @@
 # Changelog
 
+## v13.2.6 (2026-10-11 00:00) - codex
+
+### 变更摘要 / Summary
+- [env] [chore] 按授权强制停止旧 Runtime，安装 Skill `3.0.17` / Node `1.0.7`，并启动同一 `robotwin-blocks-ranking-graspnet` profile。 (local)
+- [Env] [Chore] Under authorization, force-stop the old Runtime, install Skill `3.0.17` / Node `1.0.7`, and start the same `robotwin-blocks-ranking-graspnet` profile. (local)
+- [eval] [test] Runtime/Dora running、Gateway ready、11/11 Tool contexts ready、非终态任务为 0；未调用 Query/Action，无物理运动。 (local)
+- [Eval] [Test] Runtime/Dora running, Gateway ready, all 11/11 Tool contexts ready, and zero non-terminal tasks; no Query/Action calls or physical motion occurred. (local)
+
+### 文件与锁 / Files and Lock
+- `changelog/2026-10_part5.md:L3-L14`：记录强制停止、Core 刷新、Skill/Node 安装、启动、active lock 和 no-motion 验收。 / Record force-stop, Core refresh, Skill/Node installation, start, active lock, and no-motion acceptance.
+- Active lock uses Skill `3.0.17` / Node `1.0.7`, Node SHA `92a501e6774a1910d8ad377925432e000d15a229f70ebfdf874105d81ba5dfef`.
+
+详见 [2026-10 part5 v13.2.6](changelog/2026-10_part5.md)。See the detailed v13.2.6 record.
+
 ## v13.2.5 (2026-10-11 00:00) - codex
 
 ### 变更摘要 / Summary
