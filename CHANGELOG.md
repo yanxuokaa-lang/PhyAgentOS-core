@@ -1,5 +1,27 @@
 # Changelog
 
+## v13.2.5 (2026-10-11 00:00) - codex
+
+### 变更摘要 / Summary
+- [policy] [fix] 修复未知 place 的后置验证异常丢失 Runtime 已确认释放事实的问题；结果继续为 `unknown`，但可安全进入 possession 对账。 (local)
+- [Policy] [Fix] Preserve Runtime-confirmed release evidence when unknown-place postcondition verification raises; keep the result `unknown` while allowing safe possession reconciliation. (local)
+- [eval] [test] 增加真实 `_verify_release()` 异常回归；定向 Adapter/Skill/AgentLoop 测试 `120 passed`，无物理运动。 (local)
+- [Eval] [Test] Add a real `_verify_release()` exception regression; focused Adapter/Skill/AgentLoop tests passed (`120`), with no physical motion.
+- [env] [chore] 发布 Skill `3.0.17` / Node `1.0.7`，Node SHA `92a501e6774a1910d8ad377925432e000d15a229f70ebfdf874105d81ba5dfef`。 (local)
+- [Env] [Chore] Publish Skill `3.0.17` / Node `1.0.7`, with Node SHA `92a501e6774a1910d8ad377925432e000d15a229f70ebfdf874105d81ba5dfef`. (local)
+
+### 文件与关键 Diff / Files and Key Diff
+- `examples/forge-adapters/robotwin20/runtime/robotwin_persistent_engine.py:L641-L650,L674-L715`：异常路径保留 Runtime-owned possession 事实，并清理 exhausted route generator。 / Preserve Runtime-owned possession facts in the exception path and clear the exhausted route generator.
+- `examples/forge-adapters/robotwin20/tests/test_persistent_manipulation.py:L490-L538`：覆盖 placement verification exception，不伪造成功。 / Cover placement-verification exceptions without fabricating success.
+- `examples/forge-skills/pick-place-workflow/skill.yaml:L1-L3,L223-L229`、`pyproject.toml:L1-L3`、`tests/test_grasp_propose.py:L270-L274`：同步 Skill/Node 发布版本和锁。 / Align Skill/Node release versions and locks.
+
+```diff
+- postcondition exception -> release_confirmed=false -> provider uncertain
++ postcondition exception + explicit Runtime release -> unknown + possession_state=empty
+```
+
+详见 [2026-10 part5 v13.2.5](changelog/2026-10_part5.md)。See the detailed v13.2.5 record.
+
 ## v13.2.4 (2026-10-10 19:45) - codex
 
 ### 变更摘要 / Summary

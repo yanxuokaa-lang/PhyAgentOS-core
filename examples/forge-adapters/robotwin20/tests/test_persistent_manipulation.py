@@ -487,6 +487,57 @@ def test_place_engine_does_not_claim_clearance_without_retreat(tmp_path):
     assert result["observation_ready"] is False
 
 
+def test_place_engine_preserves_release_when_postcondition_verification_fails(tmp_path):
+    from robotwin_persistent_engine import RoboTwinPersistentEngine, _StopSignal
+
+    class Video:
+        recorder = None
+
+        def start_action(self, *_args, **_kwargs):
+            return None
+
+        def finish_action(self, *_args, **_kwargs):
+            return ()
+
+    engine = object.__new__(RoboTwinPersistentEngine)
+    engine.root = tmp_path
+    engine.epoch = "unknown-place"
+    engine.duration = 30
+    engine.stop = _StopSignal(tmp_path / "stop")
+    engine.backend = SimpleNamespace(_task=SimpleNamespace(), snapshot=lambda: {"scene_revision": "scene-2"})
+    engine.video = Video()
+    engine._state = {"simulator_steps": 4, "assignment_ref": "assignment-1"}
+    engine._request = {"scene_revision": "scene-1"}
+    engine._advance_scene = lambda: "scene-3"
+
+    def verify_release():
+        engine._state["simulator_steps"] = 5
+        raise ValueError("after-state placement verification failed")
+
+    engine._verify_release = verify_release
+
+    def phases():
+        yield {"phase": "retreat"}
+        return {"trajectory": True, "planner_detached_after_release": True}
+
+    engine._phases = phases()
+    result = engine.execute(
+        "place",
+        {"scene_revision": "scene-2", "assignment_ref": "assignment-1", "entity_ref": "entity://one"},
+        Event(),
+        owner="paos:task-1",
+        invocation_id="invocation://object-place/unknown",
+    )
+
+    assert result["status"] == "unknown"
+    assert result["outcome_known"] is False
+    assert result["world_change_started"] is True
+    assert result["release_confirmed"] is True
+    assert result["possession_state"] == "empty"
+    assert result["observation_ready"] is False
+    assert engine._phases is None
+
+
 def test_acquire_engine_persists_held_identity_separately_from_unchanged(tmp_path):
     from robotwin_persistent_engine import _StopSignal
     from robotwin_simulation_probe_worker import _artifact_path

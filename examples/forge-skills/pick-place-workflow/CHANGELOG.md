@@ -1,5 +1,10 @@
 # Change Log
 
+## v3.0.17 (2026-10-11)
+
+- 中文：发布 Adapter Node `1.0.7`，修复未知 place 的后置验证异常仍保留 Runtime-owned 释放证据；动作仍保持 unknown，不伪造 placement success。
+- English: Publish Adapter Node `1.0.7`, preserving Runtime-owned release evidence when unknown-place postcondition verification raises; the action remains unknown and placement success is never fabricated.
+
 ## v3.0.16 (2026-10-10)
 
 - 中文：发布 Adapter Node `1.0.6`，将 Runtime-owned possession projection 打包进未知 place 恢复路径；释放已确认但放置验证失败时可继续只读对账，证据不足仍保持 uncertain。

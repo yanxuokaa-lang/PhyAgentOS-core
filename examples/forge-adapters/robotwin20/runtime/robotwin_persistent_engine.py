@@ -643,8 +643,11 @@ class RoboTwinPersistentEngine:
                         for record in phases
                     )
                     clear_of_target = retreat_completed
-                    self._verify_release()
+                    # The route has reached its terminal Runtime-owned result;
+                    # do not retain an exhausted generator if postcondition
+                    # verification below reports an unknown placement.
                     self._phases = None
+                    self._verify_release()
                     break
             physical_phase_completed = True
             try:
@@ -692,9 +695,9 @@ class RoboTwinPersistentEngine:
                       "failed_phase": self._state.get("phase", phase),
                       "arm_attempts": list(self._state.get("arm_selection_attempts", [])),
                       "evidence_refs": [],
-                      "release_confirmed": False,
-                      "retreat_completed": False,
-                      "clear_of_target": False,
+                      "release_confirmed": release_confirmed if phase == "place" else False,
+                      "retreat_completed": retreat_completed if phase == "place" else False,
+                      "clear_of_target": clear_of_target if phase == "place" else False,
                       "observation_ready": False}
             if not evidence_failure:
                 try:
