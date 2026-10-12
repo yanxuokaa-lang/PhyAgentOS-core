@@ -23,7 +23,8 @@
 ### 验证、部署与提交 / Validation, Deployment, and Commit
 - Ruff、compileall、`git diff --check` passed；`333 passed` + `328 passed`。 / Static checks passed; `333 passed` plus `328 passed`.
 - 未部署或重启 Runtime，未创建任务、调用 Query/Action 或产生运动。 / Runtime was not deployed or restarted; no task, Query/Action, or motion was created.
-- Implementation/review commit follows separately. / 实现与审查提交随后记录。
+- Implementation/review commit: `60f8abb4` on `feature/planning-loop`. / 实现与审查提交：`60f8abb4`，分支 `feature/planning-loop`。
+- Log/index completion commit follows separately. / 日志与索引完成提交随后记录。
 
 ## v13.3.0 (2026-10-12 14:09) - codex
 
