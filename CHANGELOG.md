@@ -27,7 +27,7 @@
 ```
 
 详见 [v13.3.7 月度日志](changelog/2026-10_part6.md)。 / See the [v13.3.7 detailed log](changelog/2026-10_part6.md).
-- Deployment log/index commit pending on `feature/planning-loop`. / 部署日志与索引提交待在 `feature/planning-loop` 完成。
+- Deployment log/index commit: `ee95434d` on `feature/planning-loop`; commit-reference completion follows separately. / 部署日志与索引提交：`ee95434d`，分支 `feature/planning-loop`；提交引用补全随后单独完成。
 
 ## v13.3.6 (2026-10-12 21:37) - codex
 
