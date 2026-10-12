@@ -661,6 +661,7 @@ def test_scene_bind_node_context_projects_current_candidates_without_auto_select
     prompt = AgentLoopNodeExecutor._default_prompt(context)
 
     assert projection["scene_bind_selection"]["status"] == "available"
+    assert context.agent_selection_required is True
     assert projection["scene_bind_selection"]["source_record_id"] == "understand-current"
     assert projection["scene_bind_selection"]["recommended_unambiguous_entity_refs"] == [
         "entity://task-a", "entity://task-b"
@@ -3283,6 +3284,8 @@ def test_scene_bind_pending_selection_crosses_wrapper_boundary_or_reports_exact_
         required_evidence=(),
         input_bindings={},
         scene_revision="scene-1",
+        agent_selection_required=True,
+        scene_bind_selection={"status": "available"},
     )
     coordinator = Coordinator()
     loop = Loop(coordinator)
@@ -3449,6 +3452,51 @@ def test_node_executor_persists_and_consumes_zero_choice_query_before_model_turn
         "use_selected_arguments": True,
         "planning_binding": {"node_id": "prepare"},
     })]
+
+
+@pytest.mark.parametrize("selection_status", ["available", "unavailable"])
+def test_node_executor_never_auto_selects_agent_owned_semantic_context(
+    selection_status,
+):
+    task = SimpleNamespace(
+        active_revision_id="revision-resume",
+        active_revision=SimpleNamespace(execution_records=[]),
+    )
+
+    class Coordinator:
+        def get_task(self, _task_id):
+            return task
+
+        def pending_planning_selection(self, *_args, **_kwargs):
+            return None
+
+    class Loop:
+        tools = SimpleNamespace()
+
+        def __init__(self):
+            self.selection_calls = 0
+            self.model_calls = 0
+
+        def persist_deterministic_query_selection(self, *_args):
+            self.selection_calls += 1
+            raise AssertionError("Agent-owned semantic selection must not be automated")
+
+        async def run_node_turn(self, **_kwargs):
+            self.model_calls += 1
+            return SimpleNamespace(turn_failure_code="semantic_selection_required")
+
+    context = _executor_context().model_copy(update={
+        "capability": "scene.bind",
+        "agent_selection_required": True,
+        "scene_bind_selection": {"status": selection_status},
+    })
+    loop = Loop()
+
+    with pytest.raises(NodeTurnIncompleteError, match="semantic_selection_required"):
+        asyncio.run(AgentLoopNodeExecutor(loop, Coordinator())(context))
+
+    assert loop.selection_calls == 0
+    assert loop.model_calls == 1
 
 
 def test_node_executor_consumes_concurrent_selection_before_model_turn():

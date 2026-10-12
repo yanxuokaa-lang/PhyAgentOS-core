@@ -103,12 +103,21 @@ Eligibility requires all of the following:
 - a frozen input schema exists;
 - the node's frozen arguments pass the complete schema after normal defaults;
 - no argument projection or projection source exists;
-- no trusted argument builder or runtime semantic intent exists.
+- no trusted argument builder or runtime semantic intent exists;
+- the bounded node context does not declare an Agent-owned semantic selection.
 
-If any condition fails, the method returns no proposal and the normal Agent turn
-retains ownership. The ordinary admission path still validates readiness,
+If dispatch eligibility fails, it returns no proposal. If the node context
+declares a semantic choice, the executor skips auto-selection altogether. The
+normal Agent turn retains ownership. The ordinary admission path validates readiness,
 evidence, scene identity, semantic bindings, input schema, digests, and the
 transactional absence of an execution or settlement.
+
+The node executor enforces the final condition before asking dispatch to compile
+a deterministic proposal. A `scene.bind` context, whether currently available
+or unavailable, is explicitly Agent-owned because its entity choice must be
+checked against current understanding and ambiguity facts. An already persisted
+selection is still resumed first: it has already crossed Coordinator admission
+and must not be discarded or duplicated.
 
 For semantic binding contexts, evidence selection follows the frozen graph:
 
@@ -130,6 +139,11 @@ choose a source record, compile provider output, author geometry, infer a target
 or supply manipulation intent. It also cannot weaken freshness, calibration,
 workspace, collision, IK, motion authorization, Gateway admission, reconciliation,
 or terminal settlement.
+
+It also cannot bypass an explicit semantic-selection context merely because the
+frozen Tool arguments satisfy JSON schema. This matters even for a read-only
+binding Query: a wrong stable identity mapping can contaminate a later Action,
+so current ambiguity remains fail-closed and Agent-owned.
 
 The rule depends only on PlanNode, ToolSpec, Query semantics, frozen schema, and
 Coordinator admission. It contains no branch for RGB, color, blocks, scene.bind,
@@ -160,3 +174,6 @@ Regression coverage must demonstrate:
 6. an explicitly required current understanding wins over same-scene historical
    understandings, while multiple explicitly required understandings remain
    unavailable.
+7. both available and unavailable Agent-owned semantic-selection contexts block
+   deterministic auto-selection, while an already persisted selection remains
+   resumable.

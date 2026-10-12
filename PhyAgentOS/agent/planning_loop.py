@@ -150,6 +150,7 @@ class NodeExecutionContext(BaseModel):
     required_evidence: tuple[str, ...]
     input_bindings: dict[str, Any]
     scene_revision: str
+    agent_selection_required: bool = False
     scene_bind_selection: dict[str, Any] | None = None
     predecessor_context: tuple[PredecessorContext, ...] = ()
     evidence_context: tuple[EvidenceExecutionContext, ...] = ()
@@ -441,6 +442,9 @@ class NodeContextProvider:
                 ),
                 recommended_action=settlement.recommended_action,
             ))
+        scene_bind_selection = _scene_bind_selection_context(
+            node, tuple(predecessors), scene_revision, tuple(evidence_context)
+        )
         return NodeExecutionContext(
             task_id=task_id,
             revision_id=revision.revision_id,
@@ -450,9 +454,8 @@ class NodeContextProvider:
             required_evidence=node.required_evidence,
             input_bindings=node.input_bindings,
             scene_revision=scene_revision,
-            scene_bind_selection=_scene_bind_selection_context(
-                node, tuple(predecessors), scene_revision, tuple(evidence_context)
-            ),
+            agent_selection_required=scene_bind_selection is not None,
+            scene_bind_selection=scene_bind_selection,
             predecessor_context=tuple(predecessors),
             evidence_context=tuple(evidence_context),
             completed_effect_context=tuple(completed_effects),
@@ -1041,7 +1044,7 @@ class AgentLoopNodeExecutor:
         persist_frozen_query = getattr(
             self.agent_loop, "persist_deterministic_query_selection", None,
         )
-        if callable(persist_frozen_query):
+        if callable(persist_frozen_query) and not context.agent_selection_required:
             selected = persist_frozen_query(context.task_id, context.node_id)
             if hasattr(selected, "__await__"):
                 selected = await selected

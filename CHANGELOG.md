@@ -1,122 +1,282 @@
 # Changelog
 
-## v13.3.5 (2026-10-12 21:17) - codex
+## 最近五版本 / Latest five versions
+
+## v13.3.6 (2026-10-12 21:37) - codex
 
 ### 变更摘要 / Summary [完成]
-- [policy] [fix] 修复通用 AgentLoop 在冻结 Query selection 无进展和同场景历史理解污染当前绑定上下文的问题：零自由度 Query 复用既有 selection admission；当前节点优先使用 `required_evidence` 明确授权的理解记录。 / Fix generic AgentLoop no-progress for frozen Query selection and historical same-scene understanding contamination: reuse existing selection admission for zero-choice Queries and prefer the understanding record explicitly authorized by the current node's `required_evidence`.
-- [eval] [test] 全仓库 `895 passed`，聚焦 `175 passed`；Ruff、compileall、`git diff --check` 通过；全程 no-motion。 / Full repository `895 passed`, focused `175 passed`; Ruff, compileall, and `git diff --check` passed; entirely no-motion.
+- [policy] [fix] 七维审查修复确定性 Query selection 绕过显式语义选择上下文的问题：只有节点不存在 `selection_required` 上下文时才允许零自由度自动持久化；实体歧义、不可用或其他 Agent-owned semantic selection 继续进入 bounded model turn。 / Seven-dimension review fixes deterministic Query selection bypassing an explicit semantic-selection context: zero-choice auto-persistence is allowed only when the node has no `selection_required` context; entity ambiguity, unavailable evidence, and other Agent-owned semantic selections continue through the bounded model turn.
+- [eval] [test] 增加 available/unavailable 语义选择上下文均禁止自动 selection 的 no-motion 回归，保留普通冻结 Query 自动收敛、并发 selection、Action/Session 禁止重放与 evidence-lineage 回归。 / Add no-motion regressions proving both available and unavailable semantic-selection contexts block auto-selection, while retaining ordinary frozen-Query convergence, concurrent-selection, Action/Session no-replay, and evidence-lineage coverage.
 
-### 文件与边界 / Files and Boundary
-- `PhyAgentOS/agent/loop.py:L459-L499`、`planning_dispatch.py:L436-L477`、`planning_loop.py:L1017-L1036,L465-L527`：确定性只读 Query selection 与 evidence lineage 投影。 / Deterministic read-only Query selection and evidence-lineage projection.
-- `tests/test_planning_dispatch.py:L130-L225`、`tests/test_planning_loop.py:L3317-L3495,L918-L1001` 及既有回归文件：selection、并发、历史理解污染和 fail-closed 测试。 / Selection, concurrency, historical-understanding contamination, and fail-closed regressions.
-- `docs/forge/FROZEN_QUERY_SELECTION_NO_PROGRESS_DIAGNOSIS_20261012.md`：保存权威证据、通用根因、修复规则和七维审查。 / Preserve authoritative evidence, generic root cause, repair rules, and seven-dimension review.
+### 审查发现与边界 / Review Finding and Boundary
+- **Major：** `AgentLoopNodeExecutor` 在模型看到 `scene_bind_selection` 前执行 deterministic selection。若当前理解将冻结实体标为歧义或上下文 unavailable，schema 完整仍会触发 `scene.bind`；绑定 Query 虽不运动，却可产生错误稳定身份并污染后续 Action。现有 schema、Coordinator transaction 和 Query semantics 只验证形状、所有权与只读性质，不验证本轮语义歧义，因此不足。 / **Major:** `AgentLoopNodeExecutor` ran deterministic selection before the model could inspect `scene_bind_selection`. If current understanding marks frozen entities ambiguous or the context unavailable, a schema-complete node could still invoke `scene.bind`; the Query itself does not move, but an incorrect stable identity can contaminate later Actions. Existing schema, Coordinator transaction, and Query semantics validate shape, ownership, and read-only behavior, not current semantic ambiguity, so they are insufficient.
+- 修复复用 `NodeExecutionContext` 已有 bounded selection projection，不增加 ToolSpec 字段、hash、baseline、全局 gate 或 RGB/颜色/对象/provider 分支；不改变 Runtime、Gateway 或 motion admission。 / The fix reuses the existing bounded selection projection on `NodeExecutionContext`; it adds no ToolSpec field, hash, baseline, global gate, or RGB/color/object/provider branch, and changes no Runtime, Gateway, or motion admission.
 
-详见 [2026-10 part6 v13.3.5](changelog/2026-10_part6.md)。See the detailed part6 v13.3.5 record.
-- Commit: `5f07b5e4` on `feature/planning-loop`.
+### 预期影响文件 / Planned Files
+- `PhyAgentOS/agent/planning_loop.py`
+- `tests/test_planning_loop.py`
+- `docs/forge/FROZEN_QUERY_SELECTION_NO_PROGRESS_DIAGNOSIS_20261012.md`
+- `changelog/2026-10_part6.md`
+- `CHANGELOG.md`
+
+### 实际修改与关键 Diff / Actual Changes and Key Diff
+- [修改] `PhyAgentOS/agent/planning_loop.py:L153,L445-L458,L1041-L1048`：非持久化上下文标记 `agent_selection_required`；显式语义选择上下文交回模型，原始 execution/pending selection 仍先恢复。 / Add the non-persisted context flag `agent_selection_required`; explicit semantic choices return to the model while existing executions and pending selections still resume first.
+- [修改] `tests/test_planning_loop.py:L664,L3287-L3288,L3457-L3499`：验证生产 context 设置标记、已持久化绑定优先恢复、available/unavailable 语义上下文均不触发 deterministic selection。 / Verify production-context flagging, precedence of persisted binding recovery, and rejection of deterministic selection for both available and unavailable semantic contexts.
+- [修改] `docs/forge/FROZEN_QUERY_SELECTION_NO_PROGRESS_DIAGNOSIS_20261012.md:L99-L119,L142-L145,L176-L178`：记录语义选择 ownership 和接受前审查反例。 / Document semantic-selection ownership and the acceptance-review counterexample.
+- **Minor（已修复 / fixed）：** v13.3.5 索引先前误写 Node executor 为 `L1017-L1036`，确定性恢复代码当前为 `L1041-L1060`；其新增 executor 回归当前为 `tests/test_planning_loop.py:L3395-L3614`，不是旧 `L3317-L3495`。历史归档保留原文，此处追加当前行号，并按规则用归档完整记录同步最近五版本。 / The earlier v13.3.5 index referenced outdated executor/test ranges; current deterministic recovery is `L1041-L1060` and its executor regressions are `tests/test_planning_loop.py:L3395-L3614`. Historical archive text remains intact; current locations are appended here and the latest five index entries are synchronized with full archive records.
+
+```diff
+ class NodeExecutionContext(BaseModel):
++    agent_selection_required: bool = False
+
++scene_bind_selection = _scene_bind_selection_context(...)
++agent_selection_required = scene_bind_selection is not None
+
+ # Existing execution and pending selection resume first.
+-if callable(persist_frozen_query):
++if callable(persist_frozen_query) and not context.agent_selection_required:
+     selected = persist_frozen_query(context.task_id, context.node_id)
+```
+
+### 七维审查 / Seven-Dimension Review
+1. **架构 / Architecture：** 上下文投影器声明语义决策 ownership，executor 只编排恢复顺序；复用 Coordinator admission，无第二执行通道。 / Context projection declares semantic-decision ownership; the executor only orders recovery, reusing Coordinator admission without a second execution path.
+2. **正确性 / Correctness：** 修复 schema 完整被错误等同于“无语义决策”的 Major；现有 lineage 收窄规则保留，多显式来源不按时间戳猜选。 / Fix the Major that equated schema completeness with no semantic decision; lineage narrowing remains, and multiple explicit sources are never selected by timestamp.
+3. **错误可观测 / Observability：** unavailable 和歧义事实继续进入模型上下文及 bounded no-progress；持久化失败无 durable winner 时仍抛出原始错误。 / Unavailability and ambiguity remain visible in model context and bounded no-progress handling; persistence failures without a durable winner still raise the original error.
+4. **恢复幂等 / Recovery and idempotency：** execution/pending selection 优先；已接受 selection 不因上下文标志被丢弃，Action terminal/unknown 不重放。 / Executions and pending selections resume first; accepted selections survive the context flag, and terminal/unknown Actions are not replayed.
+5. **机器人安全 / Robotics safety：** 语义身份选择不被只读属性绕过；frame/calibration/freshness 和 motion admission 均保持原有校验，无运动。 / Read-only semantics cannot bypass identity selection; frame, calibration, freshness, and motion admission retain existing validation, with no motion.
+6. **扩展兼容 / Extension compatibility：** 通用 context 标志，默认 false 保持非语义 Query 兼容；不增加持久化 schema、ToolSpec 字段或任务分支。 / A generic context flag defaults to false for non-semantic Queries; no persisted schema, ToolSpec field, or task branch is added.
+7. **AgentLoop 收敛 / AgentLoop convergence：** 零自由度 Query 自动 selection，语义选择走有界模型回合，已有 selection 直接恢复；不增加盲重试或无限等待。 / Zero-choice Queries auto-select, semantic choices use bounded model turns, and existing selections resume directly; no blind retry or infinite wait is introduced.
+- 最终：1 Major、1 Minor 均修复，无 Blocker 或未修复 Major。 / Final: one Major and one Minor fixed, with no Blocker or unresolved Major.
+
+### 验证与部署边界 / Validation and Deployment Boundary
+- 聚焦 `177 passed in 5.39s`；扩展控制面 `217 passed in 5.48s`；全仓库 `897 passed in 32.83s`。 / Focused: `177 passed in 5.39s`; expanded control plane: `217 passed in 5.48s`; full repository: `897 passed in 32.83s`.
+- 命令 / Command：`PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest -q -p pytest_asyncio.plugin`；Ruff、compileall、`git diff --check` 通过。 / Ruff, compileall, and `git diff --check` passed.
+- 未新建或切换分支，未安装/重启 Runtime，未创建/恢复任务，未调用 live Query/Action、相机或 simulator；测试只使用本地 fixture，无物理运动。 / No branch creation/switch, Runtime install/restart, task create/resume, or live Query/Action, camera, or simulator call; tests use local fixtures only, with no physical motion.
+
+### Git 提交 / Git Commit
+- 待记录实现 commit；当前分支 `feature/planning-loop`。 / Implementation commit pending; current branch `feature/planning-loop`.
+
+## v13.3.5 (2026-10-12 20:31) - codex
+
+### 变更摘要 / Summary [完成]
+- [policy] [fix] 修复通用 AgentLoop 在 Query 节点已具备完整、唯一、Coordinator 冻结输入时仍要求模型重复搬运参数，导致两次无 selection 回合后 `node_selection_no_progress`；仅为零自由度 Query 生成既有 `forge_plan_select` 持久化，不改变 Action/Session 或含 projection/source/语义选择的节点。 / Fix the generic AgentLoop path that still asks the model to repeat complete, unique Coordinator-frozen Query inputs, causing `node_selection_no_progress` after two selection-free turns; persist the existing `forge_plan_select` admission only for zero-choice Queries, without changing Action/Session or projection/source/semantic-choice nodes.
+- [policy] [fix] 修复 Query continuation 中同一 scene revision 的多条历史 `scene.understand` 记录污染当前 `scene.bind` 选择上下文：优先使用当前节点 `required_evidence` 明确授权的理解记录，并仅在无显式 lineage 时回退到唯一候选；不按 RGB、颜色、方块、节点名或 provider 分支。 / Fix multiple historical `scene.understand` records from the same scene revision contaminating the current `scene.bind` selection context in Query continuations: prefer the understanding record explicitly authorized by the current node's `required_evidence`, and fall back to a unique candidate only when no explicit lineage exists; add no RGB, color, block, node-name, or provider branch.
+- [eval] [test] 增加通用 frozen Query auto-selection、拒绝 Action/多候选/缺字段与 projection 节点的 no-motion 回归；验证不调用 Gateway、不创建 Action、不重放历史 Action。 / Add no-motion regressions for generic frozen-Query auto-selection and rejection of Action, multi-candidate, missing-field, and projection nodes; verify no Gateway call, Action creation, or historical Action replay.
+
+### 具体失败场景与设计边界 / Concrete Failure Scenario and Boundary
+- 当前 `current_scene_cube_bindings` 的 `input_bindings` 已完整包含 `observation_ref`、`scene_revision`、`calibration_ref`、`entity_refs`，但 active revision 没有 selection、execution record 或 rejection；模型两次未调用 `forge_plan_select`，随后 Core 正确 fail-closed 为 `node_selection_no_progress`。 / The current node already contains complete `observation_ref`, `scene_revision`, `calibration_ref`, and `entity_refs`, yet the active revision has no selection, execution record, or rejection; the model omitted `forge_plan_select` twice and Core correctly failed closed as `node_selection_no_progress`.
+- 当前节点以 `required_evidence` 明确引用最新理解 `tool:tool_392197f7a589482e`，但 `_scene_bind_selection_context()` 同时纳入同场景历史理解 `tool_a1281b35cc7848f7`；“恰好一条候选”的旧判断因此把有效上下文误报为 `unavailable`，而节点提示又要求 unavailable 时不得提交 selection，形成确定性的 no-progress。 / The current node explicitly references the latest understanding `tool:tool_392197f7a589482e` through `required_evidence`, but `_scene_bind_selection_context()` also admitted the same-scene historical understanding `tool_a1281b35cc7848f7`; the old exactly-one-candidate check therefore misreported valid context as `unavailable`, while the node prompt prohibited selection in that state, deterministically causing no progress.
+- 现有 ToolSpec、PlanGraph digest、Coordinator transaction 和 no-progress guard 无法把“没有剩余 Agent 决策”变成 durable selection；因此只在不可变 Query 输入已经满足唯一 ToolSpec 且无 projection/source/runtime semantic fields 时自动走同一 Coordinator admission。普通版本号、主键和测试不能替代该 selection，因为它们不产生可消费的 planning binding。 / Existing ToolSpec, PlanGraph digest, Coordinator transaction, and no-progress guard do not turn “no Agent decision remains” into a durable selection; therefore only an immutable Query input satisfying one unique ToolSpec with no projection/source/runtime semantic fields uses the same Coordinator admission. Versions, keys, and tests cannot replace this selection because they do not produce a consumable planning binding.
+- 不新增 hash、baseline、全局 gate、RGB/颜色/对象/节点/provider 分支；Action/Session、多个候选、缺字段和任何 projection/source 仍必须由 Agent 选择并 fail-closed。 / Add no hash, baseline, global gate, RGB/color/object/node/provider branch; Action/Session, multiple candidates, missing fields, and any projection/source remain Agent-selected and fail-closed.
+
+### 预期影响文件 / Planned Files
+- `PhyAgentOS/agent/planning_loop.py`
+- `PhyAgentOS/agent/planning_dispatch.py`
+- `PhyAgentOS/agent/loop.py`
+- `tests/test_planning_loop.py`
+- `tests/test_planning_dispatch.py`
+- `tests/test_planning_selection.py`
+- `tests/test_action_selection_projection.py`
+- `tests/test_multi_source_projection.py`
+- `tests/test_plan_proposal_bindings.py`
+- `docs/forge/FROZEN_QUERY_SELECTION_NO_PROGRESS_DIAGNOSIS_20261012.md`
+- `CHANGELOG.md`
+
+### 实际变更与七维审查 / Actual Changes and Seven-Dimension Review
+- [修改] `PhyAgentOS/agent/planning_loop.py:L465-L527`：`_scene_bind_selection_context()` 先按当前 PlanNode 的 `required_evidence` 收窄理解记录；无显式 lineage 时保留唯一授权候选回退；多个显式来源仍返回 unavailable。 / [Modified] `PhyAgentOS/agent/planning_loop.py:L465-L527`: `_scene_bind_selection_context()` now narrows understanding records by the current PlanNode's `required_evidence`, retains the unique-authorized fallback only without explicit lineage, and keeps multiple explicit sources unavailable.
+- [修改] `tests/test_planning_loop.py:L918-L1001`：新增历史同场景理解被当前显式 lineage 排除、多个显式来源 fail-closed，以及无理解记录兼容断言。 / [Modified] `tests/test_planning_loop.py:L918-L1001`: add regressions for excluding same-scene historical understanding, failing closed on multiple explicit sources, and preserving the no-understanding case.
+- [修改] `docs/forge/FROZEN_QUERY_SELECTION_NO_PROGRESS_DIAGNOSIS_20261012.md:L42-L49,L74-L78,L113-L123,L160-L162`：补充 evidence-lineage 根因、选择规则和 no-motion 验证边界。 / [Modified] `docs/forge/FROZEN_QUERY_SELECTION_NO_PROGRESS_DIAGNOSIS_20261012.md:L42-L49,L74-L78,L113-L123,L160-L162`: document the evidence-lineage root cause, selection rules, and no-motion validation boundary.
+
+### 七维审查结论 / Seven-Dimension Review
+1. **架构 / Architecture**：修复位于现有 `NodeContextProvider` 证据投影边界，不新增状态机或执行通道。 / The fix stays at the existing `NodeContextProvider` evidence-projection boundary; no second state machine or execution path was added.
+2. **正确性 / Correctness**：显式 `required_evidence` 优先；多条显式来源和跨场景记录均不被猜选。 / Explicit `required_evidence` wins; multiple explicit sources and cross-scene records are never guessed.
+3. **错误可观测 / Observability**：保留 bounded `unavailable` reason；没有吞掉缺失、重复或 stale evidence。 / Bounded `unavailable` reasons remain observable; missing, duplicate, and stale evidence are not swallowed.
+4. **恢复幂等 / Recovery and idempotency**：只影响只读上下文生成，不创建重复 selection，不重复 Query，不改变历史 Action settlement。 / The change only affects read-only context construction; it creates no duplicate selection or Query and does not alter historical Action settlements.
+5. **机器人安全 / Robotics safety**：不改变 freshness、calibration、workspace、collision、IK、motion authorization 或 Action admission；全程 no-motion。 / Freshness, calibration, workspace, collision, IK, motion authorization, and Action admission are unchanged; validation is entirely no-motion.
+6. **扩展兼容 / Extension compatibility**：仅依赖通用 evidence refs、PlanNode 和 scene revision；无 RGB、颜色、对象、provider 或节点名分支。 / The rule depends only on generic evidence refs, PlanNode, and scene revision; no RGB, color, object, provider, or node-name branch exists.
+7. **AgentLoop 收敛 / AgentLoop convergence**：当前节点不再因历史同场景记录误报 unavailable；真正多源歧义仍交回 Agent 并 fail-closed。 / The current node no longer becomes falsely unavailable due to historical same-scene records; genuine multi-source ambiguity remains Agent-owned and fail-closed.
+
+### 验证 / Validation
+- 聚焦：`175 passed in 5.47s`。 / Focused: `175 passed in 5.47s`.
+- 全仓库：`895 passed in 31.78s`。 / Full repository: `895 passed in 31.78s`.
+- Ruff、compileall、`git diff --check`：通过。 / Ruff, compileall, and `git diff --check`: passed.
+- 未启动或重启 Runtime，未创建任务，未调用 Gateway Query/Action，未读取相机，未推进 simulator，未执行运动。 / No Runtime start/restart, task creation, Gateway Query/Action, camera read, simulator step, or motion occurred.
+
+### 关键 Diff / Key Diff
+```diff
+- all authorized same-scene scene.understand records -> len != 1 -> unavailable
++ current PlanNode required_evidence lineage -> exactly one explicit record
++ no explicit lineage -> existing unique-authorized fallback
++ multiple explicit records -> unavailable (fail-closed)
+```
+
+### Git 提交 / Git Commit
+- Commit: `5f07b5e4` on `feature/planning-loop`; documentation/index completion follows separately. / 提交：`5f07b5e4`，分支 `feature/planning-loop`；日志与索引补全随后单独提交。
 
 ## v13.3.4 (2026-10-12 19:06) - codex
 
 ### 变更摘要 / Summary [完成]
-- [env] [chore] 强制停止旧 Runtime，刷新 editable Core，并发布/安装包含 v13.3.3 Adapter handoff 修复的 Skill `3.0.21` / Node `1.0.11`；使用既有 profile/operator env 启动新 Runtime。 / Force-stop the old Runtime, refresh editable Core, publish/install Skill `3.0.21` / Node `1.0.11` containing the v13.3.3 Adapter handoff fix, and start a new Runtime with the existing profile/operator environment.
-- [eval] [test] 新 host/simulator worker 完成 startup，Runtime/Dora/Gateway 和 11/11 Tool contexts ready；重启验收时无非终态任务且部署全程无 Query/Action/运动。用户随后独立创建的新任务正在执行，不属于部署流程。 / A new host/simulator worker completed startup; Runtime/Dora/Gateway and all 11 Tool contexts are ready, with no non-terminal task or deployment Query/Action/motion at restart acceptance. A user-launched task is now executing independently of deployment.
+- [env] [chore] 按用户授权强制停止当前 `pick-place-workflow` Runtime，刷新当前 checkout 的 editable Core，并使用既有 `robotwin-blocks-ranking-graspnet` profile/operator environment 启动新 Runtime，使 simulator 重新初始化场景。 / Under explicit user authorization, force-stop the current `pick-place-workflow` Runtime, refresh the editable Core from this checkout, and start a new Runtime with the existing profile/operator environment so the simulator initializes a fresh scene.
+- [eval] [test] 仅核对停止/启动生命周期、Core 导入路径、Runtime/Dora/Gateway/Tool readiness、Qwen 服务和任务库非终态计数；不创建或恢复 AgentTask，不调用 Query/Action，不读取相机，不推进 simulator action，不执行运动。 / Validate only stop/start lifecycle, Core import path, Runtime/Dora/Gateway/Tool readiness, Qwen service, and non-terminal task counts; do not create or resume an AgentTask, invoke Query/Action, read cameras, advance simulator actions, or execute motion.
 
-### 文件、验证与提交 / Files, validation, and commit
-- `pick-place-workflow/pyproject.toml:L1-L6`、`skill.yaml:L1-L4,L219-L229`、`CHANGELOG.md:L1-L11`、`tests/test_grasp_propose.py:L262-L274`：发布 Skill `3.0.21` / Node `1.0.11` 并更新 lock/version regression。 / Publish Skill `3.0.21` / Node `1.0.11` and update lock/version regression.
-- `out/releases/v13.3.4/`：Node/Skill artifacts；Node SHA `3d368ffb05dae5bf5ad7b27ea900702cfe7ea9318754c5199f2a4ed0d400af44`。 / Node/Skill release artifacts with the recorded Node SHA.
-- `131 passed in 0.95s`；新 simulator worker PID `2244784`，startup `16.531s`；active runtime lock 使用 Skill `3.0.21` / Node `1.0.11`。用户任务的 LocateAnything 冷启动期间 readiness 曾短暂超时，完成后 11/11 contexts 恢复 ready。 / `131 passed in 0.95s`; new simulator worker PID `2244784`, startup `16.531s`; active lock uses Skill `3.0.21` / Node `1.0.11`. Readiness briefly timed out during the user's LocateAnything cold start and returned to 11/11 ready afterward.
-- 全程 no-motion；deployment/release commit `4dc05f8b`；详见 [2026-10 part6 v13.3.4](changelog/2026-10_part6.md)。 / Entirely no-motion; deployment/release commit `4dc05f8b`; see the detailed part6 record.
+### 部署边界 / Deployment boundary
+- 当前任务库只有 terminal 状态（`cancelled=201`、`failed=97`），因此重启不会恢复或重放历史 Action。 / The task store contains only terminal states, so restart cannot resume or replay a historical Action.
+- 本轮修复同时涉及 editable Core 与 RobotWin Adapter 源码；启动前将核对现有 Skill/Node artifact 是否已包含 v13.3.3 Adapter handoff 代码。若 artifact 仍为旧版本，则先按既有发布流程构建新版本并更新锁，禁止仅刷新 Core 后误报部署完成。 / This repair touches both editable Core and RobotWin Adapter source; before startup, verify whether the installed Skill/Node artifact contains the v13.3.3 Adapter handoff. If it is stale, build a new version and update the existing release lock before declaring deployment complete.
+- Runtime ready 只证明服务就绪；不通过 scene Query 推断具体方块状态。新 persistent simulator worker 的启动证据用于确认初始场景生命周期已重新创建。 / Runtime readiness proves service availability only; no scene Query is used to infer object state. A newly started persistent simulator worker is the evidence that the initial-scene lifecycle was recreated.
+
+### 预期影响文件 / Planned files
+- `changelog/2026-10_part6.md`
+- `CHANGELOG.md`
+- 如需发布 Adapter：`examples/forge-skills/pick-place-workflow/pyproject.toml`、`skill.yaml`、`CHANGELOG.md`、版本回归与 `out/releases/v13.3.4/`。 / If an Adapter release is required: the workflow package/manifest/changelog/version regression and local `out/releases/v13.3.4/` artifacts.
+
+### 实际部署结果 / Completed deployment
+- [env] [chore] 发现已安装 Node `1.0.10` 不含 v13.3.3 的 `_primary_attempted` handoff 代码，因此发布并安装 Skill `3.0.21` / Node `1.0.11`；没有用“仅刷新 Core”替代 Adapter 部署。 / The installed Node `1.0.10` did not contain the v13.3.3 `_primary_attempted` handoff, so Skill `3.0.21` / Node `1.0.11` were published and installed; an editable-Core refresh was not misreported as an Adapter deployment.
+- [env] [chore] `.venv/bin/paos skill stop pick-place-workflow --force` 成功；停止后 Runtime=`stopped`、Dora=`down`、Gateway=`unavailable`、19020 端口释放，旧 host/simulator worker 退出；独立 Qwen PID `176466` / 8012 保持运行。 / The force-stop succeeded; Runtime stopped, Dora went down, Gateway became unavailable, port 19020 was released, and the old host/simulator worker exited; independent Qwen PID `176466` on port 8012 remained running.
+- [env] [chore] `.venv/bin/python -m pip install --no-deps -e .` 成功，`PhyAgentOS` 与 `AgentTaskCoordinator` 从当前 checkout 导入且包含 `authorize_retryable_query_attempt`。 / The editable Core refresh succeeded; `PhyAgentOS` and `AgentTaskCoordinator` import from this checkout and expose `authorize_retryable_query_attempt`.
+- [env] [chore] 安装并验证 Skill `3.0.21` / Node `1.0.11` 后，使用既有 operator env 启动 `robotwin-blocks-ranking-graspnet`；active runtime lock 为 `.../7f0c4086fe4d3241f0e75e4bb491c6df4255afb0cc534fdb3267d26a19539d6d/runtime-lock.json`。 / After installing and verifying Skill `3.0.21` / Node `1.0.11`, started the existing profile with the operator-owned environment; the active runtime lock is the recorded `7f0c...` lock.
+- [eval] [test] Runtime/Dora=`running`、Gateway=`ready`、11/11 Tool contexts=`ready`；新 host PID `2244656` 和 simulator worker PID `2244784` 于 19:19 创建，worker 记录 `phase=startup elapsed_s=16.531`，证明 simulator lifecycle 已重新初始化而非继续旧进程。 / Runtime and Dora are running, Gateway ready, and all 11 Tool contexts ready; new host PID `2244656` and simulator-worker PID `2244784` were created at 19:19, with `phase=startup elapsed_s=16.531`, proving the simulator lifecycle was reinitialized rather than continuing the old process.
+- [eval] [test] 运行中 embedded Adapter 已核对包含 `_primary_attempted` 与 `retryable=retryable`；重启验收时任务库仅有 `cancelled=201`、`failed=97`。随后用户会话 `cli:rgb-benchmark-injected-20261001-75` 创建 `task_491f46f4e8e34d7c` 并进入 executing，此任务不是部署流程创建或恢复。 / The running embedded Adapter contains `_primary_attempted` and `retryable=retryable`; at restart acceptance the task store contained only `cancelled=201` and `failed=97`. The user subsequently created executing task `task_491f46f4e8e34d7c` from session `...-75`; deployment did not create or resume it.
+- [eval] [test] 用户任务执行 `scene.understand` 时 LocateAnything 首次 startup 用时 `72.382s`，同步 Gateway health probe 一度报告 unavailable；host/simulator 进程持续存活，enrichment 完成后 Runtime 和 11/11 Tool contexts 自动恢复 ready。 / During the user's `scene.understand`, LocateAnything cold startup took `72.382s`, causing a synchronous Gateway health probe to report temporary unavailability; host/simulator processes remained alive and Runtime plus all 11 Tool contexts returned ready after enrichment completed.
+
+### 文件变更详情 / File changes
+- [修改] `examples/forge-skills/pick-place-workflow/pyproject.toml:L1-L6`、`skill.yaml:L1-L4,L219-L229`：Skill `3.0.20` → `3.0.21`，Node `1.0.10` → `1.0.11`，Node SHA 更新为 `3d368ffb05dae5bf5ad7b27ea900702cfe7ea9318754c5199f2a4ed0d400af44`。 / Bump the Skill and Node versions and update the Node lock SHA.
+- [修改] `examples/forge-skills/pick-place-workflow/CHANGELOG.md:L1-L11`、`tests/test_grasp_propose.py:L262-L274`：记录通用 handoff/retryability 发布并同步版本一致性回归。 / Record the generic handoff/retryability release and align version-consistency regression.
+- [新增] `out/releases/v13.3.4/robotwin20_persistent_host-1.0.11-linux-x86_64.tar.gz`、`pick-place-workflow-3.0.21.tar.gz`：从当前 Adapter/Workflow 源码构建并安装。 / Build and install the Node and Skill artifacts from current Adapter/Workflow sources.
+- [修改] `changelog/2026-10_part6.md:L1-L46`、`CHANGELOG.md:L3-L14`：记录部署边界、停止/安装/启动证据和 no-motion 验收。 / Record deployment boundaries, stop/install/start evidence, and no-motion acceptance.
+
+### 关键 Diff / Key diff
+```diff
+- Skill 3.0.20 / Node 1.0.10 (missing v13.3.3 Adapter handoff)
++ Skill 3.0.21 / Node 1.0.11 (current Adapter handoff + retryability)
+- old host/simulator process
++ new host/simulator startup -> initial-scene lifecycle recreated
+```
+
+### 验证与安全边界 / Validation and safety boundary
+- release/provider suite：`131 passed in 0.95s`；Node SHA、Skill lock、安装 receipt、runtime lock 一致。 / Release/provider suite: `131 passed in 0.95s`; Node SHA matches the Skill lock, installation receipt, and runtime lock.
+- 部署流程未创建/恢复 AgentTask，未调用 Gateway Query/Action，未读取相机，未推进 simulator action，未执行物理运动；用户随后独立启动的新任务不归入部署动作。readiness 不被当作具体场景内容证明。 / The deployment created/resumed no AgentTask, invoked no Gateway Query/Action, read no camera, and executed no simulator action or physical motion; the user's subsequently launched task is independent of deployment. Readiness is not treated as proof of specific scene contents.
+
+### Git 提交 / Git commit
+- Deployment/release commit: `4dc05f8b` on `feature/planning-loop`. / 部署与发布提交：`4dc05f8b`，分支 `feature/planning-loop`。
 - Log/index completion commit follows separately. / 日志与索引完成提交随后单独记录。
 
 ## v13.3.3 (2026-10-12 18:04) - codex
 
 ### 变更摘要 / Summary [完成]
-- [comm] [fix] fallback 最终成功时仍释放本轮已尝试的 primary provider，避免 downstream enrichment 与残留 GPU residency 竞争。 / Release an attempted primary provider even when fallback supplies the final semantic result, preventing downstream enrichment from racing residual GPU residency.
-- [policy] [fix] 对无世界变化且显式 retryable 的只读 Query provider/enrichment failure 增加同节点有界重试；保留已完成 Action settlement，禁止 Action replay。 / Add bounded same-node recovery for explicitly retryable, world-unchanged, read-only Query provider/enrichment failures; preserve completed Action settlements and prohibit Action replay.
-- [eval] [test] 七维审查修复事务竞争、重复预算消耗和 projection 缺口；focused/cross-layer `447 passed`，root suite 与干净对照均为同一组 `10 failed`。 / Seven-dimension review fixed transactional races, duplicate budget consumption, and projection gaps; focused/cross-layer suites passed `447`, and the root suite has the same ten failures as the clean comparison.
+- [comm] [fix] 修复 provider fallback 在主 provider 已尝试但 fallback 成功时跳过主 provider lifecycle handoff 的缺陷，确保 downstream enrichment 不与仍占用资源的主 provider 并发。 / Fix the provider-fallback lifecycle gap where a successful fallback skipped handoff for an already-attempted primary provider, preventing downstream enrichment from racing a still-resident resource owner.
+- [policy] [fix] 将无世界变化、只读 Query 的 enrichment worker 瞬态 transport/resource/timeout failure 归入现有受控 provider recovery；保留已完成 Action settlement，禁止 Action replay，并让确定性 contract/protocol failure 保持 fail-closed。 / Route transient transport/resource/timeout failures from read-only, world-unchanged Query enrichment into the existing bounded provider-recovery lifecycle; preserve completed Action settlements, prohibit Action replay, and keep deterministic contract/protocol failures fail-closed.
+- [eval] [test] 增加 provider handoff、重入状态清理、enrichment retryability 与 Action-prefix recovery 回归；全部 no-motion，不调用 Runtime、Gateway、相机或 simulator。 / Add regressions for provider handoff, re-entry state clearing, enrichment retryability, and Action-prefix recovery; all validation is no-motion with no Runtime, Gateway, camera, or simulator calls.
 
-### 七维审查与文件 / Seven-dimension review and files
-- 架构、正确性、可观测性、恢复幂等、机器人安全、扩展兼容、AgentLoop 收敛均通过；无 RGB/颜色/方块/节点名分支。 / Architecture, correctness, observability, recovery idempotency, robotics safety, extension compatibility, and AgentLoop convergence pass; no RGB/color/block/node-name branch exists.
-- `scene_understanding_fallback.py:L55-L69,L222-L243,L314-L366`、`single_view_perception.py:L20-L28,L832-L861,L1069-L1087`：修复 handoff 并区分 transient worker lifecycle 与 deterministic protocol failure。 / Fix handoff and distinguish transient worker lifecycle failures from deterministic protocol failures.
-- `planning_facts.py:L7-L23`、`binding.py:L126-L216`、`task.py:L885-L917,L2011-L2233,L4986-L5009`、`planning_loop.py:L24-L32,L1853-L1878`：投影 nested retryability，事务授权有界 Query retry，并仅从 effective view 排除已释放 attempt。 / Project nested retryability, transactionally authorize bounded Query retries, and exclude released attempts only from the effective view.
-- `schema.py:L359-L372`、`commands.py:L700-L719` 及对应测试：接入默认 `max_query_provider_retries=2` 和 handoff/recovery 回归。 / Wire the default `max_query_provider_retries=2` and handoff/recovery regressions.
+### 失败场景与设计边界 / Failure scenario and boundary
+- 真实失败链是 primary semantic contract failure → fallback semantic success → proposal worker transport failure；由于主 provider 仅按最终 route 判断 release，仍占用 GPU，随后 enrichment 失败并被错误标记为不可重试。 / The observed chain is primary semantic contract failure → fallback semantic success → proposal-worker transport failure; because release was keyed only to the final route, the primary resource remained resident and the enrichment failure was incorrectly marked non-retryable.
+- 版本号、主键、事务和普通测试不能释放被错误保留的 provider 资源，也不能把 Query-only worker transport failure 投影为 AgentLoop 可恢复事实；本次复用既有 lifecycle seam、bounded diagnostics 和 Query provider recovery，不新增 hash、baseline、额外 gate 或任务专用分支。 / Versions, keys, transactions, and ordinary tests cannot release a provider resource retained by the wrong route predicate or project a Query-only worker transport failure into a recoverable AgentLoop fact; this change reuses existing lifecycle seams, bounded diagnostics, and Query provider recovery without hashes, baselines, extra gates, or task-specific branches.
 
-```diff
-- final fallback route -> skip primary release -> transient enrichment failure -> stop task
-+ attempted primary -> lifecycle handoff -> bounded Query-only retry -> continue remaining suffix
-+ completed Action settlement stays authoritative; Action/Session never enter retry path
+### 七维审查 / Seven-dimension review
+- **架构 / Architecture：** lifecycle ownership 保持在 Adapter，retry ownership 保持在 Coordinator/PlanningLoop；未建立第二套 provider 状态机，也未增加场景或任务专用分支。 / Lifecycle ownership remains in the Adapter and retry ownership remains in Coordinator/PlanningLoop; no second provider state machine or scene/task-specific branch was introduced.
+- **正确性 / Correctness：** primary 是否需要释放由“本轮是否尝试”决定，而不是由最终 semantic route 决定；fallback 已成功时 handoff failure 不会再次调用 fallback。 / Primary release is determined by whether it was attempted in the current call, not by the final semantic route; a handoff failure after fallback success does not invoke fallback twice.
+- **错误与可观测 / Errors and observability：** worker transport/timeout/resource/termination 与 deterministic protocol/contract failure 分开；既有 bounded code 和 append-only `query_retry_decided` 事件保留审计，不写入异常正文。 / Worker transport/timeout/resource/termination failures are separated from deterministic protocol/contract failures; existing bounded codes and append-only `query_retry_decided` events retain auditability without persisting exception text.
+- **恢复与幂等 / Recovery and idempotency：** retry authorization 在事务内复核 task/revision/node/records，重复授权同一 record set 幂等且不消耗预算；历史记录保留，仅从 effective planning view 排除已释放尝试。 / Retry authorization transactionally rechecks task/revision/node/records; duplicate authorization of the same record set is idempotent and consumes no budget; history remains append-only while released attempts are excluded only from the effective planning view.
+- **机器人安全 / Robotics safety：** eligibility 强制 Query semantics、`world_change_started=false` 和显式 retryable；Action/Session 不可进入重试路径，已完成 Action settlement 不会重放。 / Eligibility requires Query semantics, `world_change_started=false`, and explicit retryability; Action/Session cannot enter the retry path and completed Action settlements are never replayed.
+- **扩展兼容 / Extension compatibility：** classification 使用通用 `failure_stage=provider|enrichment` 和嵌套 `error.retryable`，不依赖 RGB、颜色、方块、特定 Tool ID 或节点名；配置通过既有 verification schema/CLI 注入。 / Classification uses generic `failure_stage=provider|enrichment` and nested `error.retryable`, independent of RGB, colors, blocks, Tool IDs, or node names; configuration is injected through the existing verification schema/CLI.
+- **AgentLoop 收敛 / AgentLoop convergence：** 默认最多 2 次同 revision/node Query retry；成功则继续后缀，预算耗尽或 deterministic failure 则落回既有 settlement/recovery，避免无限 thinking。 / At most two same-revision/node Query retries are allowed by default; success continues the suffix, while budget exhaustion or deterministic failure returns to existing settlement/recovery, preventing infinite thinking.
+
+### 文件变更详情 / File changes
+
+#### [修改] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/scene_understanding_fallback.py:L55-L69,L222-L243,L314-L366`
+
+**修改前 / Before:**
+```python
+def release(self) -> None:
+    if self.last_route != self.primary_name:
+        return
 ```
 
-### 验证与提交 / Validation and commit
-- `447 passed in 13.88s`；root/current 与 clean `bb698ee7` 均为同一 `10 failed`；Ruff、compileall、diff check passed。 / `447 passed in 13.88s`; current and clean `bb698ee7` have the same ten failures; Ruff, compileall, and diff check passed.
-- 全程 no-motion，未部署或重启 Runtime，未创建任务或调用 Gateway。 / Entirely no-motion; Runtime was not deployed/restarted and no task or Gateway call was made.
-- Implementation/review commit: `6326718f` on `feature/planning-loop`; detailed record: [2026-10 part6 v13.3.3](changelog/2026-10_part6.md).
+**修改后 / After:**
+```python
+self._primary_attempted = True
+
+def release(self) -> None:
+    if not self._primary_attempted:
+        return
+```
+
+**修改说明 / Description：** 按每次调用的 primary attempt 事实完成 lifecycle handoff；fallback 已成功后的 handoff failure 保留 retryability，但不重复 fallback inference。 / Complete lifecycle handoff from per-call primary-attempt facts; preserve retryability after fallback success without repeating fallback inference.
+
+#### [修改] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/single_view_perception.py:L20-L28,L832-L861,L1069-L1087`
+
+```diff
+- ProcessWorkerError -> retryable=False
++ transient worker lifecycle error -> retryable=True
++ ProcessWorkerProtocolLimitError -> retryable=False
++ bounded lifecycle exception with explicit retryable -> preserve classification
+```
+
+#### [修改] `PhyAgentOS/agent/planning_facts.py:L7-L23`、`PhyAgentOS/forge/binding.py:L126-L216`、`PhyAgentOS/forge/task.py:L4986-L5009`
+
+```diff
+- nested error.retryable remains Adapter-only
++ nested error.retryable -> retryable_in_revision when no explicit top-level value exists
++ generic query_record_retryable() checks Query + semantic non-success + provider/enrichment + explicit true
+```
+
+#### [修改] `PhyAgentOS/forge/task.py:L885-L917,L2011-L2123,L2151-L2175,L2197-L2233`
+
+```diff
+- failed Query record remains effective and settles immediately
++ transactionally bounded query_retry_decided authorization
++ released attempt remains in audit history but leaves effective planning records
++ duplicate authorization is idempotent and does not consume retry budget
+```
+
+#### [修改] `PhyAgentOS/agent/planning_loop.py:L24-L32,L1853-L1878`、`PhyAgentOS/config/schema.py:L359-L372`、`PhyAgentOS/cli/commands.py:L700-L719`
+
+```diff
+- transient read-only enrichment failure -> node settlement/recovery stop
++ eligible Query-only failure -> bounded same-node retry
++ default max_query_provider_retries=2 via existing verification config
+```
+
+#### [修改] 测试与诊断 / Tests and diagnosis
+- `examples/forge-adapters/robotwin20/tests/test_scene_understanding_fallback.py:L17-L37,L322-L383`、`test_single_view_perception.py:L390-L496`、`test_scene_understand_provider.py:L103-L146`：handoff、重入清理、worker 分类及 public projection 回归。 / Regressions for handoff, re-entry cleanup, worker classification, and public projection.
+- `tests/test_planning_loop.py:L31-L38,L158-L390`、`tests/test_verification_service_config.py:L107-L129`：provider-neutral classification、事务/幂等预算、已完成 Action 前缀不重放、配置边界。 / Cover provider-neutral classification, transactional/idempotent budgets, no replay of completed Action prefixes, and config bounds.
+- `docs/forge/SCENE_UNDERSTANDING_ENRICHMENT_HANDOFF_DIAGNOSIS_20261012.md:L1-L117`：保存失败时序、架构根因、通用修复和 no-motion 边界。 / Preserve failure timing, architectural root cause, generic repair, and no-motion boundary.
+- `CHANGELOG.md:L3-L26,L415-L422`：更新最近版本详情与 part6 索引。 / Update latest-version details and the part6 archive link.
+
+### 验证与安全边界 / Validation and safety boundary
+- Focused/cross-layer suites：`447 passed in 13.88s`。 / Focused and cross-layer suites: `447 passed in 13.88s`.
+- Root tests：当前分支 `874 passed, 10 failed`；干净对照 `bb698ee7` 的同四个 projection 文件也是相同 10 个失败，因此本轮新增失败为 0。 / Root tests: current branch `874 passed, 10 failed`; clean comparison `bb698ee7` has the same ten failures in the same four projection files, so this change adds zero failures.
+- Ruff、compileall、`git diff --check` passed；`ruff format --check` 仅报告 touched legacy files 的既有格式差异，未做无关 bulk format。 / Ruff, compileall, and `git diff --check` passed; `ruff format --check` reports only pre-existing formatting differences in touched legacy files, so no unrelated bulk formatting was performed.
+- 全程 no-motion：未部署/重启 Runtime，未创建 AgentTask，未调用 Gateway Query/Action，未读取相机，未推进 simulator，未执行硬件运动。 / Entirely no-motion: no Runtime deployment/restart, AgentTask creation, Gateway Query/Action, camera read, simulator step, or hardware motion.
+
+### Git 提交 / Git commit
+- Implementation/review commit: `6326718f` on `feature/planning-loop`. / 实现与审查提交：`6326718f`，分支 `feature/planning-loop`。
 - Log/index completion commit follows separately. / 日志与索引完成提交随后单独记录。
 
 ## v13.3.2 (2026-10-12 16:27) - codex
 
 ### 变更摘要 / Summary [完成]
-- [env] [chore] 强制停止旧 `pick-place-workflow` Runtime，确认当前 editable Core 直接加载 v13.3.1 checkout，并复用既有 `robotwin-blocks-ranking-graspnet` profile/operator env 启动新 Runtime。 / Force-stop the old Runtime, confirm the current editable Core directly loads the v13.3.1 checkout, and start a new Runtime with the existing profile/operator environment.
-- [eval] [test] Runtime/Dora running、Gateway ready、11/11 Tool contexts ready；Qwen 8012 独立服务保持 ready；任务库无非终态任务。 / Runtime/Dora are running, Gateway and all 11 Tool contexts are ready, the independent Qwen 8012 service remains ready, and the task store has no non-terminal task.
+- [env] [chore] 在用户明确授权下强制停止当前 `pick-place-workflow` Runtime，刷新当前 checkout 的 editable Core，并使用既有 `robotwin-blocks-ranking-graspnet` profile/operator environment 启动新 Runtime。 / Under explicit user authorization, force-stop the current `pick-place-workflow` Runtime, refresh the editable Core from this checkout, and start a new Runtime with the existing `robotwin-blocks-ranking-graspnet` profile/operator environment.
+- [eval] [test] 仅验收 Runtime/Dora/Gateway/Tool context、Core 导入路径、Qwen 8012 readiness 与任务状态计数；不创建 AgentTask、不调用 Query/Action、不读取相机、不推进 simulator、不执行运动。 / Validate only Runtime/Dora/Gateway/Tool contexts, the Core import path, Qwen 8012 readiness, and task-state counts; create no AgentTask, invoke no Query/Action, read no camera, advance no simulator, and execute no motion.
 
-### 部署证据 / Deployment Evidence
-- Core import：`/home/yanxu/PhyAgentOS-forge/PhyAgentOS/agent/planning_loop.py`，`revision_settlement_loader=true`。 / Core imports the current checkout and exposes the v13.3.1 revision loader.
-- Active lock：Skill `3.0.20` / Node `1.0.10`，Node SHA-256=`722cc67599c5c7792cb069d783597fde440464c2c97f4a2927cc1d9a4e248d63`。 / The active lock pins Skill 3.0.20 and Node 1.0.10 with the recorded SHA-256.
-- Qwen `/v1/models`：`qwen3-vl-4b-awq`；task counts：`cancelled=200, failed=95`。 / Qwen reports the expected model; task counts contain only terminal states.
-- no-motion：未创建 AgentTask、调用 Query/Action、读取相机、推进 simulator 或执行运动。 / No AgentTask, Query/Action, camera read, simulator step, or motion.
+### 具体部署边界 / Concrete Deployment Boundary
+- 强制停止会终止当前 Runtime/Dora/Adapter/worker 进程；独立 Qwen 服务是否由 Runtime lifecycle 管理，以停止后的进程与端口事实为准。 / Force-stop terminates the current Runtime/Dora/Adapter/worker processes; whether the independent Qwen service is Runtime-lifecycle-owned is determined from post-stop process and port facts.
+- 本次 Core 修改不改变 Skill/Node bundle 源码或版本锁，因此不重建/覆盖同版本 bundle；只刷新 editable Core 并复用已安装 Skill `3.0.20` / Node `1.0.10`。 / This Core change does not alter Skill/Node bundle source or version locks, so no same-version bundle is rebuilt or overwritten; only editable Core is refreshed while reusing installed Skill `3.0.20` / Node `1.0.10`.
+
+### 实际部署与验收 / Completed Deployment and Validation
+- [env] [chore] `.venv/bin/paos skill stop pick-place-workflow --force` 成功；停止后 Runtime=`stopped`、Dora=`down`、Gateway=`unavailable`，旧 Adapter/worker 进程退出。 / The force-stop succeeded; afterward Runtime was stopped, Dora down, Gateway unavailable, and the old Adapter/worker processes exited.
+- [env] [chore] editable distribution 的 `direct_url.json` 仍绑定 `file:///home/yanxu/PhyAgentOS-forge`，实际导入 `PhyAgentOS/agent/planning_loop.py` 且 `revision_settlement_loader=true`。标准 pip 刷新先因 PyPI SSL/build-isolation 下载 `hatchling` 失败，非隔离模式因本地未安装 `hatchling` 失败；既有 editable link 未受损且直接加载当前 checkout，因此未改动项目依赖或绕过构建配置。 / The editable distribution remains bound to this checkout, imports the current planning loop, and exposes the new revision loader. A standard pip refresh failed while downloading `hatchling` because of PyPI SSL/build isolation, and no-build-isolation failed because `hatchling` is not locally installed; the existing editable link remained intact and directly loads the checkout, so project dependencies and build configuration were not changed or bypassed.
+- [env] [chore] 使用既有 operator env 启动 `robotwin-blocks-ranking-graspnet`；新 Dora PID `1291727`、persistent host PID `1291750`、sim worker PID `1291853`。 / Started `robotwin-blocks-ranking-graspnet` with the existing operator environment; new Dora, persistent-host, and simulator-worker PIDs are recorded.
+- [eval] [test] Runtime/Dora=`running`，Gateway=`ready`，11/11 Tool contexts=`ready`；active lock 为 `.../ea73327bd58c73341e1003e07b9a03a92a81c95b856c9ff93274cf10a5f783cd/runtime-lock.json`，Skill `3.0.20` / Node `1.0.10`，Node SHA-256=`722cc67599c5c7792cb069d783597fde440464c2c97f4a2927cc1d9a4e248d63`。 / Runtime/Dora are running, Gateway ready, and all 11 Tool contexts ready; the active lock pins Skill 3.0.20 and Node 1.0.10 with the recorded Node SHA-256.
+- [eval] [test] 独立 Qwen vLLM PID `176466` 在强制停止期间保持运行，`127.0.0.1:8012` 继续监听且 `/v1/models` 返回 `qwen3-vl-4b-awq`；它不属于本次 Skill Runtime stop/start lifecycle。 / The independent Qwen vLLM process remained running across the force-stop; port 8012 stays listening and `/v1/models` returns the expected model, confirming it is outside this Skill Runtime stop/start lifecycle.
+- [eval] [test] 任务库只含 `cancelled=200`、`failed=95`，无非终态任务；未创建 AgentTask、调用 Gateway Query/Action、读取相机、推进 simulator 或执行运动。 / The task store contains only cancelled and failed tasks with no non-terminal task; no AgentTask, Gateway Query/Action, camera read, simulator step, or motion occurred.
+
+### 文件与行号 / Files and Lines
+- [修改] `changelog/2026-10_part5.md:L3-L26`：记录 v13.3.2 部署计划、实际停止/启动、editable Core 证据、Qwen 生命周期边界和 no-motion 验收。 / Record the v13.3.2 deployment plan, actual stop/start, editable-Core evidence, Qwen lifecycle boundary, and no-motion validation.
+- [修改] `CHANGELOG.md:L3-L16`：更新最近版本索引。 / Update the recent-version index.
 
 ### Git 提交 / Git Commit
 - Deployment log/index commit: `ecdd3981` on `feature/planning-loop`. / 部署日志与索引提交：`ecdd3981`，分支 `feature/planning-loop`。
 - Commit-reference completion follows separately. / 提交引用补全随后记录。
-
-## v13.3.1 (2026-10-12 15:37) - codex
-
-### 变更摘要 / Summary [完成]
-- [policy] [fix] 历史 Action effect 与 continuation 统一使用 Coordinator effective settlement，late terminal 不再退化为原始 `outcome_unknown`。 / Historical Action effects and continuation now use Coordinator-effective settlements, so late terminal results no longer regress to raw `outcome_unknown`.
-- [policy] [fix] scene invalidation 与 legacy restore 在事务内复核恢复所有权；重复 operator resume 幂等。 / Scene invalidation and legacy restore recheck recovery ownership transactionally; repeated operator resume is idempotent.
-- [eval] [test] 七维审查修复 3 Major + 1 Minor；Core/集成 `333 passed`，通用恢复 `328 passed`，全程 no-motion。 / Seven-dimension review fixed 3 Major and 1 Minor findings; Core/integration `333 passed`, generic recovery `328 passed`, all no-motion.
-
-### 文件与关键 Diff / Files and Key Diff
-- `PhyAgentOS/agent/planning_loop.py:L161-L173,L321-L351`、`agent/loop.py:L538-L545`、`agent/tools/planning.py:L76-L87,L334-L345,L451-L462`：所有生产 context 路径接入 revision-aware effective settlement。 / Wire revision-aware effective settlements through all production context paths.
-- `PhyAgentOS/forge/task.py:L1644-L1751,L1753-L1879,L2605-L2682,L2972-L3053,L3296-L3313`：事务复核、continuation 一致性、late effect 归约和 resume 幂等。 / Add transactional rechecks, continuation consistency, late-effect reduction, and resume idempotency.
-- `tests/test_planning_loop.py:L3737-L3816,L3866-L3876,L3922-L4000`、`tests/test_planning_task_integration.py:L549-L679`：并发与 unknown-to-late-terminal continuation 回归。 / Add concurrency and unknown-to-late-terminal continuation regressions.
-- `docs/forge/AGENT_MODEL_PROVIDER_NODE_RECOVERY_DIAGNOSIS_20261012.md:L5,L112-L121`：v13.3.1 独立七维审查补充。 / Add the v13.3.1 independent seven-dimension review.
-
-```diff
-- raw historical settlement / raw transactional completion
-+ revision-aware effective settlement / consistent continuation and effect context
-- pre-read-only recovery ownership checks
-+ transactional revision, execution, node, predecessor and lifecycle rechecks
-```
-
-### 验证、部署与提交 / Validation, Deployment, and Commit
-- Ruff、compileall、`git diff --check` passed；`333 passed` + `328 passed`。 / Static checks passed; `333 passed` plus `328 passed`.
-- 未部署或重启 Runtime，未创建任务、调用 Query/Action 或产生运动。 / Runtime was not deployed or restarted; no task, Query/Action, or motion was created.
-- Implementation/review commit: `60f8abb4` on `feature/planning-loop`. / 实现与审查提交：`60f8abb4`，分支 `feature/planning-loop`。
-- Log/index completion commit follows separately. / 日志与索引完成提交随后记录。
-
-## v13.3.0 (2026-10-12 14:09) - codex
-
-### 变更摘要 / Summary [完成]
-- [policy] [fix] 将 Tool 调用前 Agent 模型 provider failure 与 Query/Action failure 分层；新增 `waiting_for_agent_provider`，同 revision/node bounded recovery，禁止 Action replay。 / Separate pre-Tool Agent model provider failures from Query/Action failures; add `waiting_for_agent_provider`, bounded same-revision/node recovery, and prohibit Action replay.
-- [policy] [fix] 历史 completed-effect context 按 `(revision_id,node_id,invocation_id)` 精确关联，只携带稳定执行身份和有界结果事实，不覆盖当前场景证据。 / Correlate historical completed effects by `(revision_id,node_id,invocation_id)`, carrying only stable execution identity and bounded outcome facts without overriding current-scene evidence.
-- [eval] [test] 七维审查修复事务恢复竞争、legacy 迁移过宽和旧 settlement 兼容性；Core/config `265 passed`，广泛恢复 suite `326 passed`，全程 no-motion。 / Seven-dimension review fixed transactional recovery races, over-broad legacy migration, and legacy-settlement compatibility; Core/config `265 passed`, broad recovery suite `326 passed`, all no-motion.
-
-### 文件与关键 Diff / Files and Key Diff
-- `PhyAgentOS/forge/task.py`、`PhyAgentOS/agent/planning_loop.py`、`PhyAgentOS/agent/long_horizon.py`：新增 Coordinator-owned model-provider wait/release lifecycle and bounded historical effect projection. / Add the Coordinator-owned model-provider wait/release lifecycle and bounded historical effect projection.
-- `PhyAgentOS/agent/prompt_context.py`、`PhyAgentOS/agent/loop.py`、`PhyAgentOS/config/schema.py`、`PhyAgentOS/cli/commands.py`：接入状态、可见工具和 retry 配置。 / Wire status, visible tools, and retry configuration.
-- `tests/test_planning_loop.py`、`tests/test_long_horizon_controller.py`、`tests/test_agent_foundation.py`、`tests/test_verification_service_config.py`：恢复、并发、跨 revision、配置和 no-motion 回归。 / Add recovery, concurrency, cross-revision, config, and no-motion regressions.
-- `docs/forge/AGENT_MODEL_PROVIDER_NODE_RECOVERY_DIAGNOSIS_20261012.md`：保存通用诊断和七维审查。 / Record the generic diagnosis and seven-dimension review.
-
-```diff
-- NodeTurnProviderError -> awaiting_replan
-+ NodeTurnProviderError before Tool record -> waiting_for_agent_provider
-+ same scene -> same node/revision retry; changed scene -> awaiting_replan
-```
-
-### 部署与提交 / Deployment and Commit
-- 本轮未部署或重启 Runtime，未创建任务、调用 Query/Action 或产生运动。 / Runtime was not deployed or restarted; no task, Query/Action, or motion was created.
-- Implementation/review commit: `df333e59`; branch `feature/planning-loop`. / 实现与审查提交：`df333e59`；分支 `feature/planning-loop`。
-- Log/index completion commit follows separately. / 日志与索引完成提交随后单独记录。
 
 <!-- v13.2.15 and earlier detailed records are archived in changelog/2026-10_part5.md. -->
 
