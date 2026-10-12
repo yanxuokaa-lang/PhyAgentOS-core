@@ -1,5 +1,20 @@
 # Changelog
 
+## v13.2.15 (2026-10-12 13:14) - codex
+
+### 变更摘要 / Summary [完成]
+- [env] [chore] 强制停止旧 Runtime，刷新 editable Core，构建并安装 Skill `3.0.20` / Node `1.0.10`，启动既有 `robotwin-blocks-ranking-graspnet` profile；不改变 RGB 任务逻辑。 / Force-stop the old Runtime, refresh the editable Core, build/install Skill `3.0.20` / Node `1.0.10`, and start the existing profile; no RGB task logic changed.
+- [eval] [test] release/conformance focused suite `76 passed`；新 Runtime running、Dora running、Gateway ready、11/11 Tool contexts ready；任务库 `cancelled=199, failed=94`，无非终态任务。 / The focused release/conformance suite passed `76`; the new Runtime/Dora are running, Gateway is ready, all 11/11 Tool contexts are ready, and the task store remains `cancelled=199, failed=94` with no non-terminal task.
+
+### 文件与关键 Diff / Files and key diff
+- `examples/forge-skills/pick-place-workflow/pyproject.toml:L1-L4`、`skill.yaml:L1-L4,L219-L229`：版本/Node lock `3.0.19/1.0.9` → `3.0.20/1.0.10`，锁定新 Node SHA。 / Update the version/Node lock and pin the new Node SHA.
+- `examples/forge-skills/pick-place-workflow/CHANGELOG.md:L3-L6`、`tests/test_grasp_propose.py:L261-L274`：发布说明与版本回归同步。 / Align release notes and version regression.
+- `out/releases/v13.2.15/`：新增 Node/Skill artifacts；runtime lock 使用 Node `1.0.10`。 / Add Node/Skill artifacts; the runtime lock uses Node `1.0.10`.
+
+### 安全边界与提交 / Safety boundary and commit
+- 未创建 AgentTask、未调用 Query/Action、未读取相机、未推进 simulator、无物理运动；未跟踪用户文件保留。 / No AgentTask, Query/Action, camera, simulator, or physical motion; user untracked files preserved.
+- Implementation/deployment commit: `52f631e5` on `feature/planning-loop`; detailed record: [2026-10 part5 v13.2.15](changelog/2026-10_part5.md).
+
 ## v13.2.14 (2026-10-12 13:02) - codex
 
 ### 变更摘要 / Summary [完成]

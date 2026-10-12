@@ -1,5 +1,10 @@
 # Change Log
 
+## v3.0.20 (2026-10-12)
+
+- 中文：发布 Adapter Node `1.0.10`，包含 lifecycle/provider route-specific diagnostics 修复，使已安装 Runtime 使用当前审查后的 provider 诊断链；不改变 Query/Action 或 RGB 任务逻辑。
+- English: Publish Adapter Node `1.0.10` with the reviewed lifecycle/provider route-specific diagnostics so the installed Runtime uses the current provider diagnostic chain; change no Query/Action or RGB task logic.
+
 ## v3.0.19 (2026-10-12)
 
 - 中文：发布 Adapter Node `1.0.9`，修复语义 fallback 后 metric enrichment worker 失败的阶段归属与受限诊断字段；enrichment 不再伪装为语义 provider readiness failure。
