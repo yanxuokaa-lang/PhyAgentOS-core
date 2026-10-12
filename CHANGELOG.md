@@ -2,6 +2,32 @@
 
 ## 最近五版本 / Latest five versions
 
+## v13.3.12 (2026-10-13 00:38) - codex
+
+### 变更摘要 / Summary [完成]
+- [env] [chore] 按用户授权终止所有旧非终态任务，强制停止旧 `pick-place-workflow` Runtime，刷新当前 checkout 的 editable Core，并启动同一 `robotwin-blocks-ranking-graspnet` profile。 / Under explicit authorization, terminate all old non-terminal tasks, force-stop the old Runtime, refresh editable Core from the current checkout, and start the same profile.
+- [eval] [test] 验收任务终态、新 host/simulator 生命周期、Runtime/Dora/Gateway/11 项 Tool readiness、Core 导入路径和端口；不创建/恢复任务或调用 Query/Action。 / Validate terminal task state, the new host/simulator lifecycle, Runtime/Dora/Gateway/all Tool readiness, Core import paths, and ports without creating/resuming tasks or invoking Query/Action.
+
+### 部署结果 / Deployment Result
+- 唯一旧非终态任务 `task_d359b5ef6179479d` 在停止处理时已为 terminal `failed`；最终 `cancelled=203`、`failed=100`、non-terminal=`0`，无数据库直改或 Action 重放。 / The only old non-terminal task was already terminal failed when handled; final counts show zero non-terminal tasks, with no direct database edit or Action replay.
+- 旧 Runtime 停止后 19020 释放、旧 host/simulator 退出；独立 Qwen PID `176466` / 8012 保持运行。`pip install --no-deps -e .` 后 Core 从当前 checkout 导入。 / After the old Runtime stopped, port 19020 was released and old host/simulator processes exited while independent Qwen remained running; editable Core imports from the current checkout.
+- 新 Dora flow PID `3503132`、host PID `3503150`、simulator worker PID `3503257` 于 00:39:26-27 创建，startup=`14.678s`；Skill/Dora running、Gateway ready、11/11 Tool contexts ready，19020/8012 监听。 / New flow, host, and simulator worker processes were created with the recorded startup time; Skill/Dora are running, Gateway and all Tool contexts ready, and both ports listen.
+- Skill `3.0.22` / Node `1.0.12` 与 runtime lock 保持不变；本轮只部署 Core v13.3.11，不发布 Adapter/Skill/Node artifact。 / Skill/Node and runtime lock remain unchanged; this deploys Core v13.3.11 only and publishes no Adapter/Skill/Node artifact.
+
+### 文件、关键 Diff 与安全边界 / Files, Key Diff, and Safety Boundary
+- `changelog/2026-10_part6.md:L507-L545`、`CHANGELOG.md:L5-L29`：完整双语停止/安装/启动证据。 / Complete bilingual stop/install/start evidence.
+
+```diff
+- old Runtime lifecycle + one previously executing task
++ zero non-terminal tasks + current-checkout Core + new host/simulator lifecycle
+  Skill 3.0.22 / Node 1.0.12 unchanged
+```
+
+- 未调用 Gateway Query/Action、相机或 simulator action；新 worker 仅证明初始场景生命周期重新创建，不证明具体场景或任务成功。 / No Gateway Query/Action, camera, or simulator action was invoked; the new worker proves only initial-scene lifecycle recreation, not scene contents or task success.
+
+### Git 提交 / Git Commit
+- Deployment log/index commit pending on `feature/planning-loop`. / 部署日志与索引提交待生成。
+
 ## v13.3.11 (2026-10-13 00:06) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -132,6 +158,10 @@
 ### Git 提交 / Git Commit
 - Restart log/index commit: `b6ce82b3` on `feature/planning-loop`; commit-reference completion follows separately. / 重启日志与索引提交：`b6ce82b3`，分支 `feature/planning-loop`；提交引用补全随后单独完成。
 
+## Archived detailed records / 已归档详细记录
+
+The latest five records above are mirrored from the monthly archive. Older snapshots below remain for historical compatibility. / 上述最近五条与月度归档同步；以下旧快照仅为历史兼容保留。
+
 ## v13.3.7 (2026-10-12 21:50) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -158,10 +188,6 @@
 
 详见 [v13.3.7 月度日志](changelog/2026-10_part6.md)。 / See the [v13.3.7 detailed log](changelog/2026-10_part6.md).
 - Deployment log/index commit: `ee95434d` on `feature/planning-loop`; commit-reference completion follows separately. / 部署日志与索引提交：`ee95434d`，分支 `feature/planning-loop`；提交引用补全随后单独完成。
-
-## Archived detailed records / 已归档详细记录
-
-The latest five records above are mirrored from the monthly archive. Older snapshots below remain for historical compatibility. / 上述最近五条与月度归档同步；以下旧快照仅为历史兼容保留。
 
 ## v13.3.6 (2026-10-12 21:37) - codex
 
