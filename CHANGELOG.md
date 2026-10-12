@@ -8,7 +8,7 @@
 
 详见 [2026-10 part5 v13.2.11](changelog/2026-10_part5.md)。See the detailed v13.2.11 record.
 - Skill `3.0.19` / Node `1.0.9`; Node SHA-256 `f721430c4bcb2960306c16c4defacae8e7652870eaffc4c0c1ab718d8f21fff4`. / Skill `3.0.19` / Node `1.0.9`; Node SHA-256 as recorded.
-- Focused validation: `366 passed`, Ruff/compileall/release-lock/diff checks passed; no Runtime, Query/Action, camera, simulator, or physical motion.
+- Focused validation: `366 passed`; full root suite `858 passed, 5 unrelated failures`; Ruff/compileall/release-lock/diff checks passed. No Runtime, Query/Action, camera, simulator, or physical motion.
 - Key contract diff: proposal-worker `failure_stage=provider` → `failure_stage=enrichment`; only semantic provider failures remain eligible for readiness-transition waiting.
 - Implementation commit: `6e6af982` on `feature/planning-loop`.
 
