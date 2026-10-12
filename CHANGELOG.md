@@ -1,5 +1,20 @@
 # Changelog
 
+## v13.3.2 (2026-10-12 16:27) - codex
+
+### 变更摘要 / Summary [完成]
+- [env] [chore] 强制停止旧 `pick-place-workflow` Runtime，确认当前 editable Core 直接加载 v13.3.1 checkout，并复用既有 `robotwin-blocks-ranking-graspnet` profile/operator env 启动新 Runtime。 / Force-stop the old Runtime, confirm the current editable Core directly loads the v13.3.1 checkout, and start a new Runtime with the existing profile/operator environment.
+- [eval] [test] Runtime/Dora running、Gateway ready、11/11 Tool contexts ready；Qwen 8012 独立服务保持 ready；任务库无非终态任务。 / Runtime/Dora are running, Gateway and all 11 Tool contexts are ready, the independent Qwen 8012 service remains ready, and the task store has no non-terminal task.
+
+### 部署证据 / Deployment Evidence
+- Core import：`/home/yanxu/PhyAgentOS-forge/PhyAgentOS/agent/planning_loop.py`，`revision_settlement_loader=true`。 / Core imports the current checkout and exposes the v13.3.1 revision loader.
+- Active lock：Skill `3.0.20` / Node `1.0.10`，Node SHA-256=`722cc67599c5c7792cb069d783597fde440464c2c97f4a2927cc1d9a4e248d63`。 / The active lock pins Skill 3.0.20 and Node 1.0.10 with the recorded SHA-256.
+- Qwen `/v1/models`：`qwen3-vl-4b-awq`；task counts：`cancelled=200, failed=95`。 / Qwen reports the expected model; task counts contain only terminal states.
+- no-motion：未创建 AgentTask、调用 Query/Action、读取相机、推进 simulator 或执行运动。 / No AgentTask, Query/Action, camera read, simulator step, or motion.
+
+### Git 提交 / Git Commit
+- Deployment log/index commit follows separately. / 部署日志与索引提交随后记录。
+
 ## v13.3.1 (2026-10-12 15:37) - codex
 
 ### 变更摘要 / Summary [完成]
