@@ -54,7 +54,7 @@
 - 未新建或切换分支，未安装/重启 Runtime，未创建/恢复任务，未调用 live Query/Action、相机或 simulator；测试只使用本地 fixture，无物理运动。 / No branch creation/switch, Runtime install/restart, task create/resume, or live Query/Action, camera, or simulator call; tests use local fixtures only, with no physical motion.
 
 ### Git 提交 / Git Commit
-- 待记录实现 commit；当前分支 `feature/planning-loop`。 / Implementation commit pending; current branch `feature/planning-loop`.
+- Implementation commit: `0205be6a` on `feature/planning-loop`; log/index reference completion follows. / 实现提交：`0205be6a`，分支 `feature/planning-loop`；日志与索引提交引用随后补全。
 
 ## v13.3.5 (2026-10-12 20:31) - codex
 
