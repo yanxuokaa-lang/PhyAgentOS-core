@@ -865,7 +865,7 @@ class SingleViewPerceptionInference:
             route = {}
         route = route if isinstance(route, Mapping) else {}
         try:
-            self.diagnostic_sink({
+            event = {
                 "status": "error",
                 "route": route.get("provider_route", "none"),
                 "provider_error_class": self._failure_class or "provider_failure",
@@ -875,7 +875,14 @@ class SingleViewPerceptionInference:
                 "observation_ref": request.get("observation_ref"),
                 "scene_revision": request.get("scene_revision"),
                 "frame_id": request.get("frame_id"),
-            })
+            }
+            for key in (
+                "primary_route", "primary_error_class", "primary_error_code",
+                "fallback_route", "fallback_error_class", "fallback_error_code",
+            ):
+                if isinstance(route.get(key), str):
+                    event[key] = route[key]
+            self.diagnostic_sink(event)
         except Exception:
             return
 

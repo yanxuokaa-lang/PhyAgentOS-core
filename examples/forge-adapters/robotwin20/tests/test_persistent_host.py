@@ -43,6 +43,41 @@ def test_scene_diagnostic_sink_drops_unbounded_provider_tokens(tmp_path):
     assert "provider_error_class" not in event
 
 
+def test_scene_diagnostic_sink_keeps_route_specific_bounded_failure_facts(tmp_path):
+    sink = _scene_diagnostic_sink(tmp_path)
+    sink(
+        {
+            "status": "error",
+            "route": "none",
+            "provider_error_class": "contract+provider_failure",
+            "provider_error_code": "http_500+http_502",
+            "primary_route": "qwen3-vl-4b-vllm",
+            "primary_error_class": "contract",
+            "primary_error_code": "contract_output",
+            "fallback_route": "gpt-5.6-sol-high",
+            "fallback_error_class": "provider_failure",
+            "fallback_error_code": "http_502",
+            "private_body": "must not cross the sink",
+        }
+    )
+
+    event = json.loads((tmp_path / "scene-understanding-diagnostics.jsonl").read_text())
+    assert event == {
+        "captured_at": event["captured_at"],
+        "status": "error",
+        "route": "none",
+        "provider_error_class": "contract+provider_failure",
+        "provider_error_code": "http_500+http_502",
+        "primary_route": "qwen3-vl-4b-vllm",
+        "primary_error_class": "contract",
+        "primary_error_code": "contract_output",
+        "fallback_route": "gpt-5.6-sol-high",
+        "fallback_error_class": "provider_failure",
+        "fallback_error_code": "http_502",
+    }
+    assert "private_body" not in event
+
+
 def test_operational_timing_logging_is_scoped_and_idempotent():
     logger = __import__("logging").getLogger("robotwin20_adapter.process_worker")
     original_handlers = list(logger.handlers)

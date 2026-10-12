@@ -2,8 +2,14 @@
 
 from __future__ import annotations
 
+import re
 import time
 from typing import Any, Callable, Mapping, Protocol
+
+_PROVIDER_ERROR_CLASSES = frozenset(
+    {"authentication", "timeout", "transport", "contract", "provider_failure"}
+)
+_DIAGNOSTIC_TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/+@-]{0,127}$")
 
 
 class _Inference(Protocol):
@@ -18,10 +24,13 @@ class SceneUnderstandingFallbackError(RuntimeError):
         message: str,
         *,
         provider_error_class: str = "provider_failure",
+        provider_error_code: str | None = None,
         retryable: bool = False,
     ) -> None:
         super().__init__(message)
         self.provider_error_class = provider_error_class
+        if isinstance(provider_error_code, str) and _DIAGNOSTIC_TOKEN.fullmatch(provider_error_code):
+            self.provider_error_code = provider_error_code
         self.retryable = retryable
 
 
@@ -53,9 +62,16 @@ class FallbackSceneUnderstandingInference:
         self.last_route: str | None = None
         self.last_error: str | None = None
         self.last_error_class: str | None = None
+        self.primary_error_class: str | None = None
+        self.primary_error_code: str | None = None
+        self.fallback_error_class: str | None = None
+        self.fallback_error_code: str | None = None
 
     @staticmethod
     def _error_class(exc: BaseException) -> str:
+        declared = getattr(exc, "provider_error_class", None)
+        if isinstance(declared, str) and declared in _PROVIDER_ERROR_CLASSES:
+            return declared
         chain: list[BaseException] = []
         current: BaseException | None = exc
         while current is not None and len(chain) < 8:
@@ -74,11 +90,39 @@ class FallbackSceneUnderstandingInference:
             return "contract"
         return "provider_failure"
 
+    @staticmethod
+    def _error_code(exc: BaseException, error_class: str) -> str:
+        declared = getattr(exc, "provider_error_code", None)
+        if isinstance(declared, str) and _DIAGNOSTIC_TOKEN.fullmatch(declared):
+            return declared
+        status = getattr(exc, "status_code", None)
+        if isinstance(status, int) and 100 <= status <= 599:
+            return f"http_{status}"
+        if error_class == "contract":
+            return "contract_output"
+        if error_class in {"timeout", "transport"}:
+            return error_class
+        return "provider_failure"
+
     def diagnostic_summary(self) -> dict[str, str]:
-        return {
+        result = {
             "provider_route": self.last_route or "none",
             "provider_error_class": self.last_error_class or "none",
         }
+        for key, value in (
+            ("primary_route", self.primary_name),
+            ("primary_error_class", self.primary_error_class),
+            ("primary_error_code", self.primary_error_code),
+            (
+                "fallback_route",
+                self.fallback_name if self.primary_error_class is not None else None,
+            ),
+            ("fallback_error_class", self.fallback_error_class),
+            ("fallback_error_code", self.fallback_error_code),
+        ):
+            if isinstance(value, str) and _DIAGNOSTIC_TOKEN.fullmatch(value):
+                result[key] = value
+        return result
 
     def readiness_summary(self) -> dict[str, Any]:
         """Project provider-chain readiness without invoking inference.
@@ -101,12 +145,20 @@ class FallbackSceneUnderstandingInference:
                 # that releases a previously latched dual-provider failure.
                 self.last_error = None
                 self.last_error_class = None
+                self.primary_error_class = None
+                self.primary_error_code = None
+                self.fallback_error_class = None
+                self.fallback_error_code = None
             elif self.last_route is None and self.last_error_class is not None:
                 return {
                     "ready": False,
                     "provider_state": "unavailable",
                     "provider_route": "none",
                     "provider_error_class": self.last_error_class,
+                    "primary_error_class": self.primary_error_class or "provider_failure",
+                    "primary_error_code": self.primary_error_code or "provider_failure",
+                    "fallback_error_class": self.fallback_error_class or "provider_failure",
+                    "fallback_error_code": self.fallback_error_code or "provider_failure",
                     "binding_error": "scene_understanding_provider_unavailable",
                 }
             if primary.get("ready") is False:
@@ -117,6 +169,7 @@ class FallbackSceneUnderstandingInference:
                     "provider_state": "fallback_pending",
                     "primary_ready": False,
                     "primary_error_class": primary.get("provider_error_class", "transport"),
+                    "primary_error_code": primary.get("provider_error_code", "transport"),
                     "provider_route": self.last_route or "none",
                     "provider_error_class": self.last_error_class or "none",
                 }
@@ -126,6 +179,10 @@ class FallbackSceneUnderstandingInference:
                 "provider_state": "unavailable",
                 "provider_route": "none",
                 "provider_error_class": self.last_error_class,
+                "primary_error_class": self.primary_error_class or "provider_failure",
+                "primary_error_code": self.primary_error_code or "provider_failure",
+                "fallback_error_class": self.fallback_error_class or "provider_failure",
+                "fallback_error_code": self.fallback_error_code or "provider_failure",
                 "binding_error": "scene_understanding_provider_unavailable",
             }
         return {
@@ -147,12 +204,21 @@ class FallbackSceneUnderstandingInference:
     def infer(self, request: Mapping[str, Any]) -> Mapping[str, Any] | None:
         started = time.perf_counter()
         primary_error_class = "provider_failure"
+        self.last_route = None
+        self.last_error = None
+        self.last_error_class = None
+        self.primary_error_class = None
+        self.primary_error_code = None
+        self.fallback_error_class = None
+        self.fallback_error_code = None
         try:
             result = self.primary.infer(request)
             if result is not None:
                 self.last_route = self.primary_name
                 self.last_error = None
                 self.last_error_class = None
+                self.primary_error_class = None
+                self.primary_error_code = None
                 self._emit({
                     "status": "available", "route": self.primary_name,
                     "observation_ref": request.get("observation_ref"),
@@ -160,12 +226,16 @@ class FallbackSceneUnderstandingInference:
                     "elapsed_ms": round((time.perf_counter() - started) * 1000, 3),
                 })
                 return result
+            self.primary_error_class = primary_error_class
+            self.primary_error_code = "empty_result"
             if not self.fallback_on_empty:
                 return None
             primary_error = "provider returned no result"
         except self.fallback_exceptions as exc:
             primary_error = type(exc).__name__
             primary_error_class = self._error_class(exc)
+            self.primary_error_class = primary_error_class
+            self.primary_error_code = self._error_code(exc, primary_error_class)
         try:
             result = self.fallback.infer(request)
             if result is None:
@@ -173,9 +243,15 @@ class FallbackSceneUnderstandingInference:
             self.last_route = self.fallback_name
             self.last_error = primary_error
             self.last_error_class = primary_error_class
+            self.fallback_error_class = None
+            self.fallback_error_code = None
             self._emit({
                 "status": "available", "route": self.fallback_name,
                 "provider_error_class": primary_error_class,
+                "primary_route": self.primary_name,
+                "primary_error_class": primary_error_class,
+                "primary_error_code": self.primary_error_code or "provider_failure",
+                "fallback_route": self.fallback_name,
                 "observation_ref": request.get("observation_ref"),
                 "scene_revision": request.get("scene_revision"),
                 "elapsed_ms": round((time.perf_counter() - started) * 1000, 3),
@@ -185,10 +261,18 @@ class FallbackSceneUnderstandingInference:
             self.last_route = None
             self.last_error = f"{primary_error}; {type(exc).__name__}"
             fallback_error_class = self._error_class(exc)
+            self.fallback_error_class = fallback_error_class
+            self.fallback_error_code = self._error_code(exc, fallback_error_class)
             self.last_error_class = f"{primary_error_class}+{fallback_error_class}"
             self._emit({
                 "status": "error", "route": "none",
                 "provider_error_class": self.last_error_class,
+                "primary_route": self.primary_name,
+                "primary_error_class": primary_error_class,
+                "primary_error_code": self.primary_error_code or "provider_failure",
+                "fallback_route": self.fallback_name,
+                "fallback_error_class": fallback_error_class,
+                "fallback_error_code": self.fallback_error_code or "provider_failure",
                 "observation_ref": request.get("observation_ref"),
                 "scene_revision": request.get("scene_revision"),
                 "elapsed_ms": round((time.perf_counter() - started) * 1000, 3),
@@ -196,6 +280,10 @@ class FallbackSceneUnderstandingInference:
             raise SceneUnderstandingFallbackError(
                 "local and fallback scene understanding providers failed",
                 provider_error_class=self.last_error_class,
+                provider_error_code=(
+                    f"{self.primary_error_code or 'provider_failure'}+"
+                    f"{self.fallback_error_code or 'provider_failure'}"
+                ),
                 # Neither provider produced evidence. A new observation cannot
                 # repair an unchanged provider outage; resume only after the
                 # Runtime context reports a changed provider state.
@@ -238,10 +326,15 @@ class FallbackSceneUnderstandingInference:
             self.last_route = None
             self.last_error = f"{primary_error}; {type(exc).__name__}"
             fallback_error_class = self._error_class(exc)
+            self.fallback_error_class = fallback_error_class
+            self.fallback_error_code = self._error_code(exc, fallback_error_class)
             self.last_error_class = f"provider_failure+{fallback_error_class}"
             raise SceneUnderstandingFallbackError(
                 "lifecycle handoff failed and fallback scene understanding failed",
                 provider_error_class=self.last_error_class,
+                provider_error_code=(
+                    f"provider_failure+{self.fallback_error_code or 'provider_failure'}"
+                ),
                 retryable=fallback_error_class in {"timeout", "transport"},
             ) from exc
 

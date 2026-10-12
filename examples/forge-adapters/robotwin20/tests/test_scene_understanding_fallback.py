@@ -62,6 +62,25 @@ def test_gpt_fallback_runs_after_local_failure():
     assert route.last_error == "TimeoutError"
 
 
+def test_empty_primary_result_is_recorded_before_fallback():
+    route = FallbackSceneUnderstandingInference(
+        _Provider(result=None),
+        _Provider({"entities": [{"entity_ref": "entity://fallback"}]}),
+        primary_name="qwen3-vl-4b-vllm",
+        fallback_name="gpt-6.1-sol-high",
+    )
+
+    assert route.infer({})["entities"][0]["entity_ref"] == "entity://fallback"
+    assert route.diagnostic_summary() == {
+        "provider_route": "gpt-6.1-sol-high",
+        "provider_error_class": "provider_failure",
+        "primary_route": "qwen3-vl-4b-vllm",
+        "primary_error_class": "provider_failure",
+        "primary_error_code": "empty_result",
+        "fallback_route": "gpt-6.1-sol-high",
+    }
+
+
 def test_both_provider_failures_are_bounded():
     route = FallbackSceneUnderstandingInference(
         _Provider(error=TimeoutError()),
@@ -79,14 +98,61 @@ def test_both_provider_failures_are_bounded():
     assert route.diagnostic_summary() == {
         "provider_route": "none",
         "provider_error_class": "timeout+transport",
+        "primary_route": "qwen3-vl-4b-vllm",
+        "primary_error_class": "timeout",
+        "primary_error_code": "timeout",
+        "fallback_route": "gpt-6.1-sol-high",
+        "fallback_error_class": "transport",
+        "fallback_error_code": "transport",
     }
     assert route.readiness_summary() == {
         "ready": False,
         "provider_state": "unavailable",
         "provider_route": "none",
         "provider_error_class": "timeout+transport",
+        "primary_error_class": "timeout",
+        "primary_error_code": "timeout",
+        "fallback_error_class": "transport",
+        "fallback_error_code": "transport",
         "binding_error": "scene_understanding_provider_unavailable",
     }
+
+
+def test_dual_failure_preserves_route_specific_declared_codes_without_exception_text():
+    primary_error = RuntimeError("private primary response")
+    primary_error.provider_error_class = "contract"  # type: ignore[attr-defined]
+    primary_error.provider_error_code = "http_500"  # type: ignore[attr-defined]
+    fallback_error = RuntimeError("private fallback response")
+    fallback_error.provider_error_class = "provider_failure"  # type: ignore[attr-defined]
+    fallback_error.provider_error_code = "http_502"  # type: ignore[attr-defined]
+    events = []
+    route = FallbackSceneUnderstandingInference(
+        _Provider(error=primary_error),
+        _Provider(error=fallback_error),
+        primary_name="local",
+        fallback_name="remote",
+        diagnostic_sink=events.append,
+    )
+
+    with pytest.raises(SceneUnderstandingFallbackError) as failure:
+        route.infer({"scene_revision": "scene-1"})
+
+    assert failure.value.provider_error_class == "contract+provider_failure"
+    assert failure.value.provider_error_code == "http_500+http_502"
+    assert route.diagnostic_summary() == {
+        "provider_route": "none",
+        "provider_error_class": "contract+provider_failure",
+        "primary_route": "local",
+        "primary_error_class": "contract",
+        "primary_error_code": "http_500",
+        "fallback_route": "remote",
+        "fallback_error_class": "provider_failure",
+        "fallback_error_code": "http_502",
+    }
+    assert events[0]["primary_error_code"] == "http_500"
+    assert events[0]["fallback_error_code"] == "http_502"
+    assert "private primary response" not in str(events)
+    assert "private fallback response" not in str(events)
 
 
 def test_primary_health_failure_keeps_one_explicit_fallback_attempt_available():
@@ -106,6 +172,7 @@ def test_primary_health_failure_keeps_one_explicit_fallback_attempt_available():
         "provider_state": "fallback_pending",
         "primary_ready": False,
         "primary_error_class": "transport",
+            "primary_error_code": "transport",
         "provider_route": "none",
         "provider_error_class": "none",
     }
@@ -155,11 +222,19 @@ def test_fallback_diagnostic_sink_is_bounded_and_does_not_copy_exception_text():
     assert route.diagnostic_summary() == {
         "provider_route": "gpt-5.6-sol-high",
         "provider_error_class": "timeout",
+        "primary_route": "qwen3-vl-4b-vllm",
+        "primary_error_class": "timeout",
+        "primary_error_code": "timeout",
+        "fallback_route": "gpt-5.6-sol-high",
     }
     assert events == [{
         "status": "available",
         "route": "gpt-5.6-sol-high",
         "provider_error_class": "timeout",
+        "primary_route": "qwen3-vl-4b-vllm",
+        "primary_error_class": "timeout",
+        "primary_error_code": "timeout",
+        "fallback_route": "gpt-5.6-sol-high",
         "observation_ref": "observation://s/c",
         "scene_revision": None,
         "elapsed_ms": events[0]["elapsed_ms"],

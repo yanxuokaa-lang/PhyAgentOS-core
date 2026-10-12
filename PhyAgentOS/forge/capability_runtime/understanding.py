@@ -457,11 +457,15 @@ def _provider_diagnostics(provider: Any) -> dict[str, str]:
     if not isinstance(value, Mapping):
         return {}
     result: dict[str, str] = {}
-    for key in ("provider_route", "provider_error_class"):
+    for key in (
+        "provider_route", "provider_error_class", "provider_error_code",
+        "primary_route", "primary_error_class", "primary_error_code",
+        "fallback_route", "fallback_error_class", "fallback_error_code",
+    ):
         item = value.get(key)
         if not isinstance(item, str) or _DIAGNOSTIC_TOKEN.fullmatch(item) is None:
             continue
-        if key == "provider_error_class":
+        if key in {"provider_error_class", "primary_error_class", "fallback_error_class"}:
             if not _valid_provider_error_class(item):
                 continue
         result[key] = item

@@ -11,6 +11,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping, Protocol
@@ -103,6 +104,52 @@ class OpenAIResponsesConfig:
 
 class OpenAIResponsesInferenceError(RuntimeError):
     """Bounded provider error safe to project as a generic ToolResult failure."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        provider_error_class: str = "contract",
+        provider_error_code: str | None = None,
+        retryable: bool = False,
+    ) -> None:
+        super().__init__(message)
+        self.provider_error_class = provider_error_class
+        if isinstance(provider_error_code, str) and re.fullmatch(
+            r"[A-Za-z0-9][A-Za-z0-9._:/+@-]{0,127}", provider_error_code
+        ):
+            self.provider_error_code = provider_error_code
+        self.retryable = retryable
+
+
+def _provider_error_code(exc: BaseException, error_class: str) -> str:
+    """Return a bounded code without exposing provider response text."""
+    declared = getattr(exc, "provider_error_code", None)
+    if isinstance(declared, str) and re.fullmatch(
+        r"[A-Za-z0-9][A-Za-z0-9._:/+@-]{0,127}", declared
+    ):
+        return declared
+    status = getattr(exc, "status_code", None)
+    if isinstance(status, int) and 100 <= status <= 599:
+        return f"http_{status}"
+    if "missing" in str(exc).lower() and "key" in str(exc).lower():
+        return "missing_api_key"
+    if error_class == "contract":
+        return "contract_output"
+    if error_class in {"authentication", "timeout", "transport"}:
+        return error_class
+    return "provider_failure"
+
+
+def _provider_error_class(exc: BaseException) -> str:
+    text = f"{type(exc).__name__} {exc}".lower()
+    if "auth" in text or "401" in text or "403" in text:
+        return "authentication"
+    if "timeout" in text or "timed out" in text:
+        return "timeout"
+    if "connection" in text or "connecterror" in text or "http" in text:
+        return "transport"
+    return "provider_failure"
 
 
 SCENE_SEMANTIC_AMBIGUITY_CODES = (
@@ -276,12 +323,16 @@ class OpenAIResponsesSceneUnderstandingInference:
         self.client_factory = client_factory or _default_client_factory
         self.diagnostic_sink = diagnostic_sink
         self._last_error_class = "none"
+        self._last_error_code = "none"
 
     def diagnostic_summary(self) -> dict[str, str]:
-        return {
+        result = {
             "provider_route": "openai-responses",
             "provider_error_class": self._last_error_class,
         }
+        if self._last_error_code != "none":
+            result["provider_error_code"] = self._last_error_code
+        return result
 
     def infer(self, request: Mapping[str, Any]) -> Mapping[str, Any]:
         if not isinstance(request, Mapping):
@@ -295,7 +346,14 @@ class OpenAIResponsesSceneUnderstandingInference:
         images = self._resolve_images(artifacts)
         api_key = os.environ.get(self.config.api_key_env)
         if not api_key:
-            raise OpenAIResponsesInferenceError(f"Missing {self.config.api_key_env} for scene understanding")
+            self._last_error_class = "authentication"
+            self._last_error_code = "missing_api_key"
+            raise OpenAIResponsesInferenceError(
+                f"Missing {self.config.api_key_env} for scene understanding",
+                provider_error_class="authentication",
+                provider_error_code="missing_api_key",
+                retryable=False,
+            )
         client = None
         try:
             client = self.client_factory(
@@ -338,6 +396,7 @@ class OpenAIResponsesSceneUnderstandingInference:
             response = client.responses.create(**payload)
             parsed = dict(self._parse_response(response))
             self._last_error_class = "none"
+            self._last_error_code = "none"
             # Semantic claims are grounded in the RGB image sent above.  Some
             # Responses models omit the optional provenance array even when the
             # claim is visual; bind only that omission to the current RGB input.
@@ -367,18 +426,21 @@ class OpenAIResponsesSceneUnderstandingInference:
                     }
                 )
             return parsed
-        except OpenAIResponsesInferenceError:
-            self._last_error_class = "contract"
+        except OpenAIResponsesInferenceError as exc:
+            self._last_error_class = getattr(exc, "provider_error_class", "contract")
+            self._last_error_code = getattr(exc, "provider_error_code", None) or "contract_output"
             raise
         except Exception as exc:
-            text = f"{type(exc).__name__} {exc}".lower()
-            self._last_error_class = (
-                "authentication" if "auth" in text or "401" in text or "403" in text
-                else "timeout" if "timeout" in text or "timed out" in text
-                else "transport" if "connection" in text or "http" in text
-                else "provider_failure"
-            )
-            raise OpenAIResponsesInferenceError("scene understanding Responses request failed") from exc
+            error_class = _provider_error_class(exc)
+            provider_error_code = _provider_error_code(exc, error_class)
+            self._last_error_class = error_class
+            self._last_error_code = provider_error_code
+            raise OpenAIResponsesInferenceError(
+                "scene understanding Responses request failed",
+                provider_error_class=error_class,
+                provider_error_code=provider_error_code,
+                retryable=error_class in {"timeout", "transport"},
+            ) from exc
         finally:
             close = getattr(client, "close", None)
             if callable(close):
@@ -485,10 +547,13 @@ class OpenAIChatCompletionsSceneUnderstandingInference(
     """
 
     def diagnostic_summary(self) -> dict[str, str]:
-        return {
+        result = {
             "provider_route": "openai-chat-completions",
             "provider_error_class": self._last_error_class,
         }
+        if self._last_error_code != "none":
+            result["provider_error_code"] = self._last_error_code
+        return result
 
     def infer(self, request: Mapping[str, Any]) -> Mapping[str, Any]:
         if not isinstance(request, Mapping):
@@ -502,7 +567,14 @@ class OpenAIChatCompletionsSceneUnderstandingInference(
         images = self._resolve_images(artifacts)
         api_key = os.environ.get(self.config.api_key_env)
         if not api_key:
-            raise OpenAIResponsesInferenceError(f"Missing {self.config.api_key_env} for scene understanding")
+            self._last_error_class = "authentication"
+            self._last_error_code = "missing_api_key"
+            raise OpenAIResponsesInferenceError(
+                f"Missing {self.config.api_key_env} for scene understanding",
+                provider_error_class="authentication",
+                provider_error_code="missing_api_key",
+                retryable=False,
+            )
         client = None
         try:
             client = self.client_factory(
@@ -542,6 +614,7 @@ class OpenAIChatCompletionsSceneUnderstandingInference(
             content = self._chat_content(response)
             parsed = dict(self._parse_response_text(content))
             self._last_error_class = "none"
+            self._last_error_code = "none"
             rgb_refs = [
                 ref for ref in artifacts
                 if isinstance(ref, str) and ref.rsplit("/", 1)[-1] == "rgb"
@@ -566,19 +639,20 @@ class OpenAIChatCompletionsSceneUnderstandingInference(
                     }
                 )
             return parsed
-        except OpenAIResponsesInferenceError:
-            self._last_error_class = "contract"
+        except OpenAIResponsesInferenceError as exc:
+            self._last_error_class = getattr(exc, "provider_error_class", "contract")
+            self._last_error_code = getattr(exc, "provider_error_code", None) or "contract_output"
             raise
         except Exception as exc:
-            text = f"{type(exc).__name__} {exc}".lower()
-            self._last_error_class = (
-                "authentication" if "auth" in text or "401" in text or "403" in text
-                else "timeout" if "timeout" in text or "timed out" in text
-                else "transport" if "connection" in text or "http" in text
-                else "provider_failure"
-            )
+            error_class = _provider_error_class(exc)
+            provider_error_code = _provider_error_code(exc, error_class)
+            self._last_error_class = error_class
+            self._last_error_code = provider_error_code
             raise OpenAIResponsesInferenceError(
-                "scene understanding Chat Completions request failed"
+                "scene understanding Chat Completions request failed",
+                provider_error_class=error_class,
+                provider_error_code=provider_error_code,
+                retryable=error_class in {"timeout", "transport"},
             ) from exc
         finally:
             close = getattr(client, "close", None)

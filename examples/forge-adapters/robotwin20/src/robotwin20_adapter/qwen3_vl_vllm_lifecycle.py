@@ -291,7 +291,7 @@ class LifecycleManagedSceneUnderstandingInference:
             return {}
         return {
             key: value[key]
-            for key in ("provider_route", "provider_error_class")
+            for key in ("provider_route", "provider_error_class", "provider_error_code")
             if isinstance(value.get(key), str)
             and 0 < len(value[key]) <= 128
             and value[key].isprintable()

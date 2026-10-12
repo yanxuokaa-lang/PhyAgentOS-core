@@ -1,5 +1,30 @@
 # Changelog
 
+## v13.2.13 (2026-10-12 12:20) - codex
+
+### 变更摘要 / Summary
+- [comm] [fix] 将语义 provider fallback 的双路失败扩展为独立 primary/fallback route、class 和 bounded code，并保留旧 `provider_error_class` 兼容字段；不记录异常正文、凭据、路径或模型输出。 / Extend dual semantic-provider failures with independent primary/fallback route, class, and bounded code while retaining the legacy `provider_error_class`; do not record exception text, credentials, paths, or model output.
+- [policy] [fix] 通过既有 Adapter、Core Query、Runtime JSONL 和生命周期 seam 透传 allowlisted diagnostics；不改变 readiness、replan、motion authorization 或 Action replay。 / Carry allowlisted diagnostics through the existing Adapter, Core Query, Runtime JSONL, and lifecycle seams; do not change readiness, replan, motion authorization, or Action replay.
+- [eval] [test] 覆盖双路 provider failure、primary 空结果、HTTP code 脱敏和 Core/sink 投影；provider/host/perception `94 passed`，Core AgentLoop/planning/recovery `263 passed`。 / Cover dual provider failure, empty primary results, HTTP-code redaction, and Core/sink projection; provider/host/perception `94 passed`, Core AgentLoop/planning/recovery `263 passed`.
+
+### 文件与关键 Diff / Files and key diff
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/scene_understanding_fallback.py:L9-L125,L204-L291`：独立记录 route/class/code，清理重入旧状态，记录 `empty_result`。 / Independently record route/class/code, clear stale re-entry state, and record `empty_result`.
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/qwen3_vl_vllm_scene_understanding.py:L75-L177,L200-L331`、`openai_scene_understanding.py:L14-L152,L326-L443,L549-L656`：provider 错误映射为有界 code。 / Map provider failures to bounded codes.
+- `PhyAgentOS/forge/capability_runtime/understanding.py:L448-L472`、`persistent_host.py:L136-L188`、`single_view_perception.py:L858-L887`：沿既有边界投影 allowlisted 字段并过滤原始敏感内容。 / Project allowlisted fields through existing boundaries while filtering raw sensitive content.
+- `docs/forge/SCENE_UNDERSTANDING_PROVIDER_FAILURE_DIAGNOSIS_20261012.md:L1-L145`：保存三次双 provider 失败证据、根因、通用修复和七维审查。 / Record the three dual-provider failures, root cause, generic fix, and seven-dimension review.
+
+```diff
+- provider_route=none, provider_error_class=contract+provider_failure
++ primary_route=<primary>, primary_error_class=<class>, primary_error_code=<code>
++ fallback_route=<fallback>, fallback_error_class=<class>, fallback_error_code=<code>
+```
+
+### 验证与提交 / Validation and commit
+- Ruff、compileall、`git diff --check` passed；全程 no-motion，未启动 Runtime、未创建 AgentTask、未调用 Gateway Query/Action。 / Ruff, compileall, and `git diff --check` passed; no motion, Runtime, AgentTask, or Gateway Query/Action was used.
+- Commit pending. / 提交待补。
+
+详见 [2026-10 part5 v13.2.13](changelog/2026-10_part5.md)。See the detailed v13.2.13 record.
+
 ## v13.2.12 (2026-10-12 09:25) - codex
 
 ### 变更摘要 / Summary

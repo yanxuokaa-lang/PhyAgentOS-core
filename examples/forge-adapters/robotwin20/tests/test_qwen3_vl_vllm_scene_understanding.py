@@ -180,6 +180,7 @@ def test_malformed_model_output_is_reported_as_bounded_contract_failure():
     assert provider.diagnostic_summary() == {
         "provider_route": "qwen3-vl-4b-vllm",
         "provider_error_class": "contract",
+        "provider_error_code": "contract_output",
     }
 
 

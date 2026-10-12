@@ -137,8 +137,13 @@ def _persistent_tool_context(
         "provider_state",
         "provider_route",
         "provider_error_class",
+        "provider_error_code",
         "primary_ready",
         "primary_error_class",
+        "primary_error_code",
+        "fallback_route",
+        "fallback_error_class",
+        "fallback_error_code",
     ):
         item = readiness.get(key)
         if isinstance(item, str) and _DIAGNOSTIC_TOKEN.fullmatch(item) is not None:
@@ -156,15 +161,23 @@ def _scene_diagnostic_sink(artifact_root: Path):
     def write(event: Mapping[str, Any]) -> None:
         allowed = {
             "status", "route", "provider_error_class", "provider_error_code",
+            "primary_route", "primary_error_class", "primary_error_code",
+            "fallback_route", "fallback_error_class", "fallback_error_code",
             "failure_stage", "provider_stage", "observation_ref", "scene_revision", "frame_id",
             "elapsed_ms", "image_ref",
         }
         value = {key: event[key] for key in allowed if key in event}
-        for key in ("route", "provider_error_class"):
+        for key in (
+            "route", "provider_error_class", "primary_route", "primary_error_class",
+            "fallback_route", "fallback_error_class",
+        ):
             item = value.get(key)
             if not isinstance(item, str) or _DIAGNOSTIC_TOKEN.fullmatch(item) is None:
                 value.pop(key, None)
-        for key in ("provider_error_code", "failure_stage", "provider_stage"):
+        for key in (
+            "provider_error_code", "primary_error_code", "fallback_error_code",
+            "failure_stage", "provider_stage",
+        ):
             item = value.get(key)
             if not isinstance(item, str) or _DIAGNOSTIC_TOKEN.fullmatch(item) is None:
                 value.pop(key, None)

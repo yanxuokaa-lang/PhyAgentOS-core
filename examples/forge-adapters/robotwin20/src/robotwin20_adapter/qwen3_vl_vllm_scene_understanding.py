@@ -77,6 +77,7 @@ class Qwen3VLVLLMInferenceError(RuntimeError):
         message: str,
         *,
         provider_error_class: str | None = None,
+        provider_error_code: str | None = None,
         retryable: bool | None = None,
     ) -> None:
         super().__init__(message)
@@ -85,6 +86,10 @@ class Qwen3VLVLLMInferenceError(RuntimeError):
             and provider_error_class in _PROVIDER_ERROR_CLASSES
         ):
             self.provider_error_class = provider_error_class
+        if isinstance(provider_error_code, str) and re.fullmatch(
+            r"[A-Za-z0-9][A-Za-z0-9._:/+@-]{0,127}", provider_error_code
+        ):
+            self.provider_error_code = provider_error_code
         if isinstance(retryable, bool):
             self.retryable = retryable
 
@@ -93,6 +98,14 @@ class Qwen3VLVLLMContractError(Qwen3VLVLLMInferenceError):
     """The local model returned an invalid semantic scene contract."""
 
     provider_error_class = "contract"
+
+    def __init__(self, message: str, *, provider_error_code: str = "contract_output") -> None:
+        super().__init__(
+            message,
+            provider_error_class="contract",
+            provider_error_code=provider_error_code,
+            retryable=False,
+        )
 
 
 class ChatCompletionsClient(Protocol):
@@ -147,6 +160,23 @@ def _provider_error_class(exc: BaseException) -> str:
     return "provider_failure"
 
 
+def _provider_error_code(exc: BaseException, error_class: str) -> str:
+    """Return a bounded, secret-free code for one provider failure."""
+    declared = getattr(exc, "provider_error_code", None)
+    if isinstance(declared, str) and re.fullmatch(
+        r"[A-Za-z0-9][A-Za-z0-9._:/+@-]{0,127}", declared
+    ):
+        return declared
+    status = getattr(exc, "status_code", None)
+    if isinstance(status, int) and 100 <= status <= 599:
+        return f"http_{status}"
+    if error_class == "contract":
+        return "contract_output"
+    if error_class in {"authentication", "timeout", "transport"}:
+        return error_class
+    return "provider_failure"
+
+
 class Qwen3VLVLLMSceneUnderstandingInference:
     """Call a persistent Qwen vLLM endpoint and return semantic claims only."""
 
@@ -173,12 +203,16 @@ class Qwen3VLVLLMSceneUnderstandingInference:
         self.client_factory = client_factory or _default_client_factory
         self.diagnostic_sink = diagnostic_sink
         self._last_error_class = "none"
+        self._last_error_code = "none"
 
     def diagnostic_summary(self) -> dict[str, str]:
-        return {
+        result = {
             "provider_route": "qwen3-vl-4b-vllm",
             "provider_error_class": self._last_error_class,
         }
+        if self._last_error_code != "none":
+            result["provider_error_code"] = self._last_error_code
+        return result
 
     def infer(self, request: Mapping[str, Any]) -> Mapping[str, Any]:
         if not isinstance(request, Mapping):
@@ -247,9 +281,12 @@ class Qwen3VLVLLMSceneUnderstandingInference:
                 }
             )
             self._last_error_class = "none"
+            self._last_error_code = "none"
             return projected
         except Qwen3VLVLLMInferenceError as exc:
             self._last_error_class = getattr(exc, "provider_error_class", "provider_failure")
+            provider_error_code = getattr(exc, "provider_error_code", None)
+            self._last_error_code = provider_error_code or "provider_failure"
             self._emit_diagnostic(
                 {
                     "status": "error",
@@ -262,12 +299,15 @@ class Qwen3VLVLLMSceneUnderstandingInference:
                     "image_refs": image_refs,
                     "elapsed_ms": round((time.perf_counter() - started) * 1000, 3),
                     "error": "qwen_vllm_inference_error",
+                    "provider_error_code": provider_error_code or "provider_failure",
                 }
             )
             raise
         except Exception as exc:
             error_class = _provider_error_class(exc)
+            provider_error_code = _provider_error_code(exc, error_class)
             self._last_error_class = error_class
+            self._last_error_code = provider_error_code
             self._emit_diagnostic(
                 {
                     "status": "error",
@@ -280,11 +320,13 @@ class Qwen3VLVLLMSceneUnderstandingInference:
                     "image_refs": image_refs,
                     "elapsed_ms": round((time.perf_counter() - started) * 1000, 3),
                     "error": type(exc).__name__,
+                    "provider_error_code": provider_error_code,
                 }
             )
             raise Qwen3VLVLLMInferenceError(
                 "qwen vLLM scene understanding request failed",
                 provider_error_class=error_class,
+                provider_error_code=provider_error_code,
                 retryable=error_class in {"timeout", "transport"},
             ) from exc
         finally:

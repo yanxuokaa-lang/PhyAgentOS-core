@@ -109,6 +109,7 @@ async def test_provider_failure_projects_only_bounded_adapter_diagnostics():
             return {
                 "provider_route": "vendor-model:v2@fallback",
                 "provider_error_class": "timeout",
+                "provider_error_code": "http_504",
                 "raw_exception": "must not cross the boundary",
             }
 
@@ -117,6 +118,7 @@ async def test_provider_failure_projects_only_bounded_adapter_diagnostics():
     ).invoke(OBSERVE_INPUT)
     assert result["provider_route"] == "vendor-model:v2@fallback"
     assert result["provider_error_class"] == "timeout"
+    assert result["provider_error_code"] == "http_504"
     assert "raw_exception" not in result
 
 
