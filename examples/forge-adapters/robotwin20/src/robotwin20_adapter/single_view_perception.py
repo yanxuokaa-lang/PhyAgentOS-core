@@ -20,7 +20,11 @@ from typing import Any, Mapping, Protocol, Sequence
 from urllib.parse import urlparse
 from uuid import uuid4
 
-from .process_worker import ProcessWorkerError
+from .process_worker import (
+    ProcessWorkerError,
+    ProcessWorkerProtocolLimitError,
+    ProcessWorkerTimeoutError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -836,8 +840,12 @@ class SingleViewPerceptionInference:
             # SingleViewPerceptionError; at this boundary they belong to the
             # enrichment provider stage and need stable failure metadata.
             error_class = (
-                "timeout" if isinstance(exc, TimeoutError) else
+                "timeout" if isinstance(exc, (TimeoutError, ProcessWorkerTimeoutError)) else
                 "transport" if isinstance(exc, ProcessWorkerError) else "provider_failure"
+            )
+            retryable = (
+                isinstance(exc, ProcessWorkerError)
+                and not isinstance(exc, ProcessWorkerProtocolLimitError)
             )
             raise SingleViewPerceptionFailureError(
                 "scene understanding metric enrichment failed",
@@ -845,7 +853,7 @@ class SingleViewPerceptionInference:
                 provider_error_class=error_class,
                 provider_error_code=self._worker_failure_code(exc),
                 provider_stage=stage,
-                retryable=False,
+                retryable=retryable,
             ) from exc
 
     @staticmethod
@@ -1067,6 +1075,8 @@ def _release_provider(
             try:
                 return release_for_request(request)
             except Exception as exc:
+                if isinstance(getattr(exc, "retryable", None), bool):
+                    raise
                 raise SingleViewPerceptionError(f"{label} provider cleanup failed") from exc
     release = getattr(provider, "release", None)
     if callable(release):

@@ -123,6 +123,27 @@ async def test_provider_failure_projects_only_bounded_adapter_diagnostics():
 
 
 @pytest.mark.asyncio
+async def test_provider_retryability_is_projected_for_planning_recovery():
+    class FailingInference:
+        def infer(self, request):
+            error = RuntimeError("worker transport failed")
+            error.provider_error_class = "transport"  # type: ignore[attr-defined]
+            error.provider_error_code = "worker_terminated"  # type: ignore[attr-defined]
+            error.failure_stage = "enrichment"  # type: ignore[attr-defined]
+            error.provider_stage = "proposal"  # type: ignore[attr-defined]
+            error.retryable = True  # type: ignore[attr-defined]
+            raise error
+
+    result = SceneUnderstandingEndpoint(
+        RoboTwinSceneUnderstandingProvider(FailingInference())
+    ).invoke(OBSERVE_INPUT)
+
+    assert result["status"] == "unavailable"
+    assert result["error"]["failure_stage"] == "enrichment"
+    assert result["error"]["retryable"] is True
+
+
+@pytest.mark.asyncio
 async def test_provider_diagnostics_reject_unbounded_or_unstructured_tokens():
     class FailingInference:
         def infer(self, request):

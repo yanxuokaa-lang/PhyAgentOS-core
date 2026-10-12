@@ -31,7 +31,10 @@ from PhyAgentOS.agent.tools.forge_task import build_forge_task_tools
 from PhyAgentOS.agent.tools.forge_tool_api import ForgeToolQueryTool
 from PhyAgentOS.agent.tools.registry import ToolRegistry
 from PhyAgentOS.config.schema import ForgeConfig
-from PhyAgentOS.forge.binding import query_record_provider_blocked
+from PhyAgentOS.forge.binding import (
+    query_record_provider_blocked,
+    query_record_retryable,
+)
 from PhyAgentOS.forge.task import (
     AgentTaskBusyError,
     AgentTaskCoordinator,
@@ -153,6 +156,235 @@ def test_query_provider_block_classification_is_provider_neutral(
     )
 
     assert query_record_provider_blocked(record) is expected
+
+
+@pytest.mark.parametrize(
+    ("semantics", "failure_stage", "retryable", "expected"),
+    [
+        ("query", "provider", True, True),
+        ("query", "enrichment", True, True),
+        ("query", "enrichment", False, False),
+        ("query", "request", True, False),
+        ("action", "enrichment", True, False),
+    ],
+)
+def test_retryable_query_classification_is_provider_neutral(
+    semantics, failure_stage, retryable, expected
+):
+    record = SimpleNamespace(
+        semantics=semantics,
+        status="succeeded",
+        response={
+            "data": {
+                "status": "unavailable",
+                "error": {
+                    "failure_stage": failure_stage,
+                    "retryable": retryable,
+                },
+            }
+        },
+    )
+
+    assert query_record_retryable(record) is expected
+
+
+def test_query_retry_authorization_is_bounded_and_excludes_released_attempts(tmp_path):
+    c = coordinator(tmp_path)
+    c.max_query_provider_retries = 1
+    task = c.create_task(
+        task_description="generic read-only inspection",
+        verification=TaskVerificationContract(mode="off"),
+    )
+    graph = make_graph(task.task_id, "revision-query-retry", ("inspect",))
+    c.expand_discovery_revision(
+        task.task_id,
+        plan_graph=graph,
+        plan_graph_ref="artifact://plans/query-retry",
+    )
+
+    def add_record(record_id):
+        record = ToolExecutionRecord(
+            record_id=record_id,
+            revision_id=graph.revision_id,
+            tool_id="perception.describe",
+            semantics="query",
+            caller_id="test",
+            node_id="inspect",
+            node_digest=plan_node_digest(graph.nodes[0]),
+            obligation_id=graph.nodes[0].obligation_id,
+            input_binding_digest=tool_input_binding_digest({}),
+            decision_trace_ref=f"artifact://trace/{record_id}",
+            status="succeeded",
+            response={
+                "data": {
+                    "status": "unavailable",
+                    "error": {
+                        "code": "provider_error",
+                        "failure_stage": "enrichment",
+                        "retryable": True,
+                    },
+                }
+            },
+        )
+        c.store.update(
+            task.task_id,
+            lambda current: current.active_revision.execution_records.append(record),
+            event_type="test_retryable_query",
+        )
+        return record
+
+    first = add_record("query-attempt-1")
+    assert c.authorize_retryable_query_attempt(
+        task.task_id,
+        graph.revision_id,
+        "inspect",
+        tool_id="perception.describe",
+        record_ids=(first.record_id,),
+    ) is True
+    assert c.planning_node_execution_records(
+        task.task_id, graph.revision_id, "inspect"
+    ) == ()
+    assert c.authorize_retryable_query_attempt(
+        task.task_id,
+        graph.revision_id,
+        "inspect",
+        tool_id="perception.describe",
+        record_ids=(first.record_id,),
+    ) is True
+
+    second = add_record("query-attempt-2")
+    assert c.authorize_retryable_query_attempt(
+        task.task_id,
+        graph.revision_id,
+        "inspect",
+        tool_id="perception.describe",
+        record_ids=(second.record_id,),
+    ) is False
+    assert [item.record_id for item in c.planning_node_execution_records(
+        task.task_id, graph.revision_id, "inspect"
+    )] == [second.record_id]
+    assert all(item.semantics == "query" for item in c.get_task(task.task_id).execution_records)
+    decisions = [
+        item["payload"]
+        for item in c.store.events(task.task_id)
+        if item["event_type"] == "query_retry_decided"
+    ]
+    assert [item["attempt"] for item in decisions] == [1, 1, 2]
+    assert [item["idempotent"] for item in decisions] == [False, True, False]
+
+
+def test_planning_loop_retries_only_query_after_completed_action_prefix(tmp_path):
+    c = coordinator(tmp_path)
+    task = c.create_task(
+        task_description="act once then inspect with a transient provider",
+        verification=TaskVerificationContract(mode="off"),
+    )
+    action = PlanNode(
+        node_id="act-once",
+        obligation_id="perform-authorized-effect",
+        capability="object.effect",
+    )
+    query = PlanNode(
+        node_id="inspect-after-effect",
+        obligation_id="inspect-current-state",
+        capability="perception.describe",
+        dependencies=(action.node_id,),
+    )
+    payload = {
+        "schema_version": "paos-plan-graph/v1",
+        "task_id": task.task_id,
+        "revision_id": "revision-action-query-retry",
+        "graph_digest": "0" * 64,
+        "planner_decision_digest": "1" * 64,
+        "policy_snapshot_digest": "2" * 64,
+        "nodes": [
+            action.model_dump(mode="json"), query.model_dump(mode="json")
+        ],
+    }
+    payload["graph_digest"] = plan_graph_digest(payload)
+    graph = PlanGraph.model_validate(payload)
+    c.expand_discovery_revision(
+        task.task_id,
+        plan_graph=graph,
+        plan_graph_ref="artifact://plans/action-query-retry",
+    )
+    calls = {action.node_id: 0, query.node_id: 0}
+
+    def execute(context):
+        calls[context.node_id] += 1
+        node = next(item for item in graph.nodes if item.node_id == context.node_id)
+        is_query = context.node_id == query.node_id
+        transient = is_query and calls[query.node_id] == 1
+        record_id = f"record-{context.node_id}-{calls[context.node_id]}"
+        response = {
+            "data": {
+                "status": "unavailable" if transient else "available",
+                **({
+                    "error": {
+                        "code": "provider_error",
+                        "failure_stage": "enrichment",
+                        "retryable": True,
+                    }
+                } if transient else {}),
+            }
+        }
+        record = ToolExecutionRecord(
+            record_id=record_id,
+            revision_id=context.revision_id,
+            tool_id="perception.describe" if is_query else "object.effect",
+            semantics="query" if is_query else "action",
+            caller_id="test",
+            node_id=context.node_id,
+            node_digest=plan_node_digest(node),
+            obligation_id=node.obligation_id,
+            input_binding_digest=tool_input_binding_digest({}),
+            decision_trace_ref=f"artifact://trace/{record_id}",
+            status="succeeded",
+            invocation_id=None if is_query else "invocation://effect/once",
+            response=response,
+            evidence_refs=[f"artifact://evidence/{record_id}"],
+        )
+        c.store.update(
+            task.task_id,
+            lambda current: current.active_revision.execution_records.append(record),
+            event_type="fixture_execution_recorded",
+        )
+        return ToolResultEnvelope(
+            task_id=context.task_id,
+            revision_id=context.revision_id,
+            node_id=context.node_id,
+            tool_id=record.tool_id,
+            status="failed" if transient else "succeeded",
+            world_change_started=False,
+            outcome_known=True,
+            evidence_refs=tuple(record.evidence_refs),
+            failure_code="provider_error" if transient else None,
+            retryable_in_revision=True if transient else None,
+        )
+
+    result = asyncio.run(PlanningLoopAdapter(
+        c,
+        context_provider=NodeContextProvider(
+            c.get_task,
+            settlement_loader=c.effective_node_settlements,
+            execution_record_loader=c.effective_planning_execution_records,
+        ),
+        node_executor=execute,
+        admission_context_provider=lambda _task_id: AdmissionContext(
+            scene_revision="scene-1"
+        ),
+    ).run(task.task_id, scene_revision="scene-1"))
+
+    assert result.status == "succeeded"
+    assert calls == {action.node_id: 1, query.node_id: 2}
+    current = c.get_task(task.task_id)
+    assert [item.node_id for item in current.active_revision.node_settlements] == [
+        action.node_id, query.node_id,
+    ]
+    assert all(item.status == "completed" for item in current.active_revision.node_settlements)
+    assert [item["event_type"] for item in c.store.events(task.task_id)].count(
+        "query_retry_decided"
+    ) == 1
 
 
 def test_provider_block_is_not_preemptively_projected_to_replan(tmp_path):

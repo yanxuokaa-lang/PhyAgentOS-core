@@ -1,5 +1,29 @@
 # Changelog
 
+## v13.3.3 (2026-10-12 18:04) - codex
+
+### 变更摘要 / Summary [完成]
+- [comm] [fix] fallback 最终成功时仍释放本轮已尝试的 primary provider，避免 downstream enrichment 与残留 GPU residency 竞争。 / Release an attempted primary provider even when fallback supplies the final semantic result, preventing downstream enrichment from racing residual GPU residency.
+- [policy] [fix] 对无世界变化且显式 retryable 的只读 Query provider/enrichment failure 增加同节点有界重试；保留已完成 Action settlement，禁止 Action replay。 / Add bounded same-node recovery for explicitly retryable, world-unchanged, read-only Query provider/enrichment failures; preserve completed Action settlements and prohibit Action replay.
+- [eval] [test] 七维审查修复事务竞争、重复预算消耗和 projection 缺口；focused/cross-layer `447 passed`，root suite 与干净对照均为同一组 `10 failed`。 / Seven-dimension review fixed transactional races, duplicate budget consumption, and projection gaps; focused/cross-layer suites passed `447`, and the root suite has the same ten failures as the clean comparison.
+
+### 七维审查与文件 / Seven-dimension review and files
+- 架构、正确性、可观测性、恢复幂等、机器人安全、扩展兼容、AgentLoop 收敛均通过；无 RGB/颜色/方块/节点名分支。 / Architecture, correctness, observability, recovery idempotency, robotics safety, extension compatibility, and AgentLoop convergence pass; no RGB/color/block/node-name branch exists.
+- `scene_understanding_fallback.py:L55-L69,L222-L243,L314-L366`、`single_view_perception.py:L20-L28,L832-L861,L1069-L1087`：修复 handoff 并区分 transient worker lifecycle 与 deterministic protocol failure。 / Fix handoff and distinguish transient worker lifecycle failures from deterministic protocol failures.
+- `planning_facts.py:L7-L23`、`binding.py:L126-L216`、`task.py:L885-L917,L2011-L2233,L4986-L5009`、`planning_loop.py:L24-L32,L1853-L1878`：投影 nested retryability，事务授权有界 Query retry，并仅从 effective view 排除已释放 attempt。 / Project nested retryability, transactionally authorize bounded Query retries, and exclude released attempts only from the effective view.
+- `schema.py:L359-L372`、`commands.py:L700-L719` 及对应测试：接入默认 `max_query_provider_retries=2` 和 handoff/recovery 回归。 / Wire the default `max_query_provider_retries=2` and handoff/recovery regressions.
+
+```diff
+- final fallback route -> skip primary release -> transient enrichment failure -> stop task
++ attempted primary -> lifecycle handoff -> bounded Query-only retry -> continue remaining suffix
++ completed Action settlement stays authoritative; Action/Session never enter retry path
+```
+
+### 验证与提交 / Validation and commit
+- `447 passed in 13.88s`；root/current 与 clean `bb698ee7` 均为同一 `10 failed`；Ruff、compileall、diff check passed。 / `447 passed in 13.88s`; current and clean `bb698ee7` have the same ten failures; Ruff, compileall, and diff check passed.
+- 全程 no-motion，未部署或重启 Runtime，未创建任务或调用 Gateway。 / Entirely no-motion; Runtime was not deployed/restarted and no task or Gateway call was made.
+- Implementation/review commit follows on `feature/planning-loop`; detailed record: [2026-10 part6 v13.3.3](changelog/2026-10_part6.md).
+
 ## v13.3.2 (2026-10-12 16:27) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -81,39 +105,7 @@
 - 未创建 AgentTask、未调用 Query/Action、未读取相机、未推进 simulator、无物理运动；未跟踪用户文件保留。 / No AgentTask, Query/Action, camera, simulator, or physical motion; user untracked files preserved.
 - Implementation/deployment commit: `52f631e5` on `feature/planning-loop`; detailed record: [2026-10 part5 v13.2.15](changelog/2026-10_part5.md).
 
-## v13.2.14 (2026-10-12 13:02) - codex
-
-### 变更摘要 / Summary [完成]
-- [comm] [fix] 修复 lifecycle wrapper 丢弃 primary/fallback route-specific diagnostics 的缺口，严格复用 bounded token 过滤。 / Fix the lifecycle-wrapper gap that dropped primary/fallback route-specific diagnostics, reusing bounded token filtering.
-- [policy] [fix] 将 `primary_route` 纳入 persistent Runtime readiness context，使 Tool context、JSONL 和 Query 诊断保持一致；不改变 readiness、replan、motion authorization 或 Action replay。 / Include `primary_route` in the persistent Runtime readiness context so Tool context, JSONL, and Query diagnostics stay consistent; do not change readiness, replan, motion authorization, or Action replay.
-- [eval] [test] lifecycle/context/provider 回归 `124 passed`，Core AgentLoop/planning/recovery `263 passed`。 / Lifecycle/context/provider regressions `124 passed`; Core AgentLoop/planning/recovery `263 passed`.
-
-### 七维审查与关键 Diff / Seven-dimension review and key diff
-- **架构 / Architecture：** diagnostics remain Adapter-owned and cross lifecycle/Runtime through existing allowlists; no parallel state or task-specific branch. / 诊断仍由 Adapter 负责，经既有 allowlist 穿过 lifecycle/Runtime，无平行状态或任务分支。
-- **正确性 / Correctness：** lifecycle now preserves all route-specific fields; readiness failure/pending context preserves both route names. / lifecycle 现在保留全部 route-specific 字段；失败/待 fallback readiness context 保留两侧 route。
-- **错误与可观测 / Errors and observability：** strict bounded-token filtering rejects private route/code fields while retaining HTTP/class codes. / 严格有界 token 过滤拒绝私有 route/code，同时保留 HTTP/class code。
-- **恢复与幂等 / Recovery and idempotency：** projection only; no retry, scene refresh, or Action replay added. / 仅 projection，不增加重试、场景刷新或 Action 重放。
-- **机器人安全 / Robotics safety：** Query/readiness diagnostics only; motion authority and all Action gates unchanged. / 仅 Query/readiness 诊断，运动授权和 Action 门禁不变。
-- **扩展兼容 / Extension compatibility：** generic provider-neutral fields work for fallback and no-fallback providers. / provider-neutral 字段同时适用于 fallback 与 no-fallback provider。
-- **AgentLoop 收敛 / AgentLoop convergence：** coordinator ownership and bounded provider recovery remain unchanged; route facts are no longer lost before handoff. / Coordinator 归属和 bounded provider recovery 不变，路由事实不会在 handoff 前丢失。
-
-### 文件与关键 Diff / Files and key diff
-- `qwen3_vl_vllm_lifecycle.py:L5-L15,L284-L304`：增加 route-specific allowlist 和严格 token 校验。 / Add route-specific allowlisting and strict token validation.
-- `scene_understanding_fallback.py:L152-L212`、`persistent_host.py:L136-L151`：readiness 与 Tool context 保留 `primary_route`/`fallback_route`。 / Preserve `primary_route`/`fallback_route` in readiness and Tool context.
-- `test_qwen3_vl_vllm_lifecycle.py:L144-L183`、`test_persistent_host.py:L324-L357`、`test_scene_understanding_fallback.py:L84-L190`：增加 projection、脱敏和 context 回归。 / Add projection, redaction, and context regressions.
-
-```diff
-- lifecycle -> provider_route/provider_error_class/provider_error_code
-+ lifecycle -> provider_route/provider_error_class/provider_error_code
-+              primary_route/primary_error_class/primary_error_code
-+              fallback_route/fallback_error_class/fallback_error_code
-```
-
-### 验证与提交 / Validation and commit
-- Provider/lifecycle/host/perception tests: `124 passed`; Core AgentLoop/planning/recovery: `263 passed`。Ruff、compileall、`git diff --check` passed；全程 no-motion。 / Provider/lifecycle/host/perception tests: `124 passed`; Core AgentLoop/planning/recovery: `263 passed`. Ruff, compileall, and `git diff --check` passed; all no-motion.
-- Implementation/review commit: `f0a446da` on `feature/planning-loop`; documentation completion follows in the log update. / 实现与审查提交：`f0a446da`，分支 `feature/planning-loop`；日志更新随后完成。
-
-详见 [2026-10 part5 v13.2.14](changelog/2026-10_part5.md)。See the detailed v13.2.14 record.
+<!-- v13.2.14 and earlier detailed records are archived in changelog/2026-10_part5.md. -->
 
 ## v13.2.13 (2026-10-12 12:20) - codex
 
@@ -420,8 +412,9 @@
 - Commit: `1c6db08` on `feature/planning-loop`.
 
 ## Archive
-- [2026-10 part4](changelog/2026-10_part4.md)
+- [2026-10 part6](changelog/2026-10_part6.md)
 - [2026-10 part5](changelog/2026-10_part5.md)
+- [2026-10 part4](changelog/2026-10_part4.md)
 - [2026-10 part3](changelog/2026-10_part3.md)
 - [2026-10 part2](changelog/2026-10_part2.md)
 - [2026-10](changelog/2026-10.md)

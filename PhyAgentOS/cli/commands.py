@@ -710,6 +710,9 @@ def _make_forge_components(config: Config, provider):
         max_agent_provider_retries=(
             config.agents.verification.max_agent_provider_retries
         ),
+        max_query_provider_retries=(
+            config.agents.verification.max_query_provider_retries
+        ),
         agent_provider_retry_delay_s=(
             config.agents.verification.agent_provider_retry_delay_s
         ),

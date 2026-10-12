@@ -397,7 +397,7 @@ def test_downstream_failure_overrides_semantic_success_without_logging_payload(t
     assert failure.value.provider_error_class == "transport"
     assert failure.value.provider_error_code == "worker_error"
     assert failure.value.provider_stage == stage
-    assert failure.value.retryable is False
+    assert failure.value.retryable is True
     assert inference.diagnostic_summary() == {
         "provider_route": "primary", "provider_error_class": "transport",
         "provider_error_code": "worker_error",
@@ -448,8 +448,28 @@ def test_worker_contract_failure_is_owned_by_the_enrichment_stage(tmp_path):
         inference.infer(REQUEST)
 
     assert failure.value.failure_stage == "enrichment"
-    assert failure.value.provider_stage == "proposal"
     assert failure.value.provider_error_class == "provider_failure"
+
+
+def test_enrichment_protocol_limit_is_not_retryable(tmp_path):
+    from robotwin20_adapter.process_worker import ProcessWorkerProtocolLimitError
+
+    inference, proposal, _ = _inference(tmp_path)
+
+    def fail(request):
+        raise ProcessWorkerProtocolLimitError(
+            "response exceeds configured protocol limit",
+            code="worker_response_too_large",
+        )
+
+    proposal.propose = fail
+    with pytest.raises(SingleViewPerceptionError) as failure:
+        inference.infer(REQUEST)
+
+    assert failure.value.provider_error_class == "transport"
+    assert failure.value.provider_error_code == "worker_response_too_large"
+    assert failure.value.retryable is False
+    assert failure.value.provider_stage == "proposal"
 
 
 def test_handoff_fallback_skips_downstream_gpu_providers(tmp_path):

@@ -66,6 +66,7 @@ class FallbackSceneUnderstandingInference:
         self.primary_error_code: str | None = None
         self.fallback_error_class: str | None = None
         self.fallback_error_code: str | None = None
+        self._primary_attempted = False
 
     @staticmethod
     def _error_class(exc: BaseException) -> str:
@@ -229,7 +230,9 @@ class FallbackSceneUnderstandingInference:
         self.primary_error_code = None
         self.fallback_error_class = None
         self.fallback_error_code = None
+        self._primary_attempted = False
         try:
+            self._primary_attempted = True
             result = self.primary.infer(request)
             if result is not None:
                 self.last_route = self.primary_name
@@ -309,11 +312,12 @@ class FallbackSceneUnderstandingInference:
             ) from exc
 
     def release(self) -> None:
-        if self.last_route != self.primary_name:
+        if not self._primary_attempted:
             return
         release = getattr(self.primary, "release", None)
         if callable(release):
             release()
+        self._primary_attempted = False
 
     def release_for_request(self, request: Mapping[str, Any]) -> Mapping[str, Any] | None:
         """Release the primary provider, falling back when lifecycle handoff fails.
@@ -323,16 +327,29 @@ class FallbackSceneUnderstandingInference:
         the original request and route semantics through GPT instead of leaking
         an adapter-only cleanup error to the generic scene Tool.
         """
-        if self.last_route != self.primary_name:
+        if not self._primary_attempted:
             return None
         release = getattr(self.primary, "release", None)
         if not callable(release):
+            self._primary_attempted = False
             return None
         try:
             release()
+            self._primary_attempted = False
             return None
         except self.fallback_exceptions as exc:
             primary_error = type(exc).__name__
+            release_error_class = self._error_class(exc)
+            release_error_code = self._error_code(exc, release_error_class)
+            if self.last_route == self.fallback_name:
+                self.last_error = primary_error
+                self.last_error_class = release_error_class
+                raise SceneUnderstandingFallbackError(
+                    "primary provider lifecycle handoff failed after fallback inference",
+                    provider_error_class=release_error_class,
+                    provider_error_code=release_error_code,
+                    retryable=release_error_class in {"timeout", "transport"},
+                ) from exc
         try:
             result = self.fallback.infer(request)
             if result is None:

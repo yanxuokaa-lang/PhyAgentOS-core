@@ -24,7 +24,11 @@ from PhyAgentOS.agent.argument_sources import (
 from PhyAgentOS.agent.experience.redaction import redact_text
 from PhyAgentOS.agent.planner_plugin import ReplanProposal
 from PhyAgentOS.agent.planning_facts import explicit_scene_revision, response_facts
-from PhyAgentOS.forge.binding import query_record_provider_blocked, query_record_status
+from PhyAgentOS.forge.binding import (
+    query_record_provider_blocked,
+    query_record_retryable,
+    query_record_status,
+)
 from PhyAgentOS.forge.task import (
     AgentTaskCoordinator,
     AgentTaskError,
@@ -1849,6 +1853,28 @@ class PlanningLoopAdapter:
                     replans,
                     reason,
                 )
+            retryable_query_records = tuple(
+                record
+                for record in node_records
+                if record.tool_id == result.tool_id
+                and query_record_retryable(record)
+            )
+            if (
+                retryable_query_records
+                and len(retryable_query_records) == len(node_records)
+                and result.world_change_started is False
+                and result.retryable_in_revision is True
+                and self.coordinator.authorize_retryable_query_attempt(
+                    task_id,
+                    context.revision_id,
+                    node_id,
+                    tool_id=result.tool_id,
+                    record_ids=tuple(
+                        item.record_id for item in retryable_query_records
+                    ),
+                )
+            ):
+                continue
             settlement = settle_node(
                 graph.nodes[[node.node_id for node in graph.nodes].index(node_id)],
                 result,

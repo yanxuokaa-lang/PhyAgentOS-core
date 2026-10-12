@@ -364,6 +364,7 @@ class AgentVerificationConfig(Base):
     evidence_retention: Literal["all", "failed", "none"] = "none"
     max_replans_per_episode: int = Field(default=2, ge=0)
     max_agent_provider_retries: int = Field(default=2, ge=0, le=20)
+    max_query_provider_retries: int = Field(default=2, ge=0, le=20)
     agent_provider_retry_delay_s: float = Field(default=1.0, gt=0, le=300.0)
     max_verifier_calls_per_run: int = Field(default=50, ge=0)
     replan_timeout_s: float = Field(default=120.0, gt=0)

@@ -139,6 +139,13 @@ def query_response_facts(record: Any) -> dict[str, Any]:
     result = payload.get("result")
     if isinstance(result, dict):
         payload = {**payload, **result}
+    error = payload.get("error")
+    if (
+        isinstance(error, Mapping)
+        and "retryable_in_revision" not in payload
+        and isinstance(error.get("retryable"), bool)
+    ):
+        payload = {**payload, "retryable_in_revision": error["retryable"]}
     return payload
 
 
@@ -186,6 +193,24 @@ def query_record_provider_blocked(record: Any) -> bool:
         isinstance(error, Mapping)
         and error.get("failure_stage") == "provider"
         and error.get("retryable") is False
+    )
+
+
+def query_record_retryable(record: Any) -> bool:
+    """Return whether a failed, read-only provider attempt may retry in-place."""
+    if (
+        getattr(record, "semantics", None) != "query"
+        or getattr(record, "status", None) != "succeeded"
+    ):
+        return False
+    facts = query_response_facts(record)
+    if facts.get("status") not in NON_SUCCESS_QUERY_STATES:
+        return False
+    error = facts.get("error")
+    return (
+        isinstance(error, Mapping)
+        and error.get("failure_stage") in {"provider", "enrichment"}
+        and error.get("retryable") is True
     )
 
 

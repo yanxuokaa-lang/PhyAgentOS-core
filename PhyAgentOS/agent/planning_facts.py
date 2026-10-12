@@ -15,6 +15,11 @@ def response_facts(response: dict[str, Any] | None) -> dict[str, Any]:
     summary = payload.get("capability_outcome_summary")
     if isinstance(summary, dict):
         payload = {**payload, **summary}
+    error = payload.get("error")
+    if isinstance(error, Mapping):
+        retryable = error.get("retryable")
+        if "retryable_in_revision" not in payload and isinstance(retryable, bool):
+            payload = {**payload, "retryable_in_revision": retryable}
     return payload
 
 

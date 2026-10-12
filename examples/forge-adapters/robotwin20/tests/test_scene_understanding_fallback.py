@@ -17,8 +17,10 @@ class _Provider:
     def __init__(self, result=None, error=None):
         self.result = result
         self.error = error
+        self.infer_count = 0
 
     def infer(self, request):
+        self.infer_count += 1
         if self.error:
             raise self.error
         return self.result
@@ -320,7 +322,7 @@ def test_release_is_forwarded_only_after_primary_route():
     assert primary.release_count == 1
 
 
-def test_release_does_not_touch_failed_primary_after_fallback():
+def test_release_handoffs_attempted_primary_after_fallback():
     primary = _ReleasableProvider(error=Qwen3VLVLLMLifecycleError("down"))
     route = FallbackSceneUnderstandingInference(
         primary,
@@ -333,7 +335,47 @@ def test_release_does_not_touch_failed_primary_after_fallback():
     assert route.infer({})["entities"][0]["entity_ref"] == "entity://fallback"
     route.release()
 
-    assert primary.release_count == 0
+    assert primary.release_count == 1
+
+
+def test_fallback_success_does_not_repeat_fallback_when_primary_handoff_fails():
+    primary = _ReleasableProvider(
+        error=Qwen3VLVLLMContractError("invalid semantic contract"),
+        release_error=Qwen3VLVLLMLifecycleError("sleep failed"),
+    )
+    fallback = _ReleasableProvider({"entities": [{"entity_ref": "entity://fallback"}]})
+    route = FallbackSceneUnderstandingInference(
+        primary,
+        fallback,
+        primary_name="local",
+        fallback_name="remote",
+        fallback_exceptions=(Qwen3VLVLLMLifecycleError, Qwen3VLVLLMContractError),
+    )
+
+    assert route.infer({})["entities"][0]["entity_ref"] == "entity://fallback"
+    with pytest.raises(SceneUnderstandingFallbackError) as failure:
+        route.release_for_request({})
+
+    assert failure.value.retryable is True
+    assert fallback.infer_count == 1
+    assert fallback.release_count == 0
+
+
+def test_primary_attempt_state_is_reset_between_requests():
+    primary = _ReleasableProvider({"entities": []})
+    route = FallbackSceneUnderstandingInference(
+        primary, _Provider({"entities": []}),
+        primary_name="local", fallback_name="remote",
+    )
+
+    route.infer({})
+    route.release()
+    route.release()
+    assert primary.release_count == 1
+
+    route.infer({})
+    route.release()
+    assert primary.release_count == 2
 
 
 def test_lifecycle_handoff_failure_uses_gpt_for_same_request():

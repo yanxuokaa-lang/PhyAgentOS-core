@@ -107,17 +107,24 @@ def test_agent_verification_config_matches_service_bounds():
 def test_agent_provider_node_retry_config_is_bounded_and_alias_compatible():
     defaults = AgentVerificationConfig()
     assert defaults.max_agent_provider_retries == 2
+    assert defaults.max_query_provider_retries == 2
     assert defaults.agent_provider_retry_delay_s == 1.0
 
-    configured = AgentVerificationConfig.model_validate({
-        "maxAgentProviderRetries": 4,
-        "agentProviderRetryDelayS": 2.5,
-    })
+    configured = AgentVerificationConfig.model_validate(
+        {
+            "maxAgentProviderRetries": 4,
+            "maxQueryProviderRetries": 3,
+            "agentProviderRetryDelayS": 2.5,
+        }
+    )
     assert configured.max_agent_provider_retries == 4
+    assert configured.max_query_provider_retries == 3
     assert configured.agent_provider_retry_delay_s == 2.5
 
     with pytest.raises(ValueError, match="less than or equal to 20"):
         AgentVerificationConfig(max_agent_provider_retries=21)
+    with pytest.raises(ValueError, match="less than or equal to 20"):
+        AgentVerificationConfig(max_query_provider_retries=21)
     with pytest.raises(ValueError, match="greater than 0"):
         AgentVerificationConfig(agent_provider_retry_delay_s=0)
 

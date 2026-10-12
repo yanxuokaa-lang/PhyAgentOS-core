@@ -27,6 +27,7 @@ from PhyAgentOS.forge.binding import (
     missing_preplan_queries,
     query_record_blocks_progress,
     query_record_provider_blocked,
+    query_record_retryable,
 )
 from PhyAgentOS.forge.evidence import ForgeEvidenceWriter
 from PhyAgentOS.forge.observation import ForgeObservationCollector
@@ -889,6 +890,7 @@ class AgentTaskCoordinator:
         max_replans: int = 2,
         replan_timeout_s: float = 120.0,
         max_agent_provider_retries: int = 2,
+        max_query_provider_retries: int = 2,
         agent_provider_retry_delay_s: float = 1.0,
     ) -> None:
         self.workspace = Path(workspace).expanduser().resolve()
@@ -905,6 +907,7 @@ class AgentTaskCoordinator:
         self.max_replans = max(0, int(max_replans))
         self.replan_timeout_s = max(0.1, float(replan_timeout_s))
         self.max_agent_provider_retries = max(0, int(max_agent_provider_retries))
+        self.max_query_provider_retries = max(0, int(max_query_provider_retries))
         self.agent_provider_retry_delay_s = max(
             0.1, float(agent_provider_retry_delay_s)
         )
@@ -2005,6 +2008,119 @@ class AgentTaskCoordinator:
             self._schedule_experience(result)
         return result
 
+    def authorize_retryable_query_attempt(
+        self,
+        task_id: str,
+        revision_id: str,
+        node_id: str,
+        *,
+        tool_id: str,
+        record_ids: tuple[str, ...],
+    ) -> bool:
+        """Release one bounded, side-effect-free Query attempt for same-node retry."""
+        task = self.store.get(task_id)
+        unique_ids = tuple(dict.fromkeys(record_ids))
+        records = {
+            item.record_id: item
+            for item in task.active_revision.execution_records
+            if item.node_id == node_id and item.record_id in unique_ids
+        }
+        if (
+            task.status != AgentTaskStatus.EXECUTING
+            or task.active_revision_id != revision_id
+            or task.terminal
+            or task.cancellation_requested
+        ):
+            raise AgentTaskError("retryable Query is no longer executable")
+        if any(
+            item.node_id == node_id
+            for item in task.active_revision.node_settlements
+        ):
+            raise AgentTaskError("settled Query node cannot retry")
+        if not unique_ids or set(records) != set(unique_ids):
+            raise AgentTaskError("Query retry must cite persisted node records")
+        if any(
+            item.tool_id != tool_id or not query_record_retryable(item)
+            for item in records.values()
+        ):
+            raise AgentTaskError("Query retry requires matching retryable provider facts")
+
+        attempt = 0
+        authorized = False
+        idempotent = False
+
+        def recheck(current: AgentTaskRecord) -> None:
+            nonlocal attempt, authorized, idempotent
+            if (
+                current.status != AgentTaskStatus.EXECUTING
+                or current.active_revision_id != revision_id
+                or current.terminal
+                or current.cancellation_requested
+                or current.pause_requested
+            ):
+                raise AgentTaskError(
+                    "retryable Query task changed state during authorization"
+                )
+            if any(
+                item.node_id == node_id
+                for item in current.active_revision.node_settlements
+            ):
+                raise AgentTaskError("retryable Query node was settled concurrently")
+            current_records = {
+                item.record_id: item
+                for item in current.active_revision.execution_records
+                if item.node_id == node_id and item.record_id in unique_ids
+            }
+            if set(current_records) != set(unique_ids) or any(
+                item.tool_id != tool_id or not query_record_retryable(item)
+                for item in current_records.values()
+            ):
+                raise AgentTaskError(
+                    "retryable Query records changed during authorization"
+                )
+            decisions = [
+                event.get("payload", {})
+                for event in self.store.events(task_id, limit=10000)
+                if event.get("event_type") == "query_retry_decided"
+                and event.get("payload", {}).get("authorized") is True
+                and event.get("payload", {}).get("idempotent") is not True
+                and event.get("payload", {}).get("revision_id") == revision_id
+                and event.get("payload", {}).get("node_id") == node_id
+            ]
+            existing = next(
+                (
+                    decision
+                    for decision in decisions
+                    if tuple(decision.get("record_ids", ())) == unique_ids
+                ),
+                None,
+            )
+            if existing is not None:
+                attempt = int(existing.get("attempt", 1))
+                authorized = True
+                idempotent = True
+                return
+            prior_retries = len(decisions)
+            attempt = prior_retries + 1
+            authorized = attempt <= self.max_query_provider_retries
+
+        self.store.update(
+            task_id,
+            recheck,
+            event_type="query_retry_decided",
+            payload=lambda _current: {
+                "revision_id": revision_id,
+                "node_id": node_id,
+                "tool_id": tool_id,
+                "record_ids": list(unique_ids),
+                "attempt": attempt,
+                "authorized": authorized,
+                "idempotent": idempotent,
+                "motion_authorized": False,
+            },
+        )
+        return authorized
+
     def active_query_provider_block(self, task_id: str) -> dict[str, Any] | None:
         """Return the latest provider block that has not been released."""
         active: dict[tuple[str, str], dict[str, Any]] = {}
@@ -2036,12 +2152,18 @@ class AgentTaskCoordinator:
         revision_id: str,
         node_id: str,
     ) -> frozenset[str]:
-        """Return immutable failed Query attempts released after provider recovery."""
+        """Return immutable failed Query attempts released by bounded recovery."""
         released: set[str] = set()
         for event in self.store.events(task_id, limit=10000):
             payload = event.get("payload", {})
             if (
-                event.get("event_type") == "query_provider_released"
+                (
+                    event.get("event_type") == "query_provider_released"
+                    or (
+                        event.get("event_type") == "query_retry_decided"
+                        and payload.get("authorized") is True
+                    )
+                )
                 and payload.get("revision_id") == revision_id
                 and payload.get("node_id") == node_id
             ):
@@ -2077,7 +2199,7 @@ class AgentTaskCoordinator:
         task_id: str,
         revision_id: str,
     ) -> tuple[ToolExecutionRecord, ...]:
-        """Exclude released provider attempts from planning while retaining audit history."""
+        """Exclude released Query attempts from planning while retaining audit history."""
         task = self.store.get(task_id)
         revision = next(
             (item for item in task.revisions if item.revision_id == revision_id),
@@ -2089,7 +2211,13 @@ class AgentTaskCoordinator:
         for event in self.store.events(task_id, limit=10000):
             payload = event.get("payload", {})
             if (
-                event.get("event_type") == "query_provider_released"
+                (
+                    event.get("event_type") == "query_provider_released"
+                    or (
+                        event.get("event_type") == "query_retry_decided"
+                        and payload.get("authorized") is True
+                    )
+                )
                 and payload.get("revision_id") == revision_id
             ):
                 released.update(
@@ -4867,6 +4995,13 @@ def _planning_response_facts(response: dict[str, Any] | None) -> dict[str, Any]:
     summary = payload.get("capability_outcome_summary")
     if isinstance(summary, dict):
         payload = {**payload, **summary}
+    error = payload.get("error")
+    if (
+        isinstance(error, Mapping)
+        and "retryable_in_revision" not in payload
+        and isinstance(error.get("retryable"), bool)
+    ):
+        payload = {**payload, "retryable_in_revision": error["retryable"]}
     return payload
 
 
