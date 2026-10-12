@@ -12,7 +12,7 @@
 - `docs/forge/FROZEN_QUERY_SELECTION_NO_PROGRESS_DIAGNOSIS_20261012.md`：保存权威证据、通用根因、修复规则和七维审查。 / Preserve authoritative evidence, generic root cause, repair rules, and seven-dimension review.
 
 详见 [2026-10 part6 v13.3.5](changelog/2026-10_part6.md)。See the detailed part6 v13.3.5 record.
-- Commit: pending on `feature/planning-loop`.
+- Commit: `5f07b5e4` on `feature/planning-loop`.
 
 ## v13.3.4 (2026-10-12 19:06) - codex
 
