@@ -26,7 +26,7 @@
 - 未调用 Gateway Query/Action、相机或 simulator action；新 worker 仅证明初始场景生命周期重新创建，不证明具体场景或任务成功。 / No Gateway Query/Action, camera, or simulator action was invoked; the new worker proves only initial-scene lifecycle recreation, not scene contents or task success.
 
 ### Git 提交 / Git Commit
-- Deployment log/index commit pending on `feature/planning-loop`. / 部署日志与索引提交待生成。
+- Deployment log/index commit: `118f2b98` on `feature/planning-loop`; commit-reference completion follows. / 部署日志与索引提交：`118f2b98`，分支 `feature/planning-loop`；提交引用补全随后完成。
 
 ## v13.3.11 (2026-10-13 00:06) - codex
 
