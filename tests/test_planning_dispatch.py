@@ -127,6 +127,101 @@ def test_prepare_selection_digests_schema_canonical_arguments():
     )
 
 
+def _frozen_query_dispatch(
+    *,
+    semantics: str = "query",
+    duplicate_candidate: bool = False,
+    projection: bool = False,
+    omit_required: bool = False,
+) -> AgentComposedDispatch:
+    arguments = {
+        "observation_ref": "observation://scene-1/head_camera",
+        "scene_revision": "scene-1",
+        "calibration_ref": "artifact://scene-1/capture-1/calibration",
+        "entity_refs": ["entity://e1", "entity://e2"],
+    }
+    if omit_required:
+        arguments.pop("entity_refs")
+    node = PlanNode(
+        node_id="bind-current",
+        obligation_id="bind-current-entities",
+        capability="scene.bind",
+        input_bindings=arguments,
+    )
+    payload = {
+        "task_id": "task-frozen-query",
+        "revision_id": "revision-frozen-query",
+        "graph_digest": "0" * 64,
+        "planner_decision_digest": "1" * 64,
+        "policy_snapshot_digest": "2" * 64,
+        "nodes": [node.model_dump(mode="json")],
+    }
+    payload["graph_digest"] = plan_graph_digest(payload)
+    policies = [ToolSpecPolicy(
+        tool_id="scene.bind",
+        semantics=semantics,
+        spec_digest="3" * 64,
+        capabilities=("scene.bind",),
+        argument_projection=("bind_projection" if projection else None),
+    )]
+    if duplicate_candidate:
+        policies.append(ToolSpecPolicy(
+            tool_id="scene.bind.alternative",
+            semantics="query",
+            spec_digest="4" * 64,
+            capabilities=("scene.bind",),
+        ))
+    schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "observation_ref", "scene_revision", "calibration_ref", "entity_refs",
+        ],
+        "properties": {
+            "observation_ref": {"type": "string"},
+            "scene_revision": {"type": "string"},
+            "calibration_ref": {"type": "string"},
+            "entity_refs": {
+                "type": "array", "minItems": 1, "items": {"type": "string"},
+            },
+        },
+    }
+    schemas = {policy.tool_id: schema for policy in policies}
+    return AgentComposedDispatch(
+        PlanGraph.model_validate(payload),
+        tuple(policies),
+        AdmissionContext(scene_revision="scene-1"),
+        input_schemas=schemas,
+    )
+
+
+def test_complete_unique_frozen_query_compiles_existing_selection_admission():
+    dispatch = _frozen_query_dispatch()
+
+    proposal = dispatch.prepare_frozen_query_selection("bind-current")
+
+    assert proposal is not None
+    assert proposal["tool_id"] == "scene.bind"
+    assert proposal["semantics"] == "query"
+    assert proposal["tool_arguments"] == dispatch.graph.nodes[0].input_bindings
+    assert proposal["decision_reason"] == (
+        "execute the unique read-only Tool with complete Coordinator-frozen node inputs"
+    )
+
+
+@pytest.mark.parametrize(
+    "dispatch",
+    [
+        pytest.param(_frozen_query_dispatch(semantics="action"), id="action"),
+        pytest.param(_frozen_query_dispatch(duplicate_candidate=True), id="multi-candidate"),
+        pytest.param(_frozen_query_dispatch(projection=True), id="projection"),
+        pytest.param(_frozen_query_dispatch(omit_required=True), id="missing-field"),
+    ],
+)
+def test_frozen_selection_does_not_take_over_agent_or_motion_choices(dispatch):
+    assert dispatch.prepare_frozen_query_selection("bind-current") is None
+
+
 def test_historical_unbindable_node_is_dependency_ready_but_not_selection_ready():
     node = PlanNode(
         node_id="acquire-blue",

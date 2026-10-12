@@ -156,6 +156,16 @@ class _Coordinator:
     def planning_selection_rejections(self, *_args):
         return []
 
+    def effective_node_settlements(self, task_id, revision_id=None):
+        task = self.get_task(task_id)
+        assert revision_id in (None, task.active_revision_id)
+        return tuple(task.active_revision.node_settlements)
+
+    def effective_planning_execution_records(self, task_id, revision_id):
+        task = self.get_task(task_id)
+        assert revision_id == task.active_revision_id
+        return tuple(task.active_revision.execution_records)
+
 
 def _task(graph, *, records, settlements):
     revision = SimpleNamespace(
@@ -184,6 +194,8 @@ def _record(*, record_id, node_id, tool_id, arguments, response, semantics="quer
         tool_id=tool_id,
         semantics=semantics,
         status="succeeded",
+        terminal=True,
+        invocation_id=(INVOCATION if semantics == "action" else None),
         arguments=arguments,
         response=response,
         error=None,

@@ -303,7 +303,7 @@ def test_forge_plan_select_compiles_named_sources_without_agent_value_assembly()
     assert ready["argument_projection_sources"]["manipulation.prepare"] == {
         "candidates": {
             "tool_id": "grasp.propose",
-            "source_scope": "predecessor",
+            "source_scope": "authorized",
         },
         "capabilities": {
             "tool_id": "manipulation.capabilities",
@@ -369,6 +369,16 @@ def test_forge_plan_select_compiles_named_sources_without_agent_value_assembly()
         def get_task(self, task_id):
             assert task_id == task.task_id
             return task
+
+        def effective_node_settlements(self, task_id, revision_id=None):
+            assert task_id == task.task_id
+            assert revision_id in (None, task.active_revision_id)
+            return tuple(task.active_revision.node_settlements)
+
+        def effective_planning_execution_records(self, task_id, revision_id):
+            assert task_id == task.task_id
+            assert revision_id == task.active_revision_id
+            return tuple(task.active_revision.execution_records)
 
         def persist_planning_selection(self, proposal):
             return {

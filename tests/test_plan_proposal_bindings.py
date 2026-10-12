@@ -579,7 +579,13 @@ def test_projection_admission_rejects_unreachable_predecessor_source_slot():
         SimpleNamespace(tool_id=policy.tool_id, planning_policy=policy)
         for policy in (producer, consumer, capability)
     )
-    task = _task((_record("capability.query", {"data": {"capability_ref": "artifact://cap/1"}}),))
+    capability_record = _record(
+        "capability.query", {"data": {"capability_ref": "artifact://cap/1"}},
+    )
+    capability_record.semantics = "query"
+    capability_record.evidence_refs = ("tool:capability",)
+    task = _task((capability_record,))
+    task.active_revision.discovery_evidence_refs = ("tool:capability",)
     consumer_node = PlanNode(
         node_id="consume",
         obligation_id="consume",

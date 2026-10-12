@@ -109,6 +109,16 @@ class _Coordinator:
         )
         return tuple(revision.execution_records)
 
+    def effective_node_settlements(self, task_id, revision_id=None):
+        task = self.get_task(task_id)
+        revisions = task.revisions or (task.active_revision,)
+        selected_revision_id = revision_id or task.active_revision.revision_id
+        revision = next(
+            item for item in revisions
+            if item.revision_id == selected_revision_id
+        )
+        return tuple(revision.node_settlements)
+
 
 class _Dispatch:
     graph = SimpleNamespace(task_id="task-1", revision_id="revision-1")

@@ -498,6 +498,21 @@ def _scene_bind_selection_context(
                 or explicit_scene_revision(evidence.arguments),
                 evidence,
             )
+    required_evidence = set(getattr(node, "required_evidence", ()))
+    explicitly_required_sources = {
+        record_id
+        for record_id, (_source_scene, understanding) in source_by_record.items()
+        if f"tool:{record_id}" in required_evidence
+        or required_evidence.intersection(
+            getattr(understanding, "evidence_refs", ())
+        )
+    }
+    if explicitly_required_sources:
+        source_by_record = {
+            record_id: source
+            for record_id, source in source_by_record.items()
+            if record_id in explicitly_required_sources
+        }
     sources = [
         (source_scene, understanding)
         for source_scene, understanding in source_by_record.values()
@@ -505,7 +520,10 @@ def _scene_bind_selection_context(
     if len(sources) != 1:
         return {
             "status": "unavailable",
-            "reason": "scene.bind requires one successful current authorized scene.understand record",
+            "reason": (
+                "scene.bind requires one successful current explicitly required "
+                "or uniquely authorized scene.understand record"
+            ),
         }
     source_scene, understanding = sources[0]
     if source_scene != scene_revision:
@@ -1017,6 +1035,26 @@ class AgentLoopNodeExecutor:
             activation = activate(context.task_id)
             if hasattr(activation, "__await__"):
                 await activation
+        resumed = await self._resume_node(context)
+        if resumed is not None:
+            return resumed
+        persist_frozen_query = getattr(
+            self.agent_loop, "persist_deterministic_query_selection", None,
+        )
+        if callable(persist_frozen_query):
+            selected = persist_frozen_query(context.task_id, context.node_id)
+            if hasattr(selected, "__await__"):
+                selected = await selected
+            if selected:
+                resumed = await self._resume_node(context)
+                if resumed is not None:
+                    return resumed
+            else:
+                # A concurrent governed selection may have been persisted after
+                # the first read.  Reconcile it before spending a model turn.
+                resumed = await self._resume_node(context)
+                if resumed is not None:
+                    return resumed
         attempts = 1 + self.max_node_turn_continuations
         previous_fingerprint: tuple[Any, ...] | None = None
         for _attempt in range(attempts):

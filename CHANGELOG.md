@@ -1,5 +1,19 @@
 # Changelog
 
+## v13.3.5 (2026-10-12 21:17) - codex
+
+### 变更摘要 / Summary [完成]
+- [policy] [fix] 修复通用 AgentLoop 在冻结 Query selection 无进展和同场景历史理解污染当前绑定上下文的问题：零自由度 Query 复用既有 selection admission；当前节点优先使用 `required_evidence` 明确授权的理解记录。 / Fix generic AgentLoop no-progress for frozen Query selection and historical same-scene understanding contamination: reuse existing selection admission for zero-choice Queries and prefer the understanding record explicitly authorized by the current node's `required_evidence`.
+- [eval] [test] 全仓库 `895 passed`，聚焦 `175 passed`；Ruff、compileall、`git diff --check` 通过；全程 no-motion。 / Full repository `895 passed`, focused `175 passed`; Ruff, compileall, and `git diff --check` passed; entirely no-motion.
+
+### 文件与边界 / Files and Boundary
+- `PhyAgentOS/agent/loop.py:L459-L499`、`planning_dispatch.py:L436-L477`、`planning_loop.py:L1017-L1036,L465-L527`：确定性只读 Query selection 与 evidence lineage 投影。 / Deterministic read-only Query selection and evidence-lineage projection.
+- `tests/test_planning_dispatch.py:L130-L225`、`tests/test_planning_loop.py:L3317-L3495,L918-L1001` 及既有回归文件：selection、并发、历史理解污染和 fail-closed 测试。 / Selection, concurrency, historical-understanding contamination, and fail-closed regressions.
+- `docs/forge/FROZEN_QUERY_SELECTION_NO_PROGRESS_DIAGNOSIS_20261012.md`：保存权威证据、通用根因、修复规则和七维审查。 / Preserve authoritative evidence, generic root cause, repair rules, and seven-dimension review.
+
+详见 [2026-10 part6 v13.3.5](changelog/2026-10_part6.md)。See the detailed part6 v13.3.5 record.
+- Commit: pending on `feature/planning-loop`.
+
 ## v13.3.4 (2026-10-12 19:06) - codex
 
 ### 变更摘要 / Summary [完成]

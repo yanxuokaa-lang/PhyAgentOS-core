@@ -459,6 +459,41 @@ class AgentLoop:
             )
         )
 
+    def persist_deterministic_query_selection(self, task_id: str, node_id: str) -> bool:
+        """Persist a zero-choice frozen Query selection without invoking a Tool.
+
+        The dispatch proves that the active node has exactly one read-only Tool,
+        a complete frozen input, and no projection or semantic source choice.
+        Coordinator persistence supplies the same durable planning binding used
+        by model-authored selections.  Actions and Sessions are never eligible.
+        """
+        dispatch = self._planning_dispatch
+        coordinator = self.forge_task_coordinator
+        if (
+            dispatch is None
+            or coordinator is None
+            or dispatch.graph.task_id != task_id
+        ):
+            return False
+        proposal = dispatch.prepare_frozen_query_selection(node_id)
+        if proposal is None:
+            return False
+        try:
+            coordinator.persist_planning_selection(proposal)
+        except AgentTaskError:
+            # Another governed planner may have won the same revision between
+            # dispatch validation and persistence.  The caller re-reads the
+            # pending selection and consumes it; it never retries the Query.
+            pending = coordinator.pending_planning_selection(
+                task_id,
+                node_id,
+                scene_revision=dispatch.current_scene_revision,
+            )
+            if pending is None:
+                raise
+            return False
+        return True
+
     def start_ready_long_horizon_tasks(self, session_key: str) -> tuple[str, ...]:
         """Start materialized tasks created by the current user turn."""
         controller = self.long_horizon_controller

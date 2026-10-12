@@ -433,6 +433,47 @@ class AgentComposedDispatch:
             return None, None
         return policy.argument_projection, policy.argument_projection_plan
 
+    def prepare_frozen_query_selection(self, node_id: str) -> dict[str, Any] | None:
+        """Compile a selection only when the frozen graph leaves no Query choice.
+
+        This is intentionally narrower than ordinary Agent selection.  It does
+        not choose between Tools, source records, projected provider payloads,
+        or motion-capable semantics.  The existing selection admission remains
+        authoritative and returns ``None`` when the frozen node is incomplete
+        or otherwise still needs Agent judgment.
+        """
+        node = next((item for item in self.graph.nodes if item.node_id == node_id), None)
+        if node is None:
+            return None
+        candidates = tuple(
+            policy
+            for policy in self.policies
+            if node.capability in policy.capabilities
+        )
+        if len(candidates) != 1:
+            return None
+        policy = candidates[0]
+        if (
+            policy.semantics != "query"
+            or policy.argument_projection is not None
+            or policy.argument_projection_plan is not None
+            or policy.trusted_argument_builder is not None
+            or policy.tool_id not in self._input_schemas
+        ):
+            return None
+        try:
+            return self.prepare_selection(
+                node_id=node.node_id,
+                tool_id=policy.tool_id,
+                arguments=deepcopy(node.input_bindings),
+                decision_reason=(
+                    "execute the unique read-only Tool with complete "
+                    "Coordinator-frozen node inputs"
+                ),
+            )
+        except PlanningDispatchError:
+            return None
+
     def admit_forge_tool(
         self, wrapper_name: str, arguments: Mapping[str, Any]
     ) -> AdmissionDecision | None:

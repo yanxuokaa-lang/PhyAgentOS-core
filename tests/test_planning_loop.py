@@ -916,13 +916,88 @@ def test_scene_bind_node_context_marks_stale_understanding_unavailable():
 
 
 def test_scene_bind_node_context_does_not_fabricate_candidates_without_understanding():
-    node = SimpleNamespace(capability="scene.bind")
+    node = SimpleNamespace(capability="scene.bind", required_evidence=())
 
     selection = _scene_bind_selection_context(node, (), "scene-current")
 
     assert selection == {
         "status": "unavailable",
-        "reason": "scene.bind requires one successful current authorized scene.understand record",
+        "reason": (
+            "scene.bind requires one successful current explicitly required "
+            "or uniquely authorized scene.understand record"
+        ),
+    }
+
+
+def _understanding_evidence(record_id: str) -> EvidenceExecutionContext:
+    return EvidenceExecutionContext(
+        revision_id="revision-source",
+        record_id=record_id,
+        tool_id="scene.understand",
+        status="succeeded",
+        evidence_refs=(f"tool:{record_id}",),
+        arguments={
+            "observation_ref": f"observation://{record_id}",
+            "scene_revision": "scene-current",
+        },
+        response={"data": {
+            "status": "available",
+            "observation_ref": f"observation://{record_id}",
+            "scene_revision": "scene-current",
+            "entities": [{
+                "entity_ref": f"entity://{record_id}",
+                "category": "task object",
+            }],
+        }},
+    )
+
+
+def test_scene_bind_context_prefers_current_node_required_understanding_lineage():
+    node = SimpleNamespace(
+        capability="scene.bind",
+        required_evidence=("tool:understand-latest",),
+    )
+
+    selection = _scene_bind_selection_context(
+        node,
+        (),
+        "scene-current",
+        (
+            _understanding_evidence("understand-history"),
+            _understanding_evidence("understand-latest"),
+        ),
+    )
+
+    assert selection["status"] == "available"
+    assert selection["source_record_id"] == "understand-latest"
+    assert selection["candidate_entity_refs"] == ["entity://understand-latest"]
+
+
+def test_scene_bind_context_rejects_multiple_explicit_understanding_sources():
+    node = SimpleNamespace(
+        capability="scene.bind",
+        required_evidence=(
+            "tool:understand-a",
+            "tool:understand-b",
+        ),
+    )
+
+    selection = _scene_bind_selection_context(
+        node,
+        (),
+        "scene-current",
+        (
+            _understanding_evidence("understand-a"),
+            _understanding_evidence("understand-b"),
+        ),
+    )
+
+    assert selection == {
+        "status": "unavailable",
+        "reason": (
+            "scene.bind requires one successful current explicitly required "
+            "or uniquely authorized scene.understand record"
+        ),
     }
 
 
@@ -3312,6 +3387,181 @@ def test_node_executor_consumes_pending_selection_before_model_turn():
     assert loop.model_calls == 0
     assert loop.tools.calls[0][0] == "forge_tool_query"
     assert loop.tools.calls[0][1]["use_selected_arguments"] is True
+
+
+def test_node_executor_persists_and_consumes_zero_choice_query_before_model_turn():
+    records = []
+    pending = {"value": None}
+    task = SimpleNamespace(
+        active_revision_id="revision-resume",
+        active_revision=SimpleNamespace(execution_records=records),
+    )
+
+    class Coordinator:
+        def get_task(self, _task_id):
+            return task
+
+        def pending_planning_selection(self, *_args, **_kwargs):
+            return pending["value"]
+
+    class Registry:
+        calls = []
+
+        async def execute(self, name, params):
+            self.calls.append((name, params))
+            records.append(_terminal_record())
+            return '{"ok":true}'
+
+    class Loop:
+        def __init__(self):
+            self.tools = Registry()
+            self.selection_calls = 0
+            self.model_calls = 0
+
+        def activate_planning_task(self, _task_id):
+            return None
+
+        def persist_deterministic_query_selection(self, task_id, node_id):
+            self.selection_calls += 1
+            assert (task_id, node_id) == ("task-resume", "prepare")
+            pending["value"] = {
+                "execution_tool": "forge_tool_query",
+                "task_id": task_id,
+                "tool_id": "scene.bind",
+                "planning_binding": {"node_id": node_id},
+            }
+            return True
+
+        async def run_node_turn(self, **_kwargs):
+            self.model_calls += 1
+            raise AssertionError("a zero-choice Query must not spend a model turn")
+
+    loop = Loop()
+    result = asyncio.run(AgentLoopNodeExecutor(loop, Coordinator())(_executor_context()))
+
+    assert result.status == "succeeded"
+    assert loop.selection_calls == 1
+    assert loop.model_calls == 0
+    assert loop.tools.calls == [("forge_tool_query", {
+        "task_id": "task-resume",
+        "tool_id": "scene.bind",
+        "arguments": {},
+        "use_selected_arguments": True,
+        "planning_binding": {"node_id": "prepare"},
+    })]
+
+
+def test_node_executor_consumes_concurrent_selection_before_model_turn():
+    records = []
+    pending = {"value": None}
+    task = SimpleNamespace(
+        active_revision_id="revision-resume",
+        active_revision=SimpleNamespace(execution_records=records),
+    )
+
+    class Coordinator:
+        def get_task(self, _task_id):
+            return task
+
+        def pending_planning_selection(self, *_args, **_kwargs):
+            return pending["value"]
+
+    class Registry:
+        calls = []
+
+        async def execute(self, name, params):
+            self.calls.append((name, params))
+            records.append(_terminal_record())
+            return '{"ok":true}'
+
+    class Loop:
+        def __init__(self):
+            self.tools = Registry()
+            self.model_calls = 0
+
+        def persist_deterministic_query_selection(self, task_id, node_id):
+            pending["value"] = {
+                "execution_tool": "forge_tool_query",
+                "task_id": task_id,
+                "tool_id": "scene.bind",
+                "planning_binding": {"node_id": node_id},
+            }
+            return False
+
+        async def run_node_turn(self, **_kwargs):
+            self.model_calls += 1
+            raise AssertionError("a concurrent durable selection must win")
+
+    loop = Loop()
+    result = asyncio.run(AgentLoopNodeExecutor(loop, Coordinator())(_executor_context()))
+
+    assert result.status == "succeeded"
+    assert loop.model_calls == 0
+    assert len(loop.tools.calls) == 1
+
+
+def test_deterministic_query_selection_accepts_only_a_durable_concurrent_winner():
+    proposal = {"task_id": "task-resume", "node_id": "prepare"}
+
+    class Dispatch:
+        graph = SimpleNamespace(task_id="task-resume")
+        current_scene_revision = "scene-1"
+
+        def prepare_frozen_query_selection(self, node_id):
+            assert node_id == "prepare"
+            return proposal
+
+    class Coordinator:
+        pending = {"value": {"tool_id": "scene.bind"}}
+
+        def persist_planning_selection(self, selected):
+            assert selected is proposal
+            raise AgentTaskError("concurrent selection")
+
+        def pending_planning_selection(self, task_id, node_id, *, scene_revision):
+            assert (task_id, node_id, scene_revision) == (
+                "task-resume", "prepare", "scene-1",
+            )
+            return self.pending["value"]
+
+    loop = SimpleNamespace(
+        _planning_dispatch=Dispatch(), forge_task_coordinator=Coordinator(),
+    )
+
+    assert AgentLoop.persist_deterministic_query_selection(
+        loop, "task-resume", "prepare",
+    ) is False
+
+    loop.forge_task_coordinator.pending["value"] = None
+    with pytest.raises(AgentTaskError, match="concurrent selection"):
+        AgentLoop.persist_deterministic_query_selection(
+            loop, "task-resume", "prepare",
+        )
+
+
+def test_deterministic_query_selection_persists_dispatch_proposal():
+    proposal = {"task_id": "task-resume", "node_id": "prepare"}
+    persisted = []
+
+    class Dispatch:
+        graph = SimpleNamespace(task_id="task-resume")
+
+        def prepare_frozen_query_selection(self, node_id):
+            assert node_id == "prepare"
+            return proposal
+
+    class Coordinator:
+        def persist_planning_selection(self, selected):
+            persisted.append(selected)
+
+    loop = SimpleNamespace(
+        _planning_dispatch=Dispatch(), forge_task_coordinator=Coordinator(),
+    )
+
+    assert AgentLoop.persist_deterministic_query_selection(
+        loop, "task-resume", "prepare",
+    ) is True
+    assert persisted == [proposal]
 
 
 def test_node_executor_reconciles_existing_terminal_record_without_model_call():
