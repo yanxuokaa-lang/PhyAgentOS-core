@@ -333,6 +333,12 @@ def test_qwen_provider_context_exposes_operator_owned_recovery_without_side_effe
                 "ready": False,
                 "provider_state": "unavailable",
                 "provider_error_class": "transport",
+                "primary_route": "qwen3-vl-4b-vllm",
+                "primary_error_class": "transport",
+                "primary_error_code": "connection_refused",
+                "fallback_route": "gpt-6.1-sol-high",
+                "fallback_error_class": "provider_failure",
+                "fallback_error_code": "http_502",
                 "binding_error": "scene_understanding_provider_unavailable",
             }
 
@@ -346,6 +352,9 @@ def test_qwen_provider_context_exposes_operator_owned_recovery_without_side_effe
     assert calls == ["readiness"]
     assert context["ready"] is False
     assert context["binding_error"] == "scene_understanding_provider_unavailable"
+    assert context["primary_route"] == "qwen3-vl-4b-vllm"
+    assert context["primary_error_code"] == "connection_refused"
+    assert context["fallback_route"] == "gpt-6.1-sol-high"
     assert context["operator_recovery"] == {
         "when": "scene_understanding_provider_unavailable",
         "owner": "operator",

@@ -155,8 +155,10 @@ class FallbackSceneUnderstandingInference:
                     "provider_state": "unavailable",
                     "provider_route": "none",
                     "provider_error_class": self.last_error_class,
+                    "primary_route": self.primary_name,
                     "primary_error_class": self.primary_error_class or "provider_failure",
                     "primary_error_code": self.primary_error_code or "provider_failure",
+                    "fallback_route": self.fallback_name,
                     "fallback_error_class": self.fallback_error_class or "provider_failure",
                     "fallback_error_code": self.fallback_error_code or "provider_failure",
                     "binding_error": "scene_understanding_provider_unavailable",
@@ -168,8 +170,10 @@ class FallbackSceneUnderstandingInference:
                     "ready": True,
                     "provider_state": "fallback_pending",
                     "primary_ready": False,
+                    "primary_route": self.primary_name,
                     "primary_error_class": primary.get("provider_error_class", "transport"),
                     "primary_error_code": primary.get("provider_error_code", "transport"),
+                    "fallback_route": self.fallback_name,
                     "provider_route": self.last_route or "none",
                     "provider_error_class": self.last_error_class or "none",
                 }
@@ -179,19 +183,33 @@ class FallbackSceneUnderstandingInference:
                 "provider_state": "unavailable",
                 "provider_route": "none",
                 "provider_error_class": self.last_error_class,
+                "primary_route": self.primary_name,
                 "primary_error_class": self.primary_error_class or "provider_failure",
                 "primary_error_code": self.primary_error_code or "provider_failure",
+                "fallback_route": self.fallback_name,
                 "fallback_error_class": self.fallback_error_class or "provider_failure",
                 "fallback_error_code": self.fallback_error_code or "provider_failure",
                 "binding_error": "scene_understanding_provider_unavailable",
             }
-        return {
+        result = {
             "ready": True,
             "provider_state": "ready",
             "primary_ready": True,
             "provider_route": self.last_route or "none",
             "provider_error_class": self.last_error_class or "none",
         }
+        if self.primary_error_class is not None:
+            result.update(
+                {
+                    "primary_route": self.primary_name,
+                    "primary_error_class": self.primary_error_class,
+                    "primary_error_code": self.primary_error_code or "provider_failure",
+                    "fallback_route": self.fallback_name,
+                    "fallback_error_class": self.fallback_error_class or "none",
+                    "fallback_error_code": self.fallback_error_code or "none",
+                }
+            )
+        return result
 
     def _emit(self, event: Mapping[str, Any]) -> None:
         if self.diagnostic_sink is None:

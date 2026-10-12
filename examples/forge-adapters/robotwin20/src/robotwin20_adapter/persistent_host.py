@@ -139,6 +139,7 @@ def _persistent_tool_context(
         "provider_error_class",
         "provider_error_code",
         "primary_ready",
+        "primary_route",
         "primary_error_class",
         "primary_error_code",
         "fallback_route",

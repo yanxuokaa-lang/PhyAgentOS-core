@@ -1,5 +1,39 @@
 # Changelog
 
+## v13.2.14 (2026-10-12 13:02) - codex
+
+### 变更摘要 / Summary [完成]
+- [comm] [fix] 修复 lifecycle wrapper 丢弃 primary/fallback route-specific diagnostics 的缺口，严格复用 bounded token 过滤。 / Fix the lifecycle-wrapper gap that dropped primary/fallback route-specific diagnostics, reusing bounded token filtering.
+- [policy] [fix] 将 `primary_route` 纳入 persistent Runtime readiness context，使 Tool context、JSONL 和 Query 诊断保持一致；不改变 readiness、replan、motion authorization 或 Action replay。 / Include `primary_route` in the persistent Runtime readiness context so Tool context, JSONL, and Query diagnostics stay consistent; do not change readiness, replan, motion authorization, or Action replay.
+- [eval] [test] lifecycle/context/provider 回归 `124 passed`，Core AgentLoop/planning/recovery `263 passed`。 / Lifecycle/context/provider regressions `124 passed`; Core AgentLoop/planning/recovery `263 passed`.
+
+### 七维审查与关键 Diff / Seven-dimension review and key diff
+- **架构 / Architecture：** diagnostics remain Adapter-owned and cross lifecycle/Runtime through existing allowlists; no parallel state or task-specific branch. / 诊断仍由 Adapter 负责，经既有 allowlist 穿过 lifecycle/Runtime，无平行状态或任务分支。
+- **正确性 / Correctness：** lifecycle now preserves all route-specific fields; readiness failure/pending context preserves both route names. / lifecycle 现在保留全部 route-specific 字段；失败/待 fallback readiness context 保留两侧 route。
+- **错误与可观测 / Errors and observability：** strict bounded-token filtering rejects private route/code fields while retaining HTTP/class codes. / 严格有界 token 过滤拒绝私有 route/code，同时保留 HTTP/class code。
+- **恢复与幂等 / Recovery and idempotency：** projection only; no retry, scene refresh, or Action replay added. / 仅 projection，不增加重试、场景刷新或 Action 重放。
+- **机器人安全 / Robotics safety：** Query/readiness diagnostics only; motion authority and all Action gates unchanged. / 仅 Query/readiness 诊断，运动授权和 Action 门禁不变。
+- **扩展兼容 / Extension compatibility：** generic provider-neutral fields work for fallback and no-fallback providers. / provider-neutral 字段同时适用于 fallback 与 no-fallback provider。
+- **AgentLoop 收敛 / AgentLoop convergence：** coordinator ownership and bounded provider recovery remain unchanged; route facts are no longer lost before handoff. / Coordinator 归属和 bounded provider recovery 不变，路由事实不会在 handoff 前丢失。
+
+### 文件与关键 Diff / Files and key diff
+- `qwen3_vl_vllm_lifecycle.py:L5-L15,L284-L304`：增加 route-specific allowlist 和严格 token 校验。 / Add route-specific allowlisting and strict token validation.
+- `scene_understanding_fallback.py:L152-L212`、`persistent_host.py:L136-L151`：readiness 与 Tool context 保留 `primary_route`/`fallback_route`。 / Preserve `primary_route`/`fallback_route` in readiness and Tool context.
+- `test_qwen3_vl_vllm_lifecycle.py:L144-L183`、`test_persistent_host.py:L324-L357`、`test_scene_understanding_fallback.py:L84-L190`：增加 projection、脱敏和 context 回归。 / Add projection, redaction, and context regressions.
+
+```diff
+- lifecycle -> provider_route/provider_error_class/provider_error_code
++ lifecycle -> provider_route/provider_error_class/provider_error_code
++              primary_route/primary_error_class/primary_error_code
++              fallback_route/fallback_error_class/fallback_error_code
+```
+
+### 验证与提交 / Validation and commit
+- Provider/lifecycle/host/perception tests: `124 passed`; Core AgentLoop/planning/recovery: `263 passed`。Ruff、compileall、`git diff --check` passed；全程 no-motion。 / Provider/lifecycle/host/perception tests: `124 passed`; Core AgentLoop/planning/recovery: `263 passed`. Ruff, compileall, and `git diff --check` passed; all no-motion.
+- Implementation and review commit pending. / 实现与审查提交待补。
+
+详见 [2026-10 part5 v13.2.14](changelog/2026-10_part5.md)。See the detailed v13.2.14 record.
+
 ## v13.2.13 (2026-10-12 12:20) - codex
 
 ### 变更摘要 / Summary

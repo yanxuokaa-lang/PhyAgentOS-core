@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from contextlib import contextmanager
 from dataclasses import dataclass
 from threading import Condition, Timer
@@ -10,6 +11,8 @@ from typing import Any, Callable, Iterator, Mapping, Protocol
 import httpx
 
 from .qwen3_vl_vllm_scene_understanding import Qwen3VLVLLMInferenceError
+
+_DIAGNOSTIC_TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/+@-]{0,127}$")
 
 
 class Qwen3VLVLLMLifecycleError(Qwen3VLVLLMInferenceError):
@@ -291,11 +294,13 @@ class LifecycleManagedSceneUnderstandingInference:
             return {}
         return {
             key: value[key]
-            for key in ("provider_route", "provider_error_class", "provider_error_code")
+            for key in (
+                "provider_route", "provider_error_class", "provider_error_code",
+                "primary_route", "primary_error_class", "primary_error_code",
+                "fallback_route", "fallback_error_class", "fallback_error_code",
+            )
             if isinstance(value.get(key), str)
-            and 0 < len(value[key]) <= 128
-            and value[key].isprintable()
-            and not any(char.isspace() for char in value[key])
+            and _DIAGNOSTIC_TOKEN.fullmatch(value[key]) is not None
         }
 
     def release(self) -> None:

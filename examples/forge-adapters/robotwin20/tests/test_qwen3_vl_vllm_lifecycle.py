@@ -153,6 +153,14 @@ def test_lifecycle_wrapper_preserves_provider_diagnostics():
                 "diagnostic_summary": lambda _self: {
                     "provider_route": "vendor-model:v2@fallback",
                     "provider_error_class": "contract",
+                    "primary_route": "local",
+                    "primary_error_class": "transport",
+                    "primary_error_code": "http_500",
+                    "fallback_route": "remote",
+                    "fallback_error_class": "contract",
+                    "fallback_error_code": "contract_output",
+                    "private_route": "secret endpoint",
+                    "private_error_code": "secret code",
                     "raw_exception": "must not cross the seam",
                 },
             },
@@ -163,7 +171,15 @@ def test_lifecycle_wrapper_preserves_provider_diagnostics():
     assert provider.diagnostic_summary() == {
         "provider_route": "vendor-model:v2@fallback",
         "provider_error_class": "contract",
+        "primary_route": "local",
+        "primary_error_class": "transport",
+        "primary_error_code": "http_500",
+        "fallback_route": "remote",
+        "fallback_error_class": "contract",
+        "fallback_error_code": "contract_output",
     }
+    assert "private_route" not in provider.diagnostic_summary()
+    assert "private_error_code" not in provider.diagnostic_summary()
     manager.close()
 
 
