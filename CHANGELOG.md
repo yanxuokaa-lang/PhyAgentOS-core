@@ -21,7 +21,7 @@
 
 ### 验证与提交 / Validation and commit
 - Ruff、compileall、`git diff --check` passed；全程 no-motion，未启动 Runtime、未创建 AgentTask、未调用 Gateway Query/Action。 / Ruff, compileall, and `git diff --check` passed; no motion, Runtime, AgentTask, or Gateway Query/Action was used.
-- Commit pending. / 提交待补。
+- Implementation commit: `c6ec908e` on `feature/planning-loop`; documentation completion follows in the log update. / 实现提交：`c6ec908e`，分支 `feature/planning-loop`；日志更新随后完成。
 
 详见 [2026-10 part5 v13.2.13](changelog/2026-10_part5.md)。See the detailed v13.2.13 record.
 
