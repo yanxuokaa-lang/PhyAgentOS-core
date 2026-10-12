@@ -1,5 +1,17 @@
 # Changelog
 
+## v13.3.4 (2026-10-12 19:06) - codex
+
+### 变更摘要 / Summary [完成]
+- [env] [chore] 强制停止旧 Runtime，刷新 editable Core，并发布/安装包含 v13.3.3 Adapter handoff 修复的 Skill `3.0.21` / Node `1.0.11`；使用既有 profile/operator env 启动新 Runtime。 / Force-stop the old Runtime, refresh editable Core, publish/install Skill `3.0.21` / Node `1.0.11` containing the v13.3.3 Adapter handoff fix, and start a new Runtime with the existing profile/operator environment.
+- [eval] [test] 新 host/simulator worker 完成 startup，Runtime/Dora/Gateway 和 11/11 Tool contexts ready；重启验收时无非终态任务且部署全程无 Query/Action/运动。用户随后独立创建的新任务正在执行，不属于部署流程。 / A new host/simulator worker completed startup; Runtime/Dora/Gateway and all 11 Tool contexts are ready, with no non-terminal task or deployment Query/Action/motion at restart acceptance. A user-launched task is now executing independently of deployment.
+
+### 文件、验证与提交 / Files, validation, and commit
+- `pick-place-workflow/pyproject.toml:L1-L6`、`skill.yaml:L1-L4,L219-L229`、`CHANGELOG.md:L1-L11`、`tests/test_grasp_propose.py:L262-L274`：发布 Skill `3.0.21` / Node `1.0.11` 并更新 lock/version regression。 / Publish Skill `3.0.21` / Node `1.0.11` and update lock/version regression.
+- `out/releases/v13.3.4/`：Node/Skill artifacts；Node SHA `3d368ffb05dae5bf5ad7b27ea900702cfe7ea9318754c5199f2a4ed0d400af44`。 / Node/Skill release artifacts with the recorded Node SHA.
+- `131 passed in 0.95s`；新 simulator worker PID `2244784`，startup `16.531s`；active runtime lock 使用 Skill `3.0.21` / Node `1.0.11`。用户任务的 LocateAnything 冷启动期间 readiness 曾短暂超时，完成后 11/11 contexts 恢复 ready。 / `131 passed in 0.95s`; new simulator worker PID `2244784`, startup `16.531s`; active lock uses Skill `3.0.21` / Node `1.0.11`. Readiness briefly timed out during the user's LocateAnything cold start and returned to 11/11 ready afterward.
+- 全程 no-motion；deployment/release commit follows；详见 [2026-10 part6 v13.3.4](changelog/2026-10_part6.md)。 / Entirely no-motion; deployment/release commit follows; see the detailed part6 record.
+
 ## v13.3.3 (2026-10-12 18:04) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -91,22 +103,7 @@
 - Implementation/review commit: `df333e59`; branch `feature/planning-loop`. / 实现与审查提交：`df333e59`；分支 `feature/planning-loop`。
 - Log/index completion commit follows separately. / 日志与索引完成提交随后单独记录。
 
-## v13.2.15 (2026-10-12 13:14) - codex
-
-### 变更摘要 / Summary [完成]
-- [env] [chore] 强制停止旧 Runtime，刷新 editable Core，构建并安装 Skill `3.0.20` / Node `1.0.10`，启动既有 `robotwin-blocks-ranking-graspnet` profile；不改变 RGB 任务逻辑。 / Force-stop the old Runtime, refresh the editable Core, build/install Skill `3.0.20` / Node `1.0.10`, and start the existing profile; no RGB task logic changed.
-- [eval] [test] release/conformance focused suite `76 passed`；新 Runtime running、Dora running、Gateway ready、11/11 Tool contexts ready；任务库 `cancelled=199, failed=94`，无非终态任务。 / The focused release/conformance suite passed `76`; the new Runtime/Dora are running, Gateway is ready, all 11/11 Tool contexts are ready, and the task store remains `cancelled=199, failed=94` with no non-terminal task.
-
-### 文件与关键 Diff / Files and key diff
-- `examples/forge-skills/pick-place-workflow/pyproject.toml:L1-L4`、`skill.yaml:L1-L4,L219-L229`：版本/Node lock `3.0.19/1.0.9` → `3.0.20/1.0.10`，锁定新 Node SHA。 / Update the version/Node lock and pin the new Node SHA.
-- `examples/forge-skills/pick-place-workflow/CHANGELOG.md:L3-L6`、`tests/test_grasp_propose.py:L261-L274`：发布说明与版本回归同步。 / Align release notes and version regression.
-- `out/releases/v13.2.15/`：新增 Node/Skill artifacts；runtime lock 使用 Node `1.0.10`。 / Add Node/Skill artifacts; the runtime lock uses Node `1.0.10`.
-
-### 安全边界与提交 / Safety boundary and commit
-- 未创建 AgentTask、未调用 Query/Action、未读取相机、未推进 simulator、无物理运动；未跟踪用户文件保留。 / No AgentTask, Query/Action, camera, simulator, or physical motion; user untracked files preserved.
-- Implementation/deployment commit: `52f631e5` on `feature/planning-loop`; detailed record: [2026-10 part5 v13.2.15](changelog/2026-10_part5.md).
-
-<!-- v13.2.14 and earlier detailed records are archived in changelog/2026-10_part5.md. -->
+<!-- v13.2.15 and earlier detailed records are archived in changelog/2026-10_part5.md. -->
 
 ## v13.2.13 (2026-10-12 12:20) - codex
 

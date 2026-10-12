@@ -1,5 +1,10 @@
 # Change Log
 
+## v3.0.21 (2026-10-12)
+
+- 中文：发布 Adapter Node `1.0.11`，确保语义 fallback 成功后仍完成已尝试 primary provider 的 GPU handoff，并将无世界变化的瞬态 enrichment worker failure 作为显式可重试 Query 事实投影；不改变 Action admission、运动授权或任务专用逻辑。
+- English: Publish Adapter Node `1.0.11`, ensuring an attempted primary provider completes GPU handoff after semantic fallback succeeds and projecting transient, world-unchanged enrichment-worker failures as explicitly retryable Query facts; change no Action admission, motion authorization, or task-specific logic.
+
 ## v3.0.20 (2026-10-12)
 
 - 中文：发布 Adapter Node `1.0.10`，包含 lifecycle/provider route-specific diagnostics 修复，使已安装 Runtime 使用当前审查后的 provider 诊断链；不改变 Query/Action 或 RGB 任务逻辑。
