@@ -15,7 +15,7 @@
 - `PhyAgentOS/agent/recovery_decisions.py:L79-L118,L218-L342`：区分 Query evidence 与 measured Action recovery，只生成 scene-refresh Query。 / Distinguish Query-evidence and measured-Action recovery and generate only a scene-refresh Query.
 - `PhyAgentOS/agent/tools/planning.py:L431-L452`、`PhyAgentOS/agent/loop.py:L1675-L1725`：缺失通用 semantic join field 的同节点纠正。 / Same-node correction for a missing generic semantic join field.
 - `tests/test_agent_foundation.py:L1364-L1410,L2620-L2920`、`tests/test_planning_selection.py:L337-L523`、`examples/forge-adapters/robotwin20/tests/test_persistent_manipulation.py:L490-L666`：no-motion recovery、projection、跨 Action 陈旧测量与 Runtime/receipt 回归。 / No-motion recovery, projection, cross-Action stale-measurement, Runtime, and receipt regressions.
-- `docs/forge/PLACEMENT_POSTCONDITION_ENTITY_SELECTION_DIAGNOSIS_20261012.md:L1-L129`：证据、ownership、恢复边界、七维审查和验证。 / Evidence, ownership, recovery boundaries, seven-dimension review, and verification.
+- `docs/forge/PLACEMENT_POSTCONDITION_ENTITY_SELECTION_DIAGNOSIS_20261012.md:L1-L131`：证据、ownership、恢复边界、七维审查和验证。 / Evidence, ownership, recovery boundaries, seven-dimension review, and verification.
 
 ```diff
 - measured postcondition violation -> outcome_unknown
@@ -35,7 +35,7 @@
 - 七维审查发现并修复 1 Major（跨 Action 陈旧 placement measurement）；无 Blocker 或未修复 Major。Focused/cross-layer `315 passed in 11.34s`；full repository `900 passed in 30.56s`；Ruff、compileall、`git diff --check` passed。全程 no-motion，未部署/重启 Runtime 或调用 live Gateway。 / Seven-dimension review found and fixed one Major (cross-Action stale placement measurement), with no Blocker or unresolved Major. Focused/cross-layer and full suites passed, as did Ruff, compileall, and diff checks; entirely no-motion with no Runtime deployment/restart or live Gateway call.
 
 ### Git 提交 / Git Commit
-- Implementation commit pending on `feature/planning-loop`; documentation/index completion follows separately. / `feature/planning-loop` 上的实现提交待完成；日志与索引补全随后单独提交。
+- Implementation/review commit: `8eae0db3` on `feature/planning-loop`; documentation/index completion follows separately. / 实现与审查提交：`8eae0db3`，分支 `feature/planning-loop`；日志与索引补全随后单独提交。
 
 ## v13.3.8 (2026-10-12 22:02) - codex
 
