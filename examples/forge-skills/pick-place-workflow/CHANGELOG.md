@@ -1,5 +1,10 @@
 # Change Log
 
+## v3.0.22 (2026-10-12)
+
+- 中文：发布 Adapter Node `1.0.12`，将已测得的放置后置条件失败与 bounded measurement/tolerance 投影打包进 Runtime，并确保每个 Action 清理上次测量；未分类 post-release 异常继续 fail-closed 为 unknown。
+- English: Publish Adapter Node `1.0.12` with measured placement-postcondition failure classification and bounded measurement/tolerance projection, while clearing prior measurements for every Action; unclassified post-release exceptions remain fail-closed as unknown.
+
 ## v3.0.21 (2026-10-12)
 
 - 中文：发布 Adapter Node `1.0.11`，确保语义 fallback 成功后仍完成已尝试 primary provider 的 GPU handoff，并将无世界变化的瞬态 enrichment worker failure 作为显式可重试 Query 事实投影；不改变 Action admission、运动授权或任务专用逻辑。

@@ -2,6 +2,32 @@
 
 ## 最近五版本 / Latest five versions
 
+## v13.3.10 (2026-10-12 23:25) - codex
+
+### 变更摘要 / Summary [完成]
+- [env] [chore] 按用户授权强制停止旧 Runtime，发布并安装 Skill `3.0.22` / Node `1.0.12`，刷新 editable Core，并启动既有 `robotwin-blocks-ranking-graspnet` profile。 / Under explicit authorization, force-stop the old Runtime, publish and install Skill `3.0.22` / Node `1.0.12`, refresh editable Core, and start the existing `robotwin-blocks-ranking-graspnet` profile.
+- [eval] [test] 验证 artifact lock、运行源码、进程、端口及 11/11 Tool readiness；没有创建/恢复 AgentTask 或调用 Query/Action。 / Verify artifact locks, running source, processes, ports, and all 11 Tool contexts; create/resume no AgentTask and invoke no Query/Action.
+
+### 文件、版本与关键 Diff / Files, Versions, and Key Diff
+- `examples/forge-skills/pick-place-workflow/pyproject.toml:L1-L6`、`skill.yaml:L1-L4,L219-L229`：Skill `3.0.21` → `3.0.22`，Node `1.0.11` → `1.0.12`，Node SHA=`96818ddbe23927326055f53e8424a9599bc7e04ff0a5357003758f9ed07c9b51`。 / Bump Skill and Node versions and lock the recorded Node SHA.
+- `examples/forge-skills/pick-place-workflow/CHANGELOG.md:L1-L11`、`tests/test_grasp_propose.py:L264-L274`：发布说明和版本一致性回归。 / Release notes and version-consistency regression.
+- `out/releases/v13.3.10/robotwin20_persistent_host-1.0.12-linux-x86_64.tar.gz`、`pick-place-workflow-3.0.22.tar.gz`：Node/Skill release artifacts；Skill bundle SHA=`7e40780869f6238c40ba543b665e583ee105c59148c9af15677d7be0fa36f82c`。 / Node and Skill release artifacts with the recorded bundle SHA.
+
+```diff
+- Skill 3.0.21 / Node 1.0.11 / old host+simulator
++ Skill 3.0.22 / Node 1.0.12 / new host+simulator
++ typed placement-postcondition failure and per-Action measurement reset installed
+```
+
+### 部署结果与安全边界 / Deployment Result and Safety Boundary
+- 强制停止成功，旧 host PID `3209179`、worker PID `3209222` 退出，独立 Qwen PID `176466`/8012 未停止。新 host PID `3256163`、worker PID `3256218` 于 23:29 创建。 / Forced stop succeeded; the old host/worker exited while independent Qwen remained running. New host/worker processes were created at 23:29.
+- Runtime lock `33f3c5ea.../runtime-lock.json` 固定 Skill `3.0.22`、Node `1.0.12` 与 Node SHA；Skill/Dora=`running`、Gateway=`ready`、11/11 Tool contexts=`ready`，19020/8012 监听。 / The new runtime lock pins Skill, Node, and Node SHA; Skill/Dora are running, Gateway and all 11 Tool contexts are ready, and ports 19020/8012 listen.
+- release/workflow/provider fixture `456 passed in 13.72s`；Core v13.3.9 已通过 focused `315`、full `900`。任务库仅 `cancelled=203`、`failed=99`，没有 non-terminal task。 / Release/workflow/provider fixtures passed; Core v13.3.9 already passed focused and full suites. The task store contains only terminal tasks.
+- 未调用 Gateway Query/Action、相机或 simulator action；readiness 不作为场景内容或任务成功证明。 / No Gateway Query/Action, camera, or simulator action was invoked; readiness is not treated as proof of scene contents or task success.
+
+### Git 提交 / Git Commit
+- Deployment/release commit pending on `feature/planning-loop`; documentation/index completion follows separately. / `feature/planning-loop` 上的部署与发布提交待完成；日志与索引补全随后单独提交。
+
 ## v13.3.9 (2026-10-12 22:59) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -160,6 +186,10 @@
 ### Git 提交 / Git Commit
 - Implementation commit: `0205be6a` on `feature/planning-loop`; log/index reference completion follows. / 实现提交：`0205be6a`，分支 `feature/planning-loop`；日志与索引提交引用随后补全。
 
+## Archived detailed records / 已归档详细记录
+
+The latest five records above are mirrored from the monthly archive. Older snapshots below remain for historical compatibility. / 上述最近五条与月度归档同步；以下旧快照仅为历史兼容保留。
+
 ## v13.3.5 (2026-10-12 20:31) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -216,10 +246,6 @@
 
 ### Git 提交 / Git Commit
 - Commit: `5f07b5e4` on `feature/planning-loop`; documentation/index completion follows separately. / 提交：`5f07b5e4`，分支 `feature/planning-loop`；日志与索引补全随后单独提交。
-
-## Archived detailed records / 已归档详细记录
-
-The latest five records above are mirrored from the monthly archive. Older snapshots below remain for historical compatibility. / 上述最近五条与月度归档同步；以下旧快照仅为历史兼容保留。
 
 ## v13.3.4 (2026-10-12 19:06) - codex
 
