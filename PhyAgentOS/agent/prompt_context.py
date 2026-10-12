@@ -873,9 +873,12 @@ def task_prompt_projection(
             )
         if "scene.understand" in missing_queries:
             planning_next_step += (
-                " Only a scene.understand error with code=understanding_provider_error, "
-                "failure_stage=provider, and retryable=false blocks on Runtime provider "
-                "readiness. A request-validation error such as invalid_freshness is "
+                " A read-only Query error such as code=understanding_provider_error with a "
+                "provider-owned code, "
+                "failure_stage=provider, and retryable=false blocks the current Query "
+                "attempt and must be handed to the persisted provider recovery lifecycle. "
+                "If Runtime Tool context is ready, use bounded replan; if unavailable, "
+                "wait for its readiness transition. A request-validation error such as invalid_freshness is "
                 "correctable in this task: keep the current successful observation, "
                 "fix the arguments from its receipt and ToolSpec, and submit one corrected "
                 "Query without repeating the identical invalid request."

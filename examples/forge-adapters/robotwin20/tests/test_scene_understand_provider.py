@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 import sys
 
 import pytest
@@ -176,6 +177,41 @@ async def test_declared_fallback_failure_class_survives_public_projection():
     }
 
 
+def test_metric_enrichment_failure_keeps_stage_and_bounded_worker_code():
+    class MetricFailureError(RuntimeError):
+        failure_stage = "enrichment"
+        provider_error_class = "transport"
+        provider_error_code = "worker_terminated"
+        provider_stage = "proposal"
+        retryable = False
+
+    class FailingInference:
+        def infer(self, request):
+            raise MetricFailureError("worker details must stay private")
+
+        def diagnostic_summary(self):
+            return {
+                "provider_route": "gpt-6.1-sol-high",
+                "provider_error_class": "transport",
+                "raw_exception": "worker details must stay private",
+            }
+
+    result = SceneUnderstandingEndpoint(
+        RoboTwinSceneUnderstandingProvider(FailingInference())
+    ).invoke(OBSERVE_INPUT)
+    assert result["error"] == {
+        "code": "understanding_provider_error",
+        "message": "scene understanding provider failed",
+        "reason": "transport",
+        "failure_stage": "enrichment",
+        "retryable": False,
+        "provider_error_code": "worker_terminated",
+        "provider_stage": "proposal",
+    }
+    assert result["provider_route"] == "gpt-6.1-sol-high"
+    assert "raw_exception" not in result
+
+
 @pytest.mark.asyncio
 async def test_wrapped_qwen_transport_class_survives_public_projection():
     class FailingInference:
@@ -254,7 +290,21 @@ async def test_provider_passes_neutral_derived_artifacts_without_importing_paos_
 
 def test_paos_import_boundary_remains_clean():
     forbidden = {"robotwin", "sapien", "torch", "ultralytics", "dora", "openai"}
-    assert not any(name.split(".", 1)[0].lower() in forbidden for name in sys.modules)
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; import PhyAgentOS.forge.capability_runtime.understanding; "
+            "print('\\n'.join(sorted(sys.modules)))",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert not any(
+        name.split(".", 1)[0].lower() in forbidden
+        for name in result.stdout.splitlines()
+    )
 
 
 def test_adapter_returns_runtime_independent_mapping_type():

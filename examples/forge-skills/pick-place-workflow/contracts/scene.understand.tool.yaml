@@ -494,6 +494,12 @@ output_schema:
           minLength: 1
         retryable:
           type: boolean
+        provider_error_code:
+          type: string
+          minLength: 1
+        provider_stage:
+          type: string
+          minLength: 1
 robot_frame_profile:
   observation_frame: observation
   unit: m

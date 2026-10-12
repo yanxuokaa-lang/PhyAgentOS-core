@@ -1462,7 +1462,7 @@ class AgentLoop:
                         )
                         yield_to_host = True
                         break
-                    if self._scene_understanding_provider_blocked(
+                    if self._query_provider_blocked(
                         tool_name=tool_call.name,
                         arguments=tool_call.arguments,
                         result=result,
@@ -1479,8 +1479,8 @@ class AgentLoop:
                                         "error": {
                                             "type": "control_handoff",
                                             "message": (
-                                                "Tool was not executed because scene understanding "
-                                                "is waiting for Runtime provider readiness."
+                                                "Tool was not executed because the Query provider "
+                                                "recovery lifecycle owns the next step."
                                             ),
                                         },
                                         "motion_authorized": False,
@@ -1490,9 +1490,8 @@ class AgentLoop:
                                 ),
                             )
                         final_content = (
-                            "Scene understanding is blocked by a non-retryable "
-                            "Runtime/provider failure; returning control until provider "
-                            "readiness recovers."
+                            "The Query is blocked by a non-retryable provider failure; "
+                            "returning control to the persisted provider recovery lifecycle."
                         )
                         yield_to_host = True
                         break
@@ -1668,14 +1667,14 @@ class AgentLoop:
         )
 
     @staticmethod
-    def _scene_understanding_provider_blocked(
+    def _query_provider_blocked(
         *, tool_name: str, arguments: Any, result: str
     ) -> bool:
-        """Stop discovery after Runtime declares scene understanding unavailable."""
+        """Yield after any Query reports a non-retryable provider-owned failure."""
         if (
             tool_name != "forge_tool_query"
             or not isinstance(arguments, Mapping)
-            or arguments.get("tool_id") != "scene.understand"
+            or not isinstance(arguments.get("tool_id"), str)
         ):
             return False
         try:
@@ -1692,7 +1691,6 @@ class AgentLoop:
             payload.get("ok") is True
             and data.get("status") == "unavailable"
             and isinstance(error, dict)
-            and error.get("code") == "understanding_provider_error"
             and error.get("failure_stage") == "provider"
             and error.get("retryable") is False
         )

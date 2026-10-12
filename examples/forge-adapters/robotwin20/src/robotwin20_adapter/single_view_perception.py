@@ -29,6 +29,27 @@ class SingleViewPerceptionError(RuntimeError):
     """The adapter cannot produce a contract-valid perception result."""
 
 
+class SingleViewPerceptionFailureError(SingleViewPerceptionError):
+    """A provider-neutral failure with stage and bounded recovery metadata."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        failure_stage: str,
+        provider_error_class: str,
+        provider_error_code: str,
+        provider_stage: str,
+        retryable: bool,
+    ) -> None:
+        super().__init__(message)
+        self.failure_stage = failure_stage
+        self.provider_error_class = provider_error_class
+        self.provider_error_code = provider_error_code
+        self.provider_stage = provider_stage
+        self.retryable = retryable
+
+
 # Provider/model wording is normalized only at this adapter boundary.  PAOS
 # Core and the Skill continue to consume the provider-neutral vocabulary.
 _AMBIGUITY_ALIASES = {
@@ -480,6 +501,7 @@ class SingleViewPerceptionInference:
         localization_provider: MetricLocalizationProvider,
         artifact_store: FilesystemPerceptionArtifactStore,
         geometry_provider: VisualGeometryProvider | None = None,
+        diagnostic_sink: Any = None,
     ) -> None:
         infer = getattr(semantic_inference, "infer", None)
         if not callable(infer) and not callable(semantic_inference):
@@ -497,25 +519,36 @@ class SingleViewPerceptionInference:
         self.localization_provider = localization_provider
         self.geometry_provider = geometry_provider or NumpyVisualGeometryProvider()
         self.artifact_store = artifact_store
+        self.diagnostic_sink = diagnostic_sink
         self._failure_class: str | None = None
+        self._failure_code: str | None = None
         self._stage = "semantic"
 
     def infer(self, request: Mapping[str, Any]) -> Mapping[str, Any]:
         self._failure_class = None
+        self._failure_code = None
         self._stage = "semantic"
         try:
             return self._infer(request)
         except Exception as exc:
-            self._failure_class = (
-                "timeout" if isinstance(exc, TimeoutError) else
-                "transport" if isinstance(exc, ProcessWorkerError) else "provider_failure"
-            )
+            if isinstance(exc, SingleViewPerceptionFailureError):
+                self._failure_class = exc.provider_error_class
+                self._failure_code = exc.provider_error_code
+            else:
+                self._failure_class = (
+                    "timeout" if isinstance(exc, TimeoutError) else
+                    "transport" if isinstance(exc, ProcessWorkerError) else "provider_failure"
+                )
+                self._failure_code = self._worker_failure_code(exc)
             # Do not log model text, credentials, or arbitrary exception messages.
             logger.warning(
                 "single-view perception failed: stage=%s error_type=%s cause_type=%s",
                 self._stage, type(exc).__name__,
                 type(exc.__cause__).__name__ if exc.__cause__ is not None else "none",
             )
+            if isinstance(exc, SingleViewPerceptionFailureError):
+                self._emit_failure(request)
+                raise
             raise
 
     def shutdown(self) -> None:
@@ -581,9 +614,10 @@ class SingleViewPerceptionInference:
                         }
                     )
                     continue
-                proposals = tuple(
-                    self.proposal_provider.propose(
-                        ProposalRequest(
+                proposals = tuple(self._call_enrichment_provider(
+                    self._stage,
+                    self.proposal_provider.propose,
+                    ProposalRequest(
                             observation_ref=str(metric_request["observation_ref"]),
                             scene_revision=str(metric_request["scene_revision"]),
                             entity_ref=entity_ref,
@@ -593,9 +627,8 @@ class SingleViewPerceptionInference:
                             rgb_path=rgb_path,
                             width_px=width,
                             height_px=height,
-                        )
                     )
-                )
+                ))
                 if len(proposals) != 1:
                     ambiguities.append(
                         {
@@ -636,7 +669,9 @@ class SingleViewPerceptionInference:
                 for entity, proposal in pending:
                     entity_ref = str(entity["entity_ref"])
                     self._stage = "segmentation"
-                    segmentation = self.segmentation_provider.segment(
+                    segmentation = self._call_enrichment_provider(
+                        self._stage,
+                        self.segmentation_provider.segment,
                         SegmentationRequest(
                             observation_ref=str(metric_request["observation_ref"]),
                             scene_revision=str(metric_request["scene_revision"]),
@@ -647,7 +682,7 @@ class SingleViewPerceptionInference:
                             width_px=width,
                             height_px=height,
                             proposal=proposal,
-                        )
+                        ),
                     )
                     if segmentation.proposal_bbox_xyxy_px != proposal.bbox_xyxy_px:
                         raise SingleViewPerceptionError("segmentation result changed the proposal bbox")
@@ -666,7 +701,7 @@ class SingleViewPerceptionInference:
                             depth=depth,
                             calibration=calibration,
                             frame_id=str(metric_request["frame_id"]),
-                        )
+                        ),
                     )
                     self._stage = "derived_artifacts"
                     mask_ref, points_ref, localization_ref, geometry_ref = _derived_refs(rgb_ref, entity_ref)
@@ -788,7 +823,61 @@ class SingleViewPerceptionInference:
         result = dict(value) if isinstance(value, Mapping) else {}
         if self._failure_class is not None and self._stage != "semantic":
             result["provider_error_class"] = self._failure_class
+            result["provider_error_code"] = self._failure_code or "provider_failure"
+            result["provider_stage"] = self._stage
         return result
+
+    def _call_enrichment_provider(self, stage: str, method: Any, request: Any) -> Any:
+        self._stage = stage
+        try:
+            return method(request)
+        except Exception as exc:
+            # Provider ports may expose adapter validation errors as
+            # SingleViewPerceptionError; at this boundary they belong to the
+            # enrichment provider stage and need stable failure metadata.
+            error_class = (
+                "timeout" if isinstance(exc, TimeoutError) else
+                "transport" if isinstance(exc, ProcessWorkerError) else "provider_failure"
+            )
+            raise SingleViewPerceptionFailureError(
+                "scene understanding metric enrichment failed",
+                failure_stage="enrichment",
+                provider_error_class=error_class,
+                provider_error_code=self._worker_failure_code(exc),
+                provider_stage=stage,
+                retryable=False,
+            ) from exc
+
+    @staticmethod
+    def _worker_failure_code(exc: Exception) -> str:
+        code = getattr(exc, "code", None)
+        if isinstance(code, str) and code.replace("_", "").isalnum() and len(code) <= 48:
+            return code
+        return "provider_failure"
+
+    def _emit_failure(self, request: Mapping[str, Any]) -> None:
+        if not callable(self.diagnostic_sink):
+            return
+        summary = getattr(self.semantic_inference, "diagnostic_summary", None)
+        try:
+            route = summary() if callable(summary) else {}
+        except Exception:
+            route = {}
+        route = route if isinstance(route, Mapping) else {}
+        try:
+            self.diagnostic_sink({
+                "status": "error",
+                "route": route.get("provider_route", "none"),
+                "provider_error_class": self._failure_class or "provider_failure",
+                "provider_error_code": self._failure_code or "provider_failure",
+                "failure_stage": "enrichment",
+                "provider_stage": self._stage,
+                "observation_ref": request.get("observation_ref"),
+                "scene_revision": request.get("scene_revision"),
+                "frame_id": request.get("frame_id"),
+            })
+        except Exception:
+            return
 
     def _semantic_result(self, request: Mapping[str, Any]) -> Mapping[str, Any]:
         infer = getattr(self.semantic_inference, "infer", None)

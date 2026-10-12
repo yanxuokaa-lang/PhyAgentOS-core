@@ -1098,7 +1098,7 @@ def test_forge_plan_select_contract_defaults_projection_only_arguments():
     assert schema["properties"]["arguments"]["default"] == {}
 
 
-def test_discovery_yields_after_non_retryable_scene_understanding_failure(tmp_path):
+def test_discovery_yields_after_non_retryable_query_provider_failure(tmp_path):
     async def exercise():
         provider = ScriptedProvider([
             LLMResponse(content=None, tool_calls=[
@@ -1123,7 +1123,7 @@ def test_discovery_yields_after_non_retryable_scene_understanding_failure(tmp_pa
             "data": {
                 "status": "unavailable",
                 "error": {
-                    "code": "understanding_provider_error",
+                    "code": "query_provider_error",
                     "reason": "transport+timeout",
                     "failure_stage": "provider",
                     "retryable": False,
@@ -1149,7 +1149,7 @@ def test_discovery_yields_after_non_retryable_scene_understanding_failure(tmp_pa
             {"task_id": "task-1", "tool_id": "scene.understand", "arguments": {}},
         )
         assert result.tools_used == ["forge_tool_query"]
-        assert "provider readiness recovers" in result.content
+        assert "provider recovery lifecycle" in result.content
         deferred = next(
             message for message in result.messages
             if message.get("tool_call_id") == "refresh-observation"
@@ -1157,6 +1157,61 @@ def test_discovery_yields_after_non_retryable_scene_understanding_failure(tmp_pa
         deferred_payload = json.loads(deferred["content"])
         assert deferred_payload["status"] == "deferred_to_provider_recovery"
         assert deferred_payload["motion_authorized"] is False
+
+    asyncio.run(exercise())
+
+
+def test_discovery_does_not_handoff_enrichment_failure_as_provider_block(tmp_path):
+    async def exercise():
+        provider = ScriptedProvider([
+            LLMResponse(content=None, tool_calls=[
+                ToolCallRequest(
+                    "enrich",
+                    "forge_tool_query",
+                    {"task_id": "task-1", "tool_id": "scene.understand", "arguments": {}},
+                ),
+                ToolCallRequest(
+                    "next-query",
+                    "forge_tool_query",
+                    {"task_id": "task-1", "tool_id": "scene.observe", "arguments": {}},
+                ),
+            ]),
+            LLMResponse(content="continue from the current task state"),
+        ])
+        loop = AgentLoop(
+            bus=MessageBus(), provider=provider, workspace=tmp_path, max_iterations=4
+        )
+        loop.tools.execute = AsyncMock(side_effect=[
+            json.dumps({
+                "ok": True,
+                "data": {
+                    "status": "unavailable",
+                    "error": {
+                        "code": "understanding_provider_error",
+                        "failure_stage": "enrichment",
+                        "provider_stage": "proposal",
+                        "retryable": False,
+                    },
+                },
+            }),
+            json.dumps({"ok": True, "data": {"status": "available"}}),
+        ])
+
+        result = await loop._run_agent_loop(
+            [{"role": "user", "content": "inspect the current scene"}],
+            projection_scope="task",
+        )
+
+        assert loop.tools.execute.await_count == 2
+        assert [item[0][1]["tool_id"] for item in loop.tools.execute.await_args_list] == [
+            "scene.understand",
+            "scene.observe",
+        ]
+        assert all(
+            json.loads(message["content"]).get("status") != "deferred_to_provider_recovery"
+            for message in result.messages
+            if message.get("role") == "tool"
+        )
 
     asyncio.run(exercise())
 
@@ -1180,7 +1235,7 @@ def test_discovery_yields_after_non_retryable_scene_understanding_failure(tmp_pa
     ],
 )
 def test_scene_understanding_request_errors_do_not_wait_for_provider_recovery(result):
-    assert AgentLoop._scene_understanding_provider_blocked(
+    assert AgentLoop._query_provider_blocked(
         tool_name="forge_tool_query",
         arguments={"tool_id": "scene.understand"},
         result=result,

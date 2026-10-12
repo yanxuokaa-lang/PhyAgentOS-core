@@ -122,6 +122,18 @@ def coordinator(tmp_path):
             False,
         ),
         (
+            "query",
+            {
+                "status": "unavailable",
+                "error": {
+                    "failure_stage": "enrichment",
+                    "provider_stage": "proposal",
+                    "retryable": False,
+                },
+            },
+            False,
+        ),
+        (
             "action",
             {
                 "status": "unavailable",

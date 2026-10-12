@@ -173,8 +173,8 @@ def query_record_provider_blocked(record: Any) -> bool:
 
     Gateway transport success is not semantic Query success.  This predicate
     deliberately requires the provider-owned failure stage and an explicit
-    non-retryable fact, so request/schema errors and physical Action outcomes
-    keep their existing recovery paths.
+    non-retryable fact, so enrichment failures, request/schema errors, and
+    physical Action outcomes keep their existing recovery paths.
     """
     if getattr(record, "semantics", None) != "query" or getattr(record, "status", None) != "succeeded":
         return False

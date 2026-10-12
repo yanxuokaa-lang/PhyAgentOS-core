@@ -1,5 +1,17 @@
 # Changelog
 
+## v13.2.11 (2026-10-12 09:05) - codex
+
+### 变更摘要 / Summary
+- [comm] [fix] 将语义 fallback 后的 metric enrichment worker failure 与 semantic provider readiness failure 分离；Core/AgentLoop 只对真正 provider-owned Query 使用 readiness/replan lifecycle。 / Separate metric-enrichment worker failures after semantic fallback from semantic-provider readiness failures; Core/AgentLoop use the readiness/replan lifecycle only for provider-owned Queries.
+- [eval] [test] 完成七维审查，补充 Query-generic handoff、enrichment exclusion、worker bounded diagnostics、release lock 和 import-boundary 回归。 / Complete the seven-dimension review and add regressions for generic Query handoff, enrichment exclusion, bounded worker diagnostics, release locks, and import boundaries.
+
+详见 [2026-10 part5 v13.2.11](changelog/2026-10_part5.md)。See the detailed v13.2.11 record.
+- Skill `3.0.19` / Node `1.0.9`; Node SHA-256 `f721430c4bcb2960306c16c4defacae8e7652870eaffc4c0c1ab718d8f21fff4`. / Skill `3.0.19` / Node `1.0.9`; Node SHA-256 as recorded.
+- Focused validation: `366 passed`, Ruff/compileall/release-lock/diff checks passed; no Runtime, Query/Action, camera, simulator, or physical motion.
+- Key contract diff: proposal-worker `failure_stage=provider` → `failure_stage=enrichment`; only semantic provider failures remain eligible for readiness-transition waiting.
+- Commit: `a7201980` on `feature/planning-loop` (documentation hash follow-up will be amended immediately).
+
 ## v13.2.10 (2026-10-11 18:10) - codex
 
 ### 变更摘要 / Summary [完成]

@@ -155,11 +155,16 @@ def _scene_diagnostic_sink(artifact_root: Path):
 
     def write(event: Mapping[str, Any]) -> None:
         allowed = {
-            "status", "route", "provider_error_class", "observation_ref",
-            "scene_revision", "frame_id", "elapsed_ms", "image_ref",
+            "status", "route", "provider_error_class", "provider_error_code",
+            "failure_stage", "provider_stage", "observation_ref", "scene_revision", "frame_id",
+            "elapsed_ms", "image_ref",
         }
         value = {key: event[key] for key in allowed if key in event}
         for key in ("route", "provider_error_class"):
+            item = value.get(key)
+            if not isinstance(item, str) or _DIAGNOSTIC_TOKEN.fullmatch(item) is None:
+                value.pop(key, None)
+        for key in ("provider_error_code", "failure_stage", "provider_stage"):
             item = value.get(key)
             if not isinstance(item, str) or _DIAGNOSTIC_TOKEN.fullmatch(item) is None:
                 value.pop(key, None)
@@ -707,7 +712,8 @@ def build_persistent_host(
             raise PersistentHostConfigurationError(f"unsupported semantic provider: {provider}")
         perception_settings = load_perception_profile(perception_profile)
         perception = build_single_view_perception(
-            inference, perception_settings, environ=variables
+            inference, perception_settings, environ=variables,
+            diagnostic_sink=diagnostic_sink,
         )
         understanding = RoboTwinSceneUnderstandingProvider(perception)
         try:

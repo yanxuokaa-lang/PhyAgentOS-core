@@ -352,6 +352,8 @@ TOOL_SPEC: dict[str, Any] = {
                     "reason": {"type": "string", "minLength": 1},
                     "failure_stage": {"type": "string", "minLength": 1},
                     "retryable": {"type": "boolean"},
+                    "provider_error_code": {"type": "string", "minLength": 1},
+                    "provider_stage": {"type": "string", "minLength": 1},
                 },
             },
         },
@@ -368,7 +370,20 @@ def _error(
     reason: str = "validation",
     failure_stage: str = "request",
     retryable: bool = False,
+    provider_error_code: str | None = None,
+    provider_stage: str | None = None,
 ) -> dict[str, Any]:
+    error_payload = {
+        "code": code,
+        "message": message,
+        "reason": reason,
+        "failure_stage": failure_stage,
+        "retryable": retryable,
+    }
+    if provider_error_code is not None:
+        error_payload["provider_error_code"] = provider_error_code
+    if provider_stage is not None:
+        error_payload["provider_stage"] = provider_stage
     return {
         "status": "invalid" if code.startswith("invalid") else "unavailable",
         "observation_ref": observation_ref,
@@ -377,13 +392,7 @@ def _error(
         "calibration_ref": None,
         "entities": [], "relations": [], "spatial_envelopes": [],
         "derived_artifacts": [], "ambiguities": [], "reconciliations": [],
-        "error": {
-            "code": code,
-            "message": message,
-            "reason": reason,
-            "failure_stage": failure_stage,
-            "retryable": retryable,
-        },
+        "error": error_payload,
     }
 
 
@@ -394,17 +403,36 @@ def _valid_provider_error_class(value: Any) -> bool:
     return len(parts) <= 4 and all(part in _PROVIDER_ERROR_CLASSES for part in parts)
 
 
-def _provider_failure(exc: Exception) -> tuple[str, bool]:
+def _provider_failure(exc: Exception) -> tuple[str, bool, str, str | None, str | None]:
     """Return a stable, secret-free provider failure category."""
     declared_class = getattr(exc, "provider_error_class", None)
     declared_retryable = getattr(exc, "retryable", None)
+    declared_stage = getattr(exc, "failure_stage", "provider")
+    failure_stage = (
+        declared_stage
+        if isinstance(declared_stage, str) and _DIAGNOSTIC_TOKEN.fullmatch(declared_stage)
+        else "provider"
+    )
+    declared_code = getattr(exc, "provider_error_code", None)
+    provider_error_code = (
+        declared_code
+        if isinstance(declared_code, str) and _DIAGNOSTIC_TOKEN.fullmatch(declared_code)
+        else None
+    )
+    declared_provider_stage = getattr(exc, "provider_stage", None)
+    provider_stage = (
+        declared_provider_stage
+        if isinstance(declared_provider_stage, str)
+        and _DIAGNOSTIC_TOKEN.fullmatch(declared_provider_stage)
+        else None
+    )
     if _valid_provider_error_class(declared_class):
         if isinstance(declared_retryable, bool):
-            return declared_class, declared_retryable
+            return declared_class, declared_retryable, failure_stage, provider_error_code, provider_stage
     text = str(exc).lower()
     name = type(exc).__name__.lower()
     if isinstance(exc, (asyncio.TimeoutError, TimeoutError)) or "timeout" in name or "timed out" in text:
-        return "timeout", True
+        return "timeout", True, failure_stage, provider_error_code, provider_stage
     if (
         "contract" in text
         or "schema" in text
@@ -413,8 +441,8 @@ def _provider_failure(exc: Exception) -> tuple[str, bool]:
         or "contract" in name
         or "schema" in name
     ):
-        return "contract", False
-    return "provider_failure", False
+        return "contract", False, failure_stage, provider_error_code, provider_stage
+    return "provider_failure", False, failure_stage, provider_error_code, provider_stage
 
 
 def _provider_diagnostics(provider: Any) -> dict[str, str]:
@@ -945,15 +973,17 @@ class SceneUnderstandingEndpoint:
             carried_entities = provider_arguments.pop("carried_entities", [])
             snapshot = self.provider.understand(provider_arguments)
         except Exception as exc:
-            reason, retryable = _provider_failure(exc)
+            reason, retryable, failure_stage, provider_error_code, provider_stage = _provider_failure(exc)
             return {
                 **_error(
                 "understanding_provider_error",
                 "scene understanding provider failed",
                 observation_ref=observation_ref,
                 reason=reason,
-                failure_stage="provider",
+                failure_stage=failure_stage,
                 retryable=retryable,
+                provider_error_code=provider_error_code,
+                provider_stage=provider_stage,
                 ),
                 **_provider_diagnostics(self.provider),
             }

@@ -391,10 +391,17 @@ def test_downstream_failure_overrides_semantic_success_without_logging_payload(t
         raise ProcessWorkerError("private-token-and-model-payload")
 
     monkeypatch.setattr(provider, method, fail)
-    with pytest.raises(ProcessWorkerError):
+    with pytest.raises(SingleViewPerceptionError) as failure:
         inference.infer(REQUEST)
+    assert failure.value.failure_stage == "enrichment"
+    assert failure.value.provider_error_class == "transport"
+    assert failure.value.provider_error_code == "worker_error"
+    assert failure.value.provider_stage == stage
+    assert failure.value.retryable is False
     assert inference.diagnostic_summary() == {
         "provider_route": "primary", "provider_error_class": "transport",
+        "provider_error_code": "worker_error",
+        "provider_stage": stage,
     }
     assert f"stage={stage}" in caplog.text
     assert "private-token-and-model-payload" not in caplog.text
@@ -402,6 +409,47 @@ def test_downstream_failure_overrides_semantic_success_without_logging_payload(t
     monkeypatch.setattr(provider, method, original)
     assert inference.infer(REQUEST)["derived_artifacts"]
     assert inference.diagnostic_summary()["provider_error_class"] == "none"
+
+
+def test_metric_worker_failure_emits_bounded_stage_diagnostic(tmp_path):
+    events = []
+    inference, proposal, _ = _inference(tmp_path)
+    inference.diagnostic_sink = events.append
+    from robotwin20_adapter.process_worker import ProcessWorkerError
+
+    def fail(request):
+        raise ProcessWorkerError("do not persist exception contents", code="worker_terminated", returncode=-9)
+
+    proposal.propose = fail
+    with pytest.raises(SingleViewPerceptionError):
+        inference.infer(REQUEST)
+    assert events == [{
+        "status": "error",
+        "route": "none",
+        "provider_error_class": "transport",
+        "provider_error_code": "worker_terminated",
+        "failure_stage": "enrichment",
+        "provider_stage": "proposal",
+        "observation_ref": OBSERVATION_REF,
+        "scene_revision": SCENE_REVISION,
+        "frame_id": "head_camera",
+    }]
+    assert "do not persist exception contents" not in json.dumps(events)
+
+
+def test_worker_contract_failure_is_owned_by_the_enrichment_stage(tmp_path):
+    inference, proposal, _ = _inference(tmp_path)
+
+    def fail(request):
+        raise SingleViewPerceptionError("worker returned an invalid proposal envelope")
+
+    proposal.propose = fail
+    with pytest.raises(SingleViewPerceptionError) as failure:
+        inference.infer(REQUEST)
+
+    assert failure.value.failure_stage == "enrichment"
+    assert failure.value.provider_stage == "proposal"
+    assert failure.value.provider_error_class == "provider_failure"
 
 
 def test_handoff_fallback_skips_downstream_gpu_providers(tmp_path):

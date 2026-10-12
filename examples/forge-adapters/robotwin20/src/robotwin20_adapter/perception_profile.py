@@ -77,6 +77,7 @@ def build_single_view_perception(
     profile: Mapping[str, Any],
     *,
     environ: Mapping[str, str] | None = None,
+    diagnostic_sink: Any = None,
 ) -> SingleViewPerceptionInference:
     if not isinstance(profile, Mapping) or set(profile) != {
         "schema_version", "artifact_root", "worker_artifact_root", "depth_scale_to_m",
@@ -114,6 +115,7 @@ def build_single_view_perception(
             max_points=max_points,
         ),
         artifact_store=FilesystemPerceptionArtifactStore(artifact_root),
+        diagnostic_sink=diagnostic_sink,
     )
 
 

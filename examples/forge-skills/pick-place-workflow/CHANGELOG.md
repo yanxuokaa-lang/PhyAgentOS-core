@@ -1,5 +1,10 @@
 # Change Log
 
+## v3.0.19 (2026-10-12)
+
+- 中文：发布 Adapter Node `1.0.9`，修复语义 fallback 后 metric enrichment worker 失败的阶段归属与受限诊断字段；enrichment 不再伪装为语义 provider readiness failure。
+- English: Publish Adapter Node `1.0.9`, preserving stage ownership and bounded diagnostics when metric-enrichment workers fail after semantic fallback; enrichment failures no longer masquerade as semantic-provider readiness failures.
+
 ## v3.0.18 (2026-10-11)
 
 - 中文：发布 Adapter Node `1.0.8`，将 grounding Query 的结构化 reconciliation 字段投影到 Gateway 顶层，确保 `reconcile_world` 可到达 Core settlement；保留嵌套诊断与 no-motion contract。
