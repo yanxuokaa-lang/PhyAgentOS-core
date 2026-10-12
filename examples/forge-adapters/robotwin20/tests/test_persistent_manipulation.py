@@ -487,8 +487,12 @@ def test_place_engine_does_not_claim_clearance_without_retreat(tmp_path):
     assert result["observation_ready"] is False
 
 
-def test_place_engine_preserves_release_when_postcondition_verification_fails(tmp_path):
-    from robotwin_persistent_engine import RoboTwinPersistentEngine, _StopSignal
+def test_place_engine_classifies_measured_postcondition_failure(tmp_path):
+    from robotwin_persistent_engine import (
+        PlacementPostconditionError,
+        RoboTwinPersistentEngine,
+        _StopSignal,
+    )
 
     class Video:
         recorder = None
@@ -512,7 +516,69 @@ def test_place_engine_preserves_release_when_postcondition_verification_fails(tm
 
     def verify_release():
         engine._state["simulator_steps"] = 5
-        raise ValueError("after-state placement verification failed")
+        engine._state["placement_measurement"] = {
+            "position_error_m": 0.01,
+            "orientation_error_rad": 0.4,
+        }
+        engine._state["placement_tolerance"] = {
+            "target_position_m": 0.04,
+            "target_orientation_rad": 0.35,
+        }
+        raise PlacementPostconditionError("after-state placement verification failed")
+
+    engine._verify_release = verify_release
+
+    def phases():
+        yield {"phase": "retreat"}
+        return {"trajectory": True, "planner_detached_after_release": True}
+
+    engine._phases = phases()
+    result = engine.execute(
+        "place",
+        {"scene_revision": "scene-2", "assignment_ref": "assignment-1", "entity_ref": "entity://one"},
+        Event(),
+        owner="paos:task-1",
+        invocation_id="invocation://object-place/unknown",
+    )
+
+    assert result["status"] == "failed"
+    assert result["outcome_known"] is True
+    assert result["world_change_started"] is True
+    assert result["failure_owner"] == "execution_verification"
+    assert result["failure_code"] == "placement_postcondition_failed"
+    assert result["requires_replan"] is True
+    assert result["recommended_action"] == "refresh_declared_evidence"
+    assert result["release_confirmed"] is True
+    assert result["retreat_completed"] is True
+    assert result["clear_of_target"] is True
+    assert result["possession_state"] == "empty"
+    assert result["placement_measurement"]["orientation_error_rad"] == 0.4
+    assert result["placement_tolerance"]["target_orientation_rad"] == 0.35
+    assert result["observation_ready"] is False
+    assert engine._phases is None
+
+
+def test_place_engine_keeps_unclassified_post_release_exception_unknown(tmp_path):
+    from robotwin_persistent_engine import RoboTwinPersistentEngine, _StopSignal
+
+    engine = object.__new__(RoboTwinPersistentEngine)
+    engine.root, engine.epoch, engine.duration = tmp_path, "unknown-place", 30
+    engine.stop = _StopSignal(tmp_path / "stop")
+    engine.backend = SimpleNamespace(
+        _task=SimpleNamespace(), snapshot=lambda: {"scene_revision": "scene-2"}
+    )
+    engine.video = SimpleNamespace(
+        recorder=None,
+        start_action=lambda *_args, **_kwargs: None,
+        finish_action=lambda *_args, **_kwargs: (),
+    )
+    engine._state = {"simulator_steps": 4, "assignment_ref": "assignment-1"}
+    engine._request = {"scene_revision": "scene-1"}
+    engine._advance_scene = lambda: "scene-3"
+
+    def verify_release():
+        engine._state["simulator_steps"] = 5
+        raise RuntimeError("post-release measurement transport failed")
 
     engine._verify_release = verify_release
 
@@ -531,11 +597,73 @@ def test_place_engine_preserves_release_when_postcondition_verification_fails(tm
 
     assert result["status"] == "unknown"
     assert result["outcome_known"] is False
-    assert result["world_change_started"] is True
     assert result["release_confirmed"] is True
     assert result["possession_state"] == "empty"
-    assert result["observation_ready"] is False
-    assert engine._phases is None
+
+
+def test_action_attempt_clears_stale_placement_measurement(tmp_path):
+    from robotwin_persistent_engine import RoboTwinPersistentEngine, _StopSignal
+
+    engine = object.__new__(RoboTwinPersistentEngine)
+    engine.root, engine.epoch, engine.duration = tmp_path, "stale-measurement", 30
+    engine.stop = _StopSignal(tmp_path / "stop")
+    engine.backend = SimpleNamespace(
+        _task=SimpleNamespace(), snapshot=lambda: {"scene_revision": "scene-2"}
+    )
+    engine.video = SimpleNamespace(
+        recorder=None,
+        start_action=lambda *_args, **_kwargs: None,
+        finish_action=lambda *_args, **_kwargs: (),
+    )
+    engine._state = {
+        "simulator_steps": 5,
+        "placement_measurement": {"orientation_error_rad": 0.4},
+        "placement_tolerance": {"target_orientation_rad": 0.35},
+    }
+    engine._request = {"scene_revision": "scene-1"}
+    engine._phases = None
+
+    result = engine.execute(
+        "place",
+        {"scene_revision": "scene-2", "assignment_ref": "assignment-1"},
+        Event(),
+        owner="paos:task-1",
+        invocation_id="invocation://object-place/not-prepared",
+    )
+
+    assert result["status"] == "failed"
+    assert result["world_change_started"] is False
+    assert "placement_measurement" not in result
+    assert "placement_tolerance" not in result
+    assert "placement_measurement" not in engine._state
+    assert "placement_tolerance" not in engine._state
+
+
+def test_bounded_action_receipt_preserves_placement_measurement_and_tolerance():
+    receipt = bounded_action_receipt({
+        "status": "failed",
+        "world_change_started": True,
+        "outcome_known": True,
+        "placement_measurement": {
+            "position_error_m": 0.016,
+            "orientation_error_rad": 0.426,
+            "provider_private": "omit",
+        },
+        "placement_tolerance": {
+            "target_position_m": 0.04,
+            "target_orientation_rad": 0.35,
+            "provider_private": "omit",
+        },
+    })
+
+    assert receipt["placement_measurement"] == {
+        "position_error_m": 0.016,
+        "orientation_error_rad": 0.426,
+    }
+    assert receipt["placement_tolerance"] == {
+        "target_position_m": 0.04,
+        "target_orientation_rad": 0.35,
+    }
 
 
 def test_acquire_engine_persists_held_identity_separately_from_unchanged(tmp_path):

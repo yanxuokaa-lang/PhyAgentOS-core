@@ -343,13 +343,22 @@ def test_plan_select_projects_authorized_understanding_into_persisted_consumer_a
         required_evidence=(evidence_ref,),
         input_bindings={"entity_ref": "entity://green"},
     )
+    unbound_node = PlanNode(
+        node_id="grasp-current-entity",
+        obligation_id="grasp-current-entity",
+        capability="grasp.propose",
+        required_evidence=(evidence_ref,),
+    )
     payload = {
         "task_id": "task-1",
         "revision_id": "revision-1",
         "graph_digest": "0" * 64,
         "planner_decision_digest": "1" * 64,
         "policy_snapshot_digest": "2" * 64,
-        "nodes": [node.model_dump(mode="json")],
+        "nodes": [
+            node.model_dump(mode="json"),
+            unbound_node.model_dump(mode="json"),
+        ],
     }
     payload["graph_digest"] = plan_graph_digest(payload)
     graph = PlanGraph.model_validate(payload)
@@ -429,6 +438,44 @@ def test_plan_select_projects_authorized_understanding_into_persisted_consumer_a
     assert dispatch.describe()["ready_nodes"][0]["selection_source_modes"] == {
         "grasp.propose": "projection_source"
     }
+    missing_entity = json.loads(asyncio.run(ForgePlanSelectTool(
+        coordinator, lambda: dispatch
+    ).execute(
+        task_id="task-1",
+        node_id="grasp-current-entity",
+        tool_id="grasp.propose",
+        decision_reason="select the current understanding record",
+        arguments={},
+        projection_source={"record_id": "understanding-record"},
+    )))
+    assert missing_entity["ok"] is False
+    assert missing_entity["error"]["code"] == "consumer_projection_invalid"
+    assert missing_entity["error"]["failure_owner"] == "agent_arguments"
+    assert missing_entity["error"]["message"] == (
+        "consumer projection requires selected entity_ref"
+    )
+    assert missing_entity["error"]["missing_fields"] == ["entity_ref"]
+    assert missing_entity["error"]["retryable_in_revision"] is True
+    assert missing_entity["error"]["requires_replan"] is False
+    assert missing_entity["error"]["recommended_action"] == (
+        "select_the_semantic_join_field_and_retry_selection"
+    )
+    assert missing_entity["error"]["rejection_persisted"] is True
+    assert coordinator.proposals == []
+
+    selected_entity = json.loads(asyncio.run(ForgePlanSelectTool(
+        coordinator, lambda: dispatch
+    ).execute(
+        task_id="task-1",
+        node_id="grasp-current-entity",
+        tool_id="grasp.propose",
+        decision_reason="select the current green entity",
+        arguments={"entity_ref": "entity://green"},
+        projection_source={"record_id": "understanding-record"},
+    )))
+    assert selected_entity["ok"] is True
+    assert coordinator.proposals[0]["tool_arguments"]["targets"][0]["entity_ref"] == "entity://green"
+
     result = json.loads(asyncio.run(ForgePlanSelectTool(
         coordinator, lambda: dispatch
     ).execute(
@@ -455,7 +502,7 @@ def test_plan_select_projects_authorized_understanding_into_persisted_consumer_a
         "tool_arguments": {},
         "use_selected_arguments": True,
     }
-    persisted = coordinator.proposals[0]["tool_arguments"]
+    persisted = coordinator.proposals[1]["tool_arguments"]
     assert persisted["targets"][0]["entity_ref"] == "entity://green"
     assert persisted["targets"][0]["spatial_envelope"]["min_xyz_m"] == [0.1, 0.2, 0.3]
     assert "entity_ref" not in persisted["targets"][0]["spatial_envelope"]
@@ -473,7 +520,7 @@ def test_plan_select_projects_authorized_understanding_into_persisted_consumer_a
     )))
     assert conflict["ok"] is False
     assert conflict["error"]["code"] == "semantic_binding_mismatch"
-    assert len(coordinator.proposals) == 1
+    assert len(coordinator.proposals) == 2
 
 
 def test_projection_rejects_cross_record_legacy_sources():

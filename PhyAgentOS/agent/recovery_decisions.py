@@ -76,30 +76,46 @@ def _scene_refresh_bootstrap_node_id(graph) -> str:
     return candidate
 
 
-def _query_evidence_refresh_required(task, graph, settlement) -> bool:
-    """Recognize a provider Query that explicitly requires fresh evidence."""
+def _evidence_refresh_kind(task, graph, settlement) -> str | None:
+    """Classify a settled Tool result that explicitly requires fresh evidence."""
     if settlement.status != "failed":
-        return False
+        return None
     records = [
         record
         for record in task.execution_records
         if (
             record.revision_id == graph.revision_id
             and record.node_id == settlement.node_id
-            and record.semantics == "query"
         )
     ]
     if not records:
-        return False
+        return None
     # Execution records are append-only and retain retry order. Recovery must
     # classify the settlement from the latest attempt, not an earlier failure
     # that a later provider result has superseded.
     facts = response_facts(records[-1].response)
-    return (
-        facts.get("failure_owner") == "evidence"
+    if (
+        records[-1].semantics == "query"
+        and facts.get("failure_owner") == "evidence"
         and facts.get("requires_replan") is True
         and facts.get("recommended_action") == "refresh_declared_evidence"
-    )
+    ):
+        return "query_evidence"
+    if (
+        records[-1].semantics == "action"
+        and facts.get("outcome_known") is True
+        and facts.get("world_change_started") is True
+        and facts.get("failure_owner") == "execution_verification"
+        and facts.get("requires_replan") is True
+        and facts.get("recommended_action") == "refresh_declared_evidence"
+    ):
+        return "measured_action_postcondition"
+    return None
+
+
+def _evidence_refresh_required(task, graph, settlement) -> bool:
+    """Return whether deterministic scene-refresh recovery is available."""
+    return _evidence_refresh_kind(task, graph, settlement) is not None
 
 
 class AgentRecoveryDecisions:
@@ -217,12 +233,17 @@ class AgentRecoveryDecisions:
                 payload={"revision_id": graph.revision_id, "node_id": settlement.node_id, **value},
             )
             return "replan"
-        if _query_evidence_refresh_required(task, graph, settlement):
+        evidence_refresh_kind = _evidence_refresh_kind(task, graph, settlement)
+        if evidence_refresh_kind is not None:
             value = {
                 "decision": "replan",
                 "reason": (
                     "A read-only Query reported stale or ambiguous evidence; refresh the "
                     "current scene before continuing preparation or any Action"
+                    if evidence_refresh_kind == "query_evidence"
+                    else
+                    "A world-changing Action reached a known measured postcondition failure; "
+                    "refresh the current scene before planning any further Action"
                 ),
             }
             self.coordinator.store.update(
@@ -271,7 +292,7 @@ class AgentRecoveryDecisions:
 
     async def propose_replan(self, *, graph, settlement, delta, context):
         task = self.coordinator.get_task(graph.task_id)
-        query_evidence_refresh = _query_evidence_refresh_required(task, graph, settlement)
+        evidence_refresh_kind = _evidence_refresh_kind(task, graph, settlement)
         refresh_capability = (
             _scene_refresh_bootstrap_capability(task)
             if (
@@ -280,17 +301,23 @@ class AgentRecoveryDecisions:
                     and settlement.world_change_started is True
                     and settlement.requires_replan is True
                 )
-                or query_evidence_refresh
+                or evidence_refresh_kind is not None
             )
             else None
         )
         if refresh_capability is not None:
-            if query_evidence_refresh:
+            if evidence_refresh_kind == "query_evidence":
                 reason = (
                     "A read-only Query reported stale or ambiguous evidence; refresh the "
                     "current scene before continuing preparation or any Action"
                 )
                 obligation_id = "refresh_current_scene_after_evidence_failure"
+            elif evidence_refresh_kind == "measured_action_postcondition":
+                reason = (
+                    "A world-changing Action reached a known measured postcondition failure; "
+                    "refresh the current scene before planning any further Action"
+                )
+                obligation_id = "refresh_current_scene_after_measured_postcondition_failure"
             else:
                 reason = (
                     "Runtime reported an unknown outcome after a world-changing Action; "

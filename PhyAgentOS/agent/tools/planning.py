@@ -429,13 +429,26 @@ class ForgePlanSelectTool(Tool):
                         source_record_ids=normalized_sources,
                     )
                 except PlanningLoopError as exc:
+                    message = str(exc)
+                    selected_join_missing = message.startswith(
+                        "consumer projection requires selected "
+                    )
                     raise PlanningDispatchError(
-                        str(exc),
+                        message,
                         code="consumer_projection_invalid",
                         failure_owner="agent_arguments",
-                        retryable_in_revision=False,
-                        requires_replan=True,
-                        recommended_action="use_exact_tool_spec_projection_source_slots",
+                        retryable_in_revision=selected_join_missing,
+                        requires_replan=not selected_join_missing,
+                        missing_fields=(
+                            (message.removeprefix("consumer projection requires selected ").strip(),)
+                            if selected_join_missing
+                            else ()
+                        ),
+                        recommended_action=(
+                            "select_the_semantic_join_field_and_retry_selection"
+                            if selected_join_missing
+                            else "use_exact_tool_spec_projection_source_slots"
+                        ),
                     ) from exc
             else:
                 if projection_source is not None or projection_sources is not None:

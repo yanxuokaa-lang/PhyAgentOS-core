@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from concurrent.futures import Future, ThreadPoolExecutor
 from copy import deepcopy
 from threading import Event, RLock
@@ -43,6 +44,8 @@ _ATTEMPT_FIELDS = (
     "failed_waypoint_index",
     "detail",
 )
+_PLACEMENT_MEASUREMENT_FIELDS = ("position_error_m", "orientation_error_rad")
+_PLACEMENT_TOLERANCE_FIELDS = ("target_position_m", "target_orientation_rad")
 
 
 def _json_size(value: Mapping[str, Any]) -> int:
@@ -139,6 +142,36 @@ def bounded_action_receipt(result: Mapping[str, Any]) -> dict[str, Any]:
             receipt.pop(key)
     receipt["artifact_refs"], refs_truncated = _project_refs(result.get("artifact_refs"))
     truncated = truncated or refs_truncated
+    measurement = result.get("placement_measurement")
+    if isinstance(measurement, Mapping):
+        projected_measurement = {
+            field: measurement[field]
+            for field in _PLACEMENT_MEASUREMENT_FIELDS
+            if (
+                field in measurement
+                and not isinstance(measurement[field], bool)
+                and isinstance(measurement[field], (int, float))
+                and math.isfinite(float(measurement[field]))
+                and float(measurement[field]) >= 0
+            )
+        }
+        if projected_measurement:
+            receipt["placement_measurement"] = projected_measurement
+    tolerance = result.get("placement_tolerance")
+    if isinstance(tolerance, Mapping):
+        projected_tolerance = {
+            field: tolerance[field]
+            for field in _PLACEMENT_TOLERANCE_FIELDS
+            if (
+                field in tolerance
+                and not isinstance(tolerance[field], bool)
+                and isinstance(tolerance[field], (int, float))
+                and math.isfinite(float(tolerance[field]))
+                and float(tolerance[field]) > 0
+            )
+        }
+        if projected_tolerance:
+            receipt["placement_tolerance"] = projected_tolerance
     evidence_refs = result.get("evidence_refs", receipt["artifact_refs"])
     receipt["evidence_refs"], refs_truncated = _project_refs(evidence_refs)
     truncated = truncated or refs_truncated

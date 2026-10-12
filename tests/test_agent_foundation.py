@@ -27,7 +27,8 @@ from PhyAgentOS.agent.prompt_context import (
 )
 from PhyAgentOS.agent.recovery_decisions import (
     AgentRecoveryDecisions,
-    _query_evidence_refresh_required,
+    _evidence_refresh_kind,
+    _evidence_refresh_required,
     _scene_refresh_bootstrap_capability,
     _scene_refresh_bootstrap_node_id,
 )
@@ -1360,6 +1361,55 @@ def test_node_turn_can_correct_selection_input_without_replan(tmp_path):
     asyncio.run(exercise())
 
 
+def test_node_turn_can_add_missing_projection_join_field_without_replan(tmp_path):
+    async def exercise():
+        provider = ScriptedProvider([
+            LLMResponse(content=None, tool_calls=[ToolCallRequest(
+                "missing-entity", "forge_plan_select", {
+                    "projection_source": {"record_id": "understanding"},
+                },
+            )]),
+            LLMResponse(content=None, tool_calls=[ToolCallRequest(
+                "selected-entity", "forge_plan_select", {
+                    "arguments": {"entity_ref": "entity://current"},
+                    "projection_source": {"record_id": "understanding"},
+                },
+            )]),
+            LLMResponse(content="Selection persisted."),
+        ])
+        loop = AgentLoop(bus=MessageBus(), provider=provider, workspace=tmp_path, max_iterations=4)
+        loop.tools.execute = AsyncMock(side_effect=[
+            json.dumps({"ok": False, "error": {
+                "code": "consumer_projection_invalid",
+                "retryable_in_revision": True,
+                "requires_replan": False,
+                "message": "consumer projection requires selected entity_ref",
+                "missing_fields": ["entity_ref"],
+                "recommended_action": "select_the_semantic_join_field_and_retry_selection",
+            }, "motion_authorized": False}),
+            json.dumps({"ok": True, "data": {"selection": {"use_selected_arguments": True}},
+                        "motion_authorized": False}),
+        ])
+
+        result = await loop._run_agent_loop(
+            [{"role": "user", "content": "select the current grasp target"}],
+            projection_scope="node", projection_node_id="grasp-current",
+            allowed_tool_names=frozenset({"forge_plan_select"}),
+        )
+
+        assert result.tools_used == ["forge_plan_select", "forge_plan_select"]
+        assert result.content == "Selection persisted."
+        correction_context = provider.requests[1]["messages"]
+        assert any(
+            message.get("role") == "system"
+            and "semantic join field entity_ref" in message.get("content", "")
+            and "do not request a replan" in message.get("content", "")
+            for message in correction_context
+        )
+
+    asyncio.run(exercise())
+
+
 @pytest.mark.parametrize("count", [1, 2, 3])
 def test_model_tool_call_materializes_variable_objects_in_same_task(tmp_path, count):
     async def exercise():
@@ -2687,6 +2737,119 @@ def test_query_evidence_failure_bootstraps_scene_refresh_without_model_or_action
     asyncio.run(exercise())
 
 
+def test_known_action_postcondition_failure_refreshes_scene_without_replaying_action(tmp_path):
+    async def exercise():
+        c, task = setup_task(tmp_path)
+        observe_tool = task.primary_skill_binding.required_tools[0]
+        observe_policy = observe_tool.planning_policy.model_copy(
+            update={"capabilities": ("scene.observe",), "refreshes_scene": True}
+        )
+        action_policy = ToolSpecPolicy(
+            tool_id="object.place",
+            semantics="action",
+            spec_digest="d" * 64,
+            capabilities=("object.relocate", "task.verify"),
+        )
+        binding = task.primary_skill_binding.model_copy(update={
+            "required_tools": (
+                observe_tool.model_copy(update={"planning_policy": observe_policy}),
+                BoundToolSpec(
+                    tool_id="object.place",
+                    semantics="action",
+                    spec_sha256="d" * 64,
+                    ready_at_binding=True,
+                    planning_policy=action_policy,
+                ),
+            ),
+        })
+        c.store.update(
+            task.task_id,
+            lambda current: setattr(current, "primary_skill_binding", binding),
+            event_type="test_action_postcondition_refresh_binding",
+        )
+        task = c.get_task(task.task_id)
+        graph = compile_task_plan(task, semantic_nodes(2), reason="place selected object")
+        c.expand_discovery_revision(
+            task.task_id,
+            plan_graph=graph,
+            plan_graph_ref="artifact://plans/action-postcondition-refresh",
+        )
+
+        def add_failure(current):
+            current.active_revision.execution_records.append(ToolExecutionRecord(
+                record_id="place-postcondition-failure",
+                revision_id=graph.revision_id,
+                node_id="chosen-1",
+                node_digest=plan_node_digest(graph.nodes[1]),
+                obligation_id=graph.nodes[1].obligation_id,
+                input_binding_digest="d" * 64,
+                decision_trace_ref="artifact://planning-traces/place-postcondition-failure",
+                tool_id="object.place",
+                semantics="action",
+                caller_id="paos:test",
+                status="failed",
+                response={"data": {
+                    "status": "failed",
+                    "outcome_known": True,
+                    "world_change_started": True,
+                    "failure_owner": "execution_verification",
+                    "failure_code": "placement_postcondition_failed",
+                    "retryable_in_revision": False,
+                    "requires_replan": True,
+                    "recommended_action": "refresh_declared_evidence",
+                }},
+            ))
+
+        c.store.update(task.task_id, add_failure, event_type="fixture_action_failure")
+        settlement = NodeSettlement(
+            task_id=task.task_id,
+            revision_id=graph.revision_id,
+            node_id="chosen-1",
+            status="failed",
+            failure_code="placement_postcondition_failed",
+            world_change_started=True,
+            outcome_known=True,
+            retryable_in_revision=False,
+            requires_replan=True,
+            recommended_action="refresh_declared_evidence",
+        )
+        provider = ScriptedProvider([])
+        decisions = AgentRecoveryDecisions(provider, "fixture-model", c)
+
+        decision = await decisions.select_recovery(
+            graph=graph,
+            settlement=settlement,
+            delta=build_replan_delta(graph, settlement),
+            context=settlement,
+        )
+        proposal = await decisions.propose_replan(
+            graph=graph,
+            settlement=settlement,
+            delta=build_replan_delta(graph, settlement),
+            context=settlement,
+        )
+
+        assert decision == "replan"
+        assert provider.requests == []
+        assert proposal.delta.retry_parent_node_id == "chosen-1"
+        assert proposal.delta.preserve_node_ids == ()
+        assert proposal.reason == (
+            "A world-changing Action reached a known measured postcondition failure; "
+            "refresh the current scene before planning any further Action"
+        )
+        assert len(proposal.plan_graph.nodes) == 1
+        recovery_node = proposal.plan_graph.nodes[0]
+        assert recovery_node.capability == "scene.observe"
+        assert recovery_node.obligation_id == (
+            "refresh_current_scene_after_measured_postcondition_failure"
+        )
+        assert [record.tool_id for record in c.get_task(task.task_id).execution_records] == [
+            "object.place"
+        ]
+
+    asyncio.run(exercise())
+
+
 def test_scene_refresh_bootstrap_node_identity_is_stable_and_avoids_source_collision():
     source = SimpleNamespace(
         revision_id="revision-source",
@@ -2709,7 +2872,7 @@ def test_scene_refresh_bootstrap_node_identity_is_stable_and_avoids_source_colli
     )
 
 
-def test_query_evidence_refresh_uses_latest_attempt_not_stale_failure():
+def test_evidence_refresh_uses_latest_attempt_not_stale_failure():
     task = SimpleNamespace(execution_records=[
         SimpleNamespace(
             revision_id="revision-1",
@@ -2735,7 +2898,29 @@ def test_query_evidence_refresh_uses_latest_attempt_not_stale_failure():
     graph = SimpleNamespace(revision_id="revision-1")
     settlement = SimpleNamespace(status="failed", node_id="prepare")
 
-    assert _query_evidence_refresh_required(task, graph, settlement) is False
+    assert _evidence_refresh_required(task, graph, settlement) is False
+
+
+def test_evidence_refresh_recognizes_known_action_postcondition_failure():
+    task = SimpleNamespace(execution_records=[SimpleNamespace(
+        revision_id="revision-1",
+        node_id="place",
+        semantics="action",
+        response={"data": {
+            "outcome_known": True,
+            "world_change_started": True,
+            "failure_owner": "execution_verification",
+            "requires_replan": True,
+            "recommended_action": "refresh_declared_evidence",
+        }},
+    )])
+    graph = SimpleNamespace(revision_id="revision-1")
+    settlement = SimpleNamespace(status="failed", node_id="place")
+
+    assert _evidence_refresh_required(task, graph, settlement) is True
+    assert _evidence_refresh_kind(task, graph, settlement) == (
+        "measured_action_postcondition"
+    )
 
 
 def test_scene_refresh_bootstrap_rejects_capability_bound_to_stale_scene_facts():

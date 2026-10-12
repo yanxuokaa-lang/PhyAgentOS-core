@@ -2,6 +2,41 @@
 
 ## 最近五版本 / Latest five versions
 
+## v13.3.9 (2026-10-12 22:59) - codex
+
+### 变更摘要 / Summary [完成]
+- [model] [fix] 将 Runtime 已测得的放置后置条件超限从 `outcome_unknown` 修正为 `failed/outcome_known=true`，保留 release/retreat/empty-possession 与误差/容差；未分类 post-release 异常继续 fail-closed。 / Reclassify measured placement-postcondition violations from `outcome_unknown` to `failed/outcome_known=true`, retaining release/retreat/empty-possession and measurement/tolerance; unclassified post-release exceptions remain fail-closed.
+- [policy] [fix] 已知 Action 后置条件失败确定性进入单一 scene-refresh Query recovery revision，不重放原 Action；consumer projection 缺少 semantic join field 时允许 AgentLoop 在同节点有界补齐。 / Deterministically route known Action postcondition failures to a recovery revision containing one scene-refresh Query without replaying the Action; allow AgentLoop to fill a missing consumer-projection semantic join field in the same node.
+- [docs] [docs] 保存 `task_bc5b3e04a00b45f7` 的精确诊断：位置误差 `0.016338 m < 0.04 m`，姿态误差 `0.425647 rad > 0.35 rad`；后续 bind 已成功，真正阻塞是 `grasp.propose` selection 缺 `entity_ref` 且 Gateway 未调用。 / Preserve the exact diagnosis: position error passed, orientation error exceeded tolerance; subsequent binding succeeded, while the actual later blocker was a missing `entity_ref` in `grasp.propose` selection before any Gateway call.
+
+### 文件与关键 Diff / Files and Key Diff
+- `examples/forge-adapters/robotwin20/runtime/robotwin_persistent_engine.py:L58-L66,L579-L740,L796-L872`：typed known postcondition failure、每次 Action 清理旧测量、测量/容差与 known-terminal scene effects。 / Typed known postcondition failure, per-Action stale-measurement clearing, measurement/tolerance, and known-terminal scene effects.
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_manipulation.py:L47-L48,L130-L226`：bounded Action receipt allowlist。 / Bounded Action-receipt allowlist.
+- `PhyAgentOS/agent/recovery_decisions.py:L79-L118,L218-L342`：区分 Query evidence 与 measured Action recovery，只生成 scene-refresh Query。 / Distinguish Query-evidence and measured-Action recovery and generate only a scene-refresh Query.
+- `PhyAgentOS/agent/tools/planning.py:L431-L452`、`PhyAgentOS/agent/loop.py:L1675-L1725`：缺失通用 semantic join field 的同节点纠正。 / Same-node correction for a missing generic semantic join field.
+- `tests/test_agent_foundation.py:L1364-L1410,L2620-L2920`、`tests/test_planning_selection.py:L337-L523`、`examples/forge-adapters/robotwin20/tests/test_persistent_manipulation.py:L490-L666`：no-motion recovery、projection、跨 Action 陈旧测量与 Runtime/receipt 回归。 / No-motion recovery, projection, cross-Action stale-measurement, Runtime, and receipt regressions.
+- `docs/forge/PLACEMENT_POSTCONDITION_ENTITY_SELECTION_DIAGNOSIS_20261012.md:L1-L129`：证据、ownership、恢复边界、七维审查和验证。 / Evidence, ownership, recovery boundaries, seven-dimension review, and verification.
+
+```diff
+- measured postcondition violation -> outcome_unknown
++ measured postcondition violation -> failed, outcome_known=true, refresh_declared_evidence
++ unclassified post-release exception -> outcome_unknown
+
+- projection missing selected <join_field> -> requires_replan
++ projection missing selected <join_field> -> bounded same-node correction
+
+- recovery may ask the model to replay/replan
++ known measured Action failure -> scene-refresh Query only
+```
+
+### 架构、安全与验证 / Architecture, Safety, and Validation
+- 修复保持 PAOS ownership：Runtime 拥有物理事实，Adapter 投影 bounded receipt，Coordinator 持久化选择，AgentLoop 编排有限纠正；无 RGB、颜色、方块、provider、task-id 或节点名分支。 / Preserve PAOS ownership: Runtime owns physical truth, Adapter projects bounded receipts, Coordinator persists selections, and AgentLoop orchestrates bounded correction; no RGB, color, block, provider, task-id, or node-name branch.
+- 不改目标、容差、轨迹、分阶段运动、freshness、calibration、collision、IK 或 motion authorization；不新增 hash、baseline、gate、持久化 schema 或第二状态机。 / Change no target, tolerance, trajectory, staged motion, freshness, calibration, collision, IK, or motion authorization; add no hash, baseline, gate, persisted schema, or second state machine.
+- 七维审查发现并修复 1 Major（跨 Action 陈旧 placement measurement）；无 Blocker 或未修复 Major。Focused/cross-layer `315 passed in 11.34s`；full repository `900 passed in 30.56s`；Ruff、compileall、`git diff --check` passed。全程 no-motion，未部署/重启 Runtime 或调用 live Gateway。 / Seven-dimension review found and fixed one Major (cross-Action stale placement measurement), with no Blocker or unresolved Major. Focused/cross-layer and full suites passed, as did Ruff, compileall, and diff checks; entirely no-motion with no Runtime deployment/restart or live Gateway call.
+
+### Git 提交 / Git Commit
+- Implementation commit pending on `feature/planning-loop`; documentation/index completion follows separately. / `feature/planning-loop` 上的实现提交待完成；日志与索引补全随后单独提交。
+
 ## v13.3.8 (2026-10-12 22:02) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -181,6 +216,10 @@
 
 ### Git 提交 / Git Commit
 - Commit: `5f07b5e4` on `feature/planning-loop`; documentation/index completion follows separately. / 提交：`5f07b5e4`，分支 `feature/planning-loop`；日志与索引补全随后单独提交。
+
+## Archived detailed records / 已归档详细记录
+
+The latest five records above are mirrored from the monthly archive. Older snapshots below remain for historical compatibility. / 上述最近五条与月度归档同步；以下旧快照仅为历史兼容保留。
 
 ## v13.3.4 (2026-10-12 19:06) - codex
 

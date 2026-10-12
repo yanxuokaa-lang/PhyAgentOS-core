@@ -1687,7 +1687,20 @@ class AgentLoop:
         ):
             return None
         message = error.get("message")
-        if message not in {
+        missing_fields = error.get("missing_fields")
+        missing_join_field = (
+            missing_fields[0]
+            if (
+                error.get("recommended_action")
+                == "select_the_semantic_join_field_and_retry_selection"
+                and isinstance(missing_fields, list)
+                and len(missing_fields) == 1
+                and isinstance(missing_fields[0], str)
+                and missing_fields[0]
+            )
+            else None
+        )
+        if missing_join_field is None and message not in {
             "named consumer projection accepts projection_sources only",
             "named consumer projection requires projection_sources",
             "named projection sources must match ToolSpec source slots",
@@ -1697,11 +1710,18 @@ class AgentLoop:
             return None
         return (
             "The Coordinator rejected the selector shape without executing a Tool. "
-            "The active ToolSpec declares named projection slots. Retry the same node "
-            "with projection_sources using exactly the slot names shown by forge_plan_ready; "
-            "each value must contain only one authorized record_id. Do not use "
-            "projection_source or argument_sources, do not assemble candidates or other "
-            "projected values, and do not request a replan."
+            + (
+                f"The projection requires the semantic join field {missing_join_field}. "
+                "Retry the same node with its exact current value selected from an authorized "
+                "source record; do not use a descriptive alias, and do not request a replan."
+                if missing_join_field is not None
+                else
+                "The active ToolSpec declares named projection slots. Retry the same node "
+                "with projection_sources using exactly the slot names shown by forge_plan_ready; "
+                "each value must contain only one authorized record_id. Do not use "
+                "projection_source or argument_sources, do not assemble candidates or other "
+                "projected values, and do not request a replan."
+            )
         )
 
     @staticmethod

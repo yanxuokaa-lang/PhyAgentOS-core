@@ -55,6 +55,17 @@ class PersistentVideoError(RuntimeError):
     """A physical phase settled but its required task video did not."""
 
 
+class PlacementPostconditionError(ValueError):
+    """The object was released, but the measured placement is outside tolerance."""
+
+    failure_owner = "execution_verification"
+    failure_code = "placement_postcondition_failed"
+    outcome_known = True
+    retryable_in_revision = False
+    requires_replan = True
+    recommended_action = "refresh_declared_evidence"
+
+
 class _TaskVideoArchive:
     """Accumulate all Action video for one PAOS task owner."""
 
@@ -575,6 +586,11 @@ class RoboTwinPersistentEngine:
         invocation_id: str,
     ) -> dict[str, Any]:
         self.stop.event = cancel
+        # Placement measurements describe one Action attempt.  The persistent
+        # engine state also spans later Actions, so clear the prior attempt
+        # before any early return or preparation failure can build a receipt.
+        self._state.pop("placement_measurement", None)
+        self._state.pop("placement_tolerance", None)
         start_steps = self._state.get("simulator_steps", 0)
         phases = []
         advancing = False
@@ -681,8 +697,9 @@ class RoboTwinPersistentEngine:
                     except Exception as stop_error:
                         stop_errors.append(type(stop_error).__name__)
             evidence_failure = isinstance(exc, PersistentVideoError) and physical_phase_completed
-            result = {"status": "failed" if evidence_failure else "unknown" if changed else "failed", "world_change_started": changed,
-                      "outcome_known": True if evidence_failure else not changed,
+            outcome_known = getattr(exc, "outcome_known", True if evidence_failure else not changed)
+            result = {"status": "failed" if outcome_known is True else "unknown" if changed else "failed", "world_change_started": changed,
+                      "outcome_known": outcome_known,
                       "failure_owner": "evidence" if evidence_failure else getattr(exc, "failure_owner", "execution"),
                       "failure_code": getattr(exc, "failure_code", type(exc).__name__),
                       "error_detail": str(exc), "stop_confirmed": not stop_errors,
@@ -713,6 +730,14 @@ class RoboTwinPersistentEngine:
                 result["new_scene_revision"] = self._advance_scene()
         if phase == "place" and release_confirmed:
             result["possession_state"] = "empty"
+        if isinstance(self._state.get("placement_measurement"), Mapping):
+            result["placement_measurement"] = dict(
+                self._state["placement_measurement"]
+            )
+        if isinstance(self._state.get("placement_tolerance"), Mapping):
+            result["placement_tolerance"] = dict(
+                self._state["placement_tolerance"]
+            )
         self._state.pop("video_recorder", None)
         reference = f"artifact://persistent/{self.epoch}/action-{uuid4().hex}"
         result["scene_effects"] = self._scene_effects(
@@ -780,9 +805,8 @@ class RoboTwinPersistentEngine:
 
         source_revision = result.get("source_scene_revision") or arguments.get("scene_revision")
         new_revision = result.get("new_scene_revision")
-        known_success = (
-            result.get("status") == "succeeded"
-            and result.get("outcome_known") is True
+        known_terminal = (
+            result.get("outcome_known") is True
             and isinstance(source_revision, str)
             and isinstance(new_revision, str)
         )
@@ -797,9 +821,9 @@ class RoboTwinPersistentEngine:
             for item in trace
             if isinstance(item, Mapping) and item.get("active_contact") is True
         ]
-        after = self._bound_entity_poses() if known_success else {}
+        after = self._bound_entity_poses() if known_terminal else {}
         actors = getattr(self.backend._task, "_paos_observed_entities", {})
-        complete = known_success and bool(before) and set(after) == set(before) and isinstance(actors, Mapping)
+        complete = known_terminal and bool(before) and set(after) == set(before) and isinstance(actors, Mapping)
         if complete:
             for entity_ref, pose in before.items():
                 actor = actors.get(entity_ref)
@@ -841,8 +865,11 @@ class RoboTwinPersistentEngine:
         orientation_error = probe._orientation_error_rad(actual.q, t3d.quaternions.mat2quat(target[:3, :3]))
         tolerance = placement["semantic_tolerance"]
         self._state["placement_measurement"] = {"position_error_m": position_error, "orientation_error_rad": orientation_error}
+        self._state["placement_tolerance"] = dict(tolerance)
         if position_error > tolerance["target_position_m"] or orientation_error > tolerance["target_orientation_rad"]:
-            raise ValueError("after-state placement verification failed")
+            raise PlacementPostconditionError(
+                "after-state placement verification failed"
+            )
 
     def close(self) -> None:
         self.stop.event.set()
