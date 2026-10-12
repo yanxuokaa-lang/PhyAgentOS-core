@@ -2140,7 +2140,7 @@ def test_activation_retains_instructions_when_source_changes(tmp_path):
     assert "New instructions" in later
 
 
-def test_node_turn_receives_original_goal_without_reinjecting_full_skill(tmp_path):
+def test_node_turn_restores_primary_skill_without_copying_historical_skill_use(tmp_path):
     async def exercise():
         c = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=object())
         task = c.create_task(task_description="Move only the left red object", verification=TaskVerificationContract(mode="off"))
@@ -2166,10 +2166,10 @@ def test_node_turn_receives_original_goal_without_reinjecting_full_skill(tmp_pat
         second = await loop.run_node_turn(task_id=task.task_id, revision_id=task.active_revision_id, node_id="selected", prompt="node evidence")
         sent = json.dumps(provider.requests[0]["messages"])
         assert "Move only the left red object" in sent
-        assert "Observe after grasp." not in sent
+        assert "Observe after grasp." in sent
         assert "HISTORICAL FULL INSTRUCTIONS" not in sent
         assert "node evidence" in sent
-        assert "agent_node_prompt_projection_v1" in sent
+        assert "agent_node_prompt_projection_v2" in sent
         assert first.model_failure_code is None
         assert second.model_failure_code is None
         reloaded = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=object()).get_task(task.task_id)

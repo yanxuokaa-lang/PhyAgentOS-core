@@ -2,6 +2,33 @@
 
 ## 最近五版本 / Latest five versions
 
+## v13.3.11 (2026-10-13 00:06) - codex
+
+### 变更摘要 / Summary [完成]
+- [policy] [fix] 从持久化 AgentTask 为每个 node/continuation turn 重建冻结 Skill、执行阶段、已完成效果、no-replay、目标账本、当前世界 lineage 与节点 Tool policy，修复长任务压缩后重复查 contract/goal 或遗忘已完成前缀。 / Reconstruct frozen Skill, phase, completed effects, no-replay history, goal ledger, current-world lineage, and node Tool policy from persisted AgentTask facts for every node/continuation turn, preventing contract/goal rereads and completed-prefix loss after compaction.
+- [eval] [test] 七维审查修复 effective settlement 冲突、stale calibration、歧义 attainment、unknown no-replay、无界兼容字段及 evidence-order 错误；无任务专用分支。 / The seven-dimension review fixes effective-settlement conflicts, stale calibration, ambiguous attainment, unknown no-replay, unbounded compatibility fields, and evidence-order handling without task-specific branches.
+
+### 文件与关键 Diff / Files and Key Diff
+- `PhyAgentOS/agent/prompt_context.py:L1020-L1776,L1837-L1848,L1945-L2044`：通用 durable context、effective settlement、exact-lineage world、goal ledger 与 bounded continuation。 / Generic durable context, effective settlements, exact-lineage world, goal ledger, and bounded continuation.
+- `PhyAgentOS/agent/loop.py:L344-L355,L1893-L1915,L1964-L1980`、`planning_loop.py:L1492-L1524`：注入 authoritative loaders，并使节点提示消费冻结 Skill/contract/phase。 / Inject authoritative loaders and make node prompts consume frozen Skill/contract/phase facts.
+- `tests/test_prompt_context.py:L769-L845,L1854-L2155`、`tests/test_planning_loop.py:L576-L592`、`tests/test_agent_foundation.py:L2143-L2182`：late settlement、unknown no-replay、lineage、attainment 歧义、compaction 与 AgentLoop 回归。 / Regressions for late settlement, unknown no-replay, lineage, attainment ambiguity, compaction, and AgentLoop integration.
+- `docs/forge/CONTINUATION_CONTEXT_SKILL_COMPACTION_DIAGNOSIS_20261013.md:L1-L114`：证据、ownership、通用修复与七维审查。 / Evidence, ownership, generic repair, and seven-dimension review.
+
+```diff
+- compacted node = current node + Skill identity + generic rules
++ compacted node = frozen Skill route + phase + effects + no-replay + goal ledger + exact-lineage world + Tool policy
+- raw settlement / partial attainment wildcard / unbounded compatibility lists
++ effective settlement / exact-or-unique attainment / bounded lists with totals
+```
+
+### 七维审查与安全边界 / Seven-Dimension Review and Safety Boundary
+- 架构、正确性、可观测、恢复幂等、机器人安全、扩展兼容与 AgentLoop 收敛七维发现的 Blocker/Major 已全部修复；Coordinator/Runtime/Gateway/planner/motion ownership 不变。 / All Blocker/Major findings across architecture, correctness, observability, recovery/idempotency, robotics safety, extension compatibility, and AgentLoop convergence were fixed; ownership boundaries remain unchanged.
+- 无 RGB、颜色、方块、benchmark、provider 或节点名分支；无新 persisted schema、ToolSpec、hash、baseline 或 gate。旧视觉实体、几何和 calibration 不会成为当前 Action 输入，歧义 attainment 保持 unknown。 / No task/provider/node-specific branch or new persisted schema, ToolSpec, hash, baseline, or gate; old visual/geometry/calibration facts cannot become current Action inputs, and ambiguous attainment stays unknown.
+- focused `320 passed in 10.13s`；full `904 passed in 31.20s`；scoped Ruff、compileall、`git diff --check` 通过。未部署/重启 Runtime、调用 live Query/Action、读取相机或执行运动。 / Focused and full suites plus scoped static checks passed; no Runtime deployment/restart, live Query/Action, camera read, or motion occurred during implementation review.
+
+### Git 提交 / Git Commit
+- Implementation/review commit pending on `feature/planning-loop`; documentation/index completion follows separately. / 实现与审查提交待生成；日志与索引引用随后补全。
+
 ## v13.3.10 (2026-10-12 23:25) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -132,6 +159,10 @@
 详见 [v13.3.7 月度日志](changelog/2026-10_part6.md)。 / See the [v13.3.7 detailed log](changelog/2026-10_part6.md).
 - Deployment log/index commit: `ee95434d` on `feature/planning-loop`; commit-reference completion follows separately. / 部署日志与索引提交：`ee95434d`，分支 `feature/planning-loop`；提交引用补全随后单独完成。
 
+## Archived detailed records / 已归档详细记录
+
+The latest five records above are mirrored from the monthly archive. Older snapshots below remain for historical compatibility. / 上述最近五条与月度归档同步；以下旧快照仅为历史兼容保留。
+
 ## v13.3.6 (2026-10-12 21:37) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -185,10 +216,6 @@
 
 ### Git 提交 / Git Commit
 - Implementation commit: `0205be6a` on `feature/planning-loop`; log/index reference completion follows. / 实现提交：`0205be6a`，分支 `feature/planning-loop`；日志与索引提交引用随后补全。
-
-## Archived detailed records / 已归档详细记录
-
-The latest five records above are mirrored from the monthly archive. Older snapshots below remain for historical compatibility. / 上述最近五条与月度归档同步；以下旧快照仅为历史兼容保留。
 
 ## v13.3.5 (2026-10-12 20:31) - codex
 

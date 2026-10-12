@@ -348,6 +348,11 @@ class AgentLoop:
                 if forge_task_coordinator is not None
                 else None
             ),
+            settlement_loader=(
+                forge_task_coordinator.effective_node_settlements
+                if forge_task_coordinator is not None
+                else None
+            ),
         )
         self._register_default_tools()
         # Load env variables
@@ -1896,10 +1901,9 @@ class AgentLoop:
                 "original_goal": task.task_description,
                 "verification": task.verification.model_dump(mode="json"),
                 # Full Skill instructions remain immutable Coordinator/SkillUse
-                # audit facts. The node-scoped projection carries the binding
-                # identity, while _default_prompt supplies bounded execution
-                # rules for this node. Re-injecting the complete document here
-                # duplicates the projection and consumes model decision budget.
+                # audit facts. The node-scoped prompt projection reconstructs
+                # them together with durable phase/effect facts for every model
+                # request, so this wrapper carries identity only.
                 "skill_binding": (
                     {
                         "binding_id": binding.binding_id,
@@ -1965,7 +1969,13 @@ class AgentLoop:
         if any(settlements.get(node.node_id) != "completed" for node in graph.nodes):
             raise ValueError("segment continuation requires every active node to be completed")
 
-        continuation_projection = continuation_task_prompt_projection(task) or {}
+        continuation_projection = continuation_task_prompt_projection(
+            task,
+            execution_record_loader=(
+                self.forge_task_coordinator.effective_planning_execution_records
+            ),
+            settlement_loader=self.forge_task_coordinator.effective_node_settlements,
+        ) or {}
         continuation_route = continuation_projection.get("continuation_route")
         latest_settled_result = continuation_projection.get("latest_settled_result")
         if continuation_route == "refresh_scene_before_next_segment":

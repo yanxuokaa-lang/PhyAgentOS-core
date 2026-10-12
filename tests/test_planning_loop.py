@@ -582,6 +582,10 @@ def test_default_node_prompt_distinguishes_geometry_and_producer_projection_sour
     assert "Never assume every projection source is an understanding record" in prompt
     assert "match the producer candidate entity_ref byte-for-byte" in prompt
     assert "do not reuse an alias from an older rejected continuation" in prompt
+    assert "do not reread a frozen contract merely to orient the turn" in prompt
+    assert "no_replay_actions and completed_obligations" in prompt
+    assert "action_effect_confirmed does not by itself prove" in prompt
+    assert "Follow frozen_skill_route_context" in prompt
 
 
 def test_scene_bind_node_context_projects_current_candidates_without_auto_selecting():

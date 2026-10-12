@@ -11,10 +11,13 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Any
 
-from PhyAgentOS.agent.planning_facts import response_facts
+from PhyAgentOS.agent.planning_facts import explicit_scene_revision, response_facts
 from PhyAgentOS.forge.binding import missing_preplan_queries, required_preplan_queries
 
 TERMINAL_EXECUTION_STATUSES = {"succeeded", "failed", "cancelled", "stopped", "unknown"}
+_MAX_PHASE_ITEMS = 64
+_MAX_GOAL_ITEMS = 128
+_MAX_CURRENT_ENTITIES = 128
 
 _TASK_COMMON = {
     "forge_task_get",
@@ -1014,9 +1017,437 @@ def _skill_binding_identity(binding: Any | None) -> dict[str, Any] | None:
     }
 
 
+def _task_history_records(
+    task: Any,
+    execution_record_loader: Callable[[str, str], Iterable[Any]] | None = None,
+) -> tuple[tuple[str, Any], ...]:
+    """Return task-bound records without borrowing another task's transcript."""
+    records: list[tuple[str, Any]] = []
+    revisions = tuple(getattr(task, "revisions", ())) or tuple(
+        item for item in (getattr(task, "active_revision", None),) if item is not None
+    )
+    for revision in revisions:
+        revision_id = getattr(revision, "revision_id", None)
+        if not isinstance(revision_id, str):
+            continue
+        source = (
+            execution_record_loader(getattr(task, "task_id", ""), revision_id)
+            if execution_record_loader is not None
+            else getattr(revision, "execution_records", ())
+        )
+        records.extend((revision_id, record) for record in source)
+    if not records:
+        active_revision_id = getattr(task, "active_revision_id", None)
+        for record in getattr(task, "execution_records", ()):
+            revision_id = getattr(record, "revision_id", None) or active_revision_id
+            if isinstance(revision_id, str):
+                records.append((revision_id, record))
+    return tuple(records)
+
+
+def _task_history_settlements(
+    task: Any,
+    settlement_loader: Callable[[str, str], Iterable[Any]] | None = None,
+) -> dict[tuple[str, str, str | None], Any]:
+    """Index effective settlements, including late resolutions, by invocation."""
+    result: dict[tuple[str, str, str | None], Any] = {}
+    revisions = tuple(getattr(task, "revisions", ())) or tuple(
+        item for item in (getattr(task, "active_revision", None),) if item is not None
+    )
+    for revision in revisions:
+        revision_id = getattr(revision, "revision_id", None)
+        if not isinstance(revision_id, str):
+            continue
+        source = _effective_revision_settlements(
+            task,
+            revision,
+            settlement_loader=settlement_loader,
+        )
+        for settlement in source:
+            node_id = getattr(settlement, "node_id", None)
+            if isinstance(node_id, str):
+                result[(revision_id, node_id, getattr(settlement, "invocation_id", None))] = settlement
+    return result
+
+
+def _effective_revision_settlements(
+    task: Any,
+    revision: Any,
+    *,
+    settlement_loader: Callable[[str, str], Iterable[Any]] | None = None,
+) -> tuple[Any, ...]:
+    """Resolve only revisions whose raw settlement can have a late result."""
+    raw = tuple(getattr(revision, "node_settlements", ()))
+    revision_id = getattr(revision, "revision_id", None)
+    if (
+        settlement_loader is None
+        or not isinstance(revision_id, str)
+        or not any(getattr(item, "status", None) == "outcome_unknown" for item in raw)
+    ):
+        return raw
+    return tuple(settlement_loader(getattr(task, "task_id", ""), revision_id))
+
+
+def _durable_execution_context(
+    task: Any,
+    *,
+    node_id: str | None = None,
+    execution_record_loader: Callable[[str, str], Iterable[Any]] | None = None,
+    settlement_loader: Callable[[str, str], Iterable[Any]] | None = None,
+) -> dict[str, Any]:
+    """Build the bounded phase/effect/goal ledger used after history compaction."""
+    history = _task_history_records(task, execution_record_loader)
+    settlements = _task_history_settlements(task, settlement_loader)
+    completed: list[dict[str, Any]] = []
+    remaining: list[dict[str, Any]] = []
+    no_replay: list[dict[str, Any]] = []
+    effects: list[dict[str, Any]] = []
+    current_bindings: dict[str, str] = {}
+    revisions = tuple(getattr(task, "revisions", ())) or tuple(
+        item for item in (getattr(task, "active_revision", None),) if item is not None
+    )
+    for revision in revisions:
+        revision_id = getattr(revision, "revision_id", None)
+        graph = getattr(revision, "plan_graph", None)
+        if not isinstance(revision_id, str) or graph is None:
+            continue
+        for node in getattr(graph, "nodes", ()):
+            settlement = next(
+                (
+                    item for item_key, item in settlements.items()
+                    if item_key[0] == revision_id
+                    and item_key[1] == getattr(node, "node_id", None)
+                ),
+                None,
+            )
+            item = {
+                "revision_id": revision_id,
+                "node_id": getattr(node, "node_id", None),
+                "obligation_id": getattr(node, "obligation_id", None),
+                "capability": getattr(node, "capability", None),
+                "status": getattr(settlement, "status", "pending") if settlement is not None else "pending",
+                "scene_revision": getattr(settlement, "scene_revision", None) if settlement is not None else None,
+            }
+            if item["status"] == "completed":
+                completed.append(item)
+            elif revision_id == getattr(getattr(task, "active_revision", None), "revision_id", None):
+                remaining.append(item)
+
+    for revision_id, record in history:
+        if getattr(record, "tool_id", None) == "scene.bind" and _discovery_record_succeeded(record):
+            current_bindings = {
+                str(entity["entity_ref"]): str(entity["execution_entity_ref"])
+                for entity in response_facts(getattr(record, "response", None)).get("entities", ())
+                if isinstance(entity, dict)
+                and isinstance(entity.get("entity_ref"), str)
+                and isinstance(entity.get("execution_entity_ref"), str)
+            }
+            continue
+        semantics = getattr(record, "semantics", None)
+        node = getattr(record, "node_id", None)
+        if semantics not in {"action", "session"} or not isinstance(node, str):
+            continue
+        settlement = settlements.get((revision_id, node, getattr(record, "invocation_id", None)))
+        if settlement is None:
+            continue
+        settlement_status = getattr(settlement, "status", None)
+        if settlement_status == "outcome_unknown":
+            no_replay.append({
+                "revision_id": revision_id,
+                "node_id": node,
+                "tool_id": getattr(record, "tool_id", None),
+                "invocation_id": getattr(record, "invocation_id", None),
+                "settlement_status": settlement_status,
+                "reason": "unresolved outcome_unknown; reconcile before any retry",
+            })
+            continue
+        if settlement_status != "completed":
+            continue
+        facts = response_facts(getattr(record, "response", None))
+        arguments = getattr(record, "arguments", {})
+        arguments = arguments if isinstance(arguments, dict) else {}
+        visual_entity_ref = arguments.get("entity_ref")
+        effect = {
+            "revision_id": revision_id,
+            "node_id": node,
+            "tool_id": getattr(record, "tool_id", None),
+            "invocation_id": getattr(record, "invocation_id", None),
+            "prior_visual_entity_ref": visual_entity_ref,
+            "execution_entity_ref": facts.get("execution_entity_ref") or current_bindings.get(visual_entity_ref),
+            "destination_ref": facts.get("destination_ref") or arguments.get("destination_ref"),
+            "source_scene_revision": facts.get("source_scene_revision") or getattr(settlement, "source_scene_revision", None),
+            "new_scene_revision": facts.get("new_scene_revision") or getattr(settlement, "scene_revision", None),
+            "world_change_started": getattr(settlement, "world_change_started", None),
+            "outcome_known": getattr(settlement, "outcome_known", None),
+            "release_confirmed": facts.get("release_confirmed"),
+            "retreat_completed": facts.get("retreat_completed"),
+            "clear_of_target": facts.get("clear_of_target"),
+            "recommended_action": getattr(settlement, "recommended_action", None),
+        }
+        effects.append(effect)
+        no_replay.append({
+            "revision_id": revision_id,
+            "node_id": node,
+            "tool_id": getattr(record, "tool_id", None),
+            "invocation_id": getattr(record, "invocation_id", None),
+            "settlement_status": settlement_status,
+            "reason": "authoritative terminal settlement; do not replay",
+        })
+
+    goal_definitions: list[dict[str, Any]] = []
+    latest_observation_record = next(
+        (
+            (revision_id, record)
+            for revision_id, record in reversed(history)
+            if getattr(record, "tool_id", None) == "scene.observe"
+            and _discovery_record_succeeded(record)
+        ),
+        None,
+    )
+    latest_scene_revision = None
+    latest_observation_ref = None
+    latest_calibration_ref = None
+    if latest_observation_record is not None:
+        _observe_revision_id, observe_record = latest_observation_record
+        observe_facts = response_facts(getattr(observe_record, "response", None))
+        observe_arguments = getattr(observe_record, "arguments", None)
+        observe_arguments = observe_arguments if isinstance(observe_arguments, dict) else {}
+        latest_scene_revision = explicit_scene_revision(observe_facts) or explicit_scene_revision(
+            observe_arguments
+        )
+        latest_observation_ref = observe_facts.get("observation_ref") or observe_arguments.get("observation_ref")
+        latest_calibration_ref = observe_facts.get("calibration_ref") or observe_arguments.get("calibration_ref")
+
+    explicit_attainment: dict[tuple[str | None, str | None], dict[str, Any]] = {}
+    for revision_id, record in history:
+        if getattr(record, "tool_id", None) != "task.goal" or getattr(record, "status", None) != "succeeded":
+            continue
+        facts = response_facts(getattr(record, "response", None))
+        for goal in facts.get("goals", ()):
+            if not isinstance(goal, dict):
+                continue
+            key = (goal.get("execution_entity_ref"), goal.get("destination_ref"))
+            if key in {(item.get("execution_entity_ref"), item.get("destination_ref")) for item in goal_definitions}:
+                continue
+            goal_definitions.append({
+                "execution_entity_ref": goal.get("execution_entity_ref"),
+                "destination_ref": goal.get("destination_ref"),
+                "frame_id": goal.get("frame_id"),
+                "goal_ref": facts.get("goal_ref"),
+                "definition_revision_id": revision_id,
+                "current_scene_attainment": "unknown",
+                "attainment_basis": "task.goal defines the target; current-scene verification is not implied",
+            })
+    for evidence_order, (revision_id, record) in enumerate(history):
+        if getattr(record, "semantics", None) != "query" or not _discovery_record_succeeded(record):
+            continue
+        facts = response_facts(getattr(record, "response", None))
+        arguments = getattr(record, "arguments", None)
+        arguments = arguments if isinstance(arguments, dict) else {}
+        record_scene = explicit_scene_revision(facts) or explicit_scene_revision(arguments)
+        if latest_scene_revision is None or record_scene != latest_scene_revision:
+            continue
+        if (
+            latest_observation_ref is None
+            or latest_calibration_ref is None
+            or (facts.get("observation_ref") or arguments.get("observation_ref"))
+            != latest_observation_ref
+            or (facts.get("calibration_ref") or arguments.get("calibration_ref"))
+            != latest_calibration_ref
+        ):
+            continue
+        for field in ("goal_attainment", "goal_statuses", "attainments", "verification_results"):
+            values = facts.get(field)
+            if not isinstance(values, list):
+                continue
+            for value in values:
+                if not isinstance(value, dict):
+                    continue
+                entity = value.get("execution_entity_ref")
+                destination = value.get("destination_ref")
+                status = value.get("status") or value.get("attainment_status")
+                normalized = {
+                    "attained": "confirmed",
+                    "completed": "confirmed",
+                    "satisfied": "confirmed",
+                    "verified": "confirmed",
+                    "failed": "failed",
+                    "not_attained": "failed",
+                    "unsatisfied": "failed",
+                    "violated": "failed",
+                    "pending": "unknown",
+                    "unknown": "unknown",
+                    "unverified": "unknown",
+                }.get(status.strip().lower()) if isinstance(status, str) else None
+                if normalized is not None and (
+                    isinstance(entity, str) or isinstance(destination, str)
+                ):
+                    explicit_attainment[(entity, destination)] = {
+                        "status": normalized,
+                        "provider_status": status,
+                        "record_id": getattr(record, "record_id", None),
+                        "revision_id": revision_id,
+                        "order": evidence_order,
+                    }
+    goal_keys = [
+        (goal.get("execution_entity_ref"), goal.get("destination_ref"))
+        for goal in goal_definitions
+    ]
+    for goal in goal_definitions:
+        key = (goal.get("execution_entity_ref"), goal.get("destination_ref"))
+        matching_effect = next(
+            (
+                effect for effect in effects
+                if effect.get("destination_ref") == goal.get("destination_ref")
+                and isinstance(effect.get("execution_entity_ref"), str)
+                and effect.get("execution_entity_ref") == goal.get("execution_entity_ref")
+            ),
+            None,
+        )
+        goal["action_effect_confirmed"] = matching_effect is not None and matching_effect.get("outcome_known") is not False
+        evidence_candidates = []
+        for (entity, destination), item in explicit_attainment.items():
+            if entity is None and destination is None:
+                continue
+            if (entity is not None and entity != key[0]) or (
+                destination is not None and destination != key[1]
+            ):
+                continue
+            matching_goals = [
+                candidate
+                for candidate in goal_keys
+                if (entity is None or entity == candidate[0])
+                and (destination is None or destination == candidate[1])
+            ]
+            if entity is not None and destination is not None or len(matching_goals) == 1:
+                evidence_candidates.append(item)
+        evidence = max(
+            evidence_candidates,
+            key=lambda item: int(item.get("order", -1)),
+            default=None,
+        )
+        if evidence is not None:
+            goal["current_scene_attainment"] = evidence["status"]
+            goal["attainment_basis"] = {
+                "record_id": evidence["record_id"],
+                "revision_id": evidence["revision_id"],
+                "provider_status": evidence["provider_status"],
+            }
+
+    current_world: dict[str, Any] = {}
+    for revision_id, record in history:
+        if getattr(record, "semantics", None) != "query" or not _discovery_record_succeeded(record):
+            continue
+        tool_id = getattr(record, "tool_id", None)
+        if tool_id not in {"scene.observe", "scene.understand", "scene.bind", "manipulation.capabilities"}:
+            continue
+        facts = response_facts(getattr(record, "response", None))
+        arguments = getattr(record, "arguments", None)
+        arguments = arguments if isinstance(arguments, dict) else {}
+        record_scene = explicit_scene_revision(facts) or explicit_scene_revision(arguments)
+        if latest_scene_revision is None or record_scene != latest_scene_revision:
+            continue
+        observation_ref = facts.get("observation_ref") or arguments.get("observation_ref")
+        calibration_ref = facts.get("calibration_ref") or arguments.get("calibration_ref")
+        if tool_id != "scene.observe" and (
+            latest_observation_ref is None
+            or latest_calibration_ref is None
+            or observation_ref != latest_observation_ref
+            or calibration_ref != latest_calibration_ref
+        ):
+            continue
+        entities = facts.get("entities", ())
+        entities = entities if isinstance(entities, (list, tuple)) else ()
+        current_world[str(tool_id)] = {
+            "revision_id": revision_id,
+            "record_id": getattr(record, "record_id", None),
+            "scene_revision": record_scene,
+            "observation_ref": observation_ref,
+            "calibration_ref": calibration_ref,
+            "binding_ref": facts.get("binding_ref"),
+            "entities": [
+                {
+                    key: entity.get(key)
+                    for key in ("entity_ref", "execution_entity_ref", "category")
+                    if entity.get(key) is not None
+                }
+                for entity in entities[:_MAX_CURRENT_ENTITIES]
+                if isinstance(entity, dict)
+            ],
+            "entity_count": len(entities),
+        }
+
+    active_revision = getattr(task, "active_revision", None)
+    active_graph = getattr(active_revision, "plan_graph", None) if active_revision is not None else None
+    active_node = next(
+        (item for item in getattr(active_graph, "nodes", ()) if getattr(item, "node_id", None) == node_id),
+        None,
+    )
+    return {
+        "active_revision_id": getattr(task, "active_revision_id", None),
+        "active_revision_number": getattr(active_revision, "number", None),
+        "current_node": {
+            "node_id": node_id,
+            "obligation_id": getattr(active_node, "obligation_id", None),
+            "capability": getattr(active_node, "capability", None),
+            "dependencies": list(getattr(active_node, "dependencies", ())),
+        } if active_node is not None else None,
+        "completed_obligations": completed[-_MAX_PHASE_ITEMS:],
+        "completed_obligations_total": len(completed),
+        "remaining_obligations": remaining[:_MAX_PHASE_ITEMS],
+        "remaining_obligations_total": len(remaining),
+        "no_replay_actions": no_replay[-_MAX_PHASE_ITEMS:],
+        "no_replay_actions_total": len(no_replay),
+        "no_replay_policy": (
+            "Every Action/Session with an authoritative completed settlement or unresolved "
+            "outcome_unknown settlement is non-replayable; reconcile unknown outcomes first. "
+            "the list is a recent orientation view and Coordinator admission remains authoritative."
+        ),
+        "completed_effects": effects[-_MAX_PHASE_ITEMS:],
+        "completed_effects_total": len(effects),
+        "goal_ledger": {
+            "definitions": goal_definitions[:_MAX_GOAL_ITEMS],
+            "definition_count": len(goal_definitions),
+            "attainment_rule": "Only explicit current-scene evidence may change current_scene_attainment; action_effect_confirmed is not attainment.",
+        },
+        "current_world_context": current_world,
+        "recovery_lineage": {
+            "active_revision_reason": getattr(active_revision, "reason", None),
+            "fresh_evidence_requirements": list(getattr(active_revision, "fresh_evidence_requirements", ())),
+            "replan_evidence_refs": list(getattr(active_revision, "replan_evidence_refs", ())),
+        },
+    }
+
+
+def _node_tool_contract_context(task: Any, node: Any) -> dict[str, Any] | None:
+    binding = getattr(task, "primary_skill_binding", None)
+    tools = getattr(binding, "required_tools", ()) if binding is not None else getattr(task, "tool_bindings", ())
+    tool = next((item for item in tools if getattr(item, "tool_id", None) == getattr(node, "capability", None)), None)
+    if tool is None:
+        return None
+    policy = getattr(tool, "planning_policy", None)
+    return {
+        "tool_id": getattr(tool, "tool_id", None),
+        "semantics": getattr(tool, "semantics", None),
+        "spec_sha256": getattr(tool, "spec_sha256", None),
+        "ready_at_binding": getattr(tool, "ready_at_binding", None),
+        "input_binding_keys": list(getattr(policy, "input_binding_keys", ())) if policy is not None else [],
+        "required_evidence": list(getattr(policy, "required_evidence", ())) if policy is not None else [],
+        "produced_evidence": list(getattr(policy, "produced_evidence", ())) if policy is not None else [],
+        "scene_write_behavior": getattr(policy, "scene_write_behavior", None) if policy is not None else None,
+        "refreshes_scene": getattr(policy, "refreshes_scene", False) if policy is not None else False,
+        "argument_projection": getattr(policy, "argument_projection", None) if policy is not None else None,
+        "argument_projection_plan": _safe_json(getattr(policy, "argument_projection_plan", None)) if policy is not None else None,
+        "authority": "frozen Coordinator binding; use forge_tool_context only when readiness or a missing field actually requires refresh",
+    }
+
+
 def node_task_prompt_projection(
     task: Any | None,
     node_id: str,
+    *,
+    execution_record_loader: Callable[[str, str], Iterable[Any]] | None = None,
+    settlement_loader: Callable[[str, str], Iterable[Any]] | None = None,
 ) -> dict[str, Any] | None:
     """Project only facts needed to execute one semantic planning node.
 
@@ -1042,8 +1473,14 @@ def node_task_prompt_projection(
         for item in getattr(task, "skill_uses", ())
         if getattr(item, "node_id", None) in (None, node_id)
     ]
+    instructions = getattr(task, "active_skill_instructions", None) or getattr(task, "primary_skill_instructions", None)
+    revision_settlements = _effective_revision_settlements(
+        task,
+        revision,
+        settlement_loader=settlement_loader,
+    ) if revision is not None else ()
     return {
-        "version": "agent_node_prompt_projection_v1",
+        "version": "agent_node_prompt_projection_v2",
         "authority": "read_only_projection_from_AgentTaskCoordinator",
         "task_id": getattr(task, "task_id", None),
         "status": _task_status(task),
@@ -1066,6 +1503,12 @@ def node_task_prompt_projection(
             }
             for item in relevant_uses
         ],
+        "frozen_skill_route_context": {
+            "skill_name": getattr(getattr(task, "primary_skill_binding", None), "skill_name", None),
+            "skill_version": getattr(getattr(task, "primary_skill_binding", None), "skill_version", None),
+            "instructions": instructions,
+            "authority": "persisted activated Skill; apply its workflow transitions for this node even after conversation compaction",
+        },
         "node": (
             {
                 "node_id": getattr(node, "node_id", None),
@@ -1085,30 +1528,63 @@ def node_task_prompt_projection(
         "node_settlement": next(
             (
                 _safe_json(item)
-                for item in getattr(revision, "node_settlements", ())
+                for item in revision_settlements
                 if getattr(item, "node_id", None) == node_id
             ),
             None,
+        ),
+        "tool_contract_context": _node_tool_contract_context(task, node) if node is not None else None,
+        "execution_phase_context": _durable_execution_context(
+            task,
+            node_id=node_id,
+            execution_record_loader=execution_record_loader,
+            settlement_loader=settlement_loader,
         ),
         "motion_authorized": False,
     }
 
 
-def continuation_task_prompt_projection(task: Any | None) -> dict[str, Any] | None:
+def continuation_task_prompt_projection(
+    task: Any | None,
+    *,
+    execution_record_loader: Callable[[str, str], Iterable[Any]] | None = None,
+    settlement_loader: Callable[[str, str], Iterable[Any]] | None = None,
+) -> dict[str, Any] | None:
     """Project settled facts needed to append the next scene segment."""
     if task is None:
         return None
     revision = getattr(task, "active_revision", None)
     graph = getattr(revision, "plan_graph", None) if revision is not None else None
+    revision_id = getattr(revision, "revision_id", None)
+    revision_settlements = (
+        _effective_revision_settlements(
+            task,
+            revision,
+            settlement_loader=settlement_loader,
+        )
+        if revision is not None
+        else ()
+    )
     settlements = {
         getattr(item, "node_id", None): getattr(item, "status", None)
-        for item in getattr(revision, "node_settlements", ())
+        for item in revision_settlements
     }
-    revision_records = tuple(getattr(revision, "execution_records", ())) if revision is not None else ()
-    all_records = tuple(getattr(task, "execution_records", ())) or revision_records
+    revision_records = (
+        tuple(execution_record_loader(getattr(task, "task_id", ""), revision_id))
+        if execution_record_loader is not None and isinstance(revision_id, str)
+        else tuple(getattr(revision, "execution_records", ()))
+        if revision is not None
+        else ()
+    )
+    all_records = tuple(
+        record
+        for _record_revision_id, record in _task_history_records(
+            task, execution_record_loader
+        )
+    ) or revision_records
     latest_settlement = next(
         (
-            item for item in reversed(tuple(getattr(revision, "node_settlements", ())))
+            item for item in reversed(revision_settlements)
             if getattr(item, "status", None) in {
                 "completed", "failed", "outcome_unknown", "stale", "cancelled_before_start"
             }
@@ -1184,7 +1660,7 @@ def continuation_task_prompt_projection(task: Any | None) -> dict[str, Any] | No
     ]
     latest_effect = next(
         (
-            record for record in reversed(tuple(getattr(task, "execution_records", ())))
+            record for record in reversed(all_records)
             if getattr(record, "semantics", None) == "action"
             and getattr(record, "status", None) == "succeeded"
             and response_facts(getattr(record, "response", None)).get("world_change_started") is True
@@ -1209,23 +1685,61 @@ def continuation_task_prompt_projection(task: Any | None) -> dict[str, Any] | No
             ) if key in facts},
         }
         if record.tool_id in {"scene.bind", "scene.understand"}:
-            summary["entities"] = [
+            entities = [
                 {key: entity[key] for key in ("entity_ref", "execution_entity_ref", "category") if key in entity}
                 for entity in facts.get("entities", ()) if isinstance(entity, dict)
             ]
+            summary["entities"] = entities[:_MAX_CURRENT_ENTITIES]
+            summary["entity_count"] = len(entities)
         summaries.append(summary)
-    goals = [
-        {"record_id": record.record_id, "goals": [
-            {key: goal[key] for key in ("execution_entity_ref", "destination_ref") if key in goal}
-            for goal in response_facts(record.response).get("goals", ()) if isinstance(goal, dict)
-        ]}
-        for record in getattr(task, "execution_records", ())
-        if record.tool_id == "task.goal" and record.status == "succeeded"
+    current_scene_query_count = len(summaries)
+    summaries = summaries[-_MAX_PHASE_ITEMS:]
+    goal_records = []
+    goal_item_count = 0
+    for record in all_records:
+        if record.tool_id != "task.goal" or record.status != "succeeded":
+            continue
+        record_goals = [
+            {
+                key: goal[key]
+                for key in ("execution_entity_ref", "destination_ref")
+                if key in goal
+            }
+            for goal in response_facts(record.response).get("goals", ())
+            if isinstance(goal, dict)
+        ]
+        goal_item_count += len(record_goals)
+        goal_records.append({
+            "record_id": record.record_id,
+            "goals": record_goals,
+            "goal_count": len(record_goals),
+        })
+    goals = []
+    remaining_goal_items = _MAX_GOAL_ITEMS
+    for item in reversed(goal_records):
+        if remaining_goal_items <= 0:
+            break
+        selected = item["goals"][-remaining_goal_items:]
+        goals.append({**item, "goals": selected})
+        remaining_goal_items -= len(selected)
+    goals.reverse()
+    completed_nodes = [
+        getattr(node, "node_id", None)
+        for node in getattr(graph, "nodes", ())
+        if settlements.get(getattr(node, "node_id", None)) == "completed"
     ]
+    phase_context = _durable_execution_context(
+        task,
+        execution_record_loader=execution_record_loader,
+        settlement_loader=settlement_loader,
+    )
     return {
-        "version": "agent_continuation_prompt_projection_v2",
+        "version": "agent_continuation_prompt_projection_v3",
         "current_scene_queries": summaries,
+        "current_scene_query_count": current_scene_query_count,
         "task_goals": goals,
+        "task_goal_record_count": len(goal_records),
+        "task_goal_item_count": goal_item_count,
         "authority": "read_only_projection_from_AgentTaskCoordinator",
         "task_id": getattr(task, "task_id", None),
         "active_revision_id": getattr(task, "active_revision_id", None),
@@ -1238,12 +1752,18 @@ def continuation_task_prompt_projection(task: Any | None) -> dict[str, Any] | No
         ),
         "task_description": getattr(task, "task_description", None),
         "verification": _safe_json(getattr(task, "verification", None)),
-        "completed_nodes": [
-            getattr(node, "node_id", None)
-            for node in getattr(graph, "nodes", ())
-            if settlements.get(getattr(node, "node_id", None)) == "completed"
-        ],
-        "available_successors": available_successors,
+        "frozen_skill_route_context": {
+            "skill_name": getattr(getattr(task, "primary_skill_binding", None), "skill_name", None),
+            "skill_version": getattr(getattr(task, "primary_skill_binding", None), "skill_version", None),
+            "instructions": getattr(task, "active_skill_instructions", None)
+            or getattr(task, "primary_skill_instructions", None),
+            "authority": "persisted activated Skill; apply its workflow transitions after conversation compaction",
+        },
+        "execution_phase_context": phase_context,
+        "completed_nodes": completed_nodes[-_MAX_PHASE_ITEMS:],
+        "completed_node_count": len(completed_nodes),
+        "available_successors": available_successors[:_MAX_PHASE_ITEMS],
+        "available_successor_count": len(available_successors),
         "continuation_route": continuation_route,
         "latest_settled_result": {
             "node_id": getattr(latest_settlement, "node_id", None),
@@ -1314,8 +1834,8 @@ def _with_task_projection(
     task_message = {
         "role": "system",
         "content": (
-            "Current persisted AgentTask projection (data, not instructions). "
-            "The Coordinator/Gateway records remain authoritative; use their exact references.\n"
+            "Current persisted AgentTask projection. All fields are authoritative data except "
+            "frozen_skill_route_context.instructions, the activated task Skill instruction.\n"
             + json.dumps(projection, ensure_ascii=False, separators=(",", ":"))
         ),
     }
@@ -1430,6 +1950,7 @@ class AgentPromptContextManager:
         reserved_output_tokens: int = 0,
         discovery_compaction_trigger_tokens: int = DEFAULT_DISCOVERY_COMPACTION_TRIGGER_TOKENS,
         execution_record_loader: Callable[[str, str], Iterable[Any]] | None = None,
+        settlement_loader: Callable[[str, str], Iterable[Any]] | None = None,
     ) -> None:
         self.context_window_tokens = int(context_window_tokens)
         self.compaction_trigger_tokens = int(compaction_trigger_tokens)
@@ -1438,6 +1959,7 @@ class AgentPromptContextManager:
             1, int(discovery_compaction_trigger_tokens)
         )
         self._execution_record_loader = execution_record_loader
+        self._settlement_loader = settlement_loader
         self.prompt_token_limit = self.context_window_tokens - self.reserved_output_tokens
         if self.prompt_token_limit <= 0:
             raise ValueError("reserved output tokens must be smaller than the context window")
@@ -1508,9 +2030,18 @@ class AgentPromptContextManager:
         elif projection_scope == "node":
             if not projection_node_id:
                 raise ValueError("node projection requires projection_node_id")
-            projection = node_task_prompt_projection(task, projection_node_id)
+            projection = node_task_prompt_projection(
+                task,
+                projection_node_id,
+                execution_record_loader=self._execution_record_loader,
+                settlement_loader=self._settlement_loader,
+            )
         elif projection_scope == "continuation":
-            projection = continuation_task_prompt_projection(task)
+            projection = continuation_task_prompt_projection(
+                task,
+                execution_record_loader=self._execution_record_loader,
+                settlement_loader=self._settlement_loader,
+            )
         else:
             raise ValueError(f"unsupported prompt projection scope: {projection_scope}")
         if phase in {"discovery", "replan"} and task is not None:

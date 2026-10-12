@@ -766,6 +766,83 @@ def test_successfully_settled_place_exposes_post_placement_fact() -> None:
     assert "post-placement" in projection["instruction_boundary"]
 
 
+def test_continuation_route_uses_effective_late_action_settlement() -> None:
+    node = SimpleNamespace(node_id="place-node", dependencies=())
+    raw = SimpleNamespace(
+        revision_id="revision-1", node_id="place-node", status="outcome_unknown",
+        world_change_started=True, outcome_known=False, scene_revision="scene-2",
+        invocation_id="invocation://place/late",
+    )
+    effective = SimpleNamespace(
+        revision_id="revision-1", node_id="place-node", status="completed",
+        world_change_started=True, outcome_known=True, scene_revision="scene-2",
+        invocation_id="invocation://place/late",
+    )
+    record = SimpleNamespace(
+        revision_id="revision-1", node_id="place-node", tool_id="object.place",
+        semantics="action", status="succeeded", invocation_id="invocation://place/late",
+        response={"data": {"new_scene_revision": "scene-2", "world_change_started": True}},
+        arguments={}, evidence_refs=("invocation://place/late",), record_id="place-late",
+    )
+    task = _task(
+        graph=SimpleNamespace(nodes=(node,)), records=(record,), settlements=(raw,)
+    )
+
+    unresolved = node_task_prompt_projection(task, "place-node")
+    assert getattr(unresolved["node_settlement"], "status", None) == "outcome_unknown"
+    assert unresolved["execution_phase_context"]["no_replay_actions"][0][
+        "settlement_status"
+    ] == "outcome_unknown"
+
+    projection = continuation_task_prompt_projection(
+        task,
+        execution_record_loader=lambda _task_id, _revision_id: (record,),
+        settlement_loader=lambda _task_id, _revision_id: (effective,),
+    )
+
+    assert projection["continuation_route"] == "refresh_scene_before_next_segment"
+    assert projection["latest_settled_result"]["status"] == "completed"
+    assert projection["latest_settled_result"]["outcome_known"] is True
+    assert projection["execution_phase_context"]["no_replay_actions_total"] == 1
+    node_projection = node_task_prompt_projection(
+        task,
+        "place-node",
+        execution_record_loader=lambda _task_id, _revision_id: (record,),
+        settlement_loader=lambda _task_id, _revision_id: (effective,),
+    )
+    assert getattr(node_projection["node_settlement"], "status", None) == "completed"
+    assert node_projection["execution_phase_context"]["completed_obligations"][0][
+        "status"
+    ] == "completed"
+
+
+def test_continuation_legacy_goal_projection_is_bounded() -> None:
+    records = tuple(
+        SimpleNamespace(
+            revision_id="revision-1",
+            node_id=None,
+            tool_id="task.goal",
+            semantics="query",
+            status="succeeded",
+            invocation_id=None,
+            record_id=f"goal-{index}",
+            arguments={},
+            response={"data": {"goals": [{
+                "execution_entity_ref": f"entity://stable-{index}",
+                "destination_ref": f"destination://goal-{index}",
+            }]}},
+            evidence_refs=(f"tool:goal-{index}",),
+        )
+        for index in range(140)
+    )
+    projection = continuation_task_prompt_projection(_task(records=records))
+
+    assert projection["task_goal_record_count"] == 140
+    assert projection["task_goal_item_count"] == 140
+    assert len(projection["task_goals"]) == 128
+    assert projection["task_goals"][0]["record_id"] == "goal-12"
+
+
 def test_terminal_task_exposes_only_reconciliation_for_unknown_action_invocation() -> None:
     names = (
         "forge_task_create",
@@ -1774,7 +1851,7 @@ def test_task_projection_preserves_revision_bindings_and_node_obligations() -> N
         assert required in encoded
 
 
-def test_node_projection_is_reference_only_and_scoped_to_current_node() -> None:
+def test_node_projection_restores_frozen_skill_and_stays_scoped_to_current_node() -> None:
     current = SimpleNamespace(
         node_id="node-place",
         obligation_id="place-red-left",
@@ -1837,15 +1914,191 @@ def test_node_projection_is_reference_only_and_scoped_to_current_node() -> None:
         ),
     )
 
-    encoded = json.dumps(node_task_prompt_projection(task, "node-place"))
+    projection = node_task_prompt_projection(task, "node-place")
+    encoded = json.dumps(projection)
 
-    assert "agent_node_prompt_projection_v1" in encoded
+    assert "agent_node_prompt_projection_v2" in encoded
     assert "skill-use-current" in encoded
     assert "skill-use-unrelated" not in encoded
     assert "place-red-left" in encoded
-    assert "place-blue-right" not in encoded
-    assert "FULL INSTRUCTIONS" not in encoded
+    assert projection["node"]["obligation_id"] == "place-red-left"
+    assert any(
+        item["obligation_id"] == "place-blue-right"
+        for item in projection["execution_phase_context"]["remaining_obligations"]
+    )
+    assert "Follow the frozen workflow." in encoded
+    assert "CURRENT FULL INSTRUCTIONS MUST NOT BE COPIED" not in encoded
+    assert "UNRELATED FULL INSTRUCTIONS MUST NOT BE COPIED" not in encoded
     assert "primary_skill_instructions" not in encoded
+
+
+def test_node_projection_reconstructs_cross_revision_phase_effect_and_goal_context() -> None:
+    action_node = SimpleNamespace(
+        node_id="place-item", obligation_id="place selected item", capability="object.place",
+        dependencies=(), conditions=(), required_evidence=(), input_bindings={},
+        resources=(), effects=("scene.changed",), retry_of=None,
+    )
+    current_node = SimpleNamespace(
+        node_id="inspect-next", obligation_id="inspect remaining work", capability="inspect.current",
+        dependencies=(), conditions=(), required_evidence=(), input_bindings={},
+        resources=(), effects=(), retry_of=None,
+    )
+    goal = SimpleNamespace(
+        revision_id="revision-1", node_id=None, tool_id="task.goal", semantics="query",
+        status="succeeded", invocation_id=None, record_id="goal-record", arguments={},
+        response={"data": {"goal_ref": "artifact://goal/1", "goals": [{
+            "execution_entity_ref": "entity://stable-1",
+            "destination_ref": "destination://goal-1", "frame_id": "world",
+        }, {
+            "execution_entity_ref": "entity://stable-2",
+            "destination_ref": "destination://goal-1", "frame_id": "world",
+        }]}}, evidence_refs=("tool:goal-record",),
+    )
+    binding = SimpleNamespace(
+        revision_id="revision-1", node_id=None, tool_id="scene.bind", semantics="query",
+        status="succeeded", invocation_id=None, record_id="bind-record", arguments={},
+        response={"data": {"scene_revision": "scene-1", "entities": [{
+            "entity_ref": "entity://visual-1", "execution_entity_ref": "entity://stable-1",
+            "category": "item",
+        }]}}, evidence_refs=("tool:bind-record",),
+    )
+    action = SimpleNamespace(
+        revision_id="revision-1", node_id="place-item", tool_id="object.place",
+        semantics="action", status="succeeded", invocation_id="invocation://place/1",
+        record_id="place-record", arguments={
+            "entity_ref": "entity://visual-1", "destination_ref": "destination://goal-1",
+        }, response={"data": {
+            "new_scene_revision": "scene-2", "release_confirmed": True,
+            "retreat_completed": True, "clear_of_target": True,
+        }}, evidence_refs=("invocation://place/1",),
+    )
+    action_settlement = SimpleNamespace(
+        revision_id="revision-1", node_id="place-item", invocation_id="invocation://place/1",
+        status="completed", scene_revision="scene-2", source_scene_revision="scene-1",
+        world_change_started=True, outcome_known=True, recommended_action="continue",
+    )
+    observe = SimpleNamespace(
+        revision_id="revision-2", node_id=None, tool_id="scene.observe", semantics="query",
+        status="succeeded", invocation_id=None, record_id="observe-current", arguments={},
+        response={"data": {
+            "scene_revision": "scene-2", "observation_ref": "observation://scene-2/head",
+            "calibration_ref": "artifact://scene-2/calibration-current",
+        }},
+        evidence_refs=("tool:observe-current",),
+    )
+    understand = SimpleNamespace(
+        revision_id="revision-2", node_id=None, tool_id="scene.understand", semantics="query",
+        status="succeeded", invocation_id=None, record_id="understand-current",
+        arguments={"scene_revision": "scene-2"},
+        response={"data": {
+            "scene_revision": "scene-2", "observation_ref": "observation://scene-2/head",
+            "calibration_ref": "artifact://scene-2/calibration-current",
+        }},
+        evidence_refs=("tool:understand-current",),
+    )
+    stale_capabilities = SimpleNamespace(
+        revision_id="revision-2", node_id=None, tool_id="manipulation.capabilities", semantics="query",
+        status="succeeded", invocation_id=None, record_id="capabilities-stale",
+        arguments={
+            "scene_revision": "scene-2", "observation_ref": "observation://scene-2/head",
+            "calibration_ref": "artifact://scene-2/calibration-stale",
+        }, response={"data": {
+            "scene_revision": "scene-2", "observation_ref": "observation://scene-2/head",
+            "calibration_ref": "artifact://scene-2/calibration-stale",
+            "goal_attainment": [{
+                "execution_entity_ref": "entity://stable-1",
+                "destination_ref": "destination://goal-1",
+                "status": "verified",
+            }],
+        }},
+        evidence_refs=("tool:capabilities-stale",),
+    )
+    exact_attainment = SimpleNamespace(
+        revision_id="revision-2", node_id=None, tool_id="verify.current", semantics="query",
+        status="succeeded", invocation_id=None, record_id="attainment-exact",
+        arguments={
+            "scene_revision": "scene-2", "observation_ref": "observation://scene-2/head",
+            "calibration_ref": "artifact://scene-2/calibration-current",
+        }, response={"data": {
+            "scene_revision": "scene-2", "observation_ref": "observation://scene-2/head",
+            "calibration_ref": "artifact://scene-2/calibration-current",
+            "goal_attainment": [{
+                "execution_entity_ref": "entity://stable-1",
+                "destination_ref": "destination://goal-1",
+                "status": "verified",
+            }],
+        }}, evidence_refs=("tool:attainment-exact",),
+    )
+    ambiguous_attainment = SimpleNamespace(
+        revision_id="revision-2", node_id=None, tool_id="verify.current", semantics="query",
+        status="succeeded", invocation_id=None, record_id="attainment-ambiguous",
+        arguments={
+            "scene_revision": "scene-2", "observation_ref": "observation://scene-2/head",
+            "calibration_ref": "artifact://scene-2/calibration-current",
+        }, response={"data": {
+            "scene_revision": "scene-2", "observation_ref": "observation://scene-2/head",
+            "calibration_ref": "artifact://scene-2/calibration-current",
+            "goal_attainment": [{
+                "destination_ref": "destination://goal-1", "status": "verified",
+            }],
+        }}, evidence_refs=("tool:attainment-ambiguous",),
+    )
+    first = SimpleNamespace(
+        revision_id="revision-1", number=1, reason="first segment",
+        plan_graph=SimpleNamespace(nodes=(action_node,)), node_settlements=(action_settlement,),
+        execution_records=[goal, binding, action], fresh_evidence_requirements=(),
+        replan_evidence_refs=(),
+    )
+    second = SimpleNamespace(
+        revision_id="revision-2", number=2, reason="continue remaining work",
+        plan_graph=SimpleNamespace(nodes=(current_node,)), node_settlements=(),
+        execution_records=[
+            observe, understand, stale_capabilities, exact_attainment,
+            ambiguous_attainment,
+        ],
+        fresh_evidence_requirements=(), replan_evidence_refs=(),
+    )
+    task = _task(graph=second.plan_graph)
+    task.revisions = [first, second]
+    task.active_revision = second
+    task.active_revision_id = "revision-2"
+    task.execution_records = [
+        goal, binding, action, observe, understand, stale_capabilities, exact_attainment,
+        ambiguous_attainment,
+    ]
+    task.primary_skill_instructions = "Inspect, plan, execute, then verify. Never replay settled actions."
+    task.active_skill_instructions = task.primary_skill_instructions
+    task.primary_skill_binding = SimpleNamespace(
+        binding_id="binding-1", skill_name="generic-workflow", skill_version="1.2.3",
+        skill_document_sha256="b" * 64, runtime_profile="fixture",
+        runtime_instance_id="runtime-1", gateway_identity="gateway-1",
+        required_tools=(SimpleNamespace(
+            tool_id="inspect.current", semantics="query", spec_sha256="c" * 64,
+            ready_at_binding=True, planning_policy=ToolSpecPolicy(
+                tool_id="inspect.current", semantics="query", spec_digest="c" * 64,
+                capabilities=("inspect.current",), required_evidence=("scene.current",),
+            ),
+        ),),
+    )
+
+    projection = node_task_prompt_projection(task, "inspect-next")
+    phase = projection["execution_phase_context"]
+
+    assert projection["frozen_skill_route_context"]["instructions"].startswith("Inspect, plan")
+    assert projection["tool_contract_context"]["tool_id"] == "inspect.current"
+    assert phase["current_node"]["node_id"] == "inspect-next"
+    assert phase["remaining_obligations"][0]["node_id"] == "inspect-next"
+    assert phase["completed_obligations"][0]["node_id"] == "place-item"
+    assert phase["no_replay_actions"][0]["invocation_id"] == "invocation://place/1"
+    assert phase["completed_effects"][0]["execution_entity_ref"] == "entity://stable-1"
+    goal_state = phase["goal_ledger"]["definitions"][0]
+    assert goal_state["action_effect_confirmed"] is True
+    assert goal_state["current_scene_attainment"] == "confirmed"
+    assert goal_state["attainment_basis"]["record_id"] == "attainment-exact"
+    assert phase["goal_ledger"]["definitions"][1]["current_scene_attainment"] == "unknown"
+    assert phase["current_world_context"]["scene.observe"]["record_id"] == "observe-current"
+    assert phase["current_world_context"]["scene.understand"]["record_id"] == "understand-current"
+    assert "manipulation.capabilities" not in phase["current_world_context"]
 
 
 def test_node_projection_scope_requires_node_identity() -> None:
@@ -1863,6 +2116,41 @@ def test_node_projection_scope_requires_node_identity() -> None:
             estimate_tokens=_estimate,
             projection_scope="node",
         )
+
+
+def test_compacted_node_turn_reinjects_skill_route_and_execution_phase() -> None:
+    node = SimpleNamespace(
+        node_id="inspect", obligation_id="inspect current state", capability="inspect.current",
+        dependencies=(), conditions=(), required_evidence=(), input_bindings={},
+        resources=(), effects=(), retry_of=None,
+    )
+    task = _task(graph=SimpleNamespace(nodes=(node,)))
+    task.primary_skill_instructions = "Persisted workflow route: inspect before planning."
+    task.active_skill_instructions = task.primary_skill_instructions
+    manager = AgentPromptContextManager(
+        context_window_tokens=100_000,
+        compaction_trigger_tokens=2_000,
+    )
+
+    view = manager.build(
+        messages=[
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "old context " * 3_000},
+            {"role": "assistant", "content": "continue"},
+        ],
+        turn_start_index=1,
+        all_tool_names=("forge_plan_ready", "forge_plan_select"),
+        task=task,
+        estimate_tokens=_estimate,
+        projection_scope="node",
+        projection_node_id="inspect",
+    )
+
+    encoded = json.dumps(view.messages)
+    assert view.compacted is True
+    assert "Persisted workflow route: inspect before planning." in encoded
+    assert "execution_phase_context" in encoded
+    assert "inspect current state" in encoded
 
 
 def test_task_projection_does_not_report_compaction_by_itself() -> None:
