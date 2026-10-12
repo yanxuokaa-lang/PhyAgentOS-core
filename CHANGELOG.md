@@ -9,7 +9,7 @@
 详见 [2026-10 part5 v13.2.12](changelog/2026-10_part5.md)。See the detailed v13.2.12 record.
 - Active lock: Skill `3.0.19` / Node `1.0.9`; Node SHA-256 `f721430c4bcb2960306c16c4defacae8e7652870eaffc4c0c1ab718d8f21fff4`.
 - Runtime: `runtime_d4b66471c6d14ffc`; 11/11 Tool contexts ready; task store remains `awaiting_replan=1`, `cancelled=197`, `failed=92`.
-- Deployment log/index commit: pending.
+- Deployment log/index commit: `2ea095d9` (this log update); branch `feature/planning-loop`.
 
 ## v13.2.11 (2026-10-12 09:05) - codex
 
