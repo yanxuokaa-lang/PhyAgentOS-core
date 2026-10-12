@@ -42,7 +42,7 @@
 - 首次启动的 simulator worker 完成初始化后因 host 配置缺失而正常关闭；最终成功启动创建了新的 simulator worker，因此场景生命周期重新初始化，但 readiness 不作为具体场景内容证明。 / The first-start simulator worker shut down after host configuration failed; the final successful start created another simulator worker, so the scene lifecycle was reinitialized, while readiness is not treated as proof of concrete scene contents.
 
 ### Git 提交 / Git Commit
-- Restart log/index commit pending on `feature/planning-loop`. / 重启日志与索引提交待在 `feature/planning-loop` 完成。
+- Restart log/index commit: `b6ce82b3` on `feature/planning-loop`; commit-reference completion follows separately. / 重启日志与索引提交：`b6ce82b3`，分支 `feature/planning-loop`；提交引用补全随后单独完成。
 
 ## v13.3.7 (2026-10-12 21:50) - codex
 
