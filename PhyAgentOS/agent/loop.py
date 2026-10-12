@@ -152,9 +152,10 @@ class AgentLoop:
     def _should_fail_task_after_model_failure(task) -> bool:
         """Keep Coordinator recovery, clarification and physical ownership intact.
 
-        PlanningLoop persists ``awaiting_replan`` before returning a node-turn
-        provider failure.  Terminalizing that same task here would discard the
-        durable recovery handoff even though no new Tool call was authorized.
+        PlanningLoop persists ``waiting_for_agent_provider`` before returning a
+        pre-Tool model failure. Terminalizing that same task here would discard
+        the durable same-node recovery handoff even though no Tool call was
+        authorized.
         Clarification/cancellation checkpoints and uncertain physical outcomes
         also remain recoverable. Other failures use Coordinator settlement.
         """
@@ -163,6 +164,7 @@ class AgentLoop:
             "awaiting_replan",
             "waiting_for_user",
             "waiting_for_runtime",
+            "waiting_for_agent_provider",
             "cancelling",
         }:
             return False

@@ -112,6 +112,29 @@ class EvidenceExecutionContext(BaseModel):
     error: dict[str, Any] | None = None
 
 
+class CompletedEffectContext(BaseModel):
+    """Bounded historical Action fact used for stage and identity continuity."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    node_id: str
+    tool_id: str
+    status: str
+    invocation_id: str | None = None
+    prior_visual_entity_ref: str | None = None
+    execution_entity_ref: str | None = None
+    destination_ref: str | None = None
+    source_scene_revision: str | None = None
+    new_scene_revision: str | None = None
+    world_change_started: bool | None = None
+    outcome_known: bool | None = None
+    release_confirmed: bool | None = None
+    retreat_completed: bool | None = None
+    clear_of_target: bool | None = None
+    observation_ready: bool | None = None
+    recommended_action: str | None = None
+
+
 class NodeExecutionContext(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -126,6 +149,7 @@ class NodeExecutionContext(BaseModel):
     scene_bind_selection: dict[str, Any] | None = None
     predecessor_context: tuple[PredecessorContext, ...] = ()
     evidence_context: tuple[EvidenceExecutionContext, ...] = ()
+    completed_effect_context: tuple[CompletedEffectContext, ...] = ()
     preserved_constraints: tuple[str, ...] = ()
     fresh_evidence_requirements: tuple[str, ...] = ()
     counterevidence_refs: tuple[str, ...] = ()
@@ -290,6 +314,117 @@ class NodeContextProvider:
                         response=record.response,
                         error=record.error,
                     ))
+        task_revisions = tuple(getattr(task, "revisions", (revision,)))
+        revision_records = tuple(
+            (source_revision.revision_id, record)
+            for source_revision in task_revisions
+            for record in source_revision.execution_records
+        )
+        historical_settlements = {
+            (
+                source_revision.revision_id,
+                item.node_id,
+                getattr(item, "invocation_id", None),
+            ): item
+            for source_revision in task_revisions
+            for item in source_revision.node_settlements
+        }
+        historical_settlements.update({
+            (
+                revision.revision_id,
+                item.node_id,
+                getattr(item, "invocation_id", None),
+            ): item
+            for item in settled_items
+        })
+        current_execution_entities: dict[str, str] = {}
+        action_execution_entities: dict[str, str] = {}
+        for _record_revision_id, record in revision_records:
+            if record.tool_id == "scene.bind" and record.status == "succeeded":
+                current_execution_entities = {
+                    str(entity["entity_ref"]): str(entity["execution_entity_ref"])
+                    for entity in response_facts(record.response).get("entities", ())
+                    if isinstance(entity, Mapping)
+                    and isinstance(entity.get("entity_ref"), str)
+                    and isinstance(entity.get("execution_entity_ref"), str)
+                }
+                continue
+            if record.semantics in {"action", "session"}:
+                visual_ref = record.arguments.get("entity_ref")
+                if (
+                    isinstance(visual_ref, str)
+                    and visual_ref in current_execution_entities
+                ):
+                    action_execution_entities[record.record_id] = (
+                        current_execution_entities[visual_ref]
+                    )
+        completed_effects: list[CompletedEffectContext] = []
+        for record_revision_id, record in revision_records:
+            if (
+                record.semantics not in {"action", "session"}
+                or record.status not in {"succeeded", "failed", "cancelled", "stopped", "unknown"}
+                or not isinstance(record.node_id, str)
+            ):
+                continue
+            settlement = historical_settlements.get(
+                (record_revision_id, record.node_id, record.invocation_id)
+            )
+            if (
+                settlement is None
+                or settlement.status != "completed"
+                or settlement.invocation_id != record.invocation_id
+            ):
+                continue
+            facts = response_facts(record.response)
+            prior_entity = record.arguments.get("entity_ref")
+            completed_effects.append(CompletedEffectContext(
+                node_id=record.node_id,
+                tool_id=record.tool_id,
+                status=record.status,
+                invocation_id=record.invocation_id,
+                prior_visual_entity_ref=(
+                    prior_entity if isinstance(prior_entity, str) else None
+                ),
+                execution_entity_ref=action_execution_entities.get(record.record_id),
+                destination_ref=(
+                    record.arguments.get("destination_ref")
+                    if isinstance(record.arguments.get("destination_ref"), str)
+                    else None
+                ),
+                source_scene_revision=(
+                    facts.get("source_scene_revision")
+                    if isinstance(facts.get("source_scene_revision"), str)
+                    else explicit_scene_revision(record.arguments)
+                ),
+                new_scene_revision=(
+                    facts.get("new_scene_revision")
+                    if isinstance(facts.get("new_scene_revision"), str)
+                    else settlement.scene_revision
+                ),
+                world_change_started=settlement.world_change_started,
+                outcome_known=settlement.outcome_known,
+                release_confirmed=(
+                    facts.get("release_confirmed")
+                    if isinstance(facts.get("release_confirmed"), bool)
+                    else None
+                ),
+                retreat_completed=(
+                    facts.get("retreat_completed")
+                    if isinstance(facts.get("retreat_completed"), bool)
+                    else None
+                ),
+                clear_of_target=(
+                    facts.get("clear_of_target")
+                    if isinstance(facts.get("clear_of_target"), bool)
+                    else None
+                ),
+                observation_ready=(
+                    facts.get("observation_ready")
+                    if isinstance(facts.get("observation_ready"), bool)
+                    else None
+                ),
+                recommended_action=settlement.recommended_action,
+            ))
         return NodeExecutionContext(
             task_id=task_id,
             revision_id=revision.revision_id,
@@ -304,6 +439,7 @@ class NodeContextProvider:
             ),
             predecessor_context=tuple(predecessors),
             evidence_context=tuple(evidence_context),
+            completed_effect_context=tuple(completed_effects),
             preserved_constraints=tuple(preserved_constraints),
             fresh_evidence_requirements=revision.fresh_evidence_requirements,
             counterevidence_refs=revision.replan_evidence_refs,
@@ -1314,7 +1450,10 @@ class AgentLoopNodeExecutor:
             "For a later node after a world-changing Action, an old scene.bind record may be "
             "provenance-only when entity_ref is already frozen in input_bindings; do not browse "
             "its stale geometry. Use direct predecessor records and the current observation for "
-            "all current-scene arguments. "
+            "all current-scene arguments. completed_effect_context is historical stage and "
+            "stable execution-identity context only: completed Action invocations must not be "
+            "replayed, and their prior_visual_entity_ref, destination, binding, or geometry must "
+            "not replace current-scene evidence. "
             "If forge_plan_ready declares argument_projection_sources, pass projection_sources with "
             "exactly those declared slot names and one visible authorized record_id per slot; do not "
             "provide source paths or projected values. The Coordinator compiles candidates, arm IDs, "
@@ -1600,6 +1739,22 @@ class PlanningLoopAdapter:
                 result = self.node_executor(context)
                 if hasattr(result, "__await__"):
                     result = await result  # type: ignore[assignment]
+            except NodeTurnProviderError as exc:
+                current = self.coordinator.record_agent_provider_blocked(
+                    task_id,
+                    context.revision_id,
+                    node_id,
+                    failure_code=exc.reason,
+                    scene_revision=context.scene_revision,
+                )
+                return PlanningLoopResult(
+                    task_id,
+                    current.status.value,
+                    tuple(completed),
+                    len(current.revisions),
+                    replans,
+                    str(exc),
+                )
             except NodeTurnIncompleteError as exc:
                 self.coordinator.record_planning_node_blocked(
                     task_id, context.revision_id, node_id, str(exc),

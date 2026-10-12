@@ -88,6 +88,21 @@ class LongHorizonTaskController:
     def resume(self, task_id: str) -> LongHorizonTaskResult:
         """Clear a pause request and wake an in-process runner when available."""
         self.coordinator.resume_task(task_id)
+        task = self.coordinator.get_task(task_id)
+        if task.status == AgentTaskStatus.WAITING_FOR_AGENT_PROVIDER:
+            try:
+                scene_revision = self.scene_revision_provider(task_id)
+                if not isinstance(scene_revision, str) or not scene_revision.strip():
+                    raise ValueError("scene revision provider returned an empty value")
+                self.coordinator.resume_agent_provider_block(
+                    task_id,
+                    scene_revision=scene_revision,
+                    operator_authorized=True,
+                )
+            except (AgentTaskError, PlanningContextUnavailableError, ValueError):
+                # Keep the persisted wait/block state; a later runner can retry
+                # after trusted scene facts become available.
+                pass
         self._ensure_started(task_id)
         return self._snapshot(task_id)
 
@@ -196,11 +211,22 @@ class LongHorizonTaskController:
             task = self.coordinator.get_task(task_id)
             if task.terminal:
                 return self._snapshot(task_id)
+            if task.status == AgentTaskStatus.AWAITING_REPLAN:
+                try:
+                    task = self.coordinator.restore_legacy_agent_provider_block(
+                        task_id,
+                        scene_revision=self.scene_revision_provider(task_id),
+                    )
+                except (AgentTaskError, PlanningContextUnavailableError, ValueError):
+                    task = self.coordinator.get_task(task_id)
             task = await self._wait_for_runtime(task_id, task)
+            task = await self._wait_for_agent_provider(task_id, task)
             if task.status == AgentTaskStatus.AWAITING_REPLAN:
                 return self._snapshot(task_id, status="awaiting_replan")
             if task.status == AgentTaskStatus.WAITING_FOR_USER:
                 return self._snapshot(task_id, status="waiting_for_user")
+            if task.status == AgentTaskStatus.WAITING_FOR_AGENT_PROVIDER:
+                return self._snapshot(task_id, status="waiting_for_agent_provider")
             if task.pause_requested:
                 return self._snapshot(task_id, status="paused")
 
@@ -213,8 +239,15 @@ class LongHorizonTaskController:
                 if task.terminal:
                     return self._snapshot(task_id)
                 task = await self._wait_for_runtime(task_id, task)
+                task = await self._wait_for_agent_provider(task_id, task)
                 if task.terminal:
                     return self._snapshot(task_id)
+                if task.status == AgentTaskStatus.AWAITING_REPLAN:
+                    return self._snapshot(task_id, status="awaiting_replan")
+                if task.status == AgentTaskStatus.WAITING_FOR_AGENT_PROVIDER:
+                    return self._snapshot(
+                        task_id, status="waiting_for_agent_provider"
+                    )
                 if task.pause_requested or task.cancellation_requested:
                     return self._snapshot(task_id)
                 try:
@@ -248,6 +281,8 @@ class LongHorizonTaskController:
                     )
 
                 if result.status == "waiting_for_runtime":
+                    continue
+                if result.status == "waiting_for_agent_provider":
                     continue
                 if result.status != "segment_completed":
                     final = self._from_planning_result(result)
@@ -290,6 +325,7 @@ class LongHorizonTaskController:
                     AgentTaskStatus.AWAITING_REPLAN,
                     AgentTaskStatus.WAITING_FOR_USER,
                     AgentTaskStatus.WAITING_FOR_RUNTIME,
+                    AgentTaskStatus.WAITING_FOR_AGENT_PROVIDER,
                 }:
                     return self._snapshot(task_id)
                 if task.pause_requested or task.cancellation_requested:
@@ -330,6 +366,53 @@ class LongHorizonTaskController:
             if task.status != AgentTaskStatus.WAITING_FOR_RUNTIME:
                 return task
             await asyncio.sleep(interval)
+            task = self.coordinator.get_task(task_id)
+        return task
+
+    async def _wait_for_agent_provider(
+        self, task_id: str, task: AgentTaskRecord
+    ) -> AgentTaskRecord:
+        """Bounded retry of the same pre-Tool node turn, never a Tool retry."""
+        interval = max(
+            0.1,
+            float(
+                getattr(
+                    getattr(self.coordinator, "config", None),
+                    "agent_provider_retry_delay_s",
+                    getattr(self.coordinator, "agent_provider_retry_delay_s", 1.0),
+                )
+            ),
+        )
+        while task.status == AgentTaskStatus.WAITING_FOR_AGENT_PROVIDER:
+            if task.pause_requested or task.cancellation_requested:
+                return task
+            block = self.coordinator.active_agent_provider_block(task_id)
+            if block is None or (
+                block.get("retry_exhausted") is True
+                and block.get("operator_authorized") is not True
+            ):
+                return task
+            await asyncio.sleep(interval)
+            try:
+                scene_revision = self.scene_revision_provider(task_id)
+                if not isinstance(scene_revision, str) or not scene_revision.strip():
+                    return task
+                task = self.coordinator.resume_agent_provider_block(
+                    task_id,
+                    scene_revision=scene_revision,
+                    operator_authorized=block.get("operator_authorized") is True,
+                )
+            except AgentTaskError:
+                current = self.coordinator.get_task(task_id)
+                if not (
+                    current.terminal
+                    or current.pause_requested
+                    or current.cancellation_requested
+                ):
+                    raise
+                return current
+            if task.status != AgentTaskStatus.WAITING_FOR_AGENT_PROVIDER:
+                return task
             task = self.coordinator.get_task(task_id)
         return task
 

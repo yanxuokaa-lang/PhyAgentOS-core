@@ -707,6 +707,12 @@ def _make_forge_components(config: Config, provider):
         verifier=_make_forge_verifier(config, provider),
         max_replans=config.agents.verification.max_replans_per_episode,
         replan_timeout_s=config.agents.verification.replan_timeout_s,
+        max_agent_provider_retries=(
+            config.agents.verification.max_agent_provider_retries
+        ),
+        agent_provider_retry_delay_s=(
+            config.agents.verification.agent_provider_retry_delay_s
+        ),
     )
     return client, invocation_ids, coordinator, runtime_registry.is_available
 

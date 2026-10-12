@@ -441,6 +441,219 @@ def test_scene_bind_node_context_projects_current_candidates_without_auto_select
     assert "does not authorize motion" not in projection["scene_bind_selection"]
 
 
+def test_node_context_separates_completed_action_identity_from_current_geometry():
+    action = PlanNode(
+        node_id="place",
+        obligation_id="place-object",
+        capability="object.place",
+    )
+    checkpoint = PlanNode(
+        node_id="checkpoint",
+        obligation_id="bind-current-scene",
+        capability="scene.bind",
+        dependencies=("place",),
+    )
+    payload = {
+        "schema_version": "paos-plan-graph/v1",
+        "task_id": "task-effect-context",
+        "revision_id": "revision-effect-context",
+        "graph_digest": "0" * 64,
+        "planner_decision_digest": "1" * 64,
+        "policy_snapshot_digest": "2" * 64,
+        "nodes": [
+            action.model_dump(mode="json"),
+            checkpoint.model_dump(mode="json"),
+        ],
+    }
+    payload["graph_digest"] = plan_graph_digest(payload)
+    graph = PlanGraph.model_validate(payload)
+    old_bind = SimpleNamespace(
+        record_id="old-bind",
+        node_id=None,
+        tool_id="scene.bind",
+        semantics="query",
+        status="succeeded",
+        invocation_id=None,
+        arguments={"scene_revision": "scene-old"},
+        response={"data": {
+            "scene_revision": "scene-old",
+            "binding_ref": "artifact://old-binding",
+            "entities": [{
+                "entity_ref": "entity://old-visual",
+                "execution_entity_ref": "entity://stable-object",
+                "world_T_object": [1.0] * 16,
+            }],
+        }},
+        error=None,
+    )
+    placed = SimpleNamespace(
+        record_id="placed",
+        node_id="place",
+        tool_id="object.place",
+        semantics="action",
+        status="succeeded",
+        invocation_id="invocation://place/1",
+        arguments={
+            "entity_ref": "entity://old-visual",
+            "destination_ref": "destination://slot/1",
+            "scene_revision": "scene-old",
+        },
+        response={"data": {
+            "status": "succeeded",
+            "new_scene_revision": "scene-current",
+            "release_confirmed": True,
+            "retreat_completed": True,
+            "clear_of_target": True,
+            "observation_ready": True,
+        }},
+        error=None,
+    )
+    settlement = SimpleNamespace(
+        node_id="place",
+        status="completed",
+        scene_revision="scene-current",
+        evidence_refs=("invocation:place/1",),
+        source_tool_id="object.place",
+        failure_code=None,
+        world_change_started=True,
+        outcome_known=True,
+        recommended_action="continue",
+        invocation_id="invocation://place/1",
+    )
+    revision = SimpleNamespace(
+        revision_id="revision-effect-context",
+        plan_graph=graph,
+        node_settlements=(settlement,),
+        execution_records=(old_bind, placed),
+        discovery_evidence_refs=(),
+        fresh_evidence_requirements=(),
+        replan_evidence_refs=(),
+    )
+    task = SimpleNamespace(
+        task_id="task-effect-context",
+        active_revision=revision,
+        revisions=(revision,),
+        primary_skill_binding=None,
+        tool_bindings=(),
+    )
+
+    context = NodeContextProvider(lambda _: task).build(
+        task.task_id, "checkpoint", scene_revision="scene-current"
+    )
+    projected = node_context_prompt_projection(context)
+
+    assert projected["completed_effect_context"] == [{
+        "node_id": "place",
+        "tool_id": "object.place",
+        "status": "succeeded",
+        "invocation_id": "invocation://place/1",
+        "prior_visual_entity_ref": "entity://old-visual",
+        "execution_entity_ref": "entity://stable-object",
+        "destination_ref": "destination://slot/1",
+        "source_scene_revision": "scene-old",
+        "new_scene_revision": "scene-current",
+        "world_change_started": True,
+        "outcome_known": True,
+        "release_confirmed": True,
+        "retreat_completed": True,
+        "clear_of_target": True,
+        "observation_ready": True,
+        "recommended_action": "continue",
+    }]
+    assert "world_T_object" not in json.dumps(
+        projected["completed_effect_context"]
+    )
+    assert "artifact://old-binding" not in json.dumps(
+        projected["completed_effect_context"]
+    )
+
+
+def test_node_context_keeps_completed_effect_from_prior_revision():
+    checkpoint = PlanNode(
+        node_id="checkpoint",
+        obligation_id="bind-current-scene",
+        capability="scene.bind",
+    )
+    payload = {
+        "schema_version": "paos-plan-graph/v1",
+        "task_id": "task-prior-effect",
+        "revision_id": "revision-current",
+        "graph_digest": "0" * 64,
+        "planner_decision_digest": "1" * 64,
+        "policy_snapshot_digest": "2" * 64,
+        "nodes": [checkpoint.model_dump(mode="json")],
+    }
+    payload["graph_digest"] = plan_graph_digest(payload)
+    graph = PlanGraph.model_validate(payload)
+    old_bind = SimpleNamespace(
+        record_id="prior-bind",
+        node_id="bind",
+        tool_id="scene.bind",
+        semantics="query",
+        status="succeeded",
+        invocation_id=None,
+        arguments={"scene_revision": "scene-old"},
+        response={"data": {"entities": [{
+            "entity_ref": "entity://old-visual",
+            "execution_entity_ref": "entity://stable-object",
+        }]}},
+        error=None,
+    )
+    placed = SimpleNamespace(
+        record_id="prior-place",
+        node_id="place",
+        tool_id="object.place",
+        semantics="action",
+        status="succeeded",
+        invocation_id="invocation://place/prior",
+        arguments={"entity_ref": "entity://old-visual"},
+        response={"data": {"new_scene_revision": "scene-current"}},
+        error=None,
+    )
+    prior_settlement = SimpleNamespace(
+        node_id="place",
+        status="completed",
+        scene_revision="scene-current",
+        world_change_started=True,
+        outcome_known=True,
+        recommended_action="continue",
+        invocation_id="invocation://place/prior",
+    )
+    prior_revision = SimpleNamespace(
+        revision_id="revision-prior",
+        node_settlements=(prior_settlement,),
+        execution_records=(old_bind, placed),
+    )
+    current_revision = SimpleNamespace(
+        revision_id="revision-current",
+        plan_graph=graph,
+        node_settlements=(),
+        execution_records=(),
+        discovery_evidence_refs=(),
+        fresh_evidence_requirements=(),
+        replan_evidence_refs=(),
+    )
+    task = SimpleNamespace(
+        task_id="task-prior-effect",
+        active_revision=current_revision,
+        revisions=(prior_revision, current_revision),
+        primary_skill_binding=None,
+        tool_bindings=(),
+    )
+
+    context = NodeContextProvider(lambda _: task).build(
+        task.task_id, "checkpoint", scene_revision="scene-current"
+    )
+
+    assert len(context.completed_effect_context) == 1
+    assert context.completed_effect_context[0].invocation_id == (
+        "invocation://place/prior"
+    )
+    assert context.completed_effect_context[0].execution_entity_ref == (
+        "entity://stable-object"
+    )
+
+
 def test_scene_bind_node_context_marks_stale_understanding_unavailable():
     node = SimpleNamespace(capability="scene.bind")
     predecessor = PredecessorContext(
@@ -3441,15 +3654,269 @@ def test_planning_loop_blocks_provider_failure_without_settlement(tmp_path):
         ),
     ).run(task.task_id, scene_revision="scene-1"))
 
-    assert result.status == "blocked"
+    assert result.status == "waiting_for_agent_provider"
     assert result.last_failure == (
         "node_turn_provider_error:arrange-red:provider_timeout"
     )
     current = c.get_task(task.task_id)
-    assert current.status.value == "awaiting_replan"
-    assert current.replan_deadline is not None
+    assert current.status.value == "waiting_for_agent_provider"
+    assert current.replan_deadline is None
     assert current.active_revision.node_settlements == []
     assert current.active_revision.execution_records == []
+
+
+def test_agent_provider_block_resumes_same_revision_without_replan(tmp_path):
+    c = coordinator(tmp_path)
+    task = c.create_task(
+        task_description="resume same pre-tool node",
+        verification=TaskVerificationContract(mode="off"),
+    )
+    graph = make_graph(task.task_id, "revision-agent-provider", ("inspect",))
+    c.expand_discovery_revision(
+        task.task_id,
+        plan_graph=graph,
+        plan_graph_ref="artifact://plans/agent-provider",
+        discovery_evidence_refs=("scene:inventory",),
+    )
+    task = c.get_task(task.task_id)
+
+    blocked = c.record_agent_provider_blocked(
+        task.task_id,
+        task.active_revision_id,
+        "inspect",
+        failure_code="provider_error",
+        scene_revision="scene-1",
+    )
+    assert blocked.status == AgentTaskStatus.WAITING_FOR_AGENT_PROVIDER
+
+    resumed = c.resume_agent_provider_block(
+        task.task_id, scene_revision="scene-1"
+    )
+
+    assert resumed.status == AgentTaskStatus.EXECUTING
+    assert resumed.active_revision_id == task.active_revision_id
+    assert len(resumed.revisions) == len(task.revisions)
+    assert resumed.active_revision.node_settlements == []
+    assert resumed.active_revision.execution_records == []
+    assert c.active_agent_provider_block(task.task_id) is None
+
+
+def test_agent_provider_block_replans_when_scene_changed(tmp_path):
+    c = coordinator(tmp_path)
+    task = c.create_task(
+        task_description="reject stale pre-tool node",
+        verification=TaskVerificationContract(mode="off"),
+    )
+    graph = make_graph(task.task_id, "revision-agent-provider-stale", ("inspect",))
+    c.expand_discovery_revision(
+        task.task_id,
+        plan_graph=graph,
+        plan_graph_ref="artifact://plans/agent-provider-stale",
+        discovery_evidence_refs=("scene:inventory",),
+    )
+    task = c.get_task(task.task_id)
+    c.record_agent_provider_blocked(
+        task.task_id,
+        task.active_revision_id,
+        "inspect",
+        failure_code="provider_error",
+        scene_revision="scene-1",
+    )
+
+    invalidated = c.resume_agent_provider_block(
+        task.task_id, scene_revision="scene-2"
+    )
+
+    assert invalidated.status == AgentTaskStatus.AWAITING_REPLAN
+    assert invalidated.replan_deadline is not None
+    assert invalidated.active_revision.node_settlements == []
+    assert invalidated.active_revision.execution_records == []
+    assert c.active_agent_provider_block(task.task_id) is None
+
+
+def test_agent_provider_block_refuses_node_with_tool_execution_record(tmp_path):
+    c = coordinator(tmp_path)
+    task = c.create_task(
+        task_description="execution record owns node recovery",
+        verification=TaskVerificationContract(mode="off"),
+    )
+    graph = make_graph(task.task_id, "revision-agent-provider-record", ("inspect",))
+    c.expand_discovery_revision(
+        task.task_id,
+        plan_graph=graph,
+        plan_graph_ref="artifact://plans/agent-provider-record",
+        discovery_evidence_refs=("scene:inventory",),
+    )
+    task = c.get_task(task.task_id)
+    c.store.update(
+        task.task_id,
+        lambda current: current.active_revision.execution_records.append(
+            ToolExecutionRecord(
+                record_id="existing-query",
+                revision_id=current.active_revision_id,
+                tool_id="perception.describe",
+                semantics="query",
+                caller_id="test",
+                node_id="inspect",
+                node_digest=plan_node_digest(graph.nodes[0]),
+                obligation_id=graph.nodes[0].obligation_id,
+                input_binding_digest=tool_input_binding_digest({}),
+                decision_trace_ref="artifact://trace/existing-query",
+                status="succeeded",
+                response={"data": {"status": "available"}},
+            )
+        ),
+        event_type="fixture_execution_recorded",
+    )
+
+    with pytest.raises(
+        AgentTaskError, match="after a Tool execution record exists"
+    ):
+        c.record_agent_provider_blocked(
+            task.task_id,
+            task.active_revision_id,
+            "inspect",
+            failure_code="provider_error",
+            scene_revision="scene-1",
+        )
+
+
+def test_agent_provider_retry_budget_requires_operator_resume(tmp_path):
+    c = AgentTaskCoordinator(
+        workspace=tmp_path,
+        config=ForgeConfig(),
+        client=object(),
+        verifier=None,
+        max_agent_provider_retries=0,
+    )
+    task = c.create_task(
+        task_description="bounded model provider recovery",
+        verification=TaskVerificationContract(mode="off"),
+    )
+    graph = make_graph(task.task_id, "revision-agent-provider-budget", ("inspect",))
+    c.expand_discovery_revision(
+        task.task_id,
+        plan_graph=graph,
+        plan_graph_ref="artifact://plans/agent-provider-budget",
+        discovery_evidence_refs=("scene:inventory",),
+    )
+    task = c.get_task(task.task_id)
+    c.record_agent_provider_blocked(
+        task.task_id,
+        task.active_revision_id,
+        "inspect",
+        failure_code="provider_error",
+        scene_revision="scene-1",
+    )
+
+    unchanged = c.resume_agent_provider_block(
+        task.task_id, scene_revision="scene-1"
+    )
+    assert unchanged.status == AgentTaskStatus.WAITING_FOR_AGENT_PROVIDER
+
+    authorized = c.resume_task(task.task_id)
+    assert authorized.status == AgentTaskStatus.WAITING_FOR_AGENT_PROVIDER
+    assert c.active_agent_provider_block(task.task_id)["operator_authorized"] is True
+
+    resumed = c.resume_agent_provider_block(
+        task.task_id, scene_revision="scene-1"
+    )
+    assert resumed.status == AgentTaskStatus.EXECUTING
+
+
+def test_legacy_node_provider_replan_restores_same_node_wait(tmp_path):
+    c = coordinator(tmp_path)
+    task = c.create_task(
+        task_description="restore legacy node provider block",
+        verification=TaskVerificationContract(mode="off"),
+    )
+    graph = make_graph(task.task_id, "revision-legacy-agent-provider", ("observe", "bind"))
+    c.expand_discovery_revision(
+        task.task_id,
+        plan_graph=graph,
+        plan_graph_ref="artifact://plans/legacy-agent-provider",
+        discovery_evidence_refs=("scene:inventory",),
+    )
+    task = c.get_task(task.task_id)
+    c.record_node_settlement(NodeSettlement(
+        task_id=task.task_id,
+        revision_id=task.active_revision_id,
+        node_id="observe",
+        status="completed",
+        evidence_refs=("tool:observe",),
+        scene_revision="scene-1",
+        source_tool_id="scene.observe",
+    ))
+    c.record_planning_node_blocked(
+        task.task_id,
+        task.active_revision_id,
+        "bind",
+        "node_turn_provider_error:bind:provider_error",
+    )
+
+    restored = c.restore_legacy_agent_provider_block(
+        task.task_id, scene_revision="scene-1"
+    )
+
+    assert restored.status == AgentTaskStatus.WAITING_FOR_AGENT_PROVIDER
+    assert restored.replan_deadline is None
+    assert restored.active_revision.node_settlements[0].node_id == "observe"
+    assert len(restored.revisions) == len(task.revisions)
+
+
+def test_legacy_provider_restore_requires_latest_block_and_completed_predecessors(
+    tmp_path,
+):
+    c = coordinator(tmp_path)
+    task = c.create_task(
+        task_description="keep ambiguous legacy recovery fail closed",
+        verification=TaskVerificationContract(mode="off"),
+    )
+    graph = make_graph(
+        task.task_id,
+        "revision-legacy-provider-ambiguous",
+        ("observe", "bind"),
+    )
+    c.expand_discovery_revision(
+        task.task_id,
+        plan_graph=graph,
+        plan_graph_ref="artifact://plans/legacy-provider-ambiguous",
+        discovery_evidence_refs=("scene:inventory",),
+    )
+    task = c.get_task(task.task_id)
+    c.record_planning_node_blocked(
+        task.task_id,
+        task.active_revision_id,
+        "bind",
+        "node_turn_provider_error:bind:provider_error",
+    )
+
+    missing_predecessor = c.restore_legacy_agent_provider_block(
+        task.task_id, scene_revision="scene-1"
+    )
+    assert missing_predecessor.status == AgentTaskStatus.AWAITING_REPLAN
+
+    c.record_node_settlement(NodeSettlement(
+        task_id=task.task_id,
+        revision_id=task.active_revision_id,
+        node_id="observe",
+        status="completed",
+        evidence_refs=("tool:observe",),
+        scene_revision="scene-1",
+        source_tool_id="scene.observe",
+    ))
+    c.record_planning_node_blocked(
+        task.task_id,
+        task.active_revision_id,
+        "bind",
+        "node_turn_incomplete:bind:node_selection_no_progress",
+    )
+
+    newer_non_provider_block = c.restore_legacy_agent_provider_block(
+        task.task_id, scene_revision="scene-1"
+    )
+    assert newer_non_provider_block.status == AgentTaskStatus.AWAITING_REPLAN
+    assert c.active_agent_provider_block(task.task_id) is None
 
 
 def test_query_provider_block_waits_without_failing_task_or_opening_downstream(tmp_path):

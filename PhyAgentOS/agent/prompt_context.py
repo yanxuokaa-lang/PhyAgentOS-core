@@ -367,6 +367,10 @@ def visible_tool_names(
         # Tool context or cancel the task, but cannot invoke or reselect the
         # blocked Query before the LongHorizon runner observes readiness change.
         allowed = generic | _TASK_COMMON | {"forge_tool_context"}
+    elif status == "waiting_for_agent_provider":
+        # The host owns retry of the same pre-Tool node turn.  No selection or
+        # Tool invocation is visible while that persisted retry lease is held.
+        allowed = generic | _TASK_COMMON | {"forge_tool_context"}
     else:
         allowed = (
             generic | _TASK_COMMON | _PLANNING | _ACTION_RECONCILIATION | _SESSION_RECONCILIATION
@@ -1470,6 +1474,8 @@ class AgentPromptContextManager:
             return "waiting_for_user"
         if status == "waiting_for_runtime":
             return "waiting_for_runtime"
+        if status == "waiting_for_agent_provider":
+            return "waiting_for_agent_provider"
         return "planning_execution"
 
     def build(

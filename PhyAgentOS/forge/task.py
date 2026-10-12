@@ -121,6 +121,7 @@ class AgentTaskStatus(StrEnum):
     EXECUTING = "executing"
     WAITING_FOR_USER = "waiting_for_user"
     WAITING_FOR_RUNTIME = "waiting_for_runtime"
+    WAITING_FOR_AGENT_PROVIDER = "waiting_for_agent_provider"
     CANCELLING = "cancelling"
     AWAITING_REPLAN = "awaiting_replan"
     SUCCEEDED = "succeeded"
@@ -887,6 +888,8 @@ class AgentTaskCoordinator:
         store: AgentTaskStore | None = None,
         max_replans: int = 2,
         replan_timeout_s: float = 120.0,
+        max_agent_provider_retries: int = 2,
+        agent_provider_retry_delay_s: float = 1.0,
     ) -> None:
         self.workspace = Path(workspace).expanduser().resolve()
         self.config = config
@@ -901,6 +904,10 @@ class AgentTaskCoordinator:
         self.store = store or AgentTaskStore(self.workspace)
         self.max_replans = max(0, int(max_replans))
         self.replan_timeout_s = max(0.1, float(replan_timeout_s))
+        self.max_agent_provider_retries = max(0, int(max_agent_provider_retries))
+        self.agent_provider_retry_delay_s = max(
+            0.1, float(agent_provider_retry_delay_s)
+        )
         self._reconciliation_callback: Callable[[str], Any] | None = None
 
     def set_reconciliation_callback(self, callback: Callable[[str], Any] | None) -> None:
@@ -1514,6 +1521,314 @@ class AgentTaskCoordinator:
             check,
             event_type="planning_node_blocked",
             payload={"revision_id": revision_id, "node_id": node_id, "reason": reason},
+        )
+
+    def record_agent_provider_blocked(
+        self,
+        task_id: str,
+        revision_id: str,
+        node_id: str,
+        *,
+        failure_code: str,
+        scene_revision: str,
+    ) -> AgentTaskRecord:
+        """Persist a pre-Tool Agent model failure without rewriting the plan graph."""
+        failure_code = failure_code.strip()
+        scene_revision = scene_revision.strip()
+        if not failure_code or not scene_revision:
+            raise AgentTaskError("Agent provider block requires failure and scene identities")
+        task = self.store.get(task_id)
+        if task.active_revision_id != revision_id:
+            raise AgentTaskError("Agent provider block is not bound to the active revision")
+        graph = task.active_revision.plan_graph
+        if graph is None or node_id not in {item.node_id for item in graph.nodes}:
+            raise AgentTaskError("Agent provider block references an unknown planning node")
+        if any(item.node_id == node_id for item in task.active_revision.node_settlements):
+            raise AgentTaskError("settled planning node cannot enter Agent provider wait")
+        if any(item.node_id == node_id for item in task.active_revision.execution_records):
+            raise AgentTaskError(
+                "Agent provider block is invalid after a Tool execution record exists"
+            )
+        previous_attempts = sum(
+            event.get("event_type") == "agent_provider_blocked"
+            and event.get("payload", {}).get("revision_id") == revision_id
+            and event.get("payload", {}).get("node_id") == node_id
+            for event in self.store.events(task_id, limit=10000)
+        )
+        attempt = previous_attempts + 1
+        retry_exhausted = attempt > self.max_agent_provider_retries
+
+        def mutate(current: AgentTaskRecord) -> None:
+            if (
+                current.status != AgentTaskStatus.EXECUTING
+                or current.active_revision_id != revision_id
+                or current.terminal
+                or current.cancellation_requested
+            ):
+                raise AgentTaskError("Agent provider block task is no longer executable")
+            if has_unsettled_owned_execution(current):
+                raise AgentTaskError(
+                    "Agent provider block cannot take ownership from an unsettled execution"
+                )
+            current_graph = current.active_revision.plan_graph
+            if current_graph is None or node_id not in {
+                item.node_id for item in current_graph.nodes
+            }:
+                raise AgentTaskError(
+                    "Agent provider block references an unknown planning node"
+                )
+            if any(
+                item.node_id == node_id
+                for item in current.active_revision.node_settlements
+            ):
+                raise AgentTaskError(
+                    "settled planning node cannot enter Agent provider wait"
+                )
+            if any(
+                item.node_id == node_id
+                for item in current.active_revision.execution_records
+            ):
+                raise AgentTaskError(
+                    "Agent provider block is invalid after a Tool execution record exists"
+                )
+            current.status = AgentTaskStatus.WAITING_FOR_AGENT_PROVIDER
+            current.replan_deadline = None
+            current.replan_extension_used = False
+            current.evidence_errors.append(
+                f"Agent provider blocked planning node: {node_id}: {failure_code}"
+            )
+
+        return self.store.update(
+            task_id,
+            mutate,
+            event_type="agent_provider_blocked",
+            payload={
+                "revision_id": revision_id,
+                "node_id": node_id,
+                "failure_code": failure_code,
+                "scene_revision": scene_revision,
+                "attempt": attempt,
+                "retry_exhausted": retry_exhausted,
+                "occurred_before_tool_execution": True,
+            },
+        )
+
+    def active_agent_provider_block(self, task_id: str) -> dict[str, Any] | None:
+        """Return the current unreleased pre-Tool Agent provider block."""
+        active: dict[tuple[str, str], dict[str, Any]] = {}
+        for event in self.store.events(task_id, limit=10000):
+            payload = event.get("payload", {})
+            key = (payload.get("revision_id"), payload.get("node_id"))
+            if not all(isinstance(item, str) and item for item in key):
+                continue
+            if event.get("event_type") == "agent_provider_blocked":
+                active[key] = dict(payload)
+            elif (
+                event.get("event_type") == "agent_provider_retry_authorized"
+                and key in active
+            ):
+                active[key]["operator_authorized"] = True
+            elif event.get("event_type") in {
+                "agent_provider_released",
+                "agent_provider_scene_invalidated",
+            }:
+                active.pop(key, None)
+        task = self.store.get(task_id)
+        candidates = [
+            payload
+            for (revision_id, _node_id), payload in active.items()
+            if revision_id == task.active_revision_id
+        ]
+        return candidates[-1] if candidates else None
+
+    def resume_agent_provider_block(
+        self,
+        task_id: str,
+        *,
+        scene_revision: str,
+        operator_authorized: bool = False,
+    ) -> AgentTaskRecord:
+        """Release the same node turn when its persisted inputs are still current."""
+        task = self.store.get(task_id)
+        if task.status != AgentTaskStatus.WAITING_FOR_AGENT_PROVIDER:
+            return task
+        block = self.active_agent_provider_block(task_id)
+        if block is None:
+            raise AgentTaskError("Agent provider wait has no active node block")
+        operator_authorized = (
+            operator_authorized or block.get("operator_authorized") is True
+        )
+        scene_revision = scene_revision.strip()
+        if not scene_revision:
+            raise AgentTaskError("Agent provider resume requires current scene identity")
+        revision_id = str(block["revision_id"])
+        node_id = str(block["node_id"])
+        expected_scene = str(block.get("scene_revision") or "")
+        if scene_revision != expected_scene:
+            def invalidate(current: AgentTaskRecord) -> None:
+                if current.status != AgentTaskStatus.WAITING_FOR_AGENT_PROVIDER:
+                    raise AgentTaskError("Agent provider wait changed during scene check")
+                current.status = AgentTaskStatus.AWAITING_REPLAN
+                current.replan_deadline = utc_now() + timedelta(
+                    seconds=self.replan_timeout_s
+                )
+                current.replan_extension_used = False
+                current.evidence_errors.append(
+                    f"Agent provider node scene changed: {node_id}: "
+                    f"{expected_scene} -> {scene_revision}"
+                )
+
+            return self.store.update(
+                task_id,
+                invalidate,
+                event_type="agent_provider_scene_invalidated",
+                payload={
+                    "revision_id": revision_id,
+                    "node_id": node_id,
+                    "expected_scene_revision": expected_scene,
+                    "actual_scene_revision": scene_revision,
+                },
+            )
+        if block.get("retry_exhausted") is True and not operator_authorized:
+            return task
+
+        def release(current: AgentTaskRecord) -> None:
+            if (
+                current.status != AgentTaskStatus.WAITING_FOR_AGENT_PROVIDER
+                or current.active_revision_id != revision_id
+                or current.cancellation_requested
+                or current.pause_requested
+            ):
+                raise AgentTaskError("Agent provider wait is no longer resumable")
+            if has_unsettled_owned_execution(current):
+                raise AgentTaskError(
+                    "Agent provider resume cannot bypass unsettled execution ownership"
+                )
+            if any(
+                item.node_id == node_id
+                for item in current.active_revision.node_settlements
+            ):
+                raise AgentTaskError("Agent provider node was settled while waiting")
+            if any(
+                item.node_id == node_id
+                for item in current.active_revision.execution_records
+            ):
+                raise AgentTaskError(
+                    "Agent provider node gained a Tool execution record while waiting"
+                )
+            current.status = AgentTaskStatus.EXECUTING
+
+        return self.store.update(
+            task_id,
+            release,
+            event_type="agent_provider_released",
+            payload={
+                "revision_id": revision_id,
+                "node_id": node_id,
+                "scene_revision": scene_revision,
+                "attempt": block.get("attempt"),
+                "operator_authorized": operator_authorized,
+            },
+        )
+
+    def restore_legacy_agent_provider_block(
+        self, task_id: str, *, scene_revision: str
+    ) -> AgentTaskRecord:
+        """Repair the old node-turn-provider-error -> awaiting-replan projection."""
+        task = self.store.get(task_id)
+        if task.status != AgentTaskStatus.AWAITING_REPLAN:
+            return task
+        blocked_event = next(
+            (
+                event
+                for event in reversed(self.store.events(task_id, limit=10000))
+                if event.get("event_type") == "planning_node_blocked"
+                and event.get("payload", {}).get("revision_id")
+                == task.active_revision_id
+            ),
+            None,
+        )
+        if blocked_event is None:
+            return task
+        blocked = blocked_event.get("payload", {})
+        if not str(blocked.get("reason", "")).startswith(
+            "node_turn_provider_error:"
+        ):
+            return task
+        node_id = blocked.get("node_id")
+        if not isinstance(node_id, str) or not node_id:
+            return task
+        if any(item.node_id == node_id for item in task.active_revision.node_settlements):
+            return task
+        if any(item.node_id == node_id for item in task.active_revision.execution_records):
+            return task
+        graph = task.active_revision.plan_graph
+        node = (
+            next((item for item in graph.nodes if item.node_id == node_id), None)
+            if graph is not None
+            else None
+        )
+        if node is None:
+            return task
+        settlements = {
+            item.node_id: item for item in task.active_revision.node_settlements
+        }
+        if any(
+            dependency not in settlements
+            or settlements[dependency].status != "completed"
+            for dependency in node.dependencies
+        ):
+            return task
+        predecessor_scenes = {
+            settlements[dependency].scene_revision
+            for dependency in node.dependencies
+            if dependency in settlements
+            and settlements[dependency].scene_revision is not None
+        }
+        if predecessor_scenes != {scene_revision}:
+            return task
+        reason = str(blocked.get("reason"))
+        failure_code = reason.rsplit(":", 1)[-1]
+
+        def restore(current: AgentTaskRecord) -> None:
+            if (
+                current.status != AgentTaskStatus.AWAITING_REPLAN
+                or current.active_revision_id != task.active_revision_id
+                or current.cancellation_requested
+                or has_unsettled_owned_execution(current)
+            ):
+                raise AgentTaskError("legacy Agent provider block is no longer restorable")
+            if any(
+                item.node_id == node_id
+                for item in current.active_revision.node_settlements
+            ) or any(
+                item.node_id == node_id
+                for item in current.active_revision.execution_records
+            ):
+                raise AgentTaskError(
+                    "legacy Agent provider node gained execution facts during restore"
+                )
+            current.status = AgentTaskStatus.WAITING_FOR_AGENT_PROVIDER
+            current.replan_deadline = None
+            current.replan_extension_used = False
+            current.evidence_errors.append(
+                f"restored legacy Agent provider block: {node_id}: {failure_code}"
+            )
+
+        return self.store.update(
+            task_id,
+            restore,
+            event_type="agent_provider_blocked",
+            payload={
+                "revision_id": task.active_revision_id,
+                "node_id": node_id,
+                "failure_code": failure_code,
+                "scene_revision": scene_revision,
+                "attempt": 1,
+                "retry_exhausted": self.max_agent_provider_retries < 1,
+                "occurred_before_tool_execution": True,
+                "legacy_recovery": True,
+            },
         )
 
     async def record_query_provider_blocked(
@@ -2911,6 +3226,20 @@ class AgentTaskCoordinator:
 
     def resume_task(self, task_id: str) -> AgentTaskRecord:
         """Clear a persisted checkpoint pause request."""
+        task = self.store.get(task_id)
+        if task.status == AgentTaskStatus.WAITING_FOR_AGENT_PROVIDER:
+            block = self.active_agent_provider_block(task_id)
+            if block is None:
+                raise AgentTaskError("Agent provider wait has no active node block")
+            return self.store.update(
+                task_id,
+                lambda current: setattr(current, "pause_requested", False),
+                event_type="agent_provider_retry_authorized",
+                payload={
+                    "revision_id": block["revision_id"],
+                    "node_id": block["node_id"],
+                },
+            )
         return self.store.update(
             task_id,
             lambda current: setattr(current, "pause_requested", False),

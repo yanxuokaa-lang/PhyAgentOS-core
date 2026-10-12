@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from PhyAgentOS.agent.long_horizon import LongHorizonTaskController
 from PhyAgentOS.agent.planning_loop import (
     NodeContextProvider,
+    NodeTurnProviderError,
     PlanningLoopAdapter,
     StaleNodeContextError,
 )
@@ -121,6 +122,70 @@ def test_controller_does_not_run_while_replan_is_awaited(tmp_path):
     result = asyncio.run(_controller(c, calls).run(task.task_id))
     assert result.status == "awaiting_replan"
     assert calls == []
+
+
+def test_controller_retries_same_node_after_agent_provider_failure(tmp_path):
+    c = AgentTaskCoordinator(
+        workspace=tmp_path,
+        config=ForgeConfig(),
+        client=object(),
+        verifier=None,
+        max_agent_provider_retries=2,
+        agent_provider_retry_delay_s=0.1,
+    )
+    task = c.create_task(
+        task_description="resume same node after model provider failure",
+        verification=TaskVerificationContract(mode="off"),
+    )
+    c.expand_discovery_revision(
+        task.task_id,
+        plan_graph=_graph(task.task_id, "revision-agent-provider"),
+        plan_graph_ref="artifact://plan/agent-provider",
+    )
+    task = c.get_task(task.task_id)
+    calls: list[str] = []
+
+    def execute(context):
+        calls.append(context.node_id)
+        if calls == ["first"]:
+            raise NodeTurnProviderError(context.node_id, "provider_error")
+        return ToolResultEnvelope(
+            task_id=context.task_id,
+            revision_id=context.revision_id,
+            node_id=context.node_id,
+            tool_id="object.arrange",
+            status="succeeded",
+        )
+
+    adapter = PlanningLoopAdapter(
+        c,
+        context_provider=NodeContextProvider(c.get_task),
+        node_executor=execute,
+        admission_context_provider=lambda _: AdmissionContext(
+            scene_revision="scene-1"
+        ),
+    )
+    controller = LongHorizonTaskController(
+        c,
+        adapter,
+        scene_revision_provider=lambda _: "scene-1",
+    )
+
+    result = asyncio.run(controller.run(task.task_id))
+
+    assert result.status == "completed"
+    assert calls == ["first", "first", "second"]
+    current = c.get_task(task.task_id)
+    assert current.active_revision_id == "revision-agent-provider"
+    assert len(current.revisions) == len(task.revisions)
+    assert [item.node_id for item in current.active_revision.node_settlements] == [
+        "first",
+        "second",
+    ]
+    assert [
+        event["event_type"] for event in c.store.events(task.task_id)
+        if event["event_type"].startswith("agent_provider_")
+    ] == ["agent_provider_blocked", "agent_provider_released"]
 
 
 def test_controller_transitions_stale_context_to_coordinator_replan(tmp_path):

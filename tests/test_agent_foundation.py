@@ -112,6 +112,17 @@ def test_model_failure_preserves_coordinator_replan_checkpoint(status, expected)
     assert AgentLoop._should_fail_task_after_model_failure(task) is expected
 
 
+def test_model_failure_preserves_agent_provider_node_checkpoint():
+    task = SimpleNamespace(
+        status=AgentTaskStatus.WAITING_FOR_AGENT_PROVIDER,
+        pause_requested=False,
+        cancellation_requested=False,
+        execution_records=(),
+    )
+
+    assert AgentLoop._should_fail_task_after_model_failure(task) is False
+
+
 def test_bound_discovery_can_recover_compacted_skill_and_contracts():
     names = (
         "read_file",

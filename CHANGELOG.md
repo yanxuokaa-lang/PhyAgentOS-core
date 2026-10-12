@@ -1,5 +1,28 @@
 # Changelog
 
+## v13.3.0 (2026-10-12 14:09) - codex
+
+### 变更摘要 / Summary [完成]
+- [policy] [fix] 将 Tool 调用前 Agent 模型 provider failure 与 Query/Action failure 分层；新增 `waiting_for_agent_provider`，同 revision/node bounded recovery，禁止 Action replay。 / Separate pre-Tool Agent model provider failures from Query/Action failures; add `waiting_for_agent_provider`, bounded same-revision/node recovery, and prohibit Action replay.
+- [policy] [fix] 历史 completed-effect context 按 `(revision_id,node_id,invocation_id)` 精确关联，只携带稳定执行身份和有界结果事实，不覆盖当前场景证据。 / Correlate historical completed effects by `(revision_id,node_id,invocation_id)`, carrying only stable execution identity and bounded outcome facts without overriding current-scene evidence.
+- [eval] [test] 七维审查修复事务恢复竞争、legacy 迁移过宽和旧 settlement 兼容性；Core/config `265 passed`，广泛恢复 suite `326 passed`，全程 no-motion。 / Seven-dimension review fixed transactional recovery races, over-broad legacy migration, and legacy-settlement compatibility; Core/config `265 passed`, broad recovery suite `326 passed`, all no-motion.
+
+### 文件与关键 Diff / Files and Key Diff
+- `PhyAgentOS/forge/task.py`、`PhyAgentOS/agent/planning_loop.py`、`PhyAgentOS/agent/long_horizon.py`：新增 Coordinator-owned model-provider wait/release lifecycle and bounded historical effect projection. / Add the Coordinator-owned model-provider wait/release lifecycle and bounded historical effect projection.
+- `PhyAgentOS/agent/prompt_context.py`、`PhyAgentOS/agent/loop.py`、`PhyAgentOS/config/schema.py`、`PhyAgentOS/cli/commands.py`：接入状态、可见工具和 retry 配置。 / Wire status, visible tools, and retry configuration.
+- `tests/test_planning_loop.py`、`tests/test_long_horizon_controller.py`、`tests/test_agent_foundation.py`、`tests/test_verification_service_config.py`：恢复、并发、跨 revision、配置和 no-motion 回归。 / Add recovery, concurrency, cross-revision, config, and no-motion regressions.
+- `docs/forge/AGENT_MODEL_PROVIDER_NODE_RECOVERY_DIAGNOSIS_20261012.md`：保存通用诊断和七维审查。 / Record the generic diagnosis and seven-dimension review.
+
+```diff
+- NodeTurnProviderError -> awaiting_replan
++ NodeTurnProviderError before Tool record -> waiting_for_agent_provider
++ same scene -> same node/revision retry; changed scene -> awaiting_replan
+```
+
+### 部署与提交 / Deployment and Commit
+- 本轮未部署或重启 Runtime，未创建任务、调用 Query/Action 或产生运动。 / Runtime was not deployed or restarted; no task, Query/Action, or motion was created.
+- Commit: 待提交 / pending commit hash; branch `feature/planning-loop`.
+
 ## v13.2.15 (2026-10-12 13:14) - codex
 
 ### 变更摘要 / Summary [完成]
