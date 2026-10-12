@@ -30,7 +30,7 @@
 
 ### 验证与提交 / Validation and commit
 - Provider/lifecycle/host/perception tests: `124 passed`; Core AgentLoop/planning/recovery: `263 passed`。Ruff、compileall、`git diff --check` passed；全程 no-motion。 / Provider/lifecycle/host/perception tests: `124 passed`; Core AgentLoop/planning/recovery: `263 passed`. Ruff, compileall, and `git diff --check` passed; all no-motion.
-- Implementation and review commit pending. / 实现与审查提交待补。
+- Implementation/review commit: `f0a446da` on `feature/planning-loop`; documentation completion follows in the log update. / 实现与审查提交：`f0a446da`，分支 `feature/planning-loop`；日志更新随后完成。
 
 详见 [2026-10 part5 v13.2.14](changelog/2026-10_part5.md)。See the detailed v13.2.14 record.
 
