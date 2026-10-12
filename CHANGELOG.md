@@ -1,5 +1,16 @@
 # Changelog
 
+## v13.2.12 (2026-10-12 09:25) - codex
+
+### 变更摘要 / Summary
+- [env] [chore] 强制停止旧 Runtime，刷新 editable Core，安装 Skill `3.0.19` / Node `1.0.9` 并启动既有 profile；Runtime/Dora running、Gateway ready、11/11 Tool contexts ready。 / Force-stop the old Runtime, refresh editable Core, install Skill `3.0.19` / Node `1.0.9`, and start the existing profile; Runtime/Dora are running, Gateway is ready, and all 11 Tool contexts are ready.
+- [eval] [test] 保留现有 `awaiting_replan=1` 任务；未创建任务、调用 Query/Action、读取相机、推进 simulator 或执行物理动作。 / Preserve the existing `awaiting_replan=1` task; create no task, invoke no Query/Action, read no camera, advance no simulator, and execute no physical motion.
+
+详见 [2026-10 part5 v13.2.12](changelog/2026-10_part5.md)。See the detailed v13.2.12 record.
+- Active lock: Skill `3.0.19` / Node `1.0.9`; Node SHA-256 `f721430c4bcb2960306c16c4defacae8e7652870eaffc4c0c1ab718d8f21fff4`.
+- Runtime: `runtime_d4b66471c6d14ffc`; 11/11 Tool contexts ready; task store remains `awaiting_replan=1`, `cancelled=197`, `failed=92`.
+- Deployment log/index commit: pending.
+
 ## v13.2.11 (2026-10-12 09:05) - codex
 
 ### 变更摘要 / Summary
