@@ -13,7 +13,8 @@
 - no-motion：未创建 AgentTask、调用 Query/Action、读取相机、推进 simulator 或执行运动。 / No AgentTask, Query/Action, camera read, simulator step, or motion.
 
 ### Git 提交 / Git Commit
-- Deployment log/index commit follows separately. / 部署日志与索引提交随后记录。
+- Deployment log/index commit: `ecdd3981` on `feature/planning-loop`. / 部署日志与索引提交：`ecdd3981`，分支 `feature/planning-loop`。
+- Commit-reference completion follows separately. / 提交引用补全随后记录。
 
 ## v13.3.1 (2026-10-12 15:37) - codex
 
