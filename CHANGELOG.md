@@ -27,7 +27,7 @@
 - focused `320 passed in 10.13s`；full `904 passed in 31.20s`；scoped Ruff、compileall、`git diff --check` 通过。未部署/重启 Runtime、调用 live Query/Action、读取相机或执行运动。 / Focused and full suites plus scoped static checks passed; no Runtime deployment/restart, live Query/Action, camera read, or motion occurred during implementation review.
 
 ### Git 提交 / Git Commit
-- Implementation/review commit pending on `feature/planning-loop`; documentation/index completion follows separately. / 实现与审查提交待生成；日志与索引引用随后补全。
+- Implementation/review commit: `5782b0fa` on `feature/planning-loop`; documentation/index completion follows separately. / 实现与审查提交：`5782b0fa`，分支 `feature/planning-loop`；日志与索引引用随后补全。
 
 ## v13.3.10 (2026-10-12 23:25) - codex
 
