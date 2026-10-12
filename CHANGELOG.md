@@ -2,6 +2,33 @@
 
 ## 最近五版本 / Latest five versions
 
+## v13.3.7 (2026-10-12 21:50) - codex
+
+### 变更摘要 / Summary [完成]
+- [env] [chore] 按用户明确授权强制停止旧 `pick-place-workflow` Runtime，刷新当前 checkout 的 editable Core，并复用已安装 Skill `3.0.21`、Node `1.0.11`、既有 `robotwin-blocks-ranking-graspnet` profile 与 operator-owned environment 启动新 Runtime。 / Under explicit user authorization, force-stop the old `pick-place-workflow` Runtime, refresh the editable Core from the current checkout, and start a new Runtime using the installed Skill `3.0.21`, Node `1.0.11`, existing `robotwin-blocks-ranking-graspnet` profile, and operator-owned environment.
+- [eval] [test] 仅验收 Runtime/Dora/Gateway/11 项 Tool context、Core 导入路径、新 host/simulator 进程、Qwen 8012 与任务库状态；不创建或恢复 AgentTask，不调用 Query/Action，不读取相机，不推进 simulator action。 / Validate only Runtime/Dora/Gateway/all 11 Tool contexts, the Core import path, new host/simulator processes, Qwen on 8012, and task-store state; do not create or resume an AgentTask, invoke Query/Action, read cameras, or advance simulator actions.
+
+### 部署与验收 / Deployment and Validation
+- 强制停止成功；Runtime=`stopped`、Dora=`down`、Gateway=`unavailable`、19020 释放，旧 host PID `2244656`、simulator worker PID `2244784` 及 enrichment workers 退出；独立 Qwen PID `176466` 保持监听 8012。 / Forced shutdown succeeded; Runtime stopped, Dora went down, Gateway became unavailable, port 19020 was released, and the old host, simulator worker, and enrichment workers exited; independent Qwen PID `176466` remained on 8012.
+- editable Core 从 `/home/yanxu/PhyAgentOS-forge` 导入并加载 v13.3.5/v13.3.6 选择恢复符号；已安装 Node `1.0.11` SHA-256 验证通过，Skill `3.0.21` / Node `1.0.11` 制品未改变。 / The editable Core imports from the current checkout with the v13.3.5/v13.3.6 selection-recovery symbols loaded; installed Node `1.0.11` passed SHA-256 verification, with Skill `3.0.21` / Node `1.0.11` artifacts unchanged.
+- 新 Runtime `runtime_e643e16c68a14f21`、host PID `3128083`、simulator worker PID `3128204` 已启动，worker startup=`16.379s`；Runtime/Dora running、Gateway 与 11/11 Tool contexts ready。 / New Runtime `runtime_e643e16c68a14f21`, host PID `3128083`, and simulator worker PID `3128204` started, with worker startup taking `16.379s`; Runtime/Dora are running and Gateway plus all 11 Tool contexts are ready.
+- 任务最终计数 `cancelled=202`、`failed=98`、non-terminal=`0`；未创建/恢复任务、调用 Query/Action、读取相机或推进 simulator action。readiness 不作为场景内容证明。 / Final task counts are `cancelled=202`, `failed=98`, and non-terminal=`0`; no task was created/resumed, no Query/Action invoked, no camera read, and no simulator action advanced. Readiness is not treated as scene-content proof.
+
+### 文件与关键 Diff / Files and Key Diff
+- `changelog/2026-10_part6.md:L250-L290`：完整双语部署记录。 / Complete bilingual deployment record.
+- `CHANGELOG.md:L5-L30`：最近五版本索引。 / Latest-five index.
+
+```diff
+- old Runtime process using the previous Core process lifetime
++ runtime_e643e16c68a14f21 with fresh host/simulator processes
++ current editable Core imports v13.3.5/v13.3.6 changes
+  installed Skill 3.0.21 / Node 1.0.11 unchanged
+  no live Query, Action, camera read, simulator advancement, or motion
+```
+
+详见 [v13.3.7 月度日志](changelog/2026-10_part6.md)。 / See the [v13.3.7 detailed log](changelog/2026-10_part6.md).
+- Deployment log/index commit pending on `feature/planning-loop`. / 部署日志与索引提交待在 `feature/planning-loop` 完成。
+
 ## v13.3.6 (2026-10-12 21:37) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -251,32 +278,6 @@ def release(self) -> None:
 ### Git 提交 / Git commit
 - Implementation/review commit: `6326718f` on `feature/planning-loop`. / 实现与审查提交：`6326718f`，分支 `feature/planning-loop`。
 - Log/index completion commit follows separately. / 日志与索引完成提交随后单独记录。
-
-## v13.3.2 (2026-10-12 16:27) - codex
-
-### 变更摘要 / Summary [完成]
-- [env] [chore] 在用户明确授权下强制停止当前 `pick-place-workflow` Runtime，刷新当前 checkout 的 editable Core，并使用既有 `robotwin-blocks-ranking-graspnet` profile/operator environment 启动新 Runtime。 / Under explicit user authorization, force-stop the current `pick-place-workflow` Runtime, refresh the editable Core from this checkout, and start a new Runtime with the existing `robotwin-blocks-ranking-graspnet` profile/operator environment.
-- [eval] [test] 仅验收 Runtime/Dora/Gateway/Tool context、Core 导入路径、Qwen 8012 readiness 与任务状态计数；不创建 AgentTask、不调用 Query/Action、不读取相机、不推进 simulator、不执行运动。 / Validate only Runtime/Dora/Gateway/Tool contexts, the Core import path, Qwen 8012 readiness, and task-state counts; create no AgentTask, invoke no Query/Action, read no camera, advance no simulator, and execute no motion.
-
-### 具体部署边界 / Concrete Deployment Boundary
-- 强制停止会终止当前 Runtime/Dora/Adapter/worker 进程；独立 Qwen 服务是否由 Runtime lifecycle 管理，以停止后的进程与端口事实为准。 / Force-stop terminates the current Runtime/Dora/Adapter/worker processes; whether the independent Qwen service is Runtime-lifecycle-owned is determined from post-stop process and port facts.
-- 本次 Core 修改不改变 Skill/Node bundle 源码或版本锁，因此不重建/覆盖同版本 bundle；只刷新 editable Core 并复用已安装 Skill `3.0.20` / Node `1.0.10`。 / This Core change does not alter Skill/Node bundle source or version locks, so no same-version bundle is rebuilt or overwritten; only editable Core is refreshed while reusing installed Skill `3.0.20` / Node `1.0.10`.
-
-### 实际部署与验收 / Completed Deployment and Validation
-- [env] [chore] `.venv/bin/paos skill stop pick-place-workflow --force` 成功；停止后 Runtime=`stopped`、Dora=`down`、Gateway=`unavailable`，旧 Adapter/worker 进程退出。 / The force-stop succeeded; afterward Runtime was stopped, Dora down, Gateway unavailable, and the old Adapter/worker processes exited.
-- [env] [chore] editable distribution 的 `direct_url.json` 仍绑定 `file:///home/yanxu/PhyAgentOS-forge`，实际导入 `PhyAgentOS/agent/planning_loop.py` 且 `revision_settlement_loader=true`。标准 pip 刷新先因 PyPI SSL/build-isolation 下载 `hatchling` 失败，非隔离模式因本地未安装 `hatchling` 失败；既有 editable link 未受损且直接加载当前 checkout，因此未改动项目依赖或绕过构建配置。 / The editable distribution remains bound to this checkout, imports the current planning loop, and exposes the new revision loader. A standard pip refresh failed while downloading `hatchling` because of PyPI SSL/build isolation, and no-build-isolation failed because `hatchling` is not locally installed; the existing editable link remained intact and directly loads the checkout, so project dependencies and build configuration were not changed or bypassed.
-- [env] [chore] 使用既有 operator env 启动 `robotwin-blocks-ranking-graspnet`；新 Dora PID `1291727`、persistent host PID `1291750`、sim worker PID `1291853`。 / Started `robotwin-blocks-ranking-graspnet` with the existing operator environment; new Dora, persistent-host, and simulator-worker PIDs are recorded.
-- [eval] [test] Runtime/Dora=`running`，Gateway=`ready`，11/11 Tool contexts=`ready`；active lock 为 `.../ea73327bd58c73341e1003e07b9a03a92a81c95b856c9ff93274cf10a5f783cd/runtime-lock.json`，Skill `3.0.20` / Node `1.0.10`，Node SHA-256=`722cc67599c5c7792cb069d783597fde440464c2c97f4a2927cc1d9a4e248d63`。 / Runtime/Dora are running, Gateway ready, and all 11 Tool contexts ready; the active lock pins Skill 3.0.20 and Node 1.0.10 with the recorded Node SHA-256.
-- [eval] [test] 独立 Qwen vLLM PID `176466` 在强制停止期间保持运行，`127.0.0.1:8012` 继续监听且 `/v1/models` 返回 `qwen3-vl-4b-awq`；它不属于本次 Skill Runtime stop/start lifecycle。 / The independent Qwen vLLM process remained running across the force-stop; port 8012 stays listening and `/v1/models` returns the expected model, confirming it is outside this Skill Runtime stop/start lifecycle.
-- [eval] [test] 任务库只含 `cancelled=200`、`failed=95`，无非终态任务；未创建 AgentTask、调用 Gateway Query/Action、读取相机、推进 simulator 或执行运动。 / The task store contains only cancelled and failed tasks with no non-terminal task; no AgentTask, Gateway Query/Action, camera read, simulator step, or motion occurred.
-
-### 文件与行号 / Files and Lines
-- [修改] `changelog/2026-10_part5.md:L3-L26`：记录 v13.3.2 部署计划、实际停止/启动、editable Core 证据、Qwen 生命周期边界和 no-motion 验收。 / Record the v13.3.2 deployment plan, actual stop/start, editable-Core evidence, Qwen lifecycle boundary, and no-motion validation.
-- [修改] `CHANGELOG.md:L3-L16`：更新最近版本索引。 / Update the recent-version index.
-
-### Git 提交 / Git Commit
-- Deployment log/index commit: `ecdd3981` on `feature/planning-loop`. / 部署日志与索引提交：`ecdd3981`，分支 `feature/planning-loop`。
-- Commit-reference completion follows separately. / 提交引用补全随后记录。
 
 <!-- v13.2.15 and earlier detailed records are archived in changelog/2026-10_part5.md. -->
 
