@@ -22,7 +22,8 @@
 ### 验证与提交 / Validation and commit
 - `447 passed in 13.88s`；root/current 与 clean `bb698ee7` 均为同一 `10 failed`；Ruff、compileall、diff check passed。 / `447 passed in 13.88s`; current and clean `bb698ee7` have the same ten failures; Ruff, compileall, and diff check passed.
 - 全程 no-motion，未部署或重启 Runtime，未创建任务或调用 Gateway。 / Entirely no-motion; Runtime was not deployed/restarted and no task or Gateway call was made.
-- Implementation/review commit follows on `feature/planning-loop`; detailed record: [2026-10 part6 v13.3.3](changelog/2026-10_part6.md).
+- Implementation/review commit: `6326718f` on `feature/planning-loop`; detailed record: [2026-10 part6 v13.3.3](changelog/2026-10_part6.md).
+- Log/index completion commit follows separately. / 日志与索引完成提交随后单独记录。
 
 ## v13.3.2 (2026-10-12 16:27) - codex
 
