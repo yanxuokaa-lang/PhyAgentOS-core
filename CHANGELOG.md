@@ -2,6 +2,48 @@
 
 ## 最近五版本 / Latest five versions
 
+## v13.3.8 (2026-10-12 22:02) - codex
+
+### 变更摘要 / Summary [完成]
+- [env] [chore] 按用户要求重新启动已进入 `failed` 的 `pick-place-workflow` Runtime：强制清理仍显示 running 的 Dora flow，再复用既有 Skill `3.0.21`、Node `1.0.11`、profile 与 operator-owned environment 创建新的 Runtime/simulator 生命周期。 / At the user's request, restart the failed `pick-place-workflow` Runtime: force-clean the Dora flow still reported as running, then reuse Skill `3.0.21`, Node `1.0.11`, the existing profile, and operator-owned environment to create a fresh Runtime/simulator lifecycle.
+- [eval] [test] 仅验收生命周期、进程、端口与 11 项 Tool readiness；不自动恢复或取消现有 AgentTask，不调用 Query/Action，不读取相机，不推进 simulator action。 / Validate only lifecycle, processes, ports, and all 11 Tool contexts; do not automatically resume or cancel the existing AgentTask, invoke Query/Action, read cameras, or advance simulator actions.
+
+### 停止前事实与边界 / Pre-Restart Facts and Boundary
+- Runtime `runtime_e643e16c68a14f21` 已为 `failed`，Gateway 19020 无监听，但 Dora flow 仍报告 running；Runtime registry 无 active invocation/session，有一个 task binding。 / Runtime `runtime_e643e16c68a14f21` is already failed and Gateway port 19020 is not listening, while the Dora flow still reports running; the Runtime registry has no active invocation/session and one task binding.
+- `task_84e561b1b98d450c` 为 `awaiting_replan`；当前未结算 `grasp.propose` 是 Query，settlement 记录 `world_change_started=false`。重启不把它解释为 Action 成功或失败，不恢复、取消或重放该任务。 / `task_84e561b1b98d450c` is awaiting replan; its unsettled `grasp.propose` is a Query whose settlement records `world_change_started=false`. Restart does not reinterpret it as Action success/failure and will not resume, cancel, or replay the task.
+- 独立 Qwen PID `176466` 正常监听 8012，不属于本次 Skill Runtime 生命周期。 / Independent Qwen PID `176466` is listening normally on 8012 and is outside this Skill Runtime lifecycle.
+
+### 实际重启与恢复 / Completed Restart and Recovery
+- [env] [chore] 标准 `paos skill stop --force` 因 Dora coordinator 仍记录 active flow、但 daemon 已丢失而失败；`dora stop --force` 与 `dora destroy` 同样返回 `no daemon connection`。精确终止孤立 `dora start` PID `3128061` 后，确认系统仅有该一个 active flow，再终止陈旧 coordinator PID `2144356`；未删除状态文件或修改数据库。 / Standard `paos skill stop --force` failed because the Dora coordinator retained an active flow while the daemon was gone; `dora stop --force` and `dora destroy` likewise returned `no daemon connection`. After terminating the orphaned `dora start` PID `3128061`, the system was confirmed to have only that active flow, then stale coordinator PID `2144356` was terminated; no state file or database was deleted or edited.
+- [env] [chore] 首次启动由 PAOS 重建 Dora coordinator/daemon 和 simulator，但 host 在配置阶段以 `model credential environment is unavailable: ROBOTWIN20_MODEL_API_KEY` fail-closed；原因是新 daemon 不再继承旧长期进程的 shell 凭据，而 operator env 本身不保存该 secret。 / The first start let PAOS recreate the Dora coordinator/daemon and simulator, but the host failed closed during configuration with `model credential environment is unavailable: ROBOTWIN20_MODEL_API_KEY`; the new daemon no longer inherited the old long-lived process's shell credential, while the operator env intentionally does not store that secret.
+- [env] [chore] 从现有 PAOS provider 配置的 mode-`0600` `apiKeyFile` 读取同一凭据并仅注入启动子进程环境；未输出凭据值，未修改 config/operator env。清理首次失败 flow 后，第二次 PAOS start 成功。 / The existing credential was read from the PAOS provider configuration's mode-`0600` `apiKeyFile` and injected only into the startup child-process environment; its value was never output and config/operator env were not modified. After cleaning the first failed flow, the second PAOS start succeeded.
+- [eval] [test] 新 Runtime `runtime_5511c31f7dc54e9e` 于 22:10:14 启动；Dora coordinator PID `3209109`、daemon PID `3209135`、host PID `3209179`、simulator worker PID `3209222`。Runtime/Dora=`running`、Gateway=`ready`、11/11 Tool contexts=`ready`，19020 与 Qwen 8012 均监听。 / New Runtime `runtime_5511c31f7dc54e9e` started at 22:10:14, with Dora coordinator PID `3209109`, daemon PID `3209135`, host PID `3209179`, and simulator worker PID `3209222`. Runtime/Dora are running, Gateway and all 11 Tool contexts ready, and ports 19020 and Qwen 8012 are listening.
+- [eval] [test] `task_84e561b1b98d450c` 的 `task_cancel_requested` 事件发生在 22:03:34，早于本轮首次 stop 22:04:01；重启没有发起该取消。最终任务计数 `cancelled=203`、`failed=98`、non-terminal=`0`，新 Runtime 无 active invocation/session/task binding。 / The `task_cancel_requested` event for `task_84e561b1b98d450c` occurred at 22:03:34, before this run's first stop at 22:04:01; the restart did not initiate that cancellation. Final counts are `cancelled=203`, `failed=98`, and non-terminal=`0`, with no active invocation/session/task binding on the new Runtime.
+
+### 影响文件 / Affected Files
+- `changelog/2026-10_part6.md`
+- `CHANGELOG.md`
+
+### 文件变更详情 / File Changes
+- [修改] `changelog/2026-10_part6.md:L292-L332`：记录 v13.3.8 Dora 控制面恢复、凭据传递失败分支、新 Runtime 进程与 no-motion 验收。 / Record v13.3.8 Dora control-plane recovery, the credential-propagation failure branch, new Runtime processes, and no-motion validation.
+- [修改] `CHANGELOG.md:L5-L45`：将 v13.3.8 完整记录加入最近五版本并滚出 v13.3.3。 / Add the complete v13.3.8 record to the latest five versions and roll out v13.3.3.
+
+### 关键 Diff / Key Diff
+```diff
+- failed Runtime + coordinator-owned stale flow + missing daemon
++ fresh Dora coordinator/daemon + new Runtime/simulator lifecycle
+- implicit credential inheritance from a long-lived daemon
++ existing mode-0600 apiKeyFile -> startup child environment only
+  no task resume, Query/Action invocation, camera read, or simulator action
+```
+
+### 验证与安全边界 / Validation and Safety Boundary
+- 本轮仅执行 Runtime/Dora 生命周期控制、配置预检和只读 readiness/process/port/task-store 检查。未调用 Gateway Query/Action、未读取相机、未推进 simulator action、未执行轨迹或运动。 / This run performed only Runtime/Dora lifecycle control, configuration preflight, and read-only readiness/process/port/task-store checks. It invoked no Gateway Query/Action, read no camera, advanced no simulator action, and executed no trajectory or motion.
+- 首次启动的 simulator worker 完成初始化后因 host 配置缺失而正常关闭；最终成功启动创建了新的 simulator worker，因此场景生命周期重新初始化，但 readiness 不作为具体场景内容证明。 / The first-start simulator worker shut down after host configuration failed; the final successful start created another simulator worker, so the scene lifecycle was reinitialized, while readiness is not treated as proof of concrete scene contents.
+
+### Git 提交 / Git Commit
+- Restart log/index commit pending on `feature/planning-loop`. / 重启日志与索引提交待在 `feature/planning-loop` 完成。
+
 ## v13.3.7 (2026-10-12 21:50) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -187,97 +229,6 @@
 - Deployment/release commit: `4dc05f8b` on `feature/planning-loop`. / 部署与发布提交：`4dc05f8b`，分支 `feature/planning-loop`。
 - Log/index completion commit follows separately. / 日志与索引完成提交随后单独记录。
 
-## v13.3.3 (2026-10-12 18:04) - codex
-
-### 变更摘要 / Summary [完成]
-- [comm] [fix] 修复 provider fallback 在主 provider 已尝试但 fallback 成功时跳过主 provider lifecycle handoff 的缺陷，确保 downstream enrichment 不与仍占用资源的主 provider 并发。 / Fix the provider-fallback lifecycle gap where a successful fallback skipped handoff for an already-attempted primary provider, preventing downstream enrichment from racing a still-resident resource owner.
-- [policy] [fix] 将无世界变化、只读 Query 的 enrichment worker 瞬态 transport/resource/timeout failure 归入现有受控 provider recovery；保留已完成 Action settlement，禁止 Action replay，并让确定性 contract/protocol failure 保持 fail-closed。 / Route transient transport/resource/timeout failures from read-only, world-unchanged Query enrichment into the existing bounded provider-recovery lifecycle; preserve completed Action settlements, prohibit Action replay, and keep deterministic contract/protocol failures fail-closed.
-- [eval] [test] 增加 provider handoff、重入状态清理、enrichment retryability 与 Action-prefix recovery 回归；全部 no-motion，不调用 Runtime、Gateway、相机或 simulator。 / Add regressions for provider handoff, re-entry state clearing, enrichment retryability, and Action-prefix recovery; all validation is no-motion with no Runtime, Gateway, camera, or simulator calls.
-
-### 失败场景与设计边界 / Failure scenario and boundary
-- 真实失败链是 primary semantic contract failure → fallback semantic success → proposal worker transport failure；由于主 provider 仅按最终 route 判断 release，仍占用 GPU，随后 enrichment 失败并被错误标记为不可重试。 / The observed chain is primary semantic contract failure → fallback semantic success → proposal-worker transport failure; because release was keyed only to the final route, the primary resource remained resident and the enrichment failure was incorrectly marked non-retryable.
-- 版本号、主键、事务和普通测试不能释放被错误保留的 provider 资源，也不能把 Query-only worker transport failure 投影为 AgentLoop 可恢复事实；本次复用既有 lifecycle seam、bounded diagnostics 和 Query provider recovery，不新增 hash、baseline、额外 gate 或任务专用分支。 / Versions, keys, transactions, and ordinary tests cannot release a provider resource retained by the wrong route predicate or project a Query-only worker transport failure into a recoverable AgentLoop fact; this change reuses existing lifecycle seams, bounded diagnostics, and Query provider recovery without hashes, baselines, extra gates, or task-specific branches.
-
-### 七维审查 / Seven-dimension review
-- **架构 / Architecture：** lifecycle ownership 保持在 Adapter，retry ownership 保持在 Coordinator/PlanningLoop；未建立第二套 provider 状态机，也未增加场景或任务专用分支。 / Lifecycle ownership remains in the Adapter and retry ownership remains in Coordinator/PlanningLoop; no second provider state machine or scene/task-specific branch was introduced.
-- **正确性 / Correctness：** primary 是否需要释放由“本轮是否尝试”决定，而不是由最终 semantic route 决定；fallback 已成功时 handoff failure 不会再次调用 fallback。 / Primary release is determined by whether it was attempted in the current call, not by the final semantic route; a handoff failure after fallback success does not invoke fallback twice.
-- **错误与可观测 / Errors and observability：** worker transport/timeout/resource/termination 与 deterministic protocol/contract failure 分开；既有 bounded code 和 append-only `query_retry_decided` 事件保留审计，不写入异常正文。 / Worker transport/timeout/resource/termination failures are separated from deterministic protocol/contract failures; existing bounded codes and append-only `query_retry_decided` events retain auditability without persisting exception text.
-- **恢复与幂等 / Recovery and idempotency：** retry authorization 在事务内复核 task/revision/node/records，重复授权同一 record set 幂等且不消耗预算；历史记录保留，仅从 effective planning view 排除已释放尝试。 / Retry authorization transactionally rechecks task/revision/node/records; duplicate authorization of the same record set is idempotent and consumes no budget; history remains append-only while released attempts are excluded only from the effective planning view.
-- **机器人安全 / Robotics safety：** eligibility 强制 Query semantics、`world_change_started=false` 和显式 retryable；Action/Session 不可进入重试路径，已完成 Action settlement 不会重放。 / Eligibility requires Query semantics, `world_change_started=false`, and explicit retryability; Action/Session cannot enter the retry path and completed Action settlements are never replayed.
-- **扩展兼容 / Extension compatibility：** classification 使用通用 `failure_stage=provider|enrichment` 和嵌套 `error.retryable`，不依赖 RGB、颜色、方块、特定 Tool ID 或节点名；配置通过既有 verification schema/CLI 注入。 / Classification uses generic `failure_stage=provider|enrichment` and nested `error.retryable`, independent of RGB, colors, blocks, Tool IDs, or node names; configuration is injected through the existing verification schema/CLI.
-- **AgentLoop 收敛 / AgentLoop convergence：** 默认最多 2 次同 revision/node Query retry；成功则继续后缀，预算耗尽或 deterministic failure 则落回既有 settlement/recovery，避免无限 thinking。 / At most two same-revision/node Query retries are allowed by default; success continues the suffix, while budget exhaustion or deterministic failure returns to existing settlement/recovery, preventing infinite thinking.
-
-### 文件变更详情 / File changes
-
-#### [修改] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/scene_understanding_fallback.py:L55-L69,L222-L243,L314-L366`
-
-**修改前 / Before:**
-```python
-def release(self) -> None:
-    if self.last_route != self.primary_name:
-        return
-```
-
-**修改后 / After:**
-```python
-self._primary_attempted = True
-
-def release(self) -> None:
-    if not self._primary_attempted:
-        return
-```
-
-**修改说明 / Description：** 按每次调用的 primary attempt 事实完成 lifecycle handoff；fallback 已成功后的 handoff failure 保留 retryability，但不重复 fallback inference。 / Complete lifecycle handoff from per-call primary-attempt facts; preserve retryability after fallback success without repeating fallback inference.
-
-#### [修改] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/single_view_perception.py:L20-L28,L832-L861,L1069-L1087`
-
-```diff
-- ProcessWorkerError -> retryable=False
-+ transient worker lifecycle error -> retryable=True
-+ ProcessWorkerProtocolLimitError -> retryable=False
-+ bounded lifecycle exception with explicit retryable -> preserve classification
-```
-
-#### [修改] `PhyAgentOS/agent/planning_facts.py:L7-L23`、`PhyAgentOS/forge/binding.py:L126-L216`、`PhyAgentOS/forge/task.py:L4986-L5009`
-
-```diff
-- nested error.retryable remains Adapter-only
-+ nested error.retryable -> retryable_in_revision when no explicit top-level value exists
-+ generic query_record_retryable() checks Query + semantic non-success + provider/enrichment + explicit true
-```
-
-#### [修改] `PhyAgentOS/forge/task.py:L885-L917,L2011-L2123,L2151-L2175,L2197-L2233`
-
-```diff
-- failed Query record remains effective and settles immediately
-+ transactionally bounded query_retry_decided authorization
-+ released attempt remains in audit history but leaves effective planning records
-+ duplicate authorization is idempotent and does not consume retry budget
-```
-
-#### [修改] `PhyAgentOS/agent/planning_loop.py:L24-L32,L1853-L1878`、`PhyAgentOS/config/schema.py:L359-L372`、`PhyAgentOS/cli/commands.py:L700-L719`
-
-```diff
-- transient read-only enrichment failure -> node settlement/recovery stop
-+ eligible Query-only failure -> bounded same-node retry
-+ default max_query_provider_retries=2 via existing verification config
-```
-
-#### [修改] 测试与诊断 / Tests and diagnosis
-- `examples/forge-adapters/robotwin20/tests/test_scene_understanding_fallback.py:L17-L37,L322-L383`、`test_single_view_perception.py:L390-L496`、`test_scene_understand_provider.py:L103-L146`：handoff、重入清理、worker 分类及 public projection 回归。 / Regressions for handoff, re-entry cleanup, worker classification, and public projection.
-- `tests/test_planning_loop.py:L31-L38,L158-L390`、`tests/test_verification_service_config.py:L107-L129`：provider-neutral classification、事务/幂等预算、已完成 Action 前缀不重放、配置边界。 / Cover provider-neutral classification, transactional/idempotent budgets, no replay of completed Action prefixes, and config bounds.
-- `docs/forge/SCENE_UNDERSTANDING_ENRICHMENT_HANDOFF_DIAGNOSIS_20261012.md:L1-L117`：保存失败时序、架构根因、通用修复和 no-motion 边界。 / Preserve failure timing, architectural root cause, generic repair, and no-motion boundary.
-- `CHANGELOG.md:L3-L26,L415-L422`：更新最近版本详情与 part6 索引。 / Update latest-version details and the part6 archive link.
-
-### 验证与安全边界 / Validation and safety boundary
-- Focused/cross-layer suites：`447 passed in 13.88s`。 / Focused and cross-layer suites: `447 passed in 13.88s`.
-- Root tests：当前分支 `874 passed, 10 failed`；干净对照 `bb698ee7` 的同四个 projection 文件也是相同 10 个失败，因此本轮新增失败为 0。 / Root tests: current branch `874 passed, 10 failed`; clean comparison `bb698ee7` has the same ten failures in the same four projection files, so this change adds zero failures.
-- Ruff、compileall、`git diff --check` passed；`ruff format --check` 仅报告 touched legacy files 的既有格式差异，未做无关 bulk format。 / Ruff, compileall, and `git diff --check` passed; `ruff format --check` reports only pre-existing formatting differences in touched legacy files, so no unrelated bulk formatting was performed.
-- 全程 no-motion：未部署/重启 Runtime，未创建 AgentTask，未调用 Gateway Query/Action，未读取相机，未推进 simulator，未执行硬件运动。 / Entirely no-motion: no Runtime deployment/restart, AgentTask creation, Gateway Query/Action, camera read, simulator step, or hardware motion.
-
-### Git 提交 / Git commit
-- Implementation/review commit: `6326718f` on `feature/planning-loop`. / 实现与审查提交：`6326718f`，分支 `feature/planning-loop`。
-- Log/index completion commit follows separately. / 日志与索引完成提交随后单独记录。
 
 <!-- v13.2.15 and earlier detailed records are archived in changelog/2026-10_part5.md. -->
 
