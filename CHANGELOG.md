@@ -21,7 +21,8 @@
 
 ### 部署与提交 / Deployment and Commit
 - 本轮未部署或重启 Runtime，未创建任务、调用 Query/Action 或产生运动。 / Runtime was not deployed or restarted; no task, Query/Action, or motion was created.
-- Commit: 待提交 / pending commit hash; branch `feature/planning-loop`.
+- Implementation/review commit: `df333e59`; branch `feature/planning-loop`. / 实现与审查提交：`df333e59`；分支 `feature/planning-loop`。
+- Log/index completion commit follows separately. / 日志与索引完成提交随后单独记录。
 
 ## v13.2.15 (2026-10-12 13:14) - codex
 
