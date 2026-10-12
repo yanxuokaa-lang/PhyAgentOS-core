@@ -10,7 +10,8 @@
 - `pick-place-workflow/pyproject.toml:L1-L6`、`skill.yaml:L1-L4,L219-L229`、`CHANGELOG.md:L1-L11`、`tests/test_grasp_propose.py:L262-L274`：发布 Skill `3.0.21` / Node `1.0.11` 并更新 lock/version regression。 / Publish Skill `3.0.21` / Node `1.0.11` and update lock/version regression.
 - `out/releases/v13.3.4/`：Node/Skill artifacts；Node SHA `3d368ffb05dae5bf5ad7b27ea900702cfe7ea9318754c5199f2a4ed0d400af44`。 / Node/Skill release artifacts with the recorded Node SHA.
 - `131 passed in 0.95s`；新 simulator worker PID `2244784`，startup `16.531s`；active runtime lock 使用 Skill `3.0.21` / Node `1.0.11`。用户任务的 LocateAnything 冷启动期间 readiness 曾短暂超时，完成后 11/11 contexts 恢复 ready。 / `131 passed in 0.95s`; new simulator worker PID `2244784`, startup `16.531s`; active lock uses Skill `3.0.21` / Node `1.0.11`. Readiness briefly timed out during the user's LocateAnything cold start and returned to 11/11 ready afterward.
-- 全程 no-motion；deployment/release commit follows；详见 [2026-10 part6 v13.3.4](changelog/2026-10_part6.md)。 / Entirely no-motion; deployment/release commit follows; see the detailed part6 record.
+- 全程 no-motion；deployment/release commit `4dc05f8b`；详见 [2026-10 part6 v13.3.4](changelog/2026-10_part6.md)。 / Entirely no-motion; deployment/release commit `4dc05f8b`; see the detailed part6 record.
+- Log/index completion commit follows separately. / 日志与索引完成提交随后单独记录。
 
 ## v13.3.3 (2026-10-12 18:04) - codex
 
