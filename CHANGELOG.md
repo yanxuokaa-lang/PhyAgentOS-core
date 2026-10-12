@@ -26,7 +26,7 @@
 - 未调用 Gateway Query/Action、相机或 simulator action；readiness 不作为场景内容或任务成功证明。 / No Gateway Query/Action, camera, or simulator action was invoked; readiness is not treated as proof of scene contents or task success.
 
 ### Git 提交 / Git Commit
-- Deployment/release commit pending on `feature/planning-loop`; documentation/index completion follows separately. / `feature/planning-loop` 上的部署与发布提交待完成；日志与索引补全随后单独提交。
+- Deployment/release commit: `0c3602ec` on `feature/planning-loop`; documentation/index completion follows separately. / 部署与发布提交：`0c3602ec`，分支 `feature/planning-loop`；日志与索引补全随后单独提交。
 
 ## v13.3.9 (2026-10-12 22:59) - codex
 
