@@ -541,6 +541,7 @@ class AgentLoop:
                 self.forge_task_coordinator.get_task,
                 self.forge_task_coordinator.effective_node_settlements,
                 self.forge_task_coordinator.effective_planning_execution_records,
+                self.forge_task_coordinator.effective_node_settlements,
             ),
             node_executor=AgentLoopNodeExecutor(
                 self,

@@ -75,8 +75,14 @@ class ForgePlanReadyTool(Tool):
                     raise PlanningLoopError("source browsing requires the active revision")
                 context = NodeContextProvider(
                     lambda _: task,
+                    settlement_loader=(
+                        self.coordinator.effective_node_settlements
+                    ),
                     execution_record_loader=(
                         self.coordinator.effective_planning_execution_records
+                    ),
+                    revision_settlement_loader=(
+                        self.coordinator.effective_node_settlements
                     ),
                 ).build(
                     task.task_id, node_id, scene_revision=self.dispatch.current_scene_revision,
@@ -327,8 +333,14 @@ class ForgePlanSelectTool(Tool):
                     task = self.coordinator.get_task(task_id)
                     context = NodeContextProvider(
                         lambda _task_id: task,
+                        settlement_loader=(
+                            self.coordinator.effective_node_settlements
+                        ),
                         execution_record_loader=(
                             self.coordinator.effective_planning_execution_records
+                        ),
+                        revision_settlement_loader=(
+                            self.coordinator.effective_node_settlements
                         ),
                     ).build(
                         task_id,
@@ -438,8 +450,14 @@ class ForgePlanSelectTool(Tool):
                     task = self.coordinator.get_task(task_id)
                     context = NodeContextProvider(
                         lambda _task_id: task,
+                        settlement_loader=(
+                            self.coordinator.effective_node_settlements
+                        ),
                         execution_record_loader=(
                             self.coordinator.effective_planning_execution_records
+                        ),
+                        revision_settlement_loader=(
+                            self.coordinator.effective_node_settlements
                         ),
                     ).build(
                         task_id,

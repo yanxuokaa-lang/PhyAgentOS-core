@@ -1666,8 +1666,27 @@ class AgentTaskCoordinator:
         expected_scene = str(block.get("scene_revision") or "")
         if scene_revision != expected_scene:
             def invalidate(current: AgentTaskRecord) -> None:
-                if current.status != AgentTaskStatus.WAITING_FOR_AGENT_PROVIDER:
+                if (
+                    current.status != AgentTaskStatus.WAITING_FOR_AGENT_PROVIDER
+                    or current.active_revision_id != revision_id
+                    or current.cancellation_requested
+                    or current.pause_requested
+                ):
                     raise AgentTaskError("Agent provider wait changed during scene check")
+                if has_unsettled_owned_execution(current):
+                    raise AgentTaskError(
+                        "Agent provider scene invalidation cannot bypass unsettled execution ownership"
+                    )
+                if any(
+                    item.node_id == node_id
+                    for item in current.active_revision.node_settlements
+                ) or any(
+                    item.node_id == node_id
+                    for item in current.active_revision.execution_records
+                ):
+                    raise AgentTaskError(
+                        "Agent provider node gained execution facts during scene invalidation"
+                    )
                 current.status = AgentTaskStatus.AWAITING_REPLAN
                 current.replan_deadline = utc_now() + timedelta(
                     seconds=self.replan_timeout_s
@@ -1771,7 +1790,7 @@ class AgentTaskCoordinator:
         if node is None:
             return task
         settlements = {
-            item.node_id: item for item in task.active_revision.node_settlements
+            item.node_id: item for item in self.effective_node_settlements(task_id)
         }
         if any(
             dependency not in settlements
@@ -1789,15 +1808,49 @@ class AgentTaskCoordinator:
             return task
         reason = str(blocked.get("reason"))
         failure_code = reason.rsplit(":", 1)[-1]
+        revision_id = task.active_revision_id
+        source_predecessors = {
+            dependency: next(
+                item
+                for item in task.active_revision.node_settlements
+                if item.node_id == dependency
+            )
+            for dependency in node.dependencies
+        }
 
         def restore(current: AgentTaskRecord) -> None:
             if (
                 current.status != AgentTaskStatus.AWAITING_REPLAN
-                or current.active_revision_id != task.active_revision_id
+                or current.active_revision_id != revision_id
                 or current.cancellation_requested
+                or current.pause_requested
                 or has_unsettled_owned_execution(current)
             ):
                 raise AgentTaskError("legacy Agent provider block is no longer restorable")
+            current_graph = current.active_revision.plan_graph
+            current_node = (
+                next(
+                    (item for item in current_graph.nodes if item.node_id == node_id),
+                    None,
+                )
+                if current_graph is not None
+                else None
+            )
+            if current_node is None or current_node.dependencies != node.dependencies:
+                raise AgentTaskError(
+                    "legacy Agent provider node changed during restore"
+                )
+            current_settlements = {
+                item.node_id: item for item in current.active_revision.node_settlements
+            }
+            if any(
+                dependency not in current_settlements
+                or current_settlements[dependency] != source_predecessors[dependency]
+                for dependency in current_node.dependencies
+            ):
+                raise AgentTaskError(
+                    "legacy Agent provider predecessors changed during restore"
+                )
             if any(
                 item.node_id == node_id
                 for item in current.active_revision.node_settlements
@@ -1820,7 +1873,7 @@ class AgentTaskCoordinator:
             restore,
             event_type="agent_provider_blocked",
             payload={
-                "revision_id": task.active_revision_id,
+                "revision_id": revision_id,
                 "node_id": node_id,
                 "failure_code": failure_code,
                 "scene_revision": scene_revision,
@@ -2564,9 +2617,9 @@ class AgentTaskCoordinator:
         revision = task.active_revision
         if revision.plan_graph is None:
             raise AgentTaskError("plan continuation requires a materialized active PlanGraph")
-        settlements = {
-            item.node_id: item.status for item in self.effective_node_settlements(task_id)
-        }
+        source_settlements = tuple(revision.node_settlements)
+        effective_settlements = self.effective_node_settlements(task_id)
+        settlements = {item.node_id: item.status for item in effective_settlements}
         incomplete = tuple(
             node.node_id
             for node in revision.plan_graph.nodes
@@ -2606,8 +2659,12 @@ class AgentTaskCoordinator:
             if current.active_revision_id != source_revision_id:
                 raise AgentTaskError("plan continuation source revision is no longer active")
             current_revision = current.active_revision
+            if tuple(current_revision.node_settlements) != source_settlements:
+                raise AgentTaskError(
+                    "plan continuation settlement facts changed during admission"
+                )
             current_settlements = {
-                item.node_id: item.status for item in current_revision.node_settlements
+                item.node_id: item.status for item in effective_settlements
             }
             current_incomplete = (
                 tuple(
@@ -2960,18 +3017,42 @@ class AgentTaskCoordinator:
                 resolved[(revision.revision_id, payload["node_id"], payload["invocation_id"])] = (
                     payload["to_status"]
                 )
-        return tuple(
-            item.model_copy(
-                update={
-                    "status": resolved.get(
-                        (item.revision_id, item.node_id, item.invocation_id), item.status
-                    )
-                    if item.status == "outcome_unknown" and item.invocation_id
-                    else item.status
-                }
+        records = {
+            (item.revision_id, item.node_id, item.invocation_id): item
+            for item in revision.execution_records
+            if item.node_id is not None and item.invocation_id is not None
+        }
+
+        def reduce_settlement(item: NodeSettlement) -> NodeSettlement:
+            if item.status != "outcome_unknown" or item.invocation_id is None:
+                return item
+            key = (item.revision_id, item.node_id, item.invocation_id)
+            status = resolved.get(key)
+            if status is None:
+                return item
+            record = records.get(key)
+            result = (
+                _tool_result_from_execution(task, record)
+                if record is not None
+                else None
             )
-            for item in revision.node_settlements
-        )
+            if result is None:
+                return item.model_copy(
+                    update={"status": status, "outcome_known": True}
+                )
+            return item.model_copy(update={
+                "status": status,
+                "scene_revision": result.new_scene_revision or item.scene_revision,
+                "failure_code": result.failure_code if status == "failed" else None,
+                "source_tool_id": result.tool_id,
+                "world_change_started": result.world_change_started,
+                "outcome_known": True,
+                "retryable_in_revision": result.retryable_in_revision,
+                "requires_replan": result.requires_replan,
+                "recommended_action": result.recommended_action,
+            })
+
+        return tuple(reduce_settlement(item) for item in revision.node_settlements)
 
     def reconcile_terminal_settlements(self, task_id: str) -> AgentTaskRecord:
         """Persist missing settlements for already-terminal planning-bound records.
@@ -3231,6 +3312,8 @@ class AgentTaskCoordinator:
             block = self.active_agent_provider_block(task_id)
             if block is None:
                 raise AgentTaskError("Agent provider wait has no active node block")
+            if block.get("operator_authorized") is True and not task.pause_requested:
+                return task
             return self.store.update(
                 task_id,
                 lambda current: setattr(current, "pause_requested", False),

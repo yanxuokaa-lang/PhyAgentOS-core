@@ -2,7 +2,7 @@
 
 日期 / Date: 2026-10-12
 
-版本 / Version: v13.3.0
+版本 / Version: v13.3.0；v13.3.1 独立审查补充 / v13.3.1 independent review addendum
 
 证据任务 / Evidence task: `task_506b5167c1164460`
 
@@ -108,6 +108,17 @@ Automatic recovery is limited by `max_agent_provider_retries`, with delay config
 审查发现并修复三项 Major：跨 revision effect 丢失/同名节点误配、恢复所有权事务竞争、legacy block 选择和前驱条件过宽。另修复旧 Query settlement 无 `invocation_id` 的兼容性。无 Blocker 或未修复 Major。
 
 The review found and fixed three Major issues: cross-revision effect loss or same-name mismatch, transactional recovery-ownership races, and over-broad legacy block/predecessor selection. It also fixed compatibility with older Query settlements without `invocation_id`. No Blocker or unresolved Major remains.
+
+## v13.3.1 独立审查补充 / Independent Review Addendum
+
+本轮在 v13.3.0 基础上发现并修复四项通用缺口： / This review found and fixed four generic gaps on top of v13.3.0:
+
+1. 历史 revision 的 `completed_effect_context` 读取原始 settlement；当 `outcome_unknown` 由同 invocation 的 late terminal receipt 解析为 `completed` 后，新 revision 会丢失已确认 effect。现在所有生产 context 路径都通过 Coordinator 的 revision-aware effective settlement loader。 / Historical `completed_effect_context` read raw settlements, so a same-invocation late terminal resolution from `outcome_unknown` to `completed` disappeared in the next revision. All production context paths now use the Coordinator's revision-aware effective settlement loader.
+2. continuation 外层使用 effective settlement，事务内却使用原始 settlement，导致同一个 late-resolved Action 在 admission 前通过、事务内又被拒绝。现在两处使用同一 effective 快照，并在事务内核对 settlement identity 未变化。 / Continuation used effective settlements before admission but raw settlements inside the transaction, allowing a late-resolved Action to pass the first check and fail the second. Both checks now use one effective snapshot, with transactional settlement-identity revalidation.
+3. scene-change invalidation 与 legacy restore 的初版事务复核不完整。现在事务内同时复核 active revision、pause/cancel、未结执行、目标节点 execution facts、图节点及同场景 completed predecessors；发现并发所有权变化时保持原状态并拒绝恢复。 / Initial scene-change invalidation and legacy restore had incomplete transactional checks. They now recheck the active revision, pause/cancel state, unsettled execution, target-node execution facts, graph node, and same-scene completed predecessors, preserving the prior state when ownership changes concurrently.
+4. 重复 operator resume 会追加重复 authorization event。连续重复调用现在幂等返回既有状态。 / Repeated operator resume appended duplicate authorization events; sequential duplicate calls now return the existing state idempotently.
+
+七维结论：架构仍由 Coordinator 归约 authoritative facts；正确性统一 raw/effective settlement 语义；错误事件保持 bounded；恢复在事务内 fail closed；机器人安全继续禁止 Action replay；扩展仅依赖通用 revision/node/invocation/scene 字段；AgentLoop 能从 late terminal 进入 continuation 且保留已完成 effect。无 RGB、颜色、对象、节点名或具体 provider 分支，无新增 hash、schema、baseline 或 gate。 / Across the seven dimensions, the Coordinator remains the authority for reduced facts; raw/effective settlement semantics are aligned; error events remain bounded; recovery fails closed transactionally; robotics safety still prohibits Action replay; extension logic depends only on generic revision/node/invocation/scene fields; and AgentLoop can continue after a late terminal result while retaining the completed effect. No RGB-, color-, object-, node-name-, or provider-specific branch and no new hash, schema, baseline, or gate were added.
 
 ## 验证与安全边界 / Validation and Safety Boundary
 

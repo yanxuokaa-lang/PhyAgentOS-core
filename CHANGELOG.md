@@ -1,5 +1,30 @@
 # Changelog
 
+## v13.3.1 (2026-10-12 15:37) - codex
+
+### 变更摘要 / Summary [完成]
+- [policy] [fix] 历史 Action effect 与 continuation 统一使用 Coordinator effective settlement，late terminal 不再退化为原始 `outcome_unknown`。 / Historical Action effects and continuation now use Coordinator-effective settlements, so late terminal results no longer regress to raw `outcome_unknown`.
+- [policy] [fix] scene invalidation 与 legacy restore 在事务内复核恢复所有权；重复 operator resume 幂等。 / Scene invalidation and legacy restore recheck recovery ownership transactionally; repeated operator resume is idempotent.
+- [eval] [test] 七维审查修复 3 Major + 1 Minor；Core/集成 `333 passed`，通用恢复 `328 passed`，全程 no-motion。 / Seven-dimension review fixed 3 Major and 1 Minor findings; Core/integration `333 passed`, generic recovery `328 passed`, all no-motion.
+
+### 文件与关键 Diff / Files and Key Diff
+- `PhyAgentOS/agent/planning_loop.py:L161-L173,L321-L351`、`agent/loop.py:L538-L545`、`agent/tools/planning.py:L76-L87,L334-L345,L451-L462`：所有生产 context 路径接入 revision-aware effective settlement。 / Wire revision-aware effective settlements through all production context paths.
+- `PhyAgentOS/forge/task.py:L1644-L1751,L1753-L1879,L2605-L2682,L2972-L3053,L3296-L3313`：事务复核、continuation 一致性、late effect 归约和 resume 幂等。 / Add transactional rechecks, continuation consistency, late-effect reduction, and resume idempotency.
+- `tests/test_planning_loop.py:L3737-L3816,L3866-L3876,L3922-L4000`、`tests/test_planning_task_integration.py:L549-L679`：并发与 unknown-to-late-terminal continuation 回归。 / Add concurrency and unknown-to-late-terminal continuation regressions.
+- `docs/forge/AGENT_MODEL_PROVIDER_NODE_RECOVERY_DIAGNOSIS_20261012.md:L5,L112-L121`：v13.3.1 独立七维审查补充。 / Add the v13.3.1 independent seven-dimension review.
+
+```diff
+- raw historical settlement / raw transactional completion
++ revision-aware effective settlement / consistent continuation and effect context
+- pre-read-only recovery ownership checks
++ transactional revision, execution, node, predecessor and lifecycle rechecks
+```
+
+### 验证、部署与提交 / Validation, Deployment, and Commit
+- Ruff、compileall、`git diff --check` passed；`333 passed` + `328 passed`。 / Static checks passed; `333 passed` plus `328 passed`.
+- 未部署或重启 Runtime，未创建任务、调用 Query/Action 或产生运动。 / Runtime was not deployed or restarted; no task, Query/Action, or motion was created.
+- Implementation/review commit follows separately. / 实现与审查提交随后记录。
+
 ## v13.3.0 (2026-10-12 14:09) - codex
 
 ### 变更摘要 / Summary [完成]

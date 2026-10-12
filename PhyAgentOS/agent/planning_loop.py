@@ -163,10 +163,14 @@ class NodeContextProvider:
         task_loader: Callable[[str], Any],
         settlement_loader: Callable[[str], tuple[NodeSettlement, ...]] | None = None,
         execution_record_loader: Callable[[str, str], tuple[Any, ...]] | None = None,
+        revision_settlement_loader: (
+            Callable[[str, str], tuple[NodeSettlement, ...]] | None
+        ) = None,
     ) -> None:
         self._task_loader = task_loader
         self._settlement_loader = settlement_loader
         self._execution_record_loader = execution_record_loader
+        self._revision_settlement_loader = revision_settlement_loader
 
     def build(
         self,
@@ -320,15 +324,23 @@ class NodeContextProvider:
             for source_revision in task_revisions
             for record in source_revision.execution_records
         )
-        historical_settlements = {
-            (
-                source_revision.revision_id,
-                item.node_id,
-                getattr(item, "invocation_id", None),
-            ): item
-            for source_revision in task_revisions
-            for item in source_revision.node_settlements
-        }
+        historical_settlements = {}
+        for source_revision in task_revisions:
+            source_settlements = (
+                self._revision_settlement_loader(
+                    task_id, source_revision.revision_id
+                )
+                if self._revision_settlement_loader is not None
+                else tuple(source_revision.node_settlements)
+            )
+            historical_settlements.update({
+                (
+                    source_revision.revision_id,
+                    item.node_id,
+                    getattr(item, "invocation_id", None),
+                ): item
+                for item in source_settlements
+            })
         historical_settlements.update({
             (
                 revision.revision_id,

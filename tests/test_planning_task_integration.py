@@ -546,6 +546,139 @@ def test_unknown_settlement_resolves_only_from_same_known_invocation(tmp_path):
     assert [item["event_type"] for item in events].count("node_settlement_resolved") == 1
 
 
+def test_late_action_resolution_survives_continuation_context(tmp_path):
+    graph = _graph("task-late-effect", "revision-action")
+    coordinator = AgentTaskCoordinator(
+        workspace=tmp_path, config=ForgeConfig(), client=_Client()
+    )
+    task = coordinator.create_task(
+        task_description="continue after one late-known action",
+        verification=TaskVerificationContract(mode="off"),
+        plan_graph=graph,
+        plan_graph_ref="artifact://plans/task-late-effect/revision-action",
+    )
+    binding = {
+        "node_id": "relocate-red",
+        "node_digest": plan_node_digest(graph.nodes[0]),
+        "obligation_id": "relocate-red",
+        "input_binding_digest": "3" * 64,
+        "decision_trace_ref": "artifact://traces/task-late-effect/action",
+    }
+    record_id, _ = coordinator._append_execution(
+        task.task_id,
+        "object.place",
+        "action",
+        {
+            "entity_ref": "entity://old-visual",
+            "destination_ref": "destination://slot/1",
+            "scene_revision": "scene-old",
+            "world_T_object": [1.0] * 16,
+            "calibration_ref": "artifact://calibration/old",
+        },
+        tool=BoundToolSpec(
+            tool_id="object.place",
+            semantics="action",
+            spec_sha256="4" * 64,
+            ready_at_binding=True,
+        ),
+        planning_binding=binding,
+    )
+    invocation_id = "invocation://object-place/late-effect"
+    coordinator.store.update(
+        task.task_id,
+        lambda current: (
+            setattr(current.active_revision.execution_records[0], "invocation_id", invocation_id),
+            setattr(current.active_revision.execution_records[0], "attempt_id", "attempt://late-effect"),
+        ),
+        event_type="test_invocation_attached",
+    )
+    coordinator._finish_execution(
+        task.task_id,
+        record_id,
+        status="unknown",
+        invocation_id=invocation_id,
+        response={
+            "status": "unknown",
+            "world_change_started": True,
+            "outcome_known": False,
+        },
+    )
+    coordinator.record_planning_node_blocked(
+        task.task_id,
+        "revision-action",
+        "relocate-red",
+        "reconciliation_required:relocate-red",
+    )
+    coordinator.observe_action(
+        task.task_id,
+        invocation_id,
+        {
+            "status": "succeeded",
+            "invocation_id": invocation_id,
+            "result": {
+                "status": "succeeded",
+                "world_changed": True,
+                "world_change_started": True,
+                "outcome_known": True,
+                "new_scene_revision": "scene-current",
+                "release_confirmed": True,
+                "retreat_completed": True,
+                "clear_of_target": True,
+            },
+        },
+    )
+    effective = coordinator.effective_node_settlements(
+        task.task_id, "revision-action"
+    )[0]
+    assert effective.status == "completed"
+    assert effective.outcome_known is True
+    assert effective.world_change_started is True
+    assert effective.scene_revision == "scene-current"
+
+    checkpoint = PlanNode(
+        node_id="checkpoint-bind",
+        obligation_id="bind-current-scene",
+        capability="scene.bind",
+    )
+    payload = {
+        "schema_version": "paos-plan-graph/v1",
+        "task_id": task.task_id,
+        "revision_id": "revision-checkpoint",
+        "graph_digest": "0" * 64,
+        "planner_decision_digest": "1" * 64,
+        "policy_snapshot_digest": "2" * 64,
+        "nodes": [checkpoint.model_dump(mode="json")],
+    }
+    payload["graph_digest"] = plan_graph_digest(payload)
+    continuation = PlanGraph.model_validate(payload)
+    coordinator.begin_continuation_revision(
+        task.task_id,
+        reason="bind the changed scene without replaying the completed action",
+        plan_graph=continuation,
+        plan_graph_ref="artifact://plans/task-late-effect/revision-checkpoint",
+    )
+
+    context = NodeContextProvider(
+        coordinator.get_task,
+        coordinator.effective_node_settlements,
+        coordinator.effective_planning_execution_records,
+        coordinator.effective_node_settlements,
+    ).build(task.task_id, "checkpoint-bind", scene_revision="scene-current")
+
+    assert len(context.completed_effect_context) == 1
+    effect = context.completed_effect_context[0]
+    assert effect.node_id == "relocate-red"
+    assert effect.invocation_id == invocation_id
+    assert effect.world_change_started is True
+    assert effect.outcome_known is True
+    projected = json.dumps(
+        effect.model_dump(mode="json"), ensure_ascii=False
+    )
+    assert "world_T_object" not in projected
+    assert "calibration_ref" not in projected
+    assert "binding_ref" not in projected
+
+
 @pytest.mark.asyncio
 async def test_bound_query_timeout_cannot_be_shorter_than_tool_spec_default(tmp_path):
     client = _QueryClient()

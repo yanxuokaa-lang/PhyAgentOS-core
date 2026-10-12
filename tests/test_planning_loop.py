@@ -3734,6 +3734,71 @@ def test_agent_provider_block_replans_when_scene_changed(tmp_path):
     assert c.active_agent_provider_block(task.task_id) is None
 
 
+def test_agent_provider_scene_change_does_not_bypass_new_execution_fact(
+    tmp_path, monkeypatch
+):
+    c = coordinator(tmp_path)
+    task = c.create_task(
+        task_description="preserve concurrent execution ownership",
+        verification=TaskVerificationContract(mode="off"),
+    )
+    graph = make_graph(task.task_id, "revision-agent-provider-race", ("inspect",))
+    c.expand_discovery_revision(
+        task.task_id,
+        plan_graph=graph,
+        plan_graph_ref="artifact://plans/agent-provider-race",
+        discovery_evidence_refs=("scene:inventory",),
+    )
+    task = c.get_task(task.task_id)
+    c.record_agent_provider_blocked(
+        task.task_id,
+        task.active_revision_id,
+        "inspect",
+        failure_code="provider_error",
+        scene_revision="scene-1",
+    )
+    original_update = c.store.update
+    injected = False
+
+    def update_with_execution_fact(task_id, mutate, *, event_type, payload=None):
+        nonlocal injected
+        if event_type == "agent_provider_scene_invalidated" and not injected:
+            injected = True
+            original_update(
+                task_id,
+                lambda current: current.active_revision.execution_records.append(
+                    ToolExecutionRecord(
+                        record_id="concurrent-query",
+                        revision_id=current.active_revision_id,
+                        tool_id="perception.describe",
+                        semantics="query",
+                        caller_id="test",
+                        node_id="inspect",
+                        node_digest=plan_node_digest(graph.nodes[0]),
+                        obligation_id=graph.nodes[0].obligation_id,
+                        input_binding_digest=tool_input_binding_digest({}),
+                        decision_trace_ref="artifact://trace/concurrent-query",
+                        status="succeeded",
+                    )
+                ),
+                event_type="fixture_execution_recorded",
+            )
+        return original_update(
+            task_id, mutate, event_type=event_type, payload=payload
+        )
+
+    monkeypatch.setattr(c.store, "update", update_with_execution_fact)
+
+    with pytest.raises(
+        AgentTaskError, match="gained execution facts during scene invalidation"
+    ):
+        c.resume_agent_provider_block(task.task_id, scene_revision="scene-2")
+
+    current = c.get_task(task.task_id)
+    assert current.status == AgentTaskStatus.WAITING_FOR_AGENT_PROVIDER
+    assert current.active_revision.execution_records[0].record_id == "concurrent-query"
+
+
 def test_agent_provider_block_refuses_node_with_tool_execution_record(tmp_path):
     c = coordinator(tmp_path)
     task = c.create_task(
@@ -3817,6 +3882,9 @@ def test_agent_provider_retry_budget_requires_operator_resume(tmp_path):
     authorized = c.resume_task(task.task_id)
     assert authorized.status == AgentTaskStatus.WAITING_FOR_AGENT_PROVIDER
     assert c.active_agent_provider_block(task.task_id)["operator_authorized"] is True
+    event_count = len(c.store.events(task.task_id))
+    assert c.resume_task(task.task_id) == authorized
+    assert len(c.store.events(task.task_id)) == event_count
 
     resumed = c.resume_agent_provider_block(
         task.task_id, scene_revision="scene-1"
@@ -3862,6 +3930,76 @@ def test_legacy_node_provider_replan_restores_same_node_wait(tmp_path):
     assert restored.replan_deadline is None
     assert restored.active_revision.node_settlements[0].node_id == "observe"
     assert len(restored.revisions) == len(task.revisions)
+
+
+def test_legacy_provider_restore_rechecks_predecessors_in_transaction(
+    tmp_path, monkeypatch
+):
+    c = coordinator(tmp_path)
+    task = c.create_task(
+        task_description="reject changed predecessor during legacy restore",
+        verification=TaskVerificationContract(mode="off"),
+    )
+    graph = make_graph(
+        task.task_id, "revision-legacy-provider-race", ("observe", "bind")
+    )
+    c.expand_discovery_revision(
+        task.task_id,
+        plan_graph=graph,
+        plan_graph_ref="artifact://plans/legacy-provider-race",
+        discovery_evidence_refs=("scene:inventory",),
+    )
+    task = c.get_task(task.task_id)
+    c.record_node_settlement(NodeSettlement(
+        task_id=task.task_id,
+        revision_id=task.active_revision_id,
+        node_id="observe",
+        status="completed",
+        evidence_refs=("tool:observe",),
+        scene_revision="scene-1",
+        source_tool_id="scene.observe",
+    ))
+    c.record_planning_node_blocked(
+        task.task_id,
+        task.active_revision_id,
+        "bind",
+        "node_turn_provider_error:bind:provider_error",
+    )
+    original_update = c.store.update
+    injected = False
+
+    def update_with_changed_predecessor(task_id, mutate, *, event_type, payload=None):
+        nonlocal injected
+        if event_type == "agent_provider_blocked" and not injected:
+            injected = True
+
+            def change_predecessor(current):
+                current.active_revision.node_settlements[0] = (
+                    current.active_revision.node_settlements[0].model_copy(
+                        update={"status": "failed"}
+                    )
+                )
+
+            original_update(
+                task_id,
+                change_predecessor,
+                event_type="fixture_predecessor_changed",
+            )
+        return original_update(
+            task_id, mutate, event_type=event_type, payload=payload
+        )
+
+    monkeypatch.setattr(c.store, "update", update_with_changed_predecessor)
+
+    with pytest.raises(
+        AgentTaskError, match="predecessors changed during restore"
+    ):
+        c.restore_legacy_agent_provider_block(
+            task.task_id, scene_revision="scene-1"
+        )
+
+    assert c.get_task(task.task_id).status == AgentTaskStatus.AWAITING_REPLAN
+    assert c.active_agent_provider_block(task.task_id) is None
 
 
 def test_legacy_provider_restore_requires_latest_block_and_completed_predecessors(
