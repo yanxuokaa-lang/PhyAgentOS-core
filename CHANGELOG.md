@@ -28,7 +28,7 @@
 ```
 
 - 独立 Qwen PID `176466` 保持 8012 监听；未创建/恢复任务，未调用 Query/Action、读取相机、推进 simulator 或执行运动。 / Independent Qwen remained listening on 8012; no task was created/resumed, no Query/Action or camera read occurred, and no simulator action or motion was executed.
-- Deployment log/index commit pending on `feature/planning-loop`; reference completion follows. / 部署日志/索引提交待完成；提交引用随后回填。
+- Deployment log/index commit: `b7f48891` on `feature/planning-loop`; hash-reference completion follows in a log-only commit. / 部署日志/索引提交：`b7f48891`，分支 `feature/planning-loop`；提交引用由纯日志提交收尾。
 
 ## v13.4.7 (2026-10-14 00:41) - codex
 
