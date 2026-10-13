@@ -41,7 +41,7 @@
 - 未部署/重启 Runtime，未恢复/创建任务，未调用 live Query/Action、相机或 simulator，未执行物理运动。 / No Runtime deployment/restart, task resume/creation, live Query/Action, camera, simulator, or physical motion occurred.
 
 ### Git 提交 / Git Commit
-- Implementation/review commit pending on `feature/planning-loop`; log/index reference completion follows. / 实现与审查提交待完成；日志与索引引用随后补全。
+- Implementation/review commit: `01ff8b08` on `feature/planning-loop`; log/index reference completion follows. / 实现与审查提交：`01ff8b08`，分支 `feature/planning-loop`；日志与索引引用随后补全。
 
 ## v13.3.13 (2026-10-13 13:15) - codex
 
