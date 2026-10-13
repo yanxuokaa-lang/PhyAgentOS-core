@@ -146,6 +146,8 @@
 ### Git 提交 / Git Commit
 - Deployment log/index commit: `41d1bef4` on `feature/planning-loop`; commit-reference completion follows. / 部署日志与索引提交：`41d1bef4`，分支 `feature/planning-loop`；提交引用随后补全。
 
+## Archived detailed records / 已归档详细记录
+
 ## v13.3.14 (2026-10-13 14:00) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -186,8 +188,6 @@
 
 ### Git 提交 / Git Commit
 - Implementation/review commit: `01ff8b08` on `feature/planning-loop`; log/index reference completion follows. / 实现与审查提交：`01ff8b08`，分支 `feature/planning-loop`；日志与索引引用随后补全。
-
-## Archived detailed records / 已归档详细记录
 
 ## v13.3.13 (2026-10-13 13:15) - codex
 
