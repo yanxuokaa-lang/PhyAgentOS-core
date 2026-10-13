@@ -22,7 +22,7 @@
 ```
 
 ### Git 提交 / Git Commit
-- Deployment log/index commit: pending on `feature/planning-loop`; exact hash will be recorded after commit. / 部署日志与索引提交：当前仍待提交，分支 `feature/planning-loop`；提交后补充精确 hash。
+- Deployment log/index commit: `fa04b41f` on `feature/planning-loop`; commit-reference completion follows separately. / 部署日志与索引提交：`fa04b41f`，分支 `feature/planning-loop`；提交引用随后单独补全。
 
 ## v13.3.12 (2026-10-13 00:38) - codex
 
