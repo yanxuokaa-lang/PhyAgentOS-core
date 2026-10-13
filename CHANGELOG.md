@@ -33,7 +33,7 @@
 - readiness 仅证明服务/初始化生命周期；未创建/恢复任务、调用 Query/Action、读取相机、推进 simulator 或执行运动。 / Readiness proves service/initialization lifecycle only; no task was created/resumed, no Query/Action invoked, no camera read, no simulator advanced, and no motion executed.
 
 ### Git 提交 / Git Commit
-- Pending on `feature/planning-loop`. / 待在当前分支提交。
+- Deployment log/index commit: `c11bdbc4` on `feature/planning-loop`; commit-reference completion follows in the log-only commit. / 部署日志与索引提交：`c11bdbc4`，分支 `feature/planning-loop`；提交引用由纯日志提交收尾。
 
 ## v13.4.5 (2026-10-13 22:32) - codex
 
