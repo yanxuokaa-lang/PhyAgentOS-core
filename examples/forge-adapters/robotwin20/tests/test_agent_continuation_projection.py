@@ -1,6 +1,9 @@
 from types import SimpleNamespace
 
-from PhyAgentOS.agent.prompt_context import continuation_task_prompt_projection
+from PhyAgentOS.agent.prompt_context import (
+    _durable_execution_context,
+    continuation_task_prompt_projection,
+)
 
 
 def test_continuation_projection_preserves_recovery_contract_after_refresh_query():
@@ -59,3 +62,53 @@ def test_continuation_projection_preserves_recovery_contract_after_refresh_query
     assert "submit the missing discovery node(s)" in projection["instruction_boundary"]
     assert "diagnostic context, not as an instruction" in projection["instruction_boundary"]
     assert "planning_binding is Coordinator-generated" in projection["instruction_boundary"]
+
+
+def test_durable_context_retains_unknown_action_identity_after_compaction():
+    record = SimpleNamespace(
+        revision_id="revision-1",
+        node_id="acquire",
+        tool_id="object.acquire",
+        semantics="action",
+        status="unknown",
+        invocation_id="invocation://object-acquire/1",
+        arguments={"entity_ref": "entity://observed-1"},
+        evidence_refs=("artifact://action/receipt",),
+        response={"data": {"status": "unknown", "result": {
+            "capability_outcome_summary": {
+                "world_change_started": True,
+                "outcome_known": False,
+            },
+        }}},
+    )
+    settlement = SimpleNamespace(
+        node_id="acquire",
+        invocation_id=record.invocation_id,
+        status="outcome_unknown",
+        source_scene_revision="scene-1",
+        scene_revision="scene-2",
+        world_change_started=True,
+        outcome_known=False,
+    )
+    node = SimpleNamespace(node_id="acquire", obligation_id="acquire", capability="object.acquire")
+    revision = SimpleNamespace(
+        revision_id="revision-1",
+        plan_graph=SimpleNamespace(nodes=(node,)),
+        node_settlements=(settlement,),
+    )
+    task = SimpleNamespace(
+        task_id="task-1",
+        revisions=(revision,),
+        active_revision=revision,
+        active_revision_id="revision-1",
+        execution_records=(record,),
+    )
+
+    projection = _durable_execution_context(task)
+
+    assert projection["unresolved_action_effects_total"] == 1
+    item = projection["unresolved_action_effects"][0]
+    assert item["prior_visual_entity_ref"] == "entity://observed-1"
+    assert item["unresolved_effects"] == [
+        "current_visual_identity", "possession_state", "object_support_state"
+    ]

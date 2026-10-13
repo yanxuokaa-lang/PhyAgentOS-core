@@ -184,6 +184,7 @@ class Qwen3VLVLLMSceneUnderstandingInference:
         {
             "observation_ref", "scene_revision", "frame_id", "calibration_ref",
             "freshness_ms", "max_age_ms", "artifacts", "views", "capture_skew_ms",
+            "reconciliation_hypotheses",
         }
     )
 
@@ -368,7 +369,7 @@ class Qwen3VLVLLMSceneUnderstandingInference:
 
     @staticmethod
     def _prompt(request: Mapping[str, Any]) -> str:
-        return (
+        guidance = (
             "Inspect all ordered RGB views jointly and return one open-world semantic scene graph using "
             "exactly the requested JSON schema. List every clearly visible entity, including "
             "salient objects and large or low-contrast physical structures such as visible "
@@ -397,6 +398,16 @@ class Qwen3VLVLLMSceneUnderstandingInference:
             "entities when visible entities are present. "
             "Artifact provenance is assigned by the adapter from source_view_indexes."
         )
+        hypotheses = request.get("reconciliation_hypotheses", [])
+        if hypotheses:
+            guidance += (
+                " The following reconciliation hypotheses are prior-execution attention cues, not current "
+                "visual facts. Inspect potentially occluded regions for matching visible characteristics, but "
+                "do not copy their source entity IDs, infer simulator identity, or invent an entity when the "
+                "current images do not support it: "
+                + json.dumps(hypotheses, ensure_ascii=False, sort_keys=True)
+            )
+        return guidance
 
     @staticmethod
     def _content(response: Any) -> str:

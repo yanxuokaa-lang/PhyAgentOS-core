@@ -60,6 +60,14 @@ class PersistentPossession:
         status = result.get("status")
         known = result.get("outcome_known") is True
         changed = result.get("world_change_started") is True
+        explicit_possession = result.get("possession_state")
+        if known and status in {"succeeded", "failed"} and explicit_possession == "empty":
+            self.state = "empty"
+            self.owner = self.entity_ref = self.acquire_invocation_ref = None
+            return
+        if known and status in {"succeeded", "failed"} and explicit_possession == "holding":
+            self.state = "holding"
+            return
         if phase == "acquire":
             if status == "succeeded" and known:
                 self.state = "holding"
@@ -200,6 +208,9 @@ class _ProjectedDriver:
             "arm_attempts": arm_attempts,
             "evidence_refs": list(raw.get("evidence_refs", refs)),
         }
+        for key in ("possession_state", "object_support_state", "acquisition_measurement"):
+            if key in raw:
+                summary[key] = deepcopy(raw[key])
         if self.phase == "place":
             summary["post_release_evidence"] = {"availability": "complete" if success and refs else "none", "artifact_refs": refs if success else []}
             summary.update(
@@ -271,6 +282,24 @@ def _spec(spec, *, argument_defaults=None, require_synchronized_views: bool = Fa
         properties["evidence_refs"] = {"type": "array", "items": {"type": "string"}}
         properties["scene_effects"] = {"type": "object"}
         properties["capability_outcome_summary"]["properties"]["world_change_started"] = {"type": ["boolean", "null"]}
+        properties["capability_outcome_summary"]["properties"].update(
+            {
+                "possession_state": {"enum": ["empty", "holding"]},
+                "object_support_state": {
+                    "enum": ["on_support", "displaced", "unknown"]
+                },
+                "acquisition_measurement": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "lift_displacement_m": {"type": "number"},
+                        "minimum_lift_m": {"type": "number"},
+                        "support_clearance_m": {"type": "number"},
+                        "support_tolerance_m": {"type": "number"},
+                    },
+                },
+            }
+        )
         if spec["tool_id"] == "object.place":
             properties["current_scene_revision"] = {"type": "string", "minLength": 1}
     return spec

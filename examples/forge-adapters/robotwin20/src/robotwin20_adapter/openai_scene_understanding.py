@@ -302,7 +302,7 @@ class OpenAIResponsesSceneUnderstandingInference:
             "calibration_ref",
             "freshness_ms",
             "max_age_ms",
-            "artifacts", "views", "capture_skew_ms",
+            "artifacts", "views", "capture_skew_ms", "reconciliation_hypotheses",
         }
     )
 
@@ -483,10 +483,12 @@ class OpenAIResponsesSceneUnderstandingInference:
             "will independently establish metric localization and geometry from masks, depth, and calibration. "
             "Therefore never emit an ambiguity merely because RGB alone cannot estimate metric or geometric "
             "quantities. If a visible semantic claim is ambiguous, use only one of the schema's canonical "
-            "semantic ambiguity codes instead of guessing. Inspect the entire image, including simple geometric "
-            "objects such as cubes and blocks, and enumerate each visibly distinct object with its apparent color "
-            "and relative position. Do not return empty entities just because the scene is simple or the objects "
-            "are not household items. If no entity can be identified confidently, return the appropriate semantic "
+            "semantic ambiguity codes instead of guessing. Inspect the entire image and enumerate each visibly "
+            "distinct task-relevant object and physical structure with identifying visual attributes and relative "
+            "relations. Reconciliation hypotheses are attention cues from prior execution, not current facts: "
+            "inspect likely occluded regions carefully, but never copy a source entity ID or claim visibility from "
+            "a hypothesis alone. Do not return empty entities just because the scene is simple. If no entity can "
+            "be identified confidently, return the appropriate semantic "
             "ambiguity rather than a clean empty result."
         )
 
@@ -499,9 +501,12 @@ class OpenAIResponsesSceneUnderstandingInference:
                 "frame_id": request.get("frame_id"),
                 "calibration_ref": request.get("calibration_ref"),
                 "artifact_refs": request.get("artifacts"),
+                "reconciliation_hypotheses": request.get(
+                    "reconciliation_hypotheses", []
+                ),
                 "task": (
-                    "Inspect all RGB views jointly and identify each visible object, including simple colored "
-                    "geometric blocks or cubes; report its color, count, and relative left-to-right layout."
+                    "Inspect all RGB views jointly, identify each visibly distinct task-relevant entity, "
+                    "and explicitly report occlusion or identity ambiguity instead of guessing."
                 ),
             },
             ensure_ascii=False,

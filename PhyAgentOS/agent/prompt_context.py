@@ -1101,6 +1101,7 @@ def _durable_execution_context(
     completed: list[dict[str, Any]] = []
     remaining: list[dict[str, Any]] = []
     no_replay: list[dict[str, Any]] = []
+    unresolved_effects: list[dict[str, Any]] = []
     effects: list[dict[str, Any]] = []
     current_bindings: dict[str, str] = {}
     revisions = tuple(getattr(task, "revisions", ())) or tuple(
@@ -1152,6 +1153,31 @@ def _durable_execution_context(
             continue
         settlement_status = getattr(settlement, "status", None)
         if settlement_status == "outcome_unknown":
+            facts = response_facts(getattr(record, "response", None))
+            arguments = getattr(record, "arguments", {})
+            arguments = arguments if isinstance(arguments, dict) else {}
+            visual_ref = arguments.get("entity_ref")
+            execution_ref = facts.get("execution_entity_ref") or current_bindings.get(visual_ref)
+            unresolved = ["current_visual_identity"]
+            if facts.get("possession_state") not in {"empty", "holding"}:
+                unresolved.append("possession_state")
+            if facts.get("object_support_state") not in {"on_support", "displaced"}:
+                unresolved.append("object_support_state")
+            unresolved_effects.append({
+                "revision_id": revision_id,
+                "node_id": node,
+                "tool_id": getattr(record, "tool_id", None),
+                "invocation_id": getattr(record, "invocation_id", None),
+                "execution_entity_ref": execution_ref,
+                "prior_visual_entity_ref": visual_ref,
+                "source_scene_revision": facts.get("source_scene_revision") or getattr(settlement, "source_scene_revision", None),
+                "world_change_started": getattr(settlement, "world_change_started", None),
+                "outcome_known": getattr(settlement, "outcome_known", None),
+                "possession_state": facts.get("possession_state"),
+                "object_support_state": facts.get("object_support_state"),
+                "unresolved_effects": unresolved,
+                "evidence_refs": list(getattr(record, "evidence_refs", ()))[:8],
+            })
             no_replay.append({
                 "revision_id": revision_id,
                 "node_id": node,
@@ -1159,6 +1185,44 @@ def _durable_execution_context(
                 "invocation_id": getattr(record, "invocation_id", None),
                 "settlement_status": settlement_status,
                 "reason": "unresolved outcome_unknown; reconcile before any retry",
+            })
+            continue
+        if (
+            settlement_status == "failed"
+            and getattr(settlement, "world_change_started", None) is True
+            and getattr(settlement, "outcome_known", None) is True
+        ):
+            facts = response_facts(getattr(record, "response", None))
+            arguments = getattr(record, "arguments", {})
+            arguments = arguments if isinstance(arguments, dict) else {}
+            visual_ref = arguments.get("entity_ref")
+            unresolved = ["current_visual_identity"]
+            if facts.get("possession_state") not in {"empty", "holding"}:
+                unresolved.append("possession_state")
+            if facts.get("object_support_state") not in {"on_support", "displaced"}:
+                unresolved.append("object_support_state")
+            unresolved_effects.append({
+                "revision_id": revision_id,
+                "node_id": node,
+                "tool_id": getattr(record, "tool_id", None),
+                "invocation_id": getattr(record, "invocation_id", None),
+                "execution_entity_ref": facts.get("execution_entity_ref") or current_bindings.get(visual_ref),
+                "prior_visual_entity_ref": visual_ref,
+                "source_scene_revision": facts.get("source_scene_revision") or getattr(settlement, "source_scene_revision", None),
+                "world_change_started": True,
+                "outcome_known": True,
+                "possession_state": facts.get("possession_state"),
+                "object_support_state": facts.get("object_support_state"),
+                "unresolved_effects": unresolved,
+                "evidence_refs": list(getattr(record, "evidence_refs", ()))[:8],
+            })
+            no_replay.append({
+                "revision_id": revision_id,
+                "node_id": node,
+                "tool_id": getattr(record, "tool_id", None),
+                "invocation_id": getattr(record, "invocation_id", None),
+                "settlement_status": settlement_status,
+                "reason": "measured world-changing failure; reconcile its affected identity before retry",
             })
             continue
         if settlement_status != "completed":
@@ -1193,6 +1257,7 @@ def _durable_execution_context(
             "settlement_status": settlement_status,
             "reason": "authoritative terminal settlement; do not replay",
         })
+
 
     goal_definitions: list[dict[str, Any]] = []
     latest_observation_record = next(
@@ -1405,6 +1470,15 @@ def _durable_execution_context(
         ),
         "completed_effects": effects[-_MAX_PHASE_ITEMS:],
         "completed_effects_total": len(effects),
+        "unresolved_action_effects": unresolved_effects[-_MAX_PHASE_ITEMS:],
+        "unresolved_action_effects_total": len(unresolved_effects),
+        "unresolved_action_policy": (
+            "Every world-changing Action with unknown or measured failed outcome retains its "
+            "stable execution identity and physical effects as a mandatory reconciliation "
+            "obligation. A fresh scene may establish a new visual entity; it cannot erase or "
+            "reuse the prior visual reference, and no Action may be retried while these effects "
+            "remain unresolved."
+        ),
         "goal_ledger": {
             "definitions": goal_definitions[:_MAX_GOAL_ITEMS],
             "definition_count": len(goal_definitions),

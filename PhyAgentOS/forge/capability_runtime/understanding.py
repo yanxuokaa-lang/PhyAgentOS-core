@@ -240,6 +240,34 @@ TOOL_SPEC: dict[str, Any] = {
                     },
                 },
             },
+            "reconciliation_hypotheses": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": [
+                        "execution_entity_ref", "source_entity_ref",
+                        "source_scene_revision", "action_invocation_id",
+                        "unresolved_effects", "evidence_refs",
+                    ],
+                    "properties": {
+                        "execution_entity_ref": {
+                            "type": "string", "pattern": _ENTITY_REF.pattern
+                        },
+                        "source_entity_ref": {
+                            "type": "string", "pattern": _ENTITY_REF.pattern
+                        },
+                        "source_scene_revision": {"type": "string", "minLength": 1},
+                        "action_invocation_id": {"type": "string", "minLength": 1},
+                        "prior_category": {"type": "string", "minLength": 1},
+                        "unresolved_effects": {
+                            "type": "array", "minItems": 1,
+                            "items": {"type": "string", "minLength": 1},
+                        },
+                        "evidence_refs": _PROVENANCE_SCHEMA,
+                    },
+                },
+            },
         },
     },
     "output_schema": {
@@ -478,7 +506,7 @@ def validate_arguments(arguments: Any) -> dict[str, Any] | None:
     allowed = {
         "observation_ref", "scene_revision", "frame_id", "calibration_ref",
         "freshness_ms", "max_age_ms", "artifacts", "views", "capture_skew_ms",
-        "carried_entities",
+        "carried_entities", "reconciliation_hypotheses",
     }
     if set(arguments) - allowed:
         return _error("invalid_arguments", "unknown scene.understand argument")
@@ -607,6 +635,55 @@ def validate_arguments(arguments: Any) -> dict[str, Any] | None:
         elif possession is not None:
             return _error("invalid_carry_forward", "unchanged entity cannot claim possession", observation_ref=observation_ref)
         seen_carried.add(entity_ref)
+    hypotheses = arguments.get("reconciliation_hypotheses", [])
+    if not isinstance(hypotheses, list):
+        return _error(
+            "invalid_reconciliation_hypotheses",
+            "reconciliation_hypotheses must be an array",
+            observation_ref=observation_ref,
+        )
+    seen_execution_refs: set[str] = set()
+    for item in hypotheses:
+        required = {
+            "execution_entity_ref", "source_entity_ref", "source_scene_revision",
+            "action_invocation_id", "unresolved_effects", "evidence_refs",
+        }
+        if (
+            not isinstance(item, dict)
+            or not required <= set(item)
+            or set(item) - required - {"prior_category"}
+            or any(
+                not isinstance(item.get(key), str) or not item[key]
+                for key in (
+                    "execution_entity_ref", "source_entity_ref",
+                    "source_scene_revision", "action_invocation_id",
+                )
+            )
+            or _ENTITY_REF.fullmatch(item["execution_entity_ref"]) is None
+            or _ENTITY_REF.fullmatch(item["source_entity_ref"]) is None
+            or item["execution_entity_ref"] in seen_execution_refs
+            or not isinstance(item.get("unresolved_effects"), list)
+            or not item["unresolved_effects"]
+            or any(
+                not isinstance(value, str) or not value
+                for value in item["unresolved_effects"]
+            )
+            or len(set(item["unresolved_effects"])) != len(item["unresolved_effects"])
+            or not _provenance_is_bound(item.get("evidence_refs"), None)
+            or (
+                "prior_category" in item
+                and (
+                    not isinstance(item["prior_category"], str)
+                    or not item["prior_category"]
+                )
+            )
+        ):
+            return _error(
+                "invalid_reconciliation_hypotheses",
+                "reconciliation hypothesis is invalid",
+                observation_ref=observation_ref,
+            )
+        seen_execution_refs.add(item["execution_entity_ref"])
     return None
 
 
@@ -1038,6 +1115,24 @@ class SceneUnderstandingEndpoint:
             "code": "observation_local_identity_remapped", "entity_refs": [alias],
             "source_entity_ref": ref, "observation_ref": observation_ref,
         } for ref, alias in aliases.items())
+        for hypothesis in arguments.get("reconciliation_hypotheses", []):
+            # A hypothesis is an obligation and attention cue, never a current
+            # visual claim.  Providers may detect a fresh entity, but only a
+            # later scene.bind can establish execution identity.  Until then
+            # keep the stable identity explicitly unresolved instead of
+            # silently deleting it from the recovery state.
+            reconciliations.append(
+                {
+                    "code": "affected_execution_entity_unresolved",
+                    "status": "unresolved",
+                    "execution_entity_ref": hypothesis["execution_entity_ref"],
+                    "source_entity_ref": hypothesis["source_entity_ref"],
+                    "source_scene_revision": hypothesis["source_scene_revision"],
+                    "action_invocation_id": hypothesis["action_invocation_id"],
+                    "unresolved_effects": list(hypothesis["unresolved_effects"]),
+                    "evidence_refs": list(hypothesis["evidence_refs"]),
+                }
+            )
         for item in carried_entities:
             entity = dict(item["entity"])
             if entity["entity_ref"] in entity_refs:

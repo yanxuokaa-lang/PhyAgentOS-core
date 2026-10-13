@@ -102,7 +102,7 @@ output_schema:
             version: {const: capability_outcome_summary_v1}
             capability_phase: {enum: [approach, contact, close, lift, hold, none]}
             status: {enum: [succeeded, failed, cancelled, stopped, unknown]}
-            failure_owner: {enum: [none, input, binding, readiness, planner, execution, evidence, settlement, operator, infrastructure, null]}
+            failure_owner: {enum: [none, input, binding, readiness, planner, execution, execution_verification, evidence, settlement, operator, infrastructure, null]}
             failure_code: {type: [string, 'null']}
             world_change_started: {type: boolean}
             outcome_known: {type: boolean}
@@ -131,6 +131,16 @@ output_schema:
                   failed_phase: {type: [string, 'null']}
                   failed_waypoint_index: {type: [integer, 'null'], minimum: 0}
                   detail: {type: [string, 'null']}
+            possession_state: {enum: [empty, holding, null]}
+            object_support_state: {enum: [on_support, displaced, unknown, null]}
+            acquisition_measurement:
+              type: [object, 'null']
+              additionalProperties: false
+              properties:
+                lift_displacement_m: {type: number}
+                minimum_lift_m: {type: number}
+                support_clearance_m: {type: number}
+                support_tolerance_m: {type: number}
             evidence_refs:
               type: array
               items: {type: string, pattern: '^artifact://[^/]+/.+$'}

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass, field
 from typing import Any, Protocol
@@ -28,6 +29,7 @@ _FAILURE_OWNERS = (
     "readiness",
     "planner",
     "execution",
+    "execution_verification",
     "evidence",
     "settlement",
     "operator",
@@ -96,6 +98,9 @@ class AcquireSnapshot:
     failed_phase: str | None = None
     arm_attempts: tuple[dict[str, Any], ...] = field(default_factory=tuple)
     evidence_refs: tuple[str, ...] = field(default_factory=tuple)
+    possession_state: str | None = None
+    object_support_state: str | None = None
+    acquisition_measurement: dict[str, float] | None = None
     pending_polls: int = 0
     provider_available: bool = True
 
@@ -165,6 +170,18 @@ def _summary_schema() -> dict[str, Any]:
             "evidence_refs": {
                 "type": "array",
                 "items": {"type": "string", "pattern": r"^artifact://[^/]+/.+$"},
+            },
+            "possession_state": {"enum": ["empty", "holding", None]},
+            "object_support_state": {"enum": ["on_support", "displaced", "unknown", None]},
+            "acquisition_measurement": {
+                "type": ["object", "null"],
+                "additionalProperties": False,
+                "properties": {
+                    "lift_displacement_m": {"type": "number"},
+                    "minimum_lift_m": {"type": "number"},
+                    "support_clearance_m": {"type": "number"},
+                    "support_tolerance_m": {"type": "number"},
+                },
             },
         },
     }
@@ -549,6 +566,25 @@ def _validate_snapshot(snapshot: AcquireSnapshot) -> str | None:
         for ref in snapshot.evidence_refs
     ):
         return "invalid_recovery_facts"
+    if snapshot.possession_state not in {None, "empty", "holding"}:
+        return "invalid_possession_state"
+    if snapshot.object_support_state not in {None, "on_support", "displaced", "unknown"}:
+        return "invalid_object_support_state"
+    if snapshot.acquisition_measurement is not None:
+        allowed_measurements = {
+            "lift_displacement_m", "minimum_lift_m", "support_clearance_m", "support_tolerance_m",
+        }
+        if (
+            not isinstance(snapshot.acquisition_measurement, dict)
+            or any(
+                key not in allowed_measurements
+                or isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(float(value))
+                for key, value in snapshot.acquisition_measurement.items()
+            )
+        ):
+            return "invalid_acquisition_measurement"
     return None
 
 
@@ -575,6 +611,12 @@ def terminal_result(arguments: dict[str, Any], snapshot: AcquireSnapshot) -> dic
         "arm_attempts": list(snapshot.arm_attempts),
         "evidence_refs": list(snapshot.evidence_refs),
     }
+    if snapshot.possession_state is not None:
+        summary["possession_state"] = snapshot.possession_state
+    if snapshot.object_support_state is not None:
+        summary["object_support_state"] = snapshot.object_support_state
+    if snapshot.acquisition_measurement is not None:
+        summary["acquisition_measurement"] = dict(snapshot.acquisition_measurement)
     result = {
         "status": snapshot.status,
         "observation_ref": arguments["observation_ref"],

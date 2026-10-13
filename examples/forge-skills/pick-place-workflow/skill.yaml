@@ -1,6 +1,6 @@
 manifest_version: 2
 name: pick-place-workflow
-version: "3.0.22"
+version: "3.0.23"
 description: Provider-neutral perception, preparation, acquisition, placement, and long-horizon workflow contracts.
 skill_document: SKILL.md
 gateway_url: http://127.0.0.1:19020
@@ -220,10 +220,10 @@ artifacts:
   resolver: local
   nodes:
     robotwin20_persistent_host:
-      artifact_id: robotwin20_persistent_host-1.0.12-linux-x86_64
-      version: "1.0.12"
+      artifact_id: robotwin20_persistent_host-1.0.13-linux-x86_64
+      version: "1.0.13"
       platform: linux
       arch: x86_64
       artifact_type: executable_tar_gz
       entrypoint: robotwin20_persistent_host
-      sha256: 96818ddbe23927326055f53e8424a9599bc7e04ff0a5357003758f9ed07c9b51
+      sha256: 1de2805535b21c529956a123b939556ff70b94548a72edc01bced96c3c3542b2

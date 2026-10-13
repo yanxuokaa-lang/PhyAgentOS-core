@@ -1,5 +1,10 @@
 # Change Log
 
+## v3.0.23 (2026-10-13)
+
+- 中文：发布 Adapter Node `1.0.13`，保留 world-changing unknown/failed Action 的稳定执行身份与 possession 对账义务，投影可测得的 acquire 后置条件，并将新观察中的 reconciliation hypothesis 明确标为 unresolved；不复用旧视觉身份、几何或位姿。
+- English: Publish Adapter Node `1.0.13`, retaining stable execution identities and possession-reconciliation obligations for world-changing unknown/failed Actions, projecting measured acquire postconditions, and marking reconciliation hypotheses from fresh observations as unresolved; stale visual identity, geometry, and poses are never reused.
+
 ## v3.0.22 (2026-10-12)
 
 - 中文：发布 Adapter Node `1.0.12`，将已测得的放置后置条件失败与 bounded measurement/tolerance 投影打包进 Runtime，并确保每个 Action 清理上次测量；未分类 post-release 异常继续 fail-closed 为 unknown。

@@ -2,6 +2,43 @@
 
 ## 最近五版本 / Latest five versions
 
+## v13.4.5 (2026-10-13 22:32) - codex
+
+### 变更摘要 / Summary [完成]
+- [policy] [fix] 修复 world-changing unknown/failed Action 的通用身份与 possession 对账：稳定执行身份不得因当前视觉漏检而从恢复义务消失；无法权威判定时继续 fail-closed。 / Fix generic identity and possession reconciliation for world-changing unknown/failed Actions: a stable execution identity must not disappear from recovery obligations because current vision missed it, and unresolved physical state remains fail-closed. (local)
+- [sense] [fix] 引入 Coordinator-owned reconciliation hypotheses，并让场景理解显式输出 unresolved；不复用旧视觉 ID、几何或位姿。 / Introduce Coordinator-owned reconciliation hypotheses and explicit unresolved understanding results without reusing stale visual IDs, geometry, or poses. (local)
+- [model] [refactor] 移除视觉 provider 的颜色方块排列专用 prompt，改为开放世界通用语义。 / Remove color-block-arrangement-specific visual-provider prompting in favor of generic open-world semantics. (local)
+
+### 预期文件与安全边界 / Planned Files and Safety Boundary
+- Core recovery/context/understanding、RobotWin Runtime/Adapter、相关 tests、Skill/Node release metadata，以及 `docs/forge/UNKNOWN_ACTION_POSSESSION_RECONCILIATION_DIAGNOSIS_20261013.md`。 / Core recovery/context/understanding, RobotWin Runtime/Adapter, related tests, Skill/Node release metadata, and the diagnosis document.
+- no-motion only；不恢复任务、不调用 live Query/Action、不重启 Runtime。 / No-motion only; no task resume, live Query/Action, or Runtime restart.
+
+### 完成结果 / Completed Result
+- Runtime 将具有完整有限测量的 acquire 未持有后置条件分类为 known failed/empty；证据不完整仍保持 outcome_unknown。 / Runtime classifies a fully measured acquire no-possession postcondition as known failed/empty; incomplete evidence remains outcome_unknown.
+- Coordinator 在 selection/invoke 两个边界注入仅含稳定身份、原 invocation 和 artifact provenance 的 reconciliation hypothesis；Understanding 漏检时显式输出 unresolved，不复制旧 visual ID、几何、位姿或 calibration。 / Coordinator injects reconciliation hypotheses containing only stable identity, original invocation, and artifact provenance at selection/invoke; Understanding emits explicit unresolved on misses without copying stale visual IDs, geometry, poses, or calibration.
+- 压缩后 prompt 持久投影保留 no-replay 与未决 Action 效果账本；视觉 provider prompt 已改为开放世界，不含颜色方块排列专用逻辑。 / Post-compaction prompt projections retain no-replay and unresolved Action-effect ledgers; visual-provider prompts are open-world and contain no color-block-arrangement specialization.
+- 七维审查已完成并修复 Major：静态/动态 Tool contract 漂移、known failed settlement 未进入账本、unknown-place release 兼容回归、acquire failure-owner enum 缺失及旧专用 prompt 测试断言。 / Seven-dimension review completed and fixed Majors: static/dynamic Tool contract drift, missing known-failed ledger entries, unknown-place release compatibility, missing acquire failure-owner enum, and stale task-specific prompt assertions.
+- `496 passed, 1 deselected`；compileall、Ruff、diff check 与 release consistency 通过。发布 Skill `3.0.23` / Node `1.0.13`，Node SHA `1de2805535b21c529956a123b939556ff70b94548a72edc01bced96c3c3542b2`。 / 496 passed with one environment-only video test deselected; compileall, Ruff, diff check, and release consistency passed. Published Skill 3.0.23 / Node 1.0.13 with the recorded SHA.
+- 诊断文档：`docs/forge/UNKNOWN_ACTION_POSSESSION_RECONCILIATION_DIAGNOSIS_20261013.md:L1-L112`。详细七维审查、文件行号和 Diff 见 `changelog/2026-10_part6.md` v13.4.5。 / Diagnosis document recorded; see the monthly v13.4.5 entry for full seven-dimension review, exact lines, and diffs.
+
+### 七维审查 / Seven-Dimension Review
+- 架构：Runtime/Coordinator/Understanding/AgentLoop 所有权保持分离；正确性：仅结构化有限测量可产生 known empty；可观测：投影 bounded failure/possession/support/measurement/unresolved facts。 / Architecture ownership remains separated; only structured finite measurement yields known empty; bounded failure, possession, support, measurement, and unresolved facts are observable.
+- 幂等：Coordinator 每次重算并复核 hypothesis；安全：unknown 保持 fail-closed 且不重放 Action；兼容：无任务/颜色/方块分支；收敛：压缩账本保留未决身份且恢复有界。 / Coordinator recomputes hypotheses idempotently; unknown remains fail-closed with no Action replay; no task/color/block branch exists; compaction retains unresolved identity and recovery remains bounded.
+
+### 文件与关键 Diff / Files and Key Diff
+- Core：`prompt_context.py:L1101-L1270,L1463-L1475`、`recovery_decisions.py:L217-L249`、`forge_tool_api.py:L290-L410,L960-L1076`、`planning.py:L491-L518`、`understanding.py:L240-L270,L506-L686,L1115-L1142`。 / Core recovery, Coordinator hypothesis, and Understanding boundaries.
+- Runtime/Adapter/Skill：`robotwin_simulation_probe_worker.py:L121-L136,L1604-L1630`、`robotwin_persistent_engine.py:L719-L728`、`persistent_manipulation.py:L35-L193,L364-L375`、provider prompts、Tool YAML、Skill `3.0.23` / Node `1.0.13`。 / Runtime measurement, receipt lifecycle, provider prompts, Tool contracts, and release metadata.
+
+```diff
+- visual miss after unknown Action could remove the affected object from recovery scope
++ stable execution identity + unresolved physical effects remain mandatory reconciliation facts
+- old task-specific block-arrangement prompt
++ open-world entity, occlusion, and attention-only reconciliation guidance
+```
+
+### Git 提交 / Git Commit
+- Implementation commit pending on `feature/planning-loop`. / 实现提交待完成，分支 `feature/planning-loop`。
+
 ## v13.4.4 (2026-10-13 21:32) - codex
 
 ### 变更摘要 / Summary [完成]

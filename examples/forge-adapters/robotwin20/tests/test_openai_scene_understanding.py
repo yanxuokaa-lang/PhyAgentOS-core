@@ -133,10 +133,11 @@ def test_responses_provider_builds_structured_image_request_and_projects_result(
     assert client_options["max_retries"] == 0
     prompt = json.loads(payload["input"][0]["content"][0]["text"])
     assert "desktop" not in prompt["task"].lower()
-    assert "geometric blocks or cubes" in prompt["task"]
-    assert "left-to-right layout" in prompt["task"]
-    assert "simple geometric objects" in payload["instructions"]
-    assert "not household items" in payload["instructions"]
+    assert "task-relevant entity" in prompt["task"]
+    assert "occlusion or identity ambiguity" in prompt["task"]
+    assert "left-to-right layout" not in prompt["task"]
+    assert "task-relevant object and physical structure" in payload["instructions"]
+    assert "Reconciliation hypotheses are attention cues" in payload["instructions"]
     image = payload["input"][0]["content"][1]
     assert image["type"] == "input_image"
     assert image["image_url"] == "data:image/png;base64," + base64.b64encode(b"rgb-bytes").decode()

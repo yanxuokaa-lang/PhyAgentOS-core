@@ -456,6 +456,31 @@ def test_derived_artifacts_are_projected_and_contract_matches_yaml():
     assert contract == UNDERSTANDING_TOOL_SPEC
 
 
+def test_reconciliation_hypothesis_is_an_unresolved_attention_cue_not_a_visual_entity():
+    snapshot = understanding_snapshot(
+        entities=(),
+        spatial_envelopes=(),
+        reconciliations=(),
+    )
+    hypothesis = {
+        "execution_entity_ref": "entity://stable-1",
+        "source_entity_ref": "entity://observed-1",
+        "source_scene_revision": "scene-6",
+        "action_invocation_id": "invocation://object-acquire/1",
+        "unresolved_effects": ["current_visual_identity", "possession_state"],
+        "evidence_refs": ["artifact://action/receipt"],
+    }
+    output = SceneUnderstandingEndpoint(Provider(snapshot)).invoke(
+        request_payload(reconciliation_hypotheses=[hypothesis])
+    )
+    assert output["entities"] == []
+    assert output["reconciliations"] == [{
+        "code": "affected_execution_entity_unresolved",
+        "status": "unresolved",
+        **hypothesis,
+    }]
+
+
 @pytest.mark.parametrize(
     ("artifact", "code"),
     [

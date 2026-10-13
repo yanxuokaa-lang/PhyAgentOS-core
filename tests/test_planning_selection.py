@@ -10,6 +10,7 @@ import PhyAgentOS.forge.task as forge_task_module
 from PhyAgentOS.agent.plan_proposal import _complete_persisted_runtime_bindings
 from PhyAgentOS.agent.planning_dispatch import AgentComposedDispatch
 from PhyAgentOS.agent.planning_loop import PlanningLoopError
+from PhyAgentOS.agent.tools.forge_tool_api import _coordinator_reconciliation_hypotheses
 from PhyAgentOS.agent.tools.planning import (
     ForgePlanSelectTool,
     _merge_projection_compatible_sources,
@@ -1508,3 +1509,81 @@ def test_prepare_selection_demotes_legacy_prose_node_intent_to_constraint():
     assert proposal["tool_arguments"]["intent"]["constraints"] == [
         "Use the current observed green point cloud only."
     ]
+
+
+def test_coordinator_reconciliation_hypothesis_retains_identity_without_stale_geometry():
+    def record(*, tool_id, semantics, status, arguments, response, invocation_id=None, evidence_refs=()):
+        return SimpleNamespace(
+            tool_id=tool_id,
+            semantics=semantics,
+            status=status,
+            arguments=arguments,
+            response=response,
+            invocation_id=invocation_id,
+            evidence_refs=evidence_refs,
+        )
+
+    task = SimpleNamespace(execution_records=[
+        record(
+            tool_id="scene.understand",
+            semantics="query",
+            status="succeeded",
+            arguments={},
+            response={"data": {
+                "status": "available",
+                "scene_revision": "scene-1",
+                "observation_ref": "observation://scene-1/camera",
+                "calibration_ref": "artifact://calibration/scene-1",
+                "entities": [{"entity_ref": "entity://observed-1", "category": "object"}],
+            }},
+        ),
+        record(
+            tool_id="scene.bind",
+            semantics="query",
+            status="succeeded",
+            arguments={},
+            response={"data": {
+                "status": "available",
+                "scene_revision": "scene-1",
+                "observation_ref": "observation://scene-1/camera",
+                "calibration_ref": "artifact://calibration/scene-1",
+                "entities": [{
+                    "entity_ref": "entity://observed-1",
+                    "execution_entity_ref": "entity://stable-1",
+                }],
+            }},
+        ),
+        record(
+            tool_id="object.acquire",
+            semantics="action",
+            status="unknown",
+            arguments={
+                "entity_ref": "entity://observed-1",
+                "scene_revision": "scene-1",
+                "pose": [1, 2, 3],
+            },
+            invocation_id="invocation://object-acquire/1",
+            evidence_refs=("artifact://action/receipt",),
+            response={"data": {"status": "unknown", "result": {
+                "capability_outcome_summary": {
+                    "world_change_started": True,
+                    "outcome_known": False,
+                },
+            }}},
+        ),
+    ])
+
+    result = _coordinator_reconciliation_hypotheses(task)
+
+    assert result == [{
+        "execution_entity_ref": "entity://stable-1",
+        "source_entity_ref": "entity://observed-1",
+        "source_scene_revision": "scene-1",
+        "action_invocation_id": "invocation://object-acquire/1",
+        "unresolved_effects": [
+            "current_visual_identity", "possession_state", "object_support_state"
+        ],
+        "evidence_refs": ["artifact://action/receipt"],
+        "prior_category": "object",
+    }]
+    assert not {"pose", "geometry", "calibration_ref"}.intersection(result[0])

@@ -290,12 +290,14 @@ class ForgeToolQueryTool(Tool):
         use_selected_arguments: bool = False,
         argument_sources: dict[str, Any] | None = None,
     ) -> str:
-        if tool_id == "scene.understand" and "carried_entities" in arguments:
+        if tool_id == "scene.understand" and {
+            "carried_entities", "reconciliation_hypotheses"
+        }.intersection(arguments):
             return _json({
                 "ok": False,
                 "error": {
                     "type": "agent_arguments",
-                    "message": "carried_entities is Coordinator-owned and cannot be supplied by the Agent",
+                    "message": "scene continuity fields are Coordinator-owned and cannot be supplied by the Agent",
                 },
             })
         if argument_sources and not task_id:
@@ -392,11 +394,16 @@ class ForgeToolQueryTool(Tool):
                         task,
                         resolved_arguments.get("scene_revision"),
                     )
+                    hypotheses = _coordinator_reconciliation_hypotheses(task)
                     if resolved_binding is not None:
                         if resolved_arguments.get("carried_entities", []) != carried:
                             raise AgentTaskError("Coordinator carry-forward changed after selection; select current evidence again")
+                        if resolved_arguments.get("reconciliation_hypotheses", []) != hypotheses:
+                            raise AgentTaskError("Coordinator reconciliation hypotheses changed after selection; select current evidence again")
                     elif carried:
                         resolved_arguments["carried_entities"] = carried
+                    if resolved_binding is None and hypotheses:
+                        resolved_arguments["reconciliation_hypotheses"] = hypotheses
                 return await self.coordinator.invoke_query(
                     task_id, tool_id,
                     resolved_arguments,
@@ -948,6 +955,123 @@ def _coordinator_carried_entities(task: Any, scene_revision: Any) -> list[dict[s
             item.update(carry_state="held", possession=dict(held))
         carried.append(item)
     return carried
+
+
+def _coordinator_reconciliation_hypotheses(task: Any) -> list[dict[str, Any]]:
+    """Retain affected stable identities without carrying stale visual facts.
+
+    This projection is deliberately separate from ``carried_entities``.  A
+    world-changing failed/unknown Action does not authorize old geometry or an
+    old observation-local identity in the current scene, but its stable
+    execution identity remains a recovery obligation until current evidence
+    resolves it.
+    """
+
+    action = None
+    action_index = -1
+    facts: dict[str, Any] = {}
+    for index in range(len(task.execution_records) - 1, -1, -1):
+        candidate = task.execution_records[index]
+        if candidate.semantics != "action":
+            continue
+        candidate_facts = response_facts(candidate.response)
+        if candidate_facts.get("world_change_started") is not True:
+            return []
+        if (
+            candidate_facts.get("outcome_known") is True
+            and candidate.status == "succeeded"
+            and candidate_facts.get("status") == "succeeded"
+        ):
+            return []
+        action, action_index, facts = candidate, index, candidate_facts
+        break
+    if action is None or not isinstance(action.invocation_id, str):
+        return []
+    source_entity_ref = action.arguments.get("entity_ref")
+    if not isinstance(source_entity_ref, str) or not source_entity_ref:
+        return []
+    source_scene_revision = (
+        facts.get("source_scene_revision")
+        or action.arguments.get("scene_revision")
+    )
+    if not isinstance(source_scene_revision, str) or not source_scene_revision:
+        return []
+
+    binding = None
+    understanding = None
+    for record in reversed(task.execution_records[:action_index]):
+        if record.semantics != "query" or record.status != "succeeded":
+            continue
+        record_facts = response_facts(record.response)
+        if (
+            record_facts.get("status") != "available"
+            or record_facts.get("scene_revision") != source_scene_revision
+        ):
+            continue
+        if binding is None and record.tool_id == "scene.bind":
+            if any(
+                item.get("entity_ref") == source_entity_ref
+                for item in record_facts.get("entities", ())
+                if isinstance(item, dict)
+            ):
+                binding = record_facts
+            continue
+        if binding is not None and record.tool_id == "scene.understand":
+            identity_keys = ("observation_ref", "scene_revision", "calibration_ref")
+            if all(record_facts.get(key) == binding.get(key) for key in identity_keys):
+                understanding = record_facts
+                break
+    if binding is None:
+        return []
+    bound = next(
+        (
+            item
+            for item in binding.get("entities", ())
+            if isinstance(item, dict) and item.get("entity_ref") == source_entity_ref
+        ),
+        None,
+    )
+    execution_ref = bound.get("execution_entity_ref") if isinstance(bound, dict) else None
+    if not isinstance(execution_ref, str) or not execution_ref:
+        return []
+    prior_claim = next(
+        (
+            item
+            for item in (understanding or {}).get("entities", ())
+            if isinstance(item, dict) and item.get("entity_ref") == source_entity_ref
+        ),
+        None,
+    )
+    unresolved = ["current_visual_identity"]
+    if facts.get("outcome_known") is not True:
+        unresolved.extend(("possession_state", "object_support_state"))
+    elif facts.get("object_support_state") not in {"on_support", "displaced"}:
+        unresolved.append("object_support_state")
+    fact_evidence_refs = facts.get("evidence_refs")
+    if not isinstance(fact_evidence_refs, (list, tuple)):
+        fact_evidence_refs = ()
+    evidence_refs = [
+        ref
+        for ref in (
+            *getattr(action, "evidence_refs", ()),
+            *fact_evidence_refs,
+        )
+        if isinstance(ref, str) and ref.startswith("artifact://")
+    ]
+    if not evidence_refs:
+        return []
+    result = {
+        "execution_entity_ref": execution_ref,
+        "source_entity_ref": source_entity_ref,
+        "source_scene_revision": source_scene_revision,
+        "action_invocation_id": action.invocation_id,
+        "unresolved_effects": list(dict.fromkeys(unresolved)),
+        "evidence_refs": list(dict.fromkeys(evidence_refs)),
+    }
+    category = prior_claim.get("category") if isinstance(prior_claim, dict) else None
+    if isinstance(category, str) and category:
+        result["prior_category"] = category
+    return [result]
 
 
 def _scene_bind_argument_error(task: Any, arguments: dict[str, Any]) -> dict[str, Any] | None:

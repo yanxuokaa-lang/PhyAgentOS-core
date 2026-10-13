@@ -225,7 +225,8 @@ class AgentRecoveryDecisions:
                 "decision": "replan",
                 "reason": (
                     "Runtime requires a recovery revision after a world-changing unknown "
-                    "outcome; the replacement must refresh evidence before any Action"
+                    "outcome; retain the affected execution identity and reconcile possession "
+                    "and current visual identity before any Action"
                 ),
             }
             self.coordinator.store.update(
@@ -243,7 +244,8 @@ class AgentRecoveryDecisions:
                     if evidence_refresh_kind == "query_evidence"
                     else
                     "A world-changing Action reached a known measured postcondition failure; "
-                    "refresh the current scene before planning any further Action"
+                    "retain its affected execution identity and refresh the current scene "
+                    "before planning any further Action"
                 ),
             }
             self.coordinator.store.update(

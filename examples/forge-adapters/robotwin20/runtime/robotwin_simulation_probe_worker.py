@@ -118,6 +118,23 @@ class PreparedExecutionPlanError(SimulationProbeError):
         self.recommended_action = recommended_action
 
 
+class AcquisitionPostconditionError(SimulationProbeError):
+    """A completed lift phase proved that the requested possession was not established."""
+
+    outcome_known = True
+    failure_code = "acquisition_postcondition_failed"
+    failure_owner = "execution_verification"
+    retryable_in_revision = False
+    requires_replan = True
+    recommended_action = "refresh_declared_evidence"
+    possession_state = "empty"
+    object_support_state = "on_support"
+
+    def __init__(self, message: str, *, measurement: Mapping[str, float]) -> None:
+        super().__init__(message)
+        self.acquisition_measurement = dict(measurement)
+
+
 @dataclass(frozen=True)
 class ArrivalPolicy:
     position_tolerance_m: float = 0.005
@@ -1586,7 +1603,30 @@ def execute_candidate_phases(
         )
         if phase_name == "lift":
             lift_z = float(actor.get_pose().p[2])
-            if not math.isfinite(lift_z) or lift_z - float(before_actor[2]) < 0.01:
+            lift_displacement = lift_z - float(before_actor[2])
+            if not math.isfinite(lift_z) or lift_displacement < 0.01:
+                # Arrival validation above proves the manipulator completed the
+                # lift segment.  Classify a known acquisition-postcondition
+                # failure only when independent geometry also proves that the
+                # target remained supported.  Otherwise possession stays
+                # unknown and the outer Action boundary remains fail-closed.
+                table_top_z = float(_table_top_z(task))
+                object_bottom_z = lift_z - float(half_extents[2])
+                support_clearance_m = object_bottom_z - table_top_z
+                measurement = {
+                    "lift_displacement_m": lift_displacement,
+                    "minimum_lift_m": 0.01,
+                    "support_clearance_m": support_clearance_m,
+                    "support_tolerance_m": 0.01,
+                }
+                if (
+                    all(math.isfinite(value) for value in measurement.values())
+                    and abs(support_clearance_m) <= measurement["support_tolerance_m"]
+                ):
+                    raise AcquisitionPostconditionError(
+                        "object did not lift and remained on its support",
+                        measurement=measurement,
+                    )
                 raise SimulationProbeError("attached object did not lift with the gripper")
             execution_state["object_lifted"] = True
         elif phase_name in {"transport", "descent"} and not execution_state.get("object_lifted"):

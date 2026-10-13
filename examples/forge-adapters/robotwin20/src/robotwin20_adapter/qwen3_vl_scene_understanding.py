@@ -51,6 +51,7 @@ class Qwen3VLSceneUnderstandingInference:
         {
             "observation_ref", "scene_revision", "frame_id", "calibration_ref",
             "freshness_ms", "max_age_ms", "artifacts", "views", "capture_skew_ms",
+            "reconciliation_hypotheses",
         }
     )
 
@@ -100,6 +101,9 @@ class Qwen3VLSceneUnderstandingInference:
                     "rgb_artifact_refs": image_refs,
                     "rgb_paths": image_paths,
                     "max_output_tokens": self.config.max_output_tokens,
+                    "reconciliation_hypotheses": request.get(
+                        "reconciliation_hypotheses", []
+                    ),
                 }
             )
             if not isinstance(reply, Mapping) or reply.get("request_id") != request_id:

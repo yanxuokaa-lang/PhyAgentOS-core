@@ -59,6 +59,7 @@ class Qwen3VLWorker:
         expected = {
             "request_id", "operation", "observation_ref", "scene_revision", "frame_id",
             "rgb_artifact_refs", "rgb_paths", "max_output_tokens",
+            "reconciliation_hypotheses",
         }
         if set(request) != expected or request.get("operation") != "understand_scene":
             return {"request_id": request_id, "status": "unavailable"}
@@ -82,7 +83,12 @@ class Qwen3VLWorker:
                 {"type": "image", "image": image}
                 for image in images
             ]
-            content.append({"type": "text", "text": _prompt()})
+            content.append(
+                {
+                    "type": "text",
+                    "text": _prompt(request.get("reconciliation_hypotheses", [])),
+                }
+            )
             messages = [{"role": "user", "content": content}]
             with contextlib.redirect_stdout(sys.stderr):
                 import torch
@@ -109,8 +115,8 @@ class Qwen3VLWorker:
         return {"request_id": request_id, "status": "available", "result": result}
 
 
-def _prompt() -> str:
-    return (
+def _prompt(reconciliation_hypotheses: Any = None) -> str:
+    prompt = (
         "Inspect all ordered RGB views jointly for one robot scene. Return one JSON object only, with exactly these keys: "
         "entities, relations, spatial_envelopes, ambiguities. Entities must be objects with entity_ref "
         "(entity://name), category, confidence, source_view_indexes. Relations must be objects with relation_ref, subject_ref, "
@@ -126,6 +132,14 @@ def _prompt() -> str:
         '{"entities":[{"entity_ref":"entity://object-1","category":"visible category",'
         '"confidence":0.9,"source_view_indexes":[0]}],"relations":[],"spatial_envelopes":[],"ambiguities":[]}'
     )
+    if reconciliation_hypotheses:
+        prompt += (
+            " Reconciliation hypotheses are prior-execution attention cues, not current facts. Inspect "
+            "possibly occluded regions, but do not copy source entity IDs or invent an entity without "
+            "current visual support: "
+            + json.dumps(reconciliation_hypotheses, ensure_ascii=False, sort_keys=True)
+        )
+    return prompt
 
 
 def _parse_json(output: str) -> dict[str, Any]:

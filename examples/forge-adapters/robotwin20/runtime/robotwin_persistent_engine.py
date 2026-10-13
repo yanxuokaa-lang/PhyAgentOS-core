@@ -716,6 +716,16 @@ class RoboTwinPersistentEngine:
                       "retreat_completed": retreat_completed if phase == "place" else False,
                       "clear_of_target": clear_of_target if phase == "place" else False,
                       "observation_ready": False}
+            if outcome_known is True:
+                possession_state = getattr(exc, "possession_state", None)
+                support_state = getattr(exc, "object_support_state", None)
+                measurement = getattr(exc, "acquisition_measurement", None)
+                if possession_state in {"empty", "holding"}:
+                    result["possession_state"] = possession_state
+                if support_state in {"on_support", "displaced", "unknown"}:
+                    result["object_support_state"] = support_state
+                if isinstance(measurement, Mapping):
+                    result["acquisition_measurement"] = dict(measurement)
             if not evidence_failure:
                 try:
                     video_refs = self.video.finish_action(

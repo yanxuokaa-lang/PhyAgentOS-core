@@ -35,6 +35,7 @@ _TERMINAL_FIELDS = (
     "clear_of_target",
     "observation_ready",
     "possession_state",
+    "object_support_state",
     "video_evidence_error",
 )
 _ATTEMPT_FIELDS = (
@@ -46,6 +47,12 @@ _ATTEMPT_FIELDS = (
 )
 _PLACEMENT_MEASUREMENT_FIELDS = ("position_error_m", "orientation_error_rad")
 _PLACEMENT_TOLERANCE_FIELDS = ("target_position_m", "target_orientation_rad")
+_ACQUISITION_MEASUREMENT_FIELDS = (
+    "lift_displacement_m",
+    "minimum_lift_m",
+    "support_clearance_m",
+    "support_tolerance_m",
+)
 
 
 def _json_size(value: Mapping[str, Any]) -> int:
@@ -172,6 +179,20 @@ def bounded_action_receipt(result: Mapping[str, Any]) -> dict[str, Any]:
         }
         if projected_tolerance:
             receipt["placement_tolerance"] = projected_tolerance
+    acquisition = result.get("acquisition_measurement")
+    if isinstance(acquisition, Mapping):
+        projected_acquisition = {
+            field: acquisition[field]
+            for field in _ACQUISITION_MEASUREMENT_FIELDS
+            if (
+                field in acquisition
+                and not isinstance(acquisition[field], bool)
+                and isinstance(acquisition[field], (int, float))
+                and math.isfinite(float(acquisition[field]))
+            )
+        }
+        if projected_acquisition:
+            receipt["acquisition_measurement"] = projected_acquisition
     evidence_refs = result.get("evidence_refs", receipt["artifact_refs"])
     receipt["evidence_refs"], refs_truncated = _project_refs(evidence_refs)
     truncated = truncated or refs_truncated
@@ -343,7 +364,10 @@ class PersistentManipulationProvider:
         with self._lock:
             status = result.get("status")
             explicit_possession = result.get("possession_state")
-            if explicit_possession == "empty" and phase == "place":
+            if explicit_possession == "empty" and (
+                phase == "place"
+                or (result.get("outcome_known") is True and status in {"succeeded", "failed"})
+            ):
                 self._state = "empty"
             elif explicit_possession == "holding" and phase == "acquire":
                 self._state = "holding"

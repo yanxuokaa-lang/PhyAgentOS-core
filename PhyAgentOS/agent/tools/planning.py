@@ -491,18 +491,30 @@ class ForgePlanSelectTool(Tool):
                             recommended_action="browse_authorized_source_and_correct_path",
                         ) from exc
             if tool_id == "scene.understand":
-                from PhyAgentOS.agent.tools.forge_tool_api import _coordinator_carried_entities
+                from PhyAgentOS.agent.tools.forge_tool_api import (
+                    _coordinator_carried_entities,
+                    _coordinator_reconciliation_hypotheses,
+                )
 
-                if "carried_entities" in final_arguments:
+                if {
+                    "carried_entities", "reconciliation_hypotheses"
+                }.intersection(final_arguments):
                     raise PlanningDispatchError(
-                        "carried_entities is Coordinator-owned and cannot be supplied by the Agent",
+                        "scene continuity fields are Coordinator-owned and cannot be supplied by the Agent",
                         code="invalid_selection_arguments",
                     )
+                task = self.coordinator.get_task(task_id)
                 carried = _coordinator_carried_entities(
-                    self.coordinator.get_task(task_id), final_arguments.get("scene_revision")
+                    task, final_arguments.get("scene_revision")
                 )
+                hypotheses = _coordinator_reconciliation_hypotheses(task)
                 if carried:
                     final_arguments = {**final_arguments, "carried_entities": carried}
+                if hypotheses:
+                    final_arguments = {
+                        **final_arguments,
+                        "reconciliation_hypotheses": hypotheses,
+                    }
             proposal = dispatch.prepare_selection(
                 node_id=node_id, tool_id=tool_id, arguments=final_arguments,
                 decision_reason=decision_reason,
