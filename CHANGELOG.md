@@ -2,6 +2,34 @@
 
 ## 最近五版本 / Latest five versions
 
+## v13.4.8 (2026-10-14 01:04) - codex
+
+### 变更摘要 / Summary [完成]
+- [env] [chore] 按用户授权停止非终态旧任务和旧 Runtime，安装当前 Core 与本地 Skill `3.0.24` / Node `1.0.14`，再使用既有 profile/operator env 启动新 Runtime。 / Under user authorization, stop non-terminal old tasks and the old Runtime, install the current Core and local Skill 3.0.24 / Node 1.0.14, then start a new Runtime using the existing profile/operator environment. (local)
+- [eval] [test] 只验收终态、安装来源、版本锁、进程、端口、Gateway 和 11/11 Tool readiness；不创建/恢复任务或执行 Query/Action。 / Validate terminality, install provenance, version lock, processes, ports, Gateway, and 11/11 Tool readiness only; create/resume no task and execute no Query/Action. (local)
+
+### 停止前事实与边界 / Pre-stop Facts and Boundary
+- 任务库 `cancelled=203`、`failed=108`、non-terminal=`0`；旧 Runtime 为 Skill `3.0.23` / Node `1.0.13`，Dora/host/simulator PID `35272`/`35295`/`35398`。 / The task store contains 203 cancelled, 108 failed, and zero non-terminal tasks; the old Runtime is Skill 3.0.23 / Node 1.0.13 with the recorded PIDs.
+- 复用 mode-0600 operator env 且不记录凭据；独立 Qwen 保持运行。readiness 不作为场景或运动成功证明。 / Reuse the mode-0600 operator environment without recording credentials; keep independent Qwen running. Readiness is not proof of scene or motion success.
+
+### 完成结果 / Completed Result
+- 任务库操作前后均为 `cancelled=203`、`failed=108`、non-terminal=`0`，因此没有调用 task stop；旧 Dora/host/simulator PID `35272`/`35295`/`35398` 已退出。 / Task counts remained 203 cancelled, 108 failed, and zero non-terminal before and after deployment, so no task stop was invoked; the old Dora/host/simulator processes exited.
+- editable Core 已从当前 checkout（HEAD `5581bc0c`）安装；Runtime lock 记录 Skill `3.0.24`、Node artifact `1.0.14` 与 SHA `3dfbaa7c01a1e1e492f520ba8b9fd38837a3b484d805e6a19f6a61f7cd75c59e`。 / The editable Core was installed from the current checkout at the recorded HEAD; the Runtime lock records Skill 3.0.24, Node artifact 1.0.14, and the recorded SHA.
+- 新 Dora/host/simulator PID `402549`/`402572`/`402676` 于 `2026-10-14 01:20:57 CST` 启动；Skill/Dora=`running`、Gateway=`ready`、11/11 Tool contexts=`ready`，19020/8012 监听。 / The new Dora/host/simulator processes started at the recorded time; Skill and Dora are running, Gateway and all 11 Tool contexts are ready, and ports 19020/8012 listen.
+
+### 文件、Diff 与边界 / Files, Diff, and Boundary
+- [修改] `changelog/2026-10_part6.md:L1061-L1101`、`CHANGELOG.md:L5-L31,L158-L160`：记录停止、安装、启动、版本锁、no-motion readiness 验收及最近五版本归档滚动。 / Record stop, installation, startup, version lock, no-motion readiness acceptance, and latest-five archive rollover.
+
+```diff
+- zero non-terminal tasks + old Runtime Skill 3.0.23 / Node 1.0.13
++ zero non-terminal tasks + old Runtime stopped
++ current Core + Skill 3.0.24 / Node 1.0.14 installed
++ new Runtime ready with 11/11 Tool contexts
+```
+
+- 独立 Qwen PID `176466` 保持 8012 监听；未创建/恢复任务，未调用 Query/Action、读取相机、推进 simulator 或执行运动。 / Independent Qwen remained listening on 8012; no task was created/resumed, no Query/Action or camera read occurred, and no simulator action or motion was executed.
+- Deployment log/index commit pending on `feature/planning-loop`; reference completion follows. / 部署日志/索引提交待完成；提交引用随后回填。
+
 ## v13.4.7 (2026-10-14 00:41) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -121,6 +149,8 @@
 ### Git 提交 / Git Commit
 - Deployment log/index commit: `0cb25e3e` on `feature/planning-loop`; hash-reference completion follows in the log-only commit. / 部署日志与索引提交：`0cb25e3e`，分支 `feature/planning-loop`；提交引用随后补全。
 
+## Archived detailed records / 已归档详细记录
+
 ## v13.4.3 (2026-10-13 19:32) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -152,8 +182,6 @@
 
 ### Git 提交 / Git Commit
 - Deployment log/index commit: `d42361a5` on `feature/planning-loop`; hash-reference completion follows in the log-only commit. / Deployment log/index commit: `d42361a5` on `feature/planning-loop`; hash-reference completion follows in the log-only commit.
-
-## Archived detailed records / 已归档详细记录
 
 ## v13.4.2 (2026-10-13 16:28) - codex
 
