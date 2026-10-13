@@ -37,7 +37,8 @@
 ```
 
 ### Git 提交 / Git Commit
-- Implementation commit pending on `feature/planning-loop`. / 实现提交待完成，分支 `feature/planning-loop`。
+- Implementation commit: `bd52d930` on `feature/planning-loop`. / 实现提交：`bd52d930`，分支 `feature/planning-loop`。
+- Log/index hash-reference completion follows in a separate documentation commit. / 日志与索引的 hash 回填使用独立文档提交收尾。
 
 ## v13.4.4 (2026-10-13 21:32) - codex
 
