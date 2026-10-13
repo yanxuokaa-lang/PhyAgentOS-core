@@ -2,6 +2,39 @@
 
 ## 最近五版本 / Latest five versions
 
+## v13.4.6 (2026-10-14 00:15) - codex
+
+### 变更摘要 / Summary [完成]
+- [env] [chore] 经 Coordinator 停止唯一非终态旧任务，强制停止旧 Runtime，安装当前 checkout Core 与本地 Skill `3.0.23` / Node `1.0.13`，并启动既有 profile。 / Stop the sole non-terminal task through the Coordinator, force-stop the old Runtime, install the current-checkout Core and local Skill 3.0.23 / Node 1.0.13, and start the existing profile. (local)
+- [eval] [test] 只做生命周期/readiness 验收；不创建/恢复任务，不调用 Query/Action，不读取相机或推进 simulator action。 / Perform lifecycle/readiness acceptance only; create/resume no task, invoke no Query/Action, read no camera, and advance no simulator action. (local)
+
+### 停止前事实与操作边界 / Pre-stop Facts and Operational Boundary
+- 非终态任务：`task_2d374f88b79d4ae9`，`awaiting_replan`，revision `revision_1d8b1de994504cd1`；仅通过 Coordinator stop。 / Non-terminal task: `task_2d374f88b79d4ae9`, awaiting_replan, revision `revision_1d8b1de994504cd1`; stop only through the Coordinator.
+- 旧 Dora/host/simulator PID `3355906`/`3355930`/`3356043`；独立 Qwen PID `176466` / 8012 保持运行。 / Old Dora/host/simulator PIDs are recorded; independent Qwen PID 176466 on 8012 remains running.
+- 安装本地 `pick-place-workflow-3.0.23.tar.gz`，Node `1.0.13` SHA `1de2805535b21c529956a123b939556ff70b94548a72edc01bced96c3c3542b2`；沿用 mode-0600 operator env 且不打印凭据。 / Install the local Skill bundle with Node 1.0.13 and the recorded SHA; reuse the mode-0600 operator env without printing credentials.
+
+### 预期文件与 Diff / Planned Files and Diff
+- `changelog/2026-10_part6.md`、`CHANGELOG.md`
+
+```diff
+- one awaiting_replan task + old Runtime/Skill artifact
++ zero non-terminal tasks + new Core/Skill/Node Runtime lifecycle
+  independent Qwen unchanged; no task resume or motion
+```
+
+### 完成结果 / Completed Result
+- `task_2d374f88b79d4ae9` 经 Coordinator stop 进入 terminal `failed`；最终 `cancelled=203`、`failed=108`、non-terminal=`0`。 / Coordinator stop moved the exact task to terminal failed; final counts are 203 cancelled, 108 failed, and zero non-terminal.
+- 旧 Dora/host/simulator/enrichment workers 已退出，19020 释放；独立 Qwen PID `176466` 保持 8012 监听。 / Old Dora/host/simulator/enrichment workers exited and 19020 was released; independent Qwen PID 176466 remained on 8012.
+- 当前 checkout Core、Skill `3.0.23` 与 Node `1.0.13` 已安装；Node archive SHA 与 runtime lock 均为 `1de2805535b21c529956a123b939556ff70b94548a72edc01bced96c3c3542b2`。 / The current-checkout Core, Skill 3.0.23, and Node 1.0.13 are installed; the Node archive SHA and runtime lock both record the expected digest.
+- 新 Dora/host/simulator PID `35272/35295/35398` 于 00:19:02 创建；Skill/Dora running、Gateway ready、11/11 Tool contexts ready，19020/8012 监听，Runtime ownership 为空。 / New Dora/host/simulator PIDs were created at 00:19:02; Skill/Dora are running, Gateway and 11/11 Tool contexts are ready, ports 19020/8012 listen, and Runtime ownership is empty.
+
+### 文件、验证与边界 / Files, Validation, and Boundary
+- [修改] `changelog/2026-10_part6.md:L945-L993`、`CHANGELOG.md:L5-L37`：完整部署证据与 no-motion 记录。 / Full deployment evidence and no-motion record.
+- readiness 仅证明服务/初始化生命周期；未创建/恢复任务、调用 Query/Action、读取相机、推进 simulator 或执行运动。 / Readiness proves service/initialization lifecycle only; no task was created/resumed, no Query/Action invoked, no camera read, no simulator advanced, and no motion executed.
+
+### Git 提交 / Git Commit
+- Pending on `feature/planning-loop`. / 待在当前分支提交。
+
 ## v13.4.5 (2026-10-13 22:32) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -130,34 +163,7 @@
 ### Git 提交 / Git Commit
 - Deployment log/index commit pending on `feature/planning-loop`; commit-reference completion follows. / 部署日志与索引提交待完成。
 
-## v13.4.1 (2026-10-13 15:53) - codex
-
-### 变更摘要 / Summary [完成]
-- [env] [chore] 按用户授权核对无非终态任务，强制停止旧 Runtime，重新安装当前 checkout Core，并使用既有 profile 启动新 Runtime。 / Under user authorization, confirm there are no non-terminal tasks, force-stop the old Runtime, reinstall the current-checkout Core, and start a new Runtime with the existing profile.
-- [eval] [test] 只验证任务库、Core 来源、Runtime/Dora/Gateway/Tool readiness、进程和端口；不创建/恢复任务，不调用 Query/Action，不读取相机，不推进 simulator action。 / Validate task store, Core provenance, Runtime/Dora/Gateway/Tool readiness, processes, and ports only; create/resume no task, invoke no Query/Action, read no camera, and advance no simulator action.
-
-### 实际停止、安装与启动 / Completed Stop, Install, and Start
-- 任务库停止前后均为 `cancelled=203`、`failed=104`、non-terminal=`0`，未调用 task stop、未直接修改 SQLite、未重放 Action。 / Task counts remained 203 cancelled, 104 failed, and zero non-terminal before and after; no task stop, direct SQLite edit, or Action replay occurred.
-- 旧 Skill/Dora/Gateway/host/simulator/enrichment workers 已停止；独立 Qwen PID `176466` 保持 8012 监听。 / Old Skill/Dora/Gateway/host/simulator/enrichment workers stopped; independent Qwen PID 176466 remained on 8012.
-- editable Core 从 `/home/yanxu/PhyAgentOS-forge` 安装，Skill `3.0.22` / Node `1.0.12` 未改变。 / Editable Core installed from `/home/yanxu/PhyAgentOS-forge`; Skill 3.0.22 and Node 1.0.12 unchanged.
-- 新 Dora flow PID `3216688`、host PID `3216693`、simulator worker PID `3216742` 于 15:54:12 创建；Skill/Dora=`running`、Gateway 和 11/11 Tool contexts=`ready`，19020/8012 监听。 / New Dora flow, host, and simulator-worker processes were created at 15:54:12; Skill/Dora are running, Gateway and all 11 Tool contexts are ready, and ports 19020/8012 listen.
-
-### 文件变更与关键 Diff / File Changes and Key Diff
-- [修改] `changelog/2026-10_part6.md:L730-L765`、`CHANGELOG.md:L5-L34`：记录零非终态任务、停止、安装来源、新生命周期与 no-motion 边界。 / Record zero non-terminal tasks, stop, install provenance, new lifecycle, and no-motion boundary.
-
-```diff
-- old Runtime lifecycle
-+ zero non-terminal tasks confirmed
-+ old Runtime stopped + current-checkout Core reinstalled
-+ new host/simulator lifecycle
-  Skill 3.0.22 / Node 1.0.12 and independent Qwen unchanged
-```
-
-### 验证与安全边界 / Validation and Safety Boundary
-- readiness 和新 worker 只证明服务/初始化生命周期，不证明场景内容或任务成功；未创建/恢复任务、调用 Query/Action、读取相机、推进 simulator 或执行运动。 / Readiness and the new worker prove only service/initialization lifecycle, not scene contents or task success; no task creation/resume, Query/Action, camera read, simulator step, or motion occurred.
-
-### Git 提交 / Git Commit
-- Deployment log/index commit: `49ac2ad9` on `feature/planning-loop`; commit-reference completion follows. / 部署日志与索引提交：`49ac2ad9`，分支 `feature/planning-loop`；提交引用随后补全。
+## Archived detailed records / 已归档详细记录
 
 ## v13.4.0 (2026-10-13 15:34) - codex
 
@@ -186,8 +192,6 @@
 
 ### Git 提交 / Git Commit
 - Deployment log/index commit: `411885e8` on `feature/planning-loop`; commit-reference completion follows. / 部署日志与索引提交：`411885e8`，分支 `feature/planning-loop`；提交引用随后补全。
-
-## Archived detailed records / 已归档详细记录
 
 ## v13.3.15 (2026-10-13 15:06) - codex
 
