@@ -28,7 +28,7 @@
 - readiness 和新 worker 只证明服务/初始化生命周期，不证明场景内容或任务成功；未创建/恢复任务、调用 Query/Action、读取相机、推进 simulator 或执行运动。 / Readiness and the new worker prove only service/initialization lifecycle, not scene contents or task success; no task creation/resume, Query/Action, camera read, simulator step, or motion occurred.
 
 ### Git 提交 / Git Commit
-- Deployment log/index commit pending on `feature/planning-loop`; commit-reference completion follows. / 部署日志与索引提交待完成；提交引用随后补全。
+- Deployment log/index commit: `411885e8` on `feature/planning-loop`; commit-reference completion follows. / 部署日志与索引提交：`411885e8`，分支 `feature/planning-loop`；提交引用随后补全。
 
 ## v13.3.15 (2026-10-13 15:06) - codex
 
