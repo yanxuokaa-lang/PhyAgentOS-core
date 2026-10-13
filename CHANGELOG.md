@@ -5,21 +5,34 @@
 ## v13.3.13 (2026-10-13 13:15) - codex
 
 ### 变更摘要 / Summary [完成]
-- [env] [chore] 按授权停止旧 Runtime，确认无非终态旧 AgentTask，安装当前 checkout 的 editable Core，并启动既有 `robotwin-blocks-ranking-graspnet` profile。 / Under authorization, stop the old Runtime, confirm no non-terminal old AgentTasks, install the editable Core from the current checkout, and start the existing profile.
-- [eval] [test] 任务库 non-terminal=`0`；新 Skill/Dora、Gateway、11/11 Tool contexts 和 19020/8012 通过生命周期验收；无 Query/Action、相机读取或 simulator action。 / Task-store non-terminal=`0`; the new Skill/Dora, Gateway, all 11 Tool contexts, and ports 19020/8012 passed lifecycle acceptance; no Query/Action, camera read, or simulator action was performed.
+- [env] [chore] 按用户授权停止所有非终态旧 AgentTask，强制停止旧 `pick-place-workflow` Runtime，重新安装当前 checkout 的 editable Core，并使用既有 `robotwin-blocks-ranking-graspnet` profile 启动新的 Runtime。 / Under explicit authorization, stop all non-terminal AgentTasks, force-stop the old `pick-place-workflow` Runtime, reinstall the editable Core from the current checkout, and start a new Runtime with the existing `robotwin-blocks-ranking-graspnet` profile.
+- [eval] [test] 仅验证任务终态、安装来源、Runtime/Dora/Gateway/Tool readiness、进程和端口；不创建或恢复任务，不调用 Query/Action，不读取相机，不推进 simulator action。 / Validate only task terminality, install provenance, Runtime/Dora/Gateway/Tool readiness, processes, and ports; create/resume no task, invoke no Query/Action, read no camera, and advance no simulator action.
 
-### 部署结果 / Deployment Result
-- 旧 Runtime 已强制停止；19020 释放，旧 host/simulator/enrichment worker 退出，独立 Qwen PID `176466` / 8012 保持运行。Core 导入路径和 editable direct URL 均为 `/home/yanxu/PhyAgentOS-forge`。 / The old Runtime was force-stopped; port 19020 was released, old host/simulator/enrichment workers exited, independent Qwen PID `176466` on 8012 remained running, and Core imports plus editable direct URL point to `/home/yanxu/PhyAgentOS-forge`.
-- 新 Dora flow/host/simulator PID 为 `3152686`/`3152691`/`3152745`；Skill/Dora=`running`、Gateway=`ready`、11/11 Tool contexts=`ready`。 / New Dora flow/host/simulator PIDs are `3152686`/`3152691`/`3152745`; Skill/Dora are running, Gateway is ready, and all 11 Tool contexts are ready.
+### 预期操作与边界 / Planned Operations and Boundary
+- 先枚举并记录精确的非终态 `task_id`，逐个通过 `.venv/bin/paos task stop <task_id>` 停止，不直接修改 SQLite。 / Enumerate and record exact non-terminal task IDs, stop each through `.venv/bin/paos task stop <task_id>`, and do not edit SQLite directly.
+- 确认任务全部进入 terminal 后，执行 `.venv/bin/paos skill stop pick-place-workflow --force`，再安装当前 checkout 并启动既有 profile；独立 Qwen 服务不因 Runtime 停止而停止。 / After all tasks are terminal, force-stop the Skill Runtime, reinstall the current checkout, and start the existing profile; the independent Qwen service is not stopped with the Runtime.
 
-### 文件、关键 Diff 与安全边界 / Files, Key Diff, and Safety Boundary
-- `changelog/2026-10_part6.md:L546-L579`、`CHANGELOG.md:L5-L31`：完整记录任务终态、停止、安装、启动、进程、端口、readiness 和 no-motion 边界。 / Complete record of task terminality, stop, install, start, processes, ports, readiness, and no-motion boundaries.
+### 实际停止、安装与启动 / Completed Stop, Install, and Start
+- [env] [chore] 只读任务库核对显示 `cancelled=203`、`failed=101`、non-terminal=`0`，因此没有需要通过 `paos task stop` 处理的旧任务；没有直接修改 SQLite，也没有恢复或重放 Action。 / The read-only task-store check showed `cancelled=203`, `failed=101`, and `non-terminal=0`, so there were no old tasks requiring `paos task stop`; SQLite was not edited and no Action was resumed or replayed.
+- [env] [chore] `.venv/bin/paos skill stop pick-place-workflow --force` 成功；Skill=`stopped`、Dora=`down`、Gateway=`unavailable`，19020 释放，旧 host/simulator/enrichment worker 退出；独立 Qwen PID `176466` 保持监听 8012。 / The forced Skill stop succeeded; Skill stopped, Dora went down, Gateway became unavailable, port 19020 was released, old host/simulator/enrichment workers exited, and independent Qwen PID `176466` remained on port 8012.
+- [env] [chore] editable 安装首次因隔离构建依赖下载 SSL EOF 失败；未改项目依赖声明，使用可用镜像补齐本地构建依赖 `hatchling`、`pathspec`、`trove-classifiers`、`tomlkit`、`editables` 后，以 `.venv/bin/python -m pip install --no-deps --no-build-isolation -e .` 成功安装。 / The first editable-install attempt hit an SSL EOF while fetching isolated build dependencies; project dependency declarations were unchanged. After installing the local build dependencies `hatchling`, `pathspec`, `trove-classifiers`, `tomlkit`, and `editables` from an available mirror, `.venv/bin/python -m pip install --no-deps --no-build-isolation -e .` completed successfully.
+- [eval] [test] `PhyAgentOS`、`PhyAgentOS.agent.prompt_context` 与 distribution direct URL 均指向 `/home/yanxu/PhyAgentOS-forge`，确认运行 Core 来自当前 checkout。 / `PhyAgentOS`, `PhyAgentOS.agent.prompt_context`, and the distribution direct URL all point to `/home/yanxu/PhyAgentOS-forge`, confirming that the running Core comes from the current checkout.
+- [env] [chore] 使用既有 operator env 和 provider `apiKeyFile` 启动 `robotwin-blocks-ranking-graspnet`；凭据只注入启动子进程，未打印或写入配置。Skill/Node artifact 保持 `3.0.22` / `1.0.12`。 / Started `robotwin-blocks-ranking-graspnet` with the existing operator env and provider `apiKeyFile`; the credential was injected only into the child process and never printed or persisted. Skill/Node artifacts remain `3.0.22` / `1.0.12`.
+- [eval] [test] 新 Dora flow PID `3152686`、host PID `3152691`、simulator worker PID `3152745` 于 13:17:12-13 创建；Skill/Dora=`running`、Gateway=`ready`、11/11 Tool contexts=`ready`，19020 与 8012 监听。 / New Dora flow PID `3152686`, host PID `3152691`, and simulator worker PID `3152745` were created at 13:17:12-13; Skill/Dora are running, Gateway is ready, all 11 Tool contexts are ready, and ports 19020 and 8012 listen.
+
+### 文件变更与关键 Diff / File Changes and Key Diff
+- [修改] `changelog/2026-10_part6.md:L546-L579`、`CHANGELOG.md:L5-L38`：记录无非终态任务、强制停止、构建依赖恢复、editable Core 来源、新 Runtime 进程/readiness 和 no-motion 边界。 / Record zero non-terminal tasks, forced stop, build-dependency recovery, editable Core provenance, new Runtime processes/readiness, and the no-motion boundary. 最近五版本同步月度完整记录。 / Synchronize the latest five versions with the complete monthly records.
 
 ```diff
-- old Runtime lifecycle
-+ zero non-terminal tasks + current-checkout Core + new Runtime lifecycle
-  Qwen 8012 retained; no task/query/action resume
+- old Runtime + no verified current checkout install
++ zero non-terminal tasks + stopped old Runtime
++ current-checkout editable Core + new host/simulator lifecycle
+  Skill 3.0.22 / Node 1.0.12 unchanged; Qwen 8012 retained
 ```
+
+### 验证与安全边界 / Validation and Safety Boundary
+- `paos skill status pick-place-workflow` 显示 Gateway 与全部 11 个 Tool context ready；任务库复核 non-terminal=`0`。readiness 和新 simulator worker 仅证明服务及初始化生命周期，不证明具体场景内容或任务成功。 / `paos skill status pick-place-workflow` reports Gateway and all 11 Tool contexts ready; the task store was rechecked at non-terminal=`0`. Readiness and the new simulator worker prove service and initialization lifecycle only, not scene contents or task success.
+- 未创建/恢复 AgentTask，未调用 Gateway Query/Action，未读取相机，未推进 simulator action，未执行轨迹或物理运动；独立 Qwen 服务未被停止。 / No AgentTask was created/resumed, no Gateway Query/Action invoked, no camera read, no simulator action advanced, and no trajectory or physical motion executed; the independent Qwen service was not stopped.
 
 ### Git 提交 / Git Commit
 - Deployment log/index commit: `fa04b41f` on `feature/planning-loop`; commit-reference completion follows separately. / 部署日志与索引提交：`fa04b41f`，分支 `feature/planning-loop`；提交引用随后单独补全。
@@ -27,25 +40,39 @@
 ## v13.3.12 (2026-10-13 00:38) - codex
 
 ### 变更摘要 / Summary [完成]
-- [env] [chore] 按用户授权终止所有旧非终态任务，强制停止旧 `pick-place-workflow` Runtime，刷新当前 checkout 的 editable Core，并启动同一 `robotwin-blocks-ranking-graspnet` profile。 / Under explicit authorization, terminate all old non-terminal tasks, force-stop the old Runtime, refresh editable Core from the current checkout, and start the same profile.
-- [eval] [test] 验收任务终态、新 host/simulator 生命周期、Runtime/Dora/Gateway/11 项 Tool readiness、Core 导入路径和端口；不创建/恢复任务或调用 Query/Action。 / Validate terminal task state, the new host/simulator lifecycle, Runtime/Dora/Gateway/all Tool readiness, Core import paths, and ports without creating/resuming tasks or invoking Query/Action.
+- [env] [chore] 按用户明确授权停止所有非终态旧 AgentTask，强制停止 `pick-place-workflow` 旧 Runtime，刷新当前 checkout 的 editable Core，并用既有 `robotwin-blocks-ranking-graspnet` profile 启动新 Runtime。 / Under explicit authorization, stop all non-terminal old AgentTasks, force-stop the old `pick-place-workflow` Runtime, refresh editable Core from the current checkout, and start a new Runtime with the existing `robotwin-blocks-ranking-graspnet` profile.
+- [eval] [test] 仅验收任务取消、Core 导入 commit、Runtime/Dora/Gateway/Tool readiness、进程和端口；不自动创建/恢复 AgentTask，不调用 Gateway Query/Action，不读取相机，不推进 simulator action。 / Validate task cancellation, Core import commit, Runtime/Dora/Gateway/Tool readiness, processes, and ports only; do not create/resume an AgentTask, invoke Gateway Query/Action, read cameras, or advance simulator actions.
 
-### 部署结果 / Deployment Result
-- 唯一旧非终态任务 `task_d359b5ef6179479d` 在停止处理时已为 terminal `failed`；最终 `cancelled=203`、`failed=100`、non-terminal=`0`，无数据库直改或 Action 重放。 / The only old non-terminal task was already terminal failed when handled; final counts show zero non-terminal tasks, with no direct database edit or Action replay.
-- 旧 Runtime 停止后 19020 释放、旧 host/simulator 退出；独立 Qwen PID `176466` / 8012 保持运行。`pip install --no-deps -e .` 后 Core 从当前 checkout 导入。 / After the old Runtime stopped, port 19020 was released and old host/simulator processes exited while independent Qwen remained running; editable Core imports from the current checkout.
-- 新 Dora flow PID `3503132`、host PID `3503150`、simulator worker PID `3503257` 于 00:39:26-27 创建，startup=`14.678s`；Skill/Dora running、Gateway ready、11/11 Tool contexts ready，19020/8012 监听。 / New flow, host, and simulator worker processes were created with the recorded startup time; Skill/Dora are running, Gateway and all Tool contexts ready, and both ports listen.
-- Skill `3.0.22` / Node `1.0.12` 与 runtime lock 保持不变；本轮只部署 Core v13.3.11，不发布 Adapter/Skill/Node artifact。 / Skill/Node and runtime lock remain unchanged; this deploys Core v13.3.11 only and publishes no Adapter/Skill/Node artifact.
+### 预期操作与边界 / Planned Operations and Boundary
+- 停止前唯一非终态任务为 `task_d359b5ef6179479d`（`executing`，session `cli:rgb-benchmark-injected-20261001-79`）；按精确 task_id 通过 Coordinator cancellation 停止，不直接修改数据库。 / Before shutdown the only non-terminal task is the recorded executing task; stop it by exact task ID through Coordinator cancellation without editing the database directly.
+- 当前 Skill/Runtime=`running`、profile=`robotwin-blocks-ranking-graspnet`、Gateway 与 11/11 Tool contexts=`ready`。先确认任务进入 terminal，再 `paos skill stop --force`，避免旧任务在生命周期切换中继续执行。 / The current Skill/Runtime is running with the existing profile and all Tool contexts ready. Confirm the task is terminal before forcing Runtime stop so no old task continues across the lifecycle change.
+- 本轮安装对象是当前分支已推送的 Core v13.3.11；未修改 Adapter/Skill/Node artifact，因此不发布新 Skill bundle。 / The install target is the pushed Core v13.3.11 from the current branch; Adapter/Skill/Node artifacts are unchanged, so no new Skill bundle is published.
 
-### 文件、关键 Diff 与安全边界 / Files, Key Diff, and Safety Boundary
-- `changelog/2026-10_part6.md:L507-L545`、`CHANGELOG.md:L5-L29`：完整双语停止/安装/启动证据。 / Complete bilingual stop/install/start evidence.
+### 预期影响文件 / Planned Files
+- `changelog/2026-10_part6.md`
+- `CHANGELOG.md`
+
+### 实际停止、安装与启动 / Completed Stop, Install, and Start
+- [env] [chore] 停止命令处理 `task_d359b5ef6179479d` 时，Coordinator 已将其置为 terminal `failed`；最终任务库为 `cancelled=203`、`failed=100`、non-terminal=`0`。没有直接修改数据库，也没有恢复或重放任何旧 Action。 / When the stop command handled the recorded task, Coordinator had already placed it in terminal `failed`; final counts are 203 cancelled, 100 failed, and zero non-terminal tasks. No database was edited directly and no old Action was resumed or replayed.
+- [env] [chore] `.venv/bin/paos skill stop pick-place-workflow --force` 成功；Skill=`stopped`、Dora=`down`、Gateway 19020 释放，旧 host/simulator 退出；独立 Qwen PID `176466` / 8012 保持运行。 / The forced Skill stop succeeded; Skill stopped, Dora went down, Gateway port 19020 was released, old host/simulator processes exited, and independent Qwen PID 176466 remained on 8012.
+- [env] [chore] `.venv/bin/python -m pip install --no-deps -e .` 成功，`PhyAgentOS` 与 `node_task_prompt_projection` 均从 `/home/yanxu/PhyAgentOS-forge` 导入，部署 Core 包含 v13.3.11。 / The editable install succeeded, with PhyAgentOS and the node projection importing from the current checkout and therefore containing v13.3.11.
+- [env] [chore] 使用既有 mode-`0600` operator env 与 provider `apiKeyFile` 启动同一 profile；凭据只注入启动子进程，未打印、未写入配置。Skill/Node artifact 保持 `3.0.22` / `1.0.12`。 / Start the same profile with the existing mode-0600 operator environment and provider key file; inject the credential only into the child process without printing or persisting it. Skill/Node artifacts remain 3.0.22/1.0.12.
+- [eval] [test] 新 Dora flow PID `3503132`、host PID `3503150`、simulator worker PID `3503257` 于 00:39:26-27 创建；worker startup=`14.678s`。Skill/Dora=`running`、Gateway=`ready`、11/11 Tool contexts=`ready`，19020/8012 监听。 / New Dora flow, host, and simulator-worker processes were created at 00:39:26-27, with worker startup taking 14.678 seconds. Skill/Dora are running, Gateway and all 11 Tool contexts are ready, and ports 19020/8012 listen.
+- [eval] [test] runtime lock 继续使用已安装 artifact 环境 `.../33f3c5ea60d382c6681e0a62d5b5ec202eed896b50d2a27fa86d2f8ed7f37f0c/runtime-lock.json`；本轮未发布或修改 Adapter/Skill/Node。 / The Runtime continues to use the recorded installed-artifact lock; no Adapter, Skill, or Node artifact was published or modified in this deployment.
+
+### 文件变更与关键 Diff / File Changes and Key Diff
+- [修改] `changelog/2026-10_part6.md:L507-L545`、`CHANGELOG.md:L5-L29`：记录任务终态、停止、editable install、新进程、readiness 与 no-motion 边界。 / Record task terminality, stop, editable install, new processes, readiness, and the no-motion boundary.
 
 ```diff
 - old Runtime lifecycle + one previously executing task
-+ zero non-terminal tasks + current-checkout Core + new host/simulator lifecycle
++ zero non-terminal tasks + stopped old Runtime
++ current-checkout editable Core + new host/simulator lifecycle
   Skill 3.0.22 / Node 1.0.12 unchanged
 ```
 
-- 未调用 Gateway Query/Action、相机或 simulator action；新 worker 仅证明初始场景生命周期重新创建，不证明具体场景或任务成功。 / No Gateway Query/Action, camera, or simulator action was invoked; the new worker proves only initial-scene lifecycle recreation, not scene contents or task success.
+### 验证与安全边界 / Validation and Safety Boundary
+- readiness 与新 simulator worker 仅证明服务及初始场景生命周期重新创建，不证明具体场景内容或任务成功。 / Readiness and the new simulator worker prove only service and initial-scene lifecycle recreation, not scene contents or task success.
+- 未自动创建/恢复 AgentTask，未调用 Gateway Query/Action，未读取相机，未推进 simulator action，未执行轨迹或物理运动。 / No AgentTask was automatically created/resumed, no Gateway Query/Action invoked, no camera read, no simulator action advanced, and no trajectory or physical motion executed.
 
 ### Git 提交 / Git Commit
 - Deployment log/index commit: `118f2b98` on `feature/planning-loop`; commit-reference completion follows. / 部署日志与索引提交：`118f2b98`，分支 `feature/planning-loop`；提交引用补全随后完成。
@@ -53,90 +80,177 @@
 ## v13.3.11 (2026-10-13 00:06) - codex
 
 ### 变更摘要 / Summary [完成]
-- [policy] [fix] 从持久化 AgentTask 为每个 node/continuation turn 重建冻结 Skill、执行阶段、已完成效果、no-replay、目标账本、当前世界 lineage 与节点 Tool policy，修复长任务压缩后重复查 contract/goal 或遗忘已完成前缀。 / Reconstruct frozen Skill, phase, completed effects, no-replay history, goal ledger, current-world lineage, and node Tool policy from persisted AgentTask facts for every node/continuation turn, preventing contract/goal rereads and completed-prefix loss after compaction.
-- [eval] [test] 七维审查修复 effective settlement 冲突、stale calibration、歧义 attainment、unknown no-replay、无界兼容字段及 evidence-order 错误；无任务专用分支。 / The seven-dimension review fixes effective-settlement conflicts, stale calibration, ambiguous attainment, unknown no-replay, unbounded compatibility fields, and evidence-order handling without task-specific branches.
+- [policy] [fix] 修复长任务 continuation 的通用上下文投影：从持久化 AgentTask 重建已完成效果、执行阶段、剩余义务、目标定义及当前证据状态，并在每个 node turn 保留冻结 Skill 工作流指令，避免摘要压缩后重复读取 contract 或重放已完成 Action。 / Fix generic long-task continuation projection: reconstruct completed effects, execution phase, remaining obligations, goal definitions and current evidence status from persisted AgentTask, and retain frozen Skill workflow instructions in every node turn so compaction does not cause repeated contract reads or replay completed Actions.
+- [eval] [test] 增加 no-motion 回归与七维审查，验证历史 Action 不重放、目标达成未知不伪造为完成、Skill 路由在压缩后仍可见、只注入当前节点相关 Tool contract。 / Add no-motion regressions and a seven-dimension review covering Action no-replay, unknown attainment not promoted to completed, Skill route visibility after compaction, and current-node-only Tool contract context.
 
-### 文件与关键 Diff / Files and Key Diff
-- `PhyAgentOS/agent/prompt_context.py:L1020-L1776,L1837-L1848,L1945-L2044`：通用 durable context、effective settlement、exact-lineage world、goal ledger 与 bounded continuation。 / Generic durable context, effective settlements, exact-lineage world, goal ledger, and bounded continuation.
-- `PhyAgentOS/agent/loop.py:L344-L355,L1893-L1915,L1964-L1980`、`planning_loop.py:L1492-L1524`：注入 authoritative loaders，并使节点提示消费冻结 Skill/contract/phase。 / Inject authoritative loaders and make node prompts consume frozen Skill/contract/phase facts.
-- `tests/test_prompt_context.py:L769-L845,L1854-L2155`、`tests/test_planning_loop.py:L576-L592`、`tests/test_agent_foundation.py:L2143-L2182`：late settlement、unknown no-replay、lineage、attainment 歧义、compaction 与 AgentLoop 回归。 / Regressions for late settlement, unknown no-replay, lineage, attainment ambiguity, compaction, and AgentLoop integration.
-- `docs/forge/CONTINUATION_CONTEXT_SKILL_COMPACTION_DIAGNOSIS_20261013.md:L1-L114`：证据、ownership、通用修复与七维审查。 / Evidence, ownership, generic repair, and seven-dimension review.
+### 预期影响文件 / Planned Files
+- `PhyAgentOS/agent/prompt_context.py`
+- `PhyAgentOS/agent/planning_loop.py`
+- `PhyAgentOS/agent/loop.py`
+- `tests/test_prompt_context.py`
+- `tests/test_planning_loop.py`
+- `docs/forge/CONTINUATION_CONTEXT_SKILL_COMPACTION_DIAGNOSIS_20261013.md`
+- `CHANGELOG.md`
 
+### 审查发现与修复边界 / Review Findings and Repair Boundary
+- **正确性 / Correctness：** 节点顶层 `node_settlement` 仍读取原始 settlement；late reconciliation 后会与 effective 阶段上下文冲突。现统一复用 Coordinator effective loader。 / The top-level node settlement still read the raw settlement and could contradict effective phase context after late reconciliation; both now use the Coordinator effective loader.
+- **正确性与机器人安全 / Correctness and robotics safety：** entity-only 或 destination-only attainment 会通配所有目标；共享该维度时可能错误确认完成。现仅接受完整键或唯一解析的部分键。 / Entity-only or destination-only attainment wildcarded every compatible goal and could falsely confirm shared goals; only exact or uniquely resolved partial keys are accepted.
+- **恢复幂等与收敛 / Recovery idempotency and convergence：** unresolved `outcome_unknown` Action/Session 未进入模型可见的 no-replay 摘要，continuation 兼容字段也仍可无界累积。现纳入 bounded orientation 并保留总数；Coordinator 仍是最终重放门禁。 / Unresolved unknown Action/Session records were absent from model-visible no-replay context and legacy continuation fields could still grow unbounded; both are now bounded with totals while Coordinator remains the enforcing replay gate.
+- 修复不新增 hash、baseline、冻结 contract、持久化 schema、全局 gate 或任务专用分支；只复用现有 AgentTask、Skill binding、Tool policy、execution record 和 settlement。 / The repair adds no hash, baseline, frozen contract, persisted schema, global gate, or task-specific branch; it reuses existing AgentTask, Skill binding, Tool policy, execution record, and settlement facts.
+
+### 实际修改 / Actual Changes
+- [policy] [fix] `PhyAgentOS/agent/prompt_context.py:L1020-L1776,L1837-L1848,L1945-L2044`：新增跨 revision 上下文重建；恢复冻结 Skill、执行阶段、completed/unknown no-replay、效果、目标账本、精确 observation/scene/calibration lineage 与当前 Tool policy；node/continuation 投影升级为 v2/v3。 / Add cross-revision reconstruction for frozen Skill, phase, completed/unknown no-replay, effects, goal ledger, exact observation/scene/calibration lineage, and current Tool policy; advance node/continuation projections to v2/v3.
+- [policy] [fix] `PhyAgentOS/agent/loop.py:L344-L355,L1893-L1915,L1964-L1980`：注入 Coordinator effective execution/settlement loaders；wrapper 不重复 Skill 正文。 / Inject Coordinator effective execution/settlement loaders and avoid duplicate Skill prose in the wrapper.
+- [policy] [fix] `PhyAgentOS/agent/planning_loop.py:L1492-L1524`：优先冻结 current-node contract，仅在 readiness 改变或字段缺失时读取 live context，并明确 Skill route、goal ledger 与 no-replay 语义。 / Prefer the frozen current-node contract, reading live context only for readiness changes or missing fields, and state Skill-route, goal-ledger, and no-replay semantics.
+- [eval] [test] `tests/test_prompt_context.py:L769-L845,L1854-L2155`、`tests/test_planning_loop.py:L576-L592`、`tests/test_agent_foundation.py:L2143-L2182`：覆盖 late settlement、unknown no-replay、bounded legacy goals、Skill compaction、跨 revision effects、精确 lineage、歧义 attainment 与生产 AgentLoop 注入。 / Cover late settlements, unknown no-replay, bounded legacy goals, Skill compaction, cross-revision effects, exact lineage, ambiguous attainment, and production AgentLoop injection.
+- [docs] [docs] `docs/forge/CONTINUATION_CONTEXT_SKILL_COMPACTION_DIAGNOSIS_20261013.md:L1-L114`：保存任务证据、ownership、通用修复、七维审查和 no-motion 边界。 / Preserve task evidence, ownership, generic repair, seven-dimension review, and no-motion boundaries.
+
+### 关键 Diff / Key Diff
 ```diff
 - compacted node = current node + Skill identity + generic rules
-+ compacted node = frozen Skill route + phase + effects + no-replay + goal ledger + exact-lineage world + Tool policy
++ compacted node = frozen Skill route + phase + effects + no-replay + goal ledger + exact-lineage world + current Tool policy
 - raw settlement / partial attainment wildcard / unbounded compatibility lists
 + effective settlement / exact-or-unique attainment / bounded lists with totals
 ```
 
-### 七维审查与安全边界 / Seven-Dimension Review and Safety Boundary
-- 架构、正确性、可观测、恢复幂等、机器人安全、扩展兼容与 AgentLoop 收敛七维发现的 Blocker/Major 已全部修复；Coordinator/Runtime/Gateway/planner/motion ownership 不变。 / All Blocker/Major findings across architecture, correctness, observability, recovery/idempotency, robotics safety, extension compatibility, and AgentLoop convergence were fixed; ownership boundaries remain unchanged.
-- 无 RGB、颜色、方块、benchmark、provider 或节点名分支；无新 persisted schema、ToolSpec、hash、baseline 或 gate。旧视觉实体、几何和 calibration 不会成为当前 Action 输入，歧义 attainment 保持 unknown。 / No task/provider/node-specific branch or new persisted schema, ToolSpec, hash, baseline, or gate; old visual/geometry/calibration facts cannot become current Action inputs, and ambiguous attainment stays unknown.
-- focused `320 passed in 10.13s`；full `904 passed in 31.20s`；scoped Ruff、compileall、`git diff --check` 通过。未部署/重启 Runtime、调用 live Query/Action、读取相机或执行运动。 / Focused and full suites plus scoped static checks passed; no Runtime deployment/restart, live Query/Action, camera read, or motion occurred during implementation review.
+### 七维审查结果 / Seven-Dimension Review Result
+1. **架构 / Architecture：** 修复位于 Coordinator-owned prompt projection；AgentLoop 仅传 loaders，Runtime/Gateway/planner/motion ownership 不变，无第二状态机。 / The fix stays in Coordinator-owned prompt projection; AgentLoop only supplies loaders, with Runtime/Gateway/planner/motion ownership unchanged and no second state machine.
+2. **正确性 / Correctness：** 修复 stale calibration、raw/effective settlement 冲突、部分 attainment 歧义及 evidence-order 循环错误；Action-goal 必须同时匹配稳定身份与 destination。 / Fix stale calibration, raw/effective settlement conflict, ambiguous partial attainment, and evidence-order loop placement; Action-goal association requires stable identity and destination.
+3. **错误可观测 / Observability：** 分开目标定义、Action effect 与当前场景达成状态，保留 record/revision provenance、恢复原因和截断前总数。 / Separate target definition, Action effect, and current-scene attainment while retaining provenance, recovery reason, and pre-truncation totals.
+4. **恢复幂等 / Recovery and idempotency：** effective late result 在 node/continuation 一致；completed 与 unresolved unknown Action/Session 均进入 no-replay orientation，Coordinator 仍执行最终门禁。 / Effective late results are consistent across node/continuation views; completed and unresolved unknown Action/Session records enter no-replay orientation while Coordinator enforces the gate.
+5. **机器人安全 / Robotics safety：** 不复用旧 visual entity、binding、geometry、coordinate 或 calibration；歧义 attainment 保持 unknown；freshness、workspace、collision、IK、motion authorization 不变。 / Reuse no old visual entity, binding, geometry, coordinate, or calibration; ambiguous attainment stays unknown; freshness, workspace, collision, IK, and motion authorization are unchanged.
+6. **扩展兼容 / Extension compatibility：** 无 RGB、颜色、方块、benchmark、provider 或节点名分支；无新持久化 schema/ToolSpec/gate；revision 记录缺失时保留 aggregate fallback。 / Add no RGB, color, block, benchmark, provider, or node-name branch, no persisted schema/ToolSpec/gate, and retain aggregate fallback when revision records are absent.
+7. **AgentLoop 收敛 / AgentLoop convergence：** 压缩后恢复 Skill/phase/remaining obligations，避免重复 contract/goal Query；兼容列表 bounded，长任务不再挤掉决策上下文。 / Restore Skill/phase/remaining obligations after compaction to avoid repeated contract/goal Queries; bounded compatibility lists prevent long tasks from evicting decision context.
+- 审查发现的 Blocker/Major 已全部修复；无未解决 Blocker/Major。 / All Blocker/Major findings discovered by the review were fixed; none remain unresolved.
+
+### 验证与安全边界 / Validation and Safety Boundary
+- 聚焦：`320 passed in 10.13s`；全仓库：`904 passed in 31.20s`。命令：`PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/pytest -q -p pytest_asyncio.plugin`。 / Focused and full repository suites passed using the recorded command.
+- scoped Ruff、`compileall`、`git diff --check` 通过。plain pytest 自动加载 ROS `launch_testing`，因环境缺少 `lark` 在收集期失败；因此关闭第三方自动加载并显式启用项目所需 `pytest_asyncio.plugin`。 / Scoped Ruff, compileall, and diff checks passed. Plain pytest autoloads ROS `launch_testing` and fails collection because `lark` is absent; third-party autoload is disabled while the required async plugin is enabled explicitly.
+- 未部署/重启 Runtime，未创建/恢复任务，未调用 live Query/Action、相机或 simulator，未执行物理运动；测试仅使用本地 fixture。 / No Runtime deployment/restart, task creation/resume, live Query/Action, camera, simulator, or physical motion occurred; tests used local fixtures only.
 
 ### Git 提交 / Git Commit
-- Implementation/review commit: `5782b0fa` on `feature/planning-loop`; documentation/index completion follows separately. / 实现与审查提交：`5782b0fa`，分支 `feature/planning-loop`；日志与索引引用随后补全。
+- Implementation/review commit: `5782b0fa` on `feature/planning-loop`; log/index reference completion follows. / 实现与审查提交：`5782b0fa`，分支 `feature/planning-loop`；日志与索引引用随后补全。
 
 ## v13.3.10 (2026-10-12 23:25) - codex
 
 ### 变更摘要 / Summary [完成]
-- [env] [chore] 按用户授权强制停止旧 Runtime，发布并安装 Skill `3.0.22` / Node `1.0.12`，刷新 editable Core，并启动既有 `robotwin-blocks-ranking-graspnet` profile。 / Under explicit authorization, force-stop the old Runtime, publish and install Skill `3.0.22` / Node `1.0.12`, refresh editable Core, and start the existing `robotwin-blocks-ranking-graspnet` profile.
-- [eval] [test] 验证 artifact lock、运行源码、进程、端口及 11/11 Tool readiness；没有创建/恢复 AgentTask 或调用 Query/Action。 / Verify artifact locks, running source, processes, ports, and all 11 Tool contexts; create/resume no AgentTask and invoke no Query/Action.
+- [env] [chore] 按用户明确授权强制停止旧 `pick-place-workflow` Runtime，发布并安装包含 v13.3.9 Runtime/Adapter 修复的新 Skill/Node artifact，刷新当前 checkout 的 editable Core，并启动既有 `robotwin-blocks-ranking-graspnet` profile。 / Under explicit user authorization, force-stop the old `pick-place-workflow` Runtime, publish and install new Skill/Node artifacts containing the v13.3.9 Runtime/Adapter fix, refresh editable Core from the current checkout, and start the existing `robotwin-blocks-ranking-graspnet` profile.
+- [eval] [test] 验收版本锁、安装 receipt、Runtime/Dora/Gateway/Tool readiness、进程与端口；不自动恢复或创建 AgentTask，不调用 Query/Action，不读取相机，不推进 simulator action。 / Validate version locks, installation receipt, Runtime/Dora/Gateway/Tool readiness, processes, and ports; do not automatically resume or create an AgentTask, invoke Query/Action, read cameras, or advance simulator actions.
 
-### 文件、版本与关键 Diff / Files, Versions, and Key Diff
-- `examples/forge-skills/pick-place-workflow/pyproject.toml:L1-L6`、`skill.yaml:L1-L4,L219-L229`：Skill `3.0.21` → `3.0.22`，Node `1.0.11` → `1.0.12`，Node SHA=`96818ddbe23927326055f53e8424a9599bc7e04ff0a5357003758f9ed07c9b51`。 / Bump Skill and Node versions and lock the recorded Node SHA.
-- `examples/forge-skills/pick-place-workflow/CHANGELOG.md:L1-L11`、`tests/test_grasp_propose.py:L264-L274`：发布说明和版本一致性回归。 / Release notes and version-consistency regression.
-- `out/releases/v13.3.10/robotwin20_persistent_host-1.0.12-linux-x86_64.tar.gz`、`pick-place-workflow-3.0.22.tar.gz`：Node/Skill release artifacts；Skill bundle SHA=`7e40780869f6238c40ba543b665e583ee105c59148c9af15677d7be0fa36f82c`。 / Node and Skill release artifacts with the recorded bundle SHA.
+### 部署前边界 / Pre-deployment Boundary
+- 当前旧 Runtime 的 host/simulator 分别为 PID `3209179`/`3209222`，Gateway `127.0.0.1:19020` 与独立 Qwen `127.0.0.1:8012` 均监听；Qwen 不属于本次 Skill Runtime 生命周期，不停止。 / The old Runtime host/simulator are PID `3209179`/`3209222`; Gateway `127.0.0.1:19020` and independent Qwen `127.0.0.1:8012` are listening. Qwen is outside this Skill Runtime lifecycle and will not be stopped.
+- 本轮会先核对 non-terminal task、active invocation/session 与发布命令，再执行 stop/install/start；readiness 只证明服务就绪，不证明具体场景或任务成功。 / This run will first verify non-terminal tasks, active invocations/sessions, and release commands, then stop/install/start. Readiness proves service availability only, not scene contents or task success.
 
+### 预期影响文件 / Planned Files
+- `examples/forge-skills/pick-place-workflow/pyproject.toml`
+- `examples/forge-skills/pick-place-workflow/skill.yaml`
+- `examples/forge-skills/pick-place-workflow/CHANGELOG.md`
+- `examples/forge-skills/pick-place-workflow/tests/test_grasp_propose.py`
+- `changelog/2026-10_part6.md`
+- `CHANGELOG.md`
+- local release artifacts under `out/releases/v13.3.10/`
+
+### 实际停止、发布与启动 / Completed Stop, Release, and Start
+- [env] [chore] `.venv/bin/paos skill stop pick-place-workflow --force` 成功；Skill=`stopped`、Dora=`down`、Gateway 19020 释放，旧 host PID `3209179` 与 simulator worker PID `3209222` 退出；独立 Qwen PID `176466` / 8012 持续运行。 / The forced stop succeeded; Skill stopped, Dora went down, Gateway port 19020 was released, and old host PID `3209179` plus simulator worker PID `3209222` exited; independent Qwen PID `176466` on 8012 remained running.
+- [env] [chore] 发布 Skill `3.0.22` / Node `1.0.12`，Node SHA-256=`96818ddbe23927326055f53e8424a9599bc7e04ff0a5357003758f9ed07c9b51`，Skill bundle SHA-256=`7e40780869f6238c40ba543b665e583ee105c59148c9af15677d7be0fa36f82c`；`paos forge-node verify` 通过。 / Publish Skill `3.0.22` / Node `1.0.12` with the recorded Node and Skill-bundle SHA-256 values; `paos forge-node verify` passed.
+- [env] [chore] `.venv/bin/python -m pip install --no-deps -e .` 刷新 Core，导入路径为当前 checkout，且包含 `_evidence_refresh_kind`；本地 Skill/Node 安装成功。 / Refresh Core with editable install from the current checkout, verify the import path and `_evidence_refresh_kind`, and install the local Skill/Node successfully.
+- [env] [chore] 使用既有 mode-`0600` operator env 与现有 provider `apiKeyFile` 启动 `robotwin-blocks-ranking-graspnet`；凭据只注入启动子进程，未打印或写入配置。 / Start `robotwin-blocks-ranking-graspnet` with the existing mode-`0600` operator environment and provider `apiKeyFile`; inject the credential only into the startup child process without printing or persisting it.
+- [eval] [test] 新 host PID `3256163`、simulator worker PID `3256218` 于 23:29 创建；Skill/Dora=`running`、Gateway=`ready`、11/11 Tool contexts=`ready`，19020 与 8012 监听。新 runtime lock 为 `.../33f3c5ea60d382c6681e0a62d5b5ec202eed896b50d2a27fa86d2f8ed7f37f0c/runtime-lock.json`，锁定 Skill `3.0.22` / Node `1.0.12` 与上述 Node SHA。 / New host PID `3256163` and simulator worker PID `3256218` were created at 23:29; Skill/Dora are running, Gateway and all 11 Tool contexts are ready, and ports 19020/8012 listen. The new runtime lock pins Skill `3.0.22` / Node `1.0.12` and the recorded Node SHA.
+- [eval] [test] 运行中 Adapter 源码核对包含 `PlacementPostconditionError` 与 `placement_measurement`/`placement_tolerance` per-Action reset；任务库在停止前后均只有 `cancelled=203`、`failed=99`，没有 non-terminal task、自动恢复或 Action 重放。 / The running Adapter source contains `PlacementPostconditionError` and per-Action resets for placement measurement/tolerance; before and after restart the task store contains only `cancelled=203` and `failed=99`, with no non-terminal task, automatic resume, or Action replay.
+
+### 文件变更详情 / File Changes
+- [修改] `examples/forge-skills/pick-place-workflow/pyproject.toml:L1-L6`、`skill.yaml:L1-L4,L219-L229`：Skill `3.0.21` → `3.0.22`，Node `1.0.11` → `1.0.12`，更新 artifact id 与 Node SHA lock。 / Bump the Skill and Node versions and update the artifact ID and Node SHA lock.
+- [修改] `examples/forge-skills/pick-place-workflow/CHANGELOG.md:L1-L11`、`tests/test_grasp_propose.py:L264-L274`：记录通用后置条件/receipt 发布并同步版本一致性回归。 / Record the generic postcondition/receipt release and align version-consistency regression.
+- [新增] `out/releases/v13.3.10/robotwin20_persistent_host-1.0.12-linux-x86_64.tar.gz`、`pick-place-workflow-3.0.22.tar.gz`：从当前 Adapter/Workflow 源码构建并安装。 / Build and install the Node and Skill artifacts from current Adapter/Workflow sources.
+
+### 关键 Diff / Key Diff
 ```diff
-- Skill 3.0.21 / Node 1.0.11 / old host+simulator
-+ Skill 3.0.22 / Node 1.0.12 / new host+simulator
-+ typed placement-postcondition failure and per-Action measurement reset installed
+- Skill 3.0.21 / Node 1.0.11
++ Skill 3.0.22 / Node 1.0.12
++ installed Runtime contains typed placement postcondition failure
++ installed Runtime clears prior placement measurements per Action
+- old host/simulator process
++ new host/simulator process and fresh runtime lock
 ```
 
-### 部署结果与安全边界 / Deployment Result and Safety Boundary
-- 强制停止成功，旧 host PID `3209179`、worker PID `3209222` 退出，独立 Qwen PID `176466`/8012 未停止。新 host PID `3256163`、worker PID `3256218` 于 23:29 创建。 / Forced stop succeeded; the old host/worker exited while independent Qwen remained running. New host/worker processes were created at 23:29.
-- Runtime lock `33f3c5ea.../runtime-lock.json` 固定 Skill `3.0.22`、Node `1.0.12` 与 Node SHA；Skill/Dora=`running`、Gateway=`ready`、11/11 Tool contexts=`ready`，19020/8012 监听。 / The new runtime lock pins Skill, Node, and Node SHA; Skill/Dora are running, Gateway and all 11 Tool contexts are ready, and ports 19020/8012 listen.
-- release/workflow/provider fixture `456 passed in 13.72s`；Core v13.3.9 已通过 focused `315`、full `900`。任务库仅 `cancelled=203`、`failed=99`，没有 non-terminal task。 / Release/workflow/provider fixtures passed; Core v13.3.9 already passed focused and full suites. The task store contains only terminal tasks.
-- 未调用 Gateway Query/Action、相机或 simulator action；readiness 不作为场景内容或任务成功证明。 / No Gateway Query/Action, camera, or simulator action was invoked; readiness is not treated as proof of scene contents or task success.
+### 验证与安全边界 / Validation and Safety Boundary
+- release/workflow/provider fixture：`456 passed in 13.72s`；首次命令因漏加 workflow `src` 出现 21 个收集期 `ModuleNotFoundError`，修正 `PYTHONPATH` 后全部通过，未进入 Runtime。 / Release/workflow/provider fixtures: `456 passed in 13.72s`; the first command omitted workflow `src` and produced 21 collection-time `ModuleNotFoundError` errors, then passed after correcting `PYTHONPATH`; neither run entered the Runtime.
+- Core v13.3.9 已验证 `315 passed` focused、`900 passed` full repository；本轮 artifact lock、Node receipt、运行源码与 Tool readiness 一致。 / Core v13.3.9 already passed 315 focused and 900 full-repository tests; artifact lock, Node receipt, running source, and Tool readiness agree in this deployment.
+- 未创建/恢复 AgentTask，未调用 Gateway Query/Action，未读取相机，未推进 simulator action；readiness 和新进程仅证明新生命周期已启动，不作为具体场景内容或任务成功证明。 / No AgentTask was created/resumed, no Gateway Query/Action invoked, no camera read, and no simulator action advanced; readiness and new processes prove only a new lifecycle, not scene contents or task success.
 
 ### Git 提交 / Git Commit
-- Deployment/release commit: `0c3602ec` on `feature/planning-loop`; documentation/index completion follows separately. / 部署与发布提交：`0c3602ec`，分支 `feature/planning-loop`；日志与索引补全随后单独提交。
+- Deployment/release commit: `0c3602ec` on `feature/planning-loop`; log/index completion follows separately. / 部署与发布提交：`0c3602ec`，分支 `feature/planning-loop`；日志与索引补全随后单独提交。
 
 ## v13.3.9 (2026-10-12 22:59) - codex
 
 ### 变更摘要 / Summary [完成]
-- [model] [fix] 将 Runtime 已测得的放置后置条件超限从 `outcome_unknown` 修正为 `failed/outcome_known=true`，保留 release/retreat/empty-possession 与误差/容差；未分类 post-release 异常继续 fail-closed。 / Reclassify measured placement-postcondition violations from `outcome_unknown` to `failed/outcome_known=true`, retaining release/retreat/empty-possession and measurement/tolerance; unclassified post-release exceptions remain fail-closed.
-- [policy] [fix] 已知 Action 后置条件失败确定性进入单一 scene-refresh Query recovery revision，不重放原 Action；consumer projection 缺少 semantic join field 时允许 AgentLoop 在同节点有界补齐。 / Deterministically route known Action postcondition failures to a recovery revision containing one scene-refresh Query without replaying the Action; allow AgentLoop to fill a missing consumer-projection semantic join field in the same node.
-- [docs] [docs] 保存 `task_bc5b3e04a00b45f7` 的精确诊断：位置误差 `0.016338 m < 0.04 m`，姿态误差 `0.425647 rad > 0.35 rad`；后续 bind 已成功，真正阻塞是 `grasp.propose` selection 缺 `entity_ref` 且 Gateway 未调用。 / Preserve the exact diagnosis: position error passed, orientation error exceeded tolerance; subsequent binding succeeded, while the actual later blocker was a missing `entity_ref` in `grasp.propose` selection before any Gateway call.
+- [docs] [docs] 保存 task_bc5b3e04a00b45f7 的放置后置条件与消费投影诊断：位置误差 0.016338 m 小于 0.04 m，姿态误差 0.425647 rad 超过 0.35 rad；释放/退避均完成，普通 ValueError 被压成 outcome_unknown；后续 grasp projection 缺少 selected entity_ref，未调用 Gateway。 / Preserve placement-postcondition and consumer-projection diagnosis: position error 0.016338 m is below 0.04 m, orientation error 0.425647 rad exceeds 0.35 rad; release/retreat completed but a generic ValueError became outcome_unknown; subsequent grasp projection omitted selected entity_ref before any Gateway invocation.
+- [policy] [fix] 在现有 Runtime outcome 和 Coordinator selection 边界准确表达已测得的后置条件失败，并允许无执行、无世界变化的实体选择缺失在当前节点有界纠正。 / Express measured postcondition failure accurately at the existing Runtime outcome boundary and allow bounded same-node correction of a missing entity selection before execution or world change.
+- [eval] [test] 增加通用 no-motion 回归：保持未知物理异常 fail-closed、保留释放/退避证据、不重放成功 Action，投影仍由 Coordinator 根据显式实体选择生成。 / Add generic no-motion regressions retaining fail-closed unknown physical failures, release/retreat evidence, successful-Action no-replay, and Coordinator projection from explicit entity selection.
 
-### 文件与关键 Diff / Files and Key Diff
-- `examples/forge-adapters/robotwin20/runtime/robotwin_persistent_engine.py:L58-L66,L579-L740,L796-L872`：typed known postcondition failure、每次 Action 清理旧测量、测量/容差与 known-terminal scene effects。 / Typed known postcondition failure, per-Action stale-measurement clearing, measurement/tolerance, and known-terminal scene effects.
-- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_manipulation.py:L47-L48,L130-L226`：bounded Action receipt allowlist。 / Bounded Action-receipt allowlist.
-- `PhyAgentOS/agent/recovery_decisions.py:L79-L118,L218-L342`：区分 Query evidence 与 measured Action recovery，只生成 scene-refresh Query。 / Distinguish Query-evidence and measured-Action recovery and generate only a scene-refresh Query.
-- `PhyAgentOS/agent/tools/planning.py:L431-L452`、`PhyAgentOS/agent/loop.py:L1675-L1725`：缺失通用 semantic join field 的同节点纠正。 / Same-node correction for a missing generic semantic join field.
-- `tests/test_agent_foundation.py:L1364-L1410,L2620-L2920`、`tests/test_planning_selection.py:L337-L523`、`examples/forge-adapters/robotwin20/tests/test_persistent_manipulation.py:L490-L666`：no-motion recovery、projection、跨 Action 陈旧测量与 Runtime/receipt 回归。 / No-motion recovery, projection, cross-Action stale-measurement, Runtime, and receipt regressions.
-- `docs/forge/PLACEMENT_POSTCONDITION_ENTITY_SELECTION_DIAGNOSIS_20261012.md:L1-L131`：证据、ownership、恢复边界、七维审查和验证。 / Evidence, ownership, recovery boundaries, seven-dimension review, and verification.
+### 失败场景与实现边界 / Failure Scenarios and Boundaries
+- 不改 benchmark 目标、姿态容差、轨迹或分阶段运动；现有证据只确认姿态超限，未证明分阶段导致误差。 / Do not change benchmark targets, orientation tolerances, trajectories, or staged motion; evidence establishes excessive orientation error but does not prove staging caused it.
+- 复用现有错误分类、selection correction budget、settlement 和场景对账；不新增 hash、gate、持久化状态或 RGB/颜色/节点名分支。 / Reuse error classification, selection correction budget, settlement, and scene reconciliation; add no hash, gate, persisted state, or RGB/color/node-name branch.
+- 本轮不部署、不重启、不恢复现有任务、不调用 live Query/Action；只使用 fixture 和既有制品。 / No deployment, restart, task resume, or live Query/Action; use fixtures and existing artifacts only.
 
+### 预期影响文件 / Planned Files
+- `examples/forge-adapters/robotwin20/runtime/robotwin_persistent_engine.py`
+- `PhyAgentOS/planning/projection.py`, `PhyAgentOS/agent/planning_loop.py`, `PhyAgentOS/agent/tools/planning.py`, `PhyAgentOS/agent/loop.py`（按真实 owning boundary 收窄 / narrow to actual owning boundaries）
+- 对应 regression tests、`docs/forge/PLACEMENT_POSTCONDITION_ENTITY_SELECTION_DIAGNOSIS_20261012.md`
+- `changelog/2026-10_part6.md`, `CHANGELOG.md`
+
+### 实际修改 / Actual Changes
+- [model] [fix] `examples/forge-adapters/robotwin20/runtime/robotwin_persistent_engine.py:L58-L66,L579-L740,L796-L872`：新增通用 `PlacementPostconditionError`，将已测得的放置后置条件超限记录为 `failed/outcome_known=true`，保留释放、退避、空持有状态、测量与容差；未分类的 post-release 异常继续为 `outcome_unknown`；每个 Action 开始时清除上次测量，已知终态允许按真实 before/after 计算 scene effects。 / [model] [fix] Add generic `PlacementPostconditionError`; record measured placement-postcondition violations as `failed/outcome_known=true` while retaining release, retreat, empty possession, measurement, and tolerance; keep unclassified post-release exceptions as `outcome_unknown`; clear prior measurements at every Action start and allow known terminal results to compute scene effects from actual before/after state.
+- [policy] [fix] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_manipulation.py:L47-L48,L130-L226`：Action receipt 仅投影有限、非负、allowlisted 的位置/姿态误差与正容差，继续受既有 transport size budget 约束。 / [policy] [fix] Project only finite, non-negative allowlisted position/orientation errors and positive tolerances into the Action receipt, still bounded by the existing transport-size budget.
+- [policy] [fix] `PhyAgentOS/agent/recovery_decisions.py:L79-L118,L218-L342`：区分 `query_evidence` 与 `measured_action_postcondition`；后者无需模型决定，生成唯一 scene-refresh Query 的 replacement revision，不把原 Action 放入替换图。 / [policy] [fix] Distinguish `query_evidence` from `measured_action_postcondition`; the latter deterministically creates a replacement revision containing one scene-refresh Query, without placing the original Action in the replacement graph.
+- [policy] [fix] `PhyAgentOS/agent/tools/planning.py:L431-L452`：通用 `consumer projection requires selected <join_field>` 拒绝改为当前 revision 可纠正，并结构化返回缺失 join field；其他 projection contract failure 维持 requires-replan。 / [policy] [fix] Make generic `consumer projection requires selected <join_field>` rejections correctable in the current revision and return the missing join field structurally; retain requires-replan behavior for other projection contract failures.
+- [policy] [fix] `PhyAgentOS/agent/loop.py:L1675-L1725`：AgentLoop 从结构化 `missing_fields` 生成同节点有界纠正提示，不自动选实体、不请求 replan，并继续受现有 correction/no-progress budget 限制。 / [policy] [fix] Build a bounded same-node correction from structured `missing_fields`; do not auto-select an entity or request a replan, and retain existing correction/no-progress budgets.
+- [eval] [test] `examples/forge-adapters/robotwin20/tests/test_persistent_manipulation.py:L490-L666`、`tests/test_planning_selection.py:L337-L523`、`tests/test_agent_foundation.py:L1364-L1410,L2620-L2920`：覆盖 typed known failure、未知异常 fail-closed、跨 Action 陈旧测量清理、receipt 白名单、缺 join field 后同节点成功、Query/Action 两类 scene refresh，以及不调用模型、不重放 Action。 / [eval] [test] Cover typed known failure, fail-closed unknown exceptions, cross-Action stale-measurement clearing, receipt allowlisting, same-node success after a missing join field, Query/Action scene refresh kinds, no model call, and no Action replay.
+- [docs] [docs] `docs/forge/PLACEMENT_POSTCONDITION_ENTITY_SELECTION_DIAGNOSIS_20261012.md:L1-L131`：保存 task 证据、阶段边界、两条独立根因、PAOS ownership、AgentLoop 收敛、审查修复与 no-motion 验证。 / [docs] [docs] Preserve task evidence, phase boundaries, the two independent root causes, PAOS ownership, AgentLoop convergence, review fix, and no-motion verification.
+
+### 关键 Diff / Key Diff
 ```diff
-- measured postcondition violation -> outcome_unknown
-+ measured postcondition violation -> failed, outcome_known=true, refresh_declared_evidence
-+ unclassified post-release exception -> outcome_unknown
+- raise ValueError("after-state placement verification failed")
++ raise PlacementPostconditionError("after-state placement verification failed")
 
-- projection missing selected <join_field> -> requires_replan
-+ projection missing selected <join_field> -> bounded same-node correction
+- changed world + exception -> outcome_unknown
++ measured postcondition failure -> failed, outcome_known=true, refresh_declared_evidence
++ unclassified post-release exception -> outcome_unknown (unchanged fail-closed behavior)
 
-- recovery may ask the model to replay/replan
-+ known measured Action failure -> scene-refresh Query only
+- missing semantic join field -> requires_replan=true
++ missing semantic join field -> retryable_in_revision=true, requires_replan=false
++ AgentLoop retries the same selection node with the exact authorized join value
+
+- recovery decision may replay/replan through the model
++ known measured Action failure -> deterministic scene-refresh Query only
 ```
 
-### 架构、安全与验证 / Architecture, Safety, and Validation
-- 修复保持 PAOS ownership：Runtime 拥有物理事实，Adapter 投影 bounded receipt，Coordinator 持久化选择，AgentLoop 编排有限纠正；无 RGB、颜色、方块、provider、task-id 或节点名分支。 / Preserve PAOS ownership: Runtime owns physical truth, Adapter projects bounded receipts, Coordinator persists selections, and AgentLoop orchestrates bounded correction; no RGB, color, block, provider, task-id, or node-name branch.
-- 不改目标、容差、轨迹、分阶段运动、freshness、calibration、collision、IK 或 motion authorization；不新增 hash、baseline、gate、持久化 schema 或第二状态机。 / Change no target, tolerance, trajectory, staged motion, freshness, calibration, collision, IK, or motion authorization; add no hash, baseline, gate, persisted schema, or second state machine.
-- 七维审查发现并修复 1 Major（跨 Action 陈旧 placement measurement）；无 Blocker 或未修复 Major。Focused/cross-layer `315 passed in 11.34s`；full repository `900 passed in 30.56s`；Ruff、compileall、`git diff --check` passed。全程 no-motion，未部署/重启 Runtime 或调用 live Gateway。 / Seven-dimension review found and fixed one Major (cross-Action stale placement measurement), with no Blocker or unresolved Major. Focused/cross-layer and full suites passed, as did Ruff, compileall, and diff checks; entirely no-motion with no Runtime deployment/restart or live Gateway call.
+### PAOS 与安全边界 / PAOS and Safety Boundary
+- Runtime 继续拥有物理事实与 after-state measurement；Adapter 只投影 bounded receipt；Coordinator 继续拥有 durable selection；AgentLoop 只负责编排有界纠正和 recovery revision。 / Runtime continues to own physical truth and after-state measurement; the Adapter projects only a bounded receipt; the Coordinator owns durable selection; AgentLoop only orchestrates bounded correction and recovery revisions.
+- 物理释放完成不等于语义放置成功；本次结果保持 failed，但不再错误表示为 unknown。历史成功 Action 和已释放事实作为上下文保留，不自动重放。 / Physical release does not equal semantic placement success; the result remains failed but is no longer misrepresented as unknown. Historical successful Actions and the release fact remain context and are not replayed automatically.
+- 不新增 hash、baseline、全局 gate、持久化 schema 或第二状态机；不含 RGB、颜色、方块、provider、task id 或节点名分支。 / Add no hash, baseline, global gate, persisted schema, or second state machine; add no RGB, color, block, provider, task-id, or node-name branch.
+- 不改目标、`0.04/0.35` 容差、轨迹、分阶段逻辑、freshness、calibration、collision、IK 或 motion authorization。现有证据未证明 staged phases 导致姿态误差。 / Do not change targets, `0.04/0.35` tolerances, trajectories, staged motion, freshness, calibration, collision, IK, or motion authorization. Current evidence does not prove staged phases caused the orientation error.
+
+### 七维 Code Review / Seven-Dimension Code Review
+1. **架构 / Architecture：** 修复分别位于 Runtime outcome、Adapter receipt、Coordinator selection error 与 AgentLoop recovery owning boundary；未复制 execution state。 / Fixes remain at the Runtime-outcome, Adapter-receipt, Coordinator-selection-error, and AgentLoop-recovery ownership boundaries; execution state is not duplicated.
+2. **正确性 / Correctness：** 位置通过而姿态超限仍为失败；审查发现并修复 persistent `_state` 让上次 place measurement 泄漏到后续 Action 的 Major。 / The result remains failed when position passes but orientation exceeds tolerance; review found and fixed a Major where persistent `_state` leaked a prior placement measurement into a later Action.
+3. **错误可观测 / Observability：** receipt 保留 bounded measurement/tolerance 和 typed failure；未分类异常仍明确 unknown，Query 与 Action recovery reason 分开。 / Receipts retain bounded measurements/tolerances and typed failure; unclassified exceptions remain explicitly unknown, and Query versus Action recovery reasons remain distinct.
+4. **恢复幂等 / Recovery and idempotency：** 已知 Action 失败只生成 scene-refresh Query，不执行模型决策或重放 Action；缺 join field 只在原节点纠正一次。 / Known Action failure creates only a scene-refresh Query without model decision or Action replay; a missing join field is corrected only in the original node.
+5. **机器人安全 / Robotics safety：** 未修改运动目标、轨迹、容差、碰撞、IK、readiness 或 authorization；unknown 物理异常保持 fail-closed。 / Motion targets, trajectories, tolerances, collision, IK, readiness, and authorization are unchanged; unknown physical exceptions remain fail-closed.
+6. **扩展兼容 / Extension compatibility：** 规则依赖通用 Tool semantics、failure metadata 与 projection join field，无 RGB、颜色、方块、provider 或节点名分支。 / Rules depend on generic Tool semantics, failure metadata, and projection join fields, with no RGB, color, block, provider, or node-name branch.
+7. **AgentLoop 收敛 / AgentLoop convergence：** 可纠正 selection 保持同 revision 并受既有 budget 限制；世界已变化的已知失败进入 fresh-evidence revision，不等待 readiness transition。 / Correctable selections stay in the same revision under existing budgets; known failures after world change enter a fresh-evidence revision rather than waiting for a readiness transition.
+- 审查最终结论：1 Major 已修复；无 Blocker、无未修复 Major。 / Final review result: one Major fixed; no Blocker or unresolved Major.
+
+### 验证 / Validation
+- 聚焦与跨层：`315 passed in 11.34s`。 / Focused and cross-layer suites: `315 passed in 11.34s`.
+- 全仓库：`900 passed in 30.56s`。 / Full repository: `900 passed in 30.56s`.
+- Ruff、compileall、`git diff --check`：通过。 / Ruff, compileall, and `git diff --check`: passed.
+- 全程 no-motion：未部署/重启 Runtime，未创建/恢复任务，未调用 live Gateway Query/Action，未读取相机，未推进 simulator，未执行机械臂运动。 / Entirely no-motion: no Runtime deployment/restart, task creation/resume, live Gateway Query/Action, camera read, simulator step, or manipulator motion.
 
 ### Git 提交 / Git Commit
-- Implementation/review commit: `8eae0db3` on `feature/planning-loop`; documentation/index completion follows separately. / 实现与审查提交：`8eae0db3`，分支 `feature/planning-loop`；日志与索引补全随后单独提交。
+- Implementation/review commit: `8eae0db3` on `feature/planning-loop`; log/index completion follows separately. / 实现与审查提交：`8eae0db3`，分支 `feature/planning-loop`；日志与索引补全随后单独提交。
+
+## Archived detailed records / 已归档详细记录
 
 ## v13.3.8 (2026-10-12 22:02) - codex
 
@@ -179,8 +293,6 @@
 
 ### Git 提交 / Git Commit
 - Restart log/index commit: `b6ce82b3` on `feature/planning-loop`; commit-reference completion follows separately. / 重启日志与索引提交：`b6ce82b3`，分支 `feature/planning-loop`；提交引用补全随后单独完成。
-
-## Archived detailed records / 已归档详细记录
 
 The latest five records above are mirrored from the monthly archive. Older snapshots below remain for historical compatibility. / 上述最近五条与月度归档同步；以下旧快照仅为历史兼容保留。
 
