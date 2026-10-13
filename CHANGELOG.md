@@ -32,7 +32,7 @@
 - readiness 不等同于场景或任务成功；本轮未创建/恢复任务，未调用 Query/Action 或执行运动。 / Readiness does not imply scene or task success; this run created/resumed no task, invoked no Query/Action, and executed no motion.
 
 ### Git 提交 / Git Commit
-- Commit pending on `feature/planning-loop`; hash will be recorded after commit. / Commit pending on `feature/planning-loop`; hash will be recorded after commit.
+- Deployment log/index commit: `d42361a5` on `feature/planning-loop`; hash-reference completion follows in the log-only commit. / Deployment log/index commit: `d42361a5` on `feature/planning-loop`; hash-reference completion follows in the log-only commit.
 
 ## v13.4.2 (2026-10-13 16:28) - codex
 
