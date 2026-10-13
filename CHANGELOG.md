@@ -2,6 +2,47 @@
 
 ## 最近五版本 / Latest five versions
 
+## v13.3.14 (2026-10-13 14:00) - codex
+
+### 变更摘要 / Summary [完成]
+- [policy] [fix] 修复通用证据刷新后的 `scene.bind` 选择语义：任务实体绑定与支撑/碰撞几何证据分离，避免 recovery plan 将环境表面误当作必须绑定的任务实体而触发 `node_selection_no_progress`。 / Fix generic post-refresh `scene.bind` selection semantics by separating task-entity binding from support/collision geometry evidence, preventing recovery plans from promoting environment surfaces into mandatory binding identities and ending in `node_selection_no_progress`.
+- [eval] [test] 增加 no-motion 回归并保存诊断；Agent 仍必须提交 selection，Coordinator 不自动绑定，`prepare` 继续对歧义几何 fail-closed。 / Add no-motion regressions and preserve the diagnosis; the Agent must still submit the selection, Coordinator does not auto-bind, and preparation remains fail-closed on ambiguous geometry.
+
+### 失败场景与边界 / Failure Scenario and Boundary
+- `manipulation.prepare` 因支撑几何歧义请求 evidence refresh；新观察、理解和能力查询成功，但 recovery obligation 把支撑/碰撞实体写成绑定要求，模型连续读取而不提交 selection。`scene.bind` Gateway 从未被调用。 / Preparation requested evidence refresh because support geometry was ambiguous; fresh observation, understanding, and capabilities succeeded, but the recovery obligation made support/collision entities binding requirements, so the model reread without submitting a selection. The `scene.bind` Gateway was never called.
+- 不新增自动选择、category 词表、hash、baseline、持久化 schema 或 motion gate；不恢复任务、不调用 Runtime Query/Action。 / Add no auto-selection, category vocabulary, hash, baseline, persisted schema, or motion gate; resume no task and invoke no Runtime Query/Action.
+
+### 实际修改 / Actual Changes
+- [policy] [fix] `PhyAgentOS/agent/plan_proposal.py:L26-L38`：Recovery planner 明确绑定任务相关观测身份，环境几何保留为理解/准备证据。 / Make recovery planning bind task-relevant observed identities while retaining environment geometry as understanding/preparation evidence.
+- [policy] [fix] `PhyAgentOS/agent/planning_loop.py:L1548-L1567`：节点 prompt 使用既有候选与歧义投影，避免把 obligation 中的支撑/碰撞描述解释成绑定身份；禁止重复只读上下文。 / Use existing candidate and ambiguity projections, avoid interpreting support/collision wording as a binding identity, and forbid context-only looping.
+- [eval] [test] `tests/test_planning_loop.py:L12,L592-L693`：覆盖 recovery guidance、环境歧义与任务实体不相交时的选择，以及不自动授权。 / Cover recovery guidance, disjoint environment ambiguity, task-entity selection, and no automatic authorization.
+- [docs] [docs] `docs/forge/REFRESHED_SCENE_BIND_SELECTION_DIAGNOSIS_20261013.md:L1-L58`：保存证据、ownership、修复和 no-motion 边界。 / Preserve evidence, ownership, repair, and no-motion boundaries.
+
+### 关键 Diff / Key Diff
+```diff
+- recovery scene.bind may require observed support/collision entities
++ recovery scene.bind selects task-relevant observed identities only
++ support/collision geometry stays scene.understand evidence for manipulation.prepare
++ Agent submits forge_plan_select; Coordinator/Runtime safety gates stay unchanged
+```
+
+### 七维 Code Review / Seven-Dimension Code Review
+1. **架构 / Architecture：** 修复位于 recovery guidance 与 AgentLoop prompt；Runtime/Coordinator/prepare ownership 不变。 / Fixes remain in recovery guidance and the AgentLoop prompt; Runtime, Coordinator, and preparation ownership is unchanged.
+2. **正确性 / Correctness：** 身份绑定与环境几何分离；审查移除 provider-category 关键字启发式。 / Identity binding is separated from environment geometry; review removed a provider-category keyword heuristic.
+3. **错误可观测 / Observability：** 保留候选、歧义、source record、scene revision 与 no-progress 错误。 / Preserve candidates, ambiguities, source record, scene revision, and no-progress errors.
+4. **恢复幂等 / Recovery and idempotency：** 不重放 Action，不复用旧 binding/geometry，只恢复当前后缀。 / Replay no Action, reuse no old binding/geometry, and recover only the current suffix.
+5. **机器人安全 / Robotics safety：** freshness、calibration、collision、IK、authorization 与 Gateway admission 不变。 / Freshness, calibration, collision, IK, authorization, and Gateway admission remain unchanged.
+6. **扩展兼容 / Extension compatibility：** 无 RGB、颜色、方块、benchmark、provider、task id、节点名或 category 词表分支。 / Add no RGB, color, block, benchmark, provider, task-id, node-name, or category-vocabulary branch.
+7. **AgentLoop 收敛 / AgentLoop convergence：** 环境证据不再升级为绑定义务；任务身份可用时要求一次 selection。 / Environment evidence is no longer promoted into a binding obligation; one selection is required when task identities are available.
+- 审查发现的 Major 已修复；无未解决 Blocker/Major。 / The review-discovered Major was fixed; no Blocker or Major remains.
+
+### 验证与安全边界 / Validation and Safety Boundary
+- 聚焦 `267 passed in 10.05s`；全仓库 `905 passed in 32.54s`；scoped Ruff、`compileall`、`git diff --check` 通过。 / Focused and full suites passed; scoped Ruff, compileall, and diff checks passed.
+- 未部署/重启 Runtime，未恢复/创建任务，未调用 live Query/Action、相机或 simulator，未执行物理运动。 / No Runtime deployment/restart, task resume/creation, live Query/Action, camera, simulator, or physical motion occurred.
+
+### Git 提交 / Git Commit
+- Implementation/review commit pending on `feature/planning-loop`; log/index reference completion follows. / 实现与审查提交待完成；日志与索引引用随后补全。
+
 ## v13.3.13 (2026-10-13 13:15) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -181,6 +222,8 @@
 ### Git 提交 / Git Commit
 - Deployment/release commit: `0c3602ec` on `feature/planning-loop`; log/index completion follows separately. / 部署与发布提交：`0c3602ec`，分支 `feature/planning-loop`；日志与索引补全随后单独提交。
 
+## Archived detailed records / 已归档详细记录
+
 ## v13.3.9 (2026-10-12 22:59) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -249,8 +292,6 @@
 
 ### Git 提交 / Git Commit
 - Implementation/review commit: `8eae0db3` on `feature/planning-loop`; log/index completion follows separately. / 实现与审查提交：`8eae0db3`，分支 `feature/planning-loop`；日志与索引补全随后单独提交。
-
-## Archived detailed records / 已归档详细记录
 
 ## v13.3.8 (2026-10-12 22:02) - codex
 

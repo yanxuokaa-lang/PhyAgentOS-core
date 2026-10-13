@@ -8,6 +8,7 @@ import pytest
 
 from PhyAgentOS.agent.long_horizon import LongHorizonTaskController
 from PhyAgentOS.agent.loop import AgentLoop
+from PhyAgentOS.agent.plan_proposal import RECOVERY_NODE_GUIDANCE
 from PhyAgentOS.agent.planner_plugin import PlannerPluginRegistry, PlanningRequest, ReplanProposal
 from PhyAgentOS.agent.planning_dispatch import AgentComposedDispatch
 from PhyAgentOS.agent.planning_loop import (
@@ -588,6 +589,18 @@ def test_default_node_prompt_distinguishes_geometry_and_producer_projection_sour
     assert "Follow frozen_skill_route_context" in prompt
 
 
+def test_recovery_guidance_keeps_environment_geometry_out_of_entity_binding():
+    assert "scene.bind node selects task-relevant observed entities only" in (
+        RECOVERY_NODE_GUIDANCE
+    )
+    assert "remain scene.understand evidence for preparation" in (
+        RECOVERY_NODE_GUIDANCE
+    )
+    assert "unless the node input bindings explicitly name them" in (
+        RECOVERY_NODE_GUIDANCE
+    )
+
+
 def test_scene_bind_node_context_projects_current_candidates_without_auto_selecting():
     understand = PlanNode(
         node_id="understand",
@@ -675,6 +688,8 @@ def test_scene_bind_node_context_projects_current_candidates_without_auto_select
     ]
     assert "submit one forge_plan_select" in prompt
     assert "Do not bind all candidates" in prompt
+    assert "recommended_unambiguous_entity_refs" in prompt
+    assert "downstream preparation Query" in prompt
     assert "does not authorize motion" not in projection["scene_bind_selection"]
 
 

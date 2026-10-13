@@ -30,7 +30,11 @@ RECOVERY_NODE_GUIDANCE = (
     "retry_of and submit only the recovery work; original execution records remain "
     "persisted. Action retry admission is unchanged. Materialize only the current "
     "scene-bound segment, or the next refresh Query when fresh evidence is needed; "
-    "continue after its result instead of inventing future bindings or evidence."
+    "continue after its result instead of inventing future bindings or evidence. "
+    "A scene.bind node selects task-relevant observed entities only. Support, "
+    "collision, fixture, and other environment geometry remain scene.understand "
+    "evidence for preparation; do not make them binding requirements unless the "
+    "node input bindings explicitly name them as task entities."
 )
 
 _BENCHMARK_DESTINATION_NODES = frozenset({
