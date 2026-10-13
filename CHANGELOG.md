@@ -31,7 +31,7 @@
 - readiness 不等同于场景或任务成功；本轮未恢复任务、调用 Query/Action 或执行运动。 / Readiness does not imply scene or task success; this run resumed no task, invoked no Query/Action, and executed no motion.
 
 ### Git 提交 / Git Commit
-- Commit pending on `feature/planning-loop`; reference follows. / 提交待完成；引用随后补全。
+- Deployment log/index commit: `0cb25e3e` on `feature/planning-loop`; hash-reference completion follows in the log-only commit. / 部署日志与索引提交：`0cb25e3e`，分支 `feature/planning-loop`；提交引用随后补全。
 
 ## v13.4.3 (2026-10-13 19:32) - codex
 
