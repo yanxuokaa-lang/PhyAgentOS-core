@@ -29,7 +29,7 @@
 - readiness 和新 worker 只证明服务/初始化生命周期，不证明场景内容或任务成功；未创建/恢复任务、调用 Query/Action、读取相机、推进 simulator 或执行运动。 / Readiness and the new worker prove only service/initialization lifecycle, not scene contents or task success; no task creation/resume, Query/Action, camera read, simulator step, or motion occurred.
 
 ### Git 提交 / Git Commit
-- Deployment log/index commit pending on `feature/planning-loop`; commit-reference completion follows. / 部署日志与索引提交待完成；提交引用随后补全。
+- Deployment log/index commit: `49ac2ad9` on `feature/planning-loop`; commit-reference completion follows. / 部署日志与索引提交：`49ac2ad9`，分支 `feature/planning-loop`；提交引用随后补全。
 
 ## v13.4.0 (2026-10-13 15:34) - codex
 
@@ -163,6 +163,8 @@
 ### Git 提交 / Git Commit
 - Deployment log/index commit: `fa04b41f` on `feature/planning-loop`; commit-reference completion follows separately. / 部署日志与索引提交：`fa04b41f`，分支 `feature/planning-loop`；提交引用随后单独补全。
 
+## Archived detailed records / 已归档详细记录
+
 ## v13.3.12 (2026-10-13 00:38) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -256,8 +258,6 @@
 
 ### Git 提交 / Git Commit
 - Implementation/review commit: `5782b0fa` on `feature/planning-loop`; log/index reference completion follows. / 实现与审查提交：`5782b0fa`，分支 `feature/planning-loop`；日志与索引引用随后补全。
-
-## Archived detailed records / 已归档详细记录
 
 ## v13.3.10 (2026-10-12 23:25) - codex
 
