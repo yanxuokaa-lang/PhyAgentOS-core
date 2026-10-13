@@ -285,6 +285,67 @@ def test_receipt_does_not_serialize_non_finite_terminal_number():
     json.dumps(receipt, allow_nan=False)
 
 
+@pytest.mark.parametrize(
+    "measurement",
+    [
+        {
+            "lift_displacement_m": 0.0,
+            "minimum_lift_m": 0.01,
+            "support_clearance_m": 0.001,
+        },
+        {
+            "lift_displacement_m": 0.02,
+            "minimum_lift_m": 0.01,
+            "support_clearance_m": 0.001,
+            "support_tolerance_m": 0.01,
+        },
+    ],
+)
+def test_malformed_known_empty_acquisition_receipt_fails_closed(measurement):
+    receipt = bounded_action_receipt({
+        "status": "failed",
+        "outcome_known": True,
+        "world_change_started": True,
+        "failure_owner": "execution_verification",
+        "failure_code": "acquisition_postcondition_failed",
+        "possession_state": "empty",
+        "object_support_state": "on_support",
+        "acquisition_measurement": measurement,
+    })
+
+    assert receipt["status"] == "unknown"
+    assert receipt["outcome_known"] is False
+    assert receipt["failure_owner"] == "settlement"
+    assert receipt["failure_code"] == "invalid_acquisition_postcondition"
+    assert receipt["recommended_action"] == "reconcile_world"
+    assert "possession_state" not in receipt
+    assert "object_support_state" not in receipt
+    assert "acquisition_measurement" not in receipt
+
+
+def test_complete_known_empty_acquisition_receipt_remains_authoritative():
+    receipt = bounded_action_receipt({
+        "status": "failed",
+        "outcome_known": True,
+        "world_change_started": True,
+        "failure_owner": "execution_verification",
+        "failure_code": "acquisition_postcondition_failed",
+        "possession_state": "empty",
+        "object_support_state": "on_support",
+        "acquisition_measurement": {
+            "lift_displacement_m": 0.0,
+            "minimum_lift_m": 0.01,
+            "support_clearance_m": 0.001,
+            "support_tolerance_m": 0.01,
+        },
+    })
+
+    assert receipt["status"] == "failed"
+    assert receipt["outcome_known"] is True
+    assert receipt["possession_state"] == "empty"
+    assert receipt["object_support_state"] == "on_support"
+
+
 def test_receipt_projection_failure_keeps_durable_evidence_and_uncertain_state(monkeypatch):
     import robotwin20_adapter.persistent_manipulation as module
 

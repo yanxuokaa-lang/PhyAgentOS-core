@@ -359,11 +359,11 @@ def test_endpoint_validates_before_provider_and_never_executes_motion_itself():
     assert rejected.status_code == 409
 
 
-def test_known_acquisition_postcondition_facts_are_projected_without_making_them_required():
+def test_known_acquisition_postcondition_facts_are_projected_with_complete_measurement():
     snapshot = successful_snapshot(
         capability_phase="lift",
         status="failed",
-        failure_owner="execution",
+        failure_owner="execution_verification",
         failure_code="acquisition_postcondition_failed",
         outcome_known=True,
         new_scene_revision=None,
@@ -384,3 +384,55 @@ def test_known_acquisition_postcondition_facts_are_projected_without_making_them
     assert summary["object_support_state"] == "on_support"
     assert summary["acquisition_measurement"]["support_clearance_m"] == 0.001
     jsonschema.validate(result, ACQUIRE_TOOL_SPEC["output_schema"]["properties"]["result"])
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"acquisition_measurement": None},
+        {"acquisition_measurement": {
+            "lift_displacement_m": 0.0,
+            "minimum_lift_m": 0.01,
+            "support_clearance_m": 0.001,
+        }},
+        {"acquisition_measurement": {
+            "lift_displacement_m": 0.0,
+            "minimum_lift_m": 0.01,
+            "support_clearance_m": 0.001,
+            "support_tolerance_m": -0.01,
+        }},
+        {"acquisition_measurement": {
+            "lift_displacement_m": 0.01,
+            "minimum_lift_m": 0.01,
+            "support_clearance_m": 0.001,
+            "support_tolerance_m": 0.01,
+        }},
+        {"acquisition_measurement": {
+            "lift_displacement_m": 0.0,
+            "minimum_lift_m": 0.01,
+            "support_clearance_m": 0.02,
+            "support_tolerance_m": 0.01,
+        }},
+    ],
+)
+def test_known_empty_acquisition_postcondition_rejects_incomplete_or_contradictory_measurement(
+    overrides,
+):
+    snapshot = successful_snapshot(
+        capability_phase="lift",
+        status="failed",
+        failure_owner="execution_verification",
+        failure_code="acquisition_postcondition_failed",
+        outcome_known=True,
+        possession_state="empty",
+        object_support_state="on_support",
+        **overrides,
+    )
+
+    rejected = ObjectAcquireEndpoint(Provider(snapshot)).admit(request_payload())
+
+    assert rejected.status_code == 502
+    assert rejected.code in {
+        "invalid_acquisition_measurement",
+        "invalid_acquisition_postcondition",
+    }

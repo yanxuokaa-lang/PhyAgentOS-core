@@ -55,6 +55,32 @@ _ACQUISITION_MEASUREMENT_FIELDS = (
 )
 
 
+def _acquisition_postcondition_is_valid(receipt: Mapping[str, Any]) -> bool:
+    """Validate the measured proof required for a known empty acquire failure."""
+
+    measurement = receipt.get("acquisition_measurement")
+    if not isinstance(measurement, Mapping) or set(measurement) != set(
+        _ACQUISITION_MEASUREMENT_FIELDS
+    ):
+        return False
+    lift_displacement = float(measurement["lift_displacement_m"])
+    minimum_lift = float(measurement["minimum_lift_m"])
+    support_clearance = float(measurement["support_clearance_m"])
+    support_tolerance = float(measurement["support_tolerance_m"])
+    return (
+        receipt.get("status") == "failed"
+        and receipt.get("outcome_known") is True
+        and receipt.get("world_change_started") is True
+        and receipt.get("failure_owner") == "execution_verification"
+        and receipt.get("possession_state") == "empty"
+        and receipt.get("object_support_state") == "on_support"
+        and minimum_lift > 0
+        and support_tolerance >= 0
+        and lift_displacement < minimum_lift
+        and abs(support_clearance) <= support_tolerance
+    )
+
+
 def _json_size(value: Mapping[str, Any]) -> int:
     return len(
         json.dumps(
@@ -193,6 +219,25 @@ def bounded_action_receipt(result: Mapping[str, Any]) -> dict[str, Any]:
         }
         if projected_acquisition:
             receipt["acquisition_measurement"] = projected_acquisition
+    if (
+        receipt.get("failure_code") == "acquisition_postcondition_failed"
+        and not _acquisition_postcondition_is_valid(receipt)
+    ):
+        # A malformed physical proof cannot authorize an empty gripper state.
+        # Preserve the world-change fact and force normal unknown-Action
+        # reconciliation instead of trusting a partial provider receipt.
+        receipt.update(
+            status="unknown",
+            outcome_known=False,
+            failure_owner="settlement",
+            failure_code="invalid_acquisition_postcondition",
+            retryable_in_revision=False,
+            requires_replan=True,
+            recommended_action="reconcile_world",
+        )
+        receipt.pop("possession_state", None)
+        receipt.pop("object_support_state", None)
+        receipt.pop("acquisition_measurement", None)
     evidence_refs = result.get("evidence_refs", receipt["artifact_refs"])
     receipt["evidence_refs"], refs_truncated = _project_refs(evidence_refs)
     truncated = truncated or refs_truncated

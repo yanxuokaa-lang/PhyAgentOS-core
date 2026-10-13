@@ -1587,3 +1587,212 @@ def test_coordinator_reconciliation_hypothesis_retains_identity_without_stale_ge
         "prior_category": "object",
     }]
     assert not {"pose", "geometry", "calibration_ref"}.intersection(result[0])
+
+
+def test_reconciliation_hypothesis_uses_source_binding_when_action_has_no_artifact():
+    def record(*, tool_id, semantics, status, arguments, response, invocation_id=None):
+        return SimpleNamespace(
+            tool_id=tool_id,
+            semantics=semantics,
+            status=status,
+            arguments=arguments,
+            response=response,
+            invocation_id=invocation_id,
+            evidence_refs=(),
+        )
+
+    task = SimpleNamespace(execution_records=[
+        record(
+            tool_id="scene.understand",
+            semantics="query",
+            status="succeeded",
+            arguments={},
+            response={"data": {
+                "status": "available",
+                "scene_revision": "scene-1",
+                "observation_ref": "observation://scene-1/camera",
+                "calibration_ref": "artifact://calibration/scene-1",
+                "entities": [{"entity_ref": "entity://observed-1", "category": "object"}],
+            }},
+        ),
+        record(
+            tool_id="scene.bind",
+            semantics="query",
+            status="succeeded",
+            arguments={},
+            response={"data": {
+                "status": "available",
+                "scene_revision": "scene-1",
+                "observation_ref": "observation://scene-1/camera",
+                "calibration_ref": "artifact://calibration/scene-1",
+                "binding_ref": "artifact://bindings/scene-1",
+                "entities": [{
+                    "entity_ref": "entity://observed-1",
+                    "execution_entity_ref": "entity://stable-1",
+                }],
+            }},
+        ),
+        record(
+            tool_id="object.acquire",
+            semantics="action",
+            status="unknown",
+            arguments={"entity_ref": "entity://observed-1", "scene_revision": "scene-1"},
+            invocation_id="invocation://object-acquire/1",
+            response={"data": {"status": "unknown", "result": {
+                "capability_outcome_summary": {
+                    "world_change_started": True,
+                    "outcome_known": False,
+                },
+            }}},
+        ),
+    ])
+
+    result = _coordinator_reconciliation_hypotheses(task)
+
+    assert result[0]["execution_entity_ref"] == "entity://stable-1"
+    assert result[0]["evidence_refs"] == ["artifact://bindings/scene-1"]
+
+
+def test_fresh_binding_settles_only_the_reestablished_visual_identity():
+    def record(*, tool_id, semantics, status, arguments, response, invocation_id=None, evidence_refs=()):
+        return SimpleNamespace(
+            tool_id=tool_id,
+            semantics=semantics,
+            status=status,
+            arguments=arguments,
+            response=response,
+            invocation_id=invocation_id,
+            evidence_refs=evidence_refs,
+        )
+
+    records = [
+        record(
+            tool_id="scene.understand",
+            semantics="query",
+            status="succeeded",
+            arguments={},
+            response={"data": {
+                "status": "available",
+                "scene_revision": "scene-1",
+                "observation_ref": "observation://scene-1/camera",
+                "calibration_ref": "artifact://calibration/scene-1",
+                "entities": [{"entity_ref": "entity://old", "category": "object"}],
+            }},
+        ),
+        record(
+            tool_id="scene.bind",
+            semantics="query",
+            status="succeeded",
+            arguments={},
+            response={"data": {
+                "status": "available",
+                "scene_revision": "scene-1",
+                "observation_ref": "observation://scene-1/camera",
+                "calibration_ref": "artifact://calibration/scene-1",
+                "binding_ref": "artifact://bindings/scene-1",
+                "entities": [{
+                    "entity_ref": "entity://old",
+                    "execution_entity_ref": "entity://stable",
+                }],
+            }},
+        ),
+        record(
+            tool_id="object.acquire",
+            semantics="action",
+            status="unknown",
+            arguments={"entity_ref": "entity://old", "scene_revision": "scene-1"},
+            invocation_id="invocation://object-acquire/1",
+            evidence_refs=("artifact://action/receipt",),
+            response={"data": {"status": "unknown", "result": {
+                "new_scene_revision": "scene-2",
+                "capability_outcome_summary": {
+                    "world_change_started": True,
+                    "outcome_known": False,
+                },
+            }}},
+        ),
+        record(
+            tool_id="scene.bind",
+            semantics="query",
+            status="succeeded",
+            arguments={},
+            response={"data": {
+                "status": "available",
+                "scene_revision": "scene-2",
+                "observation_ref": "observation://scene-2/camera",
+                "calibration_ref": "artifact://calibration/scene-2",
+                "binding_ref": "artifact://bindings/scene-2",
+                "entities": [{
+                    "entity_ref": "entity://new",
+                    "execution_entity_ref": "entity://stable",
+                }],
+            }},
+        ),
+    ]
+
+    result = _coordinator_reconciliation_hypotheses(SimpleNamespace(execution_records=records))
+
+    assert result[0]["unresolved_effects"] == ["possession_state", "object_support_state"]
+    assert "artifact://bindings/scene-2" in result[0]["evidence_refs"]
+
+
+def test_fresh_binding_completes_known_failed_identity_reconciliation():
+    task = SimpleNamespace(execution_records=[])
+    source = SimpleNamespace(
+        tool_id="scene.bind",
+        semantics="query",
+        status="succeeded",
+        arguments={},
+        invocation_id=None,
+        evidence_refs=(),
+        response={"data": {
+            "status": "available",
+            "scene_revision": "scene-1",
+            "observation_ref": "observation://scene-1/camera",
+            "calibration_ref": "artifact://calibration/scene-1",
+            "binding_ref": "artifact://bindings/scene-1",
+            "entities": [{
+                "entity_ref": "entity://old",
+                "execution_entity_ref": "entity://stable",
+            }],
+        }},
+    )
+    action = SimpleNamespace(
+        tool_id="object.acquire",
+        semantics="action",
+        status="failed",
+        arguments={"entity_ref": "entity://old", "scene_revision": "scene-1"},
+        invocation_id="invocation://object-acquire/known-failure",
+        evidence_refs=("artifact://action/known-failure",),
+        response={"data": {"status": "failed", "result": {
+            "new_scene_revision": "scene-2",
+            "capability_outcome_summary": {
+                "world_change_started": True,
+                "outcome_known": True,
+                "possession_state": "empty",
+                "object_support_state": "on_support",
+            },
+        }}},
+    )
+    fresh = SimpleNamespace(
+        tool_id="scene.bind",
+        semantics="query",
+        status="succeeded",
+        arguments={},
+        invocation_id=None,
+        evidence_refs=(),
+        response={"data": {
+            "status": "available",
+            "scene_revision": "scene-2",
+            "observation_ref": "observation://scene-2/camera",
+            "calibration_ref": "artifact://calibration/scene-2",
+            "binding_ref": "artifact://bindings/scene-2",
+            "entities": [{
+                "entity_ref": "entity://new",
+                "execution_entity_ref": "entity://stable",
+            }],
+        }},
+    )
+    task.execution_records = [source, action, fresh]
+
+    assert _coordinator_reconciliation_hypotheses(task) == []

@@ -1,5 +1,10 @@
 # Change Log
 
+## v3.0.24 (2026-10-14)
+
+- 中文：发布 Adapter Node `1.0.14`，使 unknown/known-failed Action 在 Action artifact 缺失时仍以前序 binding provenance 保留稳定身份，并在 fresh binding 重建身份后结算该视觉义务；known-empty acquire 仅接受完整且物理一致的测量，畸形 receipt 降级为 unknown 对账。
+- English: Publish Adapter Node `1.0.14`, preserving stable identity from prior binding provenance when Action artifacts are absent and settling visual identity after a fresh binding; known-empty acquisition now requires complete physically consistent measurements, while malformed receipts degrade to unknown reconciliation.
+
 ## v3.0.23 (2026-10-13)
 
 - 中文：发布 Adapter Node `1.0.13`，保留 world-changing unknown/failed Action 的稳定执行身份与 possession 对账义务，投影可测得的 acquire 后置条件，并将新观察中的 reconciliation hypothesis 明确标为 unresolved；不复用旧视觉身份、几何或位姿。

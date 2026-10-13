@@ -12,7 +12,10 @@ from PhyAgentOS.agent.argument_sources import (
     argument_path_schema,
     resolve_argument_sources,
 )
-from PhyAgentOS.agent.planning_facts import response_facts
+from PhyAgentOS.agent.planning_facts import (
+    fresh_binding_for_execution_identity,
+    response_facts,
+)
 from PhyAgentOS.agent.tools.base import Tool
 from PhyAgentOS.forge.task import AgentTaskCoordinator, AgentTaskError
 from PhyAgentOS.forge.tool_client import (
@@ -1042,11 +1045,20 @@ def _coordinator_reconciliation_hypotheses(task: Any) -> list[dict[str, Any]]:
         ),
         None,
     )
-    unresolved = ["current_visual_identity"]
-    if facts.get("outcome_known") is not True:
-        unresolved.extend(("possession_state", "object_support_state"))
-    elif facts.get("object_support_state") not in {"on_support", "displaced"}:
+    fresh_binding = fresh_binding_for_execution_identity(
+        task.execution_records,
+        action_index=action_index,
+        execution_entity_ref=execution_ref,
+        source_scene_revision=source_scene_revision,
+        expected_scene_revision=facts.get("new_scene_revision"),
+    )
+    unresolved = [] if fresh_binding is not None else ["current_visual_identity"]
+    if facts.get("possession_state") not in {"empty", "holding"}:
+        unresolved.append("possession_state")
+    if facts.get("object_support_state") not in {"on_support", "displaced"}:
         unresolved.append("object_support_state")
+    if not unresolved:
+        return []
     fact_evidence_refs = facts.get("evidence_refs")
     if not isinstance(fact_evidence_refs, (list, tuple)):
         fact_evidence_refs = ()
@@ -1055,6 +1067,8 @@ def _coordinator_reconciliation_hypotheses(task: Any) -> list[dict[str, Any]]:
         for ref in (
             *getattr(action, "evidence_refs", ()),
             *fact_evidence_refs,
+            binding.get("binding_ref"),
+            (fresh_binding or {}).get("binding_ref"),
         )
         if isinstance(ref, str) and ref.startswith("artifact://")
     ]
@@ -1066,7 +1080,7 @@ def _coordinator_reconciliation_hypotheses(task: Any) -> list[dict[str, Any]]:
         "source_scene_revision": source_scene_revision,
         "action_invocation_id": action.invocation_id,
         "unresolved_effects": list(dict.fromkeys(unresolved)),
-        "evidence_refs": list(dict.fromkeys(evidence_refs)),
+        "evidence_refs": list(dict.fromkeys(evidence_refs))[:8],
     }
     category = prior_claim.get("category") if isinstance(prior_claim, dict) else None
     if isinstance(category, str) and category:

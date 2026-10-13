@@ -112,3 +112,87 @@ def test_durable_context_retains_unknown_action_identity_after_compaction():
     assert item["unresolved_effects"] == [
         "current_visual_identity", "possession_state", "object_support_state"
     ]
+
+
+def test_durable_context_settles_known_failed_identity_after_fresh_binding():
+    action = SimpleNamespace(
+        revision_id="revision-1",
+        node_id="acquire",
+        tool_id="object.acquire",
+        semantics="action",
+        status="failed",
+        invocation_id="invocation://object-acquire/1",
+        arguments={"entity_ref": "entity://old"},
+        evidence_refs=("artifact://action/receipt",),
+        response={"data": {"status": "failed", "result": {
+            "new_scene_revision": "scene-2",
+            "capability_outcome_summary": {
+                "world_change_started": True,
+                "outcome_known": True,
+                "execution_entity_ref": "entity://stable",
+                "possession_state": "empty",
+                "object_support_state": "on_support",
+            },
+        }}},
+    )
+    binding = SimpleNamespace(
+        revision_id="revision-2",
+        node_id="bind",
+        tool_id="scene.bind",
+        semantics="query",
+        status="succeeded",
+        invocation_id=None,
+        arguments={},
+        evidence_refs=("artifact://bindings/scene-2",),
+        response={"data": {
+            "status": "available",
+            "scene_revision": "scene-2",
+            "observation_ref": "observation://scene-2/camera",
+            "calibration_ref": "artifact://calibration/scene-2",
+            "binding_ref": "artifact://bindings/scene-2",
+            "entities": [{
+                "entity_ref": "entity://new",
+                "execution_entity_ref": "entity://stable",
+            }],
+        }},
+    )
+    settlement = SimpleNamespace(
+        node_id="acquire",
+        invocation_id=action.invocation_id,
+        status="failed",
+        source_scene_revision="scene-1",
+        scene_revision="scene-2",
+        world_change_started=True,
+        outcome_known=True,
+    )
+    revision_1 = SimpleNamespace(
+        revision_id="revision-1",
+        plan_graph=SimpleNamespace(nodes=(
+            SimpleNamespace(node_id="acquire", obligation_id="acquire", capability="object.acquire"),
+        )),
+        execution_records=(action,),
+        node_settlements=(settlement,),
+    )
+    revision_2 = SimpleNamespace(
+        revision_id="revision-2",
+        plan_graph=SimpleNamespace(nodes=(
+            SimpleNamespace(node_id="bind", obligation_id="bind", capability="scene.bind"),
+        )),
+        execution_records=(binding,),
+        node_settlements=(SimpleNamespace(
+            node_id="bind", invocation_id=None, status="completed"
+        ),),
+    )
+    task = SimpleNamespace(
+        task_id="task-1",
+        revisions=(revision_1, revision_2),
+        active_revision=revision_2,
+        active_revision_id="revision-2",
+        execution_records=(action, binding),
+    )
+
+    projection = _durable_execution_context(task)
+
+    assert projection["unresolved_action_effects_total"] == 0
+    assert projection["no_replay_actions_total"] == 1
+    assert projection["no_replay_actions"][0]["invocation_id"] == action.invocation_id

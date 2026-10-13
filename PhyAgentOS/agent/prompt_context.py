@@ -11,7 +11,11 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Any
 
-from PhyAgentOS.agent.planning_facts import explicit_scene_revision, response_facts
+from PhyAgentOS.agent.planning_facts import (
+    explicit_scene_revision,
+    fresh_binding_for_execution_identity,
+    response_facts,
+)
 from PhyAgentOS.forge.binding import missing_preplan_queries, required_preplan_queries
 
 TERMINAL_EXECUTION_STATUSES = {"succeeded", "failed", "cancelled", "stopped", "unknown"}
@@ -1134,7 +1138,8 @@ def _durable_execution_context(
             elif revision_id == getattr(getattr(task, "active_revision", None), "revision_id", None):
                 remaining.append(item)
 
-    for revision_id, record in history:
+    ordered_records = tuple(record for _revision_id, record in history)
+    for record_index, (revision_id, record) in enumerate(history):
         if getattr(record, "tool_id", None) == "scene.bind" and _discovery_record_succeeded(record):
             current_bindings = {
                 str(entity["entity_ref"]): str(entity["execution_entity_ref"])
@@ -1158,26 +1163,37 @@ def _durable_execution_context(
             arguments = arguments if isinstance(arguments, dict) else {}
             visual_ref = arguments.get("entity_ref")
             execution_ref = facts.get("execution_entity_ref") or current_bindings.get(visual_ref)
-            unresolved = ["current_visual_identity"]
+            fresh_binding = fresh_binding_for_execution_identity(
+                ordered_records,
+                action_index=record_index,
+                execution_entity_ref=execution_ref,
+                source_scene_revision=(
+                    facts.get("source_scene_revision")
+                    or getattr(settlement, "source_scene_revision", None)
+                ),
+                expected_scene_revision=facts.get("new_scene_revision"),
+            )
+            unresolved = [] if fresh_binding is not None else ["current_visual_identity"]
             if facts.get("possession_state") not in {"empty", "holding"}:
                 unresolved.append("possession_state")
             if facts.get("object_support_state") not in {"on_support", "displaced"}:
                 unresolved.append("object_support_state")
-            unresolved_effects.append({
-                "revision_id": revision_id,
-                "node_id": node,
-                "tool_id": getattr(record, "tool_id", None),
-                "invocation_id": getattr(record, "invocation_id", None),
-                "execution_entity_ref": execution_ref,
-                "prior_visual_entity_ref": visual_ref,
-                "source_scene_revision": facts.get("source_scene_revision") or getattr(settlement, "source_scene_revision", None),
-                "world_change_started": getattr(settlement, "world_change_started", None),
-                "outcome_known": getattr(settlement, "outcome_known", None),
-                "possession_state": facts.get("possession_state"),
-                "object_support_state": facts.get("object_support_state"),
-                "unresolved_effects": unresolved,
-                "evidence_refs": list(getattr(record, "evidence_refs", ()))[:8],
-            })
+            if unresolved:
+                unresolved_effects.append({
+                    "revision_id": revision_id,
+                    "node_id": node,
+                    "tool_id": getattr(record, "tool_id", None),
+                    "invocation_id": getattr(record, "invocation_id", None),
+                    "execution_entity_ref": execution_ref,
+                    "prior_visual_entity_ref": visual_ref,
+                    "source_scene_revision": facts.get("source_scene_revision") or getattr(settlement, "source_scene_revision", None),
+                    "world_change_started": getattr(settlement, "world_change_started", None),
+                    "outcome_known": getattr(settlement, "outcome_known", None),
+                    "possession_state": facts.get("possession_state"),
+                    "object_support_state": facts.get("object_support_state"),
+                    "unresolved_effects": unresolved,
+                    "evidence_refs": list(getattr(record, "evidence_refs", ()))[:8],
+                })
             no_replay.append({
                 "revision_id": revision_id,
                 "node_id": node,
@@ -1196,26 +1212,38 @@ def _durable_execution_context(
             arguments = getattr(record, "arguments", {})
             arguments = arguments if isinstance(arguments, dict) else {}
             visual_ref = arguments.get("entity_ref")
-            unresolved = ["current_visual_identity"]
+            execution_ref = facts.get("execution_entity_ref") or current_bindings.get(visual_ref)
+            fresh_binding = fresh_binding_for_execution_identity(
+                ordered_records,
+                action_index=record_index,
+                execution_entity_ref=execution_ref,
+                source_scene_revision=(
+                    facts.get("source_scene_revision")
+                    or getattr(settlement, "source_scene_revision", None)
+                ),
+                expected_scene_revision=facts.get("new_scene_revision"),
+            )
+            unresolved = [] if fresh_binding is not None else ["current_visual_identity"]
             if facts.get("possession_state") not in {"empty", "holding"}:
                 unresolved.append("possession_state")
             if facts.get("object_support_state") not in {"on_support", "displaced"}:
                 unresolved.append("object_support_state")
-            unresolved_effects.append({
-                "revision_id": revision_id,
-                "node_id": node,
-                "tool_id": getattr(record, "tool_id", None),
-                "invocation_id": getattr(record, "invocation_id", None),
-                "execution_entity_ref": facts.get("execution_entity_ref") or current_bindings.get(visual_ref),
-                "prior_visual_entity_ref": visual_ref,
-                "source_scene_revision": facts.get("source_scene_revision") or getattr(settlement, "source_scene_revision", None),
-                "world_change_started": True,
-                "outcome_known": True,
-                "possession_state": facts.get("possession_state"),
-                "object_support_state": facts.get("object_support_state"),
-                "unresolved_effects": unresolved,
-                "evidence_refs": list(getattr(record, "evidence_refs", ()))[:8],
-            })
+            if unresolved:
+                unresolved_effects.append({
+                    "revision_id": revision_id,
+                    "node_id": node,
+                    "tool_id": getattr(record, "tool_id", None),
+                    "invocation_id": getattr(record, "invocation_id", None),
+                    "execution_entity_ref": execution_ref,
+                    "prior_visual_entity_ref": visual_ref,
+                    "source_scene_revision": facts.get("source_scene_revision") or getattr(settlement, "source_scene_revision", None),
+                    "world_change_started": True,
+                    "outcome_known": True,
+                    "possession_state": facts.get("possession_state"),
+                    "object_support_state": facts.get("object_support_state"),
+                    "unresolved_effects": unresolved,
+                    "evidence_refs": list(getattr(record, "evidence_refs", ()))[:8],
+                })
             no_replay.append({
                 "revision_id": revision_id,
                 "node_id": node,

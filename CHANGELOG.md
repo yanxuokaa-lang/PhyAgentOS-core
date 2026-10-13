@@ -2,6 +2,23 @@
 
 ## 最近五版本 / Latest five versions
 
+## v13.4.7 (2026-10-14 00:41) - codex
+
+### 变更摘要 / Summary [完成]
+- [policy] [fix] 七维复审 v13.4.5，修复 reconciliation hypothesis 在缺少 Action artifact refs 时丢失、fresh binding 后未决身份不收敛，以及 known-empty acquire 接受缺失/矛盾测量的安全缺口。 / Review v13.4.5 across seven dimensions and fix reconciliation-hypothesis loss without Action artifact refs, unresolved identity after a fresh binding, and unsafe acceptance of missing/contradictory known-empty acquisition measurements. (local)
+- [eval] [test] 增加 provenance fallback、settlement 收敛、durable ledger 和 malformed measurement 回归；仅 no-motion，不部署或重启 Runtime。 / Add regressions for provenance fallback, settlement convergence, the durable ledger, and malformed measurements; no-motion only, with no deployment or Runtime restart. (local)
+
+### 失败场景与边界 / Failure Scenarios and Boundary
+- 前序 binding 已有权威 `binding_ref` 时，Action receipt 无 artifact ref 不得使稳定身份从恢复义务消失；fresh binding 明确重建同一稳定身份后，只结算 `current_visual_identity`，未决 possession/support 仍保留。 / A prior authoritative `binding_ref` must preserve stable identity when the Action receipt has no artifact ref; a fresh binding of the same stable identity settles only `current_visual_identity`, while unresolved possession/support remains.
+- known-empty 必须由完整有限测量和跨字段物理关系证明；原 invocation 仍 no-replay，unknown 仍 fail-closed。不增加 hash、baseline 或全局 gate。 / Known-empty requires complete finite measurements and valid cross-field physical relations; the original invocation remains non-replayable and unknown remains fail-closed. No hash, baseline, or global gate is added.
+
+### 预期文件与验证 / Planned Files and Verification
+- Core Coordinator/prompt context、Workflow acquire contract/schema、相关 no-motion tests，以及必要的 Skill/Node 版本与本地发布记录。 / Core Coordinator/prompt context, Workflow acquire contract/schema, related no-motion tests, and required Skill/Node version/local release records.
+- 完成 Core/Adapter/Workflow 所有者边界修复；本地发布 Skill `3.0.24` / Node `1.0.14`，Node SHA `3dfbaa7c01a1e1e492f520ba8b9fd38837a3b484d805e6a19f6a61f7cd75c59e`。 / Completed the Core/Adapter/Workflow owner-boundary fixes and built local Skill 3.0.24 / Node 1.0.14 with the recorded Node SHA.
+- 七维处置：Blocker=`0`，发现的 Major 全部已修复，无未解决 Blocker/Major；详细 finding、行号和 Diff 见当月 v13.4.7 记录。 / Seven-dimension disposition: zero Blockers and all discovered Majors fixed, with no unresolved Blocker/Major; see the monthly v13.4.7 entry for detailed findings, line ranges, and diffs.
+- 验证：全仓库 `909 passed`，发布一致性 `76 passed`，聚焦 `91 passed`，compileall/Ruff/diff check 通过；仅 no-motion，未安装制品或重启 Runtime。 / Verification: 909 full-suite, 76 release-consistency, and 91 focused tests passed, plus compileall/Ruff/diff check; no-motion only, with no artifact installation or Runtime restart.
+- Implementation/review commit pending on `feature/planning-loop`; reference completion follows. / 实现/复审提交待完成；提交引用随后补全。
+
 ## v13.4.6 (2026-10-14 00:15) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -136,6 +153,8 @@
 ### Git 提交 / Git Commit
 - Deployment log/index commit: `d42361a5` on `feature/planning-loop`; hash-reference completion follows in the log-only commit. / Deployment log/index commit: `d42361a5` on `feature/planning-loop`; hash-reference completion follows in the log-only commit.
 
+## Archived detailed records / 已归档详细记录
+
 ## v13.4.2 (2026-10-13 16:28) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -162,8 +181,6 @@
 
 ### Git 提交 / Git Commit
 - Deployment log/index commit pending on `feature/planning-loop`; commit-reference completion follows. / 部署日志与索引提交待完成。
-
-## Archived detailed records / 已归档详细记录
 
 ## v13.4.0 (2026-10-13 15:34) - codex
 

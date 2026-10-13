@@ -136,11 +136,12 @@ output_schema:
             acquisition_measurement:
               type: [object, 'null']
               additionalProperties: false
+              required: [lift_displacement_m, minimum_lift_m, support_clearance_m, support_tolerance_m]
               properties:
                 lift_displacement_m: {type: number}
-                minimum_lift_m: {type: number}
+                minimum_lift_m: {type: number, exclusiveMinimum: 0}
                 support_clearance_m: {type: number}
-                support_tolerance_m: {type: number}
+                support_tolerance_m: {type: number, minimum: 0}
             evidence_refs:
               type: array
               items: {type: string, pattern: '^artifact://[^/]+/.+$'}

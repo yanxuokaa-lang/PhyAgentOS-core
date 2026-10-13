@@ -176,11 +176,17 @@ def _summary_schema() -> dict[str, Any]:
             "acquisition_measurement": {
                 "type": ["object", "null"],
                 "additionalProperties": False,
+                "required": [
+                    "lift_displacement_m",
+                    "minimum_lift_m",
+                    "support_clearance_m",
+                    "support_tolerance_m",
+                ],
                 "properties": {
                     "lift_displacement_m": {"type": "number"},
-                    "minimum_lift_m": {"type": "number"},
+                    "minimum_lift_m": {"type": "number", "exclusiveMinimum": 0},
                     "support_clearance_m": {"type": "number"},
-                    "support_tolerance_m": {"type": "number"},
+                    "support_tolerance_m": {"type": "number", "minimum": 0},
                 },
             },
         },
@@ -570,14 +576,17 @@ def _validate_snapshot(snapshot: AcquireSnapshot) -> str | None:
         return "invalid_possession_state"
     if snapshot.object_support_state not in {None, "on_support", "displaced", "unknown"}:
         return "invalid_object_support_state"
+    measurement_fields = {
+        "lift_displacement_m",
+        "minimum_lift_m",
+        "support_clearance_m",
+        "support_tolerance_m",
+    }
     if snapshot.acquisition_measurement is not None:
-        allowed_measurements = {
-            "lift_displacement_m", "minimum_lift_m", "support_clearance_m", "support_tolerance_m",
-        }
         if (
             not isinstance(snapshot.acquisition_measurement, dict)
             or any(
-                key not in allowed_measurements
+                key not in measurement_fields
                 or isinstance(value, bool)
                 or not isinstance(value, (int, float))
                 or not math.isfinite(float(value))
@@ -585,6 +594,30 @@ def _validate_snapshot(snapshot: AcquireSnapshot) -> str | None:
             )
         ):
             return "invalid_acquisition_measurement"
+    if snapshot.failure_code == "acquisition_postcondition_failed":
+        measurement = snapshot.acquisition_measurement
+        if (
+            snapshot.status != "failed"
+            or snapshot.outcome_known is not True
+            or snapshot.world_change_started is not True
+            or snapshot.failure_owner != "execution_verification"
+            or snapshot.possession_state != "empty"
+            or snapshot.object_support_state != "on_support"
+            or not isinstance(measurement, dict)
+            or set(measurement) != measurement_fields
+        ):
+            return "invalid_acquisition_postcondition"
+        lift_displacement = float(measurement["lift_displacement_m"])
+        minimum_lift = float(measurement["minimum_lift_m"])
+        support_clearance = float(measurement["support_clearance_m"])
+        support_tolerance = float(measurement["support_tolerance_m"])
+        if (
+            minimum_lift <= 0
+            or support_tolerance < 0
+            or lift_displacement >= minimum_lift
+            or abs(support_clearance) > support_tolerance
+        ):
+            return "invalid_acquisition_postcondition"
     return None
 
 
