@@ -29,7 +29,7 @@
 - 新 Dora/host/simulator PID `35272/35295/35398` 于 00:19:02 创建；Skill/Dora running、Gateway ready、11/11 Tool contexts ready，19020/8012 监听，Runtime ownership 为空。 / New Dora/host/simulator PIDs were created at 00:19:02; Skill/Dora are running, Gateway and 11/11 Tool contexts are ready, ports 19020/8012 listen, and Runtime ownership is empty.
 
 ### 文件、验证与边界 / Files, Validation, and Boundary
-- [修改] `changelog/2026-10_part6.md:L945-L993`、`CHANGELOG.md:L5-L37`：完整部署证据与 no-motion 记录。 / Full deployment evidence and no-motion record.
+- [修改] `changelog/2026-10_part6.md:L945-L993`、`CHANGELOG.md:L5-L37,L163-L193`：完整部署证据、no-motion 记录及最近五版本归档滚动。 / Full deployment evidence, no-motion record, and latest-five archive rollover.
 - readiness 仅证明服务/初始化生命周期；未创建/恢复任务、调用 Query/Action、读取相机、推进 simulator 或执行运动。 / Readiness proves service/initialization lifecycle only; no task was created/resumed, no Query/Action invoked, no camera read, no simulator advanced, and no motion executed.
 
 ### Git 提交 / Git Commit
