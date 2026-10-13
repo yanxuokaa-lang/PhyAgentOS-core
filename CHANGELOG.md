@@ -2,6 +2,34 @@
 
 ## 最近五版本 / Latest five versions
 
+## v13.3.15 (2026-10-13 15:06) - codex
+
+### 变更摘要 / Summary [完成]
+- [env] [chore] 按用户授权停止唯一非终态旧任务，强制停止旧 `pick-place-workflow` Runtime，安装当前 checkout 的 v13.3.14 Core，并使用既有 `robotwin-blocks-ranking-graspnet` profile 启动新 Runtime。 / Under user authorization, stop the only non-terminal task, force-stop the old `pick-place-workflow` Runtime, install v13.3.14 Core from the current checkout, and start a new Runtime with the existing profile.
+- [eval] [test] 只验证任务终态、Core 来源、Runtime/Dora/Gateway/Tool readiness、进程和端口；不创建或恢复任务，不调用 Query/Action，不读取相机，不推进 simulator action。 / Validate task terminality, Core provenance, Runtime/Dora/Gateway/Tool readiness, processes, and ports only; create/resume no task, invoke no Query/Action, read no camera, and advance no simulator action.
+
+### 实际停止、安装与启动 / Completed Stop, Install, and Start
+- `task_dfff5bc448ef495b` 经 Coordinator stop 返回 terminal `failed`；任务库最终 `cancelled=203`、`failed=102`、non-terminal=`0`，未直接修改 SQLite 或重放 Action。 / Coordinator stop returned terminal `failed`; final task counts are 203 cancelled, 102 failed, and zero non-terminal, with no direct SQLite edit or Action replay.
+- 旧 Skill/Dora/Gateway/host/simulator/enrichment worker 已停止；独立 Qwen PID `176466` 保持监听 8012。 / The old Skill/Dora/Gateway/host/simulator/enrichment workers stopped, while independent Qwen PID 176466 remained on 8012.
+- editable Core 从 `/home/yanxu/PhyAgentOS-forge` 安装，并核对 recovery guidance 与 node prompt 均包含 v13.3.14；Skill `3.0.22` / Node `1.0.12` artifact 未改变。 / Editable Core was installed from the current checkout and both recovery guidance and the node prompt contain v13.3.14; Skill 3.0.22 and Node 1.0.12 artifacts are unchanged.
+- 新 Dora flow PID `3205020`、host PID `3205025`、simulator worker PID `3205073` 于 15:09:12-13 创建；Skill/Dora=`running`、Gateway 和 11/11 Tool contexts=`ready`，19020/8012 监听。 / New Dora flow, host, and simulator-worker processes were created at 15:09:12-13; Skill/Dora are running, Gateway and all 11 Tool contexts are ready, and ports 19020/8012 listen.
+
+### 文件变更与关键 Diff / File Changes and Key Diff
+- [修改] `changelog/2026-10_part6.md:L635-L672`、`CHANGELOG.md:L5-L42`：记录任务终态、停止、安装来源、新生命周期与 no-motion 边界。 / Record task terminality, stop, install provenance, new lifecycle, and no-motion boundary.
+
+```diff
+- one awaiting_replan task + old Runtime lifecycle
++ zero non-terminal tasks + old Runtime stopped
++ current-checkout editable Core + new host/simulator lifecycle
+  Skill 3.0.22 / Node 1.0.12 and independent Qwen unchanged
+```
+
+### 验证与安全边界 / Validation and Safety Boundary
+- readiness 和新 worker 只证明服务/初始化生命周期，不证明场景内容或任务成功；未创建/恢复任务、调用 Query/Action、读取相机、推进 simulator 或执行运动。 / Readiness and the new worker prove only service/initialization lifecycle, not scene contents or task success; no task creation/resume, Query/Action, camera read, simulator step, or motion occurred.
+
+### Git 提交 / Git Commit
+- Deployment log/index commit pending on `feature/planning-loop`; commit-reference completion follows. / 部署日志与索引提交待完成；提交引用随后补全。
+
 ## v13.3.14 (2026-10-13 14:00) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -172,6 +200,8 @@
 ### Git 提交 / Git Commit
 - Implementation/review commit: `5782b0fa` on `feature/planning-loop`; log/index reference completion follows. / 实现与审查提交：`5782b0fa`，分支 `feature/planning-loop`；日志与索引引用随后补全。
 
+## Archived detailed records / 已归档详细记录
+
 ## v13.3.10 (2026-10-12 23:25) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -221,8 +251,6 @@
 
 ### Git 提交 / Git Commit
 - Deployment/release commit: `0c3602ec` on `feature/planning-loop`; log/index completion follows separately. / 部署与发布提交：`0c3602ec`，分支 `feature/planning-loop`；日志与索引补全随后单独提交。
-
-## Archived detailed records / 已归档详细记录
 
 ## v13.3.9 (2026-10-12 22:59) - codex
 
