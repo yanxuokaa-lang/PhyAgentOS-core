@@ -2,6 +2,28 @@
 
 ## 最近五版本 / Latest five versions
 
+## v13.3.13 (2026-10-13 13:15) - codex
+
+### 变更摘要 / Summary [完成]
+- [env] [chore] 按授权停止旧 Runtime，确认无非终态旧 AgentTask，安装当前 checkout 的 editable Core，并启动既有 `robotwin-blocks-ranking-graspnet` profile。 / Under authorization, stop the old Runtime, confirm no non-terminal old AgentTasks, install the editable Core from the current checkout, and start the existing profile.
+- [eval] [test] 任务库 non-terminal=`0`；新 Skill/Dora、Gateway、11/11 Tool contexts 和 19020/8012 通过生命周期验收；无 Query/Action、相机读取或 simulator action。 / Task-store non-terminal=`0`; the new Skill/Dora, Gateway, all 11 Tool contexts, and ports 19020/8012 passed lifecycle acceptance; no Query/Action, camera read, or simulator action was performed.
+
+### 部署结果 / Deployment Result
+- 旧 Runtime 已强制停止；19020 释放，旧 host/simulator/enrichment worker 退出，独立 Qwen PID `176466` / 8012 保持运行。Core 导入路径和 editable direct URL 均为 `/home/yanxu/PhyAgentOS-forge`。 / The old Runtime was force-stopped; port 19020 was released, old host/simulator/enrichment workers exited, independent Qwen PID `176466` on 8012 remained running, and Core imports plus editable direct URL point to `/home/yanxu/PhyAgentOS-forge`.
+- 新 Dora flow/host/simulator PID 为 `3152686`/`3152691`/`3152745`；Skill/Dora=`running`、Gateway=`ready`、11/11 Tool contexts=`ready`。 / New Dora flow/host/simulator PIDs are `3152686`/`3152691`/`3152745`; Skill/Dora are running, Gateway is ready, and all 11 Tool contexts are ready.
+
+### 文件、关键 Diff 与安全边界 / Files, Key Diff, and Safety Boundary
+- `changelog/2026-10_part6.md:L546-L579`、`CHANGELOG.md:L5-L31`：完整记录任务终态、停止、安装、启动、进程、端口、readiness 和 no-motion 边界。 / Complete record of task terminality, stop, install, start, processes, ports, readiness, and no-motion boundaries.
+
+```diff
+- old Runtime lifecycle
++ zero non-terminal tasks + current-checkout Core + new Runtime lifecycle
+  Qwen 8012 retained; no task/query/action resume
+```
+
+### Git 提交 / Git Commit
+- Deployment log/index commit: pending on `feature/planning-loop`; exact hash will be recorded after commit. / 部署日志与索引提交：当前仍待提交，分支 `feature/planning-loop`；提交后补充精确 hash。
+
 ## v13.3.12 (2026-10-13 00:38) - codex
 
 ### 变更摘要 / Summary [完成]
