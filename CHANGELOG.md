@@ -2,6 +2,34 @@
 
 ## 最近五版本 / Latest five versions
 
+## v13.4.0 (2026-10-13 15:34) - codex
+
+### 变更摘要 / Summary [完成]
+- [env] [chore] 按用户授权停止唯一非终态旧任务，强制停止旧 Runtime，重新安装当前 checkout Core，并使用既有 profile 启动新 Runtime；Patch 版本达到上限后按规则进位至 v13.4.0。 / Under user authorization, stop the only non-terminal task, force-stop the old Runtime, reinstall the current-checkout Core, and start a new Runtime with the existing profile; roll over to v13.4.0 after reaching the Patch limit.
+- [eval] [test] 只验证任务终态、Core 来源、Runtime/Dora/Gateway/Tool readiness、进程和端口；不创建/恢复任务，不调用 Query/Action，不读取相机，不推进 simulator action。 / Validate task terminality, Core provenance, Runtime/Dora/Gateway/Tool readiness, processes, and ports only; create/resume no task, invoke no Query/Action, read no camera, and advance no simulator action.
+
+### 实际停止、安装与启动 / Completed Stop, Install, and Start
+- `task_485c371aea724fcf` 经 Coordinator stop 返回 terminal `failed`；任务库最终 `cancelled=203`、`failed=103`、non-terminal=`0`，未直接修改 SQLite 或重放 Action。 / Coordinator stop returned terminal `failed`; final task counts are 203 cancelled, 103 failed, and zero non-terminal, with no direct SQLite edit or Action replay.
+- 旧 Skill/Dora/Gateway/host/simulator/enrichment worker 已停止；独立 Qwen PID `176466` 保持监听 8012。 / The old Skill/Dora/Gateway/host/simulator/enrichment workers stopped; independent Qwen PID 176466 remained on 8012.
+- editable Core 从 `/home/yanxu/PhyAgentOS-forge` 安装；Skill `3.0.22` / Node `1.0.12` 和 runtime lock 未改变。 / Editable Core installed from `/home/yanxu/PhyAgentOS-forge`; Skill 3.0.22, Node 1.0.12, and runtime lock unchanged.
+- 新 Dora flow PID `3211313`、host PID `3211318`、simulator worker PID `3211366` 于 15:35:04-05 创建；Skill/Dora=`running`、Gateway 和 11/11 Tool contexts=`ready`，19020/8012 监听。 / New Dora flow, host, and simulator-worker processes were created at 15:35:04-05; Skill/Dora are running, Gateway and all 11 Tool contexts are ready, and ports 19020/8012 listen.
+
+### 文件变更与关键 Diff / File Changes and Key Diff
+- [修改] `changelog/2026-10_part6.md:L685-L720`、`CHANGELOG.md:L5-L35`：记录任务终态、停止、安装来源、新生命周期与 no-motion 边界。 / Record task terminality, stop, install provenance, new lifecycle, and no-motion boundary.
+
+```diff
+- one awaiting_replan task + old Runtime lifecycle
++ zero non-terminal tasks + old Runtime stopped
++ current-checkout editable Core + new host/simulator lifecycle
+  Skill 3.0.22 / Node 1.0.12 and independent Qwen unchanged
+```
+
+### 验证与安全边界 / Validation and Safety Boundary
+- readiness 和新 worker 只证明服务/初始化生命周期，不证明场景内容或任务成功；未创建/恢复任务、调用 Query/Action、读取相机、推进 simulator 或执行运动。 / Readiness and the new worker prove only service/initialization lifecycle, not scene contents or task success; no task creation/resume, Query/Action, camera read, simulator step, or motion occurred.
+
+### Git 提交 / Git Commit
+- Deployment log/index commit pending on `feature/planning-loop`; commit-reference completion follows. / 部署日志与索引提交待完成；提交引用随后补全。
+
 ## v13.3.15 (2026-10-13 15:06) - codex
 
 ### 变更摘要 / Summary [完成]
