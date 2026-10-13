@@ -17,7 +17,7 @@
 - 完成 Core/Adapter/Workflow 所有者边界修复；本地发布 Skill `3.0.24` / Node `1.0.14`，Node SHA `3dfbaa7c01a1e1e492f520ba8b9fd38837a3b484d805e6a19f6a61f7cd75c59e`。 / Completed the Core/Adapter/Workflow owner-boundary fixes and built local Skill 3.0.24 / Node 1.0.14 with the recorded Node SHA.
 - 七维处置：Blocker=`0`，发现的 Major 全部已修复，无未解决 Blocker/Major；详细 finding、行号和 Diff 见当月 v13.4.7 记录。 / Seven-dimension disposition: zero Blockers and all discovered Majors fixed, with no unresolved Blocker/Major; see the monthly v13.4.7 entry for detailed findings, line ranges, and diffs.
 - 验证：全仓库 `909 passed`，发布一致性 `76 passed`，聚焦 `91 passed`，compileall/Ruff/diff check 通过；仅 no-motion，未安装制品或重启 Runtime。 / Verification: 909 full-suite, 76 release-consistency, and 91 focused tests passed, plus compileall/Ruff/diff check; no-motion only, with no artifact installation or Runtime restart.
-- Implementation/review commit pending on `feature/planning-loop`; reference completion follows. / 实现/复审提交待完成；提交引用随后补全。
+- Implementation/review commit: `8d3f7297` on `feature/planning-loop`; hash-reference completion follows in a documentation-only commit. / 实现/复审提交：`8d3f7297`，分支 `feature/planning-loop`；hash 回填由纯文档提交收尾。
 
 ## v13.4.6 (2026-10-14 00:15) - codex
 
