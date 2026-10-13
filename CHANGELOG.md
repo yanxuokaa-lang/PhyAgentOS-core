@@ -2,6 +2,37 @@
 
 ## 最近五版本 / Latest five versions
 
+## v13.4.4 (2026-10-13 21:32) - codex
+
+### 变更摘要 / Summary [完成]
+- [env] [chore] 按用户明确授权，通过 Coordinator 停止非终态旧任务 `task_feedfde84cec4022`，强制停止旧 Runtime，重新安装当前 checkout，并启动既有 profile。 / Under explicit user authorization, stop non-terminal old task `task_feedfde84cec4022` through the Coordinator, force-stop the old Runtime, reinstall the current checkout, and start the existing profile.
+- [eval] [test] 仅验证任务终态、安装来源、Runtime/Dora/Gateway/Tool readiness、新进程和端口；不恢复任务或调用 Query/Action。 / Validate only task terminality, install provenance, Runtime/Dora/Gateway/Tool readiness, new processes, and ports; do not resume tasks or invoke Query/Action.
+
+### 预期影响文件 / Planned Files
+- `changelog/2026-10_part6.md`
+- `CHANGELOG.md`
+
+### 实际停止、安装与启动 / Completed Stop, Install, and Start
+- [env] [chore] `task_feedfde84cec4022` 经 Coordinator stop 进入 terminal `failed`；任务库为 `cancelled=203`、`failed=107`、non-terminal=`0`。 / `task_feedfde84cec4022` entered terminal `failed` through Coordinator stop; task counts are 203 cancelled, 107 failed, and zero non-terminal.
+- [env] [chore] 旧 Runtime 已强制停止，旧 workers 退出，19020 释放；独立 Qwen PID `176466` 保持 8012 监听。 / The old Runtime was force-stopped, old workers exited, and port 19020 was released; independent Qwen PID `176466` remains on 8012.
+- [env] [chore] editable Core 与 direct URL 均指向 `/home/yanxu/PhyAgentOS-forge`；凭据仅来自 mode-`0600` operator env。 / The editable Core and direct URL point to `/home/yanxu/PhyAgentOS-forge`; credentials came only from the mode-`0600` operator environment.
+- [eval] [test] 新 Dora/host/simulator PID 为 `3355906`/`3355930`/`3356043`；Skill/Dora=`running`、Gateway=`ready`、11/11 Tool contexts=`ready`，19020/8012 监听。 / New Dora/host/simulator PIDs are `3355906`/`3355930`/`3356043`; Skill/Dora are running, Gateway is ready, all 11/11 Tool contexts are ready, and ports 19020/8012 listen.
+
+### 文件与关键 Diff / Files and Key Diff
+- [修改] `changelog/2026-10_part6.md:L830-L868`、`CHANGELOG.md:L5-L34`：记录停止、安装、启动及 no-motion 验收。 / Record stop, install, start, and no-motion acceptance.
+
+```diff
+- one awaiting_replan task + old Runtime
++ exact task stopped through Coordinator + zero non-terminal tasks
++ current checkout installed + new Runtime 11/11 ready
+```
+
+### 验证与安全边界 / Validation and Safety Boundary
+- readiness 不等同于场景或任务成功；本轮未恢复任务、调用 Query/Action 或执行运动。 / Readiness does not imply scene or task success; this run resumed no task, invoked no Query/Action, and executed no motion.
+
+### Git 提交 / Git Commit
+- Commit pending on `feature/planning-loop`; reference follows. / 提交待完成；引用随后补全。
+
 ## v13.4.3 (2026-10-13 19:32) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -118,6 +149,8 @@
 ### Git 提交 / Git Commit
 - Deployment log/index commit: `411885e8` on `feature/planning-loop`; commit-reference completion follows. / 部署日志与索引提交：`411885e8`，分支 `feature/planning-loop`；提交引用随后补全。
 
+## Archived detailed records / 已归档详细记录
+
 ## v13.3.15 (2026-10-13 15:06) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -145,8 +178,6 @@
 
 ### Git 提交 / Git Commit
 - Deployment log/index commit: `41d1bef4` on `feature/planning-loop`; commit-reference completion follows. / 部署日志与索引提交：`41d1bef4`，分支 `feature/planning-loop`；提交引用随后补全。
-
-## Archived detailed records / 已归档详细记录
 
 ## v13.3.14 (2026-10-13 14:00) - codex
 
