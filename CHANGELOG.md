@@ -2,6 +2,65 @@
 
 ## 最近五版本 / Latest five versions
 
+## v13.4.3 (2026-10-13 19:32) - codex
+
+### 变更摘要 / Summary [完成]
+- [env] [chore] 按用户授权确认并停止所有旧 Runtime/任务，安装当前 checkout 的 editable Core，启动既有 `robotwin-blocks-ranking-graspnet` profile。 / Under user authorization, confirm and stop all old Runtime/tasks, install the current checkout as an editable Core, and start the existing `robotwin-blocks-ranking-graspnet` profile.
+- [eval] [test] 仅验证任务终态、安装来源、Runtime/Dora/Gateway/Tool readiness、新进程与端口；不创建/恢复任务，不调用 Query/Action，不读取相机或推进 simulator action。 / Validate only task terminality, install provenance, Runtime/Dora/Gateway/Tool readiness, new processes, and ports; create/resume no task, invoke no Query/Action, read no camera, and advance no simulator action.
+
+### 预期影响文件 / Planned Files
+- `changelog/2026-10_part6.md`
+- `CHANGELOG.md`
+
+### 实际停止、安装与启动 / Completed Stop, Install, and Start
+- [env] [chore] 任务库为 `cancelled=203`、`failed=106`、non-terminal=`0`；无需 Coordinator task stop，未直接修改 SQLite 或重放 Action。 / The task store is `cancelled=203`, `failed=106`, and zero non-terminal; no Coordinator task stop was needed, and no SQLite edit or Action replay occurred.
+- [env] [chore] 旧 Runtime 已强制停止，19020 释放；独立 Qwen PID `176466` 保持 8012 监听。 / The old Runtime was force-stopped and port 19020 released; independent Qwen PID `176466` remains on 8012.
+- [env] [chore] editable Core 与 distribution direct URL 均指向 `/home/yanxu/PhyAgentOS-forge`；凭据仅来自 mode-`0600` operator env。 / The editable Core and distribution direct URL point to `/home/yanxu/PhyAgentOS-forge`; credentials came only from the mode-`0600` operator environment.
+- [eval] [test] 新 Dora/host/simulator PID 为 `3263015`/`3263020`/`3263077`；Skill/Dora=`running`、Gateway=`ready`、11/11 Tool contexts=`ready`，19020/8012 监听。 / New Dora/host/simulator PIDs are `3263015`/`3263020`/`3263077`; Skill/Dora are running, Gateway is ready, all 11/11 Tool contexts are ready, and ports 19020/8012 listen.
+
+### 文件与关键 Diff / Files and Key Diff
+- [修改] `changelog/2026-10_part6.md:L790-L828`、`CHANGELOG.md:L5-L35`：记录本次部署与 no-motion 验收。 / Record this deployment and no-motion acceptance.
+
+```diff
+- old Runtime lifecycle pending
++ old Runtime stopped + current checkout installed
++ new Runtime ready with 11/11 Tool contexts
+  no task resume, Query/Action, camera read, simulator action, or motion
+```
+
+### 验证与安全边界 / Validation and Safety Boundary
+- readiness 不等同于场景或任务成功；本轮未创建/恢复任务，未调用 Query/Action 或执行运动。 / Readiness does not imply scene or task success; this run created/resumed no task, invoked no Query/Action, and executed no motion.
+
+### Git 提交 / Git Commit
+- Commit pending on `feature/planning-loop`; hash will be recorded after commit. / Commit pending on `feature/planning-loop`; hash will be recorded after commit.
+
+## v13.4.2 (2026-10-13 16:28) - codex
+
+### 变更摘要 / Summary [完成]
+- [env] [chore] 按用户授权停止唯一非终态旧 AgentTask，强制停止旧 Runtime，重新安装当前 checkout，并使用既有 profile 启动新 Runtime。 / Under user authorization, stop the sole non-terminal old AgentTask, force-stop the old Runtime, reinstall the current checkout, and start a new Runtime with the existing profile.
+- [eval] [test] 仅验证任务终态、Core 来源、Runtime/Dora/Gateway/Tool readiness、新进程与端口；不创建/恢复任务，不调用 Query/Action，不读取相机，不推进 simulator action。 / Validate only task terminality, Core provenance, Runtime/Dora/Gateway/Tool readiness, new processes, and ports; create/resume no task, invoke no Query/Action, read no camera, and advance no simulator action.
+
+### 实际停止、安装与启动 / Completed Stop, Install, and Start
+- [env] [chore] `task_4807de31b86a4a91` 经 Coordinator stop 进入 terminal `failed`；任务库为 `cancelled=203`、`failed=105`、non-terminal=`0`。 / The exact task entered terminal `failed` through Coordinator stop; task counts are 203 cancelled, 105 failed, and zero non-terminal.
+- [env] [chore] 旧 Runtime 已强制停止，19020 释放；独立 Qwen PID `176466` 保持 8012 监听。 / The old Runtime was force-stopped and port 19020 released; independent Qwen PID `176466` remains on port 8012.
+- [env] [chore] editable Core 安装及来源核验均指向 `/home/yanxu/PhyAgentOS-forge`；凭据仅通过 mode-0600 文件注入启动环境。 / Editable Core installation and provenance verification point to `/home/yanxu/PhyAgentOS-forge`; credentials were injected only from mode-0600 files.
+- [eval] [test] 新 Dora/host/simulator PID 为 `3228455`/`3228460`/`3228509`；Skill/Dora=`running`、Gateway=`ready`、11/11 Tool contexts=`ready`，19020/8012 监听。 / New Dora/host/simulator PIDs are `3228455`/`3228460`/`3228509`; Skill/Dora are running, Gateway and all 11 Tool contexts are ready, and ports 19020/8012 listen.
+
+### 文件变更与关键 Diff / File Changes and Key Diff
+- [修改] `changelog/2026-10_part6.md:L752-L789`、`CHANGELOG.md:L5-L31`：记录停止、安装、启动、readiness 与 no-motion 边界。 / Record stop, install, start, readiness, and no-motion boundaries.
+
+```diff
+- one awaiting_replan task + old Runtime lifecycle
++ zero non-terminal tasks + stopped old Runtime
++ current-checkout editable Core + new host/simulator lifecycle
+```
+
+### 验证与安全边界 / Validation and Safety Boundary
+- 未创建/恢复任务，未调用 Query/Action，未读取相机，未推进 simulator action，未执行物理运动。 / No task was created/resumed, no Query/Action invoked, no camera read, no simulator action advanced, and no physical motion executed.
+
+### Git 提交 / Git Commit
+- Deployment log/index commit pending on `feature/planning-loop`; commit-reference completion follows. / 部署日志与索引提交待完成。
+
 ## v13.4.1 (2026-10-13 15:53) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -128,6 +187,8 @@
 ### Git 提交 / Git Commit
 - Implementation/review commit: `01ff8b08` on `feature/planning-loop`; log/index reference completion follows. / 实现与审查提交：`01ff8b08`，分支 `feature/planning-loop`；日志与索引引用随后补全。
 
+## Archived detailed records / 已归档详细记录
+
 ## v13.3.13 (2026-10-13 13:15) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -162,8 +223,6 @@
 
 ### Git 提交 / Git Commit
 - Deployment log/index commit: `fa04b41f` on `feature/planning-loop`; commit-reference completion follows separately. / 部署日志与索引提交：`fa04b41f`，分支 `feature/planning-loop`；提交引用随后单独补全。
-
-## Archived detailed records / 已归档详细记录
 
 ## v13.3.12 (2026-10-13 00:38) - codex
 
