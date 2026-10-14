@@ -35,6 +35,11 @@ def _request() -> DecisionRequest:
 
 def test_decision_result_is_closed_to_state_mutation_fields():
     assert DecisionResult(outcome="escalate", reason="ambiguous").selected_id is None
+    assert DecisionResult(
+        outcome="selected",
+        selected_id="one",
+        model_version=" jev-1.13.0 ",
+    ).model_version == "jev-1.13.0"
     with pytest.raises(ValidationError):
         DecisionResult.model_validate({
             "outcome": "selected",
@@ -43,6 +48,8 @@ def test_decision_result_is_closed_to_state_mutation_fields():
         })
     with pytest.raises(ValidationError):
         DecisionResult(outcome="unavailable", selected_id="one")
+    with pytest.raises(ValidationError, match="model_version"):
+        DecisionResult(outcome="escalate", model_version=" ")
 
 
 def test_active_decision_config_requires_measured_policy_reference():
@@ -73,6 +80,7 @@ def test_http_decision_provider_accepts_typed_choice_and_closes():
             return httpx.Response(200, json={
                 "outcome": "selected",
                 "selected_id": "one",
+                "model_version": "jev-1.13.0",
                 "reason": "matches the task goal",
             })
 
@@ -86,6 +94,7 @@ def test_http_decision_provider_accepts_typed_choice_and_closes():
         )
         assert result.outcome == "selected"
         assert result.selected_id == "one"
+        assert result.model_version == "jev-1.13.0"
         payload = json.loads(received[0].content)
         assert payload["model"] == "jev-fixture"
         assert payload["request"]["task_id"] == "task-1"

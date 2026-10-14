@@ -604,20 +604,53 @@ class AgentLoop:
             float(config.timeout_cap_s),
             max(0.0, remaining - float(config.fallback_reserve_s)),
         )
+        provider_name = type(provider).__name__
+        model_name = str(getattr(config, "model", ""))
+
+        def record_decision(
+            outcome: str,
+            *,
+            selected_id: str | None = None,
+            model_version: str | None = None,
+            reason: str = "",
+            decision_trace_ref: str | None = None,
+        ) -> None:
+            self._log_decision(
+                request,
+                mode=mode,
+                outcome=outcome,
+                started=started,
+                provider=provider_name,
+                requested_model=model_name,
+                model_version=model_version,
+                candidate_count=len(request.candidates),
+                selected_id=selected_id,
+                decision_trace_ref=decision_trace_ref,
+                remaining_ms=max(0.0, decision_deadline - monotonic()) * 1000,
+                reason=reason,
+            )
+
         if wait_s <= 0:
-            logger.info(
-                "Decision skipped task={} revision={} node={} point={} mode={} "
-                "outcome=no_fallback_budget",
-                context.task_id,
-                context.revision_id,
-                context.node_id,
-                request.decision_point,
-                mode,
+            self._log_decision(
+                request,
+                mode=mode,
+                outcome="unavailable",
+                started=monotonic(),
+                provider=provider_name,
+                requested_model=model_name,
+                candidate_count=len(request.candidates),
+                remaining_ms=0.0,
+                reason="no_fallback_budget",
             )
             return False
         if mode == "shadow":
             task = asyncio.create_task(
-                self._observe_shadow_decision(request, config=config, timeout_s=wait_s)
+                self._observe_shadow_decision(
+                    request,
+                    config=config,
+                    timeout_s=wait_s,
+                    decision_deadline=decision_deadline,
+                )
             )
             self._decision_tasks.add(task)
             task.add_done_callback(self._decision_tasks.discard)
@@ -635,67 +668,96 @@ class AgentLoop:
                 timeout=wait_s,
             )
         except asyncio.TimeoutError:
-            self._log_decision(request, mode=mode, outcome="timeout", started=started)
+            record_decision("timeout")
             return False
         except asyncio.CancelledError:
-            self._log_decision(request, mode=mode, outcome="cancelled", started=started)
+            record_decision("cancelled")
             raise
         except Exception as exc:
-            self._log_decision(
-                request,
-                mode=mode,
-                outcome="unavailable",
-                started=started,
-                reason=f"{type(exc).__name__}: {exc}",
-            )
+            record_decision("unavailable", reason=f"{type(exc).__name__}: {exc}")
             return False
-        self._log_decision(
-            request,
-            mode=mode,
-            outcome=result.outcome,
-            started=started,
-            reason=result.reason,
-        )
         if result.outcome != "selected":
+            record_decision(
+                result.outcome,
+                model_version=result.model_version,
+                reason=result.reason,
+            )
             return False
         selected = next(
             (item for item in choices if item.candidate_id == result.selected_id),
             None,
         )
         if selected is None:
-            logger.warning(
-                "Decision returned unknown candidate task={} revision={} node={} selected={}",
-                context.task_id,
-                context.revision_id,
-                context.node_id,
-                result.selected_id,
+            record_decision(
+                "admission_rejected",
+                selected_id=result.selected_id,
+                model_version=result.model_version,
+                reason="unknown_candidate",
             )
             return False
         current = self._current_node_context(context)
         if current is None:
+            record_decision(
+                "stale",
+                selected_id=result.selected_id,
+                model_version=result.model_version,
+                reason="current_context_unavailable",
+            )
+            return False
+        if current.scene_revision != request.scene_revision:
+            record_decision(
+                "stale",
+                selected_id=result.selected_id,
+                model_version=result.model_version,
+                reason="revision_or_scene_changed",
+            )
             return False
         current_prepared = self._projected_query_decision(current)
         if current_prepared is None:
+            record_decision(
+                "admission_rejected",
+                selected_id=result.selected_id,
+                model_version=result.model_version,
+                reason="current_projection_unavailable",
+            )
             return False
         current_request, current_choices = current_prepared
         if (
             current_request.revision_id != request.revision_id
             or current_request.scene_revision != request.scene_revision
         ):
+            record_decision(
+                "stale",
+                selected_id=result.selected_id,
+                model_version=result.model_version,
+                reason="revision_or_scene_changed",
+            )
             return False
         current_selected = next(
             (item for item in current_choices if item.candidate_id == result.selected_id),
             None,
         )
         if current_selected is None or current_selected.arguments != selected.arguments:
+            record_decision(
+                "admission_rejected",
+                selected_id=result.selected_id,
+                model_version=result.model_version,
+                reason="candidate_changed_during_refresh",
+            )
             return False
         proposal = self._planning_dispatch.prepare_projected_query_selection(
             current, current_selected.arguments
         )
         if proposal is None:
+            record_decision(
+                "admission_rejected",
+                selected_id=result.selected_id,
+                model_version=result.model_version,
+                reason="selection_admission_rejected",
+            )
             return False
         try:
-            self.forge_task_coordinator.persist_planning_selection(proposal)
+            persisted = self.forge_task_coordinator.persist_planning_selection(proposal)
         except AgentTaskError:
             pending = self.forge_task_coordinator.pending_planning_selection(
                 current.task_id,
@@ -703,8 +765,33 @@ class AgentLoop:
                 scene_revision=current.scene_revision,
             )
             if not self._pending_selection_matches_proposal(pending, proposal):
+                record_decision(
+                    "admission_rejected",
+                    selected_id=result.selected_id,
+                    model_version=result.model_version,
+                    reason="selection_persistence_rejected",
+                )
                 return False
+            pending_binding = pending.get("planning_binding", {}) if isinstance(pending, Mapping) else {}
+            record_decision(
+                "selected",
+                selected_id=result.selected_id,
+                model_version=result.model_version,
+                decision_trace_ref=pending_binding.get("decision_trace_ref"),
+                reason="concurrent_selection_winner",
+            )
             return False
+        record_decision(
+            "selected",
+            selected_id=result.selected_id,
+            model_version=result.model_version,
+            decision_trace_ref=(
+                persisted.get("decision_trace_ref")
+                if isinstance(persisted, Mapping)
+                else None
+            ),
+            reason=result.reason,
+        )
         return True
 
     def _projected_query_decision(self, context: Any) -> tuple[Any, tuple[Any, ...]] | None:
@@ -789,8 +876,17 @@ class AgentLoop:
             scene_revision=self._planning_dispatch.current_scene_revision,
         )
 
-    async def _observe_shadow_decision(self, request: Any, *, config: Any, timeout_s: float) -> None:
+    async def _observe_shadow_decision(
+        self,
+        request: Any,
+        *,
+        config: Any,
+        timeout_s: float,
+        decision_deadline: float,
+    ) -> None:
         started = monotonic()
+        provider_name = type(self._decision_provider).__name__
+        model_name = str(getattr(config, "model", ""))
         try:
             result = await asyncio.wait_for(
                 self._decision_provider.decide(
@@ -806,19 +902,47 @@ class AgentLoop:
                 mode="shadow",
                 outcome=result.outcome,
                 started=started,
+                provider=provider_name,
+                requested_model=model_name,
+                model_version=result.model_version,
+                candidate_count=len(request.candidates),
+                selected_id=result.selected_id,
+                remaining_ms=max(0.0, decision_deadline - monotonic()) * 1000,
                 reason=result.reason,
             )
         except asyncio.CancelledError:
-            self._log_decision(request, mode="shadow", outcome="cancelled", started=started)
+            self._log_decision(
+                request,
+                mode="shadow",
+                outcome="cancelled",
+                started=started,
+                provider=provider_name,
+                requested_model=model_name,
+                candidate_count=len(request.candidates),
+                remaining_ms=max(0.0, decision_deadline - monotonic()) * 1000,
+            )
             raise
         except asyncio.TimeoutError:
-            self._log_decision(request, mode="shadow", outcome="timeout", started=started)
+            self._log_decision(
+                request,
+                mode="shadow",
+                outcome="timeout",
+                started=started,
+                provider=provider_name,
+                requested_model=model_name,
+                candidate_count=len(request.candidates),
+                remaining_ms=max(0.0, decision_deadline - monotonic()) * 1000,
+            )
         except Exception as exc:
             self._log_decision(
                 request,
                 mode="shadow",
                 outcome="unavailable",
                 started=started,
+                provider=provider_name,
+                requested_model=model_name,
+                candidate_count=len(request.candidates),
+                remaining_ms=max(0.0, decision_deadline - monotonic()) * 1000,
                 reason=f"{type(exc).__name__}: {exc}",
             )
 
@@ -829,20 +953,36 @@ class AgentLoop:
         mode: str,
         outcome: str,
         started: float,
+        provider: str = "",
+        requested_model: str = "",
+        model_version: str | None = None,
+        candidate_count: int | None = None,
+        selected_id: str | None = None,
+        decision_trace_ref: str | None = None,
+        remaining_ms: float | None = None,
         reason: str = "",
     ) -> None:
+        observation = {
+            "task_id": request.task_id,
+            "revision_id": request.revision_id,
+            "scene_revision": request.scene_revision,
+            "node_id": request.node_id,
+            "decision_point": request.decision_point,
+            "mode": mode,
+            "provider": provider or None,
+            "requested_model": requested_model or None,
+            "model_version": model_version,
+            "candidate_count": candidate_count,
+            "selected_candidate_id": selected_id,
+            "decision_trace_ref": decision_trace_ref,
+            "outcome": outcome,
+            "reason": reason,
+            "elapsed_ms": round((monotonic() - started) * 1000, 3),
+            "remaining_ms": round(remaining_ms, 3) if remaining_ms is not None else None,
+        }
         logger.info(
-            "Agent decision task={} revision={} scene={} node={} point={} mode={} "
-            "outcome={} latency_ms={:.1f} reason={}",
-            request.task_id,
-            request.revision_id,
-            request.scene_revision,
-            request.node_id,
-            request.decision_point,
-            mode,
-            outcome,
-            (monotonic() - started) * 1000,
-            reason,
+            "Agent decision {}",
+            json.dumps(observation, ensure_ascii=False, sort_keys=True),
         )
 
     @staticmethod

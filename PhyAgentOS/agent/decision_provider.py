@@ -65,7 +65,18 @@ class DecisionResult(BaseModel):
 
     outcome: Literal["selected", "escalate", "unavailable"]
     selected_id: str | None = None
+    model_version: str | None = None
     reason: str = ""
+
+    @field_validator("model_version")
+    @classmethod
+    def nonempty_model_version(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value:
+            raise ValueError("model_version must be non-empty when provided")
+        return value
 
     @model_validator(mode="after")
     def selected_shape(self) -> "DecisionResult":

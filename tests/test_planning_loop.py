@@ -1418,7 +1418,60 @@ def test_active_projected_query_decision_persists_only_known_selected_choice(
         ]
 
 
-def test_active_projected_query_decision_rejects_stale_scene_response():
+def test_active_projected_query_decision_logs_trace_bound_observation(monkeypatch):
+    class Provider:
+        async def decide(self, _request, **_kwargs):
+            return DecisionResult(
+                outcome="selected",
+                selected_id="query-input-2",
+                model_version="jev-fixture-2026-10-15",
+                reason="matches the task goal",
+            )
+
+        async def close(self):
+            pass
+
+    class Logger:
+        def __init__(self):
+            self.messages = []
+
+        def info(self, message, *args):
+            self.messages.append(message.format(*args))
+
+    import importlib
+
+    loop_module = importlib.import_module("PhyAgentOS.agent.loop")
+    sink = Logger()
+    monkeypatch.setattr(loop_module, "logger", sink)
+    loop, coordinator, context = _projected_query_decision_fixture(Provider())
+    persist = coordinator.persist_planning_selection
+
+    def persist_with_trace(proposal):
+        persist(proposal)
+        return {"decision_trace_ref": "artifact://planning-traces/fixture/query"}
+
+    coordinator.persist_planning_selection = persist_with_trace
+
+    assert asyncio.run(loop.try_projected_query_decision(
+        context, decision_deadline=monotonic() + 1,
+    )) is True
+
+    assert len(sink.messages) == 1
+    message = sink.messages[0]
+    observation = json.loads(message.removeprefix("Agent decision "))
+    assert observation["provider"] == "Provider"
+    assert observation["requested_model"] == "jev-fixture"
+    assert observation["model_version"] == "jev-fixture-2026-10-15"
+    assert observation["candidate_count"] == 2
+    assert observation["selected_candidate_id"] == "query-input-2"
+    assert observation["decision_trace_ref"].startswith(
+        "artifact://planning-traces/"
+    )
+    assert observation["outcome"] == "selected"
+    assert observation["remaining_ms"] > 0
+
+
+def test_active_projected_query_decision_rejects_stale_scene_response(monkeypatch):
     class Provider:
         async def decide(self, _request, **_kwargs):
             loop._current_node_context = lambda context: context.model_copy(
@@ -1429,6 +1482,18 @@ def test_active_projected_query_decision_rejects_stale_scene_response():
         async def close(self):
             pass
 
+    class Logger:
+        def __init__(self):
+            self.messages = []
+
+        def info(self, message, *args):
+            self.messages.append(message.format(*args))
+
+    import importlib
+
+    loop_module = importlib.import_module("PhyAgentOS.agent.loop")
+    sink = Logger()
+    monkeypatch.setattr(loop_module, "logger", sink)
     loop, coordinator, context = _projected_query_decision_fixture(Provider())
 
     selected = asyncio.run(loop.try_projected_query_decision(
@@ -1437,6 +1502,10 @@ def test_active_projected_query_decision_rejects_stale_scene_response():
 
     assert selected is False
     assert coordinator.proposals == []
+    observation = json.loads(sink.messages[0].removeprefix("Agent decision "))
+    assert observation["outcome"] == "stale"
+    assert observation["reason"] == "revision_or_scene_changed"
+    assert observation["decision_trace_ref"] is None
 
 
 def test_active_projected_query_timeout_falls_back_and_cancellation_propagates():
@@ -1511,6 +1580,45 @@ def test_shadow_projected_query_is_nonblocking_and_closed_with_agent_loop():
         assert loop._decision_tasks == set()
 
     asyncio.run(exercise())
+
+
+def test_shadow_decision_reports_shared_deadline_remaining(monkeypatch):
+    class Provider:
+        async def decide(self, _request, **_kwargs):
+            return DecisionResult(outcome="escalate", model_version="jev-shadow-v1")
+
+        async def close(self):
+            pass
+
+    class Logger:
+        def __init__(self):
+            self.messages = []
+
+        def info(self, message, *args):
+            self.messages.append(message.format(*args))
+
+    import importlib
+
+    loop_module = importlib.import_module("PhyAgentOS.agent.loop")
+    sink = Logger()
+    monkeypatch.setattr(loop_module, "logger", sink)
+
+    async def exercise():
+        loop, _coordinator, context = _projected_query_decision_fixture(
+            Provider(), mode="shadow"
+        )
+        deadline = monotonic() + 1
+        assert await loop.try_projected_query_decision(
+            context, decision_deadline=deadline,
+        ) is False
+        await asyncio.gather(*loop._decision_tasks)
+
+    asyncio.run(exercise())
+    observation = json.loads(sink.messages[0].removeprefix("Agent decision "))
+    assert observation["outcome"] == "escalate"
+    assert observation["model_version"] == "jev-shadow-v1"
+    assert observation["remaining_ms"] > 500
+    assert observation["decision_trace_ref"] is None
 
 
 def test_agent_loop_persists_unique_projected_query_without_model_turn():
