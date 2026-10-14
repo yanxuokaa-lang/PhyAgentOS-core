@@ -20,6 +20,7 @@ from PhyAgentOS.agent.plan_proposal import (
     _validate_structured_node_intent,
     compile_task_plan,
 )
+from PhyAgentOS.agent.planner_plugin import MethodOption
 from PhyAgentOS.agent.planning_loop import _planning_record_status
 from PhyAgentOS.agent.prompt_context import (
     _compact_activation_results,
@@ -349,6 +350,62 @@ def semantic_nodes(count):
     nodes.append({"node_id": "final-observation", "obligation_id": "verify-goal", "capability": "task.verify",
                   "dependencies": [node["node_id"] for node in nodes]})
     return nodes
+
+
+async def completed_segment_with_scene(coordinator, task):
+    await ForgeTaskMaterializePlanTool(coordinator).execute(
+        task.task_id,
+        nodes=semantic_nodes(1),
+        reason="completed fixture segment",
+    )
+    current = coordinator.get_task(task.task_id)
+    for node in current.active_revision.plan_graph.nodes:
+        coordinator.record_node_settlement(NodeSettlement(
+            task_id=task.task_id,
+            revision_id=current.active_revision_id,
+            node_id=node.node_id,
+            status="completed",
+            scene_revision="scene-1",
+        ))
+    coordinator.store.update(
+        task.task_id,
+        lambda record: record.active_revision.execution_records.append(
+            ToolExecutionRecord(
+                record_id="method-scene-observation",
+                revision_id=current.active_revision_id,
+                tool_id="scene.observe",
+                semantics="query",
+                caller_id="method-fragment-fixture",
+                status="succeeded",
+                response={
+                    "ok": True,
+                    "data": {
+                        "status": "available",
+                        "scene_revision": "scene-1",
+                        "observation_ref": "artifact://observations/scene-1",
+                        "calibration_ref": "artifact://calibrations/fixture",
+                    },
+                },
+                evidence_refs=["artifact://evidence/scene-1"],
+            )
+        ),
+        event_type="fixture_method_scene",
+    )
+    return coordinator.get_task(task.task_id)
+
+
+def method_option(*, method_id="continue-method", capability="object.relocate",
+                  evidence_refs=("artifact://evidence/scene-1",)):
+    nodes = semantic_nodes(1)
+    nodes[0]["capability"] = capability
+    return MethodOption(
+        method_id=method_id,
+        description="Continue with the already-materialized semantic method.",
+        applicable_obligations=tuple(node["obligation_id"] for node in nodes),
+        nodes=tuple(PlanNode.model_validate(node) for node in nodes),
+        evidence_refs=evidence_refs,
+        reason=f"accepted method {method_id}",
+    )
 
 
 def test_structured_node_intent_excludes_flat_task_verification_semantics():
@@ -2081,6 +2138,307 @@ def test_segment_continuation_keeps_read_only_context_in_agent_turn(tmp_path):
         assert updated.active_revision_id == current_revision_id
 
     asyncio.run(exercise())
+
+
+def test_single_method_fragment_uses_existing_continuation_tool_without_llm(tmp_path):
+    async def exercise():
+        coordinator, task = setup_task(tmp_path, goal="Continue deterministically")
+        current = await completed_segment_with_scene(coordinator, task)
+        requests = []
+
+        class Planner:
+            def propose_method_options(self, *, request):
+                requests.append(request)
+                return (method_option(),)
+
+        provider = ScriptedProvider()
+        loop = AgentLoop(
+            bus=MessageBus(), provider=provider, workspace=tmp_path,
+            forge_task_coordinator=coordinator, planner_plugin=Planner(),
+            max_iterations=3,
+        )
+        replan_count = sum(
+            revision.counts_toward_replan_budget for revision in current.revisions
+        )
+
+        result = await loop.run_segment_continuation_turn(task_id=task.task_id)
+
+        updated = coordinator.get_task(task.task_id)
+        assert provider.requests == []
+        assert result.tools_used == ["forge_task_continue_plan"]
+        assert result.turn_failure_code is None
+        assert updated.active_revision_id != current.active_revision_id
+        assert updated.active_revision.counts_toward_replan_budget is False
+        assert sum(
+            revision.counts_toward_replan_budget for revision in updated.revisions
+        ) == replan_count
+        assert len(requests) == 1
+        request = requests[0]
+        assert request.task_id == task.task_id
+        assert request.revision_id == current.active_revision_id
+        assert request.scene_revision == "scene-1"
+        assert request.evidence_refs == ("artifact://evidence/scene-1",)
+        assert request.available_capabilities == (
+            "object.relocate", "scene.observe", "task.verify",
+        )
+        assert request.observations["query_facts"][0]["tool_id"] == "scene.observe"
+
+    asyncio.run(exercise())
+
+
+@pytest.mark.parametrize("option_count", [None, 0, 2])
+def test_method_fragment_missing_empty_or_ambiguous_falls_back_to_llm(
+    tmp_path, option_count,
+):
+    async def exercise():
+        coordinator, task = setup_task(tmp_path, goal="Use the normal continuation fallback")
+        current = await completed_segment_with_scene(coordinator, task)
+
+        planner = None
+        if option_count is not None:
+            class Planner:
+                def propose_method_options(self, *, request):
+                    return tuple(
+                        method_option(method_id=f"method-{index}")
+                        for index in range(option_count)
+                    )
+
+            planner = Planner()
+        provider = ScriptedProvider([
+            LLMResponse(
+                content="Use the ordinary continuation path.",
+                tool_calls=[ToolCallRequest(
+                    "fallback-continuation",
+                    "forge_task_continue_plan",
+                    {
+                        "task_id": task.task_id,
+                        "nodes": semantic_nodes(1),
+                        "reason": "LLM continuation fallback",
+                        "evidence_refs": ["artifact://evidence/scene-1"],
+                    },
+                )],
+            ),
+        ])
+        loop = AgentLoop(
+            bus=MessageBus(), provider=provider, workspace=tmp_path,
+            forge_task_coordinator=coordinator, planner_plugin=planner,
+            max_iterations=3,
+        )
+
+        result = await loop.run_segment_continuation_turn(task_id=task.task_id)
+
+        assert len(provider.requests) == 1
+        assert result.tools_used == ["forge_task_continue_plan"]
+        assert coordinator.get_task(task.task_id).active_revision_id != current.active_revision_id
+        sent = json.dumps(provider.requests[0])
+        if option_count == 2:
+            assert "ambiguous_method_options" in sent
+
+    asyncio.run(exercise())
+
+
+@pytest.mark.parametrize("rejection", ["unknown_capability", "fabricated_evidence", "tool_error"])
+def test_rejected_method_fragment_does_not_persist_and_llm_can_correct(
+    tmp_path, rejection,
+):
+    async def exercise():
+        coordinator, task = setup_task(tmp_path, goal="Correct a rejected method")
+        current = await completed_segment_with_scene(coordinator, task)
+        option = (
+            method_option(capability="undeclared.execute")
+            if rejection == "unknown_capability"
+            else method_option(evidence_refs=("artifact://evidence/fabricated",))
+            if rejection == "fabricated_evidence"
+            else method_option()
+        )
+
+        class Planner:
+            def propose_method_options(self, *, request):
+                return (option,)
+
+        provider = ScriptedProvider([
+            LLMResponse(
+                content="Correct the rejected deterministic method.",
+                tool_calls=[ToolCallRequest(
+                    "corrected-continuation",
+                    "forge_task_continue_plan",
+                    {
+                        "task_id": task.task_id,
+                        "nodes": semantic_nodes(1),
+                        "reason": "corrected continuation",
+                        "evidence_refs": ["artifact://evidence/scene-1"],
+                    },
+                )],
+            ),
+        ])
+        loop = AgentLoop(
+            bus=MessageBus(), provider=provider, workspace=tmp_path,
+            forge_task_coordinator=coordinator, planner_plugin=Planner(),
+            max_iterations=3,
+        )
+        original_execute = loop.tools.execute
+        calls = []
+
+        async def execute(name, params):
+            calls.append((name, params))
+            if rejection == "tool_error" and len(calls) == 1:
+                return json.dumps({
+                    "ok": False,
+                    "error": {"code": "fixture_rejection", "motion_authorized": False},
+                })
+            return await original_execute(name, params)
+
+        loop.tools.execute = execute
+
+        result = await loop.run_segment_continuation_turn(task_id=task.task_id)
+
+        updated = coordinator.get_task(task.task_id)
+        assert len(provider.requests) == 1
+        assert result.tools_used == ["forge_task_continue_plan"]
+        assert len(updated.revisions) == len(current.revisions) + 1
+        assert updated.active_revision.reason == "corrected continuation"
+        sent = json.dumps(provider.requests[0])
+        if rejection == "fabricated_evidence":
+            assert "invalid_method_evidence" in sent
+            assert len(calls) == 1
+        else:
+            assert "continuation_tool_rejected" in sent
+            assert len(calls) == 2
+
+    asyncio.run(exercise())
+
+
+def test_method_fragment_with_stale_scene_is_not_consumed(tmp_path):
+    async def exercise():
+        coordinator, task = setup_task(tmp_path, goal="Reject a stale method response")
+        current = await completed_segment_with_scene(coordinator, task)
+
+        class Planner:
+            def propose_method_options(self, *, request):
+                coordinator.store.update(
+                    task.task_id,
+                    lambda record: record.active_revision.execution_records.extend((
+                        ToolExecutionRecord(
+                            record_id="concurrent-world-change",
+                            revision_id=record.active_revision_id,
+                            tool_id="object.relocate",
+                            semantics="action",
+                            caller_id="concurrent-fixture",
+                            status="succeeded",
+                            response={
+                                "ok": True,
+                                "data": {
+                                    "world_changed": True,
+                                    "new_scene_revision": "scene-2",
+                                    "outcome_known": True,
+                                },
+                            },
+                        ),
+                        ToolExecutionRecord(
+                            record_id="concurrent-scene-observation",
+                            revision_id=record.active_revision_id,
+                            tool_id="scene.observe",
+                            semantics="query",
+                            caller_id="concurrent-fixture",
+                            status="succeeded",
+                            response={
+                                "ok": True,
+                                "data": {
+                                    "status": "available",
+                                    "scene_revision": "scene-2",
+                                    "observation_ref": "artifact://observations/scene-2",
+                                    "calibration_ref": "artifact://calibrations/fixture",
+                                },
+                            },
+                            evidence_refs=["artifact://evidence/scene-2"],
+                        ),
+                    )),
+                    event_type="fixture_concurrent_scene",
+                )
+                return (method_option(),)
+
+        provider = ScriptedProvider([
+            LLMResponse(
+                content="Use current scene facts.",
+                tool_calls=[ToolCallRequest(
+                    "current-scene-continuation",
+                    "forge_task_continue_plan",
+                    {
+                        "task_id": task.task_id,
+                        "nodes": semantic_nodes(1),
+                        "reason": "current scene correction",
+                        "evidence_refs": ["artifact://evidence/scene-2"],
+                    },
+                )],
+            ),
+        ])
+        loop = AgentLoop(
+            bus=MessageBus(), provider=provider, workspace=tmp_path,
+            forge_task_coordinator=coordinator, planner_plugin=Planner(),
+            max_iterations=3,
+        )
+
+        await loop.run_segment_continuation_turn(task_id=task.task_id)
+
+        updated = coordinator.get_task(task.task_id)
+        assert len(provider.requests) == 1
+        assert len(updated.revisions) == len(current.revisions) + 1
+        assert updated.active_revision.reason == "current scene correction"
+        assert "stale_method_option" in json.dumps(provider.requests[0])
+
+    asyncio.run(exercise())
+
+
+def test_method_fragment_with_stale_revision_returns_control_without_llm(tmp_path):
+    async def exercise():
+        coordinator, task = setup_task(tmp_path, goal="Reject a stale revision method")
+        current = await completed_segment_with_scene(coordinator, task)
+
+        class Planner:
+            def propose_method_options(self, *, request):
+                graph = compile_task_plan(
+                    coordinator.get_task(task.task_id),
+                    semantic_nodes(1),
+                    reason="concurrent continuation",
+                    initial_evidence_refs=("artifact://evidence/scene-1",),
+                )
+                coordinator.begin_continuation_revision(
+                    task.task_id,
+                    reason="concurrent continuation",
+                    plan_graph=graph,
+                    plan_graph_ref=f"artifact://plans/{task.task_id}/{graph.revision_id}",
+                    evidence_refs=("artifact://evidence/scene-1",),
+                )
+                return (method_option(),)
+
+        provider = ScriptedProvider()
+        loop = AgentLoop(
+            bus=MessageBus(), provider=provider, workspace=tmp_path,
+            forge_task_coordinator=coordinator, planner_plugin=Planner(),
+            max_iterations=3,
+        )
+
+        result = await loop.run_segment_continuation_turn(task_id=task.task_id)
+
+        updated = coordinator.get_task(task.task_id)
+        assert provider.requests == []
+        assert result.turn_failure_code == "stale_method_option"
+        assert result.tools_used == []
+        assert len(updated.revisions) == len(current.revisions) + 1
+        assert updated.active_revision.reason == "concurrent continuation"
+
+    asyncio.run(exercise())
+
+
+def test_method_option_requires_all_materialized_obligations():
+    with pytest.raises(ValueError, match="exactly identify"):
+        MethodOption(
+            method_id="hidden-obligation",
+            description="Invalid partial applicability declaration.",
+            applicable_obligations=("move-0",),
+            nodes=tuple(PlanNode.model_validate(node) for node in semantic_nodes(1)),
+            reason="must be rejected before continuation",
+        )
 
 
 def test_semantic_submission_rejects_cycle_undeclared_capability_and_ambiguous_input(tmp_path):

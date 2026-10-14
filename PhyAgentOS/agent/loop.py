@@ -2140,6 +2140,49 @@ class AgentLoop:
             settlement_loader=self.forge_task_coordinator.effective_node_settlements,
             compact=True,
         ) or {}
+        source_revision_id = revision.revision_id
+        method_result, method_rejection = await self._try_method_fragment_continuation(
+            task_id=task_id,
+            continuation_projection=continuation_projection,
+        )
+        if method_result is not None:
+            return method_result
+        task = self.forge_task_coordinator.get_task(task_id)
+        if task.active_revision_id != source_revision_id:
+            return AgentLoopRunResult(
+                content=(
+                    "Method fragment became stale after the active revision changed; "
+                    "the host will continue from persisted Coordinator state."
+                ),
+                tools_used=[],
+                messages=[],
+                turn_failure_code="stale_method_option",
+            )
+        graph = task.active_revision.plan_graph
+        settlements = {
+            item.node_id: item.status
+            for item in self.forge_task_coordinator.effective_node_settlements(task_id)
+        }
+        if graph is None or any(
+            settlements.get(node.node_id) != "completed" for node in graph.nodes
+        ):
+            return AgentLoopRunResult(
+                content=(
+                    "Method fragment became stale after continuation facts changed; "
+                    "the host will continue from persisted Coordinator state."
+                ),
+                tools_used=[],
+                messages=[],
+                turn_failure_code="stale_method_option",
+            )
+        continuation_projection = continuation_task_prompt_projection(
+            task,
+            execution_record_loader=(
+                self.forge_task_coordinator.effective_planning_execution_records
+            ),
+            settlement_loader=self.forge_task_coordinator.effective_node_settlements,
+            compact=True,
+        ) or {}
         continuation_route = continuation_projection.get("continuation_route")
         if continuation_route == "refresh_scene_before_next_segment":
             if continuation_projection.get("placement_terminal") is True:
@@ -2231,6 +2274,16 @@ class AgentLoop:
             if persisted_primary_skill_name
             else (),
         )
+        if method_rejection:
+            messages.append({
+                "role": "system",
+                "content": (
+                    "An optional deterministic method fragment was not accepted by the "
+                    "existing continuation admission path. No new revision was persisted. "
+                    "Use the ordinary continuation tools and current Coordinator facts to "
+                    "choose the next outcome. Rejection: " + method_rejection
+                ),
+            })
         return await self._run_agent_loop(
             messages,
             on_progress=on_progress,
@@ -2242,6 +2295,151 @@ class AgentLoop:
             # step, not the revision/status transition the outer loop awaits.
             yield_after_tools=frozenset(continuation_outcomes),
         )
+
+    async def _try_method_fragment_continuation(
+        self,
+        *,
+        task_id: str,
+        continuation_projection: dict[str, Any],
+    ) -> tuple[AgentLoopRunResult | None, str | None]:
+        """Consume one complete planner method through the normal continuation Tool."""
+
+        planner = self._planner_plugin
+        propose = getattr(planner, "propose_method_options", None)
+        if not callable(propose) or self.forge_task_coordinator is None:
+            return None, None
+
+        from pydantic import ValidationError
+
+        from PhyAgentOS.agent.planner_plugin import MethodOption, PlanningRequest
+        from PhyAgentOS.agent.planning_context import (
+            PlanningContextUnavailableError,
+            context_from_task,
+        )
+
+        task = self.forge_task_coordinator.get_task(task_id)
+        revision_id = task.active_revision_id
+        try:
+            context = context_from_task(task, allow_refresh=True)
+        except PlanningContextUnavailableError as exc:
+            return None, f"planning_context_unavailable: {exc}"
+        if dict(context.condition_facts).get("scene_current") is False:
+            return None, "planning_context_stale: a fresh scene observation is required"
+
+        bound_tools = (
+            task.primary_skill_binding.required_tools
+            if task.primary_skill_binding is not None
+            else task.tool_bindings
+        )
+        capabilities = tuple(sorted({
+            capability
+            for tool in bound_tools
+            for capability in tool.planning_policy.capabilities
+        }))
+        query_facts = continuation_projection.get("current_scene_queries", ())
+        request = PlanningRequest(
+            task_id=task.task_id,
+            revision_id=revision_id,
+            scene_revision=context.scene_revision,
+            task_description=task.task_description,
+            verification_goal=task.verification.goal,
+            success_criteria=tuple(task.verification.success_criteria),
+            constraints=tuple(task.verification.constraints),
+            evidence_refs=tuple(sorted(context.evidence_refs)),
+            observations={
+                "condition_facts": dict(context.condition_facts),
+                "continuation_route": continuation_projection.get("continuation_route"),
+                "fresh_evidence_requirements": list(
+                    task.active_revision.fresh_evidence_requirements
+                ),
+                "query_facts": list(query_facts),
+            },
+            available_capabilities=capabilities,
+        )
+        try:
+            proposed = propose(request=request)
+            options = tuple(proposed or ())
+        except Exception as exc:
+            logger.warning(
+                "Optional method fragment provider failed; using LLM continuation "
+                "task={} revision={} error={}:{}",
+                task_id,
+                revision_id,
+                type(exc).__name__,
+                exc,
+            )
+            return None, f"method_provider_error: {type(exc).__name__}: {exc}"
+        if len(options) == 0:
+            return None, None
+        if len(options) != 1:
+            return None, f"ambiguous_method_options: received {len(options)} options"
+        try:
+            option = MethodOption.model_validate(options[0])
+        except (TypeError, ValidationError, ValueError) as exc:
+            return None, f"invalid_method_option: {exc}"
+
+        current = self.forge_task_coordinator.get_task(task_id)
+        if current.active_revision_id != revision_id:
+            return None, "stale_method_option: active revision changed during proposal"
+        try:
+            current_context = context_from_task(current, allow_refresh=True)
+        except PlanningContextUnavailableError as exc:
+            return None, f"stale_method_option: {exc}"
+        if (
+            current_context.scene_revision != request.scene_revision
+            or dict(current_context.condition_facts).get("scene_current") is False
+        ):
+            return None, "stale_method_option: current scene changed during proposal"
+        unknown_evidence = sorted(
+            set(option.evidence_refs) - set(current_context.evidence_refs)
+        )
+        if unknown_evidence:
+            return None, (
+                "invalid_method_evidence: not current task-bound references: "
+                + ", ".join(unknown_evidence)
+            )
+
+        tool_result = await self.tools.execute(
+            "forge_task_continue_plan",
+            {
+                "task_id": task_id,
+                "nodes": [node.model_dump(mode="json") for node in option.nodes],
+                "reason": option.reason,
+                "evidence_refs": list(option.evidence_refs),
+            },
+        )
+        transitioned = (
+            self.forge_task_coordinator.get_task(task_id).active_revision_id != revision_id
+        )
+        if not self._tool_result_succeeded(tool_result):
+            if transitioned:
+                raise RuntimeError(
+                    "continuation Tool changed revision without a successful result"
+                )
+            return None, "continuation_tool_rejected: " + compact_tool_result(
+                "forge_task_continue_plan", tool_result
+            )
+        if not transitioned:
+            raise RuntimeError(
+                "continuation Tool reported success without advancing the active revision"
+            )
+        return AgentLoopRunResult(
+            content=f"Accepted deterministic method fragment {option.method_id}.",
+            tools_used=["forge_task_continue_plan"],
+            messages=[
+                {
+                    "role": "assistant",
+                    "content": (
+                        f"Accepted method fragment {option.method_id}: {option.description}"
+                    ),
+                },
+                {
+                    "role": "tool",
+                    "name": "forge_task_continue_plan",
+                    "content": tool_result,
+                },
+            ],
+        ), None
 
     async def run(self) -> None:
         """Run the agent loop, dispatching messages as tasks to stay responsive to /stop."""

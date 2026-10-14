@@ -6,9 +6,9 @@ import json
 from importlib.metadata import entry_points
 from typing import Any, Literal, Protocol, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from PhyAgentOS.planning import NodeSettlement, PlanGraph, ReplanDelta
+from PhyAgentOS.planning import NodeSettlement, PlanGraph, PlanNode, ReplanDelta
 
 
 class PlanningRequest(BaseModel):
@@ -18,13 +18,27 @@ class PlanningRequest(BaseModel):
 
     task_id: str
     revision_id: str
+    scene_revision: str = ""
     task_description: str
     verification_goal: str = ""
     success_criteria: tuple[str, ...] = ()
     constraints: tuple[str, ...] = ()
     evidence_refs: tuple[str, ...] = ()
-    observations: dict[str, Any] = {}
+    observations: dict[str, Any] = Field(default_factory=dict)
     available_capabilities: tuple[str, ...] = ()
+
+    @field_validator("task_id", "revision_id")
+    @classmethod
+    def planning_identity(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("planner task and revision identities must be non-empty")
+        return value
+
+    @field_validator("scene_revision")
+    @classmethod
+    def optional_scene_identity(cls, value: str) -> str:
+        return value.strip()
 
     @field_validator("observations")
     @classmethod
@@ -34,6 +48,56 @@ class PlanningRequest(BaseModel):
         except (TypeError, ValueError) as exc:
             raise ValueError("planner observations must contain finite JSON values") from exc
         return value
+
+
+class MethodOption(BaseModel):
+    """One already-materialized semantic method offered by a planner extension."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    method_id: str
+    description: str
+    applicable_obligations: tuple[str, ...]
+    nodes: tuple[PlanNode, ...] = Field(min_length=1)
+    evidence_refs: tuple[str, ...] = ()
+    reason: str
+
+    @field_validator("method_id")
+    @classmethod
+    def method_identity(cls, value: str) -> str:
+        value = value.strip()
+        if not value or value in {".", ".."} or "/" in value or "\\" in value:
+            raise ValueError("method_id must be non-empty and path-safe")
+        return value
+
+    @field_validator("description", "reason")
+    @classmethod
+    def method_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("method option text must be non-empty")
+        return value
+
+    @field_validator("applicable_obligations", "evidence_refs")
+    @classmethod
+    def unique_nonempty_values(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        normalized = tuple(item.strip() for item in value)
+        if any(not item for item in normalized) or len(normalized) != len(set(normalized)):
+            raise ValueError("method option references must be non-empty and unique")
+        return normalized
+
+    @model_validator(mode="after")
+    def obligations_are_materialized(self) -> "MethodOption":
+        if not self.applicable_obligations:
+            raise ValueError("method option must identify an applicable obligation")
+        materialized = {node.obligation_id for node in self.nodes}
+        applicable = set(self.applicable_obligations)
+        if applicable != materialized:
+            raise ValueError(
+                "method option applicable obligations must exactly identify its materialized "
+                "node obligations"
+            )
+        return self
 
 
 class ReplanProposal(BaseModel):
@@ -94,6 +158,18 @@ class RecoveryPlannerPlugin(Protocol):
         """Choose recovery from persisted failure context without executing it."""
 
 
+@runtime_checkable
+class MethodFragmentPlugin(Protocol):
+    """Optional pure capability for proposing complete semantic continuation options."""
+
+    def propose_method_options(
+        self,
+        *,
+        request: PlanningRequest,
+    ) -> tuple[MethodOption, ...]:
+        """Return in-memory options only; the host owns validation and persistence."""
+
+
 class PlannerPluginRegistry:
     """Small registry supporting explicit registration and Python entry points."""
 
@@ -124,6 +200,6 @@ class PlannerPluginRegistry:
 
 
 __all__ = [
-    "PlannerPlugin", "PlannerPluginRegistry", "PlanningRequest", "RecoveryPlannerPlugin",
-    "ReplanProposal",
+    "MethodFragmentPlugin", "MethodOption", "PlannerPlugin", "PlannerPluginRegistry",
+    "PlanningRequest", "RecoveryPlannerPlugin", "ReplanProposal",
 ]

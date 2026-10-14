@@ -2,6 +2,43 @@
 
 ## 最近五版本 / Latest five versions
 
+## v13.8.0 (2026-10-15 00:44) - codex
+
+### 变更摘要 / Summary [完成]
+- [policy] [feat] 实施 JEV P2：可选 planner 方法片段携带完整 `PlanNode`，唯一当前选项经原 registry、`forge_task_continue_plan`、compiler 和 Coordinator 创建续段，LLM 写图为零。 / Implement JEV P2: optional planner method fragments carry complete `PlanNode` values, and one current option creates a continuation through the existing registry, `forge_task_continue_plan`, compiler, and Coordinator with zero LLM graph writing. (local)
+- [eval] [test] 覆盖单选、缺能力、空/多选、插件异常、节点/证据拒绝、并发 scene/revision 变化、义务完整性、LLM fallback 与 replan budget。 / Cover one option, missing capability, empty/multiple options, provider errors, node/evidence rejection, concurrent scene/revision changes, obligation completeness, LLM fallback, and replan budget. (local)
+
+### 文件变更详情 / File Change Details
+- [修改 / Modified] `PhyAgentOS/agent/planner_plugin.py:L9-L100,L161-L170,L202-L205`：scene-bound `PlanningRequest`、冻结 `MethodOption` 和可选 `MethodFragmentPlugin`。 / Add scene-bound `PlanningRequest`, frozen `MethodOption`, and optional `MethodFragmentPlugin`.
+- [修改 / Modified] `PhyAgentOS/agent/loop.py:L2121-L2297,L2299-L2442`：有界 request、当前身份复核、真实 continuation Tool 消费、拒绝 fallback 和并发事实重读。 / Add bounded requests, current-identity checks, real continuation Tool consumption, rejection fallback, and concurrent-fact rereads.
+- [修改 / Modified] `tests/test_agent_foundation.py:L352-L408,L2143-L2441`：真实 Coordinator/registry/wrapper/compiler 链路和正反例。 / Cover the real Coordinator/registry/wrapper/compiler chain and counterexamples.
+- [新增 / Added] `changelog/2026-10_part7.md:L1-L60`、[修改 / Modified] `CHANGELOG.md:L5-L44,L1485-L1493`：双语记录、新分卷与最近五版。 / Add the bilingual record, new archive part, and latest-five rollover.
+
+### 关键代码 Diff / Key Code Diff
+```diff
+- continuation always asks the LLM to write the next graph
++ exactly one complete current MethodOption
++ -> ToolRegistry -> forge_task_continue_plan -> compiler -> Coordinator revision
++ missing/empty/multiple/invalid/stale/rejected -> original LLM continuation
+```
+
+### 七维复审 / Seven-Dimension Review
+1. 架构：planner 只生成内存选项，原 owners 继续拥有调用、编译、持久化和执行。 / Architecture: the planner only proposes in-memory options; existing owners retain invocation, compilation, persistence, and execution.
+2. 正确性：义务与节点完全一致，task/revision/scene/evidence/完成态复核，原 compiler 校验图。 / Correctness: obligations exactly match nodes, task/revision/scene/evidence/completion facts are checked, and the existing compiler validates graphs.
+3. 可观测：异常、歧义、无效、陈旧和 Tool 拒绝有明确 fallback；成功还要求 revision 前进。 / Observability: errors, ambiguity, invalid/stale options, and Tool rejection have explicit fallback; success also requires revision advancement.
+4. 恢复幂等：无插件状态写入；拒绝不建 revision，旧 revision 交还宿主；原 Action/Session 对账不变。 / Recovery/idempotency: plugins write no state, rejection creates no revision, stale revisions return to the host, and Action/Session reconciliation is unchanged.
+5. 安全：接受只声明节点，不执行或授权运动；全部测试离线 no-motion。 / Safety: acceptance only declares nodes and does not execute or authorize motion; all tests are offline no-motion.
+6. 兼容：旧 planner 必需接口不变；缺能力、空/多选保留原 LLM；Core 无具体 Skill/JEV import。 / Compatibility: required planner APIs are unchanged; missing/empty/multiple cases retain LLM fallback; Core imports no concrete Skill/JEV.
+7. 收敛/预算：单选 LLM=0、Tool=1；fallback LLM=1；续段不消耗 replan budget。 / Convergence/budget: one option uses LLM=0 and Tool=1; fallback uses LLM=1; continuation consumes no replan budget.
+- 修复三项 Major：隐藏义务、完整 Query payload、并发后旧快照；确认复审无遗留 Blocker/Major。 / Fixed three Majors—hidden obligations, full Query payloads, and stale post-concurrency snapshots—with no remaining Blocker/Major.
+
+### 验证与边界 / Validation and Boundary
+- 定向 `12 passed`；工单九文件 `505 passed in 14.33s`；全仓 `955 passed in 35.23s`；Ruff、compileall、`git diff --check` 通过。 / Focused `12 passed`; nine work-order files `505 passed in 14.33s`; full repository `955 passed in 35.23s`; Ruff, compileall, and diff checks passed.
+- 无部署、任务恢复、现场 Gateway/Query/Action/Session、相机、仿真或运动。 / No deployment, task resume, live Gateway/Query/Action/Session, camera, simulation, or motion occurred.
+
+### Git 提交 / Git Commit
+- Implementation commit: `(pending)` on `feature/planning-loop`; exact reference will be completed by a same-version log-only commit. / 实现提交：`(pending)`，分支 `feature/planning-loop`；精确引用将由同版本纯日志提交补全。
+
 ## v13.7.1 (2026-10-14 22:32) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -134,61 +171,6 @@
 
 ### Git 提交 / Git Commit
 - Commit: `84fe36ef`；Branch: `feature/planning-loop`；2026-10-14（Asia/Shanghai）。 / Commit `84fe36ef` on `feature/planning-loop`; 2026-10-14 (Asia/Shanghai).
-
-## v13.5.0 (2026-10-14 15:14) - codex
-
-### 变更摘要 / Summary [完成]
-- [policy] [refactor] 实施 JEV 工单 P0：节点回合中 `forge_plan_select` 成功且选择已持久化后立即交还宿主，由既有 `AgentLoopNodeExecutor` 消费；不把 selection 计入物理执行 Tool 预算。 / Implement JEV work-order P0: after a node-scoped `forge_plan_select` succeeds and persists its selection, immediately hand control to the host for consumption by the existing `AgentLoopNodeExecutor`, without counting selection as a physical execution Tool. (local)
-- [eval] [test] 增加 no-motion 回归，覆盖成功交接、同响应后续调用 deferred、失败选择继续纠正、blocked selection 不消费及既有 execution 对账不重放。 / Add no-motion regressions for successful handoff, deferred later calls in the same response, corrective handling of failed selections, blocked-selection non-consumption, and no replay during existing-execution reconciliation. (local)
-
-### 预期文件与边界 / Planned Files and Boundary
-- `PhyAgentOS/agent/loop.py`：新增独立 selection handoff 条件，复用既有 deferred Tool-result 语义。 / Add a dedicated selection-handoff condition while reusing the existing deferred Tool-result semantics.
-- `PhyAgentOS/agent/planning_loop.py`：仅在需要时补充 selection 交接到原 `_resume_node` 的消费语义，不改变 Coordinator/Runtime 权威边界。 / Clarify selection handoff to the existing `_resume_node` consumption path only if needed, without changing Coordinator/Runtime authority.
-- `tests/test_agent_foundation.py`、`tests/test_planning_loop.py`、`tests/test_forge_tool_api.py`：使用固定 provider/registry 验证模型调用、selection、消费和重放次数。 / Use fixed providers/registries to verify model-call, selection, consumption, and replay counts.
-- `changelog/2026-10_part6.md`、`CHANGELOG.md`：补全精确范围、关键 Diff、七维审核、验证和最近五版本。 / Complete exact ranges, key diff, seven-dimension review, validation, and latest-five records.
-- 本批不恢复任务，不调用 Runtime Query/Action、Gateway、相机或仿真，不改变 motion admission、Verifier 或 Action/Session 对账。 / This batch does not resume tasks or invoke Runtime Query/Action, Gateway, cameras, or simulation, and does not alter motion admission, Verifier, or Action/Session reconciliation.
-- [policy] [chore] [完成] 接续已有 P0 草稿，核对当前节点与当前 scene 的 durable selection；使用真实 Coordinator、registry、Query wrapper 和离线 client fixture 验证交接、纠正、消费一次、SkillUse/进度归因及重启对账，并补选择认知超时反例。 / Continue the existing P0 draft, check the current node and scene's durable selection, and exercise handoff, correction, single consumption, SkillUse/progress attribution, restart reconciliation, and selection decision timeouts using the real Coordinator, registry, Query wrapper, and an offline client fixture. (local)
-
-### 完成结果 / Completed Result
-- 本批完成 P0；P1a/P1b/P2/P3a/P3b/P4 尚未实施。源码核对确认原 `_resume_node` 已具备 selection 消费及 Action/Session 对账顺序，因此无需修改 Coordinator、NodeExecutor 或 Tool wrapper。 / This batch completes P0; P1a/P1b/P2/P3a/P3b/P4 remain unimplemented. The existing `_resume_node` already consumes selections and reconciles Actions/Sessions in the required order, so those owners and wrappers need no changes.
-- 交接要求 node scope、selector 成功、非空当前 dispatch scene revision，以及 Coordinator 返回当前 task/node/scene 的 pending selection；缺 scene、旧 scene 或未持久化不交接。同响应后续 Query/Action 仅追加 deferred transcript。 / Handoff requires node scope, selector success, a nonempty current dispatch scene revision, and a pending selection returned by the Coordinator for the current task/node/scene. Missing/stale scenes or non-persisted selections do not hand off; later Query/Action calls in the response receive deferred transcript results only.
-- 真实离线消费链断言：正常模型调用 1 次，先纠正再成功为 2 次；成功后额外模型调用 0 次，selection 持久化 1 次，Query client 消费 1 次；新宿主重启后模型/Registry 重放均为 0，Query 总调用仍为 1。SkillUse、decision trace、evidence 和进度归因均被核对。 / The real offline consumption chain asserts one normal model call or two with correction, zero additional model calls after success, one persisted selection and one Query client call. A fresh host performs zero model/Registry replay and the total Query count remains one; SkillUse, decision trace, evidence, and progress attribution are checked.
-
-### 文件变更详情 / File Change Details
-- [修改 / Modified] `PhyAgentOS/agent/loop.py:L1508-L1549,L1721-L1755`：成功选择交接与当前 scene 的持久化事实检查；复用原 deferred 结果和 Coordinator 查询，不改变执行预算。 / Add successful-selection handoff and current-scene persistence checks, reusing deferred results and the Coordinator query without changing execution budgets.
-- [修改 / Modified] `tests/test_agent_foundation.py:L1364-L1667`：当前/旧/缺失 scene、真实消费链、纠正、deferred Query/Action、持久化归因、重启不重放与 selector timeout 回归。 / Cover current/stale/missing scenes, real consumption, correction, deferred Query/Action, durable attribution, restart reconciliation, and selector timeouts.
-- [修改 / Modified] `changelog/2026-10_part6.md:L1310-L1367`、`CHANGELOG.md:L5-L62,L182-L183`（删除原 L150-L151 归档分界）：完成双语日志和关键 Diff，最近五版滚动为 v13.5.0、v13.4.15 至 v13.4.12；历史记录正文保留。 / Complete the bilingual log and key diff; roll the latest five to v13.5.0 and v13.4.15 through v13.4.12, retaining historical entry bodies.
-
-### 关键代码 Diff / Key Code Diff
-```diff
-- successful forge_plan_select -> another model request
-+ successful forge_plan_select + current task/node/scene pending selection
-+ -> defer later response calls -> yield to existing planning execution
-+ if not isinstance(scene_revision, str) or not scene_revision:
-+     return False
-+ return coordinator.pending_planning_selection(
-+     task_id, node_id, scene_revision=scene_revision,
-+ ) is not None
-```
-
-### 七维复审 / Seven-Dimension Review
-1. 架构所有权：AgentLoop 只交接；Coordinator 管持久事实，原 NodeExecutor/Registry/wrapper 消费；不新增执行引擎。 / Architecture: AgentLoop hands off, the Coordinator owns durable facts, and the existing NodeExecutor/Registry/wrapper consumes them; no new execution engine.
-2. 正确性：使用当前 dispatch scene，缺 scene 不退化为无筛选查询；成功 transport 本身不证明落盘。 / Correctness: use the current dispatch scene and never fall back to an unfiltered query when it is missing; transport success alone does not prove persistence.
-3. 错误可观测：后续调用明确记录 `deferred_to_planning_execution`；失败选择保留纠正路径，selector 超时沿用 `turn_timeout`。 / Observability: later calls explicitly record `deferred_to_planning_execution`; failed selections retain correction and selector timeout retains `turn_timeout`.
-4. 恢复幂等：blocked-selection、execution-first 和 Action/Session reconciliation 原顺序不变；真实持久化重启回归无重复消费。 / Idempotency: existing blocked-selection, execution-first, and Action/Session reconciliation ordering is preserved; restart from real persisted facts does not repeat consumption.
-5. 机器人安全：沿用原 admission、readiness、Verifier 和停止语义；无现场调用或运动，未改坐标系/标定假设。 / Robotics safety: retain admission, readiness, Verifier, and stop semantics; no live call or motion and no frame/calibration assumption changes.
-6. 扩展兼容：通用 task/node/scene 条件，无 provider、实体、颜色或任务名分支；旧失败路径保持原语义。 / Compatibility: generic task/node/scene conditions with no provider/entity/color/task-name branches; existing failure paths retain their semantics.
-7. AgentLoop 收敛：成功后额外 LLM=0；selection 仍受认知 deadline，不加入物理执行 Tool 预算集合。 / Convergence: zero extra LLM calls after success; selection remains subject to the decision deadline and is not added to the physical execution Tool budget.
-- 未发现遗留 Blocker/Major；复用已有查询、类型和普通回归，未新增 hash、冻结 contract、状态库或 gate。 / No remaining Blocker/Major finding; reuse existing queries, types, and ordinary regressions without new hashes, frozen contracts, state stores, or gates.
-
-### 验证与边界 / Validation and Boundary
-- 工单 9 文件关联回归：`477 passed in 11.77s`；全仓：`921 passed in 30.70s`。 / Nine work-order test files: `477 passed in 11.77s`; full repository: `921 passed in 30.70s`.
-- 复现命令 / Reproduce: `PYTHONDONTWRITEBYTECODE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest -q -p pytest_asyncio.plugin`。
-- `.venv/bin/python -m ruff check PhyAgentOS/agent/loop.py tests/test_agent_foundation.py`、`PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m compileall -q PhyAgentOS tests`、`git diff --check` 通过。 / Ruff, compileall, and whitespace checks passed.
-- 未部署、启动/停止 Runtime、恢复现场任务、调用 Gateway/现场 Query/Action、读取相机或推进仿真；测试 client 为离线 fixture，不作为现场闭环或运动证明。 / No deployment, Runtime lifecycle operation, live task resume, Gateway/live Query/Action, camera read, or simulation step; the offline client fixture is not evidence of a live closed loop or motion.
-
-### Git 提交 / Git Commit
-- Implementation commit: `16ee438c` on `feature/planning-loop`; this exact reference is completed by the same-version log-only commit. / 实现提交：`16ee438c`，分支 `feature/planning-loop`；精确引用由同版本纯日志提交补全。
 
 ## Archived detailed records / 已归档详细记录
 
@@ -1483,6 +1465,7 @@ The latest five records above are mirrored from the monthly archive. Older snaps
 - Commit: `1c6db08` on `feature/planning-loop`.
 
 ## Archive
+- [2026-10 part7](changelog/2026-10_part7.md)
 - [2026-10 part6](changelog/2026-10_part6.md)
 - [2026-10 part5](changelog/2026-10_part5.md)
 - [2026-10 part4](changelog/2026-10_part4.md)
