@@ -2,6 +2,33 @@
 
 ## 最近五版本 / Latest five versions
 
+## v13.9.4 (2026-10-15 02:35) - codex
+
+### 变更摘要 / Summary [完成但阻塞]
+- [policy] [feat] 补齐 P3b 前置决策观测：记录 provider/model、候选数、选中 ID、剩余 deadline、结构化拒绝原因，并关联成功 selection 的 `decision_trace_ref`；保持 off/shadow，不宣称 active 质量通过。 / Complete P3b prerequisite decision telemetry with provider/model, candidate count, selected ID, remaining deadline, structured rejection reasons, and successful-selection `decision_trace_ref`; remain off/shadow without claiming active quality.
+
+### 文件与关键 Diff / Files and Key Diff
+- [修改 / Modified] `PhyAgentOS/agent/loop.py:L585-L795,L879-L986`：输出 JSON 决策观测，区分 selected/escalate/unavailable/timeout/cancelled/stale/admission_rejected。 / Emit JSON decision observations distinguishing selected, escalation, unavailable, timeout, cancellation, stale, and admission rejection.
+- [修改 / Modified] `PhyAgentOS/agent/decision_provider.py:L61-L88`：增加兼容的可选 `model_version`。 / Add backward-compatible optional `model_version`.
+- [新增回归 / Regression] `tests/test_planning_loop.py:L1421-L1621`、`tests/test_decision_provider.py:L36-L97`：覆盖 trace、model version、stale 分类、shadow deadline 和兼容路径。 / Cover trace, model version, stale classification, shadow deadline, and compatibility paths.
+
+```diff
+- Agent decision ... outcome=selected latency_ms=... reason=...
++ Agent decision {"candidate_count":2,"decision_trace_ref":"artifact://...",
++   "model_version":"jev-1.13.0","outcome":"selected","remaining_ms":...}
+```
+
+### 七维复审与方向 / Seven-Dimension and Direction
+- 架构、事实、错误观测、恢复幂等、no-motion 安全、兼容性和 AgentLoop 收敛均无 Blocker/Major；首轮修复了 shadow deadline、model version 和 stale/admission 分类三项 Major。 / No Blocker/Major remains across architecture, facts, observability, recovery/idempotency, no-motion safety, compatibility, and AgentLoop convergence; first review fixed shadow deadline, model version, and stale/admission classification Majors.
+- 仅推进 P3b 观测前置能力；独立数据、错误接受、升级召回、真实替代率、配对时延和授权仍缺失，P3b 保持 off/shadow。 / Only the P3b telemetry prerequisite advanced; independent data, error acceptance, escalation recall, real substitution, paired latency, and authorization remain missing, so P3b stays off/shadow.
+
+### 验证与边界 / Validation and Boundary
+- 定向 `11 passed`；工单关联 `520 passed in 13.69s`；全仓 `974 passed in 37.17s`；Ruff、compileall、`git diff --check` 通过。 / Focused `11 passed`; work-order regression `520 passed in 13.69s`; full suite `974 passed in 37.17s`; Ruff, compileall, and diff checks pass.
+- 未部署、未恢复任务、未调用现场 Gateway/Query/Action/Session、相机、仿真或运动。 / No deployment, task resume, live Gateway/Query/Action/Session, camera, simulation, or motion was used.
+
+### Git 提交 / Git Commit
+- Implementation commit: `95e22c4c` on `feature/planning-loop`, pushed to origin. / 实现提交：`95e22c4c`，位于 `feature/planning-loop`，已推送 origin。
+
 ## v13.9.3 (2026-10-15 02:20) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -106,6 +133,8 @@
 
 ### Git 提交 / Git Commit
 - Implementation commit: `33096015` on `feature/planning-loop`, pushed to origin. / 实现提交：`33096015`，位于 `feature/planning-loop`，已推送到 origin。
+
+## Archived detailed records / 已归档详细记录
 
 ## v13.8.0 (2026-10-15 00:44) - codex
 
