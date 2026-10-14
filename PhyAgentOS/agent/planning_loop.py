@@ -1072,14 +1072,17 @@ class AgentLoopNodeExecutor:
             activation = activate(context.task_id)
             if hasattr(activation, "__await__"):
                 await activation
-        resumed = await self._resume_node(context)
-        if resumed is not None:
-            return resumed
         blocked_selection = context.scene_bind_selection
         if (
             isinstance(blocked_selection, Mapping)
             and blocked_selection.get("status") == "blocked"
         ):
+            # Durable executions still need reconciliation, but a pending
+            # selection must not bypass current admission by being resumed.
+            if self._node_records(context):
+                resumed = await self._resume_node(context)
+                if resumed is not None:
+                    return resumed
             code = str(
                 blocked_selection.get(
                     "code", "scene_bind_selection_inadmissible"
@@ -1094,6 +1097,9 @@ class AgentLoopNodeExecutor:
                 context.node_id,
                 f"selection_admission_blocked:{code}: {reason}",
             )
+        resumed = await self._resume_node(context)
+        if resumed is not None:
+            return resumed
         persist_frozen_query = getattr(
             self.agent_loop, "persist_deterministic_query_selection", None,
         )

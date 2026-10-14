@@ -2,6 +2,32 @@
 
 ## 最近五版本 / Latest five versions
 
+## v13.4.11 (2026-10-14 03:10) - codex
+
+### 变更摘要 / Summary [完成]
+- [policy] [fix] 确保 blocked scene.bind admission 先于 pending selection 消费；仍允许 reconciliation 已有 execution records。 / Ensure blocked scene.bind admission precedes pending-selection consumption while preserving reconciliation of existing execution records. (local)
+- [eval] [test] 增加持久化 selection 不得在 blocked admission 下调用 Tool registry 的 no-motion 回归。 / Add a no-motion regression proving a persisted selection cannot invoke the Tool registry under blocked admission. (local)
+
+### 失败场景与安全边界 / Failure Scenario and Safety Boundary
+- 若已有 pending selection 而本轮理解已证明其实体缺失/歧义，先调用 `_resume_node` 会消费 selection 并触达 Gateway；持久化 selection 本身不能证明它仍符合本轮 admission。修复只调整 AgentLoop 顺序，不新增 gate、hash 或协议；已落盘 execution 仍先做事实对账。 / If a pending selection exists after current understanding proves its entity missing/ambiguous, calling `_resume_node` first consumes it and may reach Gateway; persistence alone does not prove current admission. The fix only orders existing AgentLoop checks, adds no gate/hash/protocol, and keeps reconciliation of durable executions.
+
+### 七维审查与验证 / Seven-Dimension Review and Verification
+- 架构：门禁在 selection resume 之前，durable execution reconciliation 仍由原 executor 管理；正确性：无执行记录时不得消费 pending selection。可观测性：保留结构化 admission code/reason。 / Architecture: admission precedes selection resume while durable execution reconciliation remains in its existing owner; correctness: do not consume pending selection without an execution record. Observability: preserve structured admission code/reason.
+- 幂等：拒绝路径不产生选择/执行副作用；安全：不触达 Gateway，不绕过歧义；兼容：已有 execution 仍 reconcile；收敛：模型与 selection 都不被重复尝试。 / Idempotency: rejection creates no selection/execution side effect; safety: no Gateway access or ambiguity bypass; compatibility: existing executions still reconcile; convergence: neither model nor selection is retried.
+- `135` planning-loop tests、`914` full-suite tests 通过；Ruff、compileall、`git diff --check` 通过。无 Runtime Query/Action、相机读取、任务恢复或运动。 / 135 planning-loop and 914 full-suite tests passed; Ruff, compileall, and diff check passed. No Runtime Query/Action, camera read, task resume, or motion.
+
+### 文件与关键 Diff / Files and Key Diff
+- [修改] `PhyAgentOS/agent/planning_loop.py:L1069-L1100`：blocked context 先检查既有 execution 记录，仅有记录时 reconcile；否则在 `_resume_node` 前停止。 / [Modified] blocked context reconciles only existing execution records and otherwise stops before `_resume_node`.
+- [修改] `tests/test_planning_loop.py:L3704-L3746`：持久化 selection 在 blocked 状态下不调用 registry。 / [Modified] assert that blocked admission does not consume a persisted selection through the registry.
+
+```diff
+- blocked admission checked after pending selection could be consumed
++ blocked admission -> reconcile existing execution only -> stop before pending selection
+```
+
+### Git 提交 / Git Commit
+- Implementation commit pending on `feature/planning-loop`; hash-reference completion follows. / 实现提交待完成；提交引用随后回填。
+
 ## v13.4.10 (2026-10-14 02:45) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -105,6 +131,8 @@
 - 验证：全仓库 `909 passed`，发布一致性 `76 passed`，聚焦 `91 passed`，compileall/Ruff/diff check 通过；仅 no-motion，未安装制品或重启 Runtime。 / Verification: 909 full-suite, 76 release-consistency, and 91 focused tests passed, plus compileall/Ruff/diff check; no-motion only, with no artifact installation or Runtime restart.
 - Implementation/review commit: `8d3f7297` on `feature/planning-loop`; hash-reference completion follows in a documentation-only commit. / 实现/复审提交：`8d3f7297`，分支 `feature/planning-loop`；hash 回填由纯文档提交收尾。
 
+## Archived detailed records / 已归档详细记录
+
 ## v13.4.6 (2026-10-14 00:15) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -137,8 +165,6 @@
 
 ### Git 提交 / Git Commit
 - Deployment log/index commit: `c11bdbc4` on `feature/planning-loop`; commit-reference completion follows in the log-only commit. / 部署日志与索引提交：`c11bdbc4`，分支 `feature/planning-loop`；提交引用由纯日志提交收尾。
-
-## Archived detailed records / 已归档详细记录
 
 ## v13.4.5 (2026-10-13 22:32) - codex
 

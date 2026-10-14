@@ -3701,6 +3701,51 @@ def test_node_executor_stops_blocked_scene_bind_before_model_turn():
     assert loop.model_calls == 0
 
 
+def test_node_executor_does_not_consume_pending_selection_when_admission_blocked():
+    task = SimpleNamespace(
+        active_revision_id="revision-blocked-pending",
+        active_revision=SimpleNamespace(execution_records=[]),
+    )
+    calls = []
+
+    class Coordinator:
+        def get_task(self, _task_id):
+            return task
+
+        def pending_planning_selection(self, *_args, **_kwargs):
+            return {
+                "execution_tool": "gateway.execute",
+                "tool_id": "scene.bind",
+                "planning_binding": {},
+            }
+
+    class Loop:
+        def __init__(self):
+            self.tools = SimpleNamespace(execute=self.execute)
+
+        async def execute(self, *_args, **_kwargs):
+            calls.append("execute")
+            raise AssertionError("blocked admission must not consume pending selection")
+
+        async def run_node_turn(self, **_kwargs):
+            raise AssertionError("blocked admission must not reach the model")
+
+    context = _executor_context().model_copy(update={
+        "revision_id": "revision-blocked-pending",
+        "capability": "scene.bind",
+        "scene_bind_selection": {
+            "status": "blocked",
+            "code": "scene_bind_selection_inadmissible",
+            "reason": "declared entity is ambiguous",
+        },
+    })
+
+    with pytest.raises(NodeTurnIncompleteError, match="selection_admission_blocked"):
+        asyncio.run(AgentLoopNodeExecutor(Loop(), Coordinator())(context))
+
+    assert calls == []
+
+
 def test_node_executor_consumes_concurrent_selection_before_model_turn():
     records = []
     pending = {"value": None}
