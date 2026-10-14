@@ -26,7 +26,7 @@
 ```
 
 ### Git 提交 / Git Commit
-- Implementation commit pending on `feature/planning-loop`; hash-reference completion follows. / 实现提交待完成；提交引用随后回填。
+- Implementation commit: `3fe2afcf` on `feature/planning-loop`; hash-reference completion follows in a documentation-only commit. / 实现提交：`3fe2afcf`，分支 `feature/planning-loop`；提交引用随后以纯文档提交完成。
 
 ## v13.4.10 (2026-10-14 02:45) - codex
 
