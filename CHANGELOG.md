@@ -22,7 +22,7 @@
 ### 文件、验证与边界 / Files, Verification, and Boundary
 - [新增] `docs/forge/CURRENT_SUPPORT_BIND_DIAGNOSIS_20261014.md:L1-L120`；[修改] `changelog/2026-10_part6.md:L1102-L1116`、`CHANGELOG.md:L5-L25`：保存证据、根因分层、保留的 fail-closed 行为和非任务专用修复方向。 / [Added] the diagnosis document and [modified] the two changelog ranges to record evidence, layered causes, preserved fail-closed behavior, and generic remediation.
 - 验证：只读核对 AgentTask record、execution records、settlements、planning selections、events，任务仍为 `awaiting_replan`，没有调用 Runtime Query/Action；`git diff --check` 通过。 / Verification: read-only task record, execution records, settlements, planning selections, and events were checked; the task remains `awaiting_replan`, no Runtime Query/Action was called, and `git diff --check` passed.
-- Documentation commit pending on `feature/planning-loop`; reference completion follows. / 文档提交待在 `feature/planning-loop` 完成；提交引用随后回填。
+- Documentation commit: `6c54b5ce` on `feature/planning-loop`. / 文档提交：`6c54b5ce`，分支 `feature/planning-loop`。
 
 ## v13.4.8 (2026-10-14 01:04) - codex
 
