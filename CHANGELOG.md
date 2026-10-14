@@ -28,7 +28,7 @@
 - 文档变更未运行代码测试或在线模型，未创建任务、调用 Gateway、读取相机或执行仿真/物理动作；后续实现的回归命令已写入方案。 / This documentation change ran no code tests or online model and created no task, Gateway call, camera read, or simulated/physical action; future implementation regression commands are included.
 
 ### Git 提交 / Git Commit
-- Branch: `feature/planning-loop`；文档提交后以同一条目的日志引用提交记录其 hash，并推送当前分支。 / Record the document commit hash in a follow-up log-reference commit for this same entry, then push the current branch.
+- Commit: `86106758`；Branch: `feature/planning-loop`；2026-10-14（Asia/Shanghai）；提交引用由同版本纯日志提交补全。 / Documentation commit: `86106758` on the current branch; its reference is completed in a log-only commit for this version.
 
 ## v13.4.12 (2026-10-14 12:58) - codex
 
