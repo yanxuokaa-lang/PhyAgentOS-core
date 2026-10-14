@@ -16,7 +16,11 @@ from PhyAgentOS.agent.planning_facts import (
     fresh_binding_for_execution_identity,
     response_facts,
 )
-from PhyAgentOS.forge.binding import missing_preplan_queries, required_preplan_queries
+from PhyAgentOS.forge.binding import (
+    missing_preplan_queries,
+    query_record_status,
+    required_preplan_queries,
+)
 
 TERMINAL_EXECUTION_STATUSES = {"succeeded", "failed", "cancelled", "stopped", "unknown"}
 _MAX_PHASE_ITEMS = 64
@@ -1291,13 +1295,18 @@ def _durable_execution_context(
             else None
         )
         record_status = getattr(record, "status", None)
+        effective_record_status = (
+            query_record_status(record)
+            if getattr(record, "semantics", None) == "query"
+            else record_status
+        )
         settlement_status = getattr(settlement, "status", None)
         error = getattr(record, "error", None)
         error = error if isinstance(error, dict) else {}
         response_error = response_facts(getattr(record, "response", None)).get("error")
         response_error = response_error if isinstance(response_error, dict) else {}
         metadata = node_metadata.get((revision_id, node), {})
-        if record_status in {"failed", "cancelled", "stopped"} or settlement_status in {
+        if effective_record_status in {"failed", "cancelled", "stopped"} or settlement_status in {
             "failed", "cancelled_before_start", "stale"
         }:
             historical_failures.append({
@@ -1308,7 +1317,7 @@ def _durable_execution_context(
                 "capability": metadata.get("capability"),
                 "tool_id": getattr(record, "tool_id", None),
                 "semantics": getattr(record, "semantics", None),
-                "record_status": record_status,
+                "record_status": effective_record_status,
                 "settlement_status": settlement_status,
                 "invocation_id": getattr(record, "invocation_id", None),
                 "error": {
@@ -1318,7 +1327,7 @@ def _durable_execution_context(
                 },
                 "evidence_refs": list(getattr(record, "evidence_refs", ()))[:8],
             })
-        if record_status == "unknown" or settlement_status == "outcome_unknown":
+        if effective_record_status == "unknown" or settlement_status == "outcome_unknown":
             historical_unknowns.append({
                 "revision_id": revision_id,
                 "record_id": getattr(record, "record_id", None),
@@ -1327,7 +1336,7 @@ def _durable_execution_context(
                 "capability": metadata.get("capability"),
                 "tool_id": getattr(record, "tool_id", None),
                 "semantics": getattr(record, "semantics", None),
-                "record_status": record_status,
+                "record_status": effective_record_status,
                 "settlement_status": settlement_status,
                 "invocation_id": getattr(record, "invocation_id", None),
                 "evidence_refs": list(getattr(record, "evidence_refs", ()))[:8],
@@ -1336,6 +1345,19 @@ def _durable_execution_context(
         if semantics not in {"action", "session"} or not isinstance(node, str):
             continue
         if settlement is None:
+            if effective_record_status == "unknown":
+                no_replay.append({
+                    "revision_id": revision_id,
+                    "node_id": node,
+                    "tool_id": getattr(record, "tool_id", None),
+                    "invocation_id": getattr(record, "invocation_id", None),
+                    "record_id": getattr(record, "record_id", None),
+                    "settlement_status": None,
+                    "reason": (
+                        "unknown remote Action/Session state without a settlement; "
+                        "reconcile the persisted execution record instead of resending"
+                    ),
+                })
             continue
         if settlement_status == "outcome_unknown":
             facts = response_facts(getattr(record, "response", None))

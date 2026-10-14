@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from PhyAgentOS.agent.context import ContextBuilder
 from PhyAgentOS.agent.experience.activation import SkillActivationManager
 from PhyAgentOS.agent.experience.store import ExperienceStore
 from PhyAgentOS.agent.loop import AgentLoop, AgentLoopRunResult
@@ -1923,7 +1924,28 @@ def test_node_turn_yields_after_bound_execution_and_cannot_continue_revision(tmp
 
 def test_segment_continuation_turn_appends_next_revision_without_execution_tools(tmp_path):
     async def exercise():
+        for name, instruction in (
+            ("pick-place-workflow", "Continue from the persisted workflow route."),
+            ("global-safety", "Preserve the continuation stop rule."),
+        ):
+            skill_dir = tmp_path / "skills" / name
+            skill_dir.mkdir(parents=True)
+            (skill_dir / "SKILL.md").write_text(
+                f"---\nname: {name}\ndescription: fixture\nalways: true\n---\n"
+                f"{instruction}\n",
+                encoding="utf-8",
+            )
         c, task = setup_task(tmp_path, goal="Move two scene-bound objects in sequence")
+        c.store.update(
+            task.task_id,
+            lambda record: setattr(
+                record,
+                "active_skill_instructions",
+                "Continue from the persisted workflow route.",
+            ),
+            event_type="fixture_skill_instructions",
+        )
+        task = c.get_task(task.task_id)
         await ForgeTaskMaterializePlanTool(c).execute(
             task.task_id,
             nodes=semantic_nodes(1),
@@ -1995,6 +2017,8 @@ def test_segment_continuation_turn_appends_next_revision_without_execution_tools
         assert "forge_task_finalize" in visible
         assert "forge_tool_query" not in visible
         sent = json.dumps(provider.requests[0])
+        assert sent.count("Continue from the persisted workflow route.") == 1
+        assert "Preserve the continuation stop rule." in sent
         assert "predecessor-only source producers" in sent
         assert "Declaring dependent Action nodes does not execute or authorize them" in sent
         assert prompt_tool_sets == [frozenset({
@@ -2444,10 +2468,39 @@ def test_activation_retains_instructions_when_source_changes(tmp_path):
 
 def test_node_turn_restores_primary_skill_without_copying_historical_skill_use(tmp_path):
     async def exercise():
+        primary_skill_dir = tmp_path / "skills" / "pick-place-workflow"
+        primary_skill_dir.mkdir(parents=True)
+        (primary_skill_dir / "SKILL.md").write_text(
+            "---\nname: pick-place-workflow\ndescription: primary\nalways: true\n---\n"
+            "Observe after grasp.\n",
+            encoding="utf-8",
+        )
+        safety_skill_dir = tmp_path / "skills" / "global-safety"
+        safety_skill_dir.mkdir(parents=True)
+        (safety_skill_dir / "SKILL.md").write_text(
+            "---\nname: global-safety\ndescription: safety\nalways: true\n---\n"
+            "Preserve the global stop rule.\n",
+            encoding="utf-8",
+        )
         c = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=object())
         task = c.create_task(task_description="Move only the left red object", verification=TaskVerificationContract(mode="off"))
+        binding = ForgeSkillBinding(
+            binding_id="binding-instructions",
+            skill_name="pick-place-workflow",
+            skill_version="2.2.0",
+            manifest_sha256="a" * 64,
+            skill_document_sha256="b" * 64,
+            runtime_profile="fixture",
+            runtime_instance_id="fixture-runtime",
+            gateway_url="http://fixture.invalid",
+            required_tools=(),
+        )
         # Create an isolated persisted task fixture with its activated instructions.
-        task = task.model_copy(update={"task_id": "task-with-instructions", "primary_skill_instructions": "Observe after grasp."})
+        task = task.model_copy(update={
+            "task_id": "task-with-instructions",
+            "primary_skill_binding": binding,
+            "primary_skill_instructions": "Observe after grasp.",
+        })
         c.store.update("%s" % c.store.active().task_id, lambda item: setattr(item, "status", AgentTaskStatus.FAILED), event_type="fixture_end")
         c.store.create(task)
         initial_use = c.record_skill_use(
@@ -2470,6 +2523,7 @@ def test_node_turn_restores_primary_skill_without_copying_historical_skill_use(t
         assert "Move only the left red object" in sent
         assert "Observe after grasp." in sent
         assert sent.count("Observe after grasp.") == 1
+        assert "Preserve the global stop rule." in sent
         assert "HISTORICAL FULL INSTRUCTIONS" not in sent
         assert "node evidence" in sent
         assert '"node_context"' not in sent
@@ -2484,6 +2538,34 @@ def test_node_turn_restores_primary_skill_without_copying_historical_skill_use(t
         with pytest.raises(AgentTaskError, match="immutable"):
             c.store.update(task.task_id, lambda item: setattr(item, "primary_skill_instructions", "changed"), event_type="bad_update")
     asyncio.run(exercise())
+
+
+def test_context_builder_active_skill_exclusion_is_targeted_and_optional(tmp_path):
+    for name, instruction in (
+        ("primary-workflow", "PRIMARY WORKFLOW RULE"),
+        ("global-safety", "GLOBAL SAFETY RULE"),
+    ):
+        skill_dir = tmp_path / "skills" / name
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            f"---\nname: {name}\ndescription: fixture\nalways: true\n---\n"
+            f"{instruction}\n",
+            encoding="utf-8",
+        )
+
+    context = ContextBuilder(tmp_path)
+    ordinary = context.build_system_prompt()
+    targeted = context.build_system_prompt(
+        excluded_active_skill_names=("primary-workflow",)
+    )
+    disabled = context.build_system_prompt(include_active_skills=False)
+
+    assert "PRIMARY WORKFLOW RULE" in ordinary
+    assert "GLOBAL SAFETY RULE" in ordinary
+    assert "PRIMARY WORKFLOW RULE" not in targeted
+    assert "GLOBAL SAFETY RULE" in targeted
+    assert "PRIMARY WORKFLOW RULE" not in disabled
+    assert "GLOBAL SAFETY RULE" not in disabled
 
 
 def test_record_skill_use_is_idempotent_for_same_node_decision(tmp_path):

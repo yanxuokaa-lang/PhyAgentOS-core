@@ -120,6 +120,29 @@ class AgentLoop:
     _TOOL_RESULT_MAX_CHARS = 16_000
 
     @staticmethod
+    def _persisted_primary_skill_name(task: Any) -> str | None:
+        """Return the Skill whose persisted instructions replace its system copy."""
+        instructions = (
+            getattr(task, "active_skill_instructions", None)
+            or getattr(task, "primary_skill_instructions", None)
+        )
+        if not isinstance(instructions, str) or not instructions.strip():
+            return None
+        binding = getattr(task, "primary_skill_binding", None)
+        skill_name = getattr(binding, "skill_name", None)
+        if isinstance(skill_name, str) and skill_name.strip():
+            return skill_name
+        for skill_use in reversed(tuple(getattr(task, "skill_uses", ()))):
+            skill_name = getattr(skill_use, "skill_name", None)
+            if (
+                getattr(skill_use, "instructions", None) == instructions
+                and isinstance(skill_name, str)
+                and skill_name.strip()
+            ):
+                return skill_name
+        return None
+
+    @staticmethod
     def _retry_provider_timeout(*, projection_scope: str, phase: str) -> bool:
         """Retry a timed-out model decision before any Tool dispatch.
 
@@ -2047,8 +2070,10 @@ class AgentLoop:
                 "node turn requires non-empty task, revision, node, and prompt identities"
             )
         node_session_key = f"agent_task:{task_id}"
+        persisted_primary_skill_name = None
         if self.forge_task_coordinator is not None:
             task = self.forge_task_coordinator.get_task(task_id)
+            persisted_primary_skill_name = self._persisted_primary_skill_name(task)
             node_session_key = task.origin_session_key or node_session_key
             if task.active_revision_id != revision_id:
                 raise ValueError("node turn revision is not current")
@@ -2069,7 +2094,9 @@ class AgentLoop:
             current_message=prompt,
             channel="agent_task",
             chat_id=f"{task_id}:{revision_id}:{node_id}",
-            include_active_skills=False,
+            excluded_active_skill_names=(persisted_primary_skill_name,)
+            if persisted_primary_skill_name
+            else (),
         )
         return await self._run_agent_loop(
             messages,
@@ -2194,12 +2221,15 @@ class AgentLoop:
         # issuing an implicit refresh Query.
         if continuation_route == "refresh_scene_before_next_segment":
             continuation_tools.add("forge_tool_query")
+        persisted_primary_skill_name = self._persisted_primary_skill_name(task)
         messages = self.context.build_messages(
             history=[],
             current_message=prompt,
             channel="agent_task",
             chat_id=f"{task_id}:{task.active_revision_id}:continuation",
-            include_active_skills=False,
+            excluded_active_skill_names=(persisted_primary_skill_name,)
+            if persisted_primary_skill_name
+            else (),
         )
         return await self._run_agent_loop(
             messages,

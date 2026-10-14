@@ -131,7 +131,13 @@ def estimate_prompt_tokens(
             parts.append(json.dumps(tools, ensure_ascii=False))
         return len(enc.encode("\n".join(parts)))
     except Exception:
-        return 0
+        # Keep prompt budgeting useful when the optional tokenizer is absent or
+        # broken.  The hard counter and component diagnostics must not silently
+        # report zero for a non-empty request.
+        fallback = sum(estimate_message_tokens(message) for message in messages)
+        if tools:
+            fallback += max(1, len(json.dumps(tools, ensure_ascii=False)) // 4)
+        return max(1, fallback) if messages or tools else 0
 
 
 def estimate_message_tokens(message: dict[str, Any]) -> int:

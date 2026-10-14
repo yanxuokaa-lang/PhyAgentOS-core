@@ -5,7 +5,7 @@ import json
 import mimetypes
 import platform
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -52,6 +52,7 @@ class ContextBuilder:
         skill_names: list[str] | None = None,
         *,
         include_active_skills: bool = True,
+        excluded_active_skill_names: Collection[str] | None = None,
     ) -> str:
         """Build the system prompt from identity, bootstrap files, memory, and skills."""
         parts = [self._get_identity()]
@@ -69,6 +70,10 @@ class ContextBuilder:
             active_skills = list(
                 dict.fromkeys(active_skills + self.skills.get_active_skills())
             )
+        excluded_active_skills = set(excluded_active_skill_names or ())
+        active_skills = [
+            name for name in active_skills if name not in excluded_active_skills
+        ]
         if include_active_skills and active_skills:
             active_content = self.skills.load_skills_for_context(active_skills)
             if active_content:
@@ -244,6 +249,7 @@ Reply directly with text for conversations. Only use the 'message' tool to send 
         channel: str | None = None,
         chat_id: str | None = None,
         include_active_skills: bool = True,
+        excluded_active_skill_names: Collection[str] | None = None,
     ) -> list[dict[str, Any]]:
         """Build the complete message list for an LLM call."""
         message_ctx = self._build_message_context(channel, chat_id)
@@ -262,6 +268,7 @@ Reply directly with text for conversations. Only use the 'message' tool to send 
                 "content": self.build_system_prompt(
                     skill_names,
                     include_active_skills=include_active_skills,
+                    excluded_active_skill_names=excluded_active_skill_names,
                 ),
             },
             *history,

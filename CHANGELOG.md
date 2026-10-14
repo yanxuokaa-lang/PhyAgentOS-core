@@ -2,6 +2,46 @@
 
 ## 最近五版本 / Latest five versions
 
+## v13.7.1 (2026-10-14 22:32) - codex
+
+### 变更摘要 / Summary [完成]
+- [policy] [fix] 七维复审 JEV P1b 并修复四项 Major：保留无关 active Skill、修复 tokenizer fallback、投影 unknown Action/Session no-replay、暴露 provider unavailable。 / Review JEV P1b across seven dimensions and fix four Major issues: retain unrelated active Skills, repair tokenizer fallback, project unknown Action/Session no-replay, and expose provider unavailability. (local)
+- [eval] [test] 增加主 Skill 单份、全局 Skill 保留、旧结构等价缩减、业务失败、unknown 不重放和 tokenizer 故障回归。 / Add regressions for one primary Skill copy, global-Skill retention, equivalent old-structure reduction, business failure, unknown non-replay, and tokenizer failure. (local)
+
+### 文件变更详情 / File Change Details
+- [修改 / Modified] `PhyAgentOS/agent/context.py:L8,L50-L80,L243-L276`：新增按名称排除 active Skill；`include_active_skills` 与普通入口默认兼容。 / Add name-scoped active-Skill exclusion while retaining `include_active_skills` and ordinary defaults.
+- [修改 / Modified] `PhyAgentOS/agent/loop.py:L122-L143,L2064-L2106,L2216-L2235`：node/continuation 只排除由持久指令对应的 primary Skill。 / Node/continuation turns exclude only the primary Skill tied to persisted instructions.
+- [修改 / Modified] `PhyAgentOS/agent/prompt_context.py:L19-L23,L1280-L1361`：复用 Query 业务状态并投影无 settlement unknown Action/Session 的 no-replay。 / Reuse Query business status and project no-replay for unknown Action/Session records without settlements.
+- [修改 / Modified] `PhyAgentOS/utils/helpers.py:L112-L140`：tokenizer 异常时使用逐消息与 tool schema fallback。 / Use per-message and tool-schema fallback when tokenization fails.
+- [修改 / Modified] `tests/test_agent_foundation.py:L1925-L2035,L2469-L2568`、`tests/test_prompt_context.py:L2158-L2387`：补齐正反例和真实旧结构比较。 / Add positive/negative cases and a real former-structure comparison.
+
+### 关键代码 Diff / Key Code Diff
+```diff
+- include_active_skills=False
++ excluded_active_skill_names=(persisted_primary_skill_name,)
++ # unrelated active Skills remain
+- tokenizer failure -> 0
++ tokenizer failure -> existing per-message + tool-schema estimate
+- unknown Action/Session without settlement -> no replay fact
+```
+
+### 七维复审 / Seven-Dimension Review
+1. 架构所有权：ContextBuilder、AgentLoop、PromptContextManager 各守 system、编排、只读投影边界；无第二 loader/执行器/状态库。 / Architecture ownership remains separated across system assembly, orchestration, and read-only projection; no second loader, executor, or state store.
+2. 正确性：主 Skill 恰好一份，无关 Skill 保留；Query 使用既有业务状态；旧/新比较不再人为放大。 / Correctness: one primary Skill copy, unrelated Skills retained, existing Query business status reused, and the comparison is no longer inflated.
+3. 错误可观测：unavailable/unknown 不被 transport success 隐藏，tokenizer 故障不再记录零。 / Error observability: unavailable/unknown is not hidden by transport success and tokenizer failure no longer records zero.
+4. 恢复幂等：unknown record 携带稳定 identity 与 no-replay 原因，Coordinator reconciliation/admission 顺序不变。 / Recovery/idempotency: unknown records retain stable identity and no-replay reasons without changing Coordinator reconciliation/admission order.
+5. 机器人安全：无现场调用、运动或新权限；unknown 世界变化继续 fail-closed。 / Robotics safety: no live call, motion, or new authority; unknown world changes remain fail-closed.
+6. 扩展兼容：旧开关和默认调用有回归，新参数通用可选。 / Extension compatibility: legacy switch and defaults are covered, and the new parameter is generic and optional.
+7. AgentLoop 收敛/预算：组件统计不增加 provider/model 回合，保留全局 Skill 不产生执行重放。 / AgentLoop convergence/budget: component accounting adds no provider/model turn and retained global Skills cause no execution replay.
+- 修复后无 Blocker/Major，未新增 hash、冻结 contract、baseline、重复 gate 或状态副本。 / No Blocker/Major remains; no hash, frozen contract, baseline, duplicate gate, or state copy was added.
+
+### 验证与边界 / Validation and Boundary
+- 定向 `9 passed`；工单九文件 `495 passed in 11.87s`；全仓 `945 passed in 31.64s`；Ruff、compileall、`git diff --check` 通过。 / Focused `9 passed`; nine work-order files `495 passed in 11.87s`; full repository `945 passed in 31.64s`; Ruff, compileall, and diff checks passed.
+- 未安装/启动 Runtime，未恢复任务，未调用现场 Query/Action、Gateway、相机、仿真或运动。 / No Runtime lifecycle, task resume, live Query/Action, Gateway, camera, simulation, or motion occurred.
+
+### Git 提交 / Git Commit
+- Implementation commit: pending on `feature/planning-loop`; exact hash will be completed by the same-version log-only commit. / 实现提交待在 `feature/planning-loop` 创建；精确 hash 将由同版本纯日志提交补全。
+
 ## v13.7.0 (2026-10-14 21:38) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -150,6 +190,8 @@
 ### Git 提交 / Git Commit
 - Implementation commit: `16ee438c` on `feature/planning-loop`; this exact reference is completed by the same-version log-only commit. / 实现提交：`16ee438c`，分支 `feature/planning-loop`；精确引用由同版本纯日志提交补全。
 
+## Archived detailed records / 已归档详细记录
+
 ## v13.4.15 (2026-10-14 14:15) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -181,8 +223,6 @@
 
 ### Git 提交 / Git Commit
 - Commit: `7a38d33a`；Branch: `feature/planning-loop`；2026-10-14（Asia/Shanghai）；本引用由同版本纯日志提交补全。 / Documentation commit: `7a38d33a` on the current branch; its reference is completed in a log-only commit for this version.
-
-## Archived detailed records / 已归档详细记录
 
 ## v13.4.14 (2026-10-14 13:47) - codex
 

@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
+import PhyAgentOS.utils.helpers as helpers
 from PhyAgentOS.agent.loop import AgentLoop
 from PhyAgentOS.agent.prompt_context import (
     AgentPromptContextManager,
@@ -2174,9 +2175,11 @@ def test_p1b_token_breakdown_and_same_fixture_request_reduction() -> None:
         context_window_tokens=100_000,
         compaction_trigger_tokens=95_000,
     )
-    duplicate_skill = task.primary_skill_instructions * 30
     old_messages = [
-        {"role": "system", "content": "bootstrap\n# Active Skills\n" + duplicate_skill},
+        {
+            "role": "system",
+            "content": "bootstrap\n# Active Skills\n" + task.primary_skill_instructions,
+        },
         {
             "role": "system",
             "content": "Current persisted AgentTask projection.\n"
@@ -2185,7 +2188,8 @@ def test_p1b_token_breakdown_and_same_fixture_request_reduction() -> None:
         {"role": "user", "content": json.dumps({
             "original_goal": task.task_description,
             "verification": task.verification,
-            "skill_instructions": duplicate_skill,
+            "skill_binding": None,
+            "skill_use": None,
             "node_context": "source catalog " * 50,
         })},
     ]
@@ -2207,6 +2211,9 @@ def test_p1b_token_breakdown_and_same_fixture_request_reduction() -> None:
     encoded = json.dumps(view.messages, ensure_ascii=False)
     old_size = len(json.dumps(old_messages, ensure_ascii=False))
     assert len(encoded) < old_size
+    assert json.dumps(old_messages, ensure_ascii=False).count(
+        task.primary_skill_instructions
+    ) == 2
     assert encoded.count(task.primary_skill_instructions) == 1
 
     breakdown = estimate_prompt_component_tokens(
@@ -2263,6 +2270,89 @@ def test_p1b_node_projection_keeps_old_identity_and_historical_failures() -> Non
     assert "remaining_obligations" not in projection["execution_phase_context"]
 
 
+def test_p1b_provider_unavailable_query_is_projected_as_historical_failure() -> None:
+    node = SimpleNamespace(
+        node_id="observe",
+        obligation_id="observe current scene",
+        capability="scene.observe",
+        dependencies=(),
+        conditions=(),
+        required_evidence=(),
+        input_bindings={},
+        resources=(),
+        effects=(),
+        retry_of=None,
+    )
+    unavailable = SimpleNamespace(
+        record_id="observe-provider-unavailable",
+        revision_id="revision-1",
+        node_id="observe",
+        tool_id="scene.observe",
+        semantics="query",
+        status="succeeded",
+        invocation_id=None,
+        evidence_refs=("tool:observe-provider-unavailable",),
+        arguments={},
+        response={
+            "data": {
+                "status": "unavailable",
+                "error": {
+                    "failure_stage": "provider",
+                    "retryable": False,
+                    "code": "camera_unavailable",
+                },
+            }
+        },
+        error=None,
+    )
+    task = _task(graph=SimpleNamespace(nodes=(node,)), records=(unavailable,))
+
+    failures = node_task_prompt_projection(task, "observe", compact=True)[
+        "execution_phase_context"
+    ]["historical_failures"]
+
+    assert failures[0]["record_id"] == unavailable.record_id
+    assert failures[0]["record_status"] == "failed"
+    assert failures[0]["error"]["code"] == "camera_unavailable"
+
+
+def test_p1b_unknown_action_without_settlement_remains_non_replayable() -> None:
+    node = SimpleNamespace(
+        node_id="place",
+        obligation_id="place selected object",
+        capability="object.place",
+        dependencies=(),
+        conditions=(),
+        required_evidence=(),
+        input_bindings={"entity_ref": "entity://stable-1"},
+        resources=(),
+        effects=("object.displaced",),
+        retry_of=None,
+    )
+    unknown = SimpleNamespace(
+        record_id="action-unknown-before-settlement",
+        revision_id="revision-1",
+        node_id="place",
+        tool_id="object.place",
+        semantics="action",
+        status="unknown",
+        invocation_id=None,
+        evidence_refs=(),
+        arguments={"entity_ref": "entity://stable-1"},
+        response=None,
+        error={"type": "TimeoutError", "message": "dispatch state unknown"},
+    )
+    task = _task(graph=SimpleNamespace(nodes=(node,)), records=(unknown,))
+
+    phase = node_task_prompt_projection(task, "place", compact=True)[
+        "execution_phase_context"
+    ]
+
+    assert phase["historical_unknowns"][0]["record_id"] == unknown.record_id
+    assert phase["no_replay_actions"][0]["record_id"] == unknown.record_id
+    assert "instead of resending" in phase["no_replay_actions"][0]["reason"]
+
+
 def test_p1b_continuation_keeps_unfinished_goals_effects_and_evidence_gaps() -> None:
     task = _task(graph=SimpleNamespace(nodes=()))
     task.primary_skill_instructions = "Continue only after fresh evidence."
@@ -2275,6 +2365,25 @@ def test_p1b_continuation_keeps_unfinished_goals_effects_and_evidence_gaps() -> 
     assert "unfinished_goals" in projection
     assert "completed_effects" in projection["execution_phase_context"]
     assert "task_goals" not in projection
+
+
+def test_prompt_token_fallback_is_nonzero_when_optional_tokenizer_fails(monkeypatch) -> None:
+    monkeypatch.setattr(helpers, "tiktoken", None)
+    messages = [{"role": "system", "content": "retain the safety rule"}]
+    tools = [{"function": {"name": "forge_tool_context"}}]
+
+    estimated = helpers.estimate_prompt_tokens(messages, tools)
+    breakdown = estimate_prompt_component_tokens(
+        helpers.estimate_prompt_tokens,
+        messages,
+        tools,
+        phase="planning_execution",
+    )
+
+    assert estimated > 0
+    assert breakdown.total > 0
+    assert breakdown.bootstrap_system > 0
+    assert breakdown.tool_schemas > 0
 
 
 def test_task_projection_does_not_report_compaction_by_itself() -> None:
