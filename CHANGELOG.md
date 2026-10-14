@@ -30,7 +30,7 @@
 - 未部署、未恢复任务、未调用现场 Gateway/Query/Action/Session、相机、仿真或运动。 / No deployment, task resume, live Gateway/Query/Action/Session, camera, simulation, or motion occurred.
 
 ### Git 提交 / Git Commit
-- Implementation commit: `(pending)` on `feature/planning-loop`. / 实现提交：`(pending)`，位于 `feature/planning-loop`。
+- Implementation commit: `3f72e012` on `feature/planning-loop`. / 实现提交：`3f72e012`，位于 `feature/planning-loop`。
 
 ## v13.9.5 (2026-10-15 02:50) - codex
 
