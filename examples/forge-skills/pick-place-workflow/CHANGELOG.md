@@ -1,5 +1,10 @@
 # Change Log
 
+## v3.0.25 (2026-10-14)
+
+- 中文：声明 `scene.bind` 从当前授权 `scene.understand` 投影 `observation_ref`、`scene_revision` 与 `calibration_ref`，复用现有来源资格与场景一致性校验；不改变 Runtime 或运动授权。
+- English: Declare `scene.bind` projection of `observation_ref`, `scene_revision`, and `calibration_ref` from the current authorized `scene.understand`, reusing existing source qualification and scene-consistency checks without changing Runtime or motion authorization.
+
 ## v3.0.24 (2026-10-14)
 
 - 中文：发布 Adapter Node `1.0.14`，使 unknown/known-failed Action 在 Action artifact 缺失时仍以前序 binding provenance 保留稳定身份，并在 fresh binding 重建身份后结算该视觉义务；known-empty acquire 仅接受完整且物理一致的测量，畸形 receipt 降级为 unknown 对账。

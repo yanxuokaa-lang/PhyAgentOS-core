@@ -2,6 +2,25 @@
 
 ## 最近五版本 / Latest five versions
 
+## v13.6.0 (2026-10-14 16:00) - codex
+
+### 变更摘要 / Summary [完成]
+- [policy] [feat] 为 `scene.bind` 声明当前授权 `scene.understand` 的 `observation_ref`、`scene_revision`、`calibration_ref` named projection；复用既有 resolver，`entity_refs` 仍由 Agent 语义选择提供。 / Declare the current authorized `scene.understand` named projection for `scene.bind`; reuse existing resolvers while keeping `entity_refs` Agent-owned. (local)
+- [eval] [test] 增加真实 Coordinator 投影消费链、唯一固定语义 Query 零模型路径与缺字段、旧 scene、跨 observation、错误 Tool、未授权来源、模型覆盖和业务 unavailable 反例；全仓 `932 passed`。 / Add the real Coordinator projection path, zero-model projected Query path, and counterexamples for missing fields, stale scene, cross-observation, wrong Tool, unauthorized source, model overrides, and business unavailable; full repository `932 passed`. (local)
+
+### 文件与关键 Diff / Files and Key Diff
+- `grounding.py:L71-L97`：增加 `observed_identity_for_binding_v1`，三项身份字段来自 `scene.understand / authorized / current`。 / Add `observed_identity_for_binding_v1` with the three identity fields from `scene.understand / authorized / current`.
+- `PhyAgentOS/agent/loop.py:L502-L545`、`planning_dispatch.py:L477-L510`、`planning_loop.py:L806-L847,L1147-L1163`：唯一固定语义 Query 直接持久化 projection selection；否则保留模型路径。 / Persist a projected selection directly for one fixed-semantics Query; retain the model path otherwise.
+- `tests/test_planning_selection.py:L582-L815`、`tests/test_planning_loop.py:L940-L1195`、Skill grounding tests：验证正向投影、零模型 selection/消费各一次且 LLM=0，以及拒绝边界。 / Verify positive projection, one zero-model selection and consumption with zero LLM calls, and rejection boundaries.
+- Skill `3.0.24 → 3.0.25`、Node `1.0.14 → 1.0.15`；Node SHA `c130d7538e2d16a2082bd1c7eb1a0a75166f2ddb04672d68e7d9e62e0845831c`；bundle SHA `684203d0c4f485903fcb9eb00ac0b720e316d0735eab343aaa2cbbf71b8053ab`。 / Record the Skill/Node version bumps and artifact SHA values.
+
+### 审核与边界 / Review and Boundary
+- 七维复审无 Blocker/Major；不改变 Coordinator/Runtime/Verifier/Action 所有权，不新增 hash、冻结 contract、状态库或 gate。零模型路径仅接受固定 `entity_refs`、唯一 available current source 和唯一 Query。 / Seven-dimension review found no Blocker/Major; ownership is unchanged and no new hash, frozen contract, state store, or gate was added. The zero-model path accepts only fixed `entity_refs`, one available current source, and one Query.
+- 关联 `228`、Skill `439`、全仓 `932` 测试通过；未安装/启动新制品、恢复任务、调用现场 Query/Action、相机、仿真或运动。 / Related `228`, Skill `439`, and full-repository `932` tests passed; no new artifact was installed/started and no live Query/Action, camera, simulation, or motion was used.
+
+### Git 提交 / Git Commit
+- 待提交；当前分支 `feature/planning-loop`。 / Pending commit on `feature/planning-loop`.
+
 ## v13.5.0 (2026-10-14 15:14) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -148,6 +167,8 @@
 ### Git 提交 / Git Commit
 - Commit: `86106758`；Branch: `feature/planning-loop`；2026-10-14（Asia/Shanghai）；提交引用由同版本纯日志提交补全。 / Documentation commit: `86106758` on the current branch; its reference is completed in a log-only commit for this version.
 
+## Archived detailed records / 已归档详细记录
+
 ## v13.4.12 (2026-10-14 12:58) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -175,8 +196,6 @@
 
 ### Git 提交 / Git Commit
 - Deployment log/index commit: `96748cc1` on `feature/planning-loop`; hash-reference completion follows in a log-only commit. / 部署日志/索引提交：`96748cc1`，分支 `feature/planning-loop`；提交引用由纯日志提交收尾。
-
-## Archived detailed records / 已归档详细记录
 
 ## v13.4.11 (2026-10-14 03:10) - codex
 

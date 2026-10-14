@@ -76,6 +76,25 @@ BIND_TOOL_SPEC = _spec(
     "Resolve selected observed entities to execution objects using calibrated geometry. "
     "Returns binding_ref and world geometry; does not choose goals or authorize motion.",
 )
+BIND_TOOL_SPEC["planning"].update({
+    "argument_projection": "observed_identity_for_binding_v1",
+    "argument_projection_plan": {
+        "projection_id": "observed_identity_for_binding_v1",
+        "source_slots": {
+            "understanding": {
+                "tool_id": "scene.understand",
+                "source_scope": "authorized",
+                "scene_relation": "current",
+                "source_field_map": {
+                    "observation_ref": ["observation_ref"],
+                    "scene_revision": ["scene_revision"],
+                    "calibration_ref": ["calibration_ref"],
+                },
+            },
+        },
+        "top_level_fields": ["entity_refs"],
+    },
+})
 STAGING_TOOL_SPEC = _spec(
     "manipulation.staging",
     {"binding_ref": _REF, "entity_ref": _REF},

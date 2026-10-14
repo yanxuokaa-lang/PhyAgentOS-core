@@ -474,6 +474,41 @@ class AgentComposedDispatch:
         except PlanningDispatchError:
             return None
 
+    def prepare_projected_query_selection(
+        self,
+        node_id: str,
+        arguments: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        """Admit one deterministic projected Query after trusted source assembly."""
+        node = next((item for item in self.graph.nodes if item.node_id == node_id), None)
+        if node is None:
+            return None
+        candidates = tuple(
+            policy for policy in self.policies if node.capability in policy.capabilities
+        )
+        if len(candidates) != 1:
+            return None
+        policy = candidates[0]
+        if (
+            policy.semantics != "query"
+            or policy.argument_projection_plan is None
+            or not policy.argument_projection_plan.source_slots
+            or policy.trusted_argument_builder is not None
+        ):
+            return None
+        try:
+            return self.prepare_selection(
+                node_id=node_id,
+                tool_id=policy.tool_id,
+                arguments=arguments,
+                decision_reason=(
+                    "execute the unique read-only Tool with complete frozen semantics "
+                    "and one authorized projection source"
+                ),
+            )
+        except PlanningDispatchError:
+            return None
+
     def admit_forge_tool(
         self, wrapper_name: str, arguments: Mapping[str, Any]
     ) -> AdmissionDecision | None:

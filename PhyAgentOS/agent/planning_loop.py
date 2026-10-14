@@ -803,6 +803,50 @@ def project_consumer_arguments(
         raise PlanningLoopError(str(exc)) from exc
 
 
+def deterministic_projection_arguments(
+    context: NodeExecutionContext,
+    plan: ArgumentProjectionPlan,
+) -> dict[str, Any] | None:
+    """Project a single-slot Query only when every semantic choice is frozen."""
+    if len(plan.source_slots) != 1:
+        return None
+    if any(field not in context.input_bindings for field in plan.top_level_fields):
+        return None
+    slot = next(iter(plan.source_slots))
+    record_ids = {
+        execution.record_id
+        for predecessor in context.predecessor_context
+        for execution in predecessor.executions
+        if execution.status == "succeeded"
+        and response_facts(execution.response).get("status") == "available"
+    }
+    record_ids.update(
+        evidence.record_id
+        for evidence in context.evidence_context
+        if evidence.status == "succeeded"
+        and response_facts(evidence.response).get("status") == "available"
+    )
+    eligible: list[str] = []
+    for record_id in sorted(record_ids):
+        try:
+            _validate_named_projection_sources(context, plan, {slot: record_id})
+        except PlanningLoopError:
+            continue
+        eligible.append(record_id)
+    if len(eligible) != 1:
+        return None
+    try:
+        return project_consumer_arguments(
+            context,
+            projection=plan.projection_id,
+            projection_plan=plan,
+            literals={field: context.input_bindings[field] for field in plan.top_level_fields},
+            source_record_ids={slot: eligible[0]},
+        )
+    except PlanningLoopError:
+        return None
+
+
 def _validate_named_projection_sources(
     context: NodeExecutionContext,
     plan: ArgumentProjectionPlan,
@@ -1100,6 +1144,23 @@ class AgentLoopNodeExecutor:
         resumed = await self._resume_node(context)
         if resumed is not None:
             return resumed
+        persist_projected_query = getattr(
+            self.agent_loop, "persist_deterministic_projected_query_selection", None,
+        )
+        if callable(persist_projected_query):
+            selected = persist_projected_query(context)
+            if hasattr(selected, "__await__"):
+                selected = await selected
+            if selected:
+                resumed = await self._resume_node(context)
+                if resumed is not None:
+                    return resumed
+            else:
+                # A concurrent governed selection may have won while source
+                # qualification was completing. Reconcile before model use.
+                resumed = await self._resume_node(context)
+                if resumed is not None:
+                    return resumed
         persist_frozen_query = getattr(
             self.agent_loop, "persist_deterministic_query_selection", None,
         )

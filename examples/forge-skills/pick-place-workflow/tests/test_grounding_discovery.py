@@ -4,6 +4,28 @@ from types import SimpleNamespace
 from PhyAgentOS.forge.tool_client import ForgeToolClient
 
 from pick_place_workflow.fake_gateway import FakeGatewayTransport
+from pick_place_workflow.grounding import BIND_TOOL_SPEC
+
+
+def test_scene_bind_declares_current_understanding_identity_projection():
+    planning = BIND_TOOL_SPEC["planning"]
+    assert planning["argument_projection"] == "observed_identity_for_binding_v1"
+    assert planning["argument_projection_plan"] == {
+        "projection_id": "observed_identity_for_binding_v1",
+        "source_slots": {
+            "understanding": {
+                "tool_id": "scene.understand",
+                "source_scope": "authorized",
+                "scene_relation": "current",
+                "source_field_map": {
+                    "observation_ref": ["observation_ref"],
+                    "scene_revision": ["scene_revision"],
+                    "calibration_ref": ["calibration_ref"],
+                },
+            },
+        },
+        "top_level_fields": ["entity_refs"],
+    }
 
 
 def test_missing_provider_is_not_ready_and_failure_is_preserved():

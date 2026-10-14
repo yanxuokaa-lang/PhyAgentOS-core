@@ -24,6 +24,7 @@ from PhyAgentOS.agent.planning_loop import (
     PredecessorExecutionContext,
     StaleNodeContextError,
     _scene_bind_selection_context,
+    deterministic_projection_arguments,
     node_context_prompt_projection,
     resolve_node_argument_sources,
 )
@@ -45,6 +46,7 @@ from PhyAgentOS.forge.task import (
 )
 from PhyAgentOS.planning import (
     AdmissionContext,
+    ArgumentProjectionPlan,
     NodeSettlement,
     PlanGraph,
     PlanningExecutionBinding,
@@ -933,6 +935,264 @@ def test_scene_bind_node_context_marks_stale_understanding_unavailable():
         "reason": "scene.understand predecessor is not from the current scene revision",
         "source_record_id": "understand-old",
     }
+
+
+def test_scene_bind_node_context_rejects_business_unavailable_understanding():
+    node = SimpleNamespace(capability="scene.bind", required_evidence=())
+    predecessor = PredecessorContext(
+        node_id="understand",
+        status="completed",
+        scene_revision="scene-current",
+        executions=(PredecessorExecutionContext(
+            record_id="understand-unavailable",
+            tool_id="scene.understand",
+            semantics="query",
+            status="succeeded",
+            response={"data": {
+                "status": "unavailable",
+                "scene_revision": "scene-current",
+                "observation_ref": "observation://scene-current/head",
+                "calibration_ref": "calibration://scene-current/head",
+                "entities": [{"entity_ref": "entity://must-not-bind"}],
+            }},
+        ),),
+    )
+
+    selection = _scene_bind_selection_context(
+        node, (predecessor,), "scene-current"
+    )
+
+    assert selection == {
+        "status": "unavailable",
+        "reason": "scene.understand did not produce usable entity evidence",
+        "source_record_id": "understand-unavailable",
+    }
+
+
+def test_deterministic_projection_requires_one_available_current_source():
+    plan = ArgumentProjectionPlan.model_validate({
+        "projection_id": "observed_identity_for_binding_v1",
+        "source_slots": {
+            "understanding": {
+                "tool_id": "scene.understand",
+                "source_scope": "authorized",
+                "scene_relation": "current",
+                "source_field_map": {
+                    "observation_ref": ["observation_ref"],
+                    "scene_revision": ["scene_revision"],
+                    "calibration_ref": ["calibration_ref"],
+                },
+            },
+        },
+        "top_level_fields": ["entity_refs"],
+    })
+    record = PredecessorExecutionContext(
+        record_id="understand-current",
+        tool_id="scene.understand",
+        semantics="query",
+        status="succeeded",
+        response={"data": {
+            "status": "available",
+            "observation_ref": "observation://scene-current/head",
+            "scene_revision": "scene-current",
+            "calibration_ref": "calibration://scene-current/head",
+        }},
+    )
+    context = _executor_context().model_copy(update={
+        "capability": "scene.bind",
+        "input_bindings": {"entity_refs": ["entity://green"]},
+        "scene_revision": "scene-current",
+        "predecessor_context": (PredecessorContext(
+            node_id="understand", status="completed", scene_revision="scene-current",
+            executions=(record,),
+        ),),
+    })
+
+    projected = deterministic_projection_arguments(context, plan)
+
+    assert projected == {
+        "observation_ref": "observation://scene-current/head",
+        "scene_revision": "scene-current",
+        "calibration_ref": "calibration://scene-current/head",
+        "entity_refs": ["entity://green"],
+    }
+    duplicate = context.model_copy(update={
+        "evidence_context": (EvidenceExecutionContext(
+            revision_id="revision-resume",
+            record_id="understand-duplicate",
+            tool_id="scene.understand",
+            status="succeeded",
+            evidence_refs=("artifact://understand-duplicate",),
+            arguments={},
+            response={"data": {
+                "status": "available",
+                "observation_ref": "observation://scene-current/other",
+                "scene_revision": "scene-current",
+                "calibration_ref": "calibration://scene-current/other",
+            }},
+        ),),
+    })
+    assert deterministic_projection_arguments(duplicate, plan) is None
+
+
+def test_agent_loop_persists_unique_projected_query_without_model_turn():
+    plan = ArgumentProjectionPlan.model_validate({
+        "projection_id": "observed_identity_for_binding_v1",
+        "source_slots": {
+            "understanding": {
+                "tool_id": "scene.understand",
+                "source_scope": "authorized",
+                "scene_relation": "current",
+                "source_field_map": {
+                    "observation_ref": ["observation_ref"],
+                    "scene_revision": ["scene_revision"],
+                    "calibration_ref": ["calibration_ref"],
+                },
+            },
+        },
+        "top_level_fields": ["entity_refs"],
+    })
+    node = PlanNode(
+        node_id="bind-current",
+        obligation_id="bind-current",
+        capability="scene.bind",
+        input_bindings={"entity_refs": ["entity://green"]},
+    )
+    payload = {
+        "task_id": "task-projected-query",
+        "revision_id": "revision-projected-query",
+        "graph_digest": "0" * 64,
+        "planner_decision_digest": "1" * 64,
+        "policy_snapshot_digest": "2" * 64,
+        "nodes": [node.model_dump(mode="json")],
+    }
+    payload["graph_digest"] = plan_graph_digest(payload)
+    policy = ToolSpecPolicy(
+        tool_id="scene.bind",
+        semantics="query",
+        spec_digest="3" * 64,
+        capabilities=("scene.bind",),
+        argument_projection=plan.projection_id,
+        argument_projection_plan=plan,
+    )
+    dispatch = AgentComposedDispatch(
+        PlanGraph.model_validate(payload),
+        (policy,),
+        AdmissionContext(scene_revision="scene-current"),
+        input_schemas={"scene.bind": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": [
+                "observation_ref", "scene_revision", "calibration_ref", "entity_refs",
+            ],
+            "properties": {
+                "observation_ref": {"type": "string"},
+                "scene_revision": {"type": "string"},
+                "calibration_ref": {"type": "string"},
+                "entity_refs": {"type": "array", "minItems": 1,
+                                "items": {"type": "string"}},
+            },
+        }},
+    )
+    context = NodeExecutionContext(
+        task_id="task-projected-query",
+        revision_id="revision-projected-query",
+        node_id="bind-current",
+        capability="scene.bind",
+        dependencies=(),
+        required_evidence=(),
+        input_bindings={"entity_refs": ["entity://green"]},
+        scene_revision="scene-current",
+        predecessor_context=(PredecessorContext(
+            node_id="understand",
+            status="completed",
+            scene_revision="scene-current",
+            executions=(PredecessorExecutionContext(
+                record_id="understand-current",
+                tool_id="scene.understand",
+                semantics="query",
+                status="succeeded",
+                response={"data": {
+                    "status": "available",
+                    "observation_ref": "observation://scene-current/head",
+                    "scene_revision": "scene-current",
+                    "calibration_ref": "calibration://scene-current/head",
+                }},
+            ),),
+        ),),
+    )
+
+    class Coordinator:
+        def __init__(self):
+            self.proposals = []
+            self.pending = None
+
+        def persist_planning_selection(self, proposal):
+            self.proposals.append(proposal)
+            self.pending = {
+                "execution_tool": "forge_tool_query",
+                "tool_id": proposal["tool_id"],
+                "planning_binding": {"node_id": proposal["node_id"]},
+            }
+
+        def pending_planning_selection(self, *_args, **_kwargs):
+            return self.pending
+
+    coordinator = Coordinator()
+    loop = SimpleNamespace(
+        _planning_dispatch=dispatch,
+        forge_task_coordinator=coordinator,
+    )
+
+    selected = AgentLoop.persist_deterministic_projected_query_selection(loop, context)
+
+    assert selected is True
+    assert len(coordinator.proposals) == 1
+    assert coordinator.proposals[0]["tool_arguments"] == {
+        "observation_ref": "observation://scene-current/head",
+        "scene_revision": "scene-current",
+        "calibration_ref": "calibration://scene-current/head",
+        "entity_refs": ["entity://green"],
+    }
+
+    records = []
+    task = SimpleNamespace(
+        active_revision_id="revision-projected-query",
+        active_revision=SimpleNamespace(execution_records=records),
+    )
+    coordinator.get_task = lambda _task_id: task
+
+    class Loop:
+        def __init__(self):
+            self._planning_dispatch = dispatch
+            self.forge_task_coordinator = coordinator
+            self.tools = ToolRegistry()
+            self.model_calls = 0
+
+        def persist_deterministic_projected_query_selection(self, node_context):
+            return AgentLoop.persist_deterministic_projected_query_selection(
+                self, node_context
+            )
+
+        async def run_node_turn(self, **_kwargs):
+            self.model_calls += 1
+            raise AssertionError("deterministic projected Query must not call the model")
+
+    coordinator.proposals.clear()
+    coordinator.pending = None
+    loop = Loop()
+    terminal = _terminal_record()
+    terminal.node_id = "bind-current"
+    terminal.tool_id = "scene.bind"
+    tool = _SelectionTool(records, record=terminal)
+    loop.tools.register(tool)
+
+    result = asyncio.run(AgentLoopNodeExecutor(loop, coordinator)(context))
+
+    assert result.status == "succeeded"
+    assert loop.model_calls == 0
+    assert len(coordinator.proposals) == 1
+    assert len(tool.calls) == 1
 
 
 def test_scene_bind_node_context_does_not_fabricate_candidates_without_understanding():

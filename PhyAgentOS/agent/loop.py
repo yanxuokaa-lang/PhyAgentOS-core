@@ -499,6 +499,51 @@ class AgentLoop:
             return False
         return True
 
+    def persist_deterministic_projected_query_selection(self, context: Any) -> bool:
+        """Persist a uniquely sourced projected Query without a model turn."""
+        dispatch = self._planning_dispatch
+        coordinator = self.forge_task_coordinator
+        if (
+            dispatch is None
+            or coordinator is None
+            or dispatch.graph.task_id != context.task_id
+        ):
+            return False
+        node = next(
+            (item for item in dispatch.graph.nodes if item.node_id == context.node_id),
+            None,
+        )
+        if node is None:
+            return False
+        candidates = tuple(
+            policy for policy in dispatch.policies if node.capability in policy.capabilities
+        )
+        if len(candidates) != 1:
+            return False
+        plan = candidates[0].argument_projection_plan
+        if plan is None:
+            return False
+        from PhyAgentOS.agent.planning_loop import deterministic_projection_arguments
+
+        arguments = deterministic_projection_arguments(context, plan)
+        if arguments is None:
+            return False
+        proposal = dispatch.prepare_projected_query_selection(context.node_id, arguments)
+        if proposal is None:
+            return False
+        try:
+            coordinator.persist_planning_selection(proposal)
+        except AgentTaskError:
+            pending = coordinator.pending_planning_selection(
+                context.task_id,
+                context.node_id,
+                scene_revision=dispatch.current_scene_revision,
+            )
+            if pending is None:
+                raise
+            return False
+        return True
+
     def start_ready_long_horizon_tasks(self, session_key: str) -> tuple[str, ...]:
         """Start materialized tasks created by the current user turn."""
         controller = self.long_horizon_controller

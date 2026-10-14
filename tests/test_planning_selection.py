@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import runpy
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -32,6 +34,10 @@ from PhyAgentOS.planning import (
     tool_input_binding_digest,
 )
 from PhyAgentOS.verification.contracts import TaskVerificationContract
+
+BIND_TOOL_SPEC = runpy.run_path(
+    str(Path(__file__).parents[1] / "examples/forge-skills/pick-place-workflow/src/pick_place_workflow/grounding.py")
+)["BIND_TOOL_SPEC"]
 
 
 def test_oracle_destination_compiles_agent_entity_label_from_scene_bind():
@@ -571,6 +577,241 @@ def test_projection_rejects_nested_legacy_target_override():
             projection_source={"record_id": "understanding-record"},
             projection_plan=plan,
         )
+
+
+def test_scene_bind_projects_current_understanding_identity_before_persisting_selection():
+    evidence_ref = "artifact://scene-1/understanding"
+    node = PlanNode(
+        node_id="bind-current",
+        obligation_id="bind-current",
+        capability="scene.bind",
+        required_evidence=(evidence_ref,),
+    )
+    payload = {
+        "task_id": "task-bind-projection",
+        "revision_id": "revision-bind-projection",
+        "graph_digest": "0" * 64,
+        "planner_decision_digest": "1" * 64,
+        "policy_snapshot_digest": "2" * 64,
+        "nodes": [node.model_dump(mode="json")],
+    }
+    payload["graph_digest"] = plan_graph_digest(payload)
+    graph = PlanGraph.model_validate(payload)
+    record = SimpleNamespace(
+        record_id="understanding-current",
+        node_id=None,
+        tool_id="scene.understand",
+        semantics="query",
+        status="succeeded",
+        evidence_refs=(evidence_ref,),
+        arguments={},
+        response={"ok": True, "data": {
+            "status": "available",
+            "observation_ref": "observation://scene-1/head",
+            "scene_revision": "scene-1",
+            "calibration_ref": "calibration://scene-1/head",
+            "entities": [{"entity_ref": "entity://green"}],
+        }},
+        error=None,
+    )
+    revision = SimpleNamespace(
+        revision_id="revision-bind-projection",
+        plan_graph=graph,
+        node_settlements=(),
+        execution_records=(record,),
+        discovery_evidence_refs=(evidence_ref,),
+        fresh_evidence_requirements=(),
+        replan_evidence_refs=(),
+    )
+    task = SimpleNamespace(
+        task_id="task-bind-projection",
+        active_revision_id="revision-bind-projection",
+        active_revision=revision,
+        revisions=(revision,),
+        primary_skill_binding=None,
+        tool_bindings=(),
+    )
+
+    class Coordinator(_Coordinator):
+        def get_task(self, task_id):
+            assert task_id == task.task_id
+            return task
+
+        def persist_planning_selection(self, proposal):
+            self.proposals.append(proposal)
+            return {
+                **proposal,
+                "decision_trace_ref": "artifact://planning-traces/task-bind-projection/bind-current/t1",
+            }
+
+    policy = project_tool_spec(BIND_TOOL_SPEC)
+    dispatch = AgentComposedDispatch(
+        graph,
+        (policy,),
+        AdmissionContext(
+            scene_revision="scene-1",
+            evidence_refs=frozenset({evidence_ref}),
+        ),
+        input_schemas={"scene.bind": BIND_TOOL_SPEC["input_schema"]},
+    )
+    coordinator = Coordinator()
+    result = json.loads(asyncio.run(ForgePlanSelectTool(
+        coordinator, lambda: dispatch
+    ).execute(
+        task_id=task.task_id,
+        node_id="bind-current",
+        tool_id="scene.bind",
+        decision_reason="bind the selected current entity",
+        arguments={"entity_refs": ["entity://green"]},
+        projection_sources={"understanding": {"record_id": "understanding-current"}},
+    )))
+
+    assert result["ok"] is True
+    assert result["motion_authorized"] is False
+    assert coordinator.proposals[0]["tool_arguments"] == {
+        "observation_ref": "observation://scene-1/head",
+        "scene_revision": "scene-1",
+        "calibration_ref": "calibration://scene-1/head",
+        "entity_refs": ["entity://green"],
+    }
+    assert result["data"]["selection"]["tool_arguments"] == {}
+
+
+@pytest.mark.parametrize(
+    ("record_tool", "response_data", "agent_arguments", "selector_record_id", "message"),
+    [
+        pytest.param(
+            "scene.understand",
+            {"observation_ref": "observation://scene-1/head", "scene_revision": "scene-1"},
+            {"entity_refs": ["entity://green"]},
+            "understanding-current",
+            "projection source omits world identity fields: calibration_ref",
+            id="missing-calibration",
+        ),
+        pytest.param(
+            "scene.understand",
+            {"observation_ref": "observation://scene-0/head", "scene_revision": "scene-0",
+             "calibration_ref": "calibration://scene-0/head"},
+            {"entity_refs": ["entity://green"]},
+            "understanding-current",
+            "stale scene revision",
+            id="stale-scene",
+        ),
+        pytest.param(
+            "scene.understand",
+            {"observation_ref": "observation://scene-0/head", "scene_revision": "scene-1",
+             "calibration_ref": "calibration://scene-1/head"},
+            {"entity_refs": ["entity://green"]},
+            "understanding-current",
+            "observation_ref conflicts with scene_revision",
+            id="cross-observation-scene",
+        ),
+        pytest.param(
+            "scene.observe",
+            {"observation_ref": "observation://scene-1/head", "scene_revision": "scene-1",
+             "calibration_ref": "calibration://scene-1/head"},
+            {"entity_refs": ["entity://green"]},
+            "understanding-current",
+            "requires Tool scene.understand",
+            id="wrong-tool",
+        ),
+        pytest.param(
+            "scene.understand",
+            {"observation_ref": "observation://scene-1/head", "scene_revision": "scene-1",
+             "calibration_ref": "calibration://scene-1/head"},
+            {"observation_ref": "observation://agent-authored", "entity_refs": ["entity://green"]},
+            "understanding-current",
+            "Coordinator-owned: observation_ref",
+            id="agent-authored-observation",
+        ),
+        pytest.param(
+            "scene.understand",
+            {"observation_ref": "observation://scene-1/head", "scene_revision": "scene-1",
+             "calibration_ref": "calibration://scene-1/head"},
+            {"calibration_ref": "calibration://agent-authored",
+             "entity_refs": ["entity://green"]},
+            "understanding-current",
+            "Coordinator-owned: calibration_ref",
+            id="agent-authored-calibration",
+        ),
+        pytest.param(
+            "scene.understand",
+            {"observation_ref": "observation://scene-1/head", "scene_revision": "scene-1",
+             "calibration_ref": "calibration://scene-1/head"},
+            {"entity_refs": ["entity://green"]},
+            "outside-bounded-context",
+            "is not authorized",
+            id="unauthorized-record",
+        ),
+    ],
+)
+def test_scene_bind_projection_rejects_incomplete_or_unauthorized_identity(
+    record_tool, response_data, agent_arguments, selector_record_id, message
+):
+    evidence_ref = "artifact://scene-1/understanding"
+    node = PlanNode(
+        node_id="bind-current", obligation_id="bind-current", capability="scene.bind",
+        required_evidence=(evidence_ref,),
+    )
+    payload = {
+        "task_id": "task-bind-reject",
+        "revision_id": "revision-bind-reject",
+        "graph_digest": "0" * 64,
+        "planner_decision_digest": "1" * 64,
+        "policy_snapshot_digest": "2" * 64,
+        "nodes": [node.model_dump(mode="json")],
+    }
+    payload["graph_digest"] = plan_graph_digest(payload)
+    graph = PlanGraph.model_validate(payload)
+    record = SimpleNamespace(
+        record_id="understanding-current",
+        node_id=None,
+        tool_id=record_tool,
+        semantics="query",
+        status="succeeded",
+        evidence_refs=(evidence_ref,),
+        arguments={},
+        response={"ok": True, "data": response_data},
+        error=None,
+    )
+    revision = SimpleNamespace(
+        revision_id="revision-bind-reject", plan_graph=graph, node_settlements=(),
+        execution_records=(record,), discovery_evidence_refs=(evidence_ref,),
+        fresh_evidence_requirements=(), replan_evidence_refs=(),
+    )
+    task = SimpleNamespace(
+        task_id="task-bind-reject", active_revision_id="revision-bind-reject",
+        active_revision=revision, revisions=(revision,), primary_skill_binding=None,
+        tool_bindings=(),
+    )
+
+    class Coordinator(_Coordinator):
+        def get_task(self, task_id):
+            assert task_id == task.task_id
+            return task
+
+    dispatch = AgentComposedDispatch(
+        graph,
+        (project_tool_spec(BIND_TOOL_SPEC),),
+        AdmissionContext(scene_revision="scene-1", evidence_refs=frozenset({evidence_ref})),
+        input_schemas={"scene.bind": BIND_TOOL_SPEC["input_schema"]},
+    )
+    coordinator = Coordinator()
+    result = json.loads(asyncio.run(ForgePlanSelectTool(
+        coordinator, lambda: dispatch
+    ).execute(
+        task_id=task.task_id,
+        node_id="bind-current",
+        tool_id="scene.bind",
+        decision_reason="bind the selected current entity",
+        arguments=agent_arguments,
+        projection_sources={"understanding": {"record_id": selector_record_id}},
+    )))
+
+    assert result["ok"] is False
+    assert result["motion_authorized"] is False
+    assert message in result["error"]["message"]
+    assert coordinator.proposals == []
 
 
 def test_plan_select_rejects_when_task_is_not_active_graph():
