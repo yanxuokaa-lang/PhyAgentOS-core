@@ -14,6 +14,7 @@ from PhyAgentOS.agent.prompt_context import (
     _compact_forge_results,
     compact_tool_result,
     continuation_task_prompt_projection,
+    estimate_prompt_component_tokens,
     node_task_prompt_projection,
     task_prompt_projection,
     visible_tool_names,
@@ -2151,6 +2152,129 @@ def test_compacted_node_turn_reinjects_skill_route_and_execution_phase() -> None
     assert "Persisted workflow route: inspect before planning." in encoded
     assert "execution_phase_context" in encoded
     assert "inspect current state" in encoded
+
+
+def test_p1b_token_breakdown_and_same_fixture_request_reduction() -> None:
+    node = SimpleNamespace(
+        node_id="inspect",
+        obligation_id="inspect current state",
+        capability="inspect.current",
+        dependencies=(),
+        conditions=(),
+        required_evidence=("evidence.current",),
+        input_bindings={"entity_ref": "entity://old-visual"},
+        resources=(),
+        effects=("scene.checked",),
+        retry_of=None,
+    )
+    task = _task(graph=SimpleNamespace(nodes=(node,)))
+    task.primary_skill_instructions = "Inspect current evidence before choosing a segment."
+    task.active_skill_instructions = task.primary_skill_instructions
+    manager = AgentPromptContextManager(
+        context_window_tokens=100_000,
+        compaction_trigger_tokens=95_000,
+    )
+    duplicate_skill = task.primary_skill_instructions * 30
+    old_messages = [
+        {"role": "system", "content": "bootstrap\n# Active Skills\n" + duplicate_skill},
+        {
+            "role": "system",
+            "content": "Current persisted AgentTask projection.\n"
+            + json.dumps(node_task_prompt_projection(task, "inspect"), ensure_ascii=False),
+        },
+        {"role": "user", "content": json.dumps({
+            "original_goal": task.task_description,
+            "verification": task.verification,
+            "skill_instructions": duplicate_skill,
+            "node_context": "source catalog " * 50,
+        })},
+    ]
+    new_messages = [
+        {"role": "system", "content": "bootstrap"},
+        {"role": "user", "content": "source catalog " * 50},
+    ]
+    view = manager.build(
+        messages=new_messages,
+        turn_start_index=1,
+        all_tool_names=("forge_plan_ready",),
+        task=task,
+        estimate_tokens=lambda messages, tools: sum(
+            len(str(message.get("content", ""))) for message in messages
+        ) + 10 * len(tools),
+        projection_scope="node",
+        projection_node_id="inspect",
+    )
+    encoded = json.dumps(view.messages, ensure_ascii=False)
+    old_size = len(json.dumps(old_messages, ensure_ascii=False))
+    assert len(encoded) < old_size
+    assert encoded.count(task.primary_skill_instructions) == 1
+
+    breakdown = estimate_prompt_component_tokens(
+        lambda messages, tools: sum(
+            len(str(message.get("content", ""))) for message in messages
+        ) + 10 * len(tools or ()),
+        view.messages,
+        [{"function": {"name": "forge_plan_ready"}}],
+        phase=view.phase,
+    )
+    assert breakdown.total > 0
+    assert breakdown.bootstrap_system > 0
+    assert breakdown.skill > 0
+    assert breakdown.node_facts > 0
+    assert breakdown.tool_schemas > 0
+    assert breakdown.history == 0
+
+
+def test_p1b_node_projection_keeps_old_identity_and_historical_failures() -> None:
+    node = SimpleNamespace(
+        node_id="inspect",
+        obligation_id="inspect current state",
+        capability="inspect.current",
+        dependencies=(),
+        conditions=(),
+        required_evidence=(),
+        input_bindings={"entity_ref": "entity://old-visual"},
+        resources=(),
+        effects=(),
+        retry_of=None,
+    )
+    failed = SimpleNamespace(
+        record_id="failed-old-method",
+        revision_id="revision-1",
+        node_id="inspect",
+        tool_id="scene.understand",
+        semantics="query",
+        status="failed",
+        invocation_id=None,
+        evidence_refs=("tool:failed-old-method",),
+        arguments={},
+        response={"data": {"error": {"code": "provider_unavailable"}}},
+        error=None,
+    )
+    task = _task(graph=SimpleNamespace(nodes=(node,)), records=(failed,))
+    task.primary_skill_instructions = "Persist the workflow route."
+    task.active_skill_instructions = task.primary_skill_instructions
+    projection = node_task_prompt_projection(task, "inspect", compact=True)
+    encoded = json.dumps(projection, ensure_ascii=False)
+    assert "entity://old-visual" in encoded
+    assert "failed-old-method" in encoded
+    assert "provider_unavailable" in encoded
+    assert "completed_effects" in projection["execution_phase_context"]
+    assert "remaining_obligations" not in projection["execution_phase_context"]
+
+
+def test_p1b_continuation_keeps_unfinished_goals_effects_and_evidence_gaps() -> None:
+    task = _task(graph=SimpleNamespace(nodes=()))
+    task.primary_skill_instructions = "Continue only after fresh evidence."
+    task.active_skill_instructions = task.primary_skill_instructions
+    task.active_revision.fresh_evidence_requirements = ("scene.current",)
+    task.active_revision.replan_evidence_refs = ("tool:failed-refresh",)
+    projection = continuation_task_prompt_projection(task, compact=True)
+    assert projection["fresh_evidence_requirements"] == ["scene.current"]
+    assert projection["replan_evidence_refs"] == ["tool:failed-refresh"]
+    assert "unfinished_goals" in projection
+    assert "completed_effects" in projection["execution_phase_context"]
+    assert "task_goals" not in projection
 
 
 def test_task_projection_does_not_report_compaction_by_itself() -> None:

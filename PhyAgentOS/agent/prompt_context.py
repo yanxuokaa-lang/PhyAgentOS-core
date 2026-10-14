@@ -281,6 +281,134 @@ class PromptRequestView:
     compacted: bool
 
 
+@dataclass(frozen=True)
+class PromptTokenBreakdown:
+    """Approximate prompt composition, kept separate from the hard total."""
+
+    bootstrap_system: int
+    skill: int
+    node_facts: int
+    tool_schemas: int
+    history: int
+    total: int
+
+
+def estimate_prompt_component_tokens(
+    estimate: Callable[
+        [list[dict[str, Any]], list[dict[str, Any]] | None], int
+    ],
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]] | None,
+    *,
+    phase: str,
+) -> PromptTokenBreakdown:
+    """Estimate stable prompt components without changing the request.
+
+    The estimator is intentionally injected so AgentLoop can use the provider's
+    normal counter while tests can use one deterministic fixture counter. The
+    component values are diagnostic estimates; ``total`` remains the only hard
+    budget value.
+    """
+
+    base_system: list[dict[str, Any]] = []
+    task_projection: list[dict[str, Any]] = []
+    current: list[dict[str, Any]] = []
+    history: list[dict[str, Any]] = []
+    last_user_index = max(
+        (index for index, item in enumerate(messages) if item.get("role") == "user"),
+        default=-1,
+    )
+    for index, message in enumerate(messages):
+        role = message.get("role")
+        if role == "system" and not base_system:
+            base_system.append(message)
+        elif role == "system" and "Current persisted AgentTask projection." in str(
+            message.get("content", "")
+        ):
+            task_projection.append(message)
+        elif role == "user" and index == last_user_index:
+            current.append(message)
+        else:
+            history.append(message)
+
+    system_content = str(base_system[0].get("content", "")) if base_system else ""
+    skill_marker = min(
+        (index for index in (
+            system_content.find("# Active Skills"),
+            system_content.find("# Skills"),
+        ) if index >= 0),
+        default=len(system_content),
+    )
+    system_without_skill = (
+        [{**base_system[0], "content": system_content[:skill_marker]}]
+        if base_system
+        else []
+    )
+    skill_messages: list[dict[str, Any]] = []
+    if base_system and skill_marker < len(system_content):
+        skill_messages.append(
+            {**base_system[0], "content": system_content[skill_marker:]}
+        )
+    node_projection: list[dict[str, Any]] = []
+    scoped_working_set = False
+    for message in task_projection:
+        content = str(message.get("content", ""))
+        prefix, separator, encoded = content.partition("\n")
+        try:
+            payload = json.loads(encoded) if separator else None
+        except json.JSONDecodeError:
+            payload = None
+        route = payload.get("frozen_skill_route_context") if isinstance(payload, dict) else None
+        scoped_working_set = scoped_working_set or (
+            isinstance(payload, dict)
+            and payload.get("version") in {
+                "agent_node_prompt_projection_v2",
+                "agent_continuation_prompt_projection_v3",
+            }
+        )
+        if isinstance(route, dict) and route.get("instructions"):
+            skill_messages.append({
+                **message,
+                "content": json.dumps(
+                    {"frozen_skill_route_context": route},
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                ),
+            })
+            payload = dict(payload)
+            payload.pop("frozen_skill_route_context", None)
+            node_projection.append({
+                **message,
+                "content": prefix + "\n" + json.dumps(
+                    payload, ensure_ascii=False, separators=(",", ":")
+                ),
+            })
+        else:
+            node_projection.append(message)
+
+    node_messages = node_projection + (
+        current
+        if scoped_working_set
+        else []
+    )
+    history_messages = history + ([] if scoped_working_set else current)
+
+    bootstrap_system = estimate(system_without_skill, None)
+    skill = estimate(skill_messages, None)
+    node_facts = estimate(node_messages, None)
+    history_tokens = estimate(history_messages, None)
+    tool_schema_tokens = estimate([], tools)
+    total = estimate(messages, tools)
+    return PromptTokenBreakdown(
+        bootstrap_system=max(0, int(bootstrap_system)),
+        skill=max(0, int(skill)),
+        node_facts=max(0, int(node_facts)),
+        tool_schemas=max(0, int(tool_schema_tokens)),
+        history=max(0, int(history_tokens)),
+        total=max(0, int(total)),
+    )
+
+
 def visible_tool_names(
     all_names: Iterable[str],
     task: Any | None,
@@ -1106,8 +1234,11 @@ def _durable_execution_context(
     remaining: list[dict[str, Any]] = []
     no_replay: list[dict[str, Any]] = []
     unresolved_effects: list[dict[str, Any]] = []
+    historical_failures: list[dict[str, Any]] = []
+    historical_unknowns: list[dict[str, Any]] = []
     effects: list[dict[str, Any]] = []
     current_bindings: dict[str, str] = {}
+    node_metadata: dict[tuple[str, str], dict[str, Any]] = {}
     revisions = tuple(getattr(task, "revisions", ())) or tuple(
         item for item in (getattr(task, "active_revision", None),) if item is not None
     )
@@ -1117,6 +1248,10 @@ def _durable_execution_context(
         if not isinstance(revision_id, str) or graph is None:
             continue
         for node in getattr(graph, "nodes", ()):
+            node_metadata[(revision_id, getattr(node, "node_id", None))] = {
+                "obligation_id": getattr(node, "obligation_id", None),
+                "capability": getattr(node, "capability", None),
+            }
             settlement = next(
                 (
                     item for item_key, item in settlements.items()
@@ -1149,14 +1284,59 @@ def _durable_execution_context(
                 and isinstance(entity.get("execution_entity_ref"), str)
             }
             continue
-        semantics = getattr(record, "semantics", None)
         node = getattr(record, "node_id", None)
+        settlement = (
+            settlements.get((revision_id, node, getattr(record, "invocation_id", None)))
+            if isinstance(node, str)
+            else None
+        )
+        record_status = getattr(record, "status", None)
+        settlement_status = getattr(settlement, "status", None)
+        error = getattr(record, "error", None)
+        error = error if isinstance(error, dict) else {}
+        response_error = response_facts(getattr(record, "response", None)).get("error")
+        response_error = response_error if isinstance(response_error, dict) else {}
+        metadata = node_metadata.get((revision_id, node), {})
+        if record_status in {"failed", "cancelled", "stopped"} or settlement_status in {
+            "failed", "cancelled_before_start", "stale"
+        }:
+            historical_failures.append({
+                "revision_id": revision_id,
+                "record_id": getattr(record, "record_id", None),
+                "node_id": node,
+                "obligation_id": metadata.get("obligation_id"),
+                "capability": metadata.get("capability"),
+                "tool_id": getattr(record, "tool_id", None),
+                "semantics": getattr(record, "semantics", None),
+                "record_status": record_status,
+                "settlement_status": settlement_status,
+                "invocation_id": getattr(record, "invocation_id", None),
+                "error": {
+                    key: (error or response_error).get(key)
+                    for key in ("code", "message", "reason", "retryable")
+                    if (error or response_error).get(key) is not None
+                },
+                "evidence_refs": list(getattr(record, "evidence_refs", ()))[:8],
+            })
+        if record_status == "unknown" or settlement_status == "outcome_unknown":
+            historical_unknowns.append({
+                "revision_id": revision_id,
+                "record_id": getattr(record, "record_id", None),
+                "node_id": node,
+                "obligation_id": metadata.get("obligation_id"),
+                "capability": metadata.get("capability"),
+                "tool_id": getattr(record, "tool_id", None),
+                "semantics": getattr(record, "semantics", None),
+                "record_status": record_status,
+                "settlement_status": settlement_status,
+                "invocation_id": getattr(record, "invocation_id", None),
+                "evidence_refs": list(getattr(record, "evidence_refs", ()))[:8],
+            })
+        semantics = getattr(record, "semantics", None)
         if semantics not in {"action", "session"} or not isinstance(node, str):
             continue
-        settlement = settlements.get((revision_id, node, getattr(record, "invocation_id", None)))
         if settlement is None:
             continue
-        settlement_status = getattr(settlement, "status", None)
         if settlement_status == "outcome_unknown":
             facts = response_facts(getattr(record, "response", None))
             arguments = getattr(record, "arguments", {})
@@ -1500,6 +1680,10 @@ def _durable_execution_context(
         "completed_effects_total": len(effects),
         "unresolved_action_effects": unresolved_effects[-_MAX_PHASE_ITEMS:],
         "unresolved_action_effects_total": len(unresolved_effects),
+        "historical_failures": historical_failures[-_MAX_PHASE_ITEMS:],
+        "historical_failures_total": len(historical_failures),
+        "historical_unknowns": historical_unknowns[-_MAX_PHASE_ITEMS:],
+        "historical_unknowns_total": len(historical_unknowns),
         "unresolved_action_policy": (
             "Every world-changing Action with unknown or measured failed outcome retains its "
             "stable execution identity and physical effects as a mandatory reconciliation "
@@ -1550,6 +1734,7 @@ def node_task_prompt_projection(
     *,
     execution_record_loader: Callable[[str, str], Iterable[Any]] | None = None,
     settlement_loader: Callable[[str, str], Iterable[Any]] | None = None,
+    compact: bool = False,
 ) -> dict[str, Any] | None:
     """Project only facts needed to execute one semantic planning node.
 
@@ -1581,10 +1766,11 @@ def node_task_prompt_projection(
         revision,
         settlement_loader=settlement_loader,
     ) if revision is not None else ()
-    return {
+    projection = {
         "version": "agent_node_prompt_projection_v2",
         "authority": "read_only_projection_from_AgentTaskCoordinator",
         "task_id": getattr(task, "task_id", None),
+        "original_goal": getattr(task, "task_description", None),
         "status": _task_status(task),
         "active_revision_id": getattr(task, "active_revision_id", None),
         "revision_number": getattr(revision, "number", None),
@@ -1644,6 +1830,59 @@ def node_task_prompt_projection(
         ),
         "motion_authorized": False,
     }
+    if not compact:
+        return projection
+    if isinstance(projection.get("skill_binding"), dict):
+        projection["skill_binding"].pop("required_tools", None)
+    phase_context = projection["execution_phase_context"]
+    current_node = projection.get("node") or {}
+    current_capability = current_node.get("capability")
+    current_obligation = current_node.get("obligation_id")
+
+    def relevant_historical(item: dict[str, Any]) -> bool:
+        return (
+            item.get("node_id") == node_id
+            or (
+                current_capability is not None
+                and item.get("capability") == current_capability
+            )
+            or (
+                current_obligation is not None
+                and item.get("obligation_id") == current_obligation
+            )
+        )
+
+    projection["execution_phase_context"] = {
+        key: (
+            [item for item in phase_context[key] if relevant_historical(item)]
+            if key in {"historical_failures", "historical_unknowns"}
+            else phase_context[key]
+        )
+        for key in (
+            "no_replay_actions",
+            "no_replay_actions_total",
+            "completed_effects",
+            "completed_effects_total",
+            "unresolved_action_effects",
+            "unresolved_action_effects_total",
+            "historical_failures",
+            "historical_failures_total",
+            "historical_unknowns",
+            "historical_unknowns_total",
+            "recovery_lineage",
+        )
+        if key in phase_context
+    }
+    for key in ("historical_failures", "historical_unknowns"):
+        projection["execution_phase_context"][f"{key}_total"] = len(
+            projection["execution_phase_context"].get(key, ())
+        )
+    # The node prompt only needs the current obligation and its declared
+    # contract. Source catalogs remain in the node turn's bounded context.
+    projection.pop("skill_uses", None)
+    projection.pop("status", None)
+    projection.pop("revision_number", None)
+    return projection
 
 
 def continuation_task_prompt_projection(
@@ -1651,6 +1890,7 @@ def continuation_task_prompt_projection(
     *,
     execution_record_loader: Callable[[str, str], Iterable[Any]] | None = None,
     settlement_loader: Callable[[str, str], Iterable[Any]] | None = None,
+    compact: bool = False,
 ) -> dict[str, Any] | None:
     """Project settled facts needed to append the next scene segment."""
     if task is None:
@@ -1835,10 +2075,33 @@ def continuation_task_prompt_projection(
         execution_record_loader=execution_record_loader,
         settlement_loader=settlement_loader,
     )
-    return {
+    unfinished_goals = [
+        item for item in phase_context.get("goal_ledger", {}).get("definitions", ())
+        if item.get("current_scene_attainment") != "confirmed"
+    ]
+    compact_phase_context = {
+        key: phase_context[key]
+        for key in (
+            "no_replay_actions",
+            "no_replay_actions_total",
+            "completed_effects",
+            "completed_effects_total",
+            "unresolved_action_effects",
+            "unresolved_action_effects_total",
+            "historical_failures",
+            "historical_failures_total",
+            "historical_unknowns",
+            "historical_unknowns_total",
+            "recovery_lineage",
+        )
+        if key in phase_context
+    }
+    projection = {
         "version": "agent_continuation_prompt_projection_v3",
         "current_scene_queries": summaries,
         "current_scene_query_count": current_scene_query_count,
+        "unfinished_goals": unfinished_goals[:_MAX_GOAL_ITEMS],
+        "unfinished_goal_count": len(unfinished_goals),
         "task_goals": goals,
         "task_goal_record_count": len(goal_records),
         "task_goal_item_count": goal_item_count,
@@ -1861,7 +2124,7 @@ def continuation_task_prompt_projection(
             or getattr(task, "primary_skill_instructions", None),
             "authority": "persisted activated Skill; apply its workflow transitions after conversation compaction",
         },
-        "execution_phase_context": phase_context,
+        "execution_phase_context": phase_context if not compact else compact_phase_context,
         "completed_nodes": completed_nodes[-_MAX_PHASE_ITEMS:],
         "completed_node_count": len(completed_nodes),
         "available_successors": available_successors[:_MAX_PHASE_ITEMS],
@@ -1924,6 +2187,15 @@ def continuation_task_prompt_projection(
         ),
         "motion_authorized": False,
     }
+    if not compact:
+        return projection
+    projection.pop("task_goals", None)
+    projection.pop("task_goal_record_count", None)
+    projection.pop("task_goal_item_count", None)
+    projection.pop("completed_nodes", None)
+    projection.pop("completed_node_count", None)
+    projection.pop("active_revision_reason", None)
+    return projection
 
 
 def _with_task_projection(
@@ -2137,12 +2409,14 @@ class AgentPromptContextManager:
                 projection_node_id,
                 execution_record_loader=self._execution_record_loader,
                 settlement_loader=self._settlement_loader,
+                compact=True,
             )
         elif projection_scope == "continuation":
             projection = continuation_task_prompt_projection(
                 task,
                 execution_record_loader=self._execution_record_loader,
                 settlement_loader=self._settlement_loader,
+                compact=True,
             )
         else:
             raise ValueError(f"unsupported prompt projection scope: {projection_scope}")

@@ -2,6 +2,44 @@
 
 ## 最近五版本 / Latest five versions
 
+## v13.7.0 (2026-10-14 21:38) - codex
+
+### 变更摘要 / Summary [完成]
+- [policy] [feat] 实施 JEV P1b：缩小 node/continuation 工作集，移除目标、路由、Skill 身份和持久事实的重复 wrapper，保留单一 activated Skill 指令。 / Implement JEV P1b by narrowing node/continuation working sets, removing duplicate goal, route, Skill identity, and persisted-fact wrappers, and retaining one activated-Skill instruction copy. (local)
+- [eval] [test] 记录 bootstrap/system、Skill、节点事实、工具 schema、历史和总 token；同 fixture 输入下降且 S6 旧实体、完成效果、S10 相关失败/unknown 与 evidence gaps 保留。 / Record bootstrap/system, Skill, node-fact, tool-schema, history, and total tokens; reduce the same fixture while retaining S6 old entities/completed effects, S10 relevant failures/unknowns, and evidence gaps. (local)
+
+### 文件变更详情 / File Change Details
+- [修改 / Modified] `PhyAgentOS/agent/context.py:L50-L75,L238-L269`：node/continuation 可关闭重复 active Skill 文本，默认行为兼容。 / Allow node/continuation calls to omit duplicate active-Skill text with backward-compatible defaults.
+- [修改 / Modified] `PhyAgentOS/agent/loop.py:L24-L44,L1153-L1184,L2035-L2080,L2105-L2203`：移除节点/续段重复 JSON wrapper；记录五项组成、本地 component total 与原 provider hard total。 / Remove duplicate node/continuation JSON wrappers and log five local components plus the original provider hard total.
+- [修改 / Modified] `PhyAgentOS/agent/planning_loop.py:L1703-L1810`：节点 user prompt 只保留 current scene、合法来源和 admission。 / Keep only current scene, legal sources, and admission in the node user prompt.
+- [修改 / Modified] `PhyAgentOS/agent/prompt_context.py:L284-L409,L1230-L1705,L1731-L1865,L1855-L2167,L2360-L2415`：compact node/continuation projection、相关 failed/unknown、unfinished goals、completed effects、no-replay 及 token breakdown。 / Add compact node/continuation projections, relevant failed/unknown facts, unfinished goals, completed effects, no-replay facts, and token breakdown.
+- [新增 / Added] `tests/test_prompt_context.py:L2154-L2277`、[修改 / Modified] `tests/test_agent_foundation.py:L2445-L2485`、`tests/test_planning_loop.py:L567-L590`：同 fixture 缩减、单一 Skill、组成 token 和必要事实回归。 / Cover same-fixture reduction, one Skill copy, component tokens, and required facts.
+- [修改 / Modified] `changelog/2026-10_part6.md:L1471-L1526`、`CHANGELOG.md:L5-L55,L198-L200`：完整双语记录与最近五版滚动。 / Add the complete bilingual record and latest-five rollover.
+
+### 关键代码 Diff / Key Code Diff
+```diff
+- node/continuation wrapper repeats goal, route, Skill identity, and persisted facts
++ current decision/source working set + compact authoritative persisted projection
++ bootstrap_system + skill + node_facts + tool_schemas + history + total estimates
+```
+
+### 七维复审 / Seven-Dimension Review
+1. 架构：ContextBuilder/PromptContextManager/NodeContextProvider/AgentLoop 各自保留 system、projection、source/admission、编排所有权。 / Architecture ownership remains separated across system, projection, source/admission, and orchestration owners.
+2. 正确性：current obligation、合法来源、原目标、完成效果、相关 failed/unknown、unfinished goals 和 evidence gaps 均保留。 / Current obligation, legal sources, original goal, completed effects, relevant failed/unknown facts, unfinished goals, and evidence gaps remain.
+3. 可观测：结构化历史错误和六项 token 记录；prompt 可见不等于模型理解。 / Structured historical errors and six token measurements remain observable; prompt presence is not model understanding.
+4. 幂等：只裁剪临时 request；selection/execution/settlement 与 no-replay 对账不变。 / Only temporary requests are narrowed; selection/execution/settlement and no-replay reconciliation are unchanged.
+5. 安全：无运动权限或现场调用，current scene/admission 继续 fail-closed。 / No motion authority or live call is added; current-scene admission remains fail-closed.
+6. 兼容：新 ContextBuilder 参数默认兼容，task/discovery/replan 路径不变。 / The new ContextBuilder option defaults compatibly; task/discovery/replan paths are unchanged.
+7. 收敛：hard total 只调用一次 provider counter；组成统计不增加 provider/model 请求。 / The hard total calls the provider counter once; components add no provider/model request.
+- 已修复两项 Major：重复 provider counter 与 node 历史失败过宽；无遗留 Blocker/Major。 / Fixed two Major findings—repeated provider counting and over-broad node failure history—with no remaining Blocker/Major.
+
+### 验证与边界 / Validation and Boundary
+- 关联 `494 passed in 12.23s`；全仓 `941 passed in 31.74s`；Ruff、compileall、`git diff --check` 通过。 / Related `494` and full-repository `941` tests passed, as did Ruff, compileall, and diff checks.
+- 无 Runtime 启停、任务恢复、现场 Query/Action、Gateway、相机、仿真或运动。 / No Runtime lifecycle, task resume, live Query/Action, Gateway, camera, simulation, or motion occurred.
+
+### Git 提交 / Git Commit
+- Commit: 待提交 / pending; Branch: `feature/planning-loop`; 2026-10-14（Asia/Shanghai）。
+
 ## v13.6.1 (2026-10-14 19:45) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -144,6 +182,8 @@
 ### Git 提交 / Git Commit
 - Commit: `7a38d33a`；Branch: `feature/planning-loop`；2026-10-14（Asia/Shanghai）；本引用由同版本纯日志提交补全。 / Documentation commit: `7a38d33a` on the current branch; its reference is completed in a log-only commit for this version.
 
+## Archived detailed records / 已归档详细记录
+
 ## v13.4.14 (2026-10-14 13:47) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -174,8 +214,6 @@
 
 ### Git 提交 / Git Commit
 - Commit: `5029ce75`；Branch: `feature/planning-loop`；2026-10-14（Asia/Shanghai）；本引用由同版本纯日志提交补全。 / Documentation commit: `5029ce75` on the current branch; its reference is completed in a log-only commit for this version.
-
-## Archived detailed records / 已归档详细记录
 
 ## v13.4.13 (2026-10-14 13:18) - codex
 

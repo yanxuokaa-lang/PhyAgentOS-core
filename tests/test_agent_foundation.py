@@ -2469,8 +2469,10 @@ def test_node_turn_restores_primary_skill_without_copying_historical_skill_use(t
         sent = json.dumps(provider.requests[0]["messages"])
         assert "Move only the left red object" in sent
         assert "Observe after grasp." in sent
+        assert sent.count("Observe after grasp.") == 1
         assert "HISTORICAL FULL INSTRUCTIONS" not in sent
         assert "node evidence" in sent
+        assert '"node_context"' not in sent
         assert "agent_node_prompt_projection_v2" in sent
         assert first.model_failure_code is None
         assert second.model_failure_code is None

@@ -47,7 +47,12 @@ class ContextBuilder:
             runtime_availability_provider=runtime_availability_provider,
         )
 
-    def build_system_prompt(self, skill_names: list[str] | None = None) -> str:
+    def build_system_prompt(
+        self,
+        skill_names: list[str] | None = None,
+        *,
+        include_active_skills: bool = True,
+    ) -> str:
         """Build the system prompt from identity, bootstrap files, memory, and skills."""
         parts = [self._get_identity()]
 
@@ -64,7 +69,7 @@ class ContextBuilder:
             active_skills = list(
                 dict.fromkeys(active_skills + self.skills.get_active_skills())
             )
-        if active_skills:
+        if include_active_skills and active_skills:
             active_content = self.skills.load_skills_for_context(active_skills)
             if active_content:
                 parts.append(f"# Active Skills\n\n{active_content}")
@@ -238,6 +243,7 @@ Reply directly with text for conversations. Only use the 'message' tool to send 
         media: list[str] | None = None,
         channel: str | None = None,
         chat_id: str | None = None,
+        include_active_skills: bool = True,
     ) -> list[dict[str, Any]]:
         """Build the complete message list for an LLM call."""
         message_ctx = self._build_message_context(channel, chat_id)
@@ -251,7 +257,13 @@ Reply directly with text for conversations. Only use the 'message' tool to send 
             merged = [{"type": "text", "text": message_ctx}] + user_content
 
         return [
-            {"role": "system", "content": self.build_system_prompt(skill_names)},
+            {
+                "role": "system",
+                "content": self.build_system_prompt(
+                    skill_names,
+                    include_active_skills=include_active_skills,
+                ),
+            },
             *history,
             {"role": "user", "content": merged},
         ]

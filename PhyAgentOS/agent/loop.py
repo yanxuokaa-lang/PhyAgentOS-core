@@ -24,6 +24,7 @@ from PhyAgentOS.agent.prompt_context import (
     PromptBudgetExceededError,
     compact_tool_result,
     continuation_task_prompt_projection,
+    estimate_prompt_component_tokens,
 )
 from PhyAgentOS.agent.subagent import SubagentManager
 from PhyAgentOS.agent.tools.agent import AgentModeTool
@@ -44,7 +45,7 @@ from PhyAgentOS.forge.task import AgentTaskError, AgentTaskStatus
 from PhyAgentOS.providers.base import LLMProvider
 from PhyAgentOS.providers.providers_manager import ProvidersManager
 from PhyAgentOS.session.manager import Session, SessionManager
-from PhyAgentOS.utils.helpers import estimate_prompt_tokens_chain
+from PhyAgentOS.utils.helpers import estimate_prompt_tokens, estimate_prompt_tokens_chain
 
 if TYPE_CHECKING:
     from PhyAgentOS.agent.experience.coordinator import EpisodeClosedHook
@@ -1152,9 +1153,17 @@ class AgentLoop:
             estimated_tokens, token_source = estimate_prompt_tokens_chain(
                 self.provider, self.model, request_view.messages, tool_defs
             )
+            token_breakdown = estimate_prompt_component_tokens(
+                estimate_prompt_tokens,
+                request_view.messages,
+                tool_defs,
+                phase=request_view.phase,
+            )
             logger.info(
                 "Agent prompt context session={} iteration={} phase={} tokens={}/{} "
-                "window={} trigger={} output_reserve={} source={} tools={} compacted={}",
+                "window={} trigger={} output_reserve={} source={} tools={} compacted={} "
+                "bootstrap_system={} skill={} node_facts={} tool_schemas={} history={} "
+                "component_total={}",
                 experience_session_key,
                 iteration,
                 request_view.phase,
@@ -1166,6 +1175,12 @@ class AgentLoop:
                 token_source,
                 len(tool_defs),
                 request_view.compacted,
+                token_breakdown.bootstrap_system,
+                token_breakdown.skill,
+                token_breakdown.node_facts,
+                token_breakdown.tool_schemas,
+                token_breakdown.history,
+                token_breakdown.total,
             )
 
             retry_timeout = self._retry_provider_timeout(
@@ -2037,10 +2052,9 @@ class AgentLoop:
             node_session_key = task.origin_session_key or node_session_key
             if task.active_revision_id != revision_id:
                 raise ValueError("node turn revision is not current")
-            method_use = None
             if task.skill_uses:
                 method = task.skill_uses[-1]
-                method_use = self.forge_task_coordinator.record_skill_use(
+                self.forge_task_coordinator.record_skill_use(
                     task_id,
                     activation_id=method.activation_id,
                     skill_name=method.skill_name,
@@ -2050,45 +2064,12 @@ class AgentLoop:
                     decision_ref=f"node:{revision_id}:{node_id}",
                     node_id=node_id,
                 )
-                task = self.forge_task_coordinator.get_task(task_id)
-            binding = task.primary_skill_binding
-            prompt = json.dumps({
-                "original_goal": task.task_description,
-                "verification": task.verification.model_dump(mode="json"),
-                # Full Skill instructions remain immutable Coordinator/SkillUse
-                # audit facts. The node-scoped prompt projection reconstructs
-                # them together with durable phase/effect facts for every model
-                # request, so this wrapper carries identity only.
-                "skill_binding": (
-                    {
-                        "binding_id": binding.binding_id,
-                        "skill_name": binding.skill_name,
-                        "skill_version": binding.skill_version,
-                        "content_sha256": binding.skill_document_sha256,
-                        "runtime_profile": binding.runtime_profile,
-                        "runtime_instance_id": binding.runtime_instance_id,
-                    }
-                    if binding is not None
-                    else None
-                ),
-                "skill_use": (
-                    {
-                        "use_id": method_use.use_id,
-                        "activation_id": method_use.activation_id,
-                        "decision_ref": method_use.decision_ref,
-                        "node_id": method_use.node_id,
-                        "content_sha256": method_use.content_sha256,
-                    }
-                    if method_use is not None
-                    else None
-                ),
-                "node_context": prompt,
-            }, ensure_ascii=False)
         messages = self.context.build_messages(
             history=[],
             current_message=prompt,
             channel="agent_task",
             chat_id=f"{task_id}:{revision_id}:{node_id}",
+            include_active_skills=False,
         )
         return await self._run_agent_loop(
             messages,
@@ -2130,9 +2111,9 @@ class AgentLoop:
                 self.forge_task_coordinator.effective_planning_execution_records
             ),
             settlement_loader=self.forge_task_coordinator.effective_node_settlements,
+            compact=True,
         ) or {}
         continuation_route = continuation_projection.get("continuation_route")
-        latest_settled_result = continuation_projection.get("latest_settled_result")
         if continuation_route == "refresh_scene_before_next_segment":
             if continuation_projection.get("placement_terminal") is True:
                 route_instruction = (
@@ -2171,15 +2152,7 @@ class AgentLoop:
                 "and choose whether a next semantic segment, replan, or finalization is valid."
             )
 
-        prompt = json.dumps(
-            {
-                "task_id": task_id,
-                "original_goal": task.task_description,
-                "verification": task.verification.model_dump(mode="json"),
-                "active_revision_id": task.active_revision_id,
-                "latest_settled_result": latest_settled_result,
-                "continuation_route": continuation_route,
-                "instruction": (
+        prompt = (
                     "The current scene-bound PlanGraph segment is fully settled. Use only "
                     "persisted Coordinator facts. A completed segment is not proof that the "
                     "user-level goal, a grasp, or a placement is complete. "
@@ -2206,10 +2179,7 @@ class AgentLoop:
                     "control outcome: forge_task_continue_plan=CONTINUE, "
                     "forge_task_begin_revision=REPLAN, forge_task_finalize=FINALIZE, "
                     "forge_task_cancel=STOP, or forge_task_request_clarification=WAIT_FOR_USER."
-                ),
-            },
-            ensure_ascii=False,
-        )
+                )
         continuation_outcomes = {
             "forge_task_continue_plan",
             "forge_task_begin_revision",
@@ -2229,6 +2199,7 @@ class AgentLoop:
             current_message=prompt,
             channel="agent_task",
             chat_id=f"{task_id}:{task.active_revision_id}:continuation",
+            include_active_skills=False,
         )
         return await self._run_agent_loop(
             messages,
