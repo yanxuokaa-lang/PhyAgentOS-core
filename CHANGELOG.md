@@ -19,7 +19,7 @@
 - 关联 `228`、Skill `439`、全仓 `932` 测试通过；未安装/启动新制品、恢复任务、调用现场 Query/Action、相机、仿真或运动。 / Related `228`, Skill `439`, and full-repository `932` tests passed; no new artifact was installed/started and no live Query/Action, camera, simulation, or motion was used.
 
 ### Git 提交 / Git Commit
-- 待提交；当前分支 `feature/planning-loop`。 / Pending commit on `feature/planning-loop`.
+- Commit: `84fe36ef`；Branch: `feature/planning-loop`；2026-10-14（Asia/Shanghai）。 / Commit `84fe36ef` on `feature/planning-loop`; 2026-10-14 (Asia/Shanghai).
 
 ## v13.5.0 (2026-10-14 15:14) - codex
 
