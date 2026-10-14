@@ -1361,6 +1361,308 @@ def test_node_turn_can_correct_selection_input_without_replan(tmp_path):
     asyncio.run(exercise())
 
 
+def test_node_selection_handoff_defers_later_calls_and_uses_current_scene(tmp_path):
+    async def exercise():
+        provider = ScriptedProvider([
+            LLMResponse(content=None, tool_calls=[
+                ToolCallRequest(
+                    "select-current",
+                    "forge_plan_select",
+                    {"task_id": "task-handoff", "node_id": "observe", "tool_id": "scene.observe"},
+                ),
+                ToolCallRequest("must-defer", "forge_tool_query", {"tool_id": "scene.observe"}),
+            ]),
+            LLMResponse(content="selection transport succeeded but no current selection"),
+        ])
+        pending_calls = []
+
+        class Coordinator:
+            def get_task(self, _task_id):
+                return None
+
+            def pending_planning_selection(self, task_id, node_id, *, scene_revision):
+                pending_calls.append((task_id, node_id, scene_revision))
+                return {
+                    "task_id": task_id,
+                    "node_id": node_id,
+                    "scene_revision": scene_revision,
+                    "tool_id": "scene.observe",
+                }
+
+        loop = AgentLoop(
+            bus=MessageBus(), provider=provider, workspace=tmp_path,
+            max_iterations=3,
+        )
+        loop.forge_task_coordinator = Coordinator()
+        loop._planning_dispatch = SimpleNamespace(current_scene_revision="scene-current")
+        loop.tools.execute = AsyncMock(side_effect=[
+            json.dumps({"ok": True, "motion_authorized": False}),
+            json.dumps({"ok": True, "data": {"status": "available"}, "motion_authorized": False}),
+        ])
+
+        result = await loop._run_agent_loop(
+            [{"role": "user", "content": "execute current node"}],
+            active_task_id="task-handoff",
+            projection_scope="node",
+            projection_node_id="observe",
+            allowed_tool_names=frozenset({"forge_plan_select", "forge_tool_query"}),
+        )
+
+        assert len(provider.requests) == 1
+        assert result.tools_used == ["forge_plan_select"]
+        assert "persisted planning lifecycle" in result.content
+        deferred = next(item for item in result.messages if item.get("tool_call_id") == "must-defer")
+        assert json.loads(deferred["content"])["status"] == "deferred_to_planning_execution"
+        assert pending_calls == [("task-handoff", "observe", "scene-current")]
+        loop.tools.execute.assert_awaited_once()
+
+    asyncio.run(exercise())
+
+
+@pytest.mark.parametrize(
+    ("dispatch_scene_revision", "selection_scene_revision"),
+    [("scene-current", "scene-old"), (None, "scene-old"), ("scene-current", None)],
+)
+def test_node_selection_without_current_scene_selection_keeps_model_path(
+    tmp_path, dispatch_scene_revision, selection_scene_revision,
+):
+    async def exercise():
+        provider = ScriptedProvider([
+            LLMResponse(content=None, tool_calls=[ToolCallRequest(
+                "select-stale", "forge_plan_select", {
+                    "task_id": "task-stale", "node_id": "observe", "tool_id": "scene.observe",
+                },
+            )]),
+            LLMResponse(content="continue corrective node turn"),
+        ])
+
+        class Coordinator:
+            def get_task(self, _task_id):
+                return None
+
+            def pending_planning_selection(self, task_id, node_id, *, scene_revision):
+                # Match the Coordinator's current-scene filtering semantics.
+                assert scene_revision is not None
+                if scene_revision != selection_scene_revision:
+                    return None
+                return {
+                    "task_id": task_id,
+                    "node_id": node_id,
+                    "scene_revision": selection_scene_revision,
+                }
+
+        loop = AgentLoop(
+            bus=MessageBus(), provider=provider, workspace=tmp_path,
+            max_iterations=2,
+        )
+        loop.forge_task_coordinator = Coordinator()
+        loop._planning_dispatch = (
+            SimpleNamespace(current_scene_revision=dispatch_scene_revision)
+            if dispatch_scene_revision is not None
+            else None
+        )
+        loop.tools.execute = AsyncMock(return_value=json.dumps({
+            "ok": True, "motion_authorized": False,
+        }))
+
+        result = await loop._run_agent_loop(
+            [{"role": "user", "content": "execute current node"}],
+            active_task_id="task-stale",
+            projection_scope="node",
+            projection_node_id="observe",
+            allowed_tool_names=frozenset({"forge_plan_select"}),
+        )
+
+        assert len(provider.requests) == 2
+        assert result.tools_used == ["forge_plan_select"]
+        assert result.content == "continue corrective node turn"
+
+    asyncio.run(exercise())
+
+
+@pytest.mark.parametrize("correct_first", [False, True])
+def test_persisted_selection_handoff_consumes_real_query_once(tmp_path, monkeypatch, correct_first):
+    from PhyAgentOS.agent.planning_loop import AgentLoopNodeExecutor, NodeExecutionContext
+    from PhyAgentOS.planning import AdmissionContext
+
+    async def exercise():
+        coordinator, task = setup_task(tmp_path)
+        materialized = json.loads(await ForgeTaskMaterializePlanTool(coordinator).execute(
+            task.task_id, nodes=semantic_nodes(1), reason="offline handoff fixture",
+        ))
+        assert materialized["ok"], materialized
+        task = coordinator.get_task(task.task_id)
+        node = task.active_revision.plan_graph.nodes[0]
+        initial_use = coordinator.record_skill_use(
+            task.task_id, activation_id="activation-handoff", skill_name="pick-place-workflow",
+            skill_version="1.0.0", content_sha256="b" * 64,
+            instructions="Use governed Query evidence.", decision_ref="task:initial",
+        )
+
+        class Client:
+            def __init__(self):
+                self.calls = []
+
+            async def invoke_query_tool(self, tool_id, arguments, **kwargs):
+                self.calls.append((tool_id, arguments, kwargs))
+                return {"ok": True, "data": {
+                    "status": "available", "world_change_started": False,
+                    "outcome_known": True, "evidence_refs": ["artifact://offline/query"],
+                }, "motion_authorized": False}
+
+        client = Client()
+        coordinator.client = client
+
+        async def require_tool(task_id, tool_id, semantics):
+            assert (task_id, tool_id, semantics) == (task.task_id, "scene.observe", "query")
+            return task.primary_skill_binding.required_tools[0]
+
+        # Substitute only managed Runtime availability, keeping selection, registry
+        # admission, wrapper, execution persistence, and reconciliation real.
+        monkeypatch.setattr(coordinator, "_require_binding_tool", require_tool)
+        selection = {
+            "task_id": task.task_id, "node_id": node.node_id, "tool_id": "scene.observe",
+            "arguments": dict(node.input_bindings), "decision_reason": "offline current choice",
+        }
+        responses = []
+        if correct_first:
+            responses.append(LLMResponse(content=None, tool_calls=[ToolCallRequest(
+                "wrong-selection", "forge_plan_select", {**selection, "projection_source": {"record_id": "wrong"}},
+            )]))
+        responses.append(LLMResponse(content=None, tool_calls=[
+            ToolCallRequest("persist-selection", "forge_plan_select", selection),
+            ToolCallRequest("later-query", "forge_tool_query", {
+                "task_id": task.task_id, "tool_id": "scene.observe", "arguments": {},
+            }),
+            ToolCallRequest("later-action", "forge_tool_start_action", {
+                "task_id": task.task_id, "tool_id": "object.acquire", "arguments": {},
+            }),
+        ]))
+        provider = ScriptedProvider(responses)
+
+        def context_provider(_task_id):
+            return AdmissionContext(scene_revision="scene-current")
+
+        loop = AgentLoop(
+            bus=MessageBus(), provider=provider, workspace=tmp_path,
+            forge_task_coordinator=coordinator, forge_tool_client=client,
+            planning_context_provider=context_provider,
+        )
+        turns = []
+        run_node_turn = loop.run_node_turn
+
+        async def capture_turn(**kwargs):
+            turn = await run_node_turn(**kwargs)
+            turns.append(turn)
+            assert coordinator.pending_planning_selection(
+                task.task_id, node.node_id, scene_revision="scene-current",
+            ) is not None
+            assert coordinator.pending_planning_selection(
+                task.task_id, node.node_id, scene_revision="scene-old",
+            ) is None
+            return turn
+
+        loop.run_node_turn = AsyncMock(side_effect=capture_turn)
+        loop.tools.execute = AsyncMock(wraps=loop.tools.execute)
+        loop.skill_activation.record_tool = Mock(wraps=loop.skill_activation.record_tool)
+        progress = AsyncMock()
+        context = NodeExecutionContext(
+            task_id=task.task_id, revision_id=task.active_revision_id, node_id=node.node_id,
+            capability=node.capability, dependencies=node.dependencies,
+            required_evidence=node.required_evidence, input_bindings=dict(node.input_bindings),
+            scene_revision="scene-current", agent_selection_required=True,
+        )
+        result = await AgentLoopNodeExecutor(loop, coordinator, on_progress=progress)(context)
+        assert result.status == "succeeded"
+        assert result.world_change_started is False
+        assert result.outcome_known is True
+        assert len(provider.requests) == (2 if correct_first else 1)
+        assert provider.responses == []  # no narration request after successful selection
+        assert loop.run_node_turn.await_count == 1
+        executed_names = [call.args[0] for call in loop.tools.execute.await_args_list]
+        assert executed_names == ["forge_plan_select"] * (2 if correct_first else 1) + ["forge_tool_query"]
+        assert loop.tools.execute.await_args_list[-1].args[1]["use_selected_arguments"] is True
+        assert loop.tools.execute.await_args_list[-1].args[1]["arguments"] == {}
+        assert len(client.calls) == 1
+        assert client.calls[0][1] == node.input_bindings
+        assert progress.await_count >= 1
+        assert loop.skill_activation.record_tool.call_count == (2 if correct_first else 1)
+        assert all(call.args[1] == "forge_plan_select" for call in loop.skill_activation.record_tool.call_args_list)
+
+        deferred = {
+            item["tool_call_id"]: json.loads(item["content"])
+            for item in turns[0].messages
+            if item.get("tool_call_id") in {"later-query", "later-action"}
+        }
+        assert set(deferred) == {"later-query", "later-action"}
+        assert all(item["status"] == "deferred_to_planning_execution" for item in deferred.values())
+        task = coordinator.get_task(task.task_id)
+        assert len(task.active_revision.planning_selections) == 1
+        assert len(task.active_revision.execution_records) == 1
+        saved = task.active_revision.execution_records[0]
+        trace = task.active_revision.planning_selections[0]
+        assert saved.decision_trace_ref == trace.resumable_selection.planning_binding.decision_trace_ref
+        assert saved.node_id == node.node_id and saved.terminal
+        assert result.evidence_refs == tuple(dict.fromkeys((*saved.evidence_refs, "artifact://offline/query")))
+        assert coordinator.pending_planning_selection(task.task_id, node.node_id, scene_revision="scene-current") is None
+        assert len(task.skill_uses) == 2
+        assert task.skill_uses[0].use_id == initial_use.use_id
+        assert task.skill_uses[1].node_id == node.node_id
+        assert task.skill_uses[1].decision_ref == f"node:{task.active_revision_id}:{node.node_id}"
+        events = coordinator.store.events(task.task_id, limit=10000)
+        assert sum(event["event_type"] == "planning_selection_persisted" for event in events) == 1
+
+        # A fresh host/Coordinator uses original durable facts without another
+        # model request, registry consumption, or client invocation.
+        reloaded = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=client)
+        restarted_provider = ScriptedProvider([])
+        restarted_loop = AgentLoop(
+            bus=MessageBus(), provider=restarted_provider, workspace=tmp_path,
+            forge_task_coordinator=reloaded, forge_tool_client=client,
+            planning_context_provider=context_provider,
+        )
+        restarted_loop.tools.execute = AsyncMock(wraps=restarted_loop.tools.execute)
+        replay = await AgentLoopNodeExecutor(restarted_loop, reloaded)(context)
+        assert replay == result
+        assert restarted_provider.requests == []
+        restarted_loop.tools.execute.assert_not_awaited()
+        assert len(client.calls) == 1
+        assert len(reloaded.get_task(task.task_id).skill_uses) == 2
+
+    asyncio.run(exercise())
+
+
+def test_node_selection_remains_within_decision_timeout(tmp_path):
+    async def exercise():
+        provider = ScriptedProvider([LLMResponse(content=None, tool_calls=[
+            ToolCallRequest("slow-select", "forge_plan_select", {}),
+            ToolCallRequest("must-not-execute", "forge_tool_query", {}),
+        ])])
+        loop = AgentLoop(bus=MessageBus(), provider=provider, workspace=tmp_path)
+        cancelled = asyncio.Event()
+
+        async def execute(name, _arguments):
+            assert name == "forge_plan_select"
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cancelled.set()
+
+        loop.tools.execute = AsyncMock(side_effect=execute)
+        result = await loop._run_agent_loop(
+            [{"role": "user", "content": "select current node"}],
+            projection_scope="node", projection_node_id="current",
+            allowed_tool_names=frozenset({"forge_plan_select", "forge_tool_query"}),
+            yield_after_tools=frozenset({"forge_tool_query"}), decision_timeout_s=0.05,
+        )
+        assert cancelled.is_set()
+        assert result.turn_failure_code == "turn_timeout"
+        assert len(provider.requests) == 1
+        loop.tools.execute.assert_awaited_once()
+
+    asyncio.run(exercise())
+
+
 def test_node_turn_can_add_missing_projection_join_field_without_replan(tmp_path):
     async def exercise():
         provider = ScriptedProvider([

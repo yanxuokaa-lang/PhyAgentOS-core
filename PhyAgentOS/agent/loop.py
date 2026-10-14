@@ -1505,6 +1505,48 @@ class AgentLoop:
                         )
                         yield_to_host = True
                         break
+                    if (
+                        projection_scope == "node"
+                        and tool_call.name == "forge_plan_select"
+                        and self._tool_result_succeeded(result)
+                        and self._persisted_node_selection(
+                            task_id=active_task_id,
+                            node_id=projection_node_id,
+                            scene_revision=(
+                                self._planning_dispatch.current_scene_revision
+                                if self._planning_dispatch is not None
+                                else None
+                            ),
+                        )
+                    ):
+                        for deferred in response.tool_calls[call_index + 1 :]:
+                            messages = self.context.add_tool_result(
+                                messages,
+                                deferred.id,
+                                deferred.name,
+                                json.dumps(
+                                    {
+                                        "ok": False,
+                                        "status": "deferred_to_planning_execution",
+                                        "error": {
+                                            "type": "control_handoff",
+                                            "message": (
+                                                "Tool was not executed because the persisted "
+                                                "planning selection now owns node execution."
+                                            ),
+                                        },
+                                        "motion_authorized": False,
+                                    },
+                                    ensure_ascii=False,
+                                    separators=(",", ":"),
+                                ),
+                            )
+                        final_content = (
+                            "Planning selection persisted; continuing through the "
+                            "persisted planning lifecycle."
+                        )
+                        yield_to_host = True
+                        break
                     if self._query_provider_blocked(
                         tool_name=tool_call.name,
                         arguments=tool_call.arguments,
@@ -1675,6 +1717,42 @@ class AgentLoop:
             return False
         error = payload.get("error") if isinstance(payload, dict) else None
         return isinstance(error, dict) and error.get("requires_replan") is True
+
+    def _persisted_node_selection(
+        self,
+        *,
+        task_id: str | None,
+        node_id: str | None,
+        scene_revision: str | None,
+    ) -> bool:
+        """Confirm that the current node has an unconsumed durable selection.
+
+        A successful selector response is only a transport result.  The planning
+        lifecycle owns the handoff only after the Coordinator exposes the
+        current node's persisted selection; this keeps failed or non-persisting
+        selector responses on the existing corrective-turn path.
+        """
+        coordinator = self.forge_task_coordinator
+        loader = getattr(coordinator, "pending_planning_selection", None)
+        if (
+            coordinator is None
+            or not callable(loader)
+            or not isinstance(task_id, str)
+            or not task_id
+            or not isinstance(node_id, str)
+            or not node_id
+            or not isinstance(scene_revision, str)
+            or not scene_revision
+        ):
+            return False
+        try:
+            return loader(
+                task_id,
+                node_id,
+                scene_revision=scene_revision,
+            ) is not None
+        except (AgentTaskError, ValueError, TypeError):
+            return False
 
     @staticmethod
     def _planning_selection_correction(result: str) -> str | None:
