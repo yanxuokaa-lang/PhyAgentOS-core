@@ -2,6 +2,22 @@
 
 ## 最近五版本 / Latest five versions
 
+## v13.9.3 (2026-10-15 02:20) - codex
+
+### 变更摘要 / Summary [完成]
+- [docs] [chore] 登记 P4 影响文件记录修正提交 `44652445`，同步最近五版索引；不修改生产逻辑。 / Record P4 expected-files correction commit `44652445` and synchronize the latest-five index; no production logic changes.
+
+### 文件与关键 Diff / Files and Key Diff
+- [修改 / Modified] `changelog/2026-10_part7.md:L1-L9,L118-L121`：移除未实际修改的 `tests/test_planning_loop.py` 影响文件，并登记 `44652445`。 / Remove the unmodified `tests/test_planning_loop.py` expected file and record `44652445`.
+- [修改 / Modified] `CHANGELOG.md:L5-L12`：加入本版本并保持最近五版滚动。 / Add this version and keep the latest-five rolling index current.
+
+### 验证与边界 / Validation and Boundary
+- 全仓离线 `972 passed in 37.07s`；Ruff、compileall、`git diff --check` 通过。 / Full offline suite `972 passed in 37.07s`; Ruff, compileall, and `git diff --check` pass.
+- 未修改生产逻辑，未部署、未恢复任务、未调用现场 Gateway/Query/Action/Session、相机、仿真或运动。 / No production logic changed; no deployment, task resume, live Gateway/Query/Action/Session, camera, simulation, or motion was used.
+
+### Git 提交 / Git Commit
+- Correction commit: `44652445` on `feature/planning-loop`, pushed to origin. / 修正提交：`44652445`，位于 `feature/planning-loop`，已推送 origin。
+
 ## v13.9.2 (2026-10-15 01:45) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -127,6 +143,8 @@
 
 ### Git 提交 / Git Commit
 - Implementation commit: `a3cae374` on `feature/planning-loop`; this exact reference is completed by the same-version log-only commit. / 实现提交：`a3cae374`，分支 `feature/planning-loop`；精确引用由同版本纯日志提交补全。
+
+## Archived detailed records / 已归档详细记录
 
 ## v13.7.1 (2026-10-14 22:32) - codex
 
