@@ -578,6 +578,40 @@ def _scene_bind_selection_context(
         for ambiguity in ambiguities
     )
     entity_refs = [entity["entity_ref"] for entity in entities]
+    declared_entity_refs = (
+        node.input_bindings.get("entity_refs")
+        if isinstance(getattr(node, "input_bindings", None), Mapping)
+        else None
+    )
+    if (
+        isinstance(declared_entity_refs, list)
+        and declared_entity_refs
+        and all(isinstance(ref, str) for ref in declared_entity_refs)
+    ):
+        declared = list(dict.fromkeys(declared_entity_refs))
+        declared_ambiguous = (
+            declared
+            if global_ambiguity
+            else [ref for ref in declared if ref in ambiguous_refs]
+        )
+        declared_missing = [ref for ref in declared if ref not in entity_refs]
+        if declared_ambiguous or declared_missing:
+            return {
+                "status": "blocked",
+                "code": "scene_bind_selection_inadmissible",
+                "reason": (
+                    "scene.bind declares entity_refs that are unresolved in the "
+                    "current scene.understand result"
+                ),
+                "source_record_id": understanding.record_id,
+                "required_entity_refs": declared,
+                "ambiguous_entity_refs": declared_ambiguous,
+                "missing_entity_refs": declared_missing,
+                "candidate_entity_refs": entity_refs,
+                "global_ambiguity": global_ambiguity,
+                "selection_required": False,
+                "recovery": "refresh_or_resolve_current_understanding",
+            }
     return {
         "status": "available",
         "source_record_id": understanding.record_id,
@@ -1041,6 +1075,25 @@ class AgentLoopNodeExecutor:
         resumed = await self._resume_node(context)
         if resumed is not None:
             return resumed
+        blocked_selection = context.scene_bind_selection
+        if (
+            isinstance(blocked_selection, Mapping)
+            and blocked_selection.get("status") == "blocked"
+        ):
+            code = str(
+                blocked_selection.get(
+                    "code", "scene_bind_selection_inadmissible"
+                )
+            )
+            reason = str(
+                blocked_selection.get(
+                    "reason", "scene.bind selection is not admissible"
+                )
+            )
+            raise NodeTurnIncompleteError(
+                context.node_id,
+                f"selection_admission_blocked:{code}: {reason}",
+            )
         persist_frozen_query = getattr(
             self.agent_loop, "persist_deterministic_query_selection", None,
         )

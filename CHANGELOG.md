@@ -2,6 +2,39 @@
 
 ## 最近五版本 / Latest five versions
 
+## v13.4.10 (2026-10-14 02:45) - codex
+
+### 变更摘要 / Summary [完成]
+- [policy] [fix] 在 Coordinator 的 `scene.bind` selection 投影阶段识别任一节点声明实体处于当前理解歧义或缺失的确定性不可选状态，并由 AgentLoop 直接进入结构化 blocked/replan 边界，避免无意义 corrective turns；未声明固定集合时保留原候选选择行为。 / Detect when any node-declared `scene.bind` entity is ambiguous or missing from current understanding, then route directly through the existing structured blocked/replan boundary without corrective-turn churn; preserve candidate selection when no fixed set is declared. (local)
+- [eval] [test] 增加 no-motion 回归，覆盖全量/部分歧义实体、缺失实体和 blocked context 不调用模型；不恢复任务、不调用 Runtime Query/Action。 / Add no-motion regressions for all/partially ambiguous entities, missing entities, and blocked contexts that do not call the model; do not resume tasks or invoke Runtime Query/Action. (local)
+
+### 预期文件 / Planned Files
+- `PhyAgentOS/agent/planning_loop.py`
+- `tests/test_planning_loop.py`
+- `changelog/2026-10_part6.md`
+- `CHANGELOG.md`
+
+### 七维审查 / Seven-Dimension Review
+- 架构：资格判断放在 Coordinator selection projection，停止放在 AgentLoop node executor；正确性：必需引用任一歧义或缺失即拒绝整组绑定，未声明固定集合沿用原逻辑。 / Architecture: admission belongs to Coordinator selection projection and turn termination to AgentLoop executor; correctness: reject the whole declared set if any required ref is ambiguous or missing, while retaining the existing path for undeclared sets.
+- 可观测性：返回结构化 code、来源记录、必需/歧义/缺失候选 refs 和恢复提示；幂等：blocked 状态不写 selection 或 execution。 / Observability: return structured code, source record, required/ambiguous/missing refs, and recovery hint; idempotency: blocked state writes no selection or execution.
+- 安全：不调用 Gateway/Runtime，不放宽 grounding；兼容性：不改变合法且无歧义的 selection 行为；收敛性：确定性不可选不再消耗 corrective model turn。 / Safety: no Gateway/Runtime call and no grounding relaxation; compatibility: valid unambiguous selection behavior is unchanged; convergence: deterministic inadmissibility consumes no corrective model turn.
+
+### 完成结果与验证 / Completion and Verification
+- `134` planning-loop、`137` agent-foundation、`58` planning/context/selection tests 通过；全仓库 `913 passed`。 Ruff、compileall、`git diff --check` 通过。 / 134 planning-loop, 137 agent-foundation, and 58 planning/context/selection tests passed; the full suite passed 913 tests. Ruff, compileall, and `git diff --check` passed.
+- 七维审查未发现遗留 Blocker/Major；未恢复任务、调用 Runtime Query/Action、运动或改变 Runtime 生命周期。 / Seven-dimension review found no remaining blocker or major issue; no task was resumed, no Runtime Query/Action was called, and no motion or Runtime lifecycle operation occurred.
+
+### 文件变更与关键 Diff / File Changes and Key Diff
+- [修改] `PhyAgentOS/agent/planning_loop.py:L581-L614`：Coordinator 对固定 `entity_refs` 做整组资格检查；`L1078-L1096`：AgentLoop 在模型回合前将不可选状态转入结构化 incomplete/replan。 / [Modified] the Coordinator validates the complete declared entity set, and AgentLoop routes inadmissible context to structured incomplete/replan before a model turn.
+- [修改] `tests/test_planning_loop.py:L1055-L1187,L3656-L3701`：新增 ambiguity、missing-ref 与 no-model-turn 回归。 / [Modified] regression coverage for ambiguity, missing refs, and no model turn.
+
+```diff
+- ambiguous/missing declared refs reached model-driven selection retries
++ Coordinator reports exact inadmissible refs; AgentLoop stops before model/Gateway/Runtime
+```
+
+### 失败场景与安全边界 / Failure Scenario and Safety Boundary
+- 当支撑/碰撞等当前实体引用全部属于 `entity_identity_uncertain` 或共享几何歧义时，继续要求 Agent 选择只会重复相同 selection；若强行绑定会污染 grounding。Coordinator 只报告不可选事实，AgentLoop 复用现有 blocked/replan 状态，不自动观察、绑定、Query 或 Action。 / When all current support/collision entity refs are covered by identity uncertainty or shared-geometry ambiguity, asking the Agent to select again repeats the same selection and forced binding would corrupt grounding. The Coordinator reports the inadmissible fact, while AgentLoop reuses the existing blocked/replan state without automatic observation, binding, Query, or Action.
+
 ## v13.4.9 (2026-10-14 02:20) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -102,6 +135,8 @@
 ### Git 提交 / Git Commit
 - Deployment log/index commit: `c11bdbc4` on `feature/planning-loop`; commit-reference completion follows in the log-only commit. / 部署日志与索引提交：`c11bdbc4`，分支 `feature/planning-loop`；提交引用由纯日志提交收尾。
 
+## Archived detailed records / 已归档详细记录
+
 ## v13.4.5 (2026-10-13 22:32) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -139,8 +174,6 @@
 ### Git 提交 / Git Commit
 - Implementation commit: `bd52d930` on `feature/planning-loop`. / 实现提交：`bd52d930`，分支 `feature/planning-loop`。
 - Log/index hash-reference completion follows in a separate documentation commit. / 日志与索引的 hash 回填使用独立文档提交收尾。
-
-## Archived detailed records / 已归档详细记录
 
 ## v13.4.4 (2026-10-13 21:32) - codex
 

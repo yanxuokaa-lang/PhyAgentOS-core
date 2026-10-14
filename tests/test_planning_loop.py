@@ -1052,6 +1052,141 @@ def test_scene_bind_node_context_suppresses_recommendations_for_global_ambiguity
     assert selection["recommended_unambiguous_entity_refs"] == []
 
 
+def test_scene_bind_context_blocks_when_every_declared_entity_is_ambiguous():
+    node = SimpleNamespace(
+        capability="scene.bind",
+        required_evidence=(),
+        input_bindings={
+            "entity_refs": ["entity://surface-a", "entity://surface-b"],
+        },
+    )
+    predecessor = PredecessorContext(
+        node_id="understand",
+        status="completed",
+        scene_revision="scene-current",
+        executions=(PredecessorExecutionContext(
+            record_id="understand-current",
+            tool_id="scene.understand",
+            semantics="query",
+            status="succeeded",
+            response={"data": {
+                "scene_revision": "scene-current",
+                "entities": [
+                    {"entity_ref": "entity://task-object", "category": "task object"},
+                    {"entity_ref": "entity://surface-a", "category": "support surface"},
+                    {"entity_ref": "entity://surface-b", "category": "support surface"},
+                ],
+                "ambiguities": [{
+                    "code": "entity_identity_uncertain",
+                    "message": "multiple semantic entities share one metric localization",
+                    "entity_refs": ["entity://surface-a", "entity://surface-b"],
+                }],
+            }},
+        ),),
+    )
+
+    selection = _scene_bind_selection_context(
+        node, (predecessor,), "scene-current"
+    )
+
+    assert selection == {
+        "status": "blocked",
+        "code": "scene_bind_selection_inadmissible",
+        "reason": (
+            "scene.bind declares entity_refs that are unresolved in the "
+            "current scene.understand result"
+        ),
+        "source_record_id": "understand-current",
+        "required_entity_refs": ["entity://surface-a", "entity://surface-b"],
+        "ambiguous_entity_refs": ["entity://surface-a", "entity://surface-b"],
+        "missing_entity_refs": [],
+        "candidate_entity_refs": [
+            "entity://task-object", "entity://surface-a", "entity://surface-b",
+        ],
+        "global_ambiguity": False,
+        "selection_required": False,
+        "recovery": "refresh_or_resolve_current_understanding",
+    }
+
+
+def test_scene_bind_context_blocks_when_any_declared_entity_is_ambiguous():
+    node = SimpleNamespace(
+        capability="scene.bind",
+        required_evidence=(),
+        input_bindings={
+            "entity_refs": ["entity://task-object", "entity://surface"],
+        },
+    )
+    predecessor = PredecessorContext(
+        node_id="understand",
+        status="completed",
+        scene_revision="scene-current",
+        executions=(PredecessorExecutionContext(
+            record_id="understand-current",
+            tool_id="scene.understand",
+            semantics="query",
+            status="succeeded",
+            response={"data": {
+                "scene_revision": "scene-current",
+                "entities": [
+                    {"entity_ref": "entity://task-object", "category": "task object"},
+                    {"entity_ref": "entity://surface", "category": "support surface"},
+                ],
+                "ambiguities": [{
+                    "code": "entity_identity_uncertain",
+                    "message": "support identity is unresolved",
+                    "entity_refs": ["entity://surface"],
+                }],
+            }},
+        ),),
+    )
+
+    selection = _scene_bind_selection_context(
+        node, (predecessor,), "scene-current"
+    )
+
+    assert selection["status"] == "blocked"
+    assert selection["required_entity_refs"] == [
+        "entity://task-object", "entity://surface",
+    ]
+    assert selection["ambiguous_entity_refs"] == ["entity://surface"]
+    assert selection["missing_entity_refs"] == []
+
+
+def test_scene_bind_context_blocks_when_declared_entity_is_missing():
+    node = SimpleNamespace(
+        capability="scene.bind",
+        required_evidence=(),
+        input_bindings={"entity_refs": ["entity://missing"]},
+    )
+    predecessor = PredecessorContext(
+        node_id="understand",
+        status="completed",
+        scene_revision="scene-current",
+        executions=(PredecessorExecutionContext(
+            record_id="understand-current",
+            tool_id="scene.understand",
+            semantics="query",
+            status="succeeded",
+            response={"data": {
+                "scene_revision": "scene-current",
+                "entities": [{
+                    "entity_ref": "entity://current", "category": "task object",
+                }],
+                "ambiguities": [],
+            }},
+        ),),
+    )
+
+    selection = _scene_bind_selection_context(
+        node, (predecessor,), "scene-current"
+    )
+
+    assert selection["status"] == "blocked"
+    assert selection["ambiguous_entity_refs"] == []
+    assert selection["missing_entity_refs"] == ["entity://missing"]
+
+
 def test_unqualified_source_field_resolves_from_predecessor_arguments():
     context = NodeExecutionContext(
         task_id="task-source-fields",
@@ -3516,6 +3651,54 @@ def test_node_executor_never_auto_selects_agent_owned_semantic_context(
 
     assert loop.selection_calls == 0
     assert loop.model_calls == 1
+
+
+def test_node_executor_stops_blocked_scene_bind_before_model_turn():
+    task = SimpleNamespace(
+        active_revision_id="revision-blocked-bind",
+        active_revision=SimpleNamespace(execution_records=[]),
+    )
+
+    class Coordinator:
+        def get_task(self, _task_id):
+            return task
+
+        def pending_planning_selection(self, *_args, **_kwargs):
+            return None
+
+    class Loop:
+        tools = SimpleNamespace()
+
+        def __init__(self):
+            self.model_calls = 0
+
+        async def run_node_turn(self, **_kwargs):
+            self.model_calls += 1
+            raise AssertionError("blocked selection must not reach the model")
+
+    context = _executor_context().model_copy(update={
+        "revision_id": "revision-blocked-bind",
+        "capability": "scene.bind",
+        "agent_selection_required": True,
+        "scene_bind_selection": {
+            "status": "blocked",
+            "code": "scene_bind_selection_inadmissible",
+            "reason": "all declared entity refs are ambiguous",
+            "selection_required": False,
+        },
+    })
+    loop = Loop()
+
+    with pytest.raises(
+        NodeTurnIncompleteError,
+        match=(
+            "selection_admission_blocked:scene_bind_selection_inadmissible: "
+            "all declared entity refs are ambiguous"
+        ),
+    ):
+        asyncio.run(AgentLoopNodeExecutor(loop, Coordinator())(context))
+
+    assert loop.model_calls == 0
 
 
 def test_node_executor_consumes_concurrent_selection_before_model_turn():
