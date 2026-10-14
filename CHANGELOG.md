@@ -36,7 +36,7 @@
 - 未启动 Runtime、恢复任务或调用 Gateway/现场 Query/Action、相机、仿真或运动。 / No Runtime start, task resume, Gateway/live Query/Action, camera, simulation, or motion occurred.
 
 ### Git 提交 / Git Commit
-- Implementation commit pending on `feature/planning-loop`; exact reference follows in a same-version log-only commit. / 实现提交待生成，当前分支 `feature/planning-loop`；精确引用随后以同版本纯日志提交补全。
+- Implementation commit: `cbc1feeb` on `feature/planning-loop`; this exact reference is completed by the same-version log-only commit. / 实现提交：`cbc1feeb`，分支 `feature/planning-loop`；精确引用由同版本纯日志提交补全。
 
 ## v13.6.0 (2026-10-14 16:00) - codex
 
