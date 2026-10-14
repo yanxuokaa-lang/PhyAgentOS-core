@@ -44,7 +44,7 @@
 - Ruff、`PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m compileall -q PhyAgentOS tests`、`git diff --check` 通过。未部署、未恢复任务、未调用现场 Gateway/Query/Action/Session、相机、仿真或运动。 / Ruff, compileall, and diff checks pass. No deployment, task resume, live Gateway/Query/Action/Session, camera, simulation, or motion occurred.
 
 ### Git 提交 / Git Commit
-- Implementation commit: pending until this stage is staged and pushed on `feature/planning-loop`. / 实现提交：本阶段暂存并推送到 `feature/planning-loop` 后补全。
+- Implementation commit: `33096015` on `feature/planning-loop`, pushed to origin. / 实现提交：`33096015`，位于 `feature/planning-loop`，已推送到 origin。
 
 ## v13.8.0 (2026-10-15 00:44) - codex
 
