@@ -586,6 +586,7 @@ def test_scene_bind_projects_current_understanding_identity_before_persisting_se
         obligation_id="bind-current",
         capability="scene.bind",
         required_evidence=(evidence_ref,),
+        input_bindings={"entity_refs": ["entity://green"]},
     )
     payload = {
         "task_id": "task-bind-projection",
@@ -743,15 +744,59 @@ def test_scene_bind_projects_current_understanding_identity_before_persisting_se
             "is not authorized",
             id="unauthorized-record",
         ),
+        pytest.param(
+            "scene.understand",
+            {"status": "unavailable", "observation_ref": "observation://scene-1/head",
+             "scene_revision": "scene-1", "calibration_ref": "calibration://scene-1/head",
+             "entities": [{"entity_ref": "entity://green"}]},
+            {"entity_refs": ["entity://green"]},
+            "understanding-current",
+            "requires available current understanding",
+            id="business-unavailable",
+        ),
+        pytest.param(
+            "scene.understand",
+            {"status": "available", "observation_ref": "observation://scene-1/head",
+             "scene_revision": "scene-1", "calibration_ref": "calibration://scene-1/head",
+             "entities": [{"entity_ref": "entity://other"}]},
+            {"entity_refs": ["entity://green"]},
+            "understanding-current",
+            "declares entity_refs that are unresolved",
+            id="entity-missing",
+        ),
+        pytest.param(
+            "scene.understand",
+            {"status": "available", "observation_ref": "observation://scene-1/head",
+             "scene_revision": "scene-1", "calibration_ref": "calibration://scene-1/head",
+             "entities": [{"entity_ref": "entity://green"}],
+             "ambiguities": [{"entity_refs": ["entity://green"]}]},
+            {"entity_refs": ["entity://green"]},
+            "understanding-current",
+            "declares entity_refs that are unresolved",
+            id="entity-ambiguous",
+        ),
+        pytest.param(
+            "scene.understand",
+            {"status": "available", "observation_ref": "observation://scene-1/head",
+             "scene_revision": "scene-1", "calibration_ref": "calibration://scene-1/head",
+             "entities": [{"entity_ref": "entity://green"}]},
+            {"entity_refs": ["entity://other"]},
+            "understanding-current",
+            "do not match the frozen node selection",
+            id="frozen-entity-override",
+        ),
     ],
 )
 def test_scene_bind_projection_rejects_incomplete_or_unauthorized_identity(
     record_tool, response_data, agent_arguments, selector_record_id, message
 ):
+    response_data = dict(response_data)
+    response_data.setdefault("status", "available")
+    response_data.setdefault("entities", [{"entity_ref": "entity://green"}])
     evidence_ref = "artifact://scene-1/understanding"
     node = PlanNode(
         node_id="bind-current", obligation_id="bind-current", capability="scene.bind",
-        required_evidence=(evidence_ref,),
+        required_evidence=(evidence_ref,), input_bindings={"entity_refs": ["entity://green"]},
     )
     payload = {
         "task_id": "task-bind-reject",

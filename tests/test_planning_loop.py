@@ -1035,6 +1035,121 @@ def test_deterministic_projection_requires_one_available_current_source():
     assert deterministic_projection_arguments(duplicate, plan) is None
 
 
+def test_deterministic_projection_reuses_admitted_scene_bind_source():
+    plan = ArgumentProjectionPlan.model_validate({
+        "projection_id": "observed_identity_for_binding_v1",
+        "source_slots": {
+            "understanding": {
+                "tool_id": "scene.understand",
+                "source_scope": "authorized",
+                "scene_relation": "current",
+                "source_field_map": {
+                    "observation_ref": ["observation_ref"],
+                    "scene_revision": ["scene_revision"],
+                    "calibration_ref": ["calibration_ref"],
+                },
+            },
+        },
+        "top_level_fields": ["entity_refs"],
+    })
+
+    def understanding(record_id: str) -> PredecessorExecutionContext:
+        return PredecessorExecutionContext(
+            record_id=record_id,
+            tool_id="scene.understand",
+            semantics="query",
+            status="succeeded",
+            response={"data": {
+                "status": "available",
+                "observation_ref": f"observation://scene-current/{record_id}",
+                "scene_revision": "scene-current",
+                "calibration_ref": f"calibration://scene-current/{record_id}",
+                "entities": [{"entity_ref": "entity://green"}],
+            }},
+        )
+
+    context = _executor_context().model_copy(update={
+        "capability": "scene.bind",
+        "input_bindings": {"entity_refs": ["entity://green"]},
+        "scene_revision": "scene-current",
+        "agent_selection_required": True,
+        "scene_bind_selection": {
+            "status": "available",
+            "source_record_id": "understand-required",
+            "candidate_entity_refs": ["entity://green"],
+            "selection_required": False,
+        },
+        "predecessor_context": (PredecessorContext(
+            node_id="understand",
+            status="completed",
+            scene_revision="scene-current",
+            executions=(
+                understanding("understand-history"),
+                understanding("understand-required"),
+            ),
+        ),),
+    })
+
+    projected = deterministic_projection_arguments(context, plan)
+
+    assert projected == {
+        "observation_ref": "observation://scene-current/understand-required",
+        "scene_revision": "scene-current",
+        "calibration_ref": "calibration://scene-current/understand-required",
+        "entity_refs": ["entity://green"],
+    }
+
+
+def test_deterministic_projection_does_not_bypass_scene_bind_business_admission():
+    plan = ArgumentProjectionPlan.model_validate({
+        "projection_id": "observed_identity_for_binding_v1",
+        "source_slots": {
+            "understanding": {
+                "tool_id": "scene.understand",
+                "source_scope": "authorized",
+                "scene_relation": "current",
+                "source_field_map": {
+                    "observation_ref": ["observation_ref"],
+                    "scene_revision": ["scene_revision"],
+                    "calibration_ref": ["calibration_ref"],
+                },
+            },
+        },
+        "top_level_fields": ["entity_refs"],
+    })
+    context = _executor_context().model_copy(update={
+        "capability": "scene.bind",
+        "input_bindings": {"entity_refs": ["entity://green"]},
+        "scene_revision": "scene-current",
+        "agent_selection_required": True,
+        "scene_bind_selection": {
+            "status": "unavailable",
+            "reason": "scene.understand has no entity identities to select",
+            "source_record_id": "understand-empty",
+        },
+        "predecessor_context": (PredecessorContext(
+            node_id="understand",
+            status="completed",
+            scene_revision="scene-current",
+            executions=(PredecessorExecutionContext(
+                record_id="understand-empty",
+                tool_id="scene.understand",
+                semantics="query",
+                status="succeeded",
+                response={"data": {
+                    "status": "available",
+                    "observation_ref": "observation://scene-current/head",
+                    "scene_revision": "scene-current",
+                    "calibration_ref": "calibration://scene-current/head",
+                    "entities": [],
+                }},
+            ),),
+        ),),
+    })
+
+    assert deterministic_projection_arguments(context, plan) is None
+
+
 def test_agent_loop_persists_unique_projected_query_without_model_turn():
     plan = ArgumentProjectionPlan.model_validate({
         "projection_id": "observed_identity_for_binding_v1",
@@ -1103,6 +1218,13 @@ def test_agent_loop_persists_unique_projected_query_without_model_turn():
         required_evidence=(),
         input_bindings={"entity_refs": ["entity://green"]},
         scene_revision="scene-current",
+        agent_selection_required=True,
+        scene_bind_selection={
+            "status": "available",
+            "source_record_id": "understand-current",
+            "candidate_entity_refs": ["entity://green"],
+            "selection_required": False,
+        },
         predecessor_context=(PredecessorContext(
             node_id="understand",
             status="completed",
@@ -1117,6 +1239,7 @@ def test_agent_loop_persists_unique_projected_query_without_model_turn():
                     "observation_ref": "observation://scene-current/head",
                     "scene_revision": "scene-current",
                     "calibration_ref": "calibration://scene-current/head",
+                    "entities": [{"entity_ref": "entity://green"}],
                 }},
             ),),
         ),),
@@ -1148,7 +1271,8 @@ def test_agent_loop_persists_unique_projected_query_without_model_turn():
 
     assert selected is True
     assert len(coordinator.proposals) == 1
-    assert coordinator.proposals[0]["tool_arguments"] == {
+    proposal = coordinator.proposals[0]
+    assert proposal["tool_arguments"] == {
         "observation_ref": "observation://scene-current/head",
         "scene_revision": "scene-current",
         "calibration_ref": "calibration://scene-current/head",
@@ -1194,6 +1318,40 @@ def test_agent_loop_persists_unique_projected_query_without_model_turn():
     assert len(coordinator.proposals) == 1
     assert len(tool.calls) == 1
 
+    coordinator.proposals.clear()
+    coordinator.pending = None
+    assert AgentLoop.persist_deterministic_projected_query_selection(
+        loop, context.model_copy(update={"revision_id": "revision-stale"}),
+    ) is False
+    assert AgentLoop.persist_deterministic_projected_query_selection(
+        loop, context.model_copy(update={"scene_revision": "scene-stale"}),
+    ) is False
+    assert coordinator.proposals == []
+
+    def concurrent_selection(_proposal):
+        raise AgentTaskError("concurrent selection")
+
+    coordinator.persist_planning_selection = concurrent_selection
+    coordinator.pending = {
+        "task_id": proposal["task_id"],
+        "revision_id": proposal["revision_id"],
+        "node_id": proposal["node_id"],
+        "scene_revision": proposal["scene_revision"],
+        "tool_id": proposal["tool_id"],
+        "execution_tool": "forge_tool_query",
+        "arguments": proposal["tool_arguments"],
+    }
+    assert AgentLoop.persist_deterministic_projected_query_selection(
+        loop, context,
+    ) is False
+
+    coordinator.pending = {
+        **coordinator.pending,
+        "arguments": {**proposal["tool_arguments"], "entity_refs": ["entity://red"]},
+    }
+    with pytest.raises(AgentTaskError, match="concurrent selection"):
+        AgentLoop.persist_deterministic_projected_query_selection(loop, context)
+
 
 def test_scene_bind_node_context_does_not_fabricate_candidates_without_understanding():
     node = SimpleNamespace(capability="scene.bind", required_evidence=())
@@ -1236,6 +1394,7 @@ def test_scene_bind_context_prefers_current_node_required_understanding_lineage(
     node = SimpleNamespace(
         capability="scene.bind",
         required_evidence=("tool:understand-latest",),
+        input_bindings={"entity_refs": ["entity://understand-latest"]},
     )
 
     selection = _scene_bind_selection_context(
@@ -1251,6 +1410,7 @@ def test_scene_bind_context_prefers_current_node_required_understanding_lineage(
     assert selection["status"] == "available"
     assert selection["source_record_id"] == "understand-latest"
     assert selection["candidate_entity_refs"] == ["entity://understand-latest"]
+    assert selection["selection_required"] is False
 
 
 def test_scene_bind_context_rejects_multiple_explicit_understanding_sources():
@@ -4056,7 +4216,15 @@ def test_node_executor_consumes_concurrent_selection_before_model_turn():
 
 
 def test_deterministic_query_selection_accepts_only_a_durable_concurrent_winner():
-    proposal = {"task_id": "task-resume", "node_id": "prepare"}
+    proposal = {
+        "task_id": "task-resume",
+        "revision_id": "revision-resume",
+        "node_id": "prepare",
+        "scene_revision": "scene-1",
+        "tool_id": "scene.bind",
+        "semantics": "query",
+        "tool_arguments": {},
+    }
 
     class Dispatch:
         graph = SimpleNamespace(task_id="task-resume")
@@ -4067,7 +4235,15 @@ def test_deterministic_query_selection_accepts_only_a_durable_concurrent_winner(
             return proposal
 
     class Coordinator:
-        pending = {"value": {"tool_id": "scene.bind"}}
+        pending = {"value": {
+            "task_id": "task-resume",
+            "revision_id": "revision-resume",
+            "node_id": "prepare",
+            "scene_revision": "scene-1",
+            "tool_id": "scene.bind",
+            "execution_tool": "forge_tool_query",
+            "arguments": {},
+        }}
 
         def persist_planning_selection(self, selected):
             assert selected is proposal

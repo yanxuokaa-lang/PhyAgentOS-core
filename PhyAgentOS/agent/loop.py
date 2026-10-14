@@ -494,7 +494,7 @@ class AgentLoop:
                 node_id,
                 scene_revision=dispatch.current_scene_revision,
             )
-            if pending is None:
+            if not AgentLoop._pending_selection_matches_proposal(pending, proposal):
                 raise
             return False
         return True
@@ -507,13 +507,21 @@ class AgentLoop:
             dispatch is None
             or coordinator is None
             or dispatch.graph.task_id != context.task_id
+            or dispatch.graph.revision_id != context.revision_id
+        ):
+            return False
+        scene_revision = dispatch.current_scene_revision
+        if (
+            not isinstance(scene_revision, str)
+            or not scene_revision
+            or scene_revision != context.scene_revision
         ):
             return False
         node = next(
             (item for item in dispatch.graph.nodes if item.node_id == context.node_id),
             None,
         )
-        if node is None:
+        if node is None or node.capability != context.capability:
             return False
         candidates = tuple(
             policy for policy in dispatch.policies if node.capability in policy.capabilities
@@ -528,7 +536,7 @@ class AgentLoop:
         arguments = deterministic_projection_arguments(context, plan)
         if arguments is None:
             return False
-        proposal = dispatch.prepare_projected_query_selection(context.node_id, arguments)
+        proposal = dispatch.prepare_projected_query_selection(context, arguments)
         if proposal is None:
             return False
         try:
@@ -537,12 +545,36 @@ class AgentLoop:
             pending = coordinator.pending_planning_selection(
                 context.task_id,
                 context.node_id,
-                scene_revision=dispatch.current_scene_revision,
+                scene_revision=scene_revision,
             )
-            if pending is None:
+            if not AgentLoop._pending_selection_matches_proposal(pending, proposal):
                 raise
             return False
         return True
+
+    @staticmethod
+    def _pending_selection_matches_proposal(
+        pending: Any,
+        proposal: Mapping[str, Any],
+    ) -> bool:
+        """Accept a concurrent winner only when it is the same durable selection."""
+        if not isinstance(pending, Mapping):
+            return False
+        execution_tool = {
+            "query": "forge_tool_query",
+            "action": "forge_tool_start_action",
+            "session": "forge_tool_start_session",
+        }.get(proposal.get("semantics"))
+        return (
+            execution_tool is not None
+            and pending.get("task_id") == proposal.get("task_id")
+            and pending.get("revision_id") == proposal.get("revision_id")
+            and pending.get("node_id") == proposal.get("node_id")
+            and pending.get("scene_revision") == proposal.get("scene_revision")
+            and pending.get("tool_id") == proposal.get("tool_id")
+            and pending.get("execution_tool") == execution_tool
+            and pending.get("arguments") == proposal.get("tool_arguments")
+        )
 
     def start_ready_long_horizon_tasks(self, session_key: str) -> tuple[str, ...]:
         """Start materialized tasks created by the current user turn."""

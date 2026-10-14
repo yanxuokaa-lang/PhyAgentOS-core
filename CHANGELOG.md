@@ -2,6 +2,42 @@
 
 ## 最近五版本 / Latest five versions
 
+## v13.6.1 (2026-10-14 19:45) - codex
+
+### 变更摘要 / Summary [完成]
+- [policy] [fix] 按七维复审 JEV P0/P1a，修复 projected Query 绕过 `scene.bind` 业务准入、未复用 admitted source、stale revision/scene 落盘及不同并发 selection 被误认作同一 winner 的四项 Major。 / Review JEV P0/P1a across seven dimensions and fix four Major issues: projected Queries bypassing `scene.bind` business admission, ignoring the admitted source, persisting stale revision/scene context, and accepting a different concurrent selection as the same winner. (local)
+- [eval] [test] 增加 no-motion 失败/成功对照；Core 关联 `443`、Skill `439`、全仓 `938` 测试通过。 / Add no-motion failure/success contrasts; `443` Core-related, `439` Skill, and `938` full-repository tests pass. (local)
+
+### 文件变更详情 / File Change Details
+- [修改 / Modified] `PhyAgentOS/agent/loop.py:L467-L577`、`PhyAgentOS/agent/planning_dispatch.py:L477-L517`：要求当前 task/revision/node/capability/scene，并仅接受 tool/wrapper/arguments 全部相同的并发 winner。 / Require the current task/revision/node/capability/scene and accept only a concurrent winner with identical tool, wrapper, and arguments.
+- [修改 / Modified] `PhyAgentOS/agent/planning_loop.py:L580-L644,L775-L1022`：fixed `entity_refs` 标记无需 Agent 选择；模型与确定性 named projection 统一复用业务准入及 admitted understanding source。 / Mark fixed `entity_refs` as requiring no Agent choice; model and deterministic named projections share business admission and the admitted understanding source.
+- [修改 / Modified] `tests/test_planning_loop.py:L1038-L1351,L1393-L1418,L4218-L4262`、`tests/test_planning_selection.py:L582-L858`：覆盖业务 unavailable、实体缺失/歧义/覆盖、stale identity、required source、并发一致性及零模型单次消费。 / Cover business unavailable, missing/ambiguous/overridden entities, stale identity, required source, concurrent identity, and one zero-model consumption.
+- [修改 / Modified] `changelog/2026-10_part6.md:L1417-L1469`、`CHANGELOG.md:L5-L39,L178-L180`：完整双语七维记录与最近五版滚动。 / Add the complete bilingual seven-dimension record and latest-five rollover.
+
+### 关键代码 Diff / Key Code Diff
+```diff
+- succeeded+available fields -> projected selection; any pending race winner accepted
++ available semantic admission + fixed unambiguous entities + admitted source
++ current task/revision/node/capability/scene + exact concurrent proposal match
+```
+
+### 七维复审 / Seven-Dimension Review
+1. 架构：Skill 声明，planning-loop 解析语义，dispatch 准入，Coordinator 持久化，原 executor 消费。 / Architecture: Skill declares, planning-loop resolves semantics, dispatch admits, Coordinator persists, and the existing executor consumes.
+2. 正确性：业务可用、实体集合、来源和当前身份均必须一致。 / Correctness: business availability, entity set, source, and current identity must all agree.
+3. 可观测：保留具体 projection rejection；不同并发 proposal 保留原错误。 / Observability: precise projection rejection remains, and different concurrent proposals retain the original error.
+4. 恢复幂等：同一 proposal 可恢复；stale/different selection 不落盘。 / Recovery/idempotency: the same proposal is resumable; stale or different selections are not persisted.
+5. 机器人安全：缺标定、不可用、缺失/歧义、跨 scene 全部 fail-closed；无运动授权。 / Robotics safety: missing calibration, unavailable/missing/ambiguous input, and cross-scene identity fail closed; no motion is authorized.
+6. 扩展兼容：非 `scene.bind` 保持通用路径，无固定实体继续 Agent 选择。 / Compatibility: non-`scene.bind` consumers retain the generic path and unfixed entities continue through Agent selection.
+7. 收敛：唯一固定语义仍为 JEV=0/LLM=0，required source 不再被无关历史阻断。 / Convergence: a unique fixed choice remains JEV=0/LLM=0 and unrelated history no longer blocks a required source.
+- 修复后无遗留 Blocker/Major；P0 复审无需生产改动。 / No Blocker/Major remains after fixes; P0 required no production change.
+
+### 验证与边界 / Validation and Boundary
+- Core `443 passed in 10.48s`；Skill `439 passed in 14.39s`；全仓 `938 passed in 31.22s`；Ruff、compileall、`git diff --check` 通过。 / Core, Skill, full-repository, Ruff, compileall, and diff checks passed with the recorded counts.
+- 未启动 Runtime、恢复任务或调用 Gateway/现场 Query/Action、相机、仿真或运动。 / No Runtime start, task resume, Gateway/live Query/Action, camera, simulation, or motion occurred.
+
+### Git 提交 / Git Commit
+- Implementation commit pending on `feature/planning-loop`; exact reference follows in a same-version log-only commit. / 实现提交待生成，当前分支 `feature/planning-loop`；精确引用随后以同版本纯日志提交补全。
+
 ## v13.6.0 (2026-10-14 16:00) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -139,6 +175,8 @@
 ### Git 提交 / Git Commit
 - Commit: `5029ce75`；Branch: `feature/planning-loop`；2026-10-14（Asia/Shanghai）；本引用由同版本纯日志提交补全。 / Documentation commit: `5029ce75` on the current branch; its reference is completed in a log-only commit for this version.
 
+## Archived detailed records / 已归档详细记录
+
 ## v13.4.13 (2026-10-14 13:18) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -166,8 +204,6 @@
 
 ### Git 提交 / Git Commit
 - Commit: `86106758`；Branch: `feature/planning-loop`；2026-10-14（Asia/Shanghai）；提交引用由同版本纯日志提交补全。 / Documentation commit: `86106758` on the current branch; its reference is completed in a log-only commit for this version.
-
-## Archived detailed records / 已归档详细记录
 
 ## v13.4.12 (2026-10-14 12:58) - codex
 

@@ -476,12 +476,19 @@ class AgentComposedDispatch:
 
     def prepare_projected_query_selection(
         self,
-        node_id: str,
+        context: Any,
         arguments: Mapping[str, Any],
     ) -> dict[str, Any] | None:
-        """Admit one deterministic projected Query after trusted source assembly."""
+        """Admit one deterministic projected Query for the current node context."""
+        if (
+            self.graph.task_id != context.task_id
+            or self.graph.revision_id != context.revision_id
+            or self.current_scene_revision != context.scene_revision
+        ):
+            return None
+        node_id = context.node_id
         node = next((item for item in self.graph.nodes if item.node_id == node_id), None)
-        if node is None:
+        if node is None or node.capability != context.capability:
             return None
         candidates = tuple(
             policy for policy in self.policies if node.capability in policy.capabilities

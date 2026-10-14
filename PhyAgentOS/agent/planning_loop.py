@@ -583,11 +583,12 @@ def _scene_bind_selection_context(
         if isinstance(getattr(node, "input_bindings", None), Mapping)
         else None
     )
-    if (
+    fixed_entity_refs = (
         isinstance(declared_entity_refs, list)
-        and declared_entity_refs
+        and bool(declared_entity_refs)
         and all(isinstance(ref, str) for ref in declared_entity_refs)
-    ):
+    )
+    if fixed_entity_refs:
         declared = list(dict.fromkeys(declared_entity_refs))
         declared_ambiguous = (
             declared
@@ -639,7 +640,7 @@ def _scene_bind_selection_context(
             }
             for ambiguity in ambiguities
         ],
-        "selection_required": True,
+        "selection_required": not fixed_entity_refs,
     }
 
 
@@ -789,6 +790,11 @@ def project_consumer_arguments(
             projection_plan,
             source_record_ids,
         )
+        _validate_semantic_projection_selection(
+            context,
+            literals,
+            source_record_ids,
+        )
     elif not isinstance(source_record_id, str) or not source_record_id:
         raise PlanningLoopError("consumer projection requires an authorized source record_id")
     try:
@@ -813,19 +819,32 @@ def deterministic_projection_arguments(
     if any(field not in context.input_bindings for field in plan.top_level_fields):
         return None
     slot = next(iter(plan.source_slots))
-    record_ids = {
-        execution.record_id
-        for predecessor in context.predecessor_context
-        for execution in predecessor.executions
-        if execution.status == "succeeded"
-        and response_facts(execution.response).get("status") == "available"
-    }
-    record_ids.update(
-        evidence.record_id
-        for evidence in context.evidence_context
-        if evidence.status == "succeeded"
-        and response_facts(evidence.response).get("status") == "available"
-    )
+    semantic_selection = context.scene_bind_selection
+    if context.agent_selection_required:
+        if (
+            not isinstance(semantic_selection, Mapping)
+            or semantic_selection.get("status") != "available"
+            or semantic_selection.get("selection_required") is not False
+        ):
+            return None
+        admitted_record_id = semantic_selection.get("source_record_id")
+        if not isinstance(admitted_record_id, str) or not admitted_record_id:
+            return None
+        record_ids = {admitted_record_id}
+    else:
+        record_ids = {
+            execution.record_id
+            for predecessor in context.predecessor_context
+            for execution in predecessor.executions
+            if execution.status == "succeeded"
+            and response_facts(execution.response).get("status") == "available"
+        }
+        record_ids.update(
+            evidence.record_id
+            for evidence in context.evidence_context
+            if evidence.status == "succeeded"
+            and response_facts(evidence.response).get("status") == "available"
+        )
     eligible: list[str] = []
     for record_id in sorted(record_ids):
         try:
@@ -929,6 +948,78 @@ def _validate_named_projection_sources(
                     f"have mismatched {field}"
                 )
     return resolved
+
+
+def _validate_semantic_projection_selection(
+    context: NodeExecutionContext,
+    literals: Mapping[str, Any],
+    source_record_ids: Mapping[str, str],
+) -> None:
+    """Preserve node-level semantic admission when compiling source values."""
+    if context.capability != "scene.bind" or not context.agent_selection_required:
+        return
+    selection = context.scene_bind_selection
+    if not isinstance(selection, Mapping) or selection.get("status") != "available":
+        reason = (
+            selection.get("reason")
+            if isinstance(selection, Mapping)
+            else "semantic selection context is missing"
+        )
+        raise PlanningLoopError(
+            "scene.bind projection requires available current understanding: "
+            + str(reason)
+        )
+    admitted_record_id = selection.get("source_record_id")
+    if (
+        not isinstance(admitted_record_id, str)
+        or admitted_record_id not in source_record_ids.values()
+    ):
+        raise PlanningLoopError(
+            "scene.bind projection source does not match the admitted current understanding"
+        )
+    entity_refs = literals.get("entity_refs")
+    if (
+        not isinstance(entity_refs, list)
+        or not entity_refs
+        or any(not isinstance(ref, str) or not ref for ref in entity_refs)
+    ):
+        raise PlanningLoopError(
+            "scene.bind projection requires explicit non-empty entity_refs"
+        )
+    declared_entity_refs = context.input_bindings.get("entity_refs")
+    if (
+        isinstance(declared_entity_refs, list)
+        and declared_entity_refs
+        and all(isinstance(ref, str) and ref for ref in declared_entity_refs)
+        and entity_refs != declared_entity_refs
+    ):
+        raise PlanningLoopError(
+            "scene.bind projection entity_refs do not match the frozen node selection"
+        )
+    candidates = {
+        ref
+        for ref in selection.get("candidate_entity_refs", ())
+        if isinstance(ref, str)
+    }
+    ambiguous = {
+        ref
+        for ref in selection.get("ambiguous_entity_refs", ())
+        if isinstance(ref, str)
+    }
+    missing = sorted(set(entity_refs) - candidates)
+    selected_ambiguous = sorted(set(entity_refs) & ambiguous)
+    if selection.get("global_ambiguity") is True:
+        selected_ambiguous = sorted(set(entity_refs))
+    if missing or selected_ambiguous:
+        details = []
+        if missing:
+            details.append("missing=" + ",".join(missing))
+        if selected_ambiguous:
+            details.append("ambiguous=" + ",".join(selected_ambiguous))
+        raise PlanningLoopError(
+            "scene.bind projection entity_refs are not admissible in the current "
+            "understanding: " + "; ".join(details)
+        )
 
 
 def _projection_world_identity(
