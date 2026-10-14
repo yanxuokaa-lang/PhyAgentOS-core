@@ -19,6 +19,25 @@ Bounded Input View 是 AgentLoop 为当前语义节点构造的只读事实视�
 
 Tool Input Selection 是 Agent 从 Bounded Input View 中选择、筛选和组合消费者 ToolSpec 所需输入的决策。最终参数必须通过冻结的消费者输入 schema；选择不能创造传感器事实、度量几何、校准、执行状态或运动权限。
 
+## Node Decision Option
+
+Node Decision Option 是当前语义节点内可供选择的工具、实体、事实来源或方法组合；它表达认知选项，不代表执行许可或执行结果。
+_Avoid_: 与表示待评估 Skill 修订的 Evolution Candidate 混用。
+
+## Method Fragment
+
+Method Fragment 是 Skill 中针对一项有界义务的可复用方法片段，说明所需事实、步骤关系和预期证据；选用片段不表示其中的步骤已经完成。
+_Avoid_: 将方法片段称为第二个任务或独立执行循环。
+
+## Phase Progression
+
+Phase Progression 是同一任务在实际结果支持下进入下一项义务或方法片段的过程；选择下一方法与确认当前阶段完成是不同事实。
+_Avoid_: 将模型返回的阶段标签等同于任务状态变化。
+
+## Evidence Gap
+
+Evidence Gap 是当前目标或义务尚缺少的事实依据；工具调用成功与该缺口得到解决是不同判断。
+
 ## Skill Use
 
 Skill Use 是 Agent 在某次决策中采用一个特定版本方法的事实。同一任务可以组合多个方法，历史使用不随方法更新而改变。
