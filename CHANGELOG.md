@@ -2,6 +2,28 @@
 
 ## 最近五版本 / Latest five versions
 
+## v13.4.9 (2026-10-14 02:20) - codex
+
+### 变更摘要 / Summary [完成]
+- [docs] [docs] 保存 `current_support_bind` 阻塞的通用诊断：区分理解歧义、支撑关系解析、Coordinator selection 不可收敛和 AgentLoop recovery 边界；不修改实现、不调用 Runtime。 / Save a generic diagnosis of the `current_support_bind` block, distinguishing understanding ambiguity, support-relation resolution, non-convergent Coordinator selection, and AgentLoop recovery boundaries; no implementation or Runtime calls. (local)
+
+### 预期文件 / Planned Files
+- `docs/forge/CURRENT_SUPPORT_BIND_DIAGNOSIS_20261014.md`
+- `changelog/2026-10_part6.md`
+- `CHANGELOG.md`
+
+### 预期边界 / Planned Boundary
+- 仅保存只读证据与通用修复方向；不恢复或修改 AgentTask，不调用 Query/Action，不读取相机，不改变 Runtime。 / Save read-only evidence and generic remediation direction only; do not resume or mutate the AgentTask, invoke Query/Action, read cameras, or change Runtime.
+
+### 完成结果 / Completed Result
+- 只读诊断已保存至 `docs/forge/CURRENT_SUPPORT_BIND_DIAGNOSIS_20261014.md:L1-L120`，确认 `current_support_bind` 没有 planning selection、execution record 或 Runtime 调用；`e4–e8` 是共享 metric localization 且跨视角身份不确定的支撑候选。 / The read-only diagnosis is saved at the recorded lines, confirming no planning selection, execution record, or Runtime call for `current_support_bind`; `e4–e8` are support candidates with shared metric localization and cross-view identity uncertainty.
+- 诊断提出通用修复方向：绑定资格投影、support relation/geometry reconciliation、selection admission diagnostics 和 AgentLoop 有界收敛；不加入 RGB、颜色、方块或任务名分支。 / The diagnosis proposes generic fixes for binding-eligibility projection, support relation/geometry reconciliation, selection-admission diagnostics, and bounded AgentLoop convergence; no RGB, color, block, or task-name branch is added.
+
+### 文件、验证与边界 / Files, Verification, and Boundary
+- [新增] `docs/forge/CURRENT_SUPPORT_BIND_DIAGNOSIS_20261014.md:L1-L120`；[修改] `changelog/2026-10_part6.md:L1102-L1116`、`CHANGELOG.md:L5-L25`：保存证据、根因分层、保留的 fail-closed 行为和非任务专用修复方向。 / [Added] the diagnosis document and [modified] the two changelog ranges to record evidence, layered causes, preserved fail-closed behavior, and generic remediation.
+- 验证：只读核对 AgentTask record、execution records、settlements、planning selections、events，任务仍为 `awaiting_replan`，没有调用 Runtime Query/Action；`git diff --check` 通过。 / Verification: read-only task record, execution records, settlements, planning selections, and events were checked; the task remains `awaiting_replan`, no Runtime Query/Action was called, and `git diff --check` passed.
+- Documentation commit pending on `feature/planning-loop`; reference completion follows. / 文档提交待在 `feature/planning-loop` 完成；提交引用随后回填。
+
 ## v13.4.8 (2026-10-14 01:04) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -118,6 +140,8 @@
 - Implementation commit: `bd52d930` on `feature/planning-loop`. / 实现提交：`bd52d930`，分支 `feature/planning-loop`。
 - Log/index hash-reference completion follows in a separate documentation commit. / 日志与索引的 hash 回填使用独立文档提交收尾。
 
+## Archived detailed records / 已归档详细记录
+
 ## v13.4.4 (2026-10-13 21:32) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -148,8 +172,6 @@
 
 ### Git 提交 / Git Commit
 - Deployment log/index commit: `0cb25e3e` on `feature/planning-loop`; hash-reference completion follows in the log-only commit. / 部署日志与索引提交：`0cb25e3e`，分支 `feature/planning-loop`；提交引用随后补全。
-
-## Archived detailed records / 已归档详细记录
 
 ## v13.4.3 (2026-10-13 19:32) - codex
 
