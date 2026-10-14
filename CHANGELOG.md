@@ -40,7 +40,7 @@
 - 未安装/启动 Runtime，未恢复任务，未调用现场 Query/Action、Gateway、相机、仿真或运动。 / No Runtime lifecycle, task resume, live Query/Action, Gateway, camera, simulation, or motion occurred.
 
 ### Git 提交 / Git Commit
-- Implementation commit: pending on `feature/planning-loop`; exact hash will be completed by the same-version log-only commit. / 实现提交待在 `feature/planning-loop` 创建；精确 hash 将由同版本纯日志提交补全。
+- Implementation commit: `27843ffd` on `feature/planning-loop`; this exact reference is completed by the same-version log-only commit. / 实现提交：`27843ffd`，分支 `feature/planning-loop`；精确引用由同版本纯日志提交补全。
 
 ## v13.7.0 (2026-10-14 21:38) - codex
 
