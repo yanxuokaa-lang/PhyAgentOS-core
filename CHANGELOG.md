@@ -32,6 +32,9 @@
 + Coordinator reports exact inadmissible refs; AgentLoop stops before model/Gateway/Runtime
 ```
 
+### Git 提交 / Git Commit
+- Implementation commit: `9516634c` on `feature/planning-loop`. / 实现提交：`9516634c`，分支 `feature/planning-loop`。
+
 ### 失败场景与安全边界 / Failure Scenario and Safety Boundary
 - 当支撑/碰撞等当前实体引用全部属于 `entity_identity_uncertain` 或共享几何歧义时，继续要求 Agent 选择只会重复相同 selection；若强行绑定会污染 grounding。Coordinator 只报告不可选事实，AgentLoop 复用现有 blocked/replan 状态，不自动观察、绑定、Query 或 Action。 / When all current support/collision entity refs are covered by identity uncertainty or shared-geometry ambiguity, asking the Agent to select again repeats the same selection and forced binding would corrupt grounding. The Coordinator reports the inadmissible fact, while AgentLoop reuses the existing blocked/replan state without automatic observation, binding, Query, or Action.
 
