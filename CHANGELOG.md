@@ -37,7 +37,7 @@
 - 无部署、任务恢复、现场 Gateway/Query/Action/Session、相机、仿真或运动。 / No deployment, task resume, live Gateway/Query/Action/Session, camera, simulation, or motion occurred.
 
 ### Git 提交 / Git Commit
-- Implementation commit: `(pending)` on `feature/planning-loop`; exact reference will be completed by a same-version log-only commit. / 实现提交：`(pending)`，分支 `feature/planning-loop`；精确引用将由同版本纯日志提交补全。
+- Implementation commit: `a3cae374` on `feature/planning-loop`; this exact reference is completed by the same-version log-only commit. / 实现提交：`a3cae374`，分支 `feature/planning-loop`；精确引用由同版本纯日志提交补全。
 
 ## v13.7.1 (2026-10-14 22:32) - codex
 
