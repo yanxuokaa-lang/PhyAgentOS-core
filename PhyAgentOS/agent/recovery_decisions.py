@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from PhyAgentOS.agent.experience.redaction import redact_text
 from PhyAgentOS.agent.plan_proposal import RECOVERY_NODE_GUIDANCE, compile_task_plan
@@ -13,6 +16,111 @@ from PhyAgentOS.planning import (
     reconcile_replan_delta,
     required_node_binding_keys,
 )
+
+
+class RecoveryMethodOption(BaseModel):
+    """Evidence-bound recovery method offered to the existing LLM owner."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    option_id: Literal["stop", "replay", "replan"]
+    description: str = Field(min_length=1)
+    addresses: tuple[str, ...] = ()
+    unfinished_obligations: tuple[str, ...] = ()
+    investigation_capabilities: tuple[str, ...] = ()
+    prohibited_when: tuple[str, ...] = ()
+
+
+def recovery_method_options(task, graph, settlement, delta, context) -> tuple[RecoveryMethodOption, ...]:
+    """Build bounded recovery choices from persisted gaps and ToolSpec capabilities.
+
+    This is a pure projection. It never executes, persists, or authorizes a
+    retry. Unknown Action/Session outcomes deliberately remove replay; a
+    missing read-only capability leaves only an explicit stop/report gap.
+    """
+
+    gaps = set(getattr(delta, "fresh_evidence_requirements", ()))
+    gaps.update(getattr(settlement, "evidence_refs", ()))
+    unfinished_obligations = tuple(
+        node.obligation_id
+        for node in getattr(graph, "nodes", ())
+        if node.node_id == settlement.node_id
+    )
+    failed_records = [
+        record for record in getattr(task, "execution_records", ())
+        if record.revision_id == graph.revision_id and record.node_id == settlement.node_id
+    ]
+    unknown_owned = any(
+        record.semantics in {"action", "session"}
+        and record.status == "unknown"
+        for record in failed_records
+    )
+    query_capabilities: set[str] = set()
+    binding = getattr(task, "primary_skill_binding", None)
+    tools = (
+        getattr(binding, "required_tools", ())
+        if binding is not None
+        else getattr(task, "tool_bindings", ())
+    )
+    for tool in tools:
+        policy = getattr(tool, "planning_policy", None)
+        semantics = getattr(tool, "semantics", None) or getattr(policy, "semantics", None)
+        if semantics != "query" or policy is None:
+            continue
+        query_capabilities.update(
+            capability
+            for capability in getattr(policy, "capabilities", ())
+            if isinstance(capability, str) and capability
+        )
+
+    options: list[RecoveryMethodOption] = [RecoveryMethodOption(
+        option_id="stop",
+        description=(
+            "Stop automatic progression and report the unresolved recovery gap to the host."
+        ),
+        addresses=tuple(sorted(gaps)) or ("recovery_outcome",),
+        unfinished_obligations=unfinished_obligations,
+        prohibited_when=(),
+    )]
+    replay_safe = (
+        not unknown_owned
+        and bool(failed_records)
+        and all(
+            record.semantics == "query"
+            and record.status == "succeeded"
+            and response_facts(record.response).get("status")
+            in {"available", "succeeded"}
+            for record in failed_records
+        )
+    )
+    if replay_safe:
+        options.append(RecoveryMethodOption(
+            option_id="replay",
+            description=(
+                "Replay persisted read-only facts only; do not issue a new Query, Action, or Session."
+            ),
+            addresses=tuple(sorted(gaps)) or ("persisted_query_facts",),
+            unfinished_obligations=unfinished_obligations,
+            prohibited_when=("unknown_action_or_session",),
+        ))
+    if query_capabilities and (
+        gaps
+        or settlement.status in {"failed", "stale", "outcome_unknown"}
+        or settlement.requires_replan is True
+    ):
+        options.append(RecoveryMethodOption(
+            option_id="replan",
+            description=(
+                "Create a replacement semantic revision beginning with available read-only "
+                "investigation; preserve unknown physical outcomes and refresh required facts."
+            ),
+            addresses=tuple(sorted(gaps)) or ("failed_node",),
+            unfinished_obligations=unfinished_obligations,
+            investigation_capabilities=tuple(sorted(query_capabilities)),
+            prohibited_when=("unresolved_unknown_physical_effect",)
+            if unknown_owned else (),
+        ))
+    return tuple(options)
 
 
 def _scene_refresh_bootstrap_capability(task) -> str | None:
@@ -131,6 +239,7 @@ class AgentRecoveryDecisions:
 
     async def _ask(self, graph, settlement, delta, context, *, replan=False, repair=None):
         task = self.coordinator.get_task(graph.task_id)
+        method_options = recovery_method_options(task, graph, settlement, delta, context)
         failed_executions = []
         for record in task.execution_records:
             if record.revision_id != graph.revision_id or record.node_id != settlement.node_id:
@@ -157,7 +266,10 @@ class AgentRecoveryDecisions:
                 "reason": {"type": "string", "minLength": 1},
                 **({"nodes": {"type": "array", "minItems": 1,
                               "items": PlanNode.model_json_schema()}} if replan else {
-                    "decision": {"type": "string", "enum": ["stop", "replay", "replan"]},
+                    "decision": {
+                        "type": "string",
+                        "enum": [item.option_id for item in method_options],
+                    },
                 }),
             },
             "required": ["reason", "nodes" if replan else "decision"],
@@ -175,8 +287,10 @@ class AgentRecoveryDecisions:
                     "must never authorize retry or downstream Action. If the Runtime explicitly sets "
                     "requires_replan=true after world_change_started=true, propose recovery planning "
                     "that begins with a fresh Query; otherwise choose reconciliation or stop. "
-                    "Use failed execution diagnostics to distinguish stale evidence from software or "
+                "Use failed execution diagnostics to distinguish stale evidence from software or "
                     "configuration faults; stop when replanning cannot remedy the reported cause. "
+                "Choose only a recovery method from the supplied evidence-bound options; explain "
+                "which gap it addresses. Replay is reducer-only and never repeats a physical call. "
                     "For replanning return the full replacement semantic node list. Preserve only "
                     "the delta's allowed nodes unchanged; refresh stale evidence before actions. "
                     + RECOVERY_NODE_GUIDANCE + " Use submit_recovery to return the decision."
@@ -195,6 +309,9 @@ class AgentRecoveryDecisions:
                     "failed_executions": failed_executions,
                     "delta": delta.model_dump(mode="json"),
                     "context": context.model_dump(mode="json"),
+                    "recovery_method_options": [
+                        item.model_dump(mode="json") for item in method_options
+                    ],
                     **({"repair": repair} if repair is not None else {}),
                 }, ensure_ascii=False)},
             ],

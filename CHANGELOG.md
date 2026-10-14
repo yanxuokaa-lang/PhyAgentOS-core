@@ -2,6 +2,51 @@
 
 ## 最近五版本 / Latest five versions
 
+## v13.9.2 (2026-10-15 01:45) - codex
+
+### 变更摘要 / Summary [完成]
+- [policy] [feat] P4 在现有 recovery owner 内构造 evidence-bound `RecoveryMethodOption`，把未完成义务、结构化失败、fresh-evidence gap 和可用只读 Query 能力交给原 recovery LLM。 / P4 adds an evidence-bound `RecoveryMethodOption` projection inside the existing recovery owner, passing unfinished obligations, structured failures, fresh-evidence gaps, and available read-only Query capabilities to the original recovery LLM.
+- [eval] [test] unavailable Query 不再提供无进展 replay；unknown Action/Session 不重放；缺 Query 能力只报告 gap；原 Coordinator/PlanningLoop/reducer 语义保持。 / Unavailable Query no longer exposes a non-progressing replay; unknown Action/Session is not replayed; missing Query capability reports the gap; Coordinator/PlanningLoop/reducer semantics remain unchanged.
+
+### 文件与关键 Diff / Files and Key Diff
+- [修改 / Modified] `PhyAgentOS/agent/recovery_decisions.py:L21-L114,L231-L323`：新增纯 recovery options projection 与 prompt/schema 约束，不新增状态库、scheduler 或执行器。 / Add a pure recovery-options projection and prompt/schema constraints without a new store, scheduler, or executor.
+- [新增 / Added] `tests/test_recovery_decisions.py:L1-L117`：覆盖 replay/no-replay、gap 和 unavailable 反例。 / Cover replay/no-replay, gap, and unavailable counterexamples.
+
+```diff
+- recovery LLM sees only stop/replay/replan labels
++ unfinished obligation + failure facts + evidence gaps + read-only capabilities
++ unavailable Query and unknown physical outcomes cannot select replay
+```
+
+### 七维复审 / Seven-Dimension Review
+1. 架构：纯投影留在 recovery_decisions，原 LLM/Coordinator/PlanningLoop/reducer owner 不变。 / Architecture: pure projection stays in recovery_decisions; original LLM/Coordinator/PlanningLoop/reducer ownership is unchanged.
+2. 正确性：恢复候选绑定当前失败节点义务和事实；不可用 payload 不当作可用事实。 / Correctness: options bind to the current failed-node obligation and facts; unavailable payloads are not usable facts.
+3. 可观测：候选带 gap、capability 和禁止条件，原 failure/stop 语义不变。 / Observability: options expose gaps, capabilities, and prohibitions while original failure/stop semantics remain.
+4. 幂等：replay 仅重算持久化成功只读事实，不重发任何 Query/Action/Session。 / Idempotency: replay only reduces persisted successful read-only facts and resends no Query/Action/Session.
+5. 安全：unknown physical effect fail-closed，无 Tool、Runtime、Gateway 或运动权限。 / Safety: unknown physical effects remain fail-closed with no Tool, Runtime, Gateway, or motion authority.
+6. 兼容：公共恢复签名、返回值和 JEV-off 路径不变。 / Compatibility: public recovery signatures, return values, and JEV-off paths are unchanged.
+7. 收敛：只缩小原一次 LLM decision schema，不增 provider、Tool、重试或 replan budget。 / Convergence: only the existing single LLM decision schema is narrowed; no provider, Tool, retry, or replan budget is added.
+- 复审修复 unavailable Query 暴露 replay 的 Major；确认复审无 Blocker/Major。 / Fixed the Major exposing replay for unavailable Query facts; confirmation review found no Blocker/Major.
+
+### 验证与边界 / Validation and Boundary
+- P4 定向 `308 passed`；工单九文件 `514 passed in 13.02s`；全仓 `972 passed in 39.27s`；Ruff、compileall、`git diff --check` 通过。 / P4 focused `308 passed`; nine-file regression `514 passed in 13.02s`; full offline repository `972 passed in 39.27s`; Ruff, compileall, and diff checks pass.
+- 未部署、未恢复任务、未调用现场 Gateway/Query/Action/Session、相机、仿真或运动。 / No deployment, task resume, live Gateway/Query/Action/Session, camera, simulation, or motion occurred.
+
+### Git 提交 / Git Commit
+- Implementation commit: pending stage-only commit and push on `feature/planning-loop`. / 实现提交：待本阶段专属提交并推送后补全。
+
+## v13.9.1 (2026-10-15 01:32) - codex
+
+### 变更摘要 / Summary [完成但阻塞]
+- [eval] [audit] P3b active evidence gate remains blocked: no independent labeled/held-out data, quality/error-acceptance, escalation-recall, real substitution-rate, or paired latency measurement exists in the authoritative workspace. / P3b active evidence remains blocked for the same missing independent labeled/held-out data and quality, recall, substitution-rate, and paired-latency measurements.
+- [policy] [fix] All decision points remain off/shadow; no guessed threshold or fabricated active claim. / 所有 decision point 保持 off/shadow，不猜阈值、不伪造 active 证据。
+
+### 验证与边界 / Validation and Boundary
+- Evidence audit is complete but P3b is externally incomplete; offline P4 is allowed by the work order. No Runtime, live task, Gateway, camera, simulation, or motion was used. / 证据审计完成但 P3b 仍受外部条件阻塞；工单允许继续离线 P4，未启动 Runtime、任务、Gateway、相机、仿真或运动。
+
+### Git 提交 / Git Commit
+- Evidence-audit commit: `8244cf81`; log-reference commit: `e67358c1`, both pushed on `feature/planning-loop`. / 证据审计提交 `8244cf81`，日志引用提交 `e67358c1`，均已推送到 `feature/planning-loop`。
+
 ## v13.9.0 (2026-10-15 01:20) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -123,6 +168,8 @@
 ### Git 提交 / Git Commit
 - Implementation commit: `27843ffd` on `feature/planning-loop`; this exact reference is completed by the same-version log-only commit. / 实现提交：`27843ffd`，分支 `feature/planning-loop`；精确引用由同版本纯日志提交补全。
 
+## Archived detailed records / 已归档详细记录
+
 ## v13.7.0 (2026-10-14 21:38) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -196,8 +243,6 @@
 
 ### Git 提交 / Git Commit
 - Implementation commit: `cbc1feeb` on `feature/planning-loop`; this exact reference is completed by the same-version log-only commit. / 实现提交：`cbc1feeb`，分支 `feature/planning-loop`；精确引用由同版本纯日志提交补全。
-
-## Archived detailed records / 已归档详细记录
 
 ## v13.4.15 (2026-10-14 14:15) - codex
 
