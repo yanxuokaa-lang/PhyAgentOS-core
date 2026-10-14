@@ -2,6 +2,50 @@
 
 ## 最近五版本 / Latest five versions
 
+## v13.10.0 (2026-10-15 03:05) - codex
+
+### 变更摘要 / Summary [完成但外部阻塞]
+- [eval] [feat] 新增 P3b 离线专项评测器与 CLI：版本化 calibration/held-out 数据、family 隔离、独立复核、完整失败分母、Wilson 区间、真实替代率和配对时延。 / Add the P3b offline evaluator and CLI with versioned calibration/held-out data, family isolation, independent review, complete failure denominators, Wilson intervals, real substitution, and paired latency.
+- [eval] [fix] 七维复审修复输入证据未随 run 固化及同输入配对不可审计两项 Major；每次 run 保存规范化 config/dataset/measurement 快照，并要求 `decision_input_ref` 与 acceptance policy。 / Fix two review Majors by snapshotting normalized config/dataset/measurement inputs per run and requiring `decision_input_ref` and an acceptance policy.
+- [policy] [fix] 将 provider `escalate` 遥测统一为 `abstained`；保持所有 decision point off/shadow，不修改 Runtime 配置。 / Normalize provider `escalate` telemetry to `abstained`; keep all decision points off/shadow without changing Runtime configuration.
+
+### 文件与关键 Diff / Files and Key Diff
+- [新增 / Added] `PhyAgentOS/agent/decision_evaluation.py:L1-L669`、`scripts/evaluate_jev_decisions.py:L1-L34`、`tests/test_decision_evaluation.py:L1-L393`、`docs/forge/JEV_P3B_EVALUATION.md:L1-L97`：离线输入校验、指标、快照、active 原因、CLI、文档和反例。 / Add offline validation, metrics, snapshots, active reasons, CLI, docs, and regressions.
+- [修改 / Modified] `PhyAgentOS/agent/loop.py:L679-L684,L900-L910`、`tests/test_planning_loop.py:L1606-L1621`：统一 `abstained` 观测。 / Normalize `abstained` observations.
+- [修改 / Modified] `changelog/2026-10_part7.md:L1-L49`、`CHANGELOG.md:L5-L47`：双语实施、复审、方向审核和最近五版记录。 / Add the bilingual implementation, review, direction review, and latest-five records.
+
+```diff
+- source paths and candidate IDs only
++ input snapshots + sanitized facts/candidates + same-input refs + policy ref
+- provider outcome="escalate"
++ provider outcome="abstained"
+```
+
+### 七维复审与方向 / Seven-Dimension and Direction
+- 架构、事实、错误观测、恢复幂等、no-motion 安全、兼容性和 AgentLoop 收敛均无 Blocker/Major；评测不调用 Runtime/Provider/LLM，不写 selection/execution/settlement。 / No Blocker/Major remains across all seven dimensions; the evaluator calls no Runtime/provider/LLM and writes no selection/execution/settlement.
+- P3b 仍缺真实独立留出数据、现场配对测量和 active 授权，保持 off/shadow；fixture/partial/missing/mixed/mismatched evidence 不得 active。 / P3b still lacks real independent held-out data, live paired measurements, and active authorization, so it remains off/shadow; fixture/partial/missing/mixed/mismatched evidence cannot become active.
+
+### 验证与边界 / Validation and Boundary
+- evaluator 定向 `9 passed`；工单关联 `533 passed in 14.42s`；全仓离线 `983 passed in 38.64s`；Ruff、compileall、`git diff --check` 通过。 / Evaluator focused `9 passed`; work-order regression `533 passed in 14.42s`; full offline suite `983 passed in 38.64s`; Ruff, compileall, and diff checks pass.
+- 未部署、未恢复任务、未调用现场 Gateway/Query/Action/Session、相机、仿真或运动。 / No deployment, task resume, live Gateway/Query/Action/Session, camera, simulation, or motion occurred.
+
+### Git 提交 / Git Commit
+- Implementation commit: `(pending)` on `feature/planning-loop`. / 实现提交：`(pending)`，位于 `feature/planning-loop`。
+
+## v13.9.5 (2026-10-15 02:50) - codex
+
+### 变更摘要 / Summary [完成]
+- [docs] [chore] 同步决策观测日志与最近五版索引；不改变生产行为。 / Synchronize decision-telemetry logs and the latest-five index without changing production behavior.
+
+### 文件与关键 Diff / Files and Key Diff
+- [修改 / Modified] `CHANGELOG.md`、`changelog/2026-10_part7.md`：登记 v13.9.5 观测记录。 / Register the v13.9.5 telemetry record.
+
+### 验证与边界 / Validation and Boundary
+- 继承 v13.9.4 的离线回归与 no-motion 边界；未部署、未恢复任务、未调用现场系统。 / Inherit v13.9.4 offline regression and no-motion boundaries; no deployment, task resume, or live system call.
+
+### Git 提交 / Git Commit
+- Commit: `5cc0bdf6` on `feature/planning-loop`, pushed to origin. / 提交：`5cc0bdf6`，位于 `feature/planning-loop`，已推送 origin。
+
 ## v13.9.4 (2026-10-15 02:35) - codex
 
 ### 变更摘要 / Summary [完成但阻塞]
@@ -78,6 +122,8 @@
 ### Git 提交 / Git Commit
 - Implementation commit: `eb8b978f` on `feature/planning-loop`; pushed after the log-reference commit. / 实现提交：`eb8b978f`，位于 `feature/planning-loop`，日志引用提交后已推送。
 
+## Archived detailed records / 已归档详细记录
+
 ## v13.9.1 (2026-10-15 01:32) - codex
 
 ### 变更摘要 / Summary [完成但阻塞]
@@ -133,8 +179,6 @@
 
 ### Git 提交 / Git Commit
 - Implementation commit: `33096015` on `feature/planning-loop`, pushed to origin. / 实现提交：`33096015`，位于 `feature/planning-loop`，已推送到 origin。
-
-## Archived detailed records / 已归档详细记录
 
 ## v13.8.0 (2026-10-15 00:44) - codex
 

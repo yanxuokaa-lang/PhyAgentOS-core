@@ -1615,7 +1615,7 @@ def test_shadow_decision_reports_shared_deadline_remaining(monkeypatch):
 
     asyncio.run(exercise())
     observation = json.loads(sink.messages[0].removeprefix("Agent decision "))
-    assert observation["outcome"] == "escalate"
+    assert observation["outcome"] == "abstained"
     assert observation["model_version"] == "jev-shadow-v1"
     assert observation["remaining_ms"] > 500
     assert observation["decision_trace_ref"] is None

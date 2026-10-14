@@ -678,7 +678,7 @@ class AgentLoop:
             return False
         if result.outcome != "selected":
             record_decision(
-                result.outcome,
+                "abstained" if result.outcome == "escalate" else result.outcome,
                 model_version=result.model_version,
                 reason=result.reason,
             )
@@ -900,7 +900,9 @@ class AgentLoop:
             self._log_decision(
                 request,
                 mode="shadow",
-                outcome=result.outcome,
+                outcome=(
+                    "abstained" if result.outcome == "escalate" else result.outcome
+                ),
                 started=started,
                 provider=provider_name,
                 requested_model=model_name,
