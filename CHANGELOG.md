@@ -11,7 +11,7 @@
 ### 文件变更详情 / File Change Details
 - [修改 / Modified] `PhyAgentOS/agent/loop.py:L467-L577`、`PhyAgentOS/agent/planning_dispatch.py:L477-L517`：要求当前 task/revision/node/capability/scene，并仅接受 tool/wrapper/arguments 全部相同的并发 winner。 / Require the current task/revision/node/capability/scene and accept only a concurrent winner with identical tool, wrapper, and arguments.
 - [修改 / Modified] `PhyAgentOS/agent/planning_loop.py:L580-L644,L775-L1022`：fixed `entity_refs` 标记无需 Agent 选择；模型与确定性 named projection 统一复用业务准入及 admitted understanding source。 / Mark fixed `entity_refs` as requiring no Agent choice; model and deterministic named projections share business admission and the admitted understanding source.
-- [修改 / Modified] `tests/test_planning_loop.py:L1038-L1351,L1393-L1418,L4218-L4262`、`tests/test_planning_selection.py:L582-L858`：覆盖业务 unavailable、实体缺失/歧义/覆盖、stale identity、required source、并发一致性及零模型单次消费。 / Cover business unavailable, missing/ambiguous/overridden entities, stale identity, required source, concurrent identity, and one zero-model consumption.
+- [修改 / Modified] `tests/test_planning_loop.py:L1038-L1353,L1393-L1413,L4218-L4270`、`tests/test_planning_selection.py:L582-L859`：覆盖业务 unavailable、实体缺失/歧义/覆盖、stale identity、required source、并发一致性及零模型单次消费。 / Cover business unavailable, missing/ambiguous/overridden entities, stale identity, required source, concurrent identity, and one zero-model consumption.
 - [修改 / Modified] `changelog/2026-10_part6.md:L1417-L1469`、`CHANGELOG.md:L5-L39,L178-L180`：完整双语七维记录与最近五版滚动。 / Add the complete bilingual seven-dimension record and latest-five rollover.
 
 ### 关键代码 Diff / Key Code Diff
