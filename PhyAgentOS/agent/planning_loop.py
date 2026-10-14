@@ -11,6 +11,7 @@ import asyncio
 import json
 import math
 from dataclasses import dataclass
+from time import monotonic
 from typing import Any, Awaitable, Callable, Literal, Mapping
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -866,6 +867,96 @@ def deterministic_projection_arguments(
         return None
 
 
+@dataclass(frozen=True)
+class ProjectedQueryChoice:
+    """One complete legal Query input retained by the host for typed selection."""
+
+    candidate_id: str
+    description: str
+    arguments: dict[str, Any]
+
+
+def projected_query_argument_choices(
+    context: NodeExecutionContext,
+    plan: ArgumentProjectionPlan,
+) -> tuple[ProjectedQueryChoice, ...]:
+    """Materialize the first JEV slice: unambiguous ``scene.bind`` choices.
+
+    The provider chooses only among IDs. Exact projected arguments remain in
+    the host and are rebuilt before persistence. Multiple source records or
+    ambiguous entities intentionally produce no choices and therefore
+    escalate to the existing Agent path.
+    """
+
+    if (
+        context.capability != "scene.bind"
+        or len(plan.source_slots) != 1
+        or not context.agent_selection_required
+    ):
+        return ()
+    selection = context.scene_bind_selection
+    if (
+        not isinstance(selection, Mapping)
+        or selection.get("status") != "available"
+        or selection.get("selection_required") is not True
+        or selection.get("global_ambiguity") is True
+    ):
+        return ()
+    source_record_id = selection.get("source_record_id")
+    if not isinstance(source_record_id, str) or not source_record_id:
+        return ()
+    entity_by_ref = {
+        item["entity_ref"]: item
+        for item in selection.get("candidate_entities", ())
+        if isinstance(item, Mapping)
+        and isinstance(item.get("entity_ref"), str)
+        and item.get("entity_ref")
+    }
+    recommended = tuple(
+        ref
+        for ref in selection.get("recommended_unambiguous_entity_refs", ())
+        if isinstance(ref, str) and ref in entity_by_ref
+    )
+    if len(recommended) < 2 or len(recommended) != len(set(recommended)):
+        return ()
+    if any(
+        field != "entity_refs" and field not in context.input_bindings
+        for field in plan.top_level_fields
+    ):
+        return ()
+    slot = next(iter(plan.source_slots))
+    choices: list[ProjectedQueryChoice] = []
+    for index, entity_ref in enumerate(recommended, start=1):
+        literals = {
+            field: context.input_bindings[field]
+            for field in plan.top_level_fields
+            if field != "entity_refs"
+        }
+        literals["entity_refs"] = [entity_ref]
+        try:
+            arguments = project_consumer_arguments(
+                context,
+                projection=plan.projection_id,
+                projection_plan=plan,
+                literals=literals,
+                source_record_ids={slot: source_record_id},
+            )
+        except PlanningLoopError:
+            return ()
+        entity = entity_by_ref[entity_ref]
+        category = entity.get("category")
+        description = (
+            f"Bind current unambiguous entity {entity_ref}"
+            + (f" ({category})" if isinstance(category, str) and category else "")
+        )
+        choices.append(ProjectedQueryChoice(
+            candidate_id=f"query-input-{index}",
+            description=description,
+            arguments=arguments,
+        ))
+    return tuple(choices)
+
+
 def _validate_named_projection_sources(
     context: NodeExecutionContext,
     plan: ArgumentProjectionPlan,
@@ -1202,6 +1293,11 @@ class AgentLoopNodeExecutor:
         self.on_progress = on_progress
 
     async def __call__(self, context: NodeExecutionContext) -> ToolResultEnvelope:
+        # One node cognition cycle owns one absolute budget shared by source
+        # qualification, JEV, LLM correction, and any bounded re-entry.
+        decision_deadline = monotonic() + float(
+            getattr(self.agent_loop, "turn_timeout_s", 300.0)
+        )
         activate = getattr(self.agent_loop, "activate_planning_task", None)
         if callable(activate):
             activation = activate(context.task_id)
@@ -1269,6 +1365,24 @@ class AgentLoopNodeExecutor:
                 resumed = await self._resume_node(context)
                 if resumed is not None:
                     return resumed
+        try_projected_query = getattr(
+            self.agent_loop, "try_projected_query_decision", None
+        )
+        if callable(try_projected_query):
+            selected = try_projected_query(
+                context,
+                decision_deadline=decision_deadline,
+            )
+            if hasattr(selected, "__await__"):
+                selected = await selected
+            if selected:
+                resumed = await self._resume_node(context)
+                if resumed is not None:
+                    return resumed
+            else:
+                resumed = await self._resume_node(context)
+                if resumed is not None:
+                    return resumed
         attempts = 1 + self.max_node_turn_continuations
         previous_fingerprint: tuple[Any, ...] | None = None
         for _attempt in range(attempts):
@@ -1282,6 +1396,7 @@ class AgentLoopNodeExecutor:
                 node_id=context.node_id,
                 prompt=self._prompt_for_turn(context),
                 on_progress=self.on_progress,
+                decision_deadline=decision_deadline,
             )
             # Selection/execution may have been persisted before the provider
             # failed. Recovery uses those facts even on the final model turn;

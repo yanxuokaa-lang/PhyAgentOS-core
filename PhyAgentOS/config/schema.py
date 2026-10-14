@@ -273,6 +273,38 @@ class AgentDefaults(Base):
         return self.memory_window is not None and "context_window_tokens" not in self.model_fields_set
 
 
+class DecisionPointConfig(Base):
+    """Configuration for one optional, read-only Agent decision point."""
+
+    mode: Literal["off", "shadow", "active"] = "off"
+    endpoint: str = ""
+    model: str = ""
+    timeout_cap_s: float = Field(default=2.0, gt=0, le=300.0)
+    fallback_reserve_s: float = Field(default=0.25, ge=0, le=300.0)
+    acceptance_policy_ref: str | None = None
+    api_key_env: str | None = None
+
+    @model_validator(mode="after")
+    def validate_active_policy(self) -> "DecisionPointConfig":
+        if self.mode == "active" and not self.acceptance_policy_ref:
+            raise ValueError(
+                "active decision points require an acceptancePolicyRef from measured evidence"
+            )
+        if self.mode != "off" and not self.endpoint.strip():
+            raise ValueError("enabled decision points require an endpoint")
+        if self.mode != "off" and not self.model.strip():
+            raise ValueError("enabled decision points require a model")
+        return self
+
+
+class AgentDecisionConfig(Base):
+    """Optional JEV decisions; defaults are deliberately non-blocking."""
+
+    query_input_selection: DecisionPointConfig = Field(default_factory=DecisionPointConfig)
+    method_fragment_selection: DecisionPointConfig = Field(default_factory=DecisionPointConfig)
+    recovery_method_selection: DecisionPointConfig = Field(default_factory=DecisionPointConfig)
+
+
 class EmbodimentInstanceConfig(Base):
     """One robot knowledge profile; it has no execution adapter semantics."""
 
@@ -413,6 +445,7 @@ class AgentsConfig(Base):
     modes: AgentModes = Field(default_factory=AgentModes)
     verification: AgentVerificationConfig = Field(default_factory=AgentVerificationConfig)
     evolution: AgentEvolutionConfig = Field(default_factory=AgentEvolutionConfig)
+    decisions: AgentDecisionConfig = Field(default_factory=AgentDecisionConfig)
 
 
 class ProviderConfig(Base):

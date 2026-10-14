@@ -48,6 +48,7 @@ from PhyAgentOS.session.manager import Session, SessionManager
 from PhyAgentOS.utils.helpers import estimate_prompt_tokens, estimate_prompt_tokens_chain
 
 if TYPE_CHECKING:
+    from PhyAgentOS.agent.decision_provider import DecisionProvider
     from PhyAgentOS.agent.experience.coordinator import EpisodeClosedHook
     from PhyAgentOS.agent.long_horizon import LongHorizonTaskController
     from PhyAgentOS.agent.planner_plugin import PlannerPlugin
@@ -232,6 +233,8 @@ class AgentLoop:
         planning_dispatch: AgentComposedDispatch | None = None,
         planning_context_provider: Callable[[str], AdmissionContext] | None = None,
         planner_plugin: PlannerPlugin | None = None,
+        decision_provider: DecisionProvider | None = None,
+        query_decision_config: Any | None = None,
         discovery_no_progress_limit: int = 6,
         planning_no_progress_limit: int = 2,
     ):
@@ -267,6 +270,9 @@ class AgentLoop:
         self._planning_dispatch = planning_dispatch
         self._planning_context_provider = planning_context_provider
         self._planner_plugin = planner_plugin
+        self._decision_provider = decision_provider
+        self._query_decision_config = query_decision_config
+        self._decision_tasks: set[asyncio.Task[Any]] = set()
         self.long_horizon_controller: LongHorizonTaskController | None = None
         binding_resolver = (
             forge_task_coordinator.binding_resolver if forge_task_coordinator is not None else None
@@ -575,6 +581,269 @@ class AgentLoop:
                 raise
             return False
         return True
+
+    async def try_projected_query_decision(
+        self,
+        context: Any,
+        *,
+        decision_deadline: float,
+    ) -> bool:
+        """Try one typed JEV choice without taking persistence ownership."""
+
+        config = self._query_decision_config
+        provider = self._decision_provider
+        mode = getattr(config, "mode", "off")
+        if mode == "off" or provider is None:
+            return False
+        prepared = self._projected_query_decision(context)
+        if prepared is None:
+            return False
+        request, choices = prepared
+        remaining = decision_deadline - monotonic()
+        wait_s = min(
+            float(config.timeout_cap_s),
+            max(0.0, remaining - float(config.fallback_reserve_s)),
+        )
+        if wait_s <= 0:
+            logger.info(
+                "Decision skipped task={} revision={} node={} point={} mode={} "
+                "outcome=no_fallback_budget",
+                context.task_id,
+                context.revision_id,
+                context.node_id,
+                request.decision_point,
+                mode,
+            )
+            return False
+        if mode == "shadow":
+            task = asyncio.create_task(
+                self._observe_shadow_decision(request, config=config, timeout_s=wait_s)
+            )
+            self._decision_tasks.add(task)
+            task.add_done_callback(self._decision_tasks.discard)
+            return False
+
+        started = monotonic()
+        try:
+            result = await asyncio.wait_for(
+                provider.decide(
+                    request,
+                    endpoint=config.endpoint,
+                    model=config.model,
+                    timeout_s=wait_s,
+                ),
+                timeout=wait_s,
+            )
+        except asyncio.TimeoutError:
+            self._log_decision(request, mode=mode, outcome="timeout", started=started)
+            return False
+        except asyncio.CancelledError:
+            self._log_decision(request, mode=mode, outcome="cancelled", started=started)
+            raise
+        except Exception as exc:
+            self._log_decision(
+                request,
+                mode=mode,
+                outcome="unavailable",
+                started=started,
+                reason=f"{type(exc).__name__}: {exc}",
+            )
+            return False
+        self._log_decision(
+            request,
+            mode=mode,
+            outcome=result.outcome,
+            started=started,
+            reason=result.reason,
+        )
+        if result.outcome != "selected":
+            return False
+        selected = next(
+            (item for item in choices if item.candidate_id == result.selected_id),
+            None,
+        )
+        if selected is None:
+            logger.warning(
+                "Decision returned unknown candidate task={} revision={} node={} selected={}",
+                context.task_id,
+                context.revision_id,
+                context.node_id,
+                result.selected_id,
+            )
+            return False
+        current = self._current_node_context(context)
+        if current is None:
+            return False
+        current_prepared = self._projected_query_decision(current)
+        if current_prepared is None:
+            return False
+        current_request, current_choices = current_prepared
+        if (
+            current_request.revision_id != request.revision_id
+            or current_request.scene_revision != request.scene_revision
+        ):
+            return False
+        current_selected = next(
+            (item for item in current_choices if item.candidate_id == result.selected_id),
+            None,
+        )
+        if current_selected is None or current_selected.arguments != selected.arguments:
+            return False
+        proposal = self._planning_dispatch.prepare_projected_query_selection(
+            current, current_selected.arguments
+        )
+        if proposal is None:
+            return False
+        try:
+            self.forge_task_coordinator.persist_planning_selection(proposal)
+        except AgentTaskError:
+            pending = self.forge_task_coordinator.pending_planning_selection(
+                current.task_id,
+                current.node_id,
+                scene_revision=current.scene_revision,
+            )
+            if not self._pending_selection_matches_proposal(pending, proposal):
+                return False
+            return False
+        return True
+
+    def _projected_query_decision(self, context: Any) -> tuple[Any, tuple[Any, ...]] | None:
+        dispatch = self._planning_dispatch
+        if (
+            dispatch is None
+            or self.forge_task_coordinator is None
+            or dispatch.graph.task_id != context.task_id
+            or dispatch.graph.revision_id != context.revision_id
+            or dispatch.current_scene_revision != context.scene_revision
+        ):
+            return None
+        node = next(
+            (item for item in dispatch.graph.nodes if item.node_id == context.node_id),
+            None,
+        )
+        if node is None or node.capability != context.capability:
+            return None
+        policies = tuple(
+            policy for policy in dispatch.policies if node.capability in policy.capabilities
+        )
+        if len(policies) != 1:
+            return None
+        policy = policies[0]
+        if policy.semantics != "query" or policy.argument_projection_plan is None:
+            return None
+        from PhyAgentOS.agent.decision_provider import DecisionCandidate, DecisionRequest
+        from PhyAgentOS.agent.planning_loop import projected_query_argument_choices
+
+        choices = projected_query_argument_choices(
+            context, policy.argument_projection_plan
+        )
+        if len(choices) < 2:
+            return None
+        task = self.forge_task_coordinator.get_task(context.task_id)
+        request = DecisionRequest(
+            decision_point="query_input_selection",
+            task_id=context.task_id,
+            revision_id=context.revision_id,
+            scene_revision=context.scene_revision,
+            node_id=context.node_id,
+            goal=task.task_description,
+            facts={
+                "capability": context.capability,
+                "required_evidence": list(context.required_evidence),
+            },
+            candidates=tuple(
+                DecisionCandidate(
+                    candidate_id=item.candidate_id,
+                    description=item.description,
+                )
+                for item in choices
+            ),
+            acceptance_policy_ref=getattr(
+                self._query_decision_config, "acceptance_policy_ref", None
+            ),
+        )
+        return request, choices
+
+    def _current_node_context(self, context: Any) -> Any:
+        from PhyAgentOS.agent.planning_loop import NodeContextProvider
+
+        if self._planning_context_provider is not None:
+            # Refresh the admission facade after the remote wait. Its scene
+            # identity is a trusted host fact, not a provider-supplied value.
+            self.activate_planning_task(context.task_id)
+        task = self.forge_task_coordinator.get_task(context.task_id)
+        if task.active_revision_id != context.revision_id:
+            return None
+        return NodeContextProvider(
+            lambda _task_id: task,
+            settlement_loader=self.forge_task_coordinator.effective_node_settlements,
+            execution_record_loader=(
+                self.forge_task_coordinator.effective_planning_execution_records
+            ),
+            revision_settlement_loader=(
+                self.forge_task_coordinator.effective_node_settlements
+            ),
+        ).build(
+            context.task_id,
+            context.node_id,
+            scene_revision=self._planning_dispatch.current_scene_revision,
+        )
+
+    async def _observe_shadow_decision(self, request: Any, *, config: Any, timeout_s: float) -> None:
+        started = monotonic()
+        try:
+            result = await asyncio.wait_for(
+                self._decision_provider.decide(
+                    request,
+                    endpoint=config.endpoint,
+                    model=config.model,
+                    timeout_s=timeout_s,
+                ),
+                timeout=timeout_s,
+            )
+            self._log_decision(
+                request,
+                mode="shadow",
+                outcome=result.outcome,
+                started=started,
+                reason=result.reason,
+            )
+        except asyncio.CancelledError:
+            self._log_decision(request, mode="shadow", outcome="cancelled", started=started)
+            raise
+        except asyncio.TimeoutError:
+            self._log_decision(request, mode="shadow", outcome="timeout", started=started)
+        except Exception as exc:
+            self._log_decision(
+                request,
+                mode="shadow",
+                outcome="unavailable",
+                started=started,
+                reason=f"{type(exc).__name__}: {exc}",
+            )
+
+    @staticmethod
+    def _log_decision(
+        request: Any,
+        *,
+        mode: str,
+        outcome: str,
+        started: float,
+        reason: str = "",
+    ) -> None:
+        logger.info(
+            "Agent decision task={} revision={} scene={} node={} point={} mode={} "
+            "outcome={} latency_ms={:.1f} reason={}",
+            request.task_id,
+            request.revision_id,
+            request.scene_revision,
+            request.node_id,
+            request.decision_point,
+            mode,
+            outcome,
+            (monotonic() - started) * 1000,
+            reason,
+        )
 
     @staticmethod
     def _pending_selection_matches_proposal(
@@ -935,6 +1204,7 @@ class AgentLoop:
         allowed_tool_names: frozenset[str] | None = None,
         yield_after_tools: frozenset[str] = frozenset(),
         decision_timeout_s: float | None = None,
+        decision_deadline: float | None = None,
     ) -> AgentLoopRunResult:
         """Run the agent iteration loop."""
         messages = initial_messages
@@ -947,9 +1217,8 @@ class AgentLoop:
         turn_failure_code = None
         model_failure_code = None
         tools_used: list[str] = []
-        decision_deadline = (
-            monotonic() + decision_timeout_s if decision_timeout_s is not None else None
-        )
+        if decision_deadline is None and decision_timeout_s is not None:
+            decision_deadline = monotonic() + decision_timeout_s
         pick_place_creation_mode = False
         discovery_continuation_used = False
         discovery_progress = None
@@ -2055,6 +2324,7 @@ class AgentLoop:
         node_id: str,
         prompt: str,
         on_progress: Callable[..., Awaitable[None]] | None = None,
+        decision_deadline: float | None = None,
     ) -> AgentLoopRunResult:
         """Run one semantic-node turn through the existing AgentLoop.
 
@@ -2107,7 +2377,8 @@ class AgentLoop:
             projection_node_id=node_id,
             allowed_tool_names=_NODE_TURN_ALLOWED_TOOLS,
             yield_after_tools=_NODE_TURN_EXECUTION_TOOLS,
-            decision_timeout_s=self.turn_timeout_s,
+            decision_timeout_s=(self.turn_timeout_s if decision_deadline is None else None),
+            decision_deadline=decision_deadline,
         )
 
     async def run_segment_continuation_turn(
@@ -2593,6 +2864,14 @@ class AgentLoop:
 
     async def close_mcp(self) -> None:
         """Close MCP connections."""
+        decision_tasks = tuple(self._decision_tasks)
+        for task in decision_tasks:
+            task.cancel()
+        if decision_tasks:
+            await asyncio.gather(*decision_tasks, return_exceptions=True)
+        self._decision_tasks.clear()
+        if self._decision_provider is not None:
+            await self._decision_provider.close()
         if self._mcp_stack:
             try:
                 await self._mcp_stack.aclose()

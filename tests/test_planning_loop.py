@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+from time import monotonic
 from types import SimpleNamespace
 
 import pytest
 
+from PhyAgentOS.agent.decision_provider import DecisionResult
 from PhyAgentOS.agent.long_horizon import LongHorizonTaskController
 from PhyAgentOS.agent.loop import AgentLoop
 from PhyAgentOS.agent.plan_proposal import RECOVERY_NODE_GUIDANCE
@@ -26,13 +28,14 @@ from PhyAgentOS.agent.planning_loop import (
     _scene_bind_selection_context,
     deterministic_projection_arguments,
     node_context_prompt_projection,
+    projected_query_argument_choices,
     resolve_node_argument_sources,
 )
 from PhyAgentOS.agent.tools.base import Tool
 from PhyAgentOS.agent.tools.forge_task import build_forge_task_tools
 from PhyAgentOS.agent.tools.forge_tool_api import ForgeToolQueryTool
 from PhyAgentOS.agent.tools.registry import ToolRegistry
-from PhyAgentOS.config.schema import ForgeConfig
+from PhyAgentOS.config.schema import DecisionPointConfig, ForgeConfig
 from PhyAgentOS.forge.binding import (
     query_record_provider_blocked,
     query_record_retryable,
@@ -1148,6 +1151,366 @@ def test_deterministic_projection_does_not_bypass_scene_bind_business_admission(
     })
 
     assert deterministic_projection_arguments(context, plan) is None
+
+
+def test_projected_query_choices_materialize_complete_unambiguous_inputs():
+    plan = ArgumentProjectionPlan.model_validate({
+        "projection_id": "observed_identity_for_binding_v1",
+        "source_slots": {
+            "understanding": {
+                "tool_id": "scene.understand",
+                "source_scope": "authorized",
+                "scene_relation": "current",
+                "source_field_map": {
+                    "observation_ref": ["observation_ref"],
+                    "scene_revision": ["scene_revision"],
+                    "calibration_ref": ["calibration_ref"],
+                },
+            },
+        },
+        "top_level_fields": ["entity_refs"],
+    })
+    record = PredecessorExecutionContext(
+        record_id="understand-current",
+        tool_id="scene.understand",
+        semantics="query",
+        status="succeeded",
+        response={"data": {
+            "status": "available",
+            "observation_ref": "observation://scene-current/head",
+            "scene_revision": "scene-current",
+            "calibration_ref": "calibration://scene-current/head",
+            "entities": [
+                {"entity_ref": "entity://red", "category": "red block"},
+                {"entity_ref": "entity://blue", "category": "blue block"},
+            ],
+        }},
+    )
+    context = _executor_context().model_copy(update={
+        "capability": "scene.bind",
+        "input_bindings": {},
+        "scene_revision": "scene-current",
+        "agent_selection_required": True,
+        "scene_bind_selection": {
+            "status": "available",
+            "source_record_id": "understand-current",
+            "candidate_entities": [
+                {"entity_ref": "entity://red", "category": "red block"},
+                {"entity_ref": "entity://blue", "category": "blue block"},
+            ],
+            "candidate_entity_refs": ["entity://red", "entity://blue"],
+            "recommended_unambiguous_entity_refs": ["entity://red", "entity://blue"],
+            "selection_required": True,
+        },
+        "predecessor_context": (PredecessorContext(
+            node_id="understand",
+            status="completed",
+            scene_revision="scene-current",
+            executions=(record,),
+        ),),
+    })
+
+    choices = projected_query_argument_choices(context, plan)
+
+    assert [choice.candidate_id for choice in choices] == [
+        "query-input-1", "query-input-2",
+    ]
+    assert [choice.arguments["entity_refs"] for choice in choices] == [
+        ["entity://red"], ["entity://blue"],
+    ]
+    assert all(
+        choice.arguments["scene_revision"] == "scene-current"
+        and choice.arguments["observation_ref"] == "observation://scene-current/head"
+        and choice.arguments["calibration_ref"] == "calibration://scene-current/head"
+        for choice in choices
+    )
+    ambiguous = context.model_copy(update={
+        "scene_bind_selection": {
+            **context.scene_bind_selection,
+            "global_ambiguity": True,
+            "recommended_unambiguous_entity_refs": [],
+        },
+    })
+    assert projected_query_argument_choices(ambiguous, plan) == ()
+
+
+def _projected_query_decision_fixture(provider, *, mode="active"):
+    plan = ArgumentProjectionPlan.model_validate({
+        "projection_id": "observed_identity_for_binding_v1",
+        "source_slots": {
+            "understanding": {
+                "tool_id": "scene.understand",
+                "source_scope": "authorized",
+                "scene_relation": "current",
+                "source_field_map": {
+                    "observation_ref": ["observation_ref"],
+                    "scene_revision": ["scene_revision"],
+                    "calibration_ref": ["calibration_ref"],
+                },
+            },
+        },
+        "top_level_fields": ["entity_refs"],
+    })
+    node = PlanNode(
+        node_id="bind-current",
+        obligation_id="bind-current",
+        capability="scene.bind",
+    )
+    payload = {
+        "task_id": "task-jev-query",
+        "revision_id": "revision-jev-query",
+        "graph_digest": "0" * 64,
+        "planner_decision_digest": "1" * 64,
+        "policy_snapshot_digest": "2" * 64,
+        "nodes": [node.model_dump(mode="json")],
+    }
+    payload["graph_digest"] = plan_graph_digest(payload)
+    dispatch = AgentComposedDispatch(
+        PlanGraph.model_validate(payload),
+        (ToolSpecPolicy(
+            tool_id="scene.bind",
+            semantics="query",
+            spec_digest="3" * 64,
+            capabilities=("scene.bind",),
+            argument_projection=plan.projection_id,
+            argument_projection_plan=plan,
+        ),),
+        AdmissionContext(scene_revision="scene-current"),
+        input_schemas={"scene.bind": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": [
+                "observation_ref", "scene_revision", "calibration_ref", "entity_refs",
+            ],
+            "properties": {
+                "observation_ref": {"type": "string"},
+                "scene_revision": {"type": "string"},
+                "calibration_ref": {"type": "string"},
+                "entity_refs": {"type": "array", "minItems": 1,
+                                "items": {"type": "string"}},
+            },
+        }},
+    )
+    context = NodeExecutionContext(
+        task_id="task-jev-query",
+        revision_id="revision-jev-query",
+        node_id="bind-current",
+        capability="scene.bind",
+        dependencies=(),
+        required_evidence=(),
+        input_bindings={},
+        scene_revision="scene-current",
+        agent_selection_required=True,
+        scene_bind_selection={
+            "status": "available",
+            "source_record_id": "understand-current",
+            "candidate_entities": [
+                {"entity_ref": "entity://red", "category": "red block"},
+                {"entity_ref": "entity://blue", "category": "blue block"},
+            ],
+            "candidate_entity_refs": ["entity://red", "entity://blue"],
+            "recommended_unambiguous_entity_refs": ["entity://red", "entity://blue"],
+            "selection_required": True,
+        },
+        predecessor_context=(PredecessorContext(
+            node_id="understand",
+            status="completed",
+            scene_revision="scene-current",
+            executions=(PredecessorExecutionContext(
+                record_id="understand-current",
+                tool_id="scene.understand",
+                semantics="query",
+                status="succeeded",
+                response={"data": {
+                    "status": "available",
+                    "observation_ref": "observation://scene-current/head",
+                    "scene_revision": "scene-current",
+                    "calibration_ref": "calibration://scene-current/head",
+                }},
+            ),),
+        ),),
+    )
+
+    class Coordinator:
+        def __init__(self):
+            self.proposals = []
+
+        def get_task(self, _task_id):
+            return SimpleNamespace(
+                task_description="Bind the target object",
+                active_revision_id="revision-jev-query",
+            )
+
+        def persist_planning_selection(self, proposal):
+            self.proposals.append(proposal)
+
+        def pending_planning_selection(self, *_args, **_kwargs):
+            return None
+
+    coordinator = Coordinator()
+    loop = object.__new__(AgentLoop)
+    loop._planning_dispatch = dispatch
+    loop.forge_task_coordinator = coordinator
+    loop._decision_provider = provider
+    loop._query_decision_config = DecisionPointConfig(
+        mode=mode,
+        endpoint="https://jev.invalid/choice",
+        model="jev-fixture",
+        timeout_cap_s=0.2,
+        fallback_reserve_s=0.01,
+        acceptance_policy_ref=(
+            "artifact://jev-eval/query-v1" if mode == "active" else None
+        ),
+    )
+    loop._decision_tasks = set()
+    loop._mcp_stack = None
+    loop.forge_tool_client = None
+    loop._current_node_context = lambda _context: context
+    return loop, coordinator, context
+
+
+@pytest.mark.parametrize(
+    ("result", "expected_selected"),
+    [
+        (DecisionResult(outcome="selected", selected_id="query-input-2"), True),
+        (DecisionResult(outcome="escalate", reason="goal is ambiguous"), False),
+        (DecisionResult(outcome="unavailable", reason="service is warming"), False),
+        (DecisionResult(outcome="selected", selected_id="unknown"), False),
+    ],
+)
+def test_active_projected_query_decision_persists_only_known_selected_choice(
+    result, expected_selected,
+):
+    class Provider:
+        def __init__(self):
+            self.requests = []
+
+        async def decide(self, request, **kwargs):
+            self.requests.append((request, kwargs))
+            return result
+
+        async def close(self):
+            pass
+
+    provider = Provider()
+    loop, coordinator, context = _projected_query_decision_fixture(provider)
+
+    selected = asyncio.run(loop.try_projected_query_decision(
+        context, decision_deadline=monotonic() + 1,
+    ))
+
+    assert selected is expected_selected
+    assert len(provider.requests) == 1
+    request, kwargs = provider.requests[0]
+    assert kwargs["timeout_s"] <= 0.2
+    assert request.decision_point == "query_input_selection"
+    assert request.facts == {
+        "capability": "scene.bind",
+        "required_evidence": [],
+    }
+    assert [item.candidate_id for item in request.candidates] == [
+        "query-input-1", "query-input-2",
+    ]
+    assert len(coordinator.proposals) == int(expected_selected)
+    if expected_selected:
+        assert coordinator.proposals[0]["tool_arguments"]["entity_refs"] == [
+            "entity://blue",
+        ]
+
+
+def test_active_projected_query_decision_rejects_stale_scene_response():
+    class Provider:
+        async def decide(self, _request, **_kwargs):
+            loop._current_node_context = lambda context: context.model_copy(
+                update={"scene_revision": "scene-new"}
+            )
+            return DecisionResult(outcome="selected", selected_id="query-input-1")
+
+        async def close(self):
+            pass
+
+    loop, coordinator, context = _projected_query_decision_fixture(Provider())
+
+    selected = asyncio.run(loop.try_projected_query_decision(
+        context, decision_deadline=monotonic() + 1,
+    ))
+
+    assert selected is False
+    assert coordinator.proposals == []
+
+
+def test_active_projected_query_timeout_falls_back_and_cancellation_propagates():
+    class Provider:
+        def __init__(self):
+            self.entered = asyncio.Event()
+
+        async def decide(self, _request, **_kwargs):
+            self.entered.set()
+            await asyncio.Event().wait()
+
+        async def close(self):
+            pass
+
+    async def exercise():
+        provider = Provider()
+        loop, coordinator, context = _projected_query_decision_fixture(provider)
+        loop._query_decision_config = loop._query_decision_config.model_copy(update={
+            "timeout_cap_s": 0.02,
+            "fallback_reserve_s": 0.005,
+        })
+        assert await loop.try_projected_query_decision(
+            context, decision_deadline=monotonic() + 0.1,
+        ) is False
+        assert coordinator.proposals == []
+
+        task = asyncio.create_task(loop.try_projected_query_decision(
+            context, decision_deadline=monotonic() + 1,
+        ))
+        await provider.entered.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert coordinator.proposals == []
+
+    asyncio.run(exercise())
+
+
+def test_shadow_projected_query_is_nonblocking_and_closed_with_agent_loop():
+    class Provider:
+        def __init__(self):
+            self.entered = asyncio.Event()
+            self.cancelled = asyncio.Event()
+            self.closed = False
+
+        async def decide(self, _request, **_kwargs):
+            self.entered.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                self.cancelled.set()
+                raise
+
+        async def close(self):
+            self.closed = True
+
+    async def exercise():
+        provider = Provider()
+        loop, coordinator, context = _projected_query_decision_fixture(
+            provider, mode="shadow"
+        )
+        started = monotonic()
+        assert await loop.try_projected_query_decision(
+            context, decision_deadline=monotonic() + 1,
+        ) is False
+        assert monotonic() - started < 0.1
+        await provider.entered.wait()
+        assert coordinator.proposals == []
+        await loop.close_mcp()
+        assert provider.cancelled.is_set()
+        assert provider.closed is True
+        assert loop._decision_tasks == set()
+
+    asyncio.run(exercise())
 
 
 def test_agent_loop_persists_unique_projected_query_without_model_turn():
@@ -4071,6 +4434,52 @@ def test_node_executor_never_auto_selects_agent_owned_semantic_context(
 
     assert loop.selection_calls == 0
     assert loop.model_calls == 1
+
+
+def test_node_executor_attempts_jev_once_and_shares_absolute_deadline_with_fallback():
+    task = SimpleNamespace(
+        active_revision_id="revision-resume",
+        active_revision=SimpleNamespace(execution_records=[], planning_selections=[]),
+    )
+
+    class Coordinator:
+        def get_task(self, _task_id):
+            return task
+
+        def pending_planning_selection(self, *_args, **_kwargs):
+            return None
+
+        def planning_selection_rejections(self, *_args, **_kwargs):
+            return ()
+
+    class Loop:
+        tools = SimpleNamespace()
+        turn_timeout_s = 0.2
+
+        def __init__(self):
+            self.jev_deadlines = []
+            self.llm_deadlines = []
+
+        async def try_projected_query_decision(self, _context, *, decision_deadline):
+            self.jev_deadlines.append(decision_deadline)
+            await asyncio.sleep(0.01)
+            return False
+
+        async def run_node_turn(self, **kwargs):
+            self.llm_deadlines.append(kwargs["decision_deadline"])
+            return SimpleNamespace(model_failure_code="provider_timeout")
+
+    loop = Loop()
+    with pytest.raises(NodeTurnProviderError, match="provider_timeout"):
+        asyncio.run(AgentLoopNodeExecutor(
+            loop,
+            Coordinator(),
+            max_node_turn_continuations=1,
+        )(_executor_context()))
+
+    assert len(loop.jev_deadlines) == 1
+    assert len(loop.llm_deadlines) == 2
+    assert loop.llm_deadlines == loop.jev_deadlines * 2
 
 
 def test_node_executor_stops_blocked_scene_bind_before_model_turn():

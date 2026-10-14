@@ -2,6 +2,50 @@
 
 ## 最近五版本 / Latest five versions
 
+## v13.9.0 (2026-10-15 01:20) - codex
+
+### 变更摘要 / Summary [完成]
+- [policy] [feat] 实施 JEV P3a：新增 typed `DecisionProvider`/HTTP adapter 与 off/shadow/active 配置；首个切片只从多个当前、完整、合法的只读 Query 输入组合中选择。 / Implement JEV P3a with a typed `DecisionProvider`/HTTP adapter and off/shadow/active configuration; the first slice selects only among multiple current, complete, legal read-only Query input combinations.
+- [eval] [test] 覆盖接受、弃权、unavailable、未知候选、HTTP 关闭、取消、超时、stale scene/revision、shadow 非阻塞、共享 deadline 和 no-motion fallback；active 仍要求外部测量 acceptance policy。 / Cover acceptance, abstention, unavailability, unknown candidate, HTTP close, cancellation, timeout, stale scene/revision, non-blocking shadow, shared deadline, and no-motion fallback; active still requires an externally measured acceptance policy.
+
+### 文件变更详情 / File Change Details
+- [新增 / Added] `PhyAgentOS/agent/decision_provider.py:L1-L147`：冻结 `DecisionRequest`/`DecisionResult`/candidate 类型与无 task/selection/执行副作用的 `JEVHTTPDecisionProvider`。 / Add frozen request/result/candidate types and a side-effect-free `JEVHTTPDecisionProvider`.
+- [修改 / Modified] `PhyAgentOS/config/schema.py:L276-L313,L440-L449`：为 query/method/recovery decision points 增加 mode、endpoint、model、timeout cap、fallback reserve、acceptance policy 与凭据环境变量；active 无 policy 不可配置。 / Add mode, endpoint, model, timeout cap, fallback reserve, acceptance policy, and credential environment settings for query/method/recovery points; active without policy is rejected.
+- [修改 / Modified] `PhyAgentOS/agent/planning_loop.py:L1360-L1390,L1470-L1478`：宿主从当前 scene.bind projection 物化完整候选，并让 JEV、LLM 与纠正共享一个绝对 deadline。 / Materialize complete current scene.bind projection candidates in the host and share one absolute deadline across JEV, LLM, and correction.
+- [修改 / Modified] `PhyAgentOS/agent/loop.py:L582-L850,L1198-L1208,L2318-L2376,L2858-L2869`：接入 active/shadow/off 策略、current task/revision/scene 重读、Coordinator selection 持久化、stale 拒绝、shadow 生命周期取消和 provider close。 / Integrate active/shadow/off policy, current task/revision/scene rereads, Coordinator selection persistence, stale rejection, shadow cancellation, and provider close.
+- [修改 / Modified] `PhyAgentOS/cli/commands.py:L587-L607,L846-L866,L1032-L1083`：从现有配置构造 JEV adapter 并注入 AgentLoop。 / Build the JEV adapter from existing configuration and inject it into AgentLoop.
+- [新增 / Added] `tests/test_decision_provider.py:L1-L127`、`tests/test_planning_loop.py:L1153-L1518,L4436-L4480`：Fake HTTP/typed control flow、真实 projection/admission fixture、超时/取消/stale/shadow/deadline 反例。 / Add Fake HTTP/typed control-flow, real projection/admission fixtures, timeout/cancellation/stale/shadow/deadline counterexamples.
+
+### 关键代码 Diff / Key Code Diff
+```diff
+- semantic Query alternatives always require an unconstrained LLM selection turn
++ host materializes complete current Query candidates
++ off: no provider call; shadow: cancellable observation only; active: provider may return selected/escalate/unavailable
++ selected ID -> host rereads task/revision/scene -> existing dispatch -> Coordinator selection persistence
++ timeout/cancel/stale/unknown -> original LLM path; no Action/Session decision enablement
+```
+
+### 七维复审 / Seven-Dimension Review
+1. 架构所有权：adapter 只做 HTTP/typed transport；候选、scene/revision 复核和 selection 写入仍由 AgentLoop/dispatch/Coordinator 负责，无第二 scheduler、状态库或执行器。 / Architecture: the adapter owns only typed HTTP transport; candidate construction, scene/revision checks, and selection writes remain in AgentLoop/dispatch/Coordinator, with no second scheduler, store, or executor.
+2. 正确性与事实完整性：候选必须来自当前 scene.bind 的唯一 projection policy、授权 understanding source、完整 identity fields 和不含全局歧义的实体事实；provider 只能返回已存在 ID。 / Correctness and facts: candidates require the unique current scene.bind projection policy, authorized understanding source, complete identity fields, and non-global-ambiguous entity facts; the provider can only return an existing ID.
+3. 错误与状态可观测性：selected/escalate/unavailable、timeout、cancelled、unknown candidate、stale identity 和 fallback 均有日志/可断言结果；HTTP 不可用不伪造 selection。 / Errors and observability: selected/escalate/unavailable, timeout, cancellation, unknown IDs, stale identity, and fallback have observable logs/assertions; HTTP failure never fabricates a selection.
+4. 恢复、幂等与对账：成功仅持久化 Coordinator planning selection，后续仍由原 `_resume_node`/Registry/wrapper 消费；并发 winner 必须精确匹配，关闭只取消 shadow，不写 task。 / Recovery/idempotency: success only persists a Coordinator planning selection and existing `_resume_node`/Registry/wrapper consumes it; concurrent winners must match exactly, and close only cancels shadow without task writes.
+5. 机器人与 no-motion 安全：只读 Query slice；Action/Session policy 被明确排除，JEV 不获得 Gateway、Runtime、相机或运动权限；全部验证离线 no-motion。 / Robotics safety: this is a read-only Query slice; Action/Session policies are excluded, JEV receives no Gateway/Runtime/camera/motion authority, and all validation is offline no-motion.
+6. 扩展兼容性：provider、config、AgentLoop 参数均可选且默认 off；旧 node callers 仍使用原 relative timeout；method/recovery decision points 仅保留配置，不改变现有 PlannerPlugin/LLM fallback。 / Compatibility: provider, config, and AgentLoop parameters are optional and default off; old node callers retain relative timeout behavior, while method/recovery points are configuration-only and existing PlannerPlugin/LLM fallback is unchanged.
+7. AgentLoop 收敛、调用次数与预算：同一 node cognition cycle JEV 至多一次；JEV/LLM/纠正共享绝对 deadline；shadow 不阻塞，timeout/escalate/unavailable 不增加额外 LLM 回合。 / AgentLoop convergence, calls, and budget: one JEV attempt per node cognition cycle; JEV/LLM/correction share one absolute deadline; shadow is non-blocking and timeout/escalate/unavailable add no extra LLM turn.
+- 首轮复审修复三项 Major：active model 配置缺失、远端等待后未刷新可信 dispatch、以及 deadline 在 deterministic 前置工作后才启动；确认复审无遗留 Blocker/Major。 / First review fixed three Majors: missing active-model validation, stale trusted dispatch after remote wait, and starting the deadline after deterministic pre-work; confirmation review found no remaining Blocker/Major.
+
+### 方向审核 / Direction Review
+- 本阶段交付工单 P3a 的服务接入与固定 Query choice 控制流，未把 P3b 专项质量/替代率/时延证据伪装成 active；默认 off，active 仅可引用外部测量 policy。 / This stage delivers P3a service integration and fixed Query-choice control flow without pretending P3b quality/substitution/latency evidence exists; default is off and active requires an externally measured policy reference.
+- 未改变 Runtime、Coordinator、compiler、selection、settlement 或 Verifier 所有权；未扩张到 Action/Session 或恢复方法。 / Runtime, Coordinator, compiler, selection, settlement, and Verifier ownership is unchanged; scope does not expand to Action/Session or recovery methods.
+
+### 验证与边界 / Validation and Boundary
+- P3a 定向：`308 passed`；工单九文件关联：`518 passed in 17.54s`；全仓离线：`968 passed in 37.14s`。 / P3a focused: `308 passed`; nine-file work-order regression: `518 passed in 17.54s`; full offline repository: `968 passed in 37.14s`.
+- Ruff、`PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m compileall -q PhyAgentOS tests`、`git diff --check` 通过。未部署、未恢复任务、未调用现场 Gateway/Query/Action/Session、相机、仿真或运动。 / Ruff, compileall, and diff checks pass. No deployment, task resume, live Gateway/Query/Action/Session, camera, simulation, or motion occurred.
+
+### Git 提交 / Git Commit
+- Implementation commit: pending until this stage is staged and pushed on `feature/planning-loop`. / 实现提交：本阶段暂存并推送到 `feature/planning-loop` 后补全。
+
 ## v13.8.0 (2026-10-15 00:44) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -152,25 +196,6 @@
 
 ### Git 提交 / Git Commit
 - Implementation commit: `cbc1feeb` on `feature/planning-loop`; this exact reference is completed by the same-version log-only commit. / 实现提交：`cbc1feeb`，分支 `feature/planning-loop`；精确引用由同版本纯日志提交补全。
-
-## v13.6.0 (2026-10-14 16:00) - codex
-
-### 变更摘要 / Summary [完成]
-- [policy] [feat] 为 `scene.bind` 声明当前授权 `scene.understand` 的 `observation_ref`、`scene_revision`、`calibration_ref` named projection；复用既有 resolver，`entity_refs` 仍由 Agent 语义选择提供。 / Declare the current authorized `scene.understand` named projection for `scene.bind`; reuse existing resolvers while keeping `entity_refs` Agent-owned. (local)
-- [eval] [test] 增加真实 Coordinator 投影消费链、唯一固定语义 Query 零模型路径与缺字段、旧 scene、跨 observation、错误 Tool、未授权来源、模型覆盖和业务 unavailable 反例；全仓 `932 passed`。 / Add the real Coordinator projection path, zero-model projected Query path, and counterexamples for missing fields, stale scene, cross-observation, wrong Tool, unauthorized source, model overrides, and business unavailable; full repository `932 passed`. (local)
-
-### 文件与关键 Diff / Files and Key Diff
-- `grounding.py:L71-L97`：增加 `observed_identity_for_binding_v1`，三项身份字段来自 `scene.understand / authorized / current`。 / Add `observed_identity_for_binding_v1` with the three identity fields from `scene.understand / authorized / current`.
-- `PhyAgentOS/agent/loop.py:L502-L545`、`planning_dispatch.py:L477-L510`、`planning_loop.py:L806-L847,L1147-L1163`：唯一固定语义 Query 直接持久化 projection selection；否则保留模型路径。 / Persist a projected selection directly for one fixed-semantics Query; retain the model path otherwise.
-- `tests/test_planning_selection.py:L582-L815`、`tests/test_planning_loop.py:L940-L1195`、Skill grounding tests：验证正向投影、零模型 selection/消费各一次且 LLM=0，以及拒绝边界。 / Verify positive projection, one zero-model selection and consumption with zero LLM calls, and rejection boundaries.
-- Skill `3.0.24 → 3.0.25`、Node `1.0.14 → 1.0.15`；Node SHA `c130d7538e2d16a2082bd1c7eb1a0a75166f2ddb04672d68e7d9e62e0845831c`；bundle SHA `684203d0c4f485903fcb9eb00ac0b720e316d0735eab343aaa2cbbf71b8053ab`。 / Record the Skill/Node version bumps and artifact SHA values.
-
-### 审核与边界 / Review and Boundary
-- 七维复审无 Blocker/Major；不改变 Coordinator/Runtime/Verifier/Action 所有权，不新增 hash、冻结 contract、状态库或 gate。零模型路径仅接受固定 `entity_refs`、唯一 available current source 和唯一 Query。 / Seven-dimension review found no Blocker/Major; ownership is unchanged and no new hash, frozen contract, state store, or gate was added. The zero-model path accepts only fixed `entity_refs`, one available current source, and one Query.
-- 关联 `228`、Skill `439`、全仓 `932` 测试通过；未安装/启动新制品、恢复任务、调用现场 Query/Action、相机、仿真或运动。 / Related `228`, Skill `439`, and full-repository `932` tests passed; no new artifact was installed/started and no live Query/Action, camera, simulation, or motion was used.
-
-### Git 提交 / Git Commit
-- Commit: `84fe36ef`；Branch: `feature/planning-loop`；2026-10-14（Asia/Shanghai）。 / Commit `84fe36ef` on `feature/planning-loop`; 2026-10-14 (Asia/Shanghai).
 
 ## Archived detailed records / 已归档详细记录
 

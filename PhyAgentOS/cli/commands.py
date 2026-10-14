@@ -584,6 +584,23 @@ def _make_provider(
     return provider
 
 
+def _make_decision_provider(config: Config):
+    """Build the optional read-only JEV adapter from configured decision points."""
+    points = (
+        config.agents.decisions.query_input_selection,
+        config.agents.decisions.method_fragment_selection,
+        config.agents.decisions.recovery_method_selection,
+    )
+    if not any(point.mode != "off" for point in points):
+        return None
+    import os
+
+    from PhyAgentOS.agent.decision_provider import JEVHTTPDecisionProvider
+
+    key_env = next((point.api_key_env for point in points if point.api_key_env), None)
+    return JEVHTTPDecisionProvider(api_key=os.environ.get(key_env, "") if key_env else None)
+
+
 def _make_evolution_provider(config: Config, default_provider):
     """Resolve the optional evolution model/provider independently of verifier budget."""
     settings = config.agents.evolution
@@ -800,6 +817,7 @@ def gateway(
         sync_workspace_templates(config.workspace_path)
     bus = MessageBus()
     provider = _make_provider(config)
+    decision_provider = _make_decision_provider(config)
     evolution_provider, evolution_model = _make_evolution_provider(config, provider)
     (
         forge_tool_client,
@@ -846,6 +864,8 @@ def gateway(
         planner_plugin=AgentRecoveryDecisions(
             provider, config.agents.defaults.model, forge_task_coordinator
         ),
+        decision_provider=decision_provider,
+        query_decision_config=config.agents.decisions.query_input_selection,
     )
 
     # Set cron callback (needs agent)
@@ -1012,6 +1032,7 @@ def agent(
 
     bus = MessageBus()
     provider = _make_provider(config)
+    decision_provider = _make_decision_provider(config)
     evolution_provider, evolution_model = _make_evolution_provider(config, provider)
     (
         forge_tool_client,
@@ -1060,6 +1081,8 @@ def agent(
         planner_plugin=AgentRecoveryDecisions(
             provider, config.agents.defaults.model, forge_task_coordinator
         ),
+        decision_provider=decision_provider,
+        query_decision_config=config.agents.decisions.query_input_selection,
     )
 
     async def _long_horizon_result(result) -> None:
