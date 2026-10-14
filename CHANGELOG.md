@@ -2,6 +2,34 @@
 
 ## 最近五版本 / Latest five versions
 
+## v13.4.13 (2026-10-14 13:18) - codex
+
+### 变更摘要 / Summary [完成]
+- [docs] [docs] 保存基于 JEV 本地评测与当前源码的统一 Agent Loop 重构方案，覆盖入口、Skill、节点选择、续段、恢复和经验；明确程序/JEV/LLM 与既有事实 owner 的职责。 / Save a unified Agent Loop refactoring design grounded in local JEV results and current source, covering entry handling, Skills, node selection, continuation, recovery, and experience with explicit code/JEV/LLM and fact ownership. (local)
+- [docs] [docs] 核对 60/54/51 的总样本、有效答案、联合正确数，记录评测类别缺口、远程长尾及分阶段迁移；仅保存设计，不修改运行代码、配置或 Runtime。 / Verify 60 total, 54 valid, and 51 jointly correct cases; document category gaps, remote latency tails, and phased migration. Save the design only, without changing runtime code, configuration, or Runtime. (local)
+
+### 文件变更详情 / File Change Details
+- [新增 / Added] `docs/forge/JEV_AGENT_LOOP_REFACTOR_DIAGNOSIS_20261014.md:L1-L401`：证据、源码诊断、所有权、候选职责、闭环设计、四阶段实施和验收 / evidence, source diagnosis, ownership, candidate roles, loop design, four-stage implementation, and validation.
+- [修改 / Modified] `docs/README.md:L31,L67`：中英文诊断入口 / Chinese and English diagnosis links.
+- [修改 / Modified] `changelog/2026-10_part6.md:L1219-L1245`：本条双语完整记录 / this complete bilingual entry.
+- [修改 / Modified] `CHANGELOG.md:L5-L31,L145-L146`：同步本条完整记录并移动归档分界，最近五版本保持 v13.4.13 至 v13.4.9，历史条目正文不变 / synchronize this complete entry and move the archive boundary, retaining v13.4.13 through v13.4.9 as the latest five without changing historical entry bodies.
+
+### 关键文档 Diff / Key Documentation Diff
+```diff
++ # JEV 参与 PAOS Agent Loop 的重构诊断与实施设计
++ ## 5. JEV 可以承担哪些工作
++ ## 7. Agent Loop 必须如何运行
++ ## 10. 分阶段实施与验收
++ [JEV Agent Loop 重构诊断](forge/JEV_AGENT_LOOP_REFACTOR_DIAGNOSIS_20261014.md)
+```
+
+### 验证 / Validation
+- 已对照 gold 重新核对 JEV 60/54/51 计数、3 条 system2 → conversation 错误及 evaluation 类别覆盖；UTF-8、文档相对链接、代码围栏、最近五版本与 `git diff --check` 通过。 / Rechecked JEV counts, the three System-2-to-conversation errors, and evaluation category coverage against gold; UTF-8, relative links, code fences, latest-five entries, and diff checks passed.
+- 文档变更未运行代码测试或在线模型，未创建任务、调用 Gateway、读取相机或执行仿真/物理动作；后续实现的回归命令已写入方案。 / This documentation change ran no code tests or online model and created no task, Gateway call, camera read, or simulated/physical action; future implementation regression commands are included.
+
+### Git 提交 / Git Commit
+- Branch: `feature/planning-loop`；文档提交后以同一条目的日志引用提交记录其 hash，并推送当前分支。 / Record the document commit hash in a follow-up log-reference commit for this same entry, then push the current branch.
+
 ## v13.4.12 (2026-10-14 12:58) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -114,6 +142,8 @@
 - 验证：只读核对 AgentTask record、execution records、settlements、planning selections、events，任务仍为 `awaiting_replan`，没有调用 Runtime Query/Action；`git diff --check` 通过。 / Verification: read-only task record, execution records, settlements, planning selections, and events were checked; the task remains `awaiting_replan`, no Runtime Query/Action was called, and `git diff --check` passed.
 - Documentation commit: `6c54b5ce` on `feature/planning-loop`. / 文档提交：`6c54b5ce`，分支 `feature/planning-loop`。
 
+## Archived detailed records / 已归档详细记录
+
 ## v13.4.8 (2026-10-14 01:04) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -141,8 +171,6 @@
 
 - 独立 Qwen PID `176466` 保持 8012 监听；未创建/恢复任务，未调用 Query/Action、读取相机、推进 simulator 或执行运动。 / Independent Qwen remained listening on 8012; no task was created/resumed, no Query/Action or camera read occurred, and no simulator action or motion was executed.
 - Deployment log/index commit: `b7f48891` on `feature/planning-loop`; hash-reference completion follows in a log-only commit. / 部署日志/索引提交：`b7f48891`，分支 `feature/planning-loop`；提交引用由纯日志提交收尾。
-
-## Archived detailed records / 已归档详细记录
 
 ## v13.4.7 (2026-10-14 00:41) - codex
 

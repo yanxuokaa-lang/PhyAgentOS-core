@@ -28,6 +28,7 @@ The PhyAgentOS team maintains this directory for users, operators, and ecosystem
 - [RoboTwin Adapter 重构诊断](forge/ROBOTWIN_ADAPTER_REFACTOR_DIAGNOSIS.md)：记录 capability runtime、provider port 与环境适配器的可复用边界及六个 Tool 的迁移顺序。
 - [PAOS 状态文件架构诊断](forge/PAOS_STATE_FILE_ARCHITECTURE_DIAGNOSIS.md)：记录五类报告状态文件与 PAOS 权威持久化边界的对应关系，以及抓取放置和自主进化的审核方向。
 - [State File Adapter 功能引用卡](forge/STATE_FILE_ADAPTER_FEATURE_CARD.md)：记录第一阶段文件协议、projection、shadow validation 和 `SESSIONS.md` dry-run 的扩展点与验收边界。
+- [JEV Agent Loop 重构诊断](forge/JEV_AGENT_LOOP_REFACTOR_DIAGNOSIS_20261014.md)：依据本地测试，设计程序、JEV 与大语言模型在同一闭环内的分工、扩展位置和分阶段验证。
 
 ### 推荐阅读路径
 
@@ -63,6 +64,7 @@ The PhyAgentOS team maintains this directory for users, operators, and ecosystem
 - [RoboTwin Adapter Refactor Diagnosis](forge/ROBOTWIN_ADAPTER_REFACTOR_DIAGNOSIS.md): records the reusable boundary between capability runtime, provider ports, and environment adapters, plus the migration order for the six Tools.
 - [PAOS State-File Architecture Diagnosis](forge/PAOS_STATE_FILE_ARCHITECTURE_DIAGNOSIS.md): records how the five report state-file concepts map to PAOS authoritative stores and the review direction for pick-place integration and autonomous evolution.
 - [State File Adapter Feature Card](forge/STATE_FILE_ADAPTER_FEATURE_CARD.md): records the phase-one extension point and acceptance boundaries for the file protocol, projections, shadow validation, and `SESSIONS.md` dry-run.
+- [JEV Agent Loop Refactoring Diagnosis](forge/JEV_AGENT_LOOP_REFACTOR_DIAGNOSIS_20261014.md): uses local test evidence to design deterministic-code, JEV, and LLM responsibilities within one loop, extension seams, and phased validation.
 
 ### Suggested reading paths
 
