@@ -13,8 +13,8 @@
 - [修改 / Modified] `PhyAgentOS/agent/loop.py:L24-L44,L1153-L1184,L2035-L2080,L2105-L2203`：移除节点/续段重复 JSON wrapper；记录五项组成、本地 component total 与原 provider hard total。 / Remove duplicate node/continuation JSON wrappers and log five local components plus the original provider hard total.
 - [修改 / Modified] `PhyAgentOS/agent/planning_loop.py:L1703-L1810`：节点 user prompt 只保留 current scene、合法来源和 admission。 / Keep only current scene, legal sources, and admission in the node user prompt.
 - [修改 / Modified] `PhyAgentOS/agent/prompt_context.py:L284-L409,L1230-L1705,L1731-L1865,L1855-L2167,L2360-L2415`：compact node/continuation projection、相关 failed/unknown、unfinished goals、completed effects、no-replay 及 token breakdown。 / Add compact node/continuation projections, relevant failed/unknown facts, unfinished goals, completed effects, no-replay facts, and token breakdown.
-- [新增 / Added] `tests/test_prompt_context.py:L2154-L2277`、[修改 / Modified] `tests/test_agent_foundation.py:L2445-L2485`、`tests/test_planning_loop.py:L567-L590`：同 fixture 缩减、单一 Skill、组成 token 和必要事实回归。 / Cover same-fixture reduction, one Skill copy, component tokens, and required facts.
-- [修改 / Modified] `changelog/2026-10_part6.md:L1471-L1526`、`CHANGELOG.md:L5-L55,L198-L200`：完整双语记录与最近五版滚动。 / Add the complete bilingual record and latest-five rollover.
+- [修改 / Modified] `tests/test_prompt_context.py:L2154-L2277`、`tests/test_agent_foundation.py:L2445-L2485`、`tests/test_planning_loop.py:L567-L590`：同 fixture 缩减、单一 Skill、组成 token 和必要事实回归。 / Cover same-fixture reduction, one Skill copy, component tokens, and required facts.
+- [修改 / Modified] `changelog/2026-10_part6.md:L1471-L1512`、`CHANGELOG.md:L5-L41,L185-L187`：完整双语记录与最近五版滚动。 / Add the complete bilingual record and latest-five rollover.
 
 ### 关键代码 Diff / Key Code Diff
 ```diff
@@ -38,7 +38,7 @@
 - 无 Runtime 启停、任务恢复、现场 Query/Action、Gateway、相机、仿真或运动。 / No Runtime lifecycle, task resume, live Query/Action, Gateway, camera, simulation, or motion occurred.
 
 ### Git 提交 / Git Commit
-- Commit: 待提交 / pending; Branch: `feature/planning-loop`; 2026-10-14（Asia/Shanghai）。
+- Implementation commit: `07ddeab1` on `feature/planning-loop`; exact reference completed by the same-version log-only commit. / 实现提交：`07ddeab1`，分支 `feature/planning-loop`；精确引用由同版本纯日志提交补全。
 
 ## v13.6.1 (2026-10-14 19:45) - codex
 
