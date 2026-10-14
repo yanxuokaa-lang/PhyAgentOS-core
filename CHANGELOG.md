@@ -2,6 +2,34 @@
 
 ## 最近五版本 / Latest five versions
 
+## v13.4.12 (2026-10-14 12:58) - codex
+
+### 变更摘要 / Summary [完成]
+- [env] [chore] 按用户授权，通过 Coordinator 停止唯一非终态旧任务，强制停止旧 `pick-place-workflow` Runtime，重新安装当前 checkout 的 editable Core，并启动既有 `robotwin-blocks-ranking-graspnet` profile。 / Under explicit authorization, stop the sole non-terminal task through the Coordinator, force-stop the old `pick-place-workflow` Runtime, reinstall the editable Core from the current checkout, and start the existing `robotwin-blocks-ranking-graspnet` profile. (local)
+- [eval] [test] 仅验证任务终态、Core 安装来源、Runtime/Dora/Gateway/Tool readiness、进程及端口；不创建或恢复任务，不调用 Query/Action，不读取相机，不推进 simulator。 / Validate only task terminality, Core provenance, Runtime/Dora/Gateway/Tool readiness, processes, and ports; create/resume no task, invoke no Query/Action, read no camera, and do not advance the simulator. (local)
+
+### 部署前事实与安全边界 / Pre-deployment Facts and Safety Boundary
+- 唯一非终态任务为 `task_8fed40f6212c4b19`，状态 `awaiting_replan`，revision `revision_4ce7a2fa043b42a8`；仅按精确 task ID 调用 Coordinator-owned stop，不直接写 SQLite。 / The sole non-terminal task is the recorded awaiting-replan task and revision; stop it only through the Coordinator by exact task ID without writing SQLite directly.
+- 旧 Runtime Dora/host/simulator PID 为 `402549`/`402572`/`402676`，另有 enrichment workers；独立 Qwen PID `176466` / 8012 不属于本次停止范围。 / The old Runtime uses the recorded Dora/host/simulator PIDs plus enrichment workers; independent Qwen PID 176466 on 8012 is outside this stop scope.
+- 本次代码变更仅属于 Core；继续使用已安装 Skill `3.0.24` / Node `1.0.14`。readiness 不作为感知、标定、轨迹、运动或任务成功证明。 / This code change is Core-only, so the installed Skill 3.0.24 / Node 1.0.14 remain in use. Readiness is not proof of perception, calibration, trajectory, motion, or task success.
+
+### 完成结果 / Completed Result
+- `task_8fed40f6212c4b19` 经 Coordinator stop 进入 terminal `failed`；最终任务库 `cancelled=203`、`failed=109`、non-terminal=`0`。未直接写 SQLite 或重放 Action。 / Coordinator stop moved the exact task to terminal failed; final counts are 203 cancelled, 109 failed, and zero non-terminal. SQLite was not written directly and no Action was replayed.
+- 旧 Dora/host/simulator/enrichment workers 已强制停止，19020 释放；独立 Qwen PID `176466` 保持 8012 监听。当前 HEAD `7bac6f59` 已重新 editable 安装。 / Old Dora/host/simulator/enrichment workers were force-stopped and port 19020 released; independent Qwen PID 176466 remains on 8012. Current HEAD 7bac6f59 was reinstalled editably.
+- 新 Dora/host/simulator PID `4099427`/`4099432`/`4099480`；Skill/Dora=`running`、Gateway=`ready`、11/11 Tool contexts=`ready`。Runtime lock 保持 Skill `3.0.24` / Node `1.0.14`。 / The new Dora/host/simulator PIDs are recorded; Skill/Dora are running, Gateway is ready, and all 11 Tool contexts are ready. The runtime lock retains Skill 3.0.24 / Node 1.0.14.
+
+### 文件、Diff 与验证 / Files, Diff, and Verification
+- [修改] `changelog/2026-10_part6.md:L1185-L1217`、`CHANGELOG.md:L5-L31,L145-L147`：完整部署证据、安装来源、运行锁、no-motion 边界及最近五版本归档滚动。 / [Modified] the recorded monthly/index ranges with complete deployment evidence, provenance, runtime lock, no-motion boundary, and latest-five archive rollover.
+- 未创建/恢复任务，未调用 Runtime Query/Action、读取相机、推进 simulator 或执行运动。 / No task was created/resumed, and no Runtime Query/Action, camera read, simulator advancement, or motion occurred.
+
+```diff
+- one awaiting_replan task + old Runtime/Core lifecycle
++ zero non-terminal tasks + current checkout Core + new ready Runtime lifecycle
+```
+
+### Git 提交 / Git Commit
+- Deployment log/index commit pending on `feature/planning-loop`; hash-reference completion follows. / 部署日志/索引提交待完成；提交引用随后回填。
+
 ## v13.4.11 (2026-10-14 03:10) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -114,6 +142,8 @@
 - 独立 Qwen PID `176466` 保持 8012 监听；未创建/恢复任务，未调用 Query/Action、读取相机、推进 simulator 或执行运动。 / Independent Qwen remained listening on 8012; no task was created/resumed, no Query/Action or camera read occurred, and no simulator action or motion was executed.
 - Deployment log/index commit: `b7f48891` on `feature/planning-loop`; hash-reference completion follows in a log-only commit. / 部署日志/索引提交：`b7f48891`，分支 `feature/planning-loop`；提交引用由纯日志提交收尾。
 
+## Archived detailed records / 已归档详细记录
+
 ## v13.4.7 (2026-10-14 00:41) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -130,8 +160,6 @@
 - 七维处置：Blocker=`0`，发现的 Major 全部已修复，无未解决 Blocker/Major；详细 finding、行号和 Diff 见当月 v13.4.7 记录。 / Seven-dimension disposition: zero Blockers and all discovered Majors fixed, with no unresolved Blocker/Major; see the monthly v13.4.7 entry for detailed findings, line ranges, and diffs.
 - 验证：全仓库 `909 passed`，发布一致性 `76 passed`，聚焦 `91 passed`，compileall/Ruff/diff check 通过；仅 no-motion，未安装制品或重启 Runtime。 / Verification: 909 full-suite, 76 release-consistency, and 91 focused tests passed, plus compileall/Ruff/diff check; no-motion only, with no artifact installation or Runtime restart.
 - Implementation/review commit: `8d3f7297` on `feature/planning-loop`; hash-reference completion follows in a documentation-only commit. / 实现/复审提交：`8d3f7297`，分支 `feature/planning-loop`；hash 回填由纯文档提交收尾。
-
-## Archived detailed records / 已归档详细记录
 
 ## v13.4.6 (2026-10-14 00:15) - codex
 
