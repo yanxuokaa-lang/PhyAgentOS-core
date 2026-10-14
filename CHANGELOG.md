@@ -28,7 +28,7 @@
 ```
 
 ### Git 提交 / Git Commit
-- Deployment log/index commit pending on `feature/planning-loop`; hash-reference completion follows. / 部署日志/索引提交待完成；提交引用随后回填。
+- Deployment log/index commit: `96748cc1` on `feature/planning-loop`; hash-reference completion follows in a log-only commit. / 部署日志/索引提交：`96748cc1`，分支 `feature/planning-loop`；提交引用由纯日志提交收尾。
 
 ## v13.4.11 (2026-10-14 03:10) - codex
 
