@@ -30,6 +30,7 @@ The PhyAgentOS team maintains this directory for users, operators, and ecosystem
 - [State File Adapter 功能引用卡](forge/STATE_FILE_ADAPTER_FEATURE_CARD.md)：记录第一阶段文件协议、projection、shadow validation 和 `SESSIONS.md` dry-run 的扩展点与验收边界。
 - [JEV Agent Loop 重构诊断](forge/JEV_AGENT_LOOP_REFACTOR_DIAGNOSIS_20261014.md)：依据本地测试，设计程序、JEV 与大语言模型在同一闭环内的分工、扩展位置和分阶段验证。
 - [最近十次运行的 JEV 替代诊断](forge/JEV_RECENT_RUNS_DIAGNOSIS_20261014.md)：核对会话 80–89 的选择、参数错误、续段、恢复与执行证据，给出功能替代边界和 P0–P4 实施验收。
+- [JEV 编码模型实施工单](forge/JEV_IMPLEMENTATION_HANDOFF_20261014.md)：七维修订后的独立落地入口，供 GPT-5.6-sol 等编码模型按接口、样例、共享预算和验收分批实施。
 
 ### 推荐阅读路径
 
@@ -67,6 +68,7 @@ The PhyAgentOS team maintains this directory for users, operators, and ecosystem
 - [State File Adapter Feature Card](forge/STATE_FILE_ADAPTER_FEATURE_CARD.md): records the phase-one extension point and acceptance boundaries for the file protocol, projections, shadow validation, and `SESSIONS.md` dry-run.
 - [JEV Agent Loop Refactoring Diagnosis](forge/JEV_AGENT_LOOP_REFACTOR_DIAGNOSIS_20261014.md): uses local test evidence to design deterministic-code, JEV, and LLM responsibilities within one loop, extension seams, and phased validation.
 - [JEV Replacement Diagnosis Across Ten Recent Runs](forge/JEV_RECENT_RUNS_DIAGNOSIS_20261014.md): audits selection, argument errors, continuation, recovery, and execution evidence in sessions 80–89, with functional replacement boundaries and P0–P4 delivery criteria.
+- [JEV Implementation Handoff for Coding Models](forge/JEV_IMPLEMENTATION_HANDOFF_20261014.md): standalone work orders revised across seven review dimensions, with source interfaces, portable examples, shared budgets, and phased acceptance for coding models such as GPT-5.6-sol.
 
 ### Suggested reading paths
 

@@ -7,6 +7,10 @@
 [多次运行诊断](JEV_RECENT_RUNS_DIAGNOSIS_20261014.md)。86 次已持久化节点选择全部为单 Tool 候选，
 19 次已走确定性路径，7 次 scene.bind 均遗漏相同三个来源字段；应先完善输入/交接和常规片段，再接 JEV。
 
+实施入口（七维修订）：[编码模型实施工单](JEV_IMPLEMENTATION_HANDOFF_20261014.md)。
+面向 GPT-5.6-sol 等接手写代码的模型，细化接口复用、片段物化、共享 deadline、可移交样例与逐批验收；
+不是要求替换 PAOS 运行期 LLM。发生实施细节差异时，以该工单的明确修订为准。
+
 ## 1. 结论与重构目标
 
 建议把 JEV 接成 **同一个 Agent Loop 内可选的局部语义决策能力**，覆盖入口、方法选择、
@@ -249,6 +253,10 @@ JEV 的离线配置为 30 秒 timeout、最多 2 次 transport retries；这适�
 减少交互等待。在线 JEV 使用本轮剩余 deadline 的一部分，为 LLM 回退留时间；首版采用单次有界尝试，
 具体时间与置信策略由新的校准集和实测延迟决定，不照抄固定概率阈值。
 
+实施时由 node executor 在需要新认知时建立绝对 deadline，显式传入 JEV、`run_node_turn` 和
+`_run_agent_loop`；不能在升级时再次分配完整 `turn_timeout_s`。同一认知周期内的纠正/timeout 重入
+不再调用 JEV，只有新节点或新结算事实需要新决策时才开启新周期。详见实施工单第 4 节。
+
 显式停止命令和取消处理继续使用原路径，不等待 JEV。取消在途认知请求不表示物理执行已经停止，
 真实停止状态仍来自原执行 owner。
 
@@ -331,6 +339,9 @@ blocked admission 先于 pending selection 消费，已有 execution 仍由原 o
 唯一适用且条件完整时程序推进，多种方法需要语义匹配时构成下一阶段的 JEV 候选。
 动态实体根据实际结果晚绑定，保留原 source_scope/predecessor 关系和逐节点结算。
 
+具体采用 Skill/planner 的可选 `MethodFragmentPlugin` 能力生成携带完整 nodes/evidence_refs 的内存选项，
+经原 `forge_task_continue_plan` 调用 compiler。该能力拟新增，旧插件接口保持兼容；compiler 本身不解释片段 ID。
+
 完成条件：选定已有片段后无需 LLM 补写图；正常 continuation 不冒充失败 replan；
 Query 成功但业务 unavailable 或证据缺口未解决时，不自动推进到依赖该事实的 Action。
 
@@ -338,6 +349,8 @@ Query 成功但业务 unavailable 或证据缺口未解决时，不自动推进�
 
 交付：可选 typed provider、JEV adapter、同源决策投影及 off/shadow/active 配置。
 先使用保存事实、固定 provider 和 Fake Gateway；影子模式不写 task/执行状态、不阻塞主回合。
+工单将此批拆为 P3a（接入与固定返回回归）和 P3b（专项质量与含失败等待的配对测量后启用）；
+没有质量数据时可完成 P3a，P3b 保持未完成与 off/shadow。接受条件与观测分母见工单第 5 节。
 只有候选能够完整消费、专项质量达标的决策点才启用；先覆盖只读节点/片段，Action/Session 另做完整验收。
 
 完成条件：接受路径 1 次 JEV、0 次 LLM；弃权/超时至多尝试一次 JEV 后升级，保留回退预算；
@@ -385,13 +398,16 @@ T_new = P + E[J] + (1 - a) × (L + H)
 这些代码测试未在本次文档修改中运行：
 
 ```bash
-.venv/bin/python -m pytest -q tests/test_agent_foundation.py tests/test_planning_loop.py tests/test_forge_tool_api.py
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest -q -p pytest_asyncio.plugin tests/test_agent_foundation.py tests/test_planning_loop.py tests/test_forge_tool_api.py
 .venv/bin/python -m ruff check PhyAgentOS tests
 .venv/bin/python -m compileall -q PhyAgentOS tests
 ```
 
 本次文档验收使用既有 JSON 重新核对计数、源码符号核对、相对链接检查、UTF-8 检查和
 `git diff --check`。未运行模型、创建任务、调用 Gateway、读取相机或执行仿真/物理动作。
+
+同日七维复审确认 plain pytest 自动加载 ROS `launch_testing`，因缺少 `lark` 无法收集；
+使用显式 asyncio 插件命令成功收集 330 项，未执行用例。完整命令与可移交样例见实施工单第 6–7 节。
 
 ## 12. 新增机制的必要性与七维设计自检
 

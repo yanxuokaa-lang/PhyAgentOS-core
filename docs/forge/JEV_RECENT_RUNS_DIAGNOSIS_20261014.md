@@ -6,6 +6,10 @@
 本报告补充并修订 [JEV 总体方案](JEV_AGENT_LOOP_REFACTOR_DIAGNOSIS_20261014.md) 的实施顺序，
 重点回答“最近真实流程中哪些功能可以减少 LLM 使用，以及 JEV 必须如何完整接管这些功能”。
 
+七维复审后的落地入口：[编码模型实施工单](JEV_IMPLEMENTATION_HANDOFF_20261014.md)。
+供 GPT-5.6-sol 等模型接手实施，补齐 projection 示例、方法扩展/物化接口、共享预算、质量验收和可移交样例。
+本报告保留十次运行的证据口径；具体实施细节以该工单的修订为准。
+
 ## 1. 结论
 
 推荐采用同一个 Agent Loop 内的三层分工：**程序处理确定部分，JEV 选择现成语义选项，LLM 构造新计划与解释复杂异常。**
@@ -269,6 +273,8 @@ Tool 与参数相互依赖时，选项代表完整可解析组合，或先选 To
 | P4：局部恢复与复杂规划 | 原 recovery/continuation + Skill 调查方法；常规方法匹配由 JEV，未知根因/新图由 LLM | 分故障类型确认能力可用，区别服务失败和语义 STOP | 不重放 unknown/completed Action；无适用候选时升级；缺口未解决不宣称完成；provider 失败可归因 |
 
 P0/P1 有独立收益，不依赖 JEV 服务。P2 是阶段替代的实际前置条件，不再推迟到所有入口功能完成之后。
+为便于编码模型分批交付，P1 拆为 P1a（consumer 投影）与 P1b（工作集），P3 拆为 P3a（关闭/影子接入）
+与 P3b（专项数据验收后启用）；禁止把服务连通或固定返回测试通过当成 active 质量证明。
 P3 先覆盖只读节点和只读片段；Action/Session 的认知替代另做完整 no-motion 验收，不能因唯一候选自动放行。
 经验排序和入口扩展可独立交付，但不阻塞这条主线。
 
@@ -320,7 +326,7 @@ selection-to-execution 间隔、每个有效节点耗时、任务主动运行时
 实现后的已有回归入口如下；新增决策/片段测试随对应功能交付，本次文档工作未运行这些代码测试：
 
 ```bash
-.venv/bin/python -m pytest -q tests/test_agent_foundation.py tests/test_planning_loop.py tests/test_forge_tool_api.py
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest -q -p pytest_asyncio.plugin tests/test_agent_foundation.py tests/test_planning_loop.py tests/test_forge_tool_api.py
 .venv/bin/python -m ruff check PhyAgentOS tests
 ```
 
@@ -382,3 +388,7 @@ SQLite julianday 毫秒舍入可能使合计与原 ISO 微秒解析有几毫秒�
 
 需要保留给 LLM 的不是“剩余所有步骤”，而是需要新方法、新图、开放约束和复杂解释的决策。
 凡是已有事实与方法足够明确的部分，应通过程序或完整可消费的 JEV 选项完成闭环。
+
+同日七维交接复审在实施工单中处置 H1–H5：四项实施交接 Major 与 pytest 命令 Minor。
+它们与本报告 M1–M6 的历史流程诊断分别编号。设计修订不代表运行实现完成；
+P3b 仍需实际 JEV 专项数据与配对测量，其他编码模型可以从 P0 独立开始。

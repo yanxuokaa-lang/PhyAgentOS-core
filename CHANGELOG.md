@@ -2,6 +2,38 @@
 
 ## 最近五版本 / Latest five versions
 
+## v13.4.15 (2026-10-14 14:15) - codex
+
+### 变更摘要 / Summary [完成]
+- [docs] [docs] 按历史七维审核补齐 JEV 方案，新增供 GPT-5.6-sol 等编码模型接手的实施工单，处置 H1–H4 交接 Major 与 H5 测试命令 Minor。 / Complete the JEV design against the historical seven dimensions and add implementation work orders for coding models such as GPT-5.6-sol, addressing handoff findings H1–H4 and test-command finding H5. (local)
+- [docs] [fix] 明确 consumer 投影、片段可选能力、共享 deadline、P3a/P3b 分离及可移交样例；修复 pytest 插件收集命令，运行代码和任务状态不变。 / Specify consumer projection, optional method-fragment capability, shared deadlines, separate P3a/P3b delivery, and portable examples; correct pytest plugin collection commands without changing runtime code or task state. (local)
+
+### 文件变更详情 / File Change Details
+- [新增 / Added] `docs/forge/JEV_IMPLEMENTATION_HANDOFF_20261014.md:L1-L364`：七维处置、源码复用、分批工单、预算、质量验收、七条事件摘录与合成 fixture、接手指令 / seven-dimension disposition, source reuse, work orders, budgets, acceptance, seven event excerpts, synthetic fixtures, and handoff instructions.
+- [修改 / Modified] `docs/forge/JEV_AGENT_LOOP_REFACTOR_DIAGNOSIS_20261014.md:L10-L13,L256-L259,L342-L344,L352-L353,L401,L409-L411`：实施入口与明确修订、共享预算及测试命令 / implementation entry, explicit refinements, shared budget, and test command.
+- [修改 / Modified] `docs/forge/JEV_RECENT_RUNS_DIAGNOSIS_20261014.md:L9-L12,L276-L277,L329,L391-L394`：工单入口、细分批次、测试命令与独立审核编号 / handoff entry, split batches, test command, and separate review identifiers.
+- [修改 / Modified] `docs/README.md:L33,L71`：中英文实施入口 / Chinese and English implementation entries.
+- [修改 / Modified] `changelog/2026-10_part6.md:L1278-L1308`、`CHANGELOG.md:L5-L35,L150-L151`（移除原 L154-L155 归档分界）：同步本条双语完整记录，最近五版为 v13.4.15 至 v13.4.11，历史正文不变 / synchronize this full bilingual record, retain v13.4.15 through v13.4.11 as the latest five, remove the former archive boundary, and preserve historical bodies.
+
+### 关键文档 Diff / Key Documentation Diff
+```diff
+- high-level P0-P4 plan + local-only evidence + fresh timeout per model turn
++ source-level work orders + portable synthetic fixtures + one shared decision deadline
++ optional Skill method options carry materialized nodes into the existing continuation compiler
++ P3a off/shadow integration; P3b active only after decision-specific quality and latency measurement
+- plain pytest with implicit ROS plugin autoload
++ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 ... -p pytest_asyncio.plugin
+```
+
+### 审核与验证 / Review and Validation
+- 投影示例通过现有 ArgumentProjectionPlan 类型及 execute_argument_projection 精确输出验证；七条事件摘录通过只读 SQL 复核。 / The projection example passed existing type and exact-output validation; all seven event excerpts were verified by read-only SQL.
+- 已复现 plain pytest 的 ROS/lark 收集错误；显式 asyncio 插件成功收集 330 项，未运行测试用例或在线模型。 / Reproduced the ROS/lark collection failure; explicit asyncio collection found 330 cases, without executing tests or online models.
+- UTF-8、相对链接、代码围栏、精确范围、日志同步、历史正文保留及 diff 检查通过；不修改运行代码，不调用 Gateway/相机/仿真或恢复任务。 / UTF-8, links, fences, exact ranges, log synchronization, historical preservation, and diff checks passed; no runtime code change, Gateway/camera/simulator call, or task resume.
+- 本次处置完成的是实施方案；P0–P4 未实现，P3b 仍须实际专项数据，不能把文档修订当成 JEV 闭环验收。 / This delivery completes the implementation plan, not P0–P4 runtime changes or JEV closed-loop acceptance; P3b still requires measured decision-specific data.
+
+### Git 提交 / Git Commit
+- Commit: 待提交后补全；Branch: `feature/planning-loop`；同版本纯日志提交回填。 / Commit reference will be completed by a log-only commit on the current branch.
+
 ## v13.4.14 (2026-10-14 13:47) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -115,6 +147,8 @@
 ### Git 提交 / Git Commit
 - Implementation commit: `3fe2afcf` on `feature/planning-loop`; hash-reference completion follows in a documentation-only commit. / 实现提交：`3fe2afcf`，分支 `feature/planning-loop`；提交引用随后以纯文档提交完成。
 
+## Archived detailed records / 已归档详细记录
+
 ## v13.4.10 (2026-10-14 02:45) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -150,8 +184,6 @@
 
 ### 失败场景与安全边界 / Failure Scenario and Safety Boundary
 - 当支撑/碰撞等当前实体引用全部属于 `entity_identity_uncertain` 或共享几何歧义时，继续要求 Agent 选择只会重复相同 selection；若强行绑定会污染 grounding。Coordinator 只报告不可选事实，AgentLoop 复用现有 blocked/replan 状态，不自动观察、绑定、Query 或 Action。 / When all current support/collision entity refs are covered by identity uncertainty or shared-geometry ambiguity, asking the Agent to select again repeats the same selection and forced binding would corrupt grounding. The Coordinator reports the inadmissible fact, while AgentLoop reuses the existing blocked/replan state without automatic observation, binding, Query, or Action.
-
-## Archived detailed records / 已归档详细记录
 
 ## v13.4.9 (2026-10-14 02:20) - codex
 
