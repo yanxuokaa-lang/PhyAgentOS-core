@@ -2,24 +2,52 @@
 
 ## 最近五版本 / Latest five versions
 
+## v13.10.3 (2026-10-15 14:40) - codex
+
+### 变更摘要 / Summary [完成]
+- [docs] [docs] 保存具身 System 1 数据集与决策模型诊断，记录 20 条开发/60 条评测、20 个评测家族和 52 个不同评测输入，提出跨系统任务、标注、训练与评测路线。 / Preserve the embodied System 1 dataset/model diagnosis, recording 20 development and 60 evaluation cases, 20 evaluation families and 52 distinct evaluation inputs, with cross-system tasks, annotation, training and evaluation. (local)
+- [docs] [docs] 核查 VPP2 论文 v3 与官方接口，保存 VLM—System 1—VPP2 桥接方案、动作块/历史边界、原始指令保留、公开配方差异和对照实验。 / Verify VPP2 paper v3 and official interfaces; preserve the VLM–System 1–VPP2 bridge design, action-chunk/history boundaries, original-request context, recipe differences and controlled comparisons. (local)
+
+### 文件变更详情 / File Change Details
+- [新增 / Added] `docs/forge/EMBODIED_SYSTEM1_DATASET_AND_MODEL_DIAGNOSIS_20261015.md:L1-L222`：保存现有数据诊断、十类决策任务、覆盖维度、公开来源、模型训练与跨域评测建议。 / Preserve dataset findings, ten decision tasks, coverage dimensions, public sources, model training and cross-domain evaluation.
+- [新增 / Added] `docs/forge/VLM_SYSTEM1_VPP2_BRIDGE_DIAGNOSIS_20261015.md:L1-L223`：保存官方事实核查、源码接口、职责划分、时序、桥接样本和验证阶段。 / Preserve verified upstream facts, source interfaces, ownership, timing, bridge samples and validation phases.
+- [修改 / Modified] `changelog/2026-10_part7.md:L3-L27`、`CHANGELOG.md:L5-L177`：登记本版本，最近五版完整记录与月度归档同步，保留较早归档正文。 / Register this version, synchronize the latest five complete entries with the monthly archive, and preserve older archived content.
+
+### 关键文档 Diff / Key Documentation Diff
+```diff
++ decision sample = original instruction + visible state + candidates -> decision
++ user-intent uncertainty / missing environment facts / model uncertainty
++ VLM -> System 1 -> task manager and Adapter -> VPP2 -> observed feedback
++ preserve original user intent; distinguish subtask switching from episode reset
+```
+
+### 验证与范围 / Validation and Scope
+- 检查两份 Markdown、本地链接、UTF-8、引用行号、最近五版与月度记录一致性；`git diff --check` 通过。 / Check both Markdown documents, local links, UTF-8, line references, and latest-five/monthly consistency; `git diff --check` passes.
+- 本次为研究文档保存；官方源码核查确认历史帧和 joint Video+Action2B 配方。未运行训练/推理/仿真或硬件，本轮不新增执行门禁。 / This is a research-document save; upstream inspection confirms history conditioning and joint Video+Action2B training. Training, inference, simulation and hardware were not run; no execution gate is added.
+
+### Git 提交 / Git Commit
+- Content commit: pending; branch `feature/planning-loop`; record the commit before pushing. / 内容提交待登记；当前分支 `feature/planning-loop`，补全提交引用后推送。
+
 ## v13.10.2 (2026-10-15 13:31) - codex
 
 ### 变更摘要 / Summary [完成]
-- [docs] [docs] 保存 RoboTwin `blocks_ranking_size`、`stack_blocks_three`、`put_bottles_dustbin` 的通用多对象操作方案；明确共享操作链、关系目标、Adapter/Runtime 边界、分段续接和 no-motion 验收。 / Preserve the generic manipulation design for the three RoboTwin tasks, covering shared operation flow, relation goals, Adapter/Runtime boundaries, segmented continuation, and no-motion acceptance.
+- [docs] [docs] 保存 RoboTwin `blocks_ranking_size`、`stack_blocks_three`、`put_bottles_dustbin` 的通用多对象操作设计方案，明确可复用 PAOS 流程、任务目标抽象、Adapter 边界、场景续接、验证路线及 no-motion 边界；不修改运行时代码。 / Preserve the generic multi-object manipulation design for the three RoboTwin tasks, covering reusable PAOS flow, task-goal abstraction, Adapter boundaries, scene continuation, validation, and no-motion scope; change no runtime code.
 
-### 文件与关键 Diff / Files and Key Diff
-- [新增 / Added] `docs/forge/ROBOTWIN_MULTI_TASK_MANIPULATION_PLAN_20261015.md:L1-L293`：复用现有 PlanGraph、Coordinator、pick-place Tools 和 Verifier；定义 `at/on/inside` 目标义务及 task adapter 边界；记录目标共享、逐段重观察、验收矩阵和实现阶段。 / Reuse PlanGraph, Coordinator, pick-place Tools, and Verifier; define `at/on/inside` obligations and the task-adapter boundary; document shared goals, segmented re-observation, acceptance, and implementation phases.
-- [修改 / Modified] `changelog/2026-10_part7.md:L3-L31`、`CHANGELOG.md:L5-L34`：登记方案、行号、关键 diff 与验证边界。 / Register the plan, line references, key diff, and validation boundary.
+### 文件变更详情 / File Change Details
+- [新增 / Added] `docs/forge/ROBOTWIN_MULTI_TASK_MANIPULATION_PLAN_20261015.md:L1-L293`：记录三任务共享操作链、`at/on/inside` 关系目标、当前绑定约束、task Adapter/Runtime 边界、Coordinator-owned 分段续接、实施阶段、Agent Route Contract、验收矩阵和 no-motion 非目标。 / Record the shared operation flow, `at/on/inside` goals, current binding constraints, task Adapter/Runtime boundary, Coordinator-owned segmented continuation, implementation phases, Agent Route Contract, acceptance matrix, and no-motion non-goals.
+- [修改 / Modified] `CHANGELOG.md:L5-L32,L114-L147`：登记 v13.10.2 最近五版详情，并将 v13.9.2 移入归档。 / Register v13.10.2 in the latest-five index and move v13.9.2 to the archive.
+- [修改 / Modified] `changelog/2026-10_part7.md:L3-L31`：将本条计划更新为完成，并保留相邻的既有 v13.10.1 计划不变。 / Mark this entry complete while preserving the adjacent pre-existing v13.10.1 plan.
 
+### 关键 Diff / Key Diff
 ```diff
-- RGB-only entity binding + unique destination per object + fixed relocation sequence
-+ generic scene-entity bindings + unique obligation identity + reusable relation goals
-+ Adapter-owned task facts and geometry; one current-scene segment followed by re-observation
+- RGB-only binding + unique destination per object + fixed relocation sequence
++ generic scene-entity binding + unique obligation identity + reusable relation goals
++ Adapter-owned task facts and geometry; current-scene segment followed by re-observation
 ```
 
-### 方向与验证 / Direction and Validation
-- 这是设计文档保存，不修改运行时代码、ToolSpec、Coordinator、Runtime 或运动授权；保留 unknown fail-closed、PAOS verdict 与 benchmark result 分离。 / This is a design-document save only; runtime code, ToolSpecs, Coordinator, Runtime, and motion authority are unchanged. Unknown remains fail-closed, and PAOS verdicts remain separate from benchmark results.
-- 文档与日志已检查，`git diff --check` 通过；未运行代码测试，未启动 Runtime/任务、未调用 Gateway/Query/Action、相机、仿真或运动。 / Documentation and logs were inspected and `git diff --check` passed; no code tests, Runtime/task start, Gateway/Query/Action, camera, simulation, or motion occurred.
+### 验证与边界 / Validation and Boundary
+- 检查新文档和双语日志内容；`git diff --check` 通过。该变更仅保存设计文档，未运行代码测试、未修改运行时、ToolSpec、Coordinator、Runtime 或运动授权。 / Inspected the design document and bilingual logs; `git diff --check` passed. This documentation-only change ran no code tests and changed no Runtime, ToolSpec, Coordinator, or motion authorization.
+- 未启动 Runtime/任务、未调用 Gateway/Query/Action、相机、仿真或运动。 / No Runtime/task start, Gateway/Query/Action call, camera, simulation, or motion occurred.
 
 ### Git 提交 / Git Commit
 - Commit: `10b0b2bd` on `feature/planning-loop`, 2026-10-15 13:34 CST. / 提交：`10b0b2bd`，分支 `feature/planning-loop`，时间 2026-10-15 13:34 CST。
@@ -27,52 +55,93 @@
 ## v13.10.1 (2026-10-15 04:00) - codex
 
 ### 变更摘要 / Summary [完成]
-- [policy] [fix] 七维复审修复 continuation 方法扩展与 P4 recovery LLM 未共享宿主认知 deadline 的 Major；同一绝对预算覆盖 method proposal、LLM fallback、recovery selection/replan 与 correction retry。 / Fix the seven-dimension review Major where continuation method extensions and the P4 recovery LLM did not share the host cognition deadline; one absolute budget now covers method proposal, LLM fallback, recovery selection/replan, and correction retries.
-- [eval] [test] 增加过期 continuation/recovery no-motion 反例；过期工作不调用 planner/provider/LLM，不创建续段或执行事实。 / Add expired continuation/recovery no-motion counterexamples; expired work calls no planner/provider/LLM and creates no continuation or execution facts.
+- [policy] [fix] 七维复审发现续段方法扩展和 P4 recovery LLM 没有共享宿主认知 deadline；为 continuation、method proposal、recovery selection/replan 传递同一绝对预算，超时后 fail-closed 回原有生命周期。 / Seven-dimension review found that continuation method proposals and the P4 recovery LLM did not share the host cognition deadline; pass one absolute budget through continuation, method proposal, and recovery selection/replan, failing closed into the existing lifecycle when time expires.
+- [eval] [test] 增加 no-motion deadline 回归，证明续段/方法扩展与 recovery 重试不会重置或超过当前认知预算。 / Add no-motion deadline regressions proving continuation/method extension and recovery retries do not reset or exceed the current cognition budget.
 
-### 文件与关键 Diff / Files and Key Diff
-- [修改 / Modified] `PhyAgentOS/agent/loop.py:L2526-L2723,L2778-L2791`：continuation 传递绝对 deadline，方法扩展在剩余预算内执行，普通 LLM fallback 复用同一 deadline。 / Pass an absolute continuation deadline, bound method extensions by remaining budget, and reuse it for the ordinary LLM fallback.
-- [修改 / Modified] `PhyAgentOS/agent/recovery_decisions.py:L237-L255,L288-L346,L358-L449,L500-L525`：recovery selection/replan 复用同一 task/revision/node deadline，provider retry 受剩余时间约束。 / Reuse one task/revision/node deadline across recovery selection/replan and bound provider retries by remaining time.
-- [修改 / Modified] `PhyAgentOS/cli/commands.py:L864-L869,L1082-L1087`：复用既有 `turn_timeout_s` 注入 recovery deadline。 / Reuse existing `turn_timeout_s` for the recovery deadline.
-- [新增 / Added] `tests/test_agent_foundation.py:L2190-L2217`、`tests/test_recovery_decisions.py:L128-L156`：覆盖过期工作不调用 planner/provider。 / Cover expired work skipping planner/provider calls.
+### 预期影响文件 / Expected Files
+- `PhyAgentOS/agent/loop.py`
+- `PhyAgentOS/agent/recovery_decisions.py`
+- `PhyAgentOS/cli/commands.py`
+- `tests/test_agent_foundation.py`
+- `tests/test_recovery_decisions.py`
+- `changelog/2026-10_part7.md`
 
+### 文件变更详情 / File Change Details
+- [修改 / Modified] `PhyAgentOS/agent/loop.py:L2526-L2723,L2778-L2791`：续段接收/创建单一绝对 deadline；方法扩展在共享预算内执行，超时结果不消费；普通 LLM continuation 复用同一 deadline。 / Continuation accepts/creates one absolute deadline; method extensions run within the shared budget and late results are discarded; ordinary LLM continuation reuses the same deadline.
+- [修改 / Modified] `PhyAgentOS/agent/recovery_decisions.py:L237-L255,L288-L346,L358-L449,L500-L525`：recovery selection/replan 共享同一 task/revision/node deadline；LLM retry 被剩余预算包裹，过期 fail-closed 为 stop。 / Recovery selection/replan share one task/revision/node deadline; LLM retries are bounded by remaining budget and expiry fails closed to stop.
+- [修改 / Modified] `PhyAgentOS/cli/commands.py:L864-L869,L1082-L1087`：沿用现有 `turn_timeout_s` 注入 recovery deadline，不新增配置状态。 / Reuse the existing `turn_timeout_s` for recovery deadlines without adding configuration state.
+- [新增 / Added] `tests/test_agent_foundation.py:L2190-L2217`、`tests/test_recovery_decisions.py:L128-L156`：覆盖过期 continuation 不调用 planner/LLM、过期 recovery 不调用 provider。 / Cover expired continuation skipping planner/LLM and expired recovery skipping the provider.
+
+### 关键代码 Diff / Key Code Diff
 ```diff
-- continuation/recovery branches could start another full provider budget
-+ one absolute deadline spans proposal, fallback, and recovery correction
-+ expired work fails closed without Tool or motion dispatch
+- continuation -> method proposal / LLM with fresh or unbounded timing
+- recovery select/replan -> provider.chat_with_retry() without host budget
++ one absolute continuation deadline is passed through method proposal and LLM fallback
++ one recovery deadline is retained across select_recovery -> propose_replan and retry repair
++ expired work returns to existing fail-closed lifecycle without Tool or motion dispatch
 ```
 
-### 七维复审与验证 / Seven-Dimension Review and Validation
-- 架构、正确性、错误观测、恢复幂等、机器人安全、扩展兼容和 AgentLoop 收敛均无未解决 Blocker/Major；Coordinator、Runtime、Gateway、Action/Session 和 motion authority 未改变。 / No unresolved Blocker/Major remains across architecture, correctness, observability, recovery/idempotency, robotics safety, compatibility, and AgentLoop convergence; Coordinator, Runtime, Gateway, Action/Session, and motion authority are unchanged.
-- 定向离线回归 `325 passed in 11.53s`；Ruff、compileall、`git diff --check` 通过。使用 `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` 绕过 ROS 收集依赖；未启动 Runtime、任务、Gateway、Query、Action、Session、相机、仿真或机械臂。 / Focused offline regression `325 passed in 11.53s`; Ruff, compileall, and `git diff --check` passed. `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` bypassed the ROS collection dependency; no Runtime, task, Gateway, Query, Action, Session, camera, simulation, or robot was started.
+### 七维复审 / Seven-Dimension Review
+1. 架构所有权：deadline 只由 AgentLoop/recovery owner 编排；Coordinator、Runtime、Tool wrapper 和 Gateway 所有权不变。 / Architecture ownership: deadlines are orchestrated only by AgentLoop/recovery owner; Coordinator, Runtime, Tool wrapper, and Gateway ownership is unchanged.
+2. 正确性：method/recovery 只能消费截止时间内的当前事实；过期结果不创建 continuation/recovery proposal。 / Correctness: method/recovery may consume only current facts within the deadline; expired results create no continuation/recovery proposal.
+3. 错误可观测：超时进入 `method_provider_timeout` 或原 recovery `stop` reason，未伪造成功或 selection。 / Observability: expiry is reported as `method_provider_timeout` or the existing recovery `stop` reason; no success or selection is fabricated.
+4. 恢复幂等：同一 recovery key 复用 deadline，修正重试不重置预算；没有新增状态库或执行重放。 / Recovery/idempotency: the same recovery key reuses its deadline and repair retries do not reset budget; no new store or execution replay is added.
+5. 机器人安全：修改仅约束离线认知/LLM等待，不增加 Action、Session、Gateway 或运动权限；验证保持 no-motion。 / Robotics safety: the change only bounds offline cognition/LLM waits and adds no Action, Session, Gateway, or motion authority; validation remains no-motion.
+6. 扩展兼容：continuation 参数可选；CLI 复用既有 `turn_timeout_s`；旧调用者与 JEV-off 路径保持。 / Compatibility: the continuation parameter is optional; CLI reuses existing `turn_timeout_s`; legacy callers and JEV-off paths remain.
+7. AgentLoop 收敛：method proposal、LLM fallback、recovery correction 不再各自获得完整预算，避免嵌套超时放大。 / Convergence: method proposal, LLM fallback, and recovery correction no longer receive separate full budgets, preventing nested timeout multiplication.
+- 本次复审发现并修复 1 项 Major；无未解决 Blocker/Major。 / This review found and fixed one Major; no unresolved Blocker/Major remains.
+
+### 验证与边界 / Validation and Boundary
+- 定向离线回归：`325 passed in 11.53s`；Ruff、compileall、`git diff --check` 通过。 / Focused offline regressions: `325 passed in 11.53s`; Ruff, compileall, and `git diff --check` passed.
+- pytest 使用 `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` 绕过 ROS `launch_testing` 收集依赖；未启动 Runtime、恢复任务、Gateway、Query、Action、Session、相机、仿真或机械臂。 / Pytest used `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` to bypass the ROS `launch_testing` collection dependency; no Runtime, task recovery, Gateway, Query, Action, Session, camera, simulation, or robot was started.
+
+### Git 提交 / Git Commit
 - Commit: `5821a073` on `feature/planning-loop`, 2026-10-15 13:57 CST. / 提交：`5821a073`，分支 `feature/planning-loop`，时间 2026-10-15 13:57 CST。
 
 ## v13.10.0 (2026-10-15 03:05) - codex
 
 ### 变更摘要 / Summary [完成但外部阻塞]
-- [eval] [feat] 新增 P3b 离线专项评测器与 CLI：版本化 calibration/held-out 数据、family 隔离、独立复核、完整失败分母、Wilson 区间、真实替代率和配对时延。 / Add the P3b offline evaluator and CLI with versioned calibration/held-out data, family isolation, independent review, complete failure denominators, Wilson intervals, real substitution, and paired latency.
-- [eval] [fix] 七维复审修复输入证据未随 run 固化及同输入配对不可审计两项 Major；每次 run 保存规范化 config/dataset/measurement 快照，并要求 `decision_input_ref` 与 acceptance policy。 / Fix two review Majors by snapshotting normalized config/dataset/measurement inputs per run and requiring `decision_input_ref` and an acceptance policy.
-- [policy] [fix] 将 provider `escalate` 遥测统一为 `abstained`；保持所有 decision point off/shadow，不修改 Runtime 配置。 / Normalize provider `escalate` telemetry to `abstained`; keep all decision points off/shadow without changing Runtime configuration.
+- [eval] [feat] 实施 P3b 离线专项评测：版本化 calibration/held-out 数据、family 隔离、独立复核、完整配对、实际模型身份、失败分母、Wilson 区间、真实替代率与均值/p95 时延均进入普通验收报告。 / Implement the offline P3b specialized evaluator with versioned calibration/held-out data, family isolation, independent review, complete pairs, actual model identity, failure denominators, Wilson intervals, real substitution rate, and mean/p95 latency in an ordinary acceptance report.
+- [eval] [fix] 七维复审修复两项 Major：固化每次 run 的规范化输入快照；用脱敏目标、最小事实、完整候选 ID/描述和 `decision_input_ref` 证明配对同输入，并记录 acceptance policy。 / The seven-dimension review fixed two Majors by snapshotting normalized inputs per run and binding paired measurements to sanitized goals, minimal facts, full candidate IDs/descriptions, `decision_input_ref`, and the acceptance policy.
+- [policy] [fix] 将 provider 的 `escalate` 遥测统一为工单定义的 `abstained`；所有 decision point 继续保持 off/shadow，评测器不修改 Runtime 配置。 / Normalize provider `escalate` telemetry to the work-order `abstained` outcome; all decision points remain off/shadow and the evaluator never changes Runtime configuration.
 
-### 文件与关键 Diff / Files and Key Diff
-- [新增 / Added] `PhyAgentOS/agent/decision_evaluation.py:L1-L669`、`scripts/evaluate_jev_decisions.py:L1-L34`、`tests/test_decision_evaluation.py:L1-L393`、`docs/forge/JEV_P3B_EVALUATION.md:L1-L97`：离线输入校验、指标、快照、active 原因、CLI、文档和反例。 / Add offline validation, metrics, snapshots, active reasons, CLI, docs, and regressions.
-- [修改 / Modified] `PhyAgentOS/agent/loop.py:L679-L684,L900-L910`、`tests/test_planning_loop.py:L1606-L1621`：统一 `abstained` 观测。 / Normalize `abstained` observations.
-- [修改 / Modified] `changelog/2026-10_part7.md:L1-L49`、`CHANGELOG.md:L5-L47`：双语实施、复审、方向审核和最近五版记录。 / Add the bilingual implementation, review, direction review, and latest-five records.
+### 文件变更详情 / File Change Details
+- [新增 / Added] `PhyAgentOS/agent/decision_evaluation.py:L1-L669`：严格 Pydantic 输入、split/family/pair 校验、专项指标、active 资格原因、唯一 UTC run 目录和输入/报告快照。 / Add strict Pydantic inputs, split/family/pair checks, specialized metrics, active-eligibility reasons, unique UTC run directories, and input/report snapshots.
+- [新增 / Added] `scripts/evaluate_jev_decisions.py:L1-L34`：离线 CLI 与永不获得 active 资格的 `--max-cases` smoke。 / Add the offline CLI and `--max-cases` smoke path that can never become active-eligible.
+- [新增 / Added] `tests/test_decision_evaluation.py:L1-L393`：覆盖成功报告、fixture/部分运行、错误接受、split 泄漏、缺 trace/策略/模型身份、错配/缺失/未知配对、混合模型、全量升级、无时延收益和唯一目录。 / Cover successful reports, fixture/partial runs, erroneous acceptance, split leakage, missing trace/policy/model identity, mismatched/missing/unknown pairs, mixed models, all-escalation, no latency gain, and unique directories.
+- [新增 / Added] `docs/forge/JEV_P3B_EVALUATION.md:L1-L97`：记录输入、输出、运行命令、active 条件与 no-motion 边界。 / Document inputs, outputs, run command, active conditions, and the no-motion boundary.
+- [修改 / Modified] `PhyAgentOS/agent/loop.py:L679-L684,L900-L910`、`tests/test_planning_loop.py:L1606-L1621`：统一 `abstained` 观测及回归。 / Normalize `abstained` telemetry and its regression.
+- [修改 / Modified] `changelog/2026-10_part7.md:L1-L49`、`CHANGELOG.md:L5-L47`：补全双语实施、七维复审、方向审核和最近五版记录。 / Complete the bilingual implementation, seven-dimension review, direction review, and latest-five records.
 
+### 关键代码 Diff / Key Code Diff
 ```diff
-- source paths and candidate IDs only
-+ input snapshots + sanitized facts/candidates + same-input refs + policy ref
-- provider outcome="escalate"
-+ provider outcome="abstained"
+- source paths only; candidate IDs only; no measured policy identity
++ normalized input_config/input_dataset/input_measurements snapshots per unique run
++ sanitized goal + minimal facts + full candidate descriptions + decision_input_ref pairing
++ acceptance policy + provider/System-2 versions + complete failure denominators
++ fixture/partial/missing/mixed/mismatched evidence -> active_eligible=false
+- provider outcome "escalate" logged directly
++ provider outcome "escalate" logged as work-order outcome "abstained"
 ```
 
-### 七维复审与方向 / Seven-Dimension and Direction
-- 架构、事实、错误观测、恢复幂等、no-motion 安全、兼容性和 AgentLoop 收敛均无 Blocker/Major；评测不调用 Runtime/Provider/LLM，不写 selection/execution/settlement。 / No Blocker/Major remains across all seven dimensions; the evaluator calls no Runtime/provider/LLM and writes no selection/execution/settlement.
-- P3b 仍缺真实独立留出数据、现场配对测量和 active 授权，保持 off/shadow；fixture/partial/missing/mixed/mismatched evidence 不得 active。 / P3b still lacks real independent held-out data, live paired measurements, and active authorization, so it remains off/shadow; fixture/partial/missing/mixed/mismatched evidence cannot become active.
+### 七维复审 / Seven-Dimension Review
+1. 架构所有权：评测器仅由离线 CLI/测试调用，不接入 Runtime、Coordinator、ToolRegistry、compiler、selection、settlement 或 Verifier；无平行 scheduler、状态库、Skill loader 或执行器。 / Architecture: only the offline CLI/tests call the evaluator; Runtime, Coordinator, ToolRegistry, compiler, selection, settlement, and Verifier remain untouched, with no parallel scheduler, store, Skill loader, or executor.
+2. 正确性与事实完整性：完整 case/repetition、同输入引用、候选内容、独立标注、模型版本、策略引用和六类 held-out 分布均可审计；错误接受为零仍报告非零 Wilson 上界。 / Correctness and facts: complete case/repetition pairs, same-input references, candidate content, independent labels, model versions, policy reference, and six held-out categories are auditable; zero observed errors still has a nonzero Wilson upper bound.
+3. 错误与状态可观测性：selected/escalate/unavailable/timeout/invalid 与宿主 selected/escalated/unavailable/stale/admission_rejected 分开统计，缺失条件进入明确的 `active_ineligibility_reasons`。 / Error observability: provider and host outcomes are counted separately, and missing conditions appear in explicit `active_ineligibility_reasons`.
+4. 恢复、幂等与执行对账：评测只读既有记录并写唯一新目录，不恢复任务、不写 selection/execution/settlement；真实替代必须有宿主持久化 `decision_trace_ref`。 / Recovery and idempotency: evaluation reads recorded data and writes a unique directory only; it resumes no task and writes no selection/execution/settlement, while real substitution requires a host-persisted `decision_trace_ref`.
+5. 机器人与 no-motion 安全：未调用 Runtime、Gateway、Query、Action、Session、相机、仿真或机械臂；评测无运动授权能力。 / Robotics and no-motion safety: no Runtime, Gateway, Query, Action, Session, camera, simulator, or robot was called, and the evaluator has no motion authority.
+6. 扩展兼容性：P3a provider/config 与旧 off/shadow 路径不变；新 schema 只属于尚未发布的离线评测输入。 / Compatibility: P3a provider/config and existing off/shadow paths are unchanged; the new schema belongs only to the previously unpublished offline evaluator input.
+7. AgentLoop 收敛、调用次数与预算：评测不调用 provider/LLM；唯一生产改动只是遥测词汇映射，不增加 Tool、模型回合、重试或 deadline。 / AgentLoop convergence and budget: evaluation calls no provider/LLM; the only production change maps telemetry vocabulary and adds no Tool, model turn, retry, or deadline.
+- 首轮复审发现并修复“输入证据未随 run 保存”和“同输入/策略不可审计”两项 Major；确认复审无 Blocker/Major。 / The first review found and fixed two Majors—missing run-local input evidence and unauditable same-input/policy binding; confirmation review found no Blocker/Major.
+
+### 方向审核 / Direction Review
+- 本阶段直接推进工单 P3b 所需的专项数据、质量、错误接受、升级召回、替代率和时延验收能力，没有用合成 fixture 代替真实质量证据，也没有缩成 adapter 单测。 / This stage directly advances the specialized data, quality, erroneous-acceptance, escalation-recall, substitution, and latency evidence required by P3b without treating synthetic fixtures as real quality evidence or narrowing the work to adapter tests.
+- 当前仓库仍没有真实独立留出数据、实际服务配对测量或 active 授权，因此 P3b active 仍外部阻塞；保持 off/shadow 是工单规定的正确终态。 / The repository still lacks real independent held-out data, live-service paired measurements, and active authorization, so P3b active remains externally blocked and off/shadow is the required state.
 
 ### 验证与边界 / Validation and Boundary
-- evaluator 定向 `9 passed`；工单关联 `533 passed in 14.42s`；全仓离线 `983 passed in 38.64s`；Ruff、compileall、`git diff --check` 通过。 / Evaluator focused `9 passed`; work-order regression `533 passed in 14.42s`; full offline suite `983 passed in 38.64s`; Ruff, compileall, and diff checks pass.
-- 未部署、未恢复任务、未调用现场 Gateway/Query/Action/Session、相机、仿真或运动。 / No deployment, task resume, live Gateway/Query/Action/Session, camera, simulation, or motion occurred.
+- evaluator 定向 `9 passed`；工单关联 `533 passed in 14.42s`；全仓离线 `983 passed in 38.64s`。 / Evaluator focused `9 passed`; work-order regression `533 passed in 14.42s`; full offline suite `983 passed in 38.64s`.
+- Ruff、`PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m compileall -q PhyAgentOS scripts tests`、`git diff --check` 通过。 / Ruff, compileall, and `git diff --check` pass.
+- 未部署、未恢复任务、未调用现场系统、相机、仿真或运动。 / No deployment, task resume, live system, camera, simulation, or motion occurred.
 
 ### Git 提交 / Git Commit
 - Implementation commit: `3f72e012` on `feature/planning-loop`. / 实现提交：`3f72e012`，位于 `feature/planning-loop`。
@@ -80,16 +149,34 @@
 ## v13.9.5 (2026-10-15 02:50) - codex
 
 ### 变更摘要 / Summary [完成]
-- [docs] [chore] 同步决策观测日志与最近五版索引；不改变生产行为。 / Synchronize decision-telemetry logs and the latest-five index without changing production behavior.
+- [docs] [chore] 将 v13.9.4 决策观测记录同步到 `CHANGELOG.md` 最近五版；不修改实现或测试。 / Roll the v13.9.4 decision-telemetry record into the `CHANGELOG.md` latest-five index; no implementation or test changes.
 
-### 文件与关键 Diff / Files and Key Diff
-- [修改 / Modified] `CHANGELOG.md`、`changelog/2026-10_part7.md`：登记 v13.9.5 观测记录。 / Register the v13.9.5 telemetry record.
+### 预期影响文件 / Expected Files
+- `CHANGELOG.md`
+- `changelog/2026-10_part7.md`
+
+### 文件变更详情 / File Change Details
+- [修改 / Modified] `CHANGELOG.md:L5-L45,L154-L155`：加入 v13.9.4 的完整摘要、关键 diff、七维结论、验证结果和提交信息，并将 v13.8.0 移入归档区。 / Add the v13.9.4 summary, key diff, seven-dimension conclusion, validation, and commit record, and move v13.8.0 into the archive.
+- [修改 / Modified] `changelog/2026-10_part7.md:L1-L10`：登记本次索引同步计划和完成结果。 / Record the index-sync plan and completion result.
+
+### 关键 Diff / Key Diff
+```diff
++ v13.9.4 in CHANGELOG latest-five section
++ v13.8.0 under archived detailed records
+```
+
+### 七维复审与方向审核 / Seven-Dimension and Direction Review
+- 这是纯索引文档更新，不改变架构、事实、错误处理、恢复幂等、机器人安全、扩展兼容或 AgentLoop；无 Blocker/Major。 / This is an index-only documentation update with no architecture, facts, errors, recovery/idempotency, robotics safety, compatibility, or AgentLoop changes; no Blocker/Major.
+- P3b 仍保持 off/shadow，未把 v13.9.4 telemetry 或既有 fixture 测试提升为专项质量证据。 / P3b remains off/shadow; v13.9.4 telemetry and fixture tests are not promoted to specialized quality evidence.
 
 ### 验证与边界 / Validation and Boundary
-- 继承 v13.9.4 的离线回归与 no-motion 边界；未部署、未恢复任务、未调用现场系统。 / Inherit v13.9.4 offline regression and no-motion boundaries; no deployment, task resume, or live system call.
+- `git diff --check` 通过；上一阶段全仓 `974 passed in 37.17s`、Ruff 和 compileall 结果保持有效。 / `git diff --check` passes; the prior-stage full suite `974 passed in 37.17s`, Ruff, and compileall results remain valid.
+- 未修改生产逻辑，未部署、未恢复任务、未调用现场 Gateway/Query/Action/Session、相机、仿真或运动。 / No production logic changed; no deployment, task resume, live Gateway/Query/Action/Session, camera, simulation, or motion was used.
 
 ### Git 提交 / Git Commit
-- Commit: `5cc0bdf6` on `feature/planning-loop`, pushed to origin. / 提交：`5cc0bdf6`，位于 `feature/planning-loop`，已推送 origin。
+- Documentation index commit: recorded below after commit on `feature/planning-loop`. / 文档索引提交：将在 `feature/planning-loop` 提交后登记如下。
+
+## Archived detailed records / 已归档详细记录
 
 ## v13.9.4 (2026-10-15 02:35) - codex
 
