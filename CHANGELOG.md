@@ -2,6 +2,28 @@
 
 ## 最近五版本 / Latest five versions
 
+## v13.10.2 (2026-10-15 13:31) - codex
+
+### 变更摘要 / Summary [完成]
+- [docs] [docs] 保存 RoboTwin `blocks_ranking_size`、`stack_blocks_three`、`put_bottles_dustbin` 的通用多对象操作方案；明确共享操作链、关系目标、Adapter/Runtime 边界、分段续接和 no-motion 验收。 / Preserve the generic manipulation design for the three RoboTwin tasks, covering shared operation flow, relation goals, Adapter/Runtime boundaries, segmented continuation, and no-motion acceptance.
+
+### 文件与关键 Diff / Files and Key Diff
+- [新增 / Added] `docs/forge/ROBOTWIN_MULTI_TASK_MANIPULATION_PLAN_20261015.md:L1-L294`：复用现有 PlanGraph、Coordinator、pick-place Tools 和 Verifier；定义 `at/on/inside` 目标义务及 task adapter 边界；记录目标共享、逐段重观察、验收矩阵和实现阶段。 / Reuse PlanGraph, Coordinator, pick-place Tools, and Verifier; define `at/on/inside` obligations and the task-adapter boundary; document shared goals, segmented re-observation, acceptance, and implementation phases.
+- [修改 / Modified] `changelog/2026-10_part7.md:L3-L31`、`CHANGELOG.md:L5-L34`：登记方案、行号、关键 diff 与验证边界。 / Register the plan, line references, key diff, and validation boundary.
+
+```diff
+- RGB-only entity binding + unique destination per object + fixed relocation sequence
++ generic scene-entity bindings + unique obligation identity + reusable relation goals
++ Adapter-owned task facts and geometry; one current-scene segment followed by re-observation
+```
+
+### 方向与验证 / Direction and Validation
+- 这是设计文档保存，不修改运行时代码、ToolSpec、Coordinator、Runtime 或运动授权；保留 unknown fail-closed、PAOS verdict 与 benchmark result 分离。 / This is a design-document save only; runtime code, ToolSpecs, Coordinator, Runtime, and motion authority are unchanged. Unknown remains fail-closed, and PAOS verdicts remain separate from benchmark results.
+- 文档与日志已检查，`git diff --check` 通过；未运行代码测试，未启动 Runtime/任务、未调用 Gateway/Query/Action、相机、仿真或运动。 / Documentation and logs were inspected and `git diff --check` passed; no code tests, Runtime/task start, Gateway/Query/Action, camera, simulation, or motion occurred.
+
+### Git 提交 / Git Commit
+- Pending documentation commit on `feature/planning-loop`. / `feature/planning-loop` 上的文档提交待登记。
+
 ## v13.10.0 (2026-10-15 03:05) - codex
 
 ### 变更摘要 / Summary [完成但外部阻塞]
@@ -89,6 +111,8 @@
 ### Git 提交 / Git Commit
 - Correction commit: `44652445` on `feature/planning-loop`, pushed to origin. / 修正提交：`44652445`，位于 `feature/planning-loop`，已推送 origin。
 
+## Archived detailed records / 已归档详细记录
+
 ## v13.9.2 (2026-10-15 01:45) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -121,8 +145,6 @@
 
 ### Git 提交 / Git Commit
 - Implementation commit: `eb8b978f` on `feature/planning-loop`; pushed after the log-reference commit. / 实现提交：`eb8b978f`，位于 `feature/planning-loop`，日志引用提交后已推送。
-
-## Archived detailed records / 已归档详细记录
 
 ## v13.9.1 (2026-10-15 01:32) - codex
 
