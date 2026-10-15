@@ -1234,7 +1234,7 @@ def test_projected_query_choices_materialize_complete_unambiguous_inputs():
     assert projected_query_argument_choices(ambiguous, plan) == ()
 
 
-def _projected_query_decision_fixture(provider, *, mode="active"):
+def _projected_query_decision_fixture(provider, *, mode="active", workspace=None):
     plan = ArgumentProjectionPlan.model_validate({
         "projection_id": "observed_identity_for_binding_v1",
         "source_slots": {
@@ -1348,6 +1348,17 @@ def _projected_query_decision_fixture(provider, *, mode="active"):
             return None
 
     coordinator = Coordinator()
+    if workspace is not None:
+        # Synthetic context, but real admission/persistence. No Runtime client.
+        coordinator = AgentTaskCoordinator(
+            workspace=workspace, config=ForgeConfig(), client=object(),
+        )
+        coordinator.create_task(
+            task_description="Bind the target object",
+            verification=TaskVerificationContract(mode="off"),
+            plan_graph=dispatch.graph,
+            plan_graph_ref="artifact://plans/synthetic-jev-host-test",
+        )
     loop = object.__new__(AgentLoop)
     loop._planning_dispatch = dispatch
     loop.forge_task_coordinator = coordinator
@@ -1367,6 +1378,92 @@ def _projected_query_decision_fixture(provider, *, mode="active"):
     loop.forge_tool_client = None
     loop._current_node_context = lambda _context: context
     return loop, coordinator, context
+
+
+@pytest.mark.parametrize("case", ["selected", "escalate", "unknown", "malformed", "stale", "http_error", "timeout"])
+def test_systemone_selection_uses_real_isolated_coordinator(tmp_path, case):
+    import httpx
+
+    from PhyAgentOS.agent.decision_provider import JEVHTTPDecisionProvider
+
+    async def exercise():
+        calls = []
+
+        async def handler(request):
+            calls.append(json.loads(request.content))
+            if case == "timeout":
+                await asyncio.Event().wait()
+            if case == "stale":
+                loop._current_node_context = lambda _: context.model_copy(
+                    update={"scene_revision": "changed-scene"}
+                )
+            if case == "http_error":
+                return httpx.Response(503)
+            if case == "malformed":
+                return httpx.Response(200, json={"answers": None})
+            choice = {"escalate": "escalate", "unknown": "unknown"}.get(case, "query-input-2")
+            return httpx.Response(200, json={
+                "model": "jev-test-version",
+                "answers": {"decision": {"type": "choice", "choice": choice}},
+            })
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            provider = JEVHTTPDecisionProvider(client=client, api_format="systemone")
+            loop, coord, context = _projected_query_decision_fixture(provider, workspace=tmp_path)
+            loop._query_decision_config.timeout_cap_s = 0.02
+            selected = await loop.try_projected_query_decision(
+                context, decision_deadline=monotonic() + 1,
+            )
+            assert selected is (case == "selected")
+            assert len(calls) == 1
+            assert set(calls[0]["questions"]["decision"]["criteria"]) == {
+                "query-input-1", "query-input-2", "escalate",
+            }
+            # Reopen the real SQLite store; no synthetic trace receipts.
+            reopened = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=object())
+            task = reopened.get_task(context.task_id)
+            assert task.execution_records == []
+            pending = reopened.pending_planning_selection(
+                context.task_id, context.node_id, scene_revision=context.scene_revision,
+            )
+            if selected:
+                assert pending["arguments"]["entity_refs"] == ["entity://blue"]
+                assert pending["planning_binding"]["decision_trace_ref"].startswith("artifact://")
+                assert len(task.active_revision.planning_selections) == 1
+            else:
+                assert pending is None
+                assert task.active_revision.planning_selections == []
+
+                # Exercise the original executor's fallback boundary with the
+                # real Coordinator. Stop before the actual model/tool turn.
+                deadlines = []
+
+                class FallbackReachedError(Exception):
+                    pass
+
+                class SelectionOnlyLoop:
+                    tools = SimpleNamespace()
+                    turn_timeout_s = 1
+
+                    async def try_projected_query_decision(self, ctx, *, decision_deadline):
+                        deadlines.append(decision_deadline)
+                        return await loop.try_projected_query_decision(
+                            ctx, decision_deadline=decision_deadline,
+                        )
+
+                    async def run_node_turn(self, **kwargs):
+                        assert kwargs["decision_deadline"] == deadlines[0]
+                        raise FallbackReachedError
+
+                with pytest.raises(FallbackReachedError):
+                    await AgentLoopNodeExecutor(
+                        SelectionOnlyLoop(), reopened, max_node_turn_continuations=0,
+                    )(context)
+                assert len(deadlines) == 1
+                assert len(calls) == 2  # one request per independent cognition cycle
+                assert reopened.get_task(context.task_id).execution_records == []
+
+    asyncio.run(exercise())
 
 
 @pytest.mark.parametrize(

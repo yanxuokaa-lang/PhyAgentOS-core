@@ -586,19 +586,37 @@ def _make_provider(
 
 def _make_decision_provider(config: Config):
     """Build the optional read-only JEV adapter from configured decision points."""
-    points = (
-        config.agents.decisions.query_input_selection,
-        config.agents.decisions.method_fragment_selection,
-        config.agents.decisions.recovery_method_selection,
-    )
-    if not any(point.mode != "off" for point in points):
+    points = {
+        name: getattr(config.agents.decisions, name)
+        for name in (
+            "query_input_selection", "method_fragment_selection", "recovery_method_selection"
+        )
+        if getattr(config.agents.decisions, name).mode != "off"
+    }
+    if not points:
         return None
     import os
 
-    from PhyAgentOS.agent.decision_provider import JEVHTTPDecisionProvider
+    from PhyAgentOS.agent.decision_provider import JEVHTTPDecisionProvider, RoutedDecisionProvider
+    from PhyAgentOS.config.credentials import read_api_key_file
 
-    key_env = next((point.api_key_env for point in points if point.api_key_env), None)
-    return JEVHTTPDecisionProvider(api_key=os.environ.get(key_env, "") if key_env else None)
+    # Resolve every credential before allocating clients, so a bad file cannot
+    # leave partially constructed clients behind. Never consult disabled points.
+    keys = {}
+    base_dir = config._config_path.parent if config._config_path else Path.cwd()
+    for name, point in points.items():
+        if point.api_key_file:
+            keys[name] = read_api_key_file(point.api_key_file, base_dir=base_dir)
+        elif point.api_key_env:
+            keys[name] = os.environ.get(point.api_key_env, "")
+            if not keys[name]:
+                raise ValueError(f"missing API key environment variable for {name}")
+        else:
+            keys[name] = None
+    return RoutedDecisionProvider({
+        name: JEVHTTPDecisionProvider(api_key=keys[name], api_format=point.api_format)
+        for name, point in points.items()
+    })
 
 
 def _make_evolution_provider(config: Config, default_provider):

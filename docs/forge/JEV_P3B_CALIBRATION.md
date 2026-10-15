@@ -50,8 +50,8 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/collect_jev_calibration.py co
 取消保留已完成单路输出和 interrupted manifest，不编造未完成配对。重新运行创建新目录并重新计费。
 
 JEV 使用真实 `model/state/questions` → `answers.decision` 协议；System-2 使用远程
-Chat Completions、同样的事实/选项及无工具的 JSON 答案。此采集器不改变生产 typed DecisionProvider，
-不能据此宣称现有生产 adapter 已支持 `/v1/systemone`。
+Chat Completions、同样的事实/选项及无工具的 JSON 答案。此采集器本身不改变生产 DecisionProvider。
+v14.2.0 另行接通生产 adapter 的显式 `systemone` 协议，见下文；首轮测量仍仅属于校准器。
 
 ## 产物与证据口径
 
@@ -106,3 +106,113 @@ PYTHONDONTWRITEBYTECODE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m p
 下一阶段仍需：原 Query 候选生成/准入/Coordinator 的隔离回放、原 System-2 路径及真实 fallback
 配对、带可审计 selection trace 的实际替代证据；随后准备独立六类 held-out、独立复核及实际版本确认。
 最后依据工单报告和操作员授权启用单个 Query 点。临时校准数据不代替这些步骤，也不要求先建设 VPP2 或训练平台。
+
+## v14.2.0：宿主协议接线与历史回放资格核查
+
+本阶段只改变仓库代码和隔离测试；没有改变生产配置，没有使用密钥新增远程请求，也没有启动
+Runtime、恢复旧任务、执行 Query/Action/Session、采集相机或运行仿真/硬件。
+
+### 已修复的实现缺口
+
+1. 原生产 provider 只发送 `{model, request}`，与实测 `/v1/systemone` 不兼容。
+   现在 `apiFormat=systemone` 将宿主目标、事实及候选描述转换为 `state/questions`，
+   将 `answers.decision.choice` 转回原 `DecisionResult`；返回的 `model` 保留为真实响应身份。
+   不上传 task/revision/node/policy 引用；候选仍只携带 ID/描述，不允许服务提供执行参数。
+2. 原 CLI 使用所有决策点中的第一个环境变量，可能取到关闭点的凭据或将一个服务的凭据发给另一个服务。
+   现在仅加载 enabled 点，按点路由协议和凭据；文件读取复用 `read_api_key_file`，相对路径以配置文件目录解析。
+   `apiKeyEnv` 和 `apiKeyFile` 二选一，显式环境变量缺失会报配置错误；off 点不读取文件或环境变量。
+3. 既有宿主再次准入、scene/revision 新鲜度、Coordinator selection 所有权、deadline、取消和原 System-2 回退不变。
+   HTTP 错误、畸形答案进入既有 unavailable 路径；未知候选由宿主拒绝；不新增自动重试。
+
+配置示意（不要据此启用 active；生产仍未修改）：
+
+```json
+{
+  "agents": {
+    "decisions": {
+      "queryInputSelection": {
+        "mode": "off",
+        "endpoint": "https://www.1949-x.xn--fiqs8s/v1/systemone",
+        "model": "jev-latest",
+        "apiFormat": "systemone",
+        "apiKeyFile": "/absolute/path/to/owner-only-key",
+        "timeoutCapS": 2.0,
+        "fallbackReserveS": 0.25
+      }
+    }
+  }
+}
+```
+
+此适配器是协议转换，不是自由文本脱敏器。现场使用前仍需审核目标、facts、候选描述；用户允许的是
+脱敏后的事实发送。当前回归只使用合成数据。2 秒保持原默认，不依据五题校准自动调参；此前 JEV
+均值约 2.07 秒、p95 约 6 秒，说明真实配对时必须记录超时和 fallback，不能直接套用单请求提速结论。
+
+### 核查结果与复现
+
+2026-10-15 只读核查本地 SQLite，限定任务创建时间 `[2026-10-12, 2026-10-15T08:20:00)`：
+
+| 检查项 | 结果 | 能证明什么 |
+|---|---:|---|
+| primary binding 中冻结的 `scene.bind` ToolSpec | 23 | 23 条 projection 和 projection_plan 均为 null |
+| 这些时间范围任务的已存 Query selections | 144 | 已接受的输出，不是完整决策输入快照 |
+| 其中 `scene.bind` selections | 18 | 不能从最终已选项倒推当时完整候选及准入上下文 |
+
+此查询按创建时间、无会话前缀过滤，与首轮按更新窗口/会话前缀抽取的 24 个任务不是同一计数口径。
+当前源码 `grounding.py` 的 BIND_TOOL_SPEC 已包含投影配置，但不会追溯更新旧任务冻结的绑定。
+这意味着“重新打开旧任务”不能自动补齐输入，修改其绑定则属于反事实回放而非原版本重放。
+
+```bash
+sqlite3 -readonly /home/yanxu/.PhyAgentOS/workspace/.paos/agent_tasks/tasks.sqlite3 <<'SQL'
+SELECT count(*) AS bindings,
+       json_extract(b.value,'$.planning_policy.argument_projection') AS projection,
+       json_extract(b.value,'$.planning_policy.argument_projection_plan') AS plan
+FROM agent_tasks t, json_each(t.record_json,'$.primary_skill_binding.required_tools') b
+WHERE t.created_at >= '2026-10-12' AND t.created_at < '2026-10-15T08:20:00'
+  AND json_extract(b.value,'$.tool_id')='scene.bind'
+GROUP BY projection,plan;
+SELECT count(*) AS query_selections,
+       sum(json_extract(s.value,'$.selected_tool_id')='scene.bind') AS bind_selections
+FROM agent_tasks t, json_each(t.record_json,'$.revisions') r,
+     json_each(r.value,'$.planning_selections') s
+WHERE t.created_at >= '2026-10-12' AND t.created_at < '2026-10-15T08:20:00'
+  AND json_extract(s.value,'$.resumable_selection.semantics')='query';
+SQL
+```
+
+### 测试证据及七维复审
+
+测试 `test_systemone_selection_uses_real_isolated_coordinator` 使用合成 NodeExecutionContext、
+MockTransport 和真实隔离 Coordinator/SQLite：成功选择可重开存储恢复；拒答、未知 ID、畸形响应、
+过期场景、503、超时均无 selection/执行记录。失败后原 AgentLoopNodeExecutor 能进入 `run_node_turn`
+入口并保持同一 deadline；测试在那里停止，没有执行 System-2。上下文刷新仍为受控测试替身，
+不是真实 NodeContextProvider 快照回放。测试数、trace 及 mock 时延均不计入正式评测。
+
+1. 所有权：HTTP adapter 只转换选择结果，原 Coordinator 持有 selection/trace，Runtime 无调用。
+2. 正确性：实际协议形状、拒答、畸形答案、未知候选、过期场景被覆盖；旧数据缺口不被合成输入填平。
+3. 可观测：真实模型身份沿原 decision telemetry 记录；本地真实 selection trace 可持久化，不编造配对指标。
+4. 恢复幂等：SQLite 重开验证 pending selection；没有重试或旧任务恢复，两种协议取消均向上传播。
+5. 安全：密钥逐点隔离、owner-only 读取；无现场调用，无 frame/calibration 假定变化，无 motion 授权。
+6. 兼容：默认 typed 协议、off 模式保留；新增配置可显式选择 systemone，旧模型失败仍沿原 fallback。
+7. 收敛预算：每次认知周期一次 JEV；timeout cap、fallback reserve 和绝对截止时间不变；不自动调大预算。
+
+执行上文 pytest 命令并追加 `tests/test_planning_task_integration.py`；静态检查：
+
+```bash
+.venv/bin/ruff check PhyAgentOS/agent/decision_provider.py PhyAgentOS/config/schema.py \
+  PhyAgentOS/cli/commands.py tests/test_decision_provider.py tests/test_planning_loop.py
+```
+
+### 下一步的真实输入与权限边界
+
+推荐：使用当前已带投影配置的 ToolSpec，在新任务的决策时刻保存真实只读上下文，包括来源记录、
+场景/标定身份、目标、完整候选及准入输入。若需启动现场 Runtime/Query/相机来获得这些材料，应单独取得
+该范围的授权；本次没有执行。只导出既有快照无需运动，但仍需避免包含后续结果或标签。
+
+获得合格输入后，才可在隔离宿主上对同一输入测量 A=原 System-2、B=JEV+原 System-2 fallback，
+两路使用相同宿主代码、gpt-5.6-sol 配置和预算；保留失败分母、模型返回身份、真实 trace 和总时延。
+尚需实现这一有界配对 runner，不能把当前校准器换个名字当作它。
+
+备选：用历史事实在当前契约下重构输入，仅作反事实开发校准，不能补充独立 held-out 或宣称原历史重放。
+正式 active 仍需独立六类 held-out、独立标签复核、模型部署 provenance 确认和全部工单指标通过。
+同一执行者自审不变成独立复核；生产保持 off/shadow。当前无需以 active 开启作为继续离线开发的前提。

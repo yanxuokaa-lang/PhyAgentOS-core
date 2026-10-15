@@ -2,6 +2,52 @@
 
 ## 最近五版本 / Latest five versions
 
+## v14.2.0 (2026-10-15 16:53) - codex
+
+### 变更摘要 / Summary [完成协议与隔离测试；真实配对仍待输入]
+- [policy] [feat] 原 DecisionProvider 显式支持 systemone，保留 typed 默认；CLI 按 enabled 决策点隔离协议和凭据，复用 owner-only 文件读取。 / Support systemone in the existing provider while retaining typed defaults; isolate enabled-point protocols/credentials and reuse owner-only file loading. (local)
+- [eval] [fix] 补齐真实隔离 Coordinator/SQLite 选择持久化及原执行器回退入口验证；合成上下文不作为真实回放证据。 / Verify isolated real Coordinator/SQLite persistence and the original executor fallback entry; synthetic contexts are not historical replay evidence. (local)
+- [docs] [docs] 保存历史冻结投影缺口、七维审核与下一阶段输入/权限边界；不改生产配置或旧任务，维持 no-motion。 / Document frozen-projection gaps, seven-dimension review and next-stage inputs/authority; preserve production, historical tasks and no-motion. (local)
+
+### 文件变更详情 / File Change Details
+- [修改 / Modified] `PhyAgentOS/agent/decision_provider.py:L5,L110-L223`：显式协议、choice/abstention 转换、模型身份、逐点路由、关闭与取消兼容。 / Explicit protocol, choice/abstention conversion, reported model identity, per-point routing and close/cancellation compatibility.
+- [修改 / Modified] `PhyAgentOS/config/schema.py:L286-L292`、`PhyAgentOS/cli/commands.py:L587-L619`：协议与文件凭据配置、互斥来源、disabled 点忽略、凭据先解析再分配客户端。 / Protocol/key-file configuration, exclusive sources, disabled-point exclusion and credential resolution before client allocation.
+- [修改 / Modified] `tests/test_decision_provider.py:L114-L272`：真实 wire 形状、畸形答案、跨点凭据、off/缺失配置、typed/systemone 取消回归。 / Wire shapes, malformed answers, per-point credentials, off/missing configuration and cancellation for both protocols.
+- [修改 / Modified] `tests/test_planning_loop.py:L1237,L1351-L1361,L1383-L1466`：可选隔离 Coordinator fixture、七种响应分支、重开 SQLite 与同 deadline fallback 入口。 / Optional isolated Coordinator fixture, seven response branches, SQLite reopen and same-deadline fallback entry.
+- [修改 / Modified] `docs/forge/JEV_P3B_CALIBRATION.md:L51-L53,L110-L218`：配置示例、只读 SQL/计数、证据范围、七维自审与真实采集分支。 / Configuration example, read-only SQL/counts, evidence scope, seven-dimension self-review and prospective collection options.
+- [修改 / Modified] `changelog/2026-10_part7.md:L3-L47`、`CHANGELOG.md:L5-L49,L178-L179`：本条双语记录与最近五个已提交版本；另一工作项 v14.1.0 计划保持未提交。 / This bilingual record and latest five committed versions; unrelated v14.1.0 plans remain unstaged.
+
+### 关键代码 Diff / Key Code Diff
+```diff
+- json={"model": model, "request": request.model_dump(mode="json")}
++ typed remains the default
++ systemone: {"model": model, "state": json.dumps(goal_and_facts), "questions": {"decision": choice}}
++ answers.decision.choice -> DecisionResult; reported model -> model_version
+- key_env = first configured key among all points
+- return JEVHTTPDecisionProvider(api_key=shared_key)
++ enabled points only; apiKeyEnv XOR apiKeyFile
++ return RoutedDecisionProvider({point: JEVHTTPDecisionProvider(api_key=point_key, api_format=point_format)})
+- test coordinator stores proposals in memory only
++ optional real Coordinator stores selection/trace in isolated SQLite; reopen verifies persistence
+```
+
+### 验证与七维复审 / Validation and Seven-Dimension Review
+- 定向五模块回归 `236 passed in 6.45s`；Ruff 和 `git diff --check` 通过。命令见校准文档；MockTransport 不使用真实 API，不产生新计费或实测指标。 / Five-module regressions: 236 passed in 6.45s; Ruff/diff checks pass. Commands are in the calibration document; MockTransport creates no remote charges or measured metrics.
+- Major 已修：生产 wire shape 不兼容；全局首个凭据可能串发其他 endpoint。现有跨系统边界需要协议/凭据归属修正，无新增 hash/gate。 / Fixed Majors: incompatible wire shape and possible cross-endpoint credential reuse. Correct the existing cross-system boundary without new hashes/gates.
+1. 所有权：provider 不写 selection，原 Coordinator 落盘；Runtime 不参与。 / Ownership: provider writes no selection; the existing Coordinator persists it without Runtime participation.
+2. 正确性：成功及拒答/未知/畸形/过期/503/超时验证，旧合同不被补写。 / Correctness: selection and abstention/unknown/malformed/stale/503/timeout branches; historical contracts stay intact.
+3. 可观测：保留返回模型身份与真实隔离 trace，不伪造真实配对数。 / Observability: reported model identity and real isolated traces, without fabricated paired counts.
+4. 恢复幂等：存储重开可恢复 pending selection，取消传播且无重试。 / Recovery: pending selections survive reopen; cancellation propagates without retries.
+5. 安全：owner-only 密钥逐点使用；无现场 Query/Action/Session/相机/仿真/硬件。 / Safety: per-point owner-only keys; no live Query/Action/Session/camera/simulation/hardware.
+6. 兼容：typed 默认、off 零读取与既有 fallback 维持。 / Compatibility: typed default, zero credential reads for off and existing fallback remain.
+7. 收敛预算：认知周期一次 JEV、原 cap/reserve/deadline，未以校准均值自动调参。 / Convergence: one JEV call per cycle with existing cap/reserve/deadline, without tuning from calibration means.
+- 原 executor 在失败后到达 run_node_turn 入口，但测试在入口停止；未执行原 System-2 模型回合，未完成真实配对 runner。 / Failed decisions reach the original executor's run_node_turn entry, where tests stop; no original System-2 model turn or real paired runner is completed.
+- 只读 SQL 窗口内 23 条 primary scene.bind bindings 的 projection/plan 均 null；144 条 Query selections 中 18 条 scene.bind，仅为已接受输出。当前源码已有投影，旧冻结任务不追溯更新。 / Read-only SQL finds 23 primary scene.bind bindings with null projection/plan and 144 Query selections including 18 scene.bind outputs; current source supports projection but historical bindings remain frozen.
+- 尚需新契约下真实决策时刻快照、同版本原 System-2/fallback 配对、独立六类 held-out/复核和服务版本 provenance；生产 active 不启用。 / Still required: real decision-time snapshots under current contracts, same-version original System-2/fallback pairs, independent six-category held-out/review and deployment provenance; production active remains disabled.
+
+### Git 提交 / Git Commit
+- Content commit: pending registration on `feature/planning-loop`; v14.1.0 is reserved by unrelated work. / 内容提交将由后续日志登记；v14.1.0 已被其他工作占用，本次只提交 JEV 改动。
+
 ## v14.0.0 (2026-10-15 16:20) - codex
 
 ### 变更摘要 / Summary [完成临时校准；P3b active 未完成]
@@ -128,6 +174,8 @@
 
 ### Git 提交 / Git Commit
 - Content commit: `ec21027a` on `feature/planning-loop`, 2026-10-15 14:56 CST. / 内容提交：`ec21027a`，分支 `feature/planning-loop`，时间 2026-10-15 14:56 CST。
+
+## Archived detailed records / 已归档详细记录
 
 ## v13.10.2 (2026-10-15 13:31) - codex
 

@@ -283,9 +283,13 @@ class DecisionPointConfig(Base):
     fallback_reserve_s: float = Field(default=0.25, ge=0, le=300.0)
     acceptance_policy_ref: str | None = None
     api_key_env: str | None = None
+    api_key_file: str | None = None
+    api_format: Literal["typed", "systemone"] = "typed"
 
     @model_validator(mode="after")
     def validate_active_policy(self) -> "DecisionPointConfig":
+        if self.api_key_env and self.api_key_file:
+            raise ValueError("choose only one of apiKeyEnv and apiKeyFile")
         if self.mode == "active" and not self.acceptance_policy_ref:
             raise ValueError(
                 "active decision points require an acceptancePolicyRef from measured evidence"
