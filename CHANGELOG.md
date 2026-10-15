@@ -2,6 +2,38 @@
 
 ## 最近五版本 / Latest five versions
 
+## v14.3.1 (2026-10-15 17:53) - codex
+
+### 变更摘要 / Summary [完成方案复审；资产转换待实施]
+- [docs] [docs] 重新审核真实实验室场景，核实 LabUtopia 官方资产、许可、实际 USD 网格和来源配置，明确取代被否定的程序化圆筒外观。 / Re-audit the real lab scene against official LabUtopia assets, licensing, actual USD meshes and source configs, replacing the rejected primitive-cylinder appearance. (local)
+- [docs] [docs] 修订需求状态、资产选型/转换、Franka 桌面装配、标签、碰撞和物理清障验证顺序；代码实现仍未完成，不宣称真实闭环。 / Revise requirement status, asset selection/conversion, Franka tabletop assembly, labels, collisions and physical obstacle verification; implementation remains incomplete with no real closed-loop claim. (local)
+
+### 文件变更详情 / File Change Details
+- [新增 / Added] `docs/forge/LAB_SCENE_ASSET_REVIEW_20261015.md:L1-L174`：九项发现、来源与许可、USD 实查、桌面布局、转换路线、A-F 实施与证据边界。 / Nine findings, sources/licenses, USD inspection, tabletop layout, conversion route, A-F implementation and evidence boundaries.
+- [修改 / Modified] `docs/forge/LAB_POUR_STIR_DIAGNOSIS_20261015.md:L4-L6,L27-L31`：区分历史诊断与当前状态，记录已确认真实资产与清障要求。 / Separate historical diagnosis from current state and record confirmed real-asset and clearing requirements.
+- [修改 / Modified] `docs/forge/LAB_POUR_STIR_FEASIBILITY_REVIEW_20261015.md:L5-L6,L56,L65-L77`：补充资产复审入口，撤销已回答范围问题，明确剩余测量。 / Link the asset review, remove answered scope questions and identify remaining measurements.
+- [修改 / Modified] `docs/forge/LAB_POUR_STIR_IMPLEMENTATION_PLAN_20261015.md:L3-L4,L11-L16,L100,L126,L172-L174`：真实来源、USD 材质/碰撞转换、机器人实际相机、受阻前后可达性验证。 / Real sources, USD material/collision conversion, robot cameras and before/after reachability checks.
+- [修改 / Modified] `changelog/2026-10_part7.md:L599-L664`、`CHANGELOG.md:L5-L205`：保存前序未完成计划与本条完整审核日志；索引最近五条已完成版本，保留历史归档正文。 / Preserve the prior unfinished plan and this complete review record; index the five latest completed versions and retain historical archive bodies.
+
+### 关键文档 Diff / Key Documentation Diff
+```diff
+- 沿用 RoboTwin/Franka、四个候选瓶和目标瓶受阻作为工作假设，进入场景实现前确认。
++ 用户已确认 RoboTwin/Franka、无液体、开口瓶、稳定杯座、带柄棒及受阻先清障。
+- 直接加载程序化瓶/杯/棒外观作为实验室场景。
++ 从 LabUtopia 取得真实 USD/纹理，逐物体转换并处理材质/开口碰撞，再接回 RoboTwin。
++ LabUtopia 资产许可 CC BY-NC 4.0；代码 MIT 不等于数据资产 MIT。
++ 清障前后验证同一抓取配置的可行性变化，不把挡住标签等同于机械受阻。
+```
+上面的程序化加载行概括被否定的工作区原型，不是既有计划原文。 / The primitive-loading line summarizes the rejected worktree prototype, not a verbatim line from the previous plan.
+
+### 验证与范围 / Validation and Scope
+- 官方 README、任务配置和资产目录已读取；下载 2,787,145-byte lab_003 USD 并用临时 OpenUSD 工具解析，Z-up、米制，LoadNone 遍历到 155 个 Mesh，确认瓶/杯/棒/架/实验台 prim；没有转换或装载完整依赖。 / Read official README/configs/tree and parse the downloaded 2,787,145-byte lab_003 USD using temporary OpenUSD tooling: Z-up, metres, 155 Mesh prims under LoadNone and verified bottle/beaker/rod/rack/table prims; no conversion or complete dependency loading.
+- 四份文档 UTF-8、围栏、21 个本地链接检查通过；3 个 Bash 示例通过 `bash -n`；`git diff --check` 通过。 / Four documents pass UTF-8/fence/21-local-link checks, three Bash examples pass syntax checking and git whitespace checks pass.
+- 本条只提交文档；未完成的实验室 Runtime/资产原型代码留在工作区，未运行新机器人动作、未部署。 / This entry commits documentation only; unfinished lab Runtime/asset prototype code stays in the worktree, with no new robot motion or deployment.
+
+### Git 提交 / Git Commit
+- 本条内容提交将在后续日志登记；当前分支 `feature/planning-loop`。 / The content commit is recorded in a following log update; current branch is feature/planning-loop.
+
 ## v14.3.0 (2026-10-15 17:14) - codex
 
 ### 变更摘要 / Summary [完成真实输入采集；宿主配对待实现]
@@ -170,30 +202,6 @@
 
 ### Git 提交 / Git Commit
 - Content commit: `d8a51362` on `feature/planning-loop`, 2026-10-15 16:14 Asia/Shanghai. / 内容提交：`d8a51362`，分支 `feature/planning-loop`，时间 2026-10-15 16:14 Asia/Shanghai；本条由随后日志提交登记。
-
-## v13.10.4 (2026-10-15 14:56) - codex
-
-### 变更摘要 / Summary [完成]
-- [docs] [docs] 独立保存 VLM—System 1—VPP2 创新方向：目标忠实性、状态感知选择、事件触发升级与执行反馈续接；不混入数据集设计，既有数据集文档保持不变。 / Save a standalone VLM–System 1–VPP2 research direction covering goal fidelity, state-aware selection, event-triggered escalation and feedback-based continuation; exclude dataset design and preserve the existing dataset document. (local)
-
-### 文件变更详情 / File Change Details
-- [新增 / Added] `docs/forge/VLM_SYSTEM1_VPP2_BRIDGE_INNOVATION_DIRECTION_20261015.md:L1-L186`：记录问题、方法增量、分层职责、决策机制、完整示例、官方接口、对照消融与分阶段验证。 / Record the problem, method increment, layered ownership, decisions, a complete example, official interfaces, comparisons, ablations and phased validation.
-- [修改 / Modified] `changelog/2026-10_part7.md:L3-L51`、`CHANGELOG.md:L5-L204`：完成本条双语记录、补记前序诊断提交，并滚动同步最近五版，将 v13.9.5 保留在归档区。 / Complete this bilingual entry, record the preceding diagnosis commit and roll the latest five versions while preserving v13.9.5 in the archive.
-
-### 关键文档 Diff / Key Documentation Diff
-```diff
-+ standalone research direction: intent-preserving, state-aware execution bridging
-+ original request + confirmed facts + VLM proposal + observed feedback -> decision
-+ continue / switch / observe / clarify / replan / wait or finish
-+ test incremental value against VLM + VPP2 and event-driven alternatives
-```
-
-### 验证与范围 / Validation and Scope
-- 新文档 UTF-8、Markdown 代码围栏与引用检查通过；独立文档无数据集设计内容，原两份诊断正文未修改。 / UTF-8, Markdown fences and reference checks pass; the standalone document excludes dataset design and both preceding diagnoses remain unchanged.
-- `git diff --check` 通过，最近五版与月度完整记录一致；本次仅文档修改。 / `git diff --check` passes and the latest five complete entries match the monthly archive; this change is documentation-only.
-
-### Git 提交 / Git Commit
-- Content commit: `0a160857` on `feature/planning-loop`, 2026-10-15 15:02 CST. / 内容提交：`0a160857`，分支 `feature/planning-loop`，时间 2026-10-15 15:02 CST。
 
 ## Archived detailed records / 已归档详细记录
 
