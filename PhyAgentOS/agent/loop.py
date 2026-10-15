@@ -1797,7 +1797,7 @@ class AgentLoop:
                     logger.info("Agent tool start session={} iteration={} call_id={} tool={}",
                                 experience_session_key, iteration, tool_call.id, tool_call.name)
                     try:
-                        if tool_call.name in yield_after_tools:
+                        if tool_call.name in yield_after_tools and tool_call.name != "forge_plan_select":
                             # A governed execution has its own Tool budget and is
                             # reconciled from durable facts by the node executor.
                             if decision_deadline is not None and monotonic() >= decision_deadline:
@@ -2467,12 +2467,15 @@ class AgentLoop:
         prompt: str,
         on_progress: Callable[..., Awaitable[None]] | None = None,
         decision_deadline: float | None = None,
+        selection_only: bool = False,
     ) -> AgentLoopRunResult:
         """Run one semantic-node turn through the existing AgentLoop.
 
         The caller supplies a bounded prompt projection (including any
         predecessor context). Tool execution remains governed by the normal
-        registry and optional ``AgentComposedDispatch`` guard.
+        registry and optional ``AgentComposedDispatch`` guard. ``selection_only``
+        exposes only planning reads/selection and yields after persistence; it
+        never authorizes Tool execution or marks a node completed.
         """
         if not all(
             isinstance(value, str) and value.strip()
@@ -2517,8 +2520,14 @@ class AgentLoop:
             active_task_id=task_id,
             projection_scope="node",
             projection_node_id=node_id,
-            allowed_tool_names=_NODE_TURN_ALLOWED_TOOLS,
-            yield_after_tools=_NODE_TURN_EXECUTION_TOOLS,
+            allowed_tool_names=(
+                frozenset({"forge_plan_ready", "forge_plan_select"})
+                if selection_only else _NODE_TURN_ALLOWED_TOOLS
+            ),
+            yield_after_tools=(
+                frozenset({"forge_plan_select"})
+                if selection_only else _NODE_TURN_EXECUTION_TOOLS
+            ),
             decision_timeout_s=(self.turn_timeout_s if decision_deadline is None else None),
             decision_deadline=decision_deadline,
         )

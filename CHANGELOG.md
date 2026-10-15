@@ -2,6 +2,59 @@
 
 ## 最近五版本 / Latest five versions
 
+## v14.4.0 (2026-10-15 17:55) - codex
+
+### 变更摘要 / Summary [完成宿主配对；正式 active 未完成]
+- [eval] [feat] 复用原 Context/候选/准入/Coordinator/AgentLoop 实现隔离 no-motion 选择边界配对，并导出到已有评测器；不扩建采集平台。 / Implement isolated selection-only host pairs through original context, admission, Coordinator and AgentLoop, exporting to the existing evaluator without expanding collection infrastructure. (local)
+- [policy] [fix] 修复真实 systemone 响应附带 confidence/probabilities 时被误拒绝；保留必需字段、未知字段与 arguments 拒绝，不猜测接受阈值。 / Accept observed systemone confidence/probabilities metadata while preserving required-field and unknown/argument-field rejection without inventing thresholds. (local)
+- [eval] [exp] 两例真实宿主接受各为 1 JEV/0 System-2；不存在目标弃权后进入原 fallback，未产生 selection；保留首次协议失败测量。 / Two host acceptances each use one JEV and zero System-2 calls; an absent target escalates to original fallback without selection; retain the initial failed-protocol run. (local)
+- [eval] [fix] 修复 HEAD 已存在的恢复测试漏传必需 decision_deadline，不改恢复实现。 / Repair a pre-existing recovery test missing the required decision_deadline without changing recovery logic. (local)
+
+### 文件变更详情 / File Change Details
+- [新增 / Added] `PhyAgentOS/agent/decision_host_replay.py:L1-L406`：配置、脱敏来源导入、原宿主、选择停止、HTTP 计数/失败、同输入配对及只读评测导出。 / Config, sanitized source import, original host, selection stop, HTTP/failure accounting, paired input checks and evaluator export.
+- [修改 / Modified] `PhyAgentOS/agent/loop.py:L1800,L2470-L2479,L2523-L2533`：opt-in selection_only 只暴露 ready/select，成功选择后 yield，持久化计入认知 deadline；默认行为不变。 / Opt-in selection-only ready/select tools and post-selection yield within the cognition deadline, preserving defaults.
+- [修改 / Modified] `PhyAgentOS/agent/decision_provider.py:L174-L185`：允许已观察到的两个非执行元数据字段。 / Allow the two observed non-execution metadata fields.
+- [新增 / Added] `scripts/replay_jev_host.py:L1-L41`、`evals/decisions/host_replay.example.json:L1-L26`：配对与只读评分入口、外部配置示例。 / Pair/re-score CLI and external configuration example.
+- [新增 / Added] `tests/test_decision_host_replay.py:L1-L194`：真实隔离存储/上下文、取消、fallback、越界 Action、脱敏、预算、失败分母和评测导出。 / Real isolated storage/context, cancellation, fallback, unauthorized Action, sanitization, budgets, failure denominators and evaluator export.
+- [修改 / Modified] `tests/test_decision_provider.py:L114-L131`、`tests/test_planning_effect_recovery.py:L4,L93-L95`：metadata 协议回归与旧 deadline 调用修复。 / Metadata protocol regression and stale deadline-call repair.
+- [修改 / Modified] `docs/forge/JEV_P3B_CALIBRATION.md:L296-L383`：真实结果、来源限制、命令、剩余 active 条件。 / Actual results, provenance limitations, commands and remaining active conditions.
+- [修改 / Modified] `changelog/2026-10_part7.md:L3-L54`、`CHANGELOG.md:L5-L57` 本条及最近五版滚动；其他实验室任务不纳入。 / This monthly entry and rolling latest-five index; exclude unrelated laboratory work.
+
+### 关键代码 Diff / Key Code Diff
+新增模块之前不存在。 / New modules were absent.
+```diff
+- allowed_tool_names=_NODE_TURN_ALLOWED_TOOLS
+- yield_after_tools=_NODE_TURN_EXECUTION_TOOLS
++ selection_only: ready/select only; yield on admitted forge_plan_select
++ selection persistence remains under bounded_decision
+- set(answer) != {"type", "choice"}
++ require type/choice; allow only type/choice/confidence/probabilities
++ build_host -> NodeContextProvider -> original AgentLoopNodeExecutor
++ original run_node_turn(selection_only=True) -> Coordinator selection/trace
++ SelectionExecutor stops at pending selection, never a fake Tool result
+- recovery._ask(graph, settlement, dump, context)
++ recovery._ask(..., decision_deadline=monotonic() + 5)
+```
+
+### 验证与七维复审 / Validation and Seven-Dimension Review
+- 17 模块共 `412 passed in 7.91s`；Ruff、CLI help、diff 检查通过。测试和实际 API 计量分开。 / Seventeen modules: 412 passed in 7.91s; Ruff, CLI help and diff checks pass. Keep tests separate from API measurements.
+- 首轮 `20261015T100150.358472Z-4d173993`：15 HTTP 200，三次 JEV 因 metadata 误拒绝走 fallback；原始产物保留。 / First run: 15 HTTP 200 requests; all three JEV responses rejected for metadata and fell back; originals retained.
+- 重测 `20261015T100427.281975Z-d7981ba9`：11 HTTP 200，JEV 3/S2 8，真实替代 2/3、错误接受 0/2、必须升级 1/1；六路节点执行均 0。 / Rerun: 11 HTTP 200, JEV 3/S2 8, substitution 2/3, erroneous acceptance 0/2, required escalation 1/1, zero node executions in all six arms.
+- 总决策均值 JEV+fallback 6461.91ms vs S2 20478.55ms；p95 17407.46ms vs 23724.72ms，包含负例，n=3 的 p95 即最大值。 / Total mean 6461.91ms versus 20478.55ms and p95 17407.46ms versus 23724.72ms including the negative case; n=3 p95 is the maximum.
+1. 所有权：原 Coordinator/SQLite 保存 selection，不新建事实数据库。 / Ownership: existing Coordinator/SQLite persists selections.
+2. 正确性：原候选/准入生成完整选项，保留来源歧义；只修实际协议不兼容。 / Correctness: original full-option generation/admission and preserved ambiguity; fix observed protocol incompatibility only.
+3. 可观测：实际 request/response、host log、trace 和失败全保留；首轮不改写。 / Observability: retain actual requests, responses, host logs, traces and failures without rewriting the first run.
+4. 恢复：重开 SQLite 验证 selection；取消保存部分结果且不 fallback；唯一目录不覆盖。 / Recovery: persisted selections survive reopen; cancellation saves partial results without fallback; unique output roots.
+5. 安全：无 Gateway/执行工具；只读边界与脱敏阻止越界调用，生产配置不变。 / Safety: no Gateway or execution tools; read-only boundaries and sanitization, with unchanged production config.
+6. 兼容：新增选项默认 false、原 typed/关闭行为维持；正式评测条件未改。 / Compatibility: opt-in defaults false, preserving typed/off behavior and formal evaluator conditions.
+7. 收敛预算：一次 JEV，共享原 deadline/fallback；全局 HTTP 上限保留失败分母。 / Convergence: one JEV and the original shared deadline/fallback with bounded HTTP attempts including failures.
+- 独立 held-out、六类覆盖/样本规模、独立标签复核、正式接受策略仍缺；服务返回模型名不替代部署 provenance 确认。生产 active=false。 / Independent held-out, six-category coverage/sample size, independent label review and formal acceptance policy remain missing; returned model names do not establish deployment provenance. Production active remains off.
+- Git 基础 `94eb7202` 加本轮未提交实现实测，源码随产物保存；之后只增加离线导出/测试/文档，不改测量。 / Measured on base 94eb7202 plus uncommitted implementation with source snapshots; later offline export/tests/docs do not rewrite measurements.
+- 复现命令见校准文档；评测 CLI 返回 2 表示 active 未达标，不是程序崩溃。 / Reproduction commands are in the calibration document; evaluator exit 2 means not active-eligible, not a crash.
+
+### Git 提交 / Git Commit
+- Content commit: pending on `feature/planning-loop`; register after commit. / 内容提交后登记；仅提交本轮文件。
+
 ## v14.3.1 (2026-10-15 17:53) - codex
 
 ### 变更摘要 / Summary [完成方案复审；资产转换待实施]
@@ -173,35 +226,6 @@
 
 ### Git 提交 / Git Commit
 - Content commit: `5030e168` on `feature/planning-loop`, 2026-10-15. / 内容提交：`5030e168`；由随后日志提交登记并一同推送当前分支。
-
-## v13.10.5 (2026-10-15 16:00) - codex
-
-### 变更摘要 / Summary [完成]
-- [docs] [docs] 保存多试剂倾倒与手持棒搅拌的源码诊断、P0-P7 实施计划和可行性自审，区分明确试剂顺序/手持棒需求与待确认的配置和清障场景。 / Save the source-grounded diagnosis, P0-P7 implementation plan, and feasibility self-review for multi-reagent pouring and hand-held stirring, separating confirmed ordered-reagent/rod requirements from proposed configuration and obstacle clearing. (local)
-- [docs] [docs] 自审 11 项接入问题并修订计划，覆盖持物接续、只读准备、实验室 Adapter、打包、过程证据、归位与 unknown 对账；架构可行，物理能力待实现验证。 / Review 11 integration issues and revise the plan for held-object continuation, read-only preparation, a lab Adapter, packaging, process evidence, return placement, and unknown-outcome reconciliation; architecture is feasible and physical capability awaits implementation and testing. (local)
-
-### 文件变更详情 / File Change Details
-- [新增 / Added] `docs/forge/LAB_POUR_STIR_DIAGNOSIS_20261015.md:L1-L135`：需求来源、源码证据、动作边界、资产缺口与 Gemini 示例问题。 / Requirement provenance, source evidence, action boundaries, asset gaps, and Gemini example issues.
-- [新增 / Added] `docs/forge/LAB_POUR_STIR_IMPLEMENTATION_PLAN_20261015.md:L1-L255`：接口建议、责任层、P0-P7、验证命令、故障分支、部署与完成判据。 / Proposed interfaces, ownership, P0-P7, validation commands, failure branches, deployment, and completion criteria.
-- [新增 / Added] `docs/forge/LAB_POUR_STIR_FEASIBILITY_REVIEW_20261015.md:L1-L86`：11 项 Blocker/Major 发现及计划修订、七维可行性、待确认或测量项。 / Eleven Blocker/Major findings and plan revisions, seven-dimension feasibility, and remaining decisions or measurements.
-- [修改 / Modified] `changelog/2026-10_part7.md:L430-L457`、`CHANGELOG.md:L5-L155`：追加本条双语完整记录，最近五版本滚动为 v13.10.5 至 v13.10.1，既有历史正文不改。 / Append this complete bilingual record and roll the latest five versions to v13.10.5 through v13.10.1 without changing historical entry bodies.
-
-### 关键文档 Diff / Key Documentation Diff
-新增文件的修改前为空；关键新增片段如下。 / New files were absent; key added excerpts follow.
-```diff
-+ 新增 Tool 名称暂定为 `object.pour`、`tool.stir`；名称不是已经发布的接口。
-+ 因此推荐单独的只读 `manipulation.prepare_held`，复用 readiness provider、prepared route 存储与检查函数，保留旧 prepare 输入兼容。
-+ 计划的关键路径是 P0/P1→P2→P3/P4→P5→P6/P7。
-+ F1-F11 已有明确责任层、实施阶段和验证方法；它们在代码和物理层仍需逐项完成。
-```
-
-### 验证与范围 / Validation and Scope
-- 三份文档通过 UTF-8、代码围栏、18 个本地链接、源码/既有测试入口存在性检查；两个 Bash 示例通过 `bash -n`，未执行实现测试。 / Three documents pass UTF-8, fence, 18-local-link, and source/existing-test-path checks; two Bash examples pass `bash -n`, without executing implementation tests.
-- 最近五版本与月度归档完整条目一致、历史正文保留、`git diff --check` 通过。 / The latest five complete records match the monthly archive, historical bodies are preserved, and `git diff --check` passes.
-- 仅文档；未部署、启动 Runtime、执行仿真或硬件。 / Documentation only; no deployment, Runtime start, simulation, or hardware execution.
-
-### Git 提交 / Git Commit
-- Content commit: `d8a51362` on `feature/planning-loop`, 2026-10-15 16:14 Asia/Shanghai. / 内容提交：`d8a51362`，分支 `feature/planning-loop`，时间 2026-10-15 16:14 Asia/Shanghai；本条由随后日志提交登记。
 
 ## Archived detailed records / 已归档详细记录
 

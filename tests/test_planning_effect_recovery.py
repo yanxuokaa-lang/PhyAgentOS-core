@@ -1,6 +1,7 @@
 """Regressions for partial effects and current facts across relocation nodes."""
 
 import asyncio
+from time import monotonic
 from types import SimpleNamespace
 
 import pytest
@@ -90,7 +91,7 @@ def test_query_error_survives_live_and_persisted_settlement_and_recovery_prompt(
 
     graph = SimpleNamespace(task_id="task", revision_id="revision", model_dump=lambda **_: {})
     decision = asyncio.run(AgentRecoveryDecisions(Provider(), "model", coordinator)._ask(
-        graph, settlement, dump, context,
+        graph, settlement, dump, context, decision_deadline=monotonic() + 5,
     ))
     assert decision["decision"] == "stop"
 

@@ -173,12 +173,15 @@ class JEVHTTPDecisionProvider:
         answer = answers.get("decision") if isinstance(answers, dict) else None
         if (
             not isinstance(answer, dict)
-            or set(answer) != {"type", "choice"}
+            or not {"type", "choice"}.issubset(answer)
+            or set(answer) - {"type", "choice", "confidence", "probabilities"}
             or answer["type"] != "choice"
             or not isinstance(answer["choice"], str)
         ):
             raise ValueError("invalid systemone decision answer")
         choice = answer["choice"]
+        # Systemone also returns confidence/probabilities. These are telemetry,
+        # not execution arguments or a calibrated host acceptance threshold.
         # Unknown IDs are still checked by the host admission path.
         return DecisionResult(
             outcome="escalate" if choice == abstention else "selected",

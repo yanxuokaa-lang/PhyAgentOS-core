@@ -292,3 +292,92 @@ PYTHONDONTWRITEBYTECODE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m p
 由原 NodeContextProvider/候选生成/准入路径生成决策输入，再运行原 System-2 与 JEV+fallback 配对。
 当前语义 provider 没有输出空间包围盒或几何派生产物；若后续测试要实际执行 scene.bind，还需原几何
 enrichment/binding 服务，不能把视觉标签当成执行物体身份。生产 active 仍未启用。
+
+## 2026-10-15 原宿主选择边界配对（v14.4.0）
+
+已实现 `decision_host_replay.py`：同一脱敏理解事实、当前 `scene.bind` ToolSpec 和目标，分别创建隔离
+Coordinator/SQLite，通过原 NodeContextProvider、投影候选生成、准入、selection/trace 持久化及
+AgentLoopNodeExecutor 执行 A=原 System-2、B=JEV+原 System-2 fallback。不是另写 JSON 选择题。
+新增 `run_node_turn(selection_only=True)` 只暴露 `forge_plan_ready/select`，成功持久化即交还宿主；
+选择仍在认知 deadline 内，默认生产行为不变。评测执行器在 pending selection 处停止，不返回虚假 Tool 成功。
+
+### 数据和安全边界
+
+- 输入为上一节同一模拟器观测；保留 7 实体和 4 实体的原始身份歧义，原宿主生成 red/blue/green 三个候选。
+- 三个目标由本次作者编写：选红、选蓝、仅选不存在的紫色。正例期望来自观测类别；负例期望升级。
+  同一场景/工作流家族，全部 calibration，非历史同版本决策重放、非独立 held-out、非独立标签复核。
+- 源事实以 `offline_replay_source_import` 显式导入现有事务存储；虚拟 Runtime 为 `no-runtime`，
+  `ready_at_binding=false`，无 Gateway 客户端，不更改旧任务或伪造物理 readiness。
+- 只保留身份、类别、置信度和歧义编码/实体引用；图片、路径、日志、视觉自由文本解释不出站。
+  原 ContextBuilder 使用空的隔离 Skill/记忆目录，工作区及 home 路径脱敏；并非部署现场全部 Skill prompt 的性能证明。
+- 隔离 B 路使用 active 分支以测接受行为，引用明确的 development-only 策略说明；这不是生产 active 授权或正式接受策略。
+  Query/Action/Session 执行工具均未注册；不执行 `scene.bind`，不宣称几何绑定、物理身份或任务完成。
+- 每路同为 60s 决策预算、最多 3 次模型迭代；JEV cap=10s、fallback reserve=15s；单轮最多 18 个 HTTP 请求，
+  System-2 温度 0、2048 tokens、SDK retries=0，原宿主有界重试仍受预算限制。这些是本轮校准配置，不自动写入生产。
+
+### 实测、发现和修复
+
+首轮：`artifacts/evals/jev-host-replay-runs/20261015T100150.358472Z-4d173993/`。
+15 个 HTTP 请求均 200；三个 JEV 答案附带 `confidence/probabilities`，被原适配器严格字段集合误拒绝，
+全部走真实 System-2 fallback。保留此轮原始请求/响应/结果，不将它删除或改成修复后的成功数据。
+
+Major 修复：`decision_provider.py` 允许这两个实际观察到的非执行元数据，但仍要求 type/choice，
+拒绝未知字段及 arguments；不读取元数据作为置信度阈值，不放宽原候选 ID、场景或准入检查。
+
+重测：`artifacts/evals/jev-host-replay-runs/20261015T100427.281975Z-d7981ba9/`。
+11 个 HTTP 请求均 200：JEV 3，System-2 8。返回身份 JEV=`jev-1.13.0`、System-2=`gpt-5.6-sol`；
+后者仍是返回模型名，未取得更细部署快照证明。
+
+| 目标 | 原 System-2 总耗时 / 调用数 | JEV+fallback 总耗时 / JEV、System-2 调用数 | 实际结果 |
+| --- | --- | --- | --- |
+| red cube | 22524.15ms / 2 | 1209.46ms / 1、0 | 两路均持久化 e1 |
+| blue cube | 23724.72ms / 2 | 768.82ms / 1、0 | 两路均持久化 e2 |
+| 不存在的 purple cube | 15186.78ms / 2 | 17407.46ms / 1、2 | JEV 弃权；两路均无 selection |
+
+负例没有强选，但原 executor 以 `node_turn_incomplete` 结束；保留 `failed` 状态和耗时，不把它改写成节点成功。
+六路均 `node_execution_count=0`，无节点 settlement；正确接受的两例确实免去 System-2。
+含负例和 fallback 的均值为 6461.91ms vs 20478.55ms，p95 为 17407.46ms vs 23724.72ms。
+每路只有 3 例，nearest-rank p95 就是最大值；该结果不是泛化、部署吞吐或整任务提速结论。
+
+### 已交付评测器的结果
+
+导出真实 context/candidates、宿主 decision telemetry、调用数、trace 和总时延；两路 context/candidates
+不一致时拒绝导出。数据仍全部标为 calibration、同一 labeler/reviewer，正式 acceptance policy 留空。
+使用原 `run_decision_evaluation`，不改变任何 active 条件。报告目录：
+`artifacts/evals/jev-host-replay-runs/20261015T100427.281975Z-d7981ba9/evaluation/20261015T100701.468019Z-46cc74c6/`。
+
+- 实际替代 2/3；错误接受 0/2；必须升级 1/1。错误接受 Wilson 95% 区间上限约 0.658，不能由零观测错误推断风险为零。
+- `active_eligible=false`，CLI 退出 2 为未达 active，不是评测器崩溃。
+- 未通过：held_out_only、required_category_coverage、planned_sample_size_reached、independent_label_review、acceptance_policy_recorded。
+- 部署 provenance 的人工确认仍未完成；报告中 model_version 有值不等于服务端部署快照已固定。
+
+### 重跑与验证
+
+示例配置：`evals/decisions/host_replay.example.json`。真实配置仅在本地
+`artifacts/evals/jev-host-replay-config.json`，凭据只引用 owner-only 文件，不写入输出或 Git。
+
+```bash
+# 会产生已授权远程模型请求；无 Runtime/运动。每次创建独立目录。
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/replay_jev_host.py \
+  --config artifacts/evals/jev-host-replay-config.json
+# 只读取已记录结果，不调用模型；当前 calibration 返回 2。
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/replay_jev_host.py \
+  --evaluate-run artifacts/evals/jev-host-replay-runs/20261015T100427.281975Z-d7981ba9
+PYTHONDONTWRITEBYTECODE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest \
+  -q -p pytest_asyncio.plugin -p no:cacheprovider tests/test_decision_host_replay.py \
+  tests/test_decision_provider.py tests/test_planning_loop.py tests/test_planning_task_integration.py
+```
+
+保留 config、脱敏 facts、ToolSpec、每路 context/candidates/task/selection、真实请求响应、失败及宿主日志。
+重测基于 Git `94eb7202` 加未提交 JEV 实现，实际 runner/loop/provider 源码随产物保存；随后增加只读评测导出
+及其测试，不追溯修改测量。网络负载、模型生成和服务部署漂移仍影响重跑。
+
+七维结论：所有权仍在原 Coordinator；原准入/候选和协议回归通过；失败及模型身份可追踪；重开可恢复 selection；
+no-motion 与脱敏边界成立；生产默认路径不变；一次 JEV 与原 deadline/fallback 保持。
+下一步不再缺配对 runner，而是分组采集六类独立专项样例、独立标签复核、部署身份确认及测量形成的接受策略。
+此前三例已被查看和用于修复，不能回填成 held-out；生产继续 off/shadow。
+
+最终定向及扩展回归共 `412 passed in 7.91s`，Ruff、CLI help、diff 检查通过；出站请求记录未含
+home 路径、image_url 或 Authorization。扩展回归修复一处 HEAD 已存在的测试漏传 decision_deadline，
+不修改恢复代码。核心命令上再加 `tests/test_planning_{context,dispatch,dispatch_bootstrap,effect_recovery,end_to_end,module,projection,selection,source_assembly}.py`
+和 `tests/test_recovery_decisions.py` 可覆盖扩展集；412 总数还包含 snapshot/calibration/evaluation 测试。

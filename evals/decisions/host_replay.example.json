@@ -1,0 +1,26 @@
+{
+  "snapshot_dir": "/absolute/path/to/decision-snapshot",
+  "output_root": "../../artifacts/evals/jev-host-replay-runs",
+  "jev": {
+    "endpoint": "https://jev.example.invalid/v1/systemone",
+    "model": "jev-latest",
+    "api_key_env": "JEV_API_KEY"
+  },
+  "system2": {
+    "endpoint": "https://system2.example.invalid/v1/chat/completions",
+    "model": "gpt-5.6-sol",
+    "api_key_env": "SYSTEM2_API_KEY"
+  },
+  "cases": [
+    {
+      "goal": "Select only the red cube for the scene.bind Query. Do not execute any Query or motion.",
+      "expected_entity_refs": ["entity://replace-with-reviewed-observed-id"]
+    }
+  ],
+  "decision_timeout_s": 60,
+  "jev_timeout_s": 10,
+  "fallback_reserve_s": 15,
+  "max_iterations": 3,
+  "max_requests": 18,
+  "max_tokens": 2048
+}

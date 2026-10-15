@@ -112,7 +112,8 @@ def test_http_decision_provider_accepts_typed_choice_and_closes():
 
 
 @pytest.mark.parametrize("choice", ["one", "escalate", "unknown"])
-def test_systemone_wire_shape_and_model_identity(choice):
+@pytest.mark.parametrize("metadata", [{}, {"confidence": 0.57, "probabilities": {"one": 0.68, "escalate": 0.32}}])
+def test_systemone_wire_shape_and_model_identity(choice, metadata):
     async def exercise():
         async def handler(request):
             assert request.headers["Authorization"] == "Bearer fixture-key"
@@ -127,7 +128,7 @@ def test_systemone_wire_shape_and_model_identity(choice):
             assert "escalate" in payload["questions"]["decision"]["criteria"]
             return httpx.Response(200, json={
                 "model": "jev-1.13.0", "usage": {"input_tokens": 10},
-                "answers": {"decision": {"type": "choice", "choice": choice}},
+                "answers": {"decision": {"type": "choice", "choice": choice, **metadata}},
             })
 
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
