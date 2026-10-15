@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import asyncio
+from time import monotonic
 from types import SimpleNamespace
 
-from PhyAgentOS.agent.recovery_decisions import recovery_method_options
+import pytest
+
+from PhyAgentOS.agent.recovery_decisions import AgentRecoveryDecisions, recovery_method_options
 
 
 def _task(*, tools=(), records=()):
@@ -119,3 +123,34 @@ def test_recovery_options_do_not_replay_business_unavailable_query():
     options = recovery_method_options(task, graph, settlement, delta, context={})
 
     assert [item.option_id for item in options] == ["stop"]
+
+
+def test_recovery_llm_does_not_start_after_expired_deadline():
+    class Provider:
+        async def chat_with_retry(self, **_kwargs):
+            raise AssertionError("expired recovery deadline must not call the provider")
+
+    task = _task()
+    task.task_id = "task-1"
+    graph = SimpleNamespace(
+        task_id="task-1", revision_id="revision-1", nodes=(),
+        model_dump=lambda **_kwargs: {},
+    )
+    settlement = SimpleNamespace(
+        node_id="observe", status="failed", requires_replan=True,
+        evidence_refs=(), model_dump=lambda **_kwargs: {},
+    )
+    delta = SimpleNamespace(
+        fresh_evidence_requirements=(), model_dump=lambda **_kwargs: {},
+    )
+    context = SimpleNamespace(model_dump=lambda **_kwargs: {})
+
+    decisions = AgentRecoveryDecisions(Provider(), "model", SimpleNamespace(
+        get_task=lambda _task_id: task,
+    ))
+
+    with pytest.raises(TimeoutError, match="deadline exhausted"):
+        asyncio.run(decisions._ask(
+            graph, settlement, delta, context,
+            decision_deadline=monotonic() - 1.0,
+        ))

@@ -862,7 +862,8 @@ def gateway(
         evolution_model=evolution_model,
         planning_context_provider=_make_planning_context_provider(forge_task_coordinator),
         planner_plugin=AgentRecoveryDecisions(
-            provider, config.agents.defaults.model, forge_task_coordinator
+            provider, config.agents.defaults.model, forge_task_coordinator,
+            decision_timeout_s=config.agents.defaults.turn_timeout_s,
         ),
         decision_provider=decision_provider,
         query_decision_config=config.agents.decisions.query_input_selection,
@@ -1079,7 +1080,8 @@ def agent(
         evolution_model=evolution_model,
         planning_context_provider=_make_planning_context_provider(forge_task_coordinator),
         planner_plugin=AgentRecoveryDecisions(
-            provider, config.agents.defaults.model, forge_task_coordinator
+            provider, config.agents.defaults.model, forge_task_coordinator,
+            decision_timeout_s=config.agents.defaults.turn_timeout_s,
         ),
         decision_provider=decision_provider,
         query_decision_config=config.agents.decisions.query_input_selection,

@@ -24,6 +24,29 @@
 ### Git 提交 / Git Commit
 - Commit: `10b0b2bd` on `feature/planning-loop`, 2026-10-15 13:34 CST. / 提交：`10b0b2bd`，分支 `feature/planning-loop`，时间 2026-10-15 13:34 CST。
 
+## v13.10.1 (2026-10-15 04:00) - codex
+
+### 变更摘要 / Summary [完成]
+- [policy] [fix] 七维复审修复 continuation 方法扩展与 P4 recovery LLM 未共享宿主认知 deadline 的 Major；同一绝对预算覆盖 method proposal、LLM fallback、recovery selection/replan 与 correction retry。 / Fix the seven-dimension review Major where continuation method extensions and the P4 recovery LLM did not share the host cognition deadline; one absolute budget now covers method proposal, LLM fallback, recovery selection/replan, and correction retries.
+- [eval] [test] 增加过期 continuation/recovery no-motion 反例；过期工作不调用 planner/provider/LLM，不创建续段或执行事实。 / Add expired continuation/recovery no-motion counterexamples; expired work calls no planner/provider/LLM and creates no continuation or execution facts.
+
+### 文件与关键 Diff / Files and Key Diff
+- [修改 / Modified] `PhyAgentOS/agent/loop.py:L2526-L2723,L2778-L2791`：continuation 传递绝对 deadline，方法扩展在剩余预算内执行，普通 LLM fallback 复用同一 deadline。 / Pass an absolute continuation deadline, bound method extensions by remaining budget, and reuse it for the ordinary LLM fallback.
+- [修改 / Modified] `PhyAgentOS/agent/recovery_decisions.py:L237-L255,L288-L346,L358-L449,L500-L525`：recovery selection/replan 复用同一 task/revision/node deadline，provider retry 受剩余时间约束。 / Reuse one task/revision/node deadline across recovery selection/replan and bound provider retries by remaining time.
+- [修改 / Modified] `PhyAgentOS/cli/commands.py:L864-L869,L1082-L1087`：复用既有 `turn_timeout_s` 注入 recovery deadline。 / Reuse existing `turn_timeout_s` for the recovery deadline.
+- [新增 / Added] `tests/test_agent_foundation.py:L2190-L2217`、`tests/test_recovery_decisions.py:L128-L156`：覆盖过期工作不调用 planner/provider。 / Cover expired work skipping planner/provider calls.
+
+```diff
+- continuation/recovery branches could start another full provider budget
++ one absolute deadline spans proposal, fallback, and recovery correction
++ expired work fails closed without Tool or motion dispatch
+```
+
+### 七维复审与验证 / Seven-Dimension Review and Validation
+- 架构、正确性、错误观测、恢复幂等、机器人安全、扩展兼容和 AgentLoop 收敛均无未解决 Blocker/Major；Coordinator、Runtime、Gateway、Action/Session 和 motion authority 未改变。 / No unresolved Blocker/Major remains across architecture, correctness, observability, recovery/idempotency, robotics safety, compatibility, and AgentLoop convergence; Coordinator, Runtime, Gateway, Action/Session, and motion authority are unchanged.
+- 定向离线回归 `325 passed in 11.53s`；Ruff、compileall、`git diff --check` 通过。使用 `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` 绕过 ROS 收集依赖；未启动 Runtime、任务、Gateway、Query、Action、Session、相机、仿真或机械臂。 / Focused offline regression `325 passed in 11.53s`; Ruff, compileall, and `git diff --check` passed. `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` bypassed the ROS collection dependency; no Runtime, task, Gateway, Query, Action, Session, camera, simulation, or robot was started.
+- Commit: `5821a073` on `feature/planning-loop`, 2026-10-15 13:57 CST. / 提交：`5821a073`，分支 `feature/planning-loop`，时间 2026-10-15 13:57 CST。
+
 ## v13.10.0 (2026-10-15 03:05) - codex
 
 ### 变更摘要 / Summary [完成但外部阻塞]

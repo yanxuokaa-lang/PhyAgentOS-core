@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+from time import monotonic
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -232,12 +234,28 @@ class AgentRecoveryDecisions:
     plugin_id = "paos-agent-recovery"
     version = "1"
 
-    def __init__(self, provider, model, coordinator):
+    def __init__(self, provider, model, coordinator, *, decision_timeout_s: float = 300.0):
         self.provider = provider
         self.model = model
         self.coordinator = coordinator
+        self.decision_timeout_s = max(1.0, float(decision_timeout_s))
+        self._recovery_deadlines: dict[tuple[str, str, str], float] = {}
 
-    async def _ask(self, graph, settlement, delta, context, *, replan=False, repair=None):
+    @staticmethod
+    def _recovery_key(graph, settlement) -> tuple[str, str, str]:
+        return graph.task_id, graph.revision_id, settlement.node_id
+
+    async def _ask(
+        self,
+        graph,
+        settlement,
+        delta,
+        context,
+        *,
+        decision_deadline: float,
+        replan=False,
+        repair=None,
+    ):
         task = self.coordinator.get_task(graph.task_id)
         method_options = recovery_method_options(task, graph, settlement, delta, context)
         failed_executions = []
@@ -275,9 +293,13 @@ class AgentRecoveryDecisions:
             "required": ["reason", "nodes" if replan else "decision"],
             "additionalProperties": False,
         }
-        response = await self.provider.chat_with_retry(
-            model=self.model,
-            messages=[
+        remaining = decision_deadline - monotonic()
+        if remaining <= 0:
+            raise TimeoutError("recovery decision deadline exhausted")
+        response = await asyncio.wait_for(
+            self.provider.chat_with_retry(
+                model=self.model,
+                messages=[
                 {"role": "system", "content": (
                     "Propose recovery from the supplied task facts and bound Skill. "
                     "Do not execute Tools or change the original goal or safety constraints. "
@@ -319,7 +341,9 @@ class AgentRecoveryDecisions:
                 "name": "submit_recovery", "description": "Return a read-only recovery proposal.",
                 "parameters": parameters,
             }}],
-            tool_choice={"type": "function", "function": {"name": "submit_recovery"}},
+                tool_choice={"type": "function", "function": {"name": "submit_recovery"}},
+            ),
+            timeout=remaining,
         )
         if response.finish_reason == "error" or len(response.tool_calls) != 1:
             raise ValueError("recovery model returned no unique decision")
@@ -332,6 +356,9 @@ class AgentRecoveryDecisions:
         return value
 
     async def select_recovery(self, *, graph, settlement, delta, context):
+        decision_deadline = monotonic() + self.decision_timeout_s
+        key = self._recovery_key(graph, settlement)
+        self._recovery_deadlines[key] = decision_deadline
         task = self.coordinator.get_task(graph.task_id)
         if (
             settlement.status == "outcome_unknown"
@@ -396,7 +423,10 @@ class AgentRecoveryDecisions:
             }
         else:
             try:
-                value = await self._ask(graph, settlement, delta, context)
+                value = await self._ask(
+                    graph, settlement, delta, context,
+                    decision_deadline=decision_deadline,
+                )
                 if value["decision"] not in {"stop", "replay", "replan"}:
                     raise ValueError("unsupported recovery decision")
             except Exception as exc:
@@ -407,9 +437,14 @@ class AgentRecoveryDecisions:
             graph.task_id, lambda task: None, event_type="agent_recovery_decided",
             payload={"revision_id": graph.revision_id, "node_id": settlement.node_id, **value},
         )
+        self._recovery_deadlines.pop(key, None)
         return value["decision"]
 
     async def propose_replan(self, *, graph, settlement, delta, context):
+        key = self._recovery_key(graph, settlement)
+        decision_deadline = self._recovery_deadlines.pop(
+            key, monotonic() + self.decision_timeout_s
+        )
         task = self.coordinator.get_task(graph.task_id)
         evidence_refresh_kind = _evidence_refresh_kind(task, graph, settlement)
         refresh_capability = (
@@ -460,7 +495,11 @@ class AgentRecoveryDecisions:
                 reason=reason,
             )
 
-        value = await self._ask(graph, settlement, delta, context, replan=True)
+        value = await self._ask(
+            graph, settlement, delta, context,
+            decision_deadline=decision_deadline,
+            replan=True,
+        )
         for attempt in range(2):
             try:
                 replacement = compile_task_plan(task, value["nodes"], reason=value["reason"])
@@ -476,7 +515,9 @@ class AgentRecoveryDecisions:
                 if attempt == 1:
                     raise
                 value = await self._ask(
-                    graph, settlement, delta, context, replan=True,
+                    graph, settlement, delta, context,
+                    decision_deadline=decision_deadline,
+                    replan=True,
                     repair={"rejected_proposal": value, "validation_error": error,
                             "instruction": "Correct the rejected semantic proposal. No Tool was executed."},
                 )

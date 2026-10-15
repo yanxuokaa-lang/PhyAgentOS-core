@@ -5,6 +5,7 @@ import json
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
+from time import monotonic
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -2182,6 +2183,36 @@ def test_single_method_fragment_uses_existing_continuation_tool_without_llm(tmp_
             "object.relocate", "scene.observe", "task.verify",
         )
         assert request.observations["query_facts"][0]["tool_id"] == "scene.observe"
+
+    asyncio.run(exercise())
+
+
+def test_continuation_method_fragment_does_not_restart_an_expired_deadline(tmp_path):
+    async def exercise():
+        coordinator, task = setup_task(tmp_path, goal="Keep the continuation budget bounded")
+        await completed_segment_with_scene(coordinator, task)
+        calls = []
+
+        class Planner:
+            def propose_method_options(self, *, request):
+                calls.append(request)
+                return (method_option(),)
+
+        provider = ScriptedProvider()
+        loop = AgentLoop(
+            bus=MessageBus(), provider=provider, workspace=tmp_path,
+            forge_task_coordinator=coordinator, planner_plugin=Planner(),
+            max_iterations=1,
+        )
+
+        result = await loop.run_segment_continuation_turn(
+            task_id=task.task_id,
+            decision_deadline=monotonic() - 1.0,
+        )
+
+        assert calls == []
+        assert provider.requests == []
+        assert result.turn_failure_code == "turn_timeout"
 
     asyncio.run(exercise())
 

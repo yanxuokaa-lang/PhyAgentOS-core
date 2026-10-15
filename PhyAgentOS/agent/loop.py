@@ -2528,11 +2528,14 @@ class AgentLoop:
         *,
         task_id: str,
         on_progress: Callable[..., Awaitable[None]] | None = None,
+        decision_deadline: float | None = None,
     ) -> AgentLoopRunResult:
         """Choose the next scene-bound segment or final verification from persisted facts."""
 
         if self.forge_task_coordinator is None:
             raise RuntimeError("segment continuation requires a Forge task coordinator")
+        if decision_deadline is None:
+            decision_deadline = monotonic() + self.turn_timeout_s
         task = self.forge_task_coordinator.get_task(task_id)
         revision = task.active_revision
         graph = revision.plan_graph
@@ -2557,6 +2560,7 @@ class AgentLoop:
         method_result, method_rejection = await self._try_method_fragment_continuation(
             task_id=task_id,
             continuation_projection=continuation_projection,
+            decision_deadline=decision_deadline,
         )
         if method_result is not None:
             return method_result
@@ -2707,6 +2711,7 @@ class AgentLoop:
             # Reading context or Query evidence is an intermediate decision
             # step, not the revision/status transition the outer loop awaits.
             yield_after_tools=frozenset(continuation_outcomes),
+            decision_deadline=decision_deadline,
         )
 
     async def _try_method_fragment_continuation(
@@ -2714,6 +2719,7 @@ class AgentLoop:
         *,
         task_id: str,
         continuation_projection: dict[str, Any],
+        decision_deadline: float,
     ) -> tuple[AgentLoopRunResult | None, str | None]:
         """Consume one complete planner method through the normal continuation Tool."""
 
@@ -2770,8 +2776,19 @@ class AgentLoop:
             available_capabilities=capabilities,
         )
         try:
-            proposed = propose(request=request)
+            remaining = decision_deadline - monotonic()
+            if remaining <= 0:
+                return None, "method_provider_timeout: continuation deadline exhausted"
+            # MethodFragmentPlugin is a synchronous pure extension. Run it in
+            # a worker so a slow extension cannot block the event loop; its
+            # result is discarded when the shared deadline expires.
+            proposed = await asyncio.wait_for(
+                asyncio.to_thread(propose, request=request),
+                timeout=remaining,
+            )
             options = tuple(proposed or ())
+        except asyncio.TimeoutError:
+            return None, "method_provider_timeout: continuation deadline exhausted"
         except Exception as exc:
             logger.warning(
                 "Optional method fragment provider failed; using LLM continuation "
