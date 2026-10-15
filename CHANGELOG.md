@@ -22,7 +22,7 @@
 - 文档与日志已检查，`git diff --check` 通过；未运行代码测试，未启动 Runtime/任务、未调用 Gateway/Query/Action、相机、仿真或运动。 / Documentation and logs were inspected and `git diff --check` passed; no code tests, Runtime/task start, Gateway/Query/Action, camera, simulation, or motion occurred.
 
 ### Git 提交 / Git Commit
-- Pending documentation commit on `feature/planning-loop`. / `feature/planning-loop` 上的文档提交待登记。
+- Commit: `10b0b2bd` on `feature/planning-loop`, 2026-10-15 13:34 CST. / 提交：`10b0b2bd`，分支 `feature/planning-loop`，时间 2026-10-15 13:34 CST。
 
 ## v13.10.0 (2026-10-15 03:05) - codex
 
