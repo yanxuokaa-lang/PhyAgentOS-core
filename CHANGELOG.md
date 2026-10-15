@@ -8,7 +8,7 @@
 - [docs] [docs] 保存 RoboTwin `blocks_ranking_size`、`stack_blocks_three`、`put_bottles_dustbin` 的通用多对象操作方案；明确共享操作链、关系目标、Adapter/Runtime 边界、分段续接和 no-motion 验收。 / Preserve the generic manipulation design for the three RoboTwin tasks, covering shared operation flow, relation goals, Adapter/Runtime boundaries, segmented continuation, and no-motion acceptance.
 
 ### 文件与关键 Diff / Files and Key Diff
-- [新增 / Added] `docs/forge/ROBOTWIN_MULTI_TASK_MANIPULATION_PLAN_20261015.md:L1-L294`：复用现有 PlanGraph、Coordinator、pick-place Tools 和 Verifier；定义 `at/on/inside` 目标义务及 task adapter 边界；记录目标共享、逐段重观察、验收矩阵和实现阶段。 / Reuse PlanGraph, Coordinator, pick-place Tools, and Verifier; define `at/on/inside` obligations and the task-adapter boundary; document shared goals, segmented re-observation, acceptance, and implementation phases.
+- [新增 / Added] `docs/forge/ROBOTWIN_MULTI_TASK_MANIPULATION_PLAN_20261015.md:L1-L293`：复用现有 PlanGraph、Coordinator、pick-place Tools 和 Verifier；定义 `at/on/inside` 目标义务及 task adapter 边界；记录目标共享、逐段重观察、验收矩阵和实现阶段。 / Reuse PlanGraph, Coordinator, pick-place Tools, and Verifier; define `at/on/inside` obligations and the task-adapter boundary; document shared goals, segmented re-observation, acceptance, and implementation phases.
 - [修改 / Modified] `changelog/2026-10_part7.md:L3-L31`、`CHANGELOG.md:L5-L34`：登记方案、行号、关键 diff 与验证边界。 / Register the plan, line references, key diff, and validation boundary.
 
 ```diff
