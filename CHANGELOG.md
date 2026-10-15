@@ -46,7 +46,7 @@
 - 尚需新契约下真实决策时刻快照、同版本原 System-2/fallback 配对、独立六类 held-out/复核和服务版本 provenance；生产 active 不启用。 / Still required: real decision-time snapshots under current contracts, same-version original System-2/fallback pairs, independent six-category held-out/review and deployment provenance; production active remains disabled.
 
 ### Git 提交 / Git Commit
-- Content commit: pending registration on `feature/planning-loop`; v14.1.0 is reserved by unrelated work. / 内容提交将由后续日志登记；v14.1.0 已被其他工作占用，本次只提交 JEV 改动。
+- Content commit: `48a57c85` on `feature/planning-loop`, 2026-10-15 Asia/Shanghai; registered by the following documentation commit. / 内容提交：`48a57c85`，由后续日志提交登记；v14.1.0 已被其他工作占用，本次只提交 JEV 改动。
 
 ## v14.0.0 (2026-10-15 16:20) - codex
 
