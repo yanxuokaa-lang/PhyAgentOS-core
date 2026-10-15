@@ -2,6 +2,54 @@
 
 ## 最近五版本 / Latest five versions
 
+## v14.0.0 (2026-10-15 16:20) - codex
+
+### 变更摘要 / Summary [完成临时校准；P3b active 未完成]
+- [eval] [feat] 按用户授权从近几日真实任务库只读抽取决策事实，脱敏抽象为临时 calibration 数据；由同一执行者二次复核，不冒充独立 held-out。 / Read recent real task decisions under user authorization, abstract sanitized calibration data, and record same-author second-pass review without claiming independent held-out evidence. (local)
+- [eval] [feat] 复用既有评测模型/产物格式，增加有界 JEV systemone 与远程 gpt-5.6-sol 语义配对采集；明确 provider-only 与宿主 selection/实际替代的区别，缺失凭据保留阻塞，不伪造测量。 / Reuse evaluation types/artifacts for bounded JEV systemone and remote gpt-5.6-sol paired semantic collection; distinguish provider-only probes from host selections/substitution and preserve missing-credential blockers. (local)
+- [eval] [fix] 允许纯 calibration 输入并显式区分未执行宿主准入的测量，正式 active 条件不放宽；生产配置及现场状态不变。 / Allow calibration-only input and explicitly distinguish measurements without host admission, without weakening active eligibility or changing production configuration/live state. (local)
+
+### 文件变更详情 / File Change Details
+- [新增 / Added] `PhyAgentOS/agent/decision_calibration.py:L1-L391`：只读抽取、事实白名单、同作者 calibration、JEV systemone/远程 chat 配对、请求上限、无重试、失败/取消保存和离线评测衔接。 / Read-only extraction, allowlisted facts, same-author calibration, JEV systemone/remote chat pairs, request caps, no retries, retained failures/cancellation and offline evaluator integration.
+- [修改 / Modified] `PhyAgentOS/agent/decision_evaluation.py:L22-L30,L103,L135-L139,L236-L238,L483-L495,L522-L526,L621`：允许零留出纯校准；新增 provider_probe/not_evaluated 与明确决策点，保留正式验收并拒绝无宿主准入/错误适用范围。 / Permit calibration without held-out cases; distinguish provider-only/unassessed-host evidence and decision scope while preserving formal acceptance.
+- [新增 / Added] `scripts/collect_jev_calibration.py:L1-L33`、`evals/decisions/calibration_config.example.json:L1-L18`：分离 extract/collect CLI 与无密钥示例配置。 / Separate extraction/collection CLI and a credential-free example config.
+- [新增 / Added] `tests/test_decision_calibration.py:L1-L204`；[修改 / Modified] `tests/test_decision_evaluation.py:L151-L182`：只读脱敏、无标签泄漏、真实 HTTP 形状、配对顺序、失败分母、取消、请求上限、凭据不落盘及校准不可晋升回归。 / Cover read-only sanitization, no label leakage, HTTP shapes, order, failure denominators, cancellation, caps, credential exclusion and non-promotion of calibration.
+- [新增 / Added] `docs/forge/JEV_P3B_CALIBRATION.md:L1-L108`：来源、真实结果、精确命令、统计范围与正式 P3b 剩余项。 / Source provenance, measured results, exact commands, statistical scope and remaining formal P3b work.
+- [修改 / Modified] `changelog/2026-10_part7.md:L3-L49`、`CHANGELOG.md:L5-L52,L156-L157`：本条双语记录与最近五版，保留既有历史正文。 / This bilingual entry and latest-five index, preserving existing historical text.
+
+### 关键代码 Diff / Key Code Diff
+```diff
+- dataset always requires calibration + held_out; measurement implies a host path
++ calibration-only dataset with planned_held_out_cases=0 is representable
++ provider_probe + host_outcome=not_evaluated + explicit abstract decision scope
++ active still requires measured held-out host evidence, independent review and all original checks
++ sqlite3.connect(database.as_uri() + "?mode=ro", uri=True)
++ same sanitized facts/options -> JEV systemone and gpt-5.6-sol, at most 10 requests
++ preserve per-arm failures; never manufacture selection trace or fallback execution
+```
+
+### 验证与实测 / Validation and Measurement
+- 脱敏采用字段白名单与固定事实映射：真实失败场景是原日志包含内部引用和完整提示，直接上传会超出授权的最小事实范围；普通类型检查不能替代内容选择。无新增 hash、冻结合同或通用 gate。 / Use allowlisted fields and explicit fact mappings because raw logs contain internal references/full prompts beyond the authorized minimal upload; ordinary types cannot select private content. No new hashes, frozen contracts, or generic gates.
+- 定向离线测试、Ruff、实际只读数据抽取、最多小批量远程配对与既有评测器；凭据不写产物，不调用 Runtime/Query/Action/Session/仿真/硬件。 / Focused offline tests, Ruff, actual read-only extraction, bounded remote pairs, and the existing evaluator; no credentials in artifacts and no Runtime/Query/Action/Session/simulation/hardware calls.
+- 回归 `179 passed in 4.89s`；Ruff、`git diff --check`、两路密钥精确内容扫描通过。 / Regressions: `179 passed in 4.89s`; Ruff, diff whitespace and exact credential-content scans pass.
+- 窗口内扫描 24 个任务，20 个任务贡献 38 条事实，归并 5 题/1 工作流家族；同作者二次复核不是独立复核。 / Scan 24 tasks; 20 contribute 38 facts grouped into five cases/one workflow family; same-author second-pass review is not independent review.
+- 10 次真实 API 请求均 HTTP 200：`jev-1.13.0` 5/5、`gpt-5.6-sol` 5/5；均值 2071.65/11033.79 ms，p95 5995.21/16288.80 ms。仅单请求语义校准，不是生产决策+fallback 时延或任务提速。 / All ten real API calls return HTTP 200: both arms score 5/5; mean 2071.65/11033.79 ms and p95 5995.21/16288.80 ms. These are standalone semantic probes, not production/fallback or task speedups.
+- 本地源产物 `artifacts/evals/jev-calibration-source/20261015T083053.283710Z-1e895194/`；测量 `artifacts/evals/jev-calibration-runs/20261015T083258.500799Z-a472acda/`；后者 `evaluation/20261015T083404.087524Z-a9f736cb/acceptance_report.json` 明确 `active_eligible=false`。 / Local source/measurement directories and evaluator report retain explicit ineligibility.
+- 首轮测量使用基础提交 `d6b2b7dd` 加当时未提交实现；补充 provenance 说明测量后仅增加畸形响应处理与产物来源/源码快照，不修改原请求/响应/耗时。 / The first run used base commit d6b2b7dd plus the working implementation; a supplement records later malformed-response handling and provenance/source snapshots without rewriting measurements.
+
+### 七维复审与剩余项 / Seven-Dimension Review and Remaining Work
+1. 所有权：评测模块不写 task/selection，不新增 scheduler。 / Ownership: evaluation writes no task/selection and adds no scheduler.
+2. 正确性：不把历史模型理由当标签；缺字段与业务不可用分别处理；抽象候选不冒充历史候选。 / Correctness: historical model reasons are not labels; missing fields/business unavailability and authored choices are explicit.
+3. 可观测：两路逐请求、模型返回身份、失败与配对顺序落盘。 / Observability: per-arm requests, reported identities, failures and order persist.
+4. 恢复幂等：无任务恢复、无 API 重试；取消保留已完成单路但不伪造配对。 / Recovery: no task resume or API retry; cancellation preserves completed arms without invented pairs.
+5. 安全：全程 no-motion，SQLite 只读，密钥仅按既有 owner-only 文件接口读取。 / Safety: no motion, read-only SQLite, existing owner-only credential reader.
+6. 兼容：既有 measured/fixture 正向反向回归通过，纯 calibration 不要求假造 held-out。 / Compatibility: existing measured/fixture regressions pass; calibration needs no fabricated held-out.
+7. 收敛预算：5 对/10 次单请求上限、各 30s，无隐式 fallback/重试/工具回合。 / Convergence: five pairs/ten requests, 30s each, no implicit fallback/retry/tool turns.
+- 本项完成临时数据/API 校准；P3b 仍缺真实 Query 宿主回放、原 System-2 fallback 配对、独立六类 held-out 与独立复核，以及更细 System-2 部署版本确认。生产维持 off/shadow；不宣布 active 或完整闭环验收。 / Temporary data/API calibration is complete; formal P3b still lacks real Query-host replay/fallback, independent six-category held-out/review and finer System-2 deployment identity. Production remains off/shadow.
+
+### Git 提交 / Git Commit
+- 内容提交待生成；随后登记实际 hash 并推送 `feature/planning-loop`。 / Record the content commit in a follow-up log commit and push the current branch.
+
 ## v13.10.5 (2026-10-15 16:00) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -104,6 +152,8 @@
 
 ### Git 提交 / Git Commit
 - Commit: `10b0b2bd` on `feature/planning-loop`, 2026-10-15 13:34 CST. / 提交：`10b0b2bd`，分支 `feature/planning-loop`，时间 2026-10-15 13:34 CST。
+
+## Archived detailed records / 已归档详细记录
 
 ## v13.10.1 (2026-10-15 04:00) - codex
 

@@ -148,6 +148,38 @@ def _write_inputs(
     return path
 
 
+@pytest.mark.parametrize("condition", ["provider_probe", "abstract_point", "no_host_admission"])
+def test_calibration_evidence_cannot_qualify_even_with_other_conditions_met(tmp_path, condition):
+    config_path = _write_inputs(tmp_path)
+    reason = "measured_evidence"
+    if condition == "abstract_point":
+        config = json.loads(config_path.read_text())
+        config["decision_point"] = "abstract_runtime_decision"
+        config_path.write_text(json.dumps(config))
+        reason = "supported_active_decision_point"
+    else:
+        path = tmp_path / "measurements.json"
+        measurements = json.loads(path.read_text())
+        if condition == "provider_probe":
+            measurements["evidence_mode"] = "provider_probe"
+        else:
+            measurements["records"][0]["host_outcome"] = "not_evaluated"
+            measurements["records"][0]["decision_trace_ref"] = None
+            reason = "host_admission_evaluated"
+        path.write_text(json.dumps(measurements))
+    result = run_decision_evaluation(config_path=config_path, repo_root=Path.cwd())
+    report = json.loads((result.run_dir / "acceptance_report.json").read_text())
+    assert result.active_eligible is False and result.exit_code == 2
+    assert reason in report["ineligibility_reasons"]
+
+
+def test_zero_planned_size_does_not_allow_held_out():
+    dataset = _dataset()
+    dataset["planned_held_out_cases"] = 0
+    with pytest.raises(ValidationError, match="positive planned sample size"):
+        DecisionEvaluationDataset.model_validate(dataset)
+
+
 def test_decision_measurement_requires_trace_for_real_substitution():
     with pytest.raises(ValidationError, match="decision_trace_ref"):
         DecisionMeasurement.model_validate({

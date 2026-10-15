@@ -19,7 +19,7 @@ from PhyAgentOS.agent.decision_provider import DecisionCandidate
 from PhyAgentOS.utils.atomic_file import atomic_write_text
 
 DecisionEvaluationSplit = Literal["calibration", "held_out"]
-DecisionEvidenceMode = Literal["measured", "fixture"]
+DecisionEvidenceMode = Literal["measured", "fixture", "provider_probe"]
 ProviderOutcome = Literal["selected", "escalate", "unavailable", "timeout", "invalid"]
 HostOutcome = Literal[
     "selected",
@@ -27,6 +27,7 @@ HostOutcome = Literal[
     "unavailable",
     "stale",
     "admission_rejected",
+    "not_evaluated",
 ]
 
 REQUIRED_HELD_OUT_CATEGORIES = frozenset({
@@ -99,7 +100,7 @@ class DecisionEvaluationDataset(BaseModel):
     labeling_protocol_ref: str = Field(min_length=1)
     labeler_id: str = Field(min_length=1)
     reviewer_id: str = Field(min_length=1)
-    planned_held_out_cases: int = Field(ge=1)
+    planned_held_out_cases: int = Field(ge=0)
     cases: tuple[DecisionEvaluationCase, ...] = Field(min_length=1)
 
     @field_validator(
@@ -131,8 +132,11 @@ class DecisionEvaluationDataset(BaseModel):
                 "near-duplicate family IDs may not cross calibration and held_out: "
                 + ", ".join(leaked)
             )
-        if {case.split for case in self.cases} != {"calibration", "held_out"}:
-            raise ValueError("dataset requires both calibration and held_out cases")
+        if any(case.split == "held_out" for case in self.cases):
+            if self.planned_held_out_cases < 1:
+                raise ValueError("held_out cases require a positive planned sample size")
+            if not any(case.split == "calibration" for case in self.cases):
+                raise ValueError("held_out evaluation also requires calibration cases")
         return self
 
 
@@ -229,6 +233,9 @@ class DecisionEvaluationConfig(BaseModel):
     measurements: str = Field(min_length=1)
     output_root: str = Field(min_length=1)
     acceptance_policy_ref: str | None = None
+    decision_point: Literal["query_input_selection", "abstract_runtime_decision"] = (
+        "query_input_selection"
+    )
     splits: tuple[DecisionEvaluationSplit, ...] = ("held_out",)
     repetitions: int = Field(default=1, ge=1, le=20)
 
@@ -473,6 +480,10 @@ def run_decision_evaluation(
 
     checks = {
         "measured_evidence": measurements.evidence_mode == "measured",
+        "supported_active_decision_point": config.decision_point == "query_input_selection",
+        "host_admission_evaluated": all(
+            record.host_outcome != "not_evaluated" for record in selected_records
+        ),
         "held_out_only": config.splits == ("held_out",),
         "full_case_selection": max_cases is None,
         "complete_pairs": not missing_pairs and not unexpected_pairs,
@@ -480,7 +491,8 @@ def run_decision_evaluation(
         "paired_input_refs_match": not mismatched_input_pairs,
         "required_category_coverage": not missing_categories,
         "planned_sample_size_reached": (
-            len(selected_cases) >= dataset.planned_held_out_cases
+            dataset.planned_held_out_cases > 0
+            and len(selected_cases) >= dataset.planned_held_out_cases
         ),
         "independent_label_review": dataset.labeler_id != dataset.reviewer_id,
         "actual_model_version_recorded": all(
@@ -507,6 +519,11 @@ def run_decision_evaluation(
 
     metrics = {
         "version": "jev_decision_evaluation_metrics_v1",
+        "measurement_scope": (
+            "provider_only_not_host_or_fallback"
+            if measurements.evidence_mode == "provider_probe"
+            else "recorded_host_decision"
+        ),
         "attempts": len(selected_records),
         "case_count": len(selected_cases),
         "candidate_coverage": {
@@ -601,7 +618,7 @@ def run_decision_evaluation(
     report = {
         "version": "jev_decision_acceptance_report_v1",
         "active_eligible": active_eligible,
-        "decision_point": "query_input_selection",
+        "decision_point": config.decision_point,
         "dataset_name": dataset.name,
         "dataset_version": dataset.dataset_version,
         "evidence_mode": measurements.evidence_mode,
