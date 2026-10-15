@@ -216,3 +216,79 @@ MockTransport 和真实隔离 Coordinator/SQLite：成功选择可重开存储�
 备选：用历史事实在当前契约下重构输入，仅作反事实开发校准，不能补充独立 held-out 或宣称原历史重放。
 正式 active 仍需独立六类 held-out、独立标签复核、模型部署 provenance 确认和全部工单指标通过。
 同一执行者自审不变成独立复核；生产保持 off/shadow。当前无需以 active 开启作为继续离线开发的前提。
+
+## v14.3.0：真实 no-motion 双视角输入采集
+
+用户确认允许 Runtime/Query/相机读取后，实际核查历史 Gateway `127.0.0.1:19020` 未运行。
+因此未恢复旧任务，而是从提交 `4059b373ba37857ae87f7a710af8e3d2ca34f1cc` 导出 Adapter 源码，
+创建独立 RoboTwin 传感器场景，避开工作区中另一个任务的机器人实现改动。
+
+### 已完成的实测
+
+源码及产物根目录：
+`/home/yanxu/robotwin20-runtime/artifacts/jev-source-4059b373.e38y6W/`。
+
+1. 原 `check_persistent_runtime.py` 单视角 smoke：`capture/persistent-sensor-result.json` 为 passed，
+   两次不同图像保持同一场景版本，公开 Observation Tool 返回 available，`motion_executed=false`。
+2. 集成采集：`decision-snapshots/20261015T091928.651066Z-2be476a6/summary.json` 为 captured。
+   使用原传感器 provider、ObservationEndpoint、Qwen provider 和 SceneUnderstandingEndpoint；
+   未调用私有模拟器 actor/分割真值生成语义，没有远程模型 fallback。
+
+| 字段 | 实际结果 |
+|---|---|
+| 场景 | `blocks_ranking_rgb`，seed 0，双 Franka 初始化传感器场景 |
+| 图像 | `camera/head`、`camera/front`，实际渲染 RGB/depth |
+| 同步 | capture_skew_ms = 0 |
+| 入站年龄 | 112 ms；保留原 max_age_ms = 1000，未放宽 |
+| 本地视觉 | `http://127.0.0.1:8012/v1`，`qwen3-vl-4b-awq`，temperature 0、top_p 1 |
+| 预算 | 单次视觉请求 30 s、1536 tokens、SDK retries 0 |
+| 结果 | 7 个实体，1 条歧义；公开 scene.understand 为 available |
+| 视觉接口耗时 | 17336.11 ms；不是 JEV/System-2 决策时延 |
+| 外部调用 | 远程模型 0，Action 0，Session 0 |
+
+模型将三类方块描述为 red/blue/green cube，另四个 light gray surface 被明确标为身份不确定。
+原歧义和全部实体保留在 `understanding.json`；这些是视觉模型输出，不是人工真值标签。
+两路视觉输入只发本机 loopback 服务，不上传 JEV、System-2 或其他远程模型。
+
+### 可复现入口
+
+`scripts/capture_jev_observation.py --config ...` 每次创建新的时间戳目录，不覆盖既有结果。
+配置路径相对配置文件解析。此轮实际配置是上述根目录的 `snapshot_config.json`，包含独立
+Adapter 路径、声明的来源提交、runtime/profile、worker Python、输出根目录及本地模型预算。
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$PWD" \
+  /home/yanxu/miniconda3/envs/paos/bin/python scripts/capture_jev_observation.py \
+  --config /home/yanxu/robotwin20-runtime/artifacts/jev-source-4059b373.e38y6W/snapshot_config.json
+```
+
+成功退出 0；观测/理解不可用或采集失败退出 2。每次执行都会新建模拟器场景并重新调用本地 VLM。
+仅允许字面 loopback 模型地址，关闭代理继承；不增加远程备用路线。worker 启动/request/shutdown
+预算分别为 90/30/15 秒。正常、失败和中断路径关闭 worker；失败保留 summary、已完成观测和日志。
+
+每轮保存配置、运行 profile/seed、采集器源码、两份源 ToolSpec、实际 request/result、视觉诊断、
+worker 日志及 summary。Git HEAD 是基础版本，首次实测额外使用尚未提交的 collector；其原源码已保存在
+该 run 的 `collector_source.py`。实测后只补充日志写失败时仍关闭 worker、Python 元数据和测试，
+不修改首轮请求、响应、耗时或原始 summary。Adapter 源码目录本身来自固定 Git 导出，未加载工作区机器人改动。
+VLM 别名、GPU/网络负载和生成非确定性仍可能使重跑结果不同。
+
+### 验证与验收边界
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest \
+  -q -p pytest_asyncio.plugin -p no:cacheprovider tests/test_decision_snapshot.py \
+  tests/test_decision_calibration.py tests/test_decision_evaluation.py tests/test_decision_provider.py \
+  tests/test_planning_loop.py tests/test_planning_task_integration.py
+.venv/bin/ruff check PhyAgentOS/agent/decision_snapshot.py \
+  scripts/capture_jev_observation.py tests/test_decision_snapshot.py
+```
+
+七维核查：原 provider/endpoint 所有权不变；身份和时间戳来自实际传感器；失败结果落盘；唯一目录可重跑且无
+自动重试；Action/Session 不可达、无硬件调用；现有校准/评测格式不变；采集和模型请求预算明确。
+
+本阶段交付的是**真实观测与视觉解释快照**，尚未创建 Coordinator 任务、冻结 scene.bind 契约、生成宿主
+候选或写入 selection。输出明确 `host_selection_measured=false`，不是完整的决策时刻快照，也不是配对测量。
+下一步已不缺此次原始 RGB/depth/标定/理解材料，应将它们接入有明确离线来源的 Coordinator 回放，
+由原 NodeContextProvider/候选生成/准入路径生成决策输入，再运行原 System-2 与 JEV+fallback 配对。
+当前语义 provider 没有输出空间包围盒或几何派生产物；若后续测试要实际执行 scene.bind，还需原几何
+enrichment/binding 服务，不能把视觉标签当成执行物体身份。生产 active 仍未启用。
