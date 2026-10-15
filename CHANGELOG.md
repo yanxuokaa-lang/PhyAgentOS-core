@@ -29,7 +29,7 @@
 - 仅文档；未部署、启动 Runtime、执行仿真或硬件。 / Documentation only; no deployment, Runtime start, simulation, or hardware execution.
 
 ### Git 提交 / Git Commit
-- 内容提交待生成；随后在本条登记实际 hash，并推送当前分支 `feature/planning-loop`。 / Content commit pending; record its actual hash in this entry and push the current branch `feature/planning-loop`.
+- Content commit: `d8a51362` on `feature/planning-loop`, 2026-10-15 16:14 Asia/Shanghai. / 内容提交：`d8a51362`，分支 `feature/planning-loop`，时间 2026-10-15 16:14 Asia/Shanghai；本条由随后日志提交登记。
 
 ## v13.10.4 (2026-10-15 14:56) - codex
 
