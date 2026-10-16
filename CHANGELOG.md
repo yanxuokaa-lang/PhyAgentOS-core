@@ -2,6 +2,17 @@
 
 ## 最近五版本 / Latest five versions
 
+## v14.5.8 (2026-10-16 21:25) - codex
+
+### 变更摘要 / Summary [完成；calibration replay，非正式 held-out]
+- [eval] [exp] 对 `place_object_basket`、`move_can_pot`、`pick_dual_bottles` 运行原 Coordinator selection-only replay；保留 JEV abstain、System-2 selection 和 `node_turn_incomplete` 失败。 / Run original-Coordinator selection-only replays for `place_object_basket`, `move_can_pot`, and `pick_dual_bottles`, preserving JEV abstentions, System-2 selections, and `node_turn_incomplete` failures.
+- [eval] [docs] 三例 evaluator 均退出 `2`，`active_eligible=false`；没有把 calibration replay 当正式 held-out 或 active 证据。 / All three evaluator runs exited `2` with `active_eligible=false`; calibration replays were not treated as formal held-out or active evidence.
+
+### 文件与验证 / Files and Validation
+- `artifacts/evals/jev-host-replay-multifamily-config-{114,115,116}.json`：固定脱敏 snapshot、JEV/System-2 API endpoint、预算和 `expected_entity_refs=null`。 / Fixed sanitized snapshots, JEV/System-2 endpoints, budgets, and `expected_entity_refs=null`.
+- `docs/forge/JEV_HELD_OUT_INTAKE_20261015.md`、`changelog/2026-10_part7.md`：记录三例 host replay、fail-closed evaluator 和剩余验收条件。 / Record the three host replays, fail-closed evaluator, and remaining acceptance conditions.
+- 所有 replay `motion_authorized=false`、`node_execution_count=0`；JEV/System-2 请求仅为脱敏状态和工具 schema，无图片/Authorization；active 继续关闭。 / All replays kept `motion_authorized=false` and zero node executions; JEV/System-2 requests contained only sanitized state and tool schemas with no images or Authorization; active remains off.
+
 ## v14.5.7 (2026-10-16 21:05) - codex
 
 ### 变更摘要 / Summary [完成；候选 intake，非正式 held-out]

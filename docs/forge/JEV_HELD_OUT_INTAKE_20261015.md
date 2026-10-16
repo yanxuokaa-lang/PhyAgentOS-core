@@ -220,3 +220,22 @@ no-motion 边界不变。仅当两视角都可绑定三块、尺寸排序有 RGB
 标签复核，不能把本机视觉语义直接当作人工真值。当前仍缺正式标签冻结、未参与采集/调试的独立复核、
 case provenance manifest、同版本 JEV/System-2 配对、服务部署 provenance、完整 acceptance 指标和
 操作员授权；active 继续关闭。
+
+## 三个候选的 selection-only host replay / Selection-only host replay for three candidates (2026-10-16)
+
+对 114/115/116 运行了原 `decision_host_replay.py`，每例均使用独立 Coordinator/SQLite、原
+`NodeContextProvider`、`forge_plan_ready/select` 和 JEV+System-2 配对路径；只在 pending selection
+处停止，`node_execution_count=0`，`motion_authorized=false`。本轮 authored `expected_entity_refs=null`，
+因此没有把任一选择判为人工正确或错误。
+
+| Case | Host replay evidence | Result |
+| --- | --- | --- |
+| 114 `place_object_basket` | `.../multifamily-114/20261016T134748.057040Z-55cca684/` | System-2 选择 `entity://e2`；JEV abstain 后走 fallback，未持久化选择 |
+| 115 `move_can_pot` | `.../multifamily-115/20261016T134904.337538Z-bedbd5bb/` | JEV abstain；两路最终均 `node_turn_incomplete`，无 selection |
+| 116 `pick_dual_bottles` | `.../multifamily-116/20261016T135003.723081Z-c0784f4c/` | JEV 选择 `entity://e1`,`entity://e2`；System-2 未完成 selection |
+
+每个 replay 的原始 `requests.json` 仅包含脱敏状态/工具 schema，不含图片、Authorization 或本地路径；
+JEV/System-2 请求数受配置 `max_requests=6` 限制。随后对三个 replay 运行已交付 evaluator，均退出码
+`2`；报告明确 `active_eligible=false`，原因包括 `held_out_only`、`planned_sample_size_reached`、
+`independent_label_review`、`provenance_manifest_present`、`provenance_confirmed`，以及缺少 acceptance
+policy。上述 replay 仅证明当前宿主边界可重放和失败可追踪，不是正式 paired measurement 或 active 证据。
