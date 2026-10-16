@@ -2,6 +2,17 @@
 
 ## 最近五版本 / Latest five versions
 
+## v14.5.7 (2026-10-16 21:05) - codex
+
+### 变更摘要 / Summary [完成；候选 intake，非正式 held-out]
+- [data] [exp] 完成五个不同 RoboTwin workflow family 的只读候选 intake，固定 seed 113--117，保存双视角观测和本机 Qwen 结果；保留歧义与 provider failure 分母。 / Complete read-only candidate intake for five distinct RoboTwin workflow families with fixed seeds 113--117, preserving two-view observations, local-Qwen results, ambiguity, and provider-failure denominators.
+- [eval] [docs] 新增候选清单并明确 114/115/116 仍需 host replay、标签冻结、独立复核和 provenance；正式 held-out、JEV/System-2 配对及 active 均未完成。 / Add the candidate manifest and record that 114/115/116 still require host replay, label freeze, independent review and provenance; formal held-out, JEV/System-2 pairing and active remain incomplete.
+
+### 文件与验证 / Files and Validation
+- `artifacts/evals/jev-held-out-intake/20261016-multifamily-readonly/`：五个 profile/config、五个 timestamped capture 目录和 `candidate_intake_result.json`。 / Five profiles/configs, timestamped capture directories, and `candidate_intake_result.json`.
+- `docs/forge/JEV_HELD_OUT_INTAKE_20261015.md`、`changelog/2026-10_part7.md`：登记实际结果和验收边界。 / Record actual results and acceptance boundaries.
+- 五次均 `view_count=2`、`capture_skew_ms=0`；Action/Session/remote-model/host selection/JEV/System-2 均为 0；formal scoreable case 为 0，active 关闭。 / All five had two views and zero skew; Action/Session/remote-model/host-selection/JEV/System-2 calls were zero; formal scoreable cases remain zero and active is off.
+
 ## v14.5.6 (2026-10-16 21:00) - codex
 
 ### 变更摘要 / Summary [完成]

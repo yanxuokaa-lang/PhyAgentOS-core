@@ -200,3 +200,23 @@ no-motion 边界不变。仅当两视角都可绑定三块、尺寸排序有 RGB
 
 当前仍缺：至少五类额外 held-out family、正式标签冻结、未参与采集/调试的独立复核、同版本 JEV/System-2
 配对测量、服务部署 provenance、宿主 selection trace、接受策略记录和操作员授权。生产继续 off/shadow。
+
+## 五个新增 workflow family 只读 intake / Five-family read-only intake (2026-10-16)
+
+本批按预登记的 `v14.5.7` 计划运行五个不同 workflow family，每个 family 一个固定 seed；所有请求都
+使用只读 observation worker 和本机 `http://127.0.0.1:8012/v1` Qwen 服务。原始产物和逐 case 状态见
+`artifacts/evals/jev-held-out-intake/20261016-multifamily-readonly/candidate_intake_result.json`。
+
+| Family / seed | 结果 / Result | 证据边界 / Boundary |
+| --- | --- | --- |
+| `stack_bowls_two` / 113 | 2 views, 0 ms skew, 4 entities, 1 ambiguity | 两个碗身份不可区分，排除为 `inconclusive` / excluded as inconclusive |
+| `place_object_basket` / 114 | 2 views, 0 ms skew, 3 entities, 0 ambiguity | 语义可用但没有冻结目标标签或宿主 selection，待复核 / pending label and host replay |
+| `move_can_pot` / 115 | 2 views, 0 ms skew, 3 entities, 0 ambiguity | 观测到 jar/candle，任务关系和宿主 selection 未测量 / task relation and host selection unmeasured |
+| `pick_dual_bottles` / 116 | 2 views, 0 ms skew, 3 entities, 0 ambiguity | 两瓶可见但没有冻结目标标签或宿主 selection / visible bottles without frozen target or host selection |
+| `place_object_stand` / 117 | 2 views, 0 ms skew, local Qwen `contract_output` | 保留 provider failure 分母，不重试覆盖 / provider failure denominator retained without overwrite |
+
+五次均为 `action_calls=0`、`session_calls=0`、`remote_model_calls=0`、`host_selection_measured=false`；
+没有调用 JEV/System-2，也没有生成正式 held-out。114/115/116 只可进入后续隔离 host replay 和独立
+标签复核，不能把本机视觉语义直接当作人工真值。当前仍缺正式标签冻结、未参与采集/调试的独立复核、
+case provenance manifest、同版本 JEV/System-2 配对、服务部署 provenance、完整 acceptance 指标和
+操作员授权；active 继续关闭。
