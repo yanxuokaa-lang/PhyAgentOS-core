@@ -2,6 +2,33 @@
 
 ## 最近五版本 / Latest five versions
 
+## v14.5.5 (2026-10-16 20:00) - codex
+
+### 变更摘要 / Summary [完成；仅配对前审计]
+- [eval] [feat] 在现有 P3b 评测模块增加只读 held-out intake readiness auditor，检查 schema、六类覆盖、计划样本数、复核者身份元数据、输入引用唯一性和候选完整性；不调用 JEV/System-2，不生成 active 资格。 / Add a read-only held-out intake readiness auditor to the existing P3b evaluation module, checking schema, six-category coverage, planned size, reviewer identity metadata, input-reference uniqueness and candidate completeness; it calls neither JEV/System-2 nor grants active eligibility. (local)
+- [docs] [docs] 增加可复现 CLI、测试和脱敏失败报告，明确候选入库与正式 acceptance 的边界。 / Add a reproducible CLI, tests and sanitized failure reports, making the boundary between candidate intake and formal acceptance explicit. (local)
+
+### 文件变更详情 / File Change Details
+- [新增 / Added] `PhyAgentOS/agent/decision_evaluation.py:L271-L279,L382-L498`：只读审计 API、唯一输出目录、失败原因和 no-motion 标记。 / Read-only audit API, unique output roots, failure reasons and no-motion markers.
+- [新增 / Added] `scripts/audit_jev_held_out_intake.py:L1-L29`：配对前审计 CLI，失败返回 2，不调用远程 provider。 / Pre-pairing audit CLI returning 2 on failure without calling remote providers.
+- [修改 / Modified] `tests/test_decision_evaluation.py:L152-L230`：覆盖可配对、缺类别/样本/复核、重复输入引用和敏感坏输入不复制。 / Cover pair-ready data, missing categories/size/review, duplicate input references and non-copying of sensitive invalid input.
+- [修改 / Modified] `docs/forge/JEV_P3B_EVALUATION.md:L79-L99`：记录命令、输出和 reviewer ID 检查限制。 / Document the command, outputs and the reviewer-ID limitation.
+
+### 关键 Diff / Key Diff
+```diff
+- no reusable readiness check before paired provider requests
++ audit_held_out_dataset(...) -> explicit readiness reasons and unique audit artifacts
++ invalid input -> status=not_materialized; remote_calls=0; motion_authorized=false
+```
+
+### 验证 / Validation
+- P3b evaluator/host replay/provider/calibration/planning/recovery 关联回归：`222 passed in 6.02s`；本次新增审计测试包含其中 17 项。 / P3b evaluator/host replay/provider/calibration/planning/recovery regressions: `222 passed in 6.02s`, including 17 new audit tests.
+- Ruff、compileall、`git diff --check` 通过。 / Ruff, compileall and `git diff --check` passed.
+- 对现有 intake manifest 和 calibration dataset 的 CLI 结果均为 `ready_for_pairing=false`、退出码 `2`；没有 JEV/System-2、Runtime 或运动调用。 / The CLI returned `ready_for_pairing=false` with exit code `2` for both the current intake manifest and calibration dataset; no JEV/System-2, Runtime or motion calls occurred.
+
+### Git 提交 / Git Commit
+- Content commit: `859162c1` on `feature/planning-loop`; log registration commit follows. / 内容提交：`859162c1`，位于 `feature/planning-loop`；日志登记提交随后完成。
+
 ## v14.5.4 (2026-10-16 19:31) - codex
 
 ### 变更摘要 / Summary [完成；形成候选但未冻结]
@@ -72,6 +99,9 @@
 
 ### 验证 / Validation
 - 两批 `status=captured`、双视角、0 skew；无 Action/Session/远程模型/host selection，正式有效样本数 0。 / Both returned `status=captured` with two views and zero skew; no Action/Session/remote-model/host-selection calls and zero formal eligible samples.
+
+## Archive
+- v14.5.0 and earlier detailed records continue below; monthly archive: `changelog/2026-10_part7.md`. / v14.5.0 及更早详细记录继续保留在下方；月度归档见 `changelog/2026-10_part7.md`。
 
 ## v14.5.0 (2026-10-16 18:19) - codex
 
