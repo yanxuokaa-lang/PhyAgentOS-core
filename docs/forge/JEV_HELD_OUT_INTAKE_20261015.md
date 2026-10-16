@@ -113,3 +113,90 @@ no-motion 和图片本地边界不变；没有生产代码或配置变更；共�
 本轮因此证明了“其他 RoboTwin 工作流可产生真实只读观测”的能力边界，但没有增加有效质量样本。
 正式 P3b 仍需要预登记一个实际包含可判定目标和负例的工作流/场景，并在标签冻结后做完整配对、
 独立复核和部署 provenance 确认。
+
+## `stack_blocks_three` 预登记批次 / Preregistered `stack_blocks_three` Batch (2026-10-16)
+
+本批次属于 P3b.1 数据入库，不是 active 验收。工作流 family 固定为
+`stack_blocks_three`，场景配置为 `demo_clean`，seed 固定为 105 和 106；每个 seed 只采集一次
+同步 `camera/head` 与 `camera/front` 观测。采集前已写入 `changelog/2026-10_part7.md` 的 v14.5.1
+计划条目。只读 worker 仍不构造 Persistent Runtime，不注册目标/绑定/规划，不接受 Action/Session，
+不调用 `play_once`。
+
+### 标签协议 / Label Protocol
+
+- 正例候选：三块实体在两视角中均可定位，颜色/尺寸身份无歧义，并能从图像与深度事实判定
+  `on(upper, lower)` 的当前支撑关系；标签只描述应选择的实体关系，不产生抓取或放置参数。
+- 负例候选：缺失一块、关系被遮挡、身份或支撑关系歧义、场景初始化失败；保留原始观测和失败
+  原因，标签为 `unavailable`/`inconclusive`，不改 seed、不删除分母。
+- 不合格样本：只有单视角、局部理解与几何事实冲突、或依赖任务脚本内部目标状态才能判定的案例。
+  这些样本只能进入开发/诊断集，不能送入 held-out 配对。
+- 六类工单映射：多实体=`on` 关系中的三实体；无适用项=不存在的支撑关系请求；跨场景=105/106
+  的不同布局；多方法=同一关系的合法候选与拒答分支；非法组合=不存在的上层/下层实体组合；
+  复杂规划=无法仅凭当前观测判定支撑顺序时的升级。
+
+标签冻结前不调用 JEV 或 System-2。冻结后由未参与采集、代码修复和标签编写的复核者确认；当前
+Codex 只能做来源核对，不能把同作者复核记为 independent review。模型返回别名也不等于部署
+provenance；正式配对仍需记录服务端版本/路由证明。生产继续 off/shadow。
+
+### 批次结果 / Batch Result
+
+- seed 105：双视角、0 ms skew、8 entities、1 ambiguity；三色方块可见但仍是分散的初始化状态，
+  没有当前 `on` 关系，因此不生成正例。
+- seed 106：双视角、0 ms skew、6 entities、1 ambiguity；front 视角没有完整看到绿/红块，跨视角
+  身份不能确认，因此不生成正例。
+- 两次运行均为 `remote_model_calls=0`、`action_calls=0`、`session_calls=0`、
+  `host_selection_measured=false`。该批次保留为不可判定分母，不能发送 JEV/System-2，也不改变
+  acceptance policy 或 active 状态。
+
+## `blocks_ranking_size` 预登记批次 / Preregistered `blocks_ranking_size` Batch (2026-10-16)
+
+下一批固定 family 为 `blocks_ranking_size`，配置 `demo_clean`，seed 107 和 108；每个 seed 一次
+同步 head/front 观测。正例只有在三块实体均可跨视角绑定、相对尺寸大/中/小可由 RGB 与深度一致支持
+时成立；缺失、遮挡、尺寸差异不可分辨或跨视角身份冲突一律记录为 `inconclusive`，不改 seed、不
+删除失败分母。模型只能报告观察到的尺寸排序，不提供抓取、放置或执行参数。
+
+本批六类映射为：多实体=三块排序；无适用项=不存在的尺寸类别；跨场景=107/108 的不同随机布局；
+多方法=合法排序与拒答分支；非法组合=重复或不存在的尺寸标签；复杂规划=仅凭观测无法确定排序
+时升级。标签冻结及独立复核规则沿用上节；冻结前不调用 JEV/System-2，生产保持 off/shadow。
+
+### `blocks_ranking_size` 结果 / Result
+
+- seed 107 目录为 `.../20261016-size-ranking/captures/seed-107/20261016T111733.318208Z-4da7061a/`：
+  head 视角可见三块，cyan 只在 head 出现，不能完成跨视角身份绑定。
+- seed 108 目录为 `.../20261016-size-ranking/captures/seed-108/20261016T111906.525568Z-17d81b10/`：
+  三块和尺寸差异在 head 清晰，但 front 裁掉两侧，未满足完整跨视角绑定。
+- 两批均双视角、0 ms skew、0 ambiguity，且 `remote_model_calls=0`、`action_calls=0`、
+  `session_calls=0`、`host_selection_measured=false`；这证明观测可用性，不证明 held-out 资格。
+  107/108 被标为调参/不可判定，不能回填正式 held-out。
+
+## `blocks_ranking_size` 宽视场批次 / Wide-view `blocks_ranking_size` Batch (2026-10-16)
+
+为避免把前两批视场调参混入评测，新批次使用 seed 109/110 和后移抬高的 front camera：
+`position=[0.0, -0.8, 1.1]`、`forward=[0.0, 1.0, -0.15]`。其余任务、标签、六类映射和
+no-motion 边界不变。仅当两视角都可绑定三块、尺寸排序有 RGB/depth 一致依据且没有 ambiguity 时，
+才允许生成候选；否则保留原始分母并停止模型配对。
+
+### 宽视场实际结果 / Wide-view Results
+
+- seed 109：传感器双视角成功，但本机 Qwen 返回不可重试 `contract_output`，`entity_count=0`，
+  仅作为服务失败分母。
+- seed 110：双视角、0 ms skew、5 entities、0 ambiguity；三块均可跨视角绑定，尺寸顺序唯一，
+  进入待冻结候选。其排序标签暂记为 `small < medium < large`，仍需复核者在标签冻结前确认。
+- 两次均为 `action_calls=0`、`session_calls=0`、`remote_model_calls=0`、
+  `host_selection_measured=false`；尚未调用 JEV/System-2。
+
+下一批 seed 111/112 复用同一宽视场配置，目标是增加独立场景候选；任何用于修复或调整标签协议的
+样本都会转为开发集，不回填 held-out。
+
+### seed 111/112 结果 / Seed 111/112 Results
+
+- seed 111：双视角、0 ms skew、5 entities、2 ambiguity；三个方块的颜色/位置跨视角无法唯一匹配，
+  排除为 `inconclusive`。
+- seed 112：双视角、0 ms skew、5 entities、0 ambiguity；三块均可绑定，图像显示唯一尺寸顺序，
+  进入待冻结候选。候选的暂定小到大顺序为 `entity://e3 -> entity://e1 -> entity://e2`。
+- 候选 110/112 与排除 109/111 已写入 `20261016-size-ranking-wide/intake_result.json`。清单明确
+  `formal_held_out=false`、`independent_review=false`、JEV/System-2 为 0；这一步只完成候选入库，
+  不能进入 active 验收。
+
+当前仍缺：至少五类额外 held-out family、正式标签冻结、未参与采集/调试的独立复核、同版本 JEV/System-2
+配对测量、服务部署 provenance、宿主 selection trace、接受策略记录和操作员授权。生产继续 off/shadow。

@@ -2,6 +2,76 @@
 
 ## 最近五版本 / Latest five versions
 
+## v14.5.4 (2026-10-16 19:31) - codex
+
+### 变更摘要 / Summary [完成；形成候选但未冻结]
+- [data] [exp] 复用固定宽视场 `blocks_ranking_size` 采集 seed 111/112，保留 ambiguity 和服务失败分母。 / Capture seeds 111/112 with the frozen wide-view `blocks_ranking_size` profile while retaining ambiguity and service-failure denominators. (local)
+- [eval] [docs] 保存候选清单；seed 110/112 待冻结，formal held-out、independent review、JEV/System-2 配对和 active 均未完成。 / Save the candidate manifest; seeds 110/112 remain pending freeze and formal held-out, independent review, JEV/System-2 pairing, and active are incomplete. (local)
+
+### 文件变更详情 / File Change Details
+- [新增 / Added] `artifacts/evals/jev-held-out-intake/20261016-size-ranking-wide/seed-111.yaml`、`seed-112.yaml`、`capture-111.json`、`capture-112.json`：固定宽视场、只读 worker 配置。 / Fixed wide-view read-only worker profiles/configs.
+- [新增 / Added] `artifacts/evals/jev-held-out-intake/20261016-size-ranking-wide/intake_result.json`：记录候选 110/112、排除 109/111、JEV/System-2=0 和 `independent_review=false`。 / Candidate manifest for 110/112, exclusions 109/111, zero JEV/System-2, and no independent review.
+- [修改 / Modified] `docs/forge/JEV_HELD_OUT_INTAKE_20261015.md`、`changelog/2026-10_part7.md`：记录 seed 111/112 证据和剩余 active 条件。 / Record seed 111/112 evidence and remaining active conditions.
+
+### 关键 Diff / Key Diff
+```diff
++ seed-111/112: wide front camera, sensor_refs=[camera/head,camera/front]
++ intake_result.json: formal_held_out=false, independent_review=false, jev_calls=0, system2_calls=0
++ seed-111: ambiguity=2 -> excluded_inconclusive
++ seed-112: ambiguity=0 -> pending_label_freeze
+```
+
+### 验证 / Validation
+- seed 111/112 均 `status=captured`、双视角、0 ms skew；JSON/profile 校验通过，所有 Action/Session/host selection/JEV/System-2 计数为 0。 / Both captures succeeded with two views and zero skew; JSON/profile validation passed and all Action/Session/host-selection/JEV/System-2 counters are zero.
+- 未部署、未调用宿主、未启用 active。 / No deployment, host call, or active enablement.
+
+## v14.5.3 (2026-10-16 19:24) - codex
+
+### 变更摘要 / Summary [完成；形成候选但未冻结]
+- [data] [exp] 将 `blocks_ranking_size` front camera 后移抬高，采集 seed 109/110；不回填 107/108 调参批次。 / Move and raise the `blocks_ranking_size` front camera for seeds 109/110; never backfill tuning seeds 107/108. (local)
+- [eval] [docs] seed 109 记录 Qwen `contract_output`，seed 110 进入待冻结候选。 / Record Qwen `contract_output` for seed 109 and admit seed 110 to the pending-freeze set. (local)
+
+### 文件变更详情 / File Change Details
+- [新增 / Added] `artifacts/evals/jev-held-out-intake/20261016-size-ranking-wide/seed-109.yaml`、`seed-110.yaml`、`capture-109.json`、`capture-110.json`：宽视场只读配置。 / Wide-view read-only profiles/configs.
+- [修改 / Modified] `docs/forge/JEV_HELD_OUT_INTAKE_20261015.md`、`changelog/2026-10_part7.md`：保存实际结果和资格边界。 / Save actual results and eligibility boundaries.
+
+### 关键 Diff / Key Diff
+```diff
+- front position=[0.0,-0.45,0.85]
++ front position=[0.0,-0.8,1.1], forward=[0.0,1.0,-0.15]
++ seed-109: contract_output, no label
++ seed-110: 5 entities, 0 ambiguity, pending freeze
+```
+
+### 验证 / Validation
+- 两次 sensor capture 双视角、0 skew、Action/Session/host selection/JEV/System-2 均为 0；seed 109 的失败分母未重试覆盖。 / Both sensor captures had two views and zero skew with zero Action/Session/host-selection/JEV/System-2 calls; seed 109's failure denominator was not overwritten by retry.
+
+## v14.5.2 (2026-10-16 19:16) - codex
+
+### 变更摘要 / Summary [完成；无合格 held-out]
+- [data] [exp] 采集 `blocks_ranking_size` seed 107/108，验证原 front 视场不足且不放宽跨视角标签协议。 / Capture seeds 107/108 and verify the original front view is insufficient without relaxing cross-view labeling. (local)
+- [eval] [docs] 将两批标为调参/不可判定，不调用 JEV/System-2。 / Mark both batches tuning/inconclusive and call no JEV/System-2. (local)
+
+### 文件变更详情 / File Change Details
+- [新增 / Added] `artifacts/evals/jev-held-out-intake/20261016-size-ranking/seed-107.yaml`、`seed-108.yaml`、`capture-107.json`、`capture-108.json`：只读配置。 / Read-only profiles/configs.
+- [修改 / Modified] `docs/forge/JEV_HELD_OUT_INTAKE_20261015.md`、`changelog/2026-10_part7.md`：记录视场裁切和资格排除。 / Record cropping and eligibility exclusion.
+
+### 验证 / Validation
+- 两批双视角、0 skew、0 ambiguity，但未完成三实体跨视角绑定；Action/Session/JEV/System-2 均为 0。 / Both batches had two views and zero skew/ambiguity but lacked complete three-entity cross-view binding; Action/Session/JEV/System-2 were zero.
+
+## v14.5.1 (2026-10-16 19:07) - codex
+
+### 变更摘要 / Summary [完成；无合格 held-out]
+- [data] [exp] 采集 `stack_blocks_three` seed 105/106，保留分散初始化和 front 缺失实体事实。 / Capture `stack_blocks_three` seeds 105/106 while retaining separated initialization and missing-front-entity facts. (local)
+- [eval] [docs] 不把当前无 `on` 关系的三块改写成正例，不调用 JEV/System-2。 / Do not relabel separated blocks without a current `on` relation as positives and call no JEV/System-2. (local)
+
+### 文件变更详情 / File Change Details
+- [新增 / Added] `artifacts/evals/jev-held-out-intake/20261016-stack-three/seed-105.yaml`、`seed-106.yaml`、`capture-105.json`、`capture-106.json`：只读配置。 / Read-only profiles/configs.
+- [修改 / Modified] `docs/forge/JEV_HELD_OUT_INTAKE_20261015.md`、`changelog/2026-10_part7.md`：记录两次采集、ambiguity 和 no-motion 边界。 / Record both captures, ambiguities, and no-motion boundaries.
+
+### 验证 / Validation
+- 两批 `status=captured`、双视角、0 skew；无 Action/Session/远程模型/host selection，正式有效样本数 0。 / Both returned `status=captured` with two views and zero skew; no Action/Session/remote-model/host-selection calls and zero formal eligible samples.
+
 ## v14.5.0 (2026-10-16 18:19) - codex
 
 ### 变更摘要 / Summary [完成只读观测适配；P3b active 未完成]
