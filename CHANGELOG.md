@@ -12,6 +12,7 @@
 - `artifacts/evals/jev-held-out-intake/20261016-multifamily-readonly/`：五个 profile/config、五个 timestamped capture 目录和 `candidate_intake_result.json`。 / Five profiles/configs, timestamped capture directories, and `candidate_intake_result.json`.
 - `docs/forge/JEV_HELD_OUT_INTAKE_20261015.md`、`changelog/2026-10_part7.md`：登记实际结果和验收边界。 / Record actual results and acceptance boundaries.
 - 五次均 `view_count=2`、`capture_skew_ms=0`；Action/Session/remote-model/host selection/JEV/System-2 均为 0；formal scoreable case 为 0，active 关闭。 / All five had two views and zero skew; Action/Session/remote-model/host-selection/JEV/System-2 calls were zero; formal scoreable cases remain zero and active is off.
+- Git: `c5a4b6b7` on `feature/planning-loop`, pushed to origin. / Git: `c5a4b6b7` on `feature/planning-loop`, pushed to origin.
 
 ## v14.5.6 (2026-10-16 21:00) - codex
 
