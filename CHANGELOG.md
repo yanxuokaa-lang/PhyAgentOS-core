@@ -27,7 +27,7 @@
 - Ruff、compileall、`git diff --check` 通过；实际 intake/calibration 审计均退出 2，无远程或运动调用。 / Ruff, compileall and `git diff --check` passed; actual intake/calibration audits both exited 2 with no remote or motion calls.
 
 ### Git 提交 / Git Commit
-- Implementation commit: pending. / 实现提交：待提交。
+- Implementation commit: `c2875b54` on `feature/planning-loop`; documentation registration follows. / 实现提交：`c2875b54`，位于 `feature/planning-loop`；文档登记提交随后完成。
 
 ## v14.5.5 (2026-10-16 20:00) - codex
 
