@@ -11,6 +11,7 @@ from pydantic import ValidationError
 from PhyAgentOS.agent.decision_evaluation import (
     DecisionEvaluationDataset,
     DecisionMeasurement,
+    audit_held_out_dataset,
     run_decision_evaluation,
 )
 
@@ -146,6 +147,88 @@ def _write_inputs(
     path = root / "config.json"
     path.write_text(json.dumps(config), encoding="utf-8")
     return path
+
+
+def _write_dataset_only(root: Path, payload: dict | None = None) -> Path:
+    root.mkdir(parents=True, exist_ok=True)
+    path = root / "dataset.json"
+    path.write_text(json.dumps(payload or _dataset()), encoding="utf-8")
+    return path
+
+
+def test_held_out_intake_audit_allows_complete_dataset_before_pairing(tmp_path):
+    dataset_path = _write_dataset_only(tmp_path)
+
+    summary = audit_held_out_dataset(
+        dataset_path=dataset_path,
+        output_root=tmp_path / "audit-runs",
+        repo_root=Path(__file__).resolve().parents[1],
+    )
+
+    assert summary.ready_for_pairing is True
+    assert summary.exit_code == 0
+    report = json.loads((summary.run_dir / "audit_report.json").read_text())
+    assert report["remote_calls"] == 0
+    assert report["motion_authorized"] is False
+    assert report["reasons"] == []
+
+
+def test_held_out_intake_audit_reports_missing_categories_and_review(tmp_path):
+    payload = _dataset()
+    payload["reviewer_id"] = payload["labeler_id"]
+    payload["cases"] = payload["cases"][:2]
+    payload["planned_held_out_cases"] = 6
+    dataset_path = _write_dataset_only(tmp_path, payload)
+
+    summary = audit_held_out_dataset(
+        dataset_path=dataset_path,
+        output_root=tmp_path / "audit-runs",
+        repo_root=Path(__file__).resolve().parents[1],
+    )
+
+    assert summary.ready_for_pairing is False
+    assert summary.exit_code == 2
+    report = json.loads((summary.run_dir / "audit_report.json").read_text())
+    assert "required_category_coverage" in report["reasons"]
+    assert "planned_sample_size_reached" in report["reasons"]
+    assert "reviewer_identity_distinct" in report["reasons"]
+
+
+def test_held_out_intake_audit_rejects_duplicate_decision_inputs(tmp_path):
+    payload = _dataset()
+    payload["cases"][-1]["decision_input_ref"] = payload["cases"][-2]["decision_input_ref"]
+    dataset_path = _write_dataset_only(tmp_path, payload)
+
+    summary = audit_held_out_dataset(
+        dataset_path=dataset_path,
+        output_root=tmp_path / "audit-runs",
+        repo_root=Path(__file__).resolve().parents[1],
+    )
+
+    assert summary.ready_for_pairing is False
+    report = json.loads((summary.run_dir / "audit_report.json").read_text())
+    assert "decision_input_refs_unique" in report["reasons"]
+
+
+def test_held_out_intake_audit_keeps_schema_failures_readable(tmp_path):
+    dataset_path = _write_dataset_only(
+        tmp_path, {"version": "wrong", "api_key": "SECRET-MUST-NOT-BE-COPIED"}
+    )
+
+    summary = audit_held_out_dataset(
+        dataset_path=dataset_path,
+        output_root=tmp_path / "audit-runs",
+        repo_root=Path(__file__).resolve().parents[1],
+    )
+
+    assert summary.ready_for_pairing is False
+    report = json.loads((summary.run_dir / "audit_report.json").read_text())
+    assert report["reasons"] == ["dataset_schema_invalid"]
+    assert "error" in report
+    assert "SECRET-MUST-NOT-BE-COPIED" not in json.dumps(report)
+    assert "SECRET-MUST-NOT-BE-COPIED" not in (
+        summary.run_dir / "input_dataset.json"
+    ).read_text()
 
 
 @pytest.mark.parametrize("condition", ["provider_probe", "abstract_point", "no_host_admission"])

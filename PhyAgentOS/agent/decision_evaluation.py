@@ -268,6 +268,17 @@ class DecisionEvaluationSummary(BaseModel):
     exit_code: int
 
 
+class HeldOutIntakeAuditSummary(BaseModel):
+    """Read-only readiness result before any paired provider measurement."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    run_dir: Path
+    status: Literal["completed"]
+    ready_for_pairing: bool
+    exit_code: int
+
+
 def _strict_json_load(path: Path) -> Any:
     def reject_constant(value: str) -> None:
         raise ValueError(f"non-standard JSON constant is not allowed: {value}")
@@ -366,6 +377,125 @@ def _create_run_dir(output_root: Path) -> Path:
     run_dir = output_root / f"{timestamp}-{uuid4().hex[:8]}"
     run_dir.mkdir(parents=True, exist_ok=False)
     return run_dir
+
+
+def audit_held_out_dataset(
+    *,
+    dataset_path: Path,
+    output_root: Path,
+    repo_root: Path,
+) -> HeldOutIntakeAuditSummary:
+    """Audit a versioned dataset before remote JEV/System-2 pairing.
+
+    This is deliberately separate from ``run_decision_evaluation``: it does not
+    accept measurements and cannot produce active eligibility. It only answers
+    whether a dataset is sufficiently complete to justify spending paired
+    provider requests.
+    """
+
+    dataset_path = dataset_path.resolve()
+    output_root = output_root.resolve()
+    run_dir = _create_run_dir(output_root)
+    reasons: list[str] = []
+    checks: dict[str, bool] = {}
+    dataset: DecisionEvaluationDataset | None = None
+    try:
+        dataset = DecisionEvaluationDataset.model_validate(_strict_json_load(dataset_path))
+    except Exception as exc:
+        reasons.append("dataset_schema_invalid")
+        checks["dataset_schema_valid"] = False
+        # Do not copy an invalid input into an audit artifact: it may contain
+        # credentials or unsanitized field values that the schema would reject.
+        _write_json(run_dir / "input_dataset.json", {"status": "not_materialized"})
+        error_payload: dict[str, Any] = {"type": type(exc).__name__}
+        if hasattr(exc, "errors"):
+            error_payload["issues"] = [
+                {"loc": list(item.get("loc", ())), "type": item.get("type")}
+                for item in exc.errors()
+            ]
+        _write_json(run_dir / "audit_report.json", {
+            "version": "jev_held_out_intake_audit_v1",
+            "status": "completed",
+            "ready_for_pairing": False,
+            "dataset_path": str(dataset_path),
+            "checks": checks,
+            "reasons": reasons,
+            "error": error_payload,
+        })
+        _write_json(run_dir / "run_manifest.json", {
+            "version": "jev_held_out_intake_audit_run_v1",
+            "status": "completed",
+            "run_id": run_dir.name,
+            "git_commit": _git_commit(repo_root.resolve()),
+            "dataset_path": str(dataset_path),
+            "ready_for_pairing": False,
+            "reasons": reasons,
+        })
+        return HeldOutIntakeAuditSummary(
+            run_dir=run_dir, status="completed", ready_for_pairing=False, exit_code=2
+        )
+
+    held_out = [case for case in dataset.cases if case.split == "held_out"]
+    held_out_refs = [case.decision_input_ref for case in held_out]
+    replaceable = [case for case in held_out if not case.must_escalate]
+    candidate_coverage = all(
+        case.expected_selected_id in {
+            candidate.candidate_id for candidate in case.candidates
+        }
+        for case in replaceable
+    )
+    checks.update({
+        "dataset_schema_valid": True,
+        "held_out_cases_present": bool(held_out),
+        "required_category_coverage": REQUIRED_HELD_OUT_CATEGORIES.issubset(
+            {category for case in held_out for category in case.categories}
+        ),
+        "planned_sample_size_reached": (
+            dataset.planned_held_out_cases > 0
+            and len(held_out) >= dataset.planned_held_out_cases
+        ),
+        # This is only an identity-metadata check. Human confirmation that the
+        # reviewer was independent remains a separate acceptance requirement.
+        "reviewer_identity_distinct": dataset.labeler_id != dataset.reviewer_id,
+        "decision_input_refs_unique": len(held_out_refs) == len(set(held_out_refs)),
+        "candidate_coverage_complete": candidate_coverage,
+    })
+    reasons.extend(name for name, passed in checks.items() if not passed)
+    ready = not reasons
+    _write_json(run_dir / "input_dataset.json", dataset.model_dump(mode="json"))
+    _write_json(run_dir / "audit_report.json", {
+        "version": "jev_held_out_intake_audit_v1",
+        "status": "completed",
+        "ready_for_pairing": ready,
+        "dataset_name": dataset.name,
+        "dataset_version": dataset.dataset_version,
+        "held_out_case_count": len(held_out),
+        "held_out_family_count": len({case.family_id for case in held_out}),
+        "checks": checks,
+        "reasons": reasons,
+        "remote_calls": 0,
+        "motion_authorized": False,
+    })
+    _write_json(run_dir / "run_manifest.json", {
+        "version": "jev_held_out_intake_audit_run_v1",
+        "status": "completed",
+        "run_id": run_dir.name,
+        "git_commit": _git_commit(repo_root.resolve()),
+        "dataset_path": str(dataset_path),
+        "dataset_name": dataset.name,
+        "dataset_version": dataset.dataset_version,
+        "selected_case_ids": [case.case_id for case in held_out],
+        "ready_for_pairing": ready,
+        "reasons": reasons,
+        "remote_calls": 0,
+        "motion_authorized": False,
+    })
+    return HeldOutIntakeAuditSummary(
+        run_dir=run_dir,
+        status="completed",
+        ready_for_pairing=ready,
+        exit_code=0 if ready else 2,
+    )
 
 
 def run_decision_evaluation(
@@ -681,6 +811,8 @@ __all__ = [
     "DecisionEvaluationMeasurements",
     "DecisionEvaluationSummary",
     "DecisionMeasurement",
+    "HeldOutIntakeAuditSummary",
+    "audit_held_out_dataset",
     "load_decision_evaluation_inputs",
     "run_decision_evaluation",
 ]

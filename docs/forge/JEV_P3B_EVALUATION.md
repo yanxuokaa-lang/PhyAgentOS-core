@@ -76,6 +76,28 @@ manifest 保存 Git commit、数据集名称/版本、原始配置和测量路�
 配对时延，以及 Tool/操作员等待。不同运行通过 `dataset_version`、provider/model version、commit
 和 `selected_case_ids` 对齐比较。
 
+## 配对前审计 / Pre-pairing audit
+
+在发送任何 JEV 或 System-2 请求前，可以先对冻结候选生成的
+`jev_decision_evaluation_dataset_v1` 运行只读 readiness audit：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/audit_jev_held_out_intake.py \
+  --dataset /absolute/path/to/dataset.json \
+  --output-root /absolute/path/to/intake-audits
+```
+
+该命令只读取数据集并写入唯一 UTC 目录，输出 `audit_report.json`、
+`input_dataset.json` 和 `run_manifest.json`。它检查 held-out 样本、六类覆盖、
+计划样本数、复核者身份元数据、`decision_input_ref` 唯一性和完整候选覆盖；失败时退出 2，
+不读取凭据、不调用 JEV/System-2，也不产生 `active_eligible`。
+
+`reviewer_identity_distinct` 只表示数据集中的 labeler/reviewer ID 不同，不能替代
+未参与采集和标签编写的人工复核确认。
+
+当前 `20261016-size-ranking-wide/intake_result.json` 仍是候选 intake manifest，
+不是完整的 `jev_decision_evaluation_dataset_v1`，因此不能跳过标签冻结和独立复核直接运行正式配对。
+
 ## active 资格 / Active eligibility
 
 报告只在以下条件全部满足时给出 `active_eligible=true`：
