@@ -24,7 +24,7 @@
 ### 验证 / Validation
 - seed 111/112 均 `status=captured`、双视角、0 ms skew；JSON/profile 校验通过，所有 Action/Session/host selection/JEV/System-2 计数为 0。 / Both captures succeeded with two views and zero skew; JSON/profile validation passed and all Action/Session/host-selection/JEV/System-2 counters are zero.
 - 未部署、未调用宿主、未启用 active。 / No deployment, host call, or active enablement.
-- Git: `1e7caed9` on `feature/planning-loop`, pushed to origin. / Git：`1e7caed9`，位于 `feature/planning-loop`，已推送。
+- Git: content `1e7caed9`, documentation registration `0a6efcf5`, both on `feature/planning-loop` and pushed to origin. / Git：内容提交 `1e7caed9`、日志登记提交 `0a6efcf5`，均位于 `feature/planning-loop` 并已推送。
 
 ## v14.5.3 (2026-10-16 19:24) - codex
 
