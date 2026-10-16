@@ -30,9 +30,11 @@ class SnapshotConfig(BaseModel):
     runtime_root: Path
     runtime_profile: Path
     worker_python: Path
+    worker_script: Path | None = None
     output_root: Path
     local_api_base: str = "http://127.0.0.1:8012/v1"
     local_model: str = "qwen3-vl-4b-awq"
+    worker_request_timeout_s: float = Field(default=60, gt=0, le=300)
     model_timeout_s: float = Field(default=30, gt=0, le=60)
     model_max_tokens: int = Field(default=1536, ge=1, le=4096)
 
@@ -67,12 +69,13 @@ def _capture(config: SnapshotConfig, root: Path) -> dict:
         "runtime_root": str(config.runtime_root), "runtime_profile": str(config.runtime_profile),
         "artifact_root": str(root), "max_duration_s": 300, "stop_file": str(root / "stop"),
     })
+    worker_script = config.worker_script or (config.adapter_root / "runtime/robotwin_persistent_worker.py")
     worker_config = ProcessWorkerConfig(
-        command=(str(config.worker_python), str(config.adapter_root / "runtime/robotwin_persistent_worker.py"),
+        command=(str(config.worker_python), str(worker_script),
                  "--profile", str(worker_profile)),
         cwd=config.adapter_root / "runtime",
         environment={"PYTHONPATH": f"{config.adapter_root / 'src'}:{config.adapter_root / 'runtime'}"},
-        startup_timeout_s=90, request_timeout_s=30, shutdown_timeout_s=15,
+        startup_timeout_s=90, request_timeout_s=config.worker_request_timeout_s, shutdown_timeout_s=15,
     )
     worker = JsonlProcessWorkerClient(worker_config)
     client = PersistentWorkerClient(worker)

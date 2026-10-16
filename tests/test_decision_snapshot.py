@@ -100,3 +100,41 @@ def test_unavailable_observation_closes_worker_without_model_or_action(tmp_path,
     assert [call[0] for call in calls] == ["observe", "close"]
     assert calls[0][1]["sensor_refs"] == ["camera/head", "camera/front"]
     assert (run_dir / "worker.log").exists()
+
+
+def test_capture_config_can_select_read_only_worker(tmp_path, monkeypatch):
+    calls = []
+
+    class Client:
+        def __init__(self, worker):
+            calls.append(worker)
+
+        def query(self, operation, request):
+            return {"status": "unavailable"}
+
+        def close(self):
+            pass
+
+    modules = {
+        "robotwin20_adapter": SimpleNamespace(
+            Qwen3VLVLLMConfig=None, Qwen3VLVLLMSceneUnderstandingInference=None,
+        ),
+        "robotwin20_adapter.openai_scene_understanding": SimpleNamespace(FilesystemArtifactResolver=None),
+        "robotwin20_adapter.persistent_client": SimpleNamespace(PersistentWorkerClient=Client),
+        "robotwin20_adapter.process_worker": SimpleNamespace(
+            JsonlProcessWorkerClient=lambda config: config,
+            ProcessWorkerConfig=lambda **kwargs: kwargs,
+        ),
+        "robotwin20_adapter.runtime_profile": SimpleNamespace(load_runtime_profile=lambda _: {
+            "sensor_refs": ["camera/head"], "max_observation_age_ms": 1000,
+        }),
+        "robotwin20_adapter.understanding": SimpleNamespace(RoboTwinSceneUnderstandingProvider=None),
+    }
+    for name, module in modules.items():
+        monkeypatch.setitem(sys.modules, name, module)
+    monkeypatch.setattr(snapshot, "ObservationEndpoint", lambda provider: SimpleNamespace(invoke=provider.capture))
+    worker_script = tmp_path / "robotwin_observation_worker.py"
+    worker_script.write_text("# fixture\n", encoding="utf-8")
+    settings = config(tmp_path, worker_script=worker_script)
+    snapshot.capture_snapshot(settings, repo_root=tmp_path)
+    assert calls[0]["command"][1] == str(worker_script)

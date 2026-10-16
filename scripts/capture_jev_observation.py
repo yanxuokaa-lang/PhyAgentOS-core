@@ -18,6 +18,9 @@ def main() -> int:
     for name in ("adapter_root", "runtime_root", "runtime_profile", "worker_python", "output_root"):
         path = Path(raw[name]).expanduser()
         raw[name] = (config_path.parent / path).resolve() if not path.is_absolute() else path.resolve()
+    if raw.get("worker_script") is not None:
+        path = Path(raw["worker_script"]).expanduser()
+        raw["worker_script"] = (config_path.parent / path).resolve() if not path.is_absolute() else path.resolve()
     config = SnapshotConfig.model_validate(raw)
     sys.path.insert(0, str(config.adapter_root / "src"))
     root = capture_snapshot(config, repo_root=Path(__file__).resolve().parents[1])

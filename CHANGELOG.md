@@ -2,6 +2,41 @@
 
 ## 最近五版本 / Latest five versions
 
+## v14.5.0 (2026-10-16 18:19) - codex
+
+### 变更摘要 / Summary [完成只读观测适配；P3b active 未完成]
+- [eval] [feat] 增加不依赖任务专用 Adapter 的 RoboTwin 只读观测 worker，支持新工作流产生同步双视角观测；不注册目标/绑定/规划，不接受 Action/Session。 / Add a RoboTwin read-only observation worker independent of task-specific adapters so new workflows can produce synchronized two-view observations; it registers no goals/bindings/plans and accepts no Action/Session. (local)
+- [eval] [fix] 采集器支持外部 `worker_script` 与 `worker_request_timeout_s`，保留原 persistent worker 默认值；修复协议 stdout 被错误重定向到 stderr 的问题。 / Let the collector configure `worker_script` and `worker_request_timeout_s` while retaining the persistent-worker default; fix protocol stdout being redirected to stderr. (local)
+- [data] [exp] seed 103/104 取得真实双视角和本地理解，但因图像中没有可确认垃圾桶而不进入 held-out 评分；JEV/System-2 未调用，生产 active 仍关闭。 / Seeds 103/104 yielded real two-view observations and local understanding, but remain out of held-out scoring because no confirmed dustbin was visible; JEV/System-2 were not called and production active remains off. (local)
+
+### 文件变更详情 / File Change Details
+- [新增 / Added] `examples/forge-adapters/robotwin20/runtime/robotwin_observation_worker.py:L1-L112`：只接受 `observe`/`shutdown` 的 JSONL worker，复用 `RoboTwinSensorBackend`，明确拒绝动作命令并持久化内部失败日志。 / JSONL worker accepting only `observe`/`shutdown`, reusing `RoboTwinSensorBackend`, rejecting action commands and logging internal failures.
+- [修改 / Modified] `PhyAgentOS/agent/decision_snapshot.py:L25-L39,L67-L80`：新增可选 worker 脚本和 60-300 秒进程请求预算，默认仍使用 `robotwin_persistent_worker.py`。 / Add optional worker script and a 60-300 second process request budget, retaining `robotwin_persistent_worker.py` by default.
+- [修改 / Modified] `scripts/capture_jev_observation.py:L18-L24`：解析可选 worker 路径。 / Resolve the optional worker path.
+- [新增 / Added] `examples/forge-adapters/robotwin20/tests/test_observation_worker.py:L1-L53`；[修改 / Modified] `tests/test_decision_snapshot.py:L105-L140`：覆盖同步视图投影、缺 sensor 失败、worker 选择和 no-motion 采集关闭。 / Cover synchronized projection, missing-sensor failure, worker selection and no-motion cleanup.
+- [修改 / Modified] `docs/forge/JEV_HELD_OUT_INTAKE_20261015.md:L91-L115`：记录两次成功观测、缺失目标和不计入 held-out 的边界。 / Record both successful observations, the missing target and the exclusion from held-out scoring.
+
+### 关键代码 Diff / Key Code Diff
+```diff
+- robotwin_persistent_worker.py
++ robotwin_observation_worker.py  # only observe/shutdown; no task adapter or action provider
++ SnapshotConfig.worker_script
++ SnapshotConfig.worker_request_timeout_s
+- with redirect_stdout(sys.stderr): main()
++ main()  # protocol stdout remains connected to JsonlProcessWorkerClient
+```
+
+### 验证与七维结论 / Validation and Seven-Dimension Result
+- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest -q -p pytest_asyncio.plugin -p no:cacheprovider tests/test_decision_snapshot.py examples/forge-adapters/robotwin20/tests/test_observation_worker.py`: `12 passed`。
+- Ruff、`compileall`、`git diff --check` 通过；seed 103/104 均 `status=captured`、双视角、0 ambiguity、0 Action/Session/远程模型调用。
+- 所有权/正确性：只读 worker 只拥有传感器 reset/capture，目标、候选、Coordinator selection 仍未伪造；可观测/恢复：唯一目录、配置、源码、失败和 worker log 均保留；安全：no-motion、图片仍只到 loopback；兼容/预算：原 worker 默认路径和原模型预算不变，新进程预算仅覆盖已复现初始化超时。
+- P3b 仍未通过：瓶类场景没有可确认垃圾桶，未形成合格 held-out；独立标签复核、同版本 JEV/System-2 配对、服务部署 provenance、六类覆盖、接受策略和操作员授权仍缺。`active=false`。
+
+### Git 提交 / Git Commit
+- Commit: `1c2e168f`
+- Branch: `feature/planning-loop`
+- 时间: 2026-10-16 18:41 Asia/Shanghai
+
 ## v14.4.0 (2026-10-15 17:55) - codex
 
 ### 变更摘要 / Summary [完成宿主配对；正式 active 未完成]
