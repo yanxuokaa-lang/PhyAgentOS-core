@@ -33,7 +33,7 @@
 - P3b 仍未通过：瓶类场景没有可确认垃圾桶，未形成合格 held-out；独立标签复核、同版本 JEV/System-2 配对、服务部署 provenance、六类覆盖、接受策略和操作员授权仍缺。`active=false`。
 
 ### Git 提交 / Git Commit
-- Commit: `1c2e168f`
+- Commit: `b4369e35`
 - Branch: `feature/planning-loop`
 - 时间: 2026-10-16 18:41 Asia/Shanghai
 
