@@ -54,6 +54,7 @@ class DecisionEvaluationCase(BaseModel):
     family_id: str = Field(min_length=1)
     categories: tuple[str, ...] = Field(min_length=1)
     decision_input_ref: str = Field(min_length=1)
+    provenance_refs: tuple[str, ...] = ()
     goal: str = Field(min_length=1)
     facts: dict[str, Any]
     candidates: tuple[DecisionCandidate, ...] = Field(min_length=2)
@@ -74,6 +75,14 @@ class DecisionEvaluationCase(BaseModel):
         normalized = tuple(item.strip() for item in values)
         if any(not item for item in normalized) or len(normalized) != len(set(normalized)):
             raise ValueError("case categories must be unique and non-empty")
+        return normalized
+
+    @field_validator("provenance_refs")
+    @classmethod
+    def unique_nonempty_provenance_refs(cls, values: tuple[str, ...]) -> tuple[str, ...]:
+        normalized = tuple(item.strip() for item in values)
+        if any(not item for item in normalized) or len(normalized) != len(set(normalized)):
+            raise ValueError("case provenance refs must be unique and non-empty")
         return normalized
 
     @model_validator(mode="after")
@@ -98,6 +107,7 @@ class DecisionEvaluationDataset(BaseModel):
     dataset_version: str = Field(min_length=1)
     sampling_plan_ref: str = Field(min_length=1)
     labeling_protocol_ref: str = Field(min_length=1)
+    provenance_manifest_ref: str | None = None
     labeler_id: str = Field(min_length=1)
     reviewer_id: str = Field(min_length=1)
     planned_held_out_cases: int = Field(ge=0)
@@ -108,11 +118,14 @@ class DecisionEvaluationDataset(BaseModel):
         "dataset_version",
         "sampling_plan_ref",
         "labeling_protocol_ref",
+        "provenance_manifest_ref",
         "labeler_id",
         "reviewer_id",
     )
     @classmethod
-    def normalize_dataset_text(cls, value: str) -> str:
+    def normalize_dataset_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
         value = value.strip()
         if not value:
             raise ValueError("dataset metadata must be non-empty")
@@ -379,6 +392,82 @@ def _create_run_dir(output_root: Path) -> Path:
     return run_dir
 
 
+def _read_local_json_ref(base_dir: Path, reference: str | None) -> Any | None:
+    """Read a local evidence record; remote artifact URIs are not confirmations."""
+    if not reference or "://" in reference:
+        return None
+    path = Path(reference)
+    if not path.is_absolute():
+        path = base_dir / path
+    try:
+        return _strict_json_load(path.resolve())
+    except (OSError, ValueError, json.JSONDecodeError):
+        return None
+
+
+def _evidence_checks(
+    *,
+    dataset_path: Path,
+    dataset: DecisionEvaluationDataset,
+    selected_cases: list[DecisionEvaluationCase],
+) -> dict[str, bool]:
+    """Validate human review and source mapping records for selected cases."""
+    held_out = [case for case in selected_cases if case.split == "held_out"]
+    held_out_ids = {case.case_id for case in held_out}
+    review = _read_local_json_ref(dataset_path.parent, dataset.labeling_protocol_ref)
+    raw_review_ids = review.get("reviewed_case_ids") if isinstance(review, dict) else None
+    review_ids = (
+        set(raw_review_ids)
+        if isinstance(raw_review_ids, list)
+        and all(isinstance(item, str) for item in raw_review_ids)
+        else set()
+    )
+    review_ok = (
+        isinstance(review, dict)
+        and review.get("status") == "completed"
+        and review.get("independent_review") is True
+        and review.get("labeler_id") == dataset.labeler_id
+        and review.get("reviewer_id") == dataset.reviewer_id
+        and dataset.labeler_id != dataset.reviewer_id
+        and held_out_ids.issubset(review_ids)
+    )
+
+    manifest = _read_local_json_ref(dataset_path.parent, dataset.provenance_manifest_ref)
+    manifest_cases = manifest.get("cases", ()) if isinstance(manifest, dict) else ()
+    manifest_by_id: dict[str, tuple[str, ...]] = {}
+    if isinstance(manifest_cases, list):
+        for item in manifest_cases:
+            if not isinstance(item, dict) or not isinstance(item.get("case_id"), str):
+                continue
+            refs = item.get("provenance_refs")
+            if isinstance(refs, list) and all(isinstance(ref, str) for ref in refs):
+                manifest_by_id[item["case_id"]] = tuple(refs)
+    case_refs_present = all(case.provenance_refs for case in held_out)
+    case_refs_mapped = all(
+        tuple(manifest_by_id.get(case.case_id, ())) == tuple(case.provenance_refs)
+        for case in held_out
+    )
+    provenance_ok = (
+        bool(held_out)
+        and isinstance(manifest, dict)
+        and manifest.get("raw_free_text_uploaded") is False
+        and case_refs_present
+        and case_refs_mapped
+    )
+    return {
+        "independent_label_review": review_ok,
+        "review_record_present": isinstance(review, dict),
+        "reviewed_case_coverage": held_out_ids.issubset(review_ids),
+        "provenance_manifest_present": isinstance(manifest, dict),
+        "provenance_case_refs_complete": case_refs_present,
+        "provenance_case_coverage": case_refs_mapped,
+        "provenance_sanitized": (
+            isinstance(manifest, dict) and manifest.get("raw_free_text_uploaded") is False
+        ),
+        "provenance_confirmed": provenance_ok,
+    }
+
+
 def audit_held_out_dataset(
     *,
     dataset_path: Path,
@@ -444,6 +533,11 @@ def audit_held_out_dataset(
         }
         for case in replaceable
     )
+    evidence = _evidence_checks(
+        dataset_path=dataset_path,
+        dataset=dataset,
+        selected_cases=held_out,
+    )
     checks.update({
         "dataset_schema_valid": True,
         "held_out_cases_present": bool(held_out),
@@ -459,6 +553,7 @@ def audit_held_out_dataset(
         "reviewer_identity_distinct": dataset.labeler_id != dataset.reviewer_id,
         "decision_input_refs_unique": len(held_out_refs) == len(set(held_out_refs)),
         "candidate_coverage_complete": candidate_coverage,
+        **evidence,
     })
     reasons.extend(name for name, passed in checks.items() if not passed)
     ready = not reasons
@@ -469,6 +564,7 @@ def audit_held_out_dataset(
         "ready_for_pairing": ready,
         "dataset_name": dataset.name,
         "dataset_version": dataset.dataset_version,
+        "provenance_manifest_ref": dataset.provenance_manifest_ref,
         "held_out_case_count": len(held_out),
         "held_out_family_count": len({case.family_id for case in held_out}),
         "checks": checks,
@@ -624,7 +720,7 @@ def run_decision_evaluation(
             dataset.planned_held_out_cases > 0
             and len(selected_cases) >= dataset.planned_held_out_cases
         ),
-        "independent_label_review": dataset.labeler_id != dataset.reviewer_id,
+        "reviewer_identity_distinct": dataset.labeler_id != dataset.reviewer_id,
         "actual_model_version_recorded": all(
             record.model_version for record in selected_records
         ),
@@ -644,6 +740,13 @@ def run_decision_evaluation(
         "paired_latency_mean_improved": decision_mean < baseline_mean,
         "paired_latency_p95_not_worse": decision_p95 <= baseline_p95,
     }
+    checks.update(
+        _evidence_checks(
+            dataset_path=dataset_path,
+            dataset=dataset,
+            selected_cases=selected_cases,
+        )
+    )
     active_eligible = all(checks.values())
     ineligibility_reasons = [name for name, passed in checks.items() if not passed]
 
@@ -771,6 +874,7 @@ def run_decision_evaluation(
         "dataset_version": dataset.dataset_version,
         "sampling_plan_ref": dataset.sampling_plan_ref,
         "labeling_protocol_ref": dataset.labeling_protocol_ref,
+        "provenance_manifest_ref": dataset.provenance_manifest_ref,
         "labeler_id": dataset.labeler_id,
         "reviewer_id": dataset.reviewer_id,
         "planned_held_out_cases": dataset.planned_held_out_cases,

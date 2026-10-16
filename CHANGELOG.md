@@ -2,6 +2,33 @@
 
 ## 最近五版本 / Latest five versions
 
+## v14.5.6 (2026-10-16 21:00) - codex
+
+### 变更摘要 / Summary [完成]
+- [eval] [fix] 修复 P3b 配对前和正式评测的独立复核误放行，要求可读取的完成复核记录及逐 case 覆盖。 / Fix P3b pre-pairing and formal-evaluation false readiness by requiring a readable completed review record with per-case coverage. (local)
+- [eval] [fix] 增加 held-out provenance manifest/ref 映射与脱敏标记检查；证据缺失继续阻止 pairing 和 active。 / Add held-out provenance manifest/reference mapping and sanitization checks; missing evidence continues to block pairing and active. (local)
+
+### 文件变更详情 / File Change Details
+- [修改 / Modified] `PhyAgentOS/agent/decision_evaluation.py:L47-L153,L395-L468,L527-L590,L707-L749,L865-L892`：共用独立复核和 provenance 证据检查，坏记录 fail-closed。 / Share independent-review and provenance evidence checks, failing closed on malformed records.
+- [修改 / Modified] `tests/test_decision_evaluation.py:L28-L195,L238-L286,L504-L577`：覆盖不同 ID 但无独立确认、缺 provenance、正式评测拒绝和 malformed record。 / Cover distinct IDs without independent confirmation, missing provenance, formal rejection and malformed records.
+- [修改 / Modified] `docs/forge/JEV_P3B_EVALUATION.md:L30-L35,L96-L124`：记录正式 held-out 的复核/provenance 格式和 active 门槛。 / Document formal held-out review/provenance formats and active gates.
+- [修改 / Modified] `changelog/2026-10_part7.md`：登记本次审核修复及验证。 / Register this review fix and validation.
+
+### 关键 Diff / Key Diff
+```diff
+- independent_label_review = dataset.labeler_id != dataset.reviewer_id
++ completed independent review record with held-out coverage
++ per-case provenance refs match a local sanitized manifest
++ same checks run before pairing and before active eligibility
+```
+
+### 验证 / Validation
+- P3b evaluator `21 passed`; calibration `11 passed`; evaluator + host replay `30 passed`; related offline regression `236 passed`. / P3b evaluator `21 passed`; calibration `11 passed`; evaluator + host replay `30 passed`; related offline regression `236 passed`.
+- Ruff、compileall、`git diff --check` 通过；实际 intake/calibration 审计均退出 2，无远程或运动调用。 / Ruff, compileall and `git diff --check` passed; actual intake/calibration audits both exited 2 with no remote or motion calls.
+
+### Git 提交 / Git Commit
+- Implementation commit: pending. / 实现提交：待提交。
+
 ## v14.5.5 (2026-10-16 20:00) - codex
 
 ### 变更摘要 / Summary [完成；仅配对前审计]
@@ -101,7 +128,7 @@
 - 两批 `status=captured`、双视角、0 skew；无 Action/Session/远程模型/host selection，正式有效样本数 0。 / Both returned `status=captured` with two views and zero skew; no Action/Session/remote-model/host-selection calls and zero formal eligible samples.
 
 ## Archive
-- v14.5.0 and earlier detailed records continue below; monthly archive: `changelog/2026-10_part7.md`. / v14.5.0 及更早详细记录继续保留在下方；月度归档见 `changelog/2026-10_part7.md`。
+- v14.5.1 and earlier detailed records continue below; monthly archive: `changelog/2026-10_part7.md`. / v14.5.1 及更早详细记录继续保留在下方；月度归档见 `changelog/2026-10_part7.md`。
 
 ## v14.5.0 (2026-10-16 18:19) - codex
 

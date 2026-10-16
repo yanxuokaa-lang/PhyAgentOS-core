@@ -29,9 +29,10 @@ provenance and authorization and only when `active_eligible=true`.
 
 数据集使用 `jev_decision_evaluation_dataset_v1`。除 case 外，必须记录 `sampling_plan_ref`、
 `labeling_protocol_ref`、`labeler_id`、独立的 `reviewer_id` 和预先确定的
-`planned_held_out_cases`。每条 case 必须声明 `case_id`、
+`planned_held_out_cases`；正式 held-out 还必须提供相对数据集目录可读取的
+`provenance_manifest_ref`。每条 case 必须声明 `case_id`、
 `calibration|held_out` split、近重复隔离用的 `family_id`、类别、`decision_input_ref`、目标、
-脱敏后的最小必要事实、完整候选 ID/描述，以及正确候选或 `must_escalate=true`。同一 family
+脱敏后的最小必要事实、完整候选 ID/描述、来源 `provenance_refs`，以及正确候选或 `must_escalate=true`。同一 family
 不得跨 calibration/held_out。正式 held-out 集至少覆盖：
 
 - `multi_entity`
@@ -93,7 +94,11 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/audit_jev_held_out_intake.py 
 不读取凭据、不调用 JEV/System-2，也不产生 `active_eligible`。
 
 `reviewer_identity_distinct` 只表示数据集中的 labeler/reviewer ID 不同，不能替代
-未参与采集和标签编写的人工复核确认。
+未参与采集和标签编写的人工复核确认。审计会读取 `labeling_protocol_ref` 指向的本地 JSON，
+要求 `status=completed`、`independent_review=true`、复核者身份匹配且覆盖全部 held-out case；
+只改两个 ID 或只写自审说明不会通过。审计还会读取 `provenance_manifest_ref`，要求每条 case 的
+`provenance_refs` 与 manifest 一致，并明确 `raw_free_text_uploaded=false`。远程 `artifact://` URI
+本身不是本地 provenance 确认。
 
 当前 `20261016-size-ranking-wide/intake_result.json` 仍是候选 intake manifest，
 不是完整的 `jev_decision_evaluation_dataset_v1`，因此不能跳过标签冻结和独立复核直接运行正式配对。
@@ -103,6 +108,7 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/audit_jev_held_out_intake.py 
 报告只在以下条件全部满足时给出 `active_eligible=true`：
 
 - `evidence_mode=measured`，完整 held-out case，无部分选择，且记录独立标注复核；
+- 可读取的独立复核记录已完成并覆盖全部 held-out case，且 provenance manifest 映射完整、标记为已脱敏；
 - calibration/held-out family 隔离且六类必需场景齐全；
 - 每个 case/repetition 都有且仅有一条配对测量；
 - 每条配对测量的 `decision_input_ref` 与标注 case 一致，且报告记录 acceptance policy；

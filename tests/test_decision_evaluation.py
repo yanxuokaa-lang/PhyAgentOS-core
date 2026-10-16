@@ -32,6 +32,7 @@ def _dataset() -> dict:
         "family_id": "family-calibration",
         "categories": ["multi_entity"],
         "decision_input_ref": "artifact://jev-eval/inputs/calibration-entity",
+        "provenance_refs": ["artifact://jev-eval/source/calibration-entity"],
         "goal": "Select the current complete query input.",
         "facts": {"scene_revision": "scene-calibration"},
         "candidates": [
@@ -46,6 +47,7 @@ def _dataset() -> dict:
         "family_id": family_id,
         "categories": [category],
         "decision_input_ref": f"artifact://jev-eval/inputs/{case_id}",
+        "provenance_refs": [f"artifact://jev-eval/source/{case_id}"],
         "goal": "Select the current complete query input.",
         "facts": {"scene_revision": f"scene-{case_id}"},
         "candidates": [
@@ -60,7 +62,8 @@ def _dataset() -> dict:
         "name": "query-input-selection",
         "dataset_version": "2026-10-15.v1",
         "sampling_plan_ref": "artifact://jev-eval/sampling/query-v1",
-        "labeling_protocol_ref": "artifact://jev-eval/labels/query-v1",
+        "labeling_protocol_ref": "review.json",
+        "provenance_manifest_ref": "provenance.json",
         "labeler_id": "annotator-a",
         "reviewer_id": "reviewer-b",
         "planned_held_out_cases": len(HELD_OUT_CASES),
@@ -127,7 +130,24 @@ def _write_inputs(
     wrong_accept: bool = False,
 ) -> Path:
     root.mkdir(parents=True, exist_ok=True)
-    (root / "dataset.json").write_text(json.dumps(_dataset()), encoding="utf-8")
+    dataset = _dataset()
+    (root / "dataset.json").write_text(json.dumps(dataset), encoding="utf-8")
+    (root / "review.json").write_text(json.dumps({
+        "status": "completed",
+        "independent_review": True,
+        "labeler_id": dataset["labeler_id"],
+        "reviewer_id": dataset["reviewer_id"],
+        "reviewed_case_ids": [case["case_id"] for case in dataset["cases"]
+                               if case["split"] == "held_out"],
+    }), encoding="utf-8")
+    (root / "provenance.json").write_text(json.dumps({
+        "raw_free_text_uploaded": False,
+        "cases": [
+            {"case_id": case["case_id"], "provenance_refs": case["provenance_refs"]}
+            for case in dataset["cases"]
+            if case["split"] == "held_out"
+        ],
+    }), encoding="utf-8")
     (root / "measurements.json").write_text(
         json.dumps(_measurements(
             evidence_mode=evidence_mode,
@@ -151,8 +171,27 @@ def _write_inputs(
 
 def _write_dataset_only(root: Path, payload: dict | None = None) -> Path:
     root.mkdir(parents=True, exist_ok=True)
+    payload = payload or _dataset()
     path = root / "dataset.json"
-    path.write_text(json.dumps(payload or _dataset()), encoding="utf-8")
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    if not {"labeler_id", "reviewer_id", "cases"}.issubset(payload):
+        return path
+    (root / "review.json").write_text(json.dumps({
+        "status": "completed",
+        "independent_review": True,
+        "labeler_id": payload["labeler_id"],
+        "reviewer_id": payload["reviewer_id"],
+        "reviewed_case_ids": [case["case_id"] for case in payload["cases"]
+                               if case["split"] == "held_out"],
+    }), encoding="utf-8")
+    (root / "provenance.json").write_text(json.dumps({
+        "raw_free_text_uploaded": False,
+        "cases": [
+            {"case_id": case["case_id"], "provenance_refs": case["provenance_refs"]}
+            for case in payload["cases"]
+            if case["split"] == "held_out"
+        ],
+    }), encoding="utf-8")
     return path
 
 
@@ -192,6 +231,46 @@ def test_held_out_intake_audit_reports_missing_categories_and_review(tmp_path):
     assert "required_category_coverage" in report["reasons"]
     assert "planned_sample_size_reached" in report["reasons"]
     assert "reviewer_identity_distinct" in report["reasons"]
+
+
+def test_held_out_intake_audit_rejects_distinct_ids_without_review_record(tmp_path):
+    dataset_path = _write_dataset_only(tmp_path)
+    (tmp_path / "review.json").write_text(json.dumps({
+        "status": "completed",
+        "independent_review": False,
+        "labeler_id": "annotator-a",
+        "reviewer_id": "reviewer-b",
+        "reviewed_case_ids": [case["case_id"] for case in _dataset()["cases"]],
+    }), encoding="utf-8")
+
+    summary = audit_held_out_dataset(
+        dataset_path=dataset_path,
+        output_root=tmp_path / "audit-runs",
+        repo_root=Path(__file__).resolve().parents[1],
+    )
+
+    report = json.loads((summary.run_dir / "audit_report.json").read_text())
+    assert summary.ready_for_pairing is False
+    assert "independent_label_review" in report["reasons"]
+
+
+def test_held_out_intake_audit_requires_provenance_mapping(tmp_path):
+    payload = _dataset()
+    payload["provenance_manifest_ref"] = "missing-provenance.json"
+    dataset_path = _write_dataset_only(tmp_path, payload)
+
+    summary = audit_held_out_dataset(
+        dataset_path=dataset_path,
+        output_root=tmp_path / "audit-runs",
+        repo_root=Path(__file__).resolve().parents[1],
+    )
+
+    report = json.loads((summary.run_dir / "audit_report.json").read_text())
+    assert summary.ready_for_pairing is False
+    assert {
+        "provenance_manifest_present",
+        "provenance_confirmed",
+    }.issubset(report["reasons"])
 
 
 def test_held_out_intake_audit_rejects_duplicate_decision_inputs(tmp_path):
@@ -420,6 +499,56 @@ def test_missing_model_identity_or_independent_review_blocks_active(tmp_path):
         "independent_label_review",
         "system2_model_version_recorded",
     }.issubset(metrics["active_ineligibility_reasons"])
+
+
+def test_formal_evaluator_rejects_unconfirmed_review_and_provenance(tmp_path):
+    config_path = _write_inputs(tmp_path)
+    review = json.loads((tmp_path / "review.json").read_text())
+    review["independent_review"] = False
+    (tmp_path / "review.json").write_text(json.dumps(review), encoding="utf-8")
+    provenance = json.loads((tmp_path / "provenance.json").read_text())
+    provenance["cases"][0]["provenance_refs"] = ["artifact://wrong/source"]
+    (tmp_path / "provenance.json").write_text(json.dumps(provenance), encoding="utf-8")
+
+    summary = run_decision_evaluation(
+        config_path=config_path,
+        repo_root=Path(__file__).resolve().parents[1],
+    )
+    metrics = json.loads((summary.run_dir / "metrics.json").read_text())
+
+    assert summary.active_eligible is False
+    assert summary.exit_code == 2
+    assert {
+        "independent_label_review",
+        "provenance_case_coverage",
+        "provenance_confirmed",
+    }.issubset(metrics["active_ineligibility_reasons"])
+
+
+def test_malformed_evidence_records_fail_closed(tmp_path):
+    config_path = _write_inputs(tmp_path)
+    (tmp_path / "review.json").write_text(json.dumps({
+        "status": "completed",
+        "independent_review": True,
+        "labeler_id": "annotator-a",
+        "reviewer_id": "reviewer-b",
+        "reviewed_case_ids": {"not": "a-list"},
+    }), encoding="utf-8")
+    (tmp_path / "provenance.json").write_text(json.dumps({
+        "raw_free_text_uploaded": False,
+        "cases": [{"case_id": "held-multi-entity", "provenance_refs": "not-a-list"}],
+    }), encoding="utf-8")
+
+    summary = run_decision_evaluation(
+        config_path=config_path,
+        repo_root=Path(__file__).resolve().parents[1],
+    )
+    metrics = json.loads((summary.run_dir / "metrics.json").read_text())
+
+    assert summary.active_eligible is False
+    assert summary.exit_code == 2
+    assert "independent_label_review" in metrics["active_ineligibility_reasons"]
+    assert "provenance_case_coverage" in metrics["active_ineligibility_reasons"]
 
 
 def test_missing_policy_or_mismatched_pair_input_blocks_active(tmp_path):
