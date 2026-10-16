@@ -2,6 +2,17 @@
 
 ## 最近五版本 / Latest five versions
 
+## v14.5.9 (2026-10-16 22:10) - codex
+
+### 变更摘要 / Summary [完成；pending external reviewer]
+- [eval] [exp] 生成候选 110/112/114/115/116 的脱敏 independent-review package、空白复核表和 provenance 模板；不伪造标签、独立身份或部署证明。 / Generate a sanitized independent-review package, blank review form, and provenance template for candidates 110/112/114/115/116 without fabricating labels, reviewer independence, or deployment proof.
+- [eval] [docs] 明确 package 不是正式 held-out dataset，六类覆盖和独立复核完成前不运行正式配对、不启用 active。 / Make clear the package is not a formal held-out dataset; do not run formal pairing or enable active before six-category coverage and independent review are complete.
+
+### 文件与验证 / Files and Validation
+- `artifacts/evals/jev-review-package/20261016T2210/`：package manifest、五个 case card、review/provenance 模板。 / Package manifest, five case cards, and review/provenance templates.
+- `docs/forge/JEV_HELD_OUT_INTAKE_20261015.md`、`changelog/2026-10_part7.md`：记录外部复核交接边界。 / Record the external-review handoff boundary.
+- JSON 校验通过；无图片、凭据、Authorization 或原始模型响应；`formal_held_out=false`、`independent_review=false`、`active=false`。 / JSON validation passed; no images, credentials, Authorization, or raw model responses; `formal_held_out=false`, `independent_review=false`, and `active=false`.
+
 ## v14.5.8 (2026-10-16 21:25) - codex
 
 ### 变更摘要 / Summary [完成；calibration replay，非正式 held-out]

@@ -239,3 +239,17 @@ JEV/System-2 请求数受配置 `max_requests=6` 限制。随后对三个 replay
 `2`；报告明确 `active_eligible=false`，原因包括 `held_out_only`、`planned_sample_size_reached`、
 `independent_label_review`、`provenance_manifest_present`、`provenance_confirmed`，以及缺少 acceptance
 policy。上述 replay 仅证明当前宿主边界可重放和失败可追踪，不是正式 paired measurement 或 active 证据。
+
+## 独立复核 package / Independent review package (2026-10-16)
+
+已生成脱敏复核包：
+`artifacts/evals/jev-review-package/20261016T2210/`。包内包含候选 110/112/114/115/116 的
+最小语义事实、候选实体、capture/provenance 引用和空白复核字段；不包含图片、自由文本日志、凭据或
+JEV/System-2 原始响应。`package_manifest.json` 明确 `status=pending_external_reviewer`、
+`formal_held_out=false`、`independent_review=false`。
+
+复核者必须是未参与采集、标签编写和调试的人员，并在 `review_form.template.json` 中填写身份、逐 case
+覆盖、类别、`expected_selected_id` 或 `must_escalate`、依据引用和完成时间。复核者不能从模型选择结果
+反推标签；无法确认身份、关系或目标时必须标记 `inconclusive`。`provenance_manifest.template.json`
+只作为待确认模板，不能当作已确认 provenance。当前 package 仍不满足六类覆盖，不能直接转换为正式
+`jev_decision_evaluation_dataset_v1`，也不能触发 JEV/System-2 正式配对或 active。
