@@ -2,6 +2,35 @@
 
 ## 最近五版本 / Latest five versions
 
+## v14.6.0 (2026-10-17 12:30) - codex
+
+### 变更摘要 / Summary [完成；单候选 JEV 路由]
+- [policy] [feat] `query_input_selection` 现在允许恰好一个已审查候选调用 JEV；零候选仍回退到宿主/主模型路径，复杂规划不交给 JEV。 / `query_input_selection` now allows JEV for exactly one reviewed candidate; zero candidates still fall back to the host/primary-model path, and complex planning remains outside JEV.
+- [model] [fix] `DecisionRequest` 支持单候选 choice；JEV 只能返回候选 ID，宿主继续负责 admission、参数重建和持久化。 / `DecisionRequest` supports a single choice; JEV can only return a candidate ID while the host retains admission, argument reconstruction and persistence.
+
+### 文件变更详情 / File Change Details
+- `PhyAgentOS/agent/decision_provider.py:L29-L42`：`candidates` 最小数量 `2 -> 1`。 / Change candidate minimum `2 -> 1`.
+- `PhyAgentOS/agent/loop.py:L825-L829`：`choices` 为空才跳过 JEV。 / Skip JEV only when choices are empty.
+- `PhyAgentOS/agent/planning_loop.py:L879-L921`：允许一个 reviewed candidate。 / Allow one reviewed candidate.
+- `tests/test_planning_loop.py:L1521-L1554`：单候选 JEV 调用与 host persistence 回归。 / Single-candidate JEV and host-persistence regression.
+
+### 验证 / Validation
+- 相关 provider/redaction/planning suites：`184 passed`；Ruff、compileall、`git diff --check` 通过；全程 no-motion。 / Focused suites: `184 passed`; Ruff, compileall and `git diff --check` passed; no-motion throughout.
+
+## v14.5.12 (2026-10-17 12:05) - codex
+
+### 变更摘要 / Summary [完成；JEV shadow 七维复审修复]
+- [policy] [fix] URI 脱敏覆盖任意 `scheme://`，并将 shadow 未知候选记录为 `admission_rejected/unknown_candidate`。 / Redact any `scheme://` URI and report unknown shadow candidates as `admission_rejected/unknown_candidate`.
+- [eval] [test] 增加真实 SystemOne wire payload、goal/facts 脱敏、shadow 不持久化和未来 URI scheme 回归。 / Add regressions for the real SystemOne wire payload, goal/facts redaction, shadow non-persistence and future URI schemes.
+
+### 文件变更详情 / File Change Details
+- `PhyAgentOS/agent/experience/redaction.py:L23-L41`、`PhyAgentOS/agent/loop.py:L903-L922`：通用 URI 脱敏和未知 ID 遥测。 / General URI redaction and unknown-ID telemetry.
+- `tests/test_redaction.py:L4-L18`、`tests/test_planning_loop.py:L1521-L1554,L1716-L1861`：边界回归。 / Boundary regressions.
+- `changelog/2026-10_part7.md`：七维 shadow 复审及 active 资格边界。 / Seven-dimension shadow review and active eligibility boundary.
+
+### 验证 / Validation
+- 本轮相关回归 `184 passed`；JEV calibration evaluator 仍 `active_eligible=false`，active 不启用。 / Focused regressions passed with `184 passed`; the calibration evaluator remains `active_eligible=false`, so active stays disabled.
+
 ## v14.5.11 (2026-10-17 11:45) - codex
 
 ### 变更摘要 / Summary [完成；JEV shadow 接入验收]

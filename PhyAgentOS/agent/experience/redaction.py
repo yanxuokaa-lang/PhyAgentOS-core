@@ -21,10 +21,7 @@ _ABSOLUTE_PATH = re.compile(
 )
 _WINDOWS_PATH = re.compile(r"\b[A-Za-z]:\\(?:[^\s`]+\\)*[^\s`]+")
 _OPAQUE_URI = re.compile(
-    r"\b(?:agent-task-event|agent-task-record|artifact|attempt|calibration|"
-    r"candidate(?:-set)?|destination|entity|evidence|file|invocation|mxc|"
-    r"observation|offline|preparation|producer|record|reconstructed-development-input|"
-    r"revision|sensor|snapshot|socks5|statefile\+sessions|task)://[^\s<>()\"']+",
+    r"\b[a-z][a-z0-9+.-]*://[^\s<>()\"']+",
     re.IGNORECASE,
 )
 _EXECUTABLE_ID = re.compile(

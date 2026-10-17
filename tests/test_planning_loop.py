@@ -1518,6 +1518,73 @@ def test_active_projected_query_decision_persists_only_known_selected_choice(
         ]
 
 
+def test_active_projected_query_decision_calls_jev_for_one_candidate():
+    class Provider:
+        def __init__(self):
+            self.requests = []
+
+        async def decide(self, request, **_kwargs):
+            self.requests.append(request)
+            return DecisionResult(outcome="selected", selected_id="query-input-1")
+
+        async def close(self):
+            pass
+
+    provider = Provider()
+    loop, coordinator, context = _projected_query_decision_fixture(provider)
+    context = context.model_copy(update={
+        "scene_bind_selection": {
+            **context.scene_bind_selection,
+            "candidate_entities": [context.scene_bind_selection["candidate_entities"][0]],
+            "candidate_entity_refs": ["entity://red"],
+            "recommended_unambiguous_entity_refs": ["entity://red"],
+        },
+    })
+
+    selected = asyncio.run(loop.try_projected_query_decision(
+        context, decision_deadline=monotonic() + 1,
+    ))
+
+    assert selected is True
+    assert len(provider.requests) == 1
+    assert [item.candidate_id for item in provider.requests[0].candidates] == [
+        "query-input-1",
+    ]
+    assert len(coordinator.proposals) == 1
+    assert coordinator.proposals[0]["tool_arguments"]["entity_refs"] == ["entity://red"]
+
+
+def test_projected_query_decision_redacts_opaque_goal_and_facts():
+    class Provider:
+        def __init__(self):
+            self.requests = []
+
+        async def decide(self, request, **_kwargs):
+            self.requests.append(request)
+            return DecisionResult(outcome="escalate")
+
+        async def close(self):
+            pass
+
+    provider = Provider()
+    loop, coordinator, context = _projected_query_decision_fixture(provider)
+    coordinator.get_task = lambda _task_id: SimpleNamespace(
+        task_description="Inspect scene://private-scene and file:///home/private",
+        active_revision_id=context.revision_id,
+    )
+    context = context.model_copy(update={
+        "required_evidence": ("relation://private-scene/near", "scene://private-scene"),
+    })
+
+    assert asyncio.run(loop.try_projected_query_decision(
+        context, decision_deadline=monotonic() + 1,
+    )) is False
+    request = provider.requests[0]
+    assert "://" not in request.goal
+    assert all("://" not in value for value in request.facts["required_evidence"])
+    assert request.facts["capability"] == "scene.bind"
+
+
 def test_active_projected_query_decision_logs_trace_bound_observation(monkeypatch):
     class Provider:
         async def decide(self, _request, **_kwargs):
@@ -1682,6 +1749,55 @@ def test_shadow_projected_query_is_nonblocking_and_closed_with_agent_loop():
     asyncio.run(exercise())
 
 
+def test_shadow_systemone_wire_payload_is_redacted_and_never_persisted():
+    import httpx
+
+    from PhyAgentOS.agent.decision_provider import JEVHTTPDecisionProvider
+
+    async def exercise():
+        received = []
+
+        async def handler(request):
+            payload = json.loads(request.content)
+            received.append(payload)
+            state = json.loads(payload["state"])
+            assert "://" not in state["goal"]
+            assert all("://" not in value for value in state["facts"]["required_evidence"])
+            assert all(
+                "://" not in description
+                for description in payload["questions"]["decision"]["criteria"].values()
+            )
+            return httpx.Response(200, json={
+                "model": "jev-shadow-test",
+                "answers": {"decision": {"type": "choice", "choice": "query-input-2"}},
+            })
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            provider = JEVHTTPDecisionProvider(
+                client=client, api_format="systemone", api_key="fixture-key",
+            )
+            loop, coordinator, context = _projected_query_decision_fixture(
+                provider, mode="shadow",
+            )
+            coordinator.get_task = lambda _task_id: SimpleNamespace(
+                task_description="Inspect scene://private-scene",
+                active_revision_id=context.revision_id,
+            )
+            context = context.model_copy(update={
+                "required_evidence": ("relation://private-scene/near",),
+            })
+
+            assert await loop.try_projected_query_decision(
+                context, decision_deadline=monotonic() + 1,
+            ) is False
+            await asyncio.gather(*loop._decision_tasks)
+            assert len(received) == 1
+            assert coordinator.proposals == []
+            await provider.close()
+
+    asyncio.run(exercise())
+
+
 def test_shadow_decision_reports_shared_deadline_remaining(monkeypatch):
     class Provider:
         async def decide(self, _request, **_kwargs):
@@ -1719,6 +1835,45 @@ def test_shadow_decision_reports_shared_deadline_remaining(monkeypatch):
     assert observation["model_version"] == "jev-shadow-v1"
     assert observation["remaining_ms"] > 500
     assert observation["decision_trace_ref"] is None
+
+
+def test_shadow_decision_reports_unknown_candidate_as_admission_rejected(monkeypatch):
+    class Provider:
+        async def decide(self, _request, **_kwargs):
+            return DecisionResult(
+                outcome="selected", selected_id="query-input-unknown", model_version="jev-shadow-v1"
+            )
+
+        async def close(self):
+            pass
+
+    class Logger:
+        def __init__(self):
+            self.messages = []
+
+        def info(self, message, *args):
+            self.messages.append(message.format(*args))
+
+    import importlib
+
+    loop_module = importlib.import_module("PhyAgentOS.agent.loop")
+    sink = Logger()
+    monkeypatch.setattr(loop_module, "logger", sink)
+
+    async def exercise():
+        loop, _coordinator, context = _projected_query_decision_fixture(
+            Provider(), mode="shadow"
+        )
+        assert await loop.try_projected_query_decision(
+            context, decision_deadline=monotonic() + 1,
+        ) is False
+        await asyncio.gather(*loop._decision_tasks)
+
+    asyncio.run(exercise())
+    observation = json.loads(sink.messages[0].removeprefix("Agent decision "))
+    assert observation["outcome"] == "admission_rejected"
+    assert observation["reason"] == "unknown_candidate"
+    assert observation["selected_candidate_id"] == "query-input-unknown"
 
 
 def test_agent_loop_persists_unique_projected_query_without_model_turn():

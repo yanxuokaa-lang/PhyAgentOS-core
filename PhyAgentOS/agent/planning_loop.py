@@ -880,7 +880,7 @@ def projected_query_argument_choices(
     context: NodeExecutionContext,
     plan: ArgumentProjectionPlan,
 ) -> tuple[ProjectedQueryChoice, ...]:
-    """Materialize the first JEV slice: unambiguous ``scene.bind`` choices.
+    """Materialize the JEV slice: reviewed ``scene.bind`` choices.
 
     The provider chooses only among IDs. Exact projected arguments remain in
     the host and are rebuilt before persistence. Multiple source records or
@@ -917,7 +917,7 @@ def projected_query_argument_choices(
         for ref in selection.get("recommended_unambiguous_entity_refs", ())
         if isinstance(ref, str) and ref in entity_by_ref
     )
-    if len(recommended) < 2 or len(recommended) != len(set(recommended)):
+    if not recommended or len(recommended) != len(set(recommended)):
         return ()
     if any(
         field != "entity_refs" and field not in context.input_bindings

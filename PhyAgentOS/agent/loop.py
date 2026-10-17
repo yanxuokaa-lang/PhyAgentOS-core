@@ -825,7 +825,7 @@ class AgentLoop:
         choices = projected_query_argument_choices(
             context, policy.argument_projection_plan
         )
-        if len(choices) < 2:
+        if not choices:
             return None
         task = self.forge_task_coordinator.get_task(context.task_id)
         request = DecisionRequest(
@@ -900,12 +900,17 @@ class AgentLoop:
                 ),
                 timeout=timeout_s,
             )
+            outcome = "abstained" if result.outcome == "escalate" else result.outcome
+            reason = result.reason
+            if result.outcome == "selected" and not any(
+                item.candidate_id == result.selected_id for item in request.candidates
+            ):
+                outcome = "admission_rejected"
+                reason = "unknown_candidate"
             self._log_decision(
                 request,
                 mode="shadow",
-                outcome=(
-                    "abstained" if result.outcome == "escalate" else result.outcome
-                ),
+                outcome=outcome,
                 started=started,
                 provider=provider_name,
                 requested_model=model_name,
@@ -913,7 +918,7 @@ class AgentLoop:
                 candidate_count=len(request.candidates),
                 selected_id=result.selected_id,
                 remaining_ms=max(0.0, decision_deadline - monotonic()) * 1000,
-                reason=result.reason,
+                reason=reason,
             )
         except asyncio.CancelledError:
             self._log_decision(

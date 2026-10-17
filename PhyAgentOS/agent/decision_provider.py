@@ -38,7 +38,7 @@ class DecisionRequest(BaseModel):
     node_id: str | None = None
     goal: str
     facts: dict[str, Any] = Field(default_factory=dict)
-    candidates: tuple[DecisionCandidate, ...] = Field(min_length=2)
+    candidates: tuple[DecisionCandidate, ...] = Field(min_length=1)
     acceptance_policy_ref: str | None = None
 
     @field_validator(

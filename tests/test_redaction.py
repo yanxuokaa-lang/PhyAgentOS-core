@@ -6,7 +6,8 @@ def test_redact_text_removes_internal_opaque_uris_from_remote_text():
         "choose entity://e1 from observation://scene/head using "
         "calibration://fixture/current; see artifact://plans/rev, "
         "candidate://e1/1, destination://targets/bin, task://task-1, "
-        "record://record-1 and revision://rev-1"
+        "record://record-1, revision://rev-1, scene://scene-1, "
+        "relation://scene-1/near, socks://proxy:1080 and future+ref.v2://opaque/key"
     )
 
     redacted = redact_text(value)
