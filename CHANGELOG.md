@@ -2,7 +2,7 @@
 
 ## 最近五版本 / Latest five versions
 
-## v14.5.10 (2026-10-17 00:00) - codex
+## v14.5.10 (2026-10-17 11:37) - codex
 
 ### 变更摘要 / Summary [完成；校准可追溯，正式 held-out 未完成]
 - [eval] [fix] 为真实记录抽取的每个 calibration case 添加 task event/execution record provenance refs，并标注为 `reconstructed_development_input`；这些 refs 仅保存在本地，不进入 JEV/System-2 payload。 / Add task event/execution record provenance refs to each extracted calibration case and mark it `reconstructed_development_input`; refs remain local and are excluded from JEV/System-2 payloads.
@@ -26,6 +26,7 @@
 
 ### 七维验收 / Seven-Dimension Review
 - 架构/所有权、正确性、可观测性、恢复幂等、安全、兼容、预算/自主性均通过；Blocker 0 / Major 0 / Minor 0。正式 held-out、独立复核、独立 provenance confirmation 与六类覆盖仍不足。 / Architecture/ownership, correctness, observability, recovery/idempotency, safety, compatibility, and budget/autonomy pass; zero blockers/majors/minors. Formal held-out, independent review, independent provenance confirmation, and six-category coverage remain insufficient.
+- Content commit: `ef6f6019` on `feature/planning-loop`; documentation registration commit follows. / 内容提交：`ef6f6019`，位于 `feature/planning-loop`；日志登记提交随后完成。
 
 ## v14.5.9 (2026-10-16 22:10) - codex
 
