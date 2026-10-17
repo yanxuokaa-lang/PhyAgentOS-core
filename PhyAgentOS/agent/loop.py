@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable
 from loguru import logger
 
 from PhyAgentOS.agent.context import ContextBuilder
+from PhyAgentOS.agent.experience.redaction import redact_text
 from PhyAgentOS.agent.memory import MemoryConsolidator
 from PhyAgentOS.agent.planning_facts import response_facts
 from PhyAgentOS.agent.prompt_context import (
@@ -833,10 +834,12 @@ class AgentLoop:
             revision_id=context.revision_id,
             scene_revision=context.scene_revision,
             node_id=context.node_id,
-            goal=task.task_description,
+            goal=redact_text(task.task_description),
             facts={
-                "capability": context.capability,
-                "required_evidence": list(context.required_evidence),
+                "capability": redact_text(context.capability),
+                "required_evidence": [
+                    redact_text(item) for item in context.required_evidence
+                ],
             },
             candidates=tuple(
                 DecisionCandidate(

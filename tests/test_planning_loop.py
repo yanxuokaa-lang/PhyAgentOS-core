@@ -1215,6 +1215,9 @@ def test_projected_query_choices_materialize_complete_unambiguous_inputs():
     assert [choice.candidate_id for choice in choices] == [
         "query-input-1", "query-input-2",
     ]
+    assert all("entity://" not in choice.description for choice in choices)
+    assert all(f"candidate {index}" in choice.description
+               for index, choice in enumerate(choices, start=1))
     assert [choice.arguments["entity_refs"] for choice in choices] == [
         ["entity://red"], ["entity://blue"],
     ]

@@ -2,6 +2,33 @@
 
 ## 最近五版本 / Latest five versions
 
+## v14.5.11 (2026-10-17 11:45) - codex
+
+### 变更摘要 / Summary [完成；JEV shadow 接入验收]
+- [policy] [fix] 扩展共享文本脱敏器以替换内部 opaque URI；生产 JEV `systemone` goal 与候选描述不携带 entity/observation/calibration/artifact 等宿主引用，本地 binding 参数保持不变。 / Extend the shared text redactor to replace internal opaque URIs; production JEV `systemone` goals and candidate descriptions carry no host entity/observation/calibration/artifact references while local binding arguments remain unchanged.
+- [env] [chore] `queryInputSelection` 已接入 JEV `jev-latest`、`systemone`、key-file，并保持 `shadow`；其它决策点为 `off`，`active=false`。 / Connect `queryInputSelection` to JEV `jev-latest` with `systemone` and the key file while keeping `shadow`; other decision points remain `off` and `active=false`.
+
+### 文件变更详情 / File Change Details
+- [修改 / Modified] `PhyAgentOS/agent/experience/redaction.py:L23-L48`：新增内部 opaque URI 规则并在共享 `redact_text` 中替换为 `[REDACTED_REFERENCE]`。 / Add internal opaque-URI patterns and replace them with `[REDACTED_REFERENCE]` in shared `redact_text`.
+- [修改 / Modified] `PhyAgentOS/agent/loop.py:L20,L831-L849`：JEV 请求 goal、capability、required evidence 复用脱敏器；宿主仍使用未改写的 context/arguments。 / Reuse the redactor for the JEV goal, capability, and required evidence while the host keeps its original context/arguments.
+- [修改 / Modified] `PhyAgentOS/agent/planning_loop.py:L947-L959`：候选描述改为编号和安全类别，真实 `entity_refs` 仅保留在本地 arguments。 / Use candidate numbers and safe categories in descriptions; keep real `entity_refs` only in local arguments.
+- [新增 / Added] `tests/test_redaction.py:L1-L21`、[修改 / Modified] `tests/test_planning_loop.py:L1218-L1222`：覆盖 URI 脱敏和候选投影边界。 / Cover URI redaction and candidate-projection boundaries.
+- [配置 / Config] `/home/yanxu/.PhyAgentOS/config.json`：`queryInputSelection` 为 `shadow/systemone/jev-latest`，使用 key-file；该文件不进入本仓库提交。 / `queryInputSelection` is `shadow/systemone/jev-latest` with a key-file; this file is outside the repository commit.
+
+### 关键 Diff / Key Diff
+```diff
+- candidate description: Bind current unambiguous entity entity://...
++ candidate description: Bind current unambiguous candidate 1 (category)
++ remote goal/category URI -> [REDACTED_REFERENCE]
+  local tool arguments: entity_refs unchanged
+  decision mode: shadow; active: false
+```
+
+### 验证 / Validation
+- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/test_redaction.py tests/test_planning_loop.py`：`160 passed`；compileall 与 `git diff --check` 通过。 / `160 passed`; compileall and `git diff --check` passed.
+- 配置加载确认 `shadow/systemone/jev-latest`、key-file 存在、其它 decision points `off`、`active=false`。 / Config loading confirmed `shadow/systemone/jev-latest`, key-file presence, other decision points `off`, and `active=false`.
+- 真实 JEV API smoke 使用虚构两候选、只读 `DecisionRequest`：响应 `outcome=escalate` 且带 model version；未启动 AgentTask/Runtime/Gateway/Query/Action/Session、传感器或运动，未保存 key/原始响应。 / A real JEV API smoke with a synthetic two-choice read-only request returned `outcome=escalate` with a model version; no AgentTask/Runtime/Gateway/Query/Action/Session, sensor, or motion started, and no key/raw response was saved.
+
 ## v14.5.10 (2026-10-17 11:37) - codex
 
 ### 变更摘要 / Summary [完成；校准可追溯，正式 held-out 未完成]
@@ -62,6 +89,9 @@
 - 五次均 `view_count=2`、`capture_skew_ms=0`；Action/Session/remote-model/host selection/JEV/System-2 均为 0；formal scoreable case 为 0，active 关闭。 / All five had two views and zero skew; Action/Session/remote-model/host-selection/JEV/System-2 calls were zero; formal scoreable cases remain zero and active is off.
 - Git: `c5a4b6b7` on `feature/planning-loop`, pushed to origin. / Git: `c5a4b6b7` on `feature/planning-loop`, pushed to origin.
 
+## Archive
+- v14.5.6 and earlier detailed records continue below; monthly archive: `changelog/2026-10_part7.md`. / v14.5.6 及更早详细记录继续保留在下方；月度归档见 `changelog/2026-10_part7.md`。
+
 ## v14.5.6 (2026-10-16 21:00) - codex
 
 ### 变更摘要 / Summary [完成]
@@ -88,9 +118,6 @@
 
 ### Git 提交 / Git Commit
 - Implementation commit: `c2875b54` on `feature/planning-loop`; documentation registration follows. / 实现提交：`c2875b54`，位于 `feature/planning-loop`；文档登记提交随后完成。
-
-## Archive
-- v14.5.5 and earlier detailed records continue below; monthly archive: `changelog/2026-10_part7.md`. / v14.5.5 及更早详细记录继续保留在下方；月度归档见 `changelog/2026-10_part7.md`。
 
 ## v14.5.5 (2026-10-16 20:00) - codex
 

@@ -945,10 +945,12 @@ def projected_query_argument_choices(
             return ()
         entity = entity_by_ref[entity_ref]
         category = entity.get("category")
-        description = (
-            f"Bind current unambiguous entity {entity_ref}"
-            + (f" ({category})" if isinstance(category, str) and category else "")
-        )
+        safe_category = redact_text(category) if isinstance(category, str) else ""
+        if "://" in safe_category or len(safe_category) > 80:
+            safe_category = ""
+        description = f"Bind current unambiguous candidate {index}"
+        if safe_category.strip():
+            description += f" ({safe_category.strip()})"
         choices.append(ProjectedQueryChoice(
             candidate_id=f"query-input-{index}",
             description=description,

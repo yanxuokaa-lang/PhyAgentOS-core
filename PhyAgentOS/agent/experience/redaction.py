@@ -20,6 +20,13 @@ _ABSOLUTE_PATH = re.compile(
     r"(?<![\w.])/(?:etc|home|root|data|var|opt|srv|tmp|Users)(?:/[^\s`]+)+"
 )
 _WINDOWS_PATH = re.compile(r"\b[A-Za-z]:\\(?:[^\s`]+\\)*[^\s`]+")
+_OPAQUE_URI = re.compile(
+    r"\b(?:agent-task-event|agent-task-record|artifact|attempt|calibration|"
+    r"candidate(?:-set)?|destination|entity|evidence|file|invocation|mxc|"
+    r"observation|offline|preparation|producer|record|reconstructed-development-input|"
+    r"revision|sensor|snapshot|socks5|statefile\+sessions|task)://[^\s<>()\"']+",
+    re.IGNORECASE,
+)
 _EXECUTABLE_ID = re.compile(
     r"\b(?:command|session)_[A-Za-z0-9_-]{6,}\b", re.IGNORECASE
 )
@@ -34,6 +41,7 @@ def redact_text(value: str) -> str:
     text = _BEARER.sub("Bearer [REDACTED_CREDENTIAL]", text)
     text = _TOKEN.sub("[REDACTED_CREDENTIAL]", text)
     text = _SECRET_ASSIGNMENT.sub("[REDACTED_CREDENTIAL]", text)
+    text = _OPAQUE_URI.sub("[REDACTED_REFERENCE]", text)
     text = _ABSOLUTE_PATH.sub("[REDACTED_PATH]", text)
     text = _WINDOWS_PATH.sub("[REDACTED_PATH]", text)
     text = _EXECUTABLE_ID.sub("[REDACTED_RECORD_ID]", text)
