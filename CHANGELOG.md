@@ -14,6 +14,7 @@
 
 ### 验证 / Validation
 - Node SHA-256：`b2a0a5ba24970af965ab6e1a0389d680eda901a04ae5e8c0e4e51f5ef96397e5`；启动缺失凭据错误为 `ROBOTWIN20_MODEL_API_KEY`，未到 Gateway。 / Node SHA-256 is recorded above; startup failed on missing `ROBOTWIN20_MODEL_API_KEY` before Gateway readiness.
+- Git: `6ce1af39` on `feature/planning-loop`, pushed to origin. / Git：`6ce1af39`，位于 `feature/planning-loop`，已推送 origin。
 
 ## v14.6.0 (2026-10-17 12:30) - codex
 
