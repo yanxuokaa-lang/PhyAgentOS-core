@@ -28,6 +28,7 @@
 - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/test_redaction.py tests/test_planning_loop.py`：`160 passed`；compileall 与 `git diff --check` 通过。 / `160 passed`; compileall and `git diff --check` passed.
 - 配置加载确认 `shadow/systemone/jev-latest`、key-file 存在、其它 decision points `off`、`active=false`。 / Config loading confirmed `shadow/systemone/jev-latest`, key-file presence, other decision points `off`, and `active=false`.
 - 真实 JEV API smoke 使用虚构两候选、只读 `DecisionRequest`：响应 `outcome=escalate` 且带 model version；未启动 AgentTask/Runtime/Gateway/Query/Action/Session、传感器或运动，未保存 key/原始响应。 / A real JEV API smoke with a synthetic two-choice read-only request returned `outcome=escalate` with a model version; no AgentTask/Runtime/Gateway/Query/Action/Session, sensor, or motion started, and no key/raw response was saved.
+- Content commit: `b0c39457` on `feature/planning-loop`; documentation registration follows. / 内容提交：`b0c39457`，位于 `feature/planning-loop`；日志登记提交随后完成。
 
 ## v14.5.10 (2026-10-17 11:37) - codex
 
