@@ -2,6 +2,19 @@
 
 ## 最近五版本 / Latest five versions
 
+## v14.6.1 (2026-10-17 14:15) - codex
+
+### 变更摘要 / Summary [完成；Runtime 安装完成，启动等待凭据]
+- [env] [chore] 从当前工作树重建并安装 RoboTwin20 persistent-host Node `1.0.16` 与 Skill Bundle `3.0.25`；旧 Runtime 已停止。 / Rebuild and install RoboTwin20 persistent-host Node `1.0.16` and Skill Bundle `3.0.25`; the old Runtime is stopped.
+- [policy] [chore] 新 Runtime 启动在 host 创建世界前因缺少 `ROBOTWIN20_MODEL_API_KEY` fail-closed；无 AgentTask、Action 或运动。 / New Runtime startup failed closed before host world creation because `ROBOTWIN20_MODEL_API_KEY` was missing; no AgentTask, Action or motion occurred.
+
+### 文件变更详情 / File Change Details
+- `examples/forge-skills/pick-place-workflow/skill.yaml:L223-L229`：Node lock `1.0.15 -> 1.0.16`，绑定新 Node digest。 / Update the Node lock `1.0.15 -> 1.0.16` with the new Node digest.
+- 本地安装：`paos skill install`、`paos forge-node install`、`paos forge-node verify` 通过；Runtime 当前 `stopped`。 / Local Skill/Node installation and verification passed; Runtime is currently `stopped`.
+
+### 验证 / Validation
+- Node SHA-256：`b2a0a5ba24970af965ab6e1a0389d680eda901a04ae5e8c0e4e51f5ef96397e5`；启动缺失凭据错误为 `ROBOTWIN20_MODEL_API_KEY`，未到 Gateway。 / Node SHA-256 is recorded above; startup failed on missing `ROBOTWIN20_MODEL_API_KEY` before Gateway readiness.
+
 ## v14.6.0 (2026-10-17 12:30) - codex
 
 ### 变更摘要 / Summary [完成；单候选 JEV 路由]
