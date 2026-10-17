@@ -16,8 +16,10 @@ host candidates. Production and physical execution remain unchanged.
 - 归并为 5 个不同抽象题：缺身份字段 10 条、缺实体 1 条、Query 业务不可用 17 条、
   Action unknown 7 条、Action failed 3 条。38 条来源不是 38 个独立测试样本；全部属于一个工作流家族。
 - 仅从结构化 rejection/执行状态抽取事实；不使用历史恢复模型的自由文本理由充当真值。
-- 原目标、原始提示、图片、内部引用不进入模型请求；来源定位留在本地 `source_manifest.json`。
+- 每个抽象 case 在本地 `dataset.json` 和 `source_manifest.json` 中保留对应 task event/execution record 的 provenance refs；`decision_input_ref` 标为 `reconstructed-development-input://`，manifest 标记 `reconstructed_development_input`。这些是来源追溯，不代表还原了历史完整候选或原模型输入。
+- 原目标、原始提示、图片、来源定位符不进入模型请求；来源映射仅保存在本地抽取产物中。
 - 候选由 `SCENARIOS` 明确写出；正确选项位置交替，gold、case ID、来源和复核信息不发给模型。
+- 每个 case 的 refs 指向抽取到的结构化事实来源；将多条重复事实归并为一个抽象题仍只有一个开发 case，不增加独立样本数，也不改变 `held_out=false`。
 - 标签表示“原 owner 应如何处理当前事实”，选中报告缺口/对账选项不等于实际调用恢复流程。
 - `labeler_id == reviewer_id == codex-same-author`，复核文件明确 `independent_review=false`。
   全部 `split=calibration`，`planned_held_out_cases=0`；不为满足 schema 制造 held-out。

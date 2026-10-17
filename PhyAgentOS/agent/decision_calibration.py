@@ -111,6 +111,7 @@ def extract_calibration(
                     sources[kind].append({
                         "task_id": row["task_id"], "event_id": event["event_id"],
                         "created_at": event["created_at"],
+                        "provenance_ref": f"agent-task-event://{row['task_id']}/{event['event_id']}",
                         "observed": {"code": error["code"], "missing_fields": sorted(missing)},
                     })
             task = json.loads(row["record_json"])
@@ -132,27 +133,42 @@ def extract_calibration(
                         sources[kind].append({
                             "task_id": row["task_id"], "revision_id": revision.get("revision_id"),
                             "record_id": record["record_id"], "created_at": record["created_at"],
+                            "provenance_ref": (
+                                f"agent-task-record://{row['task_id']}/"
+                                f"{revision.get('revision_id')}/{record['record_id']}"
+                            ),
                             "observed": {"semantics": semantics, "status": status,
                                          "business_status": data.get("status")},
                         })
     finally:
         connection.close()
     cases = []
+    case_provenance = []
     for index, (kind, references) in enumerate(sources.items()):
         if not references:
             continue
         fact, correct, incorrect = SCENARIOS[kind]
         choices = [correct, incorrect] if index % 2 == 0 else [incorrect, correct]
+        provenance_refs = tuple(dict.fromkeys(
+            reference["provenance_ref"] for reference in references
+        ))
+        case_id = kind.replace("_", "-")
         cases.append({
-            "case_id": kind.replace("_", "-"), "split": "calibration",
+            "case_id": case_id, "split": "calibration",
             "family_id": "recent-source-workflow", "categories": [kind],
-            "decision_input_ref": f"artifact://recent-calibration/{kind}",
+            "decision_input_ref": f"reconstructed-development-input://recent-calibration/{kind}",
+            "provenance_refs": provenance_refs,
             "goal": "仅判断当前事实支持的下一步处理方式，不执行工具或物理动作。",
             "facts": {"observed_state": fact},
             "candidates": [{"candidate_id": f"option-{i + 1}", "description": value}
                            for i, value in enumerate(choices)],
             "expected_selected_id": f"option-{choices.index(correct) + 1}",
             "must_escalate": False,
+        })
+        case_provenance.append({
+            "case_id": case_id,
+            "input_origin": "reconstructed_development_input",
+            "provenance_refs": list(provenance_refs),
         })
     if not cases:
         raise ValueError("no recognized calibration facts in the authorized window")
@@ -161,6 +177,7 @@ def extract_calibration(
         "name": "recent-runtime-abstract-calibration", "dataset_version": "1.0.0",
         "sampling_plan_ref": "source_manifest.json",
         "labeling_protocol_ref": "label_review.json",
+        "provenance_manifest_ref": "source_manifest.json",
         "labeler_id": "codex-same-author", "reviewer_id": "codex-same-author",
         "planned_held_out_cases": 0, "cases": cases,
     })
@@ -170,6 +187,7 @@ def extract_calibration(
         "database": str(database.resolve()), "since": since, "until": until,
         "session_prefix": session_prefix, "git_commit": _git_commit(repo_root),
         "task_count": len(tasks), "sources": sources,
+        "cases": case_provenance,
         "source_record_count": sum(map(len, sources.values())),
         "abstract_case_count": len(cases), "family_count": 1,
         "derivation": "authored abstract alternatives, not historical host candidate sets",

@@ -69,14 +69,24 @@ def _config(tmp_path, monkeypatch):
 def test_extract_is_read_only_sanitized_and_not_independent(tmp_path):
     directory = _extract(tmp_path)
     text = (directory / "dataset.json").read_text()
-    assert "PRIVATE" not in text and "task-private" not in text and "revision-private" not in text
+    assert "PRIVATE-GOAL" not in text and '"secret"' not in text
     dataset = DecisionEvaluationDataset.model_validate_json(text)
     assert len(dataset.cases) == 3 and dataset.planned_held_out_cases == 0
     assert {case.split for case in dataset.cases} == {"calibration"}
     assert dataset.labeler_id == dataset.reviewer_id
+    assert dataset.provenance_manifest_ref == "source_manifest.json"
     provenance = json.loads((directory / "source_manifest.json").read_text())
     assert provenance["source_record_count"] == 3 and provenance["family_count"] == 1
     assert provenance["sources"]["missing_identity"][0]["event_id"] == 1
+    assert len(provenance["cases"]) == 3
+    assert all(item["input_origin"] == "reconstructed_development_input"
+               for item in provenance["cases"])
+    assert all(item["provenance_refs"] for item in provenance["cases"])
+    assert all(case.provenance_refs for case in dataset.cases)
+    assert all(case.decision_input_ref.startswith("reconstructed-development-input://")
+               for case in dataset.cases)
+    assert any("task-private" in ref for case in dataset.cases for ref in case.provenance_refs)
+    assert all(case.split == "calibration" for case in dataset.cases)
 
 
 def test_requests_do_not_leak_gold_or_provenance(tmp_path):
@@ -88,7 +98,8 @@ def test_requests_do_not_leak_gold_or_provenance(tmp_path):
     assert a["questions"]["decision"]["criteria"] == json.loads(b["messages"][1]["content"])["criteria"]
     for payload in (a, b):
         text = json.dumps(payload)
-        for forbidden in ("expected_selected_id", "reviewer_id", "decision_input_ref", "source_manifest", "case_id"):
+        for forbidden in ("expected_selected_id", "reviewer_id", "decision_input_ref", "source_manifest",
+                          "case_id", "agent-task-event://", "agent-task-record://"):
             assert forbidden not in text
 
 

@@ -2,6 +2,31 @@
 
 ## 最近五版本 / Latest five versions
 
+## v14.5.10 (2026-10-17 00:00) - codex
+
+### 变更摘要 / Summary [完成；校准可追溯，正式 held-out 未完成]
+- [eval] [fix] 为真实记录抽取的每个 calibration case 添加 task event/execution record provenance refs，并标注为 `reconstructed_development_input`；这些 refs 仅保存在本地，不进入 JEV/System-2 payload。 / Add task event/execution record provenance refs to each extracted calibration case and mark it `reconstructed_development_input`; refs remain local and are excluded from JEV/System-2 payloads.
+- [eval] [test] 覆盖逐案来源映射、sanitization、calibration-only 和 provider 请求不泄露 refs/gold。 / Cover per-case source mapping, sanitization, calibration-only status, and no provenance/gold leakage into provider requests.
+
+### 文件变更详情 / File Change Details
+- `PhyAgentOS/agent/decision_calibration.py:L111-L115,L133-L172,L175-L195`：生成 event/record refs，关联到 case 和 manifest，并将 manifest 设为 dataset provenance manifest。 / Generate event/record refs, map them to cases and manifest, and declare the manifest on the dataset.
+- `tests/test_decision_calibration.py:L69-L103`：来源、脱敏及远程 payload 边界回归。 / Provenance, sanitization, and remote-payload boundary regressions.
+- `docs/forge/JEV_P3B_CALIBRATION.md:L13-L25`、`changelog/2026-10_part7.md`：记录抽象重建输入口径及七维复审。 / Document reconstructed-input semantics and the seven-dimension review.
+
+```diff
+- artifact://recent-calibration/<kind>
++ reconstructed-development-input://recent-calibration/<kind>
++ case.provenance_refs -> local task event/execution record refs
++ source_manifest.cases[].input_origin = reconstructed_development_input
++ dataset.provenance_manifest_ref = source_manifest.json
+  remote payload: facts and authored candidates only; no refs, IDs, or gold
+```
+
+- 验证：校准/evaluator `32 passed`；全仓离线 `1052 passed`；Ruff、compileall、`git diff --check` 通过。真实抽取为 5 个 calibration case / 38 条来源 / 1 个 workflow family；intake audit exit `2`、`ready_for_pairing=false`，active 仍关闭。 / Validation: 32 calibration/evaluator tests and 1,052 offline tests passed; Ruff, compileall, and `git diff --check` passed. Extraction yielded 5 calibration cases from 38 source records in one workflow family; intake audit exited `2` with `ready_for_pairing=false`, and active remains off.
+
+### 七维验收 / Seven-Dimension Review
+- 架构/所有权、正确性、可观测性、恢复幂等、安全、兼容、预算/自主性均通过；Blocker 0 / Major 0 / Minor 0。正式 held-out、独立复核、独立 provenance confirmation 与六类覆盖仍不足。 / Architecture/ownership, correctness, observability, recovery/idempotency, safety, compatibility, and budget/autonomy pass; zero blockers/majors/minors. Formal held-out, independent review, independent provenance confirmation, and six-category coverage remain insufficient.
+
 ## v14.5.9 (2026-10-16 22:10) - codex
 
 ### 变更摘要 / Summary [完成；pending external reviewer]
