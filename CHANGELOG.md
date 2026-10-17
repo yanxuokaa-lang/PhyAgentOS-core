@@ -26,7 +26,7 @@
 
 ### 七维验收 / Seven-Dimension Review
 - 架构/所有权、正确性、可观测性、恢复幂等、安全、兼容、预算/自主性均通过；Blocker 0 / Major 0 / Minor 0。正式 held-out、独立复核、独立 provenance confirmation 与六类覆盖仍不足。 / Architecture/ownership, correctness, observability, recovery/idempotency, safety, compatibility, and budget/autonomy pass; zero blockers/majors/minors. Formal held-out, independent review, independent provenance confirmation, and six-category coverage remain insufficient.
-- Content commit: `ef6f6019` on `feature/planning-loop`; documentation registration commit follows. / 内容提交：`ef6f6019`，位于 `feature/planning-loop`；日志登记提交随后完成。
+- Content commit: `ef6f6019`; documentation registration commit: `528a27d8`, both on `feature/planning-loop`. / 内容提交：`ef6f6019`；日志登记提交：`528a27d8`，均位于 `feature/planning-loop`。
 
 ## v14.5.9 (2026-10-16 22:10) - codex
 
@@ -88,6 +88,9 @@
 
 ### Git 提交 / Git Commit
 - Implementation commit: `c2875b54` on `feature/planning-loop`; documentation registration follows. / 实现提交：`c2875b54`，位于 `feature/planning-loop`；文档登记提交随后完成。
+
+## Archive
+- v14.5.5 and earlier detailed records continue below; monthly archive: `changelog/2026-10_part7.md`. / v14.5.5 及更早详细记录继续保留在下方；月度归档见 `changelog/2026-10_part7.md`。
 
 ## v14.5.5 (2026-10-16 20:00) - codex
 
@@ -187,8 +190,8 @@
 ### 验证 / Validation
 - 两批 `status=captured`、双视角、0 skew；无 Action/Session/远程模型/host selection，正式有效样本数 0。 / Both returned `status=captured` with two views and zero skew; no Action/Session/remote-model/host-selection calls and zero formal eligible samples.
 
-## Archive
-- v14.5.1 and earlier detailed records continue below; monthly archive: `changelog/2026-10_part7.md`. / v14.5.1 及更早详细记录继续保留在下方；月度归档见 `changelog/2026-10_part7.md`。
+### Older records
+- Older detailed records continue below; monthly archive: `changelog/2026-10_part7.md`. / 更早的详细记录继续保留在下方；月度归档见 `changelog/2026-10_part7.md`。
 
 ## v14.5.0 (2026-10-16 18:19) - codex
 
