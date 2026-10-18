@@ -21,7 +21,7 @@
 
 ### 验证 / Validation
 - Ruff, compileall, and `git diff --check` passed; no Flexiv SDK or real robot integrated.
-- Commit follows after final log registration.
+- Commit: `8d0b1405`; branch: `feature/planning-loop`.
 
 ## v14.12.3 (2026-10-18) - codex
 
@@ -37,6 +37,7 @@
 
 ### 验证 / Validation
 - `9 passed`; Ruff and compileall passed; no physical success claimed.
+- Commit: `8d0b1405`; branch: `feature/planning-loop`.
 
 ## v14.12.2 (2026-10-18) - codex
 
