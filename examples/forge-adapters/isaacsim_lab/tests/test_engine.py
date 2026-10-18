@@ -1,7 +1,12 @@
 from threading import Event
 
 import isaacsim_lab.engine as module
-from isaacsim_lab.engine import IsaacSimLabEngine, _continuous_pour_window, _episode_succeeded
+from isaacsim_lab.engine import (
+    IsaacSimLabEngine,
+    _continuous_pour_window,
+    _episode_succeeded,
+    _pour_controller_target,
+)
 
 
 class Backend:
@@ -64,3 +69,18 @@ def test_continuous_pour_window_does_not_cross_sampling_gap(tmp_path):
         {**qualifying, "timestamp_s": 0.52},
     ]
     assert _continuous_pour_window(samples, profile) is None
+
+
+def test_pour_controller_target_compensates_measured_mouth_offset(tmp_path):
+    profile = make_profile(tmp_path)
+    import numpy as np
+    from scipy.spatial.transform import Rotation
+
+    state = {
+        "object_position": np.array([0.4, 0.2, 1.0]),
+        "target_position": np.array([0.4, 0.2, 1.2]),
+        "object_quaternion": Rotation.identity().as_quat(),
+        "object_size": np.array([0.1, 0.1, 0.6]),
+    }
+    target = _pour_controller_target(state, profile, np, Rotation)
+    assert np.allclose(target, [0.4, 0.2, 0.9])

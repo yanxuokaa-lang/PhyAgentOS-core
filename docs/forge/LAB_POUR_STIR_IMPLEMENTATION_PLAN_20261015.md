@@ -263,7 +263,7 @@ Isaac Sim runner 已实现为 `isaacsim_lab` 的 PAOS 父进程与 worker 子进
 
 - `LabUtopiaProfile` 将既有 PAOS observation/preparation 输入投影到 `entity://conical_bottle03`、`destination://beaker2` 和 cycle 参数；scene USD、配置、frame、calibration 均由 profile 提供。
 - `IsaacSimLabEngine` 只在 active Python 能发现 `isaacsim` 且 `OMNI_KIT_ACCEPT_EULA` 已明确设置时声明完整 cycle 能力；普通 PAOS Python 不会导入 Isaac 模块。
-- `LabUtopiaBackend` 在 Isaac Sim 内复用 LabUtopia 的 pick/pour 控制器，再执行归位、释放和撤离；返回原始反馈观测与七阶段事件，交由现有 PAOS feedback adapter / cycle projector 结算。最终 `succeeded` 还要求七个阶段全部完成且反馈计算器观测到同一连续倾倒保持窗口。
+- `LabUtopiaBackend` 在 Isaac Sim 内复用 LabUtopia 的 pick/pour 控制器，再执行归位、释放和撤离；返回原始反馈观测与七阶段事件，交由现有 PAOS feedback adapter / cycle projector 结算。倾倒对准点是源瓶口按当前姿态投影的点，而不是瓶体中心；provider 还尝试用该偏移补偿控制器目标。最终 `succeeded` 仍要求七个阶段全部完成且反馈计算器观测到同一连续倾倒保持窗口。
 - 预览命令只证明 Kit 和场景可加载，不证明运动或任务成功；完整任务必须使用 `labutopia` Python、显式 profile，并保留逐样本反馈、阶段事件和最终状态。
 
 当前可先查看 PAOS 将接收的输入：
@@ -292,4 +292,4 @@ print(json.dumps({key: result.get(key) for key in ('status', 'outcome_known', 'p
 PY
 ```
 
-2026-10-18 的真实单回合已启动 Isaac Sim 并返回可观测失败：`acquire`、`transport`、`stow`、`release`、`retreat` 完成，`process` 失败 `continuous_pour_window_not_observed`，因此最终为 `failed/outcome_known=true`。该回合 1109 个反馈样本中，抓持、对准、目标倾角和采样连续性共同满足的窗口为 0；这证明结算边界有效，不证明物理倾倒成功。下一步应修正 LabUtopia 的目标/控制路线或对象标定后再复验，不能放宽 PAOS 保持窗口定义。
+2026-10-18 的真实单回合已启动 Isaac Sim 并返回可观测失败：`acquire`、`transport`、`stow`、`release`、`retreat` 完成，`process` 失败 `continuous_pour_window_not_observed`，因此最终为 `failed/outcome_known=true`。瓶口观测与 provider 目标补偿接入后，最新回合共有 1039 个反馈样本，抓持、对准、目标倾角和采样连续性共同满足的窗口仍为 0；抓持且对准时最大倾角为 `0.259 rad`。这证明结算边界和失败保留有效，不证明物理倾倒成功。下一步应针对 LabUtopia 控制器的旋转路线、瓶口轴/尺寸标定和烧杯口目标定义做专门验收，不能放宽 PAOS 保持窗口定义。

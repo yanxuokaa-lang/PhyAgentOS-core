@@ -2,6 +2,42 @@
 
 ## 最近五版本 / Latest five versions
 
+## v14.12.4 (2026-10-18) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [policy] [tune] LabUtopia 倾倒阶段加入瓶口姿态补偿目标；PAOS 连续保持定义不变。 / Add a bottle-mouth pose compensation target to LabUtopia pouring; keep the PAOS continuous-hold definition unchanged.
+- [eval] [test] `9 passed`; 最新真实回合仍为 `failed/outcome_known=true`，联合窗口为 0，未声称成功。 / `9 passed`; the latest real episode remains `failed/outcome_known=true` with a zero joint window, and no success is claimed.
+
+### 文件变更详情 / File Change Details
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/engine.py:L252-L269,L370-L395`
+- `examples/forge-adapters/isaacsim_lab/tests/test_engine.py:L64-L80`
+- `docs/forge/LAB_POUR_STIR_IMPLEMENTATION_PLAN_20261015.md:L264-L278`
+
+### 关键 Diff / Key Diff
+```diff
++ provider controller target = beaker target - measured bottle-mouth pose offset
++ failed process preserves stow/release/retreat evidence
+```
+
+### 验证 / Validation
+- Ruff, compileall, and `git diff --check` passed; no Flexiv SDK or real robot integrated.
+- Commit follows after final log registration.
+
+## v14.12.3 (2026-10-18) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [sense] [fix] 倾倒对准改为源瓶口姿态投影点与烧杯口中心，而非瓶体几何中心。 / Define pour alignment from the pose-projected bottle mouth and beaker opening center rather than the bottle geometric center.
+- [eval] [test] 增加 source pour axis 配置和 profile 回归；真实回合仍以连续窗口失败结算。 / Add source-pour-axis configuration and profile coverage; settle the real episode as failed when the continuous window is absent.
+
+### 文件变更详情 / File Change Details
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/profile.py:L1-L82,L177-L193`
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/engine.py:L318-L337`
+- `examples/forge-adapters/isaacsim_lab/configs/labutopia-pour-cycle.json`
+- `examples/forge-adapters/isaacsim_lab/tests/test_profile.py:L52-L55`
+
+### 验证 / Validation
+- `9 passed`; Ruff and compileall passed; no physical success claimed.
+
 ## v14.12.2 (2026-10-18) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]

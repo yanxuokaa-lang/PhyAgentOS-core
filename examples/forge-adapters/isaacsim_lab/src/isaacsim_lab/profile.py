@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
@@ -38,6 +39,7 @@ class LabUtopiaProfile:
     tilt_tolerance_rad: float = 0.10
     maximum_tilt_rad: float = 1.50
     max_sample_gap_s: float = 0.10
+    source_pour_axis: tuple[float, float, float] = (0.0, 0.0, 1.0)
     headless: bool = True
 
     @classmethod
@@ -77,6 +79,7 @@ class LabUtopiaProfile:
             tilt_tolerance_rad=_positive_float(value, "tilt_tolerance_rad", 0.10),
             maximum_tilt_rad=_positive_float(value, "maximum_tilt_rad", 1.50),
             max_sample_gap_s=_positive_float(value, "max_sample_gap_s", 0.10),
+            source_pour_axis=_vector3(value, "source_pour_axis", (0.0, 0.0, 1.0)),
             headless=bool(value.get("headless", True)),
         )
         profile.validate_paths()
@@ -140,6 +143,7 @@ class LabUtopiaProfile:
             "frame_id": self.frame_id,
             "calibration_ref": self.calibration_ref,
             "container_frame_id": self.container_frame_id,
+            "source_pour_axis": list(self.source_pour_axis),
         }
 
     def evaluation_profile(self) -> dict[str, Any]:
@@ -184,6 +188,19 @@ def _nonnegative_int(value: Mapping[str, Any], key: str, default: int) -> int:
     if isinstance(raw, bool) or not isinstance(raw, int) or raw < 0:
         raise LabProfileError(f"{key} must be a non-negative integer")
     return raw
+
+
+def _vector3(value: Mapping[str, Any], key: str, default: tuple[float, float, float]) -> tuple[float, float, float]:
+    raw = value.get(key, default)
+    if not isinstance(raw, (list, tuple)) or len(raw) != 3:
+        raise LabProfileError(f"{key} must contain three numbers")
+    components = tuple(float(item) for item in raw)
+    if not all(math.isfinite(item) for item in components):
+        raise LabProfileError(f"{key} must contain finite numbers")
+    norm = math.sqrt(sum(item * item for item in components))
+    if norm <= 0:
+        raise LabProfileError(f"{key} must not be zero")
+    return tuple(item / norm for item in components)
 
 
 def _entity_ref(path: str) -> str:

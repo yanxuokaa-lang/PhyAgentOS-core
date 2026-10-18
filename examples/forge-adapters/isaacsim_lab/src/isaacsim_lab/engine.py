@@ -259,6 +259,9 @@ class LabUtopiaBackend:
             samples.append(self._sample(state, initial_position, initial_quaternion, now, np, Rotation, placement_started))
 
             if not placement_started:
+                if getattr(getattr(controller, "current_phase", None), "value", None) == "pouring":
+                    state = dict(state)
+                    state["target_position"] = _pour_controller_target(state, self.profile, np, Rotation)
                 action, done, success = controller.step(state)
                 if action is not None:
                     robot.get_articulation_controller().apply_action(action)
@@ -319,9 +322,12 @@ class LabUtopiaBackend:
         position = np.asarray(state["object_position"], dtype=float)
         target = np.asarray(state["target_position"], dtype=float)
         quat = np.asarray(state["object_quaternion"], dtype=float)
+        source_size = np.asarray(state["object_size"], dtype=float)
         relative = rotation_cls.from_quat(initial_quaternion).inv() * rotation_cls.from_quat(quat)
         tilt = float(relative.magnitude())
-        alignment = float(np.linalg.norm(position[:2] - target[:2]))
+        pour_axis = np.asarray(self.profile.source_pour_axis, dtype=float)
+        pour_point = position + rotation_cls.from_quat(quat).apply(pour_axis * (source_size[2] / 2.0))
+        alignment = float(np.linalg.norm(pour_point[:2] - target[:2]))
         grasp = bool(holding and position[2] > initial_position[2] + 0.04)
         return {
             "timestamp_s": float(timestamp),
@@ -333,6 +339,7 @@ class LabUtopiaBackend:
             "grasp_valid": grasp,
             "target_container_aligned": alignment <= self.profile.alignment_tolerance_m,
             "alignment_error_m": alignment,
+            "source_pour_point": {"x_m": float(pour_point[0]), "y_m": float(pour_point[1]), "z_m": float(pour_point[2]), "frame_id": self.profile.frame_id},
             "tilt_rad": tilt,
         }
 
@@ -388,6 +395,15 @@ def _continuous_pour_window(samples, profile):
         if timestamp - start >= profile.hold_s:
             return start, timestamp
     return None
+
+
+def _pour_controller_target(state, profile, np, rotation_cls):
+    """Compensate the provider controller target for the measured mouth offset."""
+    target = np.asarray(state["target_position"], dtype=float).copy()
+    quat = np.asarray(state["object_quaternion"], dtype=float)
+    size = np.asarray(state["object_size"], dtype=float)
+    mouth_offset = rotation_cls.from_quat(quat).apply(np.asarray(profile.source_pour_axis) * (size[2] / 2.0))
+    return target - mouth_offset
 
 
 def _append_placement_events(events, samples, placement_done, process_end):

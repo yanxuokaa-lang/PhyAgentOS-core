@@ -47,3 +47,8 @@ def test_profile_round_trips_json(tmp_path):
     path = tmp_path / "profile.json"
     path.write_text(json.dumps(value), encoding="utf-8")
     assert LabUtopiaProfile.from_json(path).source_path == value["source_path"]
+
+
+def test_profile_normalizes_source_pour_axis(tmp_path):
+    configured = profile(tmp_path)
+    assert configured.source_pour_axis == (0.0, 0.0, 1.0)
