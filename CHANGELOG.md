@@ -30,7 +30,7 @@
 - 未调用非夕 SDK、仿真、真实传感器、部署或机械臂；测试只证明规范化、离线算法和 control-flow 接线。 / No Flexiv SDK, simulation, real sensors, deployment, or robot was used; tests prove normalization, offline algorithms, and control-flow wiring only.
 
 ### Git 提交 / Git Commit
-- 待提交后登记 commit；branch: `feature/planning-loop`。
+- Implementation commit: `7e075401`; branch: `feature/planning-loop`; 时间 / Time: 2026-10-18 Asia/Shanghai.
 
 ## v14.10.0 (2026-10-18 22:00) - codex
 
