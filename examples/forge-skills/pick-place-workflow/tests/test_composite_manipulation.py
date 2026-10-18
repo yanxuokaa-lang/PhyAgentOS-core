@@ -198,6 +198,72 @@ def test_cycle_process_feedback_must_meet_requested_target(operation, tool_id):
     assert not result["result"]["process_completed"]
 
 
+def test_cycle_projector_normalizes_raw_provider_feedback_before_evaluation():
+    provider, held = Provider(), PersistentPossession()
+    rt = runtime(provider, held)
+    args = rt.invoke_query("cycle_preparation", "prepare", request())[
+        "arguments"
+    ]
+    raw = measured()
+    raw["feedback_observations"] = [
+        {
+            "timestamp_s": sample["timestamp_s"],
+            "frame_id": "camera_front",
+            "calibration_ref": "calibration://front/v3",
+            "container_frame_id": "container://beaker",
+            "grasp_state": "holding",
+            "feedback_valid": sample["feedback_valid"],
+            "target_container_aligned": sample["target_container_aligned"],
+            "alignment_error_m": sample["alignment_error_m"],
+            "tilt_rad": sample["tilt_rad"],
+        }
+        for sample in raw.pop("feedback_samples")
+    ]
+    raw["feedback_source_profile"] = {
+        "frame_id": "camera_front",
+        "calibration_ref": "calibration://front/v3",
+        "container_frame_id": "container://beaker",
+    }
+    provider.result = raw
+    invocation = rt.start_action("object.pour_cycle", args, caller_id=CALLER)["invocation_id"]
+    settled = rt.invocation_result(invocation)
+    assert settled["status"] == "succeeded"
+    assert settled["result"]["process_completed"] is True
+
+
+def test_cycle_projector_rejects_raw_feedback_frame_drift_as_unknown():
+    provider, held = Provider(), PersistentPossession()
+    rt = runtime(provider, held)
+    args = rt.invoke_query("cycle_preparation", "prepare", request())["arguments"]
+    raw = measured()
+    raw["feedback_observations"] = [
+        {
+            "timestamp_s": sample["timestamp_s"],
+            "frame_id": "wrong-frame",
+            "calibration_ref": "calibration://front/v3",
+            "container_frame_id": "container://beaker",
+            "grasp_state": "holding",
+            "feedback_valid": True,
+            "target_container_aligned": True,
+            "alignment_error_m": 0.001,
+            "tilt_rad": 1.7,
+        }
+        for sample in raw.pop("feedback_samples")
+    ]
+    raw["feedback_source_profile"] = {
+        "frame_id": "camera_front",
+        "calibration_ref": "calibration://front/v3",
+        "container_frame_id": "container://beaker",
+    }
+    provider.result = raw
+    invocation = rt.start_action("object.pour_cycle", args, caller_id=CALLER)["invocation_id"]
+    settled = rt.invocation_result(invocation)
+    assert settled["status"] == "unknown"
+    assert settled["result"]["process_completed"] is False
+    assert settled["result"]["measurements"]["feedback_adapter_status"] == "invalid"
+    assert "frame_mismatch" in settled["result"]["measurements"]["feedback_adapter_errors"]
+
+
 def test_process_fact_survives_missing_artifact_reference_as_unknown_partial_result():
     provider, held = Provider(), PersistentPossession()
     rt = runtime(provider, held)

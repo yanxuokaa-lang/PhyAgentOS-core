@@ -2,6 +2,66 @@
 
 ## 最近五版本 / Latest five versions
 
+## v14.11.0 (2026-10-18 22:30) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [policy] [feat] 新增 provider-neutral 反馈适配层，将部署原始观测规范化为倾倒/搅拌计算器样本，并校验时间、frame、calibration、坐标系和抓持证据。 / Add a provider-neutral feedback adapter that normalizes deployment observations for the pour/stir calculators and validates time, frame, calibration, coordinate frames, and grasp evidence.
+- [eval] [test] 增加合法规范化、时间戳回退、frame/calibration/坐标/抓持缺失、反馈无效和 PAOS 投影接线回归；全部使用 no-motion synthetic records。 / Add regressions for valid normalization, timestamp rollback, frame/calibration/coordinate/grasp omissions, invalid feedback, and PAOS projector wiring; use no-motion synthetic records only.
+- [docs] [docs] 更新诊断与审核，明确适配器已实现，具体设备采集、SDK、仿真和真机验收仍未实现。 / Update diagnosis and review to state that the adapter is implemented while device capture, SDK, simulation, and physical acceptance remain future work.
+
+### 文件变更详情 / File Change Details
+- [新增] `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/feedback_adapter.py:L1-L251`：验证来源 frame、calibration、容器/工具坐标系、单调时间和抓持映射，并输出可供现有计算器消费的规范样本。 / Validate source frame, calibration, container/tool frames, monotonic time, and grasp mapping, emitting samples consumable by the existing calculators.
+- [修改] `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/held_manipulation.py:L417-L548`：在 cycle 结果投影阶段规范化原始 `feedback_observations`，结构性错误保持 unknown。 / Normalize raw `feedback_observations` during cycle result projection and keep structural errors unknown.
+- [修改] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_manipulation.py:L380-L402`：bounded receipt 保留原始反馈与 source profile，供 PAOS 适配器接线。 / Preserve raw feedback and source profiles in the bounded receipt for PAOS adapter wiring.
+- [修改] `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/__init__.py:L20-L28`：导出反馈适配器公共符号。 / Export feedback adapter symbols.
+- [新增] `examples/forge-skills/pick-place-workflow/tests/test_feedback_adapter.py:L1-L153`、[修改] `examples/forge-skills/pick-place-workflow/tests/test_composite_manipulation.py:L201-L264`、`examples/forge-adapters/robotwin20/tests/test_persistent_manipulation.py:L155-L179`：覆盖规范化与投影接线。 / Add normalization and projector-wiring coverage.
+- [修改] `docs/forge/COMPOSITE_POUR_STIR_DIAGNOSIS_20261018.md:L4,L52,L147,L155-L159`、`docs/forge/COMPOSITE_POUR_STIR_REVIEW_20261018.md:L24,L26,L35,L83-L98`：同步反馈适配状态和设备边界。 / Synchronize feedback-adapter status and device boundary.
+
+### 关键 Diff / Key Diff
+```diff
++ provider feedback_observations + feedback_source_profile
++ PAOS feedback_adapter -> normalized feedback_samples -> existing evaluator
++ timestamp/frame/calibration/coordinate/grasp structural errors -> invalid stream -> unknown cycle
++ explicit feedback_valid=false -> non-qualifying sample; no physical success inference
+```
+
+### 验证 / Validation
+- 反馈适配器、cycle protocol、复合 Action、provider receipt：`140 passed in 0.73s`；Ruff 与 `git diff --check` 通过。 / Focused feedback-adapter, cycle protocol, composite Action, and provider receipt regression: `140 passed in 0.73s`; Ruff and `git diff --check` passed.
+- 未调用非夕 SDK、仿真、真实传感器、部署或机械臂；测试只证明规范化、离线算法和 control-flow 接线。 / No Flexiv SDK, simulation, real sensors, deployment, or robot was used; tests prove normalization, offline algorithms, and control-flow wiring only.
+
+### Git 提交 / Git Commit
+- 待提交后登记 commit；branch: `feature/planning-loop`。
+
+## v14.10.0 (2026-10-18 22:00) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [policy] [feat] 新增 provider-neutral `AtomicExecutor` 和七阶段 cycle 编排边界，保持一个公共 cycle Action。 / Add provider-neutral `AtomicExecutor` and seven-phase cycle orchestration while keeping one public cycle Action.
+- [eval] [test] no-motion executor 覆盖原子阶段顺序、失败短路、取消和 unknown。 / Cover atomic phase order, failure short-circuiting, cancellation, and unknown with a no-motion executor.
+- [docs] [docs] 明确非夕 SDK 不在本阶段范围，待后续为 provider-neutral 反馈适配。 / Keep the Flexiv SDK out of scope and identify provider-neutral feedback adaptation as the next step.
+
+### 文件变更详情 / File Change Details
+- [修改] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_manipulation.py`：新增原子执行协议、编排器和 no-motion 实现。 / Add the atomic protocol, orchestrator, and no-motion implementation.
+- [修改] `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/cycle_protocol.py`、相关测试和诊断文档：同步原子边界。 / Synchronize the atomic boundary in the cycle protocol, tests, and diagnosis.
+
+### 验证 / Validation
+- 定向离线回归：`131 passed`；Ruff 与 `git diff --check` 通过；无 SDK、仿真、传感器或机械臂调用。 / Focused offline regression: `131 passed`; Ruff and `git diff --check` passed; no SDK, simulation, sensor, or robot calls.
+- Commit: `ba168a7f`; branch: `feature/planning-loop`。
+
+## v14.9.0 (2026-10-18 21:30) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [policy] [feat] cycle 能力改为逐 operation 的 preparation/execution/feedback/return 显式声明，并保持缺失能力 fail closed。 / Require explicit per-operation preparation/execution/feedback/return capability declarations and fail closed when incomplete.
+- [eval] [test] 增加 no-motion fake control-loop、能力矩阵、失败短路、取消和部分事实保留回归。 / Add no-motion control-loop, capability-matrix, failure, cancellation, and partial-fact regressions.
+- [docs] [docs] 更新诊断与审核边界。 / Update diagnosis and review boundaries.
+
+### 文件变更详情 / File Change Details
+- [修改] `held_manipulation.py`、`persistent_runtime.py`、`persistent_manipulation.py`：接入显式 cycle capability 和部分结算。 / Wire explicit cycle capability and partial settlement.
+- [新增/修改] cycle/provider 测试与诊断审核文档。 / Add and update cycle/provider tests and diagnosis/review documents.
+
+### 验证 / Validation
+- 定向离线回归：`129 passed`；Ruff 与 `git diff --check` 通过；无 SDK、仿真、传感器或机械臂调用。 / Focused offline regression: `129 passed`; Ruff and `git diff --check` passed; no SDK, simulation, sensor, or robot calls.
+- Commit: `b615a253`; branch: `feature/planning-loop`。
+
 ## v14.8.0 (2026-10-18 21:05) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]

@@ -17,6 +17,12 @@ from .fake_gateway import (
     ObservationSnapshot,
     SceneObservationEndpoint,
 )
+from .feedback_adapter import (
+    FeedbackAdapter,
+    FeedbackAdapterError,
+    FeedbackNormalization,
+    normalize_feedback,
+)
 from .long_horizon import (
     WORKFLOW_DAG,
     WORKFLOW_DAG_VERSION,
@@ -76,6 +82,10 @@ __all__ = [
     "ObservationProvider",
     "ObservationSnapshot",
     "SceneObservationEndpoint",
+    "FeedbackAdapterError",
+    "FeedbackAdapter",
+    "FeedbackNormalization",
+    "normalize_feedback",
     "SceneUnderstandingEndpoint",
     "UnderstandingProvider",
     "UnderstandingSnapshot",

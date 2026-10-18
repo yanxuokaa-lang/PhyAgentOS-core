@@ -151,6 +151,32 @@ def test_bounded_action_receipt_preserves_cycle_phase_and_feedback_inputs():
     assert receipt["evaluation_profile"] == evaluation_profile
 
 
+def test_bounded_action_receipt_preserves_raw_feedback_adapter_inputs():
+    observations = [{
+        "timestamp_s": 0.0,
+        "frame_id": "camera_front",
+        "calibration_ref": "calibration://front/v3",
+        "container_frame_id": "container://beaker",
+        "grasp_state": "holding",
+        "feedback_valid": True,
+        "target_container_aligned": True,
+        "alignment_error_m": 0.001,
+        "tilt_rad": 1.2,
+    }]
+    source_profile = {
+        "frame_id": "camera_front",
+        "calibration_ref": "calibration://front/v3",
+        "container_frame_id": "container://beaker",
+    }
+    receipt = bounded_action_receipt({
+        "feedback_observations": observations,
+        "feedback_source_profile": source_profile,
+        "evaluation_profile": {"max_sample_gap_s": 0.2},
+    })
+    assert receipt["feedback_observations"] == observations
+    assert receipt["feedback_source_profile"] == source_profile
+
+
 def test_unknown_place_with_runtime_confirmed_release_reconciles_empty():
     class ReleasedButUnverifiedEngine(Engine):
         def execute(self, phase, arguments, cancel, *, owner, invocation_id):

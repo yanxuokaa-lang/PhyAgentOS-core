@@ -15,6 +15,7 @@ from jsonschema import Draft202012Validator
 from PhyAgentOS.forge.capability_runtime import ActionAdmission
 
 from .cycle_protocol import CyclePhaseProtocol, CycleProtocolError, evaluate_process_feedback
+from .feedback_adapter import normalize_feedback
 
 OPERATIONS = {"pour": "object.pour", "stir": "tool.stir", "place": "object.place"}
 CYCLE_OPERATIONS = {"pour_cycle": "object.pour_cycle", "stir_cycle": "tool.stir_cycle"}
@@ -423,6 +424,25 @@ def project_cycle_result(raw, arguments, possession, invocation_id):
         refs = []
     events = raw.get("phase_events", [])
     samples = raw.get("feedback_samples", [])
+    evaluation_profile = raw.get("evaluation_profile", {})
+    raw_observations = raw.get("feedback_observations")
+    if raw_observations is not None:
+        normalized = normalize_feedback(
+            arguments["operation"],
+            raw_observations,
+            source_profile=raw.get("feedback_source_profile"),
+            evaluation_profile=evaluation_profile,
+        )
+        samples = list(normalized.samples)
+        evaluation_profile = normalized.evaluation_profile
+        adapter_observability = {
+            "feedback_adapter_status": normalized.status,
+            "feedback_adapter_errors": list(normalized.errors),
+        }
+        if normalized.status != "valid":
+            known = False
+    else:
+        adapter_observability = {}
     process_feedback = {}
     process_event = next((event for event in events if isinstance(event, Mapping)
                           and event.get("phase") == "process"), None) if isinstance(events, (list, tuple)) else None
@@ -435,7 +455,7 @@ def project_cycle_result(raw, arguments, possession, invocation_id):
                        and isinstance(sample.get("timestamp_s"), (int, float))
                        and start_s <= sample["timestamp_s"] <= end_s]
             process_feedback = evaluate_process_feedback(
-                arguments["operation"], samples, arguments["parameters"], raw.get("evaluation_profile", {}),
+                arguments["operation"], samples, arguments["parameters"], evaluation_profile,
             )
         except (CycleProtocolError, KeyError, TypeError, ValueError, OverflowError):
             known = False
@@ -460,7 +480,7 @@ def project_cycle_result(raw, arguments, possession, invocation_id):
             phase_result["failed_phase"] = event.get("phase") if isinstance(event, Mapping) else None
         known = False
     known = known and phase_result["outcome_known"] is True
-    metrics = process_feedback
+    metrics = {**process_feedback, **adapter_observability}
     # Phase facts and measured process qualification remain useful partial facts
     # even when an artifact reference is missing. References gate complete
     # evidence and overall success below; they must not erase observed progress.

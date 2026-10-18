@@ -377,18 +377,27 @@ def bounded_action_receipt(result: Mapping[str, Any]) -> dict[str, Any]:
             receipt["measurements"]["trajectory_qualified"] = held_measurement["trajectory_qualified"]
         if held_measurement.get("direction") in {"cw", "ccw"}:
             receipt["measurements"]["direction"] = held_measurement["direction"]
-    for field in ("phase_events", "feedback_samples", "evaluation_profile"):
+    for field in (
+        "phase_events", "feedback_samples", "feedback_observations",
+        "feedback_source_profile", "evaluation_profile",
+    ):
         if field in result:
             value = result[field]
-            if field == "phase_events" and not isinstance(value, (list, tuple)):
-                raise ValueError("cycle phase events must be a sequence")
-            if field == "feedback_samples" and not isinstance(value, (list, tuple)):
-                raise ValueError("cycle feedback samples must be a sequence")
-            if field == "evaluation_profile" and not isinstance(value, Mapping):
-                raise ValueError("cycle evaluation profile must be a mapping")
+            if field in {"phase_events", "feedback_samples", "feedback_observations"} \
+                    and not isinstance(value, (list, tuple)):
+                raise ValueError(f"cycle {field} must be a sequence")
+            if field in {"feedback_source_profile", "evaluation_profile"} \
+                    and not isinstance(value, Mapping):
+                raise ValueError(f"cycle {field} must be a mapping")
             receipt[field] = deepcopy(value)
-    if any(field in receipt for field in ("phase_events", "feedback_samples", "evaluation_profile")):
-        if _json_size({key: receipt[key] for key in ("phase_events", "feedback_samples", "evaluation_profile")
+    if any(field in receipt for field in (
+        "phase_events", "feedback_samples", "feedback_observations",
+        "feedback_source_profile", "evaluation_profile",
+    )):
+        if _json_size({key: receipt[key] for key in (
+            "phase_events", "feedback_samples", "feedback_observations",
+            "feedback_source_profile", "evaluation_profile",
+        )
                        if key in receipt}) > ACTION_RECEIPT_MAX_BYTES // 2:
             raise ValueError("cycle feedback receipt exceeds its bounded budget")
     if (
