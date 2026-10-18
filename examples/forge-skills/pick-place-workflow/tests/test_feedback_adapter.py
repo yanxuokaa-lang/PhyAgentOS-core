@@ -75,6 +75,8 @@ def test_valid_pour_normalization_is_consumable_by_existing_calculator():
     )
     assert normalized.status == "valid"
     assert normalized.samples[0]["grasp_valid"] is True
+    assert normalized.samples[0]["frame_id"] == POUR_SOURCE["frame_id"]
+    assert normalized.samples[0]["calibration_ref"] == POUR_SOURCE["calibration_ref"]
     result = evaluate_process_feedback(
         "pour_cycle", normalized.samples, {"tilt_rad": 1.2, "hold_s": 2.0},
         normalized.evaluation_profile,
@@ -151,3 +153,33 @@ def test_explicit_invalid_feedback_is_not_physical_success():
         "pour_cycle", normalized.samples, {"tilt_rad": 1.2, "hold_s": 2.0}, POUR_PROFILE,
     )
     assert result["process_completed"] is False
+
+
+def test_source_profile_must_match_action_frame_and_calibration():
+    normalized = normalize_feedback(
+        "pour_cycle", pour_observations(), source_profile=POUR_SOURCE,
+        evaluation_profile=POUR_PROFILE,
+        expected_source_profile={
+            "frame_id": "camera_rear",
+            "calibration_ref": "calibration://rear/v1",
+        },
+    )
+    assert normalized.status == "invalid"
+    assert {
+        "source_profile_frame_id_mismatch",
+        "source_profile_calibration_ref_mismatch",
+    } <= set(normalized.errors)
+
+
+def test_normalized_sample_contract_retains_provenance_for_revalidation():
+    first = normalize_feedback(
+        "pour_cycle", pour_observations(), source_profile=POUR_SOURCE,
+        evaluation_profile=POUR_PROFILE,
+    )
+    second = normalize_feedback(
+        "pour_cycle", first.samples, source_profile=POUR_SOURCE,
+        evaluation_profile=POUR_PROFILE,
+        expected_source_profile=POUR_SOURCE,
+    )
+    assert second.status == "valid"
+    assert second.samples == first.samples

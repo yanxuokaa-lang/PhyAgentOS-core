@@ -426,18 +426,24 @@ def project_cycle_result(raw, arguments, possession, invocation_id):
     samples = raw.get("feedback_samples", [])
     evaluation_profile = raw.get("evaluation_profile", {})
     raw_observations = raw.get("feedback_observations")
-    if raw_observations is not None:
+    normalized_input = raw_observations if raw_observations is not None else raw.get("feedback_samples")
+    if normalized_input is not None:
         normalized = normalize_feedback(
             arguments["operation"],
-            raw_observations,
+            normalized_input,
             source_profile=raw.get("feedback_source_profile"),
             evaluation_profile=evaluation_profile,
+            expected_source_profile={
+                "frame_id": arguments["frame_id"],
+                "calibration_ref": arguments["calibration_ref"],
+            },
         )
         samples = list(normalized.samples)
         evaluation_profile = normalized.evaluation_profile
         adapter_observability = {
             "feedback_adapter_status": normalized.status,
             "feedback_adapter_errors": list(normalized.errors),
+            "feedback_input_kind": "raw_observations" if raw_observations is not None else "normalized_samples",
         }
         if normalized.status != "valid":
             known = False

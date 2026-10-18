@@ -91,18 +91,26 @@ class Provider:
 def measured(operation="pour_cycle", **changes):
     if operation == "pour_cycle":
         feedback = [{"timestamp_s": 2.0 + index * 0.5, "feedback_valid": True, "grasp_valid": True,
+                     "frame_id": "camera", "calibration_ref": "artifact://lab/calibration",
+                     "container_frame_id": "container://lab/beaker",
                      "target_container_aligned": True, "alignment_error_m": 0.001, "tilt_rad": 1.7}
                     for index in range(7)]
         profile = {"max_sample_gap_s": 0.6, "alignment_tolerance_m": 0.005,
                    "tilt_tolerance_rad": 0.1, "maximum_tilt_rad": 2.0}
+        source_profile = {"frame_id": "camera", "calibration_ref": "artifact://lab/calibration",
+                          "container_frame_id": "container://lab/beaker"}
     else:
         feedback = [{"timestamp_s": 2.0 + index * 0.11, "feedback_valid": True, "grasp_valid": True,
+                     "frame_id": "camera", "calibration_ref": "artifact://lab/calibration",
+                     "container_frame_id": "container://lab/beaker", "tool_tip_frame_id": "tool://lab/tip",
                      "tool_tip_x_m": 0.015 * math.cos(-index * 4 * math.pi / 40),
                      "tool_tip_y_m": 0.015 * math.sin(-index * 4 * math.pi / 40),
                      "tool_tip_depth_m": 0.04} for index in range(41)]
         profile = {"max_sample_gap_s": 0.2, "radius_tolerance_m": 0.002,
                    "depth_tolerance_m": 0.002, "container_radius_m": 0.05, "container_depth_m": 0.1,
                    "max_angular_step_rad": 0.5}
+        source_profile = {"frame_id": "camera", "calibration_ref": "artifact://lab/calibration",
+                          "container_frame_id": "container://lab/beaker", "tool_tip_frame_id": "tool://lab/tip"}
     phases = [
         {"phase": "acquire", "status": "completed", "outcome_known": True,
          "facts": {"grasp_confirmed": True, "possession_state": "holding"}},
@@ -133,7 +141,8 @@ def measured(operation="pour_cycle", **changes):
             "new_scene_revision": "scene-2", "artifact_refs": ["artifact://lab/cycle-measured"],
             "operation_completed": True, "process_completed": True, "return_completed": True,
             "failed_phase": None, "measurements": {}, "feedback_samples": feedback,
-            "evaluation_profile": profile, "phase_events": phases, "entity_ref": "entity://bottle-a",
+            "feedback_source_profile": source_profile, "evaluation_profile": profile,
+            "phase_events": phases, "entity_ref": "entity://bottle-a",
             "destination_ref": "destination://lab/beaker",
             "return_destination_ref": "destination://lab/bottle-home", "possession_state": "empty",
             "release_confirmed": True, "retreat_completed": True, "clear_of_target": True,
@@ -208,9 +217,9 @@ def test_cycle_projector_normalizes_raw_provider_feedback_before_evaluation():
     raw["feedback_observations"] = [
         {
             "timestamp_s": sample["timestamp_s"],
-            "frame_id": "camera_front",
-            "calibration_ref": "calibration://front/v3",
-            "container_frame_id": "container://beaker",
+            "frame_id": "camera",
+            "calibration_ref": "artifact://lab/calibration",
+            "container_frame_id": "container://lab/beaker",
             "grasp_state": "holding",
             "feedback_valid": sample["feedback_valid"],
             "target_container_aligned": sample["target_container_aligned"],
@@ -220,9 +229,9 @@ def test_cycle_projector_normalizes_raw_provider_feedback_before_evaluation():
         for sample in raw.pop("feedback_samples")
     ]
     raw["feedback_source_profile"] = {
-        "frame_id": "camera_front",
-        "calibration_ref": "calibration://front/v3",
-        "container_frame_id": "container://beaker",
+        "frame_id": "camera",
+        "calibration_ref": "artifact://lab/calibration",
+        "container_frame_id": "container://lab/beaker",
     }
     provider.result = raw
     invocation = rt.start_action("object.pour_cycle", args, caller_id=CALLER)["invocation_id"]
@@ -240,8 +249,8 @@ def test_cycle_projector_rejects_raw_feedback_frame_drift_as_unknown():
         {
             "timestamp_s": sample["timestamp_s"],
             "frame_id": "wrong-frame",
-            "calibration_ref": "calibration://front/v3",
-            "container_frame_id": "container://beaker",
+            "calibration_ref": "artifact://lab/calibration",
+            "container_frame_id": "container://lab/beaker",
             "grasp_state": "holding",
             "feedback_valid": True,
             "target_container_aligned": True,
@@ -251,9 +260,9 @@ def test_cycle_projector_rejects_raw_feedback_frame_drift_as_unknown():
         for sample in raw.pop("feedback_samples")
     ]
     raw["feedback_source_profile"] = {
-        "frame_id": "camera_front",
-        "calibration_ref": "calibration://front/v3",
-        "container_frame_id": "container://beaker",
+        "frame_id": "camera",
+        "calibration_ref": "artifact://lab/calibration",
+        "container_frame_id": "container://lab/beaker",
     }
     provider.result = raw
     invocation = rt.start_action("object.pour_cycle", args, caller_id=CALLER)["invocation_id"]
@@ -262,6 +271,37 @@ def test_cycle_projector_rejects_raw_feedback_frame_drift_as_unknown():
     assert settled["result"]["process_completed"] is False
     assert settled["result"]["measurements"]["feedback_adapter_status"] == "invalid"
     assert "frame_mismatch" in settled["result"]["measurements"]["feedback_adapter_errors"]
+
+
+def test_cycle_projector_rejects_source_profile_drift_from_action_identity():
+    provider, held = Provider(), PersistentPossession()
+    rt = runtime(provider, held)
+    args = rt.invoke_query("cycle_preparation", "prepare", request())["arguments"]
+    raw = measured()
+    raw["feedback_source_profile"]["frame_id"] = "camera-rear"
+    for sample in raw["feedback_samples"]:
+        sample["frame_id"] = "camera-rear"
+    provider.result = raw
+    invocation = rt.start_action("object.pour_cycle", args, caller_id=CALLER)["invocation_id"]
+    settled = rt.invocation_result(invocation)
+    assert settled["status"] == "unknown"
+    assert settled["result"]["process_completed"] is False
+    assert "source_profile_frame_id_mismatch" in settled["result"]["measurements"]["feedback_adapter_errors"]
+
+
+def test_cycle_projector_rejects_direct_samples_without_source_profile():
+    provider, held = Provider(), PersistentPossession()
+    rt = runtime(provider, held)
+    args = rt.invoke_query("cycle_preparation", "prepare", request())["arguments"]
+    raw = measured()
+    raw.pop("feedback_source_profile")
+    provider.result = raw
+    invocation = rt.start_action("object.pour_cycle", args, caller_id=CALLER)["invocation_id"]
+    settled = rt.invocation_result(invocation)
+    assert settled["status"] == "unknown"
+    assert settled["result"]["process_completed"] is False
+    assert settled["result"]["measurements"]["feedback_adapter_status"] == "invalid"
+    assert "missing_source_profile" in settled["result"]["measurements"]["feedback_adapter_errors"]
 
 
 def test_process_fact_survives_missing_artifact_reference_as_unknown_partial_result():

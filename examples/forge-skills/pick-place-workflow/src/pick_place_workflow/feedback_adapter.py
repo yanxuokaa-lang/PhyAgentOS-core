@@ -121,6 +121,7 @@ def normalize_feedback(
     *,
     source_profile: Mapping[str, Any] | None,
     evaluation_profile: Mapping[str, Any],
+    expected_source_profile: Mapping[str, Any] | None = None,
 ) -> FeedbackNormalization:
     """Normalize one raw observation stream for the existing cycle calculator.
 
@@ -134,6 +135,11 @@ def normalize_feedback(
     if operation not in _OPERATIONS:
         raise FeedbackAdapterError(f"unsupported feedback operation: {operation}")
     profile, errors = _profile_error(operation, source_profile)
+    if isinstance(expected_source_profile, Mapping):
+        for key in ("frame_id", "calibration_ref"):
+            expected = expected_source_profile.get(key)
+            if _text(expected) and profile.get(key) != expected:
+                _append_error(errors, f"source_profile_{key}_mismatch")
     if not isinstance(evaluation_profile, Mapping):
         _append_error(errors, "missing_evaluation_profile")
         normalized_evaluation_profile: dict[str, Any] = {}
@@ -174,7 +180,13 @@ def normalize_feedback(
                 _append_error(errors, "timestamp_not_monotonic")
             previous_timestamp = timestamp_value
 
-        sample: dict[str, Any] = {"timestamp_s": timestamp_value, "feedback_valid": False}
+        sample: dict[str, Any] = {
+            "timestamp_s": timestamp_value,
+            "feedback_valid": False,
+            "frame_id": profile.get("frame_id"),
+            "calibration_ref": profile.get("calibration_ref"),
+            "container_frame_id": profile.get("container_frame_id"),
+        }
         if observation.get("frame_id") != profile.get("frame_id"):
             _append_error(errors, "frame_mismatch" if observation.get("frame_id") is not None else "missing_frame_id")
         if observation.get("calibration_ref") != profile.get("calibration_ref"):
@@ -228,6 +240,7 @@ def normalize_feedback(
                 tool_tip_x_m=float(x) if _finite(x) else 0.0,
                 tool_tip_y_m=float(y) if _finite(y) else 0.0,
                 tool_tip_depth_m=float(depth) if _finite(depth) else 0.0,
+                tool_tip_frame_id=tip_frame,
             )
         projected.append(sample)
 

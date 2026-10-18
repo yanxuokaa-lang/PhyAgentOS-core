@@ -1,7 +1,7 @@
 # 倾倒与搅拌完整操作：PAOS 架构诊断与修订方案
 
 日期：2026-10-18（Asia/Shanghai）。设计基点：`b4dac9ab`；实现检查基点：`352fe271`、`c4f2a194`、`4e93476d`、`f7da28d6`、`b615a253`、`ba168a7f`，分支 `feature/planning-loop`。
-状态：PAOS Tool/Runtime 契约、离线反馈计算器、provider 无关阶段事实协议、显式 cycle 能力声明、no-motion control-loop、provider-neutral `AtomicExecutor` 和反馈规范化适配层已实现，定向回归为 `140 passed`。复审额外修复了搅拌反馈断点只重置圈数、未同步重置连续时长，以及缺少 artifact ref 时过程事实被抹除的问题。具体设备采集、SDK/仿真/真机适配与验收不在本阶段范围。本状态不代表 cycle 可在物理设备上运行。
+状态：PAOS Tool/Runtime 契约、离线反馈计算器、provider 无关阶段事实协议、显式 cycle 能力声明、no-motion control-loop、provider-neutral `AtomicExecutor` 和反馈规范化适配层已实现，定向回归为 `144 passed`。本轮继续修复了反馈 source profile 未绑定 Action frame/calibration、规范样本可绕过反馈适配校验的问题。具体设备采集、SDK/仿真/真机适配与验收不在本阶段范围。本状态不代表 cycle 可在物理设备上运行。
 配套：[设计审核与验证矩阵](COMPOSITE_POUR_STIR_REVIEW_20261018.md)。
 
 ## 1. 当前需求与结论
@@ -144,7 +144,7 @@ place 接受同一 owner 下经当前 cycle invocation/held invocation/scene rev
 4. [完成] 已知过程完成但归位失败保留阶段事实并只允许 place；缺阶段、丢失反馈、启动回执丢失或无法确认的阶段结果保持 unknown，不重放 cycle。
 5. [完成；no-motion] provider 读取显式 cycle capability declaration；fake engine control-loop 覆盖七阶段顺序、失败短路和取消后的 unknown。过程/归位事实不再因缺失 artifact ref 被抹除，但完整 succeeded 仍要求完整 evidence。
 6. [完成；provider-neutral executor] provider 支持通过 `atomic_executor` 工厂提供 acquire、transport、process、reorient_exit、stow、release、retreat 七个内部原子操作；executor 只产生阶段事实，不创建嵌套 PAOS invocation。no-motion executor 验证顺序、失败短路和取消 unknown。
-7. [完成；provider-neutral 反馈适配] 新增 `feedback_adapter`，将 provider 原始观测规范化为倾倒/搅拌计算器样本；校验单调时间、frame、calibration、容器/工具坐标系、抓持状态、过程字段和采样 profile。具体部署仍需提供实际采集、器材几何和 profile 数值；这不是非夕 SDK 接入。按当前范围不运行仿真或机械臂，也不据离线测试声称物理执行成功。
+7. [完成；provider-neutral 反馈适配] 新增 `feedback_adapter`，将 provider 原始观测和带 provenance 的规范样本统一转换为倾倒/搅拌计算器样本；校验单调时间、Action frame/calibration 绑定、容器/工具坐标系、抓持状态、过程字段和采样 profile。具体部署仍需提供实际采集、器材几何和 profile 数值；这不是非夕 SDK 接入。按当前范围不运行仿真或机械臂，也不据离线测试声称物理执行成功。
 
 实现前不添加 hash、冻结契约、baseline 或额外门禁；复用已有版本、类型、invocation 和现有运动边界检查。
 新增字段和阶段事实对应具体故障：归位失败重倒、过程假阳性、取消后继续运动。没有这些故障依据的机制不纳入本方案。
@@ -152,11 +152,11 @@ place 接受同一 owner 下经当前 cycle invocation/held invocation/scene rev
 
 ## 8. Provider 反馈协议
 
-cycle engine 的终态 receipt 携带 `phase_events`、规范化后的 `feedback_samples` 与 `evaluation_profile`；若 provider 仍提供原始 `feedback_observations`，同时携带 `feedback_source_profile`，PAOS 在投影阶段调用 `feedback_adapter` 再计算。每个阶段事件含阶段名、`completed`/`failed`/`unknown` 状态、单调时钟 `started_at_s`/`completed_at_s` 和可观察 facts；成功阶段必须满足协议规定的事实前置条件。阶段严格有序，缺失阶段或无效时间线不能结算为成功。
+cycle engine 的终态 receipt 携带 `phase_events`、规范化后的 `feedback_samples` 与 `evaluation_profile`；provider 无论提交原始 `feedback_observations` 还是规范样本，都必须携带 `feedback_source_profile`，PAOS 在投影阶段通过同一 `feedback_adapter` 重验证后再计算。source profile 的 `frame_id`/`calibration_ref` 必须与本次 Action 参数和准备 lineage 一致；规范样本也必须保留这些 provenance 字段。每个阶段事件含阶段名、`completed`/`failed`/`unknown` 状态、单调时钟 `started_at_s`/`completed_at_s` 和可观察 facts；成功阶段必须满足协议规定的事实前置条件。阶段严格有序，缺失阶段或无效时间线不能结算为成功。
 反馈样本的 `timestamp_s` 使用同一单调时钟，倾倒样本含容器对准误差、倾角、抓持和反馈有效性；搅拌样本含容器坐标系下棒尖位置、抓持和反馈有效性。profile 提供采样最大间隔、单采样角度变化上界及与器材/容器相符的几何容差，以避免稀疏采样造成转向混叠。process 阶段 `completed` 表示该阶段的执行观察已结束；是否达到工艺运动目标另由计算出的 qualification 事实判断。任一采样间隔超限、样本无效或轨迹离开目标区域时，搅拌的连续圈数和连续时长都从新片段重新计算。
 PAOS 重算过程目标，不信任 provider 的汇总圈数/倾倒时间或 `process_completed` 布尔值。部署只有在准备 provider 和执行 client 都对相同 operation 显式声明完整 `cycle_capability(operation)` 时才发现 cycle Tool；RoboTwin provider 只在 engine 提供完整声明、准备和执行入口时声明支持。协议不含运动命令、SDK 类型或设备身份。
 
-本轮将上述发现收敛为 `cycle_capability(operation)` 声明：声明必须逐 operation 给出 preparation、execution、feedback 和 return 能力，`dry_run` 仅表示可进行无运动控制流验证，不等于已授权物理动作。provider 若没有声明或声明不完整则 fail closed。反馈适配层的结构性错误（时间回退、frame/calibration 漂移、坐标或抓持证据缺失）会使整条原始流 invalid 并保持 cycle unknown；provider 明确报告的 `feedback_valid=false` 只是一个不合格采样，不会被改成成功。阶段 control-loop 仍由具体 provider/engine 实现；当前 fake engine 只用于验证阶段事件顺序、失败短路和取消语义。
+本轮将上述发现收敛为 `cycle_capability(operation)` 声明：声明必须逐 operation 给出 preparation、execution、feedback 和 return 能力，`dry_run` 仅表示可进行无运动控制流验证，不等于已授权物理动作。provider 若没有声明或声明不完整则 fail closed。反馈适配层的结构性错误（时间回退、frame/calibration 漂移、坐标或抓持证据缺失）会使整条反馈流 invalid 并保持 cycle unknown；provider 明确报告的 `feedback_valid=false` 只是一个不合格采样，不会被改成成功。阶段 control-loop 仍由具体 provider/engine 实现；当前 fake engine 只用于验证阶段事件顺序、失败短路和取消语义。
 
 过程测量、阶段事实和完整证据分开结算。有效反馈可以保留 `process_completed`/`return_completed` 部分事实；`artifact_refs` 缺失时整体结果不能升级为完整 `succeeded`，但不得因此把已经观察到的过程事实改写为未完成。
 
