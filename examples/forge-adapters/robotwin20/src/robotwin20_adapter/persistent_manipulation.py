@@ -37,6 +37,13 @@ _TERMINAL_FIELDS = (
     "possession_state",
     "object_support_state",
     "video_evidence_error",
+    "operation_completed",
+    "process_completed",
+    "return_completed",
+    "returned_to_safe_pose",
+    "entity_ref",
+    "destination_ref",
+    "return_destination_ref",
 )
 _ATTEMPT_FIELDS = (
     "arm",
@@ -52,6 +59,11 @@ _ACQUISITION_MEASUREMENT_FIELDS = (
     "minimum_lift_m",
     "support_clearance_m",
     "support_tolerance_m",
+)
+_HELD_MEASUREMENT_FIELDS = (
+    "aligned_hold_s", "maximum_tilt_rad", "in_container_turns",
+    "in_container_duration_s", "position_error_m", "orientation_error_rad",
+    "qualified_tilt_hold_s",
 )
 
 
@@ -219,6 +231,18 @@ def bounded_action_receipt(result: Mapping[str, Any]) -> dict[str, Any]:
         }
         if projected_acquisition:
             receipt["acquisition_measurement"] = projected_acquisition
+    held_measurement = result.get("measurements")
+    if isinstance(held_measurement, Mapping):
+        receipt["measurements"] = {
+            key: held_measurement[key] for key in _HELD_MEASUREMENT_FIELDS
+            if key in held_measurement and not isinstance(held_measurement[key], bool)
+            and isinstance(held_measurement[key], (int, float))
+            and math.isfinite(held_measurement[key]) and held_measurement[key] >= 0
+        }
+        if isinstance(held_measurement.get("trajectory_qualified"), bool):
+            receipt["measurements"]["trajectory_qualified"] = held_measurement["trajectory_qualified"]
+        if held_measurement.get("direction") in {"cw", "ccw"}:
+            receipt["measurements"]["direction"] = held_measurement["direction"]
     if (
         receipt.get("failure_code") == "acquisition_postcondition_failed"
         and not _acquisition_postcondition_is_valid(receipt)
@@ -303,7 +327,13 @@ class PersistentManipulationProvider:
     queries. Gateway invocation identities are supplied by the caller.
     """
 
-    def __init__(self, engine_factory: Callable[[], Any]) -> None:
+    def __init__(self, engine_factory: Callable[[], Any], *, held_operations: tuple[str, ...] = ()) -> None:
+        if set(held_operations) - {"pour", "stir"}:
+            raise ValueError("unsupported held operation")
+        self._held_operations = frozenset(held_operations)
+        self._held_id: str | None = None
+        self._cycle_id: str | None = None
+        self._scene_revision: str | None = None
         self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="robotwin-world")
         self._lock = RLock()
         try:
@@ -320,20 +350,59 @@ class PersistentManipulationProvider:
 
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
-            return {"holding_state": self._state, "owner": self._owner,
-                    "acquire_invocation_id": self._acquire_id, "entity_ref": self._entity}
+            result = {"holding_state": self._state, "owner": self._owner,
+                      "acquire_invocation_id": self._acquire_id, "entity_ref": self._entity}
+            if self._held_operations or self._cycle_id is not None:
+                result["held_invocation_ref"] = self._held_id
+                if self._scene_revision is not None:
+                    result["scene_revision"] = self._scene_revision
+            if self._cycle_id is not None:
+                result["cycle_invocation_ref"] = self._cycle_id
+            return result
 
     def query(self, operation: str, arguments: Mapping[str, Any]) -> dict[str, Any]:
         with self._lock:
-            if self._closed or self._state in {"acquiring", "placing"}:
+            if self._closed or self._state in {"acquiring", "placing", "operating"}:
                 raise ManipulationStateError("world query unavailable during motion or shutdown")
+            if operation == "prepare_cycle":
+                if self._state != "empty":
+                    raise ManipulationStateError("cycle preparation requires an empty provider")
+                prepare_cycle = getattr(self._engine, "prepare_cycle", None)
+                if not callable(prepare_cycle):
+                    raise ManipulationStateError("engine does not support complete manipulation cycles")
+                future = self._pool.submit(prepare_cycle, deepcopy(dict(arguments)))
+                return {**dict(future.result()), **self.snapshot()}
             if operation in {"route_readiness", "bind_observed_entities", "contact_qualification"} and self._state != "empty":
                 raise ManipulationStateError("new route preparation requires an empty provider")
+            if operation == "prepare_held" and (not self._held_operations or self._state != "holding"):
+                if not (self._cycle_id is not None and arguments.get("operation") == "place"
+                        and self._state == "holding"):
+                    raise ManipulationStateError("held preparation requires supported operations and known holding")
             future = self._pool.submit(self._engine.query, operation, deepcopy(dict(arguments)))
             return {**dict(future.result()), **self.snapshot()}
 
+    def prepare_cycle(self, arguments: Mapping[str, Any]) -> dict[str, Any]:
+        """Expose preparation only when the engine owns the full no-motion check."""
+        operation = arguments.get("operation") if isinstance(arguments, Mapping) else None
+        if not self.supports_cycle(operation):
+            return {"status": "unavailable", "error": "complete_cycle_not_supported"}
+        try:
+            result = self.query("prepare_cycle", arguments)
+        except Exception as exc:
+            return {"status": "unavailable", "error": f"cycle_preparation_unavailable:{type(exc).__name__}"}
+        if not isinstance(result, Mapping) or result.get("status") != "available":
+            return {"status": "unavailable", "error": "cycle_preparation_unavailable"}
+        return dict(result)
+
+    def supports_cycle(self, operation: str) -> bool:
+        with self._lock:
+            return (operation in {"pour_cycle", "stir_cycle"}
+                    and callable(getattr(self._engine, "prepare_cycle", None))
+                    and callable(getattr(self._engine, "execute_cycle", None)))
+
     def start(self, phase: str, invocation_id: str, owner: str, arguments: Mapping[str, Any]) -> None:
-        if phase not in {"acquire", "place"} or not invocation_id or not owner:
+        cycle_phase = phase in {"pour_cycle", "stir_cycle"}
+        if phase not in {"acquire", "place", *self._held_operations, "pour_cycle", "stir_cycle"} or not invocation_id or not owner:
             raise ManipulationStateError("invalid manipulation identity")
         arguments = deepcopy(dict(arguments))
         with self._lock:
@@ -347,11 +416,26 @@ class PersistentManipulationProvider:
                 if not isinstance(arguments.get("entity_ref"), str) or not arguments["entity_ref"]:
                     raise ManipulationStateError("acquire requires entity_ref")
                 self._owner, self._acquire_id, self._entity = owner, invocation_id, arguments["entity_ref"]
+                self._cycle_id = None
+            elif cycle_phase:
+                if not self.supports_cycle(phase):
+                    raise ManipulationStateError("engine does not support complete manipulation cycles")
+                if self._state != "empty" or not isinstance(arguments.get("entity_ref"), str):
+                    raise ManipulationStateError("complete cycle requires an empty provider and entity_ref")
+                self._owner, self._acquire_id, self._entity = owner, None, arguments["entity_ref"]
+                self._cycle_id = invocation_id
+                self._held_id = None
             elif (self._state != "holding" or self._owner != owner
-                  or arguments.get("acquire_invocation_id") != self._acquire_id
+                  or (self._cycle_id is None and arguments.get("acquire_invocation_id") != self._acquire_id)
+                  or (self._cycle_id is not None and arguments.get("cycle_invocation_id") != self._cycle_id)
                   or arguments.get("entity_ref") != self._entity):
                 raise ManipulationStateError("place does not match the owned held object")
-            self._state = "acquiring" if phase == "acquire" else "placing"
+            if phase in self._held_operations or "held_invocation_ref" in arguments:
+                if arguments.get("held_invocation_ref") != self._held_id or arguments.get("scene_revision") != self._scene_revision:
+                    raise ManipulationStateError("held operation uses stale possession or scene")
+            elif phase == "place" and self._held_operations and self._held_id != self._acquire_id:
+                raise ManipulationStateError("place requires current held preparation")
+            self._state = "acquiring" if phase in {"acquire", "pour_cycle", "stir_cycle"} else "placing" if phase == "place" else "operating"
             cancel = Event()
             self._operations[invocation_id] = (
                 self._pool.submit(
@@ -374,15 +458,10 @@ class PersistentManipulationProvider:
         cancel: Event,
     ) -> dict[str, Any]:
         try:
-            complete_result = dict(
-                self._engine.execute(
-                    phase,
-                    arguments,
-                    cancel,
-                    owner=owner,
-                    invocation_id=invocation_id,
-                )
-            )
+            execute = self._engine.execute_cycle if phase in {"pour_cycle", "stir_cycle"} else self._engine.execute
+            complete_result = dict(execute(
+                phase, arguments, cancel, owner=owner, invocation_id=invocation_id,
+            ))
         except Exception as exc:
             # An exception is not evidence that nothing happened.
             result = {"status": "unknown", "outcome_known": False,
@@ -409,7 +488,21 @@ class PersistentManipulationProvider:
         with self._lock:
             status = result.get("status")
             explicit_possession = result.get("possession_state")
-            if explicit_possession == "empty" and (
+            if phase in self._held_operations:
+                known = result.get("outcome_known") is True
+                if known and explicit_possession in {"empty", "holding"}:
+                    self._state = explicit_possession
+                elif known and result.get("world_change_started") is False:
+                    self._state = "holding"
+                else:
+                    self._state = "uncertain"
+            elif phase in {"pour_cycle", "stir_cycle"}:
+                known = result.get("outcome_known") is True
+                if known and result.get("possession_state") in {"empty", "holding"}:
+                    self._state = result["possession_state"]
+                else:
+                    self._state = "uncertain"
+            elif explicit_possession == "empty" and (
                 phase == "place"
                 or (result.get("outcome_known") is True and status in {"succeeded", "failed"})
             ):
@@ -424,7 +517,19 @@ class PersistentManipulationProvider:
                 self._state = "uncertain"
             if self._state == "empty":
                 self._owner = self._acquire_id = self._entity = None
+                self._cycle_id = None
+            if phase in {"pour_cycle", "stir_cycle"}:
+                self._held_id = invocation_id if self._state == "holding" else None
+            if self._held_operations or phase in {"pour_cycle", "stir_cycle"} or self._cycle_id is not None:
+                self._held_id = invocation_id
+                if result.get("outcome_known") is not True:
+                    self._scene_revision = None
+                elif result.get("new_scene_revision"):
+                    self._scene_revision = result["new_scene_revision"]
+            measured_entity = result.get("entity_ref")
             result.update(self.snapshot())
+            if ("held_invocation_ref" in arguments or phase in {"pour_cycle", "stir_cycle"}) and measured_entity is not None:
+                result["entity_ref"] = measured_entity
             result["invocation_id"] = invocation_id
             effects = result.get("scene_effects")
             if isinstance(effects, dict) and "held_entity" in effects:

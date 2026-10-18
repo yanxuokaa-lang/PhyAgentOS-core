@@ -115,6 +115,8 @@ def build_persistent_runtime_bundle(
     tool_input_defaults: Mapping[str, Mapping[str, Any]] | None = None,
     require_synchronized_views: bool = False,
     gateway_identity: str = "robotwin20-persistent-runtime",
+    held_preparation_provider=None,
+    resolve_held_preparation=None,
 ) -> PersistentRuntimeBundle:
     """Compose the persistent providers behind one provider-neutral transport.
 
@@ -139,6 +141,8 @@ def build_persistent_runtime_bundle(
         tool_context_provider=tool_context_provider,
         tool_input_defaults=tool_input_defaults,
         require_synchronized_views=require_synchronized_views,
+        held_preparation_provider=held_preparation_provider,
+        resolve_held_preparation=resolve_held_preparation,
         query_decorator=(lambda tool_id, endpoint: RememberObservation(endpoint, deployment.grounding, tool_id)
                          if tool_id in {"scene.observe", "scene.understand"} else endpoint)
         if deployment.grounding is not None else None,

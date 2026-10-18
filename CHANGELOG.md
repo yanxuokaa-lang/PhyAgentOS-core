@@ -2,6 +2,37 @@
 
 ## 最近五版本 / Latest five versions
 
+## v14.7.0 (2026-10-18 20:41) - codex
+
+### 变更摘要 / Summary [完成；仅实现通用操作契约与 no-motion provider 边界]
+- [policy] [feat] 新增 `object.pour_cycle`、`tool.stir_cycle` 与 `manipulation.prepare_cycle`；一个公共 Action 覆盖空手进入、操作过程和归位，过程完成与完整 cycle 成功分开结算。 / Add `object.pour_cycle`, `tool.stir_cycle`, and `manipulation.prepare_cycle`; one public Action covers empty-hand entry, process, and return, with process completion separated from whole-cycle success.
+- [eval] [test] 增加 cycle 成功条件、归位失败后 place-only 恢复、未知效果禁止重放、取消、参数/owner 校验及旧 held 流程回归。 / Add tests for cycle success, place-only recovery after return failure, replay prevention after unknown outcomes, cancellation, parameter/owner validation, and legacy held-flow compatibility.
+- 明确不接真实非夕 SDK，不执行仿真或机械臂；现有 RoboTwin provider 在 engine 没有 cycle 能力时 fail closed，不代表任何物理 cycle 可用。 / No real Flexiv SDK, simulation, or robot execution is involved; the RoboTwin provider fails closed without engine cycle capability and does not imply physical cycle support.
+
+### 文件变更详情 / File Change Details
+- [修改] `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/held_manipulation.py:L180-L306,L358-L488,L680-L730`：定义 cycle 输入/参数、ToolSpec、过程及归位反馈判定、分段完成结果，并让 cycle 持物仅能经当前 owner/source 的 place 恢复。 / Define cycle inputs/parameters and ToolSpecs, judge process and return feedback, expose partial completion, and permit cycle-held recovery only through place for the current owner/source.
+- [修改] `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/persistent_runtime.py:L30-L143,L473-L502`：持物来源兼容 cycle invocation，注册新 Query/Action，并扩展 cycle 来源 place。 / Support cycle invocation as possession provenance, register the new Query/Actions, and extend placement for cycle provenance.
+- [修改] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_manipulation.py:L40-L67,L370-L402,L420-L438,L460-L545`：保留过程/归位结果和有限测量；只有 engine 显式实现 `prepare_cycle`/`execute_cycle` 才报告支持，否则拒绝，不合成成功。 / Preserve process/return results and bounded measurements; require explicit engine `prepare_cycle`/`execute_cycle`, otherwise reject without synthesizing success.
+- [修改] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_deployment.py:L108-L149`：允许注入 held/cycle preparation provider 与 resolver。 / Allow injection of held/cycle preparation provider and resolver.
+- [新增] `examples/forge-skills/pick-place-workflow/contracts/manipulation.prepare_cycle.tool.yaml:L1-L256`、`object.pour_cycle.tool.yaml:L1-L291`、`tool.stir_cycle.tool.yaml:L1-L291`：提供与运行时 ToolSpec 一致的静态合同，不将 cycle 添加为所有部署的必需工具。 / Add static contracts matching runtime ToolSpecs without making cycle tools mandatory for every deployment.
+- [新增] `examples/forge-skills/pick-place-workflow/tests/test_composite_manipulation.py:L1-L226`；[修改] `examples/forge-adapters/robotwin20/tests/test_held_provider.py:L82-L90`：覆盖 no-motion cycle 生命周期、place-only 恢复和不支持 provider 拒绝。 / Cover no-motion cycle lifecycle, place-only recovery, and rejection by unsupported providers.
+
+### 关键 Diff / Key Diff
+```diff
+- one held operation assumes holding at entry and holding at exit
++ one pour_cycle/stir_cycle invocation starts empty and owns process plus return
++ succeeded requires measured process completion, confirmed release/retreat, supported object state, and a new scene revision
++ known return failure preserves process_completed and holding provenance; recovery executes place only
++ unsupported provider => unavailable/rejected; no SDK or physical success is inferred
+```
+
+### 验证 / Validation
+- Skill 定向回归：`77 passed`；Tool 安装/发现：`12 passed`；Runtime driver 与 effect recovery：`31 passed`；provider no-motion：`4 passed`。 / Skill-focused tests: `77 passed`; Tool install/discovery: `12 passed`; Runtime driver/effect recovery: `31 passed`; provider no-motion: `4 passed`.
+- Ruff 与 `git diff --check` 通过。未调用 Flexiv SDK、仿真、传感器、Gateway Action 或机械臂。 / Ruff and `git diff --check` passed. No Flexiv SDK, simulation, sensor, Gateway Action, or robot was called.
+
+### Git 提交 / Git Commit
+- 实现与日志提交后补录 commit hash；分支保持 `feature/planning-loop`。 / Record commit hashes after the implementation and changelog commits; retain branch `feature/planning-loop`.
+
 ## v14.6.2 (2026-10-18 20:12) - codex
 
 ### 变更摘要 / Summary [完成；设计修订，执行待实现]

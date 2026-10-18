@@ -1,0 +1,292 @@
+tool_id: object.pour
+endpoint_id: object_pour
+operation: pour
+semantics: action
+description: Execute one prepared pour operation and report measured outcome and possession.
+planning:
+  schema_version: paos-tool-spec-policy/v1
+  capabilities:
+  - object.pour
+  input_binding_keys:
+  - entity_ref
+  - destination_ref
+  scene_write_behavior: new_revision
+  argument_projection: prepared_held_operation_v1
+  argument_projection_plan:
+    projection_id: prepared_held_operation_v1
+    join_field: entity_ref
+    source_slots:
+      preparation:
+        tool_id: manipulation.prepare_held
+        source_scope: predecessor
+        source_field_map:
+          entity_ref:
+          - arguments
+          - entity_ref
+          destination_ref:
+          - arguments
+          - destination_ref
+          observation_ref:
+          - arguments
+          - observation_ref
+          scene_revision:
+          - arguments
+          - scene_revision
+          frame_id:
+          - arguments
+          - frame_id
+          calibration_ref:
+          - arguments
+          - calibration_ref
+          capability_snapshot_ref:
+          - arguments
+          - capability_snapshot_ref
+          acquire_invocation_ref:
+          - arguments
+          - acquire_invocation_ref
+          held_invocation_ref:
+          - arguments
+          - held_invocation_ref
+          operation:
+          - arguments
+          - operation
+          parameters:
+          - arguments
+          - parameters
+          freshness_ms:
+          - arguments
+          - freshness_ms
+          max_age_ms:
+          - arguments
+          - max_age_ms
+          preparation_ref:
+          - arguments
+          - preparation_ref
+          assignment_ref:
+          - arguments
+          - assignment_ref
+    top_level_fields: []
+input_schema:
+  type: object
+  additionalProperties: false
+  properties:
+    entity_ref:
+      type: string
+      minLength: 1
+      pattern: ^entity://[^/]+$
+    destination_ref:
+      type: string
+      minLength: 1
+      pattern: ^destination://\S+$
+    observation_ref:
+      type: string
+      minLength: 1
+    scene_revision:
+      type: string
+      minLength: 1
+    frame_id:
+      type: string
+      minLength: 1
+    calibration_ref:
+      type: string
+      minLength: 1
+    capability_snapshot_ref:
+      type: string
+      minLength: 1
+    acquire_invocation_ref:
+      type: string
+      minLength: 1
+      pattern: ^invocation://object-acquire/[^/]+$
+    held_invocation_ref:
+      type: string
+      minLength: 1
+      pattern: ^invocation://[^/]+/[^/]+$
+    operation:
+      const: pour
+    parameters:
+      type: object
+    freshness_ms:
+      type: integer
+      minimum: 0
+    max_age_ms:
+      type: integer
+      minimum: 1
+    preparation_ref:
+      type: string
+      minLength: 1
+    assignment_ref:
+      type: string
+      minLength: 1
+  required:
+  - entity_ref
+  - destination_ref
+  - observation_ref
+  - scene_revision
+  - frame_id
+  - calibration_ref
+  - capability_snapshot_ref
+  - acquire_invocation_ref
+  - held_invocation_ref
+  - operation
+  - parameters
+  - freshness_ms
+  - max_age_ms
+  - preparation_ref
+  - assignment_ref
+  allOf:
+  - if:
+      properties:
+        operation:
+          const: pour
+    then:
+      properties:
+        parameters:
+          type: object
+          additionalProperties: false
+          properties:
+            tilt_rad:
+              type: number
+              exclusiveMinimum: 0
+              maximum: 3.141592653589793
+            hold_s:
+              type: number
+              exclusiveMinimum: 0
+          required:
+          - tilt_rad
+          - hold_s
+  - if:
+      properties:
+        operation:
+          const: stir
+    then:
+      properties:
+        parameters:
+          type: object
+          additionalProperties: false
+          properties:
+            radius_m: &id001
+              type: number
+              exclusiveMinimum: 0
+            depth_m: *id001
+            turns: *id001
+            duration_s: *id001
+          required:
+          - radius_m
+          - depth_m
+          - turns
+          - duration_s
+  - if:
+      properties:
+        operation:
+          const: place
+    then:
+      properties:
+        parameters:
+          type: object
+          additionalProperties: false
+          properties: {}
+          required: []
+output_schema:
+  type: object
+  required:
+  - invocation_id
+  - attempt_id
+  - phase
+  properties:
+    invocation_id: &id002
+      type: string
+      minLength: 1
+    attempt_id: *id002
+    phase: *id002
+    result:
+      type: object
+      additionalProperties: false
+      properties:
+        entity_ref:
+          type: string
+          minLength: 1
+          pattern: ^entity://[^/]+$
+        destination_ref:
+          type: string
+          minLength: 1
+          pattern: ^destination://\S+$
+        observation_ref:
+          type: string
+          minLength: 1
+        scene_revision:
+          type: string
+          minLength: 1
+        frame_id:
+          type: string
+          minLength: 1
+        calibration_ref:
+          type: string
+          minLength: 1
+        capability_snapshot_ref:
+          type: string
+          minLength: 1
+        acquire_invocation_ref:
+          type: string
+          minLength: 1
+          pattern: ^invocation://object-acquire/[^/]+$
+        held_invocation_ref:
+          type: string
+          minLength: 1
+          pattern: ^invocation://[^/]+/[^/]+$
+        operation:
+          const: pour
+        parameters:
+          type: object
+        freshness_ms:
+          type: integer
+          minimum: 0
+        max_age_ms:
+          type: integer
+          minimum: 1
+        preparation_ref:
+          type: string
+          minLength: 1
+        assignment_ref:
+          type: string
+          minLength: 1
+        status:
+          enum:
+          - succeeded
+          - failed
+          - cancelled
+          - stopped
+          - unknown
+        new_scene_revision:
+          type:
+          - string
+          - 'null'
+        operation_completed:
+          type: boolean
+        measurements:
+          type: object
+        evidence_refs:
+          type: array
+          items: *id002
+        capability_outcome_summary:
+          type: object
+      required:
+      - status
+      - operation_completed
+      - measurements
+      - evidence_refs
+      - capability_outcome_summary
+      - entity_ref
+      - destination_ref
+      - observation_ref
+      - scene_revision
+      - frame_id
+      - calibration_ref
+      - capability_snapshot_ref
+      - acquire_invocation_ref
+      - held_invocation_ref
+      - operation
+      - parameters
+      - freshness_ms
+      - max_age_ms
+      - preparation_ref
+      - assignment_ref

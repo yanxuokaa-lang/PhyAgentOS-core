@@ -35,24 +35,48 @@ class PersistentPossession:
     owner: str | None = None
     entity_ref: str | None = None
     acquire_invocation_ref: str | None = None
+    cycle_invocation_ref: str | None = None
+    last_invocation_ref: str | None = None
+    scene_revision: str | None = None
 
-    def validate_begin(self, phase: str, *, owner: str, entity_ref: str, acquire_ref: str | None = None) -> None:
-        if phase == "acquire" and self.state in {"holding", "placing", "uncertain"}:
+    def validate_begin(self, phase: str, *, owner: str, entity_ref: str, acquire_ref: str | None = None,
+                       cycle_ref: str | None = None) -> None:
+        if phase in {"pour_cycle", "stir_cycle"}:
+            if self.state != "empty":
+                raise ValueError(f"possession is {self.state}; {phase} requires empty hand")
+            return
+        if phase == "acquire" and self.state in {"holding", "placing", "operating", "uncertain"}:
             raise ValueError(f"possession is {self.state}; acquire is not admissible")
-        if phase == "place":
+        if phase in {"place", "pour", "stir"}:
             if self.state != "holding":
-                raise ValueError(f"possession is {self.state}; place requires holding")
+                raise ValueError(f"possession is {self.state}; {phase} requires holding")
             if self.owner != owner or self.entity_ref != entity_ref or self.acquire_invocation_ref != acquire_ref:
-                raise ValueError("place does not match the held entity owner and acquisition")
+                raise ValueError(f"{phase} does not match the held entity owner and acquisition")
+            if self.cycle_invocation_ref != cycle_ref:
+                raise ValueError(f"{phase} does not match the held cycle source")
 
-    def begin(self, phase: str, *, owner: str, entity_ref: str, acquire_ref: str | None = None) -> None:
-        self.validate_begin(phase, owner=owner, entity_ref=entity_ref, acquire_ref=acquire_ref)
+    def begin(self, phase: str, *, owner: str, entity_ref: str, acquire_ref: str | None = None,
+              cycle_ref: str | None = None) -> None:
+        self.validate_begin(phase, owner=owner, entity_ref=entity_ref, acquire_ref=acquire_ref, cycle_ref=cycle_ref)
         if phase == "acquire":
             self.state, self.owner, self.entity_ref = "acquiring", owner, entity_ref
             self.acquire_invocation_ref = acquire_ref
+            self.cycle_invocation_ref = None
+            self.last_invocation_ref = acquire_ref
+            self.scene_revision = None
+            return
+        if phase in {"pour_cycle", "stir_cycle"}:
+            self.state, self.owner, self.entity_ref = "acquiring", owner, entity_ref
+            self.acquire_invocation_ref = None
+            self.cycle_invocation_ref = None
+            self.last_invocation_ref = None
+            self.scene_revision = None
             return
         if phase == "place":
             self.state = "placing"
+            return
+        if phase in {"pour", "stir"}:
+            self.state = "operating"
             return
         raise ValueError(f"unsupported possession phase: {phase}")
 
@@ -61,9 +85,16 @@ class PersistentPossession:
         known = result.get("outcome_known") is True
         changed = result.get("world_change_started") is True
         explicit_possession = result.get("possession_state")
+        if phase in {"pour", "stir", "pour_cycle", "stir_cycle"} and known and status in {"succeeded", "failed", "cancelled", "stopped"} and explicit_possession in {"empty", "holding"}:
+            self.state = explicit_possession
+            if self.state == "empty":
+                self.owner = self.entity_ref = self.acquire_invocation_ref = None
+                self.cycle_invocation_ref = None
+            return
         if known and status in {"succeeded", "failed"} and explicit_possession == "empty":
             self.state = "empty"
             self.owner = self.entity_ref = self.acquire_invocation_ref = None
+            self.cycle_invocation_ref = None
             return
         if known and status in {"succeeded", "failed"} and explicit_possession == "holding":
             self.state = "holding"
@@ -83,6 +114,10 @@ class PersistentPossession:
                 self.state = "holding"
             else:
                 self.state = "uncertain"
+        elif phase in {"pour", "stir", "pour_cycle", "stir_cycle"}:
+            # An operation never acquires or releases implicitly. Only explicit
+            # measured possession, or a confirmed no-effect interruption, can hold.
+            self.state = "holding" if known and not changed and status in {"failed", "cancelled", "stopped"} else "uncertain"
 
     def reconcile(self, snapshot: Mapping[str, Any]) -> str:
         """Reconcile after restart from explicit adapter-owned physical facts."""
@@ -93,20 +128,30 @@ class PersistentPossession:
         if holding == "empty":
             self.state = "empty"
             self.owner = self.entity_ref = self.acquire_invocation_ref = None
+            self.cycle_invocation_ref = None
             return self.state
         if holding != "holding":
             self.state = "uncertain"
             return self.state
-        if any(value is None for value in (self.owner, self.entity_ref, self.acquire_invocation_ref)):
+        source_ref = self.acquire_invocation_ref or self.cycle_invocation_ref
+        if any(value is None for value in (self.owner, self.entity_ref, source_ref)):
             self.state = "uncertain"
             return self.state
         if any(snapshot.get(key) != value for key, value in (
             ("owner", self.owner),
             ("entity_ref", self.entity_ref),
             ("acquire_invocation_ref", self.acquire_invocation_ref),
+            ("cycle_invocation_ref", self.cycle_invocation_ref),
         )):
             self.state = "uncertain"
             return self.state
+        if self.last_invocation_ref is not None and self.last_invocation_ref != self.acquire_invocation_ref:
+            if (snapshot.get("held_invocation_ref") != self.last_invocation_ref
+                    or not isinstance(snapshot.get("scene_revision"), str)
+                    or not snapshot["scene_revision"]):
+                self.state = "uncertain"
+                return self.state
+            self.scene_revision = snapshot["scene_revision"]
         self.state = "holding"
         return self.state
 
@@ -160,6 +205,8 @@ class _ProjectedDriver:
             self.phase,
             {**raw, "status": status, "outcome_known": outcome_known},
         )
+        self.possession.last_invocation_ref = self.invocation_id
+        self.possession.scene_revision = raw.get("new_scene_revision") if outcome_known else None
         arm_attempts = []
         for attempt in raw.get("arm_attempts", []):
             if not isinstance(attempt, Mapping):
@@ -237,6 +284,7 @@ class _ProjectedDriver:
         if isinstance(raw.get("scene_effects"), Mapping):
             result["scene_effects"] = deepcopy(dict(raw["scene_effects"]))
         result["evidence_refs"] = refs + ([f"placed:{self.arguments['entity_ref']}"] if success and self.phase == "place" else [])
+        result["held_invocation_ref"] = self.invocation_id
         return result
 
     def cancel(self):
@@ -279,6 +327,7 @@ def _spec(spec, *, argument_defaults=None, require_synchronized_views: bool = Fa
         spec["planning"]["capabilities"].append("task.verify")
     if action:
         properties = spec["output_schema"]["properties"]["result"]["properties"]
+        properties["held_invocation_ref"] = {"type": "string", "minLength": 1}
         properties["evidence_refs"] = {"type": "array", "items": {"type": "string"}}
         properties["scene_effects"] = {"type": "object"}
         properties["capability_outcome_summary"]["properties"]["world_change_started"] = {"type": ["boolean", "null"]}
@@ -380,7 +429,8 @@ def build_persistent_runtime(*, client, understanding_provider, grasp_provider,
                              preparation_provider, capability_provider, resolve_preparation,
                              tool_context_provider, possession: PersistentPossession | None = None,
                              query_decorator=None, tool_input_defaults=None,
-                             require_synchronized_views: bool = False) -> CapabilityRuntime:
+                             require_synchronized_views: bool = False,
+                             held_preparation_provider=None, resolve_held_preparation=None) -> CapabilityRuntime:
     """Use injected model providers and one persistent manipulation process.
 
     resolve_preparation belongs to the adapter and supplies the approved route
@@ -391,6 +441,8 @@ def build_persistent_runtime(*, client, understanding_provider, grasp_provider,
     """
     runtime = CapabilityRuntime()
     possession = possession or PersistentPossession()
+    if (held_preparation_provider is None) != (resolve_held_preparation is None):
+        raise ValueError("held preparation provider and resolver must be supplied together")
     for spec, endpoint in (
         (OBSERVATION_TOOL_SPEC, ObservationEndpoint(PersistentObservationSource(client))),
         (SCENE_UNDERSTANDING_TOOL_SPEC, SceneUnderstandingEndpoint(understanding_provider)),
@@ -403,13 +455,48 @@ def build_persistent_runtime(*, client, understanding_provider, grasp_provider,
         defaults = (tool_input_defaults or {}).get(spec["tool_id"])
         if query_decorator is not None and spec["semantics"] == "query":
             endpoint = query_decorator(spec["tool_id"], endpoint)
-        runtime.register_tool(
-            _spec(
+        live_spec = _spec(
                 spec,
                 argument_defaults=defaults,
                 require_synchronized_views=require_synchronized_views,
-            ),
+            )
+        if held_preparation_provider is not None and spec["tool_id"] == "object.place":
+            from .held_manipulation import HeldActionEndpoint, extended_place_spec
+
+            live_spec = extended_place_spec(live_spec)
+            endpoint = HeldActionEndpoint("place", client, resolve_held_preparation, possession, legacy_place=endpoint)
+        runtime.register_tool(
+            live_spec,
             endpoint,
             context_provider=lambda tool_id=spec["tool_id"]: tool_context_provider(tool_id),
         )
+    if held_preparation_provider is not None:
+        from .held_manipulation import (
+            POUR_CYCLE_TOOL_SPEC,
+            POUR_TOOL_SPEC,
+            PREPARE_CYCLE_TOOL_SPEC,
+            PREPARE_HELD_TOOL_SPEC,
+            STIR_CYCLE_TOOL_SPEC,
+            STIR_TOOL_SPEC,
+            CycleActionEndpoint,
+            CyclePreparationEndpoint,
+            HeldActionEndpoint,
+            HeldPreparationEndpoint,
+            extended_held_preparation_spec,
+        )
+
+        for spec, endpoint in (
+            (PREPARE_HELD_TOOL_SPEC, HeldPreparationEndpoint(held_preparation_provider, possession)),
+            (POUR_TOOL_SPEC, HeldActionEndpoint("pour", client, resolve_held_preparation, possession)),
+            (STIR_TOOL_SPEC, HeldActionEndpoint("stir", client, resolve_held_preparation, possession)),
+            (PREPARE_CYCLE_TOOL_SPEC, CyclePreparationEndpoint(held_preparation_provider, possession)),
+            (POUR_CYCLE_TOOL_SPEC, CycleActionEndpoint("pour_cycle", client, resolve_held_preparation, possession)),
+            (STIR_CYCLE_TOOL_SPEC, CycleActionEndpoint("stir_cycle", client, resolve_held_preparation, possession)),
+        ):
+            if spec["tool_id"] == "manipulation.prepare_held":
+                spec = extended_held_preparation_spec(spec)
+            if query_decorator is not None and spec["semantics"] == "query":
+                endpoint = query_decorator(spec["tool_id"], endpoint)
+            runtime.register_tool(deepcopy(spec), endpoint,
+                                  context_provider=lambda tool_id=spec["tool_id"]: tool_context_provider(tool_id))
     return runtime
