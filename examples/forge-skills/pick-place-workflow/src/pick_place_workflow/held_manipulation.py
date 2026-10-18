@@ -14,6 +14,8 @@ from typing import Any, Mapping
 from jsonschema import Draft202012Validator
 from PhyAgentOS.forge.capability_runtime import ActionAdmission
 
+from .cycle_protocol import CyclePhaseProtocol, CycleProtocolError, evaluate_process_feedback
+
 OPERATIONS = {"pour": "object.pour", "stir": "tool.stir", "place": "object.place"}
 CYCLE_OPERATIONS = {"pour_cycle": "object.pour_cycle", "stir_cycle": "tool.stir_cycle"}
 _TEXT = {"type": "string", "minLength": 1}
@@ -233,6 +235,7 @@ def cycle_action_spec(operation: str) -> dict[str, Any]:
         "new_scene_revision": {"type": ["string", "null"]}, "operation_completed": {"type": "boolean"},
         "process_completed": {"type": "boolean"}, "return_completed": {"type": "boolean"},
         "failed_phase": {"type": ["string", "null"]}, "possession_state": {"enum": ["empty", "holding", "uncertain"]},
+        "phase_facts": {"type": "object"}, "completed_phases": {"type": "array", "items": _TEXT},
         "measurements": {"type": "object"}, "evidence_refs": {"type": "array", "items": _TEXT},
         "capability_outcome_summary": {"type": "object"},
     })
@@ -246,6 +249,7 @@ def cycle_action_spec(operation: str) -> dict[str, Any]:
                                                     "properties": result_properties,
                                                     "required": ["status", "operation_completed", "process_completed",
                                                                  "return_completed", "failed_phase", "possession_state",
+                                                                 "phase_facts", "completed_phases",
                                                                  "measurements", "evidence_refs", "capability_outcome_summary",
                                                                  *schema["required"]]}}},
     }
@@ -394,51 +398,58 @@ def validate_cycle(arguments: Mapping[str, Any], *, action: bool, operation: str
 def project_cycle_result(raw, arguments, possession, invocation_id):
     status = raw.get("status", "unknown")
     known = raw.get("outcome_known") is True
-    metrics = raw.get("measurements", {})
     refs = raw.get("artifact_refs", [])
-    if not isinstance(metrics, Mapping):
-        metrics = {}
-    try:
-        json.dumps(metrics, allow_nan=False)
-    except (ValueError, TypeError):
-        metrics, known = {}, False
     if not isinstance(refs, (list, tuple)) or not all(
         isinstance(ref, str) and ref.startswith("artifact://") for ref in refs
     ):
         refs = []
-    parameters = arguments["parameters"]
-    def meets(name, minimum):
-        value = metrics.get(name)
-        return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and value >= minimum
-
-    if arguments["operation"] == "pour_cycle":
-        process_measurement_valid = meets("qualified_tilt_hold_s", parameters["hold_s"])
-    else:
-        process_measurement_valid = (
-            meets("in_container_turns", parameters["turns"])
-            and meets("in_container_duration_s", parameters["duration_s"])
-            and metrics.get("trajectory_qualified") is True
-            and metrics.get("direction") == parameters["direction"]
-        )
+    events = raw.get("phase_events", [])
+    samples = raw.get("feedback_samples", [])
+    process_feedback = {}
+    process_event = next((event for event in events if isinstance(event, Mapping)
+                          and event.get("phase") == "process"), None) if isinstance(events, (list, tuple)) else None
+    if process_event is not None:
+        try:
+            start_s, end_s = process_event.get("started_at_s"), process_event.get("completed_at_s")
+            if not isinstance(start_s, (int, float)) or not isinstance(end_s, (int, float)):
+                raise CycleProtocolError("process phase requires observed start and completion times")
+            samples = [sample for sample in samples if isinstance(sample, Mapping)
+                       and isinstance(sample.get("timestamp_s"), (int, float))
+                       and start_s <= sample["timestamp_s"] <= end_s]
+            process_feedback = evaluate_process_feedback(
+                arguments["operation"], samples, arguments["parameters"], raw.get("evaluation_profile", {}),
+            )
+        except (CycleProtocolError, KeyError, TypeError, ValueError, OverflowError):
+            known = False
+    protocol_events = []
+    for event in events if isinstance(events, (list, tuple)) else ():
+        if not isinstance(event, Mapping):
+            protocol_events.append(event)
+            continue
+        normalized = deepcopy(dict(event))
+        if normalized.get("phase") == "process":
+            facts = dict(normalized.get("facts", {}))
+            facts["process_measurement_qualified"] = process_feedback.get("process_completed") is True
+            normalized["facts"] = facts
+        protocol_events.append(normalized)
+    try:
+        phase_result = CyclePhaseProtocol().consume(protocol_events)
+    except CycleProtocolError:
+        phase_result = {"phase_facts": {}, "completed_phases": [], "failed_phase": None,
+                        "outcome_known": False, "process_completed": False, "return_completed": False}
+        known = False
+    known = known and phase_result["outcome_known"] is True
+    metrics = process_feedback
+    process_completed = (phase_result["process_completed"] and bool(refs))
+    return_completed = phase_result["return_completed"] and bool(refs)
     identity_matches = (raw.get("entity_ref") == arguments["entity_ref"]
                         and raw.get("destination_ref") == arguments["destination_ref"])
-    process_completed = (raw.get("process_completed") is True and process_measurement_valid
-                         and bool(refs) and identity_matches)
-    return_completed = (raw.get("return_completed") is True and bool(refs)
-                        and raw.get("return_destination_ref") == arguments["return_destination_ref"]
-                        and raw.get("possession_state") == "empty"
-                        and raw.get("object_support_state") == "on_support"
-                        and all(raw.get(key) is True for key in (
-                            "release_confirmed", "retreat_completed", "clear_of_target", "observation_ready",
-                        )))
+    process_completed = process_completed and identity_matches
     expected_success = (
         process_completed and return_completed and known and bool(refs)
-        and raw.get("operation_completed") is True
+        and phase_result["outcome_known"] is True
         and raw.get("possession_state") == "empty"
         and raw.get("object_support_state") == "on_support"
-        and all(raw.get(key) is True for key in (
-            "release_confirmed", "retreat_completed", "clear_of_target", "observation_ready",
-        ))
         and isinstance(raw.get("new_scene_revision"), str)
         and raw["new_scene_revision"] != arguments["scene_revision"]
         and raw.get("world_change_started") is True
@@ -446,8 +457,15 @@ def project_cycle_result(raw, arguments, possession, invocation_id):
         and raw.get("destination_ref") == arguments["destination_ref"]
         and raw.get("return_destination_ref") == arguments["return_destination_ref"]
     )
-    invalid_success = status == "succeeded" and not expected_success
-    if status not in {"succeeded", "failed", "cancelled", "stopped", "unknown"} or not known or invalid_success:
+    process_goal_failed = (
+        process_event is not None and process_event.get("status") == "completed"
+        and process_feedback.get("process_completed") is False
+    )
+    known_phase_failure = known and (phase_result.get("failed_phase") is not None or process_goal_failed)
+    invalid_success = status == "succeeded" and not expected_success and not known_phase_failure
+    if status == "succeeded" and known_phase_failure:
+        status = "failed"
+    elif status not in {"succeeded", "failed", "cancelled", "stopped", "unknown"} or not known or invalid_success:
         status, known = "unknown", False
     if not known:
         possession.state = "uncertain"
@@ -461,9 +479,7 @@ def project_cycle_result(raw, arguments, possession, invocation_id):
             possession.cycle_invocation_ref = invocation_id
         possession.scene_revision = raw.get("new_scene_revision") if raw.get("new_scene_revision") else None
     possession.last_invocation_ref = invocation_id
-    failed_phase = raw.get("failed_phase")
-    if failed_phase is not None and failed_phase not in {"acquire", "transport", "process", "return", "retreat"}:
-        failed_phase = None
+    failed_phase = phase_result.get("failed_phase") or ("process" if process_goal_failed else None)
     summary = {
         "version": "capability_outcome_summary_v1", "status": status,
         "capability_phase": "none", "world_change_started": raw.get("world_change_started"),
@@ -482,6 +498,8 @@ def project_cycle_result(raw, arguments, possession, invocation_id):
         "operation_completed": status == "succeeded" and expected_success,
         "process_completed": process_completed,
         "return_completed": return_completed,
+        "phase_facts": phase_result["phase_facts"],
+        "completed_phases": phase_result["completed_phases"],
         "failed_phase": failed_phase, "possession_state": possession.state,
         "measurements": deepcopy(dict(metrics)),
         "evidence_refs": list(refs), "capability_outcome_summary": summary,

@@ -91,6 +91,25 @@ def test_cancelled_motion_retains_uncertain_possession_without_release():
         provider.close()
 
 
+def test_bounded_action_receipt_preserves_cycle_phase_and_feedback_inputs():
+    phase_events = [{"phase": "acquire", "status": "completed", "outcome_known": True,
+                     "started_at_s": 0.0, "completed_at_s": 0.5,
+                     "facts": {"grasp_confirmed": True, "possession_state": "holding"}}]
+    feedback_samples = [{"timestamp_s": 1.0, "feedback_valid": True, "grasp_valid": True,
+                         "target_container_aligned": True, "alignment_error_m": 0.001,
+                         "tilt_rad": 1.2}]
+    evaluation_profile = {"max_sample_gap_s": 0.1, "alignment_tolerance_m": 0.003,
+                          "tilt_tolerance_rad": 0.04, "maximum_tilt_rad": 1.5}
+    receipt = bounded_action_receipt({
+        "status": "failed", "outcome_known": True, "artifact_refs": ["artifact://cycle/run"],
+        "phase_events": phase_events, "feedback_samples": feedback_samples,
+        "evaluation_profile": evaluation_profile,
+    })
+    assert receipt["phase_events"] == phase_events
+    assert receipt["feedback_samples"] == feedback_samples
+    assert receipt["evaluation_profile"] == evaluation_profile
+
+
 def test_unknown_place_with_runtime_confirmed_release_reconciles_empty():
     class ReleasedButUnverifiedEngine(Engine):
         def execute(self, phase, arguments, cancel, *, owner, invocation_id):
@@ -150,6 +169,50 @@ def test_unknown_place_without_runtime_possession_fact_remains_uncertain():
             {"entity_ref": "entity://one", "acquire_invocation_id": "acquire"},
         )
         assert settle(provider, "place")["holding_state"] == "uncertain"
+    finally:
+        provider.close()
+
+
+def test_cycle_sourced_possession_cannot_reenter_legacy_held_operation():
+    class CycleEngine(Engine):
+        def prepare_cycle(self, arguments):
+            return {"status": "available", "arguments": dict(arguments)}
+
+        def execute_cycle(self, phase, arguments, cancel, *, owner, invocation_id):
+            del phase, arguments, cancel, owner, invocation_id
+            return {"status": "failed", "outcome_known": True, "world_change_started": True,
+                    "possession_state": "holding", "new_scene_revision": "cycle-scene",
+                    "artifact_refs": ["artifact://cycle/result"]}
+
+    provider = PersistentManipulationProvider(CycleEngine, held_operations=("pour", "stir"))
+    try:
+        assert provider.supports_cycle("pour_cycle")
+        provider.start("pour_cycle", "cycle", "owner", {"entity_ref": "entity://bottle"})
+        receipt = settle(provider, "cycle")
+        assert receipt["holding_state"] == "holding"
+        with pytest.raises(ManipulationStateError, match="only be recovered with place"):
+            provider.start("pour", "legacy-pour", "owner", {
+                "entity_ref": "entity://bottle", "cycle_invocation_id": "cycle",
+                "held_invocation_ref": "cycle", "scene_revision": "cycle-scene",
+            })
+        provider.start("place", "recover-place", "owner", {
+            "entity_ref": "entity://bottle", "cycle_invocation_id": "cycle",
+            "held_invocation_ref": "cycle", "scene_revision": "cycle-scene",
+        })
+    finally:
+        provider.close()
+
+
+def test_cycle_capability_requires_both_prepare_and_execution_declarations():
+    class PrepareOnly(Engine):
+        def prepare_cycle(self, arguments):
+            return {"status": "available", "arguments": dict(arguments)}
+
+    provider = PersistentManipulationProvider(PrepareOnly)
+    try:
+        assert provider.supports_cycle("pour_cycle") is False
+        with pytest.raises(ManipulationStateError, match="does not support complete"):
+            provider.start("pour_cycle", "cycle", "owner", {"entity_ref": "entity://bottle"})
     finally:
         provider.close()
 

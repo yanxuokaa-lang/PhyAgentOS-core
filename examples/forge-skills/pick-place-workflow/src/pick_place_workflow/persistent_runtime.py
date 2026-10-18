@@ -54,6 +54,8 @@ class PersistentPossession:
                 raise ValueError(f"{phase} does not match the held entity owner and acquisition")
             if self.cycle_invocation_ref != cycle_ref:
                 raise ValueError(f"{phase} does not match the held cycle source")
+            if phase in {"pour", "stir"} and cycle_ref is not None:
+                raise ValueError("cycle-sourced possession can only be recovered with place")
 
     def begin(self, phase: str, *, owner: str, entity_ref: str, acquire_ref: str | None = None,
               cycle_ref: str | None = None) -> None:
@@ -489,14 +491,28 @@ def build_persistent_runtime(*, client, understanding_provider, grasp_provider,
             (PREPARE_HELD_TOOL_SPEC, HeldPreparationEndpoint(held_preparation_provider, possession)),
             (POUR_TOOL_SPEC, HeldActionEndpoint("pour", client, resolve_held_preparation, possession)),
             (STIR_TOOL_SPEC, HeldActionEndpoint("stir", client, resolve_held_preparation, possession)),
-            (PREPARE_CYCLE_TOOL_SPEC, CyclePreparationEndpoint(held_preparation_provider, possession)),
-            (POUR_CYCLE_TOOL_SPEC, CycleActionEndpoint("pour_cycle", client, resolve_held_preparation, possession)),
-            (STIR_CYCLE_TOOL_SPEC, CycleActionEndpoint("stir_cycle", client, resolve_held_preparation, possession)),
         ):
             if spec["tool_id"] == "manipulation.prepare_held":
                 spec = extended_held_preparation_spec(spec)
             if query_decorator is not None and spec["semantics"] == "query":
                 endpoint = query_decorator(spec["tool_id"], endpoint)
+            runtime.register_tool(deepcopy(spec), endpoint,
+                                  context_provider=lambda tool_id=spec["tool_id"]: tool_context_provider(tool_id))
+        supports_cycle = getattr(held_preparation_provider, "supports_cycle", None)
+        client_supports_cycle = getattr(client, "supports_cycle", None)
+        cycle_specs = (
+            ("pour_cycle", POUR_CYCLE_TOOL_SPEC, CycleActionEndpoint("pour_cycle", client, resolve_held_preparation, possession)),
+            ("stir_cycle", STIR_CYCLE_TOOL_SPEC, CycleActionEndpoint("stir_cycle", client, resolve_held_preparation, possession)),
+        )
+        available_cycles = [entry for entry in cycle_specs
+                            if (callable(supports_cycle) and supports_cycle(entry[0]) is True
+                                and callable(client_supports_cycle)
+                                and client_supports_cycle(entry[0]) is True)]
+        if available_cycles:
+            runtime.register_tool(deepcopy(PREPARE_CYCLE_TOOL_SPEC),
+                                  CyclePreparationEndpoint(held_preparation_provider, possession),
+                                  context_provider=lambda: tool_context_provider("manipulation.prepare_cycle"))
+        for _, spec, endpoint in available_cycles:
             runtime.register_tool(deepcopy(spec), endpoint,
                                   context_provider=lambda tool_id=spec["tool_id"]: tool_context_provider(tool_id))
     return runtime

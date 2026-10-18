@@ -1,5 +1,6 @@
 """No-motion tests for the complete-cycle public Tool boundary."""
 
+import math
 from copy import deepcopy
 from pathlib import Path
 
@@ -31,10 +32,14 @@ def request(operation="pour_cycle"):
 
 
 class Provider:
-    def __init__(self):
+    def __init__(self, *, cycles=True):
         self.routes, self.starts = {}, []
         self.result, self.pending = None, False
         self.cancelled, self.fail_start = False, False
+        self.cycles = cycles
+
+    def supports_cycle(self, operation):
+        return self.cycles and operation in {"pour_cycle", "stir_cycle"}
 
     def describe(self, request):
         raise AssertionError("unrelated capability Query was called")
@@ -73,22 +78,60 @@ class Provider:
 
 
 def measured(operation="pour_cycle", **changes):
-    metrics = ({"qualified_tilt_hold_s": 2.1} if operation == "pour_cycle" else
-               {"in_container_turns": 2.1, "in_container_duration_s": 4.1,
-                "trajectory_qualified": True, "direction": "cw"})
+    if operation == "pour_cycle":
+        feedback = [{"timestamp_s": 2.0 + index * 0.5, "feedback_valid": True, "grasp_valid": True,
+                     "target_container_aligned": True, "alignment_error_m": 0.001, "tilt_rad": 1.7}
+                    for index in range(7)]
+        profile = {"max_sample_gap_s": 0.6, "alignment_tolerance_m": 0.005,
+                   "tilt_tolerance_rad": 0.1, "maximum_tilt_rad": 2.0}
+    else:
+        feedback = [{"timestamp_s": 2.0 + index * 0.11, "feedback_valid": True, "grasp_valid": True,
+                     "tool_tip_x_m": 0.015 * math.cos(-index * 4 * math.pi / 40),
+                     "tool_tip_y_m": 0.015 * math.sin(-index * 4 * math.pi / 40),
+                     "tool_tip_depth_m": 0.04} for index in range(41)]
+        profile = {"max_sample_gap_s": 0.2, "radius_tolerance_m": 0.002,
+                   "depth_tolerance_m": 0.002, "container_radius_m": 0.05, "container_depth_m": 0.1,
+                   "max_angular_step_rad": 0.5}
+    phases = [
+        {"phase": "acquire", "status": "completed", "outcome_known": True,
+         "facts": {"grasp_confirmed": True, "possession_state": "holding"}},
+        {"phase": "transport", "status": "completed", "outcome_known": True,
+         "facts": {"route_completed": True, "possession_state": "holding"}},
+        {"phase": "process", "status": "completed", "outcome_known": True, "facts": {"possession_state": "holding"}},
+        {"phase": "reorient_exit", "status": "completed", "outcome_known": True,
+         "facts": {"tool_reoriented_or_exited": True, "possession_state": "holding"}},
+        {"phase": "stow", "status": "completed", "outcome_known": True,
+         "facts": {"object_support_state": "on_support"}},
+        {"phase": "release", "status": "completed", "outcome_known": True,
+         "facts": {"release_confirmed": True, "possession_state": "empty"}},
+        {"phase": "retreat", "status": "completed", "outcome_known": True,
+         "facts": {"retreat_completed": True, "clear_of_target": True, "observation_ready": True}},
+    ]
+    if changes.get("failed_phase") in {"release", "return"}:
+        phases[5] = {"phase": "release", "status": "failed", "outcome_known": True,
+                     "facts": {"release_attempted": True}}
+        phases = phases[:6]
+    for index, event in enumerate(phases):
+        event["started_at_s"] = float(index + 0)
+        event["completed_at_s"] = float(index + 1)
+    phases[2]["started_at_s"], phases[2]["completed_at_s"] = 2.0, 7.0
+    for index in range(3, len(phases)):
+        phases[index]["started_at_s"] = float(index + 4)
+        phases[index]["completed_at_s"] = float(index + 5)
     return {"status": "succeeded", "outcome_known": True, "world_change_started": True,
             "new_scene_revision": "scene-2", "artifact_refs": ["artifact://lab/cycle-measured"],
             "operation_completed": True, "process_completed": True, "return_completed": True,
-            "failed_phase": None, "measurements": metrics, "entity_ref": "entity://bottle-a",
+            "failed_phase": None, "measurements": {}, "feedback_samples": feedback,
+            "evaluation_profile": profile, "phase_events": phases, "entity_ref": "entity://bottle-a",
             "destination_ref": "destination://lab/beaker",
             "return_destination_ref": "destination://lab/bottle-home", "possession_state": "empty",
             "release_confirmed": True, "retreat_completed": True, "clear_of_target": True,
             "observation_ready": True, "object_support_state": "on_support", **changes}
 
 
-def runtime(provider, held):
+def runtime(provider, held, client=None):
     return build_persistent_runtime(
-        client=provider, understanding_provider=object(), grasp_provider=object(),
+        client=client or provider, understanding_provider=object(), grasp_provider=object(),
         preparation_provider=object(), capability_provider=provider,
         resolve_preparation=provider.resolve, tool_context_provider=lambda _: {"ready": True},
         possession=held, held_preparation_provider=provider, resolve_held_preparation=provider.resolve,
@@ -129,12 +172,19 @@ def test_cycle_process_feedback_must_meet_requested_target(operation, tool_id):
     provider, held = Provider(), PersistentPossession()
     rt = runtime(provider, held)
     args = rt.invoke_query("cycle_preparation", "prepare", request(operation))["arguments"]
-    metrics = ({"qualified_tilt_hold_s": 1.0} if operation == "pour_cycle" else
-               {"in_container_turns": 2.1, "in_container_duration_s": 4.1,
-                "trajectory_qualified": False, "direction": "cw"})
-    provider.result = measured(operation, measurements=metrics)
+    bad_trace = measured(operation)
+    if operation == "pour_cycle":
+        for sample in bad_trace["feedback_samples"]:
+            sample["target_container_aligned"] = False
+    else:
+        for sample in bad_trace["feedback_samples"]:
+            sample["tool_tip_x_m"], sample["tool_tip_y_m"] = 0.015, 0.0
+    provider.result = bad_trace
     invocation = rt.start_action(tool_id, args, caller_id=CALLER)["invocation_id"]
-    assert rt.invocation_result(invocation)["status"] == "unknown" and held.state == "uncertain"
+    result = rt.invocation_result(invocation)
+    assert result["status"] == "failed"
+    assert result["result"]["failed_phase"] == "process"
+    assert not result["result"]["process_completed"]
 
 
 def test_completed_process_with_failed_return_is_not_replayed():
@@ -174,8 +224,12 @@ def test_recovery_after_cycle_return_failure_uses_place_only():
     prepared = rt.invoke_query("held_preparation", "prepare", placement)
     assert prepared["status"] == "available"
     provider.result = {
-        **measured("place"), "entity_ref": placement["entity_ref"],
-        "destination_ref": placement["destination_ref"], "new_scene_revision": "scene-3",
+        "status": "succeeded", "outcome_known": True, "world_change_started": True,
+        "new_scene_revision": "scene-3", "artifact_refs": ["artifact://lab/place"],
+        "operation_completed": True, "measurements": {"position_error_m": 0.001},
+        "entity_ref": placement["entity_ref"], "destination_ref": placement["destination_ref"],
+        "possession_state": "empty", "release_confirmed": True, "retreat_completed": True,
+        "clear_of_target": True, "observation_ready": True,
     }
     place = rt.start_action("object.place", prepared["arguments"], caller_id=CALLER)["invocation_id"]
     assert rt.invocation_result(place)["status"] == "succeeded"
@@ -184,8 +238,10 @@ def test_recovery_after_cycle_return_failure_uses_place_only():
 
 
 @pytest.mark.parametrize("changes", [
-    {"return_completed": False}, {"process_completed": False}, {"artifact_refs": []},
-    {"release_confirmed": False}, {"possession_state": "holding"},
+    {"artifact_refs": []}, {"phase_events": []},
+    {"phase_events": "invalid"}, {"possession_state": "holding"},
+    {"phase_events": [{"phase": "acquire", "status": "unknown", "outcome_known": False,
+                       "started_at_s": 0.0, "facts": {}}]},
     {"return_destination_ref": "destination://wrong"}, {"new_scene_revision": "scene-1"},
 ])
 def test_unproven_success_blocks_replay(changes):
@@ -213,6 +269,15 @@ def test_cancel_waits_for_actual_stop_and_lost_start_is_unknown():
     assert rt.invocation_result(invocation)["status"] == "unknown"
     assert held.state == "uncertain"
 
+    lost_ack_provider, lost_ack_possession = Provider(), PersistentPossession()
+    lost_ack_provider.fail_start = True
+    lost_ack_runtime = runtime(lost_ack_provider, lost_ack_possession)
+    args = lost_ack_runtime.invoke_query("cycle_preparation", "prepare", request())["arguments"]
+    invocation = lost_ack_runtime.start_action("object.pour_cycle", args, caller_id=CALLER)["invocation_id"]
+    assert lost_ack_runtime.invocation_result(invocation)["status"] == "unknown"
+    assert lost_ack_possession.state == "uncertain"
+    assert len(lost_ack_provider.starts) == 1
+
 
 def test_changed_parameters_or_wrong_owner_cannot_start():
     provider, held = Provider(), PersistentPossession()
@@ -224,3 +289,18 @@ def test_changed_parameters_or_wrong_owner_cannot_start():
     with pytest.raises(CapabilityRuntimeError):
         rt.start_action("object.pour_cycle", args, caller_id=CALLER)
     assert not provider.starts
+
+
+def test_cycle_capability_controls_discovery_without_relabeling_held_tools():
+    rt = runtime(Provider(cycles=False), PersistentPossession())
+    ids = {tool["tool_id"] for tool in rt.list_tools()["tools"]}
+    assert "object.pour_cycle" not in ids and "tool.stir_cycle" not in ids
+    assert "object.pour" in ids and "tool.stir" in ids
+
+
+def test_cycle_discovery_requires_both_preparation_and_execution_capability():
+    provider = Provider(cycles=True)
+    rt = runtime(provider, PersistentPossession(), client=object())
+    ids = {tool["tool_id"] for tool in rt.list_tools()["tools"]}
+    assert "object.pour_cycle" not in ids and "tool.stir_cycle" not in ids
+    assert "object.pour" in ids and "tool.stir" in ids

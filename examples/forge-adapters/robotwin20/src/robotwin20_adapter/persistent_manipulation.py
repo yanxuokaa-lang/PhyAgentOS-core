@@ -243,6 +243,20 @@ def bounded_action_receipt(result: Mapping[str, Any]) -> dict[str, Any]:
             receipt["measurements"]["trajectory_qualified"] = held_measurement["trajectory_qualified"]
         if held_measurement.get("direction") in {"cw", "ccw"}:
             receipt["measurements"]["direction"] = held_measurement["direction"]
+    for field in ("phase_events", "feedback_samples", "evaluation_profile"):
+        if field in result:
+            value = result[field]
+            if field == "phase_events" and not isinstance(value, (list, tuple)):
+                raise ValueError("cycle phase events must be a sequence")
+            if field == "feedback_samples" and not isinstance(value, (list, tuple)):
+                raise ValueError("cycle feedback samples must be a sequence")
+            if field == "evaluation_profile" and not isinstance(value, Mapping):
+                raise ValueError("cycle evaluation profile must be a mapping")
+            receipt[field] = deepcopy(value)
+    if any(field in receipt for field in ("phase_events", "feedback_samples", "evaluation_profile")):
+        if _json_size({key: receipt[key] for key in ("phase_events", "feedback_samples", "evaluation_profile")
+                       if key in receipt}) > ACTION_RECEIPT_MAX_BYTES // 2:
+            raise ValueError("cycle feedback receipt exceeds its bounded budget")
     if (
         receipt.get("failure_code") == "acquisition_postcondition_failed"
         and not _acquisition_postcondition_is_valid(receipt)
@@ -425,6 +439,8 @@ class PersistentManipulationProvider:
                 self._owner, self._acquire_id, self._entity = owner, None, arguments["entity_ref"]
                 self._cycle_id = invocation_id
                 self._held_id = None
+            elif phase in self._held_operations and self._cycle_id is not None:
+                raise ManipulationStateError("cycle-sourced possession can only be recovered with place")
             elif (self._state != "holding" or self._owner != owner
                   or (self._cycle_id is None and arguments.get("acquire_invocation_id") != self._acquire_id)
                   or (self._cycle_id is not None and arguments.get("cycle_invocation_id") != self._cycle_id)
