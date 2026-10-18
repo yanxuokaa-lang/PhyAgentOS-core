@@ -22,6 +22,7 @@
 ### 验证 / Validation
 - `6 passed`; Ruff, compileall, and `git diff --check` passed.
 - Isaac Sim result: `process=failed`, `continuous_pour_window_not_observed`; no pour success claimed.
+- Commit: `19a176c0`; branch: `feature/planning-loop`.
 
 ## v14.12.1 (2026-10-18) - codex
 
