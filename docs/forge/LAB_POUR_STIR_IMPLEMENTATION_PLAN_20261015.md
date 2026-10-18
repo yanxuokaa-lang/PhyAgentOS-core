@@ -222,8 +222,8 @@ PYTHONPATH=.:examples/forge-skills/pick-place-workflow/src:examples/forge-adapte
 ```
 
 部署打包兼容检查使用现有 `examples/forge-skills/pick-place-workflow/tests/test_release_bundle.py`。
-新增仿真入口尚未实现；P3 必须把实际 runner/profile 命令、参数、解释器与输出目录写回本计划，
-P6 验收运行前确认该命令真实存在。不得虚构一个现阶段可直接执行的实验室 CLI。
+Isaac Sim runner 已实现为 `isaacsim_lab` 的 PAOS 父进程与 worker 子进程；P3 当前已有可复现的单回合命令，
+但尚未达到正常倾倒完成条件。P6 验收运行前仍需固定 profile、解释器、输出目录和逐回合证据，不得把 worker 启动或场景加载当作成功。
 
 ### 验收数据记录
 
@@ -256,3 +256,40 @@ P6 验收运行前确认该命令真实存在。不得虚构一个现阶段可�
 
 交付完成要求实际部署能够执行目标任务，正反例有证据，旧抓放兼容，失败与取消可解释。
 离线测试、Fake Runtime 和单段成功分别报告，不替代完整双试剂仿真结果。
+
+## 8. v14.12.2 Isaac Sim / LabUtopia 接入状态
+
+已确认 `/home/yanxu/LabUtopia` 的 `labutopia` 环境包含 Isaac Sim 5.1，且 `lab_001.usd`、Franka、`conical_bottle03` 与 `beaker2` 可作为本次任务的默认绑定。新增 `examples/forge-adapters/isaacsim_lab` 作为薄 Adapter：
+
+- `LabUtopiaProfile` 将既有 PAOS observation/preparation 输入投影到 `entity://conical_bottle03`、`destination://beaker2` 和 cycle 参数；scene USD、配置、frame、calibration 均由 profile 提供。
+- `IsaacSimLabEngine` 只在 active Python 能发现 `isaacsim` 且 `OMNI_KIT_ACCEPT_EULA` 已明确设置时声明完整 cycle 能力；普通 PAOS Python 不会导入 Isaac 模块。
+- `LabUtopiaBackend` 在 Isaac Sim 内复用 LabUtopia 的 pick/pour 控制器，再执行归位、释放和撤离；返回原始反馈观测与七阶段事件，交由现有 PAOS feedback adapter / cycle projector 结算。最终 `succeeded` 还要求七个阶段全部完成且反馈计算器观测到同一连续倾倒保持窗口。
+- 预览命令只证明 Kit 和场景可加载，不证明运动或任务成功；完整任务必须使用 `labutopia` Python、显式 profile，并保留逐样本反馈、阶段事件和最终状态。
+
+当前可先查看 PAOS 将接收的输入：
+
+```bash
+cd /home/yanxu/PhyAgentOS-forge
+PYTHONPATH=examples/forge-adapters/isaacsim_lab/src \
+python -m isaacsim_lab.cli \
+  --profile examples/forge-adapters/isaacsim_lab/configs/labutopia-pour-cycle.json
+```
+
+实际单回合使用下列 `labutopia` worker 命令执行；没有 Isaac 运行时或反馈证据时必须保持 `unavailable`/`unknown`，不得由 PAOS preparation 结果推断倾倒成功：
+
+```bash
+OMNI_KIT_ACCEPT_EULA=YES \
+PYTHONPATH=/home/yanxu/PhyAgentOS-forge/examples/forge-adapters/isaacsim_lab/src \
+/home/yanxu/miniconda3/envs/labutopia/bin/python - <<'PY'
+import json
+from pathlib import Path
+from threading import Event
+from isaacsim_lab.engine import IsaacSimLabEngine
+from isaacsim_lab.profile import LabUtopiaProfile
+profile = LabUtopiaProfile.from_json(Path('/home/yanxu/PhyAgentOS-forge/examples/forge-adapters/isaacsim_lab/configs/labutopia-pour-cycle.json'))
+result = IsaacSimLabEngine(profile).execute_cycle('pour_cycle', profile.paos_input(), Event())
+print(json.dumps({key: result.get(key) for key in ('status', 'outcome_known', 'phase_events')}, ensure_ascii=False))
+PY
+```
+
+2026-10-18 的真实单回合已启动 Isaac Sim 并返回可观测失败：`acquire`、`transport`、`stow`、`release`、`retreat` 完成，`process` 失败 `continuous_pour_window_not_observed`，因此最终为 `failed/outcome_known=true`。该回合 1109 个反馈样本中，抓持、对准、目标倾角和采样连续性共同满足的窗口为 0；这证明结算边界有效，不证明物理倾倒成功。下一步应修正 LabUtopia 的目标/控制路线或对象标定后再复验，不能放宽 PAOS 保持窗口定义。

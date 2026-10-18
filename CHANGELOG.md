@@ -2,6 +2,58 @@
 
 ## 最近五版本 / Latest five versions
 
+## v14.12.2 (2026-10-18) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [policy] [fix] 最终成功必须同时满足七阶段完成和同一连续倾倒保持窗口；过程失败后保留已完成归位、释放、撤离事实。 / Final success now requires all seven phases and one continuous pour hold window; preserve observed stow, release, and retreat facts after process failure.
+- [eval] [test] 增加反馈失败不得升级为成功的回归；真实 LabUtopia 回合返回 `failed/outcome_known=true`，联合窗口为 0。 / Add a regression preventing feedback failure from being promoted to success; the real LabUtopia episode returned `failed/outcome_known=true` with a zero joint window.
+
+### 文件变更详情 / File Change Details
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/engine.py:L292-L409`：接入连续窗口计算和七阶段成功结算。 / Add continuous-window evaluation and seven-phase success settlement.
+- `examples/forge-adapters/isaacsim_lab/tests/test_engine.py:L45-L54`：覆盖失败过程结算。 / Cover failed-process settlement.
+- `docs/forge/LAB_POUR_STIR_IMPLEMENTATION_PLAN_20261015.md:L224-L226,L260-L295`：登记 runner 和真实失败证据。 / Register the runner and real failure evidence.
+
+### 关键 Diff / Key Diff
+```diff
+- succeeded = pickpour_success and placement_done
++ succeeded = _episode_succeeded(pickpour_success, placement_done, phase_events)
+```
+
+### 验证 / Validation
+- `6 passed`; Ruff, compileall, and `git diff --check` passed.
+- Isaac Sim result: `process=failed`, `continuous_pour_window_not_observed`; no pour success claimed.
+
+## v14.12.1 (2026-10-18) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [env] [fix] 默认 Franka USD 从 `lab_root/assets/robots/Franka.usd` 解析，测试夹具显式提供 robot USD。 / Resolve the default Franka USD from `lab_root/assets/robots/Franka.usd` and provide it explicitly in test fixtures.
+- [eval] [test] 修复后通过 `isaacsim_lab` 回归，worker 越过远端 Nucleus 资产错误进入控制/反馈阶段。 / Pass the `isaacsim_lab` regression after the fix; the worker passed the remote Nucleus asset error and reached control/feedback stages.
+
+### 文件变更详情 / File Change Details
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/profile.py:L56-L62`
+- `examples/forge-adapters/isaacsim_lab/tests/test_engine.py:L14-L26`
+
+### 验证 / Validation
+- `6 passed`; Ruff and compileall passed.
+
+## v14.12.0 (2026-10-18) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [env] [feat] 新增不依赖非夕 SDK 的 LabUtopia/Isaac Sim profile、PAOS cycle engine、隔离 worker、输入 CLI 和场景配置。 / Add the Flexiv-SDK-independent LabUtopia/Isaac Sim profile, PAOS cycle engine, isolated worker, input CLI, and scene configuration.
+- [policy] [feat] 复用 LabUtopia pick/pour 控制器，返回反馈观测和七阶段事实；无运行时、资产或反馈时保持 unavailable/unknown。 / Reuse LabUtopia pick/pour controllers and return feedback observations plus seven phase facts; remain unavailable/unknown without runtime, assets, or feedback.
+
+### 文件变更详情 / File Change Details
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/profile.py:L1-L193`
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/engine.py:L1-L430`
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/worker.py:L1-L30`
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/cli.py:L1-L37`
+- `examples/forge-adapters/isaacsim_lab/configs/labutopia-pour-cycle.json`
+- `examples/forge-adapters/isaacsim_lab/tests/test_profile.py:L1-L49`
+- `examples/forge-adapters/isaacsim_lab/tests/test_engine.py:L1-L54`
+
+### 验证 / Validation
+- profile/engine regression, Ruff, compileall, and PAOS input CLI passed; no Flexiv SDK or real robot integrated.
+
 ## v14.11.1 (2026-10-18 23:00) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]

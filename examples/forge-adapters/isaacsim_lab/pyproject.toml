@@ -1,0 +1,24 @@
+[project]
+name = "paos-isaacsim-lab-adapter"
+version = "0.1.0"
+description = "PAOS adapter boundary for LabUtopia Isaac Sim laboratory cycles"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+paos-isaacsim-lab-input = "isaacsim_lab.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/isaacsim_lab"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W"]
+ignore = ["E501"]
