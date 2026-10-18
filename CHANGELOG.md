@@ -2,6 +2,39 @@
 
 ## 最近五版本 / Latest five versions
 
+## v14.8.0 (2026-10-18 21:05) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [policy] [feat] 增加 provider 无关倾倒/搅拌反馈计算器和七阶段事实协议；一个公共 cycle Action 对应一个 invocation，过程目标与完整取放成功分开结算。 / Add provider-neutral pour/stir feedback calculators and a seven-phase fact protocol; one public cycle Action maps to one invocation, with process qualification separated from whole-cycle success.
+- [policy] [fix] 完整 cycle 能力要求 preparation provider 和执行 client 对同一 operation 显式支持；cycle 来源持物拒绝旧 held-only pour/stir，只允许 place 恢复。 / Require both preparation provider and execution client to explicitly support the same operation; cycle-sourced possession rejects legacy held-only pour/stir and allows place-only recovery.
+- [eval] [test] 合成离线轨迹覆盖联合倾倒窗口、方向性搅拌和阶段/恢复故障；新增回归阻止搅拌将采样断点两侧的时长和圈数拼接达标。测试只证明离线算法与控制流。 / Synthetic offline traces cover joint pour windows, directional stirring, and phase/recovery failures; a regression prevents combining stir duration and turns across a sampling gap. Tests prove offline algorithms and control flow only.
+- [docs] [docs] 更新诊断与审核，明确 Tool/Runtime 契约、反馈计算器及阶段协议已实现，provider 物理执行/SDK/仿真/机械臂验收未完成。 / Update diagnosis and review to state that Tool/Runtime contracts, feedback calculators, and the phase protocol are implemented while provider physical execution, SDK, simulation, and robot acceptance are not.
+
+### 文件变更详情 / File Change Details
+- [修改] `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/cycle_protocol.py:L18-L254`：定义阶段顺序与事实校验，联合计算倾倒保持和搅拌方向性轨迹；断点或无效样本同时重置圈数与时长窗口。 / Define phase order and fact validation, compute joint pour holds and directional stir trajectories, and reset both turn and duration windows at gaps or invalid samples.
+- [修改] `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/held_manipulation.py:L174-L510`、`persistent_runtime.py:L473-L517`：增加 cycle Tool/Query、部分结算、unknown/持物恢复与双端能力发现；准备 Query 经既有 decorator。 / Add cycle Tool/Query, partial settlement, unknown/possession recovery, and two-sided capability discovery; route preparation Query through the existing decorator.
+- [修改] `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_manipulation.py:L246-L259,L337-L465`：限制回执保留并要求 engine 显式支持 cycle 准备与执行，不合成设备成功。 / Bound receipt projection and require explicit engine support for cycle preparation and execution without fabricating device success.
+- [修改] `examples/forge-skills/pick-place-workflow/contracts/object.pour_cycle.tool.yaml:L261-L283`、`tool.stir_cycle.tool.yaml:L261-L283`：静态 Tool 合同与运行时 cycle Tool 同步。 / Keep static Tool contracts aligned with runtime cycle Tools.
+- [新增] `examples/forge-skills/pick-place-workflow/tests/test_cycle_protocol.py:L1-L148`、[修改] `tests/test_composite_manipulation.py:L35-L344`、`examples/forge-adapters/robotwin20/tests/test_persistent_manipulation.py:L94-L113,L176-L220`：覆盖合成轨迹、失败事实、能力发现、decorator 与 place-only 恢复；断点组合回归在 `test_cycle_protocol.py:L81-L99`。 / Add synthetic-trace coverage and update composite/provider regressions for failure facts, discovery, decorator routing, and place-only recovery; the gap-combination regression is at `test_cycle_protocol.py:L81-L99`.
+- [修改] `docs/forge/COMPOSITE_POUR_STIR_DIAGNOSIS_20261018.md`、`docs/forge/COMPOSITE_POUR_STIR_REVIEW_20261018.md`、`changelog/2026-10_part7.md`：记录实现边界、验收结果和诊断修复。 / Record implementation boundaries, acceptance results, and the diagnosis correction.
+
+### 关键 Diff / Key Diff
+```diff
+- stir gap: reset run_turns; retain run_duration
++ stir gap or invalid sample: reset run_turns and run_duration together
+- trust provider aggregate process metrics
++ recompute qualification from continuous measured feedback and settle ordered phase facts
++ unknown remains unknown; known process with failed return preserves facts and permits place-only recovery
++ no weighing means transferred amount and homogeneity remain unmeasured
+```
+
+### 验证 / Validation
+- 指定离线回归集：`126 passed`；新增断点组合回归：`1 passed`；相关 Ruff 与 `git diff --check` 通过。 / Focused offline regression suite: `126 passed`; new gap counterexample: `1 passed`; relevant Ruff and `git diff --check` passed.
+- 未调用 PAOS Action、非夕 SDK、仿真、传感器、部署或机械臂；结果仅证明离线算法、阶段协议与 Runtime 控制流。 / No PAOS Action, Flexiv SDK, simulation, sensor, deployment, or robot was used; results prove offline algorithms, phase protocol, and Runtime control flow only.
+
+### Git 提交 / Git Commit
+- 实现提交 / Implementation commits: `352fe271`, `c4f2a194`; 日志/修复提交 / log-and-fix commit: `0e8f6bbc`; Branch: `feature/planning-loop`.
+
 ## v14.7.0 (2026-10-18 20:41) - codex
 
 ### 变更摘要 / Summary [完成；仅实现通用操作契约与 no-motion provider 边界]

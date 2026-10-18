@@ -78,6 +78,26 @@ def test_synthetic_stir_rocking_sampling_gap_and_outside_region_do_not_qualify()
     assert outside["valid_sample_count"] == 0 and not outside["process_completed"]
 
 
+def test_synthetic_stir_does_not_combine_duration_and_turns_across_a_gap():
+    trace = []
+    for index in range(31):
+        angle = math.pi * index / 30
+        trace.append({"timestamp_s": index * 0.05, "feedback_valid": True, "grasp_valid": True,
+                      "tool_tip_x_m": 0.02 * math.cos(angle), "tool_tip_y_m": 0.02 * math.sin(angle),
+                      "tool_tip_depth_m": 0.03})
+    for index in range(13):
+        angle = math.pi + math.pi * index / 12
+        trace.append({"timestamp_s": 3.5 + index * 0.05, "feedback_valid": True, "grasp_valid": True,
+                      "tool_tip_x_m": 0.02 * math.cos(angle), "tool_tip_y_m": 0.02 * math.sin(angle),
+                      "tool_tip_depth_m": 0.03})
+
+    result = evaluate_stir_feedback(trace, STIR_PARAMETERS, STIR_PROFILE)
+
+    assert result["longest_directional_turns"] == pytest.approx(0.5)
+    assert result["in_container_duration_s"] == pytest.approx(1.5)
+    assert result["process_completed"] is False
+
+
 def test_synthetic_stir_rejects_angular_aliasing_above_profile_sample_bound():
     sparse = synthetic_circle(count=5)
     result = evaluate_stir_feedback(sparse, STIR_PARAMETERS, STIR_PROFILE)

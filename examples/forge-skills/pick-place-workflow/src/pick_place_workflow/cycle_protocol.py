@@ -236,6 +236,7 @@ def evaluate_stir_feedback(samples: Sequence[Mapping[str, Any]], parameters: Map
                 )
         else:
             run_turns = 0.0
+            run_duration = 0.0
         previous_angle = math.atan2(float(sample["tool_tip_y_m"]), float(sample["tool_tip_x_m"])) if valid else None
         previous = {**sample, "_qualified": valid}
     completed = process_completed

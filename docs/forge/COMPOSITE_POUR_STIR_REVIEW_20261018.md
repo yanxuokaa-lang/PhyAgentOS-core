@@ -1,25 +1,26 @@
 # 倾倒与搅拌复合 Action：设计自审
 
 日期：2026-10-18（Asia/Shanghai）。对象：[修订诊断](COMPOSITE_POUR_STIR_DIAGNOSIS_20261018.md)。
-依据：当前源码 `b4dac9ab` 与工作区 held-operation 原型；作者自审，非独立审核或执行验收。
-方法：采用 implementation-review 的架构、配置、错误与可观测性、验证、安全、维护及文档维度；仅修订已授权的设计文档。
+依据：设计诊断基点 `b4dac9ab`；实现核对提交 `352fe271`、`c4f2a194` 和本轮工作区修改。作者自审，非独立审核或物理执行验收。
+方法：采用 implementation-review 的架构、配置、错误与可观测性、验证、安全、维护及文档维度。下表问题是实现前发现；本轮状态另列于 §4。
 
 ## 1. 发现与处置
 
-原建议的粒度方向成立，但未充分说明接口迁移、部分效果和测量语义。本轮发现 3 项 Blocker、5 项 Major、1 项 Minor。
-下表“设计已修订”指诊断已补齐明确方案；执行实现和相关测试仍待完成，不计作运行缺陷已修复。
+原建议的粒度方向成立，但未充分说明接口迁移、部分效果和测量语义。设计阶段记录了 3 项 Blocker、5 项 Major、1 项 Minor。
+下表保留当时的发现与验收条件；不是当前未关闭问题数量。
 
 | ID / 严重级别 | 具体问题与证据 | 设计处置 | 实施验收 |
 | --- | --- | --- | --- |
-| F1 / Blocker | 当前 `held_manipulation.py` L161-L169 要求已持物，L231-L240 成功仍 holding；完整 cycle 从空手开始且最终应 empty | 诊断 §3、§6：明确新 cycle 身份、前后置条件和原持物 owner 的来源扩展 | 注册发现/参数投影/旧任务兼容；cycle 后归位恢复不能伪造 acquire invocation |
-| F2 / Blocker | 倾倒已完成、归位失败时重调完整 Action 会再次倾倒；旧计划自审 F9 已识别，合并后仍存在 | §6：保存 process/return 两个结果，终态 failed，之后只做合法归位恢复；unknown 先对账 | 在归位阶段注入失败；恢复不产生第二次倾倒或搅拌事件 |
-| F3 / Blocker | 把所有阶段塞进一个调用却无控制/资源连续性，会在取消、场景变化或轮询停止后继续执行；通用 runtime L401-L426 的 deadline 依赖轮询推进 | §5：同一执行 owner、阶段适用性检查、设备侧执行监控；碰撞/急停后不无条件退回或松爪 | 停止轮询、取消中途、移动容器、占用归位点、反馈中断时有界停止且状态真实 |
-| F4 / Major | `_measured_completion` L207-L208 分别比较最大倾角与对齐时间，可接受“对齐但未倾斜保持”或过度倾斜 | §5：同一连续窗口内联合检查瓶口区域、角度容差和持物有效性，使用反馈时间 | 直立保持后瞬时倾斜、错容器、过倾、采样中断均不能成功 |
-| F5 / Major | 搅拌只看圈数/时间，未确定方向、有效半径/深度及计数口径；往返摆动可能被绝对角度累计为圈 | §4、§5：容器坐标和 cw/ccw，方向性连续轨迹，圈数/时长约束及 profile 容差 | 静止插棒、反向摆动、半径/深度偏差、漏圈和超时失败 |
+| F1 / Blocker | 旧 held Tool 要求已持物；完整 cycle 从空手开始且最终应 empty | §3、§6：独立 cycle Tool 和持物 owner 来源 | 已实现并有注册/兼容测试；cycle 来源持物拒绝旧 pour/stir |
+| F2 / Blocker | 倾倒已完成、归位失败时重调完整 Action 会再次倾倒 | §6：保留过程事实，unknown 对账；已知 holding 只 place 恢复 | 已有离线回归验证，不产生第二个 cycle invocation |
+| F3 / Blocker | 无阶段协议无法核实顺序、部分完成或停止状态 | §5、§8：同一 owner 内的有序阶段事实；设备监控/急停仍由具体 provider 负责 | 离线协议/取消和 unknown 路径已覆盖；真实设备侧有界停止未实现、不在本阶段 |
+| F4 / Major | 分别比较最大倾角与对齐时间会产生过程假阳性 | §5：容器对准、角度、抓持和反馈在同一窗口计算 | 合成轨迹覆盖错开窗口、反馈间断和未达目标 |
+| F5 / Major | 汇总圈数不能验证方向、半径/深度或容器区域 | §4、§5：容器坐标下工具尖端轨迹；单向连续圈数与时长同窗达标 | 合成轨迹覆盖反向、摆动、间断和出界 |
 | F6 / Major | 用户无称重不等于无液体；原回复易把旧无液体仿真与非夕部署混用；相关目录未找到 Flexiv 接入证据 | §1、§2、§7：过程目标明确；设备适配与测量能力按部署核实 | 不输出虚构体积/混匀结果；非夕传感/SDK/控制路径独立验收 |
 | F7 / Major | 前轮笼统声称 Action 支持公共 stop；runtime L347-L351 实际只允许 Session stop_invocation | §5：Action cancel → 等待停止确认；设备急停单独处理 | Action 使用 cancel 路径；请求成功不等于物理已停止 |
 | F8 / Major | 只有容器 destination_ref，没有瓶子/工具归还位置；圈数/时长与轨迹坐标含义不完整 | §4：增加 return_destination_ref；明确功能点、深度基准、参数可行性与超时范围 | 容器与归位点不混淆；“回原位”有来源且放置前仍有效 |
 | F9 / Minor | “一个 Action”容易被理解为只需一次 Tool 调用、无需准备或任务验证 | §1、§3、§5：一个物理操作节点；必要 Query 与最终 Verifier 仍有独立职责 | 计划包含两次倾倒、一次搅拌及必要准备/验证，无冗余外部抓放节点 |
+| F10 / Major | 初次实现中搅拌反馈断点重置了连续圈数但保留连续时长；断点前时长可能与断点后圈数合并，造成非连续样本达到目标 | §5、§8：断点/无效样本同时重置圈数和时长 | 已修复；新增 synthetic counterexample 验证两段各自不足不能拼接，定向回归包含该测试 |
 
 ## 2. 审核后的责任边界
 
@@ -28,7 +29,7 @@
 | 架构集成 | 方向符合一个节点由一个 Tool 结算；复合 Tool 必须真实拥有全过程 | 诊断 §2、§3；planning 不调用 SDK，Gateway 保持生命周期所有权 |
 | 参数和配置 | 同时定义用户参数、设备/器材参数、系统引用 | §4；实际速度、误差和力值由所选 profile 与能力验证决定 |
 | 错误与可观测性 | 过程达标和整体成功分离；可知失败与未知效果分开 | §5、§6；失败阶段、当前持物、过程测量与原 invocation 可追溯 |
-| 验证 | 用反例验证成功判据、取消和恢复，现有单测仅为复用依据 | 本文 §3；无新增运行结果声明 |
+| 验证 | 用反例验证成功判据、取消和恢复；复审发现并修复一个跨采样段累计缺陷 | 本文 §3；指定离线回归 `126 passed`，Ruff 与 diff check 通过 |
 | 机器人安全 | 复合化不移动已有授权与控制边界；控制监视独立于模型轮询 | §5；阶段适用性、attached geometry、停止及释放确认 |
 | 维护与兼容 | 新 ID 或明确版本迁移；复用执行组件和持物 owner | §3、§6；不增加第二 Runtime、子任务调度器或公共嵌套 invocation |
 | 文档与交付 | 历史方案保留，新诊断标明操作粒度变更及引用来源 | §1、§2、§7；部署能力、打包和接口发现一并验收 |
@@ -37,18 +38,18 @@
 
 | 用例 | 期望结果 | 层级 |
 | --- | --- | --- |
-| 正常倾倒/搅拌完整周期 | 一个物理 PlanNode、一个 invocation；过程和归位满足后才 succeeded | 离线集成 + 对应设备/仿真 |
-| 抓取失败、只发指令无反馈 | 后续操作不执行，不能宣布过程达标 | 离线故障 + 执行测量 |
-| 瞬间倾斜、错容器、过倾 | 有效联合保持不足，过程失败 | 测量单测 + 轨迹验证 |
-| 静止插棒、摆动代替转圈、深度错误 | 有效圈数或轨迹条件不足 | 测量单测 + 轨迹验证 |
-| 操作达标后归位失败 | 整体 failed、过程完成事实保留；后续归位不重做过程 | 离线集成 + 故障执行 |
-| 取消、超时、停止轮询 | 设备执行有界；停止确认前保持未确认事实 | driver/worker 集成 + 设备控制 |
-| 丢失启动回执、重启、未知持物 | 对账原 invocation；原状态未明确前不重发 | 传输/恢复集成 |
+| 正常倾倒/搅拌阶段结算 | 一个公共 Action invocation；阶段事实和过程证据齐全后才 succeeded | 离线合成数据；不代表设备/仿真 |
+| 抓取失败、只发指令无反馈 | 不推进后续阶段，不宣布过程达标 | 离线阶段协议 |
+| 倾倒错开窗口、错容器、过倾或采样中断 | 有效联合保持不足，过程失败 | 离线合成轨迹 |
+| 搅拌反向、摆动、半径/深度错误或采样中断 | 有效圈数不足 | 离线合成轨迹 |
+| 操作达标后归位失败 | 整体 failed、过程事实保留；后续仅 place | 离线集成 |
+| 取消、超时、停止轮询 | 请求/确认语义保持 unknown；物理停止能力不由离线测试证明 | PAOS Runtime 既有语义 + 离线回归 |
+| 丢失启动回执、进程中断、未知持物 | 对账原 invocation；原状态未明确前不重发 | 离线控制流回归 |
 | 归位点占用、容器移动、持物变化 | 后续路线失效，记录阶段和物理状态 | 几何/状态集成 + 执行验证 |
 | 两次倾倒后搅拌 | Verifier 核对正确对象、容器、先后顺序、各过程与最终归位 | 任务级集成 |
 | 旧 acquire→place、旧 held 操作 | 旧绑定语义保持；新 cycle 不伪造旧 acquire 来源 | 兼容回归 |
 
-下面是实施阶段可复用、已存在的离线测试入口。本次仅核对文件存在，未运行；它们尚不证明新 cycle 的执行能力。
+下列命令运行本轮离线协议、合成轨迹及已有恢复回归。所有新轨迹都明确标注为 synthetic measurement records，不是仿真或机器人执行结果。
 
 ```bash
 cd /home/yanxu/PhyAgentOS-forge
@@ -57,11 +58,15 @@ PYTHONPATH=.:examples/forge-skills/pick-place-workflow/src:examples/forge-adapte
 .venv/bin/python -m pytest -q -p pytest_asyncio.plugin \
   tests/test_capability_runtime_driver.py \
   tests/test_planning_effect_recovery.py \
+  examples/forge-skills/pick-place-workflow/tests/test_cycle_protocol.py \
+  examples/forge-skills/pick-place-workflow/tests/test_composite_manipulation.py \
+  examples/forge-adapters/robotwin20/tests/test_persistent_manipulation.py \
+  examples/forge-adapters/robotwin20/tests/test_held_provider.py \
   examples/forge-skills/pick-place-workflow/tests/test_generic_capability_runtime.py \
   examples/forge-skills/pick-place-workflow/tests/test_persistent_runtime.py
 ```
 
-完整 cycle、测量窗口、恢复归位的新增测试由实施阶段编写；届时补充确实存在的仿真或非夕执行命令。
+`execute_cycle` provider/engine 的设备侧动作仍需未来独立适配和授权验收；本阶段不提供仿真或设备运行命令。
 
 本次文档验证命令：
 
@@ -71,11 +76,19 @@ git diff --stat -- CHANGELOG.md changelog/2026-10_part7.md docs/forge/COMPOSITE_
 ```
 
 另检查 UTF-8、Markdown 围栏、相对链接、引用行号与测试文件存在性，确认最近五版本与归档对应条目一致。
-没有执行 Action、仿真、SDK、部署或运动测试。
+没有执行 PAOS Action、仿真、SDK、部署或运动测试；测试只证明离线算法、协议和 Runtime 控制流。
 
-## 4. 结论与实施前仍需明确的事实
+## 4. 当前实现状态
 
-修订后的方案适合交用户审核。单个完整倾倒/搅拌符合 PAOS 的 Tool 结算边界；关键是完整周期的物理 owner、过程测量和部分失败恢复一起实现。
-本次 9 项发现已在设计中给出处置，工程实现和实测均待实施；不能据文档修订将执行能力判定为通过。
-实施时必须核实具体机器人/控制模式、工具与容器功能点、夹持和放置的可用反馈、真实参数及容差、旧 Tool 是否已部署和绑定任务。
-这些事实决定设备适配与数值配置，不影响用户现在审核操作粒度和职责划分。
+- `CyclePhaseProtocol` 要求 acquire → transport → process → reorient_exit → stow → release → retreat 顺序、单调阶段时间和对应可观察事实；缺阶段、错序、缺事实、丢测量或 unknown 事件不能结算成功。process 阶段执行结束与工艺目标达标分开表达。
+- 倾倒保持从 process 阶段内样本联合计算；搅拌从容器坐标下棒尖轨迹计算，并要求方向性圈数和有效时长在同一连续段达到。汇总指标/请求值不作为测量证据。
+- cycle 能力须由准备 provider 和执行 client 对同一 operation 都通过 `supports_cycle(operation)` 明确声明；Robotwin provider 只有 engine 同时提供 `prepare_cycle` 和 `execute_cycle` 时才返回支持。Runtime 未发现能力时不发布 cycle Tool，旧 held Tool 不会被命名或描述成完整 cycle。
+- cycle 来源持物拒绝旧 held-only pour/stir，仅允许 place；回执 unknown 时保留 unknown 并要求现有 invocation 对账。
+- 诊断所列合成记录是手写的 synthetic measurement records。它们没有设备/仿真来源，不测量液量或混匀质量。
+
+尚未实现 provider/engine 的物理阶段执行、实时安全监控和传感适配；这部分需要具体设备方案，明确排除在本轮范围之外。
+
+## 5. 结论与后续设备适配范围
+
+复审发现的 F10 跨采样段时长/圈数拼接问题已修复并有独立合成反例。当前离线验收未遗留 Blocker/Major；实现满足公共 invocation、过程反馈计算、阶段事实、部分失败和能力发现边界，但不含真实设备执行器，因此无法证明夹持反馈、坐标标定、运动安全或动作结果。
+后续若接设备，须单独核实具体机器人/控制模式、工具与容器功能点、夹持/放置反馈、profile 数值与停止能力；这属于独立设备适配与验收，不应从本轮测试外推。
