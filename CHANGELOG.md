@@ -26,6 +26,7 @@
 - `12 passed`; Ruff、compileall、`git diff --check` 全部通过。 / `12 passed`; Ruff, compileall, and `git diff --check` passed.
 - Isaac Sim: `failed/outcome_known=true`, `process=continuous_pour_window_not_observed`; 1091 observations, 731 holding samples, 1090 video frames, `768x256`, `18.166667s`, `video_available=true`. / Isaac Sim: `failed/outcome_known=true`, process failed for the continuous window; 1,091 observations, 731 holding samples, 1,090 video frames, `768x256`, `18.166667s`, `video_available=true`.
 - 未接入非夕 SDK、真实机械臂或物料称重；视频只作为仿真观察证据。 / No Flexiv SDK, real robot, or material weighing was integrated; video is simulation observation evidence only.
+- Commit: `0e97820b`; Branch: `feature/planning-loop`; 时间 / Time: 2026-10-19 Asia/Shanghai.
 
 ## v14.12.5 (2026-10-18) - codex
 
