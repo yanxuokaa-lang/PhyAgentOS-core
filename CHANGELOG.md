@@ -22,7 +22,7 @@
 
 ### 验证 / Validation
 - Ruff, compileall, and `git diff --check` passed; no PAOS threshold changes.
-- Commit follows after final log registration.
+- Commit: `f9ba284f`; branch: `feature/planning-loop`.
 
 ## v14.12.4 (2026-10-18) - codex
 
