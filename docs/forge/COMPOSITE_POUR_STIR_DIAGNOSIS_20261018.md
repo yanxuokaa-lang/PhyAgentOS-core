@@ -1,7 +1,7 @@
 # 倾倒与搅拌完整操作：PAOS 架构诊断与修订方案
 
 日期：2026-10-18（Asia/Shanghai）。设计基点：`b4dac9ab`；实现检查基点：`352fe271`、`c4f2a194`、`4e93476d`、`f7da28d6`、`b615a253`，分支 `feature/planning-loop`。
-状态：PAOS Tool/Runtime 契约、离线反馈计算器、provider 无关阶段事实协议、显式 cycle 能力声明和 no-motion control-loop 验收已实现，定向回归为 `129 passed`。复审额外修复了搅拌反馈断点只重置圈数、未同步重置连续时长，以及缺少 artifact ref 时过程事实被抹除的问题。provider 的设备侧阶段执行/反馈事件产出、SDK/仿真/真机适配与验收仍未实现。本状态不代表 cycle 可在物理设备上运行。
+状态：PAOS Tool/Runtime 契约、离线反馈计算器、provider 无关阶段事实协议、显式 cycle 能力声明、no-motion control-loop 和 provider-neutral `AtomicExecutor` 边界已实现，定向回归为 `131 passed`。复审额外修复了搅拌反馈断点只重置圈数、未同步重置连续时长，以及缺少 artifact ref 时过程事实被抹除的问题。具体设备反馈适配、SDK/仿真/真机适配与验收不在本阶段范围。本状态不代表 cycle 可在物理设备上运行。
 配套：[设计审核与验证矩阵](COMPOSITE_POUR_STIR_REVIEW_20261018.md)。
 
 ## 1. 当前需求与结论
@@ -143,7 +143,8 @@ place 接受同一 owner 下经当前 cycle invocation/held invocation/scene rev
 3. [完成] 从合成倾倒/搅拌反馈轨迹验证联合连续窗口、方向性圈数、容器区域、采样中断和部分失败；新增反例保证采样断点前后的圈数与时长不能拼接。无称重结果仅表示 `motion_goal_reached`，液量与混匀质量明确未测量。
 4. [完成] 已知过程完成但归位失败保留阶段事实并只允许 place；缺阶段、丢失反馈、启动回执丢失或无法确认的阶段结果保持 unknown，不重放 cycle。
 5. [完成；no-motion] provider 读取显式 cycle capability declaration；fake engine control-loop 覆盖七阶段顺序、失败短路和取消后的 unknown。过程/归位事实不再因缺失 artifact ref 被抹除，但完整 succeeded 仍要求完整 evidence。
-6. [待后续设备适配] provider/engine 需为具体设备生成阶段事件和实测样本，并提供器材几何、坐标和 profile。按本轮范围不实现非夕 SDK、不运行仿真或机械臂，也不据离线测试声称物理执行成功。
+6. [完成；provider-neutral executor] provider 支持通过 `atomic_executor` 工厂提供 acquire、transport、process、reorient_exit、stow、release、retreat 七个内部原子操作；executor 只产生阶段事实，不创建嵌套 PAOS invocation。no-motion executor 验证顺序、失败短路和取消 unknown。
+7. [待后续反馈适配] 仍需为具体部署提供实际反馈采集、器材几何、坐标和 profile；这不是非夕 SDK 接入。按当前范围不运行仿真或机械臂，也不据离线测试声称物理执行成功。
 
 实现前不添加 hash、冻结契约、baseline 或额外门禁；复用已有版本、类型、invocation 和现有运动边界检查。
 新增字段和阶段事实对应具体故障：归位失败重倒、过程假阳性、取消后继续运动。没有这些故障依据的机制不纳入本方案。
@@ -158,3 +159,5 @@ PAOS 重算过程目标，不信任 provider 的汇总圈数/倾倒时间或 `pr
 本轮将上述发现收敛为 `cycle_capability(operation)` 声明：声明必须逐 operation 给出 preparation、execution、feedback 和 return 能力，`dry_run` 仅表示可进行无运动控制流验证，不等于已授权物理动作。provider 若没有声明或声明不完整则 fail closed。阶段 control-loop 仍由具体 provider/engine 实现；当前 fake engine 只用于验证阶段事件顺序、失败短路和取消语义。
 
 过程测量、阶段事实和完整证据分开结算。有效反馈可以保留 `process_completed`/`return_completed` 部分事实；`artifact_refs` 缺失时整体结果不能升级为完整 `succeeded`，但不得因此把已经观察到的过程事实改写为未完成。
+
+`AtomicExecutor` 是 provider 内部的原子操作协议，不是新的 PAOS Tool。它按 cycle invocation 接收 owner、invocation 和 cancel 上下文，并为七个阶段返回带时间和 facts 的事件。engine 可以继续实现完整 `execute_cycle`，也可以通过 `atomic_executor` 工厂把原子方法交给 provider-neutral 编排器；两种路径都必须由 PAOS 重算反馈并结算最终状态。`NoMotionAtomicExecutor` 只用于控制流测试，不能产生物理成功证据。

@@ -8,8 +8,10 @@ import pytest
 from robotwin20_adapter.persistent_manipulation import (
     ACTION_RECEIPT_MAX_BYTES,
     ManipulationStateError,
+    NoMotionAtomicExecutor,
     PersistentManipulationProvider,
     bounded_action_receipt,
+    execute_atomic_cycle,
 )
 
 
@@ -283,6 +285,48 @@ def test_no_motion_cycle_cancel_returns_unknown_without_advancing():
         receipt = settle(provider, "cycle")
         assert receipt["status"] == "unknown"
         assert receipt["holding_state"] == "uncertain"
+    finally:
+        provider.close()
+
+
+def test_atomic_executor_stops_before_later_phases():
+    executor = NoMotionAtomicExecutor(fail_phase="stow")
+    result = execute_atomic_cycle(
+        executor, {"operation": "pour_cycle"}, Event(), owner="owner", invocation_id="cycle",
+    )
+    assert result["status"] == "failed"
+    assert result["failed_phase"] == "stow"
+    assert executor.calls == ["acquire", "transport", "process", "reorient_exit", "stow"]
+
+
+def test_provider_can_run_a_cycle_through_atomic_executor_boundary():
+    class AtomicOnlyEngine(Engine):
+        def cycle_capability(self, operation):
+            return {"operation": operation, "preparation": True, "execution": True,
+                    "feedback": True, "return": True, "dry_run": True}
+
+        def prepare_cycle(self, arguments):
+            return {"status": "available", "arguments": dict(arguments)}
+
+        def atomic_executor(self, operation, arguments, *, owner, invocation_id):
+            del arguments, owner, invocation_id
+            assert operation == "pour_cycle"
+            self.executor = NoMotionAtomicExecutor()
+            return self.executor
+
+    provider = PersistentManipulationProvider(AtomicOnlyEngine)
+    try:
+        assert provider.supports_cycle("pour_cycle")
+        provider.start("pour_cycle", "cycle", "owner", {"entity_ref": "entity://bottle"})
+        receipt = settle(provider, "cycle")
+        assert receipt["status"] == "unknown"
+        assert receipt["holding_state"] == "uncertain"
+        assert [event["phase"] for event in receipt["phase_events"]] == [
+            "acquire", "transport", "process", "reorient_exit", "stow", "release", "retreat",
+        ]
+        assert provider._engine.executor.calls == [
+            "acquire", "transport", "process", "reorient_exit", "stow", "release", "retreat",
+        ]
     finally:
         provider.close()
 

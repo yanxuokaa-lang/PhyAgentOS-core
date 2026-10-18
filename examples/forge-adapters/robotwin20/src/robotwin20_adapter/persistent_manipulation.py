@@ -7,7 +7,7 @@ import math
 from concurrent.futures import Future, ThreadPoolExecutor
 from copy import deepcopy
 from threading import Event, RLock
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Mapping, Protocol
 
 ACTION_RECEIPT_MAX_BYTES = 262_144
 _RECEIPT_TEXT_MAX_BYTES = 2_048
@@ -65,6 +65,140 @@ _HELD_MEASUREMENT_FIELDS = (
     "in_container_duration_s", "position_error_m", "orientation_error_rad",
     "qualified_tilt_hold_s",
 )
+
+ATOMIC_CYCLE_PHASES = (
+    "acquire", "transport", "process", "reorient_exit", "stow", "release", "retreat",
+)
+
+
+class AtomicExecutor(Protocol):
+    """Provider-neutral atomic operations used inside one cycle invocation."""
+
+    def acquire(self, arguments: Mapping[str, Any], cancel: Event, **context: Any) -> Mapping[str, Any]: ...
+    def transport(self, arguments: Mapping[str, Any], cancel: Event, **context: Any) -> Mapping[str, Any]: ...
+    def process(self, arguments: Mapping[str, Any], cancel: Event, **context: Any) -> Mapping[str, Any]: ...
+    def reorient_exit(self, arguments: Mapping[str, Any], cancel: Event, **context: Any) -> Mapping[str, Any]: ...
+    def stow(self, arguments: Mapping[str, Any], cancel: Event, **context: Any) -> Mapping[str, Any]: ...
+    def release(self, arguments: Mapping[str, Any], cancel: Event, **context: Any) -> Mapping[str, Any]: ...
+    def retreat(self, arguments: Mapping[str, Any], cancel: Event, **context: Any) -> Mapping[str, Any]: ...
+
+
+class AtomicExecutionError(ValueError):
+    """The provider-neutral atomic executor returned an invalid phase result."""
+
+
+def execute_atomic_cycle(
+    executor: AtomicExecutor,
+    arguments: Mapping[str, Any],
+    cancel: Event,
+    *,
+    owner: str,
+    invocation_id: str,
+) -> dict[str, Any]:
+    """Run internal atomic operations without creating nested PAOS invocations."""
+    events: list[dict[str, Any]] = []
+    for phase in ATOMIC_CYCLE_PHASES:
+        if cancel.is_set():
+            return {
+                "status": "unknown", "outcome_known": False,
+                "world_change_started": bool(events), "phase_events": events,
+            }
+        operation = getattr(executor, phase, None)
+        if not callable(operation):
+            raise AtomicExecutionError(f"atomic executor lacks phase operation: {phase}")
+        event = operation(
+            deepcopy(dict(arguments)), cancel, owner=owner, invocation_id=invocation_id,
+        )
+        if not isinstance(event, Mapping):
+            raise AtomicExecutionError(f"atomic phase did not return a mapping: {phase}")
+        normalized = deepcopy(dict(event))
+        normalized["phase"] = phase
+        if normalized.get("status") not in {"completed", "failed", "unknown"}:
+            raise AtomicExecutionError(f"atomic phase returned invalid status: {phase}")
+        events.append(normalized)
+        if normalized["status"] != "completed":
+            return {
+                "status": normalized["status"],
+                "outcome_known": normalized.get("outcome_known") is True,
+                "world_change_started": True,
+                "phase_events": events,
+                "failed_phase": phase,
+                "possession_state": normalized.get("possession_state", "uncertain"),
+            }
+    process_facts = events[2].get("facts", {})
+    process_qualified = process_facts.get("process_measurement_qualified") is True
+    all_known = all(event.get("outcome_known") is True for event in events)
+    if not all_known:
+        return {
+            "status": "unknown", "outcome_known": False,
+            "world_change_started": True, "phase_events": events,
+            "failed_phase": None, "possession_state": "uncertain",
+        }
+    return {
+        "status": "succeeded" if process_qualified else "failed",
+        "outcome_known": True,
+        "world_change_started": True, "phase_events": events,
+        "failed_phase": None if process_qualified else "process",
+        "possession_state": "empty" if process_qualified else "holding",
+    }
+
+
+class NoMotionAtomicExecutor:
+    """Reference executor for control-flow tests; it never commands a device."""
+
+    def __init__(self, *, fail_phase: str | None = None) -> None:
+        if fail_phase is not None and fail_phase not in ATOMIC_CYCLE_PHASES:
+            raise ValueError("unknown no-motion failure phase")
+        self.fail_phase = fail_phase
+        self.calls: list[str] = []
+        self._clock_s = 0.0
+
+    def _run(self, phase: str, cancel: Event) -> dict[str, Any]:
+        self.calls.append(phase)
+        started = self._clock_s
+        self._clock_s += 1.0
+        if cancel.is_set():
+            return {"status": "unknown", "outcome_known": False,
+                    "started_at_s": started, "completed_at_s": self._clock_s}
+        if phase == self.fail_phase:
+            return {"status": "failed", "outcome_known": True,
+                    "started_at_s": started, "completed_at_s": self._clock_s,
+                    "facts": {"failure_observed": True}, "possession_state": "uncertain"}
+        facts: dict[str, Any] = {"phase_observed": True}
+        if phase == "process":
+            # A no-motion fixture cannot qualify a physical process.
+            facts["process_measurement_qualified"] = False
+        return {"status": "completed", "outcome_known": False,
+                "started_at_s": started, "completed_at_s": self._clock_s,
+                "facts": facts}
+
+    def acquire(self, arguments, cancel, **context):
+        del arguments, context
+        return self._run("acquire", cancel)
+
+    def transport(self, arguments, cancel, **context):
+        del arguments, context
+        return self._run("transport", cancel)
+
+    def process(self, arguments, cancel, **context):
+        del arguments, context
+        return self._run("process", cancel)
+
+    def reorient_exit(self, arguments, cancel, **context):
+        del arguments, context
+        return self._run("reorient_exit", cancel)
+
+    def stow(self, arguments, cancel, **context):
+        del arguments, context
+        return self._run("stow", cancel)
+
+    def release(self, arguments, cancel, **context):
+        del arguments, context
+        return self._run("release", cancel)
+
+    def retreat(self, arguments, cancel, **context):
+        del arguments, context
+        return self._run("retreat", cancel)
 
 
 def _acquisition_postcondition_is_valid(receipt: Mapping[str, Any]) -> bool:
@@ -424,6 +558,10 @@ class PersistentManipulationProvider:
     def supports_cycle(self, operation: str) -> bool:
         with self._lock:
             declaration = self.cycle_capability(operation)
+            has_execution = (
+                callable(getattr(self._engine, "execute_cycle", None))
+                or callable(getattr(self._engine, "atomic_executor", None))
+            )
             return (
                 operation in {"pour_cycle", "stir_cycle"}
                 and declaration.get("operation") == operation
@@ -431,7 +569,7 @@ class PersistentManipulationProvider:
                     "preparation", "execution", "feedback", "return",
                 ))
                 and callable(getattr(self._engine, "prepare_cycle", None))
-                and callable(getattr(self._engine, "execute_cycle", None))
+                and has_execution
             )
 
     def start(self, phase: str, invocation_id: str, owner: str, arguments: Mapping[str, Any]) -> None:
@@ -494,10 +632,26 @@ class PersistentManipulationProvider:
         cancel: Event,
     ) -> dict[str, Any]:
         try:
-            execute = self._engine.execute_cycle if phase in {"pour_cycle", "stir_cycle"} else self._engine.execute
-            complete_result = dict(execute(
-                phase, arguments, cancel, owner=owner, invocation_id=invocation_id,
-            ))
+            if phase in {"pour_cycle", "stir_cycle"}:
+                execute = getattr(self._engine, "execute_cycle", None)
+                if callable(execute):
+                    complete_result = dict(execute(
+                        phase, arguments, cancel, owner=owner, invocation_id=invocation_id,
+                    ))
+                else:
+                    factory = getattr(self._engine, "atomic_executor", None)
+                    if not callable(factory):
+                        raise AtomicExecutionError("cycle engine has no execution boundary")
+                    executor = factory(
+                        phase, deepcopy(arguments), owner=owner, invocation_id=invocation_id,
+                    )
+                    complete_result = execute_atomic_cycle(
+                        executor, arguments, cancel, owner=owner, invocation_id=invocation_id,
+                    )
+            else:
+                complete_result = dict(self._engine.execute(
+                    phase, arguments, cancel, owner=owner, invocation_id=invocation_id,
+                ))
         except Exception as exc:
             # An exception is not evidence that nothing happened.
             result = {"status": "unknown", "outcome_known": False,
