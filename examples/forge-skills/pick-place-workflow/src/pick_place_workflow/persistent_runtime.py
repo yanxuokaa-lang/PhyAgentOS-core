@@ -509,8 +509,11 @@ def build_persistent_runtime(*, client, understanding_provider, grasp_provider,
                                 and callable(client_supports_cycle)
                                 and client_supports_cycle(entry[0]) is True)]
         if available_cycles:
+            cycle_preparation = CyclePreparationEndpoint(held_preparation_provider, possession)
+            if query_decorator is not None:
+                cycle_preparation = query_decorator("manipulation.prepare_cycle", cycle_preparation)
             runtime.register_tool(deepcopy(PREPARE_CYCLE_TOOL_SPEC),
-                                  CyclePreparationEndpoint(held_preparation_provider, possession),
+                                  cycle_preparation,
                                   context_provider=lambda: tool_context_provider("manipulation.prepare_cycle"))
         for _, spec, endpoint in available_cycles:
             runtime.register_tool(deepcopy(spec), endpoint,

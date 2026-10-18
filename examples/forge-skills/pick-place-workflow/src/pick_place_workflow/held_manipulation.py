@@ -432,11 +432,14 @@ def project_cycle_result(raw, arguments, possession, invocation_id):
             facts["process_measurement_qualified"] = process_feedback.get("process_completed") is True
             normalized["facts"] = facts
         protocol_events.append(normalized)
+    phase_protocol = CyclePhaseProtocol()
     try:
-        phase_result = CyclePhaseProtocol().consume(protocol_events)
+        phase_result = phase_protocol.consume(protocol_events)
     except CycleProtocolError:
-        phase_result = {"phase_facts": {}, "completed_phases": [], "failed_phase": None,
-                        "outcome_known": False, "process_completed": False, "return_completed": False}
+        phase_result = phase_protocol.consume(())
+        if phase_result["failed_phase"] is None and protocol_events:
+            event = protocol_events[-1]
+            phase_result["failed_phase"] = event.get("phase") if isinstance(event, Mapping) else None
         known = False
     known = known and phase_result["outcome_known"] is True
     metrics = process_feedback

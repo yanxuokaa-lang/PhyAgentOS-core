@@ -256,6 +256,25 @@ def test_unproven_success_blocks_replay(changes):
     assert len(provider.starts) == 1
 
 
+def test_unknown_after_malformed_late_phase_preserves_prior_phase_facts():
+    provider, held = Provider(), PersistentPossession()
+    rt = runtime(provider, held)
+    args = rt.invoke_query("cycle_preparation", "prepare", request())["arguments"]
+    raw = measured()
+    raw["phase_events"] = [raw["phase_events"][0], raw["phase_events"][1],
+                           {"phase": "stow", "status": "completed", "outcome_known": True,
+                            "started_at_s": 2.0, "completed_at_s": 3.0,
+                            "facts": {"object_support_state": "on_support"}}]
+    raw.update(status="unknown", outcome_known=False)
+    provider.result = raw
+    invocation = rt.start_action("object.pour_cycle", args, caller_id=CALLER)["invocation_id"]
+    result = rt.invocation_result(invocation)
+    assert result["status"] == "unknown"
+    assert result["result"]["completed_phases"] == ["acquire", "transport"]
+    assert result["result"]["failed_phase"] == "stow"
+    assert held.state == "uncertain"
+
+
 def test_cancel_waits_for_actual_stop_and_lost_start_is_unknown():
     provider, held = Provider(), PersistentPossession()
     rt = runtime(provider, held)
@@ -304,3 +323,22 @@ def test_cycle_discovery_requires_both_preparation_and_execution_capability():
     ids = {tool["tool_id"] for tool in rt.list_tools()["tools"]}
     assert "object.pour_cycle" not in ids and "tool.stir_cycle" not in ids
     assert "object.pour" in ids and "tool.stir" in ids
+
+
+def test_cycle_preparation_uses_the_existing_query_decorator():
+    decorated = []
+
+    def decorate(tool_id, endpoint):
+        decorated.append(tool_id)
+        return endpoint
+
+    provider = Provider()
+    build_persistent_runtime(
+        client=provider, understanding_provider=object(), grasp_provider=object(),
+        preparation_provider=object(), capability_provider=provider,
+        resolve_preparation=provider.resolve, tool_context_provider=lambda _: {"ready": True},
+        held_preparation_provider=provider, resolve_held_preparation=provider.resolve,
+        query_decorator=decorate,
+    )
+    assert "manipulation.prepare_cycle" in decorated
+    assert "manipulation.prepare_held" in decorated
