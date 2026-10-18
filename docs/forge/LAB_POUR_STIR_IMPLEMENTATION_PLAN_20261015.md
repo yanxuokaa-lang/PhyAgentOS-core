@@ -304,3 +304,9 @@ PY
 
 2026-10-18 的真实单回合已启动 Isaac Sim 并返回可观测失败：`acquire`、`transport`、`stow`、`release`、`retreat` 完成，`process` 失败 `continuous_pour_window_not_observed`，因此最终为 `failed/outcome_known=true`。瓶口观测与 provider 目标补偿接入后，最新回合共有 1039 个反馈样本，抓持、对准、目标倾角和采样连续性共同满足的窗口仍为 0；抓持且对准时最大倾角为 `0.259 rad`。这证明结算边界和失败保留有效，不证明物理倾倒成功。下一步应针对 LabUtopia 控制器的旋转路线、瓶口轴/尺寸标定和烧杯口目标定义做专门验收，不能放宽 PAOS 保持窗口定义。
 no-motion 诊断输出 `bottleneck=alignment_lost_before_target_tilt`、`joint_sample_count=0`、`target_tilt_lower_rad=0.77`、`max_grasp_aligned_tilt_rad=0.259`；这说明在目标倾角前已经失去瓶口对准，保持时间不是当前首要瓶颈。下一步先修正 provider 控制器路线并用同一诊断复核，再启动新的 Isaac Sim 回合。
+
+## 9. v14.12.6 抓持反馈与失败回合视频 / Grasp Feedback and Failure-Episode Video
+
+本轮修正了 provider 反馈中的持物语义：`grasp_valid` 不再由归位阶段标记决定，而是由观测到的夹爪闭合、物体抬升以及物体与夹爪距离共同计算；样本同时保留 `controller_phase`、`gripper_state`、`object_lifted`、`object_gripper_distance_m` 和 `possession_state`。视频录制复用 LabUtopia 的 `camera_display`，在 worker 的正常返回、失败和异常收尾路径释放 writer；视频路径、帧数和可用性写入同一结果 JSON，视频不参与 PAOS 结算。
+
+2026-10-19 的真实 Isaac Sim 单回合仍为可解释失败：`status=failed`、`outcome_known=true`、`process=continuous_pour_window_not_observed`。本轮有 1091 条反馈样本，其中 731 条为持物状态；对准且持物的最大倾角为 `1.2756 rad`，但没有形成要求的连续 `0.6 s` 窗口，因此没有声称完成倾倒。回合视频为 `/home/yanxu/LabUtopia/outputs/paos-pour-cycle/result-403962-378796522505284.mp4`，`1090` 帧、`18.166667 s`、`768x256`，可用性为 true。该证据只证明 Isaac Sim 回合的观察与失败结算，不证明真实机械臂或物料量结果。

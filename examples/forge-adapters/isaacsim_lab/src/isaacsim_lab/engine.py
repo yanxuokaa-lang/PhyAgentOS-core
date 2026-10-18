@@ -26,6 +26,99 @@ class IsaacLabRuntimeError(RuntimeError):
     """The requested Isaac Sim execution cannot be started or observed."""
 
 
+class _EpisodeVideoRecorder:
+    """Best-effort recorder for one episode's rendered camera observations."""
+
+    def __init__(self, path: Path, cv2_module: Any, np_module: Any, *, fps: float = 60.0):
+        self.path = path
+        self._cv2 = cv2_module
+        self._np = np_module
+        self._fps = fps
+        self._writer = None
+        self._frame_count = 0
+        self._error: str | None = None
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+
+    def write(self, camera_display: Any, overlay: Sequence[str] = ()) -> None:
+        if not isinstance(camera_display, Mapping):
+            return
+        try:
+            frame = _compose_camera_frame(camera_display, self._cv2, self._np)
+            if frame is None:
+                return
+            for index, line in enumerate(overlay):
+                self._cv2.putText(
+                    frame,
+                    str(line),
+                    (8, 20 + index * 18),
+                    self._cv2.FONT_HERSHEY_SIMPLEX,
+                    0.48,
+                    (255, 255, 255),
+                    1,
+                    self._cv2.LINE_AA,
+                )
+            if self._writer is None:
+                height, width = frame.shape[:2]
+                fourcc = self._cv2.VideoWriter_fourcc(*"mp4v")
+                self._writer = self._cv2.VideoWriter(
+                    str(self.path), fourcc, self._fps, (int(width), int(height))
+                )
+                if not self._writer.isOpened():
+                    self._error = "video_writer_not_opened"
+                    self._writer.release()
+                    self._writer = None
+                    return
+            self._writer.write(frame)
+            self._frame_count += 1
+        except Exception as exc:  # video is observation evidence, never a motion gate
+            self._error = type(exc).__name__
+
+    def close(self) -> None:
+        if self._writer is not None:
+            self._writer.release()
+            self._writer = None
+
+    def metadata(self) -> dict[str, Any]:
+        available = bool(self._frame_count and self.path.is_file() and self.path.stat().st_size > 0)
+        result = {
+            "video_path": str(self.path),
+            "video_frame_count": self._frame_count,
+            "video_available": available,
+        }
+        if self._error:
+            result["video_error"] = self._error
+        return result
+
+
+def _compose_camera_frame(camera_display: Mapping[str, Any], cv2_module: Any, np_module: Any):
+    frames = []
+    for image_data in camera_display.values():
+        image = np_module.asarray(image_data)
+        if image.ndim != 3:
+            continue
+        if image.shape[0] in (1, 3, 4) and image.shape[-1] not in (1, 3, 4):
+            image = image.transpose(1, 2, 0)
+        if image.shape[-1] == 1:
+            image = cv2_module.cvtColor(image, cv2_module.COLOR_GRAY2BGR)
+        elif image.shape[-1] == 4:
+            image = cv2_module.cvtColor(image, cv2_module.COLOR_RGBA2BGR)
+        elif image.shape[-1] == 3:
+            image = cv2_module.cvtColor(image, cv2_module.COLOR_RGB2BGR)
+        else:
+            continue
+        frames.append(np_module.ascontiguousarray(image))
+    if not frames:
+        return None
+    height = min(frame.shape[0] for frame in frames)
+    normalized = []
+    for frame in frames:
+        if frame.shape[0] != height:
+            width = max(1, round(frame.shape[1] * height / frame.shape[0]))
+            frame = cv2_module.resize(frame, (width, height))
+        normalized.append(frame)
+    return np_module.hstack(normalized)
+
+
 class IsaacLabBackend(Protocol):
     def run_cycle(self, arguments: Mapping[str, Any], cancel: Event) -> Mapping[str, Any]: ...
 
@@ -107,6 +200,7 @@ class LabUtopiaBackend:
 
     def __init__(self, profile: LabUtopiaProfile):
         self.profile = profile
+        self._last_video_info: dict[str, Any] = {}
 
     def run_cycle(self, arguments: Mapping[str, Any], cancel: Event) -> Mapping[str, Any]:
         if os.environ.get("OMNI_KIT_ACCEPT_EULA", "").lower() not in {"y", "yes", "1", "true"}:
@@ -147,17 +241,26 @@ class LabUtopiaBackend:
                 except subprocess.TimeoutExpired:
                     process.kill()
                 return {"status": "unknown", "outcome_known": False, "world_change_started": True,
-                        "failure_owner": "isaacsim_adapter", "failure_code": "cancelled_worker"}
+                        "failure_owner": "isaacsim_adapter", "failure_code": "cancelled_worker",
+                        "video_path": str(result_path.with_suffix(".mp4")),
+                        "video_frame_count": 0,
+                        "video_available": result_path.with_suffix(".mp4").is_file()}
             time.sleep(0.1)
         if not result_path.is_file():
             return {"status": "unknown", "outcome_known": False, "world_change_started": True,
                     "failure_owner": "isaacsim_adapter", "failure_code": "worker_no_result",
-                    "error_detail": "Isaac worker exited without a result artifact"}
+                    "error_detail": "Isaac worker exited without a result artifact",
+                    "video_path": str(result_path.with_suffix(".mp4")),
+                    "video_frame_count": 0,
+                    "video_available": result_path.with_suffix(".mp4").is_file()}
         try:
             return json.loads(result_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
             return {"status": "unknown", "outcome_known": False, "world_change_started": True,
-                    "failure_owner": "isaacsim_adapter", "failure_code": type(exc).__name__}
+                    "failure_owner": "isaacsim_adapter", "failure_code": type(exc).__name__,
+                    "video_path": str(result_path.with_suffix(".mp4")),
+                    "video_frame_count": 0,
+                    "video_available": result_path.with_suffix(".mp4").is_file()}
 
     @property
     def profile_path(self) -> Path:
@@ -170,9 +273,10 @@ class LabUtopiaBackend:
     def _run_inprocess(self, arguments: Mapping[str, Any], cancel: Event, result_path: Path) -> Mapping[str, Any]:
         from isaacsim import SimulationApp
 
+        self._last_video_info = {}
         app = SimulationApp({"headless": self.profile.headless})
         try:
-            result = self._run_episode(app, arguments, cancel)
+            result = self._run_episode(app, arguments, cancel, result_path.with_suffix(".mp4"))
         except Exception as exc:
             result = {
                 "status": "unknown",
@@ -182,12 +286,19 @@ class LabUtopiaBackend:
                 "failure_code": type(exc).__name__,
                 "error_detail": traceback.format_exc()[-2048:],
             }
+            result.update(self._last_video_info)
         finally:
             result_path.write_text(json.dumps(result, ensure_ascii=False, allow_nan=False), encoding="utf-8")
             app.close()
         return result
 
-    def _run_episode(self, app: Any, arguments: Mapping[str, Any], cancel: Event) -> dict[str, Any]:
+    def _run_episode(
+        self,
+        app: Any,
+        arguments: Mapping[str, Any],
+        cancel: Event,
+        video_path: Path | None = None,
+    ) -> dict[str, Any]:
         self._prepend_lab_root()
         import numpy as np
         import omni.usd
@@ -241,76 +352,140 @@ class LabUtopiaBackend:
         placement_done = False
         step = 0
         dt = 1.0 / 60.0
-        while app.is_running() and step < int(cfg.task.max_steps):
-            if cancel.is_set():
-                world.stop()
-                return {"status": "unknown", "outcome_known": False, "world_change_started": bool(samples),
-                        "feedback_observations": samples, "feedback_source_profile": self.profile.source_profile(),
-                        "evaluation_profile": self.profile.evaluation_profile()}
-            world.step(render=True)
-            state = task.step()
-            if state is None:
-                step += 1
-                continue
-            if initial_position is None:
-                initial_position = np.asarray(state["object_position"], dtype=float).copy()
-                initial_quaternion = np.asarray(state["object_quaternion"], dtype=float).copy()
-            now = step * dt
-            samples.append(self._sample(state, initial_position, initial_quaternion, now, np, Rotation, placement_started))
+        video_path = video_path or (self.profile.lab_root / "outputs" / "paos-pour-cycle" / "episode.mp4")
+        try:
+            import cv2
+        except Exception as exc:  # rendering remains usable even if codec support is absent
+            recorder = None
+            video_info = {
+                "video_path": str(video_path),
+                "video_frame_count": 0,
+                "video_available": False,
+                "video_error": type(exc).__name__,
+            }
+        else:
+            recorder = _EpisodeVideoRecorder(video_path, cv2, np, fps=60.0)
+            video_info = recorder.metadata()
 
-            if not placement_started:
-                if getattr(getattr(controller, "current_phase", None), "value", None) == "pouring":
-                    state = dict(state)
-                    state["target_position"] = _pour_controller_target(state, self.profile, np, Rotation)
-                action, done, success = controller.step(state)
-                if action is not None:
-                    robot.get_articulation_controller().apply_action(action)
-                if done and success:
-                    pickpour_success = True
-                    placement_started = True
-                    placement = PlaceController(
-                        name="paos_place_controller",
-                        cspace_controller=controller.rmp_controller,
-                        gripper=robot.gripper,
-                    )
-                    placement.reset()
-            else:
-                action = placement.forward(
-                    place_position=initial_position,
-                    current_joint_positions=state["joint_positions"],
-                    gripper_control=controller.gripper_control,
-                    gripper_position=state["gripper_position"],
-                )
-                if action is not None:
-                    robot.get_articulation_controller().apply_action(action)
-                if placement.is_done():
-                    placement_done = True
-                    samples.append(self._sample(state, initial_position, initial_quaternion, now + dt, np, Rotation, placement_started))
+        cancelled = False
+        result = None
+        try:
+            while app.is_running() and step < int(cfg.task.max_steps):
+                if cancel.is_set():
+                    cancelled = True
                     break
-            step += 1
+                world.step(render=True)
+                state = task.step()
+                if state is None:
+                    step += 1
+                    continue
+                if initial_position is None:
+                    initial_position = np.asarray(state["object_position"], dtype=float).copy()
+                    initial_quaternion = np.asarray(state["object_quaternion"], dtype=float).copy()
+                now = step * dt
+                controller_phase = (
+                    "placing" if placement_started
+                    else getattr(getattr(controller, "current_phase", None), "value", "unknown")
+                )
+                sample = self._sample(
+                    state,
+                    initial_position,
+                    initial_quaternion,
+                    now,
+                    np,
+                    Rotation,
+                    controller_phase,
+                )
+                samples.append(sample)
+                if recorder is not None:
+                    recorder.write(
+                        state.get("camera_display"),
+                        (
+                            f"step={step} phase={controller_phase}",
+                            f"possession={sample['possession_state']} gripper={sample['gripper_state']}",
+                            f"tilt={sample['tilt_rad']:.3f} align={sample['alignment_error_m']:.3f}m",
+                        ),
+                    )
 
-        world.stop()
-        final = samples[-1] if samples else {}
-        events = _phase_events(samples, pickpour_success, placement_done, self.profile)
-        succeeded = _episode_succeeded(pickpour_success, placement_done, events)
-        result = {
-            "status": "succeeded" if succeeded else "failed" if samples else "unknown",
-            "outcome_known": bool(samples),
-            "world_change_started": bool(samples),
-            "entity_ref": arguments["entity_ref"],
-            "destination_ref": arguments["destination_ref"],
-            "return_destination_ref": arguments["return_destination_ref"],
-            "phase_events": events,
-            "feedback_observations": samples,
-            "feedback_source_profile": self.profile.source_profile(),
-            "evaluation_profile": self.profile.evaluation_profile(),
-            "possession_state": "empty" if succeeded else "uncertain",
-            "object_support_state": "on_support" if succeeded else "unknown",
-            "new_scene_revision": f"{arguments['scene_revision']}-pour-{step}" if succeeded else None,
-            "artifact_refs": [f"artifact://labutopia/paos-pour/{arguments['scene_revision']}-{step}"],
-            "evidence_refs": [f"artifact://labutopia/paos-pour/{arguments['scene_revision']}-{step}"],
-            "final_object_observation": final,
-        }
+                if not placement_started:
+                    if controller_phase == "pouring":
+                        state = dict(state)
+                        state["target_position"] = _pour_controller_target(state, self.profile, np, Rotation)
+                    action, done, success = controller.step(state)
+                    if action is not None:
+                        robot.get_articulation_controller().apply_action(action)
+                    if done and success:
+                        pickpour_success = True
+                        placement_started = True
+                        placement = PlaceController(
+                            name="paos_place_controller",
+                            cspace_controller=controller.rmp_controller,
+                            gripper=robot.gripper,
+                        )
+                        placement.reset()
+                else:
+                    action = placement.forward(
+                        place_position=initial_position,
+                        current_joint_positions=state["joint_positions"],
+                        gripper_control=controller.gripper_control,
+                        gripper_position=state["gripper_position"],
+                    )
+                    if action is not None:
+                        robot.get_articulation_controller().apply_action(action)
+                    if placement.is_done():
+                        placement_done = True
+                        samples.append(self._sample(
+                            state, initial_position, initial_quaternion, now + dt, np, Rotation, "placing"
+                        ))
+                        break
+                step += 1
+
+            if cancelled:
+                result = {
+                    "status": "unknown",
+                    "outcome_known": False,
+                    "world_change_started": bool(samples),
+                    "entity_ref": arguments["entity_ref"],
+                    "destination_ref": arguments["destination_ref"],
+                    "return_destination_ref": arguments["return_destination_ref"],
+                    "feedback_observations": samples,
+                    "feedback_source_profile": self.profile.source_profile(),
+                    "evaluation_profile": self.profile.evaluation_profile(),
+                }
+            else:
+                final = samples[-1] if samples else {}
+                events = _phase_events(samples, pickpour_success, placement_done, self.profile)
+                succeeded = _episode_succeeded(pickpour_success, placement_done, events)
+                result = {
+                    "status": "succeeded" if succeeded else "failed" if samples else "unknown",
+                    "outcome_known": bool(samples),
+                    "world_change_started": bool(samples),
+                    "entity_ref": arguments["entity_ref"],
+                    "destination_ref": arguments["destination_ref"],
+                    "return_destination_ref": arguments["return_destination_ref"],
+                    "phase_events": events,
+                    "feedback_observations": samples,
+                    "feedback_source_profile": self.profile.source_profile(),
+                    "evaluation_profile": self.profile.evaluation_profile(),
+                    "possession_state": "empty" if succeeded else "uncertain",
+                    "object_support_state": "on_support" if succeeded else "unknown",
+                    "new_scene_revision": f"{arguments['scene_revision']}-pour-{step}" if succeeded else None,
+                    "artifact_refs": [f"artifact://labutopia/paos-pour/{arguments['scene_revision']}-{step}"],
+                    "evidence_refs": [f"artifact://labutopia/paos-pour/{arguments['scene_revision']}-{step}"],
+                    "final_object_observation": final,
+                }
+        finally:
+            try:
+                world.stop()
+            finally:
+                if recorder is not None:
+                    recorder.close()
+                    video_info = recorder.metadata()
+                self._last_video_info = dict(video_info)
+
+        if result is None:
+            raise IsaacLabRuntimeError("Isaac episode ended without a result")
+        result.update(video_info)
         return result
 
     def _prepend_lab_root(self) -> None:
@@ -318,7 +493,7 @@ class LabUtopiaBackend:
         if root not in sys.path:
             sys.path.insert(0, root)
 
-    def _sample(self, state, initial_position, initial_quaternion, timestamp, np, rotation_cls, holding):
+    def _sample(self, state, initial_position, initial_quaternion, timestamp, np, rotation_cls, controller_phase):
         position = np.asarray(state["object_position"], dtype=float)
         target = np.asarray(state["target_position"], dtype=float)
         quat = np.asarray(state["object_quaternion"], dtype=float)
@@ -328,13 +503,37 @@ class LabUtopiaBackend:
         pour_axis = np.asarray(self.profile.source_pour_axis, dtype=float)
         pour_point = position + rotation_cls.from_quat(quat).apply(pour_axis * (source_size[2] / 2.0))
         alignment = float(np.linalg.norm(pour_point[:2] - target[:2]))
-        grasp = bool(holding and position[2] > initial_position[2] + 0.04)
+        joint_positions = np.asarray(state.get("joint_positions", []), dtype=float).reshape(-1)
+        gripper_joints = joint_positions[-2:] if joint_positions.size >= 2 else np.asarray([], dtype=float)
+        gripper_opening = float(np.max(np.abs(gripper_joints))) if gripper_joints.size else None
+        gripper_state = (
+            "unknown" if gripper_opening is None or not np.isfinite(gripper_opening)
+            else "closed" if gripper_opening <= self.profile.gripper_closed_max_m
+            else "open"
+        )
+        gripper_position = np.asarray(state.get("gripper_position", []), dtype=float).reshape(-1)
+        object_gripper_distance = None
+        if gripper_position.size >= 3 and np.all(np.isfinite(gripper_position)):
+            object_gripper_distance = float(np.linalg.norm(position - gripper_position[:3]))
+        object_lifted = bool(position[2] > initial_position[2] + self.profile.object_lift_threshold_m)
+        grasp = bool(
+            gripper_state == "closed"
+            and object_lifted
+            and object_gripper_distance is not None
+            and object_gripper_distance <= self.profile.grasp_distance_tolerance_m
+        )
         return {
             "timestamp_s": float(timestamp),
             "frame_id": self.profile.frame_id,
             "calibration_ref": self.profile.calibration_ref,
             "container_frame_id": self.profile.container_frame_id,
             "grasp_state": "holding" if grasp else "empty",
+            "possession_state": "holding" if grasp else "empty",
+            "controller_phase": controller_phase,
+            "gripper_state": gripper_state,
+            "gripper_opening_m": gripper_opening,
+            "object_lifted": object_lifted,
+            "object_gripper_distance_m": object_gripper_distance,
             "feedback_valid": True,
             "grasp_valid": grasp,
             "target_container_aligned": alignment <= self.profile.alignment_tolerance_m,

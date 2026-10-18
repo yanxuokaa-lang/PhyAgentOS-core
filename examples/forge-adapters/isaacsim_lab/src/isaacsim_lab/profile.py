@@ -39,6 +39,9 @@ class LabUtopiaProfile:
     tilt_tolerance_rad: float = 0.10
     maximum_tilt_rad: float = 1.50
     max_sample_gap_s: float = 0.10
+    gripper_closed_max_m: float = 0.035
+    object_lift_threshold_m: float = 0.04
+    grasp_distance_tolerance_m: float = 0.16
     source_pour_axis: tuple[float, float, float] = (0.0, 0.0, 1.0)
     headless: bool = True
 
@@ -79,6 +82,9 @@ class LabUtopiaProfile:
             tilt_tolerance_rad=_positive_float(value, "tilt_tolerance_rad", 0.10),
             maximum_tilt_rad=_positive_float(value, "maximum_tilt_rad", 1.50),
             max_sample_gap_s=_positive_float(value, "max_sample_gap_s", 0.10),
+            gripper_closed_max_m=_positive_float(value, "gripper_closed_max_m", 0.035),
+            object_lift_threshold_m=_positive_float(value, "object_lift_threshold_m", 0.04),
+            grasp_distance_tolerance_m=_positive_float(value, "grasp_distance_tolerance_m", 0.16),
             source_pour_axis=_vector3(value, "source_pour_axis", (0.0, 0.0, 1.0)),
             headless=bool(value.get("headless", True)),
         )

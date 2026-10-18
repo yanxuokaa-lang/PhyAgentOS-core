@@ -1,10 +1,17 @@
+import json
+import sys
+import types
 from threading import Event
+
+import numpy as np
+import pytest
 
 import isaacsim_lab.engine as module
 from isaacsim_lab.engine import (
     IsaacSimLabEngine,
     _continuous_pour_window,
     _episode_succeeded,
+    _EpisodeVideoRecorder,
     _pour_controller_target,
 )
 
@@ -95,3 +102,73 @@ def test_pour_diagnosis_identifies_alignment_loss_before_target_tilt(tmp_path):
     report = module.diagnose_pour_observations(samples, profile)
     assert report["bottleneck"] == "alignment_lost_before_target_tilt"
     assert report["joint_sample_count"] == 0
+
+
+def test_feedback_uses_observed_gripper_and_lift_state(tmp_path):
+    from scipy.spatial.transform import Rotation
+
+    profile = make_profile(tmp_path)
+    backend = module.LabUtopiaBackend(profile)
+    state = {
+        "object_position": np.array([0.4, 0.2, 0.30]),
+        "target_position": np.array([0.4, 0.2, 0.45]),
+        "object_quaternion": Rotation.identity().as_quat(),
+        "object_size": np.array([0.1, 0.1, 0.2]),
+        "gripper_position": np.array([0.4, 0.2, 0.30]),
+        "joint_positions": np.array([0.0] * 7 + [0.02, 0.02]),
+    }
+    sample = backend._sample(
+        state,
+        np.array([0.4, 0.2, 0.20]),
+        Rotation.identity().as_quat(),
+        1.0,
+        np,
+        Rotation,
+        "picking",
+    )
+    assert sample["controller_phase"] == "picking"
+    assert sample["gripper_state"] == "closed"
+    assert sample["object_lifted"] is True
+    assert sample["possession_state"] == "holding"
+    assert sample["grasp_valid"] is True
+
+
+def test_video_recorder_persists_camera_frame(tmp_path):
+    cv2 = pytest.importorskip("cv2")
+    recorder = _EpisodeVideoRecorder(tmp_path / "episode.mp4", cv2, np, fps=10.0)
+    recorder.write({"front": np.zeros((3, 16, 16), dtype=np.uint8)}, ("phase=failed",))
+    recorder.close()
+    metadata = recorder.metadata()
+    assert metadata["video_frame_count"] == 1
+    assert metadata["video_available"] is True
+
+
+def test_inprocess_exception_preserves_video_metadata(tmp_path, monkeypatch):
+    class FakeApp:
+        def __init__(self, config):
+            self.config = config
+
+        def close(self):
+            return None
+
+    fake_isaacsim = types.ModuleType("isaacsim")
+    fake_isaacsim.SimulationApp = FakeApp
+    monkeypatch.setitem(sys.modules, "isaacsim", fake_isaacsim)
+
+    profile = make_profile(tmp_path)
+    backend = module.LabUtopiaBackend(profile)
+
+    def fail_episode(app, arguments, cancel, video_path):
+        backend._last_video_info = {
+            "video_path": str(video_path),
+            "video_frame_count": 3,
+            "video_available": True,
+        }
+        raise RuntimeError("episode failed")
+
+    monkeypatch.setattr(backend, "_run_episode", fail_episode)
+    result_path = tmp_path / "result.json"
+    result = backend._run_inprocess({}, Event(), result_path)
+    assert result["status"] == "unknown"
+    assert result["video_frame_count"] == 3
+    assert json.loads(result_path.read_text(encoding="utf-8"))["video_available"] is True

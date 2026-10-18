@@ -2,6 +2,31 @@
 
 ## 最近五版本 / Latest five versions
 
+## v14.12.6 (2026-10-19 00:00) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [sense] [fix] LabUtopia 反馈改由夹爪闭合、瓶子抬升和物体-夹爪距离共同确认持物，保留控制器阶段与持物事实，不再用归位标记伪造抓取成功。 / LabUtopia feedback now confirms possession from gripper closure, bottle lift, and object-gripper distance, retaining controller phase and possession facts instead of using the placement flag.
+- [eval] [feat] 每个 Isaac Sim 回合复用 `camera_display` 保存 MP4；正常失败、取消和异常路径记录视频元数据，视频不参与 PAOS 成功判定。 / Save an MP4 from `camera_display` for every Isaac Sim episode; normal failure, cancellation, and exception paths record video metadata without using video for PAOS success.
+- [eval] [test] 增加持物反馈和视频写入回归；真实回合生成 1090 帧失败视频。 / Add possession-feedback and video-write regressions; the real episode produced a 1,090-frame failure video.
+
+### 文件变更详情 / File Change Details
+- [修改] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/engine.py:L29-L116,L236-L289,L346-L489,L496-L554`：新增 episode video recorder，在 `_run_episode` 的 `finally` 中释放 writer，并把 `video_path`、`video_frame_count`、`video_available` 写入结果；修正 `_sample` 的持物判定和可观测字段。 / Add the episode video recorder, release it in `_run_episode` `finally`, write video metadata to results, and correct possession semantics and observability in `_sample`.
+- [修改] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/profile.py:L41-L46,L84-L88`、`examples/forge-adapters/isaacsim_lab/configs/labutopia-pour-cycle.json`：外置夹爪闭合、抬升和距离阈值。 / Externalize gripper-closure, lift, and distance thresholds.
+- [修改] `examples/forge-adapters/isaacsim_lab/tests/test_engine.py:L104-L140`：覆盖真实观测字段和 MP4 生命周期。 / Cover observed possession fields and MP4 lifecycle.
+- [修改] `docs/forge/LAB_POUR_STIR_IMPLEMENTATION_PLAN_20261015.md:L307-L316`：记录本轮失败结算、反馈统计和视频证据。 / Record this failed settlement, feedback statistics, and video evidence.
+
+### 关键 Diff / Key Diff
+```diff
+- grasp = holding and object_lifted
++ grasp = gripper_closed and object_lifted and object_gripper_distance <= configured_tolerance
++ video_path/video_frame_count/video_available are persisted in every episode result
+```
+
+### 验证 / Validation
+- `12 passed`; Ruff、compileall、`git diff --check` 全部通过。 / `12 passed`; Ruff, compileall, and `git diff --check` passed.
+- Isaac Sim: `failed/outcome_known=true`, `process=continuous_pour_window_not_observed`; 1091 observations, 731 holding samples, 1090 video frames, `768x256`, `18.166667s`, `video_available=true`. / Isaac Sim: `failed/outcome_known=true`, process failed for the continuous window; 1,091 observations, 731 holding samples, 1,090 video frames, `768x256`, `18.166667s`, `video_available=true`.
+- 未接入非夕 SDK、真实机械臂或物料称重；视频只作为仿真观察证据。 / No Flexiv SDK, real robot, or material weighing was integrated; video is simulation observation evidence only.
+
 ## v14.12.5 (2026-10-18) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
