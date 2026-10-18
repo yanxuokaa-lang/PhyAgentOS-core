@@ -2,76 +2,184 @@
 
 ## 最近五版本 / Latest five versions
 
+## v14.6.2 (2026-10-18 20:12) - codex
+
+### 变更摘要 / Summary [完成；设计修订，执行待实现]
+- [docs] [docs] 保存倾倒与搅拌完整复合 Action 的架构诊断和设计自审，修订无称重过程完成、接口兼容、阶段恢复与持物归属边界。 / Save the composite pour/stir Action diagnosis and design self-review, clarifying process completion without weighing, interface compatibility, phase recovery and possession ownership. (local)
+- [docs] [docs] 更新 CHANGELOG 最近五版本与归档入口；本次仅改文档，不提交已有未完成实现。 / Update the latest-five changelog and archive navigation; this change covers documentation only and excludes existing unfinished implementation. (local)
+
+### 文件变更详情 / File Change Details
+- [新增 / Added] `docs/forge/COMPOSITE_POUR_STIR_DIAGNOSIS_20261018.md:L1-L150`：源码证据、完整操作边界、参数、联合测量、部分完成恢复及实施顺序。 / Source evidence, full-cycle boundary, parameters, joint measurement conditions, partial-completion recovery and implementation sequence.
+- [新增 / Added] `docs/forge/COMPOSITE_POUR_STIR_REVIEW_20261018.md:L1-L81`：3 Blocker / 5 Major / 1 Minor 的设计发现与修订、七维审核和验证矩阵。 / Design findings and dispositions for 3 blockers, 5 majors and 1 minor, seven review dimensions and a validation matrix.
+- [修改 / Modified] `changelog/2026-10_part7.md:L1237-L1266`：追加本版双语日志及后续提交登记，不改历史条目。 / Append this bilingual record and subsequent commit registration without editing historical entries.
+- [修改 / Modified] `CHANGELOG.md:L1-L183`：同步当前最新五版完整归档记录、维护规则与 Archive 链接，原更早索引内容保留在历史区域。 / Synchronize the five latest complete archive entries, maintenance rules and Archive links; retain older index content in a historical section.
+
+### 关键 Diff / Key Diff
+下列为新文档记录的设计前后对比，不是已实施代码变更。 / The following records the design change in the new documents, not implemented runtime changes.
+```diff
+- Agent: acquire -> held pour/stir -> place
+- success: held process finished; possession=holding
++ Agent: one pour_cycle/stir_cycle Tool -> one invocation -> one settlement
++ Runtime: grasp -> transport -> process -> return/release -> retreat
++ success: process and return completed; possession=empty; final state known
++ return failure: retain process_completed; reconcile and recover placement only
++ Action cancel != confirmed stop; public stop remains Session-only
+```
+
+### 验证与审核 / Validation and Review
+- [docs] [docs] 验证 UTF-8、围栏、相对链接、引用行号、现有测试入口及最新五版与归档一致性；`git diff --check` 通过。 / Validate UTF-8, fences, relative links, source line references, existing test entry points and latest-five/archive equality; `git diff --check` passed. (local)
+- [docs] [docs] 9 项发现已在设计中处置，执行实现与故障/运动验收待实施；本轮未运行测试套件、仿真或硬件。 / All nine findings have design dispositions; execution implementation and failure/motion acceptance remain pending. No test suite, simulation or hardware run occurred. (local)
+
+### Git 提交 / Git Commit
+- Branch: `feature/planning-loop`; 内容提交后回填 / Content commit to be registered after creation.
+
 ## v14.6.1 (2026-10-17 14:15) - codex
 
 ### 变更摘要 / Summary [完成；Runtime 安装完成，启动等待凭据]
-- [env] [chore] 从当前工作树重建并安装 RoboTwin20 persistent-host Node `1.0.16` 与 Skill Bundle `3.0.25`；旧 Runtime 已停止。 / Rebuild and install RoboTwin20 persistent-host Node `1.0.16` and Skill Bundle `3.0.25`; the old Runtime is stopped.
-- [policy] [chore] 新 Runtime 启动在 host 创建世界前因缺少 `ROBOTWIN20_MODEL_API_KEY` fail-closed；无 AgentTask、Action 或运动。 / New Runtime startup failed closed before host world creation because `ROBOTWIN20_MODEL_API_KEY` was missing; no AgentTask, Action or motion occurred.
+- [env] [chore] 从当前工作树重建 RoboTwin20 persistent-host Node `1.0.16` 和 Skill Bundle `3.0.25`，更新本地 Node lock 后安装新 Bundle；旧 Runtime 已停止。 / Rebuild RoboTwin20 persistent-host Node `1.0.16` and Skill Bundle `3.0.25` from the current worktree, update the local Node lock, install the new Bundle, and stop the old Runtime.
+- [policy] [chore] 启动尝试未进入 Gateway：Node 在创建世界前因缺少 operator-only `ROBOTWIN20_MODEL_API_KEY` fail-closed；未创建 AgentTask、未发送 Action，Runtime 已收敛为 `stopped`。 / Startup did not reach Gateway: the Node failed closed before world creation because operator-only `ROBOTWIN20_MODEL_API_KEY` was missing; no AgentTask or Action was created, and Runtime is `stopped`.
+
+### 预期文件 / Expected Files
+- `examples/forge-skills/pick-place-workflow/skill.yaml`
+- `changelog/2026-10_part7.md`
 
 ### 文件变更详情 / File Change Details
-- `examples/forge-skills/pick-place-workflow/skill.yaml:L223-L229`：Node lock `1.0.15 -> 1.0.16`，绑定新 Node digest。 / Update the Node lock `1.0.15 -> 1.0.16` with the new Node digest.
-- 本地安装：`paos skill install`、`paos forge-node install`、`paos forge-node verify` 通过；Runtime 当前 `stopped`。 / Local Skill/Node installation and verification passed; Runtime is currently `stopped`.
+- [修改 / Modified] `examples/forge-skills/pick-place-workflow/skill.yaml:L223-L229`：Node lock 从 `1.0.15` 更新到 `1.0.16`，绑定新构建 SHA-256 `b2a0a5ba...96397e5`。 / Update the Node lock from `1.0.15` to `1.0.16` with the new build SHA-256 `b2a0a5ba...96397e5`.
 
-### 验证 / Validation
-- Node SHA-256：`b2a0a5ba24970af965ab6e1a0389d680eda901a04ae5e8c0e4e51f5ef96397e5`；启动缺失凭据错误为 `ROBOTWIN20_MODEL_API_KEY`，未到 Gateway。 / Node SHA-256 is recorded above; startup failed on missing `ROBOTWIN20_MODEL_API_KEY` before Gateway readiness.
-- Git: `6ce1af39` on `feature/planning-loop`, pushed to origin. / Git：`6ce1af39`，位于 `feature/planning-loop`，已推送 origin。
+### 部署验证 / Deployment Validation
+- 构建：`build_robotwin20_node.py` 成功，Node archive `435923` bytes；`build_robotwin20_skill_bundle.py` 成功生成 `pick-place-workflow-3.0.25.tar.gz`。 / Build succeeded; Node archive is `435923` bytes and the Skill Bundle was generated successfully.
+- 安装：`paos skill install`、`paos forge-node install`、`paos forge-node verify` 均通过，Node SHA-256 verified。 / Installation and Node verification passed.
+- 停止旧 Runtime：旧 flow 已 down，active invocation/session 为空，仅有陈旧 binding；受控 `--force` 后状态为 `stopped`。 / Old flow was down with no active invocation/session and one stale binding; controlled `--force` stop converged to `stopped`.
+- 启动：`robotwin-blocks-ranking-observed` 因缺少 graspnet env 被前置检查拒绝；使用已有 `runtime-rgb-graspnet-run5.env` 尝试 `robotwin-blocks-ranking-graspnet`，因缺少 `ROBOTWIN20_MODEL_API_KEY` 在 host startup fail-closed；无 Gateway、Action 或运动。 / Observed profile was rejected for missing graspnet env; the graspnet profile then failed closed at host startup because `ROBOTWIN20_MODEL_API_KEY` was missing; no Gateway, Action or motion occurred.
+
+### Git 提交 / Git Commit
+- Implementation commit: `6ce1af39`; Branch: `feature/planning-loop`; documentation registration follows. / 实现提交：`6ce1af39`；分支：`feature/planning-loop`；日志登记提交随后完成。
 
 ## v14.6.0 (2026-10-17 12:30) - codex
 
 ### 变更摘要 / Summary [完成；单候选 JEV 路由]
-- [policy] [feat] `query_input_selection` 现在允许恰好一个已审查候选调用 JEV；零候选仍回退到宿主/主模型路径，复杂规划不交给 JEV。 / `query_input_selection` now allows JEV for exactly one reviewed candidate; zero candidates still fall back to the host/primary-model path, and complex planning remains outside JEV.
-- [model] [fix] `DecisionRequest` 支持单候选 choice；JEV 只能返回候选 ID，宿主继续负责 admission、参数重建和持久化。 / `DecisionRequest` supports a single choice; JEV can only return a candidate ID while the host retains admission, argument reconstruction and persistence.
+- [policy] [feat] 允许 `query_input_selection` 在存在恰好一个已审查候选时调用 JEV；零候选仍直接回退，复杂规划继续由主模型负责。 / Allow `query_input_selection` to call JEV when exactly one reviewed candidate exists; zero candidates still fall back directly, while complex planning remains with the primary model.
+- [eval] [test] 增加单候选 JEV 调用、宿主 admission 和 JEV abstain 回退回归；保持 no-motion。 / Add regressions for single-candidate JEV invocation, host admission, and JEV abstention fallback; keep the run no-motion.
 
 ### 文件变更详情 / File Change Details
-- `PhyAgentOS/agent/decision_provider.py:L29-L42`：`candidates` 最小数量 `2 -> 1`。 / Change candidate minimum `2 -> 1`.
-- `PhyAgentOS/agent/loop.py:L825-L829`：`choices` 为空才跳过 JEV。 / Skip JEV only when choices are empty.
-- `PhyAgentOS/agent/planning_loop.py:L879-L921`：允许一个 reviewed candidate。 / Allow one reviewed candidate.
-- `tests/test_planning_loop.py:L1521-L1554`：单候选 JEV 调用与 host persistence 回归。 / Single-candidate JEV and host-persistence regression.
+- [修改 / Modified] `PhyAgentOS/agent/decision_provider.py:L29-L42`：`DecisionRequest.candidates` 从至少 2 个放宽为至少 1 个，使单候选请求可编码。 / Change `DecisionRequest.candidates` from minimum 2 to minimum 1 so single-candidate requests can be encoded.
+- [修改 / Modified] `PhyAgentOS/agent/loop.py:L825-L829`：只在零候选时跳过 JEV；单候选进入同一 host admission/persistence 路径。 / Skip JEV only for zero candidates; single candidates use the same host admission/persistence path.
+- [修改 / Modified] `PhyAgentOS/agent/planning_loop.py:L879-L921`：允许一个已审查的 `scene.bind` candidate 进入 JEV slice；零候选、歧义和重复候选仍回退。 / Allow one reviewed `scene.bind` candidate into the JEV slice; zero, ambiguous, and duplicate candidates still fall back.
+- [新增 / Added] `tests/test_planning_loop.py:L1521-L1554`：验证单候选实际调用 JEV、只持久化 host-admitted candidate。 / Verify that a single candidate calls JEV and only the host-admitted candidate is persisted.
+
+### 关键 Diff / Key Diff
+```diff
+- DecisionRequest.candidates: min_length=2
++ DecisionRequest.candidates: min_length=1
+- if len(choices) < 2: skip JEV
++ if not choices: skip JEV
+- recommended candidates require at least two
++ one or more reviewed candidates may reach JEV; zero still falls back
+```
 
 ### 验证 / Validation
-- 相关 provider/redaction/planning suites：`184 passed`；Ruff、compileall、`git diff --check` 通过；全程 no-motion。 / Focused suites: `184 passed`; Ruff, compileall and `git diff --check` passed; no-motion throughout.
+- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/test_decision_provider.py tests/test_redaction.py tests/test_planning_loop.py`：`184 passed`。 / The focused provider, redaction and planning suites passed with `184 passed`.
+- Ruff、compileall、`git diff --check` 通过；全程 no-motion，无 Runtime/Gateway/Action/Session/传感器调用。 / Ruff, compileall and `git diff --check` passed; no motion and no Runtime/Gateway/Action/Session/sensor calls were used.
+
+### Git 提交 / Git Commit
+- Implementation commit: `b4a384fc`; Branch: `feature/planning-loop`; 时间 / Time: 2026-10-17 Asia/Shanghai. / 实现提交：`b4a384fc`；分支：`feature/planning-loop`；时间：2026-10-17 Asia/Shanghai。
 
 ## v14.5.12 (2026-10-17 12:05) - codex
 
 ### 变更摘要 / Summary [完成；JEV shadow 七维复审修复]
-- [policy] [fix] URI 脱敏覆盖任意 `scheme://`，并将 shadow 未知候选记录为 `admission_rejected/unknown_candidate`。 / Redact any `scheme://` URI and report unknown shadow candidates as `admission_rejected/unknown_candidate`.
-- [eval] [test] 增加真实 SystemOne wire payload、goal/facts 脱敏、shadow 不持久化和未来 URI scheme 回归。 / Add regressions for the real SystemOne wire payload, goal/facts redaction, shadow non-persistence and future URI schemes.
+- [policy] [fix] 将 URI 脱敏扩展到任意 `scheme://` 引用，修复 `scene://`、`relation://`、`socks://` 与未来扩展 scheme 漏出站的问题；JEV goal/facts/candidate descriptions 均在共享边界脱敏。 / Extend URI redaction to any `scheme://` reference, covering `scene://`, `relation://`, `socks://`, and future schemes; redact JEV goals/facts/candidate descriptions at the shared boundary.
+- [policy] [fix] shadow 收到不在候选集内的 selected ID 时记录 `admission_rejected/unknown_candidate`，与 active host admission 语义一致。 / Record `admission_rejected/unknown_candidate` when shadow receives a selected ID outside the candidate set, matching active host-admission semantics.
+- [eval] [test] 新增真实 SystemOne wire projection 的隔离集成回归，证明出站内容已脱敏且 shadow selection 不持久化。 / Add an isolated integration regression for the real SystemOne wire projection, proving outbound redaction and non-persistence of shadow selections.
 
 ### 文件变更详情 / File Change Details
-- `PhyAgentOS/agent/experience/redaction.py:L23-L41`、`PhyAgentOS/agent/loop.py:L903-L922`：通用 URI 脱敏和未知 ID 遥测。 / General URI redaction and unknown-ID telemetry.
-- `tests/test_redaction.py:L4-L18`、`tests/test_planning_loop.py:L1521-L1554,L1716-L1861`：边界回归。 / Boundary regressions.
-- `changelog/2026-10_part7.md`：七维 shadow 复审及 active 资格边界。 / Seven-dimension shadow review and active eligibility boundary.
-
-### 验证 / Validation
-- 本轮相关回归 `184 passed`；JEV calibration evaluator 仍 `active_eligible=false`，active 不启用。 / Focused regressions passed with `184 passed`; the calibration evaluator remains `active_eligible=false`, so active stays disabled.
-
-## v14.5.11 (2026-10-17 11:45) - codex
-
-### 变更摘要 / Summary [完成；JEV shadow 接入验收]
-- [policy] [fix] 扩展共享文本脱敏器以替换内部 opaque URI；生产 JEV `systemone` goal 与候选描述不携带 entity/observation/calibration/artifact 等宿主引用，本地 binding 参数保持不变。 / Extend the shared text redactor to replace internal opaque URIs; production JEV `systemone` goals and candidate descriptions carry no host entity/observation/calibration/artifact references while local binding arguments remain unchanged.
-- [env] [chore] `queryInputSelection` 已接入 JEV `jev-latest`、`systemone`、key-file，并保持 `shadow`；其它决策点为 `off`，`active=false`。 / Connect `queryInputSelection` to JEV `jev-latest` with `systemone` and the key file while keeping `shadow`; other decision points remain `off` and `active=false`.
-
-### 文件变更详情 / File Change Details
-- [修改 / Modified] `PhyAgentOS/agent/experience/redaction.py:L23-L48`：新增内部 opaque URI 规则并在共享 `redact_text` 中替换为 `[REDACTED_REFERENCE]`。 / Add internal opaque-URI patterns and replace them with `[REDACTED_REFERENCE]` in shared `redact_text`.
-- [修改 / Modified] `PhyAgentOS/agent/loop.py:L20,L831-L849`：JEV 请求 goal、capability、required evidence 复用脱敏器；宿主仍使用未改写的 context/arguments。 / Reuse the redactor for the JEV goal, capability, and required evidence while the host keeps its original context/arguments.
-- [修改 / Modified] `PhyAgentOS/agent/planning_loop.py:L947-L959`：候选描述改为编号和安全类别，真实 `entity_refs` 仅保留在本地 arguments。 / Use candidate numbers and safe categories in descriptions; keep real `entity_refs` only in local arguments.
-- [新增 / Added] `tests/test_redaction.py:L1-L21`、[修改 / Modified] `tests/test_planning_loop.py:L1218-L1222`：覆盖 URI 脱敏和候选投影边界。 / Cover URI redaction and candidate-projection boundaries.
-- [配置 / Config] `/home/yanxu/.PhyAgentOS/config.json`：`queryInputSelection` 为 `shadow/systemone/jev-latest`，使用 key-file；该文件不进入本仓库提交。 / `queryInputSelection` is `shadow/systemone/jev-latest` with a key-file; this file is outside the repository commit.
+- [修改 / Modified] `PhyAgentOS/agent/experience/redaction.py:L23-L41`：用通用 URI scheme 规则替代封闭 scheme 列表。 / Replace the closed scheme list with a general URI-scheme rule.
+- [修改 / Modified] `PhyAgentOS/agent/loop.py:L903-L922`：shadow 未知 candidate 输出显式 admission rejection，不再记录成 selected。 / Report explicit admission rejection for unknown shadow candidates instead of recording them as selected.
+- [修改 / Modified] `tests/test_redaction.py:L4-L18`：覆盖已知 URI 与 `future+ref.v2://` 扩展 URI。 / Cover known references and the extension URI `future+ref.v2://`.
+- [修改 / Modified] `tests/test_planning_loop.py:L1518-L1548,L1630-L1665,L1716-L1762`：覆盖 goal/facts 生产 request 脱敏、真实 `systemone` payload、shadow 不持久化和未知 ID 遥测。 / Cover production request redaction, actual `systemone` payload shape, shadow non-persistence, and unknown-ID telemetry.
 
 ### 关键 Diff / Key Diff
 ```diff
-- candidate description: Bind current unambiguous entity entity://...
-+ candidate description: Bind current unambiguous candidate 1 (category)
-+ remote goal/category URI -> [REDACTED_REFERENCE]
-  local tool arguments: entity_refs unchanged
-  decision mode: shadow; active: false
+- redact only enumerated internal URI schemes
++ redact any scheme:// reference -> [REDACTED_REFERENCE]
+- shadow selected unknown ID -> outcome=selected
++ shadow selected unknown ID -> outcome=admission_rejected, reason=unknown_candidate
++ SystemOne shadow payload contains redacted goal/facts/descriptions; no selection persisted
 ```
 
+### 七维审查 / Seven-Dimension Review
+1. 架构/所有权：DecisionProvider 仅输出封闭候选结果；Coordinator 保持唯一 selection/arguments owner；shadow 不写状态。 / Architecture/ownership: DecisionProvider returns only a closed candidate result; Coordinator remains sole selection/argument owner; shadow writes no state.
+2. 正确性/证据：修复通用 URI 漏项和 shadow 未知 ID 被误计 selected 两个 Major；SystemOne wire test 检查真实 adapter payload。 / Correctness/evidence: fix two Majors, generic URI omissions and unknown shadow IDs counted as selected; the SystemOne wire test inspects the actual adapter payload.
+3. 可观测性：selected/escalated/unavailable/timeout/admission-rejected 区分；错误候选带有 bounded reason。 / Observability: distinguish selected, escalated, unavailable, timeout, and admission-rejected; unknown candidates use a bounded reason.
+4. 失败恢复/幂等：shadow 超时/取消/服务错误仍不持久化；关闭时任务取消并关闭 provider。 / Failure recovery/idempotency: shadow timeout/cancellation/provider errors still persist nothing; shutdown cancels tasks and closes the provider.
+5. 机器人安全：此接入不调用 Runtime、Gateway、Query、Action、Session、传感器或运动；真实任务使用仍需独立授权与运行验收。 / Robotics safety: this integration calls no Runtime, Gateway, Query, Action, Session, sensor, or motion; live-task use still requires separate authorization and runtime acceptance.
+6. 兼容性：沿用既有 typed/systemone 协议和配置；URI matcher 只作用于出站自由文本，不改变本地 typed refs。 / Compatibility: retain existing typed/systemone protocols and config; URI matching applies only to outbound free text and does not alter local typed refs.
+7. 预算/自主性：deadline/timeout/fallback reserve 不变；shadow 只观测、无执行自主权。 / Budget/autonomy: deadline, timeout, and fallback reserve remain unchanged; shadow only observes and has no execution authority.
+- Review result: Blocker 0 / Major 0 / Minor 0 for the shadow-only code boundary after these fixes. The broader active rollout plan is not accepted: measured host/fallback held-out evidence and independent authorization are still absent.
+
 ### 验证 / Validation
-- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/test_redaction.py tests/test_planning_loop.py`：`160 passed`；compileall 与 `git diff --check` 通过。 / `160 passed`; compileall and `git diff --check` passed.
-- 配置加载确认 `shadow/systemone/jev-latest`、key-file 存在、其它 decision points `off`、`active=false`。 / Config loading confirmed `shadow/systemone/jev-latest`, key-file presence, other decision points `off`, and `active=false`.
-- 真实 JEV API smoke 使用虚构两候选、只读 `DecisionRequest`：响应 `outcome=escalate` 且带 model version；未启动 AgentTask/Runtime/Gateway/Query/Action/Session、传感器或运动，未保存 key/原始响应。 / A real JEV API smoke with a synthetic two-choice read-only request returned `outcome=escalate` with a model version; no AgentTask/Runtime/Gateway/Query/Action/Session, sensor, or motion started, and no key/raw response was saved.
-- Content commit: `b0c39457` on `feature/planning-loop`; documentation registration follows. / 内容提交：`b0c39457`，位于 `feature/planning-loop`；日志登记提交随后完成。
+- 定向相关回归 `215 passed`；Ruff、compileall、`git diff --check` 通过。 / Focused related regressions: `215 passed`; Ruff, compileall, and `git diff --check` passed.
+- 离线运行现有 5-case calibration evaluator：`active_eligible=false`、exit `2`；scope=`provider_only_not_host_or_fallback`，5 类不是规定六类；缺 measured evidence、held-out、独立 review/provenance、host admission、mandatory escalation 与 actual substitution。 / Offline evaluation of the existing five-case calibration returned `active_eligible=false`, exit `2`; scope is `provider_only_not_host_or_fallback`, its five categories are not the required six, and measured evidence, held-out, independent review/provenance, host admission, mandatory escalation, and actual substitution are absent.
+- 所有测试及 evaluator 均 no-motion；真实 JEV synthetic smoke 仅证明 API 连通/协议解析，不作为质量或 active 证据。 / All tests and evaluator runs were no-motion; the real synthetic JEV smoke proves API connectivity/protocol parsing only, not quality or active eligibility.
+
+### Git 提交 / Git Commit
+- Implementation commit: `b4a384fc`; documentation registration follows. / 实现提交：`b4a384fc`；日志登记提交随后完成。
+
+## v14.5.11 (2026-10-17 11:45) - codex
+
+### 变更摘要 / Summary [完成；JEV shadow 功能验收]
+- [policy] [fix] 扩展既有文本脱敏器以替换 goal/category 中的内部 opaque URI，并在生产 JEV `systemone` 请求构造前脱敏 goal；本地宿主绑定仍保留真实引用。 / Extend the existing text redactor to replace internal opaque URIs in goals/categories and redact goals before production JEV `systemone` request construction; retain real references for local host binding.
+- [policy] [test] 验收 shadow 请求只携带安全候选投影，JEV 观测结果不改变本地宿主参数，且不触发 Query/Action/Session/运动。 / Verify shadow requests carry only safe candidate projections, JEV observations do not alter local host arguments, and no Query/Action/Session/motion is triggered.
+- [env] [chore] 将本机 `queryInputSelection` 接入设置为 `shadow`，固定 JEV endpoint/model/key-file/api format；不改变 selection owner，不启用 `active`。 / Connect local `queryInputSelection` in `shadow` with the fixed JEV endpoint/model/key-file/API format; preserve selection ownership and keep `active` disabled.
+- [docs] [docs] 更新 `CHANGELOG.md` 最近五版本索引并登记本轮验收证据。 / Update the `CHANGELOG.md` latest-five index and register this acceptance evidence.
+
+### 文件变更详情 / File Change Details
+- [修改 / Modified] `PhyAgentOS/agent/experience/redaction.py:L23-L48`：对 endpoint/credential 规则之后增加内部 opaque URI 替换，包含 `entity`、`observation`、`calibration`、`artifact`、`evidence`、`file`、`candidate` 等 scheme。 / Add internal opaque-URI replacement after endpoint/credential rules, covering `entity`, `observation`, `calibration`, `artifact`, `evidence`, `file`, `candidate`, and related schemes.
+- [修改 / Modified] `PhyAgentOS/agent/loop.py:L20,L831-L849`：JEV goal、capability、required evidence 使用 `redact_text`；shadow 分支仍异步观测并立即返回 `False`，不交付模型选择给宿主。 / Redact the JEV goal, capability, and required evidence; the shadow branch still observes asynchronously and immediately returns `False`, so model choices are not applied by the host.
+- [修改 / Modified] `PhyAgentOS/agent/planning_loop.py:L947-L959`：候选描述用编号与经脱敏类别，不暴露实体 URI；本地 `arguments.entity_refs` 原样保留。 / Use numbered candidates and redacted categories without exposing entity URIs; keep local `arguments.entity_refs` intact.
+- [新增 / Added] `tests/test_redaction.py:L1-L21`、[修改 / Modified] `tests/test_planning_loop.py:L1218-L1222`：验证内部 URI 脱敏、语义类别保留和远程描述/本地引用分离。 / Verify internal-URI redaction, semantic-category retention, and separation of remote descriptions from local references.
+- [配置 / Config] `/home/yanxu/.PhyAgentOS/config.json`：本机 `queryInputSelection` 为 `shadow` + JEV `systemone`/`jev-latest`；该用户环境文件不加入仓库提交。 / Local `queryInputSelection` is `shadow` with JEV `systemone`/`jev-latest`; the user environment file is excluded from the repository commit.
+
+### 关键 Diff / Key Diff
+```diff
+- goal = task.task_description
++ goal = redact_text(task.task_description)
++ capability/required_evidence = redact_text(...)
+- description = f"Bind current unambiguous entity {entity_ref}"
++ description = f"Bind current unambiguous candidate {index} ({safe_category})"
++ opaque URI in remote goal/facts/category -> [REDACTED_REFERENCE]
+  local arguments.entity_refs -> unchanged
+  mode=shadow -> async observe only; active=false
+```
+
+### 七维功能验收 / Seven-Dimension Functional Acceptance
+- 架构/所有权：DecisionProvider 只返回封闭选择结果；Coordinator 继续拥有真实 selection 与 arguments。 / Architecture/ownership: DecisionProvider returns only a closed choice; Coordinator retains selection and argument ownership.
+- 正确性：goal/category 内部 URI 被替换；JEV 实际 smoke 的 `escalate` 响应被解析，不被冒充为 selection。 / Correctness: internal URIs in goals/categories are replaced; the real smoke's `escalate` response is parsed and not misrepresented as a selection.
+- 可观测性：配置与 smoke 仅记录 endpoint host、outcome/model-version 是否存在，不记录 key 或原始 response。 / Observability: config and smoke report only endpoint host and outcome/model-version presence, never the key or raw response.
+- 恢复/幂等：shadow 不写回 selection；超时/失败不会形成宿主参数，原有 fallback owner 不变。 / Recovery/idempotency: shadow does not persist a selection; timeout/failure cannot create host arguments, and fallback ownership is unchanged.
+- 安全：没有 Query/Action/Session、Runtime/Gateway、传感器或机械臂调用；active 继续关闭。 / Safety: no Query/Action/Session, Runtime/Gateway, sensor, or robot call; active remains disabled.
+- 兼容：使用既有 `systemone` provider、DecisionRequest 和脱敏器，无新依赖或数据格式迁移。 / Compatibility: use the existing `systemone` provider, DecisionRequest, and redactor; no new dependency or data-format migration.
+- 预算/自主性：仅发起一次合成只读 API 请求；模型无自主执行权限，返回 `escalate`。 / Budget/autonomy: one synthetic read-only API request; the model has no execution authority and returned `escalate`.
+- Review result: Blocker 0 / Major 0 / Minor 0 for shadow-only acceptance. Active replacement remains unaccepted and requires existing measured-evidence policy.
+
+### 验证 / Validation
+- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/test_redaction.py tests/test_planning_loop.py`：`160 passed`；首轮默认插件加载因 ROS `launch_testing` 缺少 `lark` 失败，停用第三方 pytest 自动插件后通过。 / `160 passed`; the default plugin-autoload attempt failed because ROS `launch_testing` lacked `lark`, then passed with third-party pytest autoload disabled.
+- `compileall`、`git diff --check` 通过；配置读取为 `shadow/systemone/jev-latest`，其它 decision points `off`，`active=false`。 / `compileall` and `git diff --check` passed; config reads `shadow/systemone/jev-latest`, other decision points are `off`, and `active=false`.
+- 真实 JEV synthetic API smoke 成功到达服务并完成协议解析：`outcome=escalate`，有 model version；未保存凭据或原始响应。 / The real synthetic JEV API smoke reached the service and parsed the protocol: `outcome=escalate`, model version present; no credential or raw response was saved.
+
+### Git 提交 / Git Commit
+- Content commit: `b0c39457`; Branch: `feature/planning-loop`; 时间 / Time: 2026-10-17 11:55 Asia/Shanghai. Documentation registration follows. / 内容提交：`b0c39457`；分支：`feature/planning-loop`；时间：2026-10-17 11:55 Asia/Shanghai。日志登记提交随后完成。
+
+## 维护规则 / Maintenance Rules
+
+- 修改前记录计划；完成后补充双语说明、精确行号、Diff、验证与 Git 信息。 / Log the plan before changes and complete bilingual details, exact lines, diffs, validation and Git metadata afterward.
+- 最近五版本从月度归档同步；历史记录保留，月度文件超过 1500 行或 300KB 后续建 part。 / Synchronize the latest five versions from monthly archives, retain history, and continue in a new part beyond 1,500 lines or 300KB.
+
+## Archive
+
+- [2026-10 Part 7](changelog/2026-10_part7.md)
+- [2026-10](changelog/2026-10.md)
+
+## 历史索引记录 / Historical index records
 
 ## v14.5.10 (2026-10-17 11:37) - codex
 
