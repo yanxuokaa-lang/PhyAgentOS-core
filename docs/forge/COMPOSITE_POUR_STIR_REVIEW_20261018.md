@@ -1,7 +1,7 @@
 # 倾倒与搅拌复合 Action：设计自审
 
 日期：2026-10-18（Asia/Shanghai）。对象：[修订诊断](COMPOSITE_POUR_STIR_DIAGNOSIS_20261018.md)。
-依据：设计诊断基点 `b4dac9ab`；实现核对提交 `352fe271`、`c4f2a194` 和本轮工作区修改。作者自审，非独立审核或物理执行验收。
+依据：设计诊断基点 `b4dac9ab`；实现核对提交 `352fe271`、`c4f2a194`、`4e93476d`、`f7da28d6` 和本轮工作区修改。作者自审，非独立审核或物理执行验收。
 方法：采用 implementation-review 的架构、配置、错误与可观测性、验证、安全、维护及文档维度。下表问题是实现前发现；本轮状态另列于 §4。
 
 ## 1. 发现与处置
@@ -21,6 +21,8 @@
 | F8 / Major | 只有容器 destination_ref，没有瓶子/工具归还位置；圈数/时长与轨迹坐标含义不完整 | §4：增加 return_destination_ref；明确功能点、深度基准、参数可行性与超时范围 | 容器与归位点不混淆；“回原位”有来源且放置前仍有效 |
 | F9 / Minor | “一个 Action”容易被理解为只需一次 Tool 调用、无需准备或任务验证 | §1、§3、§5：一个物理操作节点；必要 Query 与最终 Verifier 仍有独立职责 | 计划包含两次倾倒、一次搅拌及必要准备/验证，无冗余外部抓放节点 |
 | F10 / Major | 初次实现中搅拌反馈断点重置了连续圈数但保留连续时长；断点前时长可能与断点后圈数合并，造成非连续样本达到目标 | §5、§8：断点/无效样本同时重置圈数和时长 | 已修复；新增 synthetic counterexample 验证两段各自不足不能拼接，定向回归包含该测试 |
+| F11 / Major | cycle 能力按方法存在性判断，无法区分 preparation、execution、feedback、return 是否完整；缺少 provider control-loop 验收 | §3、§7、§8：引入逐 operation 的显式 capability declaration，并用 no-motion fake engine 验证阶段顺序、失败短路和取消 | 已修复为 fail-closed 声明；真实 provider 阶段执行和传感适配仍待设备阶段 |
+| F12 / Major | `process_completed`/`return_completed` 与 `artifact_refs` 绑定，缺少 ref 会抹掉已观察的部分事实 | §6、§8：artifact ref 只决定完整 evidence/整体 succeeded，不覆盖协议和反馈已经结算的事实 | 已修复；新增无 artifact ref 的 unknown partial-result 回归 |
 
 ## 2. 审核后的责任边界
 
@@ -29,7 +31,7 @@
 | 架构集成 | 方向符合一个节点由一个 Tool 结算；复合 Tool 必须真实拥有全过程 | 诊断 §2、§3；planning 不调用 SDK，Gateway 保持生命周期所有权 |
 | 参数和配置 | 同时定义用户参数、设备/器材参数、系统引用 | §4；实际速度、误差和力值由所选 profile 与能力验证决定 |
 | 错误与可观测性 | 过程达标和整体成功分离；可知失败与未知效果分开 | §5、§6；失败阶段、当前持物、过程测量与原 invocation 可追溯 |
-| 验证 | 用反例验证成功判据、取消和恢复；复审发现并修复一个跨采样段累计缺陷 | 本文 §3；指定离线回归 `126 passed`，Ruff 与 diff check 通过 |
+| 验证 | 用反例验证成功判据、取消和恢复；复审发现并修复跨采样段累计、能力声明和部分事实丢失缺陷 | 本文 §3；指定离线回归 `129 passed`，Ruff 与 diff check 通过 |
 | 机器人安全 | 复合化不移动已有授权与控制边界；控制监视独立于模型轮询 | §5；阶段适用性、attached geometry、停止及释放确认 |
 | 维护与兼容 | 新 ID 或明确版本迁移；复用执行组件和持物 owner | §3、§6；不增加第二 Runtime、子任务调度器或公共嵌套 invocation |
 | 文档与交付 | 历史方案保留，新诊断标明操作粒度变更及引用来源 | §1、§2、§7；部署能力、打包和接口发现一并验收 |
@@ -80,15 +82,15 @@ git diff --stat -- CHANGELOG.md changelog/2026-10_part7.md docs/forge/COMPOSITE_
 
 ## 4. 当前实现状态
 
-- `CyclePhaseProtocol` 要求 acquire → transport → process → reorient_exit → stow → release → retreat 顺序、单调阶段时间和对应可观察事实；缺阶段、错序、缺事实、丢测量或 unknown 事件不能结算成功。process 阶段执行结束与工艺目标达标分开表达。
+- `CyclePhaseProtocol` 要求 acquire → transport → process → reorient_exit → stow → release → retreat 顺序、单调阶段时间和对应可观察事实；缺阶段、错序、缺事实、丢测量或 unknown 事件不能结算成功。process 阶段执行结束与工艺目标达标分开表达。no-motion fake engine 还验证了失败阶段后不推进后续阶段、取消后保持 unknown。
 - 倾倒保持从 process 阶段内样本联合计算；搅拌从容器坐标下棒尖轨迹计算，并要求方向性圈数和有效时长在同一连续段达到。汇总指标/请求值不作为测量证据。
-- cycle 能力须由准备 provider 和执行 client 对同一 operation 都通过 `supports_cycle(operation)` 明确声明；Robotwin provider 只有 engine 同时提供 `prepare_cycle` 和 `execute_cycle` 时才返回支持。Runtime 未发现能力时不发布 cycle Tool，旧 held Tool 不会被命名或描述成完整 cycle。
+- cycle 能力须由准备 provider 和执行 client 对同一 operation 通过 `cycle_capability(operation)` 显式声明 preparation、execution、feedback、return；Runtime 未发现完整声明时不发布 cycle Tool，旧 held Tool 不会被命名或描述成完整 cycle。`supports_cycle` 仅保留为 provider 内部兼容查询，不再是 Runtime 的唯一发现依据。
 - cycle 来源持物拒绝旧 held-only pour/stir，仅允许 place；回执 unknown 时保留 unknown 并要求现有 invocation 对账。
-- 诊断所列合成记录是手写的 synthetic measurement records。它们没有设备/仿真来源，不测量液量或混匀质量。
+- 诊断所列合成记录是手写的 synthetic measurement records。它们没有设备/仿真来源，不测量液量或混匀质量。`dry_run=true` 只表示可以做无运动控制流验收，不表示有物理运动授权。
 
-尚未实现 provider/engine 的物理阶段执行、实时安全监控和传感适配；这部分需要具体设备方案，明确排除在本轮范围之外。
+尚未实现 provider/engine 的物理阶段执行、实时安全监控和传感适配；这部分需要具体设备方案，明确排除在本轮范围之外。当前新增的 fake control-loop 只证明 provider receipt 能承载阶段事件，不能证明具体设备已经执行这些阶段。
 
 ## 5. 结论与后续设备适配范围
 
-复审发现的 F10 跨采样段时长/圈数拼接问题已修复并有独立合成反例。当前离线验收未遗留 Blocker/Major；实现满足公共 invocation、过程反馈计算、阶段事实、部分失败和能力发现边界，但不含真实设备执行器，因此无法证明夹持反馈、坐标标定、运动安全或动作结果。
+复审发现的 F10 跨采样段时长/圈数拼接问题、F11 能力声明缺口和 F12 部分事实丢失问题均已修复并有回归覆盖。当前离线/no-motion 验收未遗留 Blocker/Major；实现满足公共 invocation、过程反馈计算、阶段事实、部分失败和 fail-closed 能力发现边界，但不含真实设备执行器，因此仍无法证明夹持反馈、坐标标定、运动安全或动作结果。
 后续若接设备，须单独核实具体机器人/控制模式、工具与容器功能点、夹持/放置反馈、profile 数值与停止能力；这属于独立设备适配与验收，不应从本轮测试外推。

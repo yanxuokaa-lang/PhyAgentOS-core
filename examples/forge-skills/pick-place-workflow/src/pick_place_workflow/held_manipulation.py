@@ -267,6 +267,24 @@ PREPARE_CYCLE_TOOL_SPEC = {
 POUR_CYCLE_TOOL_SPEC = cycle_action_spec("pour_cycle")
 STIR_CYCLE_TOOL_SPEC = cycle_action_spec("stir_cycle")
 
+_REQUIRED_CYCLE_CAPABILITIES = ("preparation", "execution", "feedback", "return")
+
+
+def cycle_capability_available(provider: Any, operation: str) -> bool:
+    """Accept only an explicit deployment declaration for a complete cycle."""
+    describe = getattr(provider, "cycle_capability", None)
+    if not callable(describe):
+        return False
+    try:
+        declaration = describe(operation)
+    except Exception:
+        return False
+    return (
+        isinstance(declaration, Mapping)
+        and declaration.get("operation") == operation
+        and all(declaration.get(key) is True for key in _REQUIRED_CYCLE_CAPABILITIES)
+    )
+
 
 def extended_place_spec(legacy_spec):
     """The lab deployment accepts legacy placement and current held preparation."""
@@ -443,8 +461,11 @@ def project_cycle_result(raw, arguments, possession, invocation_id):
         known = False
     known = known and phase_result["outcome_known"] is True
     metrics = process_feedback
-    process_completed = (phase_result["process_completed"] and bool(refs))
-    return_completed = phase_result["return_completed"] and bool(refs)
+    # Phase facts and measured process qualification remain useful partial facts
+    # even when an artifact reference is missing. References gate complete
+    # evidence and overall success below; they must not erase observed progress.
+    process_completed = phase_result["process_completed"]
+    return_completed = phase_result["return_completed"]
     identity_matches = (raw.get("entity_ref") == arguments["entity_ref"]
                         and raw.get("destination_ref") == arguments["destination_ref"])
     process_completed = process_completed and identity_matches

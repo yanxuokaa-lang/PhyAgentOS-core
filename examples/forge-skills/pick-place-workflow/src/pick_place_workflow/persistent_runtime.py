@@ -484,6 +484,7 @@ def build_persistent_runtime(*, client, understanding_provider, grasp_provider,
             CyclePreparationEndpoint,
             HeldActionEndpoint,
             HeldPreparationEndpoint,
+            cycle_capability_available,
             extended_held_preparation_spec,
         )
 
@@ -498,16 +499,13 @@ def build_persistent_runtime(*, client, understanding_provider, grasp_provider,
                 endpoint = query_decorator(spec["tool_id"], endpoint)
             runtime.register_tool(deepcopy(spec), endpoint,
                                   context_provider=lambda tool_id=spec["tool_id"]: tool_context_provider(tool_id))
-        supports_cycle = getattr(held_preparation_provider, "supports_cycle", None)
-        client_supports_cycle = getattr(client, "supports_cycle", None)
         cycle_specs = (
             ("pour_cycle", POUR_CYCLE_TOOL_SPEC, CycleActionEndpoint("pour_cycle", client, resolve_held_preparation, possession)),
             ("stir_cycle", STIR_CYCLE_TOOL_SPEC, CycleActionEndpoint("stir_cycle", client, resolve_held_preparation, possession)),
         )
         available_cycles = [entry for entry in cycle_specs
-                            if (callable(supports_cycle) and supports_cycle(entry[0]) is True
-                                and callable(client_supports_cycle)
-                                and client_supports_cycle(entry[0]) is True)]
+                            if (cycle_capability_available(held_preparation_provider, entry[0])
+                                and cycle_capability_available(client, entry[0]))]
         if available_cycles:
             cycle_preparation = CyclePreparationEndpoint(held_preparation_provider, possession)
             if query_decorator is not None:

@@ -408,11 +408,31 @@ class PersistentManipulationProvider:
             return {"status": "unavailable", "error": "cycle_preparation_unavailable"}
         return dict(result)
 
+    def cycle_capability(self, operation: str) -> dict[str, Any]:
+        """Return the engine's explicit deployment capability declaration."""
+        declaration = getattr(self._engine, "cycle_capability", None)
+        if not callable(declaration):
+            return {"operation": operation}
+        try:
+            value = declaration(operation)
+        except Exception:
+            return {"operation": operation}
+        if not isinstance(value, Mapping):
+            return {"operation": operation}
+        return dict(value)
+
     def supports_cycle(self, operation: str) -> bool:
         with self._lock:
-            return (operation in {"pour_cycle", "stir_cycle"}
-                    and callable(getattr(self._engine, "prepare_cycle", None))
-                    and callable(getattr(self._engine, "execute_cycle", None)))
+            declaration = self.cycle_capability(operation)
+            return (
+                operation in {"pour_cycle", "stir_cycle"}
+                and declaration.get("operation") == operation
+                and all(declaration.get(key) is True for key in (
+                    "preparation", "execution", "feedback", "return",
+                ))
+                and callable(getattr(self._engine, "prepare_cycle", None))
+                and callable(getattr(self._engine, "execute_cycle", None))
+            )
 
     def start(self, phase: str, invocation_id: str, owner: str, arguments: Mapping[str, Any]) -> None:
         cycle_phase = phase in {"pour_cycle", "stir_cycle"}

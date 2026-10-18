@@ -35,6 +35,45 @@ class Engine:
         self.closed = True
 
 
+class CycleControlLoopEngine(Engine):
+    phases = ("acquire", "transport", "process", "reorient_exit", "stow", "release", "retreat")
+
+    def __init__(self, *, fail_phase=None):
+        super().__init__()
+        self.fail_phase = fail_phase
+        self.phase_calls = []
+
+    def cycle_capability(self, operation):
+        enabled = operation in {"pour_cycle", "stir_cycle"}
+        return {"operation": operation, "preparation": enabled, "execution": enabled,
+                "feedback": enabled, "return": enabled, "dry_run": True}
+
+    def prepare_cycle(self, arguments):
+        return {"status": "available", "arguments": dict(arguments)}
+
+    def execute_cycle(self, phase, arguments, cancel, *, owner, invocation_id):
+        del arguments, owner, invocation_id
+        events = []
+        for index, name in enumerate(self.phases):
+            self.phase_calls.append(name)
+            if cancel.is_set():
+                return {"status": "unknown", "outcome_known": False,
+                        "world_change_started": True, "phase_events": events}
+            if name == self.fail_phase:
+                events.append({"phase": name, "status": "failed", "outcome_known": True,
+                               "started_at_s": float(index), "completed_at_s": float(index + 1),
+                               "facts": {"failure_observed": True}})
+                return {"status": "failed", "outcome_known": True, "world_change_started": True,
+                        "possession_state": "holding", "phase_events": events,
+                        "artifact_refs": ["artifact://cycle/control-loop"]}
+            events.append({"phase": name, "status": "completed", "outcome_known": True,
+                           "started_at_s": float(index), "completed_at_s": float(index + 1),
+                           "facts": {"phase_observed": True}})
+        return {"status": "succeeded", "outcome_known": True, "world_change_started": True,
+                "possession_state": "empty", "phase_events": events,
+                "artifact_refs": ["artifact://cycle/control-loop"]}
+
+
 def settle(provider, key):
     provider._operations[key][0].result(timeout=5)
     return provider.poll(key)
@@ -175,6 +214,10 @@ def test_unknown_place_without_runtime_possession_fact_remains_uncertain():
 
 def test_cycle_sourced_possession_cannot_reenter_legacy_held_operation():
     class CycleEngine(Engine):
+        def cycle_capability(self, operation):
+            return {"operation": operation, "preparation": True, "execution": True,
+                    "feedback": True, "return": True, "dry_run": True}
+
         def prepare_cycle(self, arguments):
             return {"status": "available", "arguments": dict(arguments)}
 
@@ -203,8 +246,53 @@ def test_cycle_sourced_possession_cannot_reenter_legacy_held_operation():
         provider.close()
 
 
+def test_no_motion_cycle_control_loop_preserves_order_and_stops_after_failure():
+    provider = PersistentManipulationProvider(lambda: CycleControlLoopEngine(fail_phase="stow"))
+    try:
+        assert provider.supports_cycle("pour_cycle")
+        provider.start("pour_cycle", "cycle", "owner", {"entity_ref": "entity://bottle"})
+        receipt = settle(provider, "cycle")
+        assert receipt["status"] == "failed"
+        assert [event["phase"] for event in receipt["phase_events"]] == [
+            "acquire", "transport", "process", "reorient_exit", "stow",
+        ]
+        assert provider._engine.phase_calls == [
+            "acquire", "transport", "process", "reorient_exit", "stow",
+        ]
+        assert receipt["holding_state"] == "holding"
+    finally:
+        provider.close()
+
+
+def test_no_motion_cycle_cancel_returns_unknown_without_advancing():
+    running = Event()
+
+    class CancellableCycle(CycleControlLoopEngine):
+        def execute_cycle(self, phase, arguments, cancel, *, owner, invocation_id):
+            del phase, arguments, owner, invocation_id
+            running.set()
+            assert cancel.wait(5)
+            return {"status": "unknown", "outcome_known": False,
+                    "world_change_started": True, "phase_events": []}
+
+    provider = PersistentManipulationProvider(CancellableCycle)
+    try:
+        provider.start("pour_cycle", "cycle", "owner", {"entity_ref": "entity://bottle"})
+        assert running.wait(5)
+        provider.cancel("cycle")
+        receipt = settle(provider, "cycle")
+        assert receipt["status"] == "unknown"
+        assert receipt["holding_state"] == "uncertain"
+    finally:
+        provider.close()
+
+
 def test_cycle_capability_requires_both_prepare_and_execution_declarations():
     class PrepareOnly(Engine):
+        def cycle_capability(self, operation):
+            return {"operation": operation, "preparation": True, "execution": False,
+                    "feedback": False, "return": False, "dry_run": True}
+
         def prepare_cycle(self, arguments):
             return {"status": "available", "arguments": dict(arguments)}
 

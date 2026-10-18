@@ -41,6 +41,17 @@ class Provider:
     def supports_cycle(self, operation):
         return self.cycles and operation in {"pour_cycle", "stir_cycle"}
 
+    def cycle_capability(self, operation):
+        enabled = self.cycles and operation in {"pour_cycle", "stir_cycle"}
+        return {
+            "operation": operation,
+            "preparation": enabled,
+            "execution": enabled,
+            "feedback": enabled,
+            "return": enabled,
+            "dry_run": True,
+        }
+
     def describe(self, request):
         raise AssertionError("unrelated capability Query was called")
 
@@ -185,6 +196,21 @@ def test_cycle_process_feedback_must_meet_requested_target(operation, tool_id):
     assert result["status"] == "failed"
     assert result["result"]["failed_phase"] == "process"
     assert not result["result"]["process_completed"]
+
+
+def test_process_fact_survives_missing_artifact_reference_as_unknown_partial_result():
+    provider, held = Provider(), PersistentPossession()
+    rt = runtime(provider, held)
+    args = rt.invoke_query("cycle_preparation", "prepare", request())["arguments"]
+    result = measured()
+    result.pop("artifact_refs")
+    result["evidence_refs"] = []
+    provider.result = result
+    invocation = rt.start_action("object.pour_cycle", args, caller_id=CALLER)["invocation_id"]
+    settled = rt.invocation_result(invocation)
+    assert settled["status"] == "unknown"
+    assert settled["result"]["process_completed"] is True
+    assert settled["result"]["return_completed"] is True
 
 
 def test_completed_process_with_failed_return_is_not_replayed():
