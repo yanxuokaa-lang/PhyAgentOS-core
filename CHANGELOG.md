@@ -33,7 +33,7 @@
 - 未调用 PAOS Action、非夕 SDK、仿真、传感器、部署或机械臂；结果仅证明离线算法、阶段协议与 Runtime 控制流。 / No PAOS Action, Flexiv SDK, simulation, sensor, deployment, or robot was used; results prove offline algorithms, phase protocol, and Runtime control flow only.
 
 ### Git 提交 / Git Commit
-- 实现提交 / Implementation commits: `352fe271`, `c4f2a194`; 日志/修复提交 / log-and-fix commit: `0e8f6bbc`; Branch: `feature/planning-loop`.
+- 实现提交 / Implementation commits: `352fe271`, `c4f2a194`; 诊断/修复提交 / diagnosis-and-fix commit: `4e93476d`; Branch: `feature/planning-loop`.
 
 ## v14.7.0 (2026-10-18 20:41) - codex
 
