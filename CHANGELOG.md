@@ -28,7 +28,7 @@
 - 未接入非夕 SDK、传感器、仿真、部署或机械臂；synthetic records 不代表物理成功。 / No Flexiv SDK, sensors, simulation, deployment, or robot were used; synthetic records do not represent physical success.
 
 ### Git 提交 / Git Commit
-- Commit: `80804368`; Branch: `feature/planning-loop`; 时间 / Time: 2026-10-18 Asia/Shanghai。
+- Implementation commit: `80804368`; documentation/log commit: `621a782a`; Branch: `feature/planning-loop`; 时间 / Time: 2026-10-18 Asia/Shanghai。
 
 ## v14.11.0 (2026-10-18 22:30) - codex
 
