@@ -2,6 +2,28 @@
 
 ## 最近五版本 / Latest five versions
 
+## v14.12.5 (2026-10-18) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [eval] [feat] 新增 no-motion 倾倒路线诊断和 CLI `--result` 入口，直接从 worker 反馈区分“旋转前丢对准”和“保持时长不足”。 / Add no-motion pour-route diagnosis and a CLI `--result` entry point to distinguish alignment loss before rotation from insufficient hold duration using worker feedback.
+- [eval] [test] `10 passed`；最新结果诊断为 `alignment_lost_before_target_tilt`，联合样本数为 `0`。 / `10 passed`; the latest result diagnoses `alignment_lost_before_target_tilt` with zero joint samples.
+
+### 文件变更详情 / File Change Details
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/engine.py:L400-L455`
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/cli.py:L14-L45`
+- `examples/forge-adapters/isaacsim_lab/tests/test_engine.py:L82-L91`
+- `docs/forge/LAB_POUR_STIR_IMPLEMENTATION_PLAN_20261015.md:L277-L303`
+
+### 关键 Diff / Key Diff
+```diff
++ worker result -> diagnose_pour_observations -> bottleneck=alignment_lost_before_target_tilt
++ no simulation is started by --result
+```
+
+### 验证 / Validation
+- Ruff, compileall, and `git diff --check` passed; no PAOS threshold changes.
+- Commit follows after final log registration.
+
 ## v14.12.4 (2026-10-18) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]

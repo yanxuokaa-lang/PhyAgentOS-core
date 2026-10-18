@@ -17,7 +17,7 @@ import traceback
 from copy import deepcopy
 from pathlib import Path
 from threading import Event
-from typing import Any, Mapping, Protocol
+from typing import Any, Mapping, Protocol, Sequence
 
 from .profile import LabProfileError, LabUtopiaProfile
 
@@ -395,6 +395,56 @@ def _continuous_pour_window(samples, profile):
         if timestamp - start >= profile.hold_s:
             return start, timestamp
     return None
+
+
+def diagnose_pour_observations(observations: Sequence[Mapping[str, Any]], profile: LabUtopiaProfile) -> dict[str, Any]:
+    """Summarize the measured pour bottleneck without starting a simulator."""
+    samples = [item for item in observations if isinstance(item, Mapping)]
+    lower = profile.tilt_rad - profile.tilt_tolerance_rad
+    upper = profile.maximum_tilt_rad
+    grasp_aligned = [item for item in samples if item.get("grasp_valid") is True and item.get("target_container_aligned") is True]
+    joint = [
+        item for item in grasp_aligned
+        if _number(item.get("tilt_rad")) is not None and lower <= float(item["tilt_rad"]) <= upper
+    ]
+    max_grasp_tilt = max(
+        (_number(item.get("tilt_rad")) for item in samples if item.get("grasp_valid") is True and _number(item.get("tilt_rad")) is not None),
+        default=None,
+    )
+    max_grasp_aligned_tilt = max(
+        (_number(item.get("tilt_rad")) for item in grasp_aligned if _number(item.get("tilt_rad")) is not None),
+        default=None,
+    )
+    window = _continuous_pour_window(samples, profile) if samples else None
+    if not samples:
+        bottleneck = "no_feedback"
+    elif not joint and max_grasp_aligned_tilt is not None and max_grasp_aligned_tilt < lower:
+        bottleneck = "alignment_lost_before_target_tilt"
+    elif joint and window is None:
+        bottleneck = "continuous_hold_insufficient"
+    elif window is not None:
+        bottleneck = "qualified_window"
+    else:
+        bottleneck = "feedback_did_not_qualify"
+    return {
+        "observation_count": len(samples),
+        "joint_sample_count": len(joint),
+        "target_tilt_lower_rad": lower,
+        "maximum_tilt_rad": upper,
+        "hold_s": profile.hold_s,
+        "max_grasp_tilt_rad": max_grasp_tilt,
+        "max_grasp_aligned_tilt_rad": max_grasp_aligned_tilt,
+        "continuous_window": list(window) if window is not None else None,
+        "bottleneck": bottleneck,
+    }
+
+
+def _number(value: Any) -> float | None:
+    try:
+        result = float(value)
+    except (TypeError, ValueError):
+        return None
+    return result if result == result and abs(result) != float("inf") else None
 
 
 def _pour_controller_target(state, profile, np, rotation_cls):

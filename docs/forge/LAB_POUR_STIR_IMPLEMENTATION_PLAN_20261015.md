@@ -275,6 +275,16 @@ python -m isaacsim_lab.cli \
   --profile examples/forge-adapters/isaacsim_lab/configs/labutopia-pour-cycle.json
 ```
 
+对已完成 worker 结果做 no-motion 路线诊断：
+
+```bash
+latest=$(find /home/yanxu/LabUtopia/outputs/paos-pour-cycle -maxdepth 1 -name 'result-*.json' -printf '%T@ %p\n' | sort -nr | head -1 | cut -d' ' -f2-)
+PYTHONPATH=examples/forge-adapters/isaacsim_lab/src \
+python -m isaacsim_lab.cli \
+  --profile examples/forge-adapters/isaacsim_lab/configs/labutopia-pour-cycle.json \
+  --result "$latest"
+```
+
 实际单回合使用下列 `labutopia` worker 命令执行；没有 Isaac 运行时或反馈证据时必须保持 `unavailable`/`unknown`，不得由 PAOS preparation 结果推断倾倒成功：
 
 ```bash
@@ -293,3 +303,4 @@ PY
 ```
 
 2026-10-18 的真实单回合已启动 Isaac Sim 并返回可观测失败：`acquire`、`transport`、`stow`、`release`、`retreat` 完成，`process` 失败 `continuous_pour_window_not_observed`，因此最终为 `failed/outcome_known=true`。瓶口观测与 provider 目标补偿接入后，最新回合共有 1039 个反馈样本，抓持、对准、目标倾角和采样连续性共同满足的窗口仍为 0；抓持且对准时最大倾角为 `0.259 rad`。这证明结算边界和失败保留有效，不证明物理倾倒成功。下一步应针对 LabUtopia 控制器的旋转路线、瓶口轴/尺寸标定和烧杯口目标定义做专门验收，不能放宽 PAOS 保持窗口定义。
+no-motion 诊断输出 `bottleneck=alignment_lost_before_target_tilt`、`joint_sample_count=0`、`target_tilt_lower_rad=0.77`、`max_grasp_aligned_tilt_rad=0.259`；这说明在目标倾角前已经失去瓶口对准，保持时间不是当前首要瓶颈。下一步先修正 provider 控制器路线并用同一诊断复核，再启动新的 Isaac Sim 回合。

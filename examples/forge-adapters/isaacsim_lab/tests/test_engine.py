@@ -84,3 +84,14 @@ def test_pour_controller_target_compensates_measured_mouth_offset(tmp_path):
     }
     target = _pour_controller_target(state, profile, np, Rotation)
     assert np.allclose(target, [0.4, 0.2, 0.9])
+
+
+def test_pour_diagnosis_identifies_alignment_loss_before_target_tilt(tmp_path):
+    profile = make_profile(tmp_path)
+    samples = [
+        {"grasp_valid": True, "target_container_aligned": True, "tilt_rad": 0.2, "timestamp_s": 0.0},
+        {"grasp_valid": True, "target_container_aligned": False, "tilt_rad": 0.8, "timestamp_s": 0.1},
+    ]
+    report = module.diagnose_pour_observations(samples, profile)
+    assert report["bottleneck"] == "alignment_lost_before_target_tilt"
+    assert report["joint_sample_count"] == 0
