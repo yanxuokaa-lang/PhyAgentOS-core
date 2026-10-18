@@ -10,9 +10,9 @@
 - [docs] [docs] 同步诊断与审核，明确当前修复完成但具体 provider source/executor、任务级整体验证和物理验收仍未实现。 / Synchronize diagnosis and review, stating that this contract fix is complete while concrete provider sources/executors, task-level integration, and physical acceptance remain unfinished.
 
 ### 文件变更详情 / File Change Details
-- [修改] `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/feedback_adapter.py:L118-L251`：增加 expected source profile 校验，并在规范样本中保留 frame/calibration/container/tool provenance。 / Add expected source-profile validation and retain frame/calibration/container/tool provenance in normalized samples.
+- [修改] `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/feedback_adapter.py:L118-L260`：增加 expected source profile 校验，并在规范样本中保留 frame/calibration/container/tool provenance。 / Add expected source-profile validation and retain frame/calibration/container/tool provenance in normalized samples.
 - [修改] `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/held_manipulation.py:L425-L445`：raw observations 与直接 normalized samples 均通过 `feedback_adapter`，且必须匹配 Action frame/calibration。 / Route raw observations and direct normalized samples through `feedback_adapter`, requiring Action frame/calibration identity.
-- [修改] `examples/forge-skills/pick-place-workflow/tests/test_feedback_adapter.py:L71-L182`、`examples/forge-skills/pick-place-workflow/tests/test_composite_manipulation.py:L91-L310`：覆盖 provenance 保留、profile 漂移、缺 source profile 和有效重验证。 / Cover provenance retention, profile drift, missing source profiles, and valid revalidation.
+- [修改] `examples/forge-skills/pick-place-workflow/tests/test_feedback_adapter.py:L71-L185`、`examples/forge-skills/pick-place-workflow/tests/test_composite_manipulation.py:L91-L304`：覆盖 provenance 保留、profile 漂移、缺 source profile 和有效重验证。 / Cover provenance retention, profile drift, missing source profiles, and valid revalidation.
 - [修改] `docs/forge/COMPOSITE_POUR_STIR_DIAGNOSIS_20261018.md:L4,L147,L155`、`docs/forge/COMPOSITE_POUR_STIR_REVIEW_20261018.md:L4,L27,L35,L92,L95,L99`：同步 F14 修复和 provider-neutral 边界。 / Synchronize the F14 fix and provider-neutral boundary.
 
 ### 关键 Diff / Key Diff
@@ -26,6 +26,9 @@
 ### 验证 / Validation
 - 定向回归：`144 passed in 0.72s`；目标文件 Ruff、compileall、`git diff --check` 通过。 / Focused regression: `144 passed in 0.72s`; targeted Ruff, compileall, and `git diff --check` passed.
 - 未接入非夕 SDK、传感器、仿真、部署或机械臂；synthetic records 不代表物理成功。 / No Flexiv SDK, sensors, simulation, deployment, or robot were used; synthetic records do not represent physical success.
+
+### Git 提交 / Git Commit
+- Commit: `80804368`; Branch: `feature/planning-loop`; 时间 / Time: 2026-10-18 Asia/Shanghai。
 
 ## v14.11.0 (2026-10-18 22:30) - codex
 

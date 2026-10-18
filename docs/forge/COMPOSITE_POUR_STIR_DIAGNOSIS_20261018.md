@@ -1,6 +1,6 @@
 # 倾倒与搅拌完整操作：PAOS 架构诊断与修订方案
 
-日期：2026-10-18（Asia/Shanghai）。设计基点：`b4dac9ab`；实现检查基点：`352fe271`、`c4f2a194`、`4e93476d`、`f7da28d6`、`b615a253`、`ba168a7f`，分支 `feature/planning-loop`。
+日期：2026-10-18（Asia/Shanghai）。设计基点：`b4dac9ab`；实现检查基点：`352fe271`、`c4f2a194`、`4e93476d`、`f7da28d6`、`b615a253`、`ba168a7f`、`7e075401`、`80804368`，分支 `feature/planning-loop`。
 状态：PAOS Tool/Runtime 契约、离线反馈计算器、provider 无关阶段事实协议、显式 cycle 能力声明、no-motion control-loop、provider-neutral `AtomicExecutor` 和反馈规范化适配层已实现，定向回归为 `144 passed`。本轮继续修复了反馈 source profile 未绑定 Action frame/calibration、规范样本可绕过反馈适配校验的问题。具体设备采集、SDK/仿真/真机适配与验收不在本阶段范围。本状态不代表 cycle 可在物理设备上运行。
 配套：[设计审核与验证矩阵](COMPOSITE_POUR_STIR_REVIEW_20261018.md)。
 
