@@ -31,7 +31,7 @@
 - Skill focused regression: `82 passed`; RoboTwin provider regression: `40 passed`。
 - Ruff、compileall、`git diff --check` 通过。 / Ruff, compileall, and `git diff --check` passed.
 - 未启动 Isaac Sim、未调用 Gateway Query/Action、未执行模拟器 step 或真实机械臂运动。 / No Isaac Sim worker, Gateway Query/Action, simulator step, or real-arm motion was executed.
-- Commit: `cc99b014` (provisional; amended once after this log update); Branch: `feature/planning-loop`。
+- Commit: `f68089ef`; Branch: `feature/planning-loop`。
 
 ## v14.12.7 (2026-10-19 00:00) - codex
 
