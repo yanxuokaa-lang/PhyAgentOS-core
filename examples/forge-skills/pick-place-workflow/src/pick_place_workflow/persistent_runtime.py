@@ -474,6 +474,7 @@ def build_persistent_runtime(*, client, understanding_provider, grasp_provider,
         )
     if held_preparation_provider is not None:
         from .held_manipulation import (
+            MANIPULATION_CYCLE_TOOL_SPEC,
             POUR_CYCLE_TOOL_SPEC,
             POUR_TOOL_SPEC,
             PREPARE_CYCLE_TOOL_SPEC,
@@ -502,6 +503,8 @@ def build_persistent_runtime(*, client, understanding_provider, grasp_provider,
         cycle_specs = (
             ("pour_cycle", POUR_CYCLE_TOOL_SPEC, CycleActionEndpoint("pour_cycle", client, resolve_held_preparation, possession)),
             ("stir_cycle", STIR_CYCLE_TOOL_SPEC, CycleActionEndpoint("stir_cycle", client, resolve_held_preparation, possession)),
+            ("manipulation_cycle", MANIPULATION_CYCLE_TOOL_SPEC,
+             CycleActionEndpoint("manipulation_cycle", client, resolve_held_preparation, possession)),
         )
         available_cycles = [entry for entry in cycle_specs
                             if (cycle_capability_available(held_preparation_provider, entry[0])

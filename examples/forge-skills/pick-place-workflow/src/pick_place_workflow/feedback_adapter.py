@@ -33,7 +33,7 @@ class FeedbackNormalization:
         return self.status == "valid"
 
 
-_OPERATIONS = {"pour_cycle", "stir_cycle"}
+_OPERATIONS = {"pour_cycle", "stir_cycle", "manipulation_cycle"}
 _HOLDING_STATES = {"holding", "grasped", "secured", "closed"}
 _EMPTY_STATES = {"empty", "released", "lost", "open"}
 
@@ -227,7 +227,7 @@ def normalize_feedback(
                 alignment_error_m=float(alignment_error) if _finite(alignment_error) else 0.0,
                 tilt_rad=float(tilt) if _finite(tilt) else 0.0,
             )
-        else:
+        elif operation == "stir_cycle":
             x, y, depth, tip_frame = _tip_coordinates(observation)
             if tip_frame != profile.get("tool_tip_frame_id"):
                 _append_error(
@@ -241,6 +241,21 @@ def normalize_feedback(
                 tool_tip_y_m=float(y) if _finite(y) else 0.0,
                 tool_tip_depth_m=float(depth) if _finite(depth) else 0.0,
                 tool_tip_frame_id=tip_frame,
+            )
+        else:
+            progress = observation.get("transform_progress")
+            error = observation.get("transform_error")
+            engaged = observation.get("engagement_valid")
+            if not _finite(progress):
+                _append_error(errors, "missing_transform_progress")
+            if not _finite(error):
+                _append_error(errors, "missing_transform_error")
+            if not isinstance(engaged, bool):
+                _append_error(errors, "missing_engagement_valid")
+            sample.update(
+                transform_progress=float(progress) if _finite(progress) else 0.0,
+                transform_error=float(error) if _finite(error) else 0.0,
+                engagement_valid=engaged is True,
             )
         projected.append(sample)
 

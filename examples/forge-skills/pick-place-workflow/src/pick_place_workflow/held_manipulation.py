@@ -18,7 +18,11 @@ from .cycle_protocol import CyclePhaseProtocol, CycleProtocolError, evaluate_pro
 from .feedback_adapter import normalize_feedback
 
 OPERATIONS = {"pour": "object.pour", "stir": "tool.stir", "place": "object.place"}
-CYCLE_OPERATIONS = {"pour_cycle": "object.pour_cycle", "stir_cycle": "tool.stir_cycle"}
+CYCLE_OPERATIONS = {
+    "pour_cycle": "object.pour_cycle",
+    "stir_cycle": "tool.stir_cycle",
+}
+GENERIC_CYCLE_OPERATIONS = {"manipulation_cycle": "manipulation.cycle"}
 _TEXT = {"type": "string", "minLength": 1}
 _POSITIVE = {"type": "number", "exclusiveMinimum": 0}
 _PARAMETERS = {
@@ -179,6 +183,26 @@ _CYCLE_PARAMETERS = {
         "duration_s": _POSITIVE, "direction": {"enum": ["cw", "ccw"]},
     },
 }
+_GENERIC_PARAMETERS = {
+    "manipulation_cycle": {
+        "process_type": {"enum": ["pour", "stir", "handle_rotation", "cap_unscrew", "cap_screw"]},
+        "engagement": {"enum": ["held_object", "tool", "handle", "cap"]},
+        "hold_s": _POSITIVE,
+        "transform": {
+            "type": "object", "additionalProperties": False,
+            "properties": {
+                "mode": {"enum": ["rotation", "translation"]},
+                "axis": {"type": "array", "minItems": 3, "maxItems": 3,
+                         "items": {"type": "number"}},
+                "magnitude": _POSITIVE,
+                "speed": _POSITIVE,
+                "direction": {"enum": ["cw", "ccw", "forward", "backward"]},
+                "tolerance": _POSITIVE,
+            },
+            "required": ["mode", "axis", "magnitude", "speed", "direction", "tolerance"],
+        },
+    },
+}
 _CYCLE_PROPERTIES = {
     name: deepcopy(_TEXT) for name in (
         "entity_ref", "destination_ref", "return_destination_ref", "observation_ref",
@@ -189,7 +213,7 @@ _CYCLE_PROPERTIES["entity_ref"]["pattern"] = r"^entity://[^/]+$"
 for _key in ("destination_ref", "return_destination_ref"):
     _CYCLE_PROPERTIES[_key]["pattern"] = r"^destination://\S+$"
 _CYCLE_PROPERTIES.update(
-    operation={"enum": list(CYCLE_OPERATIONS)}, parameters={"type": "object"},
+    operation={"enum": [*CYCLE_OPERATIONS, *GENERIC_CYCLE_OPERATIONS]}, parameters={"type": "object"},
     freshness_ms={"type": "integer", "minimum": 0}, max_age_ms={"type": "integer", "minimum": 1},
 )
 
@@ -209,13 +233,13 @@ def cycle_input_schema(*, action: bool, operation: str | None = None) -> dict[st
                  "type": "object", "additionalProperties": False,
                  "properties": deepcopy(params), "required": list(params),
              }}}}
-            for kind, params in _CYCLE_PARAMETERS.items()
+            for kind, params in {**_CYCLE_PARAMETERS, **_GENERIC_PARAMETERS}.items()
         ],
     }
 
 
 def cycle_action_spec(operation: str) -> dict[str, Any]:
-    tool_id = CYCLE_OPERATIONS[operation]
+    tool_id = {**CYCLE_OPERATIONS, **GENERIC_CYCLE_OPERATIONS}[operation]
     schema = cycle_input_schema(action=True, operation=operation)
     planning = _planning(tool_id, action=True)
     planning["input_binding_keys"] = ["entity_ref", "destination_ref", "return_destination_ref"]
@@ -267,6 +291,7 @@ PREPARE_CYCLE_TOOL_SPEC = {
 }
 POUR_CYCLE_TOOL_SPEC = cycle_action_spec("pour_cycle")
 STIR_CYCLE_TOOL_SPEC = cycle_action_spec("stir_cycle")
+MANIPULATION_CYCLE_TOOL_SPEC = cycle_action_spec("manipulation_cycle")
 
 _REQUIRED_CYCLE_CAPABILITIES = ("preparation", "execution", "feedback", "return")
 
@@ -412,6 +437,35 @@ def validate_cycle(arguments: Mapping[str, Any], *, action: bool, operation: str
     Draft202012Validator(cycle_input_schema(action=action, operation=operation)).validate(arguments)
     if arguments["freshness_ms"] > arguments["max_age_ms"]:
         raise ValueError("cycle observation is stale")
+    if arguments["operation"] == "manipulation_cycle":
+        _validate_manipulation_parameters(arguments["parameters"])
+
+
+def _validate_manipulation_parameters(parameters: Mapping[str, Any]) -> None:
+    """Validate the finite semantic envelope shared by rotation/translation primitives."""
+    transform = parameters["transform"]
+    axis = transform["axis"]
+    if not all(isinstance(value, (int, float)) and not isinstance(value, bool)
+               and math.isfinite(float(value)) for value in axis):
+        raise ValueError("manipulation transform axis must contain finite numbers")
+    if math.sqrt(sum(float(value) ** 2 for value in axis)) <= 0:
+        raise ValueError("manipulation transform axis must not be zero")
+    mode, direction = transform["mode"], transform["direction"]
+    if mode == "rotation" and direction not in {"cw", "ccw"}:
+        raise ValueError("rotation transform direction must be cw or ccw")
+    if mode == "translation" and direction not in {"forward", "backward"}:
+        raise ValueError("translation transform direction must be forward or backward")
+    expected = {
+        "pour": ("rotation", "held_object"),
+        "stir": ("rotation", "tool"),
+        "handle_rotation": ("rotation", "handle"),
+        "cap_unscrew": ("rotation", "cap"),
+        "cap_screw": ("rotation", "cap"),
+    }[parameters["process_type"]]
+    if (mode, parameters["engagement"]) != expected:
+        raise ValueError(
+            f"{parameters['process_type']} requires {expected[0]} transform with {expected[1]} engagement"
+        )
 
 
 def project_cycle_result(raw, arguments, possession, invocation_id):

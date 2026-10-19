@@ -2,6 +2,30 @@
 
 ## 最近五版本 / Latest five versions
 
+## v14.12.7 (2026-10-19 00:00) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [policy] [refactor] 吸收 LabUtopia 七阶段原子动作语义，新增可传参的 `manipulation.cycle`，覆盖倾倒、搅拌、门把手旋转、瓶盖旋开/旋紧的有限过程枚举；保留 PAOS 的持有、场景版本和证据结算边界。 / Absorb LabUtopia's seven-phase atomic semantics into a parameterized `manipulation.cycle` covering pour, stir, handle rotation, and cap unscrew/screw while preserving PAOS possession, scene-revision, and evidence settlement boundaries.
+- [eval] [test] 新增通用变换反馈、profile 能力声明和瓶盖旋转 schema 回归；`144 passed`，无模拟器或硬件运动。 / Add generic-transform feedback, profile capability, and cap-rotation schema regressions; `144 passed` with no simulator or hardware motion.
+
+### 文件变更详情 / File Change Details
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/held_manipulation.py`：有限 `process_type` 与通用 transform 参数校验，并注册 `manipulation.cycle`。
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_manipulation.py`：复用既有七阶段生命周期和持有状态。
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/profile.py`、`engine.py`：profile/backend 能力选择；legacy worker 只声明已实现的 pour。
+- `cycle_protocol.py`、`feedback_adapter.py`、静态 contracts 和 tests：通用进度/误差/接合证据及 no-motion 回归。
+
+### 关键 Diff / Key Diff
+```diff
+- CYCLE_OPERATIONS = {"pour_cycle", "stir_cycle"}
++ GENERIC_CYCLE_OPERATIONS = {"manipulation_cycle": "manipulation.cycle"}
++ process_type = pour | stir | handle_rotation | cap_unscrew | cap_screw
++ transform = mode + axis + magnitude + speed + direction + tolerance
+```
+
+### 验证 / Validation
+- `144 passed`; compileall、Ruff、`git diff --check` 通过。 / `144 passed`; compileall, Ruff, and `git diff --check` passed.
+- 未启动 Isaac Sim worker，未调用 Gateway Query/Action，未执行 simulator step 或真实机械臂运动。 / No Isaac Sim worker, Gateway Query/Action, simulator step, or physical robot motion was executed.
+
 ## v14.12.6 (2026-10-19 00:00) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
@@ -87,7 +111,7 @@
 - `9 passed`; Ruff and compileall passed; no physical success claimed.
 - Commit: `8d0b1405`; branch: `feature/planning-loop`.
 
-## v14.12.2 (2026-10-18) - codex
+### Archived v14.12.2 (2026-10-18) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
 - [policy] [fix] 最终成功必须同时满足七阶段完成和同一连续倾倒保持窗口；过程失败后保留已完成归位、释放、撤离事实。 / Final success now requires all seven phases and one continuous pour hold window; preserve observed stow, release, and retreat facts after process failure.

@@ -10,6 +10,7 @@ import yaml
 from PhyAgentOS.forge.capability_runtime import CapabilityRuntimeError
 
 from pick_place_workflow.held_manipulation import (
+    MANIPULATION_CYCLE_TOOL_SPEC,
     POUR_CYCLE_TOOL_SPEC,
     PREPARE_CYCLE_TOOL_SPEC,
     STIR_CYCLE_TOOL_SPEC,
@@ -158,10 +159,23 @@ def runtime(provider, held, client=None):
     )
 
 
-@pytest.mark.parametrize("spec", [PREPARE_CYCLE_TOOL_SPEC, POUR_CYCLE_TOOL_SPEC, STIR_CYCLE_TOOL_SPEC])
+@pytest.mark.parametrize("spec", [PREPARE_CYCLE_TOOL_SPEC, POUR_CYCLE_TOOL_SPEC, STIR_CYCLE_TOOL_SPEC,
+                                   MANIPULATION_CYCLE_TOOL_SPEC])
 def test_published_cycle_contract_matches_runtime(spec):
     path = Path(__file__).resolve().parents[1] / "contracts" / f"{spec['tool_id']}.tool.yaml"
     assert yaml.safe_load(path.read_text(encoding="utf-8")) == spec
+
+
+def test_generic_cycle_schema_accepts_cap_rotation_without_task_specific_constants():
+    args = request("pour_cycle")
+    args.update(operation="manipulation_cycle", parameters={
+        "process_type": "cap_unscrew", "engagement": "cap", "hold_s": 0.5,
+        "transform": {"mode": "rotation", "axis": [0, 0, 1], "magnitude": 1.2,
+                      "speed": 0.4, "direction": "ccw", "tolerance": 0.05},
+    })
+    jsonschema.validate({**args, "preparation_ref": "preparation://cycle/1",
+                         "assignment_ref": "artifact://lab/assignment"},
+                        MANIPULATION_CYCLE_TOOL_SPEC["input_schema"])
 
 
 @pytest.mark.parametrize("operation,tool_id,spec", [

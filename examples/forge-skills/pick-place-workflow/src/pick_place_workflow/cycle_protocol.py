@@ -247,10 +247,57 @@ def evaluate_stir_feedback(samples: Sequence[Mapping[str, Any]], parameters: Map
             "mixing_quality": "unmeasured", "homogeneous": False}
 
 
+def evaluate_manipulation_feedback(samples: Sequence[Mapping[str, Any]], parameters: Mapping[str, Any],
+                                   profile: Mapping[str, Any]) -> dict[str, Any]:
+    """Qualify a generic transform from measured progress and engagement.
+
+    Providers report progress in the requested transform's signed direction;
+    this keeps rotation and translation semantics independent of a particular
+    object or LabUtopia task controller.
+    """
+    max_gap = _positive_profile_value(profile, "max_sample_gap_s")
+    progress_tolerance = _profile_value(profile, "transform_tolerance")
+    target = float(parameters["transform"]["magnitude"])
+    required_hold = float(parameters["hold_s"])
+    longest = 0.0
+    run = 0.0
+    valid_count = 0
+    previous = None
+    for sample in _samples(samples, max_gap):
+        progress = sample.get("transform_progress")
+        error = sample.get("transform_error")
+        valid = (
+            sample.get("feedback_valid") is True
+            and sample.get("grasp_valid") is True
+            and sample.get("engagement_valid") is True
+            and _finite(progress) and _finite(error)
+            and float(progress) >= target - progress_tolerance
+            and abs(float(error)) <= progress_tolerance
+        )
+        valid_count += int(valid)
+        timestamp = float(sample["timestamp_s"])
+        delta = timestamp - float(previous["timestamp_s"]) if previous else 0.0
+        continuous = valid and previous is not None and previous.get("_qualified") is True \
+            and not sample.get("_discontinuity") and delta <= max_gap
+        run = run + delta if continuous else 0.0
+        longest = max(longest, run)
+        previous = {**sample, "_qualified": valid}
+    completed = longest >= required_hold
+    return {
+        "transform_progress": target if completed else None,
+        "transform_hold_s": longest,
+        "valid_sample_count": valid_count,
+        "process_completed": completed,
+        "result_meaning": "motion_goal_reached" if completed else "motion_goal_not_reached",
+    }
+
+
 def evaluate_process_feedback(operation: str, samples: Sequence[Mapping[str, Any]],
                               parameters: Mapping[str, Any], profile: Mapping[str, Any]) -> dict[str, Any]:
     if operation == "pour_cycle":
         return evaluate_pour_feedback(samples, parameters, profile)
     if operation == "stir_cycle":
         return evaluate_stir_feedback(samples, parameters, profile)
+    if operation == "manipulation_cycle":
+        return evaluate_manipulation_feedback(samples, parameters, profile)
     raise CycleProtocolError(f"unsupported cycle operation: {operation}")

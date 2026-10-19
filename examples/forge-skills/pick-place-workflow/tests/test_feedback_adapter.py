@@ -183,3 +183,21 @@ def test_normalized_sample_contract_retains_provenance_for_revalidation():
     )
     assert second.status == "valid"
     assert second.samples == first.samples
+
+
+def test_normalize_and_evaluate_generic_transform_feedback():
+    observations = [{
+        "timestamp_s": index * 0.2, "frame_id": "camera", "calibration_ref": "artifact://cal",
+        "container_frame_id": "container://target", "feedback_valid": True,
+        "grasp_valid": True, "engagement_valid": True, "transform_progress": 1.0,
+        "transform_error": 0.01,
+    } for index in range(5)]
+    source = {"frame_id": "camera", "calibration_ref": "artifact://cal", "container_frame_id": "container://target"}
+    normalized = normalize_feedback("manipulation_cycle", observations, source_profile=source,
+                                    evaluation_profile={"max_sample_gap_s": 0.3,
+                                                        "transform_tolerance": 0.05})
+    assert normalized.valid
+    result = evaluate_process_feedback("manipulation_cycle", normalized.samples, {
+        "hold_s": 0.6, "transform": {"magnitude": 1.0},
+    }, normalized.evaluation_profile)
+    assert result["process_completed"] is True

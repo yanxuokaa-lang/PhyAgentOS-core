@@ -69,6 +69,7 @@ _HELD_MEASUREMENT_FIELDS = (
 ATOMIC_CYCLE_PHASES = (
     "acquire", "transport", "process", "reorient_exit", "stow", "release", "retreat",
 )
+COMPLETE_CYCLE_OPERATIONS = frozenset({"pour_cycle", "stir_cycle", "manipulation_cycle"})
 
 
 class AtomicExecutor(Protocol):
@@ -572,7 +573,7 @@ class PersistentManipulationProvider:
                 or callable(getattr(self._engine, "atomic_executor", None))
             )
             return (
-                operation in {"pour_cycle", "stir_cycle"}
+                operation in COMPLETE_CYCLE_OPERATIONS
                 and declaration.get("operation") == operation
                 and all(declaration.get(key) is True for key in (
                     "preparation", "execution", "feedback", "return",
@@ -582,8 +583,8 @@ class PersistentManipulationProvider:
             )
 
     def start(self, phase: str, invocation_id: str, owner: str, arguments: Mapping[str, Any]) -> None:
-        cycle_phase = phase in {"pour_cycle", "stir_cycle"}
-        if phase not in {"acquire", "place", *self._held_operations, "pour_cycle", "stir_cycle"} or not invocation_id or not owner:
+        cycle_phase = phase in COMPLETE_CYCLE_OPERATIONS
+        if phase not in {"acquire", "place", *self._held_operations, *COMPLETE_CYCLE_OPERATIONS} or not invocation_id or not owner:
             raise ManipulationStateError("invalid manipulation identity")
         arguments = deepcopy(dict(arguments))
         with self._lock:
@@ -618,7 +619,7 @@ class PersistentManipulationProvider:
                     raise ManipulationStateError("held operation uses stale possession or scene")
             elif phase == "place" and self._held_operations and self._held_id != self._acquire_id:
                 raise ManipulationStateError("place requires current held preparation")
-            self._state = "acquiring" if phase in {"acquire", "pour_cycle", "stir_cycle"} else "placing" if phase == "place" else "operating"
+            self._state = "acquiring" if phase == "acquire" or cycle_phase else "placing" if phase == "place" else "operating"
             cancel = Event()
             self._operations[invocation_id] = (
                 self._pool.submit(
@@ -641,7 +642,7 @@ class PersistentManipulationProvider:
         cancel: Event,
     ) -> dict[str, Any]:
         try:
-            if phase in {"pour_cycle", "stir_cycle"}:
+            if phase in COMPLETE_CYCLE_OPERATIONS:
                 execute = getattr(self._engine, "execute_cycle", None)
                 if callable(execute):
                     complete_result = dict(execute(
@@ -695,7 +696,7 @@ class PersistentManipulationProvider:
                     self._state = "holding"
                 else:
                     self._state = "uncertain"
-            elif phase in {"pour_cycle", "stir_cycle"}:
+            elif phase in COMPLETE_CYCLE_OPERATIONS:
                 known = result.get("outcome_known") is True
                 if known and result.get("possession_state") in {"empty", "holding"}:
                     self._state = result["possession_state"]
@@ -717,9 +718,9 @@ class PersistentManipulationProvider:
             if self._state == "empty":
                 self._owner = self._acquire_id = self._entity = None
                 self._cycle_id = None
-            if phase in {"pour_cycle", "stir_cycle"}:
+            if phase in COMPLETE_CYCLE_OPERATIONS:
                 self._held_id = invocation_id if self._state == "holding" else None
-            if self._held_operations or phase in {"pour_cycle", "stir_cycle"} or self._cycle_id is not None:
+            if self._held_operations or phase in COMPLETE_CYCLE_OPERATIONS or self._cycle_id is not None:
                 self._held_id = invocation_id
                 if result.get("outcome_known") is not True:
                     self._scene_revision = None
@@ -727,7 +728,7 @@ class PersistentManipulationProvider:
                     self._scene_revision = result["new_scene_revision"]
             measured_entity = result.get("entity_ref")
             result.update(self.snapshot())
-            if ("held_invocation_ref" in arguments or phase in {"pour_cycle", "stir_cycle"}) and measured_entity is not None:
+            if ("held_invocation_ref" in arguments or phase in COMPLETE_CYCLE_OPERATIONS) and measured_entity is not None:
                 result["entity_ref"] = measured_entity
             result["invocation_id"] = invocation_id
             effects = result.get("scene_effects")

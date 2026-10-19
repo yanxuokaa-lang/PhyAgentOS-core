@@ -54,6 +54,14 @@ def test_backend_result_is_not_promoted_to_success(tmp_path, monkeypatch):
     assert result["outcome_known"] is False
 
 
+def test_legacy_backend_does_not_claim_unimplemented_generic_cycle(tmp_path, monkeypatch):
+    monkeypatch.setattr(module, "_isaac_runtime_available", lambda: True)
+    engine = IsaacSimLabEngine(make_profile(tmp_path), backend=Backend())
+    declaration = engine.cycle_capability("manipulation_cycle")
+    assert declaration["execution"] is False
+    assert declaration["motion_authorized"] is False
+
+
 def test_failed_feedback_phase_cannot_be_promoted_to_success():
     events = [
         {"phase": "acquire", "status": "completed", "outcome_known": True},

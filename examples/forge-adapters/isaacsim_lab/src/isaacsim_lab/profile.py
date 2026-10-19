@@ -43,6 +43,7 @@ class LabUtopiaProfile:
     object_lift_threshold_m: float = 0.04
     grasp_distance_tolerance_m: float = 0.16
     source_pour_axis: tuple[float, float, float] = (0.0, 0.0, 1.0)
+    supported_operations: tuple[str, ...] = ("pour_cycle", "stir_cycle")
     headless: bool = True
 
     @classmethod
@@ -86,6 +87,7 @@ class LabUtopiaProfile:
             object_lift_threshold_m=_positive_float(value, "object_lift_threshold_m", 0.04),
             grasp_distance_tolerance_m=_positive_float(value, "grasp_distance_tolerance_m", 0.16),
             source_pour_axis=_vector3(value, "source_pour_axis", (0.0, 0.0, 1.0)),
+            supported_operations=_operations(value.get("supported_operations", ("pour_cycle", "stir_cycle"))),
             headless=bool(value.get("headless", True)),
         )
         profile.validate_paths()
@@ -115,8 +117,10 @@ class LabUtopiaProfile:
 
     def paos_input(self, previous: Mapping[str, Any] | None = None, *, operation: str = "pour_cycle") -> dict[str, Any]:
         """Project the prior PAOS observation/preparation input into the lab scene."""
-        if operation not in {"pour_cycle", "stir_cycle"}:
+        if operation not in {"pour_cycle", "stir_cycle", "manipulation_cycle"}:
             raise LabProfileError("unsupported cycle operation")
+        if operation not in self.supported_operations:
+            raise LabProfileError(f"profile does not support {operation}")
         previous = dict(previous or {})
         required = {
             "entity_ref": _entity_ref(self.source_path),
@@ -133,8 +137,10 @@ class LabUtopiaProfile:
         }
         if operation == "pour_cycle":
             required["parameters"] = {"tilt_rad": self.tilt_rad, "hold_s": self.hold_s}
-        else:
+        elif operation == "stir_cycle":
             required["parameters"] = dict(previous.get("parameters") or {})
+        elif not previous.get("parameters"):
+            raise LabProfileError("manipulation_cycle requires caller-supplied parameters")
         for key, value in required.items():
             if key not in previous or previous[key] in (None, ""):
                 previous[key] = value
@@ -207,6 +213,13 @@ def _vector3(value: Mapping[str, Any], key: str, default: tuple[float, float, fl
     if norm <= 0:
         raise LabProfileError(f"{key} must not be zero")
     return tuple(item / norm for item in components)
+
+
+def _operations(raw: Any) -> tuple[str, ...]:
+    allowed = {"pour_cycle", "stir_cycle", "manipulation_cycle"}
+    if not isinstance(raw, (list, tuple)) or not raw or any(item not in allowed for item in raw):
+        raise LabProfileError("supported_operations must be a non-empty list of known cycle operations")
+    return tuple(dict.fromkeys(raw))
 
 
 def _entity_ref(path: str) -> str:

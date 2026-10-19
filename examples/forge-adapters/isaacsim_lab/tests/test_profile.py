@@ -52,3 +52,22 @@ def test_profile_round_trips_json(tmp_path):
 def test_profile_normalizes_source_pour_axis(tmp_path):
     configured = profile(tmp_path)
     assert configured.source_pour_axis == (0.0, 0.0, 1.0)
+
+
+def test_generic_cycle_requires_caller_parameters_and_profile_opt_in(tmp_path):
+    (tmp_path / "level.yaml").write_text("name: lab", encoding="utf-8")
+    (tmp_path / "lab.usd").write_text("usd", encoding="utf-8")
+    configured = LabUtopiaProfile.from_mapping({
+        "lab_root": str(tmp_path), "config_path": str(tmp_path / "level.yaml"),
+        "scene_usd_path": str(tmp_path / "lab.usd"), "robot_usd_path": str(tmp_path / "lab.usd"),
+        "source_path": "/World/cap", "destination_path": "/World/cap_target",
+        "supported_operations": ["manipulation_cycle"],
+    })
+    with pytest.raises(LabProfileError, match="caller-supplied"):
+        configured.paos_input(operation="manipulation_cycle")
+    value = configured.paos_input({"parameters": {
+        "process_type": "cap_unscrew", "engagement": "cap", "hold_s": 0.5,
+        "transform": {"mode": "rotation", "axis": [0, 0, 1], "magnitude": 1.0,
+                      "speed": 0.5, "direction": "ccw", "tolerance": 0.05},
+    }}, operation="manipulation_cycle")
+    assert value["parameters"]["process_type"] == "cap_unscrew"

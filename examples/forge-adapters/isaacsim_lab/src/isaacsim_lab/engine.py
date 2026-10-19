@@ -124,14 +124,16 @@ class IsaacLabBackend(Protocol):
 
 
 class IsaacSimLabEngine:
-    """PAOS provider engine that delegates one pour invocation to LabUtopia."""
+    """PAOS provider engine that delegates parameterized cycles to LabUtopia."""
 
     def __init__(self, profile: LabUtopiaProfile, *, backend: IsaacLabBackend | None = None):
         self.profile = profile
         self.backend = backend or LabUtopiaBackend(profile)
 
     def cycle_capability(self, operation: str) -> dict[str, Any]:
-        available = operation == "pour_cycle" and callable(getattr(self.backend, "run_cycle", None))
+        runnable = getattr(self.backend, "runnable_operations", ("pour_cycle",))
+        available = operation in self.profile.supported_operations and operation in runnable \
+            and callable(getattr(self.backend, "run_cycle", None))
         if available:
             try:
                 self.profile.validate_paths()
@@ -151,7 +153,7 @@ class IsaacSimLabEngine:
 
     def prepare_cycle(self, arguments: Mapping[str, Any]) -> dict[str, Any]:
         operation = arguments.get("operation") if isinstance(arguments, Mapping) else None
-        if operation != "pour_cycle":
+        if operation not in {"pour_cycle", "stir_cycle", "manipulation_cycle"}:
             return {"status": "unavailable", "motion_authorized": False, "error": "unsupported_cycle_operation"}
         try:
             self.profile.validate_paths()
@@ -176,7 +178,7 @@ class IsaacSimLabEngine:
         **context: Any,
     ) -> dict[str, Any]:
         del context
-        if operation != "pour_cycle":
+        if operation not in {"pour_cycle", "stir_cycle", "manipulation_cycle"}:
             return {"status": "unknown", "outcome_known": False, "failure_code": "unsupported_cycle_operation"}
         if not self.cycle_capability(operation)["execution"]:
             return {"status": "unknown", "outcome_known": False, "failure_code": "isaacsim_unavailable"}
@@ -196,11 +198,20 @@ class IsaacSimLabEngine:
 
 
 class LabUtopiaBackend:
-    """Run one LabUtopia pick/pour episode and return PAOS evidence."""
+    """Run one LabUtopia episode and return PAOS evidence.
+
+    The current worker implements the legacy pick/pour scene. Other generic
+    cycle profiles remain discoverable only when a deployment supplies a worker
+    that declares the corresponding operation in ``runnable_operations``.
+    """
 
     def __init__(self, profile: LabUtopiaProfile):
         self.profile = profile
         self._last_video_info: dict[str, Any] = {}
+
+    @property
+    def runnable_operations(self) -> tuple[str, ...]:
+        return ("pour_cycle",)
 
     def run_cycle(self, arguments: Mapping[str, Any], cancel: Event) -> Mapping[str, Any]:
         if os.environ.get("OMNI_KIT_ACCEPT_EULA", "").lower() not in {"y", "yes", "1", "true"}:
@@ -299,6 +310,11 @@ class LabUtopiaBackend:
         cancel: Event,
         video_path: Path | None = None,
     ) -> dict[str, Any]:
+        if arguments.get("operation") != "pour_cycle":
+            raise IsaacLabRuntimeError(
+                "this LabUtopia worker has no operation-specific episode adapter; "
+                "use a backend declaring the requested generic cycle"
+            )
         self._prepend_lab_root()
         import numpy as np
         import omni.usd

@@ -173,6 +173,67 @@ input_schema:
           - turns
           - duration_s
           - direction
+  - if:
+      properties:
+        operation:
+          const: manipulation_cycle
+    then:
+      properties:
+        parameters:
+          type: object
+          additionalProperties: false
+          properties:
+            process_type:
+              enum:
+              - pour
+              - stir
+              - handle_rotation
+              - cap_unscrew
+              - cap_screw
+            engagement:
+              enum:
+              - held_object
+              - tool
+              - handle
+              - cap
+            hold_s: &id002
+              type: number
+              exclusiveMinimum: 0
+            transform:
+              type: object
+              additionalProperties: false
+              properties:
+                mode:
+                  enum:
+                  - rotation
+                  - translation
+                axis:
+                  type: array
+                  minItems: 3
+                  maxItems: 3
+                  items:
+                    type: number
+                magnitude: *id002
+                speed: *id002
+                direction:
+                  enum:
+                  - cw
+                  - ccw
+                  - forward
+                  - backward
+                tolerance: *id002
+              required:
+              - mode
+              - axis
+              - magnitude
+              - speed
+              - direction
+              - tolerance
+          required:
+          - process_type
+          - engagement
+          - hold_s
+          - transform
 output_schema:
   type: object
   required:
@@ -180,11 +241,11 @@ output_schema:
   - attempt_id
   - phase
   properties:
-    invocation_id: &id002
+    invocation_id: &id003
       type: string
       minLength: 1
-    attempt_id: *id002
-    phase: *id002
+    attempt_id: *id003
+    phase: *id003
     result:
       type: object
       additionalProperties: false
@@ -262,14 +323,12 @@ output_schema:
           type: object
         completed_phases:
           type: array
-          items:
-            type: string
-            minLength: 1
+          items: *id003
         measurements:
           type: object
         evidence_refs:
           type: array
-          items: *id002
+          items: *id003
         capability_outcome_summary:
           type: object
       required:

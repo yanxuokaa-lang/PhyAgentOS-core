@@ -46,6 +46,7 @@ input_schema:
       enum:
       - pour_cycle
       - stir_cycle
+      - manipulation_cycle
     parameters:
       type: object
     freshness_ms:
@@ -114,6 +115,67 @@ input_schema:
           - turns
           - duration_s
           - direction
+  - if:
+      properties:
+        operation:
+          const: manipulation_cycle
+    then:
+      properties:
+        parameters:
+          type: object
+          additionalProperties: false
+          properties:
+            process_type:
+              enum:
+              - pour
+              - stir
+              - handle_rotation
+              - cap_unscrew
+              - cap_screw
+            engagement:
+              enum:
+              - held_object
+              - tool
+              - handle
+              - cap
+            hold_s: &id002
+              type: number
+              exclusiveMinimum: 0
+            transform:
+              type: object
+              additionalProperties: false
+              properties:
+                mode:
+                  enum:
+                  - rotation
+                  - translation
+                axis:
+                  type: array
+                  minItems: 3
+                  maxItems: 3
+                  items:
+                    type: number
+                magnitude: *id002
+                speed: *id002
+                direction:
+                  enum:
+                  - cw
+                  - ccw
+                  - forward
+                  - backward
+                tolerance: *id002
+              required:
+              - mode
+              - axis
+              - magnitude
+              - speed
+              - direction
+              - tolerance
+          required:
+          - process_type
+          - engagement
+          - hold_s
+          - transform
 output_schema:
   oneOf:
   - type: object
@@ -126,7 +188,7 @@ output_schema:
     properties:
       status:
         const: available
-      entity_ref: &id003
+      entity_ref: &id005
         type: string
         minLength: 1
       arguments:
@@ -164,6 +226,7 @@ output_schema:
             enum:
             - pour_cycle
             - stir_cycle
+            - manipulation_cycle
           parameters:
             type: object
           freshness_ms:
@@ -224,12 +287,12 @@ output_schema:
                 type: object
                 additionalProperties: false
                 properties:
-                  radius_m: &id002
+                  radius_m: &id003
                     type: number
                     exclusiveMinimum: 0
-                  depth_m: *id002
-                  turns: *id002
-                  duration_s: *id002
+                  depth_m: *id003
+                  turns: *id003
+                  duration_s: *id003
                   direction:
                     enum:
                     - cw
@@ -240,6 +303,67 @@ output_schema:
                 - turns
                 - duration_s
                 - direction
+        - if:
+            properties:
+              operation:
+                const: manipulation_cycle
+          then:
+            properties:
+              parameters:
+                type: object
+                additionalProperties: false
+                properties:
+                  process_type:
+                    enum:
+                    - pour
+                    - stir
+                    - handle_rotation
+                    - cap_unscrew
+                    - cap_screw
+                  engagement:
+                    enum:
+                    - held_object
+                    - tool
+                    - handle
+                    - cap
+                  hold_s: &id004
+                    type: number
+                    exclusiveMinimum: 0
+                  transform:
+                    type: object
+                    additionalProperties: false
+                    properties:
+                      mode:
+                        enum:
+                        - rotation
+                        - translation
+                      axis:
+                        type: array
+                        minItems: 3
+                        maxItems: 3
+                        items:
+                          type: number
+                      magnitude: *id004
+                      speed: *id004
+                      direction:
+                        enum:
+                        - cw
+                        - ccw
+                        - forward
+                        - backward
+                      tolerance: *id004
+                    required:
+                    - mode
+                    - axis
+                    - magnitude
+                    - speed
+                    - direction
+                    - tolerance
+                required:
+                - process_type
+                - engagement
+                - hold_s
+                - transform
       motion_authorized:
         const: false
   - type: object
@@ -251,6 +375,6 @@ output_schema:
     properties:
       status:
         const: unavailable
-      error: *id003
+      error: *id005
       motion_authorized:
         const: false
