@@ -12,58 +12,16 @@ planning:
   - destination_ref
   - return_destination_ref
   scene_write_behavior: new_revision
-  argument_projection: prepared_cycle_operation_v1
+  argument_projection: internal_cycle_preflight_v1
   argument_projection_plan:
-    projection_id: prepared_cycle_operation_v1
+    projection_id: internal_cycle_preflight_v1
     join_field: entity_ref
-    source_slots:
-      preparation:
-        tool_id: manipulation.prepare_cycle
-        source_scope: predecessor
-        source_field_map:
-          entity_ref:
-          - arguments
-          - entity_ref
-          destination_ref:
-          - arguments
-          - destination_ref
-          return_destination_ref:
-          - arguments
-          - return_destination_ref
-          observation_ref:
-          - arguments
-          - observation_ref
-          scene_revision:
-          - arguments
-          - scene_revision
-          frame_id:
-          - arguments
-          - frame_id
-          calibration_ref:
-          - arguments
-          - calibration_ref
-          capability_snapshot_ref:
-          - arguments
-          - capability_snapshot_ref
-          operation:
-          - arguments
-          - operation
-          parameters:
-          - arguments
-          - parameters
-          freshness_ms:
-          - arguments
-          - freshness_ms
-          max_age_ms:
-          - arguments
-          - max_age_ms
-          preparation_ref:
-          - arguments
-          - preparation_ref
-          assignment_ref:
-          - arguments
-          - assignment_ref
+    source_slots: {}
     top_level_fields: []
+    preflight:
+      tool_id: manipulation.prepare_cycle
+      scope: provider_internal
+      motion_authorized: false
 input_schema:
   type: object
   additionalProperties: false
@@ -124,8 +82,6 @@ input_schema:
   - parameters
   - freshness_ms
   - max_age_ms
-  - preparation_ref
-  - assignment_ref
   allOf:
   - if:
       properties:
@@ -234,6 +190,16 @@ input_schema:
           - engagement
           - hold_s
           - transform
+  - oneOf:
+    - required:
+      - preparation_ref
+      - assignment_ref
+    - not:
+        anyOf:
+        - required:
+          - preparation_ref
+        - required:
+          - assignment_ref
 output_schema:
   type: object
   required:
@@ -355,5 +321,3 @@ output_schema:
       - parameters
       - freshness_ms
       - max_age_ms
-      - preparation_ref
-      - assignment_ref

@@ -2,6 +2,37 @@
 
 ## 最近五版本 / Latest five versions
 
+## v14.12.8 (2026-10-19 20:10) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [policy] [refactor] 通用 `manipulation.cycle` 现在可由 Agent 一次公开 Action 完成内部 no-motion preflight 和七阶段周期；旧 pour/stir 两阶段路径保持兼容。 / Generic `manipulation.cycle` now performs its provider-owned no-motion preflight and seven-phase cycle behind one public Agent Action; the legacy pour/stir two-step path remains compatible.
+- [test] [feat] 增加单次调用、preflight 失败闭环和引用成对校验；相关 Skill 82 项、RoboTwin provider 40 项通过。 / Add one-call, fail-closed preflight, and paired-reference coverage; 82 Skill tests and 40 RoboTwin provider tests passed.
+
+### 文件变更详情 / File Change Details
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/held_manipulation.py:L221-L312,L463-L475,L678-L749`：单次 generic schema、内部 preflight、一次调用缓存解析结果。 / Single-call generic schema, internal preflight, and cached resolution for one invocation.
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/persistent_runtime.py:L42-L122,L503-L526`：纳入 generic possession 结算并注入 preflight provider。 / Include generic possession settlement and inject the preflight provider.
+- `examples/forge-skills/pick-place-workflow/contracts/manipulation.cycle.tool.yaml:L1-L323`：同步 `internal_cycle_preflight_v1` 契约。 / Synchronize the `internal_cycle_preflight_v1` contract.
+- `examples/forge-skills/pick-place-workflow/tests/test_composite_manipulation.py:L35-L68,L174-L241`：新增 no-motion 单次调用和失败闭环测试。 / Add no-motion one-call and fail-closed tests.
+
+### 关键 Diff / Key Diff
+```diff
+- argument_projection: prepared_cycle_operation_v1
++ argument_projection: internal_cycle_preflight_v1
++ preflight: {tool_id: manipulation.prepare_cycle, scope: provider_internal,
++             motion_authorized: false}
+```
+```diff
+- resolve_current()  # preparation query already supplied by Agent
++ admitted = resolve_current()  # one internal no-motion preflight
++ resolved = deepcopy(admitted) if single_call else resolve_current()
+```
+
+### 验证 / Validation
+- Skill focused regression: `82 passed`; RoboTwin provider regression: `40 passed`。
+- Ruff、compileall、`git diff --check` 通过。 / Ruff, compileall, and `git diff --check` passed.
+- 未启动 Isaac Sim、未调用 Gateway Query/Action、未执行模拟器 step 或真实机械臂运动。 / No Isaac Sim worker, Gateway Query/Action, simulator step, or real-arm motion was executed.
+- Commit: `cc99b014` (provisional; amended once after this log update); Branch: `feature/planning-loop`。
+
 ## v14.12.7 (2026-10-19 00:00) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]

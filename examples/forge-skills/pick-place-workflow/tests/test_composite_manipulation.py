@@ -33,17 +33,21 @@ def request(operation="pour_cycle"):
 
 
 class Provider:
-    def __init__(self, *, cycles=True):
+    def __init__(self, *, cycles=True, generic=False):
         self.routes, self.starts = {}, []
         self.result, self.pending = None, False
         self.cancelled, self.fail_start = False, False
-        self.cycles = cycles
+        self.cycles, self.generic = cycles, generic
+        self.prepare_calls = 0
 
     def supports_cycle(self, operation):
-        return self.cycles and operation in {"pour_cycle", "stir_cycle"}
+        return self.cycles and (
+            operation in {"pour_cycle", "stir_cycle"}
+            or (self.generic and operation == "manipulation_cycle")
+        )
 
     def cycle_capability(self, operation):
-        enabled = self.cycles and operation in {"pour_cycle", "stir_cycle"}
+        enabled = self.supports_cycle(operation)
         return {
             "operation": operation,
             "preparation": enabled,
@@ -57,6 +61,7 @@ class Provider:
         raise AssertionError("unrelated capability Query was called")
 
     def prepare_cycle(self, args):
+        self.prepare_calls += 1
         prepared = {**deepcopy(args), "preparation_ref": f"preparation://cycle/{len(self.routes)}",
                     "assignment_ref": "artifact://lab/assignment"}
         self.routes[prepared["preparation_ref"]] = deepcopy(prepared)
@@ -176,6 +181,64 @@ def test_generic_cycle_schema_accepts_cap_rotation_without_task_specific_constan
     jsonschema.validate({**args, "preparation_ref": "preparation://cycle/1",
                          "assignment_ref": "artifact://lab/assignment"},
                         MANIPULATION_CYCLE_TOOL_SPEC["input_schema"])
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate({**args, "preparation_ref": "preparation://cycle/1"},
+                            MANIPULATION_CYCLE_TOOL_SPEC["input_schema"])
+
+
+def test_generic_cycle_is_one_public_action_with_internal_no_motion_preflight():
+    provider, held = Provider(generic=True), PersistentPossession()
+    rt = runtime(provider, held)
+    args = request("pour_cycle")
+    args.update(operation="manipulation_cycle", parameters={
+        "process_type": "cap_unscrew", "engagement": "cap", "hold_s": 0.5,
+        "transform": {"mode": "rotation", "axis": [0, 0, 1], "magnitude": 1.2,
+                       "speed": 0.4, "direction": "ccw", "tolerance": 0.05},
+    })
+    jsonschema.validate(args, MANIPULATION_CYCLE_TOOL_SPEC["input_schema"])
+    raw = measured()
+    raw["feedback_samples"] = [
+        {"timestamp_s": 2.0 + index * 0.5, "frame_id": "camera",
+         "calibration_ref": "artifact://lab/calibration", "container_frame_id": "container://lab/beaker",
+         "feedback_valid": True, "grasp_valid": True,
+         "transform_progress": 1.2, "transform_error": 0.0, "engagement_valid": True}
+        for index in range(4)
+    ]
+    raw["feedback_source_profile"] = {
+        "frame_id": "camera", "calibration_ref": "artifact://lab/calibration",
+        "container_frame_id": "container://lab/beaker",
+    }
+    raw["evaluation_profile"] = {"max_sample_gap_s": 0.6, "transform_tolerance": 0.05}
+    provider.result = raw
+    invocation = rt.start_action("manipulation.cycle", args, caller_id=CALLER)["invocation_id"]
+    result = rt.invocation_result(invocation)
+    assert result["status"] == "succeeded"
+    assert provider.prepare_calls == 1
+    assert [item[0] for item in provider.starts] == ["manipulation_cycle"]
+
+
+def test_generic_cycle_preflight_failure_does_not_start_motion():
+    class UnavailableProvider(Provider):
+        def __init__(self):
+            super().__init__(generic=True)
+
+        def prepare_cycle(self, args):
+            self.prepare_calls += 1
+            return {"status": "unavailable", "motion_authorized": False,
+                    "error": "scene_preflight_failed"}
+
+    provider, held = UnavailableProvider(), PersistentPossession()
+    rt = runtime(provider, held)
+    args = request("pour_cycle")
+    args.update(operation="manipulation_cycle", parameters={
+        "process_type": "handle_rotation", "engagement": "handle", "hold_s": 0.5,
+        "transform": {"mode": "rotation", "axis": [0, 0, 1], "magnitude": 0.8,
+                       "speed": 0.3, "direction": "cw", "tolerance": 0.05},
+    })
+    with pytest.raises(CapabilityRuntimeError):
+        rt.start_action("manipulation.cycle", args, caller_id=CALLER)
+    assert provider.prepare_calls == 1
+    assert provider.starts == []
 
 
 @pytest.mark.parametrize("operation,tool_id,spec", [

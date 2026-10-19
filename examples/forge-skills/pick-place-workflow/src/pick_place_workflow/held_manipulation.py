@@ -218,42 +218,71 @@ _CYCLE_PROPERTIES.update(
 )
 
 
-def cycle_input_schema(*, action: bool, operation: str | None = None) -> dict[str, Any]:
+def cycle_input_schema(*, action: bool, operation: str | None = None,
+                       single_call: bool = False) -> dict[str, Any]:
     properties = deepcopy(_CYCLE_PROPERTIES)
     if operation:
         properties["operation"] = {"const": operation}
     if action:
         properties.update(preparation_ref=deepcopy(_TEXT), assignment_ref=deepcopy(_TEXT))
+    required = list(properties)
+    if action and single_call:
+        required = [key for key in required if key not in {"preparation_ref", "assignment_ref"}]
+    all_of = [
+        {"if": {"properties": {"operation": {"const": kind}}},
+         "then": {"properties": {"parameters": {
+             "type": "object", "additionalProperties": False,
+             "properties": deepcopy(params), "required": list(params),
+         }}}}
+        for kind, params in {**_CYCLE_PARAMETERS, **_GENERIC_PARAMETERS}.items()
+    ]
+    if action and single_call:
+        all_of.append({
+            "oneOf": [
+                {"required": ["preparation_ref", "assignment_ref"]},
+                {"not": {"anyOf": [
+                    {"required": ["preparation_ref"]},
+                    {"required": ["assignment_ref"]},
+                ]}},
+            ],
+        })
     return {
         "type": "object", "additionalProperties": False,
-        "properties": properties, "required": list(properties),
-        "allOf": [
-            {"if": {"properties": {"operation": {"const": kind}}},
-             "then": {"properties": {"parameters": {
-                 "type": "object", "additionalProperties": False,
-                 "properties": deepcopy(params), "required": list(params),
-             }}}}
-            for kind, params in {**_CYCLE_PARAMETERS, **_GENERIC_PARAMETERS}.items()
-        ],
+        "properties": properties, "required": required,
+        "allOf": all_of,
     }
 
 
-def cycle_action_spec(operation: str) -> dict[str, Any]:
+def cycle_action_spec(operation: str, *, single_call: bool = False) -> dict[str, Any]:
     tool_id = {**CYCLE_OPERATIONS, **GENERIC_CYCLE_OPERATIONS}[operation]
-    schema = cycle_input_schema(action=True, operation=operation)
+    schema = cycle_input_schema(action=True, operation=operation, single_call=single_call)
     planning = _planning(tool_id, action=True)
     planning["input_binding_keys"] = ["entity_ref", "destination_ref", "return_destination_ref"]
-    planning.update(
-        argument_projection="prepared_cycle_operation_v1",
-        argument_projection_plan={
-            "projection_id": "prepared_cycle_operation_v1", "join_field": "entity_ref",
-            "source_slots": {"preparation": {
-                "tool_id": "manipulation.prepare_cycle", "source_scope": "predecessor",
-                "source_field_map": {key: ["arguments", key] for key in schema["required"]},
-            }},
-            "top_level_fields": [],
-        },
-    )
+    if single_call:
+        planning.update(
+            argument_projection="internal_cycle_preflight_v1",
+            argument_projection_plan={
+                "projection_id": "internal_cycle_preflight_v1", "join_field": "entity_ref",
+                "source_slots": {}, "top_level_fields": [],
+                "preflight": {
+                    "tool_id": "manipulation.prepare_cycle",
+                    "scope": "provider_internal",
+                    "motion_authorized": False,
+                },
+            },
+        )
+    else:
+        planning.update(
+            argument_projection="prepared_cycle_operation_v1",
+            argument_projection_plan={
+                "projection_id": "prepared_cycle_operation_v1", "join_field": "entity_ref",
+                "source_slots": {"preparation": {
+                    "tool_id": "manipulation.prepare_cycle", "source_scope": "predecessor",
+                    "source_field_map": {key: ["arguments", key] for key in schema["required"]},
+                }},
+                "top_level_fields": [],
+            },
+        )
     result_properties = deepcopy(schema["properties"])
     result_properties.update({
         "status": {"enum": ["succeeded", "failed", "cancelled", "stopped", "unknown"]},
@@ -291,7 +320,7 @@ PREPARE_CYCLE_TOOL_SPEC = {
 }
 POUR_CYCLE_TOOL_SPEC = cycle_action_spec("pour_cycle")
 STIR_CYCLE_TOOL_SPEC = cycle_action_spec("stir_cycle")
-MANIPULATION_CYCLE_TOOL_SPEC = cycle_action_spec("manipulation_cycle")
+MANIPULATION_CYCLE_TOOL_SPEC = cycle_action_spec("manipulation_cycle", single_call=True)
 
 _REQUIRED_CYCLE_CAPABILITIES = ("preparation", "execution", "feedback", "return")
 
@@ -434,7 +463,15 @@ class CyclePreparationEndpoint:
 
 def validate_cycle(arguments: Mapping[str, Any], *, action: bool, operation: str | None = None) -> None:
     json.dumps(arguments, allow_nan=False)
-    Draft202012Validator(cycle_input_schema(action=action, operation=operation)).validate(arguments)
+    single_call = (
+        action
+        and (operation or arguments.get("operation")) == "manipulation_cycle"
+        and "preparation_ref" not in arguments
+        and "assignment_ref" not in arguments
+    )
+    Draft202012Validator(
+        cycle_input_schema(action=action, operation=operation, single_call=single_call)
+    ).validate(arguments)
     if arguments["freshness_ms"] > arguments["max_age_ms"]:
         raise ValueError("cycle observation is stale")
     if arguments["operation"] == "manipulation_cycle":
@@ -639,9 +676,9 @@ class CycleActionDriver:
 
 
 class CycleActionEndpoint:
-    def __init__(self, operation, client, resolve, possession):
+    def __init__(self, operation, client, resolve, possession, *, preflight=None):
         self.operation, self.client, self.resolve = operation, client, resolve
-        self.possession = possession
+        self.possession, self.preflight = possession, preflight
 
     def admit(self, arguments):
         raise ValueError("complete cycle requires a task-owned caller")
@@ -655,23 +692,48 @@ class CycleActionEndpoint:
             raise ValueError("complete cycle requires empty hand")
         public = deepcopy(arguments)
         owner = f"paos:{parts[1]}"
+        single_call = (
+            self.operation == "manipulation_cycle"
+            and "preparation_ref" not in public
+            and "assignment_ref" not in public
+        )
 
         def resolve_current():
             if self.possession.state != "empty":
                 raise ValueError("complete cycle requires empty hand")
-            resolved = deepcopy(dict(self.resolve(self.operation, deepcopy(public))))
+            request = deepcopy(public)
+            if single_call:
+                prepare = getattr(self.preflight, "prepare_cycle", None)
+                if not callable(prepare):
+                    raise ValueError("single-call cycle requires an internal preparation provider")
+                prepared_result = prepare(deepcopy(request))
+                if not isinstance(prepared_result, Mapping) or prepared_result.get("status") != "available":
+                    error = (prepared_result.get("error", "cycle_preflight_unavailable")
+                             if isinstance(prepared_result, Mapping) else "cycle_preflight_unavailable")
+                    raise ValueError(str(error))
+                request = deepcopy(prepared_result.get("arguments"))
+                if not isinstance(request, Mapping):
+                    raise ValueError("cycle preflight did not return arguments")
+                validate_cycle(request, action=True, operation=self.operation)
+                if any(request.get(key) != value for key, value in public.items()):
+                    raise ValueError("cycle preflight changed request identity or parameters")
+            elif ("preparation_ref" not in request) != ("assignment_ref" not in request):
+                raise ValueError("cycle preparation references must be supplied together")
+            resolved = deepcopy(dict(self.resolve(self.operation, request)))
             if any(resolved.get(key) != value for key, value in public.items() if key != "operation"):
                 raise ValueError("resolved cycle preparation changed inputs")
             assignment = resolved.get("assignment", {})
-            if assignment.get("task_id") != parts[1] or assignment.get("assignment_ref") != public["assignment_ref"]:
+            expected_assignment = public.get("assignment_ref", request.get("assignment_ref"))
+            if (assignment.get("task_id") != parts[1]
+                    or assignment.get("assignment_ref") != expected_assignment):
                 raise ValueError("cycle assignment does not belong to this task")
             resolved.update(operation=self.operation, task_id=parts[1])
             return resolved
 
-        resolve_current()
+        admitted = resolve_current()
 
         def start(invocation_id, attempt_id):
-            resolved = resolve_current()
+            resolved = deepcopy(admitted) if single_call else resolve_current()
             self.possession.begin(self.operation, owner=owner, entity_ref=public["entity_ref"])
             resolved["cycle_invocation_id"] = invocation_id
             try:

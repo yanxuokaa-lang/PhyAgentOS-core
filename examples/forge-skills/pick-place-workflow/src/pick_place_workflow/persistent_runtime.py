@@ -41,7 +41,7 @@ class PersistentPossession:
 
     def validate_begin(self, phase: str, *, owner: str, entity_ref: str, acquire_ref: str | None = None,
                        cycle_ref: str | None = None) -> None:
-        if phase in {"pour_cycle", "stir_cycle"}:
+        if phase in {"pour_cycle", "stir_cycle", "manipulation_cycle"}:
             if self.state != "empty":
                 raise ValueError(f"possession is {self.state}; {phase} requires empty hand")
             return
@@ -67,7 +67,7 @@ class PersistentPossession:
             self.last_invocation_ref = acquire_ref
             self.scene_revision = None
             return
-        if phase in {"pour_cycle", "stir_cycle"}:
+        if phase in {"pour_cycle", "stir_cycle", "manipulation_cycle"}:
             self.state, self.owner, self.entity_ref = "acquiring", owner, entity_ref
             self.acquire_invocation_ref = None
             self.cycle_invocation_ref = None
@@ -87,7 +87,7 @@ class PersistentPossession:
         known = result.get("outcome_known") is True
         changed = result.get("world_change_started") is True
         explicit_possession = result.get("possession_state")
-        if phase in {"pour", "stir", "pour_cycle", "stir_cycle"} and known and status in {"succeeded", "failed", "cancelled", "stopped"} and explicit_possession in {"empty", "holding"}:
+        if phase in {"pour", "stir", "pour_cycle", "stir_cycle", "manipulation_cycle"} and known and status in {"succeeded", "failed", "cancelled", "stopped"} and explicit_possession in {"empty", "holding"}:
             self.state = explicit_possession
             if self.state == "empty":
                 self.owner = self.entity_ref = self.acquire_invocation_ref = None
@@ -116,7 +116,7 @@ class PersistentPossession:
                 self.state = "holding"
             else:
                 self.state = "uncertain"
-        elif phase in {"pour", "stir", "pour_cycle", "stir_cycle"}:
+        elif phase in {"pour", "stir", "pour_cycle", "stir_cycle", "manipulation_cycle"}:
             # An operation never acquires or releases implicitly. Only explicit
             # measured possession, or a confirmed no-effect interruption, can hold.
             self.state = "holding" if known and not changed and status in {"failed", "cancelled", "stopped"} else "uncertain"
@@ -501,10 +501,15 @@ def build_persistent_runtime(*, client, understanding_provider, grasp_provider,
             runtime.register_tool(deepcopy(spec), endpoint,
                                   context_provider=lambda tool_id=spec["tool_id"]: tool_context_provider(tool_id))
         cycle_specs = (
-            ("pour_cycle", POUR_CYCLE_TOOL_SPEC, CycleActionEndpoint("pour_cycle", client, resolve_held_preparation, possession)),
-            ("stir_cycle", STIR_CYCLE_TOOL_SPEC, CycleActionEndpoint("stir_cycle", client, resolve_held_preparation, possession)),
+            ("pour_cycle", POUR_CYCLE_TOOL_SPEC,
+             CycleActionEndpoint("pour_cycle", client, resolve_held_preparation, possession,
+                                preflight=held_preparation_provider)),
+            ("stir_cycle", STIR_CYCLE_TOOL_SPEC,
+             CycleActionEndpoint("stir_cycle", client, resolve_held_preparation, possession,
+                                preflight=held_preparation_provider)),
             ("manipulation_cycle", MANIPULATION_CYCLE_TOOL_SPEC,
-             CycleActionEndpoint("manipulation_cycle", client, resolve_held_preparation, possession)),
+             CycleActionEndpoint("manipulation_cycle", client, resolve_held_preparation, possession,
+                                preflight=held_preparation_provider)),
         )
         available_cycles = [entry for entry in cycle_specs
                             if (cycle_capability_available(held_preparation_provider, entry[0])
