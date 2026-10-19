@@ -5,6 +5,8 @@
   "robot_usd_path": "/home/yanxu/LabUtopia/assets/robots/Franka.usd",
   "source_path": "/World/conical_bottle03",
   "destination_path": "/World/beaker2",
+  "source_label": "试剂A",
+  "destination_label": "烧杯",
   "frame_id": "lab_camera_front",
   "calibration_ref": "artifact://labutopia/calibration-v1",
   "scene_revision": "labutopia-lab001-v1",
@@ -24,5 +26,7 @@
   "object_lift_threshold_m": 0.04,
   "grasp_distance_tolerance_m": 0.16,
   "source_pour_axis": [0.0, 0.0, 1.0],
+  "configured_process_type": "pour",
+  "supported_operations": ["pour_cycle"],
   "headless": true
 }

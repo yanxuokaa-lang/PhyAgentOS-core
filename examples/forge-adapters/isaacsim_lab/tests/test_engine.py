@@ -12,7 +12,11 @@ from isaacsim_lab.engine import (
     _continuous_pour_window,
     _episode_succeeded,
     _EpisodeVideoRecorder,
+    _failed_events,
+    _generic_phase_events,
+    _generic_result,
     _pour_controller_target,
+    normalize_process_parameters,
 )
 
 
@@ -23,7 +27,7 @@ class Backend:
         return {"status": "unknown", "outcome_known": False, "world_change_started": False}
 
 
-def make_profile(tmp_path):
+def make_profile(tmp_path, *, configured_process_type="pour"):
     config = tmp_path / "level.yaml"
     scene = tmp_path / "scene.usd"
     robot = tmp_path / "robot.usd"
@@ -35,6 +39,7 @@ def make_profile(tmp_path):
         "lab_root": str(tmp_path), "config_path": str(config), "scene_usd_path": str(scene),
         "robot_usd_path": str(robot),
         "source_path": "/World/conical_bottle03", "destination_path": "/World/beaker2",
+        "configured_process_type": configured_process_type,
     })
 
 
@@ -60,6 +65,104 @@ def test_legacy_backend_does_not_claim_unimplemented_generic_cycle(tmp_path, mon
     declaration = engine.cycle_capability("manipulation_cycle")
     assert declaration["execution"] is False
     assert declaration["motion_authorized"] is False
+
+
+def test_legacy_pour_parameters_map_to_real_controller_dispatch(tmp_path):
+    profile = make_profile(tmp_path)
+    arguments = profile.paos_input({"parameters": {"speed": 0.4, "direction": "ccw"}}, operation="pour_cycle")
+    normalized = normalize_process_parameters(arguments, profile)
+    assert normalized["process_type"] == "pour"
+    assert normalized["axis"] == [0.0, 0.0, 1.0]
+    assert normalized["magnitude"] == profile.tilt_rad
+    assert normalized["speed"] == 0.4
+    assert normalized["controller_parameters"] == {"pour_speed": -0.4}
+    assert normalized["mapped"]["speed"] == "pour_speed"
+
+
+def test_legacy_stir_parameters_map_only_supported_controller_values(tmp_path):
+    profile = make_profile(tmp_path, configured_process_type="stir")
+    arguments = profile.paos_input({"parameters": {"radius_m": 0.01, "stir_speed": 2.0, "direction": "cw"}}, operation="stir_cycle")
+    normalized = normalize_process_parameters(arguments, profile)
+    assert normalized["process_type"] == "stir"
+    assert normalized["controller_parameters"] == {"stir_radius": 0.01, "stir_speed": 2.0}
+    assert normalized["mapped"]["magnitude"] == "stir_radius"
+
+
+def test_backend_dry_run_never_starts_simulation(tmp_path):
+    profile = make_profile(tmp_path)
+    arguments = profile.paos_input({"parameters": {
+        "process_type": "stir", "engagement": "tool", "hold_s": 0.5,
+        "transform": {"mode": "rotation", "axis": [0, 0, 1], "magnitude": 0.01,
+                      "speed": 2.0, "direction": "cw", "tolerance": 0.01},
+    }}, operation="manipulation_cycle")
+    result = module.LabUtopiaBackend(profile).dry_run_cycle(arguments)
+    assert result["status"] == "unsupported"
+    assert result["motion_authorized"] is False
+    assert result["world_change_started"] is False
+    assert result["failure_code"] == "unsupported_controller"
+
+
+def test_generic_pour_rejects_parameters_not_exposed_by_controller(tmp_path):
+    profile = make_profile(tmp_path)
+    arguments = profile.paos_input({"parameters": {
+        "process_type": "pour", "hold_s": 0.5,
+        "transform": {"mode": "rotation", "axis": [0, 0, 1], "magnitude": 0.8,
+                      "speed": 0.4, "direction": "cw", "tolerance": 0.05},
+    }}, operation="manipulation_cycle")
+    result = module.LabUtopiaBackend(profile).dry_run_cycle(arguments)
+    assert result["status"] == "unsupported"
+    assert set(result["unsupported"]) == {"axis", "magnitude", "tolerance", "hold_s"}
+
+
+def test_cap_operation_returns_explicit_unsupported_controller(tmp_path):
+    profile = make_profile(tmp_path, configured_process_type="cap_unscrew")
+    arguments = profile.paos_input({"parameters": {
+        "process_type": "cap_unscrew", "hold_s": 0.5,
+        "transform": {"mode": "rotation", "axis": [0, 0, 1], "magnitude": 1.0,
+                      "speed": 0.4, "direction": "ccw", "tolerance": 0.05},
+    }}, operation="manipulation_cycle")
+    result = module.LabUtopiaBackend(profile).dry_run_cycle(arguments)
+    assert result["status"] == "unsupported"
+    assert result["failure_code"] == "unsupported_controller"
+    assert result["motion_authorized"] is False
+
+
+def test_generic_worker_events_always_expose_all_seven_phases():
+    empty = _generic_phase_events([], process_completed=False, process_type="stir")
+    assert [event["phase"] for event in empty] == [
+        "acquire", "transport", "process", "reorient_exit", "stow", "release", "retreat"
+    ]
+    failed = _failed_events("process", [{"timestamp_s": 1.0}], "controller_not_completed")
+    assert [event["phase"] for event in failed] == [
+        "acquire", "transport", "process", "reorient_exit", "stow", "release", "retreat"
+    ]
+    assert failed[2]["status"] == "failed"
+    assert failed[3]["status"] == "unknown"
+
+
+def test_generic_worker_does_not_synthesize_post_process_success():
+    samples = [{
+        "timestamp_s": 1.0,
+        "controller_phase": "stirring",
+        "transform_progress": 0.01,
+    }]
+    events = _generic_phase_events(samples, process_completed=True, process_type="stir")
+    assert events[2]["status"] == "completed"
+    assert all(events[index]["status"] == "unknown" for index in (0, 1, 3, 4, 5, 6))
+
+
+def test_generic_result_rejects_process_only_completion(tmp_path):
+    profile = make_profile(tmp_path, configured_process_type="stir")
+    arguments = profile.paos_input(operation="stir_cycle")
+    samples = [{"timestamp_s": 1.0, "possession_state": "empty"}]
+    events = _generic_phase_events(samples, process_completed=True, process_type="stir")
+    result = _generic_result(arguments, samples, events, {"process_type": "stir"}, profile, {}, 1)
+    assert result["status"] == "failed"
+    assert result["outcome_known"] is True
+    assert result["failure_code"] == "incomplete_cycle_phases"
+    assert result["incomplete_phases"] == [
+        "acquire", "transport", "reorient_exit", "stow", "release", "retreat"
+    ]
 
 
 def test_failed_feedback_phase_cannot_be_promoted_to_success():

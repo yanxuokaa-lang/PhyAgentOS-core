@@ -23,6 +23,8 @@ class LabUtopiaProfile:
     robot_usd_path: Path
     source_path: str
     destination_path: str
+    source_label: str = "试剂A"
+    destination_label: str = "烧杯"
     profile_path: Path | None = None
     frame_id: str = "lab_camera_front"
     calibration_ref: str = "artifact://labutopia/calibration-v1"
@@ -35,6 +37,11 @@ class LabUtopiaProfile:
     freshness_ms: int = 0
     tilt_rad: float = 0.87
     hold_s: float = 0.6
+    stir_radius_m: float = 0.009
+    stir_depth_m: float = 0.04
+    stir_turns: float = 2.0
+    stir_duration_s: float = 4.0
+    stir_direction: str = "ccw"
     alignment_tolerance_m: float = 0.05
     tilt_tolerance_rad: float = 0.10
     maximum_tilt_rad: float = 1.50
@@ -43,7 +50,8 @@ class LabUtopiaProfile:
     object_lift_threshold_m: float = 0.04
     grasp_distance_tolerance_m: float = 0.16
     source_pour_axis: tuple[float, float, float] = (0.0, 0.0, 1.0)
-    supported_operations: tuple[str, ...] = ("pour_cycle", "stir_cycle")
+    configured_process_type: str = "pour"
+    supported_operations: tuple[str, ...] = ("pour_cycle", "stir_cycle", "manipulation_cycle")
     headless: bool = True
 
     @classmethod
@@ -68,6 +76,8 @@ class LabUtopiaProfile:
             robot_usd_path=path_value("robot_usd_path") if value.get("robot_usd_path") else default_robot,
             source_path=_path(value, "source_path"),
             destination_path=_path(value, "destination_path"),
+            source_label=_text(value, "source_label", "试剂A"),
+            destination_label=_text(value, "destination_label", "烧杯"),
             frame_id=_text(value, "frame_id", "lab_camera_front"),
             calibration_ref=_text(value, "calibration_ref", "artifact://labutopia/calibration-v1"),
             scene_revision=_text(value, "scene_revision", "labutopia-scene-v1"),
@@ -79,6 +89,11 @@ class LabUtopiaProfile:
             freshness_ms=_nonnegative_int(value, "freshness_ms", 0),
             tilt_rad=_positive_float(value, "tilt_rad", 0.87),
             hold_s=_positive_float(value, "hold_s", 0.6),
+            stir_radius_m=_positive_float(value, "stir_radius_m", 0.009),
+            stir_depth_m=_positive_float(value, "stir_depth_m", 0.04),
+            stir_turns=_positive_float(value, "stir_turns", 2.0),
+            stir_duration_s=_positive_float(value, "stir_duration_s", 4.0),
+            stir_direction=_direction(value.get("stir_direction", "ccw")),
             alignment_tolerance_m=_positive_float(value, "alignment_tolerance_m", 0.05),
             tilt_tolerance_rad=_positive_float(value, "tilt_tolerance_rad", 0.10),
             maximum_tilt_rad=_positive_float(value, "maximum_tilt_rad", 1.50),
@@ -87,7 +102,8 @@ class LabUtopiaProfile:
             object_lift_threshold_m=_positive_float(value, "object_lift_threshold_m", 0.04),
             grasp_distance_tolerance_m=_positive_float(value, "grasp_distance_tolerance_m", 0.16),
             source_pour_axis=_vector3(value, "source_pour_axis", (0.0, 0.0, 1.0)),
-            supported_operations=_operations(value.get("supported_operations", ("pour_cycle", "stir_cycle"))),
+            configured_process_type=_process_type(value.get("configured_process_type", "pour")),
+            supported_operations=_operations(value.get("supported_operations", ("pour_cycle", "stir_cycle", "manipulation_cycle"))),
             headless=bool(value.get("headless", True)),
         )
         profile.validate_paths()
@@ -138,7 +154,16 @@ class LabUtopiaProfile:
         if operation == "pour_cycle":
             required["parameters"] = {"tilt_rad": self.tilt_rad, "hold_s": self.hold_s}
         elif operation == "stir_cycle":
-            required["parameters"] = dict(previous.get("parameters") or {})
+            parameters = {
+                "radius_m": self.stir_radius_m,
+                "depth_m": self.stir_depth_m,
+                "turns": self.stir_turns,
+                "duration_s": self.stir_duration_s,
+                "direction": self.stir_direction,
+            }
+            parameters.update(dict(previous.get("parameters") or {}))
+            required["parameters"] = parameters
+            previous["parameters"] = parameters
         elif not previous.get("parameters"):
             raise LabProfileError("manipulation_cycle requires caller-supplied parameters")
         for key, value in required.items():
@@ -156,6 +181,9 @@ class LabUtopiaProfile:
             "calibration_ref": self.calibration_ref,
             "container_frame_id": self.container_frame_id,
             "source_pour_axis": list(self.source_pour_axis),
+            "configured_process_type": self.configured_process_type,
+            "source_label": self.source_label,
+            "destination_label": self.destination_label,
         }
 
     def evaluation_profile(self) -> dict[str, Any]:
@@ -202,6 +230,12 @@ def _nonnegative_int(value: Mapping[str, Any], key: str, default: int) -> int:
     return raw
 
 
+def _direction(raw: Any) -> str:
+    if raw not in {"cw", "ccw"}:
+        raise LabProfileError("stir_direction must be cw or ccw")
+    return raw
+
+
 def _vector3(value: Mapping[str, Any], key: str, default: tuple[float, float, float]) -> tuple[float, float, float]:
     raw = value.get(key, default)
     if not isinstance(raw, (list, tuple)) or len(raw) != 3:
@@ -220,6 +254,13 @@ def _operations(raw: Any) -> tuple[str, ...]:
     if not isinstance(raw, (list, tuple)) or not raw or any(item not in allowed for item in raw):
         raise LabProfileError("supported_operations must be a non-empty list of known cycle operations")
     return tuple(dict.fromkeys(raw))
+
+
+def _process_type(raw: Any) -> str:
+    allowed = {"pour", "stir", "handle_rotation", "cap_unscrew", "cap_screw"}
+    if not isinstance(raw, str) or raw not in allowed:
+        raise LabProfileError("configured_process_type must name one supported process type")
+    return raw
 
 
 def _entity_ref(path: str) -> str:

@@ -6,6 +6,7 @@ endpoints never generate motion or infer completion from requested parameters.
 
 from __future__ import annotations
 
+import inspect
 import json
 import math
 from copy import deepcopy
@@ -505,6 +506,19 @@ def _validate_manipulation_parameters(parameters: Mapping[str, Any]) -> None:
         )
 
 
+def _resolve_cycle_for_task(resolve, operation: str, request: Mapping[str, Any], task_id: str):
+    """Pass caller ownership when the adapter resolver explicitly supports it."""
+    try:
+        parameters = inspect.signature(resolve).parameters.values()
+    except (TypeError, ValueError):
+        parameters = ()
+    if any(parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in parameters) or any(
+        parameter.name == "task_id" for parameter in parameters
+    ):
+        return resolve(operation, request, task_id=task_id)
+    return resolve(operation, request)
+
+
 def project_cycle_result(raw, arguments, possession, invocation_id):
     status = raw.get("status", "unknown")
     known = raw.get("outcome_known") is True
@@ -719,7 +733,9 @@ class CycleActionEndpoint:
                     raise ValueError("cycle preflight changed request identity or parameters")
             elif ("preparation_ref" not in request) != ("assignment_ref" not in request):
                 raise ValueError("cycle preparation references must be supplied together")
-            resolved = deepcopy(dict(self.resolve(self.operation, request)))
+            resolved = deepcopy(dict(_resolve_cycle_for_task(
+                self.resolve, self.operation, request, parts[1]
+            )))
             if any(resolved.get(key) != value for key, value in public.items() if key != "operation"):
                 raise ValueError("resolved cycle preparation changed inputs")
             assignment = resolved.get("assignment", {})

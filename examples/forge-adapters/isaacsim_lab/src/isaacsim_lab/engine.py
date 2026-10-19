@@ -26,6 +26,185 @@ class IsaacLabRuntimeError(RuntimeError):
     """The requested Isaac Sim execution cannot be started or observed."""
 
 
+class UnsupportedControllerCapabilityError(LabProfileError):
+    """The requested PAOS parameter is not exposed by the selected controller."""
+
+    def __init__(self, process_type: str, unsupported: Sequence[str], reason: str | None = None):
+        self.process_type = process_type
+        self.unsupported = tuple(unsupported)
+        self.failure_code = "unsupported_controller" if reason else "unsupported_controller_parameter"
+        message = reason or f"{process_type} controller does not support: {', '.join(self.unsupported)}"
+        super().__init__(message)
+
+
+_PROCESS_TYPES = {"pour", "stir", "handle_rotation", "cap_unscrew", "cap_screw"}
+_DIRECTIONS = {"cw", "ccw", "forward", "backward"}
+_PROCESS_CAPABILITIES = {
+    "pour": {
+        "controller": "controllers.atomic_actions.pour_controller.PourController",
+        "mapped": {"speed": "pour_speed", "direction": "pour_speed_sign"},
+        "unsupported": {"axis", "magnitude", "tolerance", "hold_s"},
+    },
+    "stir": {
+        "controller": "controllers.atomic_actions.stir_controller.StirController",
+        "mapped": {"magnitude": "stir_radius", "speed": "stir_speed", "direction": "stir_speed_sign"},
+        "unsupported": {"axis", "tolerance", "hold_s"},
+    },
+    "handle_rotation": {
+        "controller": "controllers.atomic_actions.open_controller.OpenController",
+        "mapped": {"magnitude": "angle", "direction": "angle_sign"},
+        "unsupported": {"axis", "speed", "tolerance", "hold_s"},
+    },
+    "cap_unscrew": {"controller": None, "mapped": {}, "unsupported": set(),
+                    "reason": "LabUtopia has no confirmed threaded-cap controller"},
+    "cap_screw": {"controller": None, "mapped": {}, "unsupported": set(),
+                   "reason": "LabUtopia has no confirmed threaded-cap controller"},
+}
+
+
+def normalize_process_parameters(
+    arguments: Mapping[str, Any], profile: LabUtopiaProfile
+) -> dict[str, Any]:
+    """Normalize PAOS transform parameters into controller-facing values.
+
+    This is deliberately pure and motionless.  The live worker consumes the
+    returned mapping only after the normal PAOS frame/path preflight succeeds.
+    """
+    operation = arguments.get("operation")
+    raw = arguments.get("parameters")
+    params = dict(raw) if isinstance(raw, Mapping) else {}
+    legacy = False
+    if params.get("controller_parameters") and params.get("mapped") is not None and params.get("unsupported") == []:
+        process_type = params.get("process_type")
+        if process_type not in _PROCESS_TYPES:
+            raise LabProfileError("parameters.process_type must name a supported LabUtopia process")
+        if process_type != profile.configured_process_type:
+            raise UnsupportedControllerCapabilityError(
+                str(process_type), (),
+                reason=f"profile is configured for {profile.configured_process_type}, not {process_type}",
+            )
+        return dict(params)
+    if {"process_type", "mode", "axis", "magnitude", "speed", "direction", "tolerance", "hold_s"}.issubset(params):
+        if params.get("process_type") not in _PROCESS_TYPES:
+            raise LabProfileError("parameters.process_type must name a supported LabUtopia process")
+        process_type = str(params["process_type"])
+        transform = {key: params[key] for key in ("mode", "axis", "magnitude", "speed", "direction", "tolerance")}
+        hold_s = float(params["hold_s"])
+    elif operation == "pour_cycle":
+        legacy = True
+        process_type = "pour"
+        transform = {
+            "mode": "rotation",
+            "axis": list(profile.source_pour_axis),
+            "magnitude": float(params.get("tilt_rad", profile.tilt_rad)),
+            "speed": float(params.get("speed", 1.0)),
+            "direction": str(params.get("direction", "cw")),
+            "tolerance": float(params.get("tolerance", profile.tilt_tolerance_rad)),
+        }
+        hold_s = float(params.get("hold_s", profile.hold_s))
+    elif operation == "stir_cycle":
+        legacy = True
+        process_type = "stir"
+        transform = {
+            "mode": "rotation",
+            "axis": list(params.get("axis", [0.0, 0.0, 1.0])),
+            "magnitude": float(params.get("radius_m", params.get("magnitude", 0.009))),
+            "speed": float(params.get("stir_speed", params.get("speed", 3.0))),
+            "direction": str(params.get("direction", "ccw")),
+            "tolerance": float(params.get("tolerance", profile.alignment_tolerance_m)),
+        }
+        hold_s = float(params.get("duration_s", params.get("hold_s", profile.hold_s)))
+    elif operation == "manipulation_cycle":
+        process_type = params.get("process_type")
+        if process_type not in _PROCESS_TYPES:
+            raise LabProfileError("parameters.process_type must name a supported LabUtopia process")
+        transform = dict(params.get("transform") or {})
+        hold_s = float(params.get("hold_s", profile.hold_s))
+    else:
+        raise LabProfileError("unsupported cycle operation")
+
+    if process_type != profile.configured_process_type:
+        raise UnsupportedControllerCapabilityError(
+            process_type,
+            (),
+            reason=(
+                f"profile is configured for {profile.configured_process_type}, "
+                f"not {process_type}"
+            ),
+        )
+
+    capability = _PROCESS_CAPABILITIES[process_type]
+    if capability["controller"] is None:
+        raise UnsupportedControllerCapabilityError(process_type, (), reason=capability["reason"])
+
+    if transform.get("mode") not in {"rotation", "translation"}:
+        raise LabProfileError("parameters.transform.mode must be rotation or translation")
+    if transform["mode"] != "rotation":
+        raise UnsupportedControllerCapabilityError(process_type, ["mode"])
+    axis = transform.get("axis")
+    if not isinstance(axis, (list, tuple)) or len(axis) != 3:
+        raise LabProfileError("parameters.transform.axis must contain three numbers")
+    axis_values = tuple(float(item) for item in axis)
+    norm = sum(item * item for item in axis_values) ** 0.5
+    magnitude = float(transform.get("magnitude", 0.0))
+    speed = float(transform.get("speed", 0.0))
+    tolerance = float(transform.get("tolerance", 0.0))
+    direction = str(transform.get("direction", "ccw"))
+    if norm <= 0 or magnitude <= 0 or speed <= 0 or tolerance <= 0 or hold_s <= 0:
+        raise LabProfileError("axis, magnitude, speed, tolerance, and hold_s must be positive")
+    if direction not in _DIRECTIONS:
+        raise LabProfileError(f"unsupported transform direction: {direction}")
+    requested = set() if legacy else set(transform) | {"hold_s"}
+    unsupported = sorted(requested & set(capability["unsupported"]))
+    if unsupported:
+        raise UnsupportedControllerCapabilityError(process_type, unsupported)
+    normalized_axis = [item / norm for item in axis_values]
+    signed = -1.0 if direction in {"ccw", "backward"} else 1.0
+    controller_parameters = {
+        "pour": {"pour_speed": speed * signed},
+        "stir": {"stir_radius": magnitude, "stir_speed": speed * signed},
+        "handle_rotation": {"angle": magnitude * 180.0 / 3.141592653589793 * signed},
+    }[process_type]
+    return {
+        "process_type": process_type,
+        "mode": transform["mode"],
+        "axis": normalized_axis,
+        "magnitude": magnitude,
+        "speed": speed,
+        "direction": direction,
+        "tolerance": tolerance,
+        "hold_s": hold_s,
+        "controller_dispatch": capability["controller"],
+        "controller_parameters": controller_parameters,
+        "mapped": dict(capability["mapped"]),
+        "unsupported": [],
+    }
+
+
+def _unsupported_result(error: UnsupportedControllerCapabilityError) -> dict[str, Any]:
+    return {
+        "status": "unsupported",
+        "outcome_known": False,
+        "world_change_started": False,
+        "motion_authorized": False,
+        "failure_code": error.failure_code,
+        "process_type": error.process_type,
+        "unsupported": list(error.unsupported),
+        "error": str(error),
+    }
+
+
+def _unsupported_operation_result(operation: Any) -> dict[str, Any]:
+    return {
+        "status": "unsupported",
+        "outcome_known": False,
+        "world_change_started": False,
+        "motion_authorized": False,
+        "failure_code": "unsupported_cycle_operation",
+        "operation": operation,
+    }
+
+
 class _EpisodeVideoRecorder:
     """Best-effort recorder for one episode's rendered camera observations."""
 
@@ -134,6 +313,17 @@ class IsaacSimLabEngine:
         runnable = getattr(self.backend, "runnable_operations", ("pour_cycle",))
         available = operation in self.profile.supported_operations and operation in runnable \
             and callable(getattr(self.backend, "run_cycle", None))
+        configured_operation = {
+            "pour": "pour_cycle",
+            "stir": "stir_cycle",
+            "handle_rotation": "manipulation_cycle",
+            "cap_unscrew": "manipulation_cycle",
+            "cap_screw": "manipulation_cycle",
+        }[self.profile.configured_process_type]
+        if operation != configured_operation:
+            available = False
+        if self.profile.configured_process_type in {"cap_unscrew", "cap_screw"}:
+            available = False
         if available:
             try:
                 self.profile.validate_paths()
@@ -154,12 +344,15 @@ class IsaacSimLabEngine:
     def prepare_cycle(self, arguments: Mapping[str, Any]) -> dict[str, Any]:
         operation = arguments.get("operation") if isinstance(arguments, Mapping) else None
         if operation not in {"pour_cycle", "stir_cycle", "manipulation_cycle"}:
-            return {"status": "unavailable", "motion_authorized": False, "error": "unsupported_cycle_operation"}
+            return _unsupported_operation_result(operation)
         try:
+            prepared = self.profile.paos_input(arguments, operation=operation)
+            prepared["parameters"] = normalize_process_parameters(prepared, self.profile)
             self.profile.validate_paths()
             if not _isaac_runtime_available():
                 raise IsaacLabRuntimeError("isaacsim_unavailable_in_active_python")
-            prepared = self.profile.paos_input(arguments, operation=operation)
+        except UnsupportedControllerCapabilityError as exc:
+            return _unsupported_result(exc)
         except (LabProfileError, IsaacLabRuntimeError) as exc:
             return {"status": "unavailable", "motion_authorized": False, "error": str(exc)}
         return {
@@ -179,11 +372,24 @@ class IsaacSimLabEngine:
     ) -> dict[str, Any]:
         del context
         if operation not in {"pour_cycle", "stir_cycle", "manipulation_cycle"}:
-            return {"status": "unknown", "outcome_known": False, "failure_code": "unsupported_cycle_operation"}
+            return _unsupported_operation_result(operation)
+        try:
+            request = deepcopy(dict(arguments))
+            request["parameters"] = normalize_process_parameters(request, self.profile)
+        except UnsupportedControllerCapabilityError as exc:
+            return _unsupported_result(exc)
+        except LabProfileError as exc:
+            return {
+                "status": "invalid",
+                "outcome_known": False,
+                "motion_authorized": False,
+                "failure_code": "invalid_process_parameters",
+                "error": str(exc),
+            }
         if not self.cycle_capability(operation)["execution"]:
             return {"status": "unknown", "outcome_known": False, "failure_code": "isaacsim_unavailable"}
         try:
-            result = self.backend.run_cycle(deepcopy(dict(arguments)), cancel)
+            result = self.backend.run_cycle(request, cancel)
         except Exception as exc:
             return {
                 "status": "unknown",
@@ -200,9 +406,9 @@ class IsaacSimLabEngine:
 class LabUtopiaBackend:
     """Run one LabUtopia episode and return PAOS evidence.
 
-    The current worker implements the legacy pick/pour scene. Other generic
-    cycle profiles remain discoverable only when a deployment supplies a worker
-    that declares the corresponding operation in ``runnable_operations``.
+    The worker dispatches generic process types to LabUtopia's existing atomic
+    controllers.  Scene-specific controller/task availability is still checked
+    by the live episode and is reflected in measured feedback.
     """
 
     def __init__(self, profile: LabUtopiaProfile):
@@ -211,7 +417,7 @@ class LabUtopiaBackend:
 
     @property
     def runnable_operations(self) -> tuple[str, ...]:
-        return ("pour_cycle",)
+        return ("pour_cycle", "stir_cycle", "manipulation_cycle")
 
     def run_cycle(self, arguments: Mapping[str, Any], cancel: Event) -> Mapping[str, Any]:
         if os.environ.get("OMNI_KIT_ACCEPT_EULA", "").lower() not in {"y", "yes", "1", "true"}:
@@ -224,8 +430,36 @@ class LabUtopiaBackend:
 
         return self._run_inprocess(arguments, cancel, Path(os.environ["PAOS_ISAAC_RESULT_PATH"]))
 
+    def dry_run_cycle(self, arguments: Mapping[str, Any]) -> dict[str, Any]:
+        """Resolve dispatch and parameters without importing or stepping Isaac Sim."""
+        try:
+            normalized = normalize_process_parameters(arguments, self.profile)
+        except UnsupportedControllerCapabilityError as exc:
+            return _unsupported_result(exc)
+        except LabProfileError as exc:
+            return {
+                "status": "invalid",
+                "outcome_known": False,
+                "world_change_started": False,
+                "motion_authorized": False,
+                "failure_code": "invalid_process_parameters",
+                "error": str(exc),
+            }
+        return {
+            "status": "prepared",
+            "outcome_known": False,
+            "world_change_started": False,
+            "motion_authorized": False,
+            "process_type": normalized["process_type"],
+            "controller_dispatch": normalized["controller_dispatch"],
+            "parameters": normalized,
+        }
+
     def _run_worker(self, arguments: Mapping[str, Any], cancel: Event) -> Mapping[str, Any]:
-        output_dir = self.profile.lab_root / "outputs" / "paos-pour-cycle"
+        operation = str(arguments.get("operation", "manipulation_cycle"))
+        output_dir = self.profile.lab_root / "outputs" / (
+            "paos-pour-cycle" if operation == "pour_cycle" else "paos-generic-cycle"
+        )
         output_dir.mkdir(parents=True, exist_ok=True)
         suffix = f"{os.getpid()}-{time.monotonic_ns()}"
         input_path = output_dir / f"input-{suffix}.json"
@@ -289,6 +523,7 @@ class LabUtopiaBackend:
         try:
             result = self._run_episode(app, arguments, cancel, result_path.with_suffix(".mp4"))
         except Exception as exc:
+            phase_events = _generic_phase_events([], process_completed=False, process_type="unknown")
             result = {
                 "status": "unknown",
                 "outcome_known": False,
@@ -296,6 +531,8 @@ class LabUtopiaBackend:
                 "failure_owner": "isaacsim_adapter",
                 "failure_code": type(exc).__name__,
                 "error_detail": traceback.format_exc()[-2048:],
+                "phase_events": phase_events,
+                "feedback_observations": [],
             }
             result.update(self._last_video_info)
         finally:
@@ -310,11 +547,22 @@ class LabUtopiaBackend:
         cancel: Event,
         video_path: Path | None = None,
     ) -> dict[str, Any]:
-        if arguments.get("operation") != "pour_cycle":
-            raise IsaacLabRuntimeError(
-                "this LabUtopia worker has no operation-specific episode adapter; "
-                "use a backend declaring the requested generic cycle"
-            )
+        normalized = normalize_process_parameters(arguments, self.profile)
+        process_type = normalized["process_type"]
+        if process_type == "pour":
+            return self._run_pour_episode(app, arguments, normalized, cancel, video_path)
+        if process_type == "stir":
+            return self._run_stir_episode(app, arguments, normalized, cancel, video_path)
+        return self._run_rotation_episode(app, arguments, normalized, cancel, video_path)
+
+    def _run_pour_episode(
+        self,
+        app: Any,
+        arguments: Mapping[str, Any],
+        process_parameters: Mapping[str, Any],
+        cancel: Event,
+        video_path: Path | None = None,
+    ) -> dict[str, Any]:
         self._prepend_lab_root()
         import numpy as np
         import omni.usd
@@ -356,6 +604,7 @@ class LabUtopiaBackend:
         ObjectUtils.get_instance(stage)
         task = PickPourTask(cfg=cfg, world=world, stage=stage, robot=robot)
         controller = create_controller(cfg.controller_type, cfg=cfg, robot=robot)
+        _configure_pour_controller(controller, process_parameters)
         task.reset()
         world.play()
 
@@ -411,6 +660,7 @@ class LabUtopiaBackend:
                     np,
                     Rotation,
                     controller_phase,
+                    process_parameters=process_parameters,
                 )
                 samples.append(sample)
                 if recorder is not None:
@@ -451,7 +701,8 @@ class LabUtopiaBackend:
                     if placement.is_done():
                         placement_done = True
                         samples.append(self._sample(
-                            state, initial_position, initial_quaternion, now + dt, np, Rotation, "placing"
+                            state, initial_position, initial_quaternion, now + dt, np, Rotation, "placing",
+                            process_parameters=process_parameters,
                         ))
                         break
                 step += 1
@@ -464,6 +715,7 @@ class LabUtopiaBackend:
                     "entity_ref": arguments["entity_ref"],
                     "destination_ref": arguments["destination_ref"],
                     "return_destination_ref": arguments["return_destination_ref"],
+                    "phase_events": _phase_events(samples, pickpour_success, placement_done, self.profile),
                     "feedback_observations": samples,
                     "feedback_source_profile": self.profile.source_profile(),
                     "evaluation_profile": self.profile.evaluation_profile(),
@@ -483,6 +735,7 @@ class LabUtopiaBackend:
                     "feedback_observations": samples,
                     "feedback_source_profile": self.profile.source_profile(),
                     "evaluation_profile": self.profile.evaluation_profile(),
+                    "process_parameters": dict(process_parameters),
                     "possession_state": "empty" if succeeded else "uncertain",
                     "object_support_state": "on_support" if succeeded else "unknown",
                     "new_scene_revision": f"{arguments['scene_revision']}-pour-{step}" if succeeded else None,
@@ -504,16 +757,207 @@ class LabUtopiaBackend:
         result.update(video_info)
         return result
 
+    def _run_stir_episode(
+        self,
+        app: Any,
+        arguments: Mapping[str, Any],
+        process_parameters: Mapping[str, Any],
+        cancel: Event,
+        video_path: Path | None = None,
+    ) -> dict[str, Any]:
+        """Run LabUtopia's real glass-rod pick/stir controller."""
+        self._prepend_lab_root()
+        import numpy as np
+        import omni.usd
+        from factories.controller_factory import create_controller
+        from factories.robot_factory import create_robot
+        from isaacsim.core.api import World
+        from isaacsim.core.utils.stage import add_reference_to_stage
+        from omegaconf import OmegaConf, open_dict
+        from tasks.stir_task import StirTask
+        from utils.object_utils import ObjectUtils
+
+        cfg = OmegaConf.load(str(self.profile.config_path))
+        with open_dict(cfg):
+            cfg.usd_path = str(self.profile.scene_usd_path)
+            cfg.mode = "collect"
+            cfg.task_type = "stir"
+            cfg.controller_type = "stirglassrod"
+            cfg.max_episodes = 1
+            cfg.obj_path = self.profile.source_path
+            cfg.sub_obj_path = str(arguments.get("tool_mesh_path") or f"{self.profile.source_path}/Cylinder")
+            cfg.target_path = self.profile.destination_path
+            cfg.multi_run.run_dir = str(self.profile.lab_root / "outputs" / "paos-stir-cycle")
+            if not hasattr(cfg, "task"):
+                cfg.task = {}
+            cfg.task.max_steps = max(int(cfg.task.get("max_steps", 2000)), 2000)
+            cfg.task.obj_paths = [{"path": self.profile.source_path, "position_range": {"x": [0.25, 0.30], "y": [0.02, 0.08], "z": [0.81, 0.81]}}]
+
+        world = World(stage_units_in_meters=1.0, physics_prim_path="/physicsScene", backend="numpy")
+        robot = create_robot(cfg.robot.type, position=np.array(cfg.robot.position), usd_path=str(self.profile.robot_usd_path))
+        stage = omni.usd.get_context().get_stage()
+        add_reference_to_stage(usd_path=str(self.profile.scene_usd_path), prim_path="/World")
+        ObjectUtils.get_instance(stage)
+        task = StirTask(cfg=cfg, world=world, stage=stage, robot=robot)
+        controller = create_controller(cfg.controller_type, cfg=cfg, robot=robot)
+        _configure_stir_controller(controller, process_parameters)
+        task.reset()
+        world.play()
+        samples: list[dict[str, Any]] = []
+        initial_position = None
+        initial_quaternion = None
+        step = 0
+        dt = 1.0 / 60.0
+        done = False
+        success = False
+        video_path = video_path or (self.profile.lab_root / "outputs" / "paos-stir-cycle" / "episode.mp4")
+        recorder, video_info, np = _make_recorder(video_path)
+        try:
+            while app.is_running() and step < int(cfg.task.max_steps):
+                if cancel.is_set():
+                    break
+                world.step(render=True)
+                state = task.step()
+                if state is None:
+                    step += 1
+                    continue
+                state = dict(state)
+                state.setdefault(
+                    "target_position",
+                    state.get("target_beaker")
+                    and task.object_utils.get_geometry_center(object_path=state["target_beaker"]),
+                )
+                state.setdefault("object_quaternion", np.array([0.0, 0.0, 0.0, 1.0]))
+                if initial_position is None:
+                    initial_position = np.asarray(state["object_position"], dtype=float).copy()
+                    initial_quaternion = np.asarray(state["object_quaternion"], dtype=float).copy()
+                sample = self._sample(state, initial_position, initial_quaternion, step * dt, np, _identity_rotation(), "stirring", process_parameters=process_parameters)
+                samples.append(sample)
+                if recorder is not None:
+                    recorder.write(state.get("camera_display"), (f"step={step} phase=stirring", f"progress={sample['transform_progress']:.3f}"))
+                action, done, success = controller.step(state)
+                if action is not None:
+                    robot.get_articulation_controller().apply_action(action)
+                if done:
+                    break
+                step += 1
+        finally:
+            world.stop()
+            if recorder is not None:
+                recorder.close()
+                video_info = recorder.metadata()
+            self._last_video_info = dict(video_info)
+        events = _generic_phase_events(samples, process_completed=bool(done and success), process_type="stir")
+        return _generic_result(arguments, samples, events, process_parameters, self.profile, video_info, step)
+
+    def _run_rotation_episode(
+        self,
+        app: Any,
+        arguments: Mapping[str, Any],
+        process_parameters: Mapping[str, Any],
+        cancel: Event,
+        video_path: Path | None = None,
+    ) -> dict[str, Any]:
+        """Run LabUtopia open/close as the shared handle/cap rotation adapter."""
+        self._prepend_lab_root()
+        import numpy as np
+        import omni.usd
+        from factories.controller_factory import create_controller
+        from factories.robot_factory import create_robot
+        from isaacsim.core.api import World
+        from isaacsim.core.utils.stage import add_reference_to_stage
+        from omegaconf import OmegaConf, open_dict
+        from tasks.open_close_task import OpenCloseTask
+        from utils.object_utils import ObjectUtils
+
+        cfg = OmegaConf.load(str(self.profile.config_path))
+        controller_name = "open" if process_parameters["process_type"] in {"handle_rotation", "cap_unscrew"} else "close"
+        with open_dict(cfg):
+            cfg.usd_path = str(self.profile.scene_usd_path)
+            cfg.mode = "collect"
+            cfg.task_type = "openclose"
+            cfg.controller_type = controller_name
+            cfg.max_episodes = 1
+            cfg.multi_run.run_dir = str(self.profile.lab_root / "outputs" / "paos-rotation-cycle")
+            cfg.task.max_steps = max(int(cfg.task.get("max_steps", 1200)), 1200)
+            cfg.task.obj_paths = [{"path": self.profile.source_path, "position_range": {"x": [0.25, 0.30], "y": [0.02, 0.08], "z": [0.81, 0.81]}}]
+            cfg.task.operate_type = str(cfg.task.get("operate_type", "door"))
+            if arguments.get("handle_path"):
+                cfg.handle_path = arguments["handle_path"]
+
+        world = World(stage_units_in_meters=1.0, physics_prim_path="/physicsScene", backend="numpy")
+        robot = create_robot(cfg.robot.type, position=np.array(cfg.robot.position), usd_path=str(self.profile.robot_usd_path))
+        stage = omni.usd.get_context().get_stage()
+        add_reference_to_stage(usd_path=str(self.profile.scene_usd_path), prim_path="/World")
+        ObjectUtils.get_instance(stage)
+        task = OpenCloseTask(cfg=cfg, world=world, stage=stage, robot=robot)
+        controller = create_controller(controller_name, cfg=cfg, robot=robot)
+        _configure_rotation_controller(controller, process_parameters)
+        task.reset()
+        world.play()
+        samples: list[dict[str, Any]] = []
+        initial_position = None
+        initial_quaternion = None
+        step = 0
+        dt = 1.0 / 60.0
+        done = False
+        success = False
+        video_path = video_path or (self.profile.lab_root / "outputs" / "paos-rotation-cycle" / "episode.mp4")
+        recorder, video_info, np = _make_recorder(video_path)
+        try:
+            while app.is_running() and step < int(cfg.task.max_steps):
+                if cancel.is_set():
+                    break
+                world.step(render=True)
+                state = task.step()
+                if state is None:
+                    step += 1
+                    continue
+                state = dict(state)
+                state.setdefault("target_position", state.get("object_position"))
+                state.setdefault("object_quaternion", np.array([0.0, 0.0, 0.0, 1.0]))
+                if initial_position is None:
+                    initial_position = np.asarray(state["object_position"], dtype=float).copy()
+                    initial_quaternion = np.asarray(state["object_quaternion"], dtype=float).copy()
+                sample = self._sample(state, initial_position, initial_quaternion, step * dt, np, _identity_rotation(), "rotating", process_parameters=process_parameters)
+                samples.append(sample)
+                if recorder is not None:
+                    recorder.write(state.get("camera_display"), (f"step={step} phase=rotating", f"progress={sample['transform_progress']:.3f}"))
+                action, done, success = controller.step(state)
+                if action is not None:
+                    robot.get_articulation_controller().apply_action(action)
+                if done:
+                    break
+                step += 1
+        finally:
+            world.stop()
+            if recorder is not None:
+                recorder.close()
+                video_info = recorder.metadata()
+            self._last_video_info = dict(video_info)
+        events = _generic_phase_events(samples, process_completed=bool(done and success), process_type=process_parameters["process_type"])
+        return _generic_result(arguments, samples, events, process_parameters, self.profile, video_info, step)
+
     def _prepend_lab_root(self) -> None:
         root = str(self.profile.lab_root)
         if root not in sys.path:
             sys.path.insert(0, root)
 
-    def _sample(self, state, initial_position, initial_quaternion, timestamp, np, rotation_cls, controller_phase):
+    def _sample(
+        self,
+        state,
+        initial_position,
+        initial_quaternion,
+        timestamp,
+        np,
+        rotation_cls,
+        controller_phase,
+        process_parameters: Mapping[str, Any] | None = None,
+    ):
         position = np.asarray(state["object_position"], dtype=float)
-        target = np.asarray(state["target_position"], dtype=float)
-        quat = np.asarray(state["object_quaternion"], dtype=float)
-        source_size = np.asarray(state["object_size"], dtype=float)
+        target = np.asarray(state.get("target_position", position), dtype=float)
+        quat = np.asarray(state.get("object_quaternion", [0.0, 0.0, 0.0, 1.0]), dtype=float)
+        source_size = np.asarray(state.get("object_size", [0.0, 0.0, 0.0]), dtype=float)
         relative = rotation_cls.from_quat(initial_quaternion).inv() * rotation_cls.from_quat(quat)
         tilt = float(relative.magnitude())
         pour_axis = np.asarray(self.profile.source_pour_axis, dtype=float)
@@ -538,6 +982,10 @@ class LabUtopiaBackend:
             and object_gripper_distance is not None
             and object_gripper_distance <= self.profile.grasp_distance_tolerance_m
         )
+        process_parameters = dict(process_parameters or {})
+        transform_progress = _observed_transform_progress(state, position, initial_position, process_parameters, tilt)
+        transform_error = max(0.0, float(process_parameters.get("magnitude", 0.0)) - transform_progress)
+        engagement_valid = bool(grasp or controller_phase in {"pouring", "stirring", "rotating", "placing"})
         return {
             "timestamp_s": float(timestamp),
             "frame_id": self.profile.frame_id,
@@ -552,6 +1000,9 @@ class LabUtopiaBackend:
             "object_gripper_distance_m": object_gripper_distance,
             "feedback_valid": True,
             "grasp_valid": grasp,
+            "engagement_valid": engagement_valid,
+            "transform_progress": transform_progress,
+            "transform_error": transform_error,
             "target_container_aligned": alignment <= self.profile.alignment_tolerance_m,
             "alignment_error_m": alignment,
             "source_pour_point": {"x_m": float(pour_point[0]), "y_m": float(pour_point[1]), "z_m": float(pour_point[2]), "frame_id": self.profile.frame_id},
@@ -559,18 +1010,201 @@ class LabUtopiaBackend:
         }
 
 
+def _configure_pour_controller(controller: Any, parameters: Mapping[str, Any]) -> None:
+    """Apply PAOS speed/direction to the existing pick/pour controller."""
+    active = getattr(controller, "pour_controller", None)
+    if active is None:
+        return
+    signed_speed = float(parameters["controller_parameters"]["pour_speed"])
+    original = active.forward
+
+    def configured_forward(*args, **kwargs):
+        kwargs["pour_speed"] = signed_speed
+        return original(*args, **kwargs)
+
+    active.forward = configured_forward
+
+
+def _configure_stir_controller(controller: Any, parameters: Mapping[str, Any]) -> None:
+    active = getattr(controller, "stir_controller", None)
+    if active is None:
+        return
+    active._stir_radius = float(parameters["controller_parameters"]["stir_radius"])
+    active._stir_speed = float(parameters["controller_parameters"]["stir_speed"])
+
+
+def _configure_rotation_controller(controller: Any, parameters: Mapping[str, Any]) -> None:
+    active = getattr(controller, "open_controller", None) or getattr(controller, "close_controller", None)
+    if active is None:
+        return
+    original = active.forward
+    angle = float(parameters["controller_parameters"]["angle"])
+
+    def configured_forward(*args, **kwargs):
+        kwargs["angle"] = angle
+        return original(*args, **kwargs)
+
+    active.forward = configured_forward
+
+
+def _observed_transform_progress(state, position, initial_position, parameters, tilt_rad=0.0):
+    process_type = parameters.get("process_type")
+    if process_type == "pour":
+        return abs(float(tilt_rad))
+    revolute = state.get("revolute_joint_position")
+    if revolute is not None:
+        try:
+            values = [abs(float(value)) for value in revolute]
+            return max(values, default=0.0)
+        except (TypeError, ValueError):
+            pass
+    if process_type == "stir":
+        radius = float(parameters.get("magnitude", 0.0))
+        return min(radius, float(((position - initial_position) ** 2).sum() ** 0.5))
+    return 0.0
+
+
+def _identity_rotation():
+    from scipy.spatial.transform import Rotation
+
+    return Rotation
+
+
+def _make_recorder(video_path: Path):
+    import numpy as np
+
+    try:
+        import cv2
+    except Exception as exc:
+        return None, {"video_path": str(video_path), "video_frame_count": 0, "video_available": False, "video_error": type(exc).__name__}, np
+    recorder = _EpisodeVideoRecorder(video_path, cv2, np, fps=60.0)
+    return recorder, recorder.metadata(), np
+
+
+def _generic_phase_events(samples, *, process_completed: bool, process_type: str):
+    phases = ("acquire", "transport", "process", "reorient_exit", "stow", "release", "retreat")
+    events = [_unknown_phase_event(phase) for phase in phases]
+    if not samples:
+        return events
+
+    last = float(samples[-1]["timestamp_s"])
+    for phase in ("acquire", "transport", "reorient_exit", "stow", "release", "retreat"):
+        key = f"{phase}_completed"
+        observed = next((sample for sample in samples if sample.get(key) is True), None)
+        if observed is None:
+            continue
+        index = phases.index(phase)
+        start = float(observed.get("phase_started_at_s", observed["timestamp_s"]))
+        events[index] = _event(phase, start, float(observed["timestamp_s"]), {key: True})
+
+    process_samples = [
+        sample for sample in samples
+        if sample.get("process_started") is True
+        or float(sample.get("transform_progress", 0.0) or 0.0) > 0.0
+        or sample.get("controller_phase") in {"pouring", "stirring", "rotating"}
+    ]
+    if process_completed:
+        process = process_samples[-1] if process_samples else samples[-1]
+        started = process_samples[0] if process_samples else samples[0]
+        events[2] = _event(
+            "process",
+            float(started["timestamp_s"]),
+            float(process["timestamp_s"]),
+            {
+                "process_type": process_type,
+                "transform_progress": float(process.get("transform_progress", 0.0) or 0.0),
+            },
+        )
+    elif process_samples:
+        events[2] = {
+            "phase": "process",
+            "status": "failed",
+            "outcome_known": True,
+            "started_at_s": float(process_samples[0]["timestamp_s"]),
+            "completed_at_s": last,
+            "facts": {"failure_reason": f"{process_type}_controller_not_completed"},
+        }
+    return events
+
+
+def _unknown_phase_event(phase: str, timestamp: float = 0.0) -> dict[str, Any]:
+    return {
+        "phase": phase,
+        "status": "unknown",
+        "outcome_known": False,
+        "started_at_s": float(timestamp),
+        "completed_at_s": None,
+        "facts": {},
+    }
+
+
+def _generic_result(arguments, samples, events, parameters, profile, video_info, step):
+    process_event = next((event for event in events if event.get("phase") == "process"), {})
+    required = ("acquire", "transport", "process", "reorient_exit", "stow", "release", "retreat")
+    completed = {
+        event.get("phase")
+        for event in events
+        if event.get("status") == "completed" and event.get("outcome_known") is True
+    }
+    missing = [phase for phase in required if phase not in completed]
+    succeeded = process_event.get("status") == "completed" and not missing
+    if succeeded:
+        status = "succeeded"
+        failure_code = None
+    elif process_event.get("status") == "failed":
+        status = "failed"
+        failure_code = process_event.get("facts", {}).get("failure_reason")
+    elif process_event.get("status") == "completed" and process_event.get("outcome_known") is True:
+        status = "failed"
+        failure_code = "incomplete_cycle_phases"
+    else:
+        status = "unknown"
+        failure_code = None
+    last = samples[-1] if samples else {}
+    return {
+        "status": status,
+        "outcome_known": status in {"succeeded", "failed"},
+        "world_change_started": bool(samples),
+        "entity_ref": arguments["entity_ref"],
+        "destination_ref": arguments["destination_ref"],
+        "return_destination_ref": arguments["return_destination_ref"],
+        "phase_events": events,
+        "feedback_observations": samples,
+        "feedback_samples": samples,
+        "feedback_source_profile": profile.source_profile(),
+        "evaluation_profile": profile.evaluation_profile(),
+        "process_parameters": dict(parameters),
+        "possession_state": last.get("possession_state", "unknown"),
+        "object_support_state": last.get("object_support_state", "unknown"),
+        "new_scene_revision": f"{arguments['scene_revision']}-generic-{step}" if succeeded else None,
+        "artifact_refs": [f"artifact://labutopia/paos-generic/{arguments['scene_revision']}-{step}"],
+        "evidence_refs": [f"artifact://labutopia/paos-generic/{arguments['scene_revision']}-{step}"],
+        "final_object_observation": samples[-1] if samples else {},
+        "failure_code": failure_code,
+        "incomplete_phases": missing,
+        **video_info,
+    }
+
+
 def _phase_events(samples, pickpour_success: bool, placement_done: bool, profile: LabUtopiaProfile):
     if not samples:
-        return []
+        return _generic_phase_events([], process_completed=False, process_type="pour")
     last = float(samples[-1]["timestamp_s"])
     grasp = next((sample for sample in samples if sample["grasp_valid"]), None)
     aligned = next((sample for sample in samples if sample["target_container_aligned"] and sample["grasp_valid"]), None)
     window = _continuous_pour_window(samples, profile)
     returned = next((sample for sample in reversed(samples) if sample["grasp_valid"] and sample["tilt_rad"] <= profile.tilt_tolerance_rad), None)
-    if not grasp or not pickpour_success:
+    if not grasp:
         return _failed_events("acquire", samples, "grasp_not_confirmed")
     if not aligned:
         return _failed_events("transport", samples, "container_not_aligned")
+    if not pickpour_success:
+        return _append_placement_events(
+            _failed_events("process", samples, "pour_controller_not_completed"),
+            samples,
+            placement_done,
+            last,
+        )
     if window is None:
         return _append_placement_events(
             _failed_events("process", samples, "continuous_pour_window_not_observed"),
@@ -673,6 +1307,8 @@ def _pour_controller_target(state, profile, np, rotation_cls):
 
 def _append_placement_events(events, samples, placement_done, process_end):
     if not placement_done:
+        if any(event.get("phase") == "stow" for event in events):
+            return events
         events.append({"phase": "stow", "status": "unknown", "outcome_known": False, "started_at_s": float(samples[-1]["timestamp_s"]), "facts": {}})
         return events
     base = max(float(samples[-1]["timestamp_s"]), process_end + 0.01)
@@ -705,6 +1341,18 @@ def _failed_events(phase, samples, reason):
     phases.append({"phase": phase, "status": "failed", "outcome_known": True,
                    "started_at_s": 0.0 if not phases else phases[-1]["completed_at_s"],
                    "completed_at_s": max(end, 0.001), "facts": {"failure_observed": True, "failure_reason": reason}})
+    failed_index += 1
+    phases.extend(
+        {
+            "phase": pending,
+            "status": "unknown",
+            "outcome_known": False,
+            "started_at_s": max(end, 0.001),
+            "completed_at_s": None,
+            "facts": {},
+        }
+        for pending in order[failed_index:]
+    )
     return phases
 
 

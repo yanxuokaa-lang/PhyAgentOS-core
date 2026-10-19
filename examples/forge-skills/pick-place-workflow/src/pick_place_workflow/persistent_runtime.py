@@ -432,7 +432,9 @@ def build_persistent_runtime(*, client, understanding_provider, grasp_provider,
                              tool_context_provider, possession: PersistentPossession | None = None,
                              query_decorator=None, tool_input_defaults=None,
                              require_synchronized_views: bool = False,
-                             held_preparation_provider=None, resolve_held_preparation=None) -> CapabilityRuntime:
+                             held_preparation_provider=None, resolve_held_preparation=None,
+                             register_legacy_actions: bool = True,
+                             register_legacy_held_operations: bool = True) -> CapabilityRuntime:
     """Use injected model providers and one persistent manipulation process.
 
     resolve_preparation belongs to the adapter and supplies the approved route
@@ -445,15 +447,19 @@ def build_persistent_runtime(*, client, understanding_provider, grasp_provider,
     possession = possession or PersistentPossession()
     if (held_preparation_provider is None) != (resolve_held_preparation is None):
         raise ValueError("held preparation provider and resolver must be supplied together")
-    for spec, endpoint in (
+    registrations = [
         (OBSERVATION_TOOL_SPEC, ObservationEndpoint(PersistentObservationSource(client))),
         (SCENE_UNDERSTANDING_TOOL_SPEC, SceneUnderstandingEndpoint(understanding_provider)),
         (GRASP_PROPOSAL_TOOL_SPEC, GraspProposalEndpoint(grasp_provider)),
         (CAPABILITY_TOOL_SPEC, CapabilitySnapshotEndpoint(capability_provider)),
         (MANIPULATION_TOOL_SPEC, ManipulationPreparationEndpoint(preparation_provider)),
-        (ACQUIRE_TOOL_SPEC, PersistentActionEndpoint("acquire", client, resolve_preparation, possession=possession)),
-        (PLACE_TOOL_SPEC, PersistentActionEndpoint("place", client, resolve_preparation, possession=possession)),
-    ):
+    ]
+    if register_legacy_actions:
+        registrations.extend([
+            (ACQUIRE_TOOL_SPEC, PersistentActionEndpoint("acquire", client, resolve_preparation, possession=possession)),
+            (PLACE_TOOL_SPEC, PersistentActionEndpoint("place", client, resolve_preparation, possession=possession)),
+        ])
+    for spec, endpoint in registrations:
         defaults = (tool_input_defaults or {}).get(spec["tool_id"])
         if query_decorator is not None and spec["semantics"] == "query":
             endpoint = query_decorator(spec["tool_id"], endpoint)
@@ -462,7 +468,7 @@ def build_persistent_runtime(*, client, understanding_provider, grasp_provider,
                 argument_defaults=defaults,
                 require_synchronized_views=require_synchronized_views,
             )
-        if held_preparation_provider is not None and spec["tool_id"] == "object.place":
+        if register_legacy_held_operations and spec["tool_id"] == "object.place":
             from .held_manipulation import HeldActionEndpoint, extended_place_spec
 
             live_spec = extended_place_spec(live_spec)
@@ -489,17 +495,18 @@ def build_persistent_runtime(*, client, understanding_provider, grasp_provider,
             extended_held_preparation_spec,
         )
 
-        for spec, endpoint in (
-            (PREPARE_HELD_TOOL_SPEC, HeldPreparationEndpoint(held_preparation_provider, possession)),
-            (POUR_TOOL_SPEC, HeldActionEndpoint("pour", client, resolve_held_preparation, possession)),
-            (STIR_TOOL_SPEC, HeldActionEndpoint("stir", client, resolve_held_preparation, possession)),
-        ):
-            if spec["tool_id"] == "manipulation.prepare_held":
-                spec = extended_held_preparation_spec(spec)
-            if query_decorator is not None and spec["semantics"] == "query":
-                endpoint = query_decorator(spec["tool_id"], endpoint)
-            runtime.register_tool(deepcopy(spec), endpoint,
-                                  context_provider=lambda tool_id=spec["tool_id"]: tool_context_provider(tool_id))
+        if register_legacy_held_operations:
+            for spec, endpoint in (
+                (PREPARE_HELD_TOOL_SPEC, HeldPreparationEndpoint(held_preparation_provider, possession)),
+                (POUR_TOOL_SPEC, HeldActionEndpoint("pour", client, resolve_held_preparation, possession)),
+                (STIR_TOOL_SPEC, HeldActionEndpoint("stir", client, resolve_held_preparation, possession)),
+            ):
+                if spec["tool_id"] == "manipulation.prepare_held":
+                    spec = extended_held_preparation_spec(spec)
+                if query_decorator is not None and spec["semantics"] == "query":
+                    endpoint = query_decorator(spec["tool_id"], endpoint)
+                runtime.register_tool(deepcopy(spec), endpoint,
+                                      context_provider=lambda tool_id=spec["tool_id"]: tool_context_provider(tool_id))
         cycle_specs = (
             ("pour_cycle", POUR_CYCLE_TOOL_SPEC,
              CycleActionEndpoint("pour_cycle", client, resolve_held_preparation, possession,

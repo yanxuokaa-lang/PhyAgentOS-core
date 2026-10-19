@@ -52,6 +52,8 @@ def test_profile_round_trips_json(tmp_path):
 def test_profile_normalizes_source_pour_axis(tmp_path):
     configured = profile(tmp_path)
     assert configured.source_pour_axis == (0.0, 0.0, 1.0)
+    assert configured.configured_process_type == "pour"
+    assert "manipulation_cycle" in configured.supported_operations
 
 
 def test_generic_cycle_requires_caller_parameters_and_profile_opt_in(tmp_path):
@@ -61,6 +63,7 @@ def test_generic_cycle_requires_caller_parameters_and_profile_opt_in(tmp_path):
         "lab_root": str(tmp_path), "config_path": str(tmp_path / "level.yaml"),
         "scene_usd_path": str(tmp_path / "lab.usd"), "robot_usd_path": str(tmp_path / "lab.usd"),
         "source_path": "/World/cap", "destination_path": "/World/cap_target",
+        "configured_process_type": "cap_unscrew",
         "supported_operations": ["manipulation_cycle"],
     })
     with pytest.raises(LabProfileError, match="caller-supplied"):
@@ -71,3 +74,22 @@ def test_generic_cycle_requires_caller_parameters_and_profile_opt_in(tmp_path):
                       "speed": 0.5, "direction": "ccw", "tolerance": 0.05},
     }}, operation="manipulation_cycle")
     assert value["parameters"]["process_type"] == "cap_unscrew"
+
+
+def test_stir_profile_projects_defaults_for_existing_glass_rod_scene(tmp_path):
+    scene = tmp_path / "lab.usd"
+    config = tmp_path / "level.yaml"
+    scene.write_text("usd", encoding="utf-8")
+    config.write_text("name: lab", encoding="utf-8")
+    configured = LabUtopiaProfile.from_mapping({
+        "lab_root": str(tmp_path), "config_path": str(config),
+        "scene_usd_path": str(scene), "robot_usd_path": str(scene),
+        "source_path": "/World/glass_rod", "destination_path": "/World/target_beaker",
+        "source_label": "玻璃棒", "destination_label": "烧杯",
+        "configured_process_type": "stir", "supported_operations": ["stir_cycle"],
+    })
+    value = configured.paos_input(operation="stir_cycle")
+    assert value["parameters"] == {
+        "radius_m": 0.009, "depth_m": 0.04, "turns": 2.0,
+        "duration_s": 4.0, "direction": "ccw",
+    }
