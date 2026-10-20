@@ -30,7 +30,7 @@
 - Ruff, compileall, and `git diff --check` passed. No Isaac Sim, Gateway, or motion was run.
 
 ### Git 提交 / Git Commit
-- Commit: pending
+- Commit: `970fc82b`
 - Branch: `feature/planning-loop`
 
 ## v15.1.5 (2026-10-20 19:31) - codex
