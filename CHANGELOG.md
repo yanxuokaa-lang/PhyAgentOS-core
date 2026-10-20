@@ -23,6 +23,10 @@
 - Baseline planning/subtask tests: `51 passed` before reverting the incompatible intent requirement; Ruff and `git diff --check` passed.
 - No simulator, Gateway Action, or motion was run. Assignment provenance remains open.
 
+### Git 提交 / Git Commit
+- Commit: `8d8af9a9`
+- Branch: `feature/planning-loop`
+
 ## v15.1.9 (2026-10-20 21:20) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
