@@ -223,6 +223,7 @@ def build_labutopia_runtime(
     gateway_identity: str = "labutopia-paos-runtime",
     possession: Any | None = None,
     perception_adapter: Any | None = None,
+    subtask_context_resolver: Callable[[str], Mapping[str, Any]] | None = None,
 ) -> LabUtopiaPAOSRuntime:
     """Compose LabUtopia behind PAOS without owning perception orchestration.
 
@@ -264,7 +265,13 @@ def build_labutopia_runtime(
         refresh_binding = getattr(perception_adapter, "refresh_binding", None)
         if callable(with_query_invoker) and callable(refresh_binding):
             bound_adapter = with_query_invoker(runtime)
-            register_subtask_tool(runtime, bound_adapter.refresh_binding, tool_context_provider)
+            if subtask_context_resolver is not None:
+                register_subtask_tool(
+                    runtime,
+                    bound_adapter.refresh_binding,
+                    tool_context_provider,
+                    subtask_context_resolver,
+                )
     transport = CapabilityRuntimeTransport(runtime, gateway_identity=gateway_identity)
     return LabUtopiaPAOSRuntime(runtime, transport, selected_engine, provider, client, bound_adapter)
 

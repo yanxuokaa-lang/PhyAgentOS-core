@@ -33,6 +33,12 @@ class SubtaskExecutionError(ValueError):
     """The subtask contract or an internal Tool result is not admissible."""
 
 
+class SubtaskContextResolver(Protocol):
+    """Resolve a persisted PAOS caller into Coordinator-owned execution facts."""
+
+    def __call__(self, caller_id: str) -> Mapping[str, Any]: ...
+
+
 class SubtaskInvoker(Protocol):
     """Existing PAOS Tool transport exposed as one bounded call."""
 
@@ -736,9 +742,11 @@ class SubtaskActionEndpoint:
         self,
         runtime: CapabilityRuntime,
         refresh_binding: Callable[[PerceptionBinding, str], PerceptionBinding] | None = None,
+        resolve_context: SubtaskContextResolver | None = None,
     ) -> None:
         self.runtime = runtime
         self.refresh_binding = refresh_binding
+        self.resolve_context = resolve_context
 
     def admit(self, arguments: Mapping[str, Any]) -> ActionAdmission:
         raise ValueError("subtask Action requires a task-owned caller")
@@ -748,9 +756,55 @@ class SubtaskActionEndpoint:
         spec = SubtaskSpec.model_validate(spec_payload)
         if not isinstance(caller_id, str) or not caller_id.startswith("paos:"):
             raise ValueError("subtask Action caller must be bound to a PAOS task")
+        if not callable(self.resolve_context):
+            raise ValueError("subtask Action requires a Coordinator context resolver")
+        context = self.resolve_context(caller_id)
+        if not isinstance(context, Mapping):
+            raise ValueError("Coordinator context resolver returned a non-object")
+        required = (
+            "task_id", "revision_id", "node_id", "node_digest", "obligation_id",
+            "input_binding_digest", "decision_trace_ref", "planning_binding", "intent",
+        )
+        if any(key not in context for key in required):
+            raise ValueError("Coordinator context is incomplete for subtask admission")
+        if context["node_id"] != spec.subtask_id:
+            raise ValueError("subtask id does not match the Coordinator PlanNode")
+        planning_binding = context["planning_binding"]
+        if not isinstance(planning_binding, Mapping):
+            raise ValueError("Coordinator context has no planning binding")
+        for key in (
+            "revision_id", "node_id", "node_digest", "obligation_id",
+            "input_binding_digest", "decision_trace_ref",
+        ):
+            if planning_binding.get(key) != context.get(key):
+                raise ValueError(f"Coordinator planning binding {key} does not match the caller")
+        intent = context["intent"]
+        if not isinstance(intent, Mapping):
+            raise ValueError("Coordinator context has no trusted manipulation intent")
+        if intent.get("motion_authorized") is not False:
+            raise ValueError("Coordinator manipulation intent must remain no-motion")
+        for key in ("task_id", "revision_id", "node_id", "node_digest"):
+            if intent.get(key) != context[key]:
+                raise ValueError(f"Coordinator manipulation intent {key} does not match the caller")
+        binding = spec.binding
+        for key, expected in (
+            ("entity_ref", binding.entity_ref),
+            ("observation_ref", binding.observation_ref),
+            ("scene_revision", binding.scene_revision),
+            ("observation_frame_id", binding.frame_id),
+            ("calibration_ref", binding.calibration_ref),
+            ("candidate_set_ref", binding.candidate_set_ref),
+        ):
+            if intent.get(key) != expected:
+                raise ValueError(f"Coordinator intent {key} does not match the perception binding")
 
         def start(_invocation_id: str, _attempt_id: str) -> ActionAdmission:
-            driver = RuntimeSubtaskDriver(self.runtime, spec, caller_id, self.refresh_binding)
+            driver = RuntimeSubtaskDriver(
+                self.runtime,
+                spec,
+                caller_id,
+                self.refresh_binding,
+            )
             return ActionAdmission(
                 terminal_result={"status": "unknown", "outcome_known": False},
                 driver=driver,
@@ -840,4 +894,5 @@ __all__ = [
     "SubtaskExecutionResult", "SubtaskExecutor", "SubtaskInvoker", "SubtaskSpec",
     "SubtaskToolCall", "SUBTASK_TOOL_SPEC", "ToolReceipt", "default_subtask_calls",
     "RuntimeSubtaskDriver", "SubtaskActionEndpoint",
+    "SubtaskContextResolver",
 ]

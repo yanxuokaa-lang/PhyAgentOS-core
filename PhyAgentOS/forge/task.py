@@ -30,6 +30,7 @@ from PhyAgentOS.forge.binding import (
     query_record_retryable,
 )
 from PhyAgentOS.forge.evidence import ForgeEvidenceWriter
+from PhyAgentOS.forge.manipulation import MANIPULATION_INTENT_SEMANTIC_KEYS, ManipulationIntent
 from PhyAgentOS.forge.observation import ForgeObservationCollector
 from PhyAgentOS.forge.tool_client import ForgeToolAPIError, ForgeToolClient
 from PhyAgentOS.planning import (
@@ -1199,6 +1200,97 @@ class AgentTaskCoordinator:
                 "selected execution requires a unique node selection for the requested tool"
             )
         return PlanningExecutionBinding.model_validate(candidates[0]["planning_binding"])
+
+    def resolve_subtask_context(self, caller_id: str) -> dict[str, Any]:
+        """Resolve persisted Coordinator identity for one subtask Action caller.
+
+        The Runtime receives only the PAOS caller string. This bridge locates
+        the persisted active execution record and returns its complete node
+        binding plus the already-built manipulation intent. It never derives
+        or repairs coordinator-owned identity.
+        """
+        if not isinstance(caller_id, str):
+            raise AgentTaskError("subtask caller must be a string")
+        parts = caller_id.split(":")
+        if len(parts) != 4 or parts[0] != "paos" or not all(parts[1:]):
+            raise AgentTaskError("subtask caller is not a PAOS task record")
+        task_id, revision_id, record_id = parts[1:]
+        task = self.get_task(task_id)
+        if task.active_revision_id != revision_id:
+            raise AgentTaskError("subtask caller references a stale revision")
+        record = next(
+            (item for item in task.active_revision.execution_records if item.record_id == record_id),
+            None,
+        )
+        if record is None or record.caller_id != caller_id:
+            raise AgentTaskError("subtask caller record is not owned by the active task")
+        if record.tool_id != "manipulation.execute_subtask" or record.semantics != "action":
+            raise AgentTaskError("caller record is not a subtask Action")
+        planning_fields = (
+            record.node_id, record.node_digest, record.obligation_id,
+            record.input_binding_digest, record.decision_trace_ref,
+        )
+        if any(value is None for value in planning_fields):
+            raise AgentTaskError("subtask caller record has no complete planning binding")
+        binding = PlanningExecutionBinding.model_validate({
+            "revision_id": revision_id,
+            "node_id": record.node_id,
+            "node_digest": record.node_digest,
+            "obligation_id": record.obligation_id,
+            "input_binding_digest": record.input_binding_digest,
+            "decision_trace_ref": record.decision_trace_ref,
+        })
+        if binding.input_binding_digest != tool_input_binding_digest(record.arguments):
+            raise AgentTaskError("subtask caller arguments differ from the selected planning binding")
+        graph = task.active_revision.plan_graph
+        node = next((item for item in graph.nodes if item.node_id == record.node_id), None) if graph else None
+        if (
+            node is None
+            or plan_node_digest(node) != binding.node_digest
+            or node.obligation_id != binding.obligation_id
+        ):
+            raise AgentTaskError("subtask caller record does not match the active PlanGraph")
+        if node.capability != "manipulation.execute_subtask":
+            raise AgentTaskError("active PlanNode is not a manipulation subtask")
+        semantic = node.input_bindings.get("intent")
+        if not isinstance(semantic, Mapping):
+            raise AgentTaskError("subtask PlanNode has no structured manipulation intent")
+        if set(semantic) - MANIPULATION_INTENT_SEMANTIC_KEYS:
+            raise AgentTaskError("subtask PlanNode intent contains unsupported fields")
+        identity = node.input_bindings
+        try:
+            intent = ManipulationIntent.model_validate({
+                **dict(semantic),
+                "task_id": task_id,
+                "revision_id": revision_id,
+                "node_id": node.node_id,
+                "node_digest": plan_node_digest(node),
+                "entity_ref": identity["entity_ref"],
+                "observation_ref": identity["observation_ref"],
+                "scene_revision": identity["scene_revision"],
+                "observation_frame_id": identity["frame_id"],
+                "calibration_ref": identity["calibration_ref"],
+                "candidate_set_ref": identity["candidate_set_ref"],
+                "motion_authorized": False,
+            })
+        except (KeyError, ValueError, TypeError) as exc:
+            raise AgentTaskError(f"subtask PlanNode cannot produce a trusted manipulation intent: {exc}") from exc
+        return {
+            "task_id": task_id,
+            "revision_id": revision_id,
+            "record_id": record_id,
+            "tool_id": record.tool_id,
+            "node_id": record.node_id,
+            "node_digest": record.node_digest,
+            "obligation_id": record.obligation_id,
+            "input_binding_digest": record.input_binding_digest,
+            "decision_trace_ref": record.decision_trace_ref,
+            "planning_binding": {
+                **binding.model_dump(mode="json"),
+            },
+            "intent": intent.model_dump(mode="json"),
+            "node_input_bindings": deepcopy(dict(node.input_bindings)),
+        }
 
     def persist_planning_selection(self, proposal: dict[str, Any]) -> dict[str, Any]:
         """Persist a dispatch-approved selection and return its execution binding."""

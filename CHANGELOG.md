@@ -2,6 +2,46 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.1.10 (2026-10-20 22:11) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [policy] [review] 审核发现 subtask Action 尚未接入 `manipulation_intent_v2` trusted builder；拒绝将 Coordinator 读取未持久化 intent 的改动作为完成实现。 / Review found that the subtask Action is not yet wired to the `manipulation_intent_v2` trusted builder; rejected treating a Coordinator read of a non-persisted intent as a completed implementation.
+- [docs] [docs] 按 PAOS 架构、扩展原则、Developer Guide、AgentLoop 和七维验收记录实现 blocker 与下一阶段边界。 / Record the implementation blocker and next-stage boundary against PAOS architecture, extension principles, Developer Guide, AgentLoop, and seven-dimension acceptance.
+
+### 影响文件 / Affected Files
+- `docs/forge/IMPLEMENTATION_REVIEW_V15_1_10.md`
+- `changelog/2026-10.md`
+
+### 关键 Diff / Key Diff
+```diff
+- Coordinator expects a persisted intent absent from the subtask ToolSpec
++ Keep current contract; first persist the trusted intent through the subtask ToolSpec/PlanNode path
++ Then pass that same intent into task-scoped manipulation.prepare
+```
+
+### 验证 / Validation
+- Baseline planning/subtask tests: `51 passed` before reverting the incompatible intent requirement; Ruff and `git diff --check` passed.
+- No simulator, Gateway Action, or motion was run. Assignment provenance remains open.
+
+## v15.1.9 (2026-10-20 21:20) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [policy] [feat] 新增 Coordinator-owned 调用上下文解析接口，并使子任务入口无上下文时 fail closed。 / Add a Coordinator-owned invocation-context resolver and fail closed at the subtask entry when context is unavailable.
+- [test] [test] 覆盖调用归属、revision/node 一致性、intent/感知绑定一致性与无运动 admission；focused `28 passed`，Coordinator `2 passed`。 / Cover caller ownership, revision/node consistency, intent/perception-binding consistency, and no-motion admission; focused `28 passed`, Coordinator `2 passed`.
+
+### 影响文件 / Affected Files
+- `PhyAgentOS/forge/task.py`, generic subtask Runtime, LabUtopia wiring, focused tests, and `docs/forge/IMPLEMENTATION_REVIEW_V15_1_9.md`.
+
+### 关键 Diff / Key Diff
+```diff
+- subtask Action admission trusts only a paos caller string
++ Coordinator resolves the persisted Action execution record and active PlanNode
++ subtask admission rejects missing or inconsistent Coordinator context before internal calls
+```
+
+### 验证 / Validation
+- Ruff, `compileall`, and `git diff --check` passed; no simulator or motion was run. Assignment provenance remains explicitly partial. / Ruff、`compileall` 和 `git diff --check` 通过；未启动仿真或运动，assignment provenance 明确仍为部分完成。
+
 ## v15.1.7 (2026-10-20 20:20) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]

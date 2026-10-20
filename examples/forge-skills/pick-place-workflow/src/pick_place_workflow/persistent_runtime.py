@@ -440,7 +440,12 @@ class PersistentActionEndpoint:
         return ActionAdmission(start=start)
 
 
-def register_subtask_tool(runtime: CapabilityRuntime, refresh_binding, tool_context_provider) -> None:
+def register_subtask_tool(
+    runtime: CapabilityRuntime,
+    refresh_binding,
+    tool_context_provider,
+    resolve_subtask_context,
+) -> None:
     """Register the Agent-facing subtask boundary after Runtime composition.
 
     The late registration point lets a host bind a provider-neutral perception
@@ -449,11 +454,13 @@ def register_subtask_tool(runtime: CapabilityRuntime, refresh_binding, tool_cont
     """
     if not callable(refresh_binding):
         raise ValueError("refresh_binding must be callable")
+    if not callable(resolve_subtask_context):
+        raise ValueError("resolve_subtask_context must be callable")
     from .subtask_executor import SUBTASK_TOOL_SPEC, SubtaskActionEndpoint
 
     runtime.register_tool(
         deepcopy(SUBTASK_TOOL_SPEC),
-        SubtaskActionEndpoint(runtime, refresh_binding),
+        SubtaskActionEndpoint(runtime, refresh_binding, resolve_subtask_context),
         context_provider=lambda: tool_context_provider("manipulation.execute_subtask"),
     )
 
@@ -467,7 +474,7 @@ def build_persistent_runtime(*, client, understanding_provider, grasp_provider,
                              held_preparation_provider=None, resolve_held_preparation=None,
                              register_legacy_actions: bool = True,
                              register_legacy_held_operations: bool = True,
-                             refresh_subtask_binding=None) -> CapabilityRuntime:
+                             refresh_subtask_binding=None, resolve_subtask_context=None) -> CapabilityRuntime:
     """Use injected model providers and one persistent manipulation process.
 
     resolve_preparation belongs to the adapter and supplies the approved route
@@ -566,6 +573,11 @@ def build_persistent_runtime(*, client, understanding_provider, grasp_provider,
         for _, spec, endpoint in available_cycles:
             runtime.register_tool(deepcopy(spec), endpoint,
                                   context_provider=lambda tool_id=spec["tool_id"]: tool_context_provider(tool_id))
-        if refresh_subtask_binding is not None:
-            register_subtask_tool(runtime, refresh_subtask_binding, tool_context_provider)
+    if refresh_subtask_binding is not None and resolve_subtask_context is not None:
+        register_subtask_tool(
+            runtime,
+            refresh_subtask_binding,
+            tool_context_provider,
+            resolve_subtask_context,
+        )
     return runtime

@@ -88,8 +88,44 @@ def runtime_with_subtask_endpoint(refresh_binding=None, *, pending_acquire=False
         {"tool_id": "manipulation.prepare_held", "endpoint_id": "held_preparation", "operation": "prepare", "semantics": "query"},
         ImmediateQueryEndpoint({"status": "available", "motion_authorized": False, "arguments": {}}),
     )
-    runtime.register_tool(SUBTASK_TOOL_SPEC, SubtaskActionEndpoint(runtime, refresh_binding))
+    runtime.register_tool(SUBTASK_TOOL_SPEC, SubtaskActionEndpoint(
+        runtime, refresh_binding, lambda _caller_id: coordinator_context()
+    ))
     return runtime
+
+
+def coordinator_context(**overrides):
+    current = binding()
+    context = {
+        "task_id": "task-1",
+        "revision_id": "revision-1",
+        "node_id": "pour-a",
+        "node_digest": "a" * 64,
+        "obligation_id": "pour-a-obligation",
+        "input_binding_digest": "b" * 64,
+        "decision_trace_ref": "artifact://decisions/pour-a",
+        "planning_binding": {
+            "node_id": "pour-a", "revision_id": "revision-1",
+            "node_digest": "a" * 64, "obligation_id": "pour-a-obligation",
+            "input_binding_digest": "b" * 64,
+            "decision_trace_ref": "artifact://decisions/pour-a",
+        },
+        "intent": {
+            "task_id": "task-1",
+            "revision_id": "revision-1",
+            "node_id": "pour-a",
+            "node_digest": "a" * 64,
+            "entity_ref": current.entity_ref,
+            "observation_ref": current.observation_ref,
+            "scene_revision": current.scene_revision,
+            "observation_frame_id": current.frame_id,
+            "calibration_ref": current.calibration_ref,
+            "candidate_set_ref": current.candidate_set_ref,
+            "motion_authorized": False,
+        },
+    }
+    context.update(overrides)
+    return context
 
 
 def test_executor_aggregates_five_internal_tools_into_one_subtask_settlement():
@@ -133,6 +169,41 @@ def test_runtime_action_driver_uses_one_outer_invocation_for_internal_sequence()
     assert result["result"]["subtask_result"]["status"] == "completed"
     assert len(result["result"]["subtask_result"]["receipts"]) == 5
     assert result["result"]["capability_outcome_summary"]["requires_replan"] is False
+
+
+def test_subtask_admission_rejects_node_or_intent_mismatch_before_internal_calls():
+    runtime = CapabilityRuntime()
+    endpoint = SubtaskActionEndpoint(runtime, resolve_context=lambda _caller: coordinator_context())
+    endpoint.resolve_context = lambda _caller: coordinator_context(node_id="other-node")
+    spec = SubtaskSpec(subtask_id="pour-a", operation="pour", binding=binding())
+    with pytest.raises(ValueError, match="PlanNode"):
+        endpoint.admit_for_caller(spec.model_dump(mode="json"), caller_id="paos:task-1:revision-1:record-1")
+
+    endpoint.resolve_context = lambda _caller: coordinator_context(
+        intent={**coordinator_context()["intent"], "node_digest": "b" * 64}
+    )
+    with pytest.raises(ValueError, match="node_digest"):
+        endpoint.admit_for_caller(spec.model_dump(mode="json"), caller_id="paos:task-1:revision-1:record-1")
+
+    endpoint.resolve_context = lambda _caller: coordinator_context(
+        intent={**coordinator_context()["intent"], "motion_authorized": True}
+    )
+    with pytest.raises(ValueError, match="no-motion"):
+        endpoint.admit_for_caller(spec.model_dump(mode="json"), caller_id="paos:task-1:revision-1:record-1")
+
+    endpoint.resolve_context = lambda _caller: coordinator_context(
+        intent={**coordinator_context()["intent"], "motion_authorized": True}
+    )
+    with pytest.raises(ValueError, match="no-motion"):
+        endpoint.admit_for_caller(spec.model_dump(mode="json"), caller_id="paos:task-1:revision-1:record-1")
+
+
+def test_subtask_admission_without_coordinator_resolver_fails_closed():
+    runtime = CapabilityRuntime()
+    endpoint = SubtaskActionEndpoint(runtime)
+    spec = SubtaskSpec(subtask_id="pour-a", operation="pour", binding=binding())
+    with pytest.raises(ValueError, match="Coordinator context resolver"):
+        endpoint.admit_for_caller(spec.model_dump(mode="json"), caller_id="paos:task-1:revision-1:record-1")
 
 
 def test_runtime_driver_fails_closed_when_scene_revision_changes_without_refresh():

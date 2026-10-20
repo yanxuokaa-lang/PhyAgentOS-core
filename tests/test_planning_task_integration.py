@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -92,6 +93,72 @@ def _observation_graph(task_id: str, revision_id: str) -> PlanGraph:
     }
     payload["graph_digest"] = plan_graph_digest(payload)
     return PlanGraph.model_validate(payload)
+
+
+def test_coordinator_resolves_subtask_identity_and_builds_intent_from_plan_node():
+    node = PlanNode(
+        node_id="pour-reagent-a",
+        obligation_id="pour-reagent-a-obligation",
+        capability="manipulation.execute_subtask",
+        input_bindings={
+            "entity_ref": "entity://reagent-a",
+            "observation_ref": "observation://scene-1/camera-front",
+            "scene_revision": "scene-1",
+            "frame_id": "camera-front",
+            "calibration_ref": "artifact://calibration/camera-front-v1",
+            "candidate_set_ref": "candidate-set://scene-1/camera-front",
+            "intent": {
+                "goal": "pour reagent into vessel",
+                "success_criteria": ["liquid transferred"],
+                "allowed_arms": ["franka"],
+                "coordination_mode": "single_arm",
+                "constraints": ["keep container stable"],
+            },
+        },
+    )
+    digest = plan_node_digest(node)
+    record_arguments = {"subtask_id": "pour-reagent-a", "operation": "pour"}
+    record = SimpleNamespace(
+        record_id="record-1",
+        caller_id="paos:task-1:revision-1:record-1",
+        tool_id="manipulation.execute_subtask",
+        semantics="action",
+        node_id=node.node_id,
+        node_digest=digest,
+        obligation_id=node.obligation_id,
+        input_binding_digest=tool_input_binding_digest(record_arguments),
+        decision_trace_ref="artifact://decisions/trace-1",
+        arguments=record_arguments,
+    )
+    task = SimpleNamespace(
+        active_revision_id="revision-1",
+        active_revision=SimpleNamespace(
+            execution_records=[record],
+            plan_graph=SimpleNamespace(nodes=(node,)),
+        ),
+    )
+    coordinator = object.__new__(AgentTaskCoordinator)
+    coordinator.get_task = lambda task_id: task if task_id == "task-1" else None
+
+    context = coordinator.resolve_subtask_context(record.caller_id)
+
+    assert context["task_id"] == "task-1"
+    assert context["revision_id"] == "revision-1"
+    assert context["node_id"] == node.node_id
+    assert context["node_digest"] == digest
+    assert context["intent"]["node_digest"] == digest
+    assert context["intent"]["motion_authorized"] is False
+    assert context["intent"]["goal"] == "pour reagent into vessel"
+
+
+def test_coordinator_rejects_stale_or_non_subtask_caller_context():
+    coordinator = object.__new__(AgentTaskCoordinator)
+    task = SimpleNamespace(active_revision_id="revision-2", active_revision=SimpleNamespace(execution_records=[]))
+    coordinator.get_task = lambda _task_id: task
+    with pytest.raises(AgentTaskError, match="stale revision"):
+        coordinator.resolve_subtask_context("paos:task-1:revision-1:record-1")
+    with pytest.raises(AgentTaskError, match="not a PAOS task record"):
+        coordinator.resolve_subtask_context("diagnostic:task-1:revision-1:record-1")
 
 
 @pytest.mark.asyncio

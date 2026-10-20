@@ -253,12 +253,42 @@ def test_labutopia_registers_subtask_only_with_generic_perception_chain(tmp_path
         tool_context_provider=lambda _: {"ready": True},
         allow_live=False,
         perception_adapter=adapter,
+        subtask_context_resolver=lambda _caller: None,
     )
     try:
         tools = {item["tool_id"] for item in bundle.runtime.list_tools()["tools"]}
         assert "manipulation.execute_subtask" in tools
         assert bundle.perception_adapter is not None
         assert bundle.perception_adapter.query_invoker is bundle.runtime
+    finally:
+        bundle.client.close()
+
+
+def test_labutopia_does_not_register_subtask_without_coordinator_context(tmp_path):
+    engine = FakeEngine()
+    profile = _profile(tmp_path)
+    engine.profile = profile
+    adapter = PerceptionBindingAdapter(
+        lambda _tool_id, _arguments: {},
+        lambda _request: {"status": "available"},
+        BindingRequest(("camera/front",), "reagent_a", "beaker", 1000),
+    )
+    bundle = build_labutopia_runtime(
+        profile=profile,
+        engine=engine,
+        understanding_provider=object(),
+        grasp_provider=object(),
+        preparation_provider=GenericProvider(),
+        capability_provider=GenericProvider(),
+        resolve_preparation=lambda operation, arguments: dict(arguments),
+        tool_context_provider=lambda _: {"ready": True},
+        allow_live=False,
+        perception_adapter=adapter,
+    )
+    try:
+        tools = {item["tool_id"] for item in bundle.runtime.list_tools()["tools"]}
+        assert "manipulation.execute_subtask" not in tools
+        assert bundle.perception_adapter is not None
     finally:
         bundle.client.close()
 
