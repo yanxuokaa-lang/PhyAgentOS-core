@@ -2,6 +2,31 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.1.4 (2026-10-20 19:20) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [policy] [docs] 将 provider-neutral 的依赖方向、领域边界、证据血缘、生命周期所有权、失败优先和风险匹配验证原则写入 Coding Agent 规范。 / Add provider-neutral dependency, domain, evidence, lifecycle, failure-first, and risk-proportional validation principles to the Coding Agent instructions.
+- [test] [docs] 审核规范文本与日志格式；没有启动仿真或运动。 / Review the policy text and changelog format; no simulation or motion was started.
+
+### 影响文件 / Affected Files
+- `AGENTS.md:L23-L146`
+- `changelog/2026-10.md`
+
+### 关键 Diff / Key Diff
+```diff
++ task semantics / Agent -> domain capability ports -> Providers/Adapters -> environment or device
++ observation -> interpretation -> measurement -> candidate -> preparation -> feedback -> settlement
++ risk-proportional validation; no speculative gates without a concrete failure scenario
+```
+
+### 验证 / Validation
+- `git diff --check` passed; UTF-8 text and line references inspected.
+- 未启动 Isaac Sim、Gateway 或运动。 / No Isaac Sim, Gateway, or motion was run.
+
+### Git 提交 / Git Commit
+- Commit: pending
+- Branch: `feature/planning-loop`
+
 ## v15.1.3 (2026-10-20 20:40) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
@@ -79,19 +104,6 @@
 
 ### 验证 / Validation
 - Planning/executor and existing regressions passed; no Isaac Sim, Gateway, or motion was run.
-
-## v15.0.1 (2026-10-20 18:00) - codex
-
-### 变更摘要 / Summary [完成 / Completed]
-- [policy] [feat] 定义子任务内 acquire/prepare/process/place 顺序和一次 Agent-facing 结算边界。 / Define the ordered acquire/prepare/process/place sequence and one Agent-facing settlement boundary.
-- [test] [feat] 建立 no-motion 子任务执行器测试入口。 / Establish no-motion subtask executor test coverage.
-
-### 影响文件 / Affected Files
-- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/subtask_executor.py`
-- `examples/forge-skills/pick-place-workflow/tests/test_subtask_executor.py`
-
-### 验证 / Validation
-- Initial no-motion planning/executor tests passed; live execution was not run.
 
 ## v14.12.13 (2026-10-20) - codex
 
