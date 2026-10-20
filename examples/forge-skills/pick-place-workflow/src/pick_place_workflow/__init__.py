@@ -72,6 +72,13 @@ from .object_place import (
 from .object_place import (
     ActionReadinessGate as PlaceActionReadinessGate,
 )
+from .perception_binding import (
+    BindingRequest,
+    PerceptionBindingAdapter,
+    PerceptionBindingError,
+    PreparationBindingProvider,
+    QueryInvoker,
+)
 from .subtask_executor import (
     SUBTASK_TOOL_SPEC,
     PerceptionBinding,
@@ -121,6 +128,11 @@ __all__ = [
     "PlaceProvider",
     "PlaceRejection",
     "PlaceSnapshot",
+    "BindingRequest",
+    "PerceptionBindingAdapter",
+    "PerceptionBindingError",
+    "PreparationBindingProvider",
+    "QueryInvoker",
     "WORKFLOW_ID",
     "WORKFLOW_DAG",
     "WORKFLOW_DAG_VERSION",

@@ -61,6 +61,21 @@ through task-bound read-only Queries before materializing the executable segment
 The persistent profile gives the whole preparation Query one 330-second
 deadline inside its 360-second Tool timeout.
 
+## Generic perception binding for held subtasks
+
+`pick_place_workflow.perception_binding.PerceptionBindingAdapter` is the
+provider-neutral composition point for a subtask. It runs `scene.observe`,
+`scene.understand`, `grasp.propose`, and the scene-bound capability Query, then
+passes measured envelopes and the selected grasp to an injected preparation
+provider. The adapter accepts semantic categories/selectors and opaque PAOS
+references; it never accepts a USD Prim path or simulator-specific object name.
+
+An environment integration therefore supplies only its Query providers and its
+IK/workspace/collision preparation provider. LabUtopia, RoboTwin, MuJoCo, and a
+real-camera host can share the same binding adapter. A host with an incomplete
+provider chain does not register `manipulation.execute_subtask`, and no Query
+result authorizes motion by itself.
+
 `object.acquire` is the first physical-effect boundary. It consumes a fresh,
 calibration-bound preparation reference through the standard Action admission
 route and is reconciled through `/invocations`; approach, contact, close, lift,

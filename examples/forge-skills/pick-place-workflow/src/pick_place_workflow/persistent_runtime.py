@@ -427,6 +427,24 @@ class PersistentActionEndpoint:
         return ActionAdmission(start=start)
 
 
+def register_subtask_tool(runtime: CapabilityRuntime, refresh_binding, tool_context_provider) -> None:
+    """Register the Agent-facing subtask boundary after Runtime composition.
+
+    The late registration point lets a host bind a provider-neutral perception
+    adapter to this concrete Runtime without making the adapter environment
+    aware or exposing intermediate Tool nodes to AgentLoop.
+    """
+    if not callable(refresh_binding):
+        raise ValueError("refresh_binding must be callable")
+    from .subtask_executor import SUBTASK_TOOL_SPEC, SubtaskActionEndpoint
+
+    runtime.register_tool(
+        deepcopy(SUBTASK_TOOL_SPEC),
+        SubtaskActionEndpoint(runtime, refresh_binding),
+        context_provider=lambda: tool_context_provider("manipulation.execute_subtask"),
+    )
+
+
 def build_persistent_runtime(*, client, understanding_provider, grasp_provider,
                              preparation_provider, capability_provider, resolve_preparation,
                              tool_context_provider, possession: PersistentPossession | None = None,
@@ -533,11 +551,5 @@ def build_persistent_runtime(*, client, understanding_provider, grasp_provider,
             runtime.register_tool(deepcopy(spec), endpoint,
                                   context_provider=lambda tool_id=spec["tool_id"]: tool_context_provider(tool_id))
         if refresh_subtask_binding is not None:
-            from .subtask_executor import SUBTASK_TOOL_SPEC, SubtaskActionEndpoint
-
-            runtime.register_tool(
-                deepcopy(SUBTASK_TOOL_SPEC),
-                SubtaskActionEndpoint(runtime, refresh_subtask_binding),
-                context_provider=lambda: tool_context_provider("manipulation.execute_subtask"),
-            )
+            register_subtask_tool(runtime, refresh_subtask_binding, tool_context_provider)
     return runtime

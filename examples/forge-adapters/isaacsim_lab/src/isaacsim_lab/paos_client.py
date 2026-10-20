@@ -205,6 +205,7 @@ class LabUtopiaPAOSRuntime:
     engine: Any
     provider: LabUtopiaCycleProvider
     client: LabUtopiaCycleClient
+    perception_adapter: Any | None = None
 
 
 def build_labutopia_runtime(
@@ -220,11 +221,21 @@ def build_labutopia_runtime(
     engine: Any | None = None,
     gateway_identity: str = "labutopia-paos-runtime",
     possession: Any | None = None,
+    perception_adapter: Any | None = None,
 ) -> LabUtopiaPAOSRuntime:
-    """Compose LabUtopia cycles behind the normal PAOS runtime transport."""
+    """Compose LabUtopia behind PAOS without owning perception orchestration.
+
+    ``perception_adapter`` is the provider-neutral PAOS adapter.  LabUtopia
+    only supplies its observation/understanding/grasp/preparation providers;
+    when the complete chain is absent, the Agent-facing subtask Tool is not
+    registered.
+    """
 
     from PhyAgentOS.forge.capability_runtime import CapabilityRuntimeTransport
-    from pick_place_workflow.persistent_runtime import build_persistent_runtime
+    from pick_place_workflow.persistent_runtime import (
+        build_persistent_runtime,
+        register_subtask_tool,
+    )
 
     selected_engine = engine or IsaacSimLabEngine(profile)
     provider = LabUtopiaCycleProvider(selected_engine)
@@ -245,8 +256,15 @@ def build_labutopia_runtime(
         register_legacy_actions=False,
         register_legacy_held_operations=False,
     )
+    bound_adapter = None
+    if perception_adapter is not None and getattr(perception_adapter, "ready", False):
+        with_query_invoker = getattr(perception_adapter, "with_query_invoker", None)
+        refresh_binding = getattr(perception_adapter, "refresh_binding", None)
+        if callable(with_query_invoker) and callable(refresh_binding):
+            bound_adapter = with_query_invoker(runtime)
+            register_subtask_tool(runtime, bound_adapter.refresh_binding, tool_context_provider)
     transport = CapabilityRuntimeTransport(runtime, gateway_identity=gateway_identity)
-    return LabUtopiaPAOSRuntime(runtime, transport, selected_engine, provider, client)
+    return LabUtopiaPAOSRuntime(runtime, transport, selected_engine, provider, client, bound_adapter)
 
 
 __all__ = [
