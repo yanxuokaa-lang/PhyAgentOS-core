@@ -8,6 +8,7 @@
 - [sense] [refactor] Runtime-bound 通用 perception binding 通过标准 `manipulation.prepare` Query/ToolSpec 做 no-motion readiness，并验证候选及准备引用一致。 / Runtime-bound generic perception binding uses the standard `manipulation.prepare` Query/ToolSpec for no-motion readiness and validates candidate and preparation-reference consistency.
 - [test] [test] no-motion 回归 `48 passed`；未启动仿真或运动。 / No-motion regressions: `48 passed`; no simulator or motion was started.
 - [policy] [docs] 七维审查记录了仍待解决的 Coordinator-owned task intent/assignment 传递。 / Seven-dimension review records the remaining Coordinator-owned task intent/assignment propagation gap.
+- Commit: `ac9d19b6`; branch: `feature/planning-loop`.
 
 ### 影响文件 / Affected Files
 - `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/perception_binding.py:L17-L23,L79-L127,L215-L270`
