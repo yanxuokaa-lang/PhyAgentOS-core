@@ -17,6 +17,7 @@ from PhyAgentOS.forge.capability_runtime import ActionAdmission
 
 from .cycle_protocol import CyclePhaseProtocol, CycleProtocolError, evaluate_process_feedback
 from .feedback_adapter import normalize_feedback
+from .manipulation_target import MANIPULATION_TARGET_SCHEMA
 
 OPERATIONS = {"pour": "object.pour", "stir": "tool.stir", "place": "object.place"}
 CYCLE_OPERATIONS = {
@@ -216,6 +217,7 @@ for _key in ("destination_ref", "return_destination_ref"):
 _CYCLE_PROPERTIES.update(
     operation={"enum": [*CYCLE_OPERATIONS, *GENERIC_CYCLE_OPERATIONS]}, parameters={"type": "object"},
     freshness_ms={"type": "integer", "minimum": 0}, max_age_ms={"type": "integer", "minimum": 1},
+    manipulation_target=deepcopy(MANIPULATION_TARGET_SCHEMA),
 )
 
 
@@ -227,6 +229,7 @@ def cycle_input_schema(*, action: bool, operation: str | None = None,
     if action:
         properties.update(preparation_ref=deepcopy(_TEXT), assignment_ref=deepcopy(_TEXT))
     required = list(properties)
+    required.remove("manipulation_target")
     if action and single_call:
         required = [key for key in required if key not in {"preparation_ref", "assignment_ref"}]
     all_of = [
@@ -279,7 +282,10 @@ def cycle_action_spec(operation: str, *, single_call: bool = False) -> dict[str,
                 "projection_id": "prepared_cycle_operation_v1", "join_field": "entity_ref",
                 "source_slots": {"preparation": {
                     "tool_id": "manipulation.prepare_cycle", "source_scope": "predecessor",
-                    "source_field_map": {key: ["arguments", key] for key in schema["required"]},
+                    "source_field_map": {
+                        key: ["arguments", key]
+                        for key in (*schema["required"], "manipulation_target")
+                    },
                 }},
                 "top_level_fields": [],
             },

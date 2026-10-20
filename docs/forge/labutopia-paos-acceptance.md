@@ -54,15 +54,18 @@ PYTHONPATH=examples/forge-skills/pick-place-workflow/src:examples/forge-adapters
 pytest -q examples/forge-adapters/isaacsim_lab/tests/test_paos_integration.py
 ```
 
-The controlled RTX 5060 Ti + Isaac Sim 5.1 stir run produced:
+The controlled RTX 5060 Ti + Isaac Sim 5.1 pour run remains the accepted live
+success.  A repaired stir worker run produced measured feedback and a video,
+but PAOS correctly rejected the process because the real tip path did not meet
+the requested geometry:
 
-- `status=succeeded`, seven completed outcome-known phase events;
-- 1,398 feedback observations and 1,397 video frames;
-- measured grasp samples, container-aligned samples, `transform_progress=0.009 m`,
-  `stir_angle_rad` meeting the configured turn threshold, and final
-  `object_support_state=on_support`;
-- video: `/home/yanxu/LabUtopia/outputs/paos-generic-cycle/result-358164-503270150471272.mp4`;
-- result JSON: `/home/yanxu/LabUtopia/outputs/paos-generic-cycle/result-358164-503270150471272.json`.
+- result JSON: `/home/yanxu/LabUtopia/outputs/paos-generic-cycle/result-1053288-509535575336321.json`;
+- video: `/home/yanxu/LabUtopia/outputs/paos-generic-cycle/result-1053288-509535575336321.mp4`;
+- 1,404 feedback observations and 1,403 video frames;
+- acquire and transport completed; process was `failed/stir_observation_not_qualified`;
+- measured process tip radius was about `0.0033-0.1003 m` against the requested
+  `0.009 +/- 0.002 m`, so reorient/stow/release/retreat remain unknown.
 
-The live acceptance is evidence from that controlled run only; dry-run and
-fake-engine results are not reported as live motion success.
+This is an evidence-bounded live failure, not a successful stir claim.  The
+remaining fix belongs in LabUtopia's controller end-effector reference/IK
+target, after which the same PAOS profile must be rerun.

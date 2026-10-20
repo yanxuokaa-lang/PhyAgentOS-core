@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import math
 import os
 import subprocess
 import sys
@@ -74,6 +75,7 @@ def normalize_process_parameters(
     raw = arguments.get("parameters")
     params = dict(raw) if isinstance(raw, Mapping) else {}
     legacy = False
+    maximum_tilt = float(params.get("maximum_tilt_rad", profile.maximum_tilt_rad))
     if params.get("controller_parameters") and params.get("mapped") is not None and params.get("unsupported") == []:
         process_type = params.get("process_type")
         if process_type not in _PROCESS_TYPES:
@@ -108,18 +110,20 @@ def normalize_process_parameters(
         transform = {
             "mode": "rotation",
             "axis": list(params.get("axis", [0.0, 0.0, 1.0])),
-            "magnitude": float(params.get("radius_m", params.get("magnitude", 0.009))),
+            "magnitude": float(params.get("radius_m", params.get("magnitude", profile.stir_radius_m))),
             "speed": float(params.get("stir_speed", params.get("speed", 3.0))),
             "direction": str(params.get("direction", "ccw")),
             "tolerance": float(params.get("tolerance", profile.alignment_tolerance_m)),
         }
         hold_s = float(params.get("duration_s", params.get("hold_s", profile.hold_s)))
+        maximum_tilt = profile.maximum_tilt_rad
     elif operation == "manipulation_cycle":
         process_type = params.get("process_type")
         if process_type not in _PROCESS_TYPES:
             raise LabProfileError("parameters.process_type must name a supported LabUtopia process")
         transform = dict(params.get("transform") or {})
         hold_s = float(params.get("hold_s", profile.hold_s))
+        maximum_tilt = profile.maximum_tilt_rad
     else:
         raise LabProfileError("unsupported cycle operation")
 
@@ -174,11 +178,30 @@ def normalize_process_parameters(
         "direction": direction,
         "tolerance": tolerance,
         "hold_s": hold_s,
+        "maximum_tilt_rad": maximum_tilt,
+        "radius_m": float(params.get("radius_m", magnitude)) if process_type == "stir" else None,
+        "depth_m": float(params.get("depth_m", profile.stir_depth_m)) if process_type == "stir" else None,
+        "turns": float(params.get("turns", profile.stir_turns)) if process_type == "stir" else None,
+        "duration_s": float(params.get("duration_s", hold_s)) if process_type == "stir" else None,
         "controller_dispatch": capability["controller"],
         "controller_parameters": controller_parameters,
         "mapped": dict(capability["mapped"]),
         "unsupported": [],
     }
+
+
+def _validate_cycle_target(arguments: Mapping[str, Any], process_type: str) -> dict[str, Any]:
+    """Validate the perception target at the adapter boundary, without motion."""
+    try:
+        from pick_place_workflow.manipulation_target import validate_manipulation_target
+    except ModuleNotFoundError as exc:
+        raise LabProfileError("PAOS manipulation target contract is unavailable") from exc
+    try:
+        return validate_manipulation_target(
+            arguments.get("manipulation_target"), arguments, process_type=process_type
+        )
+    except ValueError as exc:
+        raise LabProfileError(str(exc)) from exc
 
 
 def _unsupported_result(error: UnsupportedControllerCapabilityError) -> dict[str, Any]:
@@ -330,15 +353,20 @@ class IsaacSimLabEngine:
                 available = _isaac_runtime_available()
             except LabProfileError:
                 available = False
+        eula_accepted = os.environ.get("OMNI_KIT_ACCEPT_EULA", "").lower() in {"y", "yes", "1", "true"}
+        execution_available = available and eula_accepted
         return {
             "operation": operation,
             "preparation": available,
-            "execution": available,
+            "execution": execution_available,
             "feedback": available,
             "return": available,
             "dry_run": False,
             "provider": "labutopia_isaacsim",
-            "motion_authorized": bool(available),
+            "motion_authorized": bool(execution_available),
+            "unavailable_reason": None if execution_available else (
+                "OMNI_KIT_ACCEPT_EULA_not_accepted" if available else "isaacsim_runtime_or_scene_unavailable"
+            ),
         }
 
     def prepare_cycle(self, arguments: Mapping[str, Any]) -> dict[str, Any]:
@@ -346,8 +374,12 @@ class IsaacSimLabEngine:
         if operation not in {"pour_cycle", "stir_cycle", "manipulation_cycle"}:
             return _unsupported_operation_result(operation)
         try:
+            if arguments.get("scene_revision") != self.profile.scene_revision:
+                raise LabProfileError("action scene revision does not match the prepared lab scene")
             prepared = self.profile.paos_input(arguments, operation=operation)
             prepared["parameters"] = normalize_process_parameters(prepared, self.profile)
+            if prepared["parameters"]["process_type"] in {"pour", "stir"}:
+                _validate_cycle_target(prepared, prepared["parameters"]["process_type"])
             self.profile.validate_paths()
             if not _isaac_runtime_available():
                 raise IsaacLabRuntimeError("isaacsim_unavailable_in_active_python")
@@ -375,7 +407,11 @@ class IsaacSimLabEngine:
             return _unsupported_operation_result(operation)
         try:
             request = deepcopy(dict(arguments))
+            if request.get("scene_revision") != self.profile.scene_revision:
+                raise LabProfileError("action scene revision does not match the prepared lab scene")
             request["parameters"] = normalize_process_parameters(request, self.profile)
+            if request["parameters"]["process_type"] in {"pour", "stir"}:
+                _validate_cycle_target(request, request["parameters"]["process_type"])
         except UnsupportedControllerCapabilityError as exc:
             return _unsupported_result(exc)
         except LabProfileError as exc:
@@ -387,7 +423,9 @@ class IsaacSimLabEngine:
                 "error": str(exc),
             }
         if not self.cycle_capability(operation)["execution"]:
-            return {"status": "unknown", "outcome_known": False, "failure_code": "isaacsim_unavailable"}
+            return {"status": "unknown", "outcome_known": False, "world_change_started": False,
+                    "motion_authorized": False,
+                    "failure_code": self.cycle_capability(operation).get("unavailable_reason", "isaacsim_unavailable")}
         try:
             result = self.backend.run_cycle(request, cancel)
         except Exception as exc:
@@ -434,6 +472,10 @@ class LabUtopiaBackend:
         """Resolve dispatch and parameters without importing or stepping Isaac Sim."""
         try:
             normalized = normalize_process_parameters(arguments, self.profile)
+            if normalized["process_type"] in {"pour", "stir"}:
+                target = _validate_cycle_target(arguments, normalized["process_type"])
+            else:
+                target = None
         except UnsupportedControllerCapabilityError as exc:
             return _unsupported_result(exc)
         except LabProfileError as exc:
@@ -453,6 +495,12 @@ class LabUtopiaBackend:
             "process_type": normalized["process_type"],
             "controller_dispatch": normalized["controller_dispatch"],
             "parameters": normalized,
+            "manipulation_target": {
+                "status": "available",
+                "motion_authorized": False,
+                "entity_prim_path": target["entity_prim_path"],
+                "destination_prim_path": target["destination_prim_path"],
+            } if target is not None else None,
         }
 
     def _run_worker(self, arguments: Mapping[str, Any], cancel: Event) -> Mapping[str, Any]:
@@ -576,6 +624,10 @@ class LabUtopiaBackend:
         from tasks.pickpour_task import PickPourTask
         from utils.object_utils import ObjectUtils
 
+        target = _target_in_world(_validate_cycle_target(arguments, "pour"))
+        source_path = target["entity_prim_path"]
+        destination_path = target["destination_prim_path"]
+
         cfg = OmegaConf.load(str(self.profile.config_path))
         with open_dict(cfg):
             cfg.usd_path = str(self.profile.scene_usd_path)
@@ -583,11 +635,11 @@ class LabUtopiaBackend:
             cfg.task_type = "pickpour"
             cfg.controller_type = "pickpour"
             cfg.max_episodes = 1
-            cfg.target_path = self.profile.destination_path
+            cfg.target_path = destination_path
             cfg.multi_run.run_dir = str(self.profile.lab_root / "outputs" / "paos-pour-cycle")
             cfg.task.max_steps = max(int(cfg.task.max_steps), 1800)
             cfg.task.obj_paths = [{
-                "path": self.profile.source_path,
+                "path": source_path,
                 "position_range": {
                     "x": [0.25, 0.30], "y": [0.02, 0.08], "z": [0.81, 0.81],
                 },
@@ -606,6 +658,9 @@ class LabUtopiaBackend:
         controller = create_controller(cfg.controller_type, cfg=cfg, robot=robot)
         _configure_pour_controller(controller, process_parameters)
         task.reset()
+        _apply_target_pose(stage, source_path, target["object_pose"])
+        _apply_target_pose(stage, destination_path, target["destination_pose"])
+        _configure_target_controllers(controller, target, "pour")
         world.play()
 
         initial_position = None
@@ -644,6 +699,9 @@ class LabUtopiaBackend:
                 if state is None:
                     step += 1
                     continue
+                state = dict(state)
+                state["target_position"] = np.asarray(target["destination_pose"]["position_m"], dtype=float)
+                state["grasp_object_path"] = target.get("tool_prim_path") or source_path
                 if initial_position is None:
                     feedback_position = state.get("feedback_object_position")
                     initial_position = np.asarray(
@@ -679,8 +737,9 @@ class LabUtopiaBackend:
 
                 if not placement_started:
                     if controller_phase == "pouring":
-                        state = dict(state)
-                        state["target_position"] = _pour_controller_target(state, self.profile, np, Rotation)
+                        state["target_position"] = _pour_controller_target(
+                            state, self.profile, np, Rotation, target.get("process_frame")
+                        )
                     action, done, success = controller.step(state)
                     if action is not None:
                         robot.get_articulation_controller().apply_action(action)
@@ -695,9 +754,12 @@ class LabUtopiaBackend:
                         placement.reset()
                 else:
                     action = placement.forward(
-                        place_position=initial_position,
+                        place_position=np.asarray(target["return_pose"]["position_m"], dtype=float),
                         current_joint_positions=state["joint_positions"],
                         gripper_control=controller.gripper_control,
+                        end_effector_orientation=np.asarray(
+                            target["return_pose"]["orientation_xyzw"], dtype=float
+                        ),
                         gripper_position=state["gripper_position"],
                     )
                     if action is not None:
@@ -719,14 +781,14 @@ class LabUtopiaBackend:
                     "entity_ref": arguments["entity_ref"],
                     "destination_ref": arguments["destination_ref"],
                     "return_destination_ref": arguments["return_destination_ref"],
-                    "phase_events": _phase_events(samples, pickpour_success, placement_done, self.profile),
+                    "phase_events": _phase_events(samples, pickpour_success, placement_done, self.profile, process_parameters),
                     "feedback_observations": samples,
                     "feedback_source_profile": self.profile.source_profile(),
                     "evaluation_profile": self.profile.evaluation_profile(),
                 }
             else:
                 final = samples[-1] if samples else {}
-                events = _phase_events(samples, pickpour_success, placement_done, self.profile)
+                events = _phase_events(samples, pickpour_success, placement_done, self.profile, process_parameters)
                 succeeded = _episode_succeeded(pickpour_success, placement_done, events)
                 result = {
                     "status": "succeeded" if succeeded else "failed" if samples else "unknown",
@@ -781,6 +843,11 @@ class LabUtopiaBackend:
         from tasks.stir_task import StirTask
         from utils.object_utils import ObjectUtils
 
+        target = _target_in_world(_validate_cycle_target(arguments, "stir"))
+        source_path = target["entity_prim_path"]
+        tool_path = target.get("tool_prim_path")
+        destination_path = target["destination_prim_path"]
+
         cfg = OmegaConf.load(str(self.profile.config_path))
         with open_dict(cfg):
             cfg.usd_path = str(self.profile.scene_usd_path)
@@ -788,18 +855,17 @@ class LabUtopiaBackend:
             cfg.task_type = "stir"
             cfg.controller_type = "stirglassrod"
             cfg.max_episodes = 1
-            cfg.obj_path = self.profile.source_path
+            cfg.obj_path = source_path
             cfg.sub_obj_path = str(
                 arguments.get("tool_mesh_path")
-                or self.profile.source_control_path
-                or f"{self.profile.source_path}/Cylinder"
+                or tool_path
             )
-            cfg.target_path = self.profile.destination_path
+            cfg.target_path = destination_path
             cfg.multi_run.run_dir = str(self.profile.lab_root / "outputs" / "paos-stir-cycle")
             if not hasattr(cfg, "task"):
                 cfg.task = {}
             cfg.task.max_steps = max(int(cfg.task.get("max_steps", 2000)), 2000)
-            cfg.task.obj_paths = [{"path": self.profile.source_path, "position_range": {"x": [0.25, 0.30], "y": [0.02, 0.08], "z": [0.81, 0.81]}}]
+            cfg.task.obj_paths = [{"path": source_path, "position_range": {"x": [0.25, 0.30], "y": [0.02, 0.08], "z": [0.81, 0.81]}}]
 
         world = World(stage_units_in_meters=1.0, physics_prim_path="/physicsScene", backend="numpy")
         robot = create_robot(cfg.robot.type, position=np.array(cfg.robot.position), usd_path=str(self.profile.robot_usd_path))
@@ -810,6 +876,10 @@ class LabUtopiaBackend:
         controller = create_controller(cfg.controller_type, cfg=cfg, robot=robot)
         _configure_stir_controller(controller, process_parameters)
         task.reset()
+        _apply_target_pose(stage, source_path, target["object_pose"])
+        _apply_target_pose(stage, destination_path, target["destination_pose"])
+        _configure_target_controllers(controller, target, "stir")
+        controller.initial_control_position = np.asarray(target["return_pose"]["position_m"], dtype=float)
         world.play()
         samples: list[dict[str, Any]] = []
         initial_position = None
@@ -818,6 +888,7 @@ class LabUtopiaBackend:
         dt = 1.0 / 60.0
         done = False
         success = False
+        stir_tip_offset = None
         video_path = video_path or (self.profile.lab_root / "outputs" / "paos-stir-cycle" / "episode.mp4")
         recorder, video_info, np = _make_recorder(video_path)
         try:
@@ -830,9 +901,27 @@ class LabUtopiaBackend:
                     step += 1
                     continue
                 state = dict(state)
+                state["target_position"] = np.asarray(target["destination_pose"]["position_m"], dtype=float)
+                state["grasp_object_path"] = tool_path
                 state["feedback_object_position"] = state.get("glass_rod_position")
                 state["stir_phase"] = getattr(getattr(controller, "stir_controller", None), "phase", None)
                 state["stir_angle"] = getattr(getattr(controller, "stir_controller", None), "stir_angle", 0.0)
+                state["grasped_object_path"] = getattr(
+                    getattr(controller, "gripper_control", None), "grasped_object_path", None
+                )
+                state["tool_prim_path"] = cfg.sub_obj_path
+                state["destination_prim_path"] = destination_path
+                state["tool_tip_frame_id"] = target["tool_frame"]["frame_id"]
+                state["tool_tip_position"] = _usd_geometry_endpoint(
+                    task.object_utils, cfg.sub_obj_path, target["tool_frame"]["tip_axis_local"]
+                )
+                state["tool_tip_coordinates"] = _usd_point_in_container_frame(
+                    stage,
+                    destination_path,
+                    state.get("target_position"),
+                    state["tool_tip_position"],
+                    target["tool_frame"]["frame_id"],
+                )
                 state.setdefault(
                     "target_position",
                     state.get("target_beaker")
@@ -851,7 +940,19 @@ class LabUtopiaBackend:
                 samples.append(sample)
                 if recorder is not None:
                     recorder.write(state.get("camera_display"), (f"step={step} phase=stirring", f"progress={sample['transform_progress']:.3f}"))
-                action, done, success = controller.step(state)
+                controller_state = state
+                if controller_phase == "stirring":
+                    if stir_tip_offset is None:
+                        stir_tip_offset = _stir_tip_offset(
+                            state.get("tool_tip_position"), state.get("gripper_position"), np
+                        )
+                    if stir_tip_offset is not None:
+                        controller_state = dict(state)
+                        controller_state["target_position"] = _stir_controller_target(
+                            state["target_position"], stir_tip_offset, np,
+                        )
+                        state["stir_tip_offset"] = stir_tip_offset
+                action, done, success = controller.step(controller_state)
                 if action is not None:
                     robot.get_articulation_controller().apply_action(action)
                 if done:
@@ -903,6 +1004,7 @@ class LabUtopiaBackend:
             process_completed=bool(done and success),
             process_type="stir",
             profile=self.profile,
+            process_parameters=process_parameters,
         )
         return _generic_result(arguments, samples, events, process_parameters, self.profile, video_info, step)
 
@@ -1025,6 +1127,25 @@ class LabUtopiaBackend:
         pour_point = position + rotation_cls.from_quat(quat).apply(pour_axis * (source_size[2] / 2.0))
         if process_parameters.get("process_type") == "stir":
             alignment = float(np.linalg.norm(position[:2] - target[:2]))
+            tool_tip_position = state.get("tool_tip_position")
+            container_quaternion = state.get("container_quaternion")
+            tip_coordinates = state.get("tool_tip_coordinates")
+            if tip_coordinates is None and tool_tip_position is not None and container_quaternion is not None:
+                tip_world = np.asarray(tool_tip_position, dtype=float).reshape(3)
+                container_quat = np.asarray(container_quaternion, dtype=float).reshape(4)
+                relative_tip = rotation_cls.from_quat(container_quat).inv().apply(tip_world - target)
+                tip_coordinates = {
+                    "x_m": float(relative_tip[0]),
+                    "y_m": float(relative_tip[1]),
+                    "depth_m": float(self.profile.stir_rim_height_m - relative_tip[2]),
+                    "frame_id": self.profile.tool_tip_frame_id,
+                }
+            elif isinstance(tip_coordinates, Mapping) and "local_z_m" in tip_coordinates:
+                tip_coordinates = {
+                    **tip_coordinates,
+                    "depth_m": float(self.profile.stir_rim_height_m - float(tip_coordinates["local_z_m"])),
+                }
+                state["tool_tip_coordinates"] = tip_coordinates
         else:
             alignment = float(np.linalg.norm(pour_point[:2] - target[:2]))
         joint_positions = np.asarray(state.get("joint_positions", []), dtype=float).reshape(-1)
@@ -1040,12 +1161,16 @@ class LabUtopiaBackend:
         if gripper_position.size >= 3 and np.all(np.isfinite(gripper_position)):
             object_gripper_distance = float(np.linalg.norm(position - gripper_position[:3]))
         object_lifted = bool(position[2] > initial_position[2] + self.profile.object_lift_threshold_m)
-        grasp = bool(
-            gripper_state == "closed"
-            and object_lifted
-            and object_gripper_distance is not None
-            and object_gripper_distance <= self.profile.grasp_distance_tolerance_m
-        )
+        if process_parameters.get("process_type") == "stir":
+            expected_path = state.get("tool_prim_path") or self.profile.source_control_path or self.profile.source_path
+            grasp = state.get("grasped_object_path") == expected_path
+        else:
+            grasp = bool(
+                gripper_state == "closed"
+                and object_lifted
+                and object_gripper_distance is not None
+                and object_gripper_distance <= self.profile.grasp_distance_tolerance_m
+            )
         transform_progress = _observed_transform_progress(state, position, initial_position, process_parameters, tilt)
         transform_error = max(0.0, float(process_parameters.get("magnitude", 0.0)) - transform_progress)
         engagement_valid = bool(grasp or controller_phase in {"pouring", "stirring", "rotating", "placing"})
@@ -1061,7 +1186,7 @@ class LabUtopiaBackend:
             "gripper_opening_m": gripper_opening,
             "object_lifted": object_lifted,
             "object_gripper_distance_m": object_gripper_distance,
-            "feedback_valid": True,
+            "feedback_valid": process_parameters.get("process_type") != "stir" or tip_coordinates is not None,
             "grasp_valid": grasp,
             "engagement_valid": engagement_valid,
             "transform_progress": transform_progress,
@@ -1069,10 +1194,21 @@ class LabUtopiaBackend:
             "target_container_aligned": alignment <= self.profile.alignment_tolerance_m,
             "alignment_error_m": alignment,
             "source_pour_point": {"x_m": float(pour_point[0]), "y_m": float(pour_point[1]), "z_m": float(pour_point[2]), "frame_id": self.profile.frame_id},
-            "feedback_object_path": self.profile.source_control_path or self.profile.source_path,
+            "feedback_object_path": state.get("tool_prim_path") or self.profile.source_control_path or self.profile.source_path,
             "target_position": {"x_m": float(target[0]), "y_m": float(target[1]), "z_m": float(target[2]), "frame_id": self.profile.frame_id},
             "stir_angle_rad": float(state.get("stir_angle", 0.0) or 0.0),
+            **({
+                "tool_tip_x_m": tip_coordinates["x_m"],
+                "tool_tip_y_m": tip_coordinates["y_m"],
+                "tool_tip_depth_m": tip_coordinates["depth_m"],
+                "tool_tip_frame_id": tip_coordinates["frame_id"],
+            } if process_parameters.get("process_type") == "stir" and tip_coordinates is not None else {}),
             "tilt_rad": tilt,
+            **({
+                "stir_tip_offset_x_m": float(state["stir_tip_offset"][0]),
+                "stir_tip_offset_y_m": float(state["stir_tip_offset"][1]),
+                "stir_tip_offset_z_m": float(state["stir_tip_offset"][2]),
+            } if process_parameters.get("process_type") == "stir" and state.get("stir_tip_offset") is not None else {}),
             "object_support_state": state.get("object_support_state", "unknown"),
             "acquire_completed": bool(state.get("acquire_completed", False)),
             "transport_completed": bool(state.get("transport_completed", False)),
@@ -1089,6 +1225,14 @@ def _configure_pour_controller(controller: Any, parameters: Mapping[str, Any]) -
     if active is None:
         return
     signed_speed = float(parameters["controller_parameters"]["pour_speed"])
+    target_tilt = float(parameters["magnitude"])
+    angular_speed = max(float(parameters["speed"]), 1e-6)
+    # The atomic controller advances its rotation phases by normalized event
+    # increments.  Set both directions to the requested physical angle.
+    event_dt = angular_speed / (60.0 * target_tilt)
+    if hasattr(active, "_events_dt") and len(active._events_dt) >= 5:
+        active._events_dt[2] = event_dt
+        active._events_dt[4] = event_dt
     original = active.forward
 
     def configured_forward(*args, **kwargs):
@@ -1108,7 +1252,10 @@ def _configure_stir_controller(controller: Any, parameters: Mapping[str, Any]) -
         configure(
             stir_radius=values["stir_radius"],
             stir_speed=values["stir_speed"],
-            duration_s=values.get("stir_duration_s", parameters.get("hold_s")),
+            # The measured PAOS interval starts at the first sampled point and
+            # therefore loses one frame at each boundary.  Run two extra
+            # simulation frames so the requested duration is observable.
+            duration_s=float(values.get("stir_duration_s", parameters.get("hold_s"))) + (2.0 / 60.0),
         )
     else:
         active._stir_radius = float(values["stir_radius"])
@@ -1129,6 +1276,84 @@ def _configure_rotation_controller(controller: Any, parameters: Mapping[str, Any
     active.forward = configured_forward
 
 
+def _usd_geometry_endpoint(object_utils: Any, prim_path: str, axis_local: Sequence[float]):
+    """Measure a geometry endpoint from the live USD prim pose and bounds."""
+    try:
+        import numpy as np
+        from pxr import Gf, Usd, UsdGeom
+
+        stage = getattr(object_utils, "_stage", None)
+        if stage is None:
+            return None
+        prim = stage.GetPrimAtPath(prim_path)
+        if not prim.IsValid():
+            return None
+        axis = np.asarray(axis_local, dtype=float)
+        axis_norm = float(np.linalg.norm(axis))
+        if axis.shape != (3,) or not np.isfinite(axis_norm) or axis_norm <= 0:
+            return None
+        cache = UsdGeom.BBoxCache(Usd.TimeCode.Default(), [UsdGeom.Tokens.default_])
+        local_range = cache.ComputeLocalBound(prim).GetRange()
+        minimum = np.asarray(local_range.GetMin(), dtype=float)
+        maximum = np.asarray(local_range.GetMax(), dtype=float)
+        if minimum.shape != (3,) or maximum.shape != (3,) or not np.all(np.isfinite([*minimum, *maximum])):
+            return None
+        direction = axis / axis_norm
+        endpoint = _bound_endpoint(minimum, maximum, direction)
+        if endpoint is None:
+            return None
+        world = UsdGeom.Xformable(prim).ComputeLocalToWorldTransform(Usd.TimeCode.Default()).Transform(
+            Gf.Vec3d(*endpoint.tolist())
+        )
+        return np.asarray(world, dtype=float)
+    except Exception:
+        return None
+
+
+def _bound_endpoint(minimum: Sequence[float], maximum: Sequence[float], direction: Sequence[float]):
+    import numpy as np
+
+    lower, upper, axis = (np.asarray(value, dtype=float) for value in (minimum, maximum, direction))
+    if any(value.shape != (3,) for value in (lower, upper, axis)):
+        return None
+    if not np.all(np.isfinite([*lower, *upper, *axis])) or np.linalg.norm(axis) <= 0:
+        return None
+    axis = axis / np.linalg.norm(axis)
+    corners = [
+        np.asarray([x, y, z], dtype=float)
+        for x in (lower[0], upper[0])
+        for y in (lower[1], upper[1])
+        for z in (lower[2], upper[2])
+    ]
+    return max(corners, key=lambda point: float(np.dot(point, axis)))
+
+
+def _usd_point_in_container_frame(stage: Any, container_path: str, container_center_world: Any,
+                                  point_world: Any, frame_id: str):
+    """Express a measured world point relative to the container geometry center."""
+    try:
+        import numpy as np
+        from pxr import Gf, Usd, UsdGeom
+
+        if container_center_world is None or point_world is None:
+            return None
+        prim = stage.GetPrimAtPath(container_path)
+        if not prim.IsValid():
+            return None
+        inverse = UsdGeom.Xformable(prim).ComputeLocalToWorldTransform(Usd.TimeCode.Default()).GetInverse()
+        center_local = inverse.Transform(Gf.Vec3d(*np.asarray(container_center_world, dtype=float).reshape(3).tolist()))
+        point_local = inverse.Transform(Gf.Vec3d(*np.asarray(point_world, dtype=float).reshape(3).tolist()))
+        relative = np.asarray(point_local - center_local, dtype=float)
+        return {
+            "x_m": float(relative[0]),
+            "y_m": float(relative[1]),
+            "frame_id": frame_id,
+            "local_z_m": float(relative[2]),
+        }
+    except Exception:
+        return None
+
+
 def _observed_transform_progress(state, position, initial_position, parameters, tilt_rad=0.0):
     process_type = parameters.get("process_type")
     if process_type == "pour":
@@ -1141,6 +1366,10 @@ def _observed_transform_progress(state, position, initial_position, parameters, 
         except (TypeError, ValueError):
             pass
     if process_type == "stir":
+        tip_xy = state.get("tool_tip_coordinates")
+        if isinstance(tip_xy, Mapping):
+            return min(float(parameters.get("magnitude", 0.0)),
+                       math.hypot(float(tip_xy["x_m"]), float(tip_xy["y_m"])))
         radius = float(parameters.get("magnitude", 0.0))
         target = state.get("target_position", position)
         radial = sum((float(position[index]) - float(target[index])) ** 2 for index in (0, 1)) ** 0.5
@@ -1153,6 +1382,82 @@ def _identity_rotation():
     from scipy.spatial.transform import Rotation
 
     return Rotation
+
+
+def _stir_tip_offset(tool_tip_position: Any, gripper_position: Any, np):
+    """Return the measured world-space offset from the gripper to the rod tip."""
+    if tool_tip_position is None or gripper_position is None:
+        return None
+    tip = np.asarray(tool_tip_position, dtype=float).reshape(-1)
+    gripper = np.asarray(gripper_position, dtype=float).reshape(-1)
+    if tip.size < 3 or gripper.size < 3:
+        return None
+    if not np.all(np.isfinite(tip[:3])) or not np.all(np.isfinite(gripper[:3])):
+        return None
+    return tip[:3] - gripper[:3]
+
+
+def _stir_controller_target(container_center: Any, tip_offset: Any, np):
+    """Shift the controller center so its own radius is applied at the measured rod tip."""
+    center = np.asarray(container_center, dtype=float).reshape(-1)
+    offset = np.asarray(tip_offset, dtype=float).reshape(-1)
+    if center.size < 3 or offset.size < 3:
+        raise ValueError("stir controller target requires a 3D center and tip offset")
+    if not np.all(np.isfinite(center[:3])) or not np.all(np.isfinite(offset[:3])):
+        raise ValueError("stir controller target requires finite center and tip offset")
+    return center[:3] - offset[:3]
+
+
+def _stir_trace_metrics(samples: Sequence[Mapping[str, Any]], parameters: Mapping[str, Any], profile: LabUtopiaProfile):
+    """Match PAOS stir qualification using measured tip coordinates and continuous motion."""
+    turns_required = float(parameters.get("turns", profile.stir_turns))
+    duration_required = float(parameters.get("duration_s", profile.stir_duration_s))
+    radius_required = float(parameters.get("radius_m", parameters.get("magnitude", profile.stir_radius_m)))
+    depth_required = float(parameters.get("depth_m", profile.stir_depth_m))
+    direction = 1.0 if parameters.get("direction", profile.stir_direction) == "ccw" else -1.0
+    run_turns = 0.0
+    run_duration = 0.0
+    best_turns = 0.0
+    best_duration = 0.0
+    previous = None
+    for sample in samples:
+        coordinates = (sample.get("tool_tip_x_m"), sample.get("tool_tip_y_m"), sample.get("tool_tip_depth_m"))
+        valid = sample.get("feedback_valid") is True and sample.get("grasp_valid") is True
+        valid = valid and all(_number(value) is not None for value in coordinates)
+        angle = None
+        if valid:
+            x, y, depth = map(float, coordinates)
+            radius = math.hypot(x, y)
+            valid = (
+                abs(radius - radius_required) <= profile.stir_radius_tolerance_m
+                and abs(depth - depth_required) <= profile.stir_depth_tolerance_m
+                and radius <= profile.stir_container_radius_m
+                and 0.0 <= depth <= profile.stir_container_depth_m
+            )
+            angle = math.atan2(y, x)
+        timestamp = float(sample.get("timestamp_s", 0.0))
+        delta_time = timestamp - float(previous["timestamp_s"]) if previous else 0.0
+        continuous = valid and previous is not None and previous["valid"] and 0 < delta_time <= profile.max_sample_gap_s
+        if continuous:
+            delta_angle = (angle - previous["angle"] + math.pi) % (2.0 * math.pi) - math.pi
+            directed = direction * delta_angle
+            if abs(delta_angle) > profile.max_angular_step_rad or directed < 0:
+                run_turns = run_duration = 0.0
+            else:
+                run_turns += directed / (2.0 * math.pi)
+                run_duration += delta_time
+                best_turns = max(best_turns, run_turns)
+                best_duration = max(best_duration, run_duration)
+        else:
+            run_turns = run_duration = 0.0
+        previous = {"timestamp_s": timestamp, "angle": angle, "valid": bool(valid)}
+    return {
+        "qualified": best_turns >= turns_required and best_duration + 1e-6 >= duration_required,
+        "turns": best_turns,
+        "duration_s": best_duration,
+        "required_turns": turns_required,
+        "required_duration_s": duration_required,
+    }
 
 
 def _make_recorder(video_path: Path):
@@ -1227,7 +1532,8 @@ def _stir_controller_phase(controller: Any) -> str:
     return "retreat"
 
 
-def _stir_phase_events(samples, *, process_completed: bool, process_type: str, profile: LabUtopiaProfile):
+def _stir_phase_events(samples, *, process_completed: bool, process_type: str,
+                       profile: LabUtopiaProfile, process_parameters: Mapping[str, Any] | None = None):
     """Build stir lifecycle events only from measured object/tool observations."""
     phases = ("acquire", "transport", "process", "reorient_exit", "stow", "release", "retreat")
     events = [_unknown_phase_event(phase) for phase in phases]
@@ -1244,30 +1550,31 @@ def _stir_phase_events(samples, *, process_completed: bool, process_type: str, p
     ]
     process_started = process_samples[0] if process_samples else None
     process_end = process_samples[-1] if process_samples else None
-    process_duration = (
-        float(process_end["timestamp_s"]) - float(process_started["timestamp_s"])
-        if process_started and process_end else 0.0
-    )
-    max_stir_angle = max(
-        (abs(float(item.get("stir_angle_rad", 0.0) or 0.0)) for item in process_samples),
-        default=0.0,
-    )
-    required_stir_angle = 2.0 * 3.141592653589793 * profile.stir_turns * 0.9
-    process_valid = bool(
-        process_completed
-        and process_started
-        and process_duration >= profile.stir_duration_s * 0.9
-        and max(float(item.get("transform_progress", 0.0) or 0.0) for item in process_samples) >= profile.stir_radius_m * 0.5
-        and max_stir_angle >= required_stir_angle
-    )
+    process_parameters = dict(process_parameters or {})
+    requested_turns = float(process_parameters.get("turns", profile.stir_turns) or profile.stir_turns)
+    requested_radius = float(process_parameters.get("radius_m", process_parameters.get("magnitude", profile.stir_radius_m)))
+    required_stir_angle = 2.0 * 3.141592653589793 * requested_turns * 0.9
+    process_metrics = _stir_trace_metrics(process_samples, process_parameters, profile)
+    process_valid = bool(process_completed and process_metrics["qualified"])
     if grasp:
         events[0] = _event("acquire", 0.0, grasp["timestamp_s"], {"grasp_confirmed": True, "possession_state": "holding"})
     if aligned:
         events[1] = _event("transport", grasp["timestamp_s"] if grasp else 0.0, aligned["timestamp_s"], {"route_completed": True, "possession_state": "holding"})
     if process_valid:
-        events[2] = _event("process", process_started["timestamp_s"], process_end["timestamp_s"], {"process_type": process_type, "transform_progress": max(float(item.get("transform_progress", 0.0) or 0.0) for item in process_samples), "duration_s": process_duration, "stir_angle_rad": max_stir_angle, "required_stir_angle_rad": required_stir_angle})
+        events[2] = _event(
+            "process", process_started["timestamp_s"], process_end["timestamp_s"],
+            {"process_type": process_type, "transform_progress": requested_radius,
+             "duration_s": process_metrics["duration_s"],
+             "stir_angle_rad": process_metrics["turns"] * 2.0 * 3.141592653589793,
+             "required_stir_angle_rad": required_stir_angle},
+        )
     elif process_started:
-        events[2] = {"phase": "process", "status": "failed", "outcome_known": True, "started_at_s": float(process_started["timestamp_s"]), "completed_at_s": float(samples[-1]["timestamp_s"]), "facts": {"failure_reason": "stir_observation_not_qualified"}}
+        events[2] = {
+            "phase": "process", "status": "failed", "outcome_known": True,
+            "started_at_s": float(process_started["timestamp_s"]),
+            "completed_at_s": float(max(float(samples[-1]["timestamp_s"]), float(process_started["timestamp_s"]) + 0.001)),
+            "facts": {"failure_reason": "stir_observation_not_qualified", **process_metrics},
+        }
 
     exited = next((sample for sample in samples if sample.get("controller_phase") == "reorient_exit" and sample.get("grasp_valid") is True), None)
     if exited is None:
@@ -1359,14 +1666,15 @@ def _generic_result(arguments, samples, events, parameters, profile, video_info,
     }
 
 
-def _phase_events(samples, pickpour_success: bool, placement_done: bool, profile: LabUtopiaProfile):
+def _phase_events(samples, pickpour_success: bool, placement_done: bool, profile: LabUtopiaProfile,
+                  process_parameters: Mapping[str, Any]):
     if not samples:
         return _generic_phase_events([], process_completed=False, process_type="pour")
     last = float(samples[-1]["timestamp_s"])
     grasp = next((sample for sample in samples if sample["grasp_valid"]), None)
     aligned = next((sample for sample in samples if sample["target_container_aligned"] and sample["grasp_valid"]), None)
-    window = _continuous_pour_window(samples, profile)
-    returned = next((sample for sample in reversed(samples) if sample["grasp_valid"] and sample["tilt_rad"] <= profile.tilt_tolerance_rad), None)
+    window = _continuous_pour_window(samples, profile, process_parameters)
+    returned = next((sample for sample in reversed(samples) if sample["grasp_valid"] and abs(float(sample["tilt_rad"])) <= float(process_parameters["tolerance"])), None)
     if not grasp:
         return _failed_events("acquire", samples, "grasp_not_confirmed")
     if not aligned:
@@ -1396,15 +1704,22 @@ def _phase_events(samples, pickpour_success: bool, placement_done: bool, profile
     return _append_placement_events(events, samples, placement_done, process_end["timestamp_s"])
 
 
-def _continuous_pour_window(samples, profile):
+def _continuous_pour_window(samples, profile, process_parameters=None):
     """Find one uninterrupted grasp/alignment/tilt window of the required duration."""
+    process_parameters = dict(process_parameters or {
+        "magnitude": profile.tilt_rad,
+        "tolerance": profile.tilt_tolerance_rad,
+        "maximum_tilt_rad": profile.maximum_tilt_rad,
+        "hold_s": profile.hold_s,
+    })
     start = None
     previous = None
     for sample in samples:
         qualifies = (
             sample["grasp_valid"]
             and sample["target_container_aligned"]
-            and profile.tilt_rad - profile.tilt_tolerance_rad <= sample["tilt_rad"] <= profile.maximum_tilt_rad
+            and abs(float(sample["tilt_rad"]) - float(process_parameters["magnitude"])) <= float(process_parameters["tolerance"])
+            and abs(float(sample["tilt_rad"])) <= float(process_parameters["maximum_tilt_rad"])
         )
         timestamp = float(sample["timestamp_s"])
         if not qualifies or (previous is not None and timestamp - previous > profile.max_sample_gap_s):
@@ -1414,7 +1729,7 @@ def _continuous_pour_window(samples, profile):
         if start is None:
             start = timestamp
         previous = timestamp
-        if timestamp - start >= profile.hold_s:
+        if timestamp - start >= float(process_parameters["hold_s"]):
             return start, timestamp
     return None
 
@@ -1437,7 +1752,12 @@ def diagnose_pour_observations(observations: Sequence[Mapping[str, Any]], profil
         (_number(item.get("tilt_rad")) for item in grasp_aligned if _number(item.get("tilt_rad")) is not None),
         default=None,
     )
-    window = _continuous_pour_window(samples, profile) if samples else None
+    window = _continuous_pour_window(
+        samples,
+        profile,
+        {"magnitude": profile.tilt_rad, "tolerance": profile.tilt_tolerance_rad,
+         "maximum_tilt_rad": profile.maximum_tilt_rad, "hold_s": profile.hold_s},
+    ) if samples else None
     if not samples:
         bottleneck = "no_feedback"
     elif not joint and max_grasp_aligned_tilt is not None and max_grasp_aligned_tilt < lower:
@@ -1469,13 +1789,140 @@ def _number(value: Any) -> float | None:
     return result if result == result and abs(result) != float("inf") else None
 
 
-def _pour_controller_target(state, profile, np, rotation_cls):
+def _pour_controller_target(state, profile, np, rotation_cls, process_frame=None):
     """Compensate the provider controller target for the measured mouth offset."""
-    target = np.asarray(state["target_position"], dtype=float).copy()
+    target = np.asarray(
+        (process_frame or {}).get("origin_m", state["target_position"]), dtype=float
+    ).copy()
     quat = np.asarray(state["object_quaternion"], dtype=float)
     size = np.asarray(state["object_size"], dtype=float)
-    mouth_offset = rotation_cls.from_quat(quat).apply(np.asarray(profile.source_pour_axis) * (size[2] / 2.0))
+    axis = (process_frame or {}).get("axis", profile.source_pour_axis)
+    mouth_offset = rotation_cls.from_quat(quat).apply(np.asarray(axis, dtype=float) * (size[2] / 2.0))
     return target - mouth_offset
+
+
+def _apply_target_pose(stage: Any, prim_path: str, pose: Mapping[str, Any]) -> None:
+    """Place a resolved scene prim at the calibrated target pose in stage meters."""
+    from pxr import Gf, UsdGeom
+
+    prim = stage.GetPrimAtPath(prim_path)
+    if not prim.IsValid():
+        raise IsaacLabRuntimeError(f"perceived target prim is absent from the loaded scene: {prim_path}")
+    xform = UsdGeom.XformCommonAPI(prim)
+    position = [float(value) for value in pose["position_m"]]
+    quaternion = [float(value) for value in pose["orientation_xyzw"]]
+    xform.SetTranslate(Gf.Vec3d(*position))
+    xform.SetOrient(Gf.Quatd(quaternion[3], Gf.Vec3d(*quaternion[:3])))
+
+
+def _target_in_world(target: Mapping[str, Any]) -> dict[str, Any]:
+    """Transform perception poses/vectors into Isaac Sim world coordinates.
+
+    PAOS perception may publish in a camera or calibrated control frame.  The
+    simulator controllers, USD stage, and placement feedback all operate in
+    world coordinates, so the transform is explicit and required by the
+    target contract rather than inferred from a frame name.
+    """
+    import numpy as np
+    from scipy.spatial.transform import Rotation
+
+    resolved = deepcopy(dict(target))
+    transform = resolved["world_from_control"]
+    world_rotation = Rotation.from_quat(np.asarray(transform["orientation_xyzw"], dtype=float))
+    world_origin = np.asarray(transform["translation_m"], dtype=float)
+
+    def pose_to_world(pose: Mapping[str, Any]) -> dict[str, Any]:
+        position = world_origin + world_rotation.apply(np.asarray(pose["position_m"], dtype=float))
+        orientation = (world_rotation * Rotation.from_quat(np.asarray(pose["orientation_xyzw"], dtype=float))).as_quat()
+        result = dict(pose)
+        result["frame_id"] = "world"
+        result["position_m"] = position.tolist()
+        result["orientation_xyzw"] = orientation.tolist()
+        return result
+
+    for key in ("object_pose", "grasp_frame", "destination_pose", "return_pose"):
+        resolved[key] = pose_to_world(resolved[key])
+    approach = dict(resolved["approach_direction"])
+    approach["frame_id"] = "world"
+    approach["vector"] = world_rotation.apply(np.asarray(approach["vector"], dtype=float)).tolist()
+    resolved["approach_direction"] = approach
+    if isinstance(resolved.get("process_frame"), Mapping):
+        process = dict(resolved["process_frame"])
+        process["frame_id"] = "world"
+        process["origin_m"] = (
+            world_origin + world_rotation.apply(np.asarray(process["origin_m"], dtype=float))
+        ).tolist()
+        process["axis"] = world_rotation.apply(np.asarray(process["axis"], dtype=float)).tolist()
+        resolved["process_frame"] = process
+    return resolved
+
+
+def _configure_target_controllers(controller: Any, target: Mapping[str, Any], process_type: str) -> None:
+    """Inject the selected grasp pose and approach into LabUtopia's pick primitive."""
+    import numpy as np
+
+    picker = getattr(controller, "pick_controller", None)
+    if picker is None:
+        raise IsaacLabRuntimeError("selected LabUtopia task does not expose its pick controller")
+    original_forward = picker.forward
+    grasp = target["grasp_frame"]
+    grasp_position = np.asarray(grasp["position_m"], dtype=float)
+    grasp_orientation = np.asarray(grasp["orientation_xyzw"], dtype=float)
+    approach = np.asarray(target["approach_direction"]["vector"], dtype=float)
+    grasp_prim = target.get("tool_prim_path") or target["entity_prim_path"]
+    original_approach = picker._calculate_approach_direction
+    picker._calculate_approach_direction = lambda _position: approach.copy()
+
+    def configured_pick(*args, **kwargs):
+        kwargs["picking_position"] = grasp_position.copy()
+        kwargs["end_effector_orientation"] = grasp_orientation.copy()
+        kwargs["pre_offset_x"] = 0.0
+        kwargs["pre_offset_z"] = 0.0
+        kwargs["grasp_object_path"] = grasp_prim
+        kwargs["object_name"] = process_type
+        return original_forward(*args, **kwargs)
+
+    picker.forward = configured_pick
+    # Preserve the controller method for callers that reuse an episode object.
+    picker._paos_original_approach = original_approach
+    destination = target["destination_pose"]
+    destination_position = np.asarray(destination["position_m"], dtype=float)
+    destination_orientation = np.asarray(destination["orientation_xyzw"], dtype=float)
+    return_orientation = np.asarray(target["return_pose"]["orientation_xyzw"], dtype=float)
+    if process_type == "stir":
+        active = getattr(controller, "stir_controller", None)
+        if active is None:
+            raise IsaacLabRuntimeError("selected LabUtopia task does not expose its stir controller")
+        original = active.forward
+
+        def configured_stir(*args, **kwargs):
+            kwargs["center_position"] = destination_position.copy()
+            kwargs["end_effector_orientation"] = destination_orientation.copy()
+            return original(*args, **kwargs)
+
+        active.forward = configured_stir
+        place = getattr(controller, "place_controller", None)
+        if place is not None:
+            original_place = place.forward
+
+            def configured_place(*args, **kwargs):
+                kwargs["end_effector_orientation"] = return_orientation.copy()
+                return original_place(*args, **kwargs)
+
+            place.forward = configured_place
+    elif process_type == "pour":
+        active = getattr(controller, "pour_controller", None)
+        if active is None:
+            raise IsaacLabRuntimeError("selected LabUtopia task does not expose its pour controller")
+        original = active.forward
+
+        def configured_pour(*args, **kwargs):
+            kwargs["target_position"] = destination_position.copy()
+            kwargs["target_end_effector_orientation"] = destination_orientation.copy()
+            kwargs["source_name"] = process_type
+            return original(*args, **kwargs)
+
+        active.forward = configured_pour
 
 
 def _append_placement_events(events, samples, placement_done, process_end):

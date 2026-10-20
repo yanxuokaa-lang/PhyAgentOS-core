@@ -63,6 +63,262 @@ input_schema:
     max_age_ms:
       type: integer
       minimum: 1
+    manipulation_target:
+      type: object
+      additionalProperties: false
+      required:
+      - entity_ref
+      - destination_ref
+      - scene_revision
+      - frame_id
+      - calibration_ref
+      - control_frame_id
+      - world_from_control
+      - entity_prim_path
+      - destination_prim_path
+      - object_pose
+      - grasp_frame
+      - approach_direction
+      - destination_pose
+      - return_pose
+      properties:
+        candidate_ref:
+          type: string
+          pattern: ^candidate://[^/]+/.+$
+        entity_ref:
+          type: string
+          pattern: ^entity://[^/]+$
+        destination_ref:
+          type: string
+          pattern: ^destination://\S+$
+        scene_revision:
+          type: string
+          minLength: 1
+        frame_id:
+          type: string
+          minLength: 1
+        calibration_ref:
+          type: string
+          minLength: 1
+        control_frame_id:
+          type: string
+          minLength: 1
+        world_from_control:
+          type: object
+          additionalProperties: false
+          required:
+          - parent_frame_id
+          - child_frame_id
+          - translation_m
+          - orientation_xyzw
+          properties:
+            parent_frame_id:
+              const: world
+            child_frame_id:
+              type: string
+              minLength: 1
+            translation_m:
+              type: array
+              minItems: 3
+              maxItems: 3
+              items:
+                type: number
+            orientation_xyzw:
+              type: array
+              minItems: 4
+              maxItems: 4
+              items:
+                type: number
+        entity_prim_path:
+          type: string
+          pattern: ^/World/.+
+        destination_prim_path:
+          type: string
+          pattern: ^/World/.+
+        tool_prim_path:
+          type: string
+          pattern: ^/World/.+
+        object_pose:
+          type: object
+          additionalProperties: false
+          required:
+          - frame_id
+          - unit
+          - position_m
+          - orientation_xyzw
+          properties:
+            frame_id:
+              type: string
+              minLength: 1
+            unit:
+              const: m
+            position_m:
+              type: array
+              minItems: 3
+              maxItems: 3
+              items:
+                type: number
+            orientation_xyzw:
+              type: array
+              minItems: 4
+              maxItems: 4
+              items:
+                type: number
+        grasp_frame:
+          type: object
+          additionalProperties: false
+          required:
+          - frame_id
+          - unit
+          - position_m
+          - orientation_xyzw
+          properties:
+            frame_id:
+              type: string
+              minLength: 1
+            unit:
+              const: m
+            position_m:
+              type: array
+              minItems: 3
+              maxItems: 3
+              items:
+                type: number
+            orientation_xyzw:
+              type: array
+              minItems: 4
+              maxItems: 4
+              items:
+                type: number
+        destination_pose:
+          type: object
+          additionalProperties: false
+          required:
+          - frame_id
+          - unit
+          - position_m
+          - orientation_xyzw
+          properties:
+            frame_id:
+              type: string
+              minLength: 1
+            unit:
+              const: m
+            position_m:
+              type: array
+              minItems: 3
+              maxItems: 3
+              items:
+                type: number
+            orientation_xyzw:
+              type: array
+              minItems: 4
+              maxItems: 4
+              items:
+                type: number
+        return_pose:
+          type: object
+          additionalProperties: false
+          required:
+          - frame_id
+          - unit
+          - position_m
+          - orientation_xyzw
+          properties:
+            frame_id:
+              type: string
+              minLength: 1
+            unit:
+              const: m
+            position_m:
+              type: array
+              minItems: 3
+              maxItems: 3
+              items:
+                type: number
+            orientation_xyzw:
+              type: array
+              minItems: 4
+              maxItems: 4
+              items:
+                type: number
+        approach_direction:
+          type: object
+          additionalProperties: false
+          required:
+          - frame_id
+          - unit
+          - vector
+          properties:
+            frame_id:
+              type: string
+              minLength: 1
+            unit:
+              const: unitless
+            vector:
+              type: array
+              minItems: 3
+              maxItems: 3
+              items:
+                type: number
+        tool_frame:
+          type: object
+          additionalProperties: false
+          required:
+          - frame_id
+          - tip_axis_local
+          properties:
+            frame_id:
+              type: string
+              minLength: 1
+            tip_axis_local:
+              type: array
+              minItems: 3
+              maxItems: 3
+              items:
+                type: number
+            tip_offset_m:
+              type: array
+              minItems: 3
+              maxItems: 3
+              items:
+                type: number
+        process_frame:
+          type: object
+          additionalProperties: false
+          required:
+          - frame_id
+          - origin_m
+          - axis
+          properties:
+            frame_id:
+              type: string
+              minLength: 1
+            origin_m:
+              type: array
+              minItems: 3
+              maxItems: 3
+              items:
+                type: number
+            axis:
+              type: array
+              minItems: 3
+              maxItems: 3
+              items:
+                type: number
+        geometry:
+          type: object
+          additionalProperties: false
+          properties:
+            size_m:
+              type: array
+              minItems: 3
+              maxItems: 3
+              items:
+                type: number
+        placement_tolerance_m:
+          type: number
+          exclusiveMinimum: 0
     preparation_ref:
       type: string
       minLength: 1
@@ -253,6 +509,262 @@ output_schema:
         max_age_ms:
           type: integer
           minimum: 1
+        manipulation_target:
+          type: object
+          additionalProperties: false
+          required:
+          - entity_ref
+          - destination_ref
+          - scene_revision
+          - frame_id
+          - calibration_ref
+          - control_frame_id
+          - world_from_control
+          - entity_prim_path
+          - destination_prim_path
+          - object_pose
+          - grasp_frame
+          - approach_direction
+          - destination_pose
+          - return_pose
+          properties:
+            candidate_ref:
+              type: string
+              pattern: ^candidate://[^/]+/.+$
+            entity_ref:
+              type: string
+              pattern: ^entity://[^/]+$
+            destination_ref:
+              type: string
+              pattern: ^destination://\S+$
+            scene_revision:
+              type: string
+              minLength: 1
+            frame_id:
+              type: string
+              minLength: 1
+            calibration_ref:
+              type: string
+              minLength: 1
+            control_frame_id:
+              type: string
+              minLength: 1
+            world_from_control:
+              type: object
+              additionalProperties: false
+              required:
+              - parent_frame_id
+              - child_frame_id
+              - translation_m
+              - orientation_xyzw
+              properties:
+                parent_frame_id:
+                  const: world
+                child_frame_id:
+                  type: string
+                  minLength: 1
+                translation_m:
+                  type: array
+                  minItems: 3
+                  maxItems: 3
+                  items:
+                    type: number
+                orientation_xyzw:
+                  type: array
+                  minItems: 4
+                  maxItems: 4
+                  items:
+                    type: number
+            entity_prim_path:
+              type: string
+              pattern: ^/World/.+
+            destination_prim_path:
+              type: string
+              pattern: ^/World/.+
+            tool_prim_path:
+              type: string
+              pattern: ^/World/.+
+            object_pose:
+              type: object
+              additionalProperties: false
+              required:
+              - frame_id
+              - unit
+              - position_m
+              - orientation_xyzw
+              properties:
+                frame_id:
+                  type: string
+                  minLength: 1
+                unit:
+                  const: m
+                position_m:
+                  type: array
+                  minItems: 3
+                  maxItems: 3
+                  items:
+                    type: number
+                orientation_xyzw:
+                  type: array
+                  minItems: 4
+                  maxItems: 4
+                  items:
+                    type: number
+            grasp_frame:
+              type: object
+              additionalProperties: false
+              required:
+              - frame_id
+              - unit
+              - position_m
+              - orientation_xyzw
+              properties:
+                frame_id:
+                  type: string
+                  minLength: 1
+                unit:
+                  const: m
+                position_m:
+                  type: array
+                  minItems: 3
+                  maxItems: 3
+                  items:
+                    type: number
+                orientation_xyzw:
+                  type: array
+                  minItems: 4
+                  maxItems: 4
+                  items:
+                    type: number
+            destination_pose:
+              type: object
+              additionalProperties: false
+              required:
+              - frame_id
+              - unit
+              - position_m
+              - orientation_xyzw
+              properties:
+                frame_id:
+                  type: string
+                  minLength: 1
+                unit:
+                  const: m
+                position_m:
+                  type: array
+                  minItems: 3
+                  maxItems: 3
+                  items:
+                    type: number
+                orientation_xyzw:
+                  type: array
+                  minItems: 4
+                  maxItems: 4
+                  items:
+                    type: number
+            return_pose:
+              type: object
+              additionalProperties: false
+              required:
+              - frame_id
+              - unit
+              - position_m
+              - orientation_xyzw
+              properties:
+                frame_id:
+                  type: string
+                  minLength: 1
+                unit:
+                  const: m
+                position_m:
+                  type: array
+                  minItems: 3
+                  maxItems: 3
+                  items:
+                    type: number
+                orientation_xyzw:
+                  type: array
+                  minItems: 4
+                  maxItems: 4
+                  items:
+                    type: number
+            approach_direction:
+              type: object
+              additionalProperties: false
+              required:
+              - frame_id
+              - unit
+              - vector
+              properties:
+                frame_id:
+                  type: string
+                  minLength: 1
+                unit:
+                  const: unitless
+                vector:
+                  type: array
+                  minItems: 3
+                  maxItems: 3
+                  items:
+                    type: number
+            tool_frame:
+              type: object
+              additionalProperties: false
+              required:
+              - frame_id
+              - tip_axis_local
+              properties:
+                frame_id:
+                  type: string
+                  minLength: 1
+                tip_axis_local:
+                  type: array
+                  minItems: 3
+                  maxItems: 3
+                  items:
+                    type: number
+                tip_offset_m:
+                  type: array
+                  minItems: 3
+                  maxItems: 3
+                  items:
+                    type: number
+            process_frame:
+              type: object
+              additionalProperties: false
+              required:
+              - frame_id
+              - origin_m
+              - axis
+              properties:
+                frame_id:
+                  type: string
+                  minLength: 1
+                origin_m:
+                  type: array
+                  minItems: 3
+                  maxItems: 3
+                  items:
+                    type: number
+                axis:
+                  type: array
+                  minItems: 3
+                  maxItems: 3
+                  items:
+                    type: number
+            geometry:
+              type: object
+              additionalProperties: false
+              properties:
+                size_m:
+                  type: array
+                  minItems: 3
+                  maxItems: 3
+                  items:
+                    type: number
+            placement_tolerance_m:
+              type: number
+              exclusiveMinimum: 0
         preparation_ref:
           type: string
           minLength: 1

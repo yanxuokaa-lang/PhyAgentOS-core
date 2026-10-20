@@ -14,6 +14,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--profile", type=Path, required=True)
     parser.add_argument("--previous-input", type=Path)
+    parser.add_argument("--target", type=Path, help="perception target JSON to validate without motion")
     parser.add_argument("--result", type=Path, help="inspect a completed worker result without starting Isaac Sim")
     parser.add_argument("--operation", choices=("pour_cycle", "stir_cycle", "manipulation_cycle"), default="pour_cycle")
     parser.add_argument("--dry-run", action="store_true", help="resolve controller capability without starting Isaac Sim")
@@ -22,6 +23,12 @@ def main() -> int:
     previous = None
     if args.previous_input:
         previous = json.loads(args.previous_input.read_text(encoding="utf-8"))
+    if args.target:
+        target = json.loads(args.target.read_text(encoding="utf-8"))
+        if not isinstance(target, dict):
+            parser.error("--target must contain a JSON object")
+        previous = dict(previous or {})
+        previous["manipulation_target"] = target
     output = {
         "profile": str(args.profile),
         "lab_root": str(profile.lab_root),

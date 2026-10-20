@@ -34,6 +34,7 @@ class LabUtopiaProfile:
     capability_snapshot_ref: str = "artifact://labutopia/capabilities-v1"
     return_destination_ref: str = "destination://labutopia/source-home"
     container_frame_id: str = "container://labutopia/beaker2"
+    tool_tip_frame_id: str = "container://labutopia/beaker2"
     max_age_ms: int = 1000
     freshness_ms: int = 0
     tilt_rad: float = 0.87
@@ -43,6 +44,13 @@ class LabUtopiaProfile:
     stir_turns: float = 2.0
     stir_duration_s: float = 4.0
     stir_direction: str = "ccw"
+    tool_tip_axis_local: tuple[float, float, float] = (0.0, 0.0, -1.0)
+    max_angular_step_rad: float = 0.5
+    stir_radius_tolerance_m: float = 0.002
+    stir_depth_tolerance_m: float = 0.005
+    stir_container_radius_m: float = 0.05
+    stir_container_depth_m: float = 0.08
+    stir_rim_height_m: float = 0.04
     alignment_tolerance_m: float = 0.05
     tilt_tolerance_rad: float = 0.10
     maximum_tilt_rad: float = 1.50
@@ -87,6 +95,7 @@ class LabUtopiaProfile:
             capability_snapshot_ref=_text(value, "capability_snapshot_ref", "artifact://labutopia/capabilities-v1"),
             return_destination_ref=_text(value, "return_destination_ref", "destination://labutopia/source-home"),
             container_frame_id=_text(value, "container_frame_id", "container://labutopia/beaker2"),
+            tool_tip_frame_id=_text(value, "tool_tip_frame_id", _text(value, "container_frame_id", "container://labutopia/beaker2")),
             max_age_ms=_positive_int(value, "max_age_ms", 1000),
             freshness_ms=_nonnegative_int(value, "freshness_ms", 0),
             tilt_rad=_positive_float(value, "tilt_rad", 0.87),
@@ -96,6 +105,13 @@ class LabUtopiaProfile:
             stir_turns=_positive_float(value, "stir_turns", 2.0),
             stir_duration_s=_positive_float(value, "stir_duration_s", 4.0),
             stir_direction=_direction(value.get("stir_direction", "ccw")),
+            tool_tip_axis_local=_vector3(value, "tool_tip_axis_local", (0.0, 0.0, -1.0)),
+            max_angular_step_rad=_positive_float(value, "max_angular_step_rad", 0.5),
+            stir_radius_tolerance_m=_positive_float(value, "stir_radius_tolerance_m", 0.002),
+            stir_depth_tolerance_m=_positive_float(value, "stir_depth_tolerance_m", 0.005),
+            stir_container_radius_m=_positive_float(value, "stir_container_radius_m", 0.05),
+            stir_container_depth_m=_positive_float(value, "stir_container_depth_m", 0.08),
+            stir_rim_height_m=_positive_float(value, "stir_rim_height_m", 0.04),
             alignment_tolerance_m=_positive_float(value, "alignment_tolerance_m", 0.05),
             tilt_tolerance_rad=_positive_float(value, "tilt_tolerance_rad", 0.10),
             maximum_tilt_rad=_positive_float(value, "maximum_tilt_rad", 1.50),
@@ -111,6 +127,8 @@ class LabUtopiaProfile:
         profile.validate_paths()
         if profile.tilt_rad + profile.tilt_tolerance_rad > profile.maximum_tilt_rad:
             raise LabProfileError("tilt target exceeds maximum configured tilt")
+        if profile.stir_rim_height_m > profile.stir_container_depth_m:
+            raise LabProfileError("stir rim height cannot exceed configured container depth")
         return profile
 
     @classmethod
@@ -175,6 +193,8 @@ class LabUtopiaProfile:
                 previous[key] = value
         if previous["entity_ref"] != required["entity_ref"] or previous["destination_ref"] != required["destination_ref"]:
             raise LabProfileError("previous PAOS input targets a different source or destination")
+        if previous["scene_revision"] != self.scene_revision:
+            raise LabProfileError("previous PAOS input has stale scene revision")
         if previous["frame_id"] != self.frame_id or previous["calibration_ref"] != self.calibration_ref:
             raise LabProfileError("previous PAOS input has stale frame or calibration identity")
         return previous
@@ -184,6 +204,7 @@ class LabUtopiaProfile:
             "frame_id": self.frame_id,
             "calibration_ref": self.calibration_ref,
             "container_frame_id": self.container_frame_id,
+            "tool_tip_frame_id": self.tool_tip_frame_id,
             "source_pour_axis": list(self.source_pour_axis),
             "source_control_path": self.source_control_path,
             "configured_process_type": self.configured_process_type,
@@ -200,6 +221,12 @@ class LabUtopiaProfile:
             "stir_radius_m": self.stir_radius_m,
             "stir_duration_s": self.stir_duration_s,
             "stir_turns": self.stir_turns,
+            "max_angular_step_rad": self.max_angular_step_rad,
+            "radius_tolerance_m": self.stir_radius_tolerance_m,
+            "depth_tolerance_m": self.stir_depth_tolerance_m,
+            "container_radius_m": self.stir_container_radius_m,
+            "container_depth_m": self.stir_container_depth_m,
+            "stir_rim_height_m": self.stir_rim_height_m,
         }
 
 

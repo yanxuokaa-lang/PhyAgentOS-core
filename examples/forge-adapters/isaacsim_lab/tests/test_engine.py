@@ -9,6 +9,7 @@ import pytest
 import isaacsim_lab.engine as module
 from isaacsim_lab.engine import (
     IsaacSimLabEngine,
+    _bound_endpoint,
     _continuous_pour_window,
     _episode_succeeded,
     _EpisodeVideoRecorder,
@@ -16,7 +17,10 @@ from isaacsim_lab.engine import (
     _generic_phase_events,
     _generic_result,
     _pour_controller_target,
+    _stir_controller_target,
     _stir_phase_events,
+    _stir_tip_offset,
+    _stir_trace_metrics,
     normalize_process_parameters,
 )
 
@@ -44,6 +48,63 @@ def make_profile(tmp_path, *, configured_process_type="pour"):
     })
 
 
+def make_target(profile, *, process_type="pour"):
+    frame_id = profile.frame_id
+    pose = {
+        "frame_id": frame_id, "unit": "m", "position_m": [0.2, 0.1, 0.8],
+        "orientation_xyzw": [0.0, 0.0, 0.0, 1.0],
+    }
+    target = {
+        "candidate_ref": "candidate://conical_bottle03/test",
+        "entity_ref": "entity://conical_bottle03",
+        "destination_ref": "destination://beaker2",
+        "scene_revision": profile.scene_revision,
+        "frame_id": frame_id,
+        "calibration_ref": profile.calibration_ref,
+        "control_frame_id": frame_id,
+        "world_from_control": {
+            "parent_frame_id": "world", "child_frame_id": frame_id, "translation_m": [0.0, 0.0, 0.0],
+            "orientation_xyzw": [0.0, 0.0, 0.0, 1.0],
+        },
+        "entity_prim_path": profile.source_path,
+        "destination_prim_path": profile.destination_path,
+        "object_pose": pose,
+        "grasp_frame": pose,
+        "approach_direction": {"frame_id": frame_id, "unit": "unitless", "vector": [0.0, 0.0, -1.0]},
+        "destination_pose": pose,
+        "return_pose": pose,
+        "geometry": {"size_m": [0.04, 0.04, 0.12]},
+    }
+    if process_type == "stir":
+        target["entity_ref"] = "entity://glass_rod"
+        target["destination_ref"] = "destination://target_beaker"
+        target["entity_prim_path"] = "/World/glass_rod"
+        target["destination_prim_path"] = "/World/target_beaker"
+        target["candidate_ref"] = "candidate://glass_rod/test"
+        target["tool_prim_path"] = "/World/glass_rod/Cylinder"
+        target["tool_frame"] = {"frame_id": frame_id, "tip_axis_local": [0.0, 0.0, -1.0]}
+    if process_type == "pour":
+        target["process_frame"] = {"frame_id": frame_id, "origin_m": [0.2, 0.1, 0.8], "axis": [0.0, 0.0, 1.0]}
+    return target
+
+
+def _stir_process_samples(radius, depth, start, duration, turns):
+    return [
+        {
+            "timestamp_s": start + duration * index / 40,
+            "controller_phase": "stirring",
+            "grasp_valid": True,
+            "feedback_valid": True,
+            "target_container_aligned": True,
+            "transform_progress": radius,
+            "tool_tip_x_m": radius * np.cos(2 * np.pi * turns * index / 40),
+            "tool_tip_y_m": radius * np.sin(2 * np.pi * turns * index / 40),
+            "tool_tip_depth_m": depth,
+        }
+        for index in range(41)
+    ]
+
+
 def test_capability_is_disabled_without_isaac_runtime(tmp_path, monkeypatch):
     monkeypatch.setattr(module, "_isaac_runtime_available", lambda: False)
     declaration = IsaacSimLabEngine(make_profile(tmp_path), backend=Backend()).cycle_capability("pour_cycle")
@@ -52,12 +113,68 @@ def test_capability_is_disabled_without_isaac_runtime(tmp_path, monkeypatch):
     assert declaration["motion_authorized"] is False
 
 
+def test_target_world_transform_projects_pose_and_process_frame(tmp_path):
+    target = make_target(make_profile(tmp_path))
+    target["world_from_control"]["translation_m"] = [1.0, 2.0, 3.0]
+    target["destination_pose"]["position_m"] = [0.1, 0.2, 0.3]
+    projected = module._target_in_world(target)
+    assert projected["destination_pose"]["frame_id"] == "world"
+    assert projected["destination_pose"]["position_m"] == pytest.approx([1.1, 2.2, 3.3])
+
+
+def test_target_world_transform_rotates_approach_and_process_axis(tmp_path):
+    target = make_target(make_profile(tmp_path))
+    target["approach_direction"]["vector"] = [1.0, 0.0, 0.0]
+    target["world_from_control"]["orientation_xyzw"] = [0.0, 0.0, np.sqrt(0.5), np.sqrt(0.5)]
+    projected = module._target_in_world(target)
+    assert projected["approach_direction"]["vector"] == pytest.approx([0.0, 1.0, 0.0])
+    assert projected["process_frame"]["axis"] == pytest.approx([0.0, 0.0, 1.0])
+
+
+def test_capability_does_not_claim_live_execution_before_eula_acceptance(tmp_path, monkeypatch):
+    monkeypatch.setattr(module, "_isaac_runtime_available", lambda: True)
+    monkeypatch.delenv("OMNI_KIT_ACCEPT_EULA", raising=False)
+    declaration = IsaacSimLabEngine(make_profile(tmp_path), backend=Backend()).cycle_capability("pour_cycle")
+    assert declaration["preparation"] is True
+    assert declaration["execution"] is False
+    assert declaration["motion_authorized"] is False
+    assert declaration["unavailable_reason"] == "OMNI_KIT_ACCEPT_EULA_not_accepted"
+
+
 def test_backend_result_is_not_promoted_to_success(tmp_path, monkeypatch):
     monkeypatch.setattr(module, "_isaac_runtime_available", lambda: True)
+    monkeypatch.setenv("OMNI_KIT_ACCEPT_EULA", "YES")
     engine = IsaacSimLabEngine(make_profile(tmp_path), backend=Backend())
-    result = engine.execute_cycle("pour_cycle", make_profile(tmp_path).paos_input(), Event())
+    profile = make_profile(tmp_path)
+    result = engine.execute_cycle(
+        "pour_cycle", profile.paos_input({"manipulation_target": make_target(profile)}), Event()
+    )
     assert result["status"] == "unknown"
     assert result["outcome_known"] is False
+
+
+def test_live_cycle_rejects_missing_perception_target_before_backend(tmp_path, monkeypatch):
+    monkeypatch.setattr(module, "_isaac_runtime_available", lambda: True)
+    monkeypatch.setenv("OMNI_KIT_ACCEPT_EULA", "YES")
+    engine = IsaacSimLabEngine(make_profile(tmp_path), backend=Backend())
+    result = engine.execute_cycle("pour_cycle", make_profile(tmp_path).paos_input(), Event())
+    assert result["status"] == "invalid"
+    assert result["motion_authorized"] is False
+    assert "manipulation_target" in result["error"]
+
+
+def test_live_cycle_rejects_target_without_explicit_world_transform(tmp_path, monkeypatch):
+    monkeypatch.setattr(module, "_isaac_runtime_available", lambda: True)
+    monkeypatch.setenv("OMNI_KIT_ACCEPT_EULA", "YES")
+    profile = make_profile(tmp_path)
+    target = make_target(profile)
+    target.pop("world_from_control")
+    result = IsaacSimLabEngine(profile, backend=Backend()).execute_cycle(
+        "pour_cycle", profile.paos_input({"manipulation_target": target}), Event()
+    )
+    assert result["status"] == "invalid"
+    assert result["motion_authorized"] is False
+    assert "world_from_control" in result["error"]
 
 
 def test_legacy_backend_does_not_claim_unimplemented_generic_cycle(tmp_path, monkeypatch):
@@ -87,6 +204,74 @@ def test_legacy_stir_parameters_map_only_supported_controller_values(tmp_path):
     assert normalized["process_type"] == "stir"
     assert normalized["controller_parameters"] == {"stir_radius": 0.01, "stir_speed": 2.0}
     assert normalized["mapped"]["magnitude"] == "stir_radius"
+    assert normalized["turns"] == profile.stir_turns
+    assert normalized["depth_m"] == profile.stir_depth_m
+    assert normalized["duration_s"] == profile.stir_duration_s
+
+
+def test_action_parameters_override_stir_settlement_thresholds(tmp_path):
+    profile = make_profile(tmp_path, configured_process_type="stir")
+    args = profile.paos_input({"parameters": {
+        "radius_m": 0.012, "depth_m": 0.025, "turns": 1.0,
+        "duration_s": 2.0, "direction": "cw",
+    }}, operation="stir_cycle")
+    normalized = normalize_process_parameters(args, profile)
+    assert normalized["radius_m"] == 0.012
+    assert normalized["depth_m"] == 0.025
+    assert normalized["turns"] == 1.0
+    assert normalized["duration_s"] == 2.0
+    assert normalized["direction"] == "cw"
+
+
+def test_usd_bound_endpoint_selects_the_configured_rod_tip():
+    assert np.allclose(_bound_endpoint([0.0, 0.0, -0.1], [0.0, 0.0, 0.1], [0, 0, -1]),
+                       [0.0, 0.0, -0.1])
+
+
+def test_pour_controller_target_uses_perceived_process_origin(tmp_path):
+    profile = make_profile(tmp_path)
+    state = {
+        "target_position": np.array([0.2, 0.1, 0.8]),
+        "object_quaternion": np.array([0.0, 0.0, 0.0, 1.0]),
+        "object_size": np.array([0.04, 0.04, 0.12]),
+    }
+    from scipy.spatial.transform import Rotation
+    target = _pour_controller_target(
+        state, profile, np, Rotation,
+        {"axis": [0.0, 0.0, 1.0], "origin_m": [0.4, 0.5, 0.9]},
+    )
+    assert target == pytest.approx([0.4, 0.5, 0.84])
+
+
+def test_stir_sample_reports_attached_object_and_container_frame_tip(tmp_path):
+    from scipy.spatial.transform import Rotation
+
+    profile = make_profile(tmp_path, configured_process_type="stir")
+    from dataclasses import replace
+    profile = replace(profile, source_control_path="/World/glass_rod/Cylinder")
+    backend = module.LabUtopiaBackend(profile)
+    state = {
+        "feedback_object_position": np.array([0.3, -0.2, 0.8]),
+        "object_position": np.array([0.3, -0.2, 0.8]),
+        "object_quaternion": Rotation.identity().as_quat(),
+        "object_size": np.array([0.02, 0.02, 0.2]),
+        "target_position": np.array([0.3, -0.2, 0.75]),
+        "container_quaternion": Rotation.identity().as_quat(),
+        "tool_tip_position": np.array([0.31, -0.2, 0.75]),
+        "grasped_object_path": "/World/glass_rod/Cylinder",
+        "joint_positions": np.array([0.0] * 7 + [0.02, 0.02]),
+        "gripper_position": np.array([0.3, -0.2, 0.8]),
+    }
+    sample = backend._sample(
+        state, np.array([0.3, -0.2, 0.8]), Rotation.identity().as_quat(), 1.0,
+        np, Rotation, "stirring", process_parameters={"process_type": "stir", "magnitude": 0.01},
+    )
+    assert sample["grasp_valid"] is True
+    assert sample["tool_tip_x_m"] == pytest.approx(0.01)
+    assert sample["tool_tip_y_m"] == pytest.approx(0.0)
+    assert sample["tool_tip_depth_m"] == pytest.approx(0.04)
+    assert sample["tool_tip_frame_id"] == profile.tool_tip_frame_id
+    assert sample["feedback_valid"] is True
 
 
 def test_stir_profile_keeps_control_path_separate_from_entity_path(tmp_path):
@@ -185,12 +370,7 @@ def test_stir_phase_events_require_observed_grasp_motion_turns_and_release(tmp_p
         {"timestamp_s": 2.0, "controller_phase": "transporting", "grasp_valid": True,
          "target_container_aligned": True, "transform_progress": 0.0,
          "stir_angle_rad": 0.0, "possession_state": "holding"},
-        {"timestamp_s": 2.1, "controller_phase": "stirring", "grasp_valid": True,
-         "target_container_aligned": True, "transform_progress": 0.01,
-         "stir_angle_rad": 0.0, "possession_state": "holding"},
-        {"timestamp_s": 4.2, "controller_phase": "stirring", "grasp_valid": True,
-         "target_container_aligned": True, "transform_progress": 0.01,
-         "stir_angle_rad": 2.0 * np.pi, "possession_state": "holding"},
+        *_stir_process_samples(0.01, 0.04, 2.1, 2.0, 1.0),
         {"timestamp_s": 4.5, "controller_phase": "reorient_exit", "grasp_valid": True,
          "target_container_aligned": False, "transform_progress": 0.0,
          "stir_angle_rad": 2.0 * np.pi, "possession_state": "holding"},
@@ -204,7 +384,8 @@ def test_stir_phase_events_require_observed_grasp_motion_turns_and_release(tmp_p
          "retreat_completed": True, "object_support_state": "on_support",
          "stir_angle_rad": 2.0 * np.pi, "possession_state": "empty"},
     ]
-    events = _stir_phase_events(samples, process_completed=True, process_type="stir", profile=profile)
+    events = _stir_phase_events(samples, process_completed=True, process_type="stir", profile=profile,
+                                process_parameters={"turns": 1.0, "duration_s": 2.0, "radius_m": 0.01})
     assert [event["status"] for event in events] == ["completed"] * 7
     assert events[2]["facts"]["stir_angle_rad"] >= events[2]["facts"]["required_stir_angle_rad"]
 
@@ -220,12 +401,7 @@ def test_stir_return_phases_stay_unknown_without_support_observation(tmp_path):
         {"timestamp_s": 2.0, "controller_phase": "transporting", "grasp_valid": True,
          "target_container_aligned": True, "transform_progress": 0.0,
          "stir_angle_rad": 0.0, "possession_state": "holding"},
-        {"timestamp_s": 2.1, "controller_phase": "stirring", "grasp_valid": True,
-         "target_container_aligned": True, "transform_progress": 0.01,
-         "stir_angle_rad": 0.0, "possession_state": "holding"},
-        {"timestamp_s": 4.2, "controller_phase": "stirring", "grasp_valid": True,
-         "target_container_aligned": True, "transform_progress": 0.01,
-         "stir_angle_rad": 2.0 * np.pi, "possession_state": "holding"},
+        *_stir_process_samples(0.01, 0.04, 2.1, 2.0, 1.0),
         {"timestamp_s": 4.5, "controller_phase": "reorient_exit", "grasp_valid": True,
          "target_container_aligned": False, "transform_progress": 0.0,
          "stir_angle_rad": 2.0 * np.pi, "possession_state": "holding"},
@@ -239,7 +415,8 @@ def test_stir_return_phases_stay_unknown_without_support_observation(tmp_path):
          "retreat_completed": True, "object_support_state": "unknown",
          "stir_angle_rad": 2.0 * np.pi, "possession_state": "empty"},
     ]
-    events = _stir_phase_events(samples, process_completed=True, process_type="stir", profile=profile)
+    events = _stir_phase_events(samples, process_completed=True, process_type="stir", profile=profile,
+                                process_parameters={"turns": 1.0, "duration_s": 2.0, "radius_m": 0.01})
     assert events[2]["status"] == "completed"
     assert [event["status"] for event in events[3:]] == ["completed", "unknown", "unknown", "unknown"]
 
@@ -254,6 +431,28 @@ def test_stir_phase_events_fail_without_measured_turns(tmp_path):
     events = _stir_phase_events(samples, process_completed=True, process_type="stir", profile=profile)
     assert events[2]["status"] == "failed"
     assert events[2]["facts"]["failure_reason"] == "stir_observation_not_qualified"
+
+
+def test_stir_feedback_requires_requested_tip_radius_depth_direction_and_duration(tmp_path):
+    from dataclasses import replace
+
+    profile = replace(make_profile(tmp_path, configured_process_type="stir"),
+                      stir_radius_m=0.01, stir_depth_m=0.04, stir_turns=1.0,
+                      stir_duration_s=2.0)
+    parameters = {"radius_m": 0.01, "depth_m": 0.04, "turns": 1.0,
+                  "duration_s": 2.0, "direction": "ccw"}
+    valid = _stir_process_samples(0.01, 0.04, 0.0, 2.0, 1.0)
+    assert _stir_trace_metrics(valid, parameters, profile)["qualified"] is True
+    assert _stir_trace_metrics(_stir_process_samples(0.049, 0.03, 0.0, 4.0, 2.0), parameters, profile)["qualified"] is False
+    assert _stir_trace_metrics(_stir_process_samples(0.01, 0.04, 0.0, 4.0, -1.0), parameters, profile)["qualified"] is False
+    assert _stir_trace_metrics(_stir_process_samples(0.01, 0.04, 0.0, 1.0, 1.0), parameters, profile)["qualified"] is False
+
+
+def test_stir_target_compensates_measured_rod_tip_offset():
+    offset = _stir_tip_offset([0.2, 0.4, 0.6], [0.15, 0.37, 0.58], np)
+    target = _stir_controller_target([1.0, 2.0, 3.0], offset, np)
+    assert np.allclose(target, [0.95, 1.97, 2.98])
+    assert _stir_tip_offset(None, [0.0, 0.0, 0.0], np) is None
 
 
 def test_failed_feedback_phase_cannot_be_promoted_to_success():

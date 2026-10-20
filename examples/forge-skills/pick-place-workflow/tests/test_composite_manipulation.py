@@ -171,6 +171,12 @@ def test_published_cycle_contract_matches_runtime(spec):
     assert yaml.safe_load(path.read_text(encoding="utf-8")) == spec
 
 
+@pytest.mark.parametrize("spec", [POUR_CYCLE_TOOL_SPEC, STIR_CYCLE_TOOL_SPEC])
+def test_cycle_action_projects_optional_perception_target_from_preparation(spec):
+    field_map = spec["planning"]["argument_projection_plan"]["source_slots"]["preparation"]["source_field_map"]
+    assert field_map["manipulation_target"] == ["arguments", "manipulation_target"]
+
+
 def test_generic_cycle_schema_accepts_cap_rotation_without_task_specific_constants():
     args = request("pour_cycle")
     args.update(operation="manipulation_cycle", parameters={
@@ -315,6 +321,37 @@ def test_cycle_projector_normalizes_raw_provider_feedback_before_evaluation():
     settled = rt.invocation_result(invocation)
     assert settled["status"] == "succeeded"
     assert settled["result"]["process_completed"] is True
+
+
+def test_stir_cycle_projection_consumes_tip_feedback_and_recomputes_requested_turns():
+    provider, held = Provider(), PersistentPossession()
+    rt = runtime(provider, held)
+    args = rt.invoke_query("cycle_preparation", "prepare", request("stir_cycle"))["arguments"]
+    provider.result = measured("stir_cycle")
+    invocation = rt.start_action("tool.stir_cycle", args, caller_id=CALLER)["invocation_id"]
+    settled = rt.invocation_result(invocation)
+    assert settled["status"] == "succeeded"
+    assert settled["result"]["process_completed"] is True
+    assert settled["result"]["measurements"]["longest_directional_turns"] == pytest.approx(2.0)
+
+
+def test_legacy_stir_artifact_without_tip_coordinates_stays_unknown():
+    provider, held = Provider(), PersistentPossession()
+    rt = runtime(provider, held)
+    args = rt.invoke_query("cycle_preparation", "prepare", request("stir_cycle"))["arguments"]
+    raw = measured("stir_cycle")
+    raw["feedback_source_profile"].pop("tool_tip_frame_id")
+    for sample in raw["feedback_samples"]:
+        for key in ("tool_tip_x_m", "tool_tip_y_m", "tool_tip_depth_m", "tool_tip_frame_id"):
+            sample.pop(key)
+    provider.result = raw
+    invocation = rt.start_action("tool.stir_cycle", args, caller_id=CALLER)["invocation_id"]
+    settled = rt.invocation_result(invocation)
+    assert settled["status"] == "unknown"
+    assert settled["result"]["process_completed"] is False
+    errors = settled["result"]["measurements"]["feedback_adapter_errors"]
+    assert "missing_source_tool_tip_frame_id" in errors
+    assert "missing_tool_tip_coordinates" in errors
 
 
 def test_cycle_projector_rejects_raw_feedback_frame_drift_as_unknown():
