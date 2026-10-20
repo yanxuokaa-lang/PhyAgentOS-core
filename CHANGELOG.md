@@ -2,6 +2,34 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.1.5 (2026-10-20 19:31) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [sense] [test] 为通用 `PerceptionBindingAdapter` 增加独立 Query/Preparation Provider fixture，替换传感器来源、语义类别、引用、坐标系和场景版本时不修改通用 Adapter 或 ToolSpec。 / Add an independent Query/Preparation Provider fixture; changing sensor source, semantic categories, references, frame, and scene revision requires no generic Adapter or ToolSpec changes.
+- [policy] [docs] 完成 PAOS 架构、扩展原则、开发者指南、AgentLoop 和七维验收；验证仅为 no-motion 契约证据。 / Complete the PAOS architecture, extension-principle, developer-guide, AgentLoop, and seven-dimension review; validation is no-motion contract evidence only.
+- [test] [test] 相关子集 `28 passed`；全量目录 `583 passed, 2 failed`，两项为既有发布版本/包锁不一致，未改动相关用户文件。 / Focused subset: `28 passed`; full directories: `583 passed, 2 failed`; both failures are existing release version/package-lock mismatches, and no related user files were changed.
+
+### 影响文件 / Affected Files
+- `examples/forge-skills/pick-place-workflow/tests/test_perception_binding.py:L119-L263`
+- `docs/forge/IMPLEMENTATION_REVIEW_V15_1_5.md:L1-L83`
+- `changelog/2026-10.md`
+
+### 关键 Diff / Key Diff
+```diff
++ AlternateQueryProvider.invoke_query(endpoint_id, operation, arguments)
++ AlternatePreparationProvider.prepare_binding(request)
++ same PerceptionBindingAdapter -> valid binding under a distinct scene/provider vocabulary
+```
+
+### 验证 / Validation
+- `7 passed`: perception binding; `28 passed`: perception/planning/subtask/LabUtopia wiring subset.
+- Full workflow directories: `583 passed, 2 failed` on unrelated release metadata/bundle lock checks; recorded in `docs/forge/IMPLEMENTATION_REVIEW_V15_1_5.md`.
+- Ruff and `git diff --check` passed. No Isaac Sim, Gateway, or motion was run.
+
+### Git 提交 / Git Commit
+- Commit: pending
+- Branch: `feature/planning-loop`
+
 ## v15.1.4 (2026-10-20 19:20) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
@@ -89,21 +117,6 @@
 
 ### 验证 / Validation
 - Runtime/planning/regression suite passed; no live Isaac Sim or motion was run.
-
-## v15.1.0 (2026-10-20 19:10) - codex
-
-### 变更摘要 / Summary [完成 / Completed]
-- [policy] [feat] 每个实验室子任务编译为一个 Agent-facing PlanNode，内部五 Tool 聚合一个 NodeSettlement。 / Compile each laboratory subtask as one Agent-facing PlanNode and aggregate five internal Tools into one NodeSettlement.
-- [test] [feat] 覆盖单次结算、失败/取消/unknown、stale binding 和单节点计划。 / Cover one settlement, failure/cancel/unknown, stale binding, and one-node planning.
-
-### 影响文件 / Affected Files
-- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/subtask_executor.py:L1-L532`
-- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/agent_planning.py:L263-L323`
-- `examples/forge-skills/pick-place-workflow/tests/test_subtask_executor.py:L1-L88`
-- `docs/forge/IMPLEMENTATION_REVIEW_V15_1_0.md:L1-L66`
-
-### 验证 / Validation
-- Planning/executor and existing regressions passed; no Isaac Sim, Gateway, or motion was run.
 
 ## v14.12.13 (2026-10-20) - codex
 

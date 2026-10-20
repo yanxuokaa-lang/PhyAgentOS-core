@@ -116,6 +116,94 @@ class Preparation:
         }
 
 
+class AlternateQueryProvider:
+    """Independent provider implementation using the object Query port."""
+
+    def __init__(self):
+        self.calls: list[str] = []
+
+    def invoke_query(self, endpoint_id, operation, arguments):
+        del arguments
+        self.calls.append(f"{endpoint_id}:{operation}")
+        observation = {
+            "status": "available",
+            "observation_ref": "observation://mujo/overhead-01",
+            "scene_revision": "mujo-scene-7",
+            "frame": {"frame_id": "overhead-01", "unit": "m"},
+            "calibration_ref": "artifact://calibration/mujo-v2",
+            "freshness_ms": 7,
+            "artifacts": [{"ref": "artifact://mujo/rgbd/7", "kind": "rgbd"}],
+        }
+        entities = [
+            {"entity_ref": "entity://sample-vial-07", "category": "sample_vial", "confidence": 0.94},
+            {"entity_ref": "entity://mixing-vessel-02", "category": "mixing_vessel", "confidence": 0.97},
+        ]
+        envelopes = [
+            {"entity_ref": "entity://sample-vial-07", "frame_id": "overhead-01", "unit": "m",
+             "min_xyz_m": [0.2, 0.1, 0.0], "max_xyz_m": [0.28, 0.18, 0.16], "confidence": 0.92},
+            {"entity_ref": "entity://mixing-vessel-02", "frame_id": "overhead-01", "unit": "m",
+             "min_xyz_m": [0.5, 0.2, 0.0], "max_xyz_m": [0.68, 0.4, 0.22], "confidence": 0.95},
+        ]
+        identity = {
+            "observation_ref": observation["observation_ref"],
+            "scene_revision": observation["scene_revision"],
+            "frame": observation["frame"],
+            "calibration_ref": observation["calibration_ref"],
+        }
+        if operation == "observe":
+            return {**observation}
+        if operation == "understand":
+            return {"status": "available", **identity, "entities": entities, "spatial_envelopes": envelopes}
+        if operation == "propose":
+            return {
+                "status": "available", **identity,
+                "candidate_set_ref": "candidate-set://mujo-scene-7/overhead-01",
+                "candidates": [{
+                    "candidate_ref": "candidate://mujo-scene-7/sample-vial-07/0",
+                    "entity_ref": "entity://sample-vial-07",
+                    "grasp_frame": {"frame_id": "overhead-01", "unit": "m",
+                                    "position_m": [0.24, 0.14, 0.08],
+                                    "orientation_xyzw": [0.0, 0.0, 0.707, 0.707]},
+                    "approach_direction": {"frame_id": "overhead-01", "unit": "unitless",
+                                             "vector": [0.0, 0.0, -1.0]},
+                    "score": 0.88, "confidence": 0.9,
+                    "provenance": ["artifact://mujo/grasp/7/0"],
+                    "qualification": "proposed",
+                }],
+            }
+        if operation == "describe":
+            return {
+                "status": "available", "snapshot_ref": "artifact://capabilities/mujo-scene-7",
+                "observation_ref": observation["observation_ref"],
+                "scene_revision": observation["scene_revision"],
+                "calibration_ref": observation["calibration_ref"], "motion_authorized": False,
+            }
+        raise AssertionError(f"unexpected Query operation: {operation}")
+
+
+class AlternatePreparationProvider:
+    """Preparation provider with a different interface and reference scheme."""
+
+    def __init__(self):
+        self.requests: list[dict] = []
+
+    def prepare_binding(self, request):
+        self.requests.append(deepcopy(request))
+        candidate = request["candidates"][0]
+        return {
+            "status": "prepared",
+            "observation_ref": request["observation_ref"],
+            "scene_revision": request["scene_revision"],
+            "frame": {"frame_id": request["frame_id"], "unit": "m"},
+            "calibration_ref": request["calibration_ref"],
+            "preparation_ref": "preparation://mujo-scene-7/arm-2",
+            "candidate_set_ref": request["candidate_set_ref"],
+            "candidate_ref": candidate["candidate_ref"],
+            "destination_ref": request["destination_ref"],
+            "assignment_ref": "artifact://assignments/mujo-scene-7/arm-2",
+        }
+
+
 def _adapter(query=None, preparation=None, *, duplicate_source=False):
     query = query or QueryChain()
     preparation = preparation or Preparation()
@@ -142,6 +230,37 @@ def test_adapter_composes_queries_and_returns_measured_binding():
     assert binding.measured_geometry["size_m"] == [0.1, 0.1, 0.2]
     assert binding.candidate_ref == "candidate://scene-1/reagent-a-0"
     assert preparation.requests[0]["source_entity"]["entity_ref"] == "entity://reagent-a"
+
+
+def test_adapter_is_reusable_with_an_independent_provider_implementation():
+    query = AlternateQueryProvider()
+    preparation = AlternatePreparationProvider()
+    adapter = PerceptionBindingAdapter(
+        query,
+        preparation,
+        BindingRequest(
+            sensor_refs=("camera/overhead-01",),
+            source_category="sample_vial",
+            destination_category="mixing_vessel",
+            max_age_ms=1000,
+        ),
+    )
+
+    binding = adapter.bind()
+
+    assert query.calls == [
+        "scene_observation:observe",
+        "scene_understanding:understand",
+        "grasp_proposal:propose",
+        "manipulation_capabilities:describe",
+    ]
+    assert binding.entity_ref == "entity://sample-vial-07"
+    assert binding.destination_ref == "destination://mixing-vessel-02"
+    assert binding.scene_revision == "mujo-scene-7"
+    assert binding.candidate_ref == "candidate://mujo-scene-7/sample-vial-07/0"
+    assert binding.preparation_ref == "preparation://mujo-scene-7/arm-2"
+    assert preparation.requests[0]["source_entity"]["category"] == "sample_vial"
+    assert preparation.requests[0]["destination_entity"]["category"] == "mixing_vessel"
 
 
 def test_adapter_rejects_semantic_ambiguity_without_motion():
