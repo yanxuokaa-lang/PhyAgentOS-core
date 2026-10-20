@@ -175,6 +175,43 @@ def test_pick_place_runtime_can_require_synchronized_observations_without_global
     )
 
 
+def test_persistent_observation_source_prefers_capture_and_supports_legacy_query_port():
+    from pick_place_workflow.persistent_runtime import PersistentObservationSource
+
+    request = {"sensor_ref": "camera/front", "max_age_ms": 1000}
+
+    class CaptureSource:
+        def __init__(self):
+            self.requests = []
+
+        def capture(self, value):
+            self.requests.append(value)
+            return {"source": "capture", **value}
+
+    class QuerySource:
+        def __init__(self):
+            self.calls = []
+
+        def query(self, operation, value):
+            self.calls.append((operation, value))
+            return {"source": "query", **value}
+
+    capture = CaptureSource()
+    assert PersistentObservationSource(capture).capture(request) == {"source": "capture", **request}
+    assert capture.requests == [request]
+
+    query = QuerySource()
+    assert PersistentObservationSource(query).capture(request) == {"source": "query", **request}
+    assert query.calls == [("observe", request)]
+
+
+def test_persistent_observation_source_rejects_action_only_client():
+    from pick_place_workflow.persistent_runtime import PersistentObservationSource
+
+    with pytest.raises(TypeError, match="observation source"):
+        PersistentObservationSource(object()).capture({"sensor_ref": "camera/front"})
+
+
 def test_unknown_place_cannot_produce_semantic_completion_evidence():
     class Driver:
         def poll(self):

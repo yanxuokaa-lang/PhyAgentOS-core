@@ -2,6 +2,37 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.1.6 (2026-10-20 19:50) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [sense] [refactor] 将观测输入从持物/动作 client 中分离为可注入的通用 `observation_source`，支持标准 `capture()` 或既有 `query("observe", ...)` 端口；不新增 LabUtopia 专用感知类。 / Separate observation input from the held/action client through an injectable generic `observation_source`, supporting standard `capture()` or the existing `query("observe", ...)` port; do not add a LabUtopia-specific perception class.
+- [test] [test] 增加 Runtime-backed generic perception binding wiring 回归，验证 Agent-facing subtask Tool 仍保持单节点且 no-motion。 / Add a Runtime-backed generic perception-binding wiring regression, verifying the Agent-facing subtask Tool remains one node and no-motion.
+- [policy] [docs] 完成 PAOS 架构、扩展原则、开发者指南、AgentLoop 和七维验收；`586 passed, 2 failed` 中的两项失败为无关的发布版本/包锁漂移。 / Complete the PAOS architecture, extension-principle, developer-guide, AgentLoop, and seven-dimension review; the two failures in `586 passed, 2 failed` are unrelated release version/package-lock drift.
+
+### 预计影响文件 / Planned Files
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/persistent_runtime.py`
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/paos_client.py`
+- `examples/forge-skills/pick-place-workflow/tests/test_persistent_runtime.py`
+- `examples/forge-adapters/isaacsim_lab/tests/test_paos_integration.py`
+- `examples/forge-skills/pick-place-workflow/README.md:L93-L100`
+- `docs/forge/IMPLEMENTATION_REVIEW_V15_1_6.md`
+- `changelog/2026-10.md`
+
+### 关键 Diff / Key Diff
+```diff
+- ObservationEndpoint(PersistentObservationSource(client))
++ ObservationEndpoint(PersistentObservationSource(observation_source or client))
++ capture(request) -> provider capture; compatibility fallback -> query("observe", request)
+```
+
+### 验证 / Validation
+- `29 passed`: Runtime/LabUtopia wiring; `586 passed, 2 failed`: full workflow/LabUtopia directories with unrelated release-lock drift.
+- Ruff, compileall, and `git diff --check` passed. No Isaac Sim, Gateway, or motion was run.
+
+### Git 提交 / Git Commit
+- Commit: pending
+- Branch: `feature/planning-loop`
+
 ## v15.1.5 (2026-10-20 19:31) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
@@ -101,23 +132,6 @@
 ### 验证 / Validation
 - `.venv/bin/pytest` focused suite: `123 passed`; Ruff, compileall, and `git diff --check` passed.
 - 未启动 Isaac Sim、Gateway 或运动。 / No Isaac Sim, Gateway, or motion was run.
-
-## v15.1.1 (2026-10-20 19:25) - codex
-
-### 变更摘要 / Summary [完成 / Completed]
-- [policy] [feat] Runtime-backed `manipulation.execute_subtask` 用一个外层 invocation 编排 acquire/prepare/process/place，内部 receipts 不生成 Agent 节点。 / Runtime-backed `manipulation.execute_subtask` orchestrates acquire/prepare/process/place under one outer invocation; internal receipts do not create Agent nodes.
-- [sense] [feat] 感知绑定补齐 candidate/preparation/capability/assignment provenance，并在 scene revision 变化时要求刷新。 / Complete perception binding provenance and require refresh after scene revision changes.
-- [test] [feat] 覆盖 Runtime 聚合、取消、失败、unknown、Tool discovery 和刷新边界。 / Cover Runtime aggregation, cancellation, failure, unknown, discovery, and refresh boundaries.
-
-### 影响文件 / Affected Files
-- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/subtask_executor.py:L42-L748`
-- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/persistent_runtime.py:L430-L545`
-- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/agent_planning.py:L288-L297`
-- `examples/forge-skills/pick-place-workflow/tests/test_subtask_executor.py:L1-L204`
-- `docs/forge/IMPLEMENTATION_REVIEW_V15_1_1.md:L1-L75`
-
-### 验证 / Validation
-- Runtime/planning/regression suite passed; no live Isaac Sim or motion was run.
 
 ## v14.12.13 (2026-10-20) - codex
 

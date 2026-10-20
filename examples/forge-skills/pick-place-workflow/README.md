@@ -91,6 +91,13 @@ current scene validated by Runtime before the held route continues. Its terminal
 `post_release_evidence` for downstream verification, without exposing
 coordinates, simulator parameters, or controller details.
 
+Runtime hosts must inject observation through the provider-neutral
+`observation_source` seam. New sources implement `capture(request)`; existing
+hosts with a query-backed sensor may temporarily expose `query("observe", request)`
+through the compatibility adapter. The manipulation client owns only Action
+execution (`start/poll/cancel/stop`) and is not treated as a camera or scene
+observation provider.
+
 The `robotwin-persistent` and `robotwin-blocks-ranking-observed` profiles use
 observation-owned route geometry and GraspNet by default. Their provider,
 route-transform attestation, and source-root inputs are passed together through

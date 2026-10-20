@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -258,6 +259,63 @@ def test_labutopia_registers_subtask_only_with_generic_perception_chain(tmp_path
         assert "manipulation.execute_subtask" in tools
         assert bundle.perception_adapter is not None
         assert bundle.perception_adapter.query_invoker is bundle.runtime
+    finally:
+        bundle.client.close()
+
+
+def test_labutopia_observation_query_uses_injected_source_not_action_client(tmp_path):
+    engine = FakeEngine()
+    profile = _profile(tmp_path)
+    engine.profile = profile
+
+    class ObservationSource:
+        def __init__(self):
+            self.requests = []
+
+        def capture(self, request):
+            self.requests.append(dict(request))
+            return {
+                "sensor_ref": request["sensor_ref"],
+                "captured_at": datetime.now(timezone.utc),
+                "scene_revision": "observed-scene-1",
+                "frame_id": "lab-camera-front",
+                "calibration_ref": "artifact://calibration/lab-camera-front-v1",
+                "artifacts": [{
+                    "ref": "artifact://observations/observed-scene-1/rgb",
+                    "kind": "rgb",
+                    "media_type": "image/png",
+                }],
+            }
+
+    observation_source = ObservationSource()
+    adapter = PerceptionBindingAdapter(
+        lambda _tool_id, _arguments: {},
+        lambda _request: {"status": "available"},
+        BindingRequest(("camera/front",), "reagent_a", "beaker", 1000),
+    )
+    bundle = build_labutopia_runtime(
+        profile=profile,
+        engine=engine,
+        understanding_provider=object(),
+        grasp_provider=object(),
+        preparation_provider=GenericProvider(),
+        capability_provider=GenericProvider(),
+        observation_source=observation_source,
+        resolve_preparation=lambda operation, arguments: dict(arguments),
+        tool_context_provider=lambda _: {"ready": True},
+        allow_live=False,
+        perception_adapter=adapter,
+    )
+    try:
+        result = bundle.runtime.invoke_query(
+            "scene_observation", "observe",
+            {"sensor_ref": "camera/front", "max_age_ms": 1000},
+        )
+        assert result["status"] == "available"
+        assert result["scene_revision"] == "observed-scene-1"
+        assert result["frame"]["frame_id"] == "lab-camera-front"
+        assert observation_source.requests == [{"sensor_ref": "camera/front", "max_age_ms": 1000}]
+        assert engine.started == []
     finally:
         bundle.client.close()
 

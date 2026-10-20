@@ -357,11 +357,24 @@ def _spec(spec, *, argument_defaults=None, require_synchronized_views: bool = Fa
 
 
 class PersistentObservationSource:
-    def __init__(self, client):
-        self.client = client
+    """Adapt a generic observation source without coupling it to an Action client.
+
+    New providers should expose ``capture(request)``.  The ``query`` fallback
+    keeps existing hosts compatible while the source is migrated; it is not a
+    second observation contract exposed to the Agent or Gateway.
+    """
+
+    def __init__(self, source):
+        self.source = source
 
     def capture(self, request):
-        return self.client.query("observe", request)
+        capture = getattr(self.source, "capture", None)
+        if callable(capture):
+            return capture(dict(request))
+        query = getattr(self.source, "query", None)
+        if callable(query):
+            return query("observe", dict(request))
+        raise TypeError("observation source must expose capture(request) or query(operation, request)")
 
 
 class PersistentActionEndpoint:
@@ -448,6 +461,7 @@ def register_subtask_tool(runtime: CapabilityRuntime, refresh_binding, tool_cont
 def build_persistent_runtime(*, client, understanding_provider, grasp_provider,
                              preparation_provider, capability_provider, resolve_preparation,
                              tool_context_provider, possession: PersistentPossession | None = None,
+                             observation_source=None,
                              query_decorator=None, tool_input_defaults=None,
                              require_synchronized_views: bool = False,
                              held_preparation_provider=None, resolve_held_preparation=None,
@@ -467,7 +481,9 @@ def build_persistent_runtime(*, client, understanding_provider, grasp_provider,
     if (held_preparation_provider is None) != (resolve_held_preparation is None):
         raise ValueError("held preparation provider and resolver must be supplied together")
     registrations = [
-        (OBSERVATION_TOOL_SPEC, ObservationEndpoint(PersistentObservationSource(client))),
+        (OBSERVATION_TOOL_SPEC, ObservationEndpoint(PersistentObservationSource(
+            observation_source if observation_source is not None else client
+        ))),
         (SCENE_UNDERSTANDING_TOOL_SPEC, SceneUnderstandingEndpoint(understanding_provider)),
         (GRASP_PROPOSAL_TOOL_SPEC, GraspProposalEndpoint(grasp_provider)),
         (CAPABILITY_TOOL_SPEC, CapabilitySnapshotEndpoint(capability_provider)),
