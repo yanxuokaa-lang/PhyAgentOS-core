@@ -9,6 +9,7 @@ from .agent_planning import (
     ToolSelectionError,
     compose_agent_plan,
     compose_executable_pick_place_plan,
+    compose_subtask_plan,
     select_planning_mode,
 )
 from .fake_gateway import (
@@ -71,6 +72,17 @@ from .object_place import (
 from .object_place import (
     ActionReadinessGate as PlaceActionReadinessGate,
 )
+from .subtask_executor import (
+    SUBTASK_TOOL_SPEC,
+    PerceptionBinding,
+    SubtaskExecutionError,
+    SubtaskExecutionResult,
+    SubtaskExecutor,
+    SubtaskSpec,
+    SubtaskToolCall,
+    ToolReceipt,
+    default_subtask_calls,
+)
 from .understanding import (
     SceneUnderstandingEndpoint,
     UnderstandingProvider,
@@ -126,6 +138,16 @@ __all__ = [
     "ToolSelectionError",
     "compose_agent_plan",
     "compose_executable_pick_place_plan",
+    "compose_subtask_plan",
+    "PerceptionBinding",
+    "SubtaskExecutionError",
+    "SubtaskExecutionResult",
+    "SubtaskExecutor",
+    "SubtaskSpec",
+    "SubtaskToolCall",
+    "ToolReceipt",
+    "SUBTASK_TOOL_SPEC",
+    "default_subtask_calls",
     "select_planning_mode",
     "MultiObjectAgentError",
     "MultiObjectAgentRunner",

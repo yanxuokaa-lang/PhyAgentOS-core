@@ -18,8 +18,23 @@ from pick_place_workflow.agent_planning import (
     ToolSelectionError,
     compose_agent_plan,
     compose_executable_pick_place_plan,
+    compose_subtask_plan,
     select_planning_mode,
 )
+from pick_place_workflow.subtask_executor import PerceptionBinding, SubtaskSpec
+
+
+def _lab_binding():
+    return PerceptionBinding(
+        entity_ref="entity://reagent-a", semantic_label="reagent A", category="reagent_bottle",
+        measured_pose={"position": [0.1, 0.2, 0.3]}, measured_geometry={"height_m": 0.18},
+        grasp_candidate_ref="candidate-set://scene-1/reagent-a",
+        destination_ref="destination://beaker-1", destination_pose={"position": [0.2, 0.2, 0.1]},
+        process_frame="frame://beaker-1", observation_ref="observation://lab/scene-1",
+        scene_revision="scene-1", frame_id="lab-camera-front",
+        calibration_ref="artifact://calibration/lab-v1", freshness_ms=10, max_age_ms=1000,
+        confidence=0.98, provenance="artifact://perception/lab-scene-1",
+    )
 
 
 def _plan():
@@ -182,3 +197,15 @@ def test_executable_projection_admits_declared_tool_without_motion_authority():
     decision = planner.admit(call, AdmissionContext(scene_revision="scene-0"))
     assert decision.allowed is True
     assert decision.motion_authorized is False
+
+
+def test_subtask_projection_has_one_agent_node_and_one_verify_join():
+    plan = compose_subtask_plan(
+        "lab-task", "scene-1",
+        (SubtaskSpec(subtask_id="pour-a", operation="pour", binding=_lab_binding()),),
+        planner_decision_digest="1" * 64, policy_snapshot_digest="2" * 64,
+    )
+    assert [node.capability for node in plan.graph.nodes] == ["manipulation.execute_subtask", "task.verify"]
+    assert plan.graph.nodes[0].dependencies == ()
+    assert plan.graph.nodes[1].dependencies == ("pour-a",)
+    assert plan.graph.nodes[0].input_bindings["subtask"]["binding"]["entity_ref"] == "entity://reagent-a"

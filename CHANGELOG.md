@@ -2,6 +2,40 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.1.0 (2026-10-20 19:10) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [policy] [feat] 每个实验室操作子任务编译为一个 `manipulation.execute_subtask` Agent-facing PlanNode；内部 acquire/prepare/process/place 不展开为 Agent 节点。 / Compile each laboratory operation subtask as one Agent-facing `manipulation.execute_subtask` PlanNode; internal acquire/prepare/process/place calls are not Agent nodes.
+- [policy] [refactor] 新增 observation-bound `SubtaskExecutor`，保留内部 receipts，并在子任务边界聚合一个 NodeSettlement。 / Add an observation-bound `SubtaskExecutor` that retains internal receipts and aggregates one NodeSettlement at the subtask boundary.
+- [policy] [fix] invoker 异常按 `outcome_unknown` 处理并停止后续动作，避免远端动作可能已启动时伪造已知失败。 / Treat invoker exceptions as `outcome_unknown` and stop subsequent actions instead of claiming a known failure after possible remote dispatch.
+- [test] [feat] 覆盖单次结算、失败/取消/unknown、stale binding 和单节点计划。 / Cover one settlement, failure/cancel/unknown, stale binding, and one-node planning.
+
+### 影响文件 / Affected Files
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/subtask_executor.py:L1-L514`
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/agent_planning.py:L263-L379`
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/__init__.py:L9-L157`
+- `examples/forge-skills/pick-place-workflow/tests/test_subtask_executor.py:L1-L88`
+- `examples/forge-skills/pick-place-workflow/tests/test_agent_planning.py:L18-L211`
+- `docs/forge/IMPLEMENTATION_REVIEW_V15_1_0.md:L1-L66`
+
+### 七维验收 / Seven-Dimension Acceptance
+- 1 感知来源：通过结构化 observation-bound binding 合同；未声称相机 provider 已接入。 / Pass for structured binding contract; live camera provider not claimed.
+- 2 绑定一致性：通过 frame/calibration/scene revision/freshness 校验；live scene join 留待下一阶段。 / Pass for contract validation; live scene join remains next.
+- 3 Agent 粒度：通过，一个子任务一个 PlanNode，verify 只依赖子任务。 / Pass: one PlanNode per subtask, verify joins subtasks only.
+- 4 IK/工作空间/碰撞：本阶段未评价，保持 no-motion。 / Not evaluated in this no-motion stage.
+- 5 抓取/持有/放置：部分通过，传播状态且失败短路；尚无 Runtime-backed 真实反馈。 / Partial: state propagation and short-circuiting; no Runtime-backed feedback yet.
+- 6 倾倒/搅拌反馈：部分通过，receipts 保留反馈；尚无真实过程测量。 / Partial: receipts preserve feedback; no live process measurements yet.
+- 7 子任务结算：通过，五个内部 Tool 聚合一个 NodeSettlement，unknown/取消在子任务边界停止。 / Pass: five internal Tools aggregate one NodeSettlement and unknown/cancel stop at the boundary.
+
+### 验证 / Validation
+- Planning + executor: `12 passed`; existing runtime/multi-object/composite regressions: `76 passed`。
+- `ruff check`、`compileall`、`git diff --check`: passed。
+- 未启动 Isaac Sim、未调用 Gateway、未执行运动。 / No Isaac Sim, Gateway, or motion was run.
+
+### Git 提交 / Git Commit
+- Commit: pending
+- Branch: `feature/planning-loop`
+
 ## v14.12.13 (2026-10-20) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]

@@ -26,6 +26,8 @@ from PhyAgentOS.planning import (
 )
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from .subtask_executor import SubtaskSpec
+
 AGENT_PLAN_VERSION = "pick_and_place_agent_plan_v1"
 PlanningMode = Literal["baseline", "agent_composed"]
 _SAFE_ID = re.compile(r"^[A-Za-z0-9_.:-]+$")
@@ -261,6 +263,66 @@ def compose_executable_pick_place_plan(
     return AgentComposedPlan(graph=graph, entity_bindings=tuple(bindings))
 
 
+def compose_subtask_plan(
+    task_id: str,
+    revision_id: str,
+    subtasks: tuple[SubtaskSpec, ...],
+    *,
+    planner_decision_digest: str,
+    policy_snapshot_digest: str,
+) -> AgentComposedPlan:
+    """Compile each semantic manipulation subtask into exactly one PlanNode.
+
+    Internal acquire/prepare/process/place Tool calls remain within the
+    subtask payload and are settled by the existing NodeSettlement owner.
+    """
+    if not subtasks:
+        raise AgentPlanningError("subtask plan requires at least one subtask")
+    ids = [item.subtask_id for item in subtasks]
+    if len(ids) != len(set(ids)) or "verify" in set(ids):
+        raise AgentPlanningError("subtask identities must be unique and cannot use verify")
+    known = set(ids)
+    if any(set(item.depends_on) - known for item in subtasks):
+        raise AgentPlanningError("subtask dependency references an unknown subtask")
+
+    nodes = tuple(
+        PlanNode(
+            node_id=item.subtask_id,
+            obligation_id=item.subtask_id,
+            capability="manipulation.execute_subtask",
+            dependencies=item.depends_on,
+            required_evidence=(item.binding.observation_ref,),
+            produced_evidence=(f"subtask:{item.subtask_id}:completed",),
+            input_bindings={"subtask": item.model_dump(mode="json")},
+        )
+        for item in subtasks
+    ) + (PlanNode(
+        node_id="verify",
+        obligation_id="verify-task",
+        capability="task.verify",
+        dependencies=tuple(ids),
+    ),)
+    payload = {
+        "schema_version": "paos-plan-graph/v1",
+        "task_id": task_id,
+        "revision_id": revision_id,
+        "graph_digest": "0" * 64,
+        "planner_decision_digest": planner_decision_digest,
+        "policy_snapshot_digest": policy_snapshot_digest,
+        "nodes": [node.model_dump(mode="json") for node in nodes],
+    }
+    payload["graph_digest"] = plan_graph_digest(payload)
+    graph = PlanGraph.model_validate(payload)
+    try:
+        validate_graph(graph)
+    except ValueError as exc:
+        raise AgentPlanningError(str(exc)) from exc
+    return AgentComposedPlan(
+        graph=graph,
+        entity_bindings=tuple((item.subtask_id, item.binding.entity_ref) for item in subtasks),
+    )
+
+
 def select_planning_mode(mode: PlanningMode) -> PlanningMode:
     """Validate the migration switch without changing the baseline reducer."""
 
@@ -312,5 +374,6 @@ __all__ = [
     "ToolSelectionError",
     "compose_agent_plan",
     "compose_executable_pick_place_plan",
+    "compose_subtask_plan",
     "select_planning_mode",
 ]
