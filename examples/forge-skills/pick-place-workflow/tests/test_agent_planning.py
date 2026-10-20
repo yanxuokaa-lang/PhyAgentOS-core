@@ -29,6 +29,11 @@ def _lab_binding():
         entity_ref="entity://reagent-a", semantic_label="reagent A", category="reagent_bottle",
         measured_pose={"position": [0.1, 0.2, 0.3]}, measured_geometry={"height_m": 0.18},
         grasp_candidate_ref="candidate-set://scene-1/reagent-a",
+        candidate_set_ref="candidate-set://scene-1/reagent-a",
+        preparation_ref="preparation://scene-1/reagent-a",
+        candidate_ref="candidate://reagent-a/0",
+        capability_snapshot_ref="artifact://capabilities/lab-v1",
+        assignment_ref="artifact://assignments/reagent-a",
         destination_ref="destination://beaker-1", destination_pose={"position": [0.2, 0.2, 0.1]},
         process_frame="frame://beaker-1", observation_ref="observation://lab/scene-1",
         scene_revision="scene-1", frame_id="lab-camera-front",
@@ -208,4 +213,4 @@ def test_subtask_projection_has_one_agent_node_and_one_verify_join():
     assert [node.capability for node in plan.graph.nodes] == ["manipulation.execute_subtask", "task.verify"]
     assert plan.graph.nodes[0].dependencies == ()
     assert plan.graph.nodes[1].dependencies == ("pour-a",)
-    assert plan.graph.nodes[0].input_bindings["subtask"]["binding"]["entity_ref"] == "entity://reagent-a"
+    assert plan.graph.nodes[0].input_bindings["binding"]["entity_ref"] == "entity://reagent-a"

@@ -293,7 +293,7 @@ def compose_subtask_plan(
             dependencies=item.depends_on,
             required_evidence=(item.binding.observation_ref,),
             produced_evidence=(f"subtask:{item.subtask_id}:completed",),
-            input_bindings={"subtask": item.model_dump(mode="json")},
+            input_bindings=item.model_dump(mode="json"),
         )
         for item in subtasks
     ) + (PlanNode(

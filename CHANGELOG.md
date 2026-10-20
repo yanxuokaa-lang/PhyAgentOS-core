@@ -2,38 +2,80 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.1.2 (2026-10-20 20:05) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [sense] [fix] 场景版本刷新拒绝复用旧 observation、frame 和 grasp/preparation/assignment 引用。 / Scene-revision refresh rejects stale observation, frame, and grasp/preparation/assignment references.
+- [test] [feat] 新增 stale motion-candidate no-motion 回归；focused suite `123 passed`。 / Add a stale motion-candidate no-motion regression; focused suite `123 passed`.
+- [docs] [docs] 更新 PAOS、AgentLoop、robotics-safety 和七维验收记录。 / Update PAOS, AgentLoop, robotics-safety, and seven-dimension acceptance records.
+
+### 影响文件 / Affected Files
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/subtask_executor.py:L570-L589,L706-L733`
+- `examples/forge-skills/pick-place-workflow/tests/test_subtask_executor.py:L142-L176`
+- `docs/forge/IMPLEMENTATION_REVIEW_V15_1_1.md:L8-L75`
+
+### 验证 / Validation
+- `.venv/bin/pytest` focused suite: `123 passed`; Ruff, compileall, and `git diff --check` passed.
+- 未启动 Isaac Sim、Gateway 或运动。 / No Isaac Sim, Gateway, or motion was run.
+
+## v15.1.1 (2026-10-20 19:25) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [policy] [feat] Runtime-backed `manipulation.execute_subtask` 用一个外层 invocation 编排 acquire/prepare/process/place，内部 receipts 不生成 Agent 节点。 / Runtime-backed `manipulation.execute_subtask` orchestrates acquire/prepare/process/place under one outer invocation; internal receipts do not create Agent nodes.
+- [sense] [feat] 感知绑定补齐 candidate/preparation/capability/assignment provenance，并在 scene revision 变化时要求刷新。 / Complete perception binding provenance and require refresh after scene revision changes.
+- [test] [feat] 覆盖 Runtime 聚合、取消、失败、unknown、Tool discovery 和刷新边界。 / Cover Runtime aggregation, cancellation, failure, unknown, discovery, and refresh boundaries.
+
+### 影响文件 / Affected Files
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/subtask_executor.py:L42-L748`
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/persistent_runtime.py:L430-L545`
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/agent_planning.py:L288-L297`
+- `examples/forge-skills/pick-place-workflow/tests/test_subtask_executor.py:L1-L204`
+- `docs/forge/IMPLEMENTATION_REVIEW_V15_1_1.md:L1-L75`
+
+### 验证 / Validation
+- Runtime/planning/regression suite passed; no live Isaac Sim or motion was run.
+
 ## v15.1.0 (2026-10-20 19:10) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
-- [policy] [feat] 每个实验室操作子任务编译为一个 `manipulation.execute_subtask` Agent-facing PlanNode；内部 acquire/prepare/process/place 不展开为 Agent 节点。 / Compile each laboratory operation subtask as one Agent-facing `manipulation.execute_subtask` PlanNode; internal acquire/prepare/process/place calls are not Agent nodes.
-- [policy] [refactor] 新增 observation-bound `SubtaskExecutor`，保留内部 receipts，并在子任务边界聚合一个 NodeSettlement。 / Add an observation-bound `SubtaskExecutor` that retains internal receipts and aggregates one NodeSettlement at the subtask boundary.
-- [policy] [fix] invoker 异常按 `outcome_unknown` 处理并停止后续动作，避免远端动作可能已启动时伪造已知失败。 / Treat invoker exceptions as `outcome_unknown` and stop subsequent actions instead of claiming a known failure after possible remote dispatch.
+- [policy] [feat] 每个实验室子任务编译为一个 Agent-facing PlanNode，内部五 Tool 聚合一个 NodeSettlement。 / Compile each laboratory subtask as one Agent-facing PlanNode and aggregate five internal Tools into one NodeSettlement.
 - [test] [feat] 覆盖单次结算、失败/取消/unknown、stale binding 和单节点计划。 / Cover one settlement, failure/cancel/unknown, stale binding, and one-node planning.
 
 ### 影响文件 / Affected Files
-- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/subtask_executor.py:L1-L514`
-- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/agent_planning.py:L263-L379`
-- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/__init__.py:L9-L157`
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/subtask_executor.py:L1-L532`
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/agent_planning.py:L263-L323`
 - `examples/forge-skills/pick-place-workflow/tests/test_subtask_executor.py:L1-L88`
-- `examples/forge-skills/pick-place-workflow/tests/test_agent_planning.py:L18-L211`
 - `docs/forge/IMPLEMENTATION_REVIEW_V15_1_0.md:L1-L66`
 
-### 七维验收 / Seven-Dimension Acceptance
-- 1 感知来源：通过结构化 observation-bound binding 合同；未声称相机 provider 已接入。 / Pass for structured binding contract; live camera provider not claimed.
-- 2 绑定一致性：通过 frame/calibration/scene revision/freshness 校验；live scene join 留待下一阶段。 / Pass for contract validation; live scene join remains next.
-- 3 Agent 粒度：通过，一个子任务一个 PlanNode，verify 只依赖子任务。 / Pass: one PlanNode per subtask, verify joins subtasks only.
-- 4 IK/工作空间/碰撞：本阶段未评价，保持 no-motion。 / Not evaluated in this no-motion stage.
-- 5 抓取/持有/放置：部分通过，传播状态且失败短路；尚无 Runtime-backed 真实反馈。 / Partial: state propagation and short-circuiting; no Runtime-backed feedback yet.
-- 6 倾倒/搅拌反馈：部分通过，receipts 保留反馈；尚无真实过程测量。 / Partial: receipts preserve feedback; no live process measurements yet.
-- 7 子任务结算：通过，五个内部 Tool 聚合一个 NodeSettlement，unknown/取消在子任务边界停止。 / Pass: five internal Tools aggregate one NodeSettlement and unknown/cancel stop at the boundary.
+### 验证 / Validation
+- Planning/executor and existing regressions passed; no Isaac Sim, Gateway, or motion was run.
+
+## v15.0.1 (2026-10-20 18:00) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [policy] [feat] 定义子任务内 acquire/prepare/process/place 顺序和一次 Agent-facing 结算边界。 / Define the ordered acquire/prepare/process/place sequence and one Agent-facing settlement boundary.
+- [test] [feat] 建立 no-motion 子任务执行器测试入口。 / Establish no-motion subtask executor test coverage.
+
+### 影响文件 / Affected Files
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/subtask_executor.py`
+- `examples/forge-skills/pick-place-workflow/tests/test_subtask_executor.py`
 
 ### 验证 / Validation
-- Planning + executor: `12 passed`; existing runtime/multi-object/composite regressions: `76 passed`。
-- `ruff check`、`compileall`、`git diff --check`: passed。
-- 未启动 Isaac Sim、未调用 Gateway、未执行运动。 / No Isaac Sim, Gateway, or motion was run.
+- Initial no-motion planning/executor tests passed; live execution was not run.
 
-### Git 提交 / Git Commit
-- Commit: `3cb5cdf6`
+## v15.0.0 (2026-10-20 17:00) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [docs] [docs] 保存 LabUtopia/PAOS 子任务结算架构审核、感知绑定边界和七维验收矩阵。 / Record the LabUtopia/PAOS subtask-settlement review, perception-binding boundaries, and seven-dimension matrix.
+- [policy] [refactor] 明确复用现有 Coordinator、PlanRevision、ToolExecutionRecord 和 NodeSettlement。 / Require reuse of existing Coordinator, PlanRevision, ToolExecutionRecord, and NodeSettlement.
+
+### 影响文件 / Affected Files
+- `docs/forge/LABUTOPIA_PAOS_SUBTASK_REVIEW_20261020.md:L1-L206`
+- `docs/forge/LAB_POUR_STIR_IMPLEMENTATION_PLAN_20261015.md:L314-L328`
+
+### 验证 / Validation
+- Documentation review and `git diff --check` passed; no Isaac Sim, Gateway, or motion was run.
+
 - Branch: `feature/planning-loop`
 
 ## v14.12.13 (2026-10-20) - codex

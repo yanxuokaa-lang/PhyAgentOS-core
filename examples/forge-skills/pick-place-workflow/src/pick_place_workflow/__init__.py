@@ -75,6 +75,8 @@ from .object_place import (
 from .subtask_executor import (
     SUBTASK_TOOL_SPEC,
     PerceptionBinding,
+    RuntimeSubtaskDriver,
+    SubtaskActionEndpoint,
     SubtaskExecutionError,
     SubtaskExecutionResult,
     SubtaskExecutor,
@@ -143,6 +145,8 @@ __all__ = [
     "SubtaskExecutionError",
     "SubtaskExecutionResult",
     "SubtaskExecutor",
+    "SubtaskActionEndpoint",
+    "RuntimeSubtaskDriver",
     "SubtaskSpec",
     "SubtaskToolCall",
     "ToolReceipt",

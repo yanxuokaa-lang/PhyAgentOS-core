@@ -434,7 +434,8 @@ def build_persistent_runtime(*, client, understanding_provider, grasp_provider,
                              require_synchronized_views: bool = False,
                              held_preparation_provider=None, resolve_held_preparation=None,
                              register_legacy_actions: bool = True,
-                             register_legacy_held_operations: bool = True) -> CapabilityRuntime:
+                             register_legacy_held_operations: bool = True,
+                             refresh_subtask_binding=None) -> CapabilityRuntime:
     """Use injected model providers and one persistent manipulation process.
 
     resolve_preparation belongs to the adapter and supplies the approved route
@@ -531,4 +532,12 @@ def build_persistent_runtime(*, client, understanding_provider, grasp_provider,
         for _, spec, endpoint in available_cycles:
             runtime.register_tool(deepcopy(spec), endpoint,
                                   context_provider=lambda tool_id=spec["tool_id"]: tool_context_provider(tool_id))
+        if refresh_subtask_binding is not None:
+            from .subtask_executor import SUBTASK_TOOL_SPEC, SubtaskActionEndpoint
+
+            runtime.register_tool(
+                deepcopy(SUBTASK_TOOL_SPEC),
+                SubtaskActionEndpoint(runtime, refresh_subtask_binding),
+                context_provider=lambda: tool_context_provider("manipulation.execute_subtask"),
+            )
     return runtime

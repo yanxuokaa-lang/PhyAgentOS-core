@@ -155,12 +155,13 @@ def measured(operation="pour_cycle", **changes):
             "observation_ready": True, "object_support_state": "on_support", **changes}
 
 
-def runtime(provider, held, client=None):
+def runtime(provider, held, client=None, refresh_subtask_binding=None):
     return build_persistent_runtime(
         client=client or provider, understanding_provider=object(), grasp_provider=object(),
         preparation_provider=object(), capability_provider=provider,
         resolve_preparation=provider.resolve, tool_context_provider=lambda _: {"ready": True},
         possession=held, held_preparation_provider=provider, resolve_held_preparation=provider.resolve,
+        refresh_subtask_binding=refresh_subtask_binding,
     )
 
 
@@ -569,6 +570,23 @@ def test_cycle_discovery_requires_both_preparation_and_execution_capability():
     ids = {tool["tool_id"] for tool in rt.list_tools()["tools"]}
     assert "object.pour_cycle" not in ids and "tool.stir_cycle" not in ids
     assert "object.pour" in ids and "tool.stir" in ids
+
+
+def test_subtask_action_discovery_requires_fresh_binding_adapter():
+    provider = Provider(generic=True)
+    unavailable = runtime(provider, PersistentPossession())
+    assert "manipulation.execute_subtask" not in {
+        item["tool_id"] for item in unavailable.list_tools()["tools"]
+    }
+    available = runtime(
+        provider, PersistentPossession(),
+        refresh_subtask_binding=lambda binding, revision: binding,
+    )
+    subtask_tool = next(
+        item for item in available.list_tools()["tools"]
+        if item["tool_id"] == "manipulation.execute_subtask"
+    )
+    assert subtask_tool["planning"]["capabilities"] == ["manipulation.execute_subtask"]
 
 
 def test_cycle_preparation_uses_the_existing_query_decorator():

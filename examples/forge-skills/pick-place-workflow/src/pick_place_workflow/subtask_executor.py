@@ -14,6 +14,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol
 
+from PhyAgentOS.forge.capability_runtime import ActionAdmission, CapabilityRuntime
 from PhyAgentOS.planning import NodeSettlement
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -53,6 +54,11 @@ class PerceptionBinding(BaseModel):
     measured_pose: Mapping[str, Any]
     measured_geometry: Mapping[str, Any]
     grasp_candidate_ref: str
+    candidate_set_ref: str
+    preparation_ref: str
+    candidate_ref: str
+    capability_snapshot_ref: str
+    assignment_ref: str
     destination_ref: str
     destination_pose: Mapping[str, Any]
     process_frame: str = Field(min_length=1)
@@ -100,10 +106,40 @@ class PerceptionBinding(BaseModel):
             raise ValueError("grasp_candidate_ref must use candidate-set://")
         return value
 
+    @field_validator("candidate_set_ref")
+    @classmethod
+    def candidate_set_reference(cls, value: str) -> str:
+        if _CANDIDATE_REF.fullmatch(value) is None:
+            raise ValueError("candidate_set_ref must use candidate-set://")
+        return value
+
+    @field_validator("preparation_ref")
+    @classmethod
+    def preparation_reference(cls, value: str) -> str:
+        if not value.startswith("preparation://"):
+            raise ValueError("preparation_ref must use preparation://")
+        return value
+
+    @field_validator("candidate_ref")
+    @classmethod
+    def candidate_item_reference(cls, value: str) -> str:
+        if not value.startswith("candidate://"):
+            raise ValueError("candidate_ref must use candidate://")
+        return value
+
+    @field_validator("capability_snapshot_ref", "assignment_ref")
+    @classmethod
+    def artifact_reference(cls, value: str) -> str:
+        if _ARTIFACT_REF.fullmatch(value) is None:
+            raise ValueError("capability and assignment references must use artifact://")
+        return value
+
     @model_validator(mode="after")
     def fresh_and_finite(self) -> "PerceptionBinding":
         if self.freshness_ms > self.max_age_ms:
             raise ValueError("perception binding is stale")
+        if self.grasp_candidate_ref != self.candidate_set_ref:
+            raise ValueError("grasp_candidate_ref must match candidate_set_ref")
         for value in (self.measured_pose, self.measured_geometry, self.destination_pose):
             try:
                 json.dumps(value, ensure_ascii=False, allow_nan=False)
@@ -215,10 +251,11 @@ class SubtaskSpec(BaseModel):
             raise ValueError("subtask parameters must contain finite JSON values") from exc
         if self.return_destination_ref is not None and _DESTINATION_REF.fullmatch(self.return_destination_ref) is None:
             raise ValueError("return_destination_ref must use destination:// or container://")
+        object.__setattr__(self, "tool_sequence", calls)
         return self
 
     def calls(self) -> tuple[SubtaskToolCall, ...]:
-        return self.tool_sequence or default_subtask_calls(self.operation)
+        return self.tool_sequence
 
 
 class ToolReceipt(BaseModel):
@@ -303,6 +340,7 @@ class SubtaskExecutionContext:
 
     possession_state: str = "empty"
     scene_revision: str | None = None
+    acquire_invocation_ref: str | None = None
     last_response: Mapping[str, Any] | None = None
 
 
@@ -392,6 +430,43 @@ class SubtaskExecutor:
         return binding
 
     @staticmethod
+    def _runtime_arguments(spec: SubtaskSpec, call: SubtaskToolCall, context: SubtaskExecutionContext) -> dict[str, Any]:
+        """Project a binding into the exact existing Runtime Tool input surface."""
+        binding = spec.binding.model_dump(mode="json")
+        common = {
+            key: binding[key]
+            for key in ("entity_ref", "destination_ref", "observation_ref", "scene_revision",
+                        "frame_id", "calibration_ref", "capability_snapshot_ref",
+                        "freshness_ms", "max_age_ms")
+        }
+        common["scene_revision"] = context.scene_revision or spec.binding.scene_revision
+        previous = context.last_response or {}
+        previous_invocation = previous.get("invocation_id")
+        if call.tool_id == "object.place":
+            common.update({
+                key: binding[key]
+                for key in ("candidate_set_ref", "preparation_ref", "candidate_ref", "assignment_ref")
+            })
+        if context.acquire_invocation_ref:
+            common["acquire_invocation_ref"] = context.acquire_invocation_ref
+        if isinstance(previous_invocation, str) and previous_invocation:
+            common.setdefault("acquire_invocation_ref", previous.get("acquire_invocation_ref", previous_invocation))
+            common["held_invocation_ref"] = previous_invocation
+        if call.tool_id == "object.acquire":
+            return {
+                **common,
+                "candidate_set_ref": binding["candidate_set_ref"],
+                "preparation_ref": binding["preparation_ref"],
+                "candidate_ref": binding["candidate_ref"],
+                "assignment_ref": binding["assignment_ref"],
+            }
+        common.update(call.arguments)
+        if call.tool_id == "manipulation.prepare_held":
+            common["parameters"] = dict(spec.parameters) if call.arguments.get("operation") != "place" else {}
+            common["operation"] = call.arguments["operation"]
+        return common
+
+    @staticmethod
     def _status(call: SubtaskToolCall, response: Mapping[str, Any]) -> tuple[str, bool]:
         status = response.get("status")
         if not isinstance(status, str):
@@ -449,6 +524,241 @@ class SubtaskExecutor:
         )
 
 
+class RuntimeSubtaskDriver:
+    """Non-blocking ActionDriver over the existing CapabilityRuntime.
+
+    The driver advances at most one internal Tool lifecycle step per ``poll``.
+    It never calls a provider or simulator directly and keeps the outer Action
+    invocation as the sole Agent-facing lifecycle.
+    """
+
+    def __init__(
+        self,
+        runtime: CapabilityRuntime,
+        spec: SubtaskSpec,
+        caller_id: str,
+        refresh_binding: Callable[[PerceptionBinding, str], PerceptionBinding] | None = None,
+    ) -> None:
+        self.runtime = runtime
+        self.spec = spec
+        self.caller_id = caller_id
+        self.refresh_binding = refresh_binding
+        self.index = 0
+        self.active_invocation: str | None = None
+        self.active_tool: SubtaskToolCall | None = None
+        self.context = SubtaskExecutionContext(scene_revision=spec.binding.scene_revision)
+        self.receipts: list[ToolReceipt] = []
+        self.completed: list[str] = []
+        self.next_arguments: dict[str, Any] | None = None
+        self.cancel_requested = False
+        self.terminal: dict[str, Any] | None = None
+
+    def poll(self) -> Mapping[str, Any] | None:
+        if self.terminal is not None:
+            return self.terminal
+        if self.cancel_requested and self.active_invocation is None:
+            return self._finish("cancelled", False, "cancelled_before_next_tool", "cancelled")
+        calls = self.spec.calls()
+        if self.active_invocation is not None:
+            result = self.runtime.invocation_result(self.active_invocation)
+            if result.get("status") == "pending":
+                return None
+            return self._consume(self.active_tool, result)
+        if self.index >= len(calls):
+            return self._finish("completed", True, None, "continue_next_subtask")
+        call = calls[self.index]
+        if self.context.scene_revision != self.spec.binding.scene_revision:
+            if self.refresh_binding is None:
+                return self._finish(
+                    "outcome_unknown", False, call.phase, "refresh_perception_before_motion",
+                    error="scene_revision_changed_without_fresh_perception",
+                )
+            try:
+                refreshed = self.refresh_binding(self.spec.binding, self.context.scene_revision or "")
+                refreshed = PerceptionBinding.model_validate(refreshed)
+                self._validate_refresh_binding(
+                    refreshed, self.spec.binding, self.context.scene_revision,
+                )
+                self.spec = self.spec.model_copy(update={"binding": refreshed})
+            except Exception as exc:
+                return self._finish(
+                    "outcome_unknown", False, call.phase, "refresh_perception_before_motion",
+                    error=str(exc),
+                )
+        arguments = self.next_arguments or SubtaskExecutor._runtime_arguments(self.spec, call, self.context)
+        try:
+            if call.phase == "prepare":
+                tool_spec = self.runtime.get_tool(call.tool_id)
+                result = self.runtime.invoke_query(
+                    tool_spec["endpoint_id"], tool_spec["operation"], arguments,
+                )
+                return self._consume(call, result)
+            started = self.runtime.start_action(call.tool_id, arguments, caller_id=self.caller_id)
+            self.active_invocation = started["invocation_id"]
+            self.active_tool = call
+            return None
+        except Exception as exc:
+            return self._finish("outcome_unknown", False, call.phase, "reconcile_before_retry", error=str(exc))
+
+    def cancel(self) -> None:
+        self.cancel_requested = True
+        if self.active_invocation is not None:
+            self.runtime.cancel_invocation(self.active_invocation)
+
+    def stop(self) -> None:
+        self.cancel()
+
+    def _consume(self, call: SubtaskToolCall | None, raw: Mapping[str, Any]) -> Mapping[str, Any]:
+        if call is None:
+            return self._finish("outcome_unknown", False, None, "reconcile_before_retry", error="missing_active_tool")
+        status = raw.get("status")
+        response = dict(raw.get("result", raw)) if isinstance(raw.get("result", raw), Mapping) else dict(raw)
+        response.setdefault("status", status)
+        response.setdefault("invocation_id", raw.get("invocation_id"))
+        response.setdefault("attempt_id", raw.get("attempt_id"))
+        known = response.get("outcome_known") is True
+        if call.phase == "prepare" and status == "available":
+            known = True
+        receipt = ToolReceipt(
+            sequence_index=self.index, tool_id=call.tool_id, phase=call.phase,
+            invocation_id=self._text(raw.get("invocation_id") or response.get("invocation_id")),
+            attempt_id=self._text(raw.get("attempt_id") or response.get("attempt_id")),
+            status=str(status or "unknown"), outcome_known=known, response=response,
+            error=response.get("error") if isinstance(response.get("error"), dict) else None,
+        )
+        self.receipts.append(receipt)
+        self.active_invocation = None
+        self.active_tool = None
+        self.context = SubtaskExecutionContext(
+            possession_state=SubtaskExecutor._possession(response, self.context.possession_state),
+            scene_revision=SubtaskExecutor._scene_revision(response, self.context.scene_revision),
+            acquire_invocation_ref=(
+                self._text(raw.get("invocation_id") or response.get("invocation_id"))
+                if call.phase == "acquire" else self.context.acquire_invocation_ref
+            ),
+            last_response=response,
+        )
+        if self.cancel_requested:
+            if status == "cancelled" and known:
+                return self._finish("cancelled", True, call.phase, "subtask_cancelled")
+            if status in {"failed", "stopped"} and known:
+                return self._finish("cancelled", True, call.phase, "subtask_cancelled")
+            return self._finish("outcome_unknown", False, call.phase, "reconcile_before_retry")
+        if not known or status == "unknown":
+            return self._finish("outcome_unknown", False, call.phase, "reconcile_before_retry")
+        if status in {"failed", "cancelled", "stopped"}:
+            final = "cancelled" if status == "cancelled" else "failed"
+            return self._finish(final, True, call.phase, "subtask_failed")
+        if status not in {"succeeded", "available"}:
+            return self._finish("failed", True, call.phase, "subtask_failed")
+        if call.phase == "prepare":
+            prepared = response.get("arguments")
+            if not isinstance(prepared, Mapping):
+                return self._finish("outcome_unknown", False, call.phase, "reconcile_before_retry", error="prepare_missing_arguments")
+            self.next_arguments = dict(prepared)
+        else:
+            self.next_arguments = None
+        self.completed.append(call.tool_id)
+        self.index += 1
+        return None
+
+    def _finish(self, status: str, known: bool, failed_phase: str | None, action: str, *, error: str | None = None) -> Mapping[str, Any]:
+        result = SubtaskExecutor._result(
+            self.spec, self.receipts, self.completed, self.context,
+            status, known, failed_phase, action,
+        ).model_dump(mode="json")
+        if error is not None:
+            result["error"] = {"code": "runtime_subtask_driver_error", "message": error}
+        evidence_refs = list(result.get("evidence_refs", []))
+        for receipt in self.receipts:
+            for ref in receipt.response.get("evidence_refs", ()):
+                if isinstance(ref, str) and ref.startswith("artifact://") and ref not in evidence_refs:
+                    evidence_refs.append(ref)
+        runtime_status = {"completed": "succeeded", "outcome_unknown": "unknown"}.get(status, status)
+        summary = {
+            "version": "capability_outcome_summary_v1",
+            "status": runtime_status,
+            "failure_owner": "execution" if runtime_status != "succeeded" else "none",
+            "failure_code": result.get("failure_code"),
+            "world_change_started": any(item.response.get("world_change_started") is True for item in self.receipts),
+            "outcome_known": known,
+            "evidence_availability": "complete" if evidence_refs and known and runtime_status == "succeeded" else "partial" if evidence_refs else "none",
+            "artifact_refs": evidence_refs,
+            "retryable_in_revision": False,
+            "requires_replan": runtime_status == "unknown",
+            "recommended_action": action,
+            "phase": failed_phase or "none",
+        }
+        self.terminal = {
+            "status": runtime_status,
+            "outcome_known": known,
+            "subtask_result": result,
+            "capability_outcome_summary": summary,
+            "possession_state": result["possession_state"],
+            "new_scene_revision": result["scene_revision"],
+            "evidence_refs": evidence_refs,
+            "world_change_started": any(item.response.get("world_change_started") is True for item in self.receipts),
+        }
+        return self.terminal
+
+    @staticmethod
+    def _text(value: Any) -> str | None:
+        return value if isinstance(value, str) and value else None
+
+    @staticmethod
+    def _validate_refresh_binding(
+        refreshed: PerceptionBinding,
+        previous: PerceptionBinding,
+        expected_revision: str | None,
+    ) -> None:
+        """Reject a new revision carrying old motion candidate artifacts."""
+        if (
+            refreshed.entity_ref != previous.entity_ref
+            or refreshed.destination_ref != previous.destination_ref
+            or refreshed.scene_revision != expected_revision
+            or refreshed.calibration_ref != previous.calibration_ref
+            or refreshed.frame_id != previous.frame_id
+        ):
+            raise ValueError(
+                "refreshed perception changed subtask identity, frame, revision, or calibration binding"
+            )
+        if refreshed.observation_ref == previous.observation_ref:
+            raise ValueError("refreshed perception must provide a new observation reference")
+        for field_name in ("candidate_set_ref", "preparation_ref", "candidate_ref", "assignment_ref"):
+            if getattr(refreshed, field_name) == getattr(previous, field_name):
+                raise ValueError(f"refreshed perception reused stale {field_name}")
+
+
+class SubtaskActionEndpoint:
+    """Action endpoint that delegates all internal execution to CapabilityRuntime."""
+
+    def __init__(
+        self,
+        runtime: CapabilityRuntime,
+        refresh_binding: Callable[[PerceptionBinding, str], PerceptionBinding] | None = None,
+    ) -> None:
+        self.runtime = runtime
+        self.refresh_binding = refresh_binding
+
+    def admit(self, arguments: Mapping[str, Any]) -> ActionAdmission:
+        raise ValueError("subtask Action requires a task-owned caller")
+
+    def admit_for_caller(self, arguments: Mapping[str, Any], *, caller_id: str) -> ActionAdmission:
+        spec_payload = dict(arguments)
+        spec = SubtaskSpec.model_validate(spec_payload)
+        if not isinstance(caller_id, str) or not caller_id.startswith("paos:"):
+            raise ValueError("subtask Action caller must be bound to a PAOS task")
+
+        def start(_invocation_id: str, _attempt_id: str) -> ActionAdmission:
+            driver = RuntimeSubtaskDriver(self.runtime, spec, caller_id, self.refresh_binding)
+            return ActionAdmission(
+                terminal_result={"status": "unknown", "outcome_known": False},
+                driver=driver,
+            )
+
+        return ActionAdmission(start=start, terminal_result={"status": "unknown", "outcome_known": False})
+
+
 SUBTASK_TOOL_SPEC: dict[str, Any] = {
     "tool_id": "manipulation.execute_subtask",
     "endpoint_id": "subtask_execution",
@@ -458,7 +768,7 @@ SUBTASK_TOOL_SPEC: dict[str, Any] = {
     "planning": {
         "schema_version": "paos-tool-spec-policy/v1",
         "capabilities": ["manipulation.execute_subtask"],
-        "input_binding_keys": ["entity_ref", "destination_ref", "scene_revision", "observation_ref", "calibration_ref"],
+        "input_binding_keys": ["subtask_id", "operation", "binding", "parameters", "tool_sequence"],
         "scene_write_behavior": "new_revision",
         "idempotency": "at_most_once",
     },
@@ -469,12 +779,15 @@ SUBTASK_TOOL_SPEC: dict[str, Any] = {
         "properties": {
             "subtask_id": {"type": "string", "minLength": 1},
             "operation": {"enum": ["relocate", "pour", "stir"]},
+            "depends_on": {"type": "array", "items": {"type": "string", "minLength": 1}},
             "binding": {
                 "type": "object",
                 "additionalProperties": False,
                 "required": [
                     "entity_ref", "semantic_label", "category", "measured_pose",
-                    "measured_geometry", "grasp_candidate_ref", "destination_ref",
+                    "measured_geometry", "grasp_candidate_ref", "candidate_set_ref",
+                    "preparation_ref", "candidate_ref", "capability_snapshot_ref",
+                    "assignment_ref", "destination_ref",
                     "destination_pose", "process_frame", "observation_ref", "scene_revision",
                     "frame_id", "calibration_ref", "freshness_ms", "max_age_ms",
                     "confidence", "provenance",
@@ -486,6 +799,11 @@ SUBTASK_TOOL_SPEC: dict[str, Any] = {
                     "measured_pose": {"type": "object"},
                     "measured_geometry": {"type": "object"},
                     "grasp_candidate_ref": {"type": "string", "pattern": r"^candidate-set://\S+$"},
+                    "candidate_set_ref": {"type": "string", "pattern": r"^candidate-set://\S+$"},
+                    "preparation_ref": {"type": "string", "pattern": r"^preparation://\S+$"},
+                    "candidate_ref": {"type": "string", "pattern": r"^candidate://\S+$"},
+                    "capability_snapshot_ref": {"type": "string", "pattern": r"^artifact://\S+$"},
+                    "assignment_ref": {"type": "string", "pattern": r"^artifact://\S+$"},
                     "destination_ref": {"type": "string", "pattern": r"^(?:destination|container)://\S+$"},
                     "destination_pose": {"type": "object"},
                     "process_frame": {"type": "string", "minLength": 1},
@@ -501,7 +819,17 @@ SUBTASK_TOOL_SPEC: dict[str, Any] = {
             },
             "parameters": {"type": "object"},
             "tool_sequence": {"type": "array", "minItems": 2, "items": {"type": "object"}},
-            "return_destination_ref": {"type": "string", "minLength": 1},
+            "return_destination_ref": {"type": ["string", "null"], "minLength": 1},
+        },
+    },
+    "output_schema": {
+        "type": "object",
+        "required": ["invocation_id", "attempt_id", "status", "result"],
+        "properties": {
+            "invocation_id": {"type": "string", "minLength": 1},
+            "attempt_id": {"type": "string", "minLength": 1},
+            "status": {"enum": ["succeeded", "failed", "cancelled", "stopped", "unknown"]},
+            "result": {"type": "object"},
         },
     },
 }
@@ -511,4 +839,5 @@ __all__ = [
     "PerceptionBinding", "SubtaskExecutionContext", "SubtaskExecutionError",
     "SubtaskExecutionResult", "SubtaskExecutor", "SubtaskInvoker", "SubtaskSpec",
     "SubtaskToolCall", "SUBTASK_TOOL_SPEC", "ToolReceipt", "default_subtask_calls",
+    "RuntimeSubtaskDriver", "SubtaskActionEndpoint",
 ]
