@@ -4,6 +4,7 @@
   "scene_usd_path": "/home/yanxu/LabUtopia/assets/chemistry_lab/lab_003/lab_003.usd",
   "robot_usd_path": "/home/yanxu/LabUtopia/assets/robots/Franka.usd",
   "source_path": "/World/glass_rod",
+  "source_control_path": "/World/glass_rod/Cylinder",
   "destination_path": "/World/target_beaker",
   "source_label": "玻璃棒",
   "destination_label": "烧杯",

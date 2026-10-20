@@ -16,6 +16,7 @@ from isaacsim_lab.engine import (
     _generic_phase_events,
     _generic_result,
     _pour_controller_target,
+    _stir_phase_events,
     normalize_process_parameters,
 )
 
@@ -86,6 +87,14 @@ def test_legacy_stir_parameters_map_only_supported_controller_values(tmp_path):
     assert normalized["process_type"] == "stir"
     assert normalized["controller_parameters"] == {"stir_radius": 0.01, "stir_speed": 2.0}
     assert normalized["mapped"]["magnitude"] == "stir_radius"
+
+
+def test_stir_profile_keeps_control_path_separate_from_entity_path(tmp_path):
+    profile = make_profile(tmp_path, configured_process_type="stir")
+    from dataclasses import replace
+    profile = replace(profile, source_control_path="/World/glass_rod/Cylinder")
+    assert profile.source_path == "/World/conical_bottle03"
+    assert profile.source_control_path == "/World/glass_rod/Cylinder"
 
 
 def test_backend_dry_run_never_starts_simulation(tmp_path):
@@ -163,6 +172,88 @@ def test_generic_result_rejects_process_only_completion(tmp_path):
     assert result["incomplete_phases"] == [
         "acquire", "transport", "reorient_exit", "stow", "release", "retreat"
     ]
+
+
+def test_stir_phase_events_require_observed_grasp_motion_turns_and_release(tmp_path):
+    profile = make_profile(tmp_path, configured_process_type="stir")
+    from dataclasses import replace
+    profile = replace(profile, stir_turns=1.0, stir_duration_s=2.0, stir_radius_m=0.01)
+    samples = [
+        {"timestamp_s": 1.0, "controller_phase": "acquiring", "grasp_valid": True,
+         "target_container_aligned": False, "transform_progress": 0.0,
+         "stir_angle_rad": 0.0, "possession_state": "holding"},
+        {"timestamp_s": 2.0, "controller_phase": "transporting", "grasp_valid": True,
+         "target_container_aligned": True, "transform_progress": 0.0,
+         "stir_angle_rad": 0.0, "possession_state": "holding"},
+        {"timestamp_s": 2.1, "controller_phase": "stirring", "grasp_valid": True,
+         "target_container_aligned": True, "transform_progress": 0.01,
+         "stir_angle_rad": 0.0, "possession_state": "holding"},
+        {"timestamp_s": 4.2, "controller_phase": "stirring", "grasp_valid": True,
+         "target_container_aligned": True, "transform_progress": 0.01,
+         "stir_angle_rad": 2.0 * np.pi, "possession_state": "holding"},
+        {"timestamp_s": 4.5, "controller_phase": "reorient_exit", "grasp_valid": True,
+         "target_container_aligned": False, "transform_progress": 0.0,
+         "stir_angle_rad": 2.0 * np.pi, "possession_state": "holding"},
+        {"timestamp_s": 5.0, "controller_phase": "stowing", "grasp_valid": True,
+         "target_container_aligned": False, "transform_progress": 0.0,
+         "stow_completed": True, "object_support_state": "on_support",
+         "stir_angle_rad": 2.0 * np.pi, "possession_state": "holding"},
+        {"timestamp_s": 5.1, "controller_phase": "retreat", "grasp_valid": False,
+         "target_container_aligned": False, "transform_progress": 0.0,
+         "stow_completed": True, "release_confirmed": True,
+         "retreat_completed": True, "object_support_state": "on_support",
+         "stir_angle_rad": 2.0 * np.pi, "possession_state": "empty"},
+    ]
+    events = _stir_phase_events(samples, process_completed=True, process_type="stir", profile=profile)
+    assert [event["status"] for event in events] == ["completed"] * 7
+    assert events[2]["facts"]["stir_angle_rad"] >= events[2]["facts"]["required_stir_angle_rad"]
+
+
+def test_stir_return_phases_stay_unknown_without_support_observation(tmp_path):
+    profile = make_profile(tmp_path, configured_process_type="stir")
+    from dataclasses import replace
+    profile = replace(profile, stir_turns=1.0, stir_duration_s=2.0, stir_radius_m=0.01)
+    samples = [
+        {"timestamp_s": 1.0, "controller_phase": "acquiring", "grasp_valid": True,
+         "target_container_aligned": False, "transform_progress": 0.0,
+         "stir_angle_rad": 0.0, "possession_state": "holding"},
+        {"timestamp_s": 2.0, "controller_phase": "transporting", "grasp_valid": True,
+         "target_container_aligned": True, "transform_progress": 0.0,
+         "stir_angle_rad": 0.0, "possession_state": "holding"},
+        {"timestamp_s": 2.1, "controller_phase": "stirring", "grasp_valid": True,
+         "target_container_aligned": True, "transform_progress": 0.01,
+         "stir_angle_rad": 0.0, "possession_state": "holding"},
+        {"timestamp_s": 4.2, "controller_phase": "stirring", "grasp_valid": True,
+         "target_container_aligned": True, "transform_progress": 0.01,
+         "stir_angle_rad": 2.0 * np.pi, "possession_state": "holding"},
+        {"timestamp_s": 4.5, "controller_phase": "reorient_exit", "grasp_valid": True,
+         "target_container_aligned": False, "transform_progress": 0.0,
+         "stir_angle_rad": 2.0 * np.pi, "possession_state": "holding"},
+        {"timestamp_s": 5.0, "controller_phase": "stowing", "grasp_valid": True,
+         "target_container_aligned": False, "transform_progress": 0.0,
+         "stow_completed": True, "object_support_state": "unknown",
+         "stir_angle_rad": 2.0 * np.pi, "possession_state": "holding"},
+        {"timestamp_s": 5.1, "controller_phase": "retreat", "grasp_valid": False,
+         "target_container_aligned": False, "transform_progress": 0.0,
+         "stow_completed": True, "release_confirmed": True,
+         "retreat_completed": True, "object_support_state": "unknown",
+         "stir_angle_rad": 2.0 * np.pi, "possession_state": "empty"},
+    ]
+    events = _stir_phase_events(samples, process_completed=True, process_type="stir", profile=profile)
+    assert events[2]["status"] == "completed"
+    assert [event["status"] for event in events[3:]] == ["completed", "unknown", "unknown", "unknown"]
+
+
+def test_stir_phase_events_fail_without_measured_turns(tmp_path):
+    profile = make_profile(tmp_path, configured_process_type="stir")
+    samples = [{
+        "timestamp_s": 1.0, "controller_phase": "stirring", "grasp_valid": True,
+        "target_container_aligned": True, "transform_progress": profile.stir_radius_m,
+        "stir_angle_rad": 0.0, "possession_state": "holding",
+    }]
+    events = _stir_phase_events(samples, process_completed=True, process_type="stir", profile=profile)
+    assert events[2]["status"] == "failed"
+    assert events[2]["facts"]["failure_reason"] == "stir_observation_not_qualified"
 
 
 def test_failed_feedback_phase_cannot_be_promoted_to_success():

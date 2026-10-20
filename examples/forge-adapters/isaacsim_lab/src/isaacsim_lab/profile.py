@@ -23,6 +23,7 @@ class LabUtopiaProfile:
     robot_usd_path: Path
     source_path: str
     destination_path: str
+    source_control_path: str | None = None
     source_label: str = "试剂A"
     destination_label: str = "烧杯"
     profile_path: Path | None = None
@@ -76,6 +77,7 @@ class LabUtopiaProfile:
             robot_usd_path=path_value("robot_usd_path") if value.get("robot_usd_path") else default_robot,
             source_path=_path(value, "source_path"),
             destination_path=_path(value, "destination_path"),
+            source_control_path=_optional_path(value, "source_control_path"),
             source_label=_text(value, "source_label", "试剂A"),
             destination_label=_text(value, "destination_label", "烧杯"),
             frame_id=_text(value, "frame_id", "lab_camera_front"),
@@ -130,6 +132,8 @@ class LabUtopiaProfile:
             raise LabProfileError("config_path and scene_usd_path must be files")
         if not self.source_path.startswith("/World/") or not self.destination_path.startswith("/World/"):
             raise LabProfileError("source_path and destination_path must be absolute /World prim paths")
+        if self.source_control_path is not None and not self.source_control_path.startswith("/World/"):
+            raise LabProfileError("source_control_path must be an absolute /World prim path")
 
     def paos_input(self, previous: Mapping[str, Any] | None = None, *, operation: str = "pour_cycle") -> dict[str, Any]:
         """Project the prior PAOS observation/preparation input into the lab scene."""
@@ -181,6 +185,7 @@ class LabUtopiaProfile:
             "calibration_ref": self.calibration_ref,
             "container_frame_id": self.container_frame_id,
             "source_pour_axis": list(self.source_pour_axis),
+            "source_control_path": self.source_control_path,
             "configured_process_type": self.configured_process_type,
             "source_label": self.source_label,
             "destination_label": self.destination_label,
@@ -192,6 +197,9 @@ class LabUtopiaProfile:
             "alignment_tolerance_m": self.alignment_tolerance_m,
             "tilt_tolerance_rad": self.tilt_tolerance_rad,
             "maximum_tilt_rad": self.maximum_tilt_rad,
+            "stir_radius_m": self.stir_radius_m,
+            "stir_duration_s": self.stir_duration_s,
+            "stir_turns": self.stir_turns,
         }
 
 
@@ -205,6 +213,15 @@ def _text(value: Mapping[str, Any], key: str, default: str) -> str:
 def _path(value: Mapping[str, Any], key: str) -> str:
     raw = _text(value, key, "")
     if not raw.startswith("/World/"):
+        raise LabProfileError(f"{key} must be an absolute /World prim path")
+    return raw
+
+
+def _optional_path(value: Mapping[str, Any], key: str) -> str | None:
+    raw = value.get(key)
+    if raw in (None, ""):
+        return None
+    if not isinstance(raw, str) or not raw.startswith("/World/"):
         raise LabProfileError(f"{key} must be an absolute /World prim path")
     return raw
 

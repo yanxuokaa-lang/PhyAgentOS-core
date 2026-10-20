@@ -28,6 +28,14 @@ provide arbitrary USD prim paths.
    process phase cannot produce `succeeded`. Live exceptions settle as
    `unknown` with the world-change state preserved for reconciliation.
 
+For `stir_cycle`, the entity reference (`/World/glass_rod`) and the control /
+feedback prim (`/World/glass_rod/Cylinder`) are separate profile fields. The
+feedback samples use the control prim, and process completion additionally
+requires measured container alignment, radius progress, the configured hold
+duration, and at least 90% of the configured stir turns. The controller then
+executes the existing LabUtopia place/release/retreat path; PAOS settles
+`stow`, `release`, and `retreat` only from the post-release support observation.
+
 ## Dry-run versus live
 
 `LabUtopiaCycleClient` defaults to `allow_live=False`. In this mode its
@@ -46,8 +54,15 @@ PYTHONPATH=examples/forge-skills/pick-place-workflow/src:examples/forge-adapters
 pytest -q examples/forge-adapters/isaacsim_lab/tests/test_paos_integration.py
 ```
 
-The live acceptance still requires a separate controlled run and inspection of
-the returned `phase_events`, `feedback_observations`, video artifact, and scene
-revision. The previous real pour attempt reached grasp but failed transport /
-alignment, so dry-run and fake-engine results must not be reported as a live
-pour success.
+The controlled RTX 5060 Ti + Isaac Sim 5.1 stir run produced:
+
+- `status=succeeded`, seven completed outcome-known phase events;
+- 1,398 feedback observations and 1,397 video frames;
+- measured grasp samples, container-aligned samples, `transform_progress=0.009 m`,
+  `stir_angle_rad` meeting the configured turn threshold, and final
+  `object_support_state=on_support`;
+- video: `/home/yanxu/LabUtopia/outputs/paos-generic-cycle/result-358164-503270150471272.mp4`;
+- result JSON: `/home/yanxu/LabUtopia/outputs/paos-generic-cycle/result-358164-503270150471272.json`.
+
+The live acceptance is evidence from that controlled run only; dry-run and
+fake-engine results are not reported as live motion success.

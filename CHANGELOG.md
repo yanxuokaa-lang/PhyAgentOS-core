@@ -2,6 +2,34 @@
 
 ## 最近五版本 / Latest five versions
 
+## v14.12.13 (2026-10-20) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [env] [fix] LabUtopia `stir_cycle` now uses the profile-declared `/World/glass_rod/Cylinder` control/feedback prim, records measured stir phase/angle/radius, and settles the complete seven-phase lifecycle.
+- [policy] [fix] `stow` and `retreat` are no longer promoted from controller completion; they require measured `on_support` and empty possession.
+- [test] [feat] Added control-path, measured-stir, missing-turn, and unknown-support regressions; focused adapter/profile/PAOS suite is `33 passed`.
+- [docs] [docs] Recorded the live RTX 5060 Ti + Isaac Sim 5.1 stir artifacts and seven-dimension review.
+
+### 文件变更详情 / File Change Details
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/engine.py:L648-L1300`：显式控制 prim、搅拌反馈、实测七阶段和支撑归位结算。 / Explicit control prim, stir feedback, measured seven phases, and support-backed return settlement.
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/profile.py:L26-L228`、`configs/labutopia-stir-cycle.json:L7`：外置并校验 `source_control_path`。 / Externalize and validate `source_control_path`.
+- `examples/forge-adapters/isaacsim_lab/tests/test_engine.py:L177-L245`、`tests/test_profile.py:L88-L113`：覆盖成功与失败证据边界。 / Cover success and failure evidence boundaries.
+- `docs/forge/labutopia-paos-acceptance.md:L31-L68`：记录验收标准和真实视频/JSON 路径。 / Record acceptance criteria and live video/JSON paths.
+
+### 关键 Diff / Key Diff
+```diff
+- post_state["stow_completed"] = True
+- post_state["retreat_completed"] = True
++ support_observed = post_state["object_support_state"] == "on_support"
++ post_state["stow_completed"] = support_observed
++ post_state["retreat_completed"] = support_observed and post_state["release_confirmed"]
+```
+
+### 验证 / Validation
+- `33 passed`; `compileall`, `git diff --check`, and pour/stir dry-runs passed with `motion_authorized=false`.
+- Live stir: `status=succeeded`, 1,398 feedback observations, 1,397 video frames, seven completed phases, final `on_support` and empty possession.
+- Video: `/home/yanxu/LabUtopia/outputs/paos-generic-cycle/result-358164-503270150471272.mp4`; JSON: same basename with `.json`.
+
 ## v14.12.8 (2026-10-19 20:10) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]

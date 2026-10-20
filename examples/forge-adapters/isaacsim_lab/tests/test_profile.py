@@ -85,6 +85,7 @@ def test_stir_profile_projects_defaults_for_existing_glass_rod_scene(tmp_path):
         "lab_root": str(tmp_path), "config_path": str(config),
         "scene_usd_path": str(scene), "robot_usd_path": str(scene),
         "source_path": "/World/glass_rod", "destination_path": "/World/target_beaker",
+        "source_control_path": "/World/glass_rod/Cylinder",
         "source_label": "玻璃棒", "destination_label": "烧杯",
         "configured_process_type": "stir", "supported_operations": ["stir_cycle"],
     })
@@ -93,3 +94,19 @@ def test_stir_profile_projects_defaults_for_existing_glass_rod_scene(tmp_path):
         "radius_m": 0.009, "depth_m": 0.04, "turns": 2.0,
         "duration_s": 4.0, "direction": "ccw",
     }
+    assert configured.source_control_path == "/World/glass_rod/Cylinder"
+
+
+def test_profile_rejects_non_world_source_control_path(tmp_path):
+    (tmp_path / "level.yaml").write_text("name: lab", encoding="utf-8")
+    (tmp_path / "lab.usd").write_text("usd", encoding="utf-8")
+    with pytest.raises(LabProfileError, match="source_control_path"):
+        LabUtopiaProfile.from_mapping({
+            "lab_root": str(tmp_path),
+            "config_path": str(tmp_path / "level.yaml"),
+            "scene_usd_path": str(tmp_path / "lab.usd"),
+            "robot_usd_path": str(tmp_path / "lab.usd"),
+            "source_path": "/World/glass_rod",
+            "destination_path": "/World/target_beaker",
+            "source_control_path": "glass_rod/Cylinder",
+        })

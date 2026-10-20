@@ -645,7 +645,11 @@ class LabUtopiaBackend:
                     step += 1
                     continue
                 if initial_position is None:
-                    initial_position = np.asarray(state["object_position"], dtype=float).copy()
+                    feedback_position = state.get("feedback_object_position")
+                    initial_position = np.asarray(
+                        feedback_position if feedback_position is not None else state["object_position"],
+                        dtype=float,
+                    ).copy()
                     initial_quaternion = np.asarray(state["object_quaternion"], dtype=float).copy()
                 now = step * dt
                 controller_phase = (
@@ -785,7 +789,11 @@ class LabUtopiaBackend:
             cfg.controller_type = "stirglassrod"
             cfg.max_episodes = 1
             cfg.obj_path = self.profile.source_path
-            cfg.sub_obj_path = str(arguments.get("tool_mesh_path") or f"{self.profile.source_path}/Cylinder")
+            cfg.sub_obj_path = str(
+                arguments.get("tool_mesh_path")
+                or self.profile.source_control_path
+                or f"{self.profile.source_path}/Cylinder"
+            )
             cfg.target_path = self.profile.destination_path
             cfg.multi_run.run_dir = str(self.profile.lab_root / "outputs" / "paos-stir-cycle")
             if not hasattr(cfg, "task"):
@@ -822,6 +830,9 @@ class LabUtopiaBackend:
                     step += 1
                     continue
                 state = dict(state)
+                state["feedback_object_position"] = state.get("glass_rod_position")
+                state["stir_phase"] = getattr(getattr(controller, "stir_controller", None), "phase", None)
+                state["stir_angle"] = getattr(getattr(controller, "stir_controller", None), "stir_angle", 0.0)
                 state.setdefault(
                     "target_position",
                     state.get("target_beaker")
@@ -829,9 +840,14 @@ class LabUtopiaBackend:
                 )
                 state.setdefault("object_quaternion", np.array([0.0, 0.0, 0.0, 1.0]))
                 if initial_position is None:
-                    initial_position = np.asarray(state["object_position"], dtype=float).copy()
+                    feedback_position = state.get("feedback_object_position")
+                    initial_position = np.asarray(
+                        feedback_position if feedback_position is not None else state["object_position"],
+                        dtype=float,
+                    ).copy()
                     initial_quaternion = np.asarray(state["object_quaternion"], dtype=float).copy()
-                sample = self._sample(state, initial_position, initial_quaternion, step * dt, np, _identity_rotation(), "stirring", process_parameters=process_parameters)
+                controller_phase = _stir_controller_phase(controller)
+                sample = self._sample(state, initial_position, initial_quaternion, step * dt, np, _identity_rotation(), controller_phase, process_parameters=process_parameters)
                 samples.append(sample)
                 if recorder is not None:
                     recorder.write(state.get("camera_display"), (f"step={step} phase=stirring", f"progress={sample['transform_progress']:.3f}"))
@@ -839,6 +855,41 @@ class LabUtopiaBackend:
                 if action is not None:
                     robot.get_articulation_controller().apply_action(action)
                 if done:
+                    post_state = dict(state)
+                    post_state["feedback_object_position"] = task.object_utils.get_object_xform_position(
+                        object_path=cfg.sub_obj_path
+                    )
+                    post_state["object_position"] = post_state["feedback_object_position"]
+                    post_state["release_confirmed"] = (
+                        getattr(controller, "gripper_control", None) is not None
+                        and getattr(controller.gripper_control, "grasped_object_path", None) is None
+                    )
+                    post_state["return_position"] = getattr(controller, "initial_control_position", None)
+                    return_position = post_state["return_position"]
+                    current_position = post_state["feedback_object_position"]
+                    post_state["object_support_state"] = (
+                        "on_support"
+                        if return_position is not None
+                        and current_position is not None
+                        and float(np.linalg.norm(np.asarray(current_position) - np.asarray(return_position))) <= 0.06
+                        else "unknown"
+                    )
+                    # Controller completion is not sufficient evidence that the
+                    # tool is safely stowed.  Promote return phases only when
+                    # the controlled prim is measured back on its support.
+                    support_observed = post_state["object_support_state"] == "on_support"
+                    post_state["stow_completed"] = support_observed
+                    post_state["retreat_completed"] = support_observed and post_state["release_confirmed"]
+                    samples.append(self._sample(
+                        post_state,
+                        initial_position,
+                        initial_quaternion,
+                        (step + 1) * dt,
+                        np,
+                        _identity_rotation(),
+                        "retreat",
+                        process_parameters=process_parameters,
+                    ))
                     break
                 step += 1
         finally:
@@ -847,7 +898,12 @@ class LabUtopiaBackend:
                 recorder.close()
                 video_info = recorder.metadata()
             self._last_video_info = dict(video_info)
-        events = _generic_phase_events(samples, process_completed=bool(done and success), process_type="stir")
+        events = _stir_phase_events(
+            samples,
+            process_completed=bool(done and success),
+            process_type="stir",
+            profile=self.profile,
+        )
         return _generic_result(arguments, samples, events, process_parameters, self.profile, video_info, step)
 
     def _run_rotation_episode(
@@ -954,15 +1010,23 @@ class LabUtopiaBackend:
         controller_phase,
         process_parameters: Mapping[str, Any] | None = None,
     ):
-        position = np.asarray(state["object_position"], dtype=float)
+        feedback_position = state.get("feedback_object_position")
+        position = np.asarray(
+            feedback_position if feedback_position is not None else state["object_position"],
+            dtype=float,
+        )
         target = np.asarray(state.get("target_position", position), dtype=float)
+        process_parameters = dict(process_parameters or {})
         quat = np.asarray(state.get("object_quaternion", [0.0, 0.0, 0.0, 1.0]), dtype=float)
         source_size = np.asarray(state.get("object_size", [0.0, 0.0, 0.0]), dtype=float)
         relative = rotation_cls.from_quat(initial_quaternion).inv() * rotation_cls.from_quat(quat)
         tilt = float(relative.magnitude())
         pour_axis = np.asarray(self.profile.source_pour_axis, dtype=float)
         pour_point = position + rotation_cls.from_quat(quat).apply(pour_axis * (source_size[2] / 2.0))
-        alignment = float(np.linalg.norm(pour_point[:2] - target[:2]))
+        if process_parameters.get("process_type") == "stir":
+            alignment = float(np.linalg.norm(position[:2] - target[:2]))
+        else:
+            alignment = float(np.linalg.norm(pour_point[:2] - target[:2]))
         joint_positions = np.asarray(state.get("joint_positions", []), dtype=float).reshape(-1)
         gripper_joints = joint_positions[-2:] if joint_positions.size >= 2 else np.asarray([], dtype=float)
         gripper_opening = float(np.max(np.abs(gripper_joints))) if gripper_joints.size else None
@@ -982,7 +1046,6 @@ class LabUtopiaBackend:
             and object_gripper_distance is not None
             and object_gripper_distance <= self.profile.grasp_distance_tolerance_m
         )
-        process_parameters = dict(process_parameters or {})
         transform_progress = _observed_transform_progress(state, position, initial_position, process_parameters, tilt)
         transform_error = max(0.0, float(process_parameters.get("magnitude", 0.0)) - transform_progress)
         engagement_valid = bool(grasp or controller_phase in {"pouring", "stirring", "rotating", "placing"})
@@ -1006,7 +1069,17 @@ class LabUtopiaBackend:
             "target_container_aligned": alignment <= self.profile.alignment_tolerance_m,
             "alignment_error_m": alignment,
             "source_pour_point": {"x_m": float(pour_point[0]), "y_m": float(pour_point[1]), "z_m": float(pour_point[2]), "frame_id": self.profile.frame_id},
+            "feedback_object_path": self.profile.source_control_path or self.profile.source_path,
+            "target_position": {"x_m": float(target[0]), "y_m": float(target[1]), "z_m": float(target[2]), "frame_id": self.profile.frame_id},
+            "stir_angle_rad": float(state.get("stir_angle", 0.0) or 0.0),
             "tilt_rad": tilt,
+            "object_support_state": state.get("object_support_state", "unknown"),
+            "acquire_completed": bool(state.get("acquire_completed", False)),
+            "transport_completed": bool(state.get("transport_completed", False)),
+            "reorient_exit_completed": bool(state.get("reorient_exit_completed", False)),
+            "stow_completed": bool(state.get("stow_completed", False)),
+            "release_confirmed": bool(state.get("release_confirmed", False)),
+            "retreat_completed": bool(state.get("retreat_completed", False)),
         }
 
 
@@ -1029,8 +1102,17 @@ def _configure_stir_controller(controller: Any, parameters: Mapping[str, Any]) -
     active = getattr(controller, "stir_controller", None)
     if active is None:
         return
-    active._stir_radius = float(parameters["controller_parameters"]["stir_radius"])
-    active._stir_speed = float(parameters["controller_parameters"]["stir_speed"])
+    values = parameters["controller_parameters"]
+    configure = getattr(active, "configure", None)
+    if callable(configure):
+        configure(
+            stir_radius=values["stir_radius"],
+            stir_speed=values["stir_speed"],
+            duration_s=values.get("stir_duration_s", parameters.get("hold_s")),
+        )
+    else:
+        active._stir_radius = float(values["stir_radius"])
+        active._stir_speed = float(values["stir_speed"])
 
 
 def _configure_rotation_controller(controller: Any, parameters: Mapping[str, Any]) -> None:
@@ -1060,7 +1142,10 @@ def _observed_transform_progress(state, position, initial_position, parameters, 
             pass
     if process_type == "stir":
         radius = float(parameters.get("magnitude", 0.0))
-        return min(radius, float(((position - initial_position) ** 2).sum() ** 0.5))
+        target = state.get("target_position", position)
+        radial = sum((float(position[index]) - float(target[index])) ** 2 for index in (0, 1)) ** 0.5
+        displacement = sum((float(position[index]) - float(initial_position[index])) ** 2 for index in range(3)) ** 0.5
+        return min(radius, max(radial, displacement))
     return 0.0
 
 
@@ -1124,6 +1209,94 @@ def _generic_phase_events(samples, *, process_completed: bool, process_type: str
             "completed_at_s": last,
             "facts": {"failure_reason": f"{process_type}_controller_not_completed"},
         }
+    return events
+
+
+def _stir_controller_phase(controller: Any) -> str:
+    """Expose the LabUtopia controller state as PAOS lifecycle vocabulary."""
+    pick = getattr(controller, "pick_controller", None)
+    stir = getattr(controller, "stir_controller", None)
+    place = getattr(controller, "place_controller", None)
+    if pick is not None and not pick.is_done():
+        return "acquiring"
+    if stir is not None and not stir.is_done():
+        phase = getattr(stir, "phase", None)
+        return "stirring" if phase == 3 else "transporting" if phase in {0, 1, 2} else "reorient_exit"
+    if place is not None and not place.is_done():
+        return "stowing"
+    return "retreat"
+
+
+def _stir_phase_events(samples, *, process_completed: bool, process_type: str, profile: LabUtopiaProfile):
+    """Build stir lifecycle events only from measured object/tool observations."""
+    phases = ("acquire", "transport", "process", "reorient_exit", "stow", "release", "retreat")
+    events = [_unknown_phase_event(phase) for phase in phases]
+    if not samples:
+        return events
+
+    grasp = next((sample for sample in samples if sample.get("grasp_valid") is True), None)
+    aligned = next((sample for sample in samples if sample.get("grasp_valid") is True and sample.get("target_container_aligned") is True), None)
+    process_samples = [
+        sample for sample in samples
+        if sample.get("controller_phase") == "stirring"
+        and sample.get("target_container_aligned") is True
+        and float(sample.get("transform_progress", 0.0) or 0.0) > 0.0
+    ]
+    process_started = process_samples[0] if process_samples else None
+    process_end = process_samples[-1] if process_samples else None
+    process_duration = (
+        float(process_end["timestamp_s"]) - float(process_started["timestamp_s"])
+        if process_started and process_end else 0.0
+    )
+    max_stir_angle = max(
+        (abs(float(item.get("stir_angle_rad", 0.0) or 0.0)) for item in process_samples),
+        default=0.0,
+    )
+    required_stir_angle = 2.0 * 3.141592653589793 * profile.stir_turns * 0.9
+    process_valid = bool(
+        process_completed
+        and process_started
+        and process_duration >= profile.stir_duration_s * 0.9
+        and max(float(item.get("transform_progress", 0.0) or 0.0) for item in process_samples) >= profile.stir_radius_m * 0.5
+        and max_stir_angle >= required_stir_angle
+    )
+    if grasp:
+        events[0] = _event("acquire", 0.0, grasp["timestamp_s"], {"grasp_confirmed": True, "possession_state": "holding"})
+    if aligned:
+        events[1] = _event("transport", grasp["timestamp_s"] if grasp else 0.0, aligned["timestamp_s"], {"route_completed": True, "possession_state": "holding"})
+    if process_valid:
+        events[2] = _event("process", process_started["timestamp_s"], process_end["timestamp_s"], {"process_type": process_type, "transform_progress": max(float(item.get("transform_progress", 0.0) or 0.0) for item in process_samples), "duration_s": process_duration, "stir_angle_rad": max_stir_angle, "required_stir_angle_rad": required_stir_angle})
+    elif process_started:
+        events[2] = {"phase": "process", "status": "failed", "outcome_known": True, "started_at_s": float(process_started["timestamp_s"]), "completed_at_s": float(samples[-1]["timestamp_s"]), "facts": {"failure_reason": "stir_observation_not_qualified"}}
+
+    exited = next((sample for sample in samples if sample.get("controller_phase") == "reorient_exit" and sample.get("grasp_valid") is True), None)
+    if exited is None:
+        exited = next((sample for sample in samples if sample.get("controller_phase") == "stowing" and sample.get("grasp_valid") is True), None)
+    if exited and process_valid:
+        events[3] = _event("reorient_exit", process_end["timestamp_s"], exited["timestamp_s"], {"tool_reoriented_or_exited": True, "possession_state": "holding"})
+    stowed = next(
+        (
+            sample for sample in samples
+            if sample.get("stow_completed") is True
+            and sample.get("object_support_state") == "on_support"
+        ),
+        None,
+    )
+    if stowed and events[3]["status"] == "completed":
+        events[4] = _event("stow", stowed["timestamp_s"] - 0.01, stowed["timestamp_s"], {"object_support_state": stowed.get("object_support_state", "on_support")})
+    released = next((sample for sample in reversed(samples) if sample.get("release_confirmed") is True and sample.get("possession_state") == "empty"), None)
+    if released and events[4]["status"] == "completed":
+        events[5] = _event("release", released["timestamp_s"] - 0.01, released["timestamp_s"], {"release_confirmed": True, "possession_state": "empty"})
+        retreated = next(
+            (
+                sample for sample in reversed(samples)
+                if sample.get("retreat_completed") is True
+                and sample.get("object_support_state") == "on_support"
+            ),
+            None,
+        )
+        if retreated:
+            events[6] = _event("retreat", released["timestamp_s"], retreated["timestamp_s"], {"retreat_completed": True, "clear_of_target": True, "observation_ready": True})
     return events
 
 
