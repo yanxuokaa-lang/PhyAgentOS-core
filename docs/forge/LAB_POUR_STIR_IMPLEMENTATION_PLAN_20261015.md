@@ -310,3 +310,19 @@ no-motion 诊断输出 `bottleneck=alignment_lost_before_target_tilt`、`joint_s
 本轮修正了 provider 反馈中的持物语义：`grasp_valid` 不再由归位阶段标记决定，而是由观测到的夹爪闭合、物体抬升以及物体与夹爪距离共同计算；样本同时保留 `controller_phase`、`gripper_state`、`object_lifted`、`object_gripper_distance_m` 和 `possession_state`。视频录制复用 LabUtopia 的 `camera_display`，在 worker 的正常返回、失败和异常收尾路径释放 writer；视频路径、帧数和可用性写入同一结果 JSON，视频不参与 PAOS 结算。
 
 2026-10-19 的真实 Isaac Sim 单回合仍为可解释失败：`status=failed`、`outcome_known=true`、`process=continuous_pour_window_not_observed`。本轮有 1091 条反馈样本，其中 731 条为持物状态；对准且持物的最大倾角为 `1.2756 rad`，但没有形成要求的连续 `0.6 s` 窗口，因此没有声称完成倾倒。回合视频为 `/home/yanxu/LabUtopia/outputs/paos-pour-cycle/result-403962-378796522505284.mp4`，`1090` 帧、`18.166667 s`、`768x256`，可用性为 true。该证据只证明 Isaac Sim 回合的观察与失败结算，不证明真实机械臂或物料量结果。
+
+## 10. 方案复核修正：子任务结算边界（2026-10-20）
+
+本计划此前的 P1/P3/P4 描述仍可能被实现为“每个 Tool 一个 Agent 节点”。这不符合最新要求。以 [LABUTOPIA_PAOS_SUBTASK_REVIEW_20261020.md](LABUTOPIA_PAOS_SUBTASK_REVIEW_20261020.md) 为准，必须采用以下边界：
+
+```text
+一个子任务 PlanNode
+  -> SubtaskExecutor 内部 acquire / prepare_held / pour-or-stir / prepare_held / place
+  -> 每个内部 Tool 保留 ToolExecutionRecord 和真实反馈
+  -> 只写一个子任务级 NodeSettlement
+  -> Agent 只在该 NodeSettlement 之后继续或恢复
+```
+
+这里的 `SubtaskExecutor` 是现有 Coordinator/PlanningLoop 的受治理编排适配，不是第二个任务运行时；它只能通过既有 Forge Tool API 调用 Tool，不能直连 Isaac Sim actuator、创建第二套 SQLite 或自行创建 revision。`object.pour_cycle`、`tool.stir_cycle` 保留兼容/回放用途，不再作为新 Agent 规划的默认入口。
+
+在实现前必须先解决三项 Blocker：固定 profile Prim 不得作为感知目标来源；pour/stir 必须接入已有 acquire/possession/place 工作流；AgentLoop 必须在内部 Tool 之间保持同一子任务执行上下文，不得为每个 Tool 重新调用模型。七维验收以该复核文档为准。
