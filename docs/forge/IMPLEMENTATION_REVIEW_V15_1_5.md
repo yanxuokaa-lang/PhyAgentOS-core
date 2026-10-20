@@ -12,10 +12,11 @@
   facts and explicitly keeps `motion_authorized=false`; it does not claim camera
   detection, IK, collision, or simulator execution.
 - **Unrelated regression evidence:** the complete workflow test run reported
-  `583 passed, 2 failed`. The failures are the pre-existing release manifest
-  version/SHA mismatch (`test_grasp_propose.py` and `test_release_bundle.py`)
-  associated with the user's separate RoboTwin workspace changes. They are not
-  in the changed files and were not modified here.
+  `583 passed, 2 failed`. `test_grasp_propose.py` still expects Node `1.0.15`
+  while the checked-in Skill manifest declares `1.0.16`; `test_release_bundle.py`
+  builds from the current dirty/untracked RoboTwin workspace and gets a package
+  digest different from the manifest lock. Neither failure is in the changed
+  files, and neither release metadata nor user workspace content was modified.
 
 ## PAOS architecture review
 
@@ -75,7 +76,8 @@
 28 passed: perception, Agent planning, subtask executor, and LabUtopia wiring subset
 583 passed, 2 failed: complete pick-place/LabUtopia test directories
 ruff check: passed for changed test file
-git diff --check: pending final commit validation
+compileall: passed for workflow and Isaac Sim adapter packages
+git diff --check: passed
 Isaac Sim/Gateway/motion: not run
 ```
 
