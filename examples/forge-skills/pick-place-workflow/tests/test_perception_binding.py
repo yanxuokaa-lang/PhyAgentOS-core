@@ -76,13 +76,41 @@ def _chain(*, scene: str = "scene-1", duplicate_source: bool = False):
 
 
 class QueryChain:
-    def __init__(self, *, scene: str = "scene-1", mismatch: str | None = None):
+    def __init__(
+        self,
+        *,
+        scene: str = "scene-1",
+        mismatch: str | None = None,
+        preparation_status: str = "available",
+        preparation_candidate_ref: str | None = None,
+    ):
         self.observation, self.understanding, self.grasp, self.capability = _chain(scene=scene)
         self.mismatch = mismatch
+        self.preparation_status = preparation_status
+        self.preparation_candidate_ref = preparation_candidate_ref
         self.calls: list[str] = []
 
     def __call__(self, tool_id, arguments):
         self.calls.append(tool_id)
+        if tool_id == "manipulation.prepare":
+            candidate = arguments["candidates"][0]
+            return {
+                "status": self.preparation_status,
+                "observation_ref": self.observation["observation_ref"],
+                "scene_revision": self.observation["scene_revision"],
+                "frame": self.observation["frame"],
+                "calibration_ref": self.observation["calibration_ref"],
+                "preparation_ref": "preparation://scene-1/camera-front",
+                "candidate_set_ref": arguments["candidate_set_ref"],
+                "motion_authorized": False,
+                "prepared_candidates": [{
+                    "candidate_ref": self.preparation_candidate_ref or candidate["candidate_ref"],
+                    "entity_ref": candidate["entity_ref"],
+                    "checks": {"kinematic": "pass", "collision": "pass", "workspace": "pass"},
+                    "evidence": ["artifact://readiness/scene-1/candidate-0"],
+                    "qualification": "prepared",
+                }],
+            }
         result = {
             "scene.observe": self.observation,
             "scene.understand": self.understanding,
@@ -230,6 +258,60 @@ def test_adapter_composes_queries_and_returns_measured_binding():
     assert binding.measured_geometry["size_m"] == [0.1, 0.1, 0.2]
     assert binding.candidate_ref == "candidate://scene-1/reagent-a-0"
     assert preparation.requests[0]["source_entity"]["entity_ref"] == "entity://reagent-a"
+
+
+def test_runtime_bound_adapter_uses_standard_preparation_query_before_assignment():
+    query = QueryChain()
+    adapter, _, preparation = _adapter(query=query)
+
+    class RuntimeQueryPort:
+        def __init__(self):
+            self.calls = []
+
+        def invoke_query(self, endpoint_id, operation, arguments):
+            self.calls.append((endpoint_id, operation))
+            endpoint_to_tool = {
+                ("scene_observation", "observe"): "scene.observe",
+                ("scene_understanding", "understand"): "scene.understand",
+                ("grasp_proposal", "propose"): "grasp.propose",
+                ("manipulation_capabilities", "describe"): "manipulation.capabilities",
+            }
+            tool_id = endpoint_to_tool.get((endpoint_id, operation))
+            if tool_id is not None:
+                return query(tool_id, arguments)
+            if (endpoint_id, operation) == ("manipulation_preparation", "prepare"):
+                return query("manipulation.prepare", arguments)
+            raise AssertionError(f"unexpected Runtime endpoint: {endpoint_id}:{operation}")
+
+    runtime = RuntimeQueryPort()
+    binding = adapter.with_query_invoker(runtime).bind()
+
+    assert runtime.calls == [
+        ("scene_observation", "observe"),
+        ("scene_understanding", "understand"),
+        ("grasp_proposal", "propose"),
+        ("manipulation_capabilities", "describe"),
+        ("manipulation_preparation", "prepare"),
+    ]
+    assert preparation.requests[0]["readiness"]["preparation_ref"] == binding.preparation_ref
+
+
+def test_runtime_bound_adapter_rejects_unavailable_preparation_before_assignment():
+    query = QueryChain(preparation_status="unavailable")
+    adapter, _, preparation = _adapter(query=query)
+
+    with pytest.raises(PerceptionBindingError, match="manipulation.prepare"):
+        adapter.with_query_invoker(query).bind()
+    assert preparation.requests == []
+
+
+def test_runtime_bound_adapter_rejects_preparation_candidate_mismatch():
+    query = QueryChain(preparation_candidate_ref="candidate://scene-1/other")
+    adapter, _, preparation = _adapter(query=query)
+
+    with pytest.raises(PerceptionBindingError, match="did not qualify"):
+        adapter.with_query_invoker(query).bind()
+    assert preparation.requests == []
 
 
 def test_adapter_is_reusable_with_an_independent_provider_implementation():

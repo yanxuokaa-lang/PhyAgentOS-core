@@ -2,6 +2,28 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.1.7 (2026-10-20 20:20) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [sense] [refactor] Runtime-bound 通用 perception binding 通过标准 `manipulation.prepare` Query/ToolSpec 做 no-motion readiness，并验证候选及准备引用一致。 / Runtime-bound generic perception binding uses the standard `manipulation.prepare` Query/ToolSpec for no-motion readiness and validates candidate and preparation-reference consistency.
+- [test] [test] no-motion 回归 `48 passed`；未启动仿真或运动。 / No-motion regressions: `48 passed`; no simulator or motion was started.
+- [policy] [docs] 七维审查记录了仍待解决的 Coordinator-owned task intent/assignment 传递。 / Seven-dimension review records the remaining Coordinator-owned task intent/assignment propagation gap.
+
+### 影响文件 / Affected Files
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/perception_binding.py:L17-L23,L79-L127,L215-L270`
+- `examples/forge-skills/pick-place-workflow/tests/test_perception_binding.py:L78-L123,L263-L314`
+- `docs/forge/IMPLEMENTATION_REVIEW_V15_1_7.md:L1-L67`
+
+### 关键 Diff / Key Diff
+```diff
+- Runtime-bound binding skipped the registered manipulation.prepare Query
++ Runtime-bound binding -> standard no-motion preparation Query -> validate candidate/readiness -> assignment provider
+```
+
+### 验证 / Validation
+- `48 passed`; Ruff, compileall, and `git diff --check` passed. Existing `asyncio_mode` pytest warning remains. / `48 passed`; Ruff、compileall、`git diff --check` 通过；仍有既有 `asyncio_mode` pytest warning。
+- No Isaac Sim, Gateway, Action, simulator step, or physical motion. / 未启动 Isaac Sim、Gateway、Action、模拟器 step 或真实运动。
+
 ## v15.1.6 (2026-10-20 19:50) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]

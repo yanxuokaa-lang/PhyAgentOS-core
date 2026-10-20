@@ -17,6 +17,7 @@ from typing import Any, Protocol
 from PhyAgentOS.forge.capability_runtime import (
     CAPABILITY_TOOL_SPEC,
     GRASP_PROPOSAL_TOOL_SPEC,
+    MANIPULATION_TOOL_SPEC,
     OBSERVATION_TOOL_SPEC,
     SCENE_UNDERSTANDING_TOOL_SPEC,
 )
@@ -82,6 +83,7 @@ class PerceptionBindingAdapter:
             SCENE_UNDERSTANDING_TOOL_SPEC,
             GRASP_PROPOSAL_TOOL_SPEC,
             CAPABILITY_TOOL_SPEC,
+            MANIPULATION_TOOL_SPEC,
         )
     }
 
@@ -97,6 +99,7 @@ class PerceptionBindingAdapter:
         self.preparation_provider = preparation_provider
         self.request = request
         self.destination_ref_factory = destination_ref_factory or self._default_destination_ref
+        self._runtime_preparation_query = False
 
     @property
     def ready(self) -> bool:
@@ -114,12 +117,14 @@ class PerceptionBindingAdapter:
     def with_query_invoker(self, query_invoker: QueryInvoker) -> "PerceptionBindingAdapter":
         """Return the same semantic adapter bound to a PAOS Runtime query port."""
 
-        return PerceptionBindingAdapter(
+        adapter = PerceptionBindingAdapter(
             query_invoker,
             self.preparation_provider,
             self.request,
             destination_ref_factory=self.destination_ref_factory,
         )
+        adapter._runtime_preparation_query = True
+        return adapter
 
     def refresh_binding(self, previous: PerceptionBinding, expected_scene_revision: str) -> PerceptionBinding:
         """Re-run the complete chain after a scene revision change."""
@@ -207,19 +212,53 @@ class PerceptionBindingAdapter:
         destination_ref = self.destination_ref_factory(destination)
         if not isinstance(destination_ref, str) or not destination_ref.startswith("destination://"):
             raise PerceptionBindingError("destination_ref_factory must return destination:// reference")
-        prepared = self._prepare(
-            {
-                **identity,
-                "candidate_set_ref": candidate_set_ref,
-                "candidates": [candidate],
-                "destination_ref": destination_ref,
-                "capability_snapshot_ref": capability_ref,
-                "source_entity": dict(source),
-                "destination_entity": dict(destination),
-                "source_envelope": deepcopy(source_envelope),
-                "destination_envelope": deepcopy(destination_envelope),
-            }
-        )
+        preparation_request = {
+            **identity,
+            "candidate_set_ref": candidate_set_ref,
+            "candidates": [candidate],
+            "destination_ref": destination_ref,
+            "capability_snapshot_ref": capability_ref,
+            "source_entity": dict(source),
+            "destination_entity": dict(destination),
+            "source_envelope": deepcopy(source_envelope),
+            "destination_envelope": deepcopy(destination_envelope),
+        }
+        readiness = None
+        if self._runtime_preparation_query:
+            readiness = self._query(
+                "manipulation.prepare",
+                {
+                    **identity,
+                    "candidate_set_ref": candidate_set_ref,
+                    "candidates": [candidate],
+                },
+            )
+            self._require_available(readiness, "manipulation.prepare")
+            if readiness.get("motion_authorized") is not False:
+                raise PerceptionBindingError("manipulation.prepare must remain no-motion")
+            self._validate_identity(readiness, identity, "manipulation.prepare")
+            if readiness.get("candidate_set_ref") != candidate_set_ref:
+                raise PerceptionBindingError("manipulation.prepare changed the candidate set")
+            prepared_candidates = readiness.get("prepared_candidates")
+            if not isinstance(prepared_candidates, Sequence) or isinstance(prepared_candidates, (str, bytes)):
+                raise PerceptionBindingError("manipulation.prepare returned no prepared candidates")
+            qualified = [
+                item for item in prepared_candidates
+                if isinstance(item, Mapping)
+                and item.get("candidate_ref") == candidate["candidate_ref"]
+                and item.get("entity_ref") == source["entity_ref"]
+                and item.get("qualification") == "prepared"
+            ]
+            if len(qualified) != 1:
+                raise PerceptionBindingError("manipulation.prepare did not qualify the selected candidate")
+            checks = qualified[0].get("checks")
+            if not isinstance(checks, Mapping) or any(checks.get(key) != "pass" for key in ("kinematic", "collision", "workspace")):
+                raise PerceptionBindingError("manipulation.prepare candidate checks are incomplete")
+            preparation_request["readiness"] = deepcopy(dict(readiness))
+        prepared = self._prepare(preparation_request)
+        if readiness is not None:
+            if prepared.get("preparation_ref") != readiness.get("preparation_ref"):
+                raise PerceptionBindingError("assignment provider changed the Runtime preparation reference")
         self._validate_preparation_identity(prepared, identity)
         preparation_ref = self._text(prepared.get("preparation_ref"), "preparation reference")
         assignment_ref = self._text(prepared.get("assignment_ref"), "assignment reference")
