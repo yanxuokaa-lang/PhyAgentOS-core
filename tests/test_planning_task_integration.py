@@ -18,6 +18,7 @@ from PhyAgentOS.agent.tools.forge_tool_api import ForgeToolQueryTool
 from PhyAgentOS.config.schema import ForgeConfig
 from PhyAgentOS.forge.binding import BoundToolSpec, ForgeSkillBinding, RuntimeBinding
 from PhyAgentOS.forge.capability_runtime.observation import OBSERVATION_TOOL_SPEC
+from PhyAgentOS.forge.manipulation import ManipulationIntent
 from PhyAgentOS.forge.task import (
     AgentTaskCoordinator,
     AgentTaskError,
@@ -101,23 +102,39 @@ def test_coordinator_resolves_subtask_identity_and_builds_intent_from_plan_node(
         obligation_id="pour-reagent-a-obligation",
         capability="manipulation.execute_subtask",
         input_bindings={
-            "entity_ref": "entity://reagent-a",
-            "observation_ref": "observation://scene-1/camera-front",
-            "scene_revision": "scene-1",
-            "frame_id": "camera-front",
-            "calibration_ref": "artifact://calibration/camera-front-v1",
-            "candidate_set_ref": "candidate-set://scene-1/camera-front",
-            "intent": {
-                "goal": "pour reagent into vessel",
-                "success_criteria": ["liquid transferred"],
-                "allowed_arms": ["franka"],
-                "coordination_mode": "single_arm",
-                "constraints": ["keep container stable"],
+                "binding": {
+                    "entity_ref": "entity://reagent-a",
+                    "observation_ref": "observation://scene-1/camera-front-frame",
+                    "scene_revision": "scene-1",
+                    "frame_id": "camera-front-frame",
+                    "calibration_ref": "artifact://calibration/camera-front-v1",
+                    "candidate_set_ref": "candidate-set://scene-1/camera-front-frame",
             },
+                "semantic_intent": {
+                    "goal": "pour reagent into vessel",
+                    "success_criteria": ["liquid transferred"],
+                    "allowed_arms": ["franka"],
+                    "coordination_mode": "single_arm",
+                    "constraints": ["keep container stable"],
+                },
         },
     )
     digest = plan_node_digest(node)
-    record_arguments = {"subtask_id": "pour-reagent-a", "operation": "pour"}
+    persisted_intent = ManipulationIntent.model_validate({
+        **node.input_bindings["semantic_intent"],
+        "task_id": "task-1", "revision_id": "revision-1",
+        "node_id": node.node_id, "node_digest": digest,
+        "entity_ref": node.input_bindings["binding"]["entity_ref"],
+        "observation_ref": node.input_bindings["binding"]["observation_ref"],
+        "scene_revision": node.input_bindings["binding"]["scene_revision"],
+        "observation_frame_id": node.input_bindings["binding"]["frame_id"],
+        "calibration_ref": node.input_bindings["binding"]["calibration_ref"],
+        "candidate_set_ref": node.input_bindings["binding"]["candidate_set_ref"],
+        "motion_authorized": False,
+    }).model_dump(mode="json")
+    record_arguments = {
+        "subtask_id": "pour-reagent-a", "operation": "pour", "intent": persisted_intent,
+    }
     record = SimpleNamespace(
         record_id="record-1",
         caller_id="paos:task-1:revision-1:record-1",
@@ -148,6 +165,7 @@ def test_coordinator_resolves_subtask_identity_and_builds_intent_from_plan_node(
     assert context["node_digest"] == digest
     assert context["intent"]["node_digest"] == digest
     assert context["intent"]["motion_authorized"] is False
+    assert context["intent"] == persisted_intent
     assert context["intent"]["goal"] == "pour reagent into vessel"
 
 

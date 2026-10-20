@@ -1252,14 +1252,19 @@ class AgentTaskCoordinator:
             raise AgentTaskError("subtask caller record does not match the active PlanGraph")
         if node.capability != "manipulation.execute_subtask":
             raise AgentTaskError("active PlanNode is not a manipulation subtask")
-        semantic = node.input_bindings.get("intent")
+        semantic = node.input_bindings.get("semantic_intent", node.input_bindings.get("intent"))
         if not isinstance(semantic, Mapping):
-            raise AgentTaskError("subtask PlanNode has no structured manipulation intent")
+            raise AgentTaskError("subtask PlanNode has no structured semantic intent")
         if set(semantic) - MANIPULATION_INTENT_SEMANTIC_KEYS:
-            raise AgentTaskError("subtask PlanNode intent contains unsupported fields")
-        identity = node.input_bindings
+            raise AgentTaskError("subtask PlanNode semantic intent contains unsupported fields")
+        persisted = record.arguments.get("intent") if isinstance(record.arguments, Mapping) else None
+        if not isinstance(persisted, Mapping):
+            raise AgentTaskError("subtask caller record has no persisted trusted manipulation intent")
+        identity = node.input_bindings.get("binding", node.input_bindings)
+        if not isinstance(identity, Mapping):
+            raise AgentTaskError("subtask PlanNode has no perception binding")
         try:
-            intent = ManipulationIntent.model_validate({
+            expected_intent = ManipulationIntent.model_validate({
                 **dict(semantic),
                 "task_id": task_id,
                 "revision_id": revision_id,
@@ -1274,7 +1279,13 @@ class AgentTaskCoordinator:
                 "motion_authorized": False,
             })
         except (KeyError, ValueError, TypeError) as exc:
-            raise AgentTaskError(f"subtask PlanNode cannot produce a trusted manipulation intent: {exc}") from exc
+            raise AgentTaskError(f"subtask PlanNode cannot validate a trusted manipulation intent: {exc}") from exc
+        try:
+            intent = ManipulationIntent.model_validate(dict(persisted))
+        except (TypeError, ValueError) as exc:
+            raise AgentTaskError(f"persisted subtask intent is invalid: {exc}") from exc
+        if intent != expected_intent:
+            raise AgentTaskError("persisted subtask intent does not match the active PlanNode")
         return {
             "task_id": task_id,
             "revision_id": revision_id,

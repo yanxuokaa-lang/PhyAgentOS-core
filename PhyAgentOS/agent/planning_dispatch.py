@@ -779,6 +779,63 @@ class AgentComposedDispatch:
                 recommended_action="repair_tool_policy",
             )
 
+        if policy.tool_id == "manipulation.execute_subtask":
+            semantic = node.input_bindings.get("semantic_intent")
+            binding = node.input_bindings.get("binding")
+            if not isinstance(semantic, Mapping) or not isinstance(binding, Mapping):
+                raise PlanningDispatchError(
+                    "subtask node requires structured semantic intent and perception binding",
+                    code="missing_runtime_arguments",
+                    failure_owner="plan_contract",
+                    retryable_in_revision=False,
+                    requires_replan=True,
+                    missing_fields=("semantic_intent", "binding"),
+                    recommended_action="replace_plan_segment",
+                )
+            unexpected = set(semantic) - MANIPULATION_INTENT_SEMANTIC_KEYS
+            if unexpected:
+                raise PlanningDispatchError(
+                    "subtask semantic intent contains unsupported fields",
+                    code="invalid_node_semantics",
+                    failure_owner="plan_contract",
+                    retryable_in_revision=False,
+                    requires_replan=True,
+                    missing_fields=tuple(sorted(unexpected)),
+                    recommended_action="replace_plan_segment",
+                )
+            try:
+                intent = ManipulationIntent.model_validate({
+                    **dict(semantic),
+                    "task_id": self.graph.task_id,
+                    "revision_id": self.graph.revision_id,
+                    "node_id": node.node_id,
+                    "node_digest": plan_node_digest(node),
+                    "entity_ref": binding["entity_ref"],
+                    "observation_ref": binding["observation_ref"],
+                    "scene_revision": binding["scene_revision"],
+                    "observation_frame_id": binding["frame_id"],
+                    "calibration_ref": binding["calibration_ref"],
+                    "candidate_set_ref": binding["candidate_set_ref"],
+                    "motion_authorized": False,
+                })
+            except (KeyError, TypeError, ValueError) as exc:
+                raise PlanningDispatchError(
+                    f"subtask manipulation intent is incomplete: {exc}",
+                    code="invalid_node_semantics",
+                    failure_owner="plan_contract",
+                    retryable_in_revision=False,
+                    requires_replan=True,
+                    recommended_action="replace_plan_segment",
+                ) from exc
+            supplied_intent = final_arguments.get("intent")
+            if supplied_intent is not None and supplied_intent != intent.model_dump(mode="json"):
+                raise PlanningDispatchError(
+                    "supplied subtask intent differs from the trusted node intent",
+                    code="semantic_intent_mismatch",
+                )
+            final_arguments["intent"] = intent.model_dump(mode="json")
+            return final_arguments
+
         supplied = final_arguments.pop("intent", None)
         semantic_keys = MANIPULATION_INTENT_SEMANTIC_KEYS
         flat_supplied = {

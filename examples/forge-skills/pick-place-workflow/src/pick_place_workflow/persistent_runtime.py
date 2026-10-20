@@ -322,6 +322,8 @@ def _spec(spec, *, argument_defaults=None, require_synchronized_views: bool = Fa
         spec["default_timeout_ms"] = max(
             int(spec.get("default_timeout_ms") or 0), 360_000
         )
+    if spec["tool_id"] == "manipulation.execute_subtask":
+        planning["trusted_argument_builder"] = "manipulation_intent_v2"
     if spec["tool_id"] == "grasp.propose":
         planning["argument_projection"] = "entity_geometry_target_v1"
     spec["planning"] = planning

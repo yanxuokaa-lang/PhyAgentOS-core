@@ -391,6 +391,59 @@ def test_structured_node_intent_builds_manipulation_intent_v2():
     assert trusted["intent"]["motion_authorized"] is False
 
 
+def test_subtask_selection_persists_trusted_intent_from_semantic_node_binding():
+    binding = {
+        "entity_ref": "entity://reagent-a",
+        "observation_ref": "observation://scene-a/front-camera",
+        "scene_revision": "scene-a",
+        "frame_id": "front-camera",
+        "calibration_ref": "artifact://calibration/front-v1",
+        "candidate_set_ref": "candidate-set://scene-a/front-camera",
+    }
+    node = PlanNode(
+        node_id="pour-a", obligation_id="pour-a",
+        capability="manipulation.execute_subtask",
+        input_bindings={
+            "subtask_id": "pour-a", "operation": "pour", "binding": binding,
+            "parameters": {"tilt_rad": 0.8}, "tool_sequence": [],
+            "semantic_intent": {
+                "goal": "Pour reagent A into the selected beaker",
+                "success_criteria": ["Measured pour feedback qualifies"],
+                "allowed_arms": ["franka"],
+                "coordination_mode": "single_arm",
+                "constraints": ["Keep the beaker in the measured workspace"],
+            },
+        },
+    )
+    graph_payload = {
+        "task_id": "task-pour", "revision_id": "revision-1",
+        "graph_digest": "0" * 64, "planner_decision_digest": "1" * 64,
+        "policy_snapshot_digest": "2" * 64, "nodes": [node.model_dump(mode="json")],
+    }
+    graph_payload["graph_digest"] = plan_graph_digest(graph_payload)
+    policy = ToolSpecPolicy(
+        tool_id="manipulation.execute_subtask", semantics="action",
+        spec_digest="3" * 64, capabilities=("manipulation.execute_subtask",),
+        input_binding_keys=("subtask_id", "operation", "binding", "parameters", "tool_sequence"),
+        trusted_argument_builder="manipulation_intent_v2",
+    )
+    dispatch = AgentComposedDispatch(
+        PlanGraph.model_validate(graph_payload), (policy,),
+        AdmissionContext(scene_revision="scene-a"),
+    )
+
+    trusted = dispatch._build_trusted_arguments(
+        policy=policy, node=node, arguments={"subtask_id": "pour-a"},
+    )
+
+    assert trusted["intent"]["version"] == "manipulation_intent_v2"
+    assert trusted["intent"]["task_id"] == "task-pour"
+    assert trusted["intent"]["node_digest"] == plan_node_digest(node)
+    assert trusted["intent"]["entity_ref"] == binding["entity_ref"]
+    assert trusted["intent"]["candidate_set_ref"] == binding["candidate_set_ref"]
+    assert trusted["intent"]["motion_authorized"] is False
+
+
 def test_ready_diagnostics_explain_evidence_and_condition_blockers():
     node = PlanNode(
         node_id="target",

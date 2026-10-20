@@ -207,6 +207,9 @@ class SubtaskSpec(BaseModel):
     binding: PerceptionBinding
     depends_on: tuple[str, ...] = ()
     parameters: dict[str, Any] = Field(default_factory=dict)
+    # Semantic fields are supplied by the plan; trusted execution identity is
+    # added later by the PAOS selection builder.
+    semantic_intent: dict[str, Any] | None = None
     tool_sequence: tuple[SubtaskToolCall, ...] = ()
     return_destination_ref: str | None = None
 
@@ -233,6 +236,24 @@ class SubtaskSpec(BaseModel):
             json.dumps(value, ensure_ascii=False, allow_nan=False)
         except (TypeError, ValueError) as exc:
             raise ValueError("subtask parameters must contain finite JSON values") from exc
+        return value
+
+    @field_validator("semantic_intent")
+    @classmethod
+    def validate_semantic_intent(cls, value: dict[str, Any] | None) -> dict[str, Any] | None:
+        if value is None:
+            return None
+        allowed = {"goal", "success_criteria", "allowed_arms", "coordination_mode", "constraints"}
+        unexpected = set(value) - allowed
+        if unexpected:
+            raise ValueError("subtask intent contains unsupported fields")
+        required = {"goal", "success_criteria", "allowed_arms", "coordination_mode"}
+        if required - set(value):
+            raise ValueError("subtask intent is missing required semantic fields")
+        try:
+            json.dumps(value, ensure_ascii=False, allow_nan=False)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("subtask intent must contain finite JSON values") from exc
         return value
 
     @model_validator(mode="after")
@@ -753,6 +774,14 @@ class SubtaskActionEndpoint:
 
     def admit_for_caller(self, arguments: Mapping[str, Any], *, caller_id: str) -> ActionAdmission:
         spec_payload = dict(arguments)
+        trusted_intent = spec_payload.pop("intent", None)
+        semantic = spec_payload.pop("semantic_intent", None)
+        if isinstance(trusted_intent, Mapping):
+            spec_payload["semantic_intent"] = semantic or {
+                key: trusted_intent[key]
+                for key in ("goal", "success_criteria", "allowed_arms", "coordination_mode", "constraints")
+                if key in trusted_intent
+            }
         spec = SubtaskSpec.model_validate(spec_payload)
         if not isinstance(caller_id, str) or not caller_id.startswith("paos:"):
             raise ValueError("subtask Action caller must be bound to a PAOS task")
@@ -797,6 +826,17 @@ class SubtaskActionEndpoint:
         ):
             if intent.get(key) != expected:
                 raise ValueError(f"Coordinator intent {key} does not match the perception binding")
+        if isinstance(trusted_intent, Mapping) and dict(trusted_intent) != dict(intent):
+            raise ValueError("subtask Action must carry the persisted Coordinator intent")
+        if trusted_intent is None and all(
+            key in intent for key in ("goal", "success_criteria", "allowed_arms", "coordination_mode")
+        ):
+            raise ValueError("subtask Action must carry the persisted Coordinator intent")
+        if spec.semantic_intent is not None:
+            for key in ("goal", "success_criteria", "allowed_arms", "coordination_mode", "constraints"):
+                expected = spec.semantic_intent.get(key, [] if key in {"success_criteria", "allowed_arms", "constraints"} else None)
+                if intent.get(key) != expected:
+                    raise ValueError(f"subtask semantic intent {key} does not match the Coordinator intent")
 
         def start(_invocation_id: str, _attempt_id: str) -> ActionAdmission:
             driver = RuntimeSubtaskDriver(
@@ -823,13 +863,14 @@ SUBTASK_TOOL_SPEC: dict[str, Any] = {
         "schema_version": "paos-tool-spec-policy/v1",
         "capabilities": ["manipulation.execute_subtask"],
         "input_binding_keys": ["subtask_id", "operation", "binding", "parameters", "tool_sequence"],
+        "trusted_argument_builder": "manipulation_intent_v2",
         "scene_write_behavior": "new_revision",
         "idempotency": "at_most_once",
     },
     "input_schema": {
         "type": "object",
         "additionalProperties": False,
-        "required": ["subtask_id", "operation", "binding", "parameters", "tool_sequence"],
+        "required": ["subtask_id", "operation", "binding", "parameters", "tool_sequence", "intent"],
         "properties": {
             "subtask_id": {"type": "string", "minLength": 1},
             "operation": {"enum": ["relocate", "pour", "stir"]},
@@ -873,6 +914,36 @@ SUBTASK_TOOL_SPEC: dict[str, Any] = {
             },
             "parameters": {"type": "object"},
             "tool_sequence": {"type": "array", "minItems": 2, "items": {"type": "object"}},
+            "intent": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "version", "task_id", "revision_id", "node_id", "node_digest",
+                    "entity_ref", "goal", "success_criteria", "allowed_arms",
+                    "coordination_mode", "observation_ref", "scene_revision",
+                    "observation_frame_id", "calibration_ref", "candidate_set_ref",
+                    "motion_authorized",
+                ],
+                "properties": {
+                    "version": {"const": "manipulation_intent_v2"},
+                    "task_id": {"type": "string", "minLength": 1},
+                    "revision_id": {"type": "string", "minLength": 1},
+                    "node_id": {"type": "string", "minLength": 1},
+                    "node_digest": {"type": "string", "pattern": r"^[0-9a-f]{64}$"},
+                    "entity_ref": {"type": "string", "pattern": r"^entity://\S+$"},
+                    "goal": {"type": "string", "minLength": 1},
+                    "success_criteria": {"type": "array", "items": {"type": "string"}},
+                    "allowed_arms": {"type": "array", "items": {"type": "string"}},
+                    "coordination_mode": {"enum": ["single_arm", "alternative_arm", "bimanual"]},
+                    "observation_ref": {"type": "string", "pattern": r"^observation://\S+$"},
+                    "scene_revision": {"type": "string", "minLength": 1},
+                    "observation_frame_id": {"type": "string", "minLength": 1},
+                    "calibration_ref": {"type": "string", "pattern": r"^artifact://\S+$"},
+                    "candidate_set_ref": {"type": "string", "pattern": r"^candidate-set://\S+$"},
+                    "constraints": {"type": "array", "items": {"type": "string"}},
+                    "motion_authorized": {"const": False},
+                },
+            },
             "return_destination_ref": {"type": ["string", "null"], "minLength": 1},
         },
     },

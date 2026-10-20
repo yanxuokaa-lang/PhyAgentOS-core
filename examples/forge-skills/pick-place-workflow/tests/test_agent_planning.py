@@ -207,7 +207,15 @@ def test_executable_projection_admits_declared_tool_without_motion_authority():
 def test_subtask_projection_has_one_agent_node_and_one_verify_join():
     plan = compose_subtask_plan(
         "lab-task", "scene-1",
-        (SubtaskSpec(subtask_id="pour-a", operation="pour", binding=_lab_binding()),),
+        (SubtaskSpec(
+            subtask_id="pour-a", operation="pour", binding=_lab_binding(),
+            semantic_intent={
+                "goal": "pour reagent into the selected vessel",
+                "success_criteria": ["pour process feedback is qualified"],
+                "allowed_arms": ["franka"],
+                "coordination_mode": "single_arm",
+            },
+        ),),
         planner_decision_digest="1" * 64, policy_snapshot_digest="2" * 64,
     )
     assert [node.capability for node in plan.graph.nodes] == ["manipulation.execute_subtask", "task.verify"]

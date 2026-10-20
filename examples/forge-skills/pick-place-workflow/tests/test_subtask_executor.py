@@ -111,6 +111,7 @@ def coordinator_context(**overrides):
             "decision_trace_ref": "artifact://decisions/pour-a",
         },
         "intent": {
+            "version": "manipulation_intent_v2",
             "task_id": "task-1",
             "revision_id": "revision-1",
             "node_id": "pour-a",
@@ -121,11 +122,22 @@ def coordinator_context(**overrides):
             "observation_frame_id": current.frame_id,
             "calibration_ref": current.calibration_ref,
             "candidate_set_ref": current.candidate_set_ref,
+            "goal": "pour reagent into the selected vessel",
+            "success_criteria": ["process feedback meets the pour criterion"],
+            "allowed_arms": ["franka"],
+            "coordination_mode": "single_arm",
+            "constraints": [],
             "motion_authorized": False,
         },
     }
     context.update(overrides)
     return context
+
+
+def action_arguments(spec):
+    value = spec.model_dump(mode="json", exclude_none=True)
+    value["intent"] = coordinator_context()["intent"]
+    return value
 
 
 def test_executor_aggregates_five_internal_tools_into_one_subtask_settlement():
@@ -153,10 +165,10 @@ def test_runtime_action_driver_uses_one_outer_invocation_for_internal_sequence()
 
     runtime = runtime_with_subtask_endpoint(refresh)
     spec = SubtaskSpec(subtask_id="pour-a", operation="pour", binding=binding())
-    jsonschema.validate(spec.model_dump(mode="json"), SUBTASK_TOOL_SPEC["input_schema"])
+    jsonschema.validate(action_arguments(spec), SUBTASK_TOOL_SPEC["input_schema"])
     outer = runtime.start_action(
         "manipulation.execute_subtask",
-        spec.model_dump(mode="json"),
+        action_arguments(spec),
         caller_id="paos:task-1:revision-1:record-1",
     )["invocation_id"]
     result = None
@@ -177,25 +189,25 @@ def test_subtask_admission_rejects_node_or_intent_mismatch_before_internal_calls
     endpoint.resolve_context = lambda _caller: coordinator_context(node_id="other-node")
     spec = SubtaskSpec(subtask_id="pour-a", operation="pour", binding=binding())
     with pytest.raises(ValueError, match="PlanNode"):
-        endpoint.admit_for_caller(spec.model_dump(mode="json"), caller_id="paos:task-1:revision-1:record-1")
+        endpoint.admit_for_caller(action_arguments(spec), caller_id="paos:task-1:revision-1:record-1")
 
     endpoint.resolve_context = lambda _caller: coordinator_context(
         intent={**coordinator_context()["intent"], "node_digest": "b" * 64}
     )
     with pytest.raises(ValueError, match="node_digest"):
-        endpoint.admit_for_caller(spec.model_dump(mode="json"), caller_id="paos:task-1:revision-1:record-1")
+        endpoint.admit_for_caller(action_arguments(spec), caller_id="paos:task-1:revision-1:record-1")
 
     endpoint.resolve_context = lambda _caller: coordinator_context(
         intent={**coordinator_context()["intent"], "motion_authorized": True}
     )
     with pytest.raises(ValueError, match="no-motion"):
-        endpoint.admit_for_caller(spec.model_dump(mode="json"), caller_id="paos:task-1:revision-1:record-1")
+        endpoint.admit_for_caller(action_arguments(spec), caller_id="paos:task-1:revision-1:record-1")
 
     endpoint.resolve_context = lambda _caller: coordinator_context(
         intent={**coordinator_context()["intent"], "motion_authorized": True}
     )
     with pytest.raises(ValueError, match="no-motion"):
-        endpoint.admit_for_caller(spec.model_dump(mode="json"), caller_id="paos:task-1:revision-1:record-1")
+        endpoint.admit_for_caller(action_arguments(spec), caller_id="paos:task-1:revision-1:record-1")
 
 
 def test_subtask_admission_without_coordinator_resolver_fails_closed():
@@ -210,7 +222,7 @@ def test_runtime_driver_fails_closed_when_scene_revision_changes_without_refresh
     runtime = runtime_with_subtask_endpoint()
     spec = SubtaskSpec(subtask_id="pour-a", operation="pour", binding=binding())
     outer = runtime.start_action(
-        "manipulation.execute_subtask", spec.model_dump(mode="json"),
+        "manipulation.execute_subtask", action_arguments(spec),
         caller_id="paos:task-1:revision-1:record-1",
     )["invocation_id"]
     for _ in range(10):
@@ -234,7 +246,7 @@ def test_runtime_driver_rejects_refresh_with_stale_motion_candidates():
     runtime = runtime_with_subtask_endpoint(stale_refresh)
     spec = SubtaskSpec(subtask_id="pour-a", operation="pour", binding=binding())
     outer = runtime.start_action(
-        "manipulation.execute_subtask", spec.model_dump(mode="json"),
+        "manipulation.execute_subtask", action_arguments(spec),
         caller_id="paos:task-1:revision-1:record-1",
     )["invocation_id"]
     for _ in range(10):
@@ -249,7 +261,7 @@ def test_runtime_outer_cancel_propagates_to_active_internal_invocation():
     runtime = runtime_with_subtask_endpoint(pending_acquire=True)
     spec = SubtaskSpec(subtask_id="pour-a", operation="pour", binding=binding())
     outer = runtime.start_action(
-        "manipulation.execute_subtask", spec.model_dump(mode="json"),
+        "manipulation.execute_subtask", action_arguments(spec),
         caller_id="paos:task-1:revision-1:record-1",
     )["invocation_id"]
     assert runtime.invocation_result(outer)["status"] == "pending"
