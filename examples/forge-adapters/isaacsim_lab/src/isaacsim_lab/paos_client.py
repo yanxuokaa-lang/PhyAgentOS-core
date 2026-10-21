@@ -224,6 +224,7 @@ def build_labutopia_runtime(
     possession: Any | None = None,
     perception_adapter: Any | None = None,
     subtask_context_resolver: Callable[[str], Mapping[str, Any]] | None = None,
+    assignment_store: Any | None = None,
 ) -> LabUtopiaPAOSRuntime:
     """Compose LabUtopia behind PAOS without owning perception orchestration.
 
@@ -251,13 +252,14 @@ def build_labutopia_runtime(
         preparation_provider=preparation_provider,
         capability_provider=capability_provider,
         observation_source=observation_source,
-        resolve_preparation=resolve_preparation,
+        resolve_preparation=None if assignment_store is not None else resolve_preparation,
         tool_context_provider=tool_context_provider,
         possession=possession,
         held_preparation_provider=provider,
         resolve_held_preparation=provider.resolve,
         register_legacy_actions=False,
         register_legacy_held_operations=False,
+        assignment_store=assignment_store,
     )
     bound_adapter = None
     if perception_adapter is not None and getattr(perception_adapter, "ready", False):
@@ -271,6 +273,7 @@ def build_labutopia_runtime(
                     bound_adapter.refresh_binding,
                     tool_context_provider,
                     subtask_context_resolver,
+                    assignment_store,
                 )
     transport = CapabilityRuntimeTransport(runtime, gateway_identity=gateway_identity)
     return LabUtopiaPAOSRuntime(runtime, transport, selected_engine, provider, client, bound_adapter)

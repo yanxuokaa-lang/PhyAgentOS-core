@@ -2,6 +2,34 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.1.15 (2026-10-21 09:45) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [policy] [feat] 增加 provider-neutral SQLite `AssignmentArtifactStore`，持久化完整 assignment/preparation/route artifact；冲突 canonical reference 拒绝覆盖。 / Add a provider-neutral SQLite `AssignmentArtifactStore` for complete assignment/preparation/route artifacts; reject conflicting canonical-reference overwrites.
+- [policy] [feat] preparation 契约支持可选 provider-owned `route_arguments`；同步/Runtime subtask 在 trusted intent 下写入，acquire/place 从同一 store resolver 读取。 / Extend the preparation contract with optional provider-owned `route_arguments`; persist under trusted intent and resolve acquire/place through the same store.
+- [test] [test] `47 passed` focused preparation/store/subtask tests，LabUtopia wiring `7 passed`；无仿真或运动。 / Focused preparation/store/subtask tests `47 passed`, LabUtopia wiring `7 passed`; no simulation or motion.
+
+### 影响文件 / Affected Files
+- `PhyAgentOS/forge/capability_runtime/manipulation_prepare.py:L86-L95,L517-L545,L700-L723`
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/persistent_runtime.py:L455-L533,L587-L650`
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/subtask_executor.py:L388-L502,L755-L766,L868-L887`
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/paos_client.py:L214-L277`
+- `docs/forge/IMPLEMENTATION_REVIEW_V15_1_15.md:L1-L81`
+
+### 关键 Diff / Key Diff
+```diff
+- callback-only route resolution
++ durable canonical assignment artifact store
++ trusted subtask persistence and shared acquire/place resolver
+```
+
+### 验证 / Validation
+- Ruff, compileall, and `git diff --check` passed; no Isaac Sim, Gateway Action, simulator step, or motion was run. / Ruff、compileall、`git diff --check` 通过；未启动 Isaac Sim、Gateway Action、模拟器 step 或运动。
+
+### Git 提交 / Git Commit
+- Commit: `bc3a38b1`
+- Branch: `feature/planning-loop`
+
 ## v15.1.14 (2026-10-21 09:30) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]

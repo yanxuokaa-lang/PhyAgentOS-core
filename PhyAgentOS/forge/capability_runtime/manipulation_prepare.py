@@ -89,6 +89,10 @@ class PreparationSnapshot:
     provider_available: bool = True
     assignments: tuple[dict[str, Any], ...] = field(default_factory=tuple)
     destination_ref: str | None = None
+    # Provider-owned approved route, persisted by the PAOS subtask boundary.
+    # It is optional because readiness-only providers do not produce an
+    # executable route.
+    route_arguments: dict[str, Any] | None = None
 
 
 MANIPULATION_TOOL_SPEC: dict[str, Any] = {
@@ -327,6 +331,7 @@ MANIPULATION_TOOL_SPEC["output_schema"]["properties"].update({
     "assignments": {"type": "array", "items": ArmAssignment.model_json_schema(
         ref_template="#/properties/assignments/items/$defs/{model}")},
     "destination_ref": {"type": "string", "pattern": r"^destination://[^/]+.*$"},
+    "route_arguments": {"type": "object"},
 })
 
 
@@ -515,7 +520,7 @@ def normalize_snapshot(snapshot: Any) -> PreparationSnapshot | None:
         return snapshot
     if not isinstance(snapshot, Mapping):
         return None
-    allowed = {"prepared_candidates", "provider_available", "assignments", "destination_ref"}
+    allowed = {"prepared_candidates", "provider_available", "assignments", "destination_ref", "route_arguments"}
     if set(snapshot) - allowed or not {"prepared_candidates", "provider_available"} <= set(snapshot):
         return None
     prepared = snapshot.get("prepared_candidates")
@@ -527,11 +532,15 @@ def normalize_snapshot(snapshot: Any) -> PreparationSnapshot | None:
     assignments = snapshot.get("assignments", ())
     if not isinstance(assignments, (list, tuple)) or any(not isinstance(item, Mapping) for item in assignments):
         return None
+    route_arguments = snapshot.get("route_arguments")
+    if route_arguments is not None and not isinstance(route_arguments, Mapping):
+        return None
     return PreparationSnapshot(
         prepared_candidates=tuple(dict(item) for item in prepared),
         provider_available=provider_available,
         assignments=tuple(dict(item) for item in assignments),
         destination_ref=snapshot.get("destination_ref"),
+        route_arguments=dict(route_arguments) if route_arguments is not None else None,
     )
 
 
@@ -708,6 +717,8 @@ class ManipulationPreparationEndpoint:
                 return _error("invalid_assignment_binding", "prepared assignments failed intent binding validation", observation_ref=observation_ref)
             route_result = {"assignments": [item.model_dump(mode="json") for item in assignments],
                             "destination_ref": snapshot.destination_ref}
+            if snapshot.route_arguments is not None:
+                route_result["route_arguments"] = dict(snapshot.route_arguments)
         elif snapshot.assignments or snapshot.destination_ref is not None:
             return _error("invalid_assignment_binding", "assignments require an explicit route intent", observation_ref=observation_ref)
         evidence: list[str] = []

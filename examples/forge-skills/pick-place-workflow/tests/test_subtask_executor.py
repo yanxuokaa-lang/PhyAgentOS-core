@@ -11,6 +11,7 @@ from PhyAgentOS.forge.capability_runtime import (
 from pick_place_workflow.held_manipulation import PREPARE_HELD_TOOL_SPEC, action_spec
 from pick_place_workflow.object_acquire import ACQUIRE_TOOL_SPEC
 from pick_place_workflow.object_place import PLACE_TOOL_SPEC
+from pick_place_workflow.persistent_runtime import SQLiteAssignmentArtifactStore
 from pick_place_workflow.subtask_executor import (
     SUBTASK_TOOL_SPEC,
     PerceptionBinding,
@@ -136,10 +137,18 @@ class SubtaskPreparationEndpoint:
                 "checks": {"kinematic": "pass", "collision": "pass", "workspace": "pass"},
             }],
             "assignments": [assignment],
+            "route_arguments": {
+                "entity_ref": candidate["entity_ref"],
+                "candidate_ref": candidate["candidate_ref"],
+                "preparation_ref": "preparation://scene-1/lab-camera-front",
+                "scene_revision": arguments["scene_revision"],
+                "destination_ref": arguments["destination_ref"],
+            },
         }
 
 
-def runtime_with_subtask_endpoint(refresh_binding=None, *, pending_acquire=False, validate_production_schemas=False):
+def runtime_with_subtask_endpoint(refresh_binding=None, *, pending_acquire=False,
+                                  validate_production_schemas=False, assignment_store=None):
     runtime = CapabilityRuntime()
     for tool_id, result in {
         "object.acquire": {"status": "succeeded", "outcome_known": True, "possession_state": "holding", "world_change_started": True, "new_scene_revision": "scene-2"},
@@ -186,7 +195,8 @@ def runtime_with_subtask_endpoint(refresh_binding=None, *, pending_acquire=False
         }),
     )
     runtime.register_tool(SUBTASK_TOOL_SPEC, SubtaskActionEndpoint(
-        runtime, refresh_binding, lambda _caller_id: coordinator_context()
+        runtime, refresh_binding, lambda _caller_id: coordinator_context(),
+        assignment_store=assignment_store,
     ))
     return runtime
 
@@ -249,6 +259,78 @@ def test_executor_aggregates_five_internal_tools_into_one_subtask_settlement():
     settlement = result.to_node_settlement(task_id="lab-task", revision_id="scene-1")
     assert settlement.status == "completed" and settlement.node_id == "pour-a"
     assert len(result.receipts) == 6
+
+
+def test_executor_persists_complete_preparation_artifact_without_rebuilding_route(tmp_path):
+    class ArtifactInvoker(Invoker):
+        def invoke(self, tool_id, arguments):
+            self.calls.append((tool_id, arguments))
+            if tool_id == "manipulation.prepare":
+                candidate = arguments["candidates"][0]
+                return {
+                    "status": "available", "motion_authorized": False,
+                    "observation_ref": arguments["observation_ref"],
+                    "scene_revision": arguments["scene_revision"],
+                    "frame": {"frame_id": arguments["frame_id"], "unit": "m"},
+                    "calibration_ref": arguments["calibration_ref"],
+                    "candidate_set_ref": arguments["candidate_set_ref"],
+                    "preparation_ref": "preparation://scene-1/lab-camera-front",
+                    "destination_ref": binding().destination_ref,
+                    "prepared_candidates": [{
+                        "candidate_ref": candidate["candidate_ref"],
+                        "entity_ref": candidate["entity_ref"],
+                        "qualification": "prepared",
+                        "checks": {"kinematic": "pass", "collision": "pass", "workspace": "pass"},
+                    }],
+                    "assignments": [{
+                        **{key: coordinator_context()["intent"][key] for key in (
+                            "task_id", "revision_id", "node_id", "node_digest", "entity_ref",
+                            "observation_ref", "scene_revision", "calibration_ref", "candidate_set_ref",
+                            "coordination_mode",
+                        )},
+                        "candidate_ref": candidate["candidate_ref"],
+                        "capability_snapshot_ref": binding().capability_snapshot_ref,
+                        "assignment_ref": "artifact://assignments/task-1/pour-a",
+                    }],
+                    "route_arguments": {
+                        "entity_ref": binding().entity_ref,
+                        "candidate_ref": binding().candidate_ref,
+                        "preparation_ref": "preparation://scene-1/lab-camera-front",
+                        "scene_revision": binding().scene_revision,
+                    },
+                }
+            return super().invoke(tool_id, arguments)
+
+    store = SQLiteAssignmentArtifactStore(tmp_path / "assignments.sqlite3")
+    try:
+        result = SubtaskExecutor(
+            ArtifactInvoker(responses()), assignment_store=store
+        ).execute(SubtaskSpec(
+            subtask_id="pour-a", operation="pour", binding=binding(),
+            trusted_intent=coordinator_context()["intent"],
+        ))
+        assert result.status == "completed"
+        document = store.get("artifact://assignments/task-1/pour-a")
+        assert document is not None
+        assert document["route_arguments"]["candidate_ref"] == "candidate://reagent-a/0"
+    finally:
+        store.close()
+
+
+def test_executor_fails_closed_when_store_is_configured_but_route_artifact_is_missing():
+    class Store:
+        def put(self, _assignment_ref, _document):
+            raise AssertionError("incomplete preparation must not be persisted")
+
+    result = SubtaskExecutor(
+        Invoker(responses()), assignment_store=Store()
+    ).execute(SubtaskSpec(
+        subtask_id="pour-a", operation="pour", binding=binding(),
+        trusted_intent=coordinator_context()["intent"],
+    ))
+    assert result.status == "failed"
+    assert result.failed_phase == "prepare"
+    assert result.receipts[0].tool_id == "manipulation.prepare"
 
 
 def test_executor_projects_latest_held_preparation_into_place():

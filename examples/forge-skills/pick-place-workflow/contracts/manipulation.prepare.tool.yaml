@@ -573,6 +573,8 @@ output_schema:
     destination_ref:
       type: string
       pattern: ^destination://[^/]+.*$
+    route_arguments:
+      type: object
 robot_frame_profile:
   observation_frame: observation
   unit: m

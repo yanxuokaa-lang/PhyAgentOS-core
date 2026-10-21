@@ -78,7 +78,11 @@ from .perception_binding import (
     PerceptionBindingError,
     QueryInvoker,
 )
-from .persistent_runtime import AssignmentArtifactStore, StoredAssignmentResolver
+from .persistent_runtime import (
+    AssignmentArtifactStore,
+    SQLiteAssignmentArtifactStore,
+    StoredAssignmentResolver,
+)
 from .subtask_executor import (
     SUBTASK_TOOL_SPEC,
     PerceptionBinding,
@@ -164,6 +168,7 @@ __all__ = [
     "SUBTASK_TOOL_SPEC",
     "default_subtask_calls",
     "AssignmentArtifactStore",
+    "SQLiteAssignmentArtifactStore",
     "StoredAssignmentResolver",
     "select_planning_mode",
     "MultiObjectAgentError",

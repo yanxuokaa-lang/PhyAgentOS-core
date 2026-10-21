@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import json
+import sqlite3
 from copy import deepcopy
 from dataclasses import dataclass
+from pathlib import Path
+from threading import RLock
 from typing import Any, Callable, Mapping, Protocol
 
 from PhyAgentOS.forge.capability_runtime import (
@@ -451,9 +455,82 @@ class PersistentActionEndpoint:
 class AssignmentArtifactStore(Protocol):
     """Structural interface for durable, reference-addressed route artifacts."""
 
+    def put(self, assignment_ref: str, document: Mapping[str, Any]) -> None:
+        """Persist one complete preparation artifact under its canonical reference."""
+        ...
+
     def get(self, assignment_ref: str) -> Mapping[str, Any] | None:
         """Return the persisted artifact document, or ``None`` when absent."""
         ...
+
+
+class SQLiteAssignmentArtifactStore:
+    """Small provider-neutral durable store for preparation route artifacts.
+
+    The store owns only serialization and reference lookup.  It does not derive
+    assignments, choose a robot, or interpret environment-specific route data.
+    A caller must provide the complete document produced by the preparation
+    provider; partial documents are rejected before they reach acquire/place.
+    """
+
+    def __init__(self, path: str | Path) -> None:
+        self.path = str(path)
+        self._connection = sqlite3.connect(self.path, check_same_thread=False)
+        self._lock = RLock()
+        self._connection.execute(
+            "CREATE TABLE IF NOT EXISTS assignment_artifacts "
+            "(assignment_ref TEXT PRIMARY KEY, document_json TEXT NOT NULL)"
+        )
+        self._connection.commit()
+
+    def put(self, assignment_ref: str, document: Mapping[str, Any]) -> None:
+        if not isinstance(assignment_ref, str) or not assignment_ref.startswith("artifact://"):
+            raise ValueError("assignment artifact reference must use artifact://")
+        if not isinstance(document, Mapping):
+            raise TypeError("assignment artifact document must be an object")
+        assignment = document.get("assignment")
+        route_arguments = document.get("route_arguments")
+        preparation_ref = document.get("preparation_ref")
+        if not isinstance(assignment, Mapping) or not isinstance(route_arguments, Mapping):
+            raise ValueError("assignment artifact requires assignment and route_arguments")
+        if assignment.get("assignment_ref") != assignment_ref:
+            raise ValueError("assignment artifact reference mismatch")
+        if not isinstance(preparation_ref, str) or not preparation_ref.startswith("preparation://"):
+            raise ValueError("assignment artifact requires preparation_ref")
+        payload = json.dumps(dict(document), ensure_ascii=False, allow_nan=False, sort_keys=True)
+        with self._lock:
+            try:
+                self._connection.execute(
+                    "INSERT INTO assignment_artifacts(assignment_ref, document_json) VALUES(?, ?)",
+                    (assignment_ref, payload),
+                )
+                self._connection.commit()
+            except sqlite3.IntegrityError as exc:
+                self._connection.rollback()
+                existing = self.get(assignment_ref)
+                if existing != json.loads(payload):
+                    raise ValueError("assignment reference already stores a different artifact") from exc
+
+    def get(self, assignment_ref: str) -> Mapping[str, Any] | None:
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT document_json FROM assignment_artifacts WHERE assignment_ref = ?",
+                (assignment_ref,),
+            ).fetchone()
+        if row is None:
+            return None
+        value = json.loads(row[0])
+        return deepcopy(value) if isinstance(value, Mapping) else None
+
+    def close(self) -> None:
+        with self._lock:
+            self._connection.close()
+
+    def __enter__(self) -> "SQLiteAssignmentArtifactStore":
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.close()
 
 
 class StoredAssignmentResolver:
@@ -512,6 +589,7 @@ def register_subtask_tool(
     refresh_binding,
     tool_context_provider,
     resolve_subtask_context,
+    assignment_store: AssignmentArtifactStore | None = None,
 ) -> None:
     """Register the Agent-facing subtask boundary after Runtime composition.
 
@@ -527,13 +605,13 @@ def register_subtask_tool(
 
     runtime.register_tool(
         deepcopy(SUBTASK_TOOL_SPEC),
-        SubtaskActionEndpoint(runtime, refresh_binding, resolve_subtask_context),
+        SubtaskActionEndpoint(runtime, refresh_binding, resolve_subtask_context, assignment_store=assignment_store),
         context_provider=lambda: tool_context_provider("manipulation.execute_subtask"),
     )
 
 
 def build_persistent_runtime(*, client, understanding_provider, grasp_provider,
-                             preparation_provider, capability_provider, resolve_preparation,
+                             preparation_provider, capability_provider, resolve_preparation=None,
                              tool_context_provider, possession: PersistentPossession | None = None,
                              observation_source=None,
                              query_decorator=None, tool_input_defaults=None,
@@ -541,7 +619,8 @@ def build_persistent_runtime(*, client, understanding_provider, grasp_provider,
                              held_preparation_provider=None, resolve_held_preparation=None,
                              register_legacy_actions: bool = True,
                              register_legacy_held_operations: bool = True,
-                             refresh_subtask_binding=None, resolve_subtask_context=None) -> CapabilityRuntime:
+                             refresh_subtask_binding=None, resolve_subtask_context=None,
+                             assignment_store: AssignmentArtifactStore | None = None) -> CapabilityRuntime:
     """Use injected model providers and one persistent manipulation process.
 
     resolve_preparation belongs to the adapter and supplies the approved route
@@ -551,6 +630,10 @@ def build_persistent_runtime(*, client, understanding_provider, grasp_provider,
     whether a specific candidate or Action is admissible in the current world.
     """
     runtime = CapabilityRuntime()
+    if assignment_store is not None:
+        resolve_preparation = StoredAssignmentResolver(assignment_store)
+    if resolve_preparation is None:
+        raise ValueError("resolve_preparation or assignment_store is required")
     possession = possession or PersistentPossession()
     if (held_preparation_provider is None) != (resolve_held_preparation is None):
         raise ValueError("held preparation provider and resolver must be supplied together")
@@ -646,5 +729,6 @@ def build_persistent_runtime(*, client, understanding_provider, grasp_provider,
             refresh_subtask_binding,
             tool_context_provider,
             resolve_subtask_context,
+            assignment_store,
         )
     return runtime

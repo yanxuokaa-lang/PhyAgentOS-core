@@ -382,6 +382,28 @@ class SubtaskExecutionContext:
     prepared_arguments: Mapping[str, Any] | None = None
 
 
+def _persist_assignment_artifact(store: Any, response: Mapping[str, Any]) -> None:
+    if store is None:
+        return
+    assignments = response.get("assignments")
+    route_arguments = response.get("route_arguments")
+    if not isinstance(assignments, list) or len(assignments) != 1:
+        raise SubtaskExecutionError("preparation did not return one assignment to persist")
+    assignment = assignments[0]
+    if not isinstance(assignment, Mapping):
+        raise SubtaskExecutionError("preparation assignment is not an object")
+    assignment_ref = assignment.get("assignment_ref")
+    if not isinstance(assignment_ref, str) or not assignment_ref.startswith("artifact://"):
+        raise SubtaskExecutionError("preparation assignment has no canonical reference")
+    if not isinstance(route_arguments, Mapping):
+        raise SubtaskExecutionError("preparation did not return approved route arguments")
+    store.put(assignment_ref, {
+        "assignment": dict(assignment),
+        "preparation_ref": response.get("preparation_ref"),
+        "route_arguments": dict(route_arguments),
+    })
+
+
 class SubtaskExecutor:
     """Execute one finite subtask without opening another Agent model turn."""
 
@@ -390,9 +412,11 @@ class SubtaskExecutor:
         invoker: SubtaskInvoker | Callable[[str, Mapping[str, Any]], Mapping[str, Any]],
         *,
         cancel_requested: Callable[[], bool] | None = None,
+        assignment_store=None,
     ) -> None:
         self._invoker = invoker
         self._cancel_requested = cancel_requested or (lambda: False)
+        self._assignment_store = assignment_store
 
     def execute(self, spec: SubtaskSpec) -> SubtaskExecutionResult:
         receipts: list[ToolReceipt] = []
@@ -440,6 +464,8 @@ class SubtaskExecutor:
             try:
                 if call.tool_id == "manipulation.prepare" and status == "available":
                     prepared_arguments = self._prepared_arguments(spec, response, context)
+                    if context.trusted_intent is not None:
+                        self._persist_assignment(response)
                 elif call.phase == "prepare" and status == "available":
                     prepared = response.get("arguments")
                     prepared_arguments = (
@@ -474,6 +500,9 @@ class SubtaskExecutor:
         if callable(self._invoker):
             return self._invoker(tool_id, arguments)
         return self._invoker.invoke(tool_id, arguments)
+
+    def _persist_assignment(self, response: Mapping[str, Any]) -> None:
+        _persist_assignment_artifact(self._assignment_store, response)
 
     @staticmethod
     def _prepared_arguments(
@@ -630,11 +659,13 @@ class RuntimeSubtaskDriver:
         spec: SubtaskSpec,
         caller_id: str,
         refresh_binding: Callable[[PerceptionBinding, str], PerceptionBinding] | None = None,
+        assignment_store=None,
     ) -> None:
         self.runtime = runtime
         self.spec = spec
         self.caller_id = caller_id
         self.refresh_binding = refresh_binding
+        self.assignment_store = assignment_store
         self.index = 0
         self.active_invocation: str | None = None
         self.active_tool: SubtaskToolCall | None = None
@@ -730,6 +761,8 @@ class RuntimeSubtaskDriver:
                 if call.tool_id == "manipulation.prepare" and status == "available"
                 else self.context.prepared_arguments
             )
+            if call.tool_id == "manipulation.prepare" and status == "available" and self.context.trusted_intent is not None:
+                self._persist_assignment(response)
         except Exception as exc:
             return self._finish(
                 "outcome_unknown", False, call.phase, "reconcile_before_retry", error=str(exc)
@@ -835,6 +868,9 @@ class RuntimeSubtaskDriver:
                 raise SubtaskExecutionError("manipulation.prepare returned an invalid assignment reference")
         return result
 
+    def _persist_assignment(self, response: Mapping[str, Any]) -> None:
+        _persist_assignment_artifact(self.assignment_store, response)
+
     def _finish(self, status: str, known: bool, failed_phase: str | None, action: str, *, error: str | None = None) -> Mapping[str, Any]:
         result = SubtaskExecutor._result(
             self.spec, self.receipts, self.completed, self.context,
@@ -911,10 +947,12 @@ class SubtaskActionEndpoint:
         runtime: CapabilityRuntime,
         refresh_binding: Callable[[PerceptionBinding, str], PerceptionBinding] | None = None,
         resolve_context: SubtaskContextResolver | None = None,
+        assignment_store=None,
     ) -> None:
         self.runtime = runtime
         self.refresh_binding = refresh_binding
         self.resolve_context = resolve_context
+        self.assignment_store = assignment_store
 
     def admit(self, arguments: Mapping[str, Any]) -> ActionAdmission:
         raise ValueError("subtask Action requires a task-owned caller")
@@ -992,6 +1030,7 @@ class SubtaskActionEndpoint:
                 spec,
                 caller_id,
                 self.refresh_binding,
+                self.assignment_store,
             )
             return ActionAdmission(
                 terminal_result={"status": "unknown", "outcome_known": False},

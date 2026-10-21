@@ -9,9 +9,11 @@ from pick_place_workflow.persistent_runtime import (
     AssignmentArtifactStore,
     PersistentActionEndpoint,
     PersistentPossession,
+    SQLiteAssignmentArtifactStore,
     StoredAssignmentResolver,
     _ProjectedDriver,
     _spec,
+    build_persistent_runtime,
 )
 
 
@@ -157,6 +159,86 @@ def test_persistent_action_endpoint_passes_caller_task_to_stored_resolver():
         request, caller_id="paos:task-1:revision-1:record-1"
     )
     assert admission is not None
+
+
+def test_sqlite_assignment_store_survives_close_and_reopen(tmp_path):
+    request = arguments()
+    document = {
+        "assignment": {
+            "assignment_ref": request["assignment_ref"],
+            "task_id": "task-1",
+            "entity_ref": request["entity_ref"],
+            "candidate_ref": request["candidate_ref"],
+        },
+        "preparation_ref": request["preparation_ref"],
+        "route_arguments": dict(request),
+    }
+    db_path = tmp_path / "assignments.sqlite3"
+    first = SQLiteAssignmentArtifactStore(db_path)
+    first.put(request["assignment_ref"], document)
+    first.close()
+
+    second = SQLiteAssignmentArtifactStore(db_path)
+    try:
+        resolved = StoredAssignmentResolver(second).resolve_for_task(
+            "acquire", request, task_id="task-1"
+        )
+        assert resolved["assignment"] == document["assignment"]
+        assert resolved["preparation_ref"] == request["preparation_ref"]
+    finally:
+        second.close()
+
+
+def test_sqlite_assignment_store_does_not_replace_a_canonical_ref(tmp_path):
+    request = arguments()
+    document = {
+        "assignment": {
+            "assignment_ref": request["assignment_ref"],
+            "task_id": "task-1",
+            "entity_ref": request["entity_ref"],
+            "candidate_ref": request["candidate_ref"],
+        },
+        "preparation_ref": request["preparation_ref"],
+        "route_arguments": dict(request),
+    }
+    with SQLiteAssignmentArtifactStore(tmp_path / "assignments.sqlite3") as store:
+        store.put(request["assignment_ref"], document)
+        store.put(request["assignment_ref"], document)
+        with pytest.raises(ValueError, match="different artifact"):
+            store.put(request["assignment_ref"], {
+                **document,
+                "route_arguments": {**request, "scene_revision": "other-scene"},
+            })
+
+
+def test_build_runtime_prefers_injected_store_for_action_resolution(tmp_path):
+    class Providers:
+        def describe(self, _request):
+            return None
+
+        def understand(self, _request):
+            return None
+
+        def propose(self, _request):
+            return None
+
+        def prepare(self, _request):
+            return None
+
+    store = SQLiteAssignmentArtifactStore(tmp_path / "assignments.sqlite3")
+    provider = Providers()
+    try:
+        runtime = build_persistent_runtime(
+            client=object(), understanding_provider=provider, grasp_provider=provider,
+            preparation_provider=provider, capability_provider=provider,
+            resolve_preparation=lambda _phase, _request: (_ for _ in ()).throw(
+                AssertionError("legacy resolver must not be used")),
+            assignment_store=store,
+            tool_context_provider=lambda _tool_id: {"ready": False},
+        )
+        assert runtime.get_tool("object.acquire")["tool_id"] == "object.acquire"
+    finally:
+        store.close()
 
 
 def test_composition_registers_all_seven_required_tools():
