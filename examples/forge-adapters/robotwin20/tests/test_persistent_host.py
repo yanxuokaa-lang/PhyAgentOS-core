@@ -20,6 +20,7 @@ from robotwin20_adapter.persistent_host import (
     PersistentHostConfigurationError,
     _persistent_tool_context,
     _scene_diagnostic_sink,
+    build_coordinator_ports,
     build_http_server,
     build_persistent_host,
     load_persistent_host_profile,
@@ -243,6 +244,48 @@ def test_legacy_v1_profile_without_video_configuration_remains_loadable(tmp_path
 
     assert "video" not in loaded
     assert "preparation_timeout_s" not in loaded
+
+
+def test_coordinator_ports_use_shared_paos_workspace_and_semantic_binding_request(tmp_path):
+    profile, _environ = _profile(tmp_path)
+    profile.update(
+        {
+            "coordinator_workspace": str(tmp_path),
+            "binding_request": {
+                "sensor_refs": ["camera/front", "camera/wrist"],
+                "source_category": "reagent",
+                "destination_category": "beaker",
+                "max_age_ms": 750,
+                "process_frame": "world",
+            },
+        }
+    )
+
+    adapter, resolver = build_coordinator_ports(profile)
+
+    assert adapter.ready is False
+    assert adapter.request.source_category == "reagent"
+    assert adapter.request.destination_category == "beaker"
+    assert adapter.request.sensor_refs == ("camera/front", "camera/wrist")
+    assert callable(resolver)
+
+
+def test_coordinator_ports_fail_closed_on_partial_or_path_bound_configuration(tmp_path):
+    profile, _environ = _profile(tmp_path)
+    profile["coordinator_workspace"] = str(tmp_path)
+
+    with pytest.raises(PersistentHostConfigurationError, match="supplied together"):
+        build_coordinator_ports(profile)
+
+    profile["binding_request"] = {
+        "sensor_refs": ["camera/front"],
+        "source_category": "reagent",
+        "destination_category": "beaker",
+        "max_age_ms": 1000,
+        "source_path": "/World/fixed",
+    }
+    with pytest.raises(PersistentHostConfigurationError, match="unsupported fields"):
+        build_coordinator_ports(profile)
 
 
 def test_host_closes_lifecycle_manager_when_fallback_credential_is_missing(

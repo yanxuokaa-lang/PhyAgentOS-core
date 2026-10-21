@@ -20,6 +20,9 @@ from typing import Any, Mapping
 from urllib.parse import urlsplit
 
 import httpx
+from PhyAgentOS.config.schema import ForgeConfig
+from PhyAgentOS.forge.task import AgentTaskCoordinator
+from pick_place_workflow.perception_binding import BindingRequest, PerceptionBindingAdapter
 from pick_place_workflow.persistent_runtime import SQLiteAssignmentArtifactStore
 from robotwin_motion_policy import validate_configured_controller_sources
 from robotwin_planning_geometry import SimulationProbeError
@@ -299,11 +302,76 @@ def load_persistent_host_profile(
             "goal_source",
             "start_state_tolerance_rad",
             "assignment_store_path",
+            "coordinator_workspace",
+            "binding_request",
         }
         or profile.get("schema_version") != PROFILE_SCHEMA_VERSION
     ):
         raise PersistentHostConfigurationError("persistent host profile fields are invalid")
     return profile
+
+
+def build_coordinator_ports(
+    profile: Mapping[str, Any],
+    *,
+    perception_binding_adapter: Any | None = None,
+    resolve_subtask_context=None,
+) -> tuple[Any | None, Any | None]:
+    """Build optional PAOS-owned context ports from semantic host configuration.
+
+    The host may share a PAOS workspace with an Agent process, but it never
+    creates tasks, plans, bindings, or intents.  ``binding_request`` contains
+    only semantic categories and sensor references; the generic adapter obtains
+    measured facts through the Runtime Query port after composition.
+    """
+
+    configured = {"coordinator_workspace", "binding_request"} & set(profile)
+    if configured and configured != {"coordinator_workspace", "binding_request"}:
+        raise PersistentHostConfigurationError(
+            "coordinator_workspace and binding_request must be supplied together"
+        )
+    if configured and (perception_binding_adapter is not None or resolve_subtask_context is not None):
+        raise PersistentHostConfigurationError(
+            "profile Coordinator ports cannot be combined with injected ports"
+        )
+    if configured:
+        workspace = profile["coordinator_workspace"]
+        if not isinstance(workspace, str) or not workspace.strip():
+            raise PersistentHostConfigurationError("coordinator_workspace must be a non-empty path")
+        workspace_path = Path(workspace).expanduser()
+        if not workspace_path.is_absolute() or not workspace_path.is_dir():
+            raise PersistentHostConfigurationError(
+                "coordinator_workspace must be an existing absolute directory"
+            )
+        request_data = profile["binding_request"]
+        if not isinstance(request_data, Mapping):
+            raise PersistentHostConfigurationError("binding_request must be an object")
+        allowed = {"sensor_refs", "source_category", "destination_category", "max_age_ms", "process_frame"}
+        if set(request_data) - allowed:
+            raise PersistentHostConfigurationError("binding_request contains unsupported fields")
+        try:
+            request = BindingRequest(
+                sensor_refs=tuple(request_data["sensor_refs"]),
+                source_category=request_data["source_category"],
+                destination_category=request_data["destination_category"],
+                max_age_ms=request_data["max_age_ms"],
+                process_frame=request_data.get("process_frame"),
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise PersistentHostConfigurationError(
+                f"binding_request is invalid: {exc}"
+            ) from exc
+        coordinator = AgentTaskCoordinator(
+            workspace=workspace_path,
+            config=ForgeConfig(),
+            client=object(),
+        )
+        return PerceptionBindingAdapter(None, request), coordinator.resolve_subtask_context
+    if (perception_binding_adapter is None) != (resolve_subtask_context is None):
+        raise PersistentHostConfigurationError(
+            "perception binding and Coordinator context ports must be supplied together"
+        )
+    return perception_binding_adapter, resolve_subtask_context
 
 
 def _path(value: Any, label: str, *, directory: bool = False) -> Path:
@@ -338,6 +406,11 @@ def build_persistent_host(
     variables = dict(os.environ if environ is None else environ)
     lifecycle_managers: list[Qwen3VLVLLMLifecycleManager] = []
     owned_runtime_resources: list[Any] = []
+    perception_binding_adapter, resolve_subtask_context = build_coordinator_ports(
+        profile,
+        perception_binding_adapter=perception_binding_adapter,
+        resolve_subtask_context=resolve_subtask_context,
+    )
     if perception_binding_adapter is not None or resolve_subtask_context is not None:
         if perception_binding_adapter is None or not callable(resolve_subtask_context):
             raise PersistentHostConfigurationError(
@@ -970,6 +1043,7 @@ __all__ = [
     "PersistentHost",
     "PersistentHostConfigurationError",
     "build_http_server",
+    "build_coordinator_ports",
     "build_persistent_host",
     "load_persistent_host_profile",
     "serve_persistent_host",

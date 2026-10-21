@@ -2,6 +2,16 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.4.0 (2026-10-21 11:30) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [comm] [feat] 持久 host 从共享 PAOS workspace 构造只读 Coordinator resolver，并接入通用语义感知绑定请求；拒绝 Prim/path 目标输入。 / Persistent host builds a read-only Coordinator resolver from a shared PAOS workspace and composes the generic semantic perception binding request; Prim/path targets are rejected.
+- [test] [test] Host/deployment/subtask no-motion 定向回归 `48 passed`；Ruff、compileall、`git diff --check` 通过。 / Host/deployment/subtask no-motion focused regression `48 passed`; Ruff, compileall, and `git diff --check` passed.
+- [policy] [docs] 七维审查明确动态 Agent 语义请求、实时感知、IK/碰撞、执行反馈和最终 settlement 仍未完成。 / Seven-dimension review explicitly keeps dynamic Agent semantic requests, live perception, IK/collision, execution feedback, and final settlement open.
+
+详见 [v15.4.0 月度日志](changelog/2026-10_part2.md) 和 [实现审查](docs/forge/IMPLEMENTATION_REVIEW_V15_4_0.md)。
+See the [v15.4.0 detailed log](changelog/2026-10_part2.md) and [implementation review](docs/forge/IMPLEMENTATION_REVIEW_V15_4_0.md).
+
 ## v15.3.0 (2026-10-21 13:00) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
