@@ -258,8 +258,12 @@ class PersistentPreparationProvider:
                 readiness_evidence_refs=list(selected["evidence_refs"]),
             )
             metrics["execution_approval_ref"] = approval_ref
-        self.prepared_routes.register(arguments, route_request=route, approval_ref=approval_ref,
-                                      destination_ref=request["destination_ref"])
+        route_arguments = self.prepared_routes.register(
+            arguments,
+            route_request=route,
+            approval_ref=approval_ref,
+            destination_ref=request["destination_ref"],
+        )
         return {"prepared_candidates": [{"candidate_ref": assignment.candidate_ref,
                                           "entity_ref": assignment.entity_ref,
                                           "checks": {key: "pass" for key in ("kinematic", "collision", "workspace")},
@@ -272,7 +276,8 @@ class PersistentPreparationProvider:
                                           # to an admitted simulation Action remain owned by
                                           # the assignment/evidence/approval records.
                                           "qualification": "prepared"}],
-                "provider_available": True, "assignments": [value], "destination_ref": request["destination_ref"]}
+                "provider_available": True, "assignments": [value], "destination_ref": request["destination_ref"],
+                "route_arguments": route_arguments}
 
     def _persist_metrics(
         self,

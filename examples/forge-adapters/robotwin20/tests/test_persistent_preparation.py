@@ -72,6 +72,7 @@ def test_selection_registers_geometry_but_requires_separate_approval(tmp_path, n
     request, provider, routes = composition(tmp_path, node_id=node_id)
     output = provider.prepare(request)
     assignment = output["assignments"][0]
+    route_arguments = output["route_arguments"]
     expected_preparation_ref = preparation_ref_for_request(request)
     assert expected_preparation_ref == (
         f"preparation://blocks_ranking_rgb-0-1/task-1/revision-1/{node_id}/head_camera"
@@ -84,12 +85,19 @@ def test_selection_registers_geometry_but_requires_separate_approval(tmp_path, n
     arguments.update(preparation_ref=expected_preparation_ref,
                      candidate_ref=assignment["candidate_ref"], entity_ref=assignment["entity_ref"],
                      assignment_ref=assignment["assignment_ref"])
+    assert route_arguments["assignment"] == assignment
+    assert route_arguments["route_request"]["scene_revision"] == request["scene_revision"]
+    assert route_arguments["destination_ref"] == request["destination_ref"]
+    assert route_arguments["approval_ref"] is None
+    assert route_arguments == routes._routes[(expected_preparation_ref, assignment["candidate_ref"])]
     with pytest.raises(ValueError, match="no execution approval"):
         routes("acquire", arguments)
     (tmp_path / "scene/approval.json").write_text("{}")
     routes.bind_approval(arguments["preparation_ref"], arguments["candidate_ref"], "artifact://scene/approval")
     assert routes("acquire", arguments)["assignment"] == assignment
-    assert provider.prepare(request) == output
+    refreshed = provider.prepare(request)
+    assert refreshed["assignments"] == output["assignments"]
+    assert refreshed["route_arguments"]["approval_ref"] == "artifact://scene/approval"
     assert routes("acquire", arguments)["approval_ref"] == "artifact://scene/approval"
 
 
@@ -130,7 +138,10 @@ def test_runtime_monitored_preparation_issues_route_bound_approval(tmp_path):
     )
     output = provider.prepare(request)
     assignment = output["assignments"][0]
+    route_arguments = output["route_arguments"]
     prepared = next(iter(routes._routes.values()))
+    assert route_arguments["approval_ref"] == prepared["approval_ref"]
+    assert route_arguments["route_request"] == prepared["route_request"]
     approval = validate_persistent_action_approval(
         tmp_path,
         prepared["approval_ref"],

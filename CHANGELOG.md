@@ -2,6 +2,35 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.2.1 (2026-10-21 12:00) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [env] [feat] RoboTwin 完整路线 preparation provider 现在返回已验证并登记的 provider-owned `route_arguments`，供 PAOS 子任务持久化；不在通用层重建路线或授权运动。 / The RoboTwin complete-route preparation provider now returns its verified and registered provider-owned `route_arguments` for PAOS subtask persistence; the generic layer neither rebuilds routes nor authorizes motion.
+- [test] [test] 验证 route、assignment、destination 和 approval 身份一致性及无审批时执行拒绝；`102 passed`。 / Verify route, assignment, destination, and approval identity plus rejection without approval; `102 passed`.
+- [policy] [docs] 阶段审查确认生产 subtask endpoint/store composition、真实感知与执行七维证据仍未完成。 / Stage review confirms production subtask endpoint/store composition, real perception, and live execution evidence remain incomplete.
+
+### 影响文件 / Affected Files
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/prepared_routes.py:L18-L54`
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_preparation.py:L252-L281`
+- `examples/forge-adapters/robotwin20/tests/test_persistent_preparation.py:L65-L104,L122-L150`
+- `docs/forge/IMPLEMENTATION_REVIEW_V15_2_1.md:L1-L88`
+- `changelog/2026-10_part2.md:L3-L37`
+
+### 关键 Diff / Key Diff
+```diff
+- preparation returned only public readiness and assignment
++ provider returns the exact registered executable route bundle as opaque route_arguments
++ PAOS can persist the provider-owned bundle without interpreting adapter fields
+```
+
+### 验证 / Validation
+- Persistent preparation/deployment/contract tests: `102 passed`; Ruff and `git diff --check` passed. / Persistent preparation/deployment/contract 测试 `102 passed`；Ruff 与 `git diff --check` 通过。
+- No Isaac Sim, Gateway Action, simulator step, or motion was run. / 未启动 Isaac Sim、Gateway Action、模拟器 step 或运动。
+
+### Git 提交 / Git Commit
+- Commit: `99f686d5`
+- Branch: `feature/planning-loop`
+
 ## v15.2.0 (2026-10-21 11:00) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]

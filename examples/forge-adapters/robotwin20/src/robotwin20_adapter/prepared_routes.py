@@ -21,7 +21,7 @@ class PreparedRoutes:
         self.artifact_root = artifact_root.resolve()
         self._routes: dict[tuple[str, str], dict[str, Any]] = {}
 
-    def register(self, arguments: Mapping[str, Any], *, route_request: Mapping[str, Any], approval_ref: str | None, destination_ref: str) -> None:
+    def register(self, arguments: Mapping[str, Any], *, route_request: Mapping[str, Any], approval_ref: str | None, destination_ref: str) -> dict[str, Any]:
         validate_route_request(route_request)
         candidate = next((item for item in route_request["candidates"] if item["candidate_ref"] == arguments["candidate_ref"]), None)
         if candidate is None or candidate["entity_ref"] != arguments["entity_ref"]:
@@ -50,6 +50,7 @@ class PreparedRoutes:
         if key in self._routes and self._routes[key] != value:
             raise ValueError("preparation reference already identifies different geometry")
         self._routes[key] = value
+        return deepcopy(value)
 
     def bind_approval(self, preparation_ref: str, candidate_ref: str, approval_ref: str) -> None:
         """Attach externally issued approval; the execution worker validates it."""
