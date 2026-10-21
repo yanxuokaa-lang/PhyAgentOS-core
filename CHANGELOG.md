@@ -2,6 +2,14 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.4.6 (2026-10-21 14:25) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [docs] [docs] 补录 v15.4.5 异步语义绑定提交引用；无实现代码变更。 / Record the v15.4.5 async semantic-binding commit reference; no implementation code changed.
+
+详见 [v15.4.6 月度日志](changelog/2026-10_part2.md)。
+See the [v15.4.6 detailed log](changelog/2026-10_part2.md).
+
 ## v15.4.5 (2026-10-21 14:20) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
