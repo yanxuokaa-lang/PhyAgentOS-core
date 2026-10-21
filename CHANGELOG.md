@@ -2,6 +2,14 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.4.2 (2026-10-21 12:20) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [docs] [docs] 补录 v15.4.0 (`19c0e491`) 与 v15.4.1 (`6c042b87`) 的实现提交引用；无代码变更。 / Record implementation commit references for v15.4.0 (`19c0e491`) and v15.4.1 (`6c042b87`); no code changed.
+
+详见 [v15.4.2 月度日志](changelog/2026-10_part2.md)。
+See the [v15.4.2 detailed log](changelog/2026-10_part2.md).
+
 ## v15.4.1 (2026-10-21 12:05) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
