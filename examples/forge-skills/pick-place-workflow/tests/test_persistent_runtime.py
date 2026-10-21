@@ -217,6 +217,40 @@ def test_sqlite_assignment_store_survives_close_and_reopen(tmp_path):
         second.close()
 
 
+def test_stored_assignment_resolution_retains_adapter_live_route_validation():
+    request = arguments()
+    document = {
+        "assignment": {
+            "assignment_ref": request["assignment_ref"],
+            "task_id": "task-1",
+            "entity_ref": request["entity_ref"],
+            "candidate_ref": request["candidate_ref"],
+        },
+        "preparation_ref": request["preparation_ref"],
+        "route_arguments": dict(request),
+    }
+
+    class Store:
+        def get(self, assignment_ref):
+            return document if assignment_ref == request["assignment_ref"] else None
+
+    class RouteValidator:
+        def __init__(self):
+            self.calls = []
+
+        def resolve_stored(self, phase, arguments, route_arguments, *, task_id):
+            self.calls.append((phase, task_id, route_arguments["assignment_ref"]))
+            raise ValueError("live route approval is unavailable")
+
+    validator = RouteValidator()
+    resolver = StoredAssignmentResolver(Store(), route_validator=validator)
+    with pytest.raises(ValueError, match="live route approval"):
+        resolver.resolve_for_task("acquire", request, task_id="task-1")
+    assert validator.calls == [
+        ("acquire", "task-1", request["assignment_ref"])
+    ]
+
+
 def test_sqlite_assignment_store_does_not_replace_a_canonical_ref(tmp_path):
     request = arguments()
     document = {

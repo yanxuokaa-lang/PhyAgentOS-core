@@ -14,7 +14,11 @@ from pick_place_workflow.grounding import (
     TARGET_TOOL_SPEC,
     TASK_GOAL_TOOL_SPEC,
 )
-from pick_place_workflow.persistent_runtime import build_persistent_runtime
+from pick_place_workflow.persistent_runtime import (
+    AssignmentArtifactStore,
+    build_persistent_runtime,
+    register_subtask_tool,
+)
 
 from .arm_candidates import CompleteRouteSelector
 from .contact_qualification import contact_qualification_mode
@@ -105,6 +109,16 @@ class PersistentRuntimeBundle:
         return self.transport
 
 
+class _RuntimeQueryInvoker:
+    """Expose the Runtime Query port to a provider-neutral binding adapter."""
+
+    def __init__(self, runtime: CapabilityRuntime) -> None:
+        self.runtime = runtime
+
+    def invoke_query(self, endpoint_id: str, operation: str, arguments: Mapping[str, Any]) -> Mapping[str, Any]:
+        return self.runtime.invoke_query(endpoint_id, operation, arguments)
+
+
 def build_persistent_runtime_bundle(
     *,
     deployment: PersistentDeployment,
@@ -117,6 +131,9 @@ def build_persistent_runtime_bundle(
     gateway_identity: str = "robotwin20-persistent-runtime",
     held_preparation_provider=None,
     resolve_held_preparation=None,
+    perception_binding_adapter: Any | None = None,
+    resolve_subtask_context: Callable[[str], Mapping[str, Any]] | None = None,
+    assignment_store: AssignmentArtifactStore | None = None,
 ) -> PersistentRuntimeBundle:
     """Compose the persistent providers behind one provider-neutral transport.
 
@@ -131,6 +148,16 @@ def build_persistent_runtime_bundle(
         deployment.prepared_routes,
     )):
         raise ValueError("persistent runtime and deployment must share one worker client")
+    if perception_binding_adapter is not None and not callable(
+        getattr(perception_binding_adapter, "refresh_binding", None)
+    ):
+        raise ValueError("perception_binding_adapter must expose refresh_binding")
+    if (perception_binding_adapter is None) != (resolve_subtask_context is None):
+        raise ValueError(
+            "perception_binding_adapter and resolve_subtask_context must be supplied together"
+        )
+    if perception_binding_adapter is not None and assignment_store is None:
+        raise ValueError("subtask composition requires a durable assignment store")
     runtime = build_persistent_runtime(
         client=client,
         understanding_provider=understanding_provider,
@@ -143,10 +170,25 @@ def build_persistent_runtime_bundle(
         require_synchronized_views=require_synchronized_views,
         held_preparation_provider=held_preparation_provider,
         resolve_held_preparation=resolve_held_preparation,
+        assignment_store=assignment_store,
         query_decorator=(lambda tool_id, endpoint: RememberObservation(endpoint, deployment.grounding, tool_id)
                          if tool_id in {"scene.observe", "scene.understand"} else endpoint)
         if deployment.grounding is not None else None,
     )
+    if perception_binding_adapter is not None:
+        with_query_invoker = getattr(perception_binding_adapter, "with_query_invoker", None)
+        if not callable(with_query_invoker):
+            raise ValueError("perception_binding_adapter must support Runtime Query binding")
+        bound_adapter = with_query_invoker(_RuntimeQueryInvoker(runtime))
+        if not getattr(bound_adapter, "ready", False):
+            raise ValueError("perception binding Query providers are unavailable")
+        register_subtask_tool(
+            runtime,
+            bound_adapter.refresh_binding,
+            tool_context_provider,
+            resolve_subtask_context,
+            assignment_store,
+        )
     if deployment.grounding is not None:
         for spec, resolve in (
             (BIND_TOOL_SPEC, deployment.grounding.bind),

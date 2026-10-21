@@ -60,6 +60,41 @@ class PreparedRoutes:
             raise ValueError("preparation already binds another approval")
         prepared["approval_ref"] = approval_ref
 
+    def resolve_stored(
+        self,
+        phase: str,
+        arguments: Mapping[str, Any],
+        route_arguments: Mapping[str, Any],
+        *,
+        task_id: str,
+    ) -> dict[str, Any]:
+        """Restore an opaque persisted route, then re-run live adapter checks."""
+        if not isinstance(route_arguments, Mapping):
+            raise ValueError("stored route arguments must be an object")
+        route_request = route_arguments.get("route_request")
+        assignment = route_arguments.get("assignment")
+        if not isinstance(route_request, Mapping) or not isinstance(assignment, Mapping):
+            raise ValueError("stored route is missing its request or assignment")
+        if assignment.get("task_id") != task_id:
+            raise ValueError("stored route belongs to another task")
+        preparation_fields = (
+            "observation_ref", "scene_revision", "frame_id", "calibration_ref",
+            "candidate_set_ref", "capability_snapshot_ref", "preparation_ref",
+            "candidate_ref", "entity_ref", "assignment_ref",
+        )
+        preparation = {key: route_arguments[key] for key in preparation_fields if key in route_arguments}
+        if len(preparation) != len(preparation_fields):
+            raise ValueError("stored route is missing preparation provenance")
+        restored = self.register(
+            preparation,
+            route_request=route_request,
+            approval_ref=route_arguments.get("approval_ref"),
+            destination_ref=route_arguments.get("destination_ref"),
+        )
+        if restored != dict(route_arguments):
+            raise ValueError("stored route differs from its canonical assignment artifact")
+        return self(phase, arguments)
+
     def __call__(self, phase: str, arguments: Mapping[str, Any]) -> dict[str, Any]:
         key = (arguments["preparation_ref"], arguments["candidate_ref"])
         if key not in self._routes:

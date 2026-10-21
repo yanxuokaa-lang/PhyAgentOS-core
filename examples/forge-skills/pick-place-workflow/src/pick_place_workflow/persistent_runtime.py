@@ -544,11 +544,12 @@ class StoredAssignmentResolver:
     configuration.
     """
 
-    def __init__(self, store: AssignmentArtifactStore) -> None:
+    def __init__(self, store: AssignmentArtifactStore, *, route_validator=None) -> None:
         getter = getattr(store, "get", None)
         if not callable(getter):
             raise TypeError("assignment artifact store must expose get(assignment_ref)")
         self.store = store
+        self.route_validator = route_validator
 
     def resolve_for_task(
         self, phase: str, request: Mapping[str, Any], *, task_id: str
@@ -590,6 +591,16 @@ class StoredAssignmentResolver:
         if phase == "place":
             resolved["scene_revision"] = request.get("scene_revision")
         resolved["assignment"] = deepcopy(dict(assignment))
+        if self.route_validator is not None:
+            validate_stored = getattr(self.route_validator, "resolve_stored", None)
+            if not callable(validate_stored):
+                raise ValueError("route validator must expose resolve_stored")
+            validated = validate_stored(
+                phase, request, deepcopy(resolved), task_id=task_id
+            )
+            if not isinstance(validated, Mapping):
+                raise ValueError("route validator returned a non-object")
+            return deepcopy(dict(validated))
         return resolved
 
 
@@ -640,7 +651,9 @@ def build_persistent_runtime(*, client, understanding_provider, grasp_provider,
     """
     runtime = CapabilityRuntime()
     if assignment_store is not None:
-        resolve_preparation = StoredAssignmentResolver(assignment_store)
+        resolve_preparation = StoredAssignmentResolver(
+            assignment_store, route_validator=resolve_preparation
+        )
     if resolve_preparation is None:
         raise ValueError("resolve_preparation or assignment_store is required")
     possession = possession or PersistentPossession()

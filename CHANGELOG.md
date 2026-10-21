@@ -2,6 +2,24 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.3.0 (2026-10-21 13:00) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [comm] [feat] 将 provider-neutral perception binding、Coordinator context 和 durable assignment store 接入 RoboTwin Runtime；仅完整端口组合注册 `manipulation.execute_subtask`，store 恢复后重新进入 adapter live route validation。 / Wire provider-neutral perception binding, Coordinator context, and durable assignment storage into the RoboTwin Runtime; register `manipulation.execute_subtask` only for complete composition and re-enter adapter live route validation after store restoration.
+- [test] [test] Runtime、subtask、composition 和 route validator 定向回归 `81 passed`；无运动。 / Focused Runtime, subtask, composition, and route-validator regression `81 passed`; no motion.
+- [policy] [docs] 阶段审查记录真实感知、Coordinator production caller、IK/碰撞和过程反馈仍未验收。 / Stage review records live perception, production Coordinator caller, IK/collision, and process feedback as still unaccepted.
+
+### 影响文件 / Affected Files
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_deployment.py:L112-L191`
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/persistent_host.py:L290-L355,L838-L867`
+- `examples/forge-adapters/robotwin20/src/robotwin20_adapter/prepared_routes.py:L63-L96`
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/persistent_runtime.py:L547-L604`
+- `docs/forge/IMPLEMENTATION_REVIEW_V15_3_0.md:L1-L72`
+
+### 验证 / Validation
+- `81 passed`; Ruff, compileall, and `git diff --check` passed. / `81 passed`；Ruff、compileall 与 `git diff --check` 通过。
+- Full host collection requires optional `robotwin_motion_policy`, unavailable in this shell. / 完整 host 收集需要当前 shell 不具备的可选 `robotwin_motion_policy`。
+
 ## v15.2.1 (2026-10-21 12:00) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]

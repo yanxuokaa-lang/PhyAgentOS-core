@@ -20,6 +20,7 @@ from typing import Any, Mapping
 from urllib.parse import urlsplit
 
 import httpx
+from pick_place_workflow.persistent_runtime import SQLiteAssignmentArtifactStore
 from robotwin_motion_policy import validate_configured_controller_sources
 from robotwin_planning_geometry import SimulationProbeError
 
@@ -297,6 +298,7 @@ def load_persistent_host_profile(
             "simulation_action_mode",
             "goal_source",
             "start_state_tolerance_rad",
+            "assignment_store_path",
         }
         or profile.get("schema_version") != PROFILE_SCHEMA_VERSION
     ):
@@ -321,7 +323,10 @@ def _positive_number(value: Any, label: str) -> float:
 
 
 def build_persistent_host(
-    profile: Mapping[str, Any], *, environ: Mapping[str, str] | None = None
+    profile: Mapping[str, Any], *, environ: Mapping[str, str] | None = None,
+    perception_binding_adapter: Any | None = None,
+    resolve_subtask_context=None,
+    assignment_store=None,
 ) -> PersistentHost:
     """Construct the adapter Tool API around one worker client.
 
@@ -332,6 +337,22 @@ def build_persistent_host(
 
     variables = dict(os.environ if environ is None else environ)
     lifecycle_managers: list[Qwen3VLVLLMLifecycleManager] = []
+    owned_runtime_resources: list[Any] = []
+    if perception_binding_adapter is not None or resolve_subtask_context is not None:
+        if perception_binding_adapter is None or not callable(resolve_subtask_context):
+            raise PersistentHostConfigurationError(
+                "subtask composition requires perception binding and Coordinator context ports"
+            )
+        if assignment_store is None:
+            store_path = Path(str(profile.get(
+                "assignment_store_path",
+                Path(str(profile.get("artifact_root"))) / "assignment-artifacts.sqlite3",
+            )))
+            if not store_path.is_absolute():
+                raise PersistentHostConfigurationError("assignment_store_path must be absolute")
+            store_path.parent.mkdir(parents=True, exist_ok=True)
+            assignment_store = SQLiteAssignmentArtifactStore(store_path)
+            owned_runtime_resources.append(assignment_store)
     if profile.get("agent") != {"enabled": False} or profile.get("tools") != {
         "enabled": True
     }:
@@ -827,8 +848,13 @@ def build_persistent_host(
                 }
             },
             require_synchronized_views=require_synchronized_views,
+            perception_binding_adapter=perception_binding_adapter,
+            resolve_subtask_context=resolve_subtask_context,
+            assignment_store=assignment_store,
         )
     except Exception:
+        for resource in reversed(owned_runtime_resources):
+            resource.close()
         for manager in lifecycle_managers:
             manager.close()
         client.close()
@@ -837,7 +863,7 @@ def build_persistent_host(
         client=client,
         bundle=bundle,
         lifecycle_managers=tuple(lifecycle_managers),
-        owned_resources=(perception,),
+        owned_resources=tuple([perception, *owned_runtime_resources]),
     )
 
 

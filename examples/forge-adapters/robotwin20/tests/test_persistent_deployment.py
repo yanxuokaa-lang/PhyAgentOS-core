@@ -2,6 +2,8 @@ from pathlib import Path
 
 import pytest
 import yaml
+from pick_place_workflow.perception_binding import BindingRequest, PerceptionBindingAdapter
+from pick_place_workflow.persistent_runtime import SQLiteAssignmentArtifactStore
 from test_arm_candidates import _profile
 from test_controller_qualification import _plan
 
@@ -278,6 +280,64 @@ def test_runtime_bundle_registers_persistent_tools_behind_one_transport(tmp_path
             deployment=deployment, client=object(),
             understanding_provider=object(), grasp_provider=object(),
             tool_context_provider=lambda tool_id: {"ready": True},
+        )
+
+
+def test_runtime_bundle_registers_subtask_only_with_bound_perception_context_and_store(tmp_path):
+    arm = tmp_path / "arms.yaml"
+    arm.write_text(yaml.safe_dump(_profile()))
+    profiles = Path(__file__).parents[1] / "profiles/robotwin20"
+    client = object()
+    deployment = build_persistent_deployment(
+        client=client, artifact_root=tmp_path, scene_source=lambda request: None,
+        materializer_command=("python",), materializer_arguments={
+            "arm-planning-profile": str(arm),
+            "route-input-profile": str(profiles / "route-inputs-persistent.yaml"),
+        }, arm_profile_digest="a" * 64,
+    )
+    adapter = PerceptionBindingAdapter(
+        None,
+        BindingRequest(
+            sensor_refs=("camera/front",), source_category="sample",
+            destination_category="vessel", max_age_ms=1000,
+        ),
+    )
+    store = SQLiteAssignmentArtifactStore(tmp_path / "assignments.sqlite3")
+    try:
+        bundle = build_persistent_runtime_bundle(
+            deployment=deployment, client=client, understanding_provider=object(),
+            grasp_provider=object(), tool_context_provider=lambda _tool_id: {"ready": True},
+            perception_binding_adapter=adapter,
+            resolve_subtask_context=lambda _caller: {}, assignment_store=store,
+        )
+        ids = {item["tool_id"] for item in bundle.runtime.list_tools()["tools"]}
+        assert "manipulation.execute_subtask" in ids
+    finally:
+        store.close()
+
+
+def test_runtime_bundle_rejects_partial_subtask_composition(tmp_path):
+    arm = tmp_path / "arms.yaml"
+    arm.write_text(yaml.safe_dump(_profile()))
+    profiles = Path(__file__).parents[1] / "profiles/robotwin20"
+    client = object()
+    deployment = build_persistent_deployment(
+        client=client, artifact_root=tmp_path, scene_source=lambda request: None,
+        materializer_command=("python",), materializer_arguments={
+            "arm-planning-profile": str(arm),
+            "route-input-profile": str(profiles / "route-inputs-persistent.yaml"),
+        }, arm_profile_digest="a" * 64,
+    )
+    adapter = PerceptionBindingAdapter(
+        None,
+        BindingRequest(sensor_refs=("camera/front",), source_category="sample",
+                       destination_category="vessel", max_age_ms=1000),
+    )
+    with pytest.raises(ValueError, match="supplied together"):
+        build_persistent_runtime_bundle(
+            deployment=deployment, client=client, understanding_provider=object(),
+            grasp_provider=object(), tool_context_provider=lambda _tool_id: {"ready": True},
+            perception_binding_adapter=adapter,
         )
 
 
