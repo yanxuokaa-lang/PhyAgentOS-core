@@ -20,6 +20,10 @@
 - `81 passed`; Ruff, compileall, and `git diff --check` passed. / `81 passed`；Ruff、compileall 与 `git diff --check` 通过。
 - Full host collection requires optional `robotwin_motion_policy`, unavailable in this shell. / 完整 host 收集需要当前 shell 不具备的可选 `robotwin_motion_policy`。
 
+### Git 提交 / Git Commit
+- Commit: `b59849b5`
+- Branch: `feature/planning-loop`
+
 ## v15.2.1 (2026-10-21 12:00) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
