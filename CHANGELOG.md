@@ -27,7 +27,7 @@
 - Existing pytest `asyncio_mode` warning remains. No Isaac Sim, Gateway Action, simulator step, or motion was run.
 
 ### Git 提交 / Git Commit
-- Commit: pending
+- Commit: `211d99d5`
 - Branch: `feature/planning-loop`
 
 ## v15.1.12 (2026-10-21 09:10) - codex
