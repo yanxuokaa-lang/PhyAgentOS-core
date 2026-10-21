@@ -1,8 +1,9 @@
 """Provider-neutral perception-to-manipulation binding.
 
 This module owns the PAOS query choreography, not a sensor or simulator
-implementation.  Hosts provide observation, understanding, grasp, capability,
-and preparation providers through the normal Query boundary.  The resulting
+implementation.  Hosts provide observation, understanding, grasp, and
+capability providers through the normal Query boundary.  Preparation is owned
+by the selected subtask and is intentionally outside this adapter.  The resulting
 binding contains only opaque references and measured geometry; it never
 contains a USD Prim path or an actuator command.
 """
@@ -17,7 +18,6 @@ from typing import Any, Protocol
 from PhyAgentOS.forge.capability_runtime import (
     CAPABILITY_TOOL_SPEC,
     GRASP_PROPOSAL_TOOL_SPEC,
-    MANIPULATION_TOOL_SPEC,
     OBSERVATION_TOOL_SPEC,
     SCENE_UNDERSTANDING_TOOL_SPEC,
 )
@@ -33,12 +33,6 @@ class QueryInvoker(Protocol):
     """The minimal PAOS query port consumed by this adapter."""
 
     def invoke_query(self, endpoint_id: str, operation: str, arguments: Mapping[str, Any]) -> Mapping[str, Any]: ...
-
-
-class PreparationBindingProvider(Protocol):
-    """Provider-owned IK/collision/workspace preparation boundary."""
-
-    def prepare_binding(self, request: Mapping[str, Any]) -> Mapping[str, Any] | None: ...
 
 
 Selector = Callable[[Mapping[str, Any]], bool]
@@ -83,23 +77,19 @@ class PerceptionBindingAdapter:
             SCENE_UNDERSTANDING_TOOL_SPEC,
             GRASP_PROPOSAL_TOOL_SPEC,
             CAPABILITY_TOOL_SPEC,
-            MANIPULATION_TOOL_SPEC,
         )
     }
 
     def __init__(
         self,
         query_invoker: QueryInvoker | Callable[[str, Mapping[str, Any]], Mapping[str, Any]] | None,
-        preparation_provider: PreparationBindingProvider | Callable[[Mapping[str, Any]], Mapping[str, Any] | None] | None,
         request: BindingRequest,
         *,
         destination_ref_factory: Callable[[Mapping[str, Any]], str] | None = None,
     ) -> None:
         self.query_invoker = query_invoker
-        self.preparation_provider = preparation_provider
         self.request = request
         self.destination_ref_factory = destination_ref_factory or self._default_destination_ref
-        self._runtime_preparation_query = False
 
     @property
     def ready(self) -> bool:
@@ -108,22 +98,16 @@ class PerceptionBindingAdapter:
         query_ready = self.query_invoker is not None and (
             callable(self.query_invoker) or callable(getattr(self.query_invoker, "invoke_query", None))
         )
-        preparation_ready = self.preparation_provider is not None and (
-            callable(self.preparation_provider)
-            or callable(getattr(self.preparation_provider, "prepare_binding", None))
-        )
-        return query_ready and preparation_ready
+        return query_ready
 
     def with_query_invoker(self, query_invoker: QueryInvoker) -> "PerceptionBindingAdapter":
         """Return the same semantic adapter bound to a PAOS Runtime query port."""
 
         adapter = PerceptionBindingAdapter(
             query_invoker,
-            self.preparation_provider,
             self.request,
             destination_ref_factory=self.destination_ref_factory,
         )
-        adapter._runtime_preparation_query = True
         return adapter
 
     def refresh_binding(self, previous: PerceptionBinding, expected_scene_revision: str) -> PerceptionBinding:
@@ -212,62 +196,16 @@ class PerceptionBindingAdapter:
         destination_ref = self.destination_ref_factory(destination)
         if not isinstance(destination_ref, str) or not destination_ref.startswith("destination://"):
             raise PerceptionBindingError("destination_ref_factory must return destination:// reference")
-        preparation_request = {
-            **identity,
-            "candidate_set_ref": candidate_set_ref,
-            "candidates": [candidate],
-            "destination_ref": destination_ref,
-            "capability_snapshot_ref": capability_ref,
-            "source_entity": dict(source),
-            "destination_entity": dict(destination),
-            "source_envelope": deepcopy(source_envelope),
-            "destination_envelope": deepcopy(destination_envelope),
-        }
-        readiness = None
-        if self._runtime_preparation_query:
-            readiness = self._query(
-                "manipulation.prepare",
-                {
-                    **identity,
-                    "candidate_set_ref": candidate_set_ref,
-                    "candidates": [candidate],
-                },
-            )
-            self._require_available(readiness, "manipulation.prepare")
-            if readiness.get("motion_authorized") is not False:
-                raise PerceptionBindingError("manipulation.prepare must remain no-motion")
-            self._validate_identity(readiness, identity, "manipulation.prepare")
-            if readiness.get("candidate_set_ref") != candidate_set_ref:
-                raise PerceptionBindingError("manipulation.prepare changed the candidate set")
-            prepared_candidates = readiness.get("prepared_candidates")
-            if not isinstance(prepared_candidates, Sequence) or isinstance(prepared_candidates, (str, bytes)):
-                raise PerceptionBindingError("manipulation.prepare returned no prepared candidates")
-            qualified = [
-                item for item in prepared_candidates
-                if isinstance(item, Mapping)
-                and item.get("candidate_ref") == candidate["candidate_ref"]
-                and item.get("entity_ref") == source["entity_ref"]
-                and item.get("qualification") == "prepared"
-            ]
-            if len(qualified) != 1:
-                raise PerceptionBindingError("manipulation.prepare did not qualify the selected candidate")
-            checks = qualified[0].get("checks")
-            if not isinstance(checks, Mapping) or any(checks.get(key) != "pass" for key in ("kinematic", "collision", "workspace")):
-                raise PerceptionBindingError("manipulation.prepare candidate checks are incomplete")
-            preparation_request["readiness"] = deepcopy(dict(readiness))
-        prepared = self._prepare(preparation_request)
-        if readiness is not None:
-            if prepared.get("preparation_ref") != readiness.get("preparation_ref"):
-                raise PerceptionBindingError("assignment provider changed the Runtime preparation reference")
-        self._validate_preparation_identity(prepared, identity)
-        preparation_ref = self._text(prepared.get("preparation_ref"), "preparation reference")
-        assignment_ref = self._text(prepared.get("assignment_ref"), "assignment reference")
-        if prepared.get("candidate_ref") != candidate["candidate_ref"]:
-            raise PerceptionBindingError("preparation changed the selected grasp candidate")
-        if prepared.get("candidate_set_ref") != candidate_set_ref:
-            raise PerceptionBindingError("preparation changed the candidate set")
-        if prepared.get("destination_ref") != destination_ref:
-            raise PerceptionBindingError("preparation changed the destination")
+        artifacts = observation.get("artifacts")
+        if not isinstance(artifacts, Sequence) or isinstance(artifacts, (str, bytes)):
+            raise PerceptionBindingError("observation has no evidence artifacts")
+        binding_ref = next(
+            (item.get("ref") for item in artifacts if isinstance(item, Mapping)
+             and isinstance(item.get("ref"), str) and item["ref"].startswith("artifact://")),
+            None,
+        )
+        if binding_ref is None:
+            raise PerceptionBindingError("observation has no artifact reference for binding provenance")
         measured_pose = self._measured_pose(source_envelope)
         measured_geometry = self._measured_geometry(source_envelope)
         confidence = min(
@@ -282,12 +220,12 @@ class PerceptionBindingAdapter:
             "category": source["category"],
             "measured_pose": measured_pose,
             "measured_geometry": measured_geometry,
+            "grasp_candidate": deepcopy(candidate),
             "grasp_candidate_ref": candidate_set_ref,
             "candidate_set_ref": candidate_set_ref,
-            "preparation_ref": preparation_ref,
             "candidate_ref": candidate["candidate_ref"],
             "capability_snapshot_ref": capability_ref,
-            "assignment_ref": assignment_ref,
+            "binding_ref": binding_ref,
             "destination_ref": destination_ref,
             "destination_pose": self._measured_pose(destination_envelope),
             "process_frame": process_frame,
@@ -315,31 +253,6 @@ class PerceptionBindingAdapter:
         if not isinstance(value, Mapping):
             raise PerceptionBindingError(f"{tool_id} query returned a non-object")
         return dict(value)
-
-    def _prepare(self, request: Mapping[str, Any]) -> dict[str, Any]:
-        try:
-            if callable(self.preparation_provider):
-                value = self.preparation_provider(dict(request))
-            else:
-                value = self.preparation_provider.prepare_binding(dict(request))
-        except Exception as exc:
-            raise PerceptionBindingError("manipulation preparation failed") from exc
-        if not isinstance(value, Mapping):
-            raise PerceptionBindingError("manipulation preparation returned no binding")
-        result = dict(value.get("arguments", value))
-        if value.get("status", "available") not in {"available", "prepared"}:
-            raise PerceptionBindingError("manipulation preparation is unavailable")
-        return result
-
-    @staticmethod
-    def _validate_preparation_identity(
-        prepared: Mapping[str, Any], identity: Mapping[str, Any]
-    ) -> None:
-        if any(prepared.get(key) != identity[key] for key in ("observation_ref", "scene_revision", "calibration_ref")):
-            raise PerceptionBindingError("preparation changed observation provenance")
-        frame = prepared.get("frame")
-        if not isinstance(frame, Mapping) or frame.get("frame_id") != identity["frame_id"]:
-            raise PerceptionBindingError("preparation changed frame provenance")
 
     @staticmethod
     def _require_available(result: Mapping[str, Any], tool_id: str) -> None:
@@ -462,6 +375,5 @@ __all__ = [
     "BindingRequest",
     "PerceptionBindingAdapter",
     "PerceptionBindingError",
-    "PreparationBindingProvider",
     "QueryInvoker",
 ]

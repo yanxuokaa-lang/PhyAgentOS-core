@@ -59,12 +59,12 @@ class PerceptionBinding(BaseModel):
     category: str = Field(min_length=1)
     measured_pose: Mapping[str, Any]
     measured_geometry: Mapping[str, Any]
+    grasp_candidate: Mapping[str, Any]
     grasp_candidate_ref: str
     candidate_set_ref: str
-    preparation_ref: str
     candidate_ref: str
     capability_snapshot_ref: str
-    assignment_ref: str
+    binding_ref: str
     destination_ref: str
     destination_pose: Mapping[str, Any]
     process_frame: str = Field(min_length=1)
@@ -119,13 +119,6 @@ class PerceptionBinding(BaseModel):
             raise ValueError("candidate_set_ref must use candidate-set://")
         return value
 
-    @field_validator("preparation_ref")
-    @classmethod
-    def preparation_reference(cls, value: str) -> str:
-        if not value.startswith("preparation://"):
-            raise ValueError("preparation_ref must use preparation://")
-        return value
-
     @field_validator("candidate_ref")
     @classmethod
     def candidate_item_reference(cls, value: str) -> str:
@@ -133,11 +126,20 @@ class PerceptionBinding(BaseModel):
             raise ValueError("candidate_ref must use candidate://")
         return value
 
-    @field_validator("capability_snapshot_ref", "assignment_ref")
+    @field_validator("capability_snapshot_ref")
     @classmethod
-    def artifact_reference(cls, value: str) -> str:
+    def artifact_reference(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
         if _ARTIFACT_REF.fullmatch(value) is None:
             raise ValueError("capability and assignment references must use artifact://")
+        return value
+
+    @field_validator("binding_ref")
+    @classmethod
+    def binding_reference(cls, value: str) -> str:
+        if _ARTIFACT_REF.fullmatch(value) is None:
+            raise ValueError("binding_ref must use artifact://")
         return value
 
     @model_validator(mode="after")
@@ -146,6 +148,10 @@ class PerceptionBinding(BaseModel):
             raise ValueError("perception binding is stale")
         if self.grasp_candidate_ref != self.candidate_set_ref:
             raise ValueError("grasp_candidate_ref must match candidate_set_ref")
+        try:
+            json.dumps(self.grasp_candidate, ensure_ascii=False, allow_nan=False)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("grasp candidate must contain finite JSON values") from exc
         for value in (self.measured_pose, self.measured_geometry, self.destination_pose):
             try:
                 json.dumps(value, ensure_ascii=False, allow_nan=False)
@@ -185,10 +191,12 @@ def default_subtask_calls(operation: SubtaskOperation) -> tuple[SubtaskToolCall,
     process_tool = "object.pour" if operation == "pour" else "tool.stir"
     if operation == "relocate":
         return (
+            SubtaskToolCall(tool_id="manipulation.prepare", phase="prepare"),
             SubtaskToolCall(tool_id="object.acquire", phase="acquire"),
             SubtaskToolCall(tool_id="object.place", phase="place"),
         )
     return (
+        SubtaskToolCall(tool_id="manipulation.prepare", phase="prepare"),
         SubtaskToolCall(tool_id="object.acquire", phase="acquire"),
         SubtaskToolCall(tool_id="manipulation.prepare_held", phase="prepare", arguments={"operation": operation}),
         SubtaskToolCall(tool_id=process_tool, phase="process", arguments={"operation": operation}),
@@ -210,6 +218,7 @@ class SubtaskSpec(BaseModel):
     # Semantic fields are supplied by the plan; trusted execution identity is
     # added later by the PAOS selection builder.
     semantic_intent: dict[str, Any] | None = None
+    trusted_intent: dict[str, Any] | None = None
     tool_sequence: tuple[SubtaskToolCall, ...] = ()
     return_destination_ref: str | None = None
 
@@ -264,8 +273,8 @@ class SubtaskSpec(BaseModel):
             raise ValueError("tool_sequence must follow the governed acquire/prepare/process/place sequence")
         if not calls:
             raise ValueError("subtask requires at least one internal Tool")
-        if calls[0].tool_id != "object.acquire" or calls[0].phase != "acquire":
-            raise ValueError("subtask must begin with object.acquire")
+        if calls[0].tool_id != "manipulation.prepare" or calls[0].phase != "prepare":
+            raise ValueError("subtask must begin with manipulation.prepare")
         if calls[-1].tool_id != "object.place" or calls[-1].phase != "place":
             raise ValueError("subtask must end with object.place")
         if self.operation in {"pour", "stir"}:
@@ -369,6 +378,8 @@ class SubtaskExecutionContext:
     scene_revision: str | None = None
     acquire_invocation_ref: str | None = None
     last_response: Mapping[str, Any] | None = None
+    trusted_intent: Mapping[str, Any] | None = None
+    prepared_arguments: Mapping[str, Any] | None = None
 
 
 class SubtaskExecutor:
@@ -386,7 +397,10 @@ class SubtaskExecutor:
     def execute(self, spec: SubtaskSpec) -> SubtaskExecutionResult:
         receipts: list[ToolReceipt] = []
         completed: list[str] = []
-        context = SubtaskExecutionContext(scene_revision=spec.binding.scene_revision)
+        context = SubtaskExecutionContext(
+            scene_revision=spec.binding.scene_revision,
+            trusted_intent=spec.trusted_intent,
+        )
         for index, call in enumerate(spec.calls()):
             if self._cancel_requested():
                 return self._result(spec, receipts, completed, context, "cancelled", False, call.phase, "cancelled_before_next_tool")
@@ -423,10 +437,28 @@ class SubtaskExecutor:
                     call.phase, "reconcile_before_retry",
                 )
             receipts.append(receipt)
+            try:
+                if call.tool_id == "manipulation.prepare" and status == "available":
+                    prepared_arguments = self._prepared_arguments(spec, response, context)
+                elif call.phase == "prepare" and status == "available":
+                    prepared = response.get("arguments")
+                    prepared_arguments = (
+                        dict(prepared) if isinstance(prepared, Mapping)
+                        else context.prepared_arguments
+                    )
+                else:
+                    prepared_arguments = context.prepared_arguments
+            except Exception:
+                return self._result(
+                    spec, receipts, completed, context, "failed", True,
+                    call.phase, "subtask_failed",
+                )
             context = SubtaskExecutionContext(
                 possession_state=self._possession(response, context.possession_state),
                 scene_revision=self._scene_revision(response, context.scene_revision),
                 last_response=response,
+                trusted_intent=context.trusted_intent,
+                prepared_arguments=prepared_arguments,
             )
             if not known or status == "unknown":
                 return self._result(spec, receipts, completed, context, "outcome_unknown", False, call.phase, "reconcile_before_retry")
@@ -444,9 +476,32 @@ class SubtaskExecutor:
         return self._invoker.invoke(tool_id, arguments)
 
     @staticmethod
+    def _prepared_arguments(
+        spec: SubtaskSpec,
+        response: Mapping[str, Any],
+        context: SubtaskExecutionContext,
+    ) -> dict[str, Any]:
+        """Use the same preparation contract in synchronous and Runtime paths."""
+        return RuntimeSubtaskDriver._prepared_arguments(spec, response, context)
+
+    @staticmethod
     def _arguments(spec: SubtaskSpec, call: SubtaskToolCall, context: SubtaskExecutionContext) -> dict[str, Any]:
         binding = spec.binding.model_dump(mode="json")
         binding.pop("max_age_ms", None)
+        if call.tool_id == "manipulation.prepare":
+            request = {
+                key: binding[key]
+                for key in ("observation_ref", "scene_revision", "frame_id", "calibration_ref",
+                            "freshness_ms", "max_age_ms", "candidate_set_ref", "capability_snapshot_ref",
+                            "destination_ref", "binding_ref")
+                if binding.get(key) is not None
+            }
+            request["candidates"] = [dict(binding["grasp_candidate"])]
+            if context.trusted_intent is not None:
+                request["intent"] = dict(context.trusted_intent)
+            return request
+        if context.prepared_arguments is not None:
+            binding.update(context.prepared_arguments)
         binding.update(spec.parameters)
         binding.update(call.arguments)
         binding.setdefault("entity_ref", spec.binding.entity_ref)
@@ -467,12 +522,26 @@ class SubtaskExecutor:
                         "freshness_ms", "max_age_ms")
         }
         common["scene_revision"] = context.scene_revision or spec.binding.scene_revision
+        if call.tool_id == "manipulation.prepare":
+            request = {
+                key: binding[key]
+                for key in ("observation_ref", "scene_revision", "frame_id", "calibration_ref",
+                            "freshness_ms", "max_age_ms", "candidate_set_ref", "capability_snapshot_ref",
+                            "destination_ref", "binding_ref")
+            }
+            request["candidates"] = [dict(binding["grasp_candidate"])]
+            if context.trusted_intent is not None:
+                request["intent"] = dict(context.trusted_intent)
+            return request
+        if context.prepared_arguments is not None:
+            common.update(context.prepared_arguments)
         previous = context.last_response or {}
         previous_invocation = previous.get("invocation_id")
-        if call.tool_id == "object.place":
+        if call.tool_id in {"object.acquire", "object.place"}:
             common.update({
-                key: binding[key]
+                key: context.prepared_arguments[key]
                 for key in ("candidate_set_ref", "preparation_ref", "candidate_ref", "assignment_ref")
+                if context.prepared_arguments is not None and key in context.prepared_arguments
             })
         if context.acquire_invocation_ref:
             common["acquire_invocation_ref"] = context.acquire_invocation_ref
@@ -482,10 +551,6 @@ class SubtaskExecutor:
         if call.tool_id == "object.acquire":
             return {
                 **common,
-                "candidate_set_ref": binding["candidate_set_ref"],
-                "preparation_ref": binding["preparation_ref"],
-                "candidate_ref": binding["candidate_ref"],
-                "assignment_ref": binding["assignment_ref"],
             }
         common.update(call.arguments)
         if call.tool_id == "manipulation.prepare_held":
@@ -573,7 +638,10 @@ class RuntimeSubtaskDriver:
         self.index = 0
         self.active_invocation: str | None = None
         self.active_tool: SubtaskToolCall | None = None
-        self.context = SubtaskExecutionContext(scene_revision=spec.binding.scene_revision)
+        self.context = SubtaskExecutionContext(
+            scene_revision=spec.binding.scene_revision,
+            trusted_intent=spec.trusted_intent,
+        )
         self.receipts: list[ToolReceipt] = []
         self.completed: list[str] = []
         self.next_arguments: dict[str, Any] | None = None
@@ -656,6 +724,16 @@ class RuntimeSubtaskDriver:
         self.receipts.append(receipt)
         self.active_invocation = None
         self.active_tool = None
+        try:
+            prepared_arguments = (
+                self._prepared_arguments(self.spec, response, self.context)
+                if call.tool_id == "manipulation.prepare" and status == "available"
+                else self.context.prepared_arguments
+            )
+        except Exception as exc:
+            return self._finish(
+                "outcome_unknown", False, call.phase, "reconcile_before_retry", error=str(exc)
+            )
         self.context = SubtaskExecutionContext(
             possession_state=SubtaskExecutor._possession(response, self.context.possession_state),
             scene_revision=SubtaskExecutor._scene_revision(response, self.context.scene_revision),
@@ -664,6 +742,8 @@ class RuntimeSubtaskDriver:
                 if call.phase == "acquire" else self.context.acquire_invocation_ref
             ),
             last_response=response,
+            trusted_intent=self.context.trusted_intent,
+            prepared_arguments=prepared_arguments,
         )
         if self.cancel_requested:
             if status == "cancelled" and known:
@@ -678,7 +758,9 @@ class RuntimeSubtaskDriver:
             return self._finish(final, True, call.phase, "subtask_failed")
         if status not in {"succeeded", "available"}:
             return self._finish("failed", True, call.phase, "subtask_failed")
-        if call.phase == "prepare":
+        if call.tool_id == "manipulation.prepare":
+            self.next_arguments = None
+        elif call.phase == "prepare":
             prepared = response.get("arguments")
             if not isinstance(prepared, Mapping):
                 return self._finish("outcome_unknown", False, call.phase, "reconcile_before_retry", error="prepare_missing_arguments")
@@ -688,6 +770,70 @@ class RuntimeSubtaskDriver:
         self.completed.append(call.tool_id)
         self.index += 1
         return None
+
+    @staticmethod
+    def _prepared_arguments(
+        spec: SubtaskSpec,
+        response: Mapping[str, Any],
+        context: SubtaskExecutionContext,
+    ) -> dict[str, Any]:
+        binding = spec.binding
+        if response.get("motion_authorized") is not False:
+            raise SubtaskExecutionError("manipulation.prepare must remain no-motion")
+        if any(response.get(key) != expected for key, expected in (
+            ("observation_ref", binding.observation_ref),
+            ("scene_revision", binding.scene_revision),
+            ("candidate_set_ref", binding.candidate_set_ref),
+            ("calibration_ref", binding.calibration_ref),
+        )):
+            raise SubtaskExecutionError("manipulation.prepare changed observation provenance")
+        frame = response.get("frame")
+        if not isinstance(frame, Mapping) or frame.get("frame_id") != binding.frame_id:
+            raise SubtaskExecutionError("manipulation.prepare changed frame provenance")
+        prepared = response.get("prepared_candidates")
+        selected = [
+            item for item in prepared if isinstance(item, Mapping)
+            and item.get("candidate_ref") == binding.candidate_ref
+            and item.get("entity_ref") == binding.entity_ref
+            and item.get("qualification") == "prepared"
+        ] if isinstance(prepared, list) else []
+        if len(selected) != 1:
+            raise SubtaskExecutionError("manipulation.prepare did not qualify the selected candidate")
+        checks = selected[0].get("checks")
+        if not isinstance(checks, Mapping) or any(
+            checks.get(key) != "pass" for key in ("kinematic", "collision", "workspace")
+        ):
+            raise SubtaskExecutionError("manipulation.prepare candidate checks are incomplete")
+        preparation_ref = response.get("preparation_ref")
+        if not isinstance(preparation_ref, str) or not preparation_ref.startswith("preparation://"):
+            raise SubtaskExecutionError("manipulation.prepare returned no preparation reference")
+        result = {
+            "candidate_set_ref": binding.candidate_set_ref,
+            "preparation_ref": preparation_ref,
+            "candidate_ref": binding.candidate_ref,
+            "entity_ref": binding.entity_ref,
+            "capability_snapshot_ref": binding.capability_snapshot_ref,
+        }
+        intent = context.trusted_intent
+        if intent is not None:
+            assignments = response.get("assignments")
+            if not isinstance(assignments, list) or len(assignments) != 1:
+                raise SubtaskExecutionError("manipulation.prepare returned no unique task assignment")
+            assignment = assignments[0]
+            if not isinstance(assignment, Mapping) or any(
+                assignment.get(key) != intent.get(key)
+                for key in ("task_id", "revision_id", "node_id", "node_digest", "entity_ref",
+                            "observation_ref", "scene_revision", "calibration_ref", "candidate_set_ref")
+            ) or assignment.get("candidate_ref") != binding.candidate_ref:
+                raise SubtaskExecutionError("manipulation.prepare assignment differs from trusted intent")
+            if assignment.get("capability_snapshot_ref") != binding.capability_snapshot_ref:
+                raise SubtaskExecutionError("manipulation.prepare assignment changed capability provenance")
+            if response.get("destination_ref") != binding.destination_ref:
+                raise SubtaskExecutionError("manipulation.prepare assignment changed destination")
+            result["assignment_ref"] = assignment.get("assignment_ref")
+            if not isinstance(result["assignment_ref"], str) or not result["assignment_ref"].startswith("artifact://"):
+                raise SubtaskExecutionError("manipulation.prepare returned an invalid assignment reference")
+        return result
 
     def _finish(self, status: str, known: bool, failed_phase: str | None, action: str, *, error: str | None = None) -> Mapping[str, Any]:
         result = SubtaskExecutor._result(
@@ -745,13 +891,14 @@ class RuntimeSubtaskDriver:
             or refreshed.scene_revision != expected_revision
             or refreshed.calibration_ref != previous.calibration_ref
             or refreshed.frame_id != previous.frame_id
+            or refreshed.binding_ref == previous.binding_ref
         ):
             raise ValueError(
                 "refreshed perception changed subtask identity, frame, revision, or calibration binding"
             )
         if refreshed.observation_ref == previous.observation_ref:
             raise ValueError("refreshed perception must provide a new observation reference")
-        for field_name in ("candidate_set_ref", "preparation_ref", "candidate_ref", "assignment_ref"):
+        for field_name in ("candidate_set_ref", "candidate_ref"):
             if getattr(refreshed, field_name) == getattr(previous, field_name):
                 raise ValueError(f"refreshed perception reused stale {field_name}")
 
@@ -777,6 +924,7 @@ class SubtaskActionEndpoint:
         trusted_intent = spec_payload.pop("intent", None)
         semantic = spec_payload.pop("semantic_intent", None)
         if isinstance(trusted_intent, Mapping):
+            spec_payload["trusted_intent"] = dict(trusted_intent)
             spec_payload["semantic_intent"] = semantic or {
                 key: trusted_intent[key]
                 for key in ("goal", "success_criteria", "allowed_arms", "coordination_mode", "constraints")
@@ -880,9 +1028,8 @@ SUBTASK_TOOL_SPEC: dict[str, Any] = {
                 "additionalProperties": False,
                 "required": [
                     "entity_ref", "semantic_label", "category", "measured_pose",
-                    "measured_geometry", "grasp_candidate_ref", "candidate_set_ref",
-                    "preparation_ref", "candidate_ref", "capability_snapshot_ref",
-                    "assignment_ref", "destination_ref",
+                    "measured_geometry", "grasp_candidate", "grasp_candidate_ref", "candidate_set_ref",
+                    "candidate_ref", "capability_snapshot_ref", "binding_ref", "destination_ref",
                     "destination_pose", "process_frame", "observation_ref", "scene_revision",
                     "frame_id", "calibration_ref", "freshness_ms", "max_age_ms",
                     "confidence", "provenance",
@@ -893,12 +1040,12 @@ SUBTASK_TOOL_SPEC: dict[str, Any] = {
                     "category": {"type": "string", "minLength": 1},
                     "measured_pose": {"type": "object"},
                     "measured_geometry": {"type": "object"},
+                    "grasp_candidate": {"type": "object"},
                     "grasp_candidate_ref": {"type": "string", "pattern": r"^candidate-set://\S+$"},
                     "candidate_set_ref": {"type": "string", "pattern": r"^candidate-set://\S+$"},
-                    "preparation_ref": {"type": "string", "pattern": r"^preparation://\S+$"},
                     "candidate_ref": {"type": "string", "pattern": r"^candidate://\S+$"},
                     "capability_snapshot_ref": {"type": "string", "pattern": r"^artifact://\S+$"},
-                    "assignment_ref": {"type": "string", "pattern": r"^artifact://\S+$"},
+                    "binding_ref": {"type": "string", "pattern": r"^artifact://\S+$"},
                     "destination_ref": {"type": "string", "pattern": r"^(?:destination|container)://\S+$"},
                     "destination_pose": {"type": "object"},
                     "process_frame": {"type": "string", "minLength": 1},

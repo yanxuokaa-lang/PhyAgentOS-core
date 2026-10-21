@@ -239,7 +239,6 @@ def test_labutopia_registers_subtask_only_with_generic_perception_chain(tmp_path
     engine.profile = profile
     adapter = PerceptionBindingAdapter(
         lambda _tool_id, _arguments: {},
-        lambda _request: {"status": "available"},
         BindingRequest(("camera/front",), "reagent_a", "beaker", 1000),
     )
     bundle = build_labutopia_runtime(
@@ -270,7 +269,6 @@ def test_labutopia_does_not_register_subtask_without_coordinator_context(tmp_pat
     engine.profile = profile
     adapter = PerceptionBindingAdapter(
         lambda _tool_id, _arguments: {},
-        lambda _request: {"status": "available"},
         BindingRequest(("camera/front",), "reagent_a", "beaker", 1000),
     )
     bundle = build_labutopia_runtime(
@@ -320,7 +318,6 @@ def test_labutopia_observation_query_uses_injected_source_not_action_client(tmp_
     observation_source = ObservationSource()
     adapter = PerceptionBindingAdapter(
         lambda _tool_id, _arguments: {},
-        lambda _request: {"status": "available"},
         BindingRequest(("camera/front",), "reagent_a", "beaker", 1000),
     )
     bundle = build_labutopia_runtime(

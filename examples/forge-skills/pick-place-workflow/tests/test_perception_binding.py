@@ -243,7 +243,7 @@ def _adapter(query=None, preparation=None, *, duplicate_source=False):
     )
     if duplicate_source:
         query.understanding = _chain(duplicate_source=True)[1]
-    return PerceptionBindingAdapter(query, preparation, request), query, preparation
+    return PerceptionBindingAdapter(query, request), query, preparation
 
 
 def test_adapter_composes_queries_and_returns_measured_binding():
@@ -257,10 +257,11 @@ def test_adapter_composes_queries_and_returns_measured_binding():
     assert binding.measured_pose["position_m"] == [0.15000000000000002, 0.15000000000000002, 0.1]
     assert binding.measured_geometry["size_m"] == [0.1, 0.1, 0.2]
     assert binding.candidate_ref == "candidate://scene-1/reagent-a-0"
-    assert preparation.requests[0]["source_entity"]["entity_ref"] == "entity://reagent-a"
+    assert preparation.requests == []
+    assert binding.binding_ref == "artifact://observations/scene-1/rgb"
 
 
-def test_runtime_bound_adapter_uses_standard_preparation_query_before_assignment():
+def test_runtime_bound_adapter_stays_provider_neutral_before_subtask_selection():
     query = QueryChain()
     adapter, _, preparation = _adapter(query=query)
 
@@ -284,33 +285,30 @@ def test_runtime_bound_adapter_uses_standard_preparation_query_before_assignment
             raise AssertionError(f"unexpected Runtime endpoint: {endpoint_id}:{operation}")
 
     runtime = RuntimeQueryPort()
-    binding = adapter.with_query_invoker(runtime).bind()
+    adapter.with_query_invoker(runtime).bind()
 
     assert runtime.calls == [
         ("scene_observation", "observe"),
         ("scene_understanding", "understand"),
         ("grasp_proposal", "propose"),
         ("manipulation_capabilities", "describe"),
-        ("manipulation_preparation", "prepare"),
     ]
-    assert preparation.requests[0]["readiness"]["preparation_ref"] == binding.preparation_ref
-
-
-def test_runtime_bound_adapter_rejects_unavailable_preparation_before_assignment():
-    query = QueryChain(preparation_status="unavailable")
-    adapter, _, preparation = _adapter(query=query)
-
-    with pytest.raises(PerceptionBindingError, match="manipulation.prepare"):
-        adapter.with_query_invoker(query).bind()
     assert preparation.requests == []
 
 
-def test_runtime_bound_adapter_rejects_preparation_candidate_mismatch():
+def test_runtime_bound_adapter_does_not_query_preparation_before_assignment():
+    query = QueryChain(preparation_status="unavailable")
+    adapter, _, preparation = _adapter(query=query)
+
+    adapter.with_query_invoker(query).bind()
+    assert preparation.requests == []
+
+
+def test_runtime_bound_adapter_does_not_validate_preparation_candidate_before_assignment():
     query = QueryChain(preparation_candidate_ref="candidate://scene-1/other")
     adapter, _, preparation = _adapter(query=query)
 
-    with pytest.raises(PerceptionBindingError, match="did not qualify"):
-        adapter.with_query_invoker(query).bind()
+    adapter.with_query_invoker(query).bind()
     assert preparation.requests == []
 
 
@@ -319,7 +317,6 @@ def test_adapter_is_reusable_with_an_independent_provider_implementation():
     preparation = AlternatePreparationProvider()
     adapter = PerceptionBindingAdapter(
         query,
-        preparation,
         BindingRequest(
             sensor_refs=("camera/overhead-01",),
             source_category="sample_vial",
@@ -340,9 +337,7 @@ def test_adapter_is_reusable_with_an_independent_provider_implementation():
     assert binding.destination_ref == "destination://mixing-vessel-02"
     assert binding.scene_revision == "mujo-scene-7"
     assert binding.candidate_ref == "candidate://mujo-scene-7/sample-vial-07/0"
-    assert binding.preparation_ref == "preparation://mujo-scene-7/arm-2"
-    assert preparation.requests[0]["source_entity"]["category"] == "sample_vial"
-    assert preparation.requests[0]["destination_entity"]["category"] == "mixing_vessel"
+    assert preparation.requests == []
 
 
 def test_adapter_rejects_semantic_ambiguity_without_motion():
@@ -357,7 +352,7 @@ def test_adapter_rejects_mixed_query_provenance():
         adapter.bind()
 
 
-def test_adapter_rejects_preparation_from_another_scene_revision():
+def test_adapter_does_not_consume_preparation_from_another_scene_revision():
     adapter, _, _ = _adapter(preparation=lambda request: {
         "status": "available",
         "observation_ref": request["observation_ref"],
@@ -370,8 +365,7 @@ def test_adapter_rejects_preparation_from_another_scene_revision():
         "destination_ref": request["destination_ref"],
         "assignment_ref": "artifact://assignments/old/arm-a",
     })
-    with pytest.raises(PerceptionBindingError, match="preparation changed observation provenance"):
-        adapter.bind()
+    adapter.bind()
 
 
 def test_adapter_refresh_requires_expected_revision_and_same_semantic_targets():
@@ -384,7 +378,7 @@ def test_adapter_refresh_requires_expected_revision_and_same_semantic_targets():
 
 def test_adapter_is_not_ready_without_all_provider_ports():
     request = BindingRequest(("camera/front",), "reagent_a", "beaker", 1000)
-    adapter = PerceptionBindingAdapter(None, None, request)
+    adapter = PerceptionBindingAdapter(None, request)
     assert adapter.ready is False
     with pytest.raises(PerceptionBindingError, match="providers"):
         adapter.bind()

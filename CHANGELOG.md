@@ -2,6 +2,38 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.1.12 (2026-10-21 09:10) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [sense] [refactor] 通用感知绑定不再调用 preparation；准备与 assignment 移入选定的 PAOS 子任务。 / Generic perception binding no longer calls preparation; preparation and assignment move into the selected PAOS subtask.
+- [policy] [feat] 一个子任务内部执行 no-motion prepare、acquire、process、place，沿用 canonical assignment ref，AgentLoop 只结算一次。 / A subtask internally runs no-motion prepare, acquire, process, and place using the canonical assignment reference; AgentLoop settles once.
+- [test] [test] provider-neutral perception、subtask Runtime、persistent Action、canonical assignment resolver、最新 held-preparation 投影与 LabUtopia wiring：`96 passed`；Ruff、compileall、diff check 通过。 / Provider-neutral perception, subtask Runtime, persistent Action, canonical assignment resolver, latest held-preparation projection, and LabUtopia wiring: `96 passed`; Ruff, compileall, and diff check passed.
+
+### 影响文件 / Affected Files
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/perception_binding.py:L1-L8,L63-L80,L124-L245`
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/subtask_executor.py:L189-L205,L483-L554,L769-L831`
+- `examples/forge-skills/pick-place-workflow/tests/test_perception_binding.py:L249-L341,L355-L369`
+- `examples/forge-skills/pick-place-workflow/tests/test_subtask_executor.py:L219-L245,L302-L323,L356-L373`
+- `examples/forge-skills/pick-place-workflow/tests/test_persistent_runtime.py:L61-L83`
+- `docs/forge/IMPLEMENTATION_REVIEW_V15_1_12.md:L1-L113`
+
+### 关键 Diff / Key Diff
+```diff
+- generic perception -> preparation/assignment before Agent selects a subtask
++ generic perception -> observation/understanding/grasp/capability evidence
++ selected subtask -> preparation with trusted intent -> acquire/process/place
++ one outer Agent settlement; individual Tool receipts remain internal
+```
+
+### 验证 / Validation
+- Focused suite: `96 passed`; Ruff, compileall, `git diff --check` passed.
+- Broader suite: `658 passed, 2 failed` on the existing RoboTwin node-version and bundle SHA lock mismatches; unrelated package/manifest files were left untouched.
+- No Isaac Sim, Gateway Action, simulator step, or motion was run.
+
+### Git 提交 / Git Commit
+- Commit: pending
+- Branch: `feature/planning-loop`
+
 ## v15.1.10 (2026-10-20 22:11) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]

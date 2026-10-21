@@ -57,6 +57,22 @@ def test_owner_from_gateway_caller_is_stable_across_revision_and_record():
         endpoint.admit_for_caller(arguments(), caller_id="paos:other:revision:record")
 
 
+def test_acquire_resolver_must_load_the_canonical_prepared_assignment_ref():
+    endpoint = PersistentActionEndpoint(
+        "acquire",
+        object(),
+        lambda phase, request: {
+            **request,
+            "assignment": {
+                "task_id": "task-1",
+                "assignment_ref": "artifact://scene/different-assignment",
+            },
+        },
+    )
+    with pytest.raises(ValueError, match="assignment reference mismatch"):
+        endpoint.admit_for_caller(arguments(), caller_id="paos:task-1:revision-1:record-1")
+
+
 def test_composition_registers_all_seven_required_tools():
     from pick_place_workflow.persistent_runtime import build_persistent_runtime
 

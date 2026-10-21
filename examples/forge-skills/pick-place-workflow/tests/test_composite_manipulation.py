@@ -155,13 +155,14 @@ def measured(operation="pour_cycle", **changes):
             "observation_ready": True, "object_support_state": "on_support", **changes}
 
 
-def runtime(provider, held, client=None, refresh_subtask_binding=None):
+def runtime(provider, held, client=None, refresh_subtask_binding=None, resolve_subtask_context=None):
     return build_persistent_runtime(
         client=client or provider, understanding_provider=object(), grasp_provider=object(),
         preparation_provider=object(), capability_provider=provider,
         resolve_preparation=provider.resolve, tool_context_provider=lambda _: {"ready": True},
         possession=held, held_preparation_provider=provider, resolve_held_preparation=provider.resolve,
         refresh_subtask_binding=refresh_subtask_binding,
+        resolve_subtask_context=resolve_subtask_context,
     )
 
 
@@ -581,6 +582,7 @@ def test_subtask_action_discovery_requires_fresh_binding_adapter():
     available = runtime(
         provider, PersistentPossession(),
         refresh_subtask_binding=lambda binding, revision: binding,
+        resolve_subtask_context=lambda _caller: {},
     )
     subtask_tool = next(
         item for item in available.list_tools()["tools"]

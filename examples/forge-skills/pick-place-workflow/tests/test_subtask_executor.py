@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import jsonschema
 import pytest
-from PhyAgentOS.forge.capability_runtime import ActionAdmission, CapabilityRuntime
+from PhyAgentOS.forge.capability_runtime import (
+    MANIPULATION_TOOL_SPEC,
+    ActionAdmission,
+    CapabilityRuntime,
+)
 
 from pick_place_workflow.subtask_executor import (
     SUBTASK_TOOL_SPEC,
@@ -17,12 +21,19 @@ def binding(**updates):
     value = {
         "entity_ref": "entity://reagent-a", "semantic_label": "reagent A", "category": "reagent_bottle",
         "measured_pose": {"position": [0.1, 0.2, 0.3]}, "measured_geometry": {"height_m": 0.18},
+        "grasp_candidate": {
+            "candidate_ref": "candidate://reagent-a/0", "entity_ref": "entity://reagent-a",
+            "grasp_frame": {"frame_id": "lab-camera-front", "unit": "m",
+                            "position_m": [0.1, 0.2, 0.3], "orientation_xyzw": [0, 0, 0, 1]},
+            "approach_direction": {"frame_id": "lab-camera-front", "unit": "unitless", "vector": [0, 0, -1]},
+            "score": 0.9, "confidence": 0.98, "provenance": ["artifact://grasp/reagent-a/0"],
+            "qualification": "proposed",
+        },
         "grasp_candidate_ref": "candidate-set://scene-1/reagent-a",
         "candidate_set_ref": "candidate-set://scene-1/reagent-a",
-        "preparation_ref": "preparation://scene-1/reagent-a",
         "candidate_ref": "candidate://reagent-a/0",
         "capability_snapshot_ref": "artifact://capabilities/lab-v1",
-        "assignment_ref": "artifact://assignments/reagent-a",
+        "binding_ref": "artifact://perception/lab-scene-1",
         "destination_ref": "destination://beaker-1", "destination_pose": {"position": [0.2, 0.2, 0.1]},
         "process_frame": "frame://beaker-1", "observation_ref": "observation://lab/scene-1",
         "scene_revision": "scene-1", "frame_id": "lab-camera-front",
@@ -35,6 +46,7 @@ def binding(**updates):
 
 def responses():
     return {
+        "manipulation.prepare": {"status": "available", "motion_authorized": False},
         "object.acquire": {"status": "succeeded", "outcome_known": True, "possession_state": "holding", "world_change_started": True, "new_scene_revision": "scene-2"},
         "manipulation.prepare_held": {"status": "available", "motion_authorized": False},
         "object.pour": {"status": "succeeded", "outcome_known": True, "possession_state": "holding", "world_change_started": True, "new_scene_revision": "scene-3", "evidence_refs": ["artifact://feedback/pour-1"]},
@@ -48,6 +60,22 @@ class Invoker:
 
     def invoke(self, tool_id, arguments):
         self.calls.append((tool_id, arguments))
+        if tool_id == "manipulation.prepare":
+            candidate = arguments["candidates"][0]
+            return {
+                "status": "available", "motion_authorized": False,
+                "observation_ref": arguments["observation_ref"],
+                "scene_revision": arguments["scene_revision"],
+                "frame": {"frame_id": arguments["frame_id"], "unit": "m"},
+                "calibration_ref": arguments["calibration_ref"],
+                "candidate_set_ref": arguments["candidate_set_ref"],
+                "preparation_ref": "preparation://scene-1/lab-camera-front",
+                "prepared_candidates": [{
+                    "candidate_ref": candidate["candidate_ref"], "entity_ref": candidate["entity_ref"],
+                    "qualification": "prepared",
+                    "checks": {"kinematic": "pass", "collision": "pass", "workspace": "pass"},
+                }],
+            }
         return dict(self.values[tool_id])
 
 
@@ -72,6 +100,40 @@ class ImmediateQueryEndpoint:
         return dict(self.result)
 
 
+class SubtaskPreparationEndpoint:
+    def invoke(self, arguments):
+        intent = dict(arguments["intent"])
+        candidate = arguments["candidates"][0]
+        assignment = {
+            **{key: intent[key] for key in (
+                "task_id", "revision_id", "node_id", "node_digest", "entity_ref",
+                "observation_ref", "scene_revision", "calibration_ref", "candidate_set_ref",
+                "coordination_mode",
+            )},
+            "candidate_ref": candidate["candidate_ref"],
+            "capability_snapshot_ref": arguments["capability_snapshot_ref"],
+            "assignment_ref": "artifact://assignments/task-1/pour-a",
+            "selected_arm_ids": ["franka"],
+        }
+        return {
+            "status": "available", "motion_authorized": False,
+            "observation_ref": arguments["observation_ref"],
+            "scene_revision": arguments["scene_revision"],
+            "frame": {"frame_id": arguments["frame_id"], "unit": "m"},
+            "calibration_ref": arguments["calibration_ref"],
+            "candidate_set_ref": arguments["candidate_set_ref"],
+            "preparation_ref": "preparation://scene-1/lab-camera-front",
+            "destination_ref": arguments["destination_ref"],
+            "prepared_candidates": [{
+                "candidate_ref": candidate["candidate_ref"],
+                "entity_ref": candidate["entity_ref"],
+                "qualification": "prepared",
+                "checks": {"kinematic": "pass", "collision": "pass", "workspace": "pass"},
+            }],
+            "assignments": [assignment],
+        }
+
+
 def runtime_with_subtask_endpoint(refresh_binding=None, *, pending_acquire=False):
     runtime = CapabilityRuntime()
     for tool_id, result in {
@@ -84,6 +146,10 @@ def runtime_with_subtask_endpoint(refresh_binding=None, *, pending_acquire=False
             {"tool_id": tool_id, "endpoint_id": tool_id.replace(".", "_"), "operation": tool_id.rsplit(".", 1)[-1], "semantics": "action"},
             endpoint,
         )
+    runtime.register_tool(
+        MANIPULATION_TOOL_SPEC,
+        SubtaskPreparationEndpoint(),
+    )
     runtime.register_tool(
         {"tool_id": "manipulation.prepare_held", "endpoint_id": "held_preparation", "operation": "prepare", "semantics": "query"},
         ImmediateQueryEndpoint({"status": "available", "motion_authorized": False, "arguments": {}}),
@@ -144,10 +210,39 @@ def test_executor_aggregates_five_internal_tools_into_one_subtask_settlement():
     invoker = Invoker(responses())
     result = SubtaskExecutor(invoker).execute(SubtaskSpec(subtask_id="pour-a", operation="pour", binding=binding()))
     assert result.status == "completed" and result.outcome_known is True
-    assert [item[0] for item in invoker.calls] == ["object.acquire", "manipulation.prepare_held", "object.pour", "manipulation.prepare_held", "object.place"]
+    assert [item[0] for item in invoker.calls] == ["manipulation.prepare", "object.acquire", "manipulation.prepare_held", "object.pour", "manipulation.prepare_held", "object.place"]
     settlement = result.to_node_settlement(task_id="lab-task", revision_id="scene-1")
     assert settlement.status == "completed" and settlement.node_id == "pour-a"
-    assert len(result.receipts) == 5
+    assert len(result.receipts) == 6
+
+
+def test_executor_projects_latest_held_preparation_into_place():
+    class HeldPreparationInvoker(Invoker):
+        def invoke(self, tool_id, arguments):
+            self.calls.append((tool_id, arguments))
+            if tool_id == "manipulation.prepare":
+                return Invoker.invoke(self, tool_id, arguments)
+            if tool_id == "manipulation.prepare_held":
+                return {
+                    "status": "available", "motion_authorized": False,
+                    "arguments": {
+                        **arguments,
+                        "scene_revision": "scene-3",
+                        "preparation_ref": "preparation://scene-3/lab-camera-front",
+                        "assignment_ref": "artifact://assignments/task-1/pour-a-scene-3",
+                    },
+                }
+            return dict(self.values[tool_id])
+
+    invoker = HeldPreparationInvoker(responses())
+    result = SubtaskExecutor(invoker).execute(
+        SubtaskSpec(subtask_id="pour-a", operation="pour", binding=binding())
+    )
+    assert result.status == "completed"
+    place_arguments = next(args for tool_id, args in invoker.calls if tool_id == "object.place")
+    assert place_arguments["scene_revision"] == "scene-3"
+    assert place_arguments["preparation_ref"] == "preparation://scene-3/lab-camera-front"
+    assert place_arguments["assignment_ref"] == "artifact://assignments/task-1/pour-a-scene-3"
 
 
 def test_runtime_action_driver_uses_one_outer_invocation_for_internal_sequence():
@@ -155,11 +250,10 @@ def test_runtime_action_driver_uses_one_outer_invocation_for_internal_sequence()
         return current.model_copy(update={
             "scene_revision": revision,
             "observation_ref": f"observation://lab/{revision}",
+            "binding_ref": f"artifact://perception/{revision}",
             "candidate_set_ref": f"candidate-set://{revision}/reagent-a",
             "grasp_candidate_ref": f"candidate-set://{revision}/reagent-a",
-            "preparation_ref": f"preparation://{revision}/reagent-a",
             "candidate_ref": f"candidate://{revision}/reagent-a/0",
-            "assignment_ref": f"artifact://assignments/{revision}/reagent-a",
             "freshness_ms": 0,
         })
 
@@ -179,7 +273,7 @@ def test_runtime_action_driver_uses_one_outer_invocation_for_internal_sequence()
     assert result["status"] == "succeeded"
     assert result["result"]["subtask_result"]["subtask_id"] == "pour-a"
     assert result["result"]["subtask_result"]["status"] == "completed"
-    assert len(result["result"]["subtask_result"]["receipts"]) == 5
+    assert len(result["result"]["subtask_result"]["receipts"]) == 6
     assert result["result"]["capability_outcome_summary"]["requires_replan"] is False
 
 
@@ -231,7 +325,7 @@ def test_runtime_driver_fails_closed_when_scene_revision_changes_without_refresh
             break
     assert result["status"] == "unknown"
     subtask = result["result"]["subtask_result"]
-    assert subtask["completed_tool_ids"] == ["object.acquire"]
+    assert subtask["completed_tool_ids"] == ["manipulation.prepare", "object.acquire"]
     assert subtask["recommended_action"] == "refresh_perception_before_motion"
 
 
@@ -240,6 +334,7 @@ def test_runtime_driver_rejects_refresh_with_stale_motion_candidates():
         return current.model_copy(update={
             "scene_revision": revision,
             "observation_ref": f"observation://lab/{revision}",
+            "binding_ref": f"artifact://perception/{revision}",
             "freshness_ms": 0,
         })
 
@@ -267,8 +362,8 @@ def test_runtime_outer_cancel_propagates_to_active_internal_invocation():
     assert runtime.invocation_result(outer)["status"] == "pending"
     assert runtime.cancel_invocation(outer)["accepted"] is True
     result = runtime.invocation_result(outer)
-    assert result["status"] == "unknown"
-    assert result["result"]["subtask_result"]["status"] == "outcome_unknown"
+    assert result["status"] == "cancelled"
+    assert result["result"]["subtask_result"]["status"] == "cancelled"
 
 
 def test_executor_stops_at_failed_process_without_place():
@@ -296,6 +391,8 @@ def test_invoker_exception_is_unknown_and_stops_sequence():
             self.calls.append((tool_id, arguments))
             if tool_id == "object.pour":
                 raise TimeoutError("transport lost after dispatch")
+            if tool_id == "manipulation.prepare":
+                return Invoker.invoke(self, tool_id, arguments)
             return dict(self.values[tool_id])
 
     invoker = BrokenInvoker(responses())
