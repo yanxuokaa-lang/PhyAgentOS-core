@@ -14,7 +14,11 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from .agent_planning import bind_subtask_from_semantics, compose_subtask_plan
+from .agent_planning import (
+    bind_subtask_from_semantics,
+    bind_subtask_from_semantics_async,
+    compose_subtask_plan,
+)
 from .perception_binding import BindingRequest, PerceptionBindingAdapter, QueryInvoker
 from .subtask_executor import SubtaskOperation, SubtaskSpec
 
@@ -133,8 +137,60 @@ class QuerySemanticPlanBuilder:
             raise SemanticTaskCreationError(str(exc)) from exc
 
 
+class AsyncQuerySemanticPlanBuilder(QuerySemanticPlanBuilder):
+    """Async builder for Forge Gateway or another awaitable Query port."""
+
+    async def build(self, task_description: str, semantic_subtasks: list[dict[str, Any]]) -> dict[str, Any]:
+        del task_description
+        if not isinstance(semantic_subtasks, list) or not semantic_subtasks:
+            raise SemanticTaskCreationError("semantic_subtasks must contain at least one request")
+        task_id = f"task_{uuid4().hex[:16]}"
+        revision_id = f"revision_{uuid4().hex[:16]}"
+        specs: list[SubtaskSpec] = []
+        scene_revisions: set[str] = set()
+        for raw in semantic_subtasks:
+            request = SemanticSubtaskRequest.model_validate(raw)
+            adapter = PerceptionBindingAdapter(
+                self.query_invoker,
+                BindingRequest(
+                    sensor_refs=request.sensor_refs,
+                    source_category=request.source_category,
+                    destination_category=request.destination_category,
+                    max_age_ms=request.max_age_ms,
+                    process_frame=request.process_frame,
+                    source_selector=request.source_selector,
+                    destination_selector=request.destination_selector,
+                ),
+            )
+            try:
+                spec = await bind_subtask_from_semantics_async(
+                    request.subtask_id, request.operation, adapter,
+                    depends_on=request.depends_on, parameters=request.parameters,
+                    semantic_intent=request.semantic_intent,
+                    return_destination_ref=request.return_destination_ref,
+                )
+            except ValueError as exc:
+                raise SemanticTaskCreationError(str(exc)) from exc
+            if specs:
+                dependencies = tuple(dict.fromkeys((*spec.depends_on, specs[-1].subtask_id)))
+                spec = spec.model_copy(update={"depends_on": dependencies})
+            specs.append(spec)
+            scene_revisions.add(spec.binding.scene_revision)
+        if len(scene_revisions) != 1:
+            raise SemanticTaskCreationError("semantic subtasks must share one scene revision")
+        try:
+            return compose_subtask_plan(
+                task_id, revision_id, tuple(specs),
+                planner_decision_digest=self.planner_decision_digest,
+                policy_snapshot_digest=self.policy_snapshot_digest,
+            ).graph.model_dump(mode="json")
+        except ValueError as exc:
+            raise SemanticTaskCreationError(str(exc)) from exc
+
+
 __all__ = [
     "QuerySemanticPlanBuilder",
+    "AsyncQuerySemanticPlanBuilder",
     "SemanticPlanBuilder",
     "SemanticSubtaskRequest",
     "SemanticTaskCreationError",

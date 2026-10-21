@@ -9,6 +9,7 @@ robot, or authorizes motion.
 
 from __future__ import annotations
 
+import inspect
 import re
 from typing import Any, Literal, Protocol
 
@@ -50,6 +51,8 @@ class SemanticBindingPort(Protocol):
 
     def bind(self) -> Any: ...
 
+    def bind_async(self) -> Any: ...
+
 
 def bind_subtask_from_semantics(
     subtask_id: str,
@@ -84,6 +87,36 @@ def bind_subtask_from_semantics(
         )
     except (TypeError, ValueError) as exc:
         raise AgentPlanningError(f"semantic subtask binding failed: {exc}") from exc
+
+
+async def bind_subtask_from_semantics_async(
+    subtask_id: str,
+    operation: SubtaskOperation,
+    perception: SemanticBindingPort,
+    *,
+    depends_on: tuple[str, ...] = (),
+    parameters: dict[str, object] | None = None,
+    semantic_intent: dict[str, object] | None = None,
+    return_destination_ref: str | None = None,
+) -> SubtaskSpec:
+    """Async counterpart for AgentLoop/Gateway Query transports."""
+    if not callable(getattr(perception, "bind_async", None)) or perception.ready is not True:
+        raise AgentPlanningError("async subtask perception adapter is unavailable")
+    try:
+        binding = perception.bind_async()
+        if inspect.isawaitable(binding):
+            binding = await binding
+        return SubtaskSpec(
+            subtask_id=subtask_id,
+            operation=operation,
+            binding=binding,
+            depends_on=depends_on,
+            parameters=parameters or {},
+            semantic_intent=semantic_intent,
+            return_destination_ref=return_destination_ref,
+        )
+    except (TypeError, ValueError) as exc:
+        raise AgentPlanningError(f"async semantic subtask binding failed: {exc}") from exc
 
 
 class AgentSubtaskSpec(BaseModel):
@@ -418,6 +451,7 @@ __all__ = [
     "PlanningMode",
     "ToolSelectionError",
     "bind_subtask_from_semantics",
+    "bind_subtask_from_semantics_async",
     "compose_agent_plan",
     "compose_executable_pick_place_plan",
     "compose_subtask_plan",

@@ -11,6 +11,7 @@ from PhyAgentOS.config.schema import ForgeConfig
 from PhyAgentOS.forge.task import AgentTaskCoordinator
 
 from pick_place_workflow.semantic_task_creation import (
+    AsyncQuerySemanticPlanBuilder,
     QuerySemanticPlanBuilder,
     SemanticTaskCreationError,
 )
@@ -72,6 +73,14 @@ def _request(prefix: str = "a"):
 
 def _builder(query):
     return QuerySemanticPlanBuilder(
+        query,
+        planner_decision_digest="a" * 64,
+        policy_snapshot_digest="b" * 64,
+    )
+
+
+def _async_builder(query):
+    return AsyncQuerySemanticPlanBuilder(
         query,
         planner_decision_digest="a" * 64,
         policy_snapshot_digest="b" * 64,
@@ -141,5 +150,40 @@ def test_semantic_binding_failure_does_not_call_coordinator():
         semantic_plan_builder=_builder(_provider(duplicate=True)),
     )
     with pytest.raises(SemanticTaskCreationError, match="ambiguous"):
+        asyncio.run(tool.execute("pour reagent", {"mode": "off"}, semantic_subtasks=_request()))
+    coordinator.create_task.assert_not_called()
+
+
+def test_async_gateway_query_builder_runs_before_task_persistence(tmp_path):
+    sync_provider = _provider()
+    calls = []
+
+    async def async_query(tool_id, arguments):
+        calls.append(tool_id)
+        return sync_provider(tool_id, arguments)
+
+    coordinator = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=object())
+    tool = ForgeTaskCreateTool(coordinator, semantic_plan_builder=_async_builder(async_query))
+    result = json.loads(asyncio.run(tool.execute(
+        "pour reagent", {"mode": "off"}, semantic_subtasks=_request()
+    )))
+    assert result["ok"] is True
+    assert calls == ["scene.observe", "scene.understand", "grasp.propose", "manipulation.capabilities"]
+    task = coordinator.get_task(result["data"]["task_id"])
+    assert task.active_revision.plan_graph.nodes[0].input_bindings["binding"]["entity_ref"] == "entity://a-bottle"
+
+
+def test_async_stale_query_fails_before_task_persistence():
+    sync_provider = _provider()
+
+    async def stale_query(tool_id, arguments):
+        response = sync_provider(tool_id, arguments)
+        if tool_id == "scene.observe":
+            response["freshness_ms"] = 5000
+        return response
+
+    coordinator = Mock()
+    tool = ForgeTaskCreateTool(coordinator, semantic_plan_builder=_async_builder(stale_query))
+    with pytest.raises(SemanticTaskCreationError, match="stale"):
         asyncio.run(tool.execute("pour reagent", {"mode": "off"}, semantic_subtasks=_request()))
     coordinator.create_task.assert_not_called()

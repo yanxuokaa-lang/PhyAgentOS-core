@@ -2,6 +2,32 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.4.5 (2026-10-21 14:20) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [comm] [feat] 增加 async semantic Query binding 和 `AsyncQuerySemanticPlanBuilder`，使 Agent task creation 可 await Gateway Query 后再持久化；同步接口保留。 / Add async semantic Query binding and `AsyncQuerySemanticPlanBuilder` so Agent task creation can await Gateway Queries before persistence; preserve the synchronous interface.
+- [test] [test] 定向任务创建/感知/执行/AgentLoop 回归 `247 passed`；Ruff、compileall、diff check 通过；无 Action 或运动。 / Focused task creation, perception, execution, and AgentLoop regression: `247 passed`; Ruff, compileall, and diff check passed; no Action or motion.
+- [policy] [docs] AgentLoop CLI 尚未注入 live builder；真实相机、IK/碰撞、执行反馈和恢复仍未验收。 / The AgentLoop CLI does not yet inject a live builder; real camera, IK/collision, execution feedback, and recovery remain unaccepted.
+
+### 影响文件 / Affected Files
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/perception_binding.py:L252-L323`
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/agent_planning.py:L46-L123`
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/semantic_task_creation.py:L140-L197`
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/__init__.py:L3-L18,L88-L100`
+- `examples/forge-skills/pick-place-workflow/tests/test_semantic_task_creation.py:L157-L189`
+- `docs/forge/IMPLEMENTATION_REVIEW_V15_4_5.md:L1-L78`
+- `changelog/2026-10_part2.md`
+
+### 关键 Diff / Key Diff
+```diff
+- synchronous Query binding only (not usable with ForgeToolClient.invoke_query)
++ async bind_async -> awaitable semantic builder -> existing forge_task_create await -> Coordinator persistence
++ preserve sync binding path and single subtask PlanNode settlement
+```
+
+详见 [v15.4.5 月度日志](changelog/2026-10_part2.md) 与 [实现审查](docs/forge/IMPLEMENTATION_REVIEW_V15_4_5.md)。
+See the [v15.4.5 detailed log](changelog/2026-10_part2.md) and [implementation review](docs/forge/IMPLEMENTATION_REVIEW_V15_4_5.md).
+
 ## v15.4.4 (2026-10-21 14:12) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]

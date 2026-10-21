@@ -9,6 +9,7 @@ from .agent_planning import (
     SemanticBindingPort,
     ToolSelectionError,
     bind_subtask_from_semantics,
+    bind_subtask_from_semantics_async,
     compose_agent_plan,
     compose_executable_pick_place_plan,
     compose_subtask_plan,
@@ -86,6 +87,7 @@ from .persistent_runtime import (
     StoredAssignmentResolver,
 )
 from .semantic_task_creation import (
+    AsyncQuerySemanticPlanBuilder,
     QuerySemanticPlanBuilder,
     SemanticPlanBuilder,
     SemanticSubtaskRequest,
@@ -143,10 +145,12 @@ __all__ = [
     "BindingRequest",
     "SemanticBindingPort",
     "bind_subtask_from_semantics",
+    "bind_subtask_from_semantics_async",
     "PerceptionBindingAdapter",
     "PerceptionBindingError",
     "QueryInvoker",
     "QuerySemanticPlanBuilder",
+    "AsyncQuerySemanticPlanBuilder",
     "SemanticPlanBuilder",
     "SemanticSubtaskRequest",
     "SemanticTaskCreationError",

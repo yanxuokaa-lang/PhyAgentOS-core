@@ -10,6 +10,7 @@ contains a USD Prim path or an actuator command.
 
 from __future__ import annotations
 
+import inspect
 import json
 from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
@@ -247,6 +248,69 @@ class PerceptionBindingAdapter:
             "confidence": confidence,
             "provenance": f"query-chain:{identity['observation_ref']}",
         })
+
+    async def bind_async(self) -> PerceptionBinding:
+        """Run the same Query chain over an asynchronous PAOS transport."""
+        if not self.ready:
+            raise PerceptionBindingError("perception binding providers are unavailable")
+        results: dict[str, dict[str, Any]] = {}
+
+        async def query(tool_id: str, arguments: Mapping[str, Any]) -> dict[str, Any]:
+            spec = self._QUERY_SPECS[tool_id]
+            try:
+                if callable(self.query_invoker):
+                    value = self.query_invoker(tool_id, dict(arguments))
+                else:
+                    value = self.query_invoker.invoke_query(
+                        spec["endpoint_id"], spec["operation"], dict(arguments)
+                    )
+                if inspect.isawaitable(value):
+                    value = await value
+            except Exception as exc:
+                raise PerceptionBindingError(f"{tool_id} query failed") from exc
+            if not isinstance(value, Mapping):
+                raise PerceptionBindingError(f"{tool_id} query returned a non-object")
+            results[tool_id] = dict(value)
+            return results[tool_id]
+
+        observation = await query("scene.observe", {
+            "sensor_refs": list(self.request.sensor_refs),
+            "max_age_ms": self.request.max_age_ms,
+        })
+        self._require_available(observation, "scene.observe")
+        identity = self._identity(observation, self.request.max_age_ms)
+        understanding = await query("scene.understand", {
+            **identity,
+            "artifacts": [item["ref"] for item in observation.get("artifacts", [])],
+        })
+        self._require_available(understanding, "scene.understand")
+        self._validate_identity(understanding, identity, "scene.understand")
+        source = self._select_entity(
+            understanding.get("entities", []), self.request.source_category,
+            self.request.source_selector, "source",
+        )
+        source_envelope = self._envelope(understanding.get("spatial_envelopes", []), source["entity_ref"])
+        grasp = await query("grasp.propose", {
+            **identity,
+            "targets": [{
+                "entity_ref": source["entity_ref"],
+                "category": source["category"],
+                "confidence": source["confidence"],
+                "spatial_envelope": source_envelope,
+            }],
+        })
+        self._require_available(grasp, "grasp.propose")
+        await query("manipulation.capabilities", {
+            "scene_revision": identity["scene_revision"],
+            "observation_ref": identity["observation_ref"],
+            "calibration_ref": identity["calibration_ref"],
+        })
+        cached = PerceptionBindingAdapter(
+            lambda tool_id, _arguments: results[tool_id],
+            self.request,
+            destination_ref_factory=self.destination_ref_factory,
+        )
+        return cached.bind()
 
     def _query(self, tool_id: str, arguments: Mapping[str, Any]) -> dict[str, Any]:
         spec = self._QUERY_SPECS[tool_id]
