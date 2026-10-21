@@ -31,7 +31,7 @@
 - No Isaac Sim, Gateway Action, simulator step, or motion was run.
 
 ### Git 提交 / Git Commit
-- Commit: pending
+- Commit: `757b7c57`
 - Branch: `feature/planning-loop`
 
 ## v15.1.10 (2026-10-20 22:11) - codex
@@ -184,36 +184,6 @@
 
 ### Git 提交 / Git Commit
 - Commit: `d78711bc`
-- Branch: `feature/planning-loop`
-
-## v15.1.3 (2026-10-20 20:40) - codex
-
-### 变更摘要 / Summary [完成 / Completed]
-- [sense] [feat] 新增 provider-neutral `PerceptionBindingAdapter`，环境只注入观测、理解、抓取、能力和 preparation provider。 / Add a provider-neutral `PerceptionBindingAdapter`; environments inject providers only.
-- [policy] [fix] preparation provenance 必须与 observation、scene、frame、calibration 一致；LabUtopia 仅在完整链路 ready 时注册子任务 Tool。 / Require preparation provenance to match observation, scene, frame, and calibration; register the LabUtopia subtask Tool only when the chain is ready.
-- [test] [feat] 增加语义歧义、混合 provenance、stale preparation、generic wiring 的 no-motion 回归。 / Add no-motion regressions for semantic ambiguity, mixed provenance, stale preparation, and generic wiring.
-
-### 影响文件 / Affected Files
-- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/perception_binding.py:L1-L428`
-- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/persistent_runtime.py:L430-L555`
-- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/paos_client.py:L211-L267`
-- `examples/forge-skills/pick-place-workflow/tests/test_perception_binding.py:L1-L189`
-- `docs/forge/IMPLEMENTATION_REVIEW_V15_1_3.md:L1-L85`
-
-### 关键 Diff / Key Diff
-```diff
-- LabUtopia-specific perception orchestration
-+ PAOS scene.observe -> scene.understand -> grasp.propose
-+ -> capability Query -> injected preparation provider
-+ -> one shared-provenance PerceptionBinding
-```
-
-### 验证 / Validation
-- `6 + 45 + 20` focused/no-motion/AgentLoop tests passed; Ruff, compileall, and `git diff --check` passed.
-- 未启动 Isaac Sim、Gateway 或运动。 / No Isaac Sim, Gateway, or motion was run.
-
-### Git 提交 / Git Commit
-- Commit: `c35062e4`
 - Branch: `feature/planning-loop`
 
 ## v15.1.2 (2026-10-20 20:05) - codex
