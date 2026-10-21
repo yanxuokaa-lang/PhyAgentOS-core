@@ -162,8 +162,9 @@ def _json(value: Any) -> str:
 
 
 class ForgeTaskCreateTool(Tool):
-    def __init__(self, coordinator: AgentTaskCoordinator) -> None:
+    def __init__(self, coordinator: AgentTaskCoordinator, *, semantic_plan_builder=None) -> None:
         self.coordinator = coordinator
+        self.semantic_plan_builder = semantic_plan_builder
         self.session_key: str | None = None
 
     def set_context(self, session_key: str) -> None:
@@ -184,7 +185,7 @@ class ForgeTaskCreateTool(Tool):
 
     @property
     def parameters(self) -> dict[str, Any]:
-        return {
+        schema = {
             "type": "object",
             "properties": {
                 "task_description": {"type": "string", "minLength": 1},
@@ -207,6 +208,35 @@ class ForgeTaskCreateTool(Tool):
             "required": ["task_description", "verification"],
             "additionalProperties": False,
         }
+        if self.semantic_plan_builder is not None:
+            schema["properties"]["semantic_subtasks"] = {
+                "type": "array",
+                "minItems": 1,
+                "description": (
+                    "Semantic subtask requests to bind through the configured PAOS Query "
+                    "providers before task persistence. Do not include scene paths or poses."
+                ),
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "subtask_id": {"type": "string", "minLength": 1},
+                        "operation": {"type": "string", "enum": ["relocate", "pour", "stir"]},
+                        "source_category": {"type": "string", "minLength": 1},
+                        "destination_category": {"type": "string", "minLength": 1},
+                        "sensor_refs": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1},
+                        "max_age_ms": {"type": "integer", "minimum": 1},
+                        "process_frame": {"type": "string", "minLength": 1},
+                        "source_selector": {"type": "object", "additionalProperties": {"type": ["string", "number", "boolean"]}},
+                        "destination_selector": {"type": "object", "additionalProperties": {"type": ["string", "number", "boolean"]}},
+                        "depends_on": {"type": "array", "items": {"type": "string"}},
+                        "parameters": {"type": "object"},
+                        "return_destination_ref": {"type": "string", "minLength": 1},
+                    },
+                    "required": ["subtask_id", "operation", "source_category", "destination_category", "sensor_refs", "max_age_ms"],
+                    "additionalProperties": False,
+                },
+            }
+        return schema
 
     async def execute(
         self,
@@ -215,6 +245,7 @@ class ForgeTaskCreateTool(Tool):
         activation_id: str | None = None,
         plan_graph: dict[str, Any] | None = None,
         plan_graph_ref: str | None = None,
+        semantic_subtasks: list[dict[str, Any]] | None = None,
     ) -> str:
         if task_description.strip().casefold() in {"noop", "no-op", "none"}:
             raise ValueError("AgentTask description must state an executable user task")
@@ -223,6 +254,25 @@ class ForgeTaskCreateTool(Tool):
                 "verification.mode must be explicit: use enforce with goal and "
                 "success_criteria when the user requests verification; use off only "
                 "when verification is intentionally disabled"
+            )
+        if semantic_subtasks is not None:
+            if plan_graph is not None or plan_graph_ref is not None:
+                raise ValueError("provide semantic_subtasks or plan_graph, not both")
+            builder = self.semantic_plan_builder
+            build = getattr(builder, "build", None)
+            if not callable(build):
+                raise ValueError("semantic subtask planning is unavailable")
+            plan_graph = build(task_description, semantic_subtasks)
+            if inspect.isawaitable(plan_graph):
+                plan_graph = await plan_graph
+            if isinstance(plan_graph, PlanGraph):
+                plan_graph = plan_graph.model_dump(mode="json")
+            if not isinstance(plan_graph, dict):
+                raise ValueError("semantic plan builder did not return a PlanGraph")
+            graph_identity = PlanGraph.model_validate(plan_graph)
+            plan_graph = graph_identity.model_dump(mode="json")
+            plan_graph_ref = (
+                f"artifact://plans/{graph_identity.task_id}/{graph_identity.revision_id}"
             )
         try:
             task = self.coordinator.create_task(
@@ -887,9 +937,13 @@ class ForgeTaskClarificationTool(Tool):
         })
 
 
-def build_forge_task_tools(coordinator: AgentTaskCoordinator) -> list[Tool]:
+def build_forge_task_tools(
+    coordinator: AgentTaskCoordinator,
+    *,
+    semantic_plan_builder=None,
+) -> list[Tool]:
     return [
-        ForgeTaskCreateTool(coordinator),
+        ForgeTaskCreateTool(coordinator, semantic_plan_builder=semantic_plan_builder),
         ForgeTaskGetTool(coordinator),
         ForgeTaskRebindRuntimeTool(coordinator),
         ForgeTaskBeginRevisionTool(coordinator),

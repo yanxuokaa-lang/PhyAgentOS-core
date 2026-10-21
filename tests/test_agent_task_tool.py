@@ -16,6 +16,7 @@ def test_task_create_requires_explicit_verification_choice():
     coordinator = Mock()
     tool = ForgeTaskCreateTool(coordinator)
     assert tool.parameters["properties"]["verification"]["required"] == ["mode"]
+    assert "semantic_subtasks" not in tool.parameters["properties"]
     with pytest.raises(ValueError, match="verification.mode must be explicit"):
         asyncio.run(tool.execute("Arrange RGB and verify", {}))
     coordinator.create_task.assert_not_called()

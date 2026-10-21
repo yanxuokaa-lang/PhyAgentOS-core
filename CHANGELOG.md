@@ -2,6 +2,36 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.4.3 (2026-10-21 14:11) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [comm] [feat] `forge_task_create` 可通过注入式 semantic plan builder 接收语义子任务，先经 PAOS Query 绑定为 measured evidence 与 PlanGraph，再交 Coordinator 持久化；不在 Core 引入环境/感知依赖。 / `forge_task_create` accepts semantic subtasks through an injected builder, binds them through PAOS Query into measured evidence and a PlanGraph, then persists through the Coordinator; Core gains no environment/perception dependency.
+- [policy] [feat] `QuerySemanticPlanBuilder` 支持 provider-neutral selector、多子任务同 scene revision 和共享机械臂串行依赖；每个 manipulation subtask 仍只有一个 Agent-facing node。 / `QuerySemanticPlanBuilder` supports provider-neutral selectors, a shared scene revision across subtasks, and serial dependencies for the shared arm; each manipulation subtask remains one Agent-facing node.
+- [test] [test] 245 项 semantic/perception/subtask/persistent-runtime/AgentTask/planning-loop 定向测试通过；Ruff、compileall、diff check 通过；无仿真或运动。 / 245 focused semantic, perception, subtask, persistent-runtime, AgentTask, and planning-loop tests passed; Ruff, compileall, and diff check passed; no simulation or motion.
+- [policy] [docs] 七维验收为 2 项 no-motion 通过、2 项部分、3 项 live 未验证；完整方案尚未通过。 / Seven-dimension acceptance: two no-motion passes, two partial, and three live-unverified; the full plan is not yet accepted.
+
+### 影响文件 / Affected Files
+- `PhyAgentOS/agent/tools/forge_task.py:L164-L301,L938-L954`
+- `PhyAgentOS/agent/loop.py:L228-L273,L426-L434`
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/semantic_task_creation.py:L1-L141`
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/perception_binding.py:L12-L70,L310-L334`
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/__init__.py:L88-L93,L149-L152`
+- `examples/forge-skills/pick-place-workflow/tests/test_semantic_task_creation.py:L1-L145`
+- `tests/test_agent_task_tool.py:L15-L20`
+- `docs/forge/IMPLEMENTATION_REVIEW_V15_4_3.md:L1-L85`
+- `changelog/2026-10_part2.md`
+
+### 关键 Diff / Key Diff
+```diff
+- forge_task_create accepted only a prebuilt PlanGraph
++ injected semantic_plan_builder binds task semantics through PAOS Query providers
++ Coordinator persists only after measured binding and PlanGraph validation succeed
++ one manipulation.execute_subtask PlanNode remains the Agent settlement boundary
+```
+
+详见 [v15.4.3 月度日志](changelog/2026-10_part2.md) 与 [实现审查](docs/forge/IMPLEMENTATION_REVIEW_V15_4_3.md)。
+See the [v15.4.3 detailed log](changelog/2026-10_part2.md) and [implementation review](docs/forge/IMPLEMENTATION_REVIEW_V15_4_3.md).
+
 ## v15.4.2 (2026-10-21 12:20) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]

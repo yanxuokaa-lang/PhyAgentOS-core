@@ -10,6 +10,7 @@ contains a USD Prim path or an actuator command.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass
@@ -35,7 +36,7 @@ class QueryInvoker(Protocol):
     def invoke_query(self, endpoint_id: str, operation: str, arguments: Mapping[str, Any]) -> Mapping[str, Any]: ...
 
 
-Selector = Callable[[Mapping[str, Any]], bool]
+Selector = Callable[[Mapping[str, Any]], bool] | Mapping[str, str | int | float | bool]
 
 
 @dataclass(frozen=True)
@@ -59,6 +60,14 @@ class BindingRequest:
             raise ValueError("destination_category must be non-empty")
         if isinstance(self.max_age_ms, bool) or self.max_age_ms < 1:
             raise ValueError("max_age_ms must be positive")
+        for selector in (self.source_selector, self.destination_selector):
+            if isinstance(selector, Mapping):
+                if not selector or any(not isinstance(key, str) or not key for key in selector):
+                    raise ValueError("semantic selectors must contain non-empty field names")
+                try:
+                    json.dumps(dict(selector), ensure_ascii=False, allow_nan=False)
+                except (TypeError, ValueError) as exc:
+                    raise ValueError("semantic selectors must contain finite JSON values") from exc
 
 
 class PerceptionBindingAdapter:
@@ -216,7 +225,7 @@ class PerceptionBindingAdapter:
         process_frame = self.request.process_frame or identity["frame_id"]
         return PerceptionBinding.model_validate({
             "entity_ref": source["entity_ref"],
-            "semantic_label": source["category"],
+            "semantic_label": source.get("semantic_label") or source.get("label") or source["category"],
             "category": source["category"],
             "measured_pose": measured_pose,
             "measured_geometry": measured_geometry,
@@ -311,7 +320,12 @@ class PerceptionBindingAdapter:
             dict(item) for item in entities
             if isinstance(item, Mapping)
             and item.get("category") == category
-            and (selector is None or selector(item))
+            and (
+                selector is None
+                or all(item.get(key) == value for key, value in selector.items())
+                if isinstance(selector, Mapping)
+                else selector is None or selector(item)
+            )
         ]
         if len(selected) != 1:
             raise PerceptionBindingError(f"{role} semantic selection is ambiguous or missing")

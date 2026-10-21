@@ -85,6 +85,12 @@ from .persistent_runtime import (
     SQLiteAssignmentArtifactStore,
     StoredAssignmentResolver,
 )
+from .semantic_task_creation import (
+    QuerySemanticPlanBuilder,
+    SemanticPlanBuilder,
+    SemanticSubtaskRequest,
+    SemanticTaskCreationError,
+)
 from .subtask_executor import (
     SUBTASK_TOOL_SPEC,
     PerceptionBinding,
@@ -140,6 +146,10 @@ __all__ = [
     "PerceptionBindingAdapter",
     "PerceptionBindingError",
     "QueryInvoker",
+    "QuerySemanticPlanBuilder",
+    "SemanticPlanBuilder",
+    "SemanticSubtaskRequest",
+    "SemanticTaskCreationError",
     "WORKFLOW_ID",
     "WORKFLOW_DAG",
     "WORKFLOW_DAG_VERSION",

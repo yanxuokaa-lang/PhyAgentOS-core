@@ -226,6 +226,7 @@ class AgentLoop:
         forge_tool_client: ForgeToolClient | None = None,
         forge_tool_invocation_ids: MutableSet[str] | None = None,
         forge_task_coordinator: AgentTaskCoordinator | None = None,
+        semantic_plan_builder: Any | None = None,
         runtime_availability_provider: Callable[[str], bool] | None = None,
         evolution_config: AgentEvolutionConfig | None = None,
         evolution_provider: LLMProvider | None = None,
@@ -268,6 +269,7 @@ class AgentLoop:
         self.forge_tool_client = forge_tool_client
         self.forge_tool_invocation_ids = forge_tool_invocation_ids
         self.forge_task_coordinator = forge_task_coordinator
+        self._semantic_plan_builder = semantic_plan_builder
         self._planning_dispatch = planning_dispatch
         self._planning_context_provider = planning_context_provider
         self._planner_plugin = planner_plugin
@@ -425,7 +427,10 @@ class AgentLoop:
             from PhyAgentOS.agent.tools.forge_task import build_forge_task_tools
             from PhyAgentOS.agent.tools.planning import ForgePlanActivateTool, ForgePlanSelectTool
 
-            for tool in build_forge_task_tools(self.forge_task_coordinator):
+            for tool in build_forge_task_tools(
+                self.forge_task_coordinator,
+                semantic_plan_builder=self._semantic_plan_builder,
+            ):
                 self.tools.register(tool)
             self.tools.register(
                 ForgePlanActivateTool(
