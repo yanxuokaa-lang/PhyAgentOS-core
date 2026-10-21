@@ -73,6 +73,27 @@ def test_acquire_resolver_must_load_the_canonical_prepared_assignment_ref():
         endpoint.admit_for_caller(arguments(), caller_id="paos:task-1:revision-1:record-1")
 
 
+def test_place_resolver_must_load_the_latest_held_preparation_assignment_ref():
+    possession = PersistentPossession(
+        state="holding", owner="paos:task-1", entity_ref="entity://red",
+        acquire_invocation_ref="invocation://object-acquire/1",
+    )
+    endpoint = PersistentActionEndpoint(
+        "place", object(),
+        lambda phase, request: {
+            **request,
+            "assignment": {
+                "task_id": "task-1",
+                "assignment_ref": "artifact://scene/reconstructed-assignment",
+            },
+        },
+        possession=possession,
+    )
+    request = arguments(place=True)
+    with pytest.raises(ValueError, match="assignment reference mismatch"):
+        endpoint.admit_for_caller(request, caller_id="paos:task-1:revision-2:record-2")
+
+
 def test_composition_registers_all_seven_required_tools():
     from pick_place_workflow.persistent_runtime import build_persistent_runtime
 

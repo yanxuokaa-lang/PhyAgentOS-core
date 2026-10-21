@@ -2,6 +2,34 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.1.13 (2026-10-21 09:15) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [test] [test] 使用生产 acquire/place/held-preparation ToolSpecs 运行 no-motion 子任务完整 schema 链，验证 scene revision 与 initial/held assignment 引用投影。 / Run the complete no-motion subtask schema chain with production acquire/place/held-preparation ToolSpecs and verify scene-revision and initial/held assignment-reference projection.
+- [test] [fix] 验证 acquire/place resolver 拒绝非 canonical assignment 引用；focused suite `45 passed`。 / Verify acquire/place resolvers reject non-canonical assignment references; focused suite: `45 passed`.
+- [policy] [docs] 七维验收保持部分通过；真实传感器、持久化 LabUtopia resolver、IK/碰撞与 live pour/stir 仍未验证。 / Seven-dimension acceptance remains partial; real sensors, durable LabUtopia resolver, IK/collision, and live pour/stir remain unverified.
+
+### 影响文件 / Affected Files
+- `examples/forge-skills/pick-place-workflow/tests/test_subtask_executor.py:L1-L21,L87-L191,L315-L353`
+- `examples/forge-skills/pick-place-workflow/tests/test_persistent_runtime.py:L76-L94`
+- `docs/forge/IMPLEMENTATION_REVIEW_V15_1_13.md:L1-L74`
+- `changelog/2026-10_part2.md:L3-L36`
+
+### 关键 Diff / Key Diff
+```diff
+- Reduced test-only Action schemas and empty held-preparation arguments
++ Production ToolSpecs exercise the full no-motion subtask Runtime sequence
++ Verify scene-1 -> scene-2 -> scene-3 -> scene-4 and canonical assignment refs
+```
+
+### 验证 / Validation
+- Focused subtask, persistent Runtime, and LabUtopia wiring: `45 passed`; Ruff and `git diff --check` passed.
+- Existing pytest `asyncio_mode` warning remains. No Isaac Sim, Gateway Action, simulator step, or motion was run.
+
+### Git 提交 / Git Commit
+- Commit: pending
+- Branch: `feature/planning-loop`
+
 ## v15.1.12 (2026-10-21 09:10) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]

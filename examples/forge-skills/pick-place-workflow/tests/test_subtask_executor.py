@@ -8,6 +8,9 @@ from PhyAgentOS.forge.capability_runtime import (
     CapabilityRuntime,
 )
 
+from pick_place_workflow.held_manipulation import PREPARE_HELD_TOOL_SPEC, action_spec
+from pick_place_workflow.object_acquire import ACQUIRE_TOOL_SPEC
+from pick_place_workflow.object_place import PLACE_TOOL_SPEC
 from pick_place_workflow.subtask_executor import (
     SUBTASK_TOOL_SPEC,
     PerceptionBinding,
@@ -84,12 +87,14 @@ class ImmediateActionEndpoint:
         self.result = result
 
     def admit(self, arguments):
-        return ActionAdmission(terminal_result=dict(self.result))
+        value = self.result(arguments) if callable(self.result) else self.result
+        return ActionAdmission(terminal_result=dict(value))
 
 
 class PendingActionEndpoint(ImmediateActionEndpoint):
     def admit(self, arguments):
-        return ActionAdmission(pending_polls=2, terminal_result=dict(self.result))
+        value = self.result(arguments) if callable(self.result) else self.result
+        return ActionAdmission(pending_polls=2, terminal_result=dict(value))
 
 
 class ImmediateQueryEndpoint:
@@ -97,7 +102,7 @@ class ImmediateQueryEndpoint:
         self.result = result
 
     def invoke(self, arguments):
-        return dict(self.result)
+        return dict(self.result(arguments) if callable(self.result) else self.result)
 
 
 class SubtaskPreparationEndpoint:
@@ -134,16 +139,30 @@ class SubtaskPreparationEndpoint:
         }
 
 
-def runtime_with_subtask_endpoint(refresh_binding=None, *, pending_acquire=False):
+def runtime_with_subtask_endpoint(refresh_binding=None, *, pending_acquire=False, validate_production_schemas=False):
     runtime = CapabilityRuntime()
     for tool_id, result in {
         "object.acquire": {"status": "succeeded", "outcome_known": True, "possession_state": "holding", "world_change_started": True, "new_scene_revision": "scene-2"},
         "object.pour": {"status": "succeeded", "outcome_known": True, "possession_state": "holding", "world_change_started": True, "new_scene_revision": "scene-3", "evidence_refs": ["artifact://feedback/pour-1"]},
         "object.place": {"status": "succeeded", "outcome_known": True, "possession_state": "empty", "world_change_started": True, "new_scene_revision": "scene-4", "evidence_refs": ["artifact://feedback/place-1"]},
     }.items():
-        endpoint = PendingActionEndpoint(result) if pending_acquire and tool_id == "object.acquire" else ImmediateActionEndpoint(result)
+        def terminal(arguments, result=result, tool_id=tool_id):
+            value = {**arguments, **result}
+            if tool_id == "object.acquire":
+                value.update(assignment_ref="artifact://assignments/task-1/pour-a")
+            return value
+
+        endpoint = PendingActionEndpoint(terminal) if pending_acquire and tool_id == "object.acquire" else ImmediateActionEndpoint(terminal)
+        action_spec = (
+            ACQUIRE_TOOL_SPEC if tool_id == "object.acquire" else
+            PLACE_TOOL_SPEC if tool_id == "object.place" else
+            action_spec_for(tool_id)
+        ) if validate_production_schemas else {
+            "tool_id": tool_id, "endpoint_id": tool_id.replace(".", "_"),
+            "operation": tool_id.rsplit(".", 1)[-1], "semantics": "action",
+        }
         runtime.register_tool(
-            {"tool_id": tool_id, "endpoint_id": tool_id.replace(".", "_"), "operation": tool_id.rsplit(".", 1)[-1], "semantics": "action"},
+            action_spec,
             endpoint,
         )
     runtime.register_tool(
@@ -151,13 +170,29 @@ def runtime_with_subtask_endpoint(refresh_binding=None, *, pending_acquire=False
         SubtaskPreparationEndpoint(),
     )
     runtime.register_tool(
-        {"tool_id": "manipulation.prepare_held", "endpoint_id": "held_preparation", "operation": "prepare", "semantics": "query"},
-        ImmediateQueryEndpoint({"status": "available", "motion_authorized": False, "arguments": {}}),
+        PREPARE_HELD_TOOL_SPEC if validate_production_schemas else {
+            "tool_id": "manipulation.prepare_held", "endpoint_id": "held_preparation",
+            "operation": "prepare", "semantics": "query",
+        },
+        ImmediateQueryEndpoint(lambda arguments: {
+            "status": "available", "motion_authorized": False,
+            "entity_ref": arguments["entity_ref"],
+            "arguments": {
+                **arguments,
+                "scene_revision": "scene-3",
+                "preparation_ref": "preparation://scene-3/lab-camera-front",
+                "assignment_ref": "artifact://assignments/task-1/pour-a-scene-3",
+            },
+        }),
     )
     runtime.register_tool(SUBTASK_TOOL_SPEC, SubtaskActionEndpoint(
         runtime, refresh_binding, lambda _caller_id: coordinator_context()
     ))
     return runtime
+
+
+def action_spec_for(tool_id):
+    return action_spec("pour" if tool_id == "object.pour" else "place")
 
 
 def coordinator_context(**overrides):
@@ -275,6 +310,47 @@ def test_runtime_action_driver_uses_one_outer_invocation_for_internal_sequence()
     assert result["result"]["subtask_result"]["status"] == "completed"
     assert len(result["result"]["subtask_result"]["receipts"]) == 6
     assert result["result"]["capability_outcome_summary"]["requires_replan"] is False
+
+
+def test_runtime_subtask_projects_each_transition_through_production_tool_schemas():
+    def refresh(current, revision):
+        return current.model_copy(update={
+            "scene_revision": revision,
+            "observation_ref": f"observation://lab/{revision}",
+            "binding_ref": f"artifact://perception/{revision}",
+            "candidate_set_ref": f"candidate-set://{revision}/reagent-a",
+            "grasp_candidate_ref": f"candidate-set://{revision}/reagent-a",
+            "candidate_ref": f"candidate://{revision}/reagent-a/0",
+            "freshness_ms": 0,
+        })
+
+    runtime = runtime_with_subtask_endpoint(refresh, validate_production_schemas=True)
+    spec = SubtaskSpec(subtask_id="pour-a", operation="pour", binding=binding())
+    jsonschema.validate(action_arguments(spec), SUBTASK_TOOL_SPEC["input_schema"])
+    outer = runtime.start_action(
+        "manipulation.execute_subtask", action_arguments(spec),
+        caller_id="paos:task-1:revision-1:record-1",
+    )["invocation_id"]
+    result = None
+    for _ in range(20):
+        result = runtime.invocation_result(outer)
+        if result["status"] != "pending":
+            break
+    assert result["status"] == "succeeded"
+    subtask = result["result"]["subtask_result"]
+    assert subtask["status"] == "completed"
+    assert [receipt["tool_id"] for receipt in subtask["receipts"]] == [
+        "manipulation.prepare", "object.acquire", "manipulation.prepare_held",
+        "object.pour", "manipulation.prepare_held", "object.place",
+    ]
+    acquire = subtask["receipts"][1]["response"]
+    process = subtask["receipts"][3]["response"]
+    place = subtask["receipts"][5]["response"]
+    assert acquire["assignment_ref"] == "artifact://assignments/task-1/pour-a"
+    assert process["scene_revision"] == "scene-3"
+    assert place["assignment_ref"] == "artifact://assignments/task-1/pour-a-scene-3"
+    assert place["scene_revision"] == "scene-3"
+    assert subtask["scene_revision"] == "scene-4"
 
 
 def test_subtask_admission_rejects_node_or_intent_mismatch_before_internal_calls():
