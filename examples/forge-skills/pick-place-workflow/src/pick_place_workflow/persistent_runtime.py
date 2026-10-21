@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Mapping, Protocol
 
 from PhyAgentOS.forge.capability_runtime import (
     CAPABILITY_TOOL_SPEC,
@@ -399,7 +399,13 @@ class PersistentActionEndpoint:
         if error:
             raise ValueError(error)
         public = deepcopy(arguments)
-        resolved = deepcopy(dict(self.resolve(self.phase, public)))
+        task_resolver = getattr(self.resolve, "resolve_for_task", None)
+        raw_resolved = (
+            task_resolver(self.phase, public, task_id=parts[1])
+            if callable(task_resolver)
+            else self.resolve(self.phase, public)
+        )
+        resolved = deepcopy(dict(raw_resolved))
         keys = ("entity_ref", "candidate_ref", "preparation_ref") + (("destination_ref",) if self.phase == "place" else ())
         for key in keys:
             if resolved.get(key) != public.get(key):
@@ -440,6 +446,65 @@ class PersistentActionEndpoint:
             return ActionAdmission(driver=_ProjectedDriver(driver, self.phase, public, self.possession, invocation_id=invocation_id, current_scene_revision=current_scene_revision))
 
         return ActionAdmission(start=start)
+
+
+class AssignmentArtifactStore(Protocol):
+    """Structural interface for durable, reference-addressed route artifacts."""
+
+    def get(self, assignment_ref: str) -> Mapping[str, Any] | None:
+        """Return the persisted artifact document, or ``None`` when absent."""
+        ...
+
+
+class StoredAssignmentResolver:
+    """Resolve complete preparation artifacts without rebuilding routes.
+
+    The store document has three fields: the canonical ``assignment`` object,
+    its ``preparation_ref``, and provider-owned ``route_arguments``. The latter
+    contains the approved execution route for this artifact. This resolver
+    checks PAOS ownership and request identity, then returns those stored route
+    arguments unchanged; it never derives a route from labels or environment
+    configuration.
+    """
+
+    def __init__(self, store: AssignmentArtifactStore) -> None:
+        getter = getattr(store, "get", None)
+        if not callable(getter):
+            raise TypeError("assignment artifact store must expose get(assignment_ref)")
+        self.store = store
+
+    def resolve_for_task(
+        self, phase: str, request: Mapping[str, Any], *, task_id: str
+    ) -> dict[str, Any]:
+        if phase not in {"acquire", "place"}:
+            raise ValueError("assignment resolution supports acquire or place")
+        assignment_ref = request.get("assignment_ref")
+        if not isinstance(assignment_ref, str) or not assignment_ref.startswith("artifact://"):
+            raise ValueError("assignment lookup requires its canonical artifact reference")
+        document = self.store.get(assignment_ref)
+        if not isinstance(document, Mapping):
+            raise ValueError("prepared assignment artifact was not found")
+        assignment = document.get("assignment")
+        route_arguments = document.get("route_arguments")
+        if not isinstance(assignment, Mapping) or not isinstance(route_arguments, Mapping):
+            raise ValueError("prepared assignment artifact is incomplete")
+        if assignment.get("assignment_ref") != assignment_ref:
+            raise ValueError("stored assignment reference does not match lookup key")
+        if assignment.get("task_id") != task_id:
+            raise ValueError("stored assignment belongs to another task")
+        if document.get("preparation_ref") != request.get("preparation_ref"):
+            raise ValueError("stored assignment preparation reference mismatch")
+        for key in ("entity_ref", "candidate_ref"):
+            if assignment.get(key) != request.get(key):
+                raise ValueError(f"stored assignment {key} mismatch")
+        if phase == "place" and route_arguments.get("destination_ref") != request.get("destination_ref"):
+            raise ValueError("stored assignment destination mismatch")
+        for key in ("entity_ref", "candidate_ref", "preparation_ref", "scene_revision"):
+            if route_arguments.get(key) != request.get(key):
+                raise ValueError(f"stored route {key} mismatch")
+        resolved = deepcopy(dict(route_arguments))
+        resolved["assignment"] = deepcopy(dict(assignment))
+        return resolved
 
 
 def register_subtask_tool(

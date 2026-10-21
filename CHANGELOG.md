@@ -2,6 +2,35 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.1.14 (2026-10-21 09:30) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [policy] [feat] 新增 provider-neutral assignment artifact store/resolver，按 canonical `assignment_ref` 读取 route，不从 profile/物体名重建。 / Add a provider-neutral assignment artifact store/resolver that loads routes by canonical `assignment_ref` without rebuilding from profile/object names.
+- [test] [test] 覆盖 resolver 重建、ownership/mismatch、Action endpoint integration 和生产 subtask schema 链；`47 passed`。 / Cover resolver recreation, ownership/mismatch, Action endpoint integration, and the production subtask schema chain; `47 passed`.
+- [policy] [docs] 七维验收仍明确真实 durable backend、传感器和运动证据未完成。 / Seven-dimension acceptance explicitly keeps durable backend, sensor, and motion evidence open.
+
+### 影响文件 / Affected Files
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/persistent_runtime.py:L1-L28,L382-L484`
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/__init__.py:L81,L166-L167`
+- `examples/forge-skills/pick-place-workflow/tests/test_persistent_runtime.py:L1-L15,L76-L145`
+- `docs/forge/IMPLEMENTATION_REVIEW_V15_1_14.md:L1-L87`
+- `changelog/2026-10_part2.md:L3-L42`
+
+### 关键 Diff / Key Diff
+```diff
+- callback-only preparation resolution
++ canonical assignment_ref lookup through a provider-neutral store
++ fail closed on unknown, cross-task, or identity-mismatched artifacts
+```
+
+### 验证 / Validation
+- Focused suite: `47 passed`; Ruff, compileall, and `git diff --check` passed.
+- No Isaac Sim, Gateway Action, simulator step, or motion was run.
+
+### Git 提交 / Git Commit
+- Commit: pending
+- Branch: `feature/planning-loop`
+
 ## v15.1.13 (2026-10-21 09:15) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]

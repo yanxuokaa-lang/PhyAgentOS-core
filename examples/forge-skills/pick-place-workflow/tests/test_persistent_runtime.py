@@ -6,8 +6,10 @@ from PhyAgentOS.planning import project_tool_spec
 from pick_place_workflow.object_acquire import ACQUIRE_TOOL_SPEC
 from pick_place_workflow.object_place import PLACE_TOOL_SPEC
 from pick_place_workflow.persistent_runtime import (
+    AssignmentArtifactStore,
     PersistentActionEndpoint,
     PersistentPossession,
+    StoredAssignmentResolver,
     _ProjectedDriver,
     _spec,
 )
@@ -92,6 +94,69 @@ def test_place_resolver_must_load_the_latest_held_preparation_assignment_ref():
     request = arguments(place=True)
     with pytest.raises(ValueError, match="assignment reference mismatch"):
         endpoint.admit_for_caller(request, caller_id="paos:task-1:revision-2:record-2")
+
+
+def test_stored_assignment_resolver_survives_resolver_recreation_and_reads_by_ref():
+    class Store(AssignmentArtifactStore):
+        def __init__(self, documents):
+            self.documents = dict(documents)
+
+        def get(self, assignment_ref):
+            return self.documents.get(assignment_ref)
+
+    acquire_request = arguments()
+    acquire_assignment_ref = acquire_request["assignment_ref"]
+    assignment = {
+        "assignment_ref": acquire_assignment_ref,
+        "task_id": "task-1",
+        "entity_ref": acquire_request["entity_ref"],
+        "candidate_ref": acquire_request["candidate_ref"],
+    }
+    store = Store({acquire_assignment_ref: {
+        "assignment": assignment,
+        "preparation_ref": acquire_request["preparation_ref"],
+        "route_arguments": dict(acquire_request),
+    }})
+
+    first_resolver = StoredAssignmentResolver(store)
+    first = first_resolver.resolve_for_task("acquire", acquire_request, task_id="task-1")
+    second_resolver = StoredAssignmentResolver(store)
+    second = second_resolver.resolve_for_task("acquire", acquire_request, task_id="task-1")
+    assert first == second
+    assert first["assignment"]["assignment_ref"] == acquire_assignment_ref
+
+    with pytest.raises(ValueError, match="not found"):
+        second_resolver.resolve_for_task(
+            "acquire", {**acquire_request, "assignment_ref": "artifact://scene/missing"}, task_id="task-1"
+        )
+    with pytest.raises(ValueError, match="another task"):
+        second_resolver.resolve_for_task("acquire", acquire_request, task_id="task-2")
+
+
+def test_persistent_action_endpoint_passes_caller_task_to_stored_resolver():
+    request = arguments()
+    document = {
+        "assignment": {
+            "assignment_ref": request["assignment_ref"],
+            "task_id": "task-1",
+            "entity_ref": request["entity_ref"],
+            "candidate_ref": request["candidate_ref"],
+        },
+        "preparation_ref": request["preparation_ref"],
+        "route_arguments": dict(request),
+    }
+
+    class Store:
+        def get(self, reference):
+            return document if reference == request["assignment_ref"] else None
+
+    endpoint = PersistentActionEndpoint(
+        "acquire", object(), StoredAssignmentResolver(Store())
+    )
+    admission = endpoint.admit_for_caller(
+        request, caller_id="paos:task-1:revision-1:record-1"
+    )
+    assert admission is not None
 
 
 def test_composition_registers_all_seven_required_tools():

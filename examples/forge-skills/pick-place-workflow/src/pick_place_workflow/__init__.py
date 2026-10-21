@@ -78,6 +78,7 @@ from .perception_binding import (
     PerceptionBindingError,
     QueryInvoker,
 )
+from .persistent_runtime import AssignmentArtifactStore, StoredAssignmentResolver
 from .subtask_executor import (
     SUBTASK_TOOL_SPEC,
     PerceptionBinding,
@@ -162,6 +163,8 @@ __all__ = [
     "ToolReceipt",
     "SUBTASK_TOOL_SPEC",
     "default_subtask_calls",
+    "AssignmentArtifactStore",
+    "StoredAssignmentResolver",
     "select_planning_mode",
     "MultiObjectAgentError",
     "MultiObjectAgentRunner",
