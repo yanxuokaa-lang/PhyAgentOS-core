@@ -10,7 +10,7 @@ robot, or authorizes motion.
 from __future__ import annotations
 
 import re
-from typing import Literal
+from typing import Any, Literal, Protocol
 
 from PhyAgentOS.planning import (
     AdmissionContext,
@@ -26,7 +26,7 @@ from PhyAgentOS.planning import (
 )
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from .subtask_executor import SubtaskSpec
+from .subtask_executor import SubtaskOperation, SubtaskSpec
 
 AGENT_PLAN_VERSION = "pick_and_place_agent_plan_v1"
 PlanningMode = Literal["baseline", "agent_composed"]
@@ -40,6 +40,50 @@ class AgentPlanningError(ValueError):
 
 class ToolSelectionError(AgentPlanningError):
     """Raised when no frozen ToolSpec candidate matches a semantic capability."""
+
+
+class SemanticBindingPort(Protocol):
+    """Provider-neutral measured-binding port used before plan compilation."""
+
+    @property
+    def ready(self) -> bool: ...
+
+    def bind(self) -> Any: ...
+
+
+def bind_subtask_from_semantics(
+    subtask_id: str,
+    operation: SubtaskOperation,
+    perception: SemanticBindingPort,
+    *,
+    depends_on: tuple[str, ...] = (),
+    parameters: dict[str, object] | None = None,
+    semantic_intent: dict[str, object] | None = None,
+    return_destination_ref: str | None = None,
+) -> SubtaskSpec:
+    """Bind one semantic obligation through the configured PAOS Query ports.
+
+    This is a planning composition helper only: it performs read-only Query
+    calls through the generic perception adapter and returns a SubtaskSpec.
+    Task creation, plan persistence, Tool invocation, and settlement remain
+    owned by the existing Coordinator and AgentLoop.
+    """
+
+    if not callable(getattr(perception, "bind", None)) or perception.ready is not True:
+        raise AgentPlanningError("subtask perception adapter is unavailable")
+    try:
+        binding = perception.bind()
+        return SubtaskSpec(
+            subtask_id=subtask_id,
+            operation=operation,
+            binding=binding,
+            depends_on=depends_on,
+            parameters=parameters or {},
+            semantic_intent=semantic_intent,
+            return_destination_ref=return_destination_ref,
+        )
+    except (TypeError, ValueError) as exc:
+        raise AgentPlanningError(f"semantic subtask binding failed: {exc}") from exc
 
 
 class AgentSubtaskSpec(BaseModel):
@@ -370,8 +414,10 @@ __all__ = [
     "AgentPlanningError",
     "AgentSubtaskSpec",
     "DynamicToolPlanner",
+    "SemanticBindingPort",
     "PlanningMode",
     "ToolSelectionError",
+    "bind_subtask_from_semantics",
     "compose_agent_plan",
     "compose_executable_pick_place_plan",
     "compose_subtask_plan",

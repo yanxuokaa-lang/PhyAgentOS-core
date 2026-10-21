@@ -16,6 +16,7 @@ from pick_place_workflow.agent_planning import (
     AgentSubtaskSpec,
     DynamicToolPlanner,
     ToolSelectionError,
+    bind_subtask_from_semantics,
     compose_agent_plan,
     compose_executable_pick_place_plan,
     compose_subtask_plan,
@@ -40,6 +41,52 @@ def _lab_binding():
         calibration_ref="artifact://calibration/lab-v1", freshness_ms=10, max_age_ms=1000,
         confidence=0.98, provenance="artifact://perception/lab-scene-1",
     )
+
+
+class _BindingProvider:
+    def __init__(self, binding, *, ready=True):
+        self.binding = binding
+        self.ready = ready
+        self.calls = 0
+
+    def bind(self):
+        self.calls += 1
+        return self.binding
+
+
+def test_bind_subtask_from_semantics_uses_a_provider_neutral_port():
+    first = _BindingProvider(_lab_binding())
+    second_binding = _lab_binding().model_copy(
+        update={
+            "entity_ref": "entity://reagent-b",
+            "semantic_label": "reagent B",
+            "candidate_ref": "candidate://reagent-b/0",
+        }
+    )
+    second = _BindingProvider(second_binding)
+
+    first_spec = bind_subtask_from_semantics(
+        "pour-a", "pour", first, parameters={"tilt_rad": 0.8}
+    )
+    second_spec = bind_subtask_from_semantics("pour-b", "pour", second)
+
+    assert first.calls == second.calls == 1
+    assert first_spec.binding.entity_ref == "entity://reagent-a"
+    assert second_spec.binding.entity_ref == "entity://reagent-b"
+    assert first_spec.parameters == {"tilt_rad": 0.8}
+    assert first_spec.tool_sequence == second_spec.tool_sequence
+
+
+def test_bind_subtask_from_semantics_fails_closed_before_query_or_plan():
+    unavailable = _BindingProvider(_lab_binding(), ready=False)
+    with pytest.raises(AgentPlanningError, match="adapter is unavailable"):
+        bind_subtask_from_semantics("pour-a", "pour", unavailable)
+    assert unavailable.calls == 0
+
+    broken = _BindingProvider(None)
+    with pytest.raises(AgentPlanningError, match="semantic subtask binding failed"):
+        bind_subtask_from_semantics("pour-a", "pour", broken)
+    assert broken.calls == 1
 
 
 def _plan():

@@ -2,6 +2,16 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.4.1 (2026-10-21 12:05) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [policy] [feat] 新增通用 `SemanticBindingPort` 与语义到 measured binding 的 subtask planning 组合入口；通过两个 provider fixture 验证可替换，未触发执行。 / Add a generic `SemanticBindingPort` and semantic-to-measured-binding subtask planning composition; verify provider replacement with two fixtures and invoke no execution.
+- [test] [test] Agent planning 与 perception binding 定向测试 `19 passed`；Ruff、compileall、`git diff --check` 通过。 / Focused Agent planning and perception binding tests: `19 passed`; Ruff, compileall, and `git diff --check` passed.
+- [policy] [docs] 七维验收保持部分/未验证；新入口尚未接入生产 Agent task-creation path。 / Seven-dimension acceptance remains partial/unvalidated; the new entry is not yet wired to the production Agent task-creation path.
+
+详见 [v15.4.1 月度日志](changelog/2026-10_part2.md) 和 [实现审查](docs/forge/IMPLEMENTATION_REVIEW_V15_4_1.md)。
+See the [v15.4.1 detailed log](changelog/2026-10_part2.md) and [implementation review](docs/forge/IMPLEMENTATION_REVIEW_V15_4_1.md).
+
 ## v15.4.0 (2026-10-21 11:30) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
