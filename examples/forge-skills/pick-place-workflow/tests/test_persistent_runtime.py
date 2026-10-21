@@ -161,6 +161,34 @@ def test_persistent_action_endpoint_passes_caller_task_to_stored_resolver():
     assert admission is not None
 
 
+def test_stored_assignment_resolver_rejects_route_from_another_preparation_scene():
+    request = arguments(place=True)
+    assignment = {
+        "assignment_ref": request["assignment_ref"],
+        "task_id": "task-1",
+        "entity_ref": request["entity_ref"],
+        "candidate_ref": request["candidate_ref"],
+        "scene_revision": request["scene_revision"],
+    }
+    document = {
+        "assignment": assignment,
+        "preparation_ref": request["preparation_ref"],
+        "route_arguments": {
+            **request,
+            "scene_revision": "different-scene",
+        },
+    }
+
+    class Store:
+        def get(self, _reference):
+            return document
+
+    with pytest.raises(ValueError, match="assignment scene_revision"):
+        StoredAssignmentResolver(Store()).resolve_for_task(
+            "place", request, task_id="task-1"
+        )
+
+
 def test_sqlite_assignment_store_survives_close_and_reopen(tmp_path):
     request = arguments()
     document = {

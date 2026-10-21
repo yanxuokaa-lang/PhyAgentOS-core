@@ -11,7 +11,10 @@ from PhyAgentOS.forge.capability_runtime import (
 from pick_place_workflow.held_manipulation import PREPARE_HELD_TOOL_SPEC, action_spec
 from pick_place_workflow.object_acquire import ACQUIRE_TOOL_SPEC
 from pick_place_workflow.object_place import PLACE_TOOL_SPEC
-from pick_place_workflow.persistent_runtime import SQLiteAssignmentArtifactStore
+from pick_place_workflow.persistent_runtime import (
+    SQLiteAssignmentArtifactStore,
+    StoredAssignmentResolver,
+)
 from pick_place_workflow.subtask_executor import (
     SUBTASK_TOOL_SPEC,
     PerceptionBinding,
@@ -297,6 +300,7 @@ def test_executor_persists_complete_preparation_artifact_without_rebuilding_rout
                         "candidate_ref": binding().candidate_ref,
                         "preparation_ref": "preparation://scene-1/lab-camera-front",
                         "scene_revision": binding().scene_revision,
+                        "destination_ref": binding().destination_ref,
                     },
                 }
             return super().invoke(tool_id, arguments)
@@ -315,6 +319,29 @@ def test_executor_persists_complete_preparation_artifact_without_rebuilding_rout
         assert document["route_arguments"]["candidate_ref"] == "candidate://reagent-a/0"
     finally:
         store.close()
+
+    reopened = SQLiteAssignmentArtifactStore(tmp_path / "assignments.sqlite3")
+    try:
+        resolver = StoredAssignmentResolver(reopened)
+        acquire_request = {
+            **document["route_arguments"],
+            "assignment_ref": "artifact://assignments/task-1/pour-a",
+        }
+        acquire = resolver.resolve_for_task("acquire", acquire_request, task_id="task-1")
+        assert acquire["scene_revision"] == "scene-1"
+
+        place_request = {
+            **acquire_request,
+            "scene_revision": "scene-2",
+            "acquire_invocation_ref": "invocation://object-acquire/1",
+        }
+        place = resolver.resolve_for_task("place", place_request, task_id="task-1")
+        assert place["scene_revision"] == "scene-2"
+        assert place["destination_ref"] == binding().destination_ref
+        with pytest.raises(ValueError, match="another task"):
+            resolver.resolve_for_task("place", place_request, task_id="task-2")
+    finally:
+        reopened.close()
 
 
 def test_executor_fails_closed_when_store_is_configured_but_route_artifact_is_missing():

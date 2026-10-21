@@ -574,12 +574,21 @@ class StoredAssignmentResolver:
         for key in ("entity_ref", "candidate_ref"):
             if assignment.get(key) != request.get(key):
                 raise ValueError(f"stored assignment {key} mismatch")
+        if (
+            assignment.get("scene_revision") is not None
+            and route_arguments.get("scene_revision") != assignment.get("scene_revision")
+        ):
+            raise ValueError("stored route assignment scene_revision mismatch")
         if phase == "place" and route_arguments.get("destination_ref") != request.get("destination_ref"):
             raise ValueError("stored assignment destination mismatch")
-        for key in ("entity_ref", "candidate_ref", "preparation_ref", "scene_revision"):
+        for key in ("entity_ref", "candidate_ref", "preparation_ref"):
             if route_arguments.get(key) != request.get(key):
                 raise ValueError(f"stored route {key} mismatch")
+        if phase == "acquire" and route_arguments.get("scene_revision") != request.get("scene_revision"):
+            raise ValueError("stored route scene_revision mismatch")
         resolved = deepcopy(dict(route_arguments))
+        if phase == "place":
+            resolved["scene_revision"] = request.get("scene_revision")
         resolved["assignment"] = deepcopy(dict(assignment))
         return resolved
 

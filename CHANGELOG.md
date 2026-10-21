@@ -2,6 +2,36 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.2.0 (2026-10-21 11:00) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [policy] [fix] 修复 durable assignment resolver 的 place revision 语义：acquire 校验原始 scene revision，place 校验 artifact 原始 revision 后投影 post-acquire 当前 revision。 / Fix durable assignment resolver place-revision semantics: acquire validates the original scene revision; place validates artifact lineage and projects the current post-acquire revision.
+- [test] [test] 覆盖 subtask preparation 写入 SQLite、store 重建后 acquire/place 解析及跨 task 拒绝；`46 + 35` 项相关测试通过。 / Cover subtask-preparation SQLite persistence, acquire/place resolution after store recreation, and cross-task rejection; `46 + 35` related tests passed.
+- [policy] [docs] 七维审查确认本阶段只完成 no-motion 持久化解析；真实感知、LabUtopia route producer、IK/碰撞与过程执行仍未验收。 / Seven-dimension review confirms this stage covers no-motion durable resolution only; real perception, LabUtopia route production, IK/collision, and process execution remain unaccepted.
+
+### 影响文件 / Affected Files
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/persistent_runtime.py:L574-L590`
+- `examples/forge-skills/pick-place-workflow/tests/test_subtask_executor.py:L300-L344`
+- `examples/forge-skills/pick-place-workflow/tests/test_persistent_runtime.py:L146-L184`
+- `docs/forge/IMPLEMENTATION_REVIEW_V15_2_0.md:L1-L87`
+- `changelog/2026-10_part2.md:L3-L34`
+
+### 关键 Diff / Key Diff
+```diff
+- require the prepared route revision to equal the current place revision
++ retain original assignment/route revision binding
++ project current place revision only after PAOS endpoint ownership/possession checks
++ prove SQLite close/reopen and acquire/place resolver behavior in no-motion tests
+```
+
+### 验证 / Validation
+- Focused Runtime/subtask tests: `46 passed`; Agent planning, multi-object Agent, LabUtopia wiring, and RoboTwin AgentLoop tests: `35 passed`; Ruff and `git diff --check` passed.
+- No Isaac Sim, Gateway Action, simulator step, or motion was run. / 未启动 Isaac Sim、Gateway Action、模拟器 step 或运动。
+
+### Git 提交 / Git Commit
+- Commit: `3c5957b1`
+- Branch: `feature/planning-loop`
+
 ## v15.1.15 (2026-10-21 09:45) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
@@ -117,31 +147,6 @@
 
 ### Git 提交 / Git Commit
 - Commit: `757b7c57`
-- Branch: `feature/planning-loop`
-
-## v15.1.10 (2026-10-20 22:11) - codex
-
-### 变更摘要 / Summary [完成 / Completed]
-- [policy] [review] 审核发现 subtask Action 尚未接入 `manipulation_intent_v2` trusted builder；拒绝将 Coordinator 读取未持久化 intent 的改动作为完成实现。 / Review found that the subtask Action is not yet wired to the `manipulation_intent_v2` trusted builder; rejected treating a Coordinator read of a non-persisted intent as a completed implementation.
-- [docs] [docs] 按 PAOS 架构、扩展原则、Developer Guide、AgentLoop 和七维验收记录实现 blocker 与下一阶段边界。 / Record the implementation blocker and next-stage boundary against PAOS architecture, extension principles, Developer Guide, AgentLoop, and seven-dimension acceptance.
-
-### 影响文件 / Affected Files
-- `docs/forge/IMPLEMENTATION_REVIEW_V15_1_10.md`
-- `changelog/2026-10.md`
-
-### 关键 Diff / Key Diff
-```diff
-- Coordinator expects a persisted intent absent from the subtask ToolSpec
-+ Keep current contract; first persist the trusted intent through the subtask ToolSpec/PlanNode path
-+ Then pass that same intent into task-scoped manipulation.prepare
-```
-
-### 验证 / Validation
-- Baseline planning/subtask tests: `51 passed` before reverting the incompatible intent requirement; Ruff and `git diff --check` passed.
-- No simulator, Gateway Action, or motion was run. Assignment provenance remains open.
-
-### Git 提交 / Git Commit
-- Commit: `8d8af9a9`
 - Branch: `feature/planning-loop`
 
 ## v15.1.9 (2026-10-20 21:20) - codex
