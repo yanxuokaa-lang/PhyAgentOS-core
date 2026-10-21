@@ -2,6 +2,14 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.4.4 (2026-10-21 14:12) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [docs] [docs] 补录 v15.4.3 实现提交 `a4e7e798` 至月度日志；无实现代码变更。 / Record v15.4.3 implementation commit `a4e7e798` in the monthly log; no implementation code changed.
+
+详见 [v15.4.4 月度日志](changelog/2026-10_part2.md)。
+See the [v15.4.4 detailed log](changelog/2026-10_part2.md).
+
 ## v15.4.3 (2026-10-21 14:11) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
@@ -28,6 +36,10 @@
 + Coordinator persists only after measured binding and PlanGraph validation succeed
 + one manipulation.execute_subtask PlanNode remains the Agent settlement boundary
 ```
+
+### Git 提交 / Git Commit
+- Commit: `a4e7e798`
+- Branch: `feature/planning-loop`
 
 详见 [v15.4.3 月度日志](changelog/2026-10_part2.md) 与 [实现审查](docs/forge/IMPLEMENTATION_REVIEW_V15_4_3.md)。
 See the [v15.4.3 detailed log](changelog/2026-10_part2.md) and [implementation review](docs/forge/IMPLEMENTATION_REVIEW_V15_4_3.md).
