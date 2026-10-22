@@ -117,10 +117,28 @@ def test_capability_is_disabled_without_isaac_runtime(tmp_path, monkeypatch):
 def test_observation_is_not_advertised_without_live_camera_registry(tmp_path):
     backend = LabUtopiaBackend(make_profile(tmp_path))
     assert backend.observation_ready is False
-    result = backend.observe_in_session(object(), {"sensor_ref": "sensor://front"})
+    from isaacsim_lab.worker import WorkerSessionContext
+
+    result = backend.observe_in_session(WorkerSessionContext(object()), {"sensor_ref": "sensor://front"})
     assert result["status"] == "unavailable"
     assert result["failure_code"] == "session_camera_registry_unavailable"
     assert result["motion_authorized"] is False
+
+
+def test_observation_uses_source_registered_on_worker_session(tmp_path):
+    from isaacsim_lab.worker import WorkerSessionContext
+
+    class ObservationSource:
+        def capture(self, request):
+            return {"status": "available", "sensor_ref": request["sensor_ref"]}
+
+    session = WorkerSessionContext(object())
+    session.register("observation_source", ObservationSource())
+    result = LabUtopiaBackend(make_profile(tmp_path)).observe_in_session(
+        session, {"sensor_ref": "sensor://front"}
+    )
+
+    assert result == {"status": "available", "sensor_ref": "sensor://front"}
 
 
 def test_session_owned_task_initializes_world_before_task_and_never_resets_it_again():

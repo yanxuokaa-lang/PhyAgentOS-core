@@ -1,5 +1,6 @@
 import threading
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -31,13 +32,19 @@ class FakeProcess:
 class FakeBackend:
     def __init__(self):
         self.methods = []
+        self.closed = False
 
-    def observe_in_session(self, app, request):
-        self.methods.append(("observe", app))
+    def observe_in_session(self, session, request):
+        self.methods.append(("observe", session))
+        session.register("shared_scene", {"revision": "scene-1"})
+        if request.get("capture"):
+            return {"status": "available", "captured_at": datetime(2026, 10, 22, tzinfo=timezone.utc)}
         return {"status": "unavailable", "failure_code": "camera_registry_missing"}
 
-    def _run_session_cycle(self, app, arguments, cancel, video_path):
-        self.methods.append(("execute_cycle", app))
+    def _run_session_cycle(self, session, arguments, cancel, video_path):
+        self.methods.append(("execute_cycle", session))
+        if arguments.get("require_shared_scene"):
+            assert session.resolve("shared_scene") == {"revision": "scene-1"}
         while arguments.get("wait_for_cancel") and not cancel.is_set():
             time.sleep(0.005)
         return {
@@ -45,6 +52,9 @@ class FakeBackend:
             "outcome_known": not cancel.is_set(),
             "video_path": str(video_path),
         }
+
+    def close_session(self, session):
+        self.closed = session.resolve("shared_scene") is not None
 
 
 def make_session(tmp_path, monkeypatch, backend=None):
@@ -75,15 +85,33 @@ def test_worker_session_reuses_one_owner_for_observation_and_action(tmp_path, mo
     session, backend, process_count = make_session(tmp_path, monkeypatch)
     try:
         observed = session.observe({"sensor_ref": "sensor://front"})
-        executed = session.request("execute_cycle", {"operation": "pour_cycle"})
+        executed = session.request("execute_cycle", {
+            "operation": "pour_cycle", "require_shared_scene": True
+        })
     finally:
         session.close()
 
     assert process_count == [1]
     assert [method for method, _app in backend.methods] == ["observe", "execute_cycle"]
     assert backend.methods[0][1] is backend.methods[1][1]
+    assert backend.methods[0][1].app is not None
+    assert backend.closed is True
+    assert backend.methods[0][1].resolve("shared_scene") is None
     assert observed == {"status": "unavailable", "failure_code": "camera_registry_missing"}
     assert executed["status"] == "completed"
+
+
+def test_worker_session_serializes_observation_artifact_metadata(tmp_path, monkeypatch):
+    session, _backend, _process_count = make_session(tmp_path, monkeypatch)
+    try:
+        observed = session.observe({"sensor_ref": "sensor://front", "capture": True})
+    finally:
+        session.close()
+
+    assert observed == {
+        "status": "available",
+        "captured_at": "2026-10-22T00:00:00+00:00",
+    }
 
 
 def test_worker_session_propagates_cancellation_without_faking_success(tmp_path, monkeypatch):

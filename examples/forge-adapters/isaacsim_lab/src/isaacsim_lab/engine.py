@@ -597,10 +597,10 @@ class LabUtopiaBackend:
             app.close()
         return result
 
-    def _run_session_cycle(self, app: Any, arguments: Mapping[str, Any], cancel: Event, video_path: Path) -> dict[str, Any]:
+    def _run_session_cycle(self, session: Any, arguments: Mapping[str, Any], cancel: Event, video_path: Path) -> dict[str, Any]:
         self._last_video_info = {}
         try:
-            result = self._run_episode(app, arguments, cancel, video_path)
+            result = self._run_episode(session.app, arguments, cancel, video_path)
         except Exception as exc:
             result = {
                 "status": "unknown",
@@ -615,15 +615,25 @@ class LabUtopiaBackend:
         result.update(self._last_video_info)
         return result
 
-    def observe_in_session(self, app: Any, request: Mapping[str, Any]) -> dict[str, Any]:
-        """Fail closed until the live Isaac scene registers an ObservationSource."""
-        del app, request
+    def observe_in_session(self, session: Any, request: Mapping[str, Any]) -> dict[str, Any]:
+        """Capture through the live ObservationSource owned by this worker session."""
+        source = session.resolve("observation_source")
+        capture = getattr(source, "capture", None)
+        if callable(capture):
+            result = capture(request)
+            if isinstance(result, Mapping):
+                return dict(result)
         return {
             "status": "unavailable",
             "outcome_known": False,
             "motion_authorized": False,
             "failure_code": "session_camera_registry_unavailable",
         }
+
+    def close_session(self, session: Any) -> None:
+        """Drop session-scoped backend references before SimulationApp shutdown."""
+        del session
+        self._last_video_info = {}
 
     def _run_episode(
         self,

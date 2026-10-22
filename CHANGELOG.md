@@ -2,6 +2,31 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.5.6 (2026-10-22 23:30) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [env] [feat] worker 为每个 Isaac process 建立共享 `WorkerSessionContext`，跨 Observation/Action RPC 持有 SimulationApp 和可注册资源；资源在关闭时清理。 / Each Isaac worker process now owns one shared `WorkerSessionContext` across Observation/Action RPCs, retaining the SimulationApp and registered resources until close.
+- [sense] [feat] backend Observation 从 session context dispatch 到注册的 source；未注册时仍返回 unavailable，未将 stub 提升为真实感知。 / Backend Observation dispatches through a source registered on the session context; missing sources remain unavailable, with no stub promoted to live perception.
+- [test] [test] Isaac adapter suite `70 passed`；Ruff、compileall、git diff check 通过。 / Isaac adapter suite: `70 passed`; Ruff, compileall, and git diff check passed.
+- [docs] [docs] 七维复审保持整体未验收：live camera/World/Task、绑定与 freshness、IK/碰撞、抓放、pour/stir 反馈与 live settlement 仍未验证。 / Seven-dimension review keeps the overall plan unaccepted: live camera/World/Task, binding/freshness, IK/collision, acquire/place, pour/stir feedback, and live settlement remain unverified.
+- Implementation commit: `[record after commit]` on `feature/planning-loop`.
+
+### 文件与关键 Diff / Files and Key Diff
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/worker.py:L36-L110,L134-L147`：worker-owned context、资源注册/解析/清理和 IPC 时间戳/array-like 序列化。
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/engine.py:L600-L636`：Action 用 context 所持 app；Observation 使用 context 注册的 source 并 fail-closed。
+- `examples/forge-adapters/isaacsim_lab/tests/test_worker_session.py:L32-L114`、`test_engine.py:L117-L141`：跨 RPC 资源身份、清理、序列化和 provider dispatch 测试。
+- `docs/forge/IMPLEMENTATION_REVIEW_V15_5_6.md:L1-L49`：架构/AgentLoop 复审及七维结果。
+
+```diff
+- backend RPC receives only SimulationApp; session has no scene-resource owner
++ worker context retains named resources across Observation and Action RPCs
++ registered provider -> capture; missing provider -> unavailable
++ close -> backend hook -> clear session references
+```
+
+详见 [v15.5.6 月度日志](changelog/2026-10_part8.md) 和 [实现审查](docs/forge/IMPLEMENTATION_REVIEW_V15_5_6.md)。
+See the [v15.5.6 detailed log](changelog/2026-10_part8.md) and [implementation review](docs/forge/IMPLEMENTATION_REVIEW_V15_5_6.md).
+
 ## v15.5.5 (2026-10-22 22:10) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
@@ -89,31 +114,6 @@ See the [v15.5.3 detailed log](changelog/2026-10_part8.md) and [implementation r
 
 详见 [v15.5.2 月度日志](changelog/2026-10_part8.md) 和 [实现审查](docs/forge/IMPLEMENTATION_REVIEW_V15_5_2.md)。
 See the [v15.5.2 detailed log](changelog/2026-10_part8.md) and [implementation review](docs/forge/IMPLEMENTATION_REVIEW_V15_5_2.md).
-
-## v15.5.1 (2026-10-22 10:44) - codex
-
-### 变更摘要 / Summary [完成 / Completed]
-- [sense] [feat] 新增 `IsaacCameraMetadataProvider`，从活动相机读取内参、世界外参和分辨率并持久化 calibration artifact；frame/scene revision 由 live host resolver 提供。 / Add `IsaacCameraMetadataProvider` to read intrinsics, world extrinsics, and resolution from an active camera and persist a calibration artifact; live host resolvers supply frame and scene revision.
-- [test] [test] observation、PAOS integration 和 engine tests `54 passed`；Ruff、diff check 通过。 / Observation, PAOS integration, and engine tests: `54 passed`; Ruff and diff check passed.
-- [docs] [docs] 审查通过本阶段适配器边界，七维整体未验收；跨进程 live camera session 是 Blocker。 / Review accepts this adapter boundary, but overall seven-dimension acceptance remains incomplete; cross-process live camera session is a Blocker.
-- Implementation commit: `30facff1` on `feature/planning-loop`.
-
-### 文件与关键 Diff / Files and Key Diff
-- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/observation.py:L19-L87,L202-L233`：从相机采集 calibration 并由 writer 持久化；传感器 API/校准无效返回 unavailable，存储异常保持可见。 / Capture camera calibration and persist through the writer; invalid sensor API/calibration returns unavailable, while storage failures remain visible.
-- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/__init__.py:L3-L18`：导出 metadata provider。 / Export the metadata provider.
-- `examples/forge-adapters/isaacsim_lab/tests/test_observation.py:L149-L239`：覆盖校准、血缘、缺失/异常 API、错误 artifact 和 writer 故障。 / Cover calibration, lineage, missing/throwing APIs, invalid artifacts, and writer failures.
-- `docs/forge/IMPLEMENTATION_REVIEW_V15_5_1.md:L1-L50`：架构、AgentLoop、七维验收与剩余 blocker。 / Architecture, AgentLoop, seven-dimension acceptance, and remaining blocker.
-
-### 关键 Diff / Key Diff
-```diff
-- calibration_ref supplied as opaque host metadata only
-+ active camera -> get_intrinsics_matrix + get_world_pose + get_resolution
-+ calibration values -> injected durable artifact writer -> calibration_ref
-+ live host resolvers -> frame_id + scene_revision
-```
-
-详见 [v15.5.1 月度日志](changelog/2026-10_part8.md) 和 [实现审查](docs/forge/IMPLEMENTATION_REVIEW_V15_5_1.md)。
-See the [v15.5.1 detailed log](changelog/2026-10_part8.md) and [implementation review](docs/forge/IMPLEMENTATION_REVIEW_V15_5_1.md).
 
 ## v15.5.0 (2026-10-22 16:50) - codex
 
