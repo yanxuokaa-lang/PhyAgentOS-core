@@ -2,6 +2,20 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.4.12 (2026-10-22 09:35) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [test] [test] 组合安装 PAOS Core 与 workflow wheel，验证 installed imports、semantic builder Registry discovery 和标准 CLI help。 / Co-install PAOS Core and workflow wheels; verify installed imports, semantic-builder Registry discovery, and standard CLI help.
+- [docs] [docs] 完成架构、扩展、AgentLoop 与七维证据复审；真实感知和运动相关维度仍未验收。 / Complete architecture, extensibility, AgentLoop, and seven-dimension evidence review; live perception and motion dimensions remain unaccepted.
+- Implementation commit: `[pending]` on `feature/planning-loop`.
+
+### 文件与关键 Diff / Files and Key Diff
+- `examples/forge-skills/pick-place-workflow/tests/test_semantic_task_creation.py:L241-L318`：组合 wheel 隔离安装与 CLI/Registry smoke。
+- `docs/forge/IMPLEMENTATION_REVIEW_V15_4_12.md:L1-L48`：本阶段审查及七维验收。
+
+详见 [v15.4.12 月度日志](changelog/2026-10_part2.md) 和 [实现审查](docs/forge/IMPLEMENTATION_REVIEW_V15_4_12.md)。
+See the [v15.4.12 detailed log](changelog/2026-10_part2.md) and [implementation review](docs/forge/IMPLEMENTATION_REVIEW_V15_4_12.md).
+
 ## v15.4.11 (2026-10-22 09:30) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]

@@ -238,7 +238,7 @@ def test_installed_workflow_metadata_declares_semantic_builder_entry_point():
     )
 
 
-def test_built_workflow_wheel_is_discovered_by_paos_registry(tmp_path):
+def test_installed_paos_and_workflow_wheels_start_cli_and_discover_builder(tmp_path):
     pytest.importorskip("hatchling")
     repository = Path(__file__).resolve().parents[4]
     workflow = repository / "examples/forge-skills/pick-place-workflow"
@@ -247,24 +247,26 @@ def test_built_workflow_wheel_is_discovered_by_paos_registry(tmp_path):
     wheelhouse.mkdir()
     site_packages.mkdir()
 
-    subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "pip",
-            "wheel",
-            "--no-deps",
-            "--no-build-isolation",
-            "--wheel-dir",
-            str(wheelhouse),
-            str(workflow),
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
-    wheel = next(wheelhouse.glob("*.whl"))
+    for project in (repository, workflow):
+        subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "wheel",
+                "--no-deps",
+                "--no-build-isolation",
+                "--wheel-dir",
+                str(wheelhouse),
+                str(project),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+    wheels = list(wheelhouse.glob("*.whl"))
+    assert len(wheels) == 2
     subprocess.run(
         [
             sys.executable,
@@ -275,7 +277,7 @@ def test_built_workflow_wheel_is_discovered_by_paos_registry(tmp_path):
             "--no-compile",
             "--target",
             str(site_packages),
-            str(wheel),
+            *(str(wheel) for wheel in wheels),
         ],
         check=True,
         capture_output=True,
@@ -284,28 +286,35 @@ def test_built_workflow_wheel_is_discovered_by_paos_registry(tmp_path):
     )
 
     smoke = (
+        "from pathlib import Path; "
+        "import sys; "
+        "target = Path(sys.argv[1]).resolve(); "
+        "import PhyAgentOS, pick_place_workflow; "
+        "assert Path(PhyAgentOS.__file__).resolve().is_relative_to(target); "
+        "assert Path(pick_place_workflow.__file__).resolve().is_relative_to(target); "
         "from PhyAgentOS.agent.semantic_builder_registry import SemanticPlanBuilderRegistry; "
         "registry = SemanticPlanBuilderRegistry(); "
         "ids = registry.discover(); "
         "assert 'pick_place_workflow' in ids, ids; "
         "builder = registry.create('pick_place_workflow', query_invoker=object()); "
         "assert callable(getattr(builder, 'build', None)); "
-        "assert type(builder).__name__ == 'AsyncQuerySemanticPlanBuilder'"
+        "assert type(builder).__name__ == 'AsyncQuerySemanticPlanBuilder'; "
+        "from typer.testing import CliRunner; "
+        "from PhyAgentOS.cli.commands import app; "
+        "result = CliRunner().invoke(app, ['--help']); "
+        "assert result.exit_code == 0, result.exception; "
+        "assert 'PhyAgentOS' in result.stdout"
     )
     env = os.environ.copy()
-    existing_pythonpath = env.get("PYTHONPATH")
-    env["PYTHONPATH"] = os.pathsep.join(
-        value
-        for value in (str(repository), str(site_packages), existing_pythonpath)
-        if value
-    )
+    env["PYTHONPATH"] = str(site_packages)
     subprocess.run(
-        [sys.executable, "-c", smoke],
+        [sys.executable, "-c", smoke, str(site_packages)],
         check=True,
         capture_output=True,
         text=True,
         timeout=30,
         env=env,
+        cwd=tmp_path,
     )
 
 
