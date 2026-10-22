@@ -66,7 +66,50 @@ def _provider(*, prefix: str = "a", scene: str = "scene-1", duplicate: bool = Fa
               "grasp.propose": grasp, "manipulation.capabilities": capability}
 
     def invoke(tool_id, arguments):
-        del arguments
+        if tool_id == "scene.observe":
+            return deepcopy(values[tool_id])
+        request = arguments.get("request", {})
+        if tool_id == "scene.understand":
+            request = arguments
+        elif tool_id == "grasp.propose":
+            target = arguments["targets"][0]
+            source_ref = target["entity_ref"]
+            source_label = source_ref.removeprefix("entity://").removesuffix("-bottle")
+            return {
+                **deepcopy(grasp),
+                "candidate_set_ref": f"candidate-set://{scene}/{source_label}",
+                "candidates": [{"candidate_ref": f"candidate://{scene}/{source_label}/0",
+                                  "entity_ref": source_ref, "confidence": 0.9}],
+            }
+        elif tool_id != "scene.understand":
+            return deepcopy(values[tool_id])
+        source_category = request.get("source_category", "reagent_bottle")
+        source_label = request.get("source_selector", {}).get("label", prefix)
+        destination_category = request.get("destination_category", "beaker")
+        destination_label = request.get("destination_selector", {}).get("label", f"{prefix}-beaker")
+        source_ref = f"entity://{source_label}-bottle"
+        destination_ref = f"entity://{destination_label}"
+        if tool_id == "scene.understand":
+            if duplicate:
+                return {
+                    **deepcopy(understanding),
+                    "entities": [
+                        {"entity_ref": source_ref, "category": source_category, "label": source_label, "confidence": 0.95},
+                        {"entity_ref": f"entity://{source_label}-bottle-2", "category": source_category, "label": source_label, "confidence": 0.9},
+                        {"entity_ref": destination_ref, "category": destination_category, "label": destination_label, "confidence": 0.99},
+                    ],
+                }
+            return {
+                **deepcopy(understanding),
+                "entities": [
+                    {"entity_ref": source_ref, "category": source_category, "label": source_label, "confidence": 0.95},
+                    {"entity_ref": destination_ref, "category": destination_category, "label": destination_label, "confidence": 0.99},
+                ],
+                "spatial_envelopes": [
+                    {"entity_ref": source_ref, "frame_id": "camera-front", "min_xyz_m": [0, 0, 0], "max_xyz_m": [0.1, 0.1, 0.2], "confidence": 0.9},
+                    {"entity_ref": destination_ref, "frame_id": "camera-front", "min_xyz_m": [0.3, 0, 0], "max_xyz_m": [0.5, 0.2, 0.2], "confidence": 0.9},
+                ],
+            }
         return deepcopy(values[tool_id])
 
     return invoke
@@ -79,6 +122,47 @@ def _request(prefix: str = "a"):
         "sensor_refs": ["camera/front"], "max_age_ms": 1000,
         "source_selector": {"label": prefix}, "parameters": {"magnitude": 0.8},
     }]
+
+
+def _mixture_query(tool_id, arguments):
+    """A replaceable no-motion Query provider keyed by current semantic selectors."""
+    identity = {
+        "observation_ref": "observation://mix-scene/front",
+        "scene_revision": "mix-scene",
+        "frame": {"frame_id": "camera-front", "unit": "m"},
+        "calibration_ref": "artifact://calibration/front",
+        "freshness_ms": 5,
+    }
+    if tool_id == "scene.observe":
+        return {**identity, "status": "available",
+                "artifacts": [{"ref": "artifact://observations/mix-scene/rgb"}]}
+    if tool_id == "scene.understand":
+        return {
+            **identity, "status": "available",
+            "entities": [
+                {"entity_ref": "entity://reagent-a", "category": "reagent_bottle", "label": "reagent-a", "confidence": 0.98},
+                {"entity_ref": "entity://reagent-b", "category": "reagent_bottle", "label": "reagent-b", "confidence": 0.98},
+                {"entity_ref": "entity://glass-rod", "category": "stir_tool", "label": "glass-rod", "confidence": 0.98},
+                {"entity_ref": "entity://mixing-vessel", "category": "mixing_vessel", "label": "mixing-vessel", "confidence": 0.99},
+                {"entity_ref": "entity://other-vessel", "category": "mixing_vessel", "label": "other-vessel", "confidence": 0.99},
+            ],
+            "spatial_envelopes": [
+                *[{"entity_ref": ref, "frame_id": "camera-front", "min_xyz_m": [0, 0, 0], "max_xyz_m": [0.1, 0.1, 0.2], "confidence": 0.95}
+                  for ref in ("entity://reagent-a", "entity://reagent-b", "entity://glass-rod", "entity://mixing-vessel", "entity://other-vessel")],
+            ],
+        }
+    if tool_id == "grasp.propose":
+        target = arguments["targets"][0]
+        source_ref = target["entity_ref"]
+        source_label = source_ref.removeprefix("entity://")
+        return {**identity, "status": "available",
+                "candidate_set_ref": f"candidate-set://mix-scene/{source_label}",
+                "candidates": [{"candidate_ref": f"candidate://mix-scene/{source_label}/0",
+                                  "entity_ref": target["entity_ref"], "confidence": 0.95}]}
+    if tool_id == "manipulation.capabilities":
+        return {**identity, "status": "available",
+                "snapshot_ref": "artifact://capabilities/mix-scene", "motion_authorized": False}
+    raise AssertionError(tool_id)
 
 
 def _builder(query):
@@ -114,16 +198,106 @@ def test_semantic_builder_is_provider_replaceable():
 def test_semantic_builder_serializes_multiple_subtasks_as_one_ordered_plan():
     provider = _provider()
     plan = _builder(provider).build(
-        "pour then stir",
-        _request() + [{
-            "subtask_id": "stir-after-pour", "operation": "stir",
-            "source_category": "reagent_bottle", "destination_category": "beaker",
-            "sensor_refs": ["camera/front"], "max_age_ms": 1000,
-            "source_selector": {"label": "a"},
-        }],
+        "perform two ordered pours",
+        _request() + [{**_request()[0], "subtask_id": "pour-b", "depends_on": ["pour-a"]}],
     )
     assert plan["nodes"][1]["dependencies"] == ["pour-a"]
     assert plan["nodes"][2]["node_id"] == "verify"
+
+
+def test_agent_loop_tool_call_binds_two_distinct_reagents_then_stir_rod_to_same_vessel(tmp_path):
+    class ScriptedProvider(LLMProvider):
+        def __init__(self):
+            super().__init__()
+            self.responses = [
+                LLMResponse(content=None, tool_calls=[ToolCallRequest(
+                    "mix-task", "forge_task_create", {
+                        "task_description": "将试剂A和试剂B依次倒入烧杯，再用玻璃棒搅拌",
+                        "verification": {"mode": "off"},
+                        "semantic_subtasks": [
+                            {"subtask_id": "pour-a", "operation": "pour",
+                             "source_category": "reagent_bottle", "destination_category": "mixing_vessel",
+                             "sensor_refs": ["camera/front"], "max_age_ms": 1000,
+                             "source_selector": {"label": "reagent-a"},
+                             "destination_selector": {"label": "mixing-vessel"}},
+                            {"subtask_id": "pour-b", "operation": "pour",
+                             "source_category": "reagent_bottle", "destination_category": "mixing_vessel",
+                             "sensor_refs": ["camera/front"], "max_age_ms": 1000,
+                             "source_selector": {"label": "reagent-b"},
+                             "destination_selector": {"label": "mixing-vessel"}},
+                            {"subtask_id": "stir-mixture", "operation": "stir",
+                             "source_category": "stir_tool", "destination_category": "mixing_vessel",
+                             "sensor_refs": ["camera/front"], "max_age_ms": 1000,
+                             "source_selector": {"label": "glass-rod"},
+                             "destination_selector": {"label": "mixing-vessel"}},
+                        ],
+                    },
+                )]),
+                LLMResponse(content="已按标签生成两种试剂后搅拌的任务计划；执行需等待实验室路线资格。"),
+            ]
+
+        async def chat(self, **kwargs):
+            del kwargs
+            return self.responses.pop(0)
+
+        def get_default_model(self):
+            return "test-model"
+
+    coordinator = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=object())
+    provider = ScriptedProvider()
+    loop = AgentLoop(
+        bus=MessageBus(), provider=provider, workspace=tmp_path,
+        forge_task_coordinator=coordinator,
+        semantic_plan_builder=AsyncQuerySemanticPlanBuilder(_mixture_query),
+        max_iterations=3,
+    )
+    result = asyncio.run(loop._run_agent_loop([
+        {"role": "user", "content": "将试剂A和试剂B混合后搅拌"},
+    ]))
+    assert "路线资格" in result.content
+    task = coordinator.store.active()
+    if task is None:
+        records = list(coordinator.store.list_all())
+        assert records, "Agent tool call must persist the semantic task"
+        task = records[-1]
+    nodes = task.active_revision.plan_graph.nodes
+    assert [node.node_id for node in nodes] == ["pour-a", "pour-b", "stir-mixture", "verify"]
+    assert [node.input_bindings["binding"]["entity_ref"] for node in nodes[:3]] == [
+        "entity://reagent-a", "entity://reagent-b", "entity://glass-rod",
+    ]
+    assert len({node.input_bindings["binding"]["destination_ref"] for node in nodes[:3]}) == 1
+    assert nodes[1].dependencies == ("pour-a",)
+    assert nodes[2].dependencies == ("pour-b",)
+    assert all(node.capability == "manipulation.execute_subtask" for node in nodes[:3])
+
+
+@pytest.mark.parametrize(
+    "mutate, message",
+    [
+        (lambda requests: requests[:1], "final stir-tool"),
+        (lambda requests: requests[:1] + requests[2:], "at least two reagent"),
+            (lambda requests: [requests[0], {**requests[1], "source_selector": {"label": "reagent-a"}}, requests[2]], "distinct reagent"),
+        (lambda requests: [requests[0], requests[2], requests[1]], "end with exactly one stir"),
+        (lambda requests: [*requests[:2], {**requests[2], "destination_selector": {"label": "other-vessel"}}], "same observed vessel"),
+    ],
+)
+def test_semantic_mixture_plan_rejects_incomplete_or_misbound_requests(mutate, message):
+    requests = [
+        {"subtask_id": "pour-a", "operation": "pour", "source_category": "reagent_bottle",
+         "destination_category": "mixing_vessel", "sensor_refs": ["camera/front"],
+         "max_age_ms": 1000, "source_selector": {"label": "reagent-a"},
+         "destination_selector": {"label": "mixing-vessel"}},
+        {"subtask_id": "pour-b", "operation": "pour", "source_category": "reagent_bottle",
+         "destination_category": "mixing_vessel", "sensor_refs": ["camera/front"],
+         "max_age_ms": 1000, "source_selector": {"label": "reagent-b"},
+         "destination_selector": {"label": "mixing-vessel"}},
+        {"subtask_id": "stir-mixture", "operation": "stir", "source_category": "stir_tool",
+         "destination_category": "mixing_vessel", "sensor_refs": ["camera/front"],
+         "max_age_ms": 1000, "source_selector": {"label": "glass-rod"},
+         "destination_selector": {"label": "mixing-vessel"}},
+    ]
+    with pytest.raises(SemanticTaskCreationError, match=message):
+        _builder(_mixture_query).build("mix two reagents and stir", mutate(requests))
 
 
 def test_semantic_builder_rejects_scene_revision_change_between_subtasks():

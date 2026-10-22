@@ -503,7 +503,7 @@ class IsaacSimLabEngine:
     ) -> dict[str, Any]:
         """Run one bounded manipulation phase through a phase-capable backend."""
         del context
-        if phase not in {"acquire", "pour", "place"}:
+        if phase not in {"acquire", "pour", "stir", "place"}:
             return {"status": "unsupported", "outcome_known": False,
                     "world_change_started": False, "failure_code": "unsupported_manipulation_phase"}
         execute = getattr(self.backend, "execute_phase", None)
@@ -587,7 +587,7 @@ class LabUtopiaBackend:
     def execute_phase(
         self, phase: str, arguments: Mapping[str, Any], cancel: Event
     ) -> Mapping[str, Any]:
-        if phase not in {"acquire", "pour", "place"}:
+        if phase not in {"acquire", "pour", "stir", "place"}:
             return {"status": "unsupported", "outcome_known": False,
                     "world_change_started": False, "failure_code": "unsupported_manipulation_phase"}
         if os.environ.get("OMNI_KIT_ACCEPT_EULA", "").lower() not in {"y", "yes", "1", "true"}:

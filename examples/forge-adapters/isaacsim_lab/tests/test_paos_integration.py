@@ -863,3 +863,30 @@ def test_client_never_falls_back_from_phase_action_to_legacy_cycle(tmp_path):
         assert engine.started == []
     finally:
         client.close()
+
+
+def test_client_dispatches_stir_through_phase_executor_not_stir_cycle(tmp_path):
+    class PhaseEngine(FakeEngine):
+        def __init__(self):
+            super().__init__()
+            self.phases = []
+
+        def execute_phase(self, phase, arguments, cancel, **context):
+            self.phases.append((phase, arguments, context))
+            return {"status": "unavailable", "outcome_known": False,
+                    "world_change_started": False, "failure_code": "test_no_motion"}
+
+    engine = PhaseEngine()
+    client = LabUtopiaCycleClient(engine, allow_live=True)
+    try:
+        driver = client.start("stir", "invocation://manipulation-stir/1", CALLER, {
+            "entity_ref": "entity://observed-glass-rod",
+            "scene_revision": "scene-1",
+        })
+        result = driver.poll()
+        assert result is not None
+        assert result["failure_code"] == "test_no_motion"
+        assert engine.phases[0][0] == "stir"
+        assert engine.started == []
+    finally:
+        client.close()

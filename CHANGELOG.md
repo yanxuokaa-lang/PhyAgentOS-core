@@ -2,6 +2,33 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.7.3 (2026-10-22 22:15) - codex
+
+### 变更摘要 / Summary [部分完成 / Partially Completed]
+- [policy] [feat] 同步与异步语义任务 builder 在持久化前验证多试剂混合序列；AgentLoop tool-call no-motion 验收将两个标签选中的试剂和玻璃棒绑定到同一容器，生成 `pour-a → pour-b → stir-mixture → verify`。详见 `changelog/2026-10_part9.md`。 / Validate multi-reagent mixture sequences before persistence in synchronous and asynchronous semantic task builders; the AgentLoop tool-call no-motion acceptance binds two label-selected reagents and a glass rod to one vessel, producing `pour-a → pour-b → stir-mixture → verify`. See `changelog/2026-10_part9.md`.
+- [test] [test] Agent/semantic task/worker/engine focused regression: `107 passed`; Ruff, compileall, and `git diff --check` passed. / Focused Agent/semantic task/worker/engine regressions: `107 passed`; Ruff, compileall, and `git diff --check` passed.
+- [env] [docs] 仅验收规划和观测绑定；LabUtopia 默认 route qualification 与 phase controller 仍 unavailable，物理混合未验收。 / Planning and observation binding only; default LabUtopia route qualification and phase controllers remain unavailable, so physical mixing is not accepted.
+- Commit: 待提交；Branch: `feature/planning-loop`。
+
+```diff
+- Agent semantic subtasks persisted without cross-request mixture validation
++ reject fewer than two distinct reagent pours, wrong order, or different vessel/tool binding
++ Agent tool call -> observed reagent A + reagent B + glass rod -> ordered mixture PlanGraph
+```
+
+## v15.7.2 (2026-10-22 21:49) - codex
+
+### 变更摘要 / Summary [部分完成 / Partially Completed]
+- [env] [fix] 将手持 `stir` 加入 LabUtopia phase RPC 路由；不回退至旧 `stir_cycle`。默认 provider 仍明确返回 unavailable，直到路线资格和搅拌控制器可用。 / Route held `stir` through the LabUtopia phase RPC without falling back to legacy `stir_cycle`. The default provider remains unavailable until route qualification and the stir controller exist.
+- [test] [test] 定向 Agent 子任务/Runtime/Worker no-motion 回归 `141 passed`；未启动 Isaac Sim、相机推理、IK、碰撞查询或运动。 / Focused Agent-subtask/Runtime/Worker no-motion regressions: `141 passed`; no Isaac Sim, camera inference, IK, collision query, or motion ran.
+- Commit: 待提交；Branch: `feature/planning-loop`。
+
+```diff
+- phase dispatch: acquire | pour | place
++ phase dispatch: acquire | pour | stir | place
++ held stir -> phase RPC; no legacy cycle fallback
+```
+
 ## v15.7.0 (2026-10-22 20:03) - codex
 
 ### 变更摘要 / Summary [部分完成 / Partially Completed]

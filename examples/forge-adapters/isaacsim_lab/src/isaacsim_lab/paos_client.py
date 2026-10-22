@@ -277,7 +277,7 @@ class LabUtopiaCycleClient:
                 raise LabUtopiaPAOSClientError("LabUtopia client is closed")
         cancel = Event()
         phase_executor = getattr(self.engine, "execute_phase", None)
-        if operation in {"acquire", "pour", "place"}:
+        if operation in {"acquire", "pour", "stir", "place"}:
             if not callable(phase_executor):
                 raise LabUtopiaPAOSClientError(
                     f"phase-level execution is unavailable for {operation}"

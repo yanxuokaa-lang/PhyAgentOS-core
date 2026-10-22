@@ -643,6 +643,19 @@ def test_backend_phase_ports_remain_unavailable_until_measured_routes_exist(tmp_
     assert phase["motion_authorized"] is False
 
 
+def test_backend_phase_dispatch_accepts_stir_without_claiming_execution(tmp_path):
+    profile = make_profile(tmp_path)
+    backend = LabUtopiaBackend(profile)
+    phase = backend.execute_phase_in_session(
+        object(), {"operation": "stir", "scene_revision": "scene-1"}, Event()
+    )
+
+    assert phase["status"] == "unavailable"
+    assert phase["failure_code"] == "labutopia_phase_controller_not_implemented"
+    assert phase["world_change_started"] is False
+    assert phase["motion_authorized"] is False
+
+
 def test_generic_pour_rejects_parameters_not_exposed_by_controller(tmp_path):
     profile = make_profile(tmp_path)
     arguments = profile.paos_input({"parameters": {

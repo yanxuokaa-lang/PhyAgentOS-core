@@ -103,6 +103,32 @@ class QuerySemanticPlanBuilder:
         })
         return planner_digest, policy_digest
 
+    @staticmethod
+    def _validate_mixture_sequence(specs: list[SubtaskSpec], task_description: str) -> None:
+        """Keep a multi-reagent mix plan semantically complete before persistence.
+
+        Individual Query schemas cannot enforce relationships across requests.
+        When a stir obligation is present, require two distinct observed pour
+        entities into one observed destination, followed by a stir binding to
+        that same destination.
+        """
+        mixture_requested = any(token in task_description.casefold() for token in ("mix", "mixture", "stir", "混合", "搅拌"))
+        if not mixture_requested:
+            return
+        stir_indices = [index for index, spec in enumerate(specs) if spec.operation == "stir"]
+        if not stir_indices:
+            raise SemanticTaskCreationError("mixture plan requires a final stir-tool subtask")
+        if len(stir_indices) != 1 or stir_indices[0] != len(specs) - 1:
+            raise SemanticTaskCreationError("mixture plan must end with exactly one stir subtask")
+        pours = [spec for spec in specs[:stir_indices[0]] if spec.operation == "pour"]
+        if len(pours) < 2:
+            raise SemanticTaskCreationError("mixture plan requires at least two reagent pour subtasks before stirring")
+        if len({spec.binding.entity_ref for spec in pours}) != len(pours):
+            raise SemanticTaskCreationError("mixture plan must bind each pour to a distinct reagent entity")
+        destinations = {spec.binding.destination_ref for spec in pours}
+        if len(destinations) != 1 or specs[stir_indices[0]].binding.destination_ref not in destinations:
+            raise SemanticTaskCreationError("all reagent pours and final stir must bind to the same observed vessel")
+
     async def _runtime_policy_digest(self) -> str:
         get_tool = getattr(self.query_invoker, "get_tool", None)
         if not callable(get_tool):
@@ -165,6 +191,7 @@ class QuerySemanticPlanBuilder:
             scene_revisions.add(spec.binding.scene_revision)
         if len(scene_revisions) != 1:
             raise SemanticTaskCreationError("semantic subtasks must share one scene revision")
+        self._validate_mixture_sequence(specs, task_description)
         try:
             return compose_subtask_plan(
                 task_id,
@@ -219,6 +246,7 @@ class AsyncQuerySemanticPlanBuilder(QuerySemanticPlanBuilder):
             scene_revisions.add(spec.binding.scene_revision)
         if len(scene_revisions) != 1:
             raise SemanticTaskCreationError("semantic subtasks must share one scene revision")
+        self._validate_mixture_sequence(specs, task_description)
         try:
             return compose_subtask_plan(
                 task_id, revision_id, tuple(specs),
