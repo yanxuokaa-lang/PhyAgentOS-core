@@ -10,6 +10,10 @@ from .grasp_proposal import (
     normalize_snapshot as normalize_grasp_snapshot,
 )
 from .http_transport import CapabilityRuntimeTransport
+from .inference_registry import (
+    SceneUnderstandingInferenceFactory,
+    SceneUnderstandingInferenceRegistry,
+)
 from .manipulation_capabilities import (
     CAPABILITY_ENDPOINT_ID,
     CAPABILITY_OPERATION,
@@ -89,6 +93,8 @@ __all__ = [
     "QueryEndpoint",
     "ReadinessEvaluator",
     "SceneUnderstandingProvider",
+    "SceneUnderstandingInferenceFactory",
+    "SceneUnderstandingInferenceRegistry",
     "SceneUnderstandingEndpoint",
     "SCENE_UNDERSTANDING_TOOL_SPEC",
     "UnderstandingSnapshot",

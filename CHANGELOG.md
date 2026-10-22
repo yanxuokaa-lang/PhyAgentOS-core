@@ -2,6 +2,16 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.6.4 (2026-10-22 15:05) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [policy] [feat] 增加 provider-neutral inference factory registry；通过 entry point 选择模型实现，Core 不含模型供应商代码。 / Add a provider-neutral inference factory registry; select model implementations through entry points, with no model-vendor code in Core.
+- [test] [test] 两个 inference factory 替换和 PAOS provenance 测试：`55 passed`。 / Two inference-factory replacement and PAOS provenance tests: `55 passed`.
+- [docs] [docs] `docs/forge/IMPLEMENTATION_REVIEW_V15_6_4.md:L1-L48` 完成阶段审查与七维状态。 / Complete phase review and seven-dimension status at `IMPLEMENTATION_REVIEW_V15_6_4.md:L1-L48`.
+
+### Git 提交 / Git Commit
+- Commit: pending; Branch: `feature/planning-loop`
+
 ## v15.6.3 (2026-10-22 14:20) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
