@@ -2,6 +2,14 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.4.9 (2026-10-22 15:25) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [docs] [docs] 补录 v15.4.8 接入说明提交引用；无实现代码变更。 / Record the v15.4.8 setup-documentation commit reference; no implementation code changed.
+
+详见 [v15.4.9 月度日志](changelog/2026-10_part2.md)。
+See the [v15.4.9 detailed log](changelog/2026-10_part2.md).
+
 ## v15.4.8 (2026-10-22 15:20) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
