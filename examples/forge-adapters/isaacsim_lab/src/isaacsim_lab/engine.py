@@ -600,7 +600,9 @@ class LabUtopiaBackend:
     def _run_session_cycle(self, session: Any, arguments: Mapping[str, Any], cancel: Event, video_path: Path) -> dict[str, Any]:
         self._last_video_info = {}
         try:
-            result = self._run_episode(session.app, arguments, cancel, video_path)
+            result = self._run_episode(session.app, arguments, cancel, video_path, session=session)
+        except UnsupportedControllerCapabilityError as exc:
+            result = _unsupported_result(exc)
         except Exception as exc:
             result = {
                 "status": "unknown",
@@ -616,7 +618,8 @@ class LabUtopiaBackend:
         return result
 
     def observe_in_session(self, session: Any, request: Mapping[str, Any]) -> dict[str, Any]:
-        """Capture through the live ObservationSource owned by this worker session."""
+        """Initialize the shared scene, then capture through a registered source."""
+        self._ensure_session_scene(session)
         source = session.resolve("observation_source")
         capture = getattr(source, "capture", None)
         if callable(capture):
@@ -630,6 +633,37 @@ class LabUtopiaBackend:
             "failure_code": "session_camera_registry_unavailable",
         }
 
+    def _ensure_session_scene(self, session: Any) -> None:
+        if session.resolve("lab_scene_resources") is not None:
+            return
+        if not _isaac_runtime_available():
+            return
+        self._prepend_lab_root()
+        import numpy as np
+        import omni.usd
+        from factories.robot_factory import create_robot
+        from isaacsim.core.api import World
+        from isaacsim.core.utils.stage import add_reference_to_stage
+        from omegaconf import OmegaConf
+        from utils.object_utils import ObjectUtils
+
+        cfg = OmegaConf.load(str(self.profile.config_path))
+        _get_session_scene_resources(
+            session,
+            profile=self.profile,
+            world_factory=lambda: World(
+                stage_units_in_meters=1.0, physics_prim_path="/physicsScene", backend="numpy"
+            ),
+            robot_factory=lambda: create_robot(
+                cfg.robot.type,
+                position=np.array(cfg.robot.position),
+                usd_path=str(self.profile.robot_usd_path),
+            ),
+            stage_provider=lambda: omni.usd.get_context().get_stage(),
+            add_reference_to_stage=add_reference_to_stage,
+            object_utils=ObjectUtils,
+        )
+
     def close_session(self, session: Any) -> None:
         """Drop session-scoped backend references before SimulationApp shutdown."""
         del session
@@ -641,13 +675,20 @@ class LabUtopiaBackend:
         arguments: Mapping[str, Any],
         cancel: Event,
         video_path: Path | None = None,
+        *,
+        session: Any | None = None,
     ) -> dict[str, Any]:
         normalized = normalize_process_parameters(arguments, self.profile)
         process_type = normalized["process_type"]
         if process_type == "pour":
-            return self._run_pour_episode(app, arguments, normalized, cancel, video_path)
+            return self._run_pour_episode(app, arguments, normalized, cancel, video_path, session=session)
         if process_type == "stir":
-            return self._run_stir_episode(app, arguments, normalized, cancel, video_path)
+            return self._run_stir_episode(app, arguments, normalized, cancel, video_path, session=session)
+        if session is not None:
+            raise UnsupportedControllerCapabilityError(
+                str(process_type), (),
+                reason="worker-owned scene reuse is currently supported only for pour and stir tasks",
+            )
         return self._run_rotation_episode(app, arguments, normalized, cancel, video_path)
 
     def _run_pour_episode(
@@ -657,6 +698,8 @@ class LabUtopiaBackend:
         process_parameters: Mapping[str, Any],
         cancel: Event,
         video_path: Path | None = None,
+        *,
+        session: Any | None = None,
     ) -> dict[str, Any]:
         self._prepend_lab_root()
         import numpy as np
@@ -692,17 +735,24 @@ class LabUtopiaBackend:
                 },
             }]
 
-        world = World(stage_units_in_meters=1.0, physics_prim_path="/physicsScene", backend="numpy")
-        robot = create_robot(
-            cfg.robot.type,
-            position=np.array(cfg.robot.position),
-            usd_path=str(self.profile.robot_usd_path),
+        scene = _get_session_scene_resources(
+            session,
+            profile=self.profile,
+            world_factory=lambda: World(
+                stage_units_in_meters=1.0, physics_prim_path="/physicsScene", backend="numpy"
+            ),
+            robot_factory=lambda: create_robot(
+                cfg.robot.type,
+                position=np.array(cfg.robot.position),
+                usd_path=str(self.profile.robot_usd_path),
+            ),
+            stage_provider=lambda: omni.usd.get_context().get_stage(),
+            add_reference_to_stage=add_reference_to_stage,
+            object_utils=ObjectUtils,
         )
-        stage = omni.usd.get_context().get_stage()
-        add_reference_to_stage(usd_path=str(self.profile.scene_usd_path), prim_path="/World")
-        ObjectUtils.get_instance(stage)
+        world, robot, stage = scene["world"], scene["robot"], scene["stage"]
         task = _create_session_owned_task(
-            world, robot, PickPourTask, cfg=cfg, stage=stage
+            world, robot, PickPourTask, scene_state=scene, cfg=cfg, stage=stage
         )
         controller = create_controller(cfg.controller_type, cfg=cfg, robot=robot)
         _configure_pour_controller(controller, process_parameters)
@@ -876,6 +926,8 @@ class LabUtopiaBackend:
         process_parameters: Mapping[str, Any],
         cancel: Event,
         video_path: Path | None = None,
+        *,
+        session: Any | None = None,
     ) -> dict[str, Any]:
         """Run LabUtopia's real glass-rod pick/stir controller."""
         self._prepend_lab_root()
@@ -913,13 +965,22 @@ class LabUtopiaBackend:
             cfg.task.max_steps = max(int(cfg.task.get("max_steps", 2000)), 2000)
             cfg.task.obj_paths = [{"path": source_path, "position_range": {"x": [0.25, 0.30], "y": [0.02, 0.08], "z": [0.81, 0.81]}}]
 
-        world = World(stage_units_in_meters=1.0, physics_prim_path="/physicsScene", backend="numpy")
-        robot = create_robot(cfg.robot.type, position=np.array(cfg.robot.position), usd_path=str(self.profile.robot_usd_path))
-        stage = omni.usd.get_context().get_stage()
-        add_reference_to_stage(usd_path=str(self.profile.scene_usd_path), prim_path="/World")
-        ObjectUtils.get_instance(stage)
+        scene = _get_session_scene_resources(
+            session,
+            profile=self.profile,
+            world_factory=lambda: World(
+                stage_units_in_meters=1.0, physics_prim_path="/physicsScene", backend="numpy"
+            ),
+            robot_factory=lambda: create_robot(
+                cfg.robot.type, position=np.array(cfg.robot.position), usd_path=str(self.profile.robot_usd_path)
+            ),
+            stage_provider=lambda: omni.usd.get_context().get_stage(),
+            add_reference_to_stage=add_reference_to_stage,
+            object_utils=ObjectUtils,
+        )
+        world, robot, stage = scene["world"], scene["robot"], scene["stage"]
         task = _create_session_owned_task(
-            world, robot, StirTask, cfg=cfg, stage=stage
+            world, robot, StirTask, scene_state=scene, cfg=cfg, stage=stage
         )
         controller = create_controller(cfg.controller_type, cfg=cfg, robot=robot)
         _configure_stir_controller(controller, process_parameters)
@@ -1846,11 +1907,62 @@ def _pour_controller_target(state, profile, np, rotation_cls, process_frame=None
     return target - mouth_offset
 
 
-def _create_session_owned_task(world: Any, robot: Any, task_type: Any, **kwargs: Any) -> Any:
-    """Initialize scene state once, then construct a task that cannot reset it."""
-    world.reset()
+def _get_session_scene_resources(
+    session: Any | None,
+    *,
+    profile: LabUtopiaProfile,
+    world_factory: Any,
+    robot_factory: Any,
+    stage_provider: Any,
+    add_reference_to_stage: Any,
+    object_utils: Any,
+) -> dict[str, Any]:
+    """Resolve one worker-owned scene, or create episode-local resources in-process."""
+    if session is not None:
+        existing = session.resolve("lab_scene_resources")
+        if existing is not None:
+            if existing["scene_usd_path"] != str(profile.scene_usd_path):
+                raise IsaacLabRuntimeError("worker session cannot switch its loaded scene")
+            return existing
+
+    world = world_factory()
+    robot = robot_factory()
+    stage = stage_provider()
+    add_reference_to_stage(usd_path=str(profile.scene_usd_path), prim_path="/World")
+    object_utils.get_instance(stage)
+    scene = {
+        "world": world,
+        "robot": robot,
+        "stage": stage,
+        "scene_usd_path": str(profile.scene_usd_path),
+        "world_initialized": False,
+        "robot_initialized": False,
+    }
+    if session is not None:
+        world.reset()
+        scene["world_initialized"] = True
+        session.register("lab_scene_resources", scene)
+    return scene
+
+
+def _create_session_owned_task(
+    world: Any,
+    robot: Any,
+    task_type: Any,
+    *,
+    scene_state: dict[str, Any] | None = None,
+    **kwargs: Any,
+) -> Any:
+    """Construct an episode Task without resetting session-owned scene resources."""
+    if scene_state is None or not scene_state["world_initialized"]:
+        world.reset()
+        if scene_state is not None:
+            scene_state["world_initialized"] = True
     task = task_type(world=world, robot=robot, session_owned_scene=True, **kwargs)
-    robot.initialize()
+    if scene_state is None or not scene_state["robot_initialized"]:
+        robot.initialize()
+        if scene_state is not None:
+            scene_state["robot_initialized"] = True
     task.reset()
     return task
 

@@ -2,6 +2,29 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.5.7 (2026-10-22 12:05) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [env] [refactor] worker session 在首次 observe/action 持有并复用同一 World、USD stage 和 robot；pour/stir Task 保持 episode-scoped，避免目标和帧状态泄漏；未接入 owned lifecycle 的旋转任务在共享 worker 路径明确返回 unsupported。 / The worker session owns and reuses one World, USD stage, and robot across observe/action; pour/stir Tasks remain episode-scoped to prevent target/frame-state leakage; rotation tasks without an owned lifecycle return unsupported on the shared worker path.
+- [test] [test] Isaac adapter suite `73 passed`；覆盖资源 identity、单次 World reset/robot initialize、Task wrapper 切换、scene 路径不匹配拒绝及 rotation unsupported 反馈。 / Isaac adapter suite: `73 passed`; cover resource identity, one World reset/robot initialization, Task wrapper switching, scene-path mismatch rejection, and unsupported rotation feedback.
+- [docs] [docs] PAOS 架构、扩展原则、Developer Guide、AgentLoop、反过度防御与七维 review 已记录；完整 LabUtopia 方案仍未验收。 / Record PAOS architecture, extensibility, Developer Guide, AgentLoop, anti-overdefense, and seven-dimension review; the full LabUtopia plan remains unaccepted.
+- Implementation commit: `[pending]` on `feature/planning-loop`.
+
+### 文件与关键 Diff / Files and Key Diff
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/engine.py:L608-L671,L678-L690,L698-L750,L926-L989,L1910-L1967`：observe 初始化 worker-owned scene；pour/stir episode 复用 World/stage/robot、Task 逐调用构造；共享 worker 中不支持的 task 返回 `unsupported` 且不开始 world change。
+- `examples/forge-adapters/isaacsim_lab/tests/test_engine.py:L175-L291`：no-motion 资源复用、Task 生命周期、scene profile mismatch 和 fail-closed rotation 测试。
+- `docs/forge/IMPLEMENTATION_REVIEW_V15_5_7.md:L1-L49`：PAOS/扩展/Developer Guide/AgentLoop review 与七维阶段验收。
+
+```diff
+- each episode -> new World + robot + stage reference; reset/init each Task
++ worker session -> one World + stage + robot shared across observe and pour/stir RPCs
++ episode-scoped Task wrappers -> no shared World reset or duplicate robot initialization
++ incompatible shared-scene operation -> unsupported, world_change_started=false
+```
+
+详见 [v15.5.7 月度日志](changelog/2026-10_part8.md) 和 [实现审查](docs/forge/IMPLEMENTATION_REVIEW_V15_5_7.md)。
+See the [v15.5.7 detailed log](changelog/2026-10_part8.md) and [implementation review](docs/forge/IMPLEMENTATION_REVIEW_V15_5_7.md).
+
 ## v15.5.6 (2026-10-22 23:30) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
@@ -92,7 +115,7 @@ See the [v15.5.4 detailed log](changelog/2026-10_part8.md) and [implementation r
 详见 [v15.5.3 月度日志](changelog/2026-10_part8.md) 和 [实现审查](docs/forge/IMPLEMENTATION_REVIEW_V15_5_3.md)。
 See the [v15.5.3 detailed log](changelog/2026-10_part8.md) and [implementation review](docs/forge/IMPLEMENTATION_REVIEW_V15_5_3.md).
 
-## v15.5.2 (2026-10-22 12:10) - codex
+### Archived v15.5.2 (2026-10-22 12:10) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
 - [env] [feat] 将每 Action 单独启动的 Isaac worker 改为一个可复用 SimulationApp 进程，通过 Unix socket 顺序处理 action/observe request，支持请求关联、取消标记和显式关闭；camera registry 未接入时返回 unavailable。 / Replace the per-Action worker with one reusable SimulationApp process serving ordered action/observe requests over Unix socket, with request correlation, cancellation markers, and explicit shutdown; return unavailable until a camera registry is wired.

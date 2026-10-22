@@ -17,6 +17,7 @@ from isaacsim_lab.engine import (
     _failed_events,
     _generic_phase_events,
     _generic_result,
+    _get_session_scene_resources,
     _pour_controller_target,
     _stir_controller_target,
     _stir_phase_events,
@@ -169,6 +170,119 @@ def test_session_owned_task_initializes_world_before_task_and_never_resets_it_ag
 
     assert isinstance(task, Task)
     assert events == ["world.reset", "task.construct", "robot.initialize", "task.reset"]
+
+
+def test_worker_session_reuses_scene_resources_but_constructs_episode_tasks(tmp_path):
+    from isaacsim_lab.worker import WorkerSessionContext
+
+    profile = make_profile(tmp_path)
+    session = WorkerSessionContext(object())
+    counts = {"world": 0, "robot": 0, "stage": 0, "reference": 0, "object_utils": 0}
+
+    class World:
+        def reset(self):
+            counts["world"] += 1
+
+    class Robot:
+        def initialize(self):
+            counts["robot"] += 1
+
+    stage = object()
+
+    class ObjectUtils:
+        @staticmethod
+        def get_instance(actual_stage):
+            assert actual_stage is stage
+            counts["object_utils"] += 1
+
+    def make_world():
+        counts["world_created"] = counts.get("world_created", 0) + 1
+        return World()
+
+    def make_robot():
+        counts["robot_created"] = counts.get("robot_created", 0) + 1
+        return Robot()
+
+    def resources():
+        return _get_session_scene_resources(
+            session,
+            profile=profile,
+            world_factory=make_world,
+            robot_factory=make_robot,
+            stage_provider=lambda: (counts.__setitem__("stage", counts["stage"] + 1) or stage),
+            add_reference_to_stage=lambda **_kwargs: counts.__setitem__("reference", counts["reference"] + 1),
+            object_utils=ObjectUtils,
+        )
+
+    first = resources()
+    second = resources()
+
+    class Task:
+        def __init__(self, *, world, robot, session_owned_scene, **_kwargs):
+            assert world is first["world"]
+            assert robot is first["robot"]
+            assert session_owned_scene is True
+            self.reset_count = 0
+
+        def reset(self):
+            self.reset_count += 1
+
+    first_task = module._create_session_owned_task(
+        first["world"], first["robot"], Task, scene_state=first, cfg="pour", stage=first["stage"]
+    )
+    second_task = module._create_session_owned_task(
+        second["world"], second["robot"], Task, scene_state=second, cfg="stir", stage=second["stage"]
+    )
+
+    assert first["world"] is second["world"]
+    assert first["robot"] is second["robot"]
+    assert first["stage"] is second["stage"]
+    assert first_task is not second_task
+    assert counts == {
+        "world": 1, "robot": 1, "stage": 1, "reference": 1,
+        "object_utils": 1, "world_created": 1, "robot_created": 1,
+    }
+
+
+def test_worker_session_rejects_scene_profile_switch(tmp_path):
+    from isaacsim_lab.worker import WorkerSessionContext
+
+    profile = make_profile(tmp_path)
+    session = WorkerSessionContext(object())
+    scene = {
+        "world": object(), "robot": object(), "stage": object(),
+        "scene_usd_path": "other.usd", "world_initialized": True, "robot_initialized": True,
+    }
+    session.register("lab_scene_resources", scene)
+    with pytest.raises(module.IsaacLabRuntimeError, match="cannot switch its loaded scene"):
+        _get_session_scene_resources(
+            session,
+            profile=profile,
+            world_factory=lambda: pytest.fail("must not create a second World"),
+            robot_factory=lambda: pytest.fail("must not create a second robot"),
+            stage_provider=lambda: pytest.fail("must not resolve another stage"),
+            add_reference_to_stage=lambda **_kwargs: pytest.fail("must not load another scene"),
+            object_utils=object(),
+        )
+
+
+def test_session_cycle_reports_unintegrated_task_as_unsupported_without_world_change(tmp_path, monkeypatch):
+    from isaacsim_lab.worker import WorkerSessionContext
+
+    profile = make_profile(tmp_path)
+    backend = LabUtopiaBackend(profile)
+    monkeypatch.setattr(module, "normalize_process_parameters", lambda *_args: {"process_type": "handle_rotation"})
+    session = WorkerSessionContext(object())
+    result = backend._run_session_cycle(
+        session,
+        {"operation": "handle_rotation"},
+        Event(),
+        tmp_path / "episode.mp4",
+    )
+
+    assert result["status"] == "unsupported"
+    assert result["world_change_started"] is False
+    assert result["motion_authorized"] is False
 
 
 def test_target_world_transform_projects_pose_and_process_frame(tmp_path):
