@@ -241,6 +241,9 @@ def build_labutopia_runtime(
     assignment_store: Any | None = None,
     understanding_artifact_resolver: Any | None = None,
     understanding_inference: Any | None = None,
+    understanding_inference_registry: Any | None = None,
+    understanding_inference_id: str | None = None,
+    understanding_inference_configuration: Mapping[str, Any] | None = None,
     observation_artifact_root: str | Path | None = None,
 ) -> LabUtopiaPAOSRuntime:
     """Compose LabUtopia behind PAOS without owning perception orchestration.
@@ -248,9 +251,9 @@ def build_labutopia_runtime(
     ``perception_adapter`` is the provider-neutral PAOS adapter.  LabUtopia
     only supplies its observation/understanding/grasp/preparation providers;
     when the complete chain is absent, the Agent-facing subtask Tool is not
-    registered.  A deployment may provide ``understanding_artifact_resolver``
-    and ``understanding_inference`` instead of a pre-composed understanding
-    provider.  Both are passed through unchanged to the generic PAOS runtime;
+    registered. A deployment may provide ``understanding_artifact_resolver``
+    and either a direct inference or registry selection instead of a
+    pre-composed understanding provider. These are passed to the generic PAOS runtime;
     storage ownership and model selection remain outside this adapter.  When
     using the default Isaac engine, ``observation_artifact_root`` is passed to
     its worker and can also back the generic local resolver.  A supplied engine
@@ -270,7 +273,10 @@ def build_labutopia_runtime(
     )
     if (
         understanding_provider is None
-        and understanding_inference is not None
+        and (
+            understanding_inference is not None
+            or (understanding_inference_registry is not None and understanding_inference_id is not None)
+        )
         and understanding_artifact_resolver is None
     ):
         if resolved_artifact_root is None:
@@ -295,6 +301,9 @@ def build_labutopia_runtime(
         understanding_provider=understanding_provider,
         understanding_artifact_resolver=understanding_artifact_resolver,
         understanding_inference=understanding_inference,
+        understanding_inference_registry=understanding_inference_registry,
+        understanding_inference_id=understanding_inference_id,
+        understanding_inference_configuration=understanding_inference_configuration,
         grasp_provider=grasp_provider,
         preparation_provider=preparation_provider,
         capability_provider=capability_provider,
@@ -312,7 +321,10 @@ def build_labutopia_runtime(
     observation_provider = observation_source if observation_source is not None else client
     understanding_ready = callable(getattr(understanding_provider, "understand", None)) or (
         understanding_artifact_resolver is not None
-        and understanding_inference is not None
+        and (
+            understanding_inference is not None
+            or (understanding_inference_registry is not None and understanding_inference_id is not None)
+        )
     )
     query_providers_ready = understanding_ready and all(
         callable(getattr(provider, method, None))

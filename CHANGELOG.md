@@ -2,6 +2,38 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.6.5 (2026-10-22 16:10) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [policy] [feat] 让通用 persistent runtime 接收 deployment-owned inference registry、ID 和配置，并通过 PAOS registry 组合 `ArtifactResolvingSceneUnderstandingProvider`；不引入模型供应商或环境名称。 / Let the generic persistent runtime accept a deployment-owned inference registry, ID, and configuration, composing `ArtifactResolvingSceneUnderstandingProvider` through the PAOS registry without model-vendor or environment names.
+- [test] [test] 增加 registry-backed runtime composition、缺少 resolver/ID、混合参数和 provider replacement 的 no-motion 测试。 / Add no-motion tests for registry-backed runtime composition, missing resolver/ID, mixed arguments, and provider replacement.
+- [docs] [docs] 完成阶段架构、扩展原则、Developer Guide、AgentLoop 与七维审查；不启动 live model、Isaac Sim 或运动。 / Complete phase architecture, extensibility, Developer Guide, AgentLoop, and seven-dimension review; do not start a live model, Isaac Sim, or motion.
+
+### 预计修改 / Planned Files
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/persistent_runtime.py`
+- `examples/forge-skills/pick-place-workflow/tests/test_persistent_runtime.py`
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/paos_client.py`
+- `examples/forge-adapters/isaacsim_lab/tests/test_paos_integration.py`
+- `docs/forge/IMPLEMENTATION_REVIEW_V15_6_5.md`
+- `changelog/2026-10_part8.md`
+
+### 实际修改 / Completed Changes
+- [policy] [feat] `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/persistent_runtime.py:L634-L693` 支持 resolver + registry + inference ID/config composition，并拒绝不完整或混合组合。 / Support resolver + registry + inference ID/config composition and reject incomplete or mixed forms at `persistent_runtime.py:L634-L693`.
+- [policy] [feat] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/paos_client.py:L232-L328` 透传通用 registry 选择；不含模型供应商分支。 / Forward generic registry selection without model-vendor branches at `paos_client.py:L232-L328`.
+- [test] [test] Runtime、LabUtopia wiring、registry no-motion tests: `55 passed`。 / Runtime, LabUtopia wiring, and registry no-motion tests: `55 passed`.
+- [docs] [docs] `docs/forge/IMPLEMENTATION_REVIEW_V15_6_5.md:L1-L42` 完成阶段 review 和七维状态。 / Complete phase review and seven-dimension status at `IMPLEMENTATION_REVIEW_V15_6_5.md:L1-L42`.
+
+```diff
+- environment host directly builds a concrete understanding provider
++ deployment-selected inference ID/config -> generic registry composition
++ generic persistent runtime -> artifact resolver + inference -> scene.understand Query
+```
+
+验证：`55 passed`; Ruff、compileall、`git diff --check` 通过。未启动 live model、Isaac Sim 或运动。 / Validation: `55 passed`; Ruff, compileall, and `git diff --check` pass. No live model, Isaac Sim, or motion was run.
+
+### Git 提交 / Git Commit
+- Commit: pending; Branch: `feature/planning-loop`
+
 ## v15.6.4 (2026-10-22 15:05) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]

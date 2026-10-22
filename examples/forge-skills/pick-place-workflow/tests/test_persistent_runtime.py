@@ -409,6 +409,65 @@ def test_build_runtime_composes_artifact_resolving_understanding_provider(tmp_pa
     assert seen[0]["resolved_artifacts"][0]["media_type"] == "image/png"
 
 
+def test_build_runtime_composes_registry_selected_understanding_inference(tmp_path):
+    from PhyAgentOS.forge.artifacts import LocalFilesystemArtifactResolver
+    from PhyAgentOS.forge.capability_runtime import SceneUnderstandingInferenceRegistry
+
+    (tmp_path / "rgb").mkdir()
+    (tmp_path / "rgb/front.png").write_bytes(b"image-bytes")
+
+    class Providers:
+        def propose(self, _request):
+            return None
+
+        def describe(self, _request):
+            return None
+
+        def prepare(self, _request):
+            return None
+
+    seen = []
+
+    class Factory:
+        inference_id = "fixture"
+
+        def create(self, *, configuration):
+            seen.append(("configuration", configuration))
+            return lambda request: seen.append(("inference", request)) or {"entities": []}
+
+    registry = SceneUnderstandingInferenceRegistry()
+    registry.register(Factory())
+    runtime = build_persistent_runtime(
+        client=object(),
+        understanding_artifact_resolver=LocalFilesystemArtifactResolver({"store": tmp_path}),
+        understanding_inference_registry=registry,
+        understanding_inference_id="fixture",
+        understanding_inference_configuration={"deployment": "test"},
+        grasp_provider=Providers(),
+        preparation_provider=Providers(),
+        capability_provider=Providers(),
+        resolve_preparation=lambda _phase, request: request,
+        tool_context_provider=lambda _tool_id: {"ready": True},
+        register_legacy_actions=False,
+        register_legacy_held_operations=False,
+    )
+
+    result = runtime.invoke_query("scene_understanding", "understand", {
+        "observation_ref": "observation://scene/camera",
+        "scene_revision": "scene",
+        "frame_id": "camera",
+        "calibration_ref": "artifact://store/calibration.json",
+        "freshness_ms": 10,
+        "max_age_ms": 100,
+        "artifacts": ["artifact://store/rgb/front.png"],
+    })
+
+    assert result["status"] == "available"
+    assert seen[0] == ("configuration", {"deployment": "test"})
+    assert seen[1][0] == "inference"
+    assert seen[1][1]["resolved_artifacts"][0]["data"] == b"image-bytes"
+
+
 @pytest.mark.parametrize(
     "provider,resolver,inference",
     [
@@ -429,12 +488,45 @@ def test_build_runtime_rejects_incomplete_or_ambiguous_understanding_composition
         def prepare(self, _request):
             return None
 
-    with pytest.raises(ValueError, match="understanding_provider|not both"):
+    with pytest.raises(ValueError, match="understanding_provider|not both|composition"):
         build_persistent_runtime(
             client=object(),
             understanding_provider=provider,
             understanding_artifact_resolver=resolver,
             understanding_inference=inference,
+            grasp_provider=Providers(),
+            preparation_provider=Providers(),
+            capability_provider=Providers(),
+            resolve_preparation=lambda _phase, request: request,
+            tool_context_provider=lambda _tool_id: {"ready": True},
+        )
+
+
+@pytest.mark.parametrize(
+    "resolver,registry,inference_id",
+    [
+        (None, object(), "fixture"),
+        (object(), None, "fixture"),
+        (object(), object(), None),
+    ],
+)
+def test_build_runtime_rejects_incomplete_registry_composition(resolver, registry, inference_id):
+    class Providers:
+        def propose(self, _request):
+            return None
+
+        def describe(self, _request):
+            return None
+
+        def prepare(self, _request):
+            return None
+
+    with pytest.raises(ValueError, match="composition is required"):
+        build_persistent_runtime(
+            client=object(),
+            understanding_artifact_resolver=resolver,
+            understanding_inference_registry=registry,
+            understanding_inference_id=inference_id,
             grasp_provider=Providers(),
             preparation_provider=Providers(),
             capability_provider=Providers(),

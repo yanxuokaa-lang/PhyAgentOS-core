@@ -637,6 +637,9 @@ def build_persistent_runtime(*, client, understanding_provider=None, grasp_provi
                              observation_source=None,
                              understanding_artifact_resolver=None,
                              understanding_inference=None,
+                             understanding_inference_registry=None,
+                             understanding_inference_id: str | None = None,
+                             understanding_inference_configuration: Mapping[str, Any] | None = None,
                              query_decorator=None, tool_input_defaults=None,
                              require_synchronized_views: bool = False,
                              held_preparation_provider=None, resolve_held_preparation=None,
@@ -651,24 +654,42 @@ def build_persistent_runtime(*, client, understanding_provider=None, grasp_provi
     arguments keep the original candidate/acquire provenance intact.
     tool_context_provider(tool_id) reports host-owned endpoint readiness, not
     whether a specific candidate or Action is admissible in the current world.
-    A host may inject a complete understanding_provider or compose one from an
-    artifact resolver and inference; these two forms cannot be mixed.
+    A host may inject a complete understanding_provider, compose one from an
+    artifact resolver and inference, or select a deployment-owned inference
+    through a registry. These forms cannot be mixed.
     """
     runtime = CapabilityRuntime()
     has_resolver = understanding_artifact_resolver is not None
     has_inference = understanding_inference is not None
+    has_registry = understanding_inference_registry is not None
+    has_registry_id = understanding_inference_id is not None
+    has_registry_configuration = understanding_inference_configuration is not None
     if understanding_provider is None:
-        if not (has_resolver and has_inference):
-            raise ValueError(
-                "understanding_provider or both understanding_artifact_resolver and "
-                "understanding_inference are required"
-            )
-        understanding_provider = ArtifactResolvingSceneUnderstandingProvider(
-            understanding_artifact_resolver, understanding_inference
+        direct_composition = has_resolver and has_inference and not (
+            has_registry or has_registry_id or has_registry_configuration
         )
-    elif has_resolver or has_inference:
+        registry_composition = has_resolver and has_registry and has_registry_id and not has_inference
+        if not (direct_composition or registry_composition):
+            raise ValueError(
+                "understanding_provider or resolver/inference or resolver/registry/inference_id "
+                "composition is required"
+            )
+        if direct_composition:
+            understanding_provider = ArtifactResolvingSceneUnderstandingProvider(
+                understanding_artifact_resolver, understanding_inference
+            )
+        else:
+            compose = getattr(understanding_inference_registry, "compose", None)
+            if not callable(compose):
+                raise TypeError("understanding inference registry must expose compose(...)")
+            understanding_provider = compose(
+                understanding_inference_id,
+                resolver=understanding_artifact_resolver,
+                configuration=understanding_inference_configuration,
+            )
+    elif has_resolver or has_inference or has_registry or has_registry_id or has_registry_configuration:
         raise ValueError(
-            "provide understanding_provider or resolver/inference composition, not both"
+            "provide one understanding composition form, not both"
         )
     if assignment_store is not None:
         resolve_preparation = StoredAssignmentResolver(

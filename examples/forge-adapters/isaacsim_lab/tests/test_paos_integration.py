@@ -7,7 +7,10 @@ from datetime import timezone
 from pathlib import Path
 
 import pytest
-from PhyAgentOS.forge.capability_runtime import CapabilityRuntimeError
+from PhyAgentOS.forge.capability_runtime import (
+    CapabilityRuntimeError,
+    SceneUnderstandingInferenceRegistry,
+)
 from pick_place_workflow.perception_binding import BindingRequest, PerceptionBindingAdapter
 
 from isaacsim_lab.observation import IsaacCameraObservationSource
@@ -458,6 +461,80 @@ def test_labutopia_runtime_composes_shared_artifact_understanding(tmp_path):
         bundle.client.close()
 
 
+def test_labutopia_runtime_composes_registry_selected_understanding(tmp_path):
+    artifact_root = tmp_path / "observation-artifacts"
+    artifact_root.mkdir()
+    (artifact_root / "front.png").write_bytes(b"camera-bytes")
+    engine = FakeEngine()
+    profile = _profile(tmp_path)
+    engine.profile = profile
+    seen = []
+    adapter = PerceptionBindingAdapter(
+        lambda _tool_id, _arguments: {},
+        BindingRequest(("camera/front",), "reagent_a", "beaker", 1000),
+    )
+
+    class Provider:
+        def capture(self, _request):
+            return None
+
+        def propose(self, _request):
+            return None
+
+        def describe(self, _request):
+            return None
+
+        def prepare(self, _request):
+            return None
+
+    class Factory:
+        inference_id = "fixture"
+
+        def create(self, *, configuration):
+            seen.append(("configuration", configuration))
+            return lambda request: seen.append(("inference", request)) or {"entities": []}
+
+    registry = SceneUnderstandingInferenceRegistry()
+    registry.register(Factory())
+    bundle = build_labutopia_runtime(
+        profile=profile,
+        engine=engine,
+        understanding_provider=None,
+        understanding_inference_registry=registry,
+        understanding_inference_id="fixture",
+        understanding_inference_configuration={"deployment": "test"},
+        observation_artifact_root=artifact_root,
+        grasp_provider=Provider(),
+        preparation_provider=Provider(),
+        capability_provider=Provider(),
+        observation_source=Provider(),
+        resolve_preparation=lambda operation, arguments: dict(arguments),
+        tool_context_provider=lambda _: {"ready": True},
+        allow_live=False,
+        perception_adapter=adapter,
+        subtask_context_resolver=lambda _caller: None,
+    )
+    try:
+        result = bundle.runtime.invoke_query(
+            "scene_understanding",
+            "understand",
+            {
+                "observation_ref": "observation://scene-1/camera-front",
+                "scene_revision": "scene-1",
+                "frame_id": "camera-front",
+                "calibration_ref": "artifact://labutopia/front.png",
+                "freshness_ms": 10,
+                "max_age_ms": 100,
+                "artifacts": ["artifact://labutopia/front.png"],
+            },
+        )
+        assert result["status"] == "available"
+        assert seen[0] == ("configuration", {"deployment": "test"})
+        assert seen[1][1]["resolved_artifacts"][0]["data"] == b"camera-bytes"
+    finally:
+        bundle.client.close()
+
+
 @pytest.mark.parametrize(
     "resolver,inference",
     [(object(), None)],
@@ -479,7 +556,7 @@ def test_labutopia_runtime_rejects_incomplete_understanding_composition(
         def prepare(self, _request):
             return None
 
-    with pytest.raises(ValueError, match="understanding_provider or both"):
+    with pytest.raises(ValueError, match="composition is required"):
         build_labutopia_runtime(
             profile=profile,
             engine=engine,
