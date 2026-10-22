@@ -8,7 +8,7 @@
 - [env] [feat] `observation.py:L25-L65` 新增 `FilesystemObservationArtifactWriter`，以 atomic write 持久化相机数组和标定数据，返回带真实 media type 的 `artifact://` 引用。 / Add `FilesystemObservationArtifactWriter` at `observation.py:L25-L65` to atomically persist camera arrays and calibration, returning `artifact://` refs with actual media types.
 - [test] [test] `test_observation.py:L249-L299` 覆盖落盘、读取、唯一 ref、非法输入和写入失败；完整 Isaac adapter tests `76 passed`。 / Cover persistence, readback, unique refs, invalid inputs, and failed writes at `test_observation.py:L249-L299`; complete Isaac adapter tests report `76 passed`.
 - [docs] [docs] review 记录 PAOS ownership、扩展边界、AgentLoop 与七维结果；worker 未接 writer、camera registry 和 live revision，因此完整方案未验收。 / Review records PAOS ownership, extensibility, AgentLoop, and seven-dimension status; the writer is not yet wired into the worker, with camera registry/live revision outstanding, so the full plan is not accepted.
-- Implementation commit: `[pending]` on `feature/planning-loop`.
+- Implementation commit: `effdaf56` on `feature/planning-loop`.
 
 ### 文件与关键 Diff / Files and Key Diff
 - `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/observation.py:L25-L65`：注入式 atomic filesystem writer，NPY/JSON MIME 与落盘内容匹配。
