@@ -1,0 +1,24 @@
+[project]
+name = "paos-scene-understanding-http"
+version = "0.1.0"
+description = "Vendor-neutral HTTP/JSON scene-understanding inference adapter for PAOS deployments"
+requires-python = ">=3.11"
+dependencies = ["httpx>=0.28,<1.0"]
+
+[project.entry-points."paos.scene_understanding_inference"]
+http_json = "paos_http_understanding.factory:HttpJsonInferenceFactory"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/paos_http_understanding"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W"]
+ignore = ["E501"]

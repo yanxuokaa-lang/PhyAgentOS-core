@@ -2,6 +2,29 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.6.6 (2026-10-22 17:00) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [sense] [feat] 新增供应商无关的 deployment-owned HTTP/JSON scene-understanding inference factory，通过 `paos.scene_understanding_inference` entry point 注册；不引入 OpenAI/GPT、环境名称、USD 或执行依赖。 / Add a vendor-neutral deployment-owned HTTP/JSON scene-understanding inference factory registered through `paos.scene_understanding_inference`; introduce no OpenAI/GPT, environment-name, USD, or execution dependency.
+- [test] [test] 覆盖 artifact bytes 的可序列化传递、配置校验、HTTP/JSON/响应错误和 registry entry-point composition；全部 no-motion。 / Cover serializable artifact-byte transport, configuration validation, HTTP/JSON/response errors, and registry entry-point composition; all no-motion.
+- [docs] [docs] 按 PAOS 架构、扩展原则、Developer Guide、AgentLoop 与七维记录 deployment adapter 边界和剩余真实执行缺口。 / Record the deployment-adapter boundary and remaining live-execution gaps against PAOS architecture, extensibility, Developer Guide, AgentLoop, and the seven dimensions.
+
+### 预计修改 / Planned Files
+- `examples/forge-adapters/scene-understanding-http/pyproject.toml`
+- `examples/forge-adapters/scene-understanding-http/src/paos_http_understanding/factory.py`
+- `examples/forge-adapters/scene-understanding-http/README.md`
+- `examples/forge-adapters/scene-understanding-http/tests/test_http_inference.py`
+- `docs/forge/IMPLEMENTATION_REVIEW_V15_6_6.md`
+- `changelog/2026-10_part8.md`
+
+### 实际修改 / Completed Changes
+- [sense] [feat] 新增可安装、供应商无关的 `http_json` inference factory；PAOS registry 通过 entry point 发现，binary artifact 以 base64 传输，HTTP/JSON 失败原样传播。 / Add an installable vendor-neutral `http_json` inference factory; PAOS registry discovers it through an entry point, binary artifacts use base64 transport, and HTTP/JSON failures propagate unchanged.
+- [test] [test] Adapter、registry、artifact-understanding no-motion tests: `19 passed`。 / Adapter, registry, and artifact-understanding no-motion tests: `19 passed`.
+- [docs] [docs] `README.md` 与 `docs/forge/IMPLEMENTATION_REVIEW_V15_6_6.md:L1-L56` 完成部署说明、架构审查和七维状态。 / Complete deployment documentation, architecture review, and seven-dimension status in `README.md` and `IMPLEMENTATION_REVIEW_V15_6_6.md:L1-L56`.
+
+### Git 提交 / Git Commit
+- Commit: pending; Branch: `feature/planning-loop`
+
 ## v15.6.5 (2026-10-22 16:10) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
