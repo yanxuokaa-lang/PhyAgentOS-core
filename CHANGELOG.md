@@ -2,6 +2,28 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.5.5 (2026-10-22 22:10) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [env] [fix] 修复 LabUtopia session-owned PickPour/Stir reset 未初始化首次 `step()` 所需字段的问题；读取对象路径和玻璃棒实测归位位置，不移动场景。 / Fix session-owned PickPour/Stir reset omitting fields required by the first `step()`; read configured object path and measured rod return pose without moving the scene.
+- [test] [test] LabUtopia lifecycle/first-step tests `8 passed`；Isaac adapter tests `68 passed`；Ruff、compileall、py_compile 通过。 / LabUtopia lifecycle/first-step tests: `8 passed`; Isaac adapter tests: `68 passed`; Ruff, compileall, and py_compile passed.
+- [docs] [docs] 新增阶段复审；live camera、共享 RPC World/Task、artifact IPC、IK/碰撞、抓放、pour/stir 和 settlement 仍未验收。 / Add stage review; live camera, shared RPC World/Task, artifact IPC, IK/collision, acquire/place, pour/stir, and settlement remain unaccepted.
+- PhyAgentOS implementation commit: `ec8a53cc`; LabUtopia source changes remain local because the worktree contains overlapping user modifications.
+
+### 文件与关键 Diff / Files and Key Diff
+- `/home/yanxu/LabUtopia/tasks/pickpour_task.py:L17-L23`、`stir_task.py:L11-L18`：owned reset 初始化 step state，不重排物体。
+- `/home/yanxu/LabUtopia/tests/test_task_scene_lifecycle.py:L95-L144`：验证首次 step 所需状态。
+- `docs/forge/IMPLEMENTATION_REVIEW_V15_5_5.md:L1-L39`：架构、AgentLoop、Blocker 与七维阶段验收。
+
+```diff
+- owned reset -> return before current_obj_path / return_position exists
++ current_obj_path <- configured prim binding
++ return_position <- measured current transform
+```
+
+详见 [v15.5.5 月度日志](changelog/2026-10_part8.md) 和 [实现审查](docs/forge/IMPLEMENTATION_REVIEW_V15_5_5.md)。
+See the [v15.5.5 detailed log](changelog/2026-10_part8.md) and [implementation review](docs/forge/IMPLEMENTATION_REVIEW_V15_5_5.md).
+
 ## v15.5.4 (2026-10-22 21:30) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
