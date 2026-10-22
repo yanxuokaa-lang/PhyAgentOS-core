@@ -2,6 +2,19 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.4.11 (2026-10-22 09:30) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [test] [test] 构建并隔离安装 workflow wheel，通过 PAOS Registry 发现并实例化语义 builder；未调用 Query 或 Action。 / Build and isolated-install the workflow wheel, then discover and instantiate the semantic builder through the PAOS Registry; invoke no Query or Action.
+- [docs] [docs] 复审扩展发现、AgentLoop 边界和七维证据；真实感知、运动和过程反馈仍未验收。 / Review extension discovery, AgentLoop boundaries, and seven-dimension evidence; live perception, motion, and process feedback remain unaccepted.
+
+### 文件与关键 Diff / Files and Key Diff
+- `examples/forge-skills/pick-place-workflow/tests/test_semantic_task_creation.py:L241-L309`：wheel build/install/Registry discovery 集成回归。
+- `docs/forge/IMPLEMENTATION_REVIEW_V15_4_11.md:L1-L45`：本阶段 PAOS 架构、扩展、AgentLoop 和七维审查。
+
+详见 [v15.4.11 月度日志](changelog/2026-10_part2.md) 和 [实现审查](docs/forge/IMPLEMENTATION_REVIEW_V15_4_11.md)。
+See the [v15.4.11 detailed log](changelog/2026-10_part2.md) and [implementation review](docs/forge/IMPLEMENTATION_REVIEW_V15_4_11.md).
+
 ## v15.4.10 (2026-10-22 09:24) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]

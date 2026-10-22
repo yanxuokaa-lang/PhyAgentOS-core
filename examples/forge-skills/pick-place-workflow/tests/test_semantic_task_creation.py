@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import subprocess
+import sys
 import tomllib
 from copy import deepcopy
 from pathlib import Path
@@ -232,6 +235,77 @@ def test_installed_workflow_metadata_declares_semantic_builder_entry_point():
     entry_points = metadata["project"]["entry-points"]["paos.semantic_plan_builders"]
     assert entry_points["pick_place_workflow"] == (
         "pick_place_workflow.semantic_task_creation:PickPlaceSemanticPlanBuilderFactory"
+    )
+
+
+def test_built_workflow_wheel_is_discovered_by_paos_registry(tmp_path):
+    pytest.importorskip("hatchling")
+    repository = Path(__file__).resolve().parents[4]
+    workflow = repository / "examples/forge-skills/pick-place-workflow"
+    wheelhouse = tmp_path / "wheelhouse"
+    site_packages = tmp_path / "site-packages"
+    wheelhouse.mkdir()
+    site_packages.mkdir()
+
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "wheel",
+            "--no-deps",
+            "--no-build-isolation",
+            "--wheel-dir",
+            str(wheelhouse),
+            str(workflow),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    wheel = next(wheelhouse.glob("*.whl"))
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "--no-deps",
+            "--no-compile",
+            "--target",
+            str(site_packages),
+            str(wheel),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+
+    smoke = (
+        "from PhyAgentOS.agent.semantic_builder_registry import SemanticPlanBuilderRegistry; "
+        "registry = SemanticPlanBuilderRegistry(); "
+        "ids = registry.discover(); "
+        "assert 'pick_place_workflow' in ids, ids; "
+        "builder = registry.create('pick_place_workflow', query_invoker=object()); "
+        "assert callable(getattr(builder, 'build', None)); "
+        "assert type(builder).__name__ == 'AsyncQuerySemanticPlanBuilder'"
+    )
+    env = os.environ.copy()
+    existing_pythonpath = env.get("PYTHONPATH")
+    env["PYTHONPATH"] = os.pathsep.join(
+        value
+        for value in (str(repository), str(site_packages), existing_pythonpath)
+        if value
+    )
+    subprocess.run(
+        [sys.executable, "-c", smoke],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env=env,
     )
 
 
