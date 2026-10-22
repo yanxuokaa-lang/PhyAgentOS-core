@@ -49,7 +49,7 @@ class IsaacWorkerSession:
         cancel: Event | None = None,
         timeout_s: float | None = None,
     ) -> dict[str, Any]:
-        if method not in {"execute_cycle", "observe"}:
+        if method not in {"execute_cycle", "observe", "scene_revision"}:
             raise ValueError(f"unsupported Isaac worker method: {method}")
         timeout = self.request_timeout_s if timeout_s is None else float(timeout_s)
         request_id = uuid4().hex
@@ -83,6 +83,9 @@ class IsaacWorkerSession:
 
     def observe(self, request: Mapping[str, Any], *, timeout_s: float | None = None) -> dict[str, Any]:
         return self.request("observe", request, timeout_s=timeout_s)
+
+    def scene_revision(self, *, timeout_s: float | None = None) -> dict[str, Any]:
+        return self.request("scene_revision", timeout_s=timeout_s)
 
     def close(self) -> None:
         with self._lock:

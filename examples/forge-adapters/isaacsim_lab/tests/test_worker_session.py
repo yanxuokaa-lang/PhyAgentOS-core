@@ -36,6 +36,7 @@ class FakeBackend:
 
     def observe_in_session(self, session, request):
         self.methods.append(("observe", session))
+        session.initialize_scene_revision("scene-1")
         session.register("shared_scene", {"revision": "scene-1"})
         if request.get("capture"):
             return {"status": "available", "captured_at": datetime(2026, 10, 22, tzinfo=timezone.utc)}
@@ -50,8 +51,15 @@ class FakeBackend:
         return {
             "status": "unknown" if cancel.is_set() else "completed",
             "outcome_known": not cancel.is_set(),
+            "world_change_started": not cancel.is_set(),
             "video_path": str(video_path),
         }
+
+    def scene_revision_in_session(self, session):
+        revision = session.current_scene_revision()
+        if revision is None:
+            return {"status": "unavailable"}
+        return {"status": "available", "scene_revision": revision}
 
     def close_session(self, session):
         self.closed = session.resolve("shared_scene") is not None
@@ -85,9 +93,12 @@ def test_worker_session_reuses_one_owner_for_observation_and_action(tmp_path, mo
     session, backend, process_count = make_session(tmp_path, monkeypatch)
     try:
         observed = session.observe({"sensor_ref": "sensor://front"})
+        revision = session.scene_revision()
         executed = session.request("execute_cycle", {
-            "operation": "pour_cycle", "require_shared_scene": True
+            "operation": "pour_cycle", "require_shared_scene": True,
+            "scene_revision": revision["scene_revision"],
         })
+        after = session.scene_revision()
     finally:
         session.close()
 
@@ -99,6 +110,24 @@ def test_worker_session_reuses_one_owner_for_observation_and_action(tmp_path, mo
     assert backend.methods[0][1].resolve("shared_scene") is None
     assert observed == {"status": "unavailable", "failure_code": "camera_registry_missing"}
     assert executed["status"] == "completed"
+    assert after["scene_revision"] != revision["scene_revision"]
+    assert executed["new_scene_revision"] == after["scene_revision"]
+
+
+def test_worker_rejects_stale_scene_revision_before_action_dispatch(tmp_path, monkeypatch):
+    session, backend, _process_count = make_session(tmp_path, monkeypatch)
+    try:
+        session.observe({"sensor_ref": "sensor://front"})
+        stale = session.request("execute_cycle", {
+            "operation": "pour_cycle", "scene_revision": "scene-1:old-session:0",
+        })
+    finally:
+        session.close()
+
+    assert stale["status"] == "invalid"
+    assert stale["failure_code"] == "stale_scene_revision"
+    assert stale["world_change_started"] is False
+    assert [method for method, _session in backend.methods] == ["observe"]
 
 
 def test_worker_session_serializes_observation_artifact_metadata(tmp_path, monkeypatch):
@@ -119,9 +148,15 @@ def test_worker_session_propagates_cancellation_without_faking_success(tmp_path,
     cancel = threading.Event()
     result = []
     request = threading.Thread(
-        target=lambda: result.append(session.request(
-            "execute_cycle", {"wait_for_cancel": True}, cancel=cancel
-        )),
+        target=lambda: (
+            session.observe({"sensor_ref": "sensor://front"}),
+            result.append(session.request(
+                "execute_cycle", {
+                    "wait_for_cancel": True,
+                    "scene_revision": session.scene_revision()["scene_revision"],
+                }, cancel=cancel
+            )),
+        ),
         daemon=True,
     )
     request.start()

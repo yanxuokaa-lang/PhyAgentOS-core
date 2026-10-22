@@ -9,6 +9,7 @@ import sys
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -57,6 +58,8 @@ def serve_session(socket_path: Path, app, backend, profile) -> None:
                             return
                         if method == "observe":
                             result = backend.observe_in_session(context, payload.get("arguments", {}))
+                        elif method == "scene_revision":
+                            result = backend.scene_revision_in_session(context)
                         elif method == "execute_cycle":
                             arguments = payload.get("arguments")
                             if not isinstance(arguments, dict):
@@ -64,9 +67,26 @@ def serve_session(socket_path: Path, app, backend, profile) -> None:
                             cancel = _FileCancelEvent(payload.get("cancel_path"))
                             result_path = profile.lab_root / "outputs" / "paos-session" / f"{request_id}.json"
                             result_path.parent.mkdir(parents=True, exist_ok=True)
-                            result = backend._run_session_cycle(
-                                context, arguments, cancel, result_path.with_suffix(".mp4")
-                            )
+                            ensure_action_scene = getattr(backend, "ensure_action_scene", None)
+                            if callable(ensure_action_scene):
+                                ensure_action_scene(context)
+                            current_revision = context.current_scene_revision()
+                            if current_revision is None or arguments.get("scene_revision") != current_revision:
+                                result = {
+                                    "status": "invalid",
+                                    "outcome_known": False,
+                                    "world_change_started": False,
+                                    "motion_authorized": False,
+                                    "failure_code": "stale_scene_revision",
+                                    "current_scene_revision": current_revision,
+                                }
+                            else:
+                                result = backend._run_session_cycle(
+                                    context, arguments, cancel, result_path.with_suffix(".mp4")
+                                )
+                                if result.get("world_change_started") is True:
+                                    result = dict(result)
+                                    result["new_scene_revision"] = context.advance_scene_revision()
                             result_path.write_text(
                                 json.dumps(result, ensure_ascii=False, allow_nan=False), encoding="utf-8"
                             )
@@ -92,6 +112,9 @@ class WorkerSessionContext:
         self.app = app
         self._resources: dict[str, Any] = {}
         self._closed = False
+        self._scene_revision_base: str | None = None
+        self._scene_revision_session = uuid4().hex
+        self._scene_revision_sequence = 0
 
     def register(self, name: str, resource: Any) -> None:
         if self._closed:
@@ -104,6 +127,26 @@ class WorkerSessionContext:
         if self._closed:
             return None
         return self._resources.get(name)
+
+    def initialize_scene_revision(self, base_revision: str) -> str:
+        if not isinstance(base_revision, str) or not base_revision.strip():
+            raise ValueError("scene revision base must be non-empty")
+        if self._scene_revision_base is None:
+            self._scene_revision_base = base_revision
+        elif self._scene_revision_base != base_revision:
+            raise ValueError("worker session cannot change its scene revision base")
+        return self.current_scene_revision()
+
+    def current_scene_revision(self) -> str | None:
+        if self._closed or self._scene_revision_base is None:
+            return None
+        return f"{self._scene_revision_base}:{self._scene_revision_session}:{self._scene_revision_sequence}"
+
+    def advance_scene_revision(self) -> str:
+        if self.current_scene_revision() is None:
+            raise RuntimeError("scene revision is unavailable before scene initialization")
+        self._scene_revision_sequence += 1
+        return self.current_scene_revision()
 
     def close(self) -> None:
         self._resources.clear()

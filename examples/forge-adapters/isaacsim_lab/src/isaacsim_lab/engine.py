@@ -389,9 +389,14 @@ class IsaacSimLabEngine:
         operation = arguments.get("operation") if isinstance(arguments, Mapping) else None
         if operation not in {"pour_cycle", "stir_cycle", "manipulation_cycle"}:
             return _unsupported_operation_result(operation)
+        current_revision = self._current_scene_revision()
+        if current_revision is None:
+            return {"status": "unavailable", "motion_authorized": False,
+                    "failure_code": "live_scene_revision_unavailable"}
+        if arguments.get("scene_revision") != current_revision:
+            return {"status": "invalid", "motion_authorized": False,
+                    "failure_code": "stale_scene_revision"}
         try:
-            if arguments.get("scene_revision") != self.profile.scene_revision:
-                raise LabProfileError("action scene revision does not match the prepared lab scene")
             prepared = self.profile.paos_input(arguments, operation=operation)
             prepared["parameters"] = normalize_process_parameters(prepared, self.profile)
             if prepared["parameters"]["process_type"] in {"pour", "stir"}:
@@ -401,7 +406,9 @@ class IsaacSimLabEngine:
                 raise IsaacLabRuntimeError("isaacsim_unavailable_in_active_python")
         except UnsupportedControllerCapabilityError as exc:
             return _unsupported_result(exc)
-        except (LabProfileError, IsaacLabRuntimeError) as exc:
+        except LabProfileError as exc:
+            return {"status": "invalid", "motion_authorized": False, "failure_code": "invalid_preparation", "error": str(exc)}
+        except IsaacLabRuntimeError as exc:
             return {"status": "unavailable", "motion_authorized": False, "error": str(exc)}
         return {
             "status": "available",
@@ -421,10 +428,15 @@ class IsaacSimLabEngine:
         del context
         if operation not in {"pour_cycle", "stir_cycle", "manipulation_cycle"}:
             return _unsupported_operation_result(operation)
+        current_revision = self._current_scene_revision()
+        if current_revision is None:
+            return {"status": "unavailable", "outcome_known": False, "world_change_started": False,
+                    "motion_authorized": False, "failure_code": "live_scene_revision_unavailable"}
+        if arguments.get("scene_revision") != current_revision:
+            return {"status": "invalid", "outcome_known": False, "world_change_started": False,
+                    "motion_authorized": False, "failure_code": "stale_scene_revision"}
         try:
             request = deepcopy(dict(arguments))
-            if request.get("scene_revision") != self.profile.scene_revision:
-                raise LabProfileError("action scene revision does not match the prepared lab scene")
             request["parameters"] = normalize_process_parameters(request, self.profile)
             if request["parameters"]["process_type"] in {"pour", "stir"}:
                 _validate_cycle_target(request, request["parameters"]["process_type"])
@@ -438,6 +450,10 @@ class IsaacSimLabEngine:
                 "failure_code": "invalid_process_parameters",
                 "error": str(exc),
             }
+        except IsaacLabRuntimeError as exc:
+            return {"status": "unavailable", "outcome_known": False, "world_change_started": False,
+                    "motion_authorized": False, "failure_code": "live_scene_revision_unavailable",
+                    "error": str(exc)}
         if not self.cycle_capability(operation)["execution"]:
             return {"status": "unknown", "outcome_known": False, "world_change_started": False,
                     "motion_authorized": False,
@@ -455,6 +471,13 @@ class IsaacSimLabEngine:
         if not isinstance(result, Mapping):
             raise IsaacLabRuntimeError("Isaac backend returned a non-mapping result")
         return dict(result)
+
+    def _current_scene_revision(self) -> str | None:
+        resolver = getattr(self.backend, "current_scene_revision", None)
+        if not callable(resolver):
+            return None
+        value = resolver()
+        return value if isinstance(value, str) and value.strip() else None
 
 
 class LabUtopiaBackend:
@@ -514,6 +537,18 @@ class LabUtopiaBackend:
                 "failure_code": type(exc).__name__,
                 "error_detail": str(exc)[:512],
             }
+
+    def current_scene_revision(self) -> str | None:
+        with self._worker_lock:
+            session = self._worker_session
+        if session is None:
+            return None
+        try:
+            result = session.scene_revision()
+        except Exception:
+            return None
+        revision = result.get("scene_revision") if result.get("status") == "available" else None
+        return revision if isinstance(revision, str) and revision.strip() else None
 
     def dry_run_cycle(self, arguments: Mapping[str, Any]) -> dict[str, Any]:
         """Resolve dispatch and parameters without importing or stepping Isaac Sim."""
@@ -671,7 +706,18 @@ class LabUtopiaBackend:
                 add_reference_to_stage=add_reference_to_stage,
                 object_utils=ObjectUtils,
             )
+        session.initialize_scene_revision(self.profile.scene_revision)
         self._register_session_observation_source(session, cfg, scene["stage"])
+
+    def ensure_action_scene(self, session: Any) -> None:
+        """Initialize the worker-owned scene/revision before validating an action."""
+        self._ensure_session_scene(session)
+
+    def scene_revision_in_session(self, session: Any) -> dict[str, Any]:
+        revision = session.current_scene_revision()
+        if revision is None:
+            return {"status": "unavailable", "failure_code": "scene_not_initialized"}
+        return {"status": "available", "scene_revision": revision}
 
     def _register_session_observation_source(
         self, session: Any, cfg: Any, stage: Any
@@ -728,7 +774,7 @@ class LabUtopiaBackend:
         metadata = IsaacCameraMetadataProvider(
             cameras,
             lambda sensor_ref: frame_ids.get(sensor_ref),
-            lambda sensor_ref: self.profile.scene_revision if sensor_ref in frame_ids else None,
+            lambda sensor_ref: session.current_scene_revision() if sensor_ref in frame_ids else None,
             writer,
         )
         source = IsaacCameraObservationSource(

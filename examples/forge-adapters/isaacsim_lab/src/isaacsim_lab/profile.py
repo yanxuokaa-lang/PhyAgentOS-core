@@ -189,12 +189,14 @@ class LabUtopiaProfile:
         elif not previous.get("parameters"):
             raise LabProfileError("manipulation_cycle requires caller-supplied parameters")
         for key, value in required.items():
+            if key == "scene_revision" and previous.get(key) not in (None, ""):
+                continue
             if key not in previous or previous[key] in (None, ""):
                 previous[key] = value
         if previous["entity_ref"] != required["entity_ref"] or previous["destination_ref"] != required["destination_ref"]:
             raise LabProfileError("previous PAOS input targets a different source or destination")
-        if previous["scene_revision"] != self.scene_revision:
-            raise LabProfileError("previous PAOS input has stale scene revision")
+        if not isinstance(previous["scene_revision"], str) or not previous["scene_revision"].strip():
+            raise LabProfileError("previous PAOS input requires a live scene revision")
         if previous["frame_id"] != self.frame_id or previous["calibration_ref"] != self.calibration_ref:
             raise LabProfileError("previous PAOS input has stale frame or calibration identity")
         return previous

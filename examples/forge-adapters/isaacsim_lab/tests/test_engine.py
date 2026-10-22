@@ -28,6 +28,12 @@ from isaacsim_lab.engine import (
 
 
 class Backend:
+    def __init__(self, scene_revision="labutopia-scene-v1"):
+        self.scene_revision = scene_revision
+
+    def current_scene_revision(self):
+        return self.scene_revision
+
     def run_cycle(self, arguments, cancel):
         assert arguments["operation"] == "pour_cycle"
         assert not cancel.is_set()
@@ -209,6 +215,7 @@ def test_worker_registers_configured_isaac_cameras_and_persists_capture(tmp_path
     profile = make_profile(tmp_path)
     backend = LabUtopiaBackend(profile)
     session = WorkerSessionContext(object())
+    session.initialize_scene_revision(profile.scene_revision)
     cfg = SimpleNamespace(cameras=[
         SimpleNamespace(
             name="front", prim_path="/World/NewCamera", resolution=[3, 2],
@@ -226,7 +233,7 @@ def test_worker_registers_configured_isaac_cameras_and_persists_capture(tmp_path
     })
 
     assert result["status"] == "available"
-    assert result["scene_revision"] == profile.scene_revision
+    assert result["scene_revision"].startswith(f"{profile.scene_revision}:")
     assert result["frame"]["frame_id"] == "front"
     assert {item["kind"] for item in result["artifacts"]} == {
         "rgb", "depth", "point_cloud",
@@ -426,8 +433,8 @@ def test_capability_does_not_claim_live_execution_before_eula_acceptance(tmp_pat
 def test_backend_result_is_not_promoted_to_success(tmp_path, monkeypatch):
     monkeypatch.setattr(module, "_isaac_runtime_available", lambda: True)
     monkeypatch.setenv("OMNI_KIT_ACCEPT_EULA", "YES")
-    engine = IsaacSimLabEngine(make_profile(tmp_path), backend=Backend())
     profile = make_profile(tmp_path)
+    engine = IsaacSimLabEngine(profile, backend=Backend(profile.scene_revision))
     result = engine.execute_cycle(
         "pour_cycle", profile.paos_input({"manipulation_target": make_target(profile)}), Event()
     )
@@ -438,8 +445,9 @@ def test_backend_result_is_not_promoted_to_success(tmp_path, monkeypatch):
 def test_live_cycle_rejects_missing_perception_target_before_backend(tmp_path, monkeypatch):
     monkeypatch.setattr(module, "_isaac_runtime_available", lambda: True)
     monkeypatch.setenv("OMNI_KIT_ACCEPT_EULA", "YES")
-    engine = IsaacSimLabEngine(make_profile(tmp_path), backend=Backend())
-    result = engine.execute_cycle("pour_cycle", make_profile(tmp_path).paos_input(), Event())
+    profile = make_profile(tmp_path)
+    engine = IsaacSimLabEngine(profile, backend=Backend(profile.scene_revision))
+    result = engine.execute_cycle("pour_cycle", profile.paos_input(), Event())
     assert result["status"] == "invalid"
     assert result["motion_authorized"] is False
     assert "manipulation_target" in result["error"]
@@ -451,7 +459,7 @@ def test_live_cycle_rejects_target_without_explicit_world_transform(tmp_path, mo
     profile = make_profile(tmp_path)
     target = make_target(profile)
     target.pop("world_from_control")
-    result = IsaacSimLabEngine(profile, backend=Backend()).execute_cycle(
+    result = IsaacSimLabEngine(profile, backend=Backend(profile.scene_revision)).execute_cycle(
         "pour_cycle", profile.paos_input({"manipulation_target": target}), Event()
     )
     assert result["status"] == "invalid"
