@@ -7,7 +7,7 @@
 ### 变更摘要 / Summary [完成 / Completed]
 - [test] [test] 验证标准 CLI 宿主配置 semantic builder 时的 Registry discovery、Query client identity 和 Coordinator/AgentLoop 注入；未配置路径保持兼容。 / Verify standard CLI host Registry discovery, Query-client identity, and Coordinator/AgentLoop injection when configured; preserve the unset path.
 - [docs] [docs] 完成 PAOS ownership、扩展性、Developer Guide、AgentLoop 与七维证据复审；真实 Runtime、感知和运动仍未验收。 / Complete PAOS ownership, extensibility, Developer Guide, AgentLoop, and seven-dimension evidence review; live Runtime, perception, and motion remain unaccepted.
-- Implementation commit: `[pending]` on `feature/planning-loop`.
+- Implementation commit: `64580a8e` on `feature/planning-loop`.
 
 ### 文件与关键 Diff / Files and Key Diff
 - `tests/test_cli_semantic_builder_host.py:L1-L100`：标准 CLI `_make_forge_components` no-motion host wiring tests。
