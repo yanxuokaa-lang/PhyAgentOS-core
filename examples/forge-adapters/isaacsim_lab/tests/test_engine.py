@@ -123,6 +123,36 @@ def test_observation_is_not_advertised_without_live_camera_registry(tmp_path):
     assert result["motion_authorized"] is False
 
 
+def test_session_owned_task_initializes_world_before_task_and_never_resets_it_again():
+    events = []
+
+    class World:
+        def reset(self):
+            events.append("world.reset")
+
+    class Robot:
+        def initialize(self):
+            events.append("robot.initialize")
+
+    class Task:
+        def __init__(self, *, world, robot, session_owned_scene, **kwargs):
+            assert isinstance(world, World)
+            assert isinstance(robot, Robot)
+            assert session_owned_scene is True
+            assert kwargs == {"cfg": "config", "stage": "stage"}
+            events.append("task.construct")
+
+        def reset(self):
+            events.append("task.reset")
+
+    task = module._create_session_owned_task(
+        World(), Robot(), Task, cfg="config", stage="stage"
+    )
+
+    assert isinstance(task, Task)
+    assert events == ["world.reset", "task.construct", "robot.initialize", "task.reset"]
+
+
 def test_target_world_transform_projects_pose_and_process_frame(tmp_path):
     target = make_target(make_profile(tmp_path))
     target["world_from_control"]["translation_m"] = [1.0, 2.0, 3.0]

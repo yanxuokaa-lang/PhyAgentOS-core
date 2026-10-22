@@ -691,12 +691,11 @@ class LabUtopiaBackend:
         stage = omni.usd.get_context().get_stage()
         add_reference_to_stage(usd_path=str(self.profile.scene_usd_path), prim_path="/World")
         ObjectUtils.get_instance(stage)
-        task = PickPourTask(cfg=cfg, world=world, stage=stage, robot=robot)
+        task = _create_session_owned_task(
+            world, robot, PickPourTask, cfg=cfg, stage=stage
+        )
         controller = create_controller(cfg.controller_type, cfg=cfg, robot=robot)
         _configure_pour_controller(controller, process_parameters)
-        task.reset()
-        _apply_target_pose(stage, source_path, target["object_pose"])
-        _apply_target_pose(stage, destination_path, target["destination_pose"])
         _configure_target_controllers(controller, target, "pour")
         world.play()
 
@@ -909,12 +908,11 @@ class LabUtopiaBackend:
         stage = omni.usd.get_context().get_stage()
         add_reference_to_stage(usd_path=str(self.profile.scene_usd_path), prim_path="/World")
         ObjectUtils.get_instance(stage)
-        task = StirTask(cfg=cfg, world=world, stage=stage, robot=robot)
+        task = _create_session_owned_task(
+            world, robot, StirTask, cfg=cfg, stage=stage
+        )
         controller = create_controller(cfg.controller_type, cfg=cfg, robot=robot)
         _configure_stir_controller(controller, process_parameters)
-        task.reset()
-        _apply_target_pose(stage, source_path, target["object_pose"])
-        _apply_target_pose(stage, destination_path, target["destination_pose"])
         _configure_target_controllers(controller, target, "stir")
         controller.initial_control_position = np.asarray(target["return_pose"]["position_m"], dtype=float)
         world.play()
@@ -1838,18 +1836,13 @@ def _pour_controller_target(state, profile, np, rotation_cls, process_frame=None
     return target - mouth_offset
 
 
-def _apply_target_pose(stage: Any, prim_path: str, pose: Mapping[str, Any]) -> None:
-    """Place a resolved scene prim at the calibrated target pose in stage meters."""
-    from pxr import Gf, UsdGeom
-
-    prim = stage.GetPrimAtPath(prim_path)
-    if not prim.IsValid():
-        raise IsaacLabRuntimeError(f"perceived target prim is absent from the loaded scene: {prim_path}")
-    xform = UsdGeom.XformCommonAPI(prim)
-    position = [float(value) for value in pose["position_m"]]
-    quaternion = [float(value) for value in pose["orientation_xyzw"]]
-    xform.SetTranslate(Gf.Vec3d(*position))
-    xform.SetOrient(Gf.Quatd(quaternion[3], Gf.Vec3d(*quaternion[:3])))
+def _create_session_owned_task(world: Any, robot: Any, task_type: Any, **kwargs: Any) -> Any:
+    """Initialize scene state once, then construct a task that cannot reset it."""
+    world.reset()
+    task = task_type(world=world, robot=robot, session_owned_scene=True, **kwargs)
+    robot.initialize()
+    task.reset()
+    return task
 
 
 def _target_in_world(target: Mapping[str, Any]) -> dict[str, Any]:

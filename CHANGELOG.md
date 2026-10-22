@@ -2,6 +2,49 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.5.4 (2026-10-22 21:30) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [env] [fix] episode owner 显式初始化 World/robot 并使用 session-owned Task；请求中的 perception pose 不再写入 USD。跨 RPC 场景/camera owner 与 artifact IPC 仍未接通，完整方案未验收。 / Explicitly initialize World/robot and use session-owned Tasks; request perception poses are no longer written into USD. Cross-RPC scene/camera ownership and artifact IPC remain unconnected, so the full plan is not accepted.
+- [test] [test] Isaac adapter tests `68 passed`，LabUtopia lifecycle tests `8 passed`；Ruff、compileall、py_compile 通过。 / Isaac adapter tests: `68 passed`; LabUtopia lifecycle tests: `8 passed`; Ruff, compileall, and py_compile passed.
+- [docs] [docs] 新增七维阶段审查，确认 perception、scene lineage、IK/碰撞、抓放、pour/stir 和 live settlement 尚未验收。 / Add seven-dimension stage review; perception, scene lineage, IK/collision, acquire/place, pour/stir, and live settlement remain unaccepted.
+- Implementation commit: `[pending]` on `feature/planning-loop`.
+
+### 文件与关键 Diff / Files and Key Diff
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/engine.py:L694-L699,L911-L916,L1839-L1845`：explicit World/robot initialization with session-owned Task; remove request-pose-to-USD writes.
+- `examples/forge-adapters/isaacsim_lab/tests/test_engine.py:L126-L148`：session task lifecycle order test.
+- `docs/forge/IMPLEMENTATION_REVIEW_V15_5_4.md:L1-L45`：architecture, AgentLoop, blockers, and seven-dimension acceptance.
+
+```diff
+- request pose -> mutate USD scene transform
++ request pose -> controller target only; no scene mutation
++ initialize World once -> session-owned Task -> initialize robot -> task bookkeeping reset
+```
+
+详见 [v15.5.4 月度日志](changelog/2026-10_part8.md) 和 [实现审查](docs/forge/IMPLEMENTATION_REVIEW_V15_5_4.md)。
+See the [v15.5.4 detailed log](changelog/2026-10_part8.md) and [implementation review](docs/forge/IMPLEMENTATION_REVIEW_V15_5_4.md).
+
+## v15.5.3 (2026-10-22 20:45) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [env] [refactor] 在 LabUtopia Task 增加 opt-in session-owned scene lifecycle，默认 reset 行为兼容；owned 模式避免 World reset、机器人重初始化和物体重排。 / Add an opt-in session-owned scene lifecycle to LabUtopia Tasks while preserving default reset behavior; owned mode avoids World reset, robot reinitialization, and object repositioning.
+- [test] [test] LabUtopia no-motion lifecycle tests `8 passed`，Python compile passed。 / LabUtopia no-motion lifecycle tests: `8 passed`; Python compilation passed.
+- [policy] [docs] 完成本阶段架构与七维 review；worker 未接线，真实 camera/artifact、IK/碰撞、抓放、pour/stir 和 live settlement 未验收，完整方案未完成。 / Complete this stage's architecture and seven-dimension review; worker wiring, live camera/artifacts, IK/collision, acquire/place, pour/stir, and live settlement remain unaccepted, so the full plan is incomplete.
+
+### 文件与关键 Diff / Files and Key Diff
+- `/home/yanxu/LabUtopia/tasks/base_task.py:L23-L40,L52-L62,L101-L137`、`pickpour_task.py:L5-L26`、`stir_task.py:L5-L15`：显式 session scene ownership；任务只在 default mode 重置 World/机器人/器材。 / Add explicit session-scene ownership; Tasks reset World/robot/labware only in default mode.
+- `/home/yanxu/LabUtopia/tests/test_task_scene_lifecycle.py:L1-L128`：8 项 lifecycle tests，使用 Isaac stubs，不执行运动。 / Eight lifecycle tests using Isaac stubs; no motion is executed.
+- `docs/forge/IMPLEMENTATION_REVIEW_V15_5_3.md:L1-L43`：PAOS architecture、extensibility、Developer Guide、AgentLoop 和七维验收。 / PAOS architecture, extensibility, Developer Guide, AgentLoop, and seven-dimension acceptance.
+
+```diff
+- Task reset -> World.reset + robot.initialize + reposition task objects
++ session_owned_scene -> outer scene owner controls reset; task bookkeeping only
++ default mode -> legacy behavior
+```
+
+详见 [v15.5.3 月度日志](changelog/2026-10_part8.md) 和 [实现审查](docs/forge/IMPLEMENTATION_REVIEW_V15_5_3.md)。
+See the [v15.5.3 detailed log](changelog/2026-10_part8.md) and [implementation review](docs/forge/IMPLEMENTATION_REVIEW_V15_5_3.md).
+
 ## v15.5.2 (2026-10-22 12:10) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
@@ -96,7 +139,7 @@ See the [v15.5.0 detailed log](changelog/2026-10_part2.md).
 详见 [v15.4.16 月度日志](changelog/2026-10_part2.md) 和 [实现审查](docs/forge/IMPLEMENTATION_REVIEW_V15_4_16.md)。
 See the [v15.4.16 detailed log](changelog/2026-10_part2.md) and [implementation review](docs/forge/IMPLEMENTATION_REVIEW_V15_4_16.md).
 
-## v15.4.15 (2026-10-22 10:17) - codex
+### Archived v15.4.15 (2026-10-22 10:17) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
 - [env] [fix] LabUtopia 只在五类 generic Query Provider 接口齐备时注册 `manipulation.execute_subtask`；缺少 observation/understanding/grasp/capability/preparation 方法时不向 Agent 暴露该 Tool。 / Register `manipulation.execute_subtask` only when all five generic Query Provider interfaces are present; do not expose it to the Agent when observation/understanding/grasp/capability/preparation methods are missing.
