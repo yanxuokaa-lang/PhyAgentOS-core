@@ -2,6 +2,30 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.6.0 (2026-10-22 13:40) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [sense] [feat] 增加 deployment-owned observation artifact root，贯通 worker writer 与通用 resolver。 / Add a deployment-owned observation artifact root shared by the worker writer and generic resolver.
+- [test] [test] 覆盖父子进程传递、同 ref 往返读取和缺失 root fail-closed；`142 passed`。 / Cover parent/child propagation, same-ref round-trip, and missing-root fail-closed behavior; `142 passed`.
+- [docs] [docs] `IMPLEMENTATION_REVIEW_V15_6_0.md:L1-L66` 完成阶段架构及七维审查；完整方案仍未验收。 / Complete phase architecture and seven-dimension review; the full plan remains unaccepted.
+
+### 文件与关键 Diff / Files and Key Diff
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/worker_session.py:L25-L136`
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/worker.py:L25-L31`
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/engine.py:L334-L351,L490-L505,L549-L622,L794-L798`
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/paos_client.py:L224-L333`
+- `docs/forge/IMPLEMENTATION_REVIEW_V15_6_0.md:L1-L66`
+
+```diff
+- worker and resolver used independently selected artifact roots
++ one deployment-owned root is passed to worker writer and generic resolver
+```
+
+验证：`142 passed`; Ruff、compileall、`git diff --check` 通过。无 Isaac Sim、IK、碰撞或运动。 / Validation: `142 passed`; Ruff, compileall, and `git diff --check` pass. No Isaac Sim, IK, collision query, or motion.
+
+### Git 提交 / Git Commit
+- Implementation commit: pending on `feature/planning-loop`.
+
 ## v15.5.16 (2026-10-22 10:40) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]

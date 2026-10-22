@@ -10,6 +10,7 @@ from __future__ import annotations
 from concurrent.futures import Future, ThreadPoolExecutor
 from copy import deepcopy
 from dataclasses import dataclass
+from pathlib import Path
 from threading import Event, RLock
 from typing import Any, Callable, Mapping
 from uuid import uuid4
@@ -240,6 +241,7 @@ def build_labutopia_runtime(
     assignment_store: Any | None = None,
     understanding_artifact_resolver: Any | None = None,
     understanding_inference: Any | None = None,
+    observation_artifact_root: str | Path | None = None,
 ) -> LabUtopiaPAOSRuntime:
     """Compose LabUtopia behind PAOS without owning perception orchestration.
 
@@ -249,7 +251,10 @@ def build_labutopia_runtime(
     registered.  A deployment may provide ``understanding_artifact_resolver``
     and ``understanding_inference`` instead of a pre-composed understanding
     provider.  Both are passed through unchanged to the generic PAOS runtime;
-    storage ownership and model selection remain outside this adapter.
+    storage ownership and model selection remain outside this adapter.  When
+    using the default Isaac engine, ``observation_artifact_root`` is passed to
+    its worker and can also back the generic local resolver.  A supplied engine
+    remains responsible for writing artifacts to the configured root.
     """
 
     from PhyAgentOS.forge.capability_runtime import CapabilityRuntimeTransport
@@ -258,7 +263,29 @@ def build_labutopia_runtime(
         register_subtask_tool,
     )
 
-    selected_engine = engine or IsaacSimLabEngine(profile)
+    resolved_artifact_root = (
+        Path(observation_artifact_root).expanduser().resolve()
+        if observation_artifact_root is not None
+        else None
+    )
+    if (
+        understanding_provider is None
+        and understanding_inference is not None
+        and understanding_artifact_resolver is None
+    ):
+        if resolved_artifact_root is None:
+            raise ValueError(
+                "observation_artifact_root is required when composing local artifact understanding"
+            )
+        from PhyAgentOS.forge.artifacts import LocalFilesystemArtifactResolver
+
+        resolved_artifact_root.mkdir(parents=True, exist_ok=True)
+        understanding_artifact_resolver = LocalFilesystemArtifactResolver(
+            {"labutopia": resolved_artifact_root}
+        )
+    selected_engine = engine or IsaacSimLabEngine(
+        profile, observation_artifact_root=resolved_artifact_root
+    )
     provider = LabUtopiaCycleProvider(selected_engine)
     client = LabUtopiaCycleClient(
         selected_engine, allow_live=allow_live, preparation_provider=provider

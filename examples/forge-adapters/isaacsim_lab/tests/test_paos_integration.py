@@ -393,8 +393,6 @@ def test_labutopia_observation_query_uses_injected_source_not_action_client(tmp_
 
 
 def test_labutopia_runtime_composes_shared_artifact_understanding(tmp_path):
-    from PhyAgentOS.forge.artifacts import LocalFilesystemArtifactResolver
-
     artifact_root = tmp_path / "observation-artifacts"
     artifact_root.mkdir()
     (artifact_root / "front.png").write_bytes(b"camera-bytes")
@@ -424,10 +422,8 @@ def test_labutopia_runtime_composes_shared_artifact_understanding(tmp_path):
         profile=profile,
         engine=engine,
         understanding_provider=None,
-        understanding_artifact_resolver=LocalFilesystemArtifactResolver(
-            {"labutopia": artifact_root}
-        ),
         understanding_inference=lambda request: seen.append(request) or {"entities": []},
+        observation_artifact_root=artifact_root,
         grasp_provider=Provider(),
         preparation_provider=Provider(),
         capability_provider=Provider(),
@@ -464,7 +460,7 @@ def test_labutopia_runtime_composes_shared_artifact_understanding(tmp_path):
 
 @pytest.mark.parametrize(
     "resolver,inference",
-    [(object(), None), (None, lambda _request: {"entities": []})],
+    [(object(), None)],
 )
 def test_labutopia_runtime_rejects_incomplete_understanding_composition(
     tmp_path, resolver, inference
@@ -496,7 +492,57 @@ def test_labutopia_runtime_rejects_incomplete_understanding_composition(
             resolve_preparation=lambda operation, arguments: dict(arguments),
             tool_context_provider=lambda _: {"ready": True},
             allow_live=False,
+            observation_artifact_root=tmp_path / "observation-artifacts",
         )
+
+
+def test_labutopia_runtime_requires_explicit_root_for_local_inference(tmp_path):
+    engine = FakeEngine()
+    profile = _profile(tmp_path)
+    engine.profile = profile
+
+    class Provider:
+        def propose(self, _request):
+            return None
+
+        def describe(self, _request):
+            return None
+
+        def prepare(self, _request):
+            return None
+
+    with pytest.raises(ValueError, match="observation_artifact_root is required"):
+        build_labutopia_runtime(
+            profile=profile,
+            engine=engine,
+            understanding_provider=None,
+            understanding_inference=lambda _request: {"entities": []},
+            grasp_provider=Provider(),
+            preparation_provider=Provider(),
+            capability_provider=Provider(),
+            resolve_preparation=lambda operation, arguments: dict(arguments),
+            tool_context_provider=lambda _: {"ready": True},
+        )
+
+
+def test_labutopia_runtime_passes_explicit_root_to_default_worker_backend(tmp_path):
+    profile = _profile(tmp_path)
+    artifact_root = tmp_path / "deployment-observations"
+    provider = GenericProvider()
+    bundle = build_labutopia_runtime(
+        profile=profile,
+        understanding_provider=provider,
+        grasp_provider=provider,
+        preparation_provider=provider,
+        capability_provider=provider,
+        resolve_preparation=lambda operation, arguments: dict(arguments),
+        tool_context_provider=lambda _: {"ready": True},
+        observation_artifact_root=artifact_root,
+    )
+    try:
+        assert bundle.engine.backend.observation_artifact_root == artifact_root.resolve()
+    finally:
+        bundle.client.close()
 
 
 def test_client_defaults_to_no_motion_and_reports_dry_run_capability(tmp_path):

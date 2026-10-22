@@ -65,13 +65,15 @@ class FakeBackend:
         self.closed = session.resolve("shared_scene") is not None
 
 
-def make_session(tmp_path, monkeypatch, backend=None):
+def make_session(tmp_path, monkeypatch, backend=None, observation_artifact_root=None):
     profile = SimpleNamespace(lab_root=tmp_path)
     fake_backend = backend or FakeBackend()
     process_count = []
+    child_environment = []
 
     def process_factory(*_args, env, **_kwargs):
         process_count.append(1)
+        child_environment.append(dict(env))
         socket_path = Path(env["PAOS_ISAAC_SOCKET_PATH"])
         thread = threading.Thread(
             target=serve_session,
@@ -84,13 +86,14 @@ def make_session(tmp_path, monkeypatch, backend=None):
     monkeypatch.setenv("OMNI_KIT_ACCEPT_EULA", "YES")
     session = IsaacWorkerSession(
         Path("profile.json"), startup_timeout_s=2, request_timeout_s=3,
+        observation_artifact_root=observation_artifact_root,
         process_factory=process_factory,
     )
-    return session, fake_backend, process_count
+    return session, fake_backend, process_count, child_environment
 
 
 def test_worker_session_reuses_one_owner_for_observation_and_action(tmp_path, monkeypatch):
-    session, backend, process_count = make_session(tmp_path, monkeypatch)
+    session, backend, process_count, _child_environment = make_session(tmp_path, monkeypatch)
     try:
         observed = session.observe({"sensor_ref": "sensor://front"})
         revision = session.scene_revision()
@@ -115,7 +118,7 @@ def test_worker_session_reuses_one_owner_for_observation_and_action(tmp_path, mo
 
 
 def test_worker_rejects_stale_scene_revision_before_action_dispatch(tmp_path, monkeypatch):
-    session, backend, _process_count = make_session(tmp_path, monkeypatch)
+    session, backend, _process_count, _child_environment = make_session(tmp_path, monkeypatch)
     try:
         session.observe({"sensor_ref": "sensor://front"})
         stale = session.request("execute_cycle", {
@@ -131,7 +134,7 @@ def test_worker_rejects_stale_scene_revision_before_action_dispatch(tmp_path, mo
 
 
 def test_worker_session_serializes_observation_artifact_metadata(tmp_path, monkeypatch):
-    session, _backend, _process_count = make_session(tmp_path, monkeypatch)
+    session, _backend, _process_count, _child_environment = make_session(tmp_path, monkeypatch)
     try:
         observed = session.observe({"sensor_ref": "sensor://front", "capture": True})
     finally:
@@ -144,7 +147,7 @@ def test_worker_session_serializes_observation_artifact_metadata(tmp_path, monke
 
 
 def test_worker_session_propagates_cancellation_without_faking_success(tmp_path, monkeypatch):
-    session, _backend, process_count = make_session(tmp_path, monkeypatch)
+    session, _backend, process_count, _child_environment = make_session(tmp_path, monkeypatch)
     cancel = threading.Event()
     result = []
     request = threading.Thread(
@@ -172,7 +175,7 @@ def test_worker_session_propagates_cancellation_without_faking_success(tmp_path,
 
 
 def test_worker_session_rejects_requests_after_close(tmp_path, monkeypatch):
-    session, _backend, _process_count = make_session(tmp_path, monkeypatch)
+    session, _backend, _process_count, _child_environment = make_session(tmp_path, monkeypatch)
     session.close()
     try:
         session.observe({"sensor_ref": "sensor://front"})
@@ -198,6 +201,21 @@ def test_worker_session_reports_child_exit_before_socket_startup(tmp_path, monke
         assert "exited before opening" in str(exc)
     else:
         raise AssertionError("worker startup failure was not surfaced")
+
+
+def test_worker_session_passes_deployment_artifact_root_to_child(tmp_path, monkeypatch):
+    artifact_root = tmp_path / "shared-observations"
+    session, _backend, _process_count, child_environment = make_session(
+        tmp_path, monkeypatch, observation_artifact_root=artifact_root
+    )
+    try:
+        session.observe({"sensor_ref": "sensor://front"})
+    finally:
+        session.close()
+
+    assert child_environment[0]["PAOS_ISAAC_OBSERVATION_ARTIFACT_ROOT"] == str(
+        artifact_root.resolve()
+    )
 
 
 def test_paos_client_does_not_advertise_or_project_unavailable_observation():

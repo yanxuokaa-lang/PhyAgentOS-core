@@ -25,7 +25,8 @@ def main() -> int:
     from isaacsim import SimulationApp
 
     app = SimulationApp({"headless": profile.headless})
-    backend = LabUtopiaBackend(profile)
+    artifact_root = os.environ.get("PAOS_ISAAC_OBSERVATION_ARTIFACT_ROOT")
+    backend = LabUtopiaBackend(profile, observation_artifact_root=artifact_root)
     socket_path = Path(os.environ["PAOS_ISAAC_SOCKET_PATH"])
     try:
         serve_session(socket_path, app, backend, profile)

@@ -29,11 +29,17 @@ class IsaacWorkerSession:
         *,
         startup_timeout_s: float = 120.0,
         request_timeout_s: float = 900.0,
+        observation_artifact_root: str | Path | None = None,
         process_factory: Any = subprocess.Popen,
     ) -> None:
         self.profile_path = Path(profile_path)
         self.startup_timeout_s = float(startup_timeout_s)
         self.request_timeout_s = float(request_timeout_s)
+        self.observation_artifact_root = (
+            Path(observation_artifact_root).expanduser().resolve()
+            if observation_artifact_root is not None
+            else None
+        )
         self._process_factory = process_factory
         self._lock = RLock()
         self._process: Any | None = None
@@ -121,6 +127,8 @@ class IsaacWorkerSession:
             "PAOS_ISAAC_PROFILE": str(self.profile_path),
             "PAOS_ISAAC_SOCKET_PATH": str(socket_path),
         })
+        if self.observation_artifact_root is not None:
+            env["PAOS_ISAAC_OBSERVATION_ARTIFACT_ROOT"] = str(self.observation_artifact_root)
         process = self._process_factory(
             [sys.executable, "-m", "isaacsim_lab.worker"],
             env=env,

@@ -148,6 +148,35 @@ def test_observation_uses_source_registered_on_worker_session(tmp_path):
     assert result == {"status": "available", "sensor_ref": "sensor://front"}
 
 
+def test_backend_passes_deployment_artifact_root_to_worker_session(tmp_path, monkeypatch):
+    import isaacsim_lab.worker_session as worker_session_module
+
+    artifact_root = tmp_path / "shared-observations"
+    created = []
+
+    class Session:
+        def __init__(self, profile_path, *, observation_artifact_root):
+            created.append((profile_path, observation_artifact_root))
+
+        def observe(self, _request):
+            return {"status": "unavailable"}
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr(worker_session_module, "IsaacWorkerSession", Session)
+    monkeypatch.setenv("OMNI_KIT_ACCEPT_EULA", "YES")
+    profile = make_profile(tmp_path)
+    profile_path = tmp_path / "profile.json"
+    profile_path.write_text("{}", encoding="utf-8")
+    object.__setattr__(profile, "profile_path", profile_path)
+    backend = LabUtopiaBackend(profile, observation_artifact_root=artifact_root)
+    assert backend.observe({"sensor_ref": "sensor://front"}) == {"status": "unavailable"}
+    backend.close()
+
+    assert created == [(profile_path, artifact_root.resolve())]
+
+
 def test_worker_registers_configured_isaac_cameras_and_persists_capture(tmp_path, monkeypatch):
     from types import SimpleNamespace
 
@@ -213,7 +242,8 @@ def test_worker_registers_configured_isaac_cameras_and_persists_capture(tmp_path
     monkeypatch.setitem(sys.modules, "isaacsim.sensors.camera", camera_module)
 
     profile = make_profile(tmp_path)
-    backend = LabUtopiaBackend(profile)
+    artifact_root = tmp_path / "deployment-observations"
+    backend = LabUtopiaBackend(profile, observation_artifact_root=artifact_root)
     session = WorkerSessionContext(object())
     session.initialize_scene_revision(profile.scene_revision)
     cfg = SimpleNamespace(cameras=[
@@ -239,10 +269,17 @@ def test_worker_registers_configured_isaac_cameras_and_persists_capture(tmp_path
         "rgb", "depth", "point_cloud",
     }
     assert all(item["ref"].startswith("artifact://labutopia/") for item in result["artifacts"])
-    artifact_root = tmp_path / "outputs" / "paos-observation-artifacts"
     assert len(list(artifact_root.rglob("*.npy"))) == 2
     assert len(list(artifact_root.rglob("*.png"))) == 1
     assert len(list(artifact_root.rglob("*.json"))) == 1
+    from PhyAgentOS.forge.artifacts import LocalFilesystemArtifactResolver
+
+    resolver = LocalFilesystemArtifactResolver({"labutopia": artifact_root})
+    resolved = [resolver.resolve(item["ref"]) for item in result["artifacts"]]
+    assert all(item is not None and item.data for item in resolved)
+    assert {item.media_type for item in resolved if item is not None} == {
+        "image/png", "application/x-npy"
+    }
     assert calls.count(("initialize", "front")) == 1
     assert calls.count(("initialize", "wrist")) == 1
 

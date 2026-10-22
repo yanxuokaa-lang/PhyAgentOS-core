@@ -331,9 +331,17 @@ class IsaacLabBackend(Protocol):
 class IsaacSimLabEngine:
     """PAOS provider engine that delegates parameterized cycles to LabUtopia."""
 
-    def __init__(self, profile: LabUtopiaProfile, *, backend: IsaacLabBackend | None = None):
+    def __init__(
+        self,
+        profile: LabUtopiaProfile,
+        *,
+        backend: IsaacLabBackend | None = None,
+        observation_artifact_root: str | Path | None = None,
+    ):
         self.profile = profile
-        self.backend = backend or LabUtopiaBackend(profile)
+        self.backend = backend or LabUtopiaBackend(
+            profile, observation_artifact_root=observation_artifact_root
+        )
 
     @property
     def observation_ready(self) -> bool:
@@ -488,8 +496,18 @@ class LabUtopiaBackend:
     by the live episode and is reflected in measured feedback.
     """
 
-    def __init__(self, profile: LabUtopiaProfile):
+    def __init__(
+        self,
+        profile: LabUtopiaProfile,
+        *,
+        observation_artifact_root: str | Path | None = None,
+    ):
         self.profile = profile
+        self.observation_artifact_root = (
+            Path(observation_artifact_root).expanduser().resolve()
+            if observation_artifact_root is not None
+            else None
+        )
         self._last_video_info: dict[str, Any] = {}
         self._worker_session = None
         self._worker_lock = RLock()
@@ -528,7 +546,10 @@ class LabUtopiaBackend:
                 if self._worker_session is None:
                     from .worker_session import IsaacWorkerSession
 
-                    self._worker_session = IsaacWorkerSession(self.profile_path)
+                    self._worker_session = IsaacWorkerSession(
+                        self.profile_path,
+                        observation_artifact_root=self.observation_artifact_root,
+                    )
                 session = self._worker_session
             return session.observe(request)
         except Exception as exc:
@@ -591,7 +612,10 @@ class LabUtopiaBackend:
                 if self._worker_session is None:
                     from .worker_session import IsaacWorkerSession
 
-                    self._worker_session = IsaacWorkerSession(self.profile_path)
+                    self._worker_session = IsaacWorkerSession(
+                        self.profile_path,
+                        observation_artifact_root=self.observation_artifact_root,
+                    )
                 session = self._worker_session
             return session.request("execute_cycle", arguments, cancel=cancel)
         except Exception as exc:
@@ -768,7 +792,8 @@ class LabUtopiaBackend:
         if not cameras:
             return
         writer = FilesystemObservationArtifactWriter(
-            self.profile.lab_root / "outputs" / "paos-observation-artifacts",
+            self.observation_artifact_root
+            or self.profile.lab_root / "outputs" / "paos-observation-artifacts",
             namespace="labutopia",
         )
         metadata = IsaacCameraMetadataProvider(
