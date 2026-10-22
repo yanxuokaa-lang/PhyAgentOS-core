@@ -22,7 +22,7 @@ no environment-specific model class; AgentLoop unchanged
 验证：`24 passed`; Ruff、compileall、`git diff --check` 通过；未调用 live GPT 或 Isaac Sim。 / Validation: `24 passed`; Ruff, compileall, and `git diff --check` passed; no live GPT or Isaac Sim was called.
 
 ### Git 提交 / Git Commit
-- Commit: pending; Branch: `feature/planning-loop`
+- Commit: `1aa3b6dd`; Branch: `feature/planning-loop`
 
 ## v15.6.0 (2026-10-22 13:40) - codex
 
