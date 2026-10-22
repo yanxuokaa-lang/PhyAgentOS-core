@@ -76,6 +76,31 @@ real-camera host can share the same binding adapter. A host with an incomplete
 provider chain does not register `manipulation.execute_subtask`, and no Query
 result authorizes motion by itself.
 
+### Optional PAOS semantic task-builder host wiring
+
+The standard PAOS `agent` and `gateway` commands discover this workflow's
+semantic task builder only when the bundle is installed into the same Python
+environment that runs `paos`:
+
+```bash
+python -m pip install -e examples/forge-skills/pick-place-workflow
+```
+
+Set the optional host configuration:
+
+```yaml
+forge:
+  semantic_plan_builder: pick_place_workflow
+```
+
+The host then injects its active Dynamic Forge Query client into the builder.
+The builder performs measured Query binding before task persistence and keeps
+one `manipulation.execute_subtask` PlanNode per subtask. Leaving this setting
+unset preserves the existing task-creation behavior. Installing the plugin or
+setting the option does not provide camera evidence, IK/collision proof, Action
+authorization, or robot motion; those require the Runtime's real providers and
+separate live acceptance.
+
 `object.acquire` is the first physical-effect boundary. It consumes a fresh,
 calibration-bound preparation reference through the standard Action admission
 route and is reconciled through `/invocations`; approach, contact, close, lift,

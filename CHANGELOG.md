@@ -2,6 +2,14 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.4.8 (2026-10-22 15:20) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [docs] [docs] 补充 semantic builder 插件的 editable install、`forge.semantic_plan_builder` 配置和 no-motion/真实执行边界说明。 / Document the semantic builder editable install, `forge.semantic_plan_builder` configuration, and the no-motion/live-execution boundary.
+
+详见 [v15.4.8 月度日志](changelog/2026-10_part2.md)。
+See the [v15.4.8 detailed log](changelog/2026-10_part2.md).
+
 ## v15.4.7 (2026-10-22 15:00) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
