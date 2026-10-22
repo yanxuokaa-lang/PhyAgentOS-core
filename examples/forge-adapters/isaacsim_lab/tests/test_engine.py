@@ -240,7 +240,8 @@ def test_worker_registers_configured_isaac_cameras_and_persists_capture(tmp_path
     }
     assert all(item["ref"].startswith("artifact://labutopia/") for item in result["artifacts"])
     artifact_root = tmp_path / "outputs" / "paos-observation-artifacts"
-    assert len(list(artifact_root.rglob("*.npy"))) == 3
+    assert len(list(artifact_root.rglob("*.npy"))) == 2
+    assert len(list(artifact_root.rglob("*.png"))) == 1
     assert len(list(artifact_root.rglob("*.json"))) == 1
     assert calls.count(("initialize", "front")) == 1
     assert calls.count(("initialize", "wrist")) == 1

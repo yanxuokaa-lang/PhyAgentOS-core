@@ -49,10 +49,19 @@ class FilesystemObservationArtifactWriter:
             array = np.asarray(value)
             if array.size == 0:
                 raise ValueError("camera artifact must not be empty")
-            output = io.BytesIO()
-            np.save(output, array, allow_pickle=False)
-            payload = output.getvalue()
-            suffix, media_type = ".npy", "application/x-npy"
+            if kind == "rgb":
+                from PIL import Image
+
+                array = _rgb_uint8(array)
+                output = io.BytesIO()
+                Image.fromarray(array).save(output, format="PNG")
+                payload = output.getvalue()
+                suffix, media_type = ".png", "image/png"
+            else:
+                output = io.BytesIO()
+                np.save(output, array, allow_pickle=False)
+                payload = output.getvalue()
+                suffix, media_type = ".npy", "application/x-npy"
 
         relative_path = Path(kind) / f"{uuid4().hex}{suffix}"
         destination = self._root / relative_path
@@ -244,6 +253,22 @@ def _has_data(value: Any) -> bool:
         return len(value) > 0
     except TypeError:
         return True
+
+
+def _rgb_uint8(array: Any) -> Any:
+    import numpy as np
+
+    if array.ndim != 3 or array.shape[2] not in (3, 4):
+        raise ValueError("RGB camera artifact must have shape (height, width, 3|4)")
+    if array.dtype == np.uint8:
+        return array
+    if not np.issubdtype(array.dtype, np.floating) or not np.isfinite(array).all():
+        raise ValueError("RGB camera artifact must contain uint8 or finite floating-point values")
+    minimum = float(array.min())
+    maximum = float(array.max())
+    if minimum < 0 or maximum > 1:
+        raise ValueError("floating-point RGB camera artifact values must be in [0, 1]")
+    return np.rint(array * 255).astype(np.uint8)
 
 
 def _nonempty_text(value: Any) -> bool:

@@ -2,6 +2,33 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.5.13 (2026-10-22 19:30) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [sense] [fix] `observation.py:L35-L72,L258-L271` 将 RGB artifact 改为 PNG；depth/point cloud 仍为 NPY，calibration 为 JSON。 / Encode RGB artifacts as PNG while retaining NPY depth/point cloud and JSON calibration.
+- [env] [chore] `pyproject.toml:L1-L6` 声明 Pillow。 / Declare Pillow.
+- [test] [test] 测试 RGB 解码无损、浮点输入规范化、非法输入失败、depth NPY 与 Core resolver 读取。 / Test lossless RGB decode, float normalization, invalid-input rejection, depth NPY, and Core resolver reads.
+- [docs] [docs] 记录阶段架构审查及七维验收；完整方案未通过。 / Record phase architecture review and seven-dimension acceptance; full plan remains unaccepted.
+
+### 文件与关键 Diff / Files and Key Diff
+- `observation.py:L35-L72,L258-L271`：传感器 artifact writer 的 RGB PNG 路径与浮点规范化。
+- `pyproject.toml:L1-L6`：图像编码依赖。
+- `tests/test_observation.py:L249-L323`、`tests/test_engine.py:L232-L247`：writer/resolver/session coverage。
+- `docs/forge/IMPLEMENTATION_REVIEW_V15_5_13.md:L1-L55`：审查与七维结果。
+
+```diff
+- RGB camera arrays stored as application/x-npy
++ RGB camera arrays stored as image/png; depth and point clouds remain application/x-npy
++ invalid RGB shape/range rejected before persistence
+```
+
+### 验证 / Validation
+- Isaac adapter suite：`82 passed`；Ruff、compileall、`git diff --check` 通过。pytest 有既存 unknown `asyncio_mode` warning。 / Isaac adapter suite: `82 passed`; Ruff, compileall, and `git diff --check` passed. Pytest reports the existing unknown `asyncio_mode` warning.
+- 未启动 Isaac Sim、Gateway 或运动。 / No Isaac Sim, Gateway, or motion was run.
+
+### Git 提交
+- 实现提交待完成，分支 `feature/planning-loop`。
+
 ## v15.5.12 (2026-10-23 00:25) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]

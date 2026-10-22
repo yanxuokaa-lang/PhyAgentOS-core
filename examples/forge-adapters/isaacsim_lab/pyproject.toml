@@ -3,7 +3,7 @@ name = "paos-isaacsim-lab-adapter"
 version = "0.1.0"
 description = "PAOS adapter boundary for LabUtopia Isaac Sim laboratory cycles"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = ["Pillow>=10"]
 
 [project.scripts]
 paos-isaacsim-lab-input = "isaacsim_lab.cli:main"

@@ -254,15 +254,29 @@ def test_filesystem_writer_persists_sensor_arrays_and_calibration(tmp_path):
 
     image = np.asarray([[[1, 2, 3]]], dtype=np.uint8)
     rgb = writer.write("camera/front", "rgb", image, captured_at=captured_at)
+    depth = writer.write(
+        "camera/front", "depth", np.asarray([[1.25]], dtype=np.float32),
+        captured_at=captured_at,
+    )
     calibration = writer.write(
         "camera/front", "calibration", {"frame_id": "camera/front"},
         captured_at=captured_at,
     )
 
     assert rgb["ref"].startswith("artifact://labutopia/rgb/")
-    assert rgb["media_type"] == "application/x-npy"
+    assert rgb["media_type"] == "image/png"
     rgb_path = tmp_path / rgb["ref"].removeprefix("artifact://labutopia/")
-    assert np.array_equal(np.load(BytesIO(rgb_path.read_bytes()), allow_pickle=False), image)
+    from PIL import Image
+
+    with Image.open(BytesIO(rgb_path.read_bytes())) as decoded:
+        assert np.array_equal(np.asarray(decoded), image)
+    assert rgb_path.suffix == ".png"
+    depth_path = tmp_path / depth["ref"].removeprefix("artifact://labutopia/")
+    assert depth["media_type"] == "application/x-npy"
+    assert np.array_equal(
+        np.load(BytesIO(depth_path.read_bytes()), allow_pickle=False),
+        np.asarray([[1.25]], dtype=np.float32),
+    )
     assert calibration["ref"].startswith("artifact://labutopia/calibration/")
     assert calibration["media_type"] == "application/json"
     calibration_path = tmp_path / calibration["ref"].removeprefix("artifact://labutopia/")
@@ -280,6 +294,33 @@ def test_filesystem_writer_persists_sensor_arrays_and_calibration(tmp_path):
     assert resolved_calibration.media_type == calibration["media_type"]
     assert resolved_calibration.data == calibration_path.read_bytes()
     assert rgb["ref"] != calibration["ref"]
+
+
+def test_filesystem_writer_normalizes_float_rgb_without_clipping(tmp_path):
+    writer = FilesystemObservationArtifactWriter(tmp_path, namespace="labutopia")
+    rgb = writer.write(
+        "camera/front", "rgb", np.asarray([[[0.0, 0.5, 1.0]]]),
+        captured_at=datetime(2026, 10, 22, tzinfo=timezone.utc),
+    )
+    from PIL import Image
+
+    image_path = tmp_path / rgb["ref"].removeprefix("artifact://labutopia/")
+    with Image.open(image_path) as decoded:
+        assert np.array_equal(np.asarray(decoded), np.asarray([[[0, 128, 255]]], dtype=np.uint8))
+    assert rgb["media_type"] == "image/png"
+
+
+@pytest.mark.parametrize(
+    "image",
+    [np.zeros((2, 2), dtype=np.uint8), np.full((1, 1, 3), 256.0)],
+)
+def test_filesystem_writer_rejects_invalid_rgb_shapes_and_ranges(tmp_path, image):
+    writer = FilesystemObservationArtifactWriter(tmp_path, namespace="labutopia")
+    with pytest.raises(ValueError, match="RGB camera artifact"):
+        writer.write(
+            "camera/front", "rgb", image,
+            captured_at=datetime(2026, 10, 22, tzinfo=timezone.utc),
+        )
 
 
 def test_filesystem_writer_rejects_invalid_capture_metadata(tmp_path):
