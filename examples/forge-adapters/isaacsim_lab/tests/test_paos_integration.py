@@ -135,6 +135,15 @@ class FakeEngine:
 
 
 class GenericProvider:
+    def capture(self, request):
+        return None
+
+    def understand(self, request):
+        return None
+
+    def propose(self, request):
+        return None
+
     def describe(self, request):
         return None
 
@@ -237,6 +246,7 @@ def test_labutopia_registers_subtask_only_with_generic_perception_chain(tmp_path
     engine = FakeEngine()
     profile = _profile(tmp_path)
     engine.profile = profile
+    provider = GenericProvider()
     adapter = PerceptionBindingAdapter(
         lambda _tool_id, _arguments: {},
         BindingRequest(("camera/front",), "reagent_a", "beaker", 1000),
@@ -244,10 +254,11 @@ def test_labutopia_registers_subtask_only_with_generic_perception_chain(tmp_path
     bundle = build_labutopia_runtime(
         profile=profile,
         engine=engine,
-        understanding_provider=object(),
-        grasp_provider=object(),
-        preparation_provider=GenericProvider(),
-        capability_provider=GenericProvider(),
+        understanding_provider=provider,
+        grasp_provider=provider,
+        preparation_provider=provider,
+        capability_provider=provider,
+        observation_source=provider,
         resolve_preparation=lambda operation, arguments: dict(arguments),
         tool_context_provider=lambda _: {"ready": True},
         allow_live=False,
@@ -263,7 +274,7 @@ def test_labutopia_registers_subtask_only_with_generic_perception_chain(tmp_path
         bundle.client.close()
 
 
-def test_labutopia_does_not_register_subtask_without_coordinator_context(tmp_path):
+def test_labutopia_does_not_register_subtask_with_unimplemented_query_providers(tmp_path):
     engine = FakeEngine()
     profile = _profile(tmp_path)
     engine.profile = profile
@@ -276,8 +287,40 @@ def test_labutopia_does_not_register_subtask_without_coordinator_context(tmp_pat
         engine=engine,
         understanding_provider=object(),
         grasp_provider=object(),
-        preparation_provider=GenericProvider(),
+        preparation_provider=object(),
         capability_provider=GenericProvider(),
+        observation_source=object(),
+        resolve_preparation=lambda operation, arguments: dict(arguments),
+        tool_context_provider=lambda _: {"ready": True},
+        allow_live=False,
+        perception_adapter=adapter,
+        subtask_context_resolver=lambda _caller: {},
+    )
+    try:
+        tools = {item["tool_id"] for item in bundle.runtime.list_tools()["tools"]}
+        assert "manipulation.execute_subtask" not in tools
+        assert bundle.perception_adapter is None
+    finally:
+        bundle.client.close()
+
+
+def test_labutopia_does_not_register_subtask_without_coordinator_context(tmp_path):
+    engine = FakeEngine()
+    profile = _profile(tmp_path)
+    engine.profile = profile
+    provider = GenericProvider()
+    adapter = PerceptionBindingAdapter(
+        lambda _tool_id, _arguments: {},
+        BindingRequest(("camera/front",), "reagent_a", "beaker", 1000),
+    )
+    bundle = build_labutopia_runtime(
+        profile=profile,
+        engine=engine,
+        understanding_provider=provider,
+        grasp_provider=provider,
+        preparation_provider=provider,
+        capability_provider=provider,
+        observation_source=provider,
         resolve_preparation=lambda operation, arguments: dict(arguments),
         tool_context_provider=lambda _: {"ready": True},
         allow_live=False,

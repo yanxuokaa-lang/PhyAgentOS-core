@@ -262,7 +262,25 @@ def build_labutopia_runtime(
         assignment_store=assignment_store,
     )
     bound_adapter = None
-    if perception_adapter is not None and getattr(perception_adapter, "ready", False):
+    observation_provider = observation_source if observation_source is not None else client
+    query_providers_ready = all(
+        callable(getattr(provider, method, None))
+        for provider, method in (
+            (understanding_provider, "understand"),
+            (grasp_provider, "propose"),
+            (capability_provider, "describe"),
+            (preparation_provider, "prepare"),
+        )
+    )
+    observation_provider_ready = callable(getattr(observation_provider, "capture", None)) or callable(
+        getattr(observation_provider, "query", None)
+    )
+    if (
+        perception_adapter is not None
+        and getattr(perception_adapter, "ready", False)
+        and query_providers_ready
+        and observation_provider_ready
+    ):
         with_query_invoker = getattr(perception_adapter, "with_query_invoker", None)
         refresh_binding = getattr(perception_adapter, "refresh_binding", None)
         if callable(with_query_invoker) and callable(refresh_binding):

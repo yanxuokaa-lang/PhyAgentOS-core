@@ -2,6 +2,22 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.4.15 (2026-10-22 10:17) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [env] [fix] LabUtopia 只在五类 generic Query Provider 接口齐备时注册 `manipulation.execute_subtask`；缺少 observation/understanding/grasp/capability/preparation 方法时不向 Agent 暴露该 Tool。 / Register `manipulation.execute_subtask` only when all five generic Query Provider interfaces are present; do not expose it to the Agent when observation/understanding/grasp/capability/preparation methods are missing.
+- [test] [test] LabUtopia/subtask/Runtime 定向回归 `157 passed`；Ruff、compileall、diff check 通过；no-motion。 / Focused LabUtopia/subtask/Runtime regressions: `157 passed`; Ruff, compileall, and diff check passed; no-motion.
+- [docs] [docs] 按 PAOS ownership、扩展原则、Developer Guide、AgentLoop 和七维证据复审；真实传感器、运动学、执行与过程反馈仍未验收。 / Review PAOS ownership, extensibility, Developer Guide, AgentLoop, and seven-dimension evidence; real sensors, kinematics, execution, and process feedback remain unaccepted.
+- Implementation commit: `[pending]` on `feature/planning-loop`.
+
+### 文件与关键 Diff / Files and Key Diff
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/paos_client.py:L264-L292`：检查五类 Query Provider 协议后再绑定 generic perception adapter 和 subtask Tool。
+- `examples/forge-adapters/isaacsim_lab/tests/test_paos_integration.py:L137-L151,L245-L334`：完整 provider、缺少 Provider method 与无 Coordinator resolver 的注册边界测试。
+- `docs/forge/IMPLEMENTATION_REVIEW_V15_4_15.md:L1-L45`：架构复核及七维验收。
+
+详见 [v15.4.15 月度日志](changelog/2026-10_part2.md) 和 [实现审查](docs/forge/IMPLEMENTATION_REVIEW_V15_4_15.md)。
+See the [v15.4.15 detailed log](changelog/2026-10_part2.md) and [implementation review](docs/forge/IMPLEMENTATION_REVIEW_V15_4_15.md).
+
 ## v15.4.14 (2026-10-22 09:45) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
