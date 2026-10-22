@@ -2,6 +2,20 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.4.13 (2026-10-22 09:40) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [test] [test] 验证标准 CLI 宿主配置 semantic builder 时的 Registry discovery、Query client identity 和 Coordinator/AgentLoop 注入；未配置路径保持兼容。 / Verify standard CLI host Registry discovery, Query-client identity, and Coordinator/AgentLoop injection when configured; preserve the unset path.
+- [docs] [docs] 完成 PAOS ownership、扩展性、Developer Guide、AgentLoop 与七维证据复审；真实 Runtime、感知和运动仍未验收。 / Complete PAOS ownership, extensibility, Developer Guide, AgentLoop, and seven-dimension evidence review; live Runtime, perception, and motion remain unaccepted.
+- Implementation commit: `[pending]` on `feature/planning-loop`.
+
+### 文件与关键 Diff / Files and Key Diff
+- `tests/test_cli_semantic_builder_host.py:L1-L100`：标准 CLI `_make_forge_components` no-motion host wiring tests。
+- `docs/forge/IMPLEMENTATION_REVIEW_V15_4_13.md:L1-L45`：本阶段审查与七维验收。
+
+详见 [v15.4.13 月度日志](changelog/2026-10_part2.md) 和 [实现审查](docs/forge/IMPLEMENTATION_REVIEW_V15_4_13.md)。
+See the [v15.4.13 detailed log](changelog/2026-10_part2.md) and [implementation review](docs/forge/IMPLEMENTATION_REVIEW_V15_4_13.md).
+
 ## v15.4.12 (2026-10-22 09:35) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
