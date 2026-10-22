@@ -142,6 +142,116 @@ def test_observation_uses_source_registered_on_worker_session(tmp_path):
     assert result == {"status": "available", "sensor_ref": "sensor://front"}
 
 
+def test_worker_registers_configured_isaac_cameras_and_persists_capture(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from PhyAgentOS.forge.capability_runtime.observation import ObservationEndpoint
+
+    from isaacsim_lab.worker import WorkerSessionContext
+
+    calls = []
+
+    class Camera:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def set_local_pose(self, **kwargs):
+            calls.append(("pose", kwargs))
+
+        def set_focal_length(self, value):
+            calls.append(("focal_length", value))
+
+        def set_clipping_range(self, **kwargs):
+            calls.append(("clipping", kwargs))
+
+        def initialize(self):
+            calls.append(("initialize", self.kwargs["name"]))
+
+        def add_distance_to_image_plane_to_frame(self):
+            calls.append(("depth", self.kwargs["name"]))
+
+        def add_pointcloud_to_frame(self):
+            calls.append(("point_cloud", self.kwargs["name"]))
+
+        def get_rgb(self):
+            return np.ones((2, 3, 3), dtype=np.uint8)
+
+        def get_depth(self):
+            return np.ones((2, 3), dtype=np.float32)
+
+        def get_pointcloud(self):
+            return np.ones((2, 3, 3), dtype=np.float32)
+
+        def get_intrinsics_matrix(self, *, device):
+            assert device == "cpu"
+            return np.eye(3)
+
+        def get_world_pose(self, *, camera_axes):
+            assert camera_axes == "world"
+            return np.zeros(3), np.asarray([1.0, 0.0, 0.0, 0.0])
+
+        def get_resolution(self):
+            return 3, 2
+
+    class Stage:
+        def get_prim_at_path(self, path):
+            return SimpleNamespace(IsValid=lambda: path == "/World/ExistingCamera")
+
+    stage = Stage()
+    stage.GetPrimAtPath = stage.get_prim_at_path
+
+    camera_module = types.ModuleType("isaacsim.sensors.camera")
+    camera_module.Camera = Camera
+    monkeypatch.setitem(sys.modules, "isaacsim", types.ModuleType("isaacsim"))
+    monkeypatch.setitem(sys.modules, "isaacsim.sensors", types.ModuleType("isaacsim.sensors"))
+    monkeypatch.setitem(sys.modules, "isaacsim.sensors.camera", camera_module)
+
+    profile = make_profile(tmp_path)
+    backend = LabUtopiaBackend(profile)
+    session = WorkerSessionContext(object())
+    cfg = SimpleNamespace(cameras=[
+        SimpleNamespace(
+            name="front", prim_path="/World/NewCamera", resolution=[3, 2],
+            translation=[1.0, 2.0, 3.0], orientation=[1.0, 0.0, 0.0, 0.0],
+            focal_length=6.0,
+        ),
+        SimpleNamespace(
+            name="wrist", prim_path="/World/ExistingCamera", resolution=[3, 2],
+        ),
+    ])
+
+    backend._register_session_observation_source(session, cfg, stage)
+    result = ObservationEndpoint(session.resolve("observation_source")).invoke({
+        "sensor_ref": "sensor://front", "max_age_ms": 1000,
+    })
+
+    assert result["status"] == "available"
+    assert result["scene_revision"] == profile.scene_revision
+    assert result["frame"]["frame_id"] == "front"
+    assert {item["kind"] for item in result["artifacts"]} == {
+        "rgb", "depth", "point_cloud",
+    }
+    assert all(item["ref"].startswith("artifact://labutopia/") for item in result["artifacts"])
+    artifact_root = tmp_path / "outputs" / "paos-observation-artifacts"
+    assert len(list(artifact_root.rglob("*.npy"))) == 3
+    assert len(list(artifact_root.rglob("*.json"))) == 1
+    assert calls.count(("initialize", "front")) == 1
+    assert calls.count(("initialize", "wrist")) == 1
+
+
+def test_worker_does_not_register_observation_source_without_camera_configuration(tmp_path):
+    from types import SimpleNamespace
+
+    from isaacsim_lab.worker import WorkerSessionContext
+
+    session = WorkerSessionContext(object())
+    backend = LabUtopiaBackend(make_profile(tmp_path))
+    backend._register_session_observation_source(session, SimpleNamespace(cameras=[]), object())
+
+    assert session.resolve("camera_registry") is None
+    assert session.resolve("observation_source") is None
+
+
 def test_session_owned_task_initializes_world_before_task_and_never_resets_it_again():
     events = []
 

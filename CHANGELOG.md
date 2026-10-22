@@ -2,6 +2,29 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.5.9 (2026-10-22 23:35) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [sense] [feat] `engine.py:L641-L738` 在共享 Isaac worker session 中注册配置相机 handles、标定 provider、ObservationSource 和 v15.5.8 文件 writer；无相机配置不登记 source，scene revision/readiness 仍 fail-closed。 / Register configured camera handles, calibration provider, ObservationSource, and the v15.5.8 filesystem writer in the shared Isaac worker session at `engine.py:L641-L738`; missing cameras do not register a source, while scene revision/readiness remain fail-closed.
+- [test] [test] `test_engine.py:L145-L253` 通过 Isaac API stubs 验证 RGB/depth/point-cloud artifact 落盘和无配置失败；adapter tests `78 passed`。 / Verify persisted RGB/depth/point-cloud artifacts and missing-config failure with Isaac API stubs at `test_engine.py:L145-L253`; adapter tests report `78 passed`.
+- [docs] [docs] 阶段审查确认静态 scene revision、Task camera 生命周期和 artifact resolver 仍阻塞完整七维验收。 / The phase review confirms static scene revision, Task camera lifecycle, and artifact resolver still block full seven-dimension acceptance.
+- Implementation commit: `[pending]` on `feature/planning-loop`.
+
+### 文件与关键 Diff / Files and Key Diff
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/engine.py:L641-L738`：配置相机 source/writer 登记到 worker session。
+- `examples/forge-adapters/isaacsim_lab/tests/test_engine.py:L145-L253`：session camera wiring、endpoint 和 file persistence stubs。
+- `docs/forge/IMPLEMENTATION_REVIEW_V15_5_9.md:L1-L48`：架构与 AgentLoop 复审、七维验收。
+
+```diff
+- shared Isaac worker had no registered camera source
++ profile cameras -> worker-owned Camera handles -> ObservationSource -> persisted artifact refs
++ missing camera configuration -> observation source unavailable
++ static scene revision -> no manipulation readiness or motion authorization
+```
+
+详见 [v15.5.9 月度日志](changelog/2026-10_part8.md) 和 [实现审查](docs/forge/IMPLEMENTATION_REVIEW_V15_5_9.md)。
+See the [v15.5.9 detailed log](changelog/2026-10_part8.md) and [implementation review](docs/forge/IMPLEMENTATION_REVIEW_V15_5_9.md).
+
 ## v15.5.8 (2026-10-22 23:10) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
@@ -96,7 +119,7 @@ See the [v15.5.6 detailed log](changelog/2026-10_part8.md) and [implementation r
 详见 [v15.5.5 月度日志](changelog/2026-10_part8.md) 和 [实现审查](docs/forge/IMPLEMENTATION_REVIEW_V15_5_5.md)。
 See the [v15.5.5 detailed log](changelog/2026-10_part8.md) and [implementation review](docs/forge/IMPLEMENTATION_REVIEW_V15_5_5.md).
 
-## v15.5.4 (2026-10-22 21:30) - codex
+### Archived v15.5.4 (2026-10-22 21:30) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
 - [env] [fix] episode owner 显式初始化 World/robot 并使用 session-owned Task；请求中的 perception pose 不再写入 USD。跨 RPC 场景/camera owner 与 artifact IPC 仍未接通，完整方案未验收。 / Explicitly initialize World/robot and use session-owned Tasks; request perception poses are no longer written into USD. Cross-RPC scene/camera ownership and artifact IPC remain unconnected, so the full plan is not accepted.

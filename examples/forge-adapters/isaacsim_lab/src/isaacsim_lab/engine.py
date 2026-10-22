@@ -18,6 +18,11 @@ from pathlib import Path
 from threading import Event, RLock
 from typing import Any, Mapping, Protocol, Sequence
 
+from .observation import (
+    FilesystemObservationArtifactWriter,
+    IsaacCameraMetadataProvider,
+    IsaacCameraObservationSource,
+)
 from .profile import LabProfileError, LabUtopiaProfile
 
 
@@ -634,35 +639,103 @@ class LabUtopiaBackend:
         }
 
     def _ensure_session_scene(self, session: Any) -> None:
-        if session.resolve("lab_scene_resources") is not None:
+        if session.resolve("observation_source") is not None:
             return
-        if not _isaac_runtime_available():
+        scene = session.resolve("lab_scene_resources")
+        if scene is None and not _isaac_runtime_available():
             return
         self._prepend_lab_root()
-        import numpy as np
-        import omni.usd
-        from factories.robot_factory import create_robot
-        from isaacsim.core.api import World
-        from isaacsim.core.utils.stage import add_reference_to_stage
         from omegaconf import OmegaConf
-        from utils.object_utils import ObjectUtils
 
         cfg = OmegaConf.load(str(self.profile.config_path))
-        _get_session_scene_resources(
-            session,
-            profile=self.profile,
-            world_factory=lambda: World(
-                stage_units_in_meters=1.0, physics_prim_path="/physicsScene", backend="numpy"
-            ),
-            robot_factory=lambda: create_robot(
-                cfg.robot.type,
-                position=np.array(cfg.robot.position),
-                usd_path=str(self.profile.robot_usd_path),
-            ),
-            stage_provider=lambda: omni.usd.get_context().get_stage(),
-            add_reference_to_stage=add_reference_to_stage,
-            object_utils=ObjectUtils,
+        if scene is None:
+            import numpy as np
+            import omni.usd
+            from factories.robot_factory import create_robot
+            from isaacsim.core.api import World
+            from isaacsim.core.utils.stage import add_reference_to_stage
+            from utils.object_utils import ObjectUtils
+
+            scene = _get_session_scene_resources(
+                session,
+                profile=self.profile,
+                world_factory=lambda: World(
+                    stage_units_in_meters=1.0, physics_prim_path="/physicsScene", backend="numpy"
+                ),
+                robot_factory=lambda: create_robot(
+                    cfg.robot.type,
+                    position=np.array(cfg.robot.position),
+                    usd_path=str(self.profile.robot_usd_path),
+                ),
+                stage_provider=lambda: omni.usd.get_context().get_stage(),
+                add_reference_to_stage=add_reference_to_stage,
+                object_utils=ObjectUtils,
+            )
+        self._register_session_observation_source(session, cfg, scene["stage"])
+
+    def _register_session_observation_source(
+        self, session: Any, cfg: Any, stage: Any
+    ) -> None:
+        if session.resolve("observation_source") is not None:
+            return
+        camera_configs = getattr(cfg, "cameras", None)
+        if not camera_configs:
+            return
+
+        import numpy as np
+        from isaacsim.sensors.camera import Camera
+
+        cameras: dict[str, Any] = {}
+        frame_ids: dict[str, str] = {}
+        for camera_config in camera_configs:
+            name = str(camera_config.name)
+            prim_path = str(camera_config.prim_path)
+            sensor_ref = f"sensor://{name}"
+            if sensor_ref in cameras:
+                raise IsaacLabRuntimeError(f"duplicate configured sensor name: {name}")
+            camera_kwargs = {
+                "prim_path": prim_path,
+                "name": name,
+                "frequency": 60,
+                "resolution": tuple(camera_config.resolution),
+            }
+            if stage.GetPrimAtPath(prim_path).IsValid():
+                camera = Camera(**camera_kwargs)
+            else:
+                camera = Camera(
+                    **camera_kwargs, translation=np.asarray(camera_config.translation)
+                )
+                camera.set_local_pose(
+                    orientation=np.asarray(camera_config.orientation), camera_axes="usd"
+                )
+                camera.set_focal_length(float(camera_config.focal_length))
+            clipping = getattr(camera_config, "clipping_range", (0.1, 10.0))
+            camera.set_clipping_range(
+                near_distance=float(clipping[0]), far_distance=float(clipping[1])
+            )
+            camera.initialize()
+            camera.add_distance_to_image_plane_to_frame()
+            camera.add_pointcloud_to_frame()
+            cameras[sensor_ref] = camera
+            frame_ids[sensor_ref] = name
+
+        if not cameras:
+            return
+        writer = FilesystemObservationArtifactWriter(
+            self.profile.lab_root / "outputs" / "paos-observation-artifacts",
+            namespace="labutopia",
         )
+        metadata = IsaacCameraMetadataProvider(
+            cameras,
+            lambda sensor_ref: frame_ids.get(sensor_ref),
+            lambda sensor_ref: self.profile.scene_revision if sensor_ref in frame_ids else None,
+            writer,
+        )
+        source = IsaacCameraObservationSource(
+            cameras, metadata, writer, modalities=("rgb", "depth", "point_cloud")
+        )
+        session.register("camera_registry", cameras)
+        session.register("observation_source", source)
 
     def close_session(self, session: Any) -> None:
         """Drop session-scoped backend references before SimulationApp shutdown."""
