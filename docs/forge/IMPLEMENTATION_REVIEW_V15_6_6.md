@@ -33,6 +33,8 @@ scene or a successful Query.
 - Adapter, registry, and artifact-understanding no-motion tests: `19 passed`.
 - Ruff, compileall, and `git diff --check` pass.
 - Package metadata test verifies the installable `http_json` entry point.
+- Wheel built and installed into an isolated target; PAOS `discover()` found
+  `http_json` and created `HttpJsonInference` from deployment configuration.
 - No live HTTP service, model, camera, Isaac Sim, Gateway Action, IK, collision
   query, or motion was run.
 

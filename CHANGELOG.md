@@ -20,7 +20,21 @@
 ### 实际修改 / Completed Changes
 - [sense] [feat] 新增可安装、供应商无关的 `http_json` inference factory；PAOS registry 通过 entry point 发现，binary artifact 以 base64 传输，HTTP/JSON 失败原样传播。 / Add an installable vendor-neutral `http_json` inference factory; PAOS registry discovers it through an entry point, binary artifacts use base64 transport, and HTTP/JSON failures propagate unchanged.
 - [test] [test] Adapter、registry、artifact-understanding no-motion tests: `19 passed`。 / Adapter, registry, and artifact-understanding no-motion tests: `19 passed`.
-- [docs] [docs] `README.md` 与 `docs/forge/IMPLEMENTATION_REVIEW_V15_6_6.md:L1-L56` 完成部署说明、架构审查和七维状态。 / Complete deployment documentation, architecture review, and seven-dimension status in `README.md` and `IMPLEMENTATION_REVIEW_V15_6_6.md:L1-L56`.
+- [test] [test] 构建 wheel 并安装到隔离 target；真实 registry discovery 返回 `http_json`，成功创建 `HttpJsonInference`。 / Build the wheel and install into an isolated target; real registry discovery returns `http_json` and creates `HttpJsonInference`.
+- [docs] [docs] `README.md:L1-L45` 与 `docs/forge/IMPLEMENTATION_REVIEW_V15_6_6.md:L1-L58` 完成部署说明、架构审查和七维状态。 / Complete deployment documentation, architecture review, and seven-dimension status in `README.md:L1-L45` and `IMPLEMENTATION_REVIEW_V15_6_6.md:L1-L58`.
+
+### 文件与关键 Diff / Files and Key Diff
+- `examples/forge-adapters/scene-understanding-http/pyproject.toml:L1-L24`
+- `examples/forge-adapters/scene-understanding-http/src/paos_http_understanding/factory.py:L1-L112`
+- `examples/forge-adapters/scene-understanding-http/tests/test_http_inference.py:L1-L145`
+- `examples/forge-adapters/scene-understanding-http/README.md:L1-L45`
+- `docs/forge/IMPLEMENTATION_REVIEW_V15_6_6.md:L1-L58`
+
+```diff
+- Core or environment package owns a vendor-specific inference API
++ optional deployment wheel registers generic http_json through PAOS entry points
++ shared registry/runtime composes it with ArtifactResolver; PAOS validates Query output
+```
 
 ### Git 提交 / Git Commit
 - Commit: `eeffb255`; Branch: `feature/planning-loop`
