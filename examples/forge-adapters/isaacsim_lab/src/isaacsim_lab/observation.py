@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import math
 from datetime import datetime, timezone
+from numbers import Real
 from typing import Any, Callable, Mapping, Protocol
 
 
@@ -12,6 +14,77 @@ class ObservationArtifactWriter(Protocol):
     def write(
         self, sensor_ref: str, kind: str, value: Any, *, captured_at: datetime
     ) -> Mapping[str, str]: ...
+
+
+class IsaacCameraMetadataProvider:
+    """Resolve live camera calibration while keeping host frame/revision ownership."""
+
+    def __init__(
+        self,
+        cameras: Mapping[str, Any] | Callable[[str], Any | None],
+        frame_id: Callable[[str], str | None],
+        scene_revision: Callable[[str], str | None],
+        artifact_writer: ObservationArtifactWriter,
+    ) -> None:
+        if not callable(frame_id) or not callable(scene_revision):
+            raise TypeError("frame_id and scene_revision must resolve live host metadata")
+        if not callable(getattr(artifact_writer, "write", None)):
+            raise TypeError("artifact_writer must expose write(sensor_ref, kind, value)")
+        self._cameras = cameras
+        self._frame_id = frame_id
+        self._scene_revision = scene_revision
+        self._artifact_writer = artifact_writer
+
+    def __call__(self, sensor_ref: str) -> Mapping[str, str] | None:
+        camera = self._resolve_camera(sensor_ref)
+        if camera is None:
+            return None
+        get_intrinsics = getattr(camera, "get_intrinsics_matrix", None)
+        get_pose = getattr(camera, "get_world_pose", None)
+        get_resolution = getattr(camera, "get_resolution", None)
+        if not all(callable(method) for method in (get_intrinsics, get_pose, get_resolution)):
+            return None
+        frame_id = self._frame_id(sensor_ref)
+        scene_revision = self._scene_revision(sensor_ref)
+        if not _nonempty_text(frame_id) or not _nonempty_text(scene_revision):
+            return None
+        try:
+            intrinsics = _matrix3(get_intrinsics(device="cpu"))
+            position, orientation = get_pose(camera_axes="world")
+            resolution = _vector(get_resolution(), 2)
+            payload = {
+                "schema": "paos.camera_calibration.v1",
+                "sensor_ref": sensor_ref,
+                "frame_id": frame_id,
+                "scene_revision": scene_revision,
+                "resolution": resolution,
+                "intrinsics": intrinsics,
+                "camera_pose_world": {
+                    "position_m": _vector(position, 3),
+                    "orientation_wxyz": _vector(orientation, 4),
+                },
+            }
+        except Exception:
+            return None
+        stored = self._artifact_writer.write(
+            sensor_ref, "calibration", payload, captured_at=datetime.now(timezone.utc)
+        )
+        if not isinstance(stored, Mapping):
+            return None
+        calibration_ref = stored.get("ref")
+        media_type = stored.get("media_type")
+        if not _nonempty_text(calibration_ref) or not _nonempty_text(media_type):
+            return None
+        return {
+            "frame_id": frame_id,
+            "scene_revision": scene_revision,
+            "calibration_ref": calibration_ref,
+        }
+
+    def _resolve_camera(self, sensor_ref: str) -> Any | None:
+        if callable(self._cameras):
+            return self._cameras(sensor_ref)
+        return self._cameras.get(sensor_ref)
 
 
 _MODALITIES = {
@@ -126,4 +199,35 @@ def _has_data(value: Any) -> bool:
         return True
 
 
-__all__ = ["IsaacCameraObservationSource", "ObservationArtifactWriter"]
+def _nonempty_text(value: Any) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _plain_values(value: Any) -> Any:
+    convert = getattr(value, "tolist", None)
+    if callable(convert):
+        value = convert()
+    if isinstance(value, (list, tuple)):
+        return [_plain_values(item) for item in value]
+    if isinstance(value, Real) and not isinstance(value, bool):
+        number = float(value)
+        if math.isfinite(number):
+            return number
+    raise ValueError("camera calibration contains a non-finite or non-numeric value")
+
+
+def _vector(value: Any, size: int) -> list[float]:
+    values = _plain_values(value)
+    if not isinstance(values, list) or len(values) != size or any(isinstance(item, list) for item in values):
+        raise ValueError(f"camera calibration vector must contain {size} numbers")
+    return values
+
+
+def _matrix3(value: Any) -> list[list[float]]:
+    values = _plain_values(value)
+    if not isinstance(values, list) or len(values) != 3:
+        raise ValueError("camera intrinsics must be a 3x3 matrix")
+    return [_vector(row, 3) for row in values]
+
+
+__all__ = ["IsaacCameraMetadataProvider", "IsaacCameraObservationSource", "ObservationArtifactWriter"]

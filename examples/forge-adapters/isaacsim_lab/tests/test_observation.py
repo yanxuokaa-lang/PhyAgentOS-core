@@ -3,7 +3,7 @@ from datetime import timezone
 import pytest
 from PhyAgentOS.forge.capability_runtime.observation import ObservationEndpoint
 
-from isaacsim_lab.observation import IsaacCameraObservationSource
+from isaacsim_lab.observation import IsaacCameraMetadataProvider, IsaacCameraObservationSource
 
 
 class FakeCamera:
@@ -21,6 +21,19 @@ class FakeCamera:
     def get_pointcloud(self):
         self.calls.append("point_cloud")
         return [[0.1, 0.2, 0.3]]
+
+
+class CalibratedCamera(FakeCamera):
+    def get_intrinsics_matrix(self, *, device):
+        assert device == "cpu"
+        return [[100.0, 0.0, 32.0], [0.0, 101.0, 24.0], [0.0, 0.0, 1.0]]
+
+    def get_world_pose(self, *, camera_axes):
+        assert camera_axes == "world"
+        return [1.0, 2.0, 3.0], [1.0, 0.0, 0.0, 0.0]
+
+    def get_resolution(self):
+        return 64, 48
 
 
 class ArtifactWriter:
@@ -131,3 +144,96 @@ def test_source_rejects_artifact_without_actual_media_type():
         "sensor_ref": "camera/front", "max_age_ms": 1000,
     })
     assert result["status"] == "unavailable"
+
+
+def test_live_metadata_provider_persists_camera_calibration_and_host_lineage():
+    camera = CalibratedCamera()
+    writer = ArtifactWriter()
+    provider = IsaacCameraMetadataProvider(
+        {"camera/front": camera},
+        lambda _ref: "camera/front/world",
+        lambda _ref: "scene-live-9",
+        writer,
+    )
+
+    result = provider("camera/front")
+
+    assert result == {
+        "frame_id": "camera/front/world",
+        "scene_revision": "scene-live-9",
+        "calibration_ref": "artifact://capture/camera_front/calibration",
+    }
+    sensor_ref, kind, payload, captured_at = writer.values[0]
+    assert sensor_ref == "camera/front"
+    assert kind == "calibration"
+    assert payload["schema"] == "paos.camera_calibration.v1"
+    assert payload["intrinsics"] == [
+        [100.0, 0.0, 32.0], [0.0, 101.0, 24.0], [0.0, 0.0, 1.0],
+    ]
+    assert payload["resolution"] == [64.0, 48.0]
+    assert payload["camera_pose_world"] == {
+        "position_m": [1.0, 2.0, 3.0],
+        "orientation_wxyz": [1.0, 0.0, 0.0, 0.0],
+    }
+    assert captured_at.tzinfo is timezone.utc
+
+
+@pytest.mark.parametrize(
+    "camera,frame,revision",
+    [
+        (object(), lambda _ref: "frame", lambda _ref: "scene"),
+        (CalibratedCamera(), lambda _ref: None, lambda _ref: "scene"),
+        (CalibratedCamera(), lambda _ref: "frame", lambda _ref: ""),
+    ],
+)
+def test_live_metadata_provider_fails_closed_for_missing_camera_evidence(camera, frame, revision):
+    writer = ArtifactWriter()
+    provider = IsaacCameraMetadataProvider(
+        {"camera/front": camera}, frame, revision, writer,
+    )
+
+    assert provider("camera/front") is None
+    assert writer.values == []
+
+
+def test_live_metadata_provider_rejects_invalid_calibration_and_incomplete_artifact():
+    camera = CalibratedCamera()
+    camera.get_intrinsics_matrix = lambda **_kwargs: [[1.0, 0.0], [0.0, 1.0]]
+    writer = ArtifactWriter()
+    provider = IsaacCameraMetadataProvider(
+        {"camera/front": camera}, lambda _ref: "frame", lambda _ref: "scene", writer,
+    )
+    assert provider("camera/front") is None
+
+    camera = CalibratedCamera()
+    camera.get_intrinsics_matrix = lambda **_kwargs: (_ for _ in ()).throw(
+        RuntimeError("camera calibration unavailable")
+    )
+    provider = IsaacCameraMetadataProvider(
+        {"camera/front": camera}, lambda _ref: "frame", lambda _ref: "scene", writer,
+    )
+    assert provider("camera/front") is None
+    assert writer.values == []
+
+    class MissingMediaTypeWriter:
+        def write(self, sensor_ref, kind, value, *, captured_at):
+            return {"ref": "artifact://calibration/live"}
+
+    provider = IsaacCameraMetadataProvider(
+        {"camera/front": CalibratedCamera()},
+        lambda _ref: "frame", lambda _ref: "scene", MissingMediaTypeWriter(),
+    )
+    assert provider("camera/front") is None
+
+
+def test_live_metadata_provider_does_not_hide_artifact_storage_failures():
+    class FailingWriter:
+        def write(self, sensor_ref, kind, value, *, captured_at):
+            raise OSError("calibration artifact store unavailable")
+
+    provider = IsaacCameraMetadataProvider(
+        {"camera/front": CalibratedCamera()},
+        lambda _ref: "frame", lambda _ref: "scene", FailingWriter(),
+    )
+    with pytest.raises(OSError, match="artifact store unavailable"):
+        provider("camera/front")

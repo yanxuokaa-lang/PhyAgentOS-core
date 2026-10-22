@@ -2,6 +2,31 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.5.1 (2026-10-22 10:44) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [sense] [feat] 新增 `IsaacCameraMetadataProvider`，从活动相机读取内参、世界外参和分辨率并持久化 calibration artifact；frame/scene revision 由 live host resolver 提供。 / Add `IsaacCameraMetadataProvider` to read intrinsics, world extrinsics, and resolution from an active camera and persist a calibration artifact; live host resolvers supply frame and scene revision.
+- [test] [test] observation、PAOS integration 和 engine tests `54 passed`；Ruff、diff check 通过。 / Observation, PAOS integration, and engine tests: `54 passed`; Ruff and diff check passed.
+- [docs] [docs] 审查通过本阶段适配器边界，七维整体未验收；跨进程 live camera session 是 Blocker。 / Review accepts this adapter boundary, but overall seven-dimension acceptance remains incomplete; cross-process live camera session is a Blocker.
+- Implementation commit: `[pending]` on `feature/planning-loop`.
+
+### 文件与关键 Diff / Files and Key Diff
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/observation.py:L19-L87,L202-L233`：从相机采集 calibration 并由 writer 持久化；传感器 API/校准无效返回 unavailable，存储异常保持可见。 / Capture camera calibration and persist through the writer; invalid sensor API/calibration returns unavailable, while storage failures remain visible.
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/__init__.py:L3-L18`：导出 metadata provider。 / Export the metadata provider.
+- `examples/forge-adapters/isaacsim_lab/tests/test_observation.py:L149-L239`：覆盖校准、血缘、缺失/异常 API、错误 artifact 和 writer 故障。 / Cover calibration, lineage, missing/throwing APIs, invalid artifacts, and writer failures.
+- `docs/forge/IMPLEMENTATION_REVIEW_V15_5_1.md:L1-L50`：架构、AgentLoop、七维验收与剩余 blocker。 / Architecture, AgentLoop, seven-dimension acceptance, and remaining blocker.
+
+### 关键 Diff / Key Diff
+```diff
+- calibration_ref supplied as opaque host metadata only
++ active camera -> get_intrinsics_matrix + get_world_pose + get_resolution
++ calibration values -> injected durable artifact writer -> calibration_ref
++ live host resolvers -> frame_id + scene_revision
+```
+
+详见 [v15.5.1 月度日志](changelog/2026-10_part8.md) 和 [实现审查](docs/forge/IMPLEMENTATION_REVIEW_V15_5_1.md)。
+See the [v15.5.1 detailed log](changelog/2026-10_part8.md) and [implementation review](docs/forge/IMPLEMENTATION_REVIEW_V15_5_1.md).
+
 ## v15.5.0 (2026-10-22 16:50) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
@@ -78,7 +103,7 @@ See the [v15.4.15 detailed log](changelog/2026-10_part2.md) and [implementation 
 详见 [v15.4.14 月度日志](changelog/2026-10_part2.md) 和 [实现审查](docs/forge/IMPLEMENTATION_REVIEW_V15_4_14.md)。
 See the [v15.4.14 detailed log](changelog/2026-10_part2.md) and [implementation review](docs/forge/IMPLEMENTATION_REVIEW_V15_4_14.md).
 
-## v15.4.13 (2026-10-22 09:40) - codex
+### Archived v15.4.13 (2026-10-22 09:40) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
 - [test] [test] 验证标准 CLI 宿主配置 semantic builder 时的 Registry discovery、Query client identity 和 Coordinator/AgentLoop 注入；未配置路径保持兼容。 / Verify standard CLI host Registry discovery, Query-client identity, and Coordinator/AgentLoop injection when configured; preserve the unset path.
