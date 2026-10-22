@@ -27,7 +27,7 @@
 - 未运行 Isaac Sim、Gateway 或动作。 / No Isaac Sim, Gateway, or action ran.
 
 ### Git 提交
-- 实现提交待完成，分支 `feature/planning-loop`。
+- 实现提交：`3073041f`，分支 `feature/planning-loop`；日志闭环提交随后记录。
 
 ## v15.5.13 (2026-10-22 19:30) - codex
 
