@@ -7,7 +7,7 @@
 ### 变更摘要 / Summary [完成 / Completed]
 - [test] [test] 通过 scripted-provider AgentLoop 实际 ToolCall 验证 semantic task creation、Query binding、Coordinator 持久化和单个子任务节点。 / Use a scripted-provider AgentLoop ToolCall to verify semantic task creation, Query binding, Coordinator persistence, and one subtask node.
 - [docs] [docs] 完成 PAOS architecture、扩展原则、Developer Guide、AgentLoop 和七维证据复审；脚本模型与 provider fixture 不代表 live perception 或 motion。 / Complete PAOS architecture, extensibility, Developer Guide, AgentLoop, and seven-dimension evidence review; scripted model and provider fixtures are not live perception or motion evidence.
-- Implementation commit: `[pending]` on `feature/planning-loop`.
+- Implementation commit: `832c4709` on `feature/planning-loop`.
 
 ### 文件与关键 Diff / Files and Key Diff
 - `examples/forge-skills/pick-place-workflow/tests/test_semantic_task_creation.py:L362-L424`：AgentLoop ToolCall→semantic builder→Coordinator integration regression。
