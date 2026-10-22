@@ -8,7 +8,7 @@
 - [env] [fix] episode owner 显式初始化 World/robot 并使用 session-owned Task；请求中的 perception pose 不再写入 USD。跨 RPC 场景/camera owner 与 artifact IPC 仍未接通，完整方案未验收。 / Explicitly initialize World/robot and use session-owned Tasks; request perception poses are no longer written into USD. Cross-RPC scene/camera ownership and artifact IPC remain unconnected, so the full plan is not accepted.
 - [test] [test] Isaac adapter tests `68 passed`，LabUtopia lifecycle tests `8 passed`；Ruff、compileall、py_compile 通过。 / Isaac adapter tests: `68 passed`; LabUtopia lifecycle tests: `8 passed`; Ruff, compileall, and py_compile passed.
 - [docs] [docs] 新增七维阶段审查，确认 perception、scene lineage、IK/碰撞、抓放、pour/stir 和 live settlement 尚未验收。 / Add seven-dimension stage review; perception, scene lineage, IK/collision, acquire/place, pour/stir, and live settlement remain unaccepted.
-- Implementation commit: `[pending]` on `feature/planning-loop`.
+- Implementation commit: `ec8a53cc` on `feature/planning-loop`.
 
 ### 文件与关键 Diff / Files and Key Diff
 - `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/engine.py:L694-L699,L911-L916,L1839-L1845`：explicit World/robot initialization with session-owned Task; remove request-pose-to-USD writes.
