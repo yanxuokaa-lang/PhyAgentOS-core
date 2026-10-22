@@ -2,13 +2,35 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.5.10 (2026-10-22 23:50) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [docs] [chore] `CHANGELOG.md:L5-L9,L17`、`changelog/2026-10_part8.md:L341-L350` 将 v15.5.9 实现提交引用从 pending 更新为 `81bf86dc`，记录本次日志闭环。 / Update the v15.5.9 implementation reference from pending to `81bf86dc` and record this log closeout at `CHANGELOG.md:L5-L9,L17` and `changelog/2026-10_part8.md:L341-L350`.
+- 仅修改两份日志；未暂存或修改 RoboTwin、实验产物及其它用户文件。 / Only the two changelog files were modified; RoboTwin, generated artifacts, and other user files were not staged or changed.
+
+### 文件与关键 Diff / Files and Key Diff
+- `CHANGELOG.md:L5-L9,L17`：新增 v15.5.10 记录并把 v15.5.9 提交号补为 `81bf86dc`。
+- `changelog/2026-10_part8.md:L343-L355`：记录本次变更、影响文件和提交闭环。
+
+```diff
+- v15.5.9 implementation commit: [pending]
++ v15.5.9 implementation commit: 81bf86dc
++ v15.5.10: log closeout only; unrelated working-tree files preserved
+```
+
+### 验证 / Validation
+- `git diff --check`：通过。 / Passed.
+
+### Git 提交 / Git Commit
+- v15.5.9 implementation commit: `81bf86dc`; current log commit is reported in the handoff. / v15.5.9 实现提交：`81bf86dc`；本次日志提交在交接结果中记录。
+
 ## v15.5.9 (2026-10-22 23:35) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
 - [sense] [feat] `engine.py:L641-L738` 在共享 Isaac worker session 中注册配置相机 handles、标定 provider、ObservationSource 和 v15.5.8 文件 writer；无相机配置不登记 source，scene revision/readiness 仍 fail-closed。 / Register configured camera handles, calibration provider, ObservationSource, and the v15.5.8 filesystem writer in the shared Isaac worker session at `engine.py:L641-L738`; missing cameras do not register a source, while scene revision/readiness remain fail-closed.
 - [test] [test] `test_engine.py:L145-L253` 通过 Isaac API stubs 验证 RGB/depth/point-cloud artifact 落盘和无配置失败；adapter tests `78 passed`。 / Verify persisted RGB/depth/point-cloud artifacts and missing-config failure with Isaac API stubs at `test_engine.py:L145-L253`; adapter tests report `78 passed`.
 - [docs] [docs] 阶段审查确认静态 scene revision、Task camera 生命周期和 artifact resolver 仍阻塞完整七维验收。 / The phase review confirms static scene revision, Task camera lifecycle, and artifact resolver still block full seven-dimension acceptance.
-- Implementation commit: `[pending]` on `feature/planning-loop`.
+- Implementation commit: `81bf86dc` on `feature/planning-loop`.
 
 ### 文件与关键 Diff / Files and Key Diff
 - `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/engine.py:L641-L738`：配置相机 source/writer 登记到 worker session。
