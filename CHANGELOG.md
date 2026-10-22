@@ -9,6 +9,7 @@
 - [policy] [fix] 默认接入 durable SQLite assignment store，held pour 与 acquire/place 按同一 canonical assignment reference 读取 route。 / Wire the durable SQLite assignment store by default; held pour and acquire/place resolve the route from one canonical assignment reference.
 - [test] [test] 定向 no-motion Runtime/Worker/PAOS 测试 `135 passed`；完整 LabUtopia-wired 序列仍未通过，未运行真实相机或 Isaac Sim 运动。 / Focused no-motion Runtime/Worker/PAOS tests: `135 passed`; the full LabUtopia-wired sequence remains unaccepted, and no live camera or Isaac Sim motion ran.
 - [docs] [docs] `docs/forge/IMPLEMENTATION_REVIEW_V15_7_0.md:L1-L77` 按 PAOS 架构、扩展原则、Developer Guide、AgentLoop 和七维记录阶段验收与 blocker。 / Record phase review and blockers against PAOS architecture, extensibility, Developer Guide, AgentLoop, and seven dimensions at `docs/forge/IMPLEMENTATION_REVIEW_V15_7_0.md:L1-L77`.
+- Commit: `9e7e820b`; Branch: `feature/planning-loop`.
 
 ```diff
 - acquire/pour/place -> execute_cycle
