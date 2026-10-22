@@ -17,6 +17,7 @@ from PhyAgentOS.forge.capability_runtime import (
     OBSERVATION_TOOL_SPEC,
     SCENE_UNDERSTANDING_TOOL_SPEC,
     ActionAdmission,
+    ArtifactResolvingSceneUnderstandingProvider,
     CapabilityRuntime,
     CapabilitySnapshotEndpoint,
     GraspProposalEndpoint,
@@ -630,10 +631,12 @@ def register_subtask_tool(
     )
 
 
-def build_persistent_runtime(*, client, understanding_provider, grasp_provider,
+def build_persistent_runtime(*, client, understanding_provider=None, grasp_provider,
                              preparation_provider, capability_provider, resolve_preparation=None,
                              tool_context_provider, possession: PersistentPossession | None = None,
                              observation_source=None,
+                             understanding_artifact_resolver=None,
+                             understanding_inference=None,
                              query_decorator=None, tool_input_defaults=None,
                              require_synchronized_views: bool = False,
                              held_preparation_provider=None, resolve_held_preparation=None,
@@ -648,8 +651,25 @@ def build_persistent_runtime(*, client, understanding_provider, grasp_provider,
     arguments keep the original candidate/acquire provenance intact.
     tool_context_provider(tool_id) reports host-owned endpoint readiness, not
     whether a specific candidate or Action is admissible in the current world.
+    A host may inject a complete understanding_provider or compose one from an
+    artifact resolver and inference; these two forms cannot be mixed.
     """
     runtime = CapabilityRuntime()
+    has_resolver = understanding_artifact_resolver is not None
+    has_inference = understanding_inference is not None
+    if understanding_provider is None:
+        if not (has_resolver and has_inference):
+            raise ValueError(
+                "understanding_provider or both understanding_artifact_resolver and "
+                "understanding_inference are required"
+            )
+        understanding_provider = ArtifactResolvingSceneUnderstandingProvider(
+            understanding_artifact_resolver, understanding_inference
+        )
+    elif has_resolver or has_inference:
+        raise ValueError(
+            "provide understanding_provider or resolver/inference composition, not both"
+        )
     if assignment_store is not None:
         resolve_preparation = StoredAssignmentResolver(
             assignment_store, route_validator=resolve_preparation

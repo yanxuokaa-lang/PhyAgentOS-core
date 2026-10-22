@@ -365,6 +365,84 @@ def test_composition_registers_all_seven_required_tools():
     assert all(runtime.get_context(tool["tool_id"])["ready"] is False for tool in runtime.list_tools()["tools"])
 
 
+def test_build_runtime_composes_artifact_resolving_understanding_provider(tmp_path):
+    from PhyAgentOS.forge.artifacts import LocalFilesystemArtifactResolver
+
+    (tmp_path / "rgb").mkdir()
+    (tmp_path / "rgb/front.png").write_bytes(b"image-bytes")
+
+    class Providers:
+        def propose(self, _request):
+            return None
+
+        def describe(self, _request):
+            return None
+
+        def prepare(self, _request):
+            return None
+
+    seen = []
+    runtime = build_persistent_runtime(
+        client=object(),
+        understanding_artifact_resolver=LocalFilesystemArtifactResolver({"store": tmp_path}),
+        understanding_inference=lambda payload: seen.append(payload) or {"entities": []},
+        grasp_provider=Providers(),
+        preparation_provider=Providers(),
+        capability_provider=Providers(),
+        resolve_preparation=lambda _phase, request: request,
+        tool_context_provider=lambda _tool_id: {"ready": True},
+        register_legacy_actions=False,
+        register_legacy_held_operations=False,
+    )
+    result = runtime.invoke_query("scene_understanding", "understand", {
+        "observation_ref": "observation://scene/camera",
+        "scene_revision": "scene",
+        "frame_id": "camera",
+        "calibration_ref": "artifact://store/calibration.json",
+        "freshness_ms": 10,
+        "max_age_ms": 100,
+        "artifacts": ["artifact://store/rgb/front.png"],
+    })
+
+    assert result["status"] == "available"
+    assert seen[0]["resolved_artifacts"][0]["data"] == b"image-bytes"
+    assert seen[0]["resolved_artifacts"][0]["media_type"] == "image/png"
+
+
+@pytest.mark.parametrize(
+    "provider,resolver,inference",
+    [
+        (None, object(), None),
+        (object(), object(), object()),
+    ],
+)
+def test_build_runtime_rejects_incomplete_or_ambiguous_understanding_composition(
+    provider, resolver, inference
+):
+    class Providers:
+        def propose(self, _request):
+            return None
+
+        def describe(self, _request):
+            return None
+
+        def prepare(self, _request):
+            return None
+
+    with pytest.raises(ValueError, match="understanding_provider|not both"):
+        build_persistent_runtime(
+            client=object(),
+            understanding_provider=provider,
+            understanding_artifact_resolver=resolver,
+            understanding_inference=inference,
+            grasp_provider=Providers(),
+            preparation_provider=Providers(),
+            capability_provider=Providers(),
+            resolve_preparation=lambda _phase, request: request,
+            tool_context_provider=lambda _tool_id: {"ready": True},
+        )
+
+
 def test_projected_action_diagnostics_do_not_expose_prepared_trajectory():
     class Driver:
         def poll(self):

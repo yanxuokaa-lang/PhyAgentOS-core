@@ -2,6 +2,36 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.5.15 (2026-10-22 20:30) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [sense] [feat] `persistent_runtime.py:L634-L672` 支持完整 understanding provider 或通用 resolver+inference composition。 / Support a complete understanding provider or generic resolver+inference composition at `persistent_runtime.py:L634-L672`.
+- [test] [test] Runtime Query 验证组合 provider 传递 artifact bytes/media type，并拒绝不完整/混合参数。 / Runtime Query tests verify artifact bytes/media type delivery and reject incomplete/mixed inputs.
+- [policy] [docs] 七维复审保留真实模型、共享 artifact store、IK/碰撞和动作证据 blocker。 / Seven-dimension review retains real-model, shared-artifact-store, IK/collision, and action-evidence blockers.
+
+### 文件与关键 Diff / Files and Key Diff
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/persistent_runtime.py:L13-L27,L634-L672`：通用 provider composition 接入。
+- `examples/forge-skills/pick-place-workflow/tests/test_persistent_runtime.py:L368-L443`：Runtime Query 与装配失败测试。
+- `docs/forge/IMPLEMENTATION_REVIEW_V15_5_15.md:L1-L44`：PAOS、AgentLoop 和七维阶段 review。
+
+```diff
+- understanding_provider only
++ understanding_provider OR artifact_resolver + inference
++ no environment-specific import or AgentLoop change
+```
+
+### 验证 / Validation
+- 定向测试 `54 passed`；完整 workflow `596 passed, 2 failed`（既有 Robotwin release lock mismatch）。 / Focused tests `54 passed`; full workflow `596 passed, 2 failed` (pre-existing Robotwin release lock mismatch).
+- Ruff、compileall、`git diff --check` 通过；未启动 Isaac Sim 或运动。 / Ruff, compileall, and `git diff --check` passed; no Isaac Sim or motion ran.
+
+### 预计修改 / Planned Changes
+- `persistent_runtime.py`：将通用 provider composition 作为可选构造路径。
+- `test_persistent_runtime.py`：验证 runtime Query 使用 resolver/inference 组合后的 provider。
+- 新增阶段 review，更新双语变更日志。
+
+### Git 提交
+- 实现提交待完成，分支 `feature/planning-loop`。
+
 ## v15.5.14 (2026-10-22 20:00) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
