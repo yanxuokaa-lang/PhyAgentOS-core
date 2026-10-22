@@ -10,7 +10,7 @@
 - [docs] [docs] `docs/forge/IMPLEMENTATION_REVIEW_V15_6_4.md:L1-L48` 完成阶段审查与七维状态。 / Complete phase review and seven-dimension status at `IMPLEMENTATION_REVIEW_V15_6_4.md:L1-L48`.
 
 ### Git 提交 / Git Commit
-- Commit: pending; Branch: `feature/planning-loop`
+- Commit: `64cf000e`; Branch: `feature/planning-loop`
 
 ## v15.6.3 (2026-10-22 14:20) - codex
 
