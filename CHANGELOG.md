@@ -24,7 +24,7 @@
 验证：`142 passed`; Ruff、compileall、`git diff --check` 通过。无 Isaac Sim、IK、碰撞或运动。 / Validation: `142 passed`; Ruff, compileall, and `git diff --check` pass. No Isaac Sim, IK, collision query, or motion.
 
 ### Git 提交 / Git Commit
-- Implementation commit: pending on `feature/planning-loop`.
+- Implementation commit: `cc5f9dd1` on `feature/planning-loop`.
 
 ## v15.5.16 (2026-10-22 10:40) - codex
 
