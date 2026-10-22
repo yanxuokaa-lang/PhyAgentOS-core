@@ -8,7 +8,7 @@
 - [sense] [feat] 新增 `IsaacCameraMetadataProvider`，从活动相机读取内参、世界外参和分辨率并持久化 calibration artifact；frame/scene revision 由 live host resolver 提供。 / Add `IsaacCameraMetadataProvider` to read intrinsics, world extrinsics, and resolution from an active camera and persist a calibration artifact; live host resolvers supply frame and scene revision.
 - [test] [test] observation、PAOS integration 和 engine tests `54 passed`；Ruff、diff check 通过。 / Observation, PAOS integration, and engine tests: `54 passed`; Ruff and diff check passed.
 - [docs] [docs] 审查通过本阶段适配器边界，七维整体未验收；跨进程 live camera session 是 Blocker。 / Review accepts this adapter boundary, but overall seven-dimension acceptance remains incomplete; cross-process live camera session is a Blocker.
-- Implementation commit: `[pending]` on `feature/planning-loop`.
+- Implementation commit: `30facff1` on `feature/planning-loop`.
 
 ### 文件与关键 Diff / Files and Key Diff
 - `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/observation.py:L19-L87,L202-L233`：从相机采集 calibration 并由 writer 持久化；传感器 API/校准无效返回 unavailable，存储异常保持可见。 / Capture camera calibration and persist through the writer; invalid sensor API/calibration returns unavailable, while storage failures remain visible.
