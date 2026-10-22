@@ -2,6 +2,29 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.5.2 (2026-10-22 12:10) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [env] [feat] 将每 Action 单独启动的 Isaac worker 改为一个可复用 SimulationApp 进程，通过 Unix socket 顺序处理 action/observe request，支持请求关联、取消标记和显式关闭；camera registry 未接入时返回 unavailable。 / Replace the per-Action worker with one reusable SimulationApp process serving ordered action/observe requests over Unix socket, with request correlation, cancellation markers, and explicit shutdown; return unavailable until a camera registry is wired.
+- [test] [test] 完整 Isaac adapter 测试目录 `67 passed`；Ruff、compileall、diff check 通过。 / Complete Isaac adapter test directory: `67 passed`; Ruff, compileall, and diff check passed.
+- [docs] [docs] 完成 PAOS 架构/扩展原则/Developer Guide/AgentLoop/七维复审；同一进程尚不代表同一 World/revision，完整方案未验收。 / Complete PAOS architecture, extensibility, Developer Guide, AgentLoop, and seven-dimension review; one process does not yet prove one World/revision, so the complete plan remains unaccepted.
+- Implementation commit: `[pending]` on `feature/planning-loop`.
+
+### 文件与关键 Diff / Files and Key Diff
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/worker_session.py:L1-L219`、`worker.py:L20-L101`：实现常驻 owner、请求关联、取消和关闭；Observation/Action RPC 进入同一 SimulationApp 进程。
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/engine.py:L326-L344,L463-L511,L548-L626`、`paos_client.py:L166-L177,L288-L294`：接入 Runtime client 和 ObservationSource 形状；相机 registry 缺失时 fail closed。
+- `examples/forge-adapters/isaacsim_lab/tests/test_worker_session.py:L1-L150`、`test_engine.py:L109-L119`：覆盖 session 生命周期和未就绪感知。
+- `docs/forge/IMPLEMENTATION_REVIEW_V15_5_2.md:L1-L50`：记录架构复审、AgentLoop 边界和七维验收。
+
+```diff
+- each Action -> new worker + SimulationApp -> execute -> close
++ reusable SimulationApp owner -> ordered observation/action RPC -> explicit close
++ missing live camera registry -> unavailable
+```
+
+详见 [v15.5.2 月度日志](changelog/2026-10_part8.md) 和 [实现审查](docs/forge/IMPLEMENTATION_REVIEW_V15_5_2.md)。
+See the [v15.5.2 detailed log](changelog/2026-10_part8.md) and [implementation review](docs/forge/IMPLEMENTATION_REVIEW_V15_5_2.md).
+
 ## v15.5.1 (2026-10-22 10:44) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
@@ -89,7 +112,7 @@ See the [v15.4.16 detailed log](changelog/2026-10_part2.md) and [implementation 
 详见 [v15.4.15 月度日志](changelog/2026-10_part2.md) 和 [实现审查](docs/forge/IMPLEMENTATION_REVIEW_V15_4_15.md)。
 See the [v15.4.15 detailed log](changelog/2026-10_part2.md) and [implementation review](docs/forge/IMPLEMENTATION_REVIEW_V15_4_15.md).
 
-## v15.4.14 (2026-10-22 09:45) - codex
+### Archived v15.4.14 (2026-10-22 09:45) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
 - [test] [test] 通过 scripted-provider AgentLoop 实际 ToolCall 验证 semantic task creation、Query binding、Coordinator 持久化和单个子任务节点。 / Use a scripted-provider AgentLoop ToolCall to verify semantic task creation, Query binding, Coordinator persistence, and one subtask node.

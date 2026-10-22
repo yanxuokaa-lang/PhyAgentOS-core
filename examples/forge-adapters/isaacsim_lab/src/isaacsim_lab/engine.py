@@ -11,13 +11,11 @@ import importlib.util
 import json
 import math
 import os
-import subprocess
 import sys
-import time
 import traceback
 from copy import deepcopy
 from pathlib import Path
-from threading import Event
+from threading import Event, RLock
 from typing import Any, Mapping, Protocol, Sequence
 
 from .profile import LabProfileError, LabUtopiaProfile
@@ -332,6 +330,19 @@ class IsaacSimLabEngine:
         self.profile = profile
         self.backend = backend or LabUtopiaBackend(profile)
 
+    @property
+    def observation_ready(self) -> bool:
+        return bool(getattr(self.backend, "observation_ready", False))
+
+    def observe(self, request: Mapping[str, Any]) -> dict[str, Any]:
+        observe = getattr(self.backend, "observe", None)
+        if not callable(observe):
+            return {"status": "unavailable", "failure_code": "observation_not_supported"}
+        result = observe(request)
+        return dict(result) if isinstance(result, Mapping) else {
+            "status": "unavailable", "failure_code": "invalid_observation_result"
+        }
+
     def cycle_capability(self, operation: str) -> dict[str, Any]:
         runnable = getattr(self.backend, "runnable_operations", ("pour_cycle",))
         available = operation in self.profile.supported_operations and operation in runnable \
@@ -452,6 +463,8 @@ class LabUtopiaBackend:
     def __init__(self, profile: LabUtopiaProfile):
         self.profile = profile
         self._last_video_info: dict[str, Any] = {}
+        self._worker_session = None
+        self._worker_lock = RLock()
 
     @property
     def runnable_operations(self) -> tuple[str, ...]:
@@ -467,6 +480,35 @@ class LabUtopiaBackend:
             return self._run_worker(arguments, cancel)
 
         return self._run_inprocess(arguments, cancel, Path(os.environ["PAOS_ISAAC_RESULT_PATH"]))
+
+    def close(self) -> None:
+        with self._worker_lock:
+            session = self._worker_session
+            self._worker_session = None
+        if session is not None:
+            session.close()
+
+    @property
+    def observation_ready(self) -> bool:
+        return False
+
+    def observe(self, request: Mapping[str, Any]) -> dict[str, Any]:
+        if os.environ.get("OMNI_KIT_ACCEPT_EULA", "").lower() not in {"y", "yes", "1", "true"}:
+            return {"status": "unavailable", "failure_code": "OMNI_KIT_ACCEPT_EULA_not_accepted"}
+        try:
+            with self._worker_lock:
+                if self._worker_session is None:
+                    from .worker_session import IsaacWorkerSession
+
+                    self._worker_session = IsaacWorkerSession(self.profile_path)
+                session = self._worker_session
+            return session.observe(request)
+        except Exception as exc:
+            return {
+                "status": "unavailable",
+                "failure_code": type(exc).__name__,
+                "error_detail": str(exc)[:512],
+            }
 
     def dry_run_cycle(self, arguments: Mapping[str, Any]) -> dict[str, Any]:
         """Resolve dispatch and parameters without importing or stepping Isaac Sim."""
@@ -504,56 +546,23 @@ class LabUtopiaBackend:
         }
 
     def _run_worker(self, arguments: Mapping[str, Any], cancel: Event) -> Mapping[str, Any]:
-        operation = str(arguments.get("operation", "manipulation_cycle"))
-        output_dir = self.profile.lab_root / "outputs" / (
-            "paos-pour-cycle" if operation == "pour_cycle" else "paos-generic-cycle"
-        )
-        output_dir.mkdir(parents=True, exist_ok=True)
-        suffix = f"{os.getpid()}-{time.monotonic_ns()}"
-        input_path = output_dir / f"input-{suffix}.json"
-        result_path = output_dir / f"result-{suffix}.json"
-        input_path.write_text(json.dumps(dict(arguments), ensure_ascii=False), encoding="utf-8")
-        env = dict(os.environ)
-        env.update({
-            "PAOS_ISAAC_WORKER": "1",
-            "PAOS_ISAAC_PROFILE": str(self.profile_path),
-            "PAOS_ISAAC_INPUT_PATH": str(input_path),
-            "PAOS_ISAAC_RESULT_PATH": str(result_path),
-        })
-        process = subprocess.Popen(
-            [sys.executable, "-m", "isaacsim_lab.worker"],
-            env=env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        while process.poll() is None:
-            if cancel.is_set():
-                process.terminate()
-                try:
-                    process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                return {"status": "unknown", "outcome_known": False, "world_change_started": True,
-                        "failure_owner": "isaacsim_adapter", "failure_code": "cancelled_worker",
-                        "video_path": str(result_path.with_suffix(".mp4")),
-                        "video_frame_count": 0,
-                        "video_available": result_path.with_suffix(".mp4").is_file()}
-            time.sleep(0.1)
-        if not result_path.is_file():
-            return {"status": "unknown", "outcome_known": False, "world_change_started": True,
-                    "failure_owner": "isaacsim_adapter", "failure_code": "worker_no_result",
-                    "error_detail": "Isaac worker exited without a result artifact",
-                    "video_path": str(result_path.with_suffix(".mp4")),
-                    "video_frame_count": 0,
-                    "video_available": result_path.with_suffix(".mp4").is_file()}
         try:
-            return json.loads(result_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            return {"status": "unknown", "outcome_known": False, "world_change_started": True,
-                    "failure_owner": "isaacsim_adapter", "failure_code": type(exc).__name__,
-                    "video_path": str(result_path.with_suffix(".mp4")),
-                    "video_frame_count": 0,
-                    "video_available": result_path.with_suffix(".mp4").is_file()}
+            with self._worker_lock:
+                if self._worker_session is None:
+                    from .worker_session import IsaacWorkerSession
+
+                    self._worker_session = IsaacWorkerSession(self.profile_path)
+                session = self._worker_session
+            return session.request("execute_cycle", arguments, cancel=cancel)
+        except Exception as exc:
+            return {
+                "status": "unknown",
+                "outcome_known": False,
+                "world_change_started": True,
+                "failure_owner": "isaacsim_adapter",
+                "failure_code": type(exc).__name__,
+                "error_detail": str(exc)[:512],
+            }
 
     @property
     def profile_path(self) -> Path:
@@ -575,7 +584,7 @@ class LabUtopiaBackend:
             result = {
                 "status": "unknown",
                 "outcome_known": False,
-                "world_change_started": False,
+                "world_change_started": True,
                 "failure_owner": "isaacsim_adapter",
                 "failure_code": type(exc).__name__,
                 "error_detail": traceback.format_exc()[-2048:],
@@ -587,6 +596,34 @@ class LabUtopiaBackend:
             result_path.write_text(json.dumps(result, ensure_ascii=False, allow_nan=False), encoding="utf-8")
             app.close()
         return result
+
+    def _run_session_cycle(self, app: Any, arguments: Mapping[str, Any], cancel: Event, video_path: Path) -> dict[str, Any]:
+        self._last_video_info = {}
+        try:
+            result = self._run_episode(app, arguments, cancel, video_path)
+        except Exception as exc:
+            result = {
+                "status": "unknown",
+                "outcome_known": False,
+                "world_change_started": True,
+                "failure_owner": "isaacsim_adapter",
+                "failure_code": type(exc).__name__,
+                "error_detail": traceback.format_exc()[-2048:],
+                "phase_events": _generic_phase_events([], process_completed=False, process_type="unknown"),
+                "feedback_observations": [],
+            }
+        result.update(self._last_video_info)
+        return result
+
+    def observe_in_session(self, app: Any, request: Mapping[str, Any]) -> dict[str, Any]:
+        """Fail closed until the live Isaac scene registers an ObservationSource."""
+        del app, request
+        return {
+            "status": "unavailable",
+            "outcome_known": False,
+            "motion_authorized": False,
+            "failure_code": "session_camera_registry_unavailable",
+        }
 
     def _run_episode(
         self,

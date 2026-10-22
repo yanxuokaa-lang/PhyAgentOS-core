@@ -163,6 +163,19 @@ class LabUtopiaCycleClient:
             })
         return result
 
+    @property
+    def observation_ready(self) -> bool:
+        return bool(getattr(self.engine, "observation_ready", False))
+
+    def capture(self, request: Mapping[str, Any]) -> Mapping[str, Any] | None:
+        observe = getattr(self.engine, "observe", None)
+        if not callable(observe):
+            return None
+        result = observe(deepcopy(dict(request)))
+        if not isinstance(result, Mapping) or result.get("status") != "available":
+            return None
+        return result
+
     def prepare_cycle(self, arguments: Mapping[str, Any]) -> dict[str, Any]:
         return self._preparation_provider.prepare_cycle(arguments)
 
@@ -272,8 +285,12 @@ def build_labutopia_runtime(
             (preparation_provider, "prepare"),
         )
     )
-    observation_provider_ready = callable(getattr(observation_provider, "capture", None)) or callable(
-        getattr(observation_provider, "query", None)
+    observation_provider_ready = (
+        getattr(observation_provider, "observation_ready", True) is not False
+        and (
+            callable(getattr(observation_provider, "capture", None))
+            or callable(getattr(observation_provider, "query", None))
+        )
     )
     if (
         perception_adapter is not None

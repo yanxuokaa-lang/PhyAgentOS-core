@@ -9,6 +9,7 @@ import pytest
 import isaacsim_lab.engine as module
 from isaacsim_lab.engine import (
     IsaacSimLabEngine,
+    LabUtopiaBackend,
     _bound_endpoint,
     _continuous_pour_window,
     _episode_succeeded,
@@ -111,6 +112,15 @@ def test_capability_is_disabled_without_isaac_runtime(tmp_path, monkeypatch):
     assert declaration["preparation"] is False
     assert declaration["execution"] is False
     assert declaration["motion_authorized"] is False
+
+
+def test_observation_is_not_advertised_without_live_camera_registry(tmp_path):
+    backend = LabUtopiaBackend(make_profile(tmp_path))
+    assert backend.observation_ready is False
+    result = backend.observe_in_session(object(), {"sensor_ref": "sensor://front"})
+    assert result["status"] == "unavailable"
+    assert result["failure_code"] == "session_camera_registry_unavailable"
+    assert result["motion_authorized"] is False
 
 
 def test_target_world_transform_projects_pose_and_process_frame(tmp_path):
