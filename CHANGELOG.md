@@ -7,6 +7,7 @@
 ### 变更摘要 / Summary [完成 / Completed]
 - [test] [test] 经 AgentLoop 注册 Tool 验证 semantic builder、measured binding 与单个子任务 PlanNode 持久化，并验证 workflow 打包配置中的 entry point 声明。 / Verify semantic builder wiring, measured binding, and single-subtask PlanNode persistence through the AgentLoop-registered Tool, plus the workflow packaging entry-point declaration.
 - [docs] [docs] 完成 PAOS 架构、扩展性、Developer Guide、AgentLoop 和七维证据审查；真实感知及物理执行仍未验收。 / Complete PAOS architecture, extensibility, Developer Guide, AgentLoop, and seven-dimension evidence review; live perception and physical execution remain unaccepted.
+- Implementation commit: `5ef01c66` on `feature/planning-loop`.
 
 ### 文件与关键 Diff / Files and Key Diff
 - `examples/forge-skills/pick-place-workflow/tests/test_semantic_task_creation.py:L229-L276`：entry point 元数据和 AgentLoop ToolRegistry 集成回归。
