@@ -2,6 +2,33 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.5.11 (2026-10-22 23:55) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [sense] [feat] `worker.py:L59-L149`、`worker_session.py:L52-L88` 新增 worker-owned session revision 查询、单调推进与 action stale 检查；执行启动世界变更后返回新 revision。 / Add worker-owned session revision query, monotonic advance, and stale-action rejection at `worker.py:L59-L149` and `worker_session.py:L52-L88`; return a new revision after execution starts changing the world.
+- [sense] [fix] `engine.py:L388-L480,L541-L551,L709-L720,L774-L784` 让观测元数据、prepare 和 action 使用活动 worker revision；`profile.py:L191-L202` 接受调用方传入 live revision，不把静态 profile revision 当作运行态事实。 / Bind observation metadata, preparation, and action to the active worker revision at `engine.py:L388-L480,L541-L551,L709-L720,L774-L784`; accept caller-supplied live revisions in `profile.py:L191-L202` without treating the static profile seed as runtime truth.
+- [test] [test] worker 生命周期测试覆盖 stale 拒绝、执行后 revision 推进与同 session 复用；完整 adapter suite `79 passed`。 / Worker lifecycle tests cover stale rejection, post-execution revision advance, and same-session reuse; the full adapter suite reports `79 passed`.
+- [docs] [docs] `docs/forge/IMPLEMENTATION_REVIEW_V15_5_11.md:L1-L47` 完成 PAOS、扩展原则、Developer Guide、AgentLoop 与七维阶段审查；整体方案仍未验收。 / Complete the phase review against PAOS, extensibility, Developer Guide, AgentLoop, and seven dimensions at `docs/forge/IMPLEMENTATION_REVIEW_V15_5_11.md:L1-L47`; the overall plan remains unaccepted.
+- Implementation commit: `5c56452b`; log closeout follows on `feature/planning-loop`. / 实现提交：`5c56452b`；日志闭环随后提交至 `feature/planning-loop`。
+
+### 文件与关键 Diff / Files and Key Diff
+- `worker.py:L59-L149`、`worker_session.py:L52-L88`：scene owner revision state + read RPC + stale validation + post-change advance。
+- `engine.py:L388-L480,L541-L551,L709-L720,L774-L784`：PAOS host 与 observation provider 接入活动 revision。
+- `profile.py:L191-L202`：允许传递 live scene revision。
+- `tests/test_worker_session.py:L32-L62,L92-L130`：同 session、stale 和 advance no-motion tests。
+- `docs/forge/IMPLEMENTATION_REVIEW_V15_5_11.md:L1-L47`：阶段审查与七维验收。
+
+```diff
+- profile.scene_revision -> observation + prepare + action
++ worker session revision -> observation + prepare + action validation
++ action reports world change -> worker advances revision
++ stale/unavailable revision -> reject before backend dispatch
+```
+
+### 验证 / Validation
+- Adapter tests：`79 passed`；Ruff、compileall、`git diff --check` 通过。Pytest 有既有 `asyncio_mode` warning。 / Adapter tests: `79 passed`; Ruff, compileall, and `git diff --check` passed. Pytest has the existing `asyncio_mode` warning.
+- 未启动 Isaac Sim、Gateway、simulation step、IK、碰撞查询或运动。 / No Isaac Sim, Gateway, simulation step, IK, collision query, or motion was run.
+
 ## v15.5.10 (2026-10-22 23:50) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
