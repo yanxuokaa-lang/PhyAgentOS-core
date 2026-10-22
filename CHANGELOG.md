@@ -30,7 +30,7 @@
 - 仅启动 loopback TCP fixture 和合成 RGB；未启动 Isaac Sim、Gateway、IK、碰撞查询、Action 或运动。 / Only a loopback TCP fixture and synthetic RGB ran; no Isaac Sim, Gateway, IK, collision query, Action, or motion ran.
 
 ### Git 提交 / Git Commit
-- Commit: 待提交；Branch: `feature/planning-loop`。
+- Commit: `ee4cfcc5`; Branch: `feature/planning-loop`。
 
 ## v15.6.6 (2026-10-22 17:00) - codex
 
