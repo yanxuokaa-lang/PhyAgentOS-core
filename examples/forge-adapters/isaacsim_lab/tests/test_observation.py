@@ -247,6 +247,8 @@ def test_live_metadata_provider_does_not_hide_artifact_storage_failures():
 
 
 def test_filesystem_writer_persists_sensor_arrays_and_calibration(tmp_path):
+    from PhyAgentOS.forge.artifacts import LocalFilesystemArtifactResolver
+
     writer = FilesystemObservationArtifactWriter(tmp_path, namespace="labutopia")
     captured_at = datetime(2026, 10, 22, tzinfo=timezone.utc)
 
@@ -267,6 +269,16 @@ def test_filesystem_writer_persists_sensor_arrays_and_calibration(tmp_path):
     assert json.loads(calibration_path.read_text(encoding="utf-8")) == {
         "frame_id": "camera/front"
     }
+    resolved_rgb = LocalFilesystemArtifactResolver({"labutopia": tmp_path}).resolve(rgb["ref"])
+    resolved_calibration = LocalFilesystemArtifactResolver({"labutopia": tmp_path}).resolve(
+        calibration["ref"]
+    )
+    assert resolved_rgb is not None
+    assert resolved_rgb.media_type == rgb["media_type"]
+    assert resolved_rgb.data == rgb_path.read_bytes()
+    assert resolved_calibration is not None
+    assert resolved_calibration.media_type == calibration["media_type"]
+    assert resolved_calibration.data == calibration_path.read_bytes()
     assert rgb["ref"] != calibration["ref"]
 
 

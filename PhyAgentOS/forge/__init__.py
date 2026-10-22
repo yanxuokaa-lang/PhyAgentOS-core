@@ -1,5 +1,10 @@
 """PAOS-owned aggregation over the Forge Gateway Tool API."""
 
+from PhyAgentOS.forge.artifacts import (
+    ArtifactContent,
+    ArtifactResolver,
+    LocalFilesystemArtifactResolver,
+)
 from PhyAgentOS.forge.capability_runtime import (
     ActionAdmission,
     CapabilityRuntime,
@@ -50,6 +55,9 @@ from PhyAgentOS.planning import (
 )
 
 __all__ = [
+    "ArtifactContent",
+    "ArtifactResolver",
+    "LocalFilesystemArtifactResolver",
     "ActionAdmission",
     "AgentTaskCoordinator",
     "AgentTaskOriginApproval",
