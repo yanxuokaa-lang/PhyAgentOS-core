@@ -8,7 +8,7 @@
 - [env] [refactor] worker session 在首次 observe/action 持有并复用同一 World、USD stage 和 robot；pour/stir Task 保持 episode-scoped，避免目标和帧状态泄漏；未接入 owned lifecycle 的旋转任务在共享 worker 路径明确返回 unsupported。 / The worker session owns and reuses one World, USD stage, and robot across observe/action; pour/stir Tasks remain episode-scoped to prevent target/frame-state leakage; rotation tasks without an owned lifecycle return unsupported on the shared worker path.
 - [test] [test] Isaac adapter suite `73 passed`；覆盖资源 identity、单次 World reset/robot initialize、Task wrapper 切换、scene 路径不匹配拒绝及 rotation unsupported 反馈。 / Isaac adapter suite: `73 passed`; cover resource identity, one World reset/robot initialization, Task wrapper switching, scene-path mismatch rejection, and unsupported rotation feedback.
 - [docs] [docs] PAOS 架构、扩展原则、Developer Guide、AgentLoop、反过度防御与七维 review 已记录；完整 LabUtopia 方案仍未验收。 / Record PAOS architecture, extensibility, Developer Guide, AgentLoop, anti-overdefense, and seven-dimension review; the full LabUtopia plan remains unaccepted.
-- Implementation commit: `[pending]` on `feature/planning-loop`.
+- Implementation commit: `74dcb219` on `feature/planning-loop`.
 
 ### 文件与关键 Diff / Files and Key Diff
 - `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/engine.py:L608-L671,L678-L690,L698-L750,L926-L989,L1910-L1967`：observe 初始化 worker-owned scene；pour/stir episode 复用 World/stage/robot、Task 逐调用构造；共享 worker 中不支持的 task 返回 `unsupported` 且不开始 world change。
