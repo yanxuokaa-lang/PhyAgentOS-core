@@ -10,7 +10,7 @@
 - [docs] [docs] `docs/forge/IMPLEMENTATION_REVIEW_V15_6_3.md:L1-L50` 完成依赖方向与七维审查。 / Complete dependency-direction and seven-dimension review at `IMPLEMENTATION_REVIEW_V15_6_3.md:L1-L50`.
 
 ### Git 提交 / Git Commit
-- Commit: pending; Branch: `feature/planning-loop`
+- Commit: `7b0ab356`; Branch: `feature/planning-loop`
 
 ## v15.6.2 (2026-10-22 14:05) - codex
 
