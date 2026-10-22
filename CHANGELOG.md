@@ -2,6 +2,19 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.4.10 (2026-10-22 09:24) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [test] [test] 经 AgentLoop 注册 Tool 验证 semantic builder、measured binding 与单个子任务 PlanNode 持久化，并验证 workflow 打包配置中的 entry point 声明。 / Verify semantic builder wiring, measured binding, and single-subtask PlanNode persistence through the AgentLoop-registered Tool, plus the workflow packaging entry-point declaration.
+- [docs] [docs] 完成 PAOS 架构、扩展性、Developer Guide、AgentLoop 和七维证据审查；真实感知及物理执行仍未验收。 / Complete PAOS architecture, extensibility, Developer Guide, AgentLoop, and seven-dimension evidence review; live perception and physical execution remain unaccepted.
+
+### 文件与关键 Diff / Files and Key Diff
+- `examples/forge-skills/pick-place-workflow/tests/test_semantic_task_creation.py:L229-L276`：entry point 元数据和 AgentLoop ToolRegistry 集成回归。
+- `docs/forge/IMPLEMENTATION_REVIEW_V15_4_10.md:L1-L44`：本阶段审查与七维验收。
+
+详见 [v15.4.10 月度日志](changelog/2026-10_part2.md) 和 [实现审查](docs/forge/IMPLEMENTATION_REVIEW_V15_4_10.md)。
+See the [v15.4.10 detailed log](changelog/2026-10_part2.md) and [implementation review](docs/forge/IMPLEMENTATION_REVIEW_V15_4_10.md).
+
 ## v15.4.9 (2026-10-22 15:25) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]

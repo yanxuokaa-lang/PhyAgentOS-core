@@ -2,13 +2,18 @@ from __future__ import annotations
 
 import asyncio
 import json
+import tomllib
 from copy import deepcopy
+from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
+from PhyAgentOS.agent.loop import AgentLoop
 from PhyAgentOS.agent.tools.forge_task import ForgeTaskCreateTool
+from PhyAgentOS.bus.queue import MessageBus
 from PhyAgentOS.config.schema import ForgeConfig
 from PhyAgentOS.forge.task import AgentTaskCoordinator
+from PhyAgentOS.providers.base import LLMProvider
 
 from pick_place_workflow.perception_binding import PerceptionBindingAdapter
 from pick_place_workflow.semantic_task_creation import (
@@ -219,3 +224,53 @@ def test_async_builder_binds_policy_digest_to_live_query_tool_specs():
     plan = asyncio.run(builder.build("pour reagent", _request()))
     assert observed_specs == list(PerceptionBindingAdapter._QUERY_SPECS)
     assert len(plan["policy_snapshot_digest"]) == 64
+
+
+def test_installed_workflow_metadata_declares_semantic_builder_entry_point():
+    project_file = Path(__file__).parents[1] / "pyproject.toml"
+    metadata = tomllib.loads(project_file.read_text(encoding="utf-8"))
+    entry_points = metadata["project"]["entry-points"]["paos.semantic_plan_builders"]
+    assert entry_points["pick_place_workflow"] == (
+        "pick_place_workflow.semantic_task_creation:PickPlaceSemanticPlanBuilderFactory"
+    )
+
+
+def test_agent_loop_registered_task_tool_executes_measured_subtask_creation(tmp_path):
+    sync_query = _provider()
+
+    async def query(tool_id, arguments):
+        return sync_query(tool_id, arguments)
+
+    class Provider(LLMProvider):
+        async def chat(self, messages, model=None, **kwargs):
+            del messages, model, kwargs
+            raise AssertionError("task-tool integration must not invoke the model")
+
+        def get_default_model(self):
+            return "test-model"
+
+    coordinator = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=object())
+    builder = _async_builder(query)
+    loop = AgentLoop(
+        bus=MessageBus(),
+        provider=Provider(),
+        workspace=tmp_path,
+        forge_task_coordinator=coordinator,
+        semantic_plan_builder=builder,
+    )
+    tool = loop.tools.get("forge_task_create")
+    assert tool is not None
+    assert "semantic_subtasks" in tool.parameters["properties"]
+
+    result = json.loads(asyncio.run(loop.tools.execute("forge_task_create", {
+        "task_description": "Pour reagent A into the beaker",
+        "verification": {"mode": "off"},
+        "semantic_subtasks": _request(),
+    })))
+    assert result["ok"] is True
+    task = coordinator.get_task(result["data"]["task_id"])
+    nodes = task.active_revision.plan_graph.nodes
+    assert [node.capability for node in nodes] == [
+        "manipulation.execute_subtask", "task.verify",
+    ]
+    assert nodes[0].input_bindings["binding"]["entity_ref"] == "entity://a-bottle"
