@@ -371,11 +371,15 @@ def test_legacy_cycles_are_not_invoked_from_perception_bound_task_projection(tmp
     bundle = _runtime(tmp_path, engine)
     try:
         tools = {item["tool_id"] for item in bundle.runtime.list_tools()["tools"]}
-        assert "object.pour_cycle" in tools
-        assert "tool.stir_cycle" in tools
+        assert "object.pour_cycle" not in tools
+        assert "tool.stir_cycle" not in tools
         assert "manipulation.cycle" not in tools
         assert "manipulation.execute_subtask" not in tools
         assert not {"object.acquire", "object.place", "object.pour", "tool.stir"} & tools
+        for tool_id in ("object.acquire", "object.place", "object.pour", "tool.stir", "manipulation.prepare_held"):
+            assert bundle.runtime.get_tool(tool_id)
+            with pytest.raises(CapabilityRuntimeError, match="not externally invokable"):
+                bundle.runtime.start_action(tool_id, {}, caller_id=CALLER)
 
         projected = project_pour_task(bundle.engine.profile, {
             "task_type": "pour_liquid", "source_label": "试剂A", "destination_label": "烧杯",
@@ -388,19 +392,30 @@ def test_legacy_cycles_are_not_invoked_from_perception_bound_task_projection(tmp
         bundle.client.close()
 
 
-def test_invalid_task_caller_cannot_start_labutopia_cycle(tmp_path):
+def test_labutopia_legacy_cycle_is_not_registered_in_subtask_composition(tmp_path):
     engine = FakeEngine()
     bundle = _runtime(tmp_path, engine)
     try:
-        args = bundle.engine.profile.paos_input()
-        prepared = bundle.runtime.invoke_query("cycle_preparation", "prepare", args)
-        with pytest.raises(CapabilityRuntimeError):
-            bundle.runtime.start_action(
-                "object.pour_cycle", prepared["arguments"], caller_id="not-a-paos-task"
-            )
+        tools = {item["tool_id"] for item in bundle.runtime.list_tools()["tools"]}
+        assert "object.pour_cycle" not in tools
+        with pytest.raises(CapabilityRuntimeError, match="unknown ToolSpec"):
+            bundle.runtime.start_action("object.pour_cycle", {}, caller_id=CALLER)
         assert engine.started == []
     finally:
         bundle.client.close()
+
+
+def test_labutopia_composition_owns_default_durable_assignment_store(tmp_path):
+    engine = FakeEngine()
+    bundle = _runtime(tmp_path, engine)
+    store_path = tmp_path / "outputs" / "paos" / "assignment-artifacts.sqlite3"
+    assert store_path.is_file()
+    assert bundle.client._owns_assignment_store is True
+    bundle.client.close()
+    from pick_place_workflow.persistent_runtime import SQLiteAssignmentArtifactStore
+
+    with SQLiteAssignmentArtifactStore(store_path) as reopened:
+        assert reopened.get("artifact://missing/assignment") is None
 
 
 def test_labutopia_registers_subtask_only_with_generic_perception_chain(tmp_path):
@@ -431,6 +446,50 @@ def test_labutopia_registers_subtask_only_with_generic_perception_chain(tmp_path
         assert "manipulation.execute_subtask" in tools
         assert bundle.perception_adapter is not None
         assert bundle.perception_adapter.query_invoker is bundle.runtime
+    finally:
+        bundle.client.close()
+
+
+def test_delayed_camera_session_can_register_queries_but_capture_still_fails_closed(tmp_path):
+    engine = FakeEngine()
+    profile = _profile(tmp_path)
+    engine.profile = profile
+    provider = GenericProvider()
+
+    class DelayedObservationSource:
+        observation_ready = False
+
+        def capture(self, request):
+            return {"sensor_available": False}
+
+    adapter = PerceptionBindingAdapter(
+        lambda _tool_id, _arguments: {},
+        BindingRequest(("camera/front",), "reagent_a", "beaker", 1000),
+    )
+    bundle = build_labutopia_runtime(
+        profile=profile,
+        engine=engine,
+        understanding_provider=provider,
+        grasp_provider=provider,
+        preparation_provider=provider,
+        capability_provider=provider,
+        observation_source=DelayedObservationSource(),
+        resolve_preparation=lambda operation, arguments: dict(arguments),
+        tool_context_provider=lambda _: {"ready": True},
+        allow_live=False,
+        perception_adapter=adapter,
+        subtask_context_resolver=lambda _caller: {},
+    )
+    try:
+        tools = {item["tool_id"] for item in bundle.runtime.list_tools()["tools"]}
+        assert "scene.observe" in tools
+        assert "manipulation.execute_subtask" in tools
+        observed = bundle.runtime.invoke_query("scene_observation", "observe", {
+            "sensor_ref": "camera/front",
+            "max_age_ms": 1000,
+        })
+        assert observed["status"] == "unavailable"
+        assert observed["error"]["code"] == "sensor_unavailable"
     finally:
         bundle.client.close()
 
@@ -788,5 +847,19 @@ def test_client_defaults_to_no_motion_and_reports_dry_run_capability(tmp_path):
         assert capability["execution"] is False
         with pytest.raises(LabUtopiaPAOSClientError, match="live LabUtopia execution is disabled"):
             client.start("pour_cycle", "invocation://pour/1", "paos:task-1", {})
+    finally:
+        client.close()
+
+
+def test_client_never_falls_back_from_phase_action_to_legacy_cycle(tmp_path):
+    engine = FakeEngine()
+    client = LabUtopiaCycleClient(engine, allow_live=True)
+    try:
+        with pytest.raises(LabUtopiaPAOSClientError, match="phase-level execution is unavailable"):
+            client.start("pour", "invocation://manipulation-pour/1", "paos:task-1", {
+                "entity_ref": "entity://observed-reagent-a",
+                "scene_revision": "scene-1",
+            })
+        assert engine.started == []
     finally:
         client.close()

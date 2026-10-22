@@ -91,6 +91,54 @@ def serve_session(socket_path: Path, app, backend, profile) -> None:
                             result_path.write_text(
                                 json.dumps(result, ensure_ascii=False, allow_nan=False), encoding="utf-8"
                             )
+                        elif method == "prepare_manipulation":
+                            arguments = payload.get("arguments")
+                            if not isinstance(arguments, dict):
+                                raise ValueError("arguments must be an object")
+                            current_revision = context.current_scene_revision()
+                            if current_revision is None:
+                                result = {"status": "unavailable", "motion_authorized": False,
+                                          "failure_code": "live_scene_revision_unavailable"}
+                            elif arguments.get("scene_revision") != current_revision:
+                                result = {"status": "invalid", "motion_authorized": False,
+                                          "failure_code": "stale_scene_revision",
+                                          "current_scene_revision": current_revision}
+                            else:
+                                prepare = getattr(backend, "prepare_manipulation_in_session", None)
+                                result = prepare(context, arguments) if callable(prepare) else {
+                                    "status": "unavailable", "motion_authorized": False,
+                                    "failure_code": "phase_preparation_not_supported",
+                                }
+                            if not isinstance(result, dict):
+                                raise ValueError("phase preparation returned a non-object")
+                        elif method == "execute_phase":
+                            arguments = payload.get("arguments")
+                            if not isinstance(arguments, dict):
+                                raise ValueError("arguments must be an object")
+                            current_revision = context.current_scene_revision()
+                            if current_revision is None:
+                                result = {"status": "unavailable", "outcome_known": False,
+                                          "world_change_started": False, "motion_authorized": False,
+                                          "failure_code": "live_scene_revision_unavailable"}
+                            elif arguments.get("scene_revision") != current_revision:
+                                result = {"status": "invalid", "outcome_known": False,
+                                          "world_change_started": False, "motion_authorized": False,
+                                          "failure_code": "stale_scene_revision",
+                                          "current_scene_revision": current_revision}
+                            else:
+                                execute_phase = getattr(backend, "execute_phase_in_session", None)
+                                result = execute_phase(
+                                    context, arguments, _FileCancelEvent(payload.get("cancel_path"))
+                                ) if callable(execute_phase) else {
+                                    "status": "unavailable", "outcome_known": False,
+                                    "world_change_started": False, "motion_authorized": False,
+                                    "failure_code": "phase_execution_not_supported",
+                                }
+                            if not isinstance(result, dict):
+                                raise ValueError("phase execution returned a non-object")
+                            if result.get("world_change_started") is True:
+                                result = dict(result)
+                                result["new_scene_revision"] = context.advance_scene_revision()
                         else:
                             raise ValueError("unsupported worker request method")
                         _write_response(connection, request_id, dict(result))

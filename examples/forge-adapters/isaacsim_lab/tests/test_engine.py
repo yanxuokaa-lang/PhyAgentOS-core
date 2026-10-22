@@ -624,6 +624,25 @@ def test_backend_dry_run_never_starts_simulation(tmp_path):
     assert result["failure_code"] == "unsupported_controller"
 
 
+def test_backend_phase_ports_remain_unavailable_until_measured_routes_exist(tmp_path):
+    profile = make_profile(tmp_path)
+    backend = LabUtopiaBackend(profile)
+    preparation = backend.prepare_manipulation_in_session(
+        object(), {"scene_revision": "scene-1"}
+    )
+    phase = backend.execute_phase_in_session(
+        object(), {"operation": "acquire", "scene_revision": "scene-1"}, Event()
+    )
+    assert preparation == {
+        "status": "unavailable",
+        "motion_authorized": False,
+        "failure_code": "labutopia_measured_route_qualification_not_implemented",
+    }
+    assert phase["status"] == "unavailable"
+    assert phase["world_change_started"] is False
+    assert phase["motion_authorized"] is False
+
+
 def test_generic_pour_rejects_parameters_not_exposed_by_controller(tmp_path):
     profile = make_profile(tmp_path)
     arguments = profile.paos_input({"parameters": {

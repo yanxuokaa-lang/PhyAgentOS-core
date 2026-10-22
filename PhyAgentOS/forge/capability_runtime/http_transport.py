@@ -34,9 +34,9 @@ class CapabilityRuntimeTransport(httpx.AsyncBaseTransport):
                 return self._ok({"gateway_identity": self.gateway_identity, **self.runtime.list_tools()})
             if request.method == "GET" and path.startswith("/tools/") and path.endswith("/context"):
                 tool_id = unquote(path[len("/tools/") : -len("/context")])
-                return self._ok(self.runtime.get_tool_context(tool_id))
+                return self._ok(self.runtime.get_public_context(tool_id))
             if request.method == "GET" and path.startswith("/tools/"):
-                return self._ok(self.runtime.get_tool(unquote(path[len("/tools/") :])))
+                return self._ok(self.runtime.get_public_tool(unquote(path[len("/tools/") :])))
             if request.method == "POST" and path.startswith("/tools/") and path.endswith(":invoke"):
                 return self._invoke_tool(request)
             if request.method == "GET" and path.startswith("/invocations/"):

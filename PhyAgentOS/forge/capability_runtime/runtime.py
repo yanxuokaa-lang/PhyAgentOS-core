@@ -49,6 +49,7 @@ class EndpointRegistration:
     endpoint: object
     context: dict[str, Any]
     context_provider: Callable[[], Mapping[str, Any]] | None = None
+    internal: bool = False
 
 
 @dataclass
@@ -118,6 +119,7 @@ class CapabilityRuntime:
         *,
         context: Mapping[str, Any] | None = None,
         context_provider: Callable[[], Mapping[str, Any]] | None = None,
+        internal: bool = False,
     ) -> None:
         normalized = _validate_spec(spec)
         tool_id = normalized["tool_id"]
@@ -127,15 +129,28 @@ class CapabilityRuntime:
         base_context = {"ready": True, "binding_error": None}
         if context is not None:
             base_context.update(dict(context))
-        registration = EndpointRegistration(normalized, endpoint, base_context, context_provider)
+        if not isinstance(internal, bool):
+            raise ToolContractError("internal registration flag must be boolean")
+        registration = EndpointRegistration(normalized, endpoint, base_context, context_provider, internal)
         self._tools[tool_id] = registration
         self._operations[endpoint_key] = registration
 
     def list_tools(self) -> dict[str, Any]:
-        return {"tools": [self._tools[key].spec.copy() for key in sorted(self._tools)]}
+        return {
+            "tools": [
+                self._tools[key].spec.copy()
+                for key in sorted(self._tools)
+                if not self._tools[key].internal
+            ]
+        }
 
     def get_tool(self, tool_id: str) -> dict[str, Any]:
         return self._registration(tool_id).spec.copy()
+
+    def get_public_tool(self, tool_id: str) -> dict[str, Any]:
+        registration = self._registration(tool_id)
+        self._require_public(registration)
+        return registration.spec.copy()
 
     def get_context(self, tool_id: str) -> dict[str, Any]:
         registration = self._registration(tool_id)
@@ -152,6 +167,11 @@ class CapabilityRuntime:
                 context.update(ready=False, binding_error=f"context_provider_error:{type(exc).__name__}")
         return context
 
+    def get_public_context(self, tool_id: str) -> dict[str, Any]:
+        registration = self._registration(tool_id)
+        self._require_public(registration)
+        return self.get_context(tool_id)
+
     def get_tool_context(self, tool_id: str) -> dict[str, Any]:
         """Compatibility name matching the ForgeToolClient discovery vocabulary."""
         return self.get_context(tool_id)
@@ -162,7 +182,27 @@ class CapabilityRuntime:
         operation: str,
         arguments: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
+        return self._invoke_query(endpoint_id, operation, arguments, allow_internal=False)
+
+    def invoke_internal_query(
+        self,
+        endpoint_id: str,
+        operation: str,
+        arguments: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return self._invoke_query(endpoint_id, operation, arguments, allow_internal=True)
+
+    def _invoke_query(
+        self,
+        endpoint_id: str,
+        operation: str,
+        arguments: Mapping[str, Any] | None,
+        *,
+        allow_internal: bool,
+    ) -> dict[str, Any]:
         registration = self._operation(endpoint_id, operation)
+        if registration.internal and not allow_internal:
+            raise UnknownToolError("internal ToolEndpoint is not externally invokable")
         if registration.spec["semantics"] != "query":
             raise ToolContractError(f"Tool {registration.spec['tool_id']!r} is not a Query")
         context = self.get_context(registration.spec["tool_id"])
@@ -190,7 +230,34 @@ class CapabilityRuntime:
         caller_id: str | None = None,
         timeout_ms: int | None = None,
     ) -> dict[str, Any]:
+        return self._start_action(
+            tool_id, arguments, caller_id=caller_id, timeout_ms=timeout_ms, allow_internal=False
+        )
+
+    def start_internal_action(
+        self,
+        tool_id: str,
+        arguments: Mapping[str, Any] | None = None,
+        *,
+        caller_id: str | None = None,
+        timeout_ms: int | None = None,
+    ) -> dict[str, Any]:
+        return self._start_action(
+            tool_id, arguments, caller_id=caller_id, timeout_ms=timeout_ms, allow_internal=True
+        )
+
+    def _start_action(
+        self,
+        tool_id: str,
+        arguments: Mapping[str, Any] | None,
+        *,
+        caller_id: str | None,
+        timeout_ms: int | None,
+        allow_internal: bool,
+    ) -> dict[str, Any]:
         registration = self._registration(tool_id)
+        if registration.internal and not allow_internal:
+            raise UnknownToolError("internal Action Tool is not externally invokable")
         if registration.spec["semantics"] not in {"action", "session"}:
             raise ToolContractError(f"Tool {tool_id!r} is not an Action or Session")
         context = self.get_context(tool_id)
@@ -446,6 +513,11 @@ class CapabilityRuntime:
             return self._tools[tool_id]
         except KeyError as exc:
             raise UnknownToolError(f"unknown ToolSpec: {tool_id}") from exc
+
+    @staticmethod
+    def _require_public(registration: EndpointRegistration) -> None:
+        if registration.internal:
+            raise UnknownToolError("internal ToolEndpoint is not externally discoverable")
 
     def _operation(self, endpoint_id: str, operation: str) -> EndpointRegistration:
         try:

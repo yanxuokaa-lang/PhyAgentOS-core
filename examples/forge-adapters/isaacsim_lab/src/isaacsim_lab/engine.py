@@ -484,6 +484,41 @@ class IsaacSimLabEngine:
             raise IsaacLabRuntimeError("Isaac backend returned a non-mapping result")
         return dict(result)
 
+    def prepare_manipulation(self, arguments: Mapping[str, Any]) -> dict[str, Any]:
+        """Qualify one measured route without motion through the backend port."""
+        prepare = getattr(self.backend, "prepare_manipulation", None)
+        if not callable(prepare):
+            return {
+                "status": "unavailable", "motion_authorized": False,
+                "failure_code": "phase_preparation_not_supported",
+            }
+        result = prepare(deepcopy(dict(arguments)))
+        return dict(result) if isinstance(result, Mapping) else {
+            "status": "unavailable", "motion_authorized": False,
+            "failure_code": "invalid_phase_preparation_result",
+        }
+
+    def execute_phase(
+        self, phase: str, arguments: Mapping[str, Any], cancel: Event, **context: Any
+    ) -> dict[str, Any]:
+        """Run one bounded manipulation phase through a phase-capable backend."""
+        del context
+        if phase not in {"acquire", "pour", "place"}:
+            return {"status": "unsupported", "outcome_known": False,
+                    "world_change_started": False, "failure_code": "unsupported_manipulation_phase"}
+        execute = getattr(self.backend, "execute_phase", None)
+        if not callable(execute):
+            return {"status": "unavailable", "outcome_known": False,
+                    "world_change_started": False, "failure_code": "phase_execution_not_supported"}
+        if cancel.is_set():
+            return {"status": "cancelled", "outcome_known": True,
+                    "world_change_started": False, "motion_authorized": False}
+        result = execute(phase, deepcopy(dict(arguments)), cancel)
+        return dict(result) if isinstance(result, Mapping) else {
+            "status": "unknown", "outcome_known": False, "world_change_started": True,
+            "failure_code": "invalid_phase_execution_result",
+        }
+
     def _current_scene_revision(self) -> str | None:
         resolver = getattr(self.backend, "current_scene_revision", None)
         if not callable(resolver):
@@ -530,6 +565,74 @@ class LabUtopiaBackend:
             return self._run_worker(arguments, cancel)
 
         return self._run_inprocess(arguments, cancel, Path(os.environ["PAOS_ISAAC_RESULT_PATH"]))
+
+    def prepare_manipulation(self, arguments: Mapping[str, Any]) -> Mapping[str, Any]:
+        if os.environ.get("OMNI_KIT_ACCEPT_EULA", "").lower() not in {"y", "yes", "1", "true"}:
+            return {"status": "unavailable", "motion_authorized": False,
+                    "failure_code": "OMNI_KIT_ACCEPT_EULA_not_accepted"}
+        try:
+            with self._worker_lock:
+                if self._worker_session is None:
+                    from .worker_session import IsaacWorkerSession
+                    self._worker_session = IsaacWorkerSession(
+                        self.profile_path,
+                        observation_artifact_root=self.observation_artifact_root,
+                    )
+                session = self._worker_session
+            return session.request("prepare_manipulation", arguments)
+        except Exception as exc:
+            return {"status": "unavailable", "motion_authorized": False,
+                    "failure_code": type(exc).__name__, "error_detail": str(exc)[:512]}
+
+    def execute_phase(
+        self, phase: str, arguments: Mapping[str, Any], cancel: Event
+    ) -> Mapping[str, Any]:
+        if phase not in {"acquire", "pour", "place"}:
+            return {"status": "unsupported", "outcome_known": False,
+                    "world_change_started": False, "failure_code": "unsupported_manipulation_phase"}
+        if os.environ.get("OMNI_KIT_ACCEPT_EULA", "").lower() not in {"y", "yes", "1", "true"}:
+            return {"status": "unavailable", "outcome_known": False,
+                    "world_change_started": False, "motion_authorized": False,
+                    "failure_code": "OMNI_KIT_ACCEPT_EULA_not_accepted"}
+        request = deepcopy(dict(arguments))
+        request["operation"] = phase
+        try:
+            with self._worker_lock:
+                if self._worker_session is None:
+                    from .worker_session import IsaacWorkerSession
+                    self._worker_session = IsaacWorkerSession(
+                        self.profile_path,
+                        observation_artifact_root=self.observation_artifact_root,
+                    )
+                session = self._worker_session
+            return session.request("execute_phase", request, cancel=cancel)
+        except Exception as exc:
+            return {"status": "unknown", "outcome_known": False,
+                    "world_change_started": True, "failure_code": type(exc).__name__,
+                    "error_detail": str(exc)[:512]}
+
+    def prepare_manipulation_in_session(
+        self, session: Any, arguments: Mapping[str, Any]
+    ) -> Mapping[str, Any]:
+        """Return unavailable until a measured IK/collision route provider exists."""
+        del session, arguments
+        return {
+            "status": "unavailable", "motion_authorized": False,
+            "failure_code": "labutopia_measured_route_qualification_not_implemented",
+        }
+
+    def execute_phase_in_session(
+        self, session: Any, arguments: Mapping[str, Any], cancel: Event
+    ) -> Mapping[str, Any]:
+        """Fail closed; cycle controllers are not phase-level execution routes."""
+        del session, cancel
+        phase = arguments.get("operation")
+        return {
+            "status": "unavailable", "outcome_known": False,
+            "world_change_started": False, "motion_authorized": False,
+            "failure_code": "labutopia_phase_controller_not_implemented",
+            "operation": phase,
+        }
 
     def close(self) -> None:
         with self._worker_lock:

@@ -135,6 +135,43 @@ def test_stored_assignment_resolver_survives_resolver_recreation_and_reads_by_re
         second_resolver.resolve_for_task("acquire", acquire_request, task_id="task-2")
 
 
+def test_stored_assignment_resolver_reuses_canonical_route_for_held_process():
+    request = arguments()
+    assignment = {
+        "assignment_ref": request["assignment_ref"],
+        "task_id": "task-1",
+        "entity_ref": request["entity_ref"],
+        "candidate_ref": request["candidate_ref"],
+        "scene_revision": request["scene_revision"],
+    }
+    document = {
+        "assignment": assignment,
+        "preparation_ref": request["preparation_ref"],
+        "route_arguments": dict(request),
+    }
+
+    class Store:
+        def get(self, reference):
+            return document if reference == request["assignment_ref"] else None
+
+    held_request = {
+        **request,
+        "operation": "pour",
+        "parameters": {"tilt_rad": 0.8, "hold_s": 0.5},
+        "scene_revision": "scene-after-acquire",
+        "acquire_invocation_ref": "invocation://object-acquire/1",
+        "held_invocation_ref": "invocation://manipulation-pour/1",
+    }
+    resolved = StoredAssignmentResolver(Store()).resolve_for_task(
+        "pour", held_request, task_id="task-1"
+    )
+    assert resolved["assignment"] == assignment
+    assert resolved["assignment_ref"] == request["assignment_ref"]
+    assert resolved["entity_ref"] == request["entity_ref"]
+    assert resolved["scene_revision"] == "scene-after-acquire"
+    assert resolved["parameters"] == held_request["parameters"]
+
+
 def test_persistent_action_endpoint_passes_caller_task_to_stored_resolver():
     request = arguments()
     document = {

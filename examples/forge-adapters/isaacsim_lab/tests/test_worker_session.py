@@ -55,6 +55,17 @@ class FakeBackend:
             "video_path": str(video_path),
         }
 
+    def prepare_manipulation_in_session(self, session, arguments):
+        self.methods.append(("prepare_manipulation", session))
+        return {"status": "unavailable", "motion_authorized": False,
+                "failure_code": "test_route_unavailable"}
+
+    def execute_phase_in_session(self, session, arguments, cancel):
+        self.methods.append(("execute_phase", session))
+        return {"status": "unavailable", "outcome_known": False,
+                "world_change_started": False, "motion_authorized": False,
+                "failure_code": "test_phase_unavailable"}
+
     def scene_revision_in_session(self, session):
         revision = session.current_scene_revision()
         if revision is None:
@@ -131,6 +142,27 @@ def test_worker_rejects_stale_scene_revision_before_action_dispatch(tmp_path, mo
     assert stale["failure_code"] == "stale_scene_revision"
     assert stale["world_change_started"] is False
     assert [method for method, _session in backend.methods] == ["observe"]
+
+
+def test_worker_routes_preparation_and_phase_calls_in_the_same_session(tmp_path, monkeypatch):
+    session, backend, process_count, _environment = make_session(tmp_path, monkeypatch)
+    try:
+        session.observe({"sensor_ref": "sensor://front"})
+        revision = session.scene_revision()["scene_revision"]
+        prepared = session.request("prepare_manipulation", {"scene_revision": revision})
+        phase = session.request("execute_phase", {
+            "operation": "acquire", "scene_revision": revision,
+        })
+    finally:
+        session.close()
+
+    assert process_count == [1]
+    assert prepared["failure_code"] == "test_route_unavailable"
+    assert phase["failure_code"] == "test_phase_unavailable"
+    assert [method for method, _session in backend.methods] == [
+        "observe", "prepare_manipulation", "execute_phase",
+    ]
+    assert backend.methods[0][1] is backend.methods[1][1] is backend.methods[2][1]
 
 
 def test_worker_session_serializes_observation_artifact_metadata(tmp_path, monkeypatch):

@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import asyncio
+
+import httpx
 import pytest
 from PhyAgentOS.forge.capability_runtime import (
     ActionAdmission,
     CapabilityRuntime,
     CapabilityRuntimeError,
+    CapabilityRuntimeTransport,
     DuplicateToolError,
     ToolContractError,
 )
@@ -77,6 +81,50 @@ def test_registration_rejects_invalid_default_query_timeout():
     runtime = CapabilityRuntime()
     with pytest.raises(ToolContractError, match="default_timeout_ms"):
         runtime.register_tool({**QUERY_SPEC, "default_timeout_ms": 0}, Query())
+
+
+def test_internal_tools_share_runtime_lifecycle_without_gateway_visibility():
+    runtime = CapabilityRuntime()
+    runtime.register_tool(ACTION_SPEC, Action(), internal=True)
+    runtime.register_tool(QUERY_SPEC, Query(), internal=True)
+
+    assert runtime.list_tools()["tools"] == []
+    with pytest.raises(CapabilityRuntimeError, match="not externally discoverable"):
+        runtime.get_public_tool("object.acquire")
+    with pytest.raises(CapabilityRuntimeError, match="not externally discoverable"):
+        runtime.get_public_context("object.acquire")
+    with pytest.raises(CapabilityRuntimeError, match="not externally invokable"):
+        runtime.start_action("object.acquire", {})
+    with pytest.raises(CapabilityRuntimeError, match="not externally invokable"):
+        runtime.invoke_query("scene_observation", "observe", {})
+
+    assert runtime.invoke_internal_query("scene_observation", "observe", {"sensor_ref": "front"})["status"] == "available"
+    started = runtime.start_internal_action("object.acquire", {}, caller_id="paos:task:revision:record")
+    assert runtime.invocation_status(started["invocation_id"])["status"] == "running"
+    assert runtime.invocation_result(started["invocation_id"])["status"] == "succeeded"
+
+
+def test_internal_tools_are_not_discoverable_or_invokable_over_gateway_transport():
+    runtime = CapabilityRuntime()
+    runtime.register_tool(ACTION_SPEC, Action(), internal=True)
+    runtime.register_tool(QUERY_SPEC, Query(), internal=True)
+
+    async def check_transport():
+        async with httpx.AsyncClient(
+            transport=CapabilityRuntimeTransport(runtime), base_url="http://runtime.test"
+        ) as client:
+            discovered = await client.get("/tools")
+            assert discovered.json()["data"]["tools"] == []
+            assert (await client.get("/tools/object.acquire")).status_code == 404
+            assert (await client.get("/tools/object.acquire/context")).status_code == 404
+            assert (await client.post(
+                "/tools/object.acquire:invoke", json={"arguments": {}}
+            )).status_code == 404
+            assert (await client.post(
+                "/tools/scene_observation/observe:invoke", json={"arguments": {}}
+            )).status_code == 404
+
+    asyncio.run(check_transport())
 
 
 def test_query_requires_ready_context_and_action_enforces_concurrency():

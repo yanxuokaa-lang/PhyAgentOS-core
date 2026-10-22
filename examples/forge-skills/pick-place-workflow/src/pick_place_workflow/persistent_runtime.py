@@ -555,8 +555,8 @@ class StoredAssignmentResolver:
     def resolve_for_task(
         self, phase: str, request: Mapping[str, Any], *, task_id: str
     ) -> dict[str, Any]:
-        if phase not in {"acquire", "place"}:
-            raise ValueError("assignment resolution supports acquire or place")
+        if phase not in {"acquire", "place", "pour", "stir"}:
+            raise ValueError("assignment resolution supports acquire, pour, stir, or place")
         assignment_ref = request.get("assignment_ref")
         if not isinstance(assignment_ref, str) or not assignment_ref.startswith("artifact://"):
             raise ValueError("assignment lookup requires its canonical artifact reference")
@@ -581,7 +581,9 @@ class StoredAssignmentResolver:
             and route_arguments.get("scene_revision") != assignment.get("scene_revision")
         ):
             raise ValueError("stored route assignment scene_revision mismatch")
-        if phase == "place" and route_arguments.get("destination_ref") != request.get("destination_ref"):
+        if phase in {"place", "pour", "stir"} and (
+            route_arguments.get("destination_ref") != request.get("destination_ref")
+        ):
             raise ValueError("stored assignment destination mismatch")
         for key in ("entity_ref", "candidate_ref", "preparation_ref"):
             if route_arguments.get(key) != request.get(key):
@@ -589,8 +591,9 @@ class StoredAssignmentResolver:
         if phase == "acquire" and route_arguments.get("scene_revision") != request.get("scene_revision"):
             raise ValueError("stored route scene_revision mismatch")
         resolved = deepcopy(dict(route_arguments))
-        if phase == "place":
-            resolved["scene_revision"] = request.get("scene_revision")
+        # Lifecycle fields come from the PAOS Tool request; geometry and target
+        # mapping remain sourced from the stored route.
+        resolved.update(deepcopy(dict(request)))
         resolved["assignment"] = deepcopy(dict(assignment))
         if self.route_validator is not None:
             validate_stored = getattr(self.route_validator, "resolve_stored", None)
@@ -645,6 +648,8 @@ def build_persistent_runtime(*, client, understanding_provider=None, grasp_provi
                              held_preparation_provider=None, resolve_held_preparation=None,
                              register_legacy_actions: bool = True,
                              register_legacy_held_operations: bool = True,
+                             register_internal_subtask_tools: bool = False,
+                             register_legacy_cycles: bool = True,
                              refresh_subtask_binding=None, resolve_subtask_context=None,
                              assignment_store: AssignmentArtifactStore | None = None) -> CapabilityRuntime:
     """Use injected model providers and one persistent manipulation process.
@@ -692,8 +697,13 @@ def build_persistent_runtime(*, client, understanding_provider=None, grasp_provi
             "provide one understanding composition form, not both"
         )
     if assignment_store is not None:
+        route_validator = (
+            resolve_preparation
+            if callable(getattr(resolve_preparation, "resolve_stored", None))
+            else None
+        )
         resolve_preparation = StoredAssignmentResolver(
-            assignment_store, route_validator=resolve_preparation
+            assignment_store, route_validator=route_validator
         )
     if resolve_preparation is None:
         raise ValueError("resolve_preparation or assignment_store is required")
@@ -710,6 +720,11 @@ def build_persistent_runtime(*, client, understanding_provider=None, grasp_provi
         (MANIPULATION_TOOL_SPEC, ManipulationPreparationEndpoint(preparation_provider)),
     ]
     if register_legacy_actions:
+        registrations.extend([
+            (ACQUIRE_TOOL_SPEC, PersistentActionEndpoint("acquire", client, resolve_preparation, possession=possession)),
+            (PLACE_TOOL_SPEC, PersistentActionEndpoint("place", client, resolve_preparation, possession=possession)),
+        ])
+    elif register_internal_subtask_tools:
         registrations.extend([
             (ACQUIRE_TOOL_SPEC, PersistentActionEndpoint("acquire", client, resolve_preparation, possession=possession)),
             (PLACE_TOOL_SPEC, PersistentActionEndpoint("place", client, resolve_preparation, possession=possession)),
@@ -732,6 +747,8 @@ def build_persistent_runtime(*, client, understanding_provider=None, grasp_provi
             live_spec,
             endpoint,
             context_provider=lambda tool_id=spec["tool_id"]: tool_context_provider(tool_id),
+            internal=register_internal_subtask_tools and not register_legacy_actions
+            and spec["tool_id"] in {"object.acquire", "object.place"},
         )
     if held_preparation_provider is not None:
         from .held_manipulation import (
@@ -750,7 +767,7 @@ def build_persistent_runtime(*, client, understanding_provider=None, grasp_provi
             extended_held_preparation_spec,
         )
 
-        if register_legacy_held_operations:
+        if register_legacy_held_operations or register_internal_subtask_tools:
             for spec, endpoint in (
                 (PREPARE_HELD_TOOL_SPEC, HeldPreparationEndpoint(held_preparation_provider, possession)),
                 (POUR_TOOL_SPEC, HeldActionEndpoint("pour", client, resolve_held_preparation, possession)),
@@ -760,8 +777,11 @@ def build_persistent_runtime(*, client, understanding_provider=None, grasp_provi
                     spec = extended_held_preparation_spec(spec)
                 if query_decorator is not None and spec["semantics"] == "query":
                     endpoint = query_decorator(spec["tool_id"], endpoint)
-                runtime.register_tool(deepcopy(spec), endpoint,
-                                      context_provider=lambda tool_id=spec["tool_id"]: tool_context_provider(tool_id))
+                runtime.register_tool(
+                    deepcopy(spec), endpoint,
+                    context_provider=lambda tool_id=spec["tool_id"]: tool_context_provider(tool_id),
+                    internal=register_internal_subtask_tools and not register_legacy_held_operations,
+                )
         cycle_specs = (
             ("pour_cycle", POUR_CYCLE_TOOL_SPEC,
              CycleActionEndpoint("pour_cycle", client, resolve_held_preparation, possession,
@@ -774,6 +794,7 @@ def build_persistent_runtime(*, client, understanding_provider=None, grasp_provi
                                 preflight=held_preparation_provider)),
         )
         available_cycles = [entry for entry in cycle_specs
+                            if register_legacy_cycles
                             if (cycle_capability_available(held_preparation_provider, entry[0])
                                 and cycle_capability_available(client, entry[0]))]
         if available_cycles:

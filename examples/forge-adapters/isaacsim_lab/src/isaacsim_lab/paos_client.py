@@ -220,12 +220,16 @@ class LabUtopiaCycleClient:
         allow_live: bool = False,
         max_workers: int = 1,
         preparation_provider: LabUtopiaCycleProvider | None = None,
+        assignment_store: Any | None = None,
+        owns_assignment_store: bool = False,
     ):
         if isinstance(max_workers, bool) or max_workers < 1:
             raise ValueError("max_workers must be a positive integer")
         self.engine = engine
         self.allow_live = bool(allow_live)
         self._preparation_provider = preparation_provider or LabUtopiaCycleProvider(engine)
+        self._assignment_store = assignment_store
+        self._owns_assignment_store = bool(owns_assignment_store)
         self._pool = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="labutopia-paos")
         self._closed = False
         self._lock = RLock()
@@ -264,7 +268,6 @@ class LabUtopiaCycleClient:
         return self._preparation_provider.prepare_cycle(arguments)
 
     def start(self, operation: str, invocation_id: str, owner: str, arguments: Mapping[str, Any]):
-        del owner
         if not self.allow_live:
             raise LabUtopiaPAOSClientError("live LabUtopia execution is disabled")
         if not operation or not invocation_id:
@@ -273,13 +276,26 @@ class LabUtopiaCycleClient:
             if self._closed:
                 raise LabUtopiaPAOSClientError("LabUtopia client is closed")
         cancel = Event()
-        future = self._pool.submit(
-            self.engine.execute_cycle,
-            operation,
-            deepcopy(dict(arguments)),
-            cancel,
-            invocation_id=invocation_id,
-        )
+        phase_executor = getattr(self.engine, "execute_phase", None)
+        if operation in {"acquire", "pour", "place"}:
+            if not callable(phase_executor):
+                raise LabUtopiaPAOSClientError(
+                    f"phase-level execution is unavailable for {operation}"
+                )
+            future = self._pool.submit(
+                phase_executor, operation, deepcopy(dict(arguments)), cancel,
+                invocation_id=invocation_id, owner=owner,
+            )
+        else:
+            if operation not in {"pour_cycle", "stir_cycle", "manipulation_cycle"}:
+                raise LabUtopiaPAOSClientError(f"unsupported LabUtopia action operation: {operation}")
+            future = self._pool.submit(
+                self.engine.execute_cycle,
+                operation,
+                deepcopy(dict(arguments)),
+                cancel,
+                invocation_id=invocation_id,
+            )
         return LabUtopiaActionDriver(future, cancel)
 
     def close(self) -> None:
@@ -289,8 +305,14 @@ class LabUtopiaCycleClient:
             self._closed = True
         self._pool.shutdown(wait=True, cancel_futures=True)
         close = getattr(self.engine, "close", None)
-        if callable(close):
-            close()
+        try:
+            if callable(close):
+                close()
+        finally:
+            if self._owns_assignment_store and self._assignment_store is not None:
+                store_close = getattr(self._assignment_store, "close", None)
+                if callable(store_close):
+                    store_close()
 
 
 @dataclass(frozen=True)
@@ -346,6 +368,7 @@ def build_labutopia_runtime(
 
     from PhyAgentOS.forge.capability_runtime import CapabilityRuntimeTransport
     from pick_place_workflow.persistent_runtime import (
+        StoredAssignmentResolver,
         build_persistent_runtime,
         register_subtask_tool,
     )
@@ -376,7 +399,24 @@ def build_labutopia_runtime(
     selected_engine = engine or IsaacSimLabEngine(
         profile, observation_artifact_root=resolved_artifact_root
     )
+    owns_assignment_store = assignment_store is None
+    if assignment_store is None:
+        from pick_place_workflow.persistent_runtime import SQLiteAssignmentArtifactStore
+
+        assignment_db = profile.lab_root / "outputs" / "paos" / "assignment-artifacts.sqlite3"
+        assignment_db.parent.mkdir(parents=True, exist_ok=True)
+        assignment_store = SQLiteAssignmentArtifactStore(assignment_db)
     provider = LabUtopiaCycleProvider(selected_engine, target_resolver=target_resolver)
+    held_route_resolver = provider.resolve
+    if assignment_store is not None:
+        route_validator = (
+            resolve_preparation
+            if callable(getattr(resolve_preparation, "resolve_stored", None))
+            else None
+        )
+        held_route_resolver = StoredAssignmentResolver(
+            assignment_store, route_validator=route_validator
+        )
     # A measured target resolver opts the standard PAOS preparation Query into
     # the LabUtopia provider.  Without it, the caller-supplied provider remains
     # the generic readiness implementation and legacy cycle compatibility is
@@ -387,7 +427,11 @@ def build_labutopia_runtime(
         else preparation_provider
     )
     client = LabUtopiaCycleClient(
-        selected_engine, allow_live=allow_live, preparation_provider=provider
+        selected_engine,
+        allow_live=allow_live,
+        preparation_provider=provider,
+        assignment_store=assignment_store,
+        owns_assignment_store=owns_assignment_store,
     )
     runtime = build_persistent_runtime(
         client=client,
@@ -405,9 +449,11 @@ def build_labutopia_runtime(
         tool_context_provider=tool_context_provider,
         possession=possession,
         held_preparation_provider=provider,
-        resolve_held_preparation=provider.resolve,
+        resolve_held_preparation=held_route_resolver,
         register_legacy_actions=False,
         register_legacy_held_operations=False,
+        register_internal_subtask_tools=True,
+        register_legacy_cycles=False,
         assignment_store=assignment_store,
     )
     bound_adapter = None
@@ -428,11 +474,8 @@ def build_labutopia_runtime(
         )
     )
     observation_provider_ready = (
-        getattr(observation_provider, "observation_ready", True) is not False
-        and (
-            callable(getattr(observation_provider, "capture", None))
-            or callable(getattr(observation_provider, "query", None))
-        )
+        callable(getattr(observation_provider, "capture", None))
+        or callable(getattr(observation_provider, "query", None))
     )
     if (
         perception_adapter is not None

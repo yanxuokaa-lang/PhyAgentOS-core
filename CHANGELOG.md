@@ -2,6 +2,20 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.7.0 (2026-10-22 20:03) - codex
+
+### 变更摘要 / Summary [部分完成 / Partially Completed]
+- [env] [feat] 增加 LabUtopia `prepare_manipulation` 与 acquire/pour/place phase RPC；当前默认 backend 对尚未实现的 measured IK、工作空间、碰撞资格和 phase controller 明确返回 unavailable，不回退到旧完整 cycle。 / Add LabUtopia `prepare_manipulation` and acquire/pour/place phase RPCs; the default backend explicitly returns unavailable for unimplemented measured IK, workspace, collision qualification, and phase controllers, without falling back to the legacy full cycle.
+- [policy] [fix] 默认接入 durable SQLite assignment store，held pour 与 acquire/place 按同一 canonical assignment reference 读取 route。 / Wire the durable SQLite assignment store by default; held pour and acquire/place resolve the route from one canonical assignment reference.
+- [test] [test] 定向 no-motion Runtime/Worker/PAOS 测试 `135 passed`；完整 LabUtopia-wired 序列仍未通过，未运行真实相机或 Isaac Sim 运动。 / Focused no-motion Runtime/Worker/PAOS tests: `135 passed`; the full LabUtopia-wired sequence remains unaccepted, and no live camera or Isaac Sim motion ran.
+- [docs] [docs] `docs/forge/IMPLEMENTATION_REVIEW_V15_7_0.md:L1-L77` 按 PAOS 架构、扩展原则、Developer Guide、AgentLoop 和七维记录阶段验收与 blocker。 / Record phase review and blockers against PAOS architecture, extensibility, Developer Guide, AgentLoop, and seven dimensions at `docs/forge/IMPLEMENTATION_REVIEW_V15_7_0.md:L1-L77`.
+
+```diff
+- acquire/pour/place -> execute_cycle
++ acquire/pour/place -> bounded phase RPC; unsupported -> unavailable
++ persistent assignment -> one canonical route reference
+```
+
 ## v15.6.10 (2026-10-22 17:21) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]

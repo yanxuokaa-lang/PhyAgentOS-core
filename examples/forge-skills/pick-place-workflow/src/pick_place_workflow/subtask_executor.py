@@ -721,11 +721,13 @@ class RuntimeSubtaskDriver:
         try:
             if call.phase == "prepare":
                 tool_spec = self.runtime.get_tool(call.tool_id)
-                result = self.runtime.invoke_query(
+                result = self.runtime.invoke_internal_query(
                     tool_spec["endpoint_id"], tool_spec["operation"], arguments,
                 )
                 return self._consume(call, result)
-            started = self.runtime.start_action(call.tool_id, arguments, caller_id=self.caller_id)
+            started = self.runtime.start_internal_action(
+                call.tool_id, arguments, caller_id=self.caller_id
+            )
             self.active_invocation = started["invocation_id"]
             self.active_tool = call
             return None
