@@ -2,13 +2,33 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.5.0 (2026-10-22 16:50) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [docs] [docs] 更正 v15.4.16 最终实现提交引用为 `be4e7115`，同步最近五版本索引；无代码或测试变更。 / Correct the final v15.4.16 implementation commit reference to `be4e7115` and synchronize the latest-five index; no code or tests changed.
+- Documentation correction commit: `[pending]` on `feature/planning-loop`.
+
+### 文件与关键 Diff / Files and Key Diff
+- `changelog/2026-10_part2.md`：修正实现提交号并记录本次补充。
+- `CHANGELOG.md`：将该文档修正加入最近五版本索引。
+
+### 关键 Diff / Key Diff
+```diff
+- v15.4.16 final implementation commit: 3a570a18
++ v15.4.16 final implementation commit: be4e7115
++ v15.5.0 records this reference correction; no implementation code changed
+```
+
+详见 [v15.5.0 月度日志](changelog/2026-10_part2.md)。
+See the [v15.5.0 detailed log](changelog/2026-10_part2.md).
+
 ## v15.4.16 (2026-10-22 16:30) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
 - [env] [feat] 新增通用 Isaac camera `ObservationSource`，以 `sensor_ref` 获取相机模态，并从宿主解析真实 frame/calibration/scene revision，通过 artifact writer 持久化工件；缺少 sensor/live evidence 时不可用，未配置 writer 时拒绝构造，不用 USD/profile 伪造感知。 / Add a reusable Isaac camera `ObservationSource` that resolves camera modalities by `sensor_ref`, obtains frame/calibration/scene revision from the host, and persists artifacts through an injected writer; missing sensor/live evidence returns unavailable, a missing writer prevents construction, and USD/profile is not used as perception.
 - [test] [test] no-motion camera source、PAOS Runtime integration 和 engine tests `48 passed`；Ruff、compileall、diff check 通过。 / No-motion camera-source, PAOS Runtime integration, and engine tests: `48 passed`; Ruff, compileall, and diff check passed.
 - [docs] [docs] 七维验收保留 live camera、semantic understanding、IK/collision、抓放、pour/stir 和 live settlement 未验证项，完整方案未验收。 / Seven-dimension acceptance keeps live camera, semantic understanding, IK/collision, acquire/place, pour/stir, and live settlement unverified; the full plan remains unaccepted.
-- Implementation commit: `3a570a18` on `feature/planning-loop`.
+- Implementation commit: `be4e7115` on `feature/planning-loop`.
 
 ### 文件与关键 Diff / Files and Key Diff
 - `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/observation.py:L1-L129`：实现 host-owned camera registry、metadata resolver 和 artifact writer ports。
@@ -72,7 +92,7 @@ See the [v15.4.14 detailed log](changelog/2026-10_part2.md) and [implementation 
 详见 [v15.4.13 月度日志](changelog/2026-10_part2.md) 和 [实现审查](docs/forge/IMPLEMENTATION_REVIEW_V15_4_13.md)。
 See the [v15.4.13 detailed log](changelog/2026-10_part2.md) and [implementation review](docs/forge/IMPLEMENTATION_REVIEW_V15_4_13.md).
 
-## v15.4.12 (2026-10-22 09:35) - codex
+### Archived v15.4.12 (2026-10-22 09:35) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
 - [test] [test] 组合安装 PAOS Core 与 workflow wheel，验证 installed imports、semantic builder Registry discovery 和标准 CLI help。 / Co-install PAOS Core and workflow wheels; verify installed imports, semantic-builder Registry discovery, and standard CLI help.
