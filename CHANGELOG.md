@@ -2,6 +2,30 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.5.12 (2026-10-23 00:25) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [sense] [feat] `PhyAgentOS/forge/artifacts.py:L1-L94` 新增 provider-neutral `ArtifactResolver` port 与按 authority 配置 root 的本地实现，返回 payload bytes/media type，拒绝未知 authority、URI traversal、symlink escape 和缺失/空文件。 / Add provider-neutral `ArtifactResolver` and a local implementation configured by authority roots at `PhyAgentOS/forge/artifacts.py:L1-L94`; return payload bytes/media type and reject unknown authorities, URI traversal, symlink escapes, and missing/empty files.
+- [test] [test] `tests/test_forge_artifacts.py:L1-L76` 覆盖 image/NPY/JSON、错误 scheme、未知 authority、编码 traversal、malformed port、query、缺失文件、symlink escape 和配置错误；Isaac writer interop at `test_observation.py:L249-L282`。 / Cover image/NPY/JSON, invalid schemes, unknown authorities, encoded traversal, malformed ports, query, missing files, symlink escape, and invalid configuration at `tests/test_forge_artifacts.py:L1-L76`; verify Isaac writer interoperability at `test_observation.py:L249-L282`.
+- [docs] [docs] `docs/forge/IMPLEMENTATION_REVIEW_V15_5_12.md:L1-L52` 完成架构、扩展原则、Developer Guide、AgentLoop 与七维审查；Lab semantic provider/composition 尚未接 resolver，完整方案未验收。 / Complete architecture, extensibility, Developer Guide, AgentLoop, and seven-dimension review at `docs/forge/IMPLEMENTATION_REVIEW_V15_5_12.md:L1-L52`; the Lab semantic provider/composition is not wired to the resolver, so the overall plan remains unaccepted.
+- Implementation commit: `5c96b323`; log closeout follows on `feature/planning-loop`. / 实现提交：`5c96b323`；日志闭环随后提交至 `feature/planning-loop`。
+
+### 文件与关键 Diff / Files and Key Diff
+- `PhyAgentOS/forge/artifacts.py:L1-L94`、`PhyAgentOS/forge/__init__.py:L3-L7`：provider-neutral resolver/payload API 及公开导出。
+- `tests/test_forge_artifacts.py:L1-L76`、`examples/forge-adapters/isaacsim_lab/tests/test_observation.py:L249-L282`：路径约束与 Isaac artifact readback。
+- `docs/forge/IMPLEMENTATION_REVIEW_V15_5_12.md:L1-L52`：阶段架构审查和七维验收。
+
+```diff
+- artifact refs were persisted, but consumers had no generic local resolver
++ artifact://authority/path -> configured root -> bytes + media_type
++ unsafe/unmapped refs -> unavailable
++ Lab model-provider composition remains a separate overall-plan blocker
+```
+
+### 验证 / Validation
+- Core + Isaac adapter tests：`92 passed`；Ruff、compileall、`git diff --check` 通过。 / Core + Isaac adapter tests: `92 passed`; Ruff, compileall, and `git diff --check` passed.
+- Pytest 有既有 `asyncio_mode` warning；未运行 Isaac Sim、Gateway、仿真 step、IK、碰撞查询或运动。 / Pytest reports the existing `asyncio_mode` warning; no Isaac Sim, Gateway, simulation step, IK, collision query, or motion ran.
+
 ## v15.5.11 (2026-10-22 23:55) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
