@@ -238,13 +238,18 @@ def build_labutopia_runtime(
     perception_adapter: Any | None = None,
     subtask_context_resolver: Callable[[str], Mapping[str, Any]] | None = None,
     assignment_store: Any | None = None,
+    understanding_artifact_resolver: Any | None = None,
+    understanding_inference: Any | None = None,
 ) -> LabUtopiaPAOSRuntime:
     """Compose LabUtopia behind PAOS without owning perception orchestration.
 
     ``perception_adapter`` is the provider-neutral PAOS adapter.  LabUtopia
     only supplies its observation/understanding/grasp/preparation providers;
     when the complete chain is absent, the Agent-facing subtask Tool is not
-    registered.
+    registered.  A deployment may provide ``understanding_artifact_resolver``
+    and ``understanding_inference`` instead of a pre-composed understanding
+    provider.  Both are passed through unchanged to the generic PAOS runtime;
+    storage ownership and model selection remain outside this adapter.
     """
 
     from PhyAgentOS.forge.capability_runtime import CapabilityRuntimeTransport
@@ -261,6 +266,8 @@ def build_labutopia_runtime(
     runtime = build_persistent_runtime(
         client=client,
         understanding_provider=understanding_provider,
+        understanding_artifact_resolver=understanding_artifact_resolver,
+        understanding_inference=understanding_inference,
         grasp_provider=grasp_provider,
         preparation_provider=preparation_provider,
         capability_provider=capability_provider,
@@ -276,10 +283,13 @@ def build_labutopia_runtime(
     )
     bound_adapter = None
     observation_provider = observation_source if observation_source is not None else client
-    query_providers_ready = all(
+    understanding_ready = callable(getattr(understanding_provider, "understand", None)) or (
+        understanding_artifact_resolver is not None
+        and understanding_inference is not None
+    )
+    query_providers_ready = understanding_ready and all(
         callable(getattr(provider, method, None))
         for provider, method in (
-            (understanding_provider, "understand"),
             (grasp_provider, "propose"),
             (capability_provider, "describe"),
             (preparation_provider, "prepare"),

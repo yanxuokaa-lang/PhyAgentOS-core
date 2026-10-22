@@ -392,6 +392,113 @@ def test_labutopia_observation_query_uses_injected_source_not_action_client(tmp_
         bundle.client.close()
 
 
+def test_labutopia_runtime_composes_shared_artifact_understanding(tmp_path):
+    from PhyAgentOS.forge.artifacts import LocalFilesystemArtifactResolver
+
+    artifact_root = tmp_path / "observation-artifacts"
+    artifact_root.mkdir()
+    (artifact_root / "front.png").write_bytes(b"camera-bytes")
+    engine = FakeEngine()
+    profile = _profile(tmp_path)
+    engine.profile = profile
+    seen = []
+    adapter = PerceptionBindingAdapter(
+        lambda _tool_id, _arguments: {},
+        BindingRequest(("camera/front",), "reagent_a", "beaker", 1000),
+    )
+
+    class Provider:
+        def capture(self, _request):
+            return None
+
+        def propose(self, _request):
+            return None
+
+        def describe(self, _request):
+            return None
+
+        def prepare(self, _request):
+            return None
+
+    bundle = build_labutopia_runtime(
+        profile=profile,
+        engine=engine,
+        understanding_provider=None,
+        understanding_artifact_resolver=LocalFilesystemArtifactResolver(
+            {"labutopia": artifact_root}
+        ),
+        understanding_inference=lambda request: seen.append(request) or {"entities": []},
+        grasp_provider=Provider(),
+        preparation_provider=Provider(),
+        capability_provider=Provider(),
+        observation_source=Provider(),
+        resolve_preparation=lambda operation, arguments: dict(arguments),
+        tool_context_provider=lambda _: {"ready": True},
+        allow_live=False,
+        perception_adapter=adapter,
+        subtask_context_resolver=lambda _caller: None,
+    )
+    try:
+        tools = {item["tool_id"] for item in bundle.runtime.list_tools()["tools"]}
+        assert "manipulation.execute_subtask" in tools
+        assert bundle.perception_adapter is not None
+        result = bundle.runtime.invoke_query(
+            "scene_understanding",
+            "understand",
+            {
+                "observation_ref": "observation://scene-1/camera-front",
+                "scene_revision": "scene-1",
+                "frame_id": "camera-front",
+                "calibration_ref": "artifact://labutopia/front.png",
+                "freshness_ms": 10,
+                "max_age_ms": 100,
+                "artifacts": ["artifact://labutopia/front.png"],
+            },
+        )
+        assert result["status"] == "available"
+        assert seen[0]["resolved_artifacts"][0]["data"] == b"camera-bytes"
+        assert seen[0]["resolved_artifacts"][0]["media_type"] == "image/png"
+    finally:
+        bundle.client.close()
+
+
+@pytest.mark.parametrize(
+    "resolver,inference",
+    [(object(), None), (None, lambda _request: {"entities": []})],
+)
+def test_labutopia_runtime_rejects_incomplete_understanding_composition(
+    tmp_path, resolver, inference
+):
+    engine = FakeEngine()
+    profile = _profile(tmp_path)
+    engine.profile = profile
+
+    class Provider:
+        def propose(self, _request):
+            return None
+
+        def describe(self, _request):
+            return None
+
+        def prepare(self, _request):
+            return None
+
+    with pytest.raises(ValueError, match="understanding_provider or both"):
+        build_labutopia_runtime(
+            profile=profile,
+            engine=engine,
+            understanding_provider=None,
+            understanding_artifact_resolver=resolver,
+            understanding_inference=inference,
+            grasp_provider=Provider(),
+            preparation_provider=Provider(),
+            capability_provider=Provider(),
+            resolve_preparation=lambda operation, arguments: dict(arguments),
+            tool_context_provider=lambda _: {"ready": True},
+            allow_live=False,
+        )
+
+
 def test_client_defaults_to_no_motion_and_reports_dry_run_capability(tmp_path):
     engine = FakeEngine()
     client = LabUtopiaCycleClient(engine)

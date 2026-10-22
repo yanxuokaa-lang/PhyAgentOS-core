@@ -2,6 +2,29 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.5.16 (2026-10-22 10:40) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [sense] [feat] `paos_client.py:L224-L323` 增加 deployment-owned artifact resolver/inference 注入，并修正理解 provider readiness。 / Add deployment-owned resolver/inference injection and fix understanding-provider readiness.
+- [test] [test] no-motion tests 验证 artifact bytes/media、子任务 Tool 注册及不完整组合拒绝；相关测试 `139 passed`。 / No-motion tests verify artifact bytes/media, subtask Tool registration, and rejection of incomplete composition; related tests report `139 passed`.
+- [docs] [docs] `IMPLEMENTATION_REVIEW_V15_5_16.md:L1-L56` 记录架构审查与七维阶段验收；完整方案仍未验收。 / Record architecture review and seven-dimension phase acceptance; the full plan remains unaccepted.
+
+### 文件与关键 Diff / Files and Key Diff
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/paos_client.py:L224-L323`
+- `examples/forge-adapters/isaacsim_lab/tests/test_paos_integration.py:L395-L498`
+- `docs/forge/IMPLEMENTATION_REVIEW_V15_5_16.md:L1-L56`
+
+```diff
+- LabUtopia host accepted only a pre-composed understanding provider
++ deployment injects generic ArtifactResolver + inference
++ PAOS Runtime composes scene.understand; readiness recognizes either supported form
+```
+
+验证：`139 passed`; Ruff、compileall、`git diff --check` 通过。无 Isaac Sim、IK、碰撞或运动。 / Validation: `139 passed`; Ruff, compileall, and `git diff --check` pass. No Isaac Sim, IK, collision query, or motion.
+
+### Git 提交 / Git Commit
+- Implementation commit: pending on `feature/planning-loop`.
+
 ## v15.5.15 (2026-10-22 20:30) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
