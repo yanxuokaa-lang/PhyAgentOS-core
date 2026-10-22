@@ -2,6 +2,25 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.4.7 (2026-10-22 15:00) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [policy] [feat] 增加可选 `paos.semantic_plan_builders` 插件发现与 `forge.semantic_plan_builder` CLI 注入；workflow factory 使用当前动态 Forge Query client，并从当前 Query ToolSpecs 生成 policy snapshot provenance。 / Add optional `paos.semantic_plan_builders` discovery and `forge.semantic_plan_builder` CLI injection; the workflow factory uses the active dynamic Forge Query client and derives policy snapshot provenance from current Query ToolSpecs.
+- [test] [test] 定向 semantic builder/registry、Forge task、AgentLoop、perception binding、subtask executor `206 passed`；Ruff、compileall、diff check 通过；无运动。 / Focused semantic builder/registry, Forge task, AgentLoop, perception-binding, and subtask-executor tests: `206 passed`; Ruff, compileall, and diff check passed; no motion.
+- [docs] [docs] 七维审查仍有真实感知、IK/碰撞、执行和恢复维度未验收，完整方案不标记完成。 / Seven-dimension review leaves live perception, IK/collision, execution, and recovery unaccepted; the complete plan is not marked done.
+
+### 文件与关键 Diff / Files and Key Diff
+- `PhyAgentOS/agent/semantic_builder_registry.py:L1-L60`：新增 provider-neutral plugin factory registry。
+- `PhyAgentOS/config/schema.py:L347-L354`、`PhyAgentOS/cli/commands.py:L700-L769,L853-L900,L1060-L1120`：配置与标准 Agent/Gateway host wiring。
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/semantic_task_creation.py:L74-L260`、`pyproject.toml:L1-L14`：异步 Query factory、ToolSpec 校验和 entry point。
+- `tests/test_semantic_builder_registry.py:L1-L61`、`examples/forge-skills/pick-place-workflow/tests/test_semantic_task_creation.py:L1-L221`：no-motion 回归。
+- `docs/forge/IMPLEMENTATION_REVIEW_V15_4_7.md:L1-L45`：架构、AgentLoop 和七维复核。
+
+核心差异 / Key change: `_make_forge_components` now creates an optional builder from the configured entry point and injects it into AgentLoop; when no extension is configured, the previous behavior is preserved.
+
+详见 [v15.4.7 月度日志](changelog/2026-10_part2.md) 与[实现审查](docs/forge/IMPLEMENTATION_REVIEW_V15_4_7.md)。
+See the [v15.4.7 detailed log](changelog/2026-10_part2.md) and [implementation review](docs/forge/IMPLEMENTATION_REVIEW_V15_4_7.md).
+
 ## v15.4.6 (2026-10-21 14:25) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]

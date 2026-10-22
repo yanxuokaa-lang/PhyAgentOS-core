@@ -10,8 +10,10 @@ from PhyAgentOS.agent.tools.forge_task import ForgeTaskCreateTool
 from PhyAgentOS.config.schema import ForgeConfig
 from PhyAgentOS.forge.task import AgentTaskCoordinator
 
+from pick_place_workflow.perception_binding import PerceptionBindingAdapter
 from pick_place_workflow.semantic_task_creation import (
     AsyncQuerySemanticPlanBuilder,
+    PickPlaceSemanticPlanBuilderFactory,
     QuerySemanticPlanBuilder,
     SemanticTaskCreationError,
 )
@@ -74,16 +76,12 @@ def _request(prefix: str = "a"):
 def _builder(query):
     return QuerySemanticPlanBuilder(
         query,
-        planner_decision_digest="a" * 64,
-        policy_snapshot_digest="b" * 64,
     )
 
 
 def _async_builder(query):
     return AsyncQuerySemanticPlanBuilder(
         query,
-        planner_decision_digest="a" * 64,
-        policy_snapshot_digest="b" * 64,
     )
 
 
@@ -95,6 +93,8 @@ def test_semantic_builder_binds_provider_and_emits_one_agent_node():
     assert binding["binding"]["entity_ref"] == "entity://a-bottle"
     assert binding["operation"] == "pour"
     assert "prim_path" not in json.dumps(binding)
+    assert len(plan["planner_decision_digest"]) == 64
+    assert len(plan["policy_snapshot_digest"]) == 64
 
 
 def test_semantic_builder_is_provider_replaceable():
@@ -187,3 +187,35 @@ def test_async_stale_query_fails_before_task_persistence():
     with pytest.raises(SemanticTaskCreationError, match="stale"):
         asyncio.run(tool.execute("pour reagent", {"mode": "off"}, semantic_subtasks=_request()))
     coordinator.create_task.assert_not_called()
+
+
+def test_optional_factory_injects_live_query_port_without_environment_dependency():
+    query = _provider()
+    builder = PickPlaceSemanticPlanBuilderFactory().create(query_invoker=query)
+    assert isinstance(builder, AsyncQuerySemanticPlanBuilder)
+    plan = asyncio.run(builder.build("pour reagent", _request()))
+    assert plan["nodes"][0]["input_bindings"]["binding"]["entity_ref"] == "entity://a-bottle"
+
+
+def test_async_builder_binds_policy_digest_to_live_query_tool_specs():
+    query = _provider()
+    observed_specs = []
+
+    class RuntimeQueryPort:
+        async def invoke_query(self, endpoint_id, operation, arguments):
+            tool_id = next(
+                tool_id for tool_id, spec in PerceptionBindingAdapter._QUERY_SPECS.items()
+                if spec["endpoint_id"] == endpoint_id and spec["operation"] == operation
+            )
+            return query(tool_id, arguments)
+
+        async def get_tool(self, tool_id):
+            spec = dict(PerceptionBindingAdapter._QUERY_SPECS[tool_id])
+            spec["semantics"] = "query"
+            observed_specs.append(tool_id)
+            return {"data": spec}
+
+    builder = PickPlaceSemanticPlanBuilderFactory().create(query_invoker=RuntimeQueryPort())
+    plan = asyncio.run(builder.build("pour reagent", _request()))
+    assert observed_specs == list(PerceptionBindingAdapter._QUERY_SPECS)
+    assert len(plan["policy_snapshot_digest"]) == 64

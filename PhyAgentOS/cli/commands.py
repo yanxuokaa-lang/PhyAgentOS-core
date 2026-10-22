@@ -699,6 +699,7 @@ def _make_forge_verifier(config: Config, provider):
 
 def _make_forge_components(config: Config, provider):
     """Build dynamic Agent components from the single managed Skill runtime."""
+    from PhyAgentOS.agent.semantic_builder_registry import SemanticPlanBuilderRegistry
     from PhyAgentOS.forge.binding import ForgeSkillBindingResolver
     from PhyAgentOS.forge.task import AgentTaskCoordinator
     from PhyAgentOS.skill_runtime.catalog import SkillCatalog
@@ -731,6 +732,13 @@ def _make_forge_components(config: Config, provider):
     task_binding_ids = DynamicRuntimeSet(runtime_registry, "task_binding_ids")
     binding_resolver = ForgeSkillBindingResolver(runtime_registry)
 
+    semantic_plan_builder = None
+    builder_id = config.forge.semantic_plan_builder
+    if builder_id is not None:
+        builders = SemanticPlanBuilderRegistry()
+        builders.discover()
+        semantic_plan_builder = builders.create(builder_id, query_invoker=client)
+
     coordinator = AgentTaskCoordinator(
         workspace=config.workspace_path,
         config=config.forge,
@@ -752,7 +760,13 @@ def _make_forge_components(config: Config, provider):
             config.agents.verification.agent_provider_retry_delay_s
         ),
     )
-    return client, invocation_ids, coordinator, runtime_registry.is_available
+    return (
+        client,
+        invocation_ids,
+        coordinator,
+        runtime_registry.is_available,
+        semantic_plan_builder,
+    )
 
 
 def _make_planning_context_provider(coordinator):
@@ -842,6 +856,7 @@ def gateway(
         forge_tool_invocation_ids,
         forge_task_coordinator,
         runtime_availability_provider,
+        semantic_plan_builder,
     ) = _make_forge_components(config, provider)
     session_manager = SessionManager(config.workspace_path)
 
@@ -874,6 +889,7 @@ def gateway(
         forge_tool_client=forge_tool_client,
         forge_tool_invocation_ids=forge_tool_invocation_ids,
         forge_task_coordinator=forge_task_coordinator,
+        semantic_plan_builder=semantic_plan_builder,
         runtime_availability_provider=runtime_availability_provider,
         evolution_config=config.agents.evolution,
         evolution_provider=evolution_provider,
@@ -1058,6 +1074,7 @@ def agent(
         forge_tool_invocation_ids,
         forge_task_coordinator,
         runtime_availability_provider,
+        semantic_plan_builder,
     ) = _make_forge_components(config, provider)
 
     # Create cron service for tool usage (no callback needed for CLI unless running)
@@ -1092,6 +1109,7 @@ def agent(
         forge_tool_client=forge_tool_client,
         forge_tool_invocation_ids=forge_tool_invocation_ids,
         forge_task_coordinator=forge_task_coordinator,
+        semantic_plan_builder=semantic_plan_builder,
         runtime_availability_provider=runtime_availability_provider,
         evolution_config=config.agents.evolution,
         evolution_provider=evolution_provider,

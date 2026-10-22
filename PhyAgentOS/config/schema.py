@@ -351,6 +351,7 @@ class ForgeConfig(Base):
     poll_interval_s: float = Field(default=0.5, ge=0.1, le=5.0)
     execution_timeout_s: float = Field(default=300.0, gt=0)
     evidence: ForgeEvidenceConfig = Field(default_factory=ForgeEvidenceConfig)
+    semantic_plan_builder: str | None = Field(default=None, min_length=1)
 
 DEFAULT_RESOURCE_REGISTRY_URL = "https://paos-resource-manager.dev.x-era.com"
 

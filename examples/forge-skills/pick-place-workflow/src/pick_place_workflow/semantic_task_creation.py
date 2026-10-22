@@ -12,6 +12,7 @@ import json
 from typing import Any, Protocol
 from uuid import uuid4
 
+from PhyAgentOS.planning import canonical_sha256
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .agent_planning import (
@@ -77,17 +78,56 @@ class QuerySemanticPlanBuilder:
         self,
         query_invoker: QueryInvoker,
         *,
-        planner_decision_digest: str,
-        policy_snapshot_digest: str,
+        planner_decision_digest: str | None = None,
+        policy_snapshot_digest: str | None = None,
     ) -> None:
         self.query_invoker = query_invoker
         self.planner_decision_digest = planner_decision_digest
         self.policy_snapshot_digest = policy_snapshot_digest
 
+    def _plan_digests(self, task_description: str, semantic_subtasks: list[dict[str, Any]]):
+        requests = [
+            SemanticSubtaskRequest.model_validate(item).model_dump(mode="json")
+            for item in semantic_subtasks
+        ]
+        planner_digest = self.planner_decision_digest or canonical_sha256({
+            "task_description": task_description,
+            "semantic_subtasks": requests,
+        })
+        policy_digest = self.policy_snapshot_digest or canonical_sha256({
+            "contract": "paos.perception_binding/v1",
+            "query_capabilities": [
+                "scene.observe", "scene.understand", "grasp.propose",
+                "manipulation.capabilities",
+            ],
+        })
+        return planner_digest, policy_digest
+
+    async def _runtime_policy_digest(self) -> str:
+        get_tool = getattr(self.query_invoker, "get_tool", None)
+        if not callable(get_tool):
+            return self._plan_digests("", [])[1]
+        contracts = []
+        for tool_id in PerceptionBindingAdapter._QUERY_SPECS:
+            response = await get_tool(tool_id)
+            payload = response.get("data") if isinstance(response, dict) else None
+            if not isinstance(payload, dict):
+                raise SemanticTaskCreationError(f"{tool_id} ToolSpec is unavailable")
+            expected = PerceptionBindingAdapter._QUERY_SPECS[tool_id]
+            if (
+                payload.get("tool_id") != tool_id
+                or payload.get("semantics") != "query"
+                or payload.get("endpoint_id") != expected.get("endpoint_id")
+                or payload.get("operation") != expected.get("operation")
+            ):
+                raise SemanticTaskCreationError(f"{tool_id} ToolSpec differs from the PAOS Query contract")
+            contracts.append(payload)
+        return canonical_sha256({"query_tool_specs": contracts})
+
     def build(self, task_description: str, semantic_subtasks: list[dict[str, Any]]) -> dict[str, Any]:
-        del task_description
         if not isinstance(semantic_subtasks, list) or not semantic_subtasks:
             raise SemanticTaskCreationError("semantic_subtasks must contain at least one request")
+        planner_digest, policy_digest = self._plan_digests(task_description, semantic_subtasks)
         task_id = f"task_{uuid4().hex[:16]}"
         revision_id = f"revision_{uuid4().hex[:16]}"
         specs: list[SubtaskSpec] = []
@@ -130,8 +170,8 @@ class QuerySemanticPlanBuilder:
                 task_id,
                 revision_id,
                 tuple(specs),
-                planner_decision_digest=self.planner_decision_digest,
-                policy_snapshot_digest=self.policy_snapshot_digest,
+                planner_decision_digest=planner_digest,
+                policy_snapshot_digest=policy_digest,
             ).graph.model_dump(mode="json")
         except ValueError as exc:
             raise SemanticTaskCreationError(str(exc)) from exc
@@ -141,9 +181,10 @@ class AsyncQuerySemanticPlanBuilder(QuerySemanticPlanBuilder):
     """Async builder for Forge Gateway or another awaitable Query port."""
 
     async def build(self, task_description: str, semantic_subtasks: list[dict[str, Any]]) -> dict[str, Any]:
-        del task_description
         if not isinstance(semantic_subtasks, list) or not semantic_subtasks:
             raise SemanticTaskCreationError("semantic_subtasks must contain at least one request")
+        planner_digest, _ = self._plan_digests(task_description, semantic_subtasks)
+        policy_digest = self.policy_snapshot_digest or await self._runtime_policy_digest()
         task_id = f"task_{uuid4().hex[:16]}"
         revision_id = f"revision_{uuid4().hex[:16]}"
         specs: list[SubtaskSpec] = []
@@ -181,11 +222,20 @@ class AsyncQuerySemanticPlanBuilder(QuerySemanticPlanBuilder):
         try:
             return compose_subtask_plan(
                 task_id, revision_id, tuple(specs),
-                planner_decision_digest=self.planner_decision_digest,
-                policy_snapshot_digest=self.policy_snapshot_digest,
+                planner_decision_digest=planner_digest,
+                policy_snapshot_digest=policy_digest,
             ).graph.model_dump(mode="json")
         except ValueError as exc:
             raise SemanticTaskCreationError(str(exc)) from exc
+
+
+class PickPlaceSemanticPlanBuilderFactory:
+    """Optional host plugin binding this workflow builder to a PAOS Query port."""
+
+    builder_id = "pick_place_workflow"
+
+    def create(self, *, query_invoker: QueryInvoker) -> AsyncQuerySemanticPlanBuilder:
+        return AsyncQuerySemanticPlanBuilder(query_invoker)
 
 
 __all__ = [
@@ -194,4 +244,5 @@ __all__ = [
     "SemanticPlanBuilder",
     "SemanticSubtaskRequest",
     "SemanticTaskCreationError",
+    "PickPlaceSemanticPlanBuilderFactory",
 ]
