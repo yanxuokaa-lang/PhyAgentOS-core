@@ -9,7 +9,7 @@
 - [sense] [feat] backend Observation 从 session context dispatch 到注册的 source；未注册时仍返回 unavailable，未将 stub 提升为真实感知。 / Backend Observation dispatches through a source registered on the session context; missing sources remain unavailable, with no stub promoted to live perception.
 - [test] [test] Isaac adapter suite `70 passed`；Ruff、compileall、git diff check 通过。 / Isaac adapter suite: `70 passed`; Ruff, compileall, and git diff check passed.
 - [docs] [docs] 七维复审保持整体未验收：live camera/World/Task、绑定与 freshness、IK/碰撞、抓放、pour/stir 反馈与 live settlement 仍未验证。 / Seven-dimension review keeps the overall plan unaccepted: live camera/World/Task, binding/freshness, IK/collision, acquire/place, pour/stir feedback, and live settlement remain unverified.
-- Implementation commit: `[record after commit]` on `feature/planning-loop`.
+- Implementation commit: `2404a660` on `feature/planning-loop`.
 
 ### 文件与关键 Diff / Files and Key Diff
 - `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/worker.py:L36-L110,L134-L147`：worker-owned context、资源注册/解析/清理和 IPC 时间戳/array-like 序列化。
