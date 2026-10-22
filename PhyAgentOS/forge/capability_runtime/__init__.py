@@ -28,6 +28,11 @@ from .observation import (
     ObservationContractError,
     ObservationEndpoint,
 )
+from .openai_understanding import (
+    OpenAIResponsesSceneUnderstandingProvider,
+    OpenAIUnderstandingConfig,
+    OpenAIUnderstandingError,
+)
 from .ports import (
     ActionAdmission,
     ActionDriver,
@@ -82,6 +87,9 @@ __all__ = [
     "ObservationContractError",
     "ObservationEndpoint",
     "OBSERVATION_TOOL_SPEC",
+    "OpenAIResponsesSceneUnderstandingProvider",
+    "OpenAIUnderstandingConfig",
+    "OpenAIUnderstandingError",
     "PreparationSnapshot",
     "Invocation",
     "ManipulationExecutor",

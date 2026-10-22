@@ -2,6 +2,28 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.6.2 (2026-10-22 14:05) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [sense] [feat] 增加 deployment-configured、provider-neutral 的 OpenAI Responses GPT 场景理解 provider；只处理图像语义，metric geometry 仍由独立测量能力提供。 / Add a deployment-configured, provider-neutral OpenAI Responses GPT scene-understanding provider; image semantics only, with metric geometry remaining a separate measured capability.
+- [test] [test] no-motion provider contract tests `24 passed`；覆盖 artifact 请求、PAOS provenance、credential/JSON/metric-claim 失败。 / No-motion provider contract tests `24 passed`; cover artifact requests, PAOS provenance, and credential/JSON/metric-claim failures.
+- [docs] [docs] `docs/forge/IMPLEMENTATION_REVIEW_V15_6_2.md:L1-L51` 完成阶段 review；真实 GPT、相机、IK、碰撞和动作仍未验收。 / Phase review completed at `docs/forge/IMPLEMENTATION_REVIEW_V15_6_2.md:L1-L51`; live GPT, camera, IK, collision, and action remain unaccepted.
+
+### 文件与关键 Diff / Files and Key Diff
+- `PhyAgentOS/forge/capability_runtime/openai_understanding.py:L1-L195`
+- `PhyAgentOS/forge/capability_runtime/__init__.py:L31-L35,L90-L92`
+- `tests/test_forge_openai_understanding.py:L1-L99`
+
+```diff
+deployment config + ArtifactResolver -> GPT Responses provider -> PAOS Query validation
+no environment-specific model class; AgentLoop unchanged
+```
+
+验证：`24 passed`; Ruff、compileall、`git diff --check` 通过；未调用 live GPT 或 Isaac Sim。 / Validation: `24 passed`; Ruff, compileall, and `git diff --check` passed; no live GPT or Isaac Sim was called.
+
+### Git 提交 / Git Commit
+- Commit: pending; Branch: `feature/planning-loop`
+
 ## v15.6.0 (2026-10-22 13:40) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
