@@ -8,7 +8,7 @@
 - [env] [feat] 将每 Action 单独启动的 Isaac worker 改为一个可复用 SimulationApp 进程，通过 Unix socket 顺序处理 action/observe request，支持请求关联、取消标记和显式关闭；camera registry 未接入时返回 unavailable。 / Replace the per-Action worker with one reusable SimulationApp process serving ordered action/observe requests over Unix socket, with request correlation, cancellation markers, and explicit shutdown; return unavailable until a camera registry is wired.
 - [test] [test] 完整 Isaac adapter 测试目录 `67 passed`；Ruff、compileall、diff check 通过。 / Complete Isaac adapter test directory: `67 passed`; Ruff, compileall, and diff check passed.
 - [docs] [docs] 完成 PAOS 架构/扩展原则/Developer Guide/AgentLoop/七维复审；同一进程尚不代表同一 World/revision，完整方案未验收。 / Complete PAOS architecture, extensibility, Developer Guide, AgentLoop, and seven-dimension review; one process does not yet prove one World/revision, so the complete plan remains unaccepted.
-- Implementation commit: `[pending]` on `feature/planning-loop`.
+- Implementation commit: `6d1cd661` on `feature/planning-loop`.
 
 ### 文件与关键 Diff / Files and Key Diff
 - `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/worker_session.py:L1-L219`、`worker.py:L20-L101`：实现常驻 owner、请求关联、取消和关闭；Observation/Action RPC 进入同一 SimulationApp 进程。
