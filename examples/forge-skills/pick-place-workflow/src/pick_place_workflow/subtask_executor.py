@@ -57,6 +57,8 @@ class PerceptionBinding(BaseModel):
     entity_ref: str
     semantic_label: str = Field(min_length=1)
     category: str = Field(min_length=1)
+    destination_semantic_label: str = Field(min_length=1)
+    destination_category: str = Field(min_length=1)
     measured_pose: Mapping[str, Any]
     measured_geometry: Mapping[str, Any]
     grasp_candidate: Mapping[str, Any]
@@ -526,6 +528,8 @@ class SubtaskExecutor:
                 if binding.get(key) is not None
             }
             request["candidates"] = [dict(binding["grasp_candidate"])]
+            request["perception_binding"] = dict(binding)
+            request["process_type"] = spec.operation
             if context.trusted_intent is not None:
                 request["intent"] = dict(context.trusted_intent)
             return request
@@ -559,6 +563,8 @@ class SubtaskExecutor:
                             "destination_ref", "binding_ref")
             }
             request["candidates"] = [dict(binding["grasp_candidate"])]
+            request["perception_binding"] = dict(binding)
+            request["process_type"] = spec.operation
             if context.trusted_intent is not None:
                 request["intent"] = dict(context.trusted_intent)
             return request
@@ -1066,7 +1072,8 @@ SUBTASK_TOOL_SPEC: dict[str, Any] = {
                 "type": "object",
                 "additionalProperties": False,
                 "required": [
-                    "entity_ref", "semantic_label", "category", "measured_pose",
+                    "entity_ref", "semantic_label", "category", "destination_semantic_label",
+                    "destination_category", "measured_pose",
                     "measured_geometry", "grasp_candidate", "grasp_candidate_ref", "candidate_set_ref",
                     "candidate_ref", "capability_snapshot_ref", "binding_ref", "destination_ref",
                     "destination_pose", "process_frame", "observation_ref", "scene_revision",
@@ -1077,6 +1084,8 @@ SUBTASK_TOOL_SPEC: dict[str, Any] = {
                     "entity_ref": {"type": "string", "pattern": r"^entity://[^/]+$"},
                     "semantic_label": {"type": "string", "minLength": 1},
                     "category": {"type": "string", "minLength": 1},
+                    "destination_semantic_label": {"type": "string", "minLength": 1},
+                    "destination_category": {"type": "string", "minLength": 1},
                     "measured_pose": {"type": "object"},
                     "measured_geometry": {"type": "object"},
                     "grasp_candidate": {"type": "object"},

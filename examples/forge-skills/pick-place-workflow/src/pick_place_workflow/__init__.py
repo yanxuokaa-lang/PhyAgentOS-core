@@ -46,6 +46,12 @@ from .manipulation_prepare import (
     PreparationProvider,
     PreparationSnapshot,
 )
+from .manipulation_target import (
+    ManipulationTargetError,
+    ManipulationTargetResolver,
+    resolve_manipulation_target,
+    validate_manipulation_target,
+)
 from .multi_object_agent import (
     MultiObjectAgentError,
     MultiObjectAgentRunner,
@@ -194,4 +200,8 @@ __all__ = [
     "SceneObjectBinding",
     "bind_scene_objects",
     "bind_understood_scene_objects",
+    "ManipulationTargetError",
+    "ManipulationTargetResolver",
+    "resolve_manipulation_target",
+    "validate_manipulation_target",
 ]

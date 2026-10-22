@@ -211,6 +211,7 @@ _CYCLE_PROPERTIES = {
         "scene_revision", "frame_id", "calibration_ref", "capability_snapshot_ref",
     )
 }
+_CYCLE_PROPERTIES["binding_ref"] = {"type": "string", "pattern": r"^artifact://\S+$"}
 _CYCLE_PROPERTIES["entity_ref"]["pattern"] = r"^entity://[^/]+$"
 for _key in ("destination_ref", "return_destination_ref"):
     _CYCLE_PROPERTIES[_key]["pattern"] = r"^destination://\S+$"
@@ -230,6 +231,7 @@ def cycle_input_schema(*, action: bool, operation: str | None = None,
         properties.update(preparation_ref=deepcopy(_TEXT), assignment_ref=deepcopy(_TEXT))
     required = list(properties)
     required.remove("manipulation_target")
+    required.remove("binding_ref")
     if action and single_call:
         required = [key for key in required if key not in {"preparation_ref", "assignment_ref"}]
     all_of = [

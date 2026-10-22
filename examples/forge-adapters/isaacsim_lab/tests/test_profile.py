@@ -33,6 +33,26 @@ def test_previous_input_cannot_change_scene_identity(tmp_path):
         profile(tmp_path).paos_input({"entity_ref": "entity://other"})
 
 
+def test_perception_binding_cannot_fall_back_to_profile_identity(tmp_path):
+    binding = {
+        "entity_ref": "entity://observed", "destination_ref": "destination://beaker",
+        "observation_ref": "observation://scene/camera", "scene_revision": "scene-2",
+        "frame_id": "camera-front", "calibration_ref": "artifact://calibration/v1",
+        "binding_ref": "artifact://binding/observed", "freshness_ms": 5, "max_age_ms": 1000,
+    }
+    value = profile(tmp_path).paos_input(perception_binding=binding)
+    assert value["entity_ref"] == "entity://observed"
+    assert value["destination_ref"] == "destination://beaker"
+    assert value["observation_ref"] == binding["observation_ref"]
+    assert value["scene_revision"] == binding["scene_revision"]
+    assert value["frame_id"] == binding["frame_id"]
+    assert value["calibration_ref"] == binding["calibration_ref"]
+    assert value["freshness_ms"] == binding["freshness_ms"]
+    assert value["max_age_ms"] == binding["max_age_ms"]
+    with pytest.raises(LabProfileError, match="provenance"):
+        profile(tmp_path).paos_input(perception_binding={"entity_ref": "entity://observed"})
+
+
 def test_profile_round_trips_json(tmp_path):
     value = {
         "lab_root": str(tmp_path),

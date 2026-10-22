@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import time
 from datetime import timezone
 from pathlib import Path
 
@@ -16,6 +15,7 @@ from pick_place_workflow.perception_binding import BindingRequest, PerceptionBin
 from isaacsim_lab.observation import IsaacCameraObservationSource
 from isaacsim_lab.paos_client import (
     LabUtopiaCycleClient,
+    LabUtopiaCycleProvider,
     LabUtopiaPAOSClientError,
     build_labutopia_runtime,
 )
@@ -74,6 +74,177 @@ def _phases():
     events[2]["completed_at_s"] = 4.0
     return events
 
+
+def _binding(profile, *, entity_ref="entity://observed-reagent-a", destination_ref="destination://observed-beaker"):
+    return {
+        "entity_ref": entity_ref,
+        "semantic_label": "试剂A",
+        "category": "reagent_bottle",
+        "destination_ref": destination_ref,
+        "destination_label": "烧杯",
+        "observation_ref": "observation://observed-scene/camera-front",
+        "scene_revision": "observed-scene",
+        "frame_id": profile.frame_id,
+        "calibration_ref": profile.calibration_ref,
+        "freshness_ms": 5,
+        "max_age_ms": profile.max_age_ms,
+        "binding_ref": "artifact://bindings/observed-scene/reagent-a",
+    }
+
+
+def _resolved_target(binding):
+    frame = binding["frame_id"]
+    pose = {
+        "frame_id": frame, "unit": "m", "position_m": [0.2, 0.1, 0.8],
+        "orientation_xyzw": [0.0, 0.0, 0.0, 1.0],
+    }
+    return {
+        "candidate_ref": "candidate://observed-reagent-a/grasp-1",
+        "entity_ref": binding["entity_ref"],
+        "destination_ref": binding["destination_ref"],
+        "scene_revision": binding["scene_revision"],
+        "frame_id": frame,
+        "calibration_ref": binding["calibration_ref"],
+        "control_frame_id": frame,
+        "world_from_control": {
+            "parent_frame_id": "world", "child_frame_id": frame,
+            "translation_m": [0.0, 0.0, 0.0],
+            "orientation_xyzw": [0.0, 0.0, 0.0, 1.0],
+        },
+        "entity_prim_path": "/World/measured_source",
+        "destination_prim_path": "/World/measured_destination",
+        "object_pose": pose,
+        "grasp_frame": pose,
+        "approach_direction": {"frame_id": frame, "unit": "unitless", "vector": [0.0, 0.0, -1.0]},
+        "destination_pose": pose,
+        "return_pose": pose,
+        "process_frame": {"frame_id": frame, "origin_m": [0.2, 0.1, 0.8], "axis": [0.0, 0.0, 1.0]},
+    }
+
+
+def test_labutopia_target_resolver_is_replaceable_and_binding_owned(tmp_path):
+    profile = _profile(tmp_path)
+    binding = _binding(profile)
+
+    class Engine:
+        def __init__(self, profile):
+            self.profile = profile
+            self.requests = []
+
+        def prepare_cycle(self, request):
+            self.requests.append(dict(request))
+            return {"status": "available", "arguments": dict(request)}
+
+    class ResolverA:
+        def resolve(self, observed, request):
+            assert observed == binding
+            assert request["operation"] == "pour_cycle"
+            return _resolved_target(observed)
+
+    class ResolverB:
+        def resolve(self, observed, request):
+            target = _resolved_target(observed)
+            target["entity_prim_path"] = "/World/another_provider_object"
+            return target
+
+    engine = Engine(profile)
+    request = {
+        "operation": "pour_cycle", "entity_ref": binding["entity_ref"],
+        "destination_ref": binding["destination_ref"],
+        "scene_revision": binding["scene_revision"], "frame_id": binding["frame_id"],
+        "calibration_ref": binding["calibration_ref"], "binding": binding,
+    }
+    result = LabUtopiaCycleProvider(engine, target_resolver=ResolverA()).prepare_cycle(request)
+    assert result["status"] == "available"
+    assert engine.requests[0]["manipulation_target"]["entity_prim_path"] == "/World/measured_source"
+
+    engine.requests.clear()
+    replaced = LabUtopiaCycleProvider(engine, target_resolver=ResolverB()).prepare_cycle(request)
+    assert replaced["status"] == "available"
+    assert engine.requests[0]["manipulation_target"]["entity_prim_path"] == "/World/another_provider_object"
+
+    engine.requests.clear()
+    mismatched = _resolved_target(binding)
+    mismatched["entity_ref"] = "entity://unrelated"
+
+    class MismatchedResolver:
+        def resolve(self, _observed, _request):
+            return mismatched
+
+    result = LabUtopiaCycleProvider(engine, target_resolver=MismatchedResolver()).prepare_cycle(request)
+    assert result["status"] == "invalid"
+    assert engine.requests == []
+
+    unavailable = LabUtopiaCycleProvider(engine).prepare_cycle(request)
+    assert unavailable["status"] == "unavailable"
+    assert engine.requests == []
+
+    stale_request = dict(request)
+    stale_request["binding"] = {**binding, "freshness_ms": 1001}
+    stale = LabUtopiaCycleProvider(engine, target_resolver=ResolverA()).prepare_cycle(stale_request)
+    assert stale["status"] == "invalid"
+    assert engine.requests == []
+
+
+def test_labutopia_standard_preparation_consumes_binding_and_returns_provider_route(tmp_path):
+    profile = _profile(tmp_path)
+    binding = _binding(profile)
+
+    class Engine:
+        def __init__(self, profile):
+            self.profile = profile
+            self.requests = []
+
+        def prepare_manipulation(self, request):
+            self.requests.append(dict(request))
+            candidate = request["candidates"][0]
+            return {
+                "status": "available",
+                "prepared_candidates": [{
+                    "candidate_ref": candidate["candidate_ref"],
+                    "entity_ref": candidate["entity_ref"],
+                    "qualification": "prepared",
+                    "checks": {"kinematic": "pass", "collision": "pass", "workspace": "pass"},
+                    "evidence": ["artifact://readiness/lab-route"],
+                }],
+                "assignments": [],
+                "destination_ref": request["destination_ref"],
+                "route_arguments": {
+                    "entity_ref": request["entity_ref"],
+                    "candidate_ref": candidate["candidate_ref"],
+                    "preparation_ref": "preparation://observed-scene/lab-camera-front",
+                    "scene_revision": request["scene_revision"],
+                    "destination_ref": request["destination_ref"],
+                },
+            }
+
+    class Resolver:
+        def resolve(self, observed, request):
+            assert observed == binding
+            return _resolved_target(observed)
+
+    engine = Engine(profile)
+    provider = LabUtopiaCycleProvider(engine, target_resolver=Resolver())
+    request = {
+        "entity_ref": binding["entity_ref"],
+        "destination_ref": binding["destination_ref"],
+        "observation_ref": binding["observation_ref"],
+        "scene_revision": binding["scene_revision"],
+        "frame_id": binding["frame_id"],
+        "calibration_ref": binding["calibration_ref"],
+        "candidate_set_ref": "candidate-set://observed-scene/lab-camera-front",
+        "candidate_ref": "candidate://observed-reagent-a/grasp-1",
+        "candidates": [{
+            "candidate_ref": "candidate://observed-reagent-a/grasp-1",
+            "entity_ref": binding["entity_ref"],
+        }],
+        "perception_binding": binding,
+        "process_type": "pour",
+    }
+    result = provider.prepare(request)
+    assert result["provider_available"] is True
+    assert result["route_arguments"]["destination_ref"] == binding["destination_ref"]
+    assert engine.requests[0]["manipulation_target"]["entity_prim_path"] == "/World/measured_source"
 
 class FakeEngine:
     def __init__(self):
@@ -171,26 +342,31 @@ def _runtime(tmp_path, engine):
     )
 
 
-def test_agent_task_projection_uses_profile_bound_paths_and_labels(tmp_path):
+def test_agent_task_projection_requires_and_preserves_perception_binding(tmp_path):
     profile = _profile(tmp_path)
+    binding = _binding(profile)
     projected = project_pour_task(profile, {
         "task_type": "pour_liquid",
         "source_label": "试剂A",
         "destination_label": "烧杯",
         "parameters": {"tilt_rad": 0.87, "hold_s": 0.4},
-    })
-    assert projected["source_path"] == "/World/conical_bottle03"
-    assert projected["destination_path"] == "/World/beaker2"
-    assert projected["paos_input"]["entity_ref"] == "entity://conical_bottle03"
-    assert projected["paos_input"]["destination_ref"] == "destination://beaker2"
+    }, binding=binding)
+    assert "source_path" not in projected
+    assert "destination_path" not in projected
+    assert projected["binding"] == binding
+    assert projected["parameters"] == {"tilt_rad": 0.87, "hold_s": 0.4}
+    assert "paos_input" not in projected
+
+    with pytest.raises(LabTaskProjectionError, match="perception binding is required"):
+        project_pour_task(profile, {"task_type": "pour_liquid"})
 
     with pytest.raises(LabTaskProjectionError, match="source label"):
         project_pour_task(profile, {
             "task_type": "pour_liquid", "source_label": "试剂B", "destination_label": "烧杯",
-        })
+        }, binding=binding)
 
 
-def test_paos_discovers_two_cycles_and_executes_one_task_owned_pour(tmp_path):
+def test_legacy_cycles_are_not_invoked_from_perception_bound_task_projection(tmp_path):
     engine = FakeEngine()
     bundle = _runtime(tmp_path, engine)
     try:
@@ -204,27 +380,10 @@ def test_paos_discovers_two_cycles_and_executes_one_task_owned_pour(tmp_path):
         projected = project_pour_task(bundle.engine.profile, {
             "task_type": "pour_liquid", "source_label": "试剂A", "destination_label": "烧杯",
             "parameters": {"tilt_rad": 0.87, "hold_s": 0.4},
-        })
-        prepared = bundle.runtime.invoke_query(
-            "cycle_preparation", "prepare", projected["paos_input"]
-        )
-        assert prepared["status"] == "available"
-        assert prepared["motion_authorized"] is False
-        invocation = bundle.runtime.start_action(
-            "object.pour_cycle", prepared["arguments"], caller_id=CALLER
-        )["invocation_id"]
-        result = None
-        for _ in range(50):
-            result = bundle.runtime.invocation_result(invocation)
-            if result["status"] != "pending":
-                break
-            time.sleep(0.005)
-        assert result["status"] == "succeeded"
-        assert result["result"]["operation_completed"] is True
-        assert result["result"]["process_completed"] is True
-        assert result["result"]["return_completed"] is True
-        assert [item[0] for item in engine.started] == ["pour_cycle"]
-        assert len(engine.started) == 1
+        }, binding=_binding(bundle.engine.profile))
+        assert projected["binding"]["entity_ref"] == "entity://observed-reagent-a"
+        assert "paos_input" not in projected
+        assert engine.started == []
     finally:
         bundle.client.close()
 
@@ -233,9 +392,7 @@ def test_invalid_task_caller_cannot_start_labutopia_cycle(tmp_path):
     engine = FakeEngine()
     bundle = _runtime(tmp_path, engine)
     try:
-        args = project_pour_task(bundle.engine.profile, {
-            "task_type": "pour_liquid", "source_label": "试剂A", "destination_label": "烧杯",
-        })["paos_input"]
+        args = bundle.engine.profile.paos_input()
         prepared = bundle.runtime.invoke_query("cycle_preparation", "prepare", args)
         with pytest.raises(CapabilityRuntimeError):
             bundle.runtime.start_action(

@@ -2,6 +2,67 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.6.10 (2026-10-22 17:21) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [policy] [feat] 将标准 `manipulation.prepare` 的 provider 请求扩展为可验证的 provider-neutral `perception_binding`，仅传递测量引用、位姿、几何、候选和 provenance，不传递 Prim 或 SDK 对象。 / Extend the standard `manipulation.prepare` provider request with a validated provider-neutral `perception_binding`, carrying only measured references, poses, geometry, candidates, and provenance; never Prim paths or SDK objects.
+- [env] [refactor] 让 LabUtopia preparation provider 消费同一份感知 binding，通过注入 target resolver 生成 adapter-private route arguments，并由现有 SubtaskExecutor/assignment store 供 acquire/place 复用。 / Make the LabUtopia preparation provider consume the same perception binding, resolve adapter-private route arguments through an injected target resolver, and expose the route to acquire/place through the existing SubtaskExecutor/assignment store.
+- [test] [test] 增加标准 `prepare -> assignment persistence -> acquire/place route lookup` 的 no-motion 回归，覆盖缺失/错配 binding 和 provider replacement；不启动 Isaac Sim、Gateway、IK、碰撞查询或运动。 / Add no-motion regressions for standard `prepare -> assignment persistence -> acquire/place route lookup`, including missing/mismatched bindings and provider replacement; do not start Isaac Sim, Gateway, IK, collision queries, or motion.
+- [docs] [docs] 完成 PAOS 架构、通用扩展原则、Developer Guide、AgentLoop 和七维阶段审查；只有契约/Provider/无运动证据通过时才标记阶段完成。 / Complete the phase review against PAOS architecture, general extension principles, the Developer Guide, AgentLoop, and the seven dimensions; mark the phase complete only for contract/provider/no-motion evidence.
+
+### 预计修改 / Planned Files
+- `PhyAgentOS/forge/capability_runtime/manipulation_prepare.py`
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/subtask_executor.py`
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/paos_client.py`
+- `examples/forge-adapters/isaacsim_lab/tests/test_paos_integration.py`
+- `examples/forge-skills/pick-place-workflow/tests/test_subtask_executor.py`
+- `tests/test_forge_manipulation_prepare.py`
+- `docs/forge/IMPLEMENTATION_REVIEW_V15_6_10.md`
+
+### 文件变更详情 / File Changes
+- [修改 / Modified] `PhyAgentOS/forge/capability_runtime/manipulation_prepare.py:L324-L367,L403-L465`：标准 prepare 接收并验证 provider-neutral perception binding；不含环境路径。 / Standard prepare accepts and validates a provider-neutral perception binding; no environment paths are included.
+- [修改 / Modified] `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/subtask_executor.py:L548-L570`：将同一 binding 透传至标准 preparation。 / Forward the same binding into standard preparation.
+- [修改 / Modified] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/paos_client.py:L93-L154,L376-L427`：LabUtopia resolver/provider wiring 与 fail-closed route preparation。 / LabUtopia resolver/provider wiring and fail-closed route preparation.
+- [新增 / Added] `examples/forge-skills/pick-place-workflow/tests/test_prepare_assignment.py:L78-L114`、`examples/forge-adapters/isaacsim_lab/tests/test_paos_integration.py:L189-L247`：标准 binding/provider no-motion 回归。 / Standard binding/provider no-motion regressions.
+- [新增 / Added] `docs/forge/IMPLEMENTATION_REVIEW_V15_6_10.md:L1-L72`：阶段 code review 与七维验收。 / Phase code review and seven-dimension acceptance.
+
+### 验证 / Validation
+- `95 passed`; Ruff、compileall、`git diff --check` 通过；未启动 Isaac Sim、Gateway、IK、碰撞查询或运动。 / `95 passed`; Ruff, compileall, and `git diff --check` passed; no Isaac Sim, Gateway, IK, collision query, or motion ran.
+- Overall laboratory plan remains unaccepted because live typed assignment/route qualification is not yet implemented. / 完整实验室方案仍未验收，因为 live typed assignment/route qualification 尚未实现。
+
+## v15.6.9 (2026-10-22 20:20) - codex
+
+### 变更摘要 / Summary [计划 / Planned]
+- [policy] [feat] 让通用 manipulation.prepare 在一个 PAOS 子任务内部接收 provider-neutral 测量 binding；具体环境通过注入 resolver 将它变为 adapter-private route arguments，并由既有 assignment store 持久化。通用 contract 不含 Prim 路径。 / Let generic manipulation.prepare receive a provider-neutral measured binding inside one PAOS subtask; the selected environment resolves it into adapter-private route arguments through an injected resolver, persisted by the existing assignment store. The generic contract contains no Prim paths.
+- [env] [refactor] 将 Isaac `/World` Prim 路径及场景映射校验留在 Isaac adapter，并让 LabUtopia preparation provider 在同一 assignment 中生成 acquire/place 可读取的 route。 / Keep Isaac `/World` Prim paths and scene mapping validation in the Isaac adapter; have LabUtopia's preparation provider create the route in the same assignment consumed by acquire/place.
+- [test] [test] 增加两个可替换 resolver、binding 血缘/新鲜度错配、非法 adapter target 和 durable route round-trip 的 no-motion 回归；不改变 AgentLoop 单子任务结算边界。 / Add no-motion regressions for two interchangeable resolvers, binding-lineage/freshness mismatch, invalid adapter targets, and durable route round-tripping; keep the AgentLoop one-settlement-per-subtask boundary unchanged.
+- [docs] [docs] 按 PAOS 架构、扩展原则、Developer Guide、AgentLoop 和七维标准记录本阶段的通用边界与剩余真实感知/IK/执行缺口。 / Record the generic boundary and remaining live-perception/IK/execution gaps against PAOS architecture, extensibility, the Developer Guide, and the seven dimensions.
+
+### 预计修改 / Planned Files
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/manipulation_target.py`
+- `PhyAgentOS/forge/capability_runtime/manipulation_prepare.py`
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/subtask_executor.py`
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/persistent_runtime.py`
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/paos_client.py`
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/engine.py`
+- `examples/forge-adapters/isaacsim_lab/tests/test_paos_integration.py`
+- `examples/forge-adapters/isaacsim_lab/tests/test_engine.py`
+- `examples/forge-skills/pick-place-workflow/tests/test_subtask_executor.py`
+- `tests/test_forge_manipulation_prepare.py`
+- `examples/forge-skills/pick-place-workflow/tests/test_persistent_runtime.py`
+- `docs/forge/IMPLEMENTATION_REVIEW_V15_6_9.md`
+
+### 实际修改 / Completed Changes
+- [policy] [feat] `pick_place_workflow.manipulation_target` 新增 provider-neutral resolver port，校验 binding identity/freshness，通用层不生成环境路径。 / Add a provider-neutral resolver port with binding identity/freshness checks; the generic layer does not generate environment paths.
+- [env] [refactor] LabUtopia composition 注入可替换 resolver，在 legacy no-motion preparation 中生成 adapter-private target。 / LabUtopia composition injects a replaceable resolver and generates an adapter-private target during legacy no-motion preparation.
+- [env] [fix] 显式 binding 的 observation/revision/frame/calibration/freshness 不再回退到 profile provenance。 / Explicit binding observation/revision/frame/calibration/freshness no longer fall back to profile provenance.
+- [test] [test] 两个 resolver fixture、错配/stale/missing binding 和 profile lineage tests 通过。 / Two resolver fixtures and mismatched/stale/missing binding plus profile-lineage tests pass.
+- [docs] [docs] `docs/forge/IMPLEMENTATION_REVIEW_V15_6_9.md:L1-L78` 完成阶段审查，并保留标准 subtask preparation Blocker。 / Complete the phase review at `docs/forge/IMPLEMENTATION_REVIEW_V15_6_9.md:L1-L78`, retaining the standard subtask-preparation Blocker.
+
+### 验证 / Validation
+- Async `71 passed`; synchronous `127 passed`; Ruff、compileall、`git diff --check` 通过；无 Isaac Sim、Gateway、IK、碰撞查询或运动。 / Async `71 passed`; synchronous `127 passed`; Ruff, compileall, and `git diff --check` passed; no Isaac Sim, Gateway, IK, collision query, or motion ran.
+- Commit: 待提交；Branch: `feature/planning-loop`。
+
 ## v15.6.7 (2026-10-22 18:00) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
@@ -31,6 +92,31 @@
 
 ### Git 提交 / Git Commit
 - Commit: `ee4cfcc5`; Branch: `feature/planning-loop`。
+
+## v15.6.8 (2026-10-22 19:00) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [policy] [fix] 移除 LabUtopia task projection 将语义标签直接绑定到 profile/USD Prim 的路径；投影必须消费 PAOS `PerceptionBinding` 的 opaque entity/destination refs、测量位姿、grasp candidate、scene revision 和 calibration provenance。 / Remove the LabUtopia task projection path that binds semantic labels directly to profile/USD Prim paths; projection must consume the PAOS `PerceptionBinding` opaque entity/destination refs, measured poses, grasp candidate, scene revision, and calibration provenance.
+- [test] [test] 更新 no-motion projection/integration tests，证明缺失 perception binding 时 fail-closed，并验证替换物体 ref/几何不会修改通用 PAOS 层。 / Update no-motion projection/integration tests to prove fail-closed behavior without a perception binding and verify that replacing object refs/geometry does not modify the generic PAOS layer.
+- [docs] [docs] 按 PAOS architecture、扩展原则、Developer Guide、AgentLoop 和七维记录 projection 边界修复与剩余 live evidence 缺口。 / Record the projection-boundary fix and remaining live-evidence gaps against PAOS architecture, extensibility, Developer Guide, AgentLoop, and the seven dimensions.
+
+### 预计修改 / Planned Files
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/task_projection.py`
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/profile.py`
+- `examples/forge-adapters/isaacsim_lab/tests/test_paos_integration.py`
+- `docs/forge/IMPLEMENTATION_REVIEW_V15_6_8.md`
+- `CHANGELOG.md`
+
+### 实际修改 / Completed Changes
+- [policy] [fix] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/task_projection.py:L20-L89` 要求完整且新鲜的 PAOS binding，投影结果只保留语义任务、参数和 binding，不再返回 profile/USD identity。 / Require a complete fresh PAOS binding at `task_projection.py:L20-L89`; projection now returns only semantic task data, parameters, and binding, never profile/USD identity.
+- [env] [refactor] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/profile.py:L156-L279` 支持显式 opaque refs/binding provenance，同时保留 legacy profile input 兼容入口。 / Support explicit opaque refs and binding provenance at `profile.py:L156-L279` while retaining the legacy profile-input compatibility path.
+- [sense] [refactor] `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/perception_binding.py:L180-L240` 与 `subtask_executor.py:L40-L160` 保留 destination 语义和测量 binding 字段。 / Preserve destination semantics and measured binding fields in `perception_binding.py:L180-L240` and `subtask_executor.py:L40-L160`.
+- [test] [test] Integration, subtask, and planning tests cover missing/mismatched binding no-motion fail-closed behavior. / 集成、子任务和规划测试覆盖缺失/错配 binding 的 no-motion fail-closed 行为。
+- [docs] [docs] `docs/forge/IMPLEMENTATION_REVIEW_V15_6_8.md:L1-L75` 完成阶段审查。 / Complete the phase review at `docs/forge/IMPLEMENTATION_REVIEW_V15_6_8.md:L1-L75`.
+
+### 验证 / Validation
+- 定向测试 `54 passed`；Ruff、compileall、`git diff --check` 通过；无 Isaac Sim、Gateway、IK、碰撞查询或运动。 / Focused tests `54 passed`; Ruff, compileall, and `git diff --check` passed; no Isaac Sim, Gateway, IK, collision query, or motion ran.
+- Commit: 待提交；Branch: `feature/planning-loop`。
 
 ## v15.6.6 (2026-10-22 17:00) - codex
 

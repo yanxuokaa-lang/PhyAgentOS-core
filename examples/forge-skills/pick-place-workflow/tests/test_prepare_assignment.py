@@ -73,3 +73,42 @@ def test_incomplete_route_request_never_calls_provider():
         def prepare(self, arguments):
             pytest.fail("invalid request reached provider")
     assert ManipulationPreparationEndpoint(Provider()).invoke(request)["status"] == "invalid"
+
+
+def test_standard_preparation_forwards_the_measured_binding_without_environment_fields():
+    request, result = request_and_result()
+    request["process_type"] = "pour"
+    request["perception_binding"] = {
+        "entity_ref": request["intent"]["entity_ref"],
+        "destination_ref": request["destination_ref"],
+        "candidate_ref": request["candidates"][0]["candidate_ref"],
+        "candidate_set_ref": request["candidate_set_ref"],
+        "observation_ref": request["observation_ref"],
+        "scene_revision": request["scene_revision"],
+        "frame_id": request["frame_id"],
+        "calibration_ref": request["calibration_ref"],
+        "freshness_ms": request["freshness_ms"],
+        "max_age_ms": request["max_age_ms"],
+        "measured_pose": {"position_m": [0.0, 0.0, 0.0]},
+        "measured_geometry": {"size_m": [0.1, 0.1, 0.2]},
+        "grasp_candidate": request["candidates"][0],
+        "destination_pose": {"position_m": [0.2, 0.0, 0.1]},
+        "process_frame": request["frame_id"],
+        "confidence": 0.9,
+        "provenance": "query-chain:observation://scene/camera",
+        "binding_ref": request["binding_ref"],
+        "capability_snapshot_ref": request["capability_snapshot_ref"],
+    }
+    seen = []
+
+    class Provider:
+        def prepare(self, arguments):
+            seen.append(arguments)
+            assert arguments["perception_binding"]["entity_ref"] == "entity://bottle-1"
+            assert "entity_prim_path" not in arguments["perception_binding"]
+            return result
+
+    output = ManipulationPreparationEndpoint(Provider()).invoke(request)
+    assert output["status"] == "available"
+    assert len(seen) == 1
+    jsonschema.validate(request, MANIPULATION_TOOL_SPEC["input_schema"])

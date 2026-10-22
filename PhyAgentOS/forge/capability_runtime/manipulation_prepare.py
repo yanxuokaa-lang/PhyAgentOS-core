@@ -321,11 +321,50 @@ _intent_schema["properties"]["allowed_arms"]["description"] = (
     "identifiers, not natural-language labels; do not rewrite them as "
     "left_arm/right_arm or invent aliases."
 )
+_PERCEPTION_BINDING_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "entity_ref", "destination_ref", "candidate_ref", "candidate_set_ref",
+        "observation_ref", "scene_revision", "frame_id", "calibration_ref",
+        "freshness_ms", "max_age_ms", "measured_pose", "measured_geometry",
+        "grasp_candidate", "destination_pose", "process_frame", "confidence", "provenance",
+    ],
+    "properties": {
+        "entity_ref": {"type": "string", "pattern": r"^entity://[^/]+$"},
+        "destination_ref": {"type": "string", "pattern": r"^(?:destination|container)://\S+$"},
+        "candidate_ref": {"type": "string", "pattern": r"^candidate://\S+$"},
+        "grasp_candidate_ref": {"type": "string", "pattern": r"^candidate-set://\S+$"},
+        "candidate_set_ref": {"type": "string", "pattern": r"^candidate-set://\S+$"},
+        "observation_ref": {"type": "string", "pattern": r"^observation://\S+$"},
+        "scene_revision": {"type": "string", "minLength": 1},
+        "frame_id": {"type": "string", "minLength": 1},
+        "calibration_ref": {"type": "string", "pattern": r"^artifact://\S+$"},
+        "freshness_ms": {"type": "integer", "minimum": 0},
+        "max_age_ms": {"type": "integer", "exclusiveMinimum": 0},
+        "measured_pose": {"type": "object"},
+        "measured_geometry": {"type": "object"},
+        "grasp_candidate": {"type": "object"},
+        "destination_pose": {"type": "object"},
+        "process_frame": {"type": "string", "minLength": 1},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "provenance": {"type": "string", "minLength": 1},
+        "semantic_label": {"type": "string", "minLength": 1},
+        "category": {"type": "string", "minLength": 1},
+        "destination_semantic_label": {"type": "string", "minLength": 1},
+        "destination_category": {"type": "string", "minLength": 1},
+        "binding_ref": {"type": "string", "pattern": r"^artifact://\S+$"},
+        "capability_snapshot_ref": {"type": "string", "pattern": r"^artifact://\S+$"},
+    },
+}
+
 MANIPULATION_TOOL_SPEC["input_schema"]["properties"].update({
     "intent": _intent_schema,
     "binding_ref": {"type": "string", "pattern": _ARTIFACT_REF.pattern},
     "destination_ref": {"type": "string", "pattern": r"^destination://[^/]+.*$"},
     "capability_snapshot_ref": {"type": "string", "pattern": _ARTIFACT_REF.pattern},
+    "process_type": {"type": "string", "minLength": 1},
+    "perception_binding": _PERCEPTION_BINDING_SCHEMA,
 })
 MANIPULATION_TOOL_SPEC["output_schema"]["properties"].update({
     "assignments": {"type": "array", "items": ArmAssignment.model_json_schema(
@@ -368,6 +407,7 @@ def validate_arguments(arguments: Any) -> dict[str, Any] | None:
         "observation_ref", "scene_revision", "frame_id", "calibration_ref",
         "freshness_ms", "max_age_ms", "candidate_set_ref", "candidates",
         "intent", "binding_ref", "destination_ref", "capability_snapshot_ref",
+        "process_type", "perception_binding",
     }
     if set(arguments) - allowed:
         return _error("invalid_arguments", "unknown manipulation.prepare argument")
@@ -393,6 +433,36 @@ def validate_arguments(arguments: Any) -> dict[str, Any] | None:
             return _error("invalid_scene_binding", "binding_ref is invalid")
         if not isinstance(arguments["capability_snapshot_ref"], str) or _ARTIFACT_REF.fullmatch(arguments["capability_snapshot_ref"]) is None:
             return _error("invalid_capability_binding", "capability_snapshot_ref is invalid")
+    binding = arguments.get("perception_binding")
+    if binding is not None:
+        if not isinstance(binding, Mapping):
+            return _error("invalid_perception_binding", "perception_binding must be an object")
+        required_binding = (
+            "entity_ref", "destination_ref", "candidate_ref", "candidate_set_ref",
+            "observation_ref", "scene_revision", "frame_id", "calibration_ref",
+            "freshness_ms", "max_age_ms",
+        )
+        if any(key not in binding for key in required_binding):
+            return _error("invalid_perception_binding", "perception_binding is incomplete")
+        for key in required_binding[:8]:
+            if not isinstance(binding.get(key), str) or not str(binding[key]).strip():
+                return _error("invalid_perception_binding", f"perception_binding.{key} is invalid")
+        for key in ("entity_ref", "destination_ref", "candidate_ref", "candidate_set_ref",
+                    "observation_ref", "scene_revision", "frame_id", "calibration_ref"):
+            if binding[key] != arguments.get(key, binding[key]):
+                return _error("invalid_perception_binding", f"perception_binding.{key} differs from preparation")
+        freshness, max_age = binding.get("freshness_ms"), binding.get("max_age_ms")
+        if (isinstance(freshness, bool) or not isinstance(freshness, int) or freshness < 0
+                or isinstance(max_age, bool) or not isinstance(max_age, int) or max_age < 1
+                or freshness > max_age):
+            return _error("invalid_perception_binding", "perception_binding freshness is stale or invalid")
+        try:
+            import json
+            json.dumps(dict(binding), ensure_ascii=False, allow_nan=False)
+        except (TypeError, ValueError):
+            return _error("invalid_perception_binding", "perception_binding contains non-finite values")
+        if not isinstance(arguments.get("process_type"), str) or not arguments["process_type"].strip():
+            return _error("invalid_perception_binding", "process_type is required with perception_binding")
     observation_ref = arguments.get("observation_ref")
     if not isinstance(observation_ref, str) or _OBSERVATION_REF.fullmatch(observation_ref) is None:
         return _error("invalid_observation_ref", "observation_ref must use observation:// scheme")

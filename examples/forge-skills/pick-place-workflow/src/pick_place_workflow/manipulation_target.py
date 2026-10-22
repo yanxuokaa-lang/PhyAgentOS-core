@@ -4,11 +4,21 @@ from __future__ import annotations
 
 import math
 from copy import deepcopy
-from typing import Any, Mapping
+from typing import Any, Mapping, Protocol
 
 
 class ManipulationTargetError(ValueError):
     """A perception target is stale, incomplete, or internally inconsistent."""
+
+
+class ManipulationTargetResolver(Protocol):
+    """Provider port for resolving measured references into execution data."""
+
+    def resolve(
+        self,
+        binding: Mapping[str, Any],
+        request: Mapping[str, Any],
+    ) -> Mapping[str, Any]: ...
 
 
 _REF = {"type": "string", "minLength": 1}
@@ -121,6 +131,48 @@ def validate_manipulation_target(value: Any, arguments: Mapping[str, Any], *, pr
     tolerance = target.get("placement_tolerance_m")
     if tolerance is not None and (not _finite(tolerance) or float(tolerance) <= 0):
         raise ManipulationTargetError("placement_tolerance_m must be positive")
+    return target
+
+
+def resolve_manipulation_target(
+    resolver: ManipulationTargetResolver,
+    binding: Mapping[str, Any],
+    request: Mapping[str, Any],
+    *,
+    process_type: str,
+) -> dict[str, Any]:
+    """Resolve and validate an adapter-private target without inventing identity."""
+    if not isinstance(binding, Mapping) or not isinstance(request, Mapping):
+        raise ManipulationTargetError("perception binding and target request are required")
+    for key in ("entity_ref", "destination_ref", "scene_revision", "frame_id", "calibration_ref"):
+        if not isinstance(binding.get(key), str) or not binding[key].strip():
+            raise ManipulationTargetError(f"perception binding.{key} is required")
+        if request.get(key) != binding[key]:
+            raise ManipulationTargetError(f"target request {key} differs from perception binding")
+    freshness, max_age = binding.get("freshness_ms"), binding.get("max_age_ms")
+    if (
+        isinstance(freshness, bool) or not isinstance(freshness, int) or freshness < 0
+        or isinstance(max_age, bool) or not isinstance(max_age, int) or max_age < 1
+        or freshness > max_age
+    ):
+        raise ManipulationTargetError("perception binding is stale or has invalid freshness")
+    resolve = getattr(resolver, "resolve", None)
+    if not callable(resolve):
+        raise ManipulationTargetError("target resolver must expose resolve(binding, request)")
+    result = resolve(deepcopy(dict(binding)), deepcopy(dict(request)))
+    if not isinstance(result, Mapping):
+        raise ManipulationTargetError("target resolver returned a non-object target")
+    target = validate_manipulation_target(result, binding, process_type=process_type)
+    expected = {
+        "entity_ref": binding.get("entity_ref"),
+        "destination_ref": binding.get("destination_ref"),
+        "scene_revision": binding.get("scene_revision"),
+        "frame_id": binding.get("frame_id"),
+        "calibration_ref": binding.get("calibration_ref"),
+        "candidate_ref": binding.get("candidate_ref"),
+    }
+    if any(value is not None and target.get(key) != value for key, value in expected.items()):
+        raise ManipulationTargetError("resolved target does not preserve perception binding identity")
     return target
 
 

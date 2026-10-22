@@ -228,6 +228,8 @@ class PerceptionBindingAdapter:
             "entity_ref": source["entity_ref"],
             "semantic_label": source.get("semantic_label") or source.get("label") or source["category"],
             "category": source["category"],
+            "destination_semantic_label": destination.get("semantic_label") or destination.get("label") or destination["category"],
+            "destination_category": destination["category"],
             "measured_pose": measured_pose,
             "measured_geometry": measured_geometry,
             "grasp_candidate": deepcopy(candidate),

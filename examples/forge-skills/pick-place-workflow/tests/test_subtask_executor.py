@@ -27,6 +27,7 @@ from pick_place_workflow.subtask_executor import (
 def binding(**updates):
     value = {
         "entity_ref": "entity://reagent-a", "semantic_label": "reagent A", "category": "reagent_bottle",
+        "destination_semantic_label": "beaker", "destination_category": "beaker",
         "measured_pose": {"position": [0.1, 0.2, 0.3]}, "measured_geometry": {"height_m": 0.18},
         "grasp_candidate": {
             "candidate_ref": "candidate://reagent-a/0", "entity_ref": "entity://reagent-a",

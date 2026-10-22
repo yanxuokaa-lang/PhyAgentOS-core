@@ -28,6 +28,7 @@ from pick_place_workflow.subtask_executor import PerceptionBinding, SubtaskSpec
 def _lab_binding():
     return PerceptionBinding(
         entity_ref="entity://reagent-a", semantic_label="reagent A", category="reagent_bottle",
+        destination_semantic_label="beaker", destination_category="beaker",
         measured_pose={"position": [0.1, 0.2, 0.3]}, measured_geometry={"height_m": 0.18},
         grasp_candidate={"candidate_ref": "candidate://reagent-a/0", "entity_ref": "entity://reagent-a"},
         grasp_candidate_ref="candidate-set://scene-1/reagent-a",

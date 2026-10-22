@@ -26,8 +26,9 @@ class LabUtopiaPAOSClientError(RuntimeError):
 class LabUtopiaCycleProvider:
     """Own no-motion cycle preparation and task-owned assignment projection."""
 
-    def __init__(self, engine: Any):
+    def __init__(self, engine: Any, *, target_resolver: Any | None = None):
         self.engine = engine
+        self.target_resolver = target_resolver
         self._prepared: dict[str, dict[str, Any]] = {}
         self._lock = RLock()
 
@@ -45,11 +46,30 @@ class LabUtopiaCycleProvider:
         if operation not in {"pour_cycle", "stir_cycle"}:
             return {"status": "unavailable", "motion_authorized": False,
                     "error": "labutopia_cycle_not_supported"}
+        request = deepcopy(dict(arguments))
+        binding = request.get("binding")
+        if binding is not None:
+            if self.target_resolver is None:
+                return {"status": "unavailable", "motion_authorized": False,
+                        "error": "perception_target_resolver_unavailable"}
+            try:
+                from pick_place_workflow.manipulation_target import resolve_manipulation_target
+
+                profile = getattr(self.engine, "profile", None)
+                process_type = getattr(profile, "configured_process_type", None)
+                if process_type not in {"pour", "stir"}:
+                    raise LabUtopiaPAOSClientError("target resolution requires a supported process type")
+                request["manipulation_target"] = resolve_manipulation_target(
+                    self.target_resolver, binding, request, process_type=process_type
+                )
+            except Exception as exc:
+                return {"status": "invalid", "motion_authorized": False,
+                        "error": f"perception_target_resolution_failed:{type(exc).__name__}"}
         try:
             prepare = getattr(self.engine, "prepare_cycle", None)
             if not callable(prepare):
                 raise LabUtopiaPAOSClientError("engine does not expose prepare_cycle")
-            result = prepare(deepcopy(dict(arguments)))
+            result = prepare(request)
         except Exception as exc:
             return {"status": "unavailable", "motion_authorized": False,
                     "error": f"labutopia_preparation_failed:{type(exc).__name__}"}
@@ -69,6 +89,69 @@ class LabUtopiaCycleProvider:
         return {"status": "available", "motion_authorized": False,
                 "entity_ref": value["entity_ref"], "arguments": value,
                 "provider": "labutopia_isaacsim"}
+
+    def prepare(self, request: Mapping[str, Any]) -> dict[str, Any]:
+        """Prepare the standard PAOS manipulation route from one measured binding.
+
+        The generic endpoint supplies the binding and trusted intent.  This
+        provider resolves the opaque references into adapter-private execution
+        data and requires the engine to return the typed assignment/route
+        evidence needed by acquire and place.  A legacy cycle-only engine is
+        deliberately unavailable on this path instead of fabricating an
+        assignment.
+        """
+        if not isinstance(request, Mapping):
+            return {"status": "invalid", "provider_available": False,
+                    "error": "standard_preparation_request_must_be_object"}
+        binding = request.get("perception_binding")
+        process_type = request.get("process_type")
+        if not isinstance(binding, Mapping) or process_type not in {"pour", "stir", "relocate"}:
+            return {"status": "invalid", "provider_available": False,
+                    "error": "standard_preparation_requires_perception_binding_and_process_type"}
+        if self.target_resolver is None:
+            return {"status": "unavailable", "provider_available": False,
+                    "error": "perception_target_resolver_unavailable"}
+        try:
+            from pick_place_workflow.manipulation_target import resolve_manipulation_target
+
+            target_request = {
+                key: request[key]
+                for key in ("entity_ref", "destination_ref", "scene_revision", "frame_id", "calibration_ref")
+                if key in request
+            }
+            if isinstance(request.get("candidate_ref"), str):
+                target_request["candidate_ref"] = request["candidate_ref"]
+            target = resolve_manipulation_target(
+                self.target_resolver, binding, target_request,
+                process_type=process_type,
+            )
+        except Exception as exc:
+            return {"status": "invalid", "provider_available": False,
+                    "error": f"perception_target_resolution_failed:{type(exc).__name__}"}
+        engine_prepare = getattr(self.engine, "prepare_manipulation", None)
+        if not callable(engine_prepare):
+            return {"status": "unavailable", "provider_available": False,
+                    "error": "standard_manipulation_preparation_unavailable"}
+        engine_request = deepcopy(dict(request))
+        engine_request["manipulation_target"] = target
+        try:
+            result = engine_prepare(engine_request)
+        except Exception as exc:
+            return {"status": "unavailable", "provider_available": False,
+                    "error": f"labutopia_preparation_failed:{type(exc).__name__}"}
+        if not isinstance(result, Mapping):
+            return {"status": "unavailable", "provider_available": False,
+                    "error": "labutopia_preparation_returned_non_object"}
+        if result.get("status") not in {"available", "succeeded"}:
+            return {"status": str(result.get("status", "unavailable")),
+                    "provider_available": False,
+                    "error": str(result.get("error", "labutopia_preparation_unavailable"))}
+        value = deepcopy(dict(result))
+        value.pop("status", None)
+        value.pop("motion_authorized", None)
+        value["provider_available"] = True
+        value.setdefault("destination_ref", request.get("destination_ref"))
+        return value
 
     def resolve(self, operation: str, arguments: Mapping[str, Any], *, task_id: str | None = None) -> dict[str, Any]:
         """Resolve a prepared request and bind its assignment to the caller task."""
@@ -237,6 +320,7 @@ def build_labutopia_runtime(
     gateway_identity: str = "labutopia-paos-runtime",
     possession: Any | None = None,
     perception_adapter: Any | None = None,
+    target_resolver: Any | None = None,
     subtask_context_resolver: Callable[[str], Mapping[str, Any]] | None = None,
     assignment_store: Any | None = None,
     understanding_artifact_resolver: Any | None = None,
@@ -292,7 +376,16 @@ def build_labutopia_runtime(
     selected_engine = engine or IsaacSimLabEngine(
         profile, observation_artifact_root=resolved_artifact_root
     )
-    provider = LabUtopiaCycleProvider(selected_engine)
+    provider = LabUtopiaCycleProvider(selected_engine, target_resolver=target_resolver)
+    # A measured target resolver opts the standard PAOS preparation Query into
+    # the LabUtopia provider.  Without it, the caller-supplied provider remains
+    # the generic readiness implementation and legacy cycle compatibility is
+    # unchanged.
+    selected_preparation_provider = (
+        provider
+        if target_resolver is not None and callable(getattr(provider, "prepare", None))
+        else preparation_provider
+    )
     client = LabUtopiaCycleClient(
         selected_engine, allow_live=allow_live, preparation_provider=provider
     )
@@ -305,7 +398,7 @@ def build_labutopia_runtime(
         understanding_inference_id=understanding_inference_id,
         understanding_inference_configuration=understanding_inference_configuration,
         grasp_provider=grasp_provider,
-        preparation_provider=preparation_provider,
+        preparation_provider=selected_preparation_provider,
         capability_provider=capability_provider,
         observation_source=observation_source,
         resolve_preparation=None if assignment_store is not None else resolve_preparation,
@@ -331,7 +424,7 @@ def build_labutopia_runtime(
         for provider, method in (
             (grasp_provider, "propose"),
             (capability_provider, "describe"),
-            (preparation_provider, "prepare"),
+            (selected_preparation_provider, "prepare"),
         )
     )
     observation_provider_ready = (

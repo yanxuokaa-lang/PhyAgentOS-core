@@ -153,26 +153,94 @@ class LabUtopiaProfile:
         if self.source_control_path is not None and not self.source_control_path.startswith("/World/"):
             raise LabProfileError("source_control_path must be an absolute /World prim path")
 
-    def paos_input(self, previous: Mapping[str, Any] | None = None, *, operation: str = "pour_cycle") -> dict[str, Any]:
+    def paos_input(
+        self,
+        previous: Mapping[str, Any] | None = None,
+        *,
+        operation: str = "pour_cycle",
+        perception_binding: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Project the prior PAOS observation/preparation input into the lab scene."""
         if operation not in {"pour_cycle", "stir_cycle", "manipulation_cycle"}:
             raise LabProfileError("unsupported cycle operation")
         if operation not in self.supported_operations:
             raise LabProfileError(f"profile does not support {operation}")
         previous = dict(previous or {})
+        if perception_binding is not None and not isinstance(perception_binding, Mapping):
+            raise LabProfileError("perception_binding must be a mapping")
+        if isinstance(perception_binding, Mapping):
+            binding_required = (
+                "entity_ref", "destination_ref", "observation_ref", "scene_revision",
+                "frame_id", "calibration_ref", "binding_ref", "freshness_ms", "max_age_ms",
+            )
+            if any(key not in perception_binding for key in binding_required):
+                raise LabProfileError("perception_binding provenance is incomplete")
+            freshness = perception_binding["freshness_ms"]
+            max_age = perception_binding["max_age_ms"]
+            if (
+                isinstance(freshness, bool) or not isinstance(freshness, int) or freshness < 0
+                or isinstance(max_age, bool) or not isinstance(max_age, int) or max_age < 1
+                or freshness > max_age
+            ):
+                raise LabProfileError("perception_binding is stale or has invalid freshness")
+            for key in binding_required[:7]:
+                if not isinstance(perception_binding[key], str) or not perception_binding[key].strip():
+                    raise LabProfileError("perception_binding provenance is invalid")
+        bound_entity_ref = (
+            perception_binding.get("entity_ref")
+            if isinstance(perception_binding, Mapping) else None
+        )
+        bound_destination_ref = (
+            perception_binding.get("destination_ref")
+            if isinstance(perception_binding, Mapping) else None
+        )
+        binding_ref = (
+            perception_binding.get("binding_ref")
+            if isinstance(perception_binding, Mapping) else previous.get("binding_ref")
+        )
+        bound_observation_ref = (
+            perception_binding.get("observation_ref")
+            if isinstance(perception_binding, Mapping) else None
+        )
+        bound_scene_revision = (
+            perception_binding.get("scene_revision")
+            if isinstance(perception_binding, Mapping) else None
+        )
+        bound_frame_id = (
+            perception_binding.get("frame_id")
+            if isinstance(perception_binding, Mapping) else None
+        )
+        bound_calibration_ref = (
+            perception_binding.get("calibration_ref")
+            if isinstance(perception_binding, Mapping) else None
+        )
+        bound_freshness_ms = (
+            perception_binding.get("freshness_ms")
+            if isinstance(perception_binding, Mapping) else None
+        )
+        bound_max_age_ms = (
+            perception_binding.get("max_age_ms")
+            if isinstance(perception_binding, Mapping) else None
+        )
+        if binding_ref is not None and (
+            not isinstance(binding_ref, str) or not binding_ref.startswith("artifact://")
+        ):
+            raise LabProfileError("binding_ref must use artifact:// scheme")
         required = {
-            "entity_ref": _entity_ref(self.source_path),
-            "destination_ref": _destination_ref(self.destination_path),
+            "entity_ref": bound_entity_ref or _entity_ref(self.source_path),
+            "destination_ref": bound_destination_ref or _destination_ref(self.destination_path),
             "return_destination_ref": self.return_destination_ref,
-            "observation_ref": self.observation_ref,
-            "scene_revision": self.scene_revision,
-            "frame_id": self.frame_id,
-            "calibration_ref": self.calibration_ref,
+            "observation_ref": bound_observation_ref or self.observation_ref,
+            "scene_revision": bound_scene_revision or self.scene_revision,
+            "frame_id": bound_frame_id or self.frame_id,
+            "calibration_ref": bound_calibration_ref or self.calibration_ref,
             "capability_snapshot_ref": self.capability_snapshot_ref,
             "operation": operation,
-            "freshness_ms": self.freshness_ms,
-            "max_age_ms": self.max_age_ms,
+            "freshness_ms": bound_freshness_ms if bound_freshness_ms is not None else self.freshness_ms,
+            "max_age_ms": bound_max_age_ms if bound_max_age_ms is not None else self.max_age_ms,
         }
+        if binding_ref is not None:
+            required["binding_ref"] = binding_ref
         if operation == "pour_cycle":
             required["parameters"] = {"tilt_rad": self.tilt_rad, "hold_s": self.hold_s}
         elif operation == "stir_cycle":
@@ -193,11 +261,17 @@ class LabUtopiaProfile:
                 continue
             if key not in previous or previous[key] in (None, ""):
                 previous[key] = value
-        if previous["entity_ref"] != required["entity_ref"] or previous["destination_ref"] != required["destination_ref"]:
+        if perception_binding is None and binding_ref is None and (
+            previous["entity_ref"] != required["entity_ref"]
+            or previous["destination_ref"] != required["destination_ref"]
+        ):
             raise LabProfileError("previous PAOS input targets a different source or destination")
         if not isinstance(previous["scene_revision"], str) or not previous["scene_revision"].strip():
             raise LabProfileError("previous PAOS input requires a live scene revision")
-        if previous["frame_id"] != self.frame_id or previous["calibration_ref"] != self.calibration_ref:
+        if perception_binding is None and binding_ref is None and (
+            previous["frame_id"] != self.frame_id
+            or previous["calibration_ref"] != self.calibration_ref
+        ):
             raise LabProfileError("previous PAOS input has stale frame or calibration identity")
         return previous
 

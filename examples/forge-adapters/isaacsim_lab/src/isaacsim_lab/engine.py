@@ -405,7 +405,11 @@ class IsaacSimLabEngine:
             return {"status": "invalid", "motion_authorized": False,
                     "failure_code": "stale_scene_revision"}
         try:
-            prepared = self.profile.paos_input(arguments, operation=operation)
+            prepared = self.profile.paos_input(
+                arguments,
+                operation=operation,
+                perception_binding=arguments.get("binding"),
+            )
             prepared["parameters"] = normalize_process_parameters(prepared, self.profile)
             if prepared["parameters"]["process_type"] in {"pour", "stir"}:
                 _validate_cycle_target(prepared, prepared["parameters"]["process_type"])
