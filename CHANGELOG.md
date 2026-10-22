@@ -2,6 +2,16 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.6.3 (2026-10-22 14:20) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [policy] [refactor] 删除 PAOS Core 中的 OpenAI/GPT 专用实现；保留通用 artifact resolver + inference protocol。 / Remove the OpenAI/GPT-specific PAOS Core implementation; retain the generic artifact resolver plus inference protocol.
+- [test] [test] 复用两个不同 inference 的 generic tests；artifact/understanding + workflow endpoint `52 passed`。 / Reuse generic tests with two different inference implementations; artifact/understanding and workflow endpoint tests `52 passed`.
+- [docs] [docs] `docs/forge/IMPLEMENTATION_REVIEW_V15_6_3.md:L1-L50` 完成依赖方向与七维审查。 / Complete dependency-direction and seven-dimension review at `IMPLEMENTATION_REVIEW_V15_6_3.md:L1-L50`.
+
+### Git 提交 / Git Commit
+- Commit: pending; Branch: `feature/planning-loop`
+
 ## v15.6.2 (2026-10-22 14:05) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
