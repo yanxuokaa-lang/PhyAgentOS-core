@@ -2,6 +2,20 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.4.14 (2026-10-22 09:45) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [test] [test] 通过 scripted-provider AgentLoop 实际 ToolCall 验证 semantic task creation、Query binding、Coordinator 持久化和单个子任务节点。 / Use a scripted-provider AgentLoop ToolCall to verify semantic task creation, Query binding, Coordinator persistence, and one subtask node.
+- [docs] [docs] 完成 PAOS architecture、扩展原则、Developer Guide、AgentLoop 和七维证据复审；脚本模型与 provider fixture 不代表 live perception 或 motion。 / Complete PAOS architecture, extensibility, Developer Guide, AgentLoop, and seven-dimension evidence review; scripted model and provider fixtures are not live perception or motion evidence.
+- Implementation commit: `[pending]` on `feature/planning-loop`.
+
+### 文件与关键 Diff / Files and Key Diff
+- `examples/forge-skills/pick-place-workflow/tests/test_semantic_task_creation.py:L362-L424`：AgentLoop ToolCall→semantic builder→Coordinator integration regression。
+- `docs/forge/IMPLEMENTATION_REVIEW_V15_4_14.md:L1-L46`：本阶段审查与七维验收。
+
+详见 [v15.4.14 月度日志](changelog/2026-10_part2.md) 和 [实现审查](docs/forge/IMPLEMENTATION_REVIEW_V15_4_14.md)。
+See the [v15.4.14 detailed log](changelog/2026-10_part2.md) and [implementation review](docs/forge/IMPLEMENTATION_REVIEW_V15_4_14.md).
+
 ## v15.4.13 (2026-10-22 09:40) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]

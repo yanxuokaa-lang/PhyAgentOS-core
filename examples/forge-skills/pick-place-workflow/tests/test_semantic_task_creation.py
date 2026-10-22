@@ -16,7 +16,7 @@ from PhyAgentOS.agent.tools.forge_task import ForgeTaskCreateTool
 from PhyAgentOS.bus.queue import MessageBus
 from PhyAgentOS.config.schema import ForgeConfig
 from PhyAgentOS.forge.task import AgentTaskCoordinator
-from PhyAgentOS.providers.base import LLMProvider
+from PhyAgentOS.providers.base import LLMProvider, LLMResponse, ToolCallRequest
 
 from pick_place_workflow.perception_binding import PerceptionBindingAdapter
 from pick_place_workflow.semantic_task_creation import (
@@ -352,6 +352,71 @@ def test_agent_loop_registered_task_tool_executes_measured_subtask_creation(tmp_
     })))
     assert result["ok"] is True
     task = coordinator.get_task(result["data"]["task_id"])
+    nodes = task.active_revision.plan_graph.nodes
+    assert [node.capability for node in nodes] == [
+        "manipulation.execute_subtask", "task.verify",
+    ]
+    assert nodes[0].input_bindings["binding"]["entity_ref"] == "entity://a-bottle"
+
+
+def test_agent_loop_model_tool_call_creates_semantic_subtask_once(tmp_path):
+    sync_query = _provider()
+
+    async def query(tool_id, arguments):
+        return sync_query(tool_id, arguments)
+
+    class ScriptedProvider(LLMProvider):
+        def __init__(self):
+            super().__init__()
+            self.requests = []
+            self.responses = [
+                LLMResponse(content=None, tool_calls=[ToolCallRequest(
+                    "create-semantic-task",
+                    "forge_task_create",
+                    {
+                        "task_description": "Pour reagent A into the beaker",
+                        "verification": {"mode": "off"},
+                        "semantic_subtasks": _request(),
+                    },
+                )]),
+                LLMResponse(content="Semantic task created from current observation."),
+            ]
+
+        async def chat(self, **kwargs):
+            self.requests.append(kwargs)
+            return self.responses.pop(0)
+
+        def get_default_model(self):
+            return "test-model"
+
+    provider = ScriptedProvider()
+    coordinator = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=object())
+    loop = AgentLoop(
+        bus=MessageBus(),
+        provider=provider,
+        workspace=tmp_path,
+        forge_task_coordinator=coordinator,
+        semantic_plan_builder=_async_builder(query),
+        max_iterations=3,
+    )
+
+    result = asyncio.run(loop._run_agent_loop([
+        {"role": "user", "content": "Pour reagent A into the beaker."},
+    ]))
+
+    assert result.content == "Semantic task created from current observation."
+    assert result.tools_used == ["forge_task_create"]
+    assert provider.responses == []
+    schemas = provider.requests[0]["tools"]
+    task_schema = next(
+        item["function"] for item in schemas
+        if item["function"]["name"] == "forge_task_create"
+    )
+    assert "semantic_subtasks" in task_schema["parameters"]["properties"]
+    assert len(provider.requests) == 2
+
+    task = coordinator.store.active()
+    assert task is not None
     nodes = task.active_revision.plan_graph.nodes
     assert [node.capability for node in nodes] == [
         "manipulation.execute_subtask", "task.verify",
