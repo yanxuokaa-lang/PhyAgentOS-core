@@ -2,6 +2,7 @@
 
 from .engine import IsaacLabBackend, IsaacLabRuntimeError, IsaacSimLabEngine, LabUtopiaBackend
 from .observation import (
+    FilesystemObservationArtifactWriter,
     IsaacCameraMetadataProvider,
     IsaacCameraObservationSource,
     ObservationArtifactWriter,
@@ -12,6 +13,7 @@ __all__ = [
     "IsaacLabBackend",
     "IsaacLabRuntimeError",
     "IsaacSimLabEngine",
+    "FilesystemObservationArtifactWriter",
     "IsaacCameraMetadataProvider",
     "IsaacCameraObservationSource",
     "LabProfileError",

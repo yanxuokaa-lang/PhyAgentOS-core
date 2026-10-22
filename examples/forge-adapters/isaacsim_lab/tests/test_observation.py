@@ -1,9 +1,16 @@
-from datetime import timezone
+import json
+from datetime import datetime, timezone
+from io import BytesIO
 
+import numpy as np
 import pytest
 from PhyAgentOS.forge.capability_runtime.observation import ObservationEndpoint
 
-from isaacsim_lab.observation import IsaacCameraMetadataProvider, IsaacCameraObservationSource
+from isaacsim_lab.observation import (
+    FilesystemObservationArtifactWriter,
+    IsaacCameraMetadataProvider,
+    IsaacCameraObservationSource,
+)
 
 
 class FakeCamera:
@@ -237,3 +244,56 @@ def test_live_metadata_provider_does_not_hide_artifact_storage_failures():
     )
     with pytest.raises(OSError, match="artifact store unavailable"):
         provider("camera/front")
+
+
+def test_filesystem_writer_persists_sensor_arrays_and_calibration(tmp_path):
+    writer = FilesystemObservationArtifactWriter(tmp_path, namespace="labutopia")
+    captured_at = datetime(2026, 10, 22, tzinfo=timezone.utc)
+
+    image = np.asarray([[[1, 2, 3]]], dtype=np.uint8)
+    rgb = writer.write("camera/front", "rgb", image, captured_at=captured_at)
+    calibration = writer.write(
+        "camera/front", "calibration", {"frame_id": "camera/front"},
+        captured_at=captured_at,
+    )
+
+    assert rgb["ref"].startswith("artifact://labutopia/rgb/")
+    assert rgb["media_type"] == "application/x-npy"
+    rgb_path = tmp_path / rgb["ref"].removeprefix("artifact://labutopia/")
+    assert np.array_equal(np.load(BytesIO(rgb_path.read_bytes()), allow_pickle=False), image)
+    assert calibration["ref"].startswith("artifact://labutopia/calibration/")
+    assert calibration["media_type"] == "application/json"
+    calibration_path = tmp_path / calibration["ref"].removeprefix("artifact://labutopia/")
+    assert json.loads(calibration_path.read_text(encoding="utf-8")) == {
+        "frame_id": "camera/front"
+    }
+    assert rgb["ref"] != calibration["ref"]
+
+
+def test_filesystem_writer_rejects_invalid_capture_metadata(tmp_path):
+    writer = FilesystemObservationArtifactWriter(tmp_path, namespace="labutopia")
+    with pytest.raises(ValueError, match="timezone-aware"):
+        writer.write("camera/front", "rgb", [[1]], captured_at=datetime(2026, 10, 22))
+    with pytest.raises(ValueError, match="artifact kind"):
+        writer.write("camera/front", "semantic", [[1]], captured_at=datetime.now(timezone.utc))
+
+
+def test_observation_endpoint_fails_closed_when_filesystem_write_fails(tmp_path, monkeypatch):
+    import isaacsim_lab.observation as observation_module
+
+    writer = FilesystemObservationArtifactWriter(tmp_path, namespace="labutopia")
+    monkeypatch.setattr(
+        observation_module,
+        "atomic_write_bytes",
+        lambda *_args: (_ for _ in ()).throw(OSError("disk unavailable")),
+    )
+    source = IsaacCameraObservationSource(
+        {"camera/front": FakeCamera()}, metadata, writer,
+    )
+
+    result = ObservationEndpoint(source).invoke({
+        "sensor_ref": "camera/front", "max_age_ms": 1000,
+    })
+
+    assert result["status"] == "unavailable"
+    assert result["artifacts"] == []

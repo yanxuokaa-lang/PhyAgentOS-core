@@ -2,6 +2,30 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.5.8 (2026-10-22 23:10) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [env] [feat] `observation.py:L25-L65` 新增 `FilesystemObservationArtifactWriter`，以 atomic write 持久化相机数组和标定数据，返回带真实 media type 的 `artifact://` 引用。 / Add `FilesystemObservationArtifactWriter` at `observation.py:L25-L65` to atomically persist camera arrays and calibration, returning `artifact://` refs with actual media types.
+- [test] [test] `test_observation.py:L249-L299` 覆盖落盘、读取、唯一 ref、非法输入和写入失败；完整 Isaac adapter tests `76 passed`。 / Cover persistence, readback, unique refs, invalid inputs, and failed writes at `test_observation.py:L249-L299`; complete Isaac adapter tests report `76 passed`.
+- [docs] [docs] review 记录 PAOS ownership、扩展边界、AgentLoop 与七维结果；worker 未接 writer、camera registry 和 live revision，因此完整方案未验收。 / Review records PAOS ownership, extensibility, AgentLoop, and seven-dimension status; the writer is not yet wired into the worker, with camera registry/live revision outstanding, so the full plan is not accepted.
+- Implementation commit: `[pending]` on `feature/planning-loop`.
+
+### 文件与关键 Diff / Files and Key Diff
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/observation.py:L25-L65`：注入式 atomic filesystem writer，NPY/JSON MIME 与落盘内容匹配。
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/__init__.py:L4-L22`：导出新 writer。
+- `examples/forge-adapters/isaacsim_lab/tests/test_observation.py:L249-L299`：文件回读与 fail-closed 测试。
+- `docs/forge/IMPLEMENTATION_REVIEW_V15_5_8.md:L1-L47`：阶段审查和七维验收。
+
+```diff
+- artifact persistence depended on an external writer implementation
++ adapter writer -> atomic NPY/JSON file -> opaque artifact:// ref and actual media_type
++ failed serialization/write -> ObservationEndpoint returns unavailable
++ worker camera wiring, live revision, and overall acceptance remain incomplete
+```
+
+详见 [v15.5.8 月度日志](changelog/2026-10_part8.md) 和 [实现审查](docs/forge/IMPLEMENTATION_REVIEW_V15_5_8.md)。
+See the [v15.5.8 detailed log](changelog/2026-10_part8.md) and [implementation review](docs/forge/IMPLEMENTATION_REVIEW_V15_5_8.md).
+
 ## v15.5.7 (2026-10-22 12:05) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
@@ -94,7 +118,7 @@ See the [v15.5.5 detailed log](changelog/2026-10_part8.md) and [implementation r
 详见 [v15.5.4 月度日志](changelog/2026-10_part8.md) 和 [实现审查](docs/forge/IMPLEMENTATION_REVIEW_V15_5_4.md)。
 See the [v15.5.4 detailed log](changelog/2026-10_part8.md) and [implementation review](docs/forge/IMPLEMENTATION_REVIEW_V15_5_4.md).
 
-## v15.5.3 (2026-10-22 20:45) - codex
+### Archived v15.5.3 (2026-10-22 20:45) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
 - [env] [refactor] 在 LabUtopia Task 增加 opt-in session-owned scene lifecycle，默认 reset 行为兼容；owned 模式避免 World reset、机器人重初始化和物体重排。 / Add an opt-in session-owned scene lifecycle to LabUtopia Tasks while preserving default reset behavior; owned mode avoids World reset, robot reinitialization, and object repositioning.

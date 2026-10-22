@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+import io
+import json
 import math
 from datetime import datetime, timezone
 from numbers import Real
+from pathlib import Path
 from typing import Any, Callable, Mapping, Protocol
+from uuid import uuid4
+
+from PhyAgentOS.utils.atomic_file import atomic_write_bytes
 
 
 class ObservationArtifactWriter(Protocol):
@@ -14,6 +20,47 @@ class ObservationArtifactWriter(Protocol):
     def write(
         self, sensor_ref: str, kind: str, value: Any, *, captured_at: datetime
     ) -> Mapping[str, str]: ...
+
+
+class FilesystemObservationArtifactWriter:
+    """Persist sensor values as atomic files and expose opaque PAOS refs."""
+
+    def __init__(self, root: str | Path, *, namespace: str) -> None:
+        if not isinstance(namespace, str) or not namespace.strip() or "/" in namespace:
+            raise ValueError("artifact namespace must be a non-empty URI authority")
+        self._root = Path(root).expanduser().resolve()
+        self._namespace = namespace
+
+    def write(
+        self, sensor_ref: str, kind: str, value: Any, *, captured_at: datetime
+    ) -> Mapping[str, str]:
+        if not _nonempty_text(sensor_ref) or kind not in {*_MODALITIES, "calibration"}:
+            raise ValueError("sensor_ref or artifact kind is invalid")
+        if captured_at.tzinfo is None or captured_at.utcoffset() is None:
+            raise ValueError("artifact capture time must be timezone-aware")
+        if kind == "calibration":
+            payload = json.dumps(
+                value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False
+            ).encode("utf-8")
+            suffix, media_type = ".json", "application/json"
+        else:
+            import numpy as np
+
+            array = np.asarray(value)
+            if array.size == 0:
+                raise ValueError("camera artifact must not be empty")
+            output = io.BytesIO()
+            np.save(output, array, allow_pickle=False)
+            payload = output.getvalue()
+            suffix, media_type = ".npy", "application/x-npy"
+
+        relative_path = Path(kind) / f"{uuid4().hex}{suffix}"
+        destination = self._root / relative_path
+        atomic_write_bytes(destination, payload)
+        return {
+            "ref": f"artifact://{self._namespace}/{relative_path.as_posix()}",
+            "media_type": media_type,
+        }
 
 
 class IsaacCameraMetadataProvider:
@@ -230,4 +277,9 @@ def _matrix3(value: Any) -> list[list[float]]:
     return [_vector(row, 3) for row in values]
 
 
-__all__ = ["IsaacCameraMetadataProvider", "IsaacCameraObservationSource", "ObservationArtifactWriter"]
+__all__ = [
+    "FilesystemObservationArtifactWriter",
+    "IsaacCameraMetadataProvider",
+    "IsaacCameraObservationSource",
+    "ObservationArtifactWriter",
+]
