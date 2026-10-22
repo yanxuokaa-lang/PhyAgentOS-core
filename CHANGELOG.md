@@ -2,6 +2,32 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.4.16 (2026-10-22 16:30) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [env] [feat] 新增通用 Isaac camera `ObservationSource`，以 `sensor_ref` 获取相机模态，并从宿主解析真实 frame/calibration/scene revision，通过 artifact writer 持久化工件；缺少 sensor/live evidence 时不可用，未配置 writer 时拒绝构造，不用 USD/profile 伪造感知。 / Add a reusable Isaac camera `ObservationSource` that resolves camera modalities by `sensor_ref`, obtains frame/calibration/scene revision from the host, and persists artifacts through an injected writer; missing sensor/live evidence returns unavailable, a missing writer prevents construction, and USD/profile is not used as perception.
+- [test] [test] no-motion camera source、PAOS Runtime integration 和 engine tests `48 passed`；Ruff、compileall、diff check 通过。 / No-motion camera-source, PAOS Runtime integration, and engine tests: `48 passed`; Ruff, compileall, and diff check passed.
+- [docs] [docs] 七维验收保留 live camera、semantic understanding、IK/collision、抓放、pour/stir 和 live settlement 未验证项，完整方案未验收。 / Seven-dimension acceptance keeps live camera, semantic understanding, IK/collision, acquire/place, pour/stir, and live settlement unverified; the full plan remains unaccepted.
+- Implementation commit: `3a570a18` on `feature/planning-loop`.
+
+### 文件与关键 Diff / Files and Key Diff
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/observation.py:L1-L129`：实现 host-owned camera registry、metadata resolver 和 artifact writer ports。
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/__init__.py:L1-L16`：导出 observation source 和 writer protocol。
+- `examples/forge-adapters/isaacsim_lab/tests/test_observation.py:L1-L133`：覆盖模态采集、多 sensor、缺失证据和 writer media type。
+- `examples/forge-adapters/isaacsim_lab/tests/test_paos_integration.py:L338-L392`：验证 `scene.observe` 经 Runtime 调用该 source。
+- `docs/forge/IMPLEMENTATION_REVIEW_V15_4_16.md:L1-L50`：PAOS ownership、AgentLoop 与七维审查。
+
+### 关键 Diff / Key Diff
+```diff
+- observation_source: externally injected generic callback only
++ IsaacCameraObservationSource(sensor_ref -> camera handle, live metadata resolver, artifact writer)
++ scene.observe -> ObservationEndpoint -> registered Isaac camera modality reads
++ missing camera/frame/calibration/scene revision/artifact media type -> unavailable
+```
+
+详见 [v15.4.16 月度日志](changelog/2026-10_part2.md) 和 [实现审查](docs/forge/IMPLEMENTATION_REVIEW_V15_4_16.md)。
+See the [v15.4.16 detailed log](changelog/2026-10_part2.md) and [implementation review](docs/forge/IMPLEMENTATION_REVIEW_V15_4_16.md).
+
 ## v15.4.15 (2026-10-22 10:17) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
@@ -60,7 +86,7 @@ See the [v15.4.13 detailed log](changelog/2026-10_part2.md) and [implementation 
 详见 [v15.4.12 月度日志](changelog/2026-10_part2.md) 和 [实现审查](docs/forge/IMPLEMENTATION_REVIEW_V15_4_12.md)。
 See the [v15.4.12 detailed log](changelog/2026-10_part2.md) and [implementation review](docs/forge/IMPLEMENTATION_REVIEW_V15_4_12.md).
 
-## v15.4.11 (2026-10-22 09:30) - codex
+### Archived v15.4.11 (2026-10-22 09:30) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
 - [test] [test] 构建并隔离安装 workflow wheel，通过 PAOS Registry 发现并实例化语义 builder；未调用 Query 或 Action。 / Build and isolated-install the workflow wheel, then discover and instantiate the semantic builder through the PAOS Registry; invoke no Query or Action.

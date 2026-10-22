@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import time
-from datetime import datetime, timezone
+from datetime import timezone
 from pathlib import Path
 
 import pytest
 from PhyAgentOS.forge.capability_runtime import CapabilityRuntimeError
 from pick_place_workflow.perception_binding import BindingRequest, PerceptionBindingAdapter
 
+from isaacsim_lab.observation import IsaacCameraObservationSource
 from isaacsim_lab.paos_client import (
     LabUtopiaCycleClient,
     LabUtopiaPAOSClientError,
@@ -339,26 +340,28 @@ def test_labutopia_observation_query_uses_injected_source_not_action_client(tmp_
     profile = _profile(tmp_path)
     engine.profile = profile
 
-    class ObservationSource:
-        def __init__(self):
-            self.requests = []
+    class Camera:
+        def get_rgb(self):
+            return [[[(10, 20, 30)]]]
 
-        def capture(self, request):
-            self.requests.append(dict(request))
+    class ArtifactWriter:
+        def write(self, sensor_ref, kind, value, *, captured_at):
+            assert value
+            assert captured_at.tzinfo is timezone.utc
             return {
-                "sensor_ref": request["sensor_ref"],
-                "captured_at": datetime.now(timezone.utc),
-                "scene_revision": "observed-scene-1",
-                "frame_id": "lab-camera-front",
-                "calibration_ref": "artifact://calibration/lab-camera-front-v1",
-                "artifacts": [{
-                    "ref": "artifact://observations/observed-scene-1/rgb",
-                    "kind": "rgb",
-                    "media_type": "image/png",
-                }],
+                "ref": "artifact://observations/observed-scene-1/rgb",
+                "media_type": "application/x-numpy",
             }
 
-    observation_source = ObservationSource()
+    observation_source = IsaacCameraObservationSource(
+        {"camera/front": Camera()},
+        lambda _sensor_ref: {
+            "scene_revision": "observed-scene-1",
+            "frame_id": "lab-camera-front",
+            "calibration_ref": "artifact://calibration/lab-camera-front-v1",
+        },
+        ArtifactWriter(),
+    )
     adapter = PerceptionBindingAdapter(
         lambda _tool_id, _arguments: {},
         BindingRequest(("camera/front",), "reagent_a", "beaker", 1000),
@@ -384,7 +387,6 @@ def test_labutopia_observation_query_uses_injected_source_not_action_client(tmp_
         assert result["status"] == "available"
         assert result["scene_revision"] == "observed-scene-1"
         assert result["frame"]["frame_id"] == "lab-camera-front"
-        assert observation_source.requests == [{"sensor_ref": "camera/front", "max_age_ms": 1000}]
         assert engine.started == []
     finally:
         bundle.client.close()
