@@ -23,7 +23,7 @@
 - [docs] [docs] `README.md` 与 `docs/forge/IMPLEMENTATION_REVIEW_V15_6_6.md:L1-L56` 完成部署说明、架构审查和七维状态。 / Complete deployment documentation, architecture review, and seven-dimension status in `README.md` and `IMPLEMENTATION_REVIEW_V15_6_6.md:L1-L56`.
 
 ### Git 提交 / Git Commit
-- Commit: pending; Branch: `feature/planning-loop`
+- Commit: `eeffb255`; Branch: `feature/planning-loop`
 
 ## v15.6.5 (2026-10-22 16:10) - codex
 
