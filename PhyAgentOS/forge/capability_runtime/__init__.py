@@ -1,5 +1,6 @@
 """Simulator-neutral Forge capability runtime APIs."""
 
+from .artifact_understanding import ArtifactResolvingSceneUnderstandingProvider
 from .grasp_proposal import GRASP_TOOL_SPEC as GRASP_PROPOSAL_TOOL_SPEC
 from .grasp_proposal import (
     GraspProposalEndpoint,
@@ -56,6 +57,7 @@ from .understanding import (
 
 __all__ = [
     "ActionAdmission",
+    "ArtifactResolvingSceneUnderstandingProvider",
     "ActionDriver",
     "ActionEndpoint",
     "CapabilityRuntime",

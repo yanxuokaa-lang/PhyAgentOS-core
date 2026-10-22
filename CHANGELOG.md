@@ -2,6 +2,33 @@
 
 ## 最近五版本 / Latest five versions
 
+## v15.5.14 (2026-10-22 20:00) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [sense] [feat] `artifact_understanding.py:L1-L96` 实现通用 resolver + inference provider composition，保留 observation refs/media provenance，缺失 artifact 或媒体类型冲突时失败。 / Implement generic resolver + inference provider composition with observation refs/media provenance; fail on missing artifacts or media-type conflicts.
+- [policy] [feat] 导出 provider；无模型、环境或仿真器依赖，AgentLoop 不变。 / Export the provider with no model, environment, or simulator dependency; AgentLoop is unchanged.
+- [test] [test] 两个 inference provider 共用 wrapper；覆盖 multi-view、fail-closed 和 PAOS Query provenance。 / Reuse the wrapper with two inference providers; cover multiview, fail-closed, and PAOS Query provenance.
+- [docs] [docs] 七维阶段验收保留真实模型/host composition、IK/碰撞及动作验证 blocker。 / Seven-dimension phase review retains real-model/host composition, IK/collision, and action validation blockers.
+
+### 文件与关键 Diff / Files and Key Diff
+- `PhyAgentOS/forge/capability_runtime/artifact_understanding.py:L1-L96`：通用 artifact resolver 与 inference adapter。
+- `PhyAgentOS/forge/capability_runtime/__init__.py:L3-L4,L60-L61`、`PhyAgentOS/forge/__init__.py:L8-L18,L58-L64`：公共导出。
+- `tests/test_forge_artifact_understanding.py:L1-L134`：provider replacement、artifact lineage 和 Query contract tests。
+- `docs/forge/IMPLEMENTATION_REVIEW_V15_5_14.md:L1-L44`：架构审查及七维状态。
+
+```diff
+- environment-specific code resolves artifact storage and forwards model input
++ generic resolver -> resolved artifact bytes/media -> injected inference
++ existing PAOS endpoint validates semantic claims and provenance
+```
+
+### 验证 / Validation
+- 定向 Core/Query tests：`52 passed`；Ruff、compileall、`git diff --check` 通过。pytest 显式加载 asyncio 插件并禁用 ROS plugin autoload。 / Core/Query tests: `52 passed`; Ruff, compileall, and `git diff --check` passed. Pytest explicitly loaded asyncio and disabled ROS plugin autoload.
+- 未运行 Isaac Sim、Gateway 或动作。 / No Isaac Sim, Gateway, or action ran.
+
+### Git 提交
+- 实现提交待完成，分支 `feature/planning-loop`。
+
 ## v15.5.13 (2026-10-22 19:30) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]

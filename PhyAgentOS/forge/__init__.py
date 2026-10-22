@@ -7,6 +7,7 @@ from PhyAgentOS.forge.artifacts import (
 )
 from PhyAgentOS.forge.capability_runtime import (
     ActionAdmission,
+    ArtifactResolvingSceneUnderstandingProvider,
     CapabilityRuntime,
     EnvironmentAdapter,
     GraspProposalProvider,
@@ -58,6 +59,7 @@ __all__ = [
     "ArtifactContent",
     "ArtifactResolver",
     "LocalFilesystemArtifactResolver",
+    "ArtifactResolvingSceneUnderstandingProvider",
     "ActionAdmission",
     "AgentTaskCoordinator",
     "AgentTaskOriginApproval",
