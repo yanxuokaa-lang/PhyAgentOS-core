@@ -592,3 +592,28 @@ def test_invoker_exception_is_unknown_and_stops_sequence():
 def test_stale_binding_is_rejected_before_internal_tools():
     with pytest.raises(ValueError, match="stale"):
         SubtaskSpec(subtask_id="pour-a", operation="pour", binding=binding(freshness_ms=1001))
+
+
+def test_preparation_can_select_second_candidate_and_acquire_keeps_that_selection():
+    from copy import deepcopy
+
+    from pick_place_workflow.subtask_executor import RuntimeSubtaskDriver, SubtaskExecutionContext
+    first = binding().grasp_candidate
+    second = deepcopy(first)
+    second['candidate_ref'] = 'candidate://reagent-a/second'
+    second['grasp_frame']['position_m'][0] += .025
+    observed = binding(grasp_candidates=[first, second])
+    spec = SubtaskSpec(subtask_id='pour-a', operation='pour', binding=observed, parameters={'tilt_rad': 1., 'hold_s': 1.})
+    response = {'motion_authorized': False, 'observation_ref': observed.observation_ref,
+                'scene_revision': observed.scene_revision, 'candidate_set_ref': observed.candidate_set_ref,
+                'calibration_ref': observed.calibration_ref, 'frame': {'frame_id': observed.frame_id},
+                'preparation_ref': 'preparation://selected/second',
+                'assignments': [{'candidate_ref': second['candidate_ref']}],
+                'prepared_candidates': [{'candidate_ref': second['candidate_ref'], 'entity_ref': observed.entity_ref,
+                                          'qualification': 'prepared', 'checks': dict.fromkeys(['kinematic', 'collision', 'workspace'], 'pass')}]}
+    context = SubtaskExecutionContext()
+    arguments = RuntimeSubtaskDriver._prepared_arguments(spec, response, context)
+    assert arguments['candidate_ref'] == second['candidate_ref']
+    response['assignments'][0]['candidate_ref'] = 'candidate://reagent-a/unobserved'
+    with pytest.raises(ValueError, match='outside'):
+        RuntimeSubtaskDriver._prepared_arguments(spec, response, context)

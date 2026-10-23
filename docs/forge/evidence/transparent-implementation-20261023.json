@@ -1,0 +1,1062 @@
+{
+  "date": "2026-10-23",
+  "version": "16.0.0",
+  "runs": [
+    {
+      "status": "available",
+      "stage": "queries_complete",
+      "input_mode": "recorded RGB-D, VLM claims and SAM2 masks; fresh geometry/GraspNet inference",
+      "profile": "/home/yanxu/PhyAgentOS-forge/examples/forge-adapters/isaacsim_lab/configs/labutopia-mixture.json",
+      "commit": "a37b15e5c6428670f3ea1ef82fbb95c823909811",
+      "started_at": "2026-10-23T05:13:07.507861+00:00",
+      "finished_at": "2026-10-23T05:13:13.605955+00:00",
+      "scope": "perception and grasp query; no motion or Agent acceptance",
+      "error": null,
+      "error_type": null,
+      "replay_source": "/home/yanxu/PhyAgentOS-forge/out/releases/v15.9.0/tabletop-perception-20261023-r2",
+      "run_directory": "out/releases/v16.0.0/remake-r2-20261023-c",
+      "capture": {
+        "status": "available",
+        "sensor_ref": "sensor://tabletop_third_person",
+        "captured_at": "2026-10-23T03:24:38.936427+00:00",
+        "scene_revision": "labutopia-tabletop-rod-rack-v1:e7ec1198ab074b2e8c6d9d4e5b4b653d:0",
+        "frame_id": "tabletop_third_person",
+        "calibration_ref": "artifact://labutopia/calibration/33764bfa92b143cdb1f815c8d9e646ee.json",
+        "artifacts": [
+          {
+            "ref": "artifact://labutopia/rgb/aee040c9364741cdb2242ce505a3f096.png",
+            "kind": "rgb",
+            "media_type": "image/png"
+          },
+          {
+            "ref": "artifact://labutopia/depth/d36b98d9728f4ee284db7b41d7c3b2eb.npy",
+            "kind": "depth",
+            "media_type": "application/x-npy"
+          },
+          {
+            "ref": "artifact://labutopia/point_cloud/fc6e54bce01149419082e6660948fd91.npy",
+            "kind": "point_cloud",
+            "media_type": "application/x-npy"
+          }
+        ]
+      },
+      "geometry_qualified": false,
+      "motion_executed": false,
+      "entity_count": 13,
+      "cloud_count": 13,
+      "candidate_count": 256,
+      "readable_labels": [],
+      "ambiguities": [
+        {
+          "code": "visual_object_unresolved",
+          "message": "Replayed VLM claims retain the original unreadable labels and category errors.",
+          "entity_refs": []
+        },
+        {
+          "code": "visual_object_unresolved",
+          "message": "entity://observed-6dee159b6942478c968942c3d2a80df2: process features require explicit image landmark support",
+          "entity_refs": []
+        },
+        {
+          "code": "visual_object_unresolved",
+          "message": "entity://observed-b70041b952fc4d92b763d773b56a7398: process features require explicit image landmark support",
+          "entity_refs": []
+        },
+        {
+          "code": "visual_object_unresolved",
+          "message": "entity://observed-3381791f18564d12ae8d2f912b5f3cde: process features require explicit image landmark support",
+          "entity_refs": []
+        },
+        {
+          "code": "visual_object_unresolved",
+          "message": "entity://observed-bb53c0f7954241f5b6323c29b2c58b47: process features require explicit image landmark support",
+          "entity_refs": []
+        },
+        {
+          "code": "visual_object_unresolved",
+          "message": "entity://observed-671a5a3ef58448fc9d7586e77958f20b: process features require explicit image landmark support",
+          "entity_refs": []
+        },
+        {
+          "code": "visual_object_unresolved",
+          "message": "entity://observed-f944c37c628b4c629dcf22797f4e7277: process features require explicit image landmark support",
+          "entity_refs": []
+        },
+        {
+          "code": "visual_object_unresolved",
+          "message": "entity://observed-976eac0def7349d3b14ef361a63fd030: process features require explicit image landmark support",
+          "entity_refs": []
+        },
+        {
+          "code": "visual_object_unresolved",
+          "message": "entity://observed-45e51b6def3b416da8ef696395dad39c: process features require explicit image landmark support",
+          "entity_refs": []
+        },
+        {
+          "code": "visual_object_unresolved",
+          "message": "entity://observed-37fb35cea92049f2af9bfd5c19912f1b: process features require explicit image landmark support",
+          "entity_refs": []
+        },
+        {
+          "code": "visual_object_unresolved",
+          "message": "entity://observed-11f08edd813f4eb09745cd035ccd93fe: process features require explicit image landmark support",
+          "entity_refs": []
+        },
+        {
+          "code": "visual_object_unresolved",
+          "message": "entity://observed-08d9502b401945c3a01ff7da2207a4be: process features require explicit image landmark support",
+          "entity_refs": []
+        },
+        {
+          "code": "visual_object_unresolved",
+          "message": "entity://observed-871897502d6244a2bdb2eafa9b786efb: process features require explicit image landmark support",
+          "entity_refs": []
+        },
+        {
+          "code": "visual_object_unresolved",
+          "message": "entity://observed-f45d415d2c3b414dbb06203d825b3a22: process features require explicit image landmark support",
+          "entity_refs": []
+        }
+      ],
+      "geometry_metadata": [
+        {
+          "observation_ref": "observation://labutopia-tabletop-rod-rack-v1:e7ec1198ab074b2e8c6d9d4e5b4b653d:0/tabletop_third_person",
+          "scene_revision": "labutopia-tabletop-rod-rack-v1:e7ec1198ab074b2e8c6d9d4e5b4b653d:0",
+          "frame_id": "tabletop_third_person",
+          "calibration_ref": "artifact://labutopia/calibration/33764bfa92b143cdb1f815c8d9e646ee.json",
+          "source_refs": [
+            "artifact://labutopia/rgb/aee040c9364741cdb2242ce505a3f096.png",
+            "artifact://labutopia/depth/d36b98d9728f4ee284db7b41d7c3b2eb.npy",
+            "artifact://labutopia/transparent-mask/e2aab2850fcf448ba3eef3cf9458f508.npy"
+          ],
+          "depth_ref": "artifact://labutopia/recovered-depth/706ec2206c5842fe91494f6520f523a9.npy",
+          "metadata": {
+            "torch": "2.11.0+cu128",
+            "numpy": "2.2.6",
+            "cuda": "12.8",
+            "device": "cuda:0",
+            "model_local_changes": [
+              "models/remake.py"
+            ],
+            "method": "remake",
+            "unit": "m",
+            "geometry_qualification": "unverified_estimate",
+            "model_revision": "4f568148c8421544136bf49bb941149e0c990a34",
+            "checkpoint": "/home/data/yanxu_migrated/.cache/paos/transparent_geometry/checkpoints/remake.tar",
+            "relative_checkpoint": "/home/data/yanxu_migrated/.cache/paos/transparent_geometry/checkpoints/depth_anything_v2_vits.pth",
+            "input_size_px": [
+              640,
+              480
+            ],
+            "output_size_px": [
+              1600,
+              1200
+            ],
+            "depth_scale_to_m": 1.0,
+            "depth_range_m": [
+              0.0,
+              3.0
+            ],
+            "input_valid_fraction": 0.6814140625,
+            "target_output_valid_fraction": 1.0,
+            "inference_s": 0.3593613440170884,
+            "seed": 0,
+            "preprocessing": "remake_upstream_rgb_relative_swap"
+          }
+        }
+      ],
+      "failures": [],
+      "cloud_metrics": [
+        {
+          "entity_ref": "entity://observed-6dee159b6942478c968942c3d2a80df2",
+          "category": "reagent_bottle",
+          "label": null,
+          "point_count": 12603,
+          "min_camera_m": [
+            -0.6424385905265808,
+            -0.10611192882061005,
+            0.7421280145645142
+          ],
+          "max_camera_m": [
+            -0.21508897840976715,
+            0.05499473214149475,
+            2.113586187362671
+          ],
+          "depth_quantiles_m": [
+            0.7731236219406128,
+            0.8888477087020874,
+            1.2808806896209717
+          ],
+          "world_z_quantiles_m": [
+            1.1664157405388051,
+            1.3224017696798729,
+            1.3825757224830724
+          ]
+        },
+        {
+          "entity_ref": "entity://observed-b70041b952fc4d92b763d773b56a7398",
+          "category": "reagent_bottle",
+          "label": null,
+          "point_count": 2815,
+          "min_camera_m": [
+            -0.4565066397190094,
+            -0.09656871110200882,
+            0.8237671852111816
+          ],
+          "max_camera_m": [
+            -0.1802624613046646,
+            -0.004206022713333368,
+            2.0109317302703857
+          ],
+          "depth_quantiles_m": [
+            0.8562030792236328,
+            1.0401570796966553,
+            1.3995562791824327
+          ],
+          "world_z_quantiles_m": [
+            1.1292808213461412,
+            1.2796856988936303,
+            1.3704217889288413
+          ]
+        },
+        {
+          "entity_ref": "entity://observed-3381791f18564d12ae8d2f912b5f3cde",
+          "category": "reagent_bottle",
+          "label": null,
+          "point_count": 8666,
+          "min_camera_m": [
+            -0.35210904479026794,
+            -0.039879750460386276,
+            0.7899268865585327
+          ],
+          "max_camera_m": [
+            -0.15367133915424347,
+            0.09035511314868927,
+            1.7824286222457886
+          ],
+          "depth_quantiles_m": [
+            0.8241540193557739,
+            0.9236778020858765,
+            1.2115740776062012
+          ],
+          "world_z_quantiles_m": [
+            1.1538069434704614,
+            1.2885609781540683,
+            1.3413379972935577
+          ]
+        },
+        {
+          "entity_ref": "entity://observed-bb53c0f7954241f5b6323c29b2c58b47",
+          "category": "reagent_bottle",
+          "label": null,
+          "point_count": 25397,
+          "min_camera_m": [
+            0.07736200094223022,
+            0.009942611679434776,
+            0.668449878692627
+          ],
+          "max_camera_m": [
+            0.26325151324272156,
+            0.16092327237129211,
+            1.6729024648666382
+          ],
+          "depth_quantiles_m": [
+            0.7152831554412842,
+            0.8339649438858032,
+            1.0934930086135852
+          ],
+          "world_z_quantiles_m": [
+            1.1716979945829362,
+            1.2861951055343772,
+            1.336026613112907
+          ]
+        },
+        {
+          "entity_ref": "entity://observed-671a5a3ef58448fc9d7586e77958f20b",
+          "category": "reagent_bottle",
+          "label": null,
+          "point_count": 10091,
+          "min_camera_m": [
+            0.1431351900100708,
+            -0.04279675334692001,
+            0.7715537548065186
+          ],
+          "max_camera_m": [
+            0.35782697796821594,
+            0.09515505284070969,
+            1.9766510725021362
+          ],
+          "depth_quantiles_m": [
+            0.7967560291290283,
+            0.928292989730835,
+            1.2032546997070312
+          ],
+          "world_z_quantiles_m": [
+            1.1694978085729428,
+            1.2794855389419375,
+            1.359935399393007
+          ]
+        },
+        {
+          "entity_ref": "entity://observed-f944c37c628b4c629dcf22797f4e7277",
+          "category": "reagent_bottle",
+          "label": null,
+          "point_count": 10054,
+          "min_camera_m": [
+            0.1967768669128418,
+            0.013062809593975544,
+            0.7380589246749878
+          ],
+          "max_camera_m": [
+            0.508558988571167,
+            0.12262435257434845,
+            1.8490742444992065
+          ],
+          "depth_quantiles_m": [
+            0.7623133659362793,
+            0.8500254154205322,
+            1.1297532916069033
+          ],
+          "world_z_quantiles_m": [
+            1.1682145679702591,
+            1.2972295612526277,
+            1.3404755894488907
+          ]
+        },
+        {
+          "entity_ref": "entity://observed-976eac0def7349d3b14ef361a63fd030",
+          "category": "reagent_bottle",
+          "label": null,
+          "point_count": 6465,
+          "min_camera_m": [
+            0.16321749985218048,
+            0.08513399213552475,
+            0.6676244735717773
+          ],
+          "max_camera_m": [
+            0.3777484595775604,
+            0.20946180820465088,
+            1.5147119760513306
+          ],
+          "depth_quantiles_m": [
+            0.6983824968338013,
+            0.7872532606124878,
+            1.0584936141967773
+          ],
+          "world_z_quantiles_m": [
+            1.1260148245678243,
+            1.2704139986824199,
+            1.3191960639496005
+          ]
+        },
+        {
+          "entity_ref": "entity://observed-45e51b6def3b416da8ef696395dad39c",
+          "category": "mixing_vessel",
+          "label": null,
+          "point_count": 4100,
+          "min_camera_m": [
+            -0.02284548059105873,
+            0.0023492283653467894,
+            0.7159649133682251
+          ],
+          "max_camera_m": [
+            0.02143142558634281,
+            0.06222030892968178,
+            1.9029227495193481
+          ],
+          "depth_quantiles_m": [
+            0.7387504577636719,
+            0.8298449516296387,
+            1.2051757633686055
+          ],
+          "world_z_quantiles_m": [
+            1.159530786201517,
+            1.3324763292724564,
+            1.3718126536008606
+          ]
+        },
+        {
+          "entity_ref": "entity://observed-37fb35cea92049f2af9bfd5c19912f1b",
+          "category": "mixing_vessel",
+          "label": null,
+          "point_count": 2483,
+          "min_camera_m": [
+            0.00425602775067091,
+            -0.2769550085067749,
+            0.6311876773834229
+          ],
+          "max_camera_m": [
+            0.03562505543231964,
+            -0.03157506138086319,
+            2.728600025177002
+          ],
+          "depth_quantiles_m": [
+            0.7136658549308776,
+            0.9750827550888062,
+            1.5598325729370117
+          ],
+          "world_z_quantiles_m": [
+            1.1259302564905025,
+            1.3358238116920202,
+            1.4596496992592078
+          ]
+        },
+        {
+          "entity_ref": "entity://observed-11f08edd813f4eb09745cd035ccd93fe",
+          "category": "mixing_vessel",
+          "label": null,
+          "point_count": 2593,
+          "min_camera_m": [
+            0.025976039469242096,
+            -0.20186668634414673,
+            0.7271817922592163
+          ],
+          "max_camera_m": [
+            0.08126392960548401,
+            -0.0187070369720459,
+            2.203221559524536
+          ],
+          "depth_quantiles_m": [
+            0.7933486700057983,
+            1.0302196741104126,
+            1.417358636856079
+          ],
+          "world_z_quantiles_m": [
+            1.1503696948473,
+            1.3018722976224153,
+            1.4256831827964132
+          ]
+        },
+        {
+          "entity_ref": "entity://observed-08d9502b401945c3a01ff7da2207a4be",
+          "category": "mixing_vessel",
+          "label": null,
+          "point_count": 3750,
+          "min_camera_m": [
+            0.029551859945058823,
+            -0.2331686168909073,
+            0.5487241148948669
+          ],
+          "max_camera_m": [
+            0.1440620720386505,
+            -0.015603660605847836,
+            2.4698328971862793
+          ],
+          "depth_quantiles_m": [
+            0.5880820751190186,
+            0.8981912136077881,
+            1.2812658548355103
+          ],
+          "world_z_quantiles_m": [
+            1.224274843502963,
+            1.3554486271756714,
+            1.500736057563468
+          ]
+        },
+        {
+          "entity_ref": "entity://observed-871897502d6244a2bdb2eafa9b786efb",
+          "category": "mixing_vessel",
+          "label": null,
+          "point_count": 3431,
+          "min_camera_m": [
+            0.029551859945058823,
+            -0.1532389521598816,
+            0.5487241148948669
+          ],
+          "max_camera_m": [
+            0.08525941520929337,
+            -0.015603660605847836,
+            1.7333958148956299
+          ],
+          "depth_quantiles_m": [
+            0.5862250328063965,
+            0.8975837230682373,
+            1.237828254699707
+          ],
+          "world_z_quantiles_m": [
+            1.2348010176816167,
+            1.3552858132635341,
+            1.504226746330422
+          ]
+        },
+        {
+          "entity_ref": "entity://observed-f45d415d2c3b414dbb06203d825b3a22",
+          "category": "stir_tool",
+          "label": null,
+          "point_count": 1387,
+          "min_camera_m": [
+            0.02649783529341221,
+            -0.2066463977098465,
+            0.30348271131515503
+          ],
+          "max_camera_m": [
+            0.19305957853794098,
+            -0.008540996350347996,
+            2.2675399780273438
+          ],
+          "depth_quantiles_m": [
+            0.8211326599121094,
+            1.4622739553451538,
+            1.9564200639724731
+          ],
+          "world_z_quantiles_m": [
+            0.9348650361409805,
+            1.1360357739495623,
+            1.428482649230845
+          ]
+        }
+      ]
+    },
+    {
+      "status": "available",
+      "stage": "queries_complete",
+      "input_mode": "fresh camera, VLM, segmentation, geometry and GraspNet",
+      "profile": "/home/yanxu/PhyAgentOS-forge/examples/forge-adapters/isaacsim_lab/configs/labutopia-mixture.json",
+      "commit": "a37b15e5c6428670f3ea1ef82fbb95c823909811",
+      "started_at": "2026-10-23T05:14:00.643822+00:00",
+      "finished_at": "2026-10-23T05:16:22.357830+00:00",
+      "scope": "perception and grasp query; no motion or Agent acceptance",
+      "error": null,
+      "error_type": null,
+      "replay_source": null,
+      "run_directory": "out/releases/v16.0.0/remake-wrist-20261023-a",
+      "capture": {
+        "status": "available",
+        "sensor_ref": "sensor://tabletop_wrist",
+        "captured_at": "2026-10-23T05:14:59.641996+00:00",
+        "scene_revision": "labutopia-tabletop-rod-rack-v1:fad6f76c34f4402cbc267a5dada909ed:0",
+        "frame_id": "tabletop_wrist",
+        "calibration_ref": "artifact://labutopia/calibration/a9284e88d6c14a2e873a1427a2c2f7e1.json",
+        "artifacts": [
+          {
+            "ref": "artifact://labutopia/rgb/8a37871fc00b4ed5ad9d3120e222dd21.png",
+            "kind": "rgb",
+            "media_type": "image/png"
+          },
+          {
+            "ref": "artifact://labutopia/depth/8ad20a99cf784a4f8e5eee3bafd0a585.npy",
+            "kind": "depth",
+            "media_type": "application/x-npy"
+          },
+          {
+            "ref": "artifact://labutopia/point_cloud/88da2096a9c44b5fa16dd5704fbb33f7.npy",
+            "kind": "point_cloud",
+            "media_type": "application/x-npy"
+          }
+        ]
+      },
+      "geometry_qualified": false,
+      "motion_executed": false,
+      "entity_count": 11,
+      "cloud_count": 11,
+      "candidate_count": 192,
+      "readable_labels": [],
+      "ambiguities": [
+        {
+          "code": "visual_object_unresolved",
+          "message": "Five bottle-shaped reagent containers are recognizable, but their labels are unreadable or partly hidden. Their identities are unresolved; no chemical contents are inferred.",
+          "entity_refs": []
+        },
+        {
+          "code": "visual_object_unresolved",
+          "message": "The uppermost bottle is clipped by the image boundary, including part of its mouth.",
+          "entity_refs": []
+        },
+        {
+          "code": "visual_object_unresolved",
+          "message": "The two lower-right bottles are partly occluded by the robot.",
+          "entity_refs": []
+        },
+        {
+          "code": "visual_object_unresolved",
+          "message": "Four test tubes are distinguishable in the rack. Their upper portions overlap the rack, so their bounding boxes are approximate.",
+          "entity_refs": []
+        },
+        {
+          "code": "visual_object_unresolved",
+          "message": "A thin stirring rod is visible beside the test tubes, but its working end cannot be determined.",
+          "entity_refs": []
+        },
+        {
+          "code": "visual_object_unresolved",
+          "message": "Open-rim landmarks are provided only where the complete physical rim is sufficiently distinguishable.",
+          "entity_refs": []
+        },
+        {
+          "code": "visual_object_unresolved",
+          "message": "entity://observed-764ed3fb2b2b4ba2a05d0a1eaa5896ab: observed rim fit or angular coverage is insufficient",
+          "entity_refs": []
+        },
+        {
+          "code": "visual_object_unresolved",
+          "message": "entity://observed-2454f8b1c73d4de0b4cbd04c4196952f: process features require explicit image landmark support",
+          "entity_refs": []
+        },
+        {
+          "code": "visual_object_unresolved",
+          "message": "entity://observed-42c51ef1262f4bb0b21d6c9ed7c9f655: process landmark is outside the instance mask",
+          "entity_refs": []
+        },
+        {
+          "code": "visual_object_unresolved",
+          "message": "entity://observed-c76aad87a4f745008275f772949b50eb: process landmark is outside the instance mask",
+          "entity_refs": []
+        },
+        {
+          "code": "visual_object_unresolved",
+          "message": "entity://observed-1f03f551ae6f442da954ef0c91da019f: process features require explicit image landmark support",
+          "entity_refs": []
+        },
+        {
+          "code": "visual_object_unresolved",
+          "message": "entity://observed-25b8a0f3474047d890001aa2253996fa: process features require explicit image landmark support",
+          "entity_refs": []
+        },
+        {
+          "code": "visual_object_unresolved",
+          "message": "entity://observed-4f6cba70aa9e4080a71cb07b13f050da: process features require explicit image landmark support",
+          "entity_refs": []
+        },
+        {
+          "code": "visual_object_unresolved",
+          "message": "entity://observed-bd6531ba03114b3fa03faf17d8f8d662: process features require explicit image landmark support",
+          "entity_refs": []
+        },
+        {
+          "code": "visual_object_unresolved",
+          "message": "entity://observed-df0c24ed8680473cbf04e0249d09d244: process features require explicit image landmark support",
+          "entity_refs": []
+        },
+        {
+          "code": "visual_object_unresolved",
+          "message": "entity://observed-a6e4a04f096049f18bfb343b1fb689fa: process features require explicit image landmark support",
+          "entity_refs": []
+        }
+      ],
+      "geometry_metadata": [
+        {
+          "observation_ref": "observation://labutopia-tabletop-rod-rack-v1:fad6f76c34f4402cbc267a5dada909ed:0/tabletop_wrist",
+          "scene_revision": "labutopia-tabletop-rod-rack-v1:fad6f76c34f4402cbc267a5dada909ed:0",
+          "frame_id": "tabletop_wrist",
+          "calibration_ref": "artifact://labutopia/calibration/a9284e88d6c14a2e873a1427a2c2f7e1.json",
+          "source_refs": [
+            "artifact://labutopia/rgb/8a37871fc00b4ed5ad9d3120e222dd21.png",
+            "artifact://labutopia/depth/8ad20a99cf784a4f8e5eee3bafd0a585.npy",
+            "artifact://labutopia/transparent-mask/f8d789d891fe4fa6b8c88df552600aaa.npy"
+          ],
+          "depth_ref": "artifact://labutopia/recovered-depth/61b9bf0f7fdc46ad8f093b76049387ea.npy",
+          "metadata": {
+            "torch": "2.11.0+cu128",
+            "numpy": "2.2.6",
+            "cuda": "12.8",
+            "device": "cuda:0",
+            "model_local_changes": [
+              "models/remake.py"
+            ],
+            "method": "remake",
+            "unit": "m",
+            "geometry_qualification": "unverified_estimate",
+            "model_revision": "4f568148c8421544136bf49bb941149e0c990a34",
+            "checkpoint": "/home/data/yanxu_migrated/.cache/paos/transparent_geometry/checkpoints/remake.tar",
+            "relative_checkpoint": "/home/data/yanxu_migrated/.cache/paos/transparent_geometry/checkpoints/depth_anything_v2_vits.pth",
+            "input_size_px": [
+              640,
+              480
+            ],
+            "output_size_px": [
+              1280,
+              960
+            ],
+            "depth_scale_to_m": 1.0,
+            "depth_range_m": [
+              0.0,
+              3.0
+            ],
+            "input_valid_fraction": 0.85605224609375,
+            "target_output_valid_fraction": 1.0,
+            "inference_s": 0.3607379869790748,
+            "seed": 0,
+            "preprocessing": "remake_upstream_rgb_relative_swap"
+          }
+        }
+      ],
+      "failures": [],
+      "cloud_metrics": [
+        {
+          "entity_ref": "entity://observed-764ed3fb2b2b4ba2a05d0a1eaa5896ab",
+          "category": "reagent_bottle",
+          "label": null,
+          "point_count": 9339,
+          "min_camera_m": [
+            -0.6576114296913147,
+            -0.617196261882782,
+            0.5795670747756958
+          ],
+          "max_camera_m": [
+            -0.3786315321922302,
+            -0.38955578207969666,
+            0.7974306344985962
+          ],
+          "depth_quantiles_m": [
+            0.5825279951095581,
+            0.6015596985816956,
+            0.642898440361023
+          ],
+          "world_z_quantiles_m": [
+            0.9003235612736789,
+            0.9602099808631347,
+            0.9969383312166878
+          ]
+        },
+        {
+          "entity_ref": "entity://observed-fecc52d566b441ddbe2971d88ab729f1",
+          "category": "reagent_bottle",
+          "label": null,
+          "point_count": 9824,
+          "min_camera_m": [
+            -0.5128241181373596,
+            -0.5206577181816101,
+            0.6739599704742432
+          ],
+          "max_camera_m": [
+            -0.2510039508342743,
+            -0.3062041699886322,
+            0.8873931169509888
+          ],
+          "depth_quantiles_m": [
+            0.6755826592445373,
+            0.683998703956604,
+            0.7039521932601929
+          ],
+          "world_z_quantiles_m": [
+            0.8799375235192173,
+            0.9364955152798353,
+            0.9591924872681297
+          ]
+        },
+        {
+          "entity_ref": "entity://observed-2454f8b1c73d4de0b4cbd04c4196952f",
+          "category": "reagent_bottle",
+          "label": null,
+          "point_count": 10099,
+          "min_camera_m": [
+            -0.3581230938434601,
+            -0.5916980504989624,
+            0.5714062452316284
+          ],
+          "max_camera_m": [
+            -0.09063471853733063,
+            -0.39119890332221985,
+            0.7917569875717163
+          ],
+          "depth_quantiles_m": [
+            0.5878050327301025,
+            0.6007332801818848,
+            0.6081626415252686
+          ],
+          "world_z_quantiles_m": [
+            0.9129321781572224,
+            0.9382092275666435,
+            0.9635051930086242
+          ]
+        },
+        {
+          "entity_ref": "entity://observed-42c51ef1262f4bb0b21d6c9ed7c9f655",
+          "category": "mixing_vessel",
+          "label": null,
+          "point_count": 1809,
+          "min_camera_m": [
+            -0.10278670489788055,
+            -0.2852526605129242,
+            0.48953986167907715
+          ],
+          "max_camera_m": [
+            -0.03141790255904198,
+            -0.12052540481090546,
+            0.8981529474258423
+          ],
+          "depth_quantiles_m": [
+            0.49274179339408875,
+            0.5096084475517273,
+            0.6293984651565551
+          ],
+          "world_z_quantiles_m": [
+            1.063045939225161,
+            1.1854322772973038,
+            1.196320377259489
+          ]
+        },
+        {
+          "entity_ref": "entity://observed-c76aad87a4f745008275f772949b50eb",
+          "category": "reagent_bottle",
+          "label": null,
+          "point_count": 6152,
+          "min_camera_m": [
+            0.0443464070558548,
+            -0.11756224185228348,
+            0.4478808045387268
+          ],
+          "max_camera_m": [
+            0.2009640634059906,
+            0.07142907381057739,
+            1.1047825813293457
+          ],
+          "depth_quantiles_m": [
+            0.4514877885580063,
+            0.4661845713853836,
+            0.6026909351348877
+          ],
+          "world_z_quantiles_m": [
+            1.1798375302153454,
+            1.29152024980186,
+            1.3125329324270893
+          ]
+        },
+        {
+          "entity_ref": "entity://observed-1f03f551ae6f442da954ef0c91da019f",
+          "category": "reagent_bottle",
+          "label": null,
+          "point_count": 1774,
+          "min_camera_m": [
+            0.10271728783845901,
+            0.0,
+            0.4139603078365326
+          ],
+          "max_camera_m": [
+            0.31286799907684326,
+            0.09245563298463821,
+            1.1526100635528564
+          ],
+          "depth_quantiles_m": [
+            0.4157056212425232,
+            0.4456705152988434,
+            0.9272613584995267
+          ],
+          "world_z_quantiles_m": [
+            0.9238176735599665,
+            1.318040435092192,
+            1.346567688632687
+          ]
+        },
+        {
+          "entity_ref": "entity://observed-25b8a0f3474047d890001aa2253996fa",
+          "category": "test_tube",
+          "label": null,
+          "point_count": 1309,
+          "min_camera_m": [
+            -0.30721718072891235,
+            -0.10939192026853561,
+            0.5792452096939087
+          ],
+          "max_camera_m": [
+            -0.14479869604110718,
+            0.014948038384318352,
+            0.9929012060165405
+          ],
+          "depth_quantiles_m": [
+            0.5820757150650024,
+            0.5923862457275391,
+            0.7296338081359863
+          ],
+          "world_z_quantiles_m": [
+            1.0842739905021168,
+            1.190456187707611,
+            1.221620209880221
+          ]
+        },
+        {
+          "entity_ref": "entity://observed-4f6cba70aa9e4080a71cb07b13f050da",
+          "category": "test_tube",
+          "label": null,
+          "point_count": 1056,
+          "min_camera_m": [
+            -0.27040231227874756,
+            -0.0734463706612587,
+            0.5819616317749023
+          ],
+          "max_camera_m": [
+            -0.12483800202608109,
+            0.014010367915034294,
+            1.001033902168274
+          ],
+          "depth_quantiles_m": [
+            0.5841665863990784,
+            0.5939044952392578,
+            0.7350250780582428
+          ],
+          "world_z_quantiles_m": [
+            1.0722014422798798,
+            1.1931389749686927,
+            1.2190331355659363
+          ]
+        },
+        {
+          "entity_ref": "entity://observed-bd6531ba03114b3fa03faf17d8f8d662",
+          "category": "test_tube",
+          "label": null,
+          "point_count": 1209,
+          "min_camera_m": [
+            -0.22885337471961975,
+            -0.056844670325517654,
+            0.5807163715362549
+          ],
+          "max_camera_m": [
+            -0.1059197410941124,
+            0.044360093772411346,
+            0.9351754188537598
+          ],
+          "depth_quantiles_m": [
+            0.5819629430770874,
+            0.5996437072753906,
+            0.7020979881286621
+          ],
+          "world_z_quantiles_m": [
+            1.102783817440442,
+            1.2027740846275639,
+            1.226795528967098
+          ]
+        },
+        {
+          "entity_ref": "entity://observed-df0c24ed8680473cbf04e0249d09d244",
+          "category": "test_tube",
+          "label": null,
+          "point_count": 1031,
+          "min_camera_m": [
+            -0.2300976812839508,
+            -0.022361772134900093,
+            0.5797789692878723
+          ],
+          "max_camera_m": [
+            -0.09976432472467422,
+            0.08304277062416077,
+            1.0567759275436401
+          ],
+          "depth_quantiles_m": [
+            0.5811527371406555,
+            0.5946102142333984,
+            0.670504629611969
+          ],
+          "world_z_quantiles_m": [
+            1.1628429485014067,
+            1.212421776929169,
+            1.2362557782525245
+          ]
+        },
+        {
+          "entity_ref": "entity://observed-a6e4a04f096049f18bfb343b1fb689fa",
+          "category": "stir_tool",
+          "label": null,
+          "point_count": 806,
+          "min_camera_m": [
+            -0.4608999788761139,
+            -0.13505490124225616,
+            0.5980528593063354
+          ],
+          "max_camera_m": [
+            -0.1829374134540558,
+            -0.015968503430485725,
+            1.2082953453063965
+          ],
+          "depth_quantiles_m": [
+            0.5999404191970825,
+            0.610798716545105,
+            0.8961284160614014
+          ],
+          "world_z_quantiles_m": [
+            0.9395732792625319,
+            1.1592566954923944,
+            1.1783390231311932
+          ]
+        }
+      ]
+    },
+    {
+      "status": "failed",
+      "stage": "understanding",
+      "input_mode": "recorded RGB-D, VLM claims and SAM2 masks; fresh geometry/GraspNet inference",
+      "profile": "/home/yanxu/PhyAgentOS-forge/examples/forge-adapters/isaacsim_lab/configs/labutopia-mixture.json",
+      "commit": "a37b15e5c6428670f3ea1ef82fbb95c823909811",
+      "started_at": "2026-10-23T05:07:34.692525+00:00",
+      "finished_at": "2026-10-23T05:07:34.869486+00:00",
+      "scope": "perception and grasp query; no motion or Agent acceptance",
+      "error": "understanding failed: {'code': 'understanding_provider_error', 'message': 'scene understanding provider failed', 'reason': 'provider_failure', 'failure_stage': 'provider', 'retryable': False}",
+      "error_type": "ValueError",
+      "replay_source": "/home/yanxu/PhyAgentOS-forge/out/releases/v15.9.0/tabletop-perception-20261023-r2",
+      "run_directory": "out/releases/v16.0.0/dfnet-r2-20261023-a",
+      "capture": {
+        "status": "available",
+        "sensor_ref": "sensor://tabletop_third_person",
+        "captured_at": "2026-10-23T03:24:38.936427+00:00",
+        "scene_revision": "labutopia-tabletop-rod-rack-v1:e7ec1198ab074b2e8c6d9d4e5b4b653d:0",
+        "frame_id": "tabletop_third_person",
+        "calibration_ref": "artifact://labutopia/calibration/33764bfa92b143cdb1f815c8d9e646ee.json",
+        "artifacts": [
+          {
+            "ref": "artifact://labutopia/rgb/aee040c9364741cdb2242ce505a3f096.png",
+            "kind": "rgb",
+            "media_type": "image/png"
+          },
+          {
+            "ref": "artifact://labutopia/depth/d36b98d9728f4ee284db7b41d7c3b2eb.npy",
+            "kind": "depth",
+            "media_type": "application/x-npy"
+          },
+          {
+            "ref": "artifact://labutopia/point_cloud/fc6e54bce01149419082e6660948fd91.npy",
+            "kind": "point_cloud",
+            "media_type": "application/x-npy"
+          }
+        ]
+      },
+      "geometry_qualified": false,
+      "motion_executed": false,
+      "entity_count": 0,
+      "cloud_count": 0,
+      "candidate_count": 0,
+      "readable_labels": [],
+      "ambiguities": [],
+      "geometry_metadata": [],
+      "failures": [
+        {
+          "request": {
+            "scene_revision": "labutopia-tabletop-rod-rack-v1:e7ec1198ab074b2e8c6d9d4e5b4b653d:0",
+            "frame_id": "tabletop_third_person",
+            "observation_ref": "observation://labutopia-tabletop-rod-rack-v1:e7ec1198ab074b2e8c6d9d4e5b4b653d:0/tabletop_third_person",
+            "calibration_ref": "artifact://labutopia/calibration/33764bfa92b143cdb1f815c8d9e646ee.json",
+            "freshness_ms": 0,
+            "max_age_ms": 1000,
+            "artifacts": [
+              "artifact://labutopia/rgb/aee040c9364741cdb2242ce505a3f096.png",
+              "artifact://labutopia/depth/d36b98d9728f4ee284db7b41d7c3b2eb.npy",
+              "artifact://labutopia/point_cloud/fc6e54bce01149419082e6660948fd91.npy"
+            ]
+          },
+          "error_type": "ProcessWorkerError",
+          "error": "worker reported unavailable during startup"
+        }
+      ],
+      "cloud_metrics": []
+    }
+  ],
+  "upstream_parity": {
+    "upstream_source": "/home/yanxu/.cache/paos/transparent_geometry/ReMake",
+    "capture_source": "/home/yanxu/PhyAgentOS-forge/out/releases/v15.9.0/tabletop-perception-20261023-r2",
+    "max_abs_difference_m": 0.0,
+    "torch": "2.11.0+cu128",
+    "numpy": "2.2.6",
+    "scope": "same trained-model arithmetic; does not establish scene geometry accuracy"
+  },
+  "validation": {
+    "integrated_passed": 998,
+    "integrated_failed": 2,
+    "failures": [
+      "test_bundle_and_package_versions_match_the_feature_revision",
+      "test_current_node_source_build_matches_the_immutable_manifest_lock"
+    ],
+    "focused_after_cleanup": "19 passed, 1 external-model test skipped; external model parity separately passed",
+    "probe_and_phase_tests_passed": 31
+  },
+  "conclusion": "Provider/query integration exercised; geometry, process preparation and full Agent task remain unaccepted. Raw-to-recovered displacement is not a ground-truth RMSE.",
+  "dfnet_download": "Official Google Drive download quota exceeded; no trained DFNet inference result.",
+  "model_source_patch": "examples/forge-adapters/robotwin20/patches/remake-inference-import.patch"
+}

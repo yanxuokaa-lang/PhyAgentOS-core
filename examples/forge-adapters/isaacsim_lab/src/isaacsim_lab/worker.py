@@ -61,6 +61,8 @@ def serve_session(socket_path: Path, app, backend, profile) -> None:
                             result = backend.observe_in_session(context, payload.get("arguments", {}))
                         elif method == "scene_revision":
                             result = backend.scene_revision_in_session(context)
+                        elif method == "bind_observed_entities":
+                            result = backend.bind_observed_entities_in_session(context, payload.get("arguments", {}))
                         elif method == "execute_cycle":
                             arguments = payload.get("arguments")
                             if not isinstance(arguments, dict):

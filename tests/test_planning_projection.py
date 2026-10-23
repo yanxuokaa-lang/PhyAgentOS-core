@@ -140,3 +140,23 @@ def test_prepare_tool_spec_declares_projection_without_provider_specific_fields(
     assert policy.argument_projection_plan.source_field_map["candidate_set_ref"] == (
         "candidate_set_ref",
     )
+
+
+def test_entity_projection_accepts_bound_cloud_without_an_envelope():
+    from PhyAgentOS.forge.capability_runtime.grasp_proposal import GRASP_TOOL_SPEC
+    plan = project_tool_spec(GRASP_TOOL_SPEC).argument_projection_plan
+    entity = {'entity_ref': 'entity://glass', 'category': 'container', 'confidence': .9}
+    artifact = {'artifact_ref': 'artifact://capture/cloud', 'kind': 'object_point_cloud',
+        'entity_ref': 'entity://glass', 'observation_ref': 'observation://capture/camera',
+        'scene_revision': 'scene', 'frame_id': 'camera', 'calibration_ref': 'artifact://capture/calibration',
+        'provenance': ['artifact://capture/depth']}
+    facts = {'entities': [entity], 'spatial_envelopes': [], 'derived_artifacts': [artifact],
+        **{k: artifact[k] for k in ('observation_ref', 'scene_revision', 'frame_id', 'calibration_ref')},
+        'freshness_ms': 0, 'max_age_ms': 1000}
+    result = execute_argument_projection(plan, records={'understood': ({}, {'ok': True, 'data': facts})},
+        literals={'entity_ref': 'entity://glass'}, source_record_id='understood')
+    assert result['targets'] == [{**entity, 'geometry_artifacts': [artifact]}]
+    facts['derived_artifacts'] = []
+    with pytest.raises(ArgumentProjectionError, match='spatial envelope or geometry'):
+        execute_argument_projection(plan, records={'understood': ({}, {'ok': True, 'data': facts})},
+            literals={'entity_ref': 'entity://glass'}, source_record_id='understood')

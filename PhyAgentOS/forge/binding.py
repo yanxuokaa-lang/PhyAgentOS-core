@@ -329,9 +329,13 @@ def validate_runtime_identity(runtime: Any, binding: Any) -> None:
 class ForgeSkillBindingResolver:
     """Preview, freeze, and continuously validate one active Skill runtime."""
 
-    def __init__(self, runtime_registry: Any, *, catalog: SkillCatalog | None = None) -> None:
+    def __init__(self, runtime_registry: Any, *, catalog: SkillCatalog | None = None,
+                 authorized_tool_ids: frozenset[str] | None = None) -> None:
         self.runtime_registry = runtime_registry
         self.catalog = catalog or SkillCatalog()
+        # Standalone capability hosts declare their deployed Tool authority;
+        # managed Skill runtimes retain their installed manifest authority.
+        self.authorized_tool_ids = authorized_tool_ids
         self._candidates: dict[str, ForgeSkillBindingCandidate] = {}
         self._lock = threading.RLock()
 
@@ -461,8 +465,10 @@ class ForgeSkillBindingResolver:
         """Resolve one authorized Tool contract on the owning Runtime."""
         runtime = self._runtime()
         validate_runtime_identity(runtime, binding)
-        manifest = self.catalog.get(runtime.skill_name)
-        if tool_id not in manifest.required_tools:
+        authorized = self.authorized_tool_ids
+        if authorized is None:
+            authorized = self.catalog.get(runtime.skill_name).required_tools
+        if tool_id not in authorized:
             raise ForgeSkillBindingError(f"Forge Tool {tool_id!r} is not authorized by the Runtime")
         spec = _response_data(await runtime.client.get_tool(tool_id), f"ToolSpec {tool_id!r}")
         if spec.get("semantics") != semantics:

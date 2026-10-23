@@ -1,0 +1,41 @@
+{
+  "workspace_min_m": [
+    -0.7,
+    -0.7,
+    0.7
+  ],
+  "workspace_max_m": [
+    0.65,
+    0.65,
+    1.65
+  ],
+  "approach_distance_m": 0.12,
+  "lift_distance_m": 0.12,
+  "process_clearance_m": 0.18,
+  "pour_lip_clearance_m": 0.04,
+  "maximum_tilt_rad": 1.5,
+  "maximum_stir_radius_m": 0.025,
+  "maximum_stir_depth_m": 0.06,
+  "settle_s": 0.6,
+  "collision_margin_m": 0.003,
+  "position_tolerance_m": 0.002,
+  "joint_step_rad": 0.01,
+  "joint_velocity_rad_s": 0.4,
+  "joint_acceleration_rad_s2": 0.8,
+  "joint_tracking_tolerance_rad": 0.04,
+  "grasp_position_tolerance_m": 0.008,
+  "grasp_rotation_tolerance_rad": 0.08,
+  "placement_tolerance_m": 0.008,
+  "max_execution_steps": 12000,
+  "mount_collision_paths": [
+    "/World/table"
+  ],
+  "support_collision_paths": [
+    "/World/table",
+    "/World/TubeRack/Model/test_tube_rack/group_08/_______1944"
+  ],
+  "axial_grip_paths": [
+    "/World/OperationArea/GlassRod"
+  ],
+  "stir_entry_reserve_turns": 0.25
+}

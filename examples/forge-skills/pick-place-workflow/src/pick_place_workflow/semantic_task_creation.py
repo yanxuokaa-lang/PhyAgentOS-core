@@ -74,6 +74,8 @@ class SemanticPlanBuilder(Protocol):
 class QuerySemanticPlanBuilder:
     """Build a concrete, measured subtask graph through an injected Query port."""
 
+    required_tool_contracts = (("manipulation.execute_subtask", "action"),)
+
     def __init__(
         self,
         query_invoker: QueryInvoker,

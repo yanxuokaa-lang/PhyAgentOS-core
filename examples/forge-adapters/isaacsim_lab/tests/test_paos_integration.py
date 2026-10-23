@@ -137,7 +137,7 @@ def test_labutopia_target_resolver_is_replaceable_and_binding_owned(tmp_path):
 
     class ResolverA:
         def resolve(self, observed, request):
-            assert observed == binding
+            assert all(observed[key] == value for key, value in binding.items())
             assert request["operation"] == "pour_cycle"
             return _resolved_target(observed)
 
@@ -220,7 +220,8 @@ def test_labutopia_standard_preparation_consumes_binding_and_returns_provider_ro
 
     class Resolver:
         def resolve(self, observed, request):
-            assert observed == binding
+            assert all(observed[key] == value for key, value in binding.items())
+            assert observed["grasp_candidate"]["candidate_ref"] == observed["candidate_ref"]
             return _resolved_target(observed)
 
     engine = Engine(profile)
@@ -890,3 +891,39 @@ def test_client_dispatches_stir_through_phase_executor_not_stir_cycle(tmp_path):
         assert engine.started == []
     finally:
         client.close()
+
+
+def test_preparation_tries_predicted_candidates_and_preserves_selected_pose(tmp_path):
+    from copy import deepcopy
+
+    from PhyAgentOS.forge.capability_runtime.manipulation_prepare import PreparationProviderError
+    profile = _profile(tmp_path)
+    binding = _binding(profile)
+    candidates = [{'candidate_ref': f'candidate://observed-reagent-a/model-{i}', 'entity_ref': binding['entity_ref'],
+                   'grasp_frame': {'position_m': [i*.01, .2, .3]}} for i in range(3)]
+    resolved, prepared = [], []
+    class Resolver:
+        def resolve(self, observed, request):
+            resolved.append(deepcopy(observed['grasp_candidate']))
+            target = _resolved_target(observed)
+            target['candidate_ref'] = observed['candidate_ref']
+            return target
+    class Engine:
+        failure = 'route_collision'
+        def prepare_manipulation(self, request):
+            prepared.append(request['candidate_ref'])
+            if len(prepared) == 1:
+                return {'status': 'unavailable', 'failure_code': self.failure}
+            return {'status': 'available', 'route_arguments': {'candidate_ref': request['candidate_ref']}}
+    engine = Engine()
+    provider = LabUtopiaCycleProvider(engine, target_resolver=Resolver())
+    request = {'perception_binding': binding, 'process_type': 'pour', 'candidates': candidates}
+    result = provider.prepare(request)
+    assert prepared == [candidates[0]['candidate_ref'], candidates[1]['candidate_ref']]
+    assert resolved == candidates[:2]
+    assert result['route_arguments']['candidate_ref'] == candidates[1]['candidate_ref']
+    prepared.clear()
+    engine.failure = 'stale_visual_observation'
+    with pytest.raises(PreparationProviderError, match='stale_visual_observation'):
+        provider.prepare(request)
+    assert len(prepared) == 1

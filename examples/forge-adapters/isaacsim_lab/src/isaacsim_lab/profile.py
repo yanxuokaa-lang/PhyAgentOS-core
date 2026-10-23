@@ -62,6 +62,14 @@ class LabUtopiaProfile:
     configured_process_type: str = "pour"
     supported_operations: tuple[str, ...] = ("pour_cycle", "stir_cycle", "manipulation_cycle")
     headless: bool = True
+    camera_render_frames: int = 4
+    motion_config_path: Path | None = None
+    perception_config_path: Path | None = None
+    worker_python_path: Path | None = None
+    physics_scene_path: str = "/physicsScene"
+    physics_dt_s: float = 1 / 60
+    control_dt_s: float = 1 / 60
+    startup_settle_s: float = 0.
 
     @classmethod
     def from_mapping(cls, value: Mapping[str, Any], *, base_dir: Path | None = None) -> "LabUtopiaProfile":
@@ -123,8 +131,23 @@ class LabUtopiaProfile:
             configured_process_type=_process_type(value.get("configured_process_type", "pour")),
             supported_operations=_operations(value.get("supported_operations", ("pour_cycle", "stir_cycle", "manipulation_cycle"))),
             headless=bool(value.get("headless", True)),
+            camera_render_frames=_positive_int(value, "camera_render_frames", 4),
+            motion_config_path=path_value("motion_config_path") if value.get("motion_config_path") else None,
+            perception_config_path=path_value("perception_config_path") if value.get("perception_config_path") else None,
+            worker_python_path=path_value("worker_python_path") if value.get("worker_python_path") else None,
+            physics_scene_path=_text(value, "physics_scene_path", "/physicsScene"),
+            physics_dt_s=_positive_float(value, "physics_dt_s", 1 / 60),
+            control_dt_s=_positive_float(value, "control_dt_s", 1 / 60),
+            startup_settle_s=float(value.get("startup_settle_s", 0.)),
         )
         profile.validate_paths()
+        ratio = profile.control_dt_s / profile.physics_dt_s
+        if ratio < 1 or not math.isclose(ratio, round(ratio), abs_tol=1e-6):
+            raise LabProfileError("control_dt_s must be an integer multiple of physics_dt_s")
+        if not math.isfinite(profile.startup_settle_s) or profile.startup_settle_s < 0:
+            raise LabProfileError("startup_settle_s must be finite and non-negative")
+        if not profile.physics_scene_path.startswith("/"):
+            raise LabProfileError("physics_scene_path must be an absolute prim path")
         if profile.tilt_rad + profile.tilt_tolerance_rad > profile.maximum_tilt_rad:
             raise LabProfileError("tilt target exceeds maximum configured tilt")
         if profile.stir_rim_height_m > profile.stir_container_depth_m:
@@ -148,6 +171,12 @@ class LabUtopiaProfile:
                 raise LabProfileError(f"{name} does not exist: {path}")
         if not self.config_path.is_file() or not self.scene_usd_path.is_file():
             raise LabProfileError("config_path and scene_usd_path must be files")
+        if self.motion_config_path is not None and not self.motion_config_path.is_file():
+            raise LabProfileError(f"motion_config_path does not exist: {self.motion_config_path}")
+        if self.perception_config_path is not None and not self.perception_config_path.is_file():
+            raise LabProfileError(f"perception_config_path does not exist: {self.perception_config_path}")
+        if self.worker_python_path is not None and not self.worker_python_path.is_file():
+            raise LabProfileError(f"worker_python_path does not exist: {self.worker_python_path}")
         if not self.source_path.startswith("/World/") or not self.destination_path.startswith("/World/"):
             raise LabProfileError("source_path and destination_path must be absolute /World prim paths")
         if self.source_control_path is not None and not self.source_control_path.startswith("/World/"):

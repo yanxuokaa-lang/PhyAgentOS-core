@@ -258,6 +258,22 @@ async def test_geometry_artifact_binding_is_provider_neutral_and_strict():
     assert invalid["data"]["error"]["code"] == "invalid_geometry_artifacts"
 
 
+@pytest.mark.parametrize("kind", ["object_point_cloud", "fused_entity_perception"])
+def test_cloud_only_target_needs_bound_geometry_but_no_fabricated_envelope(kind):
+    from PhyAgentOS.forge.capability_runtime.grasp_proposal import validate_arguments
+    geometry = {"artifact_ref": "artifact://obs-7/points", "kind": kind,
+        "observation_ref": "observation://scene-7/camera_front", "scene_revision": "scene-7",
+        "entity_ref": "entity://bottle-1", "frame_id": "camera_front",
+        "calibration_ref": "calibration://front/v3", "provenance": ["artifact://obs-7/depth"]}
+    source = target(geometry_artifacts=[geometry])
+    source.pop("spatial_envelope")
+    assert validate_arguments(request_payload(targets=[source])) is None
+    geometry["scene_revision"] = "older"
+    assert validate_arguments(request_payload(targets=[source]))["error"]["code"] == "invalid_geometry_artifacts"
+    source["geometry_artifacts"] = []
+    assert validate_arguments(request_payload(targets=[source]))["error"]["code"] == "invalid_target"
+
+
 def test_bundle_and_package_versions_match_the_feature_revision():
     bundle_manifest = yaml.safe_load(
         (Path(__file__).resolve().parents[1] / "skill.yaml").read_text(encoding="utf-8")

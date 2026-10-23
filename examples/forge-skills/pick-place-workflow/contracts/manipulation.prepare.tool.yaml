@@ -5,7 +5,8 @@ operation: prepare
 semantics: query
 planning:
   schema_version: paos-tool-spec-policy/v1
-  capabilities: [manipulation.prepare]
+  capabilities:
+  - manipulation.prepare
   argument_projection: candidate_set_for_entity_v1
   argument_projection_plan:
     projection_id: candidate_set_for_entity_v1
@@ -15,13 +16,21 @@ planning:
         tool_id: grasp.propose
         source_scope: authorized
         source_field_map:
-          observation_ref: [observation_ref]
-          scene_revision: [scene_revision]
-          frame_id: [frame, frame_id]
-          calibration_ref: [calibration_ref]
-          freshness_ms: [freshness_ms]
-          max_age_ms: [max_age_ms]
-          candidate_set_ref: [candidate_set_ref]
+          observation_ref:
+          - observation_ref
+          scene_revision:
+          - scene_revision
+          frame_id:
+          - frame
+          - frame_id
+          calibration_ref:
+          - calibration_ref
+          freshness_ms:
+          - freshness_ms
+          max_age_ms:
+          - max_age_ms
+          candidate_set_ref:
+          - candidate_set_ref
         filtered_collection: candidates
         filtered_output_field: candidates
         filtered_join_field: entity_ref
@@ -29,10 +38,12 @@ planning:
         tool_id: manipulation.capabilities
         source_scope: evidence
         source_field_map:
-          capability_snapshot_ref: [snapshot_ref]
+          capability_snapshot_ref:
+          - snapshot_ref
         list_field_map:
           allowed_arms:
-            source_path: [arms]
+            source_path:
+            - arms
             item_field: arm_id
             where_field: availability
             where_equals: available
@@ -142,12 +153,22 @@ input_schema:
           grasp_geometry:
             type: object
             additionalProperties: false
-            required: [width_m, height_m, depth_m]
+            required:
+            - width_m
+            - height_m
+            - depth_m
             properties:
-              width_m: {type: number, exclusiveMinimum: 0}
-              height_m: {type: number, exclusiveMinimum: 0}
-              depth_m: {type: number, exclusiveMinimum: 0}
-            description: Optional provider-predicted grasp dimensions in metres; not motion admission.
+              width_m:
+                type: number
+                exclusiveMinimum: 0
+              height_m:
+                type: number
+                exclusiveMinimum: 0
+              depth_m:
+                type: number
+                exclusiveMinimum: 0
+            description: Optional provider-predicted grasp dimensions in metres; not
+              motion admission.
           score:
             type: number
             minimum: 0
@@ -212,12 +233,11 @@ input_schema:
           items:
             type: string
           title: Allowed Arms
-          description: >-
-            Copy arm_id values verbatim from the same-scene
-            manipulation.capabilities snapshot (for example left or right).
-            These are opaque Runtime resource identifiers, not natural-language
-            labels; do not rewrite them as left_arm/right_arm or invent aliases.
           type: array
+          description: Copy arm_id values verbatim from the same-scene manipulation.capabilities
+            snapshot (for example left or right). These are opaque Runtime resource
+            identifiers, not natural-language labels; do not rewrite them as left_arm/right_arm
+            or invent aliases.
         coordination_mode:
           $ref: '#/properties/intent/$defs/CoordinationMode'
         observation_ref:
@@ -272,6 +292,104 @@ input_schema:
     capability_snapshot_ref:
       type: string
       pattern: ^artifact://[^/]+/.+$
+    process_type:
+      type: string
+      minLength: 1
+    perception_binding:
+      type: object
+      additionalProperties: false
+      required:
+      - entity_ref
+      - destination_ref
+      - candidate_ref
+      - candidate_set_ref
+      - observation_ref
+      - scene_revision
+      - frame_id
+      - calibration_ref
+      - freshness_ms
+      - max_age_ms
+      - measured_pose
+      - measured_geometry
+      - grasp_candidate
+      - destination_pose
+      - process_frame
+      - confidence
+      - provenance
+      properties:
+        entity_ref:
+          type: string
+          pattern: ^entity://[^/]+$
+        destination_ref:
+          type: string
+          pattern: ^(?:destination|container)://\S+$
+        candidate_ref:
+          type: string
+          pattern: ^candidate://\S+$
+        grasp_candidate_ref:
+          type: string
+          pattern: ^candidate-set://\S+$
+        candidate_set_ref:
+          type: string
+          pattern: ^candidate-set://\S+$
+        observation_ref:
+          type: string
+          pattern: ^observation://\S+$
+        scene_revision:
+          type: string
+          minLength: 1
+        frame_id:
+          type: string
+          minLength: 1
+        calibration_ref:
+          type: string
+          pattern: ^artifact://\S+$
+        freshness_ms:
+          type: integer
+          minimum: 0
+        max_age_ms:
+          type: integer
+          exclusiveMinimum: 0
+        measured_pose:
+          type: object
+        measured_geometry:
+          type: object
+        grasp_candidate:
+          type: object
+        grasp_candidates:
+          type: array
+          items:
+            type: object
+        destination_pose:
+          type: object
+        process_frame:
+          type: string
+          minLength: 1
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        provenance:
+          type: string
+          minLength: 1
+        semantic_label:
+          type: string
+          minLength: 1
+        category:
+          type: string
+          minLength: 1
+        destination_semantic_label:
+          type: string
+          minLength: 1
+        destination_category:
+          type: string
+          minLength: 1
+        binding_ref:
+          type: string
+          pattern: ^artifact://\S+$
+        capability_snapshot_ref:
+          type: string
+          pattern: ^artifact://\S+$
 output_schema:
   type: object
   additionalProperties: false
@@ -415,10 +533,10 @@ output_schema:
       minLength: 1
     fresh_evidence_requirements:
       type: array
-      uniqueItems: true
       items:
         type: string
         minLength: 1
+      uniqueItems: true
     error:
       type: object
       additionalProperties: false

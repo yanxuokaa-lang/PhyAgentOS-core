@@ -145,12 +145,24 @@ input_schema:
           execution_entity_ref:
             type: string
             pattern: ^entity://[^/]+$
+          effect_evidence_refs: &id001
+            type: array
+            minItems: 1
+            items:
+              type: string
+              pattern: ^artifact://[^/]+/.+$
           carry_state:
-            enum: [unchanged, held]
+            enum:
+            - unchanged
+            - held
           possession:
             type: object
             additionalProperties: false
-            required: [holding_state, entity_ref, owner, acquire_invocation_id]
+            required:
+            - holding_state
+            - entity_ref
+            - owner
+            - acquire_invocation_id
             properties:
               holding_state:
                 const: holding
@@ -163,12 +175,6 @@ input_schema:
               acquire_invocation_id:
                 type: string
                 minLength: 1
-          effect_evidence_refs: &id001
-            type: array
-            minItems: 1
-            items:
-              type: string
-              pattern: ^artifact://[^/]+/.+$
     reconciliation_hypotheses:
       type: array
       items:
@@ -263,6 +269,9 @@ output_schema:
             type: string
             pattern: ^entity://[^/]+$
           category:
+            type: string
+            minLength: 1
+          label:
             type: string
             minLength: 1
           confidence:
@@ -535,6 +544,74 @@ output_schema:
         provider_stage:
           type: string
           minLength: 1
+    views:
+      type: array
+      minItems: 0
+      items:
+        type: object
+        additionalProperties: false
+        required:
+        - sensor_ref
+        - observation_ref
+        - captured_at
+        - frame
+        - calibration_ref
+        - freshness_ms
+        - artifacts
+        properties:
+          sensor_ref:
+            type: string
+            minLength: 1
+          observation_ref:
+            type: string
+            pattern: ^observation://[^/]+/[^/]+$
+          captured_at:
+            type: string
+            format: date-time
+          frame:
+            type: object
+            additionalProperties: false
+            required:
+            - frame_id
+            - unit
+            properties:
+              frame_id:
+                type: string
+                minLength: 1
+              unit:
+                const: m
+          calibration_ref:
+            type: string
+            minLength: 1
+          freshness_ms:
+            type: integer
+            minimum: 0
+          artifacts:
+            type: array
+            minItems: 1
+            items:
+              type: object
+              additionalProperties: false
+              required:
+              - ref
+              - kind
+              - media_type
+              properties:
+                ref:
+                  type: string
+                  pattern: ^artifact://[^/]+/.+$
+                kind:
+                  enum:
+                  - rgb
+                  - depth
+                  - point_cloud
+                  - state
+                media_type:
+                  type: string
+                  minLength: 1
+    capture_skew_ms:
+      type: integer
+      minimum: 0
 robot_frame_profile:
   observation_frame: observation
   unit: m

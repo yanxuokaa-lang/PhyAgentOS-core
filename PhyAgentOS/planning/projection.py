@@ -429,13 +429,12 @@ def execute_argument_projection(
     ]
     if len(entities) != 1:
         raise ArgumentProjectionError("consumer projection requires one uniquely matched entity")
-    if len(envelopes) != 1:
+    if len(envelopes) > 1:
         raise ArgumentProjectionError(
             "consumer projection requires one uniquely matched spatial envelope"
         )
 
     entity = entities[0]
-    envelope = envelopes[0]
     target = {
         field: entity[field]
         for field in plan.entity_fields
@@ -446,19 +445,21 @@ def execute_argument_projection(
         raise ArgumentProjectionError(
             "projection entity is missing fields: " + ", ".join(missing_entity_fields)
         )
-    target[plan.envelope_output_field] = {
-        field: envelope[field]
-        for field in plan.envelope_fields
-        if field in envelope
-    }
-    missing_envelope_fields = [
-        field for field in plan.envelope_fields
-        if field not in target[plan.envelope_output_field]
-    ]
-    if missing_envelope_fields:
-        raise ArgumentProjectionError(
-            "projection envelope is missing fields: " + ", ".join(missing_envelope_fields)
-        )
+    if envelopes:
+        envelope = envelopes[0]
+        target[plan.envelope_output_field] = {
+            field: envelope[field]
+            for field in plan.envelope_fields
+            if field in envelope
+        }
+        missing_envelope_fields = [
+            field for field in plan.envelope_fields
+            if field not in target[plan.envelope_output_field]
+        ]
+        if missing_envelope_fields:
+            raise ArgumentProjectionError(
+                "projection envelope is missing fields: " + ", ".join(missing_envelope_fields)
+            )
 
     if plan.artifact_collection is not None and plan.artifact_output_field is not None:
         artifacts = [
@@ -484,6 +485,9 @@ def execute_argument_projection(
                     raise ArgumentProjectionError(
                         "projection artifact is missing fields: " + ", ".join(missing)
                     )
+
+    if not envelopes and not target.get(plan.artifact_output_field):
+        raise ArgumentProjectionError("consumer projection requires one uniquely matched spatial envelope or geometry artifact")
 
     result = {
         field: literals[field]

@@ -230,6 +230,17 @@ class ForgeTaskCreateTool(Tool):
                         "destination_selector": {"type": "object", "additionalProperties": {"type": ["string", "number", "boolean"]}},
                         "depends_on": {"type": "array", "items": {"type": "string"}},
                         "parameters": {"type": "object"},
+                        "semantic_intent": {
+                            "type": "object", "additionalProperties": False,
+                            "required": ["goal", "success_criteria", "allowed_arms", "coordination_mode"],
+                            "properties": {
+                                "goal": {"type": "string", "minLength": 1},
+                                "success_criteria": {"type": "array", "items": {"type": "string"}},
+                                "allowed_arms": {"type": "array", "items": {"type": "string"}},
+                                "coordination_mode": {"type": "string", "minLength": 1},
+                                "constraints": {"type": "array", "items": {"type": "string"}},
+                            },
+                        },
                         "return_destination_ref": {"type": "string", "minLength": 1},
                     },
                     "required": ["subtask_id", "operation", "source_category", "destination_category", "sensor_refs", "max_age_ms"],
@@ -285,6 +296,14 @@ class ForgeTaskCreateTool(Tool):
             )
             if inspect.isawaitable(task):
                 task = await task
+            if semantic_subtasks is not None:
+                try:
+                    for tool_id, semantics in getattr(self.semantic_plan_builder, "required_tool_contracts", ()):
+                        await self.coordinator.enroll_tool_contract(task.task_id, tool_id, semantics)
+                except Exception:
+                    self.coordinator.request_replan(task.task_id, reason="semantic plan Tool contract enrollment failed")
+                    raise
+                task = self.coordinator.get_task(task.task_id)
         except AgentTaskBusyError as exc:
             return _json({
                 "ok": False,

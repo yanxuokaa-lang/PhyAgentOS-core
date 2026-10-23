@@ -26,9 +26,12 @@ class LabUtopiaPAOSClientError(RuntimeError):
 class LabUtopiaCycleProvider:
     """Own no-motion cycle preparation and task-owned assignment projection."""
 
-    def __init__(self, engine: Any, *, target_resolver: Any | None = None):
+    def __init__(self, engine: Any, *, target_resolver: Any | None = None,
+                 assignment_store: Any | None = None):
         self.engine = engine
         self.target_resolver = target_resolver
+        self.assignment_store = assignment_store
+        self.result_resolver: Callable | None = None
         self._prepared: dict[str, dict[str, Any]] = {}
         self._lock = RLock()
 
@@ -100,58 +103,127 @@ class LabUtopiaCycleProvider:
         deliberately unavailable on this path instead of fabricating an
         assignment.
         """
+        from PhyAgentOS.forge.capability_runtime.manipulation_prepare import (
+            PreparationProviderError,
+        )
+
         if not isinstance(request, Mapping):
-            return {"status": "invalid", "provider_available": False,
-                    "error": "standard_preparation_request_must_be_object"}
+            raise PreparationProviderError("invalid_preparation_request", "standard preparation requires an object")
         binding = request.get("perception_binding")
         process_type = request.get("process_type")
         if not isinstance(binding, Mapping) or process_type not in {"pour", "stir", "relocate"}:
-            return {"status": "invalid", "provider_available": False,
-                    "error": "standard_preparation_requires_perception_binding_and_process_type"}
+            raise PreparationProviderError("invalid_perception_binding", "standard preparation requires a binding and process type")
         if self.target_resolver is None:
-            return {"status": "unavailable", "provider_available": False,
-                    "error": "perception_target_resolver_unavailable"}
-        try:
-            from pick_place_workflow.manipulation_target import resolve_manipulation_target
+            raise PreparationProviderError("perception_target_resolver_unavailable", "no perception target resolver is configured")
+        from pick_place_workflow.manipulation_target import resolve_manipulation_target
 
-            target_request = {
-                key: request[key]
-                for key in ("entity_ref", "destination_ref", "scene_revision", "frame_id", "calibration_ref")
-                if key in request
-            }
-            if isinstance(request.get("candidate_ref"), str):
-                target_request["candidate_ref"] = request["candidate_ref"]
-            target = resolve_manipulation_target(
-                self.target_resolver, binding, target_request,
-                process_type=process_type,
-            )
-        except Exception as exc:
-            return {"status": "invalid", "provider_available": False,
-                    "error": f"perception_target_resolution_failed:{type(exc).__name__}"}
         engine_prepare = getattr(self.engine, "prepare_manipulation", None)
         if not callable(engine_prepare):
-            return {"status": "unavailable", "provider_available": False,
-                    "error": "standard_manipulation_preparation_unavailable"}
-        engine_request = deepcopy(dict(request))
-        engine_request["manipulation_target"] = target
+            raise PreparationProviderError("standard_manipulation_preparation_unavailable", "engine has no standard route preparation")
+        rejected = []
+        for candidate in request["candidates"]:
+            selected_binding = {**binding, "grasp_candidate": candidate, "candidate_ref": candidate["candidate_ref"]}
+            target_request = {key: selected_binding[key] for key in (
+                "entity_ref", "destination_ref", "scene_revision", "frame_id", "calibration_ref", "candidate_ref")}
+            try:
+                target = resolve_manipulation_target(self.target_resolver, selected_binding, target_request,
+                                                     process_type=process_type)
+                engine_request = {**deepcopy(dict(request)), **target_request,
+                                  "perception_binding": deepcopy(selected_binding), "manipulation_target": target}
+                context = getattr(self.target_resolver, "execution_context", None)
+                if context is not None:
+                    engine_request["observation_model"] = context(selected_binding)
+                result = engine_prepare(engine_request)
+            except Exception as exc:
+                raise PreparationProviderError("perception_target_resolution_failed", str(exc)) from exc
+            if not isinstance(result, Mapping):
+                raise PreparationProviderError("invalid_preparation_result", "preparation returned a non-object")
+            if result.get("status") not in {"available", "succeeded"}:
+                code = result.get("failure_code", "route_unavailable")
+                if code not in {"route_unavailable", "inverse_kinematics_failed", "joint_limit_violation",
+                                "workspace_violation", "route_collision", "self_collision", "payload_collision",
+                                "payload_robot_collision", "no_admissible_grasp"}:
+                    raise PreparationProviderError(code, str(result.get("error_detail", result.get("error", code))),
+                                                   failure_owner="runtime_adapter")
+                rejected.append({"candidate_ref": candidate["candidate_ref"],
+                                 "failure_code": result.get("failure_code", "route_unavailable"),
+                                 "error": result.get("error")})
+                continue
+            value = deepcopy(dict(result))
+            value.pop("status", None)
+            value.pop("motion_authorized", None)
+            value["provider_available"] = True
+            value.setdefault("destination_ref", request.get("destination_ref"))
+            # Store failed candidate diagnostics with the selected route, not in
+            # a second public selection or settlement mechanism.
+            if isinstance(value.get("route_arguments"), dict):
+                value["route_arguments"]["rejected_candidates"] = rejected
+            return value
+        raise PreparationProviderError("no_admissible_grasp", str(rejected), failure_owner="runtime_adapter")
+
+    def prepare_held(self, arguments: Mapping[str, Any]) -> dict[str, Any]:
+        """Replan from the latest Tool receipt and persist a new current route.
+
+        The Runtime remains the owner of possession and invocation history.
+        Only its terminal result locates the prior assignment; no label lookup
+        or parallel held-object state is maintained here.
+        """
+        from PhyAgentOS.forge.manipulation import ArmAssignment, arm_assignment_digest
+
+        prepare = getattr(self.engine, "prepare_held", None)
+        if not callable(prepare) or self.assignment_store is None or self.result_resolver is None:
+            return {"status": "unavailable", "motion_authorized": False,
+                    "error": "held_route_preparation_unavailable"}
         try:
-            result = engine_prepare(engine_request)
-        except Exception as exc:
-            return {"status": "unavailable", "provider_available": False,
-                    "error": f"labutopia_preparation_failed:{type(exc).__name__}"}
-        if not isinstance(result, Mapping):
-            return {"status": "unavailable", "provider_available": False,
-                    "error": "labutopia_preparation_returned_non_object"}
-        if result.get("status") not in {"available", "succeeded"}:
-            return {"status": str(result.get("status", "unavailable")),
-                    "provider_available": False,
-                    "error": str(result.get("error", "labutopia_preparation_unavailable"))}
-        value = deepcopy(dict(result))
-        value.pop("status", None)
-        value.pop("motion_authorized", None)
-        value["provider_available"] = True
-        value.setdefault("destination_ref", request.get("destination_ref"))
-        return value
+            receipt = self.result_resolver(arguments["held_invocation_ref"])
+            previous = receipt.get("result", receipt)
+            summary = previous.get("capability_outcome_summary", {})
+            if (receipt.get("status") not in {"succeeded", "failed", "cancelled", "stopped"}
+                    or summary.get("outcome_known") is not True
+                    or summary.get("possession_state") != "holding"):
+                raise ValueError("held source must confirm known holding state")
+            document = self.assignment_store.get(previous.get("assignment_ref"))
+            if not isinstance(document, Mapping):
+                raise ValueError("held source assignment is unavailable")
+            assignment = dict(document["assignment"])
+            if assignment["entity_ref"] != arguments["entity_ref"]:
+                raise ValueError("held source entity differs from requested entity")
+            request = {**deepcopy(document["route_arguments"]), **deepcopy(dict(arguments)),
+                       "assignment": assignment}
+            refresh = getattr(self.target_resolver, "refresh_process", None)
+            if refresh is not None:
+                request["manipulation_target"] = refresh(arguments, request["manipulation_target"],
+                    observation_model=request["observation_model"], phase_route=request["phase_route"])
+            result = prepare(request)
+            if not isinstance(result, Mapping) or result.get("status") != "available":
+                return {"status": "unavailable", "motion_authorized": False,
+                        "error": str(result.get("failure_code", result.get("error", "held_route_unavailable")))
+                        if isinstance(result, Mapping) else "held_route_unavailable"}
+            route = result.get("route_arguments")
+            if not isinstance(route, Mapping) or any(route.get(k) != v for k, v in arguments.items()):
+                raise ValueError("held route must preserve current request and parameters")
+            preparation_ref = f"preparation://labutopia/{uuid4().hex}"
+            assignment_ref = f"artifact://labutopia/assignments/{uuid4().hex}"
+            assignment.update({key: arguments[key] for key in (
+                "observation_ref", "scene_revision", "calibration_ref", "capability_snapshot_ref")})
+            assignment.update(assignment_ref=assignment_ref,
+                              candidate_set_ref=f"candidate-set://{arguments['scene_revision']}/{arguments['frame_id']}")
+            # These describe the newly prepared route, not the acquisition route.
+            assignment.update({key: result[key] for key in ("route_digest", "readiness_evidence_ref")})
+            assignment["assignment_digest"] = arm_assignment_digest(assignment)
+            assignment = ArmAssignment.model_validate(assignment).model_dump(mode="json")
+            route = {**deepcopy(dict(route)), "preparation_ref": preparation_ref,
+                     "assignment_ref": assignment_ref, "candidate_ref": assignment["candidate_ref"]}
+            route.pop("assignment", None)
+            self.assignment_store.put(assignment_ref, {
+                "assignment": assignment, "preparation_ref": preparation_ref, "route_arguments": route,
+            })
+            return {"status": "available", "motion_authorized": False,
+                    "entity_ref": arguments["entity_ref"],
+                    "arguments": {**deepcopy(dict(arguments)), "preparation_ref": preparation_ref,
+                                  "assignment_ref": assignment_ref}}
+        except (KeyError, TypeError, ValueError) as exc:
+            return {"status": "unavailable", "motion_authorized": False, "error": str(exc)}
 
     def resolve(self, operation: str, arguments: Mapping[str, Any], *, task_id: str | None = None) -> dict[str, Any]:
         """Resolve a prepared request and bind its assignment to the caller task."""
@@ -406,7 +478,8 @@ def build_labutopia_runtime(
         assignment_db = profile.lab_root / "outputs" / "paos" / "assignment-artifacts.sqlite3"
         assignment_db.parent.mkdir(parents=True, exist_ok=True)
         assignment_store = SQLiteAssignmentArtifactStore(assignment_db)
-    provider = LabUtopiaCycleProvider(selected_engine, target_resolver=target_resolver)
+    provider = LabUtopiaCycleProvider(selected_engine, target_resolver=target_resolver,
+                                    assignment_store=assignment_store)
     held_route_resolver = provider.resolve
     if assignment_store is not None:
         route_validator = (
@@ -456,6 +529,7 @@ def build_labutopia_runtime(
         register_legacy_cycles=False,
         assignment_store=assignment_store,
     )
+    provider.result_resolver = runtime.invocation_result
     bound_adapter = None
     observation_provider = observation_source if observation_source is not None else client
     understanding_ready = callable(getattr(understanding_provider, "understand", None)) or (
@@ -479,7 +553,6 @@ def build_labutopia_runtime(
     )
     if (
         perception_adapter is not None
-        and getattr(perception_adapter, "ready", False)
         and query_providers_ready
         and observation_provider_ready
     ):
@@ -487,7 +560,7 @@ def build_labutopia_runtime(
         refresh_binding = getattr(perception_adapter, "refresh_binding", None)
         if callable(with_query_invoker) and callable(refresh_binding):
             bound_adapter = with_query_invoker(runtime)
-            if subtask_context_resolver is not None:
+            if getattr(bound_adapter, "ready", False) and subtask_context_resolver is not None:
                 register_subtask_tool(
                     runtime,
                     bound_adapter.refresh_binding,

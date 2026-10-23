@@ -14,7 +14,7 @@ import inspect
 import json
 from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Protocol
 
 from PhyAgentOS.forge.capability_runtime import (
@@ -123,7 +123,13 @@ class PerceptionBindingAdapter:
     def refresh_binding(self, previous: PerceptionBinding, expected_scene_revision: str) -> PerceptionBinding:
         """Re-run the complete chain after a scene revision change."""
 
-        binding = self.bind()
+        request = replace(self.request, source_category=previous.category,
+                          source_selector={"entity_ref": previous.entity_ref},
+                          destination_category=previous.destination_category,
+                          destination_selector=lambda entity: self.destination_ref_factory(entity) == previous.destination_ref)
+        binding = PerceptionBindingAdapter(
+            self.query_invoker, request, destination_ref_factory=self.destination_ref_factory,
+        ).bind()
         if binding.scene_revision != expected_scene_revision:
             raise PerceptionBindingError(
                 "fresh perception scene revision differs from the execution revision"
@@ -177,7 +183,8 @@ class PerceptionBindingAdapter:
                         "entity_ref": source["entity_ref"],
                         "category": source["category"],
                         "confidence": source["confidence"],
-                        "spatial_envelope": source_envelope,
+                        "spatial_envelope": {key: value for key, value in source_envelope.items() if key != "entity_ref"},
+                        "geometry_artifacts": grasp_geometry_artifacts(understanding, source["entity_ref"]),
                     }
                 ],
             },
@@ -189,8 +196,8 @@ class PerceptionBindingAdapter:
             item for item in grasp.get("candidates", [])
             if isinstance(item, Mapping) and item.get("entity_ref") == source["entity_ref"]
         ]
-        if len(candidates) != 1:
-            raise PerceptionBindingError("grasp.propose must retain exactly one source candidate")
+        if not candidates:
+            raise PerceptionBindingError("grasp.propose returned no source candidate")
         candidate = dict(candidates[0])
         capability = self._query(
             "manipulation.capabilities",
@@ -233,6 +240,7 @@ class PerceptionBindingAdapter:
             "measured_pose": measured_pose,
             "measured_geometry": measured_geometry,
             "grasp_candidate": deepcopy(candidate),
+            "grasp_candidates": deepcopy(candidates),
             "grasp_candidate_ref": candidate_set_ref,
             "candidate_set_ref": candidate_set_ref,
             "candidate_ref": candidate["candidate_ref"],
@@ -298,7 +306,8 @@ class PerceptionBindingAdapter:
                 "entity_ref": source["entity_ref"],
                 "category": source["category"],
                 "confidence": source["confidence"],
-                "spatial_envelope": source_envelope,
+                "spatial_envelope": {key: value for key, value in source_envelope.items() if key != "entity_ref"},
+                        "geometry_artifacts": grasp_geometry_artifacts(understanding, source["entity_ref"]),
             }],
         })
         self._require_available(grasp, "grasp.propose")
@@ -457,3 +466,13 @@ __all__ = [
     "PerceptionBindingError",
     "QueryInvoker",
 ]
+
+
+def grasp_geometry_artifacts(understanding, entity_ref):
+    """Project observed geometry into the existing grasp.propose input contract."""
+    keys = ("artifact_ref", "kind", "observation_ref", "scene_revision", "entity_ref",
+            "frame_id", "calibration_ref", "provenance")
+    return [{key: deepcopy(item[key]) for key in keys}
+            for item in understanding.get("derived_artifacts", [])
+            if item.get("entity_ref") == entity_ref
+            and item.get("kind") in {"object_point_cloud", "fused_entity_perception"}]

@@ -116,7 +116,9 @@ GRASP_TOOL_SPEC: dict[str, Any] = {
                 "items": {
                     "type": "object",
                     "additionalProperties": False,
-                    "required": ["entity_ref", "category", "confidence", "spatial_envelope"],
+                    "required": ["entity_ref", "category", "confidence"],
+                    "anyOf": [{"required": ["spatial_envelope"]},
+                              {"required": ["geometry_artifacts"], "properties": {"geometry_artifacts": {"minItems": 1}}}],
                     "properties": {
                         "entity_ref": {
                             "type": "string",
@@ -393,7 +395,7 @@ def _validate_target(
     if (
         not isinstance(target, dict)
         or not set(target) <= {"entity_ref", "category", "confidence", "spatial_envelope", "geometry_artifacts"}
-        or not {"entity_ref", "category", "confidence", "spatial_envelope"} <= set(target)
+        or not {"entity_ref", "category", "confidence"} <= set(target)
         or not isinstance(target.get("entity_ref"), str)
         or _ENTITY_REF.fullmatch(target["entity_ref"]) is None
         or not isinstance(target.get("category"), str)
@@ -401,29 +403,32 @@ def _validate_target(
         or not _finite_unit_interval(target.get("confidence"))
     ):
         return "invalid_target"
-    envelope = target["spatial_envelope"]
-    if (
-        not isinstance(envelope, dict)
-        or set(envelope) != {
-            "frame_id", "unit", "min_xyz_m", "max_xyz_m", "confidence", "provenance",
-        }
-        or not isinstance(envelope.get("frame_id"), str)
-        or not envelope["frame_id"].strip()
-        or envelope.get("unit") != "m"
-        or not isinstance(envelope.get("min_xyz_m"), list)
-        or not isinstance(envelope.get("max_xyz_m"), list)
-        or len(envelope["min_xyz_m"]) != 3
-        or len(envelope["max_xyz_m"]) != 3
-        or any(not _finite_number(value) for value in envelope["min_xyz_m"] + envelope["max_xyz_m"])
-        or any(low > high for low, high in zip(envelope["min_xyz_m"], envelope["max_xyz_m"], strict=True))
-        or not _finite_unit_interval(envelope.get("confidence"))
-        or not _artifact_refs(envelope.get("provenance"))
-    ):
-        return "invalid_target"
-    # One Query invocation is bound to one observation frame; envelopes must agree.
-    if envelope["frame_id"] != frame_id:
-        return "invalid_target_frame"
+    if "spatial_envelope" in target:
+        envelope = target["spatial_envelope"]
+        if (
+            not isinstance(envelope, dict)
+            or set(envelope) != {
+                "frame_id", "unit", "min_xyz_m", "max_xyz_m", "confidence", "provenance",
+            }
+            or not isinstance(envelope.get("frame_id"), str)
+            or not envelope["frame_id"].strip()
+            or envelope.get("unit") != "m"
+            or not isinstance(envelope.get("min_xyz_m"), list)
+            or not isinstance(envelope.get("max_xyz_m"), list)
+            or len(envelope["min_xyz_m"]) != 3
+            or len(envelope["max_xyz_m"]) != 3
+            or any(not _finite_number(value) for value in envelope["min_xyz_m"] + envelope["max_xyz_m"])
+            or any(low > high for low, high in zip(envelope["min_xyz_m"], envelope["max_xyz_m"], strict=True))
+            or not _finite_unit_interval(envelope.get("confidence"))
+            or not _artifact_refs(envelope.get("provenance"))
+        ):
+            return "invalid_target"
+        # One Query invocation is bound to one observation frame; envelopes must agree.
+        if envelope["frame_id"] != frame_id:
+            return "invalid_target_frame"
     geometry = target.get("geometry_artifacts", [])
+    if "spatial_envelope" not in target and not geometry:
+        return "invalid_target"
     if not isinstance(geometry, list):
         return "invalid_geometry_artifacts"
     seen_geometry: set[str] = set()
@@ -819,7 +824,7 @@ class GraspProposalEndpoint:
             target_provenance = allowed_provenance_by_entity.setdefault(
                 target["entity_ref"], set()
             )
-            target_provenance.update(target["spatial_envelope"]["provenance"])
+            target_provenance.update(target.get("spatial_envelope", {}).get("provenance", []))
             for artifact in target.get("geometry_artifacts", []):
                 target_provenance.add(artifact["artifact_ref"])
                 target_provenance.update(artifact["provenance"])

@@ -106,12 +106,13 @@ class IsaacCameraMetadataProvider:
             return None
         try:
             intrinsics = _matrix3(get_intrinsics(device="cpu"))
-            position, orientation = get_pose(camera_axes="world")
+            position, orientation = get_pose(camera_axes="ros")
             resolution = _vector(get_resolution(), 2)
             payload = {
                 "schema": "paos.camera_calibration.v1",
                 "sensor_ref": sensor_ref,
                 "frame_id": frame_id,
+                "camera_axes": "ros",
                 "scene_revision": scene_revision,
                 "resolution": resolution,
                 "intrinsics": intrinsics,
@@ -214,7 +215,7 @@ class IsaacCameraObservationSource:
             getter = getattr(camera, getter_name, None)
             if not callable(getter):
                 return None
-            value = getter()
+            value = getter(world_frame=False) if kind == "point_cloud" else getter()
             if not _has_data(value):
                 return None
             stored = self._artifact_writer.write(sensor_ref, kind, value, captured_at=captured_at)

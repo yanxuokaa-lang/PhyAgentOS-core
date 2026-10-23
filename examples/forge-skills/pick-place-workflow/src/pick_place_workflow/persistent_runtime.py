@@ -573,7 +573,10 @@ class StoredAssignmentResolver:
             raise ValueError("stored assignment belongs to another task")
         if document.get("preparation_ref") != request.get("preparation_ref"):
             raise ValueError("stored assignment preparation reference mismatch")
+        held_request = phase != "acquire" and "held_invocation_ref" in request
         for key in ("entity_ref", "candidate_ref"):
+            if key == "candidate_ref" and held_request and key not in request:
+                continue  # Held Tools identify their route by its canonical assignment.
             if assignment.get(key) != request.get(key):
                 raise ValueError(f"stored assignment {key} mismatch")
         if (
@@ -586,6 +589,8 @@ class StoredAssignmentResolver:
         ):
             raise ValueError("stored assignment destination mismatch")
         for key in ("entity_ref", "candidate_ref", "preparation_ref"):
+            if key == "candidate_ref" and held_request and key not in request:
+                continue
             if route_arguments.get(key) != request.get(key):
                 raise ValueError(f"stored route {key} mismatch")
         if phase == "acquire" and route_arguments.get("scene_revision") != request.get("scene_revision"):
@@ -738,7 +743,7 @@ def build_persistent_runtime(*, client, understanding_provider=None, grasp_provi
                 argument_defaults=defaults,
                 require_synchronized_views=require_synchronized_views,
             )
-        if register_legacy_held_operations and spec["tool_id"] == "object.place":
+        if (register_legacy_held_operations or register_internal_subtask_tools) and resolve_held_preparation is not None and spec["tool_id"] == "object.place":
             from .held_manipulation import HeldActionEndpoint, extended_place_spec
 
             live_spec = extended_place_spec(live_spec)

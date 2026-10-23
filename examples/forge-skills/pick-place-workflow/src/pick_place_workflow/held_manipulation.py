@@ -905,7 +905,12 @@ class HeldActionEndpoint:
 
         def resolve_current():
             _check_holding(self.possession, public, owner=owner)
-            resolved = deepcopy(dict(self.resolve(self.operation, deepcopy(public))))
+            task_resolver = getattr(self.resolve, "resolve_for_task", None)
+            resolved = deepcopy(dict(
+                task_resolver(self.operation, deepcopy(public), task_id=parts[1])
+                if callable(task_resolver)
+                else self.resolve(self.operation, deepcopy(public))
+            ))
             if any(resolved.get(key) != value for key, value in public.items()):
                 raise ValueError("resolved held preparation changed inputs")
             assignment = resolved.get("assignment", {})

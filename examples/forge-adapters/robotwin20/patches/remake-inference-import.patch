@@ -1,0 +1,12 @@
+diff --git a/models/remake.py b/models/remake.py
+index 5ae7fc6..7fc0f97 100755
+--- a/models/remake.py
++++ b/models/remake.py
+@@ -6,7 +6,6 @@ import torch.nn.functional as F
+ from models.swin_transformer import SwinTransformer
+ import math
+ from time import perf_counter
+-from utils.visualization import plot_realat_depth, run_gradcam_on_encoder_img
+ from models.resnet import resnet18
+ import matplotlib.pyplot as plt
+ import torchvision

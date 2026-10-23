@@ -319,10 +319,16 @@ def test_semantic_builder_rejects_scene_revision_change_between_subtasks():
 def test_forge_task_create_persists_only_after_semantic_binding(tmp_path):
     coordinator = AgentTaskCoordinator(workspace=tmp_path, config=ForgeConfig(), client=object())
     tool = ForgeTaskCreateTool(coordinator, semantic_plan_builder=_builder(_provider()))
-    result = json.loads(asyncio.run(tool.execute("pour reagent", {"mode": "off"}, semantic_subtasks=_request())))
+    subtasks = _request()
+    subtasks[0]["semantic_intent"] = {"goal": "pour selected reagent", "success_criteria": ["bottle returned"],
+                                       "allowed_arms": ["franka"], "coordination_mode": "single_arm"}
+    arguments = {"task_description": "pour reagent", "verification": {"mode": "off"}, "semantic_subtasks": subtasks}
+    assert tool.validate_params(arguments) == []
+    result = json.loads(asyncio.run(tool.execute(**arguments)))
     assert result["ok"] is True
     task = coordinator.get_task(result["data"]["task_id"])
     assert task.active_revision.plan_graph.nodes[0].capability == "manipulation.execute_subtask"
+    assert task.active_revision.plan_graph.nodes[0].input_bindings["semantic_intent"] == subtasks[0]["semantic_intent"]
 
 
 def test_semantic_binding_failure_does_not_call_coordinator():

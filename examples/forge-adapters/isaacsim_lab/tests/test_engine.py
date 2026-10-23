@@ -155,7 +155,7 @@ def test_backend_passes_deployment_artifact_root_to_worker_session(tmp_path, mon
     created = []
 
     class Session:
-        def __init__(self, profile_path, *, observation_artifact_root):
+        def __init__(self, profile_path, *, observation_artifact_root, python_executable=None):
             created.append((profile_path, observation_artifact_root))
 
         def observe(self, _request):
@@ -214,7 +214,8 @@ def test_worker_registers_configured_isaac_cameras_and_persists_capture(tmp_path
         def get_depth(self):
             return np.ones((2, 3), dtype=np.float32)
 
-        def get_pointcloud(self):
+        def get_pointcloud(self, *, world_frame):
+            assert world_frame is False
             return np.ones((2, 3, 3), dtype=np.float32)
 
         def get_intrinsics_matrix(self, *, device):
@@ -222,7 +223,7 @@ def test_worker_registers_configured_isaac_cameras_and_persists_capture(tmp_path
             return np.eye(3)
 
         def get_world_pose(self, *, camera_axes):
-            assert camera_axes == "world"
+            assert camera_axes == "ros"
             return np.zeros(3), np.asarray([1.0, 0.0, 0.0, 0.0])
 
         def get_resolution(self):
@@ -282,6 +283,7 @@ def test_worker_registers_configured_isaac_cameras_and_persists_capture(tmp_path
     }
     assert calls.count(("initialize", "front")) == 1
     assert calls.count(("initialize", "wrist")) == 1
+    assert all(camera.kwargs["frequency"] == -1 for camera in session.resolve("camera_registry").values())
 
 
 def test_worker_does_not_register_observation_source_without_camera_configuration(tmp_path):
@@ -334,9 +336,24 @@ def test_worker_session_reuses_scene_resources_but_constructs_episode_tasks(tmp_
     session = WorkerSessionContext(object())
     counts = {"world": 0, "robot": 0, "stage": 0, "reference": 0, "object_utils": 0}
 
+    from dataclasses import replace
+
+    profile = replace(profile, startup_settle_s=.1, control_dt_s=.02)
+
     class World:
         def reset(self):
+            assert counts["reference"] == 1
             counts["world"] += 1
+
+        def play(self):
+            counts["play"] = counts.get("play", 0) + 1
+
+        def step(self, *, render):
+            assert render is True
+            counts["settle_steps"] = counts.get("settle_steps", 0) + 1
+
+        def pause(self):
+            counts["pause"] = counts.get("pause", 0) + 1
 
     class Robot:
         def initialize(self):
@@ -351,6 +368,7 @@ def test_worker_session_reuses_scene_resources_but_constructs_episode_tasks(tmp_
             counts["object_utils"] += 1
 
     def make_world():
+        assert counts["reference"] == 1
         counts["world_created"] = counts.get("world_created", 0) + 1
         return World()
 
@@ -396,6 +414,7 @@ def test_worker_session_reuses_scene_resources_but_constructs_episode_tasks(tmp_
     assert counts == {
         "world": 1, "robot": 1, "stage": 1, "reference": 1,
         "object_utils": 1, "world_created": 1, "robot_created": 1,
+        "play": 1, "pause": 1, "settle_steps": 5,
     }
 
 
@@ -636,7 +655,8 @@ def test_backend_phase_ports_remain_unavailable_until_measured_routes_exist(tmp_
     assert preparation == {
         "status": "unavailable",
         "motion_authorized": False,
-        "failure_code": "labutopia_measured_route_qualification_not_implemented",
+        "failure_code": "motion_configuration_unavailable",
+        "error": "profile requires a measured phase motion configuration",
     }
     assert phase["status"] == "unavailable"
     assert phase["world_change_started"] is False
@@ -651,7 +671,7 @@ def test_backend_phase_dispatch_accepts_stir_without_claiming_execution(tmp_path
     )
 
     assert phase["status"] == "unavailable"
-    assert phase["failure_code"] == "labutopia_phase_controller_not_implemented"
+    assert phase["failure_code"] == "motion_configuration_unavailable"
     assert phase["world_change_started"] is False
     assert phase["motion_authorized"] is False
 
@@ -933,3 +953,101 @@ def test_inprocess_exception_preserves_video_metadata(tmp_path, monkeypatch):
     assert result["status"] == "unknown"
     assert result["video_frame_count"] == 3
     assert json.loads(result_path.read_text(encoding="utf-8"))["video_available"] is True
+
+
+@pytest.mark.parametrize("was_playing", [False, True])
+@pytest.mark.parametrize("capture_fails", [False, True])
+def test_session_capture_renders_without_physics_and_restores_timeline(tmp_path, was_playing, capture_fails):
+    from isaacsim_lab.worker import WorkerSessionContext
+
+    calls = []
+    session = WorkerSessionContext(object())
+    class World:
+        playing = was_playing
+        def is_playing(self):
+            return self.playing
+        def play(self):
+            self.playing = True
+            calls.append("play")
+        def pause(self):
+            self.playing = False
+            calls.append("pause")
+        def render(self):
+            assert self.playing
+            calls.append("render")
+        def step(self, **kwargs):
+            pytest.fail("camera refresh must not advance robot physics")
+    class Source:
+        def capture(self, request):
+            assert calls == ([] if was_playing else ["play"]) + ["render"] * 4
+            if capture_fails:
+                raise ValueError("capture failed")
+            return {"sensor_ref": request["sensor_ref"], "artifacts": [{"ref": "artifact://camera/rgb"}]}
+    world = World()
+    session.register("observation_source", Source())
+    session.register("lab_scene_resources", {"world": world})
+    backend = LabUtopiaBackend(make_profile(tmp_path))
+    if capture_fails:
+        with pytest.raises(ValueError, match="capture failed"):
+            backend.observe_in_session(session, {"sensor_ref": "sensor://front"})
+    else:
+        result = backend.observe_in_session(session, {"sensor_ref": "sensor://front"})
+        assert result["status"] == "available"
+    assert world.playing == was_playing
+    assert calls == (["render"] * 4 if was_playing else ["play", *["render"] * 4, "pause"])
+
+
+def test_engine_delegates_held_preparation_and_closes_backend(tmp_path):
+    calls = []
+    class Backend:
+        def prepare_held(self, request):
+            calls.append(request)
+            return {"status": "available", "route_arguments": request}
+        def close(self):
+            calls.append("closed")
+    engine = module.IsaacSimLabEngine(make_profile(tmp_path), backend=Backend())
+    request = {"operation": "stir", "scene_revision": "current", "parameters": {"turns": 2}}
+    assert engine.prepare_held(request)["route_arguments"] == request
+    engine.close()
+    assert calls == [request, "closed"]
+
+
+def test_authored_station_observation_config_uses_existing_cameras_without_layout_inputs():
+    from types import SimpleNamespace
+
+    from isaacsim_lab.engine import _observation_scene_config
+
+    original = SimpleNamespace(
+        robot=SimpleNamespace(type="franka", base_position=[-.45, 0., .712386],
+                              wrist_camera=SimpleNamespace(prim_path="/World/Franka/panda_hand/arm_camera",
+                                                           clipping_range=[.05, 10.])),
+        layout={"bottles": "not perception input"},
+    )
+    projected = _observation_scene_config(original)
+    assert projected.robot.position == [-.45, 0., .712386]
+    assert [camera.prim_path for camera in projected.cameras] == [
+        "/World/PreviewCameras/ThirdPerson", "/World/Franka/panda_hand/arm_camera"]
+    assert all(camera.require_existing for camera in projected.cameras)
+    assert not hasattr(projected, "layout")
+    assert not hasattr(original.robot, "position")
+    legacy = SimpleNamespace(robot=SimpleNamespace(position=[0., 0., 0.]), cameras=[])
+    assert _observation_scene_config(legacy) is legacy
+
+
+def test_missing_authored_camera_is_not_replaced_by_a_guessed_view(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from isaacsim_lab.engine import IsaacLabRuntimeError
+    from isaacsim_lab.worker import WorkerSessionContext
+
+    camera_module = types.ModuleType("isaacsim.sensors.camera")
+    camera_module.Camera = lambda **kwargs: pytest.fail("must not create an authored camera")
+    monkeypatch.setitem(sys.modules, "isaacsim", types.ModuleType("isaacsim"))
+    monkeypatch.setitem(sys.modules, "isaacsim.sensors", types.ModuleType("isaacsim.sensors"))
+    monkeypatch.setitem(sys.modules, "isaacsim.sensors.camera", camera_module)
+    cfg = SimpleNamespace(cameras=[SimpleNamespace(name="authored", prim_path="/World/Missing",
+                                                   resolution=[32, 32], require_existing=True)])
+    stage = SimpleNamespace(GetPrimAtPath=lambda _: SimpleNamespace(IsValid=lambda: False))
+    backend = LabUtopiaBackend(make_profile(tmp_path))
+    with pytest.raises(IsaacLabRuntimeError, match="authored observation camera is missing"):
+        backend._register_session_observation_source(WorkerSessionContext(object()), cfg, stage)

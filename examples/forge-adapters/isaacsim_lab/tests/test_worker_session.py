@@ -66,6 +66,10 @@ class FakeBackend:
                 "world_change_started": False, "motion_authorized": False,
                 "failure_code": "test_phase_unavailable"}
 
+    def bind_observed_entities_in_session(self, session, arguments):
+        self.methods.append(("bind_observed_entities", session))
+        return {"status": "unavailable", "failure_code": "visual_body_association_ambiguous"}
+
     def scene_revision_in_session(self, session):
         revision = session.current_scene_revision()
         if revision is None:
@@ -261,3 +265,35 @@ def test_paos_client_does_not_advertise_or_project_unavailable_observation():
         assert client.capture({"sensor_ref": "sensor://front"}) is None
     finally:
         client.close()
+
+
+def test_worker_uses_configured_interpreter_without_changing_session_protocol(tmp_path, monkeypatch):
+    session, _, processes, _ = make_session(tmp_path, monkeypatch)
+    session.python_executable = "/configured/isaac/python"
+    factory = session._process_factory
+    commands = []
+    def process_factory(command, **kwargs):
+        commands.append(command)
+        return factory(command, **kwargs)
+    session._process_factory = process_factory
+    try:
+        session.observe({"sensor_ref": "sensor://front"})
+    finally:
+        session.close()
+    assert commands == [["/configured/isaac/python", "-m", "isaacsim_lab.worker"]]
+    assert processes == [1]
+
+
+def test_visual_association_rejection_keeps_the_same_worker_scene(tmp_path, monkeypatch):
+    session, backend, process_count, _ = make_session(tmp_path, monkeypatch)
+    try:
+        session.observe({"sensor_ref": "sensor://front"})
+        before = session.scene_revision()
+        response = session.request("bind_observed_entities", {"claims": []})
+        after = session.scene_revision()
+    finally:
+        session.close()
+    assert response["failure_code"] == "visual_body_association_ambiguous"
+    assert before == after
+    assert process_count == [1]
+    assert backend.methods[0][1] is backend.methods[1][1]

@@ -3,9 +3,13 @@ name = "paos-isaacsim-lab-adapter"
 version = "0.1.0"
 description = "PAOS adapter boundary for LabUtopia Isaac Sim laboratory cycles"
 requires-python = ">=3.10"
-dependencies = ["Pillow>=10"]
+dependencies = ["Pillow>=10", "numpy>=1.24", "scipy>=1.10", "PyYAML>=6"]
+
+[project.optional-dependencies]
+agent = ["openai>=1.0", "paos-robotwin20-adapter>=0.1.0"]
 
 [project.scripts]
+paos-isaacsim-lab-agent = "isaacsim_lab.agent_host:main"
 paos-isaacsim-lab-input = "isaacsim_lab.cli:main"
 
 [build-system]

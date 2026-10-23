@@ -345,6 +345,7 @@ _PERCEPTION_BINDING_SCHEMA = {
         "measured_pose": {"type": "object"},
         "measured_geometry": {"type": "object"},
         "grasp_candidate": {"type": "object"},
+        "grasp_candidates": {"type": "array", "items": {"type": "object"}},
         "destination_pose": {"type": "object"},
         "process_frame": {"type": "string", "minLength": 1},
         "confidence": {"type": "number", "minimum": 0, "maximum": 1},

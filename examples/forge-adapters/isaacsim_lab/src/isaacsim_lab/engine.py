@@ -356,6 +356,9 @@ class IsaacSimLabEngine:
             "status": "unavailable", "failure_code": "invalid_observation_result"
         }
 
+    def bind_observed_entities(self, request: Mapping[str, Any]) -> dict[str, Any]:
+        return dict(self.backend.bind_observed_entities(request))
+
     def cycle_capability(self, operation: str) -> dict[str, Any]:
         runnable = getattr(self.backend, "runnable_operations", ("pour_cycle",))
         available = operation in self.profile.supported_operations and operation in runnable \
@@ -498,6 +501,23 @@ class IsaacSimLabEngine:
             "failure_code": "invalid_phase_preparation_result",
         }
 
+    def prepare_held(self, arguments: Mapping[str, Any]) -> dict[str, Any]:
+        """Request a current held route through the same backend boundary."""
+        prepare = getattr(self.backend, "prepare_held", None)
+        if not callable(prepare):
+            return {"status": "unavailable", "motion_authorized": False,
+                    "failure_code": "held_preparation_not_supported"}
+        result = prepare(deepcopy(dict(arguments)))
+        return dict(result) if isinstance(result, Mapping) else {
+            "status": "unavailable", "motion_authorized": False,
+            "failure_code": "invalid_held_preparation_result",
+        }
+
+    def close(self) -> None:
+        close = getattr(self.backend, "close", None)
+        if callable(close):
+            close()
+
     def execute_phase(
         self, phase: str, arguments: Mapping[str, Any], cancel: Event, **context: Any
     ) -> dict[str, Any]:
@@ -576,6 +596,7 @@ class LabUtopiaBackend:
                     from .worker_session import IsaacWorkerSession
                     self._worker_session = IsaacWorkerSession(
                         self.profile_path,
+                        python_executable=self.profile.worker_python_path,
                         observation_artifact_root=self.observation_artifact_root,
                     )
                 session = self._worker_session
@@ -602,6 +623,7 @@ class LabUtopiaBackend:
                     from .worker_session import IsaacWorkerSession
                     self._worker_session = IsaacWorkerSession(
                         self.profile_path,
+                        python_executable=self.profile.worker_python_path,
                         observation_artifact_root=self.observation_artifact_root,
                     )
                 session = self._worker_session
@@ -611,28 +633,80 @@ class LabUtopiaBackend:
                     "world_change_started": True, "failure_code": type(exc).__name__,
                     "error_detail": str(exc)[:512]}
 
+    def prepare_held(self, arguments: Mapping[str, Any]) -> Mapping[str, Any]:
+        # The session readiness RPC receives the explicit held operation,
+        # latest invocation and prior route; it must qualify a fresh route.
+        return self.prepare_manipulation(arguments)
+
+    def bind_observed_entities(self, request: Mapping[str, Any]) -> Mapping[str, Any]:
+        with self._worker_lock:
+            session = self._worker_session
+        if session is None:
+            return {"status": "unavailable", "failure_code": "observation_required", "motion_authorized": False}
+        return session.request("bind_observed_entities", request)
+
+    def bind_observed_entities_in_session(self, session: Any, request: Mapping[str, Any]) -> Mapping[str, Any]:
+        from .execution_identity import bind_observed_entities
+        from .phase_motion import PhaseMotionError
+
+        try:
+            return bind_observed_entities(self._phase_motion(session), request)
+        except (PhaseMotionError, ValueError) as exc:
+            return {"status": "unavailable", "motion_authorized": False,
+                    "failure_code": getattr(exc, "code", "visual_measurement_failed"),
+                    "error_detail": str(exc)}
+
     def prepare_manipulation_in_session(
         self, session: Any, arguments: Mapping[str, Any]
     ) -> Mapping[str, Any]:
-        """Return unavailable until a measured IK/collision route provider exists."""
-        del session, arguments
-        return {
-            "status": "unavailable", "motion_authorized": False,
-            "failure_code": "labutopia_measured_route_qualification_not_implemented",
-        }
+        """Qualify the current scene through the session's measured motion model."""
+        from .phase_motion import PhaseMotionError, preparation_result
+
+        try:
+            model = self._phase_motion(session)
+            route, evidence = model.prepare(arguments)
+            return preparation_result(arguments, route, evidence)
+        except (PhaseMotionError, KeyError, TypeError, ValueError) as exc:
+            return {"status": "unavailable", "motion_authorized": False,
+                    "failure_code": getattr(exc, "code", "invalid_phase_preparation"),
+                    "error": str(exc)}
+
+    def _phase_motion(self, session):
+        from .phase_motion import IsaacPhaseMotion, PhaseMotionError
+
+        if getattr(self.profile, "motion_config_path", None) is None:
+            raise PhaseMotionError("motion_configuration_unavailable", "profile requires a measured phase motion configuration")
+        model = session.resolve("phase_motion")
+        if model is None:
+            self._ensure_session_scene(session)
+            model = IsaacPhaseMotion(session, self.profile, self.observation_artifact_root)
+            session.register("phase_motion", model)
+        return model
 
     def execute_phase_in_session(
         self, session: Any, arguments: Mapping[str, Any], cancel: Event
     ) -> Mapping[str, Any]:
-        """Fail closed; cycle controllers are not phase-level execution routes."""
-        del session, cancel
-        phase = arguments.get("operation")
-        return {
-            "status": "unavailable", "outcome_known": False,
-            "world_change_started": False, "motion_authorized": False,
-            "failure_code": "labutopia_phase_controller_not_implemented",
-            "operation": phase,
-        }
+        """Execute the admitted phase without using the legacy cycle runner."""
+        from .phase_motion import PhaseMotionError, PhaseMotionPreconditionError
+
+        try:
+            model = self._phase_motion(session)
+        except PhaseMotionError as exc:
+            return {"status": "unavailable", "outcome_known": True,
+                    "world_change_started": False, "motion_authorized": False,
+                    "failure_code": exc.code, "operation": arguments.get("operation")}
+        try:
+            return model.execute(arguments, cancel)
+        except PhaseMotionPreconditionError as exc:
+            return {"status": "failed", "outcome_known": True,
+                    "world_change_started": False, "operation_completed": False,
+                    "failure_owner": "isaacsim_adapter", "failure_code": exc.code,
+                    "error_detail": str(exc)[:512]}
+        except Exception as exc:
+            return {"status": "unknown", "outcome_known": False,
+                    "world_change_started": True, "failure_owner": "isaacsim_adapter",
+                    "failure_code": getattr(exc, "code", type(exc).__name__),
+                    "error_detail": str(exc)[:512]}
 
     def close(self) -> None:
         with self._worker_lock:
@@ -655,6 +729,7 @@ class LabUtopiaBackend:
 
                     self._worker_session = IsaacWorkerSession(
                         self.profile_path,
+                        python_executable=self.profile.worker_python_path,
                         observation_artifact_root=self.observation_artifact_root,
                     )
                 session = self._worker_session
@@ -721,6 +796,7 @@ class LabUtopiaBackend:
 
                     self._worker_session = IsaacWorkerSession(
                         self.profile_path,
+                        python_executable=self.profile.worker_python_path,
                         observation_artifact_root=self.observation_artifact_root,
                     )
                 session = self._worker_session
@@ -794,9 +870,33 @@ class LabUtopiaBackend:
         source = session.resolve("observation_source")
         capture = getattr(source, "capture", None)
         if callable(capture):
-            result = capture(request)
+            scene = session.resolve("lab_scene_resources")
+            if scene is not None:
+                # Annotator graphs require a playing timeline. World.render
+                # disables physics while updating the app; restore the caller's
+                # timeline state even if rendering or capture fails.
+                world = scene["world"]
+                was_playing = world.is_playing()
+                try:
+                    if not was_playing:
+                        world.play()
+                    for _ in range(getattr(self.profile, "camera_render_frames", 4)):
+                        world.render()
+                    result = capture(request)
+                finally:
+                    if not was_playing:
+                        world.pause()
+            else:
+                result = capture(request)
             if isinstance(result, Mapping):
-                return dict(result)
+                captures = session.resolve("observation_captures")
+                if captures is None:
+                    captures = {}
+                    session.register("observation_captures", captures)
+                for view in result.get("views", [result]):
+                    if view.get("calibration_ref"):
+                        captures[view["calibration_ref"]] = deepcopy(dict(view))
+                return {"status": "available", **dict(result)}
         return {
             "status": "unavailable",
             "outcome_known": False,
@@ -813,7 +913,7 @@ class LabUtopiaBackend:
         self._prepend_lab_root()
         from omegaconf import OmegaConf
 
-        cfg = OmegaConf.load(str(self.profile.config_path))
+        cfg = _observation_scene_config(OmegaConf.load(str(self.profile.config_path)))
         if scene is None:
             import numpy as np
             import omni.usd
@@ -826,7 +926,8 @@ class LabUtopiaBackend:
                 session,
                 profile=self.profile,
                 world_factory=lambda: World(
-                    stage_units_in_meters=1.0, physics_prim_path="/physicsScene", backend="numpy"
+                    stage_units_in_meters=1.0, physics_prim_path=self.profile.physics_scene_path, backend="numpy",
+                    physics_dt=self.profile.physics_dt_s, rendering_dt=self.profile.control_dt_s
                 ),
                 robot_factory=lambda: create_robot(
                     cfg.robot.type,
@@ -837,6 +938,13 @@ class LabUtopiaBackend:
                 add_reference_to_stage=add_reference_to_stage,
                 object_utils=ObjectUtils,
             )
+        if getattr(cfg, "preview_light", None) is not None:
+            from pxr import Gf, UsdLux
+
+            # Match the original passive preview entry point's illumination.
+            light = UsdLux.DomeLight.Define(scene["stage"], cfg.preview_light.prim_path)
+            light.CreateIntensityAttr(cfg.preview_light.intensity)
+            light.CreateColorAttr(Gf.Vec3f(*cfg.preview_light.color))
         session.initialize_scene_revision(self.profile.scene_revision)
         self._register_session_observation_source(session, cfg, scene["stage"])
 
@@ -873,12 +981,15 @@ class LabUtopiaBackend:
             camera_kwargs = {
                 "prim_path": prim_path,
                 "name": name,
-                "frequency": 60,
+                # Read-only renders do not advance the simulation clock.
+                "frequency": -1,
                 "resolution": tuple(camera_config.resolution),
             }
             if stage.GetPrimAtPath(prim_path).IsValid():
                 camera = Camera(**camera_kwargs)
             else:
+                if getattr(camera_config, "require_existing", False):
+                    raise IsaacLabRuntimeError(f"authored observation camera is missing: {prim_path}")
                 camera = Camera(
                     **camera_kwargs, translation=np.asarray(camera_config.translation)
                 )
@@ -990,7 +1101,8 @@ class LabUtopiaBackend:
             session,
             profile=self.profile,
             world_factory=lambda: World(
-                stage_units_in_meters=1.0, physics_prim_path="/physicsScene", backend="numpy"
+                stage_units_in_meters=1.0, physics_prim_path=self.profile.physics_scene_path, backend="numpy",
+                    physics_dt=self.profile.physics_dt_s, rendering_dt=self.profile.control_dt_s
             ),
             robot_factory=lambda: create_robot(
                 cfg.robot.type,
@@ -1220,7 +1332,8 @@ class LabUtopiaBackend:
             session,
             profile=self.profile,
             world_factory=lambda: World(
-                stage_units_in_meters=1.0, physics_prim_path="/physicsScene", backend="numpy"
+                stage_units_in_meters=1.0, physics_prim_path=self.profile.physics_scene_path, backend="numpy",
+                    physics_dt=self.profile.physics_dt_s, rendering_dt=self.profile.control_dt_s
             ),
             robot_factory=lambda: create_robot(
                 cfg.robot.type, position=np.array(cfg.robot.position), usd_path=str(self.profile.robot_usd_path)
@@ -1400,7 +1513,8 @@ class LabUtopiaBackend:
             if arguments.get("handle_path"):
                 cfg.handle_path = arguments["handle_path"]
 
-        world = World(stage_units_in_meters=1.0, physics_prim_path="/physicsScene", backend="numpy")
+        world = World(stage_units_in_meters=1.0, physics_prim_path=self.profile.physics_scene_path, backend="numpy",
+                    physics_dt=self.profile.physics_dt_s, rendering_dt=self.profile.control_dt_s)
         robot = create_robot(cfg.robot.type, position=np.array(cfg.robot.position), usd_path=str(self.profile.robot_usd_path))
         stage = omni.usd.get_context().get_stage()
         add_reference_to_stage(usd_path=str(self.profile.scene_usd_path), prim_path="/World")
@@ -2158,6 +2272,31 @@ def _pour_controller_target(state, profile, np, rotation_cls, process_frame=None
     return target - mouth_offset
 
 
+def _observation_scene_config(cfg):
+    """Project LabUtopia's authored station config inside the Adapter boundary.
+
+    The original station owns placement and optics. Register its existing
+    cameras without copying layout fields into perception or Tool contracts.
+    Legacy camera deployment configurations retain their original behavior.
+    """
+    if getattr(cfg.robot, "base_position", None) is None:
+        return cfg
+    from types import SimpleNamespace
+
+    cameras = [
+        {"name": "tabletop_third_person", "prim_path": "/World/PreviewCameras/ThirdPerson",
+         "resolution": [1600, 1200], "clipping_range": [.05, 10.], "require_existing": True},
+        {"name": "tabletop_wrist", "prim_path": str(cfg.robot.wrist_camera.prim_path),
+         "resolution": [1280, 960], "clipping_range": list(cfg.robot.wrist_camera.clipping_range),
+         "require_existing": True},
+    ]
+    return SimpleNamespace(
+        robot=SimpleNamespace(type=cfg.robot.type, position=list(cfg.robot.base_position)),
+        cameras=[SimpleNamespace(**camera) for camera in cameras],
+        preview_light=SimpleNamespace(prim_path="/World/PreviewDomeLight", intensity=1200., color=(.88, .93, 1.)),
+    )
+
+
 def _get_session_scene_resources(
     session: Any | None,
     *,
@@ -2176,10 +2315,11 @@ def _get_session_scene_resources(
                 raise IsaacLabRuntimeError("worker session cannot switch its loaded scene")
             return existing
 
+    # Import the authored PhysicsScene before World selects its physics owner.
+    add_reference_to_stage(usd_path=str(profile.scene_usd_path), prim_path="/World")
     world = world_factory()
     robot = robot_factory()
     stage = stage_provider()
-    add_reference_to_stage(usd_path=str(profile.scene_usd_path), prim_path="/World")
     object_utils.get_instance(stage)
     scene = {
         "world": world,
@@ -2191,6 +2331,13 @@ def _get_session_scene_resources(
     }
     if session is not None:
         world.reset()
+        if profile.startup_settle_s:
+            import math
+
+            world.play()
+            for _ in range(math.ceil(profile.startup_settle_s / profile.control_dt_s)):
+                world.step(render=True)
+            world.pause()
         scene["world_initialized"] = True
         session.register("lab_scene_resources", scene)
     return scene

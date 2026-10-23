@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from types import SimpleNamespace
 
 import pytest
 
@@ -121,6 +122,79 @@ class QueryChain:
         if tool_id == self.mismatch:
             result["scene_revision"] = "other-scene"
         return result
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("asynchronous", [False, True])
+async def test_binding_projects_understanding_envelope_through_real_grasp_endpoint(asynchronous):
+    from PhyAgentOS.forge.capability_runtime.grasp_proposal import GraspProposalEndpoint
+
+    query = QueryChain()
+    for envelope in query.understanding["spatial_envelopes"]:
+        envelope["provenance"] = [query.observation["artifacts"][0]["ref"]]
+    candidates = query.grasp["candidates"]
+    endpoint = GraspProposalEndpoint(SimpleNamespace(propose=lambda request: {
+        "candidates": candidates, "ambiguities": [],
+        "funnel": dict.fromkeys(("decoded", "canonicalized", "deduplicated", "retained"), 1),
+        "produced_evidence_refs": candidates[0]["provenance"],
+    }))
+
+    def invoke(tool_id, arguments):
+        if tool_id == "grasp.propose":
+            result = endpoint.invoke(arguments)
+            assert result["status"] == "available", result
+            return result
+        return query(tool_id, arguments)
+
+    async def invoke_async(tool_id, arguments):
+        return invoke(tool_id, arguments)
+
+    adapter = PerceptionBindingAdapter(invoke_async if asynchronous else invoke, BindingRequest(
+        sensor_refs=("sensor://front",), source_category="reagent_a", destination_category="beaker", max_age_ms=1000))
+    binding = await adapter.bind_async() if asynchronous else adapter.bind()
+    assert binding.entity_ref == "entity://reagent-a"
+
+
+def test_refresh_uses_previous_entity_instead_of_shared_adapter_initial_selector():
+    query = QueryChain()
+    original_request = BindingRequest(sensor_refs=("sensor://front",), source_category="reagent_a",
+                                      destination_category="beaker", max_age_ms=1000)
+    adapter = PerceptionBindingAdapter(query, original_request)
+    first = adapter.bind()
+    previous_b = first.model_copy(update={"entity_ref": "entity://reagent-b", "category": "reagent_b"})
+    query.observation, query.understanding, query.grasp, query.capability = _chain(scene="scene-2")
+    query.understanding["entities"].extend([
+        {"entity_ref": "entity://reagent-b", "category": "reagent_b", "confidence": .95},
+        {"entity_ref": "entity://distractor", "category": "reagent_b", "confidence": .95},
+    ])
+    query.understanding["spatial_envelopes"].append({
+        **query.understanding["spatial_envelopes"][0], "entity_ref": "entity://reagent-b"})
+    query.grasp["candidates"][0]["entity_ref"] = "entity://reagent-b"
+    refreshed = adapter.refresh_binding(previous_b, "scene-2")
+    assert refreshed.entity_ref == "entity://reagent-b"
+    assert refreshed.destination_ref == first.destination_ref
+    assert refreshed.scene_revision == "scene-2"
+    assert adapter.request == original_request
+
+
+@pytest.mark.parametrize("stale_stage", [None, "understanding", "grasp", "capability"])
+def test_refresh_accepts_new_capture_calibration_but_rejects_mixed_query_lineage(stale_stage):
+    query = QueryChain()
+    adapter = PerceptionBindingAdapter(query, BindingRequest(
+        sensor_refs=("sensor://front",), source_category="reagent_a",
+        destination_category="beaker", max_age_ms=1000))
+    previous = adapter.bind()
+    query.observation, query.understanding, query.grasp, query.capability = _chain(scene="scene-2")
+    for name in ("observation", "understanding", "grasp", "capability"):
+        getattr(query, name)["calibration_ref"] = "artifact://calibration/new-capture"
+    if stale_stage:
+        getattr(query, stale_stage)["calibration_ref"] = previous.calibration_ref
+        with pytest.raises(PerceptionBindingError, match="changed calibration provenance"):
+            adapter.refresh_binding(previous, "scene-2")
+    else:
+        refreshed = adapter.refresh_binding(previous, "scene-2")
+        assert refreshed.entity_ref == previous.entity_ref
+        assert refreshed.calibration_ref == "artifact://calibration/new-capture"
 
 
 class Preparation:

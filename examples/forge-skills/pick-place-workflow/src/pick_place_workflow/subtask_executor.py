@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Literal, Protocol
 
 from PhyAgentOS.forge.capability_runtime import ActionAdmission, CapabilityRuntime
@@ -62,6 +62,7 @@ class PerceptionBinding(BaseModel):
     measured_pose: Mapping[str, Any]
     measured_geometry: Mapping[str, Any]
     grasp_candidate: Mapping[str, Any]
+    grasp_candidates: tuple[Mapping[str, Any], ...] = ()
     grasp_candidate_ref: str
     candidate_set_ref: str
     candidate_ref: str
@@ -154,7 +155,13 @@ class PerceptionBinding(BaseModel):
             json.dumps(self.grasp_candidate, ensure_ascii=False, allow_nan=False)
         except (TypeError, ValueError) as exc:
             raise ValueError("grasp candidate must contain finite JSON values") from exc
-        for value in (self.measured_pose, self.measured_geometry, self.destination_pose):
+        if self.grasp_candidates:
+            refs = [item.get("candidate_ref") for item in self.grasp_candidates]
+            if len(set(refs)) != len(refs) or self.candidate_ref not in refs:
+                raise ValueError("candidate collection must be unique and contain the preferred candidate")
+            if any(item.get("entity_ref") != self.entity_ref for item in self.grasp_candidates):
+                raise ValueError("candidate collection must belong to the bound entity")
+        for value in (self.measured_pose, self.measured_geometry, self.destination_pose, self.grasp_candidates):
             try:
                 json.dumps(value, ensure_ascii=False, allow_nan=False)
             except (TypeError, ValueError) as exc:
@@ -445,7 +452,7 @@ class SubtaskExecutor:
                     attempt_id=self._text(response.get("attempt_id")),
                     status=status,
                     outcome_known=known,
-                    response=response,
+                    response={key: value for key, value in response.items() if key != "route_arguments"},
                     error=response.get("error") if isinstance(response.get("error"), dict) else None,
                 )
             except Exception as exc:
@@ -518,7 +525,6 @@ class SubtaskExecutor:
     @staticmethod
     def _arguments(spec: SubtaskSpec, call: SubtaskToolCall, context: SubtaskExecutionContext) -> dict[str, Any]:
         binding = spec.binding.model_dump(mode="json")
-        binding.pop("max_age_ms", None)
         if call.tool_id == "manipulation.prepare":
             request = {
                 key: binding[key]
@@ -527,7 +533,7 @@ class SubtaskExecutor:
                             "destination_ref", "binding_ref")
                 if binding.get(key) is not None
             }
-            request["candidates"] = [dict(binding["grasp_candidate"])]
+            request["candidates"] = list(binding.get("grasp_candidates") or [dict(binding["grasp_candidate"])])
             request["perception_binding"] = dict(binding)
             request["process_type"] = spec.operation
             if context.trusted_intent is not None:
@@ -562,7 +568,7 @@ class SubtaskExecutor:
                             "freshness_ms", "max_age_ms", "candidate_set_ref", "capability_snapshot_ref",
                             "destination_ref", "binding_ref")
             }
-            request["candidates"] = [dict(binding["grasp_candidate"])]
+            request["candidates"] = list(binding.get("grasp_candidates") or [dict(binding["grasp_candidate"])])
             request["perception_binding"] = dict(binding)
             request["process_type"] = spec.operation
             if context.trusted_intent is not None:
@@ -570,6 +576,12 @@ class SubtaskExecutor:
             return request
         if context.prepared_arguments is not None:
             common.update(context.prepared_arguments)
+        # Acquisition route refs stay stable, but subsequent preparation uses
+        # the refreshed observation/capability rather than the acquisition view.
+        common.update({key: binding[key] for key in (
+            "observation_ref", "frame_id", "calibration_ref", "capability_snapshot_ref",
+            "freshness_ms", "max_age_ms")})
+        common["scene_revision"] = context.scene_revision or spec.binding.scene_revision
         previous = context.last_response or {}
         previous_invocation = previous.get("invocation_id")
         if call.tool_id in {"object.acquire", "object.place"}:
@@ -584,13 +596,16 @@ class SubtaskExecutor:
             common.setdefault("acquire_invocation_ref", previous.get("acquire_invocation_ref", previous_invocation))
             common["held_invocation_ref"] = previous_invocation
         if call.tool_id == "object.acquire":
-            return {
-                **common,
-            }
+            common.pop("destination_ref", None)
+            return common
         common.update(call.arguments)
         if call.tool_id == "manipulation.prepare_held":
+            from .held_manipulation import input_schema
+
             common["parameters"] = dict(spec.parameters) if call.arguments.get("operation") != "place" else {}
             common["operation"] = call.arguments["operation"]
+            return {key: value for key, value in common.items()
+                    if key in input_schema(action=False)["properties"]}
         return common
 
     @staticmethod
@@ -666,6 +681,7 @@ class RuntimeSubtaskDriver:
         caller_id: str,
         refresh_binding: Callable[[PerceptionBinding, str], PerceptionBinding] | None = None,
         assignment_store=None,
+        initial_scene_revision: str | None = None,
     ) -> None:
         self.runtime = runtime
         self.spec = spec
@@ -676,7 +692,7 @@ class RuntimeSubtaskDriver:
         self.active_invocation: str | None = None
         self.active_tool: SubtaskToolCall | None = None
         self.context = SubtaskExecutionContext(
-            scene_revision=spec.binding.scene_revision,
+            scene_revision=initial_scene_revision or spec.binding.scene_revision,
             trusted_intent=spec.trusted_intent,
         )
         self.receipts: list[ToolReceipt] = []
@@ -712,6 +728,18 @@ class RuntimeSubtaskDriver:
                     refreshed, self.spec.binding, self.context.scene_revision,
                 )
                 self.spec = self.spec.model_copy(update={"binding": refreshed})
+                if self.index == 0 and self.context.trusted_intent is not None:
+                    # The persisted outer intent still names the original
+                    # observation. Only internal preparation evidence advances;
+                    # task/node ownership and semantic authorization stay fixed.
+                    self.context = replace(self.context, trusted_intent={
+                        **self.context.trusted_intent,
+                        "observation_ref": refreshed.observation_ref,
+                        "scene_revision": refreshed.scene_revision,
+                        "observation_frame_id": refreshed.frame_id,
+                        "calibration_ref": refreshed.calibration_ref,
+                        "candidate_set_ref": refreshed.candidate_set_ref,
+                    })
             except Exception as exc:
                 return self._finish(
                     "outcome_unknown", False, call.phase, "refresh_perception_before_motion",
@@ -750,14 +778,22 @@ class RuntimeSubtaskDriver:
         response.setdefault("status", status)
         response.setdefault("invocation_id", raw.get("invocation_id"))
         response.setdefault("attempt_id", raw.get("attempt_id"))
+        # Action endpoints publish physical facts in their outcome summary.
+        # Consume that authoritative projection as well as older flat receipts.
+        summary = response.get("capability_outcome_summary")
+        if isinstance(summary, Mapping):
+            for key in ("outcome_known", "possession_state", "world_change_started"):
+                if key in summary:
+                    response.setdefault(key, summary[key])
         known = response.get("outcome_known") is True
-        if call.phase == "prepare" and status == "available":
+        if call.phase == "prepare" and status in {"available", "unavailable", "invalid", "stale", "empty"}:
             known = True
         receipt = ToolReceipt(
             sequence_index=self.index, tool_id=call.tool_id, phase=call.phase,
             invocation_id=self._text(raw.get("invocation_id") or response.get("invocation_id")),
             attempt_id=self._text(raw.get("attempt_id") or response.get("attempt_id")),
-            status=str(status or "unknown"), outcome_known=known, response=response,
+            status=str(status or "unknown"), outcome_known=known,
+            response={key: value for key, value in response.items() if key != "route_arguments"},
             error=response.get("error") if isinstance(response.get("error"), dict) else None,
         )
         self.receipts.append(receipt)
@@ -831,10 +867,15 @@ class RuntimeSubtaskDriver:
         frame = response.get("frame")
         if not isinstance(frame, Mapping) or frame.get("frame_id") != binding.frame_id:
             raise SubtaskExecutionError("manipulation.prepare changed frame provenance")
+        candidate_refs = {item["candidate_ref"] for item in binding.grasp_candidates} or {binding.candidate_ref}
+        assignments = response.get("assignments", [])
+        selected_ref = assignments[0].get("candidate_ref") if len(assignments) == 1 else binding.candidate_ref
+        if selected_ref not in candidate_refs:
+            raise SubtaskExecutionError("preparation selected a candidate outside the observed collection")
         prepared = response.get("prepared_candidates")
         selected = [
             item for item in prepared if isinstance(item, Mapping)
-            and item.get("candidate_ref") == binding.candidate_ref
+            and item.get("candidate_ref") == selected_ref
             and item.get("entity_ref") == binding.entity_ref
             and item.get("qualification") == "prepared"
         ] if isinstance(prepared, list) else []
@@ -851,7 +892,7 @@ class RuntimeSubtaskDriver:
         result = {
             "candidate_set_ref": binding.candidate_set_ref,
             "preparation_ref": preparation_ref,
-            "candidate_ref": binding.candidate_ref,
+            "candidate_ref": selected_ref,
             "entity_ref": binding.entity_ref,
             "capability_snapshot_ref": binding.capability_snapshot_ref,
         }
@@ -865,7 +906,7 @@ class RuntimeSubtaskDriver:
                 assignment.get(key) != intent.get(key)
                 for key in ("task_id", "revision_id", "node_id", "node_digest", "entity_ref",
                             "observation_ref", "scene_revision", "calibration_ref", "candidate_set_ref")
-            ) or assignment.get("candidate_ref") != binding.candidate_ref:
+            ) or assignment.get("candidate_ref") != selected_ref:
                 raise SubtaskExecutionError("manipulation.prepare assignment differs from trusted intent")
             if assignment.get("capability_snapshot_ref") != binding.capability_snapshot_ref:
                 raise SubtaskExecutionError("manipulation.prepare assignment changed capability provenance")
@@ -929,16 +970,18 @@ class RuntimeSubtaskDriver:
         expected_revision: str | None,
     ) -> None:
         """Reject a new revision carrying old motion candidate artifacts."""
+        # Each capture may publish a new calibration artifact. The binding
+        # adapter checks its Query chain against that capture's calibration;
+        # an old artifact URI is not a requirement for a fresh binding.
         if (
             refreshed.entity_ref != previous.entity_ref
             or refreshed.destination_ref != previous.destination_ref
             or refreshed.scene_revision != expected_revision
-            or refreshed.calibration_ref != previous.calibration_ref
             or refreshed.frame_id != previous.frame_id
             or refreshed.binding_ref == previous.binding_ref
         ):
             raise ValueError(
-                "refreshed perception changed subtask identity, frame, revision, or calibration binding"
+                "refreshed perception changed subtask identity, frame, revision, or binding"
             )
         if refreshed.observation_ref == previous.observation_ref:
             raise ValueError("refreshed perception must provide a new observation reference")
@@ -1039,6 +1082,7 @@ class SubtaskActionEndpoint:
                 caller_id,
                 self.refresh_binding,
                 self.assignment_store,
+                initial_scene_revision=context.get("scene_revision"),
             )
             return ActionAdmission(
                 terminal_result={"status": "unknown", "outcome_known": False},
@@ -1091,6 +1135,7 @@ SUBTASK_TOOL_SPEC: dict[str, Any] = {
                     "measured_pose": {"type": "object"},
                     "measured_geometry": {"type": "object"},
                     "grasp_candidate": {"type": "object"},
+                    "grasp_candidates": {"type": "array", "items": {"type": "object"}},
                     "grasp_candidate_ref": {"type": "string", "pattern": r"^candidate-set://\S+$"},
                     "candidate_set_ref": {"type": "string", "pattern": r"^candidate-set://\S+$"},
                     "candidate_ref": {"type": "string", "pattern": r"^candidate://\S+$"},

@@ -40,7 +40,12 @@ input_schema:
       items:
         type: object
         additionalProperties: false
-        required: [entity_ref, category, confidence, spatial_envelope]
+        required: [entity_ref, category, confidence]
+        anyOf:
+          - required: [spatial_envelope]
+          - required: [geometry_artifacts]
+            properties:
+              geometry_artifacts: {minItems: 1}
         properties:
           entity_ref:
             type: string

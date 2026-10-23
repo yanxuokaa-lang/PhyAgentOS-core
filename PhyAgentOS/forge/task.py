@@ -1286,6 +1286,11 @@ class AgentTaskCoordinator:
             raise AgentTaskError(f"persisted subtask intent is invalid: {exc}") from exc
         if intent != expected_intent:
             raise AgentTaskError("persisted subtask intent does not match the active PlanNode")
+        selected_scene_revision = next((
+            trace.scene_revision for trace in task.active_revision.planning_selections
+            if trace.resumable_selection is not None
+            and trace.resumable_selection.planning_binding.decision_trace_ref == record.decision_trace_ref
+        ), intent.scene_revision)
         return {
             "task_id": task_id,
             "revision_id": revision_id,
@@ -1300,6 +1305,7 @@ class AgentTaskCoordinator:
                 **binding.model_dump(mode="json"),
             },
             "intent": intent.model_dump(mode="json"),
+            "scene_revision": selected_scene_revision,
             "node_input_bindings": deepcopy(dict(node.input_bindings)),
         }
 
@@ -4491,6 +4497,12 @@ class AgentTaskCoordinator:
             return next(item for item in current.tool_bindings if item.tool_id == tool_id)
         except ForgeSkillBindingError as exc:
             raise AgentTaskError(str(exc)) from exc
+
+    async def enroll_tool_contract(
+        self, task_id: str, tool_id: str, semantics: Literal["query", "action", "session"]
+    ) -> BoundToolSpec:
+        """Enroll a precomposed plan's Tool contract without starting an invocation."""
+        return await self._require_binding_tool(task_id, tool_id, semantics)
 
     def _append_execution(
         self,

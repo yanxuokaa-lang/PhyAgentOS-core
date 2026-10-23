@@ -18,8 +18,21 @@ def main() -> int:
     parser.add_argument("--result", type=Path, help="inspect a completed worker result without starting Isaac Sim")
     parser.add_argument("--operation", choices=("pour_cycle", "stir_cycle", "manipulation_cycle"), default="pour_cycle")
     parser.add_argument("--dry-run", action="store_true", help="resolve controller capability without starting Isaac Sim")
+    parser.add_argument("--observe", action="store_true", help="render and capture the simulator cameras without issuing robot commands")
+    parser.add_argument("--sensor-ref", action="append", help="camera reference for --observe; may be repeated")
+    parser.add_argument("--artifact-root", type=Path, help="directory for captured observation artifacts")
     args = parser.parse_args()
     profile = LabUtopiaProfile.from_json(args.profile)
+    if args.observe:
+        if not args.sensor_ref:
+            parser.error("--observe requires at least one --sensor-ref")
+        backend = LabUtopiaBackend(profile, observation_artifact_root=args.artifact_root)
+        try:
+            output = backend.observe({"sensor_refs": args.sensor_ref})
+        finally:
+            backend.close()
+        print(json.dumps(output, ensure_ascii=False, indent=2, default=str))
+        return 0 if output.get("status") == "available" else 2
     previous = None
     if args.previous_input:
         previous = json.loads(args.previous_input.read_text(encoding="utf-8"))

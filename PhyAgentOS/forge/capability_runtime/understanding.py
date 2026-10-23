@@ -301,6 +301,7 @@ TOOL_SPEC: dict[str, Any] = {
                     "properties": {
                         "entity_ref": {"type": "string", "pattern": _ENTITY_REF.pattern},
                         "category": {"type": "string", "minLength": 1},
+                        "label": {"type": "string", "minLength": 1},
                         "confidence": {"type": "number", "minimum": 0, "maximum": 1},
                         "provenance": _PROVENANCE_SCHEMA,
                     },
@@ -387,6 +388,17 @@ TOOL_SPEC: dict[str, Any] = {
         },
     },
     "robot_frame_profile": {"observation_frame": "observation", "unit": "m"},
+}
+
+
+# The endpoint echoes the validated capture views; an absent multi-view input
+# is represented by an empty output list.
+TOOL_SPEC["output_schema"]["properties"]["views"] = {
+    **deepcopy(TOOL_SPEC["input_schema"]["properties"]["views"]),
+    "minItems": 0,
+}
+TOOL_SPEC["output_schema"]["properties"]["capture_skew_ms"] = {
+    "type": "integer", "minimum": 0,
 }
 
 
@@ -608,7 +620,9 @@ def validate_arguments(arguments: Any) -> dict[str, Any] | None:
         entity_ref = entity.get("entity_ref") if isinstance(entity, dict) else None
         if (
             not isinstance(entity, dict)
-            or set(entity) != {"entity_ref", "category", "confidence", "provenance"}
+            or not {"entity_ref", "category", "confidence", "provenance"} <= set(entity)
+            or set(entity) - {"entity_ref", "category", "label", "confidence", "provenance"}
+            or ("label" in entity and (not isinstance(entity["label"], str) or not entity["label"].strip()))
             or not isinstance(entity_ref, str) or _ENTITY_REF.fullmatch(entity_ref) is None
             or entity_ref in seen_carried
             or not isinstance(item.get("source_scene_revision"), str)
@@ -888,11 +902,13 @@ def validate_snapshot(
     for entity in snapshot.entities:
         if (
             not isinstance(entity, dict)
-            or set(entity) != {"entity_ref", "category", "confidence", "provenance"}
+            or not {"entity_ref", "category", "confidence", "provenance"} <= set(entity)
+            or set(entity) - {"entity_ref", "category", "label", "confidence", "provenance"}
             or not isinstance(entity.get("entity_ref"), str)
             or _ENTITY_REF.fullmatch(entity["entity_ref"]) is None
             or not isinstance(entity.get("category"), str)
             or not entity["category"].strip()
+            or ("label" in entity and (not isinstance(entity["label"], str) or not entity["label"].strip()))
             or not _finite_confidence(entity.get("confidence"))
         ):
             return "invalid_entity_claim"

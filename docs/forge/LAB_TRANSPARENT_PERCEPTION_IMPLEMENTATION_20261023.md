@@ -8,7 +8,7 @@
 
 **实施主线：全局定位与近景观测 → 标签/实例分割 → ReMake 恢复公制几何 → GraspNet 候选 → 功能点与路线准备 → 执行反馈。** DFNet 只作为同输入对照和可替换 Provider。主线暂不同时集成 ClearGrasp、ASGrasp 或 NeRF，触发条件见后文。
 
-ReMake 是待验证的首选机制，尚无本项目实际推理结果；它的官方 PCF-Grasp 流程不进入 PAOS。近景观测和功能点证据是该方案的一部分，不能只装一个深度模型就认为链路成立。
+ReMake 已完成本项目真实推理，但当前观测几何未通过执行验证；它的官方 PCF-Grasp 流程不进入 PAOS。近景观测和功能点证据是该方案的一部分，不能只装一个深度模型就认为链路成立。
 
 ## 当前问题与修复对应
 
@@ -104,11 +104,11 @@ ReMake 是待验证的首选机制，尚无本项目实际推理结果；它的�
 | `pick_place_workflow/perception_binding.py`、`subtask_executor.py` | 复用现有引用/候选/阶段刷新 | 持有后保持 acquisition 证据；过期、取消、失败不重放 |
 | `isaacsim_lab/perception_probe.py` 与对应 tests | 将离线回放/模型比较接入已有探针，输出证据 | 无 simulator 映射也可查询；输出目录不覆盖历史 |
 
-以上文件是待实施范围，不表示本轮已修改实现。新增 worker 的具体文件放在现有可复用感知层，与 SAM2/GraspNet worker 同一机制层；不用临时脚本承担正式推理，也不为此迁移整个项目目录。
+以上是完整计划范围；v16.0.0 已交付 Provider/查询接入及真实推理，阶段状态见文末。新增 worker 的具体文件放在现有可复用感知层，与 SAM2/GraspNet worker 同一机制层；不用临时脚本承担正式推理，也不为此迁移整个项目目录。
 
 ## 命令与产物
 
-以下为现有探针命令；它仍运行当前待修实现，不能宣称包含 ReMake。每次使用新的输出目录，保留失败产物：
+以下探针现已接入 ReMake；成功状态仅说明感知与候选查询完成，不代表几何或动作验收。每次使用新的输出目录，保留失败产物：
 
 ```bash
 OMNI_KIT_ACCEPT_EULA=YES \
@@ -119,7 +119,7 @@ PYTHONPATH=.:examples/forge-adapters/isaacsim_lab/src:examples/forge-adapters/ro
   --workspace "out/releases/v15.10.2/perception-$(date +%Y%m%d-%H%M%S)"
 ```
 
-观察已有腕部相机时可将 sensor-ref 改为 `sensor://tabletop_wrist`；这只选择相机，不会自动把机械臂移动到近景位置。离线回放和模型对照选项尚需扩展现有探针，交付时记录实际可运行命令，不能把拟定参数当作已支持功能。
+观察已有腕部相机时可将 sensor-ref 改为 `sensor://tabletop_wrist`；这只选择相机，不会自动把机械臂移动到近景位置。现已支持 `--replay`、`--geometry-method` 和 `--perception-config`，实际命令见文末及 worker 说明。
 
 实施后运行现有集成测试并加入上表失败案例：
 
@@ -142,4 +142,31 @@ PYTHONPATH=.:examples/forge-adapters/isaacsim_lab/src:examples/forge-adapters/ro
 - 几何通过但 GraspNet/准备失败：检查接触参考点、夹爪约束和路线；不产生规则抓取作为替代。
 - 工作端完全遮挡且没有适用完整观测：先解决完整观测采集；不能宣称玻璃棒搅拌已经可执行。
 
-本轮已保存诊断与方案，并验证现有探针 `--help`、文档链接、UTF-8、代码围栏和 Diff；没有安装模型、启动仿真或修改运动代码。下一实施切片为 **P0＋P1 的无运动接口与输入适配**，随后完成 P2–P3 的场景观测和几何测量。
+当前交付状态见下节；旧方案的“尚未实施”状态由本次真实运行证据更新。
+
+## v16.0.0 交付与未通过项
+
+| 阶段 | 当前结果 | 证据 / 下一步 |
+|---|---|---|
+| P0–P1 接口、失败路径和输入适配 | 已实施；ReMake 权重实际加载推理，DFNet 同端口已实现 | 原始/恢复/估计来源独立，单个对象失败保留，worker 故障不回退原始点云；DFNet 权重仍缺 |
+| P2 原场景观测 | 已回放第三人称，并采集新腕部观测 | 原场景保留；当前腕部视角严重自遮挡，需设计独立标定近景或验证安全观察姿态 |
+| P3 几何/功能点 | 未通过 | 远景恢复出现明显位置偏移；标签不可读，棒工作端不确定；没有完整棒的相机测量登记 |
+| P4 GraspNet 查询 | 已跑真实模型；准备未通过 | 第三人称 13 点云/256 候选；腕部 11 点云/192 候选；这些是候选数，不是成功率 |
+| P5 动作/Agent任务 | 未执行 | 继续要求几何、功能点、身份及路线证据后才能使能；不得改标志绕过 |
+
+可替换模型放在既有 robotwin20 可复用 Provider/worker 层；Isaac 组合配置不改变 Agent/Tool 语义。标准 `grasp.propose` 与 Agent 投影现支持已有点云引用作为独立几何输入：GraspNet 与 GraspGen 均消费这一端口，原 envelope 输入仍受原验证。未知几何不会为满足契约而编造置信度。当前完整任务绑定仍要求有效空间几何，因此它保持不可用，而不是把候选查询成功结算为任务成功。
+
+`process_features` 只拟合明确图像功能点；几何估计与功能点估计分别保留。持有刷新同时读取源工具与容器当前功能点，使用物理反馈把已观测功能点表达在既定持物坐标系中；原 acquisition 候选及几何历史保持不变。当前没有可被接受的已验证几何来源，持有运动仅有替换测试，未实际执行。
+
+真实上游数值检查执行官方 `img_rel_preprocess` 与 `Inferencer.inference` 方法体、同一训练模型和同帧输入，最大差 **0 m**。它排除了该帧上的输入适配计算差异，不能证明模型在当前相机距离和渲染玻璃上泛化。禁止根据结果从 USD 回填深度，或给模型估计加一个未经证据支持的高置信度。
+
+运行目录：
+
+- `out/releases/v16.0.0/remake-r2-20261023-c/`：完整点云回放主记录。
+- `out/releases/v16.0.0/remake-wrist-20261023-a/`：新腕部观测。
+- `out/releases/v16.0.0/dfnet-r2-20261023-a/`：缺权重失败。
+- `out/releases/v16.0.0/upstream-parity-20261023-a.json`：数值对照。
+
+版本化摘要与图：`evidence/transparent-implementation-20261023.json`、`evidence/transparent-depth-comparison-20261023.png`。部署、复现及失败分叉命令见 `../../examples/forge-adapters/robotwin20/runtime/transparent-geometry.md`。
+
+下一阶段依赖：先取得无本体遮挡、标签和功能区清晰且有标定的近景；在同一输入上验证恢复与原始深度的对应，使用独立观测或离线评估真值测误差；若仍不能恢复正确表面，再决定域适配训练或替换前端。完整棒必须先有真实相机观测及当前配准；不能用场景设定的棒长填充缺失部分。通过这些测量以后，再补齐可验证空间几何的绑定路径并进行无运动准备，最后逐项验收抓取、倾倒、搅拌及归位。

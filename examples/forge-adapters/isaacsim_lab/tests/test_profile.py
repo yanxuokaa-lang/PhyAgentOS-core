@@ -130,3 +130,20 @@ def test_profile_rejects_non_world_source_control_path(tmp_path):
             "destination_path": "/World/target_beaker",
             "source_control_path": "glass_rod/Cylinder",
         })
+
+
+@pytest.mark.parametrize("values", [
+    {"physics_dt_s": .02, "control_dt_s": .01},
+    {"physics_dt_s": .01, "control_dt_s": .015},
+    {"startup_settle_s": -1}, {"startup_settle_s": float("nan")},
+    {"physics_scene_path": "relative"},
+])
+def test_profile_rejects_invalid_simulation_clock(tmp_path, values):
+    from dataclasses import asdict
+
+    configured = asdict(profile(tmp_path))
+    configured = {key: str(value) if hasattr(value, "as_posix") else value
+                  for key, value in configured.items()}
+    configured.update(values)
+    with pytest.raises(LabProfileError):
+        LabUtopiaProfile.from_mapping(configured)

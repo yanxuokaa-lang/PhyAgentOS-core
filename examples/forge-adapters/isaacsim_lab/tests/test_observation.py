@@ -25,7 +25,8 @@ class FakeCamera:
         self.calls.append("depth")
         return [[1.25]]
 
-    def get_pointcloud(self):
+    def get_pointcloud(self, *, world_frame):
+        assert world_frame is False
         self.calls.append("point_cloud")
         return [[0.1, 0.2, 0.3]]
 
@@ -36,7 +37,7 @@ class CalibratedCamera(FakeCamera):
         return [[100.0, 0.0, 32.0], [0.0, 101.0, 24.0], [0.0, 0.0, 1.0]]
 
     def get_world_pose(self, *, camera_axes):
-        assert camera_axes == "world"
+        assert camera_axes == "ros"
         return [1.0, 2.0, 3.0], [1.0, 0.0, 0.0, 0.0]
 
     def get_resolution(self):

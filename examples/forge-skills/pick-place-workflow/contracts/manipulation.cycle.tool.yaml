@@ -53,6 +53,9 @@ input_schema:
     capability_snapshot_ref:
       type: string
       minLength: 1
+    binding_ref:
+      type: string
+      pattern: ^artifact://\S+$
     operation:
       const: manipulation_cycle
     parameters:
@@ -499,6 +502,9 @@ output_schema:
         capability_snapshot_ref:
           type: string
           minLength: 1
+        binding_ref:
+          type: string
+          pattern: ^artifact://\S+$
         operation:
           const: manipulation_cycle
         parameters:

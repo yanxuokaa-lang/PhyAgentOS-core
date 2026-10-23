@@ -531,3 +531,25 @@ def test_derived_artifact_chain_requires_declared_prior_artifact():
         Provider(understanding_snapshot(derived_artifacts=(mask, points)))
     ).invoke(request_payload())
     assert output["error"]["code"] == "invalid_derived_artifact_lineage"
+
+
+@pytest.mark.parametrize("label", [None, "REAGENT A"])
+def test_visible_label_is_optional_in_real_query_contract(label):
+    from copy import deepcopy
+
+    from jsonschema import validate
+
+    entity = deepcopy(understanding_snapshot().entities[0])
+    if label is not None:
+        entity["label"] = label
+    output = SceneUnderstandingEndpoint(Provider(understanding_snapshot(entities=(entity,)))).invoke(request_payload())
+    assert output["status"] == "available"
+    assert output["entities"][0].get("label") == label
+    validate(output, UNDERSTANDING_TOOL_SPEC["output_schema"])
+
+
+@pytest.mark.parametrize("label", ["", "   ", 7, None])
+def test_explicit_invalid_visible_label_is_rejected(label):
+    entity = {**understanding_snapshot().entities[0], "label": label}
+    output = SceneUnderstandingEndpoint(Provider(understanding_snapshot(entities=(entity,)))).invoke(request_payload())
+    assert output["status"] == "invalid"

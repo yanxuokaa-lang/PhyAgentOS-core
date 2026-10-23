@@ -30,9 +30,11 @@ class IsaacWorkerSession:
         startup_timeout_s: float = 120.0,
         request_timeout_s: float = 900.0,
         observation_artifact_root: str | Path | None = None,
+        python_executable: str | Path | None = None,
         process_factory: Any = subprocess.Popen,
     ) -> None:
         self.profile_path = Path(profile_path)
+        self.python_executable = str(python_executable or sys.executable)
         self.startup_timeout_s = float(startup_timeout_s)
         self.request_timeout_s = float(request_timeout_s)
         self.observation_artifact_root = (
@@ -56,7 +58,7 @@ class IsaacWorkerSession:
         timeout_s: float | None = None,
     ) -> dict[str, Any]:
         if method not in {
-            "execute_cycle", "prepare_manipulation", "execute_phase", "observe", "scene_revision"
+            "execute_cycle", "prepare_manipulation", "execute_phase", "observe", "scene_revision", "bind_observed_entities"
         }:
             raise ValueError(f"unsupported Isaac worker method: {method}")
         timeout = self.request_timeout_s if timeout_s is None else float(timeout_s)
@@ -132,7 +134,7 @@ class IsaacWorkerSession:
         if self.observation_artifact_root is not None:
             env["PAOS_ISAAC_OBSERVATION_ARTIFACT_ROOT"] = str(self.observation_artifact_root)
         process = self._process_factory(
-            [sys.executable, "-m", "isaacsim_lab.worker"],
+            [self.python_executable, "-m", "isaacsim_lab.worker"],
             env=env,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
