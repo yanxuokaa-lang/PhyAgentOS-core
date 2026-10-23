@@ -1,0 +1,22 @@
+{
+  "target_index": 7,
+  "entity": {
+    "entity_ref": "entity://observed-45e51b6def3b416da8ef696395dad39c",
+    "category": "mixing_vessel",
+    "confidence": 0.99,
+    "provenance": [
+      "artifact://labutopia/rgb/aee040c9364741cdb2242ce505a3f096.png"
+    ]
+  },
+  "bbox_xyxy_px": [
+    774,
+    603,
+    829,
+    695
+  ],
+  "mask_pixels": 4100,
+  "point_count": 4100,
+  "candidate_count": 0,
+  "top_candidates": [],
+  "candidate_status": "no candidates: mixing_vessel is excluded as a grasp source in the replay probe"
+}

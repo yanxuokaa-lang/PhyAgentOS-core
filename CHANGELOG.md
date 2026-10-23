@@ -40,6 +40,44 @@
 
 ## 最近五版本 / Latest five versions
 
+## v16.0.1 (2026-10-23 13:38) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [eval] [exp] 基于同一第三人称 RGB-D、实例 mask 和标定，对比 raw-depth 基线、ReMake 与 DFNet 状态，聚焦工作流目标锥形瓶。 / Compared raw depth, ReMake and DFNet status on one third-person RGB-D capture, focusing on the workflow conical-flask target. (local)
+- [docs] [feat] 生成全景及逐目标可视化、数值摘要和模型选型诊断；DFNet 不可用时明确显示无输出。 / Generated panorama/target visualizations, metrics and model-selection diagnosis; unavailable DFNet is shown without fabricated output. (local)
+
+### 文件变更详情 / File Change Details
+
+#### [新增 / Added] `scripts/render_transparent_model_diagnosis.py` L1-L277
+
+```diff
++raw_cloud_target = raw_mask_cloud(target_mask, raw_depth, intrinsics)
++target_strip.save(args.out / "target-conical-flask-comparison.png")
++overview.save(args.out / "panorama-model-comparison.png")
+```
+
+#### [新增 / Added] `docs/diagnostics/transparent-model-comparison-20261023.md` L1-L84
+
+```diff
++| raw depth | mask 内 q50≈2.043 m；历史 cloud 3,213 点 | 失败/未验证基线 |
++| ReMake | 恢复 cloud 4,100 点；geometry qualification 未验证 | 下一轮主候选 |
++| DFNet | 缺 checkpoint，无可比较输出 | 补权重后重跑 |
+```
+
+#### [新增 / Added] `docs/diagnostics/assets/transparent-model-comparison-20261023/*`
+
+- `panorama-model-comparison.png`：RGB/mask、raw/ReMake depth、union mask 和全景点云。 / RGB/masks, raw/ReMake depth, union mask and panorama clouds.
+- `target-conical-flask-comparison.png`：目标锥形瓶 RGB/mask、depth、共享范围点云和候选状态。 / Target-flask RGB/mask, depth, shared-range clouds and candidate status.
+- `target-summary.json`：目标引用、mask/cloud 计数及无候选原因。 / Target reference, mask/cloud counts and no-candidate reason.
+
+### 验证 / Validation
+- 离线渲染成功：全景 `1280x1572`，目标图 `1280x2096`；JSON 引用和图片读取均通过。 / Offline rendering passed: panorama `1280x1572`, target view `1280x2096`; JSON references and PNG decoding passed.
+- 目标为 `mixing_vessel`，4,100 mask 像素/点；候选数 0 是因其未作为抓取源，不代表模型失败。DFNet run 因缺权重失败。 / Target is `mixing_vessel`, with 4,100 mask pixels/points; zero candidates reflects its exclusion as a grasp source, not model failure. DFNet run lacks weights.
+- 未执行运动；模型深度无独立真值精度结论。 / No motion; no independent ground-truth accuracy claim.
+
+### Git 提交 / Git receipt [计划 / Planned]
+- Commit: pending; Branch: `feature/planning-loop`; Push: pending.
+
 ## v16.0.0 (2026-10-23 12:51) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
