@@ -52,7 +52,7 @@
 ### 验证 / Validation
 - 专用环境确认 Torch 2.8.0+cu128/CUDA 可用；LocateAnything `AutoProcessor.from_pretrained` 因缺少 `processor_config.json` 并尝试连接 Hugging Face 而失败（网络不可达）。 / Dedicated Torch 2.8.0+cu128/CUDA available; `AutoProcessor.from_pretrained` failed because `processor_config.json` was missing and Hugging Face was unreachable.
 - 当前记录帧无 LocateAnything 调用结果；因此不能合法声称完成用户要求的左/右模型位姿对比。 / The recorded frame has no LocateAnything result; the requested left/right model-pose comparison cannot be claimed as completed.
-- Commit/Push: pending.
+- Commit: `9270d9f3`; Branch: `feature/planning-loop`; Push: 已成功推送至 `origin/feature/planning-loop`。 / Successfully pushed to `origin/feature/planning-loop`.
 
 ## v16.0.1 (2026-10-23 13:38) - codex
 
