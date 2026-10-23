@@ -1,0 +1,226 @@
+--- a/config/tabletop_station.yaml
++++ b/config/tabletop_station.yaml
+@@ -46,9 +46,14 @@
+     position_xy: [0.23, 0.0]
+   glass_rod:
+     source_prim: /World/glass_rod
+-    position_xy: [-0.49, 0.47]
+-    lay_horizontal: true
+-    horizontal_axis: y
++    rack_slot:
++      # Empty near-side hole; offsets are relative to the rack placement center.
++      center_offset_xy: [-0.01875, -0.07928]
++      bottom_plate: test_tube_rack/group_08/_______1944
++      guide_plates:
++        - test_tube_rack/group_07/_______1943
++        - test_tube_rack/group_12/_______1938
++      support_clearance_m: 0.0002
+   reagent_zones:
+     - id: A
+       title_zh: 试剂区 1
+--- a/utils/tabletop_scene.py
++++ b/utils/tabletop_scene.py
+@@ -294,15 +294,83 @@
+     mass_api.CreateMassAttr(mass)
+
+
+-def _place_horizontal(wrapper: Usd.Prim, source_center: Gf.Vec3d, target_center: Gf.Vec3d, axis: str) -> None:
+-    if axis not in {"x", "y"}:
+-        raise ValueError(f"Unsupported horizontal rod axis: {axis}")
+-    rotation = Gf.Rotation(Gf.Vec3d(0, 1, 0) if axis == "x" else Gf.Vec3d(1, 0, 0), 90)
+-    rotation_matrix = Gf.Matrix4d().SetRotate(rotation)
+-    translation = target_center - rotation_matrix.Transform(source_center)
+-    common = UsdGeom.XformCommonAPI(wrapper)
+-    common.SetTranslate(translation)
+-    common.SetRotate(Gf.Vec3f(0, 90, 0) if axis == "x" else Gf.Vec3f(90, 0, 0), UsdGeom.XformCommonAPI.RotationOrderXYZ)
++def _place_rod_in_rack(stage: Usd.Stage, rod: Usd.Prim, source_points: np.ndarray, rack: Usd.Prim,
++                       rack_center_xy: list[float], slot: dict[str, Any]) -> None:
++    """Author a storage pose from the source axis and the rack support surface."""
++    points = np.unique(source_points.reshape(-1, 3), axis=0)
++    center = (points.min(axis=0) + points.max(axis=0)) * 0.5
++    _, axes = np.linalg.eigh(np.cov(points.T))
++    axis = axes[:, -1]
++    if axis[2] < 0:
++        axis = -axis
++    rotation = Gf.Rotation(Gf.Vec3d(*axis), Gf.Vec3d(0, 0, 1))
++    matrix = Gf.Matrix4d().SetRotate(rotation)
++    rotated = np.array([matrix.Transform(Gf.Vec3d(*point)) for point in points - center])
++    support = stage.GetPrimAtPath(rack.GetPath().AppendPath('Model/' + slot['bottom_plate']))
++    if not support or not support.HasAPI(UsdPhysics.CollisionAPI):
++        raise RuntimeError('Rod storage requires an existing rack support collider')
++    _, support_high = _world_bounds(stage, support)
++    xy = np.asarray(rack_center_xy) + np.asarray(slot['center_offset_xy'])
++    clearance = float(slot['support_clearance_m'])
++    if not np.isfinite(clearance) or not 0 <= clearance <= .001:
++        raise ValueError('Rod support clearance must lie between zero and one millimeter')
++    target_center = Gf.Vec3d(*xy, support_high[2] - rotated[:, 2].min() + clearance)
++    xform = UsdGeom.Xformable(rod)
++    xform.ClearXformOpOrder()
++    xform.AddTranslateOp().Set(target_center - matrix.Transform(Gf.Vec3d(*center)))
++    xform.AddOrientOp(UsdGeom.XformOp.PrecisionDouble).Set(rotation.GetQuat())
++    rod.CreateRelationship('lab:storage_support', custom=True).SetTargets([support.GetPath()])
++    rod.CreateAttribute('lab:storage_slot_center_xy', Sdf.ValueTypeNames.Double2, custom=True).Set(Gf.Vec2d(*xy))
++
++
++def _inspect_rod_storage(stage: Usd.Stage, config: dict[str, Any]) -> dict[str, Any]:
++    """Measure the actual placed rod against the existing rack plates."""
++    rod = stage.GetPrimAtPath('/World/OperationArea/GlassRod')
++    low, high = _world_bounds(stage, stage.GetPrimAtPath(rod.GetPath().AppendChild('Model')))
++    center = np.array((low + high) * .5)
++    radius = max(float(high[0] - low[0]), float(high[1] - low[1])) * .5
++    slot = config['layout']['glass_rod']['rack_slot']
++    support_path = '/World/TubeRack/Model/' + slot['bottom_plate']
++    support = stage.GetPrimAtPath(support_path)
++    support_low, support_high = _world_bounds(stage, support)
++    gap = float(low[2] - support_high[2])
++    if rod.GetRelationship('lab:storage_support').GetTargets() != [support.GetPath()]:
++        raise RuntimeError('Rod storage support does not match its configured rack plate')
++    if not -.0001 <= gap <= .001:
++        raise RuntimeError(f'Rod does not rest on the rack bottom plate: gap={gap:.6f} m')
++    if any(low[i] < support_low[i] or high[i] > support_high[i] for i in (0, 1)):
++        raise RuntimeError('Rod extends beyond its rack support')
++    if max(high[0] - low[0], high[1] - low[1]) > .02:
++        raise RuntimeError('Stored rod is not upright')
++    clearances = {}
++    for suffix in slot['guide_plates']:
++        plate = stage.GetPrimAtPath('/World/TubeRack/Model/' + suffix)
++        plate_low, plate_high = _world_bounds(stage, plate)
++        if low[2] >= plate_low[2] or high[2] <= plate_high[2]:
++            raise RuntimeError('Stored rod must pass through both rack guide plates')
++        segments = _cross_section_segments(_world_triangles(stage, plate), (plate_low[2]+plate_high[2])*.5)
++        # An even number of ray crossings places the center in empty space;
++        # support bounds and edge clearance then distinguish a rack hole.
++        a, b = segments[:, 0], segments[:, 1]
++        crossing = (a[:, 1] > center[1]) != (b[:, 1] > center[1])
++        start, end = a[crossing], b[crossing]
++        hits_x = start[:, 0] + (center[1] - start[:, 1]) * (end[:, 0] - start[:, 0]) / (end[:, 1] - start[:, 1])
++        if np.count_nonzero(hits_x > center[0]) % 2:
++            raise RuntimeError(f'Rod center lies inside a solid rack guide plate: {plate.GetPath()}')
++        edge = segments[:, 1] - segments[:, 0]
++        fraction = np.clip(np.sum((center[:2] - segments[:, 0])*edge, axis=1) / np.sum(edge*edge, axis=1), 0., 1.)
++        clearance = float(np.linalg.norm(segments[:, 0]+fraction[:, None]*edge-center[:2], axis=1).min()-radius)
++        if clearance <= 0:
++            raise RuntimeError(f'Rod intersects a rack guide plate: {plate.GetPath()}')
++        clearances[str(plate.GetPath())] = round(clearance, 6)
++    for prim in Usd.PrimRange(stage.GetPrimAtPath('/World/TubeRack')):
++        if prim.GetAttribute('lab:asset_type').Get() == 'test_tube':
++            tube_low, tube_high = _world_bounds(stage, prim)
++            if all(low[i] < tube_high[i] and high[i] > tube_low[i] for i in (0, 1, 2)):
++                raise RuntimeError(f'Rod storage overlaps an occupied tube: {prim.GetPath()}')
++    return {'support_path': support_path, 'center_xy_m': center[:2].tolist(),
++            'bottom_z_m': float(low[2]), 'top_z_m': float(high[2]), 'support_gap_m': round(gap, 6),
++            'guide_plate_clearance_m': clearances, 'scope': 'static USD geometry; no grasp or motion qualification'}
+
+
+ def _disable_hidden_source_physics(world: Usd.Prim, retained: set[str]) -> int:
+@@ -532,12 +600,9 @@
+
+     rod_source = layout["glass_rod"]["source_prim"]
+     rod_prim = source_stage.GetPrimAtPath(rod_source)
+-    low, high = _world_bounds(source_stage, rod_prim)
+-    rod_center = Gf.Vec3d(*layout["glass_rod"]["position_xy"], table_top + 0.009)
+-    rod_source_center = (low + high) * 0.5
+-    rod_delta = rod_center - rod_source_center
+-    rod = _add_reference(stage, source, rod_source, "/World/OperationArea/GlassRod", rod_delta)
+-    _place_horizontal(rod, rod_source_center, rod_center, layout["glass_rod"].get("horizontal_axis", "x"))
++    rod = _add_reference(stage, source, rod_source, "/World/OperationArea/GlassRod", Gf.Vec3d(0))
++    _place_rod_in_rack(stage, rod, _world_triangles(source_stage, rod_prim), rack,
++                       layout["test_tube_rack"]["position_xy"], layout["glass_rod"]["rack_slot"])
+     rod_model = stage.GetPrimAtPath("/World/OperationArea/GlassRod/Model")
+     _bind_meshes(stage, rod_model, clear_glass)
+     _set_string(rod, "lab:asset_type", "glass_rod")
+@@ -687,10 +752,10 @@
+                 "initial_bottom_z_m": round(float(low[2]), 6),
+                 "ring_radius_m": round(float(slot.GetAttribute("lab:ring_radius_m").Get()), 6),
+             }
++    rod_storage = _inspect_rod_storage(stage, config)
+     support_paths = [
+         "/World/OperationArea/TargetBeaker/Model",
+         "/World/TubeRack/Model",
+-        "/World/OperationArea/GlassRod/Model",
+     ]
+     support_paths.extend(f"/World/ReagentZones/{zone}/{rid}/Model" for zone, rid in (("A", f"R{i:02d}") for i in range(1, 5)))
+     support_paths.extend(f"/World/ReagentZones/{zone}/{rid}/Model" for zone, rid in (("B", f"R{i:02d}") for i in range(5, 9)))
+@@ -737,6 +802,8 @@
+     items = list(object_bounds.items())
+     for index, (path_a, (low_a, high_a)) in enumerate(items):
+         for path_b, (low_b, high_b) in items[index + 1 :]:
++            if {path_a, path_b} == {"/World/TubeRack", "/World/OperationArea/GlassRod"}:
++                continue  # Inspected support/guide relationship, not free-standing objects.
+             dx = max(low_b[0] - high_a[0], low_a[0] - high_b[0], 0.0)
+             dy = max(low_b[1] - high_a[1], low_a[1] - high_b[1], 0.0)
+             gap = (dx * dx + dy * dy) ** 0.5
+@@ -753,6 +820,7 @@
+         "table_bounds": (tuple(table_min), tuple(table_max)),
+         "table_top_z_m": round(float(table_top), 6),
+         "asset_bottoms_z_m": support_bottoms,
++        "rod_storage": rod_storage,
+         "franka_base_position_m": tuple(robot_position),
+         "franka_render_x_bounds_m": (round(float(robot_min[0]), 3), round(float(robot_max[0]), 3)),
+         "franka_table_edge_clearance_m": round(robot_edge_clearance, 3),
+--- a/assets/chemistry_lab/tabletop_station/tabletop_station.usda
++++ b/assets/chemistry_lab/tabletop_station/tabletop_station.usda
+@@ -1542,9 +1542,11 @@
+         def Xform "GlassRod"
+         {
+             custom string lab:asset_type = "glass_rod"
+-            float3 xformOp:rotateXYZ = (90, 0, 0)
+-            double3 xformOp:translate = (-0.4767046721834609, 1.3421423097057896, 5.211921632558045)
+-            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
++            custom double2 lab:storage_slot_center_xy = (0.21125000000000002, -0.07928)
++            custom rel lab:storage_support = </World/TubeRack/Model/test_tube_rack/group_08/_______1944>
++            quatd xformOp:orient = (0.9997472599943473, 0.02248146200305507, 5.987175478385002e-9, -0)
++            double3 xformOp:translate = (0.2245453185846967, 4.4459205426257995, 0.17418194232682904)
++            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient"]
+
+             def Xform "Model" (
+                 prepend apiSchemas = ["MaterialBindingAPI"]
+--- a/docs/tabletop_station.md
++++ b/docs/tabletop_station.md
+@@ -139,7 +139,7 @@
+
+ This change defines return targets and static validation only; existing task controllers in `main.py` do not consume them yet. Future tasks should use the vessel, restore orientation, plan to the assigned slot, place/release it, and verify the released object is in its assigned region, upright and stable. End-effector arrival alone is insufficient. Rings are visual markers, not physical recesses or obstacles.
+
+-### 当前验证与预览 / Current validation and preview
++### 先前验证与预览（v0.2.2） / Earlier validation and preview (v0.2.2)
+
+ ```bash
+ conda run --no-capture-output -n labutopia python scripts/build_tabletop_station.py build
+@@ -149,10 +149,35 @@
+ OMNI_KIT_ACCEPT_EULA=YES conda run --no-capture-output -n labutopia python scripts/preview_tabletop_station.py --view wrist-preview
+ ```
+
+-最新输出（v0.2.2）：`2133` USD prim、Franka `11` render meshes、双相机 prim、8 个唯一瓶位、R01-R08 各一个标签面及 6 个试管。inspect 验证每个标签面朝向全局相机，且标签中心相对相机侧瓶壁的偏移符合配置 `3 mm`；此前背侧命中问题已修复。56 个 Lula IK/限位姿态仍通过。RTX 5060 Ti 被动第三视角预览已打开，桌面截图中可见标签位于相机侧；`preview.png` 和 `preview_wrist.png` 是先前截图，未覆盖。标签文字的自动识别准确率、碰撞和完整轨迹仍未验证。
++当时输出（v0.2.2）：`2133` USD prim、Franka `11` render meshes、双相机 prim、8 个唯一瓶位、R01-R08 各一个标签面及 6 个试管。inspect 验证每个标签面朝向全局相机，且标签中心相对相机侧瓶壁的偏移符合配置 `3 mm`；此前背侧命中问题已修复。56 个 Lula IK/限位姿态仍通过。RTX 5060 Ti 被动第三视角预览已打开，桌面截图中可见标签位于相机侧；`preview.png` 和 `preview_wrist.png` 是先前截图，未覆盖。标签文字的自动识别准确率、碰撞和完整轨迹仍未验证。
+
+-Latest output (v0.2.2): 2133 USD prims, 11 Franka render meshes, two cameras, eight return slots, eight label faces and six tubes. Inspect confirms each label faces the global camera and sits 3 mm outside the camera-facing bottle wall; the prior backside-hit placement bug is fixed. All 56 Lula IK/limit poses still pass. The passive third-person RTX preview opened on the RTX 5060 Ti and the desktop capture shows labels on camera-facing bottle walls. Automatic text-recognition accuracy, collisions and complete paths remain unverified. Existing `preview.png` and `preview_wrist.png` were not overwritten.
++Earlier output (v0.2.2): 2133 USD prims, 11 Franka render meshes, two cameras, eight return slots, eight label faces and six tubes. Inspect confirms each label faces the global camera and sits 3 mm outside the camera-facing bottle wall; the prior backside-hit placement bug is fixed. All 56 Lula IK/limit poses still pass. The passive third-person RTX preview opened on the RTX 5060 Ti and the desktop capture shows labels on camera-facing bottle walls. Automatic text-recognition accuracy, collisions and complete paths remain unverified. Existing `preview.png` and `preview_wrist.png` were not overwritten.
+
+ 尚未验证机械臂与场景碰撞、抓取宽度和完整操作轨迹；Kit 仍报告远程 `Blue_Glass.mdl` 找不到。预览无控制器，物理保持暂停，也没有硬件动作。
+
+ Robot/environment collision, grasp width and complete manipulation paths remain unvalidated; Kit still reports the remote `Blue_Glass.mdl` unavailable. Preview has no controller, physics remains paused and no hardware action is issued.
++
++
++### 玻璃棒放入试管架（v0.2.7） / Glass rod rack storage (v0.2.7)
++
++当前场景仍由 `python scripts/preview_tabletop_station.py --view third-person` 打开。玻璃棒已从台面外围横放改为竖直放入试管架靠操作区的一个空孔；现有 R01–R08 标签、八个瓶位、烧杯及六支试管保持原布局。试管架有两列、每列七孔，选定孔中心相对架中心为 `[-0.01875, -0.07928] m`，世界位置为 `[0.21125, -0.07928] m`。构建器只负责场景初始摆放；此位置及源网格轴向不能作为 PAOS 的抓取候选。PAOS 抓取仍须来自相机观测、分割/点云和 GraspNet。
++
++Open the current scene with `python scripts/preview_tabletop_station.py --view third-person`. The rod now stands in an empty rack hole near the work area. R01–R08 labels, eight bottle slots, the beaker and six tubes retain their layout. The rack has two rows of seven holes; the selected center is `[-0.01875, -0.07928] m` relative to the rack center, or `[0.21125, -0.07928] m` in world coordinates. The builder owns initial scene placement only. This pose and source-mesh axis are not PAOS grasp candidates; those must come from camera observations, segmentation/point clouds and GraspNet.
++
++`build` 和 `inspect` 通过：棒底 `z=0.718586 m`、棒顶 `z=0.968586 m`；棒底距架底支撑板 `0.2 mm`，上下两层孔板的最小径向净空均约 `8.039 mm`，与已有试管无包围盒重叠。检查使用孔板实际截面，同时判定棒中心位于孔内、棒体不穿孔壁及底部支撑。临时 session-layer 反例验证分别拒绝悬空、插入实体板和碰撞孔边，未保存任何反例位姿。场景采用米、Z 向上，位置均为 USD 世界坐标。
++
++`build` and `inspect` pass: rod bottom `z=0.718586 m`, top `z=0.968586 m`, bottom support gap `0.2 mm`, and minimum radial clearance approximately `8.039 mm` at both guide plates. There is no AABB overlap with existing tubes. Inspection checks the actual plate section for an empty-hole center, wall clearance and bottom support. Temporary session-layer counterexamples reject floating, solid-plate insertion and hole-edge collision without saving those poses. The stage uses meters, Z-up and world coordinates.
++
++静态 RTX 截图保存在 `outputs/tabletop-rod-storage/20261023-r1/`。本次未执行物理步进、抓取或机器人控制；旧的 56 姿态 IK 报告不覆盖新的棒位，也不能作为 GraspNet 或完整轨迹验收。动态稳定性、从架内抓取及归位将在当前场景上重新验证。
++
++Static RTX images are saved under `outputs/tabletop-rod-storage/20261023-r1/`. No physics step, grasp or robot controller ran for this change. The earlier 56-pose IK report does not cover the new rod location and does not establish GraspNet or full-path acceptance. Dynamic stability, rack pickup and return require validation on this scene.
++
++复现 / Reproduce:
++
++```bash
++python scripts/build_tabletop_station.py build
++python scripts/build_tabletop_station.py inspect
++python scripts/preview_tabletop_station.py --view third-person
++```
++
++Run these commands in the existing `labutopia` environment. 在已有 `labutopia` 环境中运行。
