@@ -76,6 +76,10 @@
 
 - [docs] [chore] 修改位置 / Changed ranges: `changelog/2026-10_part9.md:L431-L465`；`CHANGELOG.md:L43-L206`（最近五条滚动更新 / latest-five rolling update）。 (local)
 
+### Git 提交回执 / Git receipt
+- Plan commit: `c15500d6`; Branch: `feature/planning-loop`; Push: `origin/feature/planning-loop` 已成功 / succeeded; 时间 / Time: 2026-10-23 12:34 CST.
+- 本回执随同版本的文档日志提交保存；P0–P5 尚待实施。 / Persist this receipt in a same-version documentation-log commit; P0–P5 implementation remains pending.
+
 ## v15.10.1 (2026-10-23 11:48) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
