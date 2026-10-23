@@ -75,8 +75,8 @@
 - 目标为 `mixing_vessel`，4,100 mask 像素/点；候选数 0 是因其未作为抓取源，不代表模型失败。DFNet run 因缺权重失败。 / Target is `mixing_vessel`, with 4,100 mask pixels/points; zero candidates reflects its exclusion as a grasp source, not model failure. DFNet run lacks weights.
 - 未执行运动；模型深度无独立真值精度结论。 / No motion; no independent ground-truth accuracy claim.
 
-### Git 提交 / Git receipt [计划 / Planned]
-- Commit: pending; Branch: `feature/planning-loop`; Push: pending.
+### Git 提交 / Git receipt
+- Commit: `085de764`; Branch: `feature/planning-loop`; Push: 两次尝试超时，远端未确认 / two attempts timed out; remote receipt unconfirmed.
 
 ## v16.0.0 (2026-10-23 12:51) - codex
 
