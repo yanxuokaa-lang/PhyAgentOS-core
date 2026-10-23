@@ -1,0 +1,838 @@
+{
+  "record_version": 1,
+  "created_at": "2026-10-23T11:57:10+08:00",
+  "purpose": "Save targeted search and engineering feasibility review; no model or motion acceptance",
+  "search": {
+    "query_families": [
+      "transparent object depth completion grasping 2025 2026 RGB D official repository pretrained",
+      "TransCG DFNet inference GraspNet",
+      "ClearGrasp normals depth2depth",
+      "ASGrasp raw IR RGB",
+      "ReMake checkpoint inference builder depth limits",
+      "Dex-NeRF transparent objects Dex-Net"
+    ],
+    "selection_criteria": [
+      "current sensor compatibility",
+      "relevance to observed glass failures",
+      "verifiable primary paper and official inference resources",
+      "preserve GraspNet and PAOS ownership"
+    ],
+    "coverage": "targeted, not exhaustive",
+    "retrieval_notes": [
+      "some raw.githubusercontent.com requests failed; corresponding source verified via GitHub contents API",
+      "arXiv initial HTML fetched; later retry timed out",
+      "checkpoint links verified in README only; no checkpoint download or execution"
+    ]
+  },
+  "sources": [
+    {
+      "id": "S1",
+      "title": "ReMake paper v1",
+      "url": "https://arxiv.org/html/2508.02507v1",
+      "additional_urls": [],
+      "accessed_on": "2026-10-23",
+      "verified_facts": "RGB-D, instance mask, relative depth; author-system viewpoint comparison in Table II; initial HTML read succeeded, later reread timed out"
+    },
+    {
+      "id": "S2",
+      "title": "ReMake official repository",
+      "url": "https://github.com/ChengYaofeng/ReMake",
+      "additional_urls": [
+        "https://chengyaofeng.github.io/ReMake.github.io/"
+      ],
+      "accessed_on": "2026-10-23",
+      "verified_facts": "README verified through GitHub contents API; published checkpoint link and inference scripts; PCF-Grasp downstream, not PAOS GraspNet; weights not downloaded"
+    },
+    {
+      "id": "S3",
+      "title": "ReMake inference and builder",
+      "url": "https://github.com/ChengYaofeng/ReMake/blob/main/run_utils/inferencer.py",
+      "additional_urls": [
+        "https://github.com/ChengYaofeng/ReMake/blob/main/run_utils/builder.py"
+      ],
+      "accessed_on": "2026-10-23",
+      "verified_facts": "inference(rgb, depth, rgb_mask=None, target_size=(1280,720)); relative model loaded inside call; fixed 480x640 interpolation; builder default depth 0.3..1.5m"
+    },
+    {
+      "id": "S4",
+      "title": "ReMake inference configuration",
+      "url": "https://github.com/ChengYaofeng/ReMake/blob/main/configs/inference/remake.yaml",
+      "additional_urls": [
+        "https://github.com/ChengYaofeng/ReMake/blob/main/relat_depth_models/load_reldepth_model.py"
+      ],
+      "accessed_on": "2026-10-23",
+      "verified_facts": "inference image_size 640x480; no explicit inference depth limits; Depth Anything V2 small loaded from a separate checkpoint by load_reldepth_model.py"
+    },
+    {
+      "id": "S5",
+      "title": "TransCG/DFNet official repository",
+      "url": "https://github.com/Galaxies99/TransCG",
+      "additional_urls": [
+        "https://github.com/Galaxies99/TransCG/blob/main/assets/docs/grasping.md",
+        "https://graspnet.net/transcg"
+      ],
+      "accessed_on": "2026-10-23",
+      "verified_facts": "RGB-D completion and official GraspNet-baseline integration; dated checkpoint shifting notes are not a measured current-project error"
+    },
+    {
+      "id": "S6",
+      "title": "DFNet actual inference",
+      "url": "https://github.com/Galaxies99/TransCG/blob/main/inference.py",
+      "additional_urls": [
+        "https://github.com/Galaxies99/TransCG/blob/main/utils/builder.py"
+      ],
+      "accessed_on": "2026-10-23",
+      "verified_facts": "returns depth_res and depth_ori; optional nearest-neighbor inpainting; builder defaults to depth 0.3..1.5m"
+    },
+    {
+      "id": "S7",
+      "title": "ClearGrasp official repository",
+      "url": "https://github.com/Shreeyak/cleargrasp",
+      "additional_urls": [],
+      "accessed_on": "2026-10-23",
+      "verified_facts": "normals, masks, occlusion boundaries and C++ depth2depth optimization; old documented dependency stack"
+    },
+    {
+      "id": "S8",
+      "title": "ASGrasp authors project page",
+      "url": "https://pku-epic.github.io/ASGrasp/",
+      "additional_urls": [
+        "https://github.com/jun7-shi/ASGrasp"
+      ],
+      "accessed_on": "2026-10-23",
+      "verified_facts": "raw IR and RGB inputs; official repository README requires GSNet and publishes checkpoint links"
+    },
+    {
+      "id": "S9",
+      "title": "Dex-NeRF primary publication",
+      "url": "https://proceedings.mlr.press/v164/ichnowski22a.html",
+      "additional_urls": [],
+      "accessed_on": "2026-10-23",
+      "verified_facts": "multiview NeRF transparent-aware geometry; downstream Dex-Net, not an existing GraspNet integration"
+    }
+  ],
+  "local_evidence": {
+    "workspace_relative_root": "out/releases/v15.9.0/tabletop-perception-20261023-r2",
+    "availability": "original images/arrays are local workspace artifacts, not included in this documentation commit",
+    "calibration_path": "out/releases/v15.9.0/tabletop-perception-20261023-r2/artifacts/labutopia/calibration/33764bfa92b143cdb1f815c8d9e646ee.json",
+    "calibration": {
+      "camera_axes": "ros",
+      "camera_pose_world": {
+        "orientation_wxyz": [
+          -0.4406707345782255,
+          0.7097632979922696,
+          -0.46691308050078145,
+          0.2898922899400649
+        ],
+        "position_m": [
+          -1.75,
+          -0.7200000286102295,
+          1.7200000286102295
+        ]
+      },
+      "frame_id": "tabletop_third_person",
+      "intrinsics": [
+        [
+          1832.4981689453125,
+          0.0,
+          800.0
+        ],
+        [
+          0.0,
+          1832.498291015625,
+          600.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "resolution": [
+        1600.0,
+        1200.0
+      ],
+      "scene_revision": "labutopia-tabletop-rod-rack-v1:e7ec1198ab074b2e8c6d9d4e5b4b653d:0",
+      "schema": "paos.camera_calibration.v1",
+      "sensor_ref": "sensor://tabletop_third_person"
+    },
+    "segmentation_replay_path": "out/releases/v15.9.0/tabletop-perception-20261023-r2/segmentation-replay.json",
+    "label_crop_replay_path": "out/releases/v15.9.0/tabletop-perception-20261023-r2/crop-label-read.txt",
+    "visible_bottle_count": 7,
+    "readable_bottle_label_count": 0,
+    "objects": [
+      {
+        "replay_index": 0,
+        "category": "reagent_bottle",
+        "label": null,
+        "bbox_xyxy": [
+          237,
+          499,
+          340,
+          684
+        ],
+        "seed_raw_depth_m": 2.388960838317871,
+        "seed_connected_cloud": {
+          "path": "out/releases/v15.9.0/tabletop-perception-20261023-r2/replay-cloud-0.npy",
+          "point_count": 9361,
+          "world_min_m": [
+            -0.3169945423614302,
+            0.5151681689737908,
+            0.7129215677301668
+          ],
+          "world_max_m": [
+            0.12179798667802078,
+            0.9047387774043452,
+            0.714918044123164
+          ],
+          "world_extent_m": [
+            0.438792529039451,
+            0.38957060843055435,
+            0.0019964763929971596
+          ]
+        },
+        "experimental_foreground_cloud": {
+          "path": "out/releases/v15.9.0/tabletop-perception-20261023-r2/foreground-cloud-0.npy",
+          "point_count": 3242,
+          "world_min_m": [
+            -0.31810039548309654,
+            0.512525858385954,
+            0.7600872661060892
+          ],
+          "world_max_m": [
+            -0.26129963832590963,
+            0.5762882304925938,
+            0.8131077710472103
+          ],
+          "world_extent_m": [
+            0.05680075715718691,
+            0.06376237210663982,
+            0.053020504941121094
+          ]
+        },
+        "current_feature_fit_on_foreground": {
+          "status": "returned_estimate",
+          "features": {
+            "origin_world": [
+              -0.2897000169045031,
+              0.5444070444392739,
+              0.7865975185766498
+            ],
+            "tip_world": [
+              -0.27006374828661656,
+              0.5605678030407697,
+              0.8110609680395656
+            ],
+            "axis_world": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "size_m": [
+              0.05680075715718691,
+              0.06376237210663982,
+              0.053020504941121094
+            ],
+            "source": "segmented_depth"
+          },
+          "verified_as_actual_rim": false
+        }
+      },
+      {
+        "replay_index": 1,
+        "category": "reagent_bottle",
+        "label": null,
+        "bbox_xyxy": [
+          372,
+          508,
+          427,
+          597
+        ],
+        "seed_raw_depth_m": 2.424769639968872,
+        "seed_connected_cloud": {
+          "path": "out/releases/v15.9.0/tabletop-perception-20261023-r2/replay-cloud-1.npy",
+          "point_count": 2205,
+          "world_min_m": [
+            -0.06992975408551638,
+            0.5451389398886981,
+            0.7129764653579926
+          ],
+          "world_max_m": [
+            0.16263092502435916,
+            0.7175204786841507,
+            0.7149565456684872
+          ],
+          "world_extent_m": [
+            0.23256067910987555,
+            0.1723815387954526,
+            0.0019800803104945697
+          ]
+        },
+        "experimental_foreground_cloud": {
+          "path": "out/releases/v15.9.0/tabletop-perception-20261023-r2/foreground-cloud-1.npy",
+          "point_count": 610,
+          "world_min_m": [
+            -0.07418101809195798,
+            0.5329244758325105,
+            0.7363527153165217
+          ],
+          "world_max_m": [
+            -0.03694035159317388,
+            0.573422808881497,
+            0.7626419624761858
+          ],
+          "world_extent_m": [
+            0.0372406664987841,
+            0.040498333048986535,
+            0.026289247159664075
+          ]
+        },
+        "current_feature_fit_on_foreground": {
+          "status": "returned_estimate",
+          "features": {
+            "origin_world": [
+              -0.05556068484256593,
+              0.5531736423570037,
+              0.7494973388963537
+            ],
+            "tip_world": [
+              -0.04018068559161738,
+              0.5605369133971201,
+              0.7606754054834832
+            ],
+            "axis_world": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "size_m": [
+              0.0372406664987841,
+              0.040498333048986535,
+              0.026289247159664075
+            ],
+            "source": "segmented_depth"
+          },
+          "verified_as_actual_rim": false
+        }
+      },
+      {
+        "replay_index": 2,
+        "category": "reagent_bottle",
+        "label": null,
+        "bbox_xyxy": [
+          394,
+          556,
+          480,
+          715
+        ],
+        "seed_raw_depth_m": 2.2522122859954834,
+        "seed_connected_cloud": {
+          "path": "out/releases/v15.9.0/tabletop-perception-20261023-r2/replay-cloud-2.npy",
+          "point_count": 6062,
+          "world_min_m": [
+            -0.30778062153303853,
+            0.3226993118296151,
+            0.7143783939992321
+          ],
+          "world_max_m": [
+            0.041194943473628065,
+            0.5833369746783879,
+            0.7149597809132031
+          ],
+          "world_extent_m": [
+            0.3489755650066666,
+            0.26063766284877277,
+            0.000581386913971027
+          ]
+        },
+        "experimental_foreground_cloud": {
+          "path": "out/releases/v15.9.0/tabletop-perception-20261023-r2/foreground-cloud-2.npy",
+          "point_count": 2264,
+          "world_min_m": [
+            -0.3089250826978702,
+            0.3217284393722619,
+            0.7523619833373603
+          ],
+          "world_max_m": [
+            -0.2658895788291664,
+            0.3761782414964243,
+            0.7967772744317254
+          ],
+          "world_extent_m": [
+            0.043035503868703806,
+            0.054449802124162394,
+            0.04441529109436515
+          ]
+        },
+        "current_feature_fit_on_foreground": {
+          "status": "returned_estimate",
+          "features": {
+            "origin_world": [
+              -0.2874073307635183,
+              0.3489533404343431,
+              0.7745696288845428
+            ],
+            "tip_world": [
+              -0.2701048236653154,
+              0.36051639369405764,
+              0.7947612363710845
+            ],
+            "axis_world": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "size_m": [
+              0.043035503868703806,
+              0.054449802124162394,
+              0.04441529109436515
+            ],
+            "source": "segmented_depth"
+          },
+          "verified_as_actual_rim": false
+        }
+      },
+      {
+        "replay_index": 3,
+        "category": "reagent_bottle",
+        "label": null,
+        "bbox_xyxy": [
+          989,
+          613,
+          1137,
+          876
+        ],
+        "seed_raw_depth_m": 2.0865235328674316,
+        "seed_connected_cloud": {
+          "path": "out/releases/v15.9.0/tabletop-perception-20261023-r2/replay-cloud-3.npy",
+          "point_count": 17701,
+          "world_min_m": [
+            -0.32627286216548623,
+            -0.4219009600159995,
+            0.7128722893716068
+          ],
+          "world_max_m": [
+            0.2204974774399131,
+            -0.2054645265910362,
+            0.7148833855681496
+          ],
+          "world_extent_m": [
+            0.5467703396053993,
+            0.21643643342496333,
+            0.0020110961965427165
+          ]
+        },
+        "experimental_foreground_cloud": {
+          "path": "out/releases/v15.9.0/tabletop-perception-20261023-r2/foreground-cloud-3.npy",
+          "point_count": 6607,
+          "world_min_m": [
+            -0.33009220537616835,
+            -0.41692766007217497,
+            0.7689302982847137
+          ],
+          "world_max_m": [
+            -0.2829089118549182,
+            -0.3160809624477915,
+            0.8320257880628616
+          ],
+          "world_extent_m": [
+            0.04718329352125017,
+            0.10084669762438347,
+            0.06309548977814794
+          ]
+        },
+        "current_feature_fit_on_foreground": {
+          "status": "returned_estimate",
+          "features": {
+            "origin_world": [
+              -0.30650055861554326,
+              -0.36650431125998323,
+              0.8004780431737877
+            ],
+            "tip_world": [
+              -0.27004677506224445,
+              -0.35950128000568216,
+              0.8300446610656973
+            ],
+            "axis_world": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "size_m": [
+              0.04718329352125017,
+              0.10084669762438347,
+              0.06309548977814794
+            ],
+            "source": "segmented_depth"
+          },
+          "verified_as_actual_rim": false
+        }
+      },
+      {
+        "replay_index": 4,
+        "category": "reagent_bottle",
+        "label": null,
+        "bbox_xyxy": [
+          1067,
+          557,
+          1177,
+          755
+        ],
+        "seed_raw_depth_m": 2.2215194702148438,
+        "seed_connected_cloud": {
+          "path": "out/releases/v15.9.0/tabletop-perception-20261023-r2/replay-cloud-4.npy",
+          "point_count": 7625,
+          "world_min_m": [
+            -0.08151987542716399,
+            -0.4087377290296718,
+            0.7128899922811243
+          ],
+          "world_max_m": [
+            0.4074112629602875,
+            -0.23663883428440868,
+            0.7148796784993912
+          ],
+          "world_extent_m": [
+            0.4889311383874515,
+            0.17209889474526313,
+            0.001989686218266895
+          ]
+        },
+        "experimental_foreground_cloud": {
+          "path": "out/releases/v15.9.0/tabletop-perception-20261023-r2/foreground-cloud-4.npy",
+          "point_count": 2466,
+          "world_min_m": [
+            -0.08809952289571599,
+            -0.40491065271954557,
+            0.7600964449854907
+          ],
+          "world_max_m": [
+            -0.05192777837368001,
+            -0.3503529791686401,
+            0.8129885580581989
+          ],
+          "world_extent_m": [
+            0.036171744522035976,
+            0.05455767355090546,
+            0.05289211307270825
+          ]
+        },
+        "current_feature_fit_on_foreground": {
+          "status": "returned_estimate",
+          "features": {
+            "origin_world": [
+              -0.070013650634698,
+              -0.37763181594409284,
+              0.7865425015218448
+            ],
+            "tip_world": [
+              -0.04018902698270426,
+              -0.3595372399469011,
+              0.8110219963069049
+            ],
+            "axis_world": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "size_m": [
+              0.036171744522035976,
+              0.05455767355090546,
+              0.05289211307270825
+            ],
+            "source": "segmented_depth"
+          },
+          "verified_as_actual_rim": false
+        }
+      },
+      {
+        "replay_index": 5,
+        "category": "reagent_bottle",
+        "label": null,
+        "bbox_xyxy": [
+          1264,
+          622,
+          1358,
+          788
+        ],
+        "seed_raw_depth_m": 2.0865235328674316,
+        "seed_connected_cloud": {
+          "path": "out/releases/v15.9.0/tabletop-perception-20261023-r2/replay-cloud-5.npy",
+          "point_count": 7409,
+          "world_min_m": [
+            -0.07518492786445341,
+            -0.6015382229965351,
+            0.712873033432496
+          ],
+          "world_max_m": [
+            0.31932549544767186,
+            -0.5010952896667042,
+            0.7148649125530571
+          ],
+          "world_extent_m": [
+            0.39451042331212527,
+            0.1004429333298309,
+            0.001991879120561091
+          ]
+        },
+        "experimental_foreground_cloud": {
+          "path": "out/releases/v15.9.0/tabletop-perception-20261023-r2/foreground-cloud-5.npy",
+          "point_count": 2645,
+          "world_min_m": [
+            -0.07894027586219554,
+            -0.5945908089774632,
+            0.752337515452775
+          ],
+          "world_max_m": [
+            -0.052771394015658,
+            -0.5280774452751584,
+            0.7967401436759984
+          ],
+          "world_extent_m": [
+            0.02616888184653754,
+            0.06651336370230476,
+            0.044402628223223384
+          ]
+        },
+        "current_feature_fit_on_foreground": {
+          "status": "returned_estimate",
+          "features": {
+            "origin_world": [
+              -0.06585583493892677,
+              -0.5613341271263108,
+              0.7745388295643867
+            ],
+            "tip_world": [
+              -0.04001533695766016,
+              -0.559431498126185,
+              0.7947728433537118
+            ],
+            "axis_world": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "size_m": [
+              0.02616888184653754,
+              0.06651336370230476,
+              0.044402628223223384
+            ],
+            "source": "segmented_depth"
+          },
+          "verified_as_actual_rim": false
+        }
+      },
+      {
+        "replay_index": 6,
+        "category": "reagent_bottle",
+        "label": null,
+        "bbox_xyxy": [
+          1228,
+          791,
+          1310,
+          907
+        ],
+        "seed_raw_depth_m": 1.799161434173584,
+        "seed_connected_cloud": {
+          "path": "out/releases/v15.9.0/tabletop-perception-20261023-r2/replay-cloud-6.npy",
+          "point_count": 4706,
+          "world_min_m": [
+            -0.30003184585030684,
+            -0.5934368718970342,
+            0.7142999994555426
+          ],
+          "world_max_m": [
+            -0.09468364227367432,
+            -0.520508489964833,
+            0.7148172851306653
+          ],
+          "world_extent_m": [
+            0.20534820357663253,
+            0.07292838193220119,
+            0.0005172856751227695
+          ]
+        },
+        "experimental_foreground_cloud": {
+          "path": "out/releases/v15.9.0/tabletop-perception-20261023-r2/foreground-cloud-6.npy",
+          "point_count": 1759,
+          "world_min_m": [
+            -0.3042028148321676,
+            -0.5907117554265952,
+            0.7362421673553072
+          ],
+          "world_max_m": [
+            -0.2808298718168316,
+            -0.532242030621588,
+            0.7625010855488031
+          ],
+          "world_extent_m": [
+            0.02337294301533599,
+            0.05846972480500712,
+            0.026258918193495906
+          ]
+        },
+        "current_feature_fit_on_foreground": {
+          "status": "returned_estimate",
+          "features": {
+            "origin_world": [
+              -0.2925163433244996,
+              -0.5614768930240917,
+              0.7493716264520551
+            ],
+            "tip_world": [
+              -0.27024975049236777,
+              -0.5595116747318977,
+              0.7604582091918498
+            ],
+            "axis_world": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "size_m": [
+              0.02337294301533599,
+              0.05846972480500712,
+              0.026258918193495906
+            ],
+            "source": "segmented_depth"
+          },
+          "verified_as_actual_rim": false
+        }
+      },
+      {
+        "replay_index": 7,
+        "category": "mixing_vessel",
+        "label": null,
+        "bbox_xyxy": [
+          774,
+          603,
+          829,
+          695
+        ],
+        "seed_raw_depth_m": 2.043653964996338,
+        "seed_connected_cloud": {
+          "path": "out/releases/v15.9.0/tabletop-perception-20261023-r2/replay-cloud-7.npy",
+          "point_count": 3213,
+          "world_min_m": [
+            -0.11240197498382565,
+            -0.029312908005796223,
+            0.7138888083659285
+          ],
+          "world_max_m": [
+            -0.07489064415245039,
+            0.02291952625712379,
+            0.8032635572329745
+          ],
+          "world_extent_m": [
+            0.037511330831375256,
+            0.05223243426292001,
+            0.089374748867046
+          ]
+        },
+        "experimental_foreground_cloud": {
+          "path": "out/releases/v15.9.0/tabletop-perception-20261023-r2/foreground-cloud-7.npy",
+          "point_count": 3105,
+          "world_min_m": [
+            -0.1124019752003802,
+            -0.029312907749470596,
+            0.7190533696347647
+          ],
+          "world_max_m": [
+            -0.07489064546918311,
+            0.022919526761380316,
+            0.8032635575796879
+          ],
+          "world_extent_m": [
+            0.037511329731197085,
+            0.05223243451085091,
+            0.08421018794492319
+          ]
+        },
+        "current_feature_fit_on_foreground": {
+          "status": "returned_estimate",
+          "features": {
+            "origin_world": [
+              -0.09364631033478166,
+              -0.00319669049404514,
+              0.7611584636072264
+            ],
+            "tip_world": [
+              -0.08175744803050973,
+              0.00021786103083245613,
+              0.8017489557785116
+            ],
+            "axis_world": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "size_m": [
+              0.037511329731197085,
+              0.05223243451085091,
+              0.08421018794492319
+            ],
+            "source": "segmented_depth"
+          },
+          "verified_as_actual_rim": false
+        }
+      },
+      {
+        "replay_index": 12,
+        "category": "stir_tool",
+        "label": null,
+        "bbox_xyxy": [
+          947,
+          398,
+          962,
+          592
+        ],
+        "seed_raw_depth_m": 2.1975901126861572,
+        "seed_connected_cloud": {
+          "path": "out/releases/v15.9.0/tabletop-perception-20261023-r2/replay-cloud-12.npy",
+          "point_count": 626,
+          "world_min_m": [
+            0.1897766965275518,
+            -0.08934503154771178,
+            0.8211608806443874
+          ],
+          "world_max_m": [
+            0.21233458633994462,
+            -0.07584725664080372,
+            0.9691064275472406
+          ],
+          "world_extent_m": [
+            0.022557889812392817,
+            0.013497774906908067,
+            0.14794554690285322
+          ]
+        }
+      }
+    ],
+    "interpretation": "bottle seed clouds align with table height; foreground-only clouds do not establish full glass or true rims; visible rod extent does not establish hidden work endpoint"
+  },
+  "decision": {
+    "preferred_validation_candidate": "near-view RGB-D + SAM2 + ReMake geometry provider + existing GraspNet",
+    "first_comparison": "DFNet through same geometry artifact seam and GraspNet",
+    "conditional_comparison": "ClearGrasp if shape recovery fails in both first candidates",
+    "deferred_sensor_route": "ASGrasp with actual calibrated raw stereo IR and RGB",
+    "deferred_multiview_route": "Dex-NeRF-style reconstruction if sufficient static calibrated views can be collected",
+    "current_project_accuracy_winner": "unknown; no new geometry-model inference performed"
+  },
+  "acceptance": {
+    "review_saved": true,
+    "new_model_installed": false,
+    "new_model_inference_run": false,
+    "graspnet_on_recovered_geometry_run": false,
+    "new_motion_run": false,
+    "full_agent_task_passed": false
+  },
+  "implementation_findings": [
+    "raw depth incorrectly treated as glass geometry",
+    "label-band top and visible rod extremum cannot establish process features",
+    "private simulator identity binding rereads raw depth",
+    "ReMake and DFNet default inference clipping excludes current bottle seed depths",
+    "resizing/default output resolution must not retain mismatched intrinsics",
+    "semantic confidence and valid-depth fraction do not establish recovered geometry reliability"
+  ]
+}
