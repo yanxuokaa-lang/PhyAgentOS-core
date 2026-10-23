@@ -809,7 +809,12 @@
 
 只提交 `/tmp/paos-v16-task-files.json` 对应的 PAOS 任务文件，不暂存 LabUtopia、其他 lab-assets 修改、会话/项目数据或模型缓存。完整动作验收仍开放；本版本提交的是查询接入与真实失败证据。 / Stage only the PAOS task-owned file list, excluding LabUtopia, unrelated lab-assets changes, session/project data and model caches. Full action acceptance remains open; this version commits query integration and measured failure evidence.
 
-- [docs] [chore] 本记录位置 / Record locations: `changelog/2026-10_part9.md:L472-L1241`；`CHANGELOG.md:L43-L950`。 (local)
+- [docs] [chore] 本记录位置 / Record locations: `changelog/2026-10_part9.md:L472-L1246`；`CHANGELOG.md:L43-L955`。 (local)
+
+### Git 提交回执 / Git receipt
+
+- Implementation commit: `367b099b`; Branch: `feature/planning-loop`; Push: `origin/feature/planning-loop` 已成功 / succeeded; 时间 / Time: 2026-10-23 13:30 CST.
+- 本回执随同版本的日志提交保存；完整 Agent 混合搅拌验收仍开放。 / Persist this receipt in a same-version log commit; full Agent mixing/stirring acceptance remains open.
 
 ## v15.10.2 (2026-10-23 12:30) - codex
 
