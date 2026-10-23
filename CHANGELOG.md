@@ -40,6 +40,20 @@
 
 ## 最近五版本 / Latest five versions
 
+## v16.0.2 (2026-10-23 19:02) - codex
+
+### 结果 / Outcome [未完成：LocateAnything 模型文件缺失且网络不可达 / Incomplete: LocateAnything model files missing and network unavailable]
+- [eval] [exp] 验证 LocateAnything 配置及专用 CUDA 环境；缺少完整缓存且 Hugging Face 不可达，未生成模型框、SAM2 配对分割或 GraspNet 对比。 / Verified LocateAnything configuration and dedicated CUDA environment; incomplete cache and unreachable Hugging Face prevented model boxes, paired SAM2 segmentation, or GraspNet comparison. (local)
+- [docs] [docs] 在月度日志记录复跑条件与证据边界；未使用旧实例框冒充 LocateAnything 输出、未借用其他目标抓取位姿。 / Logged rerun prerequisites and evidence limits; did not relabel old instance boxes as LocateAnything output or borrow grasps from other targets. (local)
+
+### 变更详情 / Change Details
+- [修改 / Modified] `changelog/2026-10.md:L3-L11` 记录计划、模型加载实测失败阶段和恢复条件；未修改诊断图或推理结果。 / Recorded plan, observed model-load failure phase, and recovery conditions; no diagnosis image or inference result was changed.
+
+### 验证 / Validation
+- 专用环境确认 Torch 2.8.0+cu128/CUDA 可用；LocateAnything `AutoProcessor.from_pretrained` 因缺少 `processor_config.json` 并尝试连接 Hugging Face 而失败（网络不可达）。 / Dedicated Torch 2.8.0+cu128/CUDA available; `AutoProcessor.from_pretrained` failed because `processor_config.json` was missing and Hugging Face was unreachable.
+- 当前记录帧无 LocateAnything 调用结果；因此不能合法声称完成用户要求的左/右模型位姿对比。 / The recorded frame has no LocateAnything result; the requested left/right model-pose comparison cannot be claimed as completed.
+- Commit/Push: pending.
+
 ## v16.0.1 (2026-10-23 13:38) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
