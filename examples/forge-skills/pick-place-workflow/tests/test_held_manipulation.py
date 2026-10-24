@@ -23,7 +23,8 @@ ACQUIRE = "invocation://object-acquire/one"
 
 def request(operation="pour", scene="scene-1", held=ACQUIRE):
     parameters = {"pour": {"tilt_rad": 1.7, "hold_s": 2.0},
-                  "stir": {"radius_m": 0.015, "depth_m": 0.04, "turns": 2.0, "duration_s": 4.0},
+                  "stir": {"radius_m": 0.015, "depth_m": 0.04, "turns": 2.0,
+                           "duration_s": 4.0, "direction": "ccw"},
                   "place": {}}[operation]
     return {"entity_ref": "entity://bottle-a", "destination_ref": "destination://lab/beaker",
             "observation_ref": f"observation://{scene}/camera", "scene_revision": scene,

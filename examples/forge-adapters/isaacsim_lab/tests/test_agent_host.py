@@ -46,11 +46,13 @@ def test_host_guidance_defaults_to_no_motion():
 
 def test_host_guidance_uses_user_task_parameters_for_generic_process_actions():
     guidance = environment_guidance('sensor://front', False)
-    assert 'generic pour_cycle and stir_cycle capabilities' in guidance
+    assert 'operation="pour" or operation="stir"' in guidance
+    assert 'object.pour and tool.stir' in guidance
     assert 'tilt_rad and hold_s' in guidance
     assert 'radius_m, depth_m, turns, duration_s and direction' in guidance
     assert 'Do not hard-code a bottle count, operation sequence, or numeric process values' in guidance
-    assert 'Do not silently fill missing task values from deployment defaults' in guidance
+    assert 'Ask the user for missing required values before creating a manipulation task' in guidance
+    assert 'do not use the legacy pour_cycle or stir_cycle names' in guidance
     assert 'Default pour parameters' not in guidance
     assert 'Default stir parameters' not in guidance
 

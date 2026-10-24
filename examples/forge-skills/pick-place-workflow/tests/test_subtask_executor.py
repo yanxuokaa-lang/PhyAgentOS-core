@@ -52,6 +52,10 @@ def binding(**updates):
     return PerceptionBinding.model_validate(value)
 
 
+def pour_parameters():
+    return {"tilt_rad": 0.8, "hold_s": 1.0}
+
+
 def responses():
     return {
         "manipulation.prepare": {"status": "available", "motion_authorized": False},
@@ -257,7 +261,7 @@ def action_arguments(spec):
 
 def test_executor_aggregates_five_internal_tools_into_one_subtask_settlement():
     invoker = Invoker(responses())
-    result = SubtaskExecutor(invoker).execute(SubtaskSpec(subtask_id="pour-a", operation="pour", binding=binding()))
+    result = SubtaskExecutor(invoker).execute(SubtaskSpec(subtask_id="pour-a", operation="pour", binding=binding(), parameters=pour_parameters()))
     assert result.status == "completed" and result.outcome_known is True
     assert [item[0] for item in invoker.calls] == ["manipulation.prepare", "object.acquire", "manipulation.prepare_held", "object.pour", "manipulation.prepare_held", "object.place"]
     settlement = result.to_node_settlement(task_id="lab-task", revision_id="scene-1")
@@ -312,6 +316,7 @@ def test_executor_persists_complete_preparation_artifact_without_rebuilding_rout
             ArtifactInvoker(responses()), assignment_store=store
         ).execute(SubtaskSpec(
             subtask_id="pour-a", operation="pour", binding=binding(),
+            parameters=pour_parameters(),
             trusted_intent=coordinator_context()["intent"],
         ))
         assert result.status == "completed"
@@ -354,6 +359,7 @@ def test_executor_fails_closed_when_store_is_configured_but_route_artifact_is_mi
         Invoker(responses()), assignment_store=Store()
     ).execute(SubtaskSpec(
         subtask_id="pour-a", operation="pour", binding=binding(),
+        parameters=pour_parameters(),
         trusted_intent=coordinator_context()["intent"],
     ))
     assert result.status == "failed"
@@ -381,7 +387,7 @@ def test_executor_projects_latest_held_preparation_into_place():
 
     invoker = HeldPreparationInvoker(responses())
     result = SubtaskExecutor(invoker).execute(
-        SubtaskSpec(subtask_id="pour-a", operation="pour", binding=binding())
+        SubtaskSpec(subtask_id="pour-a", operation="pour", binding=binding(), parameters=pour_parameters())
     )
     assert result.status == "completed"
     place_arguments = next(args for tool_id, args in invoker.calls if tool_id == "object.place")
@@ -403,7 +409,7 @@ def test_runtime_action_driver_uses_one_outer_invocation_for_internal_sequence()
         })
 
     runtime = runtime_with_subtask_endpoint(refresh)
-    spec = SubtaskSpec(subtask_id="pour-a", operation="pour", binding=binding())
+    spec = SubtaskSpec(subtask_id="pour-a", operation="pour", binding=binding(), parameters=pour_parameters())
     jsonschema.validate(action_arguments(spec), SUBTASK_TOOL_SPEC["input_schema"])
     outer = runtime.start_action(
         "manipulation.execute_subtask",
@@ -435,7 +441,7 @@ def test_runtime_subtask_projects_each_transition_through_production_tool_schema
         })
 
     runtime = runtime_with_subtask_endpoint(refresh, validate_production_schemas=True)
-    spec = SubtaskSpec(subtask_id="pour-a", operation="pour", binding=binding())
+    spec = SubtaskSpec(subtask_id="pour-a", operation="pour", binding=binding(), parameters=pour_parameters())
     jsonschema.validate(action_arguments(spec), SUBTASK_TOOL_SPEC["input_schema"])
     outer = runtime.start_action(
         "manipulation.execute_subtask", action_arguments(spec),
@@ -463,11 +469,43 @@ def test_runtime_subtask_projects_each_transition_through_production_tool_schema
     assert subtask["scene_revision"] == "scene-4"
 
 
+def test_stir_contract_requires_and_projects_direction_before_acquire():
+    from pick_place_workflow.subtask_executor import SubtaskExecutionContext
+
+    parameters = {
+        "radius_m": 0.009, "depth_m": 0.04, "turns": 2.0,
+        "duration_s": 4.0, "direction": "cw",
+    }
+    spec = SubtaskSpec(
+        subtask_id="stir-a", operation="stir", binding=binding(), parameters=parameters,
+    )
+    arguments = action_arguments(spec)
+    jsonschema.validate(arguments, SUBTASK_TOOL_SPEC["input_schema"])
+    held_prepare = spec.calls()[2]
+    held_arguments = SubtaskExecutor._runtime_arguments(
+        spec, held_prepare, SubtaskExecutionContext(scene_revision=spec.binding.scene_revision),
+    )
+    assert held_arguments["parameters"] == parameters
+    assert held_arguments["operation"] == "stir"
+
+    with pytest.raises(ValueError, match="invalid stir parameters"):
+        SubtaskSpec(subtask_id="stir-a", operation="stir", binding=binding(),
+                    parameters={key: value for key, value in parameters.items() if key != "direction"})
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate({**arguments, "parameters": {**parameters, "direction": "left"}},
+                            SUBTASK_TOOL_SPEC["input_schema"])
+
+
+def test_missing_pour_parameters_fail_before_any_internal_tool_call():
+    with pytest.raises(ValueError, match="invalid pour parameters"):
+        SubtaskSpec(subtask_id="pour-a", operation="pour", binding=binding())
+
+
 def test_subtask_admission_rejects_node_or_intent_mismatch_before_internal_calls():
     runtime = CapabilityRuntime()
     endpoint = SubtaskActionEndpoint(runtime, resolve_context=lambda _caller: coordinator_context())
     endpoint.resolve_context = lambda _caller: coordinator_context(node_id="other-node")
-    spec = SubtaskSpec(subtask_id="pour-a", operation="pour", binding=binding())
+    spec = SubtaskSpec(subtask_id="pour-a", operation="pour", binding=binding(), parameters=pour_parameters())
     with pytest.raises(ValueError, match="PlanNode"):
         endpoint.admit_for_caller(action_arguments(spec), caller_id="paos:task-1:revision-1:record-1")
 
@@ -493,14 +531,14 @@ def test_subtask_admission_rejects_node_or_intent_mismatch_before_internal_calls
 def test_subtask_admission_without_coordinator_resolver_fails_closed():
     runtime = CapabilityRuntime()
     endpoint = SubtaskActionEndpoint(runtime)
-    spec = SubtaskSpec(subtask_id="pour-a", operation="pour", binding=binding())
+    spec = SubtaskSpec(subtask_id="pour-a", operation="pour", binding=binding(), parameters=pour_parameters())
     with pytest.raises(ValueError, match="Coordinator context resolver"):
         endpoint.admit_for_caller(spec.model_dump(mode="json"), caller_id="paos:task-1:revision-1:record-1")
 
 
 def test_runtime_driver_fails_closed_when_scene_revision_changes_without_refresh():
     runtime = runtime_with_subtask_endpoint()
-    spec = SubtaskSpec(subtask_id="pour-a", operation="pour", binding=binding())
+    spec = SubtaskSpec(subtask_id="pour-a", operation="pour", binding=binding(), parameters=pour_parameters())
     outer = runtime.start_action(
         "manipulation.execute_subtask", action_arguments(spec),
         caller_id="paos:task-1:revision-1:record-1",
@@ -525,7 +563,7 @@ def test_runtime_driver_rejects_refresh_with_stale_motion_candidates():
         })
 
     runtime = runtime_with_subtask_endpoint(stale_refresh)
-    spec = SubtaskSpec(subtask_id="pour-a", operation="pour", binding=binding())
+    spec = SubtaskSpec(subtask_id="pour-a", operation="pour", binding=binding(), parameters=pour_parameters())
     outer = runtime.start_action(
         "manipulation.execute_subtask", action_arguments(spec),
         caller_id="paos:task-1:revision-1:record-1",
@@ -540,7 +578,7 @@ def test_runtime_driver_rejects_refresh_with_stale_motion_candidates():
 
 def test_runtime_outer_cancel_propagates_to_active_internal_invocation():
     runtime = runtime_with_subtask_endpoint(pending_acquire=True)
-    spec = SubtaskSpec(subtask_id="pour-a", operation="pour", binding=binding())
+    spec = SubtaskSpec(subtask_id="pour-a", operation="pour", binding=binding(), parameters=pour_parameters())
     outer = runtime.start_action(
         "manipulation.execute_subtask", action_arguments(spec),
         caller_id="paos:task-1:revision-1:record-1",
@@ -556,7 +594,7 @@ def test_executor_stops_at_failed_process_without_place():
     values = responses()
     values["object.pour"] = {"status": "failed", "outcome_known": True, "possession_state": "holding", "world_change_started": True}
     invoker = Invoker(values)
-    result = SubtaskExecutor(invoker).execute(SubtaskSpec(subtask_id="pour-a", operation="pour", binding=binding()))
+    result = SubtaskExecutor(invoker).execute(SubtaskSpec(subtask_id="pour-a", operation="pour", binding=binding(), parameters=pour_parameters()))
     assert result.status == "failed" and result.failed_phase == "process"
     assert "object.place" not in [item[0] for item in invoker.calls]
 
@@ -564,10 +602,10 @@ def test_executor_stops_at_failed_process_without_place():
 def test_executor_unknown_and_cancel_are_not_success():
     values = responses()
     values["object.pour"] = {"status": "unknown", "outcome_known": False, "possession_state": "uncertain", "world_change_started": True}
-    result = SubtaskExecutor(Invoker(values)).execute(SubtaskSpec(subtask_id="pour-a", operation="pour", binding=binding()))
+    result = SubtaskExecutor(Invoker(values)).execute(SubtaskSpec(subtask_id="pour-a", operation="pour", binding=binding(), parameters=pour_parameters()))
     assert result.status == "outcome_unknown"
     assert result.to_node_settlement(task_id="lab-task", revision_id="scene-1").requires_replan is True
-    cancelled = SubtaskExecutor(Invoker(responses()), cancel_requested=lambda: True).execute(SubtaskSpec(subtask_id="pour-a", operation="pour", binding=binding()))
+    cancelled = SubtaskExecutor(Invoker(responses()), cancel_requested=lambda: True).execute(SubtaskSpec(subtask_id="pour-a", operation="pour", binding=binding(), parameters=pour_parameters()))
     assert cancelled.status == "cancelled" and cancelled.receipts == ()
 
 
@@ -582,7 +620,7 @@ def test_invoker_exception_is_unknown_and_stops_sequence():
             return dict(self.values[tool_id])
 
     invoker = BrokenInvoker(responses())
-    result = SubtaskExecutor(invoker).execute(SubtaskSpec(subtask_id="pour-a", operation="pour", binding=binding()))
+    result = SubtaskExecutor(invoker).execute(SubtaskSpec(subtask_id="pour-a", operation="pour", binding=binding(), parameters=pour_parameters()))
     assert result.status == "outcome_unknown"
     assert result.outcome_known is False
     assert result.receipts[-1].status == "unknown"
@@ -591,7 +629,7 @@ def test_invoker_exception_is_unknown_and_stops_sequence():
 
 def test_stale_binding_is_rejected_before_internal_tools():
     with pytest.raises(ValueError, match="stale"):
-        SubtaskSpec(subtask_id="pour-a", operation="pour", binding=binding(freshness_ms=1001))
+        SubtaskSpec(subtask_id="pour-a", operation="pour", binding=binding(freshness_ms=1001), parameters=pour_parameters())
 
 
 def test_preparation_can_select_second_candidate_and_acquire_keeps_that_selection():

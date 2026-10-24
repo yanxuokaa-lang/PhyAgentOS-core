@@ -67,14 +67,16 @@ def test_bind_subtask_from_semantics_uses_a_provider_neutral_port():
     second = _BindingProvider(second_binding)
 
     first_spec = bind_subtask_from_semantics(
-        "pour-a", "pour", first, parameters={"tilt_rad": 0.8}
+        "pour-a", "pour", first, parameters={"tilt_rad": 0.8, "hold_s": 1.0}
     )
-    second_spec = bind_subtask_from_semantics("pour-b", "pour", second)
+    second_spec = bind_subtask_from_semantics(
+        "pour-b", "pour", second, parameters={"tilt_rad": 0.8, "hold_s": 1.0}
+    )
 
     assert first.calls == second.calls == 1
     assert first_spec.binding.entity_ref == "entity://reagent-a"
     assert second_spec.binding.entity_ref == "entity://reagent-b"
-    assert first_spec.parameters == {"tilt_rad": 0.8}
+    assert first_spec.parameters == {"tilt_rad": 0.8, "hold_s": 1.0}
     assert first_spec.tool_sequence == second_spec.tool_sequence
 
 
@@ -257,6 +259,7 @@ def test_subtask_projection_has_one_agent_node_and_one_verify_join():
         "lab-task", "scene-1",
         (SubtaskSpec(
             subtask_id="pour-a", operation="pour", binding=_lab_binding(),
+            parameters={"tilt_rad": 0.8, "hold_s": 1.0},
             semantic_intent={
                 "goal": "pour reagent into the selected vessel",
                 "success_criteria": ["pour process feedback is qualified"],

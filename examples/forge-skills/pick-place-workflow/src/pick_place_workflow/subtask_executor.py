@@ -18,6 +18,8 @@ from PhyAgentOS.forge.capability_runtime import ActionAdmission, CapabilityRunti
 from PhyAgentOS.planning import NodeSettlement
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from .operation_parameters import PROCESS_PARAMETER_PROPERTIES, validate_process_parameters
+
 _ENTITY_REF = re.compile(r"^entity://[^/]+$")
 _DESTINATION_REF = re.compile(r"^(?:destination|container)://\S+$")
 _OBSERVATION_REF = re.compile(r"^observation://\S+$")
@@ -294,6 +296,8 @@ class SubtaskSpec(BaseModel):
             json.dumps(self.parameters, ensure_ascii=False, allow_nan=False)
         except (TypeError, ValueError) as exc:
             raise ValueError("subtask parameters must contain finite JSON values") from exc
+        if self.operation in {"pour", "stir"}:
+            validate_process_parameters(self.operation, self.parameters)
         if self.return_destination_ref is not None and _DESTINATION_REF.fullmatch(self.return_destination_ref) is None:
             raise ValueError("return_destination_ref must use destination:// or container://")
         object.__setattr__(self, "tool_sequence", calls)
@@ -1188,6 +1192,18 @@ SUBTASK_TOOL_SPEC: dict[str, Any] = {
             },
             "return_destination_ref": {"type": ["string", "null"], "minLength": 1},
         },
+        "allOf": [
+            {
+                "if": {"properties": {"operation": {"const": operation}}},
+                "then": {"properties": {"parameters": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": PROCESS_PARAMETER_PROPERTIES[operation],
+                    "required": list(PROCESS_PARAMETER_PROPERTIES[operation]),
+                }}}
+            }
+            for operation in ("pour", "stir")
+        ],
     },
     "output_schema": {
         "type": "object",

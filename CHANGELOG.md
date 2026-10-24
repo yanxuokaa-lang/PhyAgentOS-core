@@ -6,6 +6,7 @@
 
 ## Archive
 
+- [2026-10_part11](changelog/2026-10_part11.md)
 - [2026-10_part9](changelog/2026-10_part9.md)
 - [2026-10_part10](changelog/2026-10_part10.md)
 - [2026-10_part8](changelog/2026-10_part8.md)
@@ -40,6 +41,35 @@
 - [2026-09](changelog/2026-09.md)
 
 ## 最近五版本 / Latest five versions
+
+## v16.0.5 (2026-10-24 19:57) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [policy] [refactor] 新增共享 pour/stir 参数契约，并在语义任务创建及 SubtaskSpec 入口检查必填值；搅拌方向必填且限定 `cw` / `ccw`。 / Added shared pour/stir parameter contracts and required-value validation at semantic task creation and SubtaskSpec entry; stir direction is required and limited to `cw` / `ccw`.
+- [policy] [fix] 修正 Agent operation 名称为 `pour` / `stir`，对齐内部 `object.pour` / `tool.stir`；更新 held ToolSpec 和 YAML contracts。 / Corrected Agent operation names to `pour` / `stir`, matching internal tools; updated held ToolSpecs and YAML contracts.
+- [docs] [docs] 保存标签不可读原因、建议的近景/ROI/OCR 采集路线，并更正此前对动作全链路参数化程度的表述。 / Recorded why labels remain unreadable, the close-up/ROI/OCR capture path, and corrected the earlier overstatement of end-to-end action parameterization.
+
+### 文件变更详情 / Change Details
+- [policy] [refactor] `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/operation_parameters.py:L1-L48` 统一定义动作字段、Schema 与有限数值验证。 / Defines shared action fields, schemas, and finite-value validation.
+- [policy] [fix] `semantic_task_creation.py:L31-L74,L97-L104`、`subtask_executor.py:L279-L303,L1113-L1206` 在任务 Query 和内部 Action 序列前拒绝缺参/非法参数。 / Rejects missing/invalid parameters before task Queries or internal Action sequence.
+- [policy] [fix] `held_manipulation.py:L21-L35,L182-L185`、`contracts/manipulation.prepare_held.tool.yaml`、`contracts/object.pour.tool.yaml`、`contracts/tool.stir.tool.yaml` 对齐 stir direction Schema。 / Aligns stir direction across runtime and published contracts.
+- [policy] [fix] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/agent_host.py:L88-L103` 修正 operation 名、内部 Tool 映射和缺参询问指引。 / Corrects operation names, internal Tool mapping, and missing-value guidance.
+- [test] [test] `test_semantic_task_creation.py:L198-L217`、`test_subtask_executor.py:L472-L501` 覆盖缺参/非法方向提前拒绝和方向透传。 / Covers early rejection and direction projection.
+- [docs] [docs] `docs/diagnostics/transparent-model-comparison-20261023.md:L144-L171`、`docs/reports/transparent-model-selection-report-20261024.md:L98-L104` 记录诊断及修复证据。 / Records diagnosis and repair evidence.
+
+### 验证 / Validation
+- 定向 PAOS/Agent Host 测试：`88 passed`；`.venv/bin/ruff check`、`git diff --check` 通过。 / Focused tests: `88 passed`; Ruff and diff checks passed.
+- 未执行倾倒、搅拌或机械臂运动；标签近景复拍仍待做。 / No pour, stir, or arm motion; label close-up recapture remains pending.
+
+### 关键 Diff / Key Diff
+```diff
+- semantic actions described as pour_cycle/stir_cycle; held stir schema had no direction
++ semantic actions use pour/stir; direction is required and passed as cw/ccw
++ validate process parameters before perception-bound subtask execution
+```
+
+### Git 提交 / Git Commit
+- Pending; branch: `feature/planning-loop`.
 
 ## v16.0.4 (2026-10-24 18:20) - codex
 
@@ -151,6 +181,8 @@
 
 ### Git 提交 / Git receipt
 - Commit: `085de764`; Branch: `feature/planning-loop`; Push: 两次尝试超时，远端未确认 / two attempts timed out; remote receipt unconfirmed.
+
+## 历史版本 / Older Versions
 
 ## v16.0.0 (2026-10-23 12:51) - codex
 

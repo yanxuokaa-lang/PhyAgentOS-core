@@ -92,9 +92,9 @@ def environment_guidance(sensor_ref, execute):
 Use forge_task_create semantic_subtasks to bind only the reagent labels and operations requested by the user through Queries.
 Categories are reagent_bottle, mixing_vessel and stir_tool. Sensor: {sensor_ref}. max_age_ms: 1000.
 Use a label selector only when the user specifies a label; never infer reagent identity from a bottle's fixed scene position.
-Create ordered semantic subtasks from the requested workflow, using the generic pour_cycle and stir_cycle capabilities where applicable.
-Pass each requested operation's values in that subtask's parameters object: pour_cycle accepts tilt_rad and hold_s; stir_cycle accepts radius_m, depth_m, turns, duration_s and direction.
-Do not hard-code a bottle count, operation sequence, or numeric process values. Do not silently fill missing task values from deployment defaults; ask the user for missing process parameters before authorizing motion.
+Create ordered semantic subtasks from the requested workflow using operation="pour" or operation="stir". These semantic operations are executed through the internal PAOS Tools object.pour and tool.stir; do not use the legacy pour_cycle or stir_cycle names in semantic_subtasks.
+Pass every requested operation value in that subtask's parameters object: pour requires tilt_rad and hold_s; stir requires radius_m, depth_m, turns, duration_s and direction (cw or ccw).
+Do not hard-code a bottle count, operation sequence, or numeric process values. Ask the user for missing required values before creating a manipulation task; do not silently fill them from deployment defaults.
 Each subtask includes physical acquire, process and return; do not invent object references or coordinates.
 Use semantic_intent with allowed_arms=[franka], coordination_mode=single_arm, a goal and success_criteria.
 Set verification mode=off: physical Runtime measurements decide process completion; no model chemistry verdict.

@@ -120,7 +120,7 @@ def _request(prefix: str = "a"):
         "subtask_id": f"pour-{prefix}", "operation": "pour",
         "source_category": "reagent_bottle", "destination_category": "beaker",
         "sensor_refs": ["camera/front"], "max_age_ms": 1000,
-        "source_selector": {"label": prefix}, "parameters": {"magnitude": 0.8},
+        "source_selector": {"label": prefix}, "parameters": {"tilt_rad": 0.8, "hold_s": 1.0},
     }]
 
 
@@ -195,6 +195,28 @@ def test_semantic_builder_is_provider_replaceable():
     assert first["nodes"][0]["input_bindings"]["binding"]["entity_ref"] != second["nodes"][0]["input_bindings"]["binding"]["entity_ref"]
 
 
+@pytest.mark.parametrize("parameters", [
+    {"radius_m": 0.009, "depth_m": 0.04, "turns": 2.0, "duration_s": 4.0},
+    {"radius_m": 0.009, "depth_m": 0.04, "turns": 2.0, "duration_s": 4.0,
+     "direction": "clockwise"},
+])
+def test_semantic_builder_rejects_invalid_stir_parameters_before_perception(parameters):
+    provider_calls = []
+
+    def provider(tool_id, arguments):
+        provider_calls.append((tool_id, arguments))
+        return _provider()(tool_id, arguments)
+
+    request = {
+        "subtask_id": "stir-a", "operation": "stir", "source_category": "stir_tool",
+        "destination_category": "mixing_vessel", "sensor_refs": ["camera/front"],
+        "max_age_ms": 1000, "parameters": parameters,
+    }
+    with pytest.raises(SemanticTaskCreationError, match="invalid stir parameters"):
+        _builder(provider).build("stir vessel", [request])
+    assert provider_calls == []
+
+
 def test_semantic_builder_serializes_multiple_subtasks_as_one_ordered_plan():
     provider = _provider()
     plan = _builder(provider).build(
@@ -218,16 +240,20 @@ def test_agent_loop_tool_call_binds_two_distinct_reagents_then_stir_rod_to_same_
                             {"subtask_id": "pour-a", "operation": "pour",
                              "source_category": "reagent_bottle", "destination_category": "mixing_vessel",
                              "sensor_refs": ["camera/front"], "max_age_ms": 1000,
+                             "parameters": {"tilt_rad": 0.8, "hold_s": 1.0},
                              "source_selector": {"label": "reagent-a"},
                              "destination_selector": {"label": "mixing-vessel"}},
                             {"subtask_id": "pour-b", "operation": "pour",
                              "source_category": "reagent_bottle", "destination_category": "mixing_vessel",
                              "sensor_refs": ["camera/front"], "max_age_ms": 1000,
+                             "parameters": {"tilt_rad": 0.9, "hold_s": 1.2},
                              "source_selector": {"label": "reagent-b"},
                              "destination_selector": {"label": "mixing-vessel"}},
                             {"subtask_id": "stir-mixture", "operation": "stir",
                              "source_category": "stir_tool", "destination_category": "mixing_vessel",
                              "sensor_refs": ["camera/front"], "max_age_ms": 1000,
+                             "parameters": {"radius_m": 0.009, "depth_m": 0.04, "turns": 2.0,
+                                             "duration_s": 4.0, "direction": "ccw"},
                              "source_selector": {"label": "glass-rod"},
                              "destination_selector": {"label": "mixing-vessel"}},
                         ],
@@ -286,14 +312,18 @@ def test_semantic_mixture_plan_rejects_incomplete_or_misbound_requests(mutate, m
         {"subtask_id": "pour-a", "operation": "pour", "source_category": "reagent_bottle",
          "destination_category": "mixing_vessel", "sensor_refs": ["camera/front"],
          "max_age_ms": 1000, "source_selector": {"label": "reagent-a"},
+         "parameters": {"tilt_rad": 0.8, "hold_s": 1.0},
          "destination_selector": {"label": "mixing-vessel"}},
         {"subtask_id": "pour-b", "operation": "pour", "source_category": "reagent_bottle",
          "destination_category": "mixing_vessel", "sensor_refs": ["camera/front"],
          "max_age_ms": 1000, "source_selector": {"label": "reagent-b"},
+         "parameters": {"tilt_rad": 0.8, "hold_s": 1.0},
          "destination_selector": {"label": "mixing-vessel"}},
         {"subtask_id": "stir-mixture", "operation": "stir", "source_category": "stir_tool",
          "destination_category": "mixing_vessel", "sensor_refs": ["camera/front"],
          "max_age_ms": 1000, "source_selector": {"label": "glass-rod"},
+         "parameters": {"radius_m": 0.009, "depth_m": 0.04, "turns": 2.0,
+                         "duration_s": 4.0, "direction": "ccw"},
          "destination_selector": {"label": "mixing-vessel"}},
     ]
     with pytest.raises(SemanticTaskCreationError, match=message):

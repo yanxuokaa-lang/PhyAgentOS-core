@@ -141,3 +141,32 @@ Agent Host 指引使用已有通用 `pour_cycle` 与 `stir_cycle` 能力。倾�
 
 本次成功 Agent 运行是只读标签资格检查，不是倾倒/搅拌动作执行测试。任务未提供这些工艺参数，且标签、瓶口/棒端功能点和运动准备均未通过，因此没有创建动作节点，也没有模拟器或真实机械臂运动证据。要执行后续动作，需先补充目标选择及工艺参数，并完成针对该目标的清晰观测和 `manipulation.prepare`。
 
+## 复核更正与参数契约修复（2026-10-24）
+
+本节补充对上一节动作结论的代码复核。此前写“Agent Host 与 Runtime 参数投影保留原值”，范围说得过宽：当时测试确认的是部分参数对象投影，未覆盖 Agent 语义入口的必需参数校验，也未证明 `stir.direction` 能经 held-operation Schema 到达 Provider。
+
+### 标签可读性诊断
+
+成功运行的第三人称观测为 `1600×1200`。八个试剂瓶的实例框可检测，但文字不可可靠读取、瓶身身份未解析；左后方瓶体另被机械臂遮挡。瓶身标签在整幅图内只占较小区域，玻璃反射、透视和遮挡共同限制文字识别。现有证据表明首先需要改善观测，不足以将失败归因于 ReMake 的深度能力。
+
+处理顺序建议：保留全景完成场景定位；通过不接触目标的安全观察姿态取得标签正视近景；必要时提高真实渲染分辨率或调整视场，并同步使用匹配的相机标定；按实例分割裁出标签 ROI，透视校正后做 OCR；最后用 ROI 到原图的坐标映射将文字结果绑定回对应瓶体。放大插值不能恢复未采集到的细节。本轮没有改变相机姿态或重新采集，因此标签识别仍未修复，任何身份都不得按固定位置推断。
+
+参考运行图像：`out/releases/v16.0.4/agent-label-qualification-token-budget/artifacts/labutopia/rgb/911d08d9b23440ab857497bc463dee9e.png`；结构化结果：`out/releases/v16.0.4/agent-label-qualification-token-budget/artifacts/labutopia/visual-inference/49ff95be57eb48a68663b7dd68f99815.json`。
+
+### 动作契约发现与修复
+
+PAOS 的动作所有权与生命周期仍采用单一 `manipulation.execute_subtask` 外层 Action，并在内部按 prepare、acquire、held prepare、process、return preparation、place 运行；Provider/Adapter 持有具体路径和部署限值。该结构无需将每个动作提升为新的顶层 Action。但原 Agent 指引写 `pour_cycle` / `stir_cycle`，实际语义子任务只接受 `pour` / `stir`，并映射到 `object.pour` / `tool.stir`；cycle 名称属于旧接口。
+
+原始 held `stir` Schema 不含 `direction` 且拒绝额外字段，运动代码却会在缺少方向时按 `ccw` 生成轨迹。因此 Agent 传 `direction` 会被拒绝，不传则使用固定方向。另一个问题是 `SemanticSubtaskRequest` 和 `SubtaskSpec` 原先只要求 parameters 是 JSON 对象，缺参可能在初始目标 acquire 后才由 held prepare 拒绝。
+
+本轮代码修复统一 workflow 领域层的 pour/stir 参数 Schema，并在语义任务创建与 SubtaskSpec 构造阶段校验必需字段；复合 Action ToolSpec 和 held-operation ToolSpec 复用相同字段定义，搅拌要求 `direction` 且只接受 `cw` / `ccw`；Agent Host 改用 `operation="pour"` / `operation="stir"`，明确对应内部 Tool。部署限值仍由 Provider 在无运动 preparation/路径规划边界检查，不移入通用语义层。
+
+| 项目 | 修复前 | 修复后 |
+|---|---|---|
+| Agent 操作名 | 指引 `pour_cycle` / `stir_cycle`，语义请求实际接受 `pour` / `stir` | 指引与 `semantic_subtasks` 契约一致：`pour` / `stir` |
+| 搅拌方向 | held-operation Schema 不接收；轨迹默认 `ccw` | 必填 `direction`，限定 `cw` / `ccw` 并透传到 held prepare/process 参数 |
+| 缺少必需值 | 有机会在 acquire 之后才由 Provider Schema 拒绝 | 任务请求/SubtaskSpec 在开始内部 Tool 序列前失败 |
+| 执行边界 | 参数化声明与真实轨迹能力不一致 | 外层 Action/结算不变，Provider 保持机制与安全限值所有权 |
+
+验证仅包括契约/投影/单元测试与静态检查，不执行倾倒、搅拌或机械臂运动；不代表运动路径、抓取稳定性或工艺结果通过真实仿真验收。标签改进仍需重新采集同场景近景后评估。
+

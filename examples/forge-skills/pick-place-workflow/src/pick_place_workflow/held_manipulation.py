@@ -18,18 +18,19 @@ from PhyAgentOS.forge.capability_runtime import ActionAdmission
 from .cycle_protocol import CyclePhaseProtocol, CycleProtocolError, evaluate_process_feedback
 from .feedback_adapter import normalize_feedback
 from .manipulation_target import MANIPULATION_TARGET_SCHEMA
+from .operation_parameters import PROCESS_PARAMETER_PROPERTIES
 
 OPERATIONS = {"pour": "object.pour", "stir": "tool.stir", "place": "object.place"}
+_POSITIVE = {"type": "number", "exclusiveMinimum": 0}
 CYCLE_OPERATIONS = {
     "pour_cycle": "object.pour_cycle",
     "stir_cycle": "tool.stir_cycle",
 }
 GENERIC_CYCLE_OPERATIONS = {"manipulation_cycle": "manipulation.cycle"}
 _TEXT = {"type": "string", "minLength": 1}
-_POSITIVE = {"type": "number", "exclusiveMinimum": 0}
 _PARAMETERS = {
-    "pour": {"tilt_rad": {**_POSITIVE, "maximum": 3.141592653589793}, "hold_s": _POSITIVE},
-    "stir": {"radius_m": _POSITIVE, "depth_m": _POSITIVE, "turns": _POSITIVE, "duration_s": _POSITIVE},
+    "pour": PROCESS_PARAMETER_PROPERTIES["pour"],
+    "stir": PROCESS_PARAMETER_PROPERTIES["stir"],
     "place": {},
 }
 _PROPERTIES = {
@@ -179,11 +180,8 @@ HELD_PLACE_TOOL_SPEC = action_spec("place")
 
 
 _CYCLE_PARAMETERS = {
-    "pour_cycle": {"tilt_rad": {**_POSITIVE, "maximum": math.pi}, "hold_s": _POSITIVE},
-    "stir_cycle": {
-        "radius_m": _POSITIVE, "depth_m": _POSITIVE, "turns": _POSITIVE,
-        "duration_s": _POSITIVE, "direction": {"enum": ["cw", "ccw"]},
-    },
+    "pour_cycle": PROCESS_PARAMETER_PROPERTIES["pour"],
+    "stir_cycle": PROCESS_PARAMETER_PROPERTIES["stir"],
 }
 _GENERIC_PARAMETERS = {
     "manipulation_cycle": {

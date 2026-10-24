@@ -170,11 +170,16 @@ input_schema:
             depth_m: *id001
             turns: *id001
             duration_s: *id001
+            direction:
+              enum:
+              - cw
+              - ccw
           required:
           - radius_m
           - depth_m
           - turns
           - duration_s
+          - direction
   - if:
       properties:
         operation:

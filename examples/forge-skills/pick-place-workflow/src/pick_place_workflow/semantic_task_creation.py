@@ -13,13 +13,14 @@ from typing import Any, Protocol
 from uuid import uuid4
 
 from PhyAgentOS.planning import canonical_sha256
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .agent_planning import (
     bind_subtask_from_semantics,
     bind_subtask_from_semantics_async,
     compose_subtask_plan,
 )
+from .operation_parameters import validate_process_parameters
 from .perception_binding import BindingRequest, PerceptionBindingAdapter, QueryInvoker
 from .subtask_executor import SubtaskOperation, SubtaskSpec
 
@@ -66,6 +67,12 @@ class SemanticSubtaskRequest(BaseModel):
                 raise ValueError("semantic request contains non-finite JSON") from exc
         return value
 
+    @model_validator(mode="after")
+    def process_parameters(self) -> "SemanticSubtaskRequest":
+        if self.operation in {"pour", "stir"}:
+            validate_process_parameters(self.operation, self.parameters)
+        return self
+
 
 class SemanticPlanBuilder(Protocol):
     def build(self, task_description: str, semantic_subtasks: list[dict[str, Any]]) -> Any: ...
@@ -88,10 +95,13 @@ class QuerySemanticPlanBuilder:
         self.policy_snapshot_digest = policy_snapshot_digest
 
     def _plan_digests(self, task_description: str, semantic_subtasks: list[dict[str, Any]]):
-        requests = [
-            SemanticSubtaskRequest.model_validate(item).model_dump(mode="json")
-            for item in semantic_subtasks
-        ]
+        try:
+            requests = [
+                SemanticSubtaskRequest.model_validate(item).model_dump(mode="json")
+                for item in semantic_subtasks
+            ]
+        except (TypeError, ValueError) as exc:
+            raise SemanticTaskCreationError(f"invalid semantic subtask request: {exc}") from exc
         planner_digest = self.planner_decision_digest or canonical_sha256({
             "task_description": task_description,
             "semantic_subtasks": requests,

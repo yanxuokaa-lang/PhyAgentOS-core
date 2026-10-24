@@ -84,13 +84,21 @@ Raw-depth 点云主要落在较远的背景/错误深度区间；ReMake 点云�
 
 失败修复：之前两次 Agent 尝试的结构化视觉响应均以 `JSONDecodeError` 结束。保存的响应诊断显示输出在 4060 字符处终止于未闭合目标对象，解析位置为 `line 136, column 31`。根因是视觉模型请求仅预留 2048 output tokens，无法容纳该场景的八个对象字段。现将默认预算提高至 4096，并保留构造参数覆盖能力；失败 artifact 同时记录输出长度、解码位置及有界响应摘录。两条失败任务随后经 Coordinator 生命周期接口正常取消；相同场景重跑后 understanding 返回完整结果，Agent 任务成功结算。该修复改善了解析完整性，没有改善图像本身的标签清晰度。
 
-动作抽象检查：Agent Host 使用已有 `pour_cycle` / `stir_cycle` 语义能力，不固定动作序列或数值。子任务 `parameters` 透传倾倒 `tilt_rad`、`hold_s` 和搅拌 `radius_m`、`depth_m`、`turns`、`duration_s`、`direction`；相关 Agent Host 与 Runtime 集成测试确认参数保留，缺少值时要求补充任务输入。本轮没有用户给定的工艺参数，标签身份与瓶口/棒端几何也未通过，因此此处验证的是抽象与参数传递，不是实际倾倒、搅拌或运动效果。
+动作抽象检查（复核更正）：原 Agent Host 指引曾写 `pour_cycle` / `stir_cycle`，但语义任务实际接受 `pour` / `stir`，对应内部 Tool `object.pour` / `tool.stir`。原搅拌 held-operation Schema 缺少 `direction`，因此该参数不能通过 Schema；若缺失，轨迹实现还会固定采用 `ccw`。原语义入口也没有在抓取前验证完整参数。不能据此前部分投影测试声称全链路已经参数化。
 
 | 范围 | 本轮证据 | 结论 |
 |---|---|---|
 | 锥形瓶标签 | 成功 Agent 返回的 understanding artifact | 目标可按瓶体类别分割；八个试剂瓶标签不能可靠读取，身份不可确认 |
 | ReMake | 同次运行的恢复深度、mask、点云和几何 artifact | 完成中间结果生成；仍是未独立测真值的估计几何 |
-| `pour_cycle` / `stir_cycle` | Agent Host 与 PAOS 参数透传测试 | 抽象动作可传参；没有硬编码工艺值；本轮未执行动作 |
+| `pour` / `stir` | 修复前代码与契约审查 | 发现名称不一致、搅拌方向无法透传、缺参可能延后到 acquire 后才失败 |
 | 任务完成 | Coordinator outcome | 只读检查成功；不等同于操作工作流成功 |
 
 后续选型仍以第 7 节为准：ReMake 仅是现有证据下优先继续验证的模型，并未因本次 Agent 成功而通过标签识别或运动资格验收；DFNet 仍需取得权重后按相同输入补测。
+
+## 10. 标签清晰度与动作契约修复
+
+标签识别的首要问题是观测质量。`1600×1200` 全景中瓶身标签只占小区域，玻璃反光、透视和机械臂遮挡降低可读性。后续建议先安全地采集正对标签的近景，必要时提高真实渲染分辨率/调整视场并同步更新标定；再用实例 mask 裁剪标签 ROI、透视校正并运行 OCR，将 ROI 坐标映射回瓶体实例。单纯插值放大不能补回未采集的信息。本次未移动相机或重新采集，标签状态仍是未解析。
+
+本轮已修复动作契约：workflow 领域参数定义被语义请求、复合子任务和 held-operation ToolSpec 共用；`pour` 必需 `tilt_rad` / `hold_s`，`stir` 必需 `radius_m` / `depth_m` / `turns` / `duration_s` / `direction`，方向限于 `cw` / `ccw`。入口现在在任何子任务内部动作前拒绝缺参；Host 使用真实语义 operation 名并映射到内部 Tool。PAOS 单外层 Action、内部 prepare/acquire/process/place 生命周期保持不变，具体路径和部署限值仍归 Provider/Adapter。
+
+验证范围为参数 Schema、任务构造、方向投影和既有编排测试；未运行 pour/stir，也未执行机械臂运动。因此契约一致性得到测试支持，但真实仿真运动效果与标签近景识别仍待单独验收。
