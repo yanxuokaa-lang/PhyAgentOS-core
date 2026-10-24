@@ -5,8 +5,10 @@ from __future__ import annotations
 import io
 import json
 import math
+from copy import deepcopy
 from datetime import datetime, timezone
-from numbers import Real
+from fractions import Fraction
+from numbers import Integral, Real
 from pathlib import Path
 from typing import Any, Callable, Mapping, Protocol
 from uuid import uuid4
@@ -185,19 +187,35 @@ class IsaacCameraObservationSource:
         refs = [sensor_ref] if isinstance(sensor_ref, str) else sensor_refs
         if not isinstance(refs, (list, tuple)) or not refs:
             return None
-        views = []
+        snapshots = []
         for ref in refs:
-            view = self._capture_view(ref)
-            if view is None:
+            snapshot = self._read_view(ref)
+            if snapshot is None:
                 return None
-            views.append(view)
+            snapshots.append(snapshot)
+        frame_metadata = [snapshot[2] for snapshot in snapshots]
+        if len(snapshots) > 1 and all(item is not None for item in frame_metadata):
+            if any(item != frame_metadata[0] for item in frame_metadata[1:]):
+                return None
+            shared_capture_time = min(snapshot[0]["captured_at"] for snapshot in snapshots)
+            for view, _payloads, _frame in snapshots:
+                view["captured_at"] = shared_capture_time
+        views = []
+        for view, payloads, _frame in snapshots:
+            persisted = self._persist_view(view, payloads)
+            if persisted is None:
+                return None
+            views.append(persisted)
         if len(views) == 1:
             return views[0]
         return {"views": views}
 
-    def _capture_view(self, sensor_ref: Any) -> dict[str, Any] | None:
+    def _read_view(
+        self, sensor_ref: Any
+    ) -> tuple[dict[str, Any], list[tuple[str, Any]], tuple[Fraction, float] | None] | None:
         if not isinstance(sensor_ref, str) or not sensor_ref.strip():
             return None
+        captured_at = datetime.now(timezone.utc)
         camera = self._resolve_camera(sensor_ref)
         metadata = self._metadata(sensor_ref)
         if camera is None or not isinstance(metadata, Mapping):
@@ -208,8 +226,13 @@ class IsaacCameraObservationSource:
         if not all(isinstance(value, str) and value.strip() for value in (frame_id, calibration_ref, scene_revision)):
             return None
 
-        captured_at = datetime.now(timezone.utc)
-        artifacts = []
+        frame_reader = getattr(camera, "get_current_frame", None)
+        supports_frame_metadata = callable(frame_reader)
+        frame_before = _camera_render_metadata(frame_reader) if supports_frame_metadata else None
+        if supports_frame_metadata and frame_before is None:
+            return None
+
+        payloads = []
         for kind in self._modalities:
             getter_name = _MODALITIES[kind]
             getter = getattr(camera, getter_name, None)
@@ -218,7 +241,29 @@ class IsaacCameraObservationSource:
             value = getter(world_frame=False) if kind == "point_cloud" else getter()
             if not _has_data(value):
                 return None
-            stored = self._artifact_writer.write(sensor_ref, kind, value, captured_at=captured_at)
+            payloads.append((kind, deepcopy(value)))
+
+        frame_after = _camera_render_metadata(frame_reader) if supports_frame_metadata else None
+        if supports_frame_metadata and (frame_after is None or frame_after != frame_before):
+            return None
+
+        return ({
+            "sensor_ref": sensor_ref,
+            "captured_at": captured_at,
+            "scene_revision": scene_revision,
+            "frame_id": frame_id,
+            "calibration_ref": metadata.get("calibration_ref"),
+        }, payloads, frame_before)
+
+    def _persist_view(
+        self, view: Mapping[str, Any], payloads: list[tuple[str, Any]]
+    ) -> dict[str, Any] | None:
+        sensor_ref = view["sensor_ref"]
+        artifacts = []
+        for kind, value in payloads:
+            stored = self._artifact_writer.write(
+                sensor_ref, kind, value, captured_at=view["captured_at"]
+            )
             if not isinstance(stored, Mapping):
                 return None
             artifact_ref = stored.get("ref")
@@ -229,14 +274,7 @@ class IsaacCameraObservationSource:
                 return None
             artifacts.append({"ref": artifact_ref, "kind": kind, "media_type": media_type})
 
-        return {
-            "sensor_ref": sensor_ref,
-            "captured_at": captured_at,
-            "scene_revision": scene_revision,
-            "frame_id": frame_id,
-            "calibration_ref": calibration_ref,
-            "artifacts": artifacts,
-        }
+        return {**dict(view), "artifacts": artifacts}
 
     def _resolve_camera(self, sensor_ref: str) -> Any | None:
         if callable(self._cameras):
@@ -254,6 +292,28 @@ def _has_data(value: Any) -> bool:
         return len(value) > 0
     except TypeError:
         return True
+
+
+def _camera_render_metadata(
+    frame_reader: Callable[..., Any],
+) -> tuple[Fraction, float] | None:
+    try:
+        frame = frame_reader()
+        rendering_frame = frame.get("rendering_frame")
+        rendering_time = frame.get("rendering_time")
+        numerator = rendering_frame["referenceTimeNumerator"]
+        denominator = rendering_frame["referenceTimeDenominator"]
+        if (
+            isinstance(numerator, bool) or not isinstance(numerator, Integral)
+            or isinstance(denominator, bool) or not isinstance(denominator, Integral)
+            or numerator < 0 or denominator <= 0
+            or isinstance(rendering_time, bool) or not isinstance(rendering_time, Real)
+            or not math.isfinite(float(rendering_time)) or float(rendering_time) < 0
+        ):
+            return None
+        return Fraction(int(numerator), int(denominator)), float(rendering_time)
+    except (AttributeError, KeyError, TypeError, ValueError, ZeroDivisionError):
+        return None
 
 
 def _rgb_uint8(array: Any) -> Any:

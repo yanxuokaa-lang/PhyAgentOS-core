@@ -147,7 +147,7 @@ def run_mixture(tmp_path, fail_operation=None):
         for node, entity, operation, params in (
             ("pour-a", "reagent-a", "pour", {"tilt_rad": .87, "hold_s": .6}),
             ("pour-b", "reagent-b", "pour", {"tilt_rad": .87, "hold_s": .6}),
-            ("stir", "rod", "stir", {"radius_m": .009, "depth_m": .04, "turns": 2., "duration_s": 4.}),
+            ("stir", "rod", "stir", {"radius_m": .009, "depth_m": .04, "turns": 2., "duration_s": 4., "direction": "ccw"}),
         ):
             # The Agent binds the whole plan before any physical action.
             binding = observed(entity, "scene-0")

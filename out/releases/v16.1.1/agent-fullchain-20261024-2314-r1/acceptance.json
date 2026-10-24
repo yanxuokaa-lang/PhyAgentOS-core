@@ -1,0 +1,8 @@
+{
+  "instruction": "在当前原场景完成全链路仿真验收。先通过 scene.observe 和 scene.understand 检查可见试剂标签，R01 静态标签近景可用 sensor://label_inspection_r01，全景可用 sensor://tabletop_third_person。按实际读到的可见标签选择 R01 和 R02，依次倒入唯一可确认的目标烧杯，然后使用实际识别的玻璃搅拌棒搅拌，并将瓶和棒各自归位。两次 pour 参数都是 tilt_rad=0.87, hold_s=0.6；stir 参数为 radius_m=0.009, depth_m=0.04, turns=2, duration_s=4, direction=ccw。这些是此次验收显式工艺参数，不使用默认值替代。通过 forge_task_create semantic_subtasks 与现有规划工具执行；保持 Runtime 的目标、标定、碰撞、夹持与结果检查。标签读不清、目标不唯一、功能点或准备不合格时保存实际失败并停止，禁止根据瓶位或场景资产推断身份。报告逐字标签及真实完成的各阶段，不宣称液体转移或化学混合效果。",
+  "session_key": "cli:lab-7d319d7228e4",
+  "simulated_motion_enabled": true,
+  "agent_response": "**本次验收未通过，已在物理动作前停止。** 未根据瓶位、场景资产或相机名称推断试剂身份。\n\n### 标签实读结果\n指定静态近景经 `scene.observe` 和 `scene.understand` 返回的逐字标签为：\n\n```text\nLAB REAGENT\n蒸馏水\nDistilled water\nH2O\nSimulation reagent\n```\n\n该文本中没有 `R01` 或 `R02`；全景中的试剂标签则无法可靠转录。因此，**尚不能按可见标签确认 R01 和 R02**。`sensor://label_inspection_r01` 仅是相机标识，未被当作瓶身身份。\n\n### 阶段结果\n| 阶段 | 真实结果 |\n|---|---|\n| 双相机联合观测 | 因 `capture_skew_exceeded` 失败；未放宽阈值 |\n| 分别进行全景、近景观测与理解 | 已完成只读查询 |\n| 目标烧杯检查 | 全景识别到一个 `mixing_vessel`，但工艺点位于实例掩膜之外，未通过 |\n| 搅拌棒检查 | 识别到一个 `stir_tool`，但工作端无法确定，未通过 |\n| 近景瓶口检查 | 瓶身顶部被裁切，瓶口不可见 |\n| R01/R02 绑定、任务创建与执行规划 | 未执行，避免绑定未确认对象 |\n| 准备、碰撞与夹持检查、抓取、两次 pour、stir、归位 | 均未启动，不记为通过 |\n\n您给定的全部工艺参数已原样记录，**没有替换为默认值，也没有执行**。\n\n失败报告已保存并回读核对：  \n`artifacts/fullchain_acceptance_failure.md`\n\n本次没有完成任何无液体操作动作，也不宣称液体转移或化学混合效果。继续验收前，需要可可靠读取并关联到实体的 R01/R02 标签，以及合格的瓶口、烧杯工艺点和搅拌棒工作端观测证据。",
+  "controller_outcomes": [],
+  "tasks": []
+}

@@ -1,0 +1,42 @@
+{
+  "version": "v16.1.1",
+  "started_local": "2026-10-24 23:12 Asia/Shanghai",
+  "base_commit": "cd885ed4",
+  "branch": "feature/planning-loop",
+  "profile": "examples/forge-adapters/isaacsim_lab/configs/labutopia-mixture.json",
+  "agent_config": "/home/yanxu/.PhyAgentOS/config-rgb-no-evolution-long.json",
+  "python": ".venv/bin/python",
+  "entrypoint": "isaacsim_lab.agent_host",
+  "arguments": ["--execute", "--execution-timeout-s", "1800"],
+  "instruction_source": "acceptance.json:instruction",
+  "scene": "labutopia-tabletop-rod-rack-v1:611e2815fd2a4d5cbe22518d279f4bea:0",
+  "physical_hardware": false,
+  "simulated_motion_enabled": true,
+  "simulated_actions_started": false,
+  "exit_code": 1,
+  "model": "gpt-6.1-sol",
+  "geometry_method": "remake",
+  "geometry_seed": 0,
+  "geometry_device": "cuda:0",
+  "geometry_qualification": "unverified_estimate",
+  "provider_configuration": "artifacts/labutopia/perception-configuration/92acdb1ed0374a69b9a637511eccc12b.json",
+  "model_metadata": "artifacts/labutopia/geometry-recovery/*.json",
+  "parameters": {
+    "pour": {"tilt_rad": 0.87, "hold_s": 0.6},
+    "stir": {"radius_m": 0.009, "depth_m": 0.04, "turns": 2, "duration_s": 4, "direction": "ccw"}
+  },
+  "label_prompt_replay": {
+    "artifact": "label-prompt-replay.jsonl",
+    "source_rgb": "artifacts/labutopia/rgb/cb6331eb5a48405f832c2f6a805a55b6.png",
+    "mode": "three fresh model calls on one saved image after prompt change; no simulation",
+    "identifier_read_count": 3,
+    "trial_count": 3,
+    "remaining_variability": "remote model sampling; line wrapping and occluded-background interpretations differ"
+  },
+  "raw_vs_recovered_depth": [
+    {"view": "label_inspection_r01", "paired_pixels": 580738, "raw_median_m": 0.2234544754, "remake_median_m": 0.2657185197, "median_absolute_change_m": 0.0441172123, "p95_absolute_change_m": 0.0869338065},
+    {"view": "tabletop_third_person", "paired_pixels": 101712, "raw_median_m": 2.0792069435, "remake_median_m": 0.8879472017, "median_absolute_change_m": 1.1402530670, "p95_absolute_change_m": 1.5024713278}
+  ],
+  "depth_metric_scope": "union transparent mask, finite positive raw and recovered pairs; deviation from raw depth, not independent ground-truth error",
+  "acceptance": "failed before semantic task creation; see artifacts/fullchain_acceptance_failure.md"
+}

@@ -333,3 +333,54 @@ target, after which the same PAOS profile must be rerun.
 集成测试 998 通过，2 项此前已有的 node 版本/发布锁检查仍失败；新增外部权重对照 1 通过，最大数值差 0 m；清理后相关验证 19 通过、1 项外部权重测试默认跳过，探针/准备阶段测试另有 31 通过。普通测试和模型候选数不替代真实动作反馈。
 
 详见 `LAB_TRANSPARENT_PERCEPTION_IMPLEMENTATION_20261023.md`、`IMPLEMENTATION_REVIEW_V16_0_0.md` 及 `evidence/transparent-implementation-20261023.json`。历史机制验证只保留为历史证据，不能作为当前透明感知链的执行通过记录。
+
+## v16.1.1 原场景 Agent 验收（2026-10-24）
+
+本轮使用既有 mixture profile，启用 `--execute`，要求读取 R01/R02 标签、依次倾倒、搅拌并归位。任务参数显式给定：两次倾倒均 `tilt_rad=0.87`、`hold_s=0.6`；搅拌 `radius_m=0.009`、`depth_m=0.04`、`turns=2`、`duration_s=4`、`direction=ccw`。这些值属于本次实验指令，未成为产品默认工艺。
+
+首轮模型从可读原图漏掉 R01。更新通用读取指引后，同图三次独立推理均读出编号；第二轮重新启动场景采集，Agent 再次读出 `R01 / LAB REAGENT / 蒸馏水 / Distilled water / H2O / Simulation reagent`。本轮没有修改标签材质或位置。保存的 R01 恢复点云经真实 GraspNet 返回 32 个候选，仅作离线诊断。
+
+前两轮联合采集返回 `capture_skew_exceeded`。修复先读多路缓冲再写盘，并用 Isaac 渲染帧证据区分同帧数据导出耗时与真实采样差；不同帧、换帧与无效帧信息继续拒绝，没有帧 API 的相机保留独立时间。没有扩大既有 50 ms 偏差或 1000 ms 新鲜度要求。
+
+参数化验证直接调用真实轨迹生成器，再根据 TCP/物体挂载还原瓶口或棒尖，改变倾角、停留、半径、深度、圈数、时长和方向并验证结果。最终相机、引擎、视觉理解、Host、动作轨迹和编排六文件 **175 passed**；Ruff 通过。测试没有运行物理仿真动作。
+
+执行验收继续要求 R02 唯一视觉身份、完整瓶口/杯口/棒端观测与独立几何精度证据。`resolve` 和 `refresh_process` 要求 `validated_observation`，当前 ReMake worker 输出 `unverified_estimate`；不能改名绕过这项缺失。前两轮均无 manipulation task 或 controller outcome，没有抓取、倾倒、搅拌、归位的执行反馈。
+
+第三轮 23:46:55–23:57:46 的记录在 `out/releases/v16.1.1/agent-fullchain-20261024-2350-r3/`。联合观测恢复为 `available`、freshness 539 ms，近景完整读出 R01，ReMake 全景/近景推理为 0.394/0.102 s。摘要投影未保存原始采样时间和完整 views，不能以 Agent 填写的 `capture_skew_ms=0` 作为独立同步测量。R01 身份点与 mask 错配、瓶口裁切、R02 未读清、杯口点越界、棒端未定仍阻止执行。最终 `tasks=[]`、`controller_outcomes=[]`、退出码 1：全链路未通过，没有实际工艺动作反馈。
+
+离线重查第二轮 R01 候选可运行以下命令。指定新的输出路径以保留已有结果；该查询不创建当前仿真准备或动作。
+
+```bash
+PYTHONPATH=.:examples/forge-skills/pick-place-workflow/src:examples/forge-adapters/isaacsim_lab/src:examples/forge-adapters/robotwin20/src \
+.venv/bin/python out/releases/v16.1.1/query_recorded_grasp.py \
+  --run out/releases/v16.1.1/agent-fullchain-20261024-2330-r2 \
+  --label R01 --output /tmp/paos-r01-grasp-repeat.json
+```
+
+复现最终无运动回归：
+
+```bash
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
+PYTHONPATH=.:examples/forge-skills/pick-place-workflow/src:examples/forge-adapters/isaacsim_lab/src:examples/forge-adapters/robotwin20/src \
+.venv/bin/python -m pytest -q -p pytest_asyncio.plugin \
+  examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py \
+  examples/forge-adapters/isaacsim_lab/tests/test_phase_pipeline.py \
+  examples/forge-adapters/isaacsim_lab/tests/test_visual_perception.py \
+  examples/forge-adapters/isaacsim_lab/tests/test_observation.py \
+  examples/forge-adapters/isaacsim_lab/tests/test_engine.py \
+  examples/forge-adapters/isaacsim_lab/tests/test_agent_host.py
+```
+
+按本次实际指令启动新一轮授权仿真（输出目录使用新名称）：
+
+```bash
+OMNI_KIT_ACCEPT_EULA=YES \
+PYTHONPATH=.:examples/forge-skills/pick-place-workflow/src:examples/forge-adapters/isaacsim_lab/src:examples/forge-adapters/robotwin20/src \
+.venv/bin/python -m isaacsim_lab.agent_host \
+  --profile examples/forge-adapters/isaacsim_lab/configs/labutopia-mixture.json \
+  --config /home/yanxu/.PhyAgentOS/config-rgb-no-evolution-long.json \
+  --workspace out/labutopia-remake-next-run --execute --execution-timeout-s 1800 \
+  "$(jq -r .instruction out/releases/v16.1.1/agent-fullchain-20261024-2330-r2/acceptance.json)"
+```
+
+原始输入、中间结果、失败和模型候选保存在 `out/releases/v16.1.1/`，诊断与报告分别见 `../diagnostics/transparent-model-comparison-20261023.md`、`../reports/transparent-model-selection-report-20261024.md`。后续顺序为：补齐观测和几何测量 → 单物体抓取归位 → 单次倾倒 → 单次搅拌 → 两次倾倒与搅拌组合任务。每阶段以当前观测、准备、执行反馈和 Runtime 结算验收。

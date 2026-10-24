@@ -56,7 +56,15 @@ def test_tool_tip_target_accounts_for_rotated_grasp_offset():
 
 
 @pytest.mark.parametrize("direction,sign", [("ccw", 1), ("cw", -1)])
-def test_absolute_stir_circle_does_not_accumulate_positions(direction, sign):
+@pytest.mark.parametrize("radius,depth,turns,duration", [
+    (.009, .04, 2., 4.),
+    (.018, .04, 2., 4.),
+    (.009, .055, 2., 4.),
+    (.009, .04, 1., 4.),
+    (.009, .04, 2., 7.),
+    (.025, .06, 2., 4.),
+])
+def test_absolute_stir_circle_does_not_accumulate_positions(direction, sign, radius, depth, turns, duration):
     body = pose_matrix([.1, -.1, 1.], [0., 0., 0., 1.])
     tcp = pose_matrix([.1, -.1, 1.1], [0., 0., 0., 1.])
     relation = np.linalg.inv(tcp) @ body
@@ -64,7 +72,7 @@ def test_absolute_stir_circle_does_not_accumulate_positions(direction, sign):
     target = {"process_frame": {"origin_m": [.3, .05, .88], "axis": [0., 0., 1.]},
               "tool_frame": {"tip_offset_m": tip.tolist(), "tip_axis_local": [0., 0., -1.]}}
     before = deepcopy(target)
-    points = process_waypoints("stir", {"radius_m": .009, "depth_m": .04, "turns": 2., "duration_s": 4., "direction": direction},
+    points = process_waypoints("stir", {"radius_m": radius, "depth_m": depth, "turns": turns, "duration_s": duration, "direction": direction},
                                tcp, body, relation, target, config())
     actual = []
     for pose, _, stage in points:
@@ -72,13 +80,51 @@ def test_absolute_stir_circle_does_not_accumulate_positions(direction, sign):
             placed = pose @ relation
             actual.append(placed[:3, 3] + placed[:3, :3] @ tip)
     actual = np.array(actual)
-    assert np.linalg.norm(actual[:, :2] - [.3, .05], axis=1) == pytest.approx(np.full(len(actual), .009))
-    assert actual[:, 2] == pytest.approx(np.full(len(actual), .84))
+    assert np.linalg.norm(actual[:, :2] - [.3, .05], axis=1) == pytest.approx(np.full(len(actual), radius))
+    assert actual[:, 2] == pytest.approx(np.full(len(actual), .88 - depth))
     assert target == before
     assert points[-1][2] == "exit"
     offsets = actual[:, :2] - [.3, .05]
     angles = np.unwrap(np.r_[np.pi / 2, np.arctan2(offsets[:, 1], offsets[:, 0])])
-    assert angles[-1] - angles[0] == pytest.approx(sign * 2 * np.pi * (2 + config()["stir_entry_reserve_turns"]))
+    assert angles[-1] - angles[0] == pytest.approx(sign * 2 * np.pi * (turns + config()["stir_entry_reserve_turns"]))
+    assert sum(seconds for _, seconds, stage in points if stage == "process") == pytest.approx(
+        duration * (turns + config()["stir_entry_reserve_turns"]) / turns)
+
+
+@pytest.mark.parametrize("tilt,hold", [(.65, .6), (1.2, .6), (.65, 1.8), (1.5, .6)])
+def test_pour_parameters_control_measured_body_tilt_and_hold(tilt, hold):
+    body = pose_matrix([.1, -.1, 1.], Rotation.from_euler("z", .3).as_quat())
+    tcp = pose_matrix([.13, -.08, 1.1], Rotation.from_euler("xy", [.2, -.1]).as_quat())
+    relation = np.linalg.inv(tcp) @ body
+    tip = np.array([.02, 0., .15])
+    target = {"process_frame": {"origin_m": [.3, .05, .88], "axis": [0., 0., 1.]},
+              "tool_frame": {"tip_offset_m": tip.tolist()}}
+    points = process_waypoints("pour", {"tilt_rad": tilt, "hold_s": hold},
+                               tcp, body, relation, target, config())
+    process = [(pose @ relation, seconds) for pose, seconds, stage in points if stage == "process"]
+    assert len(process) == 1
+    placed, seconds = process[0]
+    assert placed[:3, 3] + placed[:3, :3] @ tip == pytest.approx(
+        [.3, .05, .88 + config()["pour_lip_clearance_m"]])
+    upright = points[-1][0] @ relation
+    assert Rotation.from_matrix(placed[:3, :3] @ upright[:3, :3].T).magnitude() == pytest.approx(tilt)
+    assert seconds == pytest.approx(hold + config()["settle_s"])
+    assert upright[:3, 2] == pytest.approx([0., 0., 1.])
+
+
+@pytest.mark.parametrize("operation,parameters,code", [
+    ("pour", {"tilt_rad": 1.51, "hold_s": .6}, "tilt_limit_exceeded"),
+    ("stir", {"radius_m": .026, "depth_m": .04, "turns": 2., "duration_s": 4., "direction": "ccw"},
+     "stir_geometry_limit_exceeded"),
+    ("stir", {"radius_m": .009, "depth_m": .061, "turns": 2., "duration_s": 4., "direction": "cw"},
+     "stir_geometry_limit_exceeded"),
+])
+def test_process_parameters_exceeding_deployment_bounds_are_rejected(operation, parameters, code):
+    target = {"process_frame": {"origin_m": [.3, .05, .88], "axis": [0., 0., 1.]},
+              "tool_frame": {"tip_offset_m": [0., 0., -.1], "tip_axis_local": [0., 0., -1.]}}
+    with pytest.raises(PhaseMotionError) as error:
+        process_waypoints(operation, parameters, np.eye(4), np.eye(4), np.eye(4), target, config())
+    assert error.value.code == code
 
 
 def test_missing_measured_process_feature_is_rejected():

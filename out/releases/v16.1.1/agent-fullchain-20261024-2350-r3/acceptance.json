@@ -1,0 +1,8 @@
+{
+  "instruction": "继续原场景全链路仿真验收。先用 scene.observe 在一个调用中请求 sensor_refs=[\"sensor://tabletop_third_person\",\"sensor://label_inspection_r01\"]，保留默认 max_capture_skew_ms=50，max_age_ms=1000。记录是否成功；分别对可用视图 scene.understand，从实际图像逐字读取标签并核对瓶口、杯口、棒端是否可用。任务仍是选择标签 R01 和 R02 分别倾倒到唯一目标烧杯然后用实际识别的搅拌棒搅拌归位；pour 的 tilt_rad=0.87 hold_s=0.6；stir radius_m=0.009 depth_m=0.04 turns=2 duration_s=4 direction=ccw。如果观测合格则通过 semantic_subtasks 和既有 Runtime 执行；标签或功能点/几何资格不足则保留诊断停止，不用相机名称或资产信息代替视觉身份，不放宽已有检查。请保存实际阶段与每个问题，并区分文字识别和动作执行。",
+  "session_key": "cli:lab-fed75f4cc134",
+  "simulated_motion_enabled": true,
+  "agent_response": "**本次停在视觉资格检查阶段，未进入动作执行。** 未放宽检查，未创建 manipulation AgentTask 或 `semantic_subtasks`，未执行抓取、倾倒、搅拌或归位。\n\n### 1. 观测与理解\n- 已在**一次** `scene.observe` 调用中请求指定的两个 `sensor_refs`。\n- `max_age_ms=1000`；未覆盖 `max_capture_skew_ms`，保留默认 **50 ms**。\n- 调用返回 `ok=true`、`status=available`、`freshness_ms=539`。\n- 分别调用两视图的 `scene.understand`，均返回 `available`，但**接口可用不代表操作资格通过**。\n\n**更正前述表述：**可见观测摘要未展示完整 `views` 和实测捕获偏差，因此“两个视图均可用、偏差为 0 ms”未得到独立核实，不能作为同步验收通过的证据；此缺口已保存。\n\n### 2. 文字识别\n近景图像理解返回的 R01 标签逐字为：\n```text\nR01    LAB REAGENT\n蒸馏水\nDistilled water\nH2O\nSimulation reagent\n```\n全景瓶签过小或模糊，**未可靠读出 R02**。没有用相机名、固定位置或资产信息补认身份。\n\n### 3. 阻断问题\n| 对象 | 结果 |\n|---|---|\n| R01 | 文字可读，但出现身份像素不在实例掩膜内的问题；瓶颈、瓶口超出近景上边缘，过程功能点证据不足 |\n| R02 | 标签身份未可靠识别 |\n| 唯一目标烧杯 | 检出 `mixing_vessel`，但杯口过程关键点位于实例掩膜外，未通过资格检查 |\n| 搅拌棒 | 检出 `stir_tool`，但工作端无法确定，缺少有序端点及明确图像功能点支持 |\n| 其他几何 | 多个瓶存在口沿拟合/角覆盖不足、关键点越出掩膜或遮挡问题 |\n\n这是**动作前检查阻断**，不是动作执行失败。没有无液体操控完成测量，也没有转移体积或化学混合质量结论。\n\n完整阶段记录、全部逐项诊断和原始引用已保存并回读核对：  \n[验收记录](artifacts/acceptance-20261024-2347.md)",
+  "controller_outcomes": [],
+  "tasks": []
+}

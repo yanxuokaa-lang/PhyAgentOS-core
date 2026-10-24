@@ -1,0 +1,35 @@
+{
+  "version": "v16.1.1",
+  "started_local": "2026-10-24 23:30 Asia/Shanghai",
+  "base_commit": "cd885ed4",
+  "branch": "feature/planning-loop",
+  "profile": "examples/forge-adapters/isaacsim_lab/configs/labutopia-mixture.json",
+  "agent_config": "/home/yanxu/.PhyAgentOS/config-rgb-no-evolution-long.json",
+  "entrypoint": "isaacsim_lab.agent_host",
+  "arguments": ["--execute", "--execution-timeout-s", "1800"],
+  "instruction_source": "acceptance.json:instruction",
+  "session_key": "cli:lab-aca01a599c44",
+  "simulated_motion_enabled": true,
+  "physical_hardware": false,
+  "simulated_actions_started": false,
+  "exit_code": 1,
+  "label_prompt": "includes corner identifiers and every legible line; no expected label injected",
+  "joint_capture": {"status": "unavailable", "code": "capture_skew_exceeded", "max_capture_skew_ms": 50, "max_age_ms": 1000},
+  "individual_captures_freshness_ms": {"tabletop_third_person": 399, "label_inspection_r01": 235},
+  "label": {
+    "text": "R01    LAB REAGENT\n蒸馏水\nDistilled water\nH2O\nSimulation reagent",
+    "source": "artifacts/labutopia/understanding/a26345a91e814f16aa0a9577ed30d367.json",
+    "rgb": "artifacts/labutopia/rgb/6c209c2aac9d47cfa377e555e5f469c0.png",
+    "scope": "fresh simulation capture, one readable flask; not all labels or views"
+  },
+  "geometry": {
+    "method": "remake", "device": "cuda:0", "seed": 0,
+    "model_revision": "4f568148c8421544136bf49bb941149e0c990a34",
+    "qualification": "unverified_estimate",
+    "torch": "2.11.0+cu128", "cuda": "12.8", "numpy": "2.2.6",
+    "inference_s": {"tabletop_third_person": 0.3641473701, "label_inspection_r01": 0.1010521150},
+    "records": ["artifacts/labutopia/geometry-recovery/0deaf1affcf4474da1e84c2044b83c30.json", "artifacts/labutopia/geometry-recovery/668fcdeecbf84484a30b9f397d73a6a2.json"]
+  },
+  "offline_grasp": {"record": "recorded-target-grasp.json", "status": "available", "candidates": 32, "scope": "actual GraspNet on recorded R01 recovered cloud; historical capture, no preparation or motion"},
+  "acceptance": "failed before manipulation task creation; R02 identity and qualified process geometry absent"
+}

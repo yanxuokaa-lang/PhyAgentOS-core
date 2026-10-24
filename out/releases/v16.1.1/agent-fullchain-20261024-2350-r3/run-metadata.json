@@ -1,0 +1,66 @@
+{
+  "version": "v16.1.1",
+  "started_local": "2026-10-24 23:46:55 Asia/Shanghai",
+  "finished_local": "2026-10-24 23:57:46 Asia/Shanghai",
+  "directory_time_marker": "2350 is a directory label, not actual start time",
+  "base_commit": "cd885ed4",
+  "branch": "feature/planning-loop",
+  "profile": "examples/forge-adapters/isaacsim_lab/configs/labutopia-mixture.json",
+  "entrypoint": "isaacsim_lab.agent_host",
+  "arguments": [
+    "--execute",
+    "--execution-timeout-s",
+    "1800"
+  ],
+  "instruction_source": "acceptance.json:instruction",
+  "session_key": "cli:lab-fed75f4cc134",
+  "simulated_motion_enabled": true,
+  "physical_hardware": false,
+  "simulated_actions_started": false,
+  "exit_code": 1,
+  "joint_capture": {
+    "status": "available",
+    "freshness_ms": 539,
+    "max_age_ms": 1000,
+    "max_capture_skew_ms": 50,
+    "independent_skew_measurement": null,
+    "evidence_limit": "summary projection omits original views/capture timestamps/skew; Agent-supplied understand capture_skew_ms=0 is not independent measurement"
+  },
+  "label": {
+    "text": "R01    LAB REAGENT\n蒸馏水\nDistilled water\nH2O\nSimulation reagent",
+    "source": "artifacts/labutopia/visual-inference/19fff201a9694d85828ba5b0c0191242.json",
+    "rgb": "artifacts/labutopia/rgb/e3fd7ac2a47c4c1e95304e948e491d01.png",
+    "identity_binding": "failed: identity pixel is outside model instance mask",
+    "r02": "unresolved"
+  },
+  "geometry": {
+    "method": "remake",
+    "device": "cuda:0",
+    "seed": 0,
+    "model_revision": "4f568148c8421544136bf49bb941149e0c990a34",
+    "qualification": "unverified_estimate",
+    "inference_s": {
+      "tabletop_third_person": 0.3942410370800644,
+      "label_inspection_r01": 0.10226075001992285
+    },
+    "records": [
+      "artifacts/labutopia/geometry-recovery/b9ea364d99e04b3c8e3cc47f6320e853.json",
+      "artifacts/labutopia/geometry-recovery/0a521e3d142f402dbd095cde0bbb4e88.json"
+    ]
+  },
+  "acceptance": {
+    "status": "failed before manipulation task creation",
+    "tasks": 0,
+    "controller_outcomes": 0,
+    "report": "artifacts/acceptance-20261024-2347.md",
+    "blockers": [
+      "R02 identity unresolved",
+      "R01 identity-mask mismatch",
+      "cropped bottle rim",
+      "beaker landmark outside instance mask",
+      "rod working endpoint unresolved",
+      "geometry not independently validated"
+    ]
+  },
+  "archive_scope": "Git retains text records, RGB evidence and model metadata; original NPY arrays remain in the local run directory. A text-only checkout cannot replay GraspNet without those arrays."
+}

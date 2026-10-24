@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
 
 import numpy as np
@@ -29,6 +29,21 @@ class FakeCamera:
         assert world_frame is False
         self.calls.append("point_cloud")
         return [[0.1, 0.2, 0.3]]
+
+
+class FrameCamera(FakeCamera):
+    def __init__(self, numerator=1, denominator=60, rendering_time=1 / 60):
+        super().__init__()
+        self.frame = {
+            "rendering_frame": {
+                "referenceTimeNumerator": numerator,
+                "referenceTimeDenominator": denominator,
+            },
+            "rendering_time": rendering_time,
+        }
+
+    def get_current_frame(self):
+        return self.frame
 
 
 class CalibratedCamera(FakeCamera):
@@ -100,6 +115,273 @@ def test_source_captures_each_sensor_in_one_observation_set():
         "camera/front", "camera/wrist",
     ]
     assert len(result["artifacts"]) == 2
+
+
+def test_multi_sensor_capture_skew_ignores_deferred_artifact_write_delay(monkeypatch):
+    import isaacsim_lab.observation as observation_module
+
+    clock = {"now": datetime(2026, 10, 22, tzinfo=timezone.utc)}
+
+    class FakeDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return clock["now"]
+
+    class AdvancingWriter(ArtifactWriter):
+        def write(self, sensor_ref, kind, value, *, captured_at):
+            result = super().write(sensor_ref, kind, value, captured_at=captured_at)
+            clock["now"] += timedelta(milliseconds=100)
+            return result
+
+    monkeypatch.setattr(observation_module, "datetime", FakeDateTime)
+    source = IsaacCameraObservationSource(
+        {"camera/front": FakeCamera(), "camera/wrist": FakeCamera()},
+        metadata,
+        AdvancingWriter(),
+    )
+    result = ObservationEndpoint(source, now=lambda: clock["now"]).invoke(
+        {"sensor_refs": ["camera/front", "camera/wrist"], "max_age_ms": 1000}
+    )
+
+    assert result["status"] == "available"
+    assert result["capture_skew_ms"] == 0
+
+
+def test_same_render_frame_ignores_slow_pointcloud_getter(monkeypatch):
+    import isaacsim_lab.observation as observation_module
+
+    clock = {"now": datetime(2026, 10, 22, tzinfo=timezone.utc)}
+
+    class FakeDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return clock["now"]
+
+    class SlowPointCloudCamera(FrameCamera):
+        def get_pointcloud(self, *, world_frame):
+            clock["now"] += timedelta(seconds=2)
+            return super().get_pointcloud(world_frame=world_frame)
+
+    monkeypatch.setattr(observation_module, "datetime", FakeDateTime)
+    source = IsaacCameraObservationSource(
+        {"camera/front": SlowPointCloudCamera(), "camera/wrist": FrameCamera()},
+        metadata,
+        ArtifactWriter(),
+        modalities=("point_cloud",),
+    )
+    result = ObservationEndpoint(source, now=lambda: clock["now"]).invoke(
+        {"sensor_refs": ["camera/front", "camera/wrist"], "max_age_ms": 5000}
+    )
+
+    assert result["status"] == "available"
+    assert result["capture_skew_ms"] == 0
+    assert result["views"][0]["captured_at"] == result["views"][1]["captured_at"]
+
+
+def test_multi_sensor_capture_rejects_different_render_frames():
+    writer = ArtifactWriter()
+    source = IsaacCameraObservationSource(
+        {"camera/front": FrameCamera(), "camera/wrist": FrameCamera(numerator=2, rendering_time=2 / 60)},
+        metadata,
+        writer,
+    )
+
+    result = ObservationEndpoint(source).invoke(
+        {"sensor_refs": ["camera/front", "camera/wrist"], "max_age_ms": 1000}
+    )
+
+    assert result["status"] == "unavailable"
+    assert result["error"]["code"] == "sensor_unavailable"
+    assert writer.values == []
+
+
+def test_render_frame_accepts_numpy_integer_reference_time():
+    source = IsaacCameraObservationSource(
+        {
+            "camera/front": FrameCamera(numerator=np.int64(1), denominator=np.int64(60)),
+            "camera/wrist": FrameCamera(numerator=np.uint64(2), denominator=np.uint64(120)),
+        },
+        metadata,
+        ArtifactWriter(),
+    )
+
+    result = ObservationEndpoint(source).invoke(
+        {"sensor_refs": ["camera/front", "camera/wrist"], "max_age_ms": 1000}
+    )
+
+    assert result["status"] == "available"
+    assert result["capture_skew_ms"] == 0
+
+
+def test_multi_sensor_capture_rejects_frame_change_during_read():
+    class AdvancingFrameCamera(FrameCamera):
+        def get_rgb(self):
+            result = super().get_rgb()
+            self.frame["rendering_frame"]["referenceTimeNumerator"] += 1
+            self.frame["rendering_time"] += 1 / 60
+            return result
+
+    writer = ArtifactWriter()
+    source = IsaacCameraObservationSource(
+        {"camera/front": AdvancingFrameCamera(), "camera/wrist": FrameCamera()},
+        metadata,
+        writer,
+    )
+
+    result = ObservationEndpoint(source).invoke(
+        {"sensor_refs": ["camera/front", "camera/wrist"], "max_age_ms": 1000}
+    )
+
+    assert result["status"] == "unavailable"
+    assert result["error"]["code"] == "sensor_unavailable"
+    assert writer.values == []
+
+
+@pytest.mark.parametrize(
+    "frame",
+    [
+        {},
+        {"rendering_frame": {"referenceTimeNumerator": 1}, "rendering_time": 1 / 60},
+        {"rendering_frame": {"referenceTimeNumerator": 1, "referenceTimeDenominator": 60},
+         "rendering_time": float("nan")},
+    ],
+)
+def test_multi_sensor_capture_rejects_missing_or_invalid_frame_metadata(frame):
+    class InvalidFrameCamera(FrameCamera):
+        def get_current_frame(self):
+            return frame
+
+    writer = ArtifactWriter()
+    source = IsaacCameraObservationSource(
+        {"camera/front": InvalidFrameCamera(), "camera/wrist": FrameCamera()},
+        metadata,
+        writer,
+    )
+
+    result = ObservationEndpoint(source).invoke(
+        {"sensor_refs": ["camera/front", "camera/wrist"], "max_age_ms": 1000}
+    )
+
+    assert result["status"] == "unavailable"
+    assert result["error"]["code"] == "sensor_unavailable"
+    assert writer.values == []
+
+
+def test_camera_payload_is_snapshotted_before_later_sensor_reads():
+    first_buffer = np.ones((1, 1, 3), dtype=np.uint8)
+
+    class BufferedCamera(FrameCamera):
+        def get_rgb(self):
+            return first_buffer
+
+    class MutatingCamera(FrameCamera):
+        def get_rgb(self):
+            first_buffer[:] = 9
+            return np.zeros((1, 1, 3), dtype=np.uint8)
+
+    writer = ArtifactWriter()
+    source = IsaacCameraObservationSource(
+        {"camera/front": BufferedCamera(), "camera/wrist": MutatingCamera()},
+        metadata,
+        writer,
+    )
+
+    result = ObservationEndpoint(source).invoke(
+        {"sensor_refs": ["camera/front", "camera/wrist"], "max_age_ms": 1000}
+    )
+
+    assert result["status"] == "available"
+    assert np.array_equal(writer.values[0][2], np.ones((1, 1, 3), dtype=np.uint8))
+
+
+def test_mixed_frame_api_and_legacy_cameras_keep_independent_wall_times(monkeypatch):
+    import isaacsim_lab.observation as observation_module
+
+    clock = {"now": datetime(2026, 10, 22, tzinfo=timezone.utc)}
+
+    class FakeDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return clock["now"]
+
+    class SlowFrameCamera(FrameCamera):
+        def get_rgb(self):
+            clock["now"] += timedelta(milliseconds=100)
+            return super().get_rgb()
+
+    monkeypatch.setattr(observation_module, "datetime", FakeDateTime)
+    writer = ArtifactWriter()
+    source = IsaacCameraObservationSource(
+        {"camera/front": SlowFrameCamera(), "camera/wrist": FakeCamera()},
+        metadata,
+        writer,
+    )
+    result = ObservationEndpoint(source, now=lambda: clock["now"]).invoke(
+        {"sensor_refs": ["camera/front", "camera/wrist"], "max_age_ms": 1000}
+    )
+
+    assert result["status"] == "unavailable"
+    assert result["error"]["code"] == "capture_skew_exceeded"
+    captured_at = [item[3] for item in writer.values]
+    assert captured_at[1] - captured_at[0] == timedelta(milliseconds=100)
+
+
+def test_multi_sensor_capture_rejects_real_getter_delay(monkeypatch):
+    import isaacsim_lab.observation as observation_module
+
+    clock = {"now": datetime(2026, 10, 22, tzinfo=timezone.utc)}
+
+    class FakeDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return clock["now"]
+
+    class SlowCamera(FakeCamera):
+        def get_rgb(self):
+            clock["now"] += timedelta(milliseconds=100)
+            return super().get_rgb()
+
+    monkeypatch.setattr(observation_module, "datetime", FakeDateTime)
+    source = IsaacCameraObservationSource(
+        {"camera/front": SlowCamera(), "camera/wrist": FakeCamera()},
+        metadata,
+        ArtifactWriter(),
+    )
+    result = ObservationEndpoint(source, now=lambda: clock["now"]).invoke(
+        {"sensor_refs": ["camera/front", "camera/wrist"], "max_age_ms": 1000}
+    )
+
+    assert result["status"] == "unavailable"
+    assert result["error"]["code"] == "capture_skew_exceeded"
+
+
+def test_multi_sensor_capture_rejects_real_metadata_delay(monkeypatch):
+    import isaacsim_lab.observation as observation_module
+
+    clock = {"now": datetime(2026, 10, 22, tzinfo=timezone.utc)}
+
+    class FakeDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return clock["now"]
+
+    def delayed_metadata(sensor_ref):
+        if sensor_ref == "camera/front":
+            clock["now"] += timedelta(milliseconds=100)
+        return metadata(sensor_ref)
+
+    monkeypatch.setattr(observation_module, "datetime", FakeDateTime)
+    source = IsaacCameraObservationSource(
+        {"camera/front": FakeCamera(), "camera/wrist": FakeCamera()},
+        delayed_metadata,
+        ArtifactWriter(),
+    )
+    result = ObservationEndpoint(source, now=lambda: clock["now"]).invoke(
+        {"sensor_refs": ["camera/front", "camera/wrist"], "max_age_ms": 1000}
+    )
+
+    assert result["status"] == "unavailable"
+    assert result["error"]["code"] == "capture_skew_exceeded"
 
 
 @pytest.mark.parametrize(

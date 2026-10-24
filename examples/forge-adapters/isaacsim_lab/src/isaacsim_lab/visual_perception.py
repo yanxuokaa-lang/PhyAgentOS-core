@@ -51,7 +51,11 @@ class RGBLabelPointInference:
         response = self.client.responses.create(
             model=self.model, store=False, max_output_tokens=self.max_output_tokens,
             instructions=("Inspect the laboratory RGB image. Enumerate visible reagent bottles, beakers, test tubes and stirring tools. Do not classify test tubes as mixing vessels. "
-                          "Read attached labels literally; use null when unreadable. For each object give one pixel on its visible "
+                          "Read attached labels literally, including short alphanumeric identifiers at the edges or corners "
+                          "and every legible line; preserve line breaks. Inspect the entire attached label before returning "
+                          "its transcription. Never fill missing characters from expected names or surrounding objects; "
+                          "report partially unreadable text in ambiguities and use null when unreadable. "
+                          "For each object give one pixel on its visible "
                           "physical surface, away from its label, background, rim, gripper, stand and occluders. Also give a tight bbox_xyxy of the physical object excluding its label/support. Coordinates use "
                           "the original image resolution, x right and y down. For a thin rod select the midpoint of a clearly "
                           "visible shaft segment. Do not infer chemical contents or emit simulator IDs, metric geometry, "
