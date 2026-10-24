@@ -70,7 +70,7 @@
 ```
 
 ### Git 提交 / Git Commit
-- Pending commit and push. / 待提交与推送。
+- Commit: `b621414a`; Branch: `feature/planning-loop`; push pending. / 提交：`b621414a`；分支：`feature/planning-loop`；待推送。
 
 ## v16.0.3 (2026-10-24 09:35) - codex
 
