@@ -82,3 +82,35 @@ Raw depth 与 ReMake 的深度值不应直接被当成“ReMake 误差为多少�
 3. 对两个模型使用同一候选采样和准备检查，比较 `proposed` 数量、最高分、候选落点是否覆盖可夹持区域。
 4. 只有在独立几何误差和准备资格通过后，才把“候选更多/分数更高”转化为执行模型选择。
 
+## 补充对照：LocateAnything 指定目标后的五行对比（2026-10-24）
+
+上一版使用的是回放中的场景理解实例 mask；本次改为完整执行 `LocateAnything → SAM2 → RGB-D → GraspNet`，并把同一个目标 mask 同时交给 raw-depth 和 ReMake 两条几何路径。主图集中显示右侧大型锥形瓶，左列为未加入 ReMake 的 raw-depth，右列为 ReMake。
+
+![LocateAnything/ReMake 五行对比](assets/transparent-model-comparison-20261023-locateanything/locateanything-remake-grasp-comparison.png)
+
+### 本次结果
+
+| 指标 | Raw-depth | ReMake |
+|---|---:|---:|
+| 目标 mask 像素 | 25,546 | 25,546 |
+| 深度 q05 / q50 / q95（m） | 1.706 / 1.842 / 2.191 | 0.715 / 0.835 / 1.097 |
+| 目标点云 | 25,546 | 25,546 |
+| GraspNet 解码候选 | 915 | 259 |
+| GraspNet 保留候选 | 32 | 32 |
+| 最高分 | 1.000 | 1.000 |
+
+LocateAnything 使用 `800x600` 缩放输入查询 `conical flask`，返回 8 个框；选定框从缩放图 `[498,306,573,442]` 映射到原图 `[996,612,1146,884]`。SAM2 使用该框生成 mask。两侧使用同一 RGB、同一 mask、同一标定和同一 GraspNet 设置。
+
+### 错误原因与修复
+
+| 问题 | 原因 | 修复 |
+|---|---|---|
+| 原图直接运行 LocateAnything OOM | 1600x1200 输入在模型加载后触发约 5.93 GiB 推理峰值，显存余量不足约 10 MiB | 使用 800x600 缩放图推理，再将框按 2 倍映射回原图；模型权重未被删除 |
+| 之前图中锥形瓶没有 GraspNet 位姿 | 旧探针把 `mixing_vessel` 作为容器排除在抓取源之外 | 新诊断仅为离线对照，直接对 LocateAnything/SAM2 目标点云调用同一 GraspNet Provider；不进入运动准备 |
+| 旧图目标不够明显 | 全景图展示整帧，目标像素区域较小 | 新增目标裁剪五行双列图，固定显示 RGB、分割、深度、点云和位姿 |
+| DFNet 没有结果 | 当前配置目录只有 `remake.tar` 与相对深度权重；本地常见缓存路径未找到 `dfnet.tar`，已有 run 在 understanding 阶段因 provider failure 退出。Google Drive 请求超时，Baidu 提取码校验失败，未取得 checkpoint | 保留 `pending_checkpoint` 状态；取得官方权重后复用同一目标和配置重跑，不能用 ReMake 代替，也不能把缺权重写成模型效果差 |
+
+本次对照仍是离线诊断。GraspNet 分数和候选数量不等于碰撞通过、几何真值精度或运动授权。
+
+详细产物见 [`transparent-model-comparison-20261023-locateanything.md`](transparent-model-comparison-20261023-locateanything.md)。
+

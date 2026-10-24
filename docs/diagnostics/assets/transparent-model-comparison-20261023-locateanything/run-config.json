@@ -1,0 +1,26 @@
+{
+  "scene_run": "out/releases/v16.0.0/remake-r2-20261023-c",
+  "rgb_input_px": [1600, 1200],
+  "locateanything": {
+    "model_id": "nvidia/LocateAnything-3B",
+    "revision": "c32291ca5e996f5a7a485845b4f57a233936bba0",
+    "input_px": [800, 600],
+    "query": "conical flask",
+    "decode_seed": 0,
+    "generation_mode": "fast"
+  },
+  "sam2": {
+    "model_config": "configs/sam2.1/sam2.1_hiera_l.yaml",
+    "checkpoint": "/home/yanxu/Grounded-SAM-2/checkpoints/sam2.1_hiera_large.pt",
+    "device": "cuda:0"
+  },
+  "graspnet": {
+    "checkpoint": "/home/yanxu/graspnet-baseline/checkpoints/checkpoint-rs.tar",
+    "point_budget": 12000,
+    "score_threshold": 0.02,
+    "sample_seed": 0,
+    "max_candidates": 32
+  },
+  "motion_authorized": false,
+  "dfnet": "pending_checkpoint"
+}

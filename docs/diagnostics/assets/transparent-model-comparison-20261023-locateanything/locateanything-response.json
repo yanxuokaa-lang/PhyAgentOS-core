@@ -1,0 +1,130 @@
+{
+  "request_id": "diagnosis-800",
+  "status": "available",
+  "input_size_px": [
+    800,
+    600
+  ],
+  "query": "conical flask",
+  "source_rgb": "out/releases/v16.0.0/remake-r2-20261023-c/artifacts/labutopia/rgb/aee040c9364741cdb2242ce505a3f096.png",
+  "proposals": [
+    {
+      "bbox_xyxy_px": [
+        236,
+        498,
+        346,
+        602
+      ],
+      "scaled_from": [
+        118,
+        249,
+        173,
+        344
+      ]
+    },
+    {
+      "bbox_xyxy_px": [
+        368,
+        508,
+        430,
+        602
+      ],
+      "scaled_from": [
+        184,
+        254,
+        215,
+        301
+      ]
+    },
+    {
+      "bbox_xyxy_px": [
+        388,
+        558,
+        488,
+        720
+      ],
+      "scaled_from": [
+        194,
+        279,
+        244,
+        360
+      ]
+    },
+    {
+      "bbox_xyxy_px": [
+        484,
+        424,
+        596,
+        636
+      ],
+      "scaled_from": [
+        242,
+        212,
+        298,
+        318
+      ]
+    },
+    {
+      "bbox_xyxy_px": [
+        996,
+        612,
+        1146,
+        884
+      ],
+      "confidence": null,
+      "scaled_from": [
+        498,
+        306,
+        573,
+        442
+      ],
+      "selected": true
+    },
+    {
+      "bbox_xyxy_px": [
+        1068,
+        556,
+        1184,
+        758
+      ],
+      "scaled_from": [
+        534,
+        278,
+        592,
+        379
+      ]
+    },
+    {
+      "bbox_xyxy_px": [
+        1216,
+        790,
+        1324,
+        916
+      ],
+      "scaled_from": [
+        608,
+        395,
+        662,
+        458
+      ]
+    },
+    {
+      "bbox_xyxy_px": [
+        1254,
+        620,
+        1366,
+        796
+      ],
+      "scaled_from": [
+        627,
+        310,
+        683,
+        398
+      ]
+    }
+  ],
+  "scale_factor": [
+    2.0,
+    2.0
+  ]
+}
