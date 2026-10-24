@@ -46,18 +46,27 @@
 - [eval] [exp] 用 LocateAnything 缩放输入定位同一场景右侧锥形瓶，SAM2 分割后以同一 mask 对比 raw-depth 与 ReMake 的深度、点云和 GraspNet 位姿。 / Used scaled LocateAnything input to locate the right-side flask in the same scene, then compared raw-depth and ReMake depth, clouds, and GraspNet poses from one SAM2 mask. (local)
 - [docs] [feat] 生成目标裁剪五行左右双列图、完整中间 artifact、数值摘要和 DFNet 待权重说明；DFNet 官方入口访问失败，未伪造第三模型结果。 / Generated the cropped five-row paired image, intermediate artifacts, metrics summary, and DFNet checkpoint note; official DFNet download access failed, so no third-model result was fabricated. (local)
 
+### 重点差异 / Key Diff
+```diff
+- DFNet comparison: no same-target output
++ DFNet: checkpoint unavailable; rerun with same RGB/mask/calibration/GraspNet settings
++ Raw/ReMake: mask 25,546 px; decoded grasps 915/259; retained 32/32
+```
+
 ### 文件变更详情 / Change Details
 - [新增 / Added] `scripts/render_locateanything_remake_grasp_comparison.py:L1-L212`：渲染同目标 RGB、分割、深度、点云和抓取位姿。 / Renders paired RGB, segmentation, depth, cloud, and grasp-pose rows for one target.
 - [新增 / Added] `docs/diagnostics/transparent-model-comparison-20261023-locateanything.md:L1-L63`：记录实际流程、指标、复现命令和安全边界。 / Records the actual flow, metrics, reproduction command, and safety boundary.
 - [修改 / Modified] `docs/diagnostics/transparent-model-comparison-20261023.md:L85-L116`：并入五行对比图、错误原因和修复说明。 / Appended the five-row comparison, failure causes, and fixes.
-- [新增 / Added] `docs/reports/transparent-model-selection-report-20261024.md:L1-L76`：汇报同场景结果、错误修复、证据边界及暂定选型；明确 DFNet 待权重。 / Reports same-scene results, failure fixes, evidence limits, and provisional selection; marks DFNet as awaiting weights.
+- [新增 / Added] `docs/reports/transparent-model-selection-report-20261024.md:L1-L77`：汇报同场景结果、错误修复、证据边界及暂定选型；明确 DFNet 待权重。 / Reports same-scene results, failure fixes, evidence limits, and provisional selection; marks DFNet as awaiting weights.
 - [新增 / Added] `docs/diagnostics/assets/transparent-model-comparison-20261023-locateanything/*`：保存图、mask、点云、LocateAnything 响应及候选摘要。 / Saves the image, mask, clouds, LocateAnything response, and candidate summary.
 
 ### 验证 / Validation
 - LocateAnything/SAM2/GraspNet/渲染完成；图像尺寸 `1280x2160`，mask 与两路点云均为 `25,546`。 / Completed; image is `1280x2160`, mask and both clouds contain `25,546` entries.
 - GraspNet 解码 raw/ReMake 分别为 `915/259`，各保留 `32`；未执行运动。 / Raw/ReMake GraspNet decoded `915/259` and retained `32` each; no motion was executed.
 - DFNet 未运行：本地 checkpoint 缺失且官方入口本轮无法下载；报告未将此写成效果结论。 / DFNet was not run: the local checkpoint is missing and official download endpoints were unavailable; the report does not treat this as an effect result.
-- Commit/Push: pending.
+
+### Git 提交 / Git Commit
+- Commit: `a3485444`; Branch: `feature/planning-loop`; Push: pending.
 
 ## v16.0.2 (2026-10-23 19:02) - codex
 
