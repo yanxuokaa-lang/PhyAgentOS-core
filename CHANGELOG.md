@@ -70,7 +70,7 @@
 ```
 
 ### Git 提交 / Git Commit
-- Commit: `b621414a`; Branch: `feature/planning-loop`; push pending. / 提交：`b621414a`；分支：`feature/planning-loop`；待推送。
+- Commit: `b621414a` (implementation), `ba19b43f` (log receipt); Branch: `feature/planning-loop`; pushed to origin. / 提交：`b621414a`（实现）、`ba19b43f`（日志回执）；分支：`feature/planning-loop`；已推送。
 
 ## v16.0.3 (2026-10-24 09:35) - codex
 
