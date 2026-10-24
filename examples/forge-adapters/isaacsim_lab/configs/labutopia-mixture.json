@@ -7,6 +7,8 @@
   "source_path": "/World/ReagentZones/A/R01/Model",
   "destination_path": "/World/OperationArea/TargetBeaker/Model",
   "source_label": "R01",
+  "label_inspection_prim_path": "/World/ReagentZones/A/R01",
+  "label_inspection_focal_length_mm": 3.5,
   "destination_label": "BEAKER",
   "scene_revision": "labutopia-tabletop-rod-rack-v1",
   "supported_operations": [

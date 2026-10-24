@@ -4,6 +4,8 @@
 场景：`tabletop_third_person`；目标：右侧大型锥形瓶
 流程：LocateAnything → SAM2 → raw/ReMake 深度 → 点云 → GraspNet
 
+标签复测补充：Agent 使用静态 R01 inspection 相机，通过 ReMake RGB-D 流程识别出完整标签文本；透明几何仍为未独立测量的估计结果。
+
 ## 1. 目的
 
 在同一帧 RGB-D、同一目标和同一抓取配置下，对比未加入 ReMake 与加入 ReMake 后的中间结果，评估玻璃锥形瓶的深度恢复如何影响点云和抓取候选。DFNet 计划使用同一流程作为第三个模型对照，但本轮没有获得权重，因此没有 DFNet 推理结果。
@@ -102,3 +104,21 @@ Raw-depth 点云主要落在较远的背景/错误深度区间；ReMake 点云�
 本轮已修复动作契约：workflow 领域参数定义被语义请求、复合子任务和 held-operation ToolSpec 共用；`pour` 必需 `tilt_rad` / `hold_s`，`stir` 必需 `radius_m` / `depth_m` / `turns` / `duration_s` / `direction`，方向限于 `cw` / `ccw`。入口现在在任何子任务内部动作前拒绝缺参；Host 使用真实语义 operation 名并映射到内部 Tool。PAOS 单外层 Action、内部 prepare/acquire/process/place 生命周期保持不变，具体路径和部署限值仍归 Provider/Adapter。
 
 验证范围为参数 Schema、任务构造、方向投影和既有编排测试；未运行 pour/stir，也未执行机械臂运动。因此契约一致性得到测试支持，但真实仿真运动效果与标签近景识别仍待单独验收。
+
+## 11. 标签视角复拍
+
+2026-10-24 在 LabUtopia 原锥形瓶场景分别打开第三人称全景和 R01 腕部近景预览。场景、材质和标签几何保持不变；没有驱动机械臂或执行动作。全景能交代瓶子与工作台布局，但单瓶标签太小；腕部近景中人眼可辨 R01、蒸馏水、Distilled water 和 H2O。近景仍有玻璃高光/折射，且这只是静态视口观察，不是 LocateAnything、Agent 或 OCR 的识别成绩。
+
+结论是先保留现有外贴标签和约 3 mm 瓶壁间距，工作流采用全景定位目标、再正视近景读取标签。不得仅因全景不可读而把标签继续外移；若感知模型在新近景帧中仍误读，再单独排查反光、分辨率、曝光及标签 ROI。视角对照图与运行记录位于 `out/releases/v16.0.6/label-viewpoint-comparison-20261024/`；完整诊断及证据边界见 [`transparent-model-comparison-20261023.md`](../diagnostics/transparent-model-comparison-20261023.md)。
+
+## 12. R01 近景 Agent 复测与动作参数验证
+
+2026-10-24 将 R01 场景中已有的静态 inspection 位姿接入 Isaac Adapter，复用 `scene.observe → scene.understand` 和 ReMake。Agent 收到的 `1280×960` 近景实际读出 `R01`、`LAB REAGENT`、`蒸馏水`、`Distilled water`、`H2O`、`Simulation reagent`。understanding artifact 将主瓶类别置信度记为 `0.98`，但没有逐字符置信度。该帧标签足够清晰，瓶口及上部轮廓未完整入镜，边缘其他瓶体仍有歧义。
+
+首轮失败原因是 `paos` 环境缺少已声明依赖 Pillow，场景理解报 `No module named 'PIL'`；安装 Pillow 13.0.0 后成功。初始 35 mm 近景视场过窄，改用配置化 3.5 mm 焦距复测，图像完整呈现标签。ReMake 以 `cuda:0` 推理 0.430 s，恢复深度尺寸为 `1280×960`；几何状态仍为 `unverified_estimate`，不能作为几何精度结论。
+
+![Agent 实际接收的 R01 标签近景](../../out/releases/v16.1.0/agent-label-closeup-r2-20261024/artifacts/labutopia/rgb/3c68f2086c28434f984e4aca8dcb69db.png)
+
+运行记录与所有输入/中间结果保存在 `out/releases/v16.1.0/agent-label-closeup-r2-20261024/`。Agent 只执行只读检查，未创建 PAOS 任务、未调用抓取候选或运动准备；`acceptance.json` 的 `tasks` 为空且 `simulated_motion_enabled` 为 `false`。Host 对空任务列表返回进程码 1，视觉 Query 本身成功并生成 understanding、ReMake depth、mask 与点云 artifacts。
+
+倾倒/搅拌参数契约定向测试 4 项通过：缺少倾倒参数在内部 Tool 调用前失败；搅拌方向必填并透传；非法搅拌参数在感知前拒绝；Host 指引要求缺参时询问用户。此结果验证请求/参数通路，不验证轨迹质量或运动结果；本轮没有执行倾倒、搅拌或机械臂运动。此前 raw/ReMake/GraspNet 对照见本报告第 2–5 节；本次标签 Agent 复测没有生成新的抓取候选。

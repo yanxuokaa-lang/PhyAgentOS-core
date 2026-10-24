@@ -42,6 +42,59 @@
 
 ## 最近五版本 / Latest five versions
 
+## v16.1.0 (2026-10-24 21:08) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [sense] [feat] 为 LabUtopia 增加配置驱动的 R01 静态标签近景相机，复用 `scene.observe → scene.understand`、RGB-D/点云和 ReMake 链路，不移动机械臂。 / Added a configurable static R01 label-inspection camera through existing observation, RGB-D/cloud, and ReMake providers; no arm motion.
+- [eval] [exp] Agent 从近景帧读取 `R01 / LAB REAGENT / 蒸馏水 / Distilled water / H2O / Simulation reagent`；ReMake CUDA 推理 0.430 s，估计几何仍未独立验证。 / Agent read all six label lines; ReMake CUDA inference took 0.430 s and geometry remains an unverified estimate.
+- [docs] [docs] 诊断及汇报记录首轮 `PIL` 依赖错误、修复、标签边界及 pour/stir 参数化测试。 / Diagnosis and report record the initial PIL dependency failure/fix, label limits, and pour/stir parameter tests.
+
+### 文件变更详情 / Change Details
+- [sense] [feat] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/profile.py:L68-L69,L139-L142`、`engine.py:L916-L920,L997-L1032,L2308-L2343` 外置标签目标/焦距并注册静态 inspection 相机。 / Externalizes label target/focal length and registers the static inspection camera.
+- [sense] [tune] `examples/forge-adapters/isaacsim_lab/configs/labutopia-mixture.json:L10-L11` 配置 R01 prim 与 3.5 mm 焦距；`tests/test_profile.py:L72-L92`、`tests/test_engine.py:L1033-L1038` 覆盖配置和相机投影。 / Configures R01 prim and 3.5 mm focal length; tests cover settings and camera projection.
+- [docs] [docs] `docs/diagnostics/transparent-model-comparison-20261023.md:L173-L185`、`docs/reports/transparent-model-selection-report-20261024.md:L114-L124` 写入 Agent/ReMake 证据及动作检查边界。 / Records Agent/ReMake evidence and action-test limits.
+- [eval] [exp] `out/releases/v16.1.0/agent-label-closeup-r2-20261024/` 保存首轮失败、复测 acceptance、RGB-D、标定、理解、恢复深度与 mask/点云中间结果。 / Saves initial failure, rerun acceptance, RGB-D, calibration, understanding, recovered depth, masks and clouds.
+
+### 关键 Diff / Key Diff
+```diff
+- register third-person and wrist observation cameras only
++ configure R01 inspection prim and focal length
++ register a static label camera using authored scene eye/target attributes
++ preserve the existing observation and ReMake pipeline
+```
+
+### 验证 / Validation
+- 定向测试 `78 passed`；Ruff、`git diff --check` 通过。 / Focused tests: 78 passed; Ruff and diff check passed.
+- Agent read all six label lines; no PAOS task, grasp candidate, pour/stir action, or arm motion. ReMake: CUDA `cuda:0`, 0.430 s, `unverified_estimate`. / Agent read the label; no task/grasp/process/motion. ReMake output remains an unverified estimate.
+- `paos` 环境安装已声明依赖 Pillow 13.0.0，修复 `No module named PIL`。 / Installed declared Pillow 13.0.0 dependency in `paos`, fixing the provider import error.
+
+### Git 提交 / Git Commit
+- Pending.
+
+## v16.0.6 (2026-10-24 20:27) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [eval] [exp] 同一 LabUtopia 场景完成第三人称全景与静态腕部近景对照；全景标签过小，R01 近景的人眼可读性明显提升。 / Compared third-person panorama with a static wrist close-up in the same LabUtopia scene; labels are too small in panorama while R01 is substantially more legible to a human in close-up.
+- [docs] [docs] 诊断和汇报记录标签位置核验、可读字段与识别验证边界；未改仿真资产，未宣称 OCR/Agent 识别通过。 / Recorded label placement inspection, readable fields, and recognition evidence limits; no simulation assets changed and no OCR/Agent success claimed.
+
+### 文件变更详情 / Change Details
+- [docs] [docs] `docs/diagnostics/transparent-model-comparison-20261023.md:L148-L169` 加入同场景视角结果与截图；`docs/reports/transparent-model-selection-report-20261024.md:L110-L116` 加入汇报结论。 / Added same-scene viewpoint findings and screenshots to the diagnosis and report.
+- [eval] [exp] `out/releases/v16.0.6/label-viewpoint-comparison-20261024/` 保存两张 `950x532` 视口截图及 `run-metadata.json:L1-L28`。 / Saved two 950x532 viewport captures and run metadata.
+
+### 验证 / Validation
+- LabUtopia inspect 确认 8/8 标签面存在；third-person 和 wrist-preview 均打开成功，Physics paused、无控制器/运动命令。 / LabUtopia inspection found 8/8 label surfaces; both previews opened with physics paused and no controller/motion commands.
+- 人眼可读 R01、蒸馏水、Distilled water、H2O；未运行 OCR、LocateAnything、Agent 或运动。 / R01, 蒸馏水, Distilled water, and H2O are human-readable; no OCR, LocateAnything, Agent, or motion was run.
+
+### 关键 Diff / Key Diff
+```diff
+- panoramic view: label text too small; recognition unresolved
++ wrist close-up: R01 label fields human-readable
++ keep existing outward label placement; Agent/OCR qualification remains pending
+```
+
+### Git 提交 / Git Commit
+- Pending.
+
 ## v16.0.5 (2026-10-24 19:57) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
@@ -130,19 +183,7 @@
 ### Git 提交 / Git Commit
 - Commit: `a3485444`（文档回执 `a2482807`）；Branch: `feature/planning-loop`；Push 未确认（origin push 45 秒超时）。
 
-## v16.0.2 (2026-10-23 19:02) - codex
-
-### 结果 / Outcome [未完成：LocateAnything 模型文件缺失且网络不可达 / Incomplete: LocateAnything model files missing and network unavailable]
-- [eval] [exp] 验证 LocateAnything 配置及专用 CUDA 环境；缺少完整缓存且 Hugging Face 不可达，未生成模型框、SAM2 配对分割或 GraspNet 对比。 / Verified LocateAnything configuration and dedicated CUDA environment; incomplete cache and unreachable Hugging Face prevented model boxes, paired SAM2 segmentation, or GraspNet comparison. (local)
-- [docs] [docs] 在月度日志记录复跑条件与证据边界；未使用旧实例框冒充 LocateAnything 输出、未借用其他目标抓取位姿。 / Logged rerun prerequisites and evidence limits; did not relabel old instance boxes as LocateAnything output or borrow grasps from other targets. (local)
-
-### 变更详情 / Change Details
-- [修改 / Modified] `changelog/2026-10.md:L3-L11` 记录计划、模型加载实测失败阶段和恢复条件；未修改诊断图或推理结果。 / Recorded plan, observed model-load failure phase, and recovery conditions; no diagnosis image or inference result was changed.
-
-### 验证 / Validation
-- 专用环境确认 Torch 2.8.0+cu128/CUDA 可用；LocateAnything `AutoProcessor.from_pretrained` 因缺少 `processor_config.json` 并尝试连接 Hugging Face 而失败（网络不可达）。 / Dedicated Torch 2.8.0+cu128/CUDA available; `AutoProcessor.from_pretrained` failed because `processor_config.json` was missing and Hugging Face was unreachable.
-- 当前记录帧无 LocateAnything 调用结果；因此不能合法声称完成用户要求的左/右模型位姿对比。 / The recorded frame has no LocateAnything result; the requested left/right model-pose comparison cannot be claimed as completed.
-- Commit: `9270d9f3`; Branch: `feature/planning-loop`; Push: 已成功推送至 `origin/feature/planning-loop`。 / Successfully pushed to `origin/feature/planning-loop`.
+## 历史版本 / Older Versions
 
 ## v16.0.1 (2026-10-23 13:38) - codex
 
@@ -181,8 +222,6 @@
 
 ### Git 提交 / Git receipt
 - Commit: `085de764`; Branch: `feature/planning-loop`; Push: 两次尝试超时，远端未确认 / two attempts timed out; remote receipt unconfirmed.
-
-## 历史版本 / Older Versions
 
 ## v16.0.0 (2026-10-23 12:51) - codex
 

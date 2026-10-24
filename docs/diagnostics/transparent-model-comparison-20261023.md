@@ -153,6 +153,37 @@ Agent Host 指引使用已有通用 `pour_cycle` 与 `stir_cycle` 能力。倾�
 
 参考运行图像：`out/releases/v16.0.4/agent-label-qualification-token-budget/artifacts/labutopia/rgb/911d08d9b23440ab857497bc463dee9e.png`；结构化结果：`out/releases/v16.0.4/agent-label-qualification-token-budget/artifacts/labutopia/visual-inference/49ff95be57eb48a68663b7dd68f99815.json`。
 
+### 标签视角复拍（2026-10-24）
+
+为区分标签位置问题与全景分辨率/视角问题，在 LabUtopia 当前 `tabletop_station.usda` 上分别运行 `preview_tabletop_station.py --view third-person` 和 `--view wrist-preview`。两次均使用同一场景、默认光照、静态暂停仿真；没有移动机械臂、改 USD 或执行操作。原始桌面截图裁出 Isaac Sim 视口后保存在 `out/releases/v16.0.6/label-viewpoint-comparison-20261024/`。
+
+| 视角 | 可见结果 | 判读 |
+|---|---|---|
+| 第三人称全景 | 八个瓶子、操作台和机械臂关系可见；单瓶标签在画面中很小，无法稳定辨字 | 适合场景定位，不适合直接读标签 |
+| R01 腕部近景预览 | 标签位于玻璃瓶身外侧曲面；可辨认 `R01`、`蒸馏水`、`Distilled water` 和 `H2O`，但仍能看到玻璃高光/折射 | 目标正面近景显著改善人眼可读性；不是 OCR 或 Agent 识别验收 |
+
+本次没有把标签向外移动。构建检查报告显示 8/8 标签面存在，标签朝向 `robot.preview_camera.eye`；资产文档记录其距相机侧瓶壁约 3 mm。近景中可见的标签正处于外侧表面。全景失败的直接改进方向是先定位再近距离正视观测，而非继续偏移标签。若后续模型仍误读，应保存相机原始帧和该瓶实例 mask，按 mask 裁取 ROI 后分别检查 OCR/视觉理解；不要以插值放大代替真实近景采集，也不要由标签贴图真值反推模型已识别。
+
+![第三人称全景视口](../../out/releases/v16.0.6/label-viewpoint-comparison-20261024/third-person-viewport.png)
+
+![R01 腕部近景视口](../../out/releases/v16.0.6/label-viewpoint-comparison-20261024/wrist-preview-viewport.png)
+
+**证据边界：** 本次通过静态渲染确认视角差异和人眼可辨字段；未运行 LocateAnything、Agent 或 OCR，也未把近景结果绑定为感知 artifact，因此标签识别任务仍待同视角重新采集并评估。预览脚本输出确认 Physics paused、未创建控制器或运动命令。
+
+### ReMake Agent 近景复测（2026-10-24）
+
+为把上一节的人眼预览变成 Runtime 感知输入，LabUtopia Adapter 新增配置驱动的 R01 标签近景传感器。位姿从场景现有 `lab:wrist_inspection_eye_m` / `lab:wrist_inspection_target_m` 属性读取；相机只用于静态观察，不移动机械臂，也不改场景 USD 或标签几何。运行目录：`out/releases/v16.1.0/agent-label-closeup-r2-20261024/`。
+
+首轮 Agent 已成功采集 RGB-D，但视觉理解报 `ModuleNotFoundError: No module named 'PIL'`。`Pillow>=10` 已在 `isaacsim_lab` 依赖中声明，`paos` 运行环境缺装。补装 Pillow 13.0.0 后复跑；首轮 35 mm 焦距画面过窄，只显示标签局部，因此把焦距改为配置值 3.5 mm，并复用已有 R01 inspection 位姿。
+
+复测实际保存 1280×960 RGB、深度、点云和标定。ReMake 使用 CUDA `cuda:0`，推理耗时 0.430 s，生成 1280×960 恢复深度；元数据将几何标为 `unverified_estimate`。Agent/视觉理解从当前 RGB 返回 `R01 / LAB REAGENT / 蒸馏水 / Distilled water / H2O / Simulation reagent`，目标实体置信度字段为 0.98。图中标签清楚可读；瓶口和上部轮廓超出画面，左右边缘的其他瓶体未能消歧，模型没有逐字符置信度。
+
+![Agent 实际接收的 R01 标签近景](../../out/releases/v16.1.0/agent-label-closeup-r2-20261024/artifacts/labutopia/rgb/3c68f2086c28434f984e4aca8dcb69db.png)
+
+理解结果、ReMake 中间结果与任务记录分别在 `artifacts/labutopia/understanding/54a13366de214e50b494914ec7a07e26.json`、`geometry-recovery/b37f67ba6e85402db2090255fccc4279.json`、`acceptance.json`。本次是只读 Agent 交互，没有创建 PAOS 任务；`acceptance.json` 记录模型回复、`tasks: []`、`simulated_motion_enabled: false`。Host 因无任务记录返回进程码 1，但视觉 Query 已成功结算并留下 artifact。
+
+动作抽象复核另外运行 4 项定向契约测试：倾倒缺参在内部 Tool 调用前拒绝；搅拌的必填方向 `cw/ccw` 进入 held 参数；非法搅拌参数在感知前拒绝；Host 明确要求由用户提供工艺参数。倾倒、搅拌轨迹及机械臂运动均未执行。本次 Agent 只验证标签理解，不生成 GraspNet 抓取候选。
+
 ### 动作契约发现与修复
 
 PAOS 的动作所有权与生命周期仍采用单一 `manipulation.execute_subtask` 外层 Action，并在内部按 prepare、acquire、held prepare、process、return preparation、place 运行；Provider/Adapter 持有具体路径和部署限值。该结构无需将每个动作提升为新的顶层 Action。但原 Agent 指引写 `pour_cycle` / `stir_cycle`，实际语义子任务只接受 `pour` / `stir`，并映射到 `object.pour` / `tool.stir`；cycle 名称属于旧接口。

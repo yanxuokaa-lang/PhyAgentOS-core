@@ -69,6 +69,29 @@ def test_profile_round_trips_json(tmp_path):
     assert LabUtopiaProfile.from_json(path).source_path == value["source_path"]
 
 
+def test_label_inspection_camera_settings_are_profile_configured(tmp_path):
+    scene = tmp_path / "lab.usd"
+    config = tmp_path / "level.yaml"
+    scene.write_text("usd", encoding="utf-8")
+    config.write_text("name: lab", encoding="utf-8")
+    configured = LabUtopiaProfile.from_mapping({
+        "lab_root": str(tmp_path), "config_path": str(config),
+        "scene_usd_path": str(scene), "robot_usd_path": str(scene),
+        "source_path": "/World/conical_bottle03", "destination_path": "/World/beaker2",
+        "label_inspection_prim_path": "/World/ReagentZones/A/R01",
+        "label_inspection_focal_length_mm": 3.5,
+    })
+    assert configured.label_inspection_prim_path == "/World/ReagentZones/A/R01"
+    assert configured.label_inspection_focal_length_mm == 3.5
+    with pytest.raises(LabProfileError, match="label_inspection_prim_path"):
+        LabUtopiaProfile.from_mapping({
+            "lab_root": str(tmp_path), "config_path": str(config),
+            "scene_usd_path": str(scene), "robot_usd_path": str(scene),
+            "source_path": "/World/conical_bottle03", "destination_path": "/World/beaker2",
+            "label_inspection_prim_path": "ReagentZones/A/R01",
+        })
+
+
 def test_profile_normalizes_source_pour_axis(tmp_path):
     configured = profile(tmp_path)
     assert configured.source_pour_axis == (0.0, 0.0, 1.0)

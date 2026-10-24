@@ -1030,6 +1030,12 @@ def test_authored_station_observation_config_uses_existing_cameras_without_layou
     assert all(camera.require_existing for camera in projected.cameras)
     assert not hasattr(projected, "layout")
     assert not hasattr(original.robot, "position")
+    inspected = _observation_scene_config(
+        original, label_inspection_prim_path="/World/ReagentZones/A/R01"
+    )
+    assert inspected.cameras[-1].look_at_prim_path == "/World/ReagentZones/A/R01"
+    assert inspected.cameras[-1].name == "label_inspection_r01"
+    assert inspected.cameras[-1].focal_length == 3.5
     legacy = SimpleNamespace(robot=SimpleNamespace(position=[0., 0., 0.]), cameras=[])
     assert _observation_scene_config(legacy) is legacy
 

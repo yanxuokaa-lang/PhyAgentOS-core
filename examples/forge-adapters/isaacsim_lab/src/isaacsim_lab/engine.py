@@ -913,7 +913,11 @@ class LabUtopiaBackend:
         self._prepend_lab_root()
         from omegaconf import OmegaConf
 
-        cfg = _observation_scene_config(OmegaConf.load(str(self.profile.config_path)))
+        cfg = _observation_scene_config(
+            OmegaConf.load(str(self.profile.config_path)),
+            label_inspection_prim_path=self.profile.label_inspection_prim_path,
+            label_inspection_focal_length_mm=self.profile.label_inspection_focal_length_mm,
+        )
         if scene is None:
             import numpy as np
             import omni.usd
@@ -990,11 +994,40 @@ class LabUtopiaBackend:
             else:
                 if getattr(camera_config, "require_existing", False):
                     raise IsaacLabRuntimeError(f"authored observation camera is missing: {prim_path}")
+                translation = np.asarray(camera_config.translation)
+                orientation = np.asarray(camera_config.orientation)
+                target_path = getattr(camera_config, "look_at_prim_path", None)
+                if target_path:
+                    target_prim = stage.GetPrimAtPath(str(target_path))
+                    if not target_prim.IsValid():
+                        raise IsaacLabRuntimeError(f"label inspection target is missing: {target_path}")
+                    eye_attr = target_prim.GetAttribute("lab:wrist_inspection_eye_m")
+                    target_attr = target_prim.GetAttribute("lab:wrist_inspection_target_m")
+                    if not eye_attr or not target_attr:
+                        raise IsaacLabRuntimeError(
+                            f"label inspection pose is missing on target prim: {target_path}"
+                        )
+                    translation = np.asarray(eye_attr.Get(), dtype=float)
+                    target = np.asarray(target_attr.Get(), dtype=float)
+                    direction = target - translation
+                    direction /= np.linalg.norm(direction)
+                    back = -direction
+                    right = np.cross(np.array([0.0, 0.0, 1.0]), back)
+                    if np.linalg.norm(right) < 1e-6:
+                        right = np.cross(np.array([0.0, 1.0, 0.0]), back)
+                    right /= np.linalg.norm(right)
+                    up = np.cross(back, right)
+                    from scipy.spatial.transform import Rotation
+
+                    orientation_xyzw = Rotation.from_matrix(
+                        np.column_stack((right, up, back))
+                    ).as_quat()
+                    orientation = orientation_xyzw[[3, 0, 1, 2]]
                 camera = Camera(
-                    **camera_kwargs, translation=np.asarray(camera_config.translation)
+                    **camera_kwargs, translation=translation
                 )
                 camera.set_local_pose(
-                    orientation=np.asarray(camera_config.orientation), camera_axes="usd"
+                    orientation=orientation, camera_axes="usd"
                 )
                 camera.set_focal_length(float(camera_config.focal_length))
             clipping = getattr(camera_config, "clipping_range", (0.1, 10.0))
@@ -2272,7 +2305,9 @@ def _pour_controller_target(state, profile, np, rotation_cls, process_frame=None
     return target - mouth_offset
 
 
-def _observation_scene_config(cfg):
+def _observation_scene_config(
+    cfg, *, label_inspection_prim_path=None, label_inspection_focal_length_mm=3.5
+):
     """Project LabUtopia's authored station config inside the Adapter boundary.
 
     The original station owns placement and optics. Register its existing
@@ -2290,6 +2325,17 @@ def _observation_scene_config(cfg):
          "resolution": [1280, 960], "clipping_range": list(cfg.robot.wrist_camera.clipping_range),
          "require_existing": True},
     ]
+    if label_inspection_prim_path:
+        cameras.append({
+            "name": "label_inspection_r01",
+            "prim_path": "/World/PAOSCameras/LabelInspectionR01",
+            "resolution": [1280, 960],
+            "clipping_range": [.03, 3.],
+            "translation": [0., 0., 0.],
+            "orientation": [1., 0., 0., 0.],
+            "focal_length": float(label_inspection_focal_length_mm),
+            "look_at_prim_path": str(label_inspection_prim_path),
+        })
     return SimpleNamespace(
         robot=SimpleNamespace(type=cfg.robot.type, position=list(cfg.robot.base_position)),
         cameras=[SimpleNamespace(**camera) for camera in cameras],

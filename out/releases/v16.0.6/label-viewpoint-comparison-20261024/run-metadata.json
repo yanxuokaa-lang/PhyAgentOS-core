@@ -1,0 +1,23 @@
+{
+  "run_id": "label-viewpoint-comparison-20261024",
+  "captured_at": "2026-10-24T20:25:00+08:00",
+  "source_repository": "/home/yanxu/LabUtopia",
+  "scene": "assets/chemistry_lab/tabletop_station/tabletop_station.usda",
+  "commands": [
+    "OMNI_KIT_ACCEPT_EULA=YES conda run --no-capture-output -n labutopia python scripts/preview_tabletop_station.py --view third-person",
+    "OMNI_KIT_ACCEPT_EULA=YES conda run --no-capture-output -n labutopia python scripts/preview_tabletop_station.py --view wrist-preview"
+  ],
+  "capture_method": "Desktop viewport screenshots cropped to 950x532; scene asset and lighting unchanged",
+  "outputs": [
+    "third-person-viewport.png",
+    "wrist-preview-viewport.png"
+  ],
+  "observations": {
+    "panorama": "Bottle labels are too small for reliable reading at the scene overview scale.",
+    "wrist_closeup": "R01, 蒸馏水, Distilled water, and H2O are visually legible to a human observer; glass highlights/refraction remain.",
+    "robot_motion": false,
+    "physics_simulation": false,
+    "ocr_or_agent_recognition": false
+  },
+  "limitations": "Static viewport evidence only. Does not establish OCR/Agent recognition, perception artifact lineage, label identity binding, or motion readiness."
+}

@@ -65,6 +65,8 @@ class LabUtopiaProfile:
     camera_render_frames: int = 4
     motion_config_path: Path | None = None
     perception_config_path: Path | None = None
+    label_inspection_prim_path: str | None = None
+    label_inspection_focal_length_mm: float = 3.5
     worker_python_path: Path | None = None
     physics_scene_path: str = "/physicsScene"
     physics_dt_s: float = 1 / 60
@@ -134,6 +136,10 @@ class LabUtopiaProfile:
             camera_render_frames=_positive_int(value, "camera_render_frames", 4),
             motion_config_path=path_value("motion_config_path") if value.get("motion_config_path") else None,
             perception_config_path=path_value("perception_config_path") if value.get("perception_config_path") else None,
+            label_inspection_prim_path=_optional_path(value, "label_inspection_prim_path"),
+            label_inspection_focal_length_mm=_positive_float(
+                value, "label_inspection_focal_length_mm", 3.5
+            ),
             worker_python_path=path_value("worker_python_path") if value.get("worker_python_path") else None,
             physics_scene_path=_text(value, "physics_scene_path", "/physicsScene"),
             physics_dt_s=_positive_float(value, "physics_dt_s", 1 / 60),

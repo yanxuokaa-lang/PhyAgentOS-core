@@ -1,0 +1,8 @@
+{
+  "instruction": "只检查画面中 R01 锥形瓶标签。调用观察与场景理解能力获取当前图像，逐字报告模型实际识别到的标签文字及不确定字段；不要根据场景资产、文件名或常识推断内容。禁止创建任务、准备动作或执行任何运动；只做只读视觉检查。",
+  "session_key": "cli:lab-bccdfffa1716",
+  "simulated_motion_enabled": false,
+  "agent_response": "The Query is blocked by a non-retryable provider failure; returning control to the persisted provider recovery lifecycle.",
+  "controller_outcomes": [],
+  "tasks": []
+}
