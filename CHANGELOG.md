@@ -66,7 +66,7 @@
 - DFNet 未运行：本地 checkpoint 缺失且官方入口本轮无法下载；报告未将此写成效果结论。 / DFNet was not run: the local checkpoint is missing and official download endpoints were unavailable; the report does not treat this as an effect result.
 
 ### Git 提交 / Git Commit
-- Commit: `a3485444`; Branch: `feature/planning-loop`; Push: pending.
+- Commit: `a3485444`（文档回执 `a2482807`）；Branch: `feature/planning-loop`；Push 未确认（origin push 45 秒超时）。
 
 ## v16.0.2 (2026-10-23 19:02) - codex
 
