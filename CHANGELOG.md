@@ -153,7 +153,7 @@
 ### Git 提交 / Git Commit
 - Commit: `37d42d17`（实现、文档与验收证据 / implementation, docs and evidence）。
 - Branch: `feature/planning-loop`；推送目标 / push target: `origin/feature/planning-loop`。
-- 回执时间 / receipt time: 2026-10-25 00:05 Asia/Shanghai；本条随独立日志回执提交保存。 / Recorded in a separate log-receipt commit.
+- 回执时间 / receipt time: 2026-10-25 00:04 Asia/Shanghai；本条随独立日志回执提交保存。 / Recorded in a separate log-receipt commit.
 - 历史五提交 `cd23c1ed..cd885ed4` 已推送原分支；本次不包含既有 robotwin20 worker/依赖及其他无关工作区修改。 / Five preceding commits were pushed to the same branch; unrelated worker/dependency and workspace edits are excluded.
 
 ## v16.1.0 (2026-10-24 21:08) - codex
