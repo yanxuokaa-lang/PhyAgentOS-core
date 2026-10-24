@@ -23,7 +23,7 @@ from .visual_geometry import (
 class RGBLabelPointInference:
     """Deployment-owned model client; no scene IDs or task success enter its input."""
 
-    def __init__(self, client, *, model, max_output_tokens=2048):
+    def __init__(self, client, *, model, max_output_tokens=4096):
         self.client, self.model, self.max_output_tokens = client, model, max_output_tokens
 
     def infer(self, image):
@@ -68,7 +68,19 @@ class RGBLabelPointInference:
                      "image_url": f"data:{image.media_type};base64,{base64.b64encode(image.data).decode()}"}]}],
             text={"format": {"type": "json_schema", "name": "laboratory_visual_points", "strict": True, "schema": schema}},
         )
-        result = json.loads(response.output_text)
+        output_text = response.output_text or ""
+        try:
+            result = json.loads(output_text)
+        except json.JSONDecodeError as exc:
+            start = max(0, exc.pos - 240)
+            exc.response_diagnostics = {
+                "output_length": len(output_text),
+                "line": exc.lineno,
+                "column": exc.colno,
+                "position": exc.pos,
+                "excerpt": output_text[start:start + 640],
+            }
+            raise
         return result
 
 
@@ -183,8 +195,11 @@ class LabVisualPerception:
             self.captures[key] = (deepcopy(request), deepcopy(result))
             return result
         except Exception as exc:
-            self.store.write("perception-failure", {"request": request,
-                "error_type": type(exc).__name__, "error": str(exc)})
+            failure = {"request": request, "error_type": type(exc).__name__, "error": str(exc)}
+            response_diagnostics = getattr(exc, "response_diagnostics", None)
+            if response_diagnostics is not None:
+                failure["response_diagnostics"] = response_diagnostics
+            self.store.write("perception-failure", failure)
             self.diagnostics = {"reason": "provider_failure"}
             raise
 

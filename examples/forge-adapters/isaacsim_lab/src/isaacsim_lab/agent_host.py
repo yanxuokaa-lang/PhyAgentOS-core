@@ -89,14 +89,13 @@ def environment_guidance(sensor_ref, execute):
     mode = "Simulated motion is authorized." if execute else "Read-only qualification; motion is disabled."
     return f"""Laboratory deployment: persistent Isaac simulation with no liquid or chemistry model.
 {mode}
-Use forge_task_create semantic_subtasks to bind the user's requested visible reagent labels through Queries.
+Use forge_task_create semantic_subtasks to bind only the reagent labels and operations requested by the user through Queries.
 Categories are reagent_bottle, mixing_vessel and stir_tool. Sensor: {sensor_ref}. max_age_ms: 1000.
-Use selectors with the key label, for example source_selector={{"label": "R01"}}.
-A unique stir_tool can be selected by category.
-For a two-reagent mixing instruction, create ordered pour, pour, stir subtasks into the same vessel.
+Use a label selector only when the user specifies a label; never infer reagent identity from a bottle's fixed scene position.
+Create ordered semantic subtasks from the requested workflow, using the generic pour_cycle and stir_cycle capabilities where applicable.
+Pass each requested operation's values in that subtask's parameters object: pour_cycle accepts tilt_rad and hold_s; stir_cycle accepts radius_m, depth_m, turns, duration_s and direction.
+Do not hard-code a bottle count, operation sequence, or numeric process values. Do not silently fill missing task values from deployment defaults; ask the user for missing process parameters before authorizing motion.
 Each subtask includes physical acquire, process and return; do not invent object references or coordinates.
-Default pour parameters: tilt_rad=1.3, hold_s=1.0.
-Default stir parameters: radius_m=0.009, depth_m=0.04, turns=2.0, duration_s=4.0.
 Use semantic_intent with allowed_arms=[franka], coordination_mode=single_arm, a goal and success_criteria.
 Set verification mode=off: physical Runtime measurements decide process completion; no model chemistry verdict.
 After task creation, use existing planning tools to execute ready nodes. Respect failed or uncertain outcomes.

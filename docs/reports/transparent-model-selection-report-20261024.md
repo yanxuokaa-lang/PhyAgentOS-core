@@ -75,3 +75,22 @@ Raw-depth 点云主要落在较远的背景/错误深度区间；ReMake 点云�
 - raw/ReMake GraspNet 候选：`raw-grasps.json`、`remake-grasps.json`
 - 汇总：`comparison-summary.json`
 - 配置：`run-config.json`
+
+## 9. ReMake Agent 复核：标签与工艺动作
+
+2026-10-24 在原 `tabletop_third_person` 场景使用 `isaacsim_lab.agent_host` 再发起只读 Agent 任务。任务 `task_1d02787c63b24544` 以 `succeeded` 结束，完成节点为 `complete_read_only_inspection`。运行启用了 Isaac Sim EULA，但未启用模拟运动。
+
+标签结果：Agent 识别到多个试剂瓶，但明确报告八个锥形瓶标签文字无法可靠读取，化学身份未解析；左后方另一个大瓶被机械臂遮挡，无法完整观察。没有依据瓶子位置猜测内容。对应 RGB、ReMake 中间结果和 Agent 运行记录保存在 `out/releases/v16.0.4/agent-label-qualification-token-budget/`。
+
+失败修复：之前两次 Agent 尝试的结构化视觉响应均以 `JSONDecodeError` 结束。保存的响应诊断显示输出在 4060 字符处终止于未闭合目标对象，解析位置为 `line 136, column 31`。根因是视觉模型请求仅预留 2048 output tokens，无法容纳该场景的八个对象字段。现将默认预算提高至 4096，并保留构造参数覆盖能力；失败 artifact 同时记录输出长度、解码位置及有界响应摘录。两条失败任务随后经 Coordinator 生命周期接口正常取消；相同场景重跑后 understanding 返回完整结果，Agent 任务成功结算。该修复改善了解析完整性，没有改善图像本身的标签清晰度。
+
+动作抽象检查：Agent Host 使用已有 `pour_cycle` / `stir_cycle` 语义能力，不固定动作序列或数值。子任务 `parameters` 透传倾倒 `tilt_rad`、`hold_s` 和搅拌 `radius_m`、`depth_m`、`turns`、`duration_s`、`direction`；相关 Agent Host 与 Runtime 集成测试确认参数保留，缺少值时要求补充任务输入。本轮没有用户给定的工艺参数，标签身份与瓶口/棒端几何也未通过，因此此处验证的是抽象与参数传递，不是实际倾倒、搅拌或运动效果。
+
+| 范围 | 本轮证据 | 结论 |
+|---|---|---|
+| 锥形瓶标签 | 成功 Agent 返回的 understanding artifact | 目标可按瓶体类别分割；八个试剂瓶标签不能可靠读取，身份不可确认 |
+| ReMake | 同次运行的恢复深度、mask、点云和几何 artifact | 完成中间结果生成；仍是未独立测真值的估计几何 |
+| `pour_cycle` / `stir_cycle` | Agent Host 与 PAOS 参数透传测试 | 抽象动作可传参；没有硬编码工艺值；本轮未执行动作 |
+| 任务完成 | Coordinator outcome | 只读检查成功；不等同于操作工作流成功 |
+
+后续选型仍以第 7 节为准：ReMake 仅是现有证据下优先继续验证的模型，并未因本次 Agent 成功而通过标签识别或运动资格验收；DFNet 仍需取得权重后按相同输入补测。

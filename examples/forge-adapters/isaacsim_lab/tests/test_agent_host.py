@@ -44,6 +44,17 @@ def test_host_guidance_defaults_to_no_motion():
     assert 'Simulated motion is authorized' in environment_guidance('sensor://front', True)
 
 
+def test_host_guidance_uses_user_task_parameters_for_generic_process_actions():
+    guidance = environment_guidance('sensor://front', False)
+    assert 'generic pour_cycle and stir_cycle capabilities' in guidance
+    assert 'tilt_rad and hold_s' in guidance
+    assert 'radius_m, depth_m, turns, duration_s and direction' in guidance
+    assert 'Do not hard-code a bottle count, operation sequence, or numeric process values' in guidance
+    assert 'Do not silently fill missing task values from deployment defaults' in guidance
+    assert 'Default pour parameters' not in guidance
+    assert 'Default stir parameters' not in guidance
+
+
 @pytest.mark.parametrize('has_receipt', [True, False])
 @pytest.mark.parametrize('terminal', [True, False])
 def test_pending_first_action_uses_real_query_context_for_reconciliation(has_receipt, terminal):

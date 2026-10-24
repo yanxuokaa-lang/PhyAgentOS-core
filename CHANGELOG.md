@@ -7,6 +7,7 @@
 ## Archive
 
 - [2026-10_part9](changelog/2026-10_part9.md)
+- [2026-10_part10](changelog/2026-10_part10.md)
 - [2026-10_part8](changelog/2026-10_part8.md)
 - [2026-10_part7](changelog/2026-10_part7.md)
 - [2026-10_part6](changelog/2026-10_part6.md)
@@ -39,6 +40,37 @@
 - [2026-09](changelog/2026-09.md)
 
 ## 最近五版本 / Latest five versions
+
+## v16.0.4 (2026-10-24 18:20) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [policy] [fix] Agent Host 将倾倒/搅拌表达为通用 `pour_cycle` / `stir_cycle` 子任务，从任务 `parameters` 传值；删除固定瓶数、流程顺序和工艺默认值指引。 / Agent Host expresses pouring/stirring as generic `pour_cycle` / `stir_cycle` subtasks, forwards task `parameters`, and removes fixed bottle counts, operation order, and process defaults.
+- [sense] [fix] 将结构化视觉输出预算从 2048 提高至 4096，并在 JSON 解码失败 artifact 中保存有界响应摘录和解析位置；实测根因为八目标响应被截断。 / Raised structured-vision output budget from 2048 to 4096 and recorded bounded response excerpts and parse positions on JSON decode failure; run evidence showed truncation of the eight-object response.
+- [eval] [exp] ReMake 同场景只读 Agent 检查成功结算；八个锥形试剂瓶标签不可可靠读取，身份未解析；未启用运动。 / The read-only ReMake Agent inspection settled successfully in the same scene; labels on eight conical reagent bottles were unreadable and identities unresolved; motion remained disabled.
+- [docs] [docs] 更新透明材质诊断和汇报，加入失败原因/修复对比、标签结论、参数动作验证边界及运行产物。 / Updated the transparent-material diagnosis and report with failure cause/fix comparison, label findings, parameterized-action validation boundary, and run artifacts.
+
+### 文件变更详情 / Change Details
+- [policy] [fix] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/agent_host.py:L88-L103` 去除固定流程/默认值，改为从用户任务参数组合通用动作；`tests/test_agent_host.py:L47-L55` 验证指引。 / Removed fixed sequences/defaults in favor of task-parameterized generic actions; tested the guidance.
+- [sense] [fix] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/visual_perception.py:L23-L27,L71-L84,L197-L204` 提高 token 上限并保存有界 JSON 解码上下文；`tests/test_visual_perception.py:L147-L193` 覆盖预算、解析失败和持久化。 / Raised the token limit and persisted bounded JSON decode context; tests cover budget, parse failure, and persistence.
+- [docs] [docs] `docs/diagnostics/transparent-model-comparison-20261023.md:L117-L142`、`docs/reports/transparent-model-selection-report-20261024.md:L79-L96` 记录本轮结论。 / Recorded this run's findings.
+- [eval] [exp] `out/releases/v16.0.4/agent-label-qualification-token-budget/` 保存成功 Agent 运行、RGB-D、ReMake 中间 artifact 与任务结算；失败对照保存在 `agent-label-qualification-final/`。 / Saved the successful Agent run, RGB-D, ReMake intermediate artifacts and settlement; the failed comparison is in `agent-label-qualification-final/`.
+
+### 验证 / Validation
+- `61 passed`: visual perception, Agent Host, PAOS integration, and subtask executor tests; `git diff --check` passed. / Passed.
+- ReMake read-only Agent task `task_1d02787c63b24544`: `succeeded`, completed `complete_read_only_inspection`; no manipulation or motion. Eight flask labels remained unreadable; do not use the result to select reagent identity.
+- The two earlier provider-failed, no-action tasks were settled as `cancelled` through Coordinator `cancel_task`; their SQLite files were not edited directly. / Two earlier provider-failed, no-action tasks were cancelled through Coordinator lifecycle handling; no direct SQLite edits were made.
+- Parameterized action contract verified by tests only; this Agent run did not execute pour/stir because task values were absent and perception/preparation prerequisites were unqualified. / Parameterized action contract verified by tests only; no pour/stir execution due to missing task parameters and unqualified perception/preparation.
+
+### 关键 Diff / Key Diff
+```diff
+- max_output_tokens=2048
++ max_output_tokens=4096
++ persist bounded JSON decode excerpt and location on provider failure
++ replace fixed pour/pour/stir defaults with parameterized pour_cycle/stir_cycle subtasks
+```
+
+### Git 提交 / Git Commit
+- Pending commit and push. / 待提交与推送。
 
 ## v16.0.3 (2026-10-24 09:35) - codex
 

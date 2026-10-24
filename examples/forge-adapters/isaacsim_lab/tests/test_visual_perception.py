@@ -156,6 +156,41 @@ def test_rgb_inference_preserves_unresolved_objects_for_geometry():
     result = RGBLabelPointInference(client, model='test').infer(SimpleNamespace(data=data.getvalue(), media_type='image/png'))
     assert [item['label'] for item in result['objects']] == ['REAGENT A', None]
     assert result['ambiguities'] == ['Rod occluded']
+    assert client.responses.create.call_args.kwargs['max_output_tokens'] == 4096
+
+
+def test_rgb_inference_records_bounded_json_decode_context():
+    client = Mock()
+    output = '{"objects": [],\n' + (' ' * 1000) + 'not-json'
+    client.responses.create.return_value.output_text = output
+    data = io.BytesIO()
+    Image.new('RGB', (4, 4)).save(data, format='PNG')
+    with pytest.raises(json.JSONDecodeError) as caught:
+        RGBLabelPointInference(client, model='test').infer(
+            SimpleNamespace(data=data.getvalue(), media_type='image/png'))
+    diagnostics = caught.value.response_diagnostics
+    assert diagnostics['output_length'] == len(output)
+    assert diagnostics['line'] == 2
+    assert diagnostics['column'] > 1
+    assert len(diagnostics['excerpt']) <= 640
+    assert 'not-json' in diagnostics['excerpt']
+
+
+def test_malformed_model_response_context_is_persisted(tmp_path):
+    visual, _, request, _ = fixture(tmp_path)
+    output = '{"objects": [],\nnot-json'
+    with pytest.raises(json.JSONDecodeError) as caught:
+        json.loads(output)
+    caught.value.response_diagnostics = {'output_length': len(output), 'line': caught.value.lineno,
+                                         'column': caught.value.colno, 'position': caught.value.pos,
+                                         'excerpt': output}
+    visual.inference.infer.side_effect = caught.value
+    result = SceneUnderstandingEndpoint(visual).invoke(request)
+    assert result['status'] != 'available'
+    diagnostics = list(visual.store.root.glob('perception-failure/*.json'))
+    failure = json.loads(diagnostics[0].read_text())
+    assert failure['error_type'] == 'JSONDecodeError'
+    assert failure['response_diagnostics']['excerpt'] == output
 
 
 def test_recovered_surface_is_not_truncated_by_a_raw_depth_seed_filter(tmp_path):
