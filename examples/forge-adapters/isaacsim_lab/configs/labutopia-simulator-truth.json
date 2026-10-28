@@ -1,0 +1,16 @@
+{
+  "schema": "labutopia-simulator-truth/v1",
+  "source": "LabUtopia tabletop_station.usda authored labels and poses",
+  "objects": [
+    {"label": "R01", "category": "reagent_bottle", "prim_path": "/World/ReagentZones/A/R01/Model", "origin_world": [-0.27, -0.56, 0.71238606911949], "tip_world": [-0.27, -0.56, 0.86238606911949], "axis_world": [0.0, 0.0, 1.0], "size_m": [0.10, 0.10, 0.20], "pixel_radius": 32},
+    {"label": "R02", "category": "reagent_bottle", "prim_path": "/World/ReagentZones/A/R02/Model", "origin_world": [-0.04, -0.56, 0.71238606911949], "tip_world": [-0.04, -0.56, 0.86238606911949], "axis_world": [0.0, 0.0, 1.0], "size_m": [0.10, 0.10, 0.20], "pixel_radius": 32},
+    {"label": "R03", "category": "reagent_bottle", "prim_path": "/World/ReagentZones/A/R03/Model", "origin_world": [-0.27, -0.36, 0.71238606911949], "tip_world": [-0.27, -0.36, 0.86238606911949], "axis_world": [0.0, 0.0, 1.0], "size_m": [0.10, 0.10, 0.20], "pixel_radius": 32},
+    {"label": "R04", "category": "reagent_bottle", "prim_path": "/World/ReagentZones/A/R04/Model", "origin_world": [-0.04, -0.36, 0.71238606911949], "tip_world": [-0.04, -0.36, 0.86238606911949], "axis_world": [0.0, 0.0, 1.0], "size_m": [0.10, 0.10, 0.20], "pixel_radius": 32},
+    {"label": "R05", "category": "reagent_bottle", "prim_path": "/World/ReagentZones/B/R05/Model", "origin_world": [-0.27, 0.36, 0.71238606911949], "tip_world": [-0.27, 0.36, 0.86238606911949], "axis_world": [0.0, 0.0, 1.0], "size_m": [0.10, 0.10, 0.20], "pixel_radius": 32},
+    {"label": "R06", "category": "reagent_bottle", "prim_path": "/World/ReagentZones/B/R06/Model", "origin_world": [-0.04, 0.36, 0.71238606911949], "tip_world": [-0.04, 0.36, 0.86238606911949], "axis_world": [0.0, 0.0, 1.0], "size_m": [0.10, 0.10, 0.20], "pixel_radius": 32},
+    {"label": "R07", "category": "reagent_bottle", "prim_path": "/World/ReagentZones/B/R07/Model", "origin_world": [-0.27, 0.56, 0.71238606911949], "tip_world": [-0.27, 0.56, 0.86238606911949], "axis_world": [0.0, 0.0, 1.0], "size_m": [0.10, 0.10, 0.20], "pixel_radius": 32},
+    {"label": "R08", "category": "reagent_bottle", "prim_path": "/World/ReagentZones/B/R08/Model", "origin_world": [-0.04, 0.56, 0.71238606911949], "tip_world": [-0.04, 0.56, 0.86238606911949], "axis_world": [0.0, 0.0, 1.0], "size_m": [0.10, 0.10, 0.20], "pixel_radius": 32},
+    {"label": "BEAKER", "category": "mixing_vessel", "prim_path": "/World/OperationArea/TargetBeaker/Model", "origin_world": [-0.6067470526942765, 3.985742282051372, -0.014269991872127186], "tip_world": [-0.6067470526942765, 3.985742282051372, 0.10573000812787282], "axis_world": [0.0, 0.0, 1.0], "size_m": [0.12, 0.12, 0.16], "pixel_radius": 40},
+    {"label": "GLASS_ROD", "category": "stir_tool", "prim_path": "/World/OperationArea/GlassRod/Model", "origin_world": [0.2245453185846967, 4.4459205426257995, 0.17418194232682904], "tip_world": [0.2245453185846967, 4.4459205426257995, -0.12581805767317095], "axis_world": [0.0, 0.0, -1.0], "size_m": [0.01, 0.01, 0.30], "pixel_radius": 40}
+  ]
+}

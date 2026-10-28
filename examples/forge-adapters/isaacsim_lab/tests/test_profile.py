@@ -92,6 +92,29 @@ def test_label_inspection_camera_settings_are_profile_configured(tmp_path):
         })
 
 
+def test_simulator_truth_profile_requires_and_resolves_manifest(tmp_path):
+    scene = tmp_path / "lab.usd"
+    config = tmp_path / "level.yaml"
+    manifest = tmp_path / "truth.json"
+    scene.write_text("usd", encoding="utf-8")
+    config.write_text("name: lab", encoding="utf-8")
+    manifest.write_text('{"objects": []}', encoding="utf-8")
+    configured = LabUtopiaProfile.from_mapping({
+        "lab_root": str(tmp_path), "config_path": str(config),
+        "scene_usd_path": str(scene), "robot_usd_path": str(scene),
+        "source_path": "/World/source", "destination_path": "/World/destination",
+        "perception_mode": "simulator_truth", "simulation_truth_manifest_path": "truth.json",
+    }, base_dir=tmp_path)
+    assert configured.simulation_truth_manifest_path == manifest
+    with pytest.raises(LabProfileError, match="requires simulation_truth_manifest_path"):
+        LabUtopiaProfile.from_mapping({
+            "lab_root": str(tmp_path), "config_path": str(config),
+            "scene_usd_path": str(scene), "robot_usd_path": str(scene),
+            "source_path": "/World/source", "destination_path": "/World/destination",
+            "perception_mode": "simulator_truth",
+        }, base_dir=tmp_path)
+
+
 def test_profile_normalizes_source_pour_axis(tmp_path):
     configured = profile(tmp_path)
     assert configured.source_pour_axis == (0.0, 0.0, 1.0)

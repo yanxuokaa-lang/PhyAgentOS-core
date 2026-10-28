@@ -6,6 +6,7 @@
 
 ## Archive
 
+- [2026-10_part12](changelog/2026-10_part12.md)
 - [2026-10_part11](changelog/2026-10_part11.md)
 - [2026-10_part9](changelog/2026-10_part9.md)
 - [2026-10_part10](changelog/2026-10_part10.md)
@@ -41,6 +42,42 @@
 - [2026-09](changelog/2026-09.md)
 
 ## 最近五版本 / Latest five versions
+
+## v16.1.2 (2026-10-28 20:02) - codex
+
+### 变更摘要 / Summary
+- [sense] [feat] 增加 `simulator_truth` 感知模式：同一次 Isaac 观测直接使用仿真深度、点云和 authored 标签/过程几何，跳过 SAM2 与 ReMake/DFNet；保留标准 `scene.observe → scene.understand → grasp → binding` 链路。 / Added `simulator_truth` perception: use same-capture Isaac depth, point cloud and authored labels/process geometry, skipping SAM2 and ReMake/DFNet while retaining the standard perception and binding chain.
+- [policy] [feat] 保持两个 `pour` 后一个 `stir` 的语义计划顺序与必填参数契约；原子动作仍只消费用户指令参数。 / Retained the two-pour-then-stir semantic ordering and required parameter contracts; atomic actions consume caller-supplied parameters only.
+- [env] [feat] 新增 LabUtopia truth manifest，按 R01-R08、BEAKER、GLASS_ROD 标签绑定仿真 prim 与过程特征。 / Added a LabUtopia truth manifest binding R01-R08, BEAKER and GLASS_ROD labels to simulator prims and process features.
+
+### 文件变更详情 / File Change Details
+- [新增] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/simulator_truth_perception.py:L1-L86`：校验 manifest，按 authored pose 从同帧相机点云提取对象云；不启动模型 worker。 / Validates the manifest and extracts object clouds from same-frame camera point clouds using authored poses; no model worker is started.
+- [修改] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/perception_runtime.py:L18-L56`：按配置选择 model 或 simulator truth；truth 模式不实例化 SAM2/geometry workers，仍复用 GraspNet。 / Selects model or simulator truth by configuration; truth mode does not instantiate SAM2/geometry workers and still reuses GraspNet.
+- [修改] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/visual_perception.py:L166-L529`：增加 truth understanding、同帧深度/点云 provenance、`simulator_ground_truth` 资格，并允许其进入现有 resolve/held refresh；关闭时兼容空 worker。 / Adds truth understanding, same-capture depth/point-cloud provenance, `simulator_ground_truth` qualification, existing resolve/held-refresh admission, and empty-worker shutdown compatibility.
+- [修改] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/profile.py:L65-L194`、`agent_host.py:L89-L104`：增加模式/manifest 配置和不调用 ReMake 的 host guidance。 / Added mode/manifest configuration and host guidance not to invoke ReMake.
+- [新增] `examples/forge-adapters/isaacsim_lab/configs/labutopia-simulator-truth.json:L1-L16`；修改两个 LabUtopia 配置文件 `L1-L28`、`L1-L166`。 / Added the truth manifest and updated both LabUtopia configuration files.
+- [修改] `tests/test_visual_perception.py:L322-L361`、`tests/test_profile.py:L94-L117`：覆盖 truth 注入不调用 SAM2/ReMake、capture lineage 和 manifest 配置边界。 / Covered worker bypass, capture lineage and manifest configuration boundaries.
+
+### 关键 Diff / Key Diff
+```diff
+- geometry = WorkerGeometryRecoveryProvider(...)
++ if mode == "simulator_truth":
++     segmentation = geometry = None
++     truth_manifest = load_truth_manifest(manifest_path)
+```
+```diff
+- geometry_qualification != "validated_observation"
++ geometry_qualification not in {"validated_observation", "simulator_ground_truth"}
+```
+
+### 验证 / Validation
+- `pytest -q ...test_visual_perception.py ...test_profile.py ...test_agent_host.py ...test_semantic_task_creation.py ...test_subtask_executor.py`: `81 passed`。 / Focused suite: `81 passed`.
+- `python -m compileall`、`git diff --check`、truth config/manifest load check passed. / Compileall, diff check and truth config/manifest loading passed.
+- 未启动 Isaac Sim、未执行机械臂动作；`execute=False` 仍为默认，未宣称液体体积、化学反应或真实硬件成功。 / Isaac Sim and robot motion were not run; `execute=False` remains the default, with no claim of liquid volume, chemistry or hardware success.
+
+### Git 提交 / Git Commit
+- Commit: final hash recorded after log amendment.
+- Branch: `feature/planning-loop`; push failed because GitHub port 443 was unreachable after 132.9 s. The local commit remains available for a later push.
 
 ## v16.1.1 (2026-10-24 23:10) - codex
 

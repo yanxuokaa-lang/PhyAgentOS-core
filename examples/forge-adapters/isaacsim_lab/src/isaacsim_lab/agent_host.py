@@ -89,6 +89,7 @@ def environment_guidance(sensor_ref, execute):
     mode = "Simulated motion is authorized." if execute else "Read-only qualification; motion is disabled."
     return f"""Laboratory deployment: persistent Isaac simulation with no liquid or chemistry model.
 {mode}
+Perception uses same-capture Isaac depth and point cloud plus authored LabUtopia labels/features; do not invoke ReMake, DFNet or SAM2 as prerequisites.
 Use forge_task_create semantic_subtasks to bind only the reagent labels and operations requested by the user through Queries.
 Categories are reagent_bottle, mixing_vessel and stir_tool. Sensor: {sensor_ref}. max_age_ms: 1000.
 Use a label selector only when the user specifies a label; never infer reagent identity from a bottle's fixed scene position.

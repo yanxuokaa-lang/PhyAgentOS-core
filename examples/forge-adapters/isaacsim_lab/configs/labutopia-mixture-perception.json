@@ -25,6 +25,8 @@
       1
     ]
   ],
+  "perception_mode": "simulator_truth",
+  "simulation_truth_manifest_path": "labutopia-simulator-truth.json",
   "grasp": {
     "max_candidates": 32,
     "sample_count": 128,

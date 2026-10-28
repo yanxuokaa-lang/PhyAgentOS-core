@@ -166,13 +166,15 @@ class LabVisualPerception:
     Only RGB-D-derived artifacts are published through scene.understand.
     """
 
-    def __init__(self, engine, artifact_resolver, inference, *, segmentation, geometry, store, grasps, provider_from_tcp):
+    def __init__(self, engine, artifact_resolver, inference, *, segmentation, geometry, store, grasps,
+                 provider_from_tcp, truth_manifest=None):
         from robotwin20_adapter.single_view_perception import NumpyMetricLocalizationProvider
         self.engine, self.resolver, self.inference = engine, artifact_resolver, inference
         self.segmentation, self.store, self.grasps = segmentation, store, grasps
         self.geometry = geometry
         self.localization = NumpyMetricLocalizationProvider(depth_scale_to_m=1.)
         self.provider_from_tcp = np.asarray(provider_from_tcp, dtype=float)
+        self.truth_manifest = truth_manifest
         if (self.provider_from_tcp.shape != (4, 4) or not np.isfinite(self.provider_from_tcp).all()
                 or not np.allclose(self.provider_from_tcp[3], [0, 0, 0, 1])
                 or not np.allclose(self.provider_from_tcp[:3, :3].T @ self.provider_from_tcp[:3, :3], np.eye(3))
@@ -208,6 +210,8 @@ class LabVisualPerception:
             raise
 
     def _understand(self, request):
+        if self.truth_manifest is not None:
+            return self._understand_simulator_truth(request, self.truth_manifest)
         from PIL import Image
         from robotwin20_adapter.geometry_recovery import GeometryRecoveryRequest
         from robotwin20_adapter.single_view_perception import (
@@ -347,6 +351,72 @@ class LabVisualPerception:
         self.store.write("understanding", {"request": request, "result": output})
         return output
 
+    def _understand_simulator_truth(self, request, manifest):
+        """Use authored scene labels/features while retaining capture lineage."""
+        from .simulator_truth_perception import object_point_cloud
+
+        depth_ref = next((ref for ref in request["artifacts"]
+                          if ref.startswith("artifact://labutopia/depth/")), None)
+        point_cloud_ref = next((ref for ref in request["artifacts"]
+                                if ref.startswith("artifact://labutopia/point_cloud/")), None)
+        if depth_ref is None or point_cloud_ref is None:
+            raise ValueError("simulator truth requires same-capture depth and point-cloud artifacts")
+        calibration = json.loads(self.resolver.resolve(request["calibration_ref"]).data)
+        if any(calibration[key] != request[key] for key in ("scene_revision", "frame_id")):
+            raise ValueError("calibration does not belong to the capture")
+        depth = np.load(io.BytesIO(self.resolver.resolve(depth_ref).data), allow_pickle=False)
+        point_cloud = np.load(io.BytesIO(self.resolver.resolve(point_cloud_ref).data), allow_pickle=False)
+        if depth.size == 0 or not np.isfinite(depth).any():
+            raise ValueError("simulator truth depth artifact is empty or has no finite samples")
+        identity = {key: request[key] for key in ("observation_ref", "scene_revision", "frame_id", "calibration_ref")}
+        truth_ref = self.store.write("simulator-truth", {**identity, "manifest": manifest,
+            "source_refs": [depth_ref, point_cloud_ref], "depth_shape": list(depth.shape),
+            "point_cloud_shape": list(point_cloud.shape)})
+        entities, derived, records = [], [], {}
+        for label, spec in manifest["objects"].items():
+            category = spec["category"]
+            if category not in {"reagent_bottle", "mixing_vessel", "stir_tool", "test_tube"}:
+                raise ValueError(f"unsupported simulator truth category: {category}")
+            points = object_point_cloud(calibration, spec, point_cloud)
+            points_ref = self.store.write("object-point-cloud", points)
+            entity = f"entity://simulator-truth/{label}"
+            geometry_ref = self.store.write("observed-geometry", {
+                **identity, "entity_ref": entity, "label": label, "category": category,
+                "geometry_qualification": "simulator_ground_truth", "coverage": "simulator_visible_surface",
+                "process_features": {"origin_world": list(spec["origin_world"]),
+                    "tip_world": list(spec["tip_world"]), "axis_world": list(spec["axis_world"]),
+                    "size_m": list(spec["size_m"]), "source": "simulator_authored_truth",
+                    "coverage": "authored_scene_geometry"},
+                "source_refs": [truth_ref, depth_ref, point_cloud_ref, points_ref],
+                "raw_depth_ref": depth_ref})
+            self.store.path(points_ref).with_suffix(".json").write_text(json.dumps({
+                "geometry_ref": geometry_ref, "truth_ref": truth_ref, **identity,
+                "entity_ref": entity, "label": label, "category": category,
+            }), encoding="utf-8")
+            entities.append({"entity_ref": entity, "category": category, "label": label,
+                             "confidence": 1.0, "provenance": [truth_ref, depth_ref, point_cloud_ref]})
+            derived.append({"artifact_ref": points_ref, "kind": "object_point_cloud",
+                            "media_type": "application/numpy", **identity, "entity_ref": entity,
+                            "category": category, "label": label,
+                            "source_refs": [depth_ref, point_cloud_ref, truth_ref],
+                            "provenance": [truth_ref, depth_ref, point_cloud_ref],
+                            "descriptor": {"point_count": len(points), "unit": "m", "confidence": 1.0,
+                                           "geometry_qualification": "simulator_ground_truth"}})
+            records[entity] = {**identity, "entity_ref": entity, "category": category, "label": label,
+                "features": {"origin_world": list(spec["origin_world"]), "tip_world": list(spec["tip_world"]),
+                             "axis_world": list(spec["axis_world"]), "size_m": list(spec["size_m"]),
+                             "source": "simulator_authored_truth", "coverage": "authored_scene_geometry"},
+                "world_from_camera": world_from_camera(calibration).tolist(), "points_ref": points_ref,
+                "geometry_ref": geometry_ref, "geometry_qualification": "simulator_ground_truth",
+                "claim": {"category": category, "label": label, "identity_resolved": True},
+                "artifacts": list(request["artifacts"]), "prim_path": spec["prim_path"]}
+        self.observations[request["calibration_ref"]] = records
+        output = {"entities": entities, "spatial_envelopes": [], "derived_artifacts": derived,
+                  "relations": [], "ambiguities": []}
+        self.store.write("understanding", {"request": request, "result": output,
+                                             "source": "simulator_authored_truth"})
+        return output
+
     def _bind_execution(self, request, entities):
         if self.engine is None:
             raise ValueError("execution correspondence is unavailable in offline perception")
@@ -392,7 +462,8 @@ class LabVisualPerception:
         features = source["features"]
         if features is None or destination["features"] is None:
             raise ValueError("selected objects lack observed process features")
-        if any(record["geometry_qualification"] != "validated_observation" for record in (source, destination)):
+        if any(record["geometry_qualification"] not in {"validated_observation", "simulator_ground_truth"}
+               for record in (source, destination)):
             raise ValueError("geometry estimates have not been validated for process preparation")
         private = self._bind_execution(binding, [source["entity_ref"], destination_ref])
         origin = np.asarray(features["origin_world"])
@@ -418,7 +489,8 @@ class LabVisualPerception:
         source = records[arguments["entity_ref"]]
         destination_ref = "entity://" + arguments["destination_ref"].removeprefix("destination://")
         destination = records[destination_ref]
-        if any(record["features"] is None or record["geometry_qualification"] != "validated_observation"
+        if any(record["features"] is None or record["geometry_qualification"] not in
+               {"validated_observation", "simulator_ground_truth"}
                for record in (source, destination)):
             raise ValueError("held preparation requires current source and destination feature evidence")
         # Keep the acquisition geometry/candidate as historical evidence. Physics
@@ -450,9 +522,11 @@ class LabVisualPerception:
 
     def close(self):
         try:
-            self.segmentation.shutdown()
+            if self.segmentation is not None:
+                self.segmentation.shutdown()
         finally:
             try:
-                self.geometry.shutdown()
+                if self.geometry is not None:
+                    self.geometry.shutdown()
             finally:
                 self.grasps.close()

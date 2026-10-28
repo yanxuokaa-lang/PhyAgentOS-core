@@ -22,5 +22,7 @@
   "physics_dt_s": 0.0010416666666666667,
   "control_dt_s": 0.016666666666666666,
   "startup_settle_s": 0.0,
-  "perception_config_path": "labutopia-mixture-perception.json"
+  "perception_config_path": "labutopia-mixture-perception.json",
+  "perception_mode": "simulator_truth",
+  "simulation_truth_manifest_path": "labutopia-simulator-truth.json"
 }
