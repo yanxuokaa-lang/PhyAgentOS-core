@@ -317,6 +317,9 @@ def test_session_owned_task_initializes_world_before_task_and_never_resets_it_ag
             assert render is True
             events.append("world.step")
 
+        def render(self):
+            events.append("world.render")
+
         def pause(self):
             events.append("world.pause")
 
@@ -1078,6 +1081,9 @@ def test_initial_robot_state_is_applied_before_and_after_task_reset():
             assert render is True
             events.append("world.step")
 
+        def render(self):
+            events.append("world.render")
+
         def pause(self):
             events.append("world.pause")
 
@@ -1112,9 +1118,11 @@ def test_initial_robot_state_is_applied_before_and_after_task_reset():
     assert isinstance(task, Task)
     assert events == [
         "world.reset", "task.construct", "robot.initialize",
-        ("robot.set_joint_positions", expected), "world.play", "world.step", "world.pause",
+        ("robot.set_joint_positions", expected), "world.play", "world.step",
+        ("robot.set_joint_positions", expected), "world.render", "world.pause",
         "task.reset", ("robot.set_joint_positions", expected),
-        "world.play", "world.step", "world.pause",
+        "world.play", "world.step", ("robot.set_joint_positions", expected),
+        "world.render", "world.pause",
     ]
 
 
