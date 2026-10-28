@@ -71,7 +71,8 @@
 - Full-chain run stopped before observation because the Isaac worker reported `OMNI_KIT_ACCEPT_EULA_not_accepted`; no tasks or motion.
 
 ### Git 提交 / Git Commit
-- Commit: `f926fe3c`; Branch: `feature/planning-loop`。
+- Implementation commit: `f926fe3c`; documentation/receipt commit: `f5addb11`; Branch: `feature/planning-loop`。
+- Push succeeded to `origin/feature/planning-loop` at 2026-10-28 21:24 Asia/Shanghai.
 
 ## v16.1.2 (2026-10-28 20:02) - codex
 
