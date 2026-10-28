@@ -952,6 +952,7 @@ class LabUtopiaBackend:
             initial_gripper = getattr(cfg.robot, "initial_gripper_positions", None)
             if initial_arm is not None or initial_gripper is not None:
                 _apply_initial_robot_state(scene["robot"], initial_arm, initial_gripper)
+                _refresh_initial_robot_state(scene["world"])
             scene["robot_initialized"] = True
         if getattr(cfg, "preview_light", None) is not None:
             from pxr import Gf, UsdLux
@@ -2448,11 +2449,13 @@ def _create_session_owned_task(
         _apply_initial_robot_state(
             robot, initial_joint_positions, initial_gripper_positions
         )
+        _refresh_initial_robot_state(world)
     task.reset()
     if initial_joint_positions is not None or initial_gripper_positions is not None:
         _apply_initial_robot_state(
             robot, initial_joint_positions, initial_gripper_positions
         )
+        _refresh_initial_robot_state(world)
     return task
 
 
@@ -2481,6 +2484,18 @@ def _apply_initial_robot_state(
             f"Franka articulation has {actual.size} joints; expected {positions.size}"
         )
     robot.set_joint_positions(positions)
+
+
+def _refresh_initial_robot_state(world: Any) -> None:
+    """Propagate an authored qpos into link/camera transforms without a command."""
+    was_playing = bool(world.is_playing())
+    try:
+        if not was_playing:
+            world.play()
+        world.step(render=True)
+    finally:
+        if not was_playing:
+            world.pause()
 
 
 def _target_in_world(target: Mapping[str, Any]) -> dict[str, Any]:

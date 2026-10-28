@@ -307,6 +307,19 @@ def test_session_owned_task_initializes_world_before_task_and_never_resets_it_ag
         def reset(self):
             events.append("world.reset")
 
+        def is_playing(self):
+            return False
+
+        def play(self):
+            events.append("world.play")
+
+        def step(self, *, render):
+            assert render is True
+            events.append("world.step")
+
+        def pause(self):
+            events.append("world.pause")
+
     class Robot:
         def initialize(self):
             events.append("robot.initialize")
@@ -1055,6 +1068,19 @@ def test_initial_robot_state_is_applied_before_and_after_task_reset():
         def reset(self):
             events.append("world.reset")
 
+        def is_playing(self):
+            return False
+
+        def play(self):
+            events.append("world.play")
+
+        def step(self, *, render):
+            assert render is True
+            events.append("world.step")
+
+        def pause(self):
+            events.append("world.pause")
+
     class Robot:
         def __init__(self):
             self.positions = [0.] * 9
@@ -1086,8 +1112,9 @@ def test_initial_robot_state_is_applied_before_and_after_task_reset():
     assert isinstance(task, Task)
     assert events == [
         "world.reset", "task.construct", "robot.initialize",
-        ("robot.set_joint_positions", expected), "task.reset",
-        ("robot.set_joint_positions", expected),
+        ("robot.set_joint_positions", expected), "world.play", "world.step", "world.pause",
+        "task.reset", ("robot.set_joint_positions", expected),
+        "world.play", "world.step", "world.pause",
     ]
 
 
