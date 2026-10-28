@@ -43,6 +43,36 @@
 
 ## 最近五版本 / Latest five versions
 
+## v16.1.3 (2026-10-28 21:22) - codex
+
+### 变更摘要 / Summary
+- [sense] [fix] 修复 simulator-truth 的实体引用、provenance 和点云派生 artifact，使 `SceneUnderstandingEndpoint` 公共契约可验证。 / Fixed simulator-truth entity refs, provenance and point-cloud derived artifacts so the public `SceneUnderstandingEndpoint` contract validates.
+- [test] [test] 新增 Endpoint 级真值快照回归测试：`18 passed`，Ruff 与 diff 检查通过。 / Added an Endpoint-level truth snapshot regression; `18 passed`, with Ruff and diff checks passing.
+- [eval] [exp] 带 `--execute` 的全链路启动因 `OMNI_KIT_ACCEPT_EULA_not_accepted` 在观测前停止；无任务、无动作、无液体或化学结论。 / The `--execute` full-chain launch stopped before observation because `OMNI_KIT_ACCEPT_EULA_not_accepted`; no tasks, motion, liquid or chemistry conclusions.
+
+### 文件变更详情 / File Change Details
+- [修改] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/visual_perception.py:L382-L407`：opaque entity ref、公共 provenance/descriptor 收敛到契约，私有证据保留 manifest receipt。 / Opaque entity refs and contract-bounded public provenance/descriptor; manifest receipt remains private.
+- [新增] `examples/forge-adapters/isaacsim_lab/tests/test_visual_perception.py:L364-L412`：真实 `SceneUnderstandingEndpoint` 回归测试。 / Real `SceneUnderstandingEndpoint` regression.
+
+### 关键 Diff / Key Diff
+```diff
+- entity = f"entity://simulator-truth/{label}"
++ entity = f"entity://simulator-truth-{label}"
+- "provenance": [truth_ref, depth_ref, point_cloud_ref]
++ "provenance": [depth_ref, point_cloud_ref]
+```
+```diff
+- "category": category, "label": label, "descriptor": {"geometry_qualification": ...}
++ "descriptor": {"point_count": ..., "unit": "m", "confidence": None, ...required_public_fields}
+```
+
+### 验证 / Validation
+- `pytest -q examples/forge-adapters/isaacsim_lab/tests/test_visual_perception.py`: `18 passed`; Ruff and `git diff --check` passed.
+- Full-chain run stopped before observation because the Isaac worker reported `OMNI_KIT_ACCEPT_EULA_not_accepted`; no tasks or motion.
+
+### Git 提交 / Git Commit
+- Commit: `f926fe3c`; Branch: `feature/planning-loop`。
+
 ## v16.1.2 (2026-10-28 20:02) - codex
 
 ### 变更摘要 / Summary
