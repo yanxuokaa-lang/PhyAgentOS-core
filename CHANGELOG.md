@@ -6,6 +6,7 @@
 
 ## Archive
 
+- [2026-10_part13](changelog/2026-10_part13.md)
 - [2026-10_part12](changelog/2026-10_part12.md)
 - [2026-10_part11](changelog/2026-10_part11.md)
 - [2026-10_part9](changelog/2026-10_part9.md)
@@ -42,6 +43,16 @@
 - [2026-09](changelog/2026-09.md)
 
 ## 最近五版本 / Latest five versions
+
+## v16.1.4 (2026-10-28 22:00) - codex
+
+- [env] [feat] [完成] LabUtopia 场景配置声明 Franka 基座朝向、7 个臂关节初始角和 2 个夹爪初始开度；Isaac Adapter 在观测初始化及每次 task reset 前后应用，AgentLoop 不变。(local)
+- [env] [feat] [Completed] The LabUtopia scene declares the Franka base orientation, seven arm joint positions, and two gripper positions; the Isaac Adapter applies them around observation initialization and task reset, with AgentLoop unchanged. (local)
+- [test] [test] 初态/投影/失败关闭契约 `6 passed`，profile/worker session `26 passed`；未启动 Isaac Sim 或动作。(local)
+- [test] [test] Initial-state/projection/fail-closed contracts: `6 passed`; profile/worker session: `26 passed`; no Isaac Sim or motion. (local)
+
+详见 [2026-10_part13](changelog/2026-10_part13.md)。
+See [2026-10_part13](changelog/2026-10_part13.md).
 
 ## v16.1.3 (2026-10-28 21:22) - codex
 

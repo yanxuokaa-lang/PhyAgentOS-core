@@ -2,6 +2,7 @@ import json
 import sys
 import types
 from threading import Event
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -1019,12 +1020,18 @@ def test_authored_station_observation_config_uses_existing_cameras_without_layou
 
     original = SimpleNamespace(
         robot=SimpleNamespace(type="franka", base_position=[-.45, 0., .712386],
+                              base_orientation_wxyz=[1., 0., 0., 0.],
+                              initial_joint_positions=[0., -.785, 0., -2.356, 0., 1.571, .785],
+                              initial_gripper_positions=[.04, .04],
                               wrist_camera=SimpleNamespace(prim_path="/World/Franka/panda_hand/arm_camera",
                                                            clipping_range=[.05, 10.])),
         layout={"bottles": "not perception input"},
     )
     projected = _observation_scene_config(original)
     assert projected.robot.position == [-.45, 0., .712386]
+    assert projected.robot.orientation == [1., 0., 0., 0.]
+    assert projected.robot.initial_joint_positions == [0., -.785, 0., -2.356, 0., 1.571, .785]
+    assert projected.robot.initial_gripper_positions == [.04, .04]
     assert [camera.prim_path for camera in projected.cameras] == [
         "/World/PreviewCameras/ThirdPerson", "/World/Franka/panda_hand/arm_camera"]
     assert all(camera.require_existing for camera in projected.cameras)
@@ -1038,6 +1045,63 @@ def test_authored_station_observation_config_uses_existing_cameras_without_layou
     assert inspected.cameras[-1].focal_length == 3.5
     legacy = SimpleNamespace(robot=SimpleNamespace(position=[0., 0., 0.]), cameras=[])
     assert _observation_scene_config(legacy) is legacy
+
+
+def test_initial_robot_state_is_applied_before_and_after_task_reset():
+    events = []
+    expected = [0., -.785, 0., -2.356, 0., 1.571, .785, .04, .04]
+
+    class World:
+        def reset(self):
+            events.append("world.reset")
+
+    class Robot:
+        def __init__(self):
+            self.positions = [0.] * 9
+
+        def initialize(self):
+            events.append("robot.initialize")
+
+        def get_joint_positions(self):
+            return self.positions
+
+        def set_joint_positions(self, positions):
+            self.positions = list(positions)
+            events.append(("robot.set_joint_positions", self.positions))
+
+    class Task:
+        def __init__(self, **_kwargs):
+            events.append("task.construct")
+
+        def reset(self):
+            events.append("task.reset")
+
+    robot = Robot()
+    task = module._create_session_owned_task(
+        World(), robot, Task,
+        initial_joint_positions=expected[:7],
+        initial_gripper_positions=expected[7:],
+    )
+
+    assert isinstance(task, Task)
+    assert events == [
+        "world.reset", "task.construct", "robot.initialize",
+        ("robot.set_joint_positions", expected), "task.reset",
+        ("robot.set_joint_positions", expected),
+    ]
+
+
+@pytest.mark.parametrize("arm, gripper", [
+    ([0.] * 6, [.04, .04]),
+    ([0.] * 7, [.04]),
+    ([0., 0., 0., 0., 0., 0., float("nan")], [.04, .04]),
+])
+def test_initial_robot_state_rejects_invalid_joint_vectors(arm, gripper):
+    from isaacsim_lab.engine import IsaacLabRuntimeError
+
+    robot = SimpleNamespace(get_joint_positions=lambda: [0.] * 9)
+    with pytest.raises(IsaacLabRuntimeError):
+        module._apply_initial_robot_state(robot, arm, gripper)
 
 
 def test_missing_authored_camera_is_not_replaced_by_a_guessed_view(tmp_path, monkeypatch):

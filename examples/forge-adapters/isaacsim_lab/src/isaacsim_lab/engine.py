@@ -935,13 +935,24 @@ class LabUtopiaBackend:
                 ),
                 robot_factory=lambda: create_robot(
                     cfg.robot.type,
-                    position=np.array(cfg.robot.position),
+                    position=np.array(getattr(cfg.robot, "position", getattr(cfg.robot, "base_position", [0.0, 0.0, 0.0]))),
+                    orientation=np.array(getattr(
+                        cfg.robot, "orientation",
+                        getattr(cfg.robot, "base_orientation_wxyz", [1.0, 0.0, 0.0, 0.0]),
+                    )),
                     usd_path=str(self.profile.robot_usd_path),
                 ),
                 stage_provider=lambda: omni.usd.get_context().get_stage(),
                 add_reference_to_stage=add_reference_to_stage,
                 object_utils=ObjectUtils,
             )
+        if not scene["robot_initialized"]:
+            scene["robot"].initialize()
+            initial_arm = getattr(cfg.robot, "initial_joint_positions", None)
+            initial_gripper = getattr(cfg.robot, "initial_gripper_positions", None)
+            if initial_arm is not None or initial_gripper is not None:
+                _apply_initial_robot_state(scene["robot"], initial_arm, initial_gripper)
+            scene["robot_initialized"] = True
         if getattr(cfg, "preview_light", None) is not None:
             from pxr import Gf, UsdLux
 
@@ -1139,7 +1150,11 @@ class LabUtopiaBackend:
             ),
             robot_factory=lambda: create_robot(
                 cfg.robot.type,
-                position=np.array(cfg.robot.position),
+                position=np.array(getattr(cfg.robot, "position", getattr(cfg.robot, "base_position", [0.0, 0.0, 0.0]))),
+                orientation=np.array(getattr(
+                    cfg.robot, "orientation",
+                    getattr(cfg.robot, "base_orientation_wxyz", [1.0, 0.0, 0.0, 0.0]),
+                )),
                 usd_path=str(self.profile.robot_usd_path),
             ),
             stage_provider=lambda: omni.usd.get_context().get_stage(),
@@ -1148,7 +1163,10 @@ class LabUtopiaBackend:
         )
         world, robot, stage = scene["world"], scene["robot"], scene["stage"]
         task = _create_session_owned_task(
-            world, robot, PickPourTask, scene_state=scene, cfg=cfg, stage=stage
+            world, robot, PickPourTask, scene_state=scene,
+            initial_joint_positions=getattr(cfg.robot, "initial_joint_positions", None),
+            initial_gripper_positions=getattr(cfg.robot, "initial_gripper_positions", None),
+            cfg=cfg, stage=stage
         )
         controller = create_controller(cfg.controller_type, cfg=cfg, robot=robot)
         _configure_pour_controller(controller, process_parameters)
@@ -1369,7 +1387,13 @@ class LabUtopiaBackend:
                     physics_dt=self.profile.physics_dt_s, rendering_dt=self.profile.control_dt_s
             ),
             robot_factory=lambda: create_robot(
-                cfg.robot.type, position=np.array(cfg.robot.position), usd_path=str(self.profile.robot_usd_path)
+                cfg.robot.type,
+                position=np.array(getattr(cfg.robot, "position", getattr(cfg.robot, "base_position", [0.0, 0.0, 0.0]))),
+                orientation=np.array(getattr(
+                    cfg.robot, "orientation",
+                    getattr(cfg.robot, "base_orientation_wxyz", [1.0, 0.0, 0.0, 0.0]),
+                )),
+                usd_path=str(self.profile.robot_usd_path)
             ),
             stage_provider=lambda: omni.usd.get_context().get_stage(),
             add_reference_to_stage=add_reference_to_stage,
@@ -1377,7 +1401,10 @@ class LabUtopiaBackend:
         )
         world, robot, stage = scene["world"], scene["robot"], scene["stage"]
         task = _create_session_owned_task(
-            world, robot, StirTask, scene_state=scene, cfg=cfg, stage=stage
+            world, robot, StirTask, scene_state=scene,
+            initial_joint_positions=getattr(cfg.robot, "initial_joint_positions", None),
+            initial_gripper_positions=getattr(cfg.robot, "initial_gripper_positions", None),
+            cfg=cfg, stage=stage
         )
         controller = create_controller(cfg.controller_type, cfg=cfg, robot=robot)
         _configure_stir_controller(controller, process_parameters)
@@ -2337,7 +2364,15 @@ def _observation_scene_config(
             "look_at_prim_path": str(label_inspection_prim_path),
         })
     return SimpleNamespace(
-        robot=SimpleNamespace(type=cfg.robot.type, position=list(cfg.robot.base_position)),
+        robot=SimpleNamespace(
+            type=cfg.robot.type,
+            position=list(cfg.robot.base_position),
+            orientation=list(getattr(cfg.robot, "base_orientation_wxyz", [1.0, 0.0, 0.0, 0.0])),
+            initial_joint_positions=(list(cfg.robot.initial_joint_positions)
+                                     if getattr(cfg.robot, "initial_joint_positions", None) is not None else None),
+            initial_gripper_positions=(list(cfg.robot.initial_gripper_positions)
+                                       if getattr(cfg.robot, "initial_gripper_positions", None) is not None else None),
+        ),
         cameras=[SimpleNamespace(**camera) for camera in cameras],
         preview_light=SimpleNamespace(prim_path="/World/PreviewDomeLight", intensity=1200., color=(.88, .93, 1.)),
     )
@@ -2395,6 +2430,8 @@ def _create_session_owned_task(
     task_type: Any,
     *,
     scene_state: dict[str, Any] | None = None,
+    initial_joint_positions: Any | None = None,
+    initial_gripper_positions: Any | None = None,
     **kwargs: Any,
 ) -> Any:
     """Construct an episode Task without resetting session-owned scene resources."""
@@ -2407,8 +2444,43 @@ def _create_session_owned_task(
         robot.initialize()
         if scene_state is not None:
             scene_state["robot_initialized"] = True
+    if initial_joint_positions is not None or initial_gripper_positions is not None:
+        _apply_initial_robot_state(
+            robot, initial_joint_positions, initial_gripper_positions
+        )
     task.reset()
+    if initial_joint_positions is not None or initial_gripper_positions is not None:
+        _apply_initial_robot_state(
+            robot, initial_joint_positions, initial_gripper_positions
+        )
     return task
+
+
+def _apply_initial_robot_state(
+    robot: Any, arm_positions: Any, gripper_positions: Any
+) -> None:
+    """Set the configured arm and gripper state after task reset, before motion."""
+    import numpy as np
+
+    if arm_positions is None or gripper_positions is None:
+        raise IsaacLabRuntimeError(
+            "Franka initial state requires both arm and gripper positions"
+        )
+    arm = np.asarray(arm_positions, dtype=float).reshape(-1)
+    gripper = np.asarray(gripper_positions, dtype=float).reshape(-1)
+    if arm.size != 7 or gripper.size != 2:
+        raise IsaacLabRuntimeError(
+            "Franka initial state requires seven arm and two gripper positions"
+        )
+    positions = np.concatenate((arm, gripper))
+    if not np.all(np.isfinite(positions)):
+        raise IsaacLabRuntimeError("Franka initial joint positions must be finite")
+    actual = np.asarray(robot.get_joint_positions(), dtype=float).reshape(-1)
+    if actual.size != positions.size:
+        raise IsaacLabRuntimeError(
+            f"Franka articulation has {actual.size} joints; expected {positions.size}"
+        )
+    robot.set_joint_positions(positions)
 
 
 def _target_in_world(target: Mapping[str, Any]) -> dict[str, Any]:
