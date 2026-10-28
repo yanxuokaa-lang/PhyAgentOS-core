@@ -359,3 +359,54 @@ def test_simulator_truth_injection_skips_model_workers_and_preserves_capture_lin
         assert record['geometry_qualification'] == 'simulator_ground_truth'
         evidence = json.loads(store.path(record['geometry_ref']).read_text())
         assert evidence['source_refs'][0].startswith('artifact://labutopia/simulator-truth/')
+
+
+def test_simulator_truth_snapshot_passes_public_understanding_endpoint(tmp_path):
+    store = LabArtifactStore(tmp_path)
+    rgb_ref = 'artifact://labutopia/rgb/truth-endpoint.png'
+    store.path(rgb_ref).parent.mkdir(parents=True)
+    Image.new('RGB', (16, 16)).save(store.path(rgb_ref))
+    depth_ref = store.write('depth', np.ones((16, 16), dtype=np.float32))
+    cloud = np.zeros((16, 16, 3), dtype=np.float32)
+    cloud[..., 2] = 1.0
+    cloud[..., 0] = np.linspace(-.1, .1, 16)[None, :]
+    cloud[..., 1] = np.linspace(-.1, .1, 16)[:, None]
+    cloud_ref = store.write('point_cloud', cloud)
+    calibration_ref = store.write('calibration', {
+        'scene_revision': 'scene', 'frame_id': 'front',
+        'intrinsics': [[100., 0., 8.], [0., 100., 8.], [0., 0., 1.]],
+        'camera_pose_world': {'position_m': [0, 0, 0], 'orientation_wxyz': [1, 0, 0, 0]},
+    })
+    request = {
+        'observation_ref': 'observation://scene/front', 'scene_revision': 'scene',
+        'frame_id': 'front', 'calibration_ref': calibration_ref, 'freshness_ms': 0,
+        'max_age_ms': 1000, 'artifacts': [rgb_ref, depth_ref, cloud_ref],
+    }
+    manifest = {'objects': {
+        'R01': {'label': 'R01', 'category': 'reagent_bottle', 'prim_path': '/World/R01',
+                'origin_world': [-.04, 0., 1.], 'tip_world': [-.04, 0., 1.1],
+                'axis_world': [0., 0., 1.], 'size_m': [.1, .1, .2]},
+        'BEAKER': {'label': 'BEAKER', 'category': 'mixing_vessel', 'prim_path': '/World/Beaker',
+                   'origin_world': [.04, 0., 1.], 'tip_world': [.04, 0., 1.1],
+                   'axis_world': [0., 0., 1.], 'size_m': [.2, .2, .2],
+        },
+    }}
+    visual = LabVisualPerception(
+        Mock(), LocalFilesystemArtifactResolver({'labutopia': tmp_path}), Mock(),
+        segmentation=Mock(), geometry=Mock(), store=store, grasps=Mock(),
+        provider_from_tcp=CONVENTION, truth_manifest=manifest,
+    )
+
+    response = SceneUnderstandingEndpoint(visual).invoke(request)
+
+    assert response['status'] == 'available', json.dumps(response, ensure_ascii=False)
+    assert {entity['label'] for entity in response['entities']} == {'R01', 'BEAKER'}
+    assert all(entity['provenance'] == [depth_ref, cloud_ref] for entity in response['entities'])
+    point_clouds = [item for item in response['derived_artifacts'] if item['kind'] == 'object_point_cloud']
+    assert len(point_clouds) == 2
+    for artifact in point_clouds:
+        assert set(artifact['descriptor']) == {
+            'width_px', 'height_px', 'bbox_xyxy_px', 'foreground_pixels', 'point_count',
+            'unit', 'min_xyz_m', 'max_xyz_m', 'confidence',
+        }
+        assert artifact['provenance'] == [depth_ref, cloud_ref]

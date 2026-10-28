@@ -379,7 +379,7 @@ class LabVisualPerception:
                 raise ValueError(f"unsupported simulator truth category: {category}")
             points = object_point_cloud(calibration, spec, point_cloud)
             points_ref = self.store.write("object-point-cloud", points)
-            entity = f"entity://simulator-truth/{label}"
+            entity = f"entity://simulator-truth-{label}"
             geometry_ref = self.store.write("observed-geometry", {
                 **identity, "entity_ref": entity, "label": label, "category": category,
                 "geometry_qualification": "simulator_ground_truth", "coverage": "simulator_visible_surface",
@@ -393,15 +393,18 @@ class LabVisualPerception:
                 "geometry_ref": geometry_ref, "truth_ref": truth_ref, **identity,
                 "entity_ref": entity, "label": label, "category": category,
             }), encoding="utf-8")
+            # Public Query provenance may only name request artifacts or
+            # derived artifacts. Keep the manifest receipt in adapter-private
+            # geometry evidence instead of widening the public source set.
             entities.append({"entity_ref": entity, "category": category, "label": label,
-                             "confidence": 1.0, "provenance": [truth_ref, depth_ref, point_cloud_ref]})
+                             "confidence": 1.0, "provenance": [depth_ref, point_cloud_ref]})
             derived.append({"artifact_ref": points_ref, "kind": "object_point_cloud",
                             "media_type": "application/numpy", **identity, "entity_ref": entity,
-                            "category": category, "label": label,
-                            "source_refs": [depth_ref, point_cloud_ref, truth_ref],
-                            "provenance": [truth_ref, depth_ref, point_cloud_ref],
-                            "descriptor": {"point_count": len(points), "unit": "m", "confidence": 1.0,
-                                           "geometry_qualification": "simulator_ground_truth"}})
+                            "source_refs": [depth_ref, point_cloud_ref],
+                            "provenance": [depth_ref, point_cloud_ref],
+                            "descriptor": {"point_count": len(points), "unit": "m", "confidence": None,
+                                           "width_px": None, "height_px": None, "bbox_xyxy_px": None,
+                                           "foreground_pixels": None, "min_xyz_m": None, "max_xyz_m": None}})
             records[entity] = {**identity, "entity_ref": entity, "category": category, "label": label,
                 "features": {"origin_world": list(spec["origin_world"]), "tip_world": list(spec["tip_world"]),
                              "axis_world": list(spec["axis_world"]), "size_m": list(spec["size_m"]),
