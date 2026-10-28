@@ -76,7 +76,7 @@
 - 未启动 Isaac Sim、未执行机械臂动作；`execute=False` 仍为默认，未宣称液体体积、化学反应或真实硬件成功。 / Isaac Sim and robot motion were not run; `execute=False` remains the default, with no claim of liquid volume, chemistry or hardware success.
 
 ### Git 提交 / Git Commit
-- Commit: final hash recorded after log amendment.
+- Implementation commit: `5ae79fd0`.
 - Branch: `feature/planning-loop`; push failed because GitHub port 443 was unreachable after 132.9 s. The local commit remains available for a later push.
 
 ## v16.1.1 (2026-10-24 23:10) - codex
