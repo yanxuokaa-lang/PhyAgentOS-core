@@ -59,7 +59,7 @@
 - Full Skill + Isaac Adapter: `875 passed`; focused Isaac/affordance/planning: `63 passed`; Ruff, compileall, and `git diff --check` passed. No Isaac Kit, Action, pouring, stirring, or robot motion was started.
 
 ### Git 提交 / Git Commit
-- Commit: `4a5d9050`; Branch: `feature/planning-loop`; pushed after log amendment.
+- Implementation commit: `4a5d9050`; changelog commit: `2c2ebfdf`; Branch: `feature/planning-loop`; push blocked by remote network failure.
 
 ## v16.1.14 (2026-10-30 20:26) - codex
 
