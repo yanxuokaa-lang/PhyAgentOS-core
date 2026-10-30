@@ -157,6 +157,14 @@ def run_mixture(tmp_path, fail_operation=None):
             original_intent = deepcopy(context["intent"])
             spec = SubtaskSpec(subtask_id=node, operation=operation, binding=binding, parameters=params)
             arguments = spec.model_dump(mode="json", exclude_none=True)
+            if operation in {"pour", "stir"}:
+                arguments.update(
+                    process_feature_candidate_set_ref=f"process-feature-set://test/{node}",
+                    process_feature_refs=[
+                        f"process-feature://test/{node}/source",
+                        f"process-feature://test/{node}/destination",
+                    ],
+                )
             arguments["intent"] = context["intent"]
             invocation = bundle.runtime.start_action("manipulation.execute_subtask", arguments,
                                                      caller_id=f"paos:mixture:plan-1:{node}")["invocation_id"]

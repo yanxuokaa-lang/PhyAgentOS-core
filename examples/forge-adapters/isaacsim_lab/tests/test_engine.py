@@ -97,6 +97,102 @@ def make_target(profile, *, process_type="pour"):
     return target
 
 
+def test_simulator_truth_mesh_capture_traverses_instance_proxies_in_world_frame():
+    marker = object()
+    observed = {}
+    points = [(0., 0., 0.), (1., 0., 0.), (0., 1., 0.)]
+
+    mesh = SimpleNamespace(
+        GetPointsAttr=lambda: SimpleNamespace(Get=lambda: points),
+        GetFaceVertexCountsAttr=lambda: SimpleNamespace(Get=lambda: [3]),
+        GetFaceVertexIndicesAttr=lambda: SimpleNamespace(Get=lambda: [0, 1, 2]),
+    )
+    def mesh_type(_child):
+        return mesh
+
+    child = SimpleNamespace(IsA=lambda schema: schema is mesh_type)
+    usd = SimpleNamespace(
+        TimeCode=SimpleNamespace(Default=lambda: "default"),
+        TraverseInstanceProxies=lambda: marker,
+        PrimRange=lambda prim, traversal: observed.update(
+            prim=prim, traversal=traversal
+        ) or [child],
+    )
+    transform = SimpleNamespace(
+        Transform=lambda point: (point[0] + 2., point[1] + 3., point[2] + 4.)
+    )
+    usd_geom = SimpleNamespace(
+        Mesh=mesh_type,
+        XformCache=lambda _time: SimpleNamespace(
+            GetLocalToWorldTransform=lambda _child: transform
+        ),
+    )
+    gf = SimpleNamespace(Vec3d=lambda point: point)
+
+    result = module._simulator_truth_mesh_evidence(object(), usd, usd_geom, gf, 0.5)
+
+    assert observed["traversal"] is marker
+    assert result["mesh_points_world_m"] == [[1., 1.5, 2.], [1.5, 1.5, 2.], [1., 2., 2.]]
+    assert result["boundary_edges_world_m"] == [
+        [[1., 1.5, 2.], [1.5, 1.5, 2.]],
+        [[1.5, 1.5, 2.], [1., 2., 2.]],
+        [[1., 1.5, 2.], [1., 2., 2.]],
+    ]
+    assert result["boundary_edge_components_world_m"] == [result["boundary_edges_world_m"]]
+
+
+def test_simulator_truth_mesh_capture_keeps_coincident_mesh_boundaries_separate():
+    meshes = []
+    for _ in range(2):
+        meshes.append(SimpleNamespace(
+            GetPointsAttr=lambda: SimpleNamespace(Get=lambda: [(0., 0., 0.), (1., 0., 0.), (0., 1., 0.)]),
+            GetFaceVertexCountsAttr=lambda: SimpleNamespace(Get=lambda: [3]),
+            GetFaceVertexIndicesAttr=lambda: SimpleNamespace(Get=lambda: [0, 1, 2]),
+        ))
+    children = [SimpleNamespace(IsA=lambda schema, mesh=mesh: schema is mesh_type and mesh is mesh)
+                for mesh in meshes]
+    def mesh_type(child):
+        return meshes[children.index(child)]
+
+    usd = SimpleNamespace(
+        TimeCode=SimpleNamespace(Default=lambda: "default"),
+        TraverseInstanceProxies=lambda: object(),
+        PrimRange=lambda *_args: children,
+    )
+    transform = SimpleNamespace(Transform=lambda point: point)
+    usd_geom = SimpleNamespace(Mesh=mesh_type, XformCache=lambda _time: SimpleNamespace(
+        GetLocalToWorldTransform=lambda _child: transform))
+    result = module._simulator_truth_mesh_evidence(object(), usd, usd_geom,
+        SimpleNamespace(Vec3d=lambda point: point), 1.0)
+
+    assert len(result["boundary_edge_components_world_m"]) == 2
+    assert result["boundary_edge_components_world_m"][0] == result["boundary_edge_components_world_m"][1]
+
+
+def test_simulator_truth_mesh_capture_splits_disconnected_boundary_vertex_components():
+    theta = np.linspace(0, 2 * np.pi, 8, endpoint=False)
+    ring = np.column_stack((np.cos(theta), np.sin(theta), np.zeros_like(theta)))
+    points = np.vstack((ring, ring))
+    mesh = SimpleNamespace(
+        GetPointsAttr=lambda: SimpleNamespace(Get=lambda: points.tolist()),
+        GetFaceVertexCountsAttr=lambda: SimpleNamespace(Get=lambda: [8, 8]),
+        GetFaceVertexIndicesAttr=lambda: SimpleNamespace(Get=lambda: [*range(8), *range(8, 16)]),
+    )
+    child = SimpleNamespace(IsA=lambda schema: schema is mesh_type)
+    def mesh_type(_child):
+        return mesh
+
+    usd = SimpleNamespace(TimeCode=SimpleNamespace(Default=lambda: "default"),
+        TraverseInstanceProxies=lambda: object(), PrimRange=lambda *_args: [child])
+    usd_geom = SimpleNamespace(Mesh=mesh_type, XformCache=lambda _time: SimpleNamespace(
+        GetLocalToWorldTransform=lambda _child: SimpleNamespace(Transform=lambda point: point)))
+    result = module._simulator_truth_mesh_evidence(object(), usd, usd_geom,
+        SimpleNamespace(Vec3d=lambda point: point), 1.0)
+
+    assert [len(edges) for edges in result["boundary_edge_components_world_m"]] == [8, 8]
+    assert result["boundary_edge_components_world_m"][0] == result["boundary_edge_components_world_m"][1]
+
+
 def _stir_process_samples(radius, depth, start, duration, turns):
     return [
         {

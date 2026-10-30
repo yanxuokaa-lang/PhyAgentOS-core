@@ -5125,7 +5125,7 @@ def _planning_record_status(record: ToolExecutionRecord) -> str:
     if record.semantics != "query" or record.status != "succeeded":
         return record.status
     status = _planning_response_facts(record.response).get("status")
-    if status in {"unavailable", "invalid", "stale", "empty", "failed"}:
+    if status in {"unavailable", "invalid", "stale", "empty", "ambiguous", "failed"}:
         return "failed"
     if status == "unknown":
         return "unknown"

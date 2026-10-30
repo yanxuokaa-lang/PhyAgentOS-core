@@ -23,6 +23,8 @@ _CANDIDATE_REF = re.compile(r"^candidate://[^/]+/.+$")
 _PREPARATION_REF = re.compile(r"^preparation://[^/]+/.+$")
 _ARTIFACT_REF = re.compile(r"^artifact://[^/]+/.+$")
 _ENTITY_REF = re.compile(r"^entity://[^/]+$")
+_PROCESS_FEATURE_REF = re.compile(r"^process-feature://\S+$")
+_PROCESS_FEATURE_SET_REF = re.compile(r"^process-feature-set://\S+$")
 
 _CHECK_KEYS = ("kinematic", "collision", "workspace")
 _CHECK_STATUSES = ("pass", "fail", "unknown")
@@ -356,6 +358,11 @@ _PERCEPTION_BINDING_SCHEMA = {
         "destination_category": {"type": "string", "minLength": 1},
         "binding_ref": {"type": "string", "pattern": r"^artifact://\S+$"},
         "capability_snapshot_ref": {"type": "string", "pattern": r"^artifact://\S+$"},
+        "process_feature_candidate_set_ref": {"type": "string", "pattern": _PROCESS_FEATURE_SET_REF.pattern},
+        "process_feature_refs": {
+            "type": "array", "minItems": 2, "uniqueItems": True,
+            "items": {"type": "string", "pattern": _PROCESS_FEATURE_REF.pattern},
+        },
     },
 }
 
@@ -464,6 +471,17 @@ def validate_arguments(arguments: Any) -> dict[str, Any] | None:
             return _error("invalid_perception_binding", "perception_binding contains non-finite values")
         if not isinstance(arguments.get("process_type"), str) or not arguments["process_type"].strip():
             return _error("invalid_perception_binding", "process_type is required with perception_binding")
+        feature_set = binding.get("process_feature_candidate_set_ref")
+        feature_refs = binding.get("process_feature_refs")
+        if (feature_set is None) != (feature_refs is None):
+            return _error("invalid_process_features", "process feature set and selected refs must be provided together")
+        if feature_set is not None and (
+            not isinstance(feature_set, str) or _PROCESS_FEATURE_SET_REF.fullmatch(feature_set) is None
+            or not isinstance(feature_refs, list) or len(feature_refs) < 2
+            or any(not isinstance(ref, str) or _PROCESS_FEATURE_REF.fullmatch(ref) is None for ref in feature_refs)
+            or len(feature_refs) != len(set(feature_refs))
+        ):
+            return _error("invalid_process_features", "selected process feature references are invalid")
     observation_ref = arguments.get("observation_ref")
     if not isinstance(observation_ref, str) or _OBSERVATION_REF.fullmatch(observation_ref) is None:
         return _error("invalid_observation_ref", "observation_ref must use observation:// scheme")

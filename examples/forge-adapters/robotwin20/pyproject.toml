@@ -6,6 +6,7 @@ requires-python = ">=3.10"
 dependencies = []
 
 [project.optional-dependencies]
+lab-assets = ["Pillow>=10"]
 openai = ["openai>=1.0,<4"]
 perception = ["numpy>=1.26,<3", "PyYAML>=6,<7"]
 grasp = ["numpy>=1.26,<3", "PyYAML>=6,<7"]

@@ -92,6 +92,19 @@ before revision identity was added remain readable as legacy records.
    cross-record mappings remain invalid, so the Coordinator still produces one
    projection-owned final argument object.
 
+   A ToolSpec may also declare `argument_source_requirements` for values whose
+   provenance must be stronger than ordinary argument sourcing. Each rule has
+   an exact PlanNode binding predicate (`when`), required consumer keys, a
+   required predecessor Tool identity, and optional exact source paths. In
+   `forge_plan_select`, these keys must come from successful execution records
+   belonging to direct predecessor nodes; literal values, discovery evidence,
+   unrelated predecessor Tools, alternate declared paths, and caller-selected
+   target roots are rejected before a selection receipt is persisted.
+   `forge_plan_ready` exposes the active required keys. The Coordinator still
+   resolves the complete values and persists the normal DecisionTrace and
+   selection receipt. This seam does not add a provider-specific Core branch
+   or lifecycle state.
+
 When the active PlanGraph already contains a unique `scene.bind` correspondence
 for a consumer node, Coordinator materialization may freeze the exact opaque
 `entity_ref` into that node. The Agent may omit that selector; if it supplies a
@@ -216,6 +229,10 @@ the normal recovery path rather than executing a guessed payload.
    entities and reordered envelopes form a valid nested consumer input. The
    selected receipt executes the exact persisted arguments through the existing
    wrapper, without a producer-specific builder in Core.
+10. A ToolSpec-declared predecessor source requirement rejects literal,
+    discovery-evidence, wrong-Tool, and non-direct-predecessor values before
+    receipt persistence; valid exact sources are frozen into the usual
+    Coordinator receipt.
 
 ## Selection example and continuation
 

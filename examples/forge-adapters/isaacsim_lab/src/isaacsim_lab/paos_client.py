@@ -125,6 +125,12 @@ class LabUtopiaCycleProvider:
             selected_binding = {**binding, "grasp_candidate": candidate, "candidate_ref": candidate["candidate_ref"]}
             target_request = {key: selected_binding[key] for key in (
                 "entity_ref", "destination_ref", "scene_revision", "frame_id", "calibration_ref", "candidate_ref")}
+            if process_type in {"pour", "stir"}:
+                target_request.update(
+                    process_type=process_type,
+                    process_feature_candidate_set_ref=selected_binding.get("process_feature_candidate_set_ref"),
+                    process_feature_refs=list(selected_binding.get("process_feature_refs") or ()),
+                )
             try:
                 target = resolve_manipulation_target(self.target_resolver, selected_binding, target_request,
                                                      process_type=process_type)
@@ -423,6 +429,8 @@ def build_labutopia_runtime(
     understanding_inference_id: str | None = None,
     understanding_inference_configuration: Mapping[str, Any] | None = None,
     observation_artifact_root: str | Path | None = None,
+    process_feature_provider: Any | None = None,
+    grasp_task_affordance_provider: Any | None = None,
 ) -> LabUtopiaPAOSRuntime:
     """Compose LabUtopia behind PAOS without owning perception orchestration.
 
@@ -528,6 +536,8 @@ def build_labutopia_runtime(
         register_internal_subtask_tools=True,
         register_legacy_cycles=False,
         assignment_store=assignment_store,
+        process_feature_provider=process_feature_provider,
+        grasp_task_affordance_provider=grasp_task_affordance_provider,
     )
     provider.result_resolver = runtime.invocation_result
     bound_adapter = None

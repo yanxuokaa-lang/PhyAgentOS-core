@@ -27,6 +27,12 @@ from .feedback_adapter import (
     FeedbackNormalization,
     normalize_feedback,
 )
+from .grasp_task_affordance import (
+    GRASP_TASK_AFFORDANCE_PREPARATION_TOOL_SPEC,
+    GRASP_TASK_AFFORDANCE_TOOL_SPEC,
+    GraspTaskAffordancePreparationEndpoint,
+    GraspTaskAffordanceQueryEndpoint,
+)
 from .long_horizon import (
     WORKFLOW_DAG,
     WORKFLOW_DAG_VERSION,
@@ -127,6 +133,10 @@ __all__ = [
     "FeedbackAdapter",
     "FeedbackNormalization",
     "normalize_feedback",
+    "GRASP_TASK_AFFORDANCE_TOOL_SPEC",
+    "GRASP_TASK_AFFORDANCE_PREPARATION_TOOL_SPEC",
+    "GraspTaskAffordanceQueryEndpoint",
+    "GraspTaskAffordancePreparationEndpoint",
     "SceneUnderstandingEndpoint",
     "UnderstandingProvider",
     "UnderstandingSnapshot",

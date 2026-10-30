@@ -180,8 +180,13 @@ def _async_builder(query):
 def test_semantic_builder_binds_provider_and_emits_one_agent_node():
     plan = _builder(_provider()).build("pour reagent", _request())
     nodes = plan["nodes"]
-    assert [node["capability"] for node in nodes] == ["manipulation.execute_subtask", "task.verify"]
-    binding = nodes[0]["input_bindings"]
+    assert [node["capability"] for node in nodes] == [
+        "manipulation.process_features", "manipulation.prepare_process_features",
+        "manipulation.grasp_task_affordances", "manipulation.prepare_grasp_task_affordance",
+        "manipulation.execute_subtask", "task.verify",
+    ]
+    assert nodes[4]["dependencies"] == ["pour-a.prepare_grasp_task_affordance"]
+    binding = nodes[4]["input_bindings"]
     assert binding["binding"]["entity_ref"] == "entity://a-bottle"
     assert binding["operation"] == "pour"
     assert "prim_path" not in json.dumps(binding)
@@ -192,7 +197,7 @@ def test_semantic_builder_binds_provider_and_emits_one_agent_node():
 def test_semantic_builder_is_provider_replaceable():
     first = _builder(_provider(prefix="a")).build("pour a", _request("a"))
     second = _builder(_provider(prefix="b")).build("pour b", _request("b"))
-    assert first["nodes"][0]["input_bindings"]["binding"]["entity_ref"] != second["nodes"][0]["input_bindings"]["binding"]["entity_ref"]
+    assert first["nodes"][4]["input_bindings"]["binding"]["entity_ref"] != second["nodes"][4]["input_bindings"]["binding"]["entity_ref"]
 
 
 @pytest.mark.parametrize("parameters", [
@@ -223,8 +228,8 @@ def test_semantic_builder_serializes_multiple_subtasks_as_one_ordered_plan():
         "perform two ordered pours",
         _request() + [{**_request()[0], "subtask_id": "pour-b", "depends_on": ["pour-a"]}],
     )
-    assert plan["nodes"][1]["dependencies"] == ["pour-a"]
-    assert plan["nodes"][2]["node_id"] == "verify"
+    assert plan["nodes"][5]["dependencies"] == ["pour-a"]
+    assert plan["nodes"][-1]["node_id"] == "verify"
 
 
 def test_agent_loop_tool_call_binds_two_distinct_reagents_then_stir_rod_to_same_vessel(tmp_path):
@@ -287,14 +292,18 @@ def test_agent_loop_tool_call_binds_two_distinct_reagents_then_stir_rod_to_same_
         assert records, "Agent tool call must persist the semantic task"
         task = records[-1]
     nodes = task.active_revision.plan_graph.nodes
-    assert [node.node_id for node in nodes] == ["pour-a", "pour-b", "stir-mixture", "verify"]
-    assert [node.input_bindings["binding"]["entity_ref"] for node in nodes[:3]] == [
+    action_nodes = [node for node in nodes if node.capability == "manipulation.execute_subtask"]
+    assert [node.node_id for node in nodes] == [
+        "pour-a.process_features", "pour-a.prepare_process_features", "pour-a.grasp_task_affordances", "pour-a.prepare_grasp_task_affordance", "pour-a",
+        "pour-b.process_features", "pour-b.prepare_process_features", "pour-b.grasp_task_affordances", "pour-b.prepare_grasp_task_affordance", "pour-b",
+        "stir-mixture.process_features", "stir-mixture.prepare_process_features", "stir-mixture.grasp_task_affordances", "stir-mixture.prepare_grasp_task_affordance", "stir-mixture", "verify",
+    ]
+    assert [node.input_bindings["binding"]["entity_ref"] for node in action_nodes] == [
         "entity://reagent-a", "entity://reagent-b", "entity://glass-rod",
     ]
-    assert len({node.input_bindings["binding"]["destination_ref"] for node in nodes[:3]}) == 1
-    assert nodes[1].dependencies == ("pour-a",)
-    assert nodes[2].dependencies == ("pour-b",)
-    assert all(node.capability == "manipulation.execute_subtask" for node in nodes[:3])
+    assert len({node.input_bindings["binding"]["destination_ref"] for node in action_nodes}) == 1
+    assert nodes[5].dependencies == ("pour-a",)
+    assert nodes[10].dependencies == ("pour-b",)
 
 
 @pytest.mark.parametrize(
@@ -357,8 +366,9 @@ def test_forge_task_create_persists_only_after_semantic_binding(tmp_path):
     result = json.loads(asyncio.run(tool.execute(**arguments)))
     assert result["ok"] is True
     task = coordinator.get_task(result["data"]["task_id"])
-    assert task.active_revision.plan_graph.nodes[0].capability == "manipulation.execute_subtask"
-    assert task.active_revision.plan_graph.nodes[0].input_bindings["semantic_intent"] == subtasks[0]["semantic_intent"]
+    action = next(node for node in task.active_revision.plan_graph.nodes
+                  if node.capability == "manipulation.execute_subtask")
+    assert action.input_bindings["semantic_intent"] == subtasks[0]["semantic_intent"]
 
 
 def test_semantic_binding_failure_does_not_call_coordinator():
@@ -388,7 +398,9 @@ def test_async_gateway_query_builder_runs_before_task_persistence(tmp_path):
     assert result["ok"] is True
     assert calls == ["scene.observe", "scene.understand", "grasp.propose", "manipulation.capabilities"]
     task = coordinator.get_task(result["data"]["task_id"])
-    assert task.active_revision.plan_graph.nodes[0].input_bindings["binding"]["entity_ref"] == "entity://a-bottle"
+    action = next(node for node in task.active_revision.plan_graph.nodes
+                  if node.capability == "manipulation.execute_subtask")
+    assert action.input_bindings["binding"]["entity_ref"] == "entity://a-bottle"
 
 
 def test_async_stale_query_fails_before_task_persistence():
@@ -412,7 +424,7 @@ def test_optional_factory_injects_live_query_port_without_environment_dependency
     builder = PickPlaceSemanticPlanBuilderFactory().create(query_invoker=query)
     assert isinstance(builder, AsyncQuerySemanticPlanBuilder)
     plan = asyncio.run(builder.build("pour reagent", _request()))
-    assert plan["nodes"][0]["input_bindings"]["binding"]["entity_ref"] == "entity://a-bottle"
+    assert plan["nodes"][4]["input_bindings"]["binding"]["entity_ref"] == "entity://a-bottle"
 
 
 def test_async_builder_binds_policy_digest_to_live_query_tool_specs():
@@ -421,21 +433,35 @@ def test_async_builder_binds_policy_digest_to_live_query_tool_specs():
 
     class RuntimeQueryPort:
         async def invoke_query(self, endpoint_id, operation, arguments):
-            tool_id = next(
-                tool_id for tool_id, spec in PerceptionBindingAdapter._QUERY_SPECS.items()
-                if spec["endpoint_id"] == endpoint_id and spec["operation"] == operation
-            )
+            tool_id = next(tool_id for tool_id, spec in self._specs().items()
+                           if spec["endpoint_id"] == endpoint_id and spec["operation"] == operation)
             return query(tool_id, arguments)
 
+        @staticmethod
+        def _specs():
+            from pick_place_workflow.grasp_task_affordance import (
+                GRASP_TASK_AFFORDANCE_PREPARATION_TOOL_SPEC,
+                GRASP_TASK_AFFORDANCE_TOOL_SPEC,
+            )
+            from pick_place_workflow.process_features import (
+                PROCESS_FEATURE_PREPARATION_TOOL_SPEC,
+                PROCESS_FEATURE_TOOL_SPEC,
+            )
+            return {**PerceptionBindingAdapter._QUERY_SPECS,
+                    **{item["tool_id"]: item for item in (
+                        PROCESS_FEATURE_TOOL_SPEC, PROCESS_FEATURE_PREPARATION_TOOL_SPEC,
+                        GRASP_TASK_AFFORDANCE_TOOL_SPEC, GRASP_TASK_AFFORDANCE_PREPARATION_TOOL_SPEC,
+                    )}}
+
         async def get_tool(self, tool_id):
-            spec = dict(PerceptionBindingAdapter._QUERY_SPECS[tool_id])
+            spec = dict(self._specs()[tool_id])
             spec["semantics"] = "query"
             observed_specs.append(tool_id)
             return {"data": spec}
 
     builder = PickPlaceSemanticPlanBuilderFactory().create(query_invoker=RuntimeQueryPort())
     plan = asyncio.run(builder.build("pour reagent", _request()))
-    assert observed_specs == list(PerceptionBindingAdapter._QUERY_SPECS)
+    assert observed_specs == list(RuntimeQueryPort._specs())
     assert len(plan["policy_snapshot_digest"]) == 64
 
 
@@ -564,9 +590,11 @@ def test_agent_loop_registered_task_tool_executes_measured_subtask_creation(tmp_
     task = coordinator.get_task(result["data"]["task_id"])
     nodes = task.active_revision.plan_graph.nodes
     assert [node.capability for node in nodes] == [
+        "manipulation.process_features", "manipulation.prepare_process_features",
+        "manipulation.grasp_task_affordances", "manipulation.prepare_grasp_task_affordance",
         "manipulation.execute_subtask", "task.verify",
     ]
-    assert nodes[0].input_bindings["binding"]["entity_ref"] == "entity://a-bottle"
+    assert nodes[4].input_bindings["binding"]["entity_ref"] == "entity://a-bottle"
 
 
 def test_agent_loop_model_tool_call_creates_semantic_subtask_once(tmp_path):
@@ -629,6 +657,8 @@ def test_agent_loop_model_tool_call_creates_semantic_subtask_once(tmp_path):
     assert task is not None
     nodes = task.active_revision.plan_graph.nodes
     assert [node.capability for node in nodes] == [
+        "manipulation.process_features", "manipulation.prepare_process_features",
+        "manipulation.grasp_task_affordances", "manipulation.prepare_grasp_task_affordance",
         "manipulation.execute_subtask", "task.verify",
     ]
-    assert nodes[0].input_bindings["binding"]["entity_ref"] == "entity://a-bottle"
+    assert nodes[4].input_bindings["binding"]["entity_ref"] == "entity://a-bottle"

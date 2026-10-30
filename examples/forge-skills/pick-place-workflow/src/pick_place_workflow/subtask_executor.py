@@ -226,6 +226,12 @@ class SubtaskSpec(BaseModel):
     binding: PerceptionBinding
     depends_on: tuple[str, ...] = ()
     parameters: dict[str, Any] = Field(default_factory=dict)
+    process_feature_refs: tuple[str, ...] = ()
+    process_feature_candidate_set_ref: str | None = None
+    grasp_task_affordance_candidate_set_ref: str | None = None
+    grasp_task_affordance_ref: str | None = None
+    selected_grasp_candidate_ref: str | None = None
+    affordance_selection: str | None = None
     # Semantic fields are supplied by the plan; trusted execution identity is
     # added later by the PAOS selection builder.
     semantic_intent: dict[str, Any] | None = None
@@ -247,6 +253,44 @@ class SubtaskSpec(BaseModel):
             raise ValueError("subtask dependencies must be path-safe identifiers")
         if len(value) != len(set(value)):
             raise ValueError("subtask dependencies must be unique")
+        return value
+
+    @field_validator("process_feature_refs")
+    @classmethod
+    def unique_process_feature_refs(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if len(value) != len(set(value)) or any(
+            not isinstance(item, str) or re.fullmatch(r"process-feature://\S+", item) is None
+            for item in value
+        ):
+            raise ValueError("process_feature_refs must be unique opaque process-feature references")
+        return value
+
+    @field_validator("process_feature_candidate_set_ref")
+    @classmethod
+    def process_feature_set_identity(cls, value: str | None) -> str | None:
+        if value is not None and re.fullmatch(r"process-feature-set://\S+", value) is None:
+            raise ValueError("process_feature_candidate_set_ref must be an opaque process-feature-set reference")
+        return value
+
+    @field_validator("grasp_task_affordance_candidate_set_ref")
+    @classmethod
+    def affordance_set_identity(cls, value: str | None) -> str | None:
+        if value is not None and re.fullmatch(r"grasp-affordance-set://\S+", value) is None:
+            raise ValueError("grasp task affordance set reference is invalid")
+        return value
+
+    @field_validator("grasp_task_affordance_ref")
+    @classmethod
+    def affordance_identity(cls, value: str | None) -> str | None:
+        if value is not None and re.fullmatch(r"grasp-affordance://\S+", value) is None:
+            raise ValueError("grasp task affordance reference is invalid")
+        return value
+
+    @field_validator("selected_grasp_candidate_ref")
+    @classmethod
+    def selected_grasp_identity(cls, value: str | None) -> str | None:
+        if value is not None and re.fullmatch(r"candidate://\S+", value) is None:
+            raise ValueError("selected grasp candidate reference is invalid")
         return value
 
     @field_validator("parameters")
@@ -298,6 +342,18 @@ class SubtaskSpec(BaseModel):
             raise ValueError("subtask parameters must contain finite JSON values") from exc
         if self.operation in {"pour", "stir"}:
             validate_process_parameters(self.operation, self.parameters)
+            task_affordance = (self.grasp_task_affordance_candidate_set_ref, self.grasp_task_affordance_ref,
+                               self.selected_grasp_candidate_ref, self.process_feature_candidate_set_ref)
+            if self.affordance_selection == "task_qualified" and (not all(task_affordance) or not self.process_feature_refs):
+                raise ValueError("task-affordance selection requires complete candidate and feature references")
+            if self.affordance_selection == "task_qualified" and self.selected_grasp_candidate_ref is not None and self.selected_grasp_candidate_ref not in {
+                item.get("candidate_ref") for item in self.binding.grasp_candidates
+            } | {self.binding.candidate_ref}:
+                raise ValueError("selected grasp candidate is outside the bound GraspNet candidate set")
+        elif self.process_feature_refs:
+            raise ValueError("relocate subtasks cannot include process_feature_refs")
+        elif self.process_feature_candidate_set_ref is not None:
+            raise ValueError("relocate subtasks cannot include process feature candidate set")
         if self.return_destination_ref is not None and _DESTINATION_REF.fullmatch(self.return_destination_ref) is None:
             raise ValueError("return_destination_ref must use destination:// or container://")
         object.__setattr__(self, "tool_sequence", calls)
@@ -538,8 +594,18 @@ class SubtaskExecutor:
                 if binding.get(key) is not None
             }
             request["candidates"] = list(binding.get("grasp_candidates") or [dict(binding["grasp_candidate"])])
+            if spec.affordance_selection == "task_qualified" and spec.selected_grasp_candidate_ref is not None:
+                request["candidates"] = [item for item in request["candidates"]
+                                          if item.get("candidate_ref") == spec.selected_grasp_candidate_ref]
+                if len(request["candidates"]) != 1:
+                    raise SubtaskExecutionError("selected grasp candidate is absent from the current binding")
             request["perception_binding"] = dict(binding)
             request["process_type"] = spec.operation
+            if spec.operation in {"pour", "stir"}:
+                request["perception_binding"].update(
+                    process_feature_refs=list(spec.process_feature_refs),
+                    process_feature_candidate_set_ref=spec.process_feature_candidate_set_ref,
+                )
             if context.trusted_intent is not None:
                 request["intent"] = dict(context.trusted_intent)
             return request
@@ -573,8 +639,18 @@ class SubtaskExecutor:
                             "destination_ref", "binding_ref")
             }
             request["candidates"] = list(binding.get("grasp_candidates") or [dict(binding["grasp_candidate"])])
+            if spec.affordance_selection == "task_qualified" and spec.selected_grasp_candidate_ref is not None:
+                request["candidates"] = [item for item in request["candidates"]
+                                          if item.get("candidate_ref") == spec.selected_grasp_candidate_ref]
+                if len(request["candidates"]) != 1:
+                    raise SubtaskExecutionError("selected grasp candidate is absent from the current binding")
             request["perception_binding"] = dict(binding)
             request["process_type"] = spec.operation
+            if spec.operation in {"pour", "stir"}:
+                request["perception_binding"].update(
+                    process_feature_refs=list(spec.process_feature_refs),
+                    process_feature_candidate_set_ref=spec.process_feature_candidate_set_ref,
+                )
             if context.trusted_intent is not None:
                 request["intent"] = dict(context.trusted_intent)
             return request
@@ -1024,6 +1100,12 @@ class SubtaskActionEndpoint:
                 if key in trusted_intent
             }
         spec = SubtaskSpec.model_validate(spec_payload)
+        if spec.affordance_selection == "task_qualified" and spec.operation in {"pour", "stir"} and (
+            len(spec.process_feature_refs) < 2 or spec.process_feature_candidate_set_ref is None
+            or spec.grasp_task_affordance_candidate_set_ref is None
+            or spec.grasp_task_affordance_ref is None or spec.selected_grasp_candidate_ref is None
+        ):
+            raise ValueError("pour/stir Action requires successful task-affordance Preparation projections")
         if not isinstance(caller_id, str) or not caller_id.startswith("paos:"):
             raise ValueError("subtask Action caller must be bound to a PAOS task")
         if not callable(self.resolve_context):
@@ -1107,6 +1189,32 @@ SUBTASK_TOOL_SPEC: dict[str, Any] = {
         "capabilities": ["manipulation.execute_subtask"],
         "input_binding_keys": ["subtask_id", "operation", "binding", "parameters", "tool_sequence"],
         "trusted_argument_builder": "manipulation_intent_v2",
+        "argument_source_requirements": [
+            {"when": {"operation": "pour", "affordance_selection": "task_qualified"},
+             "keys": ["process_feature_refs", "process_feature_candidate_set_ref",
+                      "grasp_task_affordance_candidate_set_ref", "grasp_task_affordance_ref",
+                      "selected_grasp_candidate_ref"],
+             "source_tool_id": "manipulation.prepare_grasp_task_affordance",
+             "source_paths": {
+                 "process_feature_refs": ["response", "selected", "process_feature_refs"],
+                 "process_feature_candidate_set_ref": ["response", "process_feature_candidate_set_ref"],
+                 "grasp_task_affordance_candidate_set_ref": ["response", "candidate_set_ref"],
+                 "grasp_task_affordance_ref": ["response", "selected", "combination_ref"],
+                 "selected_grasp_candidate_ref": ["response", "selected", "grasp_candidate_ref"],
+             }},
+            {"when": {"operation": "stir", "affordance_selection": "task_qualified"},
+                "keys": ["process_feature_refs", "process_feature_candidate_set_ref",
+                      "grasp_task_affordance_candidate_set_ref", "grasp_task_affordance_ref",
+                      "selected_grasp_candidate_ref"],
+             "source_tool_id": "manipulation.prepare_grasp_task_affordance",
+             "source_paths": {
+                 "process_feature_refs": ["response", "selected", "process_feature_refs"],
+                 "process_feature_candidate_set_ref": ["response", "process_feature_candidate_set_ref"],
+                 "grasp_task_affordance_candidate_set_ref": ["response", "candidate_set_ref"],
+                 "grasp_task_affordance_ref": ["response", "selected", "combination_ref"],
+                 "selected_grasp_candidate_ref": ["response", "selected", "grasp_candidate_ref"],
+             }},
+        ],
         "scene_write_behavior": "new_revision",
         "idempotency": "at_most_once",
     },
@@ -1159,6 +1267,13 @@ SUBTASK_TOOL_SPEC: dict[str, Any] = {
                 },
             },
             "parameters": {"type": "object"},
+            "process_feature_refs": {"type": "array", "minItems": 2, "uniqueItems": True,
+                                     "items": {"type": "string", "pattern": r"^process-feature://\S+$"}},
+            "process_feature_candidate_set_ref": {"type": "string", "pattern": r"^process-feature-set://\S+$"},
+            "grasp_task_affordance_candidate_set_ref": {"type": "string", "pattern": r"^grasp-affordance-set://\S+$"},
+            "grasp_task_affordance_ref": {"type": "string", "pattern": r"^grasp-affordance://\S+$"},
+            "selected_grasp_candidate_ref": {"type": "string", "pattern": r"^candidate://\S+$"},
+            "affordance_selection": {"enum": ["task_qualified"]},
             "tool_sequence": {"type": "array", "minItems": 2, "items": {"type": "object"}},
             "intent": {
                 "type": "object",
@@ -1196,13 +1311,17 @@ SUBTASK_TOOL_SPEC: dict[str, Any] = {
             {
                 "if": {"properties": {"operation": {"const": operation}}},
                 "then": {"properties": {"parameters": {
-                    "type": "object",
-                    "additionalProperties": False,
+                    "type": "object", "additionalProperties": False,
                     "properties": PROCESS_PARAMETER_PROPERTIES[operation],
                     "required": list(PROCESS_PARAMETER_PROPERTIES[operation]),
                 }}}
             }
             for operation in ("pour", "stir")
+        ] + [
+            {"if": {"required": ["affordance_selection"], "properties": {"affordance_selection": {"const": "task_qualified"}}},
+             "then": {"required": ["process_feature_refs", "process_feature_candidate_set_ref",
+                                    "grasp_task_affordance_candidate_set_ref", "grasp_task_affordance_ref",
+                                    "selected_grasp_candidate_ref"]}}
         ],
     },
     "output_schema": {

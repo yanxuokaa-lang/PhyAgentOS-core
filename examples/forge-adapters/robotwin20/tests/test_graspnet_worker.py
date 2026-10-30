@@ -157,3 +157,17 @@ def test_sampling_treats_parallel_jaw_closing_sign_as_equivalent():
     mirrored = {"matrix": np.diag([1., -1., -1., 1.]).tolist(), "score": .8}
     different = {"matrix": np.diag([-1., -1., 1., 1.]).tolist(), "score": .1}
     assert module._sample_candidates([same, mirrored, different], 2, "orientation_diverse") == [same, different]
+
+
+def test_optional_seed_pairs_point_indices_without_changing_global_rng():
+    module = _module('graspnet_worker')
+    points = np.arange(300).reshape(100, 3)
+    shifted = points + 1000
+    state = np.random.get_state()
+    for count in (60, 140):
+        first = module._sample_points(points, count, seed=7)
+        second = module._sample_points(shifted, count, seed=7)
+        assert np.array_equal(first + 1000, second)
+        assert np.array_equal(first, module._sample_points(points, count, seed=7))
+    assert np.array_equal(state[1], np.random.get_state()[1])
+    assert module._parser().parse_args(['--checkpoint', 'model']).seed is None

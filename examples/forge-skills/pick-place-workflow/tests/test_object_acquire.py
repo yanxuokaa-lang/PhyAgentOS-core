@@ -167,6 +167,10 @@ async def test_action_discovery_context_admission_pending_and_terminal_result():
 
         "manipulation.target",
         "task.goal",
+        "manipulation.process_features",
+        "manipulation.prepare_process_features",
+            "manipulation.grasp_task_affordances",
+            "manipulation.prepare_grasp_task_affordance",
     ]
     assert spec["data"]["semantics"] == "action"
     assert context["data"] == {

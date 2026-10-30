@@ -182,7 +182,9 @@ class ForgePlanSelectTool(Tool):
             "normalized to an empty object at this planning boundary. For a Tool without a "
             "projection, use arguments and/or "
             "argument_sources, never projection_source/projection_sources. Pass the returned binding and "
-            "selection unchanged."
+            "selection unchanged. If forge_plan_ready declares predecessor_argument_keys, every named "
+            "argument must be sourced from a successful direct-predecessor record with an exact "
+            "top-level target; literals and discovery evidence are rejected."
         )
 
     @property
@@ -197,7 +199,9 @@ class ForgePlanSelectTool(Tool):
                     "type": "object",
                     "default": {},
                     "description": (
-                        "Direct Tool arguments. Omit this field when projection_source, "
+                        "Direct Tool arguments. Fields declared in predecessor_argument_keys "
+                        "must not be supplied here; source them from successful direct predecessors. "
+                        "Omit this field when projection_source, "
                         "projection_sources, or argument_sources provides every Tool argument."
                     ),
                 },
@@ -459,7 +463,23 @@ class ForgePlanSelectTool(Tool):
                         retryable_in_revision=True,
                         recommended_action="use_argument_sources_for_this_consumer",
                     )
-                if argument_sources:
+                selected_node = next(
+                    node for node in dispatch.graph.nodes if node.node_id == node_id
+                )
+                predecessor_argument_keys = dispatch.required_predecessor_argument_keys(
+                    tool_id, selected_node.input_bindings
+                )
+                predecessor_sources = dispatch.predecessor_argument_sources(
+                    tool_id, selected_node.input_bindings
+                )
+                predecessor_source_paths = dispatch.predecessor_argument_source_paths(
+                    tool_id, selected_node.input_bindings
+                )
+                if predecessor_argument_keys and projection is not None:
+                    raise PlanningLoopError(
+                        "predecessor_argument_keys cannot be combined with a consumer projection"
+                    )
+                if argument_sources or predecessor_argument_keys:
                     task = self.coordinator.get_task(task_id)
                     context = NodeContextProvider(
                         lambda _task_id: task,
@@ -477,6 +497,50 @@ class ForgePlanSelectTool(Tool):
                         node_id,
                         scene_revision=dispatch.current_scene_revision,
                     )
+                    if predecessor_argument_keys:
+                        if not isinstance(argument_sources, Mapping):
+                            raise PlanningDispatchError(
+                                "ToolSpec requires direct-predecessor argument_sources",
+                                code="invalid_argument_source",
+                                failure_owner="agent_arguments",
+                                recommended_action="copy_required_arguments_from_direct_predecessor",
+                            )
+                        missing_sources = set(predecessor_argument_keys) - set(argument_sources)
+                        literal_overrides = set(predecessor_argument_keys) & set(arguments)
+                        predecessor_records = {
+                            execution.record_id: execution.tool_id
+                            for predecessor in context.predecessor_context
+                            for execution in predecessor.executions
+                            if execution.status == "succeeded"
+                        }
+                        invalid_sources = {
+                            key for key in predecessor_argument_keys
+                            if key in argument_sources and (
+                                not isinstance(argument_sources[key], Mapping)
+                                or set(argument_sources[key]) != {"record_id", "path"}
+                                or argument_sources[key].get("record_id") not in predecessor_records
+                                or (
+                                    predecessor_sources.get(key) is not None
+                                    and predecessor_records.get(argument_sources[key].get("record_id"))
+                                    != predecessor_sources[key]
+                                )
+                                or (
+                                    key in predecessor_source_paths
+                                    and argument_sources[key].get("path")
+                                    != list(predecessor_source_paths[key])
+                                )
+                                or not isinstance(argument_sources[key].get("target_path", [key]), list)
+                                or argument_sources[key].get("target_path", [key])[:1] != [key]
+                            )
+                        }
+                        if missing_sources or literal_overrides or invalid_sources:
+                            raise PlanningDispatchError(
+                                "required arguments must be copied unchanged from a successful direct predecessor",
+                                code="invalid_argument_source",
+                                failure_owner="agent_arguments",
+                                missing_fields=tuple(sorted(missing_sources)),
+                                recommended_action="copy_required_arguments_from_direct_predecessor",
+                            )
                     try:
                         final_arguments = resolve_node_argument_sources(
                             context,

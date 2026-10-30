@@ -1068,7 +1068,17 @@ class LabUtopiaBackend:
             writer,
         )
         source = IsaacCameraObservationSource(
-            cameras, metadata, writer, modalities=("rgb", "depth", "point_cloud")
+            cameras,
+            metadata,
+            writer,
+            modalities=("rgb", "depth", "point_cloud"),
+            supplemental_artifacts=(
+                lambda _sensor_ref: {"state": _simulator_truth_state(
+                    stage, self.profile, session.current_scene_revision()
+                )}
+                if self.profile.perception_mode == "simulator_truth"
+                else {}
+            ),
         )
         session.register("camera_registry", cameras)
         session.register("observation_source", source)
@@ -2425,6 +2435,135 @@ def _get_session_scene_resources(
         scene["world_initialized"] = True
         session.register("lab_scene_resources", scene)
     return scene
+
+
+def _simulator_truth_state(
+    stage: Any, profile: LabUtopiaProfile, scene_revision: str | None
+) -> dict[str, Any]:
+    """Capture final composed USD world bounds and mesh evidence privately."""
+    import numpy as np
+    from pxr import Gf, Usd, UsdGeom
+
+    manifest_path = profile.simulation_truth_manifest_path
+    if manifest_path is None:
+        raise IsaacLabRuntimeError("simulator-truth manifest is unavailable")
+    from .simulator_truth_perception import load_truth_manifest
+
+    manifest = load_truth_manifest(manifest_path)
+    cache = UsdGeom.BBoxCache(
+        Usd.TimeCode.Default(),
+        [UsdGeom.Tokens.default_, UsdGeom.Tokens.render, UsdGeom.Tokens.proxy],
+    )
+    meters_per_unit = float(UsdGeom.GetStageMetersPerUnit(stage))
+    if not np.isfinite(meters_per_unit) or meters_per_unit <= 0:
+        raise IsaacLabRuntimeError("USD stage metersPerUnit is invalid")
+    objects = []
+    for label, spec in manifest["objects"].items():
+        prim_path = spec["prim_path"]
+        prim = stage.GetPrimAtPath(prim_path)
+        if not prim.IsValid():
+            continue
+        bound = cache.ComputeWorldBound(prim).ComputeAlignedRange()
+        minimum = np.asarray(bound.GetMin(), dtype=float) * meters_per_unit
+        maximum = np.asarray(bound.GetMax(), dtype=float) * meters_per_unit
+        if (minimum.shape != (3,) or maximum.shape != (3,)
+                or not np.isfinite(minimum).all() or not np.isfinite(maximum).all()
+                or np.any(minimum >= maximum)):
+            continue
+        evidence = _simulator_truth_mesh_evidence(prim, Usd, UsdGeom, Gf, meters_per_unit)
+        objects.append({
+            "label": label,
+            "category": spec["category"],
+            "prim_path": prim_path,
+            "min_xyz_world_m": minimum.tolist(),
+            "max_xyz_world_m": maximum.tolist(),
+            **evidence,
+        })
+    return {
+        "schema": "labutopia-simulator-world-geometry/v1",
+        "scene_revision": scene_revision,
+        "unit": "m",
+        "source": "final_composed_usd_world_geometry",
+        "bounds_source": "final_composed_usd_world_bounds",
+        "missing_labels": sorted(set(manifest["objects"]) - {item["label"] for item in objects}),
+        "objects": objects,
+    }
+
+
+def _simulator_truth_mesh_evidence(prim, usd, usd_geom, gf, meters_per_unit):
+    """Collect bounded world-space mesh evidence, including instance proxies."""
+    from collections import Counter
+
+    import numpy as np
+
+    values, boundary = [], []
+    boundary_components = []
+    xform_cache = usd_geom.XformCache(usd.TimeCode.Default())
+    traversal = usd.PrimRange(prim, usd.TraverseInstanceProxies())
+    for child in traversal:
+        if not child.IsA(usd_geom.Mesh):
+            continue
+        mesh = usd_geom.Mesh(child)
+        points = mesh.GetPointsAttr().Get()
+        if points is None or len(points) == 0:
+            continue
+        transform = xform_cache.GetLocalToWorldTransform(child)
+        offset = len(values)
+        values.extend(transform.Transform(gf.Vec3d(point)) for point in points)
+        counts = mesh.GetFaceVertexCountsAttr().Get() or []
+        indices = mesh.GetFaceVertexIndicesAttr().Get() or []
+        edges = Counter()
+        start = 0
+        for count in counts:
+            face = indices[start:start + count]
+            for index in range(count):
+                edge = tuple(sorted((int(face[index]), int(face[(index + 1) % count]))))
+                edges[edge] += 1
+            start += count
+        local_boundary = [(a, b) for (a, b), incidence in edges.items() if incidence == 1]
+        boundary.extend((offset + a, offset + b) for a, b in local_boundary)
+        adjacency = {}
+        for a, b in local_boundary:
+            adjacency.setdefault(a, set()).add(b)
+            adjacency.setdefault(b, set()).add(a)
+        unseen = set(adjacency)
+        while unseen:
+            component_vertices, stack = set(), [next(iter(unseen))]
+            while stack:
+                vertex = stack.pop()
+                if vertex in component_vertices:
+                    continue
+                component_vertices.add(vertex)
+                unseen.discard(vertex)
+                stack.extend(adjacency[vertex] - component_vertices)
+            component_edges = [(offset + a, offset + b) for a, b in local_boundary
+                               if a in component_vertices and b in component_vertices]
+            if component_edges:
+                boundary_components.append(component_edges)
+    if not values:
+        return {"mesh_points_world_m": [], "boundary_edges_world_m": []}
+    points = np.asarray(values, dtype=float) * meters_per_unit
+    if not np.isfinite(points).all():
+        return {"mesh_points_world_m": [], "boundary_edges_world_m": []}
+    edge_points = points[np.asarray(boundary, dtype=int)] if boundary else np.empty((0, 2, 3))
+    component_edge_points = [points[np.asarray(edges, dtype=int)] for edges in boundary_components]
+    if len(points) > 4096:
+        points = points[np.linspace(0, len(points) - 1, 4096, dtype=int)]
+    if len(edge_points) > 4096:
+        edge_points = edge_points[np.linspace(0, len(edge_points) - 1, 4096, dtype=int)]
+    total_component_edges = sum(len(edges) for edges in component_edge_points)
+    if total_component_edges > 4096:
+        selected = np.linspace(0, total_component_edges - 1, 4096, dtype=int)
+        offsets = np.cumsum([0, *(len(edges) for edges in component_edge_points)])
+        component_edge_points = [
+            edges[selected[(selected >= start) & (selected < end)] - start]
+            for edges, start, end in zip(component_edge_points, offsets[:-1], offsets[1:])
+        ]
+    return {
+        "mesh_points_world_m": points.tolist(),
+        "boundary_edges_world_m": edge_points.tolist(),
+        "boundary_edge_components_world_m": [edges.tolist() for edges in component_edge_points],
+    }
 
 
 def _create_session_owned_task(

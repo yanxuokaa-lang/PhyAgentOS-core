@@ -25,7 +25,7 @@ from .engine import IsaacSimLabEngine
 from .paos_client import build_labutopia_runtime
 from .perception_runtime import build_visual_providers
 from .profile import LabUtopiaProfile
-from .visual_perception import RGBLabelPointInference
+from .visual_perception import LabGraspTaskAffordanceProvider, RGBLabelPointInference
 
 
 class ObservedQueryPort:
@@ -119,6 +119,8 @@ def compose_host(*, profile, workspace, provider, inference, model, sensor_ref, 
         profile=profile, engine=engine, understanding_provider=visual, grasp_provider=grasps,
         preparation_provider=None, capability_provider=visual, resolve_preparation=None,
         target_resolver=visual, tool_context_provider=lambda _: {"ready": True, "sensor_refs": [sensor_ref]},
+        process_feature_provider=visual,
+        grasp_task_affordance_provider=LabGraspTaskAffordanceProvider(visual),
         perception_adapter=PerceptionBindingAdapter(None, BindingRequest(
             sensor_refs=(sensor_ref,), source_category="reagent_bottle", destination_category="mixing_vessel", max_age_ms=1000)),
         subtask_context_resolver=coordinator.resolve_subtask_context,
@@ -132,7 +134,10 @@ def compose_host(*, profile, workspace, provider, inference, model, sensor_ref, 
         gateway_identity=None, client=client, invocation_ids=set(), session_ids=set(), task_binding_ids=set())
     registry = ActiveRuntimeRegistry(active)
     coordinator.binding_resolver = ForgeSkillBindingResolver(registry, authorized_tool_ids=frozenset({
-        *PerceptionBindingAdapter._QUERY_SPECS, "manipulation.execute_subtask"}))
+        *PerceptionBindingAdapter._QUERY_SPECS,
+        "manipulation.process_features", "manipulation.prepare_process_features",
+        "manipulation.grasp_task_affordances", "manipulation.prepare_grasp_task_affordance",
+        "manipulation.execute_subtask"}))
     coordinator.runtime_invocation_ids = active.invocation_ids
     coordinator.runtime_session_ids = active.session_ids
     coordinator.runtime_task_binding_ids = active.task_binding_ids

@@ -178,7 +178,13 @@ class AgentComposedPlan(BaseModel):
 
     @model_validator(mode="after")
     def validate_bindings(self) -> "AgentComposedPlan":
-        node_ids = {node.node_id for node in self.graph.nodes if node.node_id != "verify"}
+        node_ids = {
+            node.node_id for node in self.graph.nodes
+            if node.node_id != "verify" and node.capability not in {
+                "manipulation.process_features", "manipulation.prepare_process_features",
+                "manipulation.grasp_task_affordances", "manipulation.prepare_grasp_task_affordance",
+            }
+        }
         bound_ids = {subtask_id for subtask_id, _ in self.entity_bindings}
         if node_ids != bound_ids:
             raise AgentPlanningError("entity bindings must cover every composed subtask exactly")
@@ -362,18 +368,113 @@ def compose_subtask_plan(
     if any(set(item.depends_on) - known for item in subtasks):
         raise AgentPlanningError("subtask dependency references an unknown subtask")
 
-    nodes = tuple(
-        PlanNode(
+    nodes_list = []
+    for item in subtasks:
+        feature_node_id = f"{item.subtask_id}.process_features"
+        dependencies = item.depends_on
+        if item.operation in {"pour", "stir"}:
+            nodes_list.append(PlanNode(
+                node_id=feature_node_id,
+                obligation_id=f"{item.subtask_id}-process-features",
+                capability="manipulation.process_features",
+                dependencies=dependencies,
+                required_evidence=(item.binding.observation_ref,),
+                produced_evidence=(f"process-features:{item.subtask_id}",),
+                input_bindings={
+                    "operation": item.operation,
+                    "entity_refs": [item.binding.entity_ref,
+                                    "entity://" + item.binding.destination_ref.removeprefix("destination://")
+                                    .removeprefix("container://")],
+                    "observation_ref": item.binding.observation_ref,
+                    "scene_revision": item.binding.scene_revision,
+                    "frame_id": item.binding.frame_id,
+                    "calibration_ref": item.binding.calibration_ref,
+                    "freshness_ms": item.binding.freshness_ms,
+                    "max_age_ms": item.binding.max_age_ms,
+                },
+            ))
+            preparation_node_id = f"{item.subtask_id}.prepare_process_features"
+            nodes_list.append(PlanNode(
+                node_id=preparation_node_id,
+                obligation_id=f"{item.subtask_id}-process-feature-preparation",
+                capability="manipulation.prepare_process_features",
+                dependencies=(feature_node_id,),
+                required_evidence=(item.binding.observation_ref,),
+                input_bindings={
+                    "operation": item.operation,
+                    "entity_refs": [item.binding.entity_ref,
+                                    "entity://" + item.binding.destination_ref.removeprefix("destination://")
+                                    .removeprefix("container://")],
+                    "observation_ref": item.binding.observation_ref,
+                    "scene_revision": item.binding.scene_revision,
+                    "frame_id": item.binding.frame_id,
+                    "calibration_ref": item.binding.calibration_ref,
+                    "freshness_ms": item.binding.freshness_ms,
+                    "max_age_ms": item.binding.max_age_ms,
+                },
+            ))
+            affordance_node_id = f"{item.subtask_id}.grasp_task_affordances"
+            nodes_list.append(PlanNode(
+                node_id=affordance_node_id,
+                obligation_id=f"{item.subtask_id}-task-affordance-candidates",
+                capability="manipulation.grasp_task_affordances",
+                dependencies=(preparation_node_id,),
+                required_evidence=(item.binding.observation_ref,),
+                produced_evidence=(f"grasp-task-affordances:{item.subtask_id}",),
+                input_bindings={
+                    "operation": item.operation,
+                    "entity_refs": [item.binding.entity_ref,
+                                    "entity://" + item.binding.destination_ref.removeprefix("destination://")
+                                    .removeprefix("container://")],
+                    "grasp_candidate_set_ref": item.binding.candidate_set_ref,
+                    "affordance_selection": "task_qualified",
+                    "process_feature_candidate_set_ref": "process-feature-set://pending",
+                    "selected_process_feature_refs": [],
+                    "observation_ref": item.binding.observation_ref,
+                    "scene_revision": item.binding.scene_revision,
+                    "frame_id": item.binding.frame_id,
+                    "calibration_ref": item.binding.calibration_ref,
+                    "freshness_ms": item.binding.freshness_ms,
+                    "max_age_ms": item.binding.max_age_ms,
+                },
+            ))
+            affordance_preparation_node_id = f"{item.subtask_id}.prepare_grasp_task_affordance"
+            nodes_list.append(PlanNode(
+                node_id=affordance_preparation_node_id,
+                obligation_id=f"{item.subtask_id}-task-affordance-preparation",
+                capability="manipulation.prepare_grasp_task_affordance",
+                dependencies=(affordance_node_id,),
+                required_evidence=(item.binding.observation_ref,),
+                input_bindings={
+                    "operation": item.operation,
+                    "entity_refs": [item.binding.entity_ref,
+                                    "entity://" + item.binding.destination_ref.removeprefix("destination://")
+                                    .removeprefix("container://")],
+                    "observation_ref": item.binding.observation_ref,
+                    "scene_revision": item.binding.scene_revision,
+                    "frame_id": item.binding.frame_id,
+                    "calibration_ref": item.binding.calibration_ref,
+                    "freshness_ms": item.binding.freshness_ms,
+                    "max_age_ms": item.binding.max_age_ms,
+                },
+            ))
+            dependencies = (affordance_preparation_node_id,)
+        nodes_list.append(PlanNode(
             node_id=item.subtask_id,
             obligation_id=item.subtask_id,
             capability="manipulation.execute_subtask",
-            dependencies=item.depends_on,
+            dependencies=dependencies,
             required_evidence=(item.binding.observation_ref,),
             produced_evidence=(f"subtask:{item.subtask_id}:completed",),
-            input_bindings=item.model_dump(mode="json", exclude_none=True),
-        )
-        for item in subtasks
-    ) + (PlanNode(
+            input_bindings={
+                **item.model_dump(mode="json", exclude_none=True,
+                                  exclude={"process_feature_refs", "process_feature_candidate_set_ref",
+                                           "grasp_task_affordance_candidate_set_ref",
+                                           "grasp_task_affordance_ref", "selected_grasp_candidate_ref"}),
+                **({"affordance_selection": "task_qualified"} if item.operation in {"pour", "stir"} else {}),
+            },
+        ))
+    nodes = tuple(nodes_list) + (PlanNode(
         node_id="verify",
         obligation_id="verify-task",
         capability="task.verify",

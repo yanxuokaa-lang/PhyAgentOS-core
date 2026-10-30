@@ -100,6 +100,36 @@ def test_source_captures_requested_camera_modalities_and_endpoint_validates_them
     assert all(item[3].tzinfo is timezone.utc for item in writer.values)
 
 
+def test_source_includes_supplemental_state_artifact_in_the_same_observation():
+    writer = ArtifactWriter()
+    state = {"scene_revision": "scene-1", "objects": []}
+    source = IsaacCameraObservationSource(
+        {"camera/front": FakeCamera()}, metadata, writer,
+        modalities=("depth", "point_cloud"),
+        supplemental_artifacts=lambda _sensor: {"state": state},
+    )
+
+    result = ObservationEndpoint(source).invoke({"sensor_ref": "camera/front", "max_age_ms": 1000})
+
+    assert result["status"] == "available"
+    assert [item[1] for item in writer.values] == ["depth", "point_cloud", "state"]
+    assert result["artifacts"][-1] == {
+        "ref": "artifact://capture/camera_front/state", "kind": "state",
+        "media_type": "application/x-numpy",
+    }
+
+
+def test_filesystem_writer_persists_state_as_json(tmp_path):
+    writer = FilesystemObservationArtifactWriter(tmp_path, namespace="labutopia")
+    value = {"scene_revision": "scene-1", "unit": "m"}
+
+    stored = writer.write("sensor://front", "state", value, captured_at=datetime.now(timezone.utc))
+
+    path = tmp_path / stored["ref"].removeprefix("artifact://labutopia/")
+    assert stored["media_type"] == "application/json"
+    assert json.loads(path.read_text(encoding="utf-8")) == value
+
+
 def test_source_captures_each_sensor_in_one_observation_set():
     cameras = {"camera/front": FakeCamera(), "camera/wrist": FakeCamera()}
     writer = ArtifactWriter()

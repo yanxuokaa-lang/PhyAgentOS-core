@@ -6,6 +6,8 @@
 
 ## Archive
 
+- [2026-10_part15](changelog/2026-10_part15.md)
+- [2026-10_part14](changelog/2026-10_part14.md)
 - [2026-10_part13](changelog/2026-10_part13.md)
 - [2026-10_part12](changelog/2026-10_part12.md)
 - [2026-10_part11](changelog/2026-10_part11.md)
@@ -44,15 +46,204 @@
 
 ## 最近五版本 / Latest five versions
 
-## v16.1.4 (2026-10-28 22:00) - codex
+## v16.1.13 (2026-10-30 18:25) - codex
 
-- [env] [feat] [完成] LabUtopia 场景配置声明 Franka 基座朝向、7 个臂关节初始角和 2 个夹爪初始开度；Isaac Adapter 在观测初始化及每次 task reset 前后应用，AgentLoop 不变。(local)
-- [env] [feat] [Completed] The LabUtopia scene declares the Franka base orientation, seven arm joint positions, and two gripper positions; the Isaac Adapter applies them around observation initialization and task reset, with AgentLoop unchanged. (local)
-- [test] [test] 初态/投影/失败关闭契约 `6 passed`，profile/worker session `26 passed`；未启动 Isaac Sim 或动作。(local)
-- [test] [test] Initial-state/projection/fail-closed contracts: `6 passed`; profile/worker session: `26 passed`; no Isaac Sim or motion. (local)
+### 变更摘要 / Summary [完成 / Completed]
+- [policy] [feat] 接通 task-affordance Query -> AgentLoop 直接前驱选择 -> 无动作 Preparation -> Action 参数投影；新语义 Action 只接受成功 Preparation 的 opaque grasp/process 引用。 / Wire task-affordance Query -> AgentLoop direct-predecessor selection -> no-motion Preparation -> Action projection; new semantic Actions accept opaque grasp/process refs only from successful Preparation.
+- [sense] [fix] Isaac Adapter 增加同观测资格 Provider；无法证明瓶身夹持区、倒液关系或棒端工作角色时返回 unavailable，不伪造候选。 / Add same-capture Isaac qualification Provider; return unavailable without fabricating candidates when bottle grasp, pour relation, or rod working-end role is unproven.
 
-详见 [2026-10_part13](changelog/2026-10_part13.md)。
-See [2026-10_part13](changelog/2026-10_part13.md).
+### 文件与验证 / Files and Validation
+- `agent_planning.py`, `subtask_executor.py`, `semantic_task_creation.py`, `grasp_task_affordance.py`, `visual_perception.py`, `agent_host.py`, contracts, and tests.
+- Full Skill + Isaac Adapter: `872 passed`; Ruff, compileall, and `git diff --check` passed. Node `1.0.19` SHA-256 `ef1700be09f8fb62088bef1653b9fe620698e173ba5e554d4215ab7a7170ae58`; no motion or Action executed.
+
+## v16.1.12 (2026-10-30 17:52) - codex
+
+### 变更摘要 / Summary [部分完成 / Partial]
+- [policy] [docs] 保存 GraspNet 任务适配诊断；定义 task-affordance Query/Preparation 的 PAOS ownership 和失败路径。 / Save the GraspNet task-affordance diagnosis and define PAOS ownership/failure paths for Query and Preparation.
+- [policy] [feat] 新增 provider-neutral opaque grasp/process combination Tool contracts、可选 Runtime/Fake Gateway 注册和契约测试。AgentLoop DAG 与 LabUtopia geometry Provider 尚未接通。 / Add provider-neutral opaque grasp/process combination Tool contracts, optional Runtime/Fake Gateway registration, and contract tests. AgentLoop DAG and LabUtopia geometry Provider are not wired yet.
+
+### 文件与验证 / Files and Validation
+- `grasp_task_affordance.py:L1-L193`; `persistent_runtime.py:L640-L752`; `fake_gateway.py:L410-L445`; `paos_client.py:L425-L540`; `test_grasp_task_affordance.py:L1-L97`.
+- Query + grasp proposal tests: `80 passed`; Ruff, compileall, and `git diff --check` passed. No AgentLoop, Isaac scene qualification, or Action execution was run.
+
+## v16.1.11 (2026-10-29 19:48) - codex
+
+### 变更摘要 / Summary [完成 / Completed; process readiness pending]
+- [sense] [fix] Adapter 私有 state artifact 保留原始 USD Mesh 顶点索引连通的边界分量；Provider 从最终网格顶层圆环或独立闭合边界生成 rim 候选，拒绝零长度边和覆盖不足的圆弧。 / Preserve boundary components by original USD Mesh vertex-index connectivity in Adapter-private state; derive rim candidates from the final mesh top ring or independent closed boundaries, rejecting zero-length edges and insufficient angular coverage.
+- [test] [test] 新鲜无动作 Isaac capture 的 Provider 离线重放及 Query endpoint 返回 R01、BEAKER 两个 rim 候选；未进入 AgentLoop 选择、Preparation 或动作。 / Provider replay and the Query endpoint on a fresh no-motion Isaac capture return rim candidates for R01 and BEAKER; AgentLoop selection, Preparation, and Actions were not run.
+
+### 文件变更详情 / File Change Details
+- [修改] `engine.py:L2493-L2566`：保留聚合边界兼容字段，新增 Mesh 顶点索引连通组件边界。 / Retain the aggregate compatibility field and add Mesh vertex-index connected boundary components.
+- [修改] `simulator_truth_perception.py:L47-L80,L133-L198`、`visual_perception.py:L432-L445`：拒绝退化边；拟合最大角间隙不超过 90°的完整顶环或逐组件拟合 rim；兼容旧 state artifact。 / Reject degenerate edges; fit a complete top ring with at most 90-degree maximum angular gap or independent component rims; preserve compatibility with older state artifacts.
+- [测试] `test_engine.py:L88-L194`、`test_visual_perception.py:L121-L175`：新增拓扑组件、退化环、完整/不完整顶环回归。 / Add regressions for topology components, degenerate loops, and complete/incomplete top rings.
+- [文档/诊断] `VISUAL_GEOMETRY_EVIDENCE_ARCHITECTURE.md:L278-L293`、`labutopia-paos-acceptance.md:L96-L115`、`.task/labutopia-process-affordance-r4-diagnosis-20261029.md:L1-L108`：记录架构归属、证据、失败路径及剩余动作资格。 / Record architecture ownership, evidence, failure paths, and remaining process qualification.
+
+### 关键 Diff / Key Diff
+```diff
+- merged coordinate-only boundary edges
++ boundary edges grouped by original Mesh vertex-index connectivity
+- reject vessel candidates on degenerate topology
++ fit complete top mesh ring (<= 90-degree max angular gap), else closed components
+```
+
+### 验证与状态 / Validation and Status
+- 定向测试 `12 passed`；Isaac Adapter + pick-place Skill 全套 `868 passed`；Ruff、compileall、`git diff --check` 通过。 / Focused tests: `12 passed`; full Isaac Adapter + pick-place Skill suites: `868 passed`; Ruff, compileall, and `git diff --check` passed.
+- 无动作 scene revision `labutopia-tabletop-rod-rack-v1:f46fd9b3231040bda7b89f8f6903cb25:0` 的离线候选：R01 `[-0.27001,-0.56000,0.80947] m` / `0.01753 m` 半径；BEAKER `[-0.07854,0.00000,0.80147] m` / `0.03004 m` 半径。 / Offline candidates from no-motion scene revision `labutopia-tabletop-rod-rack-v1:f46fd9b3231040bda7b89f8f6903cb25:0`: R01 `[-0.27001,-0.56000,0.80947] m` / `0.01753 m` radius; BEAKER `[-0.07854,0.00000,0.80147] m` / `0.03004 m` radius.
+- 对同一新 capture 调用 `ProcessFeatureQueryEndpoint` 返回 `available`、两个 opaque rim refs、`motion_authorized=false`；未运行 AgentLoop 选择、Coordinator receipt、Preparation 或 Action。瓶嘴倾倒方向、杯内腔/插入深度和棒工作端未资格化。没有 task/Action、物体运动、倾倒或搅拌。 / `ProcessFeatureQueryEndpoint` on the same capture returned `available`, two opaque rim refs, and `motion_authorized=false`; AgentLoop selection, Coordinator receipt, Preparation, and Action were not run. Bottle pour direction, beaker interior/insertion depth, and rod working end remain unqualified. No task/Action, object motion, pouring, or stirring occurred.
+- 未提交/推送：保留共享工作区内既存修改。 / Not committed/pushed; existing shared-worktree changes were preserved.
+
+详见 [2026-10_part15](changelog/2026-10_part15.md)。 / See [2026-10_part15](changelog/2026-10_part15.md).
+
+## v16.1.10 (2026-10-29 14:45) - codex
+
+### 变更摘要 / Summary [完成 / Completed; live geometry qualification pending]
+- [sense] [fix] simulator-truth rim Provider 按边界图连通分量独立评估；开放/非流形分量不会抑制独立闭环，重复边仍按非流形拒绝。 / Evaluate simulator-truth rim evidence per boundary component; open/non-manifold components cannot suppress an independent loop, and duplicate edges remain rejected as non-manifold.
+- [test] [test] 覆盖混合分量、开放边界和重复边；真实几何重放仍未发现 R01/BEAKER rim，故动作继续失败关闭。 / Cover mixed components, open boundaries, and duplicate edges; scene replay still finds no R01/BEAKER rim, so motion remains fail-closed.
+
+### 文件变更详情 / File Change Details
+- [修改] `simulator_truth_perception.py:L47-L78`：逐连通分量验证 rim 边界并保留边 multiplicity。 / Validate rim boundaries per component while preserving edge multiplicity.
+- [测试] `test_visual_perception.py:L94-L123`：新增有效 rim 与开放分叉并存及重复非流形边拒绝。 / Add valid-rim/open-branch coexistence and duplicate non-manifold edge regressions.
+- [文档/诊断] `VISUAL_GEOMETRY_EVIDENCE_ARCHITECTURE.md:L68-L72`、`.task/labutopia-process-affordance-provider-20261029.md:L98-L105`：记录 Provider 语义和当前几何仍不合格的证据。 / Record Provider semantics and evidence that current scene geometry remains unqualified.
+
+### 关键 Diff / Key Diff
+```diff
+- reject the entire boundary graph if any vertex has degree != 2
++ check each connected component independently; preserve edge multiplicity
+```
+
+### 验证与状态 / Validation and Status
+- 定向几何测试 `4 passed`；Skill + Isaac Adapter 全套 `862 passed`；Ruff、compileall、`git diff --check` 通过。 / Focused geometry tests: `4 passed`; full Skill + Isaac Adapter suites: `862 passed`; Ruff, compileall, and `git diff --check` passed.
+- 回放 no-motion 最终 USD state：R01/BEAKER 无合格 rim，GLASS_ROD 有两个对称端点；未启动 Isaac 或执行动作。 / Replayed no-motion final USD state: no qualified R01/BEAKER rim and two symmetric GLASS_ROD endpoints; Isaac and actions were not run.
+- 未提交/推送，保留既有用户工作区改动。 / Not committed/pushed; existing user worktree changes were preserved.
+
+详见 [2026-10_part15](changelog/2026-10_part15.md)。 / See [2026-10_part15](changelog/2026-10_part15.md).
+
+## v16.1.9 (2026-10-29 14:05) - codex
+
+### 变更摘要 / Summary [完成 / Completed; process geometry qualification pending]
+- [sense] [fix] Isaac Adapter 遍历最终组合 USD instance proxies，恢复引用网格的世界顶点和边界边；证据仍保留在 Adapter 私有 simulator-truth artifact。 / Traverse final-composed USD instance proxies in the Isaac Adapter and restore world vertices/boundary edges for referenced meshes; evidence stays in the Adapter-private simulator-truth artifact.
+- [test] [test] 增加世界变换/单位/边界边回归，并完成 LabUtopia 无动作观测；网格采集已通，但工艺几何仍不可用或有歧义。 / Add world-transform/unit/boundary regression and complete a LabUtopia no-motion observation; mesh capture works, but process geometry remains unavailable or ambiguous.
+
+### 文件变更详情 / File Change Details
+- [修改] `engine.py:L2493-L2537`：改用 `Usd.PrimRange(prim, Usd.TraverseInstanceProxies())`，在 Adapter 内提取世界网格点和边界边。 / Use instance-proxy traversal to capture world mesh points and boundary edges inside the Adapter.
+- [测试] `test_engine.py:L100-L140`：验证实例遍历、世界变换、stage 单位转换与边界边。 / Verify instance traversal, world transform, stage-unit conversion, and boundary edges.
+- [诊断] `.task/labutopia-process-affordance-provider-20261029.md:L90-L96`：记录 no-motion artifact 和资格边界。 / Record no-motion artifacts and qualification limits.
+
+### 关键 Diff / Key Diff
+```diff
+- Usd.PrimRange(prim)
++ Usd.PrimRange(prim, Usd.TraverseInstanceProxies())
+```
+
+### 验证与状态 / Validation and Status
+- Skill + Isaac Adapter 全套 `860 passed`；Ruff、compileall、`git diff --check` 通过。 / Full Skill + Isaac Adapter suites: `860 passed`; Ruff, compileall, and `git diff --check` passed.
+- R01 `1214/244`、BEAKER `1698/6`、GLASS_ROD `66/0` 网格顶点/边界边；瓶/杯开口候选不可用，玻璃棒两端未消歧。未执行动作。 / Mesh vertex/boundary counts: R01 `1214/244`, BEAKER `1698/6`, GLASS_ROD `66/0`; bottle/beaker opening candidates unavailable and rod endpoints unresolved. No actions executed.
+- 未提交/推送：工作区有大量既存改动，文件快照无法安全隔离。 / Not committed/pushed because extensive pre-existing worktree changes prevent safe file-snapshot isolation.
+
+详见 [2026-10_part15](changelog/2026-10_part15.md)。 / See [2026-10_part15](changelog/2026-10_part15.md).
+
+## v16.1.8 (2026-10-29 11:22) - codex
+
+### 变更摘要 / Summary [完成 / Completed; live scene qualification pending]
+- [policy] [feat] 新增 provider-neutral `manipulation.process_features` Query 和 PlanGraph 前驱；AgentLoop 从成功直接前驱选择当前观测绑定的 opaque refs，复用 Coordinator receipt/DecisionTrace。 / Add the provider-neutral Query and PlanGraph predecessor; AgentLoop selects observation-bound opaque refs from the successful direct predecessor and reuses Coordinator receipts/DecisionTrace.
+- [policy] [fix] ToolSpec 声明参数来源约束，PlanSelect 拒绝字面值、discovery、错误来源及非直接前驱；PlanReady 暴露必需来源。歧义 Query 失败结算，不开放依赖 Action。 / ToolSpec declares argument source requirements; PlanSelect rejects literals, discovery, wrong sources and non-predecessors; PlanReady exposes required sources. Ambiguous Query fails settlement and cannot ready dependent Action.
+- [sense] [fix] 将已选 refs 投影给 no-motion preparation，由 Provider 校验当前捕获、实体、场景/观测血缘、frame 和唯一性；失败路径不进入 Action admission。Action refs 再从成功 Preparation 投影。 / Project selected refs into no-motion preparation for current capture, entity, scene/observation lineage, frame and uniqueness checks; failures do not reach Action admission. Action refs are projected from successful Preparation.
+- [chore] [fix] Skill/package 版本同步；persistent-host node 更新至 `1.0.17`，manifest lock 匹配重建产物 SHA `7a65345bafba94a76dc6bde232a0f97c5bd447333dbbbc050c69bcce881c87cc`。 / Synchronize Skill/package versions and update the persistent-host node to `1.0.17` with a manifest lock matching the rebuilt artifact.
+
+### 文件变更详情 / File Change Details
+- [修改] `PhyAgentOS/planning/contracts.py:L1-L743`、`PhyAgentOS/planning/projection.py`、`PhyAgentOS/agent/planning_dispatch.py:L1-L1138`、`PhyAgentOS/agent/tools/planning.py`：增加 provider-neutral 参数来源声明、投影和 AgentLoop 选择校验，生命周期和 receipt 仍由既有 PAOS/Coordinator 拥有。 / Add provider-neutral argument source declaration, projection and AgentLoop selection validation; lifecycle and receipts remain with existing PAOS/Coordinator owners.
+- [修改] `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/agent_planning.py:L1-L509`、`subtask_executor.py`、`semantic_task_creation.py`、`persistent_runtime.py`、`fake_gateway.py`；[新增] `process_features.py`、两个 ToolSpec 与 `nodes/`：连接 Query → 显式来源选择 → no-motion Preparation，并从 Preparation 投影 Action 输入。 / Connect Query → explicit source-backed selection → no-motion Preparation, then project Action inputs from Preparation.
+- [修改] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/visual_perception.py:L1-L689`、相关 perception/client 文件：在 Adapter 私有边界解析选中 opaque refs 与当前几何捕获，不向 AgentLoop 暴露 USD/几何载荷。 / Resolve selected opaque refs against current private geometry capture without exposing USD or geometry payload to AgentLoop.
+- [修改] `examples/forge-skills/pick-place-workflow/skill.yaml:L1-L6,L221-L231`、`pyproject.toml`、`tests/test_grasp_propose.py:L279-L292`、`tests/test_release_bundle.py`：同步 bundle/package 与 immutable node artifact identity。 / Synchronize bundle/package and immutable node artifact identity.
+- [修改] `docs/forge/AGENT_TOOL_INPUT_SELECTION_DESIGN.md`、`.task/labutopia-process-affordance-provider-20261029.md`：记录架构边界、失败条件、验证结果和未完成的真实场景资格。 / Record architecture boundaries, failure conditions, validation and remaining live-scene qualification.
+
+### 关键 Diff / Key Diff
+```diff
+  arbitrary PlanNode argument values
++ ToolSpec source requirement -> successful direct-predecessor record/path
+  candidate Query -> implicit/private feature choice
++ Query -> AgentLoop opaque-ref selection receipt -> no-motion Preparation validation -> Action projection
+  ambiguous Query -> successful settlement
++ ambiguous Query -> failed settlement; dependent Action not ready
+```
+
+### 验证与状态 / Validation and Status
+- Skill + Isaac Adapter 全套：`859 passed`；artifact lock 定向测试：`2 passed`。Ruff、compileall、`git diff --check` 均通过。 / Full Skill + Isaac Adapter suites: `859 passed`; artifact lock focused tests: `2 passed`. Ruff, compileall and `git diff --check` passed.
+- 覆盖替代 Provider、AgentLoop 来源限制、过期/歧义/错实体失败及 Action 零调用路径。未启动 Isaac Kit 或执行机械臂、倒液、搅拌动作。 / Covers replacement Provider, AgentLoop source restrictions, stale/ambiguous/cross-entity failures and zero Action invocation. Isaac Kit and all robot/process actions were not run.
+- 实际 LabUtopia no-motion stage probe、瓶口/烧杯内腔/玻璃棒工作端资格仍未完成；本集成不构成动作授权。未提交或推送，工作区包含既存用户改动。 / Live LabUtopia no-motion probe and bottle-lip/beaker-interior/rod-end qualification remain outstanding; this integration does not authorize motion. Not committed or pushed because the worktree contains pre-existing user changes.
+
+详见 [2026-10_part15](changelog/2026-10_part15.md)。 / See [2026-10_part15](changelog/2026-10_part15.md).
+
+## v16.1.7 (2026-10-29 11:10) - codex
+
+### 变更摘要 / Summary [计划 / Planned]
+- [policy] [docs] 保存工艺特征候选到 PAOS Planner 选择交接的架构诊断，确认复用现有 AgentLoop/Coordinator 证据选择机制，并记录当前缺少候选 Query/选择节点/Preparation 投影的阻断。 / Save the architecture diagnosis for handing process-feature candidates to PAOS Planner selection, reusing existing AgentLoop/Coordinator evidence selection and recording the missing candidate Query, selection node, and preparation projection.
+- [sense] [feat] 计划实现 provider-neutral 候选发现与 AgentLoop 显式选择，再将 observation/scene-bound opaque refs 送入 no-motion preparation；当前保持失败关闭。 / Plan provider-neutral candidate discovery and explicit AgentLoop selection, then pass observation/scene-bound opaque refs to no-motion preparation; remain fail-closed meanwhile.
+
+### 计划文件 / Planned Files
+- `.task/labutopia-process-affordance-provider-20261029.md`
+- `docs/forge/VISUAL_GEOMETRY_EVIDENCE_ARCHITECTURE.md`
+- `docs/forge/labutopia-paos-acceptance.md`
+- PAOS ToolSpec/PlanGraph and LabUtopia skill/adapter wiring after impact review.
+
+### 关键 Diff / Key Diff
+```diff
+  adapter-private candidates -> implicit selection
++ authorized PAOS Query -> AgentLoop explicit opaque-ref selection -> preparation validation
+```
+
+详见 [2026-10_part15](changelog/2026-10_part15.md)。 / See [2026-10_part15](changelog/2026-10_part15.md).
+
+## v16.1.6 (2026-10-29 10:20) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [sense] [feat] Adapter 从同观测最终组合 USD 网格提取世界顶点/边界边；Provider 输出闭合近圆 rim 候选和搅拌棒双端候选，旧 manifest 功能坐标不再消费。 / Capture same-observation final USD mesh evidence and derive closed circular rim and symmetric rod endpoint candidates; discard legacy manifest functional coordinates.
+- [policy] [fix] 候选不冒充规划选择；PAOS binding 尚无 selected-process-feature ref，故 preparation 仍失败关闭。AgentLoop、公共契约、动作执行和任务生命周期未改。 / Do not treat candidates as planner selections; preparation remains fail-closed because binding has no selected-process-feature ref. AgentLoop, public contracts, action execution and task lifecycle remain unchanged.
+
+### 文件变更详情 / File Change Details
+- [修改] `engine.py:L1070-L1082,L2440-L2528`、`simulator_truth_perception.py:L17-L123`：Adapter 输出最终世界网格证据；Provider 根据边界拓扑和主轴生成私有候选。 / Adapter emits final-world mesh evidence; Provider derives private candidates from boundary topology and principal axis.
+- [修改] `visual_perception.py:L354-L483`：验证同 revision identity 并持久化 affordance candidates；process features 未被自动选择。 / Validate same-revision identity and persist affordance candidates without auto-selection.
+- [测试] `test_visual_perception.py:L61-L101,L413-L458`：覆盖 rim/rod 候选、无效拓扑与旧 manifest 坐标剔除；完整 Adapter `239 passed`。 / Cover rim/rod candidates, invalid topology and stale-coordinate removal; full Adapter suite: 239 passed.
+- [文档] `VISUAL_GEOMETRY_EVIDENCE_ARCHITECTURE.md:L48-L61`、`labutopia-paos-acceptance.md:L83-L93`：明确 Planner/Provider/Grasp Provider 职责和未完成的 binding selection、内腔及真实 USD 验证。 / Clarify Planner/Provider/Grasp Provider ownership and the remaining binding-selection, vessel-interior and real-USD validation gaps.
+
+### 关键 Diff / Key Diff
+```diff
+- manifest origin/tip/axis/size -> process frame
++ final USD mesh -> private feature candidates
++ process_features=None until explicit planner selection and preparation validation
+```
+
+### 验证 / Validation
+- `PYTHONPATH=.:examples/forge-adapters/isaacsim_lab/src:examples/forge-adapters/robotwin20/src:examples/forge-skills/pick-place-workflow/src .venv/bin/pytest -q examples/forge-adapters/isaacsim_lab/tests`: `239 passed`。Ruff、compileall、diff check 通过。 / Full Isaac Adapter suite: 239 passed; Ruff, compileall and diff check passed.
+- 当前环境无 `pxr`，未运行 no-motion Isaac probe；无动作执行。未提交/推送。 / No `pxr` is installed in this environment, so no no-motion Isaac probe or action ran. Not committed/pushed.
+
+详见 [2026-10_part15](changelog/2026-10_part15.md)。 / See [2026-10_part15](changelog/2026-10_part15.md).
+
+## 历史记录 / Historical entries
+
+## v16.1.5 (2026-10-29 01:23) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [sense] [fix] 从同观测 state artifact 的最终 USD 世界包围盒生成绑定空间包络，并筛选同帧相机点云；无有效边界/点时不合成 envelope。 / Derive binding envelopes from final USD world bounds in the same-observation state artifact and filter same-capture camera points; do not synthesize envelopes without valid bounds/points.
+- [sense] [fix] simulator-truth process features 改为不可用，阻止旧 manifest origin/tip/axis/size 进入倒液/搅拌准备；Query/grasp proposal 可用，准备在无可信 landmarks 时停止。 / Mark simulator-truth process features unavailable so stale manifest origin/tip/axis/size cannot enter pour/stir preparation; Query/grasp proposal remain available while preparation stops without trusted landmarks.
+
+### 文件变更详情 / File Change Details
+- [修改] `engine.py:L1070-L1082,L2440-L2487`、`observation.py:L36-L47,L165-L186,L250-L258`：Adapter 在原 observation source 中输出最终组合 USD bounds 的 JSON state artifact。 / Adapter emits final-composed USD bounds as a JSON state artifact through the existing observation source.
+- [修改] `simulator_truth_perception.py:L42-L84`、`visual_perception.py:L354-L466`：最终世界 AABB 驱动相机 frame envelope/可见点筛选；旧 manifest 工艺特征不再流入 preparation。 / Final world AABBs drive camera-frame envelopes/visible-point filtering; stale manifest process features no longer flow into preparation.
+- [修改] `test_observation.py:L103-L143`、`test_visual_perception.py:L330-L468`：覆盖 state、公共 understanding、缺失 bounds 与 process preparation fail-closed。 / Cover state artifacts, public understanding, missing bounds, and fail-closed process preparation.
+- [修改] `docs/forge/VISUAL_GEOMETRY_EVIDENCE_ARCHITECTURE.md:L36-L47`、`docs/forge/labutopia-paos-acceptance.md:L58-L82`：记录模式边界和未验收状态。 / Document mode boundaries and unaccepted status.
+
+### 关键 Diff / Key Diff
+```diff
+- "process_features": {"origin_world": manifest_origin, "tip_world": manifest_tip, ...}
++ "process_features": None
++ # Bounds support binding, not bottle mouth/rim/rod-tip qualification.
+```
+
+### 验证 / Validation
+- 定向 observation/perception 测试：`52 passed`；Ruff、compileall、`git diff --check` 通过。 / Focused observation/perception tests: 52 passed; Ruff, compileall and diff check passed.
+- 既有只读 probe 产生 10 个实体/envelopes 与 GraspNet candidates；本轮无动作执行，且结果不构成 process preparation/motion 验收。 / Existing read-only probe produced ten entities/envelopes and GraspNet candidates; no motion was run, and this does not qualify process preparation/motion.
+- 未提交/推送；保留工作区现有用户改动。 / Not committed or pushed; existing user worktree changes are preserved.
 
 ## v16.1.3 (2026-10-28 21:22) - codex
 
@@ -120,6 +311,8 @@ See [2026-10_part13](changelog/2026-10_part13.md).
 ### Git 提交 / Git Commit
 - Implementation commit: `5ae79fd0`.
 - Branch: `feature/planning-loop`; push failed because GitHub port 443 was unreachable after 132.9 s. The local commit remains available for a later push.
+
+## 历史记录 / Historical entries
 
 ## v16.1.1 (2026-10-24 23:10) - codex
 

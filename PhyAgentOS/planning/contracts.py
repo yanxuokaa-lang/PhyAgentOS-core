@@ -402,6 +402,32 @@ def plan_graph_digest(graph: PlanGraph | dict[str, Any]) -> str:
     return canonical_sha256(value)
 
 
+class ArgumentSourceRequirement(_Frozen):
+    """Require selected arguments to be copied from a successful predecessor."""
+
+    when: dict[str, str] = Field(min_length=1)
+    keys: tuple[str, ...] = Field(min_length=1)
+    source_tool_id: str = Field(min_length=1)
+    source_paths: dict[str, tuple[str | int, ...]]
+
+    @field_validator("keys")
+    @classmethod
+    def unique_keys(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if len(value) != len(set(value)) or any(not key.strip() for key in value):
+            raise ValueError("argument source requirement keys must be unique and non-empty")
+        return value
+
+    @model_validator(mode="after")
+    def paths_match_keys(self) -> "ArgumentSourceRequirement":
+        if not set(self.source_paths).issubset(self.keys) or any(
+            not path or any(not ((isinstance(part, str) and part) or (type(part) is int and part >= 0))
+                            for part in path)
+            for path in self.source_paths.values()
+        ):
+            raise ValueError("argument source requirement paths must exactly map every key to a valid path")
+        return self
+
+
 class ToolSpecPolicy(_Frozen):
     """Planning-only projection of a frozen ToolSpec."""
 
@@ -420,6 +446,8 @@ class ToolSpecPolicy(_Frozen):
     idempotency: Literal["idempotent", "at_most_once", "unknown"] = "unknown"
     refreshes_scene: bool = False
     input_binding_keys: tuple[str, ...] = ()
+    predecessor_argument_keys: tuple[str, ...] = ()
+    argument_source_requirements: tuple[ArgumentSourceRequirement, ...] = ()
     requires_before_plan: bool = False
     trusted_argument_builder: Literal["manipulation_intent_v2"] | None = None
     argument_projection: str | None = None
@@ -708,7 +736,7 @@ class WorkflowPolicyReplayReceipt(_Frozen):
 
 
 __all__ = [
-    "DecisionTrace", "NodeSettlement", "PlanGraph", "PlanNode", "ReplanDelta",
+    "ArgumentSourceRequirement", "DecisionTrace", "NodeSettlement", "PlanGraph", "PlanNode", "ReplanDelta",
     "PlanningExecutionBinding", "ResourceClaim", "ToolCallEnvelope", "ToolResultEnvelope",
     "ToolSpecPolicy", "WorkflowPolicy", "WorkflowPolicyCandidate", "WorkflowPolicyReplayReceipt", "canonical_sha256",
     "plan_graph_digest", "plan_node_digest", "tool_input_binding_digest",

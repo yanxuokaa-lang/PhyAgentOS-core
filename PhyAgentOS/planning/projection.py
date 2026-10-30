@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from .contracts import (
     ArgumentProjectionPlan,
     ArgumentProjectionSourcePlan,
+    ArgumentSourceRequirement,
     ResourceClaim,
     ToolSpecPolicy,
     canonical_sha256,
@@ -41,6 +42,8 @@ class _PlanningExtension(BaseModel):
     idempotency: str = "unknown"
     refreshes_scene: bool = False
     input_binding_keys: tuple[str, ...] = ()
+    predecessor_argument_keys: tuple[str, ...] = ()
+    argument_source_requirements: tuple[ArgumentSourceRequirement, ...] = ()
     requires_before_plan: bool = False
     trusted_argument_builder: str | None = None
     argument_projection: str | None = None
@@ -93,8 +96,27 @@ def project_tool_spec(spec: Mapping[str, Any]) -> ToolSpecPolicy:
         "capabilities", "preconditions", "required_evidence", "produced_evidence",
         "expected_effects", "failure_classes",
         "input_binding_keys",
+        "predecessor_argument_keys",
     ):
         _unique_strings(getattr(parsed, label), label)
+    if parsed.argument_source_requirements:
+        if parsed.argument_projection is not None or extension.get("argument_projection_plan") is not None:
+            raise ToolSpecProjectionError(
+                "argument source requirements cannot be combined with a consumer projection"
+            )
+        schema = value.get("input_schema")
+        properties = schema.get("properties") if isinstance(schema, Mapping) else None
+        if not isinstance(properties, Mapping):
+            raise ToolSpecProjectionError(
+                "argument source requirements need an object input_schema"
+            )
+        for requirement in parsed.argument_source_requirements:
+            unknown = set(requirement.keys) - set(properties)
+            if unknown:
+                raise ToolSpecProjectionError(
+                    "argument source requirement names unknown input fields: "
+                    + ", ".join(sorted(unknown))
+                )
     if parsed.argument_projection is not None and not parsed.argument_projection.strip():
         raise ToolSpecProjectionError("planning argument_projection must be non-empty")
     projection_plan = None
@@ -127,6 +149,8 @@ def project_tool_spec(spec: Mapping[str, Any]) -> ToolSpecPolicy:
             idempotency=parsed.idempotency,
             refreshes_scene=parsed.refreshes_scene,
             input_binding_keys=parsed.input_binding_keys,
+            predecessor_argument_keys=parsed.predecessor_argument_keys,
+            argument_source_requirements=parsed.argument_source_requirements,
             requires_before_plan=parsed.requires_before_plan,
             trusted_argument_builder=parsed.trusted_argument_builder,
             argument_projection=parsed.argument_projection,

@@ -55,6 +55,14 @@ def _sample_candidates(candidates, limit, policy):
     return [ranked[index] for index in selected]
 
 
+def _sample_points(points, max_points, *, seed=None):
+    import numpy as np
+    rng = np.random.default_rng(seed) if seed is not None else np.random
+    if len(points) >= max_points:
+        return points[rng.choice(len(points), max_points, replace=False)]
+    return np.concatenate([points, points[rng.choice(len(points), max_points-len(points), replace=True)]])
+
+
 def _load() -> None:
     global _MODEL
     assert _OPTIONS is not None
@@ -127,10 +135,10 @@ def _handle(request: Mapping[str, Any]) -> Mapping[str, Any]:
         import torch
 
         network, pred_decode, grasp_group_type = _MODEL
-        if points.shape[0] >= max_points:
-            sampled = points[np.random.choice(points.shape[0], max_points, replace=False)]
-        else:
-            sampled = np.concatenate([points, points[np.random.choice(points.shape[0], max_points - points.shape[0], replace=True)]])
+        seed = getattr(_OPTIONS, "seed", None)
+        sampled = _sample_points(points, max_points, seed=seed)
+        if seed is not None:
+            torch.manual_seed(seed)
         with torch.no_grad():
             device = next(network.parameters()).device
             end_points = network({"point_clouds": torch.from_numpy(sampled[None]).to(device)})
@@ -188,6 +196,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--source-root")
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--sampling-policy", choices=("score", "orientation_diverse"), default="score")
+    parser.add_argument("--seed", type=int, help="Optional repeatable per-request sampling for paired evaluation")
     return parser
 
 

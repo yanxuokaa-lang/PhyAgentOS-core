@@ -390,6 +390,16 @@ input_schema:
         capability_snapshot_ref:
           type: string
           pattern: ^artifact://\S+$
+        process_feature_candidate_set_ref:
+          type: string
+          pattern: ^process-feature-set://\S+$
+        process_feature_refs:
+          type: array
+          minItems: 2
+          uniqueItems: true
+          items:
+            type: string
+            pattern: ^process-feature://\S+$
 output_schema:
   type: object
   additionalProperties: false

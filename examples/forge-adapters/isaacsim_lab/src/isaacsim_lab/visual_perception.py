@@ -133,6 +133,7 @@ class RecordedGraspProvider:
     def __init__(self, provider, store):
         self.provider, self.store = provider, store
         self.captures = {}
+        self.candidate_sets = {}
 
     def propose(self, request):
         output = deepcopy(dict(self.provider.propose(request)))
@@ -147,6 +148,13 @@ class RecordedGraspProvider:
         output["candidates"] = candidates
         output["produced_evidence_refs"] = [*output.get("produced_evidence_refs", []), evidence]
         self.captures.setdefault(request["calibration_ref"], {}).update({i["candidate_ref"]: deepcopy(i) for i in candidates})
+        candidate_set_ref = output.get("candidate_set_ref")
+        if isinstance(candidate_set_ref, str):
+            self.candidate_sets[candidate_set_ref] = {
+                **{key: request[key] for key in ("observation_ref", "scene_revision", "frame_id", "calibration_ref")},
+                "entities": {target["entity_ref"] for target in request["targets"]},
+                "candidate_refs": {item["candidate_ref"] for item in candidates},
+            }
         return output
 
     def candidate(self, binding):
@@ -157,6 +165,57 @@ class RecordedGraspProvider:
 
     def close(self):
         self.provider.release()
+
+
+class LabGraspTaskAffordanceProvider:
+    """Join same-capture GraspNet and process-feature evidence fail-closed."""
+
+    def __init__(self, perception: "LabVisualPerception"):
+        self.perception = perception
+        self.candidate_sets = {}
+
+    def propose(self, request):
+        identity = {key: request[key] for key in
+                    ("observation_ref", "scene_revision", "frame_id", "calibration_ref")}
+        records = self.perception._records(request)
+        grasp_set = self.perception.grasps.candidate_sets.get(request["grasp_candidate_set_ref"])
+        feature_set = self.perception.process_feature_sets.get(request["process_feature_candidate_set_ref"])
+        expected = set(request["entity_refs"])
+        if (grasp_set is None or feature_set is None
+                or any(grasp_set.get(key) != identity[key] or feature_set.get(key) != identity[key]
+                       for key in identity)
+                or not expected <= set(records)
+                or not expected <= grasp_set["entities"]
+                or set(feature_set["entity_refs"]) != expected
+                or feature_set.get("candidate_set_ref") != request["process_feature_candidate_set_ref"]
+                or grasp_set.get("candidate_set_ref") != request["grasp_candidate_set_ref"]):
+            return {"status": "stale", "candidate_set_ref": "grasp-affordance-set://unavailable",
+                    "grasp_candidate_set_ref": request["grasp_candidate_set_ref"],
+                    "process_feature_candidate_set_ref": request["process_feature_candidate_set_ref"],
+                    **identity, "candidates": [], "error": "grasp/process evidence is not from the same capture"}
+        ref = f"grasp-affordance-set://{uuid4().hex}"
+        self.candidate_sets[ref] = {
+            **identity, "entity_refs": expected,
+            "grasp_candidate_set_ref": request["grasp_candidate_set_ref"],
+            "process_feature_candidate_set_ref": request["process_feature_candidate_set_ref"],
+        }
+        return {"status": "unavailable", "candidate_set_ref": ref,
+                "grasp_candidate_set_ref": request["grasp_candidate_set_ref"],
+                "process_feature_candidate_set_ref": request["process_feature_candidate_set_ref"],
+                **identity, "candidates": [],
+                "error": "current geometry does not qualify a task-safe grasp/process-feature relationship"}
+
+    def validate_selection(self, request):
+        identity = {key: request[key] for key in
+                    ("candidate_set_ref", "selected_combination_ref", "process_feature_candidate_set_ref",
+                     "observation_ref", "scene_revision", "frame_id", "calibration_ref")}
+        candidate_set = self.candidate_sets.get(request["candidate_set_ref"])
+        if candidate_set is None or any(candidate_set.get(key) != request[key] for key in (
+            "process_feature_candidate_set_ref", "observation_ref", "scene_revision", "frame_id", "calibration_ref"
+        )):
+            return {"status": "stale", **identity, "error": "task-affordance candidate set is stale"}
+        return {"status": "unavailable", **identity,
+                "error": "current geometry cannot revalidate a task-safe selected combination"}
 
 
 class LabVisualPerception:
@@ -182,6 +241,7 @@ class LabVisualPerception:
             raise ValueError("provider_from_tcp must be a rigid calibrated transform")
         self.observations, self.identities, self.capabilities = {}, {}, {}
         self.captures, self.labels = {}, {}
+        self.process_feature_sets = {}
         self.diagnostics = {}
 
     def diagnostic_summary(self):
@@ -353,41 +413,113 @@ class LabVisualPerception:
 
     def _understand_simulator_truth(self, request, manifest):
         """Use authored scene labels/features while retaining capture lineage."""
-        from .simulator_truth_perception import object_point_cloud
+        from .simulator_truth_perception import (
+            object_point_cloud,
+            process_feature_candidates_by_component,
+            world_bounds_in_frame,
+        )
 
         depth_ref = next((ref for ref in request["artifacts"]
                           if ref.startswith("artifact://labutopia/depth/")), None)
         point_cloud_ref = next((ref for ref in request["artifacts"]
                                 if ref.startswith("artifact://labutopia/point_cloud/")), None)
-        if depth_ref is None or point_cloud_ref is None:
-            raise ValueError("simulator truth requires same-capture depth and point-cloud artifacts")
+        state_ref = next((ref for ref in request["artifacts"]
+                          if ref.startswith("artifact://labutopia/state/")), None)
+        if depth_ref is None or point_cloud_ref is None or state_ref is None:
+            raise ValueError("simulator truth requires same-capture depth, point-cloud and USD state artifacts")
         calibration = json.loads(self.resolver.resolve(request["calibration_ref"]).data)
         if any(calibration[key] != request[key] for key in ("scene_revision", "frame_id")):
             raise ValueError("calibration does not belong to the capture")
         depth = np.load(io.BytesIO(self.resolver.resolve(depth_ref).data), allow_pickle=False)
         point_cloud = np.load(io.BytesIO(self.resolver.resolve(point_cloud_ref).data), allow_pickle=False)
+        state = json.loads(self.resolver.resolve(state_ref).data)
+        supported_schemas = {
+            "labutopia-simulator-world-bounds/v1": "final_composed_usd_world_bounds",
+            "labutopia-simulator-world-geometry/v1": "final_composed_usd_world_geometry",
+        }
+        if (state.get("schema") not in supported_schemas
+                or state.get("scene_revision") != request["scene_revision"] or state.get("unit") != "m"
+                or state.get("source") != supported_schemas.get(state.get("schema"))
+                or not isinstance(state.get("objects"), list)):
+            raise ValueError("simulator USD state does not match the observed scene revision")
+        world_bounds = {}
+        for item in state["objects"]:
+            if not isinstance(item, dict) or not isinstance(item.get("label"), str) or item["label"] in world_bounds:
+                raise ValueError("simulator USD state has missing or duplicate labels")
+            spec = manifest["objects"].get(item["label"])
+            if (spec is None or item.get("category") != spec["category"]
+                    or item.get("prim_path") != spec["prim_path"]):
+                raise ValueError("simulator USD state identity differs from the truth manifest")
+            world_bounds[item["label"]] = item
         if depth.size == 0 or not np.isfinite(depth).any():
             raise ValueError("simulator truth depth artifact is empty or has no finite samples")
         identity = {key: request[key] for key in ("observation_ref", "scene_revision", "frame_id", "calibration_ref")}
         truth_ref = self.store.write("simulator-truth", {**identity, "manifest": manifest,
-            "source_refs": [depth_ref, point_cloud_ref], "depth_shape": list(depth.shape),
+            "source_refs": [depth_ref, point_cloud_ref, state_ref], "depth_shape": list(depth.shape),
             "point_cloud_shape": list(point_cloud.shape)})
-        entities, derived, records = [], [], {}
+        entities, envelopes, derived, records, ambiguities = [], [], [], {}, []
         for label, spec in manifest["objects"].items():
             category = spec["category"]
             if category not in {"reagent_bottle", "mixing_vessel", "stir_tool", "test_tube"}:
                 raise ValueError(f"unsupported simulator truth category: {category}")
-            points = object_point_cloud(calibration, spec, point_cloud)
+            bounds = world_bounds.get(label)
+            if bounds is None:
+                entity = f"entity://simulator-truth-{label}"
+                entities.append({"entity_ref": entity, "category": category, "label": label,
+                                 "confidence": 1.0, "provenance": [depth_ref, point_cloud_ref]})
+                ambiguities.append({
+                    "code": "simulator_truth_geometry_unavailable",
+                    "message": f"Final composed USD world bounds are unavailable for {label}",
+                    "entity_refs": [entity],
+                })
+                continue
+            points = object_point_cloud(calibration, point_cloud, bounds)
+            if len(points) < 3:
+                entity = f"entity://simulator-truth-{label}"
+                entities.append({"entity_ref": entity, "category": category, "label": label,
+                                 "confidence": 1.0, "provenance": [depth_ref, point_cloud_ref]})
+                ambiguities.append({
+                    "code": "simulator_truth_geometry_not_visible",
+                    "message": f"No sufficient same-capture points fall inside final USD bounds for {label}",
+                    "entity_refs": [entity],
+                })
+                continue
             points_ref = self.store.write("object-point-cloud", points)
+            envelope_minimum, envelope_maximum = world_bounds_in_frame(calibration, bounds)
             entity = f"entity://simulator-truth-{label}"
+            feature_candidates = []
+            mesh_points = bounds.get("mesh_points_world_m")
+            boundary_edges = bounds.get("boundary_edges_world_m")
+            if state.get("schema") == "labutopia-simulator-world-geometry/v1" and category in {
+                "reagent_bottle", "mixing_vessel", "stir_tool"
+            }:
+                try:
+                    boundary_components = bounds.get("boundary_edge_components_world_m")
+                    if boundary_components is None and boundary_edges is not None:
+                        boundary_components = [boundary_edges]
+                    feature_candidates = process_feature_candidates_by_component(
+                        mesh_points,
+                        boundary_components,
+                        category,
+                    )
+                    if category == "stir_tool" and len(feature_candidates) > 1:
+                        ambiguities.append({
+                            "code": "simulator_truth_process_feature_ambiguous",
+                            "message": f"Working-end role for {label} requires task/grasp-context selection",
+                            "entity_refs": [entity],
+                        })
+                except (TypeError, ValueError) as exc:
+                    ambiguities.append({
+                        "code": "simulator_truth_process_feature_ambiguous",
+                        "message": f"Process geometry for {label} is unavailable: {exc}",
+                        "entity_refs": [entity],
+                    })
             geometry_ref = self.store.write("observed-geometry", {
                 **identity, "entity_ref": entity, "label": label, "category": category,
                 "geometry_qualification": "simulator_ground_truth", "coverage": "simulator_visible_surface",
-                "process_features": {"origin_world": list(spec["origin_world"]),
-                    "tip_world": list(spec["tip_world"]), "axis_world": list(spec["axis_world"]),
-                    "size_m": list(spec["size_m"]), "source": "simulator_authored_truth",
-                    "coverage": "authored_scene_geometry"},
-                "source_refs": [truth_ref, depth_ref, point_cloud_ref, points_ref],
+                "process_features": None,
+                "process_feature_candidates": feature_candidates,
+                "source_refs": [truth_ref, depth_ref, point_cloud_ref, state_ref, points_ref],
                 "raw_depth_ref": depth_ref})
             self.store.path(points_ref).with_suffix(".json").write_text(json.dumps({
                 "geometry_ref": geometry_ref, "truth_ref": truth_ref, **identity,
@@ -398,6 +530,15 @@ class LabVisualPerception:
             # geometry evidence instead of widening the public source set.
             entities.append({"entity_ref": entity, "category": category, "label": label,
                              "confidence": 1.0, "provenance": [depth_ref, point_cloud_ref]})
+            envelopes.append({
+                "entity_ref": entity,
+                "frame_id": request["frame_id"],
+                "unit": "m",
+                "min_xyz_m": envelope_minimum.tolist(),
+                "max_xyz_m": envelope_maximum.tolist(),
+                "confidence": 1.0,
+                "provenance": [state_ref],
+            })
             derived.append({"artifact_ref": points_ref, "kind": "object_point_cloud",
                             "media_type": "application/numpy", **identity, "entity_ref": entity,
                             "source_refs": [depth_ref, point_cloud_ref],
@@ -406,16 +547,14 @@ class LabVisualPerception:
                                            "width_px": None, "height_px": None, "bbox_xyxy_px": None,
                                            "foreground_pixels": None, "min_xyz_m": None, "max_xyz_m": None}})
             records[entity] = {**identity, "entity_ref": entity, "category": category, "label": label,
-                "features": {"origin_world": list(spec["origin_world"]), "tip_world": list(spec["tip_world"]),
-                             "axis_world": list(spec["axis_world"]), "size_m": list(spec["size_m"]),
-                             "source": "simulator_authored_truth", "coverage": "authored_scene_geometry"},
+                "features": None, "process_feature_candidates": feature_candidates,
                 "world_from_camera": world_from_camera(calibration).tolist(), "points_ref": points_ref,
                 "geometry_ref": geometry_ref, "geometry_qualification": "simulator_ground_truth",
                 "claim": {"category": category, "label": label, "identity_resolved": True},
                 "artifacts": list(request["artifacts"]), "prim_path": spec["prim_path"]}
         self.observations[request["calibration_ref"]] = records
-        output = {"entities": entities, "spatial_envelopes": [], "derived_artifacts": derived,
-                  "relations": [], "ambiguities": []}
+        output = {"entities": entities, "spatial_envelopes": envelopes, "derived_artifacts": derived,
+                  "relations": [], "ambiguities": ambiguities}
         self.store.write("understanding", {"request": request, "result": output,
                                              "source": "simulator_authored_truth"})
         return output
@@ -457,6 +596,21 @@ class LabVisualPerception:
         source = records[binding["entity_ref"]]
         destination_ref = "entity://" + binding["destination_ref"].removeprefix("destination://")
         destination = records[destination_ref]
+        process_type = request.get("process_type")
+        if process_type in {"pour", "stir"}:
+            selected_refs = request.get("process_feature_refs")
+            candidate_set_ref = request.get("process_feature_candidate_set_ref")
+            if not isinstance(selected_refs, list) or not isinstance(candidate_set_ref, str):
+                raise ValueError("planner-selected process feature refs are required")
+            feature_request = {
+                "entity_refs": [source["entity_ref"], destination_ref],
+                "candidate_set_ref": candidate_set_ref,
+                "selected_feature_refs": selected_refs,
+                **{key: binding[key] for key in ("observation_ref", "scene_revision", "frame_id", "calibration_ref")},
+            }
+            validation = self.validate_selection(feature_request)
+            if validation.get("status") != "available":
+                raise ValueError(validation.get("error", "selected process features are unavailable"))
         candidate = self.grasps.candidate(binding)
         if candidate["entity_ref"] != source["entity_ref"] or candidate["grasp_frame"]["frame_id"] != binding["frame_id"]:
             raise ValueError("selected prediction has a different entity or frame")
@@ -486,6 +640,73 @@ class LabVisualPerception:
                 "process_frame": {"frame_id": "world", "origin_m": destination["features"]["tip_world"],
                                   "axis": destination["features"]["axis_world"]},
                 "geometry": {"size_m": features["size_m"]}}
+
+    def propose(self, request):
+        """Expose only opaque identities and semantic roles from the current capture."""
+        records = self._records(request)
+        expected = set(request["entity_refs"])
+        if not expected <= set(records):
+            raise ValueError("process feature Query entities do not belong to the current observation")
+        candidates = []
+        private_candidates = {}
+        for entity_ref in request["entity_refs"]:
+            record = records[entity_ref]
+            for index, feature in enumerate(record.get("process_feature_candidates") or ()):
+                role = feature.get("feature_role", "opening")
+                feature_ref = f"process-feature://{uuid4().hex}"
+                candidates.append({"feature_ref": feature_ref, "entity_ref": entity_ref,
+                                   "feature_kind": feature.get("feature_kind", "unknown"),
+                                   "feature_role": role})
+                private_candidates[feature_ref] = (entity_ref, index, deepcopy(feature))
+        candidate_set_ref = f"process-feature-set://{uuid4().hex}"
+        self.process_feature_sets[candidate_set_ref] = {
+            **{key: request[key] for key in ("observation_ref", "scene_revision", "frame_id", "calibration_ref")},
+            "candidate_set_ref": candidate_set_ref,
+            "entity_refs": tuple(request["entity_refs"]),
+            "candidates": private_candidates,
+        }
+        return {
+            "candidate_set_ref": candidate_set_ref,
+            "observation_ref": request["observation_ref"],
+            "scene_revision": request["scene_revision"], "frame_id": request["frame_id"],
+            "calibration_ref": request["calibration_ref"], "candidates": candidates,
+        }
+
+    def validate_selection(self, request):
+        """Bind selected refs to the current private capture before preparation."""
+        identity = {key: request[key] for key in (
+            "candidate_set_ref", "selected_feature_refs", "observation_ref", "scene_revision", "frame_id", "calibration_ref"
+        )}
+        records = self._records(request)
+        expected_entities = set(request["entity_refs"])
+        candidate_set = self.process_feature_sets.get(request.get("candidate_set_ref"))
+        if candidate_set is None or any(candidate_set.get(key) != request[key] for key in (
+            "observation_ref", "scene_revision", "frame_id", "calibration_ref"
+        )) or set(candidate_set.get("entity_refs", ())) != expected_entities:
+            return {"status": "stale", **identity, "error": "candidate set is not from the current process-feature Query"}
+        selected = request["selected_feature_refs"]
+        available = candidate_set["candidates"]
+        for entity_ref in request["entity_refs"]:
+            if entity_ref not in records:
+                return {"status": "stale", **identity, "error": "selected entity is absent from the current capture"}
+        if any(ref not in available for ref in selected):
+            return {"status": "stale", **identity, "error": "selected refs are not in the current process-feature Query"}
+        selected_entities = [available[ref][0] for ref in selected]
+        if set(selected_entities) != expected_entities or len(selected_entities) != len(expected_entities):
+            return {"status": "ambiguous", **identity, "error": "select exactly one feature candidate for each task entity"}
+        categories = {entity: records[entity].get("category") for entity in expected_entities}
+        for ref in selected:
+            entity, _index, feature = available[ref]
+            kind = feature.get("feature_kind")
+            category = categories[entity]
+            if category in {"reagent_bottle", "mixing_vessel"} and kind != "rim":
+                return {"status": "invalid", **identity, "error": "vessel operation requires a rim candidate"}
+            if category == "stir_tool" and kind != "rod_endpoint_pair":
+                return {"status": "invalid", **identity, "error": "stir operation requires a rod endpoint candidate"}
+        # Current geometry candidates do not establish vessel interior or the
+        # grasp-relative working end, so selection alone cannot authorize prep.
+        return {"status": "unavailable", **identity,
+                "error": "selected process geometry is not qualified for no-motion preparation"}
 
     def refresh_process(self, arguments, target, *, observation_model, phase_route):
         records = self._records(arguments)

@@ -274,6 +274,10 @@ async def test_prepare_is_discovered_after_the_proposal_query():
 
         "manipulation.target",
         "task.goal",
+        "manipulation.process_features",
+        "manipulation.prepare_process_features",
+            "manipulation.grasp_task_affordances",
+            "manipulation.prepare_grasp_task_affordance",
     ]
     assert spec["data"]["endpoint_id"] == "manipulation_preparation"
     assert spec["data"]["operation"] == "prepare"

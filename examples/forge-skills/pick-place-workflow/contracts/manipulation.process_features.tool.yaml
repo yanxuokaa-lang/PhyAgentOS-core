@@ -1,0 +1,59 @@
+tool_id: manipulation.process_features
+implementation_id: manipulation.process_features
+endpoint_id: process_features
+operation: propose
+semantics: query
+planning:
+  schema_version: paos-tool-spec-policy/v1
+  capabilities:
+    - manipulation.process_features
+  input_binding_keys:
+    - operation
+    - entity_refs
+    - observation_ref
+    - scene_revision
+    - frame_id
+    - calibration_ref
+  scene_write_behavior: none
+description: Propose current-scene process-feature candidates without selecting one or authorizing motion.
+input_schema:
+  type: object
+  additionalProperties: false
+  required: [operation, entity_refs, observation_ref, scene_revision, frame_id, calibration_ref, freshness_ms, max_age_ms]
+  properties:
+    operation: {enum: [pour, stir]}
+    entity_refs:
+      type: array
+      minItems: 2
+      uniqueItems: true
+      items: {type: string, pattern: '^entity://[^/]+$'}
+    observation_ref: {type: string, pattern: '^observation://[^/]+/[^/]+$'}
+    scene_revision: {type: string, minLength: 1}
+    frame_id: {type: string, minLength: 1}
+    calibration_ref: {type: string, pattern: '^artifact://\S+$'}
+    freshness_ms: {type: integer, minimum: 0}
+    max_age_ms: {type: integer, minimum: 1}
+output_schema:
+  type: object
+  additionalProperties: false
+  required: [status, candidate_set_ref, observation_ref, scene_revision, frame_id, calibration_ref, candidates, motion_authorized]
+  properties:
+    status: {enum: [available, empty, unavailable, stale, invalid]}
+    candidate_set_ref: {type: string, pattern: '^process-feature-set://\S+$'}
+    observation_ref: {type: string, pattern: '^observation://[^/]+/[^/]+$'}
+    scene_revision: {type: string, minLength: 1}
+    frame_id: {type: string, minLength: 1}
+    calibration_ref: {type: string, pattern: '^artifact://\S+$'}
+    candidates:
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        required: [feature_ref, entity_ref, feature_kind, feature_role]
+        properties:
+          feature_ref: {type: string, pattern: '^process-feature://\S+$'}
+          entity_ref: {type: string, pattern: '^entity://[^/]+$'}
+          feature_kind: {type: string, minLength: 1}
+          feature_role: {type: string, minLength: 1}
+    motion_authorized: {const: false}
+    error: {type: string}

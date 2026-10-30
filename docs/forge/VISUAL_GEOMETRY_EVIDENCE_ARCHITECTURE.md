@@ -33,6 +33,54 @@ Runtime diagnostics, not visual geometry. They must not be copied into a visual
 artifact or presented as perception evidence. Until a visual entity is mapped
 to an opaque execution handle, no Action may be admitted.
 
+The explicitly configured `simulator_truth` LabUtopia experiment is a separate
+evidence mode, not a visual-geometry fallback. Its Isaac Adapter emits final
+composed USD world bounds as a same-observation `state` artifact; the truth
+Provider projects those bounds into the observed frame and filters the actual
+same-capture camera cloud against the world bounds. Envelopes retain the state
+artifact provenance, while object point clouds retain RGB-D provenance. The
+result is qualified as simulator ground truth and must not be described as
+sensor-reconstructed geometry. Missing or invalid bounds leave that entity
+without an envelope and with an explicit ambiguity. Ordinary `model` mode
+continues to reject simulator geometry as a visual source, and neither mode
+uses a simulator actor pose to repair a perception-derived geometry artifact.
+
+The simulator-truth Adapter may additionally capture final-world mesh vertices
+and boundary edges in the same private state artifact. Its USD traversal must
+include instance proxies: referenced scene assets can produce a valid world
+bound while their mesh prims are absent from the default traversal. This is an
+Adapter capture concern; it does not change public PAOS evidence or AgentLoop
+selection. Captured vertices establish that composed mesh data is available,
+not that an opening or working end is qualified. The simulator-truth
+Provider can use those data to produce process-affordance candidates: a vessel
+rim requires a closed, near-circular top boundary; separate nested loops remain
+separate candidates and do not by themselves authorize an interior model. A
+rod produces two symmetric axis-end candidates because mesh geometry alone does
+not identify the working end. These are not grasp candidates: the Grasp Provider still proposes grasps
+from the current point cloud. The Planner must bind a process candidate to the
+task role and caller-supplied parameters, and Preparation must validate that
+selection and its current evidence before use. Until the existing binding path
+contains that explicit selection, candidates remain adapter-private and
+Preparation fails closed. Missing topology, multiple plausible openings, or
+unresolved endpoint role remains ambiguity. No USD path, mesh handle, or
+candidate coordinate is added to the generic PAOS contract or AgentLoop.
+
+Boundary qualification is evaluated per connected component rather than as a
+single all-or-nothing graph. A separate open or non-manifold mesh component
+cannot become a rim candidate and must not suppress an independently closed,
+near-circular component. This does not relax closure or circle-fit criteria and
+does not infer vessel interior or rod working-end role.
+
+The 2026-10-29 LabUtopia no-motion probe confirms instance-proxy traversal on
+the composed scene: R01, BEAKER and GLASS_ROD state records contained 1214,
+1698 and 66 mesh vertices respectively. Their boundary evidence did not
+qualify the required process geometry: R01 had non-manifold/open boundary
+topology, BEAKER had only six boundary edges, and GLASS_ROD retained two
+unresolved endpoint candidates. The follow-up process-feature Query and
+Preparation therefore remain unqualified; this observation-only run admitted
+no Action. Do not equate non-empty mesh capture with a qualified rim, interior,
+pouring lip, or rod working end.
+
 The binding artifact keeps these two matrices separate: `objects[observed_ref]`
 contains observation-derived route geometry, while `scene_facts.objects` retains
 the captured Runtime actor pose keyed by execution entity and actor identity.
@@ -226,3 +274,20 @@ must exercise both reconciliation success and failure, shape uncertainty at
 bind, candidate-level rejection, artifact contract validation, and zero Action
 invocations. A successful test is not a physical success claim; only a fresh
 ForgeTaskVerifier result can establish task completion.
+
+### LabUtopia simulator-truth process geometry (2026-10-29)
+
+The Isaac Adapter keeps final composed USD mesh vertices in world metres and
+preserves boundary edges by mesh-topology connected component inside its
+private same-observation state artifact. The simulator-truth Provider estimates
+vessel rim candidates from the highest mesh-vertex ring when boundary topology
+is degenerate, requiring a stable circle fit and no angular gap greater than
+90 degrees. When that support is absent, it checks independent closed boundary
+components; zero-length edges are ignored. It does not use AABB extrema,
+manifest coordinates, or a configured target as a feature fallback.
+
+These are Query candidates, not qualified pouring/stirring landmarks. A rim
+does not establish a bottle lip's pour direction or a vessel's interior; a
+straight rod still has two unresolved endpoints. The existing PAOS opaque
+candidate selection and no-motion Preparation remain authoritative, and
+unqualified evidence must stop before Action admission.

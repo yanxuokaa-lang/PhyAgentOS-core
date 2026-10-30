@@ -86,6 +86,8 @@ class AgentComposedDispatch:
     @staticmethod
     def _selection_source_mode(policy: ToolSpecPolicy) -> str:
         """Describe the exact source selector accepted by the frozen ToolSpec."""
+        if policy.predecessor_argument_keys or policy.argument_source_requirements:
+            return "direct_predecessor_argument_sources"
         plan = policy.argument_projection_plan
         if plan is not None and plan.source_slots:
             return "projection_sources"
@@ -238,6 +240,13 @@ class AgentComposedDispatch:
                     policy.tool_id: self._selection_source_mode(policy)
                     for policy in candidate_policies
                 },
+                "predecessor_argument_keys": {
+                    policy.tool_id: list(self.required_predecessor_argument_keys(
+                        policy.tool_id, node.input_bindings
+                    ))
+                    for policy in candidate_policies
+                    if self.required_predecessor_argument_keys(policy.tool_id, node.input_bindings)
+                },
                 "missing_node_bindings": missing_node_bindings,
                 "missing_runtime_arguments": runtime_requirements,
                 "required_tool_arguments": required_arguments,
@@ -275,6 +284,30 @@ class AgentComposedDispatch:
                         and (conditions.get("scene_current") is not False or policy.refreshes_scene)
                         and set(required_node_binding_keys(policy)).issubset(nodes[node_id].input_bindings)
                     },
+                    **(
+                        {"predecessor_argument_keys": {
+                            policy.tool_id: list(self.required_predecessor_argument_keys(
+                                policy.tool_id, nodes[node_id].input_bindings
+                            ))
+                            for policy in self.policies
+                            if nodes[node_id].capability in policy.capabilities
+                            and self.required_predecessor_argument_keys(
+                                policy.tool_id, nodes[node_id].input_bindings
+                            )
+                            and (conditions.get("scene_current") is not False or policy.refreshes_scene)
+                            and set(required_node_binding_keys(policy)).issubset(nodes[node_id].input_bindings)
+                        }}
+                        if any(
+                            nodes[node_id].capability in policy.capabilities
+                            and self.required_predecessor_argument_keys(
+                                policy.tool_id, nodes[node_id].input_bindings
+                            )
+                            and (conditions.get("scene_current") is not False or policy.refreshes_scene)
+                            and set(required_node_binding_keys(policy)).issubset(nodes[node_id].input_bindings)
+                            for policy in self.policies
+                        )
+                        else {}
+                    ),
                     **(
                         {"missing_runtime_arguments": {
                             policy.tool_id: self._required_runtime_arguments(policy)
@@ -406,6 +439,20 @@ class AgentComposedDispatch:
                         )
                         else {}
                     ),
+                    **(
+                        {"predecessor_argument_keys": {
+                            policy.tool_id: list(policy.predecessor_argument_keys)
+                            for policy in self.policies
+                            if nodes[node_id].capability in policy.capabilities
+                            and policy.predecessor_argument_keys
+                        }}
+                        if any(
+                            nodes[node_id].capability in policy.capabilities
+                            and policy.predecessor_argument_keys
+                            for policy in self.policies
+                        )
+                        else {}
+                    ),
                 }
                 for node_id in ready
                 if any(
@@ -432,6 +479,64 @@ class AgentComposedDispatch:
         if policy is None:
             return None, None
         return policy.argument_projection, policy.argument_projection_plan
+
+    def predecessor_argument_keys(self, tool_id: str) -> tuple[str, ...]:
+        """Return Tool arguments that must be copied from direct predecessors."""
+        policy = self._policies.get(tool_id)
+        return policy.predecessor_argument_keys if policy is not None else ()
+
+    def required_predecessor_argument_keys(
+        self, tool_id: str, node_input_bindings: Mapping[str, Any]
+    ) -> tuple[str, ...]:
+        """Resolve unconditional and active conditional source requirements."""
+        policy = self._policies.get(tool_id)
+        if policy is None:
+            return ()
+        keys = list(policy.predecessor_argument_keys)
+        for requirement in policy.argument_source_requirements:
+            if all(node_input_bindings.get(key) == value for key, value in requirement.when.items()):
+                keys.extend(requirement.keys)
+        if len(keys) != len(set(keys)):
+            raise PlanningDispatchError(
+                "ToolSpec predecessor argument source requirements overlap"
+            )
+        return tuple(keys)
+
+    def predecessor_argument_sources(
+        self, tool_id: str, node_input_bindings: Mapping[str, Any]
+    ) -> dict[str, str | None]:
+        """Map required consumer fields to their required predecessor Tool."""
+        policy = self._policies.get(tool_id)
+        if policy is None:
+            return {}
+        sources = {key: None for key in policy.predecessor_argument_keys}
+        for requirement in policy.argument_source_requirements:
+            if all(node_input_bindings.get(key) == value for key, value in requirement.when.items()):
+                for key in requirement.keys:
+                    if key in sources:
+                        raise PlanningDispatchError(
+                            "ToolSpec predecessor argument source requirements overlap"
+                        )
+                    sources[key] = requirement.source_tool_id
+        return sources
+
+    def predecessor_argument_source_paths(
+        self, tool_id: str, node_input_bindings: Mapping[str, Any]
+    ) -> dict[str, tuple[str | int, ...]]:
+        """Return exact source paths required by active ToolSpec source rules."""
+        policy = self._policies.get(tool_id)
+        if policy is None:
+            return {}
+        paths: dict[str, tuple[str | int, ...]] = {}
+        for requirement in policy.argument_source_requirements:
+            if all(node_input_bindings.get(key) == value for key, value in requirement.when.items()):
+                overlap = set(paths) & set(requirement.source_paths)
+                if overlap:
+                    raise PlanningDispatchError(
+                        "ToolSpec predecessor argument source requirements overlap"
+                    )
+                paths.update(requirement.source_paths)
+        return paths
 
     def prepare_frozen_query_selection(self, node_id: str) -> dict[str, Any] | None:
         """Compile a selection only when the frozen graph leaves no Query choice.

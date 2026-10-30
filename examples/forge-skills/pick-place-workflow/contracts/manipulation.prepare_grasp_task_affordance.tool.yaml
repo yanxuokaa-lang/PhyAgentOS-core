@@ -1,0 +1,40 @@
+tool_id: manipulation.prepare_grasp_task_affordance
+implementation_id: manipulation.prepare_grasp_task_affordance
+endpoint_id: prepare_grasp_task_affordance
+operation: validate_selection
+semantics: query
+planning:
+  schema_version: paos-tool-spec-policy/v1
+  capabilities: [manipulation.prepare_grasp_task_affordance]
+  input_binding_keys: [operation, entity_refs, candidate_set_ref, selected_combination_ref, observation_ref, scene_revision, frame_id, calibration_ref]
+  argument_source_requirements:
+    - when: {operation: pour}
+      keys: [candidate_set_ref, selected_combination_ref, process_feature_candidate_set_ref]
+      source_tool_id: manipulation.grasp_task_affordances
+      source_paths:
+        candidate_set_ref: [response, candidate_set_ref]
+        process_feature_candidate_set_ref: [response, process_feature_candidate_set_ref]
+    - when: {operation: stir}
+      keys: [candidate_set_ref, selected_combination_ref, process_feature_candidate_set_ref]
+      source_tool_id: manipulation.grasp_task_affordances
+      source_paths:
+        candidate_set_ref: [response, candidate_set_ref]
+        process_feature_candidate_set_ref: [response, process_feature_candidate_set_ref]
+  scene_write_behavior: none
+description: Revalidate one selected task-qualified grasp combination against current evidence without motion.
+input_schema:
+  type: object
+  additionalProperties: false
+  required: [operation, entity_refs, candidate_set_ref, selected_combination_ref, process_feature_candidate_set_ref, observation_ref, scene_revision, frame_id, calibration_ref, freshness_ms, max_age_ms]
+  properties:
+    operation: {enum: [pour, stir]}
+    entity_refs: {type: array, minItems: 2, uniqueItems: true, items: {type: string, pattern: '^entity://[^/]+$'}}
+    candidate_set_ref: {type: string, pattern: '^grasp-affordance-set://\\S+$'}
+    selected_combination_ref: {type: string, pattern: '^grasp-affordance://\\S+$'}
+    process_feature_candidate_set_ref: {type: string, pattern: '^process-feature-set://\\S+$'}
+    observation_ref: {type: string, pattern: '^observation://[^/]+/[^/]+$'}
+    scene_revision: {type: string, minLength: 1}
+    frame_id: {type: string, minLength: 1}
+    calibration_ref: {type: string, pattern: '^artifact://\\S+$'}
+    freshness_ms: {type: integer, minimum: 0}
+    max_age_ms: {type: integer, minimum: 1}

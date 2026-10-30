@@ -20,8 +20,13 @@ from .agent_planning import (
     bind_subtask_from_semantics_async,
     compose_subtask_plan,
 )
+from .grasp_task_affordance import (
+    GRASP_TASK_AFFORDANCE_PREPARATION_TOOL_SPEC,
+    GRASP_TASK_AFFORDANCE_TOOL_SPEC,
+)
 from .operation_parameters import validate_process_parameters
 from .perception_binding import BindingRequest, PerceptionBindingAdapter, QueryInvoker
+from .process_features import PROCESS_FEATURE_PREPARATION_TOOL_SPEC, PROCESS_FEATURE_TOOL_SPEC
 from .subtask_executor import SubtaskOperation, SubtaskSpec
 
 
@@ -81,7 +86,13 @@ class SemanticPlanBuilder(Protocol):
 class QuerySemanticPlanBuilder:
     """Build a concrete, measured subtask graph through an injected Query port."""
 
-    required_tool_contracts = (("manipulation.execute_subtask", "action"),)
+    required_tool_contracts = (
+        ("manipulation.process_features", "query"),
+        ("manipulation.prepare_process_features", "query"),
+        ("manipulation.grasp_task_affordances", "query"),
+        ("manipulation.prepare_grasp_task_affordance", "query"),
+        ("manipulation.execute_subtask", "action"),
+    )
 
     def __init__(
         self,
@@ -146,12 +157,19 @@ class QuerySemanticPlanBuilder:
         if not callable(get_tool):
             return self._plan_digests("", [])[1]
         contracts = []
-        for tool_id in PerceptionBindingAdapter._QUERY_SPECS:
+        expected_specs = {
+            **PerceptionBindingAdapter._QUERY_SPECS,
+            **{spec["tool_id"]: spec for spec in (
+                PROCESS_FEATURE_TOOL_SPEC, PROCESS_FEATURE_PREPARATION_TOOL_SPEC,
+                GRASP_TASK_AFFORDANCE_TOOL_SPEC, GRASP_TASK_AFFORDANCE_PREPARATION_TOOL_SPEC,
+            )},
+        }
+        for tool_id in expected_specs:
             response = await get_tool(tool_id)
             payload = response.get("data") if isinstance(response, dict) else None
             if not isinstance(payload, dict):
                 raise SemanticTaskCreationError(f"{tool_id} ToolSpec is unavailable")
-            expected = PerceptionBindingAdapter._QUERY_SPECS[tool_id]
+            expected = expected_specs[tool_id]
             if (
                 payload.get("tool_id") != tool_id
                 or payload.get("semantics") != "query"

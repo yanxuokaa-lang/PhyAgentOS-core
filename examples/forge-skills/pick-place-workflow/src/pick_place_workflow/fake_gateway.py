@@ -33,6 +33,12 @@ from .grasp_proposal import (
     GraspProposalEndpoint,
     GraspProposalProvider,
 )
+from .grasp_task_affordance import (
+    GRASP_TASK_AFFORDANCE_PREPARATION_TOOL_SPEC,
+    GRASP_TASK_AFFORDANCE_TOOL_SPEC,
+    GraspTaskAffordancePreparationEndpoint,
+    GraspTaskAffordanceQueryEndpoint,
+)
 from .grounding import (
     BIND_TOOL_SPEC,
     STAGING_TOOL_SPEC,
@@ -70,6 +76,12 @@ from .object_place import (
 from .object_place import terminal_result as place_terminal_result
 from .object_place import (
     validate_arguments as validate_place_arguments,
+)
+from .process_features import (
+    PROCESS_FEATURE_PREPARATION_TOOL_SPEC,
+    PROCESS_FEATURE_TOOL_SPEC,
+    ProcessFeaturePreparationEndpoint,
+    ProcessFeatureQueryEndpoint,
 )
 from .understanding import (
     UNDERSTANDING_ENDPOINT_ID,
@@ -130,6 +142,53 @@ class _StaticCapabilityProvider:
         value["snapshot_digest"] = capability_snapshot_digest(value)
         return CapabilitySnapshot.model_validate(value)
 
+
+class _UnavailableProcessFeatureProvider:
+    """Fake Gateway provider that advertises the Query but never a usable feature."""
+
+    def propose(self, request):
+        return {
+            "candidate_set_ref": f"process-feature-set://unavailable/{request['frame_id']}",
+            **{key: request[key] for key in (
+                "observation_ref", "scene_revision", "frame_id", "calibration_ref"
+            )},
+            "candidates": [],
+        }
+
+    def validate_selection(self, request):
+        return {
+            "status": "unavailable",
+            "error": "fake Gateway does not qualify process geometry",
+            **{key: request[key] for key in (
+                "candidate_set_ref", "selected_feature_refs", "observation_ref",
+                "scene_revision", "frame_id", "calibration_ref",
+            )},
+        }
+
+
+class _UnavailableGraspTaskAffordanceProvider:
+    """Fake Gateway provider that exposes the contract but never qualifies a relation."""
+
+    def propose(self, request):
+        return {
+            "status": "unavailable",
+            "candidate_set_ref": "grasp-affordance-set://unavailable",
+            "grasp_candidate_set_ref": request.get("grasp_candidate_set_ref", "candidate-set://unavailable"),
+            "process_feature_candidate_set_ref": request.get("process_feature_candidate_set_ref", "process-feature-set://unavailable"),
+            **{key: request[key] for key in ("observation_ref", "scene_revision", "frame_id", "calibration_ref")},
+            "candidates": [],
+            "error": "fake Gateway does not qualify task affordances",
+        }
+
+    def validate_selection(self, request):
+        return {
+            "status": "unavailable",
+            "error": "fake Gateway does not qualify task affordances",
+            **{key: request[key] for key in (
+                "candidate_set_ref", "selected_combination_ref", "process_feature_candidate_set_ref",
+                "observation_ref", "scene_revision", "frame_id", "calibration_ref",
+            )},
+        }
 
 class _StaticTaskGoalProvider:
     def goal(self, _request: dict[str, Any]) -> dict[str, Any]:
@@ -384,6 +443,8 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
         capability_provider: Any | None = None,
         grounding_provider: Any | None = None,
         task_goal_provider: Any | None = None,
+        process_feature_provider: Any | None = None,
+        grasp_task_affordance_provider: Any | None = None,
         readiness_gate: ActionReadinessGate | None = None,
         defer_action_execution: bool = False,
         now: datetime | None = None,
@@ -391,6 +452,20 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
         self.endpoint = SceneObservationEndpoint(provider, now=now)
         self.grounding_provider = grounding_provider
         self.task_goal_provider = task_goal_provider or _StaticTaskGoalProvider()
+        self.process_feature_provider = process_feature_provider or _UnavailableProcessFeatureProvider()
+        self.process_feature_endpoint = (
+            ProcessFeatureQueryEndpoint(self.process_feature_provider)
+        )
+        self.process_feature_preparation_endpoint = (
+            ProcessFeaturePreparationEndpoint(self.process_feature_provider)
+        )
+        self.grasp_task_affordance_provider = grasp_task_affordance_provider or _UnavailableGraspTaskAffordanceProvider()
+        self.grasp_task_affordance_query_endpoint = GraspTaskAffordanceQueryEndpoint(
+            self.grasp_task_affordance_provider
+        )
+        self.grasp_task_affordance_preparation_endpoint = GraspTaskAffordancePreparationEndpoint(
+            self.grasp_task_affordance_provider
+        )
         self.understanding_endpoint = (
             SceneUnderstandingEndpoint(understanding_provider)
             if understanding_provider is not None
@@ -441,6 +516,10 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
                         STAGING_TOOL_SPEC,
                         TARGET_TOOL_SPEC,
                         TASK_GOAL_TOOL_SPEC,
+                        PROCESS_FEATURE_TOOL_SPEC,
+                        PROCESS_FEATURE_PREPARATION_TOOL_SPEC,
+                        GRASP_TASK_AFFORDANCE_TOOL_SPEC,
+                        GRASP_TASK_AFFORDANCE_PREPARATION_TOOL_SPEC,
                     ]
                 }
             )
@@ -463,6 +542,25 @@ class FakeGatewayTransport(httpx.AsyncBaseTransport):
                 return self._ok(getattr(self.grounding_provider, method)(json.loads(request.content)["arguments"]))
         if request.method == "GET" and path == f"/tools/{TASK_GOAL_TOOL_SPEC['tool_id']}":
             return self._ok(TASK_GOAL_TOOL_SPEC)
+        for spec, endpoint in (
+            (PROCESS_FEATURE_TOOL_SPEC, self.process_feature_endpoint),
+            (PROCESS_FEATURE_PREPARATION_TOOL_SPEC, self.process_feature_preparation_endpoint),
+            (GRASP_TASK_AFFORDANCE_TOOL_SPEC, self.grasp_task_affordance_query_endpoint),
+            (GRASP_TASK_AFFORDANCE_PREPARATION_TOOL_SPEC, self.grasp_task_affordance_preparation_endpoint),
+        ):
+            if request.method == "GET" and path == f"/tools/{spec['tool_id']}":
+                return self._ok(spec)
+            if request.method == "GET" and path == f"/tools/{spec['tool_id']}/context":
+                return self._ok({"ready": endpoint is not None,
+                                 "binding_error": None if endpoint is not None else "task affordance provider unavailable",
+                                 "motion_authorized": False})
+            if request.method == "POST" and path == f"/tools/{spec['endpoint_id']}/resolve:invoke":
+                arguments = json.loads(request.content).get("arguments")
+                result = endpoint.invoke(arguments) if endpoint is not None else {
+                    "status": "unavailable", "motion_authorized": False,
+                    "error": "process feature provider unavailable",
+                }
+                return self._ok(result)
         if request.method == "GET" and path == f"/tools/{TASK_GOAL_TOOL_SPEC['tool_id']}/context":
             return self._ok({"ready": True, "binding_error": None, "motion_authorized": False})
         if request.method == "POST" and path == f"/tools/{TASK_GOAL_TOOL_SPEC['endpoint_id']}/resolve:invoke":

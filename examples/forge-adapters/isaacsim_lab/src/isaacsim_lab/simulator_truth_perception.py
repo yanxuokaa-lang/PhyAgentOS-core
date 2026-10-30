@@ -22,14 +22,180 @@ def load_truth_manifest(path):
     for item in payload["objects"]:
         if not isinstance(item, dict):
             raise SimulatorTruthManifestError("simulator truth objects must be mappings")
-        for key in ("label", "category", "prim_path", "origin_world", "tip_world", "axis_world", "size_m"):
+        for key in ("label", "category", "prim_path"):
             if key not in item:
                 raise SimulatorTruthManifestError(f"simulator truth object is missing {key}")
         label = str(item["label"]).strip()
         if not label or label in objects:
             raise SimulatorTruthManifestError(f"simulator truth label is missing or duplicated: {label!r}")
-        objects[label] = deepcopy(item)
+        # Legacy authored functional coordinates are intentionally discarded.
+        objects[label] = {key: deepcopy(item[key]) for key in ("label", "category", "prim_path")}
     return {"schema": payload.get("schema", "labutopia-simulator-truth/v1"), "objects": objects}
+
+
+def process_feature_candidates(points, boundary_edges, category, *, tolerance_m=.004):
+    """Estimate operation affordance candidates from final composed mesh evidence."""
+    values = np.asarray(points, dtype=float)
+    if values.ndim != 2 or values.shape[1] != 3 or len(values) < 20 or not np.isfinite(values).all():
+        raise ValueError("process feature candidates require finite mesh points")
+    low, high = values.min(0), values.max(0)
+    size = high - low
+    if category in {"reagent_bottle", "mixing_vessel"}:
+        edges = np.asarray(boundary_edges, dtype=float)
+        if edges.ndim != 3 or edges.shape[1:] != (2, 3) or not np.isfinite(edges).all():
+            raise ValueError("opening features require final mesh boundary edges")
+        vertices = {}
+        graph = {}
+        vertex_resolution_m = min(tolerance_m * .01, 1e-5)
+        for edge in edges:
+            if np.linalg.norm(edge[1] - edge[0]) <= tolerance_m * .01:
+                continue
+            keys = [tuple(np.rint(point / vertex_resolution_m).astype(int)) for point in edge]
+            for key, point in zip(keys, edge):
+                vertices.setdefault(key, point)
+                graph.setdefault(key, [])
+            graph[keys[0]].append(keys[1])
+            graph[keys[1]].append(keys[0])
+        if not graph:
+            raise ValueError("opening boundary topology is open or non-manifold")
+        loops, invalid_topology, unseen = [], False, set(graph)
+        while unseen:
+            start = next(iter(unseen))
+            loop, stack = set(), [start]
+            while stack:
+                key = stack.pop()
+                if key in loop:
+                    continue
+                loop.add(key)
+                unseen.discard(key)
+                stack.extend(set(graph[key]) - loop)
+            if any(len(graph[key]) != 2 for key in loop):
+                invalid_topology = True
+                continue
+            if len(loop) >= 8:
+                loops.append(np.asarray([vertices[key] for key in loop]))
+        if not loops:
+            if invalid_topology:
+                raise ValueError("opening boundary topology is open or non-manifold")
+            raise ValueError("final mesh has no closed opening boundary")
+        top = max(float(loop[:, 2].mean()) for loop in loops)
+        top_loops = [loop for loop in loops if top - float(loop[:, 2].mean()) <= max(tolerance_m * 2, size[2] * .02)]
+        fits = []
+        for loop in top_loops:
+            centre = loop.mean(0)
+            centred_loop = loop - centre
+            _, singular, basis = np.linalg.svd(centred_loop, full_matrices=False)
+            if singular[1] <= tolerance_m:
+                continue
+            planar = centred_loop @ basis[:2].T
+            radius = np.linalg.norm(planar, axis=1)
+            median_radius = float(np.median(radius))
+            spread = float(np.std(radius))
+            if median_radius > tolerance_m and spread <= max(tolerance_m, median_radius * .12):
+                axis = basis[2]
+                if axis[2] < 0:
+                    axis = -axis
+                fits.append((median_radius, centre, spread, axis))
+        if not fits:
+            raise ValueError("top opening boundary is not a stable circular rim")
+        fits.sort(key=lambda item: item[0])
+        return [{"origin_world": ((low + high) / 2).tolist(), "tip_world": centre.tolist(),
+                 "axis_world": axis.tolist(), "size_m": size.tolist(),
+                 "feature_kind": "rim", "rim_radius_m": radius, "fit_rmse_m": spread,
+                 "candidate_index": index, "source": "final_composed_usd_mesh",
+                 "coverage": "closed_boundary_loop"}
+                for index, (radius, centre, spread, axis) in enumerate(fits)]
+    if category == "stir_tool":
+        centred = values - values.mean(0)
+        _, _, basis = np.linalg.svd(centred, full_matrices=False)
+        axis = basis[0] / np.linalg.norm(basis[0])
+        projection = centred @ axis
+        length = float(projection.max() - projection.min())
+        if length <= tolerance_m:
+            raise ValueError("rod axis is unresolved")
+        radial = centred - np.outer(projection, axis)
+        if float(np.sqrt(np.mean(np.sum(radial * radial, axis=1)))) > max(tolerance_m, length * .08):
+            raise ValueError("final mesh does not support a straight rod axis")
+        margin = max(tolerance_m, length * .01)
+        endpoints = [values[projection <= projection.min() + margin].mean(0),
+                     values[projection >= projection.max() - margin].mean(0)]
+        return [{"origin_world": endpoints[0].tolist(), "tip_world": endpoints[1].tolist(),
+                 "axis_world": axis.tolist(), "size_m": size.tolist(),
+                 "feature_kind": "rod_endpoint_pair", "feature_role": "endpoint_a",
+                 "source": "final_composed_usd_mesh", "coverage": "mesh_vertices"},
+                {"origin_world": endpoints[1].tolist(), "tip_world": endpoints[0].tolist(),
+                 "axis_world": (-axis).tolist(), "size_m": size.tolist(),
+                 "feature_kind": "rod_endpoint_pair", "feature_role": "endpoint_b",
+                 "source": "final_composed_usd_mesh", "coverage": "mesh_vertices"}]
+    raise ValueError(f"unsupported process feature category: {category}")
+
+
+def process_feature_candidates_by_component(points, boundary_components, category, *, tolerance_m=.004):
+    """Derive vessel candidates without merging coincident USD mesh topology."""
+    values = np.asarray(points, dtype=float)
+    components = list(boundary_components or ())
+    failures = []
+    if category in {"reagent_bottle", "mixing_vessel"}:
+        try:
+            return [_top_mesh_vertex_rim(values, tolerance_m=tolerance_m)]
+        except ValueError as exc:
+            failures.append(str(exc))
+    candidates = []
+    for component_index, edges in enumerate(components):
+        try:
+            features = process_feature_candidates(points, edges, category, tolerance_m=tolerance_m)
+        except (TypeError, ValueError) as exc:
+            failures.append(str(exc))
+            continue
+        for feature in features:
+            candidates.append({**feature, "mesh_component_index": component_index})
+    if candidates:
+        highest = max(float(item["tip_world"][2]) for item in candidates)
+        return [item for item in candidates if highest - float(item["tip_world"][2]) <= tolerance_m * 2]
+    if not components and category == "stir_tool":
+        return process_feature_candidates(values, [], category, tolerance_m=tolerance_m)
+    if failures:
+        raise ValueError("; ".join(dict.fromkeys(failures)))
+    raise ValueError("final mesh components have no opening boundary")
+
+
+def _top_mesh_vertex_rim(points, *, tolerance_m):
+    """Fit a fully covered top ring from final mesh vertices when topology is degenerate."""
+    if (points.ndim != 2 or points.shape[1] != 3 or len(points) < 20
+            or not np.isfinite(points).all()):
+        raise ValueError("top mesh ring requires finite mesh vertices")
+    low, high = points.min(0), points.max(0)
+    height = float(high[2] - low[2])
+    band = max(tolerance_m * .25, height * .005)
+    ring = points[points[:, 2] >= high[2] - band]
+    if len(ring) < 8:
+        raise ValueError("top mesh ring has insufficient vertex support")
+    xy = ring[:, :2]
+    system = np.column_stack((2 * xy, np.ones(len(xy))))
+    fitted, _, rank, _ = np.linalg.lstsq(system, np.sum(xy * xy, axis=1), rcond=None)
+    radius_squared = fitted[2] + fitted[:2] @ fitted[:2]
+    if rank != 3 or radius_squared <= tolerance_m * tolerance_m:
+        raise ValueError("top mesh ring circle is unresolved")
+    center_xy = fitted[:2]
+    radius = float(np.sqrt(radius_squared))
+    radial = np.linalg.norm(xy - center_xy, axis=1) - radius
+    residual = float(np.sqrt(np.mean(radial * radial)))
+    angles = np.sort(np.arctan2(xy[:, 1] - center_xy[1], xy[:, 0] - center_xy[0]))
+    max_gap = float(np.max(np.diff(np.r_[angles, angles[0] + 2 * np.pi])))
+    if residual > max(tolerance_m, radius * .12) or max_gap > np.pi / 2:
+        raise ValueError("top mesh vertices do not support a fully covered circular rim")
+    return {
+        "origin_world": ((low + high) / 2).tolist(),
+        "tip_world": [float(center_xy[0]), float(center_xy[1]), float(ring[:, 2].mean())],
+        "axis_world": [0.0, 0.0, 1.0],
+        "size_m": (high - low).tolist(),
+        "feature_kind": "rim",
+        "feature_role": "opening",
+        "rim_radius_m": radius,
+        "fit_rmse_m": residual,
+        "source": "final_composed_usd_mesh",
+        "coverage": "top_mesh_vertex_ring",
+    }
 
 
 def _finite_vector(value, size, field):
@@ -39,14 +205,12 @@ def _finite_vector(value, size, field):
     return result
 
 
-def object_point_cloud(calibration, object_spec, point_cloud):
-    """Select the local portion of the captured camera cloud near authored pose."""
+def object_point_cloud(calibration, point_cloud, world_bounds):
+    """Select same-capture points inside final composed USD world bounds."""
     points = np.asarray(point_cloud, dtype=float)
     if points.ndim == 3 and points.shape[-1] == 3:
-        image_points = points
         flat = points.reshape(-1, 3)
     elif points.ndim == 2 and points.shape[1] == 3:
-        image_points = None
         flat = points
     else:
         raise ValueError("simulator point cloud must have shape HxWx3 or Nx3")
@@ -54,21 +218,33 @@ def object_point_cloud(calibration, object_spec, point_cloud):
     if len(flat) < 3:
         raise ValueError("simulator point cloud has insufficient finite points")
     transform = world_from_camera(calibration)
-    world = _finite_vector(object_spec["origin_world"], 3, "origin_world")
-    camera = np.linalg.inv(transform)[:3, :3] @ world + np.linalg.inv(transform)[:3, 3]
-    if camera[2] <= 0:
-        raise ValueError(f"simulator truth object {object_spec['label']} is behind the camera")
-    intrinsics = np.asarray(calibration["intrinsics"], dtype=float)
-    pixel = intrinsics @ (camera / camera[2])
-    if image_points is not None:
-        height, width = image_points.shape[:2]
-        radius = int(object_spec.get("pixel_radius", 24))
-        x, y = np.rint(pixel[:2]).astype(int)
-        y0, y1 = max(0, y - radius), min(height, y + radius + 1)
-        x0, x1 = max(0, x - radius), min(width, x + radius + 1)
-        local = image_points[y0:y1, x0:x1].reshape(-1, 3)
-        local = local[np.isfinite(local).all(axis=1)]
-        if len(local) >= 3:
-            return local
-    distances = np.linalg.norm(flat - camera, axis=1)
-    return flat[np.argsort(distances)[: min(256, len(flat))]]
+    if not isinstance(world_bounds, dict):
+        raise SimulatorTruthManifestError("final composed USD world bounds are required")
+    minimum = _finite_vector(world_bounds.get("min_xyz_world_m"), 3, "min_xyz_world_m")
+    maximum = _finite_vector(world_bounds.get("max_xyz_world_m"), 3, "max_xyz_world_m")
+    if np.any(minimum >= maximum):
+        raise SimulatorTruthManifestError("world bounds must have positive extent")
+    rotation, translation = transform[:3, :3], transform[:3, 3]
+    world_points = flat @ rotation.T + translation
+    inside = np.all((world_points >= minimum) & (world_points <= maximum), axis=1)
+    return flat[inside]
+
+
+def world_bounds_in_frame(calibration, world_bounds):
+    """Project all world-AABB corners into the calibrated observation frame."""
+    minimum = _finite_vector(world_bounds.get("min_xyz_world_m"), 3, "min_xyz_world_m")
+    maximum = _finite_vector(world_bounds.get("max_xyz_world_m"), 3, "max_xyz_world_m")
+    if np.any(minimum >= maximum):
+        raise SimulatorTruthManifestError("world bounds must have positive extent")
+    corners = np.asarray([
+        [x, y, z]
+        for x in (minimum[0], maximum[0])
+        for y in (minimum[1], maximum[1])
+        for z in (minimum[2], maximum[2])
+    ])
+    world_from_cam = world_from_camera(calibration)
+    frame_from_world = np.linalg.inv(world_from_cam)
+    points = corners @ frame_from_world[:3, :3].T + frame_from_world[:3, 3]
+    if not np.isfinite(points).all():
+        raise SimulatorTruthManifestError("projected world bounds are not finite")
+    return points.min(axis=0), points.max(axis=0)

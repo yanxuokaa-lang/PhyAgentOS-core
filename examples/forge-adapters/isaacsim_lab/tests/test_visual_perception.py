@@ -15,6 +15,10 @@ from PIL import Image
 from robotwin20_adapter.geometry_recovery import GeometryRecoveryResult
 from robotwin20_adapter.grasp_proposal import GraspNetProposalProvider
 
+from isaacsim_lab.simulator_truth_perception import (
+    process_feature_candidates,
+    process_feature_candidates_by_component,
+)
 from isaacsim_lab.visual_geometry import candidate_world_pose, pixel_to_world, process_features
 from isaacsim_lab.visual_perception import (
     LabArtifactStore,
@@ -55,6 +59,120 @@ def test_process_features_require_explicit_visible_support():
     features = process_features(rod, 'stir_tool', support=support)
     assert features['tip_world'] == [.2, 0, 0]
     assert features['axis_world'] == [1, 0, 0]
+
+
+def test_simulator_truth_geometry_derives_rim_and_preserves_rod_endpoint_ambiguity():
+    theta = np.linspace(0, 2*np.pi, 128, endpoint=False)
+    ring = np.column_stack((.04*np.cos(theta), .04*np.sin(theta), np.full(len(theta), .2)))
+    side = np.column_stack((.04*np.cos(theta), .04*np.sin(theta), np.linspace(0, .2, len(theta))))
+    shell = np.vstack((ring, side))
+    edges = np.stack((ring, np.roll(ring, -1, axis=0)), axis=1)
+    vessel = process_feature_candidates(shell, edges, 'mixing_vessel')
+    assert vessel[0]['feature_kind'] == 'rim'
+    assert vessel[0]['tip_world'] == pytest.approx([0., 0., .2], abs=1e-4)
+    assert vessel[0]['source'] == 'final_composed_usd_mesh'
+
+    z = np.linspace(0., .3, 100)
+    rod = np.column_stack((np.zeros_like(z), np.zeros_like(z), z))
+    candidates = process_feature_candidates(rod, [], 'stir_tool')
+    assert len(candidates) == 2
+    assert {item['feature_role'] for item in candidates} == {'endpoint_a', 'endpoint_b'}
+    assert candidates[0]['origin_world'] == pytest.approx(candidates[1]['tip_world'])
+    assert candidates[1]['origin_world'] == pytest.approx(candidates[0]['tip_world'])
+
+
+def test_truth_manifest_discards_legacy_functional_coordinates(tmp_path):
+    from isaacsim_lab.simulator_truth_perception import load_truth_manifest
+
+    path = tmp_path / 'truth.json'
+    path.write_text(json.dumps({'objects': [{
+        'label': 'ROD', 'category': 'stir_tool', 'prim_path': '/World/Rod',
+        'origin_world': [90, 90, 90], 'tip_world': [-90, -90, -90],
+        'axis_world': [1, 0, 0], 'size_m': [99, 99, 99],
+    }]}), encoding='utf-8')
+    item = load_truth_manifest(path)['objects']['ROD']
+    assert item == {'label': 'ROD', 'category': 'stir_tool', 'prim_path': '/World/Rod'}
+
+
+def test_simulator_truth_geometry_rejects_open_or_nonmanifold_rim_boundary():
+    theta = np.linspace(0, 2*np.pi, 64, endpoint=False)
+    ring = np.column_stack((.03*np.cos(theta), .03*np.sin(theta), np.full(len(theta), .2)))
+    side = np.column_stack((.03*np.cos(theta), .03*np.sin(theta), np.linspace(0, .2, len(theta))))
+    shell = np.vstack((ring, side))
+    edges = np.stack((ring[:-1], ring[1:]), axis=1)
+    with pytest.raises(ValueError, match='open or non-manifold'):
+        process_feature_candidates(shell, edges, 'reagent_bottle')
+
+
+def test_simulator_truth_geometry_keeps_valid_rim_when_unrelated_boundary_is_open():
+    theta = np.linspace(0, 2*np.pi, 32, endpoint=False)
+    ring = np.column_stack((.03*np.cos(theta), .03*np.sin(theta), np.full(len(theta), .2)))
+    branch = np.asarray([[.2, .2, .1], [.21, .2, .1], [.22, .2, .1], [.21, .21, .1]])
+    ring_edges = np.stack((ring, np.roll(ring, -1, axis=0)), axis=1)
+    branch_edges = np.asarray([[branch[0], branch[index]] for index in (1, 2, 3)])
+    features = process_feature_candidates(
+        np.vstack((ring, branch)), np.concatenate((ring_edges, branch_edges)), 'mixing_vessel'
+    )
+    assert len(features) == 1
+    assert features[0]['feature_kind'] == 'rim'
+    assert features[0]['tip_world'] == pytest.approx([0., 0., .2], abs=1e-4)
+
+
+def test_simulator_truth_geometry_rejects_duplicate_nonmanifold_boundary_edges():
+    theta = np.linspace(0, 2*np.pi, 32, endpoint=False)
+    ring = np.column_stack((.03*np.cos(theta), .03*np.sin(theta), np.full(len(theta), .2)))
+    edges = np.stack((ring, np.roll(ring, -1, axis=0)), axis=1)
+    with pytest.raises(ValueError, match='open or non-manifold'):
+        process_feature_candidates(ring, np.concatenate((edges, edges)), 'mixing_vessel')
+
+
+def test_simulator_truth_geometry_keeps_coincident_mesh_component_candidates_separate():
+    theta = np.linspace(0, 2*np.pi, 32, endpoint=False)
+    ring = np.column_stack((.03*np.cos(theta), .03*np.sin(theta), np.full(len(theta), .2)))
+    edges = np.stack((ring, np.roll(ring, -1, axis=0)), axis=1)
+    unsupported_top = np.column_stack((np.linspace(-.1, .1, 24), np.linspace(.1, -.1, 24), np.full(24, .3)))
+    candidates = process_feature_candidates_by_component(
+        np.vstack((ring, unsupported_top)), [edges, edges.copy()], 'mixing_vessel'
+    )
+    assert len(candidates) == 2
+    assert [item['mesh_component_index'] for item in candidates] == [0, 1]
+    assert all(item['feature_kind'] == 'rim' for item in candidates)
+
+
+def test_simulator_truth_geometry_ignores_degenerate_boundary_edges():
+    theta = np.linspace(0, 2*np.pi, 32, endpoint=False)
+    ring = np.column_stack((.03*np.cos(theta), .03*np.sin(theta), np.full(len(theta), .2)))
+    degenerate = np.repeat(ring[:1, None, :], 2, axis=1)
+    with pytest.raises(ValueError, match='open or non-manifold'):
+        process_feature_candidates(ring, degenerate, 'mixing_vessel')
+
+
+def test_simulator_truth_geometry_uses_fully_covered_top_mesh_ring_when_edges_degenerate():
+    theta = np.linspace(0, 2*np.pi, 96, endpoint=False)
+    rim = np.column_stack((.03*np.cos(theta)-.08, .03*np.sin(theta), np.full(len(theta), .8)))
+    wall = np.column_stack((.03*np.cos(theta)-.08, .03*np.sin(theta), np.linspace(.72, .8, len(theta))))
+    points = np.vstack((rim, wall))
+    degenerate_edges = np.repeat(rim[:1, None, :], 2, axis=1)
+
+    candidates = process_feature_candidates_by_component(
+        points, [degenerate_edges], 'mixing_vessel'
+    )
+
+    assert len(candidates) == 1
+    assert candidates[0]['feature_kind'] == 'rim'
+    assert candidates[0]['tip_world'] == pytest.approx([-.08, 0., .8], abs=1e-5)
+    assert candidates[0]['rim_radius_m'] == pytest.approx(.03, abs=1e-5)
+    assert candidates[0]['coverage'] == 'top_mesh_vertex_ring'
+
+
+def test_simulator_truth_geometry_does_not_fit_an_incomplete_top_mesh_arc():
+    theta = np.linspace(0, np.pi / 2, 24)
+    rim = np.column_stack((.03*np.cos(theta), .03*np.sin(theta), np.full(len(theta), .8)))
+    wall = np.column_stack((.03*np.cos(theta), .03*np.sin(theta), np.linspace(.72, .8, len(theta))))
+    with pytest.raises(ValueError, match='fully covered circular rim'):
+        process_feature_candidates_by_component(
+            np.vstack((rim, wall)), [], 'mixing_vessel'
+        )
 
 
 def fixture(tmp_path):
@@ -331,12 +449,13 @@ def test_simulator_truth_injection_skips_model_workers_and_preserves_capture_lin
     cloud[..., 0] = np.linspace(-.1, .1, 16)[None, :]
     cloud[..., 1] = np.linspace(-.1, .1, 16)[:, None]
     cloud_ref = store.write('point_cloud', cloud)
+    state_ref = store.write('state', _truth_state())
     calibration_ref = store.write('calibration', {'scene_revision': 'scene', 'frame_id': 'front',
         'intrinsics': [[100., 0., 8.], [0., 100., 8.], [0., 0., 1.]],
         'camera_pose_world': {'position_m': [0, 0, 0], 'orientation_wxyz': [1, 0, 0, 0]}})
     request = {'observation_ref': 'observation://scene/front', 'scene_revision': 'scene', 'frame_id': 'front',
                'calibration_ref': calibration_ref, 'freshness_ms': 0, 'max_age_ms': 1000,
-               'artifacts': [rgb_ref, depth_ref, cloud_ref]}
+               'artifacts': [rgb_ref, depth_ref, cloud_ref, state_ref]}
     manifest = {'objects': {
         'R01': {'label': 'R01', 'category': 'reagent_bottle', 'prim_path': '/World/R01',
                 'origin_world': [-.04, 0., 1.], 'tip_world': [-.04, 0., 1.1],
@@ -352,13 +471,118 @@ def test_simulator_truth_injection_skips_model_workers_and_preserves_capture_lin
         provider_from_tcp=CONVENTION, truth_manifest=manifest)
     result = visual.understand(request)
     assert {item['label'] for item in result['entities']} == {'R01', 'BEAKER'}
+    assert len(result['spatial_envelopes']) == 2
+    assert all(item['provenance'] == [state_ref] for item in result['spatial_envelopes'])
     assert not segmentation.segment.called
     assert not geometry.recover.called
     for entity in result['entities']:
         record = visual.observations[calibration_ref][entity['entity_ref']]
         assert record['geometry_qualification'] == 'simulator_ground_truth'
+        assert record['features'] is None
         evidence = json.loads(store.path(record['geometry_ref']).read_text())
         assert evidence['source_refs'][0].startswith('artifact://labutopia/simulator-truth/')
+        assert evidence['process_features'] is None
+
+
+def test_simulator_truth_extracts_private_mesh_candidates_without_manifest_coordinates(tmp_path):
+    store = LabArtifactStore(tmp_path)
+    rgb_ref = 'artifact://labutopia/rgb/truth-mesh.png'
+    store.path(rgb_ref).parent.mkdir(parents=True)
+    Image.new('RGB', (16, 16)).save(store.path(rgb_ref))
+    depth_ref = store.write('depth', np.ones((16, 16), dtype=np.float32))
+    cloud = np.zeros((16, 16, 3), dtype=np.float32)
+    cloud[..., 0] = np.linspace(.03, .09, 16)[None, :]
+    cloud[..., 1] = np.linspace(-.08, .08, 16)[:, None]
+    cloud[..., 2] = 1.
+    cloud_ref = store.write('point_cloud', cloud)
+    theta = np.linspace(0, 2*np.pi, 64, endpoint=False)
+    ring = np.column_stack((.04*np.cos(theta), .04*np.sin(theta), np.full(len(theta), 1.1)))
+    side = np.column_stack((.04*np.cos(theta), .04*np.sin(theta), np.linspace(1., 1.1, len(theta))))
+    shell = np.vstack((ring, side))
+    edges = np.stack((ring, np.roll(ring, -1, axis=0)), axis=1).tolist()
+    state = _truth_state(schema='labutopia-simulator-world-geometry/v1',
+                         source='final_composed_usd_world_geometry')
+    state['objects'][0].update({'mesh_points_world_m': shell.tolist(), 'boundary_edges_world_m': edges})
+    state_ref = store.write('state', state)
+    calibration_ref = store.write('calibration', {'scene_revision': 'scene', 'frame_id': 'front',
+        'intrinsics': [[100., 0., 8.], [0., 100., 8.], [0., 0., 1.]],
+        'camera_pose_world': {'position_m': [0, 0, 0], 'orientation_wxyz': [1, 0, 0, 0]}})
+    request = {'observation_ref': 'observation://scene/front', 'scene_revision': 'scene', 'frame_id': 'front',
+               'calibration_ref': calibration_ref, 'freshness_ms': 0, 'max_age_ms': 1000,
+               'artifacts': [rgb_ref, depth_ref, cloud_ref, state_ref]}
+    manifest = {'objects': {
+        'R01': {'label': 'R01', 'category': 'reagent_bottle', 'prim_path': '/World/R01'},
+        'BEAKER': {'label': 'BEAKER', 'category': 'mixing_vessel', 'prim_path': '/World/Beaker'},
+    }}
+    state['objects'][1].update({'mesh_points_world_m': shell.tolist(), 'boundary_edges_world_m': edges})
+    state_ref = store.write('state', state)
+    request['artifacts'][-1] = state_ref
+    visual = LabVisualPerception(Mock(), LocalFilesystemArtifactResolver({'labutopia': tmp_path}), Mock(),
+        segmentation=Mock(), geometry=Mock(), store=store, grasps=Mock(),
+        provider_from_tcp=CONVENTION, truth_manifest=manifest)
+    visual.understand(request)
+    beaker = visual.observations[calibration_ref]['entity://simulator-truth-BEAKER']
+    assert len(beaker['process_feature_candidates']) == 1
+    assert beaker['process_feature_candidates'][0]['feature_kind'] == 'rim'
+    assert beaker['features'] is None
+    evidence = json.loads(store.path(beaker['geometry_ref']).read_text())
+    assert evidence['process_features'] is None
+    assert evidence['process_feature_candidates'][0]['source'] == 'final_composed_usd_mesh'
+
+
+def test_simulator_truth_bounds_do_not_qualify_process_landmarks_for_preparation(tmp_path):
+    store = LabArtifactStore(tmp_path)
+    rgb_ref = 'artifact://labutopia/rgb/truth-process.png'
+    store.path(rgb_ref).parent.mkdir(parents=True)
+    Image.new('RGB', (16, 16)).save(store.path(rgb_ref))
+    depth_ref = store.write('depth', np.ones((16, 16), dtype=np.float32))
+    cloud = np.zeros((16, 16, 3), dtype=np.float32)
+    cloud[..., 0] = np.linspace(-.1, .1, 16)[None, :]
+    cloud[..., 1] = np.linspace(-.1, .1, 16)[:, None]
+    cloud[..., 2] = 1.
+    cloud_ref = store.write('point_cloud', cloud)
+    state_ref = store.write('state', _truth_state())
+    calibration_ref = store.write('calibration', {
+        'scene_revision': 'scene', 'frame_id': 'front',
+        'intrinsics': [[100., 0., 8.], [0., 100., 8.], [0., 0., 1.]],
+        'camera_pose_world': {'position_m': [0, 0, 0], 'orientation_wxyz': [1, 0, 0, 0]},
+    })
+    request = {
+        'observation_ref': 'observation://scene/front', 'scene_revision': 'scene',
+        'frame_id': 'front', 'calibration_ref': calibration_ref, 'freshness_ms': 0,
+        'max_age_ms': 1000, 'artifacts': [rgb_ref, depth_ref, cloud_ref, state_ref],
+    }
+    manifest = {'objects': {
+        'R01': {'label': 'R01', 'category': 'reagent_bottle', 'prim_path': '/World/R01',
+                'origin_world': [90., 90., 90.], 'tip_world': [91., 91., 91.],
+                'axis_world': [0., 1., 0.], 'size_m': [9., 9., 9.]},
+        'BEAKER': {'label': 'BEAKER', 'category': 'mixing_vessel', 'prim_path': '/World/Beaker',
+                   'origin_world': [-90., -90., -90.], 'tip_world': [-91., -91., -91.],
+                   'axis_world': [1., 0., 0.], 'size_m': [8., 8., 8.]},
+    }}
+    engine = Mock()
+    visual = LabVisualPerception(
+        engine, LocalFilesystemArtifactResolver({'labutopia': tmp_path}), Mock(),
+        segmentation=Mock(), geometry=Mock(), store=store, grasps=Mock(),
+        provider_from_tcp=CONVENTION, truth_manifest=manifest,
+    )
+    result = visual.understand(request)
+    source = next(entity for entity in result['entities'] if entity['label'] == 'R01')
+    destination = next(entity for entity in result['entities'] if entity['label'] == 'BEAKER')
+    visual.grasps.candidate = Mock(return_value={
+        'entity_ref': source['entity_ref'],
+        'grasp_frame': {'frame_id': 'front', 'position_m': [0, 0, 1], 'orientation_xyzw': [0, 0, 0, 1]},
+        'approach_direction': {'vector': [1, 0, 0]},
+    })
+    binding = {**request, 'entity_ref': source['entity_ref'],
+               'destination_ref': destination['entity_ref'].replace('entity://', 'destination://')}
+
+    with pytest.raises(ValueError, match='lack observed process features'):
+        visual.resolve(binding, {})
+    with pytest.raises(ValueError, match='current source and destination feature evidence'):
+        visual.refresh_process(binding, {}, observation_model={'geometry_ref': 'artifact://geometry'},
+                               phase_route={'body_from_observed': np.eye(4).tolist()})
+    engine.bind_observed_entities.assert_not_called()
 
 
 def test_simulator_truth_snapshot_passes_public_understanding_endpoint(tmp_path):
@@ -372,6 +596,7 @@ def test_simulator_truth_snapshot_passes_public_understanding_endpoint(tmp_path)
     cloud[..., 0] = np.linspace(-.1, .1, 16)[None, :]
     cloud[..., 1] = np.linspace(-.1, .1, 16)[:, None]
     cloud_ref = store.write('point_cloud', cloud)
+    state_ref = store.write('state', _truth_state())
     calibration_ref = store.write('calibration', {
         'scene_revision': 'scene', 'frame_id': 'front',
         'intrinsics': [[100., 0., 8.], [0., 100., 8.], [0., 0., 1.]],
@@ -380,7 +605,7 @@ def test_simulator_truth_snapshot_passes_public_understanding_endpoint(tmp_path)
     request = {
         'observation_ref': 'observation://scene/front', 'scene_revision': 'scene',
         'frame_id': 'front', 'calibration_ref': calibration_ref, 'freshness_ms': 0,
-        'max_age_ms': 1000, 'artifacts': [rgb_ref, depth_ref, cloud_ref],
+        'max_age_ms': 1000, 'artifacts': [rgb_ref, depth_ref, cloud_ref, state_ref],
     }
     manifest = {'objects': {
         'R01': {'label': 'R01', 'category': 'reagent_bottle', 'prim_path': '/World/R01',
@@ -402,6 +627,8 @@ def test_simulator_truth_snapshot_passes_public_understanding_endpoint(tmp_path)
     assert response['status'] == 'available', json.dumps(response, ensure_ascii=False)
     assert {entity['label'] for entity in response['entities']} == {'R01', 'BEAKER'}
     assert all(entity['provenance'] == [depth_ref, cloud_ref] for entity in response['entities'])
+    assert len(response['spatial_envelopes']) == 2
+    assert all(envelope['provenance'] == [state_ref] for envelope in response['spatial_envelopes'])
     point_clouds = [item for item in response['derived_artifacts'] if item['kind'] == 'object_point_cloud']
     assert len(point_clouds) == 2
     for artifact in point_clouds:
@@ -410,3 +637,85 @@ def test_simulator_truth_snapshot_passes_public_understanding_endpoint(tmp_path)
             'unit', 'min_xyz_m', 'max_xyz_m', 'confidence',
         }
         assert artifact['provenance'] == [depth_ref, cloud_ref]
+
+    partial_state = _truth_state()
+    partial_state['objects'] = [item for item in partial_state['objects'] if item['label'] != 'R01']
+    partial_state_ref = store.write('state', partial_state)
+    partial_calibration_ref = store.write('calibration', {
+        'scene_revision': 'scene', 'frame_id': 'front-partial',
+        'intrinsics': [[100., 0., 8.], [0., 100., 8.], [0., 0., 1.]],
+        'camera_pose_world': {'position_m': [0, 0, 0], 'orientation_wxyz': [1, 0, 0, 0]},
+    })
+    partial_request = {**request, 'frame_id': 'front-partial',
+                       'observation_ref': 'observation://scene/front-partial',
+                       'calibration_ref': partial_calibration_ref,
+                       'artifacts': [rgb_ref, depth_ref, cloud_ref, partial_state_ref]}
+    partial_response = SceneUnderstandingEndpoint(visual).invoke(partial_request)
+    assert partial_response['status'] == 'available', json.dumps(partial_response, ensure_ascii=False)
+    assert {entity['label'] for entity in partial_response['entities']} == {'R01', 'BEAKER'}
+    assert [envelope['entity_ref'] for envelope in partial_response['spatial_envelopes']] == [
+        'entity://simulator-truth-BEAKER'
+    ]
+    assert partial_response['ambiguities'][0]['code'] == 'simulator_truth_geometry_unavailable'
+    assert partial_response['ambiguities'][0]['entity_refs'] == ['entity://simulator-truth-R01']
+
+
+def _truth_state(*, schema='labutopia-simulator-world-bounds/v1',
+                 source='final_composed_usd_world_bounds'):
+    return {
+        'schema': schema,
+        'scene_revision': 'scene', 'unit': 'm',
+        'source': source,
+        'objects': [
+            {'label': 'R01', 'category': 'reagent_bottle', 'prim_path': '/World/R01',
+             'min_xyz_world_m': [-.1, -.1, .9], 'max_xyz_world_m': [-.02, .1, 1.1]},
+            {'label': 'BEAKER', 'category': 'mixing_vessel', 'prim_path': '/World/Beaker',
+             'min_xyz_world_m': [.02, -.1, .9], 'max_xyz_world_m': [.1, .1, 1.1]},
+        ],
+    }
+
+
+def test_process_feature_selection_rejects_stale_or_cross_entity_refs_without_qualifying_geometry():
+    visual = object.__new__(LabVisualPerception)
+    identity = {
+        'observation_ref': 'observation://scene/front', 'scene_revision': 'scene',
+        'frame_id': 'front', 'calibration_ref': 'artifact://calibration/front',
+    }
+    visual.observations = {identity['calibration_ref']: {
+        'entity://bottle': {**identity, 'category': 'reagent_bottle',
+                            'process_feature_candidates': [{'feature_kind': 'rim'}, {'feature_kind': 'rim'}]},
+        'entity://beaker': {**identity, 'category': 'mixing_vessel',
+                            'process_feature_candidates': [{'feature_kind': 'rim'}]},
+    }}
+    visual.process_feature_sets = {
+        'process-feature-set://current': {
+            **identity, 'entity_refs': ('entity://bottle', 'entity://beaker'),
+            'candidates': {
+                'process-feature://bottle-rim-a': ('entity://bottle', 0, {'feature_kind': 'rim'}),
+                'process-feature://bottle-rim-b': ('entity://bottle', 1, {'feature_kind': 'rim'}),
+                'process-feature://beaker-rim': ('entity://beaker', 0, {'feature_kind': 'rim'}),
+            },
+        },
+    }
+    request = {
+        **identity, 'entity_refs': ['entity://bottle', 'entity://beaker'],
+        'candidate_set_ref': 'process-feature-set://current',
+        'selected_feature_refs': [
+            'process-feature://bottle-rim-a',
+            'process-feature://beaker-rim',
+        ],
+    }
+    result = visual.validate_selection(request)
+    assert result['status'] == 'unavailable'
+    assert 'not qualified' in result['error']
+
+    stale = visual.validate_selection({**request, 'selected_feature_refs': [
+        'process-feature://fabricated', request['selected_feature_refs'][1],
+    ]})
+    assert stale['status'] == 'stale'
+
+    ambiguous = visual.validate_selection({**request, 'selected_feature_refs': [
+        'process-feature://bottle-rim-a',
+        'process-feature://bottle-rim-b',
+    ]})
+    assert ambiguous['status'] == 'ambiguous'

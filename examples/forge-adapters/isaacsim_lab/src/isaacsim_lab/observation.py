@@ -36,11 +36,11 @@ class FilesystemObservationArtifactWriter:
     def write(
         self, sensor_ref: str, kind: str, value: Any, *, captured_at: datetime
     ) -> Mapping[str, str]:
-        if not _nonempty_text(sensor_ref) or kind not in {*_MODALITIES, "calibration"}:
+        if not _nonempty_text(sensor_ref) or kind not in {*_MODALITIES, "calibration", "state"}:
             raise ValueError("sensor_ref or artifact kind is invalid")
         if captured_at.tzinfo is None or captured_at.utcoffset() is None:
             raise ValueError("artifact capture time must be timezone-aware")
-        if kind == "calibration":
+        if kind in {"calibration", "state"}:
             payload = json.dumps(
                 value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False
             ).encode("utf-8")
@@ -154,12 +154,12 @@ _MODALITIES = {
 
 
 class IsaacCameraObservationSource:
-    """Capture registered Isaac cameras without deriving scene truth from USD.
+    """Capture registered Isaac cameras and optional Adapter-owned state.
 
     The host owns the live camera objects, their measured frame/calibration and
-    scene revision, and durable artifact writing. This class only reads enabled
-    camera modalities and adapts their outputs to the PAOS observation source
-    contract. It can be reused by any Isaac task that exposes these camera APIs.
+    scene revision, and durable artifact writing. Optional supplemental evidence
+    is supplied by the owning Adapter and shares the capture's scene revision.
+    Camera modalities remain reusable across Isaac tasks.
     """
 
     def __init__(
@@ -169,6 +169,7 @@ class IsaacCameraObservationSource:
         artifact_writer: ObservationArtifactWriter,
         *,
         modalities: tuple[str, ...] = ("rgb",),
+        supplemental_artifacts: Callable[[str], Mapping[str, Any]] | None = None,
     ) -> None:
         if not callable(metadata):
             raise TypeError("metadata must resolve live sensor metadata by sensor_ref")
@@ -180,6 +181,9 @@ class IsaacCameraObservationSource:
         self._metadata = metadata
         self._artifact_writer = artifact_writer
         self._modalities = tuple(dict.fromkeys(modalities))
+        if supplemental_artifacts is not None and not callable(supplemental_artifacts):
+            raise TypeError("supplemental_artifacts must be callable")
+        self._supplemental_artifacts = supplemental_artifacts
 
     def capture(self, request: Mapping[str, Any]) -> Mapping[str, Any] | None:
         sensor_ref = request.get("sensor_ref")
@@ -242,6 +246,12 @@ class IsaacCameraObservationSource:
             if not _has_data(value):
                 return None
             payloads.append((kind, deepcopy(value)))
+
+        if self._supplemental_artifacts is not None:
+            supplemental = self._supplemental_artifacts(sensor_ref)
+            if not isinstance(supplemental, Mapping):
+                return None
+            payloads.extend((kind, deepcopy(value)) for kind, value in supplemental.items())
 
         frame_after = _camera_render_metadata(frame_reader) if supports_frame_metadata else None
         if supports_frame_metadata and (frame_after is None or frame_after != frame_before):

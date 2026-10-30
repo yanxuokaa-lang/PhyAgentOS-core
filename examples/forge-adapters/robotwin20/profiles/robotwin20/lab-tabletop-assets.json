@@ -1,0 +1,5 @@
+{
+  "reagent_labels": ["A", "B", "C", "D", "E", "F", "G", "H"],
+  "blocked_label": "A",
+  "font_path": "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+}

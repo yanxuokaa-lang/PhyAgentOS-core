@@ -255,6 +255,14 @@ def coordinator_context(**overrides):
 
 def action_arguments(spec):
     value = spec.model_dump(mode="json", exclude_none=True)
+    if spec.operation in {"pour", "stir"}:
+        value["process_feature_refs"] = [
+            f"process-feature://{spec.binding.scene_revision}/{spec.binding.frame_id}/source/0",
+            f"process-feature://{spec.binding.scene_revision}/{spec.binding.frame_id}/destination/0",
+        ]
+        value["process_feature_candidate_set_ref"] = (
+            f"process-feature-set://{spec.binding.scene_revision}/{spec.binding.frame_id}"
+        )
     value["intent"] = coordinator_context()["intent"]
     return value
 
@@ -533,7 +541,7 @@ def test_subtask_admission_without_coordinator_resolver_fails_closed():
     endpoint = SubtaskActionEndpoint(runtime)
     spec = SubtaskSpec(subtask_id="pour-a", operation="pour", binding=binding(), parameters=pour_parameters())
     with pytest.raises(ValueError, match="Coordinator context resolver"):
-        endpoint.admit_for_caller(spec.model_dump(mode="json"), caller_id="paos:task-1:revision-1:record-1")
+        endpoint.admit_for_caller(action_arguments(spec), caller_id="paos:task-1:revision-1:record-1")
 
 
 def test_runtime_driver_fails_closed_when_scene_revision_changes_without_refresh():

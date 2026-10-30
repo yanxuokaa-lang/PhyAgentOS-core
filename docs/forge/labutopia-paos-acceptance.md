@@ -55,6 +55,79 @@ geometry, held-object refresh and rack withdrawal/return still need measured
 validation. Do not reuse authored `lab:grasp_contact_target_world_m`, old IK
 reports or benchmark fixed-pose primitives as a fallback.
 
+### Simulator-truth binding repair (2026-10-29)
+
+The explicit `simulator_truth` mode now captures final composed USD world bounds
+inside a same-observation `state` artifact. `scene.understand` projects those
+world bounds into the calibrated camera frame for spatial envelopes and selects
+actual same-capture point-cloud samples inside the world bounds. The envelope
+provenance names the state artifact; point-cloud provenance remains depth and
+point cloud. Missing bounds produce an entity-scoped ambiguity and no envelope.
+This is an explicitly labeled simulator-ground-truth experiment, not sensor-
+reconstructed geometry and not a generic PAOS contract change.
+
+No-motion runtime probe on 2026-10-29: `out/labutopia-truth-geometry-probe-20261029/`
+returned `scene.observe=available`, `scene.understand=available` for all ten
+manifest labels with ten spatial envelopes, and GraspNet returned candidates.
+The measured final USD bounds differ materially from stale BEAKER/GLASS_ROD
+manifest coordinates. This establishes Query-level geometry/binding inputs only;
+it does not qualify grasp contact, bottle mouth, beaker interior, rod working
+end, preparation, or motion. The Provider therefore leaves `process_features`
+unset in simulator-truth records: an AABB is sufficient for binding and grasp
+candidate selection, but cannot prove a bottle mouth, beaker rim/interior, or
+rod working end. `resolve()` and held refresh consequently fail closed before
+execution until those landmarks are derived from final composed geometry or
+validated by an independent observation. The Agent-directed mixture remains
+unaccepted.
+
+The follow-up implementation records final composed mesh vertices and boundary
+edges in the same private state artifact and derives private process-affordance
+candidates. Each closed circular boundary remains a distinct rim candidate;
+the Provider does not infer a vessel interior from an AABB. A rod yields two
+endpoint-role candidates, not a guessed working end. The current PAOS binding does not yet
+carry a planner-selected process-feature reference, so these candidates do not
+qualify preparation: `resolve()` and held refresh remain fail-closed. The
+ordinary grasp path remains point-cloud/GraspNet based. This is Provider-level
+candidate generation only, not LabUtopia mesh acceptance or motion evidence;
+the no-motion Isaac probe below confirms capture traversal but leaves rim,
+interior, rod-end qualification, and planning-to-preparation selection
+outstanding before process actions.
+
+### Process-feature geometry replay (2026-10-29)
+
+The following no-motion observation used the same Isaac Adapter and LabUtopia
+profile but did not create a PAOS task or invoke an Action:
+`out/lab-process-geometry-no-motion-20261029-r2/`. The private final-USD state
+contains R01 (1214 mesh vertices, 244 boundary edges split into 4
+vertex-topology components), BEAKER (1698 vertices, 6 degenerate boundary
+edges), and GLASS_ROD (66 vertices, no boundary edges). Component-preserving
+capture plus a conservative highest-ring fit produces one R01 rim candidate
+and one BEAKER rim candidate. The measured candidate centers are approximately
+`[-0.27001, -0.56000, 0.80947] m` and `[-0.07854, 0.00000, 0.80147] m`,
+respectively. These are geometry estimates from the final USD mesh, not
+configured coordinates.
+
+This does not yet qualify either pour or stir. R01's rim is not a separately
+identified pouring lip/direction; BEAKER's rim does not establish its interior
+volume/safe insertion region; GLASS_ROD's symmetric ends remain ambiguous.
+The subsequent `manipulation.process_features` Query, AgentLoop selection,
+Preparation, and Action path have not been exercised against this new capture.
+No robot/object motion occurred, and no pouring/stirring claim is made.
+
+### Final composed mesh traversal probe (2026-10-29)
+
+The Adapter now traverses USD instance proxies when capturing final composed
+mesh data. A fresh `agent_host` run without `--execute` captured and understood
+the same `tabletop_third_person` observation. The state artifact contained 1214
+R01 mesh vertices/244 boundary edges, 1698 BEAKER vertices/6 boundary edges,
+and 66 GLASS_ROD vertices/0 boundary edges. The Provider emitted two rod-end
+candidates, while R01 and BEAKER opening candidates remained unavailable because
+their captured boundary topology did not establish a closed near-circular rim.
+The run created no tasks, had no controller outcomes, and admitted no Action or
+Session. This validates the Adapter traversal repair only; it does not qualify
+pour/stir geometry or authorize motion. Artifacts are preserved in
+`out/lab-geometry-no-motion-20261029-r1/`.
+
 Reproduce the current no-motion probe from the PAOS repository:
 
 ```bash

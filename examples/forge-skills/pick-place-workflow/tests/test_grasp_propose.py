@@ -178,6 +178,10 @@ async def test_grasp_propose_is_discovered_with_the_perception_queries():
 
         "manipulation.target",
         "task.goal",
+        "manipulation.process_features",
+        "manipulation.prepare_process_features",
+            "manipulation.grasp_task_affordances",
+            "manipulation.prepare_grasp_task_affordance",
     ]
     assert spec["data"]["endpoint_id"] == "grasp_proposal"
     assert spec["data"]["operation"] == "propose"
@@ -283,10 +287,10 @@ def test_bundle_and_package_versions_match_the_feature_revision():
     )
     import tomllib
 
-    assert bundle_manifest["version"] == "3.0.25"
+    assert bundle_manifest["version"] == "3.0.29"
     assert tomllib.loads(package_text)["project"]["version"] == bundle_manifest["version"]
     node = bundle_manifest["artifacts"]["nodes"]["robotwin20_persistent_host"]
-    assert node["version"] == "1.0.15"
+    assert node["version"] == "1.0.19"
     assert node["artifact_id"] == f"robotwin20_persistent_host-{node['version']}-linux-x86_64"
 
 

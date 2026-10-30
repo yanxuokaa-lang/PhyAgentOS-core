@@ -254,7 +254,7 @@ def test_executable_projection_admits_declared_tool_without_motion_authority():
     assert decision.motion_authorized is False
 
 
-def test_subtask_projection_has_one_agent_node_and_one_verify_join():
+def test_subtask_projection_has_feature_query_preparation_and_action_order():
     plan = compose_subtask_plan(
         "lab-task", "scene-1",
         (SubtaskSpec(
@@ -269,7 +269,14 @@ def test_subtask_projection_has_one_agent_node_and_one_verify_join():
         ),),
         planner_decision_digest="1" * 64, policy_snapshot_digest="2" * 64,
     )
-    assert [node.capability for node in plan.graph.nodes] == ["manipulation.execute_subtask", "task.verify"]
+    assert [node.capability for node in plan.graph.nodes] == [
+        "manipulation.process_features", "manipulation.prepare_process_features",
+        "manipulation.grasp_task_affordances", "manipulation.prepare_grasp_task_affordance",
+        "manipulation.execute_subtask", "task.verify",
+    ]
     assert plan.graph.nodes[0].dependencies == ()
-    assert plan.graph.nodes[1].dependencies == ("pour-a",)
-    assert plan.graph.nodes[0].input_bindings["binding"]["entity_ref"] == "entity://reagent-a"
+    assert plan.graph.nodes[1].dependencies == ("pour-a.process_features",)
+    assert plan.graph.nodes[2].dependencies == ("pour-a.prepare_process_features",)
+    assert plan.graph.nodes[3].dependencies == ("pour-a.grasp_task_affordances",)
+    assert plan.graph.nodes[4].dependencies == ("pour-a.prepare_grasp_task_affordance",)
+    assert plan.graph.nodes[4].input_bindings["binding"]["entity_ref"] == "entity://reagent-a"

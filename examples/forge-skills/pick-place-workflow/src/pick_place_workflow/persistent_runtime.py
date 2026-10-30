@@ -656,7 +656,9 @@ def build_persistent_runtime(*, client, understanding_provider=None, grasp_provi
                              register_internal_subtask_tools: bool = False,
                              register_legacy_cycles: bool = True,
                              refresh_subtask_binding=None, resolve_subtask_context=None,
-                             assignment_store: AssignmentArtifactStore | None = None) -> CapabilityRuntime:
+                             assignment_store: AssignmentArtifactStore | None = None,
+                             process_feature_provider=None,
+                             grasp_task_affordance_provider=None) -> CapabilityRuntime:
     """Use injected model providers and one persistent manipulation process.
 
     resolve_preparation belongs to the adapter and supplies the approved route
@@ -724,6 +726,29 @@ def build_persistent_runtime(*, client, understanding_provider=None, grasp_provi
         (CAPABILITY_TOOL_SPEC, CapabilitySnapshotEndpoint(capability_provider)),
         (MANIPULATION_TOOL_SPEC, ManipulationPreparationEndpoint(preparation_provider)),
     ]
+    if process_feature_provider is not None:
+        from .process_features import (
+            PROCESS_FEATURE_PREPARATION_TOOL_SPEC,
+            PROCESS_FEATURE_TOOL_SPEC,
+            ProcessFeaturePreparationEndpoint,
+            ProcessFeatureQueryEndpoint,
+        )
+
+        registrations.append((PROCESS_FEATURE_TOOL_SPEC, ProcessFeatureQueryEndpoint(process_feature_provider)))
+        registrations.append((PROCESS_FEATURE_PREPARATION_TOOL_SPEC,
+                              ProcessFeaturePreparationEndpoint(process_feature_provider)))
+    if grasp_task_affordance_provider is not None:
+        from .grasp_task_affordance import (
+            GRASP_TASK_AFFORDANCE_PREPARATION_TOOL_SPEC,
+            GRASP_TASK_AFFORDANCE_TOOL_SPEC,
+            GraspTaskAffordancePreparationEndpoint,
+            GraspTaskAffordanceQueryEndpoint,
+        )
+
+        registrations.append((GRASP_TASK_AFFORDANCE_TOOL_SPEC,
+                              GraspTaskAffordanceQueryEndpoint(grasp_task_affordance_provider)))
+        registrations.append((GRASP_TASK_AFFORDANCE_PREPARATION_TOOL_SPEC,
+                              GraspTaskAffordancePreparationEndpoint(grasp_task_affordance_provider)))
     if register_legacy_actions:
         registrations.extend([
             (ACQUIRE_TOOL_SPEC, PersistentActionEndpoint("acquire", client, resolve_preparation, possession=possession)),

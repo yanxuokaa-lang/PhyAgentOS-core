@@ -29,6 +29,10 @@ TOOL_IDS = (
     "manipulation.staging",
     "grasp.propose",
     "manipulation.prepare",
+    "manipulation.process_features",
+    "manipulation.prepare_process_features",
+    "manipulation.grasp_task_affordances",
+    "manipulation.prepare_grasp_task_affordance",
     "object.acquire",
     "object.place",
 )
