@@ -46,6 +46,14 @@
 
 ## 最近五版本 / Latest five versions
 
+## v16.1.14 (2026-10-30 20:26) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [chore] [docs] 登记 v16.1.13 PAOS task-affordance 实现提交及远端分支。 / Record the v16.1.13 PAOS task-affordance implementation commit and remote branch.
+
+### Git 提交 / Git Commit
+- Commit: `6cbbcbfb`; Branch: `feature/planning-loop`; pushed to `origin/feature/planning-loop`.
+
 ## v16.1.13 (2026-10-30 18:25) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]
