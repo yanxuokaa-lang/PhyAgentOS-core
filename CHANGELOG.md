@@ -46,6 +46,18 @@
 
 ## 最近五版本 / Latest five versions
 
+## v16.2.0 (2026-10-30 20:35) - codex
+
+### 变更摘要 / Summary [完成 / Completed]
+- [sense] [feat] Isaac Adapter 在同一捕获内组合 GraspNet 与工艺特征候选，按点云支撑和瓶口避让筛选瓶身夹持，并按夹持位置选择玻璃棒远端；倒液缺少 pour-lip/flow-direction 证据时不可用。 / Join same-capture GraspNet and process-feature candidates, qualify bottle-body support/opening clearance, and select the rod endpoint opposite the shaft grasp; pouring remains unavailable without pour-lip/flow-direction evidence.
+- [policy] [test] Preparation 复核底层抓取/工艺证据集合；覆盖瓶口夹持拒绝、棒端歧义/选择、过期/伪造/缺失证据和零动作失败路径。 / Revalidate underlying grasp/process evidence in Preparation; cover opening-grasp rejection, rod endpoint ambiguity/selection, stale/fabricated/missing evidence, and zero-action failure paths.
+
+### 文件与验证 / Files and Validation
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/visual_perception.py:L170-L355,L870-L912`
+- `examples/forge-adapters/isaacsim_lab/tests/test_visual_perception.py:L589-L717,L803-L825`
+- `docs/forge/GRASPNET_TASK_AFFORDANCE_SELECTION_20261030.md:L38-L46`
+- Full Skill + Isaac Adapter: `875 passed`; focused Isaac/affordance/planning: `63 passed`; Ruff, compileall, and `git diff --check` passed. No Isaac Kit, Action, pouring, stirring, or robot motion was started.
+
 ## v16.1.14 (2026-10-30 20:26) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]

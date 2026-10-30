@@ -168,10 +168,28 @@ class RecordedGraspProvider:
 
 
 class LabGraspTaskAffordanceProvider:
-    """Join same-capture GraspNet and process-feature evidence fail-closed."""
+    """Qualify same-capture grasp/process combinations without selecting one."""
 
-    def __init__(self, perception: "LabVisualPerception"):
+    def __init__(self, perception: "LabVisualPerception", *, support_tolerance_m=0.012,
+                 bottle_opening_clearance_ratio=0.08, bottle_max_axial_approach_dot=0.7,
+                 rod_endpoint_ambiguity_ratio=0.12, rod_grasp_end_margin_ratio=0.15):
+        values = (support_tolerance_m, bottle_opening_clearance_ratio,
+                  bottle_max_axial_approach_dot, rod_endpoint_ambiguity_ratio,
+                  rod_grasp_end_margin_ratio)
+        if any(isinstance(value, bool) or not np.isfinite(float(value)) for value in values):
+            raise ValueError("task-affordance thresholds must be finite numbers")
+        if support_tolerance_m <= 0 or not 0 < bottle_opening_clearance_ratio < 1:
+            raise ValueError("task-affordance support and opening-clearance thresholds are invalid")
+        if not 0 < bottle_max_axial_approach_dot < 1:
+            raise ValueError("bottle approach threshold must be between zero and one")
+        if not 0 < rod_endpoint_ambiguity_ratio < 0.5 or not 0 < rod_grasp_end_margin_ratio < 0.5:
+            raise ValueError("rod endpoint thresholds must be between zero and one half")
         self.perception = perception
+        self.support_tolerance_m = float(support_tolerance_m)
+        self.bottle_opening_clearance_ratio = float(bottle_opening_clearance_ratio)
+        self.bottle_max_axial_approach_dot = float(bottle_max_axial_approach_dot)
+        self.rod_endpoint_ambiguity_ratio = float(rod_endpoint_ambiguity_ratio)
+        self.rod_grasp_end_margin_ratio = float(rod_grasp_end_margin_ratio)
         self.candidate_sets = {}
 
     def propose(self, request):
@@ -181,11 +199,12 @@ class LabGraspTaskAffordanceProvider:
         grasp_set = self.perception.grasps.candidate_sets.get(request["grasp_candidate_set_ref"])
         feature_set = self.perception.process_feature_sets.get(request["process_feature_candidate_set_ref"])
         expected = set(request["entity_refs"])
+        grasp_entity = request["entity_refs"][0]
         if (grasp_set is None or feature_set is None
                 or any(grasp_set.get(key) != identity[key] or feature_set.get(key) != identity[key]
                        for key in identity)
                 or not expected <= set(records)
-                or not expected <= grasp_set["entities"]
+                or grasp_entity not in grasp_set["entities"]
                 or set(feature_set["entity_refs"]) != expected
                 or feature_set.get("candidate_set_ref") != request["process_feature_candidate_set_ref"]
                 or grasp_set.get("candidate_set_ref") != request["grasp_candidate_set_ref"]):
@@ -193,17 +212,85 @@ class LabGraspTaskAffordanceProvider:
                     "grasp_candidate_set_ref": request["grasp_candidate_set_ref"],
                     "process_feature_candidate_set_ref": request["process_feature_candidate_set_ref"],
                     **identity, "candidates": [], "error": "grasp/process evidence is not from the same capture"}
-        ref = f"grasp-affordance-set://{uuid4().hex}"
-        self.candidate_sets[ref] = {
-            **identity, "entity_refs": expected,
+
+        source_ref, destination_ref = request["entity_refs"]
+        selected_features = []
+        for feature_ref in request["selected_process_feature_refs"]:
+            item = feature_set["candidates"].get(feature_ref)
+            if item is None:
+                return {"status": "stale", "candidate_set_ref": "grasp-affordance-set://unavailable",
+                        "grasp_candidate_set_ref": request["grasp_candidate_set_ref"],
+                        "process_feature_candidate_set_ref": request["process_feature_candidate_set_ref"],
+                        **identity, "candidates": [], "error": "selected process feature is not in the current capture"}
+            selected_features.append((feature_ref, item[0], item[2]))
+        source = records[source_ref]
+        source_features = [(ref, feature) for ref, entity, feature in selected_features if entity == source_ref]
+        destination_features = [(ref, feature) for ref, entity, feature in selected_features if entity == destination_ref]
+        grasp_candidates = self._grasp_candidates(grasp_set, request, source_ref)
+        qualified, failures = [], []
+        if request["operation"] == "pour":
+            if (len(source_features) != 1 or len(destination_features) != 1
+                    or source_features[0][1].get("feature_kind") != "rim"
+                    or destination_features[0][1].get("feature_kind") != "rim"):
+                failures.append("pour requires one source rim and one destination rim")
+            elif (source_features[0][1].get("feature_role") != "pour_lip"
+                  or not self._valid_pour_direction(source_features[0][1])):
+                failures.append("source geometry does not identify a pour lip and outward flow direction")
+            else:
+                process_refs = [source_features[0][0], destination_features[0][0]]
+                for candidate_ref, candidate in grasp_candidates:
+                    accepted, reason = self._qualify_bottle_grasp(candidate, source, source_features[0][1])
+                    if accepted:
+                        qualified.append({"entity_ref": source_ref, "grasp_candidate_ref": candidate_ref,
+                                          "process_feature_refs": process_refs})
+                    elif reason:
+                        failures.append(reason)
+        else:
+            rod_ends = [(ref, feature) for ref, feature in source_features
+                        if feature.get("feature_kind") == "rod_endpoint_pair"]
+            rims = [(ref, feature) for ref, feature in destination_features
+                    if feature.get("feature_kind") == "rim"]
+            if len(rod_ends) != 2 or len(rims) != 1 or len(source_features) != 2 or len(destination_features) != 1:
+                failures.append("stir requires both rod endpoints and one destination rim")
+            else:
+                for candidate_ref, candidate in grasp_candidates:
+                    working_ref, reason = self._working_endpoint(candidate, source, rod_ends)
+                    if working_ref:
+                        qualified.append({"entity_ref": source_ref, "grasp_candidate_ref": candidate_ref,
+                                          "process_feature_refs": [working_ref, rims[0][0]]})
+                    elif reason:
+                        failures.append(reason)
+
+        candidate_set_ref = f"grasp-affordance-set://{uuid4().hex}"
+        combinations = {}
+        candidates = []
+        for item in qualified:
+            combination_ref = f"grasp-affordance://{uuid4().hex}"
+            combination = {"combination_ref": combination_ref, **item}
+            combinations[combination_ref] = combination
+            candidates.append(combination)
+        self.candidate_sets[candidate_set_ref] = {
+            **identity, "operation": request["operation"], "entity_refs": expected,
             "grasp_candidate_set_ref": request["grasp_candidate_set_ref"],
             "process_feature_candidate_set_ref": request["process_feature_candidate_set_ref"],
+            "combinations": combinations,
         }
-        return {"status": "unavailable", "candidate_set_ref": ref,
+        status = "available" if candidates else ("ambiguous" if any("ambiguous" in item for item in failures) else "unavailable")
+        return {"status": status, "candidate_set_ref": candidate_set_ref,
                 "grasp_candidate_set_ref": request["grasp_candidate_set_ref"],
                 "process_feature_candidate_set_ref": request["process_feature_candidate_set_ref"],
-                **identity, "candidates": [],
-                "error": "current geometry does not qualify a task-safe grasp/process-feature relationship"}
+                **identity, "candidates": candidates,
+                **({"error": "; ".join(dict.fromkeys(failures))} if failures and not candidates else {})}
+
+    @staticmethod
+    def _valid_pour_direction(feature):
+        direction = np.asarray(feature.get("pour_direction_world"), dtype=float)
+        axis = np.asarray(feature.get("axis_world"), dtype=float)
+        if (direction.shape != (3,) or axis.shape != (3,) or not np.isfinite(direction).all()
+                or not np.isfinite(axis).all()):
+            return False
+        direction_norm, axis_norm = float(np.linalg.norm(direction)), float(np.linalg.norm(axis))
+        return direction_norm > 1e-9 and axis_norm > 1e-9 and abs(float(np.dot(direction / direction_norm, axis / axis_norm))) < 0.5
 
     def validate_selection(self, request):
         identity = {key: request[key] for key in
@@ -214,8 +301,116 @@ class LabGraspTaskAffordanceProvider:
             "process_feature_candidate_set_ref", "observation_ref", "scene_revision", "frame_id", "calibration_ref"
         )):
             return {"status": "stale", **identity, "error": "task-affordance candidate set is stale"}
-        return {"status": "unavailable", **identity,
-                "error": "current geometry cannot revalidate a task-safe selected combination"}
+        combination = candidate_set["combinations"].get(request["selected_combination_ref"])
+        if combination is None:
+            return {"status": "stale", **identity, "error": "selected combination is not in the current Query"}
+        grasp_set = self.perception.grasps.candidate_sets.get(candidate_set["grasp_candidate_set_ref"])
+        feature_set = self.perception.process_feature_sets.get(candidate_set["process_feature_candidate_set_ref"])
+        if (grasp_set is None or feature_set is None
+                or any(grasp_set.get(key) != candidate_set[key] or feature_set.get(key) != candidate_set[key]
+                       for key in ("observation_ref", "scene_revision", "frame_id", "calibration_ref"))
+                or feature_set.get("candidate_set_ref") != candidate_set["process_feature_candidate_set_ref"]
+                or grasp_set.get("candidate_set_ref") != candidate_set["grasp_candidate_set_ref"]):
+            return {"status": "stale", **identity, "error": "selected combination evidence is no longer current"}
+        if (combination.get("grasp_candidate_ref") not in grasp_set.get("candidate_refs", set())
+                or combination.get("grasp_candidate_ref") not in
+                self.perception.grasps.captures.get(request["calibration_ref"], {})
+                or any(ref not in feature_set.get("candidates", {}) for ref in combination.get("process_feature_refs", ()) )):
+            return {"status": "stale", **identity, "error": "selected combination references missing evidence"}
+        return {"status": "available", **identity,
+                "selected": {key: combination[key] for key in
+                             ("combination_ref", "grasp_candidate_ref", "process_feature_refs")}}
+
+    def _grasp_candidates(self, grasp_set, request, source_ref):
+        captured = self.perception.grasps.captures.get(request["calibration_ref"], {})
+        return [(ref, captured[ref]) for ref in grasp_set["candidate_refs"]
+                if ref in captured and captured[ref].get("entity_ref") == source_ref]
+
+    def _candidate_pose(self, candidate, record):
+        frame = candidate.get("grasp_frame", {})
+        approach = candidate.get("approach_direction", {})
+        if frame.get("frame_id") != record["frame_id"] or approach.get("frame_id") != record["frame_id"]:
+            return None
+        position = np.asarray(frame.get("position_m"), dtype=float)
+        direction = np.asarray(approach.get("vector"), dtype=float)
+        transform = np.asarray(record["world_from_camera"], dtype=float)
+        if (position.shape != (3,) or direction.shape != (3,) or transform.shape != (4, 4)
+                or not np.isfinite(position).all() or not np.isfinite(direction).all()
+                or not np.isfinite(transform).all()):
+            return None
+        norm = float(np.linalg.norm(direction))
+        if norm <= 1e-9:
+            return None
+        return transform[:3, :3] @ position + transform[:3, 3], transform[:3, :3] @ (direction / norm)
+
+    def _world_points(self, record):
+        try:
+            points = np.asarray(np.load(self.perception.store.path(record["points_ref"]), allow_pickle=False), dtype=float)
+            transform = np.asarray(record["world_from_camera"], dtype=float)
+        except (OSError, TypeError, ValueError, KeyError):
+            return None
+        if (points.ndim != 2 or points.shape[1] != 3 or len(points) < 3 or not np.isfinite(points).all()
+                or transform.shape != (4, 4) or not np.isfinite(transform).all()):
+            return None
+        return points @ transform[:3, :3].T + transform[:3, 3]
+
+    def _support_limit(self, candidate):
+        geometry = candidate.get("grasp_geometry") or {}
+        extents = [float(geometry[key]) for key in ("width_m", "height_m", "depth_m")
+                   if isinstance(geometry.get(key), (int, float)) and float(geometry[key]) > 0]
+        return max([self.support_tolerance_m, *(value * .75 for value in extents)])
+
+    def _qualify_bottle_grasp(self, candidate, record, rim):
+        pose, points = self._candidate_pose(candidate, record), self._world_points(record)
+        if pose is None or points is None:
+            return False, "bottle grasp pose or point-cloud evidence is unavailable"
+        tip = np.asarray(rim.get("tip_world"), dtype=float)
+        axis = np.asarray(rim.get("axis_world"), dtype=float)
+        if tip.shape != (3,) or axis.shape != (3,) or not np.isfinite(tip).all() or not np.isfinite(axis).all():
+            return False, "bottle opening geometry is unresolved"
+        axis_norm = float(np.linalg.norm(axis))
+        if axis_norm <= 1e-9:
+            return False, "bottle opening axis is unresolved"
+        axis /= axis_norm
+        position, approach = pose
+        projections = (points - tip) @ axis
+        candidate_projection = float(np.dot(position - tip, axis))
+        extent = float(np.ptp(projections))
+        clearance = max(float(rim.get("rim_radius_m", 0.0)) * 2., extent * self.bottle_opening_clearance_ratio)
+        if candidate_projection >= -clearance:
+            return False, "bottle grasp is too close to the opening"
+        if candidate_projection < float(np.quantile(projections, .02)) - self._support_limit(candidate):
+            return False, "bottle grasp is outside the observed body support"
+        if float(np.min(np.linalg.norm(points - position, axis=1))) > self._support_limit(candidate):
+            return False, "bottle grasp has no nearby observed body support"
+        if abs(float(np.dot(approach, axis))) > self.bottle_max_axial_approach_dot:
+            return False, "bottle grasp approach may occlude the opening"
+        return True, ""
+
+    def _working_endpoint(self, candidate, record, endpoints):
+        pose, points = self._candidate_pose(candidate, record), self._world_points(record)
+        if pose is None or points is None:
+            return None, "rod grasp pose or point-cloud evidence is unavailable"
+        ends = [(ref, np.asarray(feature.get("origin_world"), dtype=float)) for ref, feature in endpoints]
+        if any(point.shape != (3,) or not np.isfinite(point).all() for _, point in ends):
+            return None, "rod endpoint geometry is unresolved"
+        first, second = ends[0][1], ends[1][1]
+        segment = second - first
+        length = float(np.linalg.norm(segment))
+        if length <= 1e-9:
+            return None, "rod endpoints coincide"
+        position = pose[0]
+        projection = float(np.dot(position - first, segment) / (length * length))
+        closest = first + np.clip(projection, 0., 1.) * segment
+        if float(np.linalg.norm(position - closest)) > self._support_limit(candidate):
+            return None, "rod grasp has no nearby shaft support"
+        margin = self.rod_grasp_end_margin_ratio
+        if projection <= margin or projection >= 1. - margin:
+            return None, "rod grasp is at an endpoint rather than on the shaft"
+        distances = [float(np.linalg.norm(position - point)) for _, point in ends]
+        if abs(distances[0] - distances[1]) <= length * self.rod_endpoint_ambiguity_ratio:
+            return None, "rod working end is ambiguous relative to the grasp"
+        return ends[0 if distances[0] > distances[1] else 1][0], ""
 
 
 class LabVisualPerception:
@@ -691,10 +886,17 @@ class LabVisualPerception:
                 return {"status": "stale", **identity, "error": "selected entity is absent from the current capture"}
         if any(ref not in available for ref in selected):
             return {"status": "stale", **identity, "error": "selected refs are not in the current process-feature Query"}
-        selected_entities = [available[ref][0] for ref in selected]
-        if set(selected_entities) != expected_entities or len(selected_entities) != len(expected_entities):
-            return {"status": "ambiguous", **identity, "error": "select exactly one feature candidate for each task entity"}
         categories = {entity: records[entity].get("category") for entity in expected_entities}
+        selected_entities = [available[ref][0] for ref in selected]
+        if set(selected_entities) != expected_entities:
+            return {"status": "ambiguous", **identity, "error": "selected features do not cover each task entity"}
+        source_ref, destination_ref = request["entity_refs"]
+        source_selected = [available[ref][2] for ref in selected if available[ref][0] == source_ref]
+        destination_selected = [available[ref][2] for ref in selected if available[ref][0] == destination_ref]
+        if request["operation"] == "pour" and (len(source_selected) != 1 or len(destination_selected) != 1):
+            return {"status": "ambiguous", **identity, "error": "pour selects exactly one source rim and one destination rim"}
+        if request["operation"] == "stir" and (len(source_selected) != 2 or len(destination_selected) != 1):
+            return {"status": "ambiguous", **identity, "error": "stir selects both rod endpoints and one destination rim"}
         for ref in selected:
             entity, _index, feature = available[ref]
             kind = feature.get("feature_kind")
@@ -703,10 +905,11 @@ class LabVisualPerception:
                 return {"status": "invalid", **identity, "error": "vessel operation requires a rim candidate"}
             if category == "stir_tool" and kind != "rod_endpoint_pair":
                 return {"status": "invalid", **identity, "error": "stir operation requires a rod endpoint candidate"}
-        # Current geometry candidates do not establish vessel interior or the
-        # grasp-relative working end, so selection alone cannot authorize prep.
-        return {"status": "unavailable", **identity,
-                "error": "selected process geometry is not qualified for no-motion preparation"}
+        if request["operation"] == "stir":
+            roles = {available[ref][2].get("feature_role") for ref in selected if available[ref][0] == source_ref}
+            if roles != {"endpoint_a", "endpoint_b"}:
+                return {"status": "ambiguous", **identity, "error": "stir requires distinct endpoint_a and endpoint_b candidates"}
+        return {"status": "available", **identity, "selected_feature_refs": list(selected)}
 
     def refresh_process(self, arguments, target, *, observation_model, phase_route):
         records = self._records(arguments)

@@ -22,6 +22,7 @@ from isaacsim_lab.simulator_truth_perception import (
 from isaacsim_lab.visual_geometry import candidate_world_pose, pixel_to_world, process_features
 from isaacsim_lab.visual_perception import (
     LabArtifactStore,
+    LabGraspTaskAffordanceProvider,
     LabVisualPerception,
     RecordedGraspProvider,
     RGBLabelPointInference,
@@ -585,6 +586,137 @@ def test_simulator_truth_bounds_do_not_qualify_process_landmarks_for_preparation
     engine.bind_observed_entities.assert_not_called()
 
 
+def _task_affordance_fixture(tmp_path, *, operation, grasp_position, source_category, source_points,
+                             source_features):
+    store = LabArtifactStore(tmp_path)
+    identity = {
+        "observation_ref": "observation://scene/front", "scene_revision": "scene",
+        "frame_id": "front", "calibration_ref": "artifact://calibration/front",
+    }
+    source_ref, destination_ref = "entity://source", "entity://beaker"
+    points_ref = store.write("object-point-cloud", np.asarray(source_points, dtype=np.float32))
+    records = {
+        source_ref: {**identity, "entity_ref": source_ref, "category": source_category,
+                     "world_from_camera": np.eye(4).tolist(), "points_ref": points_ref},
+        destination_ref: {**identity, "entity_ref": destination_ref, "category": "mixing_vessel",
+                          "world_from_camera": np.eye(4).tolist(), "points_ref": points_ref},
+    }
+    grasp_ref = "candidate://source/grasp-1"
+    grasp = {"candidate_ref": grasp_ref, "entity_ref": source_ref,
+             "grasp_frame": {"frame_id": "front", "position_m": grasp_position},
+             "approach_direction": {"frame_id": "front", "vector": [0., 1., 0.]},
+             "grasp_geometry": {"width_m": .02, "height_m": .02, "depth_m": .02}}
+    process_candidates = {}
+    selected_refs = []
+    for feature_ref, entity_ref, feature in source_features:
+        process_candidates[feature_ref] = (entity_ref, len(process_candidates), feature)
+        selected_refs.append(feature_ref)
+    rim_ref = "process-feature://beaker/rim"
+    rim = {"feature_kind": "rim", "feature_role": "opening", "tip_world": [0., 0., .8],
+           "axis_world": [0., 0., 1.], "rim_radius_m": .03}
+    process_candidates[rim_ref] = (destination_ref, len(process_candidates), rim)
+    selected_refs.append(rim_ref)
+    perception = SimpleNamespace(
+        store=store,
+        observations={identity["calibration_ref"]: records},
+        grasps=SimpleNamespace(
+            candidate_sets={"candidate-set://scene/source": {**identity, "candidate_set_ref": "candidate-set://scene/source",
+                                                             "entities": {source_ref}, "candidate_refs": {grasp_ref}}},
+            captures={identity["calibration_ref"]: {grasp_ref: grasp}},
+        ),
+        process_feature_sets={"process-feature-set://scene/current": {
+            **identity, "candidate_set_ref": "process-feature-set://scene/current",
+            "entity_refs": (source_ref, destination_ref), "candidates": process_candidates,
+        }},
+        _records=lambda _request: records,
+    )
+    request = {
+        "operation": operation, "entity_refs": [source_ref, destination_ref],
+        "grasp_candidate_set_ref": "candidate-set://scene/source",
+        "process_feature_candidate_set_ref": "process-feature-set://scene/current",
+        "selected_process_feature_refs": selected_refs, **identity,
+    }
+    return LabGraspTaskAffordanceProvider(perception), request, grasp_ref
+
+
+def test_task_affordance_provider_qualifies_bottle_body_grasp_and_revalidates(tmp_path):
+    theta = np.linspace(0, 2 * np.pi, 24, endpoint=False)
+    points = np.asarray([[.05 * np.cos(angle), .05 * np.sin(angle), z]
+                         for z in np.linspace(.45, .95, 16) for angle in theta])
+    bottle_rim = {"feature_kind": "rim", "feature_role": "pour_lip", "tip_world": [0., 0., 1.],
+                  "axis_world": [0., 0., 1.], "pour_direction_world": [1., 0., 0.], "rim_radius_m": .02}
+    provider, request, grasp_ref = _task_affordance_fixture(
+        tmp_path, operation="pour", grasp_position=[.05, 0., .6833333333], source_category="reagent_bottle",
+        source_points=points, source_features=[("process-feature://bottle/rim", "entity://source", bottle_rim)],
+    )
+    query = provider.propose(request)
+    assert query["status"] == "available"
+    assert len(query["candidates"]) == 1
+    assert query["candidates"][0]["grasp_candidate_ref"] == grasp_ref
+    prep_request = {key: request[key] for key in ("process_feature_candidate_set_ref", "observation_ref",
+        "scene_revision", "frame_id", "calibration_ref")}
+    prep_request.update(candidate_set_ref=query["candidate_set_ref"],
+                        selected_combination_ref=query["candidates"][0]["combination_ref"])
+    prepared = provider.validate_selection(prep_request)
+    assert prepared["status"] == "available"
+    assert prepared["selected"]["grasp_candidate_ref"] == grasp_ref
+    stale = provider.validate_selection({**prep_request, "scene_revision": "new-scene"})
+    assert stale["status"] == "stale"
+    fabricated = provider.validate_selection({**prep_request, "selected_combination_ref": "grasp-affordance://fabricated"})
+    assert fabricated["status"] == "stale"
+    del provider.perception.process_feature_sets[request["process_feature_candidate_set_ref"]]
+    missing_evidence = provider.validate_selection(prep_request)
+    assert missing_evidence["status"] == "stale"
+
+
+def test_task_affordance_provider_fails_closed_for_opening_grasp_and_ambiguous_rod_end(tmp_path):
+    theta = np.linspace(0, 2 * np.pi, 24, endpoint=False)
+    bottle_points = np.asarray([[.05 * np.cos(angle), .05 * np.sin(angle), z]
+                                for z in np.linspace(.45, .95, 16) for angle in theta])
+    rim = {"feature_kind": "rim", "feature_role": "opening", "tip_world": [0., 0., 1.],
+           "axis_world": [0., 0., 1.], "rim_radius_m": .02}
+    provider, request, _ = _task_affordance_fixture(
+        tmp_path / "bottle", operation="pour", grasp_position=[0., 0., .99],
+        source_category="reagent_bottle", source_points=bottle_points,
+        source_features=[("process-feature://bottle/rim", "entity://source", rim)],
+    )
+    assert provider.propose(request)["status"] == "unavailable"
+
+    rod = np.asarray([[x, y, z] for x in np.linspace(0., .3, 80)
+                      for y in (-.001, .001) for z in (-.001, .001)])
+    endpoints = [
+        ("process-feature://rod/a", "entity://source", {"feature_kind": "rod_endpoint_pair",
+         "feature_role": "endpoint_a", "origin_world": [0., 0., 0.], "tip_world": [.3, 0., 0.]}),
+        ("process-feature://rod/b", "entity://source", {"feature_kind": "rod_endpoint_pair",
+         "feature_role": "endpoint_b", "origin_world": [.3, 0., 0.], "tip_world": [0., 0., 0.]}),
+    ]
+    rod_provider, rod_request, _ = _task_affordance_fixture(
+        tmp_path / "rod", operation="stir", grasp_position=[.15, 0., 0.],
+        source_category="stir_tool", source_points=rod, source_features=endpoints,
+    )
+    assert rod_provider.propose(rod_request)["status"] == "ambiguous"
+
+
+def test_task_affordance_selects_rod_endpoint_opposite_the_shaft_grasp(tmp_path):
+    rod = np.asarray([[x, y, z] for x in np.linspace(0., .3, 80)
+                      for y in (-.001, .001) for z in (-.001, .001)])
+    endpoints = [
+        ("process-feature://rod/a", "entity://source", {"feature_kind": "rod_endpoint_pair",
+         "feature_role": "endpoint_a", "origin_world": [0., 0., 0.], "tip_world": [.3, 0., 0.]}),
+        ("process-feature://rod/b", "entity://source", {"feature_kind": "rod_endpoint_pair",
+         "feature_role": "endpoint_b", "origin_world": [.3, 0., 0.], "tip_world": [0., 0., 0.]}),
+    ]
+    provider, request, _ = _task_affordance_fixture(
+        tmp_path, operation="stir", grasp_position=[.09, 0., 0.], source_category="stir_tool",
+        source_points=rod, source_features=endpoints,
+    )
+    result = provider.propose(request)
+    assert result["status"] == "available"
+    assert result["candidates"][0]["process_feature_refs"] == [
+        "process-feature://rod/b", "process-feature://beaker/rim",
+    ]
+
+
 def test_simulator_truth_snapshot_passes_public_understanding_endpoint(tmp_path):
     store = LabArtifactStore(tmp_path)
     rgb_ref = 'artifact://labutopia/rgb/truth-endpoint.png'
@@ -698,7 +830,7 @@ def test_process_feature_selection_rejects_stale_or_cross_entity_refs_without_qu
         },
     }
     request = {
-        **identity, 'entity_refs': ['entity://bottle', 'entity://beaker'],
+        **identity, 'operation': 'pour', 'entity_refs': ['entity://bottle', 'entity://beaker'],
         'candidate_set_ref': 'process-feature-set://current',
         'selected_feature_refs': [
             'process-feature://bottle-rim-a',
@@ -706,8 +838,8 @@ def test_process_feature_selection_rejects_stale_or_cross_entity_refs_without_qu
         ],
     }
     result = visual.validate_selection(request)
-    assert result['status'] == 'unavailable'
-    assert 'not qualified' in result['error']
+    assert result['status'] == 'available'
+    assert result['selected_feature_refs'] == request['selected_feature_refs']
 
     stale = visual.validate_selection({**request, 'selected_feature_refs': [
         'process-feature://fabricated', request['selected_feature_refs'][1],

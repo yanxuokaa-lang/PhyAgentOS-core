@@ -35,3 +35,11 @@ The qualification Query returns no eligible candidates or explicit ambiguous/una
 ## Acceptance evidence
 
 Contract tests can prove interface substitutability, AgentLoop source lineage, freshness checks, and zero-action failure behavior. They cannot prove the current LabUtopia glass geometry or robot reachability. Those require a fresh no-motion Isaac observation and Adapter/robot kinematic validation; live motion remains a separate explicit authorization boundary.
+
+## Implementation Status (2026-10-30)
+
+The Isaac Adapter now joins grasp and process-feature candidates from the same capture, qualifies bottle-body support and opening clearance from the observed point cloud, and derives the stirring working end as the rod endpoint farther from a shaft grasp. Preparation revalidates the opaque combination and capture identity without moving the robot. This remains geometric candidate qualification, not proof of IK reachability, collision-free execution, vessel interior, or successful liquid flow.
+
+Current final-USD vessel features identify an opening rim only. They do not establish which point is a pour lip or a valid outward flow direction, so pouring remains unavailable until that evidence is produced by a replaceable feature Provider and validated in a fresh no-motion capture. The present simulator-truth rod endpoint ordering is geometric, not user/task semantic; the farther-from-grasp rule is only a working-end heuristic and must remain ambiguous when evidence cannot distinguish the usable end.
+
+The repository tests cover body-vs-opening grasp qualification, same-capture reference revalidation, stale/fabricated Preparation selections, rod endpoint ambiguity, and selection of the endpoint opposite an off-center shaft grasp. These tests do not constitute live Isaac geometry or motion evidence.
