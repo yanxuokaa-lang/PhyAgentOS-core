@@ -46,6 +46,32 @@
 
 ## 最近五版本 / Latest five versions
 
+## v16.2.1 (2026-10-31 13:30) - codex
+
+### 变更摘要 / Summary [完成 / Completed; full-chain motion blocked]
+- [policy] [fix] Process-feature Preparation 允许 AgentLoop 选择 opaque refs，Provider 仍校验候选集；工具记录来源路径统一匹配 `response.data`。/ Allow AgentLoop opaque-ref selection while retaining Provider candidate validation; align predecessor paths with `response.data`.
+- [sense] [fix] Isaac Grasp candidate index 挂接公共 scene/frame candidate-set ref 与捕获 lineage。/ Bind the Isaac grasp candidate index to the public scene/frame candidate-set ref and capture lineage.
+
+### 文件与验证 / Files and Validation
+- `process_features.py:L133-L148`; `manipulation.prepare_process_features.tool.yaml:L6-L16`; `test_process_features.py:L133-L149,L152-L190`.
+- `grasp_task_affordance.py:L20-L38,L86-L109`; `subtask_executor.py:L1192-L1219`; related ToolSpecs `L10-L23`.
+- `visual_perception.py:L151-L158`; `test_visual_perception.py:L228-L240`.
+- Focused PAOS/Isaac tests: `87 passed`; Ruff and `git diff --check` passed.
+- AgentLoop Isaac run r7: process-feature Query and no-motion Preparation available; task-affordance Query stale (`grasp/process evidence is not from the same capture`). Task `task_0bd267dc398a422a` cancelled; no Action/controller outcomes or pour/stir/return motion. Full-chain completion is not established.
+
+### 关键 Diff / Key Diff
+```diff
+- candidate_set_ref source requirement also binds selected feature refs
++ Agent selects opaque refs; current-capture Provider validates them in Preparation
+- candidate_set_ref = output.get("candidate_set_ref")
++ candidate_set_ref = f"candidate-set://{request['scene_revision']}/{request['frame_id']}"
+- ["response", "selected", "process_feature_refs"]
++ ["response", "data", "selected", "process_feature_refs"]
+```
+
+### Git 提交 / Git Commit
+- Commit: `97b73a4d`; Branch: `feature/planning-loop`; not pushed pending explicit runtime-safety approval.
+
 ## v16.2.0 (2026-10-30 20:35) - codex
 
 ### 变更摘要 / Summary [完成 / Completed]

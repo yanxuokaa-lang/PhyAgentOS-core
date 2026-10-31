@@ -12,14 +12,14 @@ planning:
       keys: [process_feature_candidate_set_ref, selected_process_feature_refs]
       source_tool_id: manipulation.prepare_process_features
       source_paths:
-        process_feature_candidate_set_ref: [response, candidate_set_ref]
-        selected_process_feature_refs: [response, selected_feature_refs]
+        process_feature_candidate_set_ref: [response, data, candidate_set_ref]
+        selected_process_feature_refs: [response, data, selected_feature_refs]
     - when: {operation: stir}
       keys: [process_feature_candidate_set_ref, selected_process_feature_refs]
       source_tool_id: manipulation.prepare_process_features
       source_paths:
-        process_feature_candidate_set_ref: [response, candidate_set_ref]
-        selected_process_feature_refs: [response, selected_feature_refs]
+        process_feature_candidate_set_ref: [response, data, candidate_set_ref]
+        selected_process_feature_refs: [response, data, selected_feature_refs]
   scene_write_behavior: none
 description: Propose task-qualified grasp/process-feature combinations without selecting one or authorizing motion.
 input_schema:

@@ -148,9 +148,10 @@ class RecordedGraspProvider:
         output["candidates"] = candidates
         output["produced_evidence_refs"] = [*output.get("produced_evidence_refs", []), evidence]
         self.captures.setdefault(request["calibration_ref"], {}).update({i["candidate_ref"]: deepcopy(i) for i in candidates})
-        candidate_set_ref = output.get("candidate_set_ref")
+        candidate_set_ref = f"candidate-set://{request['scene_revision']}/{request['frame_id']}"
         if isinstance(candidate_set_ref, str):
             self.candidate_sets[candidate_set_ref] = {
+                "candidate_set_ref": candidate_set_ref,
                 **{key: request[key] for key in ("observation_ref", "scene_revision", "frame_id", "calibration_ref")},
                 "entities": {target["entity_ref"] for target in request["targets"]},
                 "candidate_refs": {item["candidate_ref"] for item in candidates},

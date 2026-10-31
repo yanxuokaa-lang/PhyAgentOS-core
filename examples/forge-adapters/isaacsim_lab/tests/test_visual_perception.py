@@ -231,6 +231,8 @@ def test_sensor_segmentation_cloud_pass_real_understanding_and_grasp_endpoints(t
     predicted = GraspProposalEndpoint(grasp).invoke(proposal)
     assert predicted['status'] == 'available', predicted
     assert len(predicted['candidates']) == 2
+    assert grasp.candidate_sets[predicted['candidate_set_ref']]['candidate_set_ref'] == predicted['candidate_set_ref']
+    assert grasp.candidate_sets[predicted['candidate_set_ref']]['observation_ref'] == predicted['observation_ref']
     candidate = predicted['candidates'][1]
     binding = {**proposal, 'candidate_ref': candidate['candidate_ref'], 'grasp_candidate': candidate}
     assert grasp.candidate(binding) == candidate

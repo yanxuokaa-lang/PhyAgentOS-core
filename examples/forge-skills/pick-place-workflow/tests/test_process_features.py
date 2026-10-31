@@ -130,26 +130,23 @@ def test_expired_evidence_is_rejected_without_provider_or_action_call():
     assert provider.preparation_requests == []
 
 
-def test_agent_selection_copies_exact_refs_from_query_receipt():
+def test_agent_selection_records_opaque_refs_for_provider_validation():
     query = ProcessFeatureQueryEndpoint(_ReplaceableProvider()).invoke(_request())
     chosen = [query["candidates"][0]["feature_ref"], query["candidates"][1]["feature_ref"]]
     arguments = resolve_argument_sources(
-        {"feature-query-record": ({}, query)},
+        {"feature-query-record": ({}, {"ok": True, "data": query})},
         {},
         {
-            "candidate_set_ref": {"record_id": "feature-query-record", "path": ["response", "candidate_set_ref"]},
-            "selected_feature_refs": {
-                "record_id": "feature-query-record", "path": ["response", "candidates", 0, "feature_ref"],
-                "target_path": ["selected_feature_refs", 0],
-            },
-            "second_feature_ref": {
-                "record_id": "feature-query-record", "path": ["response", "candidates", 1, "feature_ref"],
-                "target_path": ["selected_feature_refs", 1],
-            },
+            "candidate_set_ref": {"record_id": "feature-query-record", "path": ["response", "data", "candidate_set_ref"]},
         },
     )
     assert arguments["candidate_set_ref"] == query["candidate_set_ref"]
-    assert arguments["selected_feature_refs"] == chosen
+    selected = ProcessFeaturePreparationEndpoint(_ReplaceableProvider()).invoke({
+        **_request(),
+        "candidate_set_ref": query["candidate_set_ref"],
+        "selected_feature_refs": chosen,
+    })
+    assert selected["status"] == "available"
 
 
 def test_action_selection_must_copy_the_prepared_opaque_refs():
@@ -165,14 +162,14 @@ def test_action_selection_must_copy_the_prepared_opaque_refs():
         "motion_authorized": False,
     }
     action_arguments = resolve_argument_sources(
-        {"preparation-record": ({}, preparation)},
+        {"preparation-record": ({}, {"ok": True, "data": preparation})},
         {"operation": "pour"},
         {
             "process_feature_candidate_set_ref": {
-                "record_id": "preparation-record", "path": ["response", "candidate_set_ref"],
+                "record_id": "preparation-record", "path": ["response", "data", "candidate_set_ref"],
             },
             "process_feature_refs": {
-                "record_id": "preparation-record", "path": ["response", "selected_feature_refs"],
+                "record_id": "preparation-record", "path": ["response", "data", "selected_feature_refs"],
             },
         },
     )
@@ -183,16 +180,7 @@ def test_action_selection_must_copy_the_prepared_opaque_refs():
 def test_tool_specs_declare_operation_scoped_predecessor_ref_sources():
     preparation = project_tool_spec(PROCESS_FEATURE_PREPARATION_TOOL_SPEC)
     action = project_tool_spec(SUBTASK_TOOL_SPEC)
-    assert {tuple(item.when.items()) for item in preparation.argument_source_requirements} == {
-        (("operation", "pour"),), (("operation", "stir"),),
-    }
-    assert {item.source_tool_id for item in preparation.argument_source_requirements} == {
-        "manipulation.process_features"
-    }
-    assert all(item.keys == ("candidate_set_ref", "selected_feature_refs") for item in
-               preparation.argument_source_requirements)
-    assert all(item.source_paths == {"candidate_set_ref": ("response", "candidate_set_ref")} for item in
-               preparation.argument_source_requirements)
+    assert preparation.argument_source_requirements == ()
     assert {item.source_tool_id for item in action.argument_source_requirements} == {
         "manipulation.prepare_grasp_task_affordance"
     }

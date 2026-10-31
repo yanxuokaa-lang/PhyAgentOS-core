@@ -140,16 +140,10 @@ PROCESS_FEATURE_PREPARATION_TOOL_SPEC = {
         "schema_version": "paos-tool-spec-policy/v1",
         "capabilities": ["manipulation.prepare_process_features"],
         "input_binding_keys": ["operation", "entity_refs", "observation_ref", "scene_revision", "frame_id", "calibration_ref"],
-        "argument_source_requirements": [
-            {"when": {"operation": "pour"},
-             "keys": ["candidate_set_ref", "selected_feature_refs"],
-             "source_tool_id": "manipulation.process_features",
-             "source_paths": {"candidate_set_ref": ["response", "candidate_set_ref"]}},
-            {"when": {"operation": "stir"},
-             "keys": ["candidate_set_ref", "selected_feature_refs"],
-             "source_tool_id": "manipulation.process_features",
-             "source_paths": {"candidate_set_ref": ["response", "candidate_set_ref"]}},
-        ],
+        # The Agent selects opaque refs from the Query result. Preparation's
+        # provider validates both refs against the current candidate set, so a
+        # literal source slot would incorrectly reject a valid selection.
+        "argument_source_requirements": [],
         "scene_write_behavior": "none",
     },
     "input_schema": {
