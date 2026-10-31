@@ -74,7 +74,7 @@
 - `calibration_ref` 已是现有捕获区分证据，故未新增 hash、schema 或 gate。/ The existing `calibration_ref` is sufficient capture-discriminator evidence, so no hash, schema or gate was added.
 
 ### Git 提交 / Git Commit
-- Implementation commit: `abe6339a`; Branch: `feature/planning-loop`; changelog follow-up commit recorded below; not pushed because no remote-push authorization was given.
+- Implementation commit: `abe6339a`; changelog commit: `669dc464`; Branch: `feature/planning-loop`; not pushed because no remote-push authorization was given.
 
 ## v16.2.1 (2026-10-31 13:30) - codex
 
