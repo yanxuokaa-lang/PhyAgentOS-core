@@ -70,7 +70,7 @@
 ```
 
 ### Git 提交 / Git Commit
-- Commit: `97b73a4d`; Branch: `feature/planning-loop`; not pushed pending explicit runtime-safety approval.
+- Commit: `7e96b160`; Branch: `feature/planning-loop`; not pushed pending explicit runtime-safety approval.
 
 ## v16.2.0 (2026-10-30 20:35) - codex
 
