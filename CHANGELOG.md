@@ -46,7 +46,7 @@
 
 ## 最近五版本 / Latest five versions
 
-## v16.2.2 (2026-10-31 13:45) - codex
+## v16.2.2 (2026-10-31 13:44) - codex
 
 ### 变更摘要 / Summary [完成 / Completed; motion not executed]
 - [sense] [fix] 修复 Isaac GraspNet 私有候选集索引仅按 scene/frame 存储导致同帧多 calibration 捕获相互覆盖的问题；使用 public candidate ref 与 `calibration_ref` 组成内部键，保持 PAOS/AgentLoop 契约不变。 / Fix Isaac GraspNet private candidate-index overwrites across captures sharing scene/frame by indexing with the public candidate ref plus `calibration_ref`, without changing PAOS/AgentLoop contracts.
@@ -74,7 +74,7 @@
 - `calibration_ref` 已是现有捕获区分证据，故未新增 hash、schema 或 gate。/ The existing `calibration_ref` is sufficient capture-discriminator evidence, so no hash, schema or gate was added.
 
 ### Git 提交 / Git Commit
-- Commit: pending local commit; Branch: `feature/planning-loop`; not pushed because no remote-push authorization was given.
+- Implementation commit: `abe6339a`; Branch: `feature/planning-loop`; changelog follow-up commit recorded below; not pushed because no remote-push authorization was given.
 
 ## v16.2.1 (2026-10-31 13:30) - codex
 
