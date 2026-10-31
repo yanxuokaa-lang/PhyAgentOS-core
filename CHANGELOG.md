@@ -46,6 +46,11 @@
 
 ## 最近五版本 / Latest five versions
 
+## v16.2.9 (2026-10-31 18:25) - codex
+
+### Summary [Completed]
+- [docs] [docs] Completed the v16.2.8 commit receipt in `changelog/2026-10.md`; implementation commit `48946976` is recorded and no push was performed under robotics runtime-safety guidance. / 完成 v16.2.8 提交回执，记录实现提交 `48946976`，按机器人运行安全要求未推送。
+
 ## v16.2.8 (2026-10-31 18:05) - codex
 
 ### Summary [Completed; live motion remains blocked]
