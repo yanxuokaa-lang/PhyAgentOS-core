@@ -114,9 +114,9 @@
 - The implementation does not read legacy manifest coordinates, wrapper translations, bounds, configured pour axes, or AgentLoop parameters to fabricate a mouth or flow direction. PAOS public ToolSpecs and AgentLoop selection/receipt flow are unchanged.
 - Regression coverage includes a qualified lateral lip, a normal opening, and symmetric extensions that fail closed. Replaying the R8 R01 final mesh still returns only `opening`; no action is authorized.
 
-## Boundary-Evidence Tightening (v16.2.5)
+## Boundary-Evidence Tightening (v16.2.6)
 
 - The first geometry implementation was too permissive because it inspected all mesh vertices near the fitted rim. A bottle body with an asymmetric surface sample could therefore look like a pour lip even without a geometric mouth.
-- The Provider now qualifies lateral support only from final-composed USD boundary-edge endpoints belonging to the same state artifact. Mesh-only extensions, missing boundary evidence, and symmetric extensions remain `feature_role="opening"` without `pour_direction_world`.
+- The Provider now qualifies lateral support only from final-composed USD boundary-edge endpoints belonging to the same state artifact. Mesh-only extensions, missing boundary evidence, and symmetric extensions remain `feature_role="opening"` without `pour_direction_world`. Independent components are evaluated separately; multiple qualifying components fail with an explicit ambiguity rather than being averaged.
 - This is an Adapter-private evidence correction. Public PAOS contracts, opaque candidate selection, no-motion Preparation, lifecycle ownership, and Action admission are unchanged.
-- Validation: 149 focused tests passed; current R8 R01 replay remains opening-only and no physical action was run.
+- Validation: 150 focused tests passed; current R8 R01 replay remains opening-only and no physical action was run.

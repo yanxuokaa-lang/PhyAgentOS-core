@@ -146,15 +146,19 @@ def process_feature_candidates_by_component(points, boundary_components, categor
         try:
             feature = _top_mesh_vertex_rim(values, tolerance_m=tolerance_m)
             if category == "reagent_bottle" and components:
-                boundary_points = np.concatenate(
-                    [np.asarray(component, dtype=float).reshape(-1, 3) for component in components],
-                    axis=0,
-                )
-                feature.update(_pour_lip_evidence(
-                    feature["rim_radius_m"], np.asarray(feature["tip_world"]),
-                    np.asarray(feature["axis_world"]), tolerance_m,
-                    boundary_edges=boundary_points,
-                ))
+                lip_evidence = []
+                for component in components:
+                    evidence = _pour_lip_evidence(
+                        feature["rim_radius_m"], np.asarray(feature["tip_world"]),
+                        np.asarray(feature["axis_world"]), tolerance_m,
+                        boundary_edges=component,
+                    )
+                    if evidence.get("feature_role") == "pour_lip":
+                        lip_evidence.append(evidence)
+                if len(lip_evidence) == 1:
+                    feature.update(lip_evidence[0])
+                elif len(lip_evidence) > 1:
+                    raise ValueError("final mesh has multiple independent pour-lip candidates")
             return [feature]
         except ValueError as exc:
             failures.append(str(exc))
@@ -168,6 +172,12 @@ def process_feature_candidates_by_component(points, boundary_components, categor
         for feature in features:
             candidates.append({**feature, "mesh_component_index": component_index})
     if candidates:
+        if category == "reagent_bottle":
+            lip_candidates = [
+                item for item in candidates if item.get("feature_role") == "pour_lip"
+            ]
+            if len(lip_candidates) > 1:
+                raise ValueError("final mesh has multiple independent pour-lip candidates")
         highest = max(float(item["tip_world"][2]) for item in candidates)
         return [item for item in candidates if highest - float(item["tip_world"][2]) <= tolerance_m * 2]
     if not components and category == "stir_tool":

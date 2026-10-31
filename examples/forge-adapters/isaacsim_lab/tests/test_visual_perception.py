@@ -95,7 +95,7 @@ def test_simulator_truth_geometry_qualifies_lateral_pour_lip_from_mesh_support()
     lip_edges = np.stack((lip[:-1], lip[1:]), axis=1)
     edges = np.concatenate((ring_edges, lip_edges), axis=0)
 
-    candidates = process_feature_candidates(shell, edges, 'reagent_bottle')
+    candidates = process_feature_candidates_by_component(shell, [edges], 'reagent_bottle')
 
     assert len(candidates) == 1
     assert candidates[0]['feature_role'] == 'pour_lip'
@@ -117,6 +117,25 @@ def test_simulator_truth_geometry_does_not_use_mesh_only_extension_as_pour_lip()
 
     assert candidates[0]['feature_role'] == 'opening'
     assert 'pour_direction_world' not in candidates[0]
+
+
+def test_simulator_truth_geometry_does_not_merge_independent_lip_components():
+    theta = np.linspace(0, 2 * np.pi, 96, endpoint=False)
+    ring = np.column_stack((.04 * np.cos(theta), .04 * np.sin(theta), np.full(len(theta), .2)))
+    wall = np.column_stack((.04 * np.cos(theta), .04 * np.sin(theta), np.linspace(.08, .2, len(theta))))
+    extension = np.linspace(.045, .095, 12)
+    positive = np.column_stack((extension, np.zeros_like(extension), np.full(len(extension), .2)))
+    negative = np.column_stack((-extension, np.zeros_like(extension), np.full(len(extension), .2)))
+    ring_edges = np.stack((ring, np.roll(ring, -1, axis=0)), axis=1)
+    positive_edges = np.stack((positive[:-1], positive[1:]), axis=1)
+    negative_edges = np.stack((negative[:-1], negative[1:]), axis=1)
+    points = np.vstack((ring, wall, positive, negative))
+
+    with pytest.raises(ValueError, match='multiple independent pour-lip candidates'):
+        process_feature_candidates_by_component(
+            points, [np.concatenate((ring_edges, positive_edges)),
+                     np.concatenate((ring_edges, negative_edges))], 'reagent_bottle',
+        )
 
 
 def test_simulator_truth_geometry_rejects_symmetric_lateral_extensions_as_ambiguous():

@@ -46,6 +46,20 @@
 
 ## 最近五版本 / Latest five versions
 
+## v16.2.6 (2026-10-31 16:10) - codex
+
+### 变更摘要 / Summary [完成 / Completed; physical actions remain blocked]
+- [sense] [fix] 将 `pour_lip` 判定的侧向支撑限定为同一最终 USD 网格的边界边端点，避免普通瓶身表面点虚构倾倒口和流向。 / Restrict `pour_lip` lateral support to boundary endpoints from the same final USD mesh, preventing ordinary bottle surfaces from fabricating a pour mouth or flow direction.
+- [test] [test] 覆盖真实边界支撑正例、mesh-only 延伸和对称证据 fail-closed；PAOS 公共契约及 AgentLoop 生命周期未变。 / Cover qualified boundary support, mesh-only extensions and symmetric evidence fail-closed; PAOS public contracts and AgentLoop lifecycle remain unchanged.
+
+### 文件与验证 / Files and Validation
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/simulator_truth_perception.py:L109-L112,L145-L158,L219-L254`：只从最终 mesh boundary evidence 识别侧向 pour lip。 / Identify lateral pour lips only from final-mesh boundary evidence.
+- `examples/forge-adapters/isaacsim_lab/tests/test_visual_perception.py:L86-L139`：增加边界支撑、mesh-only 与对称证据用例。 / Add boundary-support, mesh-only and symmetric-evidence cases.
+- 定向测试 `150 passed`；Ruff、compileall、`git diff --check` 通过。当前 R8 R01 仍为 opening-only，未运行动作。 / Focused tests: `150 passed`; Ruff, compileall and `git diff --check` passed. R8 R01 remains opening-only; no action ran.
+
+### Git 提交 / Git Commit
+- 待提交 / Pending commit.
+
 ## v16.2.5 (2026-10-31 14:45) - codex
 
 ### 变更摘要 / Summary [完成 / Completed; physical actions remain blocked]
