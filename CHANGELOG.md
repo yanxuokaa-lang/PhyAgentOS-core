@@ -58,7 +58,7 @@
 - 定向测试 `150 passed`；Ruff、compileall、`git diff --check` 通过。当前 R8 R01 仍为 opening-only，未运行动作。 / Focused tests: `150 passed`; Ruff, compileall and `git diff --check` passed. R8 R01 remains opening-only; no action ran.
 
 ### Git 提交 / Git Commit
-- 待提交 / Pending commit.
+- Implementation commit: `224ad501`; Branch: `feature/planning-loop`; not pushed per runtime-safety guidance. / Implementation commit: `224ad501`; Branch: `feature/planning-loop`; not pushed per runtime-safety guidance.
 
 ## v16.2.5 (2026-10-31 14:45) - codex
 
