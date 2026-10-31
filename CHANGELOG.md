@@ -6,6 +6,7 @@
 
 ## Archive
 
+- [2026-10_part16](changelog/2026-10_part16.md)
 - [2026-10_part15](changelog/2026-10_part15.md)
 - [2026-10_part14](changelog/2026-10_part14.md)
 - [2026-10_part13](changelog/2026-10_part13.md)
@@ -45,6 +46,25 @@
 - [2026-09](changelog/2026-09.md)
 
 ## 最近五版本 / Latest five versions
+
+## v16.3.0 (2026-10-31 19:05) - codex
+
+### Summary [Completed]
+- [policy] [fix] `PhyAgentOS/agent/recovery_decisions.py:L37-L163,L235-L266,L396-L489` now projects only same-capture opaque grasp alternatives for a known zero-motion route-collision failure; stale provenance, missing alternatives, and provider-rejected candidates stop recovery. / 仅为已知零动作路线碰撞失败投影同捕获 opaque 替代候选；证据过期、无替代候选或已被 Provider 拒绝的候选保持停止。
+- [env] [fix] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/paos_client.py:L145-L184` reports bounded `requires_replan` and all rejected candidate refs without changing collision checks. / 报告有界重规划提示和全部拒绝候选引用，不改变碰撞检查。
+- [policy] [fix] `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/subtask_executor.py:L477-L517,L765-L799,L1068-L1090` admits replan only for the first known no-motion preparation failure with empty possession and zero completed atoms; no automatic retry. / 仅在首个已知零动作准备失败、空持有且零原子动作时允许重规划，不自动重试。
+- [test] [test] Added positive and negative recovery/Adapter tests; focused suites `124 passed`, Ruff, compileall and diff check passed. No Isaac or physical Action was started. / 增加正负恢复与 Adapter 测试；定向测试 `124 passed`，Ruff、compileall、diff check 通过；未启动 Isaac 或物理动作。
+
+### Files and Diff / 文件与 Diff
+- `PhyAgentOS/agent/recovery_decisions.py:L37-L163,L235-L266,L396-L489`: before, generic failure recovery lacked a same-capture alternative projection; after, only exact task/revision/observation/scene/frame/calibration/entity/candidate-set matches contribute opaque refs, excluding the failed and provider-rejected candidates. / 修改前无同捕获候选恢复投影；修改后只投影完整身份匹配的 opaque 引用并排除失败和 Provider 已拒绝候选。
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/paos_client.py:L145-L184`: before, all rejected routes produced a generic no-admissible-grasp error; after, explicit route collision carries bounded `requires_replan`, recommendation and rejected refs without changing collision evaluation. / 修改前只返回通用错误；修改后路线碰撞显式携带有限重规划信号和拒绝引用，不改变碰撞判断。
+- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/subtask_executor.py:L397-L432,L477-L517,L765-L799,L1068-L1090`: before, known zero-motion preparation failure settled with no replan; after, only the first known no-motion prepare failure with empty possession, zero completed atoms, explicit adapter ownership and route-collision code propagates replan; internal retry remains absent. / 修改前已知零动作准备失败不能重规划；修改后仅满足完整零动作事实的路线碰撞进入 Agent replan，不做内部重试。
+- `PhyAgentOS/forge/capability_runtime/manipulation_prepare.py:L65-L83,L291-L321,L674-L702` and `examples/forge-skills/pick-place-workflow/contracts/manipulation.prepare.tool.yaml:L535-L561`: add provider-neutral no-motion facts and opaque `rejected_candidate_refs`. / 增加 Provider 中立的零动作事实和 opaque 拒绝候选引用。
+- Tests: `examples/forge-skills/pick-place-workflow/tests/test_subtask_executor.py:L610-L680`; `tests/test_recovery_decisions.py:L165-L345`; `examples/forge-adapters/isaacsim_lab/tests/test_paos_integration.py:L932-L963`. Docs/diagnosis: `.task/labutopia-pour-lip-task-conditioned-20261031.md:L74-L110`; `docs/forge/MANIPULATION_DAG_DEVELOPER_GUIDE.md:L585-L599`; `docs/forge/IMPLEMENTATION_REVIEW_V16_3_0.md:L1-L68`; detailed bilingual record: `changelog/2026-10_part16.md:L1-L72`. / 测试覆盖正例及过期、歧义、已拒绝候选和不满足零动作条件的负例；诊断、开发指南及实现审查已更新。
+- Key Diff: `requires_replan = false` for the generic failure path -> `requires_replan = explicit_known_zero_motion_route_collision`; candidate retry -> Agent-proposed replacement revision using same-capture opaque alternatives. / 关键差异：通用失败固定不可重规划改为只允许明确的已知零动作路线碰撞；自动重试改为 Agent 在替代 revision 中选择同捕获 opaque 候选。
+
+### Git Commit
+- Implementation commit: `02249632`; branch `feature/planning-loop`; `2026-10-31 19:42 Asia/Shanghai`. / 实现提交 `02249632`；分支 `feature/planning-loop`；北京时间 `2026-10-31 19:42`。
 
 ## v16.2.9 (2026-10-31 18:25) - codex
 

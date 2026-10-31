@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Mapping
 from time import monotonic
 from typing import Literal
 
@@ -31,6 +32,135 @@ class RecoveryMethodOption(BaseModel):
     unfinished_obligations: tuple[str, ...] = ()
     investigation_capabilities: tuple[str, ...] = ()
     prohibited_when: tuple[str, ...] = ()
+
+
+def _subtask_receipts(record):
+    facts = response_facts(getattr(record, "response", None))
+    result = facts.get("subtask_result")
+    receipts = result.get("receipts") if isinstance(result, Mapping) else None
+    return tuple(item for item in receipts if isinstance(item, Mapping)) if isinstance(receipts, list) else ()
+
+
+def _route_failure_record(task, graph, settlement):
+    records = [
+        record for record in getattr(task, "execution_records", ())
+        if (
+            record.revision_id == graph.revision_id
+            and record.node_id == settlement.node_id
+            and record.semantics == "action"
+        )
+    ]
+    for record in reversed(records):
+        facts = response_facts(getattr(record, "response", None))
+        receipts = _subtask_receipts(record)
+        if (
+            settlement.status == "failed"
+            and getattr(settlement, "outcome_known", None) is True
+            and getattr(settlement, "world_change_started", None) is False
+            and getattr(settlement, "requires_replan", None) is True
+            and facts.get("requires_replan") is True
+            and len(receipts) == 1
+            and receipts[0].get("sequence_index", 0) == 0
+            and facts.get("possession_state") == "empty"
+        ):
+            for item in receipts:
+                prepared = item.get("response")
+                if not isinstance(prepared, Mapping):
+                    continue
+                error = prepared.get("error")
+                if (
+                    item.get("tool_id") == "manipulation.prepare"
+                    and prepared.get("motion_authorized") is False
+                    and prepared.get("failure_owner") == "runtime_adapter"
+                    and isinstance(error, Mapping)
+                    and error.get("code") == "no_admissible_grasp"
+                ):
+                    return record
+    return None
+
+
+def _same_capture_alternative_candidates(task, graph, settlement) -> dict | None:
+    """Project only opaque, same-capture alternatives for route recovery."""
+    failed = _route_failure_record(task, graph, settlement)
+    if failed is None:
+        return None
+    action_binding = getattr(failed, "arguments", {})
+    binding = action_binding.get("binding") if isinstance(action_binding, Mapping) else None
+    if not isinstance(binding, Mapping):
+        return None
+    operation = action_binding.get("operation")
+    identity = {
+        key: binding.get(key)
+        for key in ("entity_ref", "candidate_set_ref", "observation_ref", "scene_revision", "frame_id", "calibration_ref")
+    }
+    current_ref = binding.get("candidate_ref")
+    if not all(isinstance(value, str) and value for value in identity.values()) or not isinstance(current_ref, str):
+        return None
+    rejected_refs = {current_ref}
+    for item in _subtask_receipts(failed):
+        prepared = item.get("response")
+        if not isinstance(prepared, Mapping):
+            continue
+        values = prepared.get("rejected_candidate_refs")
+        if isinstance(values, (list, tuple)):
+            rejected_refs.update(value for value in values if isinstance(value, str))
+    for record in reversed(getattr(task, "execution_records", ())):
+        if (
+            record.revision_id != graph.revision_id
+            or record.semantics != "query"
+            or record.status != "succeeded"
+            or record.tool_id != "manipulation.grasp_task_affordances"
+        ):
+            continue
+        facts = response_facts(record.response)
+        query_arguments = getattr(record, "arguments", {})
+        query_entities = query_arguments.get("entity_refs", ()) if isinstance(query_arguments, Mapping) else ()
+        if facts.get("status") != "available":
+            continue
+        if (
+            not isinstance(query_arguments, Mapping)
+            or query_arguments.get("operation") != operation
+            or identity["entity_ref"] not in query_entities
+        ):
+            continue
+        if any(
+            facts.get(key) != value
+            for key, value in identity.items()
+            if key not in {"candidate_set_ref", "entity_ref"}
+        ):
+            continue
+        if facts.get("grasp_candidate_set_ref") != identity["candidate_set_ref"]:
+            continue
+        candidates = []
+        for item in facts.get("candidates", ()):
+            if not isinstance(item, Mapping):
+                continue
+            candidate_ref = item.get("grasp_candidate_ref")
+            entity_ref = item.get("entity_ref")
+            if (
+                isinstance(candidate_ref, str)
+                and candidate_ref not in rejected_refs
+                and entity_ref == identity["entity_ref"]
+            ):
+                candidates.append({
+                    key: item[key]
+                    for key in ("combination_ref", "grasp_candidate_ref", "process_feature_refs")
+                    if key in item
+                })
+        if not candidates:
+            return None
+        return {
+            "source_record_id": record.record_id,
+            "candidate_set_ref": facts.get("candidate_set_ref"),
+            "grasp_candidate_set_ref": facts.get("grasp_candidate_set_ref"),
+            "process_feature_candidate_set_ref": facts.get("process_feature_candidate_set_ref"),
+            "observation_ref": identity["observation_ref"],
+            "scene_revision": identity["scene_revision"],
+            "calibration_ref": identity["calibration_ref"],
+            "entity_ref": identity["entity_ref"],
+            "candidates": candidates,
+        }
+    return None
 
 
 def recovery_method_options(task, graph, settlement, delta, context) -> tuple[RecoveryMethodOption, ...]:
@@ -105,18 +235,26 @@ def recovery_method_options(task, graph, settlement, delta, context) -> tuple[Re
             unfinished_obligations=unfinished_obligations,
             prohibited_when=("unknown_action_or_session",),
         ))
+    route_alternatives = _same_capture_alternative_candidates(task, graph, settlement)
+    route_replan = _route_failure_record(task, graph, settlement) is not None
     if query_capabilities and (
         gaps
         or settlement.status in {"failed", "stale", "outcome_unknown"}
         or settlement.requires_replan is True
-    ):
+    ) and (not route_replan or route_alternatives is not None):
         options.append(RecoveryMethodOption(
             option_id="replan",
             description=(
                 "Create a replacement semantic revision beginning with available read-only "
                 "investigation; preserve unknown physical outcomes and refresh required facts."
             ),
-            addresses=tuple(sorted(gaps)) or ("failed_node",),
+            addresses=(
+                tuple(sorted(gaps))
+                if gaps
+                else ("same_capture_alternative_grasp_candidate",)
+                if route_replan
+                else ("failed_node",)
+            ),
             unfinished_obligations=unfinished_obligations,
             investigation_capabilities=tuple(sorted(query_capabilities)),
             prohibited_when=("unresolved_unknown_physical_effect",)
@@ -258,6 +396,9 @@ class AgentRecoveryDecisions:
     ):
         task = self.coordinator.get_task(graph.task_id)
         method_options = recovery_method_options(task, graph, settlement, delta, context)
+        route_alternatives = _same_capture_alternative_candidates(
+            task, graph, settlement
+        )
         failed_executions = []
         for record in task.execution_records:
             if record.revision_id != graph.revision_id or record.node_id != settlement.node_id:
@@ -315,6 +456,15 @@ class AgentRecoveryDecisions:
                 "which gap it addresses. Replay is reducer-only and never repeats a physical call. "
                     "For replanning return the full replacement semantic node list. Preserve only "
                     "the delta's allowed nodes unchanged; refresh stale evidence before actions. "
+                    + (
+                        "A known no-motion grasp route rejection may use only one of the supplied "
+                        "same-capture opaque alternatives. Propose a replacement graph that first "
+                        "performs the existing read-only task-affordance selection/Preparation with "
+                        "the chosen alternative reference; do not directly retry the failed Action, "
+                        "reuse its rejected candidate, or invent pose/geometry. If no supplied "
+                        "candidate is suitable, stop. "
+                        if route_alternatives is not None else ""
+                    )
                     + RECOVERY_NODE_GUIDANCE + " Use submit_recovery to return the decision."
                 )},
                 {"role": "user", "content": json.dumps({
@@ -329,6 +479,8 @@ class AgentRecoveryDecisions:
                     "graph": graph.model_dump(mode="json"),
                     "settlement": settlement.model_dump(mode="json"),
                     "failed_executions": failed_executions,
+                    **({"same_capture_alternative_candidates": route_alternatives}
+                       if route_alternatives is not None else {}),
                     "delta": delta.model_dump(mode="json"),
                     "context": context.model_dump(mode="json"),
                     "recovery_method_options": [

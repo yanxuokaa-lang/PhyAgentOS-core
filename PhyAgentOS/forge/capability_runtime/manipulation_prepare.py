@@ -71,6 +71,7 @@ class PreparationProviderError(RuntimeError):
         requires_replan: bool = False,
         recommended_action: str = "fix_runtime_contract",
         fresh_evidence_requirements: tuple[str, ...] = (),
+        rejected_candidate_refs: tuple[str, ...] = (),
     ):
         super().__init__(message)
         self.code = code
@@ -79,6 +80,7 @@ class PreparationProviderError(RuntimeError):
         self.requires_replan = requires_replan
         self.recommended_action = recommended_action
         self.fresh_evidence_requirements = fresh_evidence_requirements
+        self.rejected_candidate_refs = rejected_candidate_refs
 
 
 class PreparationProvider(Protocol):
@@ -291,6 +293,9 @@ MANIPULATION_TOOL_SPEC: dict[str, Any] = {
                 "items": {"type": "string", "pattern": r"^artifact://[^/]+/.+$"},
             },
             "motion_authorized": {"const": False},
+            "world_change_started": {"const": False},
+            "outcome_known": {"const": True},
+            "possession_state": {"const": "empty"},
             "failure_owner": {"type": "string", "minLength": 1},
             "retryable_in_revision": {"type": "boolean"},
             "requires_replan": {"type": "boolean"},
@@ -298,6 +303,11 @@ MANIPULATION_TOOL_SPEC: dict[str, Any] = {
             "fresh_evidence_requirements": {
                 "type": "array",
                 "items": {"type": "string", "minLength": 1},
+                "uniqueItems": True,
+            },
+            "rejected_candidate_refs": {
+                "type": "array",
+                "items": {"type": "string", "pattern": r"^candidate://[^/]+/.+$"},
                 "uniqueItems": True,
             },
             "error": {
@@ -670,6 +680,7 @@ class ManipulationPreparationEndpoint:
             requires_replan: bool = False,
             recommended_action: str = "fix_runtime_contract",
             fresh_evidence_requirements: tuple[str, ...] = (),
+            rejected_candidate_refs: tuple[str, ...] = (),
         ) -> dict[str, Any]:
             result = {
                 **_error(code, message, observation_ref=observation_ref),
@@ -682,7 +693,11 @@ class ManipulationPreparationEndpoint:
                 "retryable_in_revision": retryable_in_revision,
                 "requires_replan": requires_replan,
                 "recommended_action": recommended_action,
+                "world_change_started": False,
+                "outcome_known": True,
+                "possession_state": "empty",
                 "fresh_evidence_requirements": list(fresh_evidence_requirements),
+                "rejected_candidate_refs": list(rejected_candidate_refs),
             }
             return result
 
@@ -731,6 +746,7 @@ class ManipulationPreparationEndpoint:
                 requires_replan=exc.requires_replan,
                 recommended_action=exc.recommended_action,
                 fresh_evidence_requirements=exc.fresh_evidence_requirements,
+                rejected_candidate_refs=exc.rejected_candidate_refs,
             )
         except TimeoutError:
             return bound_error(

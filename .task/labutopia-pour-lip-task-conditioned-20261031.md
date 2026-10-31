@@ -70,3 +70,41 @@ This qualifies a no-motion geometric target and route input only. It does not
 prove liquid transfer, vessel capacity/interior volume, IK/collision readiness,
 controller success, or chemical mixing. The full task must still stop if any
 later preparation or execution evidence is missing or ambiguous.
+
+## R12 route-rejection diagnosis and recovery implementation
+
+R12 selected exactly one R01 grasp candidate (`candidate://...-0`) for a
+single-arm pour. It did not create two simultaneous grabs: R02 is a later
+subtask and the glass rod is a separate stir subtask. The first internal
+`manipulation.prepare` was no-motion and known: the Isaac Adapter rejected the
+candidate with `no_admissible_grasp` because the approach route collided with
+the R03 mesh. World state did not change, possession remained empty, and no
+atomic Tool completed. The original implementation collapsed this into
+`requires_replan=false`, so Coordinator recovery stopped before the Agent could
+choose another candidate from the same capture.
+
+The recovery path now preserves the architecture boundary:
+
+- Isaac preparation facts explicitly carry `world_change_started=false`,
+  `outcome_known=true`, `possession_state=empty`, and set `requires_replan=true`
+  only for an explicit route-collision rejection.
+- Subtask aggregation admits replan only for the first no-motion
+  `manipulation.prepare` failure with `no_admissible_grasp`, runtime-adapter
+  ownership, a route-collision diagnostic, empty possession, and zero completed
+  Tools. It never retries internally.
+- `AgentRecoveryDecisions` projects only opaque candidate/combination/process
+  references from a successful same-revision
+  `manipulation.grasp_task_affordances` record whose scene, observation,
+  calibration, frame, entity, and underlying grasp candidate set match the
+  failed Action binding. Failed candidates are excluded. Missing or stale
+  provenance yields stop, not a new Action.
+- The Agent must propose a replacement semantic graph and select one supplied
+  candidate reference. Coordinator remains the sole revision, budget,
+  admission, cancellation, and settlement owner; no provider geometry,
+  USD path, pose, or automatic retry crosses the boundary.
+
+This is a replan admission fix only. It does not bypass collision checks,
+authorize motion, or prove that any alternative route is feasible. The next
+runtime validation is a no-motion recovery run that confirms the Agent's
+replacement candidate reaches preparation; Action remains disabled until that
+new preparation is accepted.

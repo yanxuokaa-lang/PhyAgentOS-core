@@ -582,6 +582,21 @@ example because the replan budget is exhausted, the Coordinator persists the
 existing terminal `failed` task state. A runner must not report `blocked` while
 leaving the authoritative task `executing` with the same failed settlement.
 
+For a known no-motion grasp-route rejection, recovery may be admitted only
+when the first internal `manipulation.prepare` reports an explicit
+`no_admissible_grasp` route-collision diagnostic, `motion_authorized=false`,
+`world_change_started=false`, `outcome_known=true`, empty possession, and zero
+completed atomic Tools. The Subtask executor projects this as a replan hint;
+it never retries the candidate. `AgentRecoveryDecisions` may expose only
+opaque candidate/combination/process references from a successful
+same-revision `manipulation.grasp_task_affordances` record whose observation,
+scene, frame, calibration, entity, and underlying grasp candidate-set
+identities match the failed Action binding. The Agent must propose the
+replacement semantic graph and choose one supplied alternative; the
+Coordinator still owns revision creation, replan budget, admission,
+cancellation, and settlement. Missing, stale, ambiguous, post-motion, or
+unknown evidence remains stop/reconcile and cannot authorize a new Action.
+
 Long-horizon continuity is stored in `AgentTask`/`PlanRevision`, not in an
 ever-growing model transcript. Each node turn receives a read-only,
 node-scoped projection containing task/revision identity, the frozen Skill and

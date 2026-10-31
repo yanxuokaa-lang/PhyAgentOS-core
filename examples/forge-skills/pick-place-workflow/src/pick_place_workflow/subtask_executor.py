@@ -394,6 +394,7 @@ class SubtaskExecutionResult(BaseModel):
     possession_state: Literal["empty", "holding", "uncertain"] = "uncertain"
     scene_revision: str | None = None
     recommended_action: str
+    requires_replan: bool = False
 
     def to_node_settlement(
         self,
@@ -426,7 +427,7 @@ class SubtaskExecutionResult(BaseModel):
                 receipt.response.get("world_change_started") is True for receipt in self.receipts
             ),
             outcome_known=self.outcome_known,
-            requires_replan=self.status == "outcome_unknown",
+            requires_replan=self.requires_replan or self.status == "outcome_unknown",
             recommended_action=self.recommended_action,
         )
 
@@ -471,6 +472,49 @@ def _persist_assignment_artifact(store: Any, response: Mapping[str, Any]) -> Non
         "preparation_ref": response.get("preparation_ref"),
         "route_arguments": dict(route_arguments),
     })
+
+
+def _known_no_motion_prepare_failure(
+    *,
+    receipts: list[ToolReceipt] | tuple[ToolReceipt, ...],
+    completed: list[str] | tuple[str, ...],
+    status: SubtaskStatus,
+    possession_state: str,
+) -> bool:
+    """Admit only an explicit, zero-motion route rejection to Agent replan.
+
+    This is deliberately narrower than ``requires_replan`` for unknown Action
+    outcomes.  The adapter must identify the failed preparation candidate and
+    the route-collision diagnostic; no state-changing internal Tool may have
+    completed and possession must still be known empty.
+    """
+    if status != "failed" or completed or possession_state != "empty" or len(receipts) != 1:
+        return False
+    receipt = receipts[0]
+    if (
+        receipt.tool_id != "manipulation.prepare"
+        or receipt.phase != "prepare"
+        or receipt.outcome_known is not True
+    ):
+        return False
+    response = receipt.response
+    if response.get("status") not in {"unavailable", "failed"}:
+        return False
+    if response.get("motion_authorized") is not False:
+        return False
+    if response.get("world_change_started") is not False:
+        return False
+    if response.get("possession_state") != "empty":
+        return False
+    if response.get("failure_owner") != "runtime_adapter":
+        return False
+    if response.get("requires_replan") is not True:
+        return False
+    error = response.get("error")
+    if not isinstance(error, Mapping) or error.get("code") != "no_admissible_grasp":
+        return False
+    message = error.get("message")
+    return isinstance(message, str) and "route_collision" in message
 
 
 class SubtaskExecutor:
@@ -732,6 +776,14 @@ class SubtaskExecutor:
             "subtask_outcome_unknown" if status == "outcome_unknown" else
             "subtask_cancelled" if status == "cancelled" else "subtask_failed"
         )
+        requires_replan = _known_no_motion_prepare_failure(
+            receipts=receipts,
+            completed=completed,
+            status=status,
+            possession_state=context.possession_state,
+        )
+        if requires_replan:
+            recommended_action = "agent_replan_select_alternative_candidate"
         return SubtaskExecutionResult(
             subtask_id=spec.subtask_id,
             status=status,
@@ -743,6 +795,7 @@ class SubtaskExecutor:
             possession_state=(context.possession_state if context.possession_state in {"empty", "holding", "uncertain"} else "uncertain"),
             scene_revision=context.scene_revision,
             recommended_action=recommended_action,
+            requires_replan=requires_replan,
         )
 
 
@@ -1023,8 +1076,8 @@ class RuntimeSubtaskDriver:
             "evidence_availability": "complete" if evidence_refs and known and runtime_status == "succeeded" else "partial" if evidence_refs else "none",
             "artifact_refs": evidence_refs,
             "retryable_in_revision": False,
-            "requires_replan": runtime_status == "unknown",
-            "recommended_action": action,
+            "requires_replan": bool(result.get("requires_replan")) or runtime_status == "unknown",
+            "recommended_action": result.get("recommended_action") or action,
             "phase": failed_phase or "none",
         }
         self.terminal = {

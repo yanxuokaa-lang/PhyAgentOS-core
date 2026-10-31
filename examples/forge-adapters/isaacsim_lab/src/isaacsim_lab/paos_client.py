@@ -165,7 +165,23 @@ class LabUtopiaCycleProvider:
             if isinstance(value.get("route_arguments"), dict):
                 value["route_arguments"]["rejected_candidates"] = rejected
             return value
-        raise PreparationProviderError("no_admissible_grasp", str(rejected), failure_owner="runtime_adapter")
+        raise PreparationProviderError(
+            "no_admissible_grasp",
+            str(rejected),
+            failure_owner="runtime_adapter",
+            requires_replan=any(
+                item.get("failure_code") == "route_collision" for item in rejected
+            ),
+            recommended_action=(
+                "select_alternative_candidate"
+                if any(item.get("failure_code") == "route_collision" for item in rejected)
+                else "fix_runtime_contract"
+            ),
+            rejected_candidate_refs=tuple(
+                item["candidate_ref"] for item in rejected
+                if isinstance(item.get("candidate_ref"), str)
+            ),
+        )
 
     def prepare_held(self, arguments: Mapping[str, Any]) -> dict[str, Any]:
         """Replan from the latest Tool receipt and persist a new current route.

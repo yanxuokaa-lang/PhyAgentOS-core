@@ -927,3 +927,37 @@ def test_preparation_tries_predicted_candidates_and_preserves_selected_pose(tmp_
     with pytest.raises(PreparationProviderError, match='stale_visual_observation'):
         provider.prepare(request)
     assert len(prepared) == 1
+
+
+def test_route_collision_rejection_is_explicitly_replannable_but_stays_no_motion(tmp_path):
+    from PhyAgentOS.forge.capability_runtime.manipulation_prepare import PreparationProviderError
+
+    profile = _profile(tmp_path)
+    binding = _binding(profile)
+    candidate = {
+        "candidate_ref": "candidate://observed-reagent-a/route-collision",
+        "entity_ref": binding["entity_ref"],
+        "grasp_frame": {"position_m": [0.01, 0.2, 0.3]},
+    }
+
+    class Resolver:
+        def resolve(self, observed, request):
+            target = _resolved_target(observed)
+            target["candidate_ref"] = observed["candidate_ref"]
+            return target
+
+    class Engine:
+        def prepare_manipulation(self, _request):
+            return {"status": "unavailable", "failure_code": "route_collision"}
+
+    provider = LabUtopiaCycleProvider(Engine(), target_resolver=Resolver())
+    with pytest.raises(PreparationProviderError, match="route_collision") as captured:
+        provider.prepare({
+            "perception_binding": binding,
+            "process_type": "pour",
+            "candidates": [candidate],
+        })
+
+    assert captured.value.requires_replan is True
+    assert captured.value.recommended_action == "select_alternative_candidate"
+    assert captured.value.rejected_candidate_refs == (candidate["candidate_ref"],)

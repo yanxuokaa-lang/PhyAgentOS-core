@@ -531,6 +531,12 @@ output_schema:
         pattern: ^artifact://[^/]+/.+$
     motion_authorized:
       const: false
+    world_change_started:
+      const: false
+    outcome_known:
+      const: true
+    possession_state:
+      const: empty
     failure_owner:
       type: string
       minLength: 1
@@ -546,6 +552,12 @@ output_schema:
       items:
         type: string
         minLength: 1
+      uniqueItems: true
+    rejected_candidate_refs:
+      type: array
+      items:
+        type: string
+        pattern: ^candidate://[^/]+/.+$
       uniqueItems: true
     error:
       type: object
