@@ -106,3 +106,10 @@
 - The r8 artifact is a live no-motion integration result, not evidence of a
   successful physical action. Further action execution remains blocked until
   the task-affordance Query and its no-motion Preparation succeed.
+
+## R8 Geometry Provider Implementation (v16.2.4)
+
+- The Isaac simulator-truth Provider now inspects final-composed mesh points near each fitted bottle rim. It qualifies `feature_role="pour_lip"` only when a coherent lateral support extends beyond the circular rim and yields a finite outward `pour_direction_world` perpendicular to the rim axis.
+- Ordinary circular openings remain `feature_role="opening"`. Missing, weak, or symmetric lateral support produces no pour-lip fields and therefore keeps task-affordance `unavailable`.
+- The implementation does not read legacy manifest coordinates, wrapper translations, bounds, configured pour axes, or AgentLoop parameters to fabricate a mouth or flow direction. PAOS public ToolSpecs and AgentLoop selection/receipt flow are unchanged.
+- Regression coverage includes a qualified lateral lip, a normal opening, and symmetric extensions that fail closed. Replaying the R8 R01 final mesh still returns only `opening`; no action is authorized.

@@ -99,12 +99,17 @@ def process_feature_candidates(points, boundary_edges, category, *, tolerance_m=
         if not fits:
             raise ValueError("top opening boundary is not a stable circular rim")
         fits.sort(key=lambda item: item[0])
-        return [{"origin_world": ((low + high) / 2).tolist(), "tip_world": centre.tolist(),
-                 "axis_world": axis.tolist(), "size_m": size.tolist(),
-                 "feature_kind": "rim", "rim_radius_m": radius, "fit_rmse_m": spread,
-                 "candidate_index": index, "source": "final_composed_usd_mesh",
-                 "coverage": "closed_boundary_loop"}
-                for index, (radius, centre, spread, axis) in enumerate(fits)]
+        candidates = []
+        for index, (radius, centre, spread, axis) in enumerate(fits):
+            feature = {"origin_world": ((low + high) / 2).tolist(), "tip_world": centre.tolist(),
+                       "axis_world": axis.tolist(), "size_m": size.tolist(),
+                       "feature_kind": "rim", "feature_role": "opening", "rim_radius_m": radius,
+                       "fit_rmse_m": spread, "candidate_index": index,
+                       "source": "final_composed_usd_mesh", "coverage": "closed_boundary_loop"}
+            if category == "reagent_bottle":
+                feature.update(_pour_lip_evidence(values, radius, centre, axis, tolerance_m))
+            candidates.append(feature)
+        return candidates
     if category == "stir_tool":
         centred = values - values.mean(0)
         _, _, basis = np.linalg.svd(centred, full_matrices=False)
@@ -195,6 +200,48 @@ def _top_mesh_vertex_rim(points, *, tolerance_m):
         "fit_rmse_m": residual,
         "source": "final_composed_usd_mesh",
         "coverage": "top_mesh_vertex_ring",
+    }
+
+
+def _pour_lip_evidence(points, rim_radius, rim_center, rim_axis, tolerance_m):
+    """Qualify a sideward pour lip from final-mesh support near a fitted rim.
+
+    A circular opening alone is deliberately insufficient.  The mesh must contain
+    a spatially coherent, lateral extension beyond the fitted rim in the rim
+    plane.  The returned fields are provider evidence, not authored landmarks.
+    """
+    axis = np.asarray(rim_axis, dtype=float)
+    axis /= np.linalg.norm(axis)
+    values = np.asarray(points, dtype=float)
+    axial = (values - rim_center) @ axis
+    band = values[np.abs(axial) <= max(tolerance_m * 3.0, rim_radius * 0.35)]
+    if len(band) < 8:
+        return {}
+    planar = band - np.outer((band - rim_center) @ axis, axis)
+    radial_vectors = planar - rim_center
+    radial = np.linalg.norm(radial_vectors, axis=1)
+    extension_threshold = max(tolerance_m * 2.0, rim_radius * 0.18)
+    extension = radial > rim_radius + extension_threshold
+    support = radial_vectors[extension]
+    if len(support) < 6:
+        return {}
+    direction_sum = support.sum(axis=0)
+    direction = direction_sum - axis * float(np.dot(direction_sum, axis))
+    direction_norm = float(np.linalg.norm(direction))
+    if direction_norm <= max(tolerance_m, rim_radius * 0.05):
+        return {}
+    direction /= direction_norm
+    alignment = (support @ direction) / np.maximum(np.linalg.norm(support, axis=1), 1e-12)
+    if float(np.mean(alignment)) < 0.82 or int(np.count_nonzero(alignment > 0.55)) < 6:
+        return {}
+    tip = rim_center + direction * float(np.median(support @ direction))
+    return {
+        "feature_role": "pour_lip",
+        "tip_world": tip.tolist(),
+        "pour_direction_world": direction.tolist(),
+        "lip_extension_m": float(np.median(support @ direction)),
+        "lip_support_count": int(len(support)),
+        "coverage": "closed_boundary_loop+lateral_mesh_support",
     }
 
 

@@ -46,6 +46,20 @@
 
 ## 最近五版本 / Latest five versions
 
+## v16.2.4 (2026-10-31 14:25) - codex
+
+### 变更摘要 / Summary [完成 / Completed; physical actions remain blocked]
+- [sense] [fix] 从最终组合 USD 网格的侧向支撑提取合格 `pour_lip` 与 `pour_direction_world`；普通圆环、缺失或对称证据保持 `opening`/`unavailable`。 / Derive qualified `pour_lip` and `pour_direction_world` from lateral support in the final-composed USD mesh; ordinary, missing or symmetric evidence remains `opening`/`unavailable`.
+- [test] [test] 新增侧向唇口正例、普通开口和对称延伸 fail-closed 测试；PAOS ToolSpec、AgentLoop、Runtime 生命周期未改。 / Add lateral-lip, ordinary-opening and symmetric-extension fail-closed tests; PAOS ToolSpecs, AgentLoop and Runtime lifecycle are unchanged.
+
+### 文件与验证 / Files and Validation
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/simulator_truth_perception.py:L102-L112,L206-L245`：Adapter 从网格证据计算唇口和外向方向，不读取 manifest、包围盒或配置轴。 / Adapter computes lip and outward direction from mesh evidence without manifest, bounds or configured axes.
+- `examples/forge-adapters/isaacsim_lab/tests/test_visual_perception.py:L65-L119`：覆盖 opening、pour_lip 与对称证据。 / Cover opening, pour_lip and symmetric evidence.
+- Focused suites: `148 passed`; Ruff, compileall and `git diff --check` passed. R8 R01 replay remains `[('opening', None)]`; no physical action ran. / Focused suites: `148 passed`; Ruff, compileall and `git diff --check` passed. R8 R01 replay remains `[('opening', None)]`; no physical action ran.
+
+### Git 提交 / Git Commit
+- 待提交 / Pending commit.
+
 ## v16.2.3 (2026-10-31 14:06) - codex
 
 ### 变更摘要 / Summary [完成 / Completed; physical actions remain blocked]

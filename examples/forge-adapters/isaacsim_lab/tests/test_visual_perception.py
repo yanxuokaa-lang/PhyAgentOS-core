@@ -70,6 +70,7 @@ def test_simulator_truth_geometry_derives_rim_and_preserves_rod_endpoint_ambigui
     edges = np.stack((ring, np.roll(ring, -1, axis=0)), axis=1)
     vessel = process_feature_candidates(shell, edges, 'mixing_vessel')
     assert vessel[0]['feature_kind'] == 'rim'
+    assert vessel[0]['feature_role'] == 'opening'
     assert vessel[0]['tip_world'] == pytest.approx([0., 0., .2], abs=1e-4)
     assert vessel[0]['source'] == 'final_composed_usd_mesh'
 
@@ -80,6 +81,42 @@ def test_simulator_truth_geometry_derives_rim_and_preserves_rod_endpoint_ambigui
     assert {item['feature_role'] for item in candidates} == {'endpoint_a', 'endpoint_b'}
     assert candidates[0]['origin_world'] == pytest.approx(candidates[1]['tip_world'])
     assert candidates[1]['origin_world'] == pytest.approx(candidates[0]['tip_world'])
+
+
+def test_simulator_truth_geometry_qualifies_lateral_pour_lip_from_mesh_support():
+    theta = np.linspace(0, 2 * np.pi, 96, endpoint=False)
+    ring = np.column_stack((.04 * np.cos(theta), .04 * np.sin(theta), np.full(len(theta), .2)))
+    wall = np.column_stack((.04 * np.cos(theta), .04 * np.sin(theta), np.linspace(.08, .2, len(theta))))
+    lip_x = np.linspace(.045, .095, 16)
+    lip = np.column_stack((lip_x, np.zeros_like(lip_x), np.full(len(lip_x), .2)))
+    lip += np.column_stack((np.zeros(len(lip)), np.linspace(-.006, .006, len(lip)), np.zeros(len(lip))))
+    shell = np.vstack((ring, wall, lip))
+    edges = np.stack((ring, np.roll(ring, -1, axis=0)), axis=1)
+
+    candidates = process_feature_candidates(shell, edges, 'reagent_bottle')
+
+    assert len(candidates) == 1
+    assert candidates[0]['feature_role'] == 'pour_lip'
+    assert candidates[0]['pour_direction_world'] == pytest.approx([1., 0., 0.], abs=0.08)
+    assert candidates[0]['tip_world'][0] > .07
+    assert candidates[0]['lip_support_count'] >= 6
+
+
+def test_simulator_truth_geometry_rejects_symmetric_lateral_extensions_as_ambiguous():
+    theta = np.linspace(0, 2 * np.pi, 96, endpoint=False)
+    ring = np.column_stack((.04 * np.cos(theta), .04 * np.sin(theta), np.full(len(theta), .2)))
+    wall = np.column_stack((.04 * np.cos(theta), .04 * np.sin(theta), np.linspace(.08, .2, len(theta))))
+    extension = np.linspace(.045, .095, 12)
+    positive = np.column_stack((extension, np.zeros_like(extension), np.full(len(extension), .2)))
+    negative = np.column_stack((-extension, np.zeros_like(extension), np.full(len(extension), .2)))
+    shell = np.vstack((ring, wall, positive, negative))
+    edges = np.stack((ring, np.roll(ring, -1, axis=0)), axis=1)
+
+    candidates = process_feature_candidates(shell, edges, 'reagent_bottle')
+
+    assert len(candidates) == 1
+    assert candidates[0]['feature_role'] == 'opening'
+    assert 'pour_direction_world' not in candidates[0]
 
 
 def test_truth_manifest_discards_legacy_functional_coordinates(tmp_path):
