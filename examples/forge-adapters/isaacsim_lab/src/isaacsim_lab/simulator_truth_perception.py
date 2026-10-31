@@ -107,7 +107,9 @@ def process_feature_candidates(points, boundary_edges, category, *, tolerance_m=
                        "fit_rmse_m": spread, "candidate_index": index,
                        "source": "final_composed_usd_mesh", "coverage": "closed_boundary_loop"}
             if category == "reagent_bottle":
-                feature.update(_pour_lip_evidence(values, radius, centre, axis, tolerance_m))
+                feature.update(_pour_lip_evidence(
+                    radius, centre, axis, tolerance_m, boundary_edges=edges,
+                ))
             candidates.append(feature)
         return candidates
     if category == "stir_tool":
@@ -142,7 +144,18 @@ def process_feature_candidates_by_component(points, boundary_components, categor
     failures = []
     if category in {"reagent_bottle", "mixing_vessel"}:
         try:
-            return [_top_mesh_vertex_rim(values, tolerance_m=tolerance_m)]
+            feature = _top_mesh_vertex_rim(values, tolerance_m=tolerance_m)
+            if category == "reagent_bottle" and components:
+                boundary_points = np.concatenate(
+                    [np.asarray(component, dtype=float).reshape(-1, 3) for component in components],
+                    axis=0,
+                )
+                feature.update(_pour_lip_evidence(
+                    feature["rim_radius_m"], np.asarray(feature["tip_world"]),
+                    np.asarray(feature["axis_world"]), tolerance_m,
+                    boundary_edges=boundary_points,
+                ))
+            return [feature]
         except ValueError as exc:
             failures.append(str(exc))
     candidates = []
@@ -203,7 +216,7 @@ def _top_mesh_vertex_rim(points, *, tolerance_m):
     }
 
 
-def _pour_lip_evidence(points, rim_radius, rim_center, rim_axis, tolerance_m):
+def _pour_lip_evidence(rim_radius, rim_center, rim_axis, tolerance_m, *, boundary_edges=None):
     """Qualify a sideward pour lip from final-mesh support near a fitted rim.
 
     A circular opening alone is deliberately insufficient.  The mesh must contain
@@ -212,9 +225,13 @@ def _pour_lip_evidence(points, rim_radius, rim_center, rim_axis, tolerance_m):
     """
     axis = np.asarray(rim_axis, dtype=float)
     axis /= np.linalg.norm(axis)
-    values = np.asarray(points, dtype=float)
-    axial = (values - rim_center) @ axis
-    band = values[np.abs(axial) <= max(tolerance_m * 3.0, rim_radius * 0.35)]
+    if boundary_edges is None:
+        return {}
+    boundary = np.asarray(boundary_edges, dtype=float).reshape(-1, 3)
+    if boundary.ndim != 2 or boundary.shape[1] != 3 or len(boundary) < 8 or not np.isfinite(boundary).all():
+        return {}
+    axial = (boundary - rim_center) @ axis
+    band = boundary[np.abs(axial) <= max(tolerance_m * 3.0, rim_radius * 0.35)]
     if len(band) < 8:
         return {}
     planar = band - np.outer((band - rim_center) @ axis, axis)
