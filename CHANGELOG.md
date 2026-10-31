@@ -64,7 +64,7 @@
 - Key Diff: `requires_replan = false` for the generic failure path -> `requires_replan = explicit_known_zero_motion_route_collision`; candidate retry -> Agent-proposed replacement revision using same-capture opaque alternatives. / 关键差异：通用失败固定不可重规划改为只允许明确的已知零动作路线碰撞；自动重试改为 Agent 在替代 revision 中选择同捕获 opaque 候选。
 
 ### Git Commit
-- Implementation commit: `02249632`; branch `feature/planning-loop`; `2026-10-31 19:42 Asia/Shanghai`. / 实现提交 `02249632`；分支 `feature/planning-loop`；北京时间 `2026-10-31 19:42`。
+- Implementation commit: `f27c01e5`; branch `feature/planning-loop`; `2026-10-31 19:42 Asia/Shanghai`. / 实现提交 `f27c01e5`；分支 `feature/planning-loop`；北京时间 `2026-10-31 19:42`。
 
 ## v16.2.9 (2026-10-31 18:25) - codex
 
