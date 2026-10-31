@@ -67,7 +67,7 @@
 - 不允许用瓶口中心线或包围盒推断 pour lip/流向；应由最终组合 USD 的可区分几何或独立合格证据提供，否则继续 unavailable。/ Do not infer a pour lip/flow from the bottle axis or bounds; require distinguishable final-composed USD geometry or independent qualified evidence, otherwise remain unavailable.
 
 ### Git 提交 / Git Commit
-- Pending local documentation commit; no push performed. / Pending local documentation commit; no push performed.
+- Commit: `0999cb22`; Branch: `feature/planning-loop`; not pushed per runtime-safety guidance. / Commit: `0999cb22`; Branch: `feature/planning-loop`; not pushed per runtime-safety guidance.
 
 ## v16.2.2 (2026-10-31 13:44) - codex
 
