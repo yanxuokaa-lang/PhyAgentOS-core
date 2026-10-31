@@ -127,6 +127,10 @@ class LabArtifactStore:
         return ref
 
 
+def _grasp_candidate_index_key(candidate_set_ref, calibration_ref):
+    return candidate_set_ref, calibration_ref
+
+
 class RecordedGraspProvider:
     """Persist actual model inputs/output and capture-specific candidate refs."""
 
@@ -147,15 +151,25 @@ class RecordedGraspProvider:
             candidates.append(candidate)
         output["candidates"] = candidates
         output["produced_evidence_refs"] = [*output.get("produced_evidence_refs", []), evidence]
-        self.captures.setdefault(request["calibration_ref"], {}).update({i["candidate_ref"]: deepcopy(i) for i in candidates})
         candidate_set_ref = f"candidate-set://{request['scene_revision']}/{request['frame_id']}"
-        if isinstance(candidate_set_ref, str):
-            self.candidate_sets[candidate_set_ref] = {
+        index_key = _grasp_candidate_index_key(candidate_set_ref, request["calibration_ref"])
+        identity = {key: request[key] for key in
+                    ("observation_ref", "scene_revision", "frame_id", "calibration_ref")}
+        candidate_set = self.candidate_sets.get(index_key)
+        if candidate_set is not None and any(candidate_set.get(key) != value for key, value in identity.items()):
+            raise ValueError("grasp candidate-set identity changed for an existing capture")
+        if candidate_set is None:
+            candidate_set = {
                 "candidate_set_ref": candidate_set_ref,
-                **{key: request[key] for key in ("observation_ref", "scene_revision", "frame_id", "calibration_ref")},
-                "entities": {target["entity_ref"] for target in request["targets"]},
-                "candidate_refs": {item["candidate_ref"] for item in candidates},
+                **identity,
+                "entities": set(),
+                "candidate_refs": set(),
             }
+            self.candidate_sets[index_key] = candidate_set
+        candidate_set["entities"].update(target["entity_ref"] for target in request["targets"])
+        candidate_set["candidate_refs"].update(item["candidate_ref"] for item in candidates)
+        self.captures.setdefault(request["calibration_ref"], {}).update(
+            {item["candidate_ref"]: deepcopy(item) for item in candidates})
         return output
 
     def candidate(self, binding):
@@ -197,7 +211,8 @@ class LabGraspTaskAffordanceProvider:
         identity = {key: request[key] for key in
                     ("observation_ref", "scene_revision", "frame_id", "calibration_ref")}
         records = self.perception._records(request)
-        grasp_set = self.perception.grasps.candidate_sets.get(request["grasp_candidate_set_ref"])
+        grasp_set = self.perception.grasps.candidate_sets.get(_grasp_candidate_index_key(
+            request["grasp_candidate_set_ref"], request["calibration_ref"]))
         feature_set = self.perception.process_feature_sets.get(request["process_feature_candidate_set_ref"])
         expected = set(request["entity_refs"])
         grasp_entity = request["entity_refs"][0]
@@ -305,7 +320,8 @@ class LabGraspTaskAffordanceProvider:
         combination = candidate_set["combinations"].get(request["selected_combination_ref"])
         if combination is None:
             return {"status": "stale", **identity, "error": "selected combination is not in the current Query"}
-        grasp_set = self.perception.grasps.candidate_sets.get(candidate_set["grasp_candidate_set_ref"])
+        grasp_set = self.perception.grasps.candidate_sets.get(_grasp_candidate_index_key(
+            candidate_set["grasp_candidate_set_ref"], request["calibration_ref"]))
         feature_set = self.perception.process_feature_sets.get(candidate_set["process_feature_candidate_set_ref"])
         if (grasp_set is None or feature_set is None
                 or any(grasp_set.get(key) != candidate_set[key] or feature_set.get(key) != candidate_set[key]

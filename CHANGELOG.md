@@ -46,6 +46,36 @@
 
 ## 最近五版本 / Latest five versions
 
+## v16.2.2 (2026-10-31 13:45) - codex
+
+### 变更摘要 / Summary [完成 / Completed; motion not executed]
+- [sense] [fix] 修复 Isaac GraspNet 私有候选集索引仅按 scene/frame 存储导致同帧多 calibration 捕获相互覆盖的问题；使用 public candidate ref 与 `calibration_ref` 组成内部键，保持 PAOS/AgentLoop 契约不变。 / Fix Isaac GraspNet private candidate-index overwrites across captures sharing scene/frame by indexing with the public candidate ref plus `calibration_ref`, without changing PAOS/AgentLoop contracts.
+
+### 文件与验证 / Files and Validation
+- `.task/grasp-candidate-capture-collision-20261031.md:L1-L69`：保存 r7 诊断、失败场景、owner boundary 与验证计划。 / Saved the r7 diagnosis, concrete failure, owner boundary and validation plan.
+- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/visual_perception.py:L130-L172,L214-L215,L323-L330`：Adapter 私有索引按 `(candidate_set_ref, calibration_ref)` 存储；同捕获合并候选，身份冲突和跨捕获查询 fail-closed。 / Index the Adapter-private store by `(candidate_set_ref, calibration_ref)`; merge same-capture candidates and fail closed on identity conflicts and cross-capture lookup.
+- `examples/forge-adapters/isaacsim_lab/tests/test_visual_perception.py:L231-L236,L254-L288,L663-L665,L693-L710`：新增隔离、合并、冲突和 stale 回归。 / Add isolation, merging, conflict and stale regressions.
+- Focused Isaac/PAOS suites: `146 passed`; Ruff, compileall and `git diff --check` passed. No Isaac motion, Action, pouring or stirring was started. / Focused Isaac/PAOS suites: `146 passed`; Ruff, compileall and `git diff --check` passed. No Isaac motion, Action, pouring or stirring was started.
+
+### 关键 Diff / Key Diff
+```diff
+- self.candidate_sets[candidate_set_ref] = {...}
++ index_key = (candidate_set_ref, request["calibration_ref"])
++ self.candidate_sets[index_key] = {...same-capture identity...}
+```
+```diff
+- grasp_set = self.perception.grasps.candidate_sets.get(request["grasp_candidate_set_ref"])
++ grasp_set = self.perception.grasps.candidate_sets.get(
++     (request["grasp_candidate_set_ref"], request["calibration_ref"]))
+```
+
+### 架构复核 / Architecture Review
+- PAOS ToolSpec、AgentLoop 选择/receipt、Coordinator/Runtime 生命周期和 Gateway Action 边界未修改；USD、设备句柄与索引实现仍在 Isaac Adapter。/ PAOS ToolSpecs, AgentLoop selection/receipt, Coordinator/Runtime lifecycle and Gateway Action boundary are unchanged; USD, device handles and indexing remain inside the Isaac Adapter.
+- `calibration_ref` 已是现有捕获区分证据，故未新增 hash、schema 或 gate。/ The existing `calibration_ref` is sufficient capture-discriminator evidence, so no hash, schema or gate was added.
+
+### Git 提交 / Git Commit
+- Commit: pending local commit; Branch: `feature/planning-loop`; not pushed because no remote-push authorization was given.
+
 ## v16.2.1 (2026-10-31 13:30) - codex
 
 ### 变更摘要 / Summary [完成 / Completed; full-chain motion blocked]
@@ -104,16 +134,6 @@
 ### 文件与验证 / Files and Validation
 - `agent_planning.py`, `subtask_executor.py`, `semantic_task_creation.py`, `grasp_task_affordance.py`, `visual_perception.py`, `agent_host.py`, contracts, and tests.
 - Full Skill + Isaac Adapter: `872 passed`; Ruff, compileall, and `git diff --check` passed. Node `1.0.19` SHA-256 `ef1700be09f8fb62088bef1653b9fe620698e173ba5e554d4215ab7a7170ae58`; no motion or Action executed.
-
-## v16.1.12 (2026-10-30 17:52) - codex
-
-### 变更摘要 / Summary [部分完成 / Partial]
-- [policy] [docs] 保存 GraspNet 任务适配诊断；定义 task-affordance Query/Preparation 的 PAOS ownership 和失败路径。 / Save the GraspNet task-affordance diagnosis and define PAOS ownership/failure paths for Query and Preparation.
-- [policy] [feat] 新增 provider-neutral opaque grasp/process combination Tool contracts、可选 Runtime/Fake Gateway 注册和契约测试。AgentLoop DAG 与 LabUtopia geometry Provider 尚未接通。 / Add provider-neutral opaque grasp/process combination Tool contracts, optional Runtime/Fake Gateway registration, and contract tests. AgentLoop DAG and LabUtopia geometry Provider are not wired yet.
-
-### 文件与验证 / Files and Validation
-- `grasp_task_affordance.py:L1-L193`; `persistent_runtime.py:L640-L752`; `fake_gateway.py:L410-L445`; `paos_client.py:L425-L540`; `test_grasp_task_affordance.py:L1-L97`.
-- Query + grasp proposal tests: `80 passed`; Ruff, compileall, and `git diff --check` passed. No AgentLoop, Isaac scene qualification, or Action execution was run.
 
 ## v16.1.11 (2026-10-29 19:48) - codex
 

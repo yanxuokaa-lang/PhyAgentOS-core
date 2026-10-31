@@ -231,8 +231,9 @@ def test_sensor_segmentation_cloud_pass_real_understanding_and_grasp_endpoints(t
     predicted = GraspProposalEndpoint(grasp).invoke(proposal)
     assert predicted['status'] == 'available', predicted
     assert len(predicted['candidates']) == 2
-    assert grasp.candidate_sets[predicted['candidate_set_ref']]['candidate_set_ref'] == predicted['candidate_set_ref']
-    assert grasp.candidate_sets[predicted['candidate_set_ref']]['observation_ref'] == predicted['observation_ref']
+    index_key = (predicted['candidate_set_ref'], predicted['calibration_ref'])
+    assert grasp.candidate_sets[index_key]['candidate_set_ref'] == predicted['candidate_set_ref']
+    assert grasp.candidate_sets[index_key]['observation_ref'] == predicted['observation_ref']
     candidate = predicted['candidates'][1]
     binding = {**proposal, 'candidate_ref': candidate['candidate_ref'], 'grasp_candidate': candidate}
     assert grasp.candidate(binding) == candidate
@@ -248,6 +249,43 @@ def test_sensor_segmentation_cloud_pass_real_understanding_and_grasp_endpoints(t
     with pytest.raises(ValueError, match='convention'):
         candidate_world_pose(candidate, world, np.eye(4))
     assert worker.request.call_count == 1
+
+
+def test_recorded_grasp_index_isolated_by_calibration_and_merges_same_capture(tmp_path):
+    store = LabArtifactStore(tmp_path)
+    provider = Mock()
+    provider.propose.side_effect = lambda request: {
+        'candidates': [{'entity_ref': request['targets'][0]['entity_ref'], 'provenance': []}]
+    }
+    recorded = RecordedGraspProvider(provider, store)
+    public_ref = 'candidate-set://scene/front'
+
+    def proposal(label, calibration_ref, observation_ref='observation://scene/front'):
+        return recorded.propose({
+            'observation_ref': observation_ref, 'scene_revision': 'scene', 'frame_id': 'front',
+            'calibration_ref': calibration_ref,
+            'targets': [{'entity_ref': f'entity://{label}'}],
+        })
+
+    first = proposal('R01', 'artifact://calibration/r01')
+    proposal('R02', 'artifact://calibration/r02')
+    proposal('GLASS_ROD', 'artifact://calibration/rod')
+    repeated = proposal('R01-repeat', 'artifact://calibration/r01')
+
+    first_key = (public_ref, 'artifact://calibration/r01')
+    first_set = recorded.candidate_sets[first_key]
+    assert first_set['observation_ref'] == 'observation://scene/front'
+    assert first_set['entities'] == {'entity://R01', 'entity://R01-repeat'}
+    assert first_set['candidate_refs'] == {
+        first['candidates'][0]['candidate_ref'], repeated['candidates'][0]['candidate_ref'],
+    }
+    assert (public_ref, 'artifact://calibration/r02') in recorded.candidate_sets
+    assert (public_ref, 'artifact://calibration/rod') in recorded.candidate_sets
+    assert len(recorded.candidate_sets) == 3
+
+    with pytest.raises(ValueError, match='identity changed'):
+        proposal('R01-later-observation', 'artifact://calibration/r01', 'observation://other/front')
+    assert recorded.candidate_sets[first_key] is first_set
 
 
 def test_visual_capture_mismatch_and_identity_pixel_outside_mask(tmp_path):
@@ -622,8 +660,9 @@ def _task_affordance_fixture(tmp_path, *, operation, grasp_position, source_cate
         store=store,
         observations={identity["calibration_ref"]: records},
         grasps=SimpleNamespace(
-            candidate_sets={"candidate-set://scene/source": {**identity, "candidate_set_ref": "candidate-set://scene/source",
-                                                             "entities": {source_ref}, "candidate_refs": {grasp_ref}}},
+            candidate_sets={("candidate-set://scene/source", identity["calibration_ref"]): {
+                **identity, "candidate_set_ref": "candidate-set://scene/source",
+                "entities": {source_ref}, "candidate_refs": {grasp_ref}}},
             captures={identity["calibration_ref"]: {grasp_ref: grasp}},
         ),
         process_feature_sets={"process-feature-set://scene/current": {
@@ -655,6 +694,9 @@ def test_task_affordance_provider_qualifies_bottle_body_grasp_and_revalidates(tm
     assert query["status"] == "available"
     assert len(query["candidates"]) == 1
     assert query["candidates"][0]["grasp_candidate_ref"] == grasp_ref
+    cross_capture = provider.propose({**request, "calibration_ref": "artifact://calibration/other"})
+    assert cross_capture["status"] == "stale"
+    assert cross_capture["error"] == "grasp/process evidence is not from the same capture"
     prep_request = {key: request[key] for key in ("process_feature_candidate_set_ref", "observation_ref",
         "scene_revision", "frame_id", "calibration_ref")}
     prep_request.update(candidate_set_ref=query["candidate_set_ref"],
