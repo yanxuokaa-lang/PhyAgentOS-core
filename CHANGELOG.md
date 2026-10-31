@@ -46,6 +46,29 @@
 
 ## 最近五版本 / Latest five versions
 
+## v16.2.3 (2026-10-31 14:06) - codex
+
+### 变更摘要 / Summary [完成 / Completed; physical actions remain blocked]
+- [policy] [docs] 保存 r8 AgentLoop 真实运行结果：候选捕获索引修复后，同捕获 Query 成功到达 task-affordance；R01 因无法从工艺几何识别 pour lip 与 outward flow direction 而停止。/ Save the r8 AgentLoop runtime result: after the candidate-index fix, same-capture Queries reach task-affordance; R01 stops because process geometry does not qualify a pour lip and outward flow direction.
+
+### 文件与验证 / Files and Validation
+- `.task/grasp-candidate-capture-collision-20261031.md:L71-L108`：记录 r8 task/session/scene identity、流程边界、未动作证据和下一实现边界。 / Record r8 task/session/scene identity, workflow boundary, no-action evidence and next implementation boundary.
+- `out/lab-fullchain-truth-20261031-r8/acceptance.json`：R01 process-feature 与 process-feature Preparation completed；task-affordance Query `unavailable`，原因 `source geometry does not identify a pour lip and outward flow direction`；task `task_454d6babe12548b1` cancelled，`execution_records=[]`、`controller_outcomes=[]`。 / R01 process-feature and its Preparation completed; task-affordance Query unavailable for unqualified pour lip/outward flow; task cancelled with no execution records or controller outcomes.
+- No ReMake/DFNet/SAM2 worker, grasp/acquire/pour/stir/stow Action, liquid-transfer measurement or chemistry result. / No ReMake/DFNet/SAM2 worker, grasp/acquire/pour/stir/stow Action, liquid-transfer measurement or chemistry result.
+
+### 关键诊断 Diff / Key Diagnostic Diff
+```diff
+- task-affordance: stale, grasp/process evidence is not from the same capture
++ task-affordance: unavailable, source geometry does not identify a pour lip and outward flow direction
+```
+
+### 架构复核 / Architecture Review
+- 新阻塞保留在 Isaac Adapter 几何 Provider 的证据资格边界；没有更改 PAOS ToolSpec/AgentLoop 选择契约，也没有放宽 Query -> no-motion Preparation -> Action 顺序。/ The new blocker remains at the Isaac Adapter geometry-evidence qualification boundary; PAOS ToolSpecs and AgentLoop selection contracts are unchanged, and Query -> no-motion Preparation -> Action order is not weakened.
+- 不允许用瓶口中心线或包围盒推断 pour lip/流向；应由最终组合 USD 的可区分几何或独立合格证据提供，否则继续 unavailable。/ Do not infer a pour lip/flow from the bottle axis or bounds; require distinguishable final-composed USD geometry or independent qualified evidence, otherwise remain unavailable.
+
+### Git 提交 / Git Commit
+- Pending local documentation commit; no push performed. / Pending local documentation commit; no push performed.
+
 ## v16.2.2 (2026-10-31 13:44) - codex
 
 ### 变更摘要 / Summary [完成 / Completed; motion not executed]
@@ -124,16 +147,6 @@
 
 ### Git 提交 / Git Commit
 - Commit: `6cbbcbfb`; Branch: `feature/planning-loop`; pushed to `origin/feature/planning-loop`.
-
-## v16.1.13 (2026-10-30 18:25) - codex
-
-### 变更摘要 / Summary [完成 / Completed]
-- [policy] [feat] 接通 task-affordance Query -> AgentLoop 直接前驱选择 -> 无动作 Preparation -> Action 参数投影；新语义 Action 只接受成功 Preparation 的 opaque grasp/process 引用。 / Wire task-affordance Query -> AgentLoop direct-predecessor selection -> no-motion Preparation -> Action projection; new semantic Actions accept opaque grasp/process refs only from successful Preparation.
-- [sense] [fix] Isaac Adapter 增加同观测资格 Provider；无法证明瓶身夹持区、倒液关系或棒端工作角色时返回 unavailable，不伪造候选。 / Add same-capture Isaac qualification Provider; return unavailable without fabricating candidates when bottle grasp, pour relation, or rod working-end role is unproven.
-
-### 文件与验证 / Files and Validation
-- `agent_planning.py`, `subtask_executor.py`, `semantic_task_creation.py`, `grasp_task_affordance.py`, `visual_perception.py`, `agent_host.py`, contracts, and tests.
-- Full Skill + Isaac Adapter: `872 passed`; Ruff, compileall, and `git diff --check` passed. Node `1.0.19` SHA-256 `ef1700be09f8fb62088bef1653b9fe620698e173ba5e554d4215ab7a7170ae58`; no motion or Action executed.
 
 ## v16.1.11 (2026-10-29 19:48) - codex
 
