@@ -783,3 +783,17 @@ the task owner. A benchmark pass cannot overwrite, imply, or replace the PAOS
 verdict. Other RoboTwin tasks add task adapters and the atomic capabilities they
 actually require; they are not routed through pick/place by name-based branches
 in Core.
+
+### Scene entity existence is not manipulator capability
+
+An Isaac scene manifest may prove that two entities such as `R01` and `R02`
+were created, but it does not prove that two arms exist or that simultaneous
+grasping is executable. The Adapter must publish measured `CapabilitySnapshot`
+topology and exact arm IDs. AgentLoop and PlanProposal may request `bimanual`
+semantics only when those IDs are present in the same snapshot; they must not
+invent `left`/`right` aliases for a single `franka` arm.
+
+For the current LabUtopia profile (`topology=single_arm`, `arm_id=franka`),
+preparation rejects non-`single_arm` coordination or any other allowed-arm set
+before creating an assignment or issuing a command. This is a provider-owned,
+zero-motion capability failure, not a grasp retry or a coordinate fallback.

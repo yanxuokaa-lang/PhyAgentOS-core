@@ -64,10 +64,21 @@ def preparation_result(arguments, route, evidence):
     # existing contract; it does not introduce a second route-integrity scheme.
     route_digest = sha256(json.dumps(route, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).hexdigest()
     private = {**deepcopy(dict(arguments)), "phase_route": route}
+    intent = arguments["intent"]
+    coordination_mode = intent.get("coordination_mode")
+    allowed_arms = tuple(intent.get("allowed_arms") or ())
+    # This LabUtopia profile exposes one measured Franka articulation. Do not
+    # reinterpret one arm as left/right or silently collapse a bimanual request
+    # into a single assignment at the provider boundary.
+    if coordination_mode != "single_arm" or allowed_arms != ("franka",):
+        raise PhaseMotionError(
+            "unsupported_capability_topology",
+            "LabUtopia exposes topology=single_arm with arm_id=franka; "
+            f"received coordination_mode={coordination_mode!r}, allowed_arms={list(allowed_arms)!r}",
+        )
     if arguments.get("held_invocation_ref"):
         return {"status": "available", "motion_authorized": False, "route_arguments": private,
                 "route_digest": route_digest, "readiness_evidence_ref": evidence}
-    intent = arguments["intent"]
     assignment = {key: intent[key] for key in ("task_id", "revision_id", "node_id", "node_digest", "entity_ref",
                   "observation_ref", "scene_revision", "calibration_ref", "candidate_set_ref", "coordination_mode")}
     candidate = arguments["manipulation_target"]["candidate_ref"]

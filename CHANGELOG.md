@@ -47,6 +47,17 @@
 
 ## 最近五版本 / Latest five versions
 
+## v16.3.1 (2026-10-31 19:50) - codex
+
+### Summary [Completed; dual-arm execution remains unavailable]
+- [env] [fix] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py:L67-L95` rejects non-single-arm or non-`franka` requests before creating an assignment, including held-object preparation. / 对非单臂或非 `franka` 请求在创建 assignment 前拒绝，包含持有物体后的重新准备。
+- [env] [fix] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/paos_client.py:L147-L157` preserves `unsupported_capability_topology` as an explicit Adapter failure. / 保留明确的 Adapter 能力拓扑错误，不转成抓取重试。
+- [test] [test] `test_phase_pipeline.py:L216-L253` covers initial and held bimanual rejection; 63 focused tests passed, Ruff, compileall, and diff check passed. No Isaac or Action started. / 覆盖初始及持有状态的双臂请求拒绝；定向测试 63 项通过，Ruff、compileall、diff check 通过；未启动 Isaac 或动作。
+- [docs] [docs] Saved the R01/R02 scene-entity versus manipulator-capability diagnosis and required second-Articulation work in `.task/labutopia-dual-arm-capability-diagnosis-20261031.md:L1-L38`. / 保存 R01/R02 场景实体与机械臂能力的诊断，以及增加第二个 Articulation 的前置工作。
+
+### Git Commit
+- Pending exact-file commit and push. / 等待精确文件提交与推送。
+
 ## v16.3.0 (2026-10-31 19:05) - codex
 
 ### Summary [Completed]

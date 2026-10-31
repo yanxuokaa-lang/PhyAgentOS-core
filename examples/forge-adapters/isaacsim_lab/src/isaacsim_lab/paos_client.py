@@ -148,7 +148,8 @@ class LabUtopiaCycleProvider:
                 code = result.get("failure_code", "route_unavailable")
                 if code not in {"route_unavailable", "inverse_kinematics_failed", "joint_limit_violation",
                                 "workspace_violation", "route_collision", "self_collision", "payload_collision",
-                                "payload_robot_collision", "no_admissible_grasp"}:
+                                "payload_robot_collision", "no_admissible_grasp",
+                                "unsupported_capability_topology"}:
                     raise PreparationProviderError(code, str(result.get("error_detail", result.get("error", code))),
                                                    failure_owner="runtime_adapter")
                 rejected.append({"candidate_ref": candidate["candidate_ref"],

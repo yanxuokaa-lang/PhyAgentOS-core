@@ -213,6 +213,46 @@ def test_real_phase_assignment_projection_traverses_runtime(tmp_path, monkeypatc
     assert possession.state == "empty"
 
 
+@pytest.mark.parametrize("held", [False, True])
+def test_single_arm_provider_rejects_bimanual_assignment_before_motion(held):
+    from isaacsim_lab.phase_motion import PhaseMotionError, preparation_result
+
+    request = {
+        "scene_revision": "scene-0",
+        "frame_id": "front",
+        "observation_ref": "observation://scene-0/front",
+        "calibration_ref": "artifact://calibration/scene-0/front",
+        "candidate_set_ref": "candidate-set://scene-0/front",
+        "capability_snapshot_ref": "artifact://capabilities/scene-0",
+        "destination_ref": "destination://beaker",
+        "manipulation_target": {"candidate_ref": "candidate://reagent-a/scene-0"},
+        "held_invocation_ref": "invocation://held" if held else None,
+        "intent": {
+            "task_id": "mixture",
+            "revision_id": "plan-1",
+            "node_id": "pour-r01",
+            "node_digest": "a" * 64,
+            "entity_ref": "entity://reagent-a",
+            "goal": "grasp two objects with left and right arms",
+            "success_criteria": ["both objects are held"],
+            "allowed_arms": ["left", "right"],
+            "coordination_mode": "bimanual",
+            "observation_ref": "observation://scene-0/front",
+            "scene_revision": "scene-0",
+            "observation_frame_id": "front",
+            "calibration_ref": "artifact://calibration/scene-0/front",
+            "candidate_set_ref": "candidate-set://scene-0/front",
+            "constraints": [],
+            "motion_authorized": False,
+        },
+    }
+
+    with pytest.raises(PhaseMotionError, match="topology=single_arm") as exc_info:
+        preparation_result(request, {"operation": "acquire", "scene_revision": "scene-0", "steps": []},
+                           "artifact://readiness/fixture")
+    assert exc_info.value.code == "unsupported_capability_topology"
+
+
 @pytest.mark.parametrize("operation", ["pour", "stir"])
 def test_failed_process_stops_without_replaying_or_releasing(tmp_path, operation):
     outcomes, calls, possession, _ = run_mixture(tmp_path, operation)
