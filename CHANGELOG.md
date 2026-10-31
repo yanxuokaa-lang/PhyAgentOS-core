@@ -56,7 +56,7 @@
 - [docs] [docs] Saved the R01/R02 scene-entity versus manipulator-capability diagnosis and required second-Articulation work in `.task/labutopia-dual-arm-capability-diagnosis-20261031.md:L1-L38`. / 保存 R01/R02 场景实体与机械臂能力的诊断，以及增加第二个 Articulation 的前置工作。
 
 ### Git Commit
-- Pending exact-file commit and push. / 等待精确文件提交与推送。
+- Implementation commit: `077b5338`; branch `feature/planning-loop`; `2026-10-31 23:35 Asia/Shanghai`. / 实现提交 `077b5338`；分支 `feature/planning-loop`；北京时间 `2026-10-31 23:35`。
 
 ## v16.3.0 (2026-10-31 19:05) - codex
 
