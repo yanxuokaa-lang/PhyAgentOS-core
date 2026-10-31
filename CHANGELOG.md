@@ -58,7 +58,7 @@
 - Focused suites: `148 passed`; Ruff, compileall and `git diff --check` passed. R8 R01 replay remains `[('opening', None)]`; no physical action ran. / Focused suites: `148 passed`; Ruff, compileall and `git diff --check` passed. R8 R01 replay remains `[('opening', None)]`; no physical action ran.
 
 ### Git 提交 / Git Commit
-- 待提交 / Pending commit.
+- Implementation commit: `3402b0df`; Branch: `feature/planning-loop`; not pushed per runtime-safety guidance. / Implementation commit: `3402b0df`; Branch: `feature/planning-loop`; not pushed per runtime-safety guidance.
 
 ## v16.2.3 (2026-10-31 14:06) - codex
 
