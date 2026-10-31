@@ -26,6 +26,7 @@ from isaacsim_lab.visual_perception import (
     LabVisualPerception,
     RecordedGraspProvider,
     RGBLabelPointInference,
+    _task_conditioned_pour_feature,
 )
 
 CONVENTION = np.array([[0, 0, 1, 0], [0, 1, 0, 0], [-1, 0, 0, 0], [0, 0, 0, 1.]])
@@ -156,6 +157,77 @@ def test_simulator_truth_geometry_rejects_symmetric_lateral_extensions_as_ambigu
     assert len(candidates) == 1
     assert candidates[0]['feature_role'] == 'opening'
     assert 'pour_direction_world' not in candidates[0]
+
+
+def test_task_conditioned_pour_feature_uses_same_capture_openings_and_rejects_axial_target():
+    source = {
+        "feature_kind": "rim", "feature_role": "opening",
+        "tip_world": [-0.2700059745, -0.5600003466, 0.8094660674],
+        "axis_world": [0., 0., 1.], "rim_radius_m": 0.0175283518,
+        "origin_world": [-0.2700010555, -0.5600003543, 0.7611485997],
+        "size_m": [0.0771, 0.0771, 0.0975],
+    }
+    destination = {
+        "feature_kind": "rim", "feature_role": "opening",
+        "tip_world": [-0.0785390240, -0.0000037604, 0.8014708974],
+        "axis_world": [0., 0., 1.], "rim_radius_m": 0.0300393408,
+    }
+    feature = _task_conditioned_pour_feature(source, destination)
+    expected = np.asarray(destination["tip_world"]) - np.asarray(source["tip_world"])
+    expected[2] = 0.
+    expected /= np.linalg.norm(expected)
+    assert feature["feature_role"] == "pour_lip"
+    assert feature["qualification"] == "task_conditioned_opening_projection"
+    assert np.asarray(feature["pour_direction_world"]) == pytest.approx(expected)
+    assert np.asarray(feature["tip_world"]) == pytest.approx(
+        np.asarray(source["tip_world"]) + expected * source["rim_radius_m"]
+    )
+    assert source["feature_role"] == "opening"
+    assert _task_conditioned_pour_feature(source, {**destination, "tip_world": [*source["tip_world"][:2], 0.7]}) is None
+
+
+def test_process_feature_query_emits_task_directed_rim_as_opaque_candidate():
+    identity = {
+        "observation_ref": "observation://scene/front", "scene_revision": "scene",
+        "frame_id": "front", "calibration_ref": "artifact://calibration/front",
+    }
+    source = {
+        "tip_world": [0., 0., 1.], "origin_world": [0., 0., .8],
+        "axis_world": [0., 0., 1.], "size_m": [.1, .1, .4],
+        "feature_kind": "rim", "feature_role": "opening", "rim_radius_m": .02,
+        "source": "final_composed_usd_mesh",
+    }
+    destination = {
+        "tip_world": [.3, .4, 1.], "origin_world": [.3, .4, .8],
+        "axis_world": [0., 0., 1.], "size_m": [.06, .06, .1],
+        "feature_kind": "rim", "feature_role": "opening", "rim_radius_m": .03,
+    }
+    bottle_ref, beaker_ref = "entity://bottle", "entity://beaker"
+    visual = object.__new__(LabVisualPerception)
+    visual.observations = {identity["calibration_ref"]: {
+        bottle_ref: {**identity, "entity_ref": bottle_ref, "category": "reagent_bottle",
+                     "process_feature_candidates": [source]},
+        beaker_ref: {**identity, "entity_ref": beaker_ref, "category": "mixing_vessel",
+                     "process_feature_candidates": [destination]},
+    }}
+    visual.process_feature_sets = {}
+    request = {**identity, "operation": "pour", "entity_refs": [bottle_ref, beaker_ref]}
+    result = visual.propose(request)
+    assert len(result["candidates"]) == 2
+    directed = next(item for item in result["candidates"] if item["entity_ref"] == bottle_ref)
+    assert directed["feature_role"] == "pour_lip"
+    assert directed["feature_ref"].startswith("process-feature://")
+    private = visual.process_feature_sets[result["candidate_set_ref"]]["candidates"][directed["feature_ref"]][2]
+    assert private["pour_target_tip_world"] == destination["tip_world"]
+    assert private["source"] == "final_composed_usd_mesh"
+    selection = visual.validate_selection({
+        **identity, "operation": "pour", "entity_refs": [bottle_ref, beaker_ref],
+        "candidate_set_ref": result["candidate_set_ref"],
+        "selected_feature_refs": [directed["feature_ref"], next(
+            item["feature_ref"] for item in result["candidates"] if item["entity_ref"] == beaker_ref
+        )],
+    })
+    assert selection["status"] == "available"
 
 
 def test_truth_manifest_discards_legacy_functional_coordinates(tmp_path):
@@ -971,3 +1043,62 @@ def test_process_feature_selection_rejects_stale_or_cross_entity_refs_without_qu
         'process-feature://bottle-rim-b',
     ]})
     assert ambiguous['status'] == 'ambiguous'
+
+
+def test_resolve_passes_operation_into_process_feature_selection_validation():
+    identity = {
+        "observation_ref": "observation://scene/front", "scene_revision": "scene",
+        "frame_id": "front", "calibration_ref": "artifact://calibration/front",
+    }
+    source_ref, destination_ref = "entity://bottle", "entity://beaker"
+    source_feature = {
+        "feature_kind": "rim", "feature_role": "pour_lip",
+        "tip_world": [0.02, 0., 1.], "origin_world": [0., 0., .8],
+        "axis_world": [0., 0., 1.], "pour_direction_world": [1., 0., 0.],
+        "rim_radius_m": .02, "size_m": [.08, .08, .2],
+    }
+    destination_feature = {
+        "feature_kind": "rim", "feature_role": "opening",
+        "tip_world": [.3, 0., .8], "origin_world": [.3, 0., .7],
+        "axis_world": [0., 0., 1.], "rim_radius_m": .03, "size_m": [.06, .06, .1],
+    }
+    source_ref_feature, destination_ref_feature = "process-feature://bottle/lip", "process-feature://beaker/rim"
+    visual = object.__new__(LabVisualPerception)
+    visual.observations = {identity["calibration_ref"]: {
+        source_ref: {**identity, "entity_ref": source_ref, "category": "reagent_bottle",
+                     "world_from_camera": np.eye(4).tolist(), "features": None,
+                     "geometry_qualification": "simulator_ground_truth"},
+        destination_ref: {**identity, "entity_ref": destination_ref, "category": "mixing_vessel",
+                          "world_from_camera": np.eye(4).tolist(), "features": None,
+                          "geometry_qualification": "simulator_ground_truth"},
+    }}
+    visual.process_feature_sets = {"process-feature-set://scene/current": {
+        **identity, "entity_refs": (source_ref, destination_ref),
+        "candidates": {
+            source_ref_feature: (source_ref, 0, source_feature),
+            destination_ref_feature: (destination_ref, 0, destination_feature),
+        },
+    }}
+    visual.grasps = SimpleNamespace(candidate=Mock(return_value={
+        "entity_ref": source_ref, "candidate_ref": "candidate://bottle/grasp",
+        "grasp_frame": {"frame_id": "front", "position_m": [0., 0., .5],
+                        "orientation_xyzw": [0., 0., 0., 1.]},
+        "approach_direction": {"frame_id": "front", "vector": [0., 0., 1.]},
+    }))
+    visual.provider_from_tcp = np.eye(4)
+    visual._bind_execution = Mock(return_value={
+        source_ref: {"prim_path": "/World/Bottle"}, destination_ref: {"prim_path": "/World/Beaker"},
+    })
+    binding = {
+        **identity, "entity_ref": source_ref, "destination_ref": "destination://beaker",
+        "candidate_ref": "candidate://bottle/grasp",
+    }
+    request = {
+        "process_type": "pour", "process_feature_candidate_set_ref": "process-feature-set://scene/current",
+        "process_feature_refs": [source_ref_feature, destination_ref_feature],
+    }
+
+    target = visual.resolve(binding, request)
+
+    assert target["process_frame"]["pour_direction"] == source_feature["pour_direction_world"]
+    visual._bind_execution.assert_called_once()

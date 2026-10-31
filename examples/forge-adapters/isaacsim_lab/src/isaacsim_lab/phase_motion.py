@@ -245,9 +245,18 @@ def process_waypoints(operation, parameters, tcp, body, tcp_from_object, target,
     center = np.asarray(frame["origin_m"], dtype=float)
     axis = np.asarray(frame["axis"], dtype=float)
     axis /= np.linalg.norm(axis)
-    horizontal = np.cross(axis, [1., 0., 0.])
-    if np.linalg.norm(horizontal) < .1:
-        horizontal = np.cross(axis, [0., 1., 0.])
+    task_pour_direction = None
+    if operation == "pour" and frame.get("pour_direction") is not None:
+        task_pour_direction = np.asarray(frame["pour_direction"], dtype=float)
+        task_pour_direction -= axis * float(np.dot(task_pour_direction, axis))
+        if np.linalg.norm(task_pour_direction) < 1e-6:
+            raise PhaseMotionError("pour_direction_unresolved", "pour direction is parallel to the destination axis")
+        task_pour_direction /= np.linalg.norm(task_pour_direction)
+        horizontal = np.cross(task_pour_direction, axis)
+    else:
+        horizontal = np.cross(axis, [1., 0., 0.])
+        if np.linalg.norm(horizontal) < .1:
+            horizontal = np.cross(axis, [0., 1., 0.])
     horizontal /= np.linalg.norm(horizontal)
     if operation == "pour":
         horizontal = Rotation.from_rotvec(axis * config.get("pour_azimuth_rad", 0.)).apply(horizontal)
@@ -264,7 +273,8 @@ def process_waypoints(operation, parameters, tcp, body, tcp_from_object, target,
         if tilt > config["maximum_tilt_rad"]:
             raise PhaseMotionError("tilt_limit_exceeded", "pour angle exceeds the deployment limit")
         orientation = Rotation.from_rotvec(axis * config.get("pour_yaw_rad", 0.)).as_matrix() @ orientation
-        feature(high + other * config["process_clearance_m"], orientation)
+        approach_direction = -other if task_pour_direction is not None else other
+        feature(high + approach_direction * config["process_clearance_m"], orientation)
         tilted = Rotation.from_rotvec(-horizontal * tilt).as_matrix() @ orientation
         feature(high, tilted)
         feature(center + axis * config["pour_lip_clearance_m"], tilted,

@@ -20,6 +20,56 @@ from .visual_geometry import (
 )
 
 
+def _valid_pour_direction(feature):
+    direction = np.asarray(feature.get("pour_direction_world"), dtype=float)
+    axis = np.asarray(feature.get("axis_world"), dtype=float)
+    if (direction.shape != (3,) or axis.shape != (3,) or not np.isfinite(direction).all()
+            or not np.isfinite(axis).all()):
+        return False
+    direction_norm, axis_norm = float(np.linalg.norm(direction)), float(np.linalg.norm(axis))
+    return (direction_norm > 1e-9 and axis_norm > 1e-9
+            and abs(float(np.dot(direction / direction_norm, axis / axis_norm))) < 0.5)
+
+
+def _task_conditioned_pour_feature(source, destination, *, tolerance_m=0.004):
+    """Derive a target-directed pour vector from same-capture opening geometry."""
+    if source.get("feature_kind") != "rim" or destination.get("feature_kind") != "rim":
+        return None
+    if source.get("feature_role") == "pour_lip" and _valid_pour_direction(source):
+        return deepcopy(source)
+    if source.get("feature_role", "opening") != "opening":
+        return None
+    source_tip = np.asarray(source.get("tip_world"), dtype=float)
+    destination_tip = np.asarray(destination.get("tip_world"), dtype=float)
+    source_axis = np.asarray(source.get("axis_world"), dtype=float)
+    if (source_tip.shape != (3,) or destination_tip.shape != (3,) or source_axis.shape != (3,)
+            or not np.isfinite(source_tip).all() or not np.isfinite(destination_tip).all()
+            or not np.isfinite(source_axis).all()):
+        return None
+    axis_norm = float(np.linalg.norm(source_axis))
+    if axis_norm <= 1e-9:
+        return None
+    source_axis /= axis_norm
+    projected = destination_tip - source_tip
+    projected -= source_axis * float(np.dot(projected, source_axis))
+    direction_norm = float(np.linalg.norm(projected))
+    radius = source.get("rim_radius_m")
+    if (direction_norm <= max(tolerance_m, float(radius or 0.0) * 0.05)
+            or isinstance(radius, bool) or not isinstance(radius, (int, float))
+            or not np.isfinite(float(radius)) or float(radius) <= tolerance_m):
+        return None
+    direction = projected / direction_norm
+    result = deepcopy(source)
+    result.update({
+        "feature_role": "pour_lip",
+        "tip_world": (source_tip + direction * float(radius)).tolist(),
+        "pour_direction_world": direction.tolist(),
+        "pour_target_tip_world": destination_tip.tolist(),
+        "qualification": "task_conditioned_opening_projection",
+    })
+    return result
+
+
 class RGBLabelPointInference:
     """Deployment-owned model client; no scene IDs or task success enter its input."""
 
@@ -252,6 +302,13 @@ class LabGraspTaskAffordanceProvider:
             elif (source_features[0][1].get("feature_role") != "pour_lip"
                   or not self._valid_pour_direction(source_features[0][1])):
                 failures.append("source geometry does not identify a pour lip and outward flow direction")
+            elif source_features[0][1].get("pour_target_tip_world") is not None and (
+                np.linalg.norm(
+                    np.asarray(source_features[0][1]["pour_target_tip_world"], dtype=float)
+                    - np.asarray(destination_features[0][1].get("tip_world"), dtype=float)
+                ) > max(0.004, float(destination_features[0][1].get("rim_radius_m", 0.0)) * 0.25)
+            ):
+                failures.append("task-directed pour opening does not match the selected destination")
             else:
                 process_refs = [source_features[0][0], destination_features[0][0]]
                 for candidate_ref, candidate in grasp_candidates:
@@ -809,12 +866,14 @@ class LabVisualPerception:
         destination_ref = "entity://" + binding["destination_ref"].removeprefix("destination://")
         destination = records[destination_ref]
         process_type = request.get("process_type")
+        selected_features = None
         if process_type in {"pour", "stir"}:
             selected_refs = request.get("process_feature_refs")
             candidate_set_ref = request.get("process_feature_candidate_set_ref")
             if not isinstance(selected_refs, list) or not isinstance(candidate_set_ref, str):
                 raise ValueError("planner-selected process feature refs are required")
             feature_request = {
+                "operation": process_type,
                 "entity_refs": [source["entity_ref"], destination_ref],
                 "candidate_set_ref": candidate_set_ref,
                 "selected_feature_refs": selected_refs,
@@ -823,19 +882,26 @@ class LabVisualPerception:
             validation = self.validate_selection(feature_request)
             if validation.get("status") != "available":
                 raise ValueError(validation.get("error", "selected process features are unavailable"))
+            selected_features = self._selected_feature_records(
+                candidate_set_ref, selected_refs, source["entity_ref"], destination_ref,
+            )
         candidate = self.grasps.candidate(binding)
         if candidate["entity_ref"] != source["entity_ref"] or candidate["grasp_frame"]["frame_id"] != binding["frame_id"]:
             raise ValueError("selected prediction has a different entity or frame")
         transform = np.asarray(source["world_from_camera"])
         grasp, approach = candidate_world_pose(candidate, transform, self.provider_from_tcp)
-        features = source["features"]
-        if features is None or destination["features"] is None:
+        if selected_features is None:
+            features = source["features"]
+            destination_features = destination["features"]
+        else:
+            features, destination_features = selected_features
+        if features is None or destination_features is None:
             raise ValueError("selected objects lack observed process features")
         if any(record["geometry_qualification"] not in {"validated_observation", "simulator_ground_truth"}
                for record in (source, destination)):
             raise ValueError("geometry estimates have not been validated for process preparation")
         private = self._bind_execution(binding, [source["entity_ref"], destination_ref])
-        origin = np.asarray(features["origin_world"])
+        origin = self._object_origin(source, features, candidate_set_ref)
         def pose(position, rotation=(0., 0., 0., 1.)):
             return {"frame_id": "world", "unit": "m", "position_m": list(position), "orientation_xyzw": list(rotation)}
         return {**{key: binding[key] for key in ("entity_ref", "destination_ref", "scene_revision", "frame_id", "calibration_ref", "candidate_ref")},
@@ -846,12 +912,44 @@ class LabVisualPerception:
                 "object_pose": pose(origin), "return_pose": pose(origin),
                 "grasp_frame": pose(grasp[:3, 3], Rotation.from_matrix(grasp[:3, :3]).as_quat()),
                 "approach_direction": {"frame_id": "world", "unit": "unitless", "vector": approach.tolist()},
-                "destination_pose": pose(destination["features"]["origin_world"]),
+                "destination_pose": pose(destination_features["origin_world"]),
                 "tool_frame": {"frame_id": "observed_object", "tip_offset_m": (np.asarray(features["tip_world"]) - origin).tolist(),
                                "tip_axis_local": features["axis_world"]},
-                "process_frame": {"frame_id": "world", "origin_m": destination["features"]["tip_world"],
-                                  "axis": destination["features"]["axis_world"]},
+                "process_frame": {
+                    "frame_id": "world", "origin_m": destination_features["tip_world"],
+                    "axis": destination_features["axis_world"],
+                    **({"pour_direction": features["pour_direction_world"]}
+                       if process_type == "pour" and features.get("pour_direction_world") is not None else {}),
+                },
                 "geometry": {"size_m": features["size_m"]}}
+
+    def _selected_feature_records(self, candidate_set_ref, selected_refs, source_ref, destination_ref):
+        candidate_set = self.process_feature_sets.get(candidate_set_ref)
+        if candidate_set is None:
+            raise ValueError("selected process feature candidate set is unavailable")
+        selected = []
+        for ref in selected_refs:
+            item = candidate_set.get("candidates", {}).get(ref)
+            if item is None:
+                raise ValueError("selected process feature is not in the current Query")
+            entity_ref, _index, feature = item
+            selected.append((entity_ref, deepcopy(feature)))
+        source = [feature for entity, feature in selected if entity == source_ref]
+        destination = [feature for entity, feature in selected if entity == destination_ref]
+        if len(source) != 1 or len(destination) != 1:
+            raise ValueError("selected process features do not identify one source and one destination")
+        return source[0], destination[0]
+
+    def _object_origin(self, record, selected_feature, candidate_set_ref):
+        if record.get("category") != "stir_tool":
+            return np.asarray(selected_feature["origin_world"], dtype=float)
+        candidate_set = self.process_feature_sets.get(candidate_set_ref, {})
+        endpoints = [feature for ref, (entity, _index, feature) in candidate_set.get("candidates", {}).items()
+                     if entity == record["entity_ref"] and feature.get("feature_kind") == "rod_endpoint_pair"]
+        if len(endpoints) != 2:
+            raise ValueError("rod body origin requires both endpoint features")
+        return (np.asarray(endpoints[0]["origin_world"], dtype=float)
+                + np.asarray(endpoints[1]["origin_world"], dtype=float)) / 2.0
 
     def propose(self, request):
         """Expose only opaque identities and semantic roles from the current capture."""
@@ -861,15 +959,37 @@ class LabVisualPerception:
             raise ValueError("process feature Query entities do not belong to the current observation")
         candidates = []
         private_candidates = {}
-        for entity_ref in request["entity_refs"]:
-            record = records[entity_ref]
-            for index, feature in enumerate(record.get("process_feature_candidates") or ()):
-                role = feature.get("feature_role", "opening")
+        if request.get("operation") == "pour":
+            source_ref, destination_ref = request["entity_refs"]
+            source_record, destination_record = records[source_ref], records[destination_ref]
+            source_features = source_record.get("process_feature_candidates") or ()
+            destination_features = destination_record.get("process_feature_candidates") or ()
+            for source_index, source_feature in enumerate(source_features):
+                for destination_feature in destination_features:
+                    feature = _task_conditioned_pour_feature(source_feature, destination_feature)
+                    if feature is None:
+                        continue
+                    feature_ref = f"process-feature://{uuid4().hex}"
+                    candidates.append({"feature_ref": feature_ref, "entity_ref": source_ref,
+                                       "feature_kind": feature.get("feature_kind", "unknown"),
+                                       "feature_role": feature.get("feature_role", "opening")})
+                    private_candidates[feature_ref] = (source_ref, source_index, deepcopy(feature))
+            for destination_index, feature in enumerate(destination_features):
                 feature_ref = f"process-feature://{uuid4().hex}"
-                candidates.append({"feature_ref": feature_ref, "entity_ref": entity_ref,
+                candidates.append({"feature_ref": feature_ref, "entity_ref": destination_ref,
                                    "feature_kind": feature.get("feature_kind", "unknown"),
-                                   "feature_role": role})
-                private_candidates[feature_ref] = (entity_ref, index, deepcopy(feature))
+                                   "feature_role": feature.get("feature_role", "opening")})
+                private_candidates[feature_ref] = (destination_ref, destination_index, deepcopy(feature))
+        else:
+            for entity_ref in request["entity_refs"]:
+                record = records[entity_ref]
+                for index, feature in enumerate(record.get("process_feature_candidates") or ()):
+                    role = feature.get("feature_role", "opening")
+                    feature_ref = f"process-feature://{uuid4().hex}"
+                    candidates.append({"feature_ref": feature_ref, "entity_ref": entity_ref,
+                                       "feature_kind": feature.get("feature_kind", "unknown"),
+                                       "feature_role": role})
+                    private_candidates[feature_ref] = (entity_ref, index, deepcopy(feature))
         candidate_set_ref = f"process-feature-set://{uuid4().hex}"
         self.process_feature_sets[candidate_set_ref] = {
             **{key: request[key] for key in ("observation_ref", "scene_revision", "frame_id", "calibration_ref")},
@@ -933,8 +1053,17 @@ class LabVisualPerception:
         source = records[arguments["entity_ref"]]
         destination_ref = "entity://" + arguments["destination_ref"].removeprefix("destination://")
         destination = records[destination_ref]
-        if any(record["features"] is None or record["geometry_qualification"] not in
-               {"validated_observation", "simulator_ground_truth"}
+        candidate_set_ref = arguments.get("process_feature_candidate_set_ref")
+        selected_refs = arguments.get("process_feature_refs")
+        if not isinstance(candidate_set_ref, str) or not isinstance(selected_refs, list):
+            if source.get("features") is None or destination.get("features") is None:
+                raise ValueError("held preparation requires current source and destination feature evidence")
+            features, destination_features = source["features"], destination["features"]
+        else:
+            features, destination_features = self._selected_feature_records(
+                candidate_set_ref, selected_refs, source["entity_ref"], destination_ref,
+            )
+        if any(record["geometry_qualification"] not in {"validated_observation", "simulator_ground_truth"}
                for record in (source, destination)):
             raise ValueError("held preparation requires current source and destination feature evidence")
         # Keep the acquisition geometry/candidate as historical evidence. Physics
@@ -947,14 +1076,17 @@ class LabVisualPerception:
             raise ValueError("current observed identities do not match the held assignment")
         model_pose = np.asarray(private[source["entity_ref"]]["captured_body_pose"]) @ np.asarray(phase_route["body_from_observed"])
         local_from_world = np.linalg.inv(model_pose)
-        features = source["features"]
         local_tip = local_from_world[:3, :3] @ np.asarray(features["tip_world"]) + local_from_world[:3, 3]
         local_axis = local_from_world[:3, :3] @ np.asarray(features["axis_world"])
         updated = deepcopy(target)
         updated["tool_frame"] = {"frame_id": "observed_object", "tip_offset_m": local_tip.tolist(),
                                  "tip_axis_local": local_axis.tolist()}
-        updated["process_frame"] = {"frame_id": "world", "origin_m": destination["features"]["tip_world"],
-                                    "axis": destination["features"]["axis_world"]}
+        updated["process_frame"] = {
+            "frame_id": "world", "origin_m": destination_features["tip_world"],
+            "axis": destination_features["axis_world"],
+            **({"pour_direction": features["pour_direction_world"]}
+               if arguments.get("process_type") == "pour" and features.get("pour_direction_world") is not None else {}),
+        }
         updated.update({key: arguments[key] for key in ("scene_revision", "frame_id", "calibration_ref")})
         return updated
 

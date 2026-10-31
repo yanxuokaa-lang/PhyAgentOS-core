@@ -46,6 +46,22 @@
 
 ## 最近五版本 / Latest five versions
 
+## v16.2.8 (2026-10-31 18:05) - codex
+
+### Summary [Completed; live motion remains blocked]
+- [sense] [fix] `visual_perception.py:L875-L882` passes provider-owned `process_type` as `operation` to process-feature selection validation. R10 had raised `KeyError('operation')` during no-motion preparation; the focused regression is `test_visual_perception.py:L1055-L1104`. / Passes the provider-owned operation through validation; covers the R10 runtime failure.
+- [docs] [docs] `.task/labutopia-pour-lip-task-conditioned-20261031.md:L44-L65` records R10/R11. R11 passed target resolution but no-motion preparation rejected every R01 route due to collision with `/World/ReagentZones/A/R03/Model/mesh`; `world_change_started=false`, no motion atoms. / Records R10/R11; R11 remains blocked by a scene collision before motion.
+- Focused tests: `188 passed, 1 warning`; Ruff, compileall, `git diff --check` passed. Commit pending; no push under robotics runtime-safety guidance. / Validation passed; commit pending and push withheld.
+
+## v16.2.7 (2026-10-31 16:30) - codex
+
+### Summary [Completed; physical action acceptance blocked]
+- [sense] [feat] `visual_perception.py:L23-L70,L958-L1005` derives a task-conditioned pour direction from same-capture source/destination opening geometry and exposes only opaque candidates; degenerate or coaxial geometry remains unavailable. / Derives task-directed pour evidence without manifest/config/AABB fallback.
+- [policy] [fix] `visual_perception.py:L866-L949,L1050-L1090` resolves AgentLoop-selected process refs and derives rod origin from endpoint features; `manipulation_target.py:L78-L83` validates optional pour direction. / Keeps selection and evidence provider-neutral at the PAOS boundary.
+- [env] [fix] `phase_motion.py:L238-L283` uses the selected evidence direction for pour approach/tilt while keeping `tilt_rad` and `hold_s` task supplied.
+- [test] [test] `test_visual_perception.py:L159-L229,L1055-L1104` and `test_phase_motion.py:L115-L134` cover geometry, opaque selection, target resolution, and waypoint direction.
+- R9 stopped at task-affordance qualification; R10 exposed the missing `operation`; R11 reached no-motion preparation and stopped on collision with R03. No motion atoms ran. Focused tests: `188 passed, 1 warning`; Ruff, compileall, and `git diff --check` passed. Commit pending; no push under robotics runtime-safety guidance.
+
 ## v16.2.6 (2026-10-31 16:10) - codex
 
 ### 变更摘要 / Summary [完成 / Completed; physical actions remain blocked]

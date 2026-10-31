@@ -112,6 +112,28 @@ def test_pour_parameters_control_measured_body_tilt_and_hold(tilt, hold):
     assert upright[:3, 2] == pytest.approx([0., 0., 1.])
 
 
+def test_task_conditioned_pour_direction_controls_tilt_toward_destination():
+    direction = np.asarray([.6, .8, 0.])
+    body = np.eye(4)
+    tcp = np.eye(4)
+    relation = np.eye(4)
+    target = {
+        "process_frame": {"origin_m": [.3, .05, .88], "axis": [0., 0., 1.],
+                          "pour_direction": direction.tolist()},
+        "tool_frame": {"tip_offset_m": [.02, 0., .15]},
+    }
+    points = process_waypoints(
+        "pour", {"tilt_rad": .87, "hold_s": .6}, tcp, body, relation, target, config(),
+    )
+    approach = points[0][0] @ relation
+    tip = np.asarray(target["tool_frame"]["tip_offset_m"])
+    process = next(pose @ relation for pose, _, stage in points if stage == "process")
+    expected_approach = (np.asarray([.3, .05, .88]) + np.asarray([0., 0., 1.])
+                         * config()["process_clearance_m"] - direction * config()["process_clearance_m"])
+    assert approach[:3, 3] + approach[:3, :3] @ tip == pytest.approx(expected_approach)
+    assert float(np.dot(process[:3, 2], direction)) == pytest.approx(np.sin(.87))
+
+
 @pytest.mark.parametrize("operation,parameters,code", [
     ("pour", {"tilt_rad": 1.51, "hold_s": .6}, "tilt_limit_exceeded"),
     ("stir", {"radius_m": .026, "depth_m": .04, "turns": 2., "duration_s": 4., "direction": "ccw"},

@@ -78,7 +78,8 @@ MANIPULATION_TARGET_SCHEMA: dict[str, Any] = {
         "process_frame": {
             "type": "object", "additionalProperties": False,
             "required": ["frame_id", "origin_m", "axis"],
-            "properties": {"frame_id": deepcopy(_REF), "origin_m": deepcopy(_VECTOR3), "axis": deepcopy(_VECTOR3)},
+            "properties": {"frame_id": deepcopy(_REF), "origin_m": deepcopy(_VECTOR3), "axis": deepcopy(_VECTOR3),
+                           "pour_direction": deepcopy(_VECTOR3)},
         },
         "geometry": {"type": "object", "additionalProperties": False,
                      "properties": {"size_m": deepcopy(_VECTOR3)}},
@@ -125,6 +126,8 @@ def validate_manipulation_target(value: Any, arguments: Mapping[str, Any], *, pr
             raise ManipulationTargetError("pour requires process_frame in control_frame_id")
         _validate_vector(frame.get("origin_m"), "process_frame.origin_m")
         _validate_vector(frame.get("axis"), "process_frame.axis", nonzero=True)
+        if frame.get("pour_direction") is not None:
+            _validate_vector(frame["pour_direction"], "process_frame.pour_direction", nonzero=True)
     geometry = target.get("geometry")
     if isinstance(geometry, Mapping) and geometry.get("size_m") is not None:
         _validate_vector(geometry["size_m"], "geometry.size_m", positive=True)
