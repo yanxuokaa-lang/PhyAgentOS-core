@@ -65,7 +65,7 @@
 ```
 
 ### Git Commit
-- Commit: pending; branch `feature/planning-loop`.
+- Runtime evidence commit: `2f155d08`; branch `feature/planning-loop`; `2026-11-01 16:41:36 +0800`.
 - Push withheld pending explicit approval under robotics runtime-safety guidance. / 按机器人运行安全规则，未获明确批准前不推送。
 
 ## v16.3.3 (2026-11-01 13:44) - codex
