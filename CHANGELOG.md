@@ -48,6 +48,29 @@
 
 ## 最近五版本 / Latest five versions
 
+## v16.3.9 (2026-11-01 20:26) - codex
+
+### Summary [Completed; authorized execution stopped before motion]
+- [env] [exp] Started the authorized R03 -> R04 -> GLASS_ROD Agent run with simulator-truth labels, depth, point clouds, final USD geometry, and no ReMake invocation. / 使用仿真真值标签、深度、点云和最终 USD 几何启动授权全链路，不调用 ReMake。
+- [policy] [test] The persisted PlanGraph preserves both pour parameter sets and the complete stir parameter set exactly as supplied by the user prompt. / PlanGraph 原样保存用户提示词中的两次倾倒和完整搅拌参数。
+- [sense] [test] R03 process/task-affordance Query and preparation completed; Action preparation consumed only same-capture qualified grasp refs `15/23/16`. / R03 工艺与 task-affordance 查询及准备完成，Action 只消费同次捕获资格引用。
+- [env] [test] All 72 staged routes failed before controller start: 22 IK discontinuities, 16 unavailable IK solutions, 12 genuine self-collisions, and 22 environment collisions. / 72 条分段路线均在控制器启动前失败，保留逐类 IK 与碰撞统计。
+- [env] [test] `outcome_known=true`, `world_change_started=false`, `possession_state=empty`, and `controller_outcomes=[]`; R04 and GLASS_ROD did not start. / 失败结果已知、世界未变化、夹爪为空且无控制器结果，后续节点未启动。
+- [docs] [docs] Preserved a labelled five-second 1600x1200 diagnostic preview at `out/lab-fullchain-truth-20261101-staged-symmetry-execute-r1/artifacts/labutopia/no-motion-video/r03-preparation-failed-observation.mp4`; it is not Action evidence. / 保留明确标注的静态诊断视频，不作为动作证据。
+
+### Key Runtime Diff / 关键运行差异
+```diff
+- no-motion preparation probe with simulated_motion_enabled=false
++ authorized --execute run with simulated_motion_enabled=true
++ unchanged safety preparation still stops before any controller command
+```
+
+See `changelog/2026-11.md` and `.task/labutopia-r03-authorized-execution-diagnosis-20261101.md` for the route distribution, evidence identifiers, and PAOS ownership review.
+
+### Git Commit
+- Runtime evidence commit: `<pending>`; branch `feature/planning-loop`.
+- Log receipt commit: `<pending>`.
+
 ## v16.3.8 (2026-11-01 20:00) - codex
 
 ### Summary [Completed; no motion]
@@ -114,23 +137,3 @@ See `changelog/2026-11.md` for the command, safety boundary, and runtime evidenc
 - [policy] [test] Prompt parameters were preserved exactly; `controller_outcomes=[]`, `world_change_started=false`, `outcome_known=true`, `possession_state=empty`. R04 and stirring did not start. / 指令参数原样保留；控制器未启动，世界未变化，R04 与搅拌未开始。
 
 See `changelog/2026-11.md` for the execution command and evidence boundary.
-
-## v16.3.4 (2026-11-01 16:33) - codex
-
-### Summary [Completed; authorized simulation stopped before motion]
-- [env] [exp] Started the R03 -> R04 -> GLASS_ROD full-chain Agent with `--execute`, simulator-truth labels/depth/point clouds/final USD geometry, and no ReMake invocation. / 使用 `--execute` 启动 R03、R04、玻璃棒全链路，采用 simulator-truth 真值，不调用 ReMake。
-- [policy] [test] PlanGraph preserved the exact prompt parameters: both pours `tilt_rad=0.87, hold_s=0.6`; stir `radius_m=0.009, depth_m=0.04, turns=2, duration_s=4, direction=ccw`. / PlanGraph 原样保存用户提示词中的两次倾倒和搅拌参数。
-- [env] [test] R03 process/task-affordance preparation was available, but all eight qualified grasps failed aperture, IK, self/environment collision, or payload checks. The Adapter rejection list exactly matched the qualified set. / R03 工艺和 task-affordance preparation 可用，但八个资格 grasp 均未通过物理准备，Adapter 拒绝列表与资格集合完全一致。
-- [env] [test] `simulated_motion_enabled=true`, but `controller_outcomes=[]`, `world_change_started=false`, `outcome_known=true`, and `possession_state=empty`; R04 and stirring did not start. / Host 已授权仿真运动，但 preparation 在首个控制器命令前停止，场景未变化、夹爪为空，R04 和搅拌未启动。
-- [docs] [docs] Workspace: `out/lab-fullchain-truth-20261101-r03-r04-execute-r3/`; task `task_bf1d10503ac04534`; session `cli:lab-a3347a964178`. / 保存运行目录、任务和 session 证据。
-
-### Key Diff / 关键 Diff
-```diff
-- no-motion Host authorization
-+ --execute authorized at Host boundary
-+ preparation still blocks every controller command
-```
-
-### Git Commit
-- Runtime evidence commit: `2f155d08`; branch `feature/planning-loop`; `2026-11-01 16:41:36 +0800`.
-- Push withheld pending explicit approval under robotics runtime-safety guidance. / 按机器人运行安全规则，未获明确批准前不推送。
