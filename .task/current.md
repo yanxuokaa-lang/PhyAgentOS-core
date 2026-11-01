@@ -18,8 +18,9 @@
   - GLASS_ROD stir: `radius_m=0.009`, `depth_m=0.04`, `turns=2.0`, `duration_s=4.0`, `direction=ccw`
 - Forbidden shortcuts: hard-coded object coordinates, task-specific grasp poses, AgentLoop access to USD paths or gripper limits, bypassing preparation, automatic retry after uncertain motion, fabricated liquid-transfer claims.
 - Resolved defect: task-affordance Preparation now returns a selected-first ordered `qualified_grasp_candidate_refs` list, and Action preparation resolves only those opaque references from the unchanged same-capture binding. Provider-rejected raw GraspNet candidates cannot re-enter embodiment preparation.
-- Current blocker: LabUtopia v0.2.9 scales all reagent vessels below the Franka aperture. Fresh task-affordance selection returned only R03 candidates `15`, `16`, and `23`; Action preparation rejected exactly those three with `self_collision`, `route_collision`, or `inverse_kinematics_failed`. The blocker is Adapter-owned `transit_cross` route feasibility, not vessel size, semantic binding, prompt parameters, or candidate-set leakage.
-- Latest authorized simulation attempt: workspace `out/lab-fullchain-truth-20261101-all-small-vessel-execute-r3/`, task `task_135e08bbdf8e429b`, session `cli:lab-3a7197f13915`, scene revision `labutopia-tabletop-rod-rack-v1:0e65f1fb903d4ef88a533d530cec59c1:0`. R03 is `63.215 x 63.215 x 79.948 mm` and R04 is `65.474 x 65.046 x 115.680 mm`. `controller_outcomes=[]`, `world_change_started=false`, `outcome_known=true`, and `possession_state=empty`; R04 and GLASS_ROD did not start.
+- Resolved defect: the prior `self_collision` and table `route_collision` labels were produced after a discontinuous Lula IK branch was incorrectly retained when nearby IK failed. Isaac preparation now rejects that branch as `ik_discontinuity` before collision sampling and records the actual checked joint sample/TCP for genuine collision failures.
+- Current blocker: all three task-qualified R03 candidates `16`, `15`, and `23` now fail the Adapter-owned `transit_cross` route. Clearances `0.04/0.08 m` require discontinuous primary IK branches (`3.575-4.431 rad`) and nearby IK does not satisfy the full pose tolerance; clearance `0.12 m` has no IK solution. The remaining work is route/orientation construction and equivalent bottle-axis grasp orientation search inside Isaac preparation, not collision-threshold tuning, vessel size, AgentLoop, prompt parameters, or candidate-set recovery.
+- Latest no-motion verification: workspace `out/lab-fullchain-truth-20261101-ik-continuity-no-motion-r1/`, task `task_a5127feeb8c8476a`, session `cli:lab-2a6cdb5274e6`, scene revision `labutopia-tabletop-rod-rack-v1:4f9352af31ed4977bb74a26481bfdf37:0`. `simulated_motion_enabled=false`, `controller_outcomes=[]`, `world_change_started=false`, `outcome_known=true`, and `possession_state=empty`; R04 and GLASS_ROD did not start.
 
 ## Failure-first behavior
 
@@ -27,21 +28,17 @@
 - `task_qualified` selected grasp absent from the current same-capture binding: fail closed before Adapter preparation; do not fall back to the raw candidate set.
 - Candidate width above composed Franka aperture: reject candidate with `gripper_aperture_exceeded` and continue only within the same captured candidate set.
 - IK, collision, self-collision, payload collision, or workspace failure: reject candidate without motion.
+- Per-waypoint IK branch jump above the configured continuity threshold: attempt nearby IK from the previous accepted joint state; if it cannot satisfy the full pose tolerance within the threshold, reject as `ik_discontinuity` before collision sampling.
 - No admissible candidate: known zero-motion failure with empty possession; refresh grasp candidates through Agent replan.
 - Unknown execution outcome or any unconfirmed world change: stop; do not continue to R04 or stirring.
 
-## Planned implementation
+## Next implementation
 
-1. Save the R03 32-candidate exhaustion and 512-candidate no-motion diagnostic.
-2. Add deterministic geometry-diverse bounded selection in the replaceable Grasp Provider, after validation/NMS and before public candidate projection.
-3. Configure LabUtopia to request a 512-candidate native pool and retain a bounded 64-candidate geometry-diverse subset.
-4. Add provider and profile regressions proving narrow/spatially distinct candidates survive without changing scores, geometry, opaque refs, or motion authority.
-5. Run focused Provider/Isaac/planning/Skill tests, Ruff, compileall, and diff checks.
-6. Run a passive scene-state probe and a fresh no-motion AgentLoop workflow. Record measured arm/gripper joints, TCP and wrist-camera world poses, then start live simulated motion only if R03 preparation passes all aperture, frame, IK, collision, and workspace checks.
-7. Perform implementation review and fix every Blocker/Major before acceptance.
-8. Complete bilingual changelog, update recent-five index, commit scoped files, and attempt push on the current branch.
-9. Preserve the task-affordance selection through `execute_subtask`: the Adapter preparation request must contain only the selected qualified grasp, while non-task-affordance operations retain their existing bounded alternative-candidate recovery.
-10. Extend the existing task-affordance preparation receipt with an ordered opaque qualified-grasp reference list, selected first. Resolve those refs against the unchanged same-capture binding before Adapter preparation so recovery stays inside the qualified set.
+1. Keep the current IK-continuity rejection and zero-motion evidence boundary unchanged.
+2. In Isaac Adapter preparation, split `transit_cross` into raise with current orientation, translate with a safe transport orientation, reorient at staging, then approach the grasp.
+3. Enumerate bottle-axis-equivalent grasp orientations from the same opaque grasp candidate and rank only routes that pass continuous IK, limits, workspace, self/environment collision, and payload checks.
+4. Add no-motion tests for every new route segment, equivalent-orientation ordering, stale evidence, and all-routes-unavailable behavior.
+5. Run a fresh no-motion AgentLoop workflow. Enable simulated execution only after one complete R03 route is qualified; any unknown outcome or world change still stops R04 and stirring.
 
 ## Architecture review
 
@@ -55,14 +52,15 @@
 ## Validation commands
 
 ```bash
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=.:examples/forge-adapters/robotwin20/src \
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
+PYTHONPATH=.:examples/forge-adapters/isaacsim_lab/src:examples/forge-skills/pick-place-workflow/src \
   ./.venv/bin/python -m pytest -q \
-  examples/forge-adapters/robotwin20/tests/test_grasp_proposal.py \
-  examples/forge-adapters/robotwin20/tests/test_grasp_profile.py
-
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=.:examples/forge-adapters/isaacsim_lab/src:examples/forge-adapters/robotwin20/src:examples/forge-skills/pick-place-workflow/src \
-  ./.venv/bin/python -m pytest -q \
-  examples/forge-adapters/isaacsim_lab/tests/test_visual_perception.py \
   examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py \
-  examples/forge-adapters/isaacsim_lab/tests/test_paos_integration.py
+  examples/forge-adapters/isaacsim_lab/tests/test_paos_integration.py \
+  examples/forge-skills/pick-place-workflow/tests/test_subtask_executor.py
+
+PYTHONPATH=.:examples/forge-adapters/isaacsim_lab/src:examples/forge-adapters/robotwin20/src:examples/forge-skills/pick-place-workflow/src \
+  ./.venv/bin/python -m pytest -q \
+  examples/forge-adapters/isaacsim_lab/tests \
+  examples/forge-skills/pick-place-workflow/tests/test_subtask_executor.py
 ```

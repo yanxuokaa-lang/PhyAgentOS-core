@@ -282,10 +282,12 @@ def test_acquire_preparation_preserves_zero_motion_when_all_clearances_fail():
     with pytest.raises(PhaseMotionError) as captured:
         model.prepare({"manipulation_target": target, "observation_model": {}, "scene_revision": "scene"})
 
-    assert captured.value.code == "route_collision"
+    assert captured.value.code == "route_unavailable"
     assert attempts == pytest.approx([.24, .28])
     assert "clearance=0.04" in str(captured.value)
     assert "clearance=0.08" in str(captured.value)
+    assert "self_collision" in str(captured.value)
+    assert "route_collision" in str(captured.value)
 
 
 @pytest.mark.parametrize("values", [[], [0.], [float("nan")], "0.04"])
@@ -422,10 +424,72 @@ def test_collision_between_endpoints_rejects_entire_route():
             raise PhaseMotionError("route_collision", "obstacle between endpoints")
     model._collisions = collide
     goal = pose_matrix([.1, 0., 1.], [0., 0., 0., 1.])
-    with pytest.raises(PhaseMotionError, match="between endpoints"):
+    with pytest.raises(PhaseMotionError, match="between endpoints") as captured:
         model.qualify([(goal, 0., "approach")], "/World/source", np.eye(4), "acquire")
     assert any(.035 <= value <= .065 for value in samples)
     assert max(samples) < .1
+    assert "checked TCP=" in str(captured.value)
+    assert "checked joints=" in str(captured.value)
+
+
+def test_discontinuous_primary_ik_is_rejected_when_nearby_recovery_fails(monkeypatch):
+    import isaacsim_lab.phase_motion as phase_motion
+
+    model = IsaacPhaseMotion.__new__(IsaacPhaseMotion)
+    model.config = config()
+    model.hand_from_tcp = np.eye(4)
+    model.joints = lambda: np.zeros(7)
+    model.tcp = lambda joints=None: pose_matrix(
+        [0. if joints is None else float(np.asarray(joints)[0]), 0., 1.],
+        [0., 0., 0., 1.],
+    )
+    model.limits = np.tile([-5., 5.], (7, 1))
+    model.solver = SimpleNamespace(compute_inverse_kinematics=lambda *_a, **_k:
+                                   (np.r_[4.201, np.zeros(6)], True))
+    monkeypatch.setattr(
+        phase_motion,
+        "local_inverse_kinematics",
+        lambda *_a, **_k: (np.r_[.2, np.zeros(6)], False),
+    )
+    model._collisions = lambda *_a, **_k: pytest.fail("discontinuous IK must not reach collision sampling")
+
+    target = pose_matrix([.01, 0., 1.], [0., 0., 0., 1.])
+    with pytest.raises(PhaseMotionError) as captured:
+        model.qualify([(target, 0., "transit_cross")], "/World/source", np.eye(4), "acquire")
+
+    assert captured.value.code == "ik_discontinuity"
+    assert "4.201000 rad" in str(captured.value)
+    assert "configured maximum 0.500000 rad" in str(captured.value)
+
+
+def test_nearby_ik_replaces_discontinuous_primary_solution(monkeypatch):
+    import isaacsim_lab.phase_motion as phase_motion
+
+    model = IsaacPhaseMotion.__new__(IsaacPhaseMotion)
+    model.config = config()
+    model.hand_from_tcp = np.eye(4)
+    model.joints = lambda: np.zeros(7)
+    model.tcp = lambda joints=None: pose_matrix(
+        [0. if joints is None else float(np.asarray(joints)[0]), 0., 1.],
+        [0., 0., 0., 1.],
+    )
+    model.limits = np.tile([-5., 5.], (7, 1))
+    model.solver = SimpleNamespace(compute_inverse_kinematics=lambda *_a, **_k:
+                                   (np.r_[4.201, np.zeros(6)], True))
+    monkeypatch.setattr(
+        phase_motion,
+        "local_inverse_kinematics",
+        lambda *_a, **_k: (np.r_[.1, np.zeros(6)], True),
+    )
+    checked = []
+    model._collisions = lambda joints, *_a, **_k: checked.append(np.asarray(joints).copy())
+
+    target = pose_matrix([.01, 0., 1.], [0., 0., 0., 1.])
+    route = model.qualify([(target, 0., "transit_cross")], "/World/source", np.eye(4), "acquire")
+
+    assert route["steps"][-1]["joints"] == pytest.approx([.1, 0., 0., 0., 0., 0., 0.])
+    assert checked
+    assert max(float(np.max(np.abs(value))) for value in checked) <= .1
 
 
 def test_dense_collision_sampling_does_not_add_execution_stops():

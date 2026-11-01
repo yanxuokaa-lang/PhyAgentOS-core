@@ -48,6 +48,25 @@
 
 ## 最近五版本 / Latest five versions
 
+## v16.3.7 (2026-11-01 19:37) - codex
+
+### Summary [Completed; no motion]
+- [env] [fix] Isaac preparation now rejects a discontinuous primary/tool-feature IK branch before collision sampling unless nearby IK fully succeeds within the configured `0.5 rad` waypoint limit. / Isaac preparation 在碰撞采样前拒绝不连续 IK 分支，只有满足完整容差且连续的附近解才可替代。
+- [env] [fix] Mixed clearance failures report `route_unavailable` with every original reason, and collision diagnostics include the actual checked joints and TCP. / 混合 clearance 保留逐项原因，碰撞诊断记录真实检查样本。
+- [policy] [fix] The Skill consumes explicit Adapter `requires_replan` and `recommended_action` fields, preserves alternative-selection versus grasp-refresh semantics, and no longer parses error strings. / Skill 只消费显式恢复字段并保留两类重规划语义，不再解析错误文本。
+- [test] [test] Focused regression passed `123`; full Isaac Adapter plus subtask-executor regression passed `312`; Ruff, compileall, JSON validation, and diff check passed. / 定向 123 项与完整 312 项回归及静态检查通过。
+- [docs] [docs] Post-fix no-motion run `task_a5127feeb8c8476a` rejects R03 candidates `16/15/23` on `transit_cross` IK continuity/availability with no controller outcome or world change. / 修复后无动作运行确认旧碰撞标签受错误 IK 分支污染，当前真实阻塞为 transit 路线完整姿态 IK。
+
+### Key Diff / 关键 Diff
+```diff
+- failed nearby IK leaves distant Lula branch for collision sampling
+- recovery decision inferred/collapsed at the Skill boundary
++ fail closed on IK discontinuity before collision sampling
++ preserve typed Adapter recovery semantics through settlement
+```
+
+See `changelog/2026-11.md` for exact files, line ranges, validation commands, and runtime evidence.
+
 ## v16.3.6 (2026-11-01 19:14) - codex
 
 ### Summary [Completed; all-small-vessel scene still stopped before motion]
@@ -111,26 +130,6 @@ See `changelog/2026-11.md` for the execution command and evidence boundary.
 ### Git Commit
 - Implementation commit: `9a78d8e7`; branch `feature/planning-loop`; `2026-11-01 16:27:01 +0800`.
 - Push withheld pending explicit approval under robotics runtime-safety guidance. / 按机器人运行安全规则，未获明确批准前不推送。
-
-## v16.3.2 (2026-11-01 12:47) - codex
-
-### Summary [Completed; no motion]
-- [policy] [fix] `PhyAgentOS/agent/planning_dispatch.py:L887-L906` injects the exact Coordinator-owned `subtask_id`, `operation`, full `binding`, `parameters`, and `tool_sequence` for `manipulation.execute_subtask`; conflicting caller values still fail with `semantic_binding_mismatch`. / 从冻结 PlanNode 注入五个子任务字段，冲突调用值继续显式拒绝。
-- [policy] [fix] `PhyAgentOS/agent/planning_loop.py:L1847-L1851` plus `SKILL.md:L361-L370` and the developer guide require AgentLoop to submit only current task-qualified process/grasp opaque references instead of reconstructing the full observation binding. / AgentLoop 仅提交当前 task-qualified opaque 引用，不再重构完整观测绑定。
-- [test] [test] `tests/test_planning_dispatch.py:L447-L607` reproduces the 32-candidate R03 float mismatch and covers omission plus conflicts for all five frozen fields; focused validation passed `27 + 189 + 33 + 40`, Ruff, compileall, and diff check. / 回归覆盖大型候选绑定的精确注入与五字段冲突，定向测试及静态检查通过。
-- [docs] [docs] Diagnosis: `.task/labutopia-r03-r04-semantic-binding-diagnosis-20261101.md:L1-L138`; review: `docs/forge/IMPLEMENTATION_REVIEW_V16_3_2.md:L1-L82`. / 保存诊断和 PAOS/AgentLoop/机器人安全复核。
-- [env] [test] `out/lab-fullchain-truth-20261101-r03-r04-no-motion-r2/acceptance.json` proves the selection passed the former mismatch and reached real preparation. R03 then stopped on provider-owned `no_admissible_grasp/route_collision`; motion remained disabled, no Tool atom completed, no world change, and possession stayed empty. / 新无动作链路越过原绑定失败，下一阻塞为 R03 路径碰撞，未运动、未持物、场景未变化。
-
-### Key Diff / 关键 Diff
-```diff
-- model round-trips the complete observation-owned binding
-+ Coordinator injects exact frozen input_binding_keys
-+ Agent selects only process/grasp opaque references
-```
-
-### Git Commit
-- Implementation commit: `e7783db4`; log receipt: `194ecedf`; branch `feature/planning-loop`.
-- Push failed because `github.com:443` was unreachable after 134079 ms; commits remain local. / 推送因 GitHub 443 端口不可达而失败，提交仍在本地。
 
 ## v16.3.1 (2026-10-31 19:50) - codex
 

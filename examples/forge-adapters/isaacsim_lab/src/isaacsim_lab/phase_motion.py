@@ -201,6 +201,15 @@ def route_joint_travel(route):
     return float(np.abs(np.diff(points, axis=0)).sum())
 
 
+def joint_delta(start, goal):
+    """Return the largest physical joint displacement for one IK step."""
+    start = np.asarray(start, dtype=float)
+    goal = np.asarray(goal, dtype=float)
+    if start.shape != goal.shape or not np.isfinite(start).all() or not np.isfinite(goal).all():
+        return math.inf
+    return float(np.max(np.abs(goal - start)))
+
+
 def measured_feature_target(nominal_tcp, nominal_relation, measured_relation, tool):
     """Correct rod tip/axis tracking while leaving its free axial roll alone."""
     tip = np.asarray(tool["tip_offset_m"])
@@ -737,14 +746,13 @@ class IsaacPhaseMotion:
             if not candidates:
                 if not failures:
                     raise PhaseMotionError("route_unavailable", "no acquire transit clearance was configured")
-                representative = next(
-                    (exc for _clearance, exc in failures if exc.code == "route_collision"),
-                    failures[0][1],
-                )
+                codes = {exc.code for _clearance, exc in failures}
+                representative = failures[0][1]
+                failure_code = representative.code if len(codes) == 1 else "route_unavailable"
                 details = "; ".join(
                     f"clearance={clearance}: {exc.code}: {exc}" for clearance, exc in failures
                 )
-                raise PhaseMotionError(representative.code, details) from representative
+                raise PhaseMotionError(failure_code, details) from representative
             route = min(candidates, key=lambda item: (item[0], item[1]))[2]
         elif operation == "pour":
             clearance_limit = self.profile.alignment_tolerance_m - self.config["position_tolerance_m"]
@@ -797,18 +805,42 @@ class IsaacPhaseMotion:
                 if np.any(sample[:3, 3] < self.config["workspace_min_m"]) or np.any(sample[:3, 3] > self.config["workspace_max_m"]):
                     raise PhaseMotionError("workspace_violation", f"TCP outside workspace in {stage}")
                 hand = sample @ np.linalg.inv(self.hand_from_tcp)
-                goal, success = self.solver.compute_inverse_kinematics("panda_hand", hand[:3, 3],
+                primary_goal, primary_success = self.solver.compute_inverse_kinematics("panda_hand", hand[:3, 3],
                     np.roll(Rotation.from_matrix(hand[:3, :3]).as_quat(), 1), warm_start=joints,
                     position_tolerance=self.config["position_tolerance_m"], orientation_tolerance=.02)
-                if not success or np.max(np.abs(goal - joints)) > .5 or (operation == "stir" and stage == "process"):
+                maximum_delta = self.config["maximum_waypoint_joint_delta_rad"]
+                primary_delta = joint_delta(joints, primary_goal)
+                primary_finite = primary_delta < math.inf
+                force_local = operation == "stir" and stage == "process"
+                goal, success = primary_goal, bool(primary_success)
+                if not primary_success or primary_delta > maximum_delta or force_local:
                     local_goal, local_success = local_inverse_kinematics(
                         self.tcp, sample, joints, self.limits, self.config["position_tolerance_m"])
-                    if local_success:
+                    local_delta = joint_delta(joints, local_goal)
+                    if local_success and local_delta <= maximum_delta:
                         goal, success = local_goal, True
+                    elif (primary_success and primary_finite and primary_delta > maximum_delta
+                          and not force_local and tool_frame is None):
+                        raise PhaseMotionError(
+                            "ik_discontinuity",
+                            f"{stage}: primary IK joint delta {primary_delta:.6f} rad exceeds "
+                            f"configured maximum {maximum_delta:.6f} rad and nearby IK did not "
+                            f"produce a continuous solution (nearby delta={local_delta:.6f} rad); "
+                            f"seed joints={joints.tolist()}, target TCP={sample[:3, 3].tolist()}",
+                        )
+                    else:
+                        goal, success = local_goal, False
                 if tool_frame is not None:
                     goal, success = local_tool_inverse_kinematics(
                         self.tcp, sample @ tcp_from_object, tcp_from_object, tool_frame,
                         joints, self.limits, self.config["position_tolerance_m"])
+                    tool_delta = joint_delta(joints, goal)
+                    if success and tool_delta > maximum_delta:
+                        raise PhaseMotionError(
+                            "ik_discontinuity",
+                            f"{stage}: tool-feature IK joint delta {tool_delta:.6f} rad exceeds "
+                            f"configured maximum {maximum_delta:.6f} rad",
+                        )
                 if not success or not np.isfinite(goal).all():
                     raise PhaseMotionError("inverse_kinematics_failed",
                                            f"no solution in {stage}: TCP={sample.tolist()}")
@@ -829,7 +861,15 @@ class IsaacPhaseMotion:
                             self._collisions(value, source, contact, attached, tcp_from_object, support_contact,
                                              held_fingers=attached and operation != "acquire")
                         except PhaseMotionError as exc:
-                            raise PhaseMotionError(exc.code, f"{stage}: expected TCP={sample[:3, 3].tolist()}, goal TCP={self.tcp(goal)[:3, 3].tolist()}, joint delta={float(np.max(np.abs(goal-joints)))}; {exc}") from exc
+                            checked_tcp = self.tcp(value)
+                            raise PhaseMotionError(
+                                exc.code,
+                                f"{stage}: expected TCP={sample[:3, 3].tolist()}, "
+                                f"goal TCP={self.tcp(goal)[:3, 3].tolist()}, "
+                                f"checked TCP={checked_tcp[:3, 3].tolist()}, "
+                                f"checked joints={value.tolist()}, "
+                                f"joint delta={joint_delta(joints, goal)}; {exc}",
+                            ) from exc
                 # Collision sampling is denser than the commanded path. Keep
                 # its checks without making the arm stop at every check point.
                 steps.append({"joints": goal.tolist(), "stage": stage, "hold_s": 0.,

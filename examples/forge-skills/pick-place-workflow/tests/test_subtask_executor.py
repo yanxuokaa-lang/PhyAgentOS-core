@@ -607,7 +607,14 @@ def test_executor_stops_at_failed_process_without_place():
     assert "object.place" not in [item[0] for item in invoker.calls]
 
 
-def test_known_no_motion_route_rejection_requests_agent_replan_without_retry():
+@pytest.mark.parametrize("adapter_action,expected_action,message", [
+    ("select_alternative_candidate", "agent_replan_select_alternative_candidate", "unstructured failure"),
+    ("refresh_grasp_candidates", "agent_replan_refresh_grasp_candidates", "candidate route_collision"),
+    ("refresh_grasp_candidates", "agent_replan_refresh_grasp_candidates", "mixed route unavailable"),
+])
+def test_known_no_motion_adapter_rejection_preserves_explicit_replan_action(
+    adapter_action, expected_action, message,
+):
     class RejectedPreparationInvoker(Invoker):
         def invoke(self, tool_id, arguments):
             self.calls.append((tool_id, arguments))
@@ -616,13 +623,13 @@ def test_known_no_motion_route_rejection_requests_agent_replan_without_retry():
                 "motion_authorized": False,
                 "failure_owner": "runtime_adapter",
                 "requires_replan": True,
-                "recommended_action": "select_alternative_candidate",
+                "recommended_action": adapter_action,
                 "outcome_known": True,
                 "world_change_started": False,
                 "possession_state": "empty",
                 "error": {
                     "code": "no_admissible_grasp",
-                    "message": "candidate route_collision",
+                    "message": message,
                 },
             }
 
@@ -636,9 +643,13 @@ def test_known_no_motion_route_rejection_requests_agent_replan_without_retry():
 
     assert result.status == "failed"
     assert result.requires_replan is True
+    assert result.recommended_action == expected_action
     assert result.to_node_settlement(
         task_id="lab-task", revision_id="scene-1",
     ).requires_replan is True
+    assert result.to_node_settlement(
+        task_id="lab-task", revision_id="scene-1",
+    ).recommended_action == expected_action
     assert [tool_id for tool_id, _ in invoker.calls] == ["manipulation.prepare"]
 
 
@@ -647,6 +658,7 @@ def test_known_no_motion_route_rejection_requests_agent_replan_without_retry():
     {"possession_state": "holding"},
     {"requires_replan": False},
     {"failure_owner": "runtime_provider"},
+    {"recommended_action": "fix_runtime_contract"},
     {"error": {"code": "preparation_provider_error", "message": "route_collision"}},
 ])
 def test_prepare_failure_replan_hint_requires_known_zero_motion_route_rejection(changes):
@@ -656,6 +668,7 @@ def test_prepare_failure_replan_hint_requires_known_zero_motion_route_rejection(
             return {
                 "status": "unavailable", "motion_authorized": False,
                 "failure_owner": "runtime_adapter", "requires_replan": True,
+                "recommended_action": "select_alternative_candidate",
                 "world_change_started": False, "possession_state": "empty",
                 "error": {"code": "no_admissible_grasp", "message": "route_collision"},
                 **changes,

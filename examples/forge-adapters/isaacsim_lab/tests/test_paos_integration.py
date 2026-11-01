@@ -924,6 +924,13 @@ def test_preparation_tries_predicted_candidates_and_preserves_selected_pose(tmp_
     assert result['route_arguments']['candidate_ref'] == candidates[1]['candidate_ref']
     prepared.clear()
     resolved.clear()
+    engine.failure = 'ik_discontinuity'
+    result = provider.prepare(request)
+    assert prepared == [candidates[0]['candidate_ref'], candidates[1]['candidate_ref']]
+    assert resolved == candidates[:2]
+    assert result['route_arguments']['candidate_ref'] == candidates[1]['candidate_ref']
+    prepared.clear()
+    resolved.clear()
     engine.failure = 'gripper_aperture_exceeded'
     result = provider.prepare(request)
     assert prepared == [candidates[0]['candidate_ref'], candidates[1]['candidate_ref']]
@@ -936,7 +943,14 @@ def test_preparation_tries_predicted_candidates_and_preserves_selected_pose(tmp_
     assert len(prepared) == 1
 
 
-def test_route_collision_rejection_is_explicitly_replannable_but_stays_no_motion(tmp_path):
+@pytest.mark.parametrize("failure_code,recommended_action", [
+    ("route_collision", "select_alternative_candidate"),
+    ("ik_discontinuity", "select_alternative_candidate"),
+    ("route_unavailable", "refresh_grasp_candidates"),
+])
+def test_route_rejection_is_explicitly_replannable_but_stays_no_motion(
+    tmp_path, failure_code, recommended_action,
+):
     from PhyAgentOS.forge.capability_runtime.manipulation_prepare import PreparationProviderError
 
     profile = _profile(tmp_path)
@@ -955,10 +969,10 @@ def test_route_collision_rejection_is_explicitly_replannable_but_stays_no_motion
 
     class Engine:
         def prepare_manipulation(self, _request):
-            return {"status": "unavailable", "failure_code": "route_collision"}
+            return {"status": "unavailable", "failure_code": failure_code}
 
     provider = LabUtopiaCycleProvider(Engine(), target_resolver=Resolver())
-    with pytest.raises(PreparationProviderError, match="route_collision") as captured:
+    with pytest.raises(PreparationProviderError, match=failure_code) as captured:
         provider.prepare({
             "perception_binding": binding,
             "process_type": "pour",
@@ -966,5 +980,5 @@ def test_route_collision_rejection_is_explicitly_replannable_but_stays_no_motion
         })
 
     assert captured.value.requires_replan is True
-    assert captured.value.recommended_action == "select_alternative_candidate"
+    assert captured.value.recommended_action == recommended_action
     assert captured.value.rejected_candidate_refs == (candidate["candidate_ref"],)

@@ -497,47 +497,49 @@ def _persist_assignment_artifact(store: Any, response: Mapping[str, Any]) -> Non
     })
 
 
-def _known_no_motion_prepare_failure(
+def _known_no_motion_prepare_replan_action(
     *,
     receipts: list[ToolReceipt] | tuple[ToolReceipt, ...],
     completed: list[str] | tuple[str, ...],
     status: SubtaskStatus,
     possession_state: str,
-) -> bool:
-    """Admit only an explicit, zero-motion route rejection to Agent replan.
+) -> str | None:
+    """Project an explicit zero-motion Adapter recovery into Agent semantics.
 
     This is deliberately narrower than ``requires_replan`` for unknown Action
-    outcomes.  The adapter must identify the failed preparation candidate and
-    the route-collision diagnostic; no state-changing internal Tool may have
-    completed and possession must still be known empty.
+    outcomes.  No state-changing internal Tool may have completed, possession
+    must still be known empty, and the Adapter must provide a supported
+    recovery recommendation instead of relying on error-message parsing.
     """
     if status != "failed" or completed or possession_state != "empty" or len(receipts) != 1:
-        return False
+        return None
     receipt = receipts[0]
     if (
         receipt.tool_id != "manipulation.prepare"
         or receipt.phase != "prepare"
         or receipt.outcome_known is not True
     ):
-        return False
+        return None
     response = receipt.response
     if response.get("status") not in {"unavailable", "failed"}:
-        return False
+        return None
     if response.get("motion_authorized") is not False:
-        return False
+        return None
     if response.get("world_change_started") is not False:
-        return False
+        return None
     if response.get("possession_state") != "empty":
-        return False
+        return None
     if response.get("failure_owner") != "runtime_adapter":
-        return False
+        return None
     if response.get("requires_replan") is not True:
-        return False
+        return None
     error = response.get("error")
     if not isinstance(error, Mapping) or error.get("code") != "no_admissible_grasp":
-        return False
-    message = error.get("message")
-    return isinstance(message, str) and "route_collision" in message
+        return None
+    return {
+        "select_alternative_candidate": "agent_replan_select_alternative_candidate",
+        "refresh_grasp_candidates": "agent_replan_refresh_grasp_candidates",
+    }.get(response.get("recommended_action"))
 
 
 class SubtaskExecutor:
@@ -814,14 +816,15 @@ class SubtaskExecutor:
             "subtask_outcome_unknown" if status == "outcome_unknown" else
             "subtask_cancelled" if status == "cancelled" else "subtask_failed"
         )
-        requires_replan = _known_no_motion_prepare_failure(
+        replan_action = _known_no_motion_prepare_replan_action(
             receipts=receipts,
             completed=completed,
             status=status,
             possession_state=context.possession_state,
         )
-        if requires_replan:
-            recommended_action = "agent_replan_select_alternative_candidate"
+        requires_replan = replan_action is not None
+        if replan_action is not None:
+            recommended_action = replan_action
         return SubtaskExecutionResult(
             subtask_id=spec.subtask_id,
             status=status,
