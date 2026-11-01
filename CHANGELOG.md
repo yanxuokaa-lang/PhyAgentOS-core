@@ -68,7 +68,7 @@
 See `changelog/2026-11.md` for exact files, line ranges, runtime evidence, and review findings.
 
 ### Git Commit
-- Pending implementation commit; branch `feature/planning-loop`.
+- Implementation commit: `29a7b642`; branch `feature/planning-loop`; `2026-11-01 20:19:22 +0800`.
 
 ## v16.3.7 (2026-11-01 19:37) - codex
 
