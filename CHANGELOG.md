@@ -68,7 +68,8 @@
 See `changelog/2026-11.md`, `.task/labutopia-r03-staging-corridor-diagnosis-20261101.md`, and `docs/forge/IMPLEMENTATION_REVIEW_V16_4_0.md` for exact line ranges, route distributions, and PAOS ownership review.
 
 ### Git Commit
-- Implementation commit: pending; branch `feature/planning-loop`.
+- Implementation commit: `fa0800a7`; branch `feature/planning-loop`; `2026-11-01 21:20:30 +0800`.
+- Log receipt commit: pending.
 
 ## v16.3.9 (2026-11-01 20:26) - codex
 
