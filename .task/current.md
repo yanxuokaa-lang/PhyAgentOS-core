@@ -11,7 +11,7 @@
 - Public contract impact: none. Existing `grasp.propose` candidates and `manipulation.prepare` evidence remain unchanged.
 - Evidence lineage: same-capture simulator-truth observation and object point cloud -> GraspNet native proposals -> geometry-diverse bounded candidates -> task-affordance selection -> no-motion preparation -> Action feedback.
 - Freshness boundary: observation, scene revision, frame, calibration, candidate set, process-feature set, and task-affordance selection must remain identical through preparation.
-- Motion boundary: simulation execution is authorized only after preparation; any unknown outcome or world change stops the workflow. The latest authorized run stopped before the first controller command.
+- Motion boundary: simulation execution remains disabled until a complete no-motion route passes every preparation gate; any unknown outcome or world change stops the workflow.
 - User parameters:
   - R03 -> BEAKER: `tilt_rad=0.87`, `hold_s=0.60`
   - R04 -> BEAKER: `tilt_rad=0.87`, `hold_s=0.60`
@@ -20,10 +20,12 @@
 - Resolved defect: task-affordance Preparation now returns a selected-first ordered `qualified_grasp_candidate_refs` list, and Action preparation resolves only those opaque references from the unchanged same-capture binding. Provider-rejected raw GraspNet candidates cannot re-enter embodiment preparation.
 - Resolved defect: the prior `self_collision` and table `route_collision` labels were produced after a discontinuous Lula IK branch was incorrectly retained when nearby IK failed. Isaac preparation now rejects that branch as `ik_discontinuity` before collision sampling and records the actual checked joint sample/TCP for genuine collision failures.
 - Resolved defect: acquire preparation now separates current-orientation raise, configured transport reorientation, raised lateral translation, staging reorientation, and final approach. It enumerates only geometry-supported bottle-axis equivalents and sends every route through the unchanged safety qualification.
-- Current blocker: R03 candidates `15`, `23`, and `16` each traversed 24 clearance x transport-orientation x axial-angle combinations, but no complete route passed. Across 72 routes the Adapter reported 22 IK discontinuities, 16 unavailable IK solutions, 12 genuine self-collisions, and 22 environment collisions. Failures remain at `staging_reorient` and `approach`; the remaining work is Adapter-owned staging/approach feasibility and local scene clearance, not AgentLoop, prompt parameters, candidate-set recovery, or lowering safety thresholds.
-- Latest authorized execution attempt: workspace `out/lab-fullchain-truth-20261101-staged-symmetry-execute-r1/`, task `task_093815df65154b03`, session `cli:lab-dc8cd9539e91`, action `invocation://manipulation-execute_subtask/118c1f7ccfea474e`, scene revision `labutopia-tabletop-rod-rack-v1:03b288762548416e890d5da8b38e9584:0`. `simulated_motion_enabled=true`, but preparation returned `no_admissible_grasp` before any controller command; `outcome_known=true`, `world_change_started=false`, `possession_state=empty`, and R04/GLASS_ROD did not start.
-- Preserved preview: `out/lab-fullchain-truth-20261101-staged-symmetry-execute-r1/artifacts/labutopia/no-motion-video/r03-preparation-failed-observation.mp4` is a 5-second 1600x1200, 30 fps static observation labelled as controller-not-started. It is diagnostic observation evidence, not action evidence.
-- Saved diagnosis: `.task/labutopia-r03-authorized-execution-diagnosis-20261101.md`.
+- Resolved defect: acquire preparation now enumerates bounded Adapter-private approach distance, staging backoff, and signed tangential-offset corridors. Missing new configuration falls back to the legacy single corridor, and every alternative still enters the same complete safety qualification.
+- Resolved defect: repeated route failures are summarized by code, phase, corridor, clearance, and transport orientation with bounded representative examples instead of injecting every full exception into AgentLoop context.
+- Current blocker: R03 candidates `16`, `23`, and `15` each traversed 96 clearance x transport x corridor x axial-angle combinations, but no complete route passed. Across 288 routes the Adapter reported 140 IK discontinuities, 49 unavailable IK solutions, 21 self-collisions, and 78 environment collisions. Failures remain concentrated at `staging_reorient` (173) and `approach` (92); adding generic offsets alone is insufficient.
+- Latest no-motion attempt: workspace `out/lab-fullchain-truth-20261101-staging-corridor-no-motion-r1/`, task `task_b16f8e5cbeb84dda`, session `cli:lab-b11c91c66271`, action `invocation://manipulation-execute_subtask/3ebe297dca4e4fbf`, scene revision `labutopia-tabletop-rod-rack-v1:74e728eececc4cc590e7bd8dc431f73a:0`. `simulated_motion_enabled=false`, `outcome_known=true`, `world_change_started=false`, `possession_state=empty`, and `controller_outcomes=[]`; R04/GLASS_ROD did not start.
+- Preserved preview: `out/lab-fullchain-truth-20261101-staging-corridor-no-motion-r1/artifacts/labutopia/no-motion-video/staging-corridor-observation.mp4` is a 5-second 1600x1200, 30 fps static observation labelled as controller-disabled. It is diagnostic observation evidence, not action evidence.
+- Saved diagnosis: `.task/labutopia-r03-staging-corridor-diagnosis-20261101.md`.
 
 ## Failure-first behavior
 
@@ -37,11 +39,11 @@
 
 ## Next implementation
 
-1. Keep the current IK-continuity rejection and zero-motion evidence boundary unchanged.
-2. Keep the staged route and final-mesh axial-symmetry evidence projection unchanged while testing Adapter-private staging poses or approach-direction alternatives.
-3. Preserve continuous IK, limits, workspace, self/environment collision, payload checks, and same-capture evidence for every alternative.
-4. Add no-motion tests for any new staging/approach candidate ordering and all-routes-unavailable behavior.
-5. Run a fresh no-motion AgentLoop workflow. Enable simulated execution only after one complete R03 route is qualified; any unknown outcome or world change still stops R04 and stirring.
+1. Keep the current corridor search, IK-continuity rejection, collision checks, and zero-motion evidence boundary unchanged.
+2. Add task-conditioned final grasp-orientation/short-approach feasibility at the Provider/Adapter seam without exposing robot joints or USD paths to AgentLoop.
+3. Rank or reject task-affordance grasp alternatives using measured table/neighbor clearance and embodiment reachability before the full corridor product.
+4. Preserve same-capture provenance and test stale, ambiguous, all-unreachable, and replacement-provider paths.
+5. Run a fresh no-motion AgentLoop workflow. Enable simulated execution only after one complete R03 route is qualified.
 
 ## Architecture review
 

@@ -10,6 +10,9 @@ from scipy.spatial.transform import Rotation
 from isaacsim_lab.phase_motion import (
     IsaacPhaseMotion,
     PhaseMotionError,
+    acquire_failure_summary,
+    acquire_route_waypoints,
+    acquire_staging_corridors,
     collision_hits,
     held_tool_pose,
     interpolate_pose,
@@ -254,6 +257,9 @@ def test_acquire_preparation_searches_clearances_and_selects_admissible_route():
     assert pre[:3, 3] == pytest.approx([-.27, -.24, .86])
     assert route["operation"] == "acquire"
     assert route["acquire_transit_clearance_m"] == pytest.approx(.08)
+    assert route["acquire_approach_distance_m"] == pytest.approx(.12)
+    assert route["acquire_staging_backoff_m"] == pytest.approx(0.)
+    assert route["acquire_staging_tangential_offset_m"] == pytest.approx(0.)
 
 
 def test_acquire_preparation_preserves_zero_motion_when_all_clearances_fail():
@@ -299,6 +305,216 @@ def test_acquire_preparation_preserves_zero_motion_when_all_clearances_fail():
     assert "clearance=0.08" in str(captured.value)
     assert "self_collision" in str(captured.value)
     assert "route_collision" in str(captured.value)
+
+
+def test_acquire_staging_corridors_falls_back_to_legacy_approach_distance():
+    assert acquire_staging_corridors({"approach_distance_m": .12}) == ((.12, 0., 0.),)
+
+
+def test_acquire_staging_corridors_deduplicates_without_reordering():
+    first = {"approach_distance_m": .12, "staging_backoff_m": 0., "tangential_offset_m": 0.}
+    second = {"approach_distance_m": .18, "staging_backoff_m": .08, "tangential_offset_m": -.06}
+    assert acquire_staging_corridors({
+        "acquire_staging_corridor_candidates": [first, second, first],
+    }) == ((.12, 0., 0.), (.18, .08, -.06))
+
+
+@pytest.mark.parametrize("values", [
+    [],
+    "corridor",
+    [None],
+    [{"approach_distance_m": 0., "staging_backoff_m": 0., "tangential_offset_m": 0.}],
+    [{"approach_distance_m": .12, "staging_backoff_m": -.01, "tangential_offset_m": 0.}],
+    [{"approach_distance_m": True, "staging_backoff_m": 0., "tangential_offset_m": 0.}],
+    [{"approach_distance_m": .12, "staging_backoff_m": "0", "tangential_offset_m": 0.}],
+    [{"approach_distance_m": .12, "staging_backoff_m": 0., "tangential_offset_m": float("nan")}],
+])
+def test_acquire_staging_corridors_reject_invalid_configuration(values):
+    with pytest.raises(PhaseMotionError) as captured:
+        acquire_staging_corridors({"acquire_staging_corridor_candidates": values})
+    assert captured.value.code == "invalid_motion_configuration"
+
+
+def test_acquire_route_waypoints_apply_backoff_and_tangential_offset_before_approach():
+    tcp = pose_matrix([-.4, 0., 1.], [0., 0., 0., 1.])
+    desired = pose_matrix([.4, .2, .8], [0., 0., 0., 1.])
+    waypoints = acquire_route_waypoints(
+        tcp,
+        desired,
+        np.asarray([0., -1., 0.]),
+        .1,
+        [1., 0., 0., 0.],
+        (.18, .08, .06),
+        {"lift_distance_m": .1, "settle_s": .6},
+    )
+
+    transported, staged, pre, grasp = [waypoints[index][0] for index in (3, 4, 5, 6)]
+    assert pre[:3, 3] == pytest.approx([.4, .38, .8])
+    assert staged[:3, 3] == pytest.approx([.46, .46, 1.1])
+    assert transported[:2, 3] == pytest.approx(staged[:2, 3])
+    assert grasp == pytest.approx(desired)
+
+
+def test_acquire_route_waypoints_use_world_x_tangent_for_vertical_approach():
+    desired = pose_matrix([.2, -.1, .8], [0., 0., 0., 1.])
+    waypoints = acquire_route_waypoints(
+        np.eye(4),
+        desired,
+        np.asarray([0., 0., 1.]),
+        .1,
+        [0., 0., 0., 1.],
+        (.18, .08, .05),
+        {"lift_distance_m": .1, "settle_s": .6},
+    )
+
+    staged, pre = waypoints[4][0], waypoints[5][0]
+    assert pre[:3, 3] == pytest.approx([.2, -.1, .62])
+    assert staged[:2, 3] == pytest.approx([.25, -.1])
+    assert staged[2, 3] == pytest.approx(.9)
+
+
+@pytest.mark.parametrize("approach", [[0., 0., 0.], [0., float("nan"), 1.]])
+def test_acquire_route_waypoints_reject_invalid_approach(approach):
+    with pytest.raises(PhaseMotionError) as captured:
+        acquire_route_waypoints(
+            np.eye(4),
+            np.eye(4),
+            np.asarray(approach),
+            .1,
+            [0., 0., 0., 1.],
+            (.12, 0., 0.),
+            {"lift_distance_m": .1, "settle_s": .6},
+        )
+    assert captured.value.code == "invalid_grasp_approach"
+
+
+def test_acquire_preparation_qualifies_each_corridor_and_selects_offset_route():
+    model = object.__new__(IsaacPhaseMotion)
+    model.config = {
+        "approach_distance_m": .12,
+        "acquire_staging_corridor_candidates": [
+            {"approach_distance_m": .12, "staging_backoff_m": 0., "tangential_offset_m": 0.},
+            {"approach_distance_m": .18, "staging_backoff_m": .08, "tangential_offset_m": .06},
+        ],
+        "acquire_transit_clearance_candidates_m": [.04],
+        "acquire_transport_orientation_candidates_xyzw": [[1., 0., 0., 0.]],
+        "acquire_axial_symmetry_angles_rad": [0.],
+        "lift_distance_m": .10,
+        "settle_s": .6,
+    }
+    model.validate_grasp_aperture = lambda _target: None
+    current = pose_matrix([-.4, 0., 1.], [0., 0., 0., 1.])
+    body = pose_matrix([0., 0., .8], [0., 0., 0., 1.])
+    model.tcp = lambda: current.copy()
+    model.observed_pose = lambda _source: body.copy()
+    model.bind_observed_model = lambda *_args: (body.copy(), np.eye(4))
+    model.body_pose = lambda _path: np.eye(4)
+    model._artifact = lambda *_args: "artifact://readiness/test.json"
+    staged_positions = []
+
+    def qualify(waypoints, *_args, **_kwargs):
+        staged_positions.append(waypoints[4][0][:3, 3].copy())
+        if waypoints[4][0][0, 3] == pytest.approx(0.):
+            raise PhaseMotionError("route_collision", "direct corridor is blocked")
+        return {"start_joints": [0.] * 7,
+                "steps": [{"joints": [.2] + [0.] * 6, "stage": "lift"}]}
+
+    model.qualify = qualify
+    target = {
+        "world_from_control": {"translation_m": [0., 0., 0.], "orientation_xyzw": [0., 0., 0., 1.]},
+        "entity_prim_path": "/World/source/Model",
+        "destination_prim_path": "/World/destination/Model",
+        "object_pose": {"position_m": [0., 0., .8], "orientation_xyzw": [0., 0., 0., 1.]},
+        "grasp_frame": {"position_m": [0., 0., .9], "orientation_xyzw": [0., 0., 0., 1.]},
+        "approach_direction": {"vector": [0., -1., 0.]},
+        "destination_pose": {"position_m": [.2, 0., .8], "orientation_xyzw": [0., 0., 0., 1.]},
+        "return_pose": {"position_m": [0., 0., .8], "orientation_xyzw": [0., 0., 0., 1.]},
+    }
+
+    route, _evidence = model.prepare({
+        "manipulation_target": target,
+        "observation_model": {},
+        "scene_revision": "scene",
+    })
+
+    assert len(staged_positions) == 2
+    assert staged_positions[0][:2] == pytest.approx([0., .12])
+    assert staged_positions[1][:2] == pytest.approx([.06, .26])
+    assert route["acquire_approach_distance_m"] == pytest.approx(.18)
+    assert route["acquire_staging_backoff_m"] == pytest.approx(.08)
+    assert route["acquire_staging_tangential_offset_m"] == pytest.approx(.06)
+    assert route["target"]["grasp_frame"]["position_m"] == target["grasp_frame"]["position_m"]
+    assert route["target"]["grasp_frame"]["orientation_xyzw"] == target["grasp_frame"]["orientation_xyzw"]
+
+
+def test_acquire_preparation_reports_each_failed_corridor_without_motion():
+    model = object.__new__(IsaacPhaseMotion)
+    model.config = {
+        "approach_distance_m": .12,
+        "acquire_staging_corridor_candidates": [
+            {"approach_distance_m": .12, "staging_backoff_m": 0., "tangential_offset_m": 0.},
+            {"approach_distance_m": .18, "staging_backoff_m": .08, "tangential_offset_m": .06},
+        ],
+        "acquire_transit_clearance_candidates_m": [.04],
+        "acquire_transport_orientation_candidates_xyzw": [[1., 0., 0., 0.]],
+        "acquire_axial_symmetry_angles_rad": [0.],
+        "lift_distance_m": .10,
+        "settle_s": .6,
+    }
+    model.validate_grasp_aperture = lambda _target: None
+    model.tcp = lambda: np.eye(4)
+    model.observed_pose = lambda _source: np.eye(4)
+    model.bind_observed_model = lambda *_args: (np.eye(4), np.eye(4))
+    model.body_pose = lambda _path: np.eye(4)
+    attempts = []
+
+    def reject(waypoints, *_args, **_kwargs):
+        attempts.append(waypoints[4][0][:3, 3].copy())
+        raise PhaseMotionError("route_collision", "candidate route rejected")
+
+    model.qualify = reject
+    target = {
+        "world_from_control": {"translation_m": [0., 0., 0.], "orientation_xyzw": [0., 0., 0., 1.]},
+        "entity_prim_path": "/World/source/Model",
+        "destination_prim_path": "/World/destination/Model",
+        "object_pose": {"position_m": [0., 0., 0.], "orientation_xyzw": [0., 0., 0., 1.]},
+        "grasp_frame": {"position_m": [0., 0., .2], "orientation_xyzw": [0., 0., 0., 1.]},
+        "approach_direction": {"vector": [0., -1., 0.]},
+        "destination_pose": {"position_m": [.2, 0., 0.], "orientation_xyzw": [0., 0., 0., 1.]},
+        "return_pose": {"position_m": [0., 0., 0.], "orientation_xyzw": [0., 0., 0., 1.]},
+    }
+
+    with pytest.raises(PhaseMotionError) as captured:
+        model.prepare({"manipulation_target": target, "observation_model": {}, "scene_revision": "scene"})
+
+    assert captured.value.code == "route_collision"
+    assert len(attempts) == 2
+    assert "corridor=0" in str(captured.value)
+    assert "corridor_counts={0: 1, 1: 1}" in str(captured.value)
+
+
+def test_acquire_failure_summary_bounds_repeated_route_diagnostics():
+    failures = []
+    for corridor in range(4):
+        for attempt in range(24):
+            code = "ik_discontinuity" if attempt % 2 else "route_collision"
+            stage = "staging_reorient" if code == "ik_discontinuity" else "approach"
+            failures.append((
+                .04 + .04 * (attempt % 3),
+                attempt % 2,
+                corridor,
+                0.,
+                PhaseMotionError(code, f"{stage}: " + "diagnostic " * 200),
+            ))
+
+    summary = acquire_failure_summary(failures)
+
+    assert len(summary) < 2500
+    assert "routes=96" in summary
+    assert "ik_discontinuity[staging_reorient] count=48" in summary
+    assert "route_collision[approach] count=48" in summary
+    assert "corridor_counts={0: 12, 1: 12, 2: 12, 3: 12}" in summary
+    assert "clearance_counts={0.04: 16, 0.08: 16, 0.12: 16}" in summary
 
 
 @pytest.mark.parametrize("values", [[], [0.], [float("nan")], "0.04"])

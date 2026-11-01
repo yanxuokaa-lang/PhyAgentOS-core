@@ -48,6 +48,28 @@
 
 ## 最近五版本 / Latest five versions
 
+## v16.4.0 (2026-11-01 20:57) - codex
+
+### Summary [Completed; no motion]
+- [env] [feat] Isaac acquire preparation now enumerates Adapter-private, configuration-driven approach distance, staging backoff, and signed tangential-offset corridors while preserving legacy fallback. / Isaac 抓取准备新增 Adapter 私有、配置驱动的 approach/backoff/切向 corridor，并保留旧配置回退。
+- [env] [fix] Every new route still enters the unchanged workspace, full-pose IK/continuity, joint-limit, self/environment collision, payload, and possession checks. / 每条新路线继续通过未放宽的完整运动安全门禁。
+- [env] [fix] Route failures are aggregated by code, phase, corridor, clearance, and transport with bounded examples, preventing a 96-route candidate from flooding AgentLoop context. / 路线失败改为有界聚合，避免 96 路线异常淹没 AgentLoop 上下文。
+- [test] [test] Focused regression passed `151`; full regression passed `346`; Ruff, compileall, JSON parse, and diff check passed. / 定向 151 项、完整 346 项及静态检查通过。
+- [docs] [docs] The no-motion run evaluated 288 routes across same-capture refs `16/23/15`; all failed before controller start, so no `--execute` retry was launched. / 无动作运行检查 288 条路线并全部在控制器前失败，因此未发起执行重试。
+- [docs] [docs] Preserved `staging-corridor-observation.mp4` as a labelled five-second 1600x1200 static preview, not Action evidence. / 保留明确标注的静态诊断视频，不作为动作证据。
+
+### Key Diff / 关键 Diff
+```diff
+- one fixed acquire staging/approach corridor and unbounded failure concatenation
++ bounded configuration-driven corridor search through the same safety qualification
++ bounded aggregate diagnostics with representative examples
+```
+
+See `changelog/2026-11.md`, `.task/labutopia-r03-staging-corridor-diagnosis-20261101.md`, and `docs/forge/IMPLEMENTATION_REVIEW_V16_4_0.md` for exact line ranges, route distributions, and PAOS ownership review.
+
+### Git Commit
+- Implementation commit: pending; branch `feature/planning-loop`.
+
 ## v16.3.9 (2026-11-01 20:26) - codex
 
 ### Summary [Completed; authorized execution stopped before motion]
@@ -129,13 +151,3 @@ See `changelog/2026-11.md` for exact files, line ranges, validation commands, an
 - [env] [test] All three failed pre-motion on self-collision, table route collision or IK. `controller_outcomes=[]`, `world_change_started=false`, `outcome_known=true`, `possession_state=empty`; R04 and stirring did not start. / 三个候选均在动作前失败，场景未变化，后续子任务未启动。
 
 See `changelog/2026-11.md` for the command, safety boundary, and runtime evidence.
-
-## v16.3.5 (2026-11-01 18:51) - codex
-
-### Summary [Completed; small-vessel scene still stopped before motion]
-- [env] [exp] Started a new `--execute` R03 -> R04 -> GLASS_ROD Agent run against the LabUtopia v0.2.8 small-vessel scene; task `task_b4d730ffb7f043b7`, session `cli:lab-d099bf7187df`. / 在 LabUtopia v0.2.8 小瓶场景发起新的全链路 Agent 仿真执行。
-- [sense] [test] Fresh simulator-truth evidence measured R03 at `77 x 77 x 97 mm` and R04 at `93 x 93 x 165 mm`; no ReMake/DFNet/SAM2 worker or recovery artifact was created. / 新鲜仿真真值确认小瓶尺寸，未调用透明几何恢复。
-- [env] [test] R03 returned 19 same-capture task-qualified grasps, but all failed preparation: 13 aperture, 4 route collision, 1 self-collision and 1 IK failure. / R03 产生 19 个同次捕获资格候选，但全部未通过物理准备。
-- [policy] [test] Prompt parameters were preserved exactly; `controller_outcomes=[]`, `world_change_started=false`, `outcome_known=true`, `possession_state=empty`. R04 and stirring did not start. / 指令参数原样保留；控制器未启动，世界未变化，R04 与搅拌未开始。
-
-See `changelog/2026-11.md` for the execution command and evidence boundary.

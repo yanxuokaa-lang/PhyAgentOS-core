@@ -10,6 +10,28 @@
     1.65
   ],
   "approach_distance_m": 0.12,
+  "acquire_staging_corridor_candidates": [
+    {
+      "approach_distance_m": 0.12,
+      "staging_backoff_m": 0.0,
+      "tangential_offset_m": 0.0
+    },
+    {
+      "approach_distance_m": 0.18,
+      "staging_backoff_m": 0.08,
+      "tangential_offset_m": 0.0
+    },
+    {
+      "approach_distance_m": 0.18,
+      "staging_backoff_m": 0.08,
+      "tangential_offset_m": -0.06
+    },
+    {
+      "approach_distance_m": 0.18,
+      "staging_backoff_m": 0.08,
+      "tangential_offset_m": 0.06
+    }
+  ],
   "acquire_transit_clearance_candidates_m": [
     0.04,
     0.08,
