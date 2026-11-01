@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from PhyAgentOS.agent.planning_dispatch import AgentComposedDispatch
+from PhyAgentOS.agent.planning_dispatch import AgentComposedDispatch, PlanningDispatchError
 from PhyAgentOS.agent.tools.base import Tool
 from PhyAgentOS.agent.tools.planning import ForgePlanActivateTool
 from PhyAgentOS.agent.tools.registry import ToolRegistry
@@ -442,6 +442,169 @@ def test_subtask_selection_persists_trusted_intent_from_semantic_node_binding():
     assert trusted["intent"]["entity_ref"] == binding["entity_ref"]
     assert trusted["intent"]["candidate_set_ref"] == binding["candidate_set_ref"]
     assert trusted["intent"]["motion_authorized"] is False
+
+
+def test_subtask_selection_injects_frozen_binding_without_model_reconstruction():
+    grasp_candidates = [
+        {
+            "candidate_ref": f"candidate://simulator-truth-R03/grasp-{index}",
+            "entity_ref": "entity://R03",
+            "grasp_geometry": {
+                "width_m": (
+                    0.07873450219631195 if index == 12 else 0.04 + index / 1000
+                )
+            },
+        }
+        for index in range(32)
+    ]
+    binding = {
+        "entity_ref": "entity://R03",
+        "observation_ref": "observation://scene-r03-r04/front-camera",
+        "scene_revision": "scene-r03-r04",
+        "frame_id": "front-camera",
+        "calibration_ref": "artifact://calibration/lab-v1",
+        "candidate_set_ref": "candidate-set://scene-r03-r04/front-camera",
+        "grasp_candidates": grasp_candidates,
+    }
+    frozen_fields = {
+        "subtask_id": "pour-r03",
+        "operation": "pour",
+        "binding": binding,
+        "parameters": {"tilt_rad": 0.8, "hold_s": 1.0},
+        "tool_sequence": [
+            {"tool_id": "manipulation.prepare", "semantics": "query"},
+            {"tool_id": "manipulation.execute", "semantics": "action"},
+        ],
+    }
+    node = PlanNode(
+        node_id="pour-r03",
+        obligation_id="pour-r03",
+        capability="manipulation.execute_subtask",
+        input_bindings={
+            **frozen_fields,
+            "semantic_intent": {
+                "goal": "Pour R03 into the selected beaker",
+                "success_criteria": ["Measured pour feedback qualifies"],
+                "allowed_arms": ["franka"],
+                "coordination_mode": "single_arm",
+                "constraints": ["Use current task-qualified process geometry"],
+            },
+        },
+    )
+    graph_payload = {
+        "task_id": "task-r03-r04",
+        "revision_id": "revision-r03-r04",
+        "graph_digest": "0" * 64,
+        "planner_decision_digest": "1" * 64,
+        "policy_snapshot_digest": "2" * 64,
+        "nodes": [node.model_dump(mode="json")],
+    }
+    graph_payload["graph_digest"] = plan_graph_digest(graph_payload)
+    policy = ToolSpecPolicy(
+        tool_id="manipulation.execute_subtask",
+        semantics="action",
+        spec_digest="3" * 64,
+        capabilities=("manipulation.execute_subtask",),
+        input_binding_keys=(
+            "subtask_id", "operation", "binding", "parameters", "tool_sequence",
+        ),
+        trusted_argument_builder="manipulation_intent_v2",
+    )
+    input_schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            *policy.input_binding_keys,
+            "intent",
+            "affordance_selection",
+            "process_feature_refs",
+            "process_feature_candidate_set_ref",
+            "grasp_task_affordance_candidate_set_ref",
+            "grasp_task_affordance_ref",
+            "selected_grasp_candidate_ref",
+        ],
+        "properties": {
+            "subtask_id": {"type": "string"},
+            "operation": {"const": "pour"},
+            "binding": {"type": "object"},
+            "parameters": {"type": "object"},
+            "tool_sequence": {"type": "array"},
+            "intent": {"type": "object"},
+            "affordance_selection": {"const": "task_qualified"},
+            "process_feature_refs": {
+                "type": "array", "items": {"type": "string"},
+            },
+            "process_feature_candidate_set_ref": {"type": "string"},
+            "grasp_task_affordance_candidate_set_ref": {"type": "string"},
+            "grasp_task_affordance_ref": {"type": "string"},
+            "selected_grasp_candidate_ref": {"type": "string"},
+        },
+    }
+    dispatch = AgentComposedDispatch(
+        PlanGraph.model_validate(graph_payload),
+        (policy,),
+        AdmissionContext(scene_revision="scene-r03-r04"),
+        input_schemas={"manipulation.execute_subtask": input_schema},
+    )
+    selected_arguments = {
+        "affordance_selection": "task_qualified",
+        "process_feature_refs": [
+            "process-feature://R03/pour-lip",
+            "process-feature://BEAKER/opening",
+        ],
+        "process_feature_candidate_set_ref": "process-feature-set://r03-beaker/current",
+        "grasp_task_affordance_candidate_set_ref": "grasp-affordance-set://R03/current",
+        "grasp_task_affordance_ref": "grasp-affordance://R03/qualified-0",
+        "selected_grasp_candidate_ref": "candidate://simulator-truth-R03/grasp-0",
+    }
+
+    proposal = dispatch.prepare_selection(
+        node_id="pour-r03",
+        tool_id="manipulation.execute_subtask",
+        arguments=selected_arguments,
+        decision_reason="use the current task-qualified R03 grasp and process features",
+    )
+
+    for key, value in frozen_fields.items():
+        assert proposal["tool_arguments"][key] == value
+    assert proposal["tool_arguments"]["binding"]["grasp_candidates"][12][
+        "grasp_geometry"
+    ]["width_m"] == 0.07873450219631195
+    assert proposal["tool_arguments"]["intent"]["motion_authorized"] is False
+    assert {
+        key: proposal["tool_arguments"][key] for key in selected_arguments
+    } == selected_arguments
+
+    tampered_binding = json.loads(json.dumps(binding))
+    tampered_binding["grasp_candidates"][12]["grasp_geometry"]["width_m"] = (
+        0.10000000149011612
+    )
+    with pytest.raises(PlanningDispatchError) as exc_info:
+        dispatch.prepare_selection(
+            node_id="pour-r03",
+            tool_id="manipulation.execute_subtask",
+            arguments={**selected_arguments, "binding": tampered_binding},
+            decision_reason="must reject reconstructed observation-owned binding",
+        )
+    assert getattr(exc_info.value, "code") == "semantic_binding_mismatch"
+    assert exc_info.value.missing_fields == ("binding",)
+
+    conflicting_fields = {
+        "subtask_id": "pour-r04",
+        "operation": "stir",
+        "parameters": {"tilt_rad": 0.5, "hold_s": 0.2},
+        "tool_sequence": [],
+    }
+    for key, value in conflicting_fields.items():
+        with pytest.raises(PlanningDispatchError) as conflict_info:
+            dispatch.prepare_selection(
+                node_id="pour-r03",
+                tool_id="manipulation.execute_subtask",
+                arguments={**selected_arguments, key: value},
+                decision_reason=f"must reject conflicting frozen {key}",
+            )
+        assert conflict_info.value.code == "semantic_binding_mismatch"
+        assert conflict_info.value.missing_fields == (key,)
 
 
 def test_ready_diagnostics_explain_evidence_and_condition_blockers():

@@ -358,6 +358,17 @@ intent identity, or invent a decision-trace reference. The selection tool is
 control-plane only and does not invoke a Gateway, authorize motion, or replace
 Coordinator/Gateway execution and reconciliation.
 
+For `manipulation.execute_subtask`, the frozen PlanNode is the authoritative
+owner of `subtask_id`, `operation`, the complete observation-owned `binding`,
+`parameters`, and `tool_sequence`. Omit those fields from `forge_plan_select`;
+the trusted argument builder injects their exact persisted values before schema
+validation and DecisionTrace persistence. Submit only the remaining fields
+required by the current Tool schema, such as `affordance_selection` and the
+opaque process/grasp references returned by the admitted Query chain. Do not
+reconstruct `binding`, copy its grasp candidate array, round provider floats, or
+replace any node-owned field. A supplied conflicting value is rejected as
+`semantic_binding_mismatch`; omission is the normal path.
+
 Once `forge_plan_select` succeeds, that node has one durable unconsumed
 selection. Execute the returned receipt; do not select a second Tool for the
 same node. A different implementation choice requires a governed replacement

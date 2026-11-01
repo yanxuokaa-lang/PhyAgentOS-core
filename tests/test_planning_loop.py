@@ -592,6 +592,9 @@ def test_default_node_prompt_distinguishes_geometry_and_producer_projection_sour
     assert "no_replay_actions and completed_effects" in prompt
     assert "action_effect_confirmed does not by itself prove" in prompt
     assert "Follow frozen_skill_route_context" in prompt
+    assert "For manipulation.execute_subtask, do not copy" in prompt
+    assert "trusted argument builder" in prompt
+    assert "task-qualified opaque process and grasp references" in prompt
 
 
 def test_recovery_guidance_keeps_environment_geometry_out_of_entity_binding():

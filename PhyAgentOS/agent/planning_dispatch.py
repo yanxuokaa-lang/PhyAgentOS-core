@@ -885,6 +885,25 @@ class AgentComposedDispatch:
             )
 
         if policy.tool_id == "manipulation.execute_subtask":
+            for key in policy.input_binding_keys:
+                if key not in node.input_bindings:
+                    raise PlanningDispatchError(
+                        "subtask node is missing a Coordinator-owned frozen binding",
+                        code="node_tool_binding_incompatible",
+                        failure_owner="plan_contract",
+                        retryable_in_revision=False,
+                        requires_replan=True,
+                        missing_fields=(key,),
+                        recommended_action="replace_plan_segment",
+                    )
+                trusted_value = node.input_bindings[key]
+                if key in final_arguments and final_arguments[key] != trusted_value:
+                    raise PlanningDispatchError(
+                        f"supplied subtask argument {key!r} differs from the frozen node binding",
+                        code="semantic_binding_mismatch",
+                        missing_fields=(key,),
+                    )
+                final_arguments[key] = trusted_value
             semantic = node.input_bindings.get("semantic_intent")
             binding = node.input_bindings.get("binding")
             if not isinstance(semantic, Mapping) or not isinstance(binding, Mapping):

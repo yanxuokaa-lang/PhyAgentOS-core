@@ -536,6 +536,20 @@ references. Discovery tasks observe and understand before materializing their
 semantic graph, so an initial discovery observation is not repeated as a graph
 node unless a fresh observation obligation is explicitly selected.
 
+`manipulation.execute_subtask` uses the existing `manipulation_intent_v2`
+trusted argument builder as the boundary between Agent selection and frozen
+PlanNode state. The PlanNode/Coordinator owns `subtask_id`, `operation`, the
+complete observation-owned `binding`, `parameters`, and `tool_sequence`; the
+builder injects those exact values before input-schema validation and
+DecisionTrace persistence. AgentLoop submits only current provider-derived
+selection fields, including task-qualified opaque process/grasp references when
+the Tool schema requires them. It must not serialize the full binding or grasp
+candidate array back through the model. If a caller supplies a node-owned field,
+the value must be exactly equal or selection fails with
+`semantic_binding_mismatch`. This keeps observation evidence in the Coordinator,
+does not widen the public Tool contract, and leaves IK, collision, workspace,
+and execution mechanisms inside the Provider/Adapter boundary.
+
 The frozen Tool binding also retains the provider-neutral ToolSpec
 `input_schema`. `input_binding_keys` name only immutable semantic values that
 must agree with the PlanNode; they are not a duplicate list of every transport

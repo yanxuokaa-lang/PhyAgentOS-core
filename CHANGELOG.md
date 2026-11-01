@@ -6,6 +6,7 @@
 
 ## Archive
 
+- [2026-11](changelog/2026-11.md)
 - [2026-10_part16](changelog/2026-10_part16.md)
 - [2026-10_part15](changelog/2026-10_part15.md)
 - [2026-10_part14](changelog/2026-10_part14.md)
@@ -46,6 +47,25 @@
 - [2026-09](changelog/2026-09.md)
 
 ## 最近五版本 / Latest five versions
+
+## v16.3.2 (2026-11-01 12:47) - codex
+
+### Summary [Completed; no motion]
+- [policy] [fix] `PhyAgentOS/agent/planning_dispatch.py:L887-L906` injects the exact Coordinator-owned `subtask_id`, `operation`, full `binding`, `parameters`, and `tool_sequence` for `manipulation.execute_subtask`; conflicting caller values still fail with `semantic_binding_mismatch`. / 从冻结 PlanNode 注入五个子任务字段，冲突调用值继续显式拒绝。
+- [policy] [fix] `PhyAgentOS/agent/planning_loop.py:L1847-L1851` plus `SKILL.md:L361-L370` and the developer guide require AgentLoop to submit only current task-qualified process/grasp opaque references instead of reconstructing the full observation binding. / AgentLoop 仅提交当前 task-qualified opaque 引用，不再重构完整观测绑定。
+- [test] [test] `tests/test_planning_dispatch.py:L447-L607` reproduces the 32-candidate R03 float mismatch and covers omission plus conflicts for all five frozen fields; focused validation passed `27 + 189 + 33 + 40`, Ruff, compileall, and diff check. / 回归覆盖大型候选绑定的精确注入与五字段冲突，定向测试及静态检查通过。
+- [docs] [docs] Diagnosis: `.task/labutopia-r03-r04-semantic-binding-diagnosis-20261101.md:L1-L138`; review: `docs/forge/IMPLEMENTATION_REVIEW_V16_3_2.md:L1-L82`. / 保存诊断和 PAOS/AgentLoop/机器人安全复核。
+- [env] [test] `out/lab-fullchain-truth-20261101-r03-r04-no-motion-r2/acceptance.json` proves the selection passed the former mismatch and reached real preparation. R03 then stopped on provider-owned `no_admissible_grasp/route_collision`; motion remained disabled, no Tool atom completed, no world change, and possession stayed empty. / 新无动作链路越过原绑定失败，下一阻塞为 R03 路径碰撞，未运动、未持物、场景未变化。
+
+### Key Diff / 关键 Diff
+```diff
+- model round-trips the complete observation-owned binding
++ Coordinator injects exact frozen input_binding_keys
++ Agent selects only process/grasp opaque references
+```
+
+### Git Commit
+- Implementation commit: `PENDING`; branch `feature/planning-loop`.
 
 ## v16.3.1 (2026-10-31 19:50) - codex
 
