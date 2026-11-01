@@ -182,6 +182,25 @@ def continuous_joint_path(points, dt, duration, velocity_limit, acceleration_lim
     return spline(np.linspace(0., 1., frames + 1)[1:])
 
 
+def acquire_transit_clearances(config):
+    """Return the bounded Adapter-private height search configured for acquire."""
+    values = config.get("acquire_transit_clearance_candidates_m")
+    if (not isinstance(values, list) or not values
+            or any(isinstance(value, bool) or not isinstance(value, (int, float))
+                   or not math.isfinite(value) or value <= 0 for value in values)):
+        raise PhaseMotionError(
+            "invalid_motion_configuration",
+            "acquire_transit_clearance_candidates_m must be a non-empty list of finite positive numbers",
+        )
+    return tuple(dict.fromkeys(float(value) for value in values))
+
+
+def route_joint_travel(route):
+    """Compare only routes already admitted by the embodiment safety checks."""
+    points = np.asarray([route["start_joints"], *[step["joints"] for step in route["steps"]]])
+    return float(np.abs(np.diff(points, axis=0)).sum())
+
+
 def measured_feature_target(nominal_tcp, nominal_relation, measured_relation, tool):
     """Correct rod tip/axis tracking while leaving its free axial roll alone."""
     tip = np.asarray(tool["tip_offset_m"])
@@ -380,6 +399,7 @@ class IsaacPhaseMotion:
         lower, upper = np.asarray(self.config["workspace_min_m"]), np.asarray(self.config["workspace_max_m"])
         if lower.shape != (3,) or upper.shape != (3,) or not np.isfinite([lower, upper]).all() or np.any(lower >= upper):
             raise PhaseMotionError("invalid_motion_configuration", "workspace bounds must be finite and ordered")
+        acquire_transit_clearances(self.config)
         self.scene = session.resolve("lab_scene_resources")
         self.robot, self.world, self.stage = (self.scene[key] for key in ("robot", "world", "stage"))
         if not self.scene["robot_initialized"]:
@@ -504,6 +524,50 @@ class IsaacPhaseMotion:
                                  (joint.GetLowerLimitAttr().Get(), joint.GetUpperLimitAttr().Get())))
         return geometry
 
+    @cached_property
+    def maximum_gripper_opening_m(self):
+        """Derive the physical finger aperture from the composed articulation."""
+        upper_by_joint = {}
+        for number, _corners, _parent, _child, _axis, limits in self.finger_geometry:
+            lower, upper = (float(value) for value in limits)
+            if not np.isfinite([lower, upper]).all() or lower > upper:
+                raise PhaseMotionError(
+                    "finger_geometry_unavailable",
+                    f"panda_finger_joint{number} has invalid limits {limits}",
+                )
+            upper_by_joint[number] = max(upper_by_joint.get(number, -math.inf), upper)
+        if set(upper_by_joint) != {1, 2}:
+            raise PhaseMotionError(
+                "finger_geometry_unavailable",
+                "Franka preparation requires both finger joint limits",
+            )
+        opening = sum(max(0.0, value) for value in upper_by_joint.values())
+        if not math.isfinite(opening) or opening <= 0:
+            raise PhaseMotionError(
+                "finger_geometry_unavailable",
+                "Franka finger limits do not expose a positive aperture",
+            )
+        return opening
+
+    def validate_grasp_aperture(self, target):
+        """Reject a Grasp Provider candidate the composed gripper cannot open around."""
+        geometry = target.get("grasp_geometry")
+        if not isinstance(geometry, dict) or "width_m" not in geometry:
+            return None
+        width = geometry["width_m"]
+        if isinstance(width, bool) or not isinstance(width, (int, float)) or not math.isfinite(width) or width <= 0:
+            raise PhaseMotionPreconditionError(
+                "invalid_grasp_geometry",
+                "candidate grasp width must be a finite positive number",
+            )
+        maximum = self.maximum_gripper_opening_m
+        if float(width) > maximum + 1e-6:
+            raise PhaseMotionPreconditionError(
+                "gripper_aperture_exceeded",
+                f"candidate requires {float(width):.6f} m opening; composed Franka limit is {maximum:.6f} m",
+            )
+        return {"required_width_m": float(width), "maximum_opening_m": maximum}
+
     def finger_boxes(self, measured=False):
         positions = np.asarray(self.robot.get_joint_positions()) if measured else None
         for number, corners, parent, child, axis, limits in self.finger_geometry:
@@ -611,6 +675,7 @@ class IsaacPhaseMotion:
 
         operation = arguments.get("operation", "acquire") if arguments.get("held_invocation_ref") else "acquire"
         target = _target_in_world(arguments["manipulation_target"])
+        aperture_check = self.validate_grasp_aperture(target) if operation == "acquire" else None
         source = target.get("tool_prim_path") or target["entity_prim_path"]
         previous = arguments.get("phase_route", {})
         model_pose, relation = self.bind_observed_model(source, target, arguments["observation_model"], previous)
@@ -629,9 +694,12 @@ class IsaacPhaseMotion:
             lifted = desired.copy()
             lifted[2, 3] += self.config["lift_distance_m"]
             tcp_from_object = np.linalg.inv(desired) @ body
-            waypoints = [(tcp, self.config["settle_s"], "open"), (pre, 0., "approach"),
-                         (desired, self.config["settle_s"], "grasp"),
-                         (desired, self.config["settle_s"], "close"), (lifted, self.config["settle_s"], "lift")]
+            acquire_waypoint_tail = [
+                (pre, 0., "approach"),
+                (desired, self.config["settle_s"], "grasp"),
+                (desired, self.config["settle_s"], "close"),
+                (lifted, self.config["settle_s"], "lift"),
+            ]
         elif operation == "place":
             desired = np.asarray(original_return) @ np.linalg.inv(tcp_from_object)
             above = desired.copy()
@@ -643,7 +711,42 @@ class IsaacPhaseMotion:
             # observation by the Provider, not corrected from simulator truth.
             waypoints = process_waypoints(operation, arguments["parameters"], tcp, body,
                                           tcp_from_object, target, self.config)
-        if operation == "pour":
+        if operation == "acquire":
+            failures, candidates = [], []
+            base_height = max(float(tcp[2, 3]), float(pre[2, 3]), float(desired[2, 3]))
+            for order, clearance in enumerate(acquire_transit_clearances(self.config)):
+                transit_height = base_height + clearance
+                raised = tcp.copy()
+                raised[2, 3] = transit_height
+                staged = pre.copy()
+                staged[2, 3] = transit_height
+                candidate_waypoints = [
+                    (tcp, self.config["settle_s"], "open"),
+                    (raised, 0., "transit_raise"),
+                    (staged, 0., "transit_cross"),
+                    *acquire_waypoint_tail,
+                ]
+                try:
+                    candidate = self.qualify(
+                        candidate_waypoints, source, tcp_from_object, operation, np.asarray(original_return),
+                    )
+                    candidate["acquire_transit_clearance_m"] = clearance
+                    candidates.append((route_joint_travel(candidate), order, candidate))
+                except PhaseMotionError as exc:
+                    failures.append((clearance, exc))
+            if not candidates:
+                if not failures:
+                    raise PhaseMotionError("route_unavailable", "no acquire transit clearance was configured")
+                representative = next(
+                    (exc for _clearance, exc in failures if exc.code == "route_collision"),
+                    failures[0][1],
+                )
+                details = "; ".join(
+                    f"clearance={clearance}: {exc.code}: {exc}" for clearance, exc in failures
+                )
+                raise PhaseMotionError(representative.code, details) from representative
+            route = min(candidates, key=lambda item: (item[0], item[1]))[2]
+        elif operation == "pour":
             clearance_limit = self.profile.alignment_tolerance_m - self.config["position_tolerance_m"]
             clearances = sorted({self.config["pour_lip_clearance_m"], clearance_limit})
             failures, candidates = [], []
@@ -674,6 +777,8 @@ class IsaacPhaseMotion:
                      observed_model_pose=model_pose.tolist(), body_from_observed=relation.tolist(),
                      tcp_from_object=tcp_from_object.tolist(), source_path=source, target=target,
                      start_destination_pose=destination_pose.tolist() if destination_pose is not None else None)
+        if aperture_check is not None:
+            route["gripper_aperture_check"] = aperture_check
         evidence = self._artifact("readiness", {"captured_at": datetime.now(timezone.utc).isoformat(),
                                   "scene_revision": arguments["scene_revision"], "motion_authorized": False,
                                   "checks": {"kinematic": "pass", "collision": "pass", "workspace": "pass"},

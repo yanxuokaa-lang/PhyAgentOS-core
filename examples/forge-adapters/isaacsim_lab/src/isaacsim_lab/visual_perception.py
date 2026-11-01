@@ -236,15 +236,27 @@ class LabGraspTaskAffordanceProvider:
     """Qualify same-capture grasp/process combinations without selecting one."""
 
     def __init__(self, perception: "LabVisualPerception", *, support_tolerance_m=0.012,
-                 bottle_opening_clearance_ratio=0.08, bottle_max_axial_approach_dot=0.7,
+                 bottle_opening_clearance_ratio=0.08, bottle_support_clearance_ratio=0.12,
+                 bottle_max_axial_approach_dot=0.7,
                  rod_endpoint_ambiguity_ratio=0.12, rod_grasp_end_margin_ratio=0.15):
-        values = (support_tolerance_m, bottle_opening_clearance_ratio,
+        values = (support_tolerance_m, bottle_opening_clearance_ratio, bottle_support_clearance_ratio,
                   bottle_max_axial_approach_dot, rod_endpoint_ambiguity_ratio,
                   rod_grasp_end_margin_ratio)
-        if any(isinstance(value, bool) or not np.isfinite(float(value)) for value in values):
+        if any(isinstance(value, bool) for value in values):
             raise ValueError("task-affordance thresholds must be finite numbers")
+        try:
+            values = tuple(float(value) for value in values)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("task-affordance thresholds must be finite numbers") from exc
+        if not all(np.isfinite(value) for value in values):
+            raise ValueError("task-affordance thresholds must be finite numbers")
+        (support_tolerance_m, bottle_opening_clearance_ratio, bottle_support_clearance_ratio,
+         bottle_max_axial_approach_dot, rod_endpoint_ambiguity_ratio,
+         rod_grasp_end_margin_ratio) = values
         if support_tolerance_m <= 0 or not 0 < bottle_opening_clearance_ratio < 1:
             raise ValueError("task-affordance support and opening-clearance thresholds are invalid")
+        if not 0 < bottle_support_clearance_ratio < 0.5:
+            raise ValueError("bottle support-clearance threshold must be between zero and one half")
         if not 0 < bottle_max_axial_approach_dot < 1:
             raise ValueError("bottle approach threshold must be between zero and one")
         if not 0 < rod_endpoint_ambiguity_ratio < 0.5 or not 0 < rod_grasp_end_margin_ratio < 0.5:
@@ -252,6 +264,7 @@ class LabGraspTaskAffordanceProvider:
         self.perception = perception
         self.support_tolerance_m = float(support_tolerance_m)
         self.bottle_opening_clearance_ratio = float(bottle_opening_clearance_ratio)
+        self.bottle_support_clearance_ratio = float(bottle_support_clearance_ratio)
         self.bottle_max_axial_approach_dot = float(bottle_max_axial_approach_dot)
         self.rod_endpoint_ambiguity_ratio = float(rod_endpoint_ambiguity_ratio)
         self.rod_grasp_end_margin_ratio = float(rod_grasp_end_margin_ratio)
@@ -386,14 +399,36 @@ class LabGraspTaskAffordanceProvider:
                 or feature_set.get("candidate_set_ref") != candidate_set["process_feature_candidate_set_ref"]
                 or grasp_set.get("candidate_set_ref") != candidate_set["grasp_candidate_set_ref"]):
             return {"status": "stale", **identity, "error": "selected combination evidence is no longer current"}
-        if (combination.get("grasp_candidate_ref") not in grasp_set.get("candidate_refs", set())
-                or combination.get("grasp_candidate_ref") not in
-                self.perception.grasps.captures.get(request["calibration_ref"], {})
-                or any(ref not in feature_set.get("candidates", {}) for ref in combination.get("process_feature_refs", ()) )):
-            return {"status": "stale", **identity, "error": "selected combination references missing evidence"}
+        captured = self.perception.grasps.captures.get(request["calibration_ref"], {})
+        grasp_refs = set(grasp_set.get("candidate_refs", ()))
+        feature_candidates = feature_set.get("candidates", {})
+        combinations = candidate_set.get("combinations", {})
+        if not isinstance(combinations, dict) or not combinations:
+            return {"status": "stale", **identity, "error": "task-affordance candidate set is empty"}
+
+        qualified_grasp_refs = []
+        selected_process_refs = tuple(combination.get("process_feature_refs", ()))
+        ordered_combinations = [combination, *(
+            item for ref, item in combinations.items()
+            if ref != request["selected_combination_ref"]
+        )]
+        for item in ordered_combinations:
+            grasp_ref = item.get("grasp_candidate_ref")
+            process_refs = item.get("process_feature_refs", ())
+            grasp = captured.get(grasp_ref)
+            if (grasp_ref not in grasp_refs or not isinstance(grasp, dict)
+                    or grasp.get("entity_ref") != item.get("entity_ref")
+                    or item.get("entity_ref") not in candidate_set["entity_refs"]
+                    or not isinstance(process_refs, (list, tuple)) or not process_refs
+                    or any(ref not in feature_candidates for ref in process_refs)):
+                return {"status": "stale", **identity,
+                        "error": "task-affordance combination references missing evidence"}
+            if tuple(process_refs) == selected_process_refs and grasp_ref not in qualified_grasp_refs:
+                qualified_grasp_refs.append(grasp_ref)
         return {"status": "available", **identity,
                 "selected": {key: combination[key] for key in
-                             ("combination_ref", "grasp_candidate_ref", "process_feature_refs")}}
+                             ("combination_ref", "grasp_candidate_ref", "process_feature_refs")},
+                "qualified_grasp_candidate_refs": qualified_grasp_refs}
 
     def _grasp_candidates(self, grasp_set, request, source_ref):
         captured = self.perception.grasps.captures.get(request["calibration_ref"], {})
@@ -434,6 +469,14 @@ class LabGraspTaskAffordanceProvider:
                    if isinstance(geometry.get(key), (int, float)) and float(geometry[key]) > 0]
         return max([self.support_tolerance_m, *(value * .75 for value in extents)])
 
+    def _bottle_support_clearance(self, candidate, axial_extent):
+        geometry = candidate.get("grasp_geometry") or {}
+        solid_extents = [float(geometry[key]) for key in ("height_m", "depth_m")
+                         if isinstance(geometry.get(key), (int, float)) and float(geometry[key]) > 0]
+        gripper_axial_radius = max(solid_extents, default=0.) * .5
+        return max(axial_extent * self.bottle_support_clearance_ratio,
+                   self.support_tolerance_m + gripper_axial_radius)
+
     def _qualify_bottle_grasp(self, candidate, record, rim):
         pose, points = self._candidate_pose(candidate, record), self._world_points(record)
         if pose is None or points is None:
@@ -453,8 +496,12 @@ class LabGraspTaskAffordanceProvider:
         clearance = max(float(rim.get("rim_radius_m", 0.0)) * 2., extent * self.bottle_opening_clearance_ratio)
         if candidate_projection >= -clearance:
             return False, "bottle grasp is too close to the opening"
-        if candidate_projection < float(np.quantile(projections, .02)) - self._support_limit(candidate):
+        support_projection = float(np.quantile(projections, .02))
+        if candidate_projection < support_projection - self._support_limit(candidate):
             return False, "bottle grasp is outside the observed body support"
+        support_clearance = self._bottle_support_clearance(candidate, extent)
+        if candidate_projection <= support_projection + support_clearance:
+            return False, "bottle grasp is too close to the support end"
         if float(np.min(np.linalg.norm(points - position, axis=1))) > self._support_limit(candidate):
             return False, "bottle grasp has no nearby observed body support"
         if abs(float(np.dot(approach, axis))) > self.bottle_max_axial_approach_dot:
@@ -753,6 +800,8 @@ class LabVisualPerception:
                     "entity_refs": [entity],
                 })
                 continue
+            mesh_truth = bounds.get("mesh_points_world_m") is not None
+            point_sources = [state_ref] if mesh_truth else [depth_ref, point_cloud_ref]
             points_ref = self.store.write("object-point-cloud", points)
             envelope_minimum, envelope_maximum = world_bounds_in_frame(calibration, bounds)
             entity = f"entity://simulator-truth-{label}"
@@ -785,7 +834,9 @@ class LabVisualPerception:
                     })
             geometry_ref = self.store.write("observed-geometry", {
                 **identity, "entity_ref": entity, "label": label, "category": category,
-                "geometry_qualification": "simulator_ground_truth", "coverage": "simulator_visible_surface",
+                "geometry_qualification": "simulator_ground_truth",
+                "coverage": ("final_composed_usd_mesh_vertices"
+                             if mesh_truth else "simulator_visible_surface_aabb"),
                 "process_features": None,
                 "process_feature_candidates": feature_candidates,
                 "source_refs": [truth_ref, depth_ref, point_cloud_ref, state_ref, points_ref],
@@ -810,8 +861,8 @@ class LabVisualPerception:
             })
             derived.append({"artifact_ref": points_ref, "kind": "object_point_cloud",
                             "media_type": "application/numpy", **identity, "entity_ref": entity,
-                            "source_refs": [depth_ref, point_cloud_ref],
-                            "provenance": [depth_ref, point_cloud_ref],
+                            "source_refs": point_sources,
+                            "provenance": point_sources,
                             "descriptor": {"point_count": len(points), "unit": "m", "confidence": None,
                                            "width_px": None, "height_px": None, "bbox_xyxy_px": None,
                                            "foreground_pixels": None, "min_xyz_m": None, "max_xyz_m": None}})
@@ -912,6 +963,7 @@ class LabVisualPerception:
                 "object_pose": pose(origin), "return_pose": pose(origin),
                 "grasp_frame": pose(grasp[:3, 3], Rotation.from_matrix(grasp[:3, :3]).as_quat()),
                 "approach_direction": {"frame_id": "world", "unit": "unitless", "vector": approach.tolist()},
+                "grasp_geometry": deepcopy(candidate.get("grasp_geometry") or {}),
                 "destination_pose": pose(destination_features["origin_world"]),
                 "tool_frame": {"frame_id": "observed_object", "tip_offset_m": (np.asarray(features["tip_world"]) - origin).tolist(),
                                "tip_axis_local": features["axis_world"]},

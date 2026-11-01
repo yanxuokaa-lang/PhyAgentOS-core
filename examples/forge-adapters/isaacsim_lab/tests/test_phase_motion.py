@@ -149,6 +149,154 @@ def test_process_parameters_exceeding_deployment_bounds_are_rejected(operation, 
     assert error.value.code == code
 
 
+def test_grasp_aperture_uses_composed_finger_limits_and_rejects_oversized_candidate():
+    from isaacsim_lab.phase_motion import IsaacPhaseMotion
+
+    model = IsaacPhaseMotion.__new__(IsaacPhaseMotion)
+    model.finger_geometry = [
+        (1, None, None, None, 0, (0.0, 0.04)),
+        (2, None, None, None, 0, (0.0, 0.04)),
+    ]
+
+    assert model.maximum_gripper_opening_m == pytest.approx(0.08)
+    assert model.validate_grasp_aperture({
+        "grasp_geometry": {"width_m": 0.077},
+    }) == {
+        "required_width_m": pytest.approx(0.077),
+        "maximum_opening_m": pytest.approx(0.08),
+    }
+    with pytest.raises(PhaseMotionError, match="composed Franka limit") as captured:
+        model.validate_grasp_aperture({"grasp_geometry": {"width_m": 0.1}})
+    assert captured.value.code == "gripper_aperture_exceeded"
+
+
+def test_acquire_preparation_searches_clearances_and_selects_admissible_route():
+    model = object.__new__(IsaacPhaseMotion)
+    model.config = {
+        "approach_distance_m": .12,
+        "acquire_transit_clearance_candidates_m": [.04, .08, .12],
+        "lift_distance_m": .10,
+        "settle_s": .6,
+    }
+    model.validate_grasp_aperture = lambda _target: None
+    current = np.eye(4)
+    current[:3, 3] = [-.45, 0., 1.0]
+    body = np.eye(4)
+    body[:3, 3] = [-.27, -.36, .82]
+    model.tcp = lambda: current.copy()
+    model.observed_pose = lambda _source: body.copy()
+    model.bind_observed_model = lambda *_args: (body.copy(), np.eye(4))
+    model.body_pose = lambda _path: np.eye(4)
+    model._artifact = lambda *_args: "artifact://readiness/test.json"
+    captured = []
+
+    def qualify(waypoints, *_args, **_kwargs):
+        captured.append(waypoints)
+        clearance = waypoints[1][0][2, 3] - 1.0
+        if clearance == pytest.approx(.04):
+            raise PhaseMotionError("route_collision", "low route intersects scene geometry")
+        travel = .2 if clearance == pytest.approx(.08) else .4
+        return {"start_joints": [0.] * 7,
+                "steps": [{"joints": [travel] + [0.] * 6, "stage": "lift"}]}
+
+    model.qualify = qualify
+    target = {
+        "world_from_control": {
+            "translation_m": [0., 0., 0.],
+            "orientation_xyzw": [0., 0., 0., 1.],
+        },
+        "entity_prim_path": "/World/R03/Model",
+        "destination_prim_path": "/World/BEAKER/Model",
+        "object_pose": {
+            "position_m": [-.27, -.36, .82],
+            "orientation_xyzw": [0., 0., 0., 1.],
+        },
+        "grasp_frame": {
+            "position_m": [-.27, -.36, .86],
+            "orientation_xyzw": [0., 0., 0., 1.],
+        },
+        "approach_direction": {"vector": [0., -1., 0.]},
+        "destination_pose": {
+            "position_m": [-.08, 0., .8],
+            "orientation_xyzw": [0., 0., 0., 1.],
+        },
+        "return_pose": {
+            "position_m": [-.27, -.36, .82],
+            "orientation_xyzw": [0., 0., 0., 1.],
+        },
+    }
+    arguments = {
+        "manipulation_target": target,
+        "observation_model": {},
+        "scene_revision": "scene",
+    }
+
+    route, _evidence = model.prepare(arguments)
+
+    assert len(captured) == 3
+    selected = captured[1]
+    stages = [stage for _pose, _hold, stage in selected]
+    assert stages[:4] == ["open", "transit_raise", "transit_cross", "approach"]
+    raised, staged, pre = [selected[index][0] for index in (1, 2, 3)]
+    assert raised[:2, 3] == pytest.approx(current[:2, 3])
+    assert staged[:2, 3] == pytest.approx(pre[:2, 3])
+    assert raised[2, 3] == pytest.approx(1.08)
+    assert staged[2, 3] == pytest.approx(1.08)
+    assert pre[:3, 3] == pytest.approx([-.27, -.24, .86])
+    assert route["operation"] == "acquire"
+    assert route["acquire_transit_clearance_m"] == pytest.approx(.08)
+
+
+def test_acquire_preparation_preserves_zero_motion_when_all_clearances_fail():
+    model = object.__new__(IsaacPhaseMotion)
+    model.config = {
+        "approach_distance_m": .12,
+        "acquire_transit_clearance_candidates_m": [.04, .08],
+        "lift_distance_m": .10,
+        "settle_s": .6,
+    }
+    model.validate_grasp_aperture = lambda _target: None
+    model.tcp = lambda: np.eye(4)
+    model.observed_pose = lambda _source: np.eye(4)
+    model.bind_observed_model = lambda *_args: (np.eye(4), np.eye(4))
+    model.body_pose = lambda _path: np.eye(4)
+    attempts = []
+
+    def reject(waypoints, *_args, **_kwargs):
+        attempts.append(waypoints[1][0][2, 3])
+        code = "self_collision" if len(attempts) == 1 else "route_collision"
+        raise PhaseMotionError(code, "candidate route rejected")
+
+    model.qualify = reject
+    target = {
+        "world_from_control": {"translation_m": [0., 0., 0.], "orientation_xyzw": [0., 0., 0., 1.]},
+        "entity_prim_path": "/World/R03/Model",
+        "destination_prim_path": "/World/BEAKER/Model",
+        "object_pose": {"position_m": [0., 0., 0.], "orientation_xyzw": [0., 0., 0., 1.]},
+        "grasp_frame": {"position_m": [0., 0., .2], "orientation_xyzw": [0., 0., 0., 1.]},
+        "approach_direction": {"vector": [0., 0., 1.]},
+        "destination_pose": {"position_m": [.2, 0., 0.], "orientation_xyzw": [0., 0., 0., 1.]},
+        "return_pose": {"position_m": [0., 0., 0.], "orientation_xyzw": [0., 0., 0., 1.]},
+    }
+
+    with pytest.raises(PhaseMotionError) as captured:
+        model.prepare({"manipulation_target": target, "observation_model": {}, "scene_revision": "scene"})
+
+    assert captured.value.code == "route_collision"
+    assert attempts == pytest.approx([.24, .28])
+    assert "clearance=0.04" in str(captured.value)
+    assert "clearance=0.08" in str(captured.value)
+
+
+@pytest.mark.parametrize("values", [[], [0.], [float("nan")], "0.04"])
+def test_acquire_transit_clearances_reject_invalid_configuration(values):
+    from isaacsim_lab.phase_motion import acquire_transit_clearances
+
+    with pytest.raises(PhaseMotionError) as captured:
+        acquire_transit_clearances({"acquire_transit_clearance_candidates_m": values})
+    assert captured.value.code == "invalid_motion_configuration"
+
+
 def test_missing_measured_process_feature_is_rejected():
     with pytest.raises(PhaseMotionError, match="tip_offset_m"):
         process_waypoints("pour", {"tilt_rad": .87, "hold_s": .6}, np.eye(4), np.eye(4), np.eye(4),

@@ -119,6 +119,27 @@ GRASP_TASK_AFFORDANCE_PREPARATION_TOOL_SPEC = {
             **{key: GRASP_TASK_AFFORDANCE_TOOL_SPEC["input_schema"]["properties"][key] for key in ("observation_ref", "scene_revision", "frame_id", "calibration_ref", "freshness_ms", "max_age_ms")},
         },
     },
+    "output_schema": {
+        "type": "object", "additionalProperties": False,
+        "required": ["status", "motion_authorized"],
+        "properties": {
+            "status": {"enum": ["available", "ambiguous", "stale", "invalid", "unavailable"]},
+            "candidate_set_ref": {"type": "string", "pattern": "^grasp-affordance-set://\\S+$"},
+            "selected_combination_ref": {"type": "string", "pattern": "^grasp-affordance://\\S+$"},
+            "process_feature_candidate_set_ref": {"type": "string", "pattern": "^process-feature-set://\\S+$"},
+            "observation_ref": {"type": "string", "pattern": "^observation://[^/]+/[^/]+$"},
+            "scene_revision": {"type": "string", "minLength": 1},
+            "frame_id": {"type": "string", "minLength": 1},
+            "calibration_ref": {"type": "string", "pattern": "^artifact://\\S+$"},
+            "selected": {"type": "object"},
+            "qualified_grasp_candidate_refs": {
+                "type": "array", "minItems": 1, "uniqueItems": True,
+                "items": {"type": "string", "pattern": "^candidate://\\S+$"},
+            },
+            "motion_authorized": {"const": False},
+            "error": {"type": "string"},
+        },
+    },
 }
 
 _COMBINATION_REF = re.compile(r"^grasp-affordance://\S+$")
@@ -214,6 +235,7 @@ class GraspTaskAffordancePreparationEndpoint:
         if status not in {"available", "ambiguous", "stale", "invalid", "unavailable"}:
             status = "unavailable"
         selected = result.get("selected")
+        qualified_grasp_refs = result.get("qualified_grasp_candidate_refs")
         if status == "available":
             if not isinstance(selected, Mapping):
                 return {"status": "invalid", **identity, "motion_authorized": False,
@@ -225,10 +247,19 @@ class GraspTaskAffordancePreparationEndpoint:
                     or not selected["process_feature_refs"]):
                 return {"status": "invalid", **identity, "motion_authorized": False,
                         "error": "provider returned invalid selected combination"}
+            if (not isinstance(qualified_grasp_refs, (list, tuple))
+                    or not qualified_grasp_refs
+                    or len(qualified_grasp_refs) != len(set(qualified_grasp_refs))
+                    or any(not isinstance(ref, str) or re.fullmatch(r"candidate://\S+", ref) is None
+                           for ref in qualified_grasp_refs)
+                    or qualified_grasp_refs[0] != selected["grasp_candidate_ref"]):
+                return {"status": "invalid", **identity, "motion_authorized": False,
+                        "error": "provider returned invalid qualified grasp candidate references"}
         return {"status": status, **identity,
                 **({"selected": {"combination_ref": selected["combination_ref"],
                                   "grasp_candidate_ref": selected["grasp_candidate_ref"],
-                                  "process_feature_refs": list(selected["process_feature_refs"])}}
+                                  "process_feature_refs": list(selected["process_feature_refs"])},
+                    "qualified_grasp_candidate_refs": list(qualified_grasp_refs)}
                    if status == "available" else {}),
                 "motion_authorized": False,
                 **({"error": str(result["error"])} if result.get("error") else {})}

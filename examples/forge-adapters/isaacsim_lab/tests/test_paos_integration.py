@@ -923,6 +923,13 @@ def test_preparation_tries_predicted_candidates_and_preserves_selected_pose(tmp_
     assert resolved == candidates[:2]
     assert result['route_arguments']['candidate_ref'] == candidates[1]['candidate_ref']
     prepared.clear()
+    resolved.clear()
+    engine.failure = 'gripper_aperture_exceeded'
+    result = provider.prepare(request)
+    assert prepared == [candidates[0]['candidate_ref'], candidates[1]['candidate_ref']]
+    assert resolved == candidates[:2]
+    assert result['route_arguments']['candidate_ref'] == candidates[1]['candidate_ref']
+    prepared.clear()
     engine.failure = 'stale_visual_observation'
     with pytest.raises(PreparationProviderError, match='stale_visual_observation'):
         provider.prepare(request)

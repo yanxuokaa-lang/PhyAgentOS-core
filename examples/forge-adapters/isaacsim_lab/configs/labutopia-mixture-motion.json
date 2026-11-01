@@ -10,6 +10,11 @@
     1.65
   ],
   "approach_distance_m": 0.12,
+  "acquire_transit_clearance_candidates_m": [
+    0.04,
+    0.08,
+    0.12
+  ],
   "lift_distance_m": 0.12,
   "process_clearance_m": 0.18,
   "pour_lip_clearance_m": 0.04,

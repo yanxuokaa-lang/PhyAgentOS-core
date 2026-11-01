@@ -726,3 +726,93 @@ def test_preparation_can_select_second_candidate_and_acquire_keeps_that_selectio
     response['assignments'][0]['candidate_ref'] = 'candidate://reagent-a/unobserved'
     with pytest.raises(ValueError, match='outside'):
         RuntimeSubtaskDriver._prepared_arguments(spec, response, context)
+
+
+def test_task_qualified_runtime_preparation_receives_only_ordered_qualified_grasps():
+    from copy import deepcopy
+
+    from pick_place_workflow.subtask_executor import (
+        SubtaskExecutionContext,
+    )
+
+    first = binding().grasp_candidate
+    second = deepcopy(first)
+    second["candidate_ref"] = "candidate://reagent-a/qualified"
+    second["grasp_frame"]["position_m"][0] += 0.025
+    third = deepcopy(first)
+    third["candidate_ref"] = "candidate://reagent-a/provider-rejected"
+    third["grasp_frame"]["position_m"][0] += 0.05
+    observed = binding(grasp_candidates=[first, second, third])
+    spec = SubtaskSpec(
+        subtask_id="pour-a",
+        operation="pour",
+        binding=observed,
+        parameters=pour_parameters(),
+        process_feature_refs=(
+            "process-feature://scene-1/source-opening",
+            "process-feature://scene-1/destination-opening",
+        ),
+        process_feature_candidate_set_ref="process-feature-set://scene-1/pour",
+        grasp_task_affordance_candidate_set_ref="grasp-affordance-set://scene-1/pour",
+        grasp_task_affordance_ref="grasp-affordance://scene-1/pour/qualified",
+        selected_grasp_candidate_ref=second["candidate_ref"],
+        qualified_grasp_candidate_refs=(second["candidate_ref"], first["candidate_ref"]),
+        affordance_selection="task_qualified",
+    )
+
+    arguments = SubtaskExecutor._runtime_arguments(
+        spec,
+        spec.calls()[0],
+        SubtaskExecutionContext(),
+    )
+
+    assert [item["candidate_ref"] for item in arguments["candidates"]] == [
+        second["candidate_ref"],
+        first["candidate_ref"],
+    ]
+    assert third["candidate_ref"] not in {
+        item["candidate_ref"] for item in arguments["candidates"]
+    }
+    assert len(arguments["perception_binding"]["grasp_candidates"]) == 3
+
+
+def test_task_qualified_grasp_refs_must_be_selected_first_and_bound():
+    selected = binding().candidate_ref
+    common = {
+        "subtask_id": "pour-a",
+        "operation": "pour",
+        "binding": binding(),
+        "parameters": pour_parameters(),
+        "process_feature_refs": (
+            "process-feature://scene-1/source-opening",
+            "process-feature://scene-1/destination-opening",
+        ),
+        "process_feature_candidate_set_ref": "process-feature-set://scene-1/pour",
+        "grasp_task_affordance_candidate_set_ref": "grasp-affordance-set://scene-1/pour",
+        "grasp_task_affordance_ref": "grasp-affordance://scene-1/pour/qualified",
+        "selected_grasp_candidate_ref": selected,
+        "affordance_selection": "task_qualified",
+    }
+    with pytest.raises(ValueError, match="selected grasp first"):
+        SubtaskSpec(
+            **common,
+            qualified_grasp_candidate_refs=("candidate://reagent-a/other", selected),
+        )
+    with pytest.raises(ValueError, match="outside the bound"):
+        SubtaskSpec(
+            **common,
+            qualified_grasp_candidate_refs=(selected, "candidate://reagent-a/unbound"),
+        )
+
+
+def test_task_affordance_references_without_selection_fail_before_preparation():
+    with pytest.raises(ValueError, match="require task_qualified selection"):
+        SubtaskSpec(
+            subtask_id="pour-a",
+            operation="pour",
+            binding=binding(),
+            parameters=pour_parameters(),
+            grasp_task_affordance_candidate_set_ref="grasp-affordance-set://scene-1/pour",
+            grasp_task_affordance_ref="grasp-affordance://scene-1/pour/qualified",
+            selected_grasp_candidate_ref="candidate://reagent-a/0",
+        )

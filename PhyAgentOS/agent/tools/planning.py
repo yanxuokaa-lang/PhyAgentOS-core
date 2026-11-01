@@ -160,6 +160,49 @@ def _merge_projection_compatible_sources(
     return merged
 
 
+def _infer_unique_direct_predecessor_sources(
+    context: Any,
+    *,
+    required_keys: tuple[str, ...],
+    required_tool_ids: Mapping[str, str | None],
+    required_paths: Mapping[str, tuple[str | int, ...]],
+) -> dict[str, dict[str, Any]] | None:
+    """Build exact source selectors when the ToolSpec leaves no source choice.
+
+    The semantic choice already happened in the predecessor Query or
+    Preparation node. Requiring the model to repeat ToolSpec-owned JSON paths
+    adds no domain judgment and can corrupt an otherwise valid opaque
+    selection. Only synthesize selectors when every field declares both a
+    source Tool and an exact path, and that Tool has exactly one successful
+    direct-predecessor execution. Missing or ambiguous records remain explicit
+    Agent-visible failures.
+    """
+
+    records_by_tool: dict[str, dict[str, Any]] = {}
+    for predecessor in context.predecessor_context:
+        for execution in predecessor.executions:
+            if execution.status != "succeeded":
+                continue
+            records_by_tool.setdefault(execution.tool_id, {})[
+                execution.record_id
+            ] = execution
+
+    selectors: dict[str, dict[str, Any]] = {}
+    for key in required_keys:
+        source_tool_id = required_tool_ids.get(key)
+        source_path = required_paths.get(key)
+        if not isinstance(source_tool_id, str) or not source_tool_id or not source_path:
+            return None
+        records = records_by_tool.get(source_tool_id, {})
+        if len(records) != 1:
+            return None
+        selectors[key] = {
+            "record_id": next(iter(records)),
+            "path": list(source_path),
+        }
+    return selectors
+
+
 class ForgePlanSelectTool(Tool):
     """Create a Coordinator-owned binding for one ready semantic node."""
 
@@ -182,9 +225,11 @@ class ForgePlanSelectTool(Tool):
             "normalized to an empty object at this planning boundary. For a Tool without a "
             "projection, use arguments and/or "
             "argument_sources, never projection_source/projection_sources. Pass the returned binding and "
-            "selection unchanged. If forge_plan_ready declares predecessor_argument_keys, every named "
-            "argument must be sourced from a successful direct-predecessor record with an exact "
-            "top-level target; literals and discovery evidence are rejected."
+            "selection unchanged. If forge_plan_ready declares predecessor_argument_keys and the "
+            "ToolSpec maps every field to one unique successful direct predecessor, omit those fields "
+            "and argument_sources so the Coordinator copies the exact receipt. Otherwise every named "
+            "argument must be sourced from a successful direct-predecessor record with the exact "
+            "ToolSpec path; literals and discovery evidence are rejected."
         )
 
     @property
@@ -498,6 +543,13 @@ class ForgePlanSelectTool(Tool):
                         scene_revision=dispatch.current_scene_revision,
                     )
                     if predecessor_argument_keys:
+                        if argument_sources is None:
+                            argument_sources = _infer_unique_direct_predecessor_sources(
+                                context,
+                                required_keys=predecessor_argument_keys,
+                                required_tool_ids=predecessor_sources,
+                                required_paths=predecessor_source_paths,
+                            )
                         if not isinstance(argument_sources, Mapping):
                             raise PlanningDispatchError(
                                 "ToolSpec requires direct-predecessor argument_sources",

@@ -280,3 +280,4 @@ def test_subtask_projection_has_feature_query_preparation_and_action_order():
     assert plan.graph.nodes[3].dependencies == ("pour-a.grasp_task_affordances",)
     assert plan.graph.nodes[4].dependencies == ("pour-a.prepare_grasp_task_affordance",)
     assert plan.graph.nodes[4].input_bindings["binding"]["entity_ref"] == "entity://reagent-a"
+    assert "qualified_grasp_candidate_refs" not in plan.graph.nodes[4].input_bindings

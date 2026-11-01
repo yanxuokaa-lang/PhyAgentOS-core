@@ -55,7 +55,11 @@ class Provider:
             "observation_ref", "scene_revision", "frame_id", "calibration_ref")},
             "selected": {"combination_ref": value["selected_combination_ref"],
                          "grasp_candidate_ref": "candidate://bottle/grasp-2",
-                         "process_feature_refs": ["process-feature://bottle/opening"]}}
+                         "process_feature_refs": ["process-feature://bottle/opening"]},
+            "qualified_grasp_candidate_refs": [
+                "candidate://bottle/grasp-2",
+                "candidate://bottle/grasp-5",
+            ]}
 
 
 def test_query_provider_is_replaceable_and_returns_only_opaque_relations():
@@ -98,6 +102,52 @@ def test_ambiguous_provider_selection_remains_non_executable():
             "process_feature_candidate_set_ref": query["process_feature_candidate_set_ref"],
     })
     assert prepared["status"] == "ambiguous"
+    assert prepared["motion_authorized"] is False
+
+
+def test_preparation_projects_selected_first_qualified_grasp_refs_without_motion():
+    provider = Provider()
+    query = GraspTaskAffordanceQueryEndpoint(provider).invoke(request())
+    prepared = GraspTaskAffordancePreparationEndpoint(provider).invoke({
+        **{key: value for key, value in request().items()
+           if key not in {"grasp_candidate_set_ref", "selected_process_feature_refs"}},
+        "candidate_set_ref": query["candidate_set_ref"],
+        "selected_combination_ref": query["candidates"][0]["combination_ref"],
+        "process_feature_candidate_set_ref": query["process_feature_candidate_set_ref"],
+    })
+
+    assert prepared["status"] == "available"
+    assert prepared["qualified_grasp_candidate_refs"] == [
+        "candidate://bottle/grasp-2",
+        "candidate://bottle/grasp-5",
+    ]
+    assert prepared["selected"]["grasp_candidate_ref"] == prepared[
+        "qualified_grasp_candidate_refs"
+    ][0]
+    assert prepared["motion_authorized"] is False
+
+
+def test_preparation_rejects_duplicate_or_non_selected_first_qualified_refs():
+    class InvalidProvider(Provider):
+        def validate_selection(self, value):
+            result = super().validate_selection(value)
+            result["qualified_grasp_candidate_refs"] = [
+                "candidate://bottle/grasp-5",
+                "candidate://bottle/grasp-2",
+            ]
+            return result
+
+    provider = InvalidProvider()
+    query = GraspTaskAffordanceQueryEndpoint(provider).invoke(request())
+    prepared = GraspTaskAffordancePreparationEndpoint(provider).invoke({
+        **{key: value for key, value in request().items()
+           if key not in {"grasp_candidate_set_ref", "selected_process_feature_refs"}},
+        "candidate_set_ref": query["candidate_set_ref"],
+        "selected_combination_ref": query["candidates"][0]["combination_ref"],
+        "process_feature_candidate_set_ref": query["process_feature_candidate_set_ref"],
+    })
+
+    assert prepared["status"] == "invalid"
     assert prepared["motion_authorized"] is False
 
 

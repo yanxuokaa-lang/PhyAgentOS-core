@@ -28,10 +28,10 @@
   "perception_mode": "simulator_truth",
   "simulation_truth_manifest_path": "labutopia-simulator-truth.json",
   "grasp": {
-    "max_candidates": 32,
-    "sample_count": 128,
+    "max_candidates": 64,
+    "sample_count": 512,
     "point_budget": 12000,
-    "selection_order": "provider",
+    "selection_order": "geometry_diverse",
     "score_threshold": 0.02,
     "apply_nms": true,
     "nms_position_threshold_m": 0.005,

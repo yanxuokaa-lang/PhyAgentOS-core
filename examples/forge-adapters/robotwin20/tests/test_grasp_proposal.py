@@ -294,6 +294,125 @@ def test_sample_pool_is_filtered_before_retained_limit(tmp_path):
     assert data["candidates"][-1]["score"] == 0.55
 
 
+def test_geometry_diverse_selection_preserves_width_and_position_coverage(tmp_path):
+    class CoverageWorker(Worker):
+        def request(self, payload):
+            self.requests.append(payload)
+            candidates = []
+            for index in range(8):
+                pose = np.eye(4)
+                pose[0, 3] = 0.001 * index
+                width = 0.10
+                if index == 6:
+                    width = 0.04
+                if index == 7:
+                    pose[0, 3] = 0.20
+                candidates.append({
+                    "matrix": pose.tolist(),
+                    "score": 1.0 - index * 0.01,
+                    "grasp_geometry": {
+                        "width_m": width,
+                        "height_m": 0.02,
+                        "depth_m": 0.01,
+                    },
+                })
+            return {
+                "request_id": payload["request_id"],
+                "status": "available",
+                "candidates": candidates,
+                "funnel": {
+                    "decoded": 8,
+                    "canonicalized": 8,
+                    "deduplicated": 8,
+                    "retained": 8,
+                },
+            }
+
+    worker = CoverageWorker()
+    provider = GraspNetProposalProvider(
+        worker,
+        artifact_store=_store(tmp_path),
+        max_candidates=3,
+        sample_count=8,
+        apply_nms=False,
+        selection_order="geometry_diverse",
+    )
+
+    data = provider.propose(REQUEST)
+
+    assert worker.requests[0]["max_candidates"] == 8
+    assert [item["score"] for item in data["candidates"]] == pytest.approx(
+        [1.0, 0.94, 0.93]
+    )
+    assert [item["grasp_geometry"]["width_m"] for item in data["candidates"]] == [
+        0.10,
+        0.04,
+        0.10,
+    ]
+    assert [item["grasp_frame"]["position_m"][0] for item in data["candidates"]] == [
+        0.0,
+        pytest.approx(0.006),
+        pytest.approx(0.20),
+    ]
+    assert data["funnel"] == {
+        "decoded": 8,
+        "canonicalized": 8,
+        "deduplicated": 8,
+        "retained": 3,
+    }
+
+
+def test_geometry_diverse_selection_is_deterministic_and_does_not_rewrite_candidates(tmp_path):
+    class GeometryWorker(Worker):
+        def request(self, payload):
+            self.requests.append(payload)
+            candidates = []
+            for index in range(12):
+                pose = np.eye(4)
+                pose[index % 3, 3] = index * 0.01
+                angle = index * np.pi / 12
+                pose[:3, :3] = [
+                    [np.cos(angle), -np.sin(angle), 0.0],
+                    [np.sin(angle), np.cos(angle), 0.0],
+                    [0.0, 0.0, 1.0],
+                ]
+                candidates.append({
+                    "matrix": pose.tolist(),
+                    "score": 0.9 - index * 0.01,
+                    "grasp_geometry": {
+                        "width_m": 0.04 + index * 0.002,
+                        "height_m": 0.02,
+                        "depth_m": 0.01,
+                    },
+                })
+            return {
+                "request_id": payload["request_id"],
+                "status": "available",
+                "candidates": candidates,
+                "funnel": {
+                    "decoded": 12,
+                    "canonicalized": 12,
+                    "deduplicated": 12,
+                    "retained": 12,
+                },
+            }
+
+    provider = GraspNetProposalProvider(
+        GeometryWorker(),
+        artifact_store=_store(tmp_path),
+        max_candidates=6,
+        sample_count=12,
+        apply_nms=False,
+        selection_order="geometry_diverse",
+    )
+    first = provider.propose(REQUEST)["candidates"]
+    second = provider.propose(REQUEST)["candidates"]
+
+    assert first == second
+    assert all(item["grasp_geometry"]["height_m"] == 0.02 for item in first)
+    assert all(item["grasp_geometry"]["depth_m"] == 0.01 for item in first)
+
+
 def test_graspnet_geometry_crosses_public_proposal_and_prepare_boundary(tmp_path):
     from jsonschema import validate
     from PhyAgentOS.forge.capability_runtime.grasp_proposal import (

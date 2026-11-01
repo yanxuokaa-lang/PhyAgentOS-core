@@ -470,7 +470,8 @@ def compose_subtask_plan(
                 **item.model_dump(mode="json", exclude_none=True,
                                   exclude={"process_feature_refs", "process_feature_candidate_set_ref",
                                            "grasp_task_affordance_candidate_set_ref",
-                                           "grasp_task_affordance_ref", "selected_grasp_candidate_ref"}),
+                                           "grasp_task_affordance_ref", "selected_grasp_candidate_ref",
+                                           "qualified_grasp_candidate_refs"}),
                 **({"affordance_selection": "task_qualified"} if item.operation in {"pour", "stir"} else {}),
             },
         ))

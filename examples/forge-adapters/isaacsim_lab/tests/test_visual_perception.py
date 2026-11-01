@@ -16,6 +16,7 @@ from robotwin20_adapter.geometry_recovery import GeometryRecoveryResult
 from robotwin20_adapter.grasp_proposal import GraspNetProposalProvider
 
 from isaacsim_lab.simulator_truth_perception import (
+    object_point_cloud,
     process_feature_candidates,
     process_feature_candidates_by_component,
 )
@@ -82,6 +83,63 @@ def test_simulator_truth_geometry_derives_rim_and_preserves_rod_endpoint_ambigui
     assert {item['feature_role'] for item in candidates} == {'endpoint_a', 'endpoint_b'}
     assert candidates[0]['origin_world'] == pytest.approx(candidates[1]['tip_world'])
     assert candidates[1]['origin_world'] == pytest.approx(candidates[0]['tip_world'])
+
+
+def test_simulator_truth_object_cloud_prefers_final_mesh_over_transparent_support_points():
+    calibration = {
+        'intrinsics': [[100., 0., 2.], [0., 100., 2.], [0., 0., 1.]],
+        'camera_pose_world': {
+            'position_m': [1., -2., .5],
+            'orientation_wxyz': [1., 0., 0., 0.],
+        },
+    }
+    rendered = np.array([
+        [1.00, 2.00, .20],
+        [1.02, 2.00, .20],
+        [1.00, 2.02, .20],
+        [1.01, 2.01, .35],
+    ])
+    mesh_world = np.array([
+        [1.00, 0.00, .70],
+        [1.02, 0.00, .72],
+        [1.00, .02, .74],
+        [1.02, .02, .76],
+    ])
+    bounds = {
+        'min_xyz_world_m': [.99, -.01, .69],
+        'max_xyz_world_m': [1.03, .03, .77],
+        'mesh_points_world_m': mesh_world.tolist(),
+    }
+
+    points = object_point_cloud(calibration, rendered, bounds)
+
+    expected = mesh_world - np.array(calibration['camera_pose_world']['position_m'])
+    assert points == pytest.approx(expected)
+    assert not np.allclose(points, rendered)
+
+
+def test_simulator_truth_object_cloud_bounds_only_fallback_keeps_same_capture_points():
+    calibration = {
+        'intrinsics': np.eye(3).tolist(),
+        'camera_pose_world': {
+            'position_m': [0., 0., 0.],
+            'orientation_wxyz': [1., 0., 0., 0.],
+        },
+    }
+    rendered = np.array([
+        [0., 0., 1.],
+        [.05, 0., 1.],
+        [0., .05, 1.],
+        [.5, .5, 1.],
+    ])
+    bounds = {
+        'min_xyz_world_m': [-.1, -.1, .9],
+        'max_xyz_world_m': [.1, .1, 1.1],
+    }
+
+    points = object_point_cloud(calibration, rendered, bounds)
+
+    assert points == pytest.approx(rendered[:3])
 
 
 def test_simulator_truth_geometry_qualifies_lateral_pour_lip_from_mesh_support():
@@ -775,7 +833,7 @@ def test_simulator_truth_bounds_do_not_qualify_process_landmarks_for_preparation
 
 
 def _task_affordance_fixture(tmp_path, *, operation, grasp_position, source_category, source_points,
-                             source_features):
+                             source_features, grasp_geometry=None):
     store = LabArtifactStore(tmp_path)
     identity = {
         "observation_ref": "observation://scene/front", "scene_revision": "scene",
@@ -793,7 +851,7 @@ def _task_affordance_fixture(tmp_path, *, operation, grasp_position, source_cate
     grasp = {"candidate_ref": grasp_ref, "entity_ref": source_ref,
              "grasp_frame": {"frame_id": "front", "position_m": grasp_position},
              "approach_direction": {"frame_id": "front", "vector": [0., 1., 0.]},
-             "grasp_geometry": {"width_m": .02, "height_m": .02, "depth_m": .02}}
+             "grasp_geometry": grasp_geometry or {"width_m": .02, "height_m": .02, "depth_m": .02}}
     process_candidates = {}
     selected_refs = []
     for feature_ref, entity_ref, feature in source_features:
@@ -852,6 +910,45 @@ def test_task_affordance_provider_qualifies_bottle_body_grasp_and_revalidates(tm
     prepared = provider.validate_selection(prep_request)
     assert prepared["status"] == "available"
     assert prepared["selected"]["grasp_candidate_ref"] == grasp_ref
+    assert prepared["qualified_grasp_candidate_refs"] == [grasp_ref]
+
+    alternative_ref = "candidate://source/grasp-2"
+    provider.perception.grasps.candidate_sets[(
+        request["grasp_candidate_set_ref"], request["calibration_ref"]
+    )]["candidate_refs"].add(alternative_ref)
+    provider.perception.grasps.captures[request["calibration_ref"]][alternative_ref] = {
+        **provider.perception.grasps.captures[request["calibration_ref"]][grasp_ref],
+        "candidate_ref": alternative_ref,
+    }
+    alternative_combination_ref = "grasp-affordance://alternative"
+    provider.candidate_sets[query["candidate_set_ref"]]["combinations"][alternative_combination_ref] = {
+        **query["candidates"][0],
+        "combination_ref": alternative_combination_ref,
+        "grasp_candidate_ref": alternative_ref,
+    }
+    incompatible_ref = "candidate://source/grasp-3"
+    provider.perception.grasps.candidate_sets[(
+        request["grasp_candidate_set_ref"], request["calibration_ref"]
+    )]["candidate_refs"].add(incompatible_ref)
+    provider.perception.grasps.captures[request["calibration_ref"]][incompatible_ref] = {
+        **provider.perception.grasps.captures[request["calibration_ref"]][grasp_ref],
+        "candidate_ref": incompatible_ref,
+    }
+    provider.candidate_sets[query["candidate_set_ref"]]["combinations"][
+        "grasp-affordance://incompatible-process-end"
+    ] = {
+        **query["candidates"][0],
+        "combination_ref": "grasp-affordance://incompatible-process-end",
+        "grasp_candidate_ref": incompatible_ref,
+        "process_feature_refs": ["process-feature://beaker/rim"],
+    }
+    alternative = provider.validate_selection({
+        **prep_request,
+        "selected_combination_ref": alternative_combination_ref,
+    })
+    assert alternative["status"] == "available"
+    assert alternative["qualified_grasp_candidate_refs"] == [alternative_ref, grasp_ref]
+    assert incompatible_ref not in alternative["qualified_grasp_candidate_refs"]
     stale = provider.validate_selection({**prep_request, "scene_revision": "new-scene"})
     assert stale["status"] == "stale"
     fabricated = provider.validate_selection({**prep_request, "selected_combination_ref": "grasp-affordance://fabricated"})
@@ -887,6 +984,31 @@ def test_task_affordance_provider_fails_closed_for_opening_grasp_and_ambiguous_r
         source_category="stir_tool", source_points=rod, source_features=endpoints,
     )
     assert rod_provider.propose(rod_request)["status"] == "ambiguous"
+
+
+def test_task_affordance_provider_rejects_bottle_grasp_near_support_end(tmp_path):
+    theta = np.linspace(0, 2 * np.pi, 24, endpoint=False)
+    bottle_points = np.asarray([[.05 * np.cos(angle), .05 * np.sin(angle), z]
+                                for z in np.linspace(.45, .55, 16) for angle in theta])
+    rim = {"feature_kind": "rim", "feature_role": "pour_lip", "tip_world": [0., 0., .6],
+           "axis_world": [0., 0., 1.], "pour_direction_world": [1., 0., 0.], "rim_radius_m": .01}
+    provider, request, _ = _task_affordance_fixture(
+        tmp_path, operation="pour", grasp_position=[.05, 0., .49], source_category="reagent_bottle",
+        source_points=bottle_points,
+        source_features=[("process-feature://bottle/rim", "entity://source", rim)],
+        grasp_geometry={"width_m": .04, "height_m": .02, "depth_m": .08},
+    )
+
+    result = provider.propose(request)
+
+    assert result["status"] == "unavailable"
+    assert "too close to the support end" in result["error"]
+
+
+@pytest.mark.parametrize("value", [0, .5, float("nan"), "invalid"])
+def test_task_affordance_provider_rejects_invalid_bottle_support_clearance(value):
+    with pytest.raises((TypeError, ValueError), match="task-affordance|support-clearance"):
+        LabGraspTaskAffordanceProvider(Mock(), bottle_support_clearance_ratio=value)
 
 
 def test_task_affordance_selects_rod_endpoint_opposite_the_shaft_grasp(tmp_path):
@@ -1084,6 +1206,7 @@ def test_resolve_passes_operation_into_process_feature_selection_validation():
         "grasp_frame": {"frame_id": "front", "position_m": [0., 0., .5],
                         "orientation_xyzw": [0., 0., 0., 1.]},
         "approach_direction": {"frame_id": "front", "vector": [0., 0., 1.]},
+        "grasp_geometry": {"width_m": .052, "height_m": .02, "depth_m": .03},
     }))
     visual.provider_from_tcp = np.eye(4)
     visual._bind_execution = Mock(return_value={
@@ -1101,4 +1224,7 @@ def test_resolve_passes_operation_into_process_feature_selection_validation():
     target = visual.resolve(binding, request)
 
     assert target["process_frame"]["pour_direction"] == source_feature["pour_direction_world"]
+    assert target["grasp_geometry"] == {
+        "width_m": .052, "height_m": .02, "depth_m": .03,
+    }
     visual._bind_execution.assert_called_once()

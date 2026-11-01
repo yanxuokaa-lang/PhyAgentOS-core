@@ -25,10 +25,14 @@ from PhyAgentOS.forge.task import AgentTaskCoordinator, ToolExecutionRecord
 from PhyAgentOS.planning import (
     AdmissionContext,
     ArgumentProjectionPlan,
+    ArgumentSourceRequirement,
+    NodeSettlement,
     PlanGraph,
     PlanNode,
     ToolSpecPolicy,
     plan_graph_digest,
+    plan_node_digest,
+    tool_input_binding_digest,
 )
 from PhyAgentOS.verification.contracts import TaskVerificationContract
 
@@ -511,3 +515,179 @@ def test_schema_selection_receipt_and_query_execute_identical_assembled_values(
     assert calls == [("grasp.propose", saved)]
     records = coordinator.get_task(task.task_id).active_revision.execution_records
     assert len(records) == 1 and records[0].node_id == "grasp"
+
+
+def _direct_predecessor_dispatch(tmp_path, *, duplicate_record: bool = False):
+    coordinator = AgentTaskCoordinator(
+        workspace=tmp_path, config=ForgeConfig(), client=object()
+    )
+    producer = PlanNode(
+        node_id="prepare-selection",
+        obligation_id="prepare-selection",
+        capability="selection.prepare",
+    )
+    consumer = PlanNode(
+        node_id="execute-selection",
+        obligation_id="execute-selection",
+        capability="selection.execute",
+        dependencies=(producer.node_id,),
+        input_bindings={"operation": "pour"},
+    )
+    payload = {
+        "task_id": "task-direct-predecessor",
+        "revision_id": "revision-direct-predecessor",
+        "graph_digest": "0" * 64,
+        "planner_decision_digest": "1" * 64,
+        "policy_snapshot_digest": "2" * 64,
+        "nodes": [
+            producer.model_dump(mode="json"),
+            consumer.model_dump(mode="json"),
+        ],
+    }
+    payload["graph_digest"] = plan_graph_digest(payload)
+    graph = PlanGraph.model_validate(payload)
+    task = coordinator.create_task(
+        task_description="consume one prepared opaque selection",
+        verification=TaskVerificationContract(mode="off"),
+        plan_graph=graph,
+        plan_graph_ref="artifact://plans/direct-predecessor",
+    )
+
+    def seed(current):
+        record_ids = ["prepared-selection"]
+        if duplicate_record:
+            record_ids.append("prepared-selection-duplicate")
+        for record_id in record_ids:
+            current.active_revision.execution_records.append(
+                ToolExecutionRecord(
+                    record_id=record_id,
+                    revision_id=current.active_revision_id,
+                    tool_id="selection.prepare",
+                    semantics="query",
+                    caller_id="test",
+                    node_id=producer.node_id,
+                    node_digest=plan_node_digest(producer),
+                    obligation_id=producer.obligation_id,
+                    input_binding_digest=tool_input_binding_digest(
+                        producer.input_bindings
+                    ),
+                    decision_trace_ref=(
+                        f"artifact://decision-traces/{record_id}"
+                    ),
+                    status="succeeded",
+                    evidence_refs=[f"tool:{record_id}"],
+                    response={
+                        "ok": True,
+                        "data": {
+                            "selected": {
+                                "opaque_ref": "opaque://selection/current",
+                            }
+                        },
+                    },
+                )
+            )
+
+    coordinator.store.update(task.task_id, seed, event_type="test_predecessor_record")
+    coordinator.record_node_settlement(
+        NodeSettlement(
+            task_id=task.task_id,
+            revision_id=graph.revision_id,
+            node_id=producer.node_id,
+            status="completed",
+            scene_revision="scene-1",
+            source_tool_id="selection.prepare",
+        )
+    )
+    policy = ToolSpecPolicy(
+        tool_id="selection.execute",
+        semantics="query",
+        spec_digest="3" * 64,
+        capabilities=("selection.execute",),
+        argument_source_requirements=(
+            ArgumentSourceRequirement(
+                when={"operation": "pour"},
+                keys=("opaque_ref",),
+                source_tool_id="selection.prepare",
+                source_paths={
+                    "opaque_ref": (
+                        "response",
+                        "data",
+                        "selected",
+                        "opaque_ref",
+                    ),
+                },
+            ),
+        ),
+    )
+    dispatch = AgentComposedDispatch(
+        graph,
+        (policy,),
+        AdmissionContext(
+            scene_revision="scene-1",
+            settlements={producer.node_id: "completed"},
+        ),
+        input_schemas={
+            "selection.execute": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["operation", "opaque_ref"],
+                "properties": {
+                    "operation": {"const": "pour"},
+                    "opaque_ref": {
+                        "type": "string",
+                        "pattern": r"^opaque://\S+$",
+                    },
+                },
+            }
+        },
+    )
+    return coordinator, dispatch
+
+
+def test_unique_direct_predecessor_sources_are_coordinator_injected(tmp_path):
+    coordinator, dispatch = _direct_predecessor_dispatch(tmp_path)
+    selected = json.loads(
+        asyncio.run(
+            ForgePlanSelectTool(coordinator, lambda: dispatch).execute(
+                task_id="task-direct-predecessor",
+                node_id="execute-selection",
+                tool_id="selection.execute",
+                decision_reason="consume the already validated opaque selection",
+                arguments={"operation": "pour"},
+            )
+        )
+    )
+    assert selected["ok"], selected
+    saved = (
+        coordinator.get_task("task-direct-predecessor")
+        .active_revision.planning_selections[0]
+        .resumable_selection.tool_arguments
+    )
+    assert saved == {
+        "operation": "pour",
+        "opaque_ref": "opaque://selection/current",
+    }
+
+
+def test_ambiguous_direct_predecessor_sources_still_require_agent_selection(tmp_path):
+    coordinator, dispatch = _direct_predecessor_dispatch(
+        tmp_path, duplicate_record=True
+    )
+    rejected = json.loads(
+        asyncio.run(
+            ForgePlanSelectTool(coordinator, lambda: dispatch).execute(
+                task_id="task-direct-predecessor",
+                node_id="execute-selection",
+                tool_id="selection.execute",
+                decision_reason="ambiguous predecessor must not be guessed",
+                arguments={"operation": "pour"},
+            )
+        )
+    )
+    assert rejected["ok"] is False
+    assert rejected["error"]["code"] == "invalid_argument_source"
+    assert (
+        coordinator.get_task("task-direct-predecessor")
+        .active_revision.planning_selections
+        == []
+    )

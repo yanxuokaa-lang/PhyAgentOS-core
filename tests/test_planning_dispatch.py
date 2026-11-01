@@ -482,6 +482,7 @@ def test_subtask_selection_injects_frozen_binding_without_model_reconstruction()
         capability="manipulation.execute_subtask",
         input_bindings={
             **frozen_fields,
+            "affordance_selection": "task_qualified",
             "semantic_intent": {
                 "goal": "Pour R03 into the selected beaker",
                 "success_criteria": ["Measured pour feedback qualifies"],
@@ -522,6 +523,7 @@ def test_subtask_selection_injects_frozen_binding_without_model_reconstruction()
             "grasp_task_affordance_candidate_set_ref",
             "grasp_task_affordance_ref",
             "selected_grasp_candidate_ref",
+            "qualified_grasp_candidate_refs",
         ],
         "properties": {
             "subtask_id": {"type": "string"},
@@ -538,6 +540,9 @@ def test_subtask_selection_injects_frozen_binding_without_model_reconstruction()
             "grasp_task_affordance_candidate_set_ref": {"type": "string"},
             "grasp_task_affordance_ref": {"type": "string"},
             "selected_grasp_candidate_ref": {"type": "string"},
+            "qualified_grasp_candidate_refs": {
+                "type": "array", "items": {"type": "string"},
+            },
         },
     }
     dispatch = AgentComposedDispatch(
@@ -547,7 +552,6 @@ def test_subtask_selection_injects_frozen_binding_without_model_reconstruction()
         input_schemas={"manipulation.execute_subtask": input_schema},
     )
     selected_arguments = {
-        "affordance_selection": "task_qualified",
         "process_feature_refs": [
             "process-feature://R03/pour-lip",
             "process-feature://BEAKER/opening",
@@ -556,6 +560,10 @@ def test_subtask_selection_injects_frozen_binding_without_model_reconstruction()
         "grasp_task_affordance_candidate_set_ref": "grasp-affordance-set://R03/current",
         "grasp_task_affordance_ref": "grasp-affordance://R03/qualified-0",
         "selected_grasp_candidate_ref": "candidate://simulator-truth-R03/grasp-0",
+        "qualified_grasp_candidate_refs": [
+            "candidate://simulator-truth-R03/grasp-0",
+            "candidate://simulator-truth-R03/grasp-7",
+        ],
     }
 
     proposal = dispatch.prepare_selection(
@@ -571,9 +579,18 @@ def test_subtask_selection_injects_frozen_binding_without_model_reconstruction()
         "grasp_geometry"
     ]["width_m"] == 0.07873450219631195
     assert proposal["tool_arguments"]["intent"]["motion_authorized"] is False
+    assert proposal["tool_arguments"]["affordance_selection"] == "task_qualified"
     assert {
         key: proposal["tool_arguments"][key] for key in selected_arguments
     } == selected_arguments
+
+    with pytest.raises(PlanningDispatchError, match="affordance selection differs"):
+        dispatch.prepare_selection(
+            node_id="pour-r03",
+            tool_id="manipulation.execute_subtask",
+            arguments={**selected_arguments, "affordance_selection": "raw_candidates"},
+            decision_reason="attempt to replace the frozen task-affordance selection",
+        )
 
     tampered_binding = json.loads(json.dumps(binding))
     tampered_binding["grasp_candidates"][12]["grasp_geometry"]["width_m"] = (

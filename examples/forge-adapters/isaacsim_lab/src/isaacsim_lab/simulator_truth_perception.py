@@ -280,7 +280,35 @@ def _finite_vector(value, size, field):
 
 
 def object_point_cloud(calibration, point_cloud, world_bounds):
-    """Select same-capture points inside final composed USD world bounds."""
+    """Project simulator-truth object geometry into the observation frame.
+
+    Transparent vessels do not reliably own the rendered depth samples inside
+    their world AABB: the camera can see the support surface through the glass.
+    A geometry-bearing simulator state therefore uses the final composed USD
+    mesh vertices as the object-only point cloud.  Bounds-only legacy states
+    retain the previous same-capture AABB selection fallback.
+    """
+    transform = world_from_camera(calibration)
+    if not isinstance(world_bounds, dict):
+        raise SimulatorTruthManifestError("final composed USD world bounds are required")
+    minimum = _finite_vector(world_bounds.get("min_xyz_world_m"), 3, "min_xyz_world_m")
+    maximum = _finite_vector(world_bounds.get("max_xyz_world_m"), 3, "max_xyz_world_m")
+    if np.any(minimum >= maximum):
+        raise SimulatorTruthManifestError("world bounds must have positive extent")
+    mesh_points = world_bounds.get("mesh_points_world_m")
+    if mesh_points is not None:
+        mesh = np.asarray(mesh_points, dtype=float)
+        if (mesh.ndim != 2 or mesh.shape[1] != 3 or len(mesh) < 3
+                or not np.isfinite(mesh).all()):
+            raise SimulatorTruthManifestError(
+                "final composed USD mesh points must be finite Nx3 geometry"
+            )
+        frame_from_world = np.linalg.inv(transform)
+        projected = mesh @ frame_from_world[:3, :3].T + frame_from_world[:3, 3]
+        if not np.isfinite(projected).all():
+            raise SimulatorTruthManifestError("projected USD mesh points are not finite")
+        return projected
+
     points = np.asarray(point_cloud, dtype=float)
     if points.ndim == 3 and points.shape[-1] == 3:
         flat = points.reshape(-1, 3)
@@ -291,13 +319,6 @@ def object_point_cloud(calibration, point_cloud, world_bounds):
     flat = flat[np.isfinite(flat).all(axis=1)]
     if len(flat) < 3:
         raise ValueError("simulator point cloud has insufficient finite points")
-    transform = world_from_camera(calibration)
-    if not isinstance(world_bounds, dict):
-        raise SimulatorTruthManifestError("final composed USD world bounds are required")
-    minimum = _finite_vector(world_bounds.get("min_xyz_world_m"), 3, "min_xyz_world_m")
-    maximum = _finite_vector(world_bounds.get("max_xyz_world_m"), 3, "max_xyz_world_m")
-    if np.any(minimum >= maximum):
-        raise SimulatorTruthManifestError("world bounds must have positive extent")
     rotation, translation = transform[:3, :3], transform[:3, 3]
     world_points = flat @ rotation.T + translation
     inside = np.all((world_points >= minimum) & (world_points <= maximum), axis=1)

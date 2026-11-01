@@ -120,8 +120,8 @@ class GraspProposalProvider:
                 raise ValueError(f"{name} must be finite and positive")
         if not isinstance(apply_nms, bool) or not isinstance(apply_model_collision, bool):
             raise TypeError("grasp filtering flags must be booleans")
-        if selection_order not in {"score", "provider"}:
-            raise ValueError("selection_order must be score or provider")
+        if selection_order not in {"score", "provider", "geometry_diverse"}:
+            raise ValueError("selection_order must be score, provider, or geometry_diverse")
         if not isinstance(provider_id, str) or not provider_id or not provider_id.isidentifier():
             raise ValueError("provider_id must be a non-empty identifier")
         if not isinstance(model_variant, str) or not model_variant or not model_variant.isidentifier():
@@ -194,6 +194,14 @@ class GraspProposalProvider:
                     # Keep provider sampling coverage after normal NMS. Scores
                     # stay unchanged; only preparation can qualify a contact.
                     canonical.sort(key=lambda item: item[2])
+                elif self.selection_order == "geometry_diverse":
+                    canonical = _geometry_diverse_selection(
+                        canonical,
+                        raw_candidates,
+                        limit=self.max_candidates,
+                        approach_axis=self.approach_axis,
+                        closing_axis=self.closing_axis,
+                    )
                 for matrix, score, index in canonical[: self.max_candidates]:
                     grasp_geometry = raw_candidates[index].get("grasp_geometry")
                     all_candidates.append(
@@ -437,6 +445,77 @@ def _nms(candidates: list[tuple[Any, float, int]], *, position_threshold_m: floa
         if not suppressed:
             kept.append(candidate)
     return sorted(kept, key=lambda item: (-item[1], item[2]))
+
+
+def _geometry_diverse_selection(
+    candidates: list[tuple[Any, float, int]],
+    raw_candidates: list[Mapping[str, Any]],
+    *,
+    limit: int,
+    approach_axis: int,
+    closing_axis: int,
+) -> list[tuple[Any, float, int]]:
+    """Preserve bounded native coverage without performing grasp admission.
+
+    Score-only or provider-order truncation can spend the complete public
+    candidate budget on one spatial family.  This deterministic farthest-point
+    selection covers position, approach direction, sign-symmetric parallel-jaw
+    closing direction, and predicted grasp width.  It never rewrites a pose,
+    score, or geometry field; embodiment preparation remains authoritative for
+    aperture, IK, collision, workspace, and motion admission.
+    """
+
+    ordered = sorted(candidates, key=lambda item: (-item[1], item[2]))
+    if len(ordered) <= limit:
+        return ordered
+    np = _numpy()
+    matrices = np.asarray([item[0] for item in ordered], dtype=np.float64)
+    positions = matrices[:, :3, 3]
+    spans = np.ptp(positions, axis=0)
+    normalized_positions = (positions - np.min(positions, axis=0)) / np.where(
+        spans > 1e-9, spans, 1.0
+    )
+    approaches = matrices[:, :3, approach_axis]
+    closings = matrices[:, :3, closing_axis]
+    widths = np.asarray(
+        [
+            float((raw_candidates[index].get("grasp_geometry") or {}).get("width_m", 0.0))
+            for _, _, index in ordered
+        ],
+        dtype=np.float64,
+    )
+    width_span = float(np.ptp(widths))
+    normalized_widths = (
+        (widths - float(np.min(widths))) / width_span
+        if width_span > 1e-9
+        else np.zeros(len(widths), dtype=np.float64)
+    )
+
+    selected = [0]
+    nearest = np.full(len(ordered), np.inf, dtype=np.float64)
+    while len(selected) < limit:
+        index = selected[-1]
+        position_distance = np.mean(
+            (normalized_positions - normalized_positions[index]) ** 2,
+            axis=1,
+        )
+        approach_distance = (
+            1.0 - np.clip(approaches @ approaches[index], -1.0, 1.0)
+        ) / 2.0
+        closing_distance = 1.0 - np.abs(
+            np.clip(closings @ closings[index], -1.0, 1.0)
+        )
+        width_distance = np.abs(normalized_widths - normalized_widths[index])
+        distance = (
+            position_distance
+            + approach_distance
+            + closing_distance
+            + width_distance
+        )
+        nearest = np.minimum(nearest, distance)
+        nearest[selected] = -1.0
+        selected.append(int(np.argmax(nearest)))
+    return [ordered[index] for index in selected]
 
 
 def _quaternion_xyzw(rotation: Any) -> list[float]:

@@ -148,7 +148,7 @@ class LabUtopiaCycleProvider:
                 code = result.get("failure_code", "route_unavailable")
                 if code not in {"route_unavailable", "inverse_kinematics_failed", "joint_limit_violation",
                                 "workspace_violation", "route_collision", "self_collision", "payload_collision",
-                                "payload_robot_collision", "no_admissible_grasp",
+                                "payload_robot_collision", "no_admissible_grasp", "gripper_aperture_exceeded",
                                 "unsupported_capability_topology"}:
                     raise PreparationProviderError(code, str(result.get("error_detail", result.get("error", code))),
                                                    failure_owner="runtime_adapter")
@@ -171,11 +171,14 @@ class LabUtopiaCycleProvider:
             str(rejected),
             failure_owner="runtime_adapter",
             requires_replan=any(
-                item.get("failure_code") == "route_collision" for item in rejected
+                item.get("failure_code") in {"route_collision", "gripper_aperture_exceeded"}
+                for item in rejected
             ),
             recommended_action=(
                 "select_alternative_candidate"
                 if any(item.get("failure_code") == "route_collision" for item in rejected)
+                else "refresh_grasp_candidates"
+                if any(item.get("failure_code") == "gripper_aperture_exceeded" for item in rejected)
                 else "fix_runtime_contract"
             ),
             rejected_candidate_refs=tuple(

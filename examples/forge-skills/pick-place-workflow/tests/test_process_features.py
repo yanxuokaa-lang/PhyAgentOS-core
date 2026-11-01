@@ -186,5 +186,5 @@ def test_tool_specs_declare_operation_scoped_predecessor_ref_sources():
     }
     assert all(item.keys == ("process_feature_refs", "process_feature_candidate_set_ref",
                              "grasp_task_affordance_candidate_set_ref", "grasp_task_affordance_ref",
-                             "selected_grasp_candidate_ref") for item in
+                             "selected_grasp_candidate_ref", "qualified_grasp_candidate_refs") for item in
                action.argument_source_requirements)

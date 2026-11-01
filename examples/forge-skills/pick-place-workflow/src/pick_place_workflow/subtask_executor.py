@@ -231,6 +231,7 @@ class SubtaskSpec(BaseModel):
     grasp_task_affordance_candidate_set_ref: str | None = None
     grasp_task_affordance_ref: str | None = None
     selected_grasp_candidate_ref: str | None = None
+    qualified_grasp_candidate_refs: tuple[str, ...] = ()
     affordance_selection: str | None = None
     # Semantic fields are supplied by the plan; trusted execution identity is
     # added later by the PAOS selection builder.
@@ -293,6 +294,16 @@ class SubtaskSpec(BaseModel):
             raise ValueError("selected grasp candidate reference is invalid")
         return value
 
+    @field_validator("qualified_grasp_candidate_refs")
+    @classmethod
+    def qualified_grasp_identities(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if len(value) != len(set(value)) or any(
+            not isinstance(item, str) or re.fullmatch(r"candidate://\S+", item) is None
+            for item in value
+        ):
+            raise ValueError("qualified grasp candidates must be unique opaque candidate references")
+        return value
+
     @field_validator("parameters")
     @classmethod
     def finite_parameters(cls, value: dict[str, Any]) -> dict[str, Any]:
@@ -344,12 +355,24 @@ class SubtaskSpec(BaseModel):
             validate_process_parameters(self.operation, self.parameters)
             task_affordance = (self.grasp_task_affordance_candidate_set_ref, self.grasp_task_affordance_ref,
                                self.selected_grasp_candidate_ref, self.process_feature_candidate_set_ref)
-            if self.affordance_selection == "task_qualified" and (not all(task_affordance) or not self.process_feature_refs):
+            grasp_affordance = task_affordance[:3]
+            if self.affordance_selection not in {None, "task_qualified"}:
+                raise ValueError("unsupported task-affordance selection mode")
+            if self.affordance_selection is None and (any(grasp_affordance) or self.qualified_grasp_candidate_refs):
+                raise ValueError("task-affordance references require task_qualified selection")
+            if self.affordance_selection == "task_qualified" and (
+                not all(task_affordance) or not self.process_feature_refs
+                or not self.qualified_grasp_candidate_refs
+            ):
                 raise ValueError("task-affordance selection requires complete candidate and feature references")
-            if self.affordance_selection == "task_qualified" and self.selected_grasp_candidate_ref is not None and self.selected_grasp_candidate_ref not in {
-                item.get("candidate_ref") for item in self.binding.grasp_candidates
-            } | {self.binding.candidate_ref}:
-                raise ValueError("selected grasp candidate is outside the bound GraspNet candidate set")
+            if self.affordance_selection == "task_qualified":
+                if self.qualified_grasp_candidate_refs[0] != self.selected_grasp_candidate_ref:
+                    raise ValueError("qualified grasp candidates must keep the selected grasp first")
+                bound_refs = {
+                    item.get("candidate_ref") for item in self.binding.grasp_candidates
+                } | {self.binding.candidate_ref}
+                if any(ref not in bound_refs for ref in self.qualified_grasp_candidate_refs):
+                    raise ValueError("qualified grasp candidate is outside the bound GraspNet candidate set")
         elif self.process_feature_refs:
             raise ValueError("relocate subtasks cannot include process_feature_refs")
         elif self.process_feature_candidate_set_ref is not None:
@@ -627,6 +650,31 @@ class SubtaskExecutor:
         return RuntimeSubtaskDriver._prepared_arguments(spec, response, context)
 
     @staticmethod
+    def _preparation_candidates(
+        spec: SubtaskSpec,
+        binding: Mapping[str, Any],
+    ) -> list[dict[str, Any]]:
+        candidates = list(
+            binding.get("grasp_candidates") or [dict(binding["grasp_candidate"])]
+        )
+        if spec.affordance_selection != "task_qualified":
+            return candidates
+        by_ref = {
+            item.get("candidate_ref"): item
+            for item in candidates
+            if isinstance(item, Mapping)
+        }
+        missing = [
+            ref for ref in spec.qualified_grasp_candidate_refs
+            if ref not in by_ref
+        ]
+        if missing:
+            raise SubtaskExecutionError(
+                "qualified grasp candidate is absent from the current binding"
+            )
+        return [dict(by_ref[ref]) for ref in spec.qualified_grasp_candidate_refs]
+
+    @staticmethod
     def _arguments(spec: SubtaskSpec, call: SubtaskToolCall, context: SubtaskExecutionContext) -> dict[str, Any]:
         binding = spec.binding.model_dump(mode="json")
         if call.tool_id == "manipulation.prepare":
@@ -637,12 +685,7 @@ class SubtaskExecutor:
                             "destination_ref", "binding_ref")
                 if binding.get(key) is not None
             }
-            request["candidates"] = list(binding.get("grasp_candidates") or [dict(binding["grasp_candidate"])])
-            if spec.affordance_selection == "task_qualified" and spec.selected_grasp_candidate_ref is not None:
-                request["candidates"] = [item for item in request["candidates"]
-                                          if item.get("candidate_ref") == spec.selected_grasp_candidate_ref]
-                if len(request["candidates"]) != 1:
-                    raise SubtaskExecutionError("selected grasp candidate is absent from the current binding")
+            request["candidates"] = SubtaskExecutor._preparation_candidates(spec, binding)
             request["perception_binding"] = dict(binding)
             request["process_type"] = spec.operation
             if spec.operation in {"pour", "stir"}:
@@ -682,12 +725,7 @@ class SubtaskExecutor:
                             "freshness_ms", "max_age_ms", "candidate_set_ref", "capability_snapshot_ref",
                             "destination_ref", "binding_ref")
             }
-            request["candidates"] = list(binding.get("grasp_candidates") or [dict(binding["grasp_candidate"])])
-            if spec.affordance_selection == "task_qualified" and spec.selected_grasp_candidate_ref is not None:
-                request["candidates"] = [item for item in request["candidates"]
-                                          if item.get("candidate_ref") == spec.selected_grasp_candidate_ref]
-                if len(request["candidates"]) != 1:
-                    raise SubtaskExecutionError("selected grasp candidate is absent from the current binding")
+            request["candidates"] = SubtaskExecutor._preparation_candidates(spec, binding)
             request["perception_binding"] = dict(binding)
             request["process_type"] = spec.operation
             if spec.operation in {"pour", "stir"}:
@@ -1157,6 +1195,7 @@ class SubtaskActionEndpoint:
             len(spec.process_feature_refs) < 2 or spec.process_feature_candidate_set_ref is None
             or spec.grasp_task_affordance_candidate_set_ref is None
             or spec.grasp_task_affordance_ref is None or spec.selected_grasp_candidate_ref is None
+            or not spec.qualified_grasp_candidate_refs
         ):
             raise ValueError("pour/stir Action requires successful task-affordance Preparation projections")
         if not isinstance(caller_id, str) or not caller_id.startswith("paos:"):
@@ -1246,7 +1285,7 @@ SUBTASK_TOOL_SPEC: dict[str, Any] = {
             {"when": {"operation": "pour", "affordance_selection": "task_qualified"},
              "keys": ["process_feature_refs", "process_feature_candidate_set_ref",
                       "grasp_task_affordance_candidate_set_ref", "grasp_task_affordance_ref",
-                      "selected_grasp_candidate_ref"],
+                      "selected_grasp_candidate_ref", "qualified_grasp_candidate_refs"],
              "source_tool_id": "manipulation.prepare_grasp_task_affordance",
              "source_paths": {
                  "process_feature_refs": ["response", "data", "selected", "process_feature_refs"],
@@ -1254,11 +1293,12 @@ SUBTASK_TOOL_SPEC: dict[str, Any] = {
                  "grasp_task_affordance_candidate_set_ref": ["response", "data", "candidate_set_ref"],
                  "grasp_task_affordance_ref": ["response", "data", "selected", "combination_ref"],
                  "selected_grasp_candidate_ref": ["response", "data", "selected", "grasp_candidate_ref"],
+                 "qualified_grasp_candidate_refs": ["response", "data", "qualified_grasp_candidate_refs"],
              }},
             {"when": {"operation": "stir", "affordance_selection": "task_qualified"},
                 "keys": ["process_feature_refs", "process_feature_candidate_set_ref",
                       "grasp_task_affordance_candidate_set_ref", "grasp_task_affordance_ref",
-                      "selected_grasp_candidate_ref"],
+                      "selected_grasp_candidate_ref", "qualified_grasp_candidate_refs"],
              "source_tool_id": "manipulation.prepare_grasp_task_affordance",
              "source_paths": {
                  "process_feature_refs": ["response", "data", "selected", "process_feature_refs"],
@@ -1266,6 +1306,7 @@ SUBTASK_TOOL_SPEC: dict[str, Any] = {
                  "grasp_task_affordance_candidate_set_ref": ["response", "data", "candidate_set_ref"],
                  "grasp_task_affordance_ref": ["response", "data", "selected", "combination_ref"],
                  "selected_grasp_candidate_ref": ["response", "data", "selected", "grasp_candidate_ref"],
+                 "qualified_grasp_candidate_refs": ["response", "data", "qualified_grasp_candidate_refs"],
              }},
         ],
         "scene_write_behavior": "new_revision",
@@ -1326,6 +1367,10 @@ SUBTASK_TOOL_SPEC: dict[str, Any] = {
             "grasp_task_affordance_candidate_set_ref": {"type": "string", "pattern": r"^grasp-affordance-set://\S+$"},
             "grasp_task_affordance_ref": {"type": "string", "pattern": r"^grasp-affordance://\S+$"},
             "selected_grasp_candidate_ref": {"type": "string", "pattern": r"^candidate://\S+$"},
+            "qualified_grasp_candidate_refs": {
+                "type": "array", "uniqueItems": True,
+                "items": {"type": "string", "pattern": r"^candidate://\S+$"},
+            },
             "affordance_selection": {"enum": ["task_qualified"]},
             "tool_sequence": {"type": "array", "minItems": 2, "items": {"type": "object"}},
             "intent": {
@@ -1374,7 +1419,8 @@ SUBTASK_TOOL_SPEC: dict[str, Any] = {
             {"if": {"required": ["affordance_selection"], "properties": {"affordance_selection": {"const": "task_qualified"}}},
              "then": {"required": ["process_feature_refs", "process_feature_candidate_set_ref",
                                     "grasp_task_affordance_candidate_set_ref", "grasp_task_affordance_ref",
-                                    "selected_grasp_candidate_ref"]}}
+                                    "selected_grasp_candidate_ref", "qualified_grasp_candidate_refs"],
+                      "properties": {"qualified_grasp_candidate_refs": {"minItems": 1}}}}
         ],
     },
     "output_schema": {

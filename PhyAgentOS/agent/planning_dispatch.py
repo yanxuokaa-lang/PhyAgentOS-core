@@ -904,6 +904,22 @@ class AgentComposedDispatch:
                         missing_fields=(key,),
                     )
                 final_arguments[key] = trusted_value
+            # Task-affordance selection is a frozen PlanGraph semantic, not a
+            # value the Agent should have to restate after sourcing the opaque
+            # selection references from the direct predecessor.  Preserve the
+            # legacy path by injecting it only when the node declares it.
+            if "affordance_selection" in node.input_bindings:
+                trusted_selection = node.input_bindings["affordance_selection"]
+                if (
+                    "affordance_selection" in final_arguments
+                    and final_arguments["affordance_selection"] != trusted_selection
+                ):
+                    raise PlanningDispatchError(
+                        "supplied subtask affordance selection differs from the frozen node binding",
+                        code="semantic_binding_mismatch",
+                        missing_fields=("affordance_selection",),
+                    )
+                final_arguments["affordance_selection"] = trusted_selection
             semantic = node.input_bindings.get("semantic_intent")
             binding = node.input_bindings.get("binding")
             if not isinstance(semantic, Mapping) or not isinstance(binding, Mapping):
