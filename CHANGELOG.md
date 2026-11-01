@@ -69,6 +69,8 @@ See `changelog/2026-11.md` for exact files, line ranges, runtime evidence, and r
 
 ### Git Commit
 - Implementation commit: `29a7b642`; branch `feature/planning-loop`; `2026-11-01 20:19:22 +0800`.
+- Log receipt commit: `fa8768db`.
+- Push failed because the GitHub TLS connection was non-properly terminated (`GnuTLS recv error (-110)`); commits remain local. / 推送因 GitHub TLS 连接异常终止而失败，提交保留在本地。
 
 ## v16.3.7 (2026-11-01 19:37) - codex
 
