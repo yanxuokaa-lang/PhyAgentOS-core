@@ -65,7 +65,7 @@
 ```
 
 ### Git Commit
-- Implementation commit: `PENDING`; branch `feature/planning-loop`.
+- Implementation commit: `e7783db4`; branch `feature/planning-loop`.
 
 ## v16.3.1 (2026-10-31 19:50) - codex
 
