@@ -14,6 +14,75 @@ class SimulatorTruthManifestError(ValueError):
     """The authored LabUtopia truth manifest is incomplete or inconsistent."""
 
 
+def axial_grasp_symmetry(points, rim_center, axis, *, tolerance_m=.004):
+    """Validate rotational grasp equivalence from final-composed mesh slices.
+
+    A circular opening identifies an axis but does not by itself prove that a
+    gripper can rotate around the body.  Require several fully covered body
+    cross-sections with bounded radial variation before publishing Adapter-
+    private axial-symmetry evidence.
+    """
+    values = np.asarray(points, dtype=float)
+    center = np.asarray(rim_center, dtype=float)
+    direction = np.asarray(axis, dtype=float)
+    if (values.ndim != 2 or values.shape[1] != 3 or len(values) < 48
+            or center.shape != (3,) or direction.shape != (3,)
+            or not np.isfinite(values).all() or not np.isfinite(center).all()
+            or not np.isfinite(direction).all()):
+        raise ValueError("axial grasp symmetry requires finite final mesh geometry")
+    norm = float(np.linalg.norm(direction))
+    if norm <= tolerance_m:
+        raise ValueError("axial grasp symmetry axis is unresolved")
+    direction /= norm
+    axial = (values - center) @ direction
+    low, high = float(axial.min()), float(axial.max())
+    span = high - low
+    if span <= tolerance_m * 4:
+        raise ValueError("axial grasp symmetry body span is unresolved")
+    axis_origin = center + direction * ((low + high) / 2.0)
+    offsets = values - axis_origin
+    coordinates = offsets @ direction
+    radial_vectors = offsets - np.outer(coordinates, direction)
+    reference = np.array([1.0, 0.0, 0.0])
+    if abs(float(np.dot(reference, direction))) > 0.8:
+        reference = np.array([0.0, 1.0, 0.0])
+    basis_x = np.cross(direction, reference)
+    basis_x /= np.linalg.norm(basis_x)
+    basis_y = np.cross(direction, basis_x)
+    # Exclude the support and opening extrema, where bases, lips, or threads may
+    # be intentionally non-symmetric.  The remaining slices cover the graspable
+    # body used by task-affordance qualification.
+    bounds = np.linspace(low + span * 0.12, high - span * 0.18, 7)
+    slice_width = max(span * 0.08, tolerance_m * 2)
+    accepted = []
+    for coordinate in bounds:
+        samples = radial_vectors[np.abs(axial - coordinate) <= slice_width / 2]
+        if len(samples) < 8:
+            continue
+        radii = np.linalg.norm(samples, axis=1)
+        median_radius = float(np.median(radii))
+        deviation = float(np.quantile(np.abs(radii - median_radius), 0.9))
+        if median_radius <= tolerance_m or deviation > max(tolerance_m, median_radius * 0.12):
+            continue
+        angles = np.sort(np.arctan2(samples @ basis_y, samples @ basis_x))
+        maximum_gap = float(np.max(np.diff(np.r_[angles, angles[0] + 2 * np.pi])))
+        if maximum_gap > np.pi / 2:
+            continue
+        accepted.append((median_radius, deviation, maximum_gap))
+    if len(accepted) < 3:
+        raise ValueError("final mesh does not prove axial grasp symmetry across the body")
+    return {
+        "kind": "axial",
+        "axis_world": direction.tolist(),
+        "origin_world": axis_origin.tolist(),
+        "source": "final_composed_usd_mesh",
+        "coverage": "grasp_body_cross_sections",
+        "validated_slices": len(accepted),
+        "maximum_radial_deviation_m": max(item[1] for item in accepted),
+        "maximum_angular_gap_rad": max(item[2] for item in accepted),
+    }
+
+
 def load_truth_manifest(path):
     payload = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict) or not isinstance(payload.get("objects"), list):
@@ -110,6 +179,12 @@ def process_feature_candidates(points, boundary_edges, category, *, tolerance_m=
                 feature.update(_pour_lip_evidence(
                     radius, centre, axis, tolerance_m, boundary_edges=edges,
                 ))
+                try:
+                    feature["grasp_symmetry"] = axial_grasp_symmetry(
+                        values, centre, axis, tolerance_m=tolerance_m,
+                    )
+                except ValueError:
+                    pass
             candidates.append(feature)
         return candidates
     if category == "stir_tool":
@@ -212,7 +287,7 @@ def _top_mesh_vertex_rim(points, *, tolerance_m):
     max_gap = float(np.max(np.diff(np.r_[angles, angles[0] + 2 * np.pi])))
     if residual > max(tolerance_m, radius * .12) or max_gap > np.pi / 2:
         raise ValueError("top mesh vertices do not support a fully covered circular rim")
-    return {
+    feature = {
         "origin_world": ((low + high) / 2).tolist(),
         "tip_world": [float(center_xy[0]), float(center_xy[1]), float(ring[:, 2].mean())],
         "axis_world": [0.0, 0.0, 1.0],
@@ -224,6 +299,13 @@ def _top_mesh_vertex_rim(points, *, tolerance_m):
         "source": "final_composed_usd_mesh",
         "coverage": "top_mesh_vertex_ring",
     }
+    try:
+        feature["grasp_symmetry"] = axial_grasp_symmetry(
+            points, feature["tip_world"], feature["axis_world"], tolerance_m=tolerance_m,
+        )
+    except ValueError:
+        pass
+    return feature
 
 
 def _pour_lip_evidence(rim_radius, rim_center, rim_axis, tolerance_m, *, boundary_edges=None):

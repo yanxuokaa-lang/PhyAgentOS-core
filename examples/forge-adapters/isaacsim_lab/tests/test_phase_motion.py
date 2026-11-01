@@ -175,6 +175,8 @@ def test_acquire_preparation_searches_clearances_and_selects_admissible_route():
     model.config = {
         "approach_distance_m": .12,
         "acquire_transit_clearance_candidates_m": [.04, .08, .12],
+        "acquire_transport_orientation_candidates_xyzw": [[1., 0., 0., 0.]],
+        "acquire_axial_symmetry_angles_rad": [0., np.pi / 2],
         "lift_distance_m": .10,
         "settle_s": .6,
     }
@@ -236,10 +238,17 @@ def test_acquire_preparation_searches_clearances_and_selects_admissible_route():
     assert len(captured) == 3
     selected = captured[1]
     stages = [stage for _pose, _hold, stage in selected]
-    assert stages[:4] == ["open", "transit_raise", "transit_cross", "approach"]
-    raised, staged, pre = [selected[index][0] for index in (1, 2, 3)]
+    assert stages[:6] == [
+        "open", "transit_raise", "transit_orient", "transit_cross", "staging_reorient", "approach",
+    ]
+    raised, transport_ready, transported, staged, pre = [selected[index][0] for index in (1, 2, 3, 4, 5)]
     assert raised[:2, 3] == pytest.approx(current[:2, 3])
+    assert transport_ready[:3, 3] == pytest.approx(raised[:3, 3])
+    assert Rotation.from_matrix(transport_ready[:3, :3]).as_quat() == pytest.approx([1., 0., 0., 0.])
+    assert transported[:2, 3] == pytest.approx(pre[:2, 3])
+    assert transported[:3, :3] == pytest.approx(transport_ready[:3, :3])
     assert staged[:2, 3] == pytest.approx(pre[:2, 3])
+    assert staged[:3, :3] == pytest.approx(pre[:3, :3])
     assert raised[2, 3] == pytest.approx(1.08)
     assert staged[2, 3] == pytest.approx(1.08)
     assert pre[:3, 3] == pytest.approx([-.27, -.24, .86])
@@ -252,6 +261,8 @@ def test_acquire_preparation_preserves_zero_motion_when_all_clearances_fail():
     model.config = {
         "approach_distance_m": .12,
         "acquire_transit_clearance_candidates_m": [.04, .08],
+        "acquire_transport_orientation_candidates_xyzw": [[1., 0., 0., 0.]],
+        "acquire_axial_symmetry_angles_rad": [0.],
         "lift_distance_m": .10,
         "settle_s": .6,
     }
@@ -297,6 +308,89 @@ def test_acquire_transit_clearances_reject_invalid_configuration(values):
     with pytest.raises(PhaseMotionError) as captured:
         acquire_transit_clearances({"acquire_transit_clearance_candidates_m": values})
     assert captured.value.code == "invalid_motion_configuration"
+
+
+@pytest.mark.parametrize("values", [
+    [],
+    [[0., 0., 0., 0.]],
+    [[1., 0., 0.]],
+    [[float("nan"), 0., 0., 1.]],
+    [[True, 0., 0., 0.]],
+    [["bad", 0., 0., 1.]],
+])
+def test_acquire_transport_orientations_reject_invalid_configuration(values):
+    from isaacsim_lab.phase_motion import acquire_transport_orientations
+
+    with pytest.raises(PhaseMotionError) as captured:
+        acquire_transport_orientations({"acquire_transport_orientation_candidates_xyzw": values})
+    assert captured.value.code == "invalid_motion_configuration"
+
+
+@pytest.mark.parametrize("values", [[], [float("nan")], [np.pi + .01], "0"])
+def test_acquire_axial_symmetry_angles_reject_invalid_configuration(values):
+    from isaacsim_lab.phase_motion import acquire_axial_symmetry_angles
+
+    with pytest.raises(PhaseMotionError) as captured:
+        acquire_axial_symmetry_angles({"acquire_axial_symmetry_angles_rad": values})
+    assert captured.value.code == "invalid_motion_configuration"
+
+
+def test_acquire_preparation_ranks_geometry_equivalent_grasps_after_full_qualification():
+    model = object.__new__(IsaacPhaseMotion)
+    model.config = {
+        "approach_distance_m": .12,
+        "acquire_transit_clearance_candidates_m": [.04],
+        "acquire_transport_orientation_candidates_xyzw": [[1., 0., 0., 0.]],
+        "acquire_axial_symmetry_angles_rad": [0., np.pi / 2],
+        "lift_distance_m": .10,
+        "settle_s": .6,
+    }
+    model.validate_grasp_aperture = lambda _target: None
+    current = pose_matrix([-.4, 0., 1.], [0., 0., 0., 1.])
+    body = pose_matrix([0., 0., .8], [0., 0., 0., 1.])
+    model.tcp = lambda: current.copy()
+    model.observed_pose = lambda _source: body.copy()
+    model.bind_observed_model = lambda *_args: (body.copy(), np.eye(4))
+    model.body_pose = lambda _path: np.eye(4)
+    model._artifact = lambda *_args: "artifact://readiness/test.json"
+    captured = []
+
+    def qualify(waypoints, *_args, **_kwargs):
+        captured.append(waypoints)
+        grasp_position = waypoints[6][0][:3, 3]
+        travel = .1 if grasp_position[1] > .05 else .4
+        return {"start_joints": [0.] * 7,
+                "steps": [{"joints": [travel] + [0.] * 6, "stage": "lift"}]}
+
+    model.qualify = qualify
+    target = {
+        "world_from_control": {"translation_m": [0., 0., 0.], "orientation_xyzw": [0., 0., 0., 1.]},
+        "entity_prim_path": "/World/R03/Model",
+        "destination_prim_path": "/World/BEAKER/Model",
+        "object_pose": {"position_m": [0., 0., .8], "orientation_xyzw": [0., 0., 0., 1.]},
+        "grasp_frame": {"position_m": [.1, 0., .9], "orientation_xyzw": [0., 0., 0., 1.]},
+        "approach_direction": {"vector": [1., 0., 0.]},
+        "destination_pose": {"position_m": [.2, 0., .8], "orientation_xyzw": [0., 0., 0., 1.]},
+        "return_pose": {"position_m": [0., 0., .8], "orientation_xyzw": [0., 0., 0., 1.]},
+    }
+    observation_model = {
+        "grasp_symmetry": {"kind": "axial", "axis_world": [0., 0., 1.], "origin_world": [0., 0., .8]},
+    }
+
+    route, _evidence = model.prepare({
+        "manipulation_target": target,
+        "observation_model": observation_model,
+        "scene_revision": "scene",
+    })
+
+    assert len(captured) == 2
+    assert route["acquire_axial_symmetry_angle_rad"] == pytest.approx(np.pi / 2)
+    assert route["target"]["grasp_frame"]["position_m"] == pytest.approx([0., .1, .9])
+    assert route["target"]["approach_direction"]["vector"] == pytest.approx([0., 1., 0.])
+    selected = captured[1]
+    assert selected[3][0][:3, :3] == pytest.approx(Rotation.from_quat([1., 0., 0., 0.]).as_matrix())
+    assert selected[4][2] == "staging_reorient"
+    assert selected[4][0][:3, :3] == pytest.approx(selected[5][0][:3, :3])
 
 
 def test_missing_measured_process_feature_is_rejected():

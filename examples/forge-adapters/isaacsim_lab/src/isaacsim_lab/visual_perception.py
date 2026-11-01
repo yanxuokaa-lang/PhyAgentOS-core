@@ -1144,9 +1144,28 @@ class LabVisualPerception:
 
     def execution_context(self, binding):
         source = self._records(binding)[binding["entity_ref"]]
-        return {"points_ref": source["points_ref"], "world_from_camera": source["world_from_camera"],
-                "captured_body_pose": self.identities[binding["calibration_ref"]][binding["entity_ref"]]["captured_body_pose"],
-                "observation_ref": binding["observation_ref"], "geometry_ref": source["geometry_ref"]}
+        context = {"points_ref": source["points_ref"], "world_from_camera": source["world_from_camera"],
+                   "captured_body_pose": self.identities[binding["calibration_ref"]][binding["entity_ref"]]["captured_body_pose"],
+                   "observation_ref": binding["observation_ref"], "geometry_ref": source["geometry_ref"]}
+        candidate_set_ref = binding.get("process_feature_candidate_set_ref")
+        selected_refs = binding.get("process_feature_refs")
+        destination_binding = binding.get("destination_ref")
+        destination_ref = (
+            "entity://" + destination_binding.removeprefix("destination://")
+            if isinstance(destination_binding, str)
+            and destination_binding.startswith("destination://")
+            and destination_binding != "destination://"
+            else None
+        )
+        if (source.get("category") == "reagent_bottle" and isinstance(candidate_set_ref, str)
+                and isinstance(selected_refs, list) and destination_ref is not None):
+            selected_source, _selected_destination = self._selected_feature_records(
+                candidate_set_ref, selected_refs, source["entity_ref"], destination_ref,
+            )
+            symmetry = selected_source.get("grasp_symmetry")
+            if isinstance(symmetry, dict) and symmetry.get("kind") == "axial":
+                context["grasp_symmetry"] = deepcopy(symmetry)
+        return context
 
     def close(self):
         try:

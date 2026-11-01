@@ -19,8 +19,10 @@
 - Forbidden shortcuts: hard-coded object coordinates, task-specific grasp poses, AgentLoop access to USD paths or gripper limits, bypassing preparation, automatic retry after uncertain motion, fabricated liquid-transfer claims.
 - Resolved defect: task-affordance Preparation now returns a selected-first ordered `qualified_grasp_candidate_refs` list, and Action preparation resolves only those opaque references from the unchanged same-capture binding. Provider-rejected raw GraspNet candidates cannot re-enter embodiment preparation.
 - Resolved defect: the prior `self_collision` and table `route_collision` labels were produced after a discontinuous Lula IK branch was incorrectly retained when nearby IK failed. Isaac preparation now rejects that branch as `ik_discontinuity` before collision sampling and records the actual checked joint sample/TCP for genuine collision failures.
-- Current blocker: all three task-qualified R03 candidates `16`, `15`, and `23` now fail the Adapter-owned `transit_cross` route. Clearances `0.04/0.08 m` require discontinuous primary IK branches (`3.575-4.431 rad`) and nearby IK does not satisfy the full pose tolerance; clearance `0.12 m` has no IK solution. The remaining work is route/orientation construction and equivalent bottle-axis grasp orientation search inside Isaac preparation, not collision-threshold tuning, vessel size, AgentLoop, prompt parameters, or candidate-set recovery.
-- Latest no-motion verification: workspace `out/lab-fullchain-truth-20261101-ik-continuity-no-motion-r1/`, task `task_a5127feeb8c8476a`, session `cli:lab-2a6cdb5274e6`, scene revision `labutopia-tabletop-rod-rack-v1:4f9352af31ed4977bb74a26481bfdf37:0`. `simulated_motion_enabled=false`, `controller_outcomes=[]`, `world_change_started=false`, `outcome_known=true`, and `possession_state=empty`; R04 and GLASS_ROD did not start.
+- Resolved defect: acquire preparation now separates current-orientation raise, configured transport reorientation, raised lateral translation, staging reorientation, and final approach. It enumerates only geometry-supported bottle-axis equivalents and sends every route through the unchanged safety qualification.
+- Current blocker: R03 candidates `23`, `16`, and `15` each traverse 24 clearance x transport-orientation x axial-angle combinations, but no complete route passes. Failures now concentrate at `staging_reorient` (`ik_discontinuity`, `inverse_kinematics_failed`, genuine self-collision) and `approach` (table or adjacent R04 geometry collision). The remaining work is Adapter-owned staging/approach feasibility and local scene clearance, not AgentLoop, prompt parameters, candidate-set recovery, or lowering safety thresholds.
+- Latest no-motion verification: workspace `out/lab-fullchain-truth-20261101-staged-symmetry-no-motion-r1/`, task `task_a7a9e1dc56014b26`, session `cli:lab-91c7fcbbb264`, scene revision `labutopia-tabletop-rod-rack-v1:e3821a001bc84d8aaaa53bb89d8e7937:0`. `simulated_motion_enabled=false`, `world_change_started=false`, and `possession_state=empty`; R04 and GLASS_ROD did not start.
+- Preserved preview: `out/lab-fullchain-truth-20261101-staged-symmetry-no-motion-r1/artifacts/labutopia/no-motion-video/staged-symmetry-observation.mp4` is a 5-second 1600x1200 static rendered observation with the controller disabled. It is not action evidence.
 
 ## Failure-first behavior
 
@@ -35,9 +37,9 @@
 ## Next implementation
 
 1. Keep the current IK-continuity rejection and zero-motion evidence boundary unchanged.
-2. In Isaac Adapter preparation, split `transit_cross` into raise with current orientation, translate with a safe transport orientation, reorient at staging, then approach the grasp.
-3. Enumerate bottle-axis-equivalent grasp orientations from the same opaque grasp candidate and rank only routes that pass continuous IK, limits, workspace, self/environment collision, and payload checks.
-4. Add no-motion tests for every new route segment, equivalent-orientation ordering, stale evidence, and all-routes-unavailable behavior.
+2. Keep the staged route and final-mesh axial-symmetry evidence projection unchanged while testing Adapter-private staging poses or approach-direction alternatives.
+3. Preserve continuous IK, limits, workspace, self/environment collision, payload checks, and same-capture evidence for every alternative.
+4. Add no-motion tests for any new staging/approach candidate ordering and all-routes-unavailable behavior.
 5. Run a fresh no-motion AgentLoop workflow. Enable simulated execution only after one complete R03 route is qualified; any unknown outcome or world change still stops R04 and stirring.
 
 ## Architecture review

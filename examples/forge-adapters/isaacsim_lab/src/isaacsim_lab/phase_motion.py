@@ -195,6 +195,76 @@ def acquire_transit_clearances(config):
     return tuple(dict.fromkeys(float(value) for value in values))
 
 
+def acquire_transport_orientations(config):
+    """Return configured world-frame TCP orientations for raised translation."""
+    values = config.get("acquire_transport_orientation_candidates_xyzw")
+    if not isinstance(values, list) or not values:
+        raise PhaseMotionError(
+            "invalid_motion_configuration",
+            "acquire_transport_orientation_candidates_xyzw must be a non-empty list",
+        )
+    orientations = []
+    for value in values:
+        if (not isinstance(value, (list, tuple)) or len(value) != 4
+                or any(isinstance(component, bool) for component in value)):
+            quaternion = np.asarray([])
+        else:
+            try:
+                quaternion = np.asarray(value, dtype=float)
+            except (TypeError, ValueError):
+                quaternion = np.asarray([])
+        if (quaternion.shape != (4,) or not np.isfinite(quaternion).all()
+                or abs(float(np.linalg.norm(quaternion)) - 1.0) > 1e-3):
+            raise PhaseMotionError(
+                "invalid_motion_configuration",
+                "acquire transport orientations must be normalized finite xyzw quaternions",
+            )
+        item = tuple(float(component) for component in quaternion)
+        if item not in orientations:
+            orientations.append(item)
+    return tuple(orientations)
+
+
+def acquire_axial_symmetry_angles(config):
+    """Return bounded axial rotations used only with explicit geometry evidence."""
+    values = config.get("acquire_axial_symmetry_angles_rad")
+    if (not isinstance(values, list) or not values
+            or any(isinstance(value, bool) or not isinstance(value, (int, float))
+                   or not math.isfinite(value) or abs(float(value)) > math.pi for value in values)):
+        raise PhaseMotionError(
+            "invalid_motion_configuration",
+            "acquire_axial_symmetry_angles_rad must contain finite angles within [-pi, pi]",
+        )
+    return tuple(dict.fromkeys(float(value) for value in values))
+
+
+def acquire_grasp_variants(desired, approach, symmetry, angles):
+    """Rotate a qualified grasp around a Provider-declared world-space axis."""
+    desired = np.asarray(desired, dtype=float)
+    approach = np.asarray(approach, dtype=float)
+    if symmetry is None:
+        return ((None, desired.copy(), approach.copy()),)
+    if not isinstance(symmetry, dict) or symmetry.get("kind") != "axial":
+        raise PhaseMotionError("invalid_grasp_symmetry_evidence", "unsupported grasp symmetry declaration")
+    axis = np.asarray(symmetry.get("axis_world"), dtype=float)
+    origin = np.asarray(symmetry.get("origin_world"), dtype=float)
+    if (axis.shape != (3,) or origin.shape != (3,) or not np.isfinite(axis).all()
+            or not np.isfinite(origin).all() or float(np.linalg.norm(axis)) <= 1e-9):
+        raise PhaseMotionError(
+            "invalid_grasp_symmetry_evidence",
+            "axial grasp symmetry requires a finite world axis and origin",
+        )
+    axis /= np.linalg.norm(axis)
+    variants = []
+    for angle in angles:
+        rotation = Rotation.from_rotvec(axis * angle).as_matrix()
+        pose = desired.copy()
+        pose[:3, :3] = rotation @ desired[:3, :3]
+        pose[:3, 3] = origin + rotation @ (desired[:3, 3] - origin)
+        variants.append((angle, pose, rotation @ approach))
+    return tuple(variants)
+
+
 def route_joint_travel(route):
     """Compare only routes already admitted by the embodiment safety checks."""
     points = np.asarray([route["start_joints"], *[step["joints"] for step in route["steps"]]])
@@ -409,6 +479,8 @@ class IsaacPhaseMotion:
         if lower.shape != (3,) or upper.shape != (3,) or not np.isfinite([lower, upper]).all() or np.any(lower >= upper):
             raise PhaseMotionError("invalid_motion_configuration", "workspace bounds must be finite and ordered")
         acquire_transit_clearances(self.config)
+        acquire_transport_orientations(self.config)
+        acquire_axial_symmetry_angles(self.config)
         self.scene = session.resolve("lab_scene_resources")
         self.robot, self.world, self.stage = (self.scene[key] for key in ("robot", "world", "stage"))
         if not self.scene["robot_initialized"]:
@@ -698,17 +770,6 @@ class IsaacPhaseMotion:
             grasp = target["grasp_frame"]
             desired = pose_matrix(grasp["position_m"], grasp["orientation_xyzw"])
             approach = np.asarray(target["approach_direction"]["vector"])
-            pre = desired.copy()
-            pre[:3, 3] -= approach * self.config["approach_distance_m"]
-            lifted = desired.copy()
-            lifted[2, 3] += self.config["lift_distance_m"]
-            tcp_from_object = np.linalg.inv(desired) @ body
-            acquire_waypoint_tail = [
-                (pre, 0., "approach"),
-                (desired, self.config["settle_s"], "grasp"),
-                (desired, self.config["settle_s"], "close"),
-                (lifted, self.config["settle_s"], "lift"),
-            ]
         elif operation == "place":
             desired = np.asarray(original_return) @ np.linalg.inv(tcp_from_object)
             above = desired.copy()
@@ -722,38 +783,76 @@ class IsaacPhaseMotion:
                                           tcp_from_object, target, self.config)
         if operation == "acquire":
             failures, candidates = [], []
-            base_height = max(float(tcp[2, 3]), float(pre[2, 3]), float(desired[2, 3]))
-            for order, clearance in enumerate(acquire_transit_clearances(self.config)):
-                transit_height = base_height + clearance
-                raised = tcp.copy()
-                raised[2, 3] = transit_height
-                staged = pre.copy()
-                staged[2, 3] = transit_height
-                candidate_waypoints = [
-                    (tcp, self.config["settle_s"], "open"),
-                    (raised, 0., "transit_raise"),
-                    (staged, 0., "transit_cross"),
-                    *acquire_waypoint_tail,
-                ]
-                try:
-                    candidate = self.qualify(
-                        candidate_waypoints, source, tcp_from_object, operation, np.asarray(original_return),
-                    )
-                    candidate["acquire_transit_clearance_m"] = clearance
-                    candidates.append((route_joint_travel(candidate), order, candidate))
-                except PhaseMotionError as exc:
-                    failures.append((clearance, exc))
+            variants = acquire_grasp_variants(
+                desired,
+                approach,
+                arguments["observation_model"].get("grasp_symmetry"),
+                acquire_axial_symmetry_angles(self.config),
+            )
+            transport_orientations = acquire_transport_orientations(self.config)
+            for clearance_order, clearance in enumerate(acquire_transit_clearances(self.config)):
+                for transport_order, transport_quaternion in enumerate(transport_orientations):
+                    for symmetry_order, (symmetry_angle, variant_desired, variant_approach) in enumerate(variants):
+                        pre = variant_desired.copy()
+                        pre[:3, 3] -= variant_approach * self.config["approach_distance_m"]
+                        lifted = variant_desired.copy()
+                        lifted[2, 3] += self.config["lift_distance_m"]
+                        candidate_relation = np.linalg.inv(variant_desired) @ body
+                        base_height = max(float(tcp[2, 3]), float(pre[2, 3]), float(variant_desired[2, 3]))
+                        transit_height = base_height + clearance
+                        raised = tcp.copy()
+                        raised[2, 3] = transit_height
+                        transport_ready = raised.copy()
+                        transport_ready[:3, :3] = Rotation.from_quat(transport_quaternion).as_matrix()
+                        transported = transport_ready.copy()
+                        transported[:2, 3] = pre[:2, 3]
+                        staged = pre.copy()
+                        staged[2, 3] = transit_height
+                        candidate_waypoints = [
+                            (tcp, self.config["settle_s"], "open"),
+                            (raised, 0., "transit_raise"),
+                            (transport_ready, 0., "transit_orient"),
+                            (transported, 0., "transit_cross"),
+                            (staged, 0., "staging_reorient"),
+                            (pre, 0., "approach"),
+                            (variant_desired, self.config["settle_s"], "grasp"),
+                            (variant_desired, self.config["settle_s"], "close"),
+                            (lifted, self.config["settle_s"], "lift"),
+                        ]
+                        try:
+                            candidate = self.qualify(
+                                candidate_waypoints, source, candidate_relation, operation, np.asarray(original_return),
+                            )
+                            candidate["acquire_transit_clearance_m"] = clearance
+                            candidate["acquire_transport_orientation_xyzw"] = list(transport_quaternion)
+                            if symmetry_angle is not None:
+                                candidate["acquire_axial_symmetry_angle_rad"] = symmetry_angle
+                            candidate_target = deepcopy(target)
+                            candidate_target["grasp_frame"]["position_m"] = variant_desired[:3, 3].tolist()
+                            candidate_target["grasp_frame"]["orientation_xyzw"] = Rotation.from_matrix(
+                                variant_desired[:3, :3]
+                            ).as_quat().tolist()
+                            candidate_target["approach_direction"]["vector"] = variant_approach.tolist()
+                            candidates.append((
+                                route_joint_travel(candidate), clearance_order, transport_order, symmetry_order,
+                                candidate, candidate_target, candidate_relation,
+                            ))
+                        except PhaseMotionError as exc:
+                            failures.append((clearance, transport_order, symmetry_angle, exc))
             if not candidates:
                 if not failures:
-                    raise PhaseMotionError("route_unavailable", "no acquire transit clearance was configured")
-                codes = {exc.code for _clearance, exc in failures}
-                representative = failures[0][1]
+                    raise PhaseMotionError("route_unavailable", "no acquire route variant was configured")
+                codes = {exc.code for _clearance, _transport, _angle, exc in failures}
+                representative = failures[0][3]
                 failure_code = representative.code if len(codes) == 1 else "route_unavailable"
                 details = "; ".join(
-                    f"clearance={clearance}: {exc.code}: {exc}" for clearance, exc in failures
+                    f"clearance={clearance}, transport={transport_order}, axial_angle={symmetry_angle}: "
+                    f"{exc.code}: {exc}"
+                    for clearance, transport_order, symmetry_angle, exc in failures
                 )
                 raise PhaseMotionError(failure_code, details) from representative
-            route = min(candidates, key=lambda item: (item[0], item[1]))[2]
+            selected = min(candidates, key=lambda item: item[:4])
+            route, target, tcp_from_object = selected[4:]
         elif operation == "pour":
             clearance_limit = self.profile.alignment_tolerance_m - self.config["position_tolerance_m"]
             clearances = sorted({self.config["pour_lip_clearance_m"], clearance_limit})

@@ -16,6 +16,7 @@ from robotwin20_adapter.geometry_recovery import GeometryRecoveryResult
 from robotwin20_adapter.grasp_proposal import GraspNetProposalProvider
 
 from isaacsim_lab.simulator_truth_perception import (
+    axial_grasp_symmetry,
     object_point_cloud,
     process_feature_candidates,
     process_feature_candidates_by_component,
@@ -31,6 +32,83 @@ from isaacsim_lab.visual_perception import (
 )
 
 CONVENTION = np.array([[0, 0, 1, 0], [0, 1, 0, 0], [-1, 0, 0, 0], [0, 0, 0, 1.]])
+
+
+def test_final_mesh_axial_symmetry_requires_covered_body_slices():
+    angles = np.linspace(0., 2 * np.pi, 32, endpoint=False)
+    levels = np.linspace(.4, .9, 12)
+    cylinder = np.asarray([
+        [.04 * np.cos(angle), .04 * np.sin(angle), level]
+        for level in levels for angle in angles
+    ])
+
+    symmetry = axial_grasp_symmetry(cylinder, [0., 0., .9], [0., 0., 1.])
+
+    assert symmetry["kind"] == "axial"
+    assert symmetry["axis_world"] == pytest.approx([0., 0., 1.])
+    assert symmetry["validated_slices"] >= 3
+    with pytest.raises(ValueError, match="does not prove axial grasp symmetry"):
+        axial_grasp_symmetry(cylinder[cylinder[:, 0] >= 0.], [0., 0., .9], [0., 0., 1.])
+
+
+def test_execution_context_projects_only_provider_declared_grasp_symmetry():
+    visual = object.__new__(LabVisualPerception)
+    source_ref = "entity://source"
+    source = {
+        "entity_ref": source_ref,
+        "category": "reagent_bottle",
+        "points_ref": "artifact://points/source",
+        "world_from_camera": np.eye(4).tolist(),
+        "geometry_ref": "artifact://geometry/source",
+    }
+    visual._records = lambda _binding: {source_ref: source}
+    visual.identities = {"artifact://calibration/front": {
+        source_ref: {"captured_body_pose": np.eye(4).tolist()},
+    }}
+    declared = {"kind": "axial", "axis_world": [0., 0., 1.], "origin_world": [0., 0., .7]}
+    visual._selected_feature_records = lambda *_args: ({"grasp_symmetry": declared}, {"feature_kind": "rim"})
+    binding = {
+        "entity_ref": source_ref,
+        "destination_ref": "destination://beaker",
+        "observation_ref": "observation://scene/front",
+        "calibration_ref": "artifact://calibration/front",
+        "process_feature_candidate_set_ref": "process-feature-set://scene/current",
+        "process_feature_refs": ["process-feature://source/rim", "process-feature://beaker/rim"],
+    }
+
+    context = visual.execution_context(binding)
+
+    assert context["grasp_symmetry"] == declared
+    del binding["process_feature_refs"]
+    assert "grasp_symmetry" not in visual.execution_context(binding)
+
+
+@pytest.mark.parametrize("destination_ref", [None, "", "destination://", "entity://beaker"])
+def test_execution_context_requires_nonempty_destination_binding(destination_ref):
+    visual = object.__new__(LabVisualPerception)
+    source_ref = "entity://source"
+    source = {
+        "entity_ref": source_ref,
+        "category": "reagent_bottle",
+        "points_ref": "artifact://points/source",
+        "world_from_camera": np.eye(4).tolist(),
+        "geometry_ref": "artifact://geometry/source",
+    }
+    visual._records = lambda _binding: {source_ref: source}
+    visual.identities = {"artifact://calibration/front": {
+        source_ref: {"captured_body_pose": np.eye(4).tolist()},
+    }}
+    visual._selected_feature_records = Mock(side_effect=AssertionError("invalid destination must not be resolved"))
+    binding = {
+        "entity_ref": source_ref,
+        "destination_ref": destination_ref,
+        "observation_ref": "observation://scene/front",
+        "calibration_ref": "artifact://calibration/front",
+        "process_feature_candidate_set_ref": "process-feature-set://scene/current",
+        "process_feature_refs": ["process-feature://source/rim", "process-feature://beaker/rim"],
+    }
+
+    assert "grasp_symmetry" not in visual.execution_context(binding)
 
 
 def test_depth_projection_uses_optical_frame_calibration():

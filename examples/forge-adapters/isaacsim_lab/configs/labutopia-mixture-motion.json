@@ -15,6 +15,26 @@
     0.08,
     0.12
   ],
+  "acquire_transport_orientation_candidates_xyzw": [
+    [
+      1.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    [
+      0.0,
+      1.0,
+      0.0,
+      0.0
+    ]
+  ],
+  "acquire_axial_symmetry_angles_rad": [
+    0.0,
+    1.5707963267948966,
+    -1.5707963267948966,
+    3.141592653589793
+  ],
   "lift_distance_m": 0.12,
   "process_clearance_m": 0.18,
   "pour_lip_clearance_m": 0.04,

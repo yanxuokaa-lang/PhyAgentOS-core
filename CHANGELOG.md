@@ -48,6 +48,28 @@
 
 ## 最近五版本 / Latest five versions
 
+## v16.3.8 (2026-11-01 20:00) - codex
+
+### Summary [Completed; no motion]
+- [env] [feat] Isaac acquire preparation now raises with the current orientation, selects a configured transport orientation, translates laterally, reorients at staging, and only then approaches the grasp. / Isaac acquire preparation 现在依次执行当前姿态抬升、安全运输姿态、横移、staging 重定向和最终接近。
+- [sense] [feat] Final-composed USD mesh slices provide optional axial grasp-symmetry evidence; labels, USD paths, and a circular opening alone do not authorize equivalent grasp rotations. / 轴对称候选来自最终组合网格横截面证据，不依据标签、路径或单一圆形瓶口推断。
+- [env] [fix] Every clearance x transport x axial-angle combination passes the unchanged workspace, IK continuity, joint-limit, self/environment collision, and payload checks, then successful routes are ranked by joint travel and configured order. / 每个组合继续通过完整安全门禁，仅对全部通过的路线排序。
+- [test] [test] Focused regression passed `135`; full Isaac Adapter plus subtask-executor boundary regression passed `329`; Ruff, compileall, JSON validation, and diff check passed. / 定向 135 项、完整边界 329 项及静态检查通过。
+- [docs] [docs] The no-motion run exercised 24 route combinations per qualified R03 grasp and stopped at staging/approach qualification with no controller command or world change. / 无动作运行对每个 R03 资格 grasp 检查 24 条路线，均在 staging/approach 阶段停止。
+- [docs] [docs] Preserved preview: `out/lab-fullchain-truth-20261101-staged-symmetry-no-motion-r1/artifacts/labutopia/no-motion-video/staged-symmetry-observation.mp4` (5 seconds, 1600x1200, controller disabled). / 保留 5 秒真实相机静态预览，明确禁用控制器。
+
+### Key Diff / 关键 Diff
+```diff
+- lateral transit uses final grasp orientation and has no validated equivalent-orientation search
++ staged transport route plus final-mesh-supported axial alternatives
++ every variant remains subject to the existing complete safety qualification
+```
+
+See `changelog/2026-11.md` for exact files, line ranges, runtime evidence, and review findings.
+
+### Git Commit
+- Pending implementation commit; branch `feature/planning-loop`.
+
 ## v16.3.7 (2026-11-01 19:37) - codex
 
 ### Summary [Completed; no motion]
@@ -110,57 +132,3 @@ See `changelog/2026-11.md` for the execution command and evidence boundary.
 ### Git Commit
 - Runtime evidence commit: `2f155d08`; branch `feature/planning-loop`; `2026-11-01 16:41:36 +0800`.
 - Push withheld pending explicit approval under robotics runtime-safety guidance. / 按机器人运行安全规则，未获明确批准前不推送。
-
-## v16.3.3 (2026-11-01 13:44) - codex
-
-### Summary [Completed; no motion]
-- [policy] [feat] Task-Affordance Preparation now returns selected-first ordered `qualified_grasp_candidate_refs`; AgentLoop projects them from the unique direct predecessor, and Action preparation resolves only those opaque refs from the unchanged same-capture binding. / Task-Affordance Preparation 返回 selected-first 有序资格引用，AgentLoop 从唯一直接前驱投影，Action 只从同次捕获 binding 解析这些引用。
-- [sense] [fix] GraspNet keeps a 512-candidate native pool and retains 64 deterministic geometry-diverse proposals; final-composed USD mesh vertices provide simulator-truth object points, and bottle support-end grasps are filtered before embodiment preparation. / 保留 512 原生候选并选择 64 个几何多样候选；最终组合 USD mesh 提供真值点云，并在 embodiment preparation 前过滤瓶底候选。
-- [env] [fix] Isaac preparation validates final Franka aperture and searches configured route clearances while preserving IK, self/environment collision, payload, workspace and frame gates. / Isaac preparation 校验最终 Franka 开口并搜索配置化 clearance，保留 IK、碰撞、payload、workspace 与坐标系门禁。
-- [test] [test] Current focused regression: `244 passed, 1 warning`; earlier staged suites: `474 passed`; Ruff, compileall and diff check passed. A broader non-acceptance sweep exposed stale fixtures and is recorded in the monthly log. / 当前聚焦回归 244 项通过，先前分阶段累计 474 项通过，静态检查通过；更广 sweep 的旧 fixture 失败已记录于月度日志。
-- [docs] [docs] Diagnosis: `.task/labutopia-r03-grasp-candidate-exhaustion-20261101.md:L1-L183`; review: `docs/forge/IMPLEMENTATION_REVIEW_V16_3_3.md:L1-L59`. / 保存 r3-r9 诊断及 C-Safety 实现审查。
-
-### Key Diff / 关键 Diff
-```diff
-- Action alternative recovery reads the raw 64-candidate GraspNet binding
-+ Preparation returns selected-first task-qualified opaque grasp refs
-+ Action preparation iterates only that same-capture qualified set
-```
-
-### Runtime Evidence
-- r9: `out/lab-fullchain-truth-20261101-r03-r04-no-motion-r9/`, task `task_114477e266344f0b`. The eight qualified refs and Adapter rejection refs match exactly in order; no raw candidate re-entered. / 八个资格引用与 Adapter 拒绝列表顺序完全一致，原始候选未回流。
-- `simulated_motion_enabled=false`, `controller_outcomes=[]`, `world_change_started=false`, `outcome_known=true`, `possession_state=empty`; R04 and GLASS_ROD were not started. R03 still has no admissible route, so execution remains blocked. / 保持零动作、空持有；R04 和玻璃棒未启动，R03 仍无可行路线。
-
-### Git Commit
-- Implementation commit: `9a78d8e7`; branch `feature/planning-loop`; `2026-11-01 16:27:01 +0800`.
-- Push withheld pending explicit approval under robotics runtime-safety guidance. / 按机器人运行安全规则，未获明确批准前不推送。
-
-## v16.3.1 (2026-10-31 19:50) - codex
-
-### Summary [Completed; dual-arm execution remains unavailable]
-- [env] [fix] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py:L67-L95` rejects non-single-arm or non-`franka` requests before creating an assignment, including held-object preparation. / 对非单臂或非 `franka` 请求在创建 assignment 前拒绝，包含持有物体后的重新准备。
-- [env] [fix] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/paos_client.py:L147-L157` preserves `unsupported_capability_topology` as an explicit Adapter failure. / 保留明确的 Adapter 能力拓扑错误，不转成抓取重试。
-- [test] [test] `test_phase_pipeline.py:L216-L253` covers initial and held bimanual rejection; 63 focused tests passed, Ruff, compileall, and diff check passed. No Isaac or Action started. / 覆盖初始及持有状态的双臂请求拒绝；定向测试 63 项通过，Ruff、compileall、diff check 通过；未启动 Isaac 或动作。
-- [docs] [docs] Saved the R01/R02 scene-entity versus manipulator-capability diagnosis and required second-Articulation work in `.task/labutopia-dual-arm-capability-diagnosis-20261031.md:L1-L38`. / 保存 R01/R02 场景实体与机械臂能力的诊断，以及增加第二个 Articulation 的前置工作。
-
-### Git Commit
-- Implementation commit: `077b5338`; branch `feature/planning-loop`; `2026-10-31 23:35 Asia/Shanghai`. / 实现提交 `077b5338`；分支 `feature/planning-loop`；北京时间 `2026-10-31 23:35`。
-
-## v16.3.0 (2026-10-31 19:05) - codex
-
-### Summary [Completed]
-- [policy] [fix] `PhyAgentOS/agent/recovery_decisions.py:L37-L163,L235-L266,L396-L489` now projects only same-capture opaque grasp alternatives for a known zero-motion route-collision failure; stale provenance, missing alternatives, and provider-rejected candidates stop recovery. / 仅为已知零动作路线碰撞失败投影同捕获 opaque 替代候选；证据过期、无替代候选或已被 Provider 拒绝的候选保持停止。
-- [env] [fix] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/paos_client.py:L145-L184` reports bounded `requires_replan` and all rejected candidate refs without changing collision checks. / 报告有界重规划提示和全部拒绝候选引用，不改变碰撞检查。
-- [policy] [fix] `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/subtask_executor.py:L477-L517,L765-L799,L1068-L1090` admits replan only for the first known no-motion preparation failure with empty possession and zero completed atoms; no automatic retry. / 仅在首个已知零动作准备失败、空持有且零原子动作时允许重规划，不自动重试。
-- [test] [test] Added positive and negative recovery/Adapter tests; focused suites `124 passed`, Ruff, compileall and diff check passed. No Isaac or physical Action was started. / 增加正负恢复与 Adapter 测试；定向测试 `124 passed`，Ruff、compileall、diff check 通过；未启动 Isaac 或物理动作。
-
-### Files and Diff / 文件与 Diff
-- `PhyAgentOS/agent/recovery_decisions.py:L37-L163,L235-L266,L396-L489`: before, generic failure recovery lacked a same-capture alternative projection; after, only exact task/revision/observation/scene/frame/calibration/entity/candidate-set matches contribute opaque refs, excluding the failed and provider-rejected candidates. / 修改前无同捕获候选恢复投影；修改后只投影完整身份匹配的 opaque 引用并排除失败和 Provider 已拒绝候选。
-- `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/paos_client.py:L145-L184`: before, all rejected routes produced a generic no-admissible-grasp error; after, explicit route collision carries bounded `requires_replan`, recommendation and rejected refs without changing collision evaluation. / 修改前只返回通用错误；修改后路线碰撞显式携带有限重规划信号和拒绝引用，不改变碰撞判断。
-- `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/subtask_executor.py:L397-L432,L477-L517,L765-L799,L1068-L1090`: before, known zero-motion preparation failure settled with no replan; after, only the first known no-motion prepare failure with empty possession, zero completed atoms, explicit adapter ownership and route-collision code propagates replan; internal retry remains absent. / 修改前已知零动作准备失败不能重规划；修改后仅满足完整零动作事实的路线碰撞进入 Agent replan，不做内部重试。
-- `PhyAgentOS/forge/capability_runtime/manipulation_prepare.py:L65-L83,L291-L321,L674-L702` and `examples/forge-skills/pick-place-workflow/contracts/manipulation.prepare.tool.yaml:L535-L561`: add provider-neutral no-motion facts and opaque `rejected_candidate_refs`. / 增加 Provider 中立的零动作事实和 opaque 拒绝候选引用。
-- Tests: `examples/forge-skills/pick-place-workflow/tests/test_subtask_executor.py:L610-L680`; `tests/test_recovery_decisions.py:L165-L345`; `examples/forge-adapters/isaacsim_lab/tests/test_paos_integration.py:L932-L963`. Docs/diagnosis: `.task/labutopia-pour-lip-task-conditioned-20261031.md:L74-L110`; `docs/forge/MANIPULATION_DAG_DEVELOPER_GUIDE.md:L585-L599`; `docs/forge/IMPLEMENTATION_REVIEW_V16_3_0.md:L1-L68`; detailed bilingual record: `changelog/2026-10_part16.md:L1-L72`. / 测试覆盖正例及过期、歧义、已拒绝候选和不满足零动作条件的负例；诊断、开发指南及实现审查已更新。
-- Key Diff: `requires_replan = false` for the generic failure path -> `requires_replan = explicit_known_zero_motion_route_collision`; candidate retry -> Agent-proposed replacement revision using same-capture opaque alternatives. / 关键差异：通用失败固定不可重规划改为只允许明确的已知零动作路线碰撞；自动重试改为 Agent 在替代 revision 中选择同捕获 opaque 候选。
-
-### Git Commit
-- Implementation commit: `f27c01e5`; branch `feature/planning-loop`; `2026-10-31 19:42 Asia/Shanghai`. / 实现提交 `f27c01e5`；分支 `feature/planning-loop`；北京时间 `2026-10-31 19:42`。
