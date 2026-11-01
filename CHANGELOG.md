@@ -68,8 +68,8 @@
 See `changelog/2026-11.md` and `.task/labutopia-r03-authorized-execution-diagnosis-20261101.md` for the route distribution, evidence identifiers, and PAOS ownership review.
 
 ### Git Commit
-- Runtime evidence commit: `<pending>`; branch `feature/planning-loop`.
-- Log receipt commit: `<pending>`.
+- Runtime evidence commit: `40745371`; branch `feature/planning-loop`.
+- Log receipt commit: recorded by the follow-up documentation commit. / 日志回执由后续文档提交记录。
 
 ## v16.3.8 (2026-11-01 20:00) - codex
 
