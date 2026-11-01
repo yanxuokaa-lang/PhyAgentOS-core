@@ -67,6 +67,10 @@
 
 See `changelog/2026-11.md` for exact files, line ranges, validation commands, and runtime evidence.
 
+### Git Commit
+- Implementation commit: `38b46429`; branch `feature/planning-loop`; `2026-11-01 19:54:27 +0800`.
+- Push failed because `github.com:443` was unreachable after `136405 ms`; commits remain local. / 推送因 GitHub 443 端口不可达而失败，提交保留在本地。
+
 ## v16.3.6 (2026-11-01 19:14) - codex
 
 ### Summary [Completed; all-small-vessel scene still stopped before motion]
