@@ -18,8 +18,8 @@
   - GLASS_ROD stir: `radius_m=0.009`, `depth_m=0.04`, `turns=2.0`, `duration_s=4.0`, `direction=ccw`
 - Forbidden shortcuts: hard-coded object coordinates, task-specific grasp poses, AgentLoop access to USD paths or gripper limits, bypassing preparation, automatic retry after uncertain motion, fabricated liquid-transfer claims.
 - Resolved defect: task-affordance Preparation now returns a selected-first ordered `qualified_grasp_candidate_refs` list, and Action preparation resolves only those opaque references from the unchanged same-capture binding. Provider-rejected raw GraspNet candidates cannot re-enter embodiment preparation.
-- Current blocker: the eight R03 task-qualified candidates in no-motion run `r9` all fail Adapter-owned aperture, IK, collision, self-collision, or payload checks. Motion remains unauthorized; R04 and GLASS_ROD are not started.
-- Authorized simulation attempt: `out/lab-fullchain-truth-20261101-r03-r04-execute-r3/`, task `task_bf1d10503ac04534`, session `cli:lab-a3347a964178`. The Host enabled simulated motion, but the same eight qualified candidates failed preparation before any controller command; `controller_outcomes=[]`, `world_change_started=false`, `outcome_known=true`, and `possession_state=empty`.
+- Current blocker: after LabUtopia v0.2.8 replaced R03/R04 with the two smallest flask geometries, fresh execution run `out/lab-fullchain-truth-20261101-r03-r04-small-vessel-execute-r1/` produced 19 same-capture task-qualified R03 grasps. Thirteen exceed the composed Franka aperture; the six aperture-valid candidates fail self-collision, table/BEAKER route collision, or IK. The blocker is now specifically Adapter-owned route feasibility, not merely vessel size or AgentLoop selection.
+- Latest authorized simulation attempt: task `task_b4d730ffb7f043b7`, session `cli:lab-d099bf7187df`, scene revision `labutopia-tabletop-rod-rack-v1:b50bb095e683479c8779e3410b50bdfb:0`. `controller_outcomes=[]`, `world_change_started=false`, `outcome_known=true`, and `possession_state=empty`; R04 and GLASS_ROD did not start.
 
 ## Failure-first behavior
 

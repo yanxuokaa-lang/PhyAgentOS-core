@@ -48,6 +48,16 @@
 
 ## 最近五版本 / Latest five versions
 
+## v16.3.5 (2026-11-01 18:51) - codex
+
+### Summary [Completed; small-vessel scene still stopped before motion]
+- [env] [exp] Started a new `--execute` R03 -> R04 -> GLASS_ROD Agent run against the LabUtopia v0.2.8 small-vessel scene; task `task_b4d730ffb7f043b7`, session `cli:lab-d099bf7187df`. / 在 LabUtopia v0.2.8 小瓶场景发起新的全链路 Agent 仿真执行。
+- [sense] [test] Fresh simulator-truth evidence measured R03 at `77 x 77 x 97 mm` and R04 at `93 x 93 x 165 mm`; no ReMake/DFNet/SAM2 worker or recovery artifact was created. / 新鲜仿真真值确认小瓶尺寸，未调用透明几何恢复。
+- [env] [test] R03 returned 19 same-capture task-qualified grasps, but all failed preparation: 13 aperture, 4 route collision, 1 self-collision and 1 IK failure. / R03 产生 19 个同次捕获资格候选，但全部未通过物理准备。
+- [policy] [test] Prompt parameters were preserved exactly; `controller_outcomes=[]`, `world_change_started=false`, `outcome_known=true`, `possession_state=empty`. R04 and stirring did not start. / 指令参数原样保留；控制器未启动，世界未变化，R04 与搅拌未开始。
+
+See `changelog/2026-11.md` for the execution command and evidence boundary.
+
 ## v16.3.4 (2026-11-01 16:33) - codex
 
 ### Summary [Completed; authorized simulation stopped before motion]
