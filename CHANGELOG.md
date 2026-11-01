@@ -48,6 +48,26 @@
 
 ## 最近五版本 / Latest five versions
 
+## v16.3.4 (2026-11-01 16:33) - codex
+
+### Summary [Completed; authorized simulation stopped before motion]
+- [env] [exp] Started the R03 -> R04 -> GLASS_ROD full-chain Agent with `--execute`, simulator-truth labels/depth/point clouds/final USD geometry, and no ReMake invocation. / 使用 `--execute` 启动 R03、R04、玻璃棒全链路，采用 simulator-truth 真值，不调用 ReMake。
+- [policy] [test] PlanGraph preserved the exact prompt parameters: both pours `tilt_rad=0.87, hold_s=0.6`; stir `radius_m=0.009, depth_m=0.04, turns=2, duration_s=4, direction=ccw`. / PlanGraph 原样保存用户提示词中的两次倾倒和搅拌参数。
+- [env] [test] R03 process/task-affordance preparation was available, but all eight qualified grasps failed aperture, IK, self/environment collision, or payload checks. The Adapter rejection list exactly matched the qualified set. / R03 工艺和 task-affordance preparation 可用，但八个资格 grasp 均未通过物理准备，Adapter 拒绝列表与资格集合完全一致。
+- [env] [test] `simulated_motion_enabled=true`, but `controller_outcomes=[]`, `world_change_started=false`, `outcome_known=true`, and `possession_state=empty`; R04 and stirring did not start. / Host 已授权仿真运动，但 preparation 在首个控制器命令前停止，场景未变化、夹爪为空，R04 和搅拌未启动。
+- [docs] [docs] Workspace: `out/lab-fullchain-truth-20261101-r03-r04-execute-r3/`; task `task_bf1d10503ac04534`; session `cli:lab-a3347a964178`. / 保存运行目录、任务和 session 证据。
+
+### Key Diff / 关键 Diff
+```diff
+- no-motion Host authorization
++ --execute authorized at Host boundary
++ preparation still blocks every controller command
+```
+
+### Git Commit
+- Commit: pending; branch `feature/planning-loop`.
+- Push withheld pending explicit approval under robotics runtime-safety guidance. / 按机器人运行安全规则，未获明确批准前不推送。
+
 ## v16.3.3 (2026-11-01 13:44) - codex
 
 ### Summary [Completed; no motion]
@@ -121,8 +141,3 @@
 
 ### Git Commit
 - Implementation commit: `f27c01e5`; branch `feature/planning-loop`; `2026-10-31 19:42 Asia/Shanghai`. / 实现提交 `f27c01e5`；分支 `feature/planning-loop`；北京时间 `2026-10-31 19:42`。
-
-## v16.2.9 (2026-10-31 18:25) - codex
-
-### Summary [Completed]
-- [docs] [docs] Completed the v16.2.8 commit receipt in `changelog/2026-10.md`; implementation commit `48946976` is recorded and no push was performed under robotics runtime-safety guidance. / 完成 v16.2.8 提交回执，记录实现提交 `48946976`，按机器人运行安全要求未推送。

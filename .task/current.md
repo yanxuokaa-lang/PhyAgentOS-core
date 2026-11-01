@@ -19,6 +19,7 @@
 - Forbidden shortcuts: hard-coded object coordinates, task-specific grasp poses, AgentLoop access to USD paths or gripper limits, bypassing preparation, automatic retry after uncertain motion, fabricated liquid-transfer claims.
 - Resolved defect: task-affordance Preparation now returns a selected-first ordered `qualified_grasp_candidate_refs` list, and Action preparation resolves only those opaque references from the unchanged same-capture binding. Provider-rejected raw GraspNet candidates cannot re-enter embodiment preparation.
 - Current blocker: the eight R03 task-qualified candidates in no-motion run `r9` all fail Adapter-owned aperture, IK, collision, self-collision, or payload checks. Motion remains unauthorized; R04 and GLASS_ROD are not started.
+- Authorized simulation attempt: `out/lab-fullchain-truth-20261101-r03-r04-execute-r3/`, task `task_bf1d10503ac04534`, session `cli:lab-a3347a964178`. The Host enabled simulated motion, but the same eight qualified candidates failed preparation before any controller command; `controller_outcomes=[]`, `world_change_started=false`, `outcome_known=true`, and `possession_state=empty`.
 
 ## Failure-first behavior
 
