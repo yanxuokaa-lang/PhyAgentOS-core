@@ -48,6 +48,16 @@
 
 ## 最近五版本 / Latest five versions
 
+## v16.3.6 (2026-11-01 19:14) - codex
+
+### Summary [Completed; all-small-vessel scene still stopped before motion]
+- [env] [exp] Started the authorized R03 -> R04 -> GLASS_ROD full chain against LabUtopia v0.2.9; R03 measured `63.215 x 63.215 x 79.948 mm` and R04 measured `65.474 x 65.046 x 115.680 mm`. / 在全部小型瓶体场景发起授权仿真执行并确认最终组合尺寸。
+- [sense] [test] Used same-capture simulator-truth labels, depth, point clouds and final USD geometry; no ReMake/DFNet/SAM2 or transparent-recovery artifact was created. / 使用同次捕获仿真真值，未调用透明几何恢复。
+- [policy] [test] Task-Affordance qualified only R03 candidates `15/16/23`; Action preparation consumed exactly those opaque refs and did not recover from the raw GraspNet set. / Action 仅遍历三个资格引用，没有候选集合泄漏。
+- [env] [test] All three failed pre-motion on self-collision, table route collision or IK. `controller_outcomes=[]`, `world_change_started=false`, `outcome_known=true`, `possession_state=empty`; R04 and stirring did not start. / 三个候选均在动作前失败，场景未变化，后续子任务未启动。
+
+See `changelog/2026-11.md` for the command, safety boundary, and runtime evidence.
+
 ## v16.3.5 (2026-11-01 18:51) - codex
 
 ### Summary [Completed; small-vessel scene still stopped before motion]

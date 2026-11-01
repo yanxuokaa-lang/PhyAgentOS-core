@@ -11,15 +11,15 @@
 - Public contract impact: none. Existing `grasp.propose` candidates and `manipulation.prepare` evidence remain unchanged.
 - Evidence lineage: same-capture simulator-truth observation and object point cloud -> GraspNet native proposals -> geometry-diverse bounded candidates -> task-affordance selection -> no-motion preparation -> Action feedback.
 - Freshness boundary: observation, scene revision, frame, calibration, candidate set, process-feature set, and task-affordance selection must remain identical through preparation.
-- Motion boundary: no live action until a fresh no-motion run produces an admissible R03 route; any unknown outcome or world change stops the workflow.
+- Motion boundary: simulation execution is authorized only after preparation; any unknown outcome or world change stops the workflow. The latest authorized run stopped before the first controller command.
 - User parameters:
   - R03 -> BEAKER: `tilt_rad=0.87`, `hold_s=0.60`
   - R04 -> BEAKER: `tilt_rad=0.87`, `hold_s=0.60`
   - GLASS_ROD stir: `radius_m=0.009`, `depth_m=0.04`, `turns=2.0`, `duration_s=4.0`, `direction=ccw`
 - Forbidden shortcuts: hard-coded object coordinates, task-specific grasp poses, AgentLoop access to USD paths or gripper limits, bypassing preparation, automatic retry after uncertain motion, fabricated liquid-transfer claims.
 - Resolved defect: task-affordance Preparation now returns a selected-first ordered `qualified_grasp_candidate_refs` list, and Action preparation resolves only those opaque references from the unchanged same-capture binding. Provider-rejected raw GraspNet candidates cannot re-enter embodiment preparation.
-- Current blocker: after LabUtopia v0.2.8 replaced R03/R04 with the two smallest flask geometries, fresh execution run `out/lab-fullchain-truth-20261101-r03-r04-small-vessel-execute-r1/` produced 19 same-capture task-qualified R03 grasps. Thirteen exceed the composed Franka aperture; the six aperture-valid candidates fail self-collision, table/BEAKER route collision, or IK. The blocker is now specifically Adapter-owned route feasibility, not merely vessel size or AgentLoop selection.
-- Latest authorized simulation attempt: task `task_b4d730ffb7f043b7`, session `cli:lab-d099bf7187df`, scene revision `labutopia-tabletop-rod-rack-v1:b50bb095e683479c8779e3410b50bdfb:0`. `controller_outcomes=[]`, `world_change_started=false`, `outcome_known=true`, and `possession_state=empty`; R04 and GLASS_ROD did not start.
+- Current blocker: LabUtopia v0.2.9 scales all reagent vessels below the Franka aperture. Fresh task-affordance selection returned only R03 candidates `15`, `16`, and `23`; Action preparation rejected exactly those three with `self_collision`, `route_collision`, or `inverse_kinematics_failed`. The blocker is Adapter-owned `transit_cross` route feasibility, not vessel size, semantic binding, prompt parameters, or candidate-set leakage.
+- Latest authorized simulation attempt: workspace `out/lab-fullchain-truth-20261101-all-small-vessel-execute-r3/`, task `task_135e08bbdf8e429b`, session `cli:lab-3a7197f13915`, scene revision `labutopia-tabletop-rod-rack-v1:0e65f1fb903d4ef88a533d530cec59c1:0`. R03 is `63.215 x 63.215 x 79.948 mm` and R04 is `65.474 x 65.046 x 115.680 mm`. `controller_outcomes=[]`, `world_change_started=false`, `outcome_known=true`, and `possession_state=empty`; R04 and GLASS_ROD did not start.
 
 ## Failure-first behavior
 
