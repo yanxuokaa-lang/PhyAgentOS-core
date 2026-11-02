@@ -609,6 +609,215 @@ def test_acquire_preparation_ranks_geometry_equivalent_grasps_after_full_qualifi
     assert selected[4][0][:3, :3] == pytest.approx(selected[5][0][:3, :3])
 
 
+def _grasp_approach_probe_fixture():
+    model = object.__new__(IsaacPhaseMotion)
+    model.config = {
+        "acquire_axial_symmetry_angles_rad": [0., np.pi / 2],
+        "acquire_staging_corridor_candidates": [
+            {"approach_distance_m": .12, "staging_backoff_m": 0., "tangential_offset_m": 0.},
+            {"approach_distance_m": .18, "staging_backoff_m": .08, "tangential_offset_m": .06},
+        ],
+        "workspace_min_m": [-1., -1., 0.],
+        "workspace_max_m": [1., 1., 2.],
+        "position_tolerance_m": .005,
+    }
+    model.hand_from_tcp = np.eye(4)
+    model.limits = np.tile([-3., 3.], (7, 1))
+    model.joints = lambda: np.zeros(7)
+    model.validate_grasp_aperture = lambda _target: None
+    body = pose_matrix([0., 0., .8], [0., 0., 0., 1.])
+    model.bind_observed_model = lambda *_args: (body.copy(), np.eye(4))
+    model.observed_pose = lambda _source: body.copy()
+    model.solver = SimpleNamespace(
+        compute_inverse_kinematics=lambda *_args, **_kwargs: (np.zeros(7), True)
+    )
+    model._collisions = lambda *_args, **_kwargs: None
+    model._artifact = lambda _kind, _value: "artifact://labutopia/grasp-approach/test.json"
+    target = {
+        "world_from_control": {
+            "translation_m": [0., 0., 0.],
+            "orientation_xyzw": [0., 0., 0., 1.],
+        },
+        "entity_prim_path": "/World/R03/Model",
+        "object_pose": {"position_m": [0., 0., .8], "orientation_xyzw": [0., 0., 0., 1.]},
+        "grasp_frame": {"position_m": [.1, 0., .9], "orientation_xyzw": [0., 0., 0., 1.]},
+        "approach_direction": {"vector": [1., 0., 0.]},
+        "destination_pose": {"position_m": [.2, 0., .8], "orientation_xyzw": [0., 0., 0., 1.]},
+        "return_pose": {"position_m": [0., 0., .8], "orientation_xyzw": [0., 0., 0., 1.]},
+        "grasp_geometry": {"width_m": .02},
+    }
+    arguments = {
+        "candidate_ref": "candidate://source/one",
+        "observation_ref": "observation://scene/front",
+        "scene_revision": "scene",
+        "frame_id": "front",
+        "calibration_ref": "artifact://calibration/front",
+        "manipulation_target": target,
+        "observation_model": {
+            "grasp_symmetry": {
+                "kind": "axial",
+                "axis_world": [0., 0., 1.],
+                "origin_world": [0., 0., .8],
+            },
+        },
+    }
+    return model, arguments
+
+
+def test_grasp_approach_probe_selects_geometry_equivalent_feasible_orientation_without_motion():
+    model, arguments = _grasp_approach_probe_fixture()
+    checked = []
+
+    def qualify(waypoints, *_args, initial_joints, initial_pose, **_kwargs):
+        checked.append((waypoints, initial_joints.copy(), initial_pose.copy()))
+        desired = waypoints[0][0]
+        if desired[1, 3] < .05:
+            raise PhaseMotionError("route_collision", "approach: adjacent vessel")
+        return {
+            "start_joints": initial_joints.tolist(),
+            "steps": [{"joints": [0.1] + [0.] * 6, "stage": "grasp"}],
+        }
+
+    model.qualify = qualify
+    result = model.qualify_grasp_approach(arguments)
+
+    assert result["status"] == "available"
+    assert result["candidate_ref"] == arguments["candidate_ref"]
+    assert result["selected_axial_symmetry_angle_rad"] == pytest.approx(np.pi / 2)
+    assert result["selected_approach_distance_m"] == pytest.approx(.12)
+    assert result["motion_authorized"] is False
+    assert result["world_change_started"] is False
+    assert len(checked) == 4
+    assert all(item[0][0][2] == "grasp" and item[0][1][2] == "close" for item in checked)
+
+
+def test_grasp_approach_probe_fails_closed_when_all_final_approaches_are_unavailable():
+    model, arguments = _grasp_approach_probe_fixture()
+    model.qualify = lambda *_args, **_kwargs: (_ for _ in ()).throw(
+        PhaseMotionError("ik_discontinuity", "approach: no continuous local solution")
+    )
+
+    result = model.qualify_grasp_approach(arguments)
+
+    assert result["status"] == "unavailable"
+    assert result["failure_code"] == "grasp_approach_unavailable"
+    assert "ik_discontinuity" in result["error"]
+    assert result["feasibility_ref"].startswith("artifact://")
+    assert result["motion_authorized"] is False
+    assert result["world_change_started"] is False
+
+
+def test_route_qualification_can_start_from_probe_seed_without_reading_live_joints():
+    model = IsaacPhaseMotion.__new__(IsaacPhaseMotion)
+    model.config = config()
+    model.hand_from_tcp = np.eye(4)
+    model.limits = np.tile([-3., 3.], (7, 1))
+    model.joints = lambda: (_ for _ in ()).throw(AssertionError("live joints should not be read"))
+    model.tcp = lambda joints: pose_matrix([float(joints[0]), 0., 1.], [0., 0., 0., 1.])
+    model.solver = SimpleNamespace(
+        compute_inverse_kinematics=lambda _frame, position, *_args, **_kwargs:
+        (np.r_[position[0], np.zeros(6)], True)
+    )
+    model._collisions = lambda *_args, **_kwargs: None
+    initial = np.r_[.02, np.zeros(6)]
+    pre = model.tcp(initial)
+    desired = pose_matrix([.04, 0., 1.], [0., 0., 0., 1.])
+
+    route = model.qualify(
+        [(desired, 0., "grasp")],
+        "/World/source",
+        np.eye(4),
+        "acquire",
+        initial_joints=initial,
+        initial_pose=pre,
+    )
+
+    assert route["start_joints"] == pytest.approx(initial)
+    assert route["steps"][-1]["joints"][0] == pytest.approx(.04)
+
+
+def test_grasp_probe_preserves_capture_and_real_workspace_rejection_before_ik():
+    model, arguments = _grasp_approach_probe_fixture()
+    model.config = config()
+    target = arguments["manipulation_target"]
+    target["grasp_frame"]["position_m"] = [-.262553, -.342018, .750917]
+    target["approach_direction"]["vector"] = [.403409, -.659505, .634282]
+    evidence = []
+    model._artifact = lambda kind, value: evidence.append((kind, value)) or "artifact://probe/rejected"
+    model.solver.compute_inverse_kinematics = lambda *_a, **_k: pytest.fail("workspace rejection precedes IK")
+    model.qualify = lambda *_a, **_k: pytest.fail("no full route or controller call is allowed")
+
+    result = model.qualify_grasp_approach(arguments)
+
+    assert result["status"] == "unavailable"
+    saved = evidence[0][1]
+    for key in ("candidate_ref", "observation_ref", "scene_revision", "frame_id", "calibration_ref"):
+        assert saved[key] == arguments[key]
+    assert saved["failure_counts"] == {"workspace_violation": 8}
+    assert saved["workspace_frame_id"] == "world"
+    assert saved["motion_authorized"] is False
+    assert saved["world_change_started"] is False
+    assert len(saved["attempts"]) == 8
+    heights = [attempt["pregrasp_position_world_m"][2] for attempt in saved["attempts"]]
+    assert heights == pytest.approx([.674803, .636746] * 4, abs=1e-6)
+    for attempt in saved["attempts"]:
+        desired = pose_matrix(attempt["grasp_position_world_m"], [0., 0., 0., 1.])
+        corridor = (attempt["approach_distance_m"], 0., 0.)
+        route = acquire_route_waypoints(
+            pose_matrix([0., 0., 1.], [0., 0., 0., 1.]), desired,
+            attempt["approach_direction_world"], .04, [1., 0., 0., 0.], corridor, model.config,
+        )
+        full_pre = next(pose for pose, _, stage in route if stage == "approach")
+        assert full_pre[:3, 3] == pytest.approx(attempt["pregrasp_position_world_m"])
+
+
+def test_grasp_probe_uses_real_short_route_qualification_without_live_state_changes():
+    model, arguments = _grasp_approach_probe_fixture()
+    model.config = {**config(), "acquire_axial_symmetry_angles_rad": [0.]}
+    arguments["observation_model"] = {}
+    model.tcp = lambda joints: pose_matrix(joints[:3], [0., 0., 0., 1.])
+    model.solver.compute_inverse_kinematics = lambda _frame, position, *_a, **_k: (
+        np.r_[position, np.zeros(4)], True
+    )
+    checked = []
+    model._collisions = lambda joints, *_a, **_k: checked.append(joints.copy())
+    saved = []
+    model._artifact = lambda _kind, value: saved.append(value) or "artifact://probe/accepted"
+    before = deepcopy(arguments)
+
+    result = model.qualify_grasp_approach(arguments)
+
+    assert result["status"] == "available"
+    assert arguments == before
+    assert checked
+    assert saved[0]["status"] == "available"
+    assert saved[0]["motion_authorized"] is False
+    assert saved[0]["world_change_started"] is False
+    assert {s["stage"] for s in saved[0]["route"]["steps"]} == {"grasp", "close"}
+    assert saved[0]["route"]["steps"][-1]["joints"][:3] == pytest.approx([.1, 0., .9])
+
+
+def test_route_qualification_rejects_probe_seed_pose_that_disagrees_with_fk():
+    model = IsaacPhaseMotion.__new__(IsaacPhaseMotion)
+    model.config = config()
+    model.hand_from_tcp = np.eye(4)
+    model.limits = np.tile([-3., 3.], (7, 1))
+    model.tcp = lambda _joints: pose_matrix([0., 0., 1.], [0., 0., 0., 1.])
+    wrong = pose_matrix([.1, 0., 1.], [0., 0., 0., 1.])
+
+    with pytest.raises(PhaseMotionError, match="same kinematic state") as captured:
+        model.qualify(
+            [(wrong, 0., "grasp")],
+            "/World/source",
+            np.eye(4),
+            "acquire",
+            initial_joints=np.zeros(7),
+            initial_pose=wrong,
+        )
+
+    assert captured.value.code == "invalid_initial_motion_state"
+
+
 def test_missing_measured_process_feature_is_rejected():
     with pytest.raises(PhaseMotionError, match="tip_offset_m"):
         process_waypoints("pour", {"tilt_rad": .87, "hold_s": .6}, np.eye(4), np.eye(4), np.eye(4),

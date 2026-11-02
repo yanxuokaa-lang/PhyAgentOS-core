@@ -6,6 +6,7 @@ import base64
 import io
 import json
 from collections import Counter
+from collections.abc import Mapping
 from copy import deepcopy
 from uuid import uuid4
 
@@ -235,7 +236,8 @@ class RecordedGraspProvider:
 class LabGraspTaskAffordanceProvider:
     """Qualify same-capture grasp/process combinations without selecting one."""
 
-    def __init__(self, perception: "LabVisualPerception", *, support_tolerance_m=0.012,
+    def __init__(self, perception: "LabVisualPerception", *, approach_feasibility=None,
+                 support_tolerance_m=0.012,
                  bottle_opening_clearance_ratio=0.08, bottle_support_clearance_ratio=0.12,
                  bottle_max_axial_approach_dot=0.7,
                  rod_endpoint_ambiguity_ratio=0.12, rod_grasp_end_margin_ratio=0.15):
@@ -262,6 +264,9 @@ class LabGraspTaskAffordanceProvider:
         if not 0 < rod_endpoint_ambiguity_ratio < 0.5 or not 0 < rod_grasp_end_margin_ratio < 0.5:
             raise ValueError("rod endpoint thresholds must be between zero and one half")
         self.perception = perception
+        if approach_feasibility is not None and not callable(approach_feasibility):
+            raise ValueError("approach_feasibility must be callable")
+        self.approach_feasibility = approach_feasibility
         self.support_tolerance_m = float(support_tolerance_m)
         self.bottle_opening_clearance_ratio = float(bottle_opening_clearance_ratio)
         self.bottle_support_clearance_ratio = float(bottle_support_clearance_ratio)
@@ -347,6 +352,111 @@ class LabGraspTaskAffordanceProvider:
                     elif reason:
                         failures.append(reason)
 
+        feasibility = {}
+        if self.approach_feasibility is not None and qualified:
+            captured = self.perception.grasps.captures.get(request["calibration_ref"], {})
+            admitted = []
+            probe_failures = []
+            for item in qualified:
+                candidate_ref = item["grasp_candidate_ref"]
+                candidate = captured.get(candidate_ref)
+                if not isinstance(candidate, dict):
+                    return {
+                        "status": "stale",
+                        "candidate_set_ref": "grasp-affordance-set://unavailable",
+                        "grasp_candidate_set_ref": request["grasp_candidate_set_ref"],
+                        "process_feature_candidate_set_ref": request["process_feature_candidate_set_ref"],
+                        **identity,
+                        "candidates": [],
+                        "error": "qualified grasp evidence disappeared before feasibility probing",
+                    }
+                binding = {
+                    **identity,
+                    "entity_ref": source_ref,
+                    "destination_ref": "destination://" + destination_ref.removeprefix("entity://"),
+                    "candidate_set_ref": request["grasp_candidate_set_ref"],
+                    "candidate_ref": candidate_ref,
+                    "grasp_candidate": deepcopy(candidate),
+                    "process_feature_candidate_set_ref": request["process_feature_candidate_set_ref"],
+                    "process_feature_refs": list(item["process_feature_refs"]),
+                }
+                try:
+                    result = self.approach_feasibility({
+                        "operation": request["operation"],
+                        "binding": binding,
+                        "candidate_ref": candidate_ref,
+                        **identity,
+                    })
+                except Exception as exc:
+                    result = {
+                        **identity, "candidate_ref": candidate_ref,
+                        "status": "unavailable", "failure_code": "grasp_approach_provider_error",
+                        "error_type": type(exc).__name__,
+                        "motion_authorized": False, "world_change_started": False,
+                    }
+                if not isinstance(result, Mapping):
+                    result = {
+                        **identity, "candidate_ref": candidate_ref,
+                        "status": "unavailable", "failure_code": "invalid_grasp_approach_probe_result",
+                        "motion_authorized": False, "world_change_started": False,
+                    }
+                result = deepcopy(dict(result))
+                if not result.get("feasibility_ref"):
+                    result["feasibility_ref"] = self.perception.store.write(
+                        "grasp-approach-feasibility", {"request": binding, "result": result}
+                    )
+                    # Persist missing evidence for diagnosis, never manufacture a
+                    # successful feasibility receipt from a bare success response.
+                    if result.get("status") == "available":
+                        result.update(status="unavailable", failure_code="missing_grasp_approach_evidence")
+                if any(result.get(key) != identity[key] for key in identity):
+                    return {
+                        "status": "stale",
+                        "candidate_set_ref": "grasp-affordance-set://unavailable",
+                        "grasp_candidate_set_ref": request["grasp_candidate_set_ref"],
+                        "process_feature_candidate_set_ref": request["process_feature_candidate_set_ref"],
+                        **identity,
+                        "candidates": [],
+                        "error": "grasp approach feasibility is not from the current capture",
+                    }
+                if result.get("candidate_ref") != candidate_ref:
+                    return {
+                        "status": "stale",
+                        "candidate_set_ref": "grasp-affordance-set://unavailable",
+                        "grasp_candidate_set_ref": request["grasp_candidate_set_ref"],
+                        "process_feature_candidate_set_ref": request["process_feature_candidate_set_ref"],
+                        **identity,
+                        "candidates": [],
+                        "error": "grasp approach feasibility changed candidate identity",
+                    }
+                if result.get("failure_code") == "stale_scene_revision":
+                    return {
+                        "status": "stale",
+                        "candidate_set_ref": "grasp-affordance-set://unavailable",
+                        "grasp_candidate_set_ref": request["grasp_candidate_set_ref"],
+                        "process_feature_candidate_set_ref": request["process_feature_candidate_set_ref"],
+                        **identity, "candidates": [],
+                        "error": "grasp approach feasibility rejected stale_scene_revision",
+                    }
+                if (result.get("status") == "available"
+                        and result.get("motion_authorized") is False
+                        and result.get("world_change_started") is False
+                        and isinstance(result.get("feasibility_ref"), str)
+                        and result["feasibility_ref"].startswith("artifact://")):
+                    admitted.append(item)
+                else:
+                    code = result.get("failure_code", "invalid_grasp_approach_probe_result")
+                    probe_failures.append(str(code)[:100])
+                feasibility[candidate_ref] = deepcopy(dict(result))
+            qualified = admitted
+            if probe_failures and not qualified:
+                counts = Counter(probe_failures)
+                summary = ", ".join(f"{code}={count}" for code, count in sorted(counts.items()))
+                failures.append(
+                    "no task-qualified grasp has a feasible final orientation and short approach; "
+                    f"probe failures: {summary}"
+                )
+
         candidate_set_ref = f"grasp-affordance-set://{uuid4().hex}"
         combinations = {}
         candidates = []
@@ -360,6 +470,7 @@ class LabGraspTaskAffordanceProvider:
             "grasp_candidate_set_ref": request["grasp_candidate_set_ref"],
             "process_feature_candidate_set_ref": request["process_feature_candidate_set_ref"],
             "combinations": combinations,
+            "feasibility": feasibility,
         }
         status = "available" if candidates else ("ambiguous" if any("ambiguous" in item for item in failures) else "unavailable")
         return {"status": status, "candidate_set_ref": candidate_set_ref,
@@ -424,6 +535,20 @@ class LabGraspTaskAffordanceProvider:
                 return {"status": "stale", **identity,
                         "error": "task-affordance combination references missing evidence"}
             if tuple(process_refs) == selected_process_refs and grasp_ref not in qualified_grasp_refs:
+                if self.approach_feasibility is not None:
+                    receipt = candidate_set.get("feasibility", {}).get(grasp_ref)
+                    if (not isinstance(receipt, Mapping)
+                            or receipt.get("status") != "available"
+                            or receipt.get("candidate_ref") != grasp_ref
+                            or any(receipt.get(key) != candidate_set[key] for key in (
+                                "observation_ref", "scene_revision", "frame_id", "calibration_ref"
+                            ))
+                            or receipt.get("motion_authorized") is not False
+                            or receipt.get("world_change_started") is not False
+                            or not isinstance(receipt.get("feasibility_ref"), str)
+                            or not receipt["feasibility_ref"].startswith("artifact://")):
+                        return {"status": "stale", **identity,
+                                "error": "grasp approach feasibility evidence is missing or stale"}
                 qualified_grasp_refs.append(grasp_ref)
         return {"status": "available", **identity,
                 "selected": {key: combination[key] for key in
@@ -1166,6 +1291,87 @@ class LabVisualPerception:
             if isinstance(symmetry, dict) and symmetry.get("kind") == "axial":
                 context["grasp_symmetry"] = deepcopy(symmetry)
         return context
+
+    def qualify_grasp_approach(self, request):
+        """Resolve one opaque candidate into an Adapter-private no-motion probe."""
+        if self.engine is None:
+            return {
+                "status": "unavailable",
+                "candidate_ref": request.get("candidate_ref"),
+                **{key: request.get(key) for key in (
+                    "observation_ref", "scene_revision", "frame_id", "calibration_ref"
+                )},
+                "motion_authorized": False,
+                "world_change_started": False,
+                "failure_code": "execution_correspondence_unavailable",
+            }
+        binding = request.get("binding")
+        if not isinstance(binding, Mapping) or request.get("operation") not in {"pour", "stir"}:
+            raise ValueError("grasp approach probe requires a task binding and operation")
+        target_request = {
+            "process_type": request["operation"],
+            "process_feature_candidate_set_ref": binding.get("process_feature_candidate_set_ref"),
+            "process_feature_refs": list(binding.get("process_feature_refs") or ()),
+        }
+        try:
+            target = self.resolve(binding, target_request)
+            observation_model = self.execution_context(binding)
+        except (KeyError, TypeError, ValueError) as exc:
+            evidence = self.store.write("grasp-approach-feasibility", {
+                "candidate_ref": request["candidate_ref"],
+                **{key: request[key] for key in (
+                    "observation_ref", "scene_revision", "frame_id", "calibration_ref"
+                )},
+                "status": "unavailable",
+                "failure_code": "grasp_approach_target_unavailable",
+                "error": str(exc),
+                "motion_authorized": False,
+                "world_change_started": False,
+            })
+            return {
+                "status": "unavailable",
+                "candidate_ref": request["candidate_ref"],
+                **{key: request[key] for key in (
+                    "observation_ref", "scene_revision", "frame_id", "calibration_ref"
+                )},
+                "feasibility_ref": evidence,
+                "motion_authorized": False,
+                "world_change_started": False,
+                "failure_code": "grasp_approach_target_unavailable",
+                "error": str(exc),
+            }
+        qualify = getattr(self.engine, "qualify_grasp_approach", None)
+        if not callable(qualify):
+            return {
+                "status": "unavailable",
+                "candidate_ref": request["candidate_ref"],
+                **{key: request[key] for key in (
+                    "observation_ref", "scene_revision", "frame_id", "calibration_ref"
+                )},
+                "motion_authorized": False,
+                "world_change_started": False,
+                "failure_code": "grasp_approach_probe_not_supported",
+            }
+        result = qualify({
+            "operation": "acquire",
+            "candidate_ref": request["candidate_ref"],
+            "observation_ref": request["observation_ref"],
+            "scene_revision": request["scene_revision"],
+            "frame_id": request["frame_id"],
+            "calibration_ref": request["calibration_ref"],
+            "manipulation_target": target,
+            "observation_model": observation_model,
+        })
+        return dict(result) if isinstance(result, Mapping) else {
+            "status": "unavailable",
+            "candidate_ref": request["candidate_ref"],
+            **{key: request[key] for key in (
+                "observation_ref", "scene_revision", "frame_id", "calibration_ref"
+            )},
+            "motion_authorized": False,
+            "world_change_started": False,
+            "failure_code": "invalid_grasp_approach_probe_result",
+        }
 
     def close(self):
         try:

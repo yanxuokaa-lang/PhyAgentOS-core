@@ -113,6 +113,42 @@ def serve_session(socket_path: Path, app, backend, profile) -> None:
                                 }
                             if not isinstance(result, dict):
                                 raise ValueError("phase preparation returned a non-object")
+                        elif method == "qualify_grasp_approach":
+                            arguments = payload.get("arguments")
+                            if not isinstance(arguments, dict):
+                                raise ValueError("arguments must be an object")
+                            identity = {key: arguments.get(key) for key in (
+                                "candidate_ref", "observation_ref", "scene_revision", "frame_id", "calibration_ref"
+                            )}
+                            current_revision = context.current_scene_revision()
+                            if current_revision is None:
+                                result = {
+                                    **identity,
+                                    "status": "unavailable",
+                                    "motion_authorized": False,
+                                    "world_change_started": False,
+                                    "failure_code": "live_scene_revision_unavailable",
+                                }
+                            elif arguments.get("scene_revision") != current_revision:
+                                result = {
+                                    **identity,
+                                    "status": "invalid",
+                                    "motion_authorized": False,
+                                    "world_change_started": False,
+                                    "failure_code": "stale_scene_revision",
+                                    "current_scene_revision": current_revision,
+                                }
+                            else:
+                                qualify = getattr(backend, "qualify_grasp_approach_in_session", None)
+                                result = qualify(context, arguments) if callable(qualify) else {
+                                    **identity,
+                                    "status": "unavailable",
+                                    "motion_authorized": False,
+                                    "world_change_started": False,
+                                    "failure_code": "grasp_approach_probe_not_supported",
+                                }
+                            if not isinstance(result, dict):
+                                raise ValueError("grasp approach probe returned a non-object")
                         elif method == "execute_phase":
                             arguments = payload.get("arguments")
                             if not isinstance(arguments, dict):

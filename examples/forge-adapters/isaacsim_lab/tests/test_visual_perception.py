@@ -1036,6 +1036,263 @@ def test_task_affordance_provider_qualifies_bottle_body_grasp_and_revalidates(tm
     assert missing_evidence["status"] == "stale"
 
 
+def test_task_affordance_provider_keeps_only_no_motion_feasible_opaque_grasps(tmp_path):
+    theta = np.linspace(0, 2 * np.pi, 24, endpoint=False)
+    points = np.asarray([[.05 * np.cos(angle), .05 * np.sin(angle), z]
+                         for z in np.linspace(.45, .95, 16) for angle in theta])
+    bottle_rim = {
+        "feature_kind": "rim",
+        "feature_role": "pour_lip",
+        "tip_world": [0., 0., 1.],
+        "axis_world": [0., 0., 1.],
+        "pour_direction_world": [1., 0., 0.],
+        "rim_radius_m": .02,
+    }
+    provider, request, grasp_ref = _task_affordance_fixture(
+        tmp_path,
+        operation="pour",
+        grasp_position=[.05, 0., .6833333333],
+        source_category="reagent_bottle",
+        source_points=points,
+        source_features=[("process-feature://bottle/rim", "entity://source", bottle_rim)],
+    )
+    probes = []
+    rejected_ref = "candidate://source/unreachable"
+    captured = provider.perception.grasps.captures[request["calibration_ref"]]
+    captured[rejected_ref] = {**captured[grasp_ref], "candidate_ref": rejected_ref}
+    provider.perception.grasps.candidate_sets[(
+        request["grasp_candidate_set_ref"], request["calibration_ref"]
+    )]["candidate_refs"].add(rejected_ref)
+
+    def feasible(probe):
+        probes.append(probe)
+        return {
+            "status": "available" if probe["candidate_ref"] == grasp_ref else "unavailable",
+            "candidate_ref": probe["candidate_ref"],
+            **{key: probe[key] for key in (
+                "observation_ref", "scene_revision", "frame_id", "calibration_ref"
+            )},
+            "feasibility_ref": "artifact://labutopia/grasp-approach/one.json",
+            "motion_authorized": False,
+            "world_change_started": False,
+        }
+
+    provider.approach_feasibility = feasible
+    query = provider.propose(request)
+
+    assert query["status"] == "available"
+    assert [item["grasp_candidate_ref"] for item in query["candidates"]] == [grasp_ref]
+    assert len(probes) == 2
+    assert {probe["binding"]["candidate_ref"] for probe in probes} == {grasp_ref, rejected_ref}
+    assert all(probe["binding"]["process_feature_refs"] == request["selected_process_feature_refs"] for probe in probes)
+    assert all("entity_prim_path" not in probe["binding"] for probe in probes)
+    prep_request = {
+        "candidate_set_ref": query["candidate_set_ref"],
+        "selected_combination_ref": query["candidates"][0]["combination_ref"],
+        "process_feature_candidate_set_ref": request["process_feature_candidate_set_ref"],
+        **{key: request[key] for key in (
+            "observation_ref", "scene_revision", "frame_id", "calibration_ref"
+        )},
+    }
+    assert provider.validate_selection(prep_request)["qualified_grasp_candidate_refs"] == [grasp_ref]
+    receipt = provider.candidate_sets[query["candidate_set_ref"]]["feasibility"][grasp_ref]
+    receipt["feasibility_ref"] = "not-an-artifact"
+    assert provider.validate_selection(prep_request)["status"] == "stale"
+    provider.candidate_sets[query["candidate_set_ref"]]["feasibility"].clear()
+    stale = provider.validate_selection(prep_request)
+    assert stale["status"] == "stale"
+    assert "feasibility" in stale["error"]
+
+
+def test_task_affordance_provider_fails_closed_for_unavailable_or_stale_approach_probe(tmp_path):
+    theta = np.linspace(0, 2 * np.pi, 24, endpoint=False)
+    points = np.asarray([[.05 * np.cos(angle), .05 * np.sin(angle), z]
+                         for z in np.linspace(.45, .95, 16) for angle in theta])
+    bottle_rim = {
+        "feature_kind": "rim",
+        "feature_role": "pour_lip",
+        "tip_world": [0., 0., 1.],
+        "axis_world": [0., 0., 1.],
+        "pour_direction_world": [1., 0., 0.],
+        "rim_radius_m": .02,
+    }
+    provider, request, _grasp_ref = _task_affordance_fixture(
+        tmp_path,
+        operation="pour",
+        grasp_position=[.05, 0., .6833333333],
+        source_category="reagent_bottle",
+        source_points=points,
+        source_features=[("process-feature://bottle/rim", "entity://source", bottle_rim)],
+    )
+    provider.approach_feasibility = lambda probe: {
+        "status": "unavailable",
+        "failure_code": "grasp_approach_unavailable",
+        "candidate_ref": probe["candidate_ref"],
+        **{key: probe[key] for key in (
+            "observation_ref", "scene_revision", "frame_id", "calibration_ref"
+        )},
+        "motion_authorized": False,
+        "world_change_started": False,
+    }
+    unavailable = provider.propose(request)
+    assert unavailable["status"] == "unavailable"
+    assert unavailable["candidates"] == []
+    assert "feasible final orientation" in unavailable["error"]
+
+    provider.approach_feasibility = lambda probe: {
+        "status": "available",
+        "candidate_ref": probe["candidate_ref"],
+        **{key: ("other-scene" if key == "scene_revision" else probe[key]) for key in (
+            "observation_ref", "scene_revision", "frame_id", "calibration_ref"
+        )},
+        "feasibility_ref": "artifact://labutopia/grasp-approach/stale.json",
+        "motion_authorized": False,
+        "world_change_started": False,
+    }
+    stale = provider.propose(request)
+    assert stale["status"] == "stale"
+    assert stale["candidates"] == []
+
+
+@pytest.mark.parametrize("mode,expected_status,reason", [
+    ("exception", "unavailable", "grasp_approach_provider_error"),
+    ("non_mapping", "unavailable", "invalid_grasp_approach_probe_result"),
+    ("missing_receipt", "unavailable", "missing_grasp_approach_evidence"),
+    ("motion", "unavailable", "invalid_grasp_approach_probe_result"),
+    ("world_change", "unavailable", "invalid_grasp_approach_probe_result"),
+    ("wrong_ref", "stale", "changed candidate identity"),
+    ("other_capture", "stale", "not from the current capture"),
+    ("stale_revision", "stale", "stale_scene_revision"),
+    ("unsupported", "unavailable", "grasp_approach_probe_not_supported"),
+])
+def test_task_affordance_probe_failure_reasons_remain_distinct(tmp_path, mode, expected_status, reason):
+    theta = np.linspace(0, 2 * np.pi, 24, endpoint=False)
+    points = [[.05 * np.cos(a), .05 * np.sin(a), z]
+              for z in np.linspace(.45, .95, 16) for a in theta]
+    rim = {"feature_kind": "rim", "feature_role": "pour_lip", "tip_world": [0., 0., 1.],
+           "axis_world": [0., 0., 1.], "pour_direction_world": [1., 0., 0.], "rim_radius_m": .02}
+    provider, request, grasp_ref = _task_affordance_fixture(
+        tmp_path, operation="pour", grasp_position=[.05, 0., .6833333333],
+        source_category="reagent_bottle", source_points=points,
+        source_features=[("process-feature://bottle/rim", "entity://source", rim)],
+    )
+
+    def replacement(probe):
+        if mode == "exception":
+            raise RuntimeError("backend unavailable")
+        if mode == "non_mapping":
+            return None
+        result = {key: probe[key] for key in (
+            "candidate_ref", "observation_ref", "scene_revision", "frame_id", "calibration_ref"
+        )}
+        result.update(status="available", feasibility_ref="artifact://independent/receipt",
+                      motion_authorized=False, world_change_started=False)
+        if mode == "missing_receipt":
+            result.pop("feasibility_ref")
+        elif mode == "motion":
+            result["motion_authorized"] = True
+        elif mode == "world_change":
+            result["world_change_started"] = True
+        elif mode == "wrong_ref":
+            result["candidate_ref"] = "candidate://different"
+        elif mode == "other_capture":
+            result["calibration_ref"] = "artifact://calibration/other"
+        elif mode == "stale_revision":
+            result.update(status="invalid", failure_code="stale_scene_revision")
+        elif mode == "unsupported":
+            result.update(status="unavailable", failure_code="grasp_approach_probe_not_supported")
+        return result
+
+    provider.approach_feasibility = replacement
+    result = provider.propose(request)
+    assert result["status"] == expected_status
+    assert result["candidates"] == []
+    assert reason in result["error"]
+    if expected_status == "unavailable":
+        receipt = provider.candidate_sets[result["candidate_set_ref"]]["feasibility"][grasp_ref]
+        assert receipt["feasibility_ref"].startswith("artifact://")
+
+
+def test_visual_grasp_approach_probe_resolves_private_target_without_widening_query_contract():
+    from isaacsim_lab.visual_perception import LabVisualPerception
+
+    visual = object.__new__(LabVisualPerception)
+    calls = []
+    visual.engine = SimpleNamespace(qualify_grasp_approach=lambda arguments: calls.append(arguments) or {
+        "status": "available",
+        "candidate_ref": arguments["candidate_ref"],
+        "observation_ref": arguments["observation_ref"],
+        "scene_revision": arguments["scene_revision"],
+        "frame_id": arguments["frame_id"],
+        "calibration_ref": arguments["calibration_ref"],
+        "feasibility_ref": "artifact://labutopia/grasp-approach/one.json",
+        "motion_authorized": False,
+        "world_change_started": False,
+    })
+    target = {"entity_prim_path": "/World/private/source"}
+    context = {"geometry_ref": "artifact://labutopia/geometry/source.json"}
+    visual.resolve = lambda binding, request: (
+        target if binding["candidate_ref"] == "candidate://source/one"
+        and request["process_type"] == "pour" else None
+    )
+    visual.execution_context = lambda _binding: context
+    binding = {
+        "candidate_ref": "candidate://source/one",
+        "process_feature_candidate_set_ref": "process-feature-set://scene/current",
+        "process_feature_refs": ["process-feature://source/rim", "process-feature://beaker/rim"],
+    }
+    result = visual.qualify_grasp_approach({
+        "operation": "pour",
+        "binding": binding,
+        "candidate_ref": binding["candidate_ref"],
+        "observation_ref": "observation://scene/front",
+        "scene_revision": "scene",
+        "frame_id": "front",
+        "calibration_ref": "artifact://calibration/front",
+    })
+
+    assert result["status"] == "available"
+    assert calls[0]["manipulation_target"] is target
+    assert calls[0]["observation_model"] is context
+    assert "motion_authorized" not in calls[0]
+
+
+def test_visual_grasp_approach_probe_persists_target_resolution_failure_without_engine_call():
+    from isaacsim_lab.visual_perception import LabVisualPerception
+
+    visual = object.__new__(LabVisualPerception)
+    writes = []
+    visual.store = SimpleNamespace(write=lambda kind, value: writes.append((kind, value)) or
+                                   "artifact://labutopia/grasp-approach/failure.json")
+    visual.engine = SimpleNamespace(
+        qualify_grasp_approach=lambda _arguments: pytest.fail("engine probe must not run")
+    )
+    visual.resolve = lambda *_args, **_kwargs: (_ for _ in ()).throw(
+        ValueError("selected process feature is stale")
+    )
+    request = {
+        "operation": "pour",
+        "binding": {
+            "candidate_ref": "candidate://source/one",
+            "process_feature_candidate_set_ref": "process-feature-set://scene/current",
+            "process_feature_refs": ["process-feature://source/rim", "process-feature://beaker/rim"],
+        },
+        "candidate_ref": "candidate://source/one",
+        "observation_ref": "observation://scene/front",
+        "scene_revision": "scene",
+        "frame_id": "front",
+        "calibration_ref": "artifact://calibration/front",
+    }
+
+    result = visual.qualify_grasp_approach(request)
+
+    assert result["status"] == "unavailable"
+    assert result["failure_code"] == "grasp_approach_target_unavailable"
+    assert result["feasibility_ref"].startswith("artifact://")
+    assert writes[0][0] == "grasp-approach-feasibility"
+    assert writes[0][1]["world_change_started"] is False
+
+
 def test_task_affordance_provider_fails_closed_for_opening_grasp_and_ambiguous_rod_end(tmp_path):
     theta = np.linspace(0, 2 * np.pi, 24, endpoint=False)
     bottle_points = np.asarray([[.05 * np.cos(angle), .05 * np.sin(angle), z]

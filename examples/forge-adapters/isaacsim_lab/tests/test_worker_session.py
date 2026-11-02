@@ -4,6 +4,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from isaacsim_lab.paos_client import LabUtopiaCycleClient
 from isaacsim_lab.worker import serve_session
 from isaacsim_lab.worker_session import IsaacWorkerSession
@@ -59,6 +61,20 @@ class FakeBackend:
         self.methods.append(("prepare_manipulation", session))
         return {"status": "unavailable", "motion_authorized": False,
                 "failure_code": "test_route_unavailable"}
+
+    def qualify_grasp_approach_in_session(self, session, arguments):
+        self.methods.append(("qualify_grasp_approach", session))
+        return {
+            "status": "available",
+            "candidate_ref": arguments["candidate_ref"],
+            "observation_ref": arguments["observation_ref"],
+            "scene_revision": arguments["scene_revision"],
+            "frame_id": arguments["frame_id"],
+            "calibration_ref": arguments["calibration_ref"],
+            "feasibility_ref": "artifact://labutopia/grasp-approach/test.json",
+            "motion_authorized": False,
+            "world_change_started": False,
+        }
 
     def execute_phase_in_session(self, session, arguments, cancel):
         self.methods.append(("execute_phase", session))
@@ -132,6 +148,32 @@ def test_worker_session_reuses_one_owner_for_observation_and_action(tmp_path, mo
     assert executed["new_scene_revision"] == after["scene_revision"]
 
 
+def test_worker_session_probes_grasp_approach_without_advancing_scene(tmp_path, monkeypatch):
+    session, backend, process_count, _child_environment = make_session(tmp_path, monkeypatch)
+    try:
+        session.observe({"sensor_ref": "sensor://front"})
+        before = session.scene_revision()["scene_revision"]
+        result = session.request("qualify_grasp_approach", {
+            "candidate_ref": "candidate://source/one",
+            "observation_ref": f"observation://{before}/front",
+            "scene_revision": before,
+            "frame_id": "front",
+            "calibration_ref": "artifact://calibration/front",
+        })
+        after = session.scene_revision()["scene_revision"]
+    finally:
+        session.close()
+
+    assert process_count == [1]
+    assert result["status"] == "available"
+    assert result["motion_authorized"] is False
+    assert result["world_change_started"] is False
+    assert after == before
+    assert [method for method, _session in backend.methods] == [
+        "observe", "qualify_grasp_approach",
+    ]
+
+
 def test_worker_rejects_stale_scene_revision_before_action_dispatch(tmp_path, monkeypatch):
     session, backend, _process_count, _child_environment = make_session(tmp_path, monkeypatch)
     try:
@@ -146,6 +188,27 @@ def test_worker_rejects_stale_scene_revision_before_action_dispatch(tmp_path, mo
     assert stale["failure_code"] == "stale_scene_revision"
     assert stale["world_change_started"] is False
     assert [method for method, _session in backend.methods] == ["observe"]
+
+
+@pytest.mark.parametrize("observe_first", [False, True])
+def test_worker_probe_rejects_missing_or_stale_scene_without_dispatch(tmp_path, monkeypatch, observe_first):
+    session, backend, _process_count, _environment = make_session(tmp_path, monkeypatch)
+    request = {
+        "candidate_ref": "candidate://one", "observation_ref": "observation://old/front",
+        "scene_revision": "old", "frame_id": "front", "calibration_ref": "artifact://old/calibration",
+    }
+    try:
+        if observe_first:
+            session.observe({"sensor_ref": "sensor://front"})
+        result = session.request("qualify_grasp_approach", request)
+    finally:
+        session.close()
+    expected = "stale_scene_revision" if observe_first else "live_scene_revision_unavailable"
+    assert result["failure_code"] == expected
+    assert all(result[key] == value for key, value in request.items())
+    assert result["motion_authorized"] is False
+    assert result["world_change_started"] is False
+    assert all(method == "observe" for method, _session in backend.methods)
 
 
 def test_worker_routes_preparation_and_phase_calls_in_the_same_session(tmp_path, monkeypatch):

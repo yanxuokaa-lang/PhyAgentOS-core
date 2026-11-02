@@ -58,7 +58,8 @@ class IsaacWorkerSession:
         timeout_s: float | None = None,
     ) -> dict[str, Any]:
         if method not in {
-            "execute_cycle", "prepare_manipulation", "execute_phase", "observe", "scene_revision", "bind_observed_entities"
+            "execute_cycle", "prepare_manipulation", "qualify_grasp_approach", "execute_phase",
+            "observe", "scene_revision", "bind_observed_entities"
         }:
             raise ValueError(f"unsupported Isaac worker method: {method}")
         timeout = self.request_timeout_s if timeout_s is None else float(timeout_s)

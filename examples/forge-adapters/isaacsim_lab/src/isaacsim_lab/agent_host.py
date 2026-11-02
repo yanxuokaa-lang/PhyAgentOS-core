@@ -120,7 +120,9 @@ def compose_host(*, profile, workspace, provider, inference, model, sensor_ref, 
         preparation_provider=None, capability_provider=visual, resolve_preparation=None,
         target_resolver=visual, tool_context_provider=lambda _: {"ready": True, "sensor_refs": [sensor_ref]},
         process_feature_provider=visual,
-        grasp_task_affordance_provider=LabGraspTaskAffordanceProvider(visual),
+        grasp_task_affordance_provider=LabGraspTaskAffordanceProvider(
+            visual, approach_feasibility=visual.qualify_grasp_approach
+        ),
         perception_adapter=PerceptionBindingAdapter(None, BindingRequest(
             sensor_refs=(sensor_ref,), source_category="reagent_bottle", destination_category="mixing_vessel", max_age_ms=1000)),
         subtask_context_resolver=coordinator.resolve_subtask_context,

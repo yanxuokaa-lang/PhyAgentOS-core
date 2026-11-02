@@ -1011,10 +1011,39 @@ class IsaacPhaseMotion:
                                   "route": route})
         return route, evidence
 
-    def qualify(self, waypoints, source, tcp_from_object, operation, supported_pose=None, tool_frame=None):
-        joints = self.joints()
+    def qualify(
+        self,
+        waypoints,
+        source,
+        tcp_from_object,
+        operation,
+        supported_pose=None,
+        tool_frame=None,
+        *,
+        initial_joints=None,
+        initial_pose=None,
+    ):
+        joints = self.joints() if initial_joints is None else np.asarray(initial_joints, dtype=float).copy()
         initial = joints.copy()
-        previous_pose = self.tcp(joints)
+        previous_pose = self.tcp(joints) if initial_pose is None else np.asarray(initial_pose, dtype=float).copy()
+        if (joints.shape != (self.limits.shape[0],) or not np.isfinite(joints).all()
+                or previous_pose.shape != (4, 4) or not np.isfinite(previous_pose).all()):
+            raise PhaseMotionError(
+                "invalid_initial_motion_state",
+                "route qualification requires finite initial joints and TCP pose",
+            )
+        if initial_pose is not None:
+            measured_initial = self.tcp(joints)
+            position_error = float(np.linalg.norm(measured_initial[:3, 3] - previous_pose[:3, 3]))
+            orientation_error = Rotation.from_matrix(
+                measured_initial[:3, :3].T @ previous_pose[:3, :3]
+            ).magnitude()
+            if (position_error > self.config["position_tolerance_m"]
+                    or orientation_error > .02):
+                raise PhaseMotionError(
+                    "invalid_initial_motion_state",
+                    "seed joints and TCP pose do not describe the same kinematic state",
+                )
         steps = []
         for pose, hold_s, stage in waypoints:
             contact = stage in {"grasp", "close", "lift", "lower", "release", "retreat"}
@@ -1096,6 +1125,189 @@ class IsaacPhaseMotion:
             steps[-1]["hold_s"] += hold_s
             previous_pose = pose
         return {"start_joints": initial.tolist(), "steps": steps}
+
+    def qualify_grasp_approach(self, arguments):
+        """Probe final grasp orientation and its short approach without motion.
+
+        The probe deliberately does not claim a complete route.  It admits a
+        candidate only when one geometry-equivalent final orientation has a
+        collision-free pre-grasp pose and a continuous, collision-free short
+        approach/close segment.  Full acquire preparation still rechecks the
+        complete route from the measured articulation state.
+        """
+        from .engine import _target_in_world
+
+        target = _target_in_world(arguments["manipulation_target"])
+        self.validate_grasp_aperture(target)
+        source = target.get("tool_prim_path") or target["entity_prim_path"]
+        _model_pose, _relation = self.bind_observed_model(
+            source, target, arguments["observation_model"], {}
+        )
+        body = self.observed_pose(source)
+        grasp = target["grasp_frame"]
+        desired = pose_matrix(grasp["position_m"], grasp["orientation_xyzw"])
+        approach = np.asarray(target["approach_direction"]["vector"], dtype=float)
+        variants = acquire_grasp_variants(
+            desired,
+            approach,
+            arguments["observation_model"].get("grasp_symmetry"),
+            acquire_axial_symmetry_angles(self.config),
+        )
+        approach_distances = tuple(dict.fromkeys(
+            corridor[0] for corridor in acquire_staging_corridors(self.config)
+        ))
+        seed_joints = self.joints()
+        failures = []
+        candidates = []
+        attempts = []
+        identity = {key: arguments[key] for key in (
+            "candidate_ref", "observation_ref", "scene_revision", "frame_id", "calibration_ref"
+        )}
+        for symmetry_order, (symmetry_angle, variant_desired, variant_approach) in enumerate(variants):
+            direction = np.asarray(variant_approach, dtype=float)
+            norm = float(np.linalg.norm(direction))
+            if not math.isfinite(norm) or norm <= 1e-9:
+                failures.append((symmetry_angle, None, PhaseMotionError(
+                    "invalid_grasp_approach", "grasp approach direction is not finite and non-zero"
+                )))
+                continue
+            direction /= norm
+            candidate_relation = np.linalg.inv(variant_desired) @ body
+            for distance_order, distance in enumerate(approach_distances):
+                pre = variant_desired.copy()
+                pre[:3, 3] -= direction * distance
+                attempt = {
+                    "axial_symmetry_angle_rad": symmetry_angle,
+                    "approach_distance_m": distance,
+                    "grasp_position_world_m": variant_desired[:3, 3].tolist(),
+                    "pregrasp_position_world_m": pre[:3, 3].tolist(),
+                    "approach_direction_world": direction.tolist(),
+                }
+                try:
+                    if (np.any(pre[:3, 3] < self.config["workspace_min_m"])
+                            or np.any(pre[:3, 3] > self.config["workspace_max_m"])):
+                        raise PhaseMotionError(
+                            "workspace_violation",
+                            f"pre-grasp TCP={pre[:3, 3].tolist()} outside world workspace "
+                            f"min={self.config['workspace_min_m']}, max={self.config['workspace_max_m']}",
+                        )
+                    hand = pre @ np.linalg.inv(self.hand_from_tcp)
+                    pre_joints, success = self.solver.compute_inverse_kinematics(
+                        "panda_hand",
+                        hand[:3, 3],
+                        np.roll(Rotation.from_matrix(hand[:3, :3]).as_quat(), 1),
+                        warm_start=seed_joints,
+                        position_tolerance=self.config["position_tolerance_m"],
+                        orientation_tolerance=.02,
+                    )
+                    pre_joints = np.asarray(pre_joints, dtype=float)
+                    if not success or pre_joints.shape != seed_joints.shape or not np.isfinite(pre_joints).all():
+                        raise PhaseMotionError(
+                            "inverse_kinematics_failed",
+                            f"no pre-grasp IK solution: TCP={pre[:3, 3].tolist()}",
+                        )
+                    if np.any(pre_joints < self.limits[:, 0]) or np.any(pre_joints > self.limits[:, 1]):
+                        raise PhaseMotionError("joint_limit_violation", "pre-grasp")
+                    self._collisions(
+                        pre_joints,
+                        source,
+                        False,
+                        False,
+                        candidate_relation,
+                        False,
+                    )
+                    route = self.qualify(
+                        [
+                            (variant_desired, 0., "grasp"),
+                            (variant_desired, 0., "close"),
+                        ],
+                        source,
+                        candidate_relation,
+                        "acquire",
+                        initial_joints=pre_joints,
+                        initial_pose=pre,
+                    )
+                    candidates.append((
+                        route_joint_travel(route),
+                        symmetry_order,
+                        distance_order,
+                        symmetry_angle,
+                        distance,
+                        route,
+                    ))
+                    attempt["status"] = "available"
+                except PhaseMotionError as exc:
+                    failures.append((symmetry_angle, distance, exc))
+                    attempt.update(status="unavailable", failure_code=exc.code, error=str(exc))
+                attempts.append(attempt)
+        evidence_context = {
+            "captured_at": datetime.now(timezone.utc).isoformat(),
+            **identity,
+            "motion_authorized": False,
+            "world_change_started": False,
+            "workspace_frame_id": "world",
+            "workspace_min_m": self.config["workspace_min_m"],
+            "workspace_max_m": self.config["workspace_max_m"],
+            "attempts": attempts,
+        }
+        if not candidates:
+            counts = Counter(exc.code for _angle, _distance, exc in failures)
+            examples = {}
+            for angle, distance, exc in failures:
+                examples.setdefault(exc.code, (angle, distance, str(exc)))
+            detail = "; ".join(
+                f"{code} count={counts[code]}; example axial_angle={examples[code][0]}, "
+                f"approach_distance={examples[code][1]}: {examples[code][2][:400]}"
+                for code in sorted(counts)
+            ) or "no grasp approach variant was configured"
+            evidence = self._artifact("grasp-approach-feasibility", {
+                **evidence_context,
+                "status": "unavailable",
+                "failure_code": "grasp_approach_unavailable",
+                "failure_counts": dict(sorted(counts.items())),
+                "error": detail,
+            })
+            return {
+                "status": "unavailable",
+                "candidate_ref": arguments["candidate_ref"],
+                "observation_ref": arguments["observation_ref"],
+                "scene_revision": arguments["scene_revision"],
+                "frame_id": arguments["frame_id"],
+                "calibration_ref": arguments["calibration_ref"],
+                "feasibility_ref": evidence,
+                "failure_code": "grasp_approach_unavailable",
+                "error": detail,
+                "motion_authorized": False,
+                "world_change_started": False,
+            }
+        selected = min(candidates, key=lambda item: item[:3])
+        _, _, _, angle, distance, route = selected
+        evidence = self._artifact("grasp-approach-feasibility", {
+            **evidence_context,
+            "status": "available",
+            "selected_axial_symmetry_angle_rad": angle,
+            "selected_approach_distance_m": distance,
+            "checks": {
+                "pregrasp_ik": "pass",
+                "short_approach_continuity": "pass",
+                "workspace": "pass",
+                "collision": "pass",
+            },
+            "route": route,
+        })
+        return {
+            "status": "available",
+            "candidate_ref": arguments["candidate_ref"],
+            "observation_ref": arguments["observation_ref"],
+            "scene_revision": arguments["scene_revision"],
+            "frame_id": arguments["frame_id"],
+            "calibration_ref": arguments["calibration_ref"],
+            "feasibility_ref": evidence,
+            "selected_axial_symmetry_angle_rad": angle,
+            "selected_approach_distance_m": distance,
+            "motion_authorized": False,
+            "world_change_started": False,
+        }
 
     def execute(self, arguments, cancel):
         """Record the existing rendered steps without advancing extra physics."""

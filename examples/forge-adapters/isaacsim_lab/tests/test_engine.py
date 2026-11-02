@@ -1125,6 +1125,51 @@ def test_engine_delegates_held_preparation_and_closes_backend(tmp_path):
     assert calls == [request, "closed"]
 
 
+def test_engine_grasp_approach_probe_fails_closed_with_identity_when_backend_is_unavailable(tmp_path):
+    engine = module.IsaacSimLabEngine(make_profile(tmp_path), backend=Backend())
+    request = {
+        "candidate_ref": "candidate://source/one",
+        "observation_ref": "observation://scene/front",
+        "scene_revision": "scene",
+        "frame_id": "front",
+        "calibration_ref": "artifact://calibration/front",
+    }
+
+    result = engine.qualify_grasp_approach(request)
+
+    assert result["status"] == "unavailable"
+    assert result["failure_code"] == "grasp_approach_probe_not_supported"
+    assert all(result[key] == request[key] for key in request)
+    assert result["motion_authorized"] is False
+    assert result["world_change_started"] is False
+
+
+def test_backend_grasp_approach_probe_preserves_candidate_identity_on_failure(tmp_path, monkeypatch):
+    from isaacsim_lab.phase_motion import PhaseMotionError
+
+    backend = LabUtopiaBackend(make_profile(tmp_path))
+    backend._phase_motion = lambda _session: SimpleNamespace(
+        qualify_grasp_approach=lambda _arguments: (_ for _ in ()).throw(
+            PhaseMotionError("grasp_approach_unavailable", "no final approach")
+        )
+    )
+    request = {
+        "candidate_ref": "candidate://source/one",
+        "observation_ref": "observation://scene/front",
+        "scene_revision": "scene",
+        "frame_id": "front",
+        "calibration_ref": "artifact://calibration/front",
+    }
+
+    result = backend.qualify_grasp_approach_in_session(object(), request)
+
+    assert result["status"] == "unavailable"
+    assert result["failure_code"] == "grasp_approach_unavailable"
+    assert all(result[key] == request[key] for key in request)
+    assert result["motion_authorized"] is False
+    assert result["world_change_started"] is False
+
+
 def test_authored_station_observation_config_uses_existing_cameras_without_layout_inputs():
     from types import SimpleNamespace
 

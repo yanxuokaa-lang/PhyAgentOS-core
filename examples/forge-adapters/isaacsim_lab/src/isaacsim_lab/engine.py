@@ -501,6 +501,29 @@ class IsaacSimLabEngine:
             "failure_code": "invalid_phase_preparation_result",
         }
 
+    def qualify_grasp_approach(self, arguments: Mapping[str, Any]) -> dict[str, Any]:
+        """Probe a final grasp and short approach through the backend port."""
+        identity = {key: arguments.get(key) for key in (
+            "candidate_ref", "observation_ref", "scene_revision", "frame_id", "calibration_ref"
+        )}
+        qualify = getattr(self.backend, "qualify_grasp_approach", None)
+        if not callable(qualify):
+            return {
+                "status": "unavailable",
+                **identity,
+                "motion_authorized": False,
+                "world_change_started": False,
+                "failure_code": "grasp_approach_probe_not_supported",
+            }
+        result = qualify(deepcopy(dict(arguments)))
+        return dict(result) if isinstance(result, Mapping) else {
+            "status": "unavailable",
+            **identity,
+            "motion_authorized": False,
+            "world_change_started": False,
+            "failure_code": "invalid_grasp_approach_probe_result",
+        }
+
     def prepare_held(self, arguments: Mapping[str, Any]) -> dict[str, Any]:
         """Request a current held route through the same backend boundary."""
         prepare = getattr(self.backend, "prepare_held", None)
@@ -605,6 +628,39 @@ class LabUtopiaBackend:
             return {"status": "unavailable", "motion_authorized": False,
                     "failure_code": type(exc).__name__, "error_detail": str(exc)[:512]}
 
+    def qualify_grasp_approach(self, arguments: Mapping[str, Any]) -> Mapping[str, Any]:
+        identity = {key: arguments.get(key) for key in (
+            "candidate_ref", "observation_ref", "scene_revision", "frame_id", "calibration_ref"
+        )}
+        if os.environ.get("OMNI_KIT_ACCEPT_EULA", "").lower() not in {"y", "yes", "1", "true"}:
+            return {
+                "status": "unavailable",
+                **identity,
+                "motion_authorized": False,
+                "world_change_started": False,
+                "failure_code": "OMNI_KIT_ACCEPT_EULA_not_accepted",
+            }
+        try:
+            with self._worker_lock:
+                if self._worker_session is None:
+                    from .worker_session import IsaacWorkerSession
+                    self._worker_session = IsaacWorkerSession(
+                        self.profile_path,
+                        python_executable=self.profile.worker_python_path,
+                        observation_artifact_root=self.observation_artifact_root,
+                    )
+                session = self._worker_session
+            return session.request("qualify_grasp_approach", arguments)
+        except Exception as exc:
+            return {
+                "status": "unavailable",
+                **identity,
+                "motion_authorized": False,
+                "world_change_started": False,
+                "failure_code": type(exc).__name__,
+                "error_detail": str(exc)[:512],
+            }
+
     def execute_phase(
         self, phase: str, arguments: Mapping[str, Any], cancel: Event
     ) -> Mapping[str, Any]:
@@ -670,6 +726,26 @@ class LabUtopiaBackend:
             return {"status": "unavailable", "motion_authorized": False,
                     "failure_code": getattr(exc, "code", "invalid_phase_preparation"),
                     "error": str(exc)}
+
+    def qualify_grasp_approach_in_session(
+        self, session: Any, arguments: Mapping[str, Any]
+    ) -> Mapping[str, Any]:
+        """Probe final grasp feasibility without admitting or executing a route."""
+        from .phase_motion import PhaseMotionError
+
+        try:
+            return self._phase_motion(session).qualify_grasp_approach(arguments)
+        except (PhaseMotionError, KeyError, TypeError, ValueError) as exc:
+            return {
+                "status": "unavailable",
+                **{key: arguments.get(key) for key in (
+                    "candidate_ref", "observation_ref", "scene_revision", "frame_id", "calibration_ref"
+                )},
+                "motion_authorized": False,
+                "world_change_started": False,
+                "failure_code": getattr(exc, "code", "invalid_grasp_approach_probe"),
+                "error": str(exc),
+            }
 
     def _phase_motion(self, session):
         from .phase_motion import IsaacPhaseMotion, PhaseMotionError
