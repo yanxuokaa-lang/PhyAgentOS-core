@@ -1,5 +1,41 @@
 # Current Task: LabUtopia R03/R04 full-chain grasp coverage
 
+## v16.7.0 local repair validated / 候选覆盖与提示修复已验证
+
+- Diagnosis: `.task/labutopia-grasp-coverage-repair-20261102.md`.
+- Same-cloud replay finds two native worker candidates satisfying existing
+  process/aperture rules and a padded-palm/table-plane necessary condition;
+  both disappear under the old retained cap of 64. They are not yet route-qualified.
+- Align deployed retention with the existing 512 sampling cap, preserving
+  original poses/scores, NMS, process rules, same-capture references and robot checks.
+- Substituted production Provider regression reproduced 64 vs 70 contacts,
+  then passes after the profile correction. No AgentLoop or public schema change.
+- Fresh no-motion run: `out/lab-fullchain-truth-20261102-full-pool-no-motion-r1/`.
+- Retention-only native result: task cancelled; 21 aperture failures, 144 final
+  palm/table records and 16 final finger/table records. The recovered hypotheses
+  remain blocked by finger sweep; no IK or controller action was reached.
+- Continue within the existing Grasp Provider: full cloud plus at most three
+  observed PCA intervals, native inference/inverse transforms and geometric
+  sampling. Defaults stay compatible, public interfaces and all checks stay.
+- 463 affected tests pass; regional historical inference yields 9855 native
+  thresholded predictions sampled to 512. This is not a safety verdict.
+- Regional r1 failed semantic label binding; r2 retained 508/506/24 candidates
+  but failed at 339858-token prompt expansion. Generic task/node/working-set
+  projections now summarize large arrays without changing complete Coordinator
+  bindings, small process parameters, selection or Tool materialization.
+- Regional r3: `out/lab-fullchain-truth-20261102-region-no-motion-r3/`,
+  task `task_a87e6bb320964db7`, post-creation prompt 26594 tokens; process Query
+  and all four R03 feature/affordance Query/preparation nodes completed.
+- Seven distinct task-qualified combinations (30 successful variant attempts)
+  are available and the Agent selected one with exactly seven qualified opaque
+  recovery refs. No source poses, thresholds or robot margins were relaxed.
+- Final state `awaiting_replan`, long-horizon result `blocked` at the first
+  Action node with `node_selection_no_progress`; motion disabled, four Query
+  records and zero Action records. Full acquire/pour/return routes and R04/rod
+  qualification remain unvalidated; the complete workflow is not yet successful.
+- Expanded tests: 773 passed / five unchanged planning-selection mock failures;
+  loading original HEAD modules reproduces those same five failures.
+
 ## v16.6.3 local repair validated / 手掌与终态诊断修复已验证
 
 - Diagnosis: `.task/labutopia-palm-collision-repair-20261102.md`.

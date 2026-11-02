@@ -123,6 +123,37 @@ def _estimate(messages, names):
     return sum(len(str(message.get("content", ""))) for message in messages) + 10 * len(names)
 
 
+@pytest.mark.parametrize("collection", ["grasp_candidates", "document_matches"])
+def test_large_bound_arrays_are_prompt_summaries_without_changing_authority(collection):
+    from PhyAgentOS.agent.planning_loop import NodeExecutionContext, node_context_prompt_projection
+
+    bindings = {
+        "entity_ref": "entity://chosen", "parameters": {"amount": .87},
+        "evidence": {collection: [{"candidate_ref": f"candidate://{i}", "details": "x" * 2000}
+                                 for i in range(512)]},
+        "small_values": [1, 2, 3],
+    }
+    original = json.dumps(bindings)
+    node = SimpleNamespace(node_id="choose", input_bindings=bindings)
+    task = _task(graph=SimpleNamespace(nodes=(node,)))
+    context = NodeExecutionContext(task_id=task.task_id, revision_id="revision-1",
+                                   node_id="choose", capability="choose", dependencies=(),
+                                   required_evidence=(), input_bindings=bindings, scene_revision="scene-1")
+    views = [task_prompt_projection(task)["nodes"][0],
+             node_task_prompt_projection(task, "choose")["node"],
+             node_context_prompt_projection(context)]
+    for view in views:
+        projected = view["input_bindings"]
+        assert len(json.dumps(projected)) < 2000
+        assert projected["entity_ref"] == bindings["entity_ref"]
+        assert projected["parameters"] == bindings["parameters"]
+        assert projected["small_values"] == [1, 2, 3]
+        assert projected["evidence"][collection]["count"] == 512
+        assert projected["evidence"][collection]["authority"] == "prompt_summary_only"
+    assert json.dumps(bindings) == original
+    assert context.input_bindings == bindings
+
+
 def test_agent_loop_selects_task_from_current_session_not_global_active():
     session_task = SimpleNamespace(task_id="task-session", terminal=False)
     other_task = SimpleNamespace(task_id="task-other", terminal=False)

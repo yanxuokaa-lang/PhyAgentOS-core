@@ -537,6 +537,28 @@ def _task_status(task: Any) -> Any:
     return getattr(status, "value", status)
 
 
+def input_binding_prompt_projection(value: Any) -> Any:
+    """Bound displayed arrays without changing Coordinator-owned input values.
+
+    Small semantic parameters remain literal. Large collections are explicitly
+    summaries, never replacement Tool arguments; selection/materialization
+    continues to resolve the complete immutable node binding.
+    """
+    value = _safe_json(value)
+    if isinstance(value, dict):
+        return {key: input_binding_prompt_projection(child) for key, child in value.items()}
+    if isinstance(value, list):
+        if len(value) > _MAX_PHASE_ITEMS:
+            return {
+                "type": "array", "count": len(value),
+                "authority": "prompt_summary_only",
+                "source_of_truth": "Coordinator PlanNode input_bindings",
+                "usage": "Use the frozen binding; this summary is not a Tool argument or selection.",
+            }
+        return [input_binding_prompt_projection(child) for child in value]
+    return value
+
+
 def _scene_bind_selection_projection(task: Any) -> dict[str, Any] | None:
     """Project current understanding choices without selecting for the Agent."""
 
@@ -935,7 +957,7 @@ def task_prompt_projection(
                     "produced_evidence": list(getattr(node, "produced_evidence", ())),
                     "resources": _safe_json(getattr(node, "resources", ())),
                     "effects": list(getattr(node, "effects", ())),
-                    "input_bindings": _safe_json(getattr(node, "input_bindings", {})),
+                    "input_bindings": input_binding_prompt_projection(getattr(node, "input_bindings", {})),
                     "retry_of": getattr(node, "retry_of", None),
                 }
             )
@@ -1827,7 +1849,7 @@ def node_task_prompt_projection(
                 "dependencies": list(getattr(node, "dependencies", ())),
                 "conditions": list(getattr(node, "conditions", ())),
                 "required_evidence": list(getattr(node, "required_evidence", ())),
-                "input_bindings": _safe_json(getattr(node, "input_bindings", {})),
+                "input_bindings": input_binding_prompt_projection(getattr(node, "input_bindings", {})),
                 "resources": _safe_json(getattr(node, "resources", ())),
                 "effects": list(getattr(node, "effects", ())),
                 "retry_of": getattr(node, "retry_of", None),

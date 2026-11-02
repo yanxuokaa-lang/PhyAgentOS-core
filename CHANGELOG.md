@@ -48,6 +48,115 @@
 
 ## 最近五版本 / Latest five versions
 
+## v16.7.0 (2026-11-02 12:59) - codex
+
+### 预期修改 / Planned Changes [完成局部修复；完整流程尚未通过 / Local repairs complete; full workflow not accepted]
+- [docs] [docs] 保存当前受检集合四个超开口、六个终态受阻的诊断；先检查模型原始候选覆盖、截断与工艺筛选各自丢失的区域，再选择有证据的 Provider 修复。 / Save four aperture and six final-pose failures; measure losses from model coverage, truncation and process qualification before choosing an evidenced Provider repair. (local)
+- [sense] [feat] 在现有 Grasp/Task-Affordance Provider 接口后改善当前几何支持的候选覆盖；候选保持模型/观测来源与新 opaque 身份，不在 Action recovery 改位姿，不调低安全裕量或直接放松瓶口阈值。 / Improve geometry-supported coverage behind existing Provider ports, retaining model/observation provenance and new opaque identity; never shift poses in Action recovery, reduce margins or merely relax opening thresholds. (local)
+- [eval] [chore] 先建立失败复现与替代机制/同捕获/零动作测试，再接入运行配置并做原生无动作验收，分别记录契约、Provider 和执行证据。 / Establish regression, substitution, same-capture and no-motion tests before runtime wiring and native no-motion validation; distinguish contract, Provider and execution evidence. (local)
+- [docs] [docs] 遵守现有 AgentLoop/Coordinator 生命周期职责，完成架构审查、精确 Diff/行号、双语日志与当前分支提交推送；保留无关用户变更。 / Preserve AgentLoop/Coordinator lifecycle ownership; finish architecture review, precise diffs/ranges, bilingual logs and current-branch commits/push while preserving unrelated edits. (local)
+- [sense] [fix] 配对历史实测：1057 个阈值后原始候选中 4 个通过现有工艺/开口且手掌 padded bounds 高于桌面，worker 512 中留 2 个，64 截断后为 0。优先将实验 profile 的 retained budget 恢复为现有 512 sampling 上限，让原始去重候选进入后续资格检查；不新增姿态生成或放松工艺规则。 / Paired historical measurement finds four process/aperture-qualified poses with padded palm above tabletop among 1057 native candidates, two in worker 512 and zero after retained 64. Align the experiment retained budget with its existing 512 sampling cap so deduplicated native poses reach qualification; add no pose synthesis or relaxed process rule. (local)
+- [sense] [feat] 新捕获证明补回两候选仍因夹指/桌面拒绝。继续在 GraspNet worker 增加有界观测区域推理（保留全云，加最多三个 PCA 投影半区间），以原始点子集重新推理而非平移抓取；采样同时覆盖空间/朝向/开口，保留原模型分数与坐标逆变换。旧 profile 默认关闭区域推理。 / Fresh capture shows both recovered poses still fail finger/table clearance. Add bounded observed-region inference in the GraspNet worker (full cloud plus at most three half-intervals along its PCA projection), recomputing from real point subsets without shifting grasps; sample position/orientation/width while preserving scores and inverse frame transforms. Existing profiles default to no regional inference. (local)
+
+### 文件变更详情 / File Changes
+
+#### [修改 / Modified] `examples/forge-adapters/robotwin20/runtime/graspnet_worker.py` L26-L67、L78-L108、L206-L233、L285-L287
+- [sense] [feat] 新增几何多样性采样与最多三个真实观测子区域推理；区域保持原点，输出保持原始模型位姿/分数/开口。默认 count=0，与原推理路径兼容。 / Add geometric-diversity sampling and at most three real observed subsets; preserve observed points and native poses/scores/apertures, with count=0 preserving the original path. (local)
+```diff
+-if policy != "orientation_diverse":
++if policy not in ("orientation_diverse", "geometry_diverse"):
+     raise WorkerUnavailableError("unsupported GraspNet sampling policy")
++if policy == "geometry_diverse":
++    distances += np.mean((positions - positions[index]) ** 2, axis=1) + np.abs(widths - widths[index])
+
++def _input_regions(points, count):
++    # Full cloud plus bounded overlapping PCA projection intervals;
++    # subsets retain only existing points, not synthetic grasp positions.
++    regions = [points]
++    ...
++    regions.append(points[mask])
++    return regions
+
+-sampled = _sample_points(points, max_points, seed=seed)
++sampled_regions = [_sample_points(region, max_points, seed=seed) for region in regions]
+-for input_rotation in rotations:
++for sampled, input_rotation in ((sample, rotation) for sample in sampled_regions for rotation in rotations):
+     # Existing inference and inverse mapping; one request-wide output budget.
+```
+- [sense] [feat] 单一完整点云 pivot 维持坐标逆变换，每区域在各旋转间共享采样；任一推理 pass 失败即拒绝整个请求，不发布局部成功。PCA 仅是采样方向，不冒充瓶轴或棒轴。 / A common full-cloud pivot preserves inverse transforms; rotations share each region's sampled points. Any pass failure rejects the request without partial success; PCA is a sampling direction, not a physical bottle/rod axis. (local)
+
+#### [修改 / Modified] `examples/forge-adapters/isaacsim_lab/configs/labutopia-mixture-perception.json` L31、L87-L90
+- [env] [fix] 实验 profile 保留上限与已有 sample_count=512 对齐，启用区域推理和几何采样；旧部署默认行为不变，不放松 NMS、瓶口/支撑规则或机器人检查。 / Align experiment retention with its existing sample_count=512 and enable regional/geometric coverage without changing other defaults, NMS, process exclusions or robot checks. (local)
+```diff
+-"max_candidates": 64,
++"max_candidates": 512,
+-"orientation_diverse",
++"geometry_diverse",
++"--input-region-count",
++"3",
+```
+
+#### [新增 / Added] `examples/forge-adapters/isaacsim_lab/scripts/inspect_grasp_sampling.py` L1-L71
+- [eval] [feat] 独立模型环境回放历史请求，保存 native/worker 集合、配置、输入、命令、Git 版本及精确 worker 源码；输出目录禁止覆盖，失败显式保存，不生成准备/动作权限。 / Replay historical requests in the isolated model environment; save native/worker pools, config, inputs, command, Git revision and exact worker source in a unique directory, persisting explicit failure and never granting preparation/action authority. (local)
+```diff
++original = worker._sample_candidates
++def capture(candidates, limit, policy):
++    native.extend(candidates)
++    return original(candidates, limit, policy)
++worker._sample_candidates = capture
++# Persist evidence_kind='historical_grasp_sampling_diagnostic',
++# motion_authorized=False, configuration, commit and worker_source.
+```
+
+#### [新增/修改 / Added/Modified] 回归测试 / Regression Tests
+- [eval] [chore] 新增 `examples/forge-adapters/isaacsim_lab/tests/test_grasp_coverage.py:L1-L127`：真实部署组合下 70 个替代候选先复现 64 截断，再验证原值保留、同捕获 opaque 身份、Provider 失败零发布及诊断元数据。 / Production-composition tests first reproduce 64-of-70 truncation, then verify unchanged candidates, capture-scoped opaque identity, no publication on Provider failure and diagnostic metadata. (local)
+- [eval] [chore] 修改 `examples/forge-adapters/robotwin20/tests/test_graspnet_worker.py:L162-L198,L311-L345`：六个区域/多样性测试先失败再修复，补每 pass 逆变换、输出预算、默认兼容、后续区域失败不返回局部成功。 / Six region/diversity tests fail before implementation; add every-pass inverse transforms, total output budget, compatible defaults and no partial success after regional failure. (local)
+```diff
++assert selected == [candidates[0], different_region]
++assert regions[0] is points and len(regions) == 4
++assert len(seen) == 8
++np.testing.assert_allclose(matrix[:3, 3], expected, atol=2e-7)
++with pytest.raises(module.WorkerUnavailableError, match="inference failed"):
++    module._handle(request)
+```
+
+### 架构与验证 / Architecture and Validation
+- [policy] [docs] 通用层继续拥有任务语义、opaque 选择、取消/恢复/结算；Provider 拥有模型覆盖与工艺资格，Isaac 拥有真实几何/坐标/IK/完整路径。无公共契约、AgentLoop 分支或第二生命周期；替代 Provider 测试通过。 / Generic owners retain semantics, opaque selection and lifecycle; Providers own coverage/qualification, Isaac owns geometry/transforms/IK/full routes. No public-contract expansion, AgentLoop branch or shadow lifecycle; substitution tests pass. (local)
+- [eval] [chore] 受影响回归 463 passed（12.46s），Ruff/compileall/`git diff --check` 通过；实际动作证据与契约/模型证据分别记录。 / 463 affected tests pass (12.46s), as do Ruff/compileall/whitespace checks; distinguish motion proof from contract/model evidence. (local)
+- [eval] [exp] 历史 replay r2 为 1057 个阈值后原始候选，512 worker 中两个候选通过工艺/开口及手掌桌面必要条件，64 截断后为零；完整 NMS 保留 389。区域 replay r3 为 9855 原始候选→512，仍不代表可执行。 / Historical replay r2 has 1057 thresholded native candidates, two qualifying worker hypotheses lost at retained=64 despite surviving NMS (389). Regional replay r3 yields 9855→512; neither diagnostic constitutes admission. (local)
+- [eval] [exp] 仅 retention 修复的原生任务 `task_b32f6dea14194fe8` cancelled：21 超开口、144 最终手掌/桌面、16 最终夹指/桌面记录，无 IK/控制动作。区域 r1 因 destination semantic selection 歧义未建任务；保留记录后明确 BEAKER 标签重跑 r2。 / Retention-only native task cancels with 21 aperture failures, 144 final palm/table and 16 final finger/table records, no IK/controller action. Regional r1 fails destination semantic binding before task creation; preserve it and rerun r2 with explicit BEAKER label. (local)
+- [eval] [docs] 该实验最多 16 个推理 pass、每次 12000 点、总输出 512；seed 不保证 GPU 位级复现。完整观测仍用于资格/碰撞，crop 不代表空闲空间；旧门禁、裕量与 qualified-only recovery 保留。 / Bound inference to 16 passes, 12000 points each and 512 outputs; seed does not ensure bitwise GPU determinism. Full observation remains authoritative for qualification/collision; crops are not free-space proof, and existing margins/qualified-only recovery remain. (local)
+- [policy] [fix] [计划扩展] 区域 r2 已复现 task prompt 339858+8192 超 272000：PlanNode input_bindings 含完整候选数组并原样注入提示。仅在现有 prompt projection 将大数组投影为明确的非权威数量摘要，小语义值/参数保持，Coordinator 完整绑定、候选池与选择解析不改；同时覆盖 task/node/working-set 三处，增加通用非机器人和原值不变回归。 / [Plan extension] Regional r2 reproduces prompt overflow (339858+8192 >272000) because complete candidate arrays in PlanNode input_bindings are injected verbatim. Bound large arrays only in existing prompt projections with explicit non-authoritative summaries; keep small semantic parameters and exact Coordinator bindings/pools/resolution unchanged. Cover task/node/working-set views with generic non-robot and immutability regressions. (local)
+
+#### [修改 / Modified] `PhyAgentOS/agent/prompt_context.py` L540-L559、L960、L1852；`PhyAgentOS/agent/planning_loop.py` L709-L714
+- [policy] [fix] 大于现有 64-item 提示显示上限的绑定数组改为 count/非权威摘要，所有精确值保留 Coordinator；task/node/working-set 共用一份纯投影，不加机器人分支。 / Arrays beyond the existing 64-item display bound become count/non-authoritative summaries; Coordinator retains exact values. Task/node/working-set share one pure projection with no robot-specific branch. (local)
+```diff
+-"input_bindings": _safe_json(getattr(node, "input_bindings", {})),
++"input_bindings": input_binding_prompt_projection(getattr(node, "input_bindings", {})),
++# Large list projection only:
++{"type": "array", "count": len(value), "authority": "prompt_summary_only",
++ "source_of_truth": "Coordinator PlanNode input_bindings", ...}
++payload["input_bindings"] = input_binding_prompt_projection(context.input_bindings)
+```
+- [eval] [chore] `tests/test_prompt_context.py:L126-L154` 新增机器人/文档检索两类数据，先复现单个输入 1051154 字符，再断言三种提示视图小于 2000 字符、语义数值与完整记录不变。62 项 prompt 回归通过。 / Robot/document fixtures first reproduce a 1051154-character input, then assert all three prompt views stay below 2000 characters without changing semantic values or complete records; 62 prompt regressions pass. (local)
+- [eval] [exp] 原生区域 r3 创建后提示 26594 token（node_facts 18150），不再溢出，已经进入 planning_execution；修改前 r2 为 339858 token。 / Native regional r3 enters planning_execution with 26594 prompt tokens (18150 node facts), compared with 339858 before the fix. (local)
+- [eval] [chore] 扩展测试共 773 passed / 5 failed；五项均在未修改的 `test_planning_selection.py`，其 mock graph 缺少 nodes。将两个修改模块以 Git HEAD 源码加载后重跑该文件仍为同样 5 failed / 35 passed，确认非本次新增回归，未修改旧 fixture 或降低验证。 / Expanded tests report 773 passed / 5 failed; all five are unchanged planning-selection fixtures missing graph nodes. Reloading both touched modules from Git HEAD reproduces the same 5 failed / 35 passed, so old fixtures and validation were not weakened. (local)
+
+#### [新增/修改 / Added/Modified] 诊断与规范文档 / Diagnosis and Guidance
+- [docs] [docs] 新增 `.task/labutopia-grasp-coverage-repair-20261102.md:L1-L184` 与 `docs/forge/IMPLEMENTATION_REVIEW_V16_7_0.md:L1-L158`，保存实测、修复归属、替代/失败测试、最终状态、剩余无动作流程边界与复现命令。 / Add diagnosis and implementation review with measurements, ownership, substitution/failure tests, final state, remaining no-motion boundary and reproduction commands. (local)
+- [docs] [docs] 修改 `.task/current.md:L3-L38`、`docs/forge/MANIPULATION_DAG_DEVELOPER_GUIDE.md:L231-L252` 与 `docs/forge/AGENT_TOOL_INPUT_SELECTION_DESIGN.md:L160-L168`，分别记录当前任务结果、Provider 区域覆盖和非权威提示投影规则。 / Update task state, Provider regional coverage guidance and non-authoritative prompt projection rules at these exact ranges. (local)
+```diff
++Full cloud plus at most three observed subsets; qualification still uses complete evidence.
++Prompt summaries do not replace Coordinator input bindings or grant execution authority.
++Seven R03 combinations qualify; full acquire/pour/return and R04/rod remain unvalidated.
+```
+
+### 最终原生结果 / Final Native Result
+- [eval] [exp] `out/lab-fullchain-truth-20261102-region-no-motion-r3/`，task `task_a87e6bb320964db7`、revision `revision_acc11d27415a4747`、session `cli:lab-ff91b390d264`：R03/R04/棒分别保留 508/506/24 个候选，四个 R03 工艺/资格 Query/preparation 节点全部 completed。 / Fresh workspace/task/revision/session retains 508/506/24 proposals; all four R03 process/affordance Query/preparation nodes complete. (local)
+- [eval] [exp] R03 108 个 probe 请求中 41 超开口、60 不可用、7 个独立合格组合。536 条变体记录为 472 最终手掌/桌面、8 最终夹指/桌面、12 自碰撞、9 后续路径碰撞、5 IK 失败、30 available。先前中途“20 通过”是变体记录，不是候选数。 / Of 108 R03 probes, 41 exceed aperture, 60 are unavailable and seven distinct combinations qualify. The 536 variant records comprise 472 palm/table, eight finger/table, 12 self-collision, nine later route collisions, five IK failures and 30 available; the earlier intermediate 20 successes were attempts, not candidates. (local)
+- [policy] [exp] Agent 已选择 `grasp-affordance://8986e73849994e3db75ecaef78536dd7`，准备结果仅含同集合七个 qualified opaque 引用。任务最终 `awaiting_replan`，长期调度结果 blocked，首个 Action 节点出现 `node_turn_incomplete:pour_r03:node_selection_no_progress`，host exit 1。 / Agent selects that combination and preparation returns only seven same-set qualified opaque refs. Final task is awaiting_replan, long-horizon result blocked at the first Action node with the stated failure, host exit 1. (local)
+- [eval] [docs] `simulated_motion_enabled=false`，四条 Query、零条 Action 记录。controller_outcomes 保存 blocked 调度回执，不是机械臂运动回执；早期 agent_response 早于后续长期执行，以最终持久化状态为准。不声明完整路径、R04/棒资格、抓取/倾倒/搅拌成功。 / Motion is disabled, with four Query and zero Action records. controller_outcomes holds a blocked orchestration receipt, not motion feedback; the early agent_response predates later progress, so final persisted state is authoritative. No complete-route, R04/rod or manipulation success is claimed. (local)
+
 ## v16.6.3 (2026-11-02 12:38) - codex
 
 ### 预期修改 / Planned Changes [完成局部修复；可用抓取候选仍缺失 / Local repair complete; usable grasp candidate still missing]
@@ -311,83 +420,3 @@
 - Branch: `feature/planning-loop`.
 - This documentation follow-up records the completed r2 outcome and exact diagnosis/review ranges; unrelated user changes remain excluded. / 本次文档跟进记录 r2 终态及精确诊断/复核行号，未纳入无关用户修改。
 - Push: `git push origin feature/planning-loop`; report the actual remote result after this receipt commit. / 提交回执后推送当前分支，并报告实际远端结果。
-
-## v16.5.0 (2026-11-01 22:18) - codex
-
-### 预期修改 / Planned Changes [完成 / Completed; runtime remains blocked]
-- [sense] [feat] 在 Isaac Adapter 私有 Task-Affordance Provider 中接入同一捕获、同一场景修订的无动作 grasp approach 可行性探针，只保留至少一个最终抓取方向与短接近段通过 Franka IK、连续性、workspace、自碰撞及环境碰撞检查的 opaque grasp 引用；不向 AgentLoop 暴露关节、USD 路径或碰撞细节。 / Add a same-capture, same-scene-revision no-motion grasp-approach feasibility probe behind the Isaac task-affordance Provider, retaining only opaque grasp refs with at least one final orientation and short approach that passes Franka IK, continuity, workspace, self-collision, and environment-collision checks without exposing joints, USD paths, or collision details to AgentLoop. (local)
-- [env] [feat] 在 Engine/Worker/PhaseMotion Adapter 边界增加只读 feasibility RPC 与 Adapter 私有证据，复用最终组合场景、观测到执行体绑定、抓取对称变体和现有安全检查；探针不得发出控制器命令、改变世界或替代完整 Action preparation。 / Add a read-only feasibility RPC and Adapter-private evidence across the Engine/Worker/PhaseMotion boundary, reusing the final composed scene, observation-to-body binding, grasp-symmetry variants, and existing safety checks; the probe must issue no controller command, change no world state, and never replace full Action preparation. (local)
-- [policy] [fix] Task-Affordance Preparation 仅返回 Query 中已通过 feasibility 的同工艺特征 opaque refs，并在场景修订、捕获、候选集合或 feasibility 证据缺失/过期/歧义时 fail closed；现有 Action preparation 继续只遍历该有序集合。 / Make task-affordance Preparation return only same-process-feature opaque refs that passed feasibility in the Query, failing closed on stale/missing/ambiguous scene, capture, candidate-set, or feasibility evidence while the existing Action preparation continues to traverse only that ordered set. (local)
-- [test] [test] 先覆盖替代 Provider 不依赖 Isaac 私有字段、一个候选可行、全部候选不可达、stale capture/revision、无效探针结果、对称方向选择、零动作与 Action 不重新引入被排除候选；随后运行定向和完整回归及一次不带 `--execute` 的全链路 Agent 验证。 / Cover provider substitution without Isaac-private fields, one feasible candidate, all candidates unreachable, stale capture/revision, invalid probe results, symmetry-orientation selection, zero motion, and prevention of Action reintroducing rejected candidates; then run focused/full regression and one full-chain Agent validation without `--execute`. (local)
-- [docs] [docs] 保存本轮主因诊断、PAOS 所有权/替换边界、证据链与新鲜度边界、findings-first 实现复核、验证命令及 no-motion 运行回执；只有完整 R03 acquire preparation 通过后才允许后续模拟执行。 / Save the root-cause diagnosis, PAOS ownership/substitution boundary, evidence lineage and freshness boundary, findings-first implementation review, validation commands, and no-motion receipt; permit later simulated execution only after complete R03 acquire preparation succeeds. (local)
-
-### 架构与安全边界 / Architecture and Safety Boundary
-- 通用层继续只拥有 task semantics、opaque refs、生命周期、恢复与 settlement；机器人 IK、关节种子、短接近采样、USD/PhysX 查询及失败细节由 Isaac Adapter 独占。 / The generic layer continues to own task semantics, opaque refs, lifecycle, recovery, and settlement; robot IK, joint seeds, short-approach sampling, USD/PhysX queries, and failure details remain exclusively owned by the Isaac Adapter.
-- feasibility 是 Query/Preparation 的只读证据，不是第二个调度器、路线存储或成功 settlement；完整路线仍由 `manipulation.prepare` 重新验证。 / Feasibility is read-only Query/Preparation evidence, not a second scheduler, route store, or success settlement; `manipulation.prepare` still revalidates the complete route.
-- 不新增 hash、冻结 contract 或额外发布 gate，不降低 workspace、IK 连续性、关节限位、自碰撞、环境碰撞、payload collision 或 possession 门禁。 / Add no hashes, frozen contracts, or release gates, and weaken none of the workspace, IK-continuity, joint-limit, self-collision, environment-collision, payload-collision, or possession gates.
-
-### 续作计划 / Continuation Plan (2026-11-02) [完成 / Completed]
-- [docs] [fix] 保存 r3 的真实拒绝诊断：R03 候选 15/16/23 的 world grasp z≈0.750917 m、approach z≈0.634282，后退 0.12/0.18 m 后 pre-grasp z≈0.674803/0.636746 m，小于既有 workspace z_min=0.7 m；该结论只证明现有候选/接近距离不合格，不证明物体不能抓取。 / Save the measured r3 rejection: the three qualified grasps backtrack below the existing workspace floor; this rejects the present approaches, not all possible grasps of the object. (local)
-- [env] [fix] 补齐 feasibility artifact 的 capture identity、失败变体及工作空间坐标证据，保留 worker 拒绝的原始原因；验证探针与完整 preparation 的几何一致性，不修改安全阈值。 / Complete feasibility artifact capture identity and variant/workspace diagnostics, preserve worker rejection causes, and test geometric agreement with full preparation without changing safety thresholds. (local)
-- [sense] [fix] 审查并修复探针替代实现、过期/错误 identity、缺失证据和 Provider 异常的失败路径；真实不可达与基础设施异常必须可区分。 / Review and repair substitution, stale/wrong identity, missing evidence, and provider-error paths; distinguish geometric infeasibility from infrastructure failure. (local)
-- [eval] [chore] 运行定向/完整回归及新的无动作正式入口验证，保存诊断与实现复核，补齐当前任务、双语行号/Diff 和最近五版本后提交并推送当前分支；不纳入无关未提交文件。 / Run focused/full regressions and a fresh formal no-motion validation, save diagnosis/review, update task and bilingual line/diff records and latest five entries, then commit and push the current branch without unrelated changes. (local)
-
-### 实际文件变更 / Actual File Changes
-- [env] [feat] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/agent_host.py:L123-L125` 注入只读 feasibility 回调；继续使用原 Task-Affordance Query/Preparation 与 AgentLoop。 / Inject the read-only feasibility callback into the existing Task-Affordance and AgentLoop path. (local)
-- [env] [feat] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/engine.py:L504-L526,L631-L663,L730-L749` 新增 Adapter backend 分发、同一 worker RPC 与失败身份保留；未增加 Core Tool 或 Action。 / Add Adapter/backend dispatch, same-worker RPC and failure identity preservation without a Core Tool or Action. (local)
-- [env] [feat] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py:L1014-L1046,L1129-L1311` 允许显式虚拟 IK 种子并用 FK 验证一致性；生成几何轴对称短接近候选并复用既有 qualification；保存逐候选坐标、世界边界、capture identity 与失败原因。 / Support explicit hypothetical IK seeds with FK agreement, qualify geometry-equivalent short approaches through existing checks, and persist coordinates, world bounds, capture identity and causes. (local)
-- [sense] [feat] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/visual_perception.py:L9,L239-L240,L267-L269,L355-L459,L473,L538-L551,L1295-L1375` 组合过滤只保留可行 opaque grasp refs；复核回执并保存 Provider 异常/缺失证据诊断；解析私有执行 target 不扩大公共契约。 / Retain only feasible opaque grasp refs, revalidate receipts, record provider/missing-evidence errors and resolve private execution targets without widening public contracts. (local)
-- [env] [feat] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/worker.py:L116-L151`、`examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/worker_session.py:L61-L62` 接入串行只读 RPC，拒绝缺失/过期场景，保持原 request identity 且不推进 revision。 / Wire a serialized read-only RPC, reject missing/stale scenes, preserve request identity and leave revision unchanged. (local)
-- [eval] [chore] `examples/forge-adapters/isaacsim_lab/tests/test_engine.py:L1128-L1172`、`tests/test_phase_motion.py:L612-L820`、`tests/test_visual_perception.py:L1039-L1295`、`tests/test_worker_session.py:L7-L8,L65-L78,L151-L176,L193-L213`（后三者同属该 Adapter）覆盖替代回调、混合候选过滤、实际短路线 qualifier、workspace 复现、stale/invalid/missing/error 及零调用拒绝。 / Cover replacement callbacks, mixed-candidate filtering, the real short-route qualifier, recorded workspace rejection, stale/invalid/missing/error outcomes and zero-dispatch rejection. (local)
-- [docs] [docs] `.task/current.md:L25-L26,L40-L76`、`.task/labutopia-r03-approach-feasibility-diagnosis-20261102.md:L1-L130`、`docs/forge/IMPLEMENTATION_REVIEW_V16_5_0.md:L1-L79` 保存继续任务、定量诊断及 PAOS 分层复核；诊断 L81-L130 包含验证命令和新的终态回执。 / Save the current task, quantitative diagnosis and PAOS ownership review; diagnosis lines 81–130 include validation commands and the fresh terminal receipt. (local)
-
-### 关键代码 Diff / Key Code Diff
-
-```diff
-- grasp_task_affordance_provider=LabGraspTaskAffordanceProvider(visual)
-+ grasp_task_affordance_provider=LabGraspTaskAffordanceProvider(
-+     visual, approach_feasibility=visual.qualify_grasp_approach
-+ )
-
-- def qualify(self, waypoints, source, tcp_from_object, operation, supported_pose=None, tool_frame=None):
--     joints = self.joints()
-+ def qualify(self, waypoints, source, tcp_from_object, operation, supported_pose=None,
-+             tool_frame=None, *, initial_joints=None, initial_pose=None):
-+     joints = self.joints() if initial_joints is None else np.asarray(initial_joints, dtype=float).copy()
-+     # A supplied initial_pose must agree with FK before route qualification.
-
-- # Body/process-compatible grasps immediately enter the task-affordance set.
-+ # Same-capture private probe checks pre-grasp and grasp/close first.
-+ # Only candidates with available, no-motion evidence enter the set.
-+ # Full Action preparation still qualifies the entire route from live joints.
-
-- raise PhaseMotionError("workspace_violation", "pre-grasp TCP is outside workspace")
-+ raise PhaseMotionError("workspace_violation",
-+     f"pre-grasp TCP={pre[:3, 3].tolist()} outside world workspace "
-+     f"min={self.config['workspace_min_m']}, max={self.config['workspace_max_m']}")
-```
-
-### 验证 / Validation
-- 完整 Isaac Adapter + subtask executor 回归 `370 passed`；定向 phase/visual/worker 回归 `185 passed`；混合候选及无效 artifact ref 测试补强后 visual 回归 `67 passed`。 / Full Isaac Adapter plus subtask-executor regression passed 370; focused phase/visual/worker passed 185; strengthened mixed-candidate and invalid-artifact visual tests passed 67. (local)
-- 十个代码/测试文件 Ruff、compileall 与 `git diff --check` 通过；没有禁用 async 插件或把未运行测试计为通过。 / Ruff on ten code/test files, compileall and diff checks passed; asynchronous tests were not disabled or reported as passed without running. (local)
-- 初次新增 worker 参数化测试漏导入 pytest，收集失败后已补齐并重新通过；该失败不作为运行能力证据。 / An initial parametrized worker test missed its pytest import; collection was fixed and rerun successfully, with no runtime claim inferred. (local)
-
-### 运行边界 / Runtime Boundary
-- 2026-11-01 r3 已证明三个合格几何 grasp 的 24 个接近变体都越过 workspace 下界；该结论只覆盖当前候选和既有 approach 配置。 / The November 1 r3 artifacts prove all 24 short-approach variants violate the existing lower workspace bound; this covers only current candidates/configuration. (local)
-- 2026-11-02 r1 在会话中断前写出相机、state 和 understanding，但进程已结束且没有 acceptance.json；标记为中断，不能作为最终资格化结果。 / November 2 r1 wrote camera/state/understanding artifacts before interruption; its process ended without acceptance.json, so it is incomplete rather than qualification evidence. (local)
-- 2026-11-02 r2 使用相同正式 `python -m isaacsim_lab.agent_host` 入口和原提示词重跑，不传 `--execute`；task `task_51ae038c97d246fd`、session `cli:lab-5fe426934fb3` 最终 cancelled。R03 工艺 Query/preparation 通过；task-affordance 的三个 grasp 共 24 个变体全部 workspace rejection，未进入 IK/Action。 / November 2 r2 used the same formal Agent Host entry/instruction without `--execute`; the recorded task/session ended cancelled after process-feature preparation passed and all 24 grasp approaches failed workspace checks before IK/Action. (local)
-- 新 artifact 包含完整 capture identity、world grasp/pre-grasp、approach 和 workspace 边界，复现 z=0.674803/0.636746 m；`acceptance.json` 记录 `simulated_motion_enabled=false`、`controller_outcomes=[]`；R04/GLASS_ROD 未执行。 / Fresh artifacts reproduce the measured low pre-grasp heights with full identity/geometry; acceptance confirms disabled motion, empty controller outcomes and no downstream execution. (local)
-- 本次完成资格化前移和诊断修复；当前抓取方向/接近距离仍不可行，未宣称全链路倾倒/搅拌成功。 / Early qualification and diagnostic fixes are complete; current grasp directions/backoffs remain infeasible, with no full manipulation success claimed. (local)
-
-### 实现复核 / Implementation Review
-- [docs] [docs] 修复完整路线前缺失 embodiment 接近资格检查、artifact 身份/坐标不足、Provider 异常被泛化、测试完全桩替短路线等四项 Major；当前实现无剩余已识别 Blocker/Major。 / Resolve four Major findings in early embodiment qualification, artifact identity/coordinates, provider-error differentiation and real short-route test coverage; no identified implementation Blocker/Major remains. (local)
-- [docs] [docs] `CHANGELOG.md` 最近五条恢复为与月度归档一致的完整记录；保留所有历史月度版本，不纳入无关报告修改或运行大文件。 / Restore the latest five full entries in CHANGELOG to match the monthly archive, preserve historical entries and exclude unrelated edits/large run artifacts. (local)
-
-### Git 提交 / Git Commit
-- Implementation commit: `8f3fa34e`.
-- Log receipt commit: `134d4ed8`.
-- Branch: `feature/planning-loop`.
-- Time: `2026-11-02 11:04:50 +0800` (Asia/Shanghai, implementation commit).
-- Receipt: this log-only follow-up records the implementation commit and corrects the task-file line references; the rolling index contains the same complete entry. / 本次纯日志跟进回填实现提交并校正任务文件行号，滚动索引保留同一完整记录。
-- Push command: `git push origin feature/planning-loop` (current branch; no branch switch). / 推送当前分支，不切换分支。
-- First push attempt: `timeout 60s git push origin feature/planning-loop` ended with exit `124` and no remote acknowledgement. Commits remain local; one bounded retry follows this receipt. / 首次推送 60 秒超时且无远端确认；提交保留本地，记录后进行一次有界重试。

@@ -228,6 +228,28 @@ feasibility reference; precise simulator paths and numerical geometry remain
 inside private receipts. Receipt inspection handles joint samples and pose-only
 preflight samples separately, without commanding either into the simulator.
 
+Model sampling and downstream retention are separate coverage limits. The
+LabUtopia experiment retains its bounded 512-sample pool after ordinary score
+filtering/NMS for task-affordance qualification: an earlier 64-candidate cap
+discarded observed process/aperture-compatible alternatives before robot checks.
+No pose or score is rewritten. Qualified combinations still pass the existing
+opaque selection, preparation and qualified-only Action recovery path. This may
+increase Query evidence size and qualification work; model thresholds and motion
+authority are unchanged. Historical coverage diagnostics never grant
+current preparation or prove a complete route.
+
+GraspNet's private `--input-region-count` (default 0, maximum 3) optionally
+adds overlapping observed point subsets along a PCA sampling direction while
+retaining full-cloud inference. The lab profile uses three subsets and
+`--sampling-policy geometry_diverse` to preserve native position, approach,
+closing-axis and width coverage. With its four input rotations this bounds
+inference to sixteen passes; each pass inverse-maps native outputs into the
+same captured frame. This is model inference augmentation, not a physical-axis
+estimate, pose translation or task-specific grasp definition. An inference
+failure publishes no partial pool. Complete-capture geometry remains the input
+to process and obstacle qualification; omitted crop points are not free space.
+Keep these options in the Provider configuration, never AgentLoop semantics.
+
 The Adapter/Runtime owns gripper geometry, not Core or AgentLoop. A controller
 target is not a measured joint position. Readiness predicts physically bounded
 open endpoints. Without future holding-width evidence, preparation retains the

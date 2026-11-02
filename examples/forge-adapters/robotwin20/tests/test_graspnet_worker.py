@@ -159,6 +159,45 @@ def test_sampling_treats_parallel_jaw_closing_sign_as_equivalent():
     assert module._sample_candidates([same, mirrored, different], 2, "orientation_diverse") == [same, different]
 
 
+def test_geometric_sampling_preserves_a_spatial_family_with_identical_orientation():
+    module = _module('graspnet_worker')
+    candidates = []
+    for index in range(20):
+        pose = np.eye(4)
+        pose[2, 3] = index * .0001
+        candidates.append({'matrix': pose.tolist(), 'score': .9 - .01 * index,
+                           'grasp_geometry': {'width_m': .04}})
+    pose = np.eye(4)
+    pose[2, 3] = .08
+    different_region = {'matrix': pose.tolist(), 'score': .05, 'grasp_geometry': {'width_m': .04}}
+    candidates.append(different_region)
+    selected = module._sample_candidates(candidates, 2, 'geometry_diverse')
+    assert selected == [candidates[0], different_region]
+    assert all(any(item is native for native in candidates) for item in selected)
+
+
+def test_observed_regions_preserve_full_cloud_and_only_add_existing_point_subsets():
+    module = _module('graspnet_worker')
+    points = np.column_stack((np.linspace(-.1, .1, 100), np.zeros(100), np.zeros(100)))
+    regions = module._input_regions(points, 3)
+    assert regions[0] is points and len(regions) == 4
+    assert module._input_regions(points, 0) == [points]
+    for region in regions[1:]:
+        assert 3 <= len(region) < len(points)
+        assert all(any(np.array_equal(p, q) for q in points) for p in region)
+    shifted = module._input_regions(points + [2., 3., 4.], 3)
+    for original, moved in zip(regions, shifted):
+        np.testing.assert_allclose(original + [2., 3., 4.], moved)
+    assert len(module._input_regions(np.ones((10, 3)), 3)) == 1
+
+
+@pytest.mark.parametrize('count', [-1, 4, True, 1.5])
+def test_region_inference_rejects_invalid_or_unbounded_pass_count(count):
+    module = _module('graspnet_worker')
+    with pytest.raises(module.WorkerUnavailableError, match='region count'):
+        module._input_regions(np.zeros((10, 3)), count)
+
+
 def test_optional_seed_pairs_point_indices_without_changing_global_rng():
     module = _module('graspnet_worker')
     points = np.arange(300).reshape(100, 3)
@@ -267,6 +306,43 @@ def test_coordinate_inference_does_not_return_partial_success(tmp_path, monkeypa
     with pytest.raises(module.WorkerUnavailableError, match="inference failed"):
         module._handle(request)
     assert len(seen) == 2
+
+
+def test_region_inference_recomputes_same_capture_and_inverse_maps_each_pass(tmp_path, monkeypatch):
+    module, request, _, seen = _coordinate_inference_fixture(tmp_path, monkeypatch)
+    points = np.column_stack((np.linspace(.1, .3, 100), np.full(100, .2), np.ones(100))).astype(np.float32)
+    np.save(request["point_cloud_path"], points)
+    module._OPTIONS.input_region_count = 3
+    module._OPTIONS.sampling_policy = "score"
+    result = module._handle({**request, "max_candidates": 16})
+    assert len(seen) == 8
+    assert result["funnel"]["decoded"] == 8
+    pivot = points.astype(float).mean(axis=0)
+    regions = module._input_regions(points, 3)
+    for index, candidate in enumerate(result["candidates"]):
+        rotation = np.eye(3) if index % 2 == 0 else np.diag([1., -1., -1.])
+        expected = rotation.T @ (seen[index][0] + [.01, .02, .03] - pivot) + pivot
+        matrix = np.array(candidate["matrix"])
+        np.testing.assert_allclose(matrix[:3, 3], expected, atol=2e-7)
+        np.testing.assert_allclose(matrix[:3, :3], rotation.T)
+        recovered = (seen[index] - pivot) @ rotation + pivot
+        assert all(np.any(np.all(np.isclose(regions[index // 2], point, atol=2e-7), axis=1)) for point in recovered)
+        assert candidate["native_score"] == .8
+        assert candidate["grasp_geometry"] == {"width_m": .04, "height_m": .02, "depth_m": .01}
+    seen.clear()
+    assert len(module._handle({**request, "max_candidates": 2})["candidates"]) == 2
+    assert len(seen) == 8
+    assert module._parser().parse_args(["--checkpoint", "model"]).input_region_count == 0
+
+
+def test_region_failure_does_not_publish_prior_full_cloud_success(tmp_path, monkeypatch):
+    module, request, _, seen = _coordinate_inference_fixture(tmp_path, monkeypatch, fail_pass=3)
+    points = np.column_stack((np.linspace(.1, .3, 100), np.zeros(100), np.ones(100))).astype(np.float32)
+    np.save(request["point_cloud_path"], points)
+    module._OPTIONS.input_region_count = 3
+    with pytest.raises(module.WorkerUnavailableError, match="inference failed"):
+        module._handle(request)
+    assert len(seen) == 3
 
 
 def test_coordinate_inference_empty_passes_remain_empty(tmp_path, monkeypatch):

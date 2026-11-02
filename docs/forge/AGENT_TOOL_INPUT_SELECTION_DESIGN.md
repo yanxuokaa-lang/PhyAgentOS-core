@@ -157,6 +157,16 @@ errors are persisted with bounded, redacted detail in the existing task history.
 
 ## Extension Rule
 
+Task, node and working-set prompt projections summarize large immutable binding
+arrays using the existing phase display bound. Scalar parameters, small arrays
+and surrounding semantic/opaque identities remain visible. These summaries are
+explicitly non-authoritative and cannot replace consumer arguments. The complete
+PlanNode and NodeExecutionContext remain owned by Coordinator; frozen binding
+resolution, source selection and materialization continue to use those exact
+values. This prevents candidate growth from overflowing the model context without
+discarding candidates, changing public Tool schemas or adding provider-specific
+AgentLoop branches.
+
 Sourced selections return a compact receipt with `tool_arguments={}` and
 `use_selected_arguments=true`. The Agent explicitly invokes the existing
 Query/Action/Session wrapper with that flag and the receipt. Coordinator reads

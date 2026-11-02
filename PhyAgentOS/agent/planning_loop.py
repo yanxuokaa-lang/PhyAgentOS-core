@@ -706,10 +706,12 @@ def _source_catalog(
 
 def node_context_prompt_projection(context: NodeExecutionContext) -> dict[str, Any]:
     """Project selectable record paths without repeating large provider payloads."""
+    from PhyAgentOS.agent.prompt_context import input_binding_prompt_projection
 
     payload = context.model_dump(
         mode="json", exclude={"predecessor_context", "evidence_context"}
     )
+    payload["input_bindings"] = input_binding_prompt_projection(context.input_bindings)
 
     def execution_projection(execution: Any) -> dict[str, Any]:
         return {

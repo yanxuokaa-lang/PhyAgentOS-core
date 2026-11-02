@@ -28,8 +28,9 @@ def _sample_candidates(candidates, limit, policy):
 
     GraspNet decodes many spatial seeds with the same preferred orientation.
     Score-only truncation can spend the entire budget on one colliding family.
-    Start with its best score, then cover approach/closing directions. Parallel
-    jaw closing-axis sign is symmetric; ties keep native score order.
+    Start with its best score, then cover approach/closing directions and,
+    optionally, contact position and width. Parallel-jaw closing-axis sign is
+    symmetric; ties keep native score order.
     """
     import numpy as np
 
@@ -40,15 +41,26 @@ def _sample_candidates(candidates, limit, policy):
     )
     if policy == "score" or not ranked:
         return ranked[:limit]
-    if policy != "orientation_diverse":
+    if policy not in ("orientation_diverse", "geometry_diverse"):
         raise WorkerUnavailableError("unsupported GraspNet sampling policy")
-    rotations = np.asarray([item["matrix"] for item in ranked])[:, :3, :3]
+    matrices = np.asarray([item["matrix"] for item in ranked])
+    rotations = matrices[:, :3, :3]
+    if policy == "geometry_diverse":
+        positions = matrices[:, :3, 3]
+        # One cloud-wide scale preserves Euclidean distances under frame changes.
+        scale = float(np.max(np.linalg.norm(positions - positions.mean(axis=0), axis=1)))
+        positions = (positions - positions.mean(axis=0)) / (scale if scale > 1e-9 else 1.)
+        widths = np.asarray([(item.get("grasp_geometry") or {}).get("width_m", 0.) for item in ranked])
+        width_span = float(np.ptp(widths))
+        widths = (widths - widths.min()) / width_span if width_span > 1e-9 else np.zeros(len(ranked))
     selected = [0]
     nearest = np.full(len(ranked), np.inf)
     while len(selected) < min(limit, len(ranked)):
         index = selected[-1]
         distances = (1 - np.clip(rotations[:, :, 0] @ rotations[index, :, 0], -1, 1)
                      + 1 - np.abs(np.clip(rotations[:, :, 1] @ rotations[index, :, 1], -1, 1)))
+        if policy == "geometry_diverse":
+            distances += np.mean((positions - positions[index]) ** 2, axis=1) + np.abs(widths - widths[index])
         nearest = np.minimum(nearest, distances)
         nearest[selected] = -1
         selected.append(int(np.argmax(nearest)))
@@ -61,6 +73,39 @@ def _sample_points(points, max_points, *, seed=None):
     if len(points) >= max_points:
         return points[rng.choice(len(points), max_points, replace=False)]
     return np.concatenate([points, points[rng.choice(len(points), max_points-len(points), replace=True)]])
+
+
+def _input_regions(points, count):
+    """Keep the full observation and bounded overlapping subsets, never invent points.
+
+    PCA only chooses a sampling direction, not a physical object axis or grasp.
+    Region inference remains advisory; qualification uses the complete capture.
+    """
+    import numpy as np
+
+    if isinstance(count, bool) or not isinstance(count, int) or not 0 <= count <= 3:
+        raise WorkerUnavailableError("input region count must be an integer from zero to three")
+    regions = [points]
+    if count == 0 or len(points) < 4:
+        return regions
+    centered = points.astype(np.float64) - points.astype(np.float64).mean(axis=0)
+    _, axes = np.linalg.eigh(centered.T @ centered)
+    axis = axes[:, -1]
+    if axis[np.argmax(np.abs(axis))] < 0:
+        axis = -axis
+    projection = centered @ axis
+    span = float(np.ptp(projection))
+    if span <= 1e-9:
+        return regions
+    normalized = (projection - projection.min()) / span
+    starts = np.linspace(0., .5, count) if count > 1 else [.25]
+    masks = []
+    for start in starts:
+        mask = (normalized >= start - 1e-12) & (normalized <= start + .5 + 1e-12)
+        if 3 <= int(mask.sum()) < len(points) and not any(np.array_equal(mask, old) for old in masks):
+            masks.append(mask)
+            regions.append(points[mask])
+    return regions
 
 
 def _input_rotations(values):
@@ -159,17 +204,18 @@ def _handle(request: Mapping[str, Any]) -> Mapping[str, Any]:
     if request.get("apply_model_collision") is True:
         raise WorkerUnavailableError("model collision filtering requires a provider-specific implementation")
     rotations = _input_rotations(getattr(_OPTIONS, "input_rotation_xyzw", None))
+    regions = _input_regions(points, getattr(_OPTIONS, "input_region_count", 0))
     pivot = points.astype(np.float64).mean(axis=0)
     try:
         import torch
 
         network, pred_decode, grasp_group_type = _MODEL
         seed = getattr(_OPTIONS, "seed", None)
-        sampled = _sample_points(points, max_points, seed=seed)
+        sampled_regions = [_sample_points(region, max_points, seed=seed) for region in regions]
         groups = []
         with torch.no_grad():
             device = next(network.parameters()).device
-            for input_rotation in rotations:
+            for sampled, input_rotation in ((sample, rotation) for sample in sampled_regions for rotation in rotations):
                 # Rotate the same sampled points, not a predicted grasp or a
                 # synthetic viewpoint. Identity retains the original path.
                 identity = np.array_equal(input_rotation, np.eye(3))
@@ -236,7 +282,9 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--source-root")
     parser.add_argument("--device", default="cuda:0")
-    parser.add_argument("--sampling-policy", choices=("score", "orientation_diverse"), default="score")
+    parser.add_argument("--sampling-policy", choices=("score", "orientation_diverse", "geometry_diverse"), default="score")
+    parser.add_argument("--input-region-count", type=int, choices=range(4), default=0,
+                        help="Additional observed PCA intervals; full-cloud inference is always retained")
     parser.add_argument("--seed", type=int, help="Optional repeatable per-request sampling for paired evaluation")
     parser.add_argument("--input-rotation-xyzw", type=float, nargs=4, action="append",
                         help="One to four centroid-relative input rotations; predictions return to the capture frame. Default: identity only.")
