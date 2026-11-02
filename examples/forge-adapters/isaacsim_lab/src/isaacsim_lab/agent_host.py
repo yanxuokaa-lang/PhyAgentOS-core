@@ -87,6 +87,19 @@ class LabPlanningContext:
 
 def environment_guidance(sensor_ref, execute):
     mode = "Simulated motion is authorized." if execute else "Read-only qualification; motion is disabled."
+    handoff = (
+        "After task creation, use existing planning tools to select and execute ready nodes. "
+        "A successful grasp-affordance preparation is not task completion: select the ready "
+        "manipulation.execute_subtask Action using its direct-predecessor qualified opaque references, "
+        "then invoke the existing Action wrapper with the persisted selection. "
+        "The Runtime must still qualify the complete route before any controller motion. "
+        "Preserve each phase's returned video artifact references, including a failed phase; "
+        "report phase completion only from terminal Runtime feedback."
+        if execute else
+        "Only select and execute read-only Query nodes. When the next ready node is an Action, "
+        "report that execution is disabled and stop advancing; do not treat qualified candidates "
+        "as complete-route validation or completed manipulation."
+    )
     return f"""Laboratory deployment: persistent Isaac simulation with no liquid or chemistry model.
 {mode}
 Perception uses same-capture Isaac depth and point cloud plus authored LabUtopia labels/features; do not invoke ReMake, DFNet or SAM2 as prerequisites.
@@ -99,7 +112,8 @@ Do not hard-code a bottle count, operation sequence, or numeric process values. 
 Each subtask includes physical acquire, process and return; do not invent object references or coordinates.
 Use semantic_intent with allowed_arms=[franka], coordination_mode=single_arm, a goal and success_criteria.
 Set verification mode=off: physical Runtime measurements decide process completion; no model chemistry verdict.
-After task creation, use existing planning tools to execute ready nodes. Respect failed or uncertain outcomes.
+{handoff}
+Respect failed or uncertain outcomes. Never substitute raw or excluded grasps for the qualified predecessor references.
 Report only measured no-liquid manipulation, never transferred volume or chemical mixing quality.
 """
 

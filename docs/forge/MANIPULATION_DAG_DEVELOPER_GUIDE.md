@@ -449,6 +449,39 @@ adapter/profile and acceptance evidence, not the task lifecycle or Tool API.
 
 ## Evidence and Verdict Boundary
 
+### LabUtopia qualification-to-execution handoff
+
+The deployment entry `python -m isaacsim_lab.agent_host` defaults to read-only
+qualification. An explicitly authorized simulator run needs both `--execute`
+and a task instruction allowing simulation Actions. Reusing an instruction that
+forbids Actions leaves the workflow at its Action boundary even when grasp
+qualification succeeds; changing candidate thresholds cannot resolve that mode
+mismatch. Never interpret read-only candidate success as full-route readiness.
+
+After `manipulation.prepare_grasp_task_affordance` completes, the Agent selects
+the ready `manipulation.execute_subtask` through the existing planning tools,
+using qualified opaque references from the direct predecessor. The existing
+Action wrapper and Coordinator own execution and settlement. Runtime still
+prepares the complete route before controller motion. No new AgentLoop route,
+direct controller call, raw-candidate fallback or implicit motion grant is needed.
+
+The Isaac phase recorder saves actual rendered control steps under the workspace
+artifact root's `phase-video/`, including failed phases. Returned artifact refs
+must be associated with terminal phase feedback; a video alone does not prove
+successful grasp/pour/stir. No-motion Query success has no motion video. Inspect
+final Coordinator records and `controller_outcomes`, because the initial
+`agent_response` can predate background long-horizon execution.
+
+Acquire route selection is Adapter-private configuration. The default
+`acquire_route_selection=minimum_joint_travel` evaluates all configured variants;
+`first_feasible` stops at the first fully qualified route in the same configured
+order. The mixture deployment uses first-feasible to avoid spending the request
+budget optimizing after a usable route is found. Both modes run identical full
+route checks; neither may use short-approach success as a full-route receipt.
+Private `acquire-search/` artifacts record route and stage boundaries, elapsed
+time and rejection details before a possible worker timeout. These are
+preparation diagnostics with motion_authorized=false, not execution feedback.
+
 Route readiness checks are:
 
 - `attached_object_collision`;

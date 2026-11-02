@@ -1,5 +1,32 @@
 # Current Task: LabUtopia R03/R04 full-chain grasp coverage
 
+## v16.7.1 qualified-grasp Action handoff / 执行衔接
+
+- Diagnosis: `.task/labutopia-action-handoff-20261102.md`.
+- Previous run explicitly prohibited Actions and had execute=false. Seven
+  qualified combinations did not prove full-route readiness or authorize motion.
+- Fix mode-specific deployment guidance and relaunch with explicit simulation
+  execution and fresh evidence; preserve all Runtime route and recovery checks.
+- Reuse Adapter phase recording; retain actual completed/failed phase receipts
+  and videos. Generic AgentLoop/Coordinator ownership remains unchanged.
+- First workspace: `out/lab-fullchain-truth-20261102-qualified-execute-r1/`.
+- r1 reaches the R03 Action with exactly seven qualified references, then fails
+  at the first preparation with a 900-second worker timeout; no world change.
+- Adapter adds configurable first-feasible full-route selection (old default
+  remains minimum travel) and private per-route/stage progress artifacts.
+  Mixture deployment uses first-feasible. All safety checks remain unchanged.
+- 425 Adapter/executor regressions pass. Fresh r2 in
+  `out/lab-fullchain-truth-20261102-qualified-execute-r2/` qualifies a full
+  acquire route in 8.182 s (candidate 367; r1 selected 420, not a controlled
+  timing comparison), then executes actual transport/approach/insertion/close.
+- Final r2 awaits reconciliation: grasp_transform_mismatch before lift,
+  measured attachment error 34.220 mm / 0.197260 rad versus 8 mm / 0.08 rad.
+  Single-finger contact during open-gripper insertion pushes the body 26.785 mm;
+  closure raises displacement to 33.487 mm. Do not continue with uncertain hold.
+- Raw 52.55-second/3153-frame video is intact; H.264 copies under videos/ include
+  the completed transportation/approach prefix and the full failed attempt.
+  stage-videos.json preserves exact frame boundaries and outcomes. No pour/stir.
+
 ## v16.7.0 local repair validated / 候选覆盖与提示修复已验证
 
 - Diagnosis: `.task/labutopia-grasp-coverage-repair-20261102.md`.

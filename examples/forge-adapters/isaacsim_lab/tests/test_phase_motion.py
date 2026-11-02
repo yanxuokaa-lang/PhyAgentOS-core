@@ -218,7 +218,8 @@ def test_grasp_aperture_uses_composed_finger_limits_and_rejects_oversized_candid
     assert captured.value.code == "gripper_aperture_exceeded"
 
 
-def test_acquire_preparation_searches_clearances_and_selects_admissible_route():
+@pytest.mark.parametrize("policy,attempt_count,chosen", [(None, 3, .12), ("first_feasible", 2, .08)])
+def test_acquire_preparation_searches_clearances_and_selects_admissible_route(policy, attempt_count, chosen):
     model = object.__new__(IsaacPhaseMotion)
     model.config = {
         "approach_distance_m": .12,
@@ -228,6 +229,8 @@ def test_acquire_preparation_searches_clearances_and_selects_admissible_route():
         "lift_distance_m": .10,
         "settle_s": .6,
     }
+    if policy is not None:
+        model.config["acquire_route_selection"] = policy
     model.validate_grasp_aperture = lambda _target: None
     current = np.eye(4)
     current[:3, 3] = [-.45, 0., 1.0]
@@ -237,7 +240,8 @@ def test_acquire_preparation_searches_clearances_and_selects_admissible_route():
     model.observed_pose = lambda _source: body.copy()
     model.bind_observed_model = lambda *_args: (body.copy(), np.eye(4))
     model.body_pose = lambda _path: np.eye(4)
-    model._artifact = lambda *_args: "artifact://readiness/test.json"
+    artifacts = []
+    model._artifact = lambda kind, data: artifacts.append((kind, data)) or "artifact://readiness/test.json"
     captured = []
 
     def qualify(waypoints, *_args, **_kwargs):
@@ -245,7 +249,7 @@ def test_acquire_preparation_searches_clearances_and_selects_admissible_route():
         clearance = waypoints[1][0][2, 3] - 1.0
         if clearance == pytest.approx(.04):
             raise PhaseMotionError("route_collision", "low route intersects scene geometry")
-        travel = .2 if clearance == pytest.approx(.08) else .4
+        travel = .4 if clearance == pytest.approx(.08) else .2
         return {"start_joints": [0.] * 7,
                 "steps": [{"joints": [travel] + [0.] * 6, "stage": "lift"}]}
 
@@ -283,8 +287,8 @@ def test_acquire_preparation_searches_clearances_and_selects_admissible_route():
 
     route, _evidence = model.prepare(arguments)
 
-    assert len(captured) == 3
-    selected = captured[1]
+    assert len(captured) == attempt_count
+    selected = captured[attempt_count - 1]
     stages = [stage for _pose, _hold, stage in selected]
     assert stages[:6] == [
         "open", "transit_raise", "transit_orient", "transit_cross", "staging_reorient", "approach",
@@ -297,19 +301,35 @@ def test_acquire_preparation_searches_clearances_and_selects_admissible_route():
     assert transported[:3, :3] == pytest.approx(transport_ready[:3, :3])
     assert staged[:2, 3] == pytest.approx(pre[:2, 3])
     assert staged[:3, :3] == pytest.approx(pre[:3, :3])
-    assert raised[2, 3] == pytest.approx(1.08)
-    assert staged[2, 3] == pytest.approx(1.08)
+    assert raised[2, 3] == pytest.approx(1.0 + chosen)
+    assert staged[2, 3] == pytest.approx(1.0 + chosen)
     assert pre[:3, 3] == pytest.approx([-.27, -.24, .86])
     assert route["operation"] == "acquire"
-    assert route["acquire_transit_clearance_m"] == pytest.approx(.08)
+    assert route["acquire_transit_clearance_m"] == pytest.approx(chosen)
     assert route["acquire_approach_distance_m"] == pytest.approx(.12)
     assert route["acquire_staging_backoff_m"] == pytest.approx(0.)
     assert route["acquire_staging_tangential_offset_m"] == pytest.approx(0.)
+    assert artifacts[0][1]["status"] == "started"
+    attempts = [value for kind, value in artifacts if kind == "acquire-search" and value.get("stage") == "route"]
+    assert attempts[1]["failure_code"] == "route_collision"
+    assert attempts[-1]["status"] == "available"
+    assert all(item["world_change_started"] is False for item in attempts)
+    assert route["acquire_route_selection"] == (policy or "minimum_joint_travel")
 
 
-def test_acquire_preparation_preserves_zero_motion_when_all_clearances_fail():
+@pytest.mark.parametrize("value", [None, "fast", False, 1, []])
+def test_acquire_route_selection_rejects_invalid_policy(value):
+    from isaacsim_lab.phase_motion import acquire_route_selection
+
+    with pytest.raises(PhaseMotionError, match="route selection"):
+        acquire_route_selection({"acquire_route_selection": value})
+
+
+@pytest.mark.parametrize("policy", ["minimum_joint_travel", "first_feasible"])
+def test_acquire_preparation_preserves_zero_motion_when_all_clearances_fail(policy):
     model = object.__new__(IsaacPhaseMotion)
     model.config = {
+        "acquire_route_selection": policy,
         "approach_distance_m": .12,
         "acquire_transit_clearance_candidates_m": [.04, .08],
         "acquire_transport_orientation_candidates_xyzw": [[1., 0., 0., 0.]],
@@ -322,6 +342,7 @@ def test_acquire_preparation_preserves_zero_motion_when_all_clearances_fail():
     model.observed_pose = lambda _source: np.eye(4)
     model.bind_observed_model = lambda *_args: (np.eye(4), np.eye(4))
     model.body_pose = lambda _path: np.eye(4)
+    model._artifact = lambda *_args: "artifact://search/failure.json"
     attempts = []
 
     def reject(waypoints, *_args, **_kwargs):
@@ -511,6 +532,7 @@ def test_acquire_preparation_reports_each_failed_corridor_without_motion():
     model.observed_pose = lambda _source: np.eye(4)
     model.bind_observed_model = lambda *_args: (np.eye(4), np.eye(4))
     model.body_pose = lambda _path: np.eye(4)
+    model._artifact = lambda *_args: "artifact://search/failure.json"
     attempts = []
 
     def reject(waypoints, *_args, **_kwargs):
@@ -1054,8 +1076,11 @@ def test_collision_between_endpoints_rejects_entire_route():
                                    diagnostics={"checked_joints": joints.tolist()})
     model._collisions = collide
     goal = pose_matrix([.1, 0., 1.], [0., 0., 0., 1.])
+    progress = []
     with pytest.raises(PhaseMotionError, match="between endpoints") as captured:
-        model.qualify([(goal, 0., "approach")], "/World/source", np.eye(4), "acquire")
+        model.qualify([(goal, 0., "approach")], "/World/source", np.eye(4), "acquire",
+                      progress=lambda stage, status, **details: progress.append((stage, status, details)))
+    assert progress == [("approach", "started", {})]
     assert any(.035 <= value <= .065 for value in samples)
     assert max(samples) < .1
     assert "checked TCP=" in str(captured.value)
@@ -1140,7 +1165,10 @@ def test_dense_collision_sampling_does_not_add_execution_stops():
     coarse_count = len(checks)
     checks.clear()
     model.config["joint_step_rad"] /= 10
-    dense = model.qualify([(target, .6, "approach")], "/World/source", np.eye(4), "acquire")
+    progress = []
+    dense = model.qualify([(target, .6, "approach")], "/World/source", np.eye(4), "acquire",
+                          progress=lambda stage, status, **details: progress.append((stage, status, details)))
+    assert progress == [("approach", "started", {}), ("approach", "completed", {"qualified_steps": 2})]
     assert len(checks) > coarse_count
     assert dense == coarse
     assert len(dense["steps"]) == 2

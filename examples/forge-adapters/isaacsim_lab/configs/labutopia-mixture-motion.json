@@ -10,6 +10,7 @@
     1.65
   ],
   "approach_distance_m": 0.12,
+  "acquire_route_selection": "first_feasible",
   "acquire_staging_corridor_candidates": [
     {
       "approach_distance_m": 0.12,

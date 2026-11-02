@@ -44,6 +44,42 @@ def test_host_guidance_defaults_to_no_motion():
     assert 'Simulated motion is authorized' in environment_guidance('sensor://front', True)
 
 
+def test_host_guidance_distinguishes_query_qualification_from_action_handoff():
+    readonly = environment_guidance('sensor://front', False)
+    executable = environment_guidance('sensor://front', True)
+    assert 'Only select and execute read-only Query nodes' in readonly
+    assert 'report that execution is disabled' in readonly
+    assert 'then invoke the existing Action wrapper' not in readonly
+    assert 'direct-predecessor qualified opaque references' in executable
+    assert 'persisted selection' in executable
+    assert 'complete route before any controller motion' in executable
+    assert 'video artifact references, including a failed phase' in executable
+    for guidance in (readonly, executable):
+        assert 'Never substitute raw or excluded grasps' in guidance
+
+
+@pytest.mark.parametrize('execute', [False, True])
+def test_host_cli_explicitly_forwards_execution_mode_and_instruction(tmp_path, monkeypatch, execute):
+    from isaacsim_lab import agent_host
+
+    received = {}
+
+    async def run(**kwargs):
+        received.update(kwargs)
+        return {'session_key': 'test', 'tasks': [{'task_id': 'test', 'status': 'completed'}]}
+
+    monkeypatch.setattr(agent_host, 'run_instruction', run)
+    monkeypatch.setattr(agent_host.LabUtopiaProfile, 'from_json', lambda path: 'test-profile')
+    instruction = 'Use selected reagent labels and caller-supplied operation parameters.'
+    argv = ['--profile', 'profile.json', '--workspace', str(tmp_path)]
+    if execute:
+        argv.append('--execute')
+    assert agent_host.main([*argv, instruction]) == 0
+    assert received['execute'] is execute
+    assert received['instruction'] == instruction
+    assert received['profile'] == 'test-profile'
+
+
 def test_host_guidance_uses_user_task_parameters_for_generic_process_actions():
     guidance = environment_guidance('sensor://front', False)
     assert 'operation="pour" or operation="stir"' in guidance

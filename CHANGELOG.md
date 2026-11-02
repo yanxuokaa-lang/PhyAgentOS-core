@@ -48,6 +48,93 @@
 
 ## 最近五版本 / Latest five versions
 
+## v16.7.1 (2026-11-02 13:39) - codex
+
+### 完成范围 / Completed Scope
+- [docs] [fix] [完成] 保存“七个抓取资格通过而 Action 未启动”的诊断：上一轮指令明确禁止 Action，且 execute=false；区分短接近资格与完整动作准备。 / Save diagnosis of qualified grasps without Action: the previous instruction prohibited Actions and execute=false; distinguish short-approach qualification from complete preparation. (local)
+- [env] [fix] [完成] 在 Isaac 部署入口明确只读/执行两种引导及资格通过后的现有规划调用，新增相应测试；不修改 Core 生命周期或放宽碰撞检查。 / Clarify read-only/execution guidance and existing planning handoff in the Isaac deployment entry, with tests; preserve Core lifecycle and collision checks. (local)
+- [eval] [exp] [完成] 两次重新发起原任务；r1 准备超时，r2 已实际运动并在抬起前安全停止，保存通过运动子阶段及失败现场录像。尚未完成倾倒/搅拌。 / Relaunch twice: r1 preparation times out; r2 executes motion and stops before lift, preserving completed motion segments and failure footage. Pouring/stirring remain incomplete. (local)
+- [docs] [docs] [完成] 更新 .task/current.md、诊断、实现复核及最近五条索引，记录测试和实际运行范围；Git 信息见最终回执。 / Update task state, diagnosis, review and latest-five index with test/runtime scope; Git information follows in the final receipt. (local)
+
+### 文件变更详情 / File Changes
+
+#### [修改 / Modified] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/agent_host.py` L88-L118
+- [env] [fix] 只读模式明确停在 Action 边界；执行模式明确从直接前驱资格记录选择 Action，完整路线通过后才运动，并保留逐阶段视频引用。 / Read-only mode stops at the Action boundary; execution mode selects from qualified predecessor receipts, retains full-route preparation and phase video references. (local)
+```diff
+-After task creation, use existing planning tools to execute ready nodes. Respect failed or uncertain outcomes.
++handoff = (... qualified opaque predecessor references ... if execute else ... read-only Query nodes ...)
++{handoff}
++Respect failed or uncertain outcomes. Never substitute raw or excluded grasps for the qualified predecessor references.
+```
+- [policy] [fix] 仅修正部署入口引导和本次启动方式；AgentLoop、Coordinator、Tool schema、抓取坐标、完整路线检查、碰撞裕量均未改动。 / Only deployment guidance and launch mode change; AgentLoop, Coordinator, Tool schemas, grasp poses, route checks and collision margins remain unchanged. (local)
+
+#### [修改 / Modified] `examples/forge-adapters/isaacsim_lab/tests/test_agent_host.py` L47-L80
+- [eval] [chore] 新增默认只读/显式执行 CLI 传递测试及资格到 Action 引导测试，保留指令原文和调用者参数。 / Add default/explicit execution CLI forwarding and qualification-to-Action guidance tests, preserving the instruction and caller parameters. (local)
+```diff
++@pytest.mark.parametrize('execute', [False, True])
++def test_host_cli_explicitly_forwards_execution_mode_and_instruction(...):
++    assert received['execute'] is execute
++    assert received['instruction'] == instruction
++assert 'complete route before any controller motion' in executable
++assert 'Never substitute raw or excluded grasps' in guidance
+```
+- [eval] [chore] 153 项定向测试与包含这些测试的 418 项 Adapter/executor 回归通过；Ruff 和 git diff --check 通过。 / 153 targeted tests and the encompassing 418 Adapter/executor regressions pass; Ruff and git diff --check pass. (local)
+
+#### [修改 / Modified] `docs/forge/MANIPULATION_DAG_DEVELOPER_GUIDE.md` L452-L483
+- [docs] [docs] 增加明确执行授权、同集合前驱引用、完整路线准备、逐阶段录像和最终持久化结果的开发说明。 / Document explicit execution authorization, same-set predecessor refs, full-route preparation, phase recording and final persisted results. (local)
+```diff
++An explicitly authorized simulator run needs both --execute and a task instruction allowing simulation Actions.
++No-motion Query success has no motion video.
++Inspect final Coordinator records and controller_outcomes.
+```
+
+### 实测后续计划 / Native Follow-up Plan
+- [eval] [exp] r1 已创建并调用 Action，但首个 manipulation.prepare 等待 900 秒后 IsaacWorkerSessionError；world_change_started=false、completed_tool_ids=[]，没有运动录像。 / r1 creates/invokes the Action but the first manipulation.prepare times out at 900 seconds; no world change, completed atomic Tools or motion video. (local)
+- [env] [fix] [完成] 当前 acquire 在全部 96 种配置路线搜索结束后才选择最小关节行程，且缺少逐路线进度证据。增加 Adapter 私有可配置 first_feasible 策略，默认仍为原最小行程；本流程配置先用首条完整通过路线，不降低任何检查。增加逐路线耗时/成功/失败证据以区分实际无路线与预算耗尽，已用新任务重跑。 / Acquire previously searched all 96 configured variants before minimizing joint travel, without per-route progress evidence. Add Adapter-private configurable first_feasible selection while preserving the original default and every full-route check; record per-route duration/outcomes and rerun a fresh task. (local)
+- [policy] [docs] 不将超时归因为碰撞，不声称已有完整路线；优化仅允许完整 qualify 成功后提前结束搜索，任何失败候选不得执行。 / Do not call timeout a collision or claim a complete route exists; early exit is allowed only after complete qualification, never for a rejected candidate. (local)
+
+#### [修改 / Modified] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L13-L18、L288-L294、L630、L1009-L1077、L1127、L1152-L1153、L1233-L1234
+- [env] [fix] `phase_motion.py` 增加显式私有路线策略，原默认 minimum_joint_travel 保留；first_feasible 只在完整 qualify 返回后结束同序搜索。 / Add an explicit private route policy; preserve the original minimum_joint_travel default and exit first_feasible search only after full qualification. (local)
+```diff
+-for clearance ... transport ... corridor ... symmetry ...:
+-    candidates.append(fully_qualified_route)
+-selected = min(candidates, key=joint_travel)
++policy = acquire_route_selection(self.config)
++for ... in product(...):  # preserves the original variant order
++    candidate = self.qualify(..., progress=progress)
++    candidates.append(fully_qualified_route)
++    if policy == "first_feasible":
++        break
++selected = min(candidates, key=joint_travel)
+```
+- [env] [fix] `labutopia-mixture-motion.json:L14` 配置 acquire_route_selection=first_feasible；任何操作参数、采样密度、碰撞裕量、IK 或夹持检查不变。 / Configure first_feasible without changing operation parameters, sampling density, collision margins, IK or possession checks. (local)
+- [eval] [feat] 路线与阶段开始/完成/失败记录写入私有 acquire-search artifacts；包含搜索引用、配置变体、耗时和错误，明确 motion_authorized=false/world_change_started=false；不创建新的生命周期或执行权限。 / Save private route/stage start/completion/failure artifacts with search refs, variants, timing and errors, explicitly marked no-motion; no new lifecycle or execution authority. (local)
+- [eval] [chore] 424 项扩展回归通过；随后补充 first_feasible 全失败和真实 qualify 阶段记录断言，118 项 phase 测试通过。 / 424 expanded regressions pass; subsequently add all-failed first-feasible and real qualification progress assertions, with 118 phase tests passing. (local)
+
+#### [修改 / Modified] `examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py` L221-L345、L535、L1079-L1083、L1168-L1171
+- [eval] [chore] 对比默认最小行程与首条可用路线选择，测试先拒绝再成功、全部拒绝、非法策略与阶段完成证据不改变碰撞采样；旧失败 fixture 补充真实存在的 artifact seam 替身。 / Compare default min-travel and first-feasible selection; test rejection-before-success, all-rejected, invalid policy and stage evidence without changing collision sampling; supply artifact seam doubles in old failure fixtures. (local)
+```diff
++@pytest.mark.parametrize("policy,attempt_count,chosen", [(None,3,.12),("first_feasible",2,.08)])
++assert progress == [("approach", "started", {})]  # rejected between endpoints
++assert dense == coarse  # progress receipts do not alter the qualified route
+```
+
+#### [新增/修改 / Added/Modified] 诊断、复核、运行状态 / Diagnosis, Review, Runtime State
+- [docs] [docs] 新增 `.task/labutopia-action-handoff-20261102.md:L1-L158` 与 `docs/forge/IMPLEMENTATION_REVIEW_V16_7_1.md:L1-L75`；修改 `.task/current.md:L3-L28`。保存归属、实测与失败边界、复现方式、视频及下一接触问题，不改变旧日志结论。 / Add diagnosis and review; update current task with ownership, measurements, failure boundaries, reproduction, videos and the remaining contact issue without altering historical conclusions. (local)
+```diff
++read-only authorization mismatch -> explicit simulated Action handoff
++full-route timeout -> configurable first-feasible selection plus private progress evidence
++real motion -> pre-lift grasp_transform_mismatch; preserve uncertain possession and stop
+```
+
+### 最终验证与视频 / Final Validation and Videos
+- [eval] [exp] r2 task `task_bb8c12ae87744d91`、revision `revision_ce50b6a3c5f345ce`、session `cli:lab-ac37effc8a52`：四个 Query succeeded，完整 acquire 准备 available，首条路线耗时 8.182 秒、144 个轨迹点；Agent 本轮选候选 367、r1 选 420，不能把两次耗时作为同候选加速对照。 / Four Queries succeed and complete acquire preparation is available: first route takes 8.182 s with 144 waypoints. r2 selected 367 versus 420 in r1, so timings are not a controlled same-candidate comparison. (local)
+- [eval] [exp] r2 实际执行运输、接近、插入和闭爪；插入时单侧手指在张开状态推动瓶体 26.785 mm，闭爪后累计 33.487 mm。双指有接触，但 attachment 误差 34.220 mm / 0.197260 rad 超过 8 mm / 0.08 rad，在抬起前停止。 / Actual transport/approach/insertion/closure execute; a single open finger pushes the body 26.785 mm and closure raises drift to 33.487 mm. Both fingers contact, but attachment errors exceed existing limits, stopping before lift. (local)
+- [policy] [exp] Action outcome_unknown，possession uncertain，task awaiting_replan；没有执行倾倒、归位、R04 或搅拌。前台达到 40 次调用上限不改变已在途运动事实；最终以 Runtime 回执与 phase-feedback 为准。 / Action outcome is unknown with uncertain possession and task awaiting_replan; no pour/return/R04/stir occurs. Foreground iteration exhaustion does not settle in-flight motion; final Runtime receipts and feedback remain authoritative. (local)
+- [data] [docs] 原始录像 `out/lab-fullchain-truth-20261102-qualified-execute-r2/artifacts/labutopia/phase-video/8eae14287ad647d393068f3039352fb0.mp4`：3153 帧、60 fps、3840×960、52.55 秒、90,699,502 bytes，ffprobe 全帧解码成功。 / Preserve the raw video with the stated frame count, rate, resolution, duration and size; full ffprobe frame decode succeeds. (local)
+- [data] [docs] `videos/r03-motion-through-approach.mp4` 为原帧 [0,2810) 的 46.833 秒 H.264 片段（1405 帧/30 fps）；`videos/r03-acquire-stopped-before-lift.mp4` 保留整段失败尝试（1577 帧/30 fps、52.567 秒）。两者均全帧解码成功；stage-videos.json 保存边界/测量，原视频未改动，host.log 已归档。 / H.264 review copies preserve the completed motion prefix and full failed attempt with verified decoded frame counts; stage-videos.json records boundaries/measurements, raw video stays intact and host logs are archived. (local)
+- [eval] [chore] 最终 425 项 Adapter/executor 测试通过，Ruff、git diff --check 通过。未宣称完整化学/液体或抓取倾倒搅拌成功；下一项是 Adapter 接触/夹持关系资格与重新准备，不能调大误差阈值绕过。 / Final 425 Adapter/executor tests, Ruff and whitespace checks pass. No full manipulation/liquid/chemistry success is claimed; next work is Adapter contact/grip qualification and repreparation, not relaxed error thresholds. (local)
+
 ## v16.7.0 (2026-11-02 12:59) - codex
 
 ### 预期修改 / Planned Changes [完成局部修复；完整流程尚未通过 / Local repairs complete; full workflow not accepted]
@@ -372,58 +459,3 @@
 - Branch: `feature/planning-loop`.
 - Push command: `git push origin feature/planning-loop`; the remote outcome is reported separately. / 推送当前分支，单独报告远端结果。
 - Only task-owned files are staged; unrelated report edits and runtime outputs remain excluded. / 仅暂存本轮文件，排除无关报告修改与运行输出。
-
-## v16.6.0 (2026-11-02 11:28) - codex
-
-### 预期修改 / Planned Changes [完成 / Completed; manipulation remains blocked]
-- [docs] [docs] 保存 R03 接近段拒绝的修复决策，区分候选覆盖、运动参数与安全资格，评估局部重构边界；此前第二次推送因 HTTPS low-speed 超时失败。 / Save the R03 approach-rejection repair decision, distinguish candidate coverage, motion configuration and safety qualification, and bound the local refactor; the preceding second push failed with an HTTPS low-speed timeout. (local)
-- [sense] [fix] 检查同捕获点云与原生候选覆盖，修复有证据支持的候选采样损失，保持原生位姿、opaque 引用和 Provider 替换边界。 / Inspect same-capture cloud/native candidate coverage and fix evidenced sampling loss while preserving native poses, opaque references and provider substitutability. (local)
-- [env] [fix] 评估并在证据支持时修复接近距离/完整路线之间的候选一致性；不降低 workspace 或碰撞阈值，不在 AgentLoop 注入机器人参数。 / Evaluate and, where supported, repair approach-distance/full-route candidate consistency without lowering workspace/collision thresholds or leaking robot parameters into AgentLoop. (local)
-- [eval] [chore] 先补失败路径与替代机制测试，再运行受影响回归及无动作验证，记录成功/失败边界；补全精确行号、Diff、最近五版本并提交推送当前分支。 / Add failure/substitution tests, run affected regressions and no-motion validation, record outcome boundaries, and complete exact ranges, diffs and latest-five entries before committing/pushing the current branch. (local)
-
-### 定位后的实施范围 / Evidence-directed scope [完成 / Implemented]
-- [sense] [fix] 本次 r2 保存的 decoded=44、NMS 后=24，小于 64 上限，不能将故障归因为 top-K 截断；24 个候选世界 approach z 全为正。在 GraspNet Worker 内新增可配置、最多四次的同点云坐标旋转推理，围绕输入质心旋转，模型重新预测后用严格逆变换回到捕获帧，再执行原有采样/资格化；不直接翻转预测，不制造新观测。 / The saved r2 result has 44 decoded and 24 post-NMS candidates, below the budget, all with positive world approach z. Add up to four configured coordinate-frame inference passes inside the worker: rotate the same cloud about its centroid, rerun the native model and invert the transform before existing selection/qualification. Never flip predicted grasps or claim new observations. (local)
-- [eval] [chore] 新增旋转往返、原生位姿保真、单次兼容、任一推理失败拒绝与多次总预算测试；同一历史点云固定 seed 配对验证方向覆盖，保存配置/版本/证据身份，再决定是否启用实验配置。 / Test transform round-trips, native pose fidelity, one-pass compatibility, whole-request inference failure and aggregate budgets; pair runs on the same recorded cloud and seed, persist config/version/identity, then decide whether to enable the experimental profile. (local)
-- [docs] [docs] 风险等级 C-Safety；本轮不重构 AgentLoop/公共选择契约，不改变接近距离与安全下界。Provider 负责候选机制，Adapter 负责 IK/碰撞/完整路线，Coordinator 独占恢复与 settlement。 / Tier C-Safety: do not refactor AgentLoop/public selection or change approach distances/safety limits. The Provider owns proposals, the Adapter owns IK/collision/full routes, and the Coordinator alone owns recovery/settlement. (local)
-
-### 实际文件变更 / Actual File Changes
-- [sense] [feat] `examples/forge-adapters/robotwin20/runtime/graspnet_worker.py:L66-L91,L95,L161-L192,L228-L229,L241-L242` 新增 1–4 次配置化输入坐标旋转、同点采样原生推理、预测逆变换与合并预算，默认保持单次推理。 / Add 1–4 configured coordinate-frame passes, same-point native inference, inverse-mapped predictions and aggregate budgeting; default remains one pass. (local)
-- [env] [tune] `examples/forge-adapters/isaacsim_lab/configs/labutopia-mixture-perception.json:L88-L98` 经配对实测后启用 identity/X/Y/Z 半周输入旋转及 seed 0，不更改 motion 配置。 / Enable identity/X/Y/Z half-turn input passes and seed 0 after paired evidence, without changing motion configuration. (local)
-- [eval] [chore] `examples/forge-adapters/robotwin20/tests/test_graspnet_worker.py:L174-L313` 新增 13 项参数化/失败/替代路径用例，包括 90°/180°逆变换、缺失方向扩展、旧默认、空集合、失败不返回部分结果和既有 Provider 接口接入。 / Add 13 parametrized, failure and substitution cases including 90/180-degree inverse mapping, native regeneration, legacy defaults, empty results, partial-failure rejection and existing-provider integration. (local)
-- [eval] [feat] `examples/forge-adapters/robotwin20/scripts/compare_grasp_input_frames.py:L1-L99` 新增固定捕获、固定种子配对推理工具，保存原生输出、输入身份、配置、版本、checkpoint 元数据和耗时；已有输出目录拒绝覆盖。 / Add paired same-capture seeded inference preserving native outputs, identity, config/version/checkpoint metadata and timing; refuse to overwrite an existing output directory. (local)
-- [docs] [docs] `examples/forge-adapters/robotwin20/README.md:L348-L367` 说明配置、帧变换、兼容性和复现方式；`.task/current.md:L67-L105` 更新本轮结果与剩余阻塞；诊断和实现复核记录见下。 / Document configuration, transforms, compatibility and replay; update the result/remaining blocker and preserve diagnosis/review below. (local)
-- [docs] [docs] `.task/labutopia-r03-native-coverage-repair-20261102.md:L1-L159`、`docs/forge/IMPLEMENTATION_REVIEW_V16_6_0.md:L1-L67` 保存根因纠正、PAOS 所有权、分阶段方案、配对数据与执行边界。 / Save the corrected cause, PAOS ownership, phased repair, paired measurements and execution boundary. (local)
-
-### 关键代码 Diff / Key Code Diff
-```diff
-- end_points = network({"point_clouds": torch.from_numpy(sampled[None]).to(device)})
-+ for input_rotation in rotations:
-+     transformed = sampled if identity else ((sampled - pivot) @ input_rotation.T + pivot).astype(np.float32)
-+     end_points = network({"point_clouds": torch.from_numpy(transformed[None]).to(device)})
-+     # Decode each native result, then restore the original capture coordinates.
-+     center = input_rotation.T @ (center - pivot) + pivot
-+     rotation = input_rotation.T @ rotation
-
-- "funnel": {"decoded": len(group), ...}
-+ "funnel": {"decoded": sum(len(group) for group, _ in groups), ...}
-+ # Merge before the existing total candidate budget; no per-pass public cap increase.
-```
-
-### 验证 / Validation
-- 完整 Isaac Adapter、GraspNet Worker/Provider/profile 和 subtask executor 回归：`410 passed`；worker 定向 `19 passed`；Ruff、compileall、`git diff --check` 通过。 / Full Isaac Adapter, GraspNet worker/provider/profile and subtask-executor regression: 410 passed; focused worker: 19 passed; Ruff, compileall and diff checks passed. (local)
-- 新测试先复现 10 个失败再实现通过；第一次 pytest 因继承 ROS PYTHONPATH 加载无关插件缺少 lark 而无法启动，显式使用项目 PYTHONPATH 后正常运行，未禁用异步测试插件。 / New tests first produced ten expected failures and then passed; an initial inherited ROS PYTHONPATH caused an unrelated missing-lark plugin startup failure, resolved by explicit project PYTHONPATH without disabling async test plugins. (local)
-- 同捕获原生推理 `out/lab-grasp-coordinate-replay-20261102-r1/`：decoded 44→1058、返回 24→64、工艺几何合格 3→10；出现 approach Z<0 的原生候选，未调低门槛。 / Paired native inference: decoded 44→1058, public candidates 24→64, geometry-qualified 3→10, including native negative-world-Z approaches with unchanged thresholds. (local)
-- 正式无动作 r1（session `cli:lab-99ebda8ffe51`）在初始 `scene.observe is unavailable or stale` 停止，`tasks=[]`、`controller_outcomes=[]`，尚未进入候选资格；已保存回执并原样发起 r2，不改变 freshness 阈值。 / Formal no-motion r1 stopped at initial unavailable/stale observation with no tasks/controller outcomes, before candidate qualification; its receipt was saved and unchanged r2 was launched without changing freshness limits. (local)
-
-### 正式运行结果与剩余问题 / Formal Runtime and Remaining Blocker
-- r2 workspace `out/lab-fullchain-truth-20261102-native-coordinate-no-motion-r2/`，session `cli:lab-2063ffedd5eb`，task `task_053053cf3a0b4804`，revision `revision_e4383c96834e44ec`；初始绑定与 R03 工艺特征 Query/preparation 通过。 / Initial binding and R03 process-feature Query/preparation passed in the recorded r2 workspace/session/task/revision. (local)
-- 新捕获复现 R03 decoded=1058、NMS 后=389、返回=64；10 个几何合格候选中 4 个超过开口，余下 6 个各 8 次接近检查共 48 次失败：workspace 20、环境碰撞 20、自碰撞 4、IK 不可用 4。 / Fresh capture reproduces 1058 decoded, 389 post-NMS and 64 returned proposals; four of ten geometry-qualified candidates exceed aperture, while six produce 48 rejected approaches: 20 workspace, 20 environment collision, four self-collision and four unavailable IK. (local)
-- 具体环境碰撞对：finger/table=7、link6/table=4、link5/table=3、hand/R01=2、link6/R02=1、link7/R02=1、link5/BEAKER=2；这是 Adapter 碰撞模型判断，不是实际撞击测量。 / Concrete environment pairs are finger/table=7, link6/table=4, link5/table=3, hand/R01=2, link6/R02=1, link7/R02=1 and link5/BEAKER=2; these are Adapter collision-model findings, not physical impact measurements. (local)
-- Task-affordance 返回 unavailable，任务终态 cancelled，入口退出码 1；`acceptance.json` 记录 `simulated_motion_enabled=false`、`controller_outcomes=[]`，三个执行记录均为 Query，没有 Action/Session。R04/玻璃棒未执行。 / Task-affordance returned unavailable, the task ended cancelled and the host exited 1; acceptance records disabled motion, empty controller outcomes and three Query records with no Action/Session. R04/stirring did not execute. (local)
-- 本轮方向覆盖局部修复已完成并接入；完整操控仍阻塞。后续按具体碰撞姿态复核真实夹指/手掌与场景几何，再评估夹持区域净空及有界 IK 种子；不通过 AgentLoop 重构或降低门槛绕过。 / The local coverage repair is integrated; manipulation remains blocked. Next review concrete gripper/scene geometry and then gripping-region clearance/bounded IK seeds, without bypassing checks or rewriting AgentLoop. (local)
-
-### Git 提交 / Git Commit
-- Implementation: `33d3bfb2` (`2026-11-02 11:43:10 +0800`).
-- Branch: `feature/planning-loop`.
-- This documentation follow-up records the completed r2 outcome and exact diagnosis/review ranges; unrelated user changes remain excluded. / 本次文档跟进记录 r2 终态及精确诊断/复核行号，未纳入无关用户修改。
-- Push: `git push origin feature/planning-loop`; report the actual remote result after this receipt commit. / 提交回执后推送当前分支，并报告实际远端结果。

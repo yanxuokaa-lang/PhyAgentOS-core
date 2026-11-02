@@ -10,11 +10,12 @@ from __future__ import annotations
 
 import json
 import math
+import time
 from collections import Counter, defaultdict
 from copy import deepcopy
 from datetime import datetime, timezone
 from functools import cached_property
-from itertools import chain, groupby, repeat
+from itertools import chain, groupby, product, repeat
 from pathlib import Path
 from uuid import uuid4
 
@@ -282,6 +283,13 @@ def acquire_staging_corridors(config):
         if corridor not in corridors:
             corridors.append(corridor)
     return tuple(corridors)
+
+
+def acquire_route_selection(config):
+    policy = config.get("acquire_route_selection", "minimum_joint_travel")
+    if policy not in ("minimum_joint_travel", "first_feasible"):
+        raise PhaseMotionError("invalid_motion_configuration", "unsupported acquire route selection policy")
+    return policy
 
 
 def acquire_route_waypoints(tcp, desired, approach, clearance, transport_quaternion, corridor, config):
@@ -619,6 +627,7 @@ class IsaacPhaseMotion:
         acquire_transport_orientations(self.config)
         acquire_axial_symmetry_angles(self.config)
         acquire_staging_corridors(self.config)
+        acquire_route_selection(self.config)
         self.scene = session.resolve("lab_scene_resources")
         self.robot, self.world, self.stage = (self.scene[key] for key in ("robot", "world", "stage"))
         if not self.scene["robot_initialized"]:
@@ -997,40 +1006,64 @@ class IsaacPhaseMotion:
             )
             transport_orientations = acquire_transport_orientations(self.config)
             staging_corridors = acquire_staging_corridors(self.config)
-            for clearance_order, clearance in enumerate(acquire_transit_clearances(self.config)):
-                for transport_order, transport_quaternion in enumerate(transport_orientations):
-                    for corridor_order, corridor in enumerate(staging_corridors):
-                        for symmetry_order, (symmetry_angle, variant_desired, variant_approach) in enumerate(variants):
-                            candidate_relation = np.linalg.inv(variant_desired) @ body
-                            try:
-                                candidate_waypoints = acquire_route_waypoints(
-                                    tcp, variant_desired, variant_approach, clearance,
-                                    transport_quaternion, corridor, self.config,
-                                )
-                                candidate = self.qualify(
-                                    candidate_waypoints, source, candidate_relation, operation,
-                                    np.asarray(original_return),
-                                )
-                                approach_distance, staging_backoff, tangential_offset = corridor
-                                candidate["acquire_transit_clearance_m"] = clearance
-                                candidate["acquire_transport_orientation_xyzw"] = list(transport_quaternion)
-                                candidate["acquire_approach_distance_m"] = approach_distance
-                                candidate["acquire_staging_backoff_m"] = staging_backoff
-                                candidate["acquire_staging_tangential_offset_m"] = tangential_offset
-                                if symmetry_angle is not None:
-                                    candidate["acquire_axial_symmetry_angle_rad"] = symmetry_angle
-                                candidate_target = deepcopy(target)
-                                candidate_target["grasp_frame"]["position_m"] = variant_desired[:3, 3].tolist()
-                                candidate_target["grasp_frame"]["orientation_xyzw"] = Rotation.from_matrix(
-                                    variant_desired[:3, :3]
-                                ).as_quat().tolist()
-                                candidate_target["approach_direction"]["vector"] = variant_approach.tolist()
-                                candidates.append((
-                                    route_joint_travel(candidate), clearance_order, transport_order,
-                                    corridor_order, symmetry_order, candidate, candidate_target, candidate_relation,
-                                ))
-                            except PhaseMotionError as exc:
-                                failures.append((clearance, transport_order, corridor_order, symmetry_angle, exc))
+            policy = acquire_route_selection(self.config)
+            clearances = acquire_transit_clearances(self.config)
+            search_ref = self._artifact("acquire-search", {
+                "status": "started", "scene_revision": arguments["scene_revision"],
+                "candidate_ref": target.get("candidate_ref"), "policy": policy,
+                "variant_count": len(clearances) * len(transport_orientations) * len(staging_corridors) * len(variants),
+                "motion_authorized": False, "world_change_started": False,
+            })
+            combinations = product(enumerate(clearances), enumerate(transport_orientations),
+                                   enumerate(staging_corridors), enumerate(variants))
+            for (clearance_order, clearance), (transport_order, transport_quaternion), (corridor_order, corridor), (
+                    symmetry_order, (symmetry_angle, variant_desired, variant_approach)) in combinations:
+                started = time.monotonic()
+                attempt = {"search_ref": search_ref, "clearance_m": clearance,
+                           "transport_order": transport_order, "corridor_order": corridor_order,
+                           "axial_symmetry_angle_rad": symmetry_angle,
+                           "motion_authorized": False, "world_change_started": False}
+
+                def progress(stage, status, **details):
+                    self._artifact("acquire-search", {**attempt, "stage": stage, "status": status,
+                                                     "elapsed_s": time.monotonic() - started, **details})
+
+                progress("route", "started")
+                candidate_relation = np.linalg.inv(variant_desired) @ body
+                try:
+                    candidate_waypoints = acquire_route_waypoints(
+                        tcp, variant_desired, variant_approach, clearance,
+                        transport_quaternion, corridor, self.config,
+                    )
+                    candidate = self.qualify(
+                        candidate_waypoints, source, candidate_relation, operation,
+                        np.asarray(original_return), progress=progress,
+                    )
+                    approach_distance, staging_backoff, tangential_offset = corridor
+                    candidate["acquire_transit_clearance_m"] = clearance
+                    candidate["acquire_transport_orientation_xyzw"] = list(transport_quaternion)
+                    candidate["acquire_approach_distance_m"] = approach_distance
+                    candidate["acquire_staging_backoff_m"] = staging_backoff
+                    candidate["acquire_staging_tangential_offset_m"] = tangential_offset
+                    if symmetry_angle is not None:
+                        candidate["acquire_axial_symmetry_angle_rad"] = symmetry_angle
+                    candidate_target = deepcopy(target)
+                    candidate_target["grasp_frame"]["position_m"] = variant_desired[:3, 3].tolist()
+                    candidate_target["grasp_frame"]["orientation_xyzw"] = Rotation.from_matrix(
+                        variant_desired[:3, :3]
+                    ).as_quat().tolist()
+                    candidate_target["approach_direction"]["vector"] = variant_approach.tolist()
+                    candidates.append((
+                        route_joint_travel(candidate), clearance_order, transport_order,
+                        corridor_order, symmetry_order, candidate, candidate_target, candidate_relation,
+                    ))
+                    progress("route", "available")
+                    if policy == "first_feasible":
+                        break
+                except PhaseMotionError as exc:
+                    failures.append((clearance, transport_order, corridor_order, symmetry_angle, exc))
+                    progress("route", "unavailable", failure_code=exc.code, error=str(exc),
+                             collision_diagnostic=exc.diagnostics)
             if not candidates:
                 if not failures:
                     raise PhaseMotionError("route_unavailable", "no acquire route variant was configured")
@@ -1041,11 +1074,11 @@ class IsaacPhaseMotion:
                 raise PhaseMotionError(failure_code, details) from representative
             selected = min(candidates, key=lambda item: item[:5])
             route, target, tcp_from_object = selected[5:]
+            route.update(acquire_route_selection=policy, acquire_search_ref=search_ref)
         elif operation == "pour":
             clearance_limit = self.profile.alignment_tolerance_m - self.config["position_tolerance_m"]
             clearances = sorted({self.config["pour_lip_clearance_m"], clearance_limit})
             failures, candidates = [], []
-            from itertools import product
             for clearance, yaw, azimuth in product(clearances, (0., -math.pi / 2, math.pi / 2),
                                                    (0., math.pi, -math.pi / 2, math.pi / 2)):
                 if clearance > clearance_limit:
@@ -1091,6 +1124,7 @@ class IsaacPhaseMotion:
         *,
         initial_joints=None,
         initial_pose=None,
+        progress=None,
     ):
         joints = self.joints() if initial_joints is None else np.asarray(initial_joints, dtype=float).copy()
         initial = joints.copy()
@@ -1115,6 +1149,8 @@ class IsaacPhaseMotion:
                 )
         steps = []
         for pose, hold_s, stage in waypoints:
+            if progress is not None:
+                progress(stage, "started")
             contact = stage in {"grasp", "close", "lift", "lower", "release", "retreat"}
             attached = (operation != "acquire" and stage not in {"release", "retreat"}) or stage == "lift"
             for sample in interpolate_pose(previous_pose, pose):
@@ -1194,6 +1230,8 @@ class IsaacPhaseMotion:
                 joints = goal
             steps[-1]["hold_s"] += hold_s
             previous_pose = pose
+            if progress is not None:
+                progress(stage, "completed", qualified_steps=len(steps))
         return {"start_joints": initial.tolist(), "steps": steps}
 
     def qualify_grasp_approach(self, arguments):
