@@ -492,6 +492,44 @@ Private `acquire-search/` artifacts record route and stage boundaries, elapsed
 time and rejection details before a possible worker timeout. These are
 preparation diagnostics with motion_authorized=false, not execution feedback.
 
+### Isaac contact physics and acquire timing
+
+An optional Adapter-private `physics_config_path` owns simulation mass,
+collision material and finger-drive assumptions. Apply it once to the final
+composed stage's session layer before reset and capture; do not mutate source
+assets or physics inside an admitted Action. A loaded worker cannot switch
+physics profiles. Read actual mass, COM and inertia after initialization and
+persist a `scene-physics` receipt; preparation links its opaque evidence ref.
+Material bindings are authored USD evidence, not measured effective friction.
+The mixture profile's 0.10 kg vessel mass, friction coefficients and 2 N drive
+cap are explicitly uncalibrated development assumptions. Fixed rigid payload
+mass does not implement fluid transfer.
+
+`acquire_timing=stage_continuous` retimes each qualified movement stage with
+bounded velocity/acceleration and rest endpoints. Before producing readiness,
+validate all interpolated joint samples and their swept intervals against the
+existing joint, workspace and collision constraints. Preserve stage holds and
+open/close boundaries; execution consumes those samples at the prepared period.
+Changing the period invalidates preparation. This improves stop-start timing,
+not route optimality, grasp geometry or proof of actual controller tracking.
+
+Closure uses configured finger speed/acceleration, freezes the command after
+qualified bilateral contact, and requires the configured settling interval.
+Displacement before lift, misaligned bilateral contact, contact loss, or no
+stable grip stops through the existing Adapter failure/hold path. Subsequent
+phases start with measured finger aperture rather than a zero-position squeeze.
+Persist per-substep contact vectors with sensor body order; these impulses are
+not a net-force or peak-force measurement. AgentLoop must not acquire USD paths,
+finger targets or another possession/recovery state machine for this mechanism.
+
+Validate in three separate scopes: replacement-controller/contract tests,
+native USD and no-motion physics readback/reset, then fresh authorized native
+Action feedback and video. Only the last can demonstrate grip retention and
+pour/stir execution. CPU-scene particle errors must remain visible; a rigid-body
+readback pass is not a fluid-simulation pass. The no-motion entry is
+`python -m isaacsim_lab.physics_probe --profile <profile> --artifact-root <root>`
+under the configured Isaac environment with the EULA already accepted.
+
 Route readiness checks are:
 
 - `attached_object_collision`;

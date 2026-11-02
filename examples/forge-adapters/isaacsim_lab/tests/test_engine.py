@@ -553,6 +553,32 @@ def test_worker_session_rejects_scene_profile_switch(tmp_path):
         )
 
 
+def test_physics_profile_is_applied_before_reset_and_only_once(tmp_path, monkeypatch):
+    from dataclasses import replace
+
+    from isaacsim_lab import scene_physics
+    from isaacsim_lab.worker import WorkerSessionContext
+
+    profile = replace(make_profile(tmp_path), physics_config_path=tmp_path / "physics.json")
+    events = []
+    monkeypatch.setattr(scene_physics, "load_physics_config", lambda path: {"path": str(path)})
+    monkeypatch.setattr(scene_physics, "apply_scene_physics",
+                        lambda stage, config: events.append("physics") or {"bodies": []})
+    world = SimpleNamespace(reset=lambda: events.append("reset"))
+    session = WorkerSessionContext(object())
+    kwargs = dict(session=session, profile=profile, world_factory=lambda: world,
+                  robot_factory=lambda: object(), stage_provider=lambda: object(),
+                  add_reference_to_stage=lambda **kw: events.append("load"),
+                  object_utils=SimpleNamespace(get_instance=lambda stage: None))
+    first = _get_session_scene_resources(**kwargs)
+    assert _get_session_scene_resources(**kwargs) is first
+    assert events == ["load", "physics", "reset"]
+    assert first["physics_report"] == {"bodies": []}
+    kwargs["profile"] = replace(profile, physics_config_path=tmp_path / "other.json")
+    with pytest.raises(module.IsaacLabRuntimeError, match="cannot switch its physics"):
+        _get_session_scene_resources(**kwargs)
+
+
 def test_session_cycle_reports_unintegrated_task_as_unsupported_without_world_change(tmp_path, monkeypatch):
     from isaacsim_lab.worker import WorkerSessionContext
 

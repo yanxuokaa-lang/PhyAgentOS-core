@@ -48,6 +48,129 @@
 
 ## 最近五版本 / Latest five versions
 
+## v16.8.0 (2026-11-02 16:05) - codex
+
+### 完成范围 / Completed Scope [完成；真实抓取待验证 / Implemented; live grasp not yet verified]
+- [docs] [docs] 保存 R03/R05 轨迹逐点起停、R05 异常密度与闭爪瞬态接触诊断；按 PAOS 开发指南明确 Adapter 归属、证据边界和未知项。 / Preserve the stop-start trajectory, inherited R05 density and closure-transient diagnosis with Adapter ownership and explicit evidence limits. (local)
+- [env] [fix] 在 Isaac Adapter 的场景初始化边界应用版本化物理配置并记录实际质量/惯量/材质；保留外部 LabUtopia 用户修改，不将物理参数带入 AgentLoop。 / Apply configured physics at the Isaac scene initialization boundary and report runtime mass/inertia/material evidence, preserving external edits and keeping physics out of AgentLoop. (local)
+- [policy] [fix] 以阶段连续时间参数化替代 acquire 逐点起停；对重新采样路径保留完整限位、工作空间及碰撞校验。 / Replace per-waypoint acquire stops with stage-continuous timing and validate retimed samples against existing joint, workspace and collision checks. (local)
+- [policy] [fix] 渐进闭爪并在接触建立后保持夹持目标；实时检测目标漂移/接触丢失，补充有方向的接触证据，不放宽原抓取限值。 / Ramp gripper closure, retain the grip target after contact and detect drift/contact loss with directional evidence without relaxing existing grasp tolerances. (local)
+- [eval] [chore] 增加无动作、替代机制、失效路径和执行器集成测试；进行实际 USD/Isaac 无动作物理核查，明确区分测试通过与真实抓取成功。 / Add no-motion, substitution, failure-path and executor integration tests plus a native USD/Isaac physics audit; distinguish tested mechanisms from live grasp success. (local)
+- [docs] [chore] 预期影响 phase_motion.py、engine.py、profile.py、Adapter 私有物理模块及配置/测试、诊断、开发指南与 CHANGELOG；完成后记录精确 Diff/行号并定向提交推送当前分支。 / Expected changes cover motion, engine, profile, private physics/config/tests and diagnosis/guide/logs; record exact diffs/lines and commit/push only task-owned files on the current branch. (local)
+
+### 架构与结果 / Architecture and Outcome
+- [policy] [fix] 按 Tier C-Safety 复核；物理、时序、控制与原始接触证据全部留在 Isaac Adapter。AgentLoop、Skill Tool、opaque 候选链及 Coordinator 生命周期/取消/对账归属不变；无新增 Core 字段、hash 或重复门禁。 / Keep physics, timing, control and raw contact evidence Adapter-private; preserve AgentLoop, Tool contracts, opaque candidate lineage and Coordinator ownership without new core fields, hashes or redundant gates. (local)
+- [env] [tune] 显式仿真假设：每瓶 0.10 kg（0.06 kg 空瓶加 0.04 kg 固定载荷），玻璃/手指/桌面摩擦与主指驱动 2 N 上限；不是测得的实验室参数或液体转移模型。 / Use documented development assumptions for mass, friction and drive cap, not measured lab properties or fluid transfer. (local)
+- [eval] [exp] 离线同轨迹节点、60 Hz 指令时序比较：R03 50.683→22.366 秒，R05 51.300→24.167 秒，排除开闭爪/抬起/停留；不是原生执行提速证明，约 1 m 的几何绕路不变。 / Offline command timing improves with the same knots, excluding grip/lift/holds; no new runtime speed or route-optimality proof. (local)
+
+### 文件变更详情 / File Changes
+
+#### [修改 / Modified] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L172-L194, L580-L623, L650-L651, L1131-L1184, L1622-L1764
+- [policy] [fix] 新增阶段连续重定时、实际采样全路径校验、接触渐进闭爪/保持/失效停止与子步向量证据；复核补齐双指接触但夹持变换失配时立即停止。 / Add stage retiming, swept-sample qualification, ramp/hold/failure closure and substep vector evidence; reject bilateral transform mismatch immediately. (local)
+```diff
+-def continuous_joint_path(points, dt, duration, velocity_limit, acceleration_limit):
++def continuous_joint_path(points, dt, duration, velocity_limit, acceleration_limit, *, ease_endpoints=False):
++    # Global quintic clock; analytic chain-rule velocity/acceleration bounds.
++    # _time_acquire_route validates limits, FK workspace and swept collisions.
+-points = route["steps"]
++points = route.get("execution_steps", route["steps"])
+-finger_target = .04 if operation == "acquire" else 0.
++finger_target = np.full(2, .04) if operation == "acquire" else np.asarray(
++    self.robot.get_joint_positions())[finger_indices].copy()
+-elif stage == "close":
+-    finger_target = 0.
++closure = list(smooth_joint_segment(measured_fingers, np.zeros(2), dt, finger_speed, finger_acceleration))
++# Freeze target on qualified bilateral contact; require stable settling.
++if contacts() and not held:
++    raise PhaseMotionError("grasp_transform_mismatch", ...)
++# Existing drift tolerances and contact loss stop before lift.
+```
+The excerpt abbreviates local variable expressions/comments; exact source ranges above are authoritative. / 摘要 Diff 中局部表达式与注释经缩写，以上源文件行号为准。
+
+#### [新增 / Added] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/scene_physics.py` L1-L152
+- [env] [fix] 验证并解析全部目标后在 session layer 应用质量、凸分解、材质和驱动；初始化后独立读取并检查实际质量/惯量/COM，保留外部源资产。 / Resolve targets before applying session opinions and independently check actual initialized mass/inertia/COM without modifying source assets. (local)
+```diff
++with Usd.EditContext(stage, stage.GetSessionLayer()):
++    mass.CreateMassAttr(spec["mass_kg"])
++    mass.CreateDensityAttr(0.)
++    # Bind physical materials to collider and subsets.
++mass = float(np.asarray(view.get_masses()).reshape(-1)[0])
++inertia = np.asarray(view.get_inertias()).reshape(3, 3)
++com, orientation = view.get_coms()
+```
+
+#### [修改 / Modified] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/engine.py` L1035-L1046, L2497-L2498, L2506-L2510, L2519-L2520
+- [env] [fix] 在原有场景初始化边界、reset 前应用物理，之后记录实际读数；禁止同会话切换物理配置。 / Apply physics at existing initialization before reset, persist actual readback afterwards, and reject switching profiles in one loaded session. (local)
+```diff
++if profile.physics_config_path is not None:
++    physics_report = apply_scene_physics(stage, load_physics_config(profile.physics_config_path))
++report = read_runtime_physics(scene["physics_report"])
++scene["physics_evidence_ref"] = store.write("scene-physics", report)
+```
+
+#### [修改 / Modified] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/profile.py` L67, L141, L189-L190
+- [env] [feat] 可选私有 physics_config_path 按配置文件位置解析并检查存在性，未配置的部署保持原行为。 / Add optional relative private physics profile with file-existence validation; deployments without it preserve behavior. (local)
+```diff
++physics_config_path: Path | None = None
++physics_config_path=path_value("physics_config_path") if value.get("physics_config_path") else None,
+```
+
+#### [新增 / Added] `examples/forge-adapters/isaacsim_lab/configs/labutopia-mixture-physics.json` L1-L16
+#### [修改 / Modified] `examples/forge-adapters/isaacsim_lab/configs/labutopia-mixture-motion.json` L14, L75-L76; `examples/forge-adapters/isaacsim_lab/configs/labutopia-mixture.json` L5
+- [env] [tune] 集中部署假设与开关，不修改外部 LabUtopia 场景或在代码硬编码物体位置。 / Centralize deployment assumptions/settings without modifying external scenes or hardcoding object positions. (local)
+```diff
++"physics_config_path": "labutopia-mixture-physics.json",
++"acquire_timing": "stage_continuous",
++"finger_velocity_m_s": 0.015,
++"finger_acceleration_m_s2": 0.15,
++"bodies": [{"asset_type": "reagent_bottle", "mass_kg": 0.10, "material": "glass", "hull_vertex_limit": 36, "max_convex_hulls": 32}],
+```
+
+#### [新增 / Added] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/physics_probe.py` L1-L69
+- [eval] [feat] 通过真实 backend 启动/复位，核对八瓶实际物理属性与关节；只写证据、不发 motion command、不伪装抓取成功。 / Probe actual backend initialization/reset and measured body/joint state, recording evidence without motion commands or fake grasp success. (local)
+```diff
++backend.ensure_action_scene(session)
++first = read_runtime_physics(scene["physics_report"])
++world.reset()
++reset = read_runtime_physics(scene["physics_report"])
++# Assert mass/inertia and configured initial joints survive reset.
++report = {"status": "passed", ..., "motion_commands": 0, "grasp_success_proven": False}
+```
+
+#### [新增 / Added] `examples/forge-adapters/isaacsim_lab/tests/test_contact_timing.py` L1-L187; `examples/forge-adapters/isaacsim_lab/tests/test_scene_physics.py` L1-L103
+#### [修改 / Modified] `examples/forge-adapters/isaacsim_lab/tests/test_engine.py` L556-L581; `examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py` L222-L243, L328-L331, L1384, L1406
+- [eval] [fix] 补充变换失配、瞬态接触丢失、漂移、取消、后续开度、采样消费、阶段时序与 swept 碰撞失效测试；补齐 prepare→readiness 接线、reset 前物理应用及替代 USD 测试。 / Cover mismatch, transient loss, drift, cancellation, subsequent aperture, sample consumption, timing/swept failures, readiness wiring and alternative USD initialization. (local)
+```diff
++assert result["failure_code"] == "grasp_transform_mismatch"
++assert model.world.steps == 1
++assert all(c[7] > .039 for c in commands)
++assert model.world.steps == len(route["execution_steps"])
++assert stage.GetRootLayer().ExportToString() == original
+-shift = .012 if model.world.steps else 0.
++shift = .006 if model.world.steps else 0.  # Within the unchanged 8 mm pre-lift drift limit.
+```
+- [eval] [docs] 旧 measured-grasp 测试位移改为 6 mm 使其继续验证合法夹持跟踪；新增 9 mm 漂移拒绝测试独立覆盖原 8 mm 限值，不以改测试隐藏拒绝行为。 / Keep the measured-grasp test within tolerance and separately prove 9 mm drift rejection against the unchanged 8 mm bound. (local)
+
+#### [新增 / Added] `.task/labutopia-contact-and-timing-repair-20261102.md` L1-L164; `docs/forge/IMPLEMENTATION_REVIEW_V16_8_0.md` L1-L68
+#### [修改 / Modified] `.task/current.md` L1-L25; `docs/forge/MANIPULATION_DAG_DEVELOPER_GUIDE.md` L495-L532
+- [docs] [docs] 保存原生证据、诊断限制、PAOS 归属、完整复现命令、分层验收、实现复核和下一次接触验证分支。 / Save diagnosis/evidence limits, ownership, reproduction commands, layered acceptance, review and next contact-validation branches. (local)
+```diff
++No new physical grasp/pour/stir execution, video, or hardware proof.
++Physics and control remain Adapter-private; AgentLoop retains opaque semantics.
++Readback success is not effective-friction, fluid-transfer or live-grasp proof.
+```
+
+### 验证 / Validation
+- [eval] [chore] Adapter + Skill subtask executor：450 passed, 2 skipped，10.10 秒；默认环境无 pxr，两项跳过在原生 USD 环境单独执行，物理模块 10 项全通过。 / Full regression passes; the two pxr-dependent skips separately pass with actual native USD libraries. (local)
+- [eval] [exp] Isaac 原生 probe 退出码 0、8 个刚体质量均约 0.10000000149 kg，惯量/COM 合法；读数不推进时间/不改变关节，reset 保持质量/惯量及初始关节，0 条运动指令。 / Native readback/reset succeeds with valid physical values, unchanged read-only state and zero motion commands. (local)
+- [data] [docs] 制品 `out/lab-contact-timing-20261102-r1/artifacts/labutopia/physics-probe/202c33511beb4a099fd157965af89e8e.json` 与 `scene-physics/629bde4671b0440fbaefa73a7c6632a0.json`；Kit 原始 scale/MDL/CPU particle 错误保留，未声称液体物理或渲染验收通过。 / Preserve native receipts and source scene warnings/errors; no fluid/rendering acceptance claim. (local)
+- [eval] [chore] 修改 Python 文件 Ruff 通过、git diff --check 通过；初始 pytest 缺 async 插件及独立 USD 缺原生库/插件路径的失败已记录，只有修正后的结果计为通过。 / Lint/diff checks pass; distinguish corrected successful validations from initial environment failures. (local)
+- [docs] [docs] 本次不重放旧 readiness，不执行新的倒液/搅拌，不生成运动视频；旧 R05 录像保留。实际夹持稳定性与 R03 插入几何仍须新捕获、新 preparation、新 Action 验证。 / Do not replay stale readiness or claim new process/video success; fresh capture/preparation/Action remains required for physical grip and insertion validation. (local)
+
+### Git 提交 / Git Receipt
+- Branch: `feature/planning-loop`
+- [docs] [chore] 本版本任务文件定向提交；提交 hash 在后续回执中记录后与索引一同推送当前分支。无关工作区与 out/ 制品不纳入提交。 / Commit only task-owned files; record the commit in a follow-up receipt and push the current branch, excluding unrelated changes and runtime artifacts. (local)
+
 ## v16.7.2 (2026-11-02 14:56) - codex
 
 ### 完成范围 / Completed Scope [目标纠正与重跑完成；抓取未成功 / Target correction and rerun complete; grasp unsuccessful]
@@ -413,66 +536,3 @@
 - Branch: `feature/planning-loop`; time: `2026-11-02 12:53:47 +0800`.
 - [docs] [docs] 月度完整记录 `changelog/2026-11.md:L780-L872`；索引对应 `CHANGELOG.md:L51-L143`，最近五版本与归档逐字一致。 / The complete archive/index entry occupies these ranges; latest five entries match their archive exactly. (local)
 - [chore] [chore] 仅暂存本任务 12 个文件，无关报告与运行输出保留未暂存；提交回执随后以文档提交保存并推送当前分支。 / Stage only twelve task-owned files, preserving unrelated report/runtime outputs; save this receipt in a following docs commit and push the current branch. (local)
-
-## v16.6.2 (2026-11-02 12:24) - codex
-
-### 预期修改 / Planned Changes [完成局部修复；完整抓取仍受阻 / Local repair complete; full grasp remains blocked]
-- [docs] [docs] 保存复位修复后的真实拒绝分布，区分夹指保守包络、终态干涉、工作空间、开口及 IK 分支问题；在 `.task/` 记录证据与修复边界。 / Save post-reset rejection evidence and distinguish conservative finger bounds, final interference, workspace, aperture and IK branches in a task diagnosis. (local)
-- [env] [fix] 在 Isaac Adapter 内修复有实测支持的夹指碰撞表示或候选准备缺陷；优先验证几何覆盖，再接入现有 preparation，保持裕量、全行程、同捕获及完整路线检查。 / Repair evidenced finger collision representation or candidate-preparation defects inside Isaac Adapter, verifying geometry coverage before integration and preserving margins, full travel, same-capture and full-route checks. (local)
-- [eval] [chore] 先写失败复现，再运行替代机制/失败路径测试与真实场景无动作验证；不将局部净空或单元测试表述为抓取成功。 / Reproduce failures, run substitution/failure tests and actual-scene no-motion validation; do not equate local clearance or unit tests with grasp success. (local)
-- [docs] [docs] 更新开发说明、架构复核、精确行号、Diff 与最近五版本，仅提交本任务文件并推送当前分支。 / Update guidance, architecture review, exact ranges/diffs and latest five entries; commit task-owned files and push the current branch. (local)
-
-### 根因与修复 / Cause and Repair
-- [env] [fix] 旧整夹指 AABB 把未占据角落纳入开合扫掠，叠加 3 mm 裕量后过早拒绝桌面附近路径。改为读取当前场景 PhysX cooked convex 全部组件，保守切片后逐盒覆盖完整 prismatic 行程；保持原裕量。 / Whole-finger AABBs swept empty corners and prematurely rejected near-table routes after padding. Read all current-scene PhysX cooked convex components, conservatively slice their solids, and sweep each bound over full prismatic travel with the original margin. (local)
-- [env] [fix] 切片包含凸体边与切平面交点，覆盖没有原始顶点的切片；烹制失败、无回调、无组件或无效凸体均拒绝。 / Slice bounds include convex edge/plane intersections, covering slabs without original vertices; missing callbacks, failed cooking, empty components and invalid solids reject. (local)
-- [policy] [chore] 机制留在 Isaac Adapter，AgentLoop 语义参数、opaque 选择、同捕获证据、qualified-only 恢复及完整路径检查保持原职责。 / Mechanisms remain inside Isaac Adapter; AgentLoop semantic parameters, opaque selection, same-capture evidence, qualified-only recovery and complete-route checks retain their owners. (local)
-
-### 文件变更详情 / File Changes
-- [env] [fix] [新增 / Added] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/finger_collision.py:L1-L70` 同步 cooked 组件读取与凸体保守切片。 / Synchronous cooked-component loading and conservative convex-solid slicing. (local)
-- [env] [fix] [修改 / Modified] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py:L714-L780,L890-L912,L1314` 接入实例代理/最终变换/cooked 包络，保存夹指环境与自碰撞私有几何诊断。 / Integrate instance proxies, final transforms and cooked bounds; retain private finger/environment/self-overlap geometry. (local)
-- [eval] [chore] [新增 / Added] `examples/forge-adapters/isaacsim_lab/tests/test_finger_collision.py:L1-L150` 13 项几何、完整扫掠、替代烹制/查询、失败路径与裕量回归。 / Thirteen geometry, full-sweep, substituted cooking/query, failure and margin regressions. (local)
-- [eval] [chore] [修改 / Modified] `examples/forge-adapters/isaacsim_lab/scripts/inspect_collision_receipt.py:L60-L61,L99-L100,L113` 保留实际 cooked 证据和新拒绝诊断。 / Preserve actual cooked evidence and replay rejection diagnostics. (local)
-- [docs] [docs] [修改 / Modified] `docs/forge/MANIPULATION_DAG_DEVELOPER_GUIDE.md:L194-L214` 记录 Isaac 所有权、凸体覆盖、全行程、失败与历史证据边界。 / Document Isaac ownership, convex coverage, travel, failure and historical evidence boundaries. (local)
-- [docs] [docs] [新增 / Added] `.task/labutopia-finger-envelope-repair-20261102.md:L1-L108` 保存原始原因、架构决策、原生对照与后续真实阻塞。 / Save original cause, architecture decisions, native comparisons and remaining measured blockers. (local)
-- [docs] [docs] [修改 / Modified] `.task/current.md:L3-L19` 更新当前局部修复与完整流程阻塞状态。 / Update local-repair and end-to-end blocker status. (local)
-- [docs] [docs] [新增 / Added] `docs/forge/IMPLEMENTATION_REVIEW_V16_6_2.md:L1-L88` 完成问题分级、架构边界、测试命令与不同证据等级复核。 / Record severity, architecture boundaries, reproduction commands and evidence-level review. (local)
-- [docs] [docs] [修改 / Modified] `CHANGELOG.md` 最近五版本滚动加入本记录，与月度归档保持全文一致；行号在 Git 回执中补齐。 / Roll this complete record into the latest five, identical to the monthly archive; record final line range in the Git receipt. (local)
-
-### 关键代码 Diff / Key Code Diff
-```diff
-- box = bounds.ComputeRelativeBound(collider, body).ComputeAlignedBox()
-- local_corners = np.array([*product(*zip(box.GetMin(), box.GetMax()))])
-+ parts = cooked_convex_points(
-+     get_physx_cooking_interface().request_convex_collision_representation,
-+     UsdUtils.StageCache.Get().GetId(self.stage).ToLongInt(),
-+     PhysicsSchemaTools.sdfPathToInt(collider.GetPath()),
-+     PhysxCollisionRepresentationResult.RESULT_VALID,
-+ )
-+ parts = [points @ relative[:3, :3].T + relative[:3, 3] for points in parts]
-+ boxes = [box for points in parts for box in
-+          convex_slice_boxes(points, self.config["collision_margin_m"])]
-+ # Each slab includes edge/plane intersections; no vertex-only clipping.
-+ # Existing finger_boxes still sweeps every slab through joint limits.
-```
-```diff
-- raise PhaseMotionError("self_collision", f"finger envelope overlaps {link}")
-+ reject("self_collision", f"finger envelope overlaps {link}", link="finger",
-+        other_link=link, primitive="oriented_box_sphere_group", ...)
-```
-
-### 已完成验证 / Completed Validation
-- [eval] [chore] 受影响回归 434 passed；Ruff、compileall、`git diff --check` 通过。首次新增测试因模块尚未实现而收集失败；随后局部命令缺少工作流 PYTHONPATH 及零值数值断言容差导致失败，修正命令/浮点断言后全部通过。 / Affected regressions: 434 passed; Ruff, compileall and whitespace checks pass. Initial tests could not collect before implementation; a subsequent local run lacked the workflow PYTHONPATH and used an overly strict zero-value assertion, both corrected before the passing runs. (local)
-- [eval] [exp] `out/lab-cooked-finger-geometry-20261102-r1/geometry.json`：左右夹指各 8 个实际 cooked 组件，53/56 个包络盒；5 个历史中间失败样本全部 clear，关节和物理时间未变。 / Native receipt: eight actual cooked components per finger, 53/56 boxes, all five historical intermediate failures clear, with unchanged joints and physics time. (local)
-- [docs] [docs] 中间样本通过不代表最终抓取或整条路径通过；正式新捕获结果另记。 / Intermediate clearance does not prove final grasp or full-route feasibility; fresh-capture results are recorded separately. (local)
-
-### 正式新捕获结果 / Formal Fresh-Capture Result
-- [eval] [exp] `out/lab-fullchain-truth-20261102-cooked-finger-no-motion-r1/`，session `cli:lab-3c4728b402d2`，task `task_9c72fe6c84e94594`，revision `revision_3b1df384b60c41f4`；task-affordance unavailable，任务 cancelled，入口退出 1。 / The recorded workspace/session/task/revision completes with unavailable task-affordance, cancelled task and host exit 1. (local)
-- [eval] [exp] 4 个开口拒绝与 48 次接近拒绝数量不变（workspace 20/environment 20/self 4/IK 4），但候选 17 的 5 个夹指拒绝变为更低位置的手掌球/桌面拒绝，首个 TCP Z 由 0.780287 降至 0.777973 m；修复实际推进了检查，未证明最终抓取可行。 / Four aperture and 48 approach failures persist, but candidate 17's five finger failures now become later hand-sphere/table failures, first TCP Z advancing from 0.780287 to 0.777973 m; the repair advances checking without proving final feasibility. (local)
-- [eval] [exp] 候选 55 两次 refined finger/table 拒绝位于 TCP Z≈0.742 m。其余手臂环境/自碰撞与 IK 原因保持显式；未缩球半径、未调裕量、未添加绕过检查。 / Candidate 55 retains two refined finger/table failures near TCP Z 0.742 m. Remaining arm/environment/self/IK failures stay explicit; no sphere shrinking, margin tuning or bypass is added. (local)
-- [eval] [chore] `simulated_motion_enabled=false`、`controller_outcomes=[]`，三个记录均为 Query；无 Action、R04 或搅拌执行证据。 / Motion remains disabled with no controller outcomes; all three records are Queries, with no Action, R04 or stirring execution evidence. (local)
-
-### Git 提交 / Git Commit
-- Implementation commit: `e91ba782` (`2026-11-02 12:36:12 +0800`).
-- Branch: `feature/planning-loop`; push: `git push origin feature/planning-loop`.
-- [docs] [docs] `CHANGELOG.md:L51-L112` 为本版本完整记录，另滚出第五旧版本；`changelog/2026-11.md:L717-L778` 为追加的月度记录。 / The complete entry occupies these index/archive ranges; the oldest index entry rolls out without changing its archive. (local)
-- [chore] [chore] 仅提交本轮 10 个文件；无关报告、用户文件和运行输出未暂存。推送结果单独确认。 / Only ten task-owned files are committed; unrelated report, user files and runtime outputs remain unstaged. Push outcome is verified separately. (local)

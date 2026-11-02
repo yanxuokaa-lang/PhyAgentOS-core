@@ -1,4 +1,28 @@
-# Current Task: LabUtopia near-arm inner-corner selection
+# Current Task: LabUtopia contact and trajectory timing repair
+
+## v16.8.0 contact/timing implementation / 接触与时序修复
+
+- Diagnosis and validation: `.task/labutopia-contact-and-timing-repair-20261102.md`.
+- Tier C-Safety, Adapter-private implementation. AgentLoop/Coordinator retain
+  semantic parameters, opaque candidates, admission, cancellation and settlement.
+- Session-layer physics profile is applied before reset/capture; native readback
+  confirms all eight reagent vessels have ~0.1 kg mass and positive inertia,
+  unchanged after reset. This mass, friction and drive cap are simulation
+  assumptions, not measured glass/fluid properties.
+- Acquire stages use bounded continuous timing with fresh swept-path checks.
+  Closure ramps, freezes the target on qualified bilateral contact, and stops
+  on drift, transform mismatch or contact loss. Later phases retain measured
+  finger aperture. Existing collision and grip tolerances are unchanged.
+- Replacement-controller tests cover command timing, cancellation and failure
+  paths. Native USD tests cover alternative paths/material bindings/session-only
+  opinions. Native physics probe issues zero motion commands.
+- No new live grasp/pour/stir success or video in this repair task. A fresh
+  native capture/qualification/Action is needed to validate tracking, real
+  grip retention and the chosen physical assumptions. Historical videos stay
+  under the earlier R05/R03 run roots; old readiness must not be replayed.
+- Review: `docs/forge/IMPLEMENTATION_REVIEW_V16_8_0.md`.
+
+## Previous task: near-arm inner-corner selection
 
 ## v16.7.2 target correction / 目标位置纠正
 

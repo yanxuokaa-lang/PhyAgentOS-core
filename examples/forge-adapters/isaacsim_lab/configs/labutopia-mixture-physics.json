@@ -1,0 +1,16 @@
+{
+  "assumptions": "Simulation development parameters, not measured lab properties: each small reagent vessel is modeled as 0.06 kg empty glass plus 0.04 kg contents. Contents are a fixed rigid payload, not simulated fluid transfer. Friction and 2 N finger drive cap are explicit starting assumptions requiring contact validation. No grasp-success claim.",
+  "materials": {
+    "glass": {"static_friction": 0.5, "dynamic_friction": 0.4, "restitution": 0.0},
+    "finger": {"static_friction": 0.8, "dynamic_friction": 0.6, "restitution": 0.0},
+    "table": {"static_friction": 0.5, "dynamic_friction": 0.4, "restitution": 0.0}
+  },
+  "bodies": [{"asset_type": "reagent_bottle", "mass_kg": 0.10, "material": "glass", "hull_vertex_limit": 36, "max_convex_hulls": 32}],
+  "surfaces": [
+    {"paths": ["/World/Franka/panda_leftfinger", "/World/Franka/panda_rightfinger"], "material": "finger"},
+    {"paths": ["/World/table"], "material": "table"}
+  ],
+  "drives": [
+    {"joint_path": "/World/Franka/panda_hand/panda_finger_joint1", "max_force_n": 2.0, "max_velocity_m_s": 0.02}
+  ]
+}

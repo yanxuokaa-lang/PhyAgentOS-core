@@ -1032,6 +1032,18 @@ class LabUtopiaBackend:
                     scene["world"], scene["robot"], initial_arm, initial_gripper
                 )
             scene["robot_initialized"] = True
+        session.initialize_scene_revision(self.profile.scene_revision)
+        if scene.get("physics_report") is not None and not scene.get("physics_evidence_ref"):
+            from .scene_physics import read_runtime_physics
+            from .visual_perception import LabArtifactStore
+
+            report = read_runtime_physics(scene["physics_report"])
+            report.update(scene_revision=session.current_scene_revision(),
+                          simulation_time_s=float(scene["world"].current_time),
+                          physics_config_path=str(self.profile.physics_config_path))
+            store = LabArtifactStore(self.observation_artifact_root
+                                     or self.profile.lab_root / "outputs" / "paos-observation-artifacts")
+            scene["physics_evidence_ref"] = store.write("scene-physics", report)
         if getattr(cfg, "preview_light", None) is not None:
             from pxr import Gf, UsdLux
 
@@ -1039,7 +1051,6 @@ class LabUtopiaBackend:
             light = UsdLux.DomeLight.Define(scene["stage"], cfg.preview_light.prim_path)
             light.CreateIntensityAttr(cfg.preview_light.intensity)
             light.CreateColorAttr(Gf.Vec3f(*cfg.preview_light.color))
-        session.initialize_scene_revision(self.profile.scene_revision)
         self._register_session_observation_source(session, cfg, scene["stage"])
 
     def ensure_action_scene(self, session: Any) -> None:
@@ -2483,6 +2494,8 @@ def _get_session_scene_resources(
         if existing is not None:
             if existing["scene_usd_path"] != str(profile.scene_usd_path):
                 raise IsaacLabRuntimeError("worker session cannot switch its loaded scene")
+            if existing.get("physics_config_path") != profile.physics_config_path:
+                raise IsaacLabRuntimeError("worker session cannot switch its physics profile")
             return existing
 
     # Import the authored PhysicsScene before World selects its physics owner.
@@ -2490,6 +2503,11 @@ def _get_session_scene_resources(
     world = world_factory()
     robot = robot_factory()
     stage = stage_provider()
+    physics_report = None
+    if profile.physics_config_path is not None:
+        from .scene_physics import apply_scene_physics, load_physics_config
+
+        physics_report = apply_scene_physics(stage, load_physics_config(profile.physics_config_path))
     object_utils.get_instance(stage)
     scene = {
         "world": world,
@@ -2498,6 +2516,8 @@ def _get_session_scene_resources(
         "scene_usd_path": str(profile.scene_usd_path),
         "world_initialized": False,
         "robot_initialized": False,
+        "physics_report": physics_report,
+        "physics_config_path": profile.physics_config_path,
     }
     if session is not None:
         world.reset()

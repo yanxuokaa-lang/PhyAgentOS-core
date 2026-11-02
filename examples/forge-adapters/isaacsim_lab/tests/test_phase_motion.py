@@ -219,7 +219,8 @@ def test_grasp_aperture_uses_composed_finger_limits_and_rejects_oversized_candid
 
 
 @pytest.mark.parametrize("policy,attempt_count,chosen", [(None, 3, .12), ("first_feasible", 2, .08)])
-def test_acquire_preparation_searches_clearances_and_selects_admissible_route(policy, attempt_count, chosen):
+@pytest.mark.parametrize("timing", ["waypoint", "stage_continuous"])
+def test_acquire_preparation_searches_clearances_and_selects_admissible_route(policy, attempt_count, chosen, timing):
     model = object.__new__(IsaacPhaseMotion)
     model.config = {
         "approach_distance_m": .12,
@@ -231,6 +232,15 @@ def test_acquire_preparation_searches_clearances_and_selects_admissible_route(po
     }
     if policy is not None:
         model.config["acquire_route_selection"] = policy
+    model.config["acquire_timing"] = timing
+    model.scene = {"physics_evidence_ref": "artifact://labutopia/scene-physics/actual.json"}
+    timed = []
+    def retime(route):
+        assert route["operation"] == "acquire"
+        assert "tcp_from_object" in route and "original_return_pose" in route
+        timed.append(route)
+        route["execution_steps"] = list(route["steps"])
+    model._time_acquire_route = retime
     model.validate_grasp_aperture = lambda _target: None
     current = np.eye(4)
     current[:3, 3] = [-.45, 0., 1.0]
@@ -315,6 +325,10 @@ def test_acquire_preparation_searches_clearances_and_selects_admissible_route(po
     assert attempts[-1]["status"] == "available"
     assert all(item["world_change_started"] is False for item in attempts)
     assert route["acquire_route_selection"] == (policy or "minimum_joint_travel")
+    assert len(timed) == (1 if timing == "stage_continuous" else 0)
+    readiness = [value for kind, value in artifacts if kind == "readiness"][-1]
+    assert readiness["route"]["physics_evidence_ref"] == model.scene["physics_evidence_ref"]
+    assert ("execution_steps" in readiness["route"]) == (timing == "stage_continuous")
 
 
 @pytest.mark.parametrize("value", [None, "fast", False, 1, []])
@@ -1367,7 +1381,7 @@ def test_lift_contact_uses_measured_grasp_pose_and_preserves_return_target(monke
     original = deepcopy(arguments["phase_route"]["original_return_pose"])
     def tcp(joints=None):
         joints = model.robot.get_joint_positions() if joints is None else joints
-        shift = .012 if model.world.steps else 0.
+        shift = .006 if model.world.steps else 0.  # Within the unchanged 8 mm pre-lift drift limit.
         return pose_matrix([.1 + shift, 0., 1. + joints[0]], [0., 0., 0., 1.])
     model.tcp = tcp
     def body_pose(_source):
@@ -1389,7 +1403,7 @@ def test_lift_contact_uses_measured_grasp_pose_and_preserves_return_target(monke
     assert any(support for height, support in contact_checks if height < .008)
     assert all(not support for height, support in contact_checks if height > .008)
     assert arguments["phase_route"]["original_return_pose"] == original
-    assert result["measurements"]["return_error_m"] == pytest.approx(np.hypot(.012, .1))
+    assert result["measurements"]["return_error_m"] == pytest.approx(np.hypot(.006, .1))
 
 
 def test_cylindrical_grasp_axis_allows_roll_but_rejects_tilt_and_translation():

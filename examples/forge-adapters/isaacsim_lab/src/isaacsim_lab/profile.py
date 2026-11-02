@@ -64,6 +64,7 @@ class LabUtopiaProfile:
     headless: bool = True
     camera_render_frames: int = 4
     motion_config_path: Path | None = None
+    physics_config_path: Path | None = None
     perception_config_path: Path | None = None
     perception_mode: str = "model"
     simulation_truth_manifest_path: Path | None = None
@@ -137,6 +138,7 @@ class LabUtopiaProfile:
             headless=bool(value.get("headless", True)),
             camera_render_frames=_positive_int(value, "camera_render_frames", 4),
             motion_config_path=path_value("motion_config_path") if value.get("motion_config_path") else None,
+            physics_config_path=path_value("physics_config_path") if value.get("physics_config_path") else None,
             perception_config_path=path_value("perception_config_path") if value.get("perception_config_path") else None,
             perception_mode=_text(value, "perception_mode", "model"),
             simulation_truth_manifest_path=(path_value("simulation_truth_manifest_path")
@@ -184,6 +186,8 @@ class LabUtopiaProfile:
             raise LabProfileError("config_path and scene_usd_path must be files")
         if self.motion_config_path is not None and not self.motion_config_path.is_file():
             raise LabProfileError(f"motion_config_path does not exist: {self.motion_config_path}")
+        if self.physics_config_path is not None and not self.physics_config_path.is_file():
+            raise LabProfileError(f"physics_config_path does not exist: {self.physics_config_path}")
         if self.perception_config_path is not None and not self.perception_config_path.is_file():
             raise LabProfileError(f"perception_config_path does not exist: {self.perception_config_path}")
         if self.perception_mode not in {"model", "simulator_truth"}:

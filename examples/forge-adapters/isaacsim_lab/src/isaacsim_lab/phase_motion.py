@@ -169,20 +169,29 @@ def smooth_joint_segment(start, goal, dt, velocity_limit, acceleration_limit):
         yield np.asarray(start) + progress * delta
 
 
-def continuous_joint_path(points, dt, duration, velocity_limit, acceleration_limit):
-    """Run a clamped C2 path with analytic velocity/acceleration timing bounds."""
+def continuous_joint_path(points, dt, duration, velocity_limit, acceleration_limit, *, ease_endpoints=False):
+    """Sample a C2 path with rest endpoints and analytic timing bounds."""
     points = np.asarray(points, dtype=float)
     knots = np.linspace(0., 1., len(points))
-    spline = CubicSpline(knots, points, axis=0, bc_type="clamped")
+    spline = CubicSpline(knots, points, axis=0, bc_type="natural" if ease_endpoints else "clamped")
     a, b, c, _ = spline.c
     width = np.diff(knots)[:, None]
     stationary = np.clip(np.divide(-b, 3 * a, out=np.zeros_like(a), where=a != 0), 0., width)
     peak_velocity = float(np.max(np.abs(np.stack((c, (3*a*width + 2*b)*width + c,
                                                   (3*a*stationary + 2*b)*stationary + c)))))
     peak_acceleration = float(np.max(np.abs(np.stack((2*b, 6*a*width + 2*b)))))
+    if ease_endpoints:
+        # A global quintic clock provides rest endpoints without forcing a
+        # steep stop inside the first/last dense geometric knot interval.
+        # Chain-rule bounds: q''(s) s'^2 + q'(s) s''.
+        peak_acceleration = peak_acceleration * 1.875**2 + peak_velocity * (10 / math.sqrt(3))
+        peak_velocity *= 1.875
     duration = max(duration, peak_velocity / velocity_limit, math.sqrt(peak_acceleration / acceleration_limit))
     frames = max(2, math.ceil(duration / dt))
-    return spline(np.linspace(0., 1., frames + 1)[1:])
+    progress = np.linspace(0., 1., frames + 1)[1:]
+    if ease_endpoints:
+        progress = progress**3 * (10 - 15 * progress + 6 * progress**2)
+    return spline(progress)
 
 
 def acquire_transit_clearances(config):
@@ -568,6 +577,7 @@ class GripContactWindow:
     def begin(self):
         self.start = float(self.world.current_time)
         self.frames = [{} for _ in self.sensors]
+        self.contact_frames = [{} for _ in self.sensors]
         self.latest = [None for _ in self.sensors]
         self.error = None
 
@@ -584,6 +594,11 @@ class GripContactWindow:
                 self.latest[index] = (timestamp, bool(contacts))
                 if self.start <= timestamp <= float(self.world.current_time):
                     self.frames[index][timestamp] = impulse
+                    self.contact_frames[index][timestamp] = [
+                        {key: (np.asarray(item[key], dtype=float).tolist()
+                               if key in {"impulse", "position", "normal"} else str(item[key]))
+                         for key in ("body0", "body1", "impulse", "position", "normal") if key in item}
+                        for item in contacts]
         except Exception as exc:
             self.error = exc
 
@@ -601,7 +616,11 @@ class GripContactWindow:
         return {"contact_window_start_s": self.start,
                 "contact_window_end_s": float(self.world.current_time),
                 "selected_contact_impulse_ns": [sum(frames.values()) for frames in self.frames],
-                "contact_substep_samples": [len(frames) for frames in self.frames]}
+                "contact_substep_samples": [len(frames) for frames in self.frames],
+                "contact_vector_convention": "sensor_reported_body_order; not net body force",
+                "selected_contacts": [[{"timestamp_s": timestamp, "contacts": contacts}
+                                       for timestamp, contacts in frames.items() if contacts]
+                                      for frames in self.contact_frames]}
 
 
 class IsaacPhaseMotion:
@@ -628,6 +647,8 @@ class IsaacPhaseMotion:
         acquire_axial_symmetry_angles(self.config)
         acquire_staging_corridors(self.config)
         acquire_route_selection(self.config)
+        if self.config.get("acquire_timing", "waypoint") not in {"waypoint", "stage_continuous"}:
+            raise PhaseMotionError("invalid_motion_configuration", "unsupported acquire timing")
         self.scene = session.resolve("lab_scene_resources")
         self.robot, self.world, self.stage = (self.scene[key] for key in ("robot", "world", "stage"))
         if not self.scene["robot_initialized"]:
@@ -1107,11 +1128,59 @@ class IsaacPhaseMotion:
                      start_destination_pose=destination_pose.tolist() if destination_pose is not None else None)
         if aperture_check is not None:
             route["gripper_aperture_check"] = aperture_check
+        if operation == "acquire" and self.config.get("acquire_timing") == "stage_continuous":
+            self._time_acquire_route(route)
+        physics_ref = getattr(self, "scene", {}).get("physics_evidence_ref")
+        if physics_ref:
+            route["physics_evidence_ref"] = physics_ref
         evidence = self._artifact("readiness", {"captured_at": datetime.now(timezone.utc).isoformat(),
                                   "scene_revision": arguments["scene_revision"], "motion_authorized": False,
                                   "checks": {"kinematic": "pass", "collision": "pass", "workspace": "pass"},
                                   "route": route})
         return route, evidence
+
+    def _time_acquire_route(self, route):
+        """Qualify the actual stage-continuous samples before Action admission.
+
+        Interpolation can leave the original piecewise path: check its complete
+        swept joint segments, not just the original IK knots. No world stepping.
+        """
+        previous = np.asarray(route["start_joints"])
+        relation = np.asarray(route["tcp_from_object"])
+        supported = np.asarray(route["original_return_pose"])
+        timed = []
+        for stage, group in groupby(route["steps"], key=lambda point: point["stage"]):
+            points = list(group)
+            if stage in {"open", "close"}:
+                timed.extend(points)
+                previous = np.asarray(points[-1]["joints"])
+                continue
+            samples = continuous_joint_path(
+                [previous, *[point["joints"] for point in points]], self.dt, 0.,
+                self.config["joint_velocity_rad_s"], self.config["joint_acceleration_rad_s2"], ease_endpoints=True)
+            if len(timed) + len(samples) > self.config["max_execution_steps"]:
+                raise PhaseMotionError("execution_bound_reached", "retimed acquire exceeds step budget")
+            if not np.isfinite(samples).all() or np.any(samples < self.limits[:, 0]) or np.any(samples > self.limits[:, 1]):
+                raise PhaseMotionError("joint_limit_violation", f"retimed {stage} exceeds joint limits")
+            for joints in samples:
+                count = max(1, math.ceil(float(np.max(np.abs(joints - previous))) / self.config["joint_step_rad"]))
+                for checked in np.linspace(previous, joints, count + 1)[1:]:
+                    tcp = self.tcp(checked)
+                    if (np.any(tcp[:3, 3] < self.config["workspace_min_m"])
+                            or np.any(tcp[:3, 3] > self.config["workspace_max_m"])):
+                        raise PhaseMotionError("workspace_violation", f"retimed TCP outside workspace in {stage}")
+                    support = support_contact_allowed(stage, tcp @ relation, supported, self.config["placement_tolerance_m"])
+                    self._collisions(checked, route["source_path"], points[0]["allow_contact"],
+                                     points[0]["attached"], relation, support)
+                timed.append({**points[0], "joints": joints.tolist(), "hold_s": 0., "continuous": True})
+                previous = joints
+            timed[-1]["hold_s"] = sum(point["hold_s"] for point in points)
+        route["execution_steps"] = timed
+        route["execution_dt_s"] = self.dt
+        route["timing"] = {"method": "stage_continuous", "scope": "planner_constrained",
+                           "sample_count": len(timed),
+                           "nominal_arm_duration_s": len(timed) * self.dt + sum(p["hold_s"] for p in timed),
+                           "closure_duration": "contact_dependent"}
 
     def qualify(
         self,
@@ -1550,7 +1619,9 @@ class IsaacPhaseMotion:
         failure_detail = None
         status = "succeeded"
         finger_indices = [self.robot.get_dof_index(name) for name in ("panda_finger_joint1", "panda_finger_joint2")]
-        finger_target = .04 if operation == "acquire" else 0.
+        # Retain an established grip for lift/pour/stir; never squeeze it back to zero.
+        finger_target = np.full(2, .04) if operation == "acquire" else np.asarray(
+            self.robot.get_joint_positions())[finger_indices].copy()
         step_count = 0
         last_stage = None
         self.world.play()
@@ -1567,6 +1638,7 @@ class IsaacPhaseMotion:
             sample = {"timestamp_s": float(self.world.current_time), "feedback_valid": True,
                       "grasp_valid": held, "stage": stage, "joints": self.joints().tolist(),
                       "finger_positions_m": np.asarray(self.robot.get_joint_positions())[finger_indices].tolist(),
+                      "finger_target_m": np.asarray(finger_target).tolist(),
                       "object_pose": physical_body.tolist(), "tcp_pose": tcp.tolist(),
                       "object_pose_source": "physics_displacement_of_observed_model",
                       "attachment_position_error_m": relation_error, "attachment_rotation_error_rad": rotation_error,
@@ -1597,7 +1669,9 @@ class IsaacPhaseMotion:
             return held, physical_body
 
         try:
-            points = self._stir_execution_points(route, tracking_refs) if track_stir else route["steps"]
+            if "execution_steps" in route and not math.isclose(route["execution_dt_s"], self.dt):
+                raise PhaseMotionPreconditionError("stale_phase_route", "retimed route control period changed")
+            points = self._stir_execution_points(route, tracking_refs) if track_stir else route.get("execution_steps", route["steps"])
             for point in points:
                 stage = point["stage"]
                 if stage == "lift" and last_stage != "lift" and not contacts():
@@ -1608,9 +1682,7 @@ class IsaacPhaseMotion:
                     supported_pose = self.observed_pose(source)
                     grasp_relation = np.linalg.inv(self.tcp()) @ supported_pose
                 if stage in {"open", "release", "retreat"}:
-                    finger_target = .04
-                elif stage == "close":
-                    finger_target = 0.
+                    finger_target = np.full(2, .04)
                 start = self.joints()
                 goal = np.asarray(point["joints"])
                 if track_stir and not point.get("continuous"):
@@ -1630,7 +1702,17 @@ class IsaacPhaseMotion:
                 hold_frames = math.ceil(point["hold_s"] / self.dt)
                 segment = ([goal] if point.get("continuous") else smooth_joint_segment(
                     start, goal, self.dt, self.config["joint_velocity_rad_s"], self.config["joint_acceleration_rad_s2"]))
-                for arm_command in chain(segment, repeat(goal, hold_frames)):
+                closure = None
+                contact_established = False
+                stable_frames = 0
+                if stage == "close":
+                    closure = list(smooth_joint_segment(
+                        np.asarray(self.robot.get_joint_positions())[finger_indices], np.zeros(2), self.dt,
+                        self.config.get("finger_velocity_m_s", .015), self.config.get("finger_acceleration_m_s2", .15)))
+                    # The arm is already at its qualified grasp; wait for a measured,
+                    # stable bilateral hold, bounded by full closure plus settle time.
+                    segment = repeat(goal, len(closure))
+                for command_index, arm_command in enumerate(chain(segment, repeat(goal, hold_frames))):
                     if cancel.is_set():
                         status = "cancelled"
                         raise PhaseMotionError("cancelled", "phase was cancelled")
@@ -1638,6 +1720,8 @@ class IsaacPhaseMotion:
                         raise PhaseMotionError("execution_bound_reached", "simulation closed or the execution step limit was reached")
                     command = np.asarray(self.robot.get_joint_positions()).copy()
                     command[self.joint_indices] = arm_command
+                    if closure is not None and not contact_established:
+                        finger_target = closure[min(command_index, len(closure) - 1)]
                     command[finger_indices] = finger_target
                     commanded_joints = command[self.joint_indices]
                     measured_relation = (np.linalg.inv(self.tcp()) @ self.observed_pose(source)
@@ -1653,6 +1737,19 @@ class IsaacPhaseMotion:
                     step_count += 1
                     record_frame(stage)
                     held, physical_body = record(stage)
+                    if operation == "acquire" and stage in {"approach", "grasp", "close"}:
+                        drift, rotation = grasp_pose_errors(original, physical_body, axial_symmetry)
+                        if (drift > self.config["grasp_position_tolerance_m"]
+                                or rotation > self.config["grasp_rotation_tolerance_rad"]):
+                            raise PhaseMotionError("grasp_object_displaced", "object moved before a qualified lift")
+                    if closure is not None:
+                        if contacts() and not held:
+                            raise PhaseMotionError("grasp_transform_mismatch", "bilateral contact differs from the qualified grasp")
+                        if contact_established and not held:
+                            raise PhaseMotionError("physical_grasp_lost", "bilateral grip lost during closure settling")
+                        if held:
+                            contact_established = True
+                            stable_frames += 1
                     if ((operation != "acquire" and stage not in {"release", "retreat"}) or stage == "lift") and not held:
                         raise PhaseMotionError("physical_grasp_lost", "selected-body contact or measured grasp transform changed")
                     measured_relation = (np.linalg.inv(self.tcp()) @ physical_body
@@ -1661,6 +1758,10 @@ class IsaacPhaseMotion:
                                                               self.config["placement_tolerance_m"])
                     self._collisions(self.joints(), source, point["allow_contact"], point["attached"],
                                      measured_relation, support_contact, held_fingers=point["attached"])
+                    if closure is not None and contact_established and stable_frames >= max(1, hold_frames):
+                        break
+                if closure is not None and stable_frames < max(1, hold_frames):
+                    raise PhaseMotionError("grasp_not_confirmed", "bounded closure did not establish a stable bilateral grip")
                 if np.max(np.abs(self.joints() - goal)) > self.config["joint_tracking_tolerance_rad"]:
                     raise PhaseMotionError("joint_tracking_failed", f"tracking tolerance exceeded in {stage}")
                 last_goal = goal
