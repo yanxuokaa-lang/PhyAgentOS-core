@@ -64,6 +64,22 @@
 
 ## Latest result and next step
 
+### v16.6.0 active repair (2026-11-02)
+
+- Save the selection/refactor decision in `.task/labutopia-r03-native-coverage-repair-20261102.md`.
+- Recorded r2 has 44 decoded proposals and 24 post-NMS candidates, not a saturated
+  64-candidate budget. All 24 world approach Z components are positive; current
+  qualified refs share one upward family. Do not change top-K without evidence.
+- Add configurable bounded same-cloud coordinate-frame inference inside the
+  GraspNet Worker, inverse-map native predictions, then use existing sampling,
+  same-capture task-affordance and complete route preparation. No public contract
+  or AgentLoop changes; do not rotate an already predicted grasp into a new one.
+- Validate round-trip frames, one-pass compatibility, aggregate budgets and
+  inference failures; pair real model runs using one captured cloud and fixed
+  seed. Enable configuration only after evidence shows useful coverage.
+- All-unavailable returns to existing Agent recovery. No new scheduler, hashes,
+  release gates, workspace changes or automatic world-changing retries.
+
 - Fresh run `out/lab-fullchain-truth-20261102-approach-feasibility-no-motion-r2/`,
   session `cli:lab-5fe426934fb3`, task `task_51ae038c97d246fd`: process-feature
   Query/preparation available, task-affordance unavailable, task cancelled.

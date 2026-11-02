@@ -85,7 +85,17 @@
       "--device",
       "cuda:0",
       "--sampling-policy",
-      "orientation_diverse"
+      "orientation_diverse",
+      "--seed",
+      "0",
+      "--input-rotation-xyzw",
+      "0", "0", "0", "1",
+      "--input-rotation-xyzw",
+      "1", "0", "0", "0",
+      "--input-rotation-xyzw",
+      "0", "1", "0", "0",
+      "--input-rotation-xyzw",
+      "0", "0", "1", "0"
     ]
   },
   "geometry_method": "remake",

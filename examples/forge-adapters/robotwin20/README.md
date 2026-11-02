@@ -345,6 +345,26 @@ and frame adaptation are not included in the GraspNet route. Until either
 profile points at a verified external model environment, the provider must stay
 `unavailable` rather than fabricate candidates.
 
+GraspNet also supports one to four optional `--input-rotation-xyzw x y z w`
+arguments. Each pass uses the **same sampled capture cloud**, rotated about its
+centroid, and runs the native model again. If `p' = R(p-c)+c`, predictions return
+to the capture frame as `t = R.T(t'-c)+c`, `Q = R.T Q'`. Scores and gripper
+dimensions remain native; this is not a rotation of an already predicted grasp,
+a new camera view, or evidence of unobserved surfaces. Omission preserves the
+original identity-only inference. The worker merges passes before its existing
+total candidate budget; downstream NMS, task-affordance, aperture and complete
+route qualification remain authoritative. A failed pass fails the request.
+Only the explicit LabUtopia simulator-truth profile enables four passes and a
+fixed seed; other profiles retain their original behavior.
+
+For a paired no-motion comparison, run
+`scripts/compare_grasp_input_frames.py` in the configured GraspNet Python
+environment with `--profile`, `--prediction`, `--artifact-root`, a **new**
+`--output` directory, `--seed 0` and the desired repeated rotation arguments.
+It preserves the original capture identity and saves identity/ensemble native
+results, configuration, source commit, checkpoint size/mtime, versions and
+timings. `summary.json` is inference evidence only, never IK or execution proof.
+
 Although this reference wiring lives beside the RoboTwin adapter example, the
 provider itself depends only on the generic `PointCloudArtifactResolver` and
 `GraspWorkerClient` ports. A future hardware or replay adapter can reuse the

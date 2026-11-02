@@ -48,6 +48,48 @@
 
 ## 最近五版本 / Latest five versions
 
+## v16.6.0 (2026-11-02 11:28) - codex
+
+### 预期修改 / Planned Changes [完成 / Implemented; runtime qualification pending]
+- [docs] [docs] 保存 R03 接近段拒绝的修复决策，区分候选覆盖、运动参数与安全资格，评估局部重构边界；此前第二次推送因 HTTPS low-speed 超时失败。 / Save the R03 approach-rejection repair decision, distinguish candidate coverage, motion configuration and safety qualification, and bound the local refactor; the preceding second push failed with an HTTPS low-speed timeout. (local)
+- [sense] [fix] 检查同捕获点云与原生候选覆盖，修复有证据支持的候选采样损失，保持原生位姿、opaque 引用和 Provider 替换边界。 / Inspect same-capture cloud/native candidate coverage and fix evidenced sampling loss while preserving native poses, opaque references and provider substitutability. (local)
+- [env] [fix] 评估并在证据支持时修复接近距离/完整路线之间的候选一致性；不降低 workspace 或碰撞阈值，不在 AgentLoop 注入机器人参数。 / Evaluate and, where supported, repair approach-distance/full-route candidate consistency without lowering workspace/collision thresholds or leaking robot parameters into AgentLoop. (local)
+- [eval] [chore] 先补失败路径与替代机制测试，再运行受影响回归及无动作验证，记录成功/失败边界；补全精确行号、Diff、最近五版本并提交推送当前分支。 / Add failure/substitution tests, run affected regressions and no-motion validation, record outcome boundaries, and complete exact ranges, diffs and latest-five entries before committing/pushing the current branch. (local)
+
+### 定位后的实施范围 / Evidence-directed scope [完成 / Implemented]
+- [sense] [fix] 本次 r2 保存的 decoded=44、NMS 后=24，小于 64 上限，不能将故障归因为 top-K 截断；24 个候选世界 approach z 全为正。在 GraspNet Worker 内新增可配置、最多四次的同点云坐标旋转推理，围绕输入质心旋转，模型重新预测后用严格逆变换回到捕获帧，再执行原有采样/资格化；不直接翻转预测，不制造新观测。 / The saved r2 result has 44 decoded and 24 post-NMS candidates, below the budget, all with positive world approach z. Add up to four configured coordinate-frame inference passes inside the worker: rotate the same cloud about its centroid, rerun the native model and invert the transform before existing selection/qualification. Never flip predicted grasps or claim new observations. (local)
+- [eval] [chore] 新增旋转往返、原生位姿保真、单次兼容、任一推理失败拒绝与多次总预算测试；同一历史点云固定 seed 配对验证方向覆盖，保存配置/版本/证据身份，再决定是否启用实验配置。 / Test transform round-trips, native pose fidelity, one-pass compatibility, whole-request inference failure and aggregate budgets; pair runs on the same recorded cloud and seed, persist config/version/identity, then decide whether to enable the experimental profile. (local)
+- [docs] [docs] 风险等级 C-Safety；本轮不重构 AgentLoop/公共选择契约，不改变接近距离与安全下界。Provider 负责候选机制，Adapter 负责 IK/碰撞/完整路线，Coordinator 独占恢复与 settlement。 / Tier C-Safety: do not refactor AgentLoop/public selection or change approach distances/safety limits. The Provider owns proposals, the Adapter owns IK/collision/full routes, and the Coordinator alone owns recovery/settlement. (local)
+
+### 实际文件变更 / Actual File Changes
+- [sense] [feat] `examples/forge-adapters/robotwin20/runtime/graspnet_worker.py:L66-L91,L95,L161-L192,L228-L229,L241-L242` 新增 1–4 次配置化输入坐标旋转、同点采样原生推理、预测逆变换与合并预算，默认保持单次推理。 / Add 1–4 configured coordinate-frame passes, same-point native inference, inverse-mapped predictions and aggregate budgeting; default remains one pass. (local)
+- [env] [tune] `examples/forge-adapters/isaacsim_lab/configs/labutopia-mixture-perception.json:L88-L98` 经配对实测后启用 identity/X/Y/Z 半周输入旋转及 seed 0，不更改 motion 配置。 / Enable identity/X/Y/Z half-turn input passes and seed 0 after paired evidence, without changing motion configuration. (local)
+- [eval] [chore] `examples/forge-adapters/robotwin20/tests/test_graspnet_worker.py:L174-L313` 新增 13 项参数化/失败/替代路径用例，包括 90°/180°逆变换、缺失方向扩展、旧默认、空集合、失败不返回部分结果和既有 Provider 接口接入。 / Add 13 parametrized, failure and substitution cases including 90/180-degree inverse mapping, native regeneration, legacy defaults, empty results, partial-failure rejection and existing-provider integration. (local)
+- [eval] [feat] `examples/forge-adapters/robotwin20/scripts/compare_grasp_input_frames.py:L1-L99` 新增固定捕获、固定种子配对推理工具，保存原生输出、输入身份、配置、版本、checkpoint 元数据和耗时；已有输出目录拒绝覆盖。 / Add paired same-capture seeded inference preserving native outputs, identity, config/version/checkpoint metadata and timing; refuse to overwrite an existing output directory. (local)
+- [docs] [docs] `examples/forge-adapters/robotwin20/README.md:L348-L367` 说明配置、帧变换、兼容性和复现方式；`.task/current.md:L67-L82` 更新活动修复；诊断和实现复核记录见下。 / Document configuration, transforms, compatibility and replay; update the active task and preserve diagnosis/review below. (local)
+- [docs] [docs] `.task/labutopia-r03-native-coverage-repair-20261102.md:L1-L124`、`docs/forge/IMPLEMENTATION_REVIEW_V16_6_0.md:L1-L61` 保存根因纠正、PAOS 所有权、分阶段方案、配对数据与执行边界。 / Save the corrected cause, PAOS ownership, phased repair, paired measurements and execution boundary. (local)
+
+### 关键代码 Diff / Key Code Diff
+```diff
+- end_points = network({"point_clouds": torch.from_numpy(sampled[None]).to(device)})
++ for input_rotation in rotations:
++     transformed = sampled if identity else ((sampled - pivot) @ input_rotation.T + pivot).astype(np.float32)
++     end_points = network({"point_clouds": torch.from_numpy(transformed[None]).to(device)})
++     # Decode each native result, then restore the original capture coordinates.
++     center = input_rotation.T @ (center - pivot) + pivot
++     rotation = input_rotation.T @ rotation
+
+- "funnel": {"decoded": len(group), ...}
++ "funnel": {"decoded": sum(len(group) for group, _ in groups), ...}
++ # Merge before the existing total candidate budget; no per-pass public cap increase.
+```
+
+### 验证 / Validation
+- 完整 Isaac Adapter、GraspNet Worker/Provider/profile 和 subtask executor 回归：`410 passed`；worker 定向 `19 passed`；Ruff、compileall、`git diff --check` 通过。 / Full Isaac Adapter, GraspNet worker/provider/profile and subtask-executor regression: 410 passed; focused worker: 19 passed; Ruff, compileall and diff checks passed. (local)
+- 新测试先复现 10 个失败再实现通过；第一次 pytest 因继承 ROS PYTHONPATH 加载无关插件缺少 lark 而无法启动，显式使用项目 PYTHONPATH 后正常运行，未禁用异步测试插件。 / New tests first produced ten expected failures and then passed; an initial inherited ROS PYTHONPATH caused an unrelated missing-lark plugin startup failure, resolved by explicit project PYTHONPATH without disabling async test plugins. (local)
+- 同捕获原生推理 `out/lab-grasp-coordinate-replay-20261102-r1/`：decoded 44→1058、返回 24→64、工艺几何合格 3→10；出现 approach Z<0 的原生候选，未调低门槛。 / Paired native inference: decoded 44→1058, public candidates 24→64, geometry-qualified 3→10, including native negative-world-Z approaches with unchanged thresholds. (local)
+- 正式无动作 r1（session `cli:lab-99ebda8ffe51`）在初始 `scene.observe is unavailable or stale` 停止，`tasks=[]`、`controller_outcomes=[]`，尚未进入候选资格；已保存回执并原样发起 r2，不改变 freshness 阈值。 / Formal no-motion r1 stopped at initial unavailable/stale observation with no tasks/controller outcomes, before candidate qualification; its receipt is saved and unchanged r2 is running without changing freshness limits. (local)
+
 ## v16.5.0 (2026-11-01 22:18) - codex
 
 ### 预期修改 / Planned Changes [完成 / Completed; runtime remains blocked]
@@ -181,7 +223,6 @@
 - Log receipt commit: `9a4e8fdd`.
 - Push: succeeded to `origin/feature/planning-loop`; remote advanced from `a5615644` to `9a4e8fdd`. / 已成功推送当前分支，远端从 `a5615644` 前进到 `9a4e8fdd`。
 
-
 ## v16.3.9 (2026-11-01 20:26) - codex
 
 ### 变更摘要 / Summary [完成 / Completed; zero motion]
@@ -262,7 +303,6 @@ latest evidence is the authorized --execute attempt that failed before controlle
 - Branch: `feature/planning-loop`.
 - Push: runtime/log commits and the push receipt were pushed successfully. / 运行、日志及推送回执提交均已成功推送。
 
-
 ## v16.3.8 (2026-11-01 20:00) - codex
 
 ### 预期修改 / Planned Changes [完成 / Completed]
@@ -312,55 +352,3 @@ latest evidence is the authorized --execute attempt that failed before controlle
 - Log receipt commit: `fa8768db`.
 - Branch: `feature/planning-loop`.
 - Push: failed on 2026-11-01 because the GitHub TLS connection was non-properly terminated (`GnuTLS recv error (-110)`); commits remain local. / 推送失败：GitHub TLS 连接异常终止（`GnuTLS recv error (-110)`），提交保留在本地。
-
-
-## v16.3.7 (2026-11-01 19:37) - codex
-
-### 预期修改 / Planned Changes [完成 / Completed]
-- [env] [fix] 在 Isaac Adapter preparation 中拒绝超过连续性阈值且邻近 IK 无法恢复的关节分支跳变，禁止将远端 Lula 解继续送入碰撞采样；阈值保留在 motion profile 配置。 / Reject joint-branch jumps during Isaac Adapter preparation when the nearby IK solver cannot recover a continuous solution, preventing a distant Lula solution from entering collision sampling; keep the threshold in the motion profile. (local)
-- [env] [fix] 碰撞失败记录真实被检查的关节样本与 TCP，而不是只记录 waypoint 终点；混合 clearance 失败使用准确的路线不可用汇总并保留逐 clearance 原因。 / Record the actual checked joint sample and TCP for collision failures instead of only the waypoint endpoint; summarize mixed-clearance failures accurately while preserving every clearance-specific cause. (local)
-- [policy] [fix] Skill/AgentLoop 边界只消费 Adapter 显式返回的 `requires_replan` 与 `recommended_action`，并区分“选择同次捕获替代候选”和“刷新抓取候选”；不得再解析错误文本或把两类恢复建议折叠为同一动作。 / At the Skill/AgentLoop boundary, consume only the Adapter's explicit `requires_replan` and `recommended_action`, preserving the distinction between selecting a same-capture alternative and refreshing grasp candidates; do not parse error text or collapse both recovery recommendations into one action. (local)
-- [test] [test] 增加 IK 分支泄漏、连续局部解、碰撞采样诊断、混合失败汇总和显式恢复语义映射测试；不启动仿真动作。 / Add tests for IK branch leakage, continuous local recovery, collision-sample diagnostics, mixed-failure aggregation, and explicit recovery-semantics mapping without starting simulated motion. (local)
-- [docs] [docs] 保存 R03 候选 15/16/23 的诊断、PAOS 所有权边界、无动作证据、实现审查和下一 Adapter 路线阻塞。 / Save the diagnosis for R03 candidates 15/16/23, PAOS ownership boundaries, no-motion evidence, implementation review, and the next Adapter route blocker. (local)
-
-### 架构与安全边界 / Architecture and Safety Boundary
-- AgentLoop 继续只拥有任务语义、opaque 引用、生命周期、settlement 与停止；不接收关节角、USD 路径、碰撞几何或 IK 策略。 / AgentLoop continues to own task semantics, opaque references, lifecycle, settlement, and stopping only; it receives no joint angles, USD paths, collision geometry, or IK policy.
-- Task-Affordance Provider 继续负责工艺资格化；Isaac Adapter 独占初始状态、frame transform、IK 连续性、路线与碰撞机制。 / The Task-Affordance Provider continues to own process qualification; the Isaac Adapter exclusively owns initial state, frame transforms, IK continuity, routes, and collision mechanisms.
-- 本次只修改无动作 preparation、错误投影和诊断，不放宽 workspace、IK 位姿容差、关节限位、自碰撞、环境碰撞、payload collision 或 Action 门禁，不启动控制器。 / This change modifies no-motion preparation, failure projection, and diagnostics only; it does not weaken workspace, IK pose tolerance, joint-limit, self-collision, environment-collision, payload-collision, or Action gates and starts no controller.
-
-### 实际修改 / Actual Changes
-- [env] [fix] `examples/forge-adapters/isaacsim_lab/configs/labutopia-mixture-motion.json:L27` 增加 `maximum_waypoint_joint_delta_rad=0.5`；`phase_motion.py:L204-L210,L746-L756,L805-L872` 以配置阈值筛除不连续 primary/tool-feature IK，附近解只有在完整求解成功且连续时才可替代，并在真实碰撞样本上记录 joint/TCP。 / Add the configurable waypoint joint-delta limit, reject discontinuous primary/tool-feature IK unless a successful continuous nearby solution exists, and report the actual collision-check joint/TCP sample. (local)
-- [env] [fix] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/paos_client.py:L146-L190` 保留 `ik_discontinuity`、`route_unavailable` 和拒绝候选引用，并投影明确的 `select_alternative_candidate` 或 `refresh_grasp_candidates` 零动作恢复建议。 / Preserve Adapter-owned discontinuity/route failures and rejected opaque refs, projecting explicit no-motion alternative-selection or grasp-refresh recommendations. (local)
-- [policy] [fix] `examples/forge-skills/pick-place-workflow/src/pick_place_workflow/subtask_executor.py:L500-L542,L819-L839` 删除错误文本解析，验证完整零动作事实后，将两个受支持的 Adapter 建议分别映射到 Agent replan 语义；未知建议继续 fail closed。 / Remove diagnostic-string parsing and map the two supported Adapter recommendations to distinct Agent replan semantics only after all zero-motion facts are verified; unknown recommendations remain fail-closed. (local)
-- [test] [test] `test_phase_motion.py:L282-L493`、`test_paos_integration.py:L927-L984`、`test_subtask_executor.py:L610-L683` 覆盖混合 clearance、远端 IK 不得进入碰撞采样、连续局部解、真实检查样本、候选继续遍历及显式恢复映射与负例。 / Cover mixed clearances, rejection of distant IK before collision sampling, successful continuous nearby IK, checked samples, bounded candidate continuation, explicit recovery mapping, and negative paths. (local)
-- [docs] [docs] `.task/labutopia-r03-transit-ik-collision-diagnosis-20261101.md:L1-L66`、`.task/current.md:L1-L66`、`docs/forge/IMPLEMENTATION_REVIEW_V16_3_7.md:L1-L44` 保存诊断、当前阻塞和 findings-first 实现复核。 / Save the diagnosis, current blocker, and findings-first implementation review. (local)
-
-### 关键 Diff / Key Diff
-```diff
-- distant primary IK survives failed nearby recovery and enters collision sampling
-- Skill searches error text and rewrites every route failure as alternative selection
-+ reject discontinuous IK before collision sampling unless nearby IK fully succeeds
-+ report checked joints/TCP and preserve every clearance-specific reason
-+ consume typed Adapter recovery facts and preserve alternative-selection vs refresh semantics
-```
-
-### 验证 / Validation
-- 定向回归：`123 passed, 1 warning`。 / Focused regression: `123 passed, 1 warning`.
-- 完整 Isaac Adapter + subtask executor 回归：`312 passed`。 / Full Isaac Adapter plus subtask-executor regression: `312 passed`.
-- Ruff、compileall、motion JSON validation 与 `git diff --check` 通过。 / Ruff, compileall, motion JSON validation, and `git diff --check` passed.
-- 首次完整命令因缺少 `robotwin20_adapter` 的 `PYTHONPATH` 未完成收集；补齐仓库依赖路径后，禁用插件的运行得到 `310 passed, 2 async tests unavailable`，按正常 pytest 插件配置重跑后完整 `312 passed`。 / The first full command lacked the RobotWin adapter path; after correcting it, the plugin-disabled run passed 310 synchronous tests with two async tests unavailable, and the normal plugin-enabled run passed all 312.
-
-### 无动作运行证据 / No-Motion Runtime Evidence
-- Workspace `out/lab-fullchain-truth-20261101-ik-continuity-no-motion-r1/`；session `cli:lab-2a6cdb5274e6`；task `task_a5127feeb8c8476a`。 / Record the post-fix no-motion workspace, session, and task. (local)
-- 候选 `16/15/23` 在 `0.04/0.08 m` clearance 的 primary IK 最大关节跳变为 `3.575-4.431 rad`，均在碰撞采样前返回 `ik_discontinuity`；`0.12 m` 均为 `inverse_kinematics_failed`。 / All qualified candidates reject discontinuous primary IK before collision sampling at lower clearances and have no IK solution at the highest clearance. (local)
-- 旧的 `finger overlaps table` 与 `link2 overlaps link5/link6` 不再出现，证明这些标签受错误 IK 分支污染；这不证明新路线可执行。 / The prior table/self-collision labels no longer occur, proving they were contaminated by the invalid IK branch; this does not prove route executability. (local)
-- `simulated_motion_enabled=false`、`controller_outcomes=[]`、`world_change_started=false`、`outcome_known=true`、`possession_state=empty`；R04 与 GLASS_ROD 未启动。 / Motion stayed disabled, no controller/world change occurred, possession remained empty, and later subtasks did not start. (local)
-
-### 审查结论与剩余阻塞 / Review Conclusion and Remaining Blocker
-- 实现审查发现并修复一个 Major：Skill 虽已停止解析字符串，但仍折叠不同 Adapter 恢复建议；修复后无剩余 Blocker/Major。 / The implementation review found and fixed one Major recovery-semantics collapse; no implementation Blocker/Major remains.
-- 运行能力仍被 Adapter-owned `transit_cross` 完整姿态 IK/路线构造阻塞。下一步应分离 raise、safe-orientation translate、staging reorient 与 approach，并枚举瓶体轴对称等价方向；先做无动作 preparation，不得调低碰撞或 IK 门禁。 / Runtime capability remains blocked by full-pose IK and route construction for `transit_cross`; the next Adapter-private iteration must split route phases and enumerate bottle-axis-equivalent orientations under unchanged no-motion gates.
-
-### Git 提交 / Git Commit
-- Implementation commit: `38b46429` (`2026-11-01 19:54:27 +0800`).
-- Branch: `feature/planning-loop`.
-- Push: failed because `github.com:443` was unreachable after `136405 ms`; all commits remain local. / 推送失败：`github.com:443` 在 `136405 ms` 后仍不可达，全部提交保留在本地。

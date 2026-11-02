@@ -171,3 +171,143 @@ def test_optional_seed_pairs_point_indices_without_changing_global_rng():
         assert np.array_equal(first, module._sample_points(points, count, seed=7))
     assert np.array_equal(state[1], np.random.get_state()[1])
     assert module._parser().parse_args(['--checkpoint', 'model']).seed is None
+
+
+@pytest.mark.parametrize("values", [[], [[0, 0, 0, 0]], [[0, 0, float('nan'), 1]],
+                                   [[0, 0, 0, 2]], [[0, 0, 1]], [[0, 0, 0, 1]] * 5])
+def test_input_rotation_configuration_rejects_invalid_or_unbounded_passes(values):
+    module = _module("graspnet_worker")
+    with pytest.raises(module.WorkerUnavailableError, match="input rotation"):
+        module._input_rotations(values)
+
+
+def _coordinate_inference_fixture(tmp_path, monkeypatch, *, fail_pass=None):
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+
+    module = _module("graspnet_worker")
+    points = np.array([[.1, -.2, 1.], [.4, .1, 1.4], [-.2, .3, 1.2]], dtype=np.float32)
+    path = tmp_path / "captured.npy"
+    np.save(path, points)
+    seen = []
+
+    class Network:
+        def parameters(self):
+            return iter([SimpleNamespace(device="cpu")])
+
+        def __call__(self, inputs):
+            seen.append(inputs["point_clouds"][0].copy())
+            if len(seen) == fail_pass:
+                raise RuntimeError("inference failed")
+            return inputs
+
+    def decode(inputs):
+        native = [SimpleNamespace(
+            translation=inputs["point_clouds"][0][0].astype(float) + [.01, .02, .03],
+            rotation_matrix=np.eye(3), score=.8,
+            width=.04, height=.02, depth=.01,
+        )]
+        return [SimpleNamespace(detach=lambda: SimpleNamespace(
+            cpu=lambda: SimpleNamespace(numpy=lambda: native)))]
+
+    module._MODEL = (Network(), decode, lambda values: values)
+    module._OPTIONS = SimpleNamespace(
+        seed=7, sampling_policy="orientation_diverse",
+        input_rotation_xyzw=[[0., 0., 0., 1.], [1., 0., 0., 0.]],
+    )
+    monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(
+        no_grad=nullcontext, manual_seed=lambda _seed: None,
+        from_numpy=lambda array: SimpleNamespace(to=lambda _device: array),
+    ))
+    request = {"schema_version": "paos-grasp-worker/v1", "provider": "graspnet",
+               "request_id": "same-capture", "point_cloud_path": str(path),
+               "max_points": 3, "max_candidates": 4, "score_threshold": .02}
+    return module, request, points, seen
+
+
+@pytest.mark.parametrize("quaternion, rotation", [
+    ([1., 0., 0., 0.], np.diag([1., -1., -1.])),
+    ([0., 0., 2**-.5, 2**-.5], np.array([[0., -1., 0.], [1., 0., 0.], [0., 0., 1.]])),
+])
+def test_coordinate_inference_recomputes_and_inverse_maps_native_predictions(tmp_path, monkeypatch, quaternion, rotation):
+    module, request, points, seen = _coordinate_inference_fixture(tmp_path, monkeypatch)
+    module._OPTIONS.input_rotation_xyzw[1] = quaternion
+    original = points.copy()
+    result = module._handle(request)
+    pivot = points.astype(float).mean(axis=0)
+    assert len(seen) == 2
+    assert seen[1] == pytest.approx((seen[0] - pivot) @ rotation.T + pivot, abs=2e-7)
+    assert np.array_equal(points, original)
+    assert result["request_id"] == request["request_id"]
+    assert result["funnel"] == {"decoded": 2, "canonicalized": 2, "deduplicated": 2, "retained": 2}
+    matrices = [np.array(item["matrix"]) for item in result["candidates"]]
+    assert matrices[0][:3, 3] == pytest.approx(seen[0][0] + [.01, .02, .03])
+    assert matrices[1][:3, 3] == pytest.approx(
+        rotation.T @ (seen[1][0] + [.01, .02, .03] - pivot) + pivot)
+    assert matrices[1][:3, :3] == pytest.approx(rotation.T)
+    assert all(item["score"] == .8 and item["grasp_geometry"]["width_m"] == .04
+               for item in result["candidates"])
+
+
+def test_coordinate_inference_respects_total_budget_and_single_pass_compatibility(tmp_path, monkeypatch):
+    module, request, _, seen = _coordinate_inference_fixture(tmp_path, monkeypatch)
+    result = module._handle({**request, "max_candidates": 1})
+    assert len(seen) == 2
+    assert len(result["candidates"]) == 1
+    module._OPTIONS.input_rotation_xyzw = None
+    seen.clear()
+    result = module._handle(request)
+    assert len(seen) == 1
+    assert len(result["candidates"]) == 1
+    assert np.array(result["candidates"][0]["matrix"])[:3, :3] == pytest.approx(np.eye(3))
+
+
+def test_coordinate_inference_does_not_return_partial_success(tmp_path, monkeypatch):
+    module, request, _, seen = _coordinate_inference_fixture(tmp_path, monkeypatch, fail_pass=2)
+    with pytest.raises(module.WorkerUnavailableError, match="inference failed"):
+        module._handle(request)
+    assert len(seen) == 2
+
+
+def test_coordinate_inference_empty_passes_remain_empty(tmp_path, monkeypatch):
+    module, request, _, seen = _coordinate_inference_fixture(tmp_path, monkeypatch)
+    result = module._handle({**request, "score_threshold": .99})
+    assert len(seen) == 2
+    assert result["status"] == "empty"
+    assert result["candidates"] == []
+    assert result["funnel"] == {"decoded": 2, "canonicalized": 0, "deduplicated": 0, "retained": 0}
+
+
+def test_coordinate_results_substitute_through_existing_provider_protocol(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from robotwin20_adapter.grasp_proposal import GraspNetProposalProvider
+
+    module, request, _, _ = _coordinate_inference_fixture(tmp_path, monkeypatch)
+    reply = module._handle(request)
+    client = SimpleNamespace(request=lambda payload: {**reply, "request_id": payload["request_id"]})
+    source_ref = "artifact://captured/points"
+    resolver = SimpleNamespace(resolve_point_cloud=lambda _ref: Path(request["point_cloud_path"]))
+    provider = GraspNetProposalProvider(client, artifact_store=resolver, apply_nms=False)
+    identity = {"observation_ref": "observation://captured", "scene_revision": "revision-1",
+                "frame_id": "captured-camera", "calibration_ref": "artifact://captured/calibration"}
+    target = {"entity_ref": "entity://bottle", "geometry_artifacts": [
+        {**identity, "entity_ref": "entity://bottle", "kind": "object_point_cloud", "artifact_ref": source_ref},
+    ]}
+    result = provider.propose({**identity, "targets": [target]})
+    assert result["provider_available"] is True
+    assert len(result["candidates"]) == 2
+    for candidate, raw in zip(result["candidates"], reply["candidates"]):
+        assert candidate["grasp_frame"]["frame_id"] == identity["frame_id"]
+        assert candidate["approach_direction"]["vector"] == pytest.approx(np.array(raw["matrix"])[:3, 0])
+        assert candidate["provenance"] == [source_ref]
+
+
+def test_input_rotation_parser_is_opt_in_and_repeatable():
+    module = _module("graspnet_worker")
+    assert module._parser().parse_args(["--checkpoint", "model"]).input_rotation_xyzw is None
+    args = module._parser().parse_args([
+        "--checkpoint", "model", "--input-rotation-xyzw", "0", "0", "0", "1",
+        "--input-rotation-xyzw", "1", "0", "0", "0",
+    ])
+    assert len(module._input_rotations(args.input_rotation_xyzw)) == 2

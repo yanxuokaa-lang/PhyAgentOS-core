@@ -63,9 +63,36 @@ def _sample_points(points, max_points, *, seed=None):
     return np.concatenate([points, points[rng.choice(len(points), max_points-len(points), replace=True)]])
 
 
+def _input_rotations(values):
+    """Bound inference cost and validate coordinate changes, not grasp poses."""
+    import numpy as np
+
+    if values is None:
+        return [np.eye(3)]
+    if not isinstance(values, list) or not 1 <= len(values) <= 4:
+        raise WorkerUnavailableError("input rotation list must contain one to four unit quaternions")
+    rotations = []
+    for value in values:
+        try:
+            quaternion = np.asarray(value, dtype=float)
+        except (TypeError, ValueError) as exc:
+            raise WorkerUnavailableError("input rotation must be a unit xyzw quaternion") from exc
+        if (quaternion.shape != (4,) or not np.isfinite(quaternion).all()
+                or abs(float(np.linalg.norm(quaternion)) - 1.) > 1e-6):
+            raise WorkerUnavailableError("input rotation must be a unit xyzw quaternion")
+        x, y, z, w = quaternion / np.linalg.norm(quaternion)
+        rotations.append(np.array([
+            [1-2*(y*y+z*z), 2*(x*y-z*w), 2*(x*z+y*w)],
+            [2*(x*y+z*w), 1-2*(x*x+z*z), 2*(y*z-x*w)],
+            [2*(x*z-y*w), 2*(y*z+x*w), 1-2*(x*x+y*y)],
+        ]))
+    return rotations
+
+
 def _load() -> None:
     global _MODEL
     assert _OPTIONS is not None
+    _input_rotations(_OPTIONS.input_rotation_xyzw)
     checkpoint = Path(_OPTIONS.checkpoint).expanduser().resolve()
     if not checkpoint.is_file():
         raise WorkerUnavailableError("graspnet checkpoint is unavailable")
@@ -131,25 +158,38 @@ def _handle(request: Mapping[str, Any]) -> Mapping[str, Any]:
         raise WorkerUnavailableError("score_threshold is invalid")
     if request.get("apply_model_collision") is True:
         raise WorkerUnavailableError("model collision filtering requires a provider-specific implementation")
+    rotations = _input_rotations(getattr(_OPTIONS, "input_rotation_xyzw", None))
+    pivot = points.astype(np.float64).mean(axis=0)
     try:
         import torch
 
         network, pred_decode, grasp_group_type = _MODEL
         seed = getattr(_OPTIONS, "seed", None)
         sampled = _sample_points(points, max_points, seed=seed)
-        if seed is not None:
-            torch.manual_seed(seed)
+        groups = []
         with torch.no_grad():
             device = next(network.parameters()).device
-            end_points = network({"point_clouds": torch.from_numpy(sampled[None]).to(device)})
-            decoded = pred_decode(end_points)[0].detach().cpu().numpy()
-        group = grasp_group_type(decoded)
+            for input_rotation in rotations:
+                # Rotate the same sampled points, not a predicted grasp or a
+                # synthetic viewpoint. Identity retains the original path.
+                identity = np.array_equal(input_rotation, np.eye(3))
+                transformed = sampled if identity else (
+                    (sampled - pivot) @ input_rotation.T + pivot
+                ).astype(np.float32)
+                if seed is not None:
+                    torch.manual_seed(seed)
+                end_points = network({"point_clouds": torch.from_numpy(transformed[None]).to(device)})
+                decoded = pred_decode(end_points)[0].detach().cpu().numpy()
+                groups.append((grasp_group_type(decoded), None if identity else input_rotation))
     except Exception as exc:  # noqa: BLE001
         raise WorkerUnavailableError("graspnet model inference failed") from exc
     candidates = []
-    for grasp in group:
+    for grasp, input_rotation in ((grasp, rotation) for group, rotation in groups for grasp in group):
         center = np.asarray(grasp.translation, dtype=np.float64).reshape(3)
         rotation = np.asarray(grasp.rotation_matrix, dtype=np.float64).reshape(3, 3)
+        if input_rotation is not None:
+            center = input_rotation.T @ (center - pivot) + pivot
+            rotation = input_rotation.T @ rotation
         native_score = float(grasp.score)
         if (
             not np.isfinite(center).all()
@@ -185,7 +225,8 @@ def _handle(request: Mapping[str, Any]) -> Mapping[str, Any]:
         "request_id": request["request_id"],
         "status": "available" if candidates else "empty",
         "candidates": candidates,
-        "funnel": {"decoded": len(group), "canonicalized": canonical_count, "deduplicated": canonical_count, "retained": len(candidates)},
+        "funnel": {"decoded": sum(len(group) for group, _ in groups), "canonicalized": canonical_count,
+                   "deduplicated": canonical_count, "retained": len(candidates)},
     }
 
 
@@ -197,6 +238,8 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--sampling-policy", choices=("score", "orientation_diverse"), default="score")
     parser.add_argument("--seed", type=int, help="Optional repeatable per-request sampling for paired evaluation")
+    parser.add_argument("--input-rotation-xyzw", type=float, nargs=4, action="append",
+                        help="One to four centroid-relative input rotations; predictions return to the capture frame. Default: identity only.")
     return parser
 
 
