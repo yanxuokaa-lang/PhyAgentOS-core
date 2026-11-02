@@ -157,6 +157,13 @@
 - [policy] [exp] Agent 已选择 `grasp-affordance://8986e73849994e3db75ecaef78536dd7`，准备结果仅含同集合七个 qualified opaque 引用。任务最终 `awaiting_replan`，长期调度结果 blocked，首个 Action 节点出现 `node_turn_incomplete:pour_r03:node_selection_no_progress`，host exit 1。 / Agent selects that combination and preparation returns only seven same-set qualified opaque refs. Final task is awaiting_replan, long-horizon result blocked at the first Action node with the stated failure, host exit 1. (local)
 - [eval] [docs] `simulated_motion_enabled=false`，四条 Query、零条 Action 记录。controller_outcomes 保存 blocked 调度回执，不是机械臂运动回执；早期 agent_response 早于后续长期执行，以最终持久化状态为准。不声明完整路径、R04/棒资格、抓取/倾倒/搅拌成功。 / Motion is disabled, with four Query and zero Action records. controller_outcomes holds a blocked orchestration receipt, not motion feedback; the early agent_response predates later progress, so final persisted state is authoritative. No complete-route, R04/rod or manipulation success is claimed. (local)
 
+### Git 提交 / Git Commit
+- Implementation commit: `f5a3bae1`.
+- Branch: `feature/planning-loop`; time: `2026-11-02 13:32:27 +0800`.
+- [chore] [chore] 精确暂存本任务 15 个文件；无关报告与运行输出未纳入提交。 / Stage exactly fifteen task-owned files; exclude the unrelated report and runtime outputs. (local)
+- [chore] [chore] 已成功推送 `ee5b2400..f5a3bae1` 至 origin 当前分支，也补推此前 v16.6.3 的两个本地提交。 / Successfully push ee5b2400..f5a3bae1 to the current origin branch, including both previously local v16.6.3 commits. (local)
+- [docs] [docs] 本回执同步到最近五条索引后以文档提交保存并推送；无代码或验证结论变化。 / Synchronize this receipt into the latest-five index, then commit/push it as documentation without changing code or validation conclusions. (local)
+
 ## v16.6.3 (2026-11-02 12:38) - codex
 
 ### 预期修改 / Planned Changes [完成局部修复；可用抓取候选仍缺失 / Local repair complete; usable grasp candidate still missing]
