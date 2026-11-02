@@ -1,4 +1,31 @@
-# Current Task: LabUtopia R03/R04 full-chain grasp coverage
+# Current Task: LabUtopia near-arm inner-corner selection
+
+## v16.7.2 target correction / 目标位置纠正
+
+- User specifies the left zone's lower-right and right zone's lower-left
+  bottles, both closest to the robot. Previous R03/R04 belonged to the same A
+  zone; the intended pair is B/R05 and A/R03 in the existing overview.
+- Verify final composed geometry in a fresh no-motion capture before relaunch.
+  Keep geometry/labels and public contracts unchanged; correct task input only.
+- Execute left R05 then right R03 with the prior explicit process parameters,
+  using a fresh simulator and current qualified references. Do not resume the
+  preceding uncertain-possession session. Record actual phases and videos.
+- Diagnosis: `.task/labutopia-near-arm-selection-20261102.md`.
+- Instruction: `.task/labutopia-near-arm-instruction.txt`.
+- Fresh no-motion observation confirms R05/R03 in the requested image corners;
+  each is nearest its zone's robot-facing side (~0.40249 m horizontal distance).
+- Native session `cli:lab-68c0bd18324b` starts at 14:56:52 CST in
+  `out/lab-fullchain-truth-20261102-near-arm-r05-r03-r1/` with corrected targets.
+- Task `task_8983ebbef39b4da4` graph confirms R05 then R03 then GLASS_ROD with
+  unchanged process parameters. All four R05 Queries and full acquire readiness
+  pass (candidate 69, third route variant, 146 waypoints).
+- Actual R05 transport/approach/insertion completes with <1.1 mm body drift;
+  closure displaces it 393.292 mm and final finger contact is [0,0]. Stops
+  before lift with grasp_not_confirmed; possession uncertain, task awaiting_replan.
+  No R03 motion, pouring, return or stirring. The 40-iteration foreground limit
+  is separate from this measured physical failure; no duplicate Action submitted.
+- 51 selection/host/binding tests pass. Native video is 3191 frames at 60 fps
+  (53.183 s); review copies/phase ranges are saved with the run.
 
 ## v16.7.1 qualified-grasp Action handoff / 执行衔接
 

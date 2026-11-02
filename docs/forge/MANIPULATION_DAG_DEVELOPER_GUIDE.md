@@ -458,6 +458,16 @@ forbids Actions leaves the workflow at its Action boundary even when grasp
 qualification succeeds; changing candidate thresholds cannot resolve that mode
 mismatch. Never interpret read-only candidate success as full-route readiness.
 
+For a spatial target correction, establish the requested viewpoint and resolve
+the requested objects against a fresh composed-scene observation. Save the
+image/calibration/geometry association before changing the task instruction.
+Do not assume consecutive labels span different zones, rename scene objects,
+or encode a fixed label/position mapping in AgentLoop or the Grasp Provider.
+The corrected request then uses the existing semantic selectors and current
+Query bindings; proximity alone is not graspability or full-route evidence.
+After an uncertain-possession run, a fresh simulator run must not reuse that
+run's preparation or claim to reconcile its displaced scene.
+
 After `manipulation.prepare_grasp_task_affordance` completes, the Agent selects
 the ready `manipulation.execute_subtask` through the existing planning tools,
 using qualified opaque references from the direct predecessor. The existing

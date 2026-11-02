@@ -48,6 +48,63 @@
 
 ## 最近五版本 / Latest five versions
 
+## v16.7.2 (2026-11-02 14:56) - codex
+
+### 完成范围 / Completed Scope [目标纠正与重跑完成；抓取未成功 / Target correction and rerun complete; grasp unsuccessful]
+- [docs] [fix] 审核用户指定的左右区域近机械臂内侧角：历史最终组合几何显示 R03/R04 同属 A，目标应为 B/R05 与 A/R03；以新无动作观测和标注图确认，保存诊断。 / Audit the requested near-arm inner corners: composed geometry places both previous R03/R04 in A; verify B/R05 and A/R03 through a fresh no-motion observation and annotated view, then save diagnosis. (local)
+- [policy] [fix] 修正本次任务输入及复现指令，按左侧 R05、右侧 R03 运行；不硬编码 Provider 选择、不改 AgentLoop 生命周期、不改场景标签/几何、不放松动作校验。 / Correct task input and reproducible instruction to left R05 then right R03 without hardcoding Provider selection, changing AgentLoop ownership, relabeling geometry or weakening checks. (local)
+- [eval] [exp] 从新仿真会话重新发起原生 Agent，保留同次真值感知、参数化动作与阶段录像；区分位置确认、路线资格、执行与成功。 / Relaunch the native Agent from a fresh simulator session with same-capture truth, parameterized actions and videos; distinguish identity, readiness, execution and success. (local)
+- [docs] [docs] 更新 .task/current.md、选择诊断、任务指令、开发指南和最近五条索引；记录精确行号、Diff、验证与当前分支提交推送。 / Update current task, selection diagnosis, instruction, developer guide and latest-five index with ranges, diffs, validation and current-branch commit/push. (local)
+
+### 位置审核 / Position Audit
+- [eval] [exp] 新无动作观测 revision `49cc517596d64d959d7ad15742f91573:0` 的最终 Model 世界包围盒与相机标定投影证实：左区右下 R05 像素 (432.35,653.46)，右区左下 R03 (1063.63,807.74)；R04 在右区后排 (1124.47,685.95)。 / Fresh composed Model bounds and calibrated projection confirm left-inner-front R05 and right-inner-front R03; R04 is in the rear row of the right zone. (local)
+- [data] [docs] `out/lab-near-arm-selection-20261102-observe-r1/selected-bottles.png` 保留八瓶标注与两目标绿圈；selection-audit.json 保留同次几何/标定来源、各中心与距离。R05/R03 在各自区域到基座水平距离最短，约 0.40249 m；距离不作为抓取成功证据。 / Preserve annotated image and same-capture audit; selected objects are nearest within their respective zones, without treating distance as grasp proof. (local)
+- [eval] [chore] 51 项现有 host、semantic task creation、perception binding 测试通过；只修正任务输入，不增加无关运行时逻辑。 / 51 existing host/semantic-task/binding tests pass; correct task input without unrelated runtime changes. (local)
+
+### 文件变更详情 / File Changes
+
+#### [修改 / Modified] `.task/current.md` L1-L28
+- [docs] [fix] 当前目标由旧 R03/R04 改为已审核的 R05/R03，并保存新任务、检查结果、实际闭爪失败与停止边界；历史条目不改写。 / Replace the current target pair with verified R05/R03 and record the new task, checks, closure failure and stop boundary without rewriting historical entries. (local)
+```diff
+-# Current Task: LabUtopia R03/R04 full-chain grasp coverage
++# Current Task: LabUtopia near-arm inner-corner selection
++R05 -> R03 -> GLASS_ROD; fresh observation and parameter-preserving bindings
++R05 close: grasp_not_confirmed; task awaiting_replan; no lift/pour/R03/stir
+```
+
+#### [新增 / Added] `.task/labutopia-near-arm-instruction.txt` L1
+- [policy] [fix] 保存可复现任务输入：左侧 B/R05 后右侧 A/R03，沿用 tilt_rad=0.87、hold_s=0.6 以及原搅拌参数；禁止选择 R04，不改变场景标签/物体位置。 / Save reproducible input for B/R05 then A/R03 with unchanged pour/stir parameters; exclude R04 without relabeling or moving objects. (local)
+```diff
++用户指定左边区域右下角、右边区域左下角；审核对应左侧 B/R05、右侧 A/R03。
++先 R05、再 R03 倾倒至 BEAKER，然后 GLASS_ROD 搅拌；使用新捕获的合格引用。
+```
+
+#### [新增 / Added] `.task/labutopia-near-arm-selection-20261102.md` L1-L153
+- [docs] [docs] 保存最终几何/标定位置审核、模块归属、原生运行命令、51 项测试命令、持久化 Action 绑定、终态反馈、录像边界及剩余接触问题。 / Save composed-geometry/calibration audit, ownership, native/test commands, persisted Action bindings, terminal feedback, video boundaries and remaining contact issue. (local)
+```diff
++Previous R03/R04 request selected two bottles in A; verified intended pair is B/R05 and A/R03.
++Fresh graph and readiness bind the verified physical R05; complete route passes.
++Closure displaces R05 393.292 mm; final finger impulses [0,0]; stop before lift.
+```
+
+#### [修改 / Modified] `docs/forge/MANIPULATION_DAG_DEVELOPER_GUIDE.md` L461-L470
+- [docs] [docs] 明确空间目标纠正应基于新观测的图像/标定/最终几何关联，再修改任务请求；不得把固定位置映射放入 AgentLoop/Grasp Provider 或把靠近当作可抓取。 / Document fresh observation-based spatial correction at the task boundary, without fixed scene mapping in AgentLoop/Grasp Provider or proximity-as-graspability claims. (local)
+```diff
++For a spatial target correction, establish the requested viewpoint and resolve
++the requested objects against a fresh composed-scene observation.
++The corrected request then uses the existing semantic selectors and current
++Query bindings; proximity alone is not graspability or full-route evidence.
+```
+
+### 原生验证与录像 / Native Validation and Video
+- [eval] [exp] `task_8983ebbef39b4da4` / `revision_3eb048c8f12047eb` / `cli:lab-68c0bd18324b` 的持久化图按 R05、R03、GLASS_ROD 排序，参数保持；四个 R05 Query succeeded。 / Persisted graph confirms the corrected ordered identities and parameters; four R05 Queries succeed. (local)
+- [eval] [exp] 完整 acquire 选择同次候选 69，前两路线分别 IK 连续性、payload/table 拒绝，第三条 8.731 秒通过、146 轨迹点；readiness target 是 B/R05/Model/mesh。 / Full acquire selects current candidate 69; first two variants fail IK continuity and payload/table checks, third passes in 8.731 s with 146 waypoints and correct B/R05 binding. (local)
+- [eval] [exp] 真实运输/接近/插入完成，目标位移不超过 1.006 mm；闭爪才出现快速位移，最终 393.292 mm，双指最终接触冲量 [0,0]，grasp_not_confirmed 在抬起前停止。Action unknown、possession uncertain、task awaiting_replan；未执行 R03、倾倒、归位或搅拌。 / Actual transport/approach/insertion retain <1.006 mm drift; closure causes 393.292 mm final displacement and loses finger contact, stopping before lift. Preserve unknown/uncertain states; no later operations occur. (local)
+- [eval] [docs] 前台 40 次调用上限不等于物理终态；原 host 等待既有 Runtime 对账，没有重复 Action。反馈不足以进一步断言摩擦、驱动力或接触几何中的哪一个是根因，不放宽任何检查。 / Foreground iteration exhaustion is not physical settlement; host waits for Runtime without duplicate Action. Evidence does not yet isolate friction, drive force or contact geometry; checks stay unchanged. (local)
+- [data] [docs] `out/lab-fullchain-truth-20261102-near-arm-r05-r03-r1/` 保存 acceptance.json、host.log、run-context.json、stage-videos.json。原 MP4 3191 帧/60 fps/53.183 秒/88,733,263 bytes；全部帧解码通过。 / Preserve task/log/context/stage records and fully decoded raw footage with the stated frame count, rate, duration and size. (local)
+- [data] [docs] H.264 审阅视频：`r05-motion-through-approach.mp4` 47.333 秒/1420 帧；`r05-acquire-stopped-before-lift.mp4` 53.200 秒/1596 帧；`r05-close-quarter-speed.mp4` 6.533 秒/196 帧，明确四分之一速度。三份均完整解码，原视频未改；末帧已视觉复核。 / Three fully decoded H.264 copies cover completed approach, full failed attempt and explicitly quarter-speed closure; original stays intact and final image is reviewed. (local)
+- [docs] [chore] 月日志与 CHANGELOG 最近五版本同步；本轮只提交任务输入/诊断/指南/日志，out 下录像与诊断制品保留本地，无关工作区修改不纳入提交。 / Synchronize latest-five index; commit only task input/diagnosis/guide/logs, retain local runtime artifacts and leave unrelated changes unstaged. (local)
+
 ## v16.7.1 (2026-11-02 13:39) - codex
 
 ### 完成范围 / Completed Scope
@@ -413,55 +470,3 @@
 - Branch: `feature/planning-loop`; push: `git push origin feature/planning-loop`.
 - [docs] [docs] `CHANGELOG.md:L51-L112` 为本版本完整记录，另滚出第五旧版本；`changelog/2026-11.md:L717-L778` 为追加的月度记录。 / The complete entry occupies these index/archive ranges; the oldest index entry rolls out without changing its archive. (local)
 - [chore] [chore] 仅提交本轮 10 个文件；无关报告、用户文件和运行输出未暂存。推送结果单独确认。 / Only ten task-owned files are committed; unrelated report, user files and runtime outputs remain unstaged. Push outcome is verified separately. (local)
-
-## v16.6.1 (2026-11-02 12:03) - codex
-
-### 预期修改 / Planned Changes [完成 / Completed; collision/IK workflow remains blocked]
-- [docs] [docs] 保存 v16.6.0 正式无动作回执中的碰撞/IK 阻塞诊断，逐一核对实际夹指、手掌、桌面与邻瓶几何，区分碰撞模型判断与实测接触。 / Save the formal v16.6.0 collision/IK diagnosis and compare gripper, table and neighboring-object geometry, distinguishing model findings from measured contact. (local)
-- [env] [fix] 在 Isaac Adapter 的 FK、夹爪几何及 preparation 边界定位并修复有证据支持的错误；保留 workspace、碰撞裕量、同捕获证据、qualified-only 恢复及完整路线检查，不将 USD/关节参数加入 AgentLoop。 / Identify and repair evidenced FK/gripper/preparation defects inside the Isaac Adapter, preserving workspace, collision margins, same-capture evidence, qualified-only recovery and full-route checks without leaking USD/joint details into AgentLoop. (local)
-- [eval] [chore] 补充失败复现、机制替代和零动作测试，再运行受影响回归及实际无动作几何验证；按证据决定是否需要有界 IK 替代搜索，不预先放宽任何安全阈值。 / Add regression, mechanism-substitution and no-motion tests, then run affected tests and actual no-motion geometry verification; use evidence to decide whether bounded alternative IK search is needed, without relaxing safety thresholds. (local)
-- [docs] [docs] 更新诊断、架构复核、精确行号与关键 Diff、最近五版本；仅提交本轮文件并推送当前 feature/planning-loop 分支，保留无关用户修改。 / Update diagnosis, architecture review, exact ranges/diffs and the latest five entries; commit only task-owned changes and push the current branch while preserving unrelated edits. (local)
-
-### 根因与实际修复 / Cause and Repair
-- [env] [fix] 实际 Isaac 对比证实复位先推进动力学、再恢复 qpos 导致 CPU USD 手掌变换滞后 6.561186 mm。改为显式更新 articulation kinematics 并发布 PhysX→USD，再 render；真实复核误差降为 0.000197 mm。 / Native Isaac comparison proves the step-then-reset sequence left CPU USD hand transforms 6.561186 mm behind qpos. Explicit kinematic update and PhysX-to-USD publication before rendering reduce the measured discrepancy to 0.000197 mm. (local)
-- [env] [fix] 五个历史夹指/桌面拒绝在该中间样本处仍有约 16 mm 网格净空，是加裕量的全行程盒包络判断，不能说成实测撞击。保持原碰撞模型、裕量及完整路线验证，新增精确私有诊断辅助后续决策。 / Five historical finger/table failures have about 16 mm mesh clearance at the intermediate sample; they are padded full-travel box decisions, not measured impacts. Preserve the model, margins and full-route qualification while retaining exact private geometry for follow-up decisions. (local)
-
-### 文件变更详情 / File Changes
-- [env] [fix] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/engine.py:L2710-L2732` 修正初始/每次 reset 的 qpos→kinematics→USD 同步，异常时恢复 timeline。 / Correct initial/reset state publication and restore the caller's timeline on failure. (local)
-- [env] [fix] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py:L27-L31,L818-L880,L1136,L1260-L1261` 保存球/夹指盒/自碰撞模型的关节、TCP、世界形状及碰撞对，并贯穿错误包装到私有回执；不扩展 AgentLoop 接口。 / Persist sphere/finger-box/self-sphere geometry, joints, TCP and pairs through error wrapping into private receipts without extending AgentLoop interfaces. (local)
-- [eval] [chore] `examples/forge-adapters/isaacsim_lab/tests/test_engine.py:L1207-L1320` 补充 reset 前后顺序、零物理步、playing/paused 和同步失败测试；`examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py:L45-L89,L755-L773,L1007-L1008,L1017` 验证替代查询机制、精确裕量、错误传播和 private-only 诊断。 / Cover reset ordering, zero physics steps, timeline modes and failures; verify replacement queries, exact margins, propagation and private-only diagnostics. (local)
-- [eval] [feat] `examples/forge-adapters/isaacsim_lab/scripts/inspect_collision_receipt.py:L1-L150` 新增真实场景零命令几何复核入口；`examples/forge-adapters/isaacsim_lab/tests/test_collision_receipt_inspector.py:L1-L27` 覆盖结构化/旧回执及缺失关节不臆造。 / Add a native zero-command geometry inspector and cover structured/legacy receipts without inventing absent joint samples. (local)
-- [docs] [docs] `.task/labutopia-collision-geometry-repair-20261102.md:L1-L137`、`.task/current.md:L67-L98`、`docs/forge/IMPLEMENTATION_REVIEW_V16_6_1.md:L1-L67` 保存根因、PAOS 分层、验证与未完成操控边界。 / Save the cause, PAOS ownership, verification and incomplete manipulation boundary. (local)
-
-### 关键 Diff / Key Diff
-```diff
-- world.step(render=True)
-  _apply_initial_robot_state(robot, arm_positions, gripper_positions)
-+ world.physics_sim_view.update_articulations_kinematic()
-+ get_physx_interface().update_transformations(False, True)
-  world.render()
-
-- raise PhaseMotionError("route_collision", f"finger overlaps {found[0]}")
-+ reject("route_collision", f"finger overlaps {found[0]}",
-+        primitive="oriented_box", center_m=finger_center.tolist(),
-+        half_extents_m=finger_half.tolist(), ...)
-+ # Private diagnostics retain checked joints/TCP, frame, margin and sweep mode.
-+ attempt["collision_diagnostic"] = exc.diagnostics
-```
-
-### 验证 / Validation
-- [eval] [chore] 旧初始化路径先触发 7 项失败；修复后完整受影响套件 `421 passed`，Ruff、compileall、`git diff --check` 通过；不把 mock 测试当作动作证据。 / Seven tests first failed against the old reset path; the full affected suite now has 421 passes, with Ruff, compileall and whitespace checks passing. Mock tests are not motion evidence. (local)
-- [eval] [exp] 实际场景 r1/r3：hand 误差 6.561186→0.000197 mm，修复后最大 link 误差 0.000201 mm；五个历史姿态的几何复核未改变关节/物理时间、零控制器命令。r2 启动停滞后终止，没有成功回执。 / Actual-scene r1/r3: hand error 6.561186→0.000197 mm; repaired maximum link error 0.000201 mm. Five historical samples leave joints/time unchanged with zero commands. Stalled r2 startup was terminated and has no successful receipt. (local)
-- [docs] [docs] 本轮无需重构 AgentLoop/选择公共契约；新任务必须用新捕获。仍不声称完整抓取、倒液或搅拌成功。 / No AgentLoop/public-selection refactor is needed; a new task must bind a new capture. Complete acquisition, pouring and stirring are not claimed. (local)
-
-### 正式新捕获结果 / Formal Fresh-Capture Result
-- [eval] [exp] workspace `out/lab-fullchain-truth-20261102-reset-sync-no-motion-r1/`，session `cli:lab-3019a1d6c656`，task `task_ebea061a2ed841e3`，revision `revision_a274694de4f847f9`；R03 工艺特征 Query/preparation 通过，task-affordance unavailable 后任务 cancelled，入口退出 1。 / In the recorded workspace/session/task/revision, R03 process-feature Query/preparation pass, task-affordance remains unavailable, the task is cancelled and the host exits 1. (local)
-- [eval] [exp] 4 个开口拒绝；48 次接近检查仍为 workspace 20、环境碰撞 20、自碰撞 4、IK 不可用 4。24 个碰撞拒绝均带新私有结构化几何证据，证明诊断链路接入；数量不变也证明状态同步缺陷不是这些接近拒绝的唯一/主要原因。 / Four aperture rejections and 48 approach failures remain: 20 workspace, 20 environment, four self-collision and four unavailable IK. All 24 collision failures carry structured private geometry, proving integration; unchanged counts show reset inconsistency was not the sole/main cause of approach rejection. (local)
-- [eval] [chore] acceptance 明确 `simulated_motion_enabled=false`、`controller_outcomes=[]`；三个执行记录均为 Query，无 Action/controller，未执行 R04/玻璃棒。 / Acceptance records disabled motion and empty controller outcomes; all three records are Queries with no Action/controller, R04 or stirring. (local)
-- [docs] [docs] 下一步仅在证明实际 cooked collider 和全开合扫掠覆盖后细化碰撞表示，或针对真实 IK 分支问题评估有界种子。不能以局部网格净空跳过现有碰撞检查。 / Refine collision geometry only after proving cooked-collider/full-sweep coverage, or evaluate bounded seeds for demonstrated IK branch issues. Local mesh clearance must not bypass existing checks. (local)
-
-### Git 提交 / Git Commit
-- Implementation commit: `34dcd61a` (`2026-11-02 12:20:21 +0800`).
-- Branch: `feature/planning-loop`.
-- Push command: `git push origin feature/planning-loop`; the remote outcome is reported separately. / 推送当前分支，单独报告远端结果。
-- Only task-owned files are staged; unrelated report edits and runtime outputs remain excluded. / 仅暂存本轮文件，排除无关报告修改与运行输出。
