@@ -105,6 +105,12 @@
 - [eval] [exp] 候选 55 两次 refined finger/table 拒绝位于 TCP Z≈0.742 m。其余手臂环境/自碰撞与 IK 原因保持显式；未缩球半径、未调裕量、未添加绕过检查。 / Candidate 55 retains two refined finger/table failures near TCP Z 0.742 m. Remaining arm/environment/self/IK failures stay explicit; no sphere shrinking, margin tuning or bypass is added. (local)
 - [eval] [chore] `simulated_motion_enabled=false`、`controller_outcomes=[]`，三个记录均为 Query；无 Action、R04 或搅拌执行证据。 / Motion remains disabled with no controller outcomes; all three records are Queries, with no Action, R04 or stirring execution evidence. (local)
 
+### Git 提交 / Git Commit
+- Implementation commit: `e91ba782` (`2026-11-02 12:36:12 +0800`).
+- Branch: `feature/planning-loop`; push: `git push origin feature/planning-loop`.
+- [docs] [docs] `CHANGELOG.md:L51-L112` 为本版本完整记录，另滚出第五旧版本；`changelog/2026-11.md:L717-L778` 为追加的月度记录。 / The complete entry occupies these index/archive ranges; the oldest index entry rolls out without changing its archive. (local)
+- [chore] [chore] 仅提交本轮 10 个文件；无关报告、用户文件和运行输出未暂存。推送结果单独确认。 / Only ten task-owned files are committed; unrelated report, user files and runtime outputs remain unstaged. Push outcome is verified separately. (local)
+
 ## v16.6.1 (2026-11-02 12:03) - codex
 
 ### 预期修改 / Planned Changes [完成 / Completed; collision/IK workflow remains blocked]
