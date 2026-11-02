@@ -10,7 +10,9 @@ from scipy.spatial.transform import Rotation
 from isaacsim_lab.phase_motion import (
     IsaacPhaseMotion,
     PhaseMotionError,
+    acquire_direct_route_waypoints,
     acquire_failure_summary,
+    acquire_route_strategies,
     acquire_route_waypoints,
     acquire_staging_corridors,
     collision_hits,
@@ -433,6 +435,141 @@ def test_acquire_route_waypoints_apply_backoff_and_tangential_offset_before_appr
     assert staged[:3, 3] == pytest.approx([.46, .46, 1.1])
     assert transported[:2, 3] == pytest.approx(staged[:2, 3])
     assert grasp == pytest.approx(desired)
+
+
+def test_direct_acquire_route_uses_continuous_pregrasp_without_fixed_transport_orientation():
+    tcp = pose_matrix([-.4, 0., 1.], Rotation.from_euler("xyz", [.2, -.1, .3]).as_quat())
+    desired = pose_matrix([.2, -.1, .8], Rotation.from_euler("xyz", [-.3, .4, -.2]).as_quat())
+
+    waypoints = acquire_direct_route_waypoints(
+        tcp, desired, np.asarray([0., -1., 0.]), (.12, 0., 0.),
+        {"lift_distance_m": .1, "settle_s": .6},
+    )
+
+    assert [stage for _pose, _hold, stage in waypoints] == [
+        "open", "direct_pregrasp", "grasp", "close", "lift",
+    ]
+    assert waypoints[0][0] == pytest.approx(tcp)
+    assert waypoints[1][0][:3, 3] == pytest.approx([.2, .02, .8])
+    assert waypoints[1][0][:3, :3] == pytest.approx(desired[:3, :3])
+    assert waypoints[2][0] == pytest.approx(desired)
+
+
+@pytest.mark.parametrize("value", [[], ["unknown"], "direct", ["direct", 1]])
+def test_acquire_route_strategies_reject_invalid_configuration(value):
+    with pytest.raises(PhaseMotionError) as captured:
+        acquire_route_strategies({"acquire_route_strategies": value})
+    assert captured.value.code == "invalid_motion_configuration"
+
+
+def test_acquire_preparation_prefers_fully_qualified_direct_route():
+    model = object.__new__(IsaacPhaseMotion)
+    model.config = {
+        "approach_distance_m": .12,
+        "acquire_route_strategies": ["direct", "staged"],
+        "acquire_route_selection": "first_feasible",
+        "acquire_transit_clearance_candidates_m": [.04],
+        "acquire_transport_orientation_candidates_xyzw": [[1., 0., 0., 0.]],
+        "acquire_axial_symmetry_angles_rad": [0.],
+        "lift_distance_m": .10,
+        "settle_s": .6,
+    }
+    model.validate_grasp_aperture = lambda _target: None
+    current = pose_matrix([-.4, 0., 1.], [0., 0., 0., 1.])
+    body = pose_matrix([0., 0., .8], [0., 0., 0., 1.])
+    model.tcp = lambda: current.copy()
+    model.observed_pose = lambda _source: body.copy()
+    model.bind_observed_model = lambda *_args: (body.copy(), np.eye(4))
+    model.body_pose = lambda _path: np.eye(4)
+    artifacts = []
+    model._artifact = lambda kind, value: artifacts.append((kind, value)) or "artifact://readiness/direct"
+    attempted = []
+
+    def qualify(waypoints, *_args, **_kwargs):
+        attempted.append([stage for _pose, _hold, stage in waypoints])
+        return {"start_joints": [0.] * 7,
+                "steps": [{"joints": [.1] + [0.] * 6, "stage": "lift"}]}
+
+    model.qualify = qualify
+    target = {
+        "world_from_control": {"translation_m": [0., 0., 0.], "orientation_xyzw": [0., 0., 0., 1.]},
+        "entity_prim_path": "/World/source/Model",
+        "destination_prim_path": "/World/destination/Model",
+        "object_pose": {"position_m": [0., 0., .8], "orientation_xyzw": [0., 0., 0., 1.]},
+        "grasp_frame": {"position_m": [0., 0., .9], "orientation_xyzw": [0., 0., 0., 1.]},
+        "approach_direction": {"vector": [0., -1., 0.]},
+        "destination_pose": {"position_m": [.2, 0., .8], "orientation_xyzw": [0., 0., 0., 1.]},
+        "return_pose": {"position_m": [0., 0., .8], "orientation_xyzw": [0., 0., 0., 1.]},
+    }
+
+    route, _evidence = model.prepare({
+        "manipulation_target": target, "observation_model": {}, "scene_revision": "scene",
+    })
+
+    assert attempted == [["open", "direct_pregrasp", "grasp", "close", "lift"]]
+    assert route["acquire_route_strategy"] == "direct"
+    assert "acquire_transport_orientation_xyzw" not in route
+    attempts = [value for kind, value in artifacts if kind == "acquire-search" and value.get("stage") == "route"]
+    assert attempts[-1]["route_strategy"] == "direct"
+    assert attempts[-1]["status"] == "available"
+
+
+def test_acquire_preparation_falls_back_to_staged_route_after_direct_rejection():
+    model = object.__new__(IsaacPhaseMotion)
+    model.config = {
+        "approach_distance_m": .12,
+        "acquire_route_strategies": ["direct", "staged"],
+        "acquire_route_selection": "first_feasible",
+        "acquire_transit_clearance_candidates_m": [.04],
+        "acquire_transport_orientation_candidates_xyzw": [[1., 0., 0., 0.]],
+        "acquire_axial_symmetry_angles_rad": [0.],
+        "lift_distance_m": .10,
+        "settle_s": .6,
+    }
+    model.validate_grasp_aperture = lambda _target: None
+    current = pose_matrix([-.4, 0., 1.], [0., 0., 0., 1.])
+    body = pose_matrix([0., 0., .8], [0., 0., 0., 1.])
+    model.tcp = lambda: current.copy()
+    model.observed_pose = lambda _source: body.copy()
+    model.bind_observed_model = lambda *_args: (body.copy(), np.eye(4))
+    model.body_pose = lambda _path: np.eye(4)
+    artifacts = []
+    model._artifact = lambda kind, value: artifacts.append((kind, value)) or "artifact://readiness/fallback"
+    attempted = []
+
+    def qualify(waypoints, *_args, **_kwargs):
+        stages = [stage for _pose, _hold, stage in waypoints]
+        attempted.append(stages)
+        if "direct_pregrasp" in stages:
+            raise PhaseMotionError("route_collision", "direct_pregrasp: direct path is blocked")
+        return {"start_joints": [0.] * 7,
+                "steps": [{"joints": [.2] + [0.] * 6, "stage": "lift"}]}
+
+    model.qualify = qualify
+    target = {
+        "world_from_control": {"translation_m": [0., 0., 0.], "orientation_xyzw": [0., 0., 0., 1.]},
+        "entity_prim_path": "/World/source/Model",
+        "destination_prim_path": "/World/destination/Model",
+        "object_pose": {"position_m": [0., 0., .8], "orientation_xyzw": [0., 0., 0., 1.]},
+        "grasp_frame": {"position_m": [0., 0., .9], "orientation_xyzw": [0., 0., 0., 1.]},
+        "approach_direction": {"vector": [0., -1., 0.]},
+        "destination_pose": {"position_m": [.2, 0., .8], "orientation_xyzw": [0., 0., 0., 1.]},
+        "return_pose": {"position_m": [0., 0., .8], "orientation_xyzw": [0., 0., 0., 1.]},
+    }
+
+    route, _evidence = model.prepare({
+        "manipulation_target": target, "observation_model": {}, "scene_revision": "scene",
+    })
+
+    assert "direct_pregrasp" in attempted[0]
+    assert attempted[1][:6] == [
+        "open", "transit_raise", "transit_orient", "transit_cross", "staging_reorient", "approach",
+    ]
+    assert route["acquire_route_strategy"] == "staged"
+    attempts = [value for kind, value in artifacts if kind == "acquire-search" and value.get("stage") == "route"]
+    assert [attempt["route_strategy"] for attempt in attempts if attempt["status"] != "started"] == [
+        "direct", "staged",
+    ]
 
 
 def test_acquire_route_waypoints_use_world_x_tangent_for_vertical_approach():

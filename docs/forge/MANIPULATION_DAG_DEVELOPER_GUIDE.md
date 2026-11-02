@@ -492,6 +492,26 @@ Private `acquire-search/` artifacts record route and stage boundaries, elapsed
 time and rejection details before a possible worker timeout. These are
 preparation diagnostics with motion_authorized=false, not execution feedback.
 
+`acquire_route_strategies` is also Adapter-private. A `direct` strategy may
+attempt current TCP -> candidate-orientation pregrasp -> grasp -> close -> lift;
+`staged` remains available as a fallback. These are route candidates, not
+prescriptions: every segment must pass the same IK, joint-continuity, workspace,
+payload and swept-collision checks before readiness. A geometrically simpler
+route is not considered natural or safe merely because it has fewer waypoints.
+If all variants fail, preserve the stage-specific failure evidence and stop
+before controller motion. Do not loosen collision/continuity limits, move a
+selected candidate during Action recovery, or treat a short-approach receipt as
+full-route readiness.
+
+Bottle sidewall qualification may use a calibrated full grasp frame and the
+same-capture point cloud to reject asymmetric contact support and implausible
+finger/closing-axis alignment. It may rank or omit the original opaque Provider
+candidate refs; it must not synthesize/translate a pose or widen the public
+contract with robot-specific fields. Passing this geometric filter proves
+neither controller reachability nor grip retention. Fresh full-route readiness
+and bounded bilateral-contact/displacement feedback are still needed before a
+grasp-success claim.
+
 ### Isaac contact physics and acquire timing
 
 An optional Adapter-private `physics_config_path` owns simulation mass,

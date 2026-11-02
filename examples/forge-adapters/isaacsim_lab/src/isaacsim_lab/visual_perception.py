@@ -239,11 +239,13 @@ class LabGraspTaskAffordanceProvider:
     def __init__(self, perception: "LabVisualPerception", *, approach_feasibility=None,
                  support_tolerance_m=0.012,
                  bottle_opening_clearance_ratio=0.08, bottle_support_clearance_ratio=0.12,
-                 bottle_max_axial_approach_dot=0.7,
+                 bottle_max_axial_approach_dot=0.7, bottle_max_closing_axis_dot=0.35,
+                 bottle_min_finger_axis_dot=0.7, bottle_contact_center_ratio=0.15,
                  rod_endpoint_ambiguity_ratio=0.12, rod_grasp_end_margin_ratio=0.15):
         values = (support_tolerance_m, bottle_opening_clearance_ratio, bottle_support_clearance_ratio,
-                  bottle_max_axial_approach_dot, rod_endpoint_ambiguity_ratio,
-                  rod_grasp_end_margin_ratio)
+                  bottle_max_axial_approach_dot, bottle_max_closing_axis_dot,
+                  bottle_min_finger_axis_dot, bottle_contact_center_ratio,
+                  rod_endpoint_ambiguity_ratio, rod_grasp_end_margin_ratio)
         if any(isinstance(value, bool) for value in values):
             raise ValueError("task-affordance thresholds must be finite numbers")
         try:
@@ -253,14 +255,19 @@ class LabGraspTaskAffordanceProvider:
         if not all(np.isfinite(value) for value in values):
             raise ValueError("task-affordance thresholds must be finite numbers")
         (support_tolerance_m, bottle_opening_clearance_ratio, bottle_support_clearance_ratio,
-         bottle_max_axial_approach_dot, rod_endpoint_ambiguity_ratio,
-         rod_grasp_end_margin_ratio) = values
+         bottle_max_axial_approach_dot, bottle_max_closing_axis_dot,
+         bottle_min_finger_axis_dot, bottle_contact_center_ratio,
+         rod_endpoint_ambiguity_ratio, rod_grasp_end_margin_ratio) = values
         if support_tolerance_m <= 0 or not 0 < bottle_opening_clearance_ratio < 1:
             raise ValueError("task-affordance support and opening-clearance thresholds are invalid")
         if not 0 < bottle_support_clearance_ratio < 0.5:
             raise ValueError("bottle support-clearance threshold must be between zero and one half")
         if not 0 < bottle_max_axial_approach_dot < 1:
             raise ValueError("bottle approach threshold must be between zero and one")
+        if not 0 < bottle_max_closing_axis_dot < 1 or not 0 < bottle_min_finger_axis_dot < 1:
+            raise ValueError("bottle grasp-axis thresholds must be between zero and one")
+        if not 0 < bottle_contact_center_ratio < 0.5:
+            raise ValueError("bottle contact-center threshold must be between zero and one half")
         if not 0 < rod_endpoint_ambiguity_ratio < 0.5 or not 0 < rod_grasp_end_margin_ratio < 0.5:
             raise ValueError("rod endpoint thresholds must be between zero and one half")
         self.perception = perception
@@ -271,6 +278,9 @@ class LabGraspTaskAffordanceProvider:
         self.bottle_opening_clearance_ratio = float(bottle_opening_clearance_ratio)
         self.bottle_support_clearance_ratio = float(bottle_support_clearance_ratio)
         self.bottle_max_axial_approach_dot = float(bottle_max_axial_approach_dot)
+        self.bottle_max_closing_axis_dot = float(bottle_max_closing_axis_dot)
+        self.bottle_min_finger_axis_dot = float(bottle_min_finger_axis_dot)
+        self.bottle_contact_center_ratio = float(bottle_contact_center_ratio)
         self.rod_endpoint_ambiguity_ratio = float(rod_endpoint_ambiguity_ratio)
         self.rod_grasp_end_margin_ratio = float(rod_grasp_end_margin_ratio)
         self.candidate_sets = {}
@@ -329,13 +339,22 @@ class LabGraspTaskAffordanceProvider:
                 failures.append("task-directed pour opening does not match the selected destination")
             else:
                 process_refs = [source_features[0][0], destination_features[0][0]]
+                bottle_candidates = []
                 for candidate_ref, candidate in grasp_candidates:
-                    accepted, reason = self._qualify_bottle_grasp(candidate, source, source_features[0][1])
+                    accepted, reason, rank = self._qualify_bottle_grasp(
+                        candidate, source, source_features[0][1]
+                    )
                     if accepted:
-                        qualified.append({"entity_ref": source_ref, "grasp_candidate_ref": candidate_ref,
-                                          "process_feature_refs": process_refs})
+                        bottle_candidates.append((rank, candidate_ref, {
+                            "entity_ref": source_ref,
+                            "grasp_candidate_ref": candidate_ref,
+                            "process_feature_refs": process_refs,
+                        }))
                     elif reason:
                         failures.append(reason)
+                qualified.extend(item for _rank, _ref, item in sorted(
+                    bottle_candidates, key=lambda value: (*value[0], value[1])
+                ))
         else:
             rod_ends = [(ref, feature) for ref, feature in source_features
                         if feature.get("feature_kind") == "rod_endpoint_pair"]
@@ -557,25 +576,33 @@ class LabGraspTaskAffordanceProvider:
 
     def _grasp_candidates(self, grasp_set, request, source_ref):
         captured = self.perception.grasps.captures.get(request["calibration_ref"], {})
-        return [(ref, captured[ref]) for ref in grasp_set["candidate_refs"]
-                if ref in captured and captured[ref].get("entity_ref") == source_ref]
+        admitted = set(grasp_set["candidate_refs"])
+        return [(ref, candidate) for ref, candidate in captured.items()
+                if ref in admitted and candidate.get("entity_ref") == source_ref]
 
-    def _candidate_pose(self, candidate, record):
+    def _candidate_world_frame(self, candidate, record):
         frame = candidate.get("grasp_frame", {})
         approach = candidate.get("approach_direction", {})
         if frame.get("frame_id") != record["frame_id"] or approach.get("frame_id") != record["frame_id"]:
             return None
-        position = np.asarray(frame.get("position_m"), dtype=float)
-        direction = np.asarray(approach.get("vector"), dtype=float)
-        transform = np.asarray(record["world_from_camera"], dtype=float)
-        if (position.shape != (3,) or direction.shape != (3,) or transform.shape != (4, 4)
-                or not np.isfinite(position).all() or not np.isfinite(direction).all()
-                or not np.isfinite(transform).all()):
+        try:
+            transform = np.asarray(record["world_from_camera"], dtype=float)
+            provider_from_tcp = np.asarray(self.perception.provider_from_tcp, dtype=float)
+            pose, direction = candidate_world_pose(candidate, transform, provider_from_tcp)
+        except (KeyError, TypeError, ValueError):
+            return None
+        direction = np.asarray(direction, dtype=float)
+        if (pose.shape != (4, 4) or direction.shape != (3,)
+                or not np.isfinite(pose).all() or not np.isfinite(direction).all()):
             return None
         norm = float(np.linalg.norm(direction))
         if norm <= 1e-9:
             return None
-        return transform[:3, :3] @ position + transform[:3, 3], transform[:3, :3] @ (direction / norm)
+        return pose, direction / norm
+
+    def _candidate_pose(self, candidate, record):
+        resolved = self._candidate_world_frame(candidate, record)
+        return None if resolved is None else (resolved[0][:3, 3], resolved[1])
 
     def _world_points(self, record):
         try:
@@ -603,35 +630,74 @@ class LabGraspTaskAffordanceProvider:
                    self.support_tolerance_m + gripper_axial_radius)
 
     def _qualify_bottle_grasp(self, candidate, record, rim):
-        pose, points = self._candidate_pose(candidate, record), self._world_points(record)
-        if pose is None or points is None:
-            return False, "bottle grasp pose or point-cloud evidence is unavailable"
+        resolved, points = self._candidate_world_frame(candidate, record), self._world_points(record)
+        if resolved is None or points is None:
+            return False, "bottle grasp pose or point-cloud evidence is unavailable", ()
         tip = np.asarray(rim.get("tip_world"), dtype=float)
         axis = np.asarray(rim.get("axis_world"), dtype=float)
         if tip.shape != (3,) or axis.shape != (3,) or not np.isfinite(tip).all() or not np.isfinite(axis).all():
-            return False, "bottle opening geometry is unresolved"
+            return False, "bottle opening geometry is unresolved", ()
         axis_norm = float(np.linalg.norm(axis))
         if axis_norm <= 1e-9:
-            return False, "bottle opening axis is unresolved"
+            return False, "bottle opening axis is unresolved", ()
         axis /= axis_norm
-        position, approach = pose
+        frame, approach = resolved
+        position = frame[:3, 3]
         projections = (points - tip) @ axis
         candidate_projection = float(np.dot(position - tip, axis))
         extent = float(np.ptp(projections))
         clearance = max(float(rim.get("rim_radius_m", 0.0)) * 2., extent * self.bottle_opening_clearance_ratio)
         if candidate_projection >= -clearance:
-            return False, "bottle grasp is too close to the opening"
+            return False, "bottle grasp is too close to the opening", ()
         support_projection = float(np.quantile(projections, .02))
         if candidate_projection < support_projection - self._support_limit(candidate):
-            return False, "bottle grasp is outside the observed body support"
+            return False, "bottle grasp is outside the observed body support", ()
         support_clearance = self._bottle_support_clearance(candidate, extent)
         if candidate_projection <= support_projection + support_clearance:
-            return False, "bottle grasp is too close to the support end"
+            return False, "bottle grasp is too close to the support end", ()
         if float(np.min(np.linalg.norm(points - position, axis=1))) > self._support_limit(candidate):
-            return False, "bottle grasp has no nearby observed body support"
-        if abs(float(np.dot(approach, axis))) > self.bottle_max_axial_approach_dot:
-            return False, "bottle grasp approach may occlude the opening"
-        return True, ""
+            return False, "bottle grasp has no nearby observed body support", ()
+        approach_dot = abs(float(np.dot(approach, axis)))
+        if approach_dot > self.bottle_max_axial_approach_dot:
+            return False, "bottle grasp approach may occlude the opening", ()
+
+        geometry = candidate.get("grasp_geometry") or {}
+        try:
+            width, height, depth = (float(geometry[key]) for key in ("width_m", "height_m", "depth_m"))
+        except (KeyError, TypeError, ValueError):
+            return False, "bottle grasp geometry is unavailable", ()
+        if (not all(np.isfinite(value) and value > 0 for value in (width, height, depth))
+                or not np.allclose(frame[:3, :3].T @ frame[:3, :3], np.eye(3), atol=1e-5)):
+            return False, "bottle grasp frame or geometry is invalid", ()
+        finger_axis, closing_axis = frame[:3, 0], frame[:3, 1]
+        closing_dot = abs(float(np.dot(closing_axis, axis)))
+        finger_dot = abs(float(np.dot(finger_axis, axis)))
+        if closing_dot > self.bottle_max_closing_axis_dot:
+            return False, "bottle grasp closes along the bottle axis", ()
+        if finger_dot < self.bottle_min_finger_axis_dot:
+            return False, "bottle grasp finger span is not aligned with the bottle axis", ()
+
+        local = (points - position) @ frame[:3, :3]
+        height_band = max(height * .6, self.support_tolerance_m)
+        depth_slack = min(.003, self.support_tolerance_m * .25)
+        contact_band = local[(np.abs(local[:, 0]) <= height_band)
+                             & (local[:, 2] >= -depth_slack)
+                             & (local[:, 2] <= depth + depth_slack)]
+        if len(contact_band) < 6:
+            return False, "bottle grasp has insufficient sidewall contact evidence", ()
+        lower, upper = np.quantile(contact_band[:, 1], [.05, .95])
+        side_margin = max(.001, min(width * .05, self.support_tolerance_m * .25))
+        if lower >= -side_margin or upper <= side_margin:
+            return False, "bottle grasp lacks bilateral sidewall support", ()
+        half_span = float((upper - lower) * .5)
+        center_error = abs(float((upper + lower) * .5))
+        if half_span <= 1e-9 or center_error / half_span > self.bottle_contact_center_ratio:
+            return False, "bottle grasp has asymmetric finger clearance", ()
+        width_tolerance = min(.003, self.support_tolerance_m * .25)
+        if width + width_tolerance < upper - lower:
+            return False, "bottle grasp opening is narrower than the observed sidewall", ()
+        rank = (approach_dot, center_error / half_span, closing_dot, -finger_dot)
+        return True, "", rank
 
     def _working_endpoint(self, candidate, record, endpoints):
         pose, points = self._candidate_pose(candidate, record), self._world_points(record)

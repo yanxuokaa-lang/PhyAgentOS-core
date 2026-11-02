@@ -48,6 +48,60 @@
 
 ## 最近五版本 / Latest five versions
 
+## v16.9.0 (2026-11-02 19:56) - codex
+
+### 完成范围 / Completed Scope [局部实现完成；全路线资格阻塞 / Local implementation complete; full-route qualification blocked]
+- [policy] [fix] Isaac Provider 使用同次点云和完整校准抓取帧拒绝瓶身侧夹持不对称、夹爪闭合轴沿瓶轴及夹指长度轴失配候选；只排序/过滤原有 opaque GraspNet 引用，不生成或平移抓取位姿。 / Isaac Provider uses same-capture points and calibrated grasp frames to reject asymmetric or axis-misaligned bottle grasps, ranking/filtering original opaque GraspNet refs without synthesizing or shifting poses. (local)
+- [env] [feat] Isaac Adapter 在原 staged 全路径资格化前增加 direct current-pose/pregrasp route attempt，保留 staged fallback；碰撞、workspace、IK 连续性、aperture、接触及位移条件均未放宽。 / Isaac Adapter tries a direct current-pose/pregrasp route before the existing staged fallback, preserving all collision, workspace, IK-continuity, aperture, contact and drift checks. (local)
+- [eval] [exp] 旧 R05 同捕获重放拒绝 candidate 69 的不对称夹持，8/503 候选通过几何过滤；新 no-motion 运行仅 candidate 178 通过工艺几何与短接近检查。该结果不是全路线 readiness 或夹持成功证明。 / Historical replay rejects asymmetric candidate 69 and retains 8/503 geometric candidates; fresh no-motion admits candidate 178 through geometry and short approach only, not full-route readiness or grip proof. (local)
+- [eval] [exp] 新鲜授权仿真运行检查 8 条 direct、85 条 staged 路线，均未通过；Action preparation 超过 900 秒后前台 1200 秒限制结束，任务 awaiting_replan，无 readiness、controller outcome、运动视频或动作成功证据。 / Fresh authorized simulation rejects 8 direct and 85 staged routes; preparation exceeds 900 seconds and the foreground turn ends at 1200 seconds with awaiting_replan, no readiness/controller outcome/video/action success. (local)
+- [docs] [docs] 更新当前任务、保存路线/夹持诊断、v16.9.0 实现复核与 PAOS 开发指南，区分 Provider、preparation、live evidence，并记录不放宽安全检查的后续路径。 / Update current task, preserve grasp/route diagnosis, add v16.9.0 review and document-guide boundaries distinguishing Provider, preparation and live evidence without relaxing safety checks. (local)
+
+### 文件变更详情 / File Changes
+
+#### [修改 / Modified] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/visual_perception.py` L239-L285, L577-L605, L632-L700
+- [policy] [fix] 用 `candidate_world_pose` 应用 provider/TCP 标定，提取点云接触带分位数，拒绝单侧/偏心支持、开度不足和轴向错误；按几何质量对原候选做确定性排序。 / Apply calibrated provider/TCP transforms, measure point-cloud contact-band quantiles, reject one-sided/off-center/undersized/axis-misaligned grasps and deterministically rank original candidates.
+```diff
+pose, direction = candidate_world_pose(candidate, transform, provider_from_tcp)
+closing_dot = abs(float(np.dot(closing_axis, axis)))
+center_error / half_span > self.bottle_contact_center_ratio
+return True, "", (approach_dot, center_error / half_span, closing_dot, -finger_dot)
+```
+
+#### [修改 / Modified] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L304-L340, L1077-L1165
+- [env] [feat] 新增 Adapter 私有 direct/staged route 策略和直达预抓取 waypoint；每个候选继续进入相同完整 `qualify()`，ready 结果记录选用策略。 / Add Adapter-private direct/staged route strategies and direct-pregrasp waypoints; every candidate still enters the same complete `qualify()` path and readiness records the chosen strategy.
+```diff
+"acquire_route_strategies": ["direct", "staged"]
+current TCP -> direct_pregrasp -> grasp -> close -> lift
+candidate = self.qualify(candidate_waypoints, ...)
+```
+
+#### [修改 / Modified] `examples/forge-adapters/isaacsim_lab/configs/labutopia-mixture-motion.json` L14
+- [env] [tune] mixture 部署优先尝试 direct，失败后保留 staged fallback。 / Configure the mixture deployment to try direct first while retaining staged fallback. (local)
+```diff
++"acquire_route_strategies": ["direct", "staged"],
+```
+
+#### [新增 / Added] `.task/labutopia-stable-grasp-direct-route-20261102.md` L1-L117; `docs/forge/IMPLEMENTATION_REVIEW_V16_9_0.md` L1-L57
+#### [修改 / Modified] `.task/current.md` L1-L30; `docs/forge/MANIPULATION_DAG_DEVELOPER_GUIDE.md` L496-L532
+- [docs] [docs] 保存候选几何诊断、原生 no-motion 与 Action preparation 结果、分层证据限制、架构复核和安全的下一分支。 / Preserve candidate geometry diagnosis, native no-motion/Action-preparation evidence, layered evidence limits, architecture review and safe next steps. (local)
+```diff
++No route passed: 8 direct + 85 staged; no readiness or controller outcome.
++Do not claim bottle retention or natural trajectory is fixed.
++Preserve IK/collision limits; inspect fresh grasp frame and measured initial state.
+```
+
+### 验证 / Validation
+- [eval] [chore] Provider/motion 聚焦回归 201 passed；Adapter + subtask executor 全量回归 464 passed、2 native USD skipped。 / Focused Provider/motion suite passes 201; full Adapter + subtask executor passes 464 with 2 native USD skips. (local)
+- [eval] [chore] Ruff、compileall、`git diff --check` 通过；初始外部 pytest plugin 自动加载缺 `lark`，使用隔离插件加载后回归成功。 / Ruff, compileall and whitespace checks pass; initial system pytest auto-plugin import lacked `lark`, and isolated plugin loading then passed. (local)
+- [eval] [exp] no-motion 任务 `task_894ef705415247a9` 在 Action 前停止；执行任务 `task_5f4231225e424e73` / `invocation://manipulation-execute_subtask/aba88568ff884e9d` 无完整路线 readiness，1200 秒后 awaiting_replan。 / No-motion task stops before Action; authorized simulation invocation has no full-route readiness and ends awaiting_replan after 1200 seconds. (local)
+- [docs] [docs] 没有执行抓取/倾倒/搅拌控制动作，无 controller outcome 和 motion video；物理抓取稳定性与自然轨迹仍未验证。 / No grasp/pour/stir controller command, controller outcome or motion video exists; physical retention and natural trajectory remain unverified. (local)
+
+### Git Receipt
+- Branch: `feature/planning-loop`
+- Commit: pending
+- [docs] [chore] 索引严格保留最新五版本；v16.6.3 完整内容留在月归档。 / Keep exactly the latest five versions in the index; retain v16.6.3 in the monthly archive.
+
 ## v16.8.0 (2026-11-02 16:05) - codex
 
 ### 完成范围 / Completed Scope [完成；真实抓取待验证 / Implemented; live grasp not yet verified]
@@ -445,97 +499,3 @@ The excerpt abbreviates local variable expressions/comments; exact source ranges
 - [chore] [chore] 精确暂存本任务 15 个文件；无关报告与运行输出未纳入提交。 / Stage exactly fifteen task-owned files; exclude the unrelated report and runtime outputs. (local)
 - [chore] [chore] 已成功推送 `ee5b2400..f5a3bae1` 至 origin 当前分支，也补推此前 v16.6.3 的两个本地提交。 / Successfully push ee5b2400..f5a3bae1 to the current origin branch, including both previously local v16.6.3 commits. (local)
 - [docs] [docs] 本回执同步到最近五条索引后以文档提交保存并推送；无代码或验证结论变化。 / Synchronize this receipt into the latest-five index, then commit/push it as documentation without changing code or validation conclusions. (local)
-
-## v16.6.3 (2026-11-02 12:38) - codex
-
-### 预期修改 / Planned Changes [完成局部修复；可用抓取候选仍缺失 / Local repair complete; usable grasp candidate still missing]
-- [docs] [docs] 根据用户继续修复的指令，保存 v16.6.2 新捕获中的手掌球/桌面、较低夹指位置与 IK 阻塞诊断，不把碰撞球模型重叠描述成实测接触。 / Following the user's continuation request, save the fresh palm-sphere/table, lower-finger and IK blockers without describing model overlap as measured contact. (local)
-- [env] [fix] 先用当前 cooked 刚体几何复核具体失败姿态，再在 Isaac Adapter 内修复已证明的碰撞表示或规划分支缺陷；保留同捕获、完整路径、原裕量和现有生命周期。 / First compare current cooked rigid-body geometry at failed poses, then repair evidenced collision-representation or planning-branch defects inside Isaac Adapter, preserving lineage, full routes, margins and lifecycle. (local)
-- [eval] [chore] 增加实际缺陷复现、机制替代、失败与零动作测试，运行原生无动作验证；保存精确 Diff/行号，提交并推送当前分支。 / Add defect, substitution, failure and no-motion tests, run native validation, record exact diffs/ranges, and commit/push the current branch. (local)
-- [env] [fix] 原生复核已发现手掌 cooked 凸体低于桌面 0.57–1.34 mm，不缩小碰撞球；新增最终夹爪位姿预检，在 pregrasp IK 前用真实手掌/夹指及完整开合扫掠拒绝终态阻塞，保留后续全部检查。 / Native measurement finds the cooked palm below tabletop by 0.57–1.34 mm; do not shrink spheres. Add final-gripper-pose preflight using actual palm/fingers and full opening sweep before pregrasp IK, retaining all subsequent checks. (local)
-- [policy] [fix] 复现现有 probe error 字符串泄漏 USD 路径的问题；公共错误仅保留失败码/阶段/计数与 opaque 回执，精确路径和几何保留私有制品。 / Reproduce USD-path leakage through existing probe error text; public errors retain only failure codes/stages/counts and the opaque receipt, with exact paths/geometry in private artifacts. (local)
-- [eval] [fix] 复核发现新回放传空 source 时路径前缀会匹配全部绝对路径；先补回归，再让空 source 表示不豁免任何物体。正式绑定的非空 source 行为不变。 / Review found that the new replay's empty source matched every absolute path; add a regression then make empty source exempt no object, retaining bound nonempty-source behavior. (local)
-
-### 架构与实施结果 / Architecture and Implementation
-- [env] [fix] 将真实 cooked 刚体提取复用于手掌和夹指；每个轴对称终态只做一次无动作预检，结果复用于不同接近距离。终态失败保留精确 TCP 与私有几何，不伪造关节解。 / Reuse cooked-body extraction for palm/fingers and preflight each axial final pose once across approach distances; retain exact TCP/private geometry without inventing joints. (local)
-- [policy] [fix] AgentLoop、公共 Tool schema、候选身份与生命周期不变；公共 probe 错误仅汇总失败码/阶段/计数，USD 路径留在 opaque 引用对应的私有制品。 / AgentLoop, public Tool schemas, candidate identities and lifecycle remain unchanged; public probe errors summarize codes/phases/counts, with USD details behind opaque private receipts. (local)
-- [env] [fix] 保留 3 mm 逐轴裕量、完整夹指开合扫掠、原碰撞球及后续全部 IK/连续性/自碰撞/环境与载荷/完整路径检查；不挪动候选、不放松瓶口排除区、不新增 hash 或共享 gate。 / Preserve 3 mm per-axis padding, full finger travel, existing spheres and every downstream IK/continuity/collision/full-route check; no shifted candidates, relaxed opening exclusions, hashes or shared gates. (local)
-
-### 文件变更详情 / File Changes
-
-#### [修改 / Modified] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/finger_collision.py` L1-L52、L73-L110
-- [env] [refactor] 提取 `cooked_body_boxes`，遍历当前组合刚体的实际 collider，保留所有 cooked 凸体组件与 analytic bounds；通用错误文字由 finger 改为 gripper。 / Extract current-body cooked collider traversal, retaining every convex component and analytic bounds; generalize private wording from finger to gripper. (local)
-```diff
--# Mesh cooking/traversal lived only in IsaacPhaseMotion.finger_geometry.
-+def cooked_body_boxes(stage, body, maximum_slice_m):
-+    # Copy all cooked components, transform collider -> body, conservatively slice.
-+    return boxes, evidence
-```
-
-#### [修改 / Modified] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py` L719-L790、L1246-L1264、L1332-L1368
-- [env] [fix] 夹指复用提取函数，新增 cached palm geometry 与 final-grasp preflight；空 source 不豁免任何外部物体。 / Reuse extraction for fingers and add cached palm geometry/final-grasp preflight; empty source exempts no external object. (local)
-```diff
--# Probe began with pregrasp workspace / IK checks.
-+try:
-+    self.check_final_gripper_pose(variant_desired, source)
-+except PhaseMotionError as exc:
-+    final_error = exc
-+# Each distance keeps this final-pose result, then all original checks if clear.
-+if final_error is not None:
-+    raise final_error
-```
-```diff
--return path.startswith(robot_path) or path == source_path or path.startswith(source_path + "/")
-+return path.startswith(robot_path) or bool(source_path and (
-+    path == source_path or path.startswith(source_path + "/")))
--"error": detail,
-+"error": public_detail or "no grasp approach variant was configured",
-```
-- [docs] [docs] 第二段前两行是本次实现复核发现并修正的中间版本；公共错误 Diff 针对最终返回值，私有制品继续保存 detail。 / The first comparison in the second block records the intermediate review correction; the error comparison applies to the public return only, retaining private detail. (local)
-
-#### [修改 / Modified] `examples/forge-adapters/isaacsim_lab/scripts/inspect_collision_receipt.py` L32-L43、L84-L106、L131-L158
-- [eval] [feat] 回放支持被报告刚体的 cooked 几何与最低顶点；区分有 checked joints 和仅 final TCP 的证据，禁止伪造关节，全部为无动作诊断。 / Replay reported-body cooked geometry/lowest vertices and distinguish checked-joint from final-TCP-only evidence without inventing joints or commanding motion. (local)
-```diff
-+def checked_final_poses(receipt):
-+    # Only final_grasp diagnostics without checked_joints.
-+    ...
-+model.check_final_gripper_pose(pose, "")
-+"final_pose_samples": final_samples,
--"unreplayed_attempts": len(receipt.get("attempts", [])) - len(samples)
-+"unreplayed_attempts": len(receipt.get("attempts", [])) - len(samples) - len(final_samples)
-```
-
-#### [修改 / Modified] 测试 / Tests
-- [eval] [chore] `examples/forge-adapters/isaacsim_lab/tests/test_phase_motion.py:L681,L756-L798,L806-L817`：失败终态必须先于 IK、clear 不能跳过 approach、缺失几何必须 unavailable、公共 error 无 USD 路径。 / Assert blocked final poses precede IK, clear endpoints still require approach, missing geometry is unavailable and public errors omit USD paths. (local)
-- [eval] [chore] `examples/forge-adapters/isaacsim_lab/tests/test_finger_collision.py:L153-L193`：手掌/夹指的替代 overlap 查询，验证 TCP→hand、原裕量、源物体/机器人豁免与邻物/空源拒绝。 / Substitute overlap queries for palm/fingers and verify TCP-to-hand, original padding, intended source/robot exemptions, neighbor/empty-source rejection. (local)
-- [eval] [chore] `examples/forge-adapters/isaacsim_lab/tests/test_collision_receipt_inspector.py:L30-L39`：仅位姿回执不变造 checked joints。 / Pose-only receipts never invent checked joints. (local)
-```diff
-+model.solver.compute_inverse_kinematics = lambda *_a, **_k: pytest.fail("blocked endpoint must precede IK")
-+assert "checked_joints" not in attempt["collision_diagnostic"]
-+assert "/World/table/mesh" not in result["error"]
-+assert "/World/table/mesh" in saved[0]["attempts"][0]["error"]
-```
-
-#### [新增/修改 / Added/Modified] 文档 / Documentation
-- [docs] [docs] 新增 `.task/labutopia-palm-collision-repair-20261102.md:L1-L128`：保存历史/新捕获诊断、职责、修复、候选分布、下一步 Provider 覆盖改进路线。 / Add diagnosis, ownership, implementation, fresh candidate distribution and next Provider-coverage work. (local)
-- [docs] [docs] 新增 `docs/forge/IMPLEMENTATION_REVIEW_V16_6_3.md:L1-L100`：发现处置、架构、分层证据与复现命令；修改 `docs/forge/MANIPULATION_DAG_DEVELOPER_GUIDE.md:L215-L230`：终态预检和公共/私有证据边界；修改 `.task/current.md:L3-L21`：最新结果及未完成的抓取目标。 / Add findings/architecture/evidence/reproduction review, document final-pose and public/private evidence boundaries, and update task status including the unresolved grasp goal. (local)
-```diff
-+Before the Isaac short-approach probe searches pre-grasp IK, it checks each exact
-+candidate final TCP pose against current cooked palm and full-travel finger
-+geometry, with the same padding and intentional source-contact exemption as
-+the grasp stage.
-```
-
-### 验证与剩余阻塞 / Validation and Remaining Blocker
-- [eval] [chore] 受影响回归 450 passed（24.49s），Ruff/compileall/`git diff --check` 通过；缺少 preflight、公共路径泄漏、空 source 豁免均先复现失败后修复。 / 450 affected regressions pass (24.49s), with Ruff/compileall/whitespace checks passing; missing preflight, public path leakage and empty-source exemption were reproduced before fixes. (local)
-- [eval] [exp] 新捕获 workspace `out/lab-fullchain-truth-20261102-final-gripper-no-motion-r1/`，task `task_4972b9d477f048d2`，revision `revision_d41e73623a814c98`，session `cli:lab-ca9ce2f70682`：R03 工艺查询/准备 available；task-affordance unavailable，任务 cancelled，host exit 1。 / Fresh workspace/task/revision/session has available R03 process queries/preparation but unavailable task-affordance; task cancelled, host exit 1. (local)
-- [eval] [exp] 候选 4/16/44/57 超开口；10/17/23/27/52/55 各四种轴向终态均为手掌 padded cooked bounds/table 拒绝，24 次终态检查复用于两种接近距离，形成 48 条记录。旧 workspace/IK/自碰撞检查没有被证明已消失，也不代表所有可能抓取无解。 / Four candidates exceed aperture; six candidates each reject at four final orientations on padded cooked-palm/table overlap, giving 24 endpoint checks reused for two backoffs and 48 records. Earlier workspace/IK/self limitations are not disproven, and all possible grasps are not ruled out. (local)
-- [eval] [exp] 原生仅位姿回放 `out/lab-final-gripper-geometry-20261102-r1/geometry.json` exit 0；8 条终态拒绝重现、无未回放记录、关节/物理时间未变、控制命令 0；初始 FK/USD 平移最大误差 2.01e-7 m。 / Native pose-only replay exits 0, reproduces eight endpoint rejections, leaves no unplayed attempts, changes neither joints nor physics time and issues zero commands; initial FK/USD position error is at most 2.01e-7 m. (local)
-- [eval] [chore] `simulated_motion_enabled=false`、`controller_outcomes=[]`；无抓取、R04 倾倒或搅拌执行证据。Kit 材质/GPU particle 错误保留，未验证液体/粒子动力学。 / Motion remains disabled with empty controller outcomes and no grasp/R04 pour/stir execution evidence; Kit material/GPU particle errors remain, and liquid/particle dynamics are unvalidated. (local)
-- [docs] [docs] 后续应在 Grasp/Task-Affordance Provider 改善真实几何下的可抓区域覆盖与工艺净空，生成新的合格 opaque 候选；不得在 Action recovery 内平移候选或恢复被排除的 raw 集合。 / Next improve geometry-grounded grasp-region coverage/process clearance in Providers and generate newly qualified opaque candidates, never shifting poses or restoring rejected raw candidates inside Action recovery. (local)
-
-### Git 提交 / Git Commit
-- Implementation commit: `5f83c2a3`.
-- Branch: `feature/planning-loop`; time: `2026-11-02 12:53:47 +0800`.
-- [docs] [docs] 月度完整记录 `changelog/2026-11.md:L780-L872`；索引对应 `CHANGELOG.md:L51-L143`，最近五版本与归档逐字一致。 / The complete archive/index entry occupies these ranges; latest five entries match their archive exactly. (local)
-- [chore] [chore] 仅暂存本任务 12 个文件，无关报告与运行输出保留未暂存；提交回执随后以文档提交保存并推送当前分支。 / Stage only twelve task-owned files, preserving unrelated report/runtime outputs; save this receipt in a following docs commit and push the current branch. (local)

@@ -1,4 +1,32 @@
-# Current Task: LabUtopia contact and trajectory timing repair
+# Current Task: LabUtopia stable grasp and full-route qualification
+
+## v16.9.0 / 稳定抓取资格化与直达路线尝试
+
+- Diagnosis and evidence: `.task/labutopia-stable-grasp-direct-route-20261102.md`.
+- Review: `docs/forge/IMPLEMENTATION_REVIEW_V16_9_0.md`.
+- Isaac Provider filters asymmetric/axis-misaligned bottle sidewall grasps and
+  ranks only original, same-capture opaque GraspNet refs; Action does not alter
+  the selected pose.
+- Isaac Adapter now tries a direct current-pose/pregrasp route before the
+  existing fully qualified staged fallback. Collision, workspace, aperture,
+  joint-continuity, contact and drift limits remain unchanged.
+- Historical R05 candidate 69 is rejected for asymmetric finger clearance;
+  eight historical candidates remain geometrically qualified. This is replay,
+  not current motion authority.
+- Fresh no-motion run `out/lab-stable-grasp-direct-route-20261102-v16_9-no-motion-r1/`
+  admits candidate 178 through grasp/process and short-approach qualification,
+  then stops before Action.
+- Fresh authorized simulation run
+  `out/lab-stable-grasp-direct-route-20261102-v16_9-execute-r1/` examined 8
+  direct and 85 staged full routes; none passed. Task
+  `task_5f4231225e424e73` is `awaiting_replan` after a 1200-second host limit.
+  No readiness, controller outcome, video, grasp, pour or stir evidence exists.
+- Therefore bottle flight has not been fixed or disproven. Do not relax existing
+  safety thresholds. Next diagnose the fresh candidate world frame and initial
+  TCP/joints against per-stage route failures; obtain full readiness before
+  any new Action motion claim.
+- Full Adapter + subtask executor regression: 464 passed, 2 skipped; Ruff,
+  compileall and `git diff --check` passed.
 
 ## v16.8.0 contact/timing implementation / 接触与时序修复
 

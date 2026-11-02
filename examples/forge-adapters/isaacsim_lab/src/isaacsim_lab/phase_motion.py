@@ -301,6 +301,45 @@ def acquire_route_selection(config):
     return policy
 
 
+def acquire_route_strategies(config):
+    """Return ordered Adapter-private acquire planners."""
+    values = config.get("acquire_route_strategies", ["staged"])
+    if (not isinstance(values, list) or not values
+            or any(value not in {"direct", "staged"} for value in values)):
+        raise PhaseMotionError(
+            "invalid_motion_configuration",
+            "acquire_route_strategies must be a non-empty list containing direct or staged",
+        )
+    return tuple(dict.fromkeys(values))
+
+
+def acquire_direct_route_waypoints(tcp, desired, approach, corridor, config):
+    """Build a natural current-pose to pregrasp route for full qualification."""
+    tcp = np.asarray(tcp, dtype=float)
+    desired = np.asarray(desired, dtype=float)
+    approach = np.asarray(approach, dtype=float)
+    if (tcp.shape != (4, 4) or desired.shape != (4, 4) or approach.shape != (3,)
+            or not np.isfinite(tcp).all() or not np.isfinite(desired).all()
+            or not np.isfinite(approach).all() or float(np.linalg.norm(approach)) <= 1e-9):
+        raise PhaseMotionError(
+            "invalid_grasp_approach",
+            "direct acquire route requires finite poses and a non-zero approach direction",
+        )
+    approach = approach / np.linalg.norm(approach)
+    approach_distance = corridor[0]
+    pre = desired.copy()
+    pre[:3, 3] -= approach * approach_distance
+    lifted = desired.copy()
+    lifted[2, 3] += config["lift_distance_m"]
+    return [
+        (tcp, config["settle_s"], "open"),
+        (pre, 0., "direct_pregrasp"),
+        (desired, config["settle_s"], "grasp"),
+        (desired, config["settle_s"], "close"),
+        (lifted, config["settle_s"], "lift"),
+    ]
+
+
 def acquire_route_waypoints(tcp, desired, approach, clearance, transport_quaternion, corridor, config):
     """Build one geometry-derived acquire corridor without robot or task labels."""
     tcp = np.asarray(tcp, dtype=float)
@@ -352,15 +391,21 @@ def acquire_route_waypoints(tcp, desired, approach, clearance, transport_quatern
 def acquire_failure_summary(failures):
     """Bound route diagnostics while retaining failure ownership and coverage."""
     stage_names = {
-        "open", "transit_raise", "transit_orient", "transit_cross",
+        "open", "direct_pregrasp", "transit_raise", "transit_orient", "transit_cross",
         "staging_reorient", "approach", "grasp", "close", "lift",
     }
     counts = Counter()
+    strategies = defaultdict(Counter)
     corridors = defaultdict(Counter)
     clearances = defaultdict(Counter)
     transports = defaultdict(Counter)
     examples = {}
-    for clearance, transport_order, corridor_order, symmetry_angle, exc in failures:
+    for failure in failures:
+        if len(failure) == 5:
+            strategy = "staged"
+            clearance, transport_order, corridor_order, symmetry_angle, exc = failure
+        else:
+            strategy, clearance, transport_order, corridor_order, symmetry_angle, exc = failure
         detail = str(exc)
         prefix = detail.split(":", 1)[0]
         if prefix in stage_names:
@@ -371,22 +416,24 @@ def acquire_failure_summary(failures):
             stage = "unknown"
         key = (exc.code, stage)
         counts[key] += 1
+        strategies[key][strategy] += 1
         corridors[key][corridor_order] += 1
         clearances[key][clearance] += 1
         transports[key][transport_order] += 1
-        examples.setdefault(key, (clearance, transport_order, corridor_order, symmetry_angle, detail))
+        examples.setdefault(key, (strategy, clearance, transport_order, corridor_order, symmetry_angle, detail))
     sections = [f"routes={len(failures)}"]
     for key in sorted(counts):
         code, stage = key
-        clearance, transport, corridor, angle, detail = examples[key]
+        strategy, clearance, transport, corridor, angle, detail = examples[key]
         if len(detail) > 400:
             detail = detail[:397] + "..."
         sections.append(
             f"{code}[{stage}] count={counts[key]}, "
+            f"strategy_counts={dict(sorted(strategies[key].items()))}, "
             f"corridor_counts={dict(sorted(corridors[key].items()))}, "
-            f"clearance_counts={dict(sorted(clearances[key].items()))}, "
+            f"clearance_counts={dict(sorted(clearances[key].items(), key=lambda item: str(item[0])))}, "
             f"transport_counts={dict(sorted(transports[key].items()))}; "
-            f"example clearance={clearance}, transport={transport}, corridor={corridor}, "
+            f"example strategy={strategy}, clearance={clearance}, transport={transport}, corridor={corridor}, "
             f"axial_angle={angle}: {detail}"
         )
     return "; ".join(sections)
@@ -1027,69 +1074,106 @@ class IsaacPhaseMotion:
             )
             transport_orientations = acquire_transport_orientations(self.config)
             staging_corridors = acquire_staging_corridors(self.config)
+            direct_corridors = tuple(dict.fromkeys(
+                (corridor[0], 0., 0.) for corridor in staging_corridors
+            ))
             policy = acquire_route_selection(self.config)
+            strategies = acquire_route_strategies(self.config)
             clearances = acquire_transit_clearances(self.config)
+            variant_count = sum(
+                len(direct_corridors) * len(variants) if strategy == "direct"
+                else len(clearances) * len(transport_orientations) * len(staging_corridors) * len(variants)
+                for strategy in strategies
+            )
             search_ref = self._artifact("acquire-search", {
                 "status": "started", "scene_revision": arguments["scene_revision"],
                 "candidate_ref": target.get("candidate_ref"), "policy": policy,
-                "variant_count": len(clearances) * len(transport_orientations) * len(staging_corridors) * len(variants),
+                "route_strategies": list(strategies), "variant_count": variant_count,
                 "motion_authorized": False, "world_change_started": False,
             })
-            combinations = product(enumerate(clearances), enumerate(transport_orientations),
+            for strategy in strategies:
+                strategy_candidates = []
+                if strategy == "direct":
+                    combinations = (
+                        (-1, None, -1, None, corridor_order, corridor, symmetry_order, variant)
+                        for (corridor_order, corridor), (symmetry_order, variant)
+                        in product(enumerate(direct_corridors), enumerate(variants))
+                    )
+                else:
+                    combinations = (
+                        (clearance_order, clearance, transport_order, transport_quaternion,
+                         corridor_order, corridor, symmetry_order, variant)
+                        for (clearance_order, clearance), (transport_order, transport_quaternion),
+                        (corridor_order, corridor), (symmetry_order, variant)
+                        in product(enumerate(clearances), enumerate(transport_orientations),
                                    enumerate(staging_corridors), enumerate(variants))
-            for (clearance_order, clearance), (transport_order, transport_quaternion), (corridor_order, corridor), (
-                    symmetry_order, (symmetry_angle, variant_desired, variant_approach)) in combinations:
-                started = time.monotonic()
-                attempt = {"search_ref": search_ref, "clearance_m": clearance,
-                           "transport_order": transport_order, "corridor_order": corridor_order,
-                           "axial_symmetry_angle_rad": symmetry_angle,
-                           "motion_authorized": False, "world_change_started": False}
-
-                def progress(stage, status, **details):
-                    self._artifact("acquire-search", {**attempt, "stage": stage, "status": status,
-                                                     "elapsed_s": time.monotonic() - started, **details})
-
-                progress("route", "started")
-                candidate_relation = np.linalg.inv(variant_desired) @ body
-                try:
-                    candidate_waypoints = acquire_route_waypoints(
-                        tcp, variant_desired, variant_approach, clearance,
-                        transport_quaternion, corridor, self.config,
                     )
-                    candidate = self.qualify(
-                        candidate_waypoints, source, candidate_relation, operation,
-                        np.asarray(original_return), progress=progress,
-                    )
-                    approach_distance, staging_backoff, tangential_offset = corridor
-                    candidate["acquire_transit_clearance_m"] = clearance
-                    candidate["acquire_transport_orientation_xyzw"] = list(transport_quaternion)
-                    candidate["acquire_approach_distance_m"] = approach_distance
-                    candidate["acquire_staging_backoff_m"] = staging_backoff
-                    candidate["acquire_staging_tangential_offset_m"] = tangential_offset
-                    if symmetry_angle is not None:
-                        candidate["acquire_axial_symmetry_angle_rad"] = symmetry_angle
-                    candidate_target = deepcopy(target)
-                    candidate_target["grasp_frame"]["position_m"] = variant_desired[:3, 3].tolist()
-                    candidate_target["grasp_frame"]["orientation_xyzw"] = Rotation.from_matrix(
-                        variant_desired[:3, :3]
-                    ).as_quat().tolist()
-                    candidate_target["approach_direction"]["vector"] = variant_approach.tolist()
-                    candidates.append((
-                        route_joint_travel(candidate), clearance_order, transport_order,
-                        corridor_order, symmetry_order, candidate, candidate_target, candidate_relation,
-                    ))
-                    progress("route", "available")
-                    if policy == "first_feasible":
-                        break
-                except PhaseMotionError as exc:
-                    failures.append((clearance, transport_order, corridor_order, symmetry_angle, exc))
-                    progress("route", "unavailable", failure_code=exc.code, error=str(exc),
-                             collision_diagnostic=exc.diagnostics)
+                for (clearance_order, clearance, transport_order, transport_quaternion,
+                     corridor_order, corridor, symmetry_order,
+                     (symmetry_angle, variant_desired, variant_approach)) in combinations:
+                    started = time.monotonic()
+                    attempt = {"search_ref": search_ref, "route_strategy": strategy,
+                               "clearance_m": clearance, "transport_order": transport_order,
+                               "corridor_order": corridor_order,
+                               "axial_symmetry_angle_rad": symmetry_angle,
+                               "motion_authorized": False, "world_change_started": False}
+
+                    def progress(stage, status, **details):
+                        self._artifact("acquire-search", {**attempt, "stage": stage, "status": status,
+                                                         "elapsed_s": time.monotonic() - started, **details})
+
+                    progress("route", "started")
+                    candidate_relation = np.linalg.inv(variant_desired) @ body
+                    try:
+                        if strategy == "direct":
+                            candidate_waypoints = acquire_direct_route_waypoints(
+                                tcp, variant_desired, variant_approach, corridor, self.config,
+                            )
+                        else:
+                            candidate_waypoints = acquire_route_waypoints(
+                                tcp, variant_desired, variant_approach, clearance,
+                                transport_quaternion, corridor, self.config,
+                            )
+                        candidate = self.qualify(
+                            candidate_waypoints, source, candidate_relation, operation,
+                            np.asarray(original_return), progress=progress,
+                        )
+                        approach_distance, staging_backoff, tangential_offset = corridor
+                        candidate["acquire_route_strategy"] = strategy
+                        candidate["acquire_approach_distance_m"] = approach_distance
+                        candidate["acquire_staging_backoff_m"] = staging_backoff
+                        candidate["acquire_staging_tangential_offset_m"] = tangential_offset
+                        if strategy == "staged":
+                            candidate["acquire_transit_clearance_m"] = clearance
+                            candidate["acquire_transport_orientation_xyzw"] = list(transport_quaternion)
+                        if symmetry_angle is not None:
+                            candidate["acquire_axial_symmetry_angle_rad"] = symmetry_angle
+                        candidate_target = deepcopy(target)
+                        candidate_target["grasp_frame"]["position_m"] = variant_desired[:3, 3].tolist()
+                        candidate_target["grasp_frame"]["orientation_xyzw"] = Rotation.from_matrix(
+                            variant_desired[:3, :3]
+                        ).as_quat().tolist()
+                        candidate_target["approach_direction"]["vector"] = variant_approach.tolist()
+                        strategy_candidates.append((
+                            route_joint_travel(candidate), clearance_order, transport_order,
+                            corridor_order, symmetry_order, candidate, candidate_target, candidate_relation,
+                        ))
+                        progress("route", "available")
+                        if policy == "first_feasible":
+                            break
+                    except PhaseMotionError as exc:
+                        failures.append((strategy, clearance, transport_order, corridor_order,
+                                         symmetry_angle, exc))
+                        progress("route", "unavailable", failure_code=exc.code, error=str(exc),
+                                 collision_diagnostic=exc.diagnostics)
+                if strategy_candidates:
+                    candidates = strategy_candidates
+                    break
             if not candidates:
                 if not failures:
                     raise PhaseMotionError("route_unavailable", "no acquire route variant was configured")
-                codes = {exc.code for _clearance, _transport, _corridor, _angle, exc in failures}
-                representative = failures[0][4]
+                codes = {failure[-1].code for failure in failures}
+                representative = failures[0][-1]
                 failure_code = representative.code if len(codes) == 1 else "route_unavailable"
                 details = acquire_failure_summary(failures)
                 raise PhaseMotionError(failure_code, details) from representative

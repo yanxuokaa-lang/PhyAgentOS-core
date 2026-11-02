@@ -14,6 +14,7 @@ from pick_place_workflow.perception_binding import grasp_geometry_artifacts
 from PIL import Image
 from robotwin20_adapter.geometry_recovery import GeometryRecoveryResult
 from robotwin20_adapter.grasp_proposal import GraspNetProposalProvider
+from scipy.spatial.transform import Rotation
 
 from isaacsim_lab.simulator_truth_perception import (
     axial_grasp_symmetry,
@@ -911,7 +912,7 @@ def test_simulator_truth_bounds_do_not_qualify_process_landmarks_for_preparation
 
 
 def _task_affordance_fixture(tmp_path, *, operation, grasp_position, source_category, source_points,
-                             source_features, grasp_geometry=None):
+                             source_features, grasp_geometry=None, grasp_orientation=None):
     store = LabArtifactStore(tmp_path)
     identity = {
         "observation_ref": "observation://scene/front", "scene_revision": "scene",
@@ -926,10 +927,21 @@ def _task_affordance_fixture(tmp_path, *, operation, grasp_position, source_cate
                           "world_from_camera": np.eye(4).tolist(), "points_ref": points_ref},
     }
     grasp_ref = "candidate://source/grasp-1"
+    if grasp_orientation is None:
+        grasp_orientation = Rotation.from_matrix(np.asarray([
+            [0., 1., 0.],
+            [0., 0., 1.],
+            [1., 0., 0.],
+        ])).as_quat().tolist()
+    if grasp_geometry is None:
+        grasp_geometry = ({"width_m": .11, "height_m": .02, "depth_m": .04}
+                          if source_category == "reagent_bottle"
+                          else {"width_m": .02, "height_m": .02, "depth_m": .02})
     grasp = {"candidate_ref": grasp_ref, "entity_ref": source_ref,
-             "grasp_frame": {"frame_id": "front", "position_m": grasp_position},
+             "grasp_frame": {"frame_id": "front", "position_m": grasp_position,
+                             "orientation_xyzw": grasp_orientation},
              "approach_direction": {"frame_id": "front", "vector": [0., 1., 0.]},
-             "grasp_geometry": grasp_geometry or {"width_m": .02, "height_m": .02, "depth_m": .02}}
+             "grasp_geometry": grasp_geometry}
     process_candidates = {}
     selected_refs = []
     for feature_ref, entity_ref, feature in source_features:
@@ -942,6 +954,7 @@ def _task_affordance_fixture(tmp_path, *, operation, grasp_position, source_cate
     selected_refs.append(rim_ref)
     perception = SimpleNamespace(
         store=store,
+        provider_from_tcp=np.eye(4),
         observations={identity["calibration_ref"]: records},
         grasps=SimpleNamespace(
             candidate_sets={("candidate-set://scene/source", identity["calibration_ref"]): {
@@ -971,7 +984,7 @@ def test_task_affordance_provider_qualifies_bottle_body_grasp_and_revalidates(tm
     bottle_rim = {"feature_kind": "rim", "feature_role": "pour_lip", "tip_world": [0., 0., 1.],
                   "axis_world": [0., 0., 1.], "pour_direction_world": [1., 0., 0.], "rim_radius_m": .02}
     provider, request, grasp_ref = _task_affordance_fixture(
-        tmp_path, operation="pour", grasp_position=[.05, 0., .6833333333], source_category="reagent_bottle",
+        tmp_path, operation="pour", grasp_position=[0., 0., .6833333333], source_category="reagent_bottle",
         source_points=points, source_features=[("process-feature://bottle/rim", "entity://source", bottle_rim)],
     )
     query = provider.propose(request)
@@ -1051,7 +1064,7 @@ def test_task_affordance_provider_keeps_only_no_motion_feasible_opaque_grasps(tm
     provider, request, grasp_ref = _task_affordance_fixture(
         tmp_path,
         operation="pour",
-        grasp_position=[.05, 0., .6833333333],
+        grasp_position=[0., 0., .6833333333],
         source_category="reagent_bottle",
         source_points=points,
         source_features=[("process-feature://bottle/rim", "entity://source", bottle_rim)],
@@ -1119,7 +1132,7 @@ def test_task_affordance_provider_fails_closed_for_unavailable_or_stale_approach
     provider, request, _grasp_ref = _task_affordance_fixture(
         tmp_path,
         operation="pour",
-        grasp_position=[.05, 0., .6833333333],
+        grasp_position=[0., 0., .6833333333],
         source_category="reagent_bottle",
         source_points=points,
         source_features=[("process-feature://bottle/rim", "entity://source", bottle_rim)],
@@ -1172,7 +1185,7 @@ def test_task_affordance_probe_failure_reasons_remain_distinct(tmp_path, mode, e
     rim = {"feature_kind": "rim", "feature_role": "pour_lip", "tip_world": [0., 0., 1.],
            "axis_world": [0., 0., 1.], "pour_direction_world": [1., 0., 0.], "rim_radius_m": .02}
     provider, request, grasp_ref = _task_affordance_fixture(
-        tmp_path, operation="pour", grasp_position=[.05, 0., .6833333333],
+        tmp_path, operation="pour", grasp_position=[0., 0., .6833333333],
         source_category="reagent_bottle", source_points=points,
         source_features=[("process-feature://bottle/rim", "entity://source", rim)],
     )
@@ -1344,6 +1357,82 @@ def test_task_affordance_provider_rejects_bottle_grasp_near_support_end(tmp_path
 def test_task_affordance_provider_rejects_invalid_bottle_support_clearance(value):
     with pytest.raises((TypeError, ValueError), match="task-affordance|support-clearance"):
         LabGraspTaskAffordanceProvider(Mock(), bottle_support_clearance_ratio=value)
+
+
+@pytest.mark.parametrize("field,value", [
+    ("bottle_max_closing_axis_dot", 0.),
+    ("bottle_max_closing_axis_dot", 1.),
+    ("bottle_min_finger_axis_dot", float("nan")),
+    ("bottle_contact_center_ratio", .5),
+])
+def test_task_affordance_provider_rejects_invalid_bottle_stability_threshold(field, value):
+    with pytest.raises(ValueError, match="task-affordance|bottle"):
+        LabGraspTaskAffordanceProvider(Mock(), **{field: value})
+
+
+def test_task_affordance_provider_rejects_off_center_bottle_sidewall_grasp(tmp_path):
+    theta = np.linspace(0, 2 * np.pi, 48, endpoint=False)
+    points = np.asarray([[.05 * np.cos(angle), .05 * np.sin(angle), z]
+                         for z in np.linspace(.45, .95, 31) for angle in theta])
+    rim = {"feature_kind": "rim", "feature_role": "pour_lip", "tip_world": [0., 0., 1.],
+           "axis_world": [0., 0., 1.], "pour_direction_world": [1., 0., 0.], "rim_radius_m": .02}
+    provider, request, _ = _task_affordance_fixture(
+        tmp_path, operation="pour", grasp_position=[.025, 0., .7], source_category="reagent_bottle",
+        source_points=points,
+        source_features=[("process-feature://bottle/rim", "entity://source", rim)],
+    )
+
+    result = provider.propose(request)
+
+    assert result["status"] == "unavailable"
+    assert "asymmetric finger clearance" in result["error"]
+
+
+def test_task_affordance_provider_rejects_bottle_axis_closing_grasp(tmp_path):
+    theta = np.linspace(0, 2 * np.pi, 48, endpoint=False)
+    points = np.asarray([[.05 * np.cos(angle), .05 * np.sin(angle), z]
+                         for z in np.linspace(.45, .95, 31) for angle in theta])
+    rim = {"feature_kind": "rim", "feature_role": "pour_lip", "tip_world": [0., 0., 1.],
+           "axis_world": [0., 0., 1.], "pour_direction_world": [1., 0., 0.], "rim_radius_m": .02}
+    closing_along_axis = Rotation.from_matrix(np.asarray([
+        [-1., 0., 0.],
+        [0., 0., 1.],
+        [0., 1., 0.],
+    ])).as_quat().tolist()
+    provider, request, _ = _task_affordance_fixture(
+        tmp_path, operation="pour", grasp_position=[0., 0., .7], source_category="reagent_bottle",
+        source_points=points,
+        source_features=[("process-feature://bottle/rim", "entity://source", rim)],
+        grasp_orientation=closing_along_axis,
+    )
+
+    result = provider.propose(request)
+
+    assert result["status"] == "unavailable"
+    assert "closes along the bottle axis" in result["error"]
+
+
+def test_task_affordance_provider_orders_equally_stable_opaque_grasps_deterministically(tmp_path):
+    theta = np.linspace(0, 2 * np.pi, 48, endpoint=False)
+    points = np.asarray([[.05 * np.cos(angle), .05 * np.sin(angle), z]
+                         for z in np.linspace(.45, .95, 31) for angle in theta])
+    rim = {"feature_kind": "rim", "feature_role": "pour_lip", "tip_world": [0., 0., 1.],
+           "axis_world": [0., 0., 1.], "pour_direction_world": [1., 0., 0.], "rim_radius_m": .02}
+    provider, request, grasp_ref = _task_affordance_fixture(
+        tmp_path, operation="pour", grasp_position=[0., 0., .7], source_category="reagent_bottle",
+        source_points=points,
+        source_features=[("process-feature://bottle/rim", "entity://source", rim)],
+    )
+    preferred_ref = "candidate://source/grasp-0"
+    captured = provider.perception.grasps.captures[request["calibration_ref"]]
+    captured[preferred_ref] = {**captured[grasp_ref], "candidate_ref": preferred_ref}
+    provider.perception.grasps.candidate_sets[(
+        request["grasp_candidate_set_ref"], request["calibration_ref"]
+    )]["candidate_refs"].add(preferred_ref)
+
+    result = provider.propose(request)
+
+    assert [item["grasp_candidate_ref"] for item in result["candidates"]] == [preferred_ref, grasp_ref]
 
 
 def test_task_affordance_selects_rod_endpoint_opposite_the_shaft_grasp(tmp_path):
