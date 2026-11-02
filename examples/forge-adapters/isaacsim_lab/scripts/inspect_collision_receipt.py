@@ -57,6 +57,8 @@ def inspect(model, receipt):
             obstacles.append({"path": str(prim.GetPath()), "min_m": list(bounds.GetMin()),
                               "max_m": list(bounds.GetMax())})
     mesh_points = []
+    # Force current-scene cooking before sampling; keep its private provenance.
+    _ = model.finger_geometry
     for number in (1, 2):
         joint = UsdPhysics.PrismaticJoint(stage.GetPrimAtPath(
             f"{model.robot.prim_path}/panda_hand/panda_finger_joint{number}"))
@@ -94,7 +96,8 @@ def inspect(model, receipt):
             model._collisions(joints, "", False, False, np.eye(4))
             replay = {"status": "clear"}
         except PhaseMotionError as exc:
-            replay = {"status": "rejected", "code": exc.code, "error": str(exc)}
+            replay = {"status": "rejected", "code": exc.code, "error": str(exc),
+                      "collision_diagnostic": exc.diagnostics}
         samples.append({"attempt_index": index, "original_error": attempt.get("error"),
                         "joints": joints.tolist(), "tcp_world": model.tcp(joints).tolist(),
                         "finger_sweep_boxes": boxes, "finger_meshes": meshes, "replay": replay})
@@ -107,6 +110,7 @@ def inspect(model, receipt):
                 "candidate_ref", "observation_ref", "scene_revision", "calibration_ref")},
             "current_scene_revision": model.session.current_scene_revision(),
             "hand_from_tcp": model.hand_from_tcp.tolist(), "initial_fk_usd_comparison": initial_links,
+            "finger_geometry_evidence": model.finger_geometry_evidence,
             "overlap_replay_policy": "no source-contact exemption; diagnostic only",
             "obstacle_bounds": obstacles, "samples": samples,
             "unreplayed_attempts": len(receipt.get("attempts", [])) - len(samples)}

@@ -48,6 +48,63 @@
 
 ## 最近五版本 / Latest five versions
 
+## v16.6.2 (2026-11-02 12:24) - codex
+
+### 预期修改 / Planned Changes [完成局部修复；完整抓取仍受阻 / Local repair complete; full grasp remains blocked]
+- [docs] [docs] 保存复位修复后的真实拒绝分布，区分夹指保守包络、终态干涉、工作空间、开口及 IK 分支问题；在 `.task/` 记录证据与修复边界。 / Save post-reset rejection evidence and distinguish conservative finger bounds, final interference, workspace, aperture and IK branches in a task diagnosis. (local)
+- [env] [fix] 在 Isaac Adapter 内修复有实测支持的夹指碰撞表示或候选准备缺陷；优先验证几何覆盖，再接入现有 preparation，保持裕量、全行程、同捕获及完整路线检查。 / Repair evidenced finger collision representation or candidate-preparation defects inside Isaac Adapter, verifying geometry coverage before integration and preserving margins, full travel, same-capture and full-route checks. (local)
+- [eval] [chore] 先写失败复现，再运行替代机制/失败路径测试与真实场景无动作验证；不将局部净空或单元测试表述为抓取成功。 / Reproduce failures, run substitution/failure tests and actual-scene no-motion validation; do not equate local clearance or unit tests with grasp success. (local)
+- [docs] [docs] 更新开发说明、架构复核、精确行号、Diff 与最近五版本，仅提交本任务文件并推送当前分支。 / Update guidance, architecture review, exact ranges/diffs and latest five entries; commit task-owned files and push the current branch. (local)
+
+### 根因与修复 / Cause and Repair
+- [env] [fix] 旧整夹指 AABB 把未占据角落纳入开合扫掠，叠加 3 mm 裕量后过早拒绝桌面附近路径。改为读取当前场景 PhysX cooked convex 全部组件，保守切片后逐盒覆盖完整 prismatic 行程；保持原裕量。 / Whole-finger AABBs swept empty corners and prematurely rejected near-table routes after padding. Read all current-scene PhysX cooked convex components, conservatively slice their solids, and sweep each bound over full prismatic travel with the original margin. (local)
+- [env] [fix] 切片包含凸体边与切平面交点，覆盖没有原始顶点的切片；烹制失败、无回调、无组件或无效凸体均拒绝。 / Slice bounds include convex edge/plane intersections, covering slabs without original vertices; missing callbacks, failed cooking, empty components and invalid solids reject. (local)
+- [policy] [chore] 机制留在 Isaac Adapter，AgentLoop 语义参数、opaque 选择、同捕获证据、qualified-only 恢复及完整路径检查保持原职责。 / Mechanisms remain inside Isaac Adapter; AgentLoop semantic parameters, opaque selection, same-capture evidence, qualified-only recovery and complete-route checks retain their owners. (local)
+
+### 文件变更详情 / File Changes
+- [env] [fix] [新增 / Added] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/finger_collision.py:L1-L70` 同步 cooked 组件读取与凸体保守切片。 / Synchronous cooked-component loading and conservative convex-solid slicing. (local)
+- [env] [fix] [修改 / Modified] `examples/forge-adapters/isaacsim_lab/src/isaacsim_lab/phase_motion.py:L714-L780,L890-L912,L1314` 接入实例代理/最终变换/cooked 包络，保存夹指环境与自碰撞私有几何诊断。 / Integrate instance proxies, final transforms and cooked bounds; retain private finger/environment/self-overlap geometry. (local)
+- [eval] [chore] [新增 / Added] `examples/forge-adapters/isaacsim_lab/tests/test_finger_collision.py:L1-L150` 13 项几何、完整扫掠、替代烹制/查询、失败路径与裕量回归。 / Thirteen geometry, full-sweep, substituted cooking/query, failure and margin regressions. (local)
+- [eval] [chore] [修改 / Modified] `examples/forge-adapters/isaacsim_lab/scripts/inspect_collision_receipt.py:L60-L61,L99-L100,L113` 保留实际 cooked 证据和新拒绝诊断。 / Preserve actual cooked evidence and replay rejection diagnostics. (local)
+- [docs] [docs] [修改 / Modified] `docs/forge/MANIPULATION_DAG_DEVELOPER_GUIDE.md:L194-L214` 记录 Isaac 所有权、凸体覆盖、全行程、失败与历史证据边界。 / Document Isaac ownership, convex coverage, travel, failure and historical evidence boundaries. (local)
+- [docs] [docs] [新增 / Added] `.task/labutopia-finger-envelope-repair-20261102.md:L1-L108` 保存原始原因、架构决策、原生对照与后续真实阻塞。 / Save original cause, architecture decisions, native comparisons and remaining measured blockers. (local)
+- [docs] [docs] [修改 / Modified] `.task/current.md:L3-L19` 更新当前局部修复与完整流程阻塞状态。 / Update local-repair and end-to-end blocker status. (local)
+- [docs] [docs] [新增 / Added] `docs/forge/IMPLEMENTATION_REVIEW_V16_6_2.md:L1-L88` 完成问题分级、架构边界、测试命令与不同证据等级复核。 / Record severity, architecture boundaries, reproduction commands and evidence-level review. (local)
+- [docs] [docs] [修改 / Modified] `CHANGELOG.md` 最近五版本滚动加入本记录，与月度归档保持全文一致；行号在 Git 回执中补齐。 / Roll this complete record into the latest five, identical to the monthly archive; record final line range in the Git receipt. (local)
+
+### 关键代码 Diff / Key Code Diff
+```diff
+- box = bounds.ComputeRelativeBound(collider, body).ComputeAlignedBox()
+- local_corners = np.array([*product(*zip(box.GetMin(), box.GetMax()))])
++ parts = cooked_convex_points(
++     get_physx_cooking_interface().request_convex_collision_representation,
++     UsdUtils.StageCache.Get().GetId(self.stage).ToLongInt(),
++     PhysicsSchemaTools.sdfPathToInt(collider.GetPath()),
++     PhysxCollisionRepresentationResult.RESULT_VALID,
++ )
++ parts = [points @ relative[:3, :3].T + relative[:3, 3] for points in parts]
++ boxes = [box for points in parts for box in
++          convex_slice_boxes(points, self.config["collision_margin_m"])]
++ # Each slab includes edge/plane intersections; no vertex-only clipping.
++ # Existing finger_boxes still sweeps every slab through joint limits.
+```
+```diff
+- raise PhaseMotionError("self_collision", f"finger envelope overlaps {link}")
++ reject("self_collision", f"finger envelope overlaps {link}", link="finger",
++        other_link=link, primitive="oriented_box_sphere_group", ...)
+```
+
+### 已完成验证 / Completed Validation
+- [eval] [chore] 受影响回归 434 passed；Ruff、compileall、`git diff --check` 通过。首次新增测试因模块尚未实现而收集失败；随后局部命令缺少工作流 PYTHONPATH 及零值数值断言容差导致失败，修正命令/浮点断言后全部通过。 / Affected regressions: 434 passed; Ruff, compileall and whitespace checks pass. Initial tests could not collect before implementation; a subsequent local run lacked the workflow PYTHONPATH and used an overly strict zero-value assertion, both corrected before the passing runs. (local)
+- [eval] [exp] `out/lab-cooked-finger-geometry-20261102-r1/geometry.json`：左右夹指各 8 个实际 cooked 组件，53/56 个包络盒；5 个历史中间失败样本全部 clear，关节和物理时间未变。 / Native receipt: eight actual cooked components per finger, 53/56 boxes, all five historical intermediate failures clear, with unchanged joints and physics time. (local)
+- [docs] [docs] 中间样本通过不代表最终抓取或整条路径通过；正式新捕获结果另记。 / Intermediate clearance does not prove final grasp or full-route feasibility; fresh-capture results are recorded separately. (local)
+
+### 正式新捕获结果 / Formal Fresh-Capture Result
+- [eval] [exp] `out/lab-fullchain-truth-20261102-cooked-finger-no-motion-r1/`，session `cli:lab-3c4728b402d2`，task `task_9c72fe6c84e94594`，revision `revision_3b1df384b60c41f4`；task-affordance unavailable，任务 cancelled，入口退出 1。 / The recorded workspace/session/task/revision completes with unavailable task-affordance, cancelled task and host exit 1. (local)
+- [eval] [exp] 4 个开口拒绝与 48 次接近拒绝数量不变（workspace 20/environment 20/self 4/IK 4），但候选 17 的 5 个夹指拒绝变为更低位置的手掌球/桌面拒绝，首个 TCP Z 由 0.780287 降至 0.777973 m；修复实际推进了检查，未证明最终抓取可行。 / Four aperture and 48 approach failures persist, but candidate 17's five finger failures now become later hand-sphere/table failures, first TCP Z advancing from 0.780287 to 0.777973 m; the repair advances checking without proving final feasibility. (local)
+- [eval] [exp] 候选 55 两次 refined finger/table 拒绝位于 TCP Z≈0.742 m。其余手臂环境/自碰撞与 IK 原因保持显式；未缩球半径、未调裕量、未添加绕过检查。 / Candidate 55 retains two refined finger/table failures near TCP Z 0.742 m. Remaining arm/environment/self/IK failures stay explicit; no sphere shrinking, margin tuning or bypass is added. (local)
+- [eval] [chore] `simulated_motion_enabled=false`、`controller_outcomes=[]`，三个记录均为 Query；无 Action、R04 或搅拌执行证据。 / Motion remains disabled with no controller outcomes; all three records are Queries, with no Action, R04 or stirring execution evidence. (local)
+
 ## v16.6.1 (2026-11-02 12:03) - codex
 
 ### 预期修改 / Planned Changes [完成 / Completed; collision/IK workflow remains blocked]
@@ -287,83 +344,3 @@
 - Time: `2026-11-01 21:20:30 +0800`.
 - Log receipt commit: `9a4e8fdd`.
 - Push: succeeded to `origin/feature/planning-loop`; remote advanced from `a5615644` to `9a4e8fdd`. / 已成功推送当前分支，远端从 `a5615644` 前进到 `9a4e8fdd`。
-
-## v16.3.9 (2026-11-01 20:26) - codex
-
-### 变更摘要 / Summary [完成 / Completed; zero motion]
-- [env] [exp] 使用现有 LabUtopia 场景、`simulator_truth` 标签/深度/点云/最终 USD 几何和 v16.3.8 staged acquire 路线，发起 R03、R04 顺序倾倒及 GLASS_ROD 搅拌的全链路 Agent 仿真执行；不调用 ReMake。 / Start the full-chain R03/R04 sequential pour and GLASS_ROD stir Agent simulation using the existing LabUtopia scene, simulator-truth labels/depth/point clouds/final USD geometry, and the v16.3.8 staged acquire route without invoking ReMake. (local)
-- [policy] [test] 两次倾倒的 `tilt_rad=0.87, hold_s=0.60` 与搅拌的 `radius_m=0.009, depth_m=0.04, turns=2.0, duration_s=4.0, direction=ccw` 仅通过用户提示词进入 PlanGraph 和原子动作参数；不在代码、启动脚本或抓取坐标中硬编码。 / Supply both pour parameters and all stir parameters only through the user prompt into PlanGraph and atomic action arguments, without hard-coding them in code, launch scripts, or grasp coordinates. (local)
-- [env] [test] 显式启用 `--execute`，但继续要求同次捕获、工艺几何、task-affordance、夹爪开口、workspace、完整姿态 IK/连续性、自碰撞、环境碰撞、payload collision 和 possession 门禁全部通过后才能发出控制器命令；任一失败或未知结果立即停止后续节点。 / Enable `--execute` explicitly while retaining same-capture, process-geometry, task-affordance, aperture, workspace, full-pose IK/continuity, self/environment collision, payload-collision, and possession gates before any controller command; stop later nodes on any failure or unknown outcome. (local)
-- [docs] [docs] 保留 Agent session、task、scene revision、候选/preparation、controller outcome、世界变化、持有状态、Host 日志与全部 MP4；若 preparation 在动作前失败，则保留真实相机静态预览并明确其非动作证据。 / Preserve the Agent session, task, scene revision, candidate/preparation evidence, controller outcomes, world-change and possession state, Host log, and all MP4 files; if preparation fails before motion, retain a real-camera static preview and label it as non-action evidence. (local)
-
-### 安全边界 / Safety Boundary
-- 本次授权仅限 Isaac/LabUtopia 仿真，不授权真实机械臂或硬件 IO。 / This authorization applies only to Isaac/LabUtopia simulation and does not authorize physical hardware or robot IO.
-- AgentLoop 不接收 USD 路径、关节角、IK 策略或碰撞绕过参数；这些机制继续由 Isaac Adapter 独占。 / AgentLoop receives no USD paths, joint angles, IK policy, or collision-bypass parameters; those mechanisms remain owned by the Isaac Adapter.
-- 不降低或关闭任何现有运动安全门禁。 / No existing motion-safety gate will be reduced or disabled.
-
-### 执行命令 / Execution Command
-```bash
-OMNI_KIT_ACCEPT_EULA=YES PYTHONUNBUFFERED=1 \
-PYTHONPATH=.:examples/forge-skills/pick-place-workflow/src:examples/forge-adapters/isaacsim_lab/src:examples/forge-adapters/robotwin20/src \
-./.venv/bin/python -m isaacsim_lab.agent_host \
-  --profile examples/forge-adapters/isaacsim_lab/configs/labutopia-mixture.json \
-  --workspace out/lab-fullchain-truth-20261101-staged-symmetry-execute-r1 \
-  --execute --execution-timeout-s 1800 \
-  '<R03/R04 pour and GLASS_ROD stir instruction with explicit parameters and simulation authorization>'
-```
-
-### 实际运行 / Actual Runtime
-- [env] [exp] Workspace `out/lab-fullchain-truth-20261101-staged-symmetry-execute-r1/`；session `cli:lab-dc8cd9539e91`；task `task_093815df65154b03`；action `invocation://manipulation-execute_subtask/118c1f7ccfea474e`；scene revision `labutopia-tabletop-rod-rack-v1:03b288762548416e890d5da8b38e9584:0`。 / Record the authorized execution workspace, Agent session, task, Action invocation, and scene revision. (local)
-- [policy] [test] 持久化 PlanGraph 原样包含两次倾倒 `tilt_rad=0.87, hold_s=0.6` 和搅拌 `radius_m=0.009, depth_m=0.04, turns=2, duration_s=4, direction=ccw`；参数来自用户提示词，未由 Adapter、profile 或硬编码抓取点注入。 / The persisted PlanGraph preserves the exact user prompt parameters; the Adapter, profile, and grasp poses do not inject them. (local)
-- [sense] [test] R03 的 process-feature Query/preparation 与 task-affordance Query/preparation 完成；Action 只消费同次捕获已资格化的 opaque grasp refs `15/23/16`，未回退到原始 64 个 GraspNet 候选。 / R03 process-feature and task-affordance Query/preparation completed, and Action consumed only same-capture qualified refs `15/23/16` without recovering from the raw 64-candidate GraspNet set. (local)
-- [env] [test] 三个候选各检查 `3 clearance x 2 transport x 4 axial angle = 24` 条路线，共 72 条；失败分布为 22 次 IK 不连续、16 次 IK 无解、12 次真实自碰撞、22 次环境碰撞，集中在 `staging_reorient` 和 `approach`。 / Each of three candidates exercised 24 routes for 72 total; failures were 22 IK discontinuities, 16 unavailable IK solutions, 12 genuine self-collisions, and 22 environment collisions concentrated at staging reorientation and approach. (local)
-- [env] [test] `manipulation.execute_subtask` 返回已知失败：`outcome_known=true`、`world_change_started=false`、scene revision 未变化、`possession_state=empty`、`controller_outcomes=[]`；R04 和 GLASS_ROD 未启动。 / The Action returned a known zero-motion failure with unchanged scene, empty possession, and no controller outcome; R04 and GLASS_ROD did not start. (local)
-- [docs] [docs] 失败 Action 未返回动作 artifact；基于本次真实 RGB 帧生成 5 秒、1600x1200、30 fps 的静态预览 `out/lab-fullchain-truth-20261101-staged-symmetry-execute-r1/artifacts/labutopia/no-motion-video/r03-preparation-failed-observation.mp4`，画面明确标注 controller 未启动，不能作为动作证据。 / The failed Action returned no motion artifact; generate a labelled five-second static preview from the run's real RGB frame, explicitly not Action evidence. (local)
-
-### 文件变更详情 / File Changes
-
-#### [新增] `.task/labutopia-r03-authorized-execution-diagnosis-20261101.md` L1-L62
-
-**新增内容 / Added:**
-```text
-authorized full-chain identity and prompt parameters
-72-route failure distribution and collision ownership
-PAOS boundary review plus labelled no-motion preview evidence
-```
-
-#### [修改] `.task/current.md` L23-L26
-
-**修改前 / Before:**
-```text
-latest evidence is the controller-disabled no-motion run
-```
-
-**修改后 / After:**
-```text
-latest evidence is the authorized --execute attempt that failed before controller start
-```
-
-#### [修改] `CHANGELOG.md` L51-L73
-
-**修改说明 / Description:** 将 v16.3.9 加入最近五版本并滚动移除最旧的 v16.3.4 详细条目。 / Add v16.3.9 to the latest-five window and roll the oldest v16.3.4 detail entry out to the monthly archive.
-
-### 关键运行差异 / Key Runtime Diff
-```diff
-- v16.3.8 no-motion preparation probe with simulated_motion_enabled=false
-+ authorized --execute Agent run with simulated_motion_enabled=true
-+ identical safety preparation still blocks before the first controller command
-+ exact prompt parameters and same-capture qualified opaque refs remain preserved
-```
-
-### 验证 / Validation
-- Agent Host 进程完整退出并返回任务 `failed`；没有残留 `isaacsim_lab.agent_host` 或 worker 进程。 / The Agent Host exited completely with task status `failed`; no Agent Host or worker process remained.
-- `acceptance.json`、session JSONL 与 task SQLite 一致记录 R03 Action 失败、R04/GLASS_ROD 未执行、`controller_outcomes=[]` 和零世界变化。 / Acceptance, session, and task-store records agree on the R03 failure, blocked downstream nodes, empty controller outcomes, and zero world change.
-- 视频经 `ffprobe` 验证为 H.264、1600x1200、30 fps、5.0 秒，并人工检查标注和真实场景画面。 / `ffprobe` verifies H.264, 1600x1200, 30 fps, and 5.0 seconds; the overlay and real scene frame were visually checked.
-- 诊断详情：`.task/labutopia-r03-authorized-execution-diagnosis-20261101.md`。 / Diagnosis: `.task/labutopia-r03-authorized-execution-diagnosis-20261101.md`.
-
-### Git 提交 / Git Commit
-- Runtime evidence commit: `40745371`.
-- Log receipt commit: `74023e97`.
-- Push receipt commit: `a5615644`.
-- Branch: `feature/planning-loop`.
-- Push: runtime/log commits and the push receipt were pushed successfully. / 运行、日志及推送回执提交均已成功推送。

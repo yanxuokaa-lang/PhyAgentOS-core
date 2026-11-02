@@ -713,16 +713,21 @@ class IsaacPhaseMotion:
 
     @cached_property
     def finger_geometry(self):
-        """Individual finger geometry and prismatic joints in the hand frame."""
+        """Cooked convex slab bounds and prismatic joints in the body frame."""
         from itertools import product
 
-        from pxr import Usd, UsdGeom, UsdPhysics
+        from omni.physx import get_physx_cooking_interface
+        from omni.physx.bindings._physx import PhysxCollisionRepresentationResult
+        from pxr import PhysicsSchemaTools, Usd, UsdGeom, UsdPhysics, UsdUtils
+
+        from .finger_collision import convex_slice_boxes, cooked_convex_points
 
         def joint_pose(position, quaternion):
             return pose_matrix(list(position), [*quaternion.GetImaginary(), quaternion.GetReal()])
 
         bounds = UsdGeom.BBoxCache(Usd.TimeCode.Default(), ["default", "render", "proxy"])
         geometry = []
+        self.finger_geometry_evidence = []
         for number in (1, 2):
             joint = UsdPhysics.PrismaticJoint(self.stage.GetPrimAtPath(
                 f"{self.robot.prim_path}/panda_hand/panda_finger_joint{number}"))
@@ -731,16 +736,47 @@ class IsaacPhaseMotion:
             parent_from_joint = joint_pose(joint.GetLocalPos0Attr().Get(), joint.GetLocalRot0Attr().Get())
             body_from_joint = joint_pose(joint.GetLocalPos1Attr().Get(), joint.GetLocalRot1Attr().Get())
             axis = {"X": 0, "Y": 1, "Z": 2}[joint.GetAxisAttr().Get()]
-            colliders = [child for child in Usd.PrimRange(body)
+            colliders = [child for child in Usd.PrimRange(body, Usd.TraverseInstanceProxies())
                          if child.HasAPI(UsdPhysics.CollisionAPI)
                          and UsdPhysics.CollisionAPI(child).GetCollisionEnabledAttr().Get()]
             if not colliders:
                 raise PhaseMotionError("finger_geometry_unavailable", "finger link has no active collider")
             for collider in colliders:
-                box = bounds.ComputeRelativeBound(collider, body).ComputeAlignedBox()
-                local_corners = np.array([*product(*zip(box.GetMin(), box.GetMax()))])
-                geometry.append((number, local_corners, parent_from_joint, body_from_joint, axis,
-                                 (joint.GetLowerLimitAttr().Get(), joint.GetUpperLimitAttr().Get())))
+                if collider.IsA(UsdGeom.Mesh):
+                    try:
+                        parts = cooked_convex_points(
+                            get_physx_cooking_interface().request_convex_collision_representation,
+                            UsdUtils.StageCache.Get().GetId(self.stage).ToLongInt(),
+                            PhysicsSchemaTools.sdfPathToInt(collider.GetPath()),
+                            PhysxCollisionRepresentationResult.RESULT_VALID,
+                        )
+                        relative = np.asarray(
+                            UsdGeom.Xformable(collider).ComputeLocalToWorldTransform(0)
+                            * UsdGeom.Xformable(body).ComputeLocalToWorldTransform(0).GetInverse()
+                        ).T
+                        parts = [points @ relative[:3, :3].T + relative[:3, 3] for points in parts]
+                        boxes = [box for points in parts for box in
+                                 convex_slice_boxes(points, self.config["collision_margin_m"])]
+                    except (ValueError, RuntimeError) as exc:
+                        raise PhaseMotionError("finger_geometry_unavailable", str(exc)) from exc
+                    self.finger_geometry_evidence.append({
+                        "collider_path": str(collider.GetPath()), "finger_joint": number,
+                        "representation": "physx_cooked_convex_slices",
+                        "body_frame_convexes_m": [points.tolist() for points in parts],
+                        "slice_count": len(boxes),
+                    })
+                else:
+                    # Analytic primitive colliders retain their original bounds.
+                    box = bounds.ComputeRelativeBound(collider, body).ComputeAlignedBox()
+                    boxes = [(np.asarray(box.GetMin()), np.asarray(box.GetMax()))]
+                    self.finger_geometry_evidence.append({
+                        "collider_path": str(collider.GetPath()), "finger_joint": number,
+                        "representation": "analytic_primitive_bound", "slice_count": 1,
+                    })
+                for lower, upper in boxes:
+                    local_corners = np.array([*product(*zip(lower, upper))])
+                    geometry.append((number, local_corners, parent_from_joint, body_from_joint, axis,
+                                     (joint.GetLowerLimitAttr().Get(), joint.GetUpperLimitAttr().Get())))
         return geometry
 
     @cached_property
@@ -851,7 +887,7 @@ class IsaacPhaseMotion:
             return path.startswith(robot_path) or (
                 (attached or released_pose is not None or allow_contact)
                 and (path == source_path or path.startswith(source_path + "/")))
-        for lower, upper in self.finger_boxes(measured=held_fingers):
+        for box_index, (lower, upper) in enumerate(self.finger_boxes(measured=held_fingers)):
             finger_center = hand[:3, 3] + hand[:3, :3] @ ((lower + upper) / 2)
             finger_half = (upper - lower) / 2 + self.config["collision_margin_m"]
             found = collision_hits(query.overlap_box, carb.Float3(*finger_half), carb.Float3(*finger_center),
@@ -861,12 +897,19 @@ class IsaacPhaseMotion:
                        obstacle_path=found[0], primitive="oriented_box",
                        center_m=finger_center.tolist(), half_extents_m=finger_half.tolist(),
                        orientation_xyzw=Rotation.from_matrix(hand[:3, :3]).as_quat().tolist(),
+                       finger_box_index=box_index,
                        finger_opening_mode="measured" if held_fingers else "full_travel_sweep")
             for link, centers, radii in groups:
                 if link not in {"panda_hand", "panda_link7"}:
                     if any(np.linalg.norm(np.maximum(np.abs(hand[:3, :3].T @ (center - finger_center)) - finger_half, 0.)) < radius
                            for center, radius in zip(centers, radii, strict=True)):
-                        raise PhaseMotionError("self_collision", f"finger envelope overlaps {link}")
+                        reject("self_collision", f"finger envelope overlaps {link}", link="finger",
+                               other_link=link, primitive="oriented_box_sphere_group",
+                               center_m=finger_center.tolist(), half_extents_m=finger_half.tolist(),
+                               orientation_xyzw=Rotation.from_matrix(hand[:3, :3]).as_quat().tolist(),
+                               finger_box_index=box_index, other_centers_m=np.asarray(centers).tolist(),
+                               other_radii_m=list(radii),
+                               finger_opening_mode="measured" if held_fingers else "full_travel_sweep")
         # The model's adjacent links intentionally overlap at their joints.
         # All non-adjacent groups remain checked, including the payload below.
         for i, (link, centers, radii) in enumerate(groups):
@@ -1268,6 +1311,7 @@ class IsaacPhaseMotion:
             "workspace_frame_id": "world",
             "workspace_min_m": self.config["workspace_min_m"],
             "workspace_max_m": self.config["workspace_max_m"],
+            "finger_geometry_evidence": getattr(self, "finger_geometry_evidence", []),
             "attempts": attempts,
         }
         if not candidates:

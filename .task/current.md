@@ -1,5 +1,22 @@
 # Current Task: LabUtopia R03/R04 full-chain grasp coverage
 
+## v16.6.2 completed local repair / 当前局部修复结果
+
+- Saved diagnosis: `.task/labutopia-finger-envelope-repair-20261102.md`.
+- Owner: Isaac Adapter only; cooked convex component bounds replace whole
+  finger bounds, retaining full prismatic sweep and 3 mm per-axis margin.
+- Native replay `out/lab-cooked-finger-geometry-20261102-r1/geometry.json`:
+  eight cooked convex components per finger, 53/56 slab boxes; all five
+  formerly rejected intermediate samples clear. Joints/time unchanged.
+- Fresh Agent no-motion qualification:
+  `out/lab-fullchain-truth-20261102-cooked-finger-no-motion-r1/` completed;
+  task `task_9c72fe6c84e94594` cancelled, no Action/controller. The same 48
+  failures remain (workspace 20/environment 20/self 4/IK 4), but candidate 17
+  now advances beyond the old finger box and fails later at hand-sphere/table.
+- Validation: 434 affected tests pass. No AgentLoop/public contract changes.
+- Intermediate clearance is not proof of final grasp or complete-route safety;
+  no controller, pour or stir success is claimed.
+
 - Task ID: `labutopia-r03-r04-grasp-coverage-20261101`
 - Goal: run the user-requested simulator-truth AgentLoop workflow for R03 and R04 pours followed by GLASS_ROD stirring, with all atomic action parameters supplied by the semantic subtasks and no ReMake dependency.
 - Tier: `C-Safety`

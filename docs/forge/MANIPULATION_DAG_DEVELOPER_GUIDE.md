@@ -191,6 +191,27 @@ retry, top-K policy or motion permission.
 
 ### Gripper state and near-support resolution
 
+The Isaac laboratory Adapter obtains mesh-finger geometry from PhysX's
+synchronous cooked collision representation in the current composed stage.
+It retains every convex component and bounds solid slices (including convex
+edge/plane intersections), rather than bounding the entire finger mesh once.
+The slice extent uses the existing collision margin as resolution; resolution
+does not subtract from that margin. Each box still sweeps the full prismatic
+joint range during acquire/closure, or the measured opening plus the existing
+position tolerance for held phases, and receives the unchanged per-axis margin.
+This removes empty whole-box corner volume without declaring mesh vertices to
+be a complete collision solid. Missing/invalid cooked evidence fails with
+`finger_geometry_unavailable`; analytic primitive colliders retain their prior
+bounds. No scene actor, joint, physics time or controller is modified to query
+these hypothetical poses. Sphere, self-collision, workspace, attachment and
+full-route checks still apply.
+
+Cooked components, queried box index and overlap geometry stay in Adapter-private
+diagnostics; public preparation and AgentLoop keep the existing opaque evidence
+references. Historical receipt replay is diagnostic only and cannot replace a
+fresh capture or authorize motion. A clear intermediate sample is not a safe
+final grasp or a successfully acquired object.
+
 The Adapter/Runtime owns gripper geometry, not Core or AgentLoop. A controller
 target is not a measured joint position. Readiness predicts physically bounded
 open endpoints. Without future holding-width evidence, preparation retains the
